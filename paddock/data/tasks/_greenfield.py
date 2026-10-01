@@ -8,7 +8,6 @@ import os
 import re
 import shutil
 import subprocess
-import threading
 import tomllib
 import time
 from collections import defaultdict
@@ -18,13 +17,13 @@ from pathlib import Path
 from typing import Any
 
 import _forensics as fx
+import _operator_gates as og
 from _judge import Judge, call_agent, render
 from _stablemate import TrialError, effective, no_leaks, pin_held, stablemate_checkout, uv_run
 from ostler import markdown
 from paddock import Run, Score
 from workhorse.cli.run import library_dirs as wh_library_dirs
 from workhorse.config_run import AgentResilience
-from workhorse.pyflow.park import answered as gate_answered
 from workhorse.runner import extract as wh_extract
 from workhorse.runner.backends.registry import get_backend
 from workhorse._vendor.stablemate_core.clock import SYSTEM_CLOCK
@@ -258,86 +257,6 @@ def commit_baseline(run: Run) -> None:
                              f"{result.stderr.strip() or result.stdout.strip()}")
 
 
-GATE_POLL_S = 5.0
-
-GATE_GRACE_S = 120.0
-
-
-def operator_gates_path(run: Run) -> Path:
-    return build_dir(run) / "operator-gates.json"
-
-
-def operator_gates_of(run: Run) -> list[dict[str, Any]]:
-    path = operator_gates_path(run)
-    return json.loads(path.read_text(encoding="utf-8")) if path.is_file() else []
-
-
-def record_gate(run: Run, entry: dict[str, Any]) -> None:
-    """Append one operator-gate outcome to its own ledger."""
-    entries = operator_gates_of(run)
-    entries.append(entry)
-    run.write_json(operator_gates_path(run), entries)
-
-
-def record_hand_answer(run: Run, gate: str, note: str, commit: str = "") -> None:
-    """Record that a *person* answered a gate on this round, outside the harness."""
-    entry: dict[str, Any] = {"gate": gate, "action": "hand", "note": note}
-    if commit:
-        entry["commit"] = commit
-    record_gate(run, entry)
-
-
-GATE_GLOBS = ("*context*.md", "docs/**/*context*.md")
-
-
-def parked_gates(repo: Path) -> list[Path]:
-    """Every context file currently sitting on `STATUS: AWAITING_OPERATOR`."""
-    found = {path for glob in GATE_GLOBS for path in repo.glob(glob)}
-    return sorted(p for p in found if p.is_file() and not gate_answered(p))
-
-
-def watch_operator_gates(run: Run, fixture: Fixture, stop: threading.Event) -> None:
-    """Watch the produced repo for a stalled gate and park the round on it."""
-    del fixture
-    parked = {str(e["gate"]) for e in operator_gates_of(run)}
-    first_seen: dict[str, float] = {}
-
-    while not stop.wait(GATE_POLL_S):
-        awaiting = set()
-        for path in parked_gates(run.repo):
-            gate = str(path.relative_to(run.repo))
-            awaiting.add(gate)
-            if gate in parked:
-                continue
-            since = first_seen.setdefault(gate, time.monotonic())
-            if time.monotonic() - since < GATE_GRACE_S:
-                continue
-            parked.add(gate)
-            record_gate(run, {"gate": gate, "action": "parked",
-                              "reason": "still awaiting an operator "
-                                        f"{GATE_GRACE_S / 60:.0f} minutes after it opened, "
-                                        "and this round has no operator"})
-            logger.warning("operator gate parked: %s", gate)
-        for gate in set(first_seen) - awaiting:
-            logger.info(
-                "operator gate cleared after %.0fs of the %.0fs grace: %s",
-                time.monotonic() - first_seen[gate], GATE_GRACE_S, gate,
-            )
-            del first_seen[gate]
-
-
-def gates_watched(
-    run: Run, fixture: Fixture, phase: str
-) -> tuple[threading.Event, threading.Thread]:
-    """Run `phase` with the gate watcher alive, and make sure it dies with the phase."""
-    stop = threading.Event()
-    thread = threading.Thread(
-        target=watch_operator_gates, args=(run, fixture, stop),
-        name=f"gate-watcher-{phase}", daemon=True,
-    )
-    return stop, thread
-
-
 RUNTIME_IGNORES = (".opencode/", "**/qa/**/*.log")
 
 IGNORE_HEADER = "# benchmark harness: agent runtime state, not deliverables"
@@ -377,7 +296,7 @@ def run_author(run: Run, fixture: Fixture) -> None:
     if not (run.repo / fixture.backlog_path).is_file():
         raise TrialError(f"no backlog at {run.repo / fixture.backlog_path} — genesis first")
     resume = ["--run-id", AUTHOR_RUN_ID] if fixture.grill_capture else []
-    stop, thread = gates_watched(run, fixture, "author")
+    stop, thread = og.gates_watched(run, "author")
     thread.start()
     try:
         run_phase(
@@ -387,14 +306,14 @@ def run_author(run: Run, fixture: Fixture) -> None:
         )
     finally:
         stop.set()
-        thread.join(timeout=GATE_POLL_S * 2)
+        thread.join(timeout=og.GATE_POLL_S * 2)
 
 
 def run_coder(run: Run, fixture: Fixture) -> None:
     """Implement the epic queue, watching for gates without answering them."""
     if not find_epics(run.repo):
         raise TrialError("no epic queue — author produced no epics to implement")
-    stop, thread = gates_watched(run, fixture, "coder")
+    stop, thread = og.gates_watched(run, "coder")
     thread.start()
     try:
         run_phase(
@@ -404,7 +323,7 @@ def run_coder(run: Run, fixture: Fixture) -> None:
         )
     finally:
         stop.set()
-        thread.join(timeout=GATE_POLL_S * 2)
+        thread.join(timeout=og.GATE_POLL_S * 2)
 
 
 def run_gates(run: Run, fixture: Fixture) -> None:
@@ -704,7 +623,7 @@ def score_round(run: Run, fixture: Fixture) -> Score:
     tally: dict[int, int] = defaultdict(int)
     for b in bullets:
         tally[int(b["level"])] += 1
-    operator_gates = operator_gates_of(run)
+    operator_gates = og.operator_gates_of(run)
     flags = warnings(bullets, checks, operator_gates)
     runs = fx.read_runs(runs_dir(run), stablemate_checkout(run))
     nodes = fx.hang_candidates(runs_dir(run), run.stage / "artifacts")

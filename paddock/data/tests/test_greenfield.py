@@ -42,6 +42,7 @@ with _tasks_dir_on_path():
     sys.modules["_greenfield"] = gf
     _spec.loader.exec_module(gf)
 jd = sys.modules["_judge"]
+og = sys.modules["_operator_gates"]
 
 
 BACKLOG = (
@@ -271,14 +272,14 @@ def park(run: Run, name: str = "_author-context.md") -> Path:
     return path
 
 
-def watch_once(run: Run, fixture: Any, monkeypatch: pytest.MonkeyPatch, *, expect: int) -> None:
+def watch_once(run: Run, monkeypatch: pytest.MonkeyPatch, *, expect: int) -> None:
     """Run the watcher until the ledger has `expect` entries, then stop it."""
-    monkeypatch.setattr(gf, "GATE_POLL_S", 0.01)
-    stop, thread = gf.gates_watched(run, fixture, "author")
+    monkeypatch.setattr(og, "GATE_POLL_S", 0.01)
+    stop, thread = og.gates_watched(run, "author")
     thread.start()
     try:
         deadline = time.monotonic() + 10.0
-        while len(gf.operator_gates_of(run)) < expect and time.monotonic() < deadline:
+        while len(og.operator_gates_of(run)) < expect and time.monotonic() < deadline:
             time.sleep(0.01)
         time.sleep(0.1)
     finally:
@@ -288,14 +289,14 @@ def watch_once(run: Run, fixture: Any, monkeypatch: pytest.MonkeyPatch, *, expec
 
 
 def test_a_gate_still_awaiting_past_the_grace_is_parked(
-    run: Run, fixture: Any, monkeypatch: pytest.MonkeyPatch
+    run: Run, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """The one thing the watcher does at a gate: notice, and stop the round on it."""
-    monkeypatch.setattr(gf, "GATE_GRACE_S", 0.0)
+    monkeypatch.setattr(og, "GATE_GRACE_S", 0.0)
     gate = park(run)
-    watch_once(run, fixture, monkeypatch, expect=1)
+    watch_once(run, monkeypatch, expect=1)
 
-    entry, = gf.operator_gates_of(run)
+    entry, = og.operator_gates_of(run)
     assert entry["action"] == "parked"
     assert entry["gate"] == "docs/epics/_author-context.md"
     assert "no operator" in entry["reason"]
@@ -303,39 +304,39 @@ def test_a_gate_still_awaiting_past_the_grace_is_parked(
 
 
 def test_the_watcher_never_answers_a_gate(
-    run: Run, fixture: Any, monkeypatch: pytest.MonkeyPatch
+    run: Run, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """It used to, for one gate class, from a sheet of replies applied positionally — and positionally is the whole defect: a gate's questions are generated per round, so a sheet written against one round's questions got stamped `ANSWERED` over another's."""
-    monkeypatch.setattr(gf, "GATE_GRACE_S", 0.0)
+    monkeypatch.setattr(og, "GATE_GRACE_S", 0.0)
     gate = park(run)
-    watch_once(run, fixture, monkeypatch, expect=1)
+    watch_once(run, monkeypatch, expect=1)
 
     assert gate.read_text(encoding="utf-8").startswith("STATUS: AWAITING_OPERATOR")
-    assert not gf.gate_answered(gate)
-    assert "answered" not in {e["action"] for e in gf.operator_gates_of(run)}
+    assert not og.gate_answered(gate)
+    assert "answered" not in {e["action"] for e in og.operator_gates_of(run)}
 
 
 def test_a_gate_answered_inside_the_grace_is_not_a_stall(
-    run: Run, fixture: Any, monkeypatch: pytest.MonkeyPatch
+    run: Run, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Most gates on a round's path have an auto-resolver, and a resolver that grounds its answer writes it in seconds."""
     gate = park(run)
-    watch_once(run, fixture, monkeypatch, expect=0)
-    assert gf.operator_gates_of(run) == []
+    watch_once(run, monkeypatch, expect=0)
+    assert og.operator_gates_of(run) == []
 
     gate.write_text(GATE.replace("AWAITING_OPERATOR", "ANSWERED"), encoding="utf-8")
-    watch_once(run, fixture, monkeypatch, expect=0)
-    assert gf.operator_gates_of(run) == []
+    watch_once(run, monkeypatch, expect=0)
+    assert og.operator_gates_of(run) == []
 
 
 def test_how_much_grace_a_cleared_gate_spent_is_logged(
-    run: Run, fixture: Any, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    run: Run, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
 ) -> None:
     """A gate that clears inside the grace stays out of the ledger — but the grace is a number somebody has to calibrate, and the only evidence for it is how long real resolvers actually take."""
-    monkeypatch.setattr(gf, "GATE_POLL_S", 0.01)
+    monkeypatch.setattr(og, "GATE_POLL_S", 0.01)
     gate = park(run)
-    stop, thread = gf.gates_watched(run, fixture, "author")
-    with caplog.at_level(logging.INFO, logger=gf.logger.name):
+    stop, thread = og.gates_watched(run, "author")
+    with caplog.at_level(logging.INFO, logger=og.logger.name):
         thread.start()
         try:
             time.sleep(0.1)
@@ -347,17 +348,17 @@ def test_how_much_grace_a_cleared_gate_spent_is_logged(
 
     cleared = [r.getMessage() for r in caplog.records if "cleared after" in r.getMessage()]
     assert cleared and str(gate.relative_to(run.repo)) in cleared[-1]
-    assert gf.operator_gates_of(run) == []
+    assert og.operator_gates_of(run) == []
 
 
-def test_a_gate_is_parked_once(run: Run, fixture: Any, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_a_gate_is_parked_once(run: Run, monkeypatch: pytest.MonkeyPatch) -> None:
     """The round stops on a gate the first time; a watcher that keeps re-parking the same file turns one stop into a ledger nobody can read a count off."""
-    monkeypatch.setattr(gf, "GATE_GRACE_S", 0.0)
+    monkeypatch.setattr(og, "GATE_GRACE_S", 0.0)
     park(run)
-    watch_once(run, fixture, monkeypatch, expect=1)
-    watch_once(run, fixture, monkeypatch, expect=1)
+    watch_once(run, monkeypatch, expect=1)
+    watch_once(run, monkeypatch, expect=1)
 
-    assert [e["action"] for e in gf.operator_gates_of(run)] == ["parked"]
+    assert [e["action"] for e in og.operator_gates_of(run)] == ["parked"]
 
 
 def test_a_parked_gate_is_a_warning_on_the_score() -> None:
@@ -420,7 +421,7 @@ def test_the_answered_gate_lands_where_the_flow_will_read_it(run: Run, fixture: 
 
     gate = run.repo / "docs" / "epics" / gf.GRILL_GATE
     assert gate.read_text(encoding="utf-8") == ANSWERED_GATE
-    assert gf.gate_answered(gate)
+    assert og.gate_answered(gate)
     head = subprocess.run(["git", "-C", str(run.repo), "branch", "--show-current"],
                           capture_output=True, text=True, check=True)
     assert head.stdout.strip() == "author/author-grill"
@@ -481,10 +482,10 @@ def test_a_baseline_with_nothing_to_commit_is_not_an_error(run: Run) -> None:
 
 def test_a_hand_answer_is_recorded_and_says_so_loudly(run: Run) -> None:
     """A round a person unstuck is not the unattended capture its score would read as."""
-    gf.record_hand_answer(run, "dirty-tree-operator-context.create-short-links.md",
+    og.record_hand_answer(run, "dirty-tree-operator-context.create-short-links.md",
                           "gitignored the agent runtime", commit="b5f6862")
 
-    ledger = gf.operator_gates_of(run)
+    ledger = og.operator_gates_of(run)
     assert ledger == [{"gate": "dirty-tree-operator-context.create-short-links.md",
                        "action": "hand", "note": "gitignored the agent runtime",
                        "commit": "b5f6862"}]
@@ -520,58 +521,58 @@ def test_the_runtime_ignore_is_written_once(run: Run) -> None:
     assert once.startswith("\n" + gf.IGNORE_HEADER)
 
 
-def test_a_repo_root_gate_is_seen_too(run: Run, fixture: Any, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_a_repo_root_gate_is_seen_too(run: Run, monkeypatch: pytest.MonkeyPatch) -> None:
     """The coder lane's dirty-tree, CI and merge gates land at the repo root, not under `docs/`."""
     gate = run.repo / "dirty-tree-operator-context.create-short-links.md"
     gate.write_text(GATE, encoding="utf-8")
-    monkeypatch.setattr(gf, "GATE_POLL_S", 0.01)
-    monkeypatch.setattr(gf, "GATE_GRACE_S", 0.0)
-    stop, thread = gf.gates_watched(run, fixture, "coder")
+    monkeypatch.setattr(og, "GATE_POLL_S", 0.01)
+    monkeypatch.setattr(og, "GATE_GRACE_S", 0.0)
+    stop, thread = og.gates_watched(run, "coder")
     thread.start()
     try:
         deadline = time.monotonic() + 10.0
-        while not gf.operator_gates_of(run) and time.monotonic() < deadline:
+        while not og.operator_gates_of(run) and time.monotonic() < deadline:
             time.sleep(0.01)
     finally:
         stop.set()
         thread.join(timeout=5.0)
 
-    entry, = gf.operator_gates_of(run)
+    entry, = og.operator_gates_of(run)
     assert entry["gate"] == "dirty-tree-operator-context.create-short-links.md"
     assert entry["action"] == "parked"
     assert gate.read_text(encoding="utf-8") == GATE
 
 
 def test_a_coder_gate_is_parked_and_left_alone_too(
-    run: Run, fixture: Any, monkeypatch: pytest.MonkeyPatch
+    run: Run, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     gate = run.repo / "ci-operator-context.0001-api.md"
     gate.write_text(GATE, encoding="utf-8")
-    monkeypatch.setattr(gf, "GATE_POLL_S", 0.01)
-    monkeypatch.setattr(gf, "GATE_GRACE_S", 0.0)
-    stop, thread = gf.gates_watched(run, fixture, "coder")
+    monkeypatch.setattr(og, "GATE_POLL_S", 0.01)
+    monkeypatch.setattr(og, "GATE_GRACE_S", 0.0)
+    stop, thread = og.gates_watched(run, "coder")
     thread.start()
     try:
         deadline = time.monotonic() + 10.0
-        while not gf.operator_gates_of(run) and time.monotonic() < deadline:
+        while not og.operator_gates_of(run) and time.monotonic() < deadline:
             time.sleep(0.01)
     finally:
         stop.set()
         thread.join(timeout=5.0)
 
-    entry, = gf.operator_gates_of(run)
+    entry, = og.operator_gates_of(run)
     assert entry["action"] == "parked"
     assert gate.read_text(encoding="utf-8") == GATE
 
 
 def test_a_context_file_that_is_not_a_gate_is_passed_over(
-    run: Run, fixture: Any, monkeypatch: pytest.MonkeyPatch
+    run: Run, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """The globs are deliberately loose, and `gate_answered` is what makes that safe: a regenerated `qa-okf-context.md` carries no `AWAITING_OPERATOR` header, so it reads as answered rather than as a gate the harness should be touching."""
     noise = run.repo / "docs" / "specs" / "s" / "qa-okf-context.md"
     noise.parent.mkdir(parents=True)
     noise.write_text("# obligations\n\n- a thing\n", encoding="utf-8")
-    watch_once(run, fixture, monkeypatch, expect=0)
+    watch_once(run, monkeypatch, expect=0)
 
-    assert gf.operator_gates_of(run) == []
+    assert og.operator_gates_of(run) == []
     assert noise.read_text(encoding="utf-8") == "# obligations\n\n- a thing\n"

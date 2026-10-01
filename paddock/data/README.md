@@ -90,7 +90,7 @@ Three details worth knowing:
   reached in). Both are warned about loudly — a round a human unstuck is not repeatable as
   it stands, and a round that parked was measured only up to the gate. There is no third
   verb for "the harness answered it": the harness never answers a gate, and
-  `watch_operator_gates` in `tasks/_greenfield.py` says why at length.
+  `watch_operator_gates` in `tasks/_operator_gates.py` says why at length.
 
 ## The author lane's grill gate, and the frozen operator turn
 
@@ -168,6 +168,7 @@ tasks/                what a round does, one module per benchmark  (paddock load
   _frozenapp.py       the frozen-app QA round: seed a defect, run QA, score detection
   _judge.py           one agent turn that waits out usage caps, and the rubric fill
   _leverage.py        how far a QA plan used the book it was handed
+  _operator_gates.py  the operator-gate ledger, and the gate watcher that parks a round
   _forensics.py       reading run artifacts: repair loops, node timing, cap-wait
   _stablemate.py      driving stablemate itself: config pinning, project worktrees
 configs/              full stablemate configs a task pins, tracked
