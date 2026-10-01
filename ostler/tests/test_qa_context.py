@@ -591,6 +591,26 @@ def test_a_whole_book_owes_the_claims_of_a_page_that_cites_no_code(tmp_path: Pat
     assert not any(item["required"] for item in concepts), concepts
 
 
+def test_a_whole_book_context_scoped_to_one_book_mints_only_that_books_obligations(tmp_path: Path):
+    """Another book's pages still inform the context, and the scoped book's obligations are the ones the whole book mints for its pages."""
+    for book in ("demo", "other"):
+        (tmp_path / f"docs/features/{book}/ops").mkdir(parents=True)
+        (tmp_path / f"docs/features/{book}/ops/checkout.md").write_text(
+            "---\ntype: environment\nslug: checkout\ntitle: Checkout\n---\n# Checkout\n\n"
+            "- local-only: true\n- consistency: the interpreter is Python 3.12 or later\n"
+            "- verify: stdout(matches=\"Python 3\")\n",
+            encoding="utf-8",
+        )
+    _git(tmp_path, "init")
+
+    whole = book_context(tmp_path)
+    scoped = book_context(tmp_path, books=["docs/features/demo"])
+
+    assert {item["node"].split("/")[2] for item in whole["obligations"]} == {"demo", "other"}
+    assert scoped["obligations"] == [item for item in whole["obligations"] if item["node"].startswith("docs/features/demo/")]
+    assert scoped["contracts"] == whole["contracts"]
+
+
 def test_a_node_on_a_definition_page_owes_context_not_a_live_run(tmp_path: Path):
     """A concept or format page defines what a surface reads or writes. Its nodes are observed through that surface, so none owes a live run of its own."""
     (tmp_path / "docs/features/demo/concepts").mkdir(parents=True)

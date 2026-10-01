@@ -149,8 +149,13 @@ def book_context(
     source_roots: dict[str, list[str]] | None = None,
     features_root: str = "",
     repositories: Sequence[SourceRepository] = (),
+    books: Sequence[str] = (),
 ) -> dict[str, Any]:
-    """Every obligation the book currently owns — no story, no diff, nothing to be proportional to."""
+    """Every obligation the book currently owns — no story, no diff, nothing to be proportional to.
+
+    *books* names the repo-relative directories whose pages owe obligations, every page's when
+    empty. The other pages still inform the context.
+    """
     return build_context(
         root,
         base=EMPTY_TREE_SHA,
@@ -159,6 +164,7 @@ def book_context(
         features_root=features_root,
         repositories=repositories,
         whole_book=True,
+        books=books,
     )
 
 
@@ -310,11 +316,13 @@ def build_context(
     exclude_paths: Iterable[str] = (),
     repositories: Sequence[SourceRepository] = (),
     whole_book: bool = False,
+    books: Sequence[str] = (),
 ) -> dict[str, Any]:
     """Map a `base..head` code diff onto the OKF graph and return the obligation packet.
 
     *whole_book* holds every node to its own claims, with no citation demoted to context,
-    because a whole book has no change to be proportional to.
+    because a whole book has no change to be proportional to. *books* names the repo-relative
+    directories whose pages owe obligations, every page's when empty.
     """
     root = root.resolve()
     features_root = path_mod.resolve_features_root(features_root, root)
@@ -363,7 +371,7 @@ def build_context(
         "healthFindings": [*mapping.unmapped, *grounding.health, *requirement.health],
         "story": _story_identity(story_file),
         "acceptanceCriteria": _acceptance_criteria(story_file),
-        "obligations": _minted_obligations(snapshot, selection, requirement),
+        "obligations": _minted_obligations(snapshot, selection, requirement, books),
     }
 
 
@@ -701,10 +709,12 @@ def _required_contracts(
 
 
 def _minted_obligations(
-    snapshot: _BookSnapshot, selection: _Selection, requirement: _Requirement
+    snapshot: _BookSnapshot, selection: _Selection, requirement: _Requirement, books: Sequence[str] = ()
 ) -> list[dict[str, Any]]:
-    """Every selected contract's and journey's obligations, in id order, each id once."""
+    """Every selected contract's and journey's obligations on a page under *books*, in id order, each id once."""
     book = snapshot.book
+    prefixes = tuple(f"{directory.rstrip('/')}/" for directory in books)
+    owing = {node_id for node_id in selection.contracts | selection.journeys if not prefixes or book[node_id].path.startswith(prefixes)}
     fixture_provides = _fixture_provides_index(book)
     fixture_undetermined = _fixture_undetermined_index(book)
 
@@ -725,7 +735,7 @@ def _minted_obligations(
 
     obligations = [
         obligation
-        for node_id in sorted(selection.contracts)
+        for node_id in sorted(selection.contracts & owing)
         for obligation in mint(
             node_id,
             journey=False,
@@ -734,7 +744,7 @@ def _minted_obligations(
         )
     ] + [
         obligation
-        for node_id in sorted(selection.journeys)
+        for node_id in sorted(selection.journeys & owing)
         for obligation in mint(
             node_id,
             journey=True,
