@@ -10,9 +10,11 @@ from jinja2 import Environment, StrictUndefined
 from jinja2 import UndefinedError
 
 from farrier._vendor.stablemate_core.skill_refs import (
+    RETIRED_HELPERS,
     SkillCatalog,
     SkillEntry,
     SkillRefs,
+    retired_hint,
 )
 from farrier.frontmatter import (
     first_heading,
@@ -178,18 +180,6 @@ USER_HARNESS_DIRS = {
 }
 
 
-RETIRED_HELPERS = {
-    "instruction_file": "skill_link or skill_path",
-    "instruction_ref": "skill_link or skill_path",
-    "instruction_refs": "skill_link",
-    "skill_file": "skill_path",
-    "prompt_file": "skill_path",
-    "prompt_ref": "skill_path",
-    "prompt_refs": "skill_link",
-    "skill_dir": "skill_path",
-    "isUsingInstruction": "has_skill",
-}
-
 TEMPLATE_TOKENS = (
     "{%",
     "skill_link(",
@@ -202,14 +192,6 @@ TEMPLATE_TOKENS = (
     "vars.",
     *(f"{name}(" for name in RETIRED_HELPERS),
 )
-
-
-def retired_hint(message: str) -> str:
-    """The replacement for a retired helper an undefined-name *message* names, if any."""
-    for name, replacement in RETIRED_HELPERS.items():
-        if f"'{name}' is undefined" in message:
-            return f"\n`{name}` is retired. Call {replacement} with the skill's library name."
-    return ""
 
 
 def user_harness_dir(target: str) -> str:
