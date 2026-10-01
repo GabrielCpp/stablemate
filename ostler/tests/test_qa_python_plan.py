@@ -171,6 +171,24 @@ def test_load_stamps_the_module_and_interpreter_on_every_target(tmp_path: Path) 
     assert Path(document.data["targets"]["api"]["interpreter"]).exists()
 
 
+def test_a_plan_whose_packet_is_not_json_is_refused_with_the_reason(tmp_path: Path) -> None:
+    """The packet is read while the plan is described, and a broken packet still refuses the plan."""
+    spec = _spec(tmp_path)
+    (spec / "qa-okf-context.json").write_text("{not json", encoding="utf-8")
+    document, problems = load_plan(_plan(spec), spec, tmp_path)
+    assert document is None
+    assert len(problems) == 1 and problems[0].startswith("qa-okf-context.json is invalid JSON:")
+
+
+def test_a_plan_with_no_packet_loads_with_an_empty_context(tmp_path: Path) -> None:
+    spec = _spec(tmp_path)
+    (spec / "qa-okf-context.json").unlink()
+    document, _problems = load_plan(_plan(spec), spec, tmp_path)
+    assert document is not None
+    assert document.context == {}
+    assert document.data["obligationDocuments"] == {}
+
+
 def test_a_valid_plan_has_no_problems(tmp_path: Path) -> None:
     spec = _spec(tmp_path)
     document, problems = load_plan(_plan(spec), spec, tmp_path)

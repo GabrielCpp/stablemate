@@ -8,6 +8,7 @@ import re
 import shutil
 import sys
 from collections.abc import Mapping
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -73,20 +74,27 @@ def load_plan(plan_file: Path, spec_dir: Path, root: Path) -> tuple[PlanDocument
     resolved_plan = resolved_plan.resolve()
     if resolved_plan.suffix != ".py":
         return None, [RETIRED_YAML]
-    data, problems = _describe_python_plan(resolved_plan, root)
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        reading = pool.submit(_read_context, spec_dir / "qa-okf-context.json")
+        data, problems = _describe_python_plan(resolved_plan, root)
+        context = reading.result()
     if data is None:
         return None, problems
-    context_path = spec_dir / "qa-okf-context.json"
-    context: dict[str, Any] = {}
-    if context_path.is_file():
-        try:
-            loaded = json.loads(context_path.read_text(encoding="utf-8"))
-            if isinstance(loaded, dict):
-                context = loaded
-        except json.JSONDecodeError as exc:
-            return None, [f"qa-okf-context.json is invalid JSON: {exc}"]
+    if isinstance(context, str):
+        return None, [context]
     data["obligationDocuments"] = _obligation_documents(context)
     return PlanDocument(resolved_plan, spec_dir, root, data, context), problems
+
+
+def _read_context(context_path: Path) -> dict[str, Any] | str:
+    """The packet at *context_path*, read while the plan's describe runs: empty when absent, or the problem that makes it unreadable."""
+    if not context_path.is_file():
+        return {}
+    try:
+        loaded = json.loads(context_path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        return f"qa-okf-context.json is invalid JSON: {exc}"
+    return loaded if isinstance(loaded, dict) else {}
 
 
 def _obligation_documents(context: dict[str, Any]) -> dict[str, list[str]]:
