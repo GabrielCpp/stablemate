@@ -54,9 +54,10 @@ job ran rather than on the commit it ran against.
 
 Failure is soft, and in the direction of keeping what works: an unreachable remote, a
 refused fetch or a broken clone each leave the existing cache in place, so `farrier
-install` on a plane renders the library the machine already has. Nothing fetched is
-executable either: markdown and YAML, no `.py` anywhere, so code still reaches you only as
-a wheel from an index under whatever supply-chain posture you already apply to `pip`/`uv`.
+install` on a plane renders the library the machine already has. Nothing fetched runs on
+its own. The fetch is markdown, YAML and a few helper scripts that a skill tells an agent
+to run, so a package's code still reaches you only as a wheel from an index under whatever
+supply-chain posture you already apply to `pip`/`uv`.
 
 A base you named yourself is never fetched over. Routes 1–3 win outright — not even the
 remote probe fires — so a checkout you are editing cannot have a download appear
