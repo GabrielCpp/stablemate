@@ -43,7 +43,7 @@ def route_shape(method: str, path: str) -> str:
 
 
 class ExchangeEvidence(BaseModel):
-    """What a failed check's last request asked and got, and which precondition issued the credential it sent."""
+    """What a failed check's last request asked and got, which precondition issued the credential it sent, and the ids it sent that nothing the scenario ran produced."""
 
     model_config = ConfigDict(frozen=True)
 
@@ -53,6 +53,7 @@ class ExchangeEvidence(BaseModel):
     expected: tuple[int, ...] | None
     credential_sent: bool
     precondition: str
+    invented: tuple[str, ...] = ()
 
 
 class FaultEvidence(BaseModel):
@@ -89,7 +90,11 @@ class CheckEvidence(BaseModel):
 
 
 def attribute(evidence: CheckEvidence) -> Attribution:
-    """The cause of one failed harness check, by the first rule its evidence meets; no rule met leaves it unattributed."""
+    """The cause of one failed harness check, by the first rule its evidence meets; no rule met leaves it unattributed.
+
+    A server error on a request that sent an id nothing the scenario ran produced is the book's,
+    since the book wrote the id.
+    """
     fault = evidence.fault
     if fault is not None:
         if fault.fault_class == CAPABILITY_FAULT:
@@ -109,7 +114,7 @@ def attribute(evidence: CheckEvidence) -> Attribution:
     if evidence.raised:
         return Attribution(Cause.UNATTRIBUTED, status=seen, shape=shape)
     if status >= 500:
-        return Attribution(Cause.APP, status=seen, shape=shape)
+        return Attribution(Cause.BOOK if exchange.invented else Cause.APP, status=seen, shape=shape)
     if status == 404 and "{" in exchange.path:
         return Attribution(Cause.BOOK, status=seen, shape=shape)
     if status in (401, 403) and _expects_success(exchange.expected):

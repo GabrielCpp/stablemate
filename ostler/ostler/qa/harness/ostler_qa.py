@@ -65,6 +65,7 @@ PROBE_STEP = "probe"
 
 _NODE_REF = re.compile(r"(?<![\w.])@([a-zA-Z0-9][a-zA-Z0-9_-]*)\.([a-zA-Z0-9][a-zA-Z0-9_-]*)")
 _CAPTURE_REF = re.compile(r"(?<![\w.])\$([a-zA-Z0-9][a-zA-Z0-9_-]*)")
+_ID_TOKEN = re.compile(r"\b[0-9a-fA-F]{16,}\b")
 
 MECHANISMS = ("live", "fixture")
 
@@ -437,18 +438,19 @@ class Response:
 
 @dataclass(frozen=True)
 class Exchange:
-    """One request a scenario made and the status it got back, with no status when it could not connect."""
+    """One request a scenario made, the body it sent, and the status it got back, with no status when it could not connect."""
 
     method: str
     url: str
     status: int | None
     expected: list[int] | None
     headers: Mapping[str, str]
+    body: bytes | None = None
 
 
 @dataclass(frozen=True)
 class ExchangeEvidence:
-    """What a failed claim's last request asked and got, and which precondition issued its credential, never the credential itself."""
+    """What a failed claim's last request asked and got, which precondition issued its credential, never the credential itself, and the ids it sent that nothing the scenario ran produced."""
 
     method: str
     path: str
@@ -456,6 +458,7 @@ class ExchangeEvidence:
     expected: list[int] | None
     credential_sent: bool
     precondition: str
+    invented: list[str]
 
 
 @dataclass(frozen=True)
@@ -535,9 +538,9 @@ class Http:
         except urllib.error.HTTPError as exc:
             response = Response(exc.code, dict(exc.headers or {}), exc.read(), url)
         except urllib.error.URLError as exc:
-            self._exchanged(Exchange(method.upper(), url, None, expected, merged))
+            self._exchanged(Exchange(method.upper(), url, None, expected, merged, data))
             raise HttpError(f"{method.upper()} {url} could not connect: {exc.reason}") from exc
-        self._exchanged(Exchange(method.upper(), url, response.status, expected, merged))
+        self._exchanged(Exchange(method.upper(), url, response.status, expected, merged, data))
         if allowed is None:
             if response.status >= 400:
                 raise HttpError(
@@ -1152,7 +1155,19 @@ class Qa:
             expected=exchange.expected,
             credential_sent=bool(sent),
             precondition=self._issuer_of(sent),
+            invented=self._invented_ids(exchange),
         )
+
+    def _invented_ids(self, exchange: Exchange) -> list[str]:
+        """Each id-shaped value the request's path, query or body carried that no precondition fact and no capture holds."""
+        known = {
+            token.lower()
+            for value in [*(fact for facts in self._node_facts.values() for fact in facts.values()), *self._captures.values()]
+            for token in _ID_TOKEN.findall(value)
+        }
+        split = urllib.parse.urlsplit(exchange.url)
+        sent = f"{split.path}?{split.query} " + (exchange.body or b"").decode("utf-8", errors="replace")
+        return list(dict.fromkeys(token for token in _ID_TOKEN.findall(sent) if token.lower() not in known))
 
     def _issuer_of(self, sent: Sequence[str]) -> str:
         """The page of the precondition whose fact appears in a credential header value, or ``""`` when none does."""

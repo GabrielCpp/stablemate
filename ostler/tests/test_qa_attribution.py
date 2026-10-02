@@ -28,6 +28,7 @@ def _failed(status: int | None, *, path: str = "/api/orders/42", expected: list[
         (_failed(None), Cause.ENVIRONMENT),
         (_failed(500), Cause.APP),
         (_failed(503, expected=[503, 200]), Cause.APP),
+        (_failed(500, invented=["0123456789abcdef01234567"]), Cause.BOOK),
         (_failed(404, path="/api/orders/{id}"), Cause.BOOK),
         (_failed(401, credential_sent=False), Cause.BOOK),
         (_failed(403, credential_sent=True, precondition=SIGNED_IN), Cause.ARRANGEMENT),

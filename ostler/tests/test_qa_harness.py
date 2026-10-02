@@ -523,8 +523,32 @@ def test_an_unmet_expect_status_keeps_the_request_it_answered(tmp_path: Path) ->
 
     assert _asserts(records)[0]["exchange"] == {
         "method": "POST", "path": "/api/seats/A2/booking", "status": 201, "expected": [409],
-        "credential_sent": False, "precondition": "",
+        "credential_sent": False, "precondition": "", "invented": [],
     }
+
+
+INVENTED_PLAN = STATUS_PLAN.split("@scenario")[0] + '''\
+@scenario(target=api, mechanism="live", covers=["okf:docs/a.md#confirm:does:1"])
+def an_id_nothing_produced(qa: Qa) -> None:
+    """A request whose path carries a captured id and whose body carries one the book wrote."""
+    server = ThreadingHTTPServer(("127.0.0.1", 0), Always201)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    qa.http.base_url = "http://127.0.0.1:%d" % server.server_address[1]
+    qa.capture("seat", "11F1BCE709F79FE38E716E4A1BA7C16F")
+    with qa.claim(["okf:docs/a.md#confirm:does:1"]):
+        qa.http.post(
+            "/api/seats/11f1bce709f79fe38e716e4a1ba7c16f/booking",
+            json_body={"row": "0123456789abcdef01234567", "note": "A2"},
+            expect_status=409,
+        )
+'''
+
+
+def test_a_request_keeps_the_ids_nothing_the_scenario_ran_produced(tmp_path: Path) -> None:
+    """A server error on an id the book made up is the book's to fix, so the failed check names that id."""
+    _, records = _run(_write(tmp_path, INVENTED_PLAN), "an-id-nothing-produced", tmp_path)
+
+    assert _asserts(records)[0]["exchange"]["invented"] == ["0123456789abcdef01234567"]
 
 
 UNREACHABLE_PLAN = STATUS_PLAN.split("@scenario")[0] + '''\
@@ -624,7 +648,7 @@ def test_a_stopped_scenario_keeps_the_request_that_stopped_it(tmp_path: Path) ->
     assert records[-1]["stop"] == {
         "exchange": {
             "method": "POST", "path": "/api/seats", "status": 500, "expected": None,
-            "credential_sent": False, "precondition": "",
+            "credential_sent": False, "precondition": "", "invented": [],
         },
     }
 
