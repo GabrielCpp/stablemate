@@ -95,6 +95,15 @@ def resolve_power_settings(
     return model, mapped.effort or fallback.effort, scale
 
 
+def implied_profile(cfg: dict[str, Any], cli: str) -> str:
+    """The profile a bare ``--cli`` runs under: the one named after that CLI and declaring it, else none."""
+    name = cli.strip().lower()
+    try:
+        return name if profile_has_backend(select_profile(cfg, name), name) else ""
+    except (UnknownProfileError, ConfigError):
+        return ""
+
+
 def select_backend(cfg: dict[str, Any], profile_name: str, cli: str | None) -> AgentBackend:
     """The backend a named profile, or else a bare CLI, selects; a bad pick raises with its fix."""
     resolved_cli = _validated_cli(cfg, profile_name, backend_names()) if profile_name else active_cli(cli, cfg)

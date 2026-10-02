@@ -167,8 +167,25 @@ def _profiles_config(tmp_path: Path) -> Path:
     return path
 
 
-def test_a_bare_cli_run_carries_no_profile(tmp_path):
+def test_a_bare_cli_runs_under_the_profile_named_after_it(tmp_path):
+    """`--cli claude` resolves `[profiles.claude]`'s models, exactly as `--profile claude` would."""
     captured = _run_profiled(["--cli", "claude"], _profiles_config(tmp_path))
+
+    assert (captured["profile"], captured["backend"]) == ("claude", "claude")
+
+
+def test_a_bare_cli_with_no_profile_named_after_it_carries_none(tmp_path):
+    """`[profiles.cli-only]` declares codex, but only a profile *named* codex is implied by `--cli codex`."""
+    captured = _run_profiled(["--cli", "codex"], _profiles_config(tmp_path))
+
+    assert (captured["profile"], captured["backend"]) == ("", "codex")
+
+
+def test_a_profile_named_after_a_cli_it_does_not_declare_is_not_implied(tmp_path):
+    config = tmp_path / "config.toml"
+    config.write_text('config_version = 2\n\n[profiles.claude]\ncli = "opencode"\n')
+
+    captured = _run_profiled(["--cli", "claude"], config)
 
     assert (captured["profile"], captured["backend"]) == ("", "claude")
 

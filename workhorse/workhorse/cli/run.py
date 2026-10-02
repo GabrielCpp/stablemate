@@ -19,7 +19,7 @@ from workhorse.cli.params import load_params
 from workhorse.config_run import RunConfig
 from workhorse.manifest import load_context_manifest as _load_context_manifest
 from workhorse.packaged import PackagedWorkflowError
-from workhorse.profile import ProfileError, recorded_profile, select_backend
+from workhorse.profile import ProfileError, implied_profile, recorded_profile, select_backend
 from workhorse.pyflow.registry import Registry
 from workhorse.pyflow.run import RunInvocation, run_pyflow
 from workhorse.rundir import find_latest_resumable as _find_latest_resumable
@@ -196,6 +196,8 @@ def invocation(args: argparse.Namespace) -> RunInvocation:
     if not profile_name and not args.cli and resume_run_dir is not None:
         profile_name = recorded_profile(resume_run_dir)
     cfg = load_config()
+    if not profile_name and args.cli:
+        profile_name = implied_profile(cfg, args.cli)
     backend = _select_backend(cfg, profile_name, args.cli)
 
     params = load_params(args.params, args.params_file)

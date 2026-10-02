@@ -108,7 +108,10 @@ still shows the subcommand listing.
     [get_backend](concepts/get-backend.md); `<name>` ∈ `claude` (default) · `codex` ·
     `copilot` · `cline` · `opencode`. Per run, not per state. MUTUALLY EXCLUSIVE with
     `--profile`: a profile carries its own `cli` field, and passing both flags exits the run
-    with code `2` rather than silently picking one.
+    with code `2` rather than silently picking one. With no `--profile`, the run applies the
+    profile named after the CLI, `[profiles.<name>]`, when that profile declares
+    `cli = "<name>"`, exactly as `--profile <name>` would. A live CLI switch relaunches the run
+    with `--cli`, so the new CLI picks up its own profile the same way.
   - `--profile <name>` — resolve this run's models from the config's
     [`[profiles.<name>]`](concepts/config.md#profiles) tables instead of its top-level ones. A
     profile **replaces** them — nothing outside it is inherited — and declares its own `cli`
@@ -160,7 +163,8 @@ still shows the subcommand listing.
     legacy per-tool merge instead of treating a discovered path as explicit
   - verify: exit_status(code=0)
   - run: select the [profile](concepts/config.md#profiles) from `--profile`, or from the resumed
-    run's [`run.json`](formats/run-artifacts.md#runjson) after resolving its directory
+    run's [`run.json`](formats/run-artifacts.md#runjson) after resolving its directory, or under a
+    bare `--cli <name>` from `[profiles.<name>]` when that profile declares `cli = "<name>"`
   - verify: exit_status(code=0)
   - run: a resumed run re-applies its recorded profile unless `--profile` overrides it, so its
     nodes do not silently resolve against the machine's global model set
@@ -270,7 +274,9 @@ still shows the subcommand listing.
   `workhorse/tests/test_run_options.py::test_an_unknown_profile_is_refused_before_the_first_state`,
   `workhorse/tests/test_run_options.py::test_a_profile_with_nothing_for_the_chosen_backend_is_refused`,
   `workhorse/tests/test_run_options.py::test_a_flagless_resume_re_applies_the_recorded_profile`,
-  `workhorse/tests/test_run_options.py::test_an_explicit_profile_overrides_the_recorded_one`
+  `workhorse/tests/test_run_options.py::test_an_explicit_profile_overrides_the_recorded_one`,
+  `workhorse/tests/test_run_options.py::test_a_bare_cli_runs_under_the_profile_named_after_it`,
+  `workhorse/tests/test_run_options.py::test_a_profile_named_after_a_cli_it_does_not_declare_is_not_implied`
 - tests: `workhorse/tests/test_console_script.py::test_every_flag_reaches_the_engine`,
   `workhorse/tests/test_console_script.py::test_the_cli_reports_the_zip_failure_and_exits`,
   `workhorse/tests/test_resume_auto.py::test_find_latest_resumable_picks_newest_of_several_unfinished`,
