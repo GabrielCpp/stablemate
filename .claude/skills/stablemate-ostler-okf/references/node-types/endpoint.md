@@ -13,13 +13,20 @@ does.
 
 ## Identity
 
-Section type. A `### <id>` under a `## Endpoints` heading in a `server` file. Its id is
-`path#anchor`.
+File type. One page per endpoint, in the folder of its [`server`](server.md) page, named after
+the endpoint. Its id is the page's path. The page's `server:` bullet links the server, and the
+server's `## Endpoints` section links the page back. The invocations that call the endpoint
+sit on its page under `## Invocations`.
+
+A `### <id>` under a server's `## Endpoints` heading still reads as an endpoint. That is the
+form older books wrote. `ostler edit carve-endpoints <server page>` moves each one to its own
+page and rewrites every link the move touches.
 
 ## Bullet keys
 
 | key | required | what it does |
 | --- | --- | --- |
+| `server` | yes, on a page | link — the one `server` page this endpoint is served from |
 | `method` | no | the HTTP method |
 | `path` | no | the route path |
 | `channel` | no | locator — the channel, for non-HTTP transports |
@@ -224,9 +231,18 @@ obligation the run owes a check.
 timeout 30 ostler scaffold endpoint create-link --in docs/features/acme/http/links-api.md
 ```
 
-```markdown
-### create-link
+The command writes `docs/features/acme/http/create-link.md` and adds
+`- [create-link](create-link.md)` under the server's `## Endpoints`.
 
+```markdown
+---
+type: endpoint
+slug: create-link
+title: create-link
+---
+# create-link
+
+- server: [Links API](links-api.md)
 - method: POST
 - path: /links
 - does: stores the submitted URL under a generated slug
@@ -257,7 +273,7 @@ no scenario is compiled for it.
 `dangling-code-ref`,
 `missing-code-symbol`, `unknown-book-fixture`, `unarranged-request-body`,
 `unarrangeable-server-fault`, `invalid-http-method`, `misnested-bullet`, `unarranged-scenario`,
-`misbound-status-check`. See
+`misbound-status-check`, `endpoint-without-server`, `unlisted-endpoint`. See
 [../doctor-codes.md](../doctor-codes.md).
 
 ## When bullets are not enough

@@ -79,7 +79,7 @@ load-bearing on some other type is `unknown-bullet`.
 one, and every one of them is accepted wherever it is written, whatever the node type:
 
 ```
-on, parent, extends, same-as, steps, presents, detail, environment,
+on, server, parent, extends, same-as, steps, presents, detail, environment,
 cli, surfaces, requires, params, leads-to, exclusive-with, prefers, deprecates,
 launch-screen
 ```
