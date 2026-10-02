@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from ostler import markdown, registry
-from ostler.carve import CarveError, CarvePlan, _address_map, _broken, _claims, _render, _rewrite, _trim
+from ostler.carve import CarveError, CarvePlan, _address_map, _broken, _claims, _render, _rewrite, _trim, references
 from ostler.edit import FileChange, _doc_files
 from ostler.links import is_doc_link
 from ostler.model import Graph, document_anchors
@@ -29,14 +29,14 @@ def _bytes(lines: list[str], start: int, end: int) -> int:
 
 
 def _units(section: markdown.Section, anchors: dict[int, str]) -> list[tuple[int, int]]:
-    """The section's subsections, joined into contiguous runs wherever one links another by `#anchor`."""
+    """The section's subsections, joined into contiguous runs wherever one points at another by `#anchor`."""
     kids = section.children
     owner = {line: i for i, kid in enumerate(kids)
              for line, _a in anchors.items() if kid.line_start <= line < kid.line_end}
     by_anchor = {a: owner[line] for line, a in anchors.items() if line in owner}
     reach = list(range(len(kids)))
     for i, kid in enumerate(kids):
-        for _t, href, _l in markdown.iter_links(kid.text):
+        for href in references(kid.text):
             path_part, _, anchor = href.strip().partition("#")
             j = by_anchor.get(anchor) if is_doc_link(href) and not path_part else None
             if j is not None:
@@ -53,6 +53,18 @@ def _units(section: markdown.Section, anchors: dict[int, str]) -> list[tuple[int
         runs.append((kids[i].line_start, kids[end].line_end))
         i = end + 1
     return runs
+
+
+def _apart(units: list[tuple[int, int]], section: markdown.Section, lines: list[str],
+           budget: int) -> list[tuple[int, int]]:
+    """The units, with each one too large for a fragment split back into its own subsections."""
+    spans: list[tuple[int, int]] = []
+    for start, end in units:
+        if _bytes(lines, start, end) <= budget:
+            spans.append((start, end))
+        else:
+            spans += [(k.line_start, k.line_end) for k in section.children if start <= k.line_start < end]
+    return spans
 
 
 def _pack(units: list[tuple[int, int]], lines: list[str], budget: int, title: str) -> list[list[tuple[int, int]]]:
@@ -146,7 +158,8 @@ def _carve(graph: Graph, host: Path) -> CarvePlan:
         title = f"{host_title}: {section.title.strip()}"
         overhead = len(f"---\ntype: fragment\nslug: {host.stem}\ntitle: {title}\n---\n# {title}\n\n"
                        f"- host: [{host_title}]({host.name})\n\n{heading}\n\n".encode()) + 256
-        groups = _pack(_units(section, old), lines, PAGE_SIZE_LIMIT - overhead, section.title.strip())
+        budget = PAGE_SIZE_LIMIT - overhead
+        groups = _pack(_apart(_units(section, old), section, lines, budget), lines, budget, section.title.strip())
         stem = f"{host.stem}-{old[section.line_start]}"
         names = [stem] if len(groups) == 1 else [f"{stem}-{old[g[0][0]]}" for g in groups]
         built = [_build(lines, g, n, title, heading, host, host_title) for g, n in zip(groups, names)]

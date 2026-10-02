@@ -14,6 +14,7 @@ from ostler.links import is_doc_link
 from ostler.model import Graph, _inline_type, anchor_of, document_anchors, read_doc
 
 _HREF = re.compile(r"\]\(([^)\s]+)\)")
+_LOCATOR = re.compile(r"""locator=(["'])([^"'#]*#[^"']*)\1""")
 _ATX = re.compile(r"^(#{1,6})(?=\s|$)")
 _INVOCATIONS = "Invocations"
 
@@ -269,13 +270,12 @@ def _address_map(server: Path, old: dict[int, str], placements: list[tuple[Path,
 
 def _rewrite(text: str, origin: Path, location: Path, server: Path,
              moved: dict[Address, Address]) -> str:
-    def swap(match: re.Match[str]) -> str:
-        href = match.group(1)
+    def moved_href(href: str) -> str | None:
         if not is_doc_link(href):
-            return match.group(0)
+            return None
         path_part, _, anchor = href.partition("#")
         if _target(origin, path_part) != server:
-            return match.group(0)
+            return None
         new_path, new_anchor = moved.get((server, anchor), (server, anchor))
         if new_path == location:
             part = "" if new_anchor else location.name
@@ -283,9 +283,23 @@ def _rewrite(text: str, origin: Path, location: Path, server: Path,
             part = path_part
         else:
             part = Path(os.path.relpath(new_path, location.parent)).as_posix()
-        return f"]({part}#{new_anchor})" if new_anchor else f"]({part})"
+        return f"{part}#{new_anchor}" if new_anchor else part
 
-    return _HREF.sub(swap, text)
+    def swap(match: re.Match[str]) -> str:
+        href = moved_href(match.group(1))
+        return match.group(0) if href is None else f"]({href})"
+
+    def swap_locator(match: re.Match[str]) -> str:
+        href = moved_href(match.group(2))
+        quote = match.group(1)
+        return match.group(0) if href is None else f"locator={quote}{href}{quote}"
+
+    return _LOCATOR.sub(swap_locator, _HREF.sub(swap, text))
+
+
+def references(text: str) -> list[str]:
+    """Every in-book address the text points at: its links' targets and its checks' locators."""
+    return [href for _, href, _ in markdown.iter_links(text)] + [m.group(2) for m in _LOCATOR.finditer(text)]
 
 
 def _claims(lines: list[str]) -> Counter[str]:
@@ -311,7 +325,7 @@ def _broken(files: list[Path], texts: dict[Path, str], moved: dict[Address, Addr
     broken: Counter[Address] = Counter()
     for path in files:
         text = texts[path] if path in texts else path.read_text(encoding="utf-8")
-        for _, href, _ in markdown.iter_links(text):
+        for href in references(text):
             if not is_doc_link(href):
                 continue
             path_part, _, anchor = href.strip().partition("#")

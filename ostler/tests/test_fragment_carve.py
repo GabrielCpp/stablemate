@@ -22,11 +22,12 @@ def _rule(n: int, link: str = "") -> list[str]:
     return [f"### rule-{n}", "", f"- rule: entries obey rule {n}", *([link] if link else []), "", _PROSE, ""]
 
 
-def _ledger(rules: int = 8) -> str:
+def _ledger(rules: int = 8, chained: bool = False) -> str:
     lines = ["---", "type: concept", "title: Ledger", "---", "# Ledger", "", "- code: `app.py`", "",
              "## Rules", "", "Every rule the ledger enforces.", ""]
     for n in range(1, rules + 1):
-        lines += _rule(n, "- see [the next rule](#rule-5)" if n == 4 else "")
+        chain = chained and n < rules
+        lines += _rule(n, f"- see [the next rule](#rule-{n + 1})" if chain or n == 4 else "")
     lines += ["## Notes", "", "The ledger is append-only.", ""]
     return "\n".join(lines)
 
@@ -42,8 +43,8 @@ def small_limit(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(page_size, "PAGE_SIZE_LIMIT", _LIMIT)
 
 
-def _book(repo: Path, rules: int = 8) -> Path:
-    write(repo / _PAGE, _ledger(rules))
+def _book(repo: Path, rules: int = 8, chained: bool = False) -> Path:
+    write(repo / _PAGE, _ledger(rules, chained))
     write(repo / _LINKER, _budget())
     write(repo / "app.py", "x = 1\n")
     return repo / _PAGE
@@ -99,6 +100,21 @@ def test_subsections_that_link_each_other_land_on_the_same_fragment(repo: Path, 
     assert "### rule-5" in text and "](#rule-5)" in text
 
 
+def test_subsections_linked_past_what_one_fragment_holds_are_split_and_their_links_follow(
+        repo: Path, small_limit: None):
+    page = _book(repo, chained=True)
+
+    plan = fragment_carve.carve_fragments(load(repo), _PAGE)
+    assert not plan.error, plan.error
+    plan.apply()
+
+    fragments = _fragments(page)
+    assert len(fragments) > 1 and all(f.stat().st_size <= _LIMIT for f in fragments)
+    texts = "\n".join(f.read_text(encoding="utf-8") for f in fragments)
+    assert any(f"]({f.name}#rule-" in texts for f in fragments)
+    assert _findings(repo, "broken-link") == []
+
+
 def test_a_link_into_a_moved_subsection_follows_it(repo: Path, small_limit: None):
     page = _book(repo)
 
@@ -106,6 +122,29 @@ def test_a_link_into_a_moved_subsection_follows_it(repo: Path, small_limit: None
 
     [holding] = [f for f in _fragments(page) if "### rule-3" in f.read_text(encoding="utf-8")]
     assert f"]({holding.name}#rule-3)" in (repo / _LINKER).read_text(encoding="utf-8")
+
+
+def test_a_check_locator_into_a_moved_subsection_follows_it(repo: Path, small_limit: None):
+    page = _book(repo)
+    write(repo / _LINKER, _budget() + '- verify: focusable(locator="ledger.md#rule-6")\n')
+
+    fragment_carve.carve_fragments(load(repo), _PAGE).apply()
+
+    [holding] = [f for f in _fragments(page) if "### rule-6" in f.read_text(encoding="utf-8")]
+    assert f'locator="{holding.name}#rule-6"' in (repo / _LINKER).read_text(encoding="utf-8")
+
+
+def test_a_same_page_check_locator_split_from_its_subsection_names_the_fragment(repo: Path, small_limit: None):
+    page = _book(repo, chained=True)
+    text = page.read_text(encoding="utf-8").replace("- see [the next rule](#rule-2)", '- verify: focusable(locator="#rule-8")')
+    write(page, text)
+
+    fragment_carve.carve_fragments(load(repo), _PAGE).apply()
+
+    [holding] = [f for f in _fragments(page) if "### rule-8" in f.read_text(encoding="utf-8")]
+    [citing] = [f for f in _fragments(page) if "rule 1\n" in f.read_text(encoding="utf-8")]
+    assert citing != holding
+    assert f'locator="{holding.name}#rule-8"' in citing.read_text(encoding="utf-8")
 
 
 def test_a_carved_book_passes_the_size_and_fragment_checks(repo: Path, small_limit: None):
