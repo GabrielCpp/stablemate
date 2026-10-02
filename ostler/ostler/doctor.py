@@ -30,7 +30,7 @@ from ostler.qa import (captures as captures_mod, fixtures as fixtures_mod, refer
 from ostler.qa.compile import Gap
 from ostler.qa.context import RELATION_KEYS, relation_subject
 from ostler.qa.outcome import QaOutcome
-from ostler import section_hosts, stamp as stamp_mod, step_commands
+from ostler import section_hosts, server_membership, stamp as stamp_mod, step_commands
 from ostler import values as values_mod
 from ostler.source_snapshots import book_repository
 
@@ -111,6 +111,7 @@ def run(graph: Graph, epic_filter: str | None = None, check_schema: bool = True,
     resolver = links_mod.LinkResolver(graph)
 
     _check_ui(graph, f, resolver, checkouts)
+    server_membership.check_server_membership(graph, f, resolver)
     _check_book_captures(graph, f)
     _check_self_relation(graph, f, resolver)
     _check_judgment(graph, f, resolver)

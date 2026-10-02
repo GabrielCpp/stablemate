@@ -186,7 +186,7 @@ SCENARIO_FRAME_TOKEN = "scenario:"
 STEP_KIND_VALUES = ("prepare", "service", "seed", "health", "run", "verify", "probe", "drive", "teardown")
 
 CODE_GROUNDING_KEYS = frozenset({"code"})
-RELATION_KEYS = ("on", "parent", "extends", "same-as", "steps", "presents", "detail",
+RELATION_KEYS = ("on", "server", "parent", "extends", "same-as", "steps", "presents", "detail",
                  "environment", "cli", "surfaces", "launch-screen", "requires", "params",
                  "leads-to", "exclusive-with", "prefers", "deprecates")
 
@@ -609,8 +609,10 @@ UI_TYPES: tuple[UINodeType, ...] = (
         ),
     ),
     UINodeType(
-        name="endpoint", kind="section", heading="Endpoints", host_page_types=("server",),
+        name="endpoint", kind="file", context="http", heading="Endpoints",
+        host_page_types=("server",),
         bullet_keys=(
+            BulletKey("server", link=True),
             BulletKey("method", locator=True, address=True, value_kind="http-method"),
             BulletKey("path", locator=True, address=True, value_kind="route"),
             BulletKey("channel", locator=True, address=True),
@@ -764,8 +766,7 @@ LOAD_BEARING_KEYS: frozenset[str] = frozenset(
     b.key for t in UI_TYPES for b in t.bullet_keys
     if b.normative or b.check or b.link or b.arrange or b.performs or b.locator
 ) - (frozenset(RELATION_KEYS) - LOCATOR_KEYS)
-UI_HEADING_TO_TYPE: dict[str, str] = {
-    t.heading: t.name for t in UI_TYPES if t.kind == "section" and t.heading}
+UI_HEADING_TO_TYPE: dict[str, str] = {t.heading: t.name for t in UI_TYPES if t.heading}
 UI_SECTION_HEADINGS: frozenset[str] = frozenset(UI_HEADING_TO_TYPE)
 
 

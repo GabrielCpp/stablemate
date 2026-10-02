@@ -64,6 +64,52 @@ def _scaffold_file(graph: Graph, uitype: registry.UINodeType, name: str,
                         f"{path.relative_to(graph.root).as_posix()}", [path])
 
 
+def _list_under(doc: markdown.MarkdownDoc, heading: str, item: str) -> None:
+    lines = doc.body.split("\n")
+    sec = doc.find_section(heading)
+    if sec is None:
+        while lines and not lines[-1].strip():
+            lines.pop()
+        doc.replace_body([*lines, "", f"## {heading}", "", item, ""])
+        return
+    end = min((c.line_start for c in sec.children), default=sec.line_end)
+    last = max(i for i in range(sec.line_start, end) if lines[i].strip())
+    block = [item] if lines[last].lstrip().startswith("- ") else ["", item]
+    if last + 1 < len(lines) and lines[last + 1].strip():
+        block.append("")
+    doc.replace_body(lines[:last + 1] + block + lines[last + 1:])
+
+
+def _scaffold_hosted_page(graph: Graph, uitype: registry.UINodeType, name: str,
+                          in_file: str | None, title: str) -> Result:
+    hosts = " or ".join(uitype.host_page_types)
+    if not in_file:
+        return Result(False, f"a '{uitype.name}' page sits beside its {hosts} page: pass --in <{hosts} page>")
+    if "/" in name or name in (".", ".."):
+        return Result(False, f"invalid name '{name}'")
+    host = _resolve_in_file(graph, in_file)
+    if not host.is_file():
+        return Result(False, f"no such {hosts} page: {in_file}")
+    host_doc = markdown.split(host.read_text(encoding="utf-8"))
+    if registry.type_of(host_doc.frontmatter) not in uitype.host_page_types:
+        return Result(False, f"{in_file} is not a {hosts} page")
+    path = host.parent / f"{name}.md"
+    if path.exists():
+        return Result(False, f"{uitype.name} '{name}' already exists at "
+                             f"{path.relative_to(graph.root).as_posix()}")
+    host_title = str((host_doc.frontmatter or {}).get("title") or host.stem)
+    relation = uitype.bullet_keys[0].key
+    body = _file_body(uitype, title).replace(
+        f"- {relation}:\n", f"- {relation}: [{host_title}]({host.name})\n", 1)
+    fm = {"type": uitype.name, "slug": name, "title": title}
+    path.write_text(f"---\n{crud.dump_frontmatter(fm)}---\n{body}", encoding="utf-8")
+    _list_under(host_doc, uitype.heading, f"- [{name}]({name}.md)")
+    host.write_text(host_doc.render(), encoding="utf-8")
+    return Result(True, f"scaffolded {uitype.name} '{name}' -> "
+                        f"{path.relative_to(graph.root).as_posix()}, listed under ## {uitype.heading} in "
+                        f"{host.relative_to(graph.root).as_posix()}", [path, host])
+
+
 def _scaffold_section(graph: Graph, uitype: registry.UINodeType, name: str,
                       in_file: str | None) -> Result:
     if not in_file:
@@ -89,6 +135,8 @@ def scaffold(graph: Graph, type_name: str, name: str, *, service: str | None = N
     if uitype is None:
         return Result(False, f"'{type_name}' is not a UI-profile type "
                              f"(one of {', '.join(registry.UI_TYPES_BY_NAME)})")
+    if uitype.kind == "file" and uitype.host_page_types:
+        return _scaffold_hosted_page(graph, uitype, name, in_file, title or name)
     if uitype.kind == "file":
         return _scaffold_file(graph, uitype, name, service, title or name)
     return _scaffold_section(graph, uitype, name, in_file)

@@ -30,6 +30,13 @@ def _scaffold_type(repo: Path, name: str) -> Path:
     """Scaffold one instance of `name`, creating a host file first if it is section-level."""
     uitype = registry.ui_type(name)
     assert uitype is not None
+    if uitype.host_page_types:
+        host = uitype.host_page_types[0]
+        host_res = scaffold.scaffold(load(repo), host, host, service="acme")
+        assert host_res.ok, host_res.message
+        res = scaffold.scaffold(load(repo), name, name, in_file=str(host_res.paths[0]))
+        assert res.ok, res.message
+        return res.paths[0]
     if uitype.kind == "file":
         res = scaffold.scaffold(load(repo), name, name, service="acme")
         assert res.ok, res.message
@@ -93,14 +100,35 @@ def test_scaffold_section_inserts_under_heading(repo: Path):
     assert "- on:" in text and "- trigger:" in text and "- does:" in text
 
 
-def test_scaffold_section_creates_heading_if_absent(repo: Path):
+def test_scaffold_endpoint_writes_a_page_beside_its_server_and_lists_it(repo: Path):
     write(repo / "docs/features/groom/http/server.md",
           "---\ntype: server\nslug: s\ntitle: S\n---\n# S\n\n- code: `app.py`\n")
     res = scaffold.scaffold(load(repo), "endpoint", "get-worker",
                             in_file="groom/http/server.md")
-    assert res.ok
-    text = (repo / "docs/features/groom/http/server.md").read_text()
-    assert "## Endpoints" in text and "### get-worker" in text
+    assert res.ok, res.message
+    page = (repo / "docs/features/groom/http/get-worker.md").read_text()
+    assert page.startswith("---\ntype: endpoint\nslug: get-worker\n")
+    assert "- server: [S](server.md)" in page
+    host = (repo / "docs/features/groom/http/server.md").read_text()
+    assert "## Endpoints\n\n- [get-worker](get-worker.md)\n" in host
+    assert [n.id for n in load(repo).ui_nodes_of_type("endpoint")] == [
+        "docs/features/groom/http/get-worker.md"]
+
+
+def test_scaffold_endpoint_appends_to_an_existing_list(repo: Path):
+    write(repo / "docs/features/groom/http/server.md",
+          "---\ntype: server\ntitle: S\n---\n# S\n\n## Endpoints\n\n- [a](a.md)\n\n## Notes\n\nx\n")
+    assert scaffold.scaffold(load(repo), "endpoint", "b", in_file="groom/http/server.md").ok
+    host = (repo / "docs/features/groom/http/server.md").read_text()
+    assert "## Endpoints\n\n- [a](a.md)\n- [b](b.md)\n\n## Notes\n" in host
+
+
+def test_scaffold_endpoint_refuses_a_host_that_is_not_a_server(repo: Path):
+    scaffold.scaffold(load(repo), "screen", "cv", service="groom")
+    res = scaffold.scaffold(load(repo), "endpoint", "x", in_file="groom/gui/screens/cv.md")
+    assert not res.ok and "is not a server page" in res.message
+    res = scaffold.scaffold(load(repo), "endpoint", "x", service="groom")
+    assert not res.ok and "--in" in res.message
 
 
 def test_scaffold_endpoints_bare_channel_and_message_raise_no_new_finding(repo: Path):
