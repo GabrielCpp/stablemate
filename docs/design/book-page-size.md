@@ -141,7 +141,7 @@ gatekeeper runs all of this after each piece of writing.
 |---|---|---|
 | Outline | a page's headings as a tree, each with the text it spans | what a section means |
 | Promotion | picking each section that is a page kind in its own right, together with the sections whose target it is (added, R6) | the size limit |
-| Unit | a group of the remaining subsections that link to each other, so they leave together (revised, R2) | the size limit |
+| Unit | a group of the remaining subsections that link to each other, so they leave together when one fragment holds them (revised, R2, R7) | the size limit |
 | Fragment cut | packing the units of an oversized page, in order, into fragments under the limit (revised, R6) | files, links |
 | Division plan | every page to write, each addressed by its kind's folder and its name, plus what the parent keeps (revised, R5, R6) | how the plan is written to disk |
 
@@ -182,8 +182,10 @@ gatekeeper runs all of this after each piece of writing.
    Owner: Carve receipt. Upheld by Address map and Reference rewrite.
 3. **At the end of a turn every page fits the limit and no endpoint is written inline.**
    Owner: Shape finding (revised, R6).
-4. **A cut never splits inside a unit.** When a unit alone exceeds the limit, the plan
-   reports that page instead of cutting text. Owner: Division plan.
+4. **A cut never splits inside a subsection.** A unit one fragment holds leaves whole. A
+   larger unit leaves subsection by subsection, and its links and check locators follow
+   each subsection to its fragment. When one subsection alone exceeds the limit, the plan
+   reports that page instead of cutting text. Owner: Division plan (revised, R7).
 5. **A carve of a page in shape changes nothing.** Owner: Division plan.
 6. **A new page sits in its kind's folder, under a name no other page there holds, and
    passes its kind's required sections.** Owner: Division plan, which assigns each
@@ -242,7 +244,8 @@ every turn, and the same sequence is a command for an existing book.
   page kind, plus every section whose target link names it (F6). It runs whatever the
   page's size, because an inline endpoint is out of shape at any size.
 - **Unit**: the connected groups of same-page links among the remaining subsections
-  (revised, R2).
+  (revised, R2). A group past what one fragment holds splits back into its subsections
+  (revised, R7).
 - **Fragment cut**: a plain function over the outline and its units. It keeps whole `##`
   sections together when they fit, and otherwise packs that section's units in order.
   Promotion and the cut run in sequence on the same page, so neither is a variant of the
@@ -321,6 +324,13 @@ every turn, and the same sequence is a command for an existing book.
   then held that the API page is conceptually specific. The measurement behind it: 88 of
   89 invocations name exactly one endpoint, so an endpoint and its callers stand alone,
   while methods and components on the other pages do not.
+- **R7.** Unit, invariant 4 and assumption 4. Two client pages link their subsections
+  into runs no fragment holds: a query section of 46 subsections in one 78 KiB run, and a
+  components section of 35 subsections in one 144 KiB run. Keeping a unit whole refused
+  both pages, so a unit past the limit now splits along its subsections. The same carve
+  showed that a check's locator points into the book the way a link does, so the carve
+  rewrites and checks both. It also showed that a component on a screen's fragment
+  navigates from that screen.
 
 ### Lookups resolved
 
@@ -465,11 +475,13 @@ every turn, and the same sequence is a command for an existing book.
    The smallest server page holds 4 endpoints in 4 KiB, so it gains 4 short pages.
    **If wrong**: Endpoint page allows both forms, Promotion runs only on an oversized
    server page, and invariant 3 drops its endpoint clause.
-4. **Assumption**: 64 KiB is small enough for any turn and large enough for every unit.
+4. **Assumption**: 64 KiB is small enough for any turn and large enough for every
+   subsection (revised, R7).
    **Decided**: Size limit is 64 KiB.
    **Basis**: 64 KiB is about 32,000 tokens at the workflow's own costing (twice the page
-   at 4 bytes a token), under a fifth of its 180,000-token turn. The largest unit on an
-   oversized page is 37 KiB. The largest endpoint with its invocations is under that.
+   at 4 bytes a token), under a fifth of its 180,000-token turn. The largest subsection
+   on an oversized page is 36 KiB. The largest endpoint with its invocations is under
+   that. Linked units are not bounded: two reach 78 and 144 KiB (R7).
    **If wrong**: Size limit, Fragment cut, invariant 4.
 5. **Assumption**: one re-run of moved claims is acceptable.
    **Decided**: no carried verdicts. Claims whose address changed run again.
