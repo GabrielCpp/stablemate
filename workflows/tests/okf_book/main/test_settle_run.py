@@ -122,6 +122,57 @@ def test_a_repair_that_leaves_the_book_s_failed_checks_flat_asks_the_attendant_w
     assert stall.reason.startswith("the repair did not lower the book's failed checks, lap by lap: 1 → 1\n")
 
 
+def _probe_run() -> ExerciseResult:
+    refused = FailedCheck(label="signs in", expected="[200]", actual="401", cause=Cause.ARRANGEMENT, status="401")
+    summary = RunSummary(status="failed", scenarios={"probe-signed-in": ScenarioOutcome(status="failed", failed_checks=(refused,))},
+                         signatures=(Signature(Cause.ARRANGEMENT, "docs/fixtures/signed-in.md", "401", "", 1, "signs in: observed 401"),))
+    return ExerciseResult(lines=("problem: a precondition probe failed, so the book did not run",), summary=summary)
+
+
+def _settle_and_map(book: OkfBook, exercised: ExerciseResult, *, repaired: bool = True) -> str:
+    _ = book.settle_run(index=0, run_failures_repaired=repaired, exercised=exercised)
+    return book.map_run_failures(index=0, exercised=exercised, run_failures_repaired=repaired).state
+
+
+def test_a_run_a_probe_stopped_goes_back_to_its_writer_whatever_the_lap_before_counted(tmp_path: Path) -> None:
+    book = _book(tmp_path)
+    _ = book.settle_run(index=0, run_failures_repaired=False, exercised=_book_run(MISREAD))
+
+    assert _settle_and_map(book, _probe_run()) == "copy_source"
+    assert [lap.probes_only for lap in read_laps(tmp_path)] == [False, True]
+
+
+def test_a_book_run_after_a_probe_stopped_one_is_measured_against_the_last_book_run(tmp_path: Path) -> None:
+    book = _book(tmp_path)
+    _ = book.settle_run(index=0, run_failures_repaired=False, exercised=_book_run(replace(MISREAD, count=9)))
+    _ = _settle_and_map(book, _probe_run())
+
+    assert _settle_and_map(book, _book_run(replace(MISREAD, count=5))) == "copy_source"
+    assert not [blocker for blocker in read_blockers(tmp_path) if blocker.side is Side.WORKFLOW]
+
+
+def test_a_book_run_no_lower_than_the_last_book_run_stalls_with_the_probe_lap_marked_in_its_trend(tmp_path: Path) -> None:
+    book = _book(tmp_path)
+    _ = book.settle_run(index=0, run_failures_repaired=False, exercised=_book_run(replace(MISREAD, count=9)))
+    _ = _settle_and_map(book, _probe_run())
+
+    _ = _settle_and_map(book, _book_run(replace(MISREAD, count=9)))
+
+    stall = next(blocker for blocker in read_blockers(tmp_path) if blocker.side is Side.WORKFLOW)
+    assert stall.reason.startswith("the repair did not lower the book's failed checks, lap by lap: 9 → 1 at the probes → 9\n")
+
+
+def test_a_probe_stopped_run_no_lower_than_the_probe_stopped_run_before_it_stalls(tmp_path: Path) -> None:
+    book = _book(tmp_path)
+    _ = book.settle_run(index=0, run_failures_repaired=False, exercised=_probe_run())
+
+    _ = _settle_and_map(book, _probe_run())
+
+    assert [blocker.subject for blocker in read_blockers(tmp_path) if blocker.side is Side.WORKFLOW] == [
+        "tally: the book's failed checks did not fall"
+    ]
+
+
 def test_a_gapped_check_counts_as_no_failure_of_its_lap(tmp_path: Path) -> None:
     book = _book(tmp_path)
 

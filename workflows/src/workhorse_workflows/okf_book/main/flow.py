@@ -232,7 +232,8 @@ class OkfBook(BookFlow):
         service = self.surfaces[index].service
         if exercised.summary is not None:
             _ = write_run(self.records_dir, exercised.summary)
-            _ = record_lap(self.records_dir, lap_counts(service, exercised.summary.signatures, len(exercised.summary.gaps)))
+            _ = record_lap(self.records_dir, lap_counts(service, exercised.summary.signatures, len(exercised.summary.gaps),
+                                                        probes_only=exercised.stopped_at_probes))
         self._block_escalated_signatures(service, exercised)
         if exercised.passed:
             return self._next_surface(exercised.passed, index)

@@ -44,6 +44,11 @@ class ExerciseResult(BaseModel):
     summary: RunSummary | None = None
     stack_down: bool = False
 
+    @property
+    def stopped_at_probes(self) -> bool:
+        """Whether a precondition probe stopped the run, so the book itself did not run."""
+        return self.summary is not None and bool(self.summary.scenarios) and all(is_probe(name) for name in self.summary.scenarios)
+
 
 def _failure_lines(summary: RunSummary) -> list[str]:
     lines: list[str] = []

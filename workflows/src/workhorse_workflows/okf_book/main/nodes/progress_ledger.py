@@ -12,13 +12,14 @@ WRITERS_CAUSES = frozenset({Cause.BOOK, Cause.ARRANGEMENT})
 
 
 class LapCounts(BaseModel):
-    """One lap of a service's book: its failed checks by cause, and how many claims it gapped."""
+    """One lap of a service's book: its failed checks by cause, how many claims it gapped, and whether it stopped at its precondition probes before the book ran."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     service: str
     failures: dict[Cause, int] = {}
     gapped: int = 0
+    probes_only: bool = False
 
     @property
     def book(self) -> int:
@@ -37,12 +38,12 @@ class _Ledger(BaseModel):
     laps: tuple[LapCounts, ...] = ()
 
 
-def lap_counts(service: str, signatures: Iterable[Signature], gapped: int) -> LapCounts:
+def lap_counts(service: str, signatures: Iterable[Signature], gapped: int, *, probes_only: bool = False) -> LapCounts:
     """The lap whose failed checks group into *signatures*, counted by cause. A gapped check is no failure, so only *gapped* counts it."""
     failures: dict[Cause, int] = {}
     for signature in (signature for signature in signatures if not signature.gap):
         failures[signature.cause] = failures.get(signature.cause, 0) + signature.count
-    return LapCounts(service=service, failures=dict(sorted(failures.items())), gapped=gapped)
+    return LapCounts(service=service, failures=dict(sorted(failures.items())), gapped=gapped, probes_only=probes_only)
 
 
 def read_laps(records_dir: Path) -> tuple[LapCounts, ...]:
@@ -63,10 +64,21 @@ def service_laps(laps: Iterable[LapCounts], service: str) -> tuple[LapCounts, ..
 
 
 def stalled(laps: tuple[LapCounts, ...]) -> bool:
-    """Whether the last lap left the book's writers as many failed checks as the lap before it, or more."""
-    return len(laps) >= 2 and laps[-1].book >= laps[-2].book
+    """Whether the last lap left the book's writers as many failed checks as the lap it is measured against, or more.
+
+    A lap that stopped at its probes ran no book, so its count measures only the probes. It is measured
+    against the lap before it when that one stopped at its probes too, and against nothing otherwise. A
+    lap that ran the book is measured against the last earlier lap that ran it.
+    """
+    if len(laps) < 2:
+        return False
+    last = laps[-1]
+    if last.probes_only:
+        return laps[-2].probes_only and last.book >= laps[-2].book
+    ran = next((lap for lap in reversed(laps[:-1]) if not lap.probes_only), None)
+    return ran is not None and last.book >= ran.book
 
 
 def trend(laps: Iterable[LapCounts]) -> str:
-    """The book's failed checks lap after lap, as one line."""
-    return " → ".join(str(lap.book) for lap in laps)
+    """The book's failed checks lap after lap, as one line, a lap that stopped at its probes marked so."""
+    return " → ".join(f"{lap.book} at the probes" if lap.probes_only else str(lap.book) for lap in laps)
