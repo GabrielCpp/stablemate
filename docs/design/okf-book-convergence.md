@@ -170,7 +170,9 @@ failing for one reason, and notice when fixes stop helping.
 |---|---|---|
 | Party | the level that receives a kind of cause: a page's writer, the attendant or a person (revised, R4) | how the cause was found |
 | Finding | one signature addressed to one party, with its evidence sample | the other parties' findings |
-| Escalation | one question to the level above, holding the findings the level below could not settle, and its answer as a list of settled signatures (revised, R4) | how the level above settles them |
+| Escalation | one question to the level above, holding the findings the level below could not settle, each with its cause, the pages it lives in and its rerun (revised, R4, R6) | how the level above settles them |
+| Rerun | the command that runs again only the checks one finding names (R6) | who runs it |
+| Book snapshot | each claim's expected outcome as the book stated it when an escalation opened (R6) | the setup a claim needs |
 | Turn budget | what one writer turn may read and spend | the findings' content |
 
 **Converging**
@@ -209,6 +211,11 @@ read-only reference. No concept belongs to two parts.
    escalation.** Owner: Escalation (revised, R4).
 10. **A person is asked only what no agent can answer.** Owner: Escalation, which carries
     the attendant's reason for asking. Upheld by Party (R4).
+11. **An escalation's finding closes only when its rerun passes, never on an answer's
+    word.** Owner: Escalation. Upheld by Rerun (R6).
+12. **A claim's expected outcome changes only through its page's writer.** An edit from
+    the level above that changes one goes back to that writer as a finding. Owner: Book
+    snapshot (R6).
 
 ## 4. Forces and patterns
 
@@ -335,6 +342,15 @@ read-only reference. No concept belongs to two parts.
   with environment and unattributed instead of splitting cause from party, which waits on
   Escalation. The done-when is measured on the next run's output, since run 17's output
   predates the exchange evidence the rules read.
+- **R6.** §2 Routing, §3, §6, §7 A10. An attendant does not always run, and when one
+  does, nothing fixes how it works. Any agent may answer a gate, so the rules for settling
+  it live in the run and the gate, never in one attendant's prompt. Escalation's answer
+  stops being a list of settled signatures. Each finding carries its Rerun instead, and
+  the run reruns it on answer and closes what passes (invariant 11). An answering agent
+  may edit the book. A Book snapshot taken when the gate opens lets the run send a changed
+  expected outcome back to its page's writer (invariant 12). Run 17 showed why: its stall
+  folded the super-admin seed's HTTP 400 into one workflow blocker, so the gate named no
+  page and no command.
 
 ### Parts
 
@@ -502,6 +518,24 @@ attributed to one cause. An endpoint page carries every claim of every endpoint 
    another's identity, and slice 4 is what stops that.
    Touches: Environment (Stack).
    Done when: a writer's second check starts its scenarios in under 10 seconds.
+8. **Let any attendant settle a gate.** Each blocker in a gate names its cause, the
+   shared pages it lives in, and its Rerun. A stall lists each signature still on the
+   writers' side as its own blocker, with the lap trend as its reason. When the gate
+   opens, the run takes a Book snapshot. On answer, the run reruns each blocker's checks
+   itself. It closes the ones that pass and routes the ones that fail to their writers
+   with the new result. It then compares the book with the snapshot and sends each claim
+   whose expected outcome changed back to its page's writer as a finding. Fixture,
+   precondition and setup edits stay free. A blocker with no checks, such as a failed
+   turn or a ceiling, names no Rerun and goes back through its book's route as today.
+   Touches: Routing (Escalation, Rerun, Book snapshot, Finding).
+   Done when: each blocker in a gate names its cause, the shared pages it lives in, and a
+   command that reruns only that blocker's checks. On answer, the run reruns each
+   blocker's checks itself, closes the ones that pass and routes the ones that fail to
+   their writers with the new result. On answer, the run compares the book with its state
+   when the gate opened and sends any change to a claim's expected outcome back to that
+   page's writer as a finding, while fixture, precondition and setup edits stay free. The
+   rules live in the run and the gate, never in one attendant's prompt, because any agent
+   may attend.
 
 ## 7. Assumptions
 
@@ -546,9 +580,10 @@ attributed to one cause. An endpoint page carries every claim of every endpoint 
 9. **Assumption:** the split between ostler (grammar, compiler, harness) and the
    workflow (loop, writers) stays. **Decided:** nothing moves between packages.
    **Basis:** the repo's map. **If wrong:** `target-architecture` owns the change.
-10. **Assumption:** an attendant reads every escalation before a person does.
-    **Decided:** Party's middle level is an agent, and Routing sends every cause outside
-    the book to it. **Basis:** groom launches an attendant on a gate
-    (`groom/groom/attend.py`), and amended aim 8. **If wrong:** every escalation parks for
-    a person, which is how runs behave today, so the cost is the time a person takes to
-    answer.
+10. **Assumption:** an agent reads every escalation before a person does, but nothing
+    fixes which agent or how it works (revised, R6). **Decided:** Party's middle level is
+    an agent, and Routing sends every cause outside the book to it. The gate carries every
+    rule the answer needs, and the run enforces them on answer (slice 8). **Basis:** groom
+    launches an attendant on a gate (`groom/groom/attend.py`), but not on every gate, and
+    amended aim 8. **If wrong:** every escalation parks for a person, which is how runs
+    behave today, so the cost is the time a person takes to answer.
