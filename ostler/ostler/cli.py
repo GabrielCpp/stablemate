@@ -14,6 +14,7 @@ import yaml
 from ostler import autofix as autofix_mod, backfill as backfill_mod, backlog as backlog_mod, coverage, crud, crud_generic, doctor, edit, fmt as fmt_mod, freeze as freeze_mod, graph as graph_mod, ids as ids_mod, locators, path as path_mod, query as query_mod, reach, registry, scaffold as scaffold_mod, select, templates as templates_mod, todo as todo_mod, trace
 from ostler import checks as checks_mod
 from ostler import carve as carve_mod
+from ostler import fragment_carve
 from ostler import census
 from ostler import provenance
 from ostler import vet as vet_mod
@@ -536,6 +537,13 @@ def _build_parser() -> argparse.ArgumentParser:
         "with the invocations that call it, rewriting every link the move touches",
     )
     ce.add_argument("server", help="the server page, relative to the repo or to docs/features")
+    cf = esub.add_parser(
+        "carve-fragments",
+        parents=[write_parent],
+        help="move the subsections of a page's largest sections onto fragment pages beside it "
+        "until it fits the page size limit, rewriting every link the move touches",
+    )
+    cf.add_argument("page", help="the page, relative to the repo or to docs/features")
 
     sc = sub.add_parser(
         "scaffold", help="create a UI-profile node in the right place (§9)"
@@ -1451,6 +1459,8 @@ def _cmd_edit(graph, args) -> int:
         plan = edit.migrate_context(graph, args.node_type, args.service)
     elif args.op == "carve-endpoints":
         plan = carve_mod.carve_endpoints(graph, args.server)
+    elif args.op == "carve-fragments":
+        plan = fragment_carve.carve_fragments(graph, args.page)
     else:
         plan = edit.rename(graph, args.old_slug, args.new_slug)
     _out(plan.render())

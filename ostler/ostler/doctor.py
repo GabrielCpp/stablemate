@@ -30,7 +30,7 @@ from ostler.qa import (captures as captures_mod, fixtures as fixtures_mod, refer
 from ostler.qa.compile import Gap
 from ostler.qa.context import RELATION_KEYS, relation_subject
 from ostler.qa.outcome import QaOutcome
-from ostler import section_hosts, server_membership, stamp as stamp_mod, step_commands
+from ostler import fragment_hosts, page_size, section_hosts, server_membership, stamp as stamp_mod, step_commands
 from ostler import values as values_mod
 from ostler.source_snapshots import book_repository
 
@@ -112,6 +112,8 @@ def run(graph: Graph, epic_filter: str | None = None, check_schema: bool = True,
 
     _check_ui(graph, f, resolver, checkouts)
     server_membership.check_server_membership(graph, f, resolver)
+    fragment_hosts.check_fragment_hosts(graph, f, resolver)
+    page_size.check_page_size(graph, f)
     _check_book_captures(graph, f)
     _check_self_relation(graph, f, resolver)
     _check_judgment(graph, f, resolver)
@@ -1422,7 +1424,8 @@ def _check_ui_file(graph: Graph, path, f: list[Finding]) -> None:
 
     ftype = registry.ui_type(declared)
     if ftype is not None and ftype.kind == "file":
-        section_hosts.check_section_hosts(doc, rel, ftype.name, f)
+        page_type = fragment_hosts.host_type(graph, rel) if ftype.name == "fragment" else ftype.name
+        section_hosts.check_section_hosts(doc, rel, page_type, f)
         for spec, problem in required_section_problems(doc, ftype.required_sections):
             if problem == "missing":
                 f.append(Finding("error", "missing-required-section",

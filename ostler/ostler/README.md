@@ -31,6 +31,8 @@ says how to use it. This page says where each concern lives.
 - `edit.py`: `ostler edit`, format-preserving structured edits across JSON and Markdown.
 - `finding.py`: the one problem `ostler doctor` reports, shared by every module that checks a book.
 - `fmt.py`: `ostler fmt`, the canonicalizing formatter for UI-profile docs.
+- `fragment_carve.py`: `ostler edit carve-fragments`, which moves the subsections of a page past the size limit onto fragment pages beside it.
+- `fragment_hosts.py`: doctor's check that each fragment page names one host page that is no fragment, and that host links it.
 - `freeze.py`: `ostler freeze` and `unfreeze`, which pin an approved entity as ground truth.
 - `graph.py`: `ostler graph`, the whole graph dumped as JSON to filter on.
 - `ids.py`: id allocation over `.agents/ids.json`.
@@ -42,6 +44,7 @@ says how to use it. This page says where each concern lives.
 - `markdown.py`: Markdown and YAML frontmatter parsing.
 - `model.py`: the organization model, the typed knowledge graph loaded from markdown.
 - `pages.py`: which files under a book folder belong to the book, leaving out hidden folders.
+- `page_size.py`: the size limit a book page must keep so one writer can read and rewrite it in a turn, and doctor's check of it.
 - `path.py`: `ostler path`, which resolves slugs to canonical filesystem paths.
 - `provenance.py`: the joins between git story trailers and story-scoped context packets.
 - `query.py`: `ostler list`, `search` and `query`, retrieval over the knowledge graph.

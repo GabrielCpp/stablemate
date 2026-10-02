@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field, replace
@@ -1018,9 +1019,23 @@ def _parse_ui_nodes(doc: markdown.MarkdownDoc, path: Path, root: Path) -> list[U
         ))
 
     top = main.children if (main is not None and main.level == 1) else doc.sections
+    host = fragment_host(nodes[0], root) if file_id and nodes[0].type == "fragment" else ""
     for sec in top:
-        _promote_section(sec, rel, path, offset, file_id, None, nodes, anchors)
+        _promote_section(sec, rel, path, offset, host or file_id, None, nodes, anchors)
     return nodes
+
+
+def fragment_host(fragment: UINode, root: Path) -> str:
+    """The id of the one page a fragment's `host:` link names, under whose rules its sections are read."""
+    hrefs = [href for key, value, _ in fragment.bullet_order if key == "host"
+             for _t, href, _l in markdown.iter_links(value)]
+    if len(hrefs) != 1 or "://" in hrefs[0]:
+        return ""
+    target = Path(os.path.normpath(fragment.path.parent / hrefs[0].partition("#")[0]))
+    try:
+        return target.relative_to(root).as_posix()
+    except ValueError:
+        return ""
 
 
 def _load_ui_nodes(graph: Graph, pages: list[tuple[Path, dict, list[UINode]]]) -> None:

@@ -186,7 +186,7 @@ SCENARIO_FRAME_TOKEN = "scenario:"
 STEP_KIND_VALUES = ("prepare", "service", "seed", "health", "run", "verify", "probe", "drive", "teardown")
 
 CODE_GROUNDING_KEYS = frozenset({"code"})
-RELATION_KEYS = ("on", "server", "parent", "extends", "same-as", "steps", "presents", "detail",
+RELATION_KEYS = ("on", "server", "host", "parent", "extends", "same-as", "steps", "presents", "detail",
                  "environment", "cli", "surfaces", "launch-screen", "requires", "params",
                  "leads-to", "exclusive-with", "prefers", "deprecates")
 
@@ -749,6 +749,10 @@ UI_TYPES: tuple[UINodeType, ...] = (
             BulletKey("needs", nested=True, link=True),
             BulletKey("secrets", nested=True),
         ),
+    ),
+    UINodeType(
+        name="fragment", kind="file",
+        bullet_keys=(BulletKey("host", required=True, link=True),),
     ),
     UINodeType(name="untyped", kind="section"),
 )

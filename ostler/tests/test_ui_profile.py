@@ -94,6 +94,7 @@ def test_ui_types_registered():
         "method", "field",
         "runbook", "environment", "step",
         "fixture",
+        "fragment",
         "untyped",
     }
 
