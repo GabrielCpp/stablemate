@@ -3,6 +3,9 @@ agents:
   codex: true
   copilot: false
 
+repo:
+  name: stablemate
+
 # The hook manager farrier splices its one entry into. `githooks` — git's own
 # `core.hooksPath`, pointed at `.githooks/`, with no runner in front of it. The
 # pre-commit framework was the other option and it cost more than it carried: its
