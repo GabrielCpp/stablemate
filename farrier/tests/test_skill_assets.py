@@ -73,6 +73,16 @@ def test_readme_does_not_register_as_a_source(tmp_path):
     assert {source.id for source in load_sources(root, "skill")} == {"stack/go-service"}
 
 
+@pytest.mark.parametrize("name", ["AGENTS.md", "CLAUDE.md"])
+def test_a_group_instruction_file_does_not_register_as_a_source(tmp_path, name):
+    """A group's AGENTS.md tells its authors how to write there; it is not a skill named `agents`."""
+    root = _library(tmp_path)
+    _skill(root, "go-service")
+    (root / "stack" / name).write_text("# Stack skills\n\nHow to write here.\n", encoding="utf-8")
+
+    assert {source.id for source in load_sources(root, "skill")} == {"stack/go-service"}
+
+
 def test_scripts_are_not_loaded_as_sources(tmp_path):
     root = _library(tmp_path)
     skill_dir = _skill(root, "qa")

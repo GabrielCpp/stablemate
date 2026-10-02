@@ -96,7 +96,7 @@ def skill_assets(source: Source) -> list[Asset]:
     return sorted(assets, key=lambda asset: asset.rel)
 
 
-_NOT_SOURCES = frozenset({"SKILL.md", "README.md"})
+_NOT_SOURCES = frozenset({"SKILL.md", "README.md", "AGENTS.md", "CLAUDE.md"})
 
 
 def load_sources(root: Path, kind: str, layer: Layer | None = None) -> list[Source]:
