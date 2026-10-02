@@ -379,3 +379,14 @@ def test_the_prompt_and_skill_allowance_covers_the_prompt_and_the_format_skill()
     prompt = repo / "workflows/src/workhorse_workflows/okf_book/main/prompts/write-book.md"
 
     assert folder_tokens(repo / "base-library/library/skills/ostler/ostler-okf") + folder_tokens(prompt.parent) <= PROMPT_AND_SKILL_ALLOWANCE_TOKENS
+
+
+def test_a_check_named_pages_checks_only_those_pages(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    pages = ("docs/features/ledger/mine.md", "docs/features/ledger/other.md")
+    monkeypatch.setattr(check_pages, "page_problems", _problems_on(*pages))
+    problems_at_turn_start = tuple(PageProblem(page, f"{page} is broken") for page in pages)
+    path = write_command_state(tmp_path / "run", WriterCommandState(root=tmp_path, service="ledger", problems_at_turn_start=problems_at_turn_start))
+
+    output = checked([str(path), pages[0]])
+
+    assert output == CommandOutput(1, (f"{pages[0]} is broken",))

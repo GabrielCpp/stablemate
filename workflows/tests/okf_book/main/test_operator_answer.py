@@ -33,7 +33,7 @@ def test_the_answer_to_the_blockers_is_kept_for_the_repair(tmp_path: Path) -> No
     step = book.resume(gate_path=str(gate_path), question=question)
 
     assert read_answer(tmp_path) == ANSWER
-    assert step.state == "route_blocked"
+    assert step.state == "settle_gate"
 
 
 def test_a_gate_asking_something_newer_holds_no_answer_to_the_old_question() -> None:

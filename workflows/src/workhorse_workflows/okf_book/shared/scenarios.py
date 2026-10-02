@@ -183,6 +183,19 @@ class RunSummary(BaseModel):
                 grouped.setdefault(page, []).extend(PageProblem(page, f"{failure_prefix}: {line}", node=node) for line in lines)
         return {page: tuple(grouped[page]) for page in sorted(grouped)}
 
+    def signature_pages(self, signature: Signature) -> tuple[str, ...]:
+        """The pages the checks of *signature* live in: the precondition page that arranged them, then the pages of the claims they cover, in path order."""
+        found = {
+            page
+            for outcome in self.scenarios.values()
+            for check in outcome.failed_checks
+            if (check.cause, check.precondition, check.status, check.shape, check.gap)
+            == (signature.cause, signature.precondition, signature.status, signature.shape, signature.gap)
+            for page in map(obligation_page, check.covers)
+            if page and page != signature.precondition
+        }
+        return (*((signature.precondition,) if signature.precondition else ()), *sorted(found))
+
     def _requests_by_precondition(self) -> dict[str, tuple[str, ...]]:
         """Each precondition page, and the pages of the claims whose checks failed on what it arranges, in path order."""
         found: dict[str, set[str]] = {}

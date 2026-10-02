@@ -7,6 +7,8 @@ from ostler.qa.attribution import Cause, Signature
 from workhorse.pyflow import Await, Continue, Done, WorkflowFailed
 from workhorse_workflows.kit import last_commit_subject, last_commit_trailer
 from workhorse_workflows.okf_book.main.exercise_book_flow import ExerciseBook
+from workhorse_workflows.okf_book.main.nodes import gate
+from workhorse_workflows.okf_book.main.nodes.gate import SIDE_BY_ESCALATED_CAUSE, RunFailures, escalation_reason, rerun_command, take_failures
 from workhorse_workflows.okf_book.main.nodes.operator_answer import answer_below, write_answer
 from workhorse_workflows.okf_book.main.nodes.progress_ledger import LapCounts, lap_counts, read_laps, record_lap, service_laps, stalled, trend
 from workhorse_workflows.okf_book.main.nodes.repair_ledger import RepairOutcome
@@ -21,7 +23,7 @@ from workhorse_workflows.okf_book.main.nodes.turn_budget import (
     source_and_book_tokens,
 )
 from workhorse_workflows.okf_book.main.write_book_flow import WriteBook, WriteOutcome
-from workhorse_workflows.okf_book.shared.blockers import Blocker, Phase, Side, forget_blockers, forget_every_blocker, read_blockers, record_blocker
+from workhorse_workflows.okf_book.shared.blockers import Blocker, Phase, Side, forget_blocker, forget_blockers, read_blockers, record_blocker
 from workhorse_workflows.okf_book.shared.book_commits import (
     BOOK_TRAILER,
     REPAIRED,
@@ -32,14 +34,12 @@ from workhorse_workflows.okf_book.shared.book_flow import BookFlow
 from workhorse_workflows.okf_book.shared.book_run import ExerciseResult
 from workhorse_workflows.okf_book.shared.citations import book_pages
 from workhorse_workflows.okf_book.shared.entries import FEATURES_DIR
-from workhorse_workflows.okf_book.shared.page_check import PageProblem, book_problems
+from workhorse_workflows.okf_book.shared.page_check import page_problems
 from workhorse_workflows.okf_book.shared.scenarios import PLAN_NAME, plan_scenarios, spec_dir, write_run
 
 OPERATOR_NAME = "operator.md"
 
-RunFailures = dict[str, tuple[PageProblem, ...]]
-
-SIDE_BY_ESCALATED_CAUSE = {Cause.ENVIRONMENT: Side.ENVIRONMENT, Cause.APP: Side.APP, Cause.UNATTRIBUTED: Side.UNATTRIBUTED}
+WRITER_CAUSES = frozenset({Cause.BOOK, Cause.ARRANGEMENT})
 
 
 def _book_folder(service: str) -> str:
@@ -55,14 +55,6 @@ def _escalated_signatures(exercised: ExerciseResult) -> tuple[Signature, ...]:
     """The signatures of the run that a party other than the book's writer must fix."""
     signatures = exercised.summary.signatures if exercised.summary is not None else ()
     return tuple(signature for signature in signatures if signature.cause in SIDE_BY_ESCALATED_CAUSE)
-
-
-def _escalation_reason(signature: Signature) -> str:
-    """Why a person must act on *signature*: a capability only a person can supply, or the checks another party must fix."""
-    if signature.gap:
-        return (f"the stack lacks the {signature.gap}, and only a person can supply it; "
-                f"the {signature.count} checks that need it pass once it is there; for example {signature.sample}")
-    return f"{signature.count} checks failed this way; for example {signature.sample}"
 
 
 def _stall(exercised: ExerciseResult, laps: tuple[LapCounts, ...]) -> str:
@@ -112,7 +104,12 @@ class OkfBook(BookFlow):
         book = _book_folder(service)
         if not (self.root / book).is_dir():
             return Continue(None, self.copy_source, index=index).because("no book yet: write it")
-        problems = book_problems(self.root, service)
+        pending = take_failures(self.records_dir, service)
+        if pending:
+            return Continue(pending, self.copy_source, index=index, run_failures=pending).because(
+                "the gate left this book's writer failures to fix"
+            )
+        problems = tuple(problem.text for problem in page_problems(self.root, service))
         if problems:
             return Continue(problems, self.copy_source, index=index).because("the existing book has problems")
         ours = last_commit_subject(self.root, book) in (book_commit_subject(service), repaired_book_commit_subject(service))
@@ -205,12 +202,15 @@ class OkfBook(BookFlow):
         )
 
     def check_book(self, index: int, run_failures_repaired: bool = False) -> Continue[...]:
-        """Repeat the writer's own page check. Each problem it finds is a blocker, and one an earlier check found that this one does not is no longer."""
+        """Repeat the writer's own page check. Each problem it finds is a blocker on its page, and one an earlier check found that this one does not is no longer."""
         service = self.surfaces[index].service
-        problems = book_problems(self.root, service)
+        problems = page_problems(self.root, service)
         forget_blockers(self.records_dir, Phase.WRITE, Side.BOOK, service)
         for problem in problems:
-            _ = record_blocker(self.records_dir, Blocker(subject=f"{service}: {problem}", service=service, phase=Phase.WRITE, side=Side.BOOK, reason=problem))
+            blocker = Blocker(subject=f"{service}: {problem.text}", service=service, phase=Phase.WRITE, side=Side.BOOK, reason=problem.text,
+                              cause=Cause.BOOK.value, pages=(problem.page,),
+                              rerun=rerun_command(self.records_dir, service, Phase.WRITE, (problem.page,)))
+            _ = record_blocker(self.records_dir, blocker)
         return Continue(problems, self.run_book, index=index, run_failures_repaired=run_failures_repaired).because(
             "run the book against the app"
         )
@@ -249,10 +249,13 @@ class OkfBook(BookFlow):
         for side in SIDE_BY_ESCALATED_CAUSE.values():
             forget_blockers(self.records_dir, Phase.EXERCISE, side, service)
         for signature in _escalated_signatures(exercised):
-            reason = _escalation_reason(signature)
-            blocker = Blocker(subject=f"{service}: {signature.text()}", service=service, phase=Phase.EXERCISE,
-                              side=SIDE_BY_ESCALATED_CAUSE[signature.cause], reason=reason)
-            _ = record_blocker(self.records_dir, blocker)
+            _ = record_blocker(self.records_dir, self._signature_blocker(service, exercised, signature,
+                                                                         SIDE_BY_ESCALATED_CAUSE[signature.cause], escalation_reason(signature)))
+
+    def _signature_blocker(self, service: str, exercised: ExerciseResult, signature: Signature, side: Side, reason: str) -> Blocker:
+        pages = exercised.summary.signature_pages(signature) if exercised.summary is not None else ()
+        return Blocker(subject=f"{service}: {signature.text()}", service=service, phase=Phase.EXERCISE, side=side, reason=reason,
+                       cause=signature.cause.value, pages=pages, rerun=rerun_command(self.records_dir, service, Phase.EXERCISE, pages))
 
     def _book_failures(self, index: int, exercised: ExerciseResult) -> RunFailures:
         if exercised.summary is None:
@@ -272,26 +275,41 @@ class OkfBook(BookFlow):
         service = self.surfaces[index].service
         stall = _stall(exercised, service_laps(read_laps(self.records_dir), service))
         if stall:
-            blocker = Blocker(subject=f"{service}: the book's failed checks did not fall", service=service, phase=Phase.EXERCISE,
-                              side=Side.WORKFLOW, reason="\n".join((stall, *exercised.lines)))
-            _ = record_blocker(self.records_dir, blocker)
+            self._block_stall(service, exercised, stall, failures)
             return self._next_surface(exercised.passed, index)
         return Continue(failures, self.copy_source, index=index, run_failures=failures).because(
             "the repair lowered the book's failed checks: repair again"
         )
 
+    def _block_stall(self, service: str, exercised: ExerciseResult, stall: str, failures: RunFailures) -> None:
+        """Record one blocker per defect the book's writer could not fix, with its pages and the command that reruns them, or one on the workflow when no signature names one."""
+        signatures = exercised.summary.signatures if exercised.summary is not None else ()
+        mine = [signature for signature in signatures if signature.cause in WRITER_CAUSES]
+        for signature in mine:
+            reason = f"{stall}; {signature.count} checks failed this way, for example {signature.sample}"
+            _ = record_blocker(self.records_dir, self._signature_blocker(service, exercised, signature, Side.BOOK, reason))
+        if not mine:
+            pages = tuple(failures)
+            _ = record_blocker(self.records_dir, Blocker(
+                subject=f"{service}: the book's failed checks did not fall", service=service, phase=Phase.EXERCISE,
+                side=Side.WORKFLOW, reason="\n".join((stall, *exercised.lines)), pages=pages,
+                rerun=rerun_command(self.records_dir, service, Phase.EXERCISE, pages)))
+
     def report(self) -> Await[...] | Done:
-        """Publish the report. Any blocker stops the run at the operator, whose answer sends each blocked book back through its route."""
+        """Publish the report. Any blocker stops the run at a gate, whose answer has the run settle each blocker itself."""
         report = build_report(self.root, self.records_dir, self.services)
         page = write_report(self.records_dir, report)
         blockers = read_blockers(self.records_dir)
         if not blockers:
             return Done(report).because("no blocker: the books are done")
+        gate.open_gate(self.root, self.records_dir, self.services)
         question = (
-            f"The run stopped on {len(blockers)} blockers, each listed in {page}. "
+            f"The run stopped on {len(blockers)} blockers, each listed in {page} with its cause, its pages "
+            + "and the command that reruns only its checks. "
             + "Fix the book, ostler, the app or the workflow each one names, and reload the run when you changed its code. "
-            + "Answer here, and the run routes each blocked book again: a book that still fails goes back to its repair, "
-            + "and every repair turn reads your answer."
+            + "Answer here, and the run reruns each blocker's checks itself: it closes those that pass, keeps those another party "
+            + "must still fix, and sends the rest to their writers with the new result. A claim's expected outcome you changed "
+            + "goes back to its page's writer as a finding. Fixture, precondition and setup edits stay as you made them."
         )
         gate_path = self.run_dir / OPERATOR_NAME
         return Await(gate_path, question, self.resume, gate_path=str(gate_path), question=question).because("blockers wait for the operator")
@@ -300,13 +318,24 @@ class OkfBook(BookFlow):
         """The operator has fixed what the blockers named, or said how. Their answer is kept for every repair turn."""
         gate_text = Path(gate_path).read_text(encoding="utf-8") if gate_path and Path(gate_path).is_file() else ""
         write_answer(self.records_dir, answer_below(gate_text, question))
-        return Continue(None, self.route_blocked).because("the operator's answer is kept for the repair turns")
+        return Continue(None, self.settle_gate).because("the operator's answer is kept for the repair turns")
 
-    def route_blocked(self) -> Continue[...]:
-        """The books the blockers named pass again, and every blocker is forgotten, since that pass records again each one that still holds. A blocker that names no service sends every book."""
-        blocked = {blocker.service for blocker in read_blockers(self.records_dir)}
-        blocked_services = tuple(service for service in self.services if service in blocked)
-        write_pass(self.records_dir, blocked_services if blocked_services and "" not in blocked else self.services)
-        forget_every_blocker(self.records_dir)
+    def settle_gate(self) -> Continue[...]:
+        """Rerun each blocker's checks, close those that pass, and leave each writer what still fails and every claim the answer changed."""
+        routed = gate.settle_gate(self.root, self.records_dir, self.services)
+        return Continue(routed, self.route_blocked, routed=routed).because("the gate's blockers are settled")
+
+    def route_blocked(self, routed: tuple[str, ...] | None = None) -> Continue[...]:
+        """The books the gate's settlement routes pass again, and their blockers are forgotten, since that pass records again each one that still holds. Blockers left only on another party reopen the gate. Without a settlement, the books the blockers named pass again, and a blocker that names no service sends every book."""
+        blockers = read_blockers(self.records_dir)
+        if routed is None:
+            named = {blocker.service for blocker in blockers}
+            routed = tuple(service for service in self.services if service in named and "" not in named) or self.services
+        if not routed:
+            return Continue(None, self.report).because("every blocker left waits on another party: reopen the gate")
+        write_pass(self.records_dir, routed)
+        for blocker in blockers:
+            if blocker.service in routed or not blocker.service:
+                forget_blocker(self.records_dir, blocker)
         first = self._routed_after(-1)
         return Continue(None, self.route_book, index=first or 0).because("the operator answered: route the blocked books again")

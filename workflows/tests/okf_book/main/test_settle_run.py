@@ -39,9 +39,10 @@ def test_each_signature_another_party_must_fix_is_one_blocker_on_its_side(tmp_pa
 
     assert read_blockers(tmp_path) == (
         Blocker(subject="tally: app: POST /entries/… answered 500", service="tally", phase=Phase.EXERCISE, side=Side.APP,
-                reason="2 checks failed this way; for example adds: expected [201], observed 500"),
+                reason="2 checks failed this way; for example adds: expected [201], observed 500", cause="app"),
         Blocker(subject="tally: environment: GET /entries/… answered could not connect", service="tally", phase=Phase.EXERCISE,
-                side=Side.ENVIRONMENT, reason="4 checks failed this way; for example lists: expected [200], observed null"),
+                side=Side.ENVIRONMENT, reason="4 checks failed this way; for example lists: expected [200], observed null",
+                cause="environment"),
     )
 
 
@@ -90,7 +91,8 @@ def test_a_repaired_run_whose_every_failure_is_escalated_blocks_nothing_on_the_b
 
 
 def _book_run(*signatures: Signature) -> ExerciseResult:
-    misread = FailedCheck(label="adds", expected="[201]", actual="422", covers=("okf:docs/features/tally/tally.md#add:does:1",))
+    misread = FailedCheck(label="adds", expected="[201]", actual="422", cause=Cause.BOOK, status="422", shape="POST /entries/…",
+                          covers=("okf:docs/features/tally/tally.md#add:does:1",))
     summary = RunSummary(status="failed", scenarios={"tally-add": ScenarioOutcome(status="failed", failed_checks=(misread,))},
                          signatures=signatures)
     return ExerciseResult(lines=("failed",), summary=summary)
@@ -117,9 +119,24 @@ def test_a_repair_that_leaves_the_book_s_failed_checks_flat_asks_the_attendant_w
     _ = book.map_run_failures(index=0, exercised=exercised, run_failures_repaired=True)
 
     assert step.state == "map_run_failures"
-    stall = next(blocker for blocker in read_blockers(tmp_path) if blocker.side is Side.WORKFLOW)
+    [stall] = [blocker for blocker in read_blockers(tmp_path) if blocker.side is Side.BOOK]
+    assert stall.subject == "tally: book: POST /entries/… answered 422"
+    assert stall.reason.startswith("the repair did not lower the book's failed checks, lap by lap: 1 → 1; 1 checks failed this way")
+    assert (stall.cause, stall.pages) == ("book", ("docs/features/tally/tally.md",))
+    assert stall.rerun.endswith(" docs/features/tally/tally.md")
+
+
+def test_a_stall_no_signature_attributes_to_the_book_asks_the_attendant_about_the_workflow(tmp_path: Path) -> None:
+    book = _book(tmp_path)
+    _ = book.settle_run(index=0, run_failures_repaired=False, exercised=_book_run(CRASHED))
+
+    exercised = _book_run(CRASHED)
+    _ = book.settle_run(index=0, run_failures_repaired=True, exercised=exercised)
+    _ = book.map_run_failures(index=0, exercised=exercised, run_failures_repaired=True)
+
+    [stall] = [blocker for blocker in read_blockers(tmp_path) if blocker.side is Side.WORKFLOW]
     assert stall.subject == "tally: the book's failed checks did not fall"
-    assert stall.reason.startswith("the repair did not lower the book's failed checks, lap by lap: 1 → 1\n")
+    assert stall.pages == ("docs/features/tally/tally.md",)
 
 
 def _probe_run() -> ExerciseResult:
@@ -158,8 +175,8 @@ def test_a_book_run_no_lower_than_the_last_book_run_stalls_with_the_probe_lap_ma
 
     _ = _settle_and_map(book, _book_run(replace(MISREAD, count=9)))
 
-    stall = next(blocker for blocker in read_blockers(tmp_path) if blocker.side is Side.WORKFLOW)
-    assert stall.reason.startswith("the repair did not lower the book's failed checks, lap by lap: 9 → 1 at the probes → 9\n")
+    [stall] = [blocker for blocker in read_blockers(tmp_path) if blocker.side is Side.BOOK]
+    assert stall.reason.startswith("the repair did not lower the book's failed checks, lap by lap: 9 → 1 at the probes → 9;")
 
 
 def test_a_probe_stopped_run_no_lower_than_the_probe_stopped_run_before_it_stalls(tmp_path: Path) -> None:
@@ -168,9 +185,10 @@ def test_a_probe_stopped_run_no_lower_than_the_probe_stopped_run_before_it_stall
 
     _ = _settle_and_map(book, _probe_run())
 
-    assert [blocker.subject for blocker in read_blockers(tmp_path) if blocker.side is Side.WORKFLOW] == [
-        "tally: the book's failed checks did not fall"
-    ]
+    [stall] = [blocker for blocker in read_blockers(tmp_path) if blocker.side is Side.BOOK]
+    assert (stall.subject, stall.cause, stall.pages) == (
+        "tally: arrangement: docs/fixtures/signed-in.md answered 401", "arrangement", ("docs/fixtures/signed-in.md",)
+    )
 
 
 def test_a_gapped_check_counts_as_no_failure_of_its_lap(tmp_path: Path) -> None:

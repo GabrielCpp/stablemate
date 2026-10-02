@@ -243,3 +243,14 @@ def test_a_target_no_scenario_runs_is_named_back() -> None:
     selected = select_scenarios((ADD_SCENARIO,), SEEDED, ("docs/features/tally/flows/budget.md", "docs/features/tally/missing.md"))
 
     assert selected == Selection(scenarios=("tally-add",), unmatched=("docs/features/tally/missing.md",))
+
+
+def test_a_signature_names_the_page_that_arranged_its_checks_then_the_pages_they_cover() -> None:
+    refused = FailedCheck(label="adds", cause=Cause.ARRANGEMENT, precondition="docs/fixtures/admin.md", status="400",
+                          covers=("okf:docs/features/tally/tally.md#list:does:1", "okf:docs/features/tally/add.md:contract"))
+    other = FailedCheck(label="lists", cause=Cause.APP, status="500", covers=("okf:docs/features/tally/other.md:contract",))
+    summary = RunSummary(status="failed", scenarios={"tally-add": ScenarioOutcome(status="failed", failed_checks=(refused, other))})
+    signature = Signature(Cause.ARRANGEMENT, "docs/fixtures/admin.md", "400", "", 1, "adds")
+
+    assert summary.signature_pages(signature) == (
+        "docs/fixtures/admin.md", "docs/features/tally/add.md", "docs/features/tally/tally.md")

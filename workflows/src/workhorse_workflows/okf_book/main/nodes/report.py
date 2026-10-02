@@ -124,7 +124,19 @@ def build_report(root: Path, records_dir: Path, services: tuple[str, ...]) -> Bo
 def _blocker_lines(report: BookReport) -> list[str]:
     if not report.blockers:
         return ["Nothing blocked the run."]
-    return [f"- {b.phase.value} / {b.side.value}: `{b.subject}`: {b.reason}" for b in report.blockers]
+    return [line for b in report.blockers for line in _blocker_entry(b)]
+
+
+def _blocker_entry(blocker: Blocker) -> list[str]:
+    """One blocker's line, then its cause, the pages its checks live in, and the command that reruns only them."""
+    lines = [f"- {blocker.phase.value} / {blocker.side.value}: `{blocker.subject}`: {blocker.reason}"]
+    if blocker.cause:
+        lines.append(f"  - cause: {blocker.cause}")
+    if blocker.pages:
+        lines.append("  - pages: " + ", ".join(f"`{page}`" for page in blocker.pages))
+    if blocker.rerun:
+        lines.append(f"  - rerun: `{blocker.rerun}`")
+    return lines
 
 
 def _run_lines(report: BookReport) -> list[str]:

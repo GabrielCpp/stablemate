@@ -78,12 +78,8 @@ def answering_operator(asked: list[str]) -> Callable[..., None]:
     return _operator
 
 
-def no_problems(_root: Path, _service: str) -> tuple[str, ...]:
+def no_problems(_root: Path, _service: str) -> tuple[PageProblem, ...]:
     return ()
-
-
-def book_problems_until_noted(root: Path, _service: str) -> tuple[str, ...]:
-    return () if NOTE.strip() in (root / PAGE).read_text(encoding="utf-8") else ("tally.md needs a note",)
 
 
 def refuse_commits_until_answered(repo: Path, asked: list[str]) -> Callable[..., None]:
@@ -143,7 +139,7 @@ def page_problems_until_noted(root: Path, _service: str) -> tuple[PageProblem, .
 def stub_a_book_sent_to_repair(monkeypatch: pytest.MonkeyPatch) -> None:
     """Send an existing book that passes its run to the repair, with the page check clean once tally.md is noted."""
     stub_the_run_to(monkeypatch, PASSED)
-    monkeypatch.setattr(flow, "book_problems", book_problems_until_noted)
+    monkeypatch.setattr(flow, "page_problems", page_problems_until_noted)
     monkeypatch.setattr(turn_budget, "SOURCE_AND_BOOK_CEILING_TOKENS", 10)
     monkeypatch.setattr(repair_book_flow, "page_problems", page_problems_until_noted)
     monkeypatch.setattr(pyflow_park, "wait_for_answer", stopping_operator([]))

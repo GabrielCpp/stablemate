@@ -31,7 +31,9 @@ class Side(StrEnum):
 class Blocker(BaseModel):
     """One thing the run stopped working on: a file, a page, an obligation or a scenario, the service it belongs to, and why.
 
-    A record written before blockers named their service reads with no service.
+    A blocker the book's checks can show names the kind of defect that caused it, the pages its
+    checks live in, and the command that reruns only those checks. A record written before
+    blockers named these reads with none, and so does a blocker no check can show.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
@@ -41,6 +43,9 @@ class Blocker(BaseModel):
     phase: Phase
     side: Side
     reason: str
+    cause: str = ""
+    pages: tuple[str, ...] = ()
+    rerun: str = ""
 
     @property
     def key(self) -> str:
@@ -60,6 +65,11 @@ def forget_blockers(run_dir: Path, phase: Phase, side: Side, service: str) -> No
     for blocker in read_blockers(run_dir):
         if blocker.phase is phase and blocker.side is side and blocker.service == service:
             (run_dir / BLOCKERS_DIR / f"{blocker.key}.json").unlink()
+
+
+def forget_blocker(run_dir: Path, blocker: Blocker) -> None:
+    """Drop *blocker*, once its checks pass again."""
+    (run_dir / BLOCKERS_DIR / f"{blocker.key}.json").unlink(missing_ok=True)
 
 
 def forget_every_blocker(run_dir: Path) -> None:

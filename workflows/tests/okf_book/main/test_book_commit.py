@@ -14,7 +14,7 @@ from okf_book.main.tally import (
     DriveBook,
     answering_operator,
     stopping_operator,
-    book_problems_until_noted,
+    page_problems_until_noted,
     refuse_commits_until_answered,
     stub_the_run_to,
 )
@@ -39,7 +39,7 @@ def _writer(repo: Path) -> ScriptedRunner:
 @pytest.fixture
 def passing(monkeypatch: pytest.MonkeyPatch) -> None:
     stub_the_run_to(monkeypatch, PASSED)
-    monkeypatch.setattr(flow, "book_problems", book_problems_until_noted)
+    monkeypatch.setattr(flow, "page_problems", page_problems_until_noted)
 
 
 @pytest.mark.usefixtures("passing")

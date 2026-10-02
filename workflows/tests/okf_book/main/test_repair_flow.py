@@ -210,7 +210,7 @@ def _no_page_problems(_root: Path, _service: str) -> tuple[PageProblem, ...]:
 @pytest.fixture
 def failing_add(monkeypatch: pytest.MonkeyPatch) -> None:
     stub_the_run_to(monkeypatch, FAILED_ADD)
-    monkeypatch.setattr(flow, "book_problems", no_problems)
+    monkeypatch.setattr(flow, "page_problems", no_problems)
     monkeypatch.setattr(flow, "plan_scenarios", _planned)
     monkeypatch.setattr(repair_book_flow, "page_problems", _no_page_problems)
     monkeypatch.setattr(pyflow_park, "wait_for_answer", stopping_operator([]))
@@ -279,10 +279,6 @@ def _problems_until_deleted(root: Path, _service: str) -> tuple[PageProblem, ...
     return (PageProblem(PAGE, "tally.md documents nothing the app does"),) if (root / PAGE).is_file() else ()
 
 
-def _book_problems_until_deleted(root: Path, service: str) -> tuple[str, ...]:
-    return tuple(problem.text for problem in _problems_until_deleted(root, service))
-
-
 def _repairer_deleting_page(repo: Path) -> ScriptedRunner:
     def _reply(_args: dict[str, object]) -> dict[str, object]:
         (repo / PAGE).unlink()
@@ -296,7 +292,7 @@ def test_a_page_the_turn_deleted_leaves_no_entries_link_to_it(app: App, drive_bo
     """Only code writes the entries page, so code drops a link to a page a turn deleted and commits it with the turn."""
     repo = app("tally-cli")
     entries = "docs/features/tally/entries.md"
-    monkeypatch.setattr(flow, "book_problems", _book_problems_until_deleted)
+    monkeypatch.setattr(flow, "page_problems", _problems_until_deleted)
     monkeypatch.setattr(repair_book_flow, "page_problems", _problems_until_deleted)
 
     _ = drive_book(OkfBook(repo_dir=str(repo), surfaces=(TALLY,)), _repairer_deleting_page(repo))
@@ -333,7 +329,7 @@ def test_an_entries_page_someone_left_uncommitted_keeps_its_link_to_a_page_the_t
     repo = app("tally-cli")
     entries = repo / "docs/features/tally/entries.md"
     _ = entries.write_text("---\ntype: entries\n---\n\n- [Tally](tally.md)\n", encoding="utf-8")
-    monkeypatch.setattr(flow, "book_problems", _book_problems_until_deleted)
+    monkeypatch.setattr(flow, "page_problems", _problems_until_deleted)
     monkeypatch.setattr(repair_book_flow, "page_problems", _problems_until_deleted)
 
     _ = drive_book(OkfBook(repo_dir=str(repo), surfaces=(TALLY,)), _repairer_deleting_page(repo))

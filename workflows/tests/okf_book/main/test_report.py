@@ -6,7 +6,7 @@ from workhorse.runner.usage import TurnUsage
 
 from workhorse_workflows.okf_book.main.nodes.progress_ledger import LapCounts
 from workhorse_workflows.okf_book.main.nodes.report import BookReport, book_costs, render_report
-from workhorse_workflows.okf_book.shared.blockers import Phase
+from workhorse_workflows.okf_book.shared.blockers import Blocker, Phase, Side
 from workhorse_workflows.okf_book.shared.metrics import TurnMetric, turn_metric
 from workhorse_workflows.okf_book.shared.scenarios import FailedCheck, RunSummary, ScenarioOutcome
 
@@ -83,3 +83,14 @@ def test_the_report_shows_the_book_s_failed_checks_lap_by_lap() -> None:
     assert "- `tally`: the book's failed checks, lap by lap: 40 → 15\n" in rendered
     assert "  - lap 2: book 12, arrangement 3, environment 0, app 0, unattributed 0, gapped 5\n" in rendered
     assert "## Progress per lap\n\nNo lap ran.\n" in render_report(_report(None))
+
+
+def test_the_report_names_each_blocker_s_cause_its_pages_and_the_command_that_reruns_them() -> None:
+    blocker = Blocker(subject="tally: arrangement: docs/fixtures/admin.md answered 400", service="tally", phase=Phase.EXERCISE,
+                      side=Side.BOOK, reason="3 checks failed this way", cause="arrangement",
+                      pages=("docs/fixtures/admin.md", "docs/features/tally/add.md"), rerun="python -m exercise docs/fixtures/admin.md")
+
+    rendered = render_report(_report(None).model_copy(update={"blockers": (blocker,)}))
+
+    assert ("  - cause: arrangement\n  - pages: `docs/fixtures/admin.md`, `docs/features/tally/add.md`\n"
+            "  - rerun: `python -m exercise docs/fixtures/admin.md`\n") in rendered

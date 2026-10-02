@@ -17,7 +17,7 @@ from okf_book.main.tally import (
     SMALL_LIMIT,
     SERVER_PAGE,
     TALLY,
-    book_problems_until_noted,
+    page_problems_until_noted,
     stub_a_book_sent_to_repair,
     stub_the_run_to,
     write_inline_server,
@@ -48,7 +48,7 @@ def test_an_endpoint_the_writer_left_inline_gets_a_page_of_its_own_in_the_book_c
     app: App, drive_book: DriveBook, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     stub_the_run_to(monkeypatch, PASSED)
-    monkeypatch.setattr(flow, "book_problems", book_problems_until_noted)
+    monkeypatch.setattr(flow, "page_problems", page_problems_until_noted)
     repo = app("tally-cli")
 
     _ = drive_book(OkfBook(repo_dir=str(repo), surfaces=(TALLY,)), _noting(repo, "write-book", inline=True))
@@ -88,7 +88,7 @@ def test_a_page_the_writer_grew_past_the_limit_gets_fragments_in_the_book_commit
     app: App, drive_book: DriveBook, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     stub_the_run_to(monkeypatch, PASSED)
-    monkeypatch.setattr(flow, "book_problems", book_problems_until_noted)
+    monkeypatch.setattr(flow, "page_problems", page_problems_until_noted)
     monkeypatch.setattr(book_shape, "PAGE_SIZE_LIMIT", SMALL_LIMIT)
     monkeypatch.setattr(fragment_carve, "PAGE_SIZE_LIMIT", SMALL_LIMIT)
     repo = app("tally-cli")
