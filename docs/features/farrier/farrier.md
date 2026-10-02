@@ -68,7 +68,11 @@ already current.
   - run: spell the example skill name exactly as `repo_prefix` derives it
   - run: write the rendered config to `<repo>/agents.yml`
   - run: print the written path
-  - run: print `Next: list the packs you want under packs:, then farrier install.`
+  - run: seed `packs: []`, so the starter installs no skill into the repo
+  - run: print `Next: list this repo's own packs under packs:, then farrier install.`
+  - run: when the stablemate config has no `[user_library.<harness>]` table, print a proposed
+    `[user_library.claude]` table selecting the `general` and `stablemate` packs, with the
+    config path and `farrier install --user`
 - verify: json_path(path="$.agents.claude", equals=true)
 - verify: json_path(path="$.repo", absent=true)
 - verify: unchanged(subject="<repo>/agents.yml")
@@ -79,6 +83,9 @@ already current.
 - code: `farrier/farrier/init.py::default_config` @7c6a9a476d9e
 - tests: `farrier/tests/test_init_command.py::test_init_writes_a_config_the_installer_can_read`
 - tests: `farrier/tests/test_init_command.py::test_init_refuses_to_overwrite_an_existing_config`
+- tests: `farrier/tests/test_init_command.py::test_init_proposes_a_user_library_when_none_is_configured`
+- tests: `farrier/tests/test_init_command.py::test_init_proposes_nothing_once_a_user_library_exists`
+- tests: `farrier/tests/test_init_command.py::test_the_proposed_user_library_installs_from_the_base_library`
 - tests: `farrier/tests/test_init_command.py::test_init_needs_no_library_configured`
 - reads: nothing — no library resolution, no base-library fetch, no home config. It is the one
   command that runs before a repo is configured, so it must work on a machine where
@@ -154,7 +161,8 @@ the pruned starting point, and the two are kept consistent by hand.
     install renders no scaffold files
   - verify: created(subject="generated output selected by agents.yml")
   - run: raise `SystemExit("Selected packs did not match any skills or prompts")` when the
-    selection contains no skills or prompts
+    config names packs, skills or prompts and none of them matches a source
+  - run: render no skill and print nothing about it when the config selects nothing
   - verify: exit_status(code=1)
   - run: render every enabled agent's selected skill files through a
     [`Renderer`](concepts/renderer.md)
