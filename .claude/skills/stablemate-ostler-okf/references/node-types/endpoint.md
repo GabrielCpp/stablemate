@@ -19,8 +19,9 @@ server's `## Endpoints` section links the page back. The invocations that call t
 sit on its page under `## Invocations`.
 
 A `### <id>` under a server's `## Endpoints` heading still reads as an endpoint. That is the
-form older books wrote. `ostler edit carve-endpoints <server page>` moves each one to its own
-page and rewrites every link the move touches.
+form older books wrote, and doctor reports each one as `inline-endpoint`. `ostler edit
+carve-endpoints <server page>` moves each one to its own page and rewrites every link the move
+touches. The okf-book run does this itself before the next lap.
 
 ## Bullet keys
 
@@ -273,7 +274,7 @@ no scenario is compiled for it.
 `dangling-code-ref`,
 `missing-code-symbol`, `unknown-book-fixture`, `unarranged-request-body`,
 `unarrangeable-server-fault`, `invalid-http-method`, `misnested-bullet`, `unarranged-scenario`,
-`misbound-status-check`, `endpoint-without-server`, `unlisted-endpoint`. See
+`misbound-status-check`, `endpoint-without-server`, `unlisted-endpoint`, `inline-endpoint`. See
 [../doctor-codes.md](../doctor-codes.md).
 
 ## When bullets are not enough

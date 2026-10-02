@@ -150,6 +150,7 @@ Three scoping rules explain findings that otherwise read as false positives or a
 | `misplaced-section` | error | An `## Endpoints` section outside a `server` page, or a `## Commands` section outside a `cli` page. Move each copy's claims onto the matching node of the host page, delete the section, and link that node instead. |
 | `endpoint-without-server` | error | An `endpoint` page whose `server:` bullet links no `server` page, or more than one. Write one `- server: [<title>](<server page>)` under the page's title. |
 | `unlisted-endpoint` | error | An `endpoint` page its server does not link under `## Endpoints`. Add `- [<name>](<name>.md)` to that list. |
+| `inline-endpoint` | error | An endpoint written as a `### <id>` under a server's `## Endpoints` instead of on a page of its own. `ostler edit carve-endpoints <server page> --write` moves every one of them. |
 | `missing-required-section` | error | A file type is missing a required `## <Heading>`. `ostler scaffold` stubs it. |
 | `empty-required-section` | error | A file type leaves a required `## <Heading>` empty. |
 | `missing-required-bullet` | error | A node is missing a `required` bullet. State it, even as `none`. `ostler scaffold` stubs it. An `interaction`/`invocation` arm's `on:`/`trigger:`/`role:`/`name:`/`keyboard:` is exempt when it states a valid same-type `extends:` (D51) — it inherits the base case's control identity instead of restating it. |
