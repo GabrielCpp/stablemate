@@ -79,6 +79,19 @@ def test_a_genuine_mid_flow_resume_still_re_enters_in_place():
         assert resumed.read_checkpoint() is not None
 
 
+def test_a_resume_re_entering_a_flow_that_already_finished_starts_it_fresh():
+    """A reload before a state that hands off re-enters it resuming, and the sub-flow's checkpoint there is the previous visit's, finished. A run resumed onto that last state ran its scenarios against the stack the previous visit had already torn down."""
+    with tempfile.TemporaryDirectory() as tmp:
+        parent = ArtifactWriter("book", Path(tmp) / "runs", run_id="t")
+        scope = parent.subscope("exercise", "Exercise")
+        scope.write_state_checkpoint("run_scenarios", {"owned": [42]}, inputs={}, flow="Exercise")
+        scope.finish("terminal")
+
+        resumed = parent.subscope("exercise", "Exercise", resume=True)
+
+        assert resumed.read_checkpoint() is None
+
+
 def test_an_unremovable_run_dir_costs_the_wipe_but_not_the_run():
     """Housekeeping must never end a run that would otherwise work, so a tree that cannot be removed falls back to unlinking the two files that would actively corrupt this run: a stale checkpoint (which an auto-resume would resurrect if this run is interrupted before its own first checkpoint) and a stale event log (whose seq numbering restarts at 0 here, so the two runs' events would interleave)."""
     with tempfile.TemporaryDirectory() as tmp:

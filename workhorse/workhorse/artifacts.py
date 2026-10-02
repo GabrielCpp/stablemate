@@ -61,6 +61,14 @@ def _clear_stale_run(run_dir: Path) -> None:
         (run_dir / ArtifactWriter.EVENTS_FILE).unlink(missing_ok=True)
 
 
+def _finished(run_dir: Path) -> bool:
+    """Whether the flow scoped at ``run_dir`` reached its end, so its checkpoint is an earlier visit's and nothing to resume."""
+    try:
+        return parse_run_record((run_dir / "run.json").read_text()).terminal is not None
+    except (OSError, ValidationError):
+        return False
+
+
 def write_unlinked(path: Path, text: str) -> None:
     """Replace ``path``'s contents without writing through any link to it."""
     path.unlink(missing_ok=True)
@@ -181,7 +189,7 @@ class ArtifactWriter:
     ) -> "ArtifactWriter":
         """Writer for a flow invoked at ``node_id``, rooted under this run's node dir (``<run>/<node_id>/_flow``)."""
         sub_dir = self.run_dir / node_id / "_flow"
-        if resume and (sub_dir / self.CHECKPOINT_FILE).exists():
+        if resume and (sub_dir / self.CHECKPOINT_FILE).exists() and not _finished(sub_dir):
             child = ArtifactWriter.resume(sub_dir)
         else:
             child = ArtifactWriter.at(sub_dir, flow_name, node_id)
