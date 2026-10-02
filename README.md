@@ -5,17 +5,38 @@
 # stablemate
 
 [![CI](https://github.com/GabrielCpp/stablemate/actions/workflows/ci.yml/badge.svg)](https://github.com/GabrielCpp/stablemate/actions/workflows/ci.yml)
-[![workhorse-agent](https://img.shields.io/pypi/v/workhorse-agent?label=workhorse-agent)](https://pypi.org/project/workhorse-agent/)
-[![farrier](https://img.shields.io/pypi/v/farrier?label=farrier)](https://pypi.org/project/farrier/)
-[![ostler](https://img.shields.io/pypi/v/ostler?label=ostler)](https://pypi.org/project/ostler/)
-[![workhorse-workflows](https://img.shields.io/pypi/v/workhorse-workflows?label=workhorse-workflows)](https://pypi.org/project/workhorse-workflows/)
+[![workhorse-workflows](https://img.shields.io/pypi/v/workhorse-workflows?label=pypi)](https://pypi.org/project/workhorse-workflows/)
 [![Python](https://img.shields.io/badge/python-3.12%2B-blue)](https://www.python.org/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
-**stablemate is an AI-native software development lifecycle you can install.** Not a
-prompt collection: a toolchain of agent workflows that plan, implement, review and QA
-software as checkpointed state machines, unattended for days, on the agent-CLI
-subscription you already pay for — Claude, Codex, Copilot, Cline or OpenCode.
+**Your agent loop dies at 3am. stablemate's doesn't.**
+
+Run your coding agent unattended for days, on the CLI subscription you already pay for:
+Claude, Codex, Copilot, Cline or OpenCode. When the process crashes, the run resumes.
+When the cap hits, it sleeps until the reset. When the agent needs a decision, it asks
+you instead of guessing.
+
+| | A bash loop around `claude -p` | stablemate |
+| --- | --- | --- |
+| The process crashes | The run is gone | Resumes from the last checkpoint |
+| The subscription cap hits | Fails, or spins until morning | Reads the reset time and sleeps until it |
+| The agent needs a decision | Guesses | Parks on a question you answer from the browser |
+| Something odd happened at 3am | Scrollback, if you kept it | Every prompt, reply and event on disk |
+| The agent says "done" | You take its word | Tests, review and QA from separate contexts |
+
+```bash
+uv tool install workhorse-workflows     # or: pipx install workhorse-workflows
+uv tool install farrier
+workhorse-loop-runner run --dry-run     # the install check; needs no agent CLI
+```
+
+![groom's dashboard: a blocked coder run asking the operator to pick a storage backend, with the answer typed and ready to send](docs/features/groom/gui/screenshots/operator-answers-blocked-gate-answer-typed.png)
+
+## Beyond the loop: a lifecycle you can install
+
+The engine is half of it. stablemate is an AI-native software development lifecycle.
+It is not a prompt collection. It is a toolchain of agent workflows that plan, implement,
+review and QA software as checkpointed state machines.
 
 The premise is the one the emerging AI-native SDLC playbooks (Anthropic's
 [is a good statement of it](https://claude.com/blog/the-ai-native-sdlc-playbook)) argue
@@ -144,9 +165,7 @@ toolchain exists:
   can read.
 - **A loop can't ask you anything.** Operator gates park a run on a question only a
   human can answer and resume when it is answered — from the browser, hours later,
-  via [groom](groom/):
-
-  ![groom's dashboard: a blocked coder run asking the operator to pick a storage backend, with the answer typed and ready to send](docs/features/groom/gui/screenshots/operator-answers-blocked-gate-answer-typed.png)
+  via [groom](groom/), as in the screenshot at the top of this page.
 
 The composite is the point: **multi-day, unattended runs on subscription-billed agent
 CLIs** — Claude, Codex, Copilot, Cline, OpenCode — with a repo-local planning graph and
