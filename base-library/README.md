@@ -1,10 +1,11 @@
 # The stablemate base library
 
-**The toolchain skills that ship with stablemate, and the pack that selects them. This
-is data, not a package — there is nothing here to install or import.**
+**The skills and commands that ship with stablemate, and the packs that select them.
+This is data, not a package. There is nothing here to install or import.**
 
 ```bash
-farrier config set-base /path/to/this/directory   # or point at the checkout
+farrier config set-base /path/to/this/directory   # this directory itself
+farrier config set-stablemate /path/to/checkout   # or the stablemate checkout around it
 farrier install                                   # renders it into a repo
 ```
 
@@ -15,16 +16,18 @@ farrier install                                   # renders it into a repo
 | `library/skills/{farrier,groom,ostler,workhorse}/` | the skills documenting the toolchain |
 | `library/skills/method/` | ways of working that hold in any repo: decompose, grill, review, diagnose |
 | `library/skills/{architecture,testing,ui}/` | the cross-language contracts |
-| `library/prompts/stablemate/` | the interactive commands (`commit`, `grill`, `babysit-run`, …) |
-| `library/prompts/coder/` | *(empty here)* the slot an **overlay** uses to override a coder-workflow turn's body |
-| `packs/stablemate.yml` | the bundle a repo opts into with `packs: [stablemate]` |
-| `agents.example.yml` | a minimal starting `agents.yml` (farrier ships the annotated one) |
+| `library/prompts/` | the `implement-plan-worktree` and `implement-plan-here` commands |
+| `library/prompts/stablemate/` | the `babysit-run` command, which no pack selects yet |
+| `packs/stablemate.yml` | the toolchain skills, which a repo opts into with `packs: [stablemate]` |
+| `packs/general.yml` | the method skills, the cross-language contracts and the two `implement-plan` commands |
+| `agents.example.yml` | an annotated starting `agents.yml` |
 
 [AGENTS.md](AGENTS.md) is the companion to that table: what may be *added* here, and
 what ships with the package that reads it instead.
 
-That's the whole payload: markdown and YAML, with no `__init__.py`,
-`pyproject.toml`, dependencies, or executable code. Workflows are distributed
+That's the whole payload: markdown, YAML and a few standalone helper scripts that a
+skill ships beside its `SKILL.md`. There is no `__init__.py`, no `pyproject.toml` and
+no dependency. Workflows are distributed
 separately as [`workhorse-workflows`](../workflows/), and an optional overlay may
 also provide `scaffolds/` for farrier to apply.
 
@@ -35,7 +38,8 @@ configured `stablemate_dir` checkout (`<checkout>/base-library`, i.e. this direc
 a shared cache. If no base is found, an explicitly configured overlay can still operate
 alone.
 
-The cache is the interesting one: it is **fetched from GitHub into `~/.cache/stablemate`**
+The cache is the interesting one: it is **fetched from GitHub into the user cache
+directory** (`~/.cache/stablemate` on Linux, or `$STABLEMATE_CACHE_DIR`)
 and used from there — a sparse checkout of this directory alone, with `.git` dropped once
 the commit is recorded, so what lands is documents rather than a repository.
 `farrier install` is what populates it, and the only thing that updates it: on install the
@@ -70,11 +74,11 @@ the base can be absent entirely (the tools fall back to overlay-only behaviour).
 **The base ships none of these, and that is the design.** A workflow distribution is
 standalone: `workhorse-workflows` is installed on its own, every prompt it renders is
 inside its wheel, and a machine that never ran farrier runs every story end to end. If the
-defaults lived here, an optional install would be load-bearing for every turn. Everything
-under `library/prompts/stablemate/` is the other thing — prompts for the *person* using
-farrier, installed into a repo as slash commands.
+defaults lived here, an optional install would be load-bearing for every turn. The rest of
+`library/prompts/` is the other thing. It holds commands for the *person* using farrier,
+and a repo gets one as a slash command when a pack selects it.
 
-What this directory is, in an **overlay**, is an override slot. Each coder turn is two
+In an **overlay**, this directory is an override slot. Each coder turn is two
 halves: the *envelope* (`coder/<flow>/prompts/<role>.md`, in the workflow's own
 distribution — one copy per flow that renders it)
 renders the inputs, the exit condition and the result schema the state machine parses
@@ -101,8 +105,10 @@ own clock without forcing a package release.
 
 ## Versioning
 
-There is no version number — this is git. What you get is a commit, and
-`cat ~/.cache/stablemate/library/.commit` says which one. (There is no `.git` in the
+There is no version number of its own. `farrier install` fetches the library at
+farrier's release tag, `farrier-v<version>`, or at `main` for a farrier installed from
+a checkout. What lands is a commit, and `cat ~/.cache/stablemate/library/.commit` says
+which one. (There is no `.git` in the
 cache to `rev-parse`; the fetch writes that sidecar instead.)
 
 The **layout contract** (`library/skills/<group>/<name>/SKILL.md`, `packs/<pack>.yml`)
