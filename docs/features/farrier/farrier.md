@@ -141,8 +141,8 @@ the pruned starting point, and the two are kept consistent by hand.
     yields `{}` rather than `None`), then `SystemExit("Config must be a YAML mapping: <path>")` if
     the parsed value isn't a `dict`
   - verify: count(subject="stderr lines equal to Config must be a YAML mapping: <path>", equals=1)
-  - run: derive the install prefix from the kebab-cased repo dirname (`naming.repo_prefix`), never
-    from `agents.yml`
+  - run: derive the install prefix from the kebab-cased `repo.name` in `agents.yml`, else from the
+    repo dirname (`naming.repo_prefix`)
   - verify: created(subject="generated output bearing the repo-derived install prefix")
   - run: validate that `agents:` selects at least one of `codex`/`claude`/`copilot`
     (`normalize_agents`), else raise `SystemExit("No agents selected in config")`
@@ -553,7 +553,7 @@ a compatibility facade.
   - run: raise `SystemExit` for an `<id>` absent from the repo's catalog, pointing at the
     `agents.yml` `scaffolds:` list
   - run: resolve params (`resolve_scaffold_params`): declared defaults overlaid with `--param`
-    values, plus built-ins `repo_name` (kebab-cased `--repo` dirname) and `repo_title`
+    values, plus built-ins `repo_name` (kebab-cased `repo.name`, else the `--repo` dirname) and `repo_title`
     (title-cased words) unless shadowed
   - run: flatten string values in the definition's `tree:` into inline file content
   - run: download a `{url: ...}` file value at write time with a 30-second timeout

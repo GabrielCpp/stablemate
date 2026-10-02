@@ -10,8 +10,8 @@ title: Renderer naming and relative output paths
 These stateless transforms define the names and references used by source selection and rendering.
 They do not inspect a `Source` record or resolve a library layer. Source identifiers use POSIX
 slashes, generated names use kebab case, and output references are relative to the file that emits
-them. The renderer uses the repository directory name as its public prefix; configuration cannot
-override that value. The naming rules complement the [source naming and selection](source-naming-selection.md)
+them. The renderer uses the `agents.yml` `repo.name` as its public prefix, and the repository directory
+name when that key is absent. The naming rules complement the [source naming and selection](source-naming-selection.md)
 concept, which applies these aliases to selected `Source` records.
 
 ## Methods
@@ -40,12 +40,15 @@ concept, which applies these aliases to selected `Source` records.
 - tests: `farrier/tests/test_qa_evidence_ignore.py::test_qa_gitignore_follows_the_skill_that_ships_the_gate`
 
 ### method: repo_prefix
-- sig: `repo_prefix(repo: Path) -> str`
-- does: read the repository directory name
-- returns: that directory name normalized by `kebab`
+- sig: `repo_prefix(repo: Path, repo_config: Mapping[str, Any] | None = None) -> str`
+- does: read the `repo:` table's `name` when it is set
+- does: otherwise read the repository directory name
+- returns: that name normalized by `kebab`
 - verify: count(subject="repository-derived install prefix", equals=1)
-- code: `farrier/farrier/naming.py::repo_prefix` @1ebafc33b235
+- code: `farrier/farrier/naming.py::repo_prefix`
 - tests: `farrier/tests/test_install_prefix.py::test_a_directory_name_is_kebab_cased_into_the_prefix`
+- tests: `farrier/tests/test_install_prefix.py::test_agents_yml_repo_name_sets_the_prefix_whatever_the_directory`
+- tests: `farrier/tests/test_install_prefix.py::test_a_named_repo_checks_clean_under_another_directory`
 
 ### method: normalize_pattern
 - sig: `normalize_pattern(pattern: str) -> str`

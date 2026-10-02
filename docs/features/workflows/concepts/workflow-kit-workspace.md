@@ -7,14 +7,14 @@ title: Workflow kit workspace
 
 The workspace kit reads the [`.code-workspace` format](../../workhorse/formats/code-workspace-file.md),
 derives a single-repository workspace from the supplied repository directory when no manifest is
-present, and does not let `agents.yml` rename that repository key. Its checkout operation supports
+present, and names that repository by its `agents.yml` `repo.name` before its directory. Its checkout operation supports
 the default disposable clone and a host-backed worktree: worktrees are detached, preserve committed
 and uncommitted work across a restart, prune stale registrations, and refuse remote URLs because
 both sides must share the host path.
 
 - code: `workflows/src/workhorse_workflows/kit/workspace.py::resolve_workspace` @e2832eb8451a
 - code: `workflows/src/workhorse_workflows/kit/workspace.py::_read_workspace_file` @e2832eb8451a
-- code: `workflows/src/workhorse_workflows/kit/workspace.py::_repo_name_from_dir` @e2832eb8451a
+- code: `workflows/src/workhorse_workflows/kit/workspace.py::_repo_name`
 - code: `workflows/src/workhorse_workflows/kit/workspace.py::_git_network_command` @e2832eb8451a
 - code: `workflows/src/workhorse_workflows/kit/workspace.py::_has_unsynced_work` @e2832eb8451a
 - code: `workflows/src/workhorse_workflows/kit/workspace.py::_set_origin_url` @e2832eb8451a
@@ -25,7 +25,8 @@ both sides must share the host path.
 - code: `workflows/src/workhorse_workflows/kit/workspace.py::SOURCE_MODES` @e2832eb8451a
 - code: `workflows/tests/test_kit_worktree.py::host_repo`
 - tests: `workflows/tests/test_kit_workspace.py::test_resolve_workspace_uses_the_repo_dir_argument_over_cwd`
-- tests: `workflows/tests/test_kit_workspace.py::test_a_repo_is_named_by_its_directory_not_by_its_agents_yml`
+- tests: `workflows/tests/test_kit_workspace.py::test_a_repo_named_in_its_agents_yml_answers_to_that_name`
+- tests: `workflows/tests/test_kit_workspace.py::test_a_repo_with_no_name_in_its_agents_yml_is_named_by_its_directory`
 - tests: `workflows/tests/test_kit_workspace.py::test_git_network_command_uses_configured_token_env`
 - tests: `workflows/tests/test_kit_worktree.py::test_two_concurrent_runs_each_get_their_own_tree_of_one_repo`
 - tests: `workflows/tests/test_kit_worktree.py::test_uncommitted_work_survives_a_restart_too`
@@ -33,10 +34,12 @@ both sides must share the host path.
 
 ## Methods
 
-### _repo_name_from_dir
+### _repo_name
 
-- sig: `_repo_name_from_dir(path: Path) -> str`
-- does: derives the repository key from the directory basename
+- sig: `_repo_name(path: Path) -> str`
+- does: takes the `repo.name` of the repository's `agents.yml` when one is set
+- verify: json_path(path="$.repo_name", equals="configured name")
+- does: otherwise derives the repository key from the directory basename
 - verify: json_path(path="$.repo_name", matches="^[^._]*$")
 - does: replaces periods and underscores with hyphens
 - verify: json_path(path="$.repo_name", matches="^[^._]*$")
@@ -47,9 +50,9 @@ both sides must share the host path.
 - does: strips edge hyphens
 - verify: json_path(path="$.repo_name", matches="^[^-].*[^-]$|^[^-]$")
 - does: lowercases the result
-- returns: the normalized directory-derived repository key
+- returns: the normalized repository key
 - verify: json_path(path="$.repo_name", matches="^[a-z0-9][a-z0-9/-]*$")
-- code: `workflows/src/workhorse_workflows/kit/workspace.py::_repo_name_from_dir` @e2832eb8451a
+- code: `workflows/src/workhorse_workflows/kit/workspace.py::_repo_name`
 
 ### _read_workspace_file
 
@@ -73,8 +76,8 @@ both sides must share the host path.
 - verify: json_path(path="$.repo.path", matches=".*/repo")
 - does: resolves each manifest folder path relative to the manifest directory
 - verify: json_path(path="$.repo.path", matches=".*/repo")
-- does: uses the normalized checkout directory name for the single-repository fallback key
-- verify: json_path(path="$.repo", equals="normalized directory name")
+- does: uses the checkout's normalized repository name for the single-repository fallback key
+- verify: json_path(path="$.repo", equals="normalized repository name")
 - does: adds each folder's absolute `path` to the result
 - verify: created(subject="each workspace folder path entry")
 - verify: json_path(path="$.repo.path", matches="^/")
@@ -86,7 +89,8 @@ both sides must share the host path.
 - code: `workflows/src/workhorse_workflows/kit/workspace.py::resolve_workspace` @e2832eb8451a
 - tests: `workflows/tests/test_kit_workspace.py::test_resolve_workspace_uses_the_repo_dir_argument_over_cwd`
 - tests: `workflows/tests/test_kit_workspace.py::test_resolve_workspace_falls_back_to_cwd_without_a_repo_dir`
-- tests: `workflows/tests/test_kit_workspace.py::test_a_repo_is_named_by_its_directory_not_by_its_agents_yml`
+- tests: `workflows/tests/test_kit_workspace.py::test_a_repo_named_in_its_agents_yml_answers_to_that_name`
+- tests: `workflows/tests/test_kit_workspace.py::test_a_repo_with_no_name_in_its_agents_yml_is_named_by_its_directory`
 
 ### _has_unsynced_work
 

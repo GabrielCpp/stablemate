@@ -23,14 +23,14 @@ from the top-level source set.
 
 `Renderer(repo, prefix, repo_config, template_values, skills, prompts, policies=None, scope="repo")`:
 
-The `prefix` argument carries the kebab-cased repository dirname produced by
-`naming.repo_prefix`; config values do not participate in deriving it. It is prepended to every
+The `prefix` argument carries the install prefix produced by `naming.repo_prefix`: the
+`repo.name` when set, else the repository dirname, both kebab-cased. It is prepended to every
 generated skill or prompt's public name (`public_name`).
 
 - `repo` — the target repo root (`Path`), the resolved `--repo`.
 - `repo_config` — the `agents.yml` `repo:` mapping, copied into `self.repo_context` with `name`
-  **overwritten** with the derived prefix (assigned, not defaulted, so a leftover `repo.name` in a
-  config cannot shadow it), `prefix` set to the same value, and `root` set to `repo`'s absolute
+  **overwritten** with the derived prefix (the kebab-cased `repo.name` when set, else the
+  directory name), `prefix` set to the same value, and `root` set to `repo`'s absolute
   posix path. This becomes the Jinja `repo.*` context every rendered skill/prompt template sees
   (`context_manifest` later re-pins `root` to `"."` for the committed manifest).
 - `template_values` — the merged `template`/`vars` mapping (`collect_template_values`), exposed to

@@ -38,19 +38,17 @@ rendering; otherwise every pack contribution is unioned with this configuration'
 
 Repository identity, merged into the Jinja `repo.*` template context every rendered skill/prompt
 sees (`Renderer.repo_context`). Any key placed here is copied through and reachable as
-`repo.<key>` in library templates — *except* the three below, which farrier derives and
-overwrites.
+`repo.<key>` in library templates. The three keys below are the exception.
 
-- `name` — **derived, not settable.** The repo directory's basename through `kebab()`
-  (`naming.repo_prefix`). A value written here is overwritten. The same string is what the
-  workflow kit keys a repo by (`kit/workspace.py::_repo_name_from_dir`), so making it
-  configurable would let one repo answer to two names depending on which tool asked.
-- `prefix` — **derived, not settable.** Equal to `name`, and prepended to every installed
-  skill/prompt's public name (`<prefix>-<skill-id>`); see `public_name`. The former
-  `repo.prefix` / `repo.name` override is gone: it made the generated file set depend on a
-  config value rather than on the checkout, so the same committed `agents.yml` rendered
-  different filenames in a clone under a different directory name, which `install --check`
-  reports as drift with nothing to fix.
+- `name` is optional. Farrier kebab-cases it through `kebab()` (`naming.repo_prefix`), and
+  falls back to the repo directory's basename when it is absent. Set it when a checkout lives
+  under another directory name, such as a git worktree. The committed `agents.yml` then
+  renders the same filenames in every checkout, and `install --check` reports no drift. The
+  workflow kit keys a repo by the same value (`kit/workspace.py::_repo_name`), so one repo
+  answers to one name whichever tool asks.
+- `prefix` is derived and not settable. It equals `name`, and farrier prepends it to every
+  installed skill/prompt's public name (`<prefix>-<skill-id>`); see `public_name`. A `prefix`
+  written in `agents.yml` is ignored, so one key names the repo.
 - `root` — always overwritten by farrier; not user-settable. Set to the repo's absolute path in
   the per-run `repo.*` template context, but pinned to `"."` in the generated context manifest
   (`Renderer.context_manifest`) so the committed adapter is machine-independent.
