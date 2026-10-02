@@ -231,6 +231,12 @@ def code_line_spans(text: str) -> list[tuple[int, int]]:
             if tok.type in ("fence", "code_block") and tok.map]
 
 
+def comment_blocks(text: str) -> list[tuple[int, str]]:
+    """The 0-indexed start line and text of every HTML comment that opens a block, outside code."""
+    return [(tok.map[0], tok.content) for tok in _MD.parse(_normalize(text))
+            if tok.type == "html_block" and tok.map and tok.content.lstrip().startswith("<!--")]
+
+
 @dataclass
 class References:
     links: list[tuple[str, str]] = field(default_factory=list)

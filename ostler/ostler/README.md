@@ -35,6 +35,7 @@ says how to use it. This page says where each concern lives.
 - `fragment_hosts.py`: doctor's check that each fragment page names one host page that is no fragment, and that host links it.
 - `freeze.py`: `ostler freeze` and `unfreeze`, which pin an approved entity as ground truth.
 - `graph.py`: `ostler graph`, the whole graph dumped as JSON to filter on.
+- `hidden_claims.py`: doctor's check that no claim bullet sits inside an HTML comment on a book page.
 - `ids.py`: id allocation over `.agents/ids.json`.
 - `index.py`: the persistent, content-addressed parse index store.
 - `inventory.py`: the source symbol front end, one grammar for the join and the grounding check.
