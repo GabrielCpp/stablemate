@@ -147,3 +147,13 @@ def stub_a_book_sent_to_repair(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(turn_budget, "SOURCE_AND_BOOK_CEILING_TOKENS", 10)
     monkeypatch.setattr(repair_book_flow, "page_problems", page_problems_until_noted)
     monkeypatch.setattr(pyflow_park, "wait_for_answer", stopping_operator([]))
+
+
+SMALL_LIMIT = 1500
+
+
+def _rule(n: int) -> str:
+    return f"### rule-{n}\n\n- rule: an expense obeys rule {n}\n\n" + "The ledger checks this rule on every expense it records. " * 4 + "\n\n"
+
+
+LEDGER = "---\ntype: concept\ntitle: Ledger file\n---\n# Ledger file\n\n## Rules\n\n" + "".join(_rule(n) for n in range(1, 9))

@@ -14,7 +14,7 @@ from workhorse_workflows.okf_book.main.nodes.writer_request import writer_reques
 from workhorse_workflows.okf_book.shared.blockers import Phase
 from workhorse_workflows.okf_book.shared.book_commits import book_commit_subject, unfinished_book_commit_subject
 from workhorse_workflows.okf_book.shared.book_flow import BookFlow
-from workhorse_workflows.okf_book.shared.book_shape import carve_inline_endpoints, carved_pages
+from workhorse_workflows.okf_book.shared.book_shape import carved_pages, shape_book
 from workhorse_workflows.okf_book.shared.confine import Snapshot, book_changes, put_back_outside, snapshot
 from workhorse_workflows.okf_book.shared.entries import FEATURES_DIR
 from workhorse_workflows.okf_book.shared.metrics import TurnMetric, record_turn, turn_metric
@@ -125,16 +125,16 @@ class WriteBook(BookFlow):
         stray = put_back_outside(self.root, self.surface_to_write.service, before, self.run_dir)
         for path in stray:
             self.logger.warning("put back %s, which the writer changed outside its book", path)
-        return Continue(stray, self.carve_endpoints, before=before).because("carve the endpoints written inline")
+        return Continue(stray, self.carve_pages, before=before).because("carve the pages too large for one writer")
 
-    def carve_endpoints(self, before: Snapshot) -> Continue[...]:
-        """Move each endpoint the book holds inline on a server page onto a page of its own, so the server page stays small enough for one writer."""
-        carves = carve_inline_endpoints(self.root, self.surface_to_write.service, frozenset(before.digests))
+    def carve_pages(self, before: Snapshot) -> Continue[...]:
+        """Move each endpoint the book holds inline onto a page of its own, and each page past the size limit onto fragments, so every page stays small enough for one writer."""
+        carves = shape_book(self.root, self.surface_to_write.service, frozenset(before.digests))
         for carve in carves:
             if carve.refusal:
-                self.logger.warning("left the endpoints of %s inline: %s", carve.server, carve.refusal)
+                self.logger.warning("left %s as it is: %s", carve.page, carve.refusal)
             else:
-                self.logger.info("carved the endpoints of %s, writing %d pages", carve.server, len(carve.pages))
+                self.logger.info("carved %s, writing %d pages", carve.page, len(carve.pages))
         carved = carved_pages(carves)
         return Continue(carved, self.stamp_book, before=before, carved=carved).because("stamp the book's pages")
 

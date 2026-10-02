@@ -27,7 +27,7 @@ from workhorse_workflows.okf_book.main.nodes.repair_put_back import (
 )
 from workhorse_workflows.okf_book.shared.book_commits import repair_description_refusal, repaired_book_commit_message
 from workhorse_workflows.okf_book.shared.book_flow import BookFlow
-from workhorse_workflows.okf_book.shared.book_shape import carve_inline_endpoints, carved_pages
+from workhorse_workflows.okf_book.shared.book_shape import carved_pages, shape_book
 from workhorse_workflows.okf_book.shared.confine import Snapshot, committed_text, put_back_outside, restore
 from workhorse_workflows.okf_book.shared.entries import drop_links, entries_path, links_to_deleted
 
@@ -120,16 +120,16 @@ class SettleRepairTurn(BookFlow):
         _ = restore(self.root, overreach, self.before)
         for path in overreach:
             self.logger.warning("put back %s, an entry page the repair turn changed beyond adding link lines", path)
-        return Continue(overreach, self.carve_endpoints).because("carve the endpoints written inline")
+        return Continue(overreach, self.carve_pages).because("carve the pages too large for one writer")
 
-    def carve_endpoints(self) -> Continue[...]:
-        """Move each endpoint the book holds inline on a server page onto a page of its own, so the server page stays small enough for one writer."""
-        carves = carve_inline_endpoints(self.root, self.service, frozenset(self.before.digests))
+    def carve_pages(self) -> Continue[...]:
+        """Move each endpoint the book holds inline onto a page of its own, and each page past the size limit onto fragments, so every page stays small enough for one writer."""
+        carves = shape_book(self.root, self.service, frozenset(self.before.digests))
         for carve in carves:
             if carve.refusal:
-                self.logger.warning("left the endpoints of %s inline: %s", carve.server, carve.refusal)
+                self.logger.warning("left %s as it is: %s", carve.page, carve.refusal)
             else:
-                self.logger.info("carved the endpoints of %s, writing %d pages", carve.server, len(carve.pages))
+                self.logger.info("carved %s, writing %d pages", carve.page, len(carve.pages))
         carved = carved_pages(carves)
         return Continue(carved, self.stamp_pages, carved=carved).because("stamp the repaired pages")
 

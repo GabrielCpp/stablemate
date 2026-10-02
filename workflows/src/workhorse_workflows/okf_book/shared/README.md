@@ -10,7 +10,7 @@ The code more than one okf-book machine calls.
 - `book_compilation.py`: compiling the named services' books into a QA plan, and reading the page and node an obligation id names.
 - `book_flow.py`: the base every okf-book machine sits on: the repo it writes, the folder its records go in, and how it commits a book.
 - `book_run.py`: compiling a service's book, bringing its app's stack up, running every scenario or those some target pages name, and what that run did.
-- `book_shape.py`: the shape code gives a book after each turn: each endpoint a server page holds inline moved onto a page of its own.
+- `book_shape.py`: the shape code gives a book after each turn: each endpoint a server page holds inline moved onto a page of its own, then each page past the size limit carved onto fragment pages.
 - `citations.py`: the source files a book's pages cite on their `code:` bullets, with the symbol and the digest each cites.
 - `confine.py`: what a writer's turn changed in the tree, read from git before and after it.
 - `entries.py`: a service's `entries.md`, the root of its book, one link per entry point, written only by code.
