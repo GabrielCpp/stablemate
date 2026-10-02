@@ -8,6 +8,7 @@ from pathlib import Path
 from ostler import crud, ids, markdown, registry
 from ostler.dynamic_registry import TemplateKind
 from ostler.model import Graph
+from ostler.pages import in_hidden_folder
 
 
 def _kind_by_name(graph: Graph, kind_name: str) -> TemplateKind | None:
@@ -37,7 +38,7 @@ def _find_path(graph: Graph, kind: TemplateKind, name: str) -> Path | None:
     if base is None or not base.is_dir():
         return None
     for path in sorted(base.glob(kind.location)):
-        if not path.is_file() or path.name in registry.RESERVED_FILES:
+        if not path.is_file() or path.name in registry.RESERVED_FILES or in_hidden_folder(path, base):
             continue
         if _instance_name(kind, path) == name:
             return path
@@ -125,7 +126,7 @@ def find_instance(graph: Graph, kind_name: str, name: str | None = None) -> list
         return []
     rows: list[dict] = []
     for path in sorted(base.glob(kind.location)):
-        if not path.is_file() or path.name in registry.RESERVED_FILES:
+        if not path.is_file() or path.name in registry.RESERVED_FILES or in_hidden_folder(path, base):
             continue
         inst_name = _instance_name(kind, path)
         if name is not None and inst_name != name:

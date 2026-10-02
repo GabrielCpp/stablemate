@@ -11,6 +11,7 @@ from pathlib import Path
 import yaml
 
 from ostler import dynamic_registry, index, markdown, registry
+from ostler.pages import files_in_book
 
 INACTIVE_SEED_STATUS = registry.INACTIVE_SEED_STATUS
 
@@ -825,8 +826,8 @@ def _feature_pages(graph: Graph) -> list[tuple[Path, dict, list[UINode]]]:
     if not froot.is_dir():
         return []
     pages = []
-    for p in sorted(froot.rglob("*.md")):
-        if not p.is_file() or p.name in registry.RESERVED_FILES:
+    for p in files_in_book(froot):
+        if p.name in registry.RESERVED_FILES:
             continue
         try:
             doc = read_doc(p)

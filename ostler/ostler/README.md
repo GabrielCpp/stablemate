@@ -40,6 +40,7 @@ says how to use it. This page says where each concern lives.
 - `locators.py`: the Playwright locators the book yields, and where that mapping breaks.
 - `markdown.py`: Markdown and YAML frontmatter parsing.
 - `model.py`: the organization model, the typed knowledge graph loaded from markdown.
+- `pages.py`: which files under a book folder belong to the book, leaving out hidden folders.
 - `path.py`: `ostler path`, which resolves slugs to canonical filesystem paths.
 - `provenance.py`: the joins between git story trailers and story-scoped context packets.
 - `query.py`: `ostler list`, `search` and `query`, retrieval over the knowledge graph.

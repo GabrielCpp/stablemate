@@ -10,6 +10,7 @@ import yaml
 
 from ostler import markdown, registry
 from ostler.model import Graph, _file_main_section, anchor_of
+from ostler.pages import files_in_book
 
 FRONTMATTER_ORDER = ("type", "slug", "surface", "title", "status", "id", "area", "route")
 
@@ -195,8 +196,7 @@ def _target_files(graph: Graph, paths: list[str]) -> list[Path]:
     files: list[Path] = []
     for root in roots:
         if root.is_dir():
-            files.extend(p for p in sorted(root.rglob("*.md"))
-                         if p.is_file() and p.name not in registry.RESERVED_FILES)
+            files.extend(p for p in files_in_book(root) if p.name not in registry.RESERVED_FILES)
         else:
             files.append(root)
     return files

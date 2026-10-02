@@ -12,6 +12,7 @@ import yaml
 
 from ostler import markdown
 from ostler.model import Graph
+from ostler.pages import files_in_book
 
 STATUS_APPLIED = "Review fixes applied"
 STATUS_BLOCKED = "Blocked"
@@ -62,8 +63,7 @@ def _doc_files(graph: Graph) -> list[Path]:
     for key in ("epics", "specs", "features"):
         root = graph.doc_roots[key]
         if root.is_dir():
-            files.extend(p for p in root.rglob("*")
-                         if p.is_file() and p.suffix in (".json", ".md"))
+            files.extend(files_in_book(root, (".json", ".md")))
     return sorted(set(files))
 
 

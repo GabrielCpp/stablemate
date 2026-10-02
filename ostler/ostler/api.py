@@ -31,6 +31,7 @@ from ostler.qa import (
     tools as qa_tools_mod,
 )
 from ostler.model import Epic, Graph, Story, find_root, load
+from ostler.pages import files_in_book
 from ostler.qa.source_context import SourceRepository
 
 if TYPE_CHECKING:
@@ -56,7 +57,7 @@ def _listing(roots: Iterable[Path]) -> str:
     names: builtins.list[str] = []
     for root in roots:
         if root.is_dir():
-            names.extend(sorted(p.as_posix() for p in root.rglob("*.md")))
+            names.extend(p.as_posix() for p in files_in_book(root))
     return index_mod.content_sha("\n".join(names).encode("utf-8"))
 
 

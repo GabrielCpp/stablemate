@@ -18,6 +18,7 @@ from ostler import (acts, book_reach, checks, dynamic_registry, freeze, inventor
                     model, registry, schemas, select)
 from ostler import drivers, graph as graph_mod, locators as loc_mod, reach, routes as routes_mod
 from ostler.vet import placement as placement_mod
+from ostler.pages import files_in_book, in_hidden_folder
 from ostler import refs as refs_mod
 from ostler.finding import Finding
 from ostler.model import Graph, Epic, Story, UINode, read_doc, required_section_problems
@@ -1248,11 +1249,11 @@ def _check_conformance(graph: Graph, f: list[Finding]) -> None:
     etypes = registry.REGISTRY + dynamic_registry.as_entity_types(graph.template_kinds)
     seen: set = set()
     for etype in etypes:
-        base = graph.doc_roots.get(etype.doc_root)
-        if base is None or not base.is_dir():
+        folder = graph.doc_roots.get(etype.doc_root)
+        if folder is None or not folder.is_dir():
             continue
-        for path in sorted(base.glob(etype.location)):
-            if not path.is_file() or path.name in registry.RESERVED_FILES or path in seen:
+        for path in sorted(folder.glob(etype.location)):
+            if not path.is_file() or path.name in registry.RESERVED_FILES or path in seen or in_hidden_folder(path, folder):
                 continue
             seen.add(path)
             rel = _rel_posix(path, graph.root)
@@ -2444,8 +2445,8 @@ def _check_ui(graph: Graph, f: list[Finding],
         resolver = links_mod.LinkResolver(graph)
     froot = graph.doc_roots.get("features")
     if froot is not None and froot.is_dir():
-        for path in sorted(froot.rglob("*.md")):
-            if path.is_file() and path.name not in registry.RESERVED_FILES:
+        for path in files_in_book(froot):
+            if path.name not in registry.RESERVED_FILES:
                 _check_ui_file(graph, path, f)
     _check_code_grounding(graph, f, checkouts)
 
@@ -2840,7 +2841,7 @@ def _check_ui(graph: Graph, f: list[Finding],
                     relation_hrefs[(str(node.path), href)] = key
 
     if froot is not None and froot.is_dir():
-        book_pages = [p for p in sorted(froot.rglob("*.md")) if p.is_file()]
+        book_pages = files_in_book(froot)
         pages_by_name: dict[str, list[Path]] = {}
         for page in book_pages:
             pages_by_name.setdefault(page.name, []).append(page)

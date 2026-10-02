@@ -21,6 +21,7 @@ from ostler import acts as acts_mod
 from ostler import checks as checks_mod
 from ostler import inventory, markdown, path as path_mod, refs as refs_mod, registry, syntax
 from ostler.model import Graph, _parse_ui_nodes, load
+from ostler.pages import files_in_book
 from ostler import reach
 from ostler import routes as routes_mod
 from ostler.qa import captures as captures_mod
@@ -119,9 +120,7 @@ def book_files(root: Path, features_root: str) -> list[dict[str, str]]:
     files: list[dict[str, str]] = []
     if not book_dir.is_dir():
         return files
-    for path in book_dir.rglob("*.md"):
-        if not path.is_file():
-            continue
+    for path in files_in_book(book_dir):
         rel = path.relative_to(book_dir).as_posix()
         digest = hashlib.sha256(path.read_bytes()).hexdigest()
         files.append({"path": rel, "sha256": digest})
