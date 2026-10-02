@@ -1,4 +1,4 @@
-"""`ostler doctor`'s check that every endpoint page names one server page and that server lists it."""
+"""`ostler doctor`'s check that every endpoint has a page of its own, names one server page, and that server lists it."""
 
 from __future__ import annotations
 
@@ -38,6 +38,16 @@ def _type_of(path: Path) -> str:
         return ""
 
 
+def _inline(graph: Graph, node: UINode, name: str, f: list[Finding]) -> None:
+    rel = node.path.resolve().relative_to(graph.root.resolve()).as_posix()
+    f.append(Finding(
+        "error", "inline-endpoint",
+        f"{node.id}: an {name} is written inline in {node.path.name}, and every {name} has a page "
+        f"of its own beside it. The page grows with each one until no writer can hold it. The run "
+        f"moves it before the next lap; by hand, `ostler edit carve-endpoints {rel} --write`",
+        path=rel, line=node.line, ref=node.anchor or node.title))
+
+
 def check_server_membership(graph: Graph, f: list[Finding], resolver: LinkResolver) -> None:
     """Each endpoint page links exactly one server page, and that server's inventory links it back."""
     for uitype in registry.UI_TYPES:
@@ -47,6 +57,7 @@ def check_server_membership(graph: Graph, f: list[Finding], resolver: LinkResolv
         hosts = " or ".join(uitype.host_page_types)
         for node in graph.ui_nodes_of_type(uitype.name):
             if node.kind != "file":
+                _inline(graph, node, uitype.name, f)
                 continue
             servers = [p for p in _servers(node, key, resolver) if _type_of(p) in uitype.host_page_types]
             if len(servers) != 1:

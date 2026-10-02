@@ -219,7 +219,13 @@ def _slim_server(doc: markdown.MarkdownDoc, lines: list[str], units: list[_Unit]
     skip_blank = False
 
     def emit_links() -> None:
-        if body and body[-1].strip():
+        last = next((t for t in reversed(body) if t.strip()), "")
+        if last.startswith("- ["):
+            while not body[-1].strip():
+                body.pop()
+            for i in [i for i, at in where.items() if at >= len(body)]:
+                del where[i]
+        elif body and body[-1].strip():
             body.append("")
         body.extend(links)
         body.append("")

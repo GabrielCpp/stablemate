@@ -156,3 +156,33 @@ def test_endpoint_page_its_server_does_not_list_is_reported(repo: Path):
           "---\ntype: endpoint\ntitle: lone\n---\n# lone\n\n- server: [A](server.md)\n- method: GET\n")
     codes = _codes(repo)
     assert "unlisted-endpoint" in codes and "endpoint-without-server" not in codes
+
+
+def test_inline_endpoint_is_reported_until_carved(repo: Path):
+    _book(repo)
+    findings = [f for f in doctor.run(load(repo)).findings if f.code == "inline-endpoint"]
+    assert sorted(f.ref for f in findings) == ["create-widget", "get-widget"]
+    assert all(f.path == _SERVER for f in findings)
+    assert f"carve-endpoints {_SERVER} --write" in findings[0].message
+    carve_endpoints(load(repo), "acme/http/server.md").apply()
+    assert "inline-endpoint" not in _codes(repo)
+
+
+def test_carve_moves_the_inline_endpoint_a_carved_server_gained(repo: Path):
+    server = _book(repo)
+    carve_endpoints(load(repo), "acme/http/server.md").apply()
+    grown = server.read_text().replace(
+        "- [create-widget](create-widget.md)\n",
+        "- [create-widget](create-widget.md)\n\n### delete-widget\n\n- method: DELETE\n- path: /widgets/{id}\n")
+    server.write_text(grown)
+    assert "inline-endpoint" in _codes(repo)
+
+    plan = carve_endpoints(load(repo), "acme/http/server.md")
+    assert not plan.error
+    plan.apply()
+    slim = server.read_text()
+    assert ("## Endpoints\n\n- [get-widget](get-widget.md)\n- [create-widget](create-widget.md)\n"
+            "- [delete-widget](delete-widget.md)\n") in slim
+    assert "### " not in slim
+    assert (server.parent / "delete-widget.md").exists()
+    assert not _codes(repo) & {"inline-endpoint", "endpoint-without-server", "unlisted-endpoint"}

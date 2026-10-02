@@ -53,7 +53,7 @@ says how to use it. This page says where each concern lives.
 - `scaffold.py`: `ostler scaffold`, hierarchy-respecting creation of UI-profile nodes.
 - `schemas.py`: loading the bundled JSON Schemas and validating documents against them.
 - `section_hosts.py`: doctor's check that a section which lives on one page type appears on no other.
-- `server_membership.py`: doctor's check that an endpoint page names one server and that server lists it.
+- `server_membership.py`: doctor's check that each endpoint has a page of its own, that page names one server, and that server lists it.
 - `select.py`: `ostler next-epic` and `next-story`, selection over the markdown graph.
 - `selector_forms.py`: what a component's `selector:` bullet says about the address each driver can query.
 - `source_snapshots.py`: the compact source catalogs that ground code citations.
