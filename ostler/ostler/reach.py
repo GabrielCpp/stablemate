@@ -62,8 +62,12 @@ def preconditions(node: dict) -> dict:
 
 
 def _screen_of(node_id: str, by_id: dict) -> str | None:
-    """The screen a node lives on: its file-level node, when that file is a screen doc."""
-    file_id = node_id.split("#", 1)[0]
+    """The screen a node lives on: the file-level node it nests under, a fragment's host included, when that is a screen."""
+    cur, seen = node_id, set()
+    while "#" in cur and cur in by_id and cur not in seen:
+        seen.add(cur)
+        cur = by_id[cur]["parent"] or cur.split("#", 1)[0]
+    file_id = cur.split("#", 1)[0]
     node = by_id.get(file_id)
     if node is None or node.get("type") != "screen":
         return None

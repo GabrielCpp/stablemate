@@ -720,6 +720,29 @@ def test_intra_screen_leads_to_is_not_navigation(repo: Path):
     assert not any(e["from"] == DASH and e["to"] == DASH for e in edges)
 
 
+def test_a_leads_to_on_a_screens_fragment_navigates_from_that_screen(repo: Path):
+    _repo(repo)
+    write(repo / SCREENS / "dashboard-components.md", """\
+---
+type: fragment
+slug: dashboard-components
+title: "Dashboard: Components"
+---
+# Dashboard: Components
+
+- host: [Dashboard](dashboard.md)
+
+## Components
+
+### dash-archive-link
+- selector: `a`
+- leads-to: [Archive](archive.md)
+""")
+    edges = reach.navigation_edges(graph.build(load(repo), surface="web"))
+
+    assert {"from": DASH, "to": ARCHIVE} in [{"from": e["from"], "to": e["to"]} for e in edges]
+
+
 def test_none_with_a_reason_still_reads_as_none(repo: Path):
     """Authors write `none — public route, no auth guard`; the reason must not become a guard."""
     _repo(repo)
