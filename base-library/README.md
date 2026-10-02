@@ -37,7 +37,8 @@ The cache is the interesting one: it is **fetched from GitHub into `~/.cache/sta
 and used from there — a sparse checkout of this directory alone, with `.git` dropped once
 the commit is recorded, so what lands is documents rather than a repository.
 `farrier install` is what populates it, and the only thing that updates it: on install the
-base is fetched if absent and brought up to `main` if stale. Every other caller — every
+base is fetched if absent and moved to the installed farrier's release tag if stale (`main` for a farrier installed
+from a checkout). Every other caller — every
 lookup, and every workhorse resume — reads it frozen, so a run cannot resume into a
 different library than it started with. See the
 [docs/INSTALL.md](../docs/INSTALL.md#finding-the-base-library).

@@ -47,8 +47,8 @@ explicit refresh is the only operation that updates an existing cache.
 - code: `workhorse/workhorse/_vendor/stablemate_core/base_cache.py::cached_commit` @30a2077f66f6
 
 ### remote_commit
-- sig: `remote_commit() -> str | None`
-- does: query `BASE_REPO_REF` with `git ls-remote`
+- sig: `remote_commit(ref: str) -> str | None`
+- does: query `ref` with `git ls-remote`
 - verify: json_path(path="$.remote_commit", matches="^[0-9a-f]{40}$")
 - returns: the remote commit hash, or `None` when git, the network, or the ref is unavailable
 - verify: json_path(path="$.remote_commit", matches="^null$")
@@ -63,8 +63,8 @@ explicit refresh is the only operation that updates an existing cache.
 - code: `workhorse/workhorse/_vendor/stablemate_core/base_cache.py::cached_base` @30a2077f66f6
 
 ### ensure_cached_base
-- sig: `ensure_cached_base(*, quiet: bool = False) -> Path | None`
-- does: return an existing usable cache, otherwise fetch a sparse base-library checkout when fetching is enabled
+- sig: `ensure_cached_base(*, ref: str, quiet: bool = False) -> Path | None`
+- does: return an existing usable cache, otherwise fetch a sparse base-library checkout at `ref` when fetching is enabled
 - verify: created(subject="base-library cache when no usable cache exists")
 - does: leave an unusable existing cache in place and return `None` rather than overwrite it
 - verify: unchanged(subject="unusable existing base-library cache")
@@ -75,10 +75,10 @@ explicit refresh is the only operation that updates an existing cache.
 - code: `workhorse/workhorse/_vendor/stablemate_core/base_cache.py::ensure_cached_base` @30a2077f66f6
 
 ### refresh_cached_base
-- sig: `refresh_cached_base(*, quiet: bool = False) -> Path | None`
+- sig: `refresh_cached_base(*, ref: str, quiet: bool = False) -> Path | None`
 - does: fetch the base when no usable cache exists
 - verify: created(subject="base-library cache when no usable cache exists")
-- does: compare the recorded local commit with the remote before replacing stale content
+- does: compare the recorded local commit with the commit `ref` names on the remote before replacing stale content
 - verify: conflict_on_stale(subject="base-library cache", token="recorded local commit")
 - does: retain and return the existing usable cache when remote discovery or replacement fails
 - verify: unchanged(subject="existing usable base-library cache")

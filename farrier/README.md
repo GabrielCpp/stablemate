@@ -44,8 +44,11 @@ a checkout you are editing.
 **`farrier install` fetches the base, and updates it.** It is the only command that
 touches the cache, so under `pipx` — where each tool is its own venv and the base is data
 with no package to import — you get a working base library without configuring anything.
-An update asks the remote for the head of `main` first, so an already-current cache costs
-one round-trip rather than a re-clone. Three qualifications:
+The base library comes from this farrier's release tag (`farrier-v<version>`), so the
+library always matches the farrier that renders it. A farrier installed from a checkout or a
+git URL tracks `main` instead. The fetch needs `git` and network
+access. An update asks the remote which commit that ref names first, so an already-current
+cache costs one round-trip rather than a re-clone. Three qualifications:
 
 - **A base you named is never fetched over.** If `$STABLEMATE_BASE_DIR`, `set-base` or a
   `stablemate_dir` checkout answers, install returns it without even probing the remote.

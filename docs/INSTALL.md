@@ -20,8 +20,8 @@ and the base is data with no package to import, route 4 is what makes it reachab
 without configuring anything.
 
 **`farrier install` populates and updates the cache.** It is the one command that does.
-On install the base is fetched if absent and brought up to `main` if present, so a `pipx`
-user gets a working base library by running the command they were going to run anyway:
+On install the base is fetched if absent and moved to the farrier release tag
+(`farrier-v<version>`) if present, or to `main` for a farrier installed from a checkout, so a `pipx` user gets a working base library by running the command they were going to run anyway:
 
 ```bash
 farrier init              # once per repo: writes a starter agents.yml (start with packs: [stablemate])
@@ -31,15 +31,19 @@ farrier --repo . --check  # fetches if absent, but never updates — see below
 
 What lands is a sparse checkout of `base-library/` alone, with `.git` dropped once the
 commit is recorded into a `.commit` sidecar. `STABLEMATE_FETCH_BASE=0` forbids the network
-entirely (air-gapped hosts), and `STABLEMATE_CACHE_DIR` relocates the cache. An update
-first asks the remote for the head of `main` — a few hundred bytes — so an already-current
-cache costs one round-trip rather than a re-clone.
+entirely (air-gapped hosts), and `STABLEMATE_CACHE_DIR` relocates the cache. The fetch
+needs `git` on the `PATH` and network access to GitHub. The base library comes from the
+release tag of the farrier you installed, so a released farrier renders the library it
+shipped with. A farrier installed from a checkout or a git URL runs code no tag holds, so
+it tracks `main` instead. An update first asks the remote which commit that ref names. The answer is
+a few hundred bytes, so an already-current cache costs one round-trip rather than a
+re-clone.
 
 **Everything else freezes, and that is deliberate.** No lookup, no resume and no
 background timer refreshes the cache; `farrier install` is the automated form of the
 `rm -rf ~/.cache/stablemate` that used to be the only upgrade path, not a new polling
 behaviour. A workhorse run is meant to survive a week unattended and to resume into a
-checkpointed state machine after a crash, and a cache tracking `main` live could resume a
+checkpointed state machine after a crash, and a cache that moved on its own could resume a
 run into a different library than it started with. The corollary worth knowing: running
 `farrier install` while a long run is in flight on the same machine can move the library
 out from under its next resume.

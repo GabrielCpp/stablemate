@@ -129,7 +129,7 @@ def test_invalid_override_is_skipped_not_raised(tmp_path, cfg, monkeypatch):
 
 def test_resolution_never_fetches(tmp_path, monkeypatch):
     monkeypatch.setattr(
-        bc, "_clone_into", lambda dest: pytest.fail("resolution must never fetch")
+        bc, "_clone_into", lambda dest, ref: pytest.fail("resolution must never fetch")
     )
     base_library_dir()
 
@@ -139,9 +139,9 @@ def test_resolution_never_fetches(tmp_path, monkeypatch):
 def test_ensure_populates_the_cache_when_nothing_else_resolves(tmp_path, monkeypatch):
     fetched = _make_base(tmp_path / "fetched")
     monkeypatch.setattr(bc, "cached_base", lambda: None)
-    monkeypatch.setattr(bc, "ensure_cached_base", lambda *, quiet=False: fetched)
+    monkeypatch.setattr(bc, "ensure_cached_base", lambda *, ref, quiet=False: fetched)
 
-    assert ensure_base_library_dir() == fetched.resolve()
+    assert ensure_base_library_dir(ref="farrier-v1.2.3") == fetched.resolve()
 
 
 @pytest.mark.parametrize("refresh", [False, True])
@@ -155,28 +155,28 @@ def test_ensure_never_fetches_over_a_chosen_base(tmp_path, cfg, monkeypatch, ref
             bc, name, lambda *a, **k: pytest.fail("a chosen base must not be refetched")
         )
 
-    assert ensure_base_library_dir(refresh=refresh) == derived.resolve()
+    assert ensure_base_library_dir(ref="farrier-v1.2.3", refresh=refresh) == derived.resolve()
 
 
 def test_ensure_refresh_updates_an_existing_cache(tmp_path, monkeypatch):
     updated = _make_base(tmp_path / "updated")
     monkeypatch.setattr(bc, "cached_base", lambda: _make_base(tmp_path / "stale"))
-    monkeypatch.setattr(bc, "refresh_cached_base", lambda *, quiet=False: updated)
+    monkeypatch.setattr(bc, "refresh_cached_base", lambda *, ref, quiet=False: updated)
     monkeypatch.setattr(
         bc,
         "ensure_cached_base",
-        lambda *, quiet=False: pytest.fail("refresh=True must not take the frozen path"),
+        lambda *, ref, quiet=False: pytest.fail("refresh=True must not take the frozen path"),
     )
 
-    assert ensure_base_library_dir(refresh=True) == updated.resolve()
+    assert ensure_base_library_dir(ref="farrier-v1.2.3", refresh=True) == updated.resolve()
 
 
 def test_ensure_is_none_when_the_fetch_fails(monkeypatch):
     """Fail-soft: an offline host with no cache behaves as it did before this existed."""
     monkeypatch.setattr(bc, "cached_base", lambda: None)
-    monkeypatch.setattr(bc, "ensure_cached_base", lambda *, quiet=False: None)
+    monkeypatch.setattr(bc, "ensure_cached_base", lambda *, ref, quiet=False: None)
 
-    assert ensure_base_library_dir() is None
+    assert ensure_base_library_dir(ref="farrier-v1.2.3") is None
 
 
 if __name__ == "__main__":

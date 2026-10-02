@@ -55,8 +55,11 @@ The base library resolves through `stablemate_core.discovery` in four steps —
 `$STABLEMATE_BASE_DIR` → the `base_dir` config key → a `stablemate_dir` checkout
 (`<checkout>/base-library`) → the shared cache at `~/.cache/stablemate`. Only the last of those
 can be produced on demand, and [`install`](../farrier.md#install) is the one command that produces
-it: it calls `ensure_base_library_dir(refresh=not --check)` before resolving anything, which
-fetches the cache when absent and updates it to the head of `main` when present.
+it: it calls `ensure_base_library_dir(ref=farrier-v<version>, refresh=not --check)` before
+resolving anything, which fetches the cache when absent and moves it to farrier's own release tag
+when present. A released farrier so renders the library it shipped with, never whatever `main`
+holds that day. A farrier installed from a checkout or a git URL carries a `direct_url.json`
+install record, runs code no tag holds, and passes `main` instead.
 
 Two functions, deliberately: `base_library_dir()` is a pure lookup and `ensure_base_library_dir()`
 is the explicit form allowed to reach the network. A resolution that downloads as a side effect is
@@ -68,11 +71,11 @@ guarantee hold under the command that downloads: a checkout you are editing cann
 appear underneath it.
 
 **Everything except install reads the cache frozen.** No lookup, no workhorse resume and no timer
-refreshes it — a cache tracking `main` live could resume a week-long run into a different library
+refreshes it — a cache that moved on its own could resume a week-long run into a different library
 than it started with. Install is exempt because it is an operator asking for a re-render at a
 moment they chose, which is the same authority `rm -rf ~/.cache/stablemate` always carried.
 
-Updating asks the remote for the head of `main` (`git ls-remote`, a few hundred bytes) before
+Updating asks the remote which commit the ref names (`git ls-remote`, a few hundred bytes) before
 cloning anything, so an already-current cache costs one round-trip instead of a re-clone. Every
 failure — unreachable remote, `STABLEMATE_FETCH_BASE=0`, a clone that dies, a fetched tree that
 holds no `library/` — leaves the existing cache untouched and returns it. That asymmetry is the
@@ -218,9 +221,9 @@ then calls `write_library_dir`, which persists the `library_dir` field of the
 - code: `farrier/farrier/_vendor/stablemate_core/discovery.py::base_library_dir` @9298cfe7d7ec
 
 ### ensure_base_library_dir
-- sig: `ensure_base_library_dir(*, refresh: bool = False, quiet: bool = False) -> Path | None`
+- sig: `ensure_base_library_dir(*, ref: str, refresh: bool = False, quiet: bool = False) -> Path | None`
 - does: returns an explicit base without probing the network
-- does: populates the cache when no explicit base exists
+- does: populates the cache at `ref` when no explicit base exists
 - does: refreshes an existing cache only when `refresh` is true
 - returns: the resolved usable base path, or `None` when unavailable
 - verify: created(subject="base library cache")
@@ -264,18 +267,18 @@ then calls `write_library_dir`, which persists the `library_dir` field of the
 - code: `farrier/farrier/_vendor/stablemate_core/base_cache.py::cached_base` @30a2077f66f6
 
 ### ensure_cached_base
-- sig: `ensure_cached_base(*, quiet: bool = False) -> Path | None`
+- sig: `ensure_cached_base(*, ref: str, quiet: bool = False) -> Path | None`
 - does: returns an existing usable cache without fetching
 - does: refuses fetching when `STABLEMATE_FETCH_BASE` disables network access
-- does: sparse-checks out only `base-library/`, records the commit, and removes `.git`
+- does: sparse-checks out only `base-library/` at `ref`, records the commit, and removes `.git`
 - returns: the cached base, or `None` when unavailable
 - verify: created(subject="sparse base-library cache")
 - code: `farrier/farrier/_vendor/stablemate_core/base_cache.py::ensure_cached_base` @30a2077f66f6
 
 ### refresh_cached_base
-- sig: `refresh_cached_base(*, quiet: bool = False) -> Path | None`
+- sig: `refresh_cached_base(*, ref: str, quiet: bool = False) -> Path | None`
 - does: delegates to `ensure_cached_base` when no usable cache exists
-- does: compares the cached commit with the remote `main` commit before cloning
+- does: compares the cached commit with the commit `ref` names on the remote before cloning
 - does: replaces the cache only after the fetched tree passes library validation
 - returns: the refreshed cache, or the existing cache after a failed remote, clone, or swap
 - verify: unchanged(subject="existing base cache after failed refresh")

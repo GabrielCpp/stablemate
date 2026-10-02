@@ -58,14 +58,14 @@ def _explicit_base() -> Path | None:
     return None
 
 
-def ensure_base_library_dir(*, refresh: bool = False, quiet: bool = False) -> Path | None:
-    """:func:`base_library_dir`, but allowed to populate the cache — and, with ``refresh``, to update it."""
+def ensure_base_library_dir(*, ref: str, refresh: bool = False, quiet: bool = False) -> Path | None:
+    """:func:`base_library_dir`, but allowed to populate the cache at ``ref`` — and, with ``refresh``, to move it there."""
     explicit = _explicit_base()
     if explicit is not None:
         return explicit
 
     fetch = base_cache.refresh_cached_base if refresh else base_cache.ensure_cached_base
-    cached = fetch(quiet=quiet)
+    cached = fetch(ref=ref, quiet=quiet)
     if cached is not None and is_library_dir(cached):
         return cached.resolve()
     return None

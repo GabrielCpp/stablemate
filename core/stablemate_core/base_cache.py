@@ -15,7 +15,6 @@ from .layout import is_library_dir
 logger = logging.getLogger(__name__)
 
 BASE_REPO_URL = "https://github.com/GabrielCpp/stablemate.git"
-BASE_REPO_REF = "main"
 BASE_SUBPATH = "base-library"
 
 COMMIT_FILE = ".commit"
@@ -72,17 +71,17 @@ def _git(
         return None
 
 
-def remote_commit() -> str | None:
-    """The commit ``BASE_REPO_REF`` points at on the remote, or None if it cannot be read."""
-    proc = _git("ls-remote", BASE_REPO_URL, BASE_REPO_REF, timeout=_LS_REMOTE_TIMEOUT_S)
+def remote_commit(ref: str) -> str | None:
+    """The commit ``ref`` points at on the remote, or None if it cannot be read."""
+    proc = _git("ls-remote", BASE_REPO_URL, ref, timeout=_LS_REMOTE_TIMEOUT_S)
     if proc is None or proc.returncode != 0:
         return None
     first = proc.stdout.strip().split("\n", 1)[0].split()
     return first[0] if first else None
 
 
-def _clone_into(dest: Path) -> bool:
-    """Sparse-fetch ``base-library/`` into ``dest``, then leave documents behind."""
+def _clone_into(dest: Path, ref: str) -> bool:
+    """Sparse-fetch ``base-library/`` at ``ref`` into ``dest``, then leave documents behind."""
     dest.parent.mkdir(parents=True, exist_ok=True)
     steps: list[tuple[str, list[str], Path | None]] = [
         (
@@ -90,7 +89,7 @@ def _clone_into(dest: Path) -> bool:
             [
                 "clone",
                 "--depth=1",
-                f"--branch={BASE_REPO_REF}",
+                f"--branch={ref}",
                 "--filter=blob:none",
                 "--sparse",
                 BASE_REPO_URL,
@@ -103,7 +102,7 @@ def _clone_into(dest: Path) -> bool:
             ["sparse-checkout", "set", "--no-cone", f"/{BASE_SUBPATH}/"],
             dest,
         ),
-        ("checkout", ["checkout", BASE_REPO_REF], dest),
+        ("checkout", ["checkout", ref], dest),
     ]
     for label, args, cwd in steps:
         proc = _git(*args, cwd=cwd)
@@ -131,8 +130,8 @@ def cached_base() -> Path | None:
     return base if is_library_dir(base) else None
 
 
-def ensure_cached_base(*, quiet: bool = False) -> Path | None:
-    """Return the cached base library, fetching it if absent."""
+def ensure_cached_base(*, ref: str, quiet: bool = False) -> Path | None:
+    """Return the cached base library, fetching it at ``ref`` if absent."""
     existing = cached_base()
     if existing is not None:
         return existing
@@ -156,13 +155,13 @@ def ensure_cached_base(*, quiet: bool = False) -> Path | None:
     if not quiet:
         print(
             f"[stablemate] fetching base library: {BASE_REPO_URL} "
-            f"({BASE_REPO_REF}, {BASE_SUBPATH}/ only)"
+            f"({ref}, {BASE_SUBPATH}/ only)"
         )
 
     tmp = clone.parent / f".library-fetch-{os.getpid()}"
     if tmp.exists():
         shutil.rmtree(tmp, ignore_errors=True)
-    if not _clone_into(tmp):
+    if not _clone_into(tmp, ref):
         shutil.rmtree(tmp, ignore_errors=True)
         return None
 
@@ -183,17 +182,17 @@ def ensure_cached_base(*, quiet: bool = False) -> Path | None:
     return base
 
 
-def refresh_cached_base(*, quiet: bool = False) -> Path | None:
-    """Bring the cache up to date with ``BASE_REPO_REF``, then return it."""
+def refresh_cached_base(*, ref: str, quiet: bool = False) -> Path | None:
+    """Bring the cache to the commit ``ref`` names, then return it."""
     existing = cached_base()
     if existing is None:
-        return ensure_cached_base(quiet=quiet)
+        return ensure_cached_base(ref=ref, quiet=quiet)
     if not fetch_allowed():
         logger.debug("base refresh disabled via %s", FETCH_ENV)
         return existing
 
     local = cached_commit()
-    remote = remote_commit()
+    remote = remote_commit(ref)
     if remote is None:
         if not quiet:
             print(
@@ -207,13 +206,13 @@ def refresh_cached_base(*, quiet: bool = False) -> Path | None:
     if not quiet:
         print(
             f"[stablemate] updating base library: {(local or '?')[:12]} -> {remote[:12]} "
-            f"({BASE_REPO_URL}, {BASE_REPO_REF})"
+            f"({BASE_REPO_URL}, {ref})"
         )
 
     clone = cached_library_dir()
     tmp = clone.parent / f".library-fetch-{os.getpid()}"
     shutil.rmtree(tmp, ignore_errors=True)
-    if not _clone_into(tmp):
+    if not _clone_into(tmp, ref):
         shutil.rmtree(tmp, ignore_errors=True)
         return existing
     if not is_library_dir(tmp / BASE_SUBPATH):

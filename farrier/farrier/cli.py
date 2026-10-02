@@ -153,8 +153,16 @@ def _run_user_install(args: argparse.Namespace) -> int:
     return 0
 
 
+def _base_library_ref() -> str:
+    """The release tag that published this farrier, or `main` for one installed from a checkout or a URL."""
+    dist = importlib.metadata.distribution("farrier")
+    if dist.read_text("direct_url.json") is not None:
+        return "main"
+    return f"farrier-v{dist.version}"
+
+
 def _run_install(args: argparse.Namespace) -> int:
-    ensure_base_library_dir(refresh=not args.check)
+    ensure_base_library_dir(ref=_base_library_ref(), refresh=not args.check)
     set_layers(resolve_library_dir(args.library))
     if not args.check:
         for line in override_notices("skill", "library", "skills") + override_notices(

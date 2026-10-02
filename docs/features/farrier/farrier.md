@@ -109,13 +109,14 @@ the pruned starting point, and the two are kept consistent by hand.
 - verify: unchanged(subject="repository after an install --check run")
 - does:
   - run: check out the [base library](concepts/library-directory.md#fetching-and-updating-the-base)
-    by calling `ensure_base_library_dir(refresh=not --check)`
+    by calling `ensure_base_library_dir(ref=farrier-v<version> or main, refresh=not --check)`
   - verify: created(subject="base library checkout used for install")
   - run: check out the base library before anything looks for it
   - verify: created(subject="generated output from a base library fetched before layer resolution")
   - run (base absent): fetch the base library into `~/.cache/stablemate`
   - verify: created(subject="previously absent base library cache")
-  - run (cached base present): update the base library to the head of `main`
+  - run (cached base present): update the base library to this farrier's release tag, or to `main`
+    when farrier was installed from a checkout or a URL
   - verify: persists(subject="base library cache after install refresh")
   - run (configured base): skip fetching and updating when `$STABLEMATE_BASE_DIR`, `base_dir` or a
     `stablemate_dir` checkout already names the base library

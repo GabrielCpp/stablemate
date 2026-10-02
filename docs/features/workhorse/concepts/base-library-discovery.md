@@ -29,7 +29,7 @@ the base remains additive to an overlay-only installation.
 - code: `workhorse/workhorse/_vendor/stablemate_core/discovery.py::base_library_dir` @9298cfe7d7ec
 
 ### ensure_base_library_dir
-- sig: `ensure_base_library_dir(*, refresh: bool = False, quiet: bool = False) -> Path | None`
+- sig: `ensure_base_library_dir(*, ref: str, refresh: bool = False, quiet: bool = False) -> Path | None`
 - does: preserve the explicit/configured resolution order before considering the cache
 - verify: json_path(path="$.base_library_dir", equals="/explicit-base")
 - does: call cache ensure or refresh only when no human-selected base is usable
