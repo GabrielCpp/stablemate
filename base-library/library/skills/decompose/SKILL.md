@@ -198,6 +198,21 @@ Never block on a question. When the problem, the domain facts or the code leave 
 open, make the choice, record the assumption behind it here, and go on. Cite it where it
 applies in the note as `(A3)`.
 
+The choices you knew you made are half the list. Then sweep for the ones you made without
+noticing. Take the section 1 outcome, each invariant and each slice's done-when, and ask
+what must already be true for it to work:
+
+- **Time**: how long it takes to run, and how long before its value shows. A design that
+  shows value in minutes assumes the work finishes in minutes.
+- **Inputs**: what must exist before it starts, and who or what produces that input.
+- **Environment**: the machine, the credentials, the network and the data it needs.
+- **Proof**: whether what a demo, a test or a first run shows is the value section 1
+  promised, or a stand-in for it.
+
+Each answer the problem or the code does not state becomes a numbered assumption. An answer
+already known to be false is a change to the design, not an assumption. Test each one
+against the person from section 1: would they agree it is true on first reading?
+
 Number the assumptions and order them by the cost of being wrong, the most expensive first.
 Each gives:
 
@@ -238,3 +253,5 @@ mapping leaves the design and the code disagreeing on paper before a line is wri
 - The note asks the reader a question, or offers options without choosing one.
 - A choice in the design has no basis in the problem, the domain or the code, and no
   assumption in section 7.
+- A done-when, a demo or a first run depends on a duration, an input or an environment that
+  no assumption in section 7 names.
