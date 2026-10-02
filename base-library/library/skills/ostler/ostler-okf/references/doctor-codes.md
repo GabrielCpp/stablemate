@@ -155,6 +155,7 @@ Three scoping rules explain findings that otherwise read as false positives or a
 | `fragment-without-host` | error | A `fragment` page whose `host:` bullet links no page, or more than one. Write one `- host: [<title>](<host page>)` under the page's title. |
 | `fragment-of-fragment` | error | A `fragment` page whose host is itself a fragment. Point `host:` at the page the other fragment continues. |
 | `unlisted-fragment` | error | A `fragment` page its host does not link, so a reader of the host never finds the sections it continues. Add `- [<name>](<name>.md)` to the host where those sections left. |
+| `hidden-claim` | error | An HTML comment on a book page holds a claim bullet, such as `- verify:` or `- status:`. No check runs it and no reader sees it, so the page reads as if the claim were never made. Restore the claim as a bullet the page states, or delete it. No automatic fix: only the writer knows which it meant. |
 | `missing-required-section` | error | A file type is missing a required `## <Heading>`. `ostler scaffold` stubs it. |
 | `empty-required-section` | error | A file type leaves a required `## <Heading>` empty. |
 | `missing-required-bullet` | error | A node is missing a `required` bullet. State it, even as `none`. `ostler scaffold` stubs it. An `interaction`/`invocation` arm's `on:`/`trigger:`/`role:`/`name:`/`keyboard:` is exempt when it states a valid same-type `extends:` (D51) — it inherits the base case's control identity instead of restating it. |
