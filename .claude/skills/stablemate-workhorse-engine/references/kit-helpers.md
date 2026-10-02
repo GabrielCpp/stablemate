@@ -30,8 +30,9 @@ from workhorse_workflows import kit
   `remote_urls`, `set_identity`, `short_sha`, `allow_all_directories`.
 - `kit.github` — `resolve_github_token`, `resolve_repo`, `github_client`, `find_open_pr`,
   `push_branch`, `repo_full_name_from_url`, `sync_to_origin`.
-- `kit.workspace` — `resolve_workspace`, `get_repo_config`, `get_affected_repos`,
-  `build_dispatch_list`, `checkout_workspace`.
+- `kit.workspace` — `resolve_workspace`, `get_repo_config`, `checkout_workspace`. The
+  plan's repo fan-out, `get_affected_repos` and `build_dispatch_list`, belongs to the coder
+  machines and lives in `workhorse_workflows.coder.shared.plan`.
 
 **Never shell out to `git` or `gh`.** The helpers wrap GitPython and PyGithub behind seams,
 so a node never touches the CLIs while git still runs for **real** under test (against a

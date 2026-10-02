@@ -415,7 +415,7 @@ code, data or model call. The card holds:
 - **the question's task**: its input, its output and the role it gives the thing under
   study, copied from the operator's words and not paraphrased,
 - **the method's task**: the input the method reads at test time, the output it produces,
-  and who or what produces each part of it,
+  and who or what produces each part of it, once under test and once in use,
 - **the training task**, when the method learns: the input, the target, where the pairs
   come from and how many exist,
 - **the judge**: what counts as a right output,
@@ -445,6 +445,14 @@ Hold the method's task against the question's task, part by part.
   question gives it on the card.
 - **Every premise holds.** A premise the operator stated and the method dropped makes a
   different question.
+- **The input exists in use.** Trace one request from the operator's hands to the method's
+  input, as it would run after the study ends, and name the producer of every designed input
+  there. When the operator's words place the input in a form and leave its writing outside
+  the question, its writer in use is the operator's own process, and the method is not
+  charged for it. Otherwise the producer in use must be the one the test set used. When the
+  study's own session writes the test inputs and nothing named writes them in use, the test
+  measures a pipeline nobody will run. Write the producer in use and its cost per request on
+  the card, with the operator's words that place it.
 
 A candidate that fails gate 1 leaves the field with the mismatch as its reason. A rewrite
 that makes the input, the output and the role match is a new candidate with its own card.
@@ -491,7 +499,12 @@ Each check asks whether the method can succeed when everything uncertain goes it
   compiled checks, tests or a build. When the judge must compare against a reference, say
   how many right answers it accepts and why that is enough. A recorded past output counts
   as a right answer only after the judge accepts it, and the card reports how many
-  recorded outputs the judge rejects. A case where a measure lacks its second right answer
+  recorded outputs the judge rejects. A judge that rejects most of the operator's own
+  accepted outputs is read before any row rests on it. The card says whether the fault
+  is in the reference, such as work bundled beyond the case, or in the judge, and cites
+  the operator's words for the bar it holds. A judge whose verdict comes from a model
+  call gives one sample per call. Its flip share on one output across repeated calls is
+  read before its verdicts count, and a margin inside that share is no reading. A case where a measure lacks its second right answer
   reads as unmeasured, never as a score on the recorded output alone. A judge shown a second output
   beside the one it grades says whether it grades each alone or picks between them. One
   that picks between them compares against a reference, and the same count applies.
