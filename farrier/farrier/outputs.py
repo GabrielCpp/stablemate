@@ -251,7 +251,7 @@ def render_expected(
     notices: list[str] | None = None,
 ) -> dict[Path, str]:
     repo_config = config.get("repo") or {}
-    prefix = repo_prefix(repo)
+    prefix = repo_prefix(repo, repo_config)
     agents = normalize_agents(config)
     if not any(agents.values()):
         raise SystemExit("No agents selected in config")

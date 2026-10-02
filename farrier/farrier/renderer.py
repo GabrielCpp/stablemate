@@ -223,7 +223,7 @@ class Renderer:
         )
         self.prefix = prefix
         self.repo_context = dict(repo_config)
-        self.repo_context["name"] = repo_prefix(repo)
+        self.repo_context["name"] = repo_prefix(repo, repo_config)
         self.repo_context["prefix"] = prefix
         self.repo_context["root"] = repo.as_posix()
         self.template_values = template_values

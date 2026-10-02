@@ -75,7 +75,9 @@ def resolve_scaffold_params(
             f"Scaffold {scaffold_id!r} requires --param for: {', '.join(missing)}"
         )
 
-    repo_name = repo_prefix(repo)
+    config_path = repo / "agents.yml"
+    config = read_yaml(config_path) if config_path.is_file() else {}
+    repo_name = repo_prefix(repo, config.get("repo"))
     params.setdefault("repo_name", repo_name)
     params.setdefault("repo_title", repo_name.replace("-", " ").title())
     return params

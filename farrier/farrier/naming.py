@@ -3,7 +3,9 @@ from __future__ import annotations
 
 import os
 import re
+from collections.abc import Mapping
 from pathlib import Path
+from typing import Any
 
 
 def kebab(value: str) -> str:
@@ -21,9 +23,10 @@ def compose_name(prefix: str, base: str) -> str:
     return f"{prefix}-{base}"
 
 
-def repo_prefix(repo: Path) -> str:
-    """The install prefix for a repository: its directory name, kebab-cased."""
-    return kebab(repo.name)
+def repo_prefix(repo: Path, repo_config: Mapping[str, Any] | None = None) -> str:
+    """The install prefix for a repository: agents.yml's `repo.name` when set, else its directory name, kebab-cased."""
+    name = (repo_config or {}).get("name")
+    return kebab(str(name) if name else repo.name)
 
 
 def normalize_pattern(pattern: str) -> str:

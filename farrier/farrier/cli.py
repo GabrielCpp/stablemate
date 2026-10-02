@@ -305,7 +305,7 @@ def mapped_instruction_sources(generated: Path) -> list[str] | None:
             "regenerate or remove it."
         )
     repo_config = config.get("repo") or {}
-    prefix = repo_prefix(repo)
+    prefix = repo_prefix(repo, repo_config)
     include_skills, include_prompts, _, _ = collect_selection(config)
     exclude = config.get("exclude") or {}
     skills = selected_sources(
@@ -701,7 +701,7 @@ def _run_hooks_install(args: argparse.Namespace) -> int:
         set_layers(None)
     if LAYERS:
         try:
-            prefix = repo_prefix(repo)
+            prefix = repo_prefix(repo, config.get("repo"))
             include_skills, _, _, _ = collect_selection(config)
             exclude = config.get("exclude") or {}
             all_skills = load_layered_sources("skill", "library", "skills")
@@ -754,7 +754,7 @@ def _run_hooks_list(args: argparse.Namespace) -> int:
         )
         return 0
 
-    prefix = repo_prefix(repo)
+    prefix = repo_prefix(repo, config.get("repo"))
     include_skills, _, _, _ = collect_selection(config)
     exclude = config.get("exclude") or {}
     all_skills = load_layered_sources("skill", "library", "skills")
