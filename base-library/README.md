@@ -18,7 +18,7 @@ farrier install                                   # renders it into a repo
 | `library/skills/{architecture,testing,ui}/` | the cross-language contracts |
 | `library/prompts/` | the `implement-plan-worktree` and `implement-plan-here` commands |
 | `library/prompts/stablemate/` | the `babysit-run` command, which no pack selects yet |
-| `packs/stablemate.yml` | the toolchain skills, which a repo opts into with `packs: [stablemate]` |
+| `packs/stablemate.yml` | the toolchain skills, which `farrier init` proposes for the user library |
 | `packs/general.yml` | the method skills, the cross-language contracts and the two `implement-plan` commands |
 | `agents.example.yml` | an annotated starting `agents.yml` |
 
