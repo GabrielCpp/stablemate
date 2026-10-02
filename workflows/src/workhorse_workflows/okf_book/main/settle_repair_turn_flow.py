@@ -1,6 +1,7 @@
 """What code does with one repair turn's changes: put back what its batch may not keep, then stamp and commit the rest.
 
 Code puts back each page a turn changed that its batch may not keep, by the rules of `nodes/repair_put_back.py`.
+Code then carves each endpoint the book holds inline onto a page of its own, and commits those pages with the turn.
 A turn may delete a page the entries page links, so code drops that link and commits the entries page with the turn.
 
 A page someone left uncommitted when the repair started has no committed copy of their edit to go
@@ -26,6 +27,7 @@ from workhorse_workflows.okf_book.main.nodes.repair_put_back import (
 )
 from workhorse_workflows.okf_book.shared.book_commits import repair_description_refusal, repaired_book_commit_message
 from workhorse_workflows.okf_book.shared.book_flow import BookFlow
+from workhorse_workflows.okf_book.shared.book_shape import carve_inline_endpoints, carved_pages
 from workhorse_workflows.okf_book.shared.confine import Snapshot, committed_text, put_back_outside, restore
 from workhorse_workflows.okf_book.shared.entries import drop_links, entries_path, links_to_deleted
 
@@ -118,11 +120,22 @@ class SettleRepairTurn(BookFlow):
         _ = restore(self.root, overreach, self.before)
         for path in overreach:
             self.logger.warning("put back %s, an entry page the repair turn changed beyond adding link lines", path)
-        return Continue(overreach, self.stamp_pages).because("stamp the repaired pages")
+        return Continue(overreach, self.carve_endpoints).because("carve the endpoints written inline")
 
-    def stamp_pages(self) -> Continue[...]:
-        """Stamp each page the turn changed that its batch owns, but the entries page and the pages someone left uncommitted."""
-        pages = pages_to_stamp(self.root, self.service, self.before, self.batch)
+    def carve_endpoints(self) -> Continue[...]:
+        """Move each endpoint the book holds inline on a server page onto a page of its own, so the server page stays small enough for one writer."""
+        carves = carve_inline_endpoints(self.root, self.service, frozenset(self.before.digests))
+        for carve in carves:
+            if carve.refusal:
+                self.logger.warning("left the endpoints of %s inline: %s", carve.server, carve.refusal)
+            else:
+                self.logger.info("carved the endpoints of %s, writing %d pages", carve.server, len(carve.pages))
+        carved = carved_pages(carves)
+        return Continue(carved, self.stamp_pages, carved=carved).because("stamp the repaired pages")
+
+    def stamp_pages(self, carved: tuple[str, ...] = ()) -> Continue[...]:
+        """Stamp each page the turn changed that its batch owns, but the entries page and the pages someone left uncommitted, and each page a carve wrote."""
+        pages = tuple(sorted({*pages_to_stamp(self.root, self.service, self.before, self.batch), *carved}))
         changed_journey_pages = sorted(set(pages) - set(self.batch.page_paths))
         if changed_journey_pages:
             self.logger.info("the repair turn also changed %d journey pages: %s", len(changed_journey_pages), ", ".join(changed_journey_pages))

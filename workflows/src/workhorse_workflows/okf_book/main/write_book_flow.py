@@ -1,4 +1,4 @@
-"""One surface's writer turn: it writes the whole book in its folder, then the run puts back what it changed elsewhere and commits the book."""
+"""One surface's writer turn: it writes the whole book in its folder, then the run puts back what it changed elsewhere, carves each endpoint written inline onto a page of its own, and commits the book."""
 from __future__ import annotations
 
 import time
@@ -14,6 +14,7 @@ from workhorse_workflows.okf_book.main.nodes.writer_request import writer_reques
 from workhorse_workflows.okf_book.shared.blockers import Phase
 from workhorse_workflows.okf_book.shared.book_commits import book_commit_subject, unfinished_book_commit_subject
 from workhorse_workflows.okf_book.shared.book_flow import BookFlow
+from workhorse_workflows.okf_book.shared.book_shape import carve_inline_endpoints, carved_pages
 from workhorse_workflows.okf_book.shared.confine import Snapshot, book_changes, put_back_outside, snapshot
 from workhorse_workflows.okf_book.shared.entries import FEATURES_DIR
 from workhorse_workflows.okf_book.shared.metrics import TurnMetric, record_turn, turn_metric
@@ -124,12 +125,23 @@ class WriteBook(BookFlow):
         stray = put_back_outside(self.root, self.surface_to_write.service, before, self.run_dir)
         for path in stray:
             self.logger.warning("put back %s, which the writer changed outside its book", path)
-        return Continue(stray, self.stamp_book, before=before).because("stamp the book's pages")
+        return Continue(stray, self.carve_endpoints, before=before).because("carve the endpoints written inline")
 
-    def stamp_book(self, before: Snapshot) -> Continue[...]:
-        """Stamp every page the writer changed in its book."""
+    def carve_endpoints(self, before: Snapshot) -> Continue[...]:
+        """Move each endpoint the book holds inline on a server page onto a page of its own, so the server page stays small enough for one writer."""
+        carves = carve_inline_endpoints(self.root, self.surface_to_write.service, frozenset(before.digests))
+        for carve in carves:
+            if carve.refusal:
+                self.logger.warning("left the endpoints of %s inline: %s", carve.server, carve.refusal)
+            else:
+                self.logger.info("carved the endpoints of %s, writing %d pages", carve.server, len(carve.pages))
+        carved = carved_pages(carves)
+        return Continue(carved, self.stamp_book, before=before, carved=carved).because("stamp the book's pages")
+
+    def stamp_book(self, before: Snapshot, carved: tuple[str, ...] = ()) -> Continue[...]:
+        """Stamp every page the writer changed in its book, and every page a carve wrote."""
         root = self.root
-        pages = book_changes(root, self.surface_to_write.service, before)
+        pages = tuple(sorted({*book_changes(root, self.surface_to_write.service, before), *carved}))
         for page in pages:
             if page.endswith(".md") and (root / page).is_file():
                 _ = stamp_page(root, root / FEATURES_DIR, page)

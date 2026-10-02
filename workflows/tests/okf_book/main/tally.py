@@ -105,6 +105,20 @@ OTHER_PAGE = "docs/features/tally/concepts/ledger-file.md"
 OUTSIDE_EDIT = "\nan edit outside the batch\n"
 FLOW_PAGE = "docs/features/tally/flows/track-a-trip.md"
 NEW_FLOW = "docs/features/tally/flows/tally.md"
+SERVER_PAGE = "docs/features/tally/http/server.md"
+ENDPOINT_PAGES = ("docs/features/tally/http/add-expense.md", "docs/features/tally/http/get-total.md")
+INLINE_SERVER = (
+    "---\ntype: server\ntitle: Tally API\n---\n# Tally API\n\n- entry-url: http://localhost:8000\n\n"
+    "## Endpoints\n\n### get-total\n\n- method: GET\n- path: /total\n\n"
+    "### add-expense\n\n- method: POST\n- path: /expenses\n"
+)
+
+
+def write_inline_server(repo: Path) -> None:
+    """A server page in the tally book that holds its two endpoints inline."""
+    page = repo / SERVER_PAGE
+    page.parent.mkdir(parents=True, exist_ok=True)
+    _ = page.write_text(INLINE_SERVER, encoding="utf-8")
 
 
 def repairer_also_editing(repo: Path, *pages: str) -> ScriptedRunner:

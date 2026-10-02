@@ -38,7 +38,10 @@ gives relative to the repository starts there.
 {% elif kind == "http" %}
   every endpoint with its method and path, every parameter, header and body field it reads,
   every status code, header and body it answers with, every error it returns, every stored
-  record it reads or writes,
+  record it reads or writes. Each endpoint is a page of its own beside its server page, with
+  a `server:` link to that page, and the server lists it under `## Endpoints` as a
+  `- [id](page.md)` line. An endpoint written inline under the server is moved onto its own
+  page after your turn,
 {% else %}
   every screen and route, every control with its role and accessible name, every
   interaction and what it changes, every message the app shows, every value it stores,
