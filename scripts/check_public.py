@@ -22,15 +22,7 @@ BASE_SKILL_FAMILIES = {
     "architecture",
     "testing",
     "ui",
-    "code-review",
-    "grill",
-    "decompose",
-    "brainstorm",
-    "diagnosing-bugs",
-    "root-cause",
-    "vet-proposal",
-    "vertical-slicing",
-    "research-study",
+    "method",
 }
 RESOLVER = REPO / "scripts" / "private_names.py"
 HOOK_NAME = "hooks/pre-commit"

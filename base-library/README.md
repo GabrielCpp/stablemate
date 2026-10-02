@@ -12,7 +12,9 @@ farrier install                                   # renders it into a repo
 
 | Path | Contents |
 |---|---|
-| `library/skills/stablemate/` | the skills documenting the toolchain |
+| `library/skills/{farrier,groom,ostler,workhorse}/` | the skills documenting the toolchain |
+| `library/skills/method/` | ways of working that hold in any repo: decompose, grill, review, diagnose |
+| `library/skills/{architecture,testing,ui}/` | the cross-language contracts |
 | `library/prompts/stablemate/` | the interactive commands (`commit`, `grill`, `babysit-run`, …) |
 | `library/prompts/coder/` | *(empty here)* the slot an **overlay** uses to override a coder-workflow turn's body |
 | `packs/stablemate.yml` | the bundle a repo opts into with `packs: [stablemate]` |
