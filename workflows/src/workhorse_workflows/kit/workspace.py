@@ -14,9 +14,16 @@ from workhorse_workflows.kit import credentials, jsonio
 from workhorse_workflows.kit import paths as paths_kit
 
 
-def _repo_name_from_dir(path: Path) -> str:
-    """A repo's name: its directory name, normalized the same way farrier's kebab() derives the install prefix, so the key here and the prefix on that repo's installed skills are the same string by construction."""
-    name = re.sub(r"[^a-zA-Z0-9/-]+", "-", path.name.replace(".", "-").replace("_", "-"))
+def _repo_name(path: Path) -> str:
+    """A repo's name: its agents.yml `repo.name` when set, else its directory name, normalized the same way farrier's repo_prefix() derives the install prefix, so the key here and the prefix on that repo's installed skills are the same string by construction."""
+    try:
+        meta = yaml.safe_load((path / "agents.yml").read_text(encoding="utf-8"))
+    except (yaml.YAMLError, OSError):
+        meta = None
+    repo = meta.get("repo") if isinstance(meta, dict) else None
+    named = repo.get("name") if isinstance(repo, dict) else None
+    raw = str(named) if named else path.name
+    name = re.sub(r"[^a-zA-Z0-9/-]+", "-", raw.replace(".", "-").replace("_", "-"))
     return re.sub(r"-+", "-", name).strip("-").lower()
 
 
@@ -38,7 +45,7 @@ def resolve_workspace(
         folders, ws_dir = parsed
     else:
         cwd = paths_kit.find_repo_root(repo_dir)
-        folders = [{"name": _repo_name_from_dir(cwd), "path": str(cwd)}]
+        folders = [{"name": _repo_name(cwd), "path": str(cwd)}]
         ws_dir = cwd.parent
 
     repos: dict[str, dict] = {}

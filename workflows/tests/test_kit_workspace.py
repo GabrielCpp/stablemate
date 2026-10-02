@@ -33,16 +33,27 @@ def test_resolve_workspace_falls_back_to_cwd_without_a_repo_dir():
         assert repos["acme"]["path"] == str(repo_dir.resolve())
 
 
-def test_a_repo_is_named_by_its_directory_not_by_its_agents_yml():
-    """agents.yml cannot rename a repo — the key here is also the install prefix farrier derives from the same directory, so a config that could override one and not the other would let a single checkout answer to two names."""
+def test_a_repo_named_in_its_agents_yml_answers_to_that_name():
+    """A checkout under another directory name, such as a worktree, keeps the name farrier installs its skills under."""
     with tempfile.TemporaryDirectory() as tmp:
-        repo_dir = Path(tmp) / "acme"
+        repo_dir = Path(tmp) / "acme-worktree"
         repo_dir.mkdir()
-        (repo_dir / "agents.yml").write_text("repo:\n  name: globex\n", encoding="utf-8")
+        (repo_dir / "agents.yml").write_text("repo:\n  name: Globex_App\n", encoding="utf-8")
 
         repos = resolve_workspace(repo_dir=str(repo_dir))
 
-        assert list(repos) == ["acme"]
+        assert list(repos) == ["globex-app"]
+
+
+def test_a_repo_with_no_name_in_its_agents_yml_is_named_by_its_directory():
+    with tempfile.TemporaryDirectory() as tmp:
+        repo_dir = Path(tmp) / "Acme_Web"
+        repo_dir.mkdir()
+        (repo_dir / "agents.yml").write_text("repo:\n  support_email: team@example.com\n", encoding="utf-8")
+
+        repos = resolve_workspace(repo_dir=str(repo_dir))
+
+        assert list(repos) == ["acme-web"]
 
 
 def test_git_network_command_uses_configured_token_env():
