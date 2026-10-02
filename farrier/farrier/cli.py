@@ -36,7 +36,7 @@ from farrier.hook_managers import (
     install_runner,
 )
 from farrier.skill_hooks import STAGES, SkillHook
-from farrier.init import default_config
+from farrier.init import USER_LIBRARY_PROPOSAL, default_config
 from farrier.layers import (
     LAYERS,
     ensure_base_library_dir,
@@ -138,7 +138,14 @@ def _run_init(args: argparse.Namespace) -> int:
         )
     write_text(target, default_config(repo))
     print(f"Wrote {target}")
-    print("Next: list the packs you want under `packs:`, then `farrier install`.")
+    print("Next: list this repo's own packs under `packs:`, then `farrier install`.")
+    if not user_library_tables(read_config()):
+        print(
+            "\nNo user library is configured. To install the base library's general "
+            f"and stablemate packs for every repo, add this to {config_path()} and run "
+            "`farrier install --user`:\n"
+        )
+        print(USER_LIBRARY_PROPOSAL, end="")
     return 0
 
 

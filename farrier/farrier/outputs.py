@@ -276,18 +276,13 @@ def render_expected(
     check_selection(
         [("skills", all_skills, include_skills), ("prompts", all_prompts, include_prompts)]
     )
-    if not skills and not prompts:
+    if not skills and not prompts and (include_skills or include_prompts):
         packs = available_names("packs", suffix=".yml")
         catalog = (
             "Available packs:\n" + "\n".join(f"  - {name}" for name in packs)
             if packs
             else "No packs found in the configured layers."
         )
-        if not include_skills and not include_prompts:
-            raise SystemExit(
-                "The config selects nothing: `packs:` is empty and no skills or "
-                f"prompts are named directly. {catalog}"
-            )
         raise SystemExit(f"Selected packs did not match any skills or prompts. {catalog}")
 
     home_skills = {

@@ -5,7 +5,11 @@ from pathlib import Path
 import pytest
 import yaml
 
+from farrier.init import USER_LIBRARY_PROPOSAL
 from farrier.install import main
+from farrier.layers import BASE_DIR_ENV
+
+BASE_LIBRARY = Path(__file__).resolve().parents[2] / "base-library"
 
 
 def run(argv: list[str]) -> int:
@@ -20,7 +24,7 @@ def test_init_writes_a_config_the_installer_can_read(tmp_path: Path) -> None:
 
     config = yaml.safe_load((repo / "agents.yml").read_text(encoding="utf-8"))
     assert config["agents"] == {"claude": True}
-    assert config["packs"] == ["general", "stablemate"]
+    assert config["packs"] == []
 
 
 def test_init_needs_no_library_configured(tmp_path: Path, monkeypatch) -> None:
@@ -31,6 +35,66 @@ def test_init_needs_no_library_configured(tmp_path: Path, monkeypatch) -> None:
 
     assert run(["init", "--repo", str(repo)]) == 0
     assert (repo / "agents.yml").is_file()
+
+
+def test_init_proposes_a_user_library_when_none_is_configured(
+    tmp_path: Path, capsys
+) -> None:
+    repo = tmp_path / "acme"
+    repo.mkdir()
+
+    assert run(["init", "--repo", str(repo)]) == 0
+
+    assert USER_LIBRARY_PROPOSAL in capsys.readouterr().out
+
+
+def test_init_proposes_nothing_once_a_user_library_exists(
+    tmp_path: Path, monkeypatch, capsys
+) -> None:
+    config = tmp_path / "config.toml"
+    config.write_text(
+        'config_version = 1\n\n[user_library.claude]\npacks = ["general"]\n',
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("STABLEMATE_CONFIG", str(config))
+    repo = tmp_path / "acme"
+    repo.mkdir()
+
+    assert run(["init", "--repo", str(repo)]) == 0
+
+    assert "user_library" not in capsys.readouterr().out
+
+
+def test_the_proposed_user_library_installs_from_the_base_library(
+    tmp_path: Path, monkeypatch
+) -> None:
+    config = tmp_path / "config.toml"
+    config.write_text(
+        f"config_version = 1\n\n{USER_LIBRARY_PROPOSAL}", encoding="utf-8"
+    )
+    monkeypatch.setenv("STABLEMATE_CONFIG", str(config))
+    monkeypatch.setenv(BASE_DIR_ENV, str(BASE_LIBRARY))
+    home = tmp_path / "home"
+
+    assert run(["install", "--user", "--home", str(home)]) == 0
+
+    assert any((home / ".claude" / "skills").iterdir())
+
+
+def test_install_after_init_succeeds_and_says_nothing_about_skills(
+    tmp_path: Path, monkeypatch, capsys
+) -> None:
+    monkeypatch.setenv(BASE_DIR_ENV, str(BASE_LIBRARY))
+    repo = tmp_path / "acme"
+    repo.mkdir()
+    assert run(["init", "--repo", str(repo)]) == 0
+    capsys.readouterr()
+
+    assert run(["install", "--repo", str(repo)]) == 0
+
+    out = capsys.readouterr().out
+    assert "skill" not in out
+    assert not (repo / ".claude" / "skills").exists()
 
 
 def test_init_refuses_to_overwrite_an_existing_config(tmp_path: Path) -> None:
@@ -53,7 +117,7 @@ def test_init_force_replaces_an_existing_config(tmp_path: Path) -> None:
     assert run(["init", "--repo", str(repo), "--force"]) == 0
 
     config = yaml.safe_load((repo / "agents.yml").read_text(encoding="utf-8"))
-    assert config["packs"] == ["general", "stablemate"]
+    assert config["packs"] == []
 
 
 def test_init_rejects_a_repo_path_that_is_not_a_directory(tmp_path: Path) -> None:
