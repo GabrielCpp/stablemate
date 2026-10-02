@@ -46,7 +46,7 @@ from ostler.qa.plan_source import python_literal
 from ostler.qa.plan_source import scenario_lines
 from ostler.qa.plan_source import target_lines
 from ostler.qa.plan_source import target_variable
-from ostler.vet import placement as placement_mod
+from ostler import selector_forms
 
 
 MaestroLocator = tuple[str, str]
@@ -56,7 +56,7 @@ def maestro_locator(locators: Locators) -> MaestroLocator | None:
     """A `(Maestro selector key, value)` pair built from a node's own book-declared locators."""
     selector = bullet_value(next(iter(locators.selector), None))
     if selector:
-        parsed = placement_mod.parse_scheme_selector(selector)
+        parsed = selector_forms.parse_scheme_selector(selector)
         if parsed is not None and parsed[0] == "testID":
             return "id", parsed[1]
     name = bullet_value(next(iter(locators.name), None))

@@ -11,6 +11,7 @@ from types import ModuleType
 
 import pytest
 import yaml
+from ostler.selector_forms import is_addressable
 from paddock.registry import REGISTRY
 
 DATA = Path(__file__).parents[1]
@@ -52,8 +53,6 @@ TASK = _load("_task_under_test", DATA / "tasks" / "globex_qa.py")
 
 def test_every_screen_selector_is_one_the_render_scan_can_address() -> None:
     """A documented selector must be a form `ostler vet` can resolve, or the node reads missing."""
-    from ostler.vet.placement import is_addressable  # noqa: PLC0415 - a heavy import only this test needs
-
     screens = sorted((APP / "docs" / "features").rglob("gui/screens/*.md"))
     assert screens, "the fixture documents no screens"
     checked = 0

@@ -23,7 +23,7 @@ from ostler.model import Graph, UINode
 from ostler.qa.obligation_frame import BookNode, RepeatContract, RepeatTemplate, Segment, Variants, book_nodes
 from ostler.reach import NONE_TOKENS
 from ostler.untyped import JsonValue
-from ostler.vet import placement as placement_mod
+from ostler import selector_forms
 
 INTERACTIVE_ROLES = frozenset({
     "button", "link", "checkbox", "radio", "textbox", "searchbox", "combobox", "listbox",
@@ -291,7 +291,7 @@ def locator_for(node: BookNode, *, scope: tuple[str, ...] = ()) -> Locator:
             call = f'getByRole("{role}")'
         return Locator("role", playwright_call=call, role=role, name="" if _stated_none(name) else name)
     if selector:
-        scheme = placement_mod.parse_scheme_selector(selector)
+        scheme = selector_forms.parse_scheme_selector(selector)
         if scheme is not None:
             return Locator("scheme", scheme=scheme[0], value=scheme[1])
         return Locator("css", playwright_call=f'locator("{_escape(selector)}")')

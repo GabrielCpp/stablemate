@@ -8,7 +8,7 @@ The `ostler vet` command. It registers the regions of one rendered UI state agai
 - `crop.py`: cutting region snippets out of the screenshot as small PNGs, when asked.
 - `geometry.py`: the exact-rect box both sides of a vet share, and intersection over union.
 - `manifest.py`: parsing `--manifest`, the test-authored list of elements a QA script expects.
-- `placement.py`: where a documented component should sit on screen and whether it did, and which selector forms each driver accepts.
+- `placement.py`: where a component should sit on screen, and the verdict when it does not.
 - `regions.py`: merging scanned elements that share a rect into labeled regions.
 - `register.py`: the deterministic greedy IoU match between manifest elements and regions.
 - `report.py`: the vet report's shape and the `vet.md` Concept it rewrites.

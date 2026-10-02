@@ -286,7 +286,7 @@ def test_a_component_on_an_http_driven_surface_scheme_address_is_reported(repo: 
 
 
 def test_a_malformed_selector_still_trips_unaddressable_selector(repo: Path) -> None:
-    """`conflicting-selector-driver` is a second, driver-aware check beside the existing driver-blind `unaddressable-selector` (`vet.placement.is_addressable`), not a replacement for it — a CSS attribute-predicate selector still can never be matched against a real census, on any driver, and must still be reported under its own code."""
+    """`conflicting-selector-driver` is a second, driver-aware check beside the existing driver-blind `unaddressable-selector` (`selector_forms.is_addressable`), not a replacement for it — a CSS attribute-predicate selector still can never be matched against a real census, on any driver, and must still be reported under its own code."""
     write(repo / WEB_RUNBOOK_PATH, _web_runbook())
     write(repo / WEB_SCREEN_PATH, _component_screen_book('[data-state="booked"]'))
     found = [f for f in _findings(repo, "unaddressable-selector") if "#selector:" in f.ref]

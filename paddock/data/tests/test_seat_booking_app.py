@@ -17,6 +17,7 @@ from ostler import graph as graph_mod
 from ostler.model import load
 from ostler.qa.context import _obligations, _serialized_graph
 from ostler.qa.obligation_frame import book_nodes
+from ostler.selector_forms import is_addressable
 from paddock.registry import REGISTRY
 import yaml
 
@@ -65,8 +66,6 @@ def manifest(story: str) -> dict[str, list[str]]:
 
 def test_every_screen_selector_is_one_the_render_scan_can_address() -> None:
     """A documented selector must be a form `ostler vet` can resolve, or the node reads missing."""
-    from ostler.vet.placement import is_addressable  # noqa: PLC0415 - a heavy import only this test needs
-
     screens = sorted((APP / "docs" / "features").rglob("gui/screens/*.md"))
     assert screens, "the fixture documents no screens"
     for screen in screens:

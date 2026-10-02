@@ -17,6 +17,7 @@ from urllib.parse import urlparse
 from ostler import (acts, book_reach, checks, dynamic_registry, freeze, inventory, links as links_mod, markdown,
                     model, registry, schemas, select)
 from ostler import drivers, graph as graph_mod, locators as loc_mod, reach, routes as routes_mod
+from ostler import selector_forms
 from ostler.vet import placement as placement_mod
 from ostler.pages import files_in_book, in_hidden_folder
 from ostler import refs as refs_mod
@@ -711,7 +712,7 @@ def _driven_kind_parser(predicate: Callable[[str], bool], reason: str) -> Callab
 
 _DRIVER_VALUE_KINDS: dict[str, Callable[[str | None], tuple[Callable[[str], bool], str]]] = {
     "route": routes_mod.route_grammar,
-    "selector": placement_mod.selector_grammar,
+    "selector": selector_forms.selector_grammar,
 }
 
 
@@ -2386,7 +2387,7 @@ def _check_unaddressable_selector(node, rel: str, f: list[Finding]) -> None:
     values = _bullet_values(node.meta.get("selector", ""))
     for index, raw in enumerate(values, 1):
         value = raw.strip().strip("`").strip()
-        if value and not placement_mod.is_addressable(value):
+        if value and not selector_forms.is_addressable(value):
             f.append(Finding(
                 "error", "unaddressable-selector",
                 f"{node.id}: `selector:{index}` ({value}) is a form the render scan never "

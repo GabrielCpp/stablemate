@@ -30,7 +30,7 @@ from ostler.qa.plan_source import decline_captures
 from ostler.qa.plan_source import file_refusal
 from ostler.qa.plan_source import out_of_band
 from ostler.qa.plan_source import python_literal
-from ostler.vet import placement as placement_mod
+from ostler import selector_forms
 
 
 
@@ -53,7 +53,7 @@ def page_locator_expr(locators: Locators) -> str | None:
     if role and name:
         return f"qa.by_role({python_literal(role)}, name={python_literal(name)})"
     if selector:
-        if placement_mod.parse_scheme_selector(selector) is not None:
+        if selector_forms.parse_scheme_selector(selector) is not None:
             return None
         return f"qa.by_css({python_literal(selector)})"
     return None

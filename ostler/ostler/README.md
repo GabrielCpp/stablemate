@@ -53,6 +53,7 @@ says how to use it. This page says where each concern lives.
 - `schemas.py`: loading the bundled JSON Schemas and validating documents against them.
 - `section_hosts.py`: doctor's check that a section which lives on one page type appears on no other.
 - `select.py`: `ostler next-epic` and `next-story`, selection over the markdown graph.
+- `selector_forms.py`: what a component's `selector:` bullet says about the address each driver can query.
 - `source_snapshots.py`: the compact source catalogs that ground code citations.
 - `stamp.py`: `ostler stamp`, the per-citation content digests on `code:` bullets.
 - `step_commands.py`: doctor's checks on a flow step's `run:`, `health:` and `working-directory:` bullets.

@@ -80,12 +80,12 @@ not just an unlucky one.
 Off the web, there is a third spelling: a self-identifying `scheme=value` selector, e.g.
 `selector: testID=widget-table` for a React Native control. It names its own grammar in the
 string itself, so `ostler doctor` can tell it apart from a bare CSS string with no lookup of the
-node's `driver:` — see `is_addressable` in `ostler/vet/placement.py`. The recognized schemes are
+node's `driver:` — see `is_addressable` in `ostler/selector_forms.py`. The recognized schemes are
 listed there (`testID`, the prop React Native source writes and the representation Maestro's
 `id:` selector resolves against); an unrecognized scheme is rejected rather than guessed at, the
 same as any other unaddressable string. `is_addressable` is deliberately driver-blind — it asks
 only whether a string is *some* real address, never which surface's driver can query it — so a
-second check asks the question `is_addressable` will not: `placement.selector_grammar(driver)`
+second check asks the question `is_addressable` will not: `selector_forms.selector_grammar(driver)`
 holds a `web` surface's `selector:` to CSS and a `mobile` surface's to a `scheme=value` address
 or bare text, and `doctor`'s `conflicting-selector-driver` reports a selector that parsed fine
 but against the wrong one, e.g. a `testID=` selector on a component whose surface a browser
