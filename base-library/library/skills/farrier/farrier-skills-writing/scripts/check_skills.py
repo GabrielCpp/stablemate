@@ -13,7 +13,7 @@ from ostler import markdown
 CONFIG = ".agent-checks.toml"
 TABLE = "check-skills"
 
-BUDGET = 250
+BUDGET = 400
 
 ASSET_DIRS = ("references", "scripts")
 
