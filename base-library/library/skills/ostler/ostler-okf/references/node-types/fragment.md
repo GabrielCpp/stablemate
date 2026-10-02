@@ -1,0 +1,58 @@
+# `fragment`
+
+The continuation of one page that grew past the size limit: some of its sections, moved onto a
+page of their own beside it.
+
+## Identity
+
+File type. A fragment sits in its host page's folder, named `<host>-<section>` after the page and
+the section it continues. Its `host:` bullet links the host, and the host links the fragment back
+where the moved sections left. A fragment is never a host: its sections continue the host's page,
+not another fragment's.
+
+A fragment has no rules of its own. Its sections read as the host's sections, so a `## Endpoints`
+on the fragment of a `server` page is in its place, and its claims are checked as the host's
+claims. Links into a moved section point at the fragment.
+
+## When it appears
+
+Nobody writes a fragment by hand. A page past the 64 KiB limit is more than one writer can read
+and rewrite in a turn, so each edit to it truncates or drops a part, and doctor reports it as
+`page-too-large`. `ostler edit carve-fragments <page> --write` moves the subsections of its
+largest sections onto fragments until it fits, keeps every claim, and rewrites every link the move
+touches. The okf-book run does this itself before the next lap. Subsections that link each other
+by `#anchor` land on the same fragment.
+
+The carve refuses a page it cannot fit: a single subsection past what one fragment holds, or a
+host whose intros alone pass the limit. Split that subsection by hand.
+
+## Bullet keys
+
+| key | required | what it does |
+| --- | --- | --- |
+| `host` | yes | link — the one page this fragment continues |
+| `code` | no | link, **owns** its file |
+
+## Example
+
+```markdown
+---
+type: fragment
+slug: ledger-rules
+title: "Ledger: Rules"
+---
+# Ledger: Rules
+
+- host: [Ledger](ledger.md)
+
+## Rules
+
+### rule-1
+
+- rule: an expense obeys rule 1
+```
+
+## Doctor codes
+
+`fragment-without-host`, `fragment-of-fragment`, `unlisted-fragment`, and `page-too-large` on the
+host before the carve.

@@ -105,6 +105,7 @@ reference — the authority wherever this page and it disagree.
 | **noun** — domain *or* code | | | | [`concept`](references/node-types/concept.md) |
 | **artifact / data shape** | | | | [`format`](references/node-types/format.md) |
 | **operations** | | | | [`runbook`](references/node-types/runbook.md), [`environment`](references/node-types/environment.md), [`step`](references/node-types/step.md), [`fixture`](references/node-types/fixture.md) |
+| **continuation** — of a page past the size limit | | | | [`fragment`](references/node-types/fragment.md) |
 
 Each reference gives what the type is and when to reach for it rather than its neighbours, its
 identity (file or section, its folder or heading), its bullet keys in canonical order, its
