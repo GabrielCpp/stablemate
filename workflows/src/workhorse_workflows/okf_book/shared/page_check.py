@@ -22,6 +22,7 @@ from ostler import graph as graph_mod
 from ostler import index
 from ostler.book_reach import DeadPage, dead_pages
 from ostler.model import Graph, load
+from ostler.pages import files_in_book
 from ostler.qa.compile import HARNESS_LIMIT_GAPS
 from ostler.qa.plan_source import Gap
 from ostler.qa.runbook import bullet_text
@@ -113,7 +114,7 @@ def gap_problems(gaps: Iterable[Gap]) -> list[PageProblem]:
 
 def _book_page_paths(root: Path, service: str) -> list[str]:
     folder = book_dir(root, service)
-    return sorted(path.relative_to(root).as_posix() for path in folder.rglob("*.md")) if folder.is_dir() else []
+    return sorted(path.relative_to(root).as_posix() for path in files_in_book(folder)) if folder.is_dir() else []
 
 
 def _entries_problems(root: Path, service: str) -> list[PageProblem]:

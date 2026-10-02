@@ -8,6 +8,7 @@ from collections import defaultdict
 from collections.abc import Iterable
 from pathlib import Path
 
+from ostler.pages import files_in_book
 from pydantic import BaseModel, ConfigDict
 
 from workhorse_workflows.okf_book.main.nodes.progress_ledger import LapCounts, read_laps, service_laps, trend
@@ -85,7 +86,7 @@ def _concept_pages(root: Path, service: str) -> list[str]:
     folder = book_dir(root, service)
     if not folder.is_dir():
         return []
-    return sorted(rel for rel in (_rel(root, page) for page in folder.rglob("*.md")) if f"/{_CONCEPTS}/" in rel)
+    return sorted(rel for rel in (_rel(root, page) for page in files_in_book(folder)) if f"/{_CONCEPTS}/" in rel)
 
 
 def reading_list(root: Path, services: tuple[str, ...]) -> tuple[str, ...]:

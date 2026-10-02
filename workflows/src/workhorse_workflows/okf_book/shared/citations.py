@@ -5,6 +5,7 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 
+from ostler.pages import files_in_book
 from ostler.refs import code_refs, parse_code_ref
 from workhorse_workflows.okf_book.shared.entries import book_dir
 
@@ -56,4 +57,4 @@ def book_pages(root: Path, service: str) -> tuple[Path, ...]:
     folder = book_dir(root, service)
     if not folder.is_dir():
         return ()
-    return tuple(sorted(folder.rglob("*.md")))
+    return tuple(files_in_book(folder))
