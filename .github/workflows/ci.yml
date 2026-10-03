@@ -122,3 +122,31 @@ jobs:
             fi
           done < <(git rev-list "$base..$head" --no-merges)
           exit $status
+
+  install-umbrella:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.12"
+
+      - name: Build the umbrella and every wheel it pulls from the workspace
+        run: |
+          for package in ostler workhorse-agent farrier workhorse-workflows stablemate-groom stablemate; do
+            uv build --package "$package" --wheel --out-dir "$RUNNER_TEMP/wheels"
+          done
+
+      - name: Install the umbrella into a clean tool dir and run every command
+        working-directory: ${{ runner.temp }}
+        env:
+          UV_TOOL_DIR: ${{ runner.temp }}/tools
+          UV_TOOL_BIN_DIR: ${{ runner.temp }}/bin
+        run: |
+          uv tool install workhorse-workflows --with stablemate --with-executables-from farrier,stablemate-groom --find-links "$RUNNER_TEMP/wheels"
+          for command in workhorse-loop-runner workhorse-coder farrier groom; do
+            "$UV_TOOL_BIN_DIR/$command" --help >/dev/null
+          done
+          "$UV_TOOL_BIN_DIR/workhorse-loop-runner" run --dry-run
