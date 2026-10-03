@@ -88,8 +88,10 @@ def main(argv: list[str] | None = None) -> int:
     except (ValueError, FileExistsError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
-    print(f"wrote {target}")
+    shown = str(target) if target.is_absolute() else f"./{target.as_posix()}"
+    print(f"wrote {shown}")
     print("next:")
-    print(f"  uv tool install {target}")
+    print(f"  uv tool install {shown}")
+    print("  cd path/to/your/repo")
     print(f"  workhorse-{args.name} run --dry-run")
     return 0

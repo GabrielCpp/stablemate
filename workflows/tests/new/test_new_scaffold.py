@@ -130,6 +130,18 @@ def test_scaffold_refuses_an_existing_directory(tmp_path: Path, capsys: pytest.C
     assert list((tmp_path / "fix-tests").iterdir()) == []
 
 
+def test_the_install_hint_names_a_path_not_a_package(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.chdir(tmp_path)
+
+    code = scaffold.main(["fix-tests", "--check", "pytest"])
+
+    assert code == 0
+    assert "uv tool install ./fix-tests\n" in capsys.readouterr().out
+    assert (tmp_path / "fix-tests" / "pyproject.toml").is_file()
+
+
 @pytest.mark.parametrize("name", ["Fix", "fix_tests", "-fix", "fix--tests", "9fix"])
 def test_scaffold_refuses_a_name_that_is_not_a_command(tmp_path: Path, name: str) -> None:
     with pytest.raises(ValueError, match="not a workflow name"):
