@@ -24,8 +24,7 @@ shipped and is now kept only for its reasoning.
 ## The workflows
 
 - **`loop-runner`** — one state, one agent turn: hands a plan to the agent's own
-  tool-loop and lets it run to completion. The install check and, with hello-world gone,
-  the smallest example to copy when [shipping your own](https://github.com/GabrielCpp/stablemate/blob/main/workhorse/docs/AUTHORING.md#shipping-your-own-outside-this-repo).
+  tool-loop and lets it run to completion. It is the install check.
 - **`author`** — turns an approved roadmap into the plan: milestones, epics, stories
   with acceptance criteria, seeds and coverage, as a normalized planning graph ostler
   validates. The feature book is read-only to it.
@@ -39,6 +38,13 @@ shipped and is now kept only for its reasoning.
   submitted as a detached measurement job, waited on across resumes, and its artifacts
   classified deterministically — for measurements an agent turn is the wrong container
   for.
+
+`workhorse-new` is not a workflow. It writes one of your own:
+`workhorse-new fix-tests --check "pytest"` creates `./fix-tests`, a distribution whose
+agent turn loops until the check exits 0. Install it with `uv tool install ./fix-tests`,
+then [ship it](https://github.com/GabrielCpp/stablemate/blob/main/workhorse/docs/AUTHORING.md#shipping-your-own-outside-this-repo).
+[docs/first-win.md](docs/first-win.md) walks through it, from a failing test to a
+passing one.
 
 ## Authoring authority
 
