@@ -1,6 +1,7 @@
 """Which files farrier may delete, and which it must refuse to overwrite."""
 from __future__ import annotations
 
+import contextlib
 from pathlib import Path
 
 from farrier.frontmatter import frontmatter_metadata
@@ -59,9 +60,9 @@ def sweep(directory: Path) -> None:
     if not directory.is_dir():
         return
     for path in owned_files(directory):
-        path.unlink()
+        path.unlink(missing_ok=True)
     for path in sorted(
         (item for item in directory.rglob("*") if item.is_dir()), reverse=True
     ):
-        if not any(path.iterdir()):
+        with contextlib.suppress(OSError):
             path.rmdir()

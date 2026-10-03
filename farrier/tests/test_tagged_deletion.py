@@ -4,6 +4,7 @@ from pathlib import Path
 
 import pytest
 
+from farrier import ownership
 from farrier.install import main
 
 
@@ -220,3 +221,22 @@ def test_a_hand_written_agents_md_is_still_overwritten(tmp_path: Path) -> None:
     assert install(repo, library, LOCAL_CONFIG) == 0
 
     assert (repo / "AGENTS.md").read_text(encoding="utf-8") != "Mine.\n"
+
+
+def test_a_sweep_racing_another_install_does_not_fail(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    skill = tmp_path / "skills" / "db"
+    skill.mkdir(parents=True)
+    generated = skill / "SKILL.md"
+    generated.write_text(
+        "---\nname: db\ndescription: A skill.\nmetadata:\n  generated_by: farrier\n---\n",
+        encoding="utf-8",
+    )
+    listed = ownership.owned_files(tmp_path / "skills")
+    generated.unlink()
+    monkeypatch.setattr(ownership, "owned_files", lambda directory: listed)
+
+    ownership.sweep(tmp_path / "skills")
+
+    assert not skill.exists()
