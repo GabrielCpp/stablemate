@@ -1,6 +1,6 @@
 # stablemate
 
-This package installs the stablemate agent tools in one step, at versions tested together.
+This package installs the stablemate agent tools in one step, at versions that work together.
 It has no code and no command of its own. It depends on three distributions:
 
 | Distribution          | What you get                                                          |
@@ -18,8 +18,8 @@ uv tool install workhorse-workflows --with stablemate --with-executables-from fa
 You need [uv](https://docs.astral.sh/uv/) and Python 3.12 or newer.
 
 The line names `workhorse-workflows` first because uv refuses to install a package with no
-commands as a tool, and this package has none. `--with stablemate` holds all three tools at
-the versions this package pins. `--with-executables-from` puts the `farrier` and `groom`
+commands as a tool, and this package has none. `--with stablemate` holds all three tools to
+the major versions this package allows. `--with-executables-from` puts the `farrier` and `groom`
 commands on your PATH next to the workflow commands.
 
 Check the install:
@@ -32,8 +32,8 @@ groom --help
 
 ## Versions
 
-Each release of this package pins one exact version of each tool. To move all three to the
-newest release, run:
+Each release of this package allows one major version of each tool. To move all three to
+their newest release within it, run:
 
 ```bash
 uv tool upgrade workhorse-workflows

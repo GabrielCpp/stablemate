@@ -1830,12 +1830,14 @@ dependencies = [
 
 [package.optional-dependencies]
 test = [
+    { name = "packaging" },
     { name = "pytest" },
 ]
 
 [package.metadata]
 requires-dist = [
     { name = "farrier", editable = "farrier" },
+    { name = "packaging", marker = "extra == 'test'", specifier = ">=24" },
     { name = "pytest", marker = "extra == 'test'", specifier = ">=8.0" },
     { name = "stablemate-groom", editable = "groom" },
     { name = "workhorse-workflows", editable = "workflows" },

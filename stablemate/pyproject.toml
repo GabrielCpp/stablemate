@@ -1,7 +1,7 @@
 [project]
 name = "stablemate"
 version = "0.1.0"
-description = "One install for the stablemate agent tools: the workhorse workflows, farrier and groom, at versions tested together."
+description = "One install for the stablemate agent tools: the workhorse workflows, farrier and groom, at versions that work together."
 readme = "README.md"
 requires-python = ">=3.12"
 license = "MIT"
@@ -18,13 +18,13 @@ classifiers = [
   "Topic :: Utilities",
 ]
 dependencies = [
-  "workhorse-workflows==2.0.0",
-  "farrier==3.0.0",
-  "stablemate-groom==1.2.0",
+  "workhorse-workflows>=2,<3",
+  "farrier>=3,<4",
+  "stablemate-groom>=1,<2",
 ]
 
 [project.optional-dependencies]
-test = ["pytest>=8.0"]
+test = ["pytest>=8.0", "packaging>=24"]
 
 [project.urls]
 Homepage = "https://github.com/GabrielCpp/stablemate"

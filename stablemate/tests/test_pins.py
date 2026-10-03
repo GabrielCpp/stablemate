@@ -2,6 +2,9 @@ import re
 import tomllib
 from pathlib import Path
 
+from packaging.requirements import Requirement
+from packaging.specifiers import SpecifierSet
+
 PACKAGE = Path(__file__).resolve().parents[1]
 ROOT = PACKAGE.parent
 
@@ -19,14 +22,11 @@ def _member_versions() -> dict[str, str]:
     return versions
 
 
-def _pins() -> dict[str, str]:
-    pins: dict[str, str] = {}
-    for requirement in _project(PACKAGE / "pyproject.toml")["dependencies"]:
-        name, separator, version = requirement.partition("==")
-        assert separator and re.fullmatch(r"[0-9][0-9A-Za-z.+-]*", version), (
-            f"{requirement!r} is not an exact `name==version` pin"
-        )
-        pins[name] = version
+def _pins() -> dict[str, SpecifierSet]:
+    pins: dict[str, SpecifierSet] = {}
+    for written in _project(PACKAGE / "pyproject.toml")["dependencies"]:
+        requirement = Requirement(written)
+        pins[requirement.name] = requirement.specifier
     return pins
 
 
@@ -35,17 +35,14 @@ def test_every_pin_names_a_workspace_member() -> None:
     assert [name for name in _pins() if name not in members] == []
 
 
-def test_every_pin_matches_the_member_version() -> None:
+def test_every_pin_admits_the_member_version() -> None:
     members = _member_versions()
     stale = {
-        name: f"pinned {pinned}, member is {members[name]}"
-        for name, pinned in _pins().items()
-        if members.get(name) != pinned
+        name: f"pinned {specifier}, member is {members[name]}"
+        for name, specifier in _pins().items()
+        if not specifier.contains(members[name], prereleases=True)
     }
-    assert stale == {}, (
-        "a member released a new version; set the stablemate pin to it in "
-        "stablemate/pyproject.toml"
-    )
+    assert stale == {}, "a member released a new major; run make sync-pins"
 
 
 def test_the_readme_install_line_names_every_pinned_distribution() -> None:

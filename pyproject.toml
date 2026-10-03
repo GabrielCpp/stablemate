@@ -12,7 +12,7 @@
 #                                       lease and release test identities)
 #   - paddock/    -> paddock          (the benchmark harness: seeds, tasks, results —
 #                                       paddock/data/ is its data)
-#   - stablemate/ -> stablemate       (the umbrella: no code, exact pins on
+#   - stablemate/ -> stablemate       (the umbrella: no code, major ranges on
 #                                       workhorse-workflows, farrier and
 #                                       stablemate-groom, so one `uv tool install`
 #                                       brings all three)
