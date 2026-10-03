@@ -115,7 +115,7 @@ def api_scenarios(
             sinks.gaps.extend(unarranged_scenario_gap(o) for o in declared)
             continue
         covered: set[str] = set()
-        body = _scenario_body(declared, sinks.gaps, covered, sinks.captured)
+        body = _scenario_body(declared, _arranging(obligations, book), sinks.gaps, covered, sinks.captured)
         if not covered:
             continue
         emitted.covered.update(covered)
@@ -139,8 +139,8 @@ def probe_scenarios(http_owed: list[Obligation], book: BookIndex, emitted: Emitt
     probed: set[str] = set()
     for source, obligations in by_source(http_owed).items():
         ordered = sorted((o for o in obligations if o.checks), key=lambda o: o.doc_position)
-        credentials = _node_credentials(ordered)
-        callers = _node_caller_headers(ordered)
+        credentials = _node_credentials(_arranging(obligations, book))
+        callers = _node_caller_headers(_arranging(obligations, book))
         for obligation in ordered:
             probe = _probe(obligation, credentials.get(obligation.node, ()), callers.get(obligation.node, frozenset()))
             if probe is None or probe.fixture in probed:
@@ -302,6 +302,12 @@ class _UnbuiltClaimRequest:
     refusal: ScenarioRefusal
 
 
+def _arranging(obligations: list[Obligation], book: BookIndex) -> list[Obligation]:
+    """Every claim on these obligations' nodes that arranges an act, whether it checks anything or not."""
+    nodes = dict.fromkeys(obligation.node for obligation in obligations)
+    return [claim for node in nodes for claim in book.claims_by_node.get(node, [])]
+
+
 def _node_credentials(obligations: list[Obligation]) -> dict[str, tuple[CallRow, ...]]:
     """Each endpoint's `header` acts, from every claim of it that arranges one and does not expect a 401, less a name two claims set apart."""
     values: dict[str, dict[str, set[str]]] = {}
@@ -454,14 +460,14 @@ def _claim_assertions(
     return _ClaimAssertions(assertions, todos)
 
 
-def _scenario_body(obligations: list[Obligation], gaps: list[Gap], covered: set[str],
+def _scenario_body(obligations: list[Obligation], arranging: list[Obligation], gaps: list[Gap], covered: set[str],
                    captured: set[tuple[str, str]]) -> list[str]:
-    """Compile every claim's request, captures and assertions, in book order."""
+    """Compile every claim's request, captures and assertions, in book order, sending each node's credentials from every claim that arranges one, checked or not."""
     lines: list[str] = []
     produced = _Produced()
     ordered = sorted(obligations, key=lambda o: o.doc_position)
-    credentials = _node_credentials(ordered)
-    callers = _node_caller_headers(ordered)
+    credentials = _node_credentials(arranging)
+    callers = _node_caller_headers(arranging)
     for index, obligation in enumerate(ordered, start=1):
         oid = obligation.id
         observed = f"observed_{index}"

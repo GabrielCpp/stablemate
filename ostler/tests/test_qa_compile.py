@@ -574,6 +574,24 @@ def test_an_endpoint_credential_rides_on_every_claim_but_the_one_about_a_401() -
     assert 'qa.http.get("/api/things", expect_status=401)\n' in book
 
 
+def test_a_credential_arranged_under_a_claim_with_no_check_still_rides_on_the_checked_ones() -> None:
+    """A writer sets up the caller beneath a `when:` that states a precondition and checks nothing, and the claims below it are refused with 401 unless that token reaches them."""
+    signed_in = [{"name": "signed-in-editor", "args": [], "provides": "a signed-in editor",
+                  "providesKeys": ["signed-in-editor.token"]}]
+    condition, served = (f"okf:docs/features/demo/globex.md#get-things:{arm}" for arm in ("when:1", "does:1"))
+    context = _context(
+        _obligation(condition, fixturesDeclared=signed_in, docPosition=[1, 0], node="get-things",
+                    actsDeclared=[_header_act("Authorization", "Bearer @signed-in-editor.token")]),
+        _obligation(served, checksDeclared=[{"call": "ok", "name": "http_status", "args": {"code": 200}}],
+                    docPosition=[2, 0], node="get-things"),
+    )
+    source, _gaps = compile_plan_gaps(context, story="demo-story")
+    assert source is not None
+    book = source.split("_from_the_book(qa")[-1]
+    sent = 'headers={"Authorization": qa.resolve("Bearer @signed-in-editor.token")}'
+    assert f'qa.http.get("/api/things", expect_status=200, {sent})' in book
+
+
 def test_a_claim_about_a_401_stays_anonymous_though_it_repeats_the_callers_token() -> None:
     """A writer who arranges the token under every arm must not turn the claim about the anonymous caller into a signed-in request, and a bad token that claim sends on purpose still goes out."""
     signed_in = [{"name": "signed-in-editor", "args": [], "provides": "a signed-in editor",
