@@ -235,11 +235,11 @@ def _http_arrangement(rows: tuple[CallRow, ...]) -> _HttpArrangement | None:
     return arranged
 
 
-def _resolved_literal(value: CheckValue) -> str:
-    """One value as `python_literal` spells it, wrapped in `qa.resolve` when it names a reference."""
+def _resolved_literal(value: CheckValue, resolver: str = "resolve") -> str:
+    """One value as `python_literal` spells it, wrapped in `qa.<resolver>` when it names a reference."""
     literal = python_literal(value)
     if isinstance(value, str) and references.find_references(value):
-        return f"qa.resolve({literal})"
+        return f"qa.{resolver}({literal})"
     return literal
 
 
@@ -261,8 +261,8 @@ def _nested_body_literal(fields: dict[str, CheckValue]) -> str:
 
 
 def _tree_literal(tree: dict[str, Any]) -> str:
-    """One level of a nested body, each leaf spelled by `_resolved_literal`."""
-    members = (f"{json.dumps(k)}: {_tree_literal(v) if isinstance(v, dict) else _resolved_literal(v)}"
+    """One level of a nested body, each leaf spelled by `_resolved_literal` through `qa.resolve_body`."""
+    members = (f"{json.dumps(k)}: {_tree_literal(v) if isinstance(v, dict) else _resolved_literal(v, 'resolve_body')}"
                for k, v in tree.items())
     return "{" + ", ".join(members) + "}"
 

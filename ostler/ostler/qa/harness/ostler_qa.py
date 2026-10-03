@@ -777,6 +777,7 @@ class Qa:
         self._fixture_pages = {name: _fixture_page(name, spec) for name, spec in self._book_fixtures.items()}
         self._book_fixture_memo: dict[tuple[str, tuple[tuple[str, str], ...]], ToolResult] = {}
         self._node_facts: dict[str, dict[str, str]] = {}
+        self._node_structures: dict[str, dict[str, Any]] = {}
         self._lap = LapRecord(lap_dir) if lap_dir is not None else None
         self._last_fault: FixtureFault | None = None
         self._tool_env_allowed = frozenset(tool_env)
@@ -898,6 +899,13 @@ class Qa:
     def resolve(self, value: str) -> str:
         """A scenario's own value, with every embedded `@node.key`/`$name` substituted."""
         return self._resolve_ref(self.scenario_id, value)
+
+    def resolve_body(self, value: str) -> Any:
+        """A body member's value: the object or array itself when *value* is one whole `@node.key` reference to one, `resolve()` otherwise."""
+        whole = _NODE_REF.fullmatch(value)
+        if whole is not None and whole.group(2) in self._node_structures.get(whole.group(1), {}):
+            return self._node_structures[whole.group(1)][whole.group(2)]
+        return self.resolve(value)
 
     def _resolve_value(self, value: Any) -> Any:
         """`resolve()`, recursively, for a JSON-shaped dict/list body."""
@@ -1028,7 +1036,11 @@ class Qa:
             if not hit.found:
                 self._fault(fixture, last_index, "provides", "defect", f"declared provides {key!r} absent")
                 raise RuntimeError(f"qa fixture {fixture!r} does not provide {key!r} at {path!r}")
-            facts[key] = str(hit.value)
+            if isinstance(hit.value, (dict, list)):
+                self._node_structures.setdefault(fixture, {})[key] = hit.value
+                facts[key] = json.dumps(hit.value)
+            else:
+                facts[key] = str(hit.value)
         return facts
 
     def _exec_book_fixture(self, name: str, args: Mapping[str, str]) -> "ToolResult":

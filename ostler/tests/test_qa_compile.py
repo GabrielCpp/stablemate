@@ -506,7 +506,7 @@ def test_a_dotted_body_field_sends_a_nested_member() -> None:
     source, gaps = compile_plan_gaps(context, story="demo-story")
     assert source is not None
     assert _gap_kinds(gaps, oid) == []
-    assert ('json_body={"pageId": "intro", "locales": {"fr": qa.resolve("@seeded-ledger.fr"), '
+    assert ('json_body={"pageId": "intro", "locales": {"fr": qa.resolve_body("@seeded-ledger.fr"), '
             '"en": "Hello"}}') in source
 
 
@@ -727,7 +727,7 @@ def test_a_body_member_naming_a_fixture_fact_is_resolved_at_run_time() -> None:
     source, gaps = compile_plan_gaps(context, story="demo-story")
     assert source is not None
     assert _gap_kinds(gaps, oid) == []
-    assert ('json_body={"owner": qa.resolve("@seeded-acme.id"), "quantity": 3}, '
+    assert ('json_body={"owner": qa.resolve_body("@seeded-acme.id"), "quantity": 3}, '
             'headers={"X-Tenant": "acme"}') in source
 
 

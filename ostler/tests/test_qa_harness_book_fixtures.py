@@ -836,3 +836,34 @@ def test_a_book_fixture_that_names_no_page_is_refused_before_any_claim_runs(tmp_
     assert code != 0
     assert "names no page" in stdout
     assert not [r for r in records if r.get("type") == "assert"]
+
+
+STRUCTURED_FACT_SCENARIO = '''\
+@scenario(target=api, mechanism="live", covers=["ac:1"])
+def a_body_member_sends_an_object_fact_as_an_object(qa: Qa) -> None:
+    """A fixture provides a JSON object, and a body member naming it whole sends the object."""
+    qa.fixture("seeded-acme")
+    qa.check("the body member is the object", qa.resolve_body("@seeded-acme.locales") == {"fr": "Bonjour"})
+    qa.check("embedded text spells it as JSON", qa.resolve("@seeded-acme.locales") == '{"fr": "Bonjour"}')
+    qa.check("a scalar fact stays text", qa.resolve_body("@seeded-acme.slug") == "intro")
+'''
+
+
+def test_a_body_member_naming_an_object_fact_sends_the_object_not_its_text(tmp_path: Path) -> None:
+    seed = tmp_path / "seed.sh"
+    _seed_step(seed, "#!/bin/sh\necho '{\"slug\": \"intro\", \"locales\": {\"fr\": \"Bonjour\"}}'\n")
+    module = _write(tmp_path, STRUCTURED_FACT_SCENARIO)
+    book_fixtures = {
+        "seeded-acme": {
+            "steps": [{"kind": "seed", "id": "seed-it", "command": str(seed), "cwd": str(tmp_path)}],
+            "args": [], "needs": [], "secrets": [],
+            "provides": [
+                {"key": "locales", "from": "seed-it", "read": "locales"},
+                {"key": "slug", "from": "seed-it", "read": "slug"},
+            ],
+        }
+    }
+    code, stdout, records = _run(module, "a-body-member-sends-an-object-fact-as-an-object", tmp_path, book_fixtures=book_fixtures)
+    assert code == 0, stdout
+    asserted = [record for record in records if record.get("type") == "assert"]
+    assert [record["passed"] for record in asserted] == [True, True, True], asserted
