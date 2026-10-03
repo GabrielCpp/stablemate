@@ -5,12 +5,12 @@ requires-python = ">=3.12"
 [manifest]
 members = [
     "farrier",
-    "groom",
     "ostler",
     "paddock",
     "saddlebag",
     "stablemate",
     "stablemate-core",
+    "stablemate-groom",
     "workhorse-agent",
     "workhorse-workflows",
 ]
@@ -423,44 +423,6 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/a7/13/1055e1dda7882073eda533e2b96c62e55bbd2db7fda6d5ece992febc7071/greenlet-3.5.3-cp315-cp315t-win_amd64.whl", hash = "sha256:8ff8bed3e3baa20a3ea261ce00526f1898ad4801d4886fd2220580ee0ad8fadf", size = 244007, upload-time = "2026-06-26T18:22:04.353Z" },
     { url = "https://files.pythonhosted.org/packages/b4/0d/ca7d15afbdc397e3401134c9e1800d51d12b829661786187a4ad08fe484f/greenlet-3.5.3-cp315-cp315t-win_arm64.whl", hash = "sha256:b7068bd09f761f3f5b4d214c2bed063186b2a86148c740b3873e3f56d79bac31", size = 242586, upload-time = "2026-06-26T18:23:37.93Z" },
 ]
-
-[[package]]
-name = "groom"
-version = "1.2.0"
-source = { editable = "groom" }
-dependencies = [
-    { name = "jinja2" },
-    { name = "litestar", extra = ["standard"] },
-    { name = "markdown-it-py" },
-    { name = "opentelemetry-proto" },
-    { name = "platformdirs" },
-    { name = "pydantic" },
-    { name = "watchfiles" },
-    { name = "websockets" },
-    { name = "workhorse-agent" },
-]
-
-[package.optional-dependencies]
-test = [
-    { name = "playwright" },
-    { name = "pytest" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "jinja2", specifier = ">=3.1" },
-    { name = "litestar", extras = ["standard"], specifier = ">=2.10" },
-    { name = "markdown-it-py", specifier = ">=3" },
-    { name = "opentelemetry-proto", specifier = ">=1.25" },
-    { name = "platformdirs", specifier = ">=4.0" },
-    { name = "playwright", marker = "extra == 'test'", specifier = ">=1.44" },
-    { name = "pydantic", specifier = ">=2.0" },
-    { name = "pytest", marker = "extra == 'test'", specifier = ">=8.0" },
-    { name = "watchfiles", specifier = ">=0.21" },
-    { name = "websockets", specifier = ">=15" },
-    { name = "workhorse-agent", editable = "workhorse" },
-]
-provides-extras = ["test"]
 
 [[package]]
 name = "h11"
@@ -1909,6 +1871,44 @@ requires-dist = [
     { name = "platformdirs", specifier = ">=4.0" },
     { name = "pytest", marker = "extra == 'test'", specifier = ">=8.0" },
     { name = "tomli-w", specifier = ">=1.0" },
+]
+provides-extras = ["test"]
+
+[[package]]
+name = "stablemate-groom"
+version = "1.2.0"
+source = { editable = "groom" }
+dependencies = [
+    { name = "jinja2" },
+    { name = "litestar", extra = ["standard"] },
+    { name = "markdown-it-py" },
+    { name = "opentelemetry-proto" },
+    { name = "platformdirs" },
+    { name = "pydantic" },
+    { name = "watchfiles" },
+    { name = "websockets" },
+    { name = "workhorse-agent" },
+]
+
+[package.optional-dependencies]
+test = [
+    { name = "playwright" },
+    { name = "pytest" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "jinja2", specifier = ">=3.1" },
+    { name = "litestar", extras = ["standard"], specifier = ">=2.10" },
+    { name = "markdown-it-py", specifier = ">=3" },
+    { name = "opentelemetry-proto", specifier = ">=1.25" },
+    { name = "platformdirs", specifier = ">=4.0" },
+    { name = "playwright", marker = "extra == 'test'", specifier = ">=1.44" },
+    { name = "pydantic", specifier = ">=2.0" },
+    { name = "pytest", marker = "extra == 'test'", specifier = ">=8.0" },
+    { name = "watchfiles", specifier = ">=0.21" },
+    { name = "websockets", specifier = ">=15" },
+    { name = "workhorse-agent", editable = "workhorse" },
 ]
 provides-extras = ["test"]
 

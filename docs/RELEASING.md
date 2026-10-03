@@ -23,7 +23,7 @@ local `uv sync` can pass while the published dependency range is impossible to r
 Only after that smoke test do uploads proceed in dependency order:
 
 ```
-ostler → workhorse-agent → farrier → workhorse-workflows
+ostler → workhorse-agent → farrier → workhorse-workflows → stablemate-groom
 ```
 
 `stablemate-core` is not in that chain and never will be: it is vendored, not published
@@ -32,10 +32,13 @@ copies `make vendor` writes under `workhorse/` and `farrier/`, which is what mak
 release-please bump both tools — it decides what to ship from the paths a commit touched,
 so a fix committed only under `core/` would reach nobody.
 
-`groom` and `saddlebag` are versioned and get changelogs but have no upload step: the name
-`groom` on PyPI belongs to an unrelated project, and `saddlebag` is not in scope yet.
-Adding either means registering its trusted publisher on PyPI and adding its two steps to
-the workflow.
+groom publishes as `stablemate-groom`. The name `groom` on PyPI belongs to an unrelated
+project. The import package, the `groom` command and the release-please component keep the
+short name, so its tags stay `groom-v<version>`.
+
+`saddlebag` is versioned and gets changelogs but has no upload step, because it is not in
+scope yet. Adding it means registering its trusted publisher on PyPI and adding its two
+steps to the workflow.
 
 | Commit since last tag | Bump |
 | --- | --- |

@@ -1,5 +1,5 @@
 [project]
-name = "groom"
+name = "stablemate-groom"
 version = "1.2.0"
 description = "Local push-driven dashboard for workhorse agent-workflow operator gates — tends the horses while they run."
 readme = "README.md"

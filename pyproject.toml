@@ -5,8 +5,9 @@
 #                                       workhorse discovers by entry point)
 #   - farrier/    -> farrier          (renders the prompt library into a repo)
 #   - ostler/     -> ostler           (tends a repo's docs/ knowledge graph)
-#   - groom/      -> groom            (local dashboard + push notifications for
-#                                       workhorse operator gates)
+#   - groom/      -> stablemate-groom (local dashboard + push notifications for
+#                                       workhorse operator gates; the import package
+#                                       and the command stay `groom`)
 #   - saddlebag/  -> saddlebag        (runtime credential pool: scan, select,
 #                                       lease and release test identities)
 #   - paddock/    -> paddock          (the benchmark harness: seeds, tasks, results —

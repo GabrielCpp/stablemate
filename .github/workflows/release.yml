@@ -130,7 +130,7 @@ jobs:
       RELEASED: >-
         ${{ needs.release-please.outputs.releases_created == 'true'
             && needs.release-please.outputs.paths_released
-            || '["ostler","workhorse","farrier","workflows"]' }}
+            || '["ostler","workhorse","farrier","workflows","groom"]' }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -165,6 +165,10 @@ jobs:
       - name: Build workhorse-workflows
         if: contains(fromJSON(env.RELEASED), 'workflows')
         run: uv build --package workhorse-workflows --out-dir dist/workhorse-workflows
+
+      - name: Build stablemate-groom
+        if: contains(fromJSON(env.RELEASED), 'groom')
+        run: uv build --package stablemate-groom --out-dir dist/stablemate-groom
 
       - name: Verify candidate dependency metadata
         if: contains(fromJSON(env.RELEASED), 'workflows')
@@ -213,7 +217,14 @@ jobs:
           skip-existing: true
           packages-dir: dist/workhorse-workflows
 
-      # groom and saddlebag are versioned and get changelogs, but have no publish step:
-      # the name `groom` on PyPI belongs to an unrelated project, and saddlebag is not
-      # in scope. Releasing either means adding its steps here and registering a pending
-      # trusted publisher first.
+      - name: Publish stablemate-groom
+        if: contains(fromJSON(env.RELEASED), 'groom')
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          skip-existing: true
+          packages-dir: dist/stablemate-groom
+
+      # saddlebag is versioned and gets changelogs, but has no publish step: it is not in
+      # scope. Releasing it means adding its steps here and registering a pending trusted
+      # publisher first. groom publishes as `stablemate-groom`, because the name `groom`
+      # on PyPI belongs to an unrelated project.

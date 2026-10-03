@@ -153,7 +153,7 @@ a trusted machine.
 
 ```
 stablemate/groom/
-    pyproject.toml       # name "groom"; deps: litestar[standard], workhorse-agent (workspace dep), watchfiles
+    pyproject.toml       # name "stablemate-groom"; deps: litestar[standard], workhorse-agent (workspace dep), watchfiles
     groom/
         __init__.py
         models.py         # WorkflowState enum; GateInfo, WorkflowContainer, AnswerResult dataclasses

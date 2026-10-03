@@ -1,8 +1,7 @@
 # groom — build and test tasks.
 #
-# groom is versioned by release-please but has no publish step in
-# .github/workflows/release.yml: the name `groom` on PyPI belongs to an unrelated
-# project. Install it from this checkout (`pipx install ./groom`) until that is settled.
+# The distribution is `stablemate-groom`, because the name `groom` on PyPI belongs to an
+# unrelated project. The import package and the `groom` command keep the short name.
 
 .DEFAULT_GOAL := help
 
@@ -51,10 +50,9 @@ build: clean ## Build sdist + wheel into this package's dist/
 check: build ## Build and list the wheel contents (verify packaged files)
 	@unzip -l $(DIST)/$(subst -,_,$(NAME))-$(VERSION)-py3-none-any.whl
 
-# There is deliberately no `verify-install` here. The sibling packages' version of it
-# (`uv run --with groom --refresh-package groom`) would install the unrelated PyPI
-# project of the same name and report on it — a smoke test that passes on someone
-# else's code is worse than none.
+.PHONY: verify-install
+verify-install: ## Install the published package from PyPI and run --help
+	uv run --with $(NAME) --no-project --refresh-package $(NAME) -- groom --help
 
 .PHONY: clean
 clean: ## Remove build artifacts
