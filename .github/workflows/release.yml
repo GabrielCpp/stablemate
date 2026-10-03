@@ -60,10 +60,10 @@ jobs:
           config-file: .release-please-config.json
           manifest-file: .release-please-manifest.json
 
-      # uv.lock records every workspace member's own version, so release-please's bump
-      # stales it the moment it writes the pyprojects. Refreshing it here means the PR a
-      # human reviews is a tree that `uv sync --locked` accepts, rather than one that
-      # fails on the next clone.
+      # release-please's bump stales two things the moment it writes the pyprojects: a pin
+      # on a sibling whose new major falls outside it, and uv.lock, which records every
+      # member's own version. Fixing both here means the PR a human reviews is a tree that
+      # `make test` and `uv sync --locked` accept, rather than one that fails after tagging.
       - uses: actions/checkout@v4
         if: steps.rp.outputs.pr
         with:
@@ -72,14 +72,16 @@ jobs:
         if: steps.rp.outputs.pr
         with:
           python-version: "3.12"
-      - name: Refresh uv.lock on the release branch
+      - name: Sync sibling pins and uv.lock on the release branch
         if: steps.rp.outputs.pr
         run: |
+          uv run --no-project --with packaging python scripts/sync_pins.py
           uv lock
-          if ! git diff --quiet uv.lock; then
+          if ! git diff --quiet; then
             git config user.name  "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git commit -m "chore: refresh uv.lock for the release" uv.lock
+            git add uv.lock '*/pyproject.toml'
+            git commit -m "chore: sync sibling pins and uv.lock for the release"
             git push
           fi
 

@@ -235,6 +235,10 @@ vendor: ## Copy core/stablemate_core into workhorse, farrier and ostler (run it 
 	# released package and would reach nobody.
 	uv run python scripts/vendor_core.py
 
+.PHONY: sync-pins
+sync-pins: ## Widen each pin on a sibling whose new major falls outside it (the release job runs this)
+	uv run python scripts/sync_pins.py
+
 .PHONY: check-vendor
 check-vendor: ## Guard the vendored copies (they must match core/stablemate_core byte for byte)
 	# Two copies of a config *writer* is the failure this repo already had once. They are

@@ -36,22 +36,22 @@ groom publishes as `stablemate-groom`. The name `groom` on PyPI belongs to an un
 project. The import package, the `groom` command and the release-please component keep the
 short name, so its tags stay `groom-v<version>`.
 
-`stablemate` is the umbrella. It has no code and pins exact versions of
+`stablemate` is the umbrella. It has no code and allows one major version each of
 `workhorse-workflows`, `farrier` and `stablemate-groom`, so one `uv tool install` brings all
-three. It uploads last, because its pins must already be on the index.
+three. It uploads last, because the versions it allows must already be on the index.
 
-The pins do not follow a member's release on their own. A test in `stablemate/tests`
-fails whenever a pin differs from that member's version, so a stale pin blocks `make test`
-and the `verify` job rather than shipping. When a release PR bumps one of the three:
+A release PR bumps each member's own version, but never the pins other members hold on
+it. The release job closes that gap on the release branch, right after release-please
+writes it: `scripts/sync_pins.py` widens every pin on a member whose new version falls
+outside it to that member's major (`>=4,<5`), then `uv lock` runs, and both land as one
+`chore:` commit on the PR. The tree you merge already passes the pin tests, so nothing
+fails after the tags exist.
 
-1. Read the new version off the release PR.
-2. On main, set that pin in `stablemate/pyproject.toml` and commit it as
-   `fix(stablemate): pin <member> <version>`.
-3. Run `make release` again. The refreshed PR now releases the umbrella too, and its tree
-   passes the pin test.
-4. Merge it.
-
-Between steps 2 and 4, the pin test fails on main. Keep that window short.
+A minor or patch release moves no pin, because the new version is still inside the range.
+Only a new major rewrites one. The package that holds a rewritten pin is not released for
+it: release-please never sees that commit as a reason to bump. Its version already on
+PyPI keeps the old range, which still resolves, and the new range ships with that
+package's next release. `make sync-pins` runs the same rewrite locally.
 
 `saddlebag` is versioned and gets changelogs but has no upload step, because it is not in
 scope yet. Adding it means registering its trusted publisher on PyPI and adding its two
