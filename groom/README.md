@@ -71,8 +71,9 @@ spans, per-node timings and error status, filterable without leaving the browser
 
 ## Install
 
-groom is not on PyPI (that name belongs to an unrelated project), so install it from a
-checkout of the [stablemate](https://github.com/GabrielCpp/stablemate) workspace:
+groom will publish to PyPI as `stablemate-groom`, because the name `groom` belongs to an
+unrelated project. Until that release, install it from a checkout of the
+[stablemate](https://github.com/GabrielCpp/stablemate) workspace:
 
 ```bash
 pipx install ./groom        # isolated CLI on your PATH

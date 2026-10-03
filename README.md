@@ -171,7 +171,7 @@ was last checked.
 | What | State | Checked |
 | --- | --- | --- |
 | The dashboard, [groom](groom/): answers a run's questions from the browser and pages you when a run stalls | Runs from a checkout. It will publish as `stablemate-groom`, because the name `groom` on PyPI belongs to another project. | 2026-10-03 |
-| One install line for every command: `uv tool install stablemate --with-executables-from workhorse-workflows,farrier,stablemate-groom` | Not on PyPI yet | 2026-10-03 |
+| One install line for every command: `uv tool install workhorse-workflows --with stablemate --with-executables-from farrier,stablemate-groom` | Not on PyPI yet | 2026-10-03 |
 | `workhorse-new NAME --check CMD`: wraps one check from your repo in a workflow that loops the agent until the check passes | Not on PyPI yet | 2026-10-03 |
 | `workhorse-loop-runner`, the install check above | Next `workhorse-workflows` release | 2026-10-03 |
 | A site with a replay of a real multi-day run | Waits for launch | 2026-10-03 |
@@ -198,7 +198,7 @@ packages that work alongside an agent prompt library:
 | [`workflows/`](workflows/) | [`workhorse-workflows`](https://pypi.org/project/workhorse-workflows/) | The workflows themselves — `loop-runner`, `author`, `coder`, `research` — as Python, each declaring its own `workhorse-<name>` command. |
 | [`farrier/`](farrier/) | [`farrier`](https://pypi.org/project/farrier/) | Renders an agent-neutral prompt library into a repository's Codex/Claude/Copilot adapters and launcher. |
 | [`ostler/`](ostler/) | [`ostler`](https://pypi.org/project/ostler/) | Tends a repo's `docs/` knowledge graph through its CLI and the in-process facade workflows use. |
-| [`groom/`](groom/) | — (unpublished) | Local dashboard + OTLP collector for running workflows: answers operator gates from the browser and pages you when a run stalls. Optional. |
+| [`groom/`](groom/) | `stablemate-groom` (unpublished) | Local dashboard + OTLP collector for running workflows: answers operator gates from the browser and pages you when a run stalls. Optional. |
 | [`saddlebag/`](saddlebag/) | `saddlebag` (unpublished) | Credentials and environment manifests a workflow needs at run time, kept out of the repo. Optional. |
 | [`paddock/`](paddock/) | `paddock` (unpublished) | Benchmark harness for reproducible workflow trials and task-owned scoring. |
 | [`core/`](core/) | — (vendored, never published) | Shared plumbing the tools must agree on: the home config, base-library discovery, the base-library cache. `make vendor` copies it into `workhorse`, `farrier` and `ostler`, which ship it inside their own wheels; there is nothing to install. |
