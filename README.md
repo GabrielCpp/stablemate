@@ -9,20 +9,20 @@
 [![Python](https://img.shields.io/badge/python-3.12%2B-blue)](https://www.python.org/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
-**Your agent loop dies at 3am. stablemate's doesn't.**
+**Don't take your agent's word for it.**
 
-Run your coding agent unattended for days, on the CLI subscription you already pay for:
-Claude, Codex, Copilot, Cline or OpenCode. When the process crashes, the run resumes.
-When the cap hits, it sleeps until the reset. When the agent needs a decision, it asks
-you instead of guessing.
+stablemate tests, reviews and QAs the work before you see it.
 
-| | A bash loop around `claude -p` | stablemate |
-| --- | --- | --- |
-| The process crashes | The run is gone | Resumes from the last checkpoint |
-| The subscription cap hits | Fails, or spins until morning | Reads the reset time and sleeps until it |
-| The agent needs a decision | Guesses | Parks on a question you answer from the browser |
-| Something odd happened at 3am | Scrollback, if you kept it | Every prompt, reply and event on disk |
-| The agent says "done" | You take its word | Tests, review and QA from separate contexts |
+Today you write your rules in a CLAUDE.md and hope the agent follows them. It reads
+them, then says done with a test still failing. It reviews its own work in the context
+that wrote it, and it guesses when it should ask. stablemate turns those rules into
+workflow steps. A step is a check the run has to pass before it moves on, and the agent
+that did the work never signs it off. The run drives the agent CLI you already pay for:
+Claude, Codex, Copilot, Cline or OpenCode.
+
+A run acts without asking for permission, because it starts `claude` with
+`--dangerously-skip-permissions`. Isolating it is your job: a container, a VM or a
+throwaway checkout.
 
 ```bash
 uv tool install workhorse-workflows     # or: pipx install workhorse-workflows
@@ -30,51 +30,31 @@ uv tool install farrier
 workhorse-loop-runner run --dry-run     # the install check; needs no agent CLI
 ```
 
-![groom's dashboard: a blocked coder run asking the operator to pick a storage backend, with the answer typed and ready to send](docs/features/groom/gui/screenshots/operator-answers-blocked-gate-answer-typed.png)
+| You write in CLAUDE.md | What the agent does | What `workhorse-coder` does |
+| --- | --- | --- |
+| "Keep the linter clean and the tests green" | Says done with a red check | Reworks the pull request until its CI checks pass |
+| "Get it reviewed" | Reviews its own work in the same context | A separate turn reviews the diff, and the story loops back until every finding is settled |
+| "Make sure it works" | Trusts the tests it wrote | QA drives the running app against the feature's docs, with the code out of the room |
+| "Ask me if unsure" | Guesses | Parks on a question and waits for your answer |
+| "Keep going overnight" | Stops at the usage limit | Sleeps until the reset and resumes from its checkpoint |
 
-## Beyond the loop: a lifecycle you can install
+## How a piece of work moves
 
-The engine is half of it. stablemate is an AI-native software development lifecycle.
-It is not a prompt collection. It is a toolchain of agent workflows that plan, implement,
-review and QA software as checkpointed state machines.
+1. **You plan** in the agent session you already run. `farrier` installs the skills that
+   teach it the plan format, into your home or into one repo.
+2. **`workhorse-author`** turns an approved roadmap into epics and stories with
+   acceptance criteria, written into your repo's `docs/`. The docs checker validates
+   them.
+3. **`workhorse-coder`** takes each story. It implements it, has it reviewed in a fresh
+   context, writes what it built into the feature docs, and QAs the running app against
+   those docs. Then it opens a pull request and gets CI green.
+4. **You answer** when a run cannot decide. It parks on a question for hours if it has
+   to, and continues the moment you reply:
+   `workhorse-coder control --run <id> answer --text "go"`.
 
-The premise is the one the emerging AI-native SDLC playbooks (Anthropic's
-[is a good statement of it](https://claude.com/blog/the-ai-native-sdlc-playbook)) argue
-for: agents can do most of the work, but what keeps the output shippable is the
-*process* around them — intent written down before code, review against engineering
-standards, verification that does not take the implementer's word for it, a human
-reachable at the moments that need one. stablemate is that process as running,
-vendor-neutral code: the artifacts are markdown in your repo, the workflows are Python
-state machines, and every claim a run makes leaves a directory you can audit.
-
-Two things have to be true for that to work in practice, and they are the two halves of
-this repo: the runs must be **verified from independent evidence**
-([the methodology](#the-methodology-three-evidence-bases-none-of-them-the-implementers)),
-and the runs must **survive being unattended**
-([the engine](#why-an-engine-and-not-a-bash-loop)). A third is what the work is about
-right now: the evidence QA checks against is a *book* the toolchain writes itself, and
-QA is exactly as good as that book
-([where the work is](#where-the-work-is-the-book-behind-qa)).
-
-## From intent to evidence
-
-One story's path through the toolchain, tool by tool:
-
-- **[author](workflows/)** takes an approved roadmap and writes the plan: milestones,
-  epics and vertical stories with acceptance criteria, as a normalized docs graph in the
-  repo that [ostler](ostler/) validates.
-- **[coder](workflows/)** takes a story from that plan, implements it, tests it, and has
-  it reviewed against the engineering skills [farrier](farrier/) installs from the
-  [base library](base-library/) — one versioned library, so a standard changes in one
-  place and every repository's installed copy follows.
-- **coder's Docs phase**, after review and before QA, writes what was built into the
-  repo's **feature book**: user journeys, surfaces, and the checks that observe them, each
-  claim grounded in the source file it was read from.
-- **coder's QA** holds the *running application* to that book, with the code not in the
-  room, and a story passes on recorded evidence or parks for a human.
-- **[workhorse](workhorse/)** keeps all of it running across crashes, subscription caps
-  and days; **[groom](groom/)** is where you answer the questions a run cannot, and read
-  back what it did.
+The engine under every step keeps the run alive across crashes, usage limits and days.
+Every prompt, reply and event lands in a run directory you can read afterwards. What is
+installable today and what is still in progress is under [Status](#status).
 
 ## The methodology: three evidence bases, none of them the implementer's
 
@@ -164,8 +144,8 @@ toolchain exists:
   checkpoint — the artifacts that turn "it did something weird at 3am" into a diff you
   can read.
 - **A loop can't ask you anything.** Operator gates park a run on a question only a
-  human can answer and resume when it is answered — from the browser, hours later,
-  via [groom](groom/), as in the screenshot at the top of this page.
+  human can answer and resume when it is answered, hours later, from the terminal or
+  from [groom](groom/)'s browser dashboard (see [Status](#status)).
 
 The composite is the point: **multi-day, unattended runs on subscription-billed agent
 CLIs** — Claude, Codex, Copilot, Cline, OpenCode — with a repo-local planning graph and
@@ -173,6 +153,39 @@ asynchronous human gates. That durability is what makes the methodology above
 affordable: three verification legs per story is a lot of agent turns, and they only
 pay for themselves when nobody has to babysit them. Durable is not lenient, though: a
 run kept alive for days still parks on missing evidence rather than passing without it.
+
+## Status
+
+What runs from PyPI today, and what is still being built. Each row carries the date it
+was last checked.
+
+**Installable today**
+
+| What | How | Checked |
+| --- | --- | --- |
+| The workflows `author`, `coder` and `research`, each as a `workhorse-<name>` command, with the engine and the docs checker inside | `uv tool install workhorse-workflows` (2.0.0) | 2026-10-03 |
+| The skill library renderer, `farrier` | `uv tool install farrier` (3.0.0) | 2026-10-03 |
+
+**In progress**
+
+| What | State | Checked |
+| --- | --- | --- |
+| The dashboard, [groom](groom/): answers a run's questions from the browser and pages you when a run stalls | Runs from a checkout. It will publish as `stablemate-groom`, because the name `groom` on PyPI belongs to another project. | 2026-10-03 |
+| One install line for every command: `uv tool install stablemate --with-executables-from workhorse-workflows,farrier,stablemate-groom` | Not on PyPI yet | 2026-10-03 |
+| `workhorse-new NAME --check CMD`: wraps one check from your repo in a workflow that loops the agent until the check passes | Not on PyPI yet | 2026-10-03 |
+| `workhorse-loop-runner`, the install check above. It replaces `workhorse-hello-world`, which 2.0.0 still ships. | Next `workhorse-workflows` release | 2026-10-03 |
+| A site with a replay of a real multi-day run | Waits for launch | 2026-10-03 |
+
+The dashboard, once installed:
+
+![groom's dashboard: a blocked coder run asking the operator to pick a storage backend, with the answer typed and ready to send](docs/features/groom/gui/screenshots/operator-answers-blocked-gate-answer-typed.png)
+
+The direction: you hand work to the agent subscription you already pay for, and you get
+back a pull request that passed the gates a colleague's would. Those gates are tests
+written against the story, a review from a context that never saw the implementation, QA
+against the feature's own documentation, and a question to you when the run cannot
+decide. The standards the gates load are your own, installed once across every agent CLI
+you use.
 
 ## What's in the box
 
@@ -250,9 +263,9 @@ make install                                 # the workspace venv + the git hook
 uv run workhorse-loop-runner run --dry-run
 ```
 
-`groom` and `saddlebag` are optional add-ons — no base workflow requires either — and
-neither is on PyPI: the name `groom` on the index belongs to an unrelated project, and
-`saddlebag` is not in scope yet. Both run from a checkout.
+`groom` and `saddlebag` are optional add-ons, and no base workflow requires either.
+Neither is on PyPI yet, so both run from a checkout. `groom` will publish as
+`stablemate-groom` (see [Status](#status)).
 
 `stablemate-core` is on neither list because it is not a distribution at all: `workhorse`
 and `farrier` each carry a copy of it, so an install resolves from the index alone with
