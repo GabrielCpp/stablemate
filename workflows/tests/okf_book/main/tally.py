@@ -129,7 +129,7 @@ def repairer_also_editing(repo: Path, *pages: str) -> ScriptedRunner:
 
 
 def journey_problems_until_noted(root: Path, service: str) -> tuple[PageProblem, ...]:
-    return tuple(PageProblem(p.page, p.text, needs_journey=True) for p in page_problems_until_noted(root, service))
+    return tuple(PageProblem(p.page, p.text, needs_journey=True, node=f"{p.page}#track") for p in page_problems_until_noted(root, service))
 
 
 def page_problems_until_noted(root: Path, _service: str) -> tuple[PageProblem, ...]:

@@ -47,15 +47,20 @@ def _claim_new_flow_page(root: Path, journey: JourneyPages, page: str, claimed_f
     return path
 
 
-def _batch(
-    root: Path, journey_costs: list[PageCost], filling_batch_units: list[PageCost], journey: JourneyPages | None, claimed_flow_pages: set[str]
-) -> RepairBatch:
-    pages = _repairs_joined_by_page(filling_batch_units)
+def _offered_flow_page(
+    root: Path, journey: JourneyPages | None, units: list[PageCost], off_flow_pages: frozenset[str], claimed_flow_pages: set[str]
+) -> str:
+    """The new flow page a batch may write: one named for its first page on no flow, or none when no page of it is on no flow."""
+    off_flow = next((unit.repair.page for unit in units if unit.repair.page in off_flow_pages), None)
+    return _claim_new_flow_page(root, journey, off_flow, claimed_flow_pages) if journey and off_flow else ""
+
+
+def _batch(journey_costs: list[PageCost], filling_batch_units: list[PageCost], journey: JourneyPages | None, new_flow_page: str) -> RepairBatch:
     return RepairBatch(
-        pages=pages,
+        pages=_repairs_joined_by_page(filling_batch_units),
         tokens=batch_tokens([*journey_costs, *filling_batch_units]),
         journey=journey,
-        new_flow_page=_claim_new_flow_page(root, journey, pages[0].page, claimed_flow_pages) if journey else "",
+        new_flow_page=new_flow_page,
     )
 
 
@@ -116,16 +121,17 @@ def _pack(
     oversized_parts: list[OversizedPart] = []
     filling_batch_units: list[PageCost] = []
     claimed_flow_pages: set[str] = set(journey.pages) if journey else set()
+    off_flow_pages = frozenset(page for page, problems in by_page.items() if any(problem.node for problem in problems))
     for page, problems in by_page.items():
         split = splitter.split_page(page, problems)
         oversized_parts.extend(split.oversized_parts)
         for unit in split.units:
             if filling_batch_units and batch_tokens([*read_journey, *filling_batch_units, unit]) > ceiling:
-                batches.append(_batch(files.root, read_journey, filling_batch_units, journey, claimed_flow_pages))
+                batches.append(_batch(read_journey, filling_batch_units, journey, _offered_flow_page(files.root, journey, filling_batch_units, off_flow_pages, claimed_flow_pages)))
                 filling_batch_units = []
             filling_batch_units.append(unit)
     if filling_batch_units:
-        batches.append(_batch(files.root, read_journey, filling_batch_units, journey, claimed_flow_pages))
+        batches.append(_batch(read_journey, filling_batch_units, journey, _offered_flow_page(files.root, journey, filling_batch_units, off_flow_pages, claimed_flow_pages)))
     return PackedRepairs(batches=tuple(batches), oversized_parts=tuple(oversized_parts))
 
 

@@ -105,7 +105,7 @@ def test_each_journey_batch_may_write_one_new_flow_page_named_when_it_is_planned
     pages = [_page(tmp_path, f"{folder}/add.md", cites=False) for folder in ("ops", "admin")]
     journey = JourneyPages(pages=(flow,), flow_folder=f"{BOOK}/flows")
 
-    batches = pack_repairs(tmp_path, {page: (PageProblem(page, "p", needs_journey=True),) for page in pages}, journey, ceiling=2 * ONE_PAGE_TOKENS).batches
+    batches = pack_repairs(tmp_path, {page: (PageProblem(page, "p", needs_journey=True, node=f"{page}#add"),) for page in pages}, journey, ceiling=2 * ONE_PAGE_TOKENS).batches
 
     assert [batch.new_flow_page for batch in batches] == [f"{BOOK}/flows/add-2.md", f"{BOOK}/flows/add-3.md"]
     assert batches[0].owns(f"{BOOK}/flows/add-2.md")
@@ -211,6 +211,17 @@ def test_a_new_flow_page_skips_the_names_an_earlier_round_left_on_disk(tmp_path:
     page = _page(tmp_path, "ops/add.md", cites=False)
     journey = JourneyPages(pages=(flow,), flow_folder=f"{BOOK}/flows")
 
-    batches = pack_repairs(tmp_path, {page: (PageProblem(page, "p", needs_journey=True),)}, journey, ceiling=2 * ONE_PAGE_TOKENS).batches
+    batches = pack_repairs(tmp_path, {page: (PageProblem(page, "p", needs_journey=True, node=f"{page}#add"),)}, journey, ceiling=2 * ONE_PAGE_TOKENS).batches
 
     assert [batch.new_flow_page for batch in batches] == [f"{BOOK}/flows/add-3.md"]
+
+
+def test_a_page_nothing_reaches_is_offered_no_new_flow_page(tmp_path: Path) -> None:
+    flow = _page(tmp_path, "flows/add.md", cites=False)
+    dead = _page(tmp_path, "flows/add-2.md", cites=False)
+    journey = JourneyPages(pages=(flow,), flow_folder=f"{BOOK}/flows")
+
+    batches = pack_repairs(tmp_path, {dead: (PageProblem(dead, "p", needs_journey=True),)}, journey, ceiling=2 * ONE_PAGE_TOKENS).batches
+
+    assert [batch.new_flow_page for batch in batches] == [""]
+    assert not batches[0].owns(f"{BOOK}/flows/add-3.md")
