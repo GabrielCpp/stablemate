@@ -12,6 +12,10 @@
 #                                       lease and release test identities)
 #   - paddock/    -> paddock          (the benchmark harness: seeds, tasks, results —
 #                                       paddock/data/ is its data)
+#   - stablemate/ -> stablemate       (the umbrella: no code, exact pins on
+#                                       workhorse-workflows, farrier and
+#                                       stablemate-groom, so one `uv tool install`
+#                                       brings all three)
 #   - core/       -> (no distribution)  (shared plumbing: the home config, base-library
 #                                       discovery, the base-library cache. A member so it
 #                                       can be tested and imported in a checkout, but it
@@ -39,13 +43,13 @@
 # packages are built and released independently.
 
 [project]
-name = "stablemate"
+name = "stablemate-workspace"
 version = "0.0.0"
-description = "Workspace anchor for the workhorse-agent, farrier, ostler, groom and saddlebag packages (not published)."
+description = "Workspace anchor for the stablemate, workhorse-agent, farrier, ostler, stablemate-groom and saddlebag packages (not published)."
 requires-python = ">=3.12"
 
 [tool.uv.workspace]
-members = ["core", "workhorse", "workflows", "farrier", "ostler", "groom", "saddlebag", "paddock"]
+members = ["core", "workhorse", "workflows", "farrier", "ostler", "groom", "saddlebag", "paddock", "stablemate"]
 
 [dependency-groups]
 dev = [
@@ -195,7 +199,7 @@ strict = [
 # contents are not this workspace's code.
 include = [
     "core", "workhorse", "workflows", "farrier", "ostler", "groom", "saddlebag",
-    "paddock", "scripts", "docs",
+    "paddock", "stablemate", "scripts", "docs",
 ]
 exclude = [
     "**/node_modules",
@@ -254,6 +258,9 @@ root = "paddock/tests"
 
 [[tool.basedpyright.executionEnvironments]]
 root = "saddlebag/tests"
+
+[[tool.basedpyright.executionEnvironments]]
+root = "stablemate/tests"
 
 [[tool.basedpyright.executionEnvironments]]
 root = "scripts/tests"

@@ -24,6 +24,7 @@
     "farrier": { "component": "farrier" },
     "ostler": { "component": "ostler" },
     "groom": { "component": "groom" },
-    "saddlebag": { "component": "saddlebag" }
+    "saddlebag": { "component": "saddlebag" },
+    "stablemate": { "component": "stablemate" }
   }
 }

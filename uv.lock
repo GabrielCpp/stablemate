@@ -11,6 +11,7 @@ members = [
     "stablemate",
     "stablemate-core",
     "stablemate-groom",
+    "stablemate-workspace",
     "workhorse-agent",
     "workhorse-workflows",
 ]
@@ -1819,38 +1820,27 @@ wheels = [
 
 [[package]]
 name = "stablemate"
-version = "0.0.0"
-source = { virtual = "." }
+version = "0.1.0"
+source = { editable = "stablemate" }
+dependencies = [
+    { name = "farrier" },
+    { name = "stablemate-groom" },
+    { name = "workhorse-workflows" },
+]
 
-[package.dev-dependencies]
-dev = [
-    { name = "basedpyright" },
-    { name = "hvac" },
-    { name = "ostler" },
-    { name = "pillow" },
-    { name = "playwright" },
+[package.optional-dependencies]
+test = [
     { name = "pytest" },
-    { name = "pytest-timeout" },
-    { name = "pytest-xdist" },
-    { name = "ruff" },
-    { name = "ty" },
 ]
 
 [package.metadata]
-
-[package.metadata.requires-dev]
-dev = [
-    { name = "basedpyright", specifier = ">=1.31" },
-    { name = "hvac", specifier = ">=2.0" },
-    { name = "ostler", editable = "ostler" },
-    { name = "pillow", specifier = ">=10.0" },
-    { name = "playwright", specifier = ">=1.40" },
-    { name = "pytest", specifier = ">=9.0.3" },
-    { name = "pytest-timeout", specifier = ">=2.3" },
-    { name = "pytest-xdist", specifier = ">=3.6" },
-    { name = "ruff", specifier = ">=0.15.20" },
-    { name = "ty", specifier = ">=0.0.65" },
+requires-dist = [
+    { name = "farrier", editable = "farrier" },
+    { name = "pytest", marker = "extra == 'test'", specifier = ">=8.0" },
+    { name = "stablemate-groom", editable = "groom" },
+    { name = "workhorse-workflows", editable = "workflows" },
 ]
+provides-extras = ["test"]
 
 [[package]]
 name = "stablemate-core"
@@ -1911,6 +1901,41 @@ requires-dist = [
     { name = "workhorse-agent", editable = "workhorse" },
 ]
 provides-extras = ["test"]
+
+[[package]]
+name = "stablemate-workspace"
+version = "0.0.0"
+source = { virtual = "." }
+
+[package.dev-dependencies]
+dev = [
+    { name = "basedpyright" },
+    { name = "hvac" },
+    { name = "ostler" },
+    { name = "pillow" },
+    { name = "playwright" },
+    { name = "pytest" },
+    { name = "pytest-timeout" },
+    { name = "pytest-xdist" },
+    { name = "ruff" },
+    { name = "ty" },
+]
+
+[package.metadata]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "basedpyright", specifier = ">=1.31" },
+    { name = "hvac", specifier = ">=2.0" },
+    { name = "ostler", editable = "ostler" },
+    { name = "pillow", specifier = ">=10.0" },
+    { name = "playwright", specifier = ">=1.40" },
+    { name = "pytest", specifier = ">=9.0.3" },
+    { name = "pytest-timeout", specifier = ">=2.3" },
+    { name = "pytest-xdist", specifier = ">=3.6" },
+    { name = "ruff", specifier = ">=0.15.20" },
+    { name = "ty", specifier = ">=0.0.65" },
+]
 
 [[package]]
 name = "tomli-w"

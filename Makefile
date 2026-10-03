@@ -93,6 +93,7 @@ test: ## Run lint and every package suite, exactly as CI does (the check-* guard
 	$(MAKE) -C groom test
 	$(MAKE) -C saddlebag test
 	$(MAKE) -C paddock test
+	$(MAKE) -C stablemate test
 
 .PHONY: bench-doctor
 bench-doctor: ## Measure `ostler doctor` against a book: make bench-doctor DOCS=<path> [JSON=1]
@@ -250,6 +251,8 @@ build: ## Build sdists + wheels for the published distributions (into each packa
 	$(MAKE) -C workhorse build
 	$(MAKE) -C farrier build
 	$(MAKE) -C workflows build
+	$(MAKE) -C groom build
+	$(MAKE) -C stablemate build
 
 .PHONY: version
 version: ## Print every published package's declared version
@@ -257,6 +260,8 @@ version: ## Print every published package's declared version
 	@$(MAKE) -s -C workhorse version
 	@$(MAKE) -s -C farrier version
 	@$(MAKE) -s -C workflows version
+	@$(MAKE) -s -C groom version
+	@$(MAKE) -s -C stablemate version
 
 .PHONY: release
 release: ## Open (or refresh) the release-please PR — merging it is what publishes

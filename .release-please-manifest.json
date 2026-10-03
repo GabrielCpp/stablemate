@@ -4,5 +4,6 @@
   "farrier": "3.0.0",
   "ostler": "2.0.0",
   "groom": "1.2.0",
-  "saddlebag": "1.1.0"
+  "saddlebag": "1.1.0",
+  "stablemate": "0.1.0"
 }
