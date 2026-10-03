@@ -172,7 +172,7 @@ was last checked.
 | --- | --- | --- |
 | The dashboard, [groom](groom/): answers a run's questions from the browser and pages you when a run stalls | Runs from a checkout. It will publish as `stablemate-groom`, because the name `groom` on PyPI belongs to another project. | 2026-10-03 |
 | One install line for every command: `uv tool install workhorse-workflows --with stablemate --with-executables-from farrier,stablemate-groom` | Not on PyPI yet | 2026-10-03 |
-| `workhorse-new NAME --check CMD`: wraps one check from your repo in a workflow that loops the agent until the check passes | Not on PyPI yet | 2026-10-03 |
+| `workhorse-new NAME --check CMD`: wraps one check from your repo in a workflow that loops the agent until the check passes. [Guide](workflows/docs/first-win.md) | Next `workhorse-workflows` release | 2026-10-03 |
 | `workhorse-loop-runner`, the install check above | Next `workhorse-workflows` release | 2026-10-03 |
 | A site with a replay of a real multi-day run | Waits for launch | 2026-10-03 |
 
@@ -351,10 +351,10 @@ uv run workhorse-loop-runner dot           # the same machine as a graphviz diag
 
 Now read the source, which is one short file:
 [`workflows/src/workhorse_workflows/loop_runner/workflow.py`](workflows/src/workhorse_workflows/loop_runner/workflow.py).
-Copy that directory, rename it, and give it a console script of its own —
-[Shipping your own, outside this repo](workhorse/docs/AUTHORING.md#shipping-your-own-outside-this-repo)
-is the whole `pyproject.toml` and the one install command it takes, and it does not
-require a checkout of this repository.
+To start your own, run `uv run workhorse-new NAME --check CMD`. It writes a workflow
+that loops the agent until your check passes, as a package you install outside this
+repository. [The first-win guide](workflows/docs/first-win.md) takes it from a failing
+test to a passing one.
 
 **Then:** [workhorse/docs/AUTHORING.md](workhorse/docs/AUTHORING.md) is the reference
 for everything the quick start leaves out: the three tiers of state, checkpoints and
