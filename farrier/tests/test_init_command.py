@@ -1,5 +1,8 @@
 """farrier init — the starter agents.yml, and the bare-invocation help it pairs with."""
 
+import io
+import sys
+import tomllib
 from pathlib import Path
 
 import pytest
@@ -35,6 +38,62 @@ def test_init_needs_no_library_configured(tmp_path: Path, monkeypatch) -> None:
 
     assert run(["init", "--repo", str(repo)]) == 0
     assert (repo / "agents.yml").is_file()
+
+
+class _Terminal(io.StringIO):
+    def isatty(self) -> bool:
+        return True
+
+
+def answer(monkeypatch, reply: str) -> None:
+    monkeypatch.setattr(sys, "stdin", _Terminal())
+    monkeypatch.setattr("builtins.input", lambda _question: reply)
+
+
+def test_a_yes_writes_the_user_library_and_installs_it(
+    tmp_path: Path, monkeypatch
+) -> None:
+    config = tmp_path / "config.toml"
+    monkeypatch.setenv("STABLEMATE_CONFIG", str(config))
+    monkeypatch.setenv(BASE_DIR_ENV, str(BASE_LIBRARY))
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    answer(monkeypatch, "y")
+    repo = tmp_path / "acme"
+    repo.mkdir()
+
+    assert run(["init", "--repo", str(repo)]) == 0
+
+    written = tomllib.loads(config.read_text(encoding="utf-8"))
+    assert written["user_library"]["claude"] == {"packs": ["general", "stablemate"]}
+    assert any((tmp_path / "home" / ".claude" / "skills").iterdir())
+
+
+def test_a_no_leaves_the_home_alone_and_prints_the_proposal(
+    tmp_path: Path, monkeypatch, capsys
+) -> None:
+    config = tmp_path / "config.toml"
+    monkeypatch.setenv("STABLEMATE_CONFIG", str(config))
+    answer(monkeypatch, "")
+    repo = tmp_path / "acme"
+    repo.mkdir()
+
+    assert run(["init", "--repo", str(repo)]) == 0
+
+    assert not config.exists()
+    assert USER_LIBRARY_PROPOSAL in capsys.readouterr().out
+
+
+def test_init_never_asks_without_a_terminal(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setattr(sys, "stdin", io.StringIO())
+
+    def refuse(_question: str) -> str:
+        raise AssertionError("init asked a question with no terminal attached")
+
+    monkeypatch.setattr("builtins.input", refuse)
+    repo = tmp_path / "acme"
+    repo.mkdir()
+
+    assert run(["init", "--repo", str(repo)]) == 0
 
 
 def test_init_proposes_a_user_library_when_none_is_configured(

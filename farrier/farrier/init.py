@@ -69,10 +69,12 @@ packs: []
 """)
 
 
-USER_LIBRARY_PROPOSAL = """\
-[user_library.claude]
-packs = ["general", "stablemate"]
-"""
+USER_LIBRARY_TABLE = "user_library.claude"
+USER_LIBRARY_PACKS = ("general", "stablemate")
+USER_LIBRARY_PROPOSAL = (
+    f"[{USER_LIBRARY_TABLE}]\n"
+    f"packs = [{', '.join(f'\"{pack}\"' for pack in USER_LIBRARY_PACKS)}]\n"
+)
 
 
 def default_config(repo: Path) -> str:

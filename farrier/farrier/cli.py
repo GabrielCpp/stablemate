@@ -19,6 +19,7 @@ from farrier._vendor.stablemate_core.config import (
     config_path,
     read_config,
     write_base_dir,
+    write_config_section,
     write_library_dir,
     write_stablemate_dir,
     write_worktree_dir,
@@ -36,7 +37,12 @@ from farrier.hook_managers import (
     install_runner,
 )
 from farrier.skill_hooks import STAGES, SkillHook
-from farrier.init import USER_LIBRARY_PROPOSAL, default_config
+from farrier.init import (
+    USER_LIBRARY_PACKS,
+    USER_LIBRARY_PROPOSAL,
+    USER_LIBRARY_TABLE,
+    default_config,
+)
 from farrier.layers import (
     LAYERS,
     ensure_base_library_dir,
@@ -139,21 +145,40 @@ def _run_init(args: argparse.Namespace) -> int:
     write_text(target, default_config(repo))
     print(f"Wrote {target}")
     print("Next: list this repo's own packs under `packs:`, then `farrier install`.")
-    if not user_library_tables(read_config()):
-        print(
-            "\nNo user library is configured. To install the base library's general "
-            f"and stablemate packs for every repo, add this to {config_path()} and run "
-            "`farrier install --user`:\n"
-        )
-        print(USER_LIBRARY_PROPOSAL, end="")
+    if user_library_tables(read_config()):
+        return 0
+    if sys.stdin.isatty() and _confirm(
+        "\nYour home has no user library. Install the general and stablemate packs "
+        "for every repo, into ~/.claude? [y/N] "
+    ):
+        try:
+            write_config_section(USER_LIBRARY_TABLE, {"packs": list(USER_LIBRARY_PACKS)})
+        except ConfigVersionError as exc:
+            print(f"Left {config_path()} unchanged: {exc}")
+        else:
+            _load_library(None, check=False)
+            return _run_user_install(None, check=False)
+    print(
+        "\nTo install the base library's general and stablemate packs for every "
+        f"repo, add this to {config_path()} and run `farrier install --user`:\n"
+    )
+    print(USER_LIBRARY_PROPOSAL, end="")
     return 0
 
 
-def _run_user_install(args: argparse.Namespace) -> int:
+def _confirm(question: str) -> bool:
+    """Whether the person at the terminal answered yes."""
+    try:
+        return input(question).strip().lower() in {"y", "yes"}
+    except EOFError:
+        return False
+
+
+def _run_user_install(home: Path | None, check: bool) -> int:
     """`farrier install --user` — render the user_library tables into the harness homes."""
-    home = (args.home or Path.home()).expanduser().resolve()
+    home = (home or Path.home()).expanduser().resolve()
     outputs = render_user_expected(read_config(), home)
-    if args.check:
+    if check:
         return check_outputs(home, outputs, None, USER_MANAGED)
     install_outputs(home, outputs, None, USER_MANAGED)
     print(f"Installed {len(outputs)} generated files into {home}")
@@ -168,16 +193,21 @@ def _base_library_ref() -> str:
     return f"farrier-v{dist.version}"
 
 
-def _run_install(args: argparse.Namespace) -> int:
-    ensure_base_library_dir(ref=_base_library_ref(), refresh=not args.check)
-    set_layers(resolve_library_dir(args.library))
-    if not args.check:
+def _load_library(library: Path | None, check: bool) -> None:
+    """Fetch or refresh the base library, then layer the overlay over it."""
+    ensure_base_library_dir(ref=_base_library_ref(), refresh=not check)
+    set_layers(resolve_library_dir(library))
+    if not check:
         for line in override_notices("skill", "library", "skills") + override_notices(
             "prompt", "library", "prompts"
         ):
             print(line)
+
+
+def _run_install(args: argparse.Namespace) -> int:
+    _load_library(args.library, args.check)
     if getattr(args, "user", False):
-        return _run_user_install(args)
+        return _run_user_install(args.home, args.check)
     repo = args.repo.resolve()
     config_path = args.config.resolve() if args.config else repo / "agents.yml"
     if not args.config and not config_path.exists():
@@ -205,7 +235,7 @@ def _run_install(args: argparse.Namespace) -> int:
     install_outputs(repo, outputs, manager, managed)
     print(f"Installed {len(outputs)} generated files into {repo}")
     if user_library_tables(read_config()):
-        return _run_user_install(args)
+        return _run_user_install(args.home, args.check)
     return 0
 
 
