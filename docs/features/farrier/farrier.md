@@ -70,9 +70,12 @@ already current.
   - run: print the written path
   - run: seed `packs: []`, so the starter installs no skill into the repo
   - run: print `Next: list this repo's own packs under packs:, then farrier install.`
-  - run: when the stablemate config has no `[user_library.<harness>]` table, print a proposed
-    `[user_library.claude]` table selecting the `general` and `stablemate` packs, with the
-    config path and `farrier install --user`
+  - run: when the stablemate config has no `[user_library.<harness>]` table and stdin is a
+    terminal, ask whether to install the `general` and `stablemate` packs into the home
+  - run: on a yes, write a `[user_library.claude]` table selecting both packs into the
+    stablemate config and run the user install
+  - run: on a no, with no terminal, or when the config refuses the write, print that table
+    with the config path and `farrier install --user`, and write nothing to the home
 - verify: json_path(path="$.agents.claude", equals=true)
 - verify: json_path(path="$.repo", absent=true)
 - verify: unchanged(subject="<repo>/agents.yml")
@@ -84,6 +87,9 @@ already current.
 - tests: `farrier/tests/test_init_command.py::test_init_writes_a_config_the_installer_can_read`
 - tests: `farrier/tests/test_init_command.py::test_init_refuses_to_overwrite_an_existing_config`
 - tests: `farrier/tests/test_init_command.py::test_init_proposes_a_user_library_when_none_is_configured`
+- tests: `farrier/tests/test_init_command.py::test_a_yes_writes_the_user_library_and_installs_it`
+- tests: `farrier/tests/test_init_command.py::test_a_no_leaves_the_home_alone_and_prints_the_proposal`
+- tests: `farrier/tests/test_init_command.py::test_init_never_asks_without_a_terminal`
 - tests: `farrier/tests/test_init_command.py::test_init_proposes_nothing_once_a_user_library_exists`
 - tests: `farrier/tests/test_init_command.py::test_the_proposed_user_library_installs_from_the_base_library`
 - tests: `farrier/tests/test_init_command.py::test_init_needs_no_library_configured`

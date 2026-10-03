@@ -24,7 +24,7 @@ On install the base is fetched if absent and moved to the farrier release tag
 (`farrier-v<version>`) if present, or to `main` for a farrier installed from a checkout, so a `pipx` user gets a working base library by running the command they were going to run anyway:
 
 ```bash
-farrier init              # once per repo: writes a starter agents.yml that selects no packs
+farrier init              # once per repo: writes an agents.yml that selects no packs, and offers the general packs for your home
 farrier --repo .          # fetches the base if absent, updates it if stale, then renders
 farrier --repo . --check  # fetches if absent, but never updates — see below
 ```
