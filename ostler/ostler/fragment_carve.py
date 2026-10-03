@@ -225,7 +225,7 @@ def _carve(graph: Graph, host: Path) -> CarvePlan:
 
 def _page_path(graph: Graph, page: str) -> Path:
     candidate = Path(page)
-    for path in (candidate, graph.root / page, graph.doc_roots["features"] / page):
+    for path in (graph.root / page, graph.doc_roots["features"] / page, candidate):
         if path.is_file():
             return path.resolve()
     raise CarveError(f"no such page: {page}")

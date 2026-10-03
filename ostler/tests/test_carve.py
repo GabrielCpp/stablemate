@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from ostler import doctor
 from ostler.carve import carve_endpoints
 from ostler.cli import main
@@ -186,3 +188,18 @@ def test_carve_moves_the_inline_endpoint_a_carved_server_gained(repo: Path):
     assert "### " not in slim
     assert (server.parent / "delete-widget.md").exists()
     assert not _codes(repo) & {"inline-endpoint", "endpoint-without-server", "unlisted-endpoint"}
+
+
+def test_carve_reads_the_books_server_when_the_working_directory_holds_the_same_path(
+    repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    server = _book(repo)
+    elsewhere = tmp_path / "elsewhere"
+    write(elsewhere / _SERVER, "# not this book\n")
+    monkeypatch.chdir(elsewhere)
+
+    plan = carve_endpoints(load(repo), _SERVER)
+
+    assert not plan.error, plan.error
+    assert "2 endpoint page(s), 1 invocation(s)" in plan.render()
+    assert server.read_text() == _SERVER_TEXT

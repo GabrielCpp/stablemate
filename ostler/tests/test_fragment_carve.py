@@ -214,3 +214,17 @@ def test_the_cli_carves_a_page(repo: Path, small_limit: None, capsys: pytest.Cap
 
     assert "fragment page(s)" in capsys.readouterr().out
     assert _fragments(page)
+
+
+def test_a_page_is_read_from_the_book_when_the_working_directory_holds_the_same_path(
+    repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, small_limit: None
+):
+    page = _book(repo)
+    elsewhere = tmp_path / "elsewhere"
+    write(elsewhere / _PAGE, "# not this book\n")
+    monkeypatch.chdir(elsewhere)
+
+    plan = fragment_carve.carve_fragments(load(repo), _PAGE)
+
+    assert not plan.error, plan.error
+    assert {change.path.resolve().parent for change in plan.changes} == {page.resolve().parent}
