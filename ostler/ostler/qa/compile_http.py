@@ -6,6 +6,7 @@ import json
 import re
 from dataclasses import dataclass
 from dataclasses import field
+from typing import Any
 
 from ostler import acts as acts_mod
 from ostler.checks import CheckValue
@@ -210,7 +211,7 @@ class _HttpArrangement:
 
     def kwargs_source(self, *, with_body: bool) -> str:
         """The `json_body=`/`headers=` keywords of the call that sends this arrangement."""
-        body = f", json_body={_resolved_dict_literal(self.body)}" if with_body else ""
+        body = f", json_body={_nested_body_literal(self.body)}" if with_body else ""
         headers = f", headers={_resolved_dict_literal(self.headers)}" if self.headers else ""
         return body + headers
 
@@ -229,6 +230,8 @@ def _http_arrangement(rows: tuple[CallRow, ...]) -> _HttpArrangement | None:
         if key in sink and sink[key] != value:
             return None
         sink[key] = value
+    if any(other.startswith(f"{key}.") for key in arranged.body for other in arranged.body):
+        return None
     return arranged
 
 
@@ -243,6 +246,25 @@ def _resolved_literal(value: CheckValue) -> str:
 def _resolved_dict_literal(fields: dict[str, CheckValue]) -> str:
     """A `json_body=`/`headers=` dict literal, every value spelled by `_resolved_literal`."""
     return "{" + ", ".join(f"{json.dumps(k)}: {_resolved_literal(v)}" for k, v in fields.items()) + "}"
+
+
+def _nested_body_literal(fields: dict[str, CheckValue]) -> str:
+    """A `json_body=` dict literal in which a dotted field such as `locales.fr` is a member of a nested object."""
+    tree: dict[str, Any] = {}
+    for path, value in fields.items():
+        *parents, leaf = path.split(".")
+        node = tree
+        for parent in parents:
+            node = node.setdefault(parent, {})
+        node[leaf] = value
+    return _tree_literal(tree)
+
+
+def _tree_literal(tree: dict[str, Any]) -> str:
+    """One level of a nested body, each leaf spelled by `_resolved_literal`."""
+    members = (f"{json.dumps(k)}: {_tree_literal(v) if isinstance(v, dict) else _resolved_literal(v)}"
+               for k, v in tree.items())
+    return "{" + ", ".join(members) + "}"
 
 
 @dataclass(frozen=True)

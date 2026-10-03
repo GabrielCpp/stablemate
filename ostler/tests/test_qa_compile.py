@@ -489,6 +489,44 @@ def test_an_arranged_request_body_compiles_to_json_body() -> None:
     assert 'json_body={"name": "Widget A", "quantity": 3}' in source
 
 
+def test_a_dotted_body_field_sends_a_nested_member() -> None:
+    """A route that decodes a map, such as one draft per locale, reads a nested object, and a scalar `value` can only reach it through a dotted `field`."""
+    oid = "okf:docs/features/demo/globex.md#post-things:does:1"
+    context = _context(
+        _obligation(
+            oid,
+            locators={"route": ["POST /api/things"]},
+            checksDeclared=[_check()],
+            fixturesDeclared=[{"name": "seeded-ledger", "args": [], "provides": "a ledger",
+                               "providesKeys": ["seeded-ledger.fr"]}],
+            actsDeclared=[_body_act("pageId", "intro"), _body_act("locales.fr", "@seeded-ledger.fr"),
+                          _body_act("locales.en", "Hello")],
+        )
+    )
+    source, gaps = compile_plan_gaps(context, story="demo-story")
+    assert source is not None
+    assert _gap_kinds(gaps, oid) == []
+    assert ('json_body={"pageId": "intro", "locales": {"fr": qa.resolve("@seeded-ledger.fr"), '
+            '"en": "Hello"}}') in source
+
+
+def test_a_body_field_that_is_also_a_parent_of_another_is_not_sent() -> None:
+    """`locales` set to a value and `locales.fr` set beside it describe two different bodies, and sending either would grade a request the book never wrote."""
+    oid = "okf:docs/features/demo/globex.md#post-things:does:1"
+    context = _context(
+        _obligation(
+            oid,
+            locators={"route": ["POST /api/things"]},
+            checksDeclared=[_check()],
+            fixturesDeclared=[{"name": "seeded-ledger", "args": [], "provides": "a ledger"}],
+            actsDeclared=[_body_act("locales", "x"), _body_act("locales.fr", "y")],
+        )
+    )
+    result = _compile_plan_gaps(context, story="demo-story", base_url=_BASE_URL)
+    assert isinstance(result, Refusal)
+    assert _gap_kinds(result.gaps, oid) == ["unarranged-request-body"]
+
+
 def _header_act(name: str, value: str) -> dict:
     return {"call": f"header(name={name!r}, value={value!r})", "name": "header",
             "args": {"name": name, "value": value}}
