@@ -173,7 +173,7 @@ was last checked.
 | The dashboard, [groom](groom/): answers a run's questions from the browser and pages you when a run stalls | Runs from a checkout. It will publish as `stablemate-groom`, because the name `groom` on PyPI belongs to another project. | 2026-10-03 |
 | One install line for every command: `uv tool install stablemate --with-executables-from workhorse-workflows,farrier,stablemate-groom` | Not on PyPI yet | 2026-10-03 |
 | `workhorse-new NAME --check CMD`: wraps one check from your repo in a workflow that loops the agent until the check passes | Not on PyPI yet | 2026-10-03 |
-| `workhorse-loop-runner`, the install check above. It replaces `workhorse-hello-world`, which 2.0.0 still ships. | Next `workhorse-workflows` release | 2026-10-03 |
+| `workhorse-loop-runner`, the install check above | Next `workhorse-workflows` release | 2026-10-03 |
 | A site with a replay of a real multi-day run | Waits for launch | 2026-10-03 |
 
 The dashboard, once installed:
