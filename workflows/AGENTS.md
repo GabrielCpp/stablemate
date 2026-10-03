@@ -4,16 +4,19 @@ The state machines workhorse drives. A workflow is **Python**, not YAML. The YAM
 engine is retired — no `workflow.yml`, no `requires:` block, no node-graph
 document. Prose describing one is stale; fix it.
 
-## Every directory under `src/workhorse_workflows/` is a workflow, except `kit/`
+## Every directory under `src/workhorse_workflows/` is a workflow, except `kit/` and `new/`
 
 `author/`, `coder/`, `okf_book/`, `research/`, `loop_runner/` — one directory per
 workflow, each with the `workflow.py` composition root its console script points at.
 A directory beside them that is not a workflow reads as one, and the next agent looks
 for the entry point it does not have.
 
+`new/` is the other exception. It holds the `workhorse-new` command and the template
+it renders, and its README says so on its first line.
+
 **Code a second workflow also calls goes to `kit/`.** That is where the family-neutral
 domain code lives — git, GitHub, workspaces, paths, JSON, external CLIs, QA stacks —
-and it is the only non-workflow directory at that level. Inside one workflow the same
+and it is the only shared directory at that level. Inside one workflow the same
 rule applies one level down, to `<workflow>/shared/`. The count decides, not the
 subject: a module one machine calls belongs to that machine, a module two machines call
 moves up.

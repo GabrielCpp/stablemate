@@ -94,6 +94,7 @@ workhorse-research = "workhorse_workflows.research.workflow:main"
 workhorse-author = "workhorse_workflows.author.workflow:main"
 workhorse-coder = "workhorse_workflows.coder.workflow:main"
 workhorse-okf-book = "workhorse_workflows.okf_book.workflow:main"
+workhorse-new = "workhorse_workflows.new.scaffold:main"
 
 [project.urls]
 Homepage = "https://github.com/GabrielCpp/stablemate/tree/main/workflows"

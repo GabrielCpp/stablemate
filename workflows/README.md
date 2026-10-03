@@ -277,8 +277,8 @@ and each of those is a state machine with nodes of its own. The layout says so: 
 
 ```
 src/workhorse_workflows/
-  kit/            what a second workflow also calls — the only non-workflow directory
-                  here (git.py, github.py, workspace.py, qa/)
+  kit/            what a second workflow also calls (git.py, github.py, workspace.py, qa/)
+  new/            the `workhorse-new` scaffold and its template; not a workflow either
   <workflow>/
     workflow.py   the composition root — the Registry, the flow table, the console script
     main/         the machine a bare `run` starts, laid out like any other flow below
