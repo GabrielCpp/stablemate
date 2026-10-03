@@ -17,6 +17,7 @@ from pathlib import Path
 from pydantic import BaseModel, ConfigDict
 
 from workhorse.pyflow import AgentTimeout, AgentTurnFailed, Await, Continue, Done
+from workhorse.runner.failure import OutputParseError
 from workhorse_workflows.kit import diff_to_commit
 from workhorse_workflows.okf_book.main.nodes.repair_batch_models import RepairBatch
 from workhorse_workflows.okf_book.main.nodes.repair_put_back import (
@@ -167,7 +168,7 @@ class SettleRepairTurn(BookFlow):
         return Continue(pages, self.describe_commit, pages=pages).because("describe the repaired pages")
 
     def describe_commit(self, pages: tuple[str, ...]) -> Continue[...]:
-        """A small model names what the staged pages changed. A turn that fails, or a diff with nothing in it, keeps the fixed subject."""
+        """A small model names what the staged pages changed. A turn that fails, a reply refused on every try, or a diff with nothing in it, keeps the fixed subject."""
         diff = diff_to_commit(self.root, *pages)
         if not diff:
             return Continue(pages, self.commit_pages, pages=pages, commit_message=repaired_book_commit_message(self.service)).because(
@@ -190,8 +191,8 @@ class SettleRepairTurn(BookFlow):
                 cwd=self.root,
                 accept=self._accept_description,
             )
-        except (AgentTurnFailed, AgentTimeout) as ended:
-            self.logger.warning("kept the fixed repair subject, since the describe turn ended without a reply: %s", ended)
+        except (AgentTurnFailed, AgentTimeout, OutputParseError) as ended:
+            self.logger.warning("kept the fixed repair subject, since the describe turn ended without a usable reply: %s", ended)
             return Continue(pages, self.commit_pages, pages=pages, commit_message=repaired_book_commit_message(self.service)).because(
                 "the describe turn failed"
             )

@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 from okf_book.main.tally import NOTE, PAGE, TALLY, App, DriveBook, stub_a_book_sent_to_repair
 from okf_book.support import Reply, ScriptedRunner, always, commits, git
-from workhorse.runner.failure import BackendInvocationError
+from workhorse.runner.failure import BackendInvocationError, OutputParseError
 
 from workhorse_workflows.okf_book.main import settle_repair_turn_flow
 from workhorse_workflows.okf_book.main.nodes.report import BookReport
@@ -77,6 +77,19 @@ def test_a_describe_turn_that_fails_keeps_the_fixed_subject(app: App, drive_book
         raise BackendInvocationError("no result event")
 
     result = drive_book(OkfBook(repo_dir=str(repo), surfaces=(TALLY,)), _repairer_described_by(repo, _dies))
+
+    assert isinstance(result, BookReport)
+    assert _head_message(repo) == "docs(tally): repair pages of the tally book\n\nOkf-Book: repaired"
+
+
+@pytest.mark.usefixtures("over_the_ceiling")
+def test_a_describe_turn_whose_every_reply_is_refused_keeps_the_fixed_subject(app: App, drive_book: DriveBook) -> None:
+    repo = app("tally-cli")
+
+    def _refused(_args: dict[str, object]) -> dict[str, object]:
+        raise OutputParseError("the subject is 75 characters, over 72")
+
+    result = drive_book(OkfBook(repo_dir=str(repo), surfaces=(TALLY,)), _repairer_described_by(repo, _refused))
 
     assert isinstance(result, BookReport)
     assert _head_message(repo) == "docs(tally): repair pages of the tally book\n\nOkf-Book: repaired"
