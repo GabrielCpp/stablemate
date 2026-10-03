@@ -2,15 +2,12 @@
 
 A local, single-process web dashboard for `workhorse` agent-workflow operator
 gates. Run `groom serve` on your host while `author`/`coder` (or any other
-`workhorse`-based workflow) containers run in the background; `groom` shows
-every running workflow, pages you the moment one blocks on an operator gate,
-and lets you answer the gate right from the browser — no more finding and
-restarting blocked containers one by one. The shared `await_operator` node blocks in
-place rather than exiting, so the container keeps running; the answer travels
-over the run's own workhorse control socket and the run wakes at once, with the
-gate file kept as the durable record (and as the fallback channel when nothing
-is listening); `groom` only falls back to `docker start` if a container has
-genuinely stopped.
+`workhorse`-based workflow) runs in the background. `groom` shows every running
+workflow, pages you the moment one blocks on an operator gate, and lets you answer
+the gate from the browser. The shared `await_operator` node blocks in place rather
+than exiting, so the run keeps running. The answer travels over the run's own
+workhorse control socket and the run wakes at once. The gate file stays the durable
+record, and the fallback channel when nothing is listening.
 
 ![groom's run list with a blocked coder run selected: the gate question rendered on the right, an answer typed, ready to send](../docs/features/groom/gui/screenshots/operator-answers-blocked-gate-answer-typed.png)
 
@@ -21,22 +18,10 @@ spans, per-node timings and error status, filterable without leaving the browser
 
 ## How it works
 
-- Each workflow container runs a tiny in-container sidecar, `groom-sidecar`,
-  that watches its own `/workspace` and `/runs` mounts (via `watchfiles`, so the
-  container gets inotify and a developer's macOS or Windows box still works) and holds
-  one persistent WebSocket open to the host's `groom` (dialing out over
-  `host.docker.internal`, so no inbound reachability is needed). It advertises
-  full state on connect, streams `progress`/`blocked`/`turn` deltas, and serves the
-  Files/Diff panels from local disk via `getTree`/`getFile`/`getDiff` RPC over
-  the same socket — plus `listTurns`/`readTurnFile`, through which the host pulls
-  the container's turn records into its archive before the volume is destroyed,
-  and `getQuestions`/`answerGate`, through which the host talks to the run's
-  workhorse control socket: list what a run is blocked asking, and deliver the
-  operator's answer straight into the waiting process.
-  The connection is best-effort and re-syncs on reconnect —
-  a container with no `groom` listening behaves the same. See the repository's
-  [`sidecar-live-sessions.md`](https://github.com/GabrielCpp/stablemate/blob/main/docs/features/groom/sidecar-live-sessions.md)
-  for the message schema and the local `reload` development loop.
+- Each run pushes its telemetry to `groom` over OTLP. A run on groom's own host also
+  advertises its run directory, workspace and pid. `groom` reads both from local disk
+  to serve the run's Files and Diff panels and to answer its gates. A run with no
+  `groom` listening behaves the same.
 - `groom` holds live fleet and browser state in memory and pushes
   JSON state to open browser tabs over a websocket; the browser renders it with
   Preact + htm (the vendored `htm/preact` standalone build — no build step, no
@@ -82,11 +67,7 @@ spans, per-node timings and error status, filterable without leaving the browser
   Wait telemetry updates native gate discovery, including after groom reconnects.
   Socket questions are queried when submitting an answer so the write uses the
   waiting process's exact path. Machine waits show their pending result without
-  an operator answer form. Container sidecar snapshots and gate pushes retain
-  support for producers without wait telemetry.
-- On startup (or on-demand refresh), `groom` runs a one-shot `docker ps -a` +
-  `docker inspect` reconciliation scan so workflows that were already
-  blocked before `groom` was started are still picked up.
+  an operator answer form.
 
 ## Install
 
@@ -99,25 +80,22 @@ pipx install ./groom        # isolated CLI on your PATH
 
 Requires Python ≥ 3.12. groom is an optional add-on — no base workflow requires it — and
 nothing has to be configured on the workflow side: `workhorse` probes for a collector at
-the default port when a run starts, and containers dial out to it on their own.
+the default port when a run starts.
 
 ## Usage
 
 ```bash
 groom serve                       # binds 127.0.0.1:8787 — loopback only, the default
-groom serve --host 0.0.0.0       # all interfaces: required for containerized runs (see note)
+groom serve --host 0.0.0.0       # all interfaces: for runs on another machine (see note)
 ```
 
 From a checkout of this workspace, prefix each command with `uv run` (`uv run groom serve`)
 to use the working tree instead of the installed copy.
 
 > **Binding.** groom binds loopback by default because it has **no
-> authentication** — it controls docker and answers operator gates. The
-> in-container `groom-sidecar`s reach the host over the docker bridge
-> (`host.docker.internal` → the bridge gateway on Linux, not loopback), so
-> containerized runs need `--host 0.0.0.0` — an explicit choice that prints a
-> one-line exposure warning (`--allow-non-loopback` acknowledges it). Only do
-> that on a trusted network.
+> authentication**, and it answers operator gates. A run on another machine needs
+> `--host 0.0.0.0`. That choice prints a one-line exposure warning, and
+> `--allow-non-loopback` acknowledges it. Only do that on a trusted network.
 
 ## Telemetry collector (OTLP) + AFK alerting
 
@@ -136,8 +114,8 @@ enables telemetry when it finds a collector listening. Point elsewhere with
 
 It streams node/agent-turn spans, gas/heartbeat metrics, and the log records of the
 engine and every node it runs in-process into `groom`. Because a
-pushed span carries its own identity, **native (non-Docker) runs appear too** —
-no discovery gate. Spans and metrics persist in an embedded SQLite file
+pushed span carries its own identity, **every run appears with no discovery
+step**. Spans and metrics persist in an embedded SQLite file
 (`groom.db` in the platform data dir; override with `GROOM_DB`), searchable
 from the dashboard's *Telemetry* pane, via `GET /traces?run=…&node=…&status=…&
 slower_than=…`, or with raw `sqlite3` queries. Rows older than
@@ -230,10 +208,9 @@ groom's own host advertises its `run_dir`, workspace path, pid, and per-node
 `activity` label on the OTLP resource; groom materializes a fleet row from that
 (keyed by `run_id`), shows what it is doing ("coder · reviewing ACME-A2JX"), and —
 because it shares the host — serves the row's Files/Diff panels and answers its
-operator gates straight from the local filesystem (`groom.localfs`), no docker
-volume or sidecar needed. The native test is self-validating: groom draws the row
-only for a run whose `run_dir` it can actually read locally, so a containerized
-producer (whose paths don't resolve on the host) never double-lists.
+operator gates straight from the local filesystem (`groom.localfs`). The native test
+is self-validating. groom draws the row only for a run whose `run_dir` it can read
+locally, so a run whose paths don't resolve on this host never double-lists.
 
 Alert rules run on every ingest plus a periodic tick, and page you through
 browser notifications **and** an away-from-keyboard push — configure
@@ -322,8 +299,7 @@ archive search: an ending evicted from that cache is no longer available.
 Machine, capacity and retry waits do not count as operator gates. Starting a
 new waiter while the same condition remains active returns that condition again.
 
-`--run` takes the exact telemetry run ID (or the full container ID for a legacy
-sidecar without one). `GROOM_URL` selects the collector, as for `groom status`.
+`--run` takes the exact telemetry run ID. `GROOM_URL` selects the collector, as for `groom status`.
 Both CLI and server must support the wait protocol; an older server is reported
 as a monitoring error. JSON output contains `run_id`, `event`, `node`, `question`,
 `gate_path`, `terminal`, and `message`; unavailable context is an empty string.

@@ -29,11 +29,8 @@ it. That goal drives the two defining properties of the tool:
   the driver checkpoints after each transition, so a run resumes from exactly where
   it left off after a crash or reboot.
 
-It is repository-agnostic: repository setup belongs to the workflow or to the
-container supervisor, while the engine only drives the state machine. A containerized
-harness for isolated, unattended runs lives in the source repo; see
-[docs/DOCKER.md](https://github.com/GabrielCpp/stablemate/blob/main/workhorse/docs/DOCKER.md)
-(not shipped in the PyPI package).
+It is repository-agnostic: repository setup belongs to the workflow or to whatever
+supervises the run, while the engine only drives the state machine.
 
 ### Python workflows
 
@@ -146,11 +143,6 @@ warning on a real run, and `--dry-run` turns it into an exit code. The helpers
 (`skill_link`, `skill_command`, and `find_by_tags` and `has_skill` for a workflow shipping
 to unknown repos) are in
 [docs/CHECKING.md](https://github.com/GabrielCpp/stablemate/blob/main/workhorse/docs/CHECKING.md).
-
-> **Running unattended in a container?** The source repo ships a Docker harness
-> (image + compose) for fully isolated, week-long runs with credential seeding
-> and persistent volumes. It is *not* part of the PyPI package — see
-> [docs/DOCKER.md](https://github.com/GabrielCpp/stablemate/blob/main/workhorse/docs/DOCKER.md).
 
 ## Checking and diagramming a workflow
 
@@ -326,8 +318,6 @@ The full tree, what `prompt.md` does and does not capture, how a transcript capt
 which source it came from, and the `WORKHORSE_CAPTURE_TRANSCRIPTS` /
 `WORKHORSE_TRANSCRIPT_MAX_BYTES` bounds are in
 [docs/RUNS.md](https://github.com/GabrielCpp/stablemate/blob/main/workhorse/docs/RUNS.md).
-The Docker harness redirects artifacts to a persistent volume instead — see
-[docs/DOCKER.md](https://github.com/GabrielCpp/stablemate/blob/main/workhorse/docs/DOCKER.md).
 
 ## Telemetry (automatic when a collector is reachable)
 
@@ -368,10 +358,9 @@ There is also a wall-clock ceiling, `WORKHORSE_MAX_RUNTIME_S` — see
 
 `workhorse` never assumes a repository layout. A workflow receives repository paths
 as declared parameters and performs repository-specific preparation in its Python
-nodes. The source checkout's Docker harness prepares a dedicated Git worktree before
-launch and passes its location to the workflow, allowing concurrent runs to share the
-host repository's object store without sharing a working tree. See
-[docs/DOCKER.md](https://github.com/GabrielCpp/stablemate/blob/main/workhorse/docs/DOCKER.md).
+nodes. A supervisor that runs several workflows at once can prepare a dedicated Git
+worktree for each and pass its location to the workflow, so concurrent runs share the
+host repository's object store without sharing a working tree.
 
 ## Writing a workflow
 
@@ -447,8 +436,5 @@ Working on the controller itself — not on a workflow — starts from a clone o
 file in `tests/` also runs standalone under `uv run python tests/test_x.py`).
 
 The project layout, how the driver's loop works, why every agent turn gets a clean
-session, where to put a test and which of the two styles it is, where docs go, and the
-container build are in
+session, where to put a test and which of the two styles it is, and where docs go are in
 [docs/DEVELOPMENT.md](https://github.com/GabrielCpp/stablemate/blob/main/workhorse/docs/DEVELOPMENT.md).
-The Docker harness for isolated unattended runs — not shipped in the PyPI package — is in
-[docs/DOCKER.md](https://github.com/GabrielCpp/stablemate/blob/main/workhorse/docs/DOCKER.md).
