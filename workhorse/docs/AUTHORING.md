@@ -14,11 +14,15 @@ workhorse-loop-runner run --dry-run
 Its whole source is one short file,
 [`workflows/src/workhorse_workflows/loop_runner/workflow.py`](https://github.com/GabrielCpp/stablemate/blob/main/workflows/src/workhorse_workflows/loop_runner/workflow.py),
 demonstrating a narrower slice of what this document describes: one state, an agent turn
-and a registry — no node, no second state. **Copy its directory** — that file plus the
-`prompts/` beside it — and edit the copy; the node/state constructs it does not show are
-illustrated in prose only, in "A worked example" below. Copying `workflow.py` alone leaves
-the agent turn with no template, and a dry run says so before it runs anything: `state
-'start' renders 'prompts/run.md', which does not exist`.
+and a registry. It has no node and no second state.
+
+To start a workflow of your own, run `workhorse-new` instead of copying that directory.
+`workhorse-new fix-tests --check "pytest"` writes `./fix-tests`, a standalone distribution
+with its own `pyproject.toml`. Its workflow runs an agent turn, then the check, and loops
+back with the check's output until the check exits 0. It has a state, a node and a prompt,
+so it shows the constructs "A worked example" below describes in prose.
+[first-win.md](https://github.com/GabrielCpp/stablemate/blob/main/workflows/docs/first-win.md)
+walks through it from install to a passing test.
 
 Which is the habit to form: `--dry-run` is the check to run after **every** edit below, not
 only the first. Before it drives anything it reads your states' own source and fails on a
@@ -106,8 +110,9 @@ uv tool install ./acme-workflows      # or: pipx install ./acme-workflows
 workhorse-greeter run --dry-run
 ```
 
-Copying `loop_runner/` and changing the `Registry("loop-runner")` name and its
-`[project.scripts]` row is the shortest route to a green run of your own; everything below is what you add next.
+`workhorse-new` writes this layout for you, with the `Registry` name and the
+`[project.scripts]` row already filled in. It is the shortest route to a green run of your
+own. Everything below is what you add next.
 
 **Agent prompts** must output JSON matching the model the turn declared in `returns=`:
 
