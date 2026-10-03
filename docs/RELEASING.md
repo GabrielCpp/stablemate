@@ -41,17 +41,22 @@ short name, so its tags stay `groom-v<version>`.
 three. It uploads last, because the versions it allows must already be on the index.
 
 A release PR bumps each member's own version, but never the pins other members hold on
-it. The release job closes that gap on the release branch, right after release-please
-writes it: `scripts/sync_pins.py` widens every pin on a member whose new version falls
-outside it to that member's major (`>=4,<5`), then `uv lock` runs, and both land as one
-`chore:` commit on the PR. The tree you merge already passes the pin tests, so nothing
-fails after the tags exist.
+it. The release job closes that gap right after release-please writes the PR.
+`scripts/sync_pins.py` reads the new versions from the release branch and widens every pin
+a new major left behind to that major (`>=4,<5`). Each package whose pin moved gets its
+own commit on main, `fix(<package>): allow <sibling> 4.x`. release-please then runs a
+second time and sees that commit, so the package that holds the pin ships in the same
+release with a patch bump and a changelog line. A patch bump never leaves a major range,
+so the second pass moves no further pin.
 
-A minor or patch release moves no pin, because the new version is still inside the range.
-Only a new major rewrites one. The package that holds a rewritten pin is not released for
-it: release-please never sees that commit as a reason to bump. Its version already on
-PyPI keeps the old range, which still resolves, and the new range ships with that
-package's next release. `make sync-pins` runs the same rewrite locally.
+The job pushes those commits to main itself. Pull main after `make release` before you
+commit on top of it. Until the PR merges, main holds a pin one major ahead of its sibling.
+`uv lock` and the pin tests accept that, because a pin may run ahead of its member but
+never behind it. The job then refreshes `uv.lock` on the release branch as a `chore:`
+commit, so the tree you merge passes `uv sync --locked`.
+
+A minor or patch release moves no pin, because the new version is still inside the
+range. `make sync-pins` runs the same rewrite locally, against the versions in your tree.
 
 `saddlebag` is versioned and gets changelogs but has no upload step, because it is not in
 scope yet. Adding it means registering its trusted publisher on PyPI and adding its two

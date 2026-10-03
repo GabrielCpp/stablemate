@@ -60,28 +60,55 @@ jobs:
           config-file: .release-please-config.json
           manifest-file: .release-please-manifest.json
 
-      # release-please's bump stales two things the moment it writes the pyprojects: a pin
-      # on a sibling whose new major falls outside it, and uv.lock, which records every
-      # member's own version. Fixing both here means the PR a human reviews is a tree that
-      # `make test` and `uv sync --locked` accept, rather than one that fails after tagging.
+      # release-please's bump stales two things: a pin on a sibling whose new major falls
+      # outside it, and uv.lock. Each moved pin lands on main as a `fix` under its holder's
+      # scope and release-please runs again, so the holder ships in this release too; a patch
+      # bump never leaves a major range, so one more pass settles. uv.lock is then refreshed
+      # on the release branch, so the PR a human reviews is a tree `uv sync --locked` accepts.
       - uses: actions/checkout@v4
         if: steps.rp.outputs.pr
         with:
-          ref: ${{ fromJSON(steps.rp.outputs.pr).headBranchName }}
+          ref: main
       - uses: astral-sh/setup-uv@v5
         if: steps.rp.outputs.pr
         with:
           python-version: "3.12"
-      - name: Sync sibling pins and uv.lock on the release branch
+      - name: Commit each pin the release moves, under its holder's scope
+        id: pins
+        if: steps.rp.outputs.pr
+        env:
+          BRANCH: ${{ fromJSON(steps.rp.outputs.pr).headBranchName }}
+        run: |
+          git fetch --depth 1 origin "$BRANCH"
+          git worktree add --detach "$RUNNER_TEMP/release" FETCH_HEAD
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          before=$(git rev-parse HEAD)
+          uv run --no-project --with packaging python scripts/sync_pins.py \
+            --versions-from "$RUNNER_TEMP/release" --commit
+          if [ "$(git rev-parse HEAD)" != "$before" ]; then
+            git push origin HEAD:main
+            echo "moved=true" >> "$GITHUB_OUTPUT"
+          fi
+      - uses: googleapis/release-please-action@v4
+        if: steps.pins.outputs.moved
+        with:
+          target-branch: main
+          config-file: .release-please-config.json
+          manifest-file: .release-please-manifest.json
+      - uses: actions/checkout@v4
+        if: steps.rp.outputs.pr
+        with:
+          ref: ${{ fromJSON(steps.rp.outputs.pr).headBranchName }}
+      - name: Refresh uv.lock on the release branch
         if: steps.rp.outputs.pr
         run: |
-          uv run --no-project --with packaging python scripts/sync_pins.py
           uv lock
           if ! git diff --quiet; then
             git config user.name  "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git add uv.lock '*/pyproject.toml'
-            git commit -m "chore: sync sibling pins and uv.lock for the release"
+            git add uv.lock
+            git commit -m "chore: refresh uv.lock for the release"
             git push
           fi
 

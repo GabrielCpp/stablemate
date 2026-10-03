@@ -25,5 +25,5 @@ Repo-level checks that no package ships. Each guard is a module with a `main()`,
 - `review_state.py`: what the review gate remembers between stops.
 - `review_verdict.py`: the reviewer's verdict and how the gate reads it.
 - `strict_scope.py`: which paths the strict gate covers, from `[tool.stablemate.strict]`.
-- `sync_pins.py`: widening a pin on a workspace member once that member's new version falls outside it.
+- `sync_pins.py`: widening a pin on a workspace member once that member's new version falls outside it, and committing it under the holder's scope.
 - `vendor_core.py`: copying `core/stablemate_core` into each tool, and checking the copies.
