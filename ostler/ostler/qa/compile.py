@@ -441,6 +441,7 @@ def _compile_packet(
         cli_binaries=packet.cli_binaries,
         resolved_web_base_urls=web_urls, resolved_api_base_urls=api_urls,
         queries_by_node=book_index_mod.queries_by_node(carried),
+        claims_by_node=acts.claims_by_node,
     )
     journeys = JourneyPlan(book=book, sinks=sinks, navigation=navigation, walkers=_JOURNEY_WALKERS)
     lines = [

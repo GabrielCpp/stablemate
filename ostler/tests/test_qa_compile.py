@@ -3301,6 +3301,38 @@ def test_a_journey_step_sends_the_body_its_node_arranges() -> None:
     assert 'json_body={"name": "Widget A", "quantity": 3}' in source
 
 
+def test_a_journey_step_sends_the_success_body_when_its_node_arranges_two() -> None:
+    """An endpoint page documents a rejected body beside the accepted one, so merging every claim's acts sets one field twice; the journey step sends the body of the claim that succeeds."""
+    oid = f"okf:{_FLOW}:end-state"
+    route = {"route": ["POST /api/things"]}
+    rejected = _step_node(f"{_API}#post-things", route)
+    rejected["id"] = f"{_API}#post-things:rejected"
+    rejected["docPosition"] = [1, 0]
+    rejected["actsDeclared"] = [_body_act("name", "")]
+    rejected["checksDeclared"] = [{"call": "it", "name": "http_status", "args": {"code": 400}}]
+    accepted = _step_node(f"{_API}#post-things", route)
+    accepted["id"] = f"{_API}#post-things:accepted"
+    accepted["docPosition"] = [2, 0]
+    accepted["actsDeclared"] = [_body_act("name", "Widget A")]
+    accepted["checksDeclared"] = [{"call": "it", "name": "http_status", "args": {"code": 201}}]
+    context = _navigation_context(
+        _flow_obligation(
+            oid, source=_FLOW, surface="api",
+            steps=[_step(f"{_API}#post-things", "endpoint", "api")],
+            checks=[{"call": "it", "name": "http_status", "args": {"status": 201,
+                                                                   "path": "/api/things"}}],
+        ),
+        rejected,
+        accepted,
+        navigation=_api_navigation(),
+    )
+    result = _compile_plan_gaps(context, story="demo-story")
+    assert isinstance(result, Plan)
+    ast.parse(result.source)
+    assert _gap_kinds(result.gaps, oid) == []
+    assert 'json_body={"name": "Widget A"}' in result.source
+
+
 def test_a_journey_get_step_sends_the_header_its_node_arranges() -> None:
     oid = f"okf:{_FLOW}:end-state"
     get_node = _step_node(f"{_API}#get-things", {"route": ["GET /api/things"]})

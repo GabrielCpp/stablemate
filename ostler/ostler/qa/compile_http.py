@@ -483,6 +483,18 @@ class _UnbuiltStep:
     because: str
 
 
+def _step_arrangement(ref: str, node_rows: list[CallRow], book: BookIndex) -> _HttpArrangement | None:
+    """What one journey step sends: every claim's acts on its node merged, else the first success claim's own acts when the claims arrange a field differently."""
+    merged = _http_arrangement(tuple(node_rows))
+    if merged is not None:
+        return merged
+    for claim in book.claims_by_node.get(ref, ()):
+        status = _expect_status(claim.checks)
+        if status is not None and 200 <= status < 300:
+            return _http_arrangement(claim.acts)
+    return None
+
+
 def _http_request(
     index: int, step: FlowStep, book: BookIndex, ids: list[str], gaps: list[Gap],
 ) -> _HttpRequest | _UnbuiltStep:
@@ -508,7 +520,7 @@ def _http_request(
     query = "" if "?" in path else book.queries_by_node.get(ref, "")
     node_rows = book.acts_by_node.get(ref, [])
     arranged = (None if (ref in book.acts_refused or not node_rows)
-                else _http_arrangement(tuple(node_rows)))
+                else _step_arrangement(ref, node_rows, book))
     sent_references = (*(arranged.named_references() if arranged else ()), *references.find_references(query))
     if method in _BODILESS_METHODS:
         return _HttpRequest(method, path, arranged.kwargs_source(with_body=False) if arranged else "", sent_references, query)

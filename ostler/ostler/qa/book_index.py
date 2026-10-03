@@ -32,13 +32,15 @@ class BookIndex:
     resolved_web_base_urls: dict[str, str]
     resolved_api_base_urls: dict[str, str]
     queries_by_node: dict[str, str] = field(default_factory=dict[str, str])
+    claims_by_node: dict[str, list[Obligation]] = field(default_factory=dict[str, list[Obligation]])
 
 
 @dataclass(frozen=True)
 class NodeActs:
-    """Every node's declared acts in book order, and the nodes whose act bullets were refused."""
+    """Every node's declared acts in book order, the claims that declare them, and the nodes whose act bullets were refused."""
     by_node: dict[str, list[CallRow]]
     refused: set[str]
+    claims_by_node: dict[str, list[Obligation]] = field(default_factory=dict[str, list[Obligation]])
 
 
 def _is_declared_claim(obligation: Obligation) -> bool:
@@ -47,14 +49,17 @@ def _is_declared_claim(obligation: Obligation) -> bool:
 
 
 def node_acts(obligations: list[Obligation]) -> NodeActs:
-    """Every node's declared acts in book order, and the nodes whose act bullets were refused."""
+    """Every node's declared acts in book order, the claims that declare them, and the nodes whose act bullets were refused."""
     rows_by_node: dict[str, list[tuple[tuple[int, ...], int, CallRow]]] = {}
+    claims_by_node: dict[str, list[Obligation]] = {}
     refused: set[str] = set()
     for obligation in obligations:
         if not _is_declared_claim(obligation):
             continue
         if obligation.acts_unparsed:
             refused.add(obligation.node)
+        if obligation.acts:
+            claims_by_node.setdefault(obligation.node, []).append(obligation)
         for index, row in enumerate(obligation.acts):
             rows_by_node.setdefault(obligation.node, []).append((obligation.doc_position, index, row))
     ordered = {
@@ -62,7 +67,8 @@ def node_acts(obligations: list[Obligation]) -> NodeActs:
                        for _, _, row in sorted(rows, key=lambda entry: entry[:2])}.values())
         for node_id, rows in rows_by_node.items()
     }
-    return NodeActs(ordered, refused)
+    claims = {node_id: sorted(owned, key=lambda claim: claim.doc_position) for node_id, owned in claims_by_node.items()}
+    return NodeActs(ordered, refused, claims)
 
 
 def queries_by_node(obligations: list[Obligation]) -> dict[str, str]:
