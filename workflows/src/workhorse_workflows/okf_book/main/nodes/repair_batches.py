@@ -6,6 +6,7 @@ no sections, goes to no batch: it is reported, with its cost, for the operator t
 """
 from __future__ import annotations
 
+import itertools
 from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
@@ -40,7 +41,7 @@ def _repairs_joined_by_page(units: list[PageCost]) -> tuple[PageRepair, ...]:
 def _claim_new_flow_page(root: Path, journey: JourneyPages, page: str, claimed_flow_pages: set[str]) -> str:
     """A path in the flow folder named for the page, that no page on disk and no other batch holds."""
     stem = Path(page).stem
-    candidates = (f"{journey.flow_folder}/{stem}{'' if n == 1 else f'-{n}'}.md" for n in range(1, len(claimed_flow_pages) + 2))
+    candidates = (f"{journey.flow_folder}/{stem}{'' if n == 1 else f'-{n}'}.md" for n in itertools.count(1))
     path = next(path for path in candidates if path not in claimed_flow_pages and not (root / path).exists())
     claimed_flow_pages.add(path)
     return path

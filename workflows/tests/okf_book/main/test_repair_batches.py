@@ -203,3 +203,14 @@ def test_a_section_alone_over_the_ceiling_is_reported_by_its_heading(tmp_path: P
     assert [repair.sections for batch in packed.batches for repair in batch.pages] == [("list-rows",)]
     assert [large.subject for large in packed.oversized_parts] == [f"{page}, ### drop-row"]
     assert packed.oversized_parts[0].reason.endswith("split the section")
+
+
+def test_a_new_flow_page_skips_the_names_an_earlier_round_left_on_disk(tmp_path: Path) -> None:
+    flow = _page(tmp_path, "flows/add.md", cites=False)
+    _ = _page(tmp_path, "flows/add-2.md", cites=False)
+    page = _page(tmp_path, "ops/add.md", cites=False)
+    journey = JourneyPages(pages=(flow,), flow_folder=f"{BOOK}/flows")
+
+    batches = pack_repairs(tmp_path, {page: (PageProblem(page, "p", needs_journey=True),)}, journey, ceiling=2 * ONE_PAGE_TOKENS).batches
+
+    assert [batch.new_flow_page for batch in batches] == [f"{BOOK}/flows/add-3.md"]
