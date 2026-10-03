@@ -15,9 +15,11 @@ from workhorse_workflows.okf_book.shared.page_check import (
 FLOW = Path("docs/features/tally/flows/track-a-trip.md")
 COMMANDS = Path("docs/features/tally/tally.md")
 UNINVOKABLE_FIX = (
-    "When the app itself runs it, delete the page and every page under it, point each link to them at the page "
-    + "of what calls it, and state there what running it changes, with claims that prove it. Do not scaffold it "
-    + "again. When a user runs it, `binary:` names the program, and the operator opts that tool in."
+    "When the app itself runs it, delete the page and every page under it, move each other link they hold to "
+    + "the page of what calls it so no page they reached is left unlinked, point each link to them at that page, "
+    + "and state there what running it changes, with claims that prove it. Do not scaffold it again. When it is "
+    + "no one program, give the page the `type:` of what it documents and keep its links. When a user runs it, "
+    + "`binary:` names the program, and the operator opts that tool in."
 )
 
 

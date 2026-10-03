@@ -198,9 +198,11 @@ def _uninvokable_problems(root: Path, nodes: list[_Node]) -> list[PageProblem]:
                 if node.binary
                 else f"{node.id}: no run can invoke it, because it names no `binary:`. "
             )
-            + "When the app itself runs it, delete the page and every page under it, point each link to them at the page "
-            + "of what calls it, and state there what running it changes, with claims that prove it. Do not scaffold it "
-            + "again. When a user runs it, `binary:` names the program, and the operator opts that tool in.",
+            + "When the app itself runs it, delete the page and every page under it, move each other link they hold to "
+            + "the page of what calls it so no page they reached is left unlinked, point each link to them at that page, "
+            + "and state there what running it changes, with claims that prove it. Do not scaffold it again. When it is "
+            + "no one program, give the page the `type:` of what it documents and keep its links. When a user runs it, "
+            + "`binary:` names the program, and the operator opts that tool in.",
         )
         for node in nodes
         if node.type == "cli" and node.binary not in tools
