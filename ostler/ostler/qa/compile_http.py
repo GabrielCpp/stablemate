@@ -115,7 +115,8 @@ def api_scenarios(
             sinks.gaps.extend(unarranged_scenario_gap(o) for o in declared)
             continue
         covered: set[str] = set()
-        body = _scenario_body(declared, _arranging(obligations, book), sinks.gaps, covered, sinks.captured)
+        body = _scenario_body(declared, _arranging(obligations, book), book.fixture_pages, sinks.gaps, covered,
+                              sinks.captured)
         if not covered:
             continue
         emitted.covered.update(covered)
@@ -391,6 +392,25 @@ def _claim_request(
     return _ClaimRequest(f"    {observed} = qa.http.{method.lower()}({path_expr}{expect}{kwargs_source})", "{" in path)
 
 
+def _deletes_shared_fixture(obligation: Obligation, fixture_pages: dict[str, frozenset[str]]) -> ScenarioRefusal | None:
+    """Why a DELETE claim that succeeds must not run: its path names a fact of a fixture other pages name too, and every page of a lap reuses that fixture's one build."""
+    route = _route(obligation.locators)
+    status = _expect_status(obligation.checks)
+    if route is None or route[0] != "DELETE" or (status is not None and status >= 400):
+        return None
+    for ref in references.find_references(_request_path(route[1], obligation.checks)):
+        if not isinstance(ref, references.NodeRef):
+            continue
+        others = sorted(fixture_pages.get(ref.node, frozenset()) - {obligation.source})
+        if others:
+            named = ", ".join(others[:3]) + (", ..." if len(others) > 3 else "")
+            return ScenarioRefusal("deletes-shared-fixture", (
+                f"this DELETE removes `@{ref.node}.{ref.key}`, and fixture `{ref.node}` is built once per run "
+                f"and shared with {named}. Give this claim its own fixture that creates the resource it deletes, "
+                f"named on this page only"))
+    return None
+
+
 def _request_lines(
     oid: str, request: _ClaimRequest | _UnbuiltClaimRequest, observed: str, gaps: list[Gap],
 ) -> list[str]:
@@ -460,8 +480,8 @@ def _claim_assertions(
     return _ClaimAssertions(assertions, todos)
 
 
-def _scenario_body(obligations: list[Obligation], arranging: list[Obligation], gaps: list[Gap], covered: set[str],
-                   captured: set[tuple[str, str]]) -> list[str]:
+def _scenario_body(obligations: list[Obligation], arranging: list[Obligation], fixture_pages: dict[str, frozenset[str]],
+                   gaps: list[Gap], covered: set[str], captured: set[tuple[str, str]]) -> list[str]:
     """Compile every claim's request, captures and assertions, in book order, sending each node's credentials from every claim that arranges one, checked or not."""
     lines: list[str] = []
     produced = _Produced()
@@ -473,8 +493,10 @@ def _scenario_body(obligations: list[Obligation], arranging: list[Obligation], g
         observed = f"observed_{index}"
         lines.extend(["", f"    # {oid}", f"    # {' '.join(obligation.requirement.split())}"])
         produced.record_fixtures(obligation)
-        request = _claim_request(obligation, observed, produced, gaps,
-                                 credentials.get(obligation.node, ()), callers.get(obligation.node, frozenset()))
+        refusal = _deletes_shared_fixture(obligation, fixture_pages)
+        request = (_UnbuiltClaimRequest(refusal.detail, refusal) if refusal is not None
+                   else _claim_request(obligation, observed, produced, gaps,
+                                       credentials.get(obligation.node, ()), callers.get(obligation.node, frozenset())))
         claim_lines = _request_lines(oid, request, observed, gaps)
         responded = observed if isinstance(request, _ClaimRequest) else None
         claim_lines.extend(_claim_captures(obligation, responded, produced, gaps, captured))

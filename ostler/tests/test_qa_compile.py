@@ -676,6 +676,49 @@ def test_a_claim_about_a_server_fault_is_withheld_as_unarrangeable() -> None:
     assert "expect_status=201" in source
 
 
+def _ledger_fixture(name: str) -> dict:
+    return {"name": name, "args": [], "provides": "a ledger", "providesKeys": [f"{name}.id"]}
+
+
+def _ledger_delete(oid: str, fixture: str) -> dict:
+    return _obligation(oid, source="docs/features/demo/delete-ledger.md", node="delete-ledger",
+                       locators={"route": ["DELETE /api/ledgers/{id}"]},
+                       checksDeclared=[{"call": "ok", "name": "http_status",
+                                        "args": {"code": 204, "path": f"/api/ledgers/@{fixture}.id"}}],
+                       fixturesDeclared=[_ledger_fixture(fixture)])
+
+
+def _ledger_read(oid: str) -> dict:
+    return _obligation(oid, source="docs/features/demo/read-ledger.md", node="read-ledger",
+                       locators={"route": ["GET /api/ledgers/{id}"]},
+                       checksDeclared=[{"call": "ok", "name": "http_status",
+                                        "args": {"code": 200, "path": "/api/ledgers/@seeded-ledger.id"}}],
+                       fixturesDeclared=[_ledger_fixture("seeded-ledger")])
+
+
+def test_a_delete_of_a_fixture_other_pages_share_sends_no_request() -> None:
+    """Every page of a run reuses one build of a fixture, so a claim that deletes its resource breaks every page after it."""
+    deleting = "okf:docs/features/demo/delete-ledger.md#delete-ledger:does:1"
+    reading = "okf:docs/features/demo/read-ledger.md#read-ledger:does:1"
+    source, gaps = compile_plan_gaps(_context(_ledger_delete(deleting, "seeded-ledger"), _ledger_read(reading)),
+                                     story="demo-story")
+    assert source is not None
+    assert _gap_kinds(gaps, deleting) == ["deletes-shared-fixture"]
+    assert _gap_kinds(gaps, reading) == []
+    assert "qa.http.delete(" not in source
+
+
+def test_a_delete_of_a_fixture_only_its_page_names_is_sent() -> None:
+    """A fixture one page names is that page's own, and deleting its resource leaves no other page without it."""
+    deleting = "okf:docs/features/demo/delete-ledger.md#delete-ledger:does:1"
+    reading = "okf:docs/features/demo/read-ledger.md#read-ledger:does:1"
+    source, gaps = compile_plan_gaps(_context(_ledger_delete(deleting, "doomed-ledger"), _ledger_read(reading)),
+                                     story="demo-story")
+    assert source is not None
+    assert _gap_kinds(gaps, deleting) == []
+    assert 'qa.http.delete(qa.resolve("/api/ledgers/@doomed-ledger.id"), expect_status=204)' in source
+
+
 def test_each_claim_of_a_page_runs_in_its_own_claim_block() -> None:
     """A page's first refused request must not stop the run from trying the claims after it."""
     first, second = (f"okf:docs/features/demo/globex.md#get-things:{arm}" for arm in ("does:1", "emits:1"))

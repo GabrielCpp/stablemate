@@ -22,7 +22,7 @@ class OwnedCapture:
 
 @dataclass(frozen=True)
 class BookIndex:
-    """The lookups every builder in one plan shares: the book's locators, routes, queries, acts, captures and binaries, and each surface's base URL as this run resolved it."""
+    """The lookups every builder in one plan shares: the book's locators, routes, queries, acts, captures, binaries and fixture pages, and each surface's base URL as this run resolved it."""
     locators_by_node: dict[str, Locators]
     screen_routes: dict[str, str]
     acts_by_node: dict[str, list[CallRow]]
@@ -33,6 +33,7 @@ class BookIndex:
     resolved_api_base_urls: dict[str, str]
     queries_by_node: dict[str, str] = field(default_factory=dict[str, str])
     claims_by_node: dict[str, list[Obligation]] = field(default_factory=dict[str, list[Obligation]])
+    fixture_pages: dict[str, frozenset[str]] = field(default_factory=dict[str, frozenset[str]])
 
 
 @dataclass(frozen=True)
@@ -69,6 +70,17 @@ def node_acts(obligations: list[Obligation]) -> NodeActs:
     }
     claims = {node_id: sorted(owned, key=lambda claim: claim.doc_position) for node_id, owned in claims_by_node.items()}
     return NodeActs(ordered, refused, claims)
+
+
+def fixture_pages(obligations: list[Obligation]) -> dict[str, frozenset[str]]:
+    """Each fixture's name, and every page whose claims name it."""
+    pages: dict[str, set[str]] = {}
+    for obligation in obligations:
+        if not _is_declared_claim(obligation):
+            continue
+        for row in obligation.fixtures:
+            pages.setdefault(row.name, set()).add(obligation.source)
+    return {name: frozenset(sources) for name, sources in pages.items()}
 
 
 def queries_by_node(obligations: list[Obligation]) -> dict[str, str]:

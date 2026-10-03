@@ -19,6 +19,7 @@ _BRIDGE = "gap_findings has no product caller; gaps surface via qa compile-plan 
 _NO_MILESTONES = "no book in the corpus declares a milestone, so the dependency walk has nothing to walk"
 
 DORMANT_UNREACHABLE: dict[str, str] = {
+    "deletes-shared-fixture": _BRIDGE,
     "invalid-http-method": _BRIDGE,
     "milestone-cycle": _NO_MILESTONES,
     "needs-multi-target-runtime": _BRIDGE,

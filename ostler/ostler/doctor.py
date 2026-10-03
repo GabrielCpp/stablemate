@@ -1135,6 +1135,10 @@ def gap_findings(gaps: list[Gap]) -> list[Finding]:
             findings.append(
                 Finding("error", "unarrangeable-server-fault", message, ref=gap.obligation_id)
             )
+        elif gap.kind == "deletes-shared-fixture":
+            findings.append(
+                Finding("error", "deletes-shared-fixture", message, ref=gap.obligation_id)
+            )
         elif gap.kind == "unidentifiable-screen":
             findings.append(
                 Finding("error", "unidentifiable-screen", message, ref=gap.obligation_id)
