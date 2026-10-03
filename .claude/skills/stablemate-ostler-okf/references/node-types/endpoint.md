@@ -273,7 +273,7 @@ no scenario is compiled for it.
 `weak-check`, `unstated-precondition`, `unparsed-check`, `misfiled-test-ref`,
 `dangling-code-ref`,
 `missing-code-symbol`, `unknown-book-fixture`, `unarranged-request-body`,
-`unarrangeable-server-fault`, `invalid-http-method`, `misnested-bullet`, `unarranged-scenario`,
+`unarrangeable-server-fault`, `deletes-shared-fixture`, `invalid-http-method`, `misnested-bullet`, `unarranged-scenario`,
 `misbound-status-check`, `endpoint-without-server`, `unlisted-endpoint`, `inline-endpoint`. See
 [../doctor-codes.md](../doctor-codes.md).
 
