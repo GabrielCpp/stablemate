@@ -90,7 +90,8 @@ def _screen_path(
             f"{surface}'s navigation cannot reach {screen} from its start screen {nav.start or '(none stated)'}; "
             f"no scenario compiled. On {screen}, state `entry: /<route>` when its route opens on its own "
             f"and holds no `:parameter` or `*`, or add a `leads-to:` link to it on the component that navigates there. "
-            f"A route with a parameter is reached only through such a link")
+            f"A route with a parameter is reached only through such a link",
+            owner=screen)
     hops = nav.routes.get(screen)
     if hops is None:
         return ScenarioRefusal(
@@ -230,7 +231,7 @@ def _compile_page_scenarios(
         shown_on = book.fragment_hosts.get(source, source)
         screen_path = _screen_path(navigation, surface, shown_on)
         if isinstance(screen_path, ScenarioRefusal):
-            gaps.extend(Gap(oid, screen_path.kind, screen_path.detail) for oid in ids)
+            gaps.extend(Gap(oid, screen_path.kind, screen_path.detail, screen_path.owner) for oid in ids)
             continue
         if shown_on in navigation[surface].undeclared:
             gaps.append(Gap(ids[0], "screen-preconditions-undeclared",
@@ -401,11 +402,11 @@ def _performed_trigger(
     on_expr = page_locator_expr(book.locators_by_node.get(arm.on_node_id, NO_LOCATORS))
     refusal = _trigger_refusal(arm, on_expr, when_arranged)
     if refusal is not None:
-        gaps.extend(Gap(oid, refusal.kind, refusal.detail) for oid in ids)
+        gaps.extend(Gap(oid, refusal.kind, refusal.detail, refusal.owner) for oid in ids)
         return None
     scaffold = _scaffold_click_refusal(arm)
     if scaffold is not None:
-        gaps.extend(Gap(oid, scaffold.kind, scaffold.detail) for oid in ids)
+        gaps.extend(Gap(oid, scaffold.kind, scaffold.detail, scaffold.owner) for oid in ids)
     action = [f"    {on_expr}.click()  # trigger: {trailing_comment(arm.trigger)}"]
     if arm.does:
         action.extend(_prose_comment(arm.does, label="does: "))

@@ -118,7 +118,7 @@ def walk_hops(
             lines.append(f"    # TODO(arrange): no locator declared for {target_node!r}"
                          f" ({hop.label!r})")
             gaps.extend(Gap(oid, "unresolved-precondition",
-                             f"no locator declared for navigation hop {target_node!r}")
+                             f"no locator declared for navigation hop {target_node!r}", target_node)
                         for oid in oids)
             continue
         lands_on = hops[index + 1].from_page if index + 1 < len(hops) else destination
@@ -219,7 +219,7 @@ def _page_assertions(
         channel = check_observes(row.name)
         if "file" in row.args:
             refusal = file_refusal(row.name)
-            gaps.append(Gap(obligation.id, refusal.kind, refusal.detail))
+            gaps.append(Gap(obligation.id, refusal.kind, refusal.detail, refusal.owner))
             whole = False
             continue
         if channel in {"response", "body"} and not out_of_band(row.name):

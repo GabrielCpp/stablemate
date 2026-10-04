@@ -1788,6 +1788,7 @@ def test_an_unreachable_screen_names_itself_and_the_two_edits_that_reach_it() ->
     [gap] = [g for g in result.gaps if g.obligation_id == oid]
     assert _SCREEN in gap.detail
     assert "`entry: /<route>`" in gap.detail and "`leads-to:`" in gap.detail
+    assert gap.owner == _SCREEN
 
 
 @pytest.mark.parametrize(("on_value", "node"), [

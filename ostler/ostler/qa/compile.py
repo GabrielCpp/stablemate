@@ -153,7 +153,7 @@ def _split_by_entry_url(
         url = resolved_by_surface[surface]
         if url is None:
             refusal = entry_url_refusal(surface)
-            gaps.append(Gap(obligation.id, refusal.kind, refusal.detail))
+            gaps.append(Gap(obligation.id, refusal.kind, refusal.detail, refusal.owner))
             continue
         kept.append(obligation)
 
@@ -270,7 +270,7 @@ def _dispatch(
         )
         target = dispatch_target(obligation.node_type, driver)
         if isinstance(target, ScenarioRefusal):
-            gaps.append(Gap(obligation.id, target.kind, target.detail))
+            gaps.append(Gap(obligation.id, target.kind, target.detail, target.owner))
             continue
         by_target[target].append(obligation)
     return lanes

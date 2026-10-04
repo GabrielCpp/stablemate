@@ -18,17 +18,23 @@ _IDENTIFIER_BREAK = re.compile(r"[^0-9a-zA-Z]+")
 
 @dataclass(frozen=True)
 class Gap:
-    """One obligation left uncompiled, and why — `compile_plan`'s structured gap report."""
+    """One obligation left uncompiled, and why — `compile_plan`'s structured gap report.
+
+    `owner` is the node whose page takes the fix when that is not the obligation's own node, such
+    as the screen no navigation reaches. It is empty when the fix goes on the obligation's node.
+    """
     obligation_id: str
     kind: str
     detail: str
+    owner: str = ""
 
 
 @dataclass(frozen=True)
 class ScenarioRefusal:
-    """Why no scenario can be minted for an obligation: the gap kind and its detail."""
+    """Why no scenario can be minted for an obligation: the gap kind, its detail and the node that owns the fix when it is another node."""
     kind: str
     detail: str
+    owner: str = ""
 
 
 def check_observes(name: str | None) -> str | None:
