@@ -88,9 +88,8 @@ class RegroundBook(BookFlow):
                 REGROUND_PROMPT,
                 returns=RegroundVerdict,
                 timeout=REGROUND_TIMEOUT,
-                args=reground_template_args(self.root, stale, old, keep_old_version(self.records_dir, stale, old)),
+                args=reground_template_args(self.root, stale, old, keep_old_version(self.root, stale, old)),
                 cwd=self.root,
-                add_dirs=[self.records_dir],
                 profile=REGROUND_PROFILE,
             )
         except (AgentTurnFailed, AgentTimeout, OutputParseError) as ended:

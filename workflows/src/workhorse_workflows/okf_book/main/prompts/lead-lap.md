@@ -33,7 +33,7 @@ What the run printed{% if lines_left %}, its first lines, with {{ lines_left }} 
 ```
 
 - The whole run, every failed check with what it expected and what it observed, is
-  `{{ records_dir }}/run-summary.json`.
+  `{{ summary }}`.
 - The test plan the toolchain compiled from the book is `{{ plan }}`. It is what was sent to
   the app. Where a request in it differs from what the page says, the toolchain changed it.
 - The book's pages and the app's source are in this repository, which you run from.

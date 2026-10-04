@@ -198,7 +198,7 @@ def with_instructions(failures: Mapping[str, tuple[PageProblem, ...]], findings:
     return {page: (*told.get(page, ()), *problems) for page, problems in failures.items()}
 
 
-def lead_template_args(service: str, exercised: ExerciseResult, earlier: Iterable[LeadFinding], records_dir: Path, plan: Path) -> dict[str, object]:
+def lead_template_args(service: str, exercised: ExerciseResult, earlier: Iterable[LeadFinding], kept_summary: Path, plan: Path) -> dict[str, object]:
     """What the lead turn is shown: each group with its count, sample and pages, the head of what the run printed, where the whole run is kept, and what earlier laps' leads named."""
     summary = exercised.summary
     groups = [
@@ -211,7 +211,7 @@ def lead_template_args(service: str, exercised: ExerciseResult, earlier: Iterabl
         "groups": groups,
         "lines": list(exercised.lines[:LINES_SHOWN]),
         "lines_left": max(0, len(exercised.lines) - LINES_SHOWN),
-        "records_dir": str(records_dir),
+        "summary": str(kept_summary),
         "plan": str(plan),
         "sides": sorted(LEAD_SIDES),
         "earlier": [finding.model_dump(mode="json") for finding in earlier],

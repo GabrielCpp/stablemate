@@ -23,15 +23,17 @@ from workhorse_workflows.okf_book.main.nodes.lead_findings import (
     record_findings,
     service_findings,
 )
+from workhorse_workflows.okf_book.main.nodes.source_view import kept_for_turn
 from workhorse_workflows.okf_book.main.nodes.progress_ledger import read_laps, service_laps
 from workhorse_workflows.okf_book.shared.blockers import Phase
 from workhorse_workflows.okf_book.shared.book_flow import BookFlow
 from workhorse_workflows.okf_book.shared.book_run import ExerciseResult
 from workhorse_workflows.okf_book.shared.confine import changed_since, restore, snapshot
 from workhorse_workflows.okf_book.shared.metrics import TurnMetric, record_turn, turn_metric
-from workhorse_workflows.okf_book.shared.scenarios import PLAN_NAME, spec_dir
+from workhorse_workflows.okf_book.shared.scenarios import PLAN_NAME, RUN_NAME, spec_dir
 
 LEAD_PROMPT = "main/prompts/lead-lap.md"
+LEAD_FOLDER = "lead"
 LEAD_PROFILE = AgentProfile(name="okf-book-lead", confined=True)
 LEAD_TIMEOUT = 3600.0
 
@@ -51,7 +53,7 @@ class LeadLap(BookFlow):
     def start(self) -> Continue[...]:
         """Send the lead turn. A turn that ends without a verdict names nothing, and the run's own attribution stands."""
         earlier = service_findings(read_findings(self.records_dir), self.service)
-        plan = spec_dir(self.records_dir) / self.service / PLAN_NAME
+        summary, plan = kept_for_turn(self.root, LEAD_FOLDER, (self.records_dir / RUN_NAME, spec_dir(self.records_dir) / self.service / PLAN_NAME))
         before = snapshot(self.root)
         started = time.monotonic()
         verdict: LeadVerdict | None = None
@@ -61,9 +63,8 @@ class LeadLap(BookFlow):
                 returns=LeadVerdict,
                 power="high",
                 timeout=LEAD_TIMEOUT,
-                args=lead_template_args(self.service, self.run, earlier, self.records_dir, plan),
+                args=lead_template_args(self.service, self.run, earlier, summary, plan),
                 cwd=self.root,
-                add_dirs=[self.records_dir],
                 profile=LEAD_PROFILE,
             )
         except (AgentTurnFailed, AgentTimeout, OutputParseError) as ended:

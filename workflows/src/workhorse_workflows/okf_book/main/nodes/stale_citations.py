@@ -20,6 +20,7 @@ from ostler.refs import parse_code_ref
 from ostler.stamp import digest_file, stamp_targets
 from pydantic import BaseModel, ConfigDict
 
+from workhorse_workflows.okf_book.main.nodes.source_view import turn_folder
 from workhorse_workflows.okf_book.shared.citations import book_pages
 from workhorse_workflows.okf_book.shared.entries import FEATURES_DIR
 from workhorse_workflows.okf_book.shared.page_check import PageProblem
@@ -119,11 +120,9 @@ def stamped_text(root: Path, path: str, digest: str) -> str | None:
     return None
 
 
-def keep_old_version(records_dir: Path, stale: StaleFile, old: str) -> Path:
-    """Write the stamped version where the reading turn can open it whole."""
-    folder = records_dir / OLD_VERSIONS
-    folder.mkdir(parents=True, exist_ok=True)
-    kept = folder / f"{_UNSAFE.sub('-', stale.path)}@{stale.digest}"
+def keep_old_version(root: Path, stale: StaleFile, old: str) -> Path:
+    """Write the stamped version in the working tree, where a confined reading turn can open it whole."""
+    kept = turn_folder(root, OLD_VERSIONS) / f"{_UNSAFE.sub('-', stale.path)}@{stale.digest}"
     _ = kept.write_text(old, encoding="utf-8")
     return kept
 

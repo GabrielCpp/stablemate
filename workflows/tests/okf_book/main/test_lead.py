@@ -95,6 +95,7 @@ def test_the_lead_is_shown_every_group_and_its_verdict_is_kept_for_the_next_lap(
         {"number": 2, "text": "app: POST /entries/… answered 500", "cause": "app", "count": 2, "sample": CRASHED.sample, "pages": [PAGE]},
     ]
     assert first["earlier"] == []
+    assert all(Path(str(first[kept])).is_relative_to(tmp_path / "repo") for kept in ("summary", "plan"))
     assert second["earlier"] == [finding.model_dump(mode="json") for finding in led.findings]
     assert len(read_findings(tmp_path)) == 3
 
