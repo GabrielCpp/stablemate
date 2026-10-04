@@ -9,9 +9,7 @@ You change nothing. Read with your file tools, write no file, and answer only in
 The diff from the version the book was written on to the file as it is now{% if diff_left %}, its first lines, with {{ diff_left }} more{% endif %}:
 
 ```diff
-{% for line in diff %}
-{{ line }}
-{% endfor %}
+{{ diff }}
 ```
 
 - The version the book was written on is kept whole at `{{ old_version }}`.

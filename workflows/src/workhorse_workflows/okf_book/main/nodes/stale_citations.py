@@ -133,7 +133,7 @@ def reground_template_args(root: Path, stale: StaleFile, old: str, kept: Path) -
     diff = list(difflib.unified_diff(old.splitlines(), current.splitlines(), "stamped", "now", lineterm=""))
     return {
         "path": stale.path,
-        "diff": diff[:DIFF_LINES_SHOWN],
+        "diff": "\n".join(diff[:DIFF_LINES_SHOWN]),
         "diff_left": max(0, len(diff) - DIFF_LINES_SHOWN),
         "old_version": str(kept),
         "nodes": [{"number": number, "node": cited.node, "symbol": cited.symbol} for number, cited in enumerate(stale.nodes, start=1)],

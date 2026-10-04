@@ -63,7 +63,7 @@ def test_the_node_a_change_bears_on_reaches_the_writer_and_the_rest_are_stamped(
 
     [args] = runner.args_of("reground-file")
     assert args["path"] == LEDGER
-    assert "+def archive(path):" in str(args["diff"])
+    assert "+def archive(path):" in str(args["diff"]).splitlines()
     assert Path(str(args["old_version"])).is_relative_to(repo)
     assert Path(str(args["old_version"])).read_text(encoding="utf-8") + CHANGE == (repo / LEDGER).read_text(encoding="utf-8")
     [(page, [problem])] = [(page, list(problems)) for page, problems in regrounded.failures.items()]
