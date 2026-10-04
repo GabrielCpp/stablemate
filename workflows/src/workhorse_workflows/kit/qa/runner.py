@@ -73,7 +73,7 @@ def ensure_stack(
     manifests, selection = runbook.load_stacks(
         graph, near=Path(near) if near else None, logger=logger)
     if not manifests:
-        if not runbook.has_served_surface(graph):
+        if not runbook.has_served_surface(graph, Path(near) if near else None):
             return StackStatus(
                 ready="unneeded",
                 notes=("The book serves nothing — no `screen`, no `server` — so an empty "

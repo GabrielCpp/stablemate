@@ -1298,6 +1298,24 @@ def test_an_empty_manifest_splits_on_whether_the_book_serves_anything(
     assert "served surface" in status.notes
 
 
+def test_a_book_that_serves_nothing_needs_no_stack_beside_one_that_does(
+    docs: Path,
+    write: Callable[[Path, str], Path],
+) -> None:
+    """The served-surface question is asked of the book being run, not of the whole repository."""
+    log = logging.getLogger("test")
+    (docs / RUNBOOK_REL).unlink()
+    features = docs / "docs" / "features"
+    write(features / "app" / "server.md", "---\ntype: server\ntitle: App server\n---\n\n# App server\n")
+    write(features / "tool" / "command.md", "---\ntype: concept\ntitle: Command\n---\n\n# Command\n")
+
+    beside = qa_runner_mod.ensure_stack(log, str(docs), near=str(features / "tool"))
+    served = qa_runner_mod.ensure_stack(log, str(docs), near=str(features / "app"))
+
+    assert beside.ready == "unneeded", beside
+    assert served.ready == "none", served
+
+
 def _stack_runbook(root: Path, write: Callable[[Path, str], Path], *, name: str, port: int,
                    env_href: str = "") -> None:
     """A second stack runbook under `app/ops`, distinct from the `docs` fixture's own."""
