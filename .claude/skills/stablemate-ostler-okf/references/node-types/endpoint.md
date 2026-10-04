@@ -246,18 +246,28 @@ title: create-link
 - server: [Links API](links-api.md)
 - method: POST
 - path: /links
-- does: stores the submitted URL under a generated slug
-- verify: json_path(path="$.slug", matches="^[a-z0-9-]+$")
-- status: 201 with the slug in the body
-- verify: http_status(code=201, path="/links")
-- arrange: body(field="url", value="https://example.com/docs")
-- arrange: header(name="Authorization", value="Bearer @signed-in-editor.token")
-- errors: 409 when the requested slug is already in use
-- verify: http_status(code=409, path="/links")
-- auth: any signed-in editor
-- code: internal/api/links.go::CreateLink
 - fixture: signed-in-editor
+- arrange: header(name="Authorization", value="Bearer @signed-in-editor.token")
+- does: stores the submitted URL under a generated slug
+- arrange: body(field="url", value="https://example.com/docs")
+- verify: json_path(path="$.slug", matches="^[a-z0-9-]+$")
+- capture: slug from $.slug
+- status: 201 with the slug in the body
+- arrange: body(field="url", value="https://example.com/docs")
+- verify: http_status(code=201, path="/links")
+- errors: 400 when the submitted URL is not absolute
+- arrange: body(field="url", value="not-a-url")
+- verify: http_status(code=400, path="/links")
+- auth: any signed-in editor
+- arrange: body(field="url", value="https://example.com/docs")
+- verify: http_status(code=401, path="/links")
+- code: internal/api/links.go::CreateLink
 ```
+
+The `fixture:` and the credential sit above every claim, so they arrange each one. Each claim
+sends its own request, so each arm carries its own `body` and its own `verify:`. The `auth:`
+arm expects 401, so the run sends it without the credential. The `capture:` keeps the slug
+for a later step of a [flow](flow.md).
 
 The `fixture:` bullet is also what makes the endpoint's claims observable at all. An
 endpoint's checks run in a scenario compiled per book file, and that scenario's world is

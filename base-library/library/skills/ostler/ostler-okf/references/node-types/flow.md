@@ -118,15 +118,20 @@ type: flow
 
 # Shorten and Follow
 
+- fixture: signed-in-editor
 - start: a signed-in editor with no links
 - verify: count(subject="links owned by the signed-in editor", equals=0)
 - steps:
-  - [create-link](../http/links-api.md#create-link)
-  - [follow-link](../http/links-api.md#follow-link)
+  - [create-link](../http/create-link.md)
+  - [follow-link](../http/follow-link.md)
 - end: the browser lands on the original URL
 - verify: http_status(code=302, path="/{slug}")
 - tests: tests/e2e/shorten_test.go
 ```
+
+The `fixture:` signs the editor in, so the create-link step sends the credential its endpoint
+arranges. That endpoint's `capture: slug from $.slug` hands the new slug to the follow-link
+step's `/{slug}`.
 
 ## Doctor codes it can trip
 

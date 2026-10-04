@@ -74,18 +74,24 @@ timeout 30 ostler scaffold interaction save-link --in docs/features/acme/gui/scr
 ```markdown
 ### save-link
 
+- fixture: signed-in-editor
 - on: [save-button](#save-button)
 - trigger: click
 - role: button
 - name: Save
 - keyboard: Tab to focus, Enter to activate
+- verify: focusable(locator="#save-button", activates="Enter")
 - when: the URL field holds a valid absolute URL
-- does: persists the link and returns to the list
+  - arrange: fill(locator="#url-field", value="https://example.com/a")
+- does: persists the link and returns to the list, which shows it
+- verify: visible(locator="link-list.md#link-row", text="https://example.com/a")
 - code: web/src/LinkEditor.tsx::onSave
-- fixture: signed_in_editor
-- arrange: fill(locator="#url-field", value="https://example.com/a")
-- verify: created(subject="a link row for the submitted URL")
 ```
+
+The `fixture:` sits above every claim, so it arranges each one. The `fill` sits under the
+`when:` it makes true. The `does:` check reads the screen the click lands on, so its
+`locator=` names a component of that screen. A browser driver sees only the page, so the check
+is what the person sees there, not the stored row.
 
 ## Arranging a precondition: `fixture:` or `arrange:`
 

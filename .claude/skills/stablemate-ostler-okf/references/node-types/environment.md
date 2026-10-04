@@ -39,14 +39,15 @@ to own them.
 `config:` owns like `code:` with one more effect: a declared config path is a production unit
 even where the QA-context filter would drop it as stack config. Not a grounding key.
 
-An environment states facts a plan can be held to — a pinned provider version, a backend that
-is local, a service on the address the book gives — so `verify:` exists here for the same
-reason it exists on a component: without it every obligation this node mints is covered by
-whatever the scenario happened to assert, and the pin the program lost reads exactly like the
-pin it kept.
+An environment runs nothing a check can observe, so a claim on it compiles to no scenario. A
+fact about where the stack runs, such as a pinned provider version or a service on the address
+the book gives, goes on a [runbook](runbook.md) step whose `run:` exits non-zero when the fact
+is false. Bringing the stack up then checks it. A fact about what the product does, such as a
+row that survives a restart, goes with its `verify:` on the endpoint, invocation or interaction
+that produces it.
 
-Plus the [shared normative keys](../bullet-grammar.md#keys-that-are-normative-on-every-type),
-which are where an environment's claims usually live (`persistence:`, `consistency:`).
+Plus the [shared normative keys](../bullet-grammar.md#keys-that-are-normative-on-every-type).
+A claim stated with one of them here compiles to no scenario, for the reason above.
 
 ## Required sections
 
@@ -84,8 +85,6 @@ type: environment
   - postgres: 127.0.0.1:5432, database `links_dev`
 - code: docker-compose.yml
 - config: config/local.yaml
-- persistence: link rows survive a stack restart
-- verify: persists(subject="a link row created before the restart")
 ```
 
 ## Doctor codes it can trip

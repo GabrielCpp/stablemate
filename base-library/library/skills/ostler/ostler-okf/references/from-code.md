@@ -29,7 +29,8 @@ convergence gate) is in [bulk-build.md](bulk-build.md); this is only the loop yo
    - `verify:` = the observation, in the check vocabulary (see the skill body) — and reading the
      code is what tells you which one and with which arguments. The handler that returns 409 on a
      stale write declares `http_status(409, …)`; the one that writes through a store before
-     answering declares `persists(subject=…)`. Omitting it is not neutral: it is the one bullet
+     answering declares a `json_path` on the record its response returns, and the endpoint that
+     reads the record back carries its own claim. Omitting it is not neutral: it is the one bullet
      nobody downstream can supply for you.
 5. **Scaffold, author, converge** — same loop as Playbook A, but the prose is *as-built* (describe
    what the code does, not what you wish it did) and `code:`/`tests:` are real.

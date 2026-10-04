@@ -92,16 +92,21 @@ timeout 30 ostler scaffold invocation expire-stale-links --in docs/features/acme
 ```markdown
 ### expire-stale-links
 
-- on: [links-api](links-api.md)
-- trigger: the nightly scheduler, at 03:00 UTC
+- on: [expire-links](expire-links.md)
+- trigger: the nightly scheduler, at 03:00 UTC, posting to the job route
+- fixture: link-last-followed-91-days-ago
 - when: a link has not been followed for 90 days
-- does: marks the link expired and stops resolving it
-- verify: removed(subject="the stale link from the active index")
-- emits: link.expired, one per expired link
-- verify: emitted(event="link.expired", count=1)
+- does: marks the link expired and reports how many it expired
+- arrange: body(field="older_than_days", value="90")
+- verify: json_path(path="$.expired", equals=1)
 - code: internal/jobs/expire.go::ExpireStale
-- fixture: link_last_followed_91_days_ago
 ```
+
+A scenario cannot wait for 03:00, so it calls the route the scheduler posts to. That route is
+the endpoint `on:` names. A job that no route starts compiles to no scenario. Each claim sends
+one request to that endpoint, and its checks read that one response. That an expired link stops
+resolving is a claim of the endpoint that resolves links. It goes under that endpoint's
+`errors:`, with a fixture that leaves an expired link.
 
 `invocation` declares no `response:` key at all, yet books written against an HTTP-shaped
 invocation still nest a `- response:` block with `- status:`/`- errors:` children under it —

@@ -40,17 +40,17 @@ a tautology. A creation observed only *after* the action passes identically when
 already there, so a no-op and a success are the same observation:
 
 ```markdown
-# unfalsifiable — 201 and a present id say the same thing either way
-- does: creates a revision under the caller's name
-- verify: http_status(201, path="/revisions")
-- verify: json_path(path="$.revision.id", absent=false)
+# unfalsifiable — exit 0 and a message say the same thing either way
+- does: writes the ledger export to export.csv
+- verify: exit_status(code=0)
+- verify: stdout(text="exported")
 ```
 
 ```markdown
 # falsifiable — the absence before is part of what is observed
-- does: creates a revision under the caller's name
-- verify: created(subject="the caller's revision")
-- verify: json_path(path="$.revision.author", equals="the caller")
+- does: writes the ledger export to export.csv
+- verify: created(subject="export.csv")
+- verify: contents(subject="export.csv", matches="^date,amount")
 ```
 
 `created` and `removed` exist for exactly this: the harness insists on a `(before, after)` pair and
@@ -58,9 +58,17 @@ refuses an after-only read at the call. The mirror case is a delete asserted by 
 — which passes on a subject that was never there, so `removed(subject=…)` is what makes the
 disappearance attributable to the action rather than to history.
 
+A CLI scenario takes both reads of its working directory itself. An HTTP scenario makes one call
+and reads nothing before it, so there `created` and `removed` compile to `needs-snapshot`. Check
+a creation over HTTP on the response that returns the new record. A `json_path` on the create
+call's own body is one. The endpoint that lists or returns the record is another, as its own
+claim with a fixture that leaves the record, as
+[check-vocabulary.md](check-vocabulary.md#what-a-cli-scenario-compares) says.
+
 The rule generalises past existence. Any claim of the form *X changed* needs the read before it:
-that is what `unchanged`, `keys_unchanged`, `persists` and `conflict_on_stale` are, and it is why
-none of them can be spelled as a single after-read.
+that is what `unchanged` and `keys_unchanged` are, and it is why neither can be spelled as a
+single after-read. `conflict_on_stale` needs no read before: it sends a write with a stale token
+and observes the refusal.
 
 ### 3. The check discriminates the claim from its nearest plausible defect
 
@@ -70,10 +78,10 @@ Ask what the *likely* bug is, not the worst one, and choose the check that separ
 | --- | --- | --- |
 | the field is returned | it is returned empty, or as the default | `json_path(path=…, equals=…)`, never presence alone |
 | the request is refused | it is refused for a different reason | `http_status(code=409, title="Stale Hold")` |
-| the write survives | it was only observed through the session that made it | `persists(subject=…)` |
+| the write survives | it was only observed through the session that made it | `persists(subject=…)`, which no compiler runs yet; [check-vocabulary.md](check-vocabulary.md) says what to declare instead |
 | one record moved | it was copied and the old one left behind | `keys_unchanged(subject=…)` |
 | the update is conditional | it is an unconditional overwrite | `conflict_on_stale(subject=…, token=…)` |
-| the effect fired | it fired at the source, or fired twice | `emitted(event=…, count=…)` |
+| the effect fired | it fired at the source, or fired twice | `emitted(event=…, count=…)`, which no compiler runs yet; [check-vocabulary.md](check-vocabulary.md) says what to declare instead |
 | one row was deleted | the neighbours were rewritten too | `unchanged(subject=…, except_fields=[…])` |
 | the refusal says nothing it may not | it quotes the credential, path or query it rejected | `omits(subject=…, matches=…)` |
 

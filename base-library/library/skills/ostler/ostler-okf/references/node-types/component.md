@@ -155,16 +155,20 @@ timeout 30 ostler scaffold component save-button --in docs/features/acme/gui/scr
 
 - role: button
 - name: Save
+- verify: visible(locator="#save-button", text="Save")
 - placement: width 0-20%, x 60-100%
 - keyboard: reachable by Tab, activated by Enter or Space
+- verify: focusable(locator="#save-button", activates="Enter")
 - states: disabled until the URL field is valid
   - fixture: none, because the link editor opens with an empty URL field
   - verify: inert(locator="#save-button")
 - code: web/src/LinkEditor.tsx::SaveButton
 ```
 
-A `states:` claim compiles only with its own `fixture:` and `verify:`, indented under the state
-they prove. Several states go under `- states: branches`, one child bullet each, and each child
+A check binds to the nearest claim above it, as
+[document order](../bullet-grammar.md#document-order-is-the-binding) says, so each claim gets a
+`verify:` right below it. The one check after `name:` proves `role:` and `name:` together. A `states:` claim compiles only with its own `fixture:`
+and `verify:`, indented under the state they prove. Several states go under `- states: branches`, one child bullet each, and each child
 carries its own pair. A `locator=` names a declared anchor such as `#save-button`. A raw selector
 like `button[name=Save]` is refused.
 
