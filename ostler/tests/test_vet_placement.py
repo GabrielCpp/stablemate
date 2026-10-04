@@ -157,6 +157,28 @@ def test_a_component_with_no_placement_is_still_checked_for_being_there() -> Non
     assert present.detail == []
 
 
+def test_a_bare_tag_matches_the_element_a_styling_framework_gave_classes() -> None:
+    """A scan names a class-styled element `tag.class:nth(i)`, and the book's `form` is still that element."""
+    form, other = check(
+        [_component("s.md#signin-form", "form"), _component("s.md#heading", "h2")],
+        [_region("form", ["form.MuiBox-root.css-1abc:nth(0)"], (400, 200, 400, 300)),
+         _region(None, ["h2x.title:nth(0)", "formal.note"], (0, 0, 100, 40))],
+        VIEWPORT,
+    )
+    assert (form.status, other.status) == ("matched", "missing")
+
+
+def test_a_class_selector_matches_an_element_that_carries_more_classes() -> None:
+    """`div.footer` addresses `div.footer.footer--light` the way CSS does, and never an element missing the class."""
+    footer, other = check(
+        [_component("s.md#footer", "div.footer"), _component("s.md#header", "div.header.dark")],
+        [_region(None, ["div.footer.footer--light:nth(0)"], (0, 800, 1440, 100)),
+         _region(None, ["div.header.light:nth(0)", "div.footer-note"], (0, 0, 1440, 60))],
+        VIEWPORT,
+    )
+    assert (footer.status, other.status) == ("matched", "missing")
+
+
 def test_a_component_the_book_says_comes_and_goes_is_not_missing_when_it_is_gone() -> None:
     """One photograph cannot be every state a screen has."""
     verdicts = check(

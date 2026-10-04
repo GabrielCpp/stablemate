@@ -114,7 +114,13 @@ class ComponentVerdict(BaseModel):
 
 def _matches(selector: str, scanned: str) -> bool:
     """Whether a scanned element's selector is the documented one."""
-    return scanned == selector or scanned.startswith(f"{selector}:nth(")
+    if scanned == selector or scanned.startswith(f"{selector}:nth("):
+        return True
+    if selector.startswith("#") or scanned.startswith("#"):
+        return False
+    tag, *classes = selector.split(".")
+    scanned_tag, *scanned_classes = scanned.split(":nth(", 1)[0].split(".")
+    return tag.isalnum() and tag == scanned_tag and set(classes) <= set(scanned_classes)
 
 
 def _region_tags(region: RegionBox) -> set[str]:
