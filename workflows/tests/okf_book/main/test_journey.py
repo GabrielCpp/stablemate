@@ -38,6 +38,9 @@ def test_the_journey_pages_are_the_linked_and_flow_pages_left_committed(tmp_path
     [
         ("# Ledger\n\n- [Add](flows/add.md)\n\nprose\n", True),
         ("# Ledger\n\nprose\n\n- [Add](flows/add.md)\n- [Split](flows/split.md)\n", True),
+        ("# Ledger\n\nprose\n\n- [Add](flows/add.md) — add a line\n  to the ledger, end to end.\n", True),
+        ("# Ledger\n\nprose\n\n- [Add](flows/add.md)\n\n  prose under no link\n", False),
+        ("# Ledger\n\nprose\n\n- [Add](flows/add.md)\nunindented prose\n", False),
         ("# Ledger\n\nprose, see [Add](flows/add.md)\n", False),
         ("# Ledger\n\nprose\nmore prose\n", False),
         ("# Ledger\n", False),

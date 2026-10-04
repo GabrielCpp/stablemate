@@ -49,13 +49,25 @@ def outline(text: str) -> str:
     return "\n".join(line for line in text.splitlines() if line.startswith("#"))
 
 
+def _only_link_lines(lines: list[str]) -> bool:
+    in_link_item = False
+    for line in lines:
+        if _LINK.search(line):
+            in_link_item = True
+        elif not line.strip():
+            in_link_item = False
+        elif not (in_link_item and line[0].isspace()):
+            return False
+    return True
+
+
 def adds_only_links(before: str, after: str) -> bool:
-    """Whether `after` is `before` with lines added and none changed, each added line blank or holding a markdown link."""
+    """Whether `after` is `before` with lines added and none changed, each added line blank, holding a markdown link, or the indented wrap of an added link line."""
     old, new = before.splitlines(), after.splitlines()
     for tag, _, _, start, end in SequenceMatcher(a=old, b=new, autojunk=False).get_opcodes():
         if tag == "equal":
             continue
-        if tag != "insert" or not all(not line.strip() or _LINK.search(line) for line in new[start:end]):
+        if tag != "insert" or not _only_link_lines(new[start:end]):
             return False
     return True
 
