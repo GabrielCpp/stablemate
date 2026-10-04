@@ -11,7 +11,17 @@ from ostler import index
 
 from workhorse_workflows.kit.qa import runner
 from workhorse_workflows.okf_book.shared import book_run, scenarios
-from workhorse_workflows.okf_book.shared.book_run import bring_up, compile_scenarios, release, run_plan, stack_pages, with_app_logs
+from workhorse_workflows.okf_book.shared.book_run import (
+    ExerciseResult,
+    bring_up,
+    compile_scenarios,
+    release,
+    run_plan,
+    stack_down_failures,
+    stack_down_result,
+    stack_pages,
+    with_app_logs,
+)
 from ostler.qa.attribution import Cause, Signature
 from ostler.qa.plan import PlanDocument
 from ostler.qa.verdict import Verdict
@@ -60,6 +70,19 @@ def test_another_service_leaves_that_stack_down(app: Callable[[str], Path], brou
 
     assert "docs/features/api-service/ops/api-service-stack.md" in brought_up
     assert WEB_STACK.as_posix() not in brought_up
+
+
+def test_a_stack_that_cannot_come_up_is_a_problem_on_each_runbook_of_its_own_book(app: Callable[[str], Path]) -> None:
+    repo = app("globex")
+    down = stack_down_result(("gap: okf:a:does:1: k: d",), "port 8080 is held by groom")
+
+    failures = stack_down_failures(repo, "web-app", down)
+
+    assert "docs/features/api-service/ops/api-service-stack.md" not in failures
+    assert {page: [problem.text for problem in problems] for page, problems in failures.items()} == {
+        WEB_STACK.as_posix(): [f"{WEB_STACK.as_posix()}: the app's stack cannot come up: port 8080 is held by groom"]
+    }
+    assert stack_down_failures(repo, "web-app", ExerciseResult(lines=("problem: the book compiles to no plan",))) == {}
 
 
 def _bring_up_returns(monkeypatch: pytest.MonkeyPatch, results: list[dict[str, str]]) -> None:

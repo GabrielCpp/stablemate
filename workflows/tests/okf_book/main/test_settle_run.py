@@ -4,12 +4,15 @@ from __future__ import annotations
 from dataclasses import replace
 from pathlib import Path
 
+import pytest
 from okf_book.main.tally import TALLY
 from ostler.qa.attribution import Cause, Signature
 
+from workhorse_workflows.okf_book.main import flow
 from workhorse_workflows.okf_book.main.nodes.progress_ledger import LapCounts, read_laps
 from workhorse_workflows.okf_book.shared.blockers import Blocker, Phase, Side, read_blockers
-from workhorse_workflows.okf_book.shared.book_run import ExerciseResult
+from workhorse_workflows.okf_book.shared.book_run import ExerciseResult, stack_down_result
+from workhorse_workflows.okf_book.shared.page_check import PageProblem
 from workhorse_workflows.okf_book.shared.scenarios import FailedCheck, RunSummary, ScenarioOutcome
 from workhorse_workflows.okf_book.workflow import OkfBook
 
@@ -144,6 +147,28 @@ def _probe_run() -> ExerciseResult:
     summary = RunSummary(status="failed", scenarios={"probe-signed-in": ScenarioOutcome(status="failed", failed_checks=(refused,))},
                          signatures=(Signature(Cause.ARRANGEMENT, "docs/fixtures/signed-in.md", "401", "", 1, "signs in: observed 401"),))
     return ExerciseResult(lines=("problem: a precondition probe failed, so the book did not run",), summary=summary)
+
+
+def test_a_stack_that_cannot_come_up_goes_to_its_runbook_s_writer_once_then_is_the_app_s_blocker(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    book = _book(tmp_path)
+    runbook = "docs/features/tally/ops/tally-stack.md"
+    failures: dict[str, tuple[PageProblem, ...]] = {runbook: (PageProblem(runbook, f"{runbook}: the app's stack cannot come up: port 8080 is taken"),)}
+
+    def _runbook(_root: Path, _service: str, exercised: ExerciseResult) -> dict[str, tuple[PageProblem, ...]]:
+        return failures if exercised.stack_down else {}
+
+    monkeypatch.setattr(flow, "stack_down_failures", _runbook)
+    down = stack_down_result((), "port 8080 is taken")
+
+    sent = book.settle_run(index=0, run_failures_repaired=False, exercised=down)
+    assert (sent.state, sent.params["run_failures"], read_blockers(tmp_path)) == ("copy_source", failures, ())
+
+    _ = book.settle_run(index=0, run_failures_repaired=True, exercised=down)
+    [blocker] = read_blockers(tmp_path)
+    assert (blocker.phase, blocker.side) == (Phase.EXERCISE, Side.APP)
+    assert "port 8080 is taken" in blocker.reason
 
 
 def _settle_and_map(book: OkfBook, exercised: ExerciseResult, *, repaired: bool = True) -> str:

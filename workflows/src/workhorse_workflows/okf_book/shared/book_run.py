@@ -19,6 +19,7 @@ from workhorse_workflows.kit import find_docs_root
 from workhorse_workflows.kit.qa.runner import ensure_stack, release_stack
 from workhorse_workflows.okf_book.shared.entries import book_dir
 from workhorse_workflows.okf_book.shared.book_compilation import gap_page
+from workhorse_workflows.okf_book.shared.page_check import PageProblem
 from workhorse_workflows.okf_book.shared.scenarios import RunSummary, compile_book, plan_scenarios, run_scenarios, select_scenarios
 
 COPY_IGNORED = shutil.ignore_patterns(".git", "__pycache__", ".venv", "node_modules", "*.pyc")
@@ -141,6 +142,15 @@ def stack_pages(root: Path, service: str) -> tuple[str, ...]:
     with index.session(root):
         graph = model.load(find_docs_root("", str(root)))
     return tuple(node.id for node in select_stack(graph, near=book_dir(root, service)).runbooks)
+
+
+def stack_down_failures(root: Path, service: str, exercised: ExerciseResult) -> dict[str, tuple[PageProblem, ...]]:
+    """Each runbook page of the service's own book its stack came up from, with why it did not, or none when the run reached the app."""
+    if not exercised.stack_down:
+        return {}
+    folder = book_dir(root, service).relative_to(root).as_posix()
+    problem = "\n".join(line.removeprefix("problem: ") for line in exercised.lines if line.startswith("problem: "))
+    return {page: (PageProblem(page, f"{page}: {problem}"),) for page in stack_pages(root, service) if page.startswith(f"{folder}/")}
 
 
 def bring_up(logger: logging.Logger, root: Path, service: str) -> StackReadiness:

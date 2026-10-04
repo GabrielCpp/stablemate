@@ -44,7 +44,7 @@ from workhorse_workflows.okf_book.shared.book_commits import (
     repaired_book_commit_subject,
 )
 from workhorse_workflows.okf_book.shared.book_flow import BookFlow
-from workhorse_workflows.okf_book.shared.book_run import ExerciseResult
+from workhorse_workflows.okf_book.shared.book_run import ExerciseResult, stack_down_failures
 from workhorse_workflows.okf_book.shared.citations import book_pages, cites_changed_file
 from workhorse_workflows.okf_book.main.nodes.root_entries import NO_ENTRY_PAGE, entry_links
 from workhorse_workflows.okf_book.shared.entries import FEATURES_DIR, read_entries
@@ -270,7 +270,7 @@ class OkfBook(BookFlow):
         ).because("settle the run")
 
     def settle_run(self, index: int, run_failures_repaired: bool, exercised: ExerciseResult) -> Continue[...]:
-        """A passing book is done. Each failure another party must fix is a blocker, one per signature. A stack that cannot come up is a blocker on the app. A book whose run failed goes to the mapping of its failures. Either way the book stays."""
+        """A passing book is done. Each failure another party must fix is a blocker, one per signature. A stack that cannot come up goes to the writer of the runbooks it came up from, and is a blocker on the app when the book declares none or the writer's repair left it down. A book whose run failed goes to the mapping of its failures. Either way the book stays."""
         service = self.surfaces[index].service
         if exercised.summary is not None:
             _ = write_run(self.records_dir, exercised.summary)
@@ -279,9 +279,11 @@ class OkfBook(BookFlow):
         self._block_escalated_signatures(service, exercised)
         if exercised.passed:
             return self._next_surface(exercised.passed, index)
+        runbooks = {} if run_failures_repaired else stack_down_failures(self.root, service, exercised)
+        if runbooks:
+            return Continue(runbooks, self.copy_source, index=index, run_failures=runbooks).because("the stack cannot come up: repair its runbook")
         if exercised.stack_down:
-            reason = "\n".join(exercised.lines)
-            _ = record_blocker(self.records_dir, Blocker(subject=service, service=service, phase=Phase.EXERCISE, side=Side.APP, reason=reason))
+            _ = record_blocker(self.records_dir, Blocker(subject=service, service=service, phase=Phase.EXERCISE, side=Side.APP, reason="\n".join(exercised.lines)))
             return self._next_surface(exercised.passed, index)
         if lead_groups(exercised):
             return Continue(exercised.passed, self.lead_lap, index=index, exercised=exercised,
