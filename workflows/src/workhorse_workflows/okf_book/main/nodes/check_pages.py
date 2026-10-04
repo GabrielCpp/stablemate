@@ -53,6 +53,9 @@ def scoped_problems(state: WriterCommandState) -> tuple[str, ...]:
 def checked(argv: Sequence[str]) -> CommandOutput:
     """What the check of the command state file named first in `argv`, on the pages after it when it names any, exits with and prints."""
     state = read_command_state(Path(argv[0]))
+    unknown = [page for page in argv[1:] if not (state.root / page).is_file()]
+    if unknown:
+        return CommandOutput(2, (*(f"{page} is no page: name each page by its path from the repository root" for page in unknown), USAGE))
     if argv[1:]:
         state = state.model_copy(update={"pages": tuple(argv[1:]), "sections_by_page": {}})
     problems, _ = run_quietly(lambda: scoped_problems(state))

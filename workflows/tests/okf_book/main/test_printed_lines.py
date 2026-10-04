@@ -1,7 +1,16 @@
 """What a writer's command prints into its turn."""
 from __future__ import annotations
 
-from workhorse_workflows.okf_book.main.nodes.writer_commands import MAX_PRINTED_LINES, PRINTED_LINE_CHARS, printed_lines
+from pathlib import Path
+
+from workhorse_workflows.okf_book.main.nodes.check_pages import USAGE, checked
+from workhorse_workflows.okf_book.main.nodes.writer_commands import (
+    MAX_PRINTED_LINES,
+    PRINTED_LINE_CHARS,
+    WriterCommandState,
+    printed_lines,
+    write_command_state,
+)
 
 
 def test_a_command_prints_its_first_lines_and_counts_the_rest() -> None:
@@ -30,3 +39,13 @@ def test_a_command_clips_a_first_line_longer_than_one_run() -> None:
     assert len(printed[0]) == MAX_PRINTED_LINES * PRINTED_LINE_CHARS
     assert printed[0].endswith("…")
     assert printed[1].startswith("… and 1 more")
+
+
+def test_a_check_refuses_an_argument_that_names_no_page(tmp_path: Path) -> None:
+    path = write_command_state(tmp_path / "run", WriterCommandState(root=tmp_path, service="ledger"))
+
+    output = checked([str(path), "--json"])
+
+    assert output.code == 2
+    assert output.lines[0].startswith("--json is no page")
+    assert output.lines[-1] == USAGE

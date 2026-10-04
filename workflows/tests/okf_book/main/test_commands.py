@@ -366,6 +366,8 @@ def test_a_check_named_pages_checks_only_those_pages(monkeypatch: pytest.MonkeyP
     monkeypatch.setattr(check_pages, "page_problems", _problems_on(*pages))
     problems_at_turn_start = tuple(PageProblem(page, f"{page} is broken") for page in pages)
     path = write_command_state(tmp_path / "run", WriterCommandState(root=tmp_path, service="ledger", problems_at_turn_start=problems_at_turn_start))
+    (tmp_path / pages[0]).parent.mkdir(parents=True)
+    _ = (tmp_path / pages[0]).write_text("# mine\n", encoding="utf-8")
 
     output = checked([str(path), pages[0]])
 
