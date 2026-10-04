@@ -1,6 +1,6 @@
 ---
 name: diagnosing-bugs
-description: "Diagnosis discipline for a hard bug, a flake, or a performance regression, in any codebase: build a loop that goes red on this bug before forming any hypothesis, reproduce and minimise, rank 3 to 5 falsifiable hypotheses, instrument one variable at a time behind a tagged prefix, and land the fix behind a regression test at a confirmed seam. When some examples fail and others pass, rank the hypotheses by contrast: which examples each one would change, scored against the failing set and a shuffled control. Load when something is broken, throwing, failing intermittently or slower than it was, when a fix has already been attempted and did not hold, or when a test suite or a batch of inputs fails in part and you are choosing which hypothesis to test first. To judge whether a fix reaches the origin, load root-cause."
+description: "Diagnosis discipline for a hard bug, a flake, or a performance regression, in any codebase: build a loop that goes red on this bug before forming any hypothesis, reproduce and minimise, rank 3 to 5 falsifiable hypotheses, instrument one variable at a time behind a tagged prefix, and land the fix behind a regression test at a confirmed seam. When some examples fail and others pass, rank the hypotheses by contrast: which examples each one would change, scored against the failing set and a shuffled control. Load when something is broken, throwing, failing intermittently or slower than it was, when a fix has already been attempted and did not hold, or when a test suite or a batch of inputs fails in part and you are choosing which hypothesis to test first. To judge whether a fix reaches the origin, load root-cause. After three fixes that left the loop red, load step-back."
 tags: [tests, standards]
 ---
 
@@ -14,6 +14,9 @@ one and why.
 **This is the skill.** Everything after it is mechanical. With a **tight** pass/fail signal
 that goes **red** on *this* bug, bisection, hypothesis-testing and instrumentation all consume
 it. Without one, no amount of reading code substitutes. Spend disproportionate effort here.
+
+The loop serves the bug. Before building it, write the reported symptom in one sentence, in
+the reporter's words. Every phase ends by holding its result against that sentence.
 
 ### Pick the seam
 
@@ -77,6 +80,10 @@ Reading code to build a theory before that command exists is the exact failure t
 prevents. No red-capable command, no Phase 2.
 
 ### When the loop cannot be built
+
+Bound the effort per seam. Three attempts to make one seam go red is the limit. After the
+third, move to the next seam down the table. Repairing the seam itself is a second bug, and
+it has replaced the first. When no seam in the table goes red, the loop cannot be built.
 
 Say so explicitly, list what you tried, and ask for one of: access to the environment that
 reproduces it, a captured artifact (a log, a trace, a HAR, a core dump, the run's output
@@ -159,6 +166,13 @@ With a correct seam:
 5. Re-run the Phase 1 loop against the **original, un-minimised** scenario, and against every
    example when the bug showed on a set.
 
+**A fix that leaves the loop red has refuted its hypothesis.** Revert it, cross the hypothesis
+off the Phase 3 list and take the next one. A second fix stacked on the first tests two
+changes at once, and the loop can no longer say which one mattered. When the list is
+exhausted, return to Phase 3 with what the refutations showed and write a new list.
+
+Three refuted fixes on one bug is a stream of attempts. Load [[step-back]] before the fourth.
+
 ## Phase 6: cleanup and post-mortem
 
 Before calling it done:
@@ -179,6 +193,7 @@ more now than when you started.
 
 - **You have a fix and must judge whether it reaches the origin**, or you are about to add a
   retry, a waiver, a default or a broader catch: [[root-cause]].
+- **Three fixes have left the loop red**, or the work on the loop has grown larger than the bug: [[step-back]].
 - **The loop runs one of the repo's own tools**, such as its test harness, its telemetry or its
   graph checks: the skill that owns that tool carries its commands and its traps.
 

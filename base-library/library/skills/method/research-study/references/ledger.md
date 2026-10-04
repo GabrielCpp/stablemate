@@ -39,3 +39,21 @@ The ledger answers the efficiency questions without a model call:
 - every step whose `actual_min` exceeded 3× its `estimate_min`.
 
 Compute them with a one-off `jq` or Python expression when writing the report.
+
+## TRIED.md
+
+One line per method or route, newest first:
+
+```
+| date | what was tried | result | why |
+| --- | --- | --- | --- |
+| 2026-09-25 | Teach the small agent each dependent's fix from the change that broke it | did not work | The strong model won 8 of 8 against 2 of 8 for the best baseline, but the gap was vocabulary, not cause |
+```
+
+- **what was tried** says the idea in plain words a reader outside the project follows,
+  with no file names, function names or check ids,
+- **result** is one of: worked, did not work, undecided, blocked,
+- **why** is one sentence, and any number in it carries the number it was compared against.
+
+A `blocked` line names the layer it stopped at, apparatus, mechanism or question, and the
+cheapest change that would unblock it.

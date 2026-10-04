@@ -1,6 +1,6 @@
 ---
 name: step-back
-description: "Judging whether a stream of attempts is going anywhere, from outside it: the attempts treated as a reference class instead of the next case to fix, three moves (test the lever, go wide not deep, split the progress number), the side each stuck failure sits on, and a read-only reviewer with fresh context that recommends and does no work. Load when the same kind of attempt has been made three times on one goal, when a progress number falls slower each round, when a long or unattended run is being tended, when about to report nearly done again, or when a gate asks whether to keep going. For finding a defect once the stuck subset is named, load diagnosing-bugs. For judging the fix, load root-cause."
+description: "Judging whether a stream of attempts is going anywhere, from outside it: the attempts treated as a reference class instead of the next case to fix, four moves (test the aim, test the lever, go wide not deep, split the progress number), the side each stuck failure sits on, and a read-only reviewer with fresh context that recommends and does no work. Load when the same kind of attempt has been made three times on one goal, when a sub-task has grown larger than the task it serves, when a progress number falls slower each round, when a long or unattended run is being tended, when about to report nearly done again, or when a gate asks whether to keep going. For finding a defect once the stuck subset is named, load diagnosing-bugs. For judging the fix, load root-cause."
 tags: [review, process]
 ---
 
@@ -9,7 +9,8 @@ tags: [review, process]
 [[diagnosing-bugs]] finds a defect from a symptom. [[root-cause]] judges a fix. This skill judges
 the **stream**: whether the attempts so far are moving the goal, and which question to ask next.
 It fires on a count, not a topic. Three attempts of the same kind on the same goal is the trigger,
-whatever the attempts were.
+whatever the attempts were. It fires also on a size: a sub-task that has taken more time than
+the task it serves was expected to take.
 
 Each attempt is reasoned from the case in front of it: this failure, this edit, this retry. That
 is the inside view, and every step of it checks out. It cannot see that the last five attempts
@@ -28,13 +29,35 @@ The reviewer is **read-only**. It reads the records, forms a view and recommends
 nothing, answers no gate, restarts nothing and messages no one. Doing the work would put it back
 inside the frame it was brought in to leave.
 
-The brief names the goal, where the records are, what an attempt is, and the questions below. It
-does not carry the worker's theory of what is wrong. A reviewer handed a theory checks the theory.
+The brief quotes the ask word for word, as the person who made it wrote it, and says where the
+full record of it is. It names where the records of the attempts are, what an attempt is, and
+the questions below. It carries neither the worker's theory of what is wrong nor the worker's
+restatement of the goal. A reviewer handed a theory checks the theory, and a reviewer handed a
+restated goal reviews the restatement.
 
 Run it on a slow schedule while the work is long, and at once when the trigger fires. Act on its
 top finding before the next review. A finding that stands across two reviews is the finding.
 
-## Move 1: test the lever
+## Move 1: test the aim
+
+The goal the attempts chase is the worker's reading of what was asked. Read the ask itself, in
+the words of whoever made it, before any record of the attempts. Then write two sentences: what
+was asked for, and what the person would have in hand if every open attempt succeeded today.
+
+When the two differ, the stream has **narrowed**: a step toward the goal became the goal. Three
+signs mark it:
+
+- the attempts serve a tool, a harness or a check that was built to reach the goal, and the
+  goal itself has no attempt on it,
+- the thing asked for could be delivered by a route that skips the stuck step, and nobody has
+  priced that route,
+- the progress number counts something the person never asked about.
+
+Attempts on a narrowed goal are waste however well they converge, so this finding leads the
+report. The recommended action names the shortest path from what exists now to the thing asked
+for, including a path that skips the stuck step.
+
+## Move 2: test the lever
 
 For each recent attempt, ask: **did it change what gets measured?**
 
@@ -46,7 +69,7 @@ Compare the measured input before and after the attempt, not the artifact that w
 attempts that changed the artifact and left the measured input byte-identical are a dead lever.
 Every further attempt on that lever is waste, and so is every attempt that only rewords it.
 
-## Move 2: go wide, not deep
+## Move 3: go wide, not deep
 
 Put every open failure side by side and group them by **the observation itself**: the status,
 the error text, the missing field, the exception type. Do not group by where the failure was
@@ -54,15 +77,15 @@ reported, such as the file, the page, the test or the owner. That grouping is th
 attempts already used, one case at a time.
 
 - **One observation, many owners.** A group that spans many owners has one cause that none of
-  them holds. Repairing each owner is the dead lever of move 1, run in parallel.
+  them holds. Repairing each owner is the dead lever of move 2, run in parallel.
 - **The largest group first.** Rank the groups by size. The top group is worth more than the
   rest of the list together, more often than not.
 - **Read the group's members together.** What do they share that the passing cases lack? That
   contrast is the hypothesis to hand to [[diagnosing-bugs]].
 
-## Move 3: split the progress number
+## Move 4: split the progress number
 
-A total that falls each round reads as convergence. Split it by the groups from move 2 and follow
+A total that falls each round reads as convergence. Split it by the groups from move 3 and follow
 each group across the last few rounds. A falling total can hide a group that has not moved at
 all. The flat group is where the time goes.
 
@@ -104,7 +127,8 @@ without knowing the code. Then at most five findings, most costly first, each wi
 - the side it is on;
 - the one action recommended.
 
-End with one verdict per stream of work: **converging**, **slow** or **stuck**. Keep the report
+End with one verdict per stream of work: **converging**, **slow**, **stuck** or **off aim**. A
+stream that is off aim takes that verdict whatever its numbers show. Keep the report
 under one screen. Form the view first, then read the previous report and say which of its
 findings still stand and whether anyone acted on them.
 
@@ -113,6 +137,7 @@ findings still stand and whether anyone acted on them.
 Each line checkable from the report alone:
 
 - The reviewer had fresh context and changed nothing.
+- The ask is quoted, and beside it stands what the open attempts would deliver if all succeeded.
 - Every recent attempt was tested against the measured input, and dead levers are named.
 - Failures were grouped by observation, and the groups are ranked by size.
 - The progress number was split by group across rounds, and each flat group carries its price

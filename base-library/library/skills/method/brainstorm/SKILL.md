@@ -1,67 +1,73 @@
 ---
 name: brainstorm
-description: Generate a wide field of genuinely distinct options for a problem, ground them in what the repo already knows, then converge to a ranked shortlist
+description: "Generating a wide field of distinct options for a problem before any of them is judged: ground in what the repository already holds, diverge by changing the axis instead of refining one idea, then converge to a ranked shortlist of 3 to 6 with each option's main tradeoff. Load when a problem has no plan yet, when the first idea is about to become the plan, when asked for options, alternatives or ideas, or when another skill needs a field of candidates. For stress-testing a plan that already exists, load grill."
 argument-hint: "[the problem, question or space to generate options for]"
 tags: [brainstorm]
 ---
 
 # Brainstorm
 
-Generate options, don't settle one, for:
+Generate options for this, and settle none of them:
 
 $ARGUMENTS
 
-Where `grill` narrows a plan you already have, this widens a space you don't yet have a
-plan for. Nothing here is a decision until I pick one.
+[[grill]] narrows a plan that exists. This skill widens a space that has no plan yet.
+Nothing here is a decision until I pick one.
 
 ## Ground before diverging
 
-Before generating anything, look at what the repo already knows, the same way `grill`
-seeds its frontier — so you are not proposing what already exists or what a written
-constraint already rules out:
+Before generating anything, look at what the repo already knows. An option that already
+exists is not an idea, and neither is one a written constraint rules out.
 
-- **Prior art in the tree.** Existing skills, commands, modules or docs that already
-  cover part of this space — grep for it, don't guess.
-- **An OKF graph, where one exists.** `ostler graph --surface <svc>`, `ostler list --type
-  flow`, `ostler graph --orphans` — what the domain already models is not a fresh idea.
-- **The repo's own rules** — `AGENTS.md`, the skills that apply to the area. A constraint
-  already written down narrows the space; note it rather than generating options it
-  rules out.
+- **Prior art in the tree.** Existing skills, commands, modules or docs that cover part of
+  this space. Search for them.
+- **A model of the domain, where the repo keeps one.** A knowledge graph, an index or a
+  glossary. What the domain already models is not a fresh idea.
+- **The record of what was tried, where one exists.** An option that repeats a failed
+  attempt says what changed since.
+- **The repo's own rules.** `AGENTS.md` and the skills that apply to the area. A written
+  constraint narrows the space. Note it, and generate nothing it rules out.
 
-Do this yourself. Don't ask me for a fact you could look up.
+Do this yourself. A fact you can look up is not a question for me.
 
 ## Diverge
 
-Produce as many **genuinely distinct** options as the problem supports — not phrasings or
-minor variations of one idea. The first two or three are what anyone would think of
-first; they're the floor, not the output. Keep going past them: change the axis (a
-different mechanism, a different scope, a different owner of the complexity, the
-opposite of the obvious default) rather than refining the same one twice.
+Produce as many **distinct** options as the problem supports. A rewording or a small
+variation of one idea is the same option. The first two or three are what anyone would
+think of first. They are the floor. Go past them by changing the axis: a different
+mechanism, a different scope, a different owner of the complexity, or the opposite of the
+obvious default. Refining one idea twice adds nothing to the field.
 
-Name each option in a line or two — no need to develop it yet. Bad or half-broken options
-belong in the list too if they illuminate the space; cut them at the converge step, not
-before.
+Hold judgement until the converge step. Judging while generating settles on the obvious
+option, because it arrives with its argument already attached.
+
+Name each option in a line or two, and develop none yet. A bad or half-broken option
+belongs in the list when it shows a part of the space the others miss. The converge step
+cuts it.
 
 ## Converge
 
-Group near-duplicates, drop options strictly dominated by another (worse on every axis,
-better on none), and present a **ranked shortlist (3-6)**:
+Group the near-duplicates. Drop each option another one beats on every axis. Present a
+**ranked shortlist of 3 to 6**:
 
 ```
-**<option name>** — <one line: what it is>
-   <one line: the main tradeoff, and who/what it's good or bad for>
+**<option name>**: <one line on what it is>
+   <one line on the main tradeoff, and who or what it suits>
 ```
 
-Rank by fit to the stated problem, not by familiarity — the obvious option is not
-automatically first.
+Rank by fit to the stated problem. Familiarity earns no rank, so the obvious option goes
+first only when it fits best.
 
-Then stop and wait. I'll pick one, ask you to develop two of them further, or send you
-back to diverge again from a direction that looked promising. A pick here is the start of
-a decision, not the end of one — hand a chosen option to `grill` to work out its shape.
+Then stop and wait. I pick one, ask for two to be developed further, or send you back to
+diverge from a direction that looked promising. A pick starts a decision. Hand the chosen
+option to [[grill]] to work out its shape.
+
+When another skill or an unattended agent called this one, nobody is there to pick. Return
+the shortlist and the full list to the caller, and let the caller continue by its own
+rules.
 
 ## Done
 
-The session ends when I pick a direction or say stop — there's no frontier to empty here,
-since divergence doesn't converge on its own. Don't start implementing a chosen option
-without confirming that's what I want; a brainstorm answers "what could this be," not
-"build it."
+The session ends when I pick a direction or say stop. Divergence has no natural end, so
+nothing else ends it. A brainstorm answers "what could this be". Confirm with me before
+building a chosen option.

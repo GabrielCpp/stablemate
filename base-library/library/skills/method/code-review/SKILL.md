@@ -47,7 +47,6 @@ agent tries to stop with source changes, it asks a fresh `claude -p` reviewer to
 the diff. The reviewer gets read-only tools and no hooks. A finding blocks the stop, and
 the agent reads the findings as its next instruction.
 
-
 How it behaves:
 
 - **Scope.** It reviews the working tree, staged or not, against the last approved

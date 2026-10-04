@@ -88,7 +88,7 @@ description of whatever happened.
 
 ## The check
 
-`scripts/check_map.py` runs at pre-commit through farrier's hook runner. It checks every
+[scripts/check_map.py](scripts/check_map.py) runs at pre-commit through farrier's hook runner. Read it when its verdict surprises you, or to see the default extensions. It checks every
 directory where the commit adds or deletes a source file, and every directory whose map
 file the commit changes. It fails when:
 
@@ -115,5 +115,5 @@ exclude = ["gen/*", "migrations/*"]
 `extensions` replaces the default list of source extensions. `exclude` adds path
 patterns to skip, such as generated code.
 
-When the check fails, fix the map. Do not exclude the directory to get the commit
-through. An exclusion is for code no person writes.
+When the check fails, fix the map. An exclusion is for code no person writes. It is
+never the way to get a commit through.
