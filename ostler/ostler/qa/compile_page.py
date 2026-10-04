@@ -77,19 +77,25 @@ class _ScreenPath:
 
 
 def _screen_path(
-    navigation: dict[str, SurfaceNavigation], surface: str, source: str,
+    navigation: dict[str, SurfaceNavigation], surface: str, screen: str,
 ) -> _ScreenPath | ScenarioRefusal:
-    """The route to *source* on *surface*, or why no page scenario can reach it."""
+    """The route to *screen* on *surface*, or why no page scenario can reach it."""
     nav = navigation.get(surface) if surface else None
     if nav is None:
         return ScenarioRefusal("uncompilable-claim",
                                f"surface {surface!r} has no `navigation` data to address this screen by")
-    if source in nav.unreachable:
-        return ScenarioRefusal("unreachable-screen",
-                               f"{surface}'s navigation cannot reach this screen; no scenario compiled")
-    hops = nav.routes.get(source)
+    if screen in nav.unreachable:
+        return ScenarioRefusal(
+            "unreachable-screen",
+            f"{surface}'s navigation cannot reach {screen} from its start screen {nav.start or '(none stated)'}; "
+            f"no scenario compiled. On {screen}, state `entry: /<route>` when its route opens on its own, "
+            f"or add a `leads-to:` link to it on the component that navigates there")
+    hops = nav.routes.get(screen)
     if hops is None:
-        return ScenarioRefusal("uncompilable-claim", "no route computed for this screen")
+        return ScenarioRefusal(
+            "uncompilable-claim",
+            f"{screen} is no screen of {surface} and continues none, so no page scenario can open it. "
+            f"A `visible(...)` claim compiles on a screen page or on a fragment whose `host:` is one")
     if nav.root_path is None:
         return ScenarioRefusal("uncompilable-claim",
                                f"surface {surface!r} states no root path a page scenario can open from")
@@ -219,14 +225,15 @@ def _compile_page_scenarios(
 
     for (surface, source), group in sorted(by_screen.items()):
         ids = sorted(o.id for o in group)
-        screen_path = _screen_path(navigation, surface, source)
+        shown_on = book.fragment_hosts.get(source, source)
+        screen_path = _screen_path(navigation, surface, shown_on)
         if isinstance(screen_path, ScenarioRefusal):
             gaps.extend(Gap(oid, screen_path.kind, screen_path.detail) for oid in ids)
             continue
-        if source in navigation[surface].undeclared:
+        if shown_on in navigation[surface].undeclared:
             gaps.append(Gap(ids[0], "screen-preconditions-undeclared",
                              "reachable, but this screen declares no `requires:`/`params:` bullets"))
-        screen = _PageScreen(book, source, screen_path, target_variable(surface, "web"))
+        screen = _PageScreen(book, source, shown_on, screen_path, target_variable(surface, "web"))
         bucket = lines_by_surface.setdefault(surface, [])
         scenarios = _screen_scenarios(source, group, gaps)
         for arrival in scenarios.arrivals:
@@ -252,6 +259,7 @@ class _PageScreen:
     """One screen a page scenario arrives at: the book it reads, the route to it, and the target it runs on."""
     book: BookIndex
     source: str
+    screen: str
     path: _ScreenPath
     target_var: str
 
@@ -289,7 +297,7 @@ def _arrive(screen: _PageScreen, arranged: list[FixtureRow], gaps: list[Gap], id
     return [
         *(fixture_call(row) for row in arranged),
         f"    qa.goto({python_literal(screen.path.root_path)})",
-        *walk_hops(screen.path.hops, screen.source, screen.book, gaps, ids),
+        *walk_hops(screen.path.hops, screen.screen, screen.book, gaps, ids),
     ]
 
 
@@ -305,7 +313,7 @@ def _arrival_scenario(
     ids = sorted(o.id for o in obligations)
     arranged = arrangement_of(obligations).rows
     body = _arrive(screen, arranged, gaps, ids)
-    body.extend(vet_calls([screen.source], screen.book.screen_routes, ids, gaps))
+    body.extend(vet_calls([screen.screen], screen.book.screen_routes, ids, gaps))
     for node_id in sorted(arrival.nodes):
         node_acts = screen.book.acts_by_node.get(node_id, [])
         if node_acts:
@@ -321,7 +329,7 @@ def _arrival_scenario(
         *_scenario_head(screen.target_var, ids, observed.covered,
                         [python_literal(row.precondition) for row in arranged]),
         f"def {arrival.name}(qa: Qa) -> None:",
-        f'    """Arrive at {screen.source} via the book\'s own navigation and check what it shows."""',
+        f'    """Arrive at {screen.screen} via the book\'s own navigation and check what it shows."""',
         "",
         *body,
         *observed.lines,

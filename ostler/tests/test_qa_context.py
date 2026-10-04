@@ -3072,6 +3072,27 @@ def test_navigation_carries_bundle_id_through_the_unknown_start_exception_path(r
     assert navigation["groom"]["counts"]["unreachable"] == 1
 
 
+def test_the_packet_names_the_page_each_fragment_continues(repo: Path):
+    _write_navigation_environment(repo)
+    write(repo / "docs/features/groom/gui/screens/dashboard.md", (
+        "---\ntype: screen\nslug: dashboard\ntitle: Dashboard\n---\n# Dashboard\n\n"
+        "- route: `/dashboard`\n- requires: none\n- params: none\n\n"
+        "- [dashboard-components](dashboard-components.md)\n"
+    ))
+    write(repo / "docs/features/groom/gui/screens/dashboard-components.md", (
+        "---\ntype: fragment\nslug: dashboard-components\ntitle: 'Dashboard: Components'\n---\n"
+        "# Dashboard: Components\n\n- host: [Dashboard](dashboard.md)\n\n"
+        "## Components\n\n### run-table\n- role: table\n- name: Runs\n"
+    ))
+    _git(repo, "init")
+
+    packet = book_context(repo)
+
+    assert packet["fragmentHosts"] == {
+        "docs/features/groom/gui/screens/dashboard-components.md": "docs/features/groom/gui/screens/dashboard.md",
+    }
+
+
 def test_navigation_carries_launch_screen_through_the_screenless_stub_branch(repo: Path):
     """A surface with no screen nodes at all takes `_navigation`'s screenless-stub branch — `reach.screens_of` counts every `screen` file under the surface's own directory, so a surface with none has nothing a `launch-screen:` could name either; the stub still carries `launchScreen` (here, correctly `None`, since no screen exists to resolve to) the same way it already carries `driver`/`bundleId` through this branch, rather than dropping the key."""
     _write_navigation_environment(repo)

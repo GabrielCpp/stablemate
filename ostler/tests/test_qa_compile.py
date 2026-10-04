@@ -1754,6 +1754,54 @@ def test_an_unreachable_screen_is_a_finding_not_a_compile_target() -> None:
     assert kinds == ["unreachable-screen"]
 
 
+def test_an_unreachable_screen_names_itself_and_the_two_edits_that_reach_it() -> None:
+    node = f"{_SCREEN}#policy-table"
+    oid = "okf:policy-list:policy-table:visible:1"
+    context = _navigation_context(
+        _page_obligation(oid, node,
+                          locators={"role": ["table"], "name": ["Policies on file"]},
+                          checks=[_visible("table:Policies on file")]),
+        navigation=_arrival_navigation(unreachable=[_SCREEN]),
+    )
+    result = _compile_plan_gaps(context, story="demo-story")
+    assert isinstance(result, Refusal)
+    [gap] = [g for g in result.gaps if g.obligation_id == oid]
+    assert _SCREEN in gap.detail
+    assert "`entry: /<route>`" in gap.detail and "`leads-to:`" in gap.detail
+
+
+_FRAGMENT = "docs/features/policy/gui/screens/policy-list-components.md"
+
+
+def _fragment_claim() -> dict:
+    return _page_obligation("okf:policy-list-components:policy-table:visible:1", f"{_FRAGMENT}#policy-table",
+                            source=_FRAGMENT,
+                            locators={"role": ["table"], "name": ["Policies on file"]},
+                            checks=[_visible("table:Policies on file")])
+
+
+def test_a_claim_on_a_fragment_arrives_at_the_screen_the_fragment_continues() -> None:
+    context = _navigation_context(_fragment_claim(), navigation=_arrival_navigation())
+    context["fragmentHosts"] = {_FRAGMENT: _SCREEN}
+
+    source, gaps = compile_plan_gaps(context, story="demo-story")
+
+    assert gaps == [] and source is not None
+    assert f"qa.vet({_SCREEN!r}".replace("'", '"') in source
+    assert f"Arrive at {_SCREEN} via" in source
+
+
+def test_a_claim_on_a_page_that_is_no_screen_and_continues_none_says_so() -> None:
+    context = _navigation_context(_fragment_claim(), navigation=_arrival_navigation())
+
+    result = _compile_plan_gaps(context, story="demo-story")
+
+    assert isinstance(result, Refusal)
+    [gap] = result.gaps
+    assert gap.kind == "uncompilable-claim"
+    assert _FRAGMENT in gap.detail and "`host:`" in gap.detail
+
+
 def test_a_zero_screen_book_grows_no_playwright_target() -> None:
     """Condition 1: a book with no screen nodes on any surface never grows a `web` target, even if a stray page-checked obligation somehow reached the compiler."""
     node = "docs/features/policy/http/policy-desk-api.md#note"

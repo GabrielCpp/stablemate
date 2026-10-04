@@ -445,6 +445,7 @@ def _compile_packet(
         claims_by_node=acts.claims_by_node,
         hop_acts=book_index_mod.hop_acts(carried, acts.by_node),
         fixture_pages=book_index_mod.fixture_pages(carried, rebuilt=packet.scenario_fixtures),
+        fragment_hosts=packet.fragment_hosts,
     )
     journeys = JourneyPlan(book=book, sinks=sinks, navigation=navigation, walkers=_JOURNEY_WALKERS)
     lines = [

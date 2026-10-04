@@ -22,6 +22,7 @@ class ContextPacket:
     cli_binaries: dict[str, str]
     scenario_fixtures: frozenset[str]
     story_slug: str
+    fragment_hosts: dict[str, str]
 
     @property
     def owed(self) -> list[Obligation]:
@@ -72,4 +73,5 @@ def packet_of(context: Mapping[str, Any]) -> ContextPacket:
         cli_binaries=_string_table(context.get("cliBinaries"), "cliBinaries"),
         scenario_fixtures=_names(context.get("scenarioFixtures"), "scenarioFixtures"),
         story_slug=_string_table(context.get("story"), "story").get("slug", ""),
+        fragment_hosts=_string_table(context.get("fragmentHosts"), "fragmentHosts"),
     )

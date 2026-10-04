@@ -368,6 +368,7 @@ def build_context(
         "navigation": _navigation(snapshot.head_dump),
         "cliBinaries": _run_binaries_by_path(snapshot.book),
         "scenarioFixtures": _scenario_fixtures(snapshot.book),
+        "fragmentHosts": _fragment_hosts(snapshot.book),
         "screenRoutes": routes_mod.screen_routes(snapshot.head_graph),
         "healthFindings": [*mapping.unmapped, *grounding.health, *requirement.health],
         "story": _story_identity(story_file),
@@ -1363,6 +1364,18 @@ def _scenario_fixtures(book: Mapping[str, BookNode]) -> list[str]:
         if values and bullet_text(values[0]) == "scenario":
             names.add(Path(node.path).stem)
     return sorted(names)
+
+
+def _fragment_hosts(book: Mapping[str, BookNode]) -> dict[str, str]:
+    """The page each `fragment` page continues, by the fragment's file `path`: the one its `host:` bullet links."""
+    hosts: dict[str, str] = {}
+    for node in book.values():
+        if node.type != "fragment" or node.kind != "file":
+            continue
+        linked = sorted({edge.to.split("#", 1)[0] for edge in node.edges if edge.via == "host" and edge.to})
+        if len(linked) == 1:
+            hosts[node.path] = linked[0]
+    return hosts
 
 
 def _run_binaries_by_path(book: Mapping[str, BookNode]) -> dict[str, str]:
