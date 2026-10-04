@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from workhorse_workflows.okf_book.shared.blockers import BLOCKERS_DIR, Blocker, Phase, Side, forget_blockers, read_blockers, record_blocker
+from workhorse_workflows.okf_book.shared.blockers import BLOCKERS_DIR, Blocker, Phase, Side, blockers_by_side, forget_blockers, read_blockers, record_blocker
 
 
 def _book_blocker(service: str, problem: str) -> Blocker:
@@ -25,3 +25,10 @@ def test_a_record_written_before_blockers_named_their_service_still_reads(tmp_pa
     _ = (folder / "earlier.json").write_text('{"subject": "api: x", "phase": "write", "side": "book", "reason": "x"}', encoding="utf-8")
 
     assert [blocker.service for blocker in read_blockers(tmp_path)] == [""]
+
+
+def test_the_tally_names_each_side_with_its_count_largest_first() -> None:
+    environment = Blocker(subject="port", service="api", phase=Phase.EXERCISE, side=Side.ENVIRONMENT, reason="the port is held")
+    blockers = (_book_blocker("api", "one"), environment, _book_blocker("api", "two"))
+
+    assert blockers_by_side(blockers) == "2 for book, 1 for environment"

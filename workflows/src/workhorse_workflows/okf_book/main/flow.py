@@ -36,7 +36,7 @@ from workhorse_workflows.okf_book.main.nodes.turn_budget import (
     source_and_book_tokens,
 )
 from workhorse_workflows.okf_book.main.write_book_flow import WriteBook, WriteOutcome
-from workhorse_workflows.okf_book.shared.blockers import Blocker, Phase, Side, forget_blocker, forget_blockers, read_blockers, record_blocker
+from workhorse_workflows.okf_book.shared.blockers import Blocker, Phase, Side, blockers_by_side, forget_blocker, forget_blockers, read_blockers, record_blocker
 from workhorse_workflows.okf_book.shared.book_commits import (
     BOOK_TRAILER,
     REPAIRED,
@@ -354,7 +354,7 @@ class OkfBook(BookFlow):
             return Done(report).because("no blocker: the books are done")
         gate.open_gate(self.root, self.records_dir, self.services)
         question = (
-            f"The run stopped on {len(blockers)} blockers, each listed in {page} with its cause, its pages "
+            f"The run stopped on {len(blockers)} blockers ({blockers_by_side(blockers)}), each listed in {page} with its cause, its pages "
             + "and the command that reruns only its checks. "
             + "Fix the book, ostler, the app or the workflow each one names, and reload the run when you changed its code. "
             + "Answer here, and the run reruns each blocker's checks itself: it closes those that pass, keeps those another party "

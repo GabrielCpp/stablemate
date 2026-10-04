@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import hashlib
+from collections import Counter
 from enum import StrEnum
 from pathlib import Path
 
@@ -85,3 +86,9 @@ def read_blockers(run_dir: Path) -> tuple[Blocker, ...]:
         return ()
     found = (Blocker.model_validate_json(path.read_text(encoding="utf-8")) for path in folder.glob("*.json"))
     return tuple(sorted(found, key=lambda b: (list(Phase).index(b.phase), b.subject)))
+
+
+def blockers_by_side(blockers: tuple[Blocker, ...]) -> str:
+    """How many blockers each side has to clear, the largest first, as one phrase an operator reads."""
+    counts = Counter(blocker.side for blocker in blockers)
+    return ", ".join(f"{count} for {side.value}" for side, count in sorted(counts.items(), key=lambda item: (-item[1], item[0].value)))
