@@ -26,7 +26,7 @@ Section type. A `### <id>` under a `## Interactions` heading, normally in a
 | key | required | what it does |
 | --- | --- | --- |
 | `on` | **yes** | link — the component this acts on |
-| `trigger` | **yes** | what fires it |
+| `trigger` | **yes** | what fires it: `click` when pressing the `on:` control does, the only trigger a scenario performs; keyboard activation belongs on `keyboard:`, a precondition on `when:` |
 | `role` | **yes** | the ARIA role of the control |
 | `name` | **yes** | its accessible name |
 | `keyboard` | **yes** | **mints an obligation** — how it is fired without a pointer, or [its own emptiness](../bullet-grammar.md#a-claim-that-states-its-own-emptiness) |
@@ -75,7 +75,7 @@ timeout 30 ostler scaffold interaction save-link --in docs/features/acme/gui/scr
 ### save-link
 
 - on: [save-button](#save-button)
-- trigger: click or Enter on the Save button
+- trigger: click
 - role: button
 - name: Save
 - keyboard: Tab to focus, Enter to activate
