@@ -70,16 +70,16 @@ def ensure_stack(
     """Bring the durable QA stack up (or adopt one already serving) before the runner."""
     root = find_docs_root(docs_path, repo_dir)
     graph = model.load(root)
-    manifests, selection = runbook.load_stacks(
-        graph, near=Path(near) if near else None, logger=logger)
+    near_path = Path(near) if near else None
+    if not runbook.has_served_surface(graph, near_path):
+        return StackStatus(
+            ready="unneeded",
+            notes=("The book serves nothing — no `screen`, no `server` — so it has no stack "
+                   "to bring up, whatever runbooks it documents. QA scenarios invoke the "
+                   "repo's commands directly."),
+        )
+    manifests, selection = runbook.load_stacks(graph, near=near_path, logger=logger)
     if not manifests:
-        if not runbook.has_served_surface(graph, Path(near) if near else None):
-            return StackStatus(
-                ready="unneeded",
-                notes=("The book serves nothing — no `screen`, no `server` — so an empty "
-                       "stack is its documented topology. QA scenarios invoke the repo's "
-                       "commands directly; there is nothing to bring up first."),
-            )
         if selection.reason == "ambiguous":
             return StackStatus(
                 ready="none",

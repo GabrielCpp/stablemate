@@ -154,6 +154,10 @@ title: QA stack
 - health: true
 """
 
+SERVER_REL = "docs/features/app/server.md"
+
+SERVER_MD = "---\ntype: server\ntitle: App server\n---\n\n# App server\n"
+
 
 @pytest.fixture
 def docs(
@@ -165,6 +169,7 @@ def docs(
     write(repo / "docs" / "epics" / EPIC / "epic.md", EPIC_MD)
     write(repo / STORY_REL / "story.md", STORY_MD)
     write(repo / RUNBOOK_REL, RUNBOOK_MD)
+    write(repo / SERVER_REL, SERVER_MD)
     write_json(
         repo / SPEC_REL / "plan-context.json", {"story": STORY, "services": [API_SERVICE]}
     )
@@ -1284,15 +1289,13 @@ def test_an_empty_manifest_splits_on_whether_the_book_serves_anything(
     """`ensure_stack` reads the topology, not just the manifest, before calling it a gap."""
     log = logging.getLogger("test")
     (docs / RUNBOOK_REL).unlink()
+    (docs / SERVER_REL).unlink()
 
     status = qa_nodes.ensure_stack(log, str(docs))
     assert status.ready == "unneeded", status
     assert "serves nothing" in status.notes
 
-    write(
-        docs / "docs" / "features" / "app" / "server.md",
-        "---\ntype: server\ntitle: App server\n---\n\n# App server\n",
-    )
+    write(docs / SERVER_REL, SERVER_MD)
     status = qa_nodes.ensure_stack(log, str(docs))
     assert status.ready == "none", status
     assert "served surface" in status.notes
@@ -1306,7 +1309,6 @@ def test_a_book_that_serves_nothing_needs_no_stack_beside_one_that_does(
     log = logging.getLogger("test")
     (docs / RUNBOOK_REL).unlink()
     features = docs / "docs" / "features"
-    write(features / "app" / "server.md", "---\ntype: server\ntitle: App server\n---\n\n# App server\n")
     write(features / "tool" / "command.md", "---\ntype: concept\ntitle: Command\n---\n\n# Command\n")
 
     beside = qa_runner_mod.ensure_stack(log, str(docs), near=str(features / "tool"))
@@ -1314,6 +1316,23 @@ def test_a_book_that_serves_nothing_needs_no_stack_beside_one_that_does(
 
     assert beside.ready == "unneeded", beside
     assert served.ready == "none", served
+
+
+def test_a_book_that_serves_nothing_brings_up_none_of_its_runbooks(
+    docs: Path,
+    write: Callable[[Path, str], Path],
+) -> None:
+    """A command-line book's service runbook documents a procedure; QA invokes the commands instead."""
+    log = logging.getLogger("test")
+    features = docs / "docs" / "features"
+    write(features / "tool" / "command.md", "---\ntype: concept\ntitle: Command\n---\n\n# Command\n")
+    write(features / "tool" / "ops" / "container-job.md",
+          "---\ntype: runbook\ntitle: Container job\n---\n\n# Container job\n\n- driver: cli\n\n"
+          "## Steps\n\n### serve\n\n- kind: service\n- run: false\n- health: false\n")
+
+    status = qa_runner_mod.ensure_stack(log, str(docs), near=str(features / "tool"))
+
+    assert status.ready == "unneeded", status
 
 
 def _stack_runbook(root: Path, write: Callable[[Path, str], Path], *, name: str, port: int,
@@ -1396,6 +1415,7 @@ def test_a_book_that_serves_nothing_runs_qa_without_a_stack(
     """An artifact-only book proceeds straight to planning — no fixer, no gate, no boot."""
     ostler()
     (docs / RUNBOOK_REL).unlink()
+    (docs / SERVER_REL).unlink()
 
     def _boom(*a: Any, **k: Any) -> dict[str, Any]:
         raise AssertionError("there is no manifest, so nothing may try to bring one up")
