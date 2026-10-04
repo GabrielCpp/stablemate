@@ -2457,6 +2457,59 @@ def test_an_arms_acts_reach_the_builder_from_the_bullet_that_declares_no_check()
     assert does_oid in _covers(source)
 
 
+def _fixtured_guard_context(second_guard_fixtures: list[dict] | None) -> tuple[dict, str]:
+    """A two-guard interaction whose first guard names a fixture, and whose second carries *second_guard_fixtures*."""
+    button = f"{_SCREEN}#switch-language-button"
+    interaction = f"{_SCREEN}#switch-language"
+    does_oid = "okf:page-route:switch-language:does:1"
+    locators = {"on": ["[switch-language-button](#switch-language-button)"],
+                "trigger": ["click"],
+                "when": ["the page has a translation", "the reader is on the English page"],
+                "does": ["the browser navigates to the translated page"]}
+    seeded = {"name": "translated-page", "args": [], "provides": "a page with a French translation"}
+    context = _navigation_context(
+        _page_obligation("okf:page-route:switch-language-button:visible:1", button,
+                          locators={"role": ["button"], "name": ["Français"]},
+                          checks=[_visible("button:Français")]),
+        _page_obligation("okf:page-route:switch-language:when:1", interaction, kind="when",
+                          locators=locators, checks=[], fixtures=[seeded]),
+        _page_obligation("okf:page-route:switch-language:when:2", interaction, kind="when",
+                          locators=locators, checks=[], fixtures=second_guard_fixtures),
+        _page_obligation(does_oid, interaction, kind="does", locators=locators,
+                          checks=[_located("#article", f"{_SCREEN}#article",
+                                            {"selector": ["`#article`"]})]),
+        navigation=_arrival_navigation(),
+    )
+    return context, does_oid
+
+
+def test_a_when_guard_with_its_own_fixture_is_arranged_by_it() -> None:
+    """interaction.md teaches a `fixture:` under a `when:` as that guard's arrangement, so the compiler performs the fixture and the click instead of refusing the arm."""
+    context, does_oid = _fixtured_guard_context(
+        [{"name": "english-page", "args": [], "provides": "the reader opened the English page"}])
+    source, gaps = compile_plan_gaps(context, story="demo-story")
+    assert source is not None
+    ast.parse(source)
+    lines = source.splitlines()
+    fixtures = [i for i, line in enumerate(lines) if 'qa.fixture("translated-page")' in line]
+    clicks = [i for i, line in enumerate(lines) if "# trigger:" in line]
+    assert fixtures and clicks, source
+    assert fixtures[0] < clicks[0]
+    assert "unarranged-interaction-precondition" not in _gap_kinds(gaps, does_oid)
+    assert does_oid in _covers(source)
+
+
+def test_a_when_guard_without_a_fixture_still_refuses_its_arm() -> None:
+    """One fixtured guard does not arrange its sibling: the refusal names every remedy a writer can take."""
+    context, does_oid = _fixtured_guard_context(None)
+    source, gaps = compile_plan_gaps(context, story="demo-story")
+    assert source is not None
+    assert _gap_kinds(gaps, does_oid) == ["unarranged-interaction-precondition"]
+    assert does_oid not in _covers(source)
+    detail = next(g.detail for g in gaps if g.obligation_id == does_oid)
+    assert "`fixture: none, because ...`" in detail
+
+
 def test_a_journey_step_performs_its_own_acts_before_it_triggers_it() -> None:
     """The performer of a step is the only actor that can establish state on the surface it performs on, and a journey performs this step itself — so the step's `arrange:` bullets are performed here, in the same window `_interaction_scenario` uses when it compiles the same interaction alone."""
     oid = f"okf:{_FLOW}:end-state"

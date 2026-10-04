@@ -37,6 +37,7 @@ class BookIndex:
     fixture_pages: dict[str, frozenset[str]] = field(default_factory=dict[str, frozenset[str]])
     hop_acts: dict[tuple[str, str], list[CallRow]] = field(default_factory=dict[tuple[str, str], list[CallRow]])
     fragment_hosts: dict[str, str] = field(default_factory=dict[str, str])
+    guards_by_node: dict[str, list[Obligation]] = field(default_factory=dict[str, list[Obligation]])
 
 
 @dataclass(frozen=True)
@@ -73,6 +74,15 @@ def node_acts(obligations: list[Obligation]) -> NodeActs:
     }
     claims = {node_id: sorted(owned, key=lambda claim: claim.doc_position) for node_id, owned in claims_by_node.items()}
     return NodeActs(ordered, refused, claims)
+
+
+def guards_by_node(obligations: list[Obligation]) -> dict[str, list[Obligation]]:
+    """Each node's `when:` guards in book order, with the fixtures each one names."""
+    guards: dict[str, list[Obligation]] = {}
+    for obligation in sorted(obligations, key=lambda o: o.doc_position):
+        if obligation.kind == "when":
+            guards.setdefault(obligation.node, []).append(obligation)
+    return guards
 
 
 def hop_acts(

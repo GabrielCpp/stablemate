@@ -372,8 +372,16 @@ def _trigger_refusal(arm: _InteractionArm, on_expr: str | None, when_arranged: b
     if arm.when and not when_arranged:
         return ScenarioRefusal("unarranged-interaction-precondition",
                                f"`when:` states a precondition ({arm.when!r}) this scenario does "
-                               "not arrange, so its assertions would observe an unestablished state")
+                               "not arrange, so its assertions would observe an unestablished state. "
+                               "Indent a `fixture:` under each guard a seeded world establishes, an "
+                               "`arrange:` act for a state the user reaches on this screen, or "
+                               "`fixture: none, because ...` under a guard that holds as the screen opens")
     return None
+
+
+def _guards_fixtured(guards: list[Obligation]) -> bool:
+    """Whether every `when:` guard in *guards* carries its own `fixture:` or states that it needs none."""
+    return bool(guards) and all(o.fixtures or o.arranges_nothing for o in guards)
 
 
 def _scaffold_click_refusal(arm: _InteractionArm) -> ScenarioRefusal | None:
@@ -403,7 +411,8 @@ def _performed_trigger(
     """Perform *arm*'s acts and click its `on:` control, or `None` with the gap filed when no scenario can."""
     node_acts = book.acts_by_node.get(node_id, [])
     performed = perform_acts(node_acts, acts_mod.WEB, gaps, ids).lines if node_acts else None
-    when_arranged = performed is not None and node_id not in book.acts_refused
+    when_arranged = ((performed is not None and node_id not in book.acts_refused)
+                     or _guards_fixtured(book.guards_by_node.get(node_id, [])))
     on_expr = page_locator_expr(book.locators_by_node.get(arm.on_node_id, NO_LOCATORS))
     refusal = _trigger_refusal(arm, on_expr, when_arranged)
     if refusal is not None:
@@ -434,7 +443,7 @@ def _interaction_scenario(
                          "this arm's `extends:` target is missing or not the same node type, "
                          "so its control identity could not be inherited from the base case")
                     for oid in ids)
-    arranged = arrangement_of(obligations).rows
+    arranged = arrangement_of([*book.guards_by_node.get(node_id, []), *obligations]).rows
     arrived = _arrive(screen, arranged, gaps, ids)
     trigger = _performed_trigger(book, node_id, arm, gaps, ids)
     if trigger is None:
