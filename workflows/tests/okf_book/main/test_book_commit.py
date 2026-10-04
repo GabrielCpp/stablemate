@@ -9,6 +9,7 @@ from okf_book.main.tally import (
     NOTE,
     PAGE,
     PASSED,
+    REFUSAL,
     TALLY,
     App,
     DriveBook,
@@ -18,7 +19,7 @@ from okf_book.main.tally import (
     refuse_commits_until_answered,
     stub_the_run_to,
 )
-from okf_book.support import ScriptedRunner, git
+from okf_book.support import FIX_COMMIT_NODE, ScriptedRunner, always, git
 from workhorse.pyflow import park as pyflow_park
 
 from workhorse_workflows.okf_book.main import flow
@@ -106,4 +107,53 @@ def test_an_answer_to_a_refused_commit_commits_again_without_rendering_again(
     assert isinstance(result, BookReport)
     assert len(asked) == 1
     assert rendered_repos == [repo.resolve()]
+    assert git(repo, "show", "--name-only", "--format=", "HEAD").split() == [PAGE]
+
+
+def _hook(repo: Path) -> Path:
+    return repo / git(repo, "rev-parse", "--git-path", "hooks/pre-commit").strip()
+
+
+@pytest.mark.usefixtures("passing")
+def test_a_refused_commit_goes_to_a_turn_that_fixes_it_and_no_operator_is_asked(
+    app: App, drive_book: DriveBook, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo = app("tally-cli")
+    asked: list[str] = []
+    _ = refuse_commits_until_answered(repo, asked)
+    monkeypatch.setattr(pyflow_park, "wait_for_answer", stopping_operator(asked))
+    runner = _writer(repo)
+
+    def _fix(_args: dict[str, object]) -> dict[str, object]:
+        _hook(repo).unlink()
+        return {"fixed": "removed what refused it"}
+
+    runner.replies[FIX_COMMIT_NODE] = _fix
+
+    result = drive_book(OkfBook(repo_dir=str(repo), surfaces=(TALLY,)), runner)
+
+    assert isinstance(result, BookReport)
+    assert asked == []
+    [args] = runner.args_of(FIX_COMMIT_NODE)
+    assert REFUSAL in str(args["refusal"])
+    assert args["paths"] == [PAGE]
+    assert git(repo, "show", "--name-only", "--format=", "HEAD").split() == [PAGE]
+
+
+@pytest.mark.usefixtures("passing")
+def test_a_commit_the_turn_could_not_fix_reaches_the_operator_with_what_the_turn_said(
+    app: App, drive_book: DriveBook, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo = app("tally-cli")
+    asked: list[str] = []
+    monkeypatch.setattr(pyflow_park, "wait_for_answer", refuse_commits_until_answered(repo, asked))
+    runner = _writer(repo)
+    runner.replies[FIX_COMMIT_NODE] = always({"blocked": "the hook refuses every commit"})
+
+    result = drive_book(OkfBook(repo_dir=str(repo), surfaces=(TALLY,)), runner)
+
+    assert isinstance(result, BookReport)
+    [gate] = asked
+    assert REFUSAL in gate
+    assert "the hook refuses every commit" in gate
     assert git(repo, "show", "--name-only", "--format=", "HEAD").split() == [PAGE]

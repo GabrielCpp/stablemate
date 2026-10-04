@@ -20,6 +20,7 @@ from workhorse_workflows.okf_book.workflow import OkfBook
 
 _drive: Callable[[OkfBook, RunEnv], object] = drive
 LEAD_NODE = Path(LEAD_PROMPT).stem
+FIX_COMMIT_NODE = "fix-refused-commit"
 
 
 class StoppedAtTheGate(Exception):
@@ -68,6 +69,7 @@ class ScriptedRunner(AgentRunner):
     A reply the turn's validator refuses is asked for once more, with the refusal under `refused` in its arguments, as the ladder asks again.
     A repair commit's describe turn that no test scripts gets the fixed description, and counts in `described` instead of the turns.
     A lead turn that no test scripts names nothing, so the run's own attribution stands, and counts in no turn.
+    A turn sent to a refused commit that no test scripts changes nothing, so the refusal reaches the operator, and counts in no turn.
     """
 
     def __init__(self, replies: Mapping[str, Reply]) -> None:
@@ -106,6 +108,8 @@ class ScriptedRunner(AgentRunner):
             return "scripted", {"description": f"repair pages of the {args['service']} book", "body": ""}
         if node.id == LEAD_NODE and node.id not in self.replies:
             return "scripted", {"findings": []}
+        if node.id == FIX_COMMIT_NODE and node.id not in self.replies:
+            return "scripted", {"fixed": ""}
         self.turns[node.id] += 1
         self.calls.append((node.id, args))
         self.nodes.append(node)
