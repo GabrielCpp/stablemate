@@ -98,7 +98,7 @@ def attribute(evidence: CheckEvidence) -> Attribution:
     fault = evidence.fault
     if fault is not None:
         if fault.fault_class == CAPABILITY_FAULT:
-            return Attribution(Cause.ENVIRONMENT, fault.page or fault.fixture, gap=fault.fixture.replace("-", " "))
+            return Attribution(Cause.ENVIRONMENT, fault.page, gap=fault.fixture.replace("-", " "))
         if fault.fault_class == "environment":
             return Attribution(Cause.ENVIRONMENT, fault.page or fault.fixture)
         if fault.page:

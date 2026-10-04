@@ -70,6 +70,12 @@ def test_an_absent_capability_is_the_environment_s_and_names_the_gap() -> None:
     assert attribute(CheckEvidence.model_validate(record)) == Attribution(Cause.ENVIRONMENT, page, gap="payment provider")
 
 
+def test_an_absent_qa_tool_names_the_gap_and_no_page() -> None:
+    record = {"label": "a check", "passed": False, "fault": {"fault_class": "capability", "fixture": "qa-tool-ostler", "page": ""}}
+
+    assert attribute(CheckEvidence.model_validate(record)) == Attribution(Cause.ENVIRONMENT, "", gap="qa tool ostler")
+
+
 def test_a_fault_outside_the_book_s_fixtures_falls_through_to_the_reply() -> None:
     record = {**_failed(500), "fault": {"fault_class": "defect", "fixture": "a-scenario", "page": ""}}
 
