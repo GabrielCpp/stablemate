@@ -52,6 +52,19 @@ packs:
 # Direct single-item selection (no pack — see agents/packs/CLAUDE.md): the
 # /update-skill-from-conversation command that folds a session's learnings back
 # into the agent library (skills, commands, root instructions).
+qa:
+  tools:
+    - farrier
+    - groom
+    - groom-sidecar
+    - ostler
+    - workhorse-author
+    - workhorse-coder
+    - workhorse-loop-runner
+    - workhorse-new
+    - workhorse-okf-book
+    - workhorse-research
+
 prompts:
   - agent-library/update-skill-from-conversation
 
