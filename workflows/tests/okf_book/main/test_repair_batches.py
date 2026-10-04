@@ -207,6 +207,35 @@ def test_a_section_alone_over_the_ceiling_is_reported_by_its_heading(tmp_path: P
     assert packed.oversized_parts[0].reason.endswith("split the section")
 
 
+def test_a_page_over_the_ceiling_only_at_two_readings_of_its_sources_is_a_batch_of_its_own(tmp_path: Path) -> None:
+    _write_source(tmp_path)
+    large = _page(tmp_path, "a.md", cites=True)
+    small = _page(tmp_path, "b.md", cites=False)
+
+    packed = pack_repairs(
+        tmp_path, {large: (PageProblem(large, "p"),), small: (PageProblem(small, "p"),)}, ceiling=ONE_PAGE_TOKENS + SOURCE_TOKENS
+    )
+
+    assert packed.oversized_parts == ()
+    assert [batch.page_paths for batch in packed.batches] == [(large,), (small,)]
+
+
+def test_a_section_over_the_ceiling_only_at_two_readings_of_its_sources_is_sent_alone(tmp_path: Path) -> None:
+    _write_source(tmp_path)
+    page = _server_page(tmp_path, {"list-rows": PAGE_TOKENS, "drop-row": PAGE_TOKENS})
+    path = tmp_path / page
+    _ = path.write_text(path.read_text(encoding="utf-8").replace("### drop-row\n\n", f"### drop-row\n\n- code: `{SOURCE}`\n"), encoding="utf-8")
+    problems = (
+        PageProblem(page, f"{page}#list-rows is broken", node=f"{page}#list-rows"),
+        PageProblem(page, f"{page}#drop-row is broken", node=f"{page}#drop-row"),
+    )
+
+    packed = pack_repairs(tmp_path, {page: problems}, ceiling=BOOK_HOLDS * 2 * PAGE_TOKENS + SOURCE_TOKENS)
+
+    assert packed.oversized_parts == ()
+    assert [repair.sections for batch in packed.batches for repair in batch.pages] == [("list-rows",), ("drop-row",)]
+
+
 def test_a_new_flow_page_skips_the_names_an_earlier_round_left_on_disk(tmp_path: Path) -> None:
     flow = _page(tmp_path, "flows/add.md", cites=False)
     _ = _page(tmp_path, "flows/add-2.md", cites=False)

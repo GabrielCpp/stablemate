@@ -100,6 +100,9 @@ class _PageSplitter:
     def _tokens_alone(self, unit: PageCost) -> int:
         return batch_tokens([*self.journey_costs, unit])
 
+    def _fits_read_once(self, unit: PageCost) -> bool:
+        return batch_tokens([*self.journey_costs, unit], source_reads=1) <= self.ceiling
+
     def _oversized(self, page: str, tokens: int, section: str | None = None) -> OversizedPart:
         return OversizedPart(page=page, tokens=tokens, ceiling=self.ceiling, with_journey=self.with_journey, section=section)
 
@@ -113,7 +116,7 @@ class _PageSplitter:
         for section in (section for section in parts.sections if section.id in by_section):
             unit = text_cost(self.files, page, parts.section_text(section), tuple(by_section[section.id]), (section.id,))
             tokens_alone = self._tokens_alone(unit)
-            if tokens_alone > self.ceiling:
+            if tokens_alone > self.ceiling and not self._fits_read_once(unit):
                 oversized_parts.append(self._oversized(page, tokens_alone, section.id))
             else:
                 units.append(unit)
@@ -129,6 +132,8 @@ class _PageSplitter:
             return _PageSplit([whole], [])
         if len(page_sections(text).sections) > 1:
             return self._split_by_section(page, text, problems)
+        if self._fits_read_once(whole):
+            return _PageSplit([whole], [])
         return _PageSplit([], [self._oversized(page, tokens_alone)])
 
 
@@ -162,6 +167,9 @@ def pack_repairs(
     ceiling: int = SOURCE_AND_BOOK_CEILING_TOKENS,
 ) -> PackedRepairs:
     """Pack the pages, in the order given, into batches each under `ceiling`, and set aside each page alone over it.
+
+    A page or section over `ceiling` with its sources read twice and under it with them read once
+    is a batch of its own.
 
     The problems whose fix goes on a flow or an entry page go first, into batches that also hold the
     journey pages and count what the writer reads of them. A page's other problems go to batches

@@ -4,7 +4,8 @@ A page costs twice its own tokens, since the writer holds it as it edits it and 
 back, and twice the part of each source file it cites, since the writer reads that part once and
 again as it checks the page's claims against it. The part is the declaration or yaml key the
 citation names, or the whole file when it names none. A part two pages of one batch cite is counted
-once.
+once. A page or section that is over the ceiling at two readings and under it at one is sent alone,
+since a file no citation can name a part of, such as a stylesheet, is otherwise never repaired.
 """
 from __future__ import annotations
 
@@ -48,12 +49,12 @@ def text_cost(
     )
 
 
-def batch_tokens(units: list[PageCost]) -> int:
-    """What one turn sent every unit costs, each cited part counted once."""
+def batch_tokens(units: list[PageCost], source_reads: int = SOURCE_READS) -> int:
+    """What one turn sent every unit costs, each cited part counted once and read *source_reads* times."""
     sources: dict[str, int] = {}
     for unit in units:
         sources.update(unit.source_tokens)
-    return sum(unit.own_tokens for unit in units) + SOURCE_READS * sum(sources.values())
+    return sum(unit.own_tokens for unit in units) + source_reads * sum(sources.values())
 
 
 def _read_cost(page: str, text: str) -> PageCost:
