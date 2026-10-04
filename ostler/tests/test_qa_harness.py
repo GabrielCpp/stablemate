@@ -820,6 +820,20 @@ def test_a_tool_runs_with_a_contained_cwd_and_a_declared_env(tmp_path: Path) -> 
     assert not (tmp_path / "escaped").exists()
 
 
+def test_a_scenario_stopped_on_a_tool_nobody_opted_in_records_the_missing_capability(tmp_path: Path) -> None:
+    """Only a person can opt a tool in, so the stop names the tool as what the stack lacks."""
+    module = _write(tmp_path, TOOL_ENV_PLAN)
+    context = json.dumps({"root": str(tmp_path), "spec_dir": str(tmp_path), "qa_dir": str(tmp_path / "qa"), "tools": {}})
+
+    _code, _stdout, records = _harness(
+        "run", str(module), "the-tool-runs-where-and-how-the-scenario-says", context,
+        records_to=tmp_path / "records.jsonl",
+    )
+
+    faults = [record["stop"]["fault"] for record in records if "fault" in record.get("stop", {})]
+    assert faults == [{"fault_class": "capability", "fixture": "qa-tool-sh", "page": ""}]
+
+
 def test_tool_env_refuses_a_name_it_cannot_safely_hand_out() -> None:
     """The declaration is the validation surface, so a bad name fails at import."""
     harness = load_harness_module("ostler_qa")

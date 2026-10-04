@@ -802,6 +802,7 @@ class Qa:
         """A user- or machine-declared external command, opted into via `agents.yml`."""
         command = self._tool_commands.get(name)
         if command is None:
+            self._claim_fault = ClaimFault("capability", f"qa-tool-{name}", "")
             raise RuntimeError(
                 f"qa tool {name!r} is not available — opt into it via this repo's "
                 f"agents.yml `qa: {{tools: [{name!r}]}}`, and if it is not a built-in, "
