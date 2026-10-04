@@ -175,6 +175,34 @@ def test_a_problem_a_later_round_finds_on_a_page_outside_the_first_round_is_not_
     assert [repair.page for repair in sent] == [PAGE]
 
 
+def _two_then_another_page_once_noted(root: Path, service: str) -> tuple[PageProblem, ...]:
+    [*unnoted] = page_problems_until_noted(root, service)
+    if unnoted:
+        return (*unnoted, PageProblem(PAGE, "tally.md needs a second note"))
+    return (PageProblem(OTHER_PAGE, "ledger-file.md needs a note"),)
+
+
+@pytest.mark.usefixtures("over_the_ceiling")
+def test_a_check_that_finds_fewer_problems_sends_the_page_no_repair_planned_to_a_second_repair(
+    app: App, drive_book: DriveBook, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo = app("tally-cli")
+    runner = _repairer(repo)
+    monkeypatch.setattr(flow, "page_problems", _two_then_another_page_once_noted)
+    monkeypatch.setattr(repair_book_flow, "page_problems", _two_then_another_page_once_noted)
+
+    result = drive_book(OkfBook(repo_dir=str(repo), surfaces=(TALLY,)), runner)
+
+    assert isinstance(result, BookReport)
+    sent = [
+        [repair.page for repair in TypeAdapter(tuple[PageRepair, ...]).validate_python(args["pages"])]
+        for args in runner.args_of("repair-pages")
+    ]
+    assert sent[:2] == [[PAGE], [OTHER_PAGE]]
+    assert len(sent) == 1 + REPAIR_ROUNDS
+    assert [(b.phase, b.pages) for b in result.blockers if b.side is Side.BOOK] == [(Phase.WRITE, (OTHER_PAGE,))]
+
+
 @pytest.mark.usefixtures("over_the_ceiling")
 def test_a_page_too_large_for_one_writer_is_sent_no_turn_and_is_a_blocker_on_the_workflow(
     app: App, drive_book: DriveBook, monkeypatch: pytest.MonkeyPatch

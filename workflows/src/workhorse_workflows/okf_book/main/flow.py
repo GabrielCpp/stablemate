@@ -47,7 +47,7 @@ from workhorse_workflows.okf_book.shared.book_flow import BookFlow
 from workhorse_workflows.okf_book.shared.book_run import ExerciseResult
 from workhorse_workflows.okf_book.shared.citations import book_pages, cites_changed_file
 from workhorse_workflows.okf_book.shared.entries import FEATURES_DIR
-from workhorse_workflows.okf_book.shared.page_check import page_problems
+from workhorse_workflows.okf_book.shared.page_check import PageProblem, page_problems
 from workhorse_workflows.okf_book.shared.scenarios import PLAN_NAME, plan_scenarios, spec_dir, write_run
 
 OPERATOR_NAME = "operator.md"
@@ -108,6 +108,7 @@ class OkfBook(BookFlow):
     def _block_surface_and_move_on(self, index: int, reason: str) -> Continue[...]:
         service = self.surfaces[index].service
         blocker = Blocker(subject=service, service=service, phase=Phase.WRITE, side=Side.WORKFLOW, reason=reason)
+        forget_blockers(self.records_dir, Phase.WRITE, Side.BOOK, service)
         _ = record_blocker(self.records_dir, blocker)
         return self._next_surface(reason, index)
 
@@ -124,8 +125,10 @@ class OkfBook(BookFlow):
             return Continue(pending, self.copy_source, index=index, run_failures=pending).because(
                 "the gate left this book's writer failures to fix"
             )
-        problems = tuple(problem.text for problem in page_problems(self.root, service))
+        found = page_problems(self.root, service)
+        problems = tuple(problem.text for problem in found)
         if problems:
+            _ = self._record_check(service, found)
             return Continue(problems, self.copy_source, index=index).because("the existing book has problems")
         ours = last_commit_subject(self.root, book) in (book_commit_subject(service), repaired_book_commit_subject(service))
         if ours or last_commit_trailer(self.root, BOOK_TRAILER, book) == REPAIRED:
@@ -223,16 +226,27 @@ class OkfBook(BookFlow):
             "check the committed book"
         )
 
-    def check_book(self, index: int, run_failures_repaired: bool = False) -> Continue[...]:
-        """Repeat the writer's own page check. Each problem it finds is a blocker on its page, and one an earlier check found that this one does not is no longer."""
-        service = self.surfaces[index].service
-        problems = page_problems(self.root, service)
+    def _record_check(self, service: str, problems: tuple[PageProblem, ...]) -> int:
+        """Make each problem of a check a blocker on its page, in place of the ones the last check left. Returns how many that one left."""
+        before = sum(1 for blocker in read_blockers(self.records_dir)
+                     if blocker.phase is Phase.WRITE and blocker.side is Side.BOOK and blocker.service == service)
         forget_blockers(self.records_dir, Phase.WRITE, Side.BOOK, service)
         for problem in problems:
             blocker = Blocker(subject=f"{service}: {problem.text}", service=service, phase=Phase.WRITE, side=Side.BOOK, reason=problem.text,
                               cause=Cause.BOOK.value, pages=(problem.page,),
                               rerun=rerun_command(self.records_dir, service, Phase.WRITE, (problem.page,)))
             _ = record_blocker(self.records_dir, blocker)
+        return before
+
+    def check_book(self, index: int, run_failures_repaired: bool = False) -> Continue[...]:
+        """Repeat the writer's own page check. Each problem it finds is a blocker on its page, and one an earlier check found that this one does not is no longer. A book with fewer problems than its last check found goes back to its repair, so a person is asked only about what a repair did not lower."""
+        service = self.surfaces[index].service
+        problems = page_problems(self.root, service)
+        before = self._record_check(service, problems)
+        if problems and (not before or len(problems) < before):
+            return Continue(problems, self.copy_source, index=index, run_failures={} if run_failures_repaired else None).because(
+                "the check finds fewer problems than the last one did: repair what is left"
+            )
         return Continue(problems, self.run_book, index=index, run_failures_repaired=run_failures_repaired).because(
             "run the book against the app"
         )
