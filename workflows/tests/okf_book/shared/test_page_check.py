@@ -1,6 +1,7 @@
 """The book check reports every command, endpoint and screen no flow walks."""
 from __future__ import annotations
 
+import shutil
 from collections.abc import Callable
 from pathlib import Path
 
@@ -99,6 +100,24 @@ def test_a_cli_page_that_names_no_binary_cannot_be_invoked(app: Callable[[str], 
 
     assert [problem for problem in book_problems(repo, "tally") if "no run can invoke" in problem] == [
         f"{COMMANDS.as_posix()}: no run can invoke it, because it names no `binary:`. " + UNINVOKABLE_FIX
+    ]
+
+
+def test_a_book_no_claim_of_which_declares_a_check_is_a_problem_on_its_entries_page(app: Callable[[str], Path]) -> None:
+    repo = app("tally-cli")
+    checked = book_problems(repo, "tally")
+    book = repo / "docs/features/tally"
+    shutil.rmtree(book)
+    book.mkdir()
+    _ = (book / "entries.md").write_text("---\ntype: entries\ntitle: tally\n---\n# tally\n\n- [ledger](ledger.md)\n", encoding="utf-8")
+    _ = (book / "ledger.md").write_text("---\ntype: concept\ntitle: ledger\n---\n# ledger\n\nThe ledger keeps every expense.\n", encoding="utf-8")
+
+    unchecked = [problem for problem in book_problems(repo, "tally") if "declares a check" in problem]
+
+    assert not [problem for problem in checked if "declares a check" in problem]
+    assert unchecked == [
+        "docs/features/tally/entries.md: no claim of this book declares a check, so a run has nothing to exercise. Give the claims a "
+        + "user can observe a `- verify:` bullet that checks what they see, starting with the steps of each flow."
     ]
 
 

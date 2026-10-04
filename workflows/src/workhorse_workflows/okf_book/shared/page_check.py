@@ -6,7 +6,8 @@ restamps. So is a bullet the page's type does not declare, which doctor only war
 a hand-kept book may carry one, but which on a written page is a claim nothing runs. It reports
 every command, endpoint and screen no flow walks, every cli page that names no binary, and every
 obligation that does not compile, unless the gap is one ostler cannot run yet, which is
-ostler's to fix and not the book's. A binary the repository opts in as no QA tool is the operator's to
+ostler's to fix and not the book's. A book none of whose claims declares a check compiles to no plan,
+so it is a problem on the entries page. A binary the repository opts in as no QA tool is the operator's to
 opt in, so it is a blocker on the environment and no problem of the page. A claim observed out of band is the book's: no run observes it, so the writer
 restates it as what a caller sees, or drops it.
 """
@@ -29,7 +30,7 @@ from ostler.qa.plan_source import Gap
 from ostler.qa.runbook import bullet_text
 from ostler.qa.tools import opted_in_tools
 from workhorse_workflows.okf_book.shared.blockers import Blocker, Phase, Side
-from workhorse_workflows.okf_book.shared.book_compilation import compile_services, gap_page, obligation_node
+from workhorse_workflows.okf_book.shared.book_compilation import BookCompilation, compile_services, gap_page, obligation_node
 from workhorse_workflows.okf_book.shared.entries import book_dir, entries_path
 
 OSTLER_GAPS = HARNESS_LIMIT_GAPS | frozenset({"needs-snapshot"})
@@ -251,8 +252,21 @@ def tool_blockers(root: Path, service: str) -> tuple[Blocker, ...]:
     )
 
 
+def _unchecked_problems(root: Path, service: str, compilation: BookCompilation, gaps: list[Gap]) -> list[PageProblem]:
+    if compilation.planned or gaps or not entries_path(root, service).is_file():
+        return []
+    page = entries_path(root, service).relative_to(root).as_posix()
+    return [
+        PageProblem(
+            page,
+            f"{page}: no claim of this book declares a check, so a run has nothing to exercise. Give the claims a "
+            + "user can observe a `- verify:` bullet that checks what they see, starting with the steps of each flow.",
+        )
+    ]
+
+
 def page_problems(root: Path, service: str) -> tuple[PageProblem, ...]:
-    """Every problem on the service's book, each with its page: a missing entries page, a page nothing reaches, a doctor error, a command, endpoint or screen no flow walks, a command page that names no binary, and a claim that does not compile."""
+    """Every problem on the service's book, each with its page: a missing entries page, a page nothing reaches, a doctor error, a command, endpoint or screen no flow walks, a command page that names no binary, a claim that does not compile, and a book no claim of which declares a check."""
     with index.session(root):
         pages = _book_page_paths(root, service)
         book = load(root)
@@ -267,7 +281,8 @@ def page_problems(root: Path, service: str) -> tuple[PageProblem, ...]:
             if page.service == service
         ]
         wanted = frozenset(pages)
-        gaps = [gap for gap in compile_services(root, (service,)).gaps if gap_page(gap) in wanted and gap_side(gap) is Side.BOOK]
+        compilation = compile_services(root, (service,))
+        gaps = [gap for gap in compilation.gaps if gap_page(gap) in wanted and gap_side(gap) is Side.BOOK]
         return (
             *_entries_problems(root, service),
             *dead,
@@ -275,6 +290,7 @@ def page_problems(root: Path, service: str) -> tuple[PageProblem, ...]:
             *_off_journey_problems(nodes),
             *_uninvokable_problems(nodes),
             *gap_problems(gaps),
+            *_unchecked_problems(root, service, compilation, gaps),
         )
 
 
