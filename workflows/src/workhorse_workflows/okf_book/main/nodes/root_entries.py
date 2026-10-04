@@ -10,6 +10,10 @@ from workhorse_workflows.okf_book.shared.entries import ENTRIES_NAME, EntryLink,
 ENTRY_TYPES = ("cli", "server")
 SCREEN_TYPE = "screen"
 FILE_KIND = "file"
+NO_ENTRY_PAGE = (
+    "the book has pages but no cli, server or screen page for its entries page to link, so nothing reaches them "
+    + "and no repair turn can change that; and"
+)
 
 
 def _book_nodes(graph: Graph, book: Path, type_name: str) -> list[UINode]:

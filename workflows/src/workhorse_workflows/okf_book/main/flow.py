@@ -46,7 +46,8 @@ from workhorse_workflows.okf_book.shared.book_commits import (
 from workhorse_workflows.okf_book.shared.book_flow import BookFlow
 from workhorse_workflows.okf_book.shared.book_run import ExerciseResult
 from workhorse_workflows.okf_book.shared.citations import book_pages, cites_changed_file
-from workhorse_workflows.okf_book.shared.entries import FEATURES_DIR
+from workhorse_workflows.okf_book.main.nodes.root_entries import NO_ENTRY_PAGE, entry_links
+from workhorse_workflows.okf_book.shared.entries import FEATURES_DIR, read_entries
 from workhorse_workflows.okf_book.shared.page_check import PageProblem, page_problems, tool_blockers
 from workhorse_workflows.okf_book.shared.scenarios import PLAN_NAME, plan_scenarios, spec_dir, write_run
 
@@ -156,7 +157,7 @@ class OkfBook(BookFlow):
         )
 
     def measure_source(self, index: int, run_failures: RunFailures | None = None) -> Continue[...]:
-        """A book over the ceiling one writer reads is repaired a batch of pages at a time, with the failures of the run it failed. A surface with no book over it is a blocker."""
+        """A book over the ceiling one writer reads is repaired a batch of pages at a time, with the failures of the run it failed. A surface with no book over it is a blocker, and so is one whose book has no entry page, since no repair turn can make its pages reachable."""
         surface = self.surfaces[index]
         view = source_view_folder(self.root, _source_folder(self.root, surface))
         tokens = source_and_book_tokens(folder_tokens(view), folder_tokens(self.root / _book_folder(surface.service)))
@@ -165,10 +166,12 @@ class OkfBook(BookFlow):
             return Continue(tokens, self.write_book, index=index, run_failures_repaired=run_failures is not None).because(
                 "the source fits one writer"
             )
-        if book_pages(self.root, surface.service):
+        if entry_links(self.root, surface.service) or read_entries(self.root, surface.service):
             return Continue(tokens, self.repair_book, index=index, run_failures=run_failures).because(
                 "the book is over one writer: repair it in batches"
             )
+        if book_pages(self.root, surface.service):
+            reason = f"{NO_ENTRY_PAGE} {reason}"
         return self._block_surface_and_move_on(index, reason)
 
     def repair_book(self, index: int, run_failures: RunFailures | None = None) -> Continue[...]:
