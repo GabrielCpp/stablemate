@@ -367,6 +367,7 @@ def build_context(
         "verificationIndex": verification_index,
         "navigation": _navigation(snapshot.head_dump),
         "cliBinaries": _run_binaries_by_path(snapshot.book),
+        "scenarioFixtures": _scenario_fixtures(snapshot.book),
         "screenRoutes": routes_mod.screen_routes(snapshot.head_graph),
         "healthFindings": [*mapping.unmapped, *grounding.health, *requirement.health],
         "story": _story_identity(story_file),
@@ -764,7 +765,38 @@ def _minted_obligations(
     deduped: dict[str, dict[str, Any]] = {}
     for obligation in obligations:
         deduped.setdefault(str(obligation["id"]), obligation)
-    return list(deduped.values())
+    minted = list(deduped.values())
+    _discharge_states_an_interaction_reaches(minted)
+    return minted
+
+
+_REACHED_BY_INTERACTION_KEYS = frozenset({"states", "role", "name"})
+
+
+def _discharge_states_an_interaction_reaches(minted: list[dict[str, Any]]) -> None:
+    """Stop owing an arrival check on a component that comes and goes when an interaction on its page proves it visible."""
+    proven = {
+        (str(obligation["source"]), str(target["node"]))
+        for obligation in minted
+        if obligation["nodeType"] == "interaction"
+        for check in obligation.get("checksDeclared", ())
+        if check["name"] == "visible"
+        for target in check.get("locates", {}).values()
+    }
+    comes_and_goes = {
+        str(obligation["node"])
+        for obligation in minted
+        if obligation["nodeType"] == "component" and obligation["kind"] == "states"
+    }
+    for obligation in minted:
+        if obligation["nodeType"] != "component" or obligation["kind"] not in _REACHED_BY_INTERACTION_KEYS:
+            continue
+        if obligation["node"] not in comes_and_goes or (str(obligation["source"]), str(obligation["node"])) not in proven:
+            continue
+        if obligation.get("checksDeclared") or obligation.get("fixturesDeclared"):
+            continue
+        obligation["required"] = False
+        obligation["evidenceRequired"] = "context"
 
 
 VERIFICATION_INDEX_FILE = "qa-okf-verification-index.json"
@@ -1319,6 +1351,18 @@ def _cli_binaries(book: Mapping[str, BookNode]) -> dict[str, str]:
         if binary:
             binaries[node.path] = binary
     return binaries
+
+
+def _scenario_fixtures(book: Mapping[str, BookNode]) -> list[str]:
+    """Every `fixture` file that states `lifetime: scenario`, by the name a `fixture:` bullet calls it."""
+    names: set[str] = set()
+    for node in book.values():
+        if node.type != "fixture" or node.kind != "file":
+            continue
+        values = node.bullets.get("lifetime", ())
+        if values and bullet_text(values[0]) == "scenario":
+            names.add(Path(node.path).stem)
+    return sorted(names)
 
 
 def _run_binaries_by_path(book: Mapping[str, BookNode]) -> dict[str, str]:
@@ -1965,6 +2009,8 @@ def _obligations(
     for key in registry.normative_keys(book_node.type):
         for index, requirement in enumerate(book_node.bullets.get(key, ()), start=1):
             claim = (key, index)
+            if registry.states_no_claim(key, requirement):
+                continue
             obligation = _claim_obligation(
                 base,
                 book_node,
@@ -1981,12 +2027,24 @@ def _obligations(
                 obligation["evidenceRequired"] = "context"
             reader.claim_parts(node_parts, attribution, claim).stamp(obligation)
             output.append(obligation)
+    _discharge_address_pair(book_node.type, output)
     if judgment:
         base["judgment"] = judgment
     unspecified = _unspecified(book_node)
     if unspecified:
         base["unspecified"] = unspecified
     return output
+
+
+def _discharge_address_pair(node_type: str, minted: list[dict[str, Any]]) -> None:
+    """Stop owing a check on an address bullet when the check under its pair already proves the address."""
+    pair = [o for o in minted if o["kind"] in registry.address_keys(node_type)]
+    if not any(o.get("checksDeclared") for o in pair):
+        return
+    for obligation in pair:
+        if not obligation.get("checksDeclared"):
+            obligation["required"] = False
+            obligation["evidenceRequired"] = "context"
 
 
 def _node_obligation(

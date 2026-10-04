@@ -21,6 +21,7 @@ class Arranged:
     """One precondition as its first build in the lap left it: the facts it provides and the command's end, or the fault that stopped it."""
 
     facts: dict[str, str] = field(default_factory=dict)
+    structures: dict[str, Any] = field(default_factory=dict)
     command: list[str] = field(default_factory=list)
     stdout: str = ""
     stderr: str = ""

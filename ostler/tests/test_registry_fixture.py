@@ -27,7 +27,7 @@ def test_fixture_node_type_is_registered_as_a_fixtures_file() -> None:
     assert uitype.kind == "file"
     assert uitype.context == "fixtures"
     assert {b.key for b in uitype.bullet_keys} == {
-        "args", "provides", "needs", "secrets"}
+        "args", "provides", "needs", "secrets", "lifetime"}
     needs = next(b for b in uitype.bullet_keys if b.key == "needs")
     provides = next(b for b in uitype.bullet_keys if b.key == "provides")
     assert needs.link is True and needs.nested is True

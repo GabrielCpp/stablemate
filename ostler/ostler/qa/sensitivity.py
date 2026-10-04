@@ -78,7 +78,11 @@ class _Page:
     """The one attribute `focusable` reaches through the locator to find."""
 
     def __init__(self, element: "_Focusable") -> None:
+        self._element = element
         self.keyboard = _Keyboard(element)
+
+    def evaluate(self, expression: str) -> Any:
+        return self._element.evaluate(expression)
 
 
 class _Focusable:
@@ -99,10 +103,15 @@ class _Focusable:
         if self._focused and self._armed and key == self._fires_on:
             self._activated = True
 
+    def element_handle(self) -> "_Focusable":
+        return self
+
     def evaluate(self, expression: str) -> Any:
-        """Answer the three expressions `_read_focus` sends, and refuse a fourth."""
+        """Answer the four expressions `_read_focus` sends, and refuse a fifth."""
         if "document.activeElement" in expression:
             return self._focused
+        if "isConnected" in expression:
+            return None
         if "addEventListener" in expression:
             self._armed = True
             self._activated = False

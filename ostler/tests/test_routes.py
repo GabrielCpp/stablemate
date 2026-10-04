@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import re
+
 from ostler import routes
 
 
@@ -18,6 +20,39 @@ def test_arrival_compares_paths_and_ignores_state_within_a_screen() -> None:
     assert routes.arrived_at("http://localhost:18102/dashboard?page=2#top", "/dashboard")
     assert routes.arrived_at("http://localhost:18102/", "/")
     assert not routes.arrived_at("http://localhost:18102/settings", "/dashboard")
+
+
+def test_a_parameterised_route_is_arrived_at_when_each_parameter_fills_one_segment() -> None:
+    """A parameter stands for one path segment, so the page is that screen whatever id it shows."""
+    assert routes.arrived_at("http://localhost:18102/links/42/edit?tab=a", "/links/:id/edit")
+    assert routes.arrived_at("http://localhost:18102/links/42/edit", "/links/{id}/edit")
+    assert not routes.arrived_at("http://localhost:18102/links/42", "/links/:id/edit")
+    assert not routes.arrived_at("http://localhost:18102/links/42/7/edit", "/links/:id/edit")
+
+
+def test_a_parameterised_route_loses_to_a_sibling_that_spells_the_path_literally() -> None:
+    """`/links/new` is the new-link screen, and never the link screen whose id happens to read `new`."""
+    siblings = ["/links/new", "/links/:id"]
+    assert not routes.arrived_at("http://localhost:18102/links/new", "/links/:id", siblings)
+    assert routes.arrived_at("http://localhost:18102/links/42", "/links/:id", siblings)
+
+
+def test_the_arrival_regex_matches_a_whole_url_at_the_route_and_nothing_short_of_it() -> None:
+    """The harness waits on this before it photographs, so a redirect still in flight must not match."""
+    regex = re.compile(routes.arrival_regex("/links/:id/stages/:form"))
+    assert regex.fullmatch("http://localhost:18102/links/42/stages/7?tab=a")
+    assert regex.fullmatch("http://localhost:18102/links/42/stages/7/")
+    assert not regex.fullmatch("http://localhost:18102/links/42/stages")
+    assert routes.arrival_regex("/files/*") == ""
+
+
+def test_a_wildcard_route_is_one_no_url_comparison_can_use() -> None:
+    assert not routes.is_comparable("/files/*")
+    assert not routes.is_comparable("/files/report-{id}.pdf")
+    assert not routes.is_comparable("the app root")
+    assert routes.is_comparable("/links/:id/edit")
+    assert routes.why_unreadable("/files/*").endswith("names a family of pages")
+    assert routes.why_unreadable("/links/:id/edit") == ""
 
 
 def test_is_screen_name_shaped_accepts_a_navigator_identifier_and_rejects_a_path_or_url() -> None:
@@ -82,3 +117,12 @@ def test_route_grammar_and_path_addressedness_per_driver() -> None:
     none_predicate, _none_reason = routes.route_grammar(None)
     assert none_predicate is routes.is_path_shaped
     assert routes.is_path_addressed(None)
+
+
+def test_a_segment_ending_in_a_question_mark_may_be_absent() -> None:
+    route = "/sheets/:id/properties/categories?/:categoryId?"
+    assert routes.arrived_at("http://localhost:18102/sheets/2/properties", route)
+    assert routes.arrived_at("http://localhost:18102/sheets/2/properties/categories/41", route)
+    assert not routes.arrived_at("http://localhost:18102/sheets/2", route)
+    assert not routes.arrived_at("http://localhost:18102/sheets/2/properties/other/41", route)
+    assert routes.literal_route(route) == ""

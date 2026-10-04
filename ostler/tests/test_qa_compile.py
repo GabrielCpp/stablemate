@@ -510,6 +510,39 @@ def test_a_dotted_body_field_sends_a_nested_member() -> None:
             '"en": "Hello"}}') in source
 
 
+def test_the_body_field_dollar_sends_the_value_as_the_whole_body() -> None:
+    """A route that decodes a top-level array reads no object, so the one field `$` names the body itself."""
+    oid = "okf:docs/features/demo/globex.md#post-things:does:1"
+    context = _context(
+        _obligation(
+            oid,
+            locators={"route": ["POST /api/things"]},
+            checksDeclared=[_check()],
+            fixturesDeclared=[{"name": "seeded-ledger", "args": [], "provides": "a ledger",
+                               "providesKeys": ["seeded-ledger.rows"]}],
+            actsDeclared=[_body_act("$", "@seeded-ledger.rows")],
+        )
+    )
+    source, gaps = compile_plan_gaps(context, story="demo-story")
+    assert source is not None
+    assert _gap_kinds(gaps, oid) == []
+    assert 'json_body=qa.resolve_body("@seeded-ledger.rows")' in source
+
+
+def test_the_whole_body_beside_a_member_is_not_sent() -> None:
+    oid = "okf:docs/features/demo/globex.md#post-things:does:1"
+    context = _context(
+        _obligation(
+            oid,
+            locators={"route": ["POST /api/things"]},
+            checksDeclared=[_check()],
+            actsDeclared=[_body_act("$", "x"), _body_act("name", "Widget A")],
+        )
+    )
+    source, _gaps = compile_plan_gaps(context, story="demo-story")
+    assert source is None or "json_body" not in source
+
+
 def test_a_body_field_that_is_also_a_parent_of_another_is_not_sent() -> None:
     """`locales` set to a value and `locales.fr` set beside it describe two different bodies, and sending either would grade a request the book never wrote."""
     oid = "okf:docs/features/demo/globex.md#post-things:does:1"
@@ -590,6 +623,68 @@ def test_a_credential_arranged_under_a_claim_with_no_check_still_rides_on_the_ch
     book = source.split("_from_the_book(qa")[-1]
     sent = 'headers={"Authorization": qa.resolve("Bearer @signed-in-editor.token")}'
     assert f'qa.http.get("/api/things", expect_status=200, {sent})' in book
+
+
+def test_a_refused_caller_named_under_a_403_claim_replaces_the_endpoint_credential_there_only() -> None:
+    """A claim about a caller the route refuses names that caller itself, and the token it names must neither reach the claims the route serves nor lose to the endpoint's own."""
+    callers = [{"name": "signed-in-editor", "args": [], "provides": "a signed-in editor",
+                "providesKeys": ["signed-in-editor.token", "signed-in-editor.strangerToken"]}]
+    arranged, served, refused = (f"okf:docs/features/demo/globex.md#get-things:{arm}" for arm in ("message:1", "does:1", "emits:2"))
+    editor = _header_act("Authorization", "Bearer @signed-in-editor.token")
+    stranger = _header_act("Authorization", "Bearer @signed-in-editor.strangerToken")
+    context = _context(
+        _obligation(arranged, checksDeclared=[{"call": "ok", "name": "http_status", "args": {"code": 200}}],
+                    fixturesDeclared=callers, docPosition=[1, 0], node="get-things", actsDeclared=[editor]),
+        _obligation(served, checksDeclared=[{"call": "ok", "name": "http_status", "args": {"code": 200}}],
+                    fixturesDeclared=callers, docPosition=[2, 0], node="get-things"),
+        _obligation(refused, checksDeclared=[{"call": "no", "name": "http_status", "args": {"code": 403}}],
+                    fixturesDeclared=callers, docPosition=[3, 0], node="get-things", actsDeclared=[editor, stranger]),
+    )
+    source, gaps = compile_plan_gaps(context, story="demo-story")
+    assert source is not None
+    assert _gap_kinds(gaps, refused) == []
+    book = source.split("_from_the_book(qa")[-1]
+    assert book.count('expect_status=200, headers={"Authorization": qa.resolve("Bearer @signed-in-editor.token")})') == 2
+    assert 'expect_status=403, headers={"Authorization": qa.resolve("Bearer @signed-in-editor.strangerToken")})' in book
+
+
+def test_a_body_arranged_under_a_claim_replaces_the_one_its_endpoint_arranges() -> None:
+    """An endpoint arranges the body its claims share, and the one claim about a different body writes its own after it."""
+    oid = "okf:docs/features/demo/globex.md#post-things:does:1"
+    context = _context(
+        _obligation(
+            oid,
+            locators={"route": ["POST /api/things"]},
+            checksDeclared=[_check()],
+            fixturesDeclared=[{"name": "seeded-ledger", "args": [], "provides": "a ledger",
+                               "providesKeys": ["seeded-ledger.rows", "seeded-ledger.otherRows"]}],
+            actsDeclared=[_body_act("$", "@seeded-ledger.rows"), _body_act("$", "@seeded-ledger.otherRows")],
+        )
+    )
+    source, gaps = compile_plan_gaps(context, story="demo-story")
+    assert source is not None
+    assert _gap_kinds(gaps, oid) == []
+    assert 'json_body=qa.resolve_body("@seeded-ledger.otherRows")' in source
+    assert '"@seeded-ledger.rows"' not in source
+
+
+def test_the_fixture_behind_a_credential_from_a_claim_with_no_check_is_arranged_too() -> None:
+    """The token a `when:` lends to the claims below it is minted by that `when:`'s own fixture, so a scenario that sends the header without building the fixture fails every one of them on a reference nothing resolved."""
+    signed_in = [{"name": "signed-in-editor", "args": [], "provides": "a signed-in editor",
+                  "providesKeys": ["signed-in-editor.token"]}]
+    condition, served = (f"okf:docs/features/demo/globex.md#get-things:{arm}" for arm in ("when:1", "does:1"))
+    context = _context(
+        _obligation(condition, fixturesDeclared=signed_in, docPosition=[1, 0], node="get-things",
+                    actsDeclared=[_header_act("Authorization", "Bearer @signed-in-editor.token")]),
+        _obligation(served, checksDeclared=[{"call": "ok", "name": "http_status", "args": {"code": 200}}],
+                    docPosition=[2, 0], node="get-things"),
+    )
+    source, gaps = compile_plan_gaps(context, story="demo-story")
+    assert source is not None
+    book = source.split("_from_the_book(qa")[-1]
+    assert _gap_kinds(gaps, served) == []
+    assert book.index('qa.fixture("signed-in-editor")') < book.index("qa.http.get(")
+    assert f"with qa.claim([{json.dumps(served)}]):\n        qa.fixture(" in book
 
 
 def test_a_claim_about_a_401_stays_anonymous_though_it_repeats_the_callers_token() -> None:
@@ -717,6 +812,18 @@ def test_a_delete_of_a_fixture_only_its_page_names_is_sent() -> None:
     assert source is not None
     assert _gap_kinds(gaps, deleting) == []
     assert 'qa.http.delete(qa.resolve("/api/ledgers/@doomed-ledger.id"), expect_status=204)' in source
+
+
+def test_a_delete_of_a_fixture_each_scenario_rebuilds_is_sent_though_other_pages_name_it() -> None:
+    """A fixture built again for every scenario hands each page its own resource, so one page deleting it takes nothing from another."""
+    deleting = "okf:docs/features/demo/delete-ledger.md#delete-ledger:does:1"
+    reading = "okf:docs/features/demo/read-ledger.md#read-ledger:does:1"
+    context = _context(_ledger_delete(deleting, "seeded-ledger"), _ledger_read(reading))
+    context["scenarioFixtures"] = ["seeded-ledger"]
+    source, gaps = compile_plan_gaps(context, story="demo-story")
+    assert source is not None
+    assert _gap_kinds(gaps, deleting) == []
+    assert 'qa.http.delete(qa.resolve("/api/ledgers/@seeded-ledger.id"), expect_status=204)' in source
 
 
 def test_each_claim_of_a_page_runs_in_its_own_claim_block() -> None:
@@ -1061,6 +1168,22 @@ def test_a_check_path_that_drops_the_routes_fixture_fact_does_not_replace_the_ro
     source = compile_plan(context, story="demo-story")
     assert 'qa.http.get(qa.resolve("/api/things/@seeded-acme.id"), expect_status=200)' in source
     assert 'qa.http.get("/api/things/0123456789ABCDEF"' not in source
+
+
+def test_a_check_path_that_names_another_fixture_fact_replaces_the_route() -> None:
+    oid = "okf:docs/features/acme/api.md#get-thing:errors:1"
+    context = _context(
+        _obligation(
+            oid,
+            locators={"route": ["GET /api/things/@seeded-acme.id"]},
+            checksDeclared=[{"call": "ok", "name": "http_status",
+                              "args": {"code": 404, "path": "/api/things/@seeded-acme.missingId"}}],
+            fixturesDeclared=[{"name": "seeded-acme", "args": [], "provides": "an account exists",
+                               "providesKeys": ["seeded-acme.id", "seeded-acme.missingId"]}],
+        )
+    )
+    source = compile_plan(context, story="demo-story")
+    assert 'qa.http.get(qa.resolve("/api/things/@seeded-acme.missingId"), expect_status=404)' in source
 
 
 def test_a_capture_resolves_a_reference_on_a_strictly_later_obligation() -> None:
@@ -2007,6 +2130,34 @@ def test_a_keyboard_claim_is_checked_on_arrival_before_anything_is_clicked() -> 
             'locator="#create-policy-button", activates="Enter"') in scenario
 
 
+def test_a_keyboard_claim_is_checked_after_the_interactions_arrangement() -> None:
+    """A control that only takes focus once the state its interaction arranges holds is pressed in that state."""
+    button = f"{_SCREEN}#create-policy-button"
+    button_locators = {"role": ["button"], "name": ["Create policy"]}
+    interaction = f"{_SCREEN}#submit-new-policy"
+    interaction_locators = {"on": ["[create-policy-button](#create-policy-button)"],
+                            "trigger": ["click"], "keyboard": ["Enter"]}
+    keyboard_oid = "okf:new-policy:submit-new-policy:keyboard:1"
+    focusable = {"call": "it", "name": "focusable",
+                 "args": {"locator": "#create-policy-button", "activates": "Enter"},
+                 "locates": {"locator": {"node": button, "locators": button_locators}}}
+    acts = [_act("fill", f"{_SCREEN}#name-field", {"selector": ["`input[name=\"name\"]`"]},
+                 locator="#name-field", value="Policy A")]
+    context = _navigation_context(
+        _page_obligation("okf:new-policy:create-policy-button:visible:1", button,
+                          locators=button_locators, checks=[_visible("button:Create policy")]),
+        _page_obligation(keyboard_oid, interaction, locators=interaction_locators,
+                          acts=acts, checks=[focusable]),
+        navigation=_arrival_navigation(),
+    )
+    source, gaps = compile_plan_gaps(context, story="demo-story")
+    assert source is not None
+    assert [g for g in gaps if g.obligation_id == keyboard_oid] == []
+    (scenario,) = [s for s in source.split("@scenario(")[1:] if keyboard_oid in s]
+    assert ".click()" not in scenario
+    assert scenario.index('.fill("Policy A")') < scenario.index('qa.verify("focusable"')
+
+
 def test_a_gapped_but_covered_obligation_is_not_deferred() -> None:
     """The `open-new-widget` shape: a real `covers=[...]` claim stands beside its own gap on purpose (`_ARRANGEMENT_GAPS`)."""
     button = f"{_SCREEN}#create-policy-button"
@@ -2391,7 +2542,7 @@ def test_an_interaction_photographs_the_screen_its_checks_name() -> None:
     assert source is not None
     interactions = [s for s in source.split("@scenario(")[1:] if "submit_new_policy(" in s]
     assert len(interactions) == 1
-    assert re.findall(r"qa\.vet\(\"(.+?)\"\)", interactions[0]) == [elsewhere]
+    assert re.findall(r"qa\.vet\(\"(.+?)\", arrives=", interactions[0]) == [elsewhere]
     assert interactions[0].index(".click()") < interactions[0].index("qa.vet(")
 
 
@@ -3301,6 +3452,34 @@ def test_a_journey_step_path_binds_the_key_its_fixture_provides() -> None:
     assert _gap_kinds(result.gaps, oid) == []
 
 
+def test_a_journey_step_path_binds_the_fixture_its_own_request_names() -> None:
+    """Two of the flow's fixtures provide `thing_id`, and the step's request sends a fact of one of them, so its path binds that one's key."""
+    oid = f"okf:{_FLOW}:end-state"
+    get_node = _step_node(f"{_API}#get-thing", {"route": ["GET /api/things/{thing_id}"]})
+    get_node["actsDeclared"] = [_header_act("Authorization", "@spare-thing.token")]
+    context = _navigation_context(
+        _flow_obligation(
+            oid, source=_FLOW, surface="api",
+            steps=[_step(f"{_API}#get-thing", "endpoint", "api")],
+            checks=[{"call": "it", "name": "http_status",
+                    "args": {"status": 200, "path": "/api/things/{thing_id}"}}],
+            fixtures=[
+                {"name": "seeded-thing", "args": [], "provides": "a thing",
+                 "providesKeys": ["seeded-thing.thing_id"]},
+                {"name": "spare-thing", "args": [], "provides": "a spare thing",
+                 "providesKeys": ["spare-thing.thing_id", "spare-thing.token"]},
+            ],
+        ),
+        get_node,
+        navigation=_api_navigation(),
+    )
+    result = _compile_plan_gaps(context, story="demo-story")
+    assert isinstance(result, Plan)
+    ast.parse(result.source)
+    assert 'qa.http.get(qa.resolve("/api/things/@spare-thing.thing_id")' in result.source
+    assert _gap_kinds(result.gaps, oid) == []
+
+
 def test_a_journey_step_path_nothing_binds_still_files_its_gap() -> None:
     """A step's `{thing_id}` that no step captured and no fixture provides stays a template, and the journey says so."""
     oid = f"okf:{_FLOW}:end-state"
@@ -3430,6 +3609,59 @@ def test_a_journey_step_sends_the_success_body_when_its_node_arranges_two() -> N
     ast.parse(result.source)
     assert _gap_kinds(result.gaps, oid) == []
     assert 'json_body={"name": "Widget A"}' in result.source
+
+
+def _journey_over_a_rejected_and_an_accepted_claim(rejected_acts: list[dict], accepted_acts: list[dict]) -> tuple[str, dict]:
+    oid = f"okf:{_FLOW}:end-state"
+    route = {"route": ["POST /api/things"]}
+    rejected = _step_node(f"{_API}#post-things", route)
+    rejected["id"] = f"{_API}#post-things:rejected"
+    rejected["docPosition"] = [1, 0]
+    rejected["actsDeclared"] = rejected_acts
+    rejected["checksDeclared"] = [{"call": "it", "name": "http_status", "args": {"code": 400}}]
+    accepted = _step_node(f"{_API}#post-things", route)
+    accepted["id"] = f"{_API}#post-things:accepted"
+    accepted["docPosition"] = [2, 0]
+    accepted["actsDeclared"] = accepted_acts
+    accepted["checksDeclared"] = [{"call": "it", "name": "http_status", "args": {"code": 201}}]
+    context = _navigation_context(
+        _flow_obligation(
+            oid, source=_FLOW, surface="api",
+            steps=[_step(f"{_API}#post-things", "endpoint", "api")],
+            checks=[{"call": "it", "name": "http_status", "args": {"status": 201,
+                                                                   "path": "/api/things"}}],
+        ),
+        rejected,
+        accepted,
+        navigation=_api_navigation(),
+    )
+    return oid, context
+
+
+def test_a_journey_step_leaves_out_a_field_only_a_refusal_claim_sends() -> None:
+    """A refusal claim adds the field that gets the request refused; the journey step wants the request admitted, so it sends the fields the other claims arrange."""
+    oid, context = _journey_over_a_rejected_and_an_accepted_claim(
+        [_body_act("name", "Widget A"), _body_act("colour", "not-a-colour")],
+        [_body_act("name", "Widget A")],
+    )
+    result = _compile_plan_gaps(context, story="demo-story")
+    assert isinstance(result, Plan)
+    ast.parse(result.source)
+    assert _gap_kinds(result.gaps, oid) == []
+    assert 'json_body={"name": "Widget A"}' in result.source
+
+
+def test_a_journey_step_sends_the_success_claims_own_header_over_its_nodes() -> None:
+    """The success claim carries its node's header and then its own for the same name; the step sends the claim's own, as the claim's scenario does."""
+    oid, context = _journey_over_a_rejected_and_an_accepted_claim(
+        [_header_act("Authorization", "reader"), _body_act("name", "")],
+        [_header_act("Authorization", "reader"), _header_act("Authorization", "writer"), _body_act("name", "Widget A")],
+    )
+    result = _compile_plan_gaps(context, story="demo-story")
+    assert isinstance(result, Plan)
+    ast.parse(result.source)
+    assert _gap_kinds(result.gaps, oid) == []
+    assert 'json_body={"name": "Widget A"}, headers={"Authorization": "writer"}' in result.source
 
 
 def test_a_journey_get_step_sends_the_header_its_node_arranges() -> None:
@@ -3940,8 +4172,8 @@ def test_a_journey_that_says_it_needs_no_arrangement_compiles() -> None:
     assert "    preconditions=[\n    ],\n" in source
 
 
-def test_a_scenario_ending_on_a_parameterised_route_vets_nothing() -> None:
-    """A screen addressed by `/links/:id/edit` names a family of pages, not one page."""
+def test_a_scenario_ending_on_a_parameterised_route_is_vetted() -> None:
+    """A parameter fills one path segment, so the page a walk lands on is still that one screen."""
     oid = "okf:policy-list:policy-table:visible:1"
     context = _navigation_context(
         _page_obligation(oid, f"{_SCREEN}#policy-table",
@@ -3952,10 +4184,26 @@ def test_a_scenario_ending_on_a_parameterised_route_vets_nothing() -> None:
     )
     source, gaps = compile_plan_gaps(context, story="demo-story")
     assert source is not None
+    assert _vetted(source) == [_SCREEN]
+    assert [gap for gap in gaps if gap.kind == "unidentifiable-screen"] == []
+
+
+def test_a_scenario_ending_on_a_wildcard_route_vets_nothing() -> None:
+    """A screen addressed by `/policies/*` names a family of pages, not one page."""
+    oid = "okf:policy-list:policy-table:visible:1"
+    context = _navigation_context(
+        _page_obligation(oid, f"{_SCREEN}#policy-table",
+                          locators={"role": ["table"], "name": ["Policies on file"]},
+                          checks=[_visible("table:Policies on file")]),
+        navigation=_arrival_navigation(),
+        screen_routes={_SCREEN: "/policies/*"},
+    )
+    source, gaps = compile_plan_gaps(context, story="demo-story")
+    assert source is not None
     assert _vetted(source) == []
     unidentifiable = [gap for gap in gaps if gap.kind == "unidentifiable-screen"]
     assert [gap.obligation_id for gap in unidentifiable] == [oid]
-    assert "/policies/:id/edit" in unidentifiable[0].detail
+    assert "/policies/*" in unidentifiable[0].detail
     assert f'covers=["{oid}"]' in source
 
 
@@ -3992,7 +4240,7 @@ def test_a_route_that_is_not_a_path_is_reported_as_one_not_as_a_pattern() -> Non
         return next(gap.detail for gap in gaps if gap.kind == "unidentifiable-screen")
 
     assert "is not a path a browser could show" in detail_for("app_bundle_user_home")
-    assert "names a family of pages" in detail_for("/policies/{id}")
+    assert "names a family of pages" in detail_for("/policies/*")
 
 
 def test_a_fixture_bullet_that_did_not_parse_is_not_the_journey_that_arranges_nothing() -> None:
@@ -4865,3 +5113,56 @@ def test_a_web_journey_step_with_a_whitespace_press_key_gaps_only_the_specific_c
     assert "volume up" in uncompilable[0].detail
     assert "not a Playwright key" in uncompilable[0].detail
     assert "declares an arrangement this journey cannot make" not in uncompilable[0].detail
+
+
+def test_a_states_claim_the_seeded_world_is_already_in_compiles_without_a_fixture() -> None:
+    """A `states:` claim that declares a check and says `fixture: none, because ...` is observed as the scenario finds it, and is not gapped for arranging nothing."""
+    node = f"{_SCREEN}#unbilled-message"
+    state_oid = "okf:policy-list:unbilled-message:states:1"
+    context = _navigation_context(
+        _page_obligation(state_oid, node, kind="states",
+                         requirement="present when the account was never billed.",
+                         locators={"selector": ["`#unbilled`"]},
+                         checks=[_visible("#unbilled")]) | {"arrangesNothing": True},
+        navigation=_arrival_navigation(),
+    )
+    source, gaps = compile_plan_gaps(context, story="demo-story")
+    assert source is not None
+    ast.parse(source)
+    assert _gap_kinds(gaps, state_oid) == []
+    assert state_oid in _covers(source)
+
+
+_HOME = "docs/features/policy/gui/screens/home.md"
+
+
+def test_a_navigation_click_first_performs_the_acts_of_the_arm_that_lands_on_the_next_screen() -> None:
+    """A hop through a button two interaction arms share performs the acts of the arm whose check observes the screen the hop lands on, so a walk through a login form signs in and never types the refused arm's values."""
+    oid = "okf:home:home-title:visible:1"
+    button = f"{_SCREEN}#login-button"
+    on = {"on": ["[login-button](#login-button)"], "trigger": ["click"]}
+    navigation = _arrival_navigation()
+    navigation["policy"]["routes"][_HOME] = [{"node": button, "from": _SCREEN, "label": "Login"}]
+    context = _navigation_context(
+        _page_obligation(oid, f"{_HOME}#home-title", source=_HOME,
+                         locators={"selector": ["`#home-title`"]}, checks=[_visible("#home-title")]),
+        _page_obligation(f"{button}:carrier", button,
+                         locators={"selector": ["`#login`"]}, checks=[]) | {"required": False},
+        _page_obligation(f"{_SCREEN}#refuse:carrier", f"{_SCREEN}#refuse", locators=on,
+                         acts=[_act("fill", f"{_SCREEN}#password", {"selector": ["`#password`"]},
+                                    locator="#password", value="not-the-password")],
+                         checks=[_located_visible(f"{_SCREEN}#alert", {"selector": ["`#alert`"]})],
+                         ) | {"required": False},
+        _page_obligation(f"{_SCREEN}#submit:carrier", f"{_SCREEN}#submit", locators=on,
+                         acts=[_act("fill", f"{_SCREEN}#password", {"selector": ["`#password`"]},
+                                    locator="#password", value="the-password")],
+                         checks=[_located_visible(f"{_HOME}#home-title", {"selector": ["`#home-title`"]})],
+                         ) | {"required": False},
+        navigation=navigation,
+    )
+    source, gaps = compile_plan_gaps(context, story="demo-story")
+    assert source is not None
+    ast.parse(source)
+    assert oid in _covers(source), gaps
+    assert "not-the-password" not in source
+    assert source.index('.fill("the-password")') < source.index(".click()  # Login")

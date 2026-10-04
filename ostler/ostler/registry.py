@@ -748,6 +748,7 @@ UI_TYPES: tuple[UINodeType, ...] = (
                       properties=("from", "read", "is"), one_of=("from", "is")),
             BulletKey("needs", nested=True, link=True),
             BulletKey("secrets", nested=True),
+            BulletKey("lifetime"),
         ),
     ),
     UINodeType(

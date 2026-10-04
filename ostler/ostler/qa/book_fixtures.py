@@ -125,5 +125,6 @@ def resolved(graph: Graph) -> dict[str, dict[str, Any]]:
             "provides": _declared_provides(node),
             "needs": _needs_of(graph, node, by_name),
             "secrets": _declared_secrets(node),
+            "lifetime": "scenario" if _bullet_values(node.meta.get("lifetime")) == ["scenario"] else "lap",
         }
     return out

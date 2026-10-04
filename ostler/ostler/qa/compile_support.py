@@ -13,8 +13,10 @@ from ostler.qa.obligation import Obligation
 from ostler.qa.plan_source import Gap
 from ostler.qa.plan_source import arrangement_of
 from ostler.qa.plan_source import check_observes
+from ostler.qa.plan_source import python_literal
+from ostler.routes import arrival_regex
+from ostler.routes import is_comparable
 from ostler.routes import is_screen_name_shaped
-from ostler.routes import literal_route
 from ostler.routes import why_unreadable
 
 
@@ -118,7 +120,7 @@ def vettable(
     keep: list[str] = []
     for document in documents:
         route = screen_routes.get(document, "")
-        if is_screen_name_shaped(route.strip()) if mobile else literal_route(route):
+        if is_screen_name_shaped(route.strip()) if mobile else is_comparable(route):
             keep.append(document)
             continue
         why = why_unmatchable_screen_name(route) if mobile else why_unreadable(route)
@@ -149,3 +151,11 @@ def unarranged_scenario_gap(obligation: Obligation) -> Gap:
                "needs nothing — add a `fixture:` naming the arrangement, or "
                "`fixture: none, because ...` saying why the claim holds in whatever world the "
                "scenario finds")
+
+
+def vet_calls(documents: list[str], screen_routes: dict[str, str], ids: list[str], gaps: list[Gap]) -> list[str]:
+    """One `qa.vet` line per browser screen in *documents* a vet can establish, each told the address to wait for."""
+    return [
+        f"    qa.vet({python_literal(document)}, arrives={python_literal(arrival_regex(screen_routes.get(document, '')))})"
+        for document in vettable(documents, screen_routes, ids, gaps)
+    ]

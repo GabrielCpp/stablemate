@@ -482,6 +482,23 @@ def test_a_precondition_that_failed_in_its_lap_fails_again_without_running(tmp_p
     assert second_fault == first_fault
 
 
+def test_a_precondition_of_scenario_lifetime_is_built_again_by_each_scenario_of_a_lap(tmp_path: Path) -> None:
+    counter = tmp_path / "runs.txt"
+    book_fixtures = _lap_fixtures(tmp_path, counter, f'#!/bin/sh\nprintf "a" >> {counter}\necho \'{{"id": "acc-1"}}\'\n')
+    book_fixtures["seeded-globex"]["lifetime"] = "scenario"
+    module = _write(tmp_path, LAP_SCENARIOS)
+    lap = tmp_path / "lap"
+
+    first_code, first_out, _first_records = _run(module, "first-page", tmp_path, book_fixtures=book_fixtures, lap_dir=lap)
+    second_code, second_out, second_records = _run(module, "second-page", tmp_path, book_fixtures=book_fixtures, lap_dir=lap)
+
+    assert first_code == 0, first_out
+    assert second_code == 0, second_out
+    assert counter.read_text(encoding="utf-8") == "agg"
+    assert {r["name"]: r["reused"] for r in second_records if r.get("kind") == "fixture"} == {
+        "seeded-acme": True, "seeded-globex": False}
+
+
 def test_without_a_lap_each_scenario_builds_its_own_preconditions(tmp_path: Path) -> None:
     counter = tmp_path / "runs.txt"
     book_fixtures = _lap_fixtures(tmp_path, counter, f'#!/bin/sh\nprintf "a" >> {counter}\necho \'{{"id": "acc-1"}}\'\n')
@@ -866,4 +883,31 @@ def test_a_body_member_naming_an_object_fact_sends_the_object_not_its_text(tmp_p
     code, stdout, records = _run(module, "a-body-member-sends-an-object-fact-as-an-object", tmp_path, book_fixtures=book_fixtures)
     assert code == 0, stdout
     asserted = [record for record in records if record.get("type") == "assert"]
+    assert [record["passed"] for record in asserted] == [True, True, True], asserted
+
+
+def test_an_object_fact_reused_later_in_its_lap_is_still_an_object(tmp_path: Path) -> None:
+    seed = tmp_path / "seed.sh"
+    _seed_step(seed, "#!/bin/sh\necho '{\"slug\": \"intro\", \"locales\": {\"fr\": \"Bonjour\"}}'\n")
+    module = _write(tmp_path, STRUCTURED_FACT_SCENARIO)
+    book_fixtures = {
+        "seeded-acme": {
+            "steps": [{"kind": "seed", "id": "seed-it", "command": str(seed), "cwd": str(tmp_path)}],
+            "args": [], "needs": [], "secrets": [],
+            "provides": [
+                {"key": "locales", "from": "seed-it", "read": "locales"},
+                {"key": "slug", "from": "seed-it", "read": "slug"},
+            ],
+        }
+    }
+    lap = tmp_path / "lap"
+    scenario = "a-body-member-sends-an-object-fact-as-an-object"
+
+    first_code, first_out, _first_records = _run(module, scenario, tmp_path, book_fixtures=book_fixtures, lap_dir=lap)
+    second_code, second_out, second_records = _run(module, scenario, tmp_path, book_fixtures=book_fixtures, lap_dir=lap)
+
+    assert first_code == 0, first_out
+    assert second_code == 0, second_out
+    assert [r["reused"] for r in second_records if r.get("kind") == "fixture"] == [True]
+    asserted = [record for record in second_records if record.get("type") == "assert"]
     assert [record["passed"] for record in asserted] == [True, True, True], asserted

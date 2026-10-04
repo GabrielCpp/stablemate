@@ -97,12 +97,22 @@ def read_focus(observed: object, args: Args) -> FocusReading:
         return FocusReading(focused=focused, activated=None)
     if not focused:
         return FocusReading(focused=False, activated=False)
-    evaluate(
-        "el => { el.__ostlerActivated = false; "
-        "el.addEventListener('click', () => { el.__ostlerActivated = true; }, {once: true}); }"
+    page = getattr(observed, "page")
+    held = getattr(observed, "element_handle")()
+    expanded = held.evaluate(
+        "el => { window.__ostlerActivated = false; "
+        "el.addEventListener('click', () => { window.__ostlerActivated = true; }, {once: true}); "
+        "return el.getAttribute('aria-expanded'); }"
     )
-    getattr(observed, "page").keyboard.press(args["activates"])
-    return FocusReading(focused=True, activated=bool(evaluate("el => el.__ostlerActivated === true")))
+    page.keyboard.press(args["activates"])
+    if bool(page.evaluate("() => window.__ostlerActivated === true")):
+        return FocusReading(focused=True, activated=True)
+    return FocusReading(focused=True, activated=expanded == "false" and _opened(held))
+
+
+def _opened(held: object) -> bool:
+    """Whether a control that opens a popup on the keypress itself, with no click, now reports it open. *held* is the element itself, because an open popup hides the control from a lookup by role."""
+    return getattr(held, "evaluate")("el => el.isConnected && el.getAttribute('aria-expanded')") == "true"
 
 
 def verify_focusable(reading: FocusReading, args: Args) -> Verdict:

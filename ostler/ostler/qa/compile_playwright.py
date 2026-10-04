@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from typing import get_args as _get_args
 
 from ostler import acts as acts_mod
+from ostler.qa.book_index import BookIndex
 from ostler.qa.compile_journey import JourneyWalk
 from ostler.qa.compile_journey import WalkedJourney
 from ostler.qa.compile_support import PLAYWRIGHT
@@ -15,7 +16,7 @@ from ostler.qa.compile_support import on_href
 from ostler.qa.compile_support import on_label
 from ostler.qa.compile_support import trailing_comment
 from ostler.qa.compile_support import unobservable_gap
-from ostler.qa.compile_support import vettable
+from ostler.qa.compile_support import vet_calls
 from ostler.qa.navigation import NavHop
 from ostler.qa.obligation import CallRow
 from ostler.qa.obligation import FlowStep
@@ -103,15 +104,16 @@ def perform_acts(
 
 def walk_hops(
     hops: tuple[NavHop, ...],
-    locators_by_node: dict[str, Locators],
+    destination: str,
+    book: BookIndex,
     gaps: list[Gap],
     oids: list[str],
 ) -> list[str]:
-    """One `.click()` per hop the book's own navigation-derivation logic found (Correction 2')."""
+    """One `.click()` per hop on the way to *destination*, after the acts the book says that click needs to land there."""
     lines: list[str] = []
-    for hop in hops:
+    for index, hop in enumerate(hops):
         target_node = hop.node
-        expr = page_locator_expr(locators_by_node.get(target_node, NO_LOCATORS))
+        expr = page_locator_expr(book.locators_by_node.get(target_node, NO_LOCATORS))
         if expr is None:
             lines.append(f"    # TODO(arrange): no locator declared for {target_node!r}"
                          f" ({hop.label!r})")
@@ -119,6 +121,9 @@ def walk_hops(
                              f"no locator declared for navigation hop {target_node!r}")
                         for oid in oids)
             continue
+        lands_on = hops[index + 1].from_page if index + 1 < len(hops) else destination
+        needed = perform_acts(book.hop_acts.get((target_node, lands_on), []), acts_mod.WEB, gaps, oids)
+        lines.extend(needed.lines or [])
         lines.append(f"    {expr}.click()  # {trailing_comment(hop.label)}")
     return lines
 
@@ -291,7 +296,7 @@ def _web_start(walk: JourneyWalk, gaps: list[Gap]) -> list[str] | None:
                     for oid in walk.ids)
         return None
     return [f"    qa.goto({python_literal(walk.nav.root_path)})",
-            *walk_hops(hops, walk.book.locators_by_node, gaps, walk.ids)]
+            *walk_hops(hops, first_source, walk.book, gaps, walk.ids)]
 
 
 def _web_step(index: int, step: FlowStep, walk: JourneyWalk, gaps: list[Gap]) -> list[str] | None:
@@ -355,7 +360,6 @@ def web_walk(walk: JourneyWalk, sinks: PlanSinks) -> WalkedJourney:
         lines.insert(action_index, f"    {WINDOW_VAR} = qa.window()")
     return WalkedJourney([
         *lines,
-        *(f"    qa.vet({python_literal(document)})"
-          for document in vettable(observed.documents, walk.book.screen_routes, walk.ids, gaps)),
+        *vet_calls(observed.documents, walk.book.screen_routes, walk.ids, gaps),
         *observed.lines,
     ], frozenset(observed.covered))

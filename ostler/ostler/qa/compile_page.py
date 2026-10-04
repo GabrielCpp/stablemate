@@ -19,7 +19,7 @@ from ostler.qa.compile_support import on_href
 from ostler.qa.compile_support import on_label
 from ostler.qa.compile_support import trailing_comment
 from ostler.qa.compile_support import unarranged_state_gap
-from ostler.qa.compile_support import vettable
+from ostler.qa.compile_support import vet_calls
 from ostler.qa.navigation import NavHop
 from ostler.qa.navigation import SurfaceNavigation
 from ostler.qa.obligation import FixtureRow
@@ -113,10 +113,10 @@ class _ScreenScenarios:
 def _state_arrivals(
     slug: str, node_id: str, obligations: list[Obligation], gaps: list[Gap],
 ) -> list[_Arrival]:
-    """One arrival per `states` claim that declares a check and arranges its state, gapping the rest."""
+    """One arrival per `states` claim that declares a check and arranges its state or says the seeded world is already in it, gapping the rest."""
     arrivals: list[_Arrival] = []
     for obligation in (o for o in obligations if o.kind == "states"):
-        if obligation.checks and arrangement_of([obligation]).rows:
+        if obligation.checks and not arrangement_of([obligation]).unstated:
             arrivals.append(_Arrival(f"{slug}_{obligation.id.rsplit(':', 1)[-1]}", {node_id: [obligation]}))
         else:
             gaps.append(unarranged_state_gap(obligation))
@@ -289,7 +289,7 @@ def _arrive(screen: _PageScreen, arranged: list[FixtureRow], gaps: list[Gap], id
     return [
         *(fixture_call(row) for row in arranged),
         f"    qa.goto({python_literal(screen.path.root_path)})",
-        *walk_hops(screen.path.hops, screen.book.locators_by_node, gaps, ids),
+        *walk_hops(screen.path.hops, screen.source, screen.book, gaps, ids),
     ]
 
 
@@ -305,10 +305,11 @@ def _arrival_scenario(
     ids = sorted(o.id for o in obligations)
     arranged = arrangement_of(obligations).rows
     body = _arrive(screen, arranged, gaps, ids)
-    body.extend(
-        f"    qa.vet({python_literal(document)})"
-        for document in vettable([screen.source], screen.book.screen_routes, ids, gaps)
-    )
+    body.extend(vet_calls([screen.source], screen.book.screen_routes, ids, gaps))
+    for node_id in sorted(arrival.nodes):
+        node_acts = screen.book.acts_by_node.get(node_id, [])
+        if node_acts:
+            body.extend(perform_acts(node_acts, acts_mod.WEB, gaps, ids).lines or [])
     observed = page_observations(
         [o for _node_id, obs in sorted(arrival.nodes.items()) for o in obs], gaps)
     if not observed.covered:
@@ -438,7 +439,6 @@ def _interaction_scenario(
         f"    {python_literal(f'{arm.label or node_id}: {arm.trigger}')}",
         "",
         *body,
-        *(f"    qa.vet({python_literal(document)})"
-          for document in vettable(observed.documents, book.screen_routes, ids, gaps)),
+        *vet_calls(observed.documents, book.screen_routes, ids, gaps),
         *observed.lines,
     ]

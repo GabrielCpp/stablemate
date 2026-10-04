@@ -776,7 +776,7 @@ def test_concepts_chained_by_same_as_citing_one_symbol_stay_one_family(tmp_path:
 
 
 def _same_as_button_screens(
-    tmp_path: Path, names: list[str], *, extra_bullets: dict[str, str] | None = None
+    tmp_path: Path, names: list[str], *, extra_bullets: dict[str, str] | None = None, interactions: str = ""
 ) -> str:
     """`names` screens, each with a `save-button` component reciprocally `same-as:`-linked to every other member and grounded on its own file — so each enters the packet independently of the relation, the invariant `_same_as_component` collapsing must not disturb."""
     extra_bullets = extra_bullets or {}
@@ -795,7 +795,8 @@ def _same_as_button_screens(
             "- name: Save item\n"
             f"{extra_bullets.get(name, '')}"
             f"{same_as}"
-            f"- code: app/{name}.py::save_item\n",
+            f"- code: app/{name}.py::save_item\n"
+            f"{interactions}",
             encoding="utf-8",
         )
         (tmp_path / f"app/{name}.py").write_text(
@@ -829,6 +830,92 @@ def test_same_as_pair_collapses_onto_the_lower_member_id(tmp_path: Path):
         "okf:docs/features/demo/screen-a.md#save-button:name:1",
         "okf:docs/features/demo/screen-a.md#save-button:role:1",
     ]
+
+
+def test_a_check_under_the_name_discharges_the_role_it_is_paired_with(tmp_path: Path):
+    """`role:` and `name:` are one address, so the check under either bullet proves both and the other owes none."""
+    base = _same_as_button_screens(
+        tmp_path, ["screen-a"],
+        extra_bullets={"screen-a": '- verify: visible(locator="#save-button")\n'},
+    )
+
+    packet = build_context(tmp_path, base=base, source_roots={"demo": ["app"]})
+
+    owed = {item["id"].rsplit(":", 2)[-2]: item["required"] for item in packet["obligations"]
+            if item["node"].endswith("#save-button") and item["kind"] in ("role", "name")}
+    assert owed == {"role": False, "name": True}
+
+
+def test_an_address_pair_with_no_check_at_all_still_owes_one(tmp_path: Path):
+    base = _same_as_button_screens(tmp_path, ["screen-a"])
+
+    packet = build_context(tmp_path, base=base, source_roots={"demo": ["app"]})
+
+    owed = {item["kind"]: item["required"] for item in packet["obligations"]
+            if item["node"].endswith("#save-button") and item["kind"] in ("role", "name")}
+    assert owed == {"role": True, "name": True}
+
+
+def test_a_keyboard_bullet_that_states_its_own_emptiness_mints_no_obligation(tmp_path: Path):
+    """`keyboard: none, because ...` says there is nothing to operate, so there is no claim for a check to prove."""
+    base = _same_as_button_screens(
+        tmp_path, ["screen-a"],
+        extra_bullets={"screen-a": "- keyboard: none, because it is announced and not operated.\n"},
+    )
+
+    packet = build_context(tmp_path, base=base, source_roots={"demo": ["app"]})
+
+    kinds = {item["kind"] for item in packet["obligations"] if item["node"].endswith("#save-button")}
+    assert "keyboard" not in kinds
+
+
+_PRESS_SAVE = (
+    "\n## Interactions\n\n"
+    "### press-save\n"
+    "- on: [save-button](#save-button)\n"
+    "- trigger: click\n"
+    "- does:\n"
+    "  - shows the button once the item is dirty.\n"
+    '- verify: visible(locator="#save-button")\n'
+    "- code: app/screen-a.py::save_item\n"
+)
+
+
+def _save_button_owes(packet: dict[str, Any]) -> dict[str, bool]:
+    return {item["kind"]: item["required"] for item in packet["obligations"]
+            if item["node"].endswith("#save-button") and item["kind"] in ("states", "role", "name")}
+
+
+def test_an_interaction_that_proves_a_coming_and_going_component_visible_discharges_its_arrival_checks(tmp_path: Path):
+    """A component absent on arrival cannot pass a check there, so the interaction that makes it appear carries the proof."""
+    base = _same_as_button_screens(
+        tmp_path, ["screen-a"],
+        extra_bullets={"screen-a": "- states: present only once the item is dirty.\n"},
+        interactions=_PRESS_SAVE,
+    )
+
+    packet = build_context(tmp_path, base=base, source_roots={"demo": ["app"]})
+
+    assert _save_button_owes(packet) == {"states": False, "role": False, "name": False}
+
+
+def test_a_coming_and_going_component_no_interaction_proves_still_owes_its_checks(tmp_path: Path):
+    base = _same_as_button_screens(
+        tmp_path, ["screen-a"],
+        extra_bullets={"screen-a": "- states: present only once the item is dirty.\n"},
+    )
+
+    packet = build_context(tmp_path, base=base, source_roots={"demo": ["app"]})
+
+    assert _save_button_owes(packet) == {"states": True, "role": True, "name": True}
+
+
+def test_an_interaction_check_does_not_discharge_a_component_that_is_always_present(tmp_path: Path):
+    base = _same_as_button_screens(tmp_path, ["screen-a"], interactions=_PRESS_SAVE)
+
+    packet = build_context(tmp_path, base=base, source_roots={"demo": ["app"]})
+
+    assert _save_button_owes(packet) == {"role": True, "name": True}
 
 
 def test_same_as_triple_collapses_to_one_obligation_not_three(tmp_path: Path):

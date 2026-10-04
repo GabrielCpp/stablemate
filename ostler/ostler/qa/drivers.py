@@ -19,7 +19,7 @@ from pydantic import ValidationError
 
 from ostler import path as path_mod
 from ostler.model import load as load_graph
-from ostler.routes import arrived_at, literal_route, screen_routes
+from ostler.routes import arrived_at, is_comparable, screen_routes
 from ostler.untyped import JsonValue
 from ostler.qa import book_fixtures as qa_book_fixtures
 from ostler.qa.attribution import NO_ATTRIBUTION, SAMPLE_CHARS, Attribution, Cause, CheckEvidence, CommandEnding, attribute
@@ -705,9 +705,9 @@ class PythonDriver(QaDriver):
         self._book()
         route = self._routes.get(screen, "")
         url = str(record.get("url", ""))
-        if not url or not literal_route(route):
+        if not url or not is_comparable(route):
             return None
-        if arrived_at(url, route):
+        if arrived_at(url, route, self._routes.values()):
             return None
         return (
             f"scenario '{scenario_id}' vets '{screen}', documented at route '{route}', but "
@@ -726,6 +726,8 @@ class PythonDriver(QaDriver):
         components = self._book().get(screen)
         if self._book_problem is not None:
             return [], [self._book_problem]
+        if components is None and screen in self._routes:
+            components = []
         if components is None:
             return [], [
                 f"scenario '{scenario_id}' vets '{screen}', which the book does not document "
@@ -765,7 +767,7 @@ class PythonDriver(QaDriver):
             "regionCount": len(regions),
             "arrival": (
                 "confirmed"
-                if record.get("url") and literal_route(self._routes.get(screen, ""))
+                if record.get("url") and is_comparable(self._routes.get(screen, ""))
                 else ("unobserved" if not record.get("url") else "unstated")
             ),
             "url": str(record.get("url", "")),

@@ -8,7 +8,9 @@ from __future__ import annotations
 
 import json
 import logging
+import time
 from email.message import Message
+from pathlib import Path
 
 import pytest
 
@@ -738,61 +740,74 @@ def test_teardown_stack_delegates_with_the_leave_up_policy(monkeypatch) -> None:
     assert seen == {"pgid": "", "stop": "", "cwd": "api"}
 
 
-def test_run_step_accepts_string_and_mapping(monkeypatch) -> None:
-    seen: list[tuple[list[str], str, float]] = []
+def test_run_step_accepts_string_and_mapping(tmp_path) -> None:
+    (tmp_path / "api").mkdir()
 
-    class Done:
-        returncode = 0
-        stderr = ""
-
-    def fake_run(argv, *, cwd, capture_output, text, timeout):
-        seen.append((argv, cwd, timeout))
-        return Done()
-
-    monkeypatch.setattr(stack.subprocess, "run", fake_run)
-
-    ok, _ = stack._run_step("make seed", "root", 42, LOG, label="seed[0]")
+    ok, _ = stack._run_step("pwd > where", str(tmp_path), 42, LOG, label="seed[0]")
     assert ok
     ok, _ = stack._run_step(
-        {"run": "make seed-users", "working-directory": "api", "timeout": "7"},
-        "root", 42, LOG, label="seed[1]",
+        {"run": "pwd > where", "working-directory": str(tmp_path / "api"), "timeout": "7"},
+        str(tmp_path), 42, LOG, label="seed[1]",
     )
     assert ok
-    assert seen == [
-        ([stack._SHELL, "-c", "make seed"], "root", 42),
-        ([stack._SHELL, "-c", "make seed-users"], "api", 7.0),
-    ]
+    assert (tmp_path / "where").read_text().strip() == str(tmp_path)
+    assert (tmp_path / "api" / "where").read_text().strip() == str(tmp_path / "api")
 
 
-def test_run_step_reports_a_nonzero_exit(monkeypatch) -> None:
-    class Failed:
-        returncode = 1
-        stdout = ""
-        stderr = "seed blew up"
-
-    monkeypatch.setattr(stack.subprocess, "run", lambda *_a, **_kw: Failed())
-    ok, err = stack._run_step("make seed", "root", 42, LOG, label="seed[0]")
+def test_run_step_reports_a_nonzero_exit(tmp_path) -> None:
+    ok, err = stack._run_step(
+        "echo seed blew up >&2; exit 1", str(tmp_path), 42, LOG, label="seed[0]",
+    )
     assert not ok
     assert "seed blew up" in err
     assert "exit 1" in err  # the exit code is part of the brief, not only the stream
 
 
-def test_run_step_briefs_from_stdout_when_stderr_is_silent(monkeypatch) -> None:
+def test_run_step_briefs_from_stdout_when_stderr_is_silent(tmp_path) -> None:
     """make and docker put real failures on stdout; an empty brief points at nothing.
 
     The observed shape: a coder-QA seed step failed with exit 2, its Makefile printed the
     error to stdout, and the setup fixer was briefed with a blank reason — so it had to
     re-run the step by hand to learn what the run already knew.
     """
-    class Failed:
-        returncode = 2
-        stdout = "progress...\nError: emulator port 8081 is taken"
-        stderr = "  \n"
-
-    monkeypatch.setattr(stack.subprocess, "run", lambda *_a, **_kw: Failed())
-    ok, err = stack._run_step("make seed", "root", 42, LOG, label="seed[0]")
+    ok, err = stack._run_step(
+        "echo progress...; echo Error: emulator port 8081 is taken; echo '  ' >&2; exit 2",
+        str(tmp_path), 42, LOG, label="seed[0]",
+    )
     assert not ok
     assert "port 8081 is taken" in err
+
+
+def test_run_step_returns_while_a_server_it_backgrounded_keeps_its_output_open(tmp_path) -> None:
+    """A step that starts an upstream with ``&`` is done when its shell is.
+
+    The observed shape: a web runbook readied its API with a backgrounded ``go run``; the
+    server inherited the step's output, and a step read through pipes waits for the last
+    writer, so the lap sat on a healthy stack until somebody killed it.
+    """
+    ok, err = stack._run_step("sleep 30 &", str(tmp_path), 5, LOG, label="prepare[0]")
+    assert ok, err
+
+
+def test_run_step_kills_the_group_of_a_step_that_never_returns(tmp_path) -> None:
+    ok, err = stack._run_step(
+        {"run": "sh -c 'echo $$ > child; exec sleep 30'; true", "timeout": "1"},
+        str(tmp_path), 42, LOG, label="prepare[0]",
+    )
+    assert not ok
+    assert "still running after 1s" in err
+    child = int((tmp_path / "child").read_text())
+    deadline = time.monotonic() + 5
+    while _alive(child) and time.monotonic() < deadline:
+        time.sleep(0.05)
+    assert not _alive(child)
+
+
+def _alive(pid: int) -> bool:
+    try:
+        return "Z" not in Path(f"/proc/{pid}/stat").read_text().split(")")[-1].split()[0]
+    except OSError:
+        return False
 
 
 def test_step_error_keeps_the_tail_of_a_long_stream() -> None:

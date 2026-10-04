@@ -443,7 +443,8 @@ def _compile_packet(
         resolved_web_base_urls=web_urls, resolved_api_base_urls=api_urls,
         queries_by_node=book_index_mod.queries_by_node(carried),
         claims_by_node=acts.claims_by_node,
-        fixture_pages=book_index_mod.fixture_pages(carried),
+        hop_acts=book_index_mod.hop_acts(carried, acts.by_node),
+        fixture_pages=book_index_mod.fixture_pages(carried, rebuilt=packet.scenario_fixtures),
     )
     journeys = JourneyPlan(book=book, sinks=sinks, navigation=navigation, walkers=_JOURNEY_WALKERS)
     lines = [

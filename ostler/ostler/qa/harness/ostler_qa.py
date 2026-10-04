@@ -1049,7 +1049,8 @@ class Qa:
         cached = self._book_fixture_memo.get(memo_key)
         if cached is not None:
             return cached
-        arranged = self._lap.built(name, args) if self._lap is not None else None
+        shared = self._lap if self._book_fixtures[name].get("lifetime") != "scenario" else None
+        arranged = shared.built(name, args) if shared is not None else None
         result = self._build_book_fixture(name, args) if arranged is None else self._reuse_book_fixture(name, arranged)
         self._book_fixture_memo[memo_key] = result
         self._recorder.emit(
@@ -1067,17 +1068,18 @@ class Qa:
         return result
 
     def _build_book_fixture(self, name: str, args: Mapping[str, str]) -> "ToolResult":
-        """Run *name*'s steps, and keep what they left, or the fault that stopped them, in the lap record."""
+        """Run *name*'s steps, and keep what they left, or the fault that stopped them, in the lap record unless each scenario builds its own."""
         self._last_fault = None
+        lap = self._lap if self._book_fixtures[name].get("lifetime") != "scenario" else None
         try:
             result = self._run_book_fixture(name, args)
         except RuntimeError as exc:
-            if self._lap is not None and self._last_fault is not None:
-                self._lap.keep(name, args, Arranged(fault=asdict(self._last_fault), error=str(exc)))
+            if lap is not None and self._last_fault is not None:
+                lap.keep(name, args, Arranged(fault=asdict(self._last_fault), error=str(exc)))
             raise
-        if self._lap is not None:
-            self._lap.keep(name, args, Arranged(
-                facts=self._node_facts[name], command=list(result.command),
+        if lap is not None:
+            lap.keep(name, args, Arranged(
+                facts=self._node_facts[name], structures=self._node_structures.get(name, {}), command=list(result.command),
                 stdout=result.stdout, stderr=result.stderr, exit_code=result.exit_code))
         return result
 
@@ -1090,6 +1092,8 @@ class Qa:
             if need.get("fixture") is not None:
                 self._exec_book_fixture(str(need["fixture"]), {})
         self._node_facts[name] = dict(arranged.facts)
+        if arranged.structures:
+            self._node_structures[name] = dict(arranged.structures)
         return ToolResult(command=arranged.command, stdout=arranged.stdout, stderr=arranged.stderr, exit_code=arranged.exit_code)
 
     def _run_book_fixture(self, name: str, args: Mapping[str, str]) -> "ToolResult":
@@ -1473,7 +1477,13 @@ class Qa:
 
 
     def by_role(self, role: str, *, name: str | None = None, **kwargs: Any) -> Any:
-        return self.browser_page.get_by_role(role, name=name, **kwargs)
+        """The element with this role and name. A name that several elements contain addresses the one that carries it whole."""
+        found = self.browser_page.get_by_role(role, name=name, **kwargs)
+        if isinstance(name, str) and "exact" not in kwargs and found.count() > 1:
+            whole = self.browser_page.get_by_role(role, name=name, exact=True, **kwargs)
+            if whole.count() == 1:
+                return whole
+        return found
 
     def by_label(self, text: str, **kwargs: Any) -> Any:
         return self.browser_page.get_by_label(text, **kwargs)
@@ -1539,10 +1549,24 @@ class Qa:
             self._recorder.emit({"type": "artifact", "path": str(artifact), "kind": kind})
         return path
 
-    def vet(self, screen: str, name: str = "", components: list[str] | None = None) -> Path:
-        """Photograph a screen and hand ostler the screen it is supposed to be."""
+    def _settle(self, arrives: str) -> None:
+        """Give a client-side redirect and the screen's own loads time to finish before the photograph."""
+        page = self.browser_page
+        pattern = re.compile(arrives)
+        deadline = time.monotonic() + ARRIVAL_WAIT_S
+        while pattern.fullmatch(str(page.url)) is None and time.monotonic() < deadline:
+            page.wait_for_timeout(100)
+        try:
+            page.wait_for_load_state("networkidle", timeout=SETTLE_WAIT_MS)
+        except Exception:
+            return
+
+    def vet(self, screen: str, name: str = "", components: list[str] | None = None, arrives: str = "") -> Path:
+        """Photograph a screen and hand ostler the screen it is supposed to be. *arrives* is the address to wait for first."""
         state = name or "vet"
         if self.target.driver == "playwright":
+            if arrives:
+                self._settle(arrives)
             path = self.screenshot(state)
         elif self.target.driver == "maestro":
             path = self.device_screenshot(state)
@@ -1787,6 +1811,8 @@ class Convert:
 CHECK_METHODS = frozenset({"check", "require", "eventually", "require_eventually", "verify"})
 
 VET_METHOD = "vet"
+ARRIVAL_WAIT_S = 10.0
+SETTLE_WAIT_MS = 5000
 
 
 @dataclass(frozen=True)

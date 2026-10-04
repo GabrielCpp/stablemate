@@ -20,6 +20,7 @@ class ContextPacket:
     navigation: dict[str, SurfaceNavigation]
     screen_routes: dict[str, str]
     cli_binaries: dict[str, str]
+    scenario_fixtures: frozenset[str]
     story_slug: str
 
     @property
@@ -48,6 +49,20 @@ def _string_table(value: object, what: str) -> dict[str, str]:
     return table
 
 
+def _names(value: object, what: str) -> frozenset[str]:
+    """A packet list of names, empty when unset, refused loudly when anything else."""
+    if value is None:
+        return frozenset()
+    if not isinstance(value, list):
+        raise ValueError(f"context `{what}` is not a list of strings: {value!r}")
+    names: set[str] = set()
+    for item in value:
+        if not isinstance(item, str):
+            raise ValueError(f"context `{what}` is not a list of strings: {value!r}")
+        names.add(item)
+    return frozenset(names)
+
+
 def packet_of(context: Mapping[str, Any]) -> ContextPacket:
     """*context* validated into a `ContextPacket`, refused loudly wherever it is malformed."""
     return ContextPacket(
@@ -55,5 +70,6 @@ def packet_of(context: Mapping[str, Any]) -> ContextPacket:
         navigation=navigation_rows(context.get("navigation")),
         screen_routes=_string_table(context.get("screenRoutes"), "screenRoutes"),
         cli_binaries=_string_table(context.get("cliBinaries"), "cliBinaries"),
+        scenario_fixtures=_names(context.get("scenarioFixtures"), "scenarioFixtures"),
         story_slug=_string_table(context.get("story"), "story").get("slug", ""),
     )

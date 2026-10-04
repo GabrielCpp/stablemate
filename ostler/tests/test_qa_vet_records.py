@@ -151,6 +151,30 @@ def test_a_vet_of_a_screen_the_book_does_not_document_fails_the_scenario(repo: P
     assert _asserts(driver) == []
 
 
+def test_a_vet_of_a_screen_whose_components_carry_no_selector_places_nothing(repo: Path) -> None:
+    """A screen found wholly by role and name is still a documented screen: its arrival is checked and nothing is placed."""
+    write(
+        repo / SCREEN,
+        "---\ntype: screen\nslug: s\ntitle: S\n---\n# S\n\n"
+        "- route: /dashboard\n\n"
+        "## Components\n\n"
+        "### save\n- role: button\n- name: Save\n",
+    )
+    shot = _shot(repo, [_region("button", "button.save", (0, 88, 120, 40))])
+    driver = _driver(repo)
+
+    arrived = driver._grade(
+        "s-1", [], _records(shot, url="http://localhost:18102/dashboard"), "", 0, timed_out=False
+    )
+    assert arrived.status == "passed" and arrived.failures == 0
+
+    elsewhere = driver._grade(
+        "s-1", [], _records(shot, url="http://localhost:18102/settings"), "", 0, timed_out=False
+    )
+    assert elsewhere.status == "failed"
+    assert "did not arrive" in elsewhere.message
+
+
 def test_a_vet_spelled_in_the_packet_s_frame_resolves_against_a_book_rooted_elsewhere(
     repo: Path,
 ) -> None:

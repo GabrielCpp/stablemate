@@ -26,6 +26,7 @@ from ostler.qa.obligation import FlowStep
 from ostler.qa.obligation import Locators
 from ostler.qa.obligation import NO_LOCATORS
 from ostler.qa.obligation import Obligation
+from ostler.qa.plan_source import Arrangement
 from ostler.qa.plan_source import EmittedScenarios
 from ostler.qa.plan_source import Gap
 from ostler.qa.plan_source import PlanSinks
@@ -81,11 +82,12 @@ def _concrete_path(rows: tuple[CallRow, ...]) -> str | None:
 
 
 def _request_path(template: str, rows: tuple[CallRow, ...]) -> str:
-    """The path a claim requests: a declared check's real path, unless it drops a reference the route names."""
+    """The path a claim requests: a declared check's real path, unless it drops a reference the route names and names no other in its place."""
     concrete = _concrete_path(rows)
     if concrete is None:
         return template
-    if set(references.find_references(template)) - set(references.find_references(concrete)):
+    routed, checked = set(references.find_references(template)), set(references.find_references(concrete))
+    if routed - checked and not checked - routed:
         return template
     return concrete
 
@@ -110,13 +112,13 @@ def api_scenarios(
         declared = [o for o in obligations if o.checks]
         if not declared:
             continue
-        arrangement = arrangement_of(declared)
+        arranging = _arranging(obligations, book)
+        arrangement = _with_lent_fixtures(arrangement_of(declared), _credential_lenders(declared, arranging), declared)
         if arrangement.unstated:
             sinks.gaps.extend(unarranged_scenario_gap(o) for o in declared)
             continue
         covered: set[str] = set()
-        body = _scenario_body(declared, _arranging(obligations, book), book.fixture_pages, sinks.gaps, covered,
-                              sinks.captured)
+        body = _scenario_body(declared, arranging, book.fixture_pages, sinks.gaps, covered, sinks.captured)
         if not covered:
             continue
         emitted.covered.update(covered)
@@ -196,6 +198,7 @@ def _probe(obligation: Obligation, credentials: tuple[CallRow, ...], caller: fro
 
 _BODILESS_METHODS = frozenset({"GET", "DELETE", "HEAD", "OPTIONS"})
 _SERVER_FAULT = 500
+_WHOLE_BODY = "$"
 
 
 @dataclass(frozen=True)
@@ -217,8 +220,8 @@ class _HttpArrangement:
         return body + headers
 
 
-def _http_arrangement(rows: tuple[CallRow, ...]) -> _HttpArrangement | None:
-    """The body and headers *rows* arrange, or `None` if any one of them cannot be sent over HTTP."""
+def _http_arrangement(rows: tuple[CallRow, ...], *, later_replaces: bool = False) -> _HttpArrangement | None:
+    """The body and headers *rows* arrange, or `None` if any one of them cannot be sent over HTTP. Two values for one name cannot both be sent, unless *later_replaces*: a claim's own act comes after its node's and replaces it."""
     arranged = _HttpArrangement({}, {})
     for row in rows:
         spec = acts_mod.ACT_BY_NAME.get(row.name)
@@ -228,10 +231,12 @@ def _http_arrangement(rows: tuple[CallRow, ...]) -> _HttpArrangement | None:
             sink, key, value = arranged.headers, row.text_arg("name"), row.text_arg("value")
         else:
             sink, key, value = arranged.body, row.text_arg("field"), row.args.get("value", "")
-        if key in sink and sink[key] != value:
+        if key in sink and sink[key] != value and not later_replaces:
             return None
         sink[key] = value
     if any(other.startswith(f"{key}.") for key in arranged.body for other in arranged.body):
+        return None
+    if _WHOLE_BODY in arranged.body and len(arranged.body) > 1:
         return None
     return arranged
 
@@ -250,7 +255,9 @@ def _resolved_dict_literal(fields: dict[str, CheckValue]) -> str:
 
 
 def _nested_body_literal(fields: dict[str, CheckValue]) -> str:
-    """A `json_body=` dict literal in which a dotted field such as `locales.fr` is a member of a nested object."""
+    """A `json_body=` literal: a dotted field such as `locales.fr` is a member of a nested object, and the lone field `$` is the whole body."""
+    if list(fields) == [_WHOLE_BODY]:
+        return _resolved_literal(fields[_WHOLE_BODY], "resolve_body")
     tree: dict[str, Any] = {}
     for path, value in fields.items():
         *parents, leaf = path.split(".")
@@ -310,11 +317,11 @@ def _arranging(obligations: list[Obligation], book: BookIndex) -> list[Obligatio
 
 
 def _node_credentials(obligations: list[Obligation]) -> dict[str, tuple[CallRow, ...]]:
-    """Each endpoint's `header` acts, from every claim of it that arranges one and does not expect a 401, less a name two claims set apart."""
+    """Each endpoint's `header` acts, from every claim of it that arranges one and does not expect a refusal, less a name two claims set apart. A claim that expects a 401 or a 403 names the caller the endpoint refuses, which is its own to send."""
     values: dict[str, dict[str, set[str]]] = {}
     rows: dict[str, dict[str, CallRow]] = {}
     for obligation in obligations:
-        if _expect_status(obligation.checks) == 401:
+        if _expect_status(obligation.checks) in _REFUSED:
             continue
         for row in obligation.acts:
             if row.name != "header" or not obligation.node:
@@ -324,6 +331,31 @@ def _node_credentials(obligations: list[Obligation]) -> dict[str, tuple[CallRow,
             rows.setdefault(obligation.node, {}).setdefault(name, row)
     return {node: tuple(row for name, row in by_name.items() if len(values[node][name]) == 1)
             for node, by_name in rows.items()}
+
+
+def _credential_lenders(declared: list[Obligation], arranging: list[Obligation]) -> list[Obligation]:
+    """The claims that check nothing yet arrange a header their endpoint's checked claims send, so their fixtures have to be arranged too."""
+    checked = {obligation.id for obligation in declared}
+    nodes = {obligation.node for obligation in declared}
+    return [claim for claim in arranging
+            if claim.id not in checked and claim.node in nodes and claim.fixtures
+            and any(row.name == "header" for row in claim.acts)]
+
+
+def _with_lent_fixtures(arrangement: Arrangement, lenders: list[Obligation], declared: list[Obligation]) -> Arrangement:
+    """*arrangement* plus each lender's fixtures, needed by every checked claim of the lender's endpoint."""
+    if not lenders:
+        return arrangement
+    rows = {(row.name, row.args): row for row in arrangement.rows}
+    needed_by = {key: list(ids) for key, ids in arrangement.needed_by.items()}
+    for lender in lenders:
+        borrowers = [obligation.id for obligation in declared if obligation.node == lender.node]
+        for row in lender.fixtures:
+            key = (row.name, row.args)
+            rows.setdefault(key, row)
+            needers = needed_by.setdefault(key, [])
+            needers.extend(oid for oid in borrowers if oid not in needers)
+    return Arrangement(list(rows.values()), arrangement.stated_none, needed_by)
 
 
 def _header_pair(row: CallRow) -> tuple[str, str]:
@@ -378,7 +410,7 @@ def _claim_request(
                 for ref in path_refs if not produced.resolves(ref))
     wants_body = method not in _BODILESS_METHODS
     act_rows = _claim_acts(obligation, credentials, caller)
-    arranged = None if (not act_rows or obligation.acts_unparsed) else _http_arrangement(act_rows)
+    arranged = None if (not act_rows or obligation.acts_unparsed) else _http_arrangement(act_rows, later_replaces=True)
     if wants_body and (arranged is None or not arranged.body):
         why = "the book carries no request body"
         return _UnbuiltClaimRequest(why, ScenarioRefusal("unarranged-request-body", why))
@@ -488,6 +520,8 @@ def _scenario_body(obligations: list[Obligation], arranging: list[Obligation], f
     ordered = sorted(obligations, key=lambda o: o.doc_position)
     credentials = _node_credentials(arranging)
     callers = _node_caller_headers(arranging)
+    for lender in _credential_lenders(obligations, arranging):
+        produced.record_fixtures(lender)
     for index, obligation in enumerate(ordered, start=1):
         oid = obligation.id
         observed = f"observed_{index}"
@@ -534,14 +568,18 @@ class _UnbuiltStep:
 
 
 def _step_arrangement(ref: str, node_rows: list[CallRow], book: BookIndex) -> _HttpArrangement | None:
-    """What one journey step sends: every claim's acts on its node merged, else the first success claim's own acts when the claims arrange a field differently."""
-    merged = _http_arrangement(tuple(node_rows))
+    """What one journey step sends: the acts of every claim on its node that expects no refusal, merged, else the first success claim's own acts when those claims arrange a field differently."""
+    refusing = {row.call for claim in book.claims_by_node.get(ref, ()) if (_expect_status(claim.checks) or 0) >= 400
+                for row in claim.acts}
+    admitted = {row.call for claim in book.claims_by_node.get(ref, ()) if (_expect_status(claim.checks) or 0) < 400
+                for row in claim.acts}
+    merged = _http_arrangement(tuple(row for row in node_rows if row.call in admitted or row.call not in refusing))
     if merged is not None:
         return merged
     for claim in book.claims_by_node.get(ref, ()):
         status = _expect_status(claim.checks)
         if status is not None and 200 <= status < 300:
-            return _http_arrangement(claim.acts)
+            return _http_arrangement(claim.acts, later_replaces=True)
     return None
 
 
@@ -653,13 +691,18 @@ def _fixture_owners(obligations: list[Obligation]) -> dict[str, set[str]]:
     return owners
 
 
-def _bound_path(path: str, produced: set[str], owners: dict[str, set[str]]) -> str:
-    """*path* with each `{name}` an earlier step captured or one fixture provides spelled as that reference."""
+def _bound_path(path: str, produced: set[str], owners: dict[str, set[str]], named: set[str]) -> str:
+    """*path* with each `{name}` an earlier step captured or one fixture provides spelled as that reference.
+
+    Where several of the journey's fixtures provide the key, the one the step's own request names is the one meant.
+    """
     def bind(match: re.Match[str]) -> str:
         name = match.group(1)
         if name in produced:
             return f"${name}"
         provided = owners.get(name, set())
+        if len(provided) > 1:
+            provided = provided & named
         if len(provided) == 1:
             return f"@{next(iter(provided))}.{name}"
         return match.group(0)
@@ -695,7 +738,8 @@ def _http_steps(walk: JourneyWalk, sinks: PlanSinks) -> _HttpSteps | None:
                                      gaps, sinks.captured, because=request.because)
             return None
         observed, last_path = f"observed_{index}", request.path
-        bound = _bound_path(request.path, produced, owners) + (f"?{request.query}" if request.query else "")
+        named = {ref.node for ref in request.sent_references if isinstance(ref, references.NodeRef)}
+        bound = _bound_path(request.path, produced, owners, named) + (f"?{request.query}" if request.query else "")
         target = (f"qa.resolve({python_literal(bound)})" if references.find_references(bound)
                   else python_literal(bound))
         expect = f", expect_status={refused_status}" if refused_status is not None and index == len(walk.steps) else ""

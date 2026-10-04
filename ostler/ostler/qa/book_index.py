@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from dataclasses import field
 
 from ostler import registry
+from ostler.qa.compile_support import on_href
 from ostler.qa.obligation import CallRow
 from ostler.qa.obligation import Locators
 from ostler.qa.obligation import Obligation
@@ -34,6 +35,7 @@ class BookIndex:
     queries_by_node: dict[str, str] = field(default_factory=dict[str, str])
     claims_by_node: dict[str, list[Obligation]] = field(default_factory=dict[str, list[Obligation]])
     fixture_pages: dict[str, frozenset[str]] = field(default_factory=dict[str, frozenset[str]])
+    hop_acts: dict[tuple[str, str], list[CallRow]] = field(default_factory=dict[tuple[str, str], list[CallRow]])
 
 
 @dataclass(frozen=True)
@@ -72,13 +74,34 @@ def node_acts(obligations: list[Obligation]) -> NodeActs:
     return NodeActs(ordered, refused, claims)
 
 
-def fixture_pages(obligations: list[Obligation]) -> dict[str, frozenset[str]]:
-    """Each fixture's name, and every page whose claims name it."""
+def hop_acts(
+    obligations: list[Obligation], acts_by_node: dict[str, list[CallRow]],
+) -> dict[tuple[str, str], list[CallRow]]:
+    """The acts a navigation click needs first, keyed by the component clicked and the page it lands on: those of the first interaction on that component whose checks observe that page."""
+    found: dict[tuple[str, str], list[CallRow]] = {}
+    for obligation in sorted(obligations, key=lambda o: o.doc_position):
+        acts = acts_by_node.get(obligation.node)
+        href = on_href(next(iter(obligation.locators.on), ""))
+        if obligation.node_type != "interaction" or not acts or not href:
+            continue
+        component = f"{obligation.source}#{href.lstrip('#')}"
+        for row in obligation.checks:
+            for target in row.locates.values():
+                landed = target.node.split("#")[0]
+                if landed and landed != obligation.source:
+                    found.setdefault((component, landed), acts)
+    return found
+
+
+def fixture_pages(obligations: list[Obligation], *, rebuilt: frozenset[str] = frozenset()) -> dict[str, frozenset[str]]:
+    """Each fixture one lap builds once, and every page whose claims name it; a fixture in *rebuilt* is built for each scenario, so no page shares it."""
     pages: dict[str, set[str]] = {}
     for obligation in obligations:
         if not _is_declared_claim(obligation):
             continue
         for row in obligation.fixtures:
+            if row.name in rebuilt:
+                continue
             pages.setdefault(row.name, set()).add(obligation.source)
     return {name: frozenset(sources) for name, sources in pages.items()}
 

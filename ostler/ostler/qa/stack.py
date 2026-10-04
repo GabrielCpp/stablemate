@@ -52,6 +52,7 @@ import re
 import shutil
 import signal
 import subprocess
+import tempfile
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -707,13 +708,25 @@ def _run_step(
         return False, f"{label}: no command"
     logger.info("running %s: %s (cwd %s)", label, cmd, cwd)
     try:
-        done = subprocess.run(  # noqa: S603 (documented recipe, loopback stack)
-            _shell_argv(cmd), cwd=cwd, capture_output=True, text=True, timeout=timeout,
-        )
+        with tempfile.TemporaryFile("w+") as out, tempfile.TemporaryFile("w+") as errs:
+            proc = subprocess.Popen(  # noqa: S603 (documented recipe, loopback stack)
+                _shell_argv(cmd), cwd=cwd, stdout=out, stderr=errs,
+                stdin=subprocess.DEVNULL, text=True, start_new_session=True,
+            )
+            try:
+                code = proc.wait(timeout=timeout)
+            except subprocess.TimeoutExpired:
+                _killpg(proc.pid, signal.SIGKILL)
+                proc.wait()
+                return False, (f"still running after {timeout:.0f}s, so its process group was "
+                               "killed (a blocking step must return: start a server in the "
+                               "background, or declare it as the service)")
+            if code != 0:
+                out.seek(0)
+                errs.seek(0)
+                return False, _step_error(code, out.read(), errs.read())
     except (OSError, ValueError, subprocess.SubprocessError) as exc:
         return False, str(exc)
-    if done.returncode != 0:
-        return False, _step_error(done.returncode, done.stdout, done.stderr)
     return True, ""
 
 
