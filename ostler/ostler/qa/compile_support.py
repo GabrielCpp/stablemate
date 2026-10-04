@@ -148,11 +148,13 @@ def unarranged_state_gap(obligation: Obligation) -> Gap:
     state_text = " ".join(obligation.requirement.split())
     missing = []
     if not obligation.checks:
-        missing.append("no check declared")
+        missing.append("no check declared — indent a `verify:` under this state's own bullet")
     if arrangement_of([obligation]).unstated:
-        missing.append("no fixture arranged")
+        missing.append("no fixture arranged — indent a `fixture:` under this state's own bullet, "
+                       "or `fixture: none, because ...` when the state holds as the screen opens")
     return Gap(obligation.id, "unarranged-state",
-               f"carries `states:` ({state_text!r}); " + " and ".join(missing))
+               f"carries `states:` ({state_text!r}); " + " and ".join(missing)
+               + ". A state only a person's act reaches is the `does:` of the interaction that performs the act: claim it there")
 
 
 def unarranged_scenario_gap(obligation: Obligation) -> Gap:
