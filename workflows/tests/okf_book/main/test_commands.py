@@ -22,8 +22,7 @@ from workhorse_workflows.okf_book.main.nodes.exercise import USAGE as EXERCISE_U
 from workhorse_workflows.okf_book.main.nodes.exercise import run_exercise
 from workhorse_workflows.okf_book.main.nodes.writer_jobs import Start, Work, finish_job
 from workhorse_workflows.okf_book.main.nodes.writer_stack import KeptStack
-from workhorse_workflows.okf_book.main.nodes.writer_ostler import USAGE as OSTLER_USAGE
-from workhorse_workflows.okf_book.main.nodes.writer_ostler import run_ostler
+from workhorse_workflows.okf_book.main.nodes.writer_ostler import INDEX_DIR_REFUSED, USAGE as OSTLER_USAGE, run_ostler
 from workhorse_workflows.okf_book.main.nodes.turn_budget import (
     BOOK_HOLDS,
     BOOK_PER_SOURCE_TOKEN,
@@ -229,6 +228,7 @@ def test_the_ostler_command_runs_only_scaffold_and_fmt(tmp_path: Path) -> None:
 
     assert run_ostler([str(path), "checks"]) == CommandOutput(2, (OSTLER_USAGE,))
     assert run_ostler([str(path)]) == CommandOutput(2, (OSTLER_USAGE,))
+    assert run_ostler([str(path), "fmt", "docs", "--index-dir=docs"]) == CommandOutput(2, (INDEX_DIR_REFUSED,))
     assert read_command_state(path).ostler_runs == 0
 
 

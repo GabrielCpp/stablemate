@@ -19,6 +19,8 @@ from workhorse_workflows.okf_book.main.nodes.writer_commands import (
 
 SUBCOMMANDS = ("scaffold", "fmt")
 USAGE = f"usage: python -m {OSTLER_MODULE} <writer-commands.json> {{{','.join(SUBCOMMANDS)}}} <ostler arguments>"
+INDEX_DIR_OPTION = "--index-dir"
+INDEX_DIR_REFUSED = f"{INDEX_DIR_OPTION} does not run here: ostler keeps its index outside the repository. Run the command without it."
 
 
 def _ostler_exit_code(args: list[str]) -> int:
@@ -32,6 +34,8 @@ def run_ostler(argv: Sequence[str]) -> CommandOutput:
     """What one ostler run exits with and prints for command state file named first in `argv`."""
     if len(argv) < 2 or argv[1] not in SUBCOMMANDS:
         return CommandOutput(2, (USAGE,))
+    if any(argument.split("=", 1)[0] == INDEX_DIR_OPTION for argument in argv[2:]):
+        return CommandOutput(2, (INDEX_DIR_REFUSED,))
     if spend_ostler_run(Path(argv[0])) is None:
         return CommandOutput(1, (OSTLER_RUNS_SPENT_MESSAGE,))
     code, printed = run_quietly(lambda: _ostler_exit_code(list(argv[1:])))
