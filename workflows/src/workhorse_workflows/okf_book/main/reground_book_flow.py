@@ -105,8 +105,11 @@ class RegroundBook(BookFlow):
         return Continue(stamped, self.commit_stamps, failures=failures, pages=pages, stamped=stamped).because("commit the stamped pages")
 
     def commit_stamps(self, failures: Failures, pages: tuple[str, ...] = (), stamped: int = 0) -> Await[...] | Done:
-        """Commit the pages whose stamps changed. A commit the repo refused waits for the operator."""
+        """Render the agent files, then commit the pages whose stamps changed. A render that failed, or a commit the repo still refuses after a turn at fixing it, waits for the operator."""
         if pages:
+            unrendered = self._render_agent_files_or_await(self.commit_stamps, failures=failures, pages=pages, stamped=stamped)
+            if unrendered is not None:
+                return unrendered
             message = repaired_book_commit_message(self.service, RESTAMP_DESCRIPTION)
             waiting = self._commit_or_await(message, pages, self.commit_stamps, failures=failures, pages=pages, stamped=stamped)
             if waiting is not None:
