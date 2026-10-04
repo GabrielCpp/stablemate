@@ -295,6 +295,33 @@ def route_entries(data: dict) -> list[str]:
             and is_route(bullet_value(n["bullets"], ENTRY_BULLET))]
 
 
+def literal_entries(data: dict) -> dict[str, str]:
+    """Each screen whose ``entry:`` is a path a browser can open as written, with that path; a path with a parameter or a wildcard is left out."""
+    doors: dict[str, str] = {}
+    for node in data["nodes"]:
+        if node["type"] != "screen" or node["kind"] != "file":
+            continue
+        stated = bullet_value(node["bullets"], ENTRY_BULLET).split()
+        path = routes_mod.literal_route(stated[0].strip("`")) if stated else ""
+        if path:
+            doors[node["id"]] = path
+    return doors
+
+
+def _through_a_door(edges: list[dict], doors: dict[str, str], target: str,
+                    by_id: dict) -> tuple[str, list[dict]] | None:
+    """``(path, hops)`` — the entry path to open and the clicks from there to *target*, the fewest clicks first; None when no door leads there."""
+    found: list[tuple[int, str, str, list[dict]]] = []
+    for door, path in doors.items():
+        hops = route(edges, door, target, by_id)
+        if hops is not None:
+            found.append((len(hops), door, path, hops))
+    if not found:
+        return None
+    _, _, path, hops = min(found, key=lambda entry: entry[:2])
+    return path, hops
+
+
 def prose_entry(node: dict) -> str:
     """The ``entry:`` value when it describes rather than addresses; empty otherwise."""
     value = bullet_value(node["bullets"], ENTRY_BULLET)
@@ -404,17 +431,24 @@ def reachability_in(data: dict, *, surface: str | None = None, start: str | None
     screens = screens_of(data)
     start = resolve_start(data, start, driver, surface=surface)
 
+    doors = literal_entries(data) if routes_mod.is_path_addressed(driver) else {}
+
     routed: dict[str, list[dict]] = {}
+    opens: dict[str, str] = {}
     unreachable: list[str] = []
     undeclared: list[str] = []
     for screen in screens:
         if not preconditions(by_id[screen])["declared"]:
             undeclared.append(screen)
         path = route(edges, start, screen, by_id)
-        if path is None:
+        if path is not None:
+            routed[screen] = path
+            continue
+        through = _through_a_door(edges, doors, screen, by_id)
+        if through is None:
             unreachable.append(screen)
         else:
-            routed[screen] = path
+            opens[screen], routed[screen] = through
 
     return {
         "start": start,
@@ -427,6 +461,7 @@ def reachability_in(data: dict, *, surface: str | None = None, start: str | None
             "nav_edges": len(edges),
         },
         "routes": routed,
+        "opens": opens,
         "unreachable": sorted(unreachable),
         "undeclared": sorted(undeclared),
     }

@@ -290,12 +290,13 @@ def _web_start(walk: JourneyWalk, gaps: list[Gap]) -> list[str] | None:
                         "step lives")
                     for oid in walk.ids)
         return None
-    if walk.nav.root_path is None:
+    opened = walk.nav.path_to(first_source)
+    if opened is None:
         gaps.extend(Gap(oid, "uncompilable-claim",
                         "this surface states no root path a journey can open from")
                     for oid in walk.ids)
         return None
-    return [f"    qa.goto({python_literal(walk.nav.root_path)})",
+    return [f"    qa.goto({python_literal(opened)})",
             *walk_hops(hops, first_source, walk.book, gaps, walk.ids)]
 
 

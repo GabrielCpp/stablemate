@@ -1522,6 +1522,25 @@ def test_a_page_scenario_with_no_root_path_gaps_uncompilable_claim_not_a_fabrica
     assert "states no root path" in detail
 
 
+def test_a_page_scenario_on_a_screen_with_its_own_entry_opens_that_entry() -> None:
+    """A screen the start cannot click to, whose page states a literal `entry:`, is opened at that path and not at the surface root."""
+    oid = "okf:policy-list:policy-table:visible:1"
+    nav = _arrival_navigation()
+    nav["policy"]["start"] = "docs/features/policy/gui/screens/landing.md"
+    nav["policy"]["opens"] = {_SCREEN: "/policies"}
+    context = _navigation_context(
+        _page_obligation(oid, f"{_SCREEN}#policy-table",
+                          locators={"role": ["table"], "name": ["Policies on file"]},
+                          checks=[_visible("table:Policies on file")]),
+        navigation=nav,
+    )
+    result = _compile_plan_gaps(context, story="demo-story")
+    assert isinstance(result, Plan)
+    assert oid in _covers(result.source)
+    assert 'qa.goto("/policies")' in result.source
+    assert 'qa.goto("/")' not in result.source
+
+
 def test_an_unarranged_states_claim_produces_a_gap_not_a_scenario() -> None:
     """A `states:` bullet mints its own obligation (`kind == "states"`) separate from the node's `role:`/`name:` claim."""
     node = f"{_SCREEN}#coverage-type-select"

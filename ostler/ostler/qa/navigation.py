@@ -29,6 +29,11 @@ class SurfaceNavigation:
     routes: dict[str, tuple[NavHop, ...]]
     unreachable: frozenset[str]
     undeclared: frozenset[str]
+    opens: dict[str, str]
+
+    def path_to(self, screen: str) -> str | None:
+        """The path a walk to *screen* opens first: the entry its route starts from, else the surface's root."""
+        return self.opens.get(screen, self.root_path)
 
 
 @dataclass(frozen=True)
@@ -93,6 +98,20 @@ def _screen_set(surface: str, key: str, value: object) -> frozenset[str]:
     return frozenset(screen for screen in value if isinstance(screen, str))
 
 
+def _screen_paths(surface: str, key: str, value: object) -> dict[str, str]:
+    """A packet table of screen id to path, empty when unset, refused loudly when malformed."""
+    if value is None:
+        return {}
+    if not isinstance(value, dict):
+        raise ValueError(f"navigation `{key}` for surface {surface!r} is not a mapping of screen to path: {value!r}")
+    paths: dict[str, str] = {}
+    for screen, path in value.items():
+        if not (isinstance(screen, str) and isinstance(path, str)):
+            raise ValueError(f"navigation `{key}` for surface {surface!r} is not a mapping of screen to path: {value!r}")
+        paths[screen] = path
+    return paths
+
+
 def surface_navigation(surface: str, row: object) -> SurfaceNavigation:
     """One surface's navigation row, refused loudly when it is not a mapping."""
     if not isinstance(row, dict):
@@ -109,6 +128,7 @@ def surface_navigation(surface: str, row: object) -> SurfaceNavigation:
         routes=_nav_hops(row.get("routes") or {}),
         unreachable=_screen_set(surface, "unreachable", row.get("unreachable")),
         undeclared=_screen_set(surface, "undeclared", row.get("undeclared")),
+        opens=_screen_paths(surface, "opens", row.get("opens")),
     )
 
 

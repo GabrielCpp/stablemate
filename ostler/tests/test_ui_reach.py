@@ -477,6 +477,53 @@ def test_a_prose_entry_does_not_exempt_a_screen(repo: Path):
     assert "`entry: emailed deep link` is not a route" in unreachable[0].message
 
 
+def test_a_literal_entry_is_the_path_a_walk_to_the_screen_opens(repo: Path):
+    """The page compilers read `opens` to start a walk at the screen's own address instead of the surface root."""
+    _repo(repo)
+    write(repo / SCREENS / "archive.md", _entry(ORPHAN, "`/archive`"))
+    report = reach.reachability(load(repo), surface="web", start=LAND)
+
+    assert report["unreachable"] == []
+    assert report["opens"] == {ARCHIVE: "/archive"}
+    assert report["routes"][ARCHIVE] == []
+
+
+def test_a_screen_behind_an_entry_is_reached_by_clicks_from_that_entry(repo: Path):
+    _repo(repo)
+    detail = f"{SCREENS}/archive-detail.md"
+    link = "\n".join(["", "## Components", "", "### archive-detail-link", "- selector: `a`",
+                      "- leads-to: [Archive detail](archive-detail.md)", ""])
+    page = "\n".join(["---", "type: screen", "slug: archive-detail", "title: Archive detail", "---",
+                      "# Archive detail", "", "- route: `/archive/:id`", ""])
+    write(repo / SCREENS / "archive.md", _entry(ORPHAN, "`/archive`") + link)
+    write(repo / SCREENS / "archive-detail.md", page)
+    report = reach.reachability(load(repo), surface="web", start=LAND)
+
+    assert report["opens"][detail] == "/archive"
+    assert [hop["to"] for hop in report["routes"][detail]] == [detail]
+    assert detail not in report["unreachable"]
+
+
+def test_an_entry_with_a_parameter_opens_nothing(repo: Path):
+    """No walk can fill `:id`, so the screen stays unreachable until a link leads to it."""
+    _repo(repo)
+    write(repo / SCREENS / "archive.md", _entry(ORPHAN, "`/archive/:id`"))
+    report = reach.reachability(load(repo), surface="web", start=LAND)
+
+    assert report["unreachable"] == [ARCHIVE]
+    assert report["opens"] == {}
+
+
+def test_a_screen_the_start_reaches_keeps_its_click_path(repo: Path):
+    """An entry is the fallback: a screen a user can click to is still walked from the start."""
+    _repo(repo)
+    write(repo / SCREENS / "sign-in.md", _entry(SIGN_IN, "`/sign-in`"))
+    report = reach.reachability(load(repo), surface="web", start=LAND)
+
+    assert SIGNIN not in report["opens"]
+    assert len(report["routes"][SIGNIN]) == 1
+
+
 MOBILE_SCREENS = "docs/features/mobile-app/gui/screens"
 
 

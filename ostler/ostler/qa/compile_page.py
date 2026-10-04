@@ -88,18 +88,20 @@ def _screen_path(
         return ScenarioRefusal(
             "unreachable-screen",
             f"{surface}'s navigation cannot reach {screen} from its start screen {nav.start or '(none stated)'}; "
-            f"no scenario compiled. On {screen}, state `entry: /<route>` when its route opens on its own, "
-            f"or add a `leads-to:` link to it on the component that navigates there")
+            f"no scenario compiled. On {screen}, state `entry: /<route>` when its route opens on its own "
+            f"and holds no `:parameter` or `*`, or add a `leads-to:` link to it on the component that navigates there. "
+            f"A route with a parameter is reached only through such a link")
     hops = nav.routes.get(screen)
     if hops is None:
         return ScenarioRefusal(
             "uncompilable-claim",
             f"{screen} is no screen of {surface} and continues none, so no page scenario can open it. "
             f"A `visible(...)` claim compiles on a screen page or on a fragment whose `host:` is one")
-    if nav.root_path is None:
+    opened = nav.path_to(screen)
+    if opened is None:
         return ScenarioRefusal("uncompilable-claim",
                                f"surface {surface!r} states no root path a page scenario can open from")
-    return _ScreenPath(nav.root_path, hops)
+    return _ScreenPath(opened, hops)
 
 
 @dataclass(frozen=True)
