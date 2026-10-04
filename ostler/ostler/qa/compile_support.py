@@ -56,11 +56,16 @@ def unobservable_gap(oid: str, name: str | None, driver: DriverSpec) -> Gap:
         return Gap(oid, "uncompilable-claim",
                     f"`{name}` observes {what}, which the {driver.name} driver can see, but "
                     f"this compiler has no page-scenario arrangement for it yet")
+    if name == "absent" and "page" in driver.observes:
+        return Gap(oid, "needs-absence-check",
+                   f"`absent` observes a subject, and no {driver.name} page check asserts that a control "
+                   "is missing yet. The book states what the page shows; the harness is what lacks the "
+                   "check. Nothing to repair on the page")
     remedy = ""
     if "page" in driver.observes and observes in ("subject", "subject-pair"):
         remedy = (": this driver reads what the page shows. Claim what the screen shows with `visible`, "
                   "`actionable` or `inert` on the control's anchor, or state the claim on the surface that "
-                  "stores the subject. No page check asserts that a control is missing yet")
+                  "stores the subject")
     return Gap(oid, "uncompilable-claim",
                f"`{name}` observes {what}, not observable from the {driver.name} driver{remedy}")
 

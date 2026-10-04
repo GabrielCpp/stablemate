@@ -1091,6 +1091,10 @@ def gap_findings(gaps: list[Gap]) -> list[Finding]:
             findings.append(
                 Finding("error", "needs-multi-target-runtime", message, ref=gap.obligation_id)
             )
+        elif gap.kind == "needs-trigger-action":
+            findings.append(Finding("error", "needs-trigger-action", message, ref=gap.obligation_id))
+        elif gap.kind == "needs-absence-check":
+            findings.append(Finding("error", "needs-absence-check", message, ref=gap.obligation_id))
         elif gap.kind == "invalid-http-method":
             findings.append(Finding("error", "invalid-http-method", message, ref=gap.obligation_id))
         elif gap.kind == "needs-out-of-band-observation":

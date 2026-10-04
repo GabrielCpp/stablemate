@@ -341,6 +341,8 @@ def _arrival_scenario(
 
 _CLICK_TRIGGER = "click"
 
+NON_PRESS_TRIGGERS = frozenset({"fill", "press", "paste", "drag", "drop", "load", "navigate", "timer"})
+
 
 @dataclass(frozen=True)
 class _InteractionArm:
@@ -385,17 +387,27 @@ def _guards_fixtured(guards: list[Obligation]) -> bool:
 
 
 def _scaffold_click_refusal(arm: _InteractionArm) -> ScenarioRefusal | None:
-    """Why *arm*'s performed click is only a scaffold for a trigger that is not a click, or `None` when it is one."""
-    if (bullet_value(arm.trigger) or "").lower() == _CLICK_TRIGGER:
+    """Why *arm*'s performed click is only a scaffold for a trigger that is not a click, or `None` when it is one.
+
+    A trigger word this compiler has no action for is the harness's gap, since the book named the
+    trigger. Any other value is the book's, since it names no trigger at all.
+    """
+    word = (bullet_value(arm.trigger) or "").lower()
+    if word == _CLICK_TRIGGER:
         return None
+    if word in NON_PRESS_TRIGGERS:
+        return ScenarioRefusal("needs-trigger-action",
+                               f"trigger {word!r} compiles to a scaffold click on {arm.label!r}: this "
+                               f"compiler has no action for a `{word}` trigger yet. The book names the "
+                               "trigger; the harness is what lacks the action. Nothing to repair on the page")
+    words = ", ".join(f"`{w}`" for w in sorted(NON_PRESS_TRIGGERS))
     return ScenarioRefusal("unresolved-precondition",
                            f"trigger {arm.trigger!r} compiles to a scaffold click on {arm.label!r}, "
                            "not a verified action. When pressing the `on:` control fires it, write "
                            "`trigger: click`: activating it from the keyboard is the `keyboard:` "
                            "bullet's own claim, and a state that must hold before the press is a "
                            "`when:` arranged by `arrange:` acts. A trigger that is no press of the "
-                           "`on:` control (typing, a paste, a drag, a timer) has no compiled action "
-                           "in this vocabulary yet")
+                           f"`on:` control is one word of {words}")
 
 
 @dataclass(frozen=True)

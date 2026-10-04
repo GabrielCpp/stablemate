@@ -12,6 +12,7 @@ import yaml
 
 from ostler import checks
 from ostler.qa.compile import (
+    HARNESS_LIMIT_GAPS,
     Gap,
     Plan,
     Refusal,
@@ -24,6 +25,7 @@ from ostler.qa.compile import (
 )
 from ostler.qa.compile_support import MAESTRO, PLAYWRIGHT, PYTHON, DriverSpec
 from ostler.qa.compile_support import on_node
+from ostler.qa.compile_page import NON_PRESS_TRIGGERS
 from ostler.qa.compile_support import unobservable_gap as _unobservable_gap
 from ostler.qa.dispatch import BUILT_TARGETS, DISPATCH_TABLE, OBSERVE_ROW, OPS_TYPES, dispatch_target
 from ostler.qa.outcome import QaOutcome
@@ -1701,6 +1703,23 @@ def test_a_subject_only_verb_on_a_page_obligation_is_a_gap_not_a_silent_drop() -
     assert "`visible`, `actionable` or `inert`" in gap.detail
 
 
+def test_an_absent_claim_on_a_page_is_the_harness_missing_check() -> None:
+    """The book can state that a control is missing; Playwright has no page check for it yet, which is the harness's gap."""
+    node = f"{_SCREEN}#policy-table"
+    oid = "okf:policy-list:policy-table:visible:1"
+    context = _navigation_context(
+        _page_obligation(oid, node,
+                          locators={"role": ["table"], "name": ["Policies on file"]},
+                          checks=[_visible("table:Policies on file"),
+                                  {"call": "the delete button", "name": "absent",
+                                   "args": {"subject": "button:Delete"}}]),
+        navigation=_arrival_navigation(),
+    )
+    _source, gaps = compile_plan_gaps(context, story="demo-story")
+    assert _gap_kinds(gaps, oid) == ["needs-absence-check"]
+    assert "needs-absence-check" in HARNESS_LIMIT_GAPS
+
+
 def test_a_body_observing_verb_on_a_page_obligation_names_driver_and_channel_differently() -> None:
     """`json_path` observes a `body` — a channel Playwright *can* see, unlike `unchanged`'s `subject`."""
     node = f"{_SCREEN}#policy-table"
@@ -2179,6 +2198,50 @@ def test_a_click_trigger_is_the_click_the_scenario_performs() -> None:
     assert [g for g in gaps if g.obligation_id == interaction_oid] == []
     assert interaction_oid in _covers(source)
     assert 'qa.by_role("button", name="Create policy").click()' in source
+
+
+def test_a_named_non_press_trigger_is_the_harness_missing_action() -> None:
+    """`trigger: paste` names the trigger; the compiler having no paste action is the harness's gap, not the book's."""
+    button = f"{_SCREEN}#create-policy-button"
+    interaction = f"{_SCREEN}#submit-new-policy"
+    interaction_oid = "okf:new-policy:submit-new-policy:does:1"
+    context = _navigation_context(
+        _page_obligation("okf:new-policy:create-policy-button:visible:1", button,
+                          locators={"role": ["button"], "name": ["Create policy"]},
+                          checks=[_visible("button:Create policy")]),
+        _page_obligation(interaction_oid, interaction,
+                          locators={"on": ["[create-policy-button](#create-policy-button)"],
+                                    "trigger": ["`paste`"],
+                                    "does": ["adds a policy and shows it"]},
+                          checks=[_located("#policy-table", f"{_SCREEN}#policy-table",
+                                           {"role": ["table"], "name": ["Policies on file"]})]),
+        navigation=_arrival_navigation(),
+    )
+    _, gaps = compile_plan_gaps(context, story="demo-story")
+    assert _gap_kinds(gaps, interaction_oid) == ["needs-trigger-action"]
+    assert "needs-trigger-action" in HARNESS_LIMIT_GAPS
+
+
+def test_a_prose_trigger_names_the_words_a_trigger_may_be() -> None:
+    button = f"{_SCREEN}#create-policy-button"
+    interaction = f"{_SCREEN}#submit-new-policy"
+    interaction_oid = "okf:new-policy:submit-new-policy:does:1"
+    context = _navigation_context(
+        _page_obligation("okf:new-policy:create-policy-button:visible:1", button,
+                          locators={"role": ["button"], "name": ["Create policy"]},
+                          checks=[_visible("button:Create policy")]),
+        _page_obligation(interaction_oid, interaction,
+                          locators={"on": ["[create-policy-button](#create-policy-button)"],
+                                    "trigger": ["a paste event while the editor is focused"],
+                                    "does": ["adds a policy and shows it"]},
+                          checks=[_located("#policy-table", f"{_SCREEN}#policy-table",
+                                           {"role": ["table"], "name": ["Policies on file"]})]),
+        navigation=_arrival_navigation(),
+    )
+    _, gaps = compile_plan_gaps(context, story="demo-story")
+    [gap] = [g for g in gaps if g.obligation_id == interaction_oid]
+    assert gap.kind == "unresolved-precondition"
+    assert all(f"`{word}`" in gap.detail for word in NON_PRESS_TRIGGERS)
 
 
 def test_a_keyboard_claim_is_checked_on_arrival_before_anything_is_clicked() -> None:

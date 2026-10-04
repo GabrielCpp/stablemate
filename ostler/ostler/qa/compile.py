@@ -54,6 +54,7 @@ from ostler.qa.plan_source import target_variable
 
 _ARRANGEMENT_GAPS = frozenset({
     "unresolved-precondition",
+    "needs-trigger-action",
     "screen-preconditions-undeclared",
     "unarranged-interaction-precondition",
     "unidentifiable-screen",
@@ -90,6 +91,8 @@ GAP_KINDS = frozenset({
     "uncaptured-declaration",
     "needs-target-backend",
     "needs-multi-target-runtime",
+    "needs-trigger-action",
+    "needs-absence-check",
     "invalid-http-method",
     "undeclared-launch-screen",
     "unreachable-from-launch",
@@ -98,6 +101,8 @@ GAP_KINDS = frozenset({
 HARNESS_LIMIT_GAPS = frozenset({
     "needs-target-backend",
     "needs-multi-target-runtime",
+    "needs-trigger-action",
+    "needs-absence-check",
 })
 
 
