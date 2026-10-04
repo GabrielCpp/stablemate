@@ -47,7 +47,7 @@ from workhorse_workflows.okf_book.shared.book_flow import BookFlow
 from workhorse_workflows.okf_book.shared.book_run import ExerciseResult
 from workhorse_workflows.okf_book.shared.citations import book_pages, cites_changed_file
 from workhorse_workflows.okf_book.shared.entries import FEATURES_DIR
-from workhorse_workflows.okf_book.shared.page_check import PageProblem, page_problems
+from workhorse_workflows.okf_book.shared.page_check import PageProblem, page_problems, tool_blockers
 from workhorse_workflows.okf_book.shared.scenarios import PLAN_NAME, plan_scenarios, spec_dir, write_run
 
 OPERATOR_NAME = "operator.md"
@@ -127,8 +127,8 @@ class OkfBook(BookFlow):
             )
         found = page_problems(self.root, service)
         problems = tuple(problem.text for problem in found)
+        _ = self._record_check(service, found)
         if problems:
-            _ = self._record_check(service, found)
             return Continue(problems, self.copy_source, index=index).because("the existing book has problems")
         ours = last_commit_subject(self.root, book) in (book_commit_subject(service), repaired_book_commit_subject(service))
         if ours or last_commit_trailer(self.root, BOOK_TRAILER, book) == REPAIRED:
@@ -231,6 +231,9 @@ class OkfBook(BookFlow):
         before = sum(1 for blocker in read_blockers(self.records_dir)
                      if blocker.phase is Phase.WRITE and blocker.side is Side.BOOK and blocker.service == service)
         forget_blockers(self.records_dir, Phase.WRITE, Side.BOOK, service)
+        forget_blockers(self.records_dir, Phase.WRITE, Side.ENVIRONMENT, service)
+        for tool in tool_blockers(self.root, service):
+            _ = record_blocker(self.records_dir, tool)
         for problem in problems:
             blocker = Blocker(subject=f"{service}: {problem.text}", service=service, phase=Phase.WRITE, side=Side.BOOK, reason=problem.text,
                               cause=Cause.BOOK.value, pages=(problem.page,),

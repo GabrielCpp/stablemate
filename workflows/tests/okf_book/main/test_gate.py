@@ -1,7 +1,7 @@
 """The gate a run stops at: each blocker's rerun command, and what the run settles itself once the gate is answered."""
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from pathlib import Path
 
 import pytest
@@ -14,7 +14,7 @@ from workhorse_workflows.okf_book.main.nodes.gate import GATE_DIR, SNAPSHOT_FOLD
 from workhorse_workflows.okf_book.main.nodes.writer_commands import CHECK_MODULE, EXERCISE_MODULE
 from workhorse_workflows.okf_book.shared.blockers import Blocker, Phase, Side, read_blockers, record_blocker
 from workhorse_workflows.okf_book.shared.book_run import ExerciseResult
-from workhorse_workflows.okf_book.shared.page_check import PageProblem
+from workhorse_workflows.okf_book.shared.page_check import PageProblem, tool_blockers
 from workhorse_workflows.okf_book.shared.scenarios import FailedCheck, RunSummary, ScenarioOutcome
 from workhorse_workflows.okf_book.workflow import OkfBook
 
@@ -166,3 +166,23 @@ def test_a_book_the_gate_left_failures_for_goes_to_its_writer_with_them(tmp_path
 
     assert step.state == "copy_source"
     assert step.params["run_failures"] == {ADD: (failure,)}
+
+
+def test_a_tool_blocker_holds_its_book_until_the_tool_is_opted_in(app: Callable[[str], Path], tmp_path: Path) -> None:
+    repo = app("tally-cli")
+    records = tmp_path / "records"
+    config = repo / "agents.yml"
+    opted_in = config.read_text(encoding="utf-8")
+    _ = config.write_text("".join(line for line in opted_in.splitlines(keepends=True) if "- python3" not in line), encoding="utf-8")
+    for blocker in tool_blockers(repo, "tally"):
+        _ = record_blocker(records, blocker)
+
+    held = settle_gate(repo, records, SERVICES)
+    kept = [blocker.subject for blocker in read_blockers(records)]
+    _ = config.write_text(opted_in, encoding="utf-8")
+    routed = settle_gate(repo, records, SERVICES)
+
+    assert held == ()
+    assert kept == ["tally: QA tool python3"]
+    assert routed == SERVICES
+    assert read_blockers(records) == ()

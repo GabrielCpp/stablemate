@@ -5,11 +5,13 @@ from collections.abc import Callable
 from pathlib import Path
 
 from ostler.qa.plan_source import Gap
+from workhorse_workflows.okf_book.shared.blockers import Phase, Side
 from workhorse_workflows.okf_book.shared.page_check import (
     PageProblem,
     book_problems,
     gap_problems,
     off_journey_nodes,
+    tool_blockers,
 )
 
 FLOW = Path("docs/features/tally/flows/track-a-trip.md")
@@ -76,16 +78,19 @@ def test_a_claim_no_run_observes_is_the_books_to_restate(app: Callable[[str], Pa
     assert "State what a caller of the surface sees instead" in problems[0]
 
 
-def test_a_cli_page_whose_binary_the_repo_opts_into_no_qa_tool_cannot_be_invoked(app: Callable[[str], Path]) -> None:
+def test_a_binary_the_repo_opts_into_no_qa_tool_is_the_operators_and_no_problem_of_the_page(app: Callable[[str], Path]) -> None:
     repo = app("tally-cli")
-    uninvokable_while_opted_in = [problem for problem in book_problems(repo, "tally") if "no run can invoke" in problem]
+    blocked_while_opted_in = tool_blockers(repo, "tally")
     _drop_lines(repo / "agents.yml", "- python3")
 
-    assert uninvokable_while_opted_in == []
-    assert [problem for problem in book_problems(repo, "tally") if "no run can invoke" in problem] == [
-        f"{COMMANDS.as_posix()}: no run can invoke `python3`, because this repository opts no QA tool of that name in. "
-        + UNINVOKABLE_FIX
+    blockers = tool_blockers(repo, "tally")
+
+    assert blocked_while_opted_in == ()
+    assert [problem for problem in book_problems(repo, "tally") if "no run can invoke" in problem] == []
+    assert [(blocker.subject, blocker.phase, blocker.side, blocker.pages) for blocker in blockers] == [
+        ("tally: QA tool python3", Phase.WRITE, Side.ENVIRONMENT, (COMMANDS.as_posix(),))
     ]
+    assert "list `python3` under `qa: tools:` in agents.yml" in blockers[0].reason
 
 
 def test_a_cli_page_that_names_no_binary_cannot_be_invoked(app: Callable[[str], Path]) -> None:

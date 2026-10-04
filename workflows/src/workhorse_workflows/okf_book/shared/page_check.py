@@ -4,9 +4,10 @@ Nothing here changes a page. It reports a missing entries page, every page nothi
 page reaches, and every doctor error on the book, except a stale citation, which the commit
 restamps. So is a bullet the page's type does not declare, which doctor only warns about because
 a hand-kept book may carry one, but which on a written page is a claim nothing runs. It reports
-every command, endpoint and screen no flow walks, every cli page that names no binary or one the
-repository opts into no QA tool, and every obligation that does not compile, unless the gap is one ostler cannot run yet, which is
-ostler's to fix and not the book's. A claim observed out of band is the book's: no run observes it, so the writer
+every command, endpoint and screen no flow walks, every cli page that names no binary, and every
+obligation that does not compile, unless the gap is one ostler cannot run yet, which is
+ostler's to fix and not the book's. A binary the repository opts in as no QA tool is the operator's to
+opt in, so it is a blocker on the environment and no problem of the page. A claim observed out of band is the book's: no run observes it, so the writer
 restates it as what a caller sees, or drops it.
 """
 from __future__ import annotations
@@ -27,7 +28,7 @@ from ostler.qa.compile import HARNESS_LIMIT_GAPS
 from ostler.qa.plan_source import Gap
 from ostler.qa.runbook import bullet_text
 from ostler.qa.tools import opted_in_tools
-from workhorse_workflows.okf_book.shared.blockers import Side
+from workhorse_workflows.okf_book.shared.blockers import Blocker, Phase, Side
 from workhorse_workflows.okf_book.shared.book_compilation import compile_services, gap_page, obligation_node
 from workhorse_workflows.okf_book.shared.entries import book_dir, entries_path
 
@@ -188,16 +189,11 @@ def _off_journey_problems(nodes: list[_Node]) -> list[PageProblem]:
     ]
 
 
-def _uninvokable_problems(root: Path, nodes: list[_Node]) -> list[PageProblem]:
-    tools = opted_in_tools(root)
+def _uninvokable_problems(nodes: list[_Node]) -> list[PageProblem]:
     return [
         PageProblem(
             node.id,
-            (
-                f"{node.id}: no run can invoke `{node.binary}`, because this repository opts no QA tool of that name in. "
-                if node.binary
-                else f"{node.id}: no run can invoke it, because it names no `binary:`. "
-            )
+            f"{node.id}: no run can invoke it, because it names no `binary:`. "
             + "When the app itself runs it, delete the page and every page under it, move each other link they hold to "
             + "the page of what calls it so no page they reached is left unlinked, point each link to them at that page, "
             + "and state there what running it changes, with claims that prove it. Do not scaffold it again. When it is "
@@ -205,12 +201,42 @@ def _uninvokable_problems(root: Path, nodes: list[_Node]) -> list[PageProblem]:
             + "`binary:` names the program, and the operator opts that tool in.",
         )
         for node in nodes
-        if node.type == "cli" and node.binary not in tools
+        if node.type == "cli" and not node.binary
     ]
 
 
+def _unopted_tools(root: Path, nodes: list[_Node]) -> dict[str, tuple[str, ...]]:
+    tools = opted_in_tools(root)
+    pages: dict[str, list[str]] = {}
+    for node in nodes:
+        if node.type == "cli" and node.binary and node.binary not in tools:
+            pages.setdefault(node.binary, []).append(node.id.partition("#")[0])
+    return {binary: tuple(dict.fromkeys(named)) for binary, named in sorted(pages.items())}
+
+
+def tool_blockers(root: Path, service: str) -> tuple[Blocker, ...]:
+    """One blocker per program the service's command pages name that this repository opts in as no QA tool. A page states that a user runs the program, and only the operator can let a run invoke it, so no writer is sent to the page."""
+    return tuple(
+        Blocker(
+            subject=f"{service}: QA tool {binary}",
+            service=service,
+            phase=Phase.WRITE,
+            side=Side.ENVIRONMENT,
+            reason=(
+                f"no run can invoke `{binary}`, because this repository opts no QA tool of that name in, and "
+                f"{len(pages)} command pages of this book state that a user runs it. To let a run invoke it, list "
+                f"`{binary}` under `qa: tools:` in agents.yml, and give a program that is no built-in tool a "
+                f"`[qa_tools.{binary}]` table with its `command` in the home config. When no user runs that "
+                "program, its pages are mistyped: what they state belongs on the page of what calls it."
+            ),
+            pages=pages,
+        )
+        for binary, pages in _unopted_tools(root, _service_nodes(load(root), service)).items()
+    )
+
+
 def page_problems(root: Path, service: str) -> tuple[PageProblem, ...]:
-    """Every problem on the service's book, each with its page: a missing entries page, a page nothing reaches, a doctor error, a command, endpoint or screen no flow walks, a command no run can invoke, and a claim that does not compile."""
+    """Every problem on the service's book, each with its page: a missing entries page, a page nothing reaches, a doctor error, a command, endpoint or screen no flow walks, a command page that names no binary, and a claim that does not compile."""
     with index.session(root):
         pages = _book_page_paths(root, service)
         book = load(root)
@@ -231,7 +257,7 @@ def page_problems(root: Path, service: str) -> tuple[PageProblem, ...]:
             *dead,
             *_doctor_problems(book, pages),
             *_off_journey_problems(nodes),
-            *_uninvokable_problems(root, nodes),
+            *_uninvokable_problems(nodes),
             *gap_problems(gaps),
         )
 

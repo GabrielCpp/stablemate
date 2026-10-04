@@ -26,7 +26,7 @@ from workhorse_workflows.okf_book.shared.blockers import Blocker, Phase, Side, f
 from workhorse_workflows.okf_book.shared.book_compilation import obligation_page
 from workhorse_workflows.okf_book.shared.book_run import ExerciseResult
 from workhorse_workflows.okf_book.shared.entries import FEATURES_DIR
-from workhorse_workflows.okf_book.shared.page_check import PageProblem, page_problems
+from workhorse_workflows.okf_book.shared.page_check import PageProblem, page_problems, tool_blockers
 from workhorse_workflows.okf_book.shared.scenarios import PLAN_NAME, plan_scenarios
 
 GATE_DIR = "gate"
@@ -169,10 +169,12 @@ def _settle_runs(root: Path, records_dir: Path, service: str, runs: Sequence[Blo
 
 
 def _settle_writes(root: Path, records_dir: Path, service: str, writes: Sequence[Blocker]) -> None:
-    """Close each page check blocker whose pages the check no longer finds a problem on. The others go to the writer with the book's problems."""
+    """Close each page check blocker whose pages the check no longer finds a problem on, and each tool blocker whose tool is now opted in. The other page blockers go to the writer with the book's problems."""
     failing = {problem.page for problem in page_problems(root, service)}
+    unopted = {blocker.key for blocker in tool_blockers(root, service)}
     for blocker in writes:
-        if not set(blocker.pages) & failing:
+        cleared = blocker.key not in unopted if blocker.side is Side.ENVIRONMENT else not set(blocker.pages) & failing
+        if cleared:
             forget_blocker(records_dir, blocker)
 
 
