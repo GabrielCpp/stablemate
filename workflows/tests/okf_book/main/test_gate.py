@@ -103,6 +103,20 @@ def test_a_blocker_whose_rerun_passes_is_closed(tmp_path: Path, monkeypatch: pyt
     assert take_failures(tmp_path, "tally") == {}
 
 
+def test_a_rerun_names_only_the_pages_still_in_the_book_and_a_blocker_left_with_none_is_closed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _ = record_blocker(_book(tmp_path), _blocker().model_copy(update={"pages": ("qa-tool-tally", ADD)}))
+    gone = Blocker(subject="tally: a deleted page", service="tally", phase=Phase.EXERCISE, side=Side.APP, reason="r", pages=("docs/gone.md",))
+    _ = record_blocker(tmp_path, gone)
+    asked = _rerun_with(monkeypatch, GateRerun(result=ExerciseResult(lines=("every scenario passed",), passed=True)))
+
+    _ = settle_gate(tmp_path, tmp_path, SERVICES)
+
+    assert asked == [(ADD,)]
+    assert read_blockers(tmp_path) == ()
+
+
 def test_a_book_blocker_whose_rerun_fails_hands_its_writer_the_new_result_once(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     _ = record_blocker(_book(tmp_path), _blocker())
     failure = PageProblem(ADD, "adds: expected [201], observed 422")

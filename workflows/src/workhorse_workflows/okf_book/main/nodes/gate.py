@@ -178,6 +178,18 @@ def _settle_writes(root: Path, records_dir: Path, service: str, writes: Sequence
             forget_blocker(records_dir, blocker)
 
 
+def _on_present_pages(root: Path, records_dir: Path, blocker: Blocker) -> Blocker | None:
+    """*blocker* naming only its pages still in the book, or nothing once none is, since no check is left to show it."""
+    pages = tuple(page for page in blocker.pages if (root / page).is_file())
+    if pages == blocker.pages:
+        return blocker
+    if not pages:
+        forget_blocker(records_dir, blocker)
+        return None
+    rerun = rerun_command(records_dir, blocker.service, blocker.phase, pages) if blocker.rerun else ""
+    return record_blocker(records_dir, blocker.model_copy(update={"pages": pages, "rerun": rerun}))
+
+
 def _service_of(page: str, services: Iterable[str]) -> str:
     return next((service for service in services if page.startswith(f"{(FEATURES_DIR / service).as_posix()}/")), "")
 
@@ -198,7 +210,8 @@ def settle_gate(root: Path, records_dir: Path, services: Sequence[str]) -> tuple
             failures.setdefault(_service_of(problem.page, services), {}).setdefault(problem.page, []).append(problem)
         (snapshot / "claims.json").unlink()
     for service in services:
-        mine = [blocker for blocker in blockers if blocker.service == service and blocker.pages]
+        mine = [present for blocker in blockers if blocker.service == service and blocker.pages
+                and (present := _on_present_pages(root, records_dir, blocker)) is not None]
         writes = [blocker for blocker in mine if blocker.phase is Phase.WRITE]
         if writes:
             _settle_writes(root, records_dir, service, writes)
