@@ -14,10 +14,12 @@ from workhorse.runner.backends.null import NullBackend
 from workhorse.runner.ladder import AgentRunner
 from workhorse.runner.spec import AgentNode
 
+from workhorse_workflows.okf_book.main.lead_lap_flow import LEAD_PROMPT
 from workhorse_workflows.okf_book.main.settle_repair_turn_flow import DESCRIBE_LABEL
 from workhorse_workflows.okf_book.workflow import OkfBook
 
 _drive: Callable[[OkfBook, RunEnv], object] = drive
+LEAD_NODE = Path(LEAD_PROMPT).stem
 
 
 class StoppedAtTheGate(Exception):
@@ -65,6 +67,7 @@ class ScriptedRunner(AgentRunner):
 
     A reply the turn's validator refuses is asked for once more, with the refusal under `refused` in its arguments, as the ladder asks again.
     A repair commit's describe turn that no test scripts gets the fixed description, and counts in `described` instead of the turns.
+    A lead turn that no test scripts names nothing, so the run's own attribution stands, and counts in no turn.
     """
 
     def __init__(self, replies: Mapping[str, Reply]) -> None:
@@ -101,6 +104,8 @@ class ScriptedRunner(AgentRunner):
         if node.id == DESCRIBE_LABEL and node.id not in self.replies:
             self.described.append(args)
             return "scripted", {"description": f"repair pages of the {args['service']} book", "body": ""}
+        if node.id == LEAD_NODE and node.id not in self.replies:
+            return "scripted", {"findings": []}
         self.turns[node.id] += 1
         self.calls.append((node.id, args))
         self.nodes.append(node)

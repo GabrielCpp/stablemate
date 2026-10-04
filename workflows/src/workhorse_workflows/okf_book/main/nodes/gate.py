@@ -34,7 +34,7 @@ FAILURES_FILE = "failures.json"
 SNAPSHOT_FOLDER = "claims"
 
 SIDE_BY_ESCALATED_CAUSE = {Cause.ENVIRONMENT: Side.ENVIRONMENT, Cause.APP: Side.APP, Cause.UNATTRIBUTED: Side.UNATTRIBUTED}
-ESCALATED_SIDES = frozenset(SIDE_BY_ESCALATED_CAUSE.values())
+ESCALATED_SIDES = frozenset({*SIDE_BY_ESCALATED_CAUSE.values(), Side.OSTLER})
 
 RunFailures = dict[str, tuple[PageProblem, ...]]
 

@@ -85,7 +85,7 @@ def test_a_repaired_run_whose_every_failure_is_escalated_blocks_nothing_on_the_b
     step = book.settle_run(index=0, run_failures_repaired=True, exercised=exercised)
     _ = book.map_run_failures(index=0, exercised=exercised, run_failures_repaired=True)
 
-    assert step.state == "map_run_failures"
+    assert step.state == "lead_lap"
 
     assert [blocker.side for blocker in read_blockers(tmp_path)] == [Side.APP]
 
@@ -118,7 +118,7 @@ def test_a_repair_that_leaves_the_book_s_failed_checks_flat_asks_the_attendant_w
     step = book.settle_run(index=0, run_failures_repaired=True, exercised=exercised)
     _ = book.map_run_failures(index=0, exercised=exercised, run_failures_repaired=True)
 
-    assert step.state == "map_run_failures"
+    assert step.state == "lead_lap"
     [stall] = [blocker for blocker in read_blockers(tmp_path) if blocker.side is Side.BOOK]
     assert stall.subject == "tally: book: POST /entries/… answered 422"
     assert stall.reason.startswith("the repair did not lower the book's failed checks, lap by lap: 1 → 1; 1 checks failed this way")

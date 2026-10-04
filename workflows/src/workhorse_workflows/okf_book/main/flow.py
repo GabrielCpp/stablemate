@@ -8,7 +8,18 @@ from workhorse.pyflow import Await, Continue, Done, WorkflowFailed
 from workhorse_workflows.kit import last_commit_subject, last_commit_trailer
 from workhorse_workflows.okf_book.main.exercise_book_flow import ExerciseBook
 from workhorse_workflows.okf_book.main.nodes import gate
-from workhorse_workflows.okf_book.main.nodes.gate import SIDE_BY_ESCALATED_CAUSE, RunFailures, escalation_reason, rerun_command, take_failures
+from workhorse_workflows.okf_book.main.lead_lap_flow import LeadLap
+from workhorse_workflows.okf_book.main.nodes.gate import ESCALATED_SIDES, SIDE_BY_ESCALATED_CAUSE, RunFailures, rerun_command, take_failures
+from workhorse_workflows.okf_book.main.nodes.lead_findings import (
+    Escalation,
+    LeadFinding,
+    LedLap,
+    attributed,
+    lead_groups,
+    led_escalations,
+    run_escalations,
+    with_instructions,
+)
 from workhorse_workflows.okf_book.main.nodes.operator_answer import answer_below, write_answer
 from workhorse_workflows.okf_book.main.nodes.progress_ledger import LapCounts, lap_counts, read_laps, record_lap, service_laps, stalled, trend
 from workhorse_workflows.okf_book.main.nodes.repair_ledger import RepairOutcome
@@ -241,16 +252,28 @@ class OkfBook(BookFlow):
             reason = "\n".join(exercised.lines)
             _ = record_blocker(self.records_dir, Blocker(subject=service, service=service, phase=Phase.EXERCISE, side=Side.APP, reason=reason))
             return self._next_surface(exercised.passed, index)
+        if lead_groups(exercised):
+            return Continue(exercised.passed, self.lead_lap, index=index, exercised=exercised,
+                            run_failures_repaired=run_failures_repaired).because("the book fails its run: the lead reads the whole lap first")
         return Continue(exercised.passed, self.map_run_failures, index=index, exercised=exercised,
                         run_failures_repaired=run_failures_repaired).because("the book fails its run")
 
-    def _block_escalated_signatures(self, service: str, exercised: ExerciseResult) -> None:
+    def lead_lap(self, index: int, exercised: ExerciseResult, run_failures_repaired: bool = False) -> Continue[...]:
+        """Hand the lap to its lead, which names the side of each group of failed checks before any page is repaired. Each group it named another side's is a blocker on that side, and the rest go to their mapping as it attributed them. A lead that named nothing leaves the run's own attribution."""
+        service = self.surfaces[index].service
+        led = LedLap.model_validate(self.handoff(LeadLap, parent_records_dir=str(self.records_dir), service=service, exercised=exercised))
+        result = attributed(exercised, led.findings)
+        if led.findings:
+            self._block_escalated_signatures(service, result, led_escalations(exercised, result, led.findings))
+        return Continue(led, self.map_run_failures, index=index, exercised=result, run_failures_repaired=run_failures_repaired,
+                        lead=led.findings).because("map the failures the lead left to the book")
+
+    def _block_escalated_signatures(self, service: str, exercised: ExerciseResult, escalations: tuple[Escalation, ...] | None = None) -> None:
         """Record one blocker per signature the book's writer cannot fix, after dropping the ones an earlier run of this book recorded."""
-        for side in SIDE_BY_ESCALATED_CAUSE.values():
+        for side in ESCALATED_SIDES:
             forget_blockers(self.records_dir, Phase.EXERCISE, side, service)
-        for signature in _escalated_signatures(exercised):
-            _ = record_blocker(self.records_dir, self._signature_blocker(service, exercised, signature,
-                                                                         SIDE_BY_ESCALATED_CAUSE[signature.cause], escalation_reason(signature)))
+        for signature, side, reason in run_escalations(exercised) if escalations is None else escalations:
+            _ = record_blocker(self.records_dir, self._signature_blocker(service, exercised, signature, side, reason))
 
     def _signature_blocker(self, service: str, exercised: ExerciseResult, signature: Signature, side: Side, reason: str) -> Blocker:
         pages = exercised.summary.signature_pages(signature) if exercised.summary is not None else ()
@@ -265,9 +288,11 @@ class OkfBook(BookFlow):
         plan = spec / PLAN_NAME
         return exercised.summary.failures_by_page(scenarios, plan.read_text(encoding="utf-8") if plan.is_file() else "")
 
-    def map_run_failures(self, index: int, exercised: ExerciseResult, run_failures_repaired: bool = False) -> Continue[...]:
+    def map_run_failures(
+        self, index: int, exercised: ExerciseResult, run_failures_repaired: bool = False, lead: tuple[LeadFinding, ...] = (),
+    ) -> Continue[...]:
         """Map each failure of the run the writer can fix to the page that covers it, and hand the book to the writer, since a claim the run cannot exercise is a defect of the book. A run whose every failure is escalated has nothing for the writer. A repair that did not lower the book's failed checks stops the laps, and the attendant is asked with their trend."""
-        failures = self._book_failures(index, exercised)
+        failures = with_instructions(self._book_failures(index, exercised), lead)
         if not failures and _escalated_signatures(exercised):
             return self._next_surface(exercised.passed, index)
         if not run_failures_repaired:

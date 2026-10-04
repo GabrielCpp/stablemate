@@ -10,6 +10,7 @@ The steps the main book flow calls. Each module owns one job a state hands off.
 - `exercise.py`: the run of a book, or of the pages and fixture pages the writer names, against the real app.
 - `gate.py`: what the run settles itself when a gate is answered: each blocker's rerun, its verdict, and the failures left to the writers.
 - `journey.py`: the pages a fix that puts a page on a journey may change.
+- `lead_findings.py`: what the lead named for each group of a lap's failed checks, kept across laps, and the lap as it attributed it.
 - `operator_answer.py`: the operator's latest answer, which every repair turn reads until the next gate.
 - `page_sections.py`: the `###` sections of a page and the section each problem sits in.
 - `progress_ledger.py`: each lap's failed checks by cause, and the rule that says a lap did not help.

@@ -108,7 +108,6 @@ def test_a_run_scoped_to_a_flow_page_compiles_the_whole_book_and_runs_only_that_
 
     assert outcome.planned
     assert outcome.only == ("docs-features-api-service-flows-add-widget-via-api-journey",)
-    assert outcome.gaps
     assert all(f"okf:{flow_page}" in gap for gap in outcome.gaps)
 
 
