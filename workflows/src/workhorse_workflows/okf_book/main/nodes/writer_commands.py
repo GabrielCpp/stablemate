@@ -126,16 +126,27 @@ def spend_ostler_run(path: Path) -> WriterCommandState | None:
     return _write_and_return_state(path, state.with_ostler_run_spent())
 
 
-def _clipped(line: str) -> str:
-    return line if len(line) <= PRINTED_LINE_CHARS else line[: PRINTED_LINE_CHARS - 1] + "…"
+def _clipped(line: str, chars: int) -> str:
+    return line if len(line) <= chars else line[: chars - 1] + "…"
 
 
 def printed_lines(lines: Sequence[str], limit: int = MAX_PRINTED_LINES) -> tuple[str, ...]:
-    """The lines a command prints into the writer's turn: the first `limit`, each clipped, then how many more wait behind them."""
-    shown = tuple(_clipped(line) for line in lines[:limit])
-    if len(lines) <= limit:
-        return shown
-    return (*shown, f"… and {len(lines) - limit} more: fix these, then run it again")
+    """The lines a command prints into the writer's turn, then how many more wait behind them.
+
+    A run prints at most `limit` lines and at most `limit` times `PRINTED_LINE_CHARS` characters.
+    Each line is printed whole, since a problem names its remedy and its claims last. Only a
+    first line longer than the whole run's characters is clipped.
+    """
+    chars_left = limit * PRINTED_LINE_CHARS
+    shown: list[str] = []
+    for line in lines[:limit]:
+        if shown and len(line) > chars_left:
+            break
+        shown.append(_clipped(line, chars_left))
+        chars_left -= len(shown[-1])
+    if len(shown) == len(lines):
+        return tuple(shown)
+    return (*shown, f"… and {len(lines) - len(shown)} more: fix these, then run it again")
 
 
 def run_quietly[T](work: Callable[[], T]) -> tuple[T, str]:

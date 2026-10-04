@@ -42,8 +42,6 @@ from workhorse_workflows.okf_book.shared.page_check import PageProblem
 from workhorse_workflows.okf_book.main.nodes.writer_commands import (
     CHECK_MODULE,
     CHECK_AND_SCENARIO_RUN_CAP,
-    PRINTED_LINE_CHARS,
-    MAX_PRINTED_LINES,
     CHECK_AND_SCENARIO_RUNS_SPENT_MESSAGE,
     CommandOutput,
     OSTLER_MODULE,
@@ -53,7 +51,6 @@ from workhorse_workflows.okf_book.main.nodes.writer_commands import (
     check_command,
     exercise_command,
     ostler_command,
-    printed_lines,
     command_state_path,
     read_command_state,
     write_command_state,
@@ -355,23 +352,6 @@ def test_a_command_state_reads_the_problems_at_turn_start_an_earlier_run_wrote_a
         f"{page}: step-no-verify: a claim has no verify",
         texts[1],
     ]
-
-
-def test_a_command_prints_its_first_lines_and_counts_the_rest() -> None:
-    lines = [f"problem {n}" for n in range(MAX_PRINTED_LINES + 5)]
-
-    printed = printed_lines(lines)
-
-    assert printed[:-1] == tuple(lines[:MAX_PRINTED_LINES])
-    assert printed[-1].startswith("… and 5 more")
-    assert printed_lines(lines[:3]) == tuple(lines[:3])
-
-
-def test_a_command_clips_each_line_it_prints() -> None:
-    printed = printed_lines(["x" * (PRINTED_LINE_CHARS * 3)])
-
-    assert len(printed[0]) == PRINTED_LINE_CHARS
-    assert printed[0].endswith("…")
 
 
 def test_the_prompt_and_skill_allowance_covers_the_prompt_and_the_format_skill() -> None:
