@@ -76,6 +76,18 @@ def test_a_result_is_read_again_until_a_page_changes_and_then_the_command_runs_a
     assert _runs_spent(state) == 2
 
 
+def test_a_result_is_not_read_again_once_the_repository_opts_in_another_qa_tool(tmp_path: Path) -> None:
+    state = _state(tmp_path)
+    argv = (state,)
+
+    first = run_or_attach("exercise", argv, _here, wait_s=0)
+    _ = (tmp_path / "repo" / "agents.yml").write_text("qa:\n  tools:\n    - ledger\n", encoding="utf-8")
+    anew = run_or_attach("exercise", argv, _here, wait_s=0)
+
+    assert first == anew == PASSED
+    assert _runs_spent(state) == 2
+
+
 def test_a_run_whose_process_ended_without_a_result_says_so_and_the_next_call_starts_it_again(tmp_path: Path) -> None:
     state = _state(tmp_path)
     argv = (state,)

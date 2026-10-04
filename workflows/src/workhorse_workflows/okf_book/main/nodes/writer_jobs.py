@@ -10,6 +10,7 @@ import time
 from collections.abc import Callable, Sequence
 from pathlib import Path
 
+from ostler.qa.tools import config_files
 from pydantic import TypeAdapter
 
 from workhorse_workflows.okf_book.main.nodes.writer_commands import (
@@ -51,9 +52,9 @@ def job_folder(name: str, argv: Sequence[str]) -> Path:
 
 
 def book_digest(root: Path) -> str:
-    """What changes whenever a page under the repository's `docs/` is written."""
+    """What changes whenever a page under the repository's `docs/` is written, or a file that decides which QA tools a run can invoke."""
     digest = hashlib.sha256()
-    for path in sorted((root / "docs").rglob("*.md")):
+    for path in [*sorted((root / "docs").rglob("*.md")), *config_files(root)]:
         try:
             stat = path.stat()
         except OSError:

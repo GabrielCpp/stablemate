@@ -36,6 +36,11 @@ def qa_block(root: Path) -> dict[str, Any]:
     return {}
 
 
+def config_files(root: Path) -> tuple[Path, ...]:
+    """Every file whose contents decide which QA tools a run on *root* can invoke, present or not."""
+    return (*(root / name for name in _QA_CONFIG_FILES), config_path())
+
+
 def opted_in_tools(root: Path) -> set[str]:
     """The tool names this repo's `qa:` block lists under `tools:`."""
     values = qa_block(root).get("tools", [])
