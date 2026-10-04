@@ -158,9 +158,19 @@ timeout 30 ostler scaffold component save-button --in docs/features/acme/gui/scr
 - placement: width 0-20%, x 60-100%
 - keyboard: reachable by Tab, activated by Enter or Space
 - states: disabled until the URL field is valid
+  - fixture: none, because the link editor opens with an empty URL field
+  - verify: inert(locator="#save-button")
 - code: web/src/LinkEditor.tsx::SaveButton
-- verify: visible(locator="button[name=Save]", text="Save")
 ```
+
+A `states:` claim compiles only with its own `fixture:` and `verify:`, indented under the state
+they prove. Several states go under `- states: branches`, one child bullet each, and each child
+carries its own pair. A `locator=` names a declared anchor such as `#save-button`. A raw selector
+like `button[name=Save]` is refused.
+
+A component cannot perform an act, so it has no way to reach a state that takes a click or a
+keystroke. That state is the `does:` of the [`interaction`](interaction.md) that performs the act.
+Claim it there, and leave the component the states a fixture alone arranges.
 
 ## Doctor codes it can trip
 
