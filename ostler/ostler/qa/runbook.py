@@ -292,11 +292,7 @@ def select_stack(graph: Graph, name: str = "", *, near: Path | None = None) -> S
                                candidates=tuple(node.id for node in stacks))
     candidates = environments
     if near is not None:
-        features_root = path_mod.features_root(graph)
-        near_path = near if near.is_absolute() else graph.root / near
-        surface = graph_mod.surface_of(near_path, features_root)
-        narrowed = [node for node in stacks
-                    if surface and graph_mod.surface_of(node.path, features_root) == surface]
+        narrowed = _on_surface_of(graph, stacks, near)
         if narrowed:
             candidates = {environment_of(node, resolver) for node in narrowed}
     local_only = {env for env in candidates
@@ -324,9 +320,30 @@ def select_server(graph: Graph) -> UINode | None:
     return servers[0] if servers else None
 
 
-def has_served_surface(graph: Graph) -> bool:
-    """Whether anything in this book has to be *running* before QA can reach it."""
-    return bool(graph.ui_nodes_of_type("screen") or graph.ui_nodes_of_type("server"))
+def _surface_near(graph: Graph, near: Path) -> str:
+    """The surface *near* belongs to, or "" when it sits on none."""
+    return graph_mod.surface_of(near if near.is_absolute() else graph.root / near,
+                                path_mod.features_root(graph))
+
+
+def _on_surface_of(graph: Graph, nodes: list[UINode], near: Path) -> list[UINode]:
+    """The *nodes* on the surface *near* belongs to, or none when *near* sits on no surface."""
+    surface = _surface_near(graph, near)
+    features_root = path_mod.features_root(graph)
+    return [node for node in nodes
+            if surface and graph_mod.surface_of(node.path, features_root) == surface]
+
+
+def has_served_surface(graph: Graph, near: Path | None = None) -> bool:
+    """Whether anything in this book has to be *running* before QA can reach it.
+
+    With *near*, the question is asked of the one surface that path belongs to: a
+    command-line book serves nothing even when a book beside it serves a screen.
+    """
+    served = [*graph.ui_nodes_of_type("screen"), *graph.ui_nodes_of_type("server")]
+    if near is not None and _surface_near(graph, near):
+        return bool(_on_surface_of(graph, served, near))
+    return bool(served)
 
 
 def load_stack(root: Path | None = None, *, name: str = "", near: Path | None = None,
