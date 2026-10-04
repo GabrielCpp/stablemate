@@ -316,7 +316,7 @@ def _arrival_scenario(
     ids = sorted(o.id for o in obligations)
     arranged = arrangement_of(obligations).rows
     body = _arrive(screen, arranged, gaps, ids)
-    body.extend(vet_calls([screen.screen], screen.book.screen_routes, ids, gaps))
+    body.extend(vet_calls([screen.screen], screen.book.screen_routes, ids, gaps, screen.book.fragment_hosts))
     for node_id in sorted(arrival.nodes):
         node_acts = screen.book.acts_by_node.get(node_id, [])
         if node_acts:
@@ -449,6 +449,6 @@ def _interaction_scenario(
         f"    {python_literal(f'{arm.label or node_id}: {arm.trigger}')}",
         "",
         *body,
-        *vet_calls(observed.documents, book.screen_routes, ids, gaps),
+        *vet_calls(observed.documents, book.screen_routes, ids, gaps, book.fragment_hosts),
         *observed.lines,
     ]

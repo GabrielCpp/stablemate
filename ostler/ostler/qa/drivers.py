@@ -19,7 +19,7 @@ from pydantic import ValidationError
 
 from ostler import path as path_mod
 from ostler.model import load as load_graph
-from ostler.routes import arrived_at, is_comparable, screen_routes
+from ostler.routes import arrived_at, is_comparable, vet_routes
 from ostler.untyped import JsonValue
 from ostler.qa import book_fixtures as qa_book_fixtures
 from ostler.qa.attribution import NO_ATTRIBUTION, SAMPLE_CHARS, Attribution, Cause, CheckEvidence, CommandEnding, attribute
@@ -697,7 +697,7 @@ class PythonDriver(QaDriver):
             if self._book_problem is None:
                 graph = load_graph(self.root, root_overrides={"features": features_root})
                 self._screens = placement.screen_components(graph)
-                self._routes = screen_routes(graph)
+                self._routes = vet_routes(graph)
         return self._screens
 
     def _arrival(self, scenario_id: str, screen: str, record: dict[str, Any]) -> str | None:

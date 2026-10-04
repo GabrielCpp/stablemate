@@ -7,7 +7,7 @@ import re
 from collections.abc import Callable, Iterable
 from urllib.parse import urlsplit
 
-from ostler.model import Graph
+from ostler.model import Graph, fragment_host
 
 
 def is_path_shaped(route: str) -> bool:
@@ -149,6 +149,21 @@ def screen_routes(graph: Graph) -> dict[str, str]:
         if route:
             routes.setdefault(node.id.split("#")[0], set()).add(route)
     return {path: next(iter(found)) for path, found in routes.items() if len(found) == 1}
+
+
+def vet_routes(graph: Graph) -> dict[str, str]:
+    """`screen_routes`, plus each fragment page under the route of the screen its `host:` chain ends on."""
+    routes = screen_routes(graph)
+    hosts = {node.id: fragment_host(node, graph.root) for node in graph.ui_nodes
+             if node.type == "fragment" and node.kind == "file"}
+    for fragment in hosts:
+        page, seen = fragment, {fragment}
+        while page not in routes and hosts.get(page, "") not in seen | {""}:
+            page = hosts[page]
+            seen.add(page)
+        if page in routes:
+            routes[fragment] = routes[page]
+    return routes
 
 
 SURFACE_PERFORMABLE_TYPES: dict[str, frozenset[str]] = {

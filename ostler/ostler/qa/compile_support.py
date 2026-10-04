@@ -119,6 +119,15 @@ def why_unmatchable_screen_name(route: str) -> str:
     return f"its `route:` (`{text}`) is not a navigator screen name a Maestro run could match"
 
 
+def screen_route(document: str, screen_routes: dict[str, str], hosts: dict[str, str]) -> str:
+    """The `route:` a vet of *document* waits for: its own, or that of the screen its fragment chain is shown on."""
+    seen: set[str] = set()
+    while document not in screen_routes and document in hosts and document not in seen:
+        seen.add(document)
+        document = hosts[document]
+    return screen_routes.get(document, "")
+
+
 def vettable(
     documents: list[str],
     screen_routes: dict[str, str],
@@ -126,11 +135,12 @@ def vettable(
     gaps: list[Gap],
     *,
     mobile: bool = False,
+    hosts: dict[str, str] | None = None,
 ) -> list[str]:
     """*documents* a vet can establish as its subject, with a gap for each one it cannot."""
     keep: list[str] = []
     for document in documents:
-        route = screen_routes.get(document, "")
+        route = screen_route(document, screen_routes, hosts or {})
         if is_screen_name_shaped(route.strip()) if mobile else is_comparable(route):
             keep.append(document)
             continue
@@ -166,9 +176,13 @@ def unarranged_scenario_gap(obligation: Obligation) -> Gap:
                "scenario finds")
 
 
-def vet_calls(documents: list[str], screen_routes: dict[str, str], ids: list[str], gaps: list[Gap]) -> list[str]:
+def vet_calls(
+    documents: list[str], screen_routes: dict[str, str], ids: list[str], gaps: list[Gap],
+    hosts: dict[str, str] | None = None,
+) -> list[str]:
     """One `qa.vet` line per browser screen in *documents* a vet can establish, each told the address to wait for."""
     return [
-        f"    qa.vet({python_literal(document)}, arrives={python_literal(arrival_regex(screen_routes.get(document, '')))})"
-        for document in vettable(documents, screen_routes, ids, gaps)
+        f"    qa.vet({python_literal(document)}, "
+        f"arrives={python_literal(arrival_regex(screen_route(document, screen_routes, hosts or {})))})"
+        for document in vettable(documents, screen_routes, ids, gaps, hosts=hosts)
     ]

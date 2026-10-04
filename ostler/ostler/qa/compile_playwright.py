@@ -360,6 +360,6 @@ def web_walk(walk: JourneyWalk, sinks: PlanSinks) -> WalkedJourney:
         lines.insert(action_index, f"    {WINDOW_VAR} = qa.window()")
     return WalkedJourney([
         *lines,
-        *vet_calls(observed.documents, walk.book.screen_routes, walk.ids, gaps),
+        *vet_calls(observed.documents, walk.book.screen_routes, walk.ids, gaps, walk.book.fragment_hosts),
         *observed.lines,
     ], frozenset(observed.covered))

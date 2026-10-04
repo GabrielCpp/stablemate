@@ -352,7 +352,7 @@ def _scenario_body(
             lines.extend(
                 f"    qa.vet({python_literal(document)})"
                 for document in vettable(compiled.documents, book.screen_routes, [oid], sinks.gaps,
-                                         mobile=True)
+                                         mobile=True, hosts=book.fragment_hosts)
             )
         covered.add(oid)
     return lines
@@ -457,6 +457,6 @@ def maestro_walk(walk: JourneyWalk, launch: MaestroLaunch, sinks: PlanSinks) -> 
         lines.extend(
             f"    qa.vet({python_literal(document)})"
             for document in vettable(compiled.documents, walk.book.screen_routes, page_oids, gaps,
-                                     mobile=True)
+                                     mobile=True, hosts=walk.book.fragment_hosts)
         )
     return WalkedJourney(lines, frozenset(covered))
