@@ -4,7 +4,9 @@ from __future__ import annotations
 from pathlib import Path
 
 from workhorse_workflows.okf_book.main.nodes.journey import JourneyPages
-from workhorse_workflows.okf_book.main.nodes.repair_batches import problems_by_page, pack_repairs
+from workhorse_workflows.okf_book.main.nodes.page_sections import HEAD_SECTION_ID
+from workhorse_workflows.okf_book.main.nodes.repair_batch_models import PageRepair, RepairBatch
+from workhorse_workflows.okf_book.main.nodes.repair_batches import has_work_left, problems_by_page, pack_repairs
 from workhorse_workflows.okf_book.main.nodes.turn_budget import BOOK_HOLDS, CHARS_PER_TOKEN, SOURCE_READS
 from workhorse_workflows.okf_book.shared.page_check import PageProblem
 
@@ -225,3 +227,18 @@ def test_a_page_nothing_reaches_is_offered_no_new_flow_page(tmp_path: Path) -> N
 
     assert [batch.new_flow_page for batch in batches] == [""]
     assert not batches[0].owns(f"{BOOK}/flows/add-3.md")
+
+
+def test_a_batch_has_work_left_while_a_page_it_names_has_a_problem_and_holds_a_named_section(tmp_path: Path) -> None:
+    page, other = "docs/features/tally/tally.md", "docs/features/tally/other.md"
+    (tmp_path / page).parent.mkdir(parents=True)
+    _ = (tmp_path / page).write_text("# Tally\n\nThe head.\n\n### Add\n\nAdds an expense.\n", encoding="utf-8")
+
+    def batch(*sections: str) -> RepairBatch:
+        return RepairBatch(pages=(PageRepair(page=page, problems=("needs a note",), sections=sections),), tokens=1)
+
+    assert has_work_left(tmp_path, batch(), frozenset({page}))
+    assert not has_work_left(tmp_path, batch(), frozenset({other}))
+    assert has_work_left(tmp_path, batch("Add"), frozenset({page}))
+    assert has_work_left(tmp_path, batch(HEAD_SECTION_ID), frozenset({page}))
+    assert not has_work_left(tmp_path, batch("a-section-a-carve-moved"), frozenset({page}))

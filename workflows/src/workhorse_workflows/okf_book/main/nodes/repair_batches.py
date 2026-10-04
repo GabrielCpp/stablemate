@@ -30,6 +30,26 @@ def problems_by_page(
     return {page: tuple(grouped[page]) for page in sorted(grouped)}
 
 
+def has_work_left(root: Path, batch: RepairBatch, open_pages: frozenset[str]) -> bool:
+    """Whether a batch packed before earlier turns of its round still has something to repair.
+
+    A batch that owns the journey always has. Any other has when one of its pages still has a problem
+    and still holds a section the batch names on it, since a carve moves sections onto pages of their own.
+    """
+    if batch.journey is not None:
+        return True
+    for repair in batch.pages:
+        path = root / repair.page
+        if repair.page not in open_pages or not path.is_file():
+            continue
+        if not repair.sections:
+            return True
+        on_page = {section.id for section in page_sections(path.read_text(encoding="utf-8")).sections}
+        if on_page.intersection(repair.sections):
+            return True
+    return False
+
+
 def _repairs_joined_by_page(units: list[PageCost]) -> tuple[PageRepair, ...]:
     by_page: dict[str, PageRepair] = {}
     for unit in units:

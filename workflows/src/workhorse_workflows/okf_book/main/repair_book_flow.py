@@ -24,7 +24,7 @@ from pathlib import Path
 from workhorse.pyflow import AgentTimeout, AgentTurnFailed, Continue, Done, WorkflowFailed
 from workhorse_workflows.okf_book.main.nodes.journey import journey_pages
 from workhorse_workflows.okf_book.main.nodes.operator_answer import read_answer
-from workhorse_workflows.okf_book.main.nodes.repair_batches import pack_repairs, problems_by_page
+from workhorse_workflows.okf_book.main.nodes.repair_batches import has_work_left, pack_repairs, problems_by_page
 from workhorse_workflows.okf_book.main.nodes.repair_ledger import BatchTurn, RepairLedger, RepairRound
 from workhorse_workflows.okf_book.main.nodes.surface import Surface
 from workhorse_workflows.okf_book.main.nodes.writer_commands import WriterCommandState, write_command_state
@@ -127,6 +127,12 @@ class RepairBook(BookFlow):
         self, ledger: RepairLedger, this_round: RepairRound, index: int, problems_at_turn_start: tuple[PageProblem, ...]
     ) -> Continue[...]:
         """Snapshot the tree and write the command state that scopes the turn's check to its batch and to the problems the book has now."""
+        open_pages = frozenset({problem.page for problem in problems_at_turn_start} | (set(self.run_failures) if this_round.number == 1 else set()))
+        if not has_work_left(self.root, this_round.batches[index], open_pages):
+            self.logger.info("no turn for %s: earlier turns of the round left nothing to repair there", ", ".join(this_round.batches[index].page_paths))
+            return Continue(index, self.close_batch, ledger=ledger, this_round=this_round, index=index).because(
+                "earlier turns left this batch nothing to repair"
+            )
         turn = BatchTurn(ledger=ledger, this_round=this_round, index=index, before=snapshot(self.root))
         batch = turn.batch
         state = WriterCommandState(
