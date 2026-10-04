@@ -103,21 +103,43 @@ def test_a_cli_page_that_names_no_binary_cannot_be_invoked(app: Callable[[str], 
     ]
 
 
-def test_a_book_no_claim_of_which_declares_a_check_is_a_problem_on_its_entries_page(app: Callable[[str], Path]) -> None:
-    repo = app("tally-cli")
-    checked = book_problems(repo, "tally")
+def _unchecked_book(repo: Path, *, flow: bool) -> list[str]:
     book = repo / "docs/features/tally"
     shutil.rmtree(book)
     book.mkdir()
-    _ = (book / "entries.md").write_text("---\ntype: entries\ntitle: tally\n---\n# tally\n\n- [ledger](ledger.md)\n", encoding="utf-8")
+    links = "- [ledger](ledger.md)\n" + ("- [track a trip](track-a-trip.md)\n" if flow else "")
+    _ = (book / "entries.md").write_text(f"---\ntype: entries\ntitle: tally\n---\n# tally\n\n{links}", encoding="utf-8")
     _ = (book / "ledger.md").write_text("---\ntype: concept\ntitle: ledger\n---\n# ledger\n\nThe ledger keeps every expense.\n", encoding="utf-8")
+    if flow:
+        _ = (book / "track-a-trip.md").write_text(
+            "---\ntype: flow\nslug: track-a-trip\ntitle: Track a trip\n---\n# Track a trip\n\n"
+            + "- steps:\n  - Read the [ledger](ledger.md) back.\n",
+            encoding="utf-8",
+        )
+    return [problem for problem in book_problems(repo, "tally") if "declares a check" in problem]
 
-    unchecked = [problem for problem in book_problems(repo, "tally") if "declares a check" in problem]
+
+def test_a_book_no_claim_of_which_declares_a_check_is_a_problem_on_each_flow_page(app: Callable[[str], Path]) -> None:
+    repo = app("tally-cli")
+    checked = book_problems(repo, "tally")
+
+    unchecked = _unchecked_book(repo, flow=True)
 
     assert not [problem for problem in checked if "declares a check" in problem]
     assert unchecked == [
-        "docs/features/tally/entries.md: no claim of this book declares a check, so a run has nothing to exercise. Give the claims a "
-        + "user can observe a `- verify:` bullet that checks what they see, starting with the steps of each flow."
+        "docs/features/tally/track-a-trip.md: no claim of this book declares a check, so a run has nothing to exercise. Give each "
+        + "step of this flow a `- verify:` bullet that checks what the user sees once the step is done."
+    ]
+
+
+def test_a_book_with_no_flow_and_no_check_is_a_problem_on_every_page_but_its_entries(app: Callable[[str], Path]) -> None:
+    repo = app("tally-cli")
+
+    unchecked = _unchecked_book(repo, flow=False)
+
+    assert unchecked == [
+        "docs/features/tally/ledger.md: no claim of this book declares a check, so a run has nothing to exercise. Give the claims a "
+        + "user can observe on this page a `- verify:` bullet that checks what they see."
     ]
 
 

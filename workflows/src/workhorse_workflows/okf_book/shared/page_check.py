@@ -30,7 +30,7 @@ from ostler.qa.plan_source import Gap
 from ostler.qa.runbook import bullet_text
 from ostler.qa.tools import opted_in_tools
 from workhorse_workflows.okf_book.shared.blockers import Blocker, Phase, Side
-from workhorse_workflows.okf_book.shared.book_compilation import BookCompilation, compile_services, gap_page, obligation_node
+from workhorse_workflows.okf_book.shared.book_compilation import compile_services, gap_page, obligation_node
 from workhorse_workflows.okf_book.shared.entries import book_dir, entries_path
 
 OSTLER_GAPS = HARNESS_LIMIT_GAPS | frozenset({"needs-snapshot"})
@@ -252,16 +252,25 @@ def tool_blockers(root: Path, service: str) -> tuple[Blocker, ...]:
     )
 
 
-def _unchecked_problems(root: Path, service: str, compilation: BookCompilation, gaps: list[Gap]) -> list[PageProblem]:
-    if compilation.planned or gaps or not entries_path(root, service).is_file():
-        return []
-    page = entries_path(root, service).relative_to(root).as_posix()
+def _unchecked_problems(entries: str, nodes: list[_Node], pages: list[str]) -> list[PageProblem]:
+    flows = sorted({node.id.partition("#")[0] for node in nodes if node.type in ("flow", "step")})
+    if flows:
+        return [
+            PageProblem(
+                page,
+                f"{page}: no claim of this book declares a check, so a run has nothing to exercise. Give each step "
+                + "of this flow a `- verify:` bullet that checks what the user sees once the step is done.",
+            )
+            for page in flows
+        ]
     return [
         PageProblem(
             page,
             f"{page}: no claim of this book declares a check, so a run has nothing to exercise. Give the claims a "
-            + "user can observe a `- verify:` bullet that checks what they see, starting with the steps of each flow.",
+            + "user can observe on this page a `- verify:` bullet that checks what they see.",
         )
+        for page in pages
+        if page != entries
     ]
 
 
@@ -283,6 +292,8 @@ def page_problems(root: Path, service: str) -> tuple[PageProblem, ...]:
         wanted = frozenset(pages)
         compilation = compile_services(root, (service,))
         gaps = [gap for gap in compilation.gaps if gap_page(gap) in wanted and gap_side(gap) is Side.BOOK]
+        entries = entries_path(root, service)
+        unchecked = not compilation.planned and not gaps and entries.is_file()
         return (
             *_entries_problems(root, service),
             *dead,
@@ -290,7 +301,7 @@ def page_problems(root: Path, service: str) -> tuple[PageProblem, ...]:
             *_off_journey_problems(nodes),
             *_uninvokable_problems(nodes),
             *gap_problems(gaps),
-            *_unchecked_problems(root, service, compilation, gaps),
+            *(_unchecked_problems(entries.relative_to(root).as_posix(), nodes, pages) if unchecked else []),
         )
 
 
