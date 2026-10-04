@@ -382,7 +382,12 @@ def _scaffold_click_refusal(arm: _InteractionArm) -> ScenarioRefusal | None:
         return None
     return ScenarioRefusal("unresolved-precondition",
                            f"trigger {arm.trigger!r} compiles to a scaffold click on {arm.label!r}, "
-                           "not a verified action")
+                           "not a verified action. When pressing the `on:` control fires it, write "
+                           "`trigger: click`: activating it from the keyboard is the `keyboard:` "
+                           "bullet's own claim, and a state that must hold before the press is a "
+                           "`when:` arranged by `arrange:` acts. A trigger that is no press of the "
+                           "`on:` control (typing, a paste, a drag, a timer) has no compiled action "
+                           "in this vocabulary yet")
 
 
 @dataclass(frozen=True)

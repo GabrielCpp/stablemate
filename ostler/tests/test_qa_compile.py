@@ -2153,6 +2153,7 @@ def test_the_scaffold_click_gap_does_not_claim_does_is_unresolved() -> None:
     details = [g.detail for g in gaps if g.obligation_id == interaction_oid]
     assert len(details) == 1
     assert "scaffold click" in details[0]
+    assert "write `trigger: click`" in details[0]
     assert "does:" not in details[0]
 
 
