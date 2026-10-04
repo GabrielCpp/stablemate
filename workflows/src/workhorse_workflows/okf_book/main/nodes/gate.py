@@ -93,6 +93,14 @@ def take_failures(records_dir: Path, service: str) -> RunFailures:
     return failures
 
 
+def keep_failures(records_dir: Path, service: str, failures: RunFailures) -> None:
+    """Add *failures* to the ones kept for *service*'s writer, each under its page."""
+    if not failures:
+        return
+    kept = take_failures(records_dir, service)
+    _write_failures(records_dir, service, {page: (*kept.get(page, ()), *failures.get(page, ())) for page in (*kept, *(p for p in failures if p not in kept))})
+
+
 def _write_failures(records_dir: Path, service: str, failures: RunFailures) -> None:
     folder = gate_folder(records_dir, service)
     folder.mkdir(parents=True, exist_ok=True)

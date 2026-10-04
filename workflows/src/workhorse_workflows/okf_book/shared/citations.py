@@ -7,6 +7,7 @@ from pathlib import Path
 
 from ostler.pages import files_in_book
 from ostler.refs import code_refs, parse_code_ref
+from ostler.stamp import digest_file
 from workhorse_workflows.okf_book.shared.entries import book_dir
 
 _CODE_BULLET = re.compile(r"^\s*[-*]\s+code:\s*(?P<value>.*)$")
@@ -58,3 +59,19 @@ def book_pages(root: Path, service: str) -> tuple[Path, ...]:
     if not folder.is_dir():
         return ()
     return tuple(files_in_book(folder))
+
+
+def cites_changed_file(root: Path, service: str) -> bool:
+    """Whether any page of the service's book cites a file that no longer has the digest stamped beside it."""
+    digests: dict[str, str | None] = {}
+    for page in book_pages(root, service):
+        for citation in page_citations(page):
+            if citation.digest is None:
+                continue
+            if citation.path not in digests:
+                cited = root / citation.path
+                digests[citation.path] = digest_file(cited.read_bytes()) if cited.is_file() else None
+            current = digests[citation.path]
+            if current is not None and current != citation.digest:
+                return True
+    return False

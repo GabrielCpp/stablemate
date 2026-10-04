@@ -8,6 +8,7 @@ from pathlib import Path
 
 import pytest
 from okf_book.support import APPS, ScriptedRunner, driver, git
+from ostler.stamp import stamp_page
 from workhorse.artifacts import ArtifactWriter
 from workhorse.config_run import RunConfig
 from workhorse.pyflow.engine import RunEnv
@@ -43,11 +44,14 @@ def rendered_repos(monkeypatch: pytest.MonkeyPatch) -> list[Path]:
 
 @pytest.fixture
 def app(tmp_path: Path) -> Callable[[str], Path]:
-    """A committed copy of a paddock fixture app, so the tracked fixture is never written."""
+    """A committed copy of a paddock fixture app, its book stamped on the source as copied, so the tracked fixture is never written."""
 
     def _app(name: str) -> Path:
         repo = tmp_path / name
         _ = shutil.copytree(APPS / name, repo, ignore=shutil.ignore_patterns("__pycache__", "node_modules"))
+        features = repo / "docs" / "features"
+        for page in sorted(features.rglob("*.md")):
+            _ = stamp_page(repo, features, page.relative_to(repo).as_posix())
         _ = git(repo, "init", "-q")
         _ = git(repo, "add", "-A")
         _ = git(repo, "commit", "-q", "-m", "fixture")

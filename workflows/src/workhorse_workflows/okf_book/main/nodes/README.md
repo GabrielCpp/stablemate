@@ -22,6 +22,7 @@ The steps the main book flow calls. Each module owns one job a state hands off.
 - `report.py`: the run's account for the operator.
 - `root_entries.py`: the entries page code writes for a book that has none.
 - `source_view.py`: the copy of the product source a writer reads.
+- `stale_citations.py`: the citations whose file changed since their stamp, grouped by file, and what one reading of the change settles for them.
 - `surface.py`: the declaration of one surface of a service.
 - `surface_pass.py`: the services one pass of the run routes.
 - `turn_budget.py`: what one writer turn reads, held against its budget.

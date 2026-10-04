@@ -9,7 +9,7 @@ from workhorse_workflows.kit import last_commit_subject, last_commit_trailer
 from workhorse_workflows.okf_book.main.exercise_book_flow import ExerciseBook
 from workhorse_workflows.okf_book.main.nodes import gate
 from workhorse_workflows.okf_book.main.lead_lap_flow import LeadLap
-from workhorse_workflows.okf_book.main.nodes.gate import ESCALATED_SIDES, SIDE_BY_ESCALATED_CAUSE, RunFailures, rerun_command, take_failures
+from workhorse_workflows.okf_book.main.nodes.gate import ESCALATED_SIDES, SIDE_BY_ESCALATED_CAUSE, RunFailures, keep_failures, rerun_command, take_failures
 from workhorse_workflows.okf_book.main.nodes.lead_findings import (
     Escalation,
     LeadFinding,
@@ -25,6 +25,8 @@ from workhorse_workflows.okf_book.main.nodes.progress_ledger import LapCounts, l
 from workhorse_workflows.okf_book.main.nodes.repair_ledger import RepairOutcome
 from workhorse_workflows.okf_book.main.repair_book_flow import RepairBook
 from workhorse_workflows.okf_book.main.nodes.report import build_report, write_report
+from workhorse_workflows.okf_book.main.nodes.stale_citations import Regrounded
+from workhorse_workflows.okf_book.main.reground_book_flow import RegroundBook
 from workhorse_workflows.okf_book.main.nodes.source_view import build_source_view, source_view_folder
 from workhorse_workflows.okf_book.main.nodes.surface import Surface
 from workhorse_workflows.okf_book.main.nodes.surface_pass import read_pass, write_pass
@@ -43,7 +45,7 @@ from workhorse_workflows.okf_book.shared.book_commits import (
 )
 from workhorse_workflows.okf_book.shared.book_flow import BookFlow
 from workhorse_workflows.okf_book.shared.book_run import ExerciseResult
-from workhorse_workflows.okf_book.shared.citations import book_pages
+from workhorse_workflows.okf_book.shared.citations import book_pages, cites_changed_file
 from workhorse_workflows.okf_book.shared.entries import FEATURES_DIR
 from workhorse_workflows.okf_book.shared.page_check import page_problems
 from workhorse_workflows.okf_book.shared.scenarios import PLAN_NAME, plan_scenarios, spec_dir, write_run
@@ -109,12 +111,14 @@ class OkfBook(BookFlow):
         _ = record_blocker(self.records_dir, blocker)
         return self._next_surface(reason, index)
 
-    def route_book(self, index: int) -> Continue[...]:
-        """A missing book, or one with problems, goes to the writer, so a rerun after the operator's fix repairs what the last run left. A book this workflow's writer or repair last committed with no problem goes through the check again, and any other one goes straight to its run."""
+    def route_book(self, index: int, regrounded: bool = False) -> Continue[...]:
+        """A missing book, or one with problems, goes to the writer, so a rerun after the operator's fix repairs what the last run left. A book citing a file that changed since its stamp is regrounded first. A book this workflow's writer or repair last committed with no problem goes through the check again, and any other one goes straight to its run."""
         service = self.surfaces[index].service
         book = _book_folder(service)
         if not (self.root / book).is_dir():
             return Continue(None, self.copy_source, index=index).because("no book yet: write it")
+        if not regrounded and cites_changed_file(self.root, service):
+            return Continue(service, self.reground_book, index=index).because("the code the book cites has changed: read the changes first")
         pending = take_failures(self.records_dir, service)
         if pending:
             return Continue(pending, self.copy_source, index=index, run_failures=pending).because(
@@ -129,6 +133,13 @@ class OkfBook(BookFlow):
         return Continue(problems, self.run_book, index=index, run_failures_repaired=False).because(
             "the existing book checks clean"
         )
+
+    def reground_book(self, index: int) -> Continue[...]:
+        """Hand the book to its regrounding. The nodes a change bears on are kept as failures for the book's writer, and the book is routed again."""
+        service = self.surfaces[index].service
+        regrounded = Regrounded.model_validate(self.handoff(RegroundBook, parent_records_dir=str(self.records_dir), service=service))
+        keep_failures(self.records_dir, service, regrounded.failures)
+        return Continue(regrounded, self.route_book, index=index, regrounded=True).because("the changed files are read: route the book")
 
     def copy_source(self, index: int, run_failures: RunFailures | None = None) -> Continue[...]:
         """Copy the surface's product source for its writer. A surface whose source is no folder is a blocker."""
