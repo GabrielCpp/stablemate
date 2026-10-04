@@ -13,7 +13,7 @@ from ostler.qa.compile_journey import WalkedJourney
 from ostler.qa.compile_support import MAESTRO
 from ostler.qa.compile_support import bullet_value
 from ostler.qa.compile_support import check_document
-from ostler.qa.compile_support import on_href
+from ostler.qa.compile_support import on_node
 from ostler.qa.compile_support import on_label
 from ostler.qa.compile_support import unarranged_scenario_gap
 from ostler.qa.compile_support import unarranged_state_gap
@@ -158,9 +158,7 @@ def _on_locator(
     source: str, on_value: str, locators_by_node: dict[str, Locators],
 ) -> MaestroLocator | None:
     """The Maestro locator of the node an `on:` bullet on *source* points at."""
-    href = on_href(on_value)
-    on_node_id = f"{source}#{href.lstrip('#')}" if href else ""
-    return maestro_locator(locators_by_node.get(on_node_id, NO_LOCATORS))
+    return maestro_locator(locators_by_node.get(on_node(source, on_value), NO_LOCATORS))
 
 
 @dataclass(frozen=True)

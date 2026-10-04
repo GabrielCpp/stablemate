@@ -15,7 +15,7 @@ from ostler.qa.compile_playwright import perform_acts
 from ostler.qa.compile_playwright import walk_hops
 from ostler.qa.compile_support import PLAYWRIGHT
 from ostler.qa.compile_support import bullet_value
-from ostler.qa.compile_support import on_href
+from ostler.qa.compile_support import on_node
 from ostler.qa.compile_support import on_label
 from ostler.qa.compile_support import trailing_comment
 from ostler.qa.compile_support import unarranged_state_gap
@@ -357,8 +357,7 @@ def _interaction_arm(source: str, obligation: Obligation) -> _InteractionArm:
         return next(iter(values), "")
 
     on_value = first(locators.on)
-    href = on_href(on_value)
-    on_node_id = f"{source}#{href.lstrip('#')}" if href else (f"{source}#{on_value}" if on_value else "")
+    on_node_id = on_node(source, on_value) or (f"{source}#{on_value}" if on_value else "")
     return _InteractionArm(on_node_id, on_label(on_value), first(locators.trigger), first(locators.does), first(locators.when))
 
 

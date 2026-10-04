@@ -12,7 +12,7 @@ from ostler.qa.compile_journey import WalkedJourney
 from ostler.qa.compile_support import PLAYWRIGHT
 from ostler.qa.compile_support import bullet_value
 from ostler.qa.compile_support import check_document
-from ostler.qa.compile_support import on_href
+from ostler.qa.compile_support import on_node
 from ostler.qa.compile_support import on_label
 from ostler.qa.compile_support import trailing_comment
 from ostler.qa.compile_support import unobservable_gap
@@ -314,8 +314,7 @@ def _web_step(index: int, step: FlowStep, walk: JourneyWalk, gaps: list[Gap]) ->
     locators = book.locators_by_node.get(ref, NO_LOCATORS)
     on_value = next(iter(locators.on), "")
     trigger_value = next(iter(locators.trigger), "")
-    href = on_href(on_value)
-    on_node_id = f"{ref.split('#')[0]}#{href.lstrip('#')}" if href else ""
+    on_node_id = on_node(ref.split("#")[0], on_value)
     expr = page_locator_expr(book.locators_by_node.get(on_node_id, NO_LOCATORS))
     if expr is None:
         gaps.extend(Gap(oid, "uncompilable-claim",

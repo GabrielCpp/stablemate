@@ -23,6 +23,7 @@ from ostler.qa.compile import (
     deferred_obligations as _deferred_obligations,
 )
 from ostler.qa.compile_support import MAESTRO, PLAYWRIGHT, PYTHON, DriverSpec
+from ostler.qa.compile_support import on_node
 from ostler.qa.compile_support import unobservable_gap as _unobservable_gap
 from ostler.qa.dispatch import BUILT_TARGETS, DISPATCH_TABLE, OBSERVE_ROW, OPS_TYPES, dispatch_target
 from ostler.qa.outcome import QaOutcome
@@ -1768,6 +1769,16 @@ def test_an_unreachable_screen_names_itself_and_the_two_edits_that_reach_it() ->
     [gap] = [g for g in result.gaps if g.obligation_id == oid]
     assert _SCREEN in gap.detail
     assert "`entry: /<route>`" in gap.detail and "`leads-to:`" in gap.detail
+
+
+@pytest.mark.parametrize(("on_value", "node"), [
+    ("[Save](#save-button)", "docs/gui/screens/editor.md#save-button"),
+    ("[Save](editor-components.md#save-button)", "docs/gui/screens/editor-components.md#save-button"),
+    ("[Report](../http/report.md#report-row)", "docs/gui/http/report.md#report-row"),
+    ("the save button", ""),
+])
+def test_an_on_bullet_names_the_component_on_the_page_its_link_points_at(on_value: str, node: str) -> None:
+    assert on_node("docs/gui/screens/editor.md", on_value) == node
 
 
 _FRAGMENT = "docs/features/policy/gui/screens/policy-list-components.md"

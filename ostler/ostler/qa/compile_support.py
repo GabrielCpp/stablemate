@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import posixpath
 import re
 from dataclasses import dataclass
 from types import ModuleType
@@ -84,6 +85,16 @@ def trailing_comment(text: str) -> str:
 def on_href(on_value: str) -> str | None:
     """The link target an `on:` bullet names, when it names one."""
     return next(iter(extract_refs(on_value).links), (None, None))[1]
+
+
+def on_node(source: str, on_value: str) -> str:
+    """The node an `on:` bullet on page *source* links, on that page or on the page its link names; `""` with no link."""
+    href = on_href(on_value)
+    if not href:
+        return ""
+    page, _, anchor = href.partition("#")
+    target = posixpath.normpath(posixpath.join(posixpath.dirname(source), page)) if page else source
+    return f"{target}#{anchor}"
 
 
 def on_label(on_value: str) -> str:

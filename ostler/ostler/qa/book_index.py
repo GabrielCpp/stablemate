@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from dataclasses import field
 
 from ostler import registry
-from ostler.qa.compile_support import on_href
+from ostler.qa.compile_support import on_node
 from ostler.qa.obligation import CallRow
 from ostler.qa.obligation import Locators
 from ostler.qa.obligation import Obligation
@@ -82,10 +82,9 @@ def hop_acts(
     found: dict[tuple[str, str], list[CallRow]] = {}
     for obligation in sorted(obligations, key=lambda o: o.doc_position):
         acts = acts_by_node.get(obligation.node)
-        href = on_href(next(iter(obligation.locators.on), ""))
-        if obligation.node_type != "interaction" or not acts or not href:
+        component = on_node(obligation.source, next(iter(obligation.locators.on), ""))
+        if obligation.node_type != "interaction" or not acts or not component:
             continue
-        component = f"{obligation.source}#{href.lstrip('#')}"
         for row in obligation.checks:
             for target in row.locates.values():
                 landed = target.node.split("#")[0]
