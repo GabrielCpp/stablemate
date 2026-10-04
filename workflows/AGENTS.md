@@ -95,6 +95,33 @@ was grounded in something already written, at the `operator_mode` sites in
 control-flow graph, not a grep, same as everything else this check cannot see
 structurally. See the script's own docstring before widening it.
 
+## A workflow is written after the session that worked (load-bearing)
+
+Aims 8 and 9 of [the constitution](../docs/CONSTITUTION.md) set two rules for every
+workflow here. `/vet-proposal` holds a new workflow, a new stage or a new repair loop to
+both.
+
+**Attended first.** A process becomes a workflow after an attended session has finished
+it at least twice on a real target of the intended size. The proposal cites those
+sessions. Their transcripts say which seats the workflow needs, what each seat must see
+and what each may touch. A run that does not converge is answered by finishing its
+target attended, then folding that session back in. It is not answered by more
+machinery around the run.
+
+**One wide seat above the narrow ones.** Every loop that repairs work has a lead seat
+that runs before the first repair of a lap. The lead sees the whole lap: every failure
+grouped by what was observed, the logs, and what the toolchain sent. It keeps its
+findings across laps. It names a side for each group: the work, the toolchain, a
+fixture, the environment or the app. Only the groups it names as the work's own reach
+the narrow repair nodes. The rest stop as findings for the level above. The lead runs
+on the strongest model profile the run has. Workers may run on a cheaper one.
+
+The reason is what the other shape cost. A narrow node told to repair a page edits the
+page, because the page is all it can touch. The okf-book run on a large API spent 87 of
+99 hours that way. Its largest causes sat in the test compiler, the fixtures and the
+environment, where no page edit could reach them. Each one was found by an attended
+session reading the whole lap, and fixed once.
+
 ## A prompt is a file, unless it is too small to be one
 
 `self.agent("dev/prompts/implement-plan.md", …)` stays the default spelling. The file is

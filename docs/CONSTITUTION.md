@@ -99,6 +99,31 @@ parks and waits for them rather than assuming they are present.
 over fixing in place. A gate over a prompt. Resuming where it stopped over starting
 again. Sleeping until a window reopens over dying inside it.
 
+The level above is a seat inside the run, and it is the widest one. It sees everything
+the level below produced at once: every failure of a lap, the logs, and what the
+toolchain sent. It keeps its findings from one lap to the next. It may name a cause
+outside the work it supervises, such as the toolchain, a fixture or the environment. It
+reads the evidence before the first repair is dispatched. The narrow nodes below it do
+the bulk labor. The state machine holds only what must not bend: the gates, the
+evidence, the budget and the checkpoint. The widest seat gets the strongest model the
+user has, and the narrow seats may run on a cheaper one.
+
+*Also chooses:* one seat that sees the whole lap over a rule that sees one check.
+Naming the cause before the first repair over inferring it from repairs that failed.
+
+### 9. A workflow records a process that already worked
+
+A state machine encodes a guess about the shape of a problem. The guess is only safe
+once the problem has been solved. A process is automated after an attended session has
+finished it at least twice on a real target of the intended size. The transcripts of
+those sessions are the workflow's specification. They name its seats, what each seat
+must see, and what each may touch.
+
+*Chooses:* finishing the task attended over automating it first. A node added because a
+session needed that step over a node added because the design predicted it. Shrinking
+the target until an attended session finishes over growing the machinery around a run
+that does not.
+
 ## The product bars
 
 One per package. This file is where they are read side by side, which is how a package
@@ -136,7 +161,8 @@ throughput whenever the two trade.
 **workflows** is the out-of-the-box development workflow: story authoring, dev, review, QA.
 *Bar:* it executes daily development work without supervision.
 *Rejects:* a fix that requires a person to notice something. If the recovery depends on
-someone watching, the workflow has not recovered.
+someone watching, the workflow has not recovered. It also rejects a workflow, or a new
+stage of one, for a process no attended session has finished (aim 9).
 
 **ostler** organises documentation across a repository and manages the okf books.
 *Bar:* a book true, complete, sufficient and intelligible enough that running it tests the
