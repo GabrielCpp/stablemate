@@ -1698,6 +1698,7 @@ def test_a_subject_only_verb_on_a_page_obligation_is_a_gap_not_a_silent_drop() -
     [gap] = [g for g in result.gaps if g.obligation_id == oid and g.kind == "uncompilable-claim"]
     assert "unchanged" in gap.detail
     assert "not observable from the playwright driver" in gap.detail
+    assert "`visible`, `actionable` or `inert`" in gap.detail
 
 
 def test_a_body_observing_verb_on_a_page_obligation_names_driver_and_channel_differently() -> None:
