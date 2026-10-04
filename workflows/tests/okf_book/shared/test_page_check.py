@@ -119,3 +119,20 @@ def test_gaps_are_grouped_per_node_so_each_problem_names_the_claims_of_one_node(
         ),
         PageProblem(page, f"okf:{page}#export:does:1 does not compile: unparsed-check: no check", node=f"{page}#export"),
     ]
+
+
+def test_a_gap_another_node_owns_is_one_problem_on_the_owner_page_and_none_on_the_claim_pages() -> None:
+    page = COMMANDS.as_posix()
+    owner = "docs/features/tally/gui/screens/editor.md"
+    gaps = [
+        Gap(f"okf:{page}#add:does:1", "unreachable-screen", "nothing leads here.", owner),
+        Gap(f"okf:{page}#export:does:1", "unreachable-screen", "nothing leads here.", owner),
+    ]
+
+    assert gap_problems(gaps) == [
+        PageProblem(
+            owner,
+            f"{owner}: unreachable-screen: nothing leads here. It stops 2 claims from compiling, such as okf:{page}#add:does:1",
+            node=owner,
+        )
+    ]

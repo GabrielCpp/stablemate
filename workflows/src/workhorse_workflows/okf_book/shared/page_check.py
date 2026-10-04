@@ -96,12 +96,28 @@ def _doctor_problems(book: Graph, pages: list[str]) -> list[PageProblem]:
 
 
 def gap_problems(gaps: Iterable[Gap]) -> list[PageProblem]:
-    """One problem per node, kind and fix of the gaps, so a problem names the claims of one node that one fix mends."""
+    """One problem per node, kind and fix of the gaps, so a problem names the claims of one node that one fix mends.
+
+    A gap another node owns is one problem on the owner's page however many claims it stops, and
+    none on the pages of those claims, since no edit there mends it.
+    """
     by_fix: dict[tuple[str, str, str], list[str]] = {}
+    by_owner: dict[tuple[str, str, str], list[str]] = {}
     for gap in gaps:
         detail = WRITER_FIXES.get(gap.kind, gap.detail)
-        by_fix.setdefault((obligation_node(gap.obligation_id), gap.kind, detail), []).append(gap.obligation_id)
-    return [
+        if gap.owner:
+            by_owner.setdefault((gap.owner, gap.kind, detail), []).append(gap.obligation_id)
+        else:
+            by_fix.setdefault((obligation_node(gap.obligation_id), gap.kind, detail), []).append(gap.obligation_id)
+    owned = [
+        PageProblem(
+            owner.partition("#")[0],
+            f"{owner}: {kind}: {detail} It stops {len(ids)} claims from compiling, such as {ids[0]}",
+            node=owner,
+        )
+        for (owner, kind, detail), ids in by_owner.items()
+    ]
+    return owned + [
         PageProblem(node.partition("#")[0], f"{ids[0]} does not compile: {kind}: {detail}", node=node)
         if len(ids) == 1
         else PageProblem(

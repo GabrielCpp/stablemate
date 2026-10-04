@@ -44,8 +44,8 @@ def obligation_node(obligation_id: str) -> str:
 
 
 def gap_page(gap: Gap) -> str:
-    """The repo-relative page a gap's obligation names, empty when it names none."""
-    return obligation_page(gap.obligation_id)
+    """The repo-relative page a gap's fix goes on: its owner's page, else the page its obligation names, empty when it names none."""
+    return gap.owner.partition("#")[0] or obligation_page(gap.obligation_id)
 
 
 def is_defect(gap: Gap) -> bool:
