@@ -129,12 +129,10 @@ for every field the source holds unique, such as a company name beside the email
 
 ### Signing a browser in
 
-A token in a step's environment never reaches a browser. A claim a browser checks behind a
-sign-in needs a session in that browser, and the fixture makes it the way a person does: it
-opens the sign-in screen and acts on it. A step that states `open:` and `arrange:` is a
-**browser step**. The scenario's own browser performs it in place of `run:`, and keeps the
-session it leaves, cookies, local storage and IndexedDB alike, for every page the scenario
-opens after it.
+A token in a step's environment never reaches a browser. A browser claim behind a sign-in
+needs a session in that browser, so the fixture signs in the way a person does. A step that
+states `open:` and `arrange:` is a **browser step**. The scenario's browser performs it in
+place of `run:` and keeps the session it leaves for every page opened after it.
 
 ```markdown
 ## Steps
@@ -164,7 +162,6 @@ opens after it.
 - A sign-in through an identity provider picks an account the stack already holds. Seed that
   account first, in a `run:` step that does what the stack's seed does, then click it by its
   email. An account the step makes up never exists, and the chooser never shows it.
-- A step states `run:` or the browser keys, never both, and at most one `open:`.
 
 A fixture that signs a browser in, directly or through its `needs:`, arranges only claims a
 browser checks. An http or cli claim that names it compiles to the gap

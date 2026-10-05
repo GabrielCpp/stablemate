@@ -29,7 +29,8 @@ Section type. A `### <id>` under the runbook's `## Steps` heading. Its id is `pa
 
 **`open:` and `arrange:` make a fixture step a browser step.** The scenario's own browser
 performs it, in place of `run:`, and keeps the session it leaves. A step has one performer, so
-it states either `run:` or the browser keys, never both. A runbook step never states them:
+it states either `run:` or the browser keys, never both, and at most one `open:`. A runbook
+step never states them:
 bring-up runs before any scenario has a browser. See
 [fixture.md](fixture.md#signing-a-browser-in).
 
