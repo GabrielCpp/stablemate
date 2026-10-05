@@ -181,7 +181,9 @@ it onto whichever claim ends up last:
   **every child**;
 - a `fixture:` above every claim is ambient — state reached once is the state every later claim
   is read in — so it fans out to **all** the node's obligations. (This is the one asymmetry: an
-  observation is specific by nature, an arrangement is ambient by nature.)
+  observation is specific by nature, an arrangement is ambient by nature.) A screen's
+  `requires:` guard that links a fixture page is ambient one level up, to every claim on the
+  screen ([screen](node-types/screen.md));
 - a `capture:` binds like a check — it records what observing *that* claim pulled back out;
 - a `verify:`, `fixture:`, `run:` or `capture:` indented **under one child** of a claim list
   binds to that child alone, whatever the list's combiner. Nothing fans it out to the siblings.

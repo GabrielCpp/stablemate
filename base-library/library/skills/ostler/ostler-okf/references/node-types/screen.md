@@ -32,6 +32,14 @@ All three required keys are required **even when empty**. A screen that omits `r
 indistinguishable from one that is genuinely unconditional, and reachability cannot tell
 "nothing to satisfy" from "nobody wrote it down" — so state `none`.
 
+A `requires:` child that links a [`fixture`](fixture.md) page names how the guard is met. The
+compiler arranges that fixture, by name and with no arguments, for every claim on the screen
+and on each fragment it hosts, ahead of the claim's own `fixture:` bullets. A guard stated once
+here is then the state every scenario on the screen arrives in, and no claim has to repeat it.
+A guard in prose, or one linking any other page, stays a description and arranges nothing.
+Guards do not carry over a `leads-to:` hop: a guarded screen reached through another guarded
+screen links the fixture on both.
+
 Reachability starts at the **root**: the screen whose `route:` is the path of the surface's
 entry URL — the `entry-url:` of a [`runbook`](runbook.md) naming the surface, and failing that
 the one its [`server`](server.md) node states — or `/` when no contract states one. Every other screen has to be reached from it by `leads-to:` hops.
@@ -97,7 +105,8 @@ type: screen
 # Link Editor
 
 - route: /links/:id/edit
-- requires: signed-in editor session
+- requires:
+  - [Signed-in editor](../../fixtures/signed-in-editor.md) — only an editor reaches the editor
 - params: id — the short-link id being edited
 ```
 
