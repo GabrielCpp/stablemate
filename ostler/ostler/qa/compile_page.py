@@ -149,9 +149,11 @@ def _shared_shape(remaining: list[Obligation], gaps: list[Gap]) -> _SharedShape 
     if locators.on:
         return "interaction"
     if not page_locator_expr(locators):
-        gaps.extend(Gap(oid, "uncompilable-claim",
-                         "no addressable `### <component>` owns this `visible(...)` claim")
-                    for oid in sorted(o.id for o in remaining))
+        checks = ", ".join(f"`{name}(...)`" for name in sorted({check.name for o in remaining for check in o.checks})) or "its claims"
+        detail = (f"{checks} on `{remaining[0].node}` cannot be addressed: the node declares no locator. "
+                  "Put the claim under the `### <component>` whose locator shows it, or declare the node's own "
+                  "`selector:`, or its `role:` and `name:`")
+        gaps.extend(Gap(oid, "uncompilable-claim", detail) for oid in sorted(o.id for o in remaining))
         return None
     return "exclusive" if locators.exclusive_with else "plain"
 

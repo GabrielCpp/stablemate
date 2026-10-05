@@ -2573,6 +2573,18 @@ def test_a_when_guard_without_a_fixture_still_refuses_its_arm() -> None:
     assert "`fixture: none, because ...`" in detail
 
 
+def test_a_claim_on_a_node_with_no_locator_names_its_check_and_the_missing_locator() -> None:
+    """A screen's own claim reads like any other until the compiler looks for what to address, so the refusal names the check it could not place and what the node lacks."""
+    oid = "okf:policy-list:contract"
+    absent = {"call": "it", "name": "absent", "args": {"subject": "the error panel"}}
+    context = _navigation_context(_page_obligation(oid, _SCREEN, checks=[absent]), navigation=_arrival_navigation())
+    _source, gaps = compile_plan_gaps(context, story="demo-story")
+    [gap] = [g for g in gaps if g.obligation_id == oid]
+    assert gap.kind == "uncompilable-claim"
+    assert f"`absent(...)` on `{_SCREEN}` cannot be addressed: the node declares no locator" in gap.detail
+    assert "visible" not in gap.detail
+
+
 def test_the_refusal_names_the_guard_left_unarranged_and_not_its_fixtured_sibling() -> None:
     """A reader of the refusal goes to the guard it quotes, so quoting the arranged one sends them to a guard with nothing left to do."""
     context, does_oid = _fixtured_guard_context(None)
