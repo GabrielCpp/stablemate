@@ -6,16 +6,20 @@ from collections.abc import Callable
 
 from ostler_qa_documents import read_body, read_countable, read_document, verify_count, verify_json_path, verify_omits
 from ostler_qa_elements import (
+    read_console,
     read_control,
     read_focus,
     read_hidden,
     read_size,
+    read_title,
     read_visibility,
     verify_actionable,
+    verify_console,
     verify_emitted,
     verify_focusable,
     verify_hidden,
     verify_inert,
+    verify_title,
     verify_visible,
 )
 from ostler_qa_files import (
@@ -72,6 +76,8 @@ VERIFIERS: dict[str, Verifier] = {
     "inert": _verifier(read_control("inert"), verify_inert),
     "hidden": _verifier(read_hidden, verify_hidden),
     "focusable": _verifier(read_focus, verify_focusable),
+    "title": _verifier(read_title, verify_title),
+    "console": _verifier(read_console, verify_console),
     "persists": _verifier(read_pair("persists"), verify_persists),
     "emitted": _verifier(read_size, verify_emitted),
     "omits": _verifier(read_body, verify_omits),

@@ -1,7 +1,8 @@
-"""The verifiers that observe page elements: whether one is shown, takes an action, takes focus, and how many were emitted."""
+"""The verifiers that observe a page: whether an element is shown, takes an action, takes focus, how many were emitted, the title and the console."""
 
 from __future__ import annotations
 
+import re
 import time
 from collections.abc import Callable, Sized
 from dataclasses import dataclass
@@ -165,3 +166,71 @@ def verify_emitted(reading: SizeReading, args: Args) -> Verdict:
     if "count" in args:
         return verdict(reading.size == args["count"], reading.size, args["count"])
     return verdict(reading.size > 0, reading.size, "at least one")
+
+
+TITLE_WAIT_S = 3.0
+
+
+def _title_matches(title: str, args: Args) -> bool:
+    if "equals" in args:
+        return title == str_arg(args, "equals")
+    return re.search(str_arg(args, "matches"), title) is not None
+
+
+@dataclass(frozen=True)
+class TitleReading:
+    """The document title, once a screen that sets it late has had time to."""
+
+    title: str
+
+
+def read_title(observed: object, args: Args) -> TitleReading:
+    title = getattr(observed, "title", None)
+    if isinstance(observed, str) or not callable(title):
+        return TitleReading(title=str(observed))
+    deadline = time.monotonic() + TITLE_WAIT_S
+    while True:
+        read = str(title())
+        if _title_matches(read, args) or time.monotonic() >= deadline:
+            return TitleReading(title=read)
+        time.sleep(0.1)
+
+
+def verify_title(reading: TitleReading, args: Args) -> Verdict:
+    expected = {"equals": args["equals"]} if "equals" in args else {"matches": args["matches"]}
+    return verdict(_title_matches(reading.title, args), reading.title, expected)
+
+
+CONSOLE_LEVELS = {"warn": "warning"}
+
+
+@dataclass(frozen=True)
+class ConsoleReading:
+    """The console messages the claim names, by their text."""
+
+    texts: tuple[str, ...]
+
+
+def read_console(observed: object, args: Args) -> ConsoleReading:
+    if not isinstance(observed, list):
+        raise TypeError(f"`console` reads a list of console messages, not {type(observed).__name__}")
+    level = CONSOLE_LEVELS.get(str(args.get("level", "")), str(args.get("level", "")))
+    texts: list[str] = []
+    for entry in observed:
+        text = str(entry.get("text", "")) if isinstance(entry, dict) else str(entry)
+        kind = str(entry.get("type", "")) if isinstance(entry, dict) else ""
+        if level and kind != level:
+            continue
+        if "text" in args and str_arg(args, "text") not in text:
+            continue
+        if "matches" in args and re.search(str_arg(args, "matches"), text) is None:
+            continue
+        texts.append(text)
+    return ConsoleReading(texts=tuple(texts))
+
+
+def verify_console(reading: ConsoleReading, args: Args) -> Verdict:
+    found = len(reading.texts)
+    if "count" in args:
+        return verdict(found == args["count"], list(reading.texts), {"count": args["count"]})
+    return verdict(found > 0, list(reading.texts), "at least one")

@@ -8,6 +8,7 @@ import sys
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
+from urllib.parse import urlsplit
 
 import pytest
 
@@ -723,6 +724,59 @@ def test_a_window_excludes_the_exchanges_that_preceded_the_action(tmp_path: Path
     assert window.response_for("/api/widgets").status == 201
     with pytest.raises(LookupError):
         browser.response_for("/api/widgets")
+
+
+@pytest.mark.parametrize("path,url,matched", [
+    ("/v1/items/{id}", "http://127.0.0.1:8099/v1/items/42?x=1", True),
+    ("/v1/items/{id}", "http://127.0.0.1:8099/v1/items/42/tags", False),
+    ("/v1/items/{id}", "http://127.0.0.1:8099/v1/items/", False),
+    ("/v1/a.b", "http://127.0.0.1:8099/v1/aXb", False),
+])
+def test_a_request_path_names_each_varying_segment_with_braces(path: str, url: str, matched: bool) -> None:
+    assert bool(ostler_qa_browser.path_pattern(path).fullmatch(urlsplit(url).path)) is matched
+
+
+def test_a_window_reads_the_requests_and_console_after_the_action_only(tmp_path: Path) -> None:
+    """The window is the proxy view: what the page sent and logged after the claim's action."""
+    browser = _browser(tmp_path)
+    browser._on_request(_request("http://127.0.0.1:8099/v1/items/1", method="POST"))
+    browser._on_console(SimpleNamespace(type="log", text="before", location=None))
+    window = browser.window()
+    browser._on_request(_request("http://127.0.0.1:8099/v1/items/2", method="POST"))
+    browser._on_request(_request("http://127.0.0.1:8099/v1/items/2", method="GET"))
+    browser._on_console(SimpleNamespace(type="log", text="after", location=None))
+
+    sent = window.requests_to("/v1/items/{id}", method="post")
+    assert [entry["url"] for entry in sent] == ["http://127.0.0.1:8099/v1/items/2"]
+    assert len(window.requests_to("/v1/items/{id}")) == 2
+    assert [entry["text"] for entry in window.console()] == ["after"]
+
+
+def test_a_window_waits_for_the_requests_in_flight_before_it_counts(tmp_path: Path) -> None:
+    browser = _browser(tmp_path)
+    window = browser.window()
+    pending = _request("http://127.0.0.1:8099/v1/items/3", method="DELETE", failure="net::ERR_FAILED")
+    browser._on_request(pending)
+    ticks: list[int] = []
+
+    def wait_for_timeout(ms: int) -> None:
+        ticks.append(ms)
+        if len(ticks) == 5:
+            browser._on_failed_request(pending)
+
+    browser.page = SimpleNamespace(wait_for_timeout=wait_for_timeout)
+    assert [entry["method"] for entry in window.requests_to("/v1/items/{id}")] == ["DELETE"]
+    quiet_steps = ostler_qa_browser.QUIET_MS // ostler_qa_browser.QUIET_STEP_MS
+    assert len(ticks) == 4 + quiet_steps
+
+
+def test_a_page_that_never_goes_quiet_is_read_at_the_timeout(tmp_path: Path) -> None:
+    browser = _browser(tmp_path)
+    ticks: list[int] = []
+    browser.page = SimpleNamespace(wait_for_timeout=ticks.append)
+    browser._open = {1}
+    browser.window().console()
+    assert sum(ticks) == ostler_qa_browser.QUIET_TIMEOUT_MS
 
 
 def test_an_arranged_page_that_never_comes_back_says_where_it_stayed(tmp_path: Path) -> None:

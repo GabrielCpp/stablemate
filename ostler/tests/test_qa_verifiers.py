@@ -415,6 +415,58 @@ def test_hidden_waits_for_a_closing_element_to_leave() -> None:
     assert harness.VERIFIERS["hidden"](_Matches(True, leaves_after=2), {}).passed is True
 
 
+class _Titled:
+    def __init__(self, *titles: str) -> None:
+        self._titles = list(titles)
+
+    def title(self) -> str:
+        return self._titles.pop(0) if len(self._titles) > 1 else self._titles[0]
+
+
+def test_title_compares_exactly_or_by_pattern() -> None:
+    verify = harness.VERIFIERS["title"]
+    assert verify(_Titled("Policies · Acme"), {"equals": "Policies · Acme"}).passed is True
+    assert verify(_Titled("Policies · Acme"), {"matches": "^Policies"}).passed is True
+    assert verify("Policies · Acme", {"equals": "Policies · Acme"}).passed is True
+
+
+def test_title_waits_for_a_screen_that_sets_it_late() -> None:
+    assert harness.VERIFIERS["title"](_Titled("Loading", "Loading", "Policies"), {"equals": "Policies"}).passed
+
+
+def test_title_fails_on_the_wrong_title(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(load_harness_module("ostler_qa_elements"), "TITLE_WAIT_S", 0.0)
+    verdict = harness.VERIFIERS["title"](_Titled("Sign in"), {"equals": "Policies"})
+    assert verdict.passed is False
+    assert verdict.actual == "Sign in" and verdict.expected == {"equals": "Policies"}
+
+
+_LOGGED = [
+    {"type": "log", "text": "saved draft 7"},
+    {"type": "warning", "text": "deprecated prop"},
+    {"type": "error", "text": "failed to sync"},
+]
+
+
+def test_console_finds_a_message_by_text_level_and_pattern() -> None:
+    verify = harness.VERIFIERS["console"]
+    assert verify(_LOGGED, {"text": "saved"}).passed is True
+    assert verify(_LOGGED, {"level": "warn", "text": "deprecated"}).passed is True
+    assert verify(_LOGGED, {"level": "error", "text": "deprecated"}).passed is False
+    assert verify(_LOGGED, {"matches": "draft [0-9]+$", "count": 1}).passed is True
+
+
+def test_console_with_a_count_of_zero_claims_the_page_logged_none() -> None:
+    verify = harness.VERIFIERS["console"]
+    assert verify(_LOGGED, {"level": "error", "matches": ".", "count": 0}).passed is False
+    assert verify(_LOGGED[:2], {"level": "error", "matches": ".", "count": 0}).passed is True
+
+
+def test_console_refuses_anything_but_the_list_of_messages() -> None:
+    with pytest.raises(TypeError, match="console"):
+        harness.VERIFIERS["console"]("saved", {"text": "saved"})
+
+
 def test_exit_status_reads_exit_code_and_refuses_other_subjects() -> None:
     """The check observes the one thing a command's output never carries — how the process ended — and a plan that hands it a response or a document has mis-wired the claim."""
     verify = harness.VERIFIERS["exit_status"]

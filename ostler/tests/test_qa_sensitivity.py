@@ -60,6 +60,11 @@ _WITNESSED_CALLS = [
     'hidden(locator="#dialog")',
     'focusable(locator="#save")',
     'focusable(locator="#save", activates="Enter")',
+    'title(equals="Policies · Acme")',
+    'title(matches="^Policies")',
+    'console(text="saved")',
+    'console(level="error", matches="^failed", count=0)',
+    'console(level="warn", text="deprecated", count=1)',
 ]
 
 

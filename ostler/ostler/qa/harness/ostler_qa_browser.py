@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any
@@ -55,6 +56,10 @@ DEFAULT_VIEWPORT = {"width": 1440, "height": 900}
 BROWSER_ISSUED_URLS: tuple[str, ...] = ("/favicon.ico",)
 
 ARRANGE_TIMEOUT_MS = 30_000
+
+QUIET_MS = 500
+QUIET_STEP_MS = 100
+QUIET_TIMEOUT_MS = 5000
 
 ARRANGE_METHODS = {"fill": "fill", "click": "click", "press": "press", "select": "select_option"}
 
@@ -108,18 +113,41 @@ class RecordedResponse:
 
 
 
+def path_pattern(path: str) -> re.Pattern[str]:
+    """A request path as a pattern, with each `{name}` standing for one whole segment."""
+    parts = re.split(r"(\{[^{}/]+\})", path)
+    return re.compile("".join("[^/]+" if part.startswith("{") else re.escape(part) for part in parts if part))
+
+
 class ResponseWindow:
-    """The exchanges a page made after one point in a scenario — `Browser.window()`'s handle."""
+    """The exchanges and console messages a page made after one point in a scenario — `Browser.window()`'s handle."""
 
-    __slots__ = ("_browser", "_since")
+    __slots__ = ("_browser", "_console", "_requests", "_since")
 
-    def __init__(self, browser: Browser, since: int) -> None:
+    def __init__(self, browser: Browser, since: int, requests: int = 0, console: int = 0) -> None:
         self._browser = browser
         self._since = since
+        self._requests = requests
+        self._console = console
 
     def response_for(self, path: str, *, method: str | None = None) -> RecordedResponse:
         """The one response on *path* (and *method*, if given) inside this window."""
         return self._browser.response_for(path, method=method, since=self._since)
+
+    def requests_to(self, path: str, *, method: str | None = None) -> list[dict[str, Any]]:
+        """Every request on *path* (and *method*, if given) inside this window, once the page has gone quiet."""
+        self._browser.quiet()
+        pattern = path_pattern(path)
+        return [
+            entry for entry in self._browser.requests()[self._requests:]
+            if pattern.fullmatch(urlsplit(str(entry.get("url", ""))).path)
+            and (method is None or str(entry.get("method", "")).upper() == method.upper())
+        ]
+
+    def console(self) -> list[dict[str, Any]]:
+        """Every console message inside this window, once the page has gone quiet."""
+        self._browser.quiet()
+        return self._browser.console()[self._console:]
 
 
 class Browser:
@@ -157,6 +185,7 @@ class Browser:
         self._failed_requests: list[dict[str, Any]] = []
         self._responses: list[dict[str, Any]] = []
         self._by_request: dict[int, dict[str, Any]] = {}
+        self._open: set[int] = set()
         self._held: list[Any] = []
         self._body_budget = MAX_BODY_BUDGET_BYTES
         self._secrets = [value for value in secrets if value]
@@ -329,7 +358,20 @@ class Browser:
 
     def window(self) -> ResponseWindow:
         """An observation window opening here — what a claim about the next action may read."""
-        return ResponseWindow(self, len(self._responses))
+        return ResponseWindow(self, len(self._responses), len(self._requests), len(self._console))
+
+    def quiet(self, *, quiet_ms: int = QUIET_MS, timeout_ms: int = QUIET_TIMEOUT_MS) -> None:
+        """Wait until no request is in flight and none has started for *quiet_ms*, or *timeout_ms* has passed."""
+        if self.page is None:
+            return
+        waited, still, seen = 0, 0, len(self._requests)
+        while waited < timeout_ms and still < quiet_ms:
+            self.page.wait_for_timeout(QUIET_STEP_MS)
+            waited += QUIET_STEP_MS
+            if self._open or len(self._requests) != seen:
+                still, seen = 0, len(self._requests)
+            else:
+                still += QUIET_STEP_MS
 
     def response_for(
         self, path: str, *, method: str | None = None, since: int = 0
@@ -457,9 +499,11 @@ class Browser:
             "requestBody": self._payload(getattr(request, "post_data", None)),
         }
         self._remember(request, record)
+        self._open.add(id(request))
 
     def _on_failed_request(self, request: Any) -> None:
         """A request that never completed, with *why* it did not."""
+        self._open.discard(id(request))
         record = self._record(request)
         record["errorText"] = request.failure or ""
         record.setdefault("bodyOmitted", "request did not complete")
@@ -480,6 +524,7 @@ class Browser:
 
     def _on_request_finished(self, request: Any) -> None:
         """The body and the timings, taken at the one moment they are cheap and safe."""
+        self._open.discard(id(request))
         record = self._record(request)
         timing = getattr(request, "timing", None)
         if isinstance(timing, dict) and timing.get("responseEnd", -1) >= 0:

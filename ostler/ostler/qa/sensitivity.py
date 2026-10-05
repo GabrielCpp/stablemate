@@ -639,6 +639,32 @@ def _plan_hidden(_args: Mapping[str, checks.CheckValue]) -> _WitnessPlan:
     ])
 
 
+def _plan_title(args: Mapping[str, checks.CheckValue]) -> _WitnessPlan | _NoWitness:
+    title = str(args["equals"]) if "equals" in args else _matching(str(args["matches"]))
+    if title is None:
+        return _NoWitness(f"no title can be invented for /{args.get('matches')}/")
+    if "matches" in args and re.search(str(args["matches"]), _OTHER):
+        return _NoWitness(f"every title carries something /{args['matches']}/ matches")
+    return _WitnessPlan.of(title, [("the tab reads another title", _OTHER)])
+
+
+def _plan_console(args: Mapping[str, checks.CheckValue]) -> _WitnessPlan | _NoWitness:
+    text = str(args["text"]) if "text" in args else _matching(str(args["matches"]))
+    if text is None:
+        return _NoWitness(f"no console message can be invented for /{args.get('matches')}/")
+    level = str(args.get("level", "log"))
+    want = _int(args["count"]) if "count" in args else 1
+    logged = {"type": "warning" if level == "warn" else level, "text": text}
+    mutations: list[tuple[str, object]] = []
+    if "count" in args:
+        mutations.append(("one more was logged", [logged] * (want + 1)))
+    if want != 0:
+        mutations.append(("nothing was logged", []))
+    if "level" in args and want != 0:
+        mutations.append(("it was logged at another level", [{**logged, "type": "debug" if level != "debug" else "info"}] * want))
+    return _WitnessPlan.of([logged] * want, mutations)
+
+
 def _plan_persists(_args: Mapping[str, checks.CheckValue]) -> _WitnessPlan:
     return _WitnessPlan.of(("written", "written"), [
         ("nothing was re-read after the restart", ("written", None)),
@@ -709,6 +735,8 @@ _PLANNERS: dict[str, Callable[[Mapping[str, checks.CheckValue]], _WitnessPlan | 
     "focusable": _plan_focusable,
     "inert": _plan_inert,
     "hidden": _plan_hidden,
+    "title": _plan_title,
+    "console": _plan_console,
     "persists": _plan_persists,
     "emitted": _plan_emitted,
     "omits": _plan_omits,

@@ -230,6 +230,29 @@ CHECKS: tuple[CheckSpec, ...] = (
         observes="keyboard",
     ),
     CheckSpec(
+        name="title",
+        params=(CheckParam("equals", "str"), CheckParam("matches", "str", pattern=True)),
+        one_of=("equals", "matches"),
+        excludes="a screen that draws the right content under the wrong document title, which "
+                 "the browser tab, the history list and a screen reader announce and no "
+                 "assertion about an element on the page can see",
+        observes="title",
+    ),
+    CheckSpec(
+        name="console",
+        params=(
+            CheckParam("level", "str"),
+            CheckParam("text", "str"),
+            CheckParam("matches", "str", pattern=True),
+            CheckParam("count", "int"),
+        ),
+        one_of=("text", "matches"),
+        excludes="an action whose only trace is what the page logs, such as a warning the book "
+                 "says the app raises or a log line it says the app never writes, which no "
+                 "assertion about what is drawn can see",
+        observes="console",
+    ),
+    CheckSpec(
         name="persists",
         params=(CheckParam("subject", "str", required=True, identifies=True),),
         excludes="a write observed only through the same session that made it, which cannot "

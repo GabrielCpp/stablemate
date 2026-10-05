@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from typing import get_args as _get_args
 
@@ -263,6 +264,37 @@ def _exchange_operand(
     return f"{selection}.json()" if channel == "body" else selection
 
 
+REQUEST_EVENT = re.compile(r"(GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS) +(/[^\s?#]*)", re.IGNORECASE)
+
+
+def _request_operand(row: CallRow, obligation: Obligation, gaps: list[Gap]) -> str | None:
+    """The requests an `emitted(event="METHOD /path")` row counts inside the window, or `None` with the gap filed."""
+    event = row.text_arg("event").strip()
+    spelled = REQUEST_EVENT.fullmatch(event)
+    if spelled is None:
+        gaps.append(Gap(
+            obligation.id, "uncompilable-claim",
+            f"`emitted(event={event!r})` names no request this driver can count. The playwright driver "
+            "sees every request the page sends, so spell the event as the request: "
+            "`emitted(event=\"POST /v1/items/{id}\", count=1)`, with each `{name}` standing for one "
+            "path segment, and `count=0` for a request the page must not send"))
+        return None
+    method, path = spelled.groups()
+    return f"{WINDOW_VAR}.requests_to({python_literal(path)}, method={python_literal(method.upper())})"
+
+
+def _browser_operand(row: CallRow, obligation: Obligation, channel: str | None, gaps: list[Gap]) -> str | None:
+    """Where a page scenario is pointed for a row that reads the page's title, console or requests."""
+    if channel == "title":
+        return "qa.browser_page"
+    if channel == "console":
+        return f"{WINDOW_VAR}.console()"
+    return _request_operand(row, obligation, gaps)
+
+
+BROWSER_READS = frozenset({"title", "console"})
+
+
 def needs_window(lines: list[str]) -> bool:
     """Whether any emitted assertion reads the observation window, so it has to be opened."""
     return any(f"{WINDOW_VAR}." in line for line in lines)
@@ -283,8 +315,10 @@ def _page_assertions(
             gaps.append(Gap(obligation.id, refusal.kind, refusal.detail, refusal.owner))
             whole = False
             continue
-        if channel in {"response", "body"} and not out_of_band(row.name):
-            operand = _exchange_operand(row, obligation, exchange, channel, gaps)
+        browser_read = channel in BROWSER_READS or row.name == "emitted"
+        if browser_read or channel in {"response", "body"} and not out_of_band(row.name):
+            operand = (_browser_operand(row, obligation, channel, gaps) if browser_read
+                       else _exchange_operand(row, obligation, exchange, str(channel), gaps))
             if operand is None:
                 whole = False
                 continue

@@ -1700,7 +1700,10 @@ def test_a_subject_only_verb_on_a_page_obligation_is_a_gap_not_a_silent_drop() -
     [gap] = [g for g in result.gaps if g.obligation_id == oid and g.kind == "uncompilable-claim"]
     assert "unchanged" in gap.detail
     assert "not observable from the playwright driver" in gap.detail
-    assert "`visible`, `actionable` or `inert`" in gap.detail
+    assert "`visible`, `hidden`, `actionable` or `inert`" in gap.detail
+    assert "`title`" in gap.detail and "`console`" in gap.detail
+    assert 'emitted(event=\\"POST /v1/items/{id}\\", count=1)' not in gap.detail
+    assert 'emitted(event="POST /v1/items/{id}", count=1)' in gap.detail
 
 
 def test_an_absent_claim_on_a_page_is_a_repair_that_names_hidden() -> None:
@@ -1734,6 +1737,46 @@ def test_a_hidden_claim_on_a_page_compiles_to_a_page_check() -> None:
     source, gaps = compile_plan_gaps(context, story="demo-story")
     assert not [g for g in gaps if g.obligation_id == oid]
     assert source is not None and 'qa.verify("hidden"' in source
+
+
+def _browser_read(name: str, args: dict) -> tuple[str | None, list]:
+    node = f"{_SCREEN}#policy-table"
+    oid = f"okf:policy-list:policy-table:{name}:1"
+    context = _navigation_context(
+        _page_obligation(oid, node,
+                          locators={"role": ["table"], "name": ["Policies on file"]},
+                          checks=[{"call": "it", "name": name, "args": args}]),
+        navigation=_arrival_navigation(),
+    )
+    source, gaps = compile_plan_gaps(context, story="demo-story")
+    return source, [g for g in gaps if g.obligation_id == oid]
+
+
+def test_a_title_claim_reads_the_page_itself() -> None:
+    source, gaps = _browser_read("title", {"equals": "Policies"})
+    assert not gaps
+    assert source is not None and 'qa.verify("title", qa.browser_page, equals="Policies"' in source
+
+
+def test_a_console_claim_reads_what_the_page_logged_after_the_action() -> None:
+    source, gaps = _browser_read("console", {"level": "error", "matches": ".", "count": 0})
+    assert not gaps
+    assert source is not None and 'qa.verify("console", exchanges.console(), level="error"' in source
+    assert "exchanges = qa.window()" in source
+
+
+def test_an_emitted_request_reads_what_the_page_sent_after_the_action() -> None:
+    source, gaps = _browser_read("emitted", {"event": "post /v1/items/{id}", "count": 1})
+    assert not gaps
+    assert source is not None
+    assert 'qa.verify("emitted", exchanges.requests_to("/v1/items/{id}", method="POST"), ' in source
+
+
+def test_an_emitted_event_that_is_not_a_request_teaches_the_request_spelling() -> None:
+    source, gaps = _browser_read("emitted", {"event": "item.created", "count": 1})
+    [gap] = gaps
+    assert gap.kind == "uncompilable-claim"
+    assert 'emitted(event="POST /v1/items/{id}", count=1)' in gap.detail
 
 
 def test_a_body_observing_verb_on_a_page_obligation_names_driver_and_channel_differently() -> None:
@@ -1771,7 +1814,7 @@ def test_a_driver_with_no_declared_channels_gaps_every_claim_and_crashes_on_none
 
 def test_playwright_and_maestro_declare_disjoint_but_overlapping_capabilities() -> None:
     """Maestro is nameable from the compiler via its own capability declaration — it declares `page` and `subject`, not the HTTP channels Playwright can see, and not the same page/HTTP mix Playwright declares either."""
-    assert PLAYWRIGHT.observes == frozenset({"page", "response", "body", "keyboard"})
+    assert PLAYWRIGHT.observes == frozenset({"page", "response", "body", "keyboard", "title", "console"})
     assert MAESTRO.observes == frozenset({"page", "subject"})
     assert PYTHON.observes == frozenset({"response", "body", "subject"})
 
