@@ -5419,3 +5419,39 @@ def test_a_name_that_describes_the_label_is_refused_with_the_reason() -> None:
     assert "carries a markdown link" in details[0]
     assert "State the literal name" in details[0]
     assert source is None or "see [form]" not in source
+
+
+def _prose_click() -> dict:
+    return {"call": 'click(locator="#insert-menu")', "name": "click", "args": {"locator": "#insert-menu"},
+            "locates": {"locator": {"node": f"{_SCREEN}#insert-menu",
+                                    "locators": {"role": ["button"], "name": ['the trigger named "Insert"']}}}}
+
+
+def test_a_trigger_whose_arrangement_is_refused_claims_nothing() -> None:
+    """The refused act is the gap; the click after it would run in a world nobody arranged."""
+    interaction_oid = "okf:new-policy:submit-new-policy:does:1"
+    context = _click_context("Create policy")
+    context["obligations"][1]["actsDeclared"] = [_prose_click()]
+    source, gaps = compile_plan_gaps(context, story="demo-story")
+    assert _gap_kinds(gaps, interaction_oid) == ["uncompilable-claim"]
+    assert source is None or interaction_oid not in _covers(source)
+
+
+def test_an_arrival_withdraws_only_the_claims_a_refused_act_arranged() -> None:
+    button_oid = "okf:new-policy:create-policy-button:visible:1"
+    table_oid = "okf:new-policy:policy-table:visible:1"
+    context = _navigation_context(
+        _page_obligation(button_oid, f"{_SCREEN}#create-policy-button",
+                          locators={"role": ["button"], "name": ["Create policy"]},
+                          checks=[_visible("button:Create policy")], acts=[_prose_click()]),
+        _page_obligation(table_oid, f"{_SCREEN}#policy-table",
+                          locators={"role": ["table"], "name": ["Policies on file"]},
+                          checks=[_visible("table:Policies on file")]),
+        navigation=_arrival_navigation(),
+    )
+    source, gaps = compile_plan_gaps(context, story="demo-story")
+    assert _gap_kinds(gaps, button_oid) == ["uncompilable-claim"]
+    assert _gap_kinds(gaps, table_oid) == []
+    assert source is not None
+    assert table_oid in _covers(source)
+    assert button_oid not in _covers(source)

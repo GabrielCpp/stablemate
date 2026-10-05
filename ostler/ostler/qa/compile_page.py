@@ -321,12 +321,17 @@ def _arrival_scenario(
     arranged = arrangement_of(obligations).rows
     body = _arrive(screen, arranged, gaps, ids)
     body.extend(vet_calls([screen.screen], screen.book.screen_routes, ids, gaps, screen.book.fragment_hosts))
+    refused: set[str] = set()
     for node_id in sorted(arrival.nodes):
         node_acts = screen.book.acts_by_node.get(node_id, [])
-        if node_acts:
-            body.extend(perform_acts(node_acts, acts_mod.WEB, gaps, ids).lines or [])
+        if not node_acts:
+            continue
+        performed = perform_acts(node_acts, acts_mod.WEB, gaps, sorted(o.id for o in arrival.nodes[node_id]))
+        if performed.gap_filed:
+            refused.add(node_id)
+        body.extend(performed.lines or [])
     observed = page_observations(
-        [o for _node_id, obs in sorted(arrival.nodes.items()) for o in obs], gaps)
+        [o for node_id, obs in sorted(arrival.nodes.items()) if node_id not in refused for o in obs], gaps)
     if not observed.covered:
         return []
     if needs_window(observed.lines):
@@ -431,7 +436,10 @@ def _performed_trigger(
 ) -> _PerformedTrigger | None:
     """Perform *arm*'s acts and click its `on:` control, or `None` with the gap filed when no scenario can."""
     node_acts = book.acts_by_node.get(node_id, [])
-    performed = perform_acts(node_acts, acts_mod.WEB, gaps, ids).lines if node_acts else None
+    acted = perform_acts(node_acts, acts_mod.WEB, gaps, ids) if node_acts else None
+    if acted is not None and acted.gap_filed:
+        return None
+    performed = acted.lines if acted is not None else None
     unarranged = _unarranged_guards(arm, book.guards_by_node.get(node_id, []),
                                     performed is not None and node_id not in book.acts_refused)
     on_locators = book.locators_by_node.get(arm.on_node_id, NO_LOCATORS)
