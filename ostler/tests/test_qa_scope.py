@@ -7,7 +7,7 @@ import subprocess
 from pathlib import Path
 
 
-from ostler.qa.context import CONTEXT_HEADING, build_context, validate_context, write_context
+from ostler.qa.context import CONTEXT_HEADING, book_context, build_context, validate_context, write_context
 from ostler.qa.plan import load_plan, validate_v2
 
 
@@ -997,6 +997,24 @@ def test_a_journey_over_a_required_contract_is_itself_required(tmp_path: Path):
         "docs/features/demo/flows/reads-widget.md": True,
         "docs/features/demo/flows/opens-screen.md": False,
     }
+
+
+def test_a_whole_book_owes_a_journey_whose_steps_link_no_contract(tmp_path: Path):
+    _book(tmp_path)
+    (tmp_path / "docs/features/demo/flows").mkdir()
+    (tmp_path / "docs/features/demo/flows/presses-keys.md").write_text(
+        "---\ntype: flow\nslug: presses-keys\ntitle: Presses keys\n---\n# Presses keys\n\n"
+        "- start: the operator is on the demo screen\n"
+        "- steps:\n"
+        "  1. they press the arrow keys\n"
+        "- end: the next tab is active\n",
+        encoding="utf-8",
+    )
+
+    packet = book_context(tmp_path, source_roots={"demo": ["app"]})
+
+    journeys = {item["node"]: item["required"] for item in packet["obligations"] if item.get("kind") == "journey"}
+    assert journeys == {"docs/features/demo/flows/presses-keys.md": True}
 
 
 def test_a_journey_is_required_of_the_story_that_walked_it_not_of_its_neighbour(tmp_path: Path):

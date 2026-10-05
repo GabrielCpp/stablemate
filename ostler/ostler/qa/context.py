@@ -1649,7 +1649,9 @@ def _journey_is_required(
     required_contracts: set[str],
     end_edges: set[tuple[str, str]],
 ) -> bool:
-    """Whether this flow is owed live evidence, or is only context."""
+    """Whether this flow is owed live evidence, or is only context. A whole book owes every one of its flows."""
+    if any(reason.kind == ReasonKind.BOOK_CLAIM for reason in direct_reasons.get(node_id, [])):
+        return True
     reasons = [
         reason
         for reason in direct_reasons.get(node_id, [])
