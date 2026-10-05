@@ -819,6 +819,12 @@ def test_step_error_keeps_the_tail_of_a_long_stream() -> None:
     assert "exit 2" in err  # never a blank brief, even with silent streams
 
 
+def test_step_error_keeps_the_reason_a_recipe_echoed_to_stdout() -> None:
+    err = stack._step_error(2, "  X Port 8080 is held by a non-Docker process.\n", "make: *** [Makefile:168: up] Error 1\n")
+    assert "Port 8080 is held" in err
+    assert "Error 1" in err
+
+
 def test_a_manifest_step_is_a_shell_recipe_not_an_argv_list() -> None:
     """Manifest commands run through a shell — really, not via a mock.
 

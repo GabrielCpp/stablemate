@@ -735,13 +735,13 @@ def _step_error(code: int, stdout: str | None, stderr: str | None) -> str:
 
     The *tail* of the stream, not the head: a build that scrolls 40 lines of progress
     before the error puts the error last, and a head-truncated brief hands the repairer
-    the progress and cuts the error. stderr when it says anything, else stdout — make
-    and docker put real failures on stdout often enough that "exit 2" with an empty
-    brief was what the setup fixer got for a step whose output named the fix.
+    the progress and cuts the error. Both streams' tails, stdout first: a Makefile
+    recipe echoes why it stopped to stdout, and make then puts only its own
+    "Error 1" line on stderr, so stderr alone hides the reason the recipe gave.
     """
-    detail = (stderr or "").strip()[-500:] or (stdout or "").strip()[-500:]
-    if detail:
-        return f"exit {code}: {detail}"
+    tails = [tail for stream in (stdout, stderr) if (tail := (stream or "").strip()[-500:])]
+    if tails:
+        return f"exit {code}: {' | '.join(tails)}"
     return f"exit {code} with no output on either stream"
 
 
