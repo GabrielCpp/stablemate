@@ -170,10 +170,10 @@ def _obligation(oid: str, fixture: str) -> dict:
     }
 
 
-def _gaps(fixture: str, browser_fixtures: list[str]) -> list[Gap]:
+def _gaps(fixture: str, browser_fixtures: list[str], driver: str = "http", node_type: str = "endpoint") -> list[Gap]:
     oid = "okf:docs/features/demo/api.md#list-projects:does:1"
-    context = {"story": {"slug": "demo-story"}, "obligations": [_obligation(oid, fixture)],
-               "navigation": {"": {"driver": "http"}}, "browserFixtures": browser_fixtures}
+    context = {"story": {"slug": "demo-story"}, "obligations": [{**_obligation(oid, fixture), "nodeType": node_type}],
+               "navigation": {"": {"driver": driver}}, "browserFixtures": browser_fixtures}
     return [gap for gap in compile_plan_gaps(context, story="demo-story").gaps if gap.obligation_id == oid]
 
 
@@ -182,6 +182,19 @@ def test_a_browser_sign_in_on_a_claim_no_browser_drives_is_a_compile_gap() -> No
 
     assert gap.kind == "browser-fixture-off-browser"
     assert "signed-in-editor signs a browser in" in gap.detail
+
+
+def test_a_browser_sign_in_on_a_component_of_a_web_surface_is_no_gap() -> None:
+    gaps = _gaps("signed-in-editor", ["signed-in-editor"], driver="web", node_type="component")
+
+    assert "browser-fixture-off-browser" not in {gap.kind for gap in gaps}
+
+
+def test_a_browser_sign_in_on_an_endpoint_of_a_web_surface_is_a_compile_gap() -> None:
+    [gap] = _gaps("signed-in-editor", ["signed-in-editor"], driver="web")
+
+    assert gap.kind == "browser-fixture-off-browser"
+    assert "performed by http" in gap.detail
 
 
 def test_a_fixture_that_runs_commands_arranges_a_claim_no_browser_drives() -> None:

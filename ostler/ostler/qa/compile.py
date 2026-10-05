@@ -257,18 +257,28 @@ class ObligationLanes:
     no_verify: list[Obligation] = field(default_factory=list[Obligation])
 
 
+def _driver(obligation: Obligation, navigation: dict[str, SurfaceNavigation]) -> str | None:
+    """The driver that performs *obligation*: a CLI page's own, else its surface's."""
+    if obligation.on_cli_page and obligation.node_type in OBSERVED_TYPES:
+        return "cli"
+    return surface_row(navigation, obligation.surface).driver
+
+
 def _signs_in_off_browser(
     obligation: Obligation, navigation: dict[str, SurfaceNavigation], browser_fixtures: frozenset[str],
 ) -> Gap | None:
-    """The gap for a claim that arranges a browser sign-in on a surface no browser drives."""
-    driver = surface_row(navigation, obligation.surface).driver
+    """The gap for a claim that arranges a browser sign-in and is performed by something other than a browser."""
     signing = sorted({row.name for row in obligation.fixtures if row.name in browser_fixtures})
-    if driver == "playwright" or not signing:
+    if not signing:
         return None
+    target = dispatch_target(obligation.node_type, _driver(obligation, navigation))
+    if target == "playwright":
+        return None
+    runner = target if isinstance(target, str) else "no runner"
     return Gap(obligation.id, "browser-fixture-off-browser", (
-        f"fixture {', '.join(signing)} signs a browser in, and surface {obligation.surface!r} is "
-        f"driven by {driver or 'no driver'}, which opens no browser: arrange this claim with a "
-        "fixture whose steps all `run:`, or state it on a screen of a browser surface"))
+        f"fixture {', '.join(signing)} signs a browser in, and this {obligation.node_type} claim on "
+        f"surface {obligation.surface!r} is performed by {runner}, which opens no browser: arrange "
+        "this claim with a fixture whose steps all `run:`, or state it on a screen of a browser surface"))
 
 
 def _dispatch(
@@ -289,11 +299,7 @@ def _dispatch(
         if obligation.node_type == "flow":
             lanes.flow.append(obligation)
             continue
-        driver = (
-            "cli" if obligation.on_cli_page and obligation.node_type in OBSERVED_TYPES
-            else surface_row(navigation, obligation.surface).driver
-        )
-        target = dispatch_target(obligation.node_type, driver)
+        target = dispatch_target(obligation.node_type, _driver(obligation, navigation))
         if isinstance(target, ScenarioRefusal):
             gaps.append(Gap(obligation.id, target.kind, target.detail, target.owner))
             continue
