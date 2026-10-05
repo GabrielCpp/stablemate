@@ -145,6 +145,33 @@ def release_stack(logger: logging.Logger, owned_pgids: tuple[str, ...]) -> None:
         _ = stack.teardown_app(pgid, "", "", logger=logger)
 
 
+def _group_running(pgid: int) -> bool:
+    """Whether a process other than a zombie is left in the process group *pgid*."""
+    for stat in Path("/proc").glob("[0-9]*/stat"):
+        try:
+            fields = stat.read_text(encoding="ascii", errors="replace").rpartition(")")[2].split()
+        except OSError:
+            continue
+        if len(fields) > 2 and fields[2] == str(pgid) and fields[0] != "Z":
+            return True
+    return False
+
+
+def stack_stopped(owned_pgids: tuple[str, ...]) -> str:
+    """Why the app stopped serving: a process group bring-up launched and left serving has no process left, or nothing when each still runs.
+
+    Bring-up owns a group only when its launch command was still running once the app answered,
+    so a group that empties afterwards is a server that exited, never a bring-up that handed off.
+    """
+    for pgid in owned_pgids:
+        if pgid.isdigit() and not _group_running(int(pgid)):
+            return (f"the server the stack's bring-up launched (process group {pgid}) exited during the run, "
+                    "so the app stopped serving and no later scenario could reach it; the runbook step that "
+                    "launches it must start a server that keeps serving until the run stops it, with no "
+                    "time limit of its own")
+    return ""
+
+
 def bring_up_failure(step: str, error: str, source: str) -> str:
     """Why bring-up failed, and which side repairs it: the runbook, or the app when it serves no health route."""
     failed = f"Stack bring-up failed at step '{step}'" + (f": {error}" if error else "")
@@ -220,4 +247,4 @@ def run_qa_plan(
     return QaPlanRun(status=status, notes=notes, ostler=outcome.data)
 
 
-__all__ = ["ensure_stack", "run_qa_plan"]
+__all__ = ["ensure_stack", "run_qa_plan", "stack_stopped"]

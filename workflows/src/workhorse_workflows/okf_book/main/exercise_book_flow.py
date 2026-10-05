@@ -4,6 +4,7 @@ from __future__ import annotations
 from workhorse.pyflow import Continue, Done
 from workhorse_workflows.kit.qa.runner import release_stack
 from workhorse_workflows.okf_book.shared.book_run import (
+    StackReadiness,
     bring_up,
     compile_scenarios,
     failed_run,
@@ -44,7 +45,8 @@ class ExerciseBook(BookFlow):
     ) -> Done:
         """Run every scenario against the app, on a copy of it when it serves nothing, then stop what bring-up started."""
         try:
-            exercised = with_app_logs(run_plan(self.root, self.records_dir / SPEC_DIR / self.service, gaps, serving), app_logs)
+            stack = StackReadiness(up=True, serving=serving, notes="", owned=owned, app_logs=app_logs)
+            exercised = with_app_logs(run_plan(self.root, self.records_dir / SPEC_DIR / self.service, gaps, stack), app_logs)
         finally:
             release_stack(self.logger, owned)
         return Done(exercised).because("the scenarios ran")

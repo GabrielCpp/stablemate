@@ -13,6 +13,7 @@ from workhorse_workflows.kit.qa import runner
 from workhorse_workflows.okf_book.shared import book_run, scenarios
 from workhorse_workflows.okf_book.shared.book_run import (
     ExerciseResult,
+    StackReadiness,
     bring_up,
     compile_scenarios,
     release,
@@ -32,6 +33,7 @@ PREVIEW = (
     "- selector: local-only\n- local-only: true\n"
 )
 WEB_STACK = Path("docs/features/web-app/ops/web-app-stack.md")
+SERVING = StackReadiness(up=True, serving=True, notes="")
 
 
 def _repo_with_web_app_on_preview(repo: Path) -> Path:
@@ -202,7 +204,7 @@ def test_a_check_the_app_answered_with_a_server_error_shows_the_end_of_its_log_w
     _ran(monkeypatch, "POST http://localhost:8080/widgets returned 500: internal error")
     log = _app_log(tmp_path)
 
-    result = with_app_logs(run_plan(tmp_path, tmp_path / "spec", (), True), (log,))
+    result = with_app_logs(run_plan(tmp_path, tmp_path / "spec", (), SERVING), (log,))
 
     assert f"the app answered a server error, and its log {log} ends with:" in result.lines
     assert "  error cloning the default widget: relation widgets_default does not exist" in result.lines
@@ -212,7 +214,7 @@ def test_a_check_the_app_answered_with_a_server_error_shows_the_end_of_its_log_w
 def test_a_check_that_failed_without_a_server_error_leaves_the_log_out(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     _ran(monkeypatch, "GET http://localhost:8080/widgets returned 404: not found")
 
-    result = with_app_logs(run_plan(tmp_path, tmp_path / "spec", (), True), (_app_log(tmp_path),))
+    result = with_app_logs(run_plan(tmp_path, tmp_path / "spec", (), SERVING), (_app_log(tmp_path),))
 
     assert not any("its log" in line for line in result.lines)
 
@@ -226,7 +228,7 @@ def _probed(monkeypatch: pytest.MonkeyPatch, probe_cause: Cause | None, gap: str
     def _plan_scenarios(*_args: object) -> tuple[tuple[Scenario, ...], tuple[str, ...]]:
         return plan, ()
 
-    def _run_scenarios(_root: Path, _spec: Path, only: tuple[str, ...], _lap: Path) -> RunSummary:
+    def _run_scenarios(_root: Path, _spec: Path, only: tuple[str, ...], _lap: Path, _check: object = None) -> RunSummary:
         asked.append(tuple(only))
         if probe_cause is None or tuple(only) != ("probe-signed-in-editor",):
             return RunSummary(status="passed", scenarios={name: ScenarioOutcome(status="passed") for name in only})
@@ -242,7 +244,7 @@ def _probed(monkeypatch: pytest.MonkeyPatch, probe_cause: Cause | None, gap: str
 def test_a_precondition_whose_probe_is_refused_stops_the_run_before_the_book(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     asked = _probed(monkeypatch, Cause.ARRANGEMENT)
 
-    result = run_plan(tmp_path, tmp_path / "spec", (), True)
+    result = run_plan(tmp_path, tmp_path / "spec", (), SERVING)
 
     assert asked == [("probe-signed-in-editor",)]
     assert result.lines[0] == "problem: a precondition probe failed, so the book did not run"
@@ -255,14 +257,14 @@ def test_the_probes_and_the_book_run_in_one_lap_that_ends_with_the_run(monkeypat
     laps: list[Path] = []
     probing = book_run.run_scenarios
 
-    def _run_scenarios(root: Path, spec: Path, only: tuple[str, ...], lap: Path) -> RunSummary:
+    def _run_scenarios(root: Path, spec: Path, only: tuple[str, ...], lap: Path, _check: object = None) -> RunSummary:
         laps.append(lap)
         _ = (lap / "arranged.json").write_text("{}", encoding="utf-8")
         return probing(root, spec, only, lap)
 
     monkeypatch.setattr(book_run, "run_scenarios", _run_scenarios)
 
-    _ = run_plan(tmp_path, tmp_path / "spec", (), True)
+    _ = run_plan(tmp_path, tmp_path / "spec", (), SERVING)
 
     assert len(laps) == 2
     assert laps[0] == laps[1]
@@ -272,7 +274,7 @@ def test_the_probes_and_the_book_run_in_one_lap_that_ends_with_the_run(monkeypat
 def test_probes_that_pass_let_the_book_run_without_them(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     asked = _probed(monkeypatch, None)
 
-    result = run_plan(tmp_path, tmp_path / "spec", (), True)
+    result = run_plan(tmp_path, tmp_path / "spec", (), SERVING)
 
     assert asked == [("probe-signed-in-editor",), ("docs-a-from-the-book",)]
     assert result.passed
@@ -281,7 +283,7 @@ def test_probes_that_pass_let_the_book_run_without_them(monkeypatch: pytest.Monk
 def test_a_probe_the_app_fails_leaves_the_book_to_run(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     asked = _probed(monkeypatch, Cause.APP)
 
-    _ = run_plan(tmp_path, tmp_path / "spec", (), True)
+    _ = run_plan(tmp_path, tmp_path / "spec", (), SERVING)
 
     assert asked[-1] == ("docs-a-from-the-book",)
 
@@ -289,7 +291,7 @@ def test_a_probe_the_app_fails_leaves_the_book_to_run(monkeypatch: pytest.Monkey
 def test_a_probe_that_finds_a_capability_absent_leaves_the_book_to_run(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     asked = _probed(monkeypatch, Cause.ENVIRONMENT, gap="payment provider")
 
-    _ = run_plan(tmp_path, tmp_path / "spec", (), True)
+    _ = run_plan(tmp_path, tmp_path / "spec", (), SERVING)
 
     assert asked[-1] == ("docs-a-from-the-book",)
 
@@ -305,7 +307,7 @@ def test_a_gapped_claim_reads_as_the_capability_the_stack_lacks(monkeypatch: pyt
 
     monkeypatch.setattr(book_run, "run_scenarios", _run_scenarios)
 
-    result = run_plan(tmp_path, tmp_path / "spec", (), True, only=("charge",))
+    result = run_plan(tmp_path, tmp_path / "spec", (), SERVING, only=("charge",))
 
     assert f"claim {claim}: gapped: payment provider absent" in result.lines
     assert not result.passed
@@ -314,7 +316,7 @@ def test_a_gapped_claim_reads_as_the_capability_the_stack_lacks(monkeypatch: pyt
 def test_a_run_of_named_scenarios_probes_nothing(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     asked = _probed(monkeypatch, Cause.ARRANGEMENT)
 
-    _ = run_plan(tmp_path, tmp_path / "spec", (), True, only=("docs-a-from-the-book",))
+    _ = run_plan(tmp_path, tmp_path / "spec", (), SERVING, only=("docs-a-from-the-book",))
 
     assert asked == [("docs-a-from-the-book",)]
 

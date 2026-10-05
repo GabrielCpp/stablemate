@@ -56,7 +56,7 @@ def exercise_book(kept: KeptStack, root: Path, service: str, spec: Path, targets
     try:
         if not stack.up:
             return stack_down_result(outcome.gaps, stack.notes)
-        return with_app_logs(run_plan(root, spec, outcome.gaps, stack.serving, outcome.only), stack.app_logs)
+        return with_app_logs(run_plan(root, spec, outcome.gaps, stack, outcome.only), stack.app_logs)
     finally:
         release(kept.logger, stack)
 

@@ -16,7 +16,7 @@ from ostler.qa.runbook import select_stack
 from pydantic import BaseModel, ConfigDict
 from workhorse.runner.redact import REDACTED, SecretRedactor
 from workhorse_workflows.kit import find_docs_root
-from workhorse_workflows.kit.qa.runner import ensure_stack, release_stack
+from workhorse_workflows.kit.qa.runner import ensure_stack, release_stack, stack_stopped
 from workhorse_workflows.okf_book.shared.entries import book_dir
 from workhorse_workflows.okf_book.shared.book_compilation import gap_page
 from workhorse_workflows.okf_book.shared.page_check import PageProblem
@@ -69,8 +69,8 @@ def _masked(line: str) -> str:
     return masked[:LOG_LINE_CHARS]
 
 
-def app_log_lines(app_logs: Sequence[str]) -> list[str]:
-    """The end of each log the launched app wrote, with credentials masked, which says why the app answered a server error."""
+def app_log_lines(app_logs: Sequence[str], heading: str = "the app answered a server error") -> list[str]:
+    """The end of each log the launched app wrote, with credentials masked, under *heading*, which says what the log explains."""
     lines: list[str] = []
     for log in app_logs:
         try:
@@ -79,16 +79,16 @@ def app_log_lines(app_logs: Sequence[str]) -> list[str]:
             continue
         tail = text.splitlines()[-LOG_TAIL_LINES:]
         if tail:
-            lines.append(f"the app answered a server error, and its log {log} ends with:")
+            lines.append(f"{heading}, and its log {log} ends with:")
             lines.extend(f"  {_masked(line)}" for line in tail)
     return lines
 
 
-def _run_in_copy(root: Path, spec: Path, only: Sequence[str], lap: Path) -> RunSummary:
+def _run_in_copy(root: Path, spec: Path, only: Sequence[str], lap: Path, stack_check: Callable[[], str] | None = None) -> RunSummary:
     with tempfile.TemporaryDirectory(prefix="okf-exercise-") as tmp:
         app = Path(tmp) / "app"
         _ = shutil.copytree(root, app, ignore=COPY_IGNORED)
-        return run_scenarios(app, spec, only, lap)
+        return run_scenarios(app, spec, only, lap, stack_check)
 
 
 @dataclass(frozen=True, slots=True)
@@ -120,6 +120,12 @@ def failed_run(gaps: tuple[str, ...], problem: str) -> ExerciseResult:
 def stack_down_result(gaps: tuple[str, ...], notes: str) -> ExerciseResult:
     """The run that stopped because the app's stack could not come up."""
     return ExerciseResult(lines=(*gaps, f"problem: the app's stack cannot come up: {notes}"), stack_down=True)
+
+
+def stack_stopped_result(gaps: tuple[str, ...], reason: str, app_logs: Sequence[str]) -> ExerciseResult:
+    """The run that stopped because the app stopped serving partway through, which measured nothing of the book after that."""
+    logs = tuple(f"problem: {line}" for line in app_log_lines(app_logs, "the app stopped serving"))
+    return ExerciseResult(lines=(*gaps, f"problem: the app's stack stopped serving: {reason}", *logs), stack_down=True)
 
 
 def compile_scenarios(root: Path, service: str, spec: Path, targets: Sequence[str] = ()) -> CompileOutcome:
@@ -166,8 +172,11 @@ def release(logger: logging.Logger, stack: StackReadiness) -> None:
     release_stack(logger, stack.owned)
 
 
-def run_plan(root: Path, spec: Path, gaps: tuple[str, ...], serving: bool, only: Sequence[str] = ()) -> ExerciseResult:
+def run_plan(root: Path, spec: Path, gaps: tuple[str, ...], stack: StackReadiness, only: Sequence[str] = ()) -> ExerciseResult:
     """Run the named compiled scenarios, every one when none is named, on a copy of the app when it serves nothing.
+
+    The run stops at the first scenario after a server the stack's bring-up launched exited, since
+    every later scenario would fail on the app's absence, and the result sends the runbook to repair.
 
     A run of every scenario probes each precondition first. A probe that fails on what its fixture
     arranges, or on the environment, stops the run before the book, since every claim that fixture
@@ -175,9 +184,11 @@ def run_plan(root: Path, spec: Path, gaps: tuple[str, ...], serving: bool, only:
     the book's run gaps the claims that need it and runs the rest. The probes and the book are one
     lap, so each precondition is built once across both.
     """
-    runner = run_scenarios if serving else _run_in_copy
+    runner = run_scenarios if stack.serving else _run_in_copy
     with tempfile.TemporaryDirectory(prefix="okf-lap-") as lap:
-        return _run_lap(root, spec, gaps, only, lambda names: runner(root, spec, names, Path(lap)))
+        result = _run_lap(root, spec, gaps, only, lambda names: runner(root, spec, names, Path(lap), lambda: stack_stopped(stack.owned)))
+    stopped = stack_stopped(stack.owned)
+    return stack_stopped_result(gaps, stopped, stack.app_logs) if stopped else result
 
 
 def _run_lap(root: Path, spec: Path, gaps: tuple[str, ...], only: Sequence[str], run: Callable[[Sequence[str]], RunSummary]) -> ExerciseResult:

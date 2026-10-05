@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import hashlib
 import re
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from pathlib import Path, PurePosixPath
 
 from pydantic import BaseModel, ConfigDict, Field, TypeAdapter
@@ -302,12 +302,14 @@ def select_scenarios(scenarios: Sequence[Scenario], arranging: Mapping[str, Sequ
     return Selection(scenarios=tuple(chosen), unmatched=tuple(unmatched))
 
 
-def run_scenarios(root: Path, spec: Path, only: Iterable[str], lap: Path | None = None) -> RunSummary:
-    """Run the named scenarios of the compiled plan, all of them when none is named, building each precondition once in the lap *lap* records."""
+def run_scenarios(
+    root: Path, spec: Path, only: Iterable[str], lap: Path | None = None, stack_check: Callable[[], str] | None = None,
+) -> RunSummary:
+    """Run the named scenarios of the compiled plan, all of them when none is named, building each precondition once in the lap *lap* records, until *stack_check* says the app stopped serving."""
     document, problems = loaded_plan(root, spec)
     if document is None:
         return RunSummary(status="invalid", problems=problems)
-    _status, _message, summary = run_plan(document, root=root, only=list(only) or None, lap=lap)
+    _status, _message, summary = run_plan(document, root=root, only=list(only) or None, lap=lap, stack_check=stack_check)
     return RunSummary.model_validate(summary)
 
 
