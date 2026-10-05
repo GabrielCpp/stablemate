@@ -2222,6 +2222,26 @@ def test_a_named_non_press_trigger_is_the_harness_missing_action() -> None:
     assert "needs-trigger-action" in HARNESS_LIMIT_GAPS
 
 
+def test_a_load_trigger_is_performed_by_arriving_at_the_screen() -> None:
+    """A redirect that fires as the page loads needs no click, and its `on:` is often a state with no locator of its own."""
+    interaction = f"{_SCREEN}#redirect-if-signed-in"
+    interaction_oid = "okf:new-policy:redirect-if-signed-in:does:1"
+    context = _navigation_context(
+        _page_obligation(interaction_oid, interaction,
+                          locators={"on": ["[checking-state](#checking-state)"],
+                                    "trigger": ["load"],
+                                    "does": ["shows the policy table"]},
+                          checks=[_located("#policy-table", f"{_SCREEN}#policy-table",
+                                           {"role": ["table"], "name": ["Policies on file"]})]),
+        navigation=_arrival_navigation(),
+    )
+    source, gaps = compile_plan_gaps(context, story="demo-story")
+    assert source is not None
+    assert [g for g in gaps if g.obligation_id == interaction_oid] == []
+    assert interaction_oid in _covers(source)
+    assert ".click()" not in source
+
+
 def test_a_prose_trigger_names_the_words_a_trigger_may_be() -> None:
     button = f"{_SCREEN}#create-policy-button"
     interaction = f"{_SCREEN}#submit-new-policy"

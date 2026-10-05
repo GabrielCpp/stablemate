@@ -352,6 +352,8 @@ _CLICK_TRIGGER = "click"
 
 NON_PRESS_TRIGGERS = frozenset({"fill", "press", "paste", "drag", "drop", "load", "navigate", "timer"})
 
+ARRIVAL_TRIGGERS = frozenset({"load", "navigate"})
+
 
 @dataclass(frozen=True)
 class _InteractionArm:
@@ -376,8 +378,11 @@ def _interaction_arm(source: str, obligation: Obligation) -> _InteractionArm:
 
 
 def _trigger_refusal(arm: _InteractionArm, on_locators: Locators, unarranged: tuple[str, ...]) -> ScenarioRefusal | None:
-    """Why no scenario can perform *arm*, or `None` when one can."""
-    if page_locator_expr(on_locators) is None:
+    """Why no scenario can perform *arm*, or `None` when one can.
+
+    Arriving at the screen performs a `load` or `navigate` trigger, so its `on:` control needs no locator.
+    """
+    if _trigger_word(arm) not in ARRIVAL_TRIGGERS and page_locator_expr(on_locators) is None:
         return ScenarioRefusal("unresolved-precondition",
                                f"no locator declared for `on:` component {arm.label!r}{name_refusal(on_locators)}")
     if unarranged:
@@ -400,14 +405,18 @@ def _unarranged_guards(arm: _InteractionArm, guards: list[Obligation], acts_arra
     return tuple(o.requirement for o in guards if not (o.fixtures or o.arranges_nothing))
 
 
+def _trigger_word(arm: _InteractionArm) -> str:
+    return (bullet_value(arm.trigger) or "").lower()
+
+
 def _scaffold_click_refusal(arm: _InteractionArm) -> ScenarioRefusal | None:
     """Why *arm*'s performed click is only a scaffold for a trigger that is not a click, or `None` when it is one.
 
     A trigger word this compiler has no action for is the harness's gap, since the book named the
     trigger. Any other value is the book's, since it names no trigger at all.
     """
-    word = (bullet_value(arm.trigger) or "").lower()
-    if word == _CLICK_TRIGGER:
+    word = _trigger_word(arm)
+    if word == _CLICK_TRIGGER or word in ARRIVAL_TRIGGERS:
         return None
     if word in NON_PRESS_TRIGGERS:
         return ScenarioRefusal("needs-trigger-action",
@@ -451,7 +460,10 @@ def _performed_trigger(
     scaffold = _scaffold_click_refusal(arm)
     if scaffold is not None:
         gaps.extend(Gap(oid, scaffold.kind, scaffold.detail, scaffold.owner) for oid in ids)
-    action = [f"    {on_expr}.click()  # trigger: {trailing_comment(arm.trigger)}"]
+    if _trigger_word(arm) in ARRIVAL_TRIGGERS:
+        action = [f"    # trigger: {trailing_comment(arm.trigger)}, performed by arriving at the screen"]
+    else:
+        action = [f"    {on_expr}.click()  # trigger: {trailing_comment(arm.trigger)}"]
     if arm.does:
         action.extend(_prose_comment(arm.does, label="does: "))
     return _PerformedTrigger(performed or [], action)
