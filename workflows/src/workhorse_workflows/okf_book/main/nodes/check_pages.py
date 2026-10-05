@@ -5,6 +5,8 @@ import sys
 from collections.abc import Sequence
 from pathlib import Path
 
+from workhorse_workflows.okf_book.main.nodes.check_lead import latest_check_findings, unheld
+from workhorse_workflows.okf_book.main.nodes.lead_findings import read_findings
 from workhorse_workflows.okf_book.main.nodes.page_sections import page_sections
 from workhorse_workflows.okf_book.main.nodes.writer_commands import (
     CHECK_MODULE,
@@ -40,6 +42,8 @@ def scoped_problems(state: WriterCommandState) -> tuple[str, ...]:
     """
     root = state.root.resolve()
     problems = page_problems(root, state.service)
+    if state.records_dir is not None:
+        problems = unheld(problems, latest_check_findings(read_findings(state.records_dir), state.service))
     if not state.pages:
         return tuple(problem.text for problem in problems)
     problems_at_turn_start = frozenset(problem.text_ignoring_line() for problem in state.problems_at_turn_start)

@@ -4,6 +4,7 @@ from __future__ import annotations
 from collections.abc import Iterable, Mapping
 from dataclasses import replace
 from pathlib import Path
+from typing import Literal
 
 from ostler.qa.attribution import Cause, Signature
 from pydantic import BaseModel, ConfigDict, field_validator
@@ -26,10 +27,11 @@ CAUSE_BY_OTHER_SIDE = {
 LEAD_SIDES = frozenset({Side.BOOK, *CAUSE_BY_OTHER_SIDE})
 
 type Escalation = tuple[Signature, Side, str]
+type Measured = Literal["run", "check"]
 
 
 class GroupVerdict(BaseModel):
-    """What the lead says of one numbered group: the side that must change, what it read that shows it, and what a page repair must do when the side is the book."""
+    """What the lead says of one numbered group: the side that must change, what it read that shows it, and what a page repair must do when the side is the book. A verdict that names nodes judges only those of the group, and one that names none judges the rest."""
 
     model_config = ConfigDict(frozen=True, extra="ignore")
 
@@ -37,6 +39,7 @@ class GroupVerdict(BaseModel):
     side: Side
     evidence: str
     instruction: str = ""
+    nodes: tuple[str, ...] = ()
 
     @field_validator("side")
     @classmethod
@@ -55,7 +58,11 @@ class LeadVerdict(BaseModel):
 
 
 class LeadFinding(BaseModel):
-    """One group of one lap as the lead named it, with the signature the run gave it, its count and its pages."""
+    """One group of one lap as the lead named it, with the signature the run gave it, its count and its pages.
+
+    A group of a page check is measured by the check: its signature is the code of the rule that
+    raised its problems, and the nodes it names are the only ones of the group it judges.
+    """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -67,6 +74,8 @@ class LeadFinding(BaseModel):
     evidence: str
     instruction: str = ""
     pages: tuple[str, ...] = ()
+    measured: Measured = "run"
+    nodes: tuple[str, ...] = ()
 
 
 class LedLap(BaseModel):
@@ -114,8 +123,8 @@ def record_findings(records_dir: Path, findings: Iterable[LeadFinding]) -> None:
     _ = (records_dir / FINDINGS_NAME).write_text(_Ledger(findings=kept).model_dump_json(indent=2), encoding="utf-8")
 
 
-def service_findings(findings: Iterable[LeadFinding], service: str) -> tuple[LeadFinding, ...]:
-    return tuple(finding for finding in findings if finding.service == service)
+def service_findings(findings: Iterable[LeadFinding], service: str, measured: Measured = "run") -> tuple[LeadFinding, ...]:
+    return tuple(finding for finding in findings if finding.service == service and finding.measured == measured)
 
 
 def _key(cause: Cause, precondition: str, status: str, shape: str, gap: str) -> tuple[Cause, str, str, str, str]:

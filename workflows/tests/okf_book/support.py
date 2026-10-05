@@ -14,12 +14,14 @@ from workhorse.runner.backends.null import NullBackend
 from workhorse.runner.ladder import AgentRunner
 from workhorse.runner.spec import AgentNode
 
+from workhorse_workflows.okf_book.main.lead_check_flow import CHECK_LEAD_PROMPT
 from workhorse_workflows.okf_book.main.lead_lap_flow import LEAD_PROMPT
 from workhorse_workflows.okf_book.main.settle_repair_turn_flow import DESCRIBE_LABEL
 from workhorse_workflows.okf_book.workflow import OkfBook
 
 _drive: Callable[[OkfBook, RunEnv], object] = drive
 LEAD_NODE = Path(LEAD_PROMPT).stem
+CHECK_LEAD_NODE = Path(CHECK_LEAD_PROMPT).stem
 FIX_COMMIT_NODE = "fix-refused-commit"
 
 
@@ -106,7 +108,7 @@ class ScriptedRunner(AgentRunner):
         if node.id == DESCRIBE_LABEL and node.id not in self.replies:
             self.described.append(args)
             return "scripted", {"description": f"repair pages of the {args['service']} book", "body": ""}
-        if node.id == LEAD_NODE and node.id not in self.replies:
+        if node.id in (LEAD_NODE, CHECK_LEAD_NODE) and node.id not in self.replies:
             return "scripted", {"findings": []}
         if node.id == FIX_COMMIT_NODE and node.id not in self.replies:
             return "scripted", {"fixed": ""}

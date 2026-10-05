@@ -77,6 +77,12 @@ class PageProblem:
     line: int | None = None
     node: str = ""
     requests: tuple[str, ...] = ()
+    code: str = ""
+
+    @property
+    def held_key(self) -> str:
+        """The rule that raised the problem and the node it sits on, or its page when it names no node: what a lead's verdict holds it back by."""
+        return f"{self.code} {self.node or self.page}"
 
     def text_ignoring_line(self) -> str:
         """The problem's text with its line number left out, since an edit above the problem moves it."""
@@ -89,7 +95,7 @@ def _doctor_problems(book: Graph, pages: list[str]) -> list[PageProblem]:
     report = doctor.scope_to_paths(doctor.run(book), pages)
     return [
         PageProblem(
-            f.path, f"{f.path}:{f.line}: {f.code}: {f.message}" + (f" {f.suggestion}" if f.suggestion else ""), line=f.line
+            f.path, f"{f.path}:{f.line}: {f.code}: {f.message}" + (f" {f.suggestion}" if f.suggestion else ""), line=f.line, code=f.code
         )
         for f in report.findings
         if (f.severity == "error" or f.code in CHARGED_WARNINGS) and f.code not in RESTAMPED_CODES | REACH_CODES
@@ -115,16 +121,18 @@ def gap_problems(gaps: Iterable[Gap]) -> list[PageProblem]:
             owner.partition("#")[0],
             f"{owner}: {kind}: {detail} It stops {len(ids)} claims from compiling, such as {ids[0]}",
             node=owner,
+            code=kind,
         )
         for (owner, kind, detail), ids in by_owner.items()
     ]
     return owned + [
-        PageProblem(node.partition("#")[0], f"{ids[0]} does not compile: {kind}: {detail}", node=node)
+        PageProblem(node.partition("#")[0], f"{ids[0]} does not compile: {kind}: {detail}", node=node, code=kind)
         if len(ids) == 1
         else PageProblem(
             node.partition("#")[0],
             f"each of {len(ids)} claims on {node} does not compile: {kind}: {detail} The claims: {', '.join(ids)}",
             node=node,
+            code=kind,
         )
         for (node, kind, detail), ids in by_fix.items()
     ]
@@ -140,7 +148,7 @@ def _entries_problems(root: Path, service: str) -> list[PageProblem]:
         return []
     page = entries_path(root, service).relative_to(root).as_posix()
     return [
-        PageProblem(page, f"{page} is missing. Write it with `type: entries` and one `- [title](page.md)` link per entry page.")
+        PageProblem(page, f"{page} is missing. Write it with `type: entries` and one `- [title](page.md)` link per entry page.", code="missing-entries")
     ]
 
 
@@ -201,6 +209,7 @@ def _off_journey_problems(nodes: list[_Node]) -> list[PageProblem]:
             f"{node} is on no flow. Write a flow under flows/ whose steps link it, or link it from a step of a flow you have.",
             needs_journey=True,
             node=node,
+            code="off-journey",
         )
         for node in _off_journey_node_ids(nodes)
     ]
@@ -216,6 +225,7 @@ def _uninvokable_problems(nodes: list[_Node]) -> list[PageProblem]:
             + "and state there what running it changes, with claims that prove it. Do not scaffold it again. When it is "
             + "no one program, give the page the `type:` of what it documents and keep its links. When a user runs it, "
             + "`binary:` names the program, and the operator opts that tool in.",
+            code="no-binary",
         )
         for node in nodes
         if node.type == "cli" and not node.binary
@@ -260,6 +270,7 @@ def _unchecked_problems(entries: str, nodes: list[_Node], pages: list[str]) -> l
                 page,
                 f"{page}: no claim of this book declares a check, so a run has nothing to exercise. Give each step "
                 + "of this flow a `- verify:` bullet that checks what the user sees once the step is done.",
+                code="no-check",
             )
             for page in flows
         ]
@@ -268,6 +279,7 @@ def _unchecked_problems(entries: str, nodes: list[_Node], pages: list[str]) -> l
             page,
             f"{page}: no claim of this book declares a check, so a run has nothing to exercise. Give the claims a "
             + "user can observe on this page a `- verify:` bullet that checks what they see.",
+            code="no-check",
         )
         for page in pages
         if page != entries
@@ -285,6 +297,7 @@ def page_problems(root: Path, service: str) -> tuple[PageProblem, ...]:
                 page.rel,
                 f"{page.rel} is linked from no page the entries page reaches. Link it, or delete it.",
                 needs_journey=True,
+                code="unlinked-page",
             )
             for page in dead_pages(book)
             if page.service == service

@@ -13,6 +13,9 @@ reported.
 After each turn the repair hands its changes to `settle_repair_turn_flow.py`, which puts back what
 the batch may not keep and commits the rest.
 
+A problem the last lead of the book's page check held for another side than the book is sent to no
+turn, and each page a group the lead named the book's sits on is told first what the lead said of it.
+
 A page someone left uncommitted when the repair started is never sent to a turn and never committed,
 so their edits stay theirs. A turn that changed one waits for the operator.
 """
@@ -22,7 +25,9 @@ import time
 from pathlib import Path
 
 from workhorse.pyflow import AgentTimeout, AgentTurnFailed, Continue, Done, WorkflowFailed
+from workhorse_workflows.okf_book.main.nodes.check_lead import latest_check_findings, unheld, with_check_instructions
 from workhorse_workflows.okf_book.main.nodes.journey import journey_pages
+from workhorse_workflows.okf_book.main.nodes.lead_findings import read_findings
 from workhorse_workflows.okf_book.main.nodes.operator_answer import read_answer
 from workhorse_workflows.okf_book.main.nodes.repair_batches import has_work_left, pack_repairs, problems_by_page
 from workhorse_workflows.okf_book.main.nodes.repair_ledger import BatchTurn, RepairLedger, RepairRound
@@ -67,10 +72,14 @@ class RepairBook(BookFlow):
         )
         return Continue(rooted, self.plan_first_round, uncommitted_at_start=rooted.uncommitted_at_start).because("the book is rooted")
 
+    def _book_problems(self) -> tuple[PageProblem, ...]:
+        findings = latest_check_findings(read_findings(self.records_dir), self.service)
+        return with_check_instructions(unheld(page_problems(self.root, self.service), findings), findings)
+
     def plan_first_round(self, uncommitted_at_start: tuple[str, ...]) -> Continue[...] | Done:
         """Plan the pages the repair works on: each page the check or the failed run finds a problem on, but one someone left uncommitted."""
         run_problems = [problem for problems in self.run_failures.values() for problem in problems]
-        problems = (*page_problems(self.root, self.service), *run_problems)
+        problems = (*self._book_problems(), *run_problems)
         by_page = problems_by_page(problems, frozenset(uncommitted_at_start))
         journey = journey_pages(self.root, self.service, frozenset(uncommitted_at_start))
         ledger = RepairLedger(uncommitted_at_start=uncommitted_at_start, planned_pages=tuple(by_page), journey=journey)
@@ -141,6 +150,7 @@ class RepairBook(BookFlow):
             pages=batch.page_paths,
             sections_by_page={page.page: page.sections for page in batch.pages if page.sections},
             problems_at_turn_start=problems_at_turn_start,
+            records_dir=self.records_dir,
         )
         settle_jobs(self.run_dir)
         _ = write_command_state(self.run_dir, state)
@@ -197,7 +207,7 @@ class RepairBook(BookFlow):
 
     def close_batch(self, ledger: RepairLedger, this_round: RepairRound, index: int) -> Continue[...]:
         """Check the book, close each page of the batch the check finds clean, and move to the next batch, or plan the next round after the last."""
-        problems = page_problems(self.root, self.service)
+        problems = self._book_problems()
         ledger = ledger.with_clean_pages_closed(this_round, index, problems)
         if index + 1 < len(this_round.batches):
             return Continue(

@@ -8,7 +8,9 @@ from workhorse.pyflow import Await, Continue, Done, WorkflowFailed
 from workhorse_workflows.kit import last_commit_subject, last_commit_trailer
 from workhorse_workflows.okf_book.main.exercise_book_flow import ExerciseBook
 from workhorse_workflows.okf_book.main.nodes import gate
+from workhorse_workflows.okf_book.main.lead_check_flow import LeadCheck
 from workhorse_workflows.okf_book.main.lead_lap_flow import LeadLap
+from workhorse_workflows.okf_book.main.nodes.check_lead import latest_check_findings, record_check, unheld
 from workhorse_workflows.okf_book.main.nodes.gate import ESCALATED_SIDES, SIDE_BY_ESCALATED_CAUSE, RunFailures, keep_failures, rerun_command, take_failures
 from workhorse_workflows.okf_book.main.nodes.lead_findings import (
     Escalation,
@@ -17,6 +19,7 @@ from workhorse_workflows.okf_book.main.nodes.lead_findings import (
     attributed,
     lead_groups,
     led_escalations,
+    read_findings,
     run_escalations,
     with_instructions,
 )
@@ -48,7 +51,7 @@ from workhorse_workflows.okf_book.shared.book_run import ExerciseResult, stack_d
 from workhorse_workflows.okf_book.shared.citations import book_pages, cites_changed_file
 from workhorse_workflows.okf_book.main.nodes.root_entries import NO_ENTRY_PAGE, entry_links
 from workhorse_workflows.okf_book.shared.entries import FEATURES_DIR, read_entries
-from workhorse_workflows.okf_book.shared.page_check import PageProblem, page_problems, tool_blockers
+from workhorse_workflows.okf_book.shared.page_check import PageProblem, page_problems
 from workhorse_workflows.okf_book.shared.scenarios import PLAN_NAME, plan_scenarios, spec_dir, write_run
 
 OPERATOR_NAME = "operator.md"
@@ -127,14 +130,15 @@ class OkfBook(BookFlow):
                 "the gate left this book's writer failures to fix"
             )
         found = page_problems(self.root, service)
-        problems = tuple(problem.text for problem in found)
-        _ = self._record_check(service, found)
-        if problems:
-            return Continue(problems, self.copy_source, index=index).because("the existing book has problems")
+        if found:
+            return Continue(len(found), self.lead_check, index=index, problems=found).because(
+                "the existing book has problems: the lead reads the whole check first"
+            )
+        _ = record_check(self.records_dir, self.root, service, found)
         ours = last_commit_subject(self.root, book) in (book_commit_subject(service), repaired_book_commit_subject(service))
         if ours or last_commit_trailer(self.root, BOOK_TRAILER, book) == REPAIRED:
             return Continue(book, self.check_book, index=index).because("this workflow wrote the book: check it")
-        return Continue(problems, self.run_book, index=index, run_failures_repaired=False).because(
+        return Continue(found, self.run_book, index=index, run_failures_repaired=False).because(
             "the existing book checks clean"
         )
 
@@ -229,33 +233,28 @@ class OkfBook(BookFlow):
             "check the committed book"
         )
 
-    def _record_check(self, service: str, problems: tuple[PageProblem, ...]) -> int:
-        """Make each problem of a check a blocker on its page, in place of the ones the last check left. Returns how many that one left."""
-        before = sum(1 for blocker in read_blockers(self.records_dir)
-                     if blocker.phase is Phase.WRITE and blocker.side is Side.BOOK and blocker.service == service)
-        forget_blockers(self.records_dir, Phase.WRITE, Side.BOOK, service)
-        forget_blockers(self.records_dir, Phase.WRITE, Side.ENVIRONMENT, service)
-        for tool in tool_blockers(self.root, service):
-            _ = record_blocker(self.records_dir, tool)
-        for problem in problems:
-            blocker = Blocker(subject=f"{service}: {problem.text}", service=service, phase=Phase.WRITE, side=Side.BOOK, reason=problem.text,
-                              cause=Cause.BOOK.value, pages=(problem.page,),
-                              rerun=rerun_command(self.records_dir, service, Phase.WRITE, (problem.page,)))
-            _ = record_blocker(self.records_dir, blocker)
-        return before
-
     def check_book(self, index: int, run_failures_repaired: bool = False) -> Continue[...]:
-        """Repeat the writer's own page check. Each problem it finds is a blocker on its page, and one an earlier check found that this one does not is no longer. A book with fewer problems than its last check found goes back to its repair, so a person is asked only about what a repair did not lower."""
+        """Repeat the writer's own page check. A book with problems goes to the lead of the check first, and a clean one to its run."""
         service = self.surfaces[index].service
         problems = page_problems(self.root, service)
-        before = self._record_check(service, problems)
-        if problems and (not before or len(problems) < before):
-            return Continue(problems, self.copy_source, index=index, run_failures={} if run_failures_repaired else None).because(
-                "the check finds fewer problems than the last one did: repair what is left"
-            )
+        if problems:
+            return Continue(len(problems), self.lead_check, index=index, problems=problems, repaired=True,
+                            run_failures_repaired=run_failures_repaired).because("the check finds problems: the lead reads the whole check first")
+        _ = record_check(self.records_dir, self.root, service, problems)
         return Continue(problems, self.run_book, index=index, run_failures_repaired=run_failures_repaired).because(
             "run the book against the app"
         )
+
+    def lead_check(self, index: int, problems: tuple[PageProblem, ...], repaired: bool = False, run_failures_repaired: bool = False) -> Continue[...]:
+        """Hand the check to its lead, which names the side of each rule's problems before any page is repaired. A problem it named another side's is held: it is a blocker on that side, and no page repair is sent it. A lead that named nothing leaves what the last lead of the check named. Each problem left is a blocker on its page, and goes to its repair. After a repair the problems left go back only when they are fewer than the last check left, so a person is asked only about what a repair did not lower."""
+        service = self.surfaces[index].service
+        led = LedLap.model_validate(self.handoff(LeadCheck, parent_records_dir=str(self.records_dir), service=service, problems=problems))
+        findings = latest_check_findings(read_findings(self.records_dir), service)
+        left = unheld(problems, findings)
+        before = record_check(self.records_dir, self.root, service, problems, findings)
+        if left and (not repaired or not before or len(left) < before):
+            return Continue(led, self.copy_source, index=index, run_failures={} if run_failures_repaired else None).because("the lead left the book problems to repair")
+        return Continue(led, self.run_book, index=index, run_failures_repaired=run_failures_repaired).because("run the book against the app")
 
     def run_book(self, index: int, run_failures_repaired: bool) -> Continue[...]:
         """Run the book against the app, by handing off to the run flow."""

@@ -50,7 +50,8 @@ class WriterCommandState(BaseModel):
     and every problem not in `problems_at_turn_start`, the problems the book had when the turn started.
     A page in `sections_by_page` is covered only in the `###` sections named for it. The field also
     reads its earlier key, `sections`, and `problems_at_turn_start` also reads its earlier form, the
-    problems' texts.
+    problems' texts. With `records_dir` naming the run's records, the check leaves out every problem
+    the last lead of the book's page check held for another side than the book.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
@@ -60,6 +61,7 @@ class WriterCommandState(BaseModel):
     pages: tuple[str, ...] = ()
     sections_by_page: dict[str, tuple[str, ...]] = Field(default={}, validation_alias=AliasChoices("sections_by_page", "sections"))
     problems_at_turn_start: tuple[PageProblem, ...] = ()
+    records_dir: Path | None = None
     check_and_scenario_runs: int = 0
     ostler_runs: int = 0
 
