@@ -93,7 +93,6 @@ GAP_KINDS = frozenset({
     "needs-target-backend",
     "needs-multi-target-runtime",
     "needs-trigger-action",
-    "needs-absence-check",
     "invalid-http-method",
     "undeclared-launch-screen",
     "unreachable-from-launch",
@@ -103,7 +102,6 @@ HARNESS_LIMIT_GAPS = frozenset({
     "needs-target-backend",
     "needs-multi-target-runtime",
     "needs-trigger-action",
-    "needs-absence-check",
 })
 
 

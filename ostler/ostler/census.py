@@ -23,7 +23,6 @@ DORMANT_UNREACHABLE: dict[str, str] = {
     "deletes-shared-fixture": _BRIDGE,
     "invalid-http-method": _BRIDGE,
     "milestone-cycle": _NO_MILESTONES,
-    "needs-absence-check": _BRIDGE,
     "needs-multi-target-runtime": _BRIDGE,
     "needs-out-of-band-observation": _BRIDGE,
     "needs-snapshot": _BRIDGE,

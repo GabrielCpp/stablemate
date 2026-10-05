@@ -8,11 +8,13 @@ from ostler_qa_documents import read_body, read_countable, read_document, verify
 from ostler_qa_elements import (
     read_control,
     read_focus,
+    read_hidden,
     read_size,
     read_visibility,
     verify_actionable,
     verify_emitted,
     verify_focusable,
+    verify_hidden,
     verify_inert,
     verify_visible,
 )
@@ -68,6 +70,7 @@ VERIFIERS: dict[str, Verifier] = {
     "visible": _verifier(read_visibility, verify_visible),
     "actionable": _verifier(read_control("actionable"), verify_actionable),
     "inert": _verifier(read_control("inert"), verify_inert),
+    "hidden": _verifier(read_hidden, verify_hidden),
     "focusable": _verifier(read_focus, verify_focusable),
     "persists": _verifier(read_pair("persists"), verify_persists),
     "emitted": _verifier(read_size, verify_emitted),

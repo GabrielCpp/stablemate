@@ -57,6 +57,7 @@ _WITNESSED_CALLS = [
     'count(subject="entries", equals=2, file="tally.json")',
     'actionable(locator="#save")',
     'inert(locator="#save")',
+    'hidden(locator="#dialog")',
     'focusable(locator="#save")',
     'focusable(locator="#save", activates="Enter")',
 ]

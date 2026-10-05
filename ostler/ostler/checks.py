@@ -209,6 +209,14 @@ CHECKS: tuple[CheckSpec, ...] = (
         observes="page",
     ),
     CheckSpec(
+        name="hidden",
+        params=(CheckParam("locator", "str", required=True, locator=True, identifies=True),),
+        excludes="a control the book says is gone, such as a dialog that closed or an option "
+                 "withdrawn, that the product still draws. `inert` passes a leftover that is "
+                 "disabled, and `visible` can only claim the opposite",
+        observes="page",
+    ),
+    CheckSpec(
         name="focusable",
         params=(
             CheckParam("locator", "str", required=True, locator=True, identifies=True),

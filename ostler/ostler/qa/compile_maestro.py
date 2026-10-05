@@ -108,6 +108,8 @@ def _check_commands(
 ) -> list[str]:
     """The Maestro assertion that observes check *check_name* on the control at *locator*."""
     key, value = locator
+    if check_name == "hidden":
+        return ["- assertNotVisible:", f'    {key}: "{value}"']
     block = ["- assertVisible:", f'    {key}: "{value}"']
     if check_name == "actionable":
         block.append("    enabled: true")

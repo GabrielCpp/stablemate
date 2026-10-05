@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import time
 from collections.abc import Callable, Sized
 from dataclasses import dataclass
 
@@ -44,6 +45,28 @@ def verify_visible(reading: VisibilityReading, args: Args) -> Verdict:
     text = reading.readings[0] if reading.readings else None
     contains = reading.shown and any(str_arg(args, "text") in each for each in reading.readings)
     return verdict(contains, {"visible": reading.shown, "text": text}, {"visible": True, "text": str_arg(args, "text")})
+
+
+HIDE_WAIT_S = 3.0
+
+
+def read_hidden(observed: object, args: Args) -> VisibilityReading:
+    """Whether any element the locator matches is still shown, once a closing element has had time to leave."""
+    count = getattr(observed, "count", None)
+    if not callable(count):
+        return read_visibility(observed, {})
+    deadline = time.monotonic() + HIDE_WAIT_S
+    while True:
+        found = getattr(observed, "nth")
+        matches = count()
+        shown = any(found(index).is_visible() for index in range(matches if isinstance(matches, int) else 0))
+        if not shown or time.monotonic() >= deadline:
+            return VisibilityReading(shown=shown, readings=())
+        time.sleep(0.1)
+
+
+def verify_hidden(reading: VisibilityReading, args: Args) -> Verdict:
+    return verdict(not reading.shown, {"visible": reading.shown}, {"visible": False})
 
 
 @dataclass(frozen=True)

@@ -633,6 +633,12 @@ def _plan_inert(_args: Mapping[str, checks.CheckValue]) -> _WitnessPlan:
     ])
 
 
+def _plan_hidden(_args: Mapping[str, checks.CheckValue]) -> _WitnessPlan:
+    return _WitnessPlan.of(_Locator(visible=False, text="witness"), [
+        ("the control is still drawn", _Locator(visible=True, text="witness")),
+    ])
+
+
 def _plan_persists(_args: Mapping[str, checks.CheckValue]) -> _WitnessPlan:
     return _WitnessPlan.of(("written", "written"), [
         ("nothing was re-read after the restart", ("written", None)),
@@ -702,6 +708,7 @@ _PLANNERS: dict[str, Callable[[Mapping[str, checks.CheckValue]], _WitnessPlan | 
     "actionable": _plan_actionable,
     "focusable": _plan_focusable,
     "inert": _plan_inert,
+    "hidden": _plan_hidden,
     "persists": _plan_persists,
     "emitted": _plan_emitted,
     "omits": _plan_omits,

@@ -110,6 +110,7 @@ def test_every_spec_declares_what_it_observes() -> None:
         "visible": "page",
         "actionable": "page",
         "inert": "page",
+        "hidden": "page",
         "focusable": "keyboard",
         "unchanged": "subject-pair",
         "keys_unchanged": "subject-pair",

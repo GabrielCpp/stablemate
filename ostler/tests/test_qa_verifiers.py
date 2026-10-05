@@ -380,6 +380,41 @@ def test_visible_still_fails_on_text_neither_reading_carries() -> None:
     assert verdict.passed is False
 
 
+class _Matches:
+    """Every element a locator matches, each shown or not, and the ones that stop being shown once read *leaves_after* times."""
+
+    def __init__(self, *shown: bool, leaves_after: int | None = None) -> None:
+        self._shown = list(shown)
+        self._leaves_after = leaves_after
+        self.reads = 0
+
+    def count(self) -> int:
+        self.reads += 1
+        if self._leaves_after is not None and self.reads > self._leaves_after:
+            self._shown = []
+        return len(self._shown)
+
+    def nth(self, index: int) -> SimpleNamespace:
+        return SimpleNamespace(is_visible=lambda: self._shown[index])
+
+
+def test_hidden_passes_when_nothing_the_locator_matches_is_shown() -> None:
+    assert harness.VERIFIERS["hidden"](_Matches(), {}).passed is True
+    assert harness.VERIFIERS["hidden"](_Matches(False, False), {}).passed is True
+
+
+def test_hidden_fails_when_any_match_is_still_shown(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(load_harness_module("ostler_qa_elements"), "HIDE_WAIT_S", 0.0)
+    verdict = harness.VERIFIERS["hidden"](_Matches(False, True), {})
+    assert verdict.passed is False
+    assert verdict.actual == {"visible": True} and verdict.expected == {"visible": False}
+
+
+def test_hidden_waits_for_a_closing_element_to_leave() -> None:
+    """A dialog animates out after the click that closed it, and the check reads the screen it settles on."""
+    assert harness.VERIFIERS["hidden"](_Matches(True, leaves_after=2), {}).passed is True
+
+
 def test_exit_status_reads_exit_code_and_refuses_other_subjects() -> None:
     """The check observes the one thing a command's output never carries — how the process ended — and a plan that hands it a response or a document has mis-wired the claim."""
     verify = harness.VERIFIERS["exit_status"]
