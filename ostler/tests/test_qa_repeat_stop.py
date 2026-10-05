@@ -34,7 +34,9 @@ def _obligation(index: int, pages: int) -> str:
     return f"okf:docs/features/demo/page-{index % pages}.md:contract:{index}"
 
 
-def _run(tmp_path: Path, bodies: list[str], *, pages: int, stop_on_repeat: int) -> tuple[str, dict[str, Any], Path]:
+def _run(
+    tmp_path: Path, bodies: list[str], *, pages: int, stop_on_repeat: int, only: list[str] | None = None,
+) -> tuple[str, dict[str, Any], Path]:
     spec = tmp_path / "docs/specs/story-1"
     spec.mkdir(parents=True, exist_ok=True)
     obligations = [_obligation(index, pages) for index in range(len(bodies))]
@@ -50,7 +52,7 @@ def _run(tmp_path: Path, bodies: list[str], *, pages: int, stop_on_repeat: int) 
     (spec / "qa_plan.py").write_text(source, encoding="utf-8")
     document, problems = load_plan(spec / "qa_plan.py", spec, tmp_path)
     assert not problems and document is not None
-    status, _message, summary = run_plan(document, root=tmp_path, stop_on_repeat=stop_on_repeat)
+    status, _message, summary = run_plan(document, root=tmp_path, stop_on_repeat=stop_on_repeat, only=only)
     return status, summary, spec
 
 
@@ -86,6 +88,17 @@ def test_a_run_of_one_page_stops_on_a_repeat_on_that_page(tmp_path: Path) -> Non
     [stopped] = summary["runner_errors"]
     assert "3 scenarios on 1 pages failed on one observation: " in stopped
     assert "outside any single page" not in stopped
+
+
+def test_a_scoped_run_stops_on_a_repeat_on_one_of_its_pages(tmp_path: Path) -> None:
+    bodies = [_fails(WALL) if index % 2 == 0 else "pass" for index in range(10)]
+    status, summary, _spec = _run(
+        tmp_path, bodies, pages=2, stop_on_repeat=3, only=[f"scenario-{index}" for index in range(10)])
+
+    assert status == "failed"
+    assert len(summary["scenarios"]) == 5
+    [stopped] = summary["runner_errors"]
+    assert "3 scenarios on 1 pages failed on one observation: " in stopped
 
 
 def test_different_observations_do_not_add_up(tmp_path: Path) -> None:

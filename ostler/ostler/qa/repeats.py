@@ -58,8 +58,13 @@ class RepeatWatch:
                 f"{seen} (pages: {named}). Fix that cause first. The scenarios after {scenario_id} did not run")
 
 
-def watch_for(threshold: int, scenarios: Iterable[Mapping[str, object]]) -> RepeatWatch:
-    """The watch over a run of *scenarios*, which asks a repeat to span as many pages as the run holds, up to MIN_PAGES."""
+def watch_for(threshold: int, scenarios: Iterable[Mapping[str, object]], *, scoped: bool = False) -> RepeatWatch:
+    """The watch over a run of *scenarios*, which asks a repeat to span as many pages as the run holds, up to MIN_PAGES.
+
+    A *scoped* run names its scenarios for the pages one writer is fixing, so a repeat on any one of them stops it.
+    """
+    if scoped:
+        return RepeatWatch(threshold, 1)
     held = pages(claim for scenario in scenarios for claim in _claims(scenario.get("covers")))
     return RepeatWatch(threshold, min(MIN_PAGES, max(len(held), 1)))
 

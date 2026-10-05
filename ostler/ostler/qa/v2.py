@@ -105,7 +105,7 @@ def run_plan(
     status = "passed"
     cleanup_errors: list[str] = []
     runner_errors: list[str] = []
-    watch = watch_for(stop_on_repeat, selected)
+    watch = watch_for(stop_on_repeat, selected, scoped=only is not None)
     summary: dict[str, Any] = {}
     evidence: Path | None = None
     try:
