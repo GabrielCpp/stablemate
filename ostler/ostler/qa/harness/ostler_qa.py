@@ -1547,14 +1547,15 @@ class Qa:
     def by_role(self, role: str, *, name: str | None = None, **kwargs: Any) -> Any:
         """The element with this role and name. A name that several elements contain addresses the one that carries it whole.
 
-        A page that shows no such element yet is let finish its loads first, so the choice is made against what it renders.
+        A page that shows no such element yet is waited on until one appears, so the choice is made against what it renders.
+        A page that streams data never goes idle, so the element itself is the signal, not the network.
         """
         found = self.browser_page.get_by_role(role, name=name, **kwargs)
         if not isinstance(name, str) or "exact" in kwargs:
             return found
         if found.count() == 0:
             try:
-                self.browser_page.wait_for_load_state("networkidle", timeout=SETTLE_WAIT_MS)
+                found.first.wait_for(state="attached", timeout=SETTLE_WAIT_MS)
             except Exception:
                 return found
         if found.count() > 1:

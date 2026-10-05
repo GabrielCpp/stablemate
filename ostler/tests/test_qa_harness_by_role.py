@@ -24,12 +24,19 @@ class _Found:
     def count(self) -> int:
         return len(self.names)
 
+    @property
+    def first(self) -> _Found:
+        return self
+
+    def wait_for(self, *, state: str, timeout: int) -> None:
+        self.page.shown, self.page.loading = self.page.shown + self.page.loading, ()
+
 
 @dataclass
 class _Page:
     """A page of same-role elements, matched by name the way a browser does: contained unless `exact`.
 
-    The elements in *loading* appear once the page's loads finish.
+    The elements in *loading* appear once something waits for them. The page's network never goes idle.
     """
 
     shown: tuple[str, ...]
@@ -39,7 +46,7 @@ class _Page:
         return _Found(self, name, exact)
 
     def wait_for_load_state(self, _state: str, *, timeout: int) -> None:
-        self.shown, self.loading = self.shown + self.loading, ()
+        raise TimeoutError(f"Timeout {timeout}ms exceeded.")
 
 
 @dataclass(frozen=True)
