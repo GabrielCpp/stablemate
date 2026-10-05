@@ -326,9 +326,13 @@ def malformed_identity(bullets: Mapping[str, object]) -> list[str]:
 
 
 def collisions(book: LocatorBook) -> list[LocatorCollision]:
-    """Nodes sharing a screen, a role, and an accessible name — where one-to-one fails."""
+    """Nodes sharing a screen, a role, and an accessible name — where one-to-one fails.
+
+    A nameless node is told apart by its `selector:`, so two unnamed nodes collide only when
+    their selectors match too.
+    """
     scopes = book.scopes
-    groups: dict[tuple[str, str, str], list[BookNode]] = {}
+    groups: dict[tuple[str, str, str, str], list[BookNode]] = {}
     templated: dict[tuple[str, str], list[tuple[BookNode, RepeatTemplate]]] = {}
     for screen, node in book.locatables:
         if node.type != "component" or malformed_identity(node.bullets):
@@ -338,7 +342,8 @@ def collisions(book: LocatorBook) -> list[LocatorCollision]:
             templated.setdefault((screen, loc.role), []).append((node, loc.template))
         if loc.strategy != "role":
             continue
-        groups.setdefault((screen, loc.role, loc.name), []).append(node)
+        selector = "" if loc.name else _bullet(node, "selector")
+        groups.setdefault((screen, loc.role, loc.name, selector), []).append(node)
 
     exclusive = book.exclusive
 
@@ -351,7 +356,7 @@ def collisions(book: LocatorBook) -> list[LocatorCollision]:
         return conflicting
 
     out: list[LocatorCollision] = []
-    for (screen, role, name), nodes in sorted(groups.items()):
+    for (screen, role, name, _), nodes in sorted(groups.items()):
         if len(nodes) < 2:
             continue
         conflicting = _live([n.id for n in nodes])
@@ -361,7 +366,7 @@ def collisions(book: LocatorBook) -> list[LocatorCollision]:
     for (screen, role), pairs in sorted(templated.items()):
         for node, template in pairs:
             pattern = _pattern(template.segments)
-            for (other_screen, other_role, name), statics in sorted(groups.items()):
+            for (other_screen, other_role, name, _), statics in sorted(groups.items()):
                 if (other_screen, other_role) != (screen, role) or not name:
                     continue
                 if not re.fullmatch(pattern, name):

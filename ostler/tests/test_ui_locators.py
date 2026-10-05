@@ -348,6 +348,20 @@ def test_exclusive_with_clears_a_false_positive_collision(repo: Path):
     assert "ambiguous-locator" not in _codes(repo)
 
 
+def test_unnamed_nodes_with_distinct_selectors_do_not_collide(repo: Path):
+    write(repo / DASH, _screen(
+        "### draft-badge\n- selector: `#draft-badge`\n- role: status\n- name: none\n",
+        "### save-pill\n- selector: `#save-pill`\n- role: status\n- name: none\n"))
+    assert locators.collisions(_book(repo)) == []
+
+
+def test_unnamed_nodes_sharing_a_selector_still_collide(repo: Path):
+    write(repo / DASH, _screen(
+        "### draft-badge\n- selector: `.badge`\n- role: status\n- name: none\n",
+        "### save-pill\n- selector: `.badge`\n- role: status\n- name: none\n"))
+    assert [c.name for c in locators.collisions(_book(repo))] == [""]
+
+
 def test_exclusive_with_is_symmetric(repo: Path):
     """Annotating one of the two mutually-exclusive siblings is enough."""
     write(repo / DASH, _screen("""\
