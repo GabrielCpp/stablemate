@@ -366,14 +366,15 @@ def _interaction_arm(source: str, obligation: Obligation) -> _InteractionArm:
     return _InteractionArm(on_node_id, on_label(on_value), first(locators.trigger), first(locators.does), first(locators.when))
 
 
-def _trigger_refusal(arm: _InteractionArm, on_expr: str | None, when_arranged: bool) -> ScenarioRefusal | None:
+def _trigger_refusal(arm: _InteractionArm, on_expr: str | None, unarranged: tuple[str, ...]) -> ScenarioRefusal | None:
     """Why no scenario can perform *arm*, or `None` when one can."""
     if on_expr is None:
         return ScenarioRefusal("unresolved-precondition",
                                f"no locator declared for `on:` component {arm.label!r}")
-    if arm.when and not when_arranged:
+    if unarranged:
+        stated = "; ".join(repr(guard) for guard in unarranged)
         return ScenarioRefusal("unarranged-interaction-precondition",
-                               f"`when:` states a precondition ({arm.when!r}) this scenario does "
+                               f"`when:` states a precondition ({stated}) this scenario does "
                                "not arrange, so its assertions would observe an unestablished state. "
                                "Indent a `fixture:` under each guard a seeded world establishes, an "
                                "`arrange:` act for a state the user reaches on this screen, or "
@@ -381,9 +382,13 @@ def _trigger_refusal(arm: _InteractionArm, on_expr: str | None, when_arranged: b
     return None
 
 
-def _guards_fixtured(guards: list[Obligation]) -> bool:
-    """Whether every `when:` guard in *guards* carries its own `fixture:` or states that it needs none."""
-    return bool(guards) and all(o.fixtures or o.arranges_nothing for o in guards)
+def _unarranged_guards(arm: _InteractionArm, guards: list[Obligation], acts_arranged: bool) -> tuple[str, ...]:
+    """Each `when:` guard of *arm* that neither its acts nor a `fixture:` under it arranges, and that does not state it needs none."""
+    if not arm.when or acts_arranged:
+        return ()
+    if not guards:
+        return (arm.when,)
+    return tuple(o.requirement for o in guards if not (o.fixtures or o.arranges_nothing))
 
 
 def _scaffold_click_refusal(arm: _InteractionArm) -> ScenarioRefusal | None:
@@ -423,10 +428,10 @@ def _performed_trigger(
     """Perform *arm*'s acts and click its `on:` control, or `None` with the gap filed when no scenario can."""
     node_acts = book.acts_by_node.get(node_id, [])
     performed = perform_acts(node_acts, acts_mod.WEB, gaps, ids).lines if node_acts else None
-    when_arranged = ((performed is not None and node_id not in book.acts_refused)
-                     or _guards_fixtured(book.guards_by_node.get(node_id, [])))
+    unarranged = _unarranged_guards(arm, book.guards_by_node.get(node_id, []),
+                                    performed is not None and node_id not in book.acts_refused)
     on_expr = page_locator_expr(book.locators_by_node.get(arm.on_node_id, NO_LOCATORS))
-    refusal = _trigger_refusal(arm, on_expr, when_arranged)
+    refusal = _trigger_refusal(arm, on_expr, unarranged)
     if refusal is not None:
         gaps.extend(Gap(oid, refusal.kind, refusal.detail, refusal.owner) for oid in ids)
         return None

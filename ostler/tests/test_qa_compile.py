@@ -2534,9 +2534,9 @@ def _fixtured_guard_context(second_guard_fixtures: list[dict] | None) -> tuple[d
         _page_obligation("okf:page-route:switch-language-button:visible:1", button,
                           locators={"role": ["button"], "name": ["Français"]},
                           checks=[_visible("button:Français")]),
-        _page_obligation("okf:page-route:switch-language:when:1", interaction, kind="when",
+        _page_obligation("okf:page-route:switch-language:when:1", interaction, kind="when", requirement="the page has a translation",
                           locators=locators, checks=[], fixtures=[seeded]),
-        _page_obligation("okf:page-route:switch-language:when:2", interaction, kind="when",
+        _page_obligation("okf:page-route:switch-language:when:2", interaction, kind="when", requirement="the reader is on the English page",
                           locators=locators, checks=[], fixtures=second_guard_fixtures),
         _page_obligation(does_oid, interaction, kind="does", locators=locators,
                           checks=[_located("#article", f"{_SCREEN}#article",
@@ -2571,6 +2571,15 @@ def test_a_when_guard_without_a_fixture_still_refuses_its_arm() -> None:
     assert does_oid not in _covers(source)
     detail = next(g.detail for g in gaps if g.obligation_id == does_oid)
     assert "`fixture: none, because ...`" in detail
+
+
+def test_the_refusal_names_the_guard_left_unarranged_and_not_its_fixtured_sibling() -> None:
+    """A reader of the refusal goes to the guard it quotes, so quoting the arranged one sends them to a guard with nothing left to do."""
+    context, does_oid = _fixtured_guard_context(None)
+    _source, gaps = compile_plan_gaps(context, story="demo-story")
+    detail = next(g.detail for g in gaps if g.obligation_id == does_oid)
+    assert "the reader is on the English page" in detail
+    assert "the page has a translation" not in detail
 
 
 def test_a_journey_step_performs_its_own_acts_before_it_triggers_it() -> None:
