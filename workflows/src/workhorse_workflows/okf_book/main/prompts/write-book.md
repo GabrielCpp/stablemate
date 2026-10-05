@@ -64,8 +64,12 @@ gives relative to the repository starts there.
   emulator, no database. The runbook fetches and starts every other tool and service the app
   needs.
   The health check is a route the app's source serves to say it is ready. Name that route,
-  and never invent one. If the source serves none, name `/healthz` and say in your reply that
-  the app must implement it. That run fails bring-up, and the report sends the gap to the app.
+  and never invent one. A web app's pages are routes its source serves: with no readiness
+  route, name the page route that answers without sign-in, and set `identity` to text its
+  HTML carries on every load, such as its `<title>`. Proving the backend is reachable is a
+  later step's job, not the health check's. If the source serves no route at all, name
+  `/healthz` and say in your reply that the app must implement it. That run fails bring-up,
+  and the report sends the gap to the app.
   The command below reports the step where bring-up failed, and it is the only way to probe
   that machine.
 {% endif %}
