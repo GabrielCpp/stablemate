@@ -10,6 +10,7 @@ import linecache
 import os
 import re
 import shutil
+import string
 import subprocess
 import sys
 import time
@@ -778,6 +779,7 @@ class Qa:
         self._book_fixture_memo: dict[tuple[str, tuple[tuple[str, str], ...]], ToolResult] = {}
         self._node_facts: dict[str, dict[str, str]] = {}
         self._node_structures: dict[str, dict[str, Any]] = {}
+        self._node_sessions: dict[str, dict[str, Any]] = {}
         self._lap = LapRecord(lap_dir) if lap_dir is not None else None
         self._last_fault: FixtureFault | None = None
         self._tool_env_allowed = frozenset(tool_env)
@@ -994,6 +996,57 @@ class Qa:
             raise RuntimeError(f"qa fixture {fixture!r} step {index} ({kind}) failed ({detail})")
         return result
 
+    def _arranging_browser(self, fixture: str, index: int, kind: str) -> Any:
+        if self.diagnostics is None:
+            detail = (f"signs a browser in, but target '{self.target.name}' declares driver "
+                      f"'{self.target.driver}' — only a scenario on a browser target can use it")
+            self._fault(fixture, index, kind, "defect", detail)
+            raise RuntimeError(f"qa fixture {fixture!r} {detail}")
+        return self.diagnostics
+
+    def _bound_action(self, action: Mapping[str, Any], env: Mapping[str, str]) -> dict[str, Any]:
+        bound: dict[str, Any] = {}
+        for key, value in action.items():
+            if key == "locator":
+                bound[key] = {part: string.Template(text).substitute(env) for part, text in value.items()}
+            elif key == "open":
+                bound[key] = self.http.url_for(string.Template(str(value)).substitute(env))
+            elif key == "value":
+                bound[key] = string.Template(str(value)).substitute(env)
+            else:
+                bound[key] = value
+        return bound
+
+    def _run_browser_step(
+        self, fixture: str, index: int, step: Mapping[str, Any], env: Mapping[str, str],
+    ) -> "ToolResult":
+        kind = str(step.get("kind", ""))
+        browser = self._arranging_browser(fixture, index, kind)
+        try:
+            actions = [self._bound_action(action, env) for action in step["browser"]]
+        except (KeyError, ValueError) as exc:
+            detail = f"names {exc}, which no arg, secret, need or provided fact binds"
+            self._fault(fixture, index, kind, "defect", detail)
+            raise RuntimeError(f"qa fixture {fixture!r} step {index} ({kind}) {detail}") from exc
+        try:
+            browser.arrange(actions)
+        except Exception as exc:  # noqa: BLE001 - every driver error is this step failing, recorded as a fault
+            detail = (str(exc).strip().splitlines() or [type(exc).__name__])[0][:500]
+            self._fault(fixture, index, kind, "defect", detail)
+            raise RuntimeError(f"qa fixture {fixture!r} step {index} ({kind}) failed ({detail})") from exc
+        performed = [json.dumps(action, sort_keys=True) for action in step["browser"]]
+        return ToolResult(command=["browser", *performed], stdout="", stderr="", exit_code=0)
+
+    def _settled_session(self, fixture: str, index: int) -> dict[str, Any]:
+        browser = self._arranging_browser(fixture, index, "session")
+        try:
+            return browser.session(self.target.base_url)
+        except Exception as exc:  # noqa: BLE001 - a page that never comes back is the fixture failing
+            first = (str(exc).strip().splitlines() or [type(exc).__name__])[0][:500]
+            detail = f"the browser did not settle back on {self.target.base_url}: {first}"
+            self._fault(fixture, index, "session", "defect", detail)
+            raise RuntimeError(f"qa fixture {fixture!r} {detail}") from exc
+
     def _extract_provides(
         self,
         fixture: str,
@@ -1081,7 +1134,8 @@ class Qa:
         if lap is not None:
             lap.keep(name, args, Arranged(
                 facts=self._node_facts[name], structures=self._node_structures.get(name, {}), command=list(result.command),
-                stdout=result.stdout, stderr=result.stderr, exit_code=result.exit_code))
+                stdout=result.stdout, stderr=result.stderr, exit_code=result.exit_code,
+                browser=self._node_sessions.get(name)))
         return result
 
     def _reuse_book_fixture(self, name: str, arranged: Arranged) -> "ToolResult":
@@ -1092,6 +1146,8 @@ class Qa:
         for need in self._book_fixtures[name].get("needs", []):
             if need.get("fixture") is not None:
                 self._exec_book_fixture(str(need["fixture"]), {})
+        if arranged.browser is not None:
+            self._arranging_browser(name, -1, "session").restore(arranged.browser)
         self._node_facts[name] = dict(arranged.facts)
         if arranged.structures:
             self._node_structures[name] = dict(arranged.structures)
@@ -1134,17 +1190,28 @@ class Qa:
                 env.setdefault(entry["key"], entry["is"])
         result: ToolResult | None = None
         step_results: dict[str, ToolResult] = {}
+        signed_in = False
         for index, step in enumerate(steps):
             if step.get("missing_run"):
                 detail = "step has no `run:` command"
                 self._fault(name, index, str(step.get("kind", "")), "defect", detail)
                 raise RuntimeError(f"qa fixture {name!r} step {index}: {detail}")
-            result = self._run_book_step(name, index, step, env)
+            if step.get("unperformable"):
+                detail = f"a browser cannot perform this step: {step['unperformable']}"
+                self._fault(name, index, str(step.get("kind", "")), "defect", detail)
+                raise RuntimeError(f"qa fixture {name!r} step {index}: {detail}")
+            if "browser" in step:
+                result = self._run_browser_step(name, index, step, env)
+                signed_in = True
+            else:
+                result = self._run_book_step(name, index, step, env)
             step_id = step.get("id")
             if step_id:
                 step_results[step_id] = result
                 for key, value in _facts_of_step(provides, step_id, result.stdout).items():
                     env.setdefault(key, value)
+        if signed_in:
+            self._node_sessions[name] = self._settled_session(name, len(steps) - 1)
         self._node_facts[name] = self._extract_provides(name, provides, step_results, len(steps) - 1)
         if result is None:
             result = ToolResult(command=[], stdout="", stderr="", exit_code=0)

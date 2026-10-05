@@ -18,7 +18,7 @@ from typing import Any
 
 @dataclass(frozen=True)
 class Arranged:
-    """One precondition as its first build in the lap left it: the facts it provides and the command's end, or the fault that stopped it."""
+    """One precondition as its first build in the lap left it: the facts it provides, the command's end and the browser session it signed in, or the fault that stopped it."""
 
     facts: dict[str, str] = field(default_factory=dict)
     structures: dict[str, Any] = field(default_factory=dict)
@@ -26,6 +26,7 @@ class Arranged:
     stdout: str = ""
     stderr: str = ""
     exit_code: int = 0
+    browser: dict[str, Any] | None = None
     fault: dict[str, Any] | None = None
     error: str = ""
 

@@ -25,7 +25,7 @@ from ostler.finding import Finding
 from ostler.model import Graph, Epic, Story, UINode, read_doc, required_section_problems
 from ostler.path import features_root as features_root_of, specs_root_in
 from ostler.provenance import checkout_for
-from ostler.qa import (captures as captures_mod, fixtures as fixtures_mod, references,
+from ostler.qa import (captures as captures_mod, fixture_browser, fixtures as fixtures_mod, references,
                        runbook as runbook_mod, sensitivity)
 from ostler.qa.compile import Gap
 from ostler.qa.context import RELATION_KEYS, relation_subject
@@ -778,9 +778,11 @@ def _check_fixture_grammar(graph: Graph, f: list[Finding]) -> None:
     fixtures = {n.id: n for n in graph.ui_nodes_of_type("fixture")}
     by_name = {Path(n.id).stem: n for n in fixtures.values()}
 
+    fixture_steps: set[str] = set()
     for node in fixtures.values():
         rel = _rel_path(graph, node)
         for step in runbook_mod.steps_of(graph, node):
+            fixture_steps.add(step.id)
             kind = _bullet_value(step.meta, "kind")
             if kind and kind not in _FIXTURE_STEP_KINDS:
                 f.append(Finding(
@@ -788,6 +790,13 @@ def _check_fixture_grammar(graph: Graph, f: list[Finding]) -> None:
                     f"{step.id}: `kind: {kind}` is not a fixture step kind",
                     path=rel, line=step.line, ref=kind,
                     suggestion="- kind: " + "|".join(sorted(_FIXTURE_STEP_KINDS))))
+            if fixture_browser.is_browser_step(step):
+                f.extend(Finding("error", "fixture-browser-step", f"{step.id}: {problem}",
+                                 path=rel, line=step.line,
+                                 suggestion='- open: [<screen>](<screen>.md)\n'
+                                            '- arrange: click(locator="#<component-anchor>")')
+                         for problem in fixture_browser.browser_step(graph, step).problems)
+                continue
             if not _bullet_value(step.meta, "run"):
                 f.append(Finding(
                     "error", "fixture-step-no-run",
@@ -797,6 +806,14 @@ def _check_fixture_grammar(graph: Graph, f: list[Finding]) -> None:
             step_commands.check_step_command_syntax(step, rel, f)
             step_commands.check_step_command_checkout_path(graph, step, rel, f)
             step_commands.check_fixture_step_directory(graph, step, rel, f)
+
+    for step in graph.ui_nodes_of_type("step"):
+        if step.id not in fixture_steps and fixture_browser.is_browser_step(step):
+            f.append(Finding(
+                "error", "browser-step-outside-fixture",
+                f"{step.id}: `open:` and `arrange:` are performed only by a fixture's steps — "
+                f"a runbook step runs a command",
+                path=_rel_path(graph, step), line=step.line))
 
     _check_fixture_needs_cycles(graph, fixtures, f)
     _check_needs_binding_args(graph, by_name, f)
@@ -1087,6 +1104,8 @@ def gap_findings(gaps: list[Gap]) -> list[Finding]:
             findings.append(Finding("error", "needs-snapshot", message, ref=gap.obligation_id))
         elif gap.kind == "needs-target-backend":
             findings.append(Finding("error", "needs-target-backend", message, ref=gap.obligation_id))
+        elif gap.kind == "browser-fixture-off-browser":
+            findings.append(Finding("error", "browser-fixture-off-browser", message, ref=gap.obligation_id))
         elif gap.kind == "needs-multi-target-runtime":
             findings.append(
                 Finding("error", "needs-multi-target-runtime", message, ref=gap.obligation_id)

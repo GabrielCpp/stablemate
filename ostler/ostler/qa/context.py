@@ -26,6 +26,7 @@ from ostler import reach
 from ostler import routes as routes_mod
 from ostler.qa import captures as captures_mod
 from ostler.qa.dispatch import owes_live_evidence
+from ostler.qa.fixture_browser import BROWSER_KEYS
 from ostler.qa import fixtures as fixtures_mod
 from ostler.qa.compile import annotate_deferred_obligations
 from ostler.qa.obligation_frame import (
@@ -368,6 +369,7 @@ def build_context(
         "navigation": _navigation(snapshot.head_dump),
         "cliBinaries": _run_binaries_by_path(snapshot.book),
         "scenarioFixtures": _scenario_fixtures(snapshot.book),
+        "browserFixtures": _browser_fixtures(snapshot.book),
         "fragmentHosts": _fragment_hosts(snapshot.book),
         "screenRoutes": routes_mod.screen_routes(snapshot.head_graph),
         "healthFindings": [*mapping.unmapped, *grounding.health, *requirement.health],
@@ -1372,6 +1374,24 @@ def _scenario_fixtures(book: Mapping[str, BookNode]) -> list[str]:
         if values and bullet_text(values[0]) == "scenario":
             names.add(Path(node.path).stem)
     return sorted(names)
+
+
+def _browser_fixtures(book: Mapping[str, BookNode]) -> list[str]:
+    """Every `fixture` file that signs a browser in, by its own step or a fixture it `needs:`."""
+    fixtures = {node.path: node for node in book.values() if node.type == "fixture" and node.kind == "file"}
+    signing = {
+        node.path for node in book.values()
+        if node.type == "step" and node.path in fixtures and any(node.bullets.get(key) for key in BROWSER_KEYS)
+    }
+    grew = True
+    while grew:
+        needing = {
+            path for path, node in fixtures.items()
+            if any(edge.via == "needs" and edge.to.split("#", 1)[0] in signing for edge in node.edges)
+        }
+        grew = not needing <= signing
+        signing |= needing
+    return sorted(Path(path).stem for path in signing)
 
 
 def _fragment_hosts(book: Mapping[str, BookNode]) -> dict[str, str]:

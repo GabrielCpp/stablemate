@@ -732,6 +732,8 @@ UI_TYPES: tuple[UINodeType, ...] = (
             BulletKey("verify", link=True),
             BulletKey("optional"),
             BulletKey("depends-on"),
+            BulletKey("open", link=True),
+            BulletKey("arrange"),
         ),
     ),
     UINodeType(

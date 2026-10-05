@@ -579,6 +579,36 @@ def test_a_step_with_no_run_command_is_a_defect_not_a_silent_skip(tmp_path: Path
     assert fault["fixture"] == "seeded-acme"
 
 
+def test_a_browser_step_the_book_cannot_state_is_a_defect_naming_why(tmp_path: Path) -> None:
+    module = _write(tmp_path, SECRET_SCENARIO)
+    book_fixtures = {
+        "seeded-acme": {
+            "steps": [{"kind": "seed", "id": "sign-in", "unperformable": "`open:` links no `screen`"}],
+            "args": [], "provides": [], "needs": [], "secrets": [],
+        }
+    }
+    code, stdout, records = _run(module, "needs-a-secret", tmp_path, book_fixtures=book_fixtures)
+    assert code != 0, stdout
+    [fault] = [r for r in records if r.get("type") == "fixture_fault"]
+    assert fault["fault_class"] == "defect"
+    assert "`open:` links no `screen`" in json.dumps(fault)
+
+
+def test_a_browser_step_on_a_scenario_with_no_browser_is_a_defect(tmp_path: Path) -> None:
+    module = _write(tmp_path, SECRET_SCENARIO)
+    book_fixtures = {
+        "seeded-acme": {
+            "steps": [{"kind": "seed", "id": "sign-in", "browser": [{"open": "/login", "screen": "login.md"}]}],
+            "args": [], "provides": [], "needs": [], "secrets": [],
+        }
+    }
+    code, stdout, records = _run(module, "needs-a-secret", tmp_path, book_fixtures=book_fixtures)
+    assert code != 0, stdout
+    [fault] = [r for r in records if r.get("type") == "fixture_fault"]
+    assert fault["fault_class"] == "defect"
+    assert fault["fixture"] == "seeded-acme"
+
+
 def test_an_unresolvable_needs_link_is_a_defect_not_a_silent_skip(tmp_path: Path) -> None:
     globex_script = tmp_path / "seed-globex.sh"
     _seed_step(globex_script, "#!/bin/sh\necho '{}'\n")

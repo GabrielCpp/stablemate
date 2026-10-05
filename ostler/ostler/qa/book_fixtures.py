@@ -7,6 +7,7 @@ from typing import Any
 
 from ostler.markdown import extract_refs
 from ostler.model import Graph, UINode
+from ostler.qa import fixture_browser
 from ostler.qa import fixtures as fixtures_mod
 from ostler.qa import runbook as runbook_mod
 from ostler.qa.stack import STEP_TIMEOUT_S, boot_timeout
@@ -92,8 +93,15 @@ def _steps_of(graph: Graph, node: UINode) -> list[dict[str, Any]]:
     steps: list[dict[str, Any]] = []
     for step in runbook_mod.steps_of(graph, node):
         kind = runbook_mod.bullet_value(step.meta, "kind")
-        command = runbook_mod.step_command(step, runbook_mod.system_root(graph), ".")
         step_id = step.id.rpartition("#")[2]
+        if fixture_browser.is_browser_step(step):
+            performed = fixture_browser.browser_step(graph, step)
+            if performed.problems:
+                steps.append({"kind": kind, "id": step_id, "unperformable": "; ".join(performed.problems)})
+            else:
+                steps.append({"kind": kind, "id": step_id, "browser": performed.actions})
+            continue
+        command = runbook_mod.step_command(step, runbook_mod.system_root(graph), ".")
         if command is None:
             steps.append({"kind": kind, "id": step_id, "missing_run": True})
             continue

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
@@ -53,6 +53,26 @@ DEFAULT_VIEWPORT = {"width": 1440, "height": 900}
 
 
 BROWSER_ISSUED_URLS: tuple[str, ...] = ("/favicon.ico",)
+
+ARRANGE_TIMEOUT_MS = 30_000
+
+ARRANGE_METHODS = {"fill": "fill", "click": "click", "press": "press", "select": "select_option"}
+
+
+def _locate(page: Any, locator: Mapping[str, str]) -> Any:
+    """The element a fixture's locator names: by role and name, label, text or a book-declared selector."""
+    if "role" in locator:
+        found = page.get_by_role(locator["role"], name=locator["name"])
+        if found.count() > 1:
+            whole = page.get_by_role(locator["role"], name=locator["name"], exact=True)
+            if whole.count() == 1:
+                return whole
+        return found
+    if "label" in locator:
+        return page.get_by_label(locator["label"])
+    if "text" in locator:
+        return page.get_by_text(locator["text"])
+    return page.locator(locator["css"])
 
 
 class RecordedResponse:
@@ -140,6 +160,7 @@ class Browser:
         self._held: list[Any] = []
         self._body_budget = MAX_BODY_BUDGET_BYTES
         self._secrets = [value for value in secrets if value]
+        self._side: Any = None
 
 
     def open(self) -> Any:
@@ -212,6 +233,47 @@ class Browser:
         if str(self.target.browser or "chromium") != "chromium":
             return []
         return ["clipboard-read", "clipboard-write"]
+
+    def arrange(self, actions: Sequence[Mapping[str, Any]], *, timeout_ms: float = ARRANGE_TIMEOUT_MS) -> None:
+        """Perform a fixture's browser actions on a page of this context the scenario never sees."""
+        if self._side is None:
+            self._side = self._context.new_page()
+        try:
+            for action in actions:
+                if "open" in action:
+                    self._side.goto(str(action["open"]), timeout=timeout_ms)
+                    continue
+                found = _locate(self._side, action["locator"])
+                method = ARRANGE_METHODS[str(action["act"])]
+                values = [str(action["value"])] if "value" in action else []
+                getattr(found, method)(*values, timeout=timeout_ms)
+        except Exception:
+            self._close_side()
+            raise
+
+    def session(self, origin: str, *, timeout_ms: float = ARRANGE_TIMEOUT_MS) -> dict[str, Any]:
+        """The session the arranged page left, once it is back on *origin* and its requests have settled."""
+        host = urlsplit(origin).netloc
+        try:
+            self._side.wait_for_url(lambda url: urlsplit(url).netloc == host, timeout=timeout_ms)
+            self._side.wait_for_load_state("networkidle", timeout=timeout_ms)
+            return dict(self._context.storage_state(indexed_db=True))
+        finally:
+            self._close_side()
+
+    def restore(self, state: Mapping[str, Any]) -> None:
+        """Put an earlier scenario's arranged session into this context, before the page opens the app."""
+        side = self._context.new_page()
+        try:
+            side.goto("about:blank")
+            self._context.set_storage_state(dict(state))
+        finally:
+            side.close()
+
+    def _close_side(self) -> None:
+        if self._side is not None:
+            self._side.close()
+            self._side = None
 
 
     def console_errors(self, *, ignore_urls: Sequence[str] = BROWSER_ISSUED_URLS) -> list[dict[str, Any]]:

@@ -64,6 +64,7 @@ _ARRANGEMENT_GAPS = frozenset({
 
 GAP_KINDS = frozenset({
     "uncompilable-claim",
+    "browser-fixture-off-browser",
     "unresolved-precondition",
     "unreachable-screen",
     "screen-preconditions-undeclared",
@@ -256,8 +257,23 @@ class ObligationLanes:
     no_verify: list[Obligation] = field(default_factory=list[Obligation])
 
 
+def _signs_in_off_browser(
+    obligation: Obligation, navigation: dict[str, SurfaceNavigation], browser_fixtures: frozenset[str],
+) -> Gap | None:
+    """The gap for a claim that arranges a browser sign-in on a surface no browser drives."""
+    driver = surface_row(navigation, obligation.surface).driver
+    signing = sorted({row.name for row in obligation.fixtures if row.name in browser_fixtures})
+    if driver == "playwright" or not signing:
+        return None
+    return Gap(obligation.id, "browser-fixture-off-browser", (
+        f"fixture {', '.join(signing)} signs a browser in, and surface {obligation.surface!r} is "
+        f"driven by {driver or 'no driver'}, which opens no browser: arrange this claim with a "
+        "fixture whose steps all `run:`, or state it on a screen of a browser surface"))
+
+
 def _dispatch(
     owed: list[Obligation], navigation: dict[str, SurfaceNavigation], gaps: list[Gap],
+    browser_fixtures: frozenset[str] = frozenset(),
 ) -> ObligationLanes:
     """Route each owed obligation to the builder D1's table names for its node and surface."""
     lanes = ObligationLanes()
@@ -265,6 +281,10 @@ def _dispatch(
     for obligation in owed:
         if not _is_owed_for_dispatch(obligation):
             lanes.no_verify.append(obligation)
+            continue
+        off_browser = _signs_in_off_browser(obligation, navigation, browser_fixtures)
+        if off_browser is not None:
+            gaps.append(off_browser)
             continue
         if obligation.node_type == "flow":
             lanes.flow.append(obligation)
@@ -433,7 +453,7 @@ def _compile_packet(
     emitted = EmittedScenarios(targets=set(), covered=set() if covered_ids is None else covered_ids)
     owed = _readable(packet.owed, sinks.gaps)
     navigation = packet.navigation
-    lanes = _dispatch(owed, navigation, sinks.gaps)
+    lanes = _dispatch(owed, navigation, sinks.gaps, packet.browser_fixtures)
     debt = _book_debt(lanes.no_verify, sinks.gaps)
     http_owed, api_urls = _split_by_entry_url(lanes.http, navigation, base_url, sinks.gaps)
     page_owed, web_urls = _split_by_entry_url(lanes.page, navigation, base_url, sinks.gaps)
