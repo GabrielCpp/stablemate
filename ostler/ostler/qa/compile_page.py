@@ -12,10 +12,12 @@ from ostler.qa.compile_playwright import name_refusal
 from ostler.qa.compile_playwright import needs_window
 from ostler.qa.compile_playwright import page_locator_expr
 from ostler.qa.compile_playwright import page_observations
+from ostler.qa.compile_playwright import TRIGGER_ACTS
 from ostler.qa.compile_playwright import perform_acts
+from ostler.qa.compile_playwright import trigger_name
+from ostler.qa.compile_playwright import trigger_performance
 from ostler.qa.compile_playwright import walk_hops
 from ostler.qa.compile_support import PLAYWRIGHT
-from ostler.qa.compile_support import bullet_value
 from ostler.qa.compile_support import on_node
 from ostler.qa.compile_support import on_label
 from ostler.qa.compile_support import trailing_comment
@@ -406,7 +408,7 @@ def _unarranged_guards(arm: _InteractionArm, guards: list[Obligation], acts_arra
 
 
 def _trigger_word(arm: _InteractionArm) -> str:
-    return (bullet_value(arm.trigger) or "").lower()
+    return trigger_name(arm.trigger)
 
 
 def _scaffold_click_refusal(arm: _InteractionArm) -> ScenarioRefusal | None:
@@ -416,7 +418,7 @@ def _scaffold_click_refusal(arm: _InteractionArm) -> ScenarioRefusal | None:
     trigger. Any other value is the book's, since it names no trigger at all.
     """
     word = _trigger_word(arm)
-    if word == _CLICK_TRIGGER or word in ARRIVAL_TRIGGERS:
+    if word == _CLICK_TRIGGER or word in ARRIVAL_TRIGGERS or word in TRIGGER_ACTS:
         return None
     if word in NON_PRESS_TRIGGERS:
         return ScenarioRefusal("needs-trigger-action",
@@ -462,6 +464,12 @@ def _performed_trigger(
         gaps.extend(Gap(oid, scaffold.kind, scaffold.detail, scaffold.owner) for oid in ids)
     if _trigger_word(arm) in ARRIVAL_TRIGGERS:
         action = [f"    # trigger: {trailing_comment(arm.trigger)}, performed by arriving at the screen"]
+    elif _trigger_word(arm) in TRIGGER_ACTS and on_expr is not None:
+        performance = trigger_performance(arm.trigger, on_expr)
+        if isinstance(performance, ScenarioRefusal):
+            gaps.extend(Gap(oid, performance.kind, performance.detail, performance.owner) for oid in ids)
+            return None
+        action = [performance]
     else:
         action = [f"    {on_expr}.click()  # trigger: {trailing_comment(arm.trigger)}"]
     if arm.does:

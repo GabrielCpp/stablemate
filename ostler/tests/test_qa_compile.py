@@ -2238,6 +2238,44 @@ def test_a_named_non_press_trigger_is_the_harness_missing_action() -> None:
     assert "needs-trigger-action" in HARNESS_LIMIT_GAPS
 
 
+def _keyed_trigger(trigger: str) -> tuple[str | None, list[Gap]]:
+    title = f"{_SCREEN}#policy-title"
+    return compile_plan_gaps(_navigation_context(
+        _page_obligation("okf:new-policy:policy-title:visible:1", title,
+                          locators={"role": ["textbox"], "name": ["Policy title"]},
+                          checks=[_visible("textbox:Policy title")]),
+        _page_obligation("okf:new-policy:rename-policy:does:1", f"{_SCREEN}#rename-policy",
+                          locators={"on": ["[policy-title](#policy-title)"],
+                                    "trigger": [trigger],
+                                    "does": ["shows the policy table"]},
+                          checks=[_located("#policy-table", f"{_SCREEN}#policy-table",
+                                           {"role": ["table"], "name": ["Policies on file"]})]),
+        navigation=_arrival_navigation(),
+    ), story="demo-story")
+
+
+@pytest.mark.parametrize(("trigger", "performed"), [
+    ('`press(key="Escape")`', '.press("Escape")'),
+    ('fill(value="Q3 policy")', '.fill("Q3 policy")'),
+    ('press("Enter")', '.press("Enter")'),
+])
+def test_a_keyed_trigger_sends_its_key_or_text_to_the_on_control(trigger: str, performed: str) -> None:
+    source, gaps = _keyed_trigger(trigger)
+    assert source is not None
+    assert _gap_kinds(gaps, "okf:new-policy:rename-policy:does:1") == []
+    assert f'qa.by_role("textbox", name="Policy title"){performed}' in source
+    assert ".click()" not in source
+
+
+@pytest.mark.parametrize("trigger", ["press", "`fill`", 'press(locator="#policy-title")', 'press(key="Control B")'])
+def test_a_keyed_trigger_without_a_usable_key_is_a_book_repair(trigger: str) -> None:
+    source, gaps = _keyed_trigger(trigger)
+    rename = [g for g in gaps if g.obligation_id == "okf:new-policy:rename-policy:does:1"]
+    assert [g.kind for g in rename] == ["uncompilable-claim"]
+    assert "uncompilable-claim" not in HARNESS_LIMIT_GAPS
+    assert source is None or "rename_policy" not in source
+
+
 def test_a_load_trigger_is_performed_by_arriving_at_the_screen() -> None:
     """A redirect that fires as the page loads needs no click, and its `on:` is often a state with no locator of its own."""
     interaction = f"{_SCREEN}#redirect-if-signed-in"

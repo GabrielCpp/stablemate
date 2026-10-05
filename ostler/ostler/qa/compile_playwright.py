@@ -7,6 +7,8 @@ from typing import get_args as _get_args
 
 from ostler import accessible_names
 from ostler import acts as acts_mod
+from ostler.checks import Call
+from ostler.checks import parse_call
 from ostler.qa.book_index import BookIndex
 from ostler.qa.compile_journey import JourneyWalk
 from ostler.qa.compile_journey import WalkedJourney
@@ -26,6 +28,7 @@ from ostler.qa.obligation import NO_LOCATORS
 from ostler.qa.obligation import Obligation
 from ostler.qa.plan_source import Gap
 from ostler.qa.plan_source import PlanSinks
+from ostler.qa.plan_source import ScenarioRefusal
 from ostler.qa.plan_source import call_kwargs
 from ostler.qa.plan_source import check_observes
 from ostler.qa.plan_source import decline_captures
@@ -120,6 +123,41 @@ def perform_acts(
         argument = "" if value_param is None else python_literal(row.args.get(value_param, ""))
         lines.append(f"    {expr}.{method}({argument})  # arrange: {row.call}")
     return PerformedActs(lines)
+
+
+TRIGGER_ACTS: dict[str, str] = {"fill": "value", "press": "key"}
+
+
+def trigger_name(raw: str) -> str:
+    """The act a `trigger:` names: its bare word, or the name of the call it is written as."""
+    value = bullet_value(raw) or ""
+    parsed = parse_call(value)
+    return (parsed.name if parsed is not None else value).lower()
+
+
+def trigger_performance(raw: str, on_expr: str) -> str | ScenarioRefusal:
+    """The line that performs a `fill(value=…)` or `press(key=…)` trigger on *on_expr*, or why the book's spelling of it cannot be performed."""
+    name = trigger_name(raw)
+    param = TRIGGER_ACTS[name]
+    parsed = parse_call(bullet_value(raw) or "")
+    argument: object = None
+    if isinstance(parsed, Call) and set(parsed.keywords) <= {param}:
+        if parsed.keywords and not parsed.positional:
+            argument = parsed.keywords[param]
+        elif len(parsed.positional) == 1 and not parsed.keywords:
+            argument = parsed.positional[0]
+    example = "Escape" if name == "press" else "…"
+    if not isinstance(argument, str) or not argument:
+        return ScenarioRefusal("uncompilable-claim",
+                               f"trigger {raw!r} does not say what to {name}: write "
+                               f'`trigger: {name}({param}="{example}")`, the {param} the user sends '
+                               "to the `on:` control, which is the control it acts on")
+    if name == "press" and any(ch.isspace() for ch in argument):
+        return ScenarioRefusal("uncompilable-claim",
+                               f"trigger `press` names key {argument!r}, which contains whitespace "
+                               "and so is not a Playwright key")
+    method, _ = _ACT_METHODS[name]
+    return f"    {on_expr}.{method}({python_literal(argument)})  # trigger: {trailing_comment(raw)}"
 
 
 def walk_hops(
@@ -358,6 +396,12 @@ def _web_step(index: int, step: FlowStep, walk: JourneyWalk, gaps: list[Gap]) ->
                             "journey never reached")
                         for oid in ids)
         return None
+    if trigger_name(trigger_value) in TRIGGER_ACTS:
+        action = trigger_performance(trigger_value, expr)
+        if isinstance(action, ScenarioRefusal):
+            gaps.extend(Gap(oid, action.kind, f"step {index}: {action.detail}") for oid in ids)
+            return None
+        return [*performed.lines, action]
     return [*performed.lines, f"    {expr}.click()  # step {index}: {trailing_comment(trigger_value)}"]
 
 
