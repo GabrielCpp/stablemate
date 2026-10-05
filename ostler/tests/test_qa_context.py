@@ -918,6 +918,37 @@ def test_an_interaction_check_does_not_discharge_a_component_that_is_always_pres
     assert _save_button_owes(packet) == {"role": True, "name": True}
 
 
+def test_an_interaction_on_the_host_discharges_a_fragment_component_it_proves_visible(tmp_path: Path):
+    (tmp_path / "docs/features/demo").mkdir(parents=True)
+    (tmp_path / "app").mkdir()
+    (tmp_path / "docs/features/demo/screen-a.md").write_text(
+        "---\ntype: screen\ntitle: screen-a\n---\n# screen-a\n\n"
+        "- [screen-a-components](screen-a-components.md)\n"
+        + _PRESS_SAVE.replace("(#save-button)", "(screen-a-components.md#save-button)").replace(
+            '"#save-button"', '"screen-a-components.md#save-button"'),
+        encoding="utf-8",
+    )
+    (tmp_path / "docs/features/demo/screen-a-components.md").write_text(
+        "---\ntype: fragment\ntitle: 'screen-a: Components'\n---\n# screen-a: Components\n\n"
+        "- host: [screen-a](screen-a.md)\n\n"
+        "## Components\n\n### save-button\n- role: button\n- name: Save item\n"
+        "- states: present only once the item is dirty.\n- code: app/screen-a.py::save_item\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "app/screen-a.py").write_text("def save_item():\n    return 'old'\n", encoding="utf-8")
+    _git(tmp_path, "init")
+    _git(tmp_path, "config", "user.email", "qa@example.com")
+    _git(tmp_path, "config", "user.name", "QA")
+    _git(tmp_path, "add", ".")
+    _git(tmp_path, "commit", "-m", "base")
+    base = _git(tmp_path, "rev-parse", "HEAD")
+    (tmp_path / "app/screen-a.py").write_text("def save_item():\n    return 'new'\n", encoding="utf-8")
+
+    packet = build_context(tmp_path, base=base, source_roots={"demo": ["app"]})
+
+    assert _save_button_owes(packet) == {"states": False, "role": False, "name": False}
+
+
 def test_same_as_triple_collapses_to_one_obligation_not_three(tmp_path: Path):
     """A three-member family (`screen-a`/`screen-b`/`screen-c`, each reciprocally `same-as:` the other two) still mints one obligation per key, never three — and because each member's own `_obligations` call computes the representative independently off its own id, the three members landing on the same `screen-a`-rooted ids also shows the id does not depend on which member the walk happened to start from."""
     base = _same_as_button_screens(tmp_path, ["screen-a", "screen-b", "screen-c"])

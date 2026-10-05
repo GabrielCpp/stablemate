@@ -767,17 +767,25 @@ def _minted_obligations(
     for obligation in obligations:
         deduped.setdefault(str(obligation["id"]), obligation)
     minted = list(deduped.values())
-    _discharge_states_an_interaction_reaches(minted)
+    _discharge_states_an_interaction_reaches(minted, _fragment_hosts(book))
     return minted
 
 
 _REACHED_BY_INTERACTION_KEYS = frozenset({"states", "role", "name"})
 
 
-def _discharge_states_an_interaction_reaches(minted: list[dict[str, Any]]) -> None:
-    """Stop owing an arrival check on a component that comes and goes when an interaction on its page proves it visible."""
+def _discharge_states_an_interaction_reaches(minted: list[dict[str, Any]], hosts: Mapping[str, str]) -> None:
+    """Stop owing an arrival check on a component that comes and goes when an interaction on its page proves it visible.
+
+    A fragment's components are shown on its host, so an interaction on the host proves them.
+    """
+
+    def page(obligation: dict[str, Any]) -> str:
+        source = str(obligation["source"])
+        return hosts.get(source, source)
+
     proven = {
-        (str(obligation["source"]), str(target["node"]))
+        (page(obligation), str(target["node"]))
         for obligation in minted
         if obligation["nodeType"] == "interaction"
         for check in obligation.get("checksDeclared", ())
@@ -792,7 +800,7 @@ def _discharge_states_an_interaction_reaches(minted: list[dict[str, Any]]) -> No
     for obligation in minted:
         if obligation["nodeType"] != "component" or obligation["kind"] not in _REACHED_BY_INTERACTION_KEYS:
             continue
-        if obligation["node"] not in comes_and_goes or (str(obligation["source"]), str(obligation["node"])) not in proven:
+        if obligation["node"] not in comes_and_goes or (page(obligation), str(obligation["node"])) not in proven:
             continue
         if obligation.get("checksDeclared") or obligation.get("fixturesDeclared"):
             continue
