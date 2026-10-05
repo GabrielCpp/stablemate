@@ -8,7 +8,7 @@ import shutil
 import tempfile
 from dataclasses import asdict
 from pathlib import Path
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from typing import Any
 
 from ostler.qa.attribution import signatures
@@ -37,16 +37,19 @@ def run_plan(
     only: list[str] | None = None,
     qa_dirname: str = QA_DIRNAME,
     lap: Path | None = None,
+    stack_check: Callable[[], str] | None = None,
 ) -> tuple[str, str, dict[str, Any]]:
     """Execute a validated plan and return ``(status, message, summary)``.
 
     Each precondition is built once per lap and kept in the lap record under *lap*, so a caller
     that runs one lap in several calls hands each the same directory. Without one, this call is
-    the lap.
+    the lap. *stack_check* runs before each scenario and says why the app stopped serving, which
+    blocks the run there, since every scenario after it would fail on the app's absence.
     """
     if lap is None:
         with tempfile.TemporaryDirectory(prefix="ostler-lap-") as scratch:
-            return run_plan(document, root=root, stop_on_fail=stop_on_fail, only=only, qa_dirname=qa_dirname, lap=Path(scratch))
+            return run_plan(document, root=root, stop_on_fail=stop_on_fail, only=only, qa_dirname=qa_dirname,
+                            lap=Path(scratch), stack_check=stack_check)
     plan = document.data
     spec_dir = document.spec_dir
     scored = qa_dirname == QA_DIRNAME
@@ -125,6 +128,12 @@ def run_plan(
                 }
             )
         for scenario in selected:
+            stopped = stack_check() if stack_check else ""
+            if stopped:
+                status = "blocked"
+                runner_errors.append(stopped)
+                session.append({"kind": "runner_error", "status": status, "message": stopped})
+                break
             scenario_id = str(scenario["id"])
             target_id = str(scenario["target"])
             for name in scenario.get("restart", []):
