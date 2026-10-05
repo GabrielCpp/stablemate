@@ -17,6 +17,7 @@ from ostler.qa import run_log
 from ostler.qa.plan import PlanDocument, check_runtime_requirements
 from ostler.qa.session import QA_DIRNAME, QaSession
 from ostler.qa.verdict import Verdict, judge, merged
+from ostler.qa.repeats import RepeatWatch
 from ostler.qa.report import REPORT_FILE, ReportError, write_report
 
 
@@ -38,6 +39,7 @@ def run_plan(
     qa_dirname: str = QA_DIRNAME,
     lap: Path | None = None,
     stack_check: Callable[[], str] | None = None,
+    stop_on_repeat: int = 0,
 ) -> tuple[str, str, dict[str, Any]]:
     """Execute a validated plan and return ``(status, message, summary)``.
 
@@ -45,11 +47,14 @@ def run_plan(
     that runs one lap in several calls hands each the same directory. Without one, this call is
     the lap. *stack_check* runs before each scenario and says why the app stopped serving, which
     blocks the run there, since every scenario after it would fail on the app's absence.
+
+    A positive *stop_on_repeat* stops the run once that many scenarios on several pages failed on
+    one observation, since one cause no page holds would fail every scenario after them the same way.
     """
     if lap is None:
         with tempfile.TemporaryDirectory(prefix="ostler-lap-") as scratch:
             return run_plan(document, root=root, stop_on_fail=stop_on_fail, only=only, qa_dirname=qa_dirname,
-                            lap=Path(scratch), stack_check=stack_check)
+                            lap=Path(scratch), stack_check=stack_check, stop_on_repeat=stop_on_repeat)
     plan = document.data
     spec_dir = document.spec_dir
     scored = qa_dirname == QA_DIRNAME
@@ -100,6 +105,7 @@ def run_plan(
     status = "passed"
     cleanup_errors: list[str] = []
     runner_errors: list[str] = []
+    watch = RepeatWatch(stop_on_repeat)
     summary: dict[str, Any] = {}
     evidence: Path | None = None
     try:
@@ -167,6 +173,11 @@ def run_plan(
                 status = result.status
                 if stop_on_fail:
                     break
+            repeated = watch.observe(scenario_id, scenario.get("covers", []), result)
+            if repeated:
+                runner_errors.append(repeated)
+                session.append({"kind": "runner_error", "status": status, "message": repeated})
+                break
     except DriverBlocked as exc:
         status = "blocked"
         runner_errors.append(str(exc))
