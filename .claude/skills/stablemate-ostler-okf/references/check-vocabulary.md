@@ -8,7 +8,7 @@ Editable path on this machine: `farrier source .claude/skills/stablemate-ostler-
 
 # The check vocabulary
 
-The twenty named checks a `verify:` bullet may call, their signatures, and — the part that
+The twenty-one named checks a `verify:` bullet may call, their signatures, and — the part that
 matters when judging whether a check earns its bullet — **the defect each one excludes**. A check
 that excludes no plausible defect is a rubber stamp, and `doctor` refuses it as `weak-check`.
 Companion to [`../SKILL.md`](../SKILL.md) and to [bullet-grammar.md](bullet-grammar.md), which
@@ -105,7 +105,8 @@ saved, not what it printed, gets a value check. The HTTP and mobile drivers refu
 the web driver gaps it: none of them has a working directory to read.
 
 ### `absent(subject*=<str>)`
-Excludes a delete that hid the thing from one surface and left it readable on another.
+Excludes a delete that hid the thing from one surface and left it readable on another. It reads
+a file. A claim that a control is not on the screen is `hidden(locator=…)`.
 
 ### `created(subject*=<str>)`
 Excludes a thing that was already there reported as created. A presence check run only afterwards
@@ -133,6 +134,13 @@ bullet — write the claim about what the user can do, not about the attribute o
 happens to spell it with. `disabled` is HTML's word for it; a mobile surface says
 `enabled=false` and an API says nothing at all, so a check named after the attribute would be
 compilable by one driver and meaningless to the rest.
+
+### `hidden(locator*=<str> (locator))`
+Excludes a control the book says is gone, such as a dialog that closed or an option withdrawn,
+that the product still draws. `inert` passes a leftover that is disabled, and `visible` can only
+claim the opposite. It passes when no element the locator matches is shown, and it gives a
+closing element three seconds to leave. This is the page's form of `absent`: `absent` reads a
+file, and `hidden` reads the screen.
 
 ### `focusable(locator*=<str> (locator), activates=<str>)`
 Excludes a control reachable only by pointer, which `visible`/`actionable` both pass because
