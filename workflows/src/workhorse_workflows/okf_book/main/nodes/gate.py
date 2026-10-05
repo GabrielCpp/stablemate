@@ -65,6 +65,17 @@ def rerun_command(records_dir: Path, service: str, phase: Phase, pages: Sequence
     return " ".join((command, *(shlex.quote(page) for page in pages)))
 
 
+def block_stopped_runner(records_dir: Path, service: str, exercised: ExerciseResult) -> bool:
+    """Record a blocker when the runner itself stopped the run, which then measured nothing of the book: on the environment when a driver could not start, on ostler otherwise."""
+    summary = exercised.summary
+    if summary is None or not summary.runner_errors:
+        return False
+    side = Side.ENVIRONMENT if summary.status == "blocked" else Side.OSTLER
+    _ = record_blocker(records_dir, Blocker(subject=f"{service}: the runner stopped before it measured the book", service=service,
+                                            phase=Phase.EXERCISE, side=side, reason="\n".join(exercised.lines)))
+    return True
+
+
 def escalation_reason(signature: Signature) -> str:
     """Why a person must act on *signature*: a capability only a person can supply, or the checks another party must fix."""
     if signature.gap:

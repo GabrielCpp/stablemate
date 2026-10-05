@@ -242,9 +242,7 @@ class OkfBook(BookFlow):
             return Continue(len(problems), self.lead_check, index=index, problems=problems, repaired=True,
                             run_failures_repaired=run_failures_repaired).because("the check finds problems: the lead reads the whole check first")
         _ = record_check(self.records_dir, self.root, service, problems)
-        return Continue(problems, self.run_book, index=index, run_failures_repaired=run_failures_repaired).because(
-            "run the book against the app"
-        )
+        return Continue(problems, self.run_book, index=index, run_failures_repaired=run_failures_repaired).because("run the book against the app")
 
     def lead_check(self, index: int, problems: tuple[PageProblem, ...], repaired: bool = False, run_failures_repaired: bool = False) -> Continue[...]:
         """Hand the check to its lead, which names the side of each rule's problems before any page is repaired. A problem it named another side's is held: it is a blocker on that side, and no page repair is sent it. A lead that named nothing leaves what the last lead of the check named. Each problem left is a blocker on its page, and goes to its repair. After a repair the problems left go back only when they are fewer than the last check left, so a person is asked only about what a repair did not lower."""
@@ -270,8 +268,10 @@ class OkfBook(BookFlow):
         ).because("settle the run")
 
     def settle_run(self, index: int, run_failures_repaired: bool, exercised: ExerciseResult) -> Continue[...]:
-        """A passing book is done. Each failure another party must fix is a blocker, one per signature. A stack that cannot come up goes to the writer of the runbooks it came up from, and is a blocker on the app when the book declares none or the writer's repair left it down. A book whose run failed goes to the mapping of its failures. Either way the book stays."""
+        """A passing book is done. A run the runner itself stopped measured nothing of the book, so it is a blocker on the runner's side and no lap. Each failure another party must fix is a blocker, one per signature. A stack that cannot come up goes to the writer of the runbooks it came up from, and is a blocker on the app when the book declares none or the writer's repair left it down. A book whose run failed goes to the mapping of its failures. Either way the book stays."""
         service = self.surfaces[index].service
+        if gate.block_stopped_runner(self.records_dir, service, exercised):
+            return self._next_surface(exercised.passed, index)
         if exercised.summary is not None:
             _ = write_run(self.records_dir, exercised.summary)
             _ = record_lap(self.records_dir, lap_counts(service, exercised.summary.signatures, len(exercised.summary.gaps),
