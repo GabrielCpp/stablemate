@@ -69,12 +69,23 @@ def test_one_observation_on_many_pages_stops_the_run_and_leaves_the_rest_unreach
     assert sum(record["kind"] == "scenario_start" for record in _records(spec)) == 4
 
 
-def test_an_observation_on_too_few_pages_lets_the_run_continue(tmp_path: Path) -> None:
-    status, summary, _spec = _run(tmp_path, [_fails(WALL)] * 6, pages=2, stop_on_repeat=3)
+def test_an_observation_on_too_few_of_the_run_s_pages_lets_it_continue(tmp_path: Path) -> None:
+    bodies = [_fails(WALL) if index % 4 < 2 else "pass" for index in range(8)]
+    status, summary, _spec = _run(tmp_path, bodies, pages=4, stop_on_repeat=3)
 
     assert status == "failed"
-    assert len(summary["scenarios"]) == 6
+    assert len(summary["scenarios"]) == 8
     assert "runner_errors" not in summary
+
+
+def test_a_run_of_one_page_stops_on_a_repeat_on_that_page(tmp_path: Path) -> None:
+    status, summary, _spec = _run(tmp_path, [_fails(WALL)] * 6, pages=1, stop_on_repeat=3)
+
+    assert status == "failed"
+    assert len(summary["scenarios"]) == 3
+    [stopped] = summary["runner_errors"]
+    assert "3 scenarios on 1 pages failed on one observation: " in stopped
+    assert "outside any single page" not in stopped
 
 
 def test_different_observations_do_not_add_up(tmp_path: Path) -> None:
@@ -97,6 +108,19 @@ def test_an_observation_ignores_numbers_and_reads_the_last_line() -> None:
     second = ScenarioResult(status="failed", message="Traceback\n  line 40\nTimeout 7000ms exceeded")
 
     assert observation(first) == observation(second) == "Timeout Nms exceeded"
+
+
+def test_a_message_that_names_its_scenario_is_one_observation_with_its_last_problem() -> None:
+    watch = RepeatWatch(3, 1)
+    stops = [
+        watch.observe(f"s{index}", [_obligation(index, 1)], ScenarioResult(
+            status="failed",
+            message=f"waiting for locator(\"#control-{chr(97 + index)}\"); scenario 's{index}' was photographed at '/login'"))
+        for index in range(3)
+    ]
+
+    assert stops[:2] == ["", ""]
+    assert "scenario '<scenario>' was photographed at '/login'" in stops[2]
 
 
 def test_an_observation_without_a_message_is_the_first_check_observed() -> None:

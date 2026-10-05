@@ -17,7 +17,7 @@ from ostler.qa import run_log
 from ostler.qa.plan import PlanDocument, check_runtime_requirements
 from ostler.qa.session import QA_DIRNAME, QaSession
 from ostler.qa.verdict import Verdict, judge, merged
-from ostler.qa.repeats import RepeatWatch
+from ostler.qa.repeats import watch_for
 from ostler.qa.report import REPORT_FILE, ReportError, write_report
 
 
@@ -105,7 +105,7 @@ def run_plan(
     status = "passed"
     cleanup_errors: list[str] = []
     runner_errors: list[str] = []
-    watch = RepeatWatch(stop_on_repeat)
+    watch = watch_for(stop_on_repeat, selected)
     summary: dict[str, Any] = {}
     evidence: Path | None = None
     try:

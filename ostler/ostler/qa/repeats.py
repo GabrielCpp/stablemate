@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import re
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 
 from ostler.qa.drivers import ScenarioResult
@@ -15,10 +15,12 @@ _DIGITS = re.compile(r"\d+")
 _SPACE = re.compile(r"\s+")
 
 
-def observation(result: ScenarioResult) -> str:
-    """What a failed scenario observed: the last line of its message, or its first failed check's actual value, with numbers blanked."""
+def observation(result: ScenarioResult, scenario_id: str = "") -> str:
+    """What a failed scenario observed: the last problem on the last line of its message, or its first failed check's actual value, with its own id and numbers blanked."""
     lines = [line.strip() for line in result.message.splitlines() if line.strip()]
-    seen = lines[-1] if lines else next((check.actual for check in result.failed_checks if check.actual), "")
+    seen = lines[-1].rsplit("; ", 1)[-1] if lines else next((check.actual for check in result.failed_checks if check.actual), "")
+    if scenario_id:
+        seen = seen.replace(scenario_id, "<scenario>")
     return _SPACE.sub(" ", _DIGITS.sub("N", seen)).strip()[:OBSERVATION_CHARS]
 
 
@@ -32,6 +34,7 @@ class RepeatWatch:
     """The failure observations a run has seen so far, and the scenarios and pages each one spans."""
 
     threshold: int
+    min_pages: int = MIN_PAGES
     scenarios: dict[str, list[str]] = field(default_factory=dict)
     pages: dict[str, set[str]] = field(default_factory=dict)
 
@@ -41,15 +44,25 @@ class RepeatWatch:
             return ""
         if result.failed_checks and all(check.gap for check in result.failed_checks):
             return ""
-        seen = observation(result)
+        seen = observation(result, scenario_id)
         if not seen:
             return ""
         self.scenarios.setdefault(seen, []).append(scenario_id)
         self.pages.setdefault(seen, set()).update(pages(covers))
         failed, spanned = self.scenarios[seen], sorted(self.pages[seen])
-        if len(failed) < self.threshold or len(spanned) < MIN_PAGES:
+        if len(failed) < self.threshold or len(spanned) < self.min_pages:
             return ""
         named = ", ".join(spanned[:PAGES_NAMED]) + (f" and {len(spanned) - PAGES_NAMED} more" if len(spanned) > PAGES_NAMED else "")
-        return (f"the run stopped after {len(failed)} scenarios on {len(spanned)} pages failed on one observation, "
-                f"so one cause outside any single page is likely: {seen} (pages: {named}). "
-                f"Fix that cause first. The scenarios after {scenario_id} did not run")
+        likely = ", so one cause outside any single page is likely" if len(spanned) >= MIN_PAGES else ""
+        return (f"the run stopped after {len(failed)} scenarios on {len(spanned)} pages failed on one observation{likely}: "
+                f"{seen} (pages: {named}). Fix that cause first. The scenarios after {scenario_id} did not run")
+
+
+def watch_for(threshold: int, scenarios: Iterable[Mapping[str, object]]) -> RepeatWatch:
+    """The watch over a run of *scenarios*, which asks a repeat to span as many pages as the run holds, up to MIN_PAGES."""
+    held = pages(claim for scenario in scenarios for claim in _claims(scenario.get("covers")))
+    return RepeatWatch(threshold, min(MIN_PAGES, max(len(held), 1)))
+
+
+def _claims(covers: object) -> list[object]:
+    return list(covers) if isinstance(covers, list | tuple) else []
