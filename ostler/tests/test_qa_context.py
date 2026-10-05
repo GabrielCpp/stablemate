@@ -1203,6 +1203,51 @@ def test_an_edited_bullet_carries_only_the_head_revisions_value(tmp_path: Path):
     assert by_id[f"{node}:name:1"]["locators"]["name"] == ["none"]
 
 
+def _guarded_screen(guard: str) -> str:
+    return "\n".join([
+        "---", "type: screen", "title: Items", "---", "# Items", "",
+        "- route: /items", "- requires:", f"  - {guard}", "- params: none", "",
+        "## Components", "", "### empty-notice",
+        "- role: paragraph", "- name: No items are on file yet.", "- selector: p.empty-notice",
+        "- states: shown while no item is on file", "- code: app/items.py::render_empty", "",
+    ])
+
+
+_SIGNED_IN = "\n".join([
+    "---", "type: fixture", "title: Signed in", "---", "# Signed in", "",
+    "## Steps", "", "### sign-in", "", "- kind: seed", "- run: true", "",
+])
+
+
+@pytest.mark.parametrize(("guard", "arranged"), [
+    ("[Signed in](../../fixtures/signed-in.md) — only a signed-in user reaches the list", [("signed-in", ())]),
+    ("a signed-in user", []),
+])
+def test_a_screen_guard_that_links_a_fixture_arranges_it_for_every_claim_on_the_screen(
+    tmp_path: Path, guard: str, arranged: list[tuple[str, tuple[str, ...]]],
+):
+    """A guard stated once on the screen is the state every claim on it is observed in."""
+    (tmp_path / "docs/features/acme/gui/screens").mkdir(parents=True)
+    (tmp_path / "docs/features/acme/fixtures").mkdir(parents=True)
+    (tmp_path / "app").mkdir()
+    (tmp_path / "docs/features/acme/fixtures/signed-in.md").write_text(_SIGNED_IN, encoding="utf-8")
+    (tmp_path / "docs/features/acme/gui/screens/items.md").write_text(_guarded_screen(guard), encoding="utf-8")
+    (tmp_path / "app/items.py").write_text("def render_empty():\n    return 'old'\n", encoding="utf-8")
+    _git(tmp_path, "init")
+    _git(tmp_path, "config", "user.email", "qa@example.com")
+    _git(tmp_path, "config", "user.name", "QA")
+    _git(tmp_path, "add", ".")
+    _git(tmp_path, "commit", "-m", "base")
+    base = _git(tmp_path, "rev-parse", "HEAD")
+    (tmp_path / "app/items.py").write_text("def render_empty():\n    return 'new'\n", encoding="utf-8")
+
+    packet = build_context(tmp_path, base=base, source_roots={"acme": ["app"]})
+
+    by_id = {item["id"]: item for item in packet["obligations"]}
+    claim = by_id["okf:docs/features/acme/gui/screens/items.md#empty-notice:states:1"]
+    assert [(row["name"], tuple(row["args"])) for row in claim.get("fixturesDeclared", [])] == arranged
+
+
 def test_a_node_the_change_deleted_is_still_described_by_the_base_revision(tmp_path: Path):
     """The counterpart, and the reason the merge exists at all: head wins per key only for a node head still has."""
     (tmp_path / "docs/features/acme/gui/screens").mkdir(parents=True)

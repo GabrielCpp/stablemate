@@ -2042,7 +2042,7 @@ def _obligations(
     representative = min(family)
     base = _node_obligation(book_node, reasons, family, journey=journey, required=required, scope=scope, book=book)
     reader = _PartReader(resolve_locator, fixture_provides, fixture_undetermined)
-    attribution = _attribution(book_node)
+    attribution = _with_guard_fixtures(_attribution(book_node), _guard_fixtures(book_node, book))
     node_parts = reader.node_parts(attribution)
     node_parts.stamp(base)
     base["docPosition"] = [book_node.line, -1]
@@ -2158,6 +2158,33 @@ def _attribution(book_node: BookNode) -> _Attribution:
         acts=_Attributed(*registry.attributed_acts(*args)),
         captures=_Attributed(*registry.attributed_captures(*args)),
     )
+
+
+def _screen_hosting(book_node: BookNode, book: Mapping[str, BookNode]) -> BookNode | None:
+    """The screen *book_node* is shown on: its own file's node, or the page a fragment file's `host:` links."""
+    page = book.get(book_node.id.split("#", 1)[0])
+    if page is not None and page.type == "fragment":
+        hosts = sorted({edge.to.split("#", 1)[0] for edge in page.edges if edge.via == "host" and edge.to})
+        page = book.get(hosts[0]) if len(hosts) == 1 else None
+    return page if page is not None and page.type == "screen" else None
+
+
+def _guard_fixtures(book_node: BookNode, book: Mapping[str, BookNode]) -> list[str]:
+    """The fixture each `requires:` guard of the screen *book_node* is shown on links, by name."""
+    screen = _screen_hosting(book_node, book)
+    if screen is None:
+        return []
+    linked = [edge.to for edge in screen.edges if edge.via == reach.GUARD_BULLET and edge.to]
+    return list(dict.fromkeys(
+        Path(target).stem for target in linked if (node := book.get(target)) is not None and node.type == "fixture"))
+
+
+def _with_guard_fixtures(attribution: _Attribution, guards: list[str]) -> _Attribution:
+    """*attribution* with each guard fixture ambient to every claim, ahead of the node's own."""
+    if not guards:
+        return attribution
+    fixtures = _Attributed([*guards, *attribution.fixtures.own], attribution.fixtures.per_claim)
+    return replace(attribution, fixtures=fixtures)
 
 
 def _undetermined_claims(book_node: BookNode) -> set[_Claim]:
