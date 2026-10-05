@@ -26,7 +26,7 @@ Section type. A `### <id>` under a `## Interactions` heading, normally in a
 | key | required | what it does |
 | --- | --- | --- |
 | `on` | **yes** | link — the component this acts on |
-| `trigger` | **yes** | what fires it, as one word: `click` when pressing the `on:` control does, `load` or `navigate` when opening the screen does. A scenario performs those three: it clicks the `on:` control, or it arrives at the screen and clicks nothing. Any other trigger is one of `fill`, `press`, `paste`, `drag`, `drop` or `timer`, and the compiler reports it as `needs-trigger-action` until it has the action. Keyboard activation belongs on `keyboard:`, a precondition on `when:` |
+| `trigger` | **yes** | what fires it: `click` when pressing the `on:` control does, `load` or `navigate` when opening the screen does. A scenario performs those three: it clicks the `on:` control, or it arrives at the screen and clicks nothing. A key or text the user sends to the `on:` control is a call that names it, `press(key="Escape")` or `fill(value="Q3 report")`, and the scenario sends it. A bare `press` or `fill` says nothing to send and does not compile. Any other trigger is one of `paste`, `drag`, `drop` or `timer`, and the compiler reports it as `needs-trigger-action` until it has the action. Keyboard activation of the control belongs on `keyboard:`, a precondition on `when:` |
 | `role` | **yes** | the ARIA role of the control |
 | `name` | **yes** | its accessible name |
 | `keyboard` | **yes** | **mints an obligation** — how it is fired without a pointer, or [its own emptiness](../bullet-grammar.md#a-claim-that-states-its-own-emptiness) |
