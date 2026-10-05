@@ -108,19 +108,24 @@ and what each may touch. A run that does not converge is answered by finishing i
 target attended, then folding that session back in. It is not answered by more
 machinery around the run.
 
-**One wide seat above the narrow ones.** Every loop that repairs work has a lead seat
-that runs before the first repair of a lap. The lead sees the whole lap: every failure
-grouped by what was observed, the logs, and what the toolchain sent. It keeps its
-findings across laps. It names a side for each group: the work, the toolchain, a
-fixture, the environment or the app. Only the groups it names as the work's own reach
-the narrow repair nodes. The rest stop as findings for the level above. The lead runs
-on the strongest model profile the run has. Workers may run on a cheaper one.
+**One owner, with narrow helpers.** Every loop that repairs work has one owner seat that
+holds the whole work and repairs it itself. Code runs the gates between the owner's turns
+and opens its next turn on their results: every failure grouped by what was observed, the
+logs, and what the toolchain sent. The owner names a side for each group: the work, the
+toolchain, a fixture, the environment or the app. Only the groups it names the work's own
+come back to it. The rest stop as findings for the level above, and a lap that does not
+lower the failures asks the operator. A narrow seat checks one thing or retrieves one
+thing for the owner, read-only, and never edits the work. The owner runs on the strongest
+model profile the run has. Helpers may run on a cheaper one.
 
-The reason is what the other shape cost. A narrow node told to repair a page edits the
+The reason is what the other shapes cost. A narrow node told to repair a page edits the
 page, because the page is all it can touch. The okf-book run on a large API spent 87 of
 99 hours that way. Its largest causes sat in the test compiler, the fixtures and the
 environment, where no page edit could reach them. Each one was found by an attended
-session reading the whole lap, and fixed once.
+session reading the whole lap, and fixed once. A lead seat above batches of narrow
+writers did not close that gap. On a web app's book, every batch failed behind the same
+missing sign-in fixture, which no batch held, and the lead's finding reached the writers
+only as text.
 
 ## A prompt is a file, unless it is too small to be one
 
