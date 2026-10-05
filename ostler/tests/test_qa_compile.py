@@ -5418,6 +5418,7 @@ def test_a_name_that_describes_the_label_is_refused_with_the_reason() -> None:
     assert len(details) == 1
     assert "carries a markdown link" in details[0]
     assert "State the literal name" in details[0]
+    assert "`one-per:`" in details[0]
     assert source is None or "see [form]" not in source
 
 

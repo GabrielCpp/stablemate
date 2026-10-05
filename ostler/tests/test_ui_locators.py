@@ -596,7 +596,8 @@ def test_doctor_errors_on_a_name_that_describes_the_label(repo: Path):
     data = _build(repo, _screen(
         "### tab\n- role: tab\n- name: the activated tab's label (see [tab](tabs.md#tab))\n"))
     assert [p.mark for p in locators.prose_names(data)] == ["a markdown link"]
-    assert "prose-name" in _codes(repo)
+    [finding] = [f for f in doctor.run(load(repo)).findings if f.code == "prose-name"]
+    assert "`one-per:`" in finding.message
 
 
 def test_a_wholly_quoted_name_is_a_stated_name(repo: Path):

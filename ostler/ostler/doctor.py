@@ -2329,7 +2329,9 @@ def _check_locators(data: dict, f: list[Finding]) -> None:
             "error", "prose-name",
             f"{prose.node}: `name: {prose.name}` carries {prose.mark}, so it describes the "
             "accessible name instead of stating it — `getByRole` would wait for the description "
-            "and time out; state the one string a browser computes, and put any caveat in prose",
+            "and time out; state the one string a browser computes, and put any caveat in prose. "
+            "A control the page renders once per item has no one string: declare `one-per:` "
+            "and write its name as a template over the item, such as `{tab.label}`",
             ref=prose.node, suggestion="- name: <the literal accessible name>",
             **_at(prose.node)))
 

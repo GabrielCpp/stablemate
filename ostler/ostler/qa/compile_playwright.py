@@ -69,7 +69,9 @@ def name_refusal(locators: Locators) -> str:
         return ""
     return (f". Its `name:` {name!r} carries {mark}, so it describes the accessible name "
             "instead of stating the one string a browser computes, and `getByRole` would wait "
-            "for that description and time out. State the literal name, one value per node")
+            "for that description and time out. State the literal name, one value per node. "
+            "A control rendered once per item declares `one-per:` and names itself with a "
+            "template over the item, such as `{tab.label}`")
 
 
 _ACT_METHODS: dict[str, tuple[str, str | None]] = {
