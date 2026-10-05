@@ -131,7 +131,9 @@ def journey_target(
     if not steps:
         return ScenarioRefusal(
             "uncompilable-claim",
-            "this flow's claim is about what its `steps:` did, and it names no steps to walk")
+            "this flow's claim is about what its `steps:` did, and it names no steps to walk. "
+            "A step is a `[label](page.md#node)` link to the control, endpoint or command it "
+            "performs, and a step written as a sentence links nothing")
     unresolved = [step.href for step in steps if not step.ref]
     if unresolved:
         return ScenarioRefusal(
