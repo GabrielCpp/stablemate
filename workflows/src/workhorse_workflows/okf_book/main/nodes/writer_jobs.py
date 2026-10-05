@@ -6,6 +6,7 @@ import json
 import logging
 import os
 import shutil
+import signal
 import time
 from collections.abc import Callable, Sequence
 from pathlib import Path
@@ -26,6 +27,7 @@ JOBS_FOLDER = "writer-jobs"
 ATTACH_WAIT_S = 25.0
 POLL_S = 0.5
 SETTLE_WAIT_S = 1800.0
+STOP_WAIT_S = 10.0
 STILL_RUNNING_LINE = (
     "still running: run this same command again to read its result. Each call waits up to 25 seconds for it, and spends no run. "
     "Keep fixing meanwhile: an edit you make now is not in this result"
@@ -164,13 +166,33 @@ def detached(work: Work) -> Start:
     return start
 
 
+def _signal_group(pid: int, signum: signal.Signals) -> None:
+    try:
+        if os.getpgid(pid) == pid:
+            os.killpg(pid, signum)
+    except ProcessLookupError:
+        return
+
+
+def _stop(job: Path) -> None:
+    pid = int((job / _PID).read_text(encoding="utf-8"))
+    _signal_group(pid, signal.SIGTERM)
+    deadline = time.monotonic() + STOP_WAIT_S
+    while _running(job) and time.monotonic() < deadline:
+        time.sleep(POLL_S)
+    if _running(job):
+        _signal_group(pid, signal.SIGKILL)
+
+
 def settle_jobs(run_dir: Path) -> None:
-    """Wait, up to `SETTLE_WAIT_S`, for every job a turn left running, clear them all, and stop the stack its checks kept up, so no two turns run the app at once."""
+    """Wait, up to `SETTLE_WAIT_S`, for every job a turn left running, stop the process group of each still running, clear them all, and stop the stack its checks kept up, so no two turns run the app at once."""
     folder = jobs_folder(run_dir)
     if folder.is_dir():
         deadline = time.monotonic() + SETTLE_WAIT_S
         for job in folder.iterdir():
             while _running(job) and time.monotonic() < deadline:
                 time.sleep(POLL_S)
+            if _running(job):
+                _stop(job)
         shutil.rmtree(folder, ignore_errors=True)
     KeptStack(run_dir, logging.getLogger(__name__)).release()

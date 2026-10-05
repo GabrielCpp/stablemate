@@ -6,6 +6,9 @@ import subprocess
 from collections.abc import Sequence
 from pathlib import Path
 
+import pytest
+
+from workhorse_workflows.okf_book.main.nodes import writer_jobs
 from workhorse_workflows.okf_book.main.nodes.writer_commands import CommandOutput, WriterCommandState, read_command_state, write_command_state
 from workhorse_workflows.okf_book.main.nodes.writer_jobs import (
     STILL_RUNNING_LINE,
@@ -126,4 +129,19 @@ def test_settling_waits_for_a_job_a_turn_left_running_and_clears_every_job(tmp_p
     settle_jobs(Path(state).parent)
 
     assert process.poll() is not None
+    assert not jobs_folder(Path(state).parent).exists()
+
+
+def test_settling_stops_a_job_still_running_at_the_deadline_with_the_processes_it_started(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(writer_jobs, "SETTLE_WAIT_S", 0.0)
+    state = _state(tmp_path)
+    leader = subprocess.Popen(["sh", "-c", "sleep 60 & wait"], start_new_session=True)
+
+    def _left_running(job: Path, _argv: Sequence[str]) -> None:
+        _pending(job, leader.pid)
+
+    _ = run_or_attach("exercise", (state,), _left_running, wait_s=0)
+    settle_jobs(Path(state).parent)
+
+    assert leader.wait(timeout=5) != 0
     assert not jobs_folder(Path(state).parent).exists()
