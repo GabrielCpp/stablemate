@@ -723,3 +723,19 @@ def test_a_window_excludes_the_exchanges_that_preceded_the_action(tmp_path: Path
     assert window.response_for("/api/widgets").status == 201
     with pytest.raises(LookupError):
         browser.response_for("/api/widgets")
+
+
+def test_an_arranged_page_that_never_comes_back_says_where_it_stayed(tmp_path: Path) -> None:
+    """A sign-in that stalls on the provider's page is that page's step failing, and the error has to name it."""
+
+    def _never(_matches: Any, *, timeout: float) -> None:
+        raise TimeoutError(f"Timeout {timeout}ms exceeded.")
+
+    browser = _browser(tmp_path)
+    browser._side = SimpleNamespace(
+        url="http://localhost:9099/emulator/auth/handler", wait_for_url=_never, close=lambda: None,
+    )
+    with pytest.raises(TimeoutError) as excinfo:
+        browser.session("http://localhost:5173")
+    assert "stayed on http://localhost:9099/emulator/auth/handler" in str(excinfo.value)
+    assert browser._side is None

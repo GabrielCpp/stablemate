@@ -252,10 +252,16 @@ class Browser:
             raise
 
     def session(self, origin: str, *, timeout_ms: float = ARRANGE_TIMEOUT_MS) -> dict[str, Any]:
-        """The session the arranged page left, once it is back on *origin* and its requests have settled."""
+        """The session the arranged page left, once it is back on *origin* and its requests have settled.
+
+        A page that never comes back says which page it stayed on, since that page is the step that stalled.
+        """
         host = urlsplit(origin).netloc
         try:
-            self._side.wait_for_url(lambda url: urlsplit(url).netloc == host, timeout=timeout_ms)
+            try:
+                self._side.wait_for_url(lambda url: urlsplit(url).netloc == host, timeout=timeout_ms)
+            except Exception as exc:
+                raise TimeoutError(f"the arranged page stayed on {self._side.url}") from exc
             self._side.wait_for_load_state("networkidle", timeout=timeout_ms)
             return dict(self._context.storage_state(indexed_db=True))
         finally:
