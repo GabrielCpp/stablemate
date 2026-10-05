@@ -8,6 +8,7 @@ from typing import Literal
 from ostler import acts as acts_mod
 from ostler.qa.book_index import BookIndex
 from ostler.qa.compile_playwright import WINDOW_VAR
+from ostler.qa.compile_playwright import name_refusal
 from ostler.qa.compile_playwright import needs_window
 from ostler.qa.compile_playwright import page_locator_expr
 from ostler.qa.compile_playwright import page_observations
@@ -23,6 +24,7 @@ from ostler.qa.compile_support import vet_calls
 from ostler.qa.navigation import NavHop
 from ostler.qa.navigation import SurfaceNavigation
 from ostler.qa.obligation import FixtureRow
+from ostler.qa.obligation import Locators
 from ostler.qa.obligation import NO_LOCATORS
 from ostler.qa.obligation import Obligation
 from ostler.qa.plan_source import EmittedScenarios
@@ -152,7 +154,7 @@ def _shared_shape(remaining: list[Obligation], gaps: list[Gap]) -> _SharedShape 
         checks = ", ".join(f"`{name}(...)`" for name in sorted({check.name for o in remaining for check in o.checks})) or "its claims"
         detail = (f"{checks} on `{remaining[0].node}` cannot be addressed: the node declares no locator. "
                   "Put the claim under the `### <component>` whose locator shows it, or declare the node's own "
-                  "`selector:`, or its `role:` and `name:`")
+                  f"`selector:`, or its `role:` and `name:`{name_refusal(locators)}")
         gaps.extend(Gap(oid, "uncompilable-claim", detail) for oid in sorted(o.id for o in remaining))
         return None
     return "exclusive" if locators.exclusive_with else "plain"
@@ -368,11 +370,11 @@ def _interaction_arm(source: str, obligation: Obligation) -> _InteractionArm:
     return _InteractionArm(on_node_id, on_label(on_value), first(locators.trigger), first(locators.does), first(locators.when))
 
 
-def _trigger_refusal(arm: _InteractionArm, on_expr: str | None, unarranged: tuple[str, ...]) -> ScenarioRefusal | None:
+def _trigger_refusal(arm: _InteractionArm, on_locators: Locators, unarranged: tuple[str, ...]) -> ScenarioRefusal | None:
     """Why no scenario can perform *arm*, or `None` when one can."""
-    if on_expr is None:
+    if page_locator_expr(on_locators) is None:
         return ScenarioRefusal("unresolved-precondition",
-                               f"no locator declared for `on:` component {arm.label!r}")
+                               f"no locator declared for `on:` component {arm.label!r}{name_refusal(on_locators)}")
     if unarranged:
         stated = "; ".join(repr(guard) for guard in unarranged)
         return ScenarioRefusal("unarranged-interaction-precondition",
@@ -432,8 +434,9 @@ def _performed_trigger(
     performed = perform_acts(node_acts, acts_mod.WEB, gaps, ids).lines if node_acts else None
     unarranged = _unarranged_guards(arm, book.guards_by_node.get(node_id, []),
                                     performed is not None and node_id not in book.acts_refused)
-    on_expr = page_locator_expr(book.locators_by_node.get(arm.on_node_id, NO_LOCATORS))
-    refusal = _trigger_refusal(arm, on_expr, unarranged)
+    on_locators = book.locators_by_node.get(arm.on_node_id, NO_LOCATORS)
+    on_expr = page_locator_expr(on_locators)
+    refusal = _trigger_refusal(arm, on_locators, unarranged)
     if refusal is not None:
         gaps.extend(Gap(oid, refusal.kind, refusal.detail, refusal.owner) for oid in ids)
         return None

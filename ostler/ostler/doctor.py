@@ -2324,6 +2324,15 @@ def _check_locators(data: dict, f: list[Finding]) -> None:
             ref=bad.node, suggestion="- role: <one bare ARIA role, or `none`>",
             **_at(bad.node)))
 
+    for prose in loc_mod.prose_names(book):
+        f.append(Finding(
+            "error", "prose-name",
+            f"{prose.node}: `name: {prose.name}` carries {prose.mark}, so it describes the "
+            "accessible name instead of stating it — `getByRole` would wait for the description "
+            "and time out; state the one string a browser computes, and put any caveat in prose",
+            ref=prose.node, suggestion="- name: <the literal accessible name>",
+            **_at(prose.node)))
+
     for unnamed in loc_mod.unnamed_interactives(book):
         f.append(Finding(
             "error", "unnamed-interactive",

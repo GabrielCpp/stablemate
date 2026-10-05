@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import get_args as _get_args
 
+from ostler import accessible_names
 from ostler import acts as acts_mod
 from ostler.qa.book_index import BookIndex
 from ostler.qa.compile_journey import JourneyWalk
@@ -51,13 +52,24 @@ def page_locator_expr(locators: Locators) -> str | None:
         role = None
     name = bullet_value(next(iter(locators.name), None))
     selector = bullet_value(next(iter(locators.selector), None))
-    if role and name:
-        return f"qa.by_role({python_literal(role)}, name={python_literal(name)})"
+    if role and name and not accessible_names.prose_mark(name):
+        return f"qa.by_role({python_literal(role)}, name={python_literal(accessible_names.literal_name(name))})"
     if selector:
         if selector_forms.parse_scheme_selector(selector) is not None:
             return None
         return f"qa.by_css({python_literal(selector)})"
     return None
+
+
+def name_refusal(locators: Locators) -> str:
+    """Why a node's `name:` could not address it, as a sentence for a gap, or `""`."""
+    name = bullet_value(next(iter(locators.name), None))
+    mark = accessible_names.prose_mark(name) if name else ""
+    if not mark:
+        return ""
+    return (f". Its `name:` {name!r} carries {mark}, so it describes the accessible name "
+            "instead of stating the one string a browser computes, and `getByRole` would wait "
+            "for that description and time out. State the literal name, one value per node")
 
 
 _ACT_METHODS: dict[str, tuple[str, str | None]] = {
@@ -85,9 +97,15 @@ def perform_acts(
         if spec is None or driver not in spec.drivers:
             return PerformedActs(None)
         located = row.locates.get("locator")
-        expr = page_locator_expr(located.locators if located else NO_LOCATORS)
+        act_locators = located.locators if located else NO_LOCATORS
+        expr = page_locator_expr(act_locators)
         if expr is None:
-            return PerformedActs(None)
+            refusal = name_refusal(act_locators)
+            if not refusal:
+                return PerformedActs(None)
+            gaps.extend(Gap(oid, "uncompilable-claim", f"`{row.call}` cannot be performed{refusal}")
+                        for oid in ids)
+            return PerformedActs(None, gap_filed=True)
         if driver == acts_mod.WEB and spec.name == "press":
             book_key = row.text_arg("key")
             if any(ch.isspace() for ch in book_key):
@@ -113,12 +131,14 @@ def walk_hops(
     lines: list[str] = []
     for index, hop in enumerate(hops):
         target_node = hop.node
-        expr = page_locator_expr(book.locators_by_node.get(target_node, NO_LOCATORS))
+        hop_locators = book.locators_by_node.get(target_node, NO_LOCATORS)
+        expr = page_locator_expr(hop_locators)
         if expr is None:
             lines.append(f"    # TODO(arrange): no locator declared for {target_node!r}"
                          f" ({hop.label!r})")
             gaps.extend(Gap(oid, "unresolved-precondition",
-                             f"no locator declared for navigation hop {target_node!r}", target_node)
+                             f"no locator declared for navigation hop {target_node!r}"
+                             f"{name_refusal(hop_locators)}", target_node)
                         for oid in oids)
             continue
         lands_on = hops[index + 1].from_page if index + 1 < len(hops) else destination
@@ -134,7 +154,7 @@ def _assertion_operand(locators: Locators, oid: str, gaps: list[Gap]) -> str | N
     if expr is None:
         gaps.append(Gap(oid, "uncompilable-claim",
                          "no addressable role/name or selector locator for this obligation's "
-                         "`visible(...)` assertion"))
+                         f"`visible(...)` assertion{name_refusal(locators)}"))
         return None
     return expr
 
@@ -161,7 +181,8 @@ def _check_operand(
         gaps.append(Gap(
             obligation.id, "uncompilable-claim",
             f"`{node_id}` is what `{param}=` names, and it declares no role/name pair and no "
-            f"selector — so the book says what to look at and not how to address it"))
+            f"selector — so the book says what to look at and not how to address it"
+            f"{name_refusal(target.locators)}"))
         return None
     return expr
 
@@ -316,12 +337,13 @@ def _web_step(index: int, step: FlowStep, walk: JourneyWalk, gaps: list[Gap]) ->
     on_value = next(iter(locators.on), "")
     trigger_value = next(iter(locators.trigger), "")
     on_node_id = on_node(ref.split("#")[0], on_value)
-    expr = page_locator_expr(book.locators_by_node.get(on_node_id, NO_LOCATORS))
+    on_locators = book.locators_by_node.get(on_node_id, NO_LOCATORS)
+    expr = page_locator_expr(on_locators)
     if expr is None:
         gaps.extend(Gap(oid, "uncompilable-claim",
                         f"step {index} acts on {on_label(on_value)!r}, which declares no role/name "
                         "pair and no selector to address it by; every step after it would "
-                        "run in a world this journey never reached")
+                        f"run in a world this journey never reached{name_refusal(on_locators)}")
                     for oid in ids)
         return None
     performed = perform_acts(book.acts_by_node.get(ref, []), acts_mod.WEB, gaps, ids)

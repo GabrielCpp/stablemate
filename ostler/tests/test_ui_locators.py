@@ -590,3 +590,15 @@ def test_a_repeated_role_is_reported_under_its_own_key(repo: Path):
     dup = [f for f in doctor.run(load(repo), check_schema=False).findings
            if f.code == "duplicate-bullet"]
     assert [f.ref for f in dup] == [f"{DASH}#x#role"]
+
+
+def test_doctor_errors_on_a_name_that_describes_the_label(repo: Path):
+    data = _build(repo, _screen(
+        "### tab\n- role: tab\n- name: the activated tab's label (see [tab](tabs.md#tab))\n"))
+    assert [p.mark for p in locators.prose_names(data)] == ["a markdown link"]
+    assert "prose-name" in _codes(repo)
+
+
+def test_a_wholly_quoted_name_is_a_stated_name(repo: Path):
+    data = _build(repo, _screen('### login\n- role: heading\n- name: "Connexion requise"\n'))
+    assert locators.prose_names(data) == []

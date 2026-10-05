@@ -8,12 +8,14 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 
+from ostler import accessible_names
 from ostler import graph as graph_mod
 from ostler.locator_findings import (
     InvalidRole,
     InvalidVariants,
     LocatorCollision,
     MalformedTemplate,
+    ProseName,
     StaticTemplate,
     TemplateOutsideRepeat,
     UnnamedInteractive,
@@ -379,6 +381,17 @@ def invalid_roles(book: LocatorBook) -> list[InvalidRole]:
         role = _bullet(node, "role")
         if role and not _stated_none(role) and role.lower() not in ARIA_ROLES:
             out.append(InvalidRole(screen, node.id, role))
+    return out
+
+
+def prose_names(book: LocatorBook) -> list[ProseName]:
+    """Nodes whose ``name:`` carries a link, a code span or a quote among other words."""
+    out = []
+    for screen, node in book.locatables:
+        name = _bullet(node, "name")
+        mark = accessible_names.prose_mark(name) if name and not _stated_none(name) else ""
+        if mark:
+            out.append(ProseName(screen, node.id, name, mark))
     return out
 
 

@@ -5384,3 +5384,38 @@ def test_a_navigation_click_first_performs_the_acts_of_the_arm_that_lands_on_the
     assert oid in _covers(source), gaps
     assert "not-the-password" not in source
     assert source.index('.fill("the-password")') < source.index(".click()  # Login")
+
+
+def _click_context(name: str):
+    button = f"{_SCREEN}#create-policy-button"
+    interaction = f"{_SCREEN}#submit-new-policy"
+    return _navigation_context(
+        _page_obligation("okf:new-policy:create-policy-button:visible:1", button,
+                          locators={"role": ["button"], "name": [name]},
+                          checks=[_visible("button:Create policy")]),
+        _page_obligation("okf:new-policy:submit-new-policy:does:1", interaction,
+                          locators={"on": ["[create-policy-button](#create-policy-button)"],
+                                    "trigger": ["click"],
+                                    "does": ["adds a policy and shows it"]},
+                          checks=[_located("#policy-table", f"{_SCREEN}#policy-table",
+                                           {"role": ["table"], "name": ["Policies on file"]})]),
+        navigation=_arrival_navigation(),
+    )
+
+
+def test_a_quoted_name_addresses_the_control_by_the_words_inside_the_quotes() -> None:
+    source, _ = compile_plan_gaps(_click_context('"Create policy"'), story="demo-story")
+    assert source is not None
+    assert 'qa.by_role("button", name="Create policy").click()' in source
+
+
+def test_a_name_that_describes_the_label_is_refused_with_the_reason() -> None:
+    """A name `getByRole` would wait for verbatim and time out on becomes a gap the writer can act on."""
+    interaction_oid = "okf:new-policy:submit-new-policy:does:1"
+    source, gaps = compile_plan_gaps(
+        _click_context("the form's own label (see [form](forms.md#form))"), story="demo-story")
+    details = [g.detail for g in gaps if g.obligation_id == interaction_oid]
+    assert len(details) == 1
+    assert "carries a markdown link" in details[0]
+    assert "State the literal name" in details[0]
+    assert source is None or "see [form]" not in source

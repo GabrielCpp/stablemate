@@ -43,6 +43,19 @@ class InvalidRole:
 
 
 @dataclass(frozen=True, slots=True)
+class ProseName:
+    """A node whose ``name:`` describes its accessible name instead of stating it."""
+
+    screen: str
+    node: str
+    name: str
+    mark: str
+
+    def row(self) -> dict[str, JsonValue]:
+        return {"screen": self.screen, "node": self.node, "name": self.name, "mark": self.mark}
+
+
+@dataclass(frozen=True, slots=True)
 class StaticTemplate:
     """A repeated node whose name carries no datum of the collection it iterates."""
 
