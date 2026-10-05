@@ -11,7 +11,8 @@ from workhorse.runner.failure import OutputParseError
 from workhorse_workflows.okf_book.main.nodes.gate import RunFailures
 from workhorse_workflows.okf_book.main.nodes.lead_findings import OwnerReply
 from workhorse_workflows.okf_book.main.nodes.operator_answer import mark_heard
-from workhorse_workflows.okf_book.main.nodes.owner_gate import Gates, gate_template_args, record_owner_reply
+from workhorse_workflows.okf_book.main.nodes.owner_gate import OWNER_FOLDER, Gates, gate_template_args, record_owner_reply
+from workhorse_workflows.okf_book.main.nodes.source_view import turn_folder
 from workhorse_workflows.okf_book.main.nodes.surface import Surface
 from workhorse_workflows.okf_book.main.nodes.writer_commands import WriterCommandState, write_command_state
 from workhorse_workflows.okf_book.main.nodes.writer_jobs import settle_jobs
@@ -85,7 +86,7 @@ class WriteBook(BookFlow):
                 timeout=float("inf"),
                 args={**request.template_args(), **gate},
                 cwd=self.root / self.book_folder,
-                add_dirs=[request.source_view],
+                add_dirs=[request.source_view, turn_folder(self.root, OWNER_FOLDER)],
                 profile=request.profile,
             )
         except OutputParseError as unread:

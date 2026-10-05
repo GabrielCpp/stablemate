@@ -67,7 +67,7 @@ def test_the_writer_runs_in_its_book_and_reads_only_the_surface_source(app: App,
     assert runner.total == 1
     assert node.cwd == str(repo / "docs/features/tally")
     assert node.timeout == float("inf")
-    assert node.add_dirs == [str(source_view_folder(repo, "tally"))]
+    assert node.add_dirs == [str(source_view_folder(repo, "tally")), str(source_view_folder(repo, ".owner"))]
     assert node.agent is not None
     assert node.agent.confined
     assert [command.split()[2] for command in node.agent.commands] == [OSTLER_MODULE, CHECK_MODULE, EXERCISE_MODULE]
