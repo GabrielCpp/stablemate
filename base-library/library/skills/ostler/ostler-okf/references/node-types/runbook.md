@@ -167,6 +167,7 @@ type: runbook
 
 `runbook-missing` (warn, raised when no runbook exists at all), `runbook-bad-reuse`,
 `runbook-bad-kind`, `runbook-incomplete`, `runbook-multi-service`, `runbook-local-only`,
+`runbook-shared-entry-url`,
 `no-drivable-surface`, `unknown-driver`, `missing-required-bullet`
 on `driver:`, `missing-required-section`, `empty-required-section`. See
 [../doctor-codes.md](../doctor-codes.md).
