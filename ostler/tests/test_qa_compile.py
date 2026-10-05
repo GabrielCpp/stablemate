@@ -4436,6 +4436,30 @@ def test_a_web_journey_arrives_then_clicks_every_step_in_order() -> None:
     assert second < source.rindex("#things-table")
 
 
+def test_a_web_journey_whose_first_step_is_on_a_fragment_opens_the_screen_hosting_it() -> None:
+    """A carved page has no route of its own: the walk opens the screen its `host:` chain ends on."""
+    oid = f"okf:{_FLOW}:end-state"
+    open_thing = f"{_FRAGMENT}#open-thing"
+    context = _navigation_context(
+        _flow_obligation(
+            oid, source=_FLOW, surface="policy",
+            steps=[_step(open_thing, "interaction", "policy")],
+            checks=[_located_visible(f"{_SCREEN}#things-table", {"selector": ["#things-table"]})],
+        ),
+        _page_obligation(f"{open_thing}:carrier", open_thing, source=_FRAGMENT,
+                         locators={"on": ["[open-link](#open-link)"], "trigger": ["click"]},
+                         checks=[]) | {"required": False},
+        _page_obligation(f"{_FRAGMENT}#open-link:carrier", f"{_FRAGMENT}#open-link", source=_FRAGMENT,
+                         locators={"selector": ["#open-link"]}, checks=[]) | {"required": False},
+        navigation=_arrival_navigation(),
+    )
+    context["fragmentHosts"] = {_FRAGMENT: _SCREEN}
+    result = _compile_plan_gaps(context, story="demo-story")
+    assert isinstance(result, Plan), result.gaps
+    assert oid in _covers(result.source)
+    assert result.source.index("qa.goto(") < result.source.index('"#open-link"')
+
+
 def test_a_web_journey_with_no_root_path_gaps_uncompilable_claim_not_a_fabricated_root() -> None:
     """The journey side of the same catch-all removal: a driver with no path grammar states no `rootPath`, so the journey gaps `uncompilable-claim` naming the missing root instead of opening on a fabricated `qa.goto("/")` — no step is compiled and no claim is asserted in a world the walk never actually reached."""
     oid = f"okf:{_FLOW}:end-state"

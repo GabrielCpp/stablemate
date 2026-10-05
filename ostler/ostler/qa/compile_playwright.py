@@ -18,6 +18,7 @@ from ostler.qa.compile_support import bullet_value
 from ostler.qa.compile_support import check_document
 from ostler.qa.compile_support import on_node
 from ostler.qa.compile_support import on_label
+from ostler.qa.compile_support import shown_on
 from ostler.qa.compile_support import trailing_comment
 from ostler.qa.compile_support import unobservable_gap
 from ostler.qa.compile_support import vet_calls
@@ -377,7 +378,7 @@ def page_observations(
 
 def _web_start(walk: JourneyWalk, gaps: list[Gap]) -> list[str] | None:
     """Open the surface's root and click through to where the journey's first step lives."""
-    first_source = walk.steps[0].ref.split("#")[0]
+    first_source = shown_on(walk.steps[0].ref.split("#")[0], walk.nav.routes, walk.book.fragment_hosts)
     hops = walk.nav.routes.get(first_source)
     if hops is None:
         gaps.extend(Gap(oid, "uncompilable-claim",

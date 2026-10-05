@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import posixpath
 import re
+from collections.abc import Container
+from collections.abc import Mapping
 from dataclasses import dataclass
 from types import ModuleType
 
@@ -134,13 +136,18 @@ def why_unmatchable_screen_name(route: str) -> str:
     return f"its `route:` (`{text}`) is not a navigator screen name a Maestro run could match"
 
 
-def screen_route(document: str, screen_routes: dict[str, str], hosts: dict[str, str]) -> str:
-    """The `route:` a vet of *document* waits for: its own, or that of the screen its fragment chain is shown on."""
+def shown_on(document: str, known: Container[str], hosts: Mapping[str, str]) -> str:
+    """The first page of *document*'s fragment `host:` chain that is *known*, or the chain's last page."""
     seen: set[str] = set()
-    while document not in screen_routes and document in hosts and document not in seen:
+    while document not in known and document in hosts and document not in seen:
         seen.add(document)
         document = hosts[document]
-    return screen_routes.get(document, "")
+    return document
+
+
+def screen_route(document: str, screen_routes: dict[str, str], hosts: dict[str, str]) -> str:
+    """The `route:` a vet of *document* waits for: its own, or that of the screen its fragment chain is shown on."""
+    return screen_routes.get(shown_on(document, screen_routes, hosts), "")
 
 
 def vettable(

@@ -15,6 +15,7 @@ from ostler.qa.compile_support import bullet_value
 from ostler.qa.compile_support import check_document
 from ostler.qa.compile_support import on_node
 from ostler.qa.compile_support import on_label
+from ostler.qa.compile_support import shown_on
 from ostler.qa.compile_support import unarranged_scenario_gap
 from ostler.qa.compile_support import unarranged_state_gap
 from ostler.qa.compile_support import unobservable_gap
@@ -426,7 +427,8 @@ def maestro_walk(walk: JourneyWalk, launch: MaestroLaunch, sinks: PlanSinks) -> 
     """Walk a flow's `interaction` steps as Maestro `tapOn` commands, then assert the flow's own claims in the same flow file."""
     steps, ids, gaps = walk.steps, walk.ids, sinks.gaps
     empty_walk = WalkedJourney([], frozenset())
-    if steps and (first_page := steps[0].ref.split("#")[0]) != launch.launch_screen:
+    if steps and (first_page := shown_on(steps[0].ref.split("#")[0], {launch.launch_screen},
+                                         walk.book.fragment_hosts)) != launch.launch_screen:
         gaps.extend(Gap(oid, "unreachable-from-launch",
                         f"a cold `launchApp` opens on {launch.launch_screen!r}, not "
                         f"{first_page!r}, and nothing before this journey's first step "
