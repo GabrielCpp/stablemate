@@ -46,10 +46,12 @@ was told was wrong, or the cause is not in the book.
 
 - `book`: the page breaks the rule and could keep it. It cites a symbol the source does not
   have, links a node that does not exist, leaves a required bullet out, or states a claim no
-  check can witness when the source shows one could.
-- `ostler`: the page says something true and well formed, and the toolchain cannot read it.
-  The compiler reports it has no action or no check for what the page rightly says, a doctor
-  rule fires on a shape the format documents as valid, or the rule misreads the page.
+  check can witness when the source shows one could. A true claim stated through a check the
+  surface cannot observe is the book's too, when the problem names another way to state it.
+- `ostler`: the page says something true and well formed, and the toolchain cannot read it in
+  any shape the format offers. The compiler reports it has no action or no check for what the
+  page rightly says, a doctor rule fires on a shape the format documents as valid, or the rule
+  misreads the page.
 - `app`: the rule is right and the page is right about the app, and the app breaks its own
   contract, so no true page keeps the rule.
 - `environment`: the problem needs something only an operator can supply: a binary, a
@@ -63,12 +65,15 @@ was told was wrong, or the cause is not in the book.
 2. For each group, read two or three of its problems, the page lines they name, the source the
    page cites, and what `doctor-codes.md` says the rule asks. Ask whether a page that kept the
    rule could still say what is true. When it could not, the cause is not the book's.
-3. Name the side from what you read. Quote it in the evidence: the rule's own message, the
+3. Read what the problem itself asks. A problem that says what the page should claim instead
+   is the book's whenever the page can follow it and still say what is true. A problem that
+   says there is nothing to repair on the page is not the book's.
+4. Name the side from what you read. Quote it in the evidence: the rule's own message, the
    page line or the source line that shows the cause, with its path.
-4. For a `book` group, write the instruction a page repair needs: what is wrong and what the
+5. For a `book` group, write the instruction a page repair needs: what is wrong and what the
    page must say, as specific as a path, a key or a symbol. The repair sees only its own few
    pages, so tell it what it cannot see from there.
-5. When one rule's problems sit on two sides, split the group. Give one finding per side, list
+6. When one rule's problems sit on two sides, split the group. Give one finding per side, list
    the nodes of each in `nodes`, and leave `nodes` empty on the finding that judges the rest.
    A node is written as the problem names it, or as the page's path when it names none.
 
