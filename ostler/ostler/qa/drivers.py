@@ -844,12 +844,12 @@ class LocalLauncher(Launcher):
                 "run",
                 str(driver.module_path()),
                 scenario_id,
-                json.dumps(context),
+                "-",
             ),
             cwd=driver.root,
             env=env,
             pass_fds=(write_fd,),
-            stdin=subprocess.DEVNULL,
+            stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             start_new_session=True,
@@ -860,7 +860,7 @@ class LocalLauncher(Launcher):
         reader.start()
         timed_out = False
         try:
-            output_raw, _ = process.communicate(timeout=timeout)
+            output_raw, _ = process.communicate(json.dumps(context).encode(), timeout=timeout)
         except subprocess.TimeoutExpired:
             _kill_group(process)
             output_raw, _ = process.communicate()

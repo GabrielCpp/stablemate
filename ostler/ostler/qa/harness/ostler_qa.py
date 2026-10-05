@@ -2271,7 +2271,7 @@ def _run(module_path: Path, scenario_id: str, context: dict[str, Any]) -> int:
 def main(argv: Sequence[str] | None = None) -> int:
     args = list(sys.argv[1:] if argv is None else argv)
     if not args:
-        raise SystemExit("usage: ostler_qa (describe <module> | run <module> <scenario>)")
+        raise SystemExit("usage: ostler_qa (describe <module> | run <module> <scenario> [<context json> | -])")
     mode, args = args[0], args[1:]
     if mode == "describe":
         gc.disable()
@@ -2280,7 +2280,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 0
     if mode == "run":
         module_path, scenario_id = Path(args[0]).resolve(), args[1]
-        context = json.loads(args[2]) if len(args) > 2 else {}
+        raw = sys.stdin.read() if args[2:] == ["-"] else (args[2] if len(args) > 2 else "{}")
+        context = json.loads(raw)
         return _run(module_path, scenario_id, context)
     raise SystemExit(f"unknown mode {mode!r}")
 
