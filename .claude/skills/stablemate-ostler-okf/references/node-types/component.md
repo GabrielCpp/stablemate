@@ -49,9 +49,7 @@ is a legitimate value on `name:` — a decorative element has no accessible name
 from both bullets, and the compiler never emits a role without a name — a role on its own
 resolves to more than one element and Playwright's strict mode raises. So no check in the
 vocabulary can observe `role:` apart from `name:`, and a `verify:` under a component discharges
-the pair together. Do not add a second check to "cover" the role: the two bullets are an address,
-nothing counts them as claims to be evenly covered, and a check written to satisfy that intuition
-asserts the same query twice. When `name:` is `none` the address falls through to `selector:`,
+the pair together. A second check to "cover" the role asserts the same query twice. When `name:` is `none` the address falls through to `selector:`,
 and the by-role requirement relaxes with it.
 
 **`name:` is an observation of the accessibility tree, not a transcription of the text on the
@@ -64,12 +62,14 @@ author label (`aria-label`, `aria-labelledby`, a `<label for>`, and for a `table
 `form`, `textbox`, `spinbutton` or `combobox` with no author label has **no** accessible name,
 so its `name:` is `none`.
 
-Writing the announced wording into `name:` on such a node makes a claim no reading of the
-accessibility tree can check, and the compiler turns it into a locator that matches nothing:
-against a live stack, `getByRole("status", name="No widgets are on file yet.")` resolves to 0
-elements while the element is painted and visible. The wording is still a real claim — it moves
-to the one check that can observe it, `verify: visible(locator=..., text="...")`, beside a
+Writing the announced wording into `name:` on such a node makes a locator that matches
+nothing: `getByRole("status", name="No widgets are on file yet.")` finds 0 elements while the
+element is visible. The wording moves to `verify: visible(locator=..., text="...")`, beside a
 `name: none`.
+
+`name:` holds the literal name and nothing else: `Insérer`, never `the trigger named "Insérer"`
+or a link to where the label is defined. One value per node. A name with a link, a code span
+or an inner quote is `prose-name`, and the compiler refuses it.
 
 `placement:` is screen-relative on purpose: no `sidebar`/`main-column` vocabulary, nothing that
 assumes a grid. It is the one documented fact a role+name assertion cannot check — `getByRole`

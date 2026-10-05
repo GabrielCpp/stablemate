@@ -213,6 +213,7 @@ Three scoping rules explain findings that otherwise read as false positives or a
 | `malformed-variants` | warn | `variants:` does not parse. Form: one backticked span holding `path = token \| token \| …`, prose only after ` — `. |
 | `template-outside-repeat` | warn | The `name:` carries balanced `{…}` holes but the node declares no `one-per:` and inherits no repeat scope — every hole is opaque, so consumers match the name as a wildcard instead of the value it was written to pin. Declare the repeat keys if the control renders per member of a collection; otherwise write the literal rendered name. A warn per the migration rule: backfills drain conversions as ordinary worklist items. |
 | `invalid-role` | error | `role:` is not an ARIA role. State the bare computed role and put any caveat in prose. |
+| `prose-name` | error | `name:` carries a link, a code span or a quote among other words, so it describes the name. State the one string a browser computes. |
 | `unnamed-interactive` | error | An operable role with no accessible `name:` — unannounceable to assistive tech and unaddressable by `getByRole`. |
 | `missing-placement` | error | A page-carrying role with no `placement:`. A role+name assertion passes on a component crushed into a sliver. |
 | `malformed-placement` | error | `placement:` does not parse. Form: `width 60-100%, x 0-20%`. |
