@@ -55,38 +55,6 @@ workflow = (
             "finalize": Finalize,
         },
     )
-    .stub_agents(
-        {
-            "review-epics": {"status": "approved"},
-            "build-milestone": {"status": "complete"},
-            "review-epic-split": {"status": "approved"},
-            "rework-epic-split": {"status": "complete"},
-            "resolve-epic-split": {"decision": "answered"},
-            "write-epic": {"status": "complete"},
-            "split-stories": {"status": "complete"},
-            "design-mockup": {"status": "skipped"},
-            "write-story": {"status": "written"},
-            "audit-story": {"status": "passed"},
-            "review-coverage": {"status": "ok"},
-            "resolve-operator": {"decision": "answered"},
-            "resolve-integrity": {"decision": "answered"},
-            "plan-units": {"status": "complete"},
-            "assess-unit": {"status": "assessed"},
-            "assess-parity-unit": {"status": "assessed"},
-            "fix-record": {"status": "fixed"},
-            "partition-findings": {"status": "complete"},
-            "plan-epic-edit": {
-                "status": "complete",
-                "delete_epic": True,
-            },
-            "refine-epic-edit-plan": {
-                "status": "complete",
-                "delete_epic": True,
-            },
-            "review-epic-edit-plan": {"status": "approved"},
-            "rewrite-epic-edit": {"status": "complete"},
-        }
-    )
 )
 main = console_script(workflow.entry_point(Author))
 

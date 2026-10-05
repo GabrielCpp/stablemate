@@ -4,6 +4,7 @@ from __future__ import annotations
 from typing import Literal
 
 from workhorse_workflows.author.shared.schemas._base import AuthorResult
+from workhorse.pyflow import dry_run
 
 
 class Config(AuthorResult):
@@ -113,6 +114,7 @@ class Committed(AuthorResult):
     committed: bool = False
 
 
+@dry_run(status="complete")
 class WriteEpicResult(AuthorResult):
     """`main/prompts/write-epic.md` — one epic's `epic.md` written from its seeds."""
 
@@ -120,6 +122,7 @@ class WriteEpicResult(AuthorResult):
     notes: str = ""
 
 
+@dry_run(status="complete")
 class StorySplit(AuthorResult):
     """`main/prompts/split-stories.md` — an epic's seeds grouped into story-sized units."""
 
@@ -127,6 +130,7 @@ class StorySplit(AuthorResult):
     notes: str = ""
 
 
+@dry_run(status="skipped")
 class MockupResult(AuthorResult):
     """`<flow>/prompts/design-mockup.md` — the surface sketch a UI story is written against."""
 
@@ -145,6 +149,7 @@ class MockupGate(AuthorResult):
     evidence: str = ""
 
 
+@dry_run(status="written")
 class WriteStoryResult(AuthorResult):
     """`<flow>/prompts/write-story.md` and `<flow>/prompts/rework-story.md` — one story written."""
 
@@ -162,6 +167,7 @@ class AuditFinding(AuthorResult):
     repair: str = ""
 
 
+@dry_run(status="passed")
 class AuditResult(AuthorResult):
     """`<flow>/prompts/audit-story.md` — the story read back against its epic and seeds."""
 
@@ -170,6 +176,7 @@ class AuditResult(AuthorResult):
     notes: str = ""
 
 
+@dry_run(status="ok")
 class CoverageReview(AuthorResult):
     """`<flow>/prompts/review-coverage.md` — every seed accounted for by some story."""
 

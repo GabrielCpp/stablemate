@@ -4,6 +4,7 @@ from __future__ import annotations
 from typing import Literal
 
 from pydantic import BaseModel, Field
+from workhorse.pyflow import dry_run
 
 
 class MilestoneContext(BaseModel):
@@ -18,6 +19,7 @@ class MilestoneContext(BaseModel):
     epic_fingerprints: dict[str, str] = Field(default_factory=dict)
 
 
+@dry_run(status="complete", notes="")
 class MilestoneResult(BaseModel):
     """The milestone authoring turn's machine-readable reply."""
 

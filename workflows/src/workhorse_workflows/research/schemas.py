@@ -4,6 +4,7 @@ from __future__ import annotations
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
+from workhorse.pyflow import dry_run
 
 
 class ResearchResult(BaseModel):
@@ -72,6 +73,7 @@ class PublishResult(ResearchResult):
 
 
 
+@dry_run(gate_id="")
 class GateSelection(ResearchResult):
     """`prompts/select-next-gate.md` — which gate to attempt, or that the program died."""
 
@@ -153,6 +155,7 @@ class NewDirectionResult(ResearchResult):
     progress_reset: bool = False
 
 
+@dry_run(verdict="reached")
 class GoalReview(ResearchResult):
     """`prompts/lead-goal-review.md` — the ladder is exhausted; now what?"""
 
@@ -436,6 +439,7 @@ class NewTarget(ResearchResult):
     why_resolvable: str = ""
 
 
+@dry_run(verdict="continue")
 class ProgramReview(ResearchResult):
     """The lead's program-level verdict on a dossier."""
 
@@ -452,6 +456,7 @@ class ProgramReview(ResearchResult):
     confidence: str = ""
 
 
+@dry_run(status="written")
 class RecharterResult(ResearchResult):
     """What `program-recharter` wrote into the program folder."""
 

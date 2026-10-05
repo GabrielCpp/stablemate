@@ -23,7 +23,7 @@ dependencies = [
   # the Workhorse 3.x backend contract — that release carries the `Registry(..., package=)`
   # kwarg every workflow below passes in `workflow.py`, and the engine bump is what
   # made that kwarg exist.
-  "workhorse-agent>=3,<4",
+  "workhorse-agent>=3.1,<4",
   # `kit` — all of what used to be `workhorse.scriptutil`. These are here rather than
   # on the engine because knowing how to open a pull request, or how to read the
   # relaxed JSON a `.code-workspace` file is written in, is workflow domain: workhorse

@@ -4,6 +4,7 @@ from __future__ import annotations
 from typing import Literal
 
 from workhorse_workflows.author.shared.schemas._base import AuthorResult
+from workhorse.pyflow import dry_run
 
 
 class EditIntent(AuthorResult):
@@ -88,6 +89,7 @@ class StoryChange(AuthorResult):
     rewrite: bool = False
 
 
+@dry_run(status="complete", delete_epic=True)
 class EpicEditPlan(AuthorResult):
     """A complete replacement plan, validated before any graph write."""
 
@@ -111,11 +113,13 @@ class AppliedEpicEdit(AuthorResult):
     removed_stories: list[str] = []
 
 
+@dry_run(status="approved")
 class EpicEditReview(AuthorResult):
     status: Literal["approved", "needs_rework", "blocked"] = "needs_rework"
     notes: str = ""
 
 
+@dry_run(status="complete")
 class EpicRewriteResult(AuthorResult):
     status: Literal["complete", "blocked"] = "blocked"
     notes: str = ""

@@ -4,9 +4,10 @@ from __future__ import annotations
 from pydantic import BaseModel
 
 from workhorse.cli import console_script
-from workhorse.pyflow import Done, Registry, Workflow
+from workhorse.pyflow import Done, Registry, Workflow, dry_run
 
 
+@dry_run(summary="Dry run: plan not actually carried out.")
 class Outcome(BaseModel):
     """What the agent turn must reply with once the plan is carried out."""
 
@@ -31,7 +32,6 @@ class LoopRunner(Workflow):
 workflow = (
     Registry("loop-runner", package=__package__)
     .add_blueprints()
-    .stub_agents({"run": {"summary": "Dry run: plan not actually carried out."}})
 )
 
 main = console_script(workflow.entry_point(LoopRunner))

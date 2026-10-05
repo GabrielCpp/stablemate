@@ -6,6 +6,7 @@ import re
 from typing import Any, Literal
 
 from pydantic import AliasChoices, Field, field_validator, model_validator
+from workhorse.pyflow import dry_run
 
 from workhorse_workflows.coder.shared.schemas._base import CoderResult, Finding
 
@@ -66,6 +67,7 @@ class PlanFixture(CoderResult):
     )
 
 
+@dry_run(status="done")
 class PlanResult(CoderResult):
     """What every plan turn returns — `plan-story`, `repair-plan-paths`, `replan-with-answer`."""
 
@@ -145,6 +147,7 @@ class PlanResult(CoderResult):
         return v
 
 
+@dry_run(status="done")
 class ImplResult(CoderResult):
     """`<flow>/prompts/implement-plan.md` — one service layer implemented, or the blocker."""
 
@@ -182,6 +185,7 @@ class FailureReport(CoderResult):
         return hashlib.sha256(material.encode("utf-8")).hexdigest()[:12]
 
 
+@dry_run(status="fixed")
 class FixResult(CoderResult):
     """`dev/prompts/dev-fix.md` — the repair turn's own report, whatever the gate was."""
 
@@ -200,6 +204,7 @@ class FixResult(CoderResult):
     )
 
 
+@dry_run(decision="answered")
 class OperatorResolution(CoderResult):
     """`shared/prompts/resolve-operator.md` — the resolver's report on a block."""
 

@@ -4,6 +4,7 @@ from __future__ import annotations
 from typing import Literal
 
 from pydantic import BaseModel, Field
+from workhorse.pyflow import dry_run
 
 
 class EpicSplitContext(BaseModel):
@@ -20,6 +21,7 @@ class EpicSplitContext(BaseModel):
     story_slugs: dict[str, list[str]] = Field(default_factory=dict)
 
 
+@dry_run(status="complete", notes="")
 class EpicSplitResult(BaseModel):
     """A split or rework turn's reply."""
 
@@ -27,6 +29,7 @@ class EpicSplitResult(BaseModel):
     notes: str
 
 
+@dry_run(status="approved", notes="")
 class EpicSplitReview(BaseModel):
     """The independent review verdict over the ordered skeletons."""
 
@@ -43,6 +46,7 @@ class EpicSplitValidation(BaseModel):
     errors: str = ""
 
 
+@dry_run(decision="escalated", notes="")
 class OperatorResolution(BaseModel):
     """The diagnostic resolver's report before the flow parks for an operator."""
 

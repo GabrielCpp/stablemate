@@ -25,34 +25,7 @@ workflow = (
         fix=Fix,
         fix_ci=FixCi,
     )
-    .stub_agents(
-        {
-            "plan-story": {"status": "complete"},
-            "repair-plan-paths": {"status": "done"},
-            "replan-with-answer": {"status": "done"},
-            "implement-plan": {"status": "complete"},
-            "dev-fix": {"status": "fixed"},
-            "code-review": {"status": "clean"},
-            "review-implementation": {"status": "approved"},
-            "apply-review": {"status": "applied"},
-            "document-story": {"status": "passed"},
-            "review-story-documentation": {"status": "passed"},
-            "plan-qa": {"status": "complete"},
-            "qa-story": {"status": "passed"},
-            "audit-qa": {"status": "passed"},
-            "apply-qa-fixes": {"status": "passed"},
-            "triage-qa": {"status": "resolved"},
-            "repair-qa-context": {"status": "repaired"},
-            "report-qa-dev": {"status": "reported"},
-            "report-qa-dev-pass": {"status": "reported"},
-            "fix-regression": {"status": "fixed"},
-            "setup-fix": {"status": "fixed"},
-            "fix-ci": {"status": "fixed"},
-            "fix-merge": {"status": "resolved"},
-            "replan-epic": {"status": "complete"},
-            "resolve-operator": {"decision": "answered"},
-        }
-    )
+    .stub_agents({"apply-review": {"status": "applied"}})
 )
 main = console_script(workflow.entry_point(Coder))
 

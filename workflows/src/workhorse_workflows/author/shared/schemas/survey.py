@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from workhorse_workflows.author.shared.schemas._base import AuthorResult
+from workhorse.pyflow import dry_run
 
 
 
@@ -99,6 +100,7 @@ class EmitResult(AuthorResult):
 
 
 
+@dry_run(status="complete")
 class PlanResult(AuthorResult):
     """`surveyor/prompts/plan-units.md` — the enumeration rules the planner wrote."""
 
@@ -106,6 +108,7 @@ class PlanResult(AuthorResult):
     notes: str = ""
 
 
+@dry_run(status="assessed")
 class UnitAssessment(AuthorResult):
     """`surveyor/prompts/assess-unit.md` — one unit assessed, or found too big."""
 
@@ -113,6 +116,7 @@ class UnitAssessment(AuthorResult):
     notes: str = ""
 
 
+@dry_run(status="fixed")
 class RecordFix(AuthorResult):
     """`surveyor/prompts/fix-record.md` — one bounded repair of an invalid record."""
 
@@ -120,6 +124,7 @@ class RecordFix(AuthorResult):
     notes: str = ""
 
 
+@dry_run(status="complete")
 class PartitionProposal(AuthorResult):
     """`surveyor/prompts/partition-findings.md` — findings clustered into work items."""
 
@@ -127,6 +132,7 @@ class PartitionProposal(AuthorResult):
     notes: str = ""
 
 
+@dry_run(decision="answered")
 class OperatorResolution(AuthorResult):
     """`surveyor/prompts/resolve-operator.md` — the diagnostic investigator's report."""
 

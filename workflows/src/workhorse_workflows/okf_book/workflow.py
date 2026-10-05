@@ -16,7 +16,7 @@ workflow = (
     Registry("okf-book", package=__package__)
     .add_blueprints()
     .add_flows(write_book=WriteBook, repair_book=RepairBook, root_book=RootBook, exercise_book=ExerciseBook, lead_lap=LeadLap, lead_check=LeadCheck, reground_book=RegroundBook)
-    .stub_agents({"write-book": "stub", "repair-pages": "stub", "lead-lap": "stub", "reground-file": "stub"})
+    .stub_agents({"write-book": "stub", "repair-pages": "stub"})
 )
 main = console_script(workflow.entry_point(OkfBook))
 

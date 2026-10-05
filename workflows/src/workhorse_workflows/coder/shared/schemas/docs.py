@@ -4,6 +4,7 @@ from __future__ import annotations
 from typing import ClassVar, Literal
 
 from pydantic import BaseModel, Field
+from workhorse.pyflow import dry_run
 
 from workhorse_workflows.coder.shared.schemas._base import CoderResult, Finding
 from workhorse_workflows.kit.telemetry import ProgressVerdict, progress_verdict
@@ -25,6 +26,7 @@ class ContextClassification(CoderResult):
     notes: str = ""
 
 
+@dry_run(status="documented")
 class DocumentationResult(CoderResult):
     """`docs/prompts/document-story.md` — the story folded into the as-built OKF book."""
 
@@ -85,6 +87,7 @@ class DocumentationFinding(Finding):
     ] = Field(description="What class of defect this is, so the repair can be routed.")
 
 
+@dry_run(status="approved")
 class DocumentationReview(CoderResult):
     """`docs/prompts/review-story-documentation.md` — an independent read of what was written."""
 

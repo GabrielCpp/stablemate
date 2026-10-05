@@ -19,6 +19,7 @@ from ostler.model import load
 from ostler.refs import parse_code_ref
 from ostler.stamp import digest_file, stamp_targets
 from pydantic import BaseModel, ConfigDict
+from workhorse.pyflow import dry_run
 
 from workhorse_workflows.okf_book.main.nodes.source_view import turn_folder
 from workhorse_workflows.okf_book.shared.citations import book_pages
@@ -64,6 +65,7 @@ class AffectedNode(BaseModel):
     instruction: str = ""
 
 
+@dry_run(affected=())
 class RegroundVerdict(BaseModel):
     """The reading's reply: the nodes the change bears on. A node it leaves out still holds."""
 

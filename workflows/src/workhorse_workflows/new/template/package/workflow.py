@@ -6,13 +6,14 @@ import subprocess
 
 from pydantic import BaseModel
 from workhorse.cli import console_script
-from workhorse.pyflow import Blueprint, Continue, Done, Registry, Workflow, WorkflowFailed
+from workhorse.pyflow import Blueprint, Continue, Done, Registry, Workflow, WorkflowFailed, dry_run
 
 OUTPUT_LIMIT = 12_000
 
 blueprint = Blueprint("__WORKFLOW_NAME__")
 
 
+@dry_run(summary="Dry run: no change made.")
 class Fix(BaseModel):
     """What the agent turn must reply with once it has made its change."""
 
@@ -93,6 +94,5 @@ class CheckLoop(Workflow):
 workflow = (
     Registry("__WORKFLOW_NAME__", package=__package__)
     .add_blueprints(blueprint)
-    .stub_agents({"fix": {"summary": "Dry run: no change made."}})
 )
 main = console_script(workflow.entry_point(CheckLoop))

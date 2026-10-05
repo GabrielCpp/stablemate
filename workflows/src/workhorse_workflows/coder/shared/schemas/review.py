@@ -4,6 +4,7 @@ from __future__ import annotations
 from typing import ClassVar, Literal
 
 from pydantic import BaseModel, Field
+from workhorse.pyflow import dry_run
 
 from workhorse_workflows.coder.shared.schemas._base import CoderResult, Finding
 
@@ -30,6 +31,7 @@ class ReviewFinding(Finding):
     )
 
 
+@dry_run(status="clean")
 class CodeReviewResult(CoderResult):
     """`review/prompts/code-review.md` — the mechanical review pass over the diff."""
 
@@ -52,6 +54,7 @@ class CodeReviewResult(CoderResult):
     )
 
 
+@dry_run(status="approved")
 class ReviewVerdict(CoderResult):
     """`review/prompts/review-implementation.md` — the binding verdict on the implementation."""
 

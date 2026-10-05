@@ -4,6 +4,7 @@ from __future__ import annotations
 from typing import Literal
 
 from pydantic import Field
+from workhorse.pyflow import dry_run
 
 from workhorse_workflows.coder.shared.schemas._base import CoderResult
 
@@ -42,6 +43,7 @@ class MergeFlagged(CoderResult):
     merge_flagged: bool = False
 
 
+@dry_run(status="fixed")
 class MergeFixResult(CoderResult):
     """`fix_merge`'s reply — the conflict resolution the agent turn wrote."""
 

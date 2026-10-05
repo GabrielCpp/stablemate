@@ -1406,12 +1406,5 @@ class Research(Workflow):
 
 workflow = Registry("research", package=__package__).add_blueprints(
     blueprint, gate_blueprint
-).stub_agents(
-    {
-        "select-next-gate": {"gate_id": ""},
-        "lead-goal-review": {"verdict": "reached"},
-        "program-review": {"verdict": "continue"},
-        "program-recharter": {"status": "written"},
-    }
 )
 main = console_script(workflow.entry_point(Research))

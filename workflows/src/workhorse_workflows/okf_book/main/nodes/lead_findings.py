@@ -8,6 +8,7 @@ from typing import Literal
 
 from ostler.qa.attribution import Cause, Signature
 from pydantic import BaseModel, ConfigDict, field_validator
+from workhorse.pyflow import dry_run
 
 from workhorse_workflows.okf_book.main.nodes.gate import SIDE_BY_ESCALATED_CAUSE, escalation_reason
 from workhorse_workflows.okf_book.shared.blockers import Side
@@ -49,6 +50,7 @@ class GroupVerdict(BaseModel):
         return side
 
 
+@dry_run(findings=())
 class LeadVerdict(BaseModel):
     """The lead's reply: one verdict per group it judged."""
 

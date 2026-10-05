@@ -4,6 +4,7 @@ from __future__ import annotations
 from typing import Literal
 
 from pydantic import BaseModel, Field
+from workhorse.pyflow import dry_run
 
 from workhorse_workflows.coder.shared.schemas._base import CoderResult
 from workhorse_workflows.coder.shared.schemas.story import WorkspaceDirs
@@ -35,6 +36,7 @@ class PushOutcome(CoderResult):
     notes: str = ""
 
 
+@dry_run(status="fixed")
 class FixCiResult(CoderResult):
     """`fix_ci/prompts/fix-ci.md` — the fixer's own report: `fixed`, `failed` or `blocked`."""
 

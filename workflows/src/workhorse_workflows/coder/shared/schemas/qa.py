@@ -4,6 +4,7 @@ from __future__ import annotations
 from typing import Any, Literal
 
 from pydantic import Field
+from workhorse.pyflow import dry_run
 
 from workhorse_workflows.coder.shared.schemas._base import CoderResult, Finding
 from workhorse_workflows.kit.qa.schemas import QaPlanRun, QaResult, QaStatus, StackStatus
@@ -21,6 +22,7 @@ QaTriageClass = Literal["code", "product", "evidence", "environment"]
 QaFlowStatus = Literal["passed", "inconclusive", "replan", "rescope", "refix"]
 
 
+@dry_run(status="passed")
 class QaRunResult(CoderResult):
     """One QA verdict an agent turn was asked for — the fix lane's check, retry and recheck."""
 
@@ -144,6 +146,7 @@ class RegressionRun(CoderResult):
 
 
 
+@dry_run(status="repaired")
 class ContextRepair(CoderResult):
     """The repair half of `qa/prompts/repair-qa-context.md` — did the obligation packet heal?"""
 
@@ -163,6 +166,7 @@ class ContextRepair(CoderResult):
         )
 
 
+@dry_run(status="done")
 class QaPlanResult(CoderResult):
     """`plan-qa.md` — the authored `qa_plan.py`, as the author reports it."""
 
@@ -229,6 +233,7 @@ class QaFinding(Finding):
     )
 
 
+@dry_run(status="assessed")
 class QaAssessment(CoderResult):
     """`qa-story.md` — what the runner's raw verdict actually means for this story."""
 
@@ -262,6 +267,7 @@ class QaAssessment(CoderResult):
     )
 
 
+@dry_run(status="audited")
 class QaAudit(CoderResult):
     """`audit-qa.md` — an adversarial second read of a pass that already cleared the gate."""
 
@@ -290,6 +296,7 @@ class QaAudit(CoderResult):
     )
 
 
+@dry_run(status="triaged")
 class QaTriage(CoderResult):
     """`triage-qa.md` — are the findings in-AC fixes, or a scope the author must re-derive?"""
 
@@ -325,6 +332,7 @@ class QaTriage(CoderResult):
     )
 
 
+@dry_run(status="reported")
 class QaReport(CoderResult):
     """`report-qa-dev(-pass).md` — the findings written out to the tracker, in `dev` runs."""
 
@@ -342,6 +350,7 @@ class QaReport(CoderResult):
     )
 
 
+@dry_run(status="attempted")
 class RegressionFix(CoderResult):
     """`fix-regression.md` — the attempt to make the committed journey suites green again."""
 
@@ -362,6 +371,7 @@ class RegressionFix(CoderResult):
     )
 
 
+@dry_run(status="ready")
 class SetupResult(CoderResult):
     """`setup-fix.md` — the repair attempt on a stack manifest that would not come up."""
 
