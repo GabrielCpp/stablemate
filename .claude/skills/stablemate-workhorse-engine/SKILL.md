@@ -72,8 +72,8 @@ workflows/src/workhorse_workflows/<name>/
 └── shared/              # what a second machine also reaches
     ├── blueprint.py     #   `blueprint = Blueprint("<name>")` — the one every node decorates
     ├── paths.py         #   the only caller of `ostler.path`: doc dirs and filenames
-    ├── schemas/         #   the models states and nodes exchange (schemas.py until it grows)
-    ├── stubs.py         #   the --dry-run stand-ins
+    ├── schemas/         #   the models states and nodes exchange, with their @dry_run replies
+    ├── stubs.py         #   the nodes' --dry-run stand-ins
     └── <subject>.py     #   a node module more than one machine calls
 ```
 
@@ -84,7 +84,6 @@ workflow = (
     Registry("acme", package=__package__)
     .add_blueprints(blueprint)
     .add_flows(dev=Dev, qa=Qa)
-    .stub_agents({"implement-plan": {"status": "complete"}})
 )
 main = console_script(workflow.entry_point(Acme))   # Acme comes from acme.main.flow
 ```
@@ -195,6 +194,36 @@ def check_stack(logger: logging.Logger, manifest: dict) -> Report: ...
 - There is deliberately **no `timeout=`**. A node runs in the engine's own process and
   there is no portable way to interrupt it, so the knob would be accepted and ignored. The
   run-wide `WORKHORSE_MAX_RUNTIME_S` budget is what bounds a slow node.
+
+### An agent turn's dry-run reply
+
+Declare the reply `--dry-run` hands back on the model the turn returns:
+
+```python
+from workhorse.pyflow import dry_run
+
+@dry_run(status="done")
+class ImplResult(BaseModel):
+    status: Literal["done", "blocked"]
+    notes: str = ""
+```
+
+Every turn that returns `ImplResult` then answers `status="done"` under `--dry-run`. The
+decorator validates the reply against the model when the module imports. A stale value
+fails the import, not a dry run that happens to reach the turn. The declaration belongs to
+the class it decorates, so a subclass does not inherit it.
+
+A turn takes its reply from the first of three places that has one:
+
+1. its prompt stem or inline label in `Registry.stub_agents({...})`,
+2. the `@dry_run` reply on its return model,
+3. a blank instance of its return model.
+
+The table entry overrides the model. Use it for one turn that must answer differently from
+the other turns sharing its model, or for a turn that returns a `str`, which no decorator
+can carry. Once a workflow declares a reply either way, a dry run that reaches a fail
+terminal exits `1`. A workflow with no declared reply answers every turn blank, so its
+fail terminal still exits `0`.
 
 ### A node shares the driver's fate
 
@@ -400,7 +429,7 @@ def test_validate_plan_rejects(tmp_path):
 
 **Drive the whole state machine** — build a `RunEnv` with a scripted agent and a node index
 with the outside-world nodes overridden. `Registry.override(**by_name)` returns a
-non-mutating copy; `Registry.stub_agents({stem: reply})` declares dry-run replies:
+non-mutating copy:
 
 ```python
 from workhorse.pyflow.driver import drive
