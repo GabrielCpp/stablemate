@@ -32,6 +32,14 @@ Section type. A `### <id>` under the runbook's `## Steps` heading. Its id is `pa
 | `verify` | no | **a link, not a check** — golden or deterministic output |
 | `optional` | no | `true` for best-effort steps |
 | `depends-on` | no | ordering hint (default: document order) |
+| `open` | no | **fixture steps only**: a link to the `screen` a browser opens, by its route |
+| `arrange` | no | **fixture steps only**: one browser act (`click`, `fill`, `press`, `select`) per bullet, performed in order after `open:` |
+
+**`open:` and `arrange:` make a fixture step a browser step.** The scenario's own browser
+performs it, in place of `run:`, and keeps the session it leaves. A step has one performer, so
+it states either `run:` or the browser keys, never both. A runbook step never states them:
+bring-up runs before any scenario has a browser. See
+[fixture.md](fixture.md#signing-a-browser-in).
 
 **`verify:` on a step is the trap.** On every normative type it is a check; here it is a
 `link`. A boot step's `verify:` says how to tell *the step* ran — a golden file, a
@@ -101,7 +109,8 @@ timeout 30 ostler scaffold step serve --in docs/features/acme/ops/links-local.md
 `missing-required-bullet` on `kind:`, `runbook-bad-kind`, `check-expression-as-command` (a
 `run:`/`health:` value that parses as a check call), `unparsable-command` (a `run:`/`health:`
 value bash cannot parse), `runbook-scenario-frame` (a
-**runbook** step's `working-directory:` states the fixture-only `scenario:` token), and —
+**runbook** step's `working-directory:` states the fixture-only `scenario:` token),
+`browser-step-outside-fixture` (a **runbook** step states `open:` or `arrange:`), and —
 raised against the enclosing runbook — `runbook-incomplete` (a runbook that brings a stack up with no `kind: service` step) and
 `runbook-multi-service` (more
 than one). See [../doctor-codes.md](../doctor-codes.md).

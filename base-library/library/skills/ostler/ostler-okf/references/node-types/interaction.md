@@ -92,7 +92,9 @@ step in a world where that condition is false proves nothing about the claim. Wh
 arranges it is decided by **who can establish the state**:
 
 - **`fixture:`** — something run *beside* the surface: a seeded row, a signed-in session, a
-  stopped dependency. The performer arrives and the state is already there.
+  stopped dependency. The performer arrives and the state is already there. A signed-in
+  session in a browser comes from a fixture whose steps sign that browser in, as
+  [fixture.md](fixture.md#signing-a-browser-in) shows.
 - **`arrange:`** — an act the **performer of the step** carries out on this node's own surface:
   `fill`, `click`, `press`, `select`. A `when:` over what the user typed is true only once
   someone has typed, and no out-of-process command can type into a form.

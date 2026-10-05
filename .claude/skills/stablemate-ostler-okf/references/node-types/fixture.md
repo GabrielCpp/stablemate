@@ -135,6 +135,50 @@ one from a fixture step that prints it:
 `run: printf '{"email":"qa-%s@example.com"}' "$(date +%s%N)"`. The step prints a fresh value
 for every field the source holds unique, such as a company name beside the email.
 
+### Signing a browser in
+
+A token in a step's environment never reaches a browser. A claim a browser checks behind a
+sign-in needs a session in that browser, and the fixture makes it the way a person does: it
+opens the sign-in screen and acts on it. A step that states `open:` and `arrange:` is a
+**browser step**. The scenario's own browser performs it in place of `run:`, and keeps the
+session it leaves, cookies, local storage and IndexedDB alike, for every page the scenario
+opens after it.
+
+```markdown
+## Steps
+
+### seed-account
+
+- kind: seed
+- run: ./scripts/seed-editor.sh
+
+### sign-in
+
+- kind: seed
+- open: [Login](../login.md)
+- arrange: click("../login.md#continue-with-google")
+- arrange: click("text=editor@example.com")
+```
+
+- `open:` links the `screen` the browser starts on. The harness opens its `route:`, so the
+  route is one concrete path a person reaches by its address alone.
+- Each `arrange:` is one act, `click`, `fill`, `press` or `select`, performed in book order
+  after the screen opens. Its locator is a book anchor to a component or interaction the app
+  owns, the same as a claim's.
+- A page the book does not own, such as an auth emulator's account chooser or a third-party
+  identity provider, has no component to anchor. There the locator states what a person reads:
+  `role=button[name="Add new account"]`, `label=Email` or `text=editor@example.com`. Only a
+  fixture step may use this form. A claim still anchors every locator to the book.
+- A sign-in through an identity provider picks an account the stack already holds. Seed that
+  account first, in a `run:` step that does what the stack's seed does, then click it by its
+  email. An account the step makes up never exists, and the chooser never shows it.
+- A step states `run:` or the browser keys, never both, and at most one `open:`.
+
+A fixture that signs a browser in, directly or through its `needs:`, arranges only claims a
+browser checks. An http or cli claim that names it compiles to the gap
+`browser-fixture-off-browser`, because no browser holds the session there. Arrange that claim
+with a fixture whose steps all `run:`, such as the token sign-in above.
+
 A fixture's own steps do **not** carry `capture:`. `capture:` lives on the seven consuming
 node types, where it names what a *scenario* pulled out of a live response or the DOM — a
 fixture's `provides:` is the equivalent idea for what the arrangement itself leaves behind.
@@ -180,13 +224,13 @@ title: Seeded acme
 ## Doctor codes it can trip
 
 See [`../doctor-codes.md`](../doctor-codes.md): `unknown-book-fixture`, `fixture-step-kind`,
-`fixture-step-no-run`, `fixture-arg-mismatch`, `fixture-needs-target-args`,
+`fixture-step-no-run`, `fixture-browser-step`, `browser-fixture-off-browser`, `fixture-arg-mismatch`, `fixture-needs-target-args`,
 `fixture-needs-cycle`, `fixture-undeclared-provides`, `undetermined-provided-fact`,
 `fixture-secret-name`, `unbacked-precondition`, `missing-required-section`,
 `empty-required-section`.
 
 ## When bullets are not enough
 
-A fixture's own steps are shell commands and a check, the same as a runbook's — anything the
+A fixture's own steps are shell commands, browser acts and a check. Anything the
 grammar cannot express (branching setup, environment-specific seeding) belongs in the script
 `run:` names, not encoded into more bullets.

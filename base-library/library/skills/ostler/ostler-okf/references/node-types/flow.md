@@ -133,6 +133,10 @@ The `fixture:` signs the editor in, so the create-link step sends the credential
 arranges. That endpoint's `capture: slug from $.slug` hands the new slug to the follow-link
 step's `/{slug}`.
 
+The steps here are http calls, so a token sign-in arranges them. A flow whose steps a browser
+performs needs the session in that browser instead. Its fixture opens the sign-in screen and
+acts on it, as [fixture.md](fixture.md#signing-a-browser-in) shows.
+
 ## Doctor codes it can trip
 
 `unresolved-relation` on a `steps:` child, `undeclared-obligation` when `start:`/`end:` are
