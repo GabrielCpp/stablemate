@@ -1,4 +1,4 @@
-"""The operator's answer to the blockers reaches every owner turn that follows it."""
+"""The operator's answer to the blockers reaches each book's owner on its next turn, and not after it replied."""
 from __future__ import annotations
 
 from pathlib import Path
@@ -8,15 +8,19 @@ import pytest
 from okf_book.main.tally import TALLY
 
 from workhorse import gates, templates
+from workhorse.runner.usage import TurnUsage
 
 from workhorse_workflows import okf_book
 from workhorse_workflows.okf_book.main.flow import OPERATOR_NAME
-from workhorse_workflows.okf_book.main.nodes.operator_answer import ANSWER_LIMIT_CHARS, answer_below, read_answer, write_answer
+from workhorse_workflows.okf_book.main.nodes.operator_answer import ANSWER_LIMIT_CHARS, answer_below, mark_heard, read_answer, write_answer
 from workhorse_workflows.okf_book.main.nodes.owner_gate import Gates, gate_template_args
 from workhorse_workflows.okf_book.main.nodes.writer_commands import check_command, exercise_command, ostler_command
 from workhorse_workflows.okf_book.main.nodes.writer_request import WriterRequest
-from workhorse_workflows.okf_book.main.write_book_flow import WRITE_PROMPT
+from workhorse_workflows.okf_book.main.nodes.lead_findings import OwnerReply
+from workhorse_workflows.okf_book.main.write_book_flow import WRITE_PROMPT, WriteBook
 from workhorse_workflows.okf_book.shared.blockers import Blocker, Phase, Side, record_blocker
+from workhorse_workflows.okf_book.shared.confine import Snapshot
+from workhorse_workflows.okf_book.shared.metrics import turn_metric
 from workhorse_workflows.okf_book.workflow import OkfBook
 
 ANSWER = "The admin checks revoke the supplier's tokens. Give them their own user."
@@ -32,7 +36,7 @@ def test_the_answer_to_the_blockers_is_kept_for_the_owner(tmp_path: Path) -> Non
 
     step = book.resume(gate_path=str(gate_path), question=question)
 
-    assert read_answer(tmp_path) == ANSWER
+    assert read_answer(tmp_path, "tally") == ANSWER
     assert step.state == "settle_gate"
 
 
@@ -48,7 +52,18 @@ def test_an_empty_answer_clears_the_last(tmp_path: Path) -> None:
     write_answer(tmp_path, ANSWER)
     write_answer(tmp_path, "")
 
-    assert read_answer(tmp_path) == ""
+    assert read_answer(tmp_path, "tally") == ""
+
+
+def test_an_owner_that_replied_reads_the_answer_no_more_and_a_new_answer_reaches_it_again(tmp_path: Path) -> None:
+    write_answer(tmp_path, ANSWER)
+
+    mark_heard(tmp_path, "tally")
+
+    assert read_answer(tmp_path, "tally") == ""
+    assert read_answer(tmp_path, "ledger") == ANSWER
+    write_answer(tmp_path, "Rerun the exercise.")
+    assert read_answer(tmp_path, "tally") == "Rerun the exercise."
 
 
 @pytest.mark.usefixtures("ostler_okf_skill")
@@ -81,3 +96,14 @@ def test_a_long_answer_is_capped() -> None:
 
     assert ANSWER_LIMIT_CHARS - 10 < len(answer) <= ANSWER_LIMIT_CHARS
     assert answer == "x" * len(answer)
+
+
+@pytest.mark.parametrize(("failure", "kept"), [(None, ""), ("the writer's turn ended without a reply: timed out", ANSWER)])
+def test_only_an_owner_turn_that_replied_retires_the_answer(tmp_path: Path, failure: str | None, kept: str) -> None:
+    flow = WriteBook(repo_dir=str(tmp_path), parent_records_dir=str(tmp_path), surface=TALLY)
+    write_answer(tmp_path, ANSWER)
+    metric = turn_metric(Phase.WRITE, "write-book", ("tally",), 1.0, TurnUsage())
+
+    _ = flow.record_writer_turn(Snapshot(digests={}), metric, failure, OwnerReply())
+
+    assert read_answer(tmp_path, "tally") == kept

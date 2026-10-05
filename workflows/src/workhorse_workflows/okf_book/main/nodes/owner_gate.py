@@ -72,7 +72,7 @@ def _check_groups(problems: Iterable[PageProblem]) -> list[dict[str, object]]:
 
 
 def gate_template_args(root: Path, records_dir: Path, service: str, gates: Gates) -> dict[str, object]:
-    """The gate results the owner's turn opens on: the run's groups and the head of what it printed, the check's groups, where every failure is kept, what the owner named on earlier laps, and what the operator last answered."""
+    """The gate results the owner's turn opens on: the run's groups and the head of what it printed, the check's groups, where every failure is kept, what the owner named on earlier laps, and the operator's last answer while this owner has not replied after reading it."""
     exercised, problems, failures = gates.exercised, gates.problems, gates.failures
     folder = turn_folder(root, OWNER_FOLDER)
     summary, plan = kept_for_turn(root, OWNER_FOLDER, (records_dir / RUN_NAME, spec_dir(records_dir) / service / PLAN_NAME))
@@ -88,7 +88,7 @@ def gate_template_args(root: Path, records_dir: Path, service: str, gates: Gates
         "check_problems": str(write_check_problems(folder, problems)) if problems else "",
         "sides": sorted(LEAD_SIDES),
         "earlier": [finding.model_dump(mode="json") for finding in read_findings(records_dir) if finding.service == service],
-        "operator_answer": read_answer(records_dir),
+        "operator_answer": read_answer(records_dir, service),
     }
 
 

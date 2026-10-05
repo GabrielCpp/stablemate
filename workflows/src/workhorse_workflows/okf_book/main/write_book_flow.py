@@ -10,6 +10,7 @@ from workhorse.pyflow import AgentTimeout, AgentTurnFailed, Await, Continue, Don
 from workhorse.runner.failure import OutputParseError
 from workhorse_workflows.okf_book.main.nodes.gate import RunFailures
 from workhorse_workflows.okf_book.main.nodes.lead_findings import OwnerReply
+from workhorse_workflows.okf_book.main.nodes.operator_answer import mark_heard
 from workhorse_workflows.okf_book.main.nodes.owner_gate import Gates, gate_template_args, record_owner_reply
 from workhorse_workflows.okf_book.main.nodes.surface import Surface
 from workhorse_workflows.okf_book.main.nodes.writer_commands import WriterCommandState, write_command_state
@@ -101,10 +102,12 @@ class WriteBook(BookFlow):
         )
 
     def record_writer_turn(self, before: Snapshot, metric: TurnMetric, failure: str | None, reply: OwnerReply | None = None) -> Continue[...]:
-        """Record what the writer's turn cost, and the side it named of each group of the gates it was shown."""
+        """Record what the writer's turn cost, and the side it named of each group of the gates it was shown. A turn that replied has read the operator's answer."""
         record_turn(self.records_dir, metric)
         if reply is not None:
             _ = record_owner_reply(self.records_dir, self.surface_to_write.service, self._gates(), reply)
+        if failure is None:
+            mark_heard(self.records_dir, self.surface_to_write.service)
         if failure is not None:
             return Continue(failure, self.put_back_after_failed_turn, before=before, failure=failure).because(
                 "the writer's turn failed"

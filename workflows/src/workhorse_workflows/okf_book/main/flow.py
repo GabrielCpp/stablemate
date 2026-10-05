@@ -305,10 +305,10 @@ class OkfBook(BookFlow):
         return Await(gate_path, question, self.resume, gate_path=str(gate_path), question=question).because("blockers wait for the operator")
 
     def resume(self, gate_path: str = "", question: str = "") -> Continue[...]:
-        """The operator has fixed what the blockers named, or said how. Their answer is kept for every repair turn."""
+        """The operator has fixed what the blockers named, or said how. Each book's owner reads their answer on its next turn."""
         gate_text = Path(gate_path).read_text(encoding="utf-8") if gate_path and Path(gate_path).is_file() else ""
         write_answer(self.records_dir, answer_below(gate_text, question))
-        return Continue(None, self.settle_gate).because("the operator's answer is kept for the repair turns")
+        return Continue(None, self.settle_gate).because("the operator's answer is kept for the owners")
 
     def settle_gate(self) -> Continue[...]:
         """Rerun each blocker's checks, close those that pass, and leave each writer what still fails and every claim the answer changed."""
