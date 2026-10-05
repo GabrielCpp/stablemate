@@ -1,4 +1,4 @@
-"""The operator's answer to the blockers reaches every repair turn that follows it."""
+"""The operator's answer to the blockers reaches every owner turn that follows it."""
 from __future__ import annotations
 
 from pathlib import Path
@@ -12,17 +12,17 @@ from workhorse import gates, templates
 from workhorse_workflows import okf_book
 from workhorse_workflows.okf_book.main.flow import OPERATOR_NAME
 from workhorse_workflows.okf_book.main.nodes.operator_answer import ANSWER_LIMIT_CHARS, answer_below, read_answer, write_answer
-from workhorse_workflows.okf_book.main.nodes.repair_batch_models import PageRepair, RepairBatch
+from workhorse_workflows.okf_book.main.nodes.owner_gate import Gates, gate_template_args
 from workhorse_workflows.okf_book.main.nodes.writer_commands import check_command, exercise_command, ostler_command
 from workhorse_workflows.okf_book.main.nodes.writer_request import WriterRequest
-from workhorse_workflows.okf_book.main.repair_book_flow import REPAIR_PROMPT
+from workhorse_workflows.okf_book.main.write_book_flow import WRITE_PROMPT
 from workhorse_workflows.okf_book.shared.blockers import Blocker, Phase, Side, record_blocker
 from workhorse_workflows.okf_book.workflow import OkfBook
 
 ANSWER = "The admin checks revoke the supplier's tokens. Give them their own user."
 
 
-def test_the_answer_to_the_blockers_is_kept_for_the_repair(tmp_path: Path) -> None:
+def test_the_answer_to_the_blockers_is_kept_for_the_owner(tmp_path: Path) -> None:
     book = OkfBook(repo_dir=str(tmp_path), parent_records_dir=str(tmp_path), surfaces=(TALLY,))
     _ = book.start()
     _ = record_blocker(tmp_path, Blocker(subject="tally", service="tally", phase=Phase.EXERCISE, side=Side.BOOK, reason="failed its run"))
@@ -52,7 +52,7 @@ def test_an_empty_answer_clears_the_last(tmp_path: Path) -> None:
 
 
 @pytest.mark.usefixtures("ostler_okf_skill")
-def test_the_repair_prompt_carries_the_answer(tmp_path: Path) -> None:
+def test_the_owner_prompt_carries_the_answer(tmp_path: Path) -> None:
     request = WriterRequest(
         surface=TALLY,
         repo_root=tmp_path,
@@ -64,14 +64,14 @@ def test_the_repair_prompt_carries_the_answer(tmp_path: Path) -> None:
         exercise_command_line=exercise_command(tmp_path),
         qa_tools=(),
     )
-    batch = RepairBatch(pages=(PageRepair(page="docs/features/tally/fixtures/signed-in.md", problems=("seed failed",)),), tokens=1)
     folder = Path(okf_book.__file__).parent
+    unanswered = templates.render(WRITE_PROMPT, {**request.template_args(), **gate_template_args(tmp_path, tmp_path, "tally", Gates())}, folder)
+    write_answer(tmp_path, ANSWER)
 
-    answered = templates.render(REPAIR_PROMPT, request.repair_template_args(batch, failed_run=True, operator_answer=ANSWER), folder)
-    unanswered = templates.render(REPAIR_PROMPT, request.repair_template_args(batch, failed_run=True), folder)
+    answered = templates.render(WRITE_PROMPT, {**request.template_args(), **gate_template_args(tmp_path, tmp_path, "tally", Gates())}, folder)
 
-    assert f"    {ANSWER}" in answered
-    assert "The operator read" not in unanswered
+    assert ANSWER in answered
+    assert "What the operator answered" not in unanswered
 
 
 def test_a_long_answer_is_capped() -> None:

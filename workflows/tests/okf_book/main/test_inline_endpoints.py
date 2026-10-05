@@ -18,7 +18,7 @@ from okf_book.main.tally import (
     SERVER_PAGE,
     TALLY,
     page_problems_until_noted,
-    stub_a_book_sent_to_repair,
+    stub_a_book_sent_back_to_its_owner,
     stub_the_run_to,
     write_inline_server,
 )
@@ -58,16 +58,16 @@ def test_an_endpoint_the_writer_left_inline_gets_a_page_of_its_own_in_the_book_c
     assert "### " not in (repo / SERVER_PAGE).read_text(encoding="utf-8")
 
 
-def test_an_endpoint_a_server_page_holds_inline_gets_a_page_of_its_own_after_a_repair_turn(
+def test_an_endpoint_a_server_page_holds_inline_gets_a_page_of_its_own_after_the_owner_turn_on_an_existing_book(
     app: App, drive_book: DriveBook, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    stub_a_book_sent_to_repair(monkeypatch)
+    stub_a_book_sent_back_to_its_owner(monkeypatch)
     repo = app("tally-cli")
     write_inline_server(repo)
     _ = git(repo, "add", SERVER_PAGE)
     _ = git(repo, "commit", "-q", "-m", "docs(tally): describe the tally api")
 
-    _ = drive_book(OkfBook(repo_dir=str(repo), surfaces=(TALLY,)), _noting(repo, "repair-pages", inline=False))
+    _ = drive_book(OkfBook(repo_dir=str(repo), surfaces=(TALLY,)), _noting(repo, "write-book", inline=False))
 
     assert git(repo, "status", "--porcelain").strip() == ""
     assert _committed_in_head(repo) == sorted((*ENDPOINT_PAGES, PAGE, SERVER_PAGE))

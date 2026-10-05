@@ -1,4 +1,4 @@
-"""The okf-book run: one confined writer per surface writes its whole book, then the run checks it, runs it and reports."""
+"""The okf-book run: one confined owner per surface writes its whole book, code checks it and runs it between the owner's turns, and the run reports."""
 from __future__ import annotations
 
 from pathlib import Path
@@ -8,36 +8,26 @@ from workhorse.pyflow import Await, Continue, Done, WorkflowFailed
 from workhorse_workflows.kit import last_commit_subject, last_commit_trailer
 from workhorse_workflows.okf_book.main.exercise_book_flow import ExerciseBook
 from workhorse_workflows.okf_book.main.nodes import gate
-from workhorse_workflows.okf_book.main.lead_check_flow import LeadCheck
-from workhorse_workflows.okf_book.main.lead_lap_flow import LeadLap
 from workhorse_workflows.okf_book.main.nodes.check_lead import latest_check_findings, record_check, unheld
 from workhorse_workflows.okf_book.main.nodes.gate import ESCALATED_SIDES, SIDE_BY_ESCALATED_CAUSE, RunFailures, keep_failures, rerun_command, take_failures
 from workhorse_workflows.okf_book.main.nodes.lead_findings import (
     Escalation,
     LeadFinding,
-    LedLap,
     attributed,
-    lead_groups,
     led_escalations,
     read_findings,
     run_escalations,
+    service_findings,
     with_instructions,
 )
 from workhorse_workflows.okf_book.main.nodes.operator_answer import answer_below, write_answer
 from workhorse_workflows.okf_book.main.nodes.progress_ledger import LapCounts, lap_counts, read_laps, record_lap, service_laps, stalled, trend
-from workhorse_workflows.okf_book.main.nodes.repair_ledger import RepairOutcome
-from workhorse_workflows.okf_book.main.repair_book_flow import RepairBook
 from workhorse_workflows.okf_book.main.nodes.report import build_report, write_report
 from workhorse_workflows.okf_book.main.nodes.stale_citations import Regrounded
 from workhorse_workflows.okf_book.main.reground_book_flow import RegroundBook
-from workhorse_workflows.okf_book.main.nodes.source_view import build_source_view, source_view_folder
+from workhorse_workflows.okf_book.main.nodes.source_view import build_source_view
 from workhorse_workflows.okf_book.main.nodes.surface import Surface
 from workhorse_workflows.okf_book.main.nodes.surface_pass import read_pass, write_pass
-from workhorse_workflows.okf_book.main.nodes.turn_budget import (
-    ceiling_blocker_reason,
-    folder_tokens,
-    source_and_book_tokens,
-)
 from workhorse_workflows.okf_book.main.write_book_flow import WriteBook, WriteOutcome
 from workhorse_workflows.okf_book.shared.blockers import Blocker, Phase, Side, blockers_by_side, forget_blocker, forget_blockers, read_blockers, record_blocker
 from workhorse_workflows.okf_book.shared.book_commits import (
@@ -48,9 +38,8 @@ from workhorse_workflows.okf_book.shared.book_commits import (
 )
 from workhorse_workflows.okf_book.shared.book_flow import BookFlow
 from workhorse_workflows.okf_book.shared.book_run import ExerciseResult, stack_down_failures
-from workhorse_workflows.okf_book.shared.citations import book_pages, cites_changed_file
-from workhorse_workflows.okf_book.main.nodes.root_entries import NO_ENTRY_PAGE, entry_links
-from workhorse_workflows.okf_book.shared.entries import FEATURES_DIR, read_entries
+from workhorse_workflows.okf_book.shared.citations import cites_changed_file
+from workhorse_workflows.okf_book.shared.entries import FEATURES_DIR
 from workhorse_workflows.okf_book.shared.page_check import PageProblem, page_problems
 from workhorse_workflows.okf_book.shared.scenarios import PLAN_NAME, plan_scenarios, spec_dir, write_run
 
@@ -84,7 +73,7 @@ def _stall(exercised: ExerciseResult, laps: tuple[LapCounts, ...]) -> str:
 
 
 class OkfBook(BookFlow):
-    """The run: each surface's book is written by one confined turn, committed, checked and run against the app."""
+    """The run: each surface's book is written by its owner's turns, each committed, checked and run against the app."""
 
     surfaces: tuple[Surface, ...] = ()
 
@@ -117,7 +106,7 @@ class OkfBook(BookFlow):
         return self._next_surface(reason, index)
 
     def route_book(self, index: int, regrounded: bool = False) -> Continue[...]:
-        """A missing book, or one with problems, goes to the writer, so a rerun after the operator's fix repairs what the last run left. A book citing a file that changed since its stamp is regrounded first. A book this workflow's writer or repair last committed with no problem goes through the check again, and any other one goes straight to its run."""
+        """A missing book, or one the gate left failures for, goes to its owner, so a rerun after the operator's fix repairs what the last run left. A book citing a file that changed since its stamp is regrounded first. A book with problems, or one this workflow last committed, goes through the check again, and any other one goes straight to its run."""
         service = self.surfaces[index].service
         book = _book_folder(service)
         if not (self.root / book).is_dir():
@@ -127,13 +116,11 @@ class OkfBook(BookFlow):
         pending = take_failures(self.records_dir, service)
         if pending:
             return Continue(pending, self.copy_source, index=index, run_failures=pending).because(
-                "the gate left this book's writer failures to fix"
+                "the gate left this book's owner failures to fix"
             )
         found = page_problems(self.root, service)
         if found:
-            return Continue(len(found), self.lead_check, index=index, problems=found).because(
-                "the existing book has problems: the lead reads the whole check first"
-            )
+            return Continue(len(found), self.check_book, index=index).because("the existing book has problems: check it")
         _ = record_check(self.records_dir, self.root, service, found)
         ours = last_commit_subject(self.root, book) in (book_commit_subject(service), repaired_book_commit_subject(service))
         if ours or last_commit_trailer(self.root, BOOK_TRAILER, book) == REPAIRED:
@@ -143,117 +130,66 @@ class OkfBook(BookFlow):
         )
 
     def reground_book(self, index: int) -> Continue[...]:
-        """Hand the book to its regrounding. The nodes a change bears on are kept as failures for the book's writer, and the book is routed again."""
+        """Hand the book to its regrounding. The nodes a change bears on are kept as failures for the book's owner, and the book is routed again."""
         service = self.surfaces[index].service
         regrounded = Regrounded.model_validate(self.handoff(RegroundBook, parent_records_dir=str(self.records_dir), service=service))
         keep_failures(self.records_dir, service, regrounded.failures)
         return Continue(regrounded, self.route_book, index=index, regrounded=True).because("the changed files are read: route the book")
 
-    def copy_source(self, index: int, run_failures: RunFailures | None = None) -> Continue[...]:
-        """Copy the surface's product source for its writer. A surface whose source is no folder is a blocker."""
+    def copy_source(
+        self, index: int, run_failures: RunFailures | None = None, problems: tuple[PageProblem, ...] = (), exercised: ExerciseResult | None = None,
+    ) -> Continue[...]:
+        """Copy the surface's product source for its owner. A surface whose source is no folder is a blocker."""
         surface = self.surfaces[index]
         source = _source_folder(self.root, surface)
         if not (self.root / source).is_dir():
             return self._block_surface_and_move_on(index, f"the entry {surface.entry} is in no source folder")
         view = build_source_view(self.root, source)
-        return Continue(view.as_posix(), self.measure_source, index=index, run_failures=run_failures).because(
-            "measure the writer's source"
+        return Continue(view.as_posix(), self.write_book, index=index, run_failures=run_failures, problems=problems, exercised=exercised).because(
+            "send the book's owner"
         )
 
-    def measure_source(self, index: int, run_failures: RunFailures | None = None) -> Continue[...]:
-        """A book over the ceiling one writer reads is repaired a batch of pages at a time, with the failures of the run it failed. A surface with no book over it is a blocker, and so is one whose book has no entry page, since no repair turn can make its pages reachable."""
+    def write_book(
+        self, index: int, run_failures: RunFailures | None = None, problems: tuple[PageProblem, ...] = (), exercised: ExerciseResult | None = None,
+    ) -> Continue[...]:
+        """Hand the book to one turn of its owner, with the gates it last failed. A turn sent the failures of a run is a repair, and the run after it must lower them."""
         surface = self.surfaces[index]
-        view = source_view_folder(self.root, _source_folder(self.root, surface))
-        tokens = source_and_book_tokens(folder_tokens(view), folder_tokens(self.root / _book_folder(surface.service)))
-        reason = ceiling_blocker_reason(tokens)
-        if reason is None:
-            return Continue(tokens, self.write_book, index=index, run_failures_repaired=run_failures is not None).because(
-                "the source fits one writer"
-            )
-        if entry_links(self.root, surface.service) or read_entries(self.root, surface.service):
-            return Continue(tokens, self.repair_book, index=index, run_failures=run_failures).because(
-                "the book is over one writer: repair it in batches"
-            )
-        if book_pages(self.root, surface.service):
-            reason = f"{NO_ENTRY_PAGE} {reason}"
-        return self._block_surface_and_move_on(index, reason)
-
-    def repair_book(self, index: int, run_failures: RunFailures | None = None) -> Continue[...]:
-        """Hand the book to its repair, with the failures of the run it failed when it failed one."""
-        surface = self.surfaces[index]
-        repaired = RepairOutcome.model_validate(
-            self.handoff(
-                RepairBook,
-                parent_records_dir=str(self.records_dir),
-                surface=surface,
-                book_folder=_book_folder(surface.service),
-                source_folder=_source_folder(self.root, surface),
-                run_failures=run_failures or {},
-            )
-        )
-        return Continue(
-            repaired, self.settle_repair, index=index, repaired=repaired, run_failures_repaired=run_failures is not None
-        ).because("settle the repair")
-
-    def settle_repair(self, index: int, repaired: RepairOutcome, run_failures_repaired: bool = False) -> Continue[...]:
-        """The repair turns that ended without a reply are one blocker on the workflow, and each page too large for one writer is another, in place of the ones an earlier repair left. The repaired book goes to its check."""
-        service = self.surfaces[index].service
-        forget_blockers(self.records_dir, Phase.WRITE, Side.WORKFLOW, service)
-        if repaired.failed_turns:
-            reason = "\n".join(repaired.failed_turns)
-            _ = record_blocker(self.records_dir, Blocker(subject=service, service=service, phase=Phase.WRITE, side=Side.WORKFLOW, reason=reason))
-        for part in repaired.oversized_parts:
-            blocker = Blocker(subject=f"{service}: {part.subject}", service=service, phase=Phase.WRITE, side=Side.WORKFLOW, reason=part.reason)
-            _ = record_blocker(self.records_dir, blocker)
-        return Continue(repaired, self.check_book, index=index, run_failures_repaired=run_failures_repaired).because(
-            "check the repaired book"
-        )
-
-    def write_book(self, index: int, run_failures_repaired: bool = False) -> Continue[...]:
-        """Hand the surface to its writer."""
-        surface = self.surfaces[index]
-        source = _source_folder(self.root, surface)
         written = WriteOutcome.model_validate(
             self.handoff(
                 WriteBook,
                 parent_records_dir=str(self.records_dir),
                 surface=surface,
                 book_folder=_book_folder(surface.service),
-                source_folder=source,
+                source_folder=_source_folder(self.root, surface),
+                exercised=exercised,
+                problems=problems,
+                run_failures=run_failures or {},
             )
         )
         return Continue(
-            written, self.settle_write, index=index, written=written, run_failures_repaired=run_failures_repaired
-        ).because("settle the writer's turn")
+            written, self.settle_write, index=index, written=written, run_failures_repaired=run_failures is not None
+        ).because("settle the owner's turn")
 
     def settle_write(self, index: int, written: WriteOutcome, run_failures_repaired: bool = False) -> Continue[...]:
         """A turn that ended without a reply is a blocker on the surface. A committed book goes to its check."""
         if not written.committed:
             return self._block_surface_and_move_on(index, written.failure)
-        return Continue(written, self.check_book, index=index, run_failures_repaired=run_failures_repaired).because(
+        return Continue(written, self.check_book, index=index, run_failures_repaired=run_failures_repaired, repaired=True).because(
             "check the committed book"
         )
 
-    def check_book(self, index: int, run_failures_repaired: bool = False) -> Continue[...]:
-        """Repeat the writer's own page check. A book with problems goes to the lead of the check first, and a clean one to its run."""
+    def check_book(self, index: int, run_failures_repaired: bool = False, repaired: bool = False) -> Continue[...]:
+        """Repeat the owner's own page check. A problem in a group the owner named another side's is held: it is a blocker on that side. Each problem left is a blocker on its page, and goes back to the owner. After its turn the problems left go back only when they are fewer than the last check left, so a person is asked only about what a turn did not lower."""
         service = self.surfaces[index].service
         problems = page_problems(self.root, service)
-        if problems:
-            return Continue(len(problems), self.lead_check, index=index, problems=problems, repaired=True,
-                            run_failures_repaired=run_failures_repaired).because("the check finds problems: the lead reads the whole check first")
-        _ = record_check(self.records_dir, self.root, service, problems)
-        return Continue(problems, self.run_book, index=index, run_failures_repaired=run_failures_repaired).because("run the book against the app")
-
-    def lead_check(self, index: int, problems: tuple[PageProblem, ...], repaired: bool = False, run_failures_repaired: bool = False) -> Continue[...]:
-        """Hand the check to its lead, which names the side of each rule's problems before any page is repaired. A problem it named another side's is held: it is a blocker on that side, and no page repair is sent it. A lead that named nothing leaves what the last lead of the check named. Each problem left is a blocker on its page, and goes to its repair. After a repair the problems left go back only when they are fewer than the last check left, so a person is asked only about what a repair did not lower."""
-        service = self.surfaces[index].service
-        led = LedLap.model_validate(self.handoff(LeadCheck, parent_records_dir=str(self.records_dir), service=service, problems=problems))
         findings = latest_check_findings(read_findings(self.records_dir), service)
         left = unheld(problems, findings)
         before = record_check(self.records_dir, self.root, service, problems, findings)
         if left and (not repaired or not before or len(left) < before):
-            return Continue(led, self.copy_source, index=index, run_failures={} if run_failures_repaired else None).because("the lead left the book problems to repair")
-        return Continue(led, self.run_book, index=index, run_failures_repaired=run_failures_repaired).because("run the book against the app")
+            return Continue(len(left), self.copy_source, index=index, problems=problems, run_failures={} if run_failures_repaired else None).because(
+                "the check finds problems the book holds: back to its owner"
+            )
+        return Continue(problems, self.run_book, index=index, run_failures_repaired=run_failures_repaired).because("run the book against the app")
 
     def run_book(self, index: int, run_failures_repaired: bool) -> Continue[...]:
         """Run the book against the app, by handing off to the run flow."""
@@ -267,8 +203,13 @@ class OkfBook(BookFlow):
             exercised=exercised,
         ).because("settle the run")
 
+    def _owned(self, service: str, exercised: ExerciseResult) -> tuple[ExerciseResult, tuple[LeadFinding, ...]]:
+        """The run with each group the owner named moved to the side it named, and what it named."""
+        findings = service_findings(read_findings(self.records_dir), service)
+        return attributed(exercised, findings), findings
+
     def settle_run(self, index: int, run_failures_repaired: bool, exercised: ExerciseResult) -> Continue[...]:
-        """A passing book is done. A run the runner itself stopped measured nothing of the book, so it is a blocker on the runner's side and no lap. Each failure another party must fix is a blocker, one per signature. A stack that cannot come up goes to the writer of the runbooks it came up from, and is a blocker on the app when the book declares none or the writer's repair left it down. A book whose run failed goes to the mapping of its failures. Either way the book stays."""
+        """A passing book is done. A run the runner itself stopped measured nothing of the book, so it is a blocker on the runner's side and no lap. Each failure another party must fix is a blocker, one per signature, on the side the owner named when it named one. A stack that cannot come up goes to the owner of the runbooks it came up from, and is a blocker on the app when the book declares none or the owner's repair left it down. A book whose run failed goes to the mapping of its failures. Either way the book stays."""
         service = self.surfaces[index].service
         if gate.block_stopped_runner(self.records_dir, service, exercised):
             return self._next_surface(exercised.passed, index)
@@ -276,33 +217,23 @@ class OkfBook(BookFlow):
             _ = write_run(self.records_dir, exercised.summary)
             _ = record_lap(self.records_dir, lap_counts(service, exercised.summary.signatures, len(exercised.summary.gaps),
                                                         probes_only=exercised.stopped_at_probes))
-        self._block_escalated_signatures(service, exercised)
+        led, findings = self._owned(service, exercised)
+        self._block_escalated_signatures(service, led, led_escalations(exercised, led, findings) if findings else None)
         if exercised.passed:
             return self._next_surface(exercised.passed, index)
         runbooks = {} if run_failures_repaired else stack_down_failures(self.root, service, exercised)
         if runbooks:
-            return Continue(runbooks, self.copy_source, index=index, run_failures=runbooks).because("the stack cannot come up: repair its runbook")
+            return Continue(runbooks, self.copy_source, index=index, run_failures=runbooks, exercised=exercised).because(
+                "the stack cannot come up: repair its runbook"
+            )
         if exercised.stack_down:
             _ = record_blocker(self.records_dir, Blocker(subject=service, service=service, phase=Phase.EXERCISE, side=Side.APP, reason="\n".join(exercised.lines)))
             return self._next_surface(exercised.passed, index)
-        if lead_groups(exercised):
-            return Continue(exercised.passed, self.lead_lap, index=index, exercised=exercised,
-                            run_failures_repaired=run_failures_repaired).because("the book fails its run: the lead reads the whole lap first")
         return Continue(exercised.passed, self.map_run_failures, index=index, exercised=exercised,
                         run_failures_repaired=run_failures_repaired).because("the book fails its run")
 
-    def lead_lap(self, index: int, exercised: ExerciseResult, run_failures_repaired: bool = False) -> Continue[...]:
-        """Hand the lap to its lead, which names the side of each group of failed checks before any page is repaired. Each group it named another side's is a blocker on that side, and the rest go to their mapping as it attributed them. A lead that named nothing leaves the run's own attribution."""
-        service = self.surfaces[index].service
-        led = LedLap.model_validate(self.handoff(LeadLap, parent_records_dir=str(self.records_dir), service=service, exercised=exercised))
-        result = attributed(exercised, led.findings)
-        if led.findings:
-            self._block_escalated_signatures(service, result, led_escalations(exercised, result, led.findings))
-        return Continue(led, self.map_run_failures, index=index, exercised=result, run_failures_repaired=run_failures_repaired,
-                        lead=led.findings).because("map the failures the lead left to the book")
-
     def _block_escalated_signatures(self, service: str, exercised: ExerciseResult, escalations: tuple[Escalation, ...] | None = None) -> None:
-        """Record one blocker per signature the book's writer cannot fix, after dropping the ones an earlier run of this book recorded."""
+        """Record one blocker per signature the book's owner cannot fix, after dropping the ones an earlier run of this book recorded."""
         for side in ESCALATED_SIDES:
             forget_blockers(self.records_dir, Phase.EXERCISE, side, service)
         for signature, side, reason in run_escalations(exercised) if escalations is None else escalations:
@@ -321,26 +252,27 @@ class OkfBook(BookFlow):
         plan = spec / PLAN_NAME
         return exercised.summary.failures_by_page(scenarios, plan.read_text(encoding="utf-8") if plan.is_file() else "")
 
-    def map_run_failures(
-        self, index: int, exercised: ExerciseResult, run_failures_repaired: bool = False, lead: tuple[LeadFinding, ...] = (),
-    ) -> Continue[...]:
-        """Map each failure of the run the writer can fix to the page that covers it, and hand the book to the writer, since a claim the run cannot exercise is a defect of the book. A run whose every failure is escalated has nothing for the writer. A repair that did not lower the book's failed checks stops the laps, and the attendant is asked with their trend."""
-        failures = with_instructions(self._book_failures(index, exercised), lead)
-        if not failures and _escalated_signatures(exercised):
+    def map_run_failures(self, index: int, exercised: ExerciseResult, run_failures_repaired: bool = False) -> Continue[...]:
+        """Map each failure of the run the owner can fix to the page that covers it, and hand the book back to its owner with the whole run, since a claim the run cannot exercise is a defect of the book. A run whose every failure is escalated has nothing for the owner. A turn that did not lower the book's failed checks stops the laps, and the attendant is asked with their trend."""
+        service = self.surfaces[index].service
+        led, findings = self._owned(service, exercised)
+        failures = with_instructions(self._book_failures(index, led), findings)
+        if not failures and _escalated_signatures(led):
             return self._next_surface(exercised.passed, index)
         if not run_failures_repaired:
-            return Continue(failures, self.copy_source, index=index, run_failures=failures).because("repair the pages the run failed on")
-        service = self.surfaces[index].service
+            return Continue(failures, self.copy_source, index=index, run_failures=failures, exercised=exercised).because(
+                "the book's owner repairs what the run failed on"
+            )
         stall = _stall(exercised, service_laps(read_laps(self.records_dir), service))
         if stall:
-            self._block_stall(service, exercised, stall, failures)
+            self._block_stall(service, led, stall, failures)
             return self._next_surface(exercised.passed, index)
-        return Continue(failures, self.copy_source, index=index, run_failures=failures).because(
-            "the repair lowered the book's failed checks: repair again"
+        return Continue(failures, self.copy_source, index=index, run_failures=failures, exercised=exercised).because(
+            "the owner's turn lowered the book's failed checks: send it again"
         )
 
     def _block_stall(self, service: str, exercised: ExerciseResult, stall: str, failures: RunFailures) -> None:
-        """Record one blocker per defect the book's writer could not fix, with its pages and the command that reruns them, or one on the workflow when no signature names one."""
+        """Record one blocker per defect the book's owner could not fix, with its pages and the command that reruns them, or one on the workflow when no signature names one."""
         signatures = exercised.summary.signatures if exercised.summary is not None else ()
         mine = [signature for signature in signatures if signature.cause in WRITER_CAUSES]
         for signature in mine:

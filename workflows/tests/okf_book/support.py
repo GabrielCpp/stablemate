@@ -14,14 +14,9 @@ from workhorse.runner.backends.null import NullBackend
 from workhorse.runner.ladder import AgentRunner
 from workhorse.runner.spec import AgentNode
 
-from workhorse_workflows.okf_book.main.lead_check_flow import CHECK_LEAD_PROMPT
-from workhorse_workflows.okf_book.main.lead_lap_flow import LEAD_PROMPT
-from workhorse_workflows.okf_book.main.settle_repair_turn_flow import DESCRIBE_LABEL
 from workhorse_workflows.okf_book.workflow import OkfBook
 
 _drive: Callable[[OkfBook, RunEnv], object] = drive
-LEAD_NODE = Path(LEAD_PROMPT).stem
-CHECK_LEAD_NODE = Path(CHECK_LEAD_PROMPT).stem
 FIX_COMMIT_NODE = "fix-refused-commit"
 
 
@@ -69,8 +64,6 @@ class ScriptedRunner(AgentRunner):
     """Answers each turn with the reply scripted for its prompt, and keeps every turn's arguments.
 
     A reply the turn's validator refuses is asked for once more, with the refusal under `refused` in its arguments, as the ladder asks again.
-    A repair commit's describe turn that no test scripts gets the fixed description, and counts in `described` instead of the turns.
-    A lead turn that no test scripts names nothing, so the run's own attribution stands, and counts in no turn.
     A turn sent to a refused commit that no test scripts changes nothing, so the refusal reaches the operator, and counts in no turn.
     """
 
@@ -81,7 +74,6 @@ class ScriptedRunner(AgentRunner):
         self.calls: list[tuple[str, dict[str, object]]] = []
         self.nodes: list[AgentNode] = []
         self.refused: list[tuple[str, str]] = []
-        self.described: list[dict[str, object]] = []
 
     @property
     def total(self) -> int:
@@ -105,11 +97,6 @@ class ScriptedRunner(AgentRunner):
         validate: Callable[[dict[str, object]], object] | None = None,
     ) -> tuple[str, dict[str, object]]:
         args = context.as_dict()
-        if node.id == DESCRIBE_LABEL and node.id not in self.replies:
-            self.described.append(args)
-            return "scripted", {"description": f"repair pages of the {args['service']} book", "body": ""}
-        if node.id in (LEAD_NODE, CHECK_LEAD_NODE) and node.id not in self.replies:
-            return "scripted", {"findings": []}
         if node.id == FIX_COMMIT_NODE and node.id not in self.replies:
             return "scripted", {"fixed": ""}
         self.turns[node.id] += 1

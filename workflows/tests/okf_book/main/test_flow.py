@@ -1,4 +1,4 @@
-"""One confined writer per surface writes the book, and the run commits, checks, runs and reports it."""
+"""One confined owner per surface writes the book, and the run commits, checks, runs and reports it."""
 from __future__ import annotations
 
 import logging
@@ -29,8 +29,7 @@ from workhorse.pyflow.graph import registry_graphs, state_graph
 from workhorse.pyflow.preflight import preflight
 from workhorse.runner.failure import BackendInvocationError
 
-from workhorse_workflows.okf_book.main import exercise_book_flow, flow, lead_lap_flow, reground_book_flow, repair_book_flow, root_book_flow, write_book_flow
-from workhorse_workflows.okf_book.main.nodes import turn_budget
+from workhorse_workflows.okf_book.main import exercise_book_flow, flow, reground_book_flow, write_book_flow
 from workhorse_workflows.okf_book.main.nodes.source_view import source_view_folder
 from workhorse_workflows.okf_book.main.nodes.writer_commands import CHECK_MODULE, EXERCISE_MODULE, OSTLER_MODULE
 from workhorse_workflows.okf_book.main.nodes.report import BookReport
@@ -46,7 +45,7 @@ def _writer(repo: Path, *, stray: bool = False) -> ScriptedRunner:
         _ = page.write_text(page.read_text(encoding="utf-8") + NOTE, encoding="utf-8")
         if stray:
             _ = (repo / "tally" / "cli.py").write_text("broken\n", encoding="utf-8")
-        return {"value": "wrote tally.md"}
+        return {"run": [], "check": []}
 
     return ScriptedRunner({"write-book": _reply})
 
@@ -169,24 +168,6 @@ def test_each_problem_the_check_finds_is_its_own_blocker(
     assert [b.subject for b in result.blockers] == ["tally: a.md is linked from no page", "tally: b.md: unparsed-check"]
 
 
-def test_a_source_over_the_ceiling_with_no_book_is_a_blocker_and_sends_no_writer(
-    app: App, drive_book: DriveBook, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    repo = app("tally-cli")
-    _ = git(repo, "rm", "-rq", "docs/features/tally")
-    _ = git(repo, "commit", "-q", "-m", "drop the book")
-    runner = _writer(repo)
-    monkeypatch.setattr(turn_budget, "SOURCE_AND_BOOK_CEILING_TOKENS", 10)
-    monkeypatch.setattr(pyflow_park, "wait_for_answer", stopping_operator([]))
-
-    result = drive_book(OkfBook(repo_dir=str(repo), surfaces=(TALLY,)), runner)
-
-    assert runner.total == 0
-    assert isinstance(result, BookReport)
-    assert [(b.subject, b.side) for b in result.blockers] == [("tally", Side.WORKFLOW)]
-    assert "split the surface" in result.blockers[0].reason
-
-
 def test_an_existing_book_that_checks_and_runs_clean_sends_no_writer(
     app: App, drive_book: DriveBook, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -287,23 +268,6 @@ def test_a_book_this_workflow_repaired_that_fails_its_check_goes_back_to_its_wri
     assert result.blockers == ()
 
 
-def test_a_book_this_workflow_wrote_is_run_even_when_its_source_is_over_the_ceiling(
-    app: App, drive_book: DriveBook, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    repo = app("tally-cli")
-    runner = _writer(repo)
-    _written_by_the_workflow(repo)
-    stub_the_run_to(monkeypatch, PASSED)
-    monkeypatch.setattr(flow, "page_problems", no_problems)
-    monkeypatch.setattr(turn_budget, "SOURCE_AND_BOOK_CEILING_TOKENS", 10)
-
-    result = drive_book(OkfBook(repo_dir=str(repo), surfaces=(TALLY,)), runner)
-
-    assert runner.total == 0
-    assert isinstance(result, BookReport)
-    assert result.blockers == ()
-
-
 def test_a_book_this_workflow_wrote_that_fails_its_check_goes_to_its_writer_and_what_it_leaves_is_a_blocker(
     app: App, drive_book: DriveBook, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -380,11 +344,10 @@ def test_a_run_with_no_surface_fails(app: App, drive_book: DriveBook) -> None:
 
 @pytest.mark.parametrize(
     "machine",
-    [OkfBook, exercise_book_flow.ExerciseBook, lead_lap_flow.LeadLap, reground_book_flow.RegroundBook, write_book_flow.WriteBook, repair_book_flow.RepairBook, root_book_flow.RootBook],
+    [OkfBook, exercise_book_flow.ExerciseBook, reground_book_flow.RegroundBook, write_book_flow.WriteBook],
 )
 def test_every_transition_says_why(
-    machine: type[OkfBook] | type[exercise_book_flow.ExerciseBook] | type[lead_lap_flow.LeadLap] | type[reground_book_flow.RegroundBook]
-    | type[write_book_flow.WriteBook] | type[repair_book_flow.RepairBook] | type[root_book_flow.RootBook],
+    machine: type[OkfBook] | type[exercise_book_flow.ExerciseBook] | type[reground_book_flow.RegroundBook] | type[write_book_flow.WriteBook],
 ) -> None:
     edges = [edge for node in state_graph(machine).states for edge in node.edges]
     assert edges

@@ -59,6 +59,16 @@ class LeadVerdict(BaseModel):
     findings: tuple[GroupVerdict, ...] = ()
 
 
+@dry_run(run=(), check=())
+class OwnerReply(BaseModel):
+    """The book owner's reply: the side of each numbered group of the run and of the check it was shown at the start of its turn."""
+
+    model_config = ConfigDict(frozen=True, extra="ignore")
+
+    run: tuple[GroupVerdict, ...] = ()
+    check: tuple[GroupVerdict, ...] = ()
+
+
 class LeadFinding(BaseModel):
     """One group of one lap as the lead named it, with the signature the run gave it, its count and its pages.
 

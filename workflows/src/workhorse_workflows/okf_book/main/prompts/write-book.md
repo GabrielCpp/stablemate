@@ -102,6 +102,100 @@ gives relative to the repository starts there.
 - A check that parses output passes on any layout. For every structured output the app prints,
   answers or writes, state its layout, and check at least one example against its exact text.
 
+{% if run_groups or check_groups or run_failures or operator_answer %}
+## Where the book stands
+
+You own this book. The run checked it and ran it against the app after your last turn, and
+this is what failed. Read all of it before you edit a page. Many failures that share a status,
+a fixture, a role or a route prefix usually share one cause, and you fix that cause once, in
+the one page that holds it, often a fixture or a shared page.
+
+Some causes are not the book's, and no page edit fixes them. For each numbered group below,
+name the side that has to change in your reply. A group you name another side's is held back
+from the book on every later lap, and goes to the operator as a finding with your evidence.
+
+{% if run_groups %}
+### The run
+
+The run grouped its failed checks by what was observed. The cause beside each group is a
+guess a per-check rule made, so treat it as a hint.
+
+{% for group in run_groups %}
+{{ group.number }}. `{{ group.text }}`: {{ group.count }} checks, guessed `{{ group.cause }}`.
+   For example: {{ group.sample }}
+{% if group.pages %}
+   Pages: {% for page in group.pages %}`{{ page }}`{% if not loop.last %}, {% endif %}{% endfor %}
+
+{% endif %}
+{% endfor %}
+
+What the run printed{% if run_lines_left %}, its first lines, with {{ run_lines_left }} more in its summary{% endif %}:
+
+```
+{% for line in run_lines %}
+{{ line }}
+{% endfor %}
+```
+
+- The whole run, every failed check with what it expected and what it observed, is
+  `{{ run_summary }}`.
+- The test plan the toolchain compiled from the book is `{{ run_plan }}`. It is what was sent
+  to the app. Where a request in it differs from what the page says, the toolchain changed it.
+{% if run_failures %}
+- Each failure the book can fix, after the page that covers it, is in `{{ run_failures }}`.
+{% endif %}
+
+{% endif %}
+{% if check_groups %}
+### The check
+
+The check grouped its problems by the rule that raised them.
+
+{% for group in check_groups %}
+{{ group.number }}. `{{ group.code }}`: {{ group.count }} problems, for example:
+{% for sample in group.samples %}
+   - {{ sample }}
+{% endfor %}
+   Nodes: {% for node in group.nodes %}`{{ node }}`{% if not loop.last %}, {% endif %}{% endfor %}{% if group.nodes_left %}, and {{ group.nodes_left }} more{% endif %}
+
+{% endfor %}
+
+Every problem of the check is in `{{ check_problems }}`.
+
+{% endif %}
+{% if earlier %}
+### What you named on earlier laps
+
+{% for finding in earlier %}
+- Lap {{ finding.lap }}, {{ finding.measured }}: `{{ finding.signature }}`, {{ finding.count }}, named `{{ finding.side }}`. {{ finding.evidence }}
+{% endfor %}
+
+A group you named the book's that is back with the same count was not fixed by your edit.
+Read it again: the edit was wrong, or the cause is not in the book.
+
+{% endif %}
+{% if operator_answer %}
+### What the operator answered
+
+{{ operator_answer }}
+
+{% endif %}
+### The sides
+
+- `book`: a page states something the app's source contradicts, sends a request the source
+  refuses for a reason the page could have read, or uses an arrangement its fixture page does
+  not make. A fixture page is a book page.
+- `ostler`: the toolchain compiled the page into something the page does not say, or cannot
+  express a check the page is right to make.
+- `app`: the page matches what the source is written to do, and the app does something else.
+- `environment`: the stack lacks something the app needs that no fixture page can supply: a
+  service that is down, a credential, an external provider, seed data only an operator loads.
+- `unattributed`: you read the evidence and cannot tell. Say what you would need to see.
+
+Name a side other than `book` only with evidence: the line of the plan, the source or the log
+that shows the cause, with its path.
+
+{% endif %}
 You are done when both commands pass: the check below prints "No problems", and the command
 above prints "All N scenarios pass". The two commands share {{ check_and_scenario_run_cap }} runs in all, so fix
 every problem a run prints before you run it again.
@@ -110,4 +204,15 @@ every problem a run prints before you run it again.
 {{ check }}
 ```
 
-Do not commit. Reply with one line saying which pages you wrote.
+Do not commit. Reply with one JSON object and nothing else. Name one side for each numbered
+group you were shown, and leave both lists empty when you were shown none:
+
+```json
+{
+  "run": [{"group": 1, "side": "{{ sides | join('" | "') }}", "evidence": "what you read that shows the cause, with its path"}],
+  "check": [{"group": 1, "side": "{{ sides | join('" | "') }}", "evidence": "what you read that shows the cause, with its path", "nodes": []}]
+}
+```
+
+A check verdict that lists `nodes` judges only those nodes of its group. Give the group a
+second verdict with no `nodes` for the rest.

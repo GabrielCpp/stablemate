@@ -10,8 +10,7 @@ import pytest
 from okf_book.support import ScriptedRunner, StoppedAtTheGate, git
 from workhorse.pyflow import park as pyflow_park
 
-from workhorse_workflows.okf_book.main import exercise_book_flow, flow, repair_book_flow
-from workhorse_workflows.okf_book.main.nodes import turn_budget
+from workhorse_workflows.okf_book.main import exercise_book_flow, flow
 from workhorse_workflows.okf_book.main.nodes.report import read_report
 from workhorse_workflows.okf_book.main.nodes.surface import Surface, SurfaceKind
 from workhorse_workflows.okf_book.shared.book_run import CompileOutcome, ExerciseResult, StackReadiness
@@ -98,9 +97,6 @@ def refuse_commits_until_answered(repo: Path, asked: list[str]) -> Callable[...,
 
 
 OTHER_PAGE = "docs/features/tally/concepts/ledger-file.md"
-OUTSIDE_EDIT = "\nan edit outside the batch\n"
-FLOW_PAGE = "docs/features/tally/flows/track-a-trip.md"
-NEW_FLOW = "docs/features/tally/flows/tally.md"
 SERVER_PAGE = "docs/features/tally/http/server.md"
 ENDPOINT_PAGES = ("docs/features/tally/http/add-expense.md", "docs/features/tally/http/get-total.md")
 INLINE_SERVER = (
@@ -117,31 +113,14 @@ def write_inline_server(repo: Path) -> None:
     _ = page.write_text(INLINE_SERVER, encoding="utf-8")
 
 
-def repairer_also_editing(repo: Path, *pages: str) -> ScriptedRunner:
-    def _reply(_args: dict[str, object]) -> dict[str, object]:
-        _ = (repo / PAGE).write_text((repo / PAGE).read_text(encoding="utf-8") + NOTE, encoding="utf-8")
-        for page in pages:
-            text = (repo / page).read_text(encoding="utf-8") if (repo / page).is_file() else ""
-            _ = (repo / page).write_text(text + OUTSIDE_EDIT, encoding="utf-8")
-        return {"value": f"repaired {PAGE}"}
-
-    return ScriptedRunner({"repair-pages": _reply})
-
-
-def journey_problems_until_noted(root: Path, service: str) -> tuple[PageProblem, ...]:
-    return tuple(PageProblem(p.page, p.text, needs_journey=True, node=f"{p.page}#track") for p in page_problems_until_noted(root, service))
-
-
 def page_problems_until_noted(root: Path, _service: str) -> tuple[PageProblem, ...]:
     return () if NOTE.strip() in (root / PAGE).read_text(encoding="utf-8") else (PageProblem(PAGE, "tally.md needs a note"),)
 
 
-def stub_a_book_sent_to_repair(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Send an existing book that passes its run to the repair, with the page check clean once tally.md is noted."""
+def stub_a_book_sent_back_to_its_owner(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Send an existing book that passes its run back to its owner, with the page check clean once tally.md is noted."""
     stub_the_run_to(monkeypatch, PASSED)
     monkeypatch.setattr(flow, "page_problems", page_problems_until_noted)
-    monkeypatch.setattr(turn_budget, "SOURCE_AND_BOOK_CEILING_TOKENS", 10)
-    monkeypatch.setattr(repair_book_flow, "page_problems", page_problems_until_noted)
     monkeypatch.setattr(pyflow_park, "wait_for_answer", stopping_operator([]))
 
 

@@ -1,4 +1,4 @@
-"""One surface's writer turn: it writes the whole book in its folder, then the run puts back what it changed elsewhere, carves each endpoint written inline onto a page of its own, and commits the book."""
+"""One turn of a surface's book owner: it holds the whole book, opens on the gates it last failed and writes every page itself, then the run puts back what it changed elsewhere, carves each endpoint written inline onto a page of its own, and commits the book."""
 from __future__ import annotations
 
 import time
@@ -7,6 +7,10 @@ from pathlib import Path
 from pydantic import BaseModel, ConfigDict
 from ostler.stamp import stamp_page
 from workhorse.pyflow import AgentTimeout, AgentTurnFailed, Await, Continue, Done, WorkflowFailed
+from workhorse.runner.failure import OutputParseError
+from workhorse_workflows.okf_book.main.nodes.gate import RunFailures
+from workhorse_workflows.okf_book.main.nodes.lead_findings import OwnerReply
+from workhorse_workflows.okf_book.main.nodes.owner_gate import Gates, gate_template_args, record_owner_reply
 from workhorse_workflows.okf_book.main.nodes.surface import Surface
 from workhorse_workflows.okf_book.main.nodes.writer_commands import WriterCommandState, write_command_state
 from workhorse_workflows.okf_book.main.nodes.writer_jobs import settle_jobs
@@ -14,10 +18,12 @@ from workhorse_workflows.okf_book.main.nodes.writer_request import writer_reques
 from workhorse_workflows.okf_book.shared.blockers import Phase
 from workhorse_workflows.okf_book.shared.book_commits import book_commit_subject, unfinished_book_commit_subject
 from workhorse_workflows.okf_book.shared.book_flow import BookFlow
+from workhorse_workflows.okf_book.shared.book_run import ExerciseResult
 from workhorse_workflows.okf_book.shared.book_shape import carved_pages, shape_book
 from workhorse_workflows.okf_book.shared.confine import Snapshot, book_changes, put_back_outside, snapshot
 from workhorse_workflows.okf_book.shared.entries import FEATURES_DIR
 from workhorse_workflows.okf_book.shared.metrics import TurnMetric, record_turn, turn_metric
+from workhorse_workflows.okf_book.shared.page_check import PageProblem
 
 WRITE_PROMPT = "main/prompts/write-book.md"
 
@@ -32,17 +38,23 @@ class WriteOutcome(BaseModel):
 
 
 class WriteBook(BookFlow):
-    """Sends one surface's writer, keeps its writes inside its book, and ends on whether the book was committed."""
+    """Sends one turn of a surface's book owner with the gates it last failed, keeps its writes inside its book, and ends on whether the book was committed."""
 
     surface: Surface | None = None
     book_folder: str = ""
     source_folder: str = ""
+    exercised: ExerciseResult | None = None
+    problems: tuple[PageProblem, ...] = ()
+    run_failures: RunFailures = {}
 
     @property
     def surface_to_write(self) -> Surface:
         if self.surface is None:
             raise WorkflowFailed("the write flow names no surface")
         return self.surface
+
+    def _gates(self) -> Gates:
+        return Gates(exercised=self.exercised, problems=self.problems, failures=self.run_failures)
 
     def start(self) -> Continue[...]:
         """Record the tree before the writer runs, so what it changes outside its book can be put back."""
@@ -57,23 +69,26 @@ class WriteBook(BookFlow):
         return Continue(command_state_file.as_posix(), self.write_book, before=before).because("send the writer")
 
     def write_book(self, before: Snapshot) -> Continue[...]:
-        """One turn, confined to its book folder and to ostler and the two checks, writes the whole book until both pass."""
+        """One turn, confined to its book folder and to ostler and the two checks, opens on the gates the book last failed and writes the whole book until both pass. A reply that names no side leaves the gates as they were."""
         surface = self.surface_to_write
         request = writer_request(self.run_dir, self.root, surface, self.book_folder, self.source_folder)
+        gate = gate_template_args(self.root, self.records_dir, surface.service, self._gates())
         started = time.monotonic()
-        reply = ""
+        reply = OwnerReply()
         failure: str | None = None
         try:
             reply = self.agent(
                 WRITE_PROMPT,
-                returns=str,
-                power="medium",
+                returns=OwnerReply,
+                power="high",
                 timeout=float("inf"),
-                args=request.template_args(),
+                args={**request.template_args(), **gate},
                 cwd=self.root / self.book_folder,
                 add_dirs=[request.source_view],
                 profile=request.profile,
             )
+        except OutputParseError as unread:
+            self.logger.warning("the owner's reply on %s named no side: %s", surface.service, unread)
         except (AgentTurnFailed, AgentTimeout) as failed:
             failure = f"the writer's turn ended without a reply: {failed}"
         settle_jobs(self.run_dir)
@@ -81,13 +96,15 @@ class WriteBook(BookFlow):
         metric = turn_metric(
             Phase.WRITE, node, (surface.service,), (time.monotonic() - started) / 60, self.turn_usage(node)
         )
-        return Continue(reply, self.record_writer_turn, before=before, metric=metric, failure=failure).because(
+        return Continue(reply, self.record_writer_turn, before=before, metric=metric, failure=failure, reply=reply).because(
             "record the writer's turn"
         )
 
-    def record_writer_turn(self, before: Snapshot, metric: TurnMetric, failure: str | None) -> Continue[...]:
-        """Record what the writer's turn cost."""
+    def record_writer_turn(self, before: Snapshot, metric: TurnMetric, failure: str | None, reply: OwnerReply | None = None) -> Continue[...]:
+        """Record what the writer's turn cost, and the side it named of each group of the gates it was shown."""
         record_turn(self.records_dir, metric)
+        if reply is not None:
+            _ = record_owner_reply(self.records_dir, self.surface_to_write.service, self._gates(), reply)
         if failure is not None:
             return Continue(failure, self.put_back_after_failed_turn, before=before, failure=failure).because(
                 "the writer's turn failed"

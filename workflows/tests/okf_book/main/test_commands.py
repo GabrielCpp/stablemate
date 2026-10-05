@@ -1,4 +1,4 @@
-"""The two commands the writer runs read the command state the run writes, and the source a writer reads is measured first."""
+"""The commands the owner runs read the command state the run writes."""
 from __future__ import annotations
 
 import logging
@@ -10,11 +10,9 @@ from pathlib import Path
 
 import pytest
 
-from workhorse import templates
 from workhorse.config_run import AgentResilience
 from workhorse.testing import make_git_repo
 
-from workhorse_workflows import okf_book
 from workhorse_workflows.okf_book.main.nodes import check_pages, exercise, writer_stack
 from workhorse_workflows.okf_book.main.nodes.check_pages import NO_PROBLEMS_LINE, checked, run_check, scoped_problems
 from workhorse_workflows.okf_book.main.nodes.check_pages import USAGE as CHECK_USAGE
@@ -23,20 +21,9 @@ from workhorse_workflows.okf_book.main.nodes.exercise import run_exercise
 from workhorse_workflows.okf_book.main.nodes.writer_jobs import Start, Work, finish_job
 from workhorse_workflows.okf_book.main.nodes.writer_stack import KeptStack
 from workhorse_workflows.okf_book.main.nodes.writer_ostler import INDEX_DIR_REFUSED, USAGE as OSTLER_USAGE, run_ostler
-from workhorse_workflows.okf_book.main.nodes.turn_budget import (
-    BOOK_HOLDS,
-    BOOK_PER_SOURCE_TOKEN,
-    PROMPT_AND_SKILL_ALLOWANCE_TOKENS,
-    SOURCE_AND_BOOK_CEILING_TOKENS,
-    ceiling_blocker_reason,
-    SOURCE_READS,
-    folder_tokens,
-    source_and_book_tokens,
-)
+from workhorse_workflows.okf_book.main.nodes.turn_budget import PROMPT_AND_SKILL_ALLOWANCE_TOKENS, folder_tokens
 from workhorse_workflows.okf_book.main.nodes.surface import Surface, SurfaceKind
 from workhorse_workflows.okf_book.main.nodes.writer_request import WriterRequest
-from workhorse_workflows.okf_book.main.nodes.repair_batch_models import PageRepair, RepairBatch
-from workhorse_workflows.okf_book.main.repair_book_flow import REPAIR_PROMPT
 from workhorse_workflows.okf_book.shared.book_run import CompileOutcome, ExerciseResult, StackReadiness
 from workhorse_workflows.okf_book.shared.page_check import PageProblem
 from workhorse_workflows.okf_book.main.nodes.writer_commands import (
@@ -91,27 +78,6 @@ def test_the_writer_waits_on_an_exercise_past_the_cli_default_and_inside_the_sil
 
     assert limit is not None
     assert 120 < limit < AgentResilience().silence_timeout_s
-
-
-@pytest.mark.usefixtures("ostler_okf_skill")
-def test_a_repair_of_a_failed_run_is_told_the_stack_the_run_starts(tmp_path: Path) -> None:
-    request = WriterRequest(
-        surface=Surface(service="tally", kind=SurfaceKind.HTTP, entry="tally-api"),
-        repo_root=tmp_path,
-        book_folder="docs",
-        source_folder="src",
-        source_view=tmp_path,
-        ostler_command_line=ostler_command(tmp_path),
-        check_command_line=check_command(tmp_path),
-        exercise_command_line=exercise_command(tmp_path),
-        qa_tools=(),
-        stack_pages=("docs/features/tally/ops/dev-stack.md", "docs/features/tally/ops/http.md"),
-    )
-    batch = RepairBatch(pages=(PageRepair(page="docs/features/tally/fixtures/signed-in.md", problems=("seed failed",)),), tokens=1)
-
-    prompt = templates.render(REPAIR_PROMPT, request.repair_template_args(batch, failed_run=True), Path(okf_book.__file__).parent)
-
-    assert "The run starts the app from `docs/features/tally/ops/dev-stack.md` and `docs/features/tally/ops/http.md`," in prompt
 
 
 def test_each_command_names_its_usage_without_one_command_state() -> None:
@@ -249,14 +215,6 @@ def test_the_source_size_skips_dependency_folders(tmp_path: Path) -> None:
     _ = (tmp_path / "node_modules" / "lib.js").write_text("b" * 4000, encoding="utf-8")
 
     assert folder_tokens(tmp_path) == 10
-    assert ceiling_blocker_reason(SOURCE_AND_BOOK_CEILING_TOKENS) is None
-    assert ceiling_blocker_reason(SOURCE_AND_BOOK_CEILING_TOKENS + 1) is not None
-
-
-def test_the_source_and_the_book_are_each_counted_twice() -> None:
-    assert source_and_book_tokens(1000, 0) == SOURCE_READS * 1000 + BOOK_HOLDS * BOOK_PER_SOURCE_TOKEN * 1000
-    assert source_and_book_tokens(1000, 5000) == SOURCE_READS * 1000 + BOOK_HOLDS * 5000
-
 
 
 def _noisy_problems(root: Path, service: str) -> tuple[PageProblem, ...]:
