@@ -23,6 +23,7 @@ from workhorse_workflows.okf_book.shared.page_check import PageProblem
 SPEC_DIR = "spec"
 PLAN_NAME = "qa_plan.py"
 RUN_NAME = "run-summary.json"
+REPEAT_STOP = 12
 OBLIGATION_PAGE = re.compile(r"^okf:(?P<page>[^#]+?\.md)(?:[#:]|$)")
 PLAN_FRAME = re.compile(rf'File "[^"]*{re.escape(PLAN_NAME)}", line (?P<line>\d+)')
 CLAIM_MARK = re.compile(r"^\s*# (?P<claim>okf:\S+)")
@@ -305,11 +306,16 @@ def select_scenarios(scenarios: Sequence[Scenario], arranging: Mapping[str, Sequ
 def run_scenarios(
     root: Path, spec: Path, only: Iterable[str], lap: Path | None = None, stack_check: Callable[[], str] | None = None,
 ) -> RunSummary:
-    """Run the named scenarios of the compiled plan, all of them when none is named, building each precondition once in the lap *lap* records, until *stack_check* says the app stopped serving."""
+    """Run the named scenarios of the compiled plan, all of them when none is named, building each precondition once in the lap *lap* records.
+
+    The run stops when *stack_check* says the app stopped serving, and when REPEAT_STOP scenarios on
+    several pages failed on one observation, whose one cause the lead fixes before the rest run.
+    """
     document, problems = loaded_plan(root, spec)
     if document is None:
         return RunSummary(status="invalid", problems=problems)
-    _status, _message, summary = run_plan(document, root=root, only=list(only) or None, lap=lap, stack_check=stack_check)
+    _status, _message, summary = run_plan(
+        document, root=root, only=list(only) or None, lap=lap, stack_check=stack_check, stop_on_repeat=REPEAT_STOP)
     return RunSummary.model_validate(summary)
 
 
