@@ -100,7 +100,9 @@ def ensure_stack(
 
     results = runbook.bring_up_stacks(manifests, repo_root=str(root), logger=logger)
     last = results[-1]
-    owned = tuple(r["app_pgid"] for r in results if r.get("app_pgid") and r.get("adopted") != "yes")
+    owned = tuple(
+        r["app_pgid"] for r in results
+        if r.get("app_pgid") and r.get("adopted") != "yes" and r["app_pgid"].isdigit() and _group_running(int(r["app_pgid"])))
     app_logs = tuple(r["app_log"] for r in results if r.get("app_log"))
     if last.get("ready") == "yes":
         chosen = _entry_result(results, selection.runbooks, near, graph)
@@ -161,7 +163,9 @@ def stack_stopped(owned_pgids: tuple[str, ...]) -> str:
     """Why the app stopped serving: a process group bring-up launched and left serving has no process left, or nothing when each still runs.
 
     Bring-up owns a group only when its launch command was still running once the app answered,
-    so a group that empties afterwards is a server that exited, never a bring-up that handed off.
+    and only when the group still runs once every stack is up, since a later stack's bring-up
+    reaps a server an earlier one left on the same port. A group that empties afterwards is a
+    server that exited, never a bring-up that handed off.
     """
     for pgid in owned_pgids:
         if pgid.isdigit() and not _group_running(int(pgid)):

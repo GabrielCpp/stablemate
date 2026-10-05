@@ -92,6 +92,11 @@ def _bring_up_returns(monkeypatch: pytest.MonkeyPatch, results: list[dict[str, s
         return results
 
     monkeypatch.setattr(runner.runbook, "bring_up_stacks", _bring_up)
+    monkeypatch.setattr(runner, "_group_running", _running)
+
+
+def _running(_pgid: int) -> bool:
+    return True
 
 
 def test_a_bring_up_owns_the_servers_it_started_and_not_one_it_adopted(
