@@ -122,7 +122,7 @@ def run(graph: Graph, epic_filter: str | None = None, check_schema: bool = True,
     _check_same_as_disagreement(graph, f, resolver)
     _check_unspecified(graph, f, resolver)
     _check_sensitivity(graph, f)
-    _check_runbook(graph, f)
+    _check_runbook(graph, f, resolver)
     _check_unreachable_nodes(graph, f)
     ui_data = _ui_graph(graph, resolver)
     if ui_data is not None:
@@ -2119,7 +2119,7 @@ def _check_runbook_driver_surface(data: dict, f: list[Finding]) -> None:
                          suggestion=f"- surfaces: [<name>](<path/to/{sorted(performable)[0]}.md>)"))
 
 
-def _check_runbook(graph: Graph, f: list[Finding]) -> None:
+def _check_runbook(graph: Graph, f: list[Finding], resolver: links_mod.LinkResolver) -> None:
     """The book must say how this system comes up, and say it in a shape QA can run."""
     runbooks = graph.ui_nodes_of_type("runbook")
     stacks = {n.id for n in runbook_mod.stack_runbooks(graph)}
@@ -2184,6 +2184,33 @@ def _check_runbook(graph: Graph, f: list[Finding]) -> None:
                              suggestion="- entry-url: http://localhost:<port>"))
 
         _check_runbook_environment(graph, node, rel, f)
+
+    _check_shared_entry_urls([n for n in runbooks if n.id in stacks], graph, f, resolver)
+
+
+def _check_shared_entry_urls(stacks: list[UINode], graph: Graph, f: list[Finding],
+                             resolver: links_mod.LinkResolver) -> None:
+    """Two stack runbooks one bring-up starts together cannot both serve one address."""
+    claims: dict[tuple[str, str], list[UINode]] = {}
+    for node in stacks:
+        url = _bullet_value(node.meta, "entry-url").rstrip("/")
+        if url:
+            key = (runbook_mod.environment_of(node, resolver), url)
+            claims.setdefault(key, []).append(node)
+    for (environment, url), nodes in claims.items():
+        if len(nodes) < 2:
+            continue
+        names = ", ".join(_rel_path(graph, n) for n in nodes)
+        where = f"environment `{environment}`" if environment else "no environment"
+        for node in nodes[1:]:
+            f.append(Finding("error", "runbook-shared-entry-url",
+                             f"{_rel_path(graph, node)}: {names} all bring up {url} in {where} "
+                             f"— a bring-up starts every one of them, and each service step "
+                             f"takes the port the previous one is serving",
+                             path=_rel_path(graph, node), line=node.line, ref=node.id,
+                             suggestion="keep one stack runbook per address; a runbook that "
+                                        "only tests the app drops its `entry-url:` and "
+                                        "`kind: service` step"))
 
 
 def _check_runbook_environment(graph: Graph, node, rel: str, f: list[Finding]) -> None:

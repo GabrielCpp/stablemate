@@ -219,6 +219,7 @@ and a book carrying only procedures still gets `runbook-missing`.
 | `runbook-incomplete` | error | a stack runbook with no `kind: service` step, or nothing proving readiness (neither `entry-url:` nor a service `health:`) |
 | `runbook-multi-service` | error | more than one `kind: service` step — the reader takes the first, so which one launched is otherwise luck |
 | `runbook-local-only` | error | boots a `local-only: true` environment whose `services:` point off this machine |
+| `runbook-shared-entry-url` | error | two stack runbooks of one environment state the same `entry-url:`, so the second service takes the port the first is serving |
 
 `runbook-missing` is a warning, not an error, and it only fires against a book that has
 something *served*: a `screen` or a `server`, neither of which can be driven until a process

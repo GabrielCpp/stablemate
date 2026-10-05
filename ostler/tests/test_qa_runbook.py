@@ -735,6 +735,31 @@ def test_doctor_reports_two_service_steps(tmp_path: Path) -> None:
     assert "runbook-multi-service" in codes(tmp_path)
 
 
+def _local_stack(tmp_path: Path, name: str, url: str) -> None:
+    make_runbook(tmp_path, "---\ntype: runbook\n---\n\n# QA\n\n- driver: web\n"
+                 f"- environment: [Local](local.md)\n- entry-url: {url}\n\n"
+                 "## Steps\n\n### serve\n\n- kind: service\n- run: ./serve.sh\n", name=name)
+
+
+def test_doctor_reports_two_stacks_of_one_environment_serving_one_address(
+        tmp_path: Path) -> None:
+    (tmp_path / ".git").mkdir()
+    write(tmp_path / "docs" / "features" / "app" / "ops" / "local.md",
+          "---\ntype: environment\ntitle: Local\n---\n\n# Local\n\n- selector: local\n")
+    _local_stack(tmp_path, "web", "http://localhost:5173")
+    _local_stack(tmp_path, "browser", "http://localhost:5173/")
+    assert codes(tmp_path).count("runbook-shared-entry-url") == 1
+
+
+def test_doctor_lets_two_stacks_of_one_environment_serve_two_addresses(tmp_path: Path) -> None:
+    (tmp_path / ".git").mkdir()
+    write(tmp_path / "docs" / "features" / "app" / "ops" / "local.md",
+          "---\ntype: environment\ntitle: Local\n---\n\n# Local\n\n- selector: local\n")
+    _local_stack(tmp_path, "web", "http://localhost:5173")
+    _local_stack(tmp_path, "api", "http://localhost:8080")
+    assert "runbook-shared-entry-url" not in codes(tmp_path)
+
+
 def test_doctor_refuses_a_local_only_environment_pointing_off_the_machine(
         tmp_path: Path) -> None:
     (tmp_path / ".git").mkdir()
