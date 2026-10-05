@@ -325,11 +325,18 @@ def malformed_identity(bullets: Mapping[str, object]) -> list[str]:
             if isinstance(value := bullets.get(key), list | tuple) and len(value) > 1]
 
 
+def _constrains(segments: tuple[Segment, ...]) -> bool:
+    """Whether a template carries literal text, so a static name can be told to match it."""
+    return any(s.kind == "literal" and s.value.strip() for s in segments)
+
+
 def collisions(book: LocatorBook) -> list[LocatorCollision]:
     """Nodes sharing a screen, a role, and an accessible name — where one-to-one fails.
 
     A nameless node is told apart by its `selector:`, so two unnamed nodes collide only when
-    their selectors match too.
+    their selectors match too. A template made only of holes, such as `{document.title}`,
+    matches whichever name its data carries: whether it collides is the data's question, and
+    the run answers it with the bound value.
     """
     scopes = book.scopes
     groups: dict[tuple[str, str, str, str], list[BookNode]] = {}
@@ -338,7 +345,7 @@ def collisions(book: LocatorBook) -> list[LocatorCollision]:
         if node.type != "component" or malformed_identity(node.bullets):
             continue
         loc = locator_for(node, scope=scopes.get(node.id, ()))
-        if loc.template is not None:
+        if loc.template is not None and _constrains(loc.template.segments):
             templated.setdefault((screen, loc.role), []).append((node, loc.template))
         if loc.strategy != "role":
             continue

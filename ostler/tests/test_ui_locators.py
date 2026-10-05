@@ -513,6 +513,13 @@ def test_a_static_sibling_the_pattern_cannot_match_is_fine(repo: Path):
     assert locators.collisions(_build(repo, _screen(REPEATED, SAVE))) == []
 
 
+def test_a_template_of_holes_alone_collides_with_no_static_sibling(repo: Path):
+    """`{doc.title}` is whatever the data names it, so only the run can show a clash."""
+    title = "### title-button\n- role: button\n- one-per: `doc`\n- name: `{doc.title}`\n"
+    assert locators.collisions(_build(repo, _screen(title, SAVE))) == []
+    assert "ambiguous-locator" not in _codes(repo)
+
+
 def test_exclusive_with_clears_a_template_collision_too(repo: Path):
     body = _screen(REPEATED.rstrip() + "\n- exclusive-with: [total-label](#total-label)\n",
                    "### total-label\n- role: button\n- name: Total — 12.00 $\n")
