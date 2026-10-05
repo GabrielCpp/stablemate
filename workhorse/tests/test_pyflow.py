@@ -36,6 +36,7 @@ from workhorse.pyflow import (  # noqa: E402
     WorkflowDefinitionError,
     WorkflowFailed,
     WorkflowFrozenError,
+    dry_run,
     state,
 )
 from workhorse.pyflow import engine as pyflow_engine  # noqa: E402
@@ -1606,6 +1607,59 @@ def test_a_dry_run_answers_a_prompt_with_the_reply_the_registry_declared():
 
         env = _env(tmp, dry_run=True, agent_stubs=registry.agent_stubs)
         assert drive(Asks(), env) == ("approved", 3, "?")
+
+
+def test_a_dry_run_answers_a_prompt_with_the_reply_its_schema_declared():
+    """The registry's table still wins, so one turn can answer differently from every other turn sharing its schema."""
+
+    @dry_run(kind="written", count=2)
+    class Written(Payload):
+        pass
+
+    class Inherits(Written):
+        pass
+
+    with tempfile.TemporaryDirectory() as tmp:
+        registry = Registry("acme").stub_agents({"rework": {"kind": "reworked"}})
+
+        class Asks(Workflow):
+            def start(self) -> Transition:
+                write = self.agent("prompts/write.md", returns=Written)
+                rework = self.agent("prompts/rework.md", returns=Written)
+                child = self.agent("prompts/child.md", returns=Inherits)
+                return Done((write.kind, write.count, rework.kind, child.kind))
+
+        env = _env(tmp, dry_run=True, agent_stubs=registry.agent_stubs)
+        assert drive(Asks(), env) == ("written", 2, "reworked", "?")
+        assert env.declared_answers == {"write", "rework"}
+
+
+def test_a_schema_declared_reply_that_does_not_fit_its_schema_fails_at_import():
+    """A turn no dry run reaches still has its declaration checked, so the reply cannot drift from the fields."""
+    try:
+
+        @dry_run(count="many")
+        class Counted(Payload):
+            pass
+
+    except WorkflowDefinitionError as exc:
+        assert "Counted" in str(exc) and "count" in str(exc), exc
+    else:
+        raise AssertionError("a declared reply the schema rejects must fail its declaration")
+
+
+def test_a_workflow_whose_package_declares_a_reply_has_said_its_happy_path_before_any_turn():
+    """A dry run that fails before its first turn still knows the workflow declared what a turn answers."""
+
+    @dry_run(count=1)
+    class Declared(Payload):
+        pass
+
+    here = Declared.__module__
+    assert Registry("acme", package=here).declares_replies()
+    assert not Registry("acme", package=f"{here}_elsewhere").declares_replies()
+    assert not Registry("acme").declares_replies()
+    assert Registry("acme").stub_agents({"write": {"kind": "x"}}).declares_replies()
 
 
 def test_the_agent_ladder_is_a_run_dependency_not_a_module_attribute():

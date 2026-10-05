@@ -12,6 +12,7 @@ from workhorse.packaged import package_dir
 from workhorse.pyflow.blueprint import Blueprint, NodeSpec
 from workhorse.pyflow.errors import WorkflowDefinitionError
 from workhorse.pyflow.names import NameIndex
+from workhorse.pyflow.replies import declares_under
 from workhorse.pyflow.workflow import Workflow, state
 
 REGISTRY_ATTR = "__workhorse_registry__"
@@ -62,6 +63,15 @@ class Registry:
         """Declare what `--dry-run` should get back from each prompt, by stem."""
         self.agent_stubs.update(replies)
         return self
+
+    def declares_replies(self) -> bool:
+        """Whether this workflow said what its happy path is: a reply table, or a `@dry_run` model in its package."""
+        if self.agent_stubs:
+            return True
+        package = self.package
+        if not package and self.entry is not None:
+            package = self.entry.__module__.rpartition(".")[0]
+        return declares_under(package)
 
     def override(self, **by_name: Callable[..., Any]) -> NameIndex[NodeSpec]:
         """A copy of `self.nodes` with those nodes bound to those functions."""

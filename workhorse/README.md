@@ -161,7 +161,7 @@ The dry run does a static pass over the states' source — every rendered prompt
 every state is reachable, something can return `Done`, no transition names a non-state —
 and then drives the machine for real over a *substituted* node index, where every node body
 and agent reply is a stand-in. What each half catches, what a fail terminal means with and
-without `stub_agents({...})`, the `dry-run` run dir, and `dot`'s flags and rendering rules
+without declared replies, the `dry-run` run dir, and `dot`'s flags and rendering rules
 are in [docs/CHECKING.md](https://github.com/GabrielCpp/stablemate/blob/main/workhorse/docs/CHECKING.md).
 
 ## Choosing the agent CLI backend

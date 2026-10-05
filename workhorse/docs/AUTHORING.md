@@ -673,20 +673,27 @@ happened to import.
 A node the index does not carry is a hard error naming `add_blueprints`, not a silent
 fallback — which is what finally gives the collision detection teeth.
 
-Three ways to put something else in the table:
+Four ways to put something else in the table:
 
 ```python
 # 1. declared at authoring time — what --dry-run returns for this node
 @blueprint.node(stub=lambda logger, subject: Reading(kind="stub", count=0))
 def measure(logger, subject: str) -> Reading: ...
 
-# 2. declared on the registry — what --dry-run returns for an agent turn,
-#    keyed by prompt stem or inline label (hyphens, hence a dict, not **kwargs)
+# 2. declared on the reply model — what --dry-run returns for every agent turn
+#    whose `returns=` is this model; a subclass does not inherit it
+@dry_run(ok=True)
+class Review(BaseModel):
+    ok: bool = False
+
+# 3. declared on the registry — what --dry-run returns for one agent turn,
+#    keyed by prompt stem or inline label (hyphens, hence a dict, not **kwargs);
+#    it wins over the model's declaration, and it is the only way to stub a `str` reply
 workflow = Registry("acme").add_blueprints(blueprint).stub_agents(
     {"review": {"ok": True}}
 )
 
-# 3. supplied by one run — a copy of the index with those names rebound
+# 4. supplied by one run — a copy of the index with those names rebound
 env = RunEnv(..., nodes=workflow.override(measure=lambda logger, subject: Reading(...)))
 ```
 

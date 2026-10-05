@@ -14,6 +14,7 @@ from workhorse.pyflow.errors import (
     WorkflowFrozenError,
 )
 from workhorse.pyflow.registry import Registry
+from workhorse.pyflow.replies import dry_run
 from workhorse.pyflow.transitions import Await, Continue, Done, Transition
 from workhorse.pyflow.workflow import StateSpec, Workflow, state
 
@@ -36,5 +37,6 @@ __all__ = [
     "WorkflowDefinitionError",
     "WorkflowFailed",
     "WorkflowFrozenError",
+    "dry_run",
     "state",
 ]

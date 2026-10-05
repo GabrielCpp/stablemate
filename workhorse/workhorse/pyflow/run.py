@@ -298,7 +298,8 @@ def run_pyflow(invocation: RunInvocation) -> int:
                 otel.end_run("interrupted", error=str(exc), error_class=type(exc).__name__,
                              error_kind="fatal")
                 return 1
-            if dry_run and isinstance(exc, WorkflowFailed) and not registry.agent_stubs:
+            declared = registry.declares_replies() or bool(env.declared_answers)
+            if dry_run and isinstance(exc, WorkflowFailed) and not declared:
                 print(
                     f"[workhorse] dry-run reached the fail terminal in "
                     f"'{_state_of(writer)}': {exc}"

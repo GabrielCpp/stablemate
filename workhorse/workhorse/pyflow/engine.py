@@ -19,6 +19,7 @@ from workhorse.manifest import ManifestContext
 from workhorse.runner.backends import AgentProfile
 from workhorse.runner.spec import AgentNode, OutputSpec
 from workhorse.pyflow.blueprint import NodeSpec, node_spec
+from workhorse.pyflow.replies import declared_reply
 from workhorse.pyflow.errors import (
     AgentTimeout,
     AgentTurnFailed,
@@ -116,6 +117,7 @@ class RunEnv:
     manifest: ManifestContext = field(default_factory=ManifestContext)
     nodes: NameIndex[NodeSpec] | None = None
     agent_stubs: dict[str, Any] | None = None
+    declared_answers: set[str] = field(default_factory=set)
     agent_runner: AgentRunner | None = None
     resume_pending: bool = False
     worktree_dispatched: bool = False
@@ -271,7 +273,7 @@ class Engine:
         node_id = label if inline else (Path(prompt).stem or "agent")
         prompt_ref = f"inline:{label}" if inline else prompt
         writer = self.env.writer
-        declared = node_id in (self.env.agent_stubs or {})
+        declared = node_id in (self.env.agent_stubs or {}) or declared_reply(returns) is not None
         session_path = self.env.session_id_path
         resumed = ""
         if session and session_path is not None:
@@ -391,9 +393,10 @@ class Engine:
 
     def _agent_stub(self, node_id: str, returns: type, args: dict[str, Any]) -> Any:
         """The reply a dry run uses for one prompt."""
-        reply = (self.env.agent_stubs or {}).get(node_id)
+        reply = (self.env.agent_stubs or {}).get(node_id, declared_reply(returns))
         if reply is None:
             return _blank(returns)
+        self.env.declared_answers.add(node_id)
         if callable(reply):
             reply = reply(args)
         if isinstance(reply, dict):

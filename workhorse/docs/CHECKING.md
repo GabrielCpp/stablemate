@@ -94,16 +94,21 @@ the registry's node index with every node's body replaced by its stand-in, so `s
 runs the same code path it always does — see
 [The node index is the substitution seam](https://github.com/GabrielCpp/stablemate/blob/main/workhorse/docs/AUTHORING.md#the-node-index-is-the-substitution-seam).
 A node's stand-in is whatever `@blueprint.node(stub=…)` declared, or a blank instance of
-its declared return type; an agent turn's is whatever `Registry.stub_agents({...})`
-declared for that prompt stem, or for an inline turn's label, or a blank reply model.
+its declared return type. An agent turn's stand-in comes from the first of three places
+that has one: the entry `Registry.stub_agents({...})` declared for that prompt stem or
+inline label, then the reply its return model declared with `@dry_run(...)`, then a blank
+reply model. A `@dry_run` declaration belongs to the model it decorates, so a subclass
+does not inherit it. The decorator validates the reply against the model when the module
+imports, so a declaration fails loudly even for a turn no dry run reaches.
 
 **What a fail terminal means depends on whether the workflow declared any stand-ins.**
 Undeclared, every reply is blank, so the machine takes whichever branch a blank selects
 — and for any workflow with a reachable `raise WorkflowFailed` that can be the failing
 one, which would mean no such workflow could ever dry-run green. So a dry run prints
 which state halted and why, marks the run dir `fail`, and still exits `0`. A workflow
-that calls `stub_agents({...})` has *said* what the happy path answers, so reaching a
-fail terminal anyway is a real finding and exits `1`. Every other deliberate failure (a
+that calls `stub_agents({...})`, or whose package holds a `@dry_run` model, or whose run
+answered a turn from one, has *said* what the happy path answers, so reaching a fail terminal anyway is a real
+finding and exits `1`. Every other deliberate failure (a
 dead state, a bad checkpoint parameter, an exhausted transition budget) exits `1` either
 way.
 

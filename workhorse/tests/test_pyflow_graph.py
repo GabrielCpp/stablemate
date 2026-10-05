@@ -24,6 +24,7 @@ from workhorse.pyflow import (  # noqa: E402
     Registry,
     Workflow,
     WorkflowFailed,
+    dry_run,
     state,
 )
 from workhorse.pyflow.dot import to_dot  # noqa: E402
@@ -50,6 +51,11 @@ Transition = Any
 
 class Report(BaseModel):
     verdict: str = ""
+
+
+@dry_run(verdict="signed")
+class Signed(Report):
+    pass
 
 
 bp = Blueprint("kit")
@@ -549,6 +555,7 @@ def test_a_dry_run_records_which_stand_in_answered_each_seam():
             self.call(bare_node)
             self.agent("prompts/review.md", returns=Report)
             self.agent("prompts/record.md", returns=Report)
+            self.agent("prompts/sign.md", returns=Signed)
             return Done(None)
 
     registry = RegistryAt("acme")
@@ -560,6 +567,7 @@ def test_a_dry_run_records_which_stand_in_answered_each_seam():
         prompts.mkdir()
         (prompts / "review.md").write_text("hi")
         (prompts / "record.md").write_text("hi")
+        (prompts / "sign.md").write_text("hi")
         registry.at = Path(tmp)
         runs = Path(tmp) / "runs"
         code = pyflow_run.run_pyflow(
@@ -579,6 +587,7 @@ def test_a_dry_run_records_which_stand_in_answered_each_seam():
         "bare_node": "blank",
         "review": "declared",
         "record": "blank",
+        "sign": "declared",
     }, entered
 
 
@@ -655,6 +664,38 @@ def test_a_real_run_still_fails_on_the_same_fail_terminal():
     code, out = _run_halting(dry_run=False)
     assert code == 1, out
     assert "ERROR: budget exhausted" in out, out
+
+
+class HaltsAfterASignedReply(Workflow):
+    """A machine whose happy path its reply schema declared, and which fails anyway."""
+
+    def start(self) -> Transition:
+        reply = self.agent("prompts/sign.md", returns=Signed)
+        if reply.verdict == "ok":
+            return Done(reply)
+        raise WorkflowFailed("budget exhausted")
+
+
+def test_a_dry_run_whose_schema_declared_the_happy_path_fails_on_the_fail_terminal():
+    """A declared reply says the path should succeed, so reaching the fail terminal is a finding."""
+    from workhorse.pyflow import run as pyflow_run
+
+    registry = RegistryAt("acme")
+    registry.entry_point(HaltsAfterASignedReply)
+    out = io.StringIO()
+    with tempfile.TemporaryDirectory() as tmp:
+        prompts = Path(tmp) / "prompts"
+        prompts.mkdir()
+        (prompts / "sign.md").write_text("hi")
+        registry.at = Path(tmp)
+        with contextlib.redirect_stdout(out):
+            code = pyflow_run.run_pyflow(
+                pyflow_run.RunInvocation(
+                    registry, runs_dir=Path(tmp) / "runs", run_id="halt", dry_run=True
+                )
+            )
+    assert code == 1, out.getvalue()
+    assert "ERROR: budget exhausted" in out.getvalue(), out.getvalue()
 
 
 def _run_naming_a_skill(
