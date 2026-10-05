@@ -88,28 +88,33 @@ everywhere over one that is optimal here.
 
 ### 8. It runs without anyone watching, and asks upward when it must
 
-Work survives crashes, caps and days. Attendance is a pyramid. A node does one narrow
-task, and a blocked node asks the level above it. That level is an agent before it is a
-person. Each level reasons about what the level below could not see, then sends the fix
-down as a narrower task than its own. A person stands at the top and is asked only what
-only a person can answer, such as a secret's value or what the product should do. It
-parks and waits for them rather than assuming they are present.
+Work survives crashes, caps and days. Attendance is a pyramid. One agent owns the work,
+and a blocked owner asks the level above it. That level is an agent before it is a
+person. A person stands at the top and is asked only what only a person can answer, such
+as a secret's value or what the product should do. It parks and waits for them rather
+than assuming they are present.
 
 *Chooses:* asking the attendant over parking for a person. Diagnosing before dispatching
 over fixing in place. A gate over a prompt. Resuming where it stopped over starting
 again. Sleeping until a window reopens over dying inside it.
 
-The level above is a seat inside the run, and it is the widest one. It sees everything
-the level below produced at once: every failure of a lap, the logs, and what the
-toolchain sent. It keeps its findings from one lap to the next. It may name a cause
-outside the work it supervises, such as the toolchain, a fixture or the environment. It
-reads the evidence before the first repair is dispatched. The narrow nodes below it do
-the bulk labor. The state machine holds only what must not bend: the gates, the
-evidence, the budget and the checkpoint. The widest seat gets the strongest model the
-user has, and the narrow seats may run on a cheaper one.
+The owner is one seat inside the run, and it is the widest one. It holds the whole
+work and does the work itself. Between its turns, code runs the gates and hands their
+results back: every failure of a lap grouped by what was observed, the logs, and what
+the toolchain sent. The owner names a side for each group. A cause outside the work,
+such as the toolchain, a fixture's provider or the environment, stops as a finding for
+the level above, and the work's own causes come back to the owner. Its findings carry
+from one lap to the next. A lap that leaves the gates where they were asks upward.
 
-*Also chooses:* one seat that sees the whole lap over a rule that sees one check.
-Naming the cause before the first repair over inferring it from repairs that failed.
+Narrow seats exist only to serve the owner. Each one checks one thing or retrieves one
+thing, in a fresh context, and answers with its evidence. It edits nothing. The state
+machine holds only what must not bend: the gates, the evidence, the budget and the
+checkpoint. The owner gets the strongest model the user has, and the narrow seats may
+run on a cheaper one.
+
+*Also chooses:* one owner that holds the whole work over narrow writers that each hold
+part of it. A cause that spans the parts is fixed once, where it sits. Static checks
+between the owner's turns over agent turns that route work between seats.
 
 ### 9. A workflow records a process that already worked
 
