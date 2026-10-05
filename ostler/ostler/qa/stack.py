@@ -306,9 +306,9 @@ def boot_app(
         return {"boot_ok": "no", "entry_url": entry_url, "app_pid": "", "app_pgid": "",
                 "reason": why + _port_hint(health_url)}
 
-    logger.warning("app was not healthy within %.0fs — killing pgid %d and failing soft. %s",
+    logger.warning("app was not healthy within %.0fs — reaping pgid %d and failing soft. %s",
                    timeout_s, pgid, why)
-    _killpg(pgid, signal.SIGKILL)
+    _reap_pgid(pgid, clock=clock)
     # Diagnose the port *after* reaping our own group, so a hint can only ever name the
     # foreign process that beat us to the bind, never the corpse we just made.
     return {"boot_ok": "no", "entry_url": entry_url, "app_pid": "", "app_pgid": "",
@@ -716,7 +716,7 @@ def _run_step(
             try:
                 code = proc.wait(timeout=timeout)
             except subprocess.TimeoutExpired:
-                _killpg(proc.pid, signal.SIGKILL)
+                _reap_pgid(proc.pid, clock=SYSTEM_CLOCK)
                 proc.wait()
                 return False, (f"still running after {timeout:.0f}s, so its process group was "
                                "killed (a blocking step must return: start a server in the "

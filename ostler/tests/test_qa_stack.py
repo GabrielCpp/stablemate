@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import logging
+import signal
 import time
 from email.message import Message
 from pathlib import Path
@@ -668,6 +669,35 @@ def test_boot_reports_why_it_gave_up_rather_than_only_that_it_did(monkeypatch) -
     )
     assert out["boot_ok"] == "no"
     assert "identity marker" in out["reason"]
+
+
+def test_boot_gives_up_with_a_term_a_docker_client_can_forward(monkeypatch) -> None:
+    """A SIGKILL ends `docker run` and leaves its container serving the port."""
+    class Serving:
+        pid = 4242
+        returncode = None
+
+        def poll(self):
+            return None
+
+    sent: list[int] = []
+
+    def killpg(_pgid: int, sig: int) -> bool:
+        sent.append(sig)
+        return sig == signal.SIGTERM
+
+    monkeypatch.setattr(stack.subprocess, "Popen", lambda *_a, **_kw: Serving())
+    monkeypatch.setattr(stack.os, "getpgid", lambda _pid: 4242)
+    monkeypatch.setattr(stack, "_killpg", killpg)
+    monkeypatch.setattr(stack, "health_probe", lambda *_a, **_kw: "not answering")
+
+    out = stack.boot_app(
+        "docker run node:22 npm run dev", "http://localhost:5173", "/", ".", ".", "", 30.0,
+        adopt=False, logger=LOG, clock=FakeClock(),
+    )
+
+    assert out["boot_ok"] == "no"
+    assert sent == [signal.SIGTERM, 0]
 
 
 def test_boot_reports_a_nonzero_exit_as_the_reason(monkeypatch) -> None:
