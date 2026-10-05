@@ -8,7 +8,7 @@ Editable path on this machine: `farrier source .claude/skills/stablemate-ostler-
 
 # The check vocabulary
 
-The twenty-one named checks a `verify:` bullet may call, their signatures, and — the part that
+The twenty-four named checks a `verify:` bullet may call, their signatures, and — the part that
 matters when judging whether a check earns its bullet — **the defect each one excludes**. A check
 that excludes no plausible defect is a rubber stamp, and `doctor` refuses it as `weak-check`.
 Companion to [`../SKILL.md`](../SKILL.md) and to [bullet-grammar.md](bullet-grammar.md), which
@@ -148,6 +148,18 @@ it is on the screen and enabled — and, when `activates` is given, a control th
 focus but does not fire on the key the book names, which no assertion about what is drawn can
 see: the defect is in what the keypress does, not in what is on the screen.
 
+### `title(equals=<str>, matches=<str>) — one of equals, matches`
+Excludes a screen that draws the right content under the wrong document title. A tab, a
+bookmark and a screen reader's first announcement all read the title, and no check on the page
+body sees it. The browser driver reads it, and gives a screen that sets it late three seconds.
+
+### `console(level=<str>, text=<str>, matches=<str>, count=<int>) — one of text, matches`
+Excludes an action whose only trace is what the page logs, and a page that logs an error while
+it draws the right thing. `level` is `log`, `info`, `warn` or `error`. `text` is a substring and
+`matches` a regex. With `count`, exactly that many messages match. `count=0` claims the page
+logged none. Without it, at least one matches. The browser driver reads what the page logged
+since the claim's action, once the page's requests have settled.
+
 ### `persists(subject*=<str>)`
 Excludes a write observed only through the same session that made it, which cannot tell a commit
 from a cache.
@@ -156,11 +168,18 @@ from a cache.
 Excludes an effect asserted at its source instead of at its subscriber, and an at-most-once
 effect fired twice.
 
-`persists` and `emitted` read a second channel: another session, or the subscriber. No compiler
-opens that channel yet, so a claim checked by one of them compiles to no scenario. Its gap is
-`needs-out-of-band-observation` on HTTP and `uncompilable-claim` in a browser. Both are the
-page's to fix: the claim is true, and its check reads the wrong channel. Check the write where a
-user reads it back instead. On HTTP,
+In a browser, the page itself is the source, and the requests it sends are what a proxy in
+front of the app would see. So the browser driver reads `emitted` as the requests the page sent
+after the claim's action. Spell the event as a method and a path, with `{name}` for a segment
+that varies: `emitted(event="POST /v1/items/{id}", count=1)`. `count=0` claims the page sent no
+such request. The driver waits for the page's requests to settle before it counts. Any other
+spelling of the event is `uncompilable-claim` in a browser.
+
+`persists`, and `emitted` on HTTP, read a second channel: another session, or the subscriber.
+No compiler opens that channel yet, so a claim checked by one of them compiles to no scenario.
+Its gap is `needs-out-of-band-observation` on HTTP and `uncompilable-claim` in a browser. Both
+are the page's to fix: the claim is true, and its check reads the wrong channel. Check the write
+where a user reads it back instead. On HTTP,
 a claim sends one request and its checks read that one response. So the read-back is a claim of
 the endpoint that returns the record, with a fixture that leaves the record in place, and its
 check is a `json_path` on that response. In a browser, it is a `visible` on the screen the
