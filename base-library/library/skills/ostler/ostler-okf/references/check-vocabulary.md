@@ -141,8 +141,10 @@ Excludes an effect asserted at its source instead of at its subscriber, and an a
 effect fired twice.
 
 `persists` and `emitted` read a second channel: another session, or the subscriber. No compiler
-opens that channel yet, so a claim checked only by one of them compiles to no scenario. Its gap
-is `needs-out-of-band-observation`. Check the write where a user reads it back instead. On HTTP,
+opens that channel yet, so a claim checked by one of them compiles to no scenario. Its gap is
+`needs-out-of-band-observation` on HTTP and `uncompilable-claim` in a browser. Both are the
+page's to fix: the claim is true, and its check reads the wrong channel. Check the write where a
+user reads it back instead. On HTTP,
 a claim sends one request and its checks read that one response. So the read-back is a claim of
 the endpoint that returns the record, with a fixture that leaves the record in place, and its
 check is a `json_path` on that response. In a browser, it is a `visible` on the screen the
