@@ -3928,6 +3928,32 @@ def test_a_journey_step_path_binds_the_key_its_fixture_provides() -> None:
     assert _gap_kinds(result.gaps, oid) == []
 
 
+def test_a_journey_whose_endpoints_name_their_own_server_walks_at_that_server() -> None:
+    oid = f"okf:{_FLOW}:end-state"
+    context = _follow_journey(oid, captures=[{"name": "thing_id", "from": "$.thing.id"}], fixtures=[
+        {"name": "mock-server", "args": [], "provides": "the mock server answers"},
+    ])
+    context["serverOrigins"] = {_API: "http://127.0.0.1:8099"}
+    result = _compile_plan_gaps(context, story="demo-story")
+    assert isinstance(result, Plan)
+    assert 'api_api_127_0_0_1_8099 = target("api_api_127_0_0_1_8099", driver="python", ' \
+        'base_url="http://127.0.0.1:8099")' in result.source
+    assert "    target=api_api_127_0_0_1_8099," in result.source
+    assert _gap_kinds(result.gaps, oid) == []
+
+
+def test_a_journey_across_two_servers_is_refused_for_the_one_base_url_a_scenario_has() -> None:
+    oid = f"okf:{_FLOW}:end-state"
+    context = _follow_journey(oid, captures=[{"name": "thing_id", "from": "$.thing.id"}], fixtures=[
+        {"name": "mock-server", "args": [], "provides": "the mock server answers"},
+    ])
+    other = "docs/features/demo/http/other.md"
+    context["obligations"][0]["steps"][1]["ref"] = f"{other}#get-thing"
+    context["serverOrigins"] = {_API: "http://127.0.0.1:8099"}
+    result = _compile_plan_gaps(context, story="demo-story")
+    assert _gap_kinds(result.gaps, oid) == ["needs-multi-target-runtime"]
+
+
 def test_a_journey_step_path_binds_the_fixture_its_own_request_names() -> None:
     """Two of the flow's fixtures provide `thing_id`, and the step's request sends a fact of one of them, so its path binds that one's key."""
     oid = f"okf:{_FLOW}:end-state"

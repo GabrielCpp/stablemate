@@ -4,7 +4,9 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
+from urllib.parse import urlparse
 
+from ostler import reach
 from ostler.qa.book_index import BookIndex
 from ostler.qa.compile_cli import cli_journey
 from ostler.qa.dispatch import dispatch_target
@@ -48,7 +50,8 @@ class WalkedJourney:
 
 @dataclass(frozen=True)
 class BoundJourney:
-    """A journey whose target is settled: the source spliced into `target(...)`, and its walk."""
+    """A journey whose target is settled: its variable, the source spliced into `target(...)`, and its walk."""
+    target_var: str
     target_kwargs: str
     walk: Callable[[PlanSinks], WalkedJourney]
 
@@ -88,33 +91,53 @@ def _cli_walk(walk: JourneyWalk, sinks: PlanSinks) -> WalkedJourney:
     return WalkedJourney(lines, frozenset(covered))
 
 
-def _bind_at_base_url(url: str | None, walk: JourneyWalk, walker: Walker) -> BoundJourney | ScenarioRefusal:
+def api_target(surface: str, source: str, book: BookIndex) -> tuple[str, str | None]:
+    """The target a page's HTTP scenario runs on and its base URL: the server the page names, when its origin is not the surface's."""
+    surface_url = book.resolved_api_base_urls.get(surface)
+    origin = book.server_origins.get(source)
+    if not origin or (surface_url and reach.url_origin(surface_url) == origin):
+        return target_variable(surface, "api"), surface_url
+    return f"{target_variable(surface, 'api')}_{python_identifier(urlparse(origin).netloc)}", origin
+
+
+def _bind_at_base_url(
+    target_var: str, url: str | None, walk: JourneyWalk, walker: Walker,
+) -> BoundJourney | ScenarioRefusal:
     """Bind a journey whose target declares a `base_url=`, or refuse it for a missing entry URL."""
     if url is None:
         return entry_url_refusal(walk.nav.surface)
-    return BoundJourney(f", base_url={python_literal(url)}", lambda sinks: walker(walk, sinks))
+    return BoundJourney(target_var, f", base_url={python_literal(url)}", lambda sinks: walker(walk, sinks))
 
 
 def _journey_backends(walkers: JourneyWalkers) -> dict[str, JourneyBackend]:
     """Each built journey target, keyed by the name D1's table gives it."""
 
     def bind_http(walk: JourneyWalk) -> BoundJourney | ScenarioRefusal:
-        url = walk.book.resolved_api_base_urls.get(walk.nav.surface) or walk.nav.entry_url
-        return _bind_at_base_url(url, walk, walkers.http)
+        surface = walk.nav.surface
+        targets = {api_target(surface, step.ref.split("#", 1)[0], walk.book) for step in walk.steps}
+        if len(targets) > 1:
+            return ScenarioRefusal(
+                "needs-multi-target-runtime",
+                "this journey's endpoints answer at "
+                + ", ".join(sorted(url or "the surface's own address" for _var, url in targets))
+                + " — `@scenario(target=...)` sends every request to one base URL, so a walk "
+                  "across two servers fits no scenario. Split the flow at the server it changes to")
+        target_var, url = targets.pop() if targets else (target_variable(surface, "api"), None)
+        return _bind_at_base_url(target_var, url or walk.nav.entry_url, walk, walkers.http)
 
     def bind_web(walk: JourneyWalk) -> BoundJourney | ScenarioRefusal:
         url = walk.book.resolved_web_base_urls.get(walk.nav.surface) or walk.nav.entry_url
-        return _bind_at_base_url(url, walk, walkers.web)
+        return _bind_at_base_url(target_variable(walk.nav.surface, "web"), url, walk, walkers.web)
 
     def bind_maestro(walk: JourneyWalk) -> BoundJourney | ScenarioRefusal:
         launch = maestro_launch(walk.nav)
         if isinstance(launch, ScenarioRefusal):
             return launch
-        return BoundJourney(f", app_id={python_literal(launch.bundle_id)}",
+        return BoundJourney(target_variable(walk.nav.surface, "mobile"), f", app_id={python_literal(launch.bundle_id)}",
                             lambda sinks: walkers.maestro(walk, launch, sinks))
 
     def bind_cli(walk: JourneyWalk) -> BoundJourney | ScenarioRefusal:
-        return BoundJourney("", lambda sinks: _cli_walk(walk, sinks))
+        return BoundJourney(target_variable(walk.nav.surface, "cli"), "", lambda sinks: _cli_walk(walk, sinks))
 
     return {
         "http": JourneyBackend("api", "python", bind_http),
@@ -248,13 +271,12 @@ def journey_scenarios(
         if not walked.covered:
             continue
         emitted.covered.update(walked.covered)
-        target_var = target_variable(surface, backend.kind)
-        lines.extend(target_lines(target_var, backend.driver, bound.target_kwargs, emitted))
-        lines.extend(journey_scenario(source, target_var, ids, walked, arrangement.rows))
+        lines.extend(target_lines(bound.target_var, backend.driver, bound.target_kwargs, emitted))
+        lines.extend(journey_scenario(source, bound.target_var, ids, walked, arrangement.rows))
     return lines
 
 
 __all__ = [
     "BoundJourney", "JourneyBackend", "JourneyPlan", "JourneyTarget", "JourneyWalk",
-    "JourneyWalkers", "WalkedJourney", "journey_scenario", "journey_scenarios", "journey_target",
+    "JourneyWalkers", "WalkedJourney", "api_target", "journey_scenario", "journey_scenarios", "journey_target",
 ]
