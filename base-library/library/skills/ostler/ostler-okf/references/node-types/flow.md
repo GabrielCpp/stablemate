@@ -74,7 +74,10 @@ A step may link more than the node that performs it. When a child links an inter
 invocation, endpoint or command, that link is the step, and every other link in the child is
 context the walk performs nothing for: the screen it sits on, the component it mounts, the field
 it reads. A child that links only screens, components or fields says what the reader sees and
-adds no step. An endpoint that one of the journey's invocations names as its `on:` is that
+adds no step. A child that links nothing is a sentence no walker can perform, and the compiler
+refuses the whole flow as `uncompilable-claim` rather than walk it one step short. A condition
+or a branch such as "if the slug is taken" belongs on the node that handles it, not in the
+chain. An endpoint that one of the journey's invocations names as its `on:` is that
 invocation's request, so a browser journey that links the endpoint its page calls stays one
 browser journey.
 
