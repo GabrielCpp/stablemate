@@ -266,7 +266,11 @@ class Browser:
         return ["clipboard-read", "clipboard-write"]
 
     def arrange(self, actions: Sequence[Mapping[str, Any]], *, timeout_ms: float = ARRANGE_TIMEOUT_MS) -> None:
-        """Perform a fixture's browser actions on a page of this context the scenario never sees."""
+        """Perform a fixture's browser actions on a page of this context the scenario never sees.
+
+        Each action waits for the page the last one opened to finish loading, since a provider's
+        page shows its controls before its scripts listen to them and drops a click made earlier.
+        """
         if self._side is None:
             self._side = self._context.new_page()
         try:
@@ -274,6 +278,7 @@ class Browser:
                 if "open" in action:
                     self._side.goto(str(action["open"]), timeout=timeout_ms)
                     continue
+                self._side.wait_for_load_state("load", timeout=timeout_ms)
                 found = _locate(self._side, action["locator"])
                 method = ARRANGE_METHODS[str(action["act"])]
                 values = [str(action["value"])] if "value" in action else []

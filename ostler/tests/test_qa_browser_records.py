@@ -794,3 +794,25 @@ def test_an_arranged_page_that_never_comes_back_says_where_it_stayed(tmp_path: P
         browser.session("http://localhost:5173")
     assert "stayed on http://localhost:9099/emulator/auth/handler" in str(excinfo.value)
     assert browser._side is None
+
+
+def test_an_arranged_click_waits_for_the_page_the_last_step_opened_to_load(tmp_path: Path) -> None:
+    """A provider's sign-in page lists its accounts before its scripts listen, and a click made then is lost."""
+    calls: list[str] = []
+    found = SimpleNamespace(click=lambda *, timeout: calls.append("click"), count=lambda: 1)
+    browser = _browser(tmp_path)
+    browser._side = SimpleNamespace(
+        goto=lambda url, *, timeout: calls.append(f"goto {url}"),
+        wait_for_load_state=lambda state, *, timeout: calls.append(f"wait {state}"),
+        get_by_role=lambda role, *, name: found,
+        get_by_text=lambda text: found,
+        close=lambda: None,
+    )
+
+    browser.arrange([
+        {"open": "/login"},
+        {"act": "click", "locator": {"role": "button", "name": "Continue with Google"}},
+        {"act": "click", "locator": {"text": "editor@example.com"}},
+    ])
+
+    assert calls == ["goto /login", "wait load", "click", "wait load", "click"]
