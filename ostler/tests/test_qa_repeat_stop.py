@@ -65,10 +65,11 @@ def test_one_observation_on_many_pages_stops_the_run_and_leaves_the_rest_unreach
 
     assert status == "failed"
     assert len(summary["scenarios"]) == 4
-    [stopped] = summary["runner_errors"]
+    stopped = summary["stopped_on_repeat"]
     assert WALL in stopped and "4 scenarios on 3 pages" in stopped
     assert summary["verdicts"] == {_obligation(index, 3): "unreached" for index in range(8)}
     assert sum(record["kind"] == "scenario_start" for record in _records(spec)) == 4
+    assert "runner_errors" not in summary
 
 
 def test_an_observation_on_too_few_of_the_run_s_pages_lets_it_continue(tmp_path: Path) -> None:
@@ -77,7 +78,7 @@ def test_an_observation_on_too_few_of_the_run_s_pages_lets_it_continue(tmp_path:
 
     assert status == "failed"
     assert len(summary["scenarios"]) == 8
-    assert "runner_errors" not in summary
+    assert "stopped_on_repeat" not in summary
 
 
 def test_a_run_of_one_page_stops_on_a_repeat_on_that_page(tmp_path: Path) -> None:
@@ -85,7 +86,7 @@ def test_a_run_of_one_page_stops_on_a_repeat_on_that_page(tmp_path: Path) -> Non
 
     assert status == "failed"
     assert len(summary["scenarios"]) == 3
-    [stopped] = summary["runner_errors"]
+    stopped = summary["stopped_on_repeat"]
     assert "3 scenarios on 1 pages failed on one observation: " in stopped
     assert "outside any single page" not in stopped
 
@@ -97,7 +98,7 @@ def test_a_scoped_run_stops_on_a_repeat_on_one_of_its_pages(tmp_path: Path) -> N
 
     assert status == "failed"
     assert len(summary["scenarios"]) == 5
-    [stopped] = summary["runner_errors"]
+    stopped = summary["stopped_on_repeat"]
     assert "3 scenarios on 1 pages failed on one observation: " in stopped
 
 
@@ -106,14 +107,14 @@ def test_different_observations_do_not_add_up(tmp_path: Path) -> None:
     _status, summary, _spec = _run(tmp_path, bodies, pages=3, stop_on_repeat=2)
 
     assert len(summary["scenarios"]) == 6
-    assert "runner_errors" not in summary
+    assert "stopped_on_repeat" not in summary
 
 
 def test_no_threshold_runs_every_scenario(tmp_path: Path) -> None:
     _status, summary, _spec = _run(tmp_path, [_fails(WALL)] * 5, pages=5, stop_on_repeat=0)
 
     assert len(summary["scenarios"]) == 5
-    assert "runner_errors" not in summary
+    assert "stopped_on_repeat" not in summary
 
 
 def test_an_observation_ignores_numbers_and_reads_the_last_line() -> None:

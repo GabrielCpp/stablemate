@@ -62,6 +62,8 @@ def run_plan(
 
     A positive *stop_on_repeat* stops the run once that many scenarios on several pages failed on
     one observation, since one cause no page holds would fail every scenario after them the same way.
+    The summary says why under `stopped_on_repeat`, apart from its `runner_errors`, since the
+    scenarios it ran measured the book and their failures are the book's to fix.
     """
     if lap is None:
         with tempfile.TemporaryDirectory(prefix="ostler-lap-") as scratch:
@@ -117,6 +119,7 @@ def run_plan(
     status = "passed"
     cleanup_errors: list[str] = []
     runner_errors: list[str] = []
+    stopped_on_repeat = ""
     watch = watch_for(stop_on_repeat, selected, scoped=only is not None)
     summary: dict[str, Any] = {}
     evidence: Path | None = None
@@ -185,10 +188,9 @@ def run_plan(
                 status = result.status
                 if stop_on_fail:
                     break
-            repeated = watch.observe(scenario_id, scenario.get("covers", []), result)
-            if repeated:
-                runner_errors.append(repeated)
-                session.append({"kind": "runner_error", "status": status, "message": repeated})
+            stopped_on_repeat = watch.observe(scenario_id, scenario.get("covers", []), result)
+            if stopped_on_repeat:
+                session.append({"kind": "repeat_stop", "status": status, "message": stopped_on_repeat})
                 break
     except DriverBlocked as exc:
         status = "blocked"
@@ -273,12 +275,15 @@ def run_plan(
         summary["cleanup_errors"] = cleanup_errors
     if runner_errors:
         summary["runner_errors"] = runner_errors
+    if stopped_on_repeat:
+        summary["stopped_on_repeat"] = stopped_on_repeat
     message = (
         f"QA run {status.upper()}: {summary.get('pass_count', 0)} assertions passed, "
         f"{summary.get('fail_count', 0)} failed, {len(results)} scenarios"
     )
-    if runner_errors:
-        message += f" — {'; '.join(runner_errors)}"
+    stops = [*runner_errors, stopped_on_repeat] if stopped_on_repeat else runner_errors
+    if stops:
+        message += f" — {'; '.join(stops)}"
     return status, message, summary
 
 
