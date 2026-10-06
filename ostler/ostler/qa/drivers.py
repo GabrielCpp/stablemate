@@ -135,6 +135,7 @@ class _Tally:
     failures: int = 0
     failed_checks: list[FailedCheck] = field(default_factory=list)
     verdicts: dict[str, Verdict] = field(default_factory=dict)
+    vet_trouble: bool = False
 
     def count_assertion(self) -> int:
         """Count one more assertion and return its number, which is the action it is recorded under."""
@@ -457,6 +458,8 @@ class PythonDriver(QaDriver):
             tally.judge(covers, True)
         elif unreached or not tally.failed_checks:
             stopped_by = attribute(_evidence((terminal or {}).get("stop") or {}))
+            if stopped_by.cause is Cause.UNATTRIBUTED and tally.vet_trouble:
+                stopped_by = Attribution(Cause.BOOK)
             if unreached:
                 judge(tally.verdicts, unreached, Verdict.GAPPED if stopped_by.gap else Verdict.UNREACHED)
             else:
@@ -530,6 +533,7 @@ class PythonDriver(QaDriver):
             verdicts, trouble = self._vet(scenario_id, record, step=step)
         except ValueError as exc:
             verdicts, trouble = [], [f"scenario '{scenario_id}' vet failed: {exc}"]
+        tally.vet_trouble = tally.vet_trouble or bool(trouble)
         for verdict in verdicts:
             action = tally.count_assertion()
             verdict_covers = _covers_in(covers, verdict.node_id, self.obligation_documents)
@@ -712,7 +716,9 @@ class PythonDriver(QaDriver):
         return (
             f"scenario '{scenario_id}' vets '{screen}', documented at route '{route}', but "
             f"the page it photographed was at '{url}' — the walk did not arrive, so every "
-            "placement verdict would be about a screen the book does not describe"
+            "placement verdict would be about a screen the book does not describe. When the app "
+            "sent the walk elsewhere, as a guarded route sends a visitor who is not signed in, "
+            "name on the claim the fixture that sets up what the route needs"
         )
 
     def _vet(
