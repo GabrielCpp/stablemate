@@ -239,7 +239,7 @@ def compile_template(name: str, scope: tuple[str, ...]) -> CompiledName | None:
     return CompiledName(name, tuple(segments), tuple(binds), malformed)
 
 
-def _pattern(segments: tuple[Segment, ...]) -> str:
+def name_pattern(segments: tuple[Segment, ...]) -> str:
     """The portable-regex intersection of a template: escaped literals, `.*` for every hole."""
     return "".join(re.escape(s.value) if s.kind == "literal" else ".*" for s in segments)
 
@@ -372,7 +372,7 @@ def collisions(book: LocatorBook) -> list[LocatorCollision]:
         out.append(LocatorCollision(screen, role, name, tuple(sorted(conflicting))))
     for (screen, role), pairs in sorted(templated.items()):
         for node, template in pairs:
-            pattern = _pattern(template.segments)
+            pattern = name_pattern(template.segments)
             for (other_screen, other_role, name, _), statics in sorted(groups.items()):
                 if (other_screen, other_role) != (screen, role) or not name:
                     continue

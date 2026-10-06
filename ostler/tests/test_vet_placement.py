@@ -296,6 +296,17 @@ def test_the_name_comparison_is_the_one_the_locator_performs() -> None:
     assert [v.status for v in verdicts] == ["matched"]
 
 
+def test_a_templated_name_matches_any_text_in_its_holes() -> None:
+    """A row's name carries the row's data, so the book writes a hole where the screen shows a value."""
+    templated = VettedComponent(node_id="s.md#c", selector="#upload", name="Upload document {document.title}")
+    verdicts = check(
+        [templated, templated.model_copy(update={"node_id": "s.md#d", "name": "Remove document {document.title}"})],
+        [_named("form", ["#upload"], (0, 0, 100, 40), ["button"], ["Upload document Our process"])],
+        VIEWPORT,
+    )
+    assert [v.status for v in verdicts] == ["matched", "misnamed"]
+
+
 def test_the_name_is_read_off_the_element_the_selector_addresses() -> None:
     """A region is a rect and several elements share one; a name belongs to an element."""
     region = _named(

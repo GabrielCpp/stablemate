@@ -6,6 +6,7 @@ import re
 
 from pydantic import BaseModel, ConfigDict
 
+from ostler.locators import compile_template, name_pattern
 from ostler.model import Graph, UINode
 from ostler.qa.harness_host import load_harness_module
 from ostler.selector_forms import ROLE_SELECTOR
@@ -160,6 +161,14 @@ def _flat(text: str) -> str:
     return " ".join(text.split())
 
 
+def _names_agree(documented: str, actual: str) -> bool:
+    """Whether *actual* is the name *documented* gives, with each `{hole}` of a template standing for any text."""
+    template = compile_template(documented, ())
+    if template is None or template.malformed:
+        return actual.casefold() == documented.casefold()
+    return re.fullmatch(name_pattern(template.segments), actual, re.IGNORECASE | re.DOTALL) is not None
+
+
 def _name_disagreement(
     documented: str, region: RegionBox, index: int
 ) -> list[str]:
@@ -170,7 +179,7 @@ def _name_disagreement(
     if observed is None:
         return []
     own_role, actual = observed
-    if _flat(actual).casefold() == _flat(documented).casefold():
+    if _names_agree(_flat(documented), _flat(actual)):
         return []
     where = f"the `{own_role}` there" if own_role else "the element there"
     has = f"is named {_flat(actual)!r}" if _flat(actual) else "has no accessible name"
