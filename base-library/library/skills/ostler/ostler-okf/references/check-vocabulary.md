@@ -1,6 +1,6 @@
 # The check vocabulary
 
-The twenty-four named checks a `verify:` bullet may call, their signatures, and — the part that
+The twenty-seven named checks a `verify:` bullet may call, their signatures, and — the part that
 matters when judging whether a check earns its bullet — **the defect each one excludes**. A check
 that excludes no plausible defect is a rubber stamp, and `doctor` refuses it as `weak-check`.
 Companion to [`../SKILL.md`](../SKILL.md) and to [bullet-grammar.md](bullet-grammar.md), which
@@ -151,6 +151,26 @@ it draws the right thing. `level` is `log`, `info`, `warn` or `error`. `text` is
 `matches` a regex. With `count`, exactly that many messages match. `count=0` claims the page
 logged none. Without it, at least one matches. The browser driver reads what the page logged
 since the claim's action, once the page's requests have settled.
+
+### `url(equals=<str>, matches=<str>) — one of equals, matches`
+Excludes a screen that draws the right content at the wrong address, such as a link that drops
+its query or fragment, or a redirect the book says never happens. The address is the path, the
+query and the fragment, with no origin, so `url(equals="/fr/guide?tab=2#install")`. The browser
+driver reads it, and gives a screen that moves late three seconds.
+
+### `stored(key=<str>, records=<str>, text=<str>, matches=<str>, count=<int>) — one of key, records`
+Excludes a write the page keeps in the browser and never draws, such as a draft in IndexedDB or
+a preference in localStorage. `key` names one localStorage value. `records` names an IndexedDB
+object store as `<database>/<store>`, and each record reads as its JSON. `text` is a substring
+and `matches` a regex, both tested against each value. With `count`, exactly that many values
+match. `count=0` claims the page kept none. Without it, at least one matches. Read the database
+and store names off the app's source, as in
+`stored(records="app-drafts/drafts", text="\"locale\":\"fr\"", count=1)`.
+
+### `clipboard(text=<str>, matches=<str>) — one of text, matches`
+Excludes a copy action that confirms on the screen and puts the wrong text, or nothing, on the
+clipboard. The browser driver records every text the page copies, through the Clipboard API or a
+copy event, and judges the last one. `text` is a substring and `matches` a regex.
 
 ### `persists(subject*=<str>)`
 Excludes a write observed only through the same session that made it, which cannot tell a commit
