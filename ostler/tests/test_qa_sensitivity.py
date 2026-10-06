@@ -65,6 +65,13 @@ _WITNESSED_CALLS = [
     'console(text="saved")',
     'console(level="error", matches="^failed", count=0)',
     'console(level="warn", text="deprecated", count=1)',
+    'url(equals="/fr/guide?tab=2#install")',
+    'url(matches="^/fr/")',
+    'stored(records="docs-drafts/drafts", text="fr", count=1)',
+    'stored(key="theme", count=0)',
+    'stored(key="theme", matches="^dark$")',
+    'clipboard(text="/fr/guide?tab=2")',
+    'clipboard(matches="^/fr/")',
 ]
 
 

@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
 
+from ostler_qa_browser_state import CLIPBOARD_JS
 from ostler_qa_scan import FRAME_JS, SCAN_JS, merge_rects, summarize
 from playwright.sync_api import sync_playwright
 
@@ -208,6 +209,7 @@ class Browser:
             options["record_video_dir"] = str(self.video_dir)
             options["record_video_size"] = dict(self.viewport)
         self._context = self._browser.new_context(**options)
+        self._context.add_init_script(CLIPBOARD_JS)
         self.start_offset_ms = self.clock()
         self.page = self._context.new_page()
         if name == "chromium":

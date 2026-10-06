@@ -8,6 +8,7 @@ and Playwright.
 
 - `ostler_qa.py`: the harness a `qa_plan.py` imports, and the runner that drives it.
 - `ostler_qa_browser.py`: the Playwright lifecycle of a browser scenario.
+- `ostler_qa_browser_state.py`: the verifiers that read what the browser holds beyond the drawn page: its address, its storage and what the page copied.
 - `ostler_qa_checkout.py`: the copy of the checkout a scenario's commands run in.
 - `ostler_qa_documents.py`: the verifiers that read documents and bodies: a JSON path, a count of what it selects, and what a body must not carry.
 - `ostler_qa_elements.py`: the verifiers that read page elements: shown, actionable, focusable, and how many were emitted.

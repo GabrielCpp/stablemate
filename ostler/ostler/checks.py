@@ -253,6 +253,39 @@ CHECKS: tuple[CheckSpec, ...] = (
         observes="console",
     ),
     CheckSpec(
+        name="url",
+        params=(CheckParam("equals", "str"), CheckParam("matches", "str", pattern=True)),
+        one_of=("equals", "matches"),
+        excludes="a screen that draws the right content at the wrong address, such as a link "
+                 "that drops its query or fragment, or a redirect the book says never happens, "
+                 "which a bookmark, a shared link and the back button see and no assertion "
+                 "about an element on the page can",
+        observes="url",
+    ),
+    CheckSpec(
+        name="stored",
+        params=(
+            CheckParam("key", "str", identifies=True),
+            CheckParam("records", "str", identifies=True),
+            CheckParam("text", "str"),
+            CheckParam("matches", "str", pattern=True),
+            CheckParam("count", "int"),
+        ),
+        one_of=("key", "records"),
+        excludes="a write the page keeps in the browser and never draws, such as a draft in "
+                 "IndexedDB or a preference in localStorage, which no assertion about what is "
+                 "on the screen can see until a reload that also discards the evidence",
+        observes="stored",
+    ),
+    CheckSpec(
+        name="clipboard",
+        params=(CheckParam("text", "str"), CheckParam("matches", "str", pattern=True)),
+        one_of=("text", "matches"),
+        excludes="a copy action that confirms on the screen and puts the wrong text, or "
+                 "nothing, on the clipboard, which no assertion about what is drawn can see",
+        observes="clipboard",
+    ),
+    CheckSpec(
         name="persists",
         params=(CheckParam("subject", "str", required=True, identifies=True),),
         excludes="a write observed only through the same session that made it, which cannot "

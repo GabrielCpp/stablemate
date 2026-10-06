@@ -665,6 +665,40 @@ def _plan_console(args: Mapping[str, checks.CheckValue]) -> _WitnessPlan | _NoWi
     return _WitnessPlan.of([logged] * want, mutations)
 
 
+def _plan_url(args: Mapping[str, checks.CheckValue]) -> _WitnessPlan | _NoWitness:
+    address = str(args["equals"]) if "equals" in args else _matching(str(args["matches"]))
+    if address is None:
+        return _NoWitness(f"no address can be invented for /{args.get('matches')}/")
+    if "matches" in args and re.search(str(args["matches"]), f"/{_OTHER}"):
+        return _NoWitness(f"every address carries something /{args['matches']}/ matches")
+    return _WitnessPlan.of(address, [("the page is at another address", f"/{_OTHER}")])
+
+
+def _plan_stored(args: Mapping[str, checks.CheckValue]) -> _WitnessPlan | _NoWitness:
+    value = str(args["text"]) if "text" in args else "witness"
+    if "matches" in args:
+        matched = _matching(str(args["matches"]))
+        if matched is None:
+            return _NoWitness(f"no stored value can be invented for /{args.get('matches')}/")
+        value = f"{value}{matched}" if "text" in args else matched
+    want = _int(args["count"]) if "count" in args else 1
+    mutations: list[tuple[str, object]] = []
+    if "count" in args:
+        mutations.append(("one more was stored", [value] * (want + 1)))
+    if want != 0:
+        mutations.append(("nothing was stored", []))
+    return _WitnessPlan.of([value] * want, mutations)
+
+
+def _plan_clipboard(args: Mapping[str, checks.CheckValue]) -> _WitnessPlan | _NoWitness:
+    text = str(args["text"]) if "text" in args else _matching(str(args["matches"]))
+    if text is None:
+        return _NoWitness(f"no copied text can be invented for /{args.get('matches')}/")
+    if "matches" in args and re.search(str(args["matches"]), _OTHER):
+        return _NoWitness(f"every copied text carries something /{args['matches']}/ matches")
+    return _WitnessPlan.of([text], [("nothing was copied", []), ("another text was copied last", [text, _OTHER])])
+
+
 def _plan_persists(_args: Mapping[str, checks.CheckValue]) -> _WitnessPlan:
     return _WitnessPlan.of(("written", "written"), [
         ("nothing was re-read after the restart", ("written", None)),
@@ -737,6 +771,9 @@ _PLANNERS: dict[str, Callable[[Mapping[str, checks.CheckValue]], _WitnessPlan | 
     "hidden": _plan_hidden,
     "title": _plan_title,
     "console": _plan_console,
+    "url": _plan_url,
+    "stored": _plan_stored,
+    "clipboard": _plan_clipboard,
     "persists": _plan_persists,
     "emitted": _plan_emitted,
     "omits": _plan_omits,

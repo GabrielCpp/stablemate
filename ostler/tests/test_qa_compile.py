@@ -1702,6 +1702,7 @@ def test_a_subject_only_verb_on_a_page_obligation_is_a_gap_not_a_silent_drop() -
     assert "not observable from the playwright driver" in gap.detail
     assert "`visible`, `hidden`, `actionable` or `inert`" in gap.detail
     assert "`title`" in gap.detail and "`console`" in gap.detail
+    assert "`url(" in gap.detail and "`stored(" in gap.detail and "`clipboard(" in gap.detail
     assert 'emitted(event=\\"POST /v1/items/{id}\\", count=1)' not in gap.detail
     assert 'emitted(event="POST /v1/items/{id}", count=1)' in gap.detail
 
@@ -1756,6 +1757,17 @@ def test_a_title_claim_reads_the_page_itself() -> None:
     source, gaps = _browser_read("title", {"equals": "Policies"})
     assert not gaps
     assert source is not None and 'qa.verify("title", qa.browser_page, equals="Policies"' in source
+
+
+@pytest.mark.parametrize(("name", "args"), [
+    ("url", {"equals": "/fr/guide?tab=2"}),
+    ("stored", {"records": "docs-drafts/drafts", "count": 2}),
+    ("clipboard", {"text": "/fr/guide"}),
+])
+def test_an_address_storage_or_clipboard_claim_reads_the_page_itself(name: str, args: dict[str, object]) -> None:
+    source, gaps = _browser_read(name, args)
+    assert not gaps
+    assert source is not None and f'qa.verify("{name}", qa.browser_page, ' in source
 
 
 def test_a_console_claim_reads_what_the_page_logged_after_the_action() -> None:
@@ -1814,7 +1826,7 @@ def test_a_driver_with_no_declared_channels_gaps_every_claim_and_crashes_on_none
 
 def test_playwright_and_maestro_declare_disjoint_but_overlapping_capabilities() -> None:
     """Maestro is nameable from the compiler via its own capability declaration — it declares `page` and `subject`, not the HTTP channels Playwright can see, and not the same page/HTTP mix Playwright declares either."""
-    assert PLAYWRIGHT.observes == frozenset({"page", "response", "body", "keyboard", "title", "console"})
+    assert PLAYWRIGHT.observes == frozenset({"page", "response", "body", "keyboard", "title", "console", "url", "stored", "clipboard"})
     assert MAESTRO.observes == frozenset({"page", "subject"})
     assert PYTHON.observes == frozenset({"response", "body", "subject"})
 

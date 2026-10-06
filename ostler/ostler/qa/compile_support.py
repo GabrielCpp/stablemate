@@ -64,9 +64,13 @@ def unobservable_gap(oid: str, name: str | None, driver: DriverSpec) -> Gap:
                    "not on the screen is `hidden(locator=\"#<node>\")`, pointed at the control's anchor")
     remedy = ""
     if "console" in driver.observes and observes in ("subject", "subject-pair"):
-        remedy = (": this driver reads the page, its title, its console and every request it sends. Claim what "
+        remedy = (": this driver reads the page, its title, its address, what it stores in the browser, what "
+                  "it copies, its console and every request it sends. Claim what "
                   "the screen shows with `visible`, `hidden`, `actionable` or `inert` on the control's anchor, "
-                  "the tab's title with `title`, a log line with `console`, a request the page sends or must "
+                  "the tab's title with `title`, the address bar with `url(equals=\"/path?query#fragment\")`, a "
+                  "localStorage value or IndexedDB records with `stored(key=...)` or "
+                  "`stored(records=\"<database>/<store>\", text=..., count=...)`, what a copy action put on the "
+                  "clipboard with `clipboard(text=...)`, a log line with `console`, a request the page sends or must "
                   "not send with `emitted(event=\"POST /v1/items/{id}\", count=1)`, what a write returned with "
                   "`http_status(method=..., path=...)`, or state the claim on the surface that stores the subject")
     elif "page" in driver.observes and observes in ("subject", "subject-pair"):

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
+from ostler_qa_browser_state import read_clipboard, read_stored, read_url, verify_clipboard, verify_stored, verify_url
 from ostler_qa_documents import read_body, read_countable, read_document, verify_count, verify_json_path, verify_omits
 from ostler_qa_elements import (
     read_console,
@@ -78,6 +79,9 @@ VERIFIERS: dict[str, Verifier] = {
     "focusable": _verifier(read_focus, verify_focusable),
     "title": _verifier(read_title, verify_title),
     "console": _verifier(read_console, verify_console),
+    "url": _verifier(read_url, verify_url),
+    "stored": _verifier(read_stored, verify_stored),
+    "clipboard": _verifier(read_clipboard, verify_clipboard),
     "persists": _verifier(read_pair("persists"), verify_persists),
     "emitted": _verifier(read_size, verify_emitted),
     "omits": _verifier(read_body, verify_omits),

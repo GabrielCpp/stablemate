@@ -285,15 +285,17 @@ def _request_operand(row: CallRow, obligation: Obligation, gaps: list[Gap]) -> s
 
 
 def _browser_operand(row: CallRow, obligation: Obligation, channel: str | None, gaps: list[Gap]) -> str | None:
-    """Where a page scenario is pointed for a row that reads the page's title, console or requests."""
-    if channel == "title":
+    """Where a page scenario is pointed for a row that reads the page's title, address, storage, clipboard, console or requests."""
+    if channel in PAGE_READS:
         return "qa.browser_page"
     if channel == "console":
         return f"{WINDOW_VAR}.console()"
     return _request_operand(row, obligation, gaps)
 
 
-BROWSER_READS = frozenset({"title", "console"})
+PAGE_READS = frozenset({"title", "url", "stored", "clipboard"})
+
+BROWSER_READS = PAGE_READS | {"console"}
 
 
 def needs_window(lines: list[str]) -> bool:
