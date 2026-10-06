@@ -3478,6 +3478,26 @@ def test_a_flow_that_names_no_steps_has_no_walk_to_compile() -> None:
     assert "`steps:`" in gap.detail and "names no steps to walk" in gap.detail
 
 
+def test_a_flow_step_that_links_nothing_refuses_the_walk_rather_than_skipping_it() -> None:
+    oid = f"okf:{_FLOW}:end-state"
+    context = _navigation_context(
+        _flow_obligation(
+            oid, source=_FLOW, surface="api",
+            steps=[_step(f"{_API}#post-things", "endpoint", "api"),
+                   {"ref": "", "href": "", "nodeType": "", "surface": ""}],
+            checks=[{"call": "it", "name": "http_status", "args": {"status": 200,
+                                                                   "path": "/api/things"}}],
+        ),
+        _step_node(f"{_API}#post-things", {"route": ["POST /api/things"]}),
+        navigation=_api_navigation(),
+    )
+    result = _compile_plan_gaps(context, story="demo-story")
+    assert isinstance(result, Refusal)
+    [gap] = [g for g in result.gaps if g.obligation_id == oid]
+    assert gap.kind == "uncompilable-claim"
+    assert "1 of this flow's `steps:` entries link no node" in gap.detail
+
+
 def test_a_journeys_claim_is_observed_where_its_last_step_left_the_world() -> None:
     """The steps are performed in the order the book wrote them, and the flow's own `verify:` is asserted against the *last* step's response — the only world this scenario actually produced."""
     oid = f"okf:{_FLOW}:end-state"

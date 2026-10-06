@@ -71,3 +71,8 @@ def test_a_bullet_naming_only_places_is_what_the_reader_sees_not_a_step() -> Non
 def test_an_unresolved_link_stays_so_the_walk_is_refused_rather_than_shortened() -> None:
     walk = _walk("[open-menu](shell.md#open-menu) then [gone](shell.md#gone)")
     assert walk == [("shell.md#open-menu", "interaction"), ("", "")]
+
+
+def test_a_sentence_that_links_nothing_stays_so_the_walk_is_refused_rather_than_shortened() -> None:
+    walk = _walk("[open-menu](shell.md#open-menu)", "the reader waits for the menu to settle")
+    assert walk == [("shell.md#open-menu", "interaction"), ("", "")]

@@ -135,6 +135,14 @@ def journey_target(
             "A step is a `[label](page.md#node)` link to the control, endpoint or command it "
             "performs. A step written as a sentence links nothing, and a link to a screen, "
             "component or field only says where a step happens or what it shows")
+    unlinked = sum(1 for step in steps if not step.href)
+    if unlinked:
+        return ScenarioRefusal(
+            "uncompilable-claim",
+            f"{unlinked} of this flow's `steps:` entries link no node. A walker performs only "
+            "what a step links, so it would skip each such sentence and observe a world the "
+            "journey did not reach. Link the interaction, invocation, endpoint or command the "
+            "entry performs, or drop an entry that only narrates what the reader sees")
     unresolved = [step.href for step in steps if not step.ref]
     if unresolved:
         return ScenarioRefusal(

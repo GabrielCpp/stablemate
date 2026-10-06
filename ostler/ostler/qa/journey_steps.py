@@ -38,9 +38,12 @@ class JourneyStep:
 
 
 def _bullet_steps(item: str, resolved: Mapping[str, str], book: Mapping[str, BookNode]) -> list[JourneyStep]:
-    """Every link one `steps:` bullet writes, resolved to the node it names."""
+    """Every link one `steps:` bullet writes, resolved to the node it names, or one empty step for a bullet that links nothing."""
+    links = markdown.extract_refs(item).links
+    if not links:
+        return [JourneyStep(ref="", href="", node_type="", surface="")]
     steps: list[JourneyStep] = []
-    for _text, href in markdown.extract_refs(item).links:
+    for _text, href in links:
         target_id = resolved.get(href, "")
         target = book.get(target_id) if target_id else None
         steps.append(JourneyStep(ref=target_id, href=href, node_type=target.type if target else "",
