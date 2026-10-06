@@ -3,9 +3,12 @@
 from __future__ import annotations
 
 import re
+from collections.abc import Mapping
 
 from pydantic import BaseModel, ConfigDict
 
+from ostler import markdown
+from ostler.links import LinkResolver
 from ostler.locators import compile_template, name_pattern
 from ostler.model import Graph, UINode
 from ostler.qa.harness_host import load_harness_module
@@ -93,7 +96,11 @@ class ComponentVerdict(BaseModel):
     def sentence(self) -> str:
         """What the ledger records — the assertion label a reader sees, alone."""
         if self.status == "missing":
-            return f"{self.node_id} (`{self.selector}`) rendered nowhere on this screen"
+            return (
+                f"{self.node_id} (`{self.selector}`) rendered nowhere on this screen. "
+                "If it renders only in some states, claim them under its `states:`, or link it "
+                "`same-as:` to the occurrence that does"
+            )
         if self.status == "misplaced":
             return f"{self.node_id} (`{self.selector}`) is placed wrong: " + "; ".join(self.detail)
         if self.status == "misnamed":
@@ -223,6 +230,23 @@ def check(
 _NO_CONDITION = ("none", "n/a", "na", "-")
 
 
+def _same_as_family(node: UINode, nodes: Mapping[str, UINode], resolver: LinkResolver) -> list[UINode]:
+    """*node* and every occurrence its `same-as:` links reach, which share the claims any one of them states."""
+    family = {node.id: node}
+    queue = [node]
+    while queue:
+        current = queue.pop()
+        raw = current.meta.get("same-as", "")
+        for value in raw if isinstance(raw, list) else [raw]:
+            for _text, href in markdown.extract_refs(str(value)).links:
+                target = resolver.resolve(current.path, href)
+                member = nodes.get(target.node_id) if target is not None and target.resolved else None
+                if member is not None and member.id not in family:
+                    family[member.id] = member
+                    queue.append(member)
+    return list(family.values())
+
+
 def _declares_coming_and_going(node: UINode) -> bool:
     """Whether the book gives this component a reason to be absent from a given render."""
     for key in ("states", "exclusive-with"):
@@ -244,6 +268,8 @@ def _documented_name(node: UINode) -> str:
 def screen_components(graph: Graph) -> dict[str, list[VettedComponent]]:
     """Every documented screen's registrable components, keyed by the screen's doc path."""
     table: dict[str, list[VettedComponent]] = {}
+    nodes = {node.id: node for node in graph.ui_nodes}
+    resolver = LinkResolver(graph)
     for node in graph.ui_nodes:
         if node.type != "component":
             continue
@@ -257,7 +283,9 @@ def screen_components(graph: Graph) -> dict[str, list[VettedComponent]]:
             selector=selector,
             placement=parsed if isinstance(parsed, Placement) else None,
             name=_documented_name(node),
-            conditional=_declares_coming_and_going(node),
+            conditional=any(
+                _declares_coming_and_going(member) for member in _same_as_family(node, nodes, resolver)
+            ),
         ))
     return table
 

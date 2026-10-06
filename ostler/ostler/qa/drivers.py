@@ -573,7 +573,8 @@ class PythonDriver(QaDriver):
             tally.judge(verdict_covers, passed)
             if not passed:
                 tally.count_failure(FailedCheck.of(
-                    verdict.sentence(), verdict.expected, verdict.observed(), attribution=Attribution(Cause.BOOK)))
+                    verdict.sentence(), verdict.expected, verdict.observed(),
+                    covers=(f"okf:{verdict.node_id}",), attribution=Attribution(Cause.BOOK)))
         return trouble
 
     def _step_record(

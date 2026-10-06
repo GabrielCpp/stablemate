@@ -130,7 +130,7 @@ def test_the_screen_the_book_documents_is_registered_against_the_one_that_render
         "x is 81.9% of the viewport, documented as 0-20%",
     ]
     assert verdicts[1].bbox == BBox(x=1180, y=88, width=250, height=760)
-    assert verdicts[2].sentence().endswith("rendered nowhere on this screen")
+    assert "rendered nowhere on this screen. If it renders only in some states" in verdicts[2].sentence()
 
 
 def test_a_region_no_component_claims_is_counted_not_judged() -> None:
@@ -210,6 +210,26 @@ def test_only_a_stated_condition_excuses_a_component_from_being_there(
     graph = _graph_with_component({"selector": "#c", **bullets})
 
     assert screen_components(graph)["s.md"][0].conditional is conditional
+
+
+def test_an_occurrence_silent_about_its_states_comes_and_goes_with_its_same_as_family(
+    tmp_path: Path,
+) -> None:
+    """The book writes a dialog on its screen and again on a components page, and only the second says when it is closed."""
+    pages = {
+        "screen.md": "- same-as: [Dialog](components.md#dialog)",
+        "components.md": "- states: `open=false` renders nothing\n- same-as: [Dialog](screen.md#dialog)",
+    }
+    nodes = []
+    for name, bullets in pages.items():
+        path = tmp_path / name
+        path.write_text(f"# Page\n\n### dialog\n- selector: `div.dialog`\n{bullets}\n", encoding="utf-8")
+        meta = dict(line[2:].split(": ", 1) for line in bullets.splitlines())
+        nodes.append(UINode(type="component", kind="section", id=f"{name}#dialog", path=path,
+                            anchor="dialog", meta={"selector": "div.dialog", **meta}))
+    graph = Graph(root=tmp_path, org_name="acme", profile="full", doc_roots={}, ui_nodes=nodes)
+
+    assert screen_components(graph)["screen.md"][0].conditional is True
 
 
 def test_a_selector_that_addresses_by_role_matches_the_role_the_scan_recorded() -> None:

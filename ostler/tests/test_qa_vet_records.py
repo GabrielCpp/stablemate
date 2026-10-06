@@ -348,6 +348,20 @@ def test_a_failed_verdict_puts_what_the_page_showed_on_the_ledger(repo: Path) ->
     assert "matched at x=0, y=88, 240x760" == records["PASS"]["params"]["actual"]
 
 
+def test_a_failed_verdict_is_the_book_s_on_the_page_of_the_component_it_judged(repo: Path) -> None:
+    """A scenario that covers no claim of the component still files the failure where the component is written."""
+    _book(repo)
+    shot = _shot(repo, [_region("navigation", "nav.toc", (0, 88, 240, 760))])
+    driver = _driver(repo)
+
+    result = driver._grade("s-1", [], _records(shot), "", 0, timed_out=False)
+
+    [failed] = result.failed_checks
+    assert failed.cause is Cause.BOOK
+    assert len(failed.covers) == 1
+    assert failed.covers[0].startswith(f"okf:{SCREEN}#")
+
+
 def test_a_vet_of_a_screen_the_walk_never_reached_is_a_hard_stop(repo: Path) -> None:
     """The screen is an argument and the pixels are an observation; nothing else related them."""
     _book(repo)
