@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+import pytest
+
 from ostler.qa.harness_host import load_harness_module
 
 elements = load_harness_module("ostler_qa_elements")
@@ -75,3 +77,33 @@ def test_a_key_that_neither_clicks_nor_opens_anything_does_not_activate() -> Non
     assert elements.read_focus(shut, {"activates": "Enter"}).activated is False
     already_open = _Control(_Page(clicks_on_key=False), expanded=("true", "true"))
     assert elements.read_focus(already_open, {"activates": "Enter"}).activated is False
+
+
+class _Unrendered:
+    """A locator whose element the page never rendered: any wait on it outlasts the scenario."""
+
+    def count(self) -> int:
+        return 0
+
+    def is_enabled(self) -> bool:
+        raise TimeoutError("Locator.is_enabled: Timeout 30000ms exceeded.")
+
+    def focus(self) -> None:
+        raise TimeoutError("Locator.focus: Timeout 30000ms exceeded.")
+
+
+_CHECKS = {
+    "actionable": (elements.read_control("actionable"), elements.verify_actionable),
+    "inert": (elements.read_control("inert"), elements.verify_inert),
+    "focusable": (elements.read_focus, elements.verify_focusable),
+}
+
+
+@pytest.mark.parametrize("check", sorted(_CHECKS))
+def test_a_control_the_page_never_rendered_fails_its_check_instead_of_aborting_the_scenario(
+    check: str, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(elements, "ATTACH_WAIT_S", 0.0)
+    read, judge = _CHECKS[check]
+    result = judge(read(_Unrendered(), {}), {})
+    assert (result.passed, result.actual) == (False, {"present": False})

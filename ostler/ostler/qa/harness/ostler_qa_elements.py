@@ -70,11 +70,34 @@ def verify_hidden(reading: VisibilityReading, args: Args) -> Verdict:
     return verdict(not reading.shown, {"visible": reading.shown}, {"visible": False})
 
 
+ATTACH_WAIT_S = 5.0
+
+
+def _attached(observed: object) -> bool:
+    """Whether the locator matches an element, once a screen that renders it late has had time to."""
+    count = getattr(observed, "count", None)
+    if not callable(count):
+        return True
+    deadline = time.monotonic() + ATTACH_WAIT_S
+    while not count():
+        if time.monotonic() >= deadline:
+            return False
+        time.sleep(0.1)
+    return True
+
+
+_ABSENT = {"present": False}
+
+
 @dataclass(frozen=True)
 class ControlReading:
-    """Whether the product will let a user act on this control."""
+    """Whether the control is on the page, and whether the product will let a user act on it."""
 
     enabled: bool
+    present: bool = True
+
+    def actual(self) -> dict[str, bool]:
+        return {"actionable": self.enabled} if self.present else _ABSENT
 
 
 def read_control(check: str) -> Callable[[object, Args], ControlReading]:
@@ -85,17 +108,19 @@ def read_control(check: str) -> Callable[[object, Args], ControlReading]:
                 f"{check} observes whether a control accepts the action — pass the element "
                 f"itself, not {type(observed).__name__}"
             )
+        if not _attached(observed):
+            return ControlReading(enabled=False, present=False)
         return ControlReading(enabled=bool(is_enabled()))
 
     return read
 
 
 def verify_actionable(reading: ControlReading, args: Args) -> Verdict:
-    return verdict(reading.enabled, {"actionable": reading.enabled}, {"actionable": True})
+    return verdict(reading.present and reading.enabled, reading.actual(), {"actionable": True})
 
 
 def verify_inert(reading: ControlReading, args: Args) -> Verdict:
-    return verdict(not reading.enabled, {"actionable": reading.enabled}, {"actionable": False})
+    return verdict(reading.present and not reading.enabled, reading.actual(), {"actionable": False})
 
 
 @dataclass(frozen=True)
@@ -104,6 +129,7 @@ class FocusReading:
 
     focused: bool
     activated: bool | None
+    present: bool = True
 
 
 def read_focus(observed: object, args: Args) -> FocusReading:
@@ -114,6 +140,8 @@ def read_focus(observed: object, args: Args) -> FocusReading:
             f"focusable observes a control through real keyboard focus — pass the element "
             f"itself, not {type(observed).__name__}"
         )
+    if not _attached(observed):
+        return FocusReading(focused=False, activated=None, present=False)
     focus()
     evaluate = getattr(observed, "evaluate")
     focused = bool(evaluate("el => el === document.activeElement"))
@@ -140,6 +168,8 @@ def _opened(held: object) -> bool:
 
 
 def verify_focusable(reading: FocusReading, args: Args) -> Verdict:
+    if not reading.present:
+        return verdict(False, _ABSENT, {"focused": True, "activated": True} if "activates" in args else {"focused": True})
     if reading.activated is None:
         return verdict(reading.focused, {"focused": reading.focused}, {"focused": True})
     return verdict(
