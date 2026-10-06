@@ -373,3 +373,32 @@ if __name__ == "__main__":
     test_a_message_is_reassembled_across_however_many_packets_it_takes()
     test_a_request_over_its_limit_is_ignored_and_the_run_survives()
     print("ok")
+
+
+def test_a_stop_reaches_a_run_whose_dashboard_queued_requests_while_a_long_step_ran() -> None:
+    """A run takes requests only between the steps of a long pass, and a dashboard polls it every few seconds meanwhile, so the operator's stop arrives behind a queue rather than being turned away."""
+    with tempfile.TemporaryDirectory() as tmp:
+        run_dir = Path(tmp)
+        channel = SocketChannel.open(run_dir)
+        pollers = []
+        for _ in range(8):
+            poller = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+            poller.settimeout(1.0)
+            poller.connect(str(run_dir / control.SOCKET_FILE))
+            poller.sendall((Request(action=control.STATUS).to_json() + "\n").encode("utf-8"))
+            pollers.append(poller)
+        answered: list[dict[str, object]] = []
+        caller = threading.Thread(target=lambda: answered.append(control.send(run_dir, Request(action=control.STOP))))
+        caller.start()
+        try:
+            request = wait_until(None, timeout=5.0, clock=FakeClock(), channel=channel, tick=0.05)
+            assert request is not None
+            assert request.action == control.STOP
+            channel.reply({"ok": True})
+        finally:
+            caller.join(timeout=5)
+            for poller in pollers:
+                poller.close()
+            channel.close()
+
+        assert answered == [{"ok": True}]

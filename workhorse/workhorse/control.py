@@ -9,6 +9,7 @@ import os
 import select
 import socket
 import tempfile
+import time
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -36,6 +37,10 @@ _CHUNK = 64 * 1024
 REQUEST_LIMIT = 64 * 1024
 
 REPLY_LIMIT = 64 * 1024 * 1024
+
+BACKLOG = 64
+
+CONNECT_RETRY_S = 0.1
 
 logger = logging.getLogger(__name__)
 
@@ -145,7 +150,7 @@ class SocketChannel:
         listener = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
         listener.bind(str(path))
         os.chmod(path, 0o600)
-        listener.listen(1)
+        listener.listen(BACKLOG)
         listener.setblocking(False)
         return cls(path, listener)
 
@@ -360,13 +365,7 @@ def wait_until(
 def send(run_dir: str | Path, request: Request, *, timeout: float = 5.0) -> dict[str, object]:
     """Deliver `request` to the run listening on `run_dir` and return its reply."""
     path = _socket_path(Path(run_dir))
-    client = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-    client.settimeout(timeout)
-    try:
-        client.connect(str(path))
-    except (FileNotFoundError, ConnectionRefusedError) as exc:
-        client.close()
-        raise FileNotFoundError(f"no run is listening on {path}") from exc
+    client = _connected(path, timeout)
     try:
         client.sendall((request.to_json() + "\n").encode("utf-8"))
         try:
@@ -382,6 +381,26 @@ def send(run_dir: str | Path, request: Request, *, timeout: float = 5.0) -> dict
         return reply if isinstance(reply, dict) else {}
     finally:
         client.close()
+
+
+def _connected(path: Path, timeout: float) -> socket.socket:
+    """A client connected to `path`, waiting up to `timeout` while a run between two waits has a full queue."""
+    deadline = time.monotonic() + timeout
+    while True:
+        client = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        client.settimeout(timeout)
+        try:
+            client.connect(str(path))
+        except (FileNotFoundError, ConnectionRefusedError) as exc:
+            client.close()
+            raise FileNotFoundError(f"no run is listening on {path}") from exc
+        except BlockingIOError as exc:
+            client.close()
+            if time.monotonic() >= deadline:
+                raise TimeoutError(f"the run on {path} took no request for {timeout:g}s: its queue stayed full") from exc
+            time.sleep(CONNECT_RETRY_S)
+        else:
+            return client
 
 
 def listening(run_dir: str | Path) -> bool:
