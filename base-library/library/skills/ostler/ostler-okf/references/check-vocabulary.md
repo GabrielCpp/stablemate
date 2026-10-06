@@ -342,6 +342,7 @@ call grammar as a check and refused against its own names:
 | `click(locator*)` | a control has been operated once — an expander opened, a row selected | web, mobile |
 | `press(locator*, key*)` | a real keypress has reached a control (focus order, a key-handled shortcut) | web, mobile |
 | `select(locator*, option*)` | a chooser holds a stated option | web |
+| `visit(path*)` | the browser is at an address the reader typed or followed: an unknown route segment, a deep link, a query no link builds | web |
 | `body(field*, value*)` | a member of the request this step sends carries a stated value | http |
 | `header(name*, value*)` | the request this step sends carries a stated header, such as the token a sign-in fixture minted | http |
 
@@ -366,3 +367,8 @@ performance that does not exist.
 chooser is a screen of its own, and arranging one there is the steps that reach it, not one act.
 A `mobile` target facing `arrange: select(…)` gaps rather than emitting — which is the driver
 list doing its job, not a hole in the vocabulary.
+
+**`visit` names an address, not a control.** Its `path` is what follows the origin and starts
+with `/`, as `visit(path="/fr/guide?tab=2")`. The run supplies the origin, so a book never
+spells a host. Reach for it when no link leads to the state, such as a locale the app does not
+serve.

@@ -82,6 +82,12 @@ just made. Without such a capture, the flow's `fixture:` supplies it when exactl
 `provides:` a key of that name. A name neither supplies stays a template, and the compiler
 files it as `unresolved-precondition` on the step.
 
+On a `web` surface, a step whose node fires on `trigger: load` or `trigger: navigate` is an
+arrival. The reader reaches it by typing or following an address, not by a click. The walk
+performs the node's own `arrange:` acts, so `arrange: visit(path="/de")` opens `/de`. A node
+that arranges nothing opens the screen it sits on, by the book's navigation path. The compiler
+files an arrival that has neither as `uncompilable-claim`.
+
 A step on an `http` surface sends what its endpoint arranges. Its headers and body are the
 endpoint's `arrange:` acts under its claims, never the ones under its `errors:`. Its query
 string is the one the endpoint's own `http_status` row spells. A flow carries no `arrange:` of
