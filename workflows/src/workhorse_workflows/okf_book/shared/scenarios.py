@@ -24,6 +24,7 @@ SPEC_DIR = "spec"
 PLAN_NAME = "qa_plan.py"
 RUN_NAME = "run-summary.json"
 REPEAT_STOP = 12
+SLOW_FIXTURE_S = 600.0
 OBLIGATION_PAGE = re.compile(r"^okf:(?P<page>[^#]+?\.md)(?:[#:]|$)")
 PLAN_FRAME = re.compile(rf'File "[^"]*{re.escape(PLAN_NAME)}", line (?P<line>\d+)')
 CLAIM_MARK = re.compile(r"^\s*# (?P<claim>okf:\S+)")
@@ -121,6 +122,28 @@ class ScenarioOutcome(BaseModel):
         return ""
 
 
+class FixtureBuilds(BaseModel):
+    """How many times the run built one book fixture, and how long those builds took in all."""
+
+    model_config = ConfigDict(frozen=True, extra="ignore")
+
+    name: str
+    page: str
+    lifetime: str
+    builds: int
+    seconds: float
+
+    def slow_problem(self) -> PageProblem | None:
+        """The fixture's page told to build once per run what each scenario rebuilt, when its builds took SLOW_FIXTURE_S or more in all."""
+        if self.lifetime != "scenario" or self.builds < 2 or self.seconds < SLOW_FIXTURE_S:
+            return None
+        return PageProblem(self.page, (
+            f"the run built this fixture {self.builds} times, {self.seconds / self.builds:.0f} s each and "
+            f"{self.seconds / 60:.0f} min in all, because it has `lifetime: scenario`. Move the steps that arrange "
+            "what no scenario changes into a fixture this one `needs:`, which keeps the default `lifetime: lap` and "
+            "is built once per run, and keep here only what each scenario must find fresh."))
+
+
 class RunSummary(BaseModel):
     """What running the plan did: its status, each scenario's outcome, what stopped it, and the verdict each claim ended with."""
 
@@ -133,6 +156,7 @@ class RunSummary(BaseModel):
     report_path: str = Field(default="", validation_alias="report")
     signatures: tuple[Signature, ...] = ()
     verdicts: dict[str, Verdict] = {}
+    fixture_builds: tuple[FixtureBuilds, ...] = ()
 
     @property
     def failed_scenarios(self) -> tuple[str, ...]:
@@ -154,10 +178,11 @@ class RunSummary(BaseModel):
         requests failed on it, and a check another party must fix is left to its escalation. A check made for one claim is reported on that claim's page alone, naming its node. A scenario
         stopped inside the compiled *plan_source* is reported at the obligation it stopped in, and on
         that obligation's page the problem names its node. A journey stopped at a step is also
-        reported on the page of the node that step performs, which the scenario covers no claim of.
+        reported on the page of the node that step performs, which the scenario covers no claim of. A
+        `lifetime: scenario` fixture whose builds took SLOW_FIXTURE_S or more in all is reported on its own page.
         """
         pages_by_scenario = {scenario.id: scenario.pages for scenario in scenarios}
-        grouped: dict[str, list[PageProblem]] = {}
+        grouped = self._slow_fixtures()
         requests = self._requests_by_precondition()
         for signature in self.signatures:
             if signature.cause is Cause.ARRANGEMENT and signature.precondition:
@@ -183,6 +208,11 @@ class RunSummary(BaseModel):
                 node = obligation_node(claim) if obligation_page(claim) == page else ""
                 grouped.setdefault(page, []).extend(PageProblem(page, f"{failure_prefix}: {line}", node=node) for line in lines)
         return {page: tuple(grouped[page]) for page in sorted(grouped)}
+
+    def _slow_fixtures(self) -> dict[str, list[PageProblem]]:
+        """Each fixture page whose per-scenario builds were slow, with the problem that says so."""
+        slow = [problem for builds in self.fixture_builds if (problem := builds.slow_problem()) is not None]
+        return {problem.page: [problem] for problem in slow}
 
     def signature_pages(self, signature: Signature) -> tuple[str, ...]:
         """The pages the checks of *signature* live in: the precondition page that arranged them, then the pages of the claims they cover, in path order."""

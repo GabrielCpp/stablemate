@@ -200,6 +200,22 @@ def test_a_check_from_a_run_that_attributed_nothing_is_the_books() -> None:
     assert summary.signatures == ()
 
 
+def test_a_per_scenario_fixture_the_run_rebuilt_for_ten_minutes_lands_on_its_page_and_a_lap_one_does_not() -> None:
+    session = "docs/features/tally/fixtures/editor-session.md"
+    stack = "docs/features/tally/fixtures/test-stack.md"
+    quick = "docs/features/tally/fixtures/signed-in.md"
+    summary = RunSummary.model_validate({"status": "passed", "fixture_builds": [
+        {"name": "editor-session", "page": session, "lifetime": "scenario", "builds": 20, "seconds": 800.0},
+        {"name": "test-stack", "page": stack, "lifetime": "lap", "builds": 30, "seconds": 1200.0},
+        {"name": "signed-in", "page": quick, "lifetime": "scenario", "builds": 200, "seconds": 300.0},
+    ]})
+
+    by_page = summary.failures_by_page(())
+
+    assert list(by_page) == [session]
+    assert by_page[session][0].text.startswith("the run built this fixture 20 times, 40 s each and 13 min in all")
+
+
 def test_a_run_summary_reads_back_its_signatures() -> None:
     written = {"cause": "environment", "precondition": "", "status": "could not connect", "shape": "GET /entries/…",
                "count": 3, "sample": "lists"}
