@@ -216,7 +216,8 @@ class OkfBook(BookFlow):
         if exercised.summary is not None:
             _ = write_run(self.records_dir, exercised.summary)
             _ = record_lap(self.records_dir, lap_counts(service, exercised.summary.signatures, len(exercised.summary.gaps),
-                                                        probes_only=exercised.stopped_at_probes))
+                                                        probes_only=exercised.stopped_at_probes,
+                                                        stopped_early=bool(exercised.summary.stopped_on_repeat)))
         led, findings = self._owned(service, exercised)
         self._block_escalated_signatures(service, led, led_escalations(exercised, led, findings) if findings else None)
         if exercised.passed:

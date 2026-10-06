@@ -145,7 +145,7 @@ class FixtureBuilds(BaseModel):
 
 
 class RunSummary(BaseModel):
-    """What running the plan did: its status, each scenario's outcome, what stopped it, and the verdict each claim ended with."""
+    """What running the plan did: its status, each scenario's outcome, what stopped it, and the verdict each claim ended with. A run stopped on one repeated failure says so apart from its runner errors, since the scenarios it ran measured the book."""
 
     model_config = ConfigDict(frozen=True, extra="ignore", validate_by_name=True, validate_by_alias=True)
 
@@ -153,6 +153,7 @@ class RunSummary(BaseModel):
     scenarios: dict[str, ScenarioOutcome] = {}
     problems: tuple[str, ...] = ()
     runner_errors: tuple[str, ...] = ()
+    stopped_on_repeat: str = ""
     report_path: str = Field(default="", validation_alias="report")
     signatures: tuple[Signature, ...] = ()
     verdicts: dict[str, Verdict] = {}

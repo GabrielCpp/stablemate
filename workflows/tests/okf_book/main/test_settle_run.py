@@ -193,6 +193,17 @@ def test_a_book_run_after_a_probe_stopped_one_is_measured_against_the_last_book_
     assert not [blocker for blocker in read_blockers(tmp_path) if blocker.side is Side.WORKFLOW]
 
 
+def test_a_whole_book_run_after_one_that_stopped_early_is_measured_against_nothing(tmp_path: Path) -> None:
+    book = _book(tmp_path)
+    early = _book_run(replace(MISREAD, count=3))
+    assert early.summary is not None
+    stopped = early.model_copy(update={"summary": early.summary.model_copy(update={"stopped_on_repeat": "the run stopped"})})
+    _ = book.settle_run(index=0, run_failures_repaired=False, exercised=stopped)
+
+    assert _settle_and_map(book, _book_run(replace(MISREAD, count=9))) == "copy_source"
+    assert [lap.stopped_early for lap in read_laps(tmp_path)] == [True, False]
+
+
 def test_a_book_run_no_lower_than_the_last_book_run_stalls_with_the_probe_lap_marked_in_its_trend(tmp_path: Path) -> None:
     book = _book(tmp_path)
     _ = book.settle_run(index=0, run_failures_repaired=False, exercised=_book_run(replace(MISREAD, count=9)))

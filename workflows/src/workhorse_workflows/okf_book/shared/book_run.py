@@ -53,7 +53,7 @@ class ExerciseResult(BaseModel):
 
 
 def _failure_lines(summary: RunSummary) -> list[str]:
-    lines: list[str] = []
+    lines = [f"problem: {summary.stopped_on_repeat}"] if summary.stopped_on_repeat else []
     for name in summary.failed_scenarios:
         outcome = summary.scenarios[name]
         lines.append(f"scenario {name}: {outcome.status}, {outcome.failures} of {outcome.assertions} checks failed")
