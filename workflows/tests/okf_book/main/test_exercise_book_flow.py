@@ -40,6 +40,9 @@ def _stub_run(monkeypatch: pytest.MonkeyPatch, stack: StackReadiness) -> list[tu
     def _bring_up(*_args: object) -> StackReadiness:
         return stack
 
+    def _serving(_owned: tuple[str, ...]) -> str:
+        return ""
+
     def _run_plan(*_args: object) -> ExerciseResult:
         raise RuntimeError("the runner died")
 
@@ -51,6 +54,7 @@ def _stub_run(monkeypatch: pytest.MonkeyPatch, stack: StackReadiness) -> list[tu
 
     monkeypatch.setattr(exercise_book_flow, "compile_scenarios", _compile)
     monkeypatch.setattr(exercise_book_flow, "bring_up", _bring_up)
+    monkeypatch.setattr(exercise_book_flow, "stack_stopped", _serving)
     monkeypatch.setattr(exercise_book_flow, "run_plan", _run_plan)
     monkeypatch.setattr(exercise_book_flow, "release_stack", _release_stack)
     monkeypatch.setattr(exercise_book_flow, "release", _release)
@@ -77,3 +81,58 @@ def test_a_stack_that_failed_to_come_up_stops_the_servers_it_started(
 
     assert result.stack_down
     assert released == [("4242",)]
+
+
+def _stub_dead_server(monkeypatch: pytest.MonkeyPatch, gone: list[bool]) -> tuple[list[tuple[str, ...]], list[str]]:
+    """A stack whose server each check in *gone* reports dead or serving, in turn, and a runner that passes."""
+    released: list[tuple[str, ...]] = []
+    owned = iter(("4242", "4343", "4444"))
+    brought: list[str] = []
+
+    def _compile(*_args: object) -> CompileOutcome:
+        return CompileOutcome(gaps=(), planned=True)
+
+    def _bring_up(*_args: object) -> StackReadiness:
+        brought.append(next(owned))
+        return StackReadiness(up=True, serving=True, notes="", owned=(brought[-1],))
+
+    def _stopped(_owned: tuple[str, ...]) -> str:
+        return "the server exited" if gone.pop(0) else ""
+
+    def _run_plan(*_args: object) -> ExerciseResult:
+        return ExerciseResult(lines=(), passed=True)
+
+    def _release_stack(_logger: logging.Logger, pgids: tuple[str, ...]) -> None:
+        released.append(tuple(pgids))
+
+    monkeypatch.setattr(exercise_book_flow, "compile_scenarios", _compile)
+    monkeypatch.setattr(exercise_book_flow, "bring_up", _bring_up)
+    monkeypatch.setattr(exercise_book_flow, "stack_stopped", _stopped)
+    monkeypatch.setattr(exercise_book_flow, "run_plan", _run_plan)
+    monkeypatch.setattr(exercise_book_flow, "release_stack", _release_stack)
+    return released, brought
+
+
+def test_a_server_gone_before_the_first_scenario_comes_up_again_before_the_run(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    released, brought = _stub_dead_server(monkeypatch, [True])
+
+    result = _drive(tmp_path)
+
+    assert result.passed
+    assert brought == ["4242", "4343"]
+    assert released == [("4242",), ("4343",)]
+
+
+def test_a_server_that_dies_again_after_coming_back_is_run_once_rather_than_restarted_forever(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    gone = [True, True]
+    released, brought = _stub_dead_server(monkeypatch, gone)
+
+    _ = _drive(tmp_path)
+
+    assert brought == ["4242", "4343"]
+    assert released == [("4242",), ("4343",)]
+    assert gone == [True]
