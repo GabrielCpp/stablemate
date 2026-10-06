@@ -368,6 +368,7 @@ def build_context(
         "verificationIndex": verification_index,
         "navigation": _navigation(snapshot.head_dump),
         "cliBinaries": _run_binaries_by_path(snapshot.book),
+        "serverOrigins": _server_origins(snapshot.book),
         "scenarioFixtures": _scenario_fixtures(snapshot.book),
         "browserFixtures": _browser_fixtures(snapshot.book),
         "fragmentHosts": _fragment_hosts(snapshot.book),
@@ -1362,6 +1363,25 @@ def _cli_binaries(book: Mapping[str, BookNode]) -> dict[str, str]:
         if binary:
             binaries[node.path] = binary
     return binaries
+
+
+def _server_origins(book: Mapping[str, BookNode]) -> dict[str, str]:
+    """The origin a page's HTTP claims are sent to, keyed by file `path`: a `server` file's own `entry-url:`, and the same for every page whose `server:` links that file."""
+    origins: dict[str, str] = {}
+    for node in book.values():
+        if node.type != "server" or node.kind != "file":
+            continue
+        values = node.bullets.get(reach.ENTRY_URL_BULLET, ())
+        origin = reach.url_origin(bullet_text(values[0])) if values else ""
+        if origin:
+            origins[node.path] = origin
+    linked: dict[str, str] = {}
+    for node in book.values():
+        for edge in node.edges:
+            origin = origins.get(edge.to.split("#", 1)[0]) if edge.via == "server" else None
+            if origin and node.path not in origins:
+                linked[node.path] = origin
+    return origins | linked
 
 
 def _scenario_fixtures(book: Mapping[str, BookNode]) -> list[str]:

@@ -7,8 +7,10 @@ import re
 from dataclasses import dataclass
 from dataclasses import field
 from typing import Any
+from urllib.parse import urlparse
 
 from ostler import acts as acts_mod
+from ostler import reach
 from ostler.checks import CheckValue
 from ostler.checks import _rooted
 from ostler.qa import references
@@ -40,6 +42,7 @@ from ostler.qa.plan_source import check_observes
 from ostler.qa.plan_source import decline_captures
 from ostler.qa.plan_source import operand_for
 from ostler.qa.plan_source import probe_function_name
+from ostler.qa.plan_source import python_identifier
 from ostler.qa.plan_source import python_literal
 from ostler.qa.plan_source import scenario_lines
 from ostler.qa.plan_source import target_lines
@@ -102,6 +105,15 @@ def _expect_status(rows: tuple[CallRow, ...]) -> int | None:
     return None
 
 
+def _api_target(surface: str, source: str, book: BookIndex) -> tuple[str, str | None]:
+    """The target a page's HTTP scenario runs on and its base URL: the server the page names, when its origin is not the surface's."""
+    surface_url = book.resolved_api_base_urls.get(surface)
+    origin = book.server_origins.get(source)
+    if not origin or (surface_url and reach.url_origin(surface_url) == origin):
+        return target_variable(surface, "api"), surface_url
+    return f"{target_variable(surface, 'api')}_{python_identifier(urlparse(origin).netloc)}", origin
+
+
 def api_scenarios(
     http_owed: list[Obligation], book: BookIndex, sinks: PlanSinks, emitted: EmittedScenarios,
 ) -> list[str]:
@@ -122,10 +134,8 @@ def api_scenarios(
         if not covered:
             continue
         emitted.covered.update(covered)
-        surface = obligations[0].surface
-        target_var = target_variable(surface, "api")
-        base_url = f", base_url={python_literal(book.resolved_api_base_urls.get(surface))}"
-        lines.extend(target_lines(target_var, PYTHON.name, base_url, emitted))
+        target_var, base_url = _api_target(obligations[0].surface, source, book)
+        lines.extend(target_lines(target_var, PYTHON.name, f", base_url={python_literal(base_url)}", emitted))
         scenario = SourceScenario(
             source, target_var, [o.id for o in declared if o.id in covered],
             arrangement, body)
@@ -149,10 +159,8 @@ def probe_scenarios(http_owed: list[Obligation], book: BookIndex, emitted: Emitt
             if probe is None or probe.fixture in probed:
                 continue
             probed.add(probe.fixture)
-            surface = obligation.surface
-            target_var = target_variable(surface, "api")
-            base_url = f", base_url={python_literal(book.resolved_api_base_urls.get(surface))}"
-            lines.extend(target_lines(target_var, PYTHON.name, base_url, emitted))
+            target_var, base_url = _api_target(obligation.surface, source, book)
+            lines.extend(target_lines(target_var, PYTHON.name, f", base_url={python_literal(base_url)}", emitted))
             scenario = SourceScenario(
                 source, target_var, [obligation.id], arrangement_of([obligation]), probe.body(obligation.id),
                 objective=f"Whether {probe.fixture} builds on its own and a caller it signs in is answered on {probe.route}.")

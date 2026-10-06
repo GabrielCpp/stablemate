@@ -3059,6 +3059,54 @@ def test_two_surfaces_sharing_one_driver_kind_each_keep_their_own_address() -> N
     assert "    target=zulu_service_api,\n" in source
 
 
+def test_an_endpoint_on_its_own_server_is_sent_to_that_server_and_not_the_surface() -> None:
+    oid = "okf:docs/features/acme/http/manifest.md#manifest:does:1"
+    source = "docs/features/acme/http/manifest.md"
+    context = _navigation_context(
+        _obligation(
+            oid,
+            source=source,
+            surface="web-app",
+            locators={"route": ["GET /v1/manifest"]},
+            checksDeclared=[
+                {"call": "the response", "name": "http_status", "args": {"code": 200, "path": "/v1/manifest"}},
+            ],
+            fixturesDeclared=[{"name": "seeded-manifest", "args": [], "provides": "a manifest exists"}],
+        ),
+        navigation={"web-app": {"driver": "http", "entryUrl": "http://localhost:5173"}},
+    )
+    context["serverOrigins"] = {source: "http://127.0.0.1:8099"}
+    _result = _compile_plan_gaps(context, story="demo-story")
+    assert isinstance(_result, Plan)
+    assert _result.gaps == []
+    assert 'web_app_api_127_0_0_1_8099 = target("web_app_api_127_0_0_1_8099", driver="python", ' \
+        'base_url="http://127.0.0.1:8099")' in _result.source
+    assert "localhost:5173" not in _result.source
+
+
+def test_an_endpoint_whose_server_is_the_surface_s_keeps_the_surface_target() -> None:
+    oid = "okf:docs/features/acme/api.md#post-things:does:1"
+    source = "docs/features/acme/api.md"
+    context = _navigation_context(
+        _obligation(
+            oid,
+            source=source,
+            surface="api-service",
+            locators={"route": ["GET /api/things"]},
+            checksDeclared=[
+                {"call": "the response", "name": "http_status", "args": {"code": 200, "path": "/api/things"}},
+            ],
+            fixturesDeclared=[{"name": "seeded-thing", "args": [], "provides": "a thing exists"}],
+        ),
+        navigation={"api-service": {"driver": "http", "entryUrl": "http://localhost:18101"}},
+    )
+    context["serverOrigins"] = {source: "http://localhost:18101"}
+    _result = _compile_plan_gaps(context, story="demo-story")
+    assert isinstance(_result, Plan)
+    assert 'api_service_api = target("api_service_api", driver="python", ' \
+        'base_url="http://localhost:18101")' in _result.source
+
+
 def test_a_surface_with_no_entry_url_and_no_fallback_gaps_instead_of_guessing() -> None:
     """No `--base-url` and no book-stated `entry-url:` on this obligation's surface: the compiler drops it as `undeclared-entry-url` rather than compiling it against an address nobody wrote down — the failure mode Phase 2h exists to replace (one CLI default applied to every surface, right or wrong)."""
     oid = "okf:docs/features/acme/api.md#post-things:does:1"

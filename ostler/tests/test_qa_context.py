@@ -30,7 +30,7 @@ from ostler.qa.context import (
     select_obligations,
     validate_context,
 )
-from ostler.qa.obligation_frame import BookNode, declared_locators
+from ostler.qa.obligation_frame import BookNode, NodeEdge, declared_locators
 
 from conftest import write
 
@@ -360,6 +360,27 @@ def test_cli_binaries_key_the_owning_files_binary_by_shared_path(tmp_path: Path)
     packet = build_context(tmp_path, base=base, source_roots={"demo": ["app"]})
 
     assert packet["cliBinaries"] == {"docs/features/demo/tally.md": "tally"}
+
+
+def test_a_page_s_http_origin_is_the_entry_url_of_the_server_it_names() -> None:
+    server = "docs/features/demo/http/mock-server.md"
+    endpoint = "docs/features/demo/http/manifest.md"
+    book = {
+        server: BookNode(id=server, type="server", page_type="server", surface="demo", path=server, kind="file",
+                         bullets={"entry-url": ("http://127.0.0.1:8099/base",)}, edges=()),
+        endpoint: BookNode(id=endpoint, type="endpoint", page_type="endpoint", surface="demo", path=endpoint,
+                           kind="file", bullets={},
+                           edges=(NodeEdge(to=server, via="server", href="mock-server.md"),)),
+        "docs/features/demo/other.md": BookNode(id="docs/features/demo/other.md", type="endpoint",
+                                                page_type="endpoint", surface="demo",
+                                                path="docs/features/demo/other.md", kind="file",
+                                                bullets={}, edges=()),
+    }
+
+    assert context_mod._server_origins(book) == {
+        server: "http://127.0.0.1:8099",
+        endpoint: "http://127.0.0.1:8099",
+    }
 
 
 def test_a_binary_explained_after_its_name_is_read_as_its_name(tmp_path: Path):

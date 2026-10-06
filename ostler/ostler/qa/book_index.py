@@ -38,6 +38,7 @@ class BookIndex:
     hop_acts: dict[tuple[str, str], list[CallRow]] = field(default_factory=dict[tuple[str, str], list[CallRow]])
     fragment_hosts: dict[str, str] = field(default_factory=dict[str, str])
     guards_by_node: dict[str, list[Obligation]] = field(default_factory=dict[str, list[Obligation]])
+    server_origins: dict[str, str] = field(default_factory=dict[str, str])
 
 
 @dataclass(frozen=True)

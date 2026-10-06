@@ -187,7 +187,7 @@ RUNBOOK_TYPE = "runbook"
 SURFACES_BULLET = "surfaces"
 
 
-def _origin(url: str) -> str:
+def url_origin(url: str) -> str:
     """``scheme://host[:port]`` off a full ``entry-url:`` value; empty when it has none."""
     parsed = urlparse(url)
     return f"{parsed.scheme}://{parsed.netloc}" if parsed.scheme and parsed.netloc else ""
@@ -232,14 +232,14 @@ def _surface_value(dump: dict, surface: str, key: str) -> str | None:
 
 def entry_origin(dump: dict, surface: str) -> str | None:
     """The ``scheme://host[:port]`` a QA walk should open for *surface*; ``None`` if the book states none."""
-    origin = _origin(_surface_value(dump, surface, ENTRY_URL_BULLET) or "")
+    origin = url_origin(_surface_value(dump, surface, ENTRY_URL_BULLET) or "")
     if origin:
         return origin
     by_id = {n["id"]: n for n in dump["nodes"]}
     _path, server_id = root_path(graph_mod.subset(dump, surface))
     if server_id is None:
         return None
-    return _origin(bullet_value(by_id[server_id]["bullets"], ENTRY_URL_BULLET)) or None
+    return url_origin(bullet_value(by_id[server_id]["bullets"], ENTRY_URL_BULLET)) or None
 
 
 def surface_driver(dump: dict, surface: str) -> str | None:

@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 from collections.abc import Mapping
 from dataclasses import dataclass
+from dataclasses import field
 from typing import Any
 
 from ostler.qa.navigation import SurfaceNavigation
@@ -24,6 +25,7 @@ class ContextPacket:
     story_slug: str
     fragment_hosts: dict[str, str]
     browser_fixtures: frozenset[str] = frozenset()
+    server_origins: dict[str, str] = field(default_factory=dict[str, str])
 
     @property
     def owed(self) -> list[Obligation]:
@@ -76,4 +78,5 @@ def packet_of(context: Mapping[str, Any]) -> ContextPacket:
         story_slug=_string_table(context.get("story"), "story").get("slug", ""),
         fragment_hosts=_string_table(context.get("fragmentHosts"), "fragmentHosts"),
         browser_fixtures=_names(context.get("browserFixtures"), "browserFixtures"),
+        server_origins=_string_table(context.get("serverOrigins"), "serverOrigins"),
     )
