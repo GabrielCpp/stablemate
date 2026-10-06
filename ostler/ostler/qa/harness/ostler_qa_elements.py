@@ -1,4 +1,4 @@
-"""The verifiers that observe a page: whether an element is shown, takes an action, takes focus, how many were emitted, the title and the console."""
+"""The verifiers that observe a page: whether an element is shown and how many, takes an action, takes focus, how many were emitted, the title and the console."""
 
 from __future__ import annotations
 
@@ -25,13 +25,40 @@ def _readings(observed: object) -> tuple[str, ...]:
 
 @dataclass(frozen=True)
 class VisibilityReading:
-    """Whether the subject is shown, and every spelling of its text when the check reads text."""
+    """Whether the subject is shown, every spelling of its text when the check reads text, and how many are shown when it counts."""
 
     shown: bool
     readings: tuple[str, ...]
+    count: int | None = None
+
+
+COUNT_WAIT_S = 3.0
+
+
+def _shown(element: object, args: Args) -> bool:
+    if not getattr(element, "is_visible")():
+        return False
+    return "text" not in args or any(str_arg(args, "text") in each for each in _readings(element))
+
+
+def _count_shown(observed: object, args: Args) -> VisibilityReading:
+    """How many elements the locator matches are shown, once a screen that draws them late has had time to."""
+    count = getattr(observed, "count", None)
+    if not callable(count):
+        raise TypeError(f"`visible(count=...)` counts the elements a locator matches, not {type(observed).__name__}")
+    found = getattr(observed, "nth")
+    deadline = time.monotonic() + COUNT_WAIT_S
+    while True:
+        matches = count()
+        shown = sum(1 for index in range(matches if isinstance(matches, int) else 0) if _shown(found(index), args))
+        if shown == args["count"] or time.monotonic() >= deadline:
+            return VisibilityReading(shown=shown > 0, readings=(), count=shown)
+        time.sleep(0.1)
 
 
 def read_visibility(observed: object, args: Args) -> VisibilityReading:
+    if "count" in args:
+        return _count_shown(observed, args)
     is_visible = getattr(observed, "is_visible", None)
     if callable(is_visible):
         shown = bool(is_visible())
@@ -41,6 +68,8 @@ def read_visibility(observed: object, args: Args) -> VisibilityReading:
 
 
 def verify_visible(reading: VisibilityReading, args: Args) -> Verdict:
+    if "count" in args:
+        return verdict(reading.count == args["count"], {"shown": reading.count}, {"shown": args["count"]})
     if "text" not in args:
         return verdict(reading.shown, {"visible": reading.shown}, {"visible": True})
     text = reading.readings[0] if reading.readings else None

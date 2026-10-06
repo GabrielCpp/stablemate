@@ -67,7 +67,7 @@ def unobservable_gap(oid: str, name: str | None, driver: DriverSpec) -> Gap:
         remedy = (": this driver reads the page, its title, its address, what it stores in the browser, what "
                   "it copies, its console and every request it sends. Claim what "
                   "the screen shows with `visible`, `hidden`, `actionable` or `inert` on the control's anchor, "
-                  "the tab's title with `title`, the address bar with `url(equals=\"/path?query#fragment\")`, a "
+                  "how many it shows with `visible(locator=..., count=3)`, the tab's title with `title`, the address bar with `url(equals=\"/path?query#fragment\")`, a "
                   "localStorage value or IndexedDB records with `stored(key=...)` or "
                   "`stored(records=\"<database>/<store>\", text=..., count=...)`, what a copy action put on the "
                   "clipboard with `clipboard(text=...)`, a log line with `console`, a request the page sends or must "

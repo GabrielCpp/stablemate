@@ -64,6 +64,19 @@ class _Locator:
         return self._text
 
 
+class _Locators:
+    """Every element a locator matches, read one at a time by index."""
+
+    def __init__(self, elements: list[_Locator]) -> None:
+        self._elements = elements
+
+    def count(self) -> int:
+        return len(self._elements)
+
+    def nth(self, index: int) -> _Locator:
+        return self._elements[index]
+
+
 class _Keyboard:
     """The keypress half of a page, and the record of which key was pressed."""
 
@@ -598,8 +611,23 @@ def _plan_removed(_args: Mapping[str, checks.CheckValue]) -> _WitnessPlan:
     ])
 
 
+def _plan_counted(text: str, want: int, *, reads_text: bool) -> _WitnessPlan:
+    def shown(times: int, *, reading: str = text, visible: bool = True) -> _Locators:
+        return _Locators([_Locator(visible=visible, text=reading) for _ in range(times)])
+
+    mutations: list[tuple[str, object]] = [("one more is shown", shown(want + 1))]
+    if want != 0:
+        mutations.append(("one fewer is shown", shown(want - 1)))
+        mutations.append(("they are in the tree but not on the screen", shown(want, visible=False)))
+        if reads_text:
+            mutations.append(("they read something else", shown(want, reading=_OTHER)))
+    return _WitnessPlan.of(shown(want), mutations)
+
+
 def _plan_visible(args: Mapping[str, checks.CheckValue]) -> _WitnessPlan:
     text = str(args.get("text", "witness"))
+    if "count" in args:
+        return _plan_counted(text, _int(args["count"]), reads_text="text" in args)
     witness = _Locator(visible=True, text=text)
     mutations: list[tuple[str, object]] = [("the element is not on the page", _Locator(visible=False, text=text))]
     if "text" in args:

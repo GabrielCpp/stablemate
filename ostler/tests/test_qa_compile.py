@@ -1702,7 +1702,7 @@ def test_a_subject_only_verb_on_a_page_obligation_is_a_gap_not_a_silent_drop() -
     assert "not observable from the playwright driver" in gap.detail
     assert "`visible`, `hidden`, `actionable` or `inert`" in gap.detail
     assert "`title`" in gap.detail and "`console`" in gap.detail
-    assert "`url(" in gap.detail and "`stored(" in gap.detail and "`clipboard(" in gap.detail
+    assert "`url(" in gap.detail and "`stored(" in gap.detail and "`clipboard(" in gap.detail and "count=3)" in gap.detail
     assert 'emitted(event=\\"POST /v1/items/{id}\\", count=1)' not in gap.detail
     assert 'emitted(event="POST /v1/items/{id}", count=1)' in gap.detail
 

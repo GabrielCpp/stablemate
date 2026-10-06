@@ -415,6 +415,29 @@ def test_hidden_waits_for_a_closing_element_to_leave() -> None:
     assert harness.VERIFIERS["hidden"](_Matches(True, leaves_after=2), {}).passed is True
 
 
+def test_visible_with_a_count_counts_only_the_shown_matches(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(load_harness_module("ostler_qa_elements"), "COUNT_WAIT_S", 0.0)
+    verify = harness.VERIFIERS["visible"]
+    assert verify(_Matches(True, False, True, True), {"locator": "[role=tabpanel]", "count": 3}).passed is True
+    verdict = verify(_Matches(True, False, False), {"locator": "[role=tabpanel]", "count": 3})
+    assert verdict.passed is False
+    assert verdict.actual == {"shown": 1} and verdict.expected == {"shown": 3}
+
+
+def test_visible_with_a_count_and_text_counts_the_shown_matches_that_say_it(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(load_harness_module("ostler_qa_elements"), "COUNT_WAIT_S", 0.0)
+    panels = SimpleNamespace(
+        count=lambda: 3,
+        nth=lambda index: _StyledLocator(rendered=("Draft", "Draft", "Published")[index], dom=""),
+    )
+    assert harness.VERIFIERS["visible"](panels, {"locator": "li", "text": "Draft", "count": 2}).passed is True
+    assert harness.VERIFIERS["visible"](panels, {"locator": "li", "text": "Draft", "count": 3}).passed is False
+
+
+def test_visible_with_a_count_waits_for_a_screen_that_draws_late() -> None:
+    assert harness.VERIFIERS["visible"](_Matches(True, leaves_after=2), {"locator": "li", "count": 0}).passed is True
+
+
 class _Titled:
     def __init__(self, *titles: str) -> None:
         self._titles = list(titles)

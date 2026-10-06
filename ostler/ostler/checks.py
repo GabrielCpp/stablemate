@@ -187,9 +187,10 @@ CHECKS: tuple[CheckSpec, ...] = (
         params=(
             CheckParam("locator", "str", required=True, locator=True, identifies=True),
             CheckParam("text", "str"),
+            CheckParam("count", "int"),
         ),
-        excludes="an element present in the tree but not on the screen, and the right widget "
-                 "showing the wrong content",
+        excludes="an element present in the tree but not on the screen, the right widget "
+                 "showing the wrong content, and one panel drawn where the book promises three",
         observes="page",
     ),
     CheckSpec(

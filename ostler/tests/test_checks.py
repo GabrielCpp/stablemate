@@ -254,7 +254,7 @@ def test_a_signature_says_which_kind_of_string_an_argument_is() -> None:
     """`str` is three different obligations here — free prose, a path into the observed document, the anchor of a declared component — and an author writing a call has to know which."""
     assert checks.CHECK_BY_NAME["json_path"].signature().startswith("json_path(path*=<str> (path)")
     assert "locator*=<str> (locator)" in checks.CHECK_BY_NAME["visible"].signature()
-    assert "text=<str>)" in checks.CHECK_BY_NAME["visible"].signature()
+    assert "text=<str>, count=<int>)" in checks.CHECK_BY_NAME["visible"].signature()
 
 
 def test_a_signature_is_an_example_before_it_is_a_type() -> None:
