@@ -5,24 +5,11 @@ from __future__ import annotations
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from ostler import markdown, registry
+from ostler.qa.journey_steps import JourneyStep, journey_steps
 from ostler.untyped import JsonValue
 
 _LOCATOR_KEYS = tuple(sorted(registry.LOCATOR_KEYS))
 _LOCATOR_KEY_RENAME = {"exclusive-with": "exclusiveWith"}
-
-
-@dataclass(frozen=True, slots=True)
-class JourneyStep:
-    """One node a flow's `steps:` names: its id, the link the book wrote, its type and its surface."""
-
-    ref: str
-    href: str
-    node_type: str
-    surface: str
-
-    def row(self) -> dict[str, JsonValue]:
-        """The step as the obligation row carries it."""
-        return {"ref": self.ref, "href": self.href, "nodeType": self.node_type, "surface": self.surface}
 
 
 _SEGMENT_FIELDS = {"literal": "text", "bind": "path", "opaque": "expr"}
@@ -361,25 +348,6 @@ def linked_surface(node: BookNode, values: Iterable[str], book: Mapping[str, Boo
     return ""
 
 
-def _journey_steps(node: BookNode, book: Mapping[str, BookNode]) -> tuple[JourneyStep, ...]:
-    """The nodes a flow's `steps:` names, in the order the book wrote them."""
-    resolved = {edge.href: edge.to for edge in node.edges if edge.to and edge.href}
-    walk: list[JourneyStep] = []
-    for item in node.bullets.get("steps", ()):
-        for _text, href in markdown.extract_refs(item).links:
-            target_id = resolved.get(href, "")
-            target = book.get(target_id) if target_id else None
-            walk.append(
-                JourneyStep(
-                    ref=target_id,
-                    href=href,
-                    node_type=target.type if target else "",
-                    surface=target.surface if target else "",
-                )
-            )
-    return tuple(walk)
-
-
 def obligation_frame(
     node: BookNode, repeat: RepeatContract | None, book: Mapping[str, BookNode]
 ) -> ObligationFrame:
@@ -387,7 +355,7 @@ def obligation_frame(
     surface, steps = "", ()
     if node.type == "flow":
         surface = linked_surface(node, node.bullets.get("end", ()), book)
-        steps = _journey_steps(node, book)
+        steps = journey_steps(node, book)
     locators = declared_locators(node)
     extends_unresolved = False
     if node.type in ("interaction", "invocation"):

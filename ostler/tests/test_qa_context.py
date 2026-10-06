@@ -2591,7 +2591,7 @@ title: Items
 
 
 def test_a_flows_steps_reach_the_packet_in_the_order_the_book_wrote_them(tmp_path: Path):
-    """A journey is a sequence, and the packet has to carry it as one."""
+    """A journey is a sequence of what the reader does, and the packet carries it without the places it passes."""
     (tmp_path / "docs/features/acme/gui/screens").mkdir(parents=True)
     (tmp_path / "docs/features/acme/flows").mkdir(parents=True)
     (tmp_path / "app").mkdir()
@@ -2620,6 +2620,13 @@ title: Items
   - request: persist the item
 - verify: visible(locator="#saved")
 - code: app/items.py::save_item
+
+### clear-item
+- on: [save-button](#save-button)
+- trigger: click
+- does:
+  - request: clear the item
+- code: app/items.py::save_item
 """,
         encoding="utf-8",
     )
@@ -2632,7 +2639,8 @@ title: Save and return
 
 - start: [items](../gui/screens/items.md)
 - steps:
-  - [save-item](../gui/screens/items.md#save-item)
+  - [save-item](../gui/screens/items.md#save-item) on the [items](../gui/screens/items.md) screen
+  - [clear-item](../gui/screens/items.md#clear-item)
   - [items](../gui/screens/items.md)
 - end: [items](../gui/screens/items.md)
 - verify: visible(locator="../gui/screens/items.md#save-button")
@@ -2665,7 +2673,7 @@ title: Save and return
     assert walk and all(entry == walk[0] for entry in walk)
     assert walk[0] == [
         ("docs/features/acme/gui/screens/items.md#save-item", "interaction"),
-        ("docs/features/acme/gui/screens/items.md", "screen"),
+        ("docs/features/acme/gui/screens/items.md#clear-item", "interaction"),
     ]
     assert {step["surface"] for step in flow[0]["steps"]} == {"acme"}
 

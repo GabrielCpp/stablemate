@@ -133,7 +133,8 @@ def journey_target(
             "uncompilable-claim",
             "this flow's claim is about what its `steps:` did, and it names no steps to walk. "
             "A step is a `[label](page.md#node)` link to the control, endpoint or command it "
-            "performs, and a step written as a sentence links nothing")
+            "performs. A step written as a sentence links nothing, and a link to a screen, "
+            "component or field only says where a step happens or what it shows")
     unresolved = [step.href for step in steps if not step.ref]
     if unresolved:
         return ScenarioRefusal(
@@ -155,7 +156,10 @@ def journey_target(
             + ", ".join(f"{pair.target} on {pair.surface!r}"
                         for pair in sorted(set(pairs), key=lambda pair: (pair.target, pair.surface)))
             + " — `@scenario(target=...)` binds one driver to one service, so "
-              "there is no scenario shape a journey across two of them fits into")
+              "there is no scenario shape a journey across two of them fits into. When the "
+              "page's own request is what reaches an endpoint named here, make that endpoint "
+              "the `on:` of the invocation that sends it. The journey then reads the endpoint "
+              "as that invocation's request")
     return pairs[0]
 
 
