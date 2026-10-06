@@ -109,6 +109,8 @@ async def native_questions(run_dir: str, caller: str, run: str) -> dict | None:
         reply = await asyncio.to_thread(control.send, run_dir, control.Request(action=control.QUESTIONS))
     except FileNotFoundError:
         return None
+    except control.Unanswered:
+        return {}
     except control.ControlProtocolError as exc:
         logger.warning("%s: %s answered unreadably: %s", caller, run, exc)
         return None

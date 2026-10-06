@@ -855,7 +855,7 @@ async def _answer_via_socket(
     if wf.native:
         try:
             reply = await asyncio.to_thread(control.send, wf.runs_volume, request)
-        except (FileNotFoundError, control.ControlProtocolError):
+        except (FileNotFoundError, control.ControlProtocolError, control.Unanswered):
             return None
     else:
         try:

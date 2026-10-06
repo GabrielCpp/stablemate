@@ -183,6 +183,11 @@ def run(args: argparse.Namespace) -> None:
     )
     try:
         reply = control.send(run_dir, request)
+    except control.Unanswered:
+        if args.action == control.STOP:
+            _report_queued_stop(run_dir, args.wait, args.timeout)
+            return
+        reply = {}
     except (OSError, control.ControlProtocolError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         print(f"  run:     {_liveness(run_dir)}", file=sys.stderr)
@@ -275,6 +280,15 @@ def _answer_payload(args: argparse.Namespace) -> tuple[str, str]:
         )
         sys.exit(1)
     return args.gate or "", sys.stdin.read()
+
+
+def _report_queued_stop(run_dir: Path, wait: bool, timeout: float) -> None:
+    """Say the stop waits in the run's queue, and wait for the pid when asked to."""
+    print(f"stop queued for {run_dir}: the run is busy in {_position(run_dir)}, "
+          "a step that reads no request, and it stops at its next check")
+    print(f"  run:     {_liveness(run_dir)}")
+    if wait:
+        offline.wait_gone(run_dir, timeout)
 
 
 def _report_questions(run_dir: Path, reply: dict[str, object]) -> None:

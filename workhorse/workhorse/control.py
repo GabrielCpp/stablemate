@@ -49,6 +49,10 @@ class ControlProtocolError(Exception):
     """A message that could not be framed: over its limit with no newline in sight."""
 
 
+class Unanswered(Exception):
+    """A request the run took into its queue and has not answered yet, because the step it is in reads none."""
+
+
 @dataclass(frozen=True)
 class Request:
     """What an operator asked for, as it arrived on the channel."""
@@ -373,6 +377,10 @@ def send(run_dir: str | Path, request: Request, *, timeout: float = 5.0) -> dict
         client.sendall((request.to_json() + "\n").encode("utf-8"))
         try:
             raw = _read_message(client, limit=REPLY_LIMIT)
+        except TimeoutError as exc:
+            raise Unanswered(
+                f"the run on {path} holds the request in its queue and gave no answer within {timeout:g}s"
+            ) from exc
         except OSError:
             return {}
         if not raw:
@@ -484,6 +492,7 @@ __all__ = [
     "NullChannel",
     "Request",
     "SocketChannel",
+    "Unanswered",
     "answer",
     "arm",
     "armed",

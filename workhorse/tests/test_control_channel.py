@@ -9,6 +9,8 @@ import tempfile
 import threading
 from pathlib import Path
 
+import pytest
+
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from _fakes import FakeClock  # noqa: E402
@@ -92,7 +94,8 @@ def test_a_socket_left_by_a_killed_run_is_rebound_rather_than_fatal() -> None:
         second = SocketChannel.open(run_dir)
         try:
             assert second.path == path
-            assert control.send(run_dir, Request(action="status"), timeout=1.0) == {}
+            with pytest.raises(control.Unanswered):
+                control.send(run_dir, Request(action="status"), timeout=0.2)
         finally:
             second.close()
 
@@ -122,7 +125,8 @@ def test_a_run_dir_too_long_for_sun_path_still_gets_a_channel() -> None:
             pointer = run_dir / control.POINTER_FILE
             assert pointer.exists()
             assert Path(pointer.read_text(encoding="utf-8").strip()) == channel.path
-            assert control.send(run_dir, Request(action="status"), timeout=1.0) == {}
+            with pytest.raises(control.Unanswered):
+                control.send(run_dir, Request(action="status"), timeout=0.2)
         finally:
             channel.close()
         assert not channel.path.exists()

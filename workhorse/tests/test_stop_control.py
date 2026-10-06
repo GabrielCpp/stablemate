@@ -6,6 +6,7 @@ import os
 import sys
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
+from functools import partial
 from pathlib import Path
 
 import pytest
@@ -73,6 +74,21 @@ def test_stop_cli_requires_explicit_acceptance_over_the_socket(
                 assert "stop accepted" not in output.out
                 assert "error:" in output.err
             assert received.result(timeout=2).action == "stop"
+    finally:
+        channel.close()
+
+
+def test_a_stop_a_busy_run_has_not_read_is_reported_queued_and_stays_queued(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    channel = control.SocketChannel.open(tmp_path)
+    monkeypatch.setattr(control, "send", partial(control.send, timeout=0.2))
+    try:
+        cli_main(["control", "--run", str(tmp_path), "stop"],
+                 workflow="demo", registry=Registry("demo"))
+        assert "stop queued" in capsys.readouterr().out
+        request = channel.take()
+        assert request is not None and request.action == "stop"
     finally:
         channel.close()
 

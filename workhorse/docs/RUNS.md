@@ -57,9 +57,12 @@ is handled when the run next polls control, including during streaming and waits
 a busy script node can delay it until a state boundary.
 
 The command prints `stop accepted` and exits 0 when the run acknowledges the
-request, without waiting for shutdown. A missing listener, unsupported action, or
-missing acknowledgment exits 1. Without acknowledgment the outcome is unconfirmed;
-the command does not fall back to sending an OS signal. A run using an older engine
+request, without waiting for shutdown. A run busy in a step that reads no request
+cannot acknowledge it yet. The request waits in the run's queue, and the command
+prints `stop queued`, names the state the run is in, and exits 0. The run stops at
+its next check. With `--wait`, the command then blocks until the pid is gone. A
+missing listener or an unsupported action exits 1. The command never falls back to
+sending an OS signal. A run using an older engine
 needs `control --run /absolute/run/dir reload --core` before it supports `stop`.
 `stop` accepts the existing run-selection options, but no `--core` or
 `--at-boundary` flags.

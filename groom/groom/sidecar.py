@@ -366,6 +366,8 @@ def _relay_to_control(run: str, request: control.Request) -> dict:
         return dict(control.send(str(base), request, timeout=CONTROL_TIMEOUT))
     except FileNotFoundError:
         return {"ok": False, "error": "no listener"}
+    except control.Unanswered:
+        return {}
 
 
 def _rpc_get_questions(params: dict) -> dict:
