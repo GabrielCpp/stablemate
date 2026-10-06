@@ -70,6 +70,14 @@ None. The `steps:` chain is the body.
 Each child of `steps:` links to the node that performs it — an interaction, an invocation, an
 endpoint. `ostler graph` is the structural authority for what a flow reaches.
 
+A step may link more than the node that performs it. When a child links an interaction,
+invocation, endpoint or command, that link is the step, and every other link in the child is
+context the walk performs nothing for: the screen it sits on, the component it mounts, the field
+it reads. A child that links only screens, components or fields says what the reader sees and
+adds no step. An endpoint that one of the journey's invocations names as its `on:` is that
+invocation's request, so a browser journey that links the endpoint its page calls stays one
+browser journey.
+
 On a `cli`, a step performs one command line, so the node it links states exactly one distinct
 `run:` in its own bullets. That node is usually an invocation. The compiler refuses a step whose
 node states no `run:`, or several different ones, because it cannot tell which run the step
@@ -106,7 +114,9 @@ target is its node type paired with the `driver:` of the surface it lives on, so
 walks a mobile app and then a web app — or drives an api and then a browser — names two. One
 compiled scenario binds one driver to one service, so there is no shape for that journey yet,
 and the compiler says so with `needs-multi-target-runtime` rather than asking anyone to change
-the book. **That is not a defect in the flow.** Write the
+the book. One case is a defect: a browser journey that links the endpoint its page calls,
+from an invocation whose `on:` names something else. Make that endpoint the invocation's `on:`.
+**A journey that crosses targets is not otherwise a defect in the flow.** Write the
 journey the user actually performs; a journey that is really two, performed by two people or
 two sittings, is two flows, and splitting it to make the compiler happy records a walk nobody
 takes.
