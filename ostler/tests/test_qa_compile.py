@@ -2272,7 +2272,7 @@ def test_a_click_trigger_is_the_click_the_scenario_performs() -> None:
 
 
 def test_a_named_non_press_trigger_is_the_harness_missing_action() -> None:
-    """`trigger: paste` names the trigger; the compiler having no paste action is the harness's gap, not the book's."""
+    """`trigger: drag` names the trigger; the compiler having no drag action is the harness's gap, not the book's."""
     button = f"{_SCREEN}#create-policy-button"
     interaction = f"{_SCREEN}#submit-new-policy"
     interaction_oid = "okf:new-policy:submit-new-policy:does:1"
@@ -2282,7 +2282,7 @@ def test_a_named_non_press_trigger_is_the_harness_missing_action() -> None:
                           checks=[_visible("button:Create policy")]),
         _page_obligation(interaction_oid, interaction,
                           locators={"on": ["[create-policy-button](#create-policy-button)"],
-                                    "trigger": ["`paste`"],
+                                    "trigger": ["`drag`"],
                                     "does": ["adds a policy and shows it"]},
                           checks=[_located("#policy-table", f"{_SCREEN}#policy-table",
                                            {"role": ["table"], "name": ["Policies on file"]})]),
@@ -2322,7 +2322,23 @@ def test_a_keyed_trigger_sends_its_key_or_text_to_the_on_control(trigger: str, p
     assert ".click()" not in source
 
 
-@pytest.mark.parametrize("trigger", ["press", "`fill`", 'press(locator="#policy-title")', 'press(key="Control B")'])
+@pytest.mark.parametrize(("trigger", "performed"), [
+    ('paste(text="Q3 policy")', 'qa.paste(qa.by_role("textbox", name="Policy title"), text="Q3 policy")'),
+    ('`paste(html="<b>Q3</b>", text="Q3")`',
+     'qa.paste(qa.by_role("textbox", name="Policy title"), html="<b>Q3</b>", text="Q3")'),
+    ('drop(file="fixtures/q3.docx")', 'qa.drop(qa.by_role("textbox", name="Policy title"), file="fixtures/q3.docx")'),
+    ('drop("fixtures/q3.docx")', 'qa.drop(qa.by_role("textbox", name="Policy title"), file="fixtures/q3.docx")'),
+])
+def test_a_paste_or_drop_trigger_hands_its_payload_to_the_on_control(trigger: str, performed: str) -> None:
+    source, gaps = _keyed_trigger(trigger)
+    assert source is not None
+    assert _gap_kinds(gaps, "okf:new-policy:rename-policy:does:1") == []
+    assert performed in source
+    assert ".click()" not in source
+
+
+@pytest.mark.parametrize("trigger", ["press", "`fill`", 'press(locator="#policy-title")', 'press(key="Control B")',
+                                     "paste", 'paste(file="a.txt")', "`drop`", 'drop(file="")'])
 def test_a_keyed_trigger_without_a_usable_key_is_a_book_repair(trigger: str) -> None:
     source, gaps = _keyed_trigger(trigger)
     rename = [g for g in gaps if g.obligation_id == "okf:new-policy:rename-policy:does:1"]

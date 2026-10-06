@@ -137,7 +137,11 @@ def perform_acts(
     return PerformedActs(lines)
 
 
-TRIGGER_ACTS: dict[str, str] = {"fill": "value", "press": "key"}
+TRIGGER_ACTS: dict[str, tuple[str, ...]] = {
+    "fill": ("value",), "press": ("key",), "paste": ("text", "html"), "drop": ("file",),
+}
+
+_TRIGGER_EXAMPLES = {"press": "Escape", "drop": "fixtures/sample.docx"}
 
 ARRIVAL_TRIGGERS = frozenset({"load", "navigate"})
 
@@ -149,29 +153,45 @@ def trigger_name(raw: str) -> str:
     return (parsed.name if parsed is not None else value).lower()
 
 
-def trigger_performance(raw: str, on_expr: str) -> str | ScenarioRefusal:
-    """The line that performs a `fill(value=…)` or `press(key=…)` trigger on *on_expr*, or why the book's spelling of it cannot be performed."""
-    name = trigger_name(raw)
-    param = TRIGGER_ACTS[name]
+def _trigger_arguments(raw: str, params: tuple[str, ...]) -> dict[str, str]:
+    """The non-empty string arguments *raw* passes by *params*, a lone positional one standing for the first."""
     parsed = parse_call(bullet_value(raw) or "")
-    argument: object = None
-    if isinstance(parsed, Call) and set(parsed.keywords) <= {param}:
-        if parsed.keywords and not parsed.positional:
-            argument = parsed.keywords[param]
-        elif len(parsed.positional) == 1 and not parsed.keywords:
-            argument = parsed.positional[0]
-    example = "Escape" if name == "press" else "…"
-    if not isinstance(argument, str) or not argument:
+    if not isinstance(parsed, Call) or not set(parsed.keywords) <= set(params):
+        return {}
+    if len(parsed.positional) == 1 and not parsed.keywords:
+        given: dict[str, object] = {params[0]: parsed.positional[0]}
+    elif parsed.positional:
+        return {}
+    else:
+        given = dict(parsed.keywords)
+    if not all(isinstance(value, str) and value for value in given.values()):
+        return {}
+    return {key: str(value) for key, value in given.items()}
+
+
+def trigger_performance(raw: str, on_expr: str) -> str | ScenarioRefusal:
+    """The line that performs a `fill`, `press`, `paste` or `drop` trigger on *on_expr*, or why the book's spelling of it cannot be performed."""
+    name = trigger_name(raw)
+    params = TRIGGER_ACTS[name]
+    arguments = _trigger_arguments(raw, params)
+    if not arguments:
+        spelled = " or ".join(f'`trigger: {name}({param}="{_TRIGGER_EXAMPLES.get(name, "…")}")`'
+                              for param in params)
         return ScenarioRefusal("uncompilable-claim",
-                               f"trigger {raw!r} does not say what to {name}: write "
-                               f'`trigger: {name}({param}="{example}")`, the {param} the user sends '
-                               "to the `on:` control, which is the control it acts on")
+                               f"trigger {raw!r} does not say what to {name}: write {spelled}, "
+                               f"the {' or '.join(params)} the user hands the `on:` control, which "
+                               "is the control it acts on")
+    comment = f"  # trigger: {trailing_comment(raw)}"
+    if name in ("paste", "drop"):
+        keywords = "".join(f", {key}={python_literal(value)}" for key, value in arguments.items())
+        return f"    qa.{name}({on_expr}{keywords}){comment}"
+    argument = arguments[params[0]]
     if name == "press" and any(ch.isspace() for ch in argument):
         return ScenarioRefusal("uncompilable-claim",
                                f"trigger `press` names key {argument!r}, which contains whitespace "
                                "and so is not a Playwright key")
     method, _ = _ACT_METHODS[name]
-    return f"    {on_expr}.{method}({python_literal(argument)})  # trigger: {trailing_comment(raw)}"
+    return f"    {on_expr}.{method}({python_literal(argument)}){comment}"
 
 
 def walk_hops(

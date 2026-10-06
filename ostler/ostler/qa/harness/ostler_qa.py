@@ -28,6 +28,7 @@ from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
+import ostler_qa_transfer
 from ostler_qa_checkout import copy_checkout
 from ostler_qa_lap import Arranged, LapRecord
 from ostler_qa_paths import is_projection, path_steps, resolve_path
@@ -1584,6 +1585,14 @@ class Qa:
     def goto(self, url: str, **kwargs: Any) -> Any:
         """Navigate a relative path against the target's `base_url`."""
         return self.browser_page.goto(self.http.url_for(url), **kwargs)
+
+    def paste(self, locator: Any, *, text: str | None = None, html: str | None = None) -> None:
+        """Paste *text* or *html* into *locator*, as the user's clipboard would."""
+        ostler_qa_transfer.paste(locator, text=text, html=html)
+
+    def drop(self, locator: Any, file: str) -> None:
+        """Drop the checkout's *file* on *locator*, as a file manager's drag would."""
+        ostler_qa_transfer.drop(locator, self.root / file)
 
     def window(self) -> Any:
         """Open an observation window over the exchanges this page is about to make."""
