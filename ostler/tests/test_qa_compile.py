@@ -2767,6 +2767,51 @@ def test_a_journey_step_performs_its_own_acts_before_it_triggers_it() -> None:
     assert first < fill < second
 
 
+def _visit(path: str) -> dict:
+    return {"call": f"visit(path={path!r})", "name": "visit", "args": {"path": path}, "locates": {}}
+
+
+def _arrival_flow(acts: list[dict]) -> dict:
+    oid = f"okf:{_FLOW}:end-state"
+    resolve = f"{_SCREEN}#resolve-locale"
+    return _navigation_context(
+        _flow_obligation(
+            oid, source=_FLOW, surface="policy",
+            steps=[_step(resolve, "invocation", "policy")],
+            checks=[_located_visible(f"{_SCREEN}#not-found", {"selector": ["#not-found"]})],
+        ),
+        _page_obligation(f"{resolve}:carrier", resolve,
+                         locators={"on": ["[things-table](#things-table)"], "trigger": ["navigate"]},
+                         checks=[], acts=acts) | {"required": False},
+        navigation=_arrival_navigation(),
+    )
+
+
+def test_a_journey_step_the_screen_runs_on_arrival_visits_the_address_it_arranges() -> None:
+    """A reader who types an unknown locale reaches no screen by a click, so the step's `visit` act is the address the journey opens, and nothing is clicked for it."""
+    result = _compile_plan_gaps(_arrival_flow([_visit("/de")]), story="demo-story")
+    assert isinstance(result, Plan)
+    ast.parse(result.source)
+    journey = result.source.split("@scenario(")[-1]
+    assert 'qa.goto("/de")' in journey
+    assert f"okf:{_FLOW}:end-state" in _covers(result.source)
+    assert ".click()" not in journey.split('qa.goto("/de")')[1]
+
+
+def test_a_journey_step_the_screen_runs_on_arrival_opens_its_screen_when_it_arranges_no_address() -> None:
+    result = _compile_plan_gaps(_arrival_flow([]), story="demo-story")
+    assert isinstance(result, Plan)
+    journey = result.source.split("@scenario(")[-1]
+    assert journey.count("qa.goto(") == 2
+    assert f"okf:{_FLOW}:end-state" in _covers(result.source)
+
+
+def test_a_visit_that_names_no_path_after_the_origin_is_refused() -> None:
+    result = _compile_plan_gaps(_arrival_flow([_visit("https://example.com/de")]), story="demo-story")
+    details = [g.detail for g in result.gaps if g.obligation_id == f"okf:{_FLOW}:end-state"]
+    assert any("starting with `/`" in detail for detail in details), details
+
+
 def test_a_wrapped_book_bullet_still_compiles_to_valid_python() -> None:
     """A `does:`/`trigger:` value that wrapped across lines in the book source is still just one string by the time `qa context` hands it here — nothing marks where the line broke."""
     button = f"{_SCREEN}#create-policy-button"

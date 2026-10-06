@@ -85,6 +85,14 @@ ACTS: tuple[ActSpec, ...] = (
         drivers=(WEB,),
     ),
     ActSpec(
+        name="visit",
+        params=(ActParam("path", "str", required=True),),
+        establishes="the browser is at a stated address, typed or followed rather than reached "
+                    "by a click: an unknown route segment, a deep link, a query a link never "
+                    "builds. `path` is the address after the origin, starting with `/`",
+        drivers=(WEB,),
+    ),
+    ActSpec(
         name="body",
         params=(ActParam("field", "str", required=True),
                 ActParam("value", "scalar", required=True)),

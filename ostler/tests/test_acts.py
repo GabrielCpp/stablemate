@@ -83,8 +83,15 @@ def test_every_act_declares_at_least_one_driver_that_can_perform_it() -> None:
 def test_every_web_or_mobile_act_names_the_control_it_operates_by_a_locator() -> None:
     """An act with no locator would operate whatever the driver last touched, which is not a statement the book can make about a control — true of a person's driver, where the control the performer touches is exactly what the act needs named."""
     for spec in acts.ACTS:
-        if acts.WEB in spec.drivers or acts.MOBILE in spec.drivers:
+        if spec.name != "visit" and (acts.WEB in spec.drivers or acts.MOBILE in spec.drivers):
             assert any(p.locator and p.required for p in spec.params), spec.name
+
+
+def test_visit_names_an_address_rather_than_a_control() -> None:
+    """A typed address touches no control, so `visit` is the one browser act whose argument is the path after the origin."""
+    spec = acts.ACT_BY_NAME["visit"]
+    assert spec.drivers == (acts.WEB,)
+    assert [(p.name, p.required, p.locator) for p in spec.params] == [("path", True, False)]
 
 
 def test_body_names_a_field_rather_than_a_control() -> None:

@@ -103,6 +103,16 @@ def perform_acts(
         spec = acts_mod.ACT_BY_NAME.get(row.name)
         if spec is None or driver not in spec.drivers:
             return PerformedActs(None)
+        if spec.name == "visit":
+            path = row.text_arg("path")
+            if not path.startswith("/"):
+                gaps.extend(Gap(oid, "uncompilable-claim",
+                                f"`{row.call}` names {path!r}, which is no address after the origin: "
+                                'write the path the reader types, starting with `/`, as `visit(path="/fr/guide")`')
+                            for oid in ids)
+                return PerformedActs(None, gap_filed=True)
+            lines.append(f"    qa.goto({python_literal(path)})  # arrange: {row.call}")
+            continue
         located = row.locates.get("locator")
         act_locators = located.locators if located else NO_LOCATORS
         expr = page_locator_expr(act_locators)
@@ -128,6 +138,8 @@ def perform_acts(
 
 
 TRIGGER_ACTS: dict[str, str] = {"fill": "value", "press": "key"}
+
+ARRIVAL_TRIGGERS = frozenset({"load", "navigate"})
 
 
 def trigger_name(raw: str) -> str:
@@ -399,20 +411,22 @@ def _web_start(walk: JourneyWalk, gaps: list[Gap]) -> list[str] | None:
 
 
 def _web_step(index: int, step: FlowStep, walk: JourneyWalk, gaps: list[Gap]) -> list[str] | None:
-    """Arrange and click one `interaction` step, or `None` once the journey cannot go on."""
+    """Arrange and perform one `interaction` or `invocation` step, or `None` once the journey cannot go on."""
     book, ids = walk.book, walk.ids
     node_type = step.node_type
-    if node_type != "interaction":
+    if node_type not in ("interaction", "invocation"):
         gaps.extend(Gap(oid, "uncompilable-claim",
                         f"step {index} names a {node_type or 'untyped'} node, which is a "
                         "place rather than an action; this builder performs only "
-                        "`interaction` steps")
+                        "`interaction` and `invocation` steps")
                     for oid in ids)
         return None
     ref = step.ref
     locators = book.locators_by_node.get(ref, NO_LOCATORS)
     on_value = next(iter(locators.on), "")
     trigger_value = next(iter(locators.trigger), "")
+    if trigger_name(trigger_value) in ARRIVAL_TRIGGERS:
+        return _arrival_step(index, step, walk, gaps)
     on_node_id = on_node(ref.split("#")[0], on_value)
     on_locators = book.locators_by_node.get(on_node_id, NO_LOCATORS)
     expr = page_locator_expr(on_locators)
@@ -440,6 +454,30 @@ def _web_step(index: int, step: FlowStep, walk: JourneyWalk, gaps: list[Gap]) ->
             return None
         return [*performed.lines, action]
     return [*performed.lines, f"    {expr}.click()  # step {index}: {trailing_comment(trigger_value)}"]
+
+
+def _arrival_step(index: int, step: FlowStep, walk: JourneyWalk, gaps: list[Gap]) -> list[str] | None:
+    """Perform a step the screen runs on arrival: its `visit` acts when it declares any, else opening the screen it lives on."""
+    acts = walk.book.acts_by_node.get(step.ref, [])
+    if acts:
+        performed = perform_acts(acts, acts_mod.WEB, gaps, walk.ids)
+        if performed.lines is None:
+            if not performed.gap_filed:
+                gaps.extend(Gap(oid, "uncompilable-claim",
+                                f"step {index} declares an arrangement this journey cannot make; every "
+                                "step after it would run in a world this journey never reached")
+                            for oid in walk.ids)
+            return None
+        return performed.lines
+    source = shown_on(step.ref.split("#")[0], walk.nav.routes, walk.book.fragment_hosts)
+    opened = walk.nav.path_to(source)
+    if opened is None:
+        gaps.extend(Gap(oid, "uncompilable-claim",
+                        f"step {index} runs when {source!r} loads, and no path to open it is known: "
+                        'declare `arrange: visit(path="/…")` on the step for the address the reader lands on')
+                    for oid in walk.ids)
+        return None
+    return [f"    qa.goto({python_literal(opened)})  # step {index}: arrives at {source}"]
 
 
 def web_walk(walk: JourneyWalk, sinks: PlanSinks) -> WalkedJourney:

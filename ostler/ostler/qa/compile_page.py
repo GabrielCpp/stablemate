@@ -12,6 +12,7 @@ from ostler.qa.compile_playwright import name_refusal
 from ostler.qa.compile_playwright import needs_window
 from ostler.qa.compile_playwright import page_locator_expr
 from ostler.qa.compile_playwright import page_observations
+from ostler.qa.compile_playwright import ARRIVAL_TRIGGERS
 from ostler.qa.compile_playwright import TRIGGER_ACTS
 from ostler.qa.compile_playwright import perform_acts
 from ostler.qa.compile_playwright import trigger_name
@@ -353,9 +354,6 @@ def _arrival_scenario(
 _CLICK_TRIGGER = "click"
 
 NON_PRESS_TRIGGERS = frozenset({"fill", "press", "paste", "drag", "drop", "load", "navigate", "timer"})
-
-ARRIVAL_TRIGGERS = frozenset({"load", "navigate"})
-
 
 @dataclass(frozen=True)
 class _InteractionArm:
