@@ -735,7 +735,8 @@ class PythonDriver(QaDriver):
             f"the page it photographed was at '{url}' — the walk did not arrive, so every "
             "placement verdict would be about a screen the book does not describe. When the app "
             "sent the walk elsewhere, as a guarded route sends a visitor who is not signed in, "
-            "name on the claim the fixture that sets up what the route needs"
+            f"link the fixture that sets up what the route needs under the `requires:` of '{screen}', "
+            "and every claim on that screen arranges it"
         )
 
     def _vet(

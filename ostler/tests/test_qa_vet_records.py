@@ -365,7 +365,7 @@ def test_a_vet_of_a_screen_the_walk_never_reached_is_a_hard_stop(repo: Path) -> 
 
 
 def test_a_walk_the_app_sent_elsewhere_goes_to_the_book_with_how_to_reach_the_screen(repo: Path) -> None:
-    """A guarded route sends a visitor who is not signed in to its login, which the claim's fixture fixes."""
+    """A guarded route sends a visitor who is not signed in to its login, which a fixture the screen requires fixes."""
     _book(repo)
     shot = _shot(repo, [_region("navigation", "nav.toc", (0, 88, 240, 760))])
     driver = _driver(repo)
@@ -375,7 +375,7 @@ def test_a_walk_the_app_sent_elsewhere_goes_to_the_book_with_how_to_reach_the_sc
     )
 
     assert [check.cause for check in result.failed_checks] == [Cause.BOOK]
-    assert "name on the claim the fixture" in result.message
+    assert "under the `requires:` of" in result.message
 
 
 def test_a_vet_on_the_documented_route_registers_and_says_it_confirmed_the_screen(
