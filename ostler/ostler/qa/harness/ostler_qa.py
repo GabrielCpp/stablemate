@@ -1103,20 +1103,25 @@ class Qa:
         cached = self._book_fixture_memo.get(memo_key)
         if cached is not None:
             return cached
-        shared = self._lap if self._book_fixtures[name].get("lifetime") != "scenario" else None
+        spec = self._book_fixtures[name]
+        shared = self._lap if spec.get("lifetime") != "scenario" else None
         arranged = shared.built(name, args) if shared is not None else None
+        started = time.monotonic()
         result = self._build_book_fixture(name, args) if arranged is None else self._reuse_book_fixture(name, arranged)
         self._book_fixture_memo[memo_key] = result
         self._recorder.emit(
             {
-                "kind": "fixture",
+                "type": "fixture",
                 "scenario": self.scenario_id,
                 "name": name,
-                "provides": ",".join(entry["key"] for entry in self._book_fixtures[name].get("provides", [])),
+                "page": spec.get("page", ""),
+                "lifetime": spec.get("lifetime", "lap"),
+                "provides": ",".join(entry["key"] for entry in spec.get("provides", [])),
                 "command": result.command,
                 "exit_code": result.exit_code,
                 "ok": result.ok,
                 "reused": arranged is not None,
+                "seconds": round(time.monotonic() - started, 3),
             }
         )
         return result

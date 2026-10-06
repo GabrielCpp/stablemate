@@ -30,6 +30,18 @@ def _run_verdicts(selected: list[dict[str, Any]], results: Mapping[str, Scenario
     return {claim: str(verdict) for claim, verdict in sorted(verdicts.items())}
 
 
+def _fixture_builds(results: Mapping[str, ScenarioResult]) -> list[dict[str, Any]]:
+    """Each book fixture the run built, with how many times and how long in all, slowest first."""
+    totals: dict[str, dict[str, Any]] = {}
+    for result in results.values():
+        for build in result.fixture_builds:
+            total = totals.setdefault(build.page, {"name": build.name, "page": build.page, "lifetime": build.lifetime,
+                                                   "builds": 0, "seconds": 0.0})
+            total["builds"] += 1
+            total["seconds"] = round(total["seconds"] + build.seconds, 3)
+    return sorted(totals.values(), key=lambda total: (-total["seconds"], total["page"]))
+
+
 def run_plan(
     document: PlanDocument,
     *,
@@ -246,6 +258,7 @@ def run_plan(
                 for name, result in results.items()
             },
             "verdicts": _run_verdicts(selected, results),
+            "fixture_builds": _fixture_builds(results),
             "signatures": [
                 asdict(signature)
                 for signature in signatures(

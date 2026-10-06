@@ -127,6 +127,16 @@ class FailedCheck:
         return f"{self.label}: expected {self.expected}, observed {self.actual}"[:SAMPLE_CHARS]
 
 
+@dataclass(frozen=True)
+class FixtureBuild:
+    """One book fixture a scenario built rather than reused: its page, its lifetime and how long building it took."""
+
+    name: str
+    page: str
+    lifetime: str
+    seconds: float
+
+
 @dataclass
 class _Tally:
     """What grading one scenario's records has counted so far."""
@@ -136,6 +146,7 @@ class _Tally:
     failed_checks: list[FailedCheck] = field(default_factory=list)
     verdicts: dict[str, Verdict] = field(default_factory=dict)
     vet_trouble: bool = False
+    fixture_builds: list[FixtureBuild] = field(default_factory=list)
 
     def count_assertion(self) -> int:
         """Count one more assertion and return its number, which is the action it is recorded under."""
@@ -162,6 +173,7 @@ class ScenarioResult:
     failed_checks: list[FailedCheck] = field(default_factory=list)
     unreached: list[str] = field(default_factory=list)
     verdicts: dict[str, Verdict] = field(default_factory=dict)
+    fixture_builds: list[FixtureBuild] = field(default_factory=list)
 
 
 class DriverBlocked(RuntimeError):
@@ -401,6 +413,10 @@ class PythonDriver(QaDriver):
                 problems.extend(self._register(scenario_id, record, step=step, painted=painted))
             elif kind == "vet":
                 problems.extend(self._grade_vet_and_list_problems(tally, scenario_id, covers, record, step))
+            elif kind == "fixture" and record.get("page") and not record.get("reused"):
+                tally.fixture_builds.append(FixtureBuild(
+                    str(record.get("name", "")), str(record["page"]), str(record.get("lifetime", "lap")),
+                    float(record.get("seconds") or 0.0)))
             elif kind == "scenario":
                 terminal = record
 
@@ -485,6 +501,7 @@ class PythonDriver(QaDriver):
             failed_checks=tally.failed_checks,
             unreached=unreached,
             verdicts=tally.verdicts,
+            fixture_builds=tally.fixture_builds,
         )
 
     def _grade_assert(

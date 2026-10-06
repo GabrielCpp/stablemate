@@ -98,7 +98,7 @@ def test_fixture_dispatches_book_fixtures_before_the_agentsyml_tier(tmp_path: Pa
     }
     code, stdout, records = _run(module, "uses-the-seeded-account", tmp_path, book_fixtures=book_fixtures)
     assert code == 0, (stdout, records)
-    fixture_records = [r for r in records if r.get("kind") == "fixture"]
+    fixture_records = [r for r in records if r.get("type") == "fixture"]
     assert fixture_records and fixture_records[0]["ok"] is True
 
 
@@ -459,10 +459,13 @@ def test_a_precondition_built_in_one_scenario_is_reused_by_the_next_in_its_lap(t
     assert first_code == 0, first_out
     assert second_code == 0, second_out
     assert counter.read_text(encoding="utf-8") == "ag"
-    assert {r["name"]: r["reused"] for r in first_records if r.get("kind") == "fixture"} == {
+    assert {r["name"]: r["reused"] for r in first_records if r.get("type") == "fixture"} == {
         "seeded-acme": False, "seeded-globex": False}
-    assert {r["name"]: r["reused"] for r in second_records if r.get("kind") == "fixture"} == {
+    assert {r["name"]: r["reused"] for r in second_records if r.get("type") == "fixture"} == {
         "seeded-acme": True, "seeded-globex": True}
+    built = next(r for r in first_records if r.get("type") == "fixture" and r["name"] == "seeded-acme")
+    assert (built["page"], built["lifetime"]) == ("docs/fixtures/seeded-acme.md", "lap")
+    assert built["seconds"] >= 0
 
 
 def test_a_precondition_that_failed_in_its_lap_fails_again_without_running(tmp_path: Path) -> None:
@@ -495,7 +498,7 @@ def test_a_precondition_of_scenario_lifetime_is_built_again_by_each_scenario_of_
     assert first_code == 0, first_out
     assert second_code == 0, second_out
     assert counter.read_text(encoding="utf-8") == "agg"
-    assert {r["name"]: r["reused"] for r in second_records if r.get("kind") == "fixture"} == {
+    assert {r["name"]: r["reused"] for r in second_records if r.get("type") == "fixture"} == {
         "seeded-acme": True, "seeded-globex": False}
 
 
@@ -938,6 +941,6 @@ def test_an_object_fact_reused_later_in_its_lap_is_still_an_object(tmp_path: Pat
 
     assert first_code == 0, first_out
     assert second_code == 0, second_out
-    assert [r["reused"] for r in second_records if r.get("kind") == "fixture"] == [True]
+    assert [r["reused"] for r in second_records if r.get("type") == "fixture"] == [True]
     asserted = [record for record in second_records if record.get("type") == "assert"]
     assert [record["passed"] for record in asserted] == [True, True, True], asserted
