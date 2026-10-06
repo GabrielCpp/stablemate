@@ -7,6 +7,9 @@ from collections.abc import Callable
 from pathlib import Path
 
 import pytest
+from workhorse import control
+from workhorse.control import FakeChannel, Request
+from workhorse.reload import ReloadRequested
 
 from workhorse_workflows.kit.qa import runner
 from workhorse_workflows.kit.qa.runner import stack_stopped
@@ -80,3 +83,44 @@ def test_a_run_whose_server_exited_is_a_stopped_stack_its_runbook_repairs(
     assert "problem:   VITE ready in 300 ms" in result.lines
     (problem,) = stack_down_failures(repo, "web-app", result)[WEB_STACK]
     assert "the app's stack stopped serving" in problem.text
+
+
+def _run_until_stopped(
+    app: Callable[[str], Path], monkeypatch: pytest.MonkeyPatch, tmp_path: Path, request: Request, checks: list[str],
+) -> None:
+    """Run two scenarios on a channel holding *request*, recording in *checks* the reason each check gave."""
+
+    def _run_scenarios(_root: Path, _spec: Path, only: tuple[str, ...], _lap: Path, stack_check: Callable[[], str]) -> RunSummary:
+        for _name in only:
+            checks.append(stack_check())
+            if checks[-1]:
+                break
+        return RunSummary(status="blocked", runner_errors=(checks[-1],), scenarios={})
+
+    monkeypatch.setattr(book_run, "run_scenarios", _run_scenarios)
+    control.arm(FakeChannel(request))
+    try:
+        _ = run_plan(app("globex"), tmp_path / "spec", (), StackReadiness(up=True, serving=True, notes=""), only=("docs-a", "docs-b"))
+    finally:
+        control.arm(None)
+
+
+def test_a_stop_asked_during_a_pass_ends_it_before_the_next_scenario(
+    app: Callable[[str], Path], monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+) -> None:
+    checks: list[str] = []
+    with pytest.raises(KeyboardInterrupt):
+        _run_until_stopped(app, monkeypatch, tmp_path, Request(action="stop"), checks)
+
+    assert checks == ["the operator stopped the run"]
+
+
+def test_a_reload_asked_during_a_pass_reaches_the_engine_once_the_runner_returns(
+    app: Callable[[str], Path], monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+) -> None:
+    checks: list[str] = []
+    with pytest.raises(ReloadRequested) as raised:
+        _run_until_stopped(app, monkeypatch, tmp_path, Request(action="reload", core=True), checks)
+
+    assert raised.value.core
+    assert checks == ["the operator asked for a reload"]

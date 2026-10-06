@@ -14,6 +14,7 @@ from ostler.qa.attribution import Cause
 from ostler.qa.plan_source import is_probe
 from ostler.qa.runbook import select_stack
 from pydantic import BaseModel, ConfigDict
+from workhorse.reload import ReloadRequested, cut_requested
 from workhorse.runner.redact import REDACTED, SecretRedactor
 from workhorse_workflows.kit import find_docs_root
 from workhorse_workflows.kit.qa.runner import ensure_stack, release_stack, stack_stopped
@@ -172,6 +173,27 @@ def release(logger: logging.Logger, stack: StackReadiness) -> None:
     release_stack(logger, stack.owned)
 
 
+@dataclass
+class _BetweenScenarios:
+    """Why a run stops before its next scenario: an operator's stop or cutting reload, held in *halt* until the runner returns, or a server the bring-up launched that exited."""
+
+    owned: tuple[str, ...]
+    halt: BaseException | None = None
+    reason: str = ""
+
+    def __call__(self) -> str:
+        if self.halt is None:
+            try:
+                request = cut_requested()
+            except KeyboardInterrupt as stop:
+                self.halt, self.reason = stop, "the operator stopped the run"
+            else:
+                if request is not None:
+                    self.halt = ReloadRequested(core=request.core, cli=request.cli)
+                    self.reason = "the operator asked for a reload"
+        return self.reason or stack_stopped(self.owned)
+
+
 def run_plan(root: Path, spec: Path, gaps: tuple[str, ...], stack: StackReadiness, only: Sequence[str] = ()) -> ExerciseResult:
     """Run the named compiled scenarios, every one when none is named, on a copy of the app when it serves nothing.
 
@@ -183,10 +205,16 @@ def run_plan(root: Path, spec: Path, gaps: tuple[str, ...], stack: StackReadines
     arranges would fail the same way. A probe that finds a capability absent stops nothing, because
     the book's run gaps the claims that need it and runs the rest. The probes and the book are one
     lap, so each precondition is built once across both.
+
+    An operator's stop or cutting reload ends the run before the next scenario rather than after the
+    last, and reaches the engine once the runner has stopped its drivers.
     """
     runner = run_scenarios if stack.serving else _run_in_copy
+    between = _BetweenScenarios(stack.owned)
     with tempfile.TemporaryDirectory(prefix="okf-lap-") as lap:
-        result = _run_lap(root, spec, gaps, only, lambda names: runner(root, spec, names, Path(lap), lambda: stack_stopped(stack.owned)))
+        result = _run_lap(root, spec, gaps, only, lambda names: runner(root, spec, names, Path(lap), between))
+    if between.halt is not None:
+        raise between.halt
     stopped = stack_stopped(stack.owned)
     return stack_stopped_result(gaps, stopped, stack.app_logs) if stopped else result
 
