@@ -171,6 +171,9 @@ class SocketChannel:
             logger.warning("ignoring an unreadable control message: %s", exc)
             conn.close()
             return None
+        if not raw:
+            conn.close()
+            return None
         try:
             payload = json.loads(raw)
         except ValueError as exc:

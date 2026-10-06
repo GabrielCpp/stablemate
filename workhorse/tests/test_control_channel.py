@@ -402,3 +402,16 @@ def test_a_stop_reaches_a_run_whose_dashboard_queued_requests_while_a_long_step_
             channel.close()
 
         assert answered == [{"ok": True}]
+
+
+def test_a_liveness_probe_is_no_malformed_message(caplog) -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        run_dir = Path(tmp)
+        channel = SocketChannel.open(run_dir)
+        try:
+            assert control.listening(run_dir)
+            with caplog.at_level("WARNING", logger="workhorse.control"):
+                assert channel.take() is None
+            assert caplog.records == []
+        finally:
+            channel.close()
