@@ -110,9 +110,14 @@ Excludes a delete asserted only by absence afterwards, which passes identically 
 was never there — the presence before the action is what makes the disappearance attributable to
 it.
 
-### `visible(locator*=<str> (locator), text=<str>)`
-Excludes an element present in the tree but not on the screen, and the right widget showing the
-wrong content.
+### `visible(locator*=<str> (locator), text=<str>, count=<int>)`
+Excludes an element present in the tree but not on the screen, the right widget showing the
+wrong content, and one panel drawn where the book promises three.
+
+With `count`, the check counts the elements the locator matches that are on the screen, and that
+say `text` when it is given. It passes on exactly that many. A claim that a screen "renders one
+tab panel per tab" is `visible(locator="[role=tabpanel]", count=3)` on a screen with three tabs.
+`count=0` claims none is shown, which is `hidden` for a whole set.
 
 ### `actionable(locator*=<str> (locator))`
 Excludes a control the book says the user can use and the product has disabled — which
