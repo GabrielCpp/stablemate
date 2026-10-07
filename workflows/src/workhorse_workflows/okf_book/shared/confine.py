@@ -70,16 +70,6 @@ def _tracked(root: Path, path: str) -> bool:
     return bool(_git(root, "ls-tree", "--name-only", "HEAD", "--", path).strip())
 
 
-def absent_from_head(root: Path, paths: Iterable[str]) -> frozenset[str]:
-    """The paths HEAD does not hold, such as a page a turn created."""
-    return frozenset(path for path in paths if not _tracked(root, path))
-
-
-def committed_text(root: Path, path: str) -> str:
-    """The path's content as HEAD holds it, empty when HEAD does not hold it."""
-    return _git(root, "show", f"HEAD:{path}") if _tracked(root, path) else ""
-
-
 def restore(root: Path, paths: Iterable[str], before: Snapshot) -> tuple[str, ...]:
     """Put each path back as HEAD has it. A path that was already dirty before the turn is left, and returned."""
     left: list[str] = []

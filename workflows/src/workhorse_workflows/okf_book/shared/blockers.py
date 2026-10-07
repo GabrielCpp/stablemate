@@ -73,12 +73,6 @@ def forget_blocker(run_dir: Path, blocker: Blocker) -> None:
     (run_dir / BLOCKERS_DIR / f"{blocker.key}.json").unlink(missing_ok=True)
 
 
-def forget_every_blocker(run_dir: Path) -> None:
-    """Drop every blocker, once the operator has fixed what they named."""
-    for path in (run_dir / BLOCKERS_DIR).glob("*.json"):
-        path.unlink()
-
-
 def read_blockers(run_dir: Path) -> tuple[Blocker, ...]:
     """Every blocker recorded so far, by phase then subject."""
     folder = run_dir / BLOCKERS_DIR

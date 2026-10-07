@@ -1,4 +1,4 @@
-"""One turn of a surface's book owner: it holds the whole book, opens on the gates it last failed and writes every page itself, then the run puts back what it changed elsewhere, carves each endpoint written inline onto a page of its own, and commits the book."""
+"""One turn of a surface's book owner: it holds the whole book, opens on the gates it last failed and writes every page itself, then the run puts back what it changed elsewhere and commits the book."""
 from __future__ import annotations
 
 import time
@@ -21,7 +21,6 @@ from workhorse_workflows.okf_book.shared.blockers import Phase
 from workhorse_workflows.okf_book.shared.book_commits import book_commit_subject, unfinished_book_commit_subject
 from workhorse_workflows.okf_book.shared.book_flow import BookFlow
 from workhorse_workflows.okf_book.shared.book_run import ExerciseResult
-from workhorse_workflows.okf_book.shared.book_shape import carved_pages, shape_book
 from workhorse_workflows.okf_book.shared.confine import Snapshot, book_changes, put_back_outside, snapshot
 from workhorse_workflows.okf_book.shared.entries import FEATURES_DIR
 from workhorse_workflows.okf_book.shared.metrics import TurnMetric, record_turn, turn_metric
@@ -146,23 +145,12 @@ class WriteBook(BookFlow):
         stray = put_back_outside(self.root, self.surface_to_write.service, before, self.run_dir)
         for path in stray:
             self.logger.warning("put back %s, which the writer changed outside its book", path)
-        return Continue(stray, self.carve_pages, before=before).because("carve the pages too large for one writer")
+        return Continue(stray, self.stamp_book, before=before).because("stamp the book's pages")
 
-    def carve_pages(self, before: Snapshot) -> Continue[...]:
-        """Move each endpoint the book holds inline onto a page of its own, and each page past the size limit onto fragments, so every page stays small enough for one writer."""
-        carves = shape_book(self.root, self.surface_to_write.service, frozenset(before.digests))
-        for carve in carves:
-            if carve.refusal:
-                self.logger.warning("left %s as it is: %s", carve.page, carve.refusal)
-            else:
-                self.logger.info("carved %s, writing %d pages", carve.page, len(carve.pages))
-        carved = carved_pages(carves)
-        return Continue(carved, self.stamp_book, before=before, carved=carved).because("stamp the book's pages")
-
-    def stamp_book(self, before: Snapshot, carved: tuple[str, ...] = ()) -> Continue[...]:
-        """Stamp every page the writer changed in its book, and every page a carve wrote."""
+    def stamp_book(self, before: Snapshot) -> Continue[...]:
+        """Stamp every page the writer changed in its book."""
         root = self.root
-        pages = tuple(sorted({*book_changes(root, self.surface_to_write.service, before), *carved}))
+        pages = tuple(sorted(book_changes(root, self.surface_to_write.service, before)))
         for page in pages:
             if page.endswith(".md") and (root / page).is_file():
                 _ = stamp_page(root, root / FEATURES_DIR, page)

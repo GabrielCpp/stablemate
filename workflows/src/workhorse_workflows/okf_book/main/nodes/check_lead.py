@@ -13,7 +13,7 @@ from pathlib import Path
 from ostler.qa.attribution import Cause
 
 from workhorse_workflows.okf_book.main.nodes.gate import rerun_command
-from workhorse_workflows.okf_book.main.nodes.lead_findings import CAUSE_BY_OTHER_SIDE, LEAD_SIDES, LeadFinding, LeadVerdict, service_findings
+from workhorse_workflows.okf_book.main.nodes.lead_findings import CAUSE_BY_OTHER_SIDE, LeadFinding, LeadVerdict, service_findings
 from workhorse_workflows.okf_book.shared.blockers import Blocker, Phase, Side, forget_blockers, read_blockers, record_blocker
 from workhorse_workflows.okf_book.shared.page_check import PageProblem, tool_blockers
 
@@ -104,42 +104,11 @@ def unheld(problems: Iterable[PageProblem], findings: Iterable[LeadFinding]) -> 
     return tuple(problem for problem in found if problem.held_key not in keys)
 
 
-def with_check_instructions(problems: Iterable[PageProblem], findings: Iterable[LeadFinding]) -> tuple[PageProblem, ...]:
-    """*problems* with what the lead said to do first on each page of a group it named the book's, ahead of the page's problems."""
-    found = tuple(problems)
-    told: dict[str, list[PageProblem]] = {}
-    for finding in findings:
-        if finding.side is not Side.BOOK or not finding.instruction:
-            continue
-        for page in dict.fromkeys(problem.page for problem in found if judging(problem, (finding,)) is finding):
-            told.setdefault(page, []).append(
-                PageProblem(page, f"the lead read the whole check, and says of {finding.signature}: {finding.instruction}", code="lead")
-            )
-    return (*(note for notes in told.values() for note in notes), *found)
-
-
 def write_check_problems(folder: Path, problems: Iterable[PageProblem]) -> Path:
     """Write every problem of the check, one per line, where the lead turn reads it."""
     path = folder / PROBLEMS_NAME
     _ = path.write_text("".join(f"{problem.code}\t{problem.text}\n" for problem in problems), encoding="utf-8")
     return path
-
-
-def check_lead_template_args(service: str, problems: Iterable[PageProblem], earlier: Iterable[LeadFinding], kept_problems: Path) -> dict[str, object]:
-    """What the lead of a check is shown: each group with its count, some of its problems, its pages and nodes, where every problem is kept, and what earlier leads of the check named."""
-    groups = [
-        {"number": number, "code": group.code, "count": len(group.problems),
-         "samples": [problem.text for problem in group.problems[:SAMPLES_SHOWN]],
-         "pages": list(group.pages), "nodes": list(group.nodes[:NODES_SHOWN]), "nodes_left": max(0, len(group.nodes) - NODES_SHOWN)}
-        for number, group in enumerate(check_groups(problems), start=1)
-    ]
-    return {
-        "service": service,
-        "groups": groups,
-        "problems": str(kept_problems),
-        "sides": sorted(LEAD_SIDES),
-        "earlier": [finding.model_dump(mode="json") for finding in earlier],
-    }
 
 
 def held_reasons(pairs: Iterable[tuple[PageProblem, LeadFinding]]) -> Mapping[LeadFinding, tuple[PageProblem, ...]]:

@@ -96,23 +96,6 @@ def refuse_commits_until_answered(repo: Path, asked: list[str]) -> Callable[...,
     return _operator
 
 
-OTHER_PAGE = "docs/features/tally/concepts/ledger-file.md"
-SERVER_PAGE = "docs/features/tally/http/server.md"
-ENDPOINT_PAGES = ("docs/features/tally/http/add-expense.md", "docs/features/tally/http/get-total.md")
-INLINE_SERVER = (
-    "---\ntype: server\ntitle: Tally API\n---\n# Tally API\n\n- entry-url: http://localhost:8000\n\n"
-    "## Endpoints\n\n### get-total\n\n- method: GET\n- path: /total\n\n"
-    "### add-expense\n\n- method: POST\n- path: /expenses\n"
-)
-
-
-def write_inline_server(repo: Path) -> None:
-    """A server page in the tally book that holds its two endpoints inline."""
-    page = repo / SERVER_PAGE
-    page.parent.mkdir(parents=True, exist_ok=True)
-    _ = page.write_text(INLINE_SERVER, encoding="utf-8")
-
-
 def page_problems_until_noted(root: Path, _service: str) -> tuple[PageProblem, ...]:
     return () if NOTE.strip() in (root / PAGE).read_text(encoding="utf-8") else (PageProblem(PAGE, "tally.md needs a note"),)
 
@@ -122,13 +105,3 @@ def stub_a_book_sent_back_to_its_owner(monkeypatch: pytest.MonkeyPatch) -> None:
     stub_the_run_to(monkeypatch, PASSED)
     monkeypatch.setattr(flow, "page_problems", page_problems_until_noted)
     monkeypatch.setattr(pyflow_park, "wait_for_answer", stopping_operator([]))
-
-
-SMALL_LIMIT = 1500
-
-
-def _rule(n: int) -> str:
-    return f"### rule-{n}\n\n- rule: an expense obeys rule {n}\n\n" + "The ledger checks this rule on every expense it records. " * 4 + "\n\n"
-
-
-LEDGER = "---\ntype: concept\ntitle: Ledger file\n---\n# Ledger file\n\n## Rules\n\n" + "".join(_rule(n) for n in range(1, 9))

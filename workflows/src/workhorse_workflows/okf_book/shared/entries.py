@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import re
-from collections.abc import Collection
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -54,27 +53,3 @@ def read_entries(root: Path, service: str) -> tuple[EntryLink, ...]:
         if match:
             found.append(EntryLink(match.group("title"), match.group("target")))
     return tuple(found)
-
-
-def links_to_deleted(root: Path, service: str, changed: Collection[str]) -> tuple[EntryLink, ...]:
-    """The links of the service's entries page to a page of *changed*, repo-relative paths, that is gone from disk."""
-    book = book_dir(root, service)
-    return tuple(
-        link for link in read_entries(root, service) if link.page and _repo_path(root, book / link.page) in changed and not (book / link.page).is_file()
-    )
-
-
-def _repo_path(root: Path, path: Path) -> str:
-    return path.resolve().relative_to(root.resolve()).as_posix()
-
-
-def drop_links(root: Path, service: str, links: Collection[EntryLink]) -> None:
-    """Remove the line of each of *links* from the service's entries page."""
-    path = entries_path(root, service)
-    lines = path.read_text(encoding="utf-8").splitlines(keepends=True)
-    _ = path.write_text("".join(line for line in lines if _entry_link(line) not in links), encoding="utf-8")
-
-
-def _entry_link(line: str) -> EntryLink | None:
-    match = _LINK.match(line.rstrip("\n"))
-    return EntryLink(match.group("title"), match.group("target")) if match else None

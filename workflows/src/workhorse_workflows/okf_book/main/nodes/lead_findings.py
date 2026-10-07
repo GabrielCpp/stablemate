@@ -90,14 +90,6 @@ class LeadFinding(BaseModel):
     nodes: tuple[str, ...] = ()
 
 
-class LedLap(BaseModel):
-    """What one lap's lead named. No finding means the lead named nothing, and the run's own attribution stands."""
-
-    model_config = ConfigDict(frozen=True, extra="forbid")
-
-    findings: tuple[LeadFinding, ...] = ()
-
-
 class _Ledger(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -217,23 +209,3 @@ def with_instructions(failures: Mapping[str, tuple[PageProblem, ...]], findings:
             if page in failures:
                 told.setdefault(page, []).append(PageProblem(page, f"the lead read the whole lap, and says of {finding.signature}: {finding.instruction}"))
     return {page: (*told.get(page, ()), *problems) for page, problems in failures.items()}
-
-
-def lead_template_args(service: str, exercised: ExerciseResult, earlier: Iterable[LeadFinding], kept_summary: Path, plan: Path) -> dict[str, object]:
-    """What the lead turn is shown: each group with its count, sample and pages, the head of what the run printed, where the whole run is kept, and what earlier laps' leads named."""
-    summary = exercised.summary
-    groups = [
-        {"number": number, "text": signature.text(), "cause": signature.cause.value, "count": signature.count, "sample": signature.sample,
-         "pages": list(summary.signature_pages(signature)) if summary is not None else []}
-        for number, signature in enumerate(lead_groups(exercised), start=1)
-    ]
-    return {
-        "service": service,
-        "groups": groups,
-        "lines": list(exercised.lines[:LINES_SHOWN]),
-        "lines_left": max(0, len(exercised.lines) - LINES_SHOWN),
-        "summary": str(kept_summary),
-        "plan": str(plan),
-        "sides": sorted(LEAD_SIDES),
-        "earlier": [finding.model_dump(mode="json") for finding in earlier],
-    }
