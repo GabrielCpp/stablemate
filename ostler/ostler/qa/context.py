@@ -1418,16 +1418,24 @@ def _browser_fixtures(book: Mapping[str, BookNode]) -> list[str]:
 
 
 def _fixture_screens(book: Mapping[str, BookNode]) -> dict[str, str]:
-    """The screen each `fixture` file's own browser steps leave the browser on: the one its last `open:` links."""
-    fixtures = {node.path for node in book.values() if node.type == "fixture" and node.kind == "file"}
+    """The screen each `fixture` file leaves the scenario's browser on: the one its own last `open:` links when each scenario builds it, else the one the last fixture it `needs:` leaves."""
+    fixtures = {node.path: node for node in book.values() if node.type == "fixture" and node.kind == "file"}
+    per_scenario = set(_scenario_fixtures(book))
     opened: dict[str, tuple[int, str]] = {}
     for node in book.values():
-        if node.type != "step" or node.path not in fixtures:
+        if node.type != "step" or node.path not in fixtures or Path(node.path).stem not in per_scenario:
             continue
         screens = [edge.to.split("#", 1)[0] for edge in node.edges if edge.via == "open" and edge.to]
         if screens and node.line >= opened.get(node.path, (-1, ""))[0]:
             opened[node.path] = (node.line, screens[0])
-    return {Path(path).stem: screen for path, (_, screen) in sorted(opened.items())}
+
+    def left_on(path: str, seen: frozenset[str]) -> str | None:
+        if path in opened:
+            return opened[path][1]
+        needs = [edge.to for edge in fixtures[path].edges if edge.via == "needs" and edge.to in fixtures and edge.to not in seen]
+        return next((screen for need in reversed(needs) if (screen := left_on(need, seen | {path}))), None)
+
+    return {Path(path).stem: screen for path in sorted(fixtures) if (screen := left_on(path, frozenset({path})))}
 
 
 def _fragment_hosts(book: Mapping[str, BookNode]) -> dict[str, str]:

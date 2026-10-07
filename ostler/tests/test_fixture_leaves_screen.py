@@ -13,6 +13,7 @@ from conftest import screen_md, write
 LIST_PATH = "docs/features/app/document-list.md"
 OPEN_PATH = "docs/features/app/fixtures/create-form-open.md"
 SEEDED_PATH = "docs/features/app/fixtures/seeded.md"
+IDLE_PATH = "docs/features/app/fixtures/create-form-idle.md"
 SCREEN = "docs/features/policy/gui/screens/policy-list.md"
 BASE_URL = "http://localhost:5173"
 
@@ -30,6 +31,8 @@ type: fixture
 title: Create form open
 ---
 # Create form open
+
+- lifetime: scenario
 
 ## Steps
 
@@ -54,6 +57,24 @@ title: Seeded
 - run: ./scripts/seed.sh
 """
 
+IDLE_FIXTURE = """---
+type: fixture
+title: Create form idle
+---
+# Create form idle
+
+- needs:
+  - [Seeded](seeded.md)
+  - [Create form open](create-form-open.md)
+
+## Steps
+
+### settle
+
+- kind: seed
+- run: true
+"""
+
 
 def _git(root: Path, *args: str) -> None:
     subprocess.run(["git", "-c", "user.email=qa@example.com", "-c", "user.name=QA", *args],
@@ -69,6 +90,29 @@ def test_the_context_names_the_screen_a_fixtures_own_browser_steps_open(repo: Pa
     _git(repo, "commit", "-qm", "base")
 
     assert book_context(repo)["fixtureScreens"] == {"create-form-open": LIST_PATH}
+
+
+def test_a_fixture_with_no_browser_steps_leaves_the_browser_where_the_last_fixture_it_needs_did(repo: Path) -> None:
+    write(repo / LIST_PATH, screen_md("document-list", "Document list", body=LIST_COMPONENTS))
+    write(repo / OPEN_PATH, OPEN_FIXTURE)
+    write(repo / SEEDED_PATH, SEEDED_FIXTURE)
+    write(repo / IDLE_PATH, IDLE_FIXTURE)
+    _git(repo, "init")
+    _git(repo, "add", ".")
+    _git(repo, "commit", "-qm", "base")
+
+    assert book_context(repo)["fixtureScreens"] == {"create-form-idle": LIST_PATH, "create-form-open": LIST_PATH}
+
+
+def test_a_fixture_a_whole_lap_shares_leaves_the_scenarios_browser_where_it_was(repo: Path) -> None:
+    write(repo / LIST_PATH, screen_md("document-list", "Document list", body=LIST_COMPONENTS))
+    write(repo / OPEN_PATH, OPEN_FIXTURE.replace("- lifetime: scenario\n\n", ""))
+    write(repo / SEEDED_PATH, SEEDED_FIXTURE)
+    _git(repo, "init")
+    _git(repo, "add", ".")
+    _git(repo, "commit", "-qm", "base")
+
+    assert book_context(repo)["fixtureScreens"] == {}
 
 
 def _context(fixture_screens: dict[str, str]) -> dict:
