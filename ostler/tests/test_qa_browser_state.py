@@ -57,7 +57,8 @@ class _Stored:
 _DRAFTS = ['{"pageId":"p1","locale":"fr"}', '{"pageId":"p1","locale":"en"}']
 
 
-def test_stored_counts_the_records_that_carry_the_text() -> None:
+def test_stored_counts_the_records_that_carry_the_text(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(state, "STATE_WAIT_S", 0.0)
     verify = harness.VERIFIERS["stored"]
     page = _Stored(_DRAFTS)
     assert verify(page, {"records": "docs-drafts/drafts", "text": '"pageId":"p1"', "count": 2}).passed is True
@@ -65,7 +66,8 @@ def test_stored_counts_the_records_that_carry_the_text() -> None:
     assert verify(page, {"records": "docs-drafts/drafts", "text": '"locale":"de"'}).passed is False
 
 
-def test_stored_with_a_count_of_zero_claims_the_page_kept_nothing() -> None:
+def test_stored_with_a_count_of_zero_claims_the_page_kept_nothing(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(state, "STATE_WAIT_S", 0.0)
     verify = harness.VERIFIERS["stored"]
     assert verify(_Stored([]), {"key": "theme", "count": 0}).passed is True
     assert verify(_Stored(["dark"]), {"key": "theme", "count": 0}).passed is False
