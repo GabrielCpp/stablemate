@@ -1269,6 +1269,49 @@ def test_a_screen_guard_that_links_a_fixture_arranges_it_for_every_claim_on_the_
     assert [(row["name"], tuple(row["args"])) for row in claim.get("fixturesDeclared", [])] == arranged
 
 
+_LIST_IN_FRONT = "\n".join([
+    "---", "type: screen", "title: Items", "---", "# Items", "",
+    "- route: /", "- requires:", "  - [Signed in](../../fixtures/signed-in.md) — only a signed-in user reaches the list",
+    "- params: none", "",
+    "## Components", "", "### open-item",
+    "- role: button", "- name: Open item", "- leads-to: [Editor](editor.md)", "",
+])
+
+
+_EDITOR_BEHIND = "\n".join([
+    "---", "type: screen", "title: Editor", "---", "# Editor", "",
+    "- route: /editor", "- requires: none", "- params: none", "",
+    "## Components", "", "### title-field",
+    "- role: textbox", "- name: Title", "- selector: input.title",
+    "- states: shown while an item is open", "- code: app/editor.py::render_title", "",
+])
+
+
+def test_a_screen_reached_through_a_guarded_screen_arranges_that_guards_fixture(tmp_path: Path):
+    """A scenario walks through every screen in front of its own, so a sign-in the first one asks for is owed before the last."""
+    screens = tmp_path / "docs/features/acme/gui/screens"
+    screens.mkdir(parents=True)
+    (tmp_path / "docs/features/acme/fixtures").mkdir(parents=True)
+    (tmp_path / "app").mkdir()
+    (tmp_path / "docs/features/acme/fixtures/signed-in.md").write_text(_SIGNED_IN, encoding="utf-8")
+    (screens / "items.md").write_text(_LIST_IN_FRONT, encoding="utf-8")
+    (screens / "editor.md").write_text(_EDITOR_BEHIND, encoding="utf-8")
+    (tmp_path / "app/editor.py").write_text("def render_title():\n    return 'old'\n", encoding="utf-8")
+    _git(tmp_path, "init")
+    _git(tmp_path, "config", "user.email", "qa@example.com")
+    _git(tmp_path, "config", "user.name", "QA")
+    _git(tmp_path, "add", ".")
+    _git(tmp_path, "commit", "-m", "base")
+    base = _git(tmp_path, "rev-parse", "HEAD")
+    (tmp_path / "app/editor.py").write_text("def render_title():\n    return 'new'\n", encoding="utf-8")
+
+    packet = build_context(tmp_path, base=base, source_roots={"acme": ["app"]})
+
+    by_id = {item["id"]: item for item in packet["obligations"]}
+    claim = by_id["okf:docs/features/acme/gui/screens/editor.md#title-field:states:1"]
+    assert [row["name"] for row in claim.get("fixturesDeclared", [])] == ["signed-in"]
+
+
 def test_a_node_the_change_deleted_is_still_described_by_the_base_revision(tmp_path: Path):
     """The counterpart, and the reason the merge exists at all: head wins per key only for a node head still has."""
     (tmp_path / "docs/features/acme/gui/screens").mkdir(parents=True)

@@ -343,6 +343,7 @@ def build_context(
     )
     requirement = _requirement(snapshot.book, selection, grounding.grounded, mapping.shared)
     changed_code = _changed_code_rows(changes)
+    navigation = _navigation(snapshot.head_dump)
     return {
         "version": 2 if repositories else 1,
         "available": bool(snapshot.nodes_by_id),
@@ -366,7 +367,7 @@ def build_context(
             if item["impacted"]
         ],
         "verificationIndex": verification_index,
-        "navigation": _navigation(snapshot.head_dump),
+        "navigation": navigation,
         "cliBinaries": _run_binaries_by_path(snapshot.book),
         "serverOrigins": _server_origins(snapshot.book),
         "scenarioFixtures": _scenario_fixtures(snapshot.book),
@@ -377,7 +378,7 @@ def build_context(
         "healthFindings": [*mapping.unmapped, *grounding.health, *requirement.health],
         "story": _story_identity(story_file),
         "acceptanceCriteria": _acceptance_criteria(story_file),
-        "obligations": _minted_obligations(snapshot, selection, requirement, books),
+        "obligations": _minted_obligations(snapshot, selection, requirement, books, walks=_walks(navigation)),
     }
 
 
@@ -721,7 +722,12 @@ def _required_contracts(
 
 
 def _minted_obligations(
-    snapshot: _BookSnapshot, selection: _Selection, requirement: _Requirement, books: Sequence[str] = ()
+    snapshot: _BookSnapshot,
+    selection: _Selection,
+    requirement: _Requirement,
+    books: Sequence[str] = (),
+    *,
+    walks: Mapping[str, tuple[str, ...]] | None = None,
 ) -> list[dict[str, Any]]:
     """Every selected contract's and journey's obligations on a page under *books*, in id order, each id once."""
     book = snapshot.book
@@ -745,6 +751,7 @@ def _minted_obligations(
             fixture_needs=fixture_needs,
             resolve_locator=_locator_resolver(snapshot.head_graph, book, book[node_id]),
             book=book,
+            walks=walks or {},
         )
 
     obligations = [
@@ -2114,6 +2121,7 @@ def _obligations(
     fixture_needs: Mapping[str, frozenset[str]] | None = None,
     resolve_locator: Callable[[str], LocatorTarget] | None = None,
     book: Mapping[str, BookNode],
+    walks: Mapping[str, tuple[str, ...]] | None = None,
 ) -> list[dict[str, Any]]:
     """Mint one obligation per normative bullet, plus the node-level contract."""
     required = required and owes_live_evidence(book_node.type, book_node.page_type)
@@ -2121,7 +2129,7 @@ def _obligations(
     representative = min(family)
     base = _node_obligation(book_node, reasons, family, journey=journey, required=required, scope=scope, book=book)
     reader = _PartReader(resolve_locator, fixture_provides, fixture_undetermined, fixture_needs)
-    ambient = [*_guard_fixtures(book_node, book), *_parent_fixtures(book_node, book)]
+    ambient = [*_guard_fixtures(book_node, book, walks or {}), *_parent_fixtures(book_node, book)]
     attribution = _with_ambient_fixtures(_attribution(book_node), ambient)
     node_parts = reader.node_parts(attribution)
     node_parts.stamp(base)
@@ -2249,12 +2257,24 @@ def _screen_hosting(book_node: BookNode, book: Mapping[str, BookNode]) -> BookNo
     return page if page is not None and page.type == "screen" else None
 
 
-def _guard_fixtures(book_node: BookNode, book: Mapping[str, BookNode]) -> list[str]:
-    """The fixture each `requires:` guard of the screen *book_node* is shown on links, by name."""
+def _walks(navigation: Mapping[str, Mapping[str, Any]]) -> dict[str, tuple[str, ...]]:
+    """Each routed screen's walk: every screen a scenario passes through to reach it, the screen itself last."""
+    return {
+        screen: (*(hop["from"] for hop in hops), screen)
+        for surface in navigation.values()
+        for screen, hops in surface.get("routes", {}).items()
+    }
+
+
+def _guard_fixtures(
+    book_node: BookNode, book: Mapping[str, BookNode], walks: Mapping[str, tuple[str, ...]],
+) -> list[str]:
+    """The fixture each `requires:` guard links, by name, of every screen the walk to *book_node*'s screen passes through."""
     screen = _screen_hosting(book_node, book)
     if screen is None:
         return []
-    linked = [edge.to for edge in screen.edges if edge.via == reach.GUARD_BULLET and edge.to]
+    passed = [page for screen_id in walks.get(screen.id, (screen.id,)) if (page := book.get(screen_id)) is not None]
+    linked = [edge.to for page in passed for edge in page.edges if edge.via == reach.GUARD_BULLET and edge.to]
     return list(dict.fromkeys(
         Path(target).stem for target in linked if (node := book.get(target)) is not None and node.type == "fixture"))
 
