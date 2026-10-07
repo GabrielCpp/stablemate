@@ -71,6 +71,7 @@ SERVE_STEP = "serve"
 _SERVE_SETTLE_S = 0.5
 
 _BACKGROUNDED = re.compile(r"(?<![&|])&\s*$")
+_TEMPLATE_HOLE = re.compile(r"\$?\{[^{}]*\}")
 
 _NODE_REF = re.compile(r"(?<![\w.])@([a-zA-Z0-9][a-zA-Z0-9_-]*)\.([a-zA-Z0-9][a-zA-Z0-9_-]*)")
 _CAPTURE_REF = re.compile(r"(?<![\w.])\$([a-zA-Z0-9][a-zA-Z0-9_-]*)")
@@ -386,6 +387,12 @@ def _definition_line(func: Callable[..., None]) -> int:
     if code is None or not linecache.getlines(code.co_filename):
         return 0
     return code.co_firstlineno
+
+
+def template_pattern(template: str) -> re.Pattern[str]:
+    """The names a templated control can carry: its literal text in place, any text in each hole."""
+    parts = _TEMPLATE_HOLE.split(template)
+    return re.compile("^" + ".+?".join(re.escape(part) for part in parts) + "$")
 
 
 def stop_server_group(pgid: int) -> None:
@@ -1621,12 +1628,20 @@ class Qa:
         return self.offset_base_ms + round((time.monotonic() - _PROCESS_START) * 1000)
 
 
-    def by_role(self, role: str, *, name: str | None = None, **kwargs: Any) -> Any:
+    def by_role(self, role: str, *, name: str | None = None, template: str | None = None, **kwargs: Any) -> Any:
         """The element with this role and name. A name that several elements contain addresses the one that carries it whole.
 
         A page that shows no such element yet is waited on until one appears, so the choice is made against what it renders.
         A page that streams data never goes idle, so the element itself is the signal, not the network.
+        A *template* names a control rendered once per item, so each hole matches any text and the first instance answers.
         """
+        if template is not None:
+            found = self.browser_page.get_by_role(role, name=template_pattern(template), **kwargs)
+            try:
+                found.first.wait_for(state="attached", timeout=SETTLE_WAIT_MS)
+            except Exception:
+                pass
+            return found.first
         found = self.browser_page.get_by_role(role, name=name, **kwargs)
         if not isinstance(name, str) or "exact" in kwargs:
             return found

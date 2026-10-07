@@ -50,6 +50,9 @@ except ImportError:
     _MATCHABLE_ROLES = None
 
 
+_TEMPLATE_HOLE = re.compile(r"\{[^{}]+\}")
+
+
 def page_locator_expr(locators: Locators) -> str | None:
     """A concrete Playwright locator expression built from a node's own book-declared locators."""
     role = bullet_value(next(iter(locators.role), None))
@@ -58,7 +61,9 @@ def page_locator_expr(locators: Locators) -> str | None:
     name = bullet_value(next(iter(locators.name), None))
     selector = bullet_value(next(iter(locators.selector), None))
     if role and name and not accessible_names.prose_mark(name):
-        return f"qa.by_role({python_literal(role)}, name={python_literal(accessible_names.literal_name(name))})"
+        literal = accessible_names.literal_name(name)
+        keyword = "template" if _TEMPLATE_HOLE.search(literal) else "name"
+        return f"qa.by_role({python_literal(role)}, {keyword}={python_literal(literal)})"
     if selector:
         if selector_forms.parse_scheme_selector(selector) is not None:
             return None

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 
 from ostler.qa.harness_host import load_harness_module
@@ -12,11 +13,13 @@ harness = load_harness_module("ostler_qa")
 @dataclass
 class _Found:
     page: _Page
-    name: str
+    name: str | re.Pattern[str]
     exact: bool
 
     @property
     def names(self) -> tuple[str, ...]:
+        if isinstance(self.name, re.Pattern):
+            return tuple(each for each in self.page.shown if self.name.search(each))
         if self.exact:
             return tuple(each for each in self.page.shown if each == self.name)
         return tuple(each for each in self.page.shown if self.name.lower() in each.lower())
@@ -42,7 +45,7 @@ class _Page:
     shown: tuple[str, ...]
     loading: tuple[str, ...] = ()
 
-    def get_by_role(self, _role: str, *, name: str, exact: bool = False) -> _Found:
+    def get_by_role(self, _role: str, *, name: str | re.Pattern[str], exact: bool = False) -> _Found:
         return _Found(self, name, exact)
 
     def wait_for_load_state(self, _state: str, *, timeout: int) -> None:
@@ -74,3 +77,13 @@ def test_a_list_that_renders_after_the_call_still_addresses_the_element_that_car
 
 def test_a_name_no_element_carries_whole_stays_ambiguous() -> None:
     assert _by_role(("Save draft", "Save copy"), "Save") == ("Save draft", "Save copy")
+
+
+def test_a_template_addresses_a_control_whose_name_fills_its_holes() -> None:
+    found = harness.Qa.by_role(_Qa(_Page(("Modifier", "Modifier la version Français"))), "button",
+                               template="Modifier la version {locale.name}")
+    assert found.names == ("Modifier la version Français",)
+
+
+def test_a_template_never_matches_its_own_placeholder_text_alone() -> None:
+    assert not harness.template_pattern("Supprimer {document.title}").match("Supprimer ")
