@@ -2831,6 +2831,40 @@ def test_a_journey_step_performs_its_own_acts_before_it_triggers_it() -> None:
     assert first < fill < second
 
 
+def _opening_journey(fixture_screens: dict[str, str]) -> str:
+    open_thing = f"{_SCREEN}#open-thing"
+    context = _navigation_context(
+        _flow_obligation(
+            f"okf:{_FLOW}:end-state", source=_FLOW, surface="policy",
+            steps=[_step(open_thing, "interaction", "policy")],
+            checks=[_located_visible(f"{_SCREEN}#things-table", {"selector": ["#things-table"]})],
+        ),
+        _page_obligation(f"{open_thing}:carrier", open_thing,
+                         locators={"on": ["[open-link](#open-link)"], "trigger": ["click"]},
+                         checks=[]) | {"required": False},
+        _page_obligation(f"{_SCREEN}#open-link:carrier", f"{_SCREEN}#open-link",
+                         locators={"selector": ["#open-link"]}, checks=[]) | {"required": False},
+        navigation=_arrival_navigation(),
+    ) | {"fixtureScreens": fixture_screens}
+    result = _compile_plan_gaps(context, story="demo-story")
+    assert isinstance(result, Plan)
+    ast.parse(result.source)
+    return result.source.split("@scenario(")[-1]
+
+
+def test_a_journey_whose_fixture_left_the_browser_on_its_first_screen_starts_there() -> None:
+    journey = _opening_journey({"seeded-ledger": _SCREEN})
+
+    assert "qa.goto(" not in journey
+    assert journey.index('qa.fixture("seeded-ledger")') < journey.index('"#open-link"')
+
+
+def test_a_journey_whose_fixture_left_the_browser_elsewhere_opens_its_first_screen() -> None:
+    journey = _opening_journey({"seeded-ledger": "docs/features/policy/gui/screens/landing.md"})
+
+    assert journey.index('qa.fixture("seeded-ledger")') < journey.index("qa.goto(") < journey.index('"#open-link"')
+
+
 def _visit(path: str) -> dict:
     return {"call": f"visit(path={path!r})", "name": "visit", "args": {"path": path}, "locates": {}}
 

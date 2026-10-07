@@ -421,8 +421,10 @@ def page_observations(
 
 
 def _web_start(walk: JourneyWalk, gaps: list[Gap]) -> list[str] | None:
-    """Open the surface's root and click through to where the journey's first step lives."""
+    """Open the surface's root and click through to where the journey's first step lives, unless the journey's last fixture already left the browser there."""
     first_source = shown_on(walk.steps[0].ref.split("#")[0], walk.nav.routes, walk.book.fragment_hosts)
+    if walk.left_on == first_source:
+        return []
     hops = walk.nav.routes.get(first_source)
     if hops is None:
         gaps.extend(Gap(oid, "uncompilable-claim",

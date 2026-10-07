@@ -39,6 +39,7 @@ class JourneyWalk:
     obligations: list[Obligation]
     ids: list[str]
     nav: SurfaceNavigation
+    left_on: str | None = None
 
 
 @dataclass(frozen=True)
@@ -253,12 +254,13 @@ def journey_scenarios(
                             "journey, and this compiler builds no journey path for it")
                         for oid in ids)
             continue
-        walk = JourneyWalk(plan.book, steps, obligations, ids, surface_row(plan.navigation, surface))
+        arrangement = arrangement_of(obligations)
+        left_on = plan.book.fixture_screens.get(arrangement.rows[-1].name) if arrangement.rows else None
+        walk = JourneyWalk(plan.book, steps, obligations, ids, surface_row(plan.navigation, surface), left_on)
         bound = backend.bind(walk)
         if isinstance(bound, ScenarioRefusal):
             gaps.extend(Gap(oid, bound.kind, bound.detail) for oid in ids)
             continue
-        arrangement = arrangement_of(obligations)
         if arrangement.unstated:
             gaps.extend(Gap(oid, "unarranged-journey",
                             "this flow arranges nothing before its walk and does not say it "
