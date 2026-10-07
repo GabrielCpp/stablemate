@@ -10,6 +10,7 @@ import linecache
 import os
 import re
 import shutil
+import signal
 import string
 import subprocess
 import sys
@@ -64,6 +65,12 @@ RECORD_PATH_ENV = "OSTLER_QA_RECORD_PATH"
 _SHELL = shutil.which("bash") or "/bin/sh"
 
 PROBE_STEP = "probe"
+
+SERVE_STEP = "serve"
+
+_SERVE_SETTLE_S = 0.5
+
+_BACKGROUNDED = re.compile(r"(?<![&|])&\s*$")
 
 _NODE_REF = re.compile(r"(?<![\w.])@([a-zA-Z0-9][a-zA-Z0-9_-]*)\.([a-zA-Z0-9][a-zA-Z0-9_-]*)")
 _CAPTURE_REF = re.compile(r"(?<![\w.])\$([a-zA-Z0-9][a-zA-Z0-9_-]*)")
@@ -381,6 +388,12 @@ def _definition_line(func: Callable[..., None]) -> int:
     return code.co_firstlineno
 
 
+def stop_server_group(pgid: int) -> None:
+    """SIGKILL a `serve` step's process group: what its shell started outlives the shell otherwise."""
+    try:
+        os.killpg(pgid, signal.SIGKILL)
+    except (ProcessLookupError, PermissionError):
+        return
 
 
 class _Recorder:
@@ -783,6 +796,7 @@ class Qa:
         self._node_sessions: dict[str, dict[str, Any]] = {}
         self._lap = LapRecord(lap_dir) if lap_dir is not None else None
         self._last_fault: FixtureFault | None = None
+        self._servers: list[subprocess.Popen[bytes]] = []
         self._tool_env_allowed = frozenset(tool_env)
         self._recorder = recorder
         self._captures: dict[str, str] = {}
@@ -962,11 +976,13 @@ class Qa:
     ) -> "ToolResult":
         kind = str(step.get("kind", ""))
         command = str(step.get("command", ""))
-        cwd = str(self.scenario_checkout_copy()) if step.get("cwd-frame") == "scenario" else str(step.get("cwd") or self.root)
+        cwd = self._step_cwd(fixture, index, step)
         timeout = float(step["timeout"])
-        if not Path(cwd).is_dir():
-            self._fault(fixture, index, kind, "environment", f"cwd {cwd!r} does not exist")
-            raise RuntimeError(f"qa fixture {fixture!r} step {index} ({kind}): cwd {cwd!r} does not exist")
+        if _BACKGROUNDED.search(command):
+            detail = ("backgrounds its command with `&`, so the step never finishes; "
+                      "a process the scenario talks to is a `kind: serve` step")
+            self._fault(fixture, index, kind, "defect", detail)
+            raise RuntimeError(f"qa fixture {fixture!r} step {index} ({kind}) {detail}")
         argv = [_SHELL, "-c", command]
         overlay = {**os.environ, **env}
         try:
@@ -996,6 +1012,59 @@ class Qa:
             self._fault(fixture, index, kind, fault_class, detail)
             raise RuntimeError(f"qa fixture {fixture!r} step {index} ({kind}) failed ({detail})")
         return result
+
+    def _step_cwd(self, fixture: str, index: int, step: Mapping[str, Any]) -> str:
+        kind = str(step.get("kind", ""))
+        cwd = str(self.scenario_checkout_copy()) if step.get("cwd-frame") == "scenario" else str(step.get("cwd") or self.root)
+        if not Path(cwd).is_dir():
+            self._fault(fixture, index, kind, "environment", f"cwd {cwd!r} does not exist")
+            raise RuntimeError(f"qa fixture {fixture!r} step {index} ({kind}): cwd {cwd!r} does not exist")
+        return cwd
+
+    def _serve_book_step(
+        self, fixture: str, index: int, step: Mapping[str, Any], env: Mapping[str, str],
+    ) -> "ToolResult":
+        """Start a `serve` step's command in its own process group, which lives until the scenario ends."""
+        if self._book_fixtures[fixture].get("lifetime") != "scenario":
+            detail = ("serves a process, which ends with the scenario that started it; "
+                      "declare `lifetime: scenario` so each scenario starts its own")
+            self._fault(fixture, index, SERVE_STEP, "defect", detail)
+            raise RuntimeError(f"qa fixture {fixture!r} step {index} ({SERVE_STEP}) {detail}")
+        cwd = self._step_cwd(fixture, index, step)
+        argv = [_SHELL, "-c", str(step.get("command", ""))]
+        log_path = self.dir / f"serve-{self.scenario_id}-{fixture}-{index}.log"
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            with log_path.open("wb") as log:
+                server = subprocess.Popen(  # noqa: S603 - fixed shell invocation of a book-declared recipe
+                    argv, cwd=cwd, env={**os.environ, **env}, stdin=subprocess.DEVNULL,
+                    stdout=log, stderr=subprocess.STDOUT, process_group=0,
+                )
+        except OSError as exc:
+            self._fault(fixture, index, SERVE_STEP, "environment", str(exc))
+            raise RuntimeError(f"qa fixture {fixture!r} step {index} ({SERVE_STEP}) could not start: {exc}") from exc
+        self._servers.append(server)
+        self._recorder.emit({"type": "serve", "scenario": self.scenario_id, "fixture": fixture, "pgid": server.pid})
+        try:
+            code = server.wait(timeout=_SERVE_SETTLE_S)
+        except subprocess.TimeoutExpired:
+            code = 0
+        if code != 0:
+            tail = log_path.read_text(encoding="utf-8", errors="replace").strip()[-500:]
+            detail = f"exited {code} as it started: {tail}"
+            self._fault(fixture, index, SERVE_STEP, "defect", detail)
+            raise RuntimeError(f"qa fixture {fixture!r} step {index} ({SERVE_STEP}) {detail}")
+        return ToolResult(command=argv, stdout="", stderr="", exit_code=0)
+
+    def stop_servers(self) -> None:
+        """Kill every process group a `serve` step started, so the next scenario finds its port free."""
+        for server in self._servers:
+            stop_server_group(server.pid)
+            try:
+                server.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                continue
+        self._servers.clear()
 
     def _arranging_browser(self, fixture: str, index: int, kind: str) -> Any:
         if self.diagnostics is None:
@@ -1209,6 +1278,8 @@ class Qa:
             if "browser" in step:
                 result = self._run_browser_step(name, index, step, env)
                 signed_in = True
+            elif step.get("kind") == SERVE_STEP:
+                result = self._serve_book_step(name, index, step, env)
             else:
                 result = self._run_book_step(name, index, step, env)
             step_id = step.get("id")
@@ -2330,6 +2401,7 @@ def _run(module_path: Path, scenario_id: str, context: dict[str, Any]) -> int:
         if problems:
             status = "failed" if status == "passed" else status
             error = "; ".join([part for part in [error, *problems] if part])
+    qa.stop_servers()
     if qa.failures:
         status = "failed" if status == "passed" else status
     if status == "passed" and target_decl.driver in UI_DRIVER_NAMES and qa.vets == 0:

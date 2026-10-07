@@ -807,6 +807,7 @@ def _check_fixture_grammar(graph: Graph, f: list[Finding]) -> None:
             step_commands.check_step_command_syntax(step, rel, f)
             step_commands.check_step_command_checkout_path(graph, step, rel, f)
             step_commands.check_fixture_step_directory(graph, step, rel, f)
+            step_commands.check_fixture_step_serves(node, step, rel, f)
 
     for step in graph.ui_nodes_of_type("step"):
         if step.id not in fixture_steps and fixture_browser.is_browser_step(step):

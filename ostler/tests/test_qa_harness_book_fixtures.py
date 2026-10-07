@@ -3,9 +3,13 @@
 from __future__ import annotations
 
 import json
+import os
+import signal
 import subprocess
 import sys
 from pathlib import Path
+
+from ostler.qa.drivers import stop_servers
 
 HARNESS_DIR = Path(__file__).resolve().parents[1] / "ostler" / "qa" / "harness"
 
@@ -944,3 +948,83 @@ def test_an_object_fact_reused_later_in_its_lap_is_still_an_object(tmp_path: Pat
     assert [r["reused"] for r in second_records if r.get("type") == "fixture"] == [True]
     asserted = [record for record in second_records if record.get("type") == "assert"]
     assert [record["passed"] for record in asserted] == [True, True, True], asserted
+
+
+SERVE_SCENARIO = '''\
+@scenario(target=api, mechanism="live", covers=["ac:1"])
+def talks_to_a_server(qa: Qa) -> None:
+    """Arranges a server the scenario talks to."""
+    qa.fixture("mock-backend")
+    qa.check("arranged", True)
+'''
+
+
+def _serve_fixture(tmp_path: Path, *, lifetime: str = "scenario", serve: str = "") -> dict:
+    pid_file = tmp_path / "server.pid"
+    return {
+        "mock-backend": {
+            "steps": [
+                {"kind": "serve", "id": "start", "command": serve or f"echo $$ > {pid_file}; exec sleep 30"},
+                {"kind": "verify", "id": "alive", "command": f"sleep 0.2; kill -0 $(cat {pid_file})"},
+            ],
+            "args": [], "provides": [], "needs": [], "secrets": [], "lifetime": lifetime,
+        }
+    }
+
+
+def _is_running(pid: int) -> bool:
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    return Path(f"/proc/{pid}/stat").read_text().split()[2] != "Z"
+
+
+def test_a_served_process_answers_the_next_step_and_is_gone_when_the_scenario_ends(tmp_path: Path) -> None:
+    module = _write(tmp_path, SERVE_SCENARIO)
+    code, stdout, records = _run(module, "talks-to-a-server", tmp_path, book_fixtures=_serve_fixture(tmp_path))
+    assert code == 0, stdout
+    [served] = [r for r in records if r.get("type") == "serve"]
+    assert served["fixture"] == "mock-backend"
+    assert not _is_running(int((tmp_path / "server.pid").read_text()))
+
+
+def test_a_backgrounded_command_is_refused_naming_the_serve_step(tmp_path: Path) -> None:
+    module = _write(tmp_path, SERVE_SCENARIO)
+    book_fixtures = {
+        "mock-backend": {
+            "steps": [{"kind": "seed", "id": "start", "command": "sleep 30 &"}],
+            "args": [], "provides": [], "needs": [], "secrets": [], "lifetime": "scenario",
+        }
+    }
+    code, stdout, records = _run(module, "talks-to-a-server", tmp_path, book_fixtures=book_fixtures)
+    assert code != 0, stdout
+    [fault] = [r for r in records if r.get("type") == "fixture_fault"]
+    assert fault["fault_class"] == "defect"
+    assert "`kind: serve`" in fault["detail"]
+
+
+def test_a_served_process_in_a_fixture_shared_across_scenarios_is_refused(tmp_path: Path) -> None:
+    module = _write(tmp_path, SERVE_SCENARIO)
+    book_fixtures = _serve_fixture(tmp_path, lifetime="lap")
+    code, stdout, records = _run(module, "talks-to-a-server", tmp_path, book_fixtures=book_fixtures)
+    assert code != 0, stdout
+    [fault] = [r for r in records if r.get("type") == "fixture_fault"]
+    assert "`lifetime: scenario`" in fault["detail"]
+    assert not (tmp_path / "server.pid").exists()
+
+
+def test_a_server_that_dies_as_it_starts_is_a_defect_quoting_its_output(tmp_path: Path) -> None:
+    module = _write(tmp_path, SERVE_SCENARIO)
+    book_fixtures = _serve_fixture(tmp_path, serve="echo 'address already in use' >&2; exit 3")
+    code, stdout, records = _run(module, "talks-to-a-server", tmp_path, book_fixtures=book_fixtures)
+    assert code != 0, stdout
+    [fault] = [r for r in records if r.get("type") == "fixture_fault"]
+    assert "exited 3" in fault["detail"]
+    assert "address already in use" in fault["detail"]
+
+
+def test_the_driver_stops_a_server_a_killed_scenario_left_running(tmp_path: Path) -> None:
+    server = subprocess.Popen(["sleep", "30"], process_group=0)  # noqa: S603, S607
+    stop_servers([{"type": "serve", "pgid": server.pid}])
+    assert server.wait(timeout=5) == -signal.SIGKILL

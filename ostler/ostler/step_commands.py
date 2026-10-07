@@ -2,12 +2,16 @@
 
 from __future__ import annotations
 
+import re
+
 from ostler import checks, refs as refs_mod, registry
 from ostler.finding import Finding
 from ostler.model import Graph, UINode
 from ostler.qa import runbook as runbook_mod, stack as stack_mod
 
 _STEP_COMMAND_KEYS: tuple[str, ...] = ("run", "health")
+
+_BACKGROUNDED = re.compile(r"(?<![&|])&\s*$")
 
 
 def check_step_command_bullets(step: UINode, rel: str, f: list[Finding]) -> None:
@@ -88,3 +92,25 @@ def check_step_not_scenario_frame(graph: Graph, step: UINode, rel: str, f: list[
         f"exists to name — state a path, or drop the bullet to run at the checkout root",
         path=rel, line=step.line, ref=refs_mod.bullet_ref(step.id, "working-directory"),
         suggestion="- working-directory: <path>"))
+
+
+def check_fixture_step_serves(node: UINode, step: UINode, rel: str, f: list[Finding]) -> None:
+    """A fixture step holds a process open only as a `serve` step of a `lifetime: scenario` fixture."""
+    kind = runbook_mod.bullet_value(step.meta, "kind")
+    run = runbook_mod.bullet_value(step.meta, "run")
+    if kind != "serve" and _BACKGROUNDED.search(run):
+        f.append(Finding(
+            "error", "fixture-step-backgrounded",
+            f"{step.id}: `run:` ends in `&`, so the harness waits on a process that never exits "
+            f"and the scenario times out. A process the scenario talks to is a `kind: serve` "
+            f"step, which the harness starts and stops when the scenario ends",
+            path=rel, line=step.line, ref=refs_mod.bullet_ref(step.id, "kind"),
+            suggestion="- kind: serve"))
+    if kind == "serve" and runbook_mod.bullet_value(node.meta, "lifetime") != "scenario":
+        f.append(Finding(
+            "error", "fixture-serve-lifetime",
+            f"{step.id}: a `serve` step's process ends with the scenario that started it, so "
+            f"another scenario reusing this fixture would find no server. Declare "
+            f"`lifetime: scenario` so each scenario starts its own",
+            path=rel, line=step.line, ref=refs_mod.bullet_ref(step.id, "kind"),
+            suggestion="- lifetime: scenario"))

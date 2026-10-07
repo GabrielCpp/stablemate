@@ -891,6 +891,8 @@ class LocalLauncher(Launcher):
             output_raw, _ = process.communicate()
             timed_out = True
         reader.join(timeout=5)
+        if timed_out or not any(record.get("type") == "scenario" for record in records):
+            stop_servers(records)
         safe = _redact_bytes(output_raw or b"", driver.session.secret_values.values())
         return records, safe.decode("utf-8", errors="replace"), process.returncode, timed_out
 
@@ -903,6 +905,17 @@ def _drain(read_fd: int, records: list[dict[str, Any]]) -> None:
                 records.append(json.loads(line))
             except json.JSONDecodeError:
                 continue
+
+
+def stop_servers(records: list[dict[str, Any]]) -> None:
+    """SIGKILL each process group a `serve` step started, which a scenario that never finished left running."""
+    for record in records:
+        if record.get("type") != "serve":
+            continue
+        try:
+            os.killpg(int(record["pgid"]), signal.SIGKILL)
+        except (ProcessLookupError, PermissionError):
+            continue
 
 
 def _kill_group(process: subprocess.Popen[bytes]) -> None:

@@ -522,3 +522,40 @@ def test_a_step_that_names_the_checkout_by_its_absolute_path_is_refused_and_a_re
     write(repo / "docs/features/acme/fixtures/other-acme.md", _fixture_in("scripts"))
     found = _findings(repo, "checkout-absolute-path")
     assert [(f.path, f.severity) for f in found] == [("docs/features/acme/fixtures/seeded-acme.md", "error")]
+
+
+def _served_fixture(*, kind: str, run: str, lifetime: str = "scenario") -> str:
+    lifetime_line = f"- lifetime: {lifetime}\n" if lifetime else ""
+    return (f"---\ntype: fixture\ntitle: Mock backend\n---\n# Mock backend\n\n{lifetime_line}"
+            f"\n## Steps\n\n### start\n- kind: {kind}\n- run: {run}\n")
+
+
+def test_a_fixture_step_that_backgrounds_its_command_is_refused_naming_serve(repo: Path) -> None:
+    _stack(repo)
+    write(repo / "docs/features/acme/fixtures/mock-backend.md",
+          _served_fixture(kind="seed", run="python3 tools/backend.py &"))
+    found = _findings(repo, "fixture-step-backgrounded")
+    assert [(f.severity, f.suggestion) for f in found] == [("error", "- kind: serve")]
+
+
+def test_a_command_joined_with_double_ampersand_is_not_backgrounded(repo: Path) -> None:
+    _stack(repo)
+    write(repo / "docs/features/acme/fixtures/mock-backend.md",
+          _served_fixture(kind="seed", run="./scripts/seed-acme.sh && echo done"))
+    assert _findings(repo, "fixture-step-backgrounded") == []
+
+
+def test_a_serve_step_in_a_scenario_fixture_is_clean(repo: Path) -> None:
+    _stack(repo)
+    write(repo / "docs/features/acme/fixtures/mock-backend.md",
+          _served_fixture(kind="serve", run="python3 tools/backend.py"))
+    findings = doctor.run(load(repo)).findings
+    assert [f for f in findings if f.code in {"fixture-step-kind", "fixture-serve-lifetime"}] == []
+
+
+def test_a_serve_step_in_a_fixture_other_scenarios_reuse_is_refused(repo: Path) -> None:
+    _stack(repo)
+    write(repo / "docs/features/acme/fixtures/mock-backend.md",
+          _served_fixture(kind="serve", run="python3 tools/backend.py", lifetime=""))
+    found = _findings(repo, "fixture-serve-lifetime")
+    assert [(f.severity, f.suggestion) for f in found] == [("error", "- lifetime: scenario")]
