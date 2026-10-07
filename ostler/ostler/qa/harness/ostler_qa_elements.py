@@ -6,6 +6,7 @@ import re
 import time
 from collections.abc import Callable, Sized
 from dataclasses import dataclass
+from urllib.parse import urlsplit
 
 from ostler_qa_verdicts import Args, Verdict, str_arg, verdict
 
@@ -30,6 +31,7 @@ class VisibilityReading:
     shown: bool
     readings: tuple[str, ...]
     count: int | None = None
+    absent_at: str | None = None
 
 
 COUNT_WAIT_S = 3.0
@@ -62,6 +64,9 @@ def read_visibility(observed: object, args: Args) -> VisibilityReading:
     is_visible = getattr(observed, "is_visible", None)
     if callable(is_visible):
         shown = bool(is_visible())
+        if not shown and not _attached(observed):
+            return VisibilityReading(shown=False, readings=(), absent_at=_page_path(observed))
+        shown = shown or bool(is_visible())
         return VisibilityReading(shown=shown, readings=_readings(observed) if shown and "text" in args else ())
     readings = (str(observed),) if "text" in args and observed is not None else ()
     return VisibilityReading(shown=bool(observed), readings=readings)
@@ -70,6 +75,9 @@ def read_visibility(observed: object, args: Args) -> VisibilityReading:
 def verify_visible(reading: VisibilityReading, args: Args) -> Verdict:
     if "count" in args:
         return verdict(reading.count == args["count"], {"shown": reading.count}, {"shown": args["count"]})
+    if reading.absent_at is not None:
+        expected = {"visible": True, "text": str_arg(args, "text")} if "text" in args else {"visible": True}
+        return verdict(False, {"present": False, "at": reading.absent_at}, expected)
     if "text" not in args:
         return verdict(reading.shown, {"visible": reading.shown}, {"visible": True})
     text = reading.readings[0] if reading.readings else None
@@ -116,6 +124,12 @@ def _attached(observed: object) -> bool:
 
 
 _ABSENT = {"present": False}
+
+
+def _page_path(observed: object) -> str:
+    """The address of the page a locator searched, or `""` when it carries none."""
+    url = str(getattr(getattr(observed, "page", None), "url", "") or "")
+    return urlsplit(url).path if url else ""
 
 
 @dataclass(frozen=True)
