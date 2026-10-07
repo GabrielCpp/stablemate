@@ -542,6 +542,17 @@ def _validate_python_scenarios(
     return problems, asserted_coverage
 
 
+def _located_templates(scenario: Mapping[str, Any]) -> set[str]:
+    """The name templates a scenario locates a control by, each one addressing whichever member of its family is rendered."""
+    actions = scenario.get("locators")
+    return {
+        action["locator"]["template"]
+        for action in (actions if isinstance(actions, list) else [])
+        if is_mapping(action) and is_mapping(action.get("locator"))
+        and isinstance(action["locator"].get("template"), str) and action["locator"]["template"] != COMPUTED
+    }
+
+
 def _validate_instances(document: PlanDocument) -> list[str]:
     """Hold every scenario covering a repeated obligation to concrete, named instances."""
     repeats: dict[str, RepeatContract] = {}
@@ -567,6 +578,7 @@ def _validate_instances(document: PlanDocument) -> list[str]:
         )
         raw_instances = scenario.get("instances")
         declared = raw_instances if isinstance(raw_instances, list) else []
+        templates = _located_templates(scenario)
         by_obligation: dict[str, list[dict[str, Any]]] = {}
         for instance in declared:
             if not is_mapping(instance):
@@ -624,6 +636,8 @@ def _validate_instances(document: PlanDocument) -> list[str]:
             if not repeat.binds and not variants:
                 continue
             instances = by_obligation.get(obligation_id, [])
+            if not instances and not variants and repeat.template and repeat.template.template in templates:
+                continue
             if not instances:
                 problems.append(
                     f"scenario '{scenario_id}' covers repeated obligation '{obligation_id}' "

@@ -614,6 +614,40 @@ def test_invoking_the_declared_check_with_its_arguments_binds(tmp_path: Path) ->
     assert validate_v2(document) == []
 
 
+def _declaring_a_fixture_value(spec: Path) -> None:
+    context_path = spec / "qa-okf-context.json"
+    context = json.loads(context_path.read_text(encoding="utf-8"))
+    context["obligations"][0]["checksDeclared"] = [{
+        "call": 'json_path(path="item.id", equals="@item.id")',
+        "name": "json_path",
+        "args": {"path": "item.id", "equals": "@item.id"},
+    }]
+    context_path.write_text(json.dumps(context), encoding="utf-8")
+
+
+def test_a_fixture_value_the_plan_resolves_binds_the_declared_check(tmp_path: Path) -> None:
+    """`qa.resolve` substitutes the value at run time, so the text it is handed is the argument the book declared."""
+    spec = _spec(tmp_path)
+    _declaring_a_fixture_value(spec)
+    source = VERIFY_PLAN.replace("{args}", 'path="item.id", equals=qa.resolve("@item.id")')
+    document, problems = load_plan(_plan(spec, source), spec, tmp_path)
+    assert not problems and document is not None
+    assert validate_v2(document) == []
+
+
+def test_resolving_another_fixture_value_is_named_as_the_difference(tmp_path: Path) -> None:
+    spec = _spec(tmp_path)
+    _declaring_a_fixture_value(spec)
+    source = VERIFY_PLAN.replace("{args}", 'path="item.id", equals=qa.resolve("@item.name")')
+    document, problems = load_plan(_plan(spec, source), spec, tmp_path)
+    assert not problems and document is not None
+
+    reported = [item for item in validate_v2(document) if "declares `json_path" in item]
+
+    assert reported
+    assert '`equals` (declared "@item.id", invoked "@item.name")' in reported[0]
+
+
 def test_the_same_check_with_weaker_arguments_is_a_different_call(tmp_path: Path) -> None:
     spec = _spec(tmp_path)
     _declaring(spec)
@@ -1229,6 +1263,37 @@ def test_covering_a_repeated_obligation_without_instances_is_rejected(tmp_path: 
         tmp_path,
         _repeat_spec(tmp_path),
         'qa.check("a row is shown", True, covers=[OB])',
+    )
+    assert any("declares no qa.instance" in item for item in reported)
+
+
+def test_a_member_located_by_the_family_template_proves_the_family(tmp_path: Path) -> None:
+    """The template's holes match whichever member the fixture rendered, which is the member the scenario drives."""
+    reported = _repeat_problems(
+        tmp_path,
+        _repeat_spec(tmp_path, variants=None),
+        'row = qa.by_role("row", template="{stage.name} stage row")\n'
+        'qa.check("a row is shown", row is not None, covers=[OB])',
+    )
+    assert reported == []
+
+
+def test_a_member_located_by_another_template_proves_nothing_of_the_family(tmp_path: Path) -> None:
+    reported = _repeat_problems(
+        tmp_path,
+        _repeat_spec(tmp_path, variants=None),
+        'row = qa.by_role("row", template="{stage.name} column")\n'
+        'qa.check("a row is shown", row is not None, covers=[OB])',
+    )
+    assert any("declares no qa.instance" in item for item in reported)
+
+
+def test_a_template_samples_one_variant_so_an_enumerated_axis_still_needs_instances(tmp_path: Path) -> None:
+    reported = _repeat_problems(
+        tmp_path,
+        _repeat_spec(tmp_path),
+        'row = qa.by_role("row", template="{stage.name} stage row")\n'
+        'qa.check("a row is shown", row is not None, covers=[OB])',
     )
     assert any("declares no qa.instance" in item for item in reported)
 

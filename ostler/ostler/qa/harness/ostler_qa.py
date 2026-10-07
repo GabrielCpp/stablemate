@@ -2098,6 +2098,16 @@ def _resolve(node: ast.expr, constants: dict[str, Any]) -> Any:
     return _literal(node)
 
 
+def _check_argument(node: ast.expr, constants: dict[str, Any]) -> Any:
+    """A check argument's value, reading `qa.resolve("<text>")` as the text the book declared."""
+    if (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and node.func.attr == "resolve"
+            and len(node.args) == 1 and not node.keywords):
+        text = _resolve(node.args[0], constants)
+        if isinstance(text, str):
+            return text
+    return _resolve(node, constants)
+
+
 def _covers_ids(node: ast.expr, constants: dict[str, Any]) -> list[str]:
     """The obligation ids a `covers=` argument binds, with `COMPUTED` for each unreadable one."""
     written = _resolve(node, constants)
@@ -2155,7 +2165,7 @@ def extract_check_calls(source: str) -> dict[str, list[dict[str, Any]]]:
                 if keyword.arg == "covers":
                     covers = _covers_ids(keyword.value, constants)
                 elif keyword.arg != "label":
-                    value = _resolve(keyword.value, constants)
+                    value = _check_argument(keyword.value, constants)
                     args[keyword.arg] = value if value is not None else COMPUTED
             calls.append(
                 {
@@ -2209,9 +2219,9 @@ def _locator_action(call: ast.Call, method: str) -> dict[str, Any] | None:
     value = _literal(call.args[0]) if call.args else None
     locator: dict[str, Any] = {strategy: value if isinstance(value, str) else COMPUTED}
     for keyword in call.keywords:
-        if keyword.arg == "name" and strategy == "role":
+        if keyword.arg in {"name", "template"} and strategy == "role":
             named = _literal(keyword.value)
-            locator["name"] = named if isinstance(named, str) else COMPUTED
+            locator[keyword.arg] = named if isinstance(named, str) else COMPUTED
     return {"locator": locator}
 
 
