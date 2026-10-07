@@ -270,3 +270,11 @@ def test_a_signature_names_the_page_that_arranged_its_checks_then_the_pages_they
 
     assert summary.signature_pages(signature) == (
         "docs/fixtures/admin.md", "docs/features/tally/add.md", "docs/features/tally/tally.md")
+
+
+def test_a_check_that_found_no_control_tells_the_writer_to_claim_it_after_the_act_that_opens_it() -> None:
+    absent = FailedCheck(label="slug field shown", expected='{"visible": true}',
+                         actual='{"present": false, "at": "/fr/editor"}')
+    assert "`does:` of the interaction" in absent.failure_line()
+    hidden = FailedCheck(label="slug field shown", expected='{"visible": true}', actual='{"visible": false}')
+    assert "`does:`" not in hidden.failure_line()

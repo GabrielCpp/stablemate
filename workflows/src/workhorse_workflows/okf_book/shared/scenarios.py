@@ -45,6 +45,9 @@ class Scenario(BaseModel):
         return tuple(dict.fromkeys(match["page"] for obligation in self.covers if (match := OBLIGATION_PAGE.match(obligation))))
 
 
+_ABSENT_CONTROL = re.compile(r'"present":\s*false')
+
+
 class FailedCheck(BaseModel):
     """One check that did not hold: what it asserted, what it expected, what it observed, and whose fault it is.
 
@@ -71,6 +74,9 @@ class FailedCheck(BaseModel):
 
     def failure_line(self) -> str:
         observed = f"{self.label}: expected {self.expected}, observed {self.actual}"
+        if _ABSENT_CONTROL.search(self.actual):
+            observed += (". No element on that page matched the locator. A control that appears only after a person's "
+                         "act is the `does:` of the interaction that performs the act: claim it there")
         return f"{observed} (the command it observed ended with {self.command_ending_text})" if self.command_ending_text else observed
 
 
