@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from ostler import markdown, refs
+from ostler import keys, markdown, refs
 
 CheckValue = str | int | float | bool | list[str]
 
@@ -35,6 +35,7 @@ class CheckParam:
     locator: bool = False
     identifies: bool = False
     pattern: bool = False
+    key: bool = False
 
 
 Observation = str
@@ -221,7 +222,7 @@ CHECKS: tuple[CheckSpec, ...] = (
         name="focusable",
         params=(
             CheckParam("locator", "str", required=True, locator=True, identifies=True),
-            CheckParam("activates", "str"),
+            CheckParam("activates", "str", key=True),
         ),
         excludes="a control reachable only by pointer, which `visible`/`actionable` both pass "
                  "because it is on the screen and enabled — and, when `activates` is given, a "
@@ -706,6 +707,9 @@ def bind(name: str, args: Mapping[str, Any]) -> CheckCall | Refusal:
                 re.compile(value)
             except re.error as exc:
                 return wrong(f"`{name}`: `{key}` is not a valid regular expression — {exc}")
+        if param.key and not keys.pressable(str(value)):
+            return wrong(f"`{name}`: `{key}` names `{value}`, and no browser can press that key. "
+                         "Name one key or chord such as `Enter`, `Shift+Tab` or `ControlOrMeta+z`")
         bound[key] = _rooted(value) if param.path else value
     for param in spec.params:
         if param.required and param.name not in bound:

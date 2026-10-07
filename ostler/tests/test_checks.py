@@ -331,6 +331,18 @@ def test_only_a_declared_pattern_argument_is_compiled() -> None:
     assert call.args == {"subject": "detail", "text": "an id like [redacted]"}
 
 
+@pytest.mark.parametrize("key", ["input", "Esc", "Ctrl+A", "é", ""])
+def test_a_key_no_browser_can_press_is_refused_at_bind_not_mid_lap(key: str) -> None:
+    refused = checks.bind("focusable", {"locator": "#title", "activates": key})
+    assert isinstance(refused, checks.Refusal)
+    assert refused.kind == "bad-arguments"
+
+
+@pytest.mark.parametrize("key", ["Enter", "Space", " ", "Escape", "a", "Shift+Tab", "ControlOrMeta+KeyS", "Shift++", "F12"])
+def test_a_key_a_browser_can_press_binds(key: str) -> None:
+    assert isinstance(checks.bind("focusable", {"locator": "#title", "activates": key}), checks.CheckCall)
+
+
 def test_a_one_of_spec_shows_the_choice_in_its_signature() -> None:
     """The signature is what a refusal offers an author as the shape that would be accepted, and an optional-looking argument list does not say that one of them is mandatory."""
     assert "one of equals, matches, absent" in checks.CHECK_BY_NAME["json_path"].signature()
