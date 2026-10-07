@@ -508,6 +508,9 @@ def ensure_stack(
         except (TypeError, ValueError):
             pass
         _clear_record(app_cwd)
+    held = bool(health_url) and _still_served(
+        health_url, identity, grace=TERM_GRACE_S if recorded else 0.0, clock=clock,
+    )
 
     for i, step in enumerate(manifest.get("prepare") or []):
         ok, err = _run_step(step, app_cwd, timeout_s, logger, label=f"prepare[{i}]")
@@ -534,6 +537,9 @@ def ensure_stack(
                                               f"{health_url or entry_url}",
                          res["app_pid"], res["app_pgid"])
         app_pid, app_pgid = res["app_pid"], res["app_pgid"]
+        if held and app_pgid:
+            _reap_pgid(int(app_pgid), clock=clock)
+            return _fail("launch", _held_reason(health_url))
         app_log = str(app_log_path(launch_cwd)) if app_log_path(launch_cwd).is_file() else ""
         # An owned foreground server outlives this process, and its handles must too:
         # record it so a teardown running in a different process — or the next run's
@@ -617,6 +623,31 @@ def _seed_then_gate(
             logger.warning("health[%d] failed: %s", i, err)
             return f"health[{i}]", err
     return "", ""
+
+
+def _still_served(health_url: str, identity: str, *, grace: float, clock: Clock) -> bool:
+    """Whether *health_url* still answers once *grace* has passed for a reaped predecessor to let go.
+
+    A foreground server this bring-up starts cannot bind an address something else holds,
+    and its readiness probe then reads the holder's answer as its own. Knowing the address
+    was held before the launch is what tells the two apart.
+    """
+    deadline = clock.monotonic() + grace
+    while not health_probe(health_url, identity):
+        if clock.monotonic() >= deadline:
+            return True
+        clock.sleep(POLL_INTERVAL_S)
+    return False
+
+
+def _held_reason(health_url: str) -> str:
+    """Why a foreground launch onto an address already answering proves nothing, and what to repair."""
+    return (f"{health_url} was already answering before the launch ran, from a server this run "
+            f"did not start and cannot stop. The launch started a second server that cannot "
+            f"take that address, so the readiness check read the old server and not this one. "
+            f"Stop the leftover server. Then make the launch stop its own predecessor before it "
+            f"starts: a container launch gets a fixed `--name` and removes that name first."
+            + _port_hint(health_url))
 
 
 def _health_window(manifest: dict[str, Any]) -> float:

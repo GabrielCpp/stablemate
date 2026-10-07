@@ -411,6 +411,44 @@ def test_ensure_stack_reuse_never_relaunches_even_when_serving(monkeypatch) -> N
     assert launched["n"] == 1
 
 
+def test_ensure_stack_refuses_a_foreground_server_launched_onto_an_address_a_leftover_holds(monkeypatch) -> None:
+    """A leftover this run cannot stop answers the probe, so the new server's readiness would be the leftover's."""
+    monkeypatch.setattr(stack, "health_probe", lambda *_a, **_kw: "")
+    reaped: list[int] = []
+    monkeypatch.setattr(stack, "_reap_pgid", lambda pgid, **_kw: reaped.append(pgid))
+    monkeypatch.setattr(
+        stack, "boot_app",
+        lambda *_a, **_kw: {"boot_ok": "yes", "entry_url": "u", "app_pid": "4242", "app_pgid": "4242"},
+    )
+    out = stack.ensure_stack(
+        {"entry_url": "http://localhost:5173", "identity": "acme", "launch": "npm run dev"},
+        logger=LOG, clock=FakeClock(),
+    )
+    assert out["ready"] == "no"
+    assert out["failed_step"] == "launch"
+    assert "already answering before the launch ran" in out["error"]
+    assert reaped == [4242]
+
+
+def test_ensure_stack_launches_once_a_reaped_predecessor_lets_go_of_the_address(monkeypatch) -> None:
+    """The recorded server this run reaps may hold the address a moment longer, and waiting that out is not a leftover."""
+    answers = iter(["", "", "connection refused"])
+    monkeypatch.setattr(stack, "health_probe", lambda *_a, **_kw: next(answers, "connection refused"))
+    monkeypatch.setattr(stack, "_read_live_record", lambda _cwd: "777")
+    monkeypatch.setattr(stack, "_reap_pgid", lambda *_a, **_kw: None)
+    monkeypatch.setattr(stack, "_write_record", lambda *_a, **_kw: None)
+    monkeypatch.setattr(
+        stack, "boot_app",
+        lambda *_a, **_kw: {"boot_ok": "yes", "entry_url": "u", "app_pid": "4242", "app_pgid": "4242"},
+    )
+    out = stack.ensure_stack(
+        {"entry_url": "http://localhost:5173", "identity": "acme", "launch": "npm run dev"},
+        logger=LOG, clock=FakeClock(),
+    )
+    assert out["ready"] == "yes"
+    assert out["app_pgid"] == "4242"
+
+
 def test_ensure_stack_runs_prepare_launch_seed_health_in_order(monkeypatch) -> None:
     order: list[str] = []
 
