@@ -150,6 +150,8 @@ _TRIGGER_EXAMPLES = {"press": "Escape", "drop": "fixtures/sample.docx"}
 
 ARRIVAL_TRIGGERS = frozenset({"load", "navigate"})
 
+PAGE_TRIGGERS = {"back": "qa.back()", "print": "qa.print_page()"}
+
 
 def trigger_name(raw: str) -> str:
     """The act a `trigger:` names: its bare word, or the name of the call it is written as."""
@@ -452,6 +454,8 @@ def _web_step(index: int, step: FlowStep, walk: JourneyWalk, gaps: list[Gap]) ->
     trigger_value = next(iter(locators.trigger), "")
     if trigger_name(trigger_value) in ARRIVAL_TRIGGERS:
         return _arrival_step(index, step, walk, gaps)
+    if trigger_name(trigger_value) in PAGE_TRIGGERS:
+        return _page_step(index, step, walk, gaps)
     on_node_id = on_node(ref.split("#")[0], on_value)
     on_locators = book.locators_by_node.get(on_node_id, NO_LOCATORS)
     expr = page_locator_expr(on_locators)
@@ -479,6 +483,20 @@ def _web_step(index: int, step: FlowStep, walk: JourneyWalk, gaps: list[Gap]) ->
             return None
         return [*performed.lines, action]
     return [*performed.lines, f"    {expr}.click()  # step {index}: {trailing_comment(trigger_value)}"]
+
+
+def _page_step(index: int, step: FlowStep, walk: JourneyWalk, gaps: list[Gap]) -> list[str] | None:
+    """Perform a step the user takes on the browser rather than on a control of the page: its acts, then going back or printing."""
+    trigger_value = next(iter(walk.book.locators_by_node.get(step.ref, NO_LOCATORS).trigger), "")
+    performed = perform_acts(walk.book.acts_by_node.get(step.ref, []), acts_mod.WEB, gaps, walk.ids)
+    if performed.lines is None or step.ref in walk.book.acts_refused:
+        if not performed.gap_filed:
+            gaps.extend(Gap(oid, "uncompilable-claim",
+                            f"step {index} declares an arrangement this journey cannot make; every "
+                            "step after it would run in a world this journey never reached")
+                        for oid in walk.ids)
+        return None
+    return [*performed.lines, f"    {PAGE_TRIGGERS[trigger_name(trigger_value)]}  # step {index}: {trailing_comment(trigger_value)}"]
 
 
 def _arrival_step(index: int, step: FlowStep, walk: JourneyWalk, gaps: list[Gap]) -> list[str] | None:

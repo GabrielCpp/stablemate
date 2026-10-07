@@ -13,6 +13,7 @@ from ostler.qa.compile_playwright import needs_window
 from ostler.qa.compile_playwright import page_locator_expr
 from ostler.qa.compile_playwright import page_observations
 from ostler.qa.compile_playwright import ARRIVAL_TRIGGERS
+from ostler.qa.compile_playwright import PAGE_TRIGGERS
 from ostler.qa.compile_playwright import TRIGGER_ACTS
 from ostler.qa.compile_playwright import perform_acts
 from ostler.qa.compile_playwright import trigger_name
@@ -353,7 +354,7 @@ def _arrival_scenario(
 
 _CLICK_TRIGGER = "click"
 
-NON_PRESS_TRIGGERS = frozenset({"fill", "press", "paste", "drag", "drop", "load", "navigate", "timer"})
+NON_PRESS_TRIGGERS = frozenset({"fill", "press", "paste", "drag", "drop", "load", "navigate", "timer", *PAGE_TRIGGERS})
 
 @dataclass(frozen=True)
 class _InteractionArm:
@@ -380,9 +381,9 @@ def _interaction_arm(source: str, obligation: Obligation) -> _InteractionArm:
 def _trigger_refusal(arm: _InteractionArm, on_locators: Locators, unarranged: tuple[str, ...]) -> ScenarioRefusal | None:
     """Why no scenario can perform *arm*, or `None` when one can.
 
-    Arriving at the screen performs a `load` or `navigate` trigger, so its `on:` control needs no locator.
+    Arriving at the screen performs a `load` or `navigate` trigger, and the browser performs a `back` or `print`, so their `on:` control needs no locator.
     """
-    if _trigger_word(arm) not in ARRIVAL_TRIGGERS and page_locator_expr(on_locators) is None:
+    if _trigger_word(arm) not in ARRIVAL_TRIGGERS | PAGE_TRIGGERS.keys() and page_locator_expr(on_locators) is None:
         return ScenarioRefusal("unresolved-precondition",
                                f"no locator declared for `on:` component {arm.label!r}{name_refusal(on_locators)}")
     if unarranged:
@@ -416,7 +417,7 @@ def _scaffold_click_refusal(arm: _InteractionArm) -> ScenarioRefusal | None:
     trigger. Any other value is the book's, since it names no trigger at all.
     """
     word = _trigger_word(arm)
-    if word == _CLICK_TRIGGER or word in ARRIVAL_TRIGGERS or word in TRIGGER_ACTS:
+    if word == _CLICK_TRIGGER or word in ARRIVAL_TRIGGERS or word in TRIGGER_ACTS or word in PAGE_TRIGGERS:
         return None
     if word in NON_PRESS_TRIGGERS:
         return ScenarioRefusal("needs-trigger-action",
@@ -462,6 +463,8 @@ def _performed_trigger(
         gaps.extend(Gap(oid, scaffold.kind, scaffold.detail, scaffold.owner) for oid in ids)
     if _trigger_word(arm) in ARRIVAL_TRIGGERS:
         action = [f"    # trigger: {trailing_comment(arm.trigger)}, performed by arriving at the screen"]
+    elif _trigger_word(arm) in PAGE_TRIGGERS:
+        action = [f"    {PAGE_TRIGGERS[_trigger_word(arm)]}  # trigger: {trailing_comment(arm.trigger)}"]
     elif _trigger_word(arm) in TRIGGER_ACTS and on_expr is not None:
         performance = trigger_performance(arm.trigger, on_expr)
         if isinstance(performance, ScenarioRefusal):

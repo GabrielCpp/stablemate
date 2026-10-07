@@ -2347,6 +2347,27 @@ def test_a_keyed_trigger_without_a_usable_key_is_a_book_repair(trigger: str) -> 
     assert source is None or "rename_policy" not in source
 
 
+@pytest.mark.parametrize(("trigger", "performed"), [("back", "qa.back()"), ("`print`", "qa.print_page()")])
+def test_a_back_or_print_trigger_is_performed_by_the_browser_on_no_control(trigger: str, performed: str) -> None:
+    """Going back and printing act on the page as a whole, so their `on:` is often a state with no locator of its own."""
+    interaction = f"{_SCREEN}#leave-policy"
+    interaction_oid = "okf:new-policy:leave-policy:does:1"
+    context = _navigation_context(
+        _page_obligation(interaction_oid, interaction,
+                          locators={"on": ["[checking-state](#checking-state)"],
+                                    "trigger": [trigger],
+                                    "does": ["shows the policy table"]},
+                          checks=[_located("#policy-table", f"{_SCREEN}#policy-table",
+                                           {"role": ["table"], "name": ["Policies on file"]})]),
+        navigation=_arrival_navigation(),
+    )
+    source, gaps = compile_plan_gaps(context, story="demo-story")
+    assert source is not None
+    assert [g for g in gaps if g.obligation_id == interaction_oid] == []
+    assert f"    {performed}  # trigger: " in source
+    assert ".click()" not in source
+
+
 def test_a_load_trigger_is_performed_by_arriving_at_the_screen() -> None:
     """A redirect that fires as the page loads needs no click, and its `on:` is often a state with no locator of its own."""
     interaction = f"{_SCREEN}#redirect-if-signed-in"
@@ -5764,3 +5785,33 @@ def test_an_arrival_withdraws_only_the_claims_a_refused_act_arranged() -> None:
     assert source is not None
     assert table_oid in _covers(source)
     assert button_oid not in _covers(source)
+
+
+def test_a_web_journey_step_that_goes_back_needs_no_control_to_act_on() -> None:
+    oid = f"okf:{_FLOW}:end-state"
+    open_thing = f"{_SCREEN}#open-thing"
+    go_back = f"{_SCREEN}#go-back"
+    context = _navigation_context(
+        _flow_obligation(
+            oid, source=_FLOW, surface="policy",
+            steps=[_step(open_thing, "interaction", "policy"),
+                   _step(go_back, "interaction", "policy")],
+            checks=[_located_visible(f"{_SCREEN}#things-table",
+                                     {"selector": ["#things-table"]})],
+        ),
+        _page_obligation(f"{open_thing}:carrier", open_thing,
+                         locators={"on": ["[open-link](#open-link)"], "trigger": ["click"]},
+                         checks=[]) | {"required": False},
+        _page_obligation(f"{go_back}:carrier", go_back,
+                         locators={"on": ["[thing-page](#thing-page)"], "trigger": ["back"]},
+                         checks=[]) | {"required": False},
+        _page_obligation(f"{_SCREEN}#open-link:carrier", f"{_SCREEN}#open-link",
+                         locators={"selector": ["#open-link"]}, checks=[]) | {"required": False},
+        navigation=_arrival_navigation(),
+    )
+    source, gaps = compile_plan_gaps(context, story="demo-story")
+    assert source is not None
+    ast.parse(source)
+    assert "    qa.back()  # step 2: back" in source
+    assert _gap_kinds(gaps, oid) == []
+    assert oid in _covers(source)

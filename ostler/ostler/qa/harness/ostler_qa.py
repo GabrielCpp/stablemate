@@ -1680,6 +1680,14 @@ class Qa:
         """Drop the checkout's *file* on *locator*, as a file manager's drag would."""
         ostler_qa_transfer.drop(locator, self.root / file)
 
+    def back(self) -> Any:
+        """Go back one entry in the page's history, as the browser's Back button does."""
+        return self.browser_page.go_back()
+
+    def print_page(self) -> None:
+        """Lay the page out for printing, as the browser does when the user prints it, until the scenario ends."""
+        self.browser_page.emulate_media(media="print")
+
     def window(self) -> Any:
         """Open an observation window over the exchanges this page is about to make."""
         recorder = self.diagnostics
