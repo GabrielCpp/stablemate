@@ -177,6 +177,14 @@ Excludes a copy action that confirms on the screen and puts the wrong text, or n
 clipboard. The browser driver records every text the page copies, through the Clipboard API or a
 copy event, and judges the last one. `text` is a substring and `matches` a regex.
 
+### `downloaded(name=<str>, text=<str>, matches=<str>, count=<int>) — one of name, text, matches`
+Excludes an export that confirms on the screen and hands the user the wrong file, an empty one or
+none. The browser driver keeps every file the page hands over after the claim's action, by the
+name the page suggests and its content as text. `name` is a substring of that name, `text` a
+substring of the content and `matches` a regex over it. With `count`, exactly that many files
+match. Without it, at least one does. A download that fails matches nothing. Check an export as
+`downloaded(name=".xml", text="<rule id=\"r1\"")`.
+
 ### `persists(subject*=<str>)`
 Excludes a write observed only through the same session that made it, which cannot tell a commit
 from a cache.
