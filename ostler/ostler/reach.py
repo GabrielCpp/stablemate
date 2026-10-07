@@ -302,7 +302,7 @@ def literal_entries(data: dict) -> dict[str, str]:
         if node["type"] != "screen" or node["kind"] != "file":
             continue
         stated = bullet_value(node["bullets"], ENTRY_BULLET).split()
-        path = routes_mod.literal_route(stated[0].strip("`")) if stated else ""
+        path = routes_mod.entry_address(stated[0].strip("`")) if stated else ""
         if path:
             doors[node["id"]] = path
     return doors

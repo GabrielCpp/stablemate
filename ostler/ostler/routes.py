@@ -75,6 +75,18 @@ def literal_route(route: str) -> str:
     return text.rstrip("/") or "/"
 
 
+_QUERY_MARK = re.compile(r"\?(?=[^/])")
+
+
+def entry_address(entry: str) -> str:
+    """The address a browser opens for an `entry:`: its literal path with any query string it states, or "" when the path is a pattern. A `?` that ends a segment marks it optional, and any other `?` starts a query."""
+    text = entry.strip()
+    query = _QUERY_MARK.search(text)
+    path, rest = (text[:query.start()], text[query.start():]) if query else (text, "")
+    literal = literal_route(path)
+    return literal + rest if literal else ""
+
+
 def route_pattern(route: str) -> re.Pattern[str] | None:
     """The pattern a browser's path must match for this route, or None when no URL comparison can use it. A `:name` or `{name}` segment stands for exactly one path segment, and a segment ending in `?` may be absent."""
     text = route.strip()

@@ -126,3 +126,10 @@ def test_a_segment_ending_in_a_question_mark_may_be_absent() -> None:
     assert not routes.arrived_at("http://localhost:18102/sheets/2", route)
     assert not routes.arrived_at("http://localhost:18102/sheets/2/properties/other/41", route)
     assert routes.literal_route(route) == ""
+    assert routes.entry_address(route) == ""
+
+
+def test_an_entry_with_a_query_string_opens_its_path_with_that_query() -> None:
+    assert routes.entry_address("/login?qa=true") == "/login?qa=true"
+    assert routes.entry_address("/dashboard/") == "/dashboard"
+    assert routes.entry_address("/links/:id?tab=edit") == ""
