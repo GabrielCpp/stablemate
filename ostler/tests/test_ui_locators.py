@@ -362,6 +362,30 @@ def test_unnamed_nodes_sharing_a_selector_still_collide(repo: Path):
     assert [c.name for c in locators.collisions(_book(repo))] == [""]
 
 
+def _state_rows(one_per: str) -> str:
+    return _screen(*(f"### {slug}\n- selector: `tr.{css}`\n- role: row\n- one-per: {one_per}\n- name: {{row.cells}}\n"
+                     for slug, css in (("dragged-row", "dragging"), ("target-row", "drag-ghost"))))
+
+
+def test_rows_whose_template_binds_nothing_are_told_how_to_bind_it_and_that_the_selector_is_unread(repo: Path):
+    write(repo / DASH, _state_rows("document row that is being dragged"))
+    [collision] = locators.collisions(_book(repo))
+    remedy = locators.collision_remedy(_book(repo), collision)
+    assert "`- one-per: `row``" in remedy
+    assert "no locator reads while the node states a `role:`" in remedy
+
+
+def test_rows_whose_template_binds_their_repeat_are_the_data_s_question(repo: Path):
+    write(repo / DASH, _state_rows("`row`"))
+    assert locators.collisions(_book(repo)) == []
+
+
+def test_two_buttons_sharing_a_name_are_told_only_to_rename(repo: Path):
+    [collision] = locators.collisions(_build(repo, _screen(SAVE, DUPLICATE_SAVE)))
+    remedy = locators.collision_remedy(_book(repo), collision)
+    assert remedy == "give each control a distinct accessible `name:`"
+
+
 def test_exclusive_with_is_symmetric(repo: Path):
     """Annotating one of the two mutually-exclusive siblings is enough."""
     write(repo / DASH, _screen("""\

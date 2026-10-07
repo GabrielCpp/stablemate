@@ -386,6 +386,23 @@ def collisions(book: LocatorBook) -> list[LocatorCollision]:
     return out
 
 
+def collision_remedy(book: LocatorBook, collision: LocatorCollision) -> str:
+    """What would tell a collision's nodes apart, given the bullets they already declare."""
+    remedy = ["give each control a distinct accessible `name:`"]
+    hole = _HOLE_RE.search(collision.name) if not collision.template else None
+    if hole:
+        var = hole.group(1).strip().split(".", 1)[0] or "item"
+        remedy.append(f"`name: {collision.name}` is a template, but these nodes repeat over nothing, so the "
+                      f"name is matched as written: `one-per:` must be one bare variable, such as "
+                      f"`- one-per: `{var}``, for `{{{var}.…}}` to bind")
+    nodes = {node.id: node for _, node in book.locatables}
+    selectors = {_bullet(nodes[node_id], "selector") for node_id in collision.nodes if node_id in nodes}
+    if collision.role not in INTERACTIVE_ROLES and len(selectors - {""}) > 1:
+        remedy.append("each declares its own `selector:`, which no locator reads while the node states a "
+                      "`role:`, so a node only a selector tells apart states `- role: none`")
+    return ". ".join(remedy)
+
+
 def invalid_roles(book: LocatorBook) -> list[InvalidRole]:
     """Nodes whose ``role:`` is not an ARIA role — usually a real role with prose stapled to it."""
     out = []

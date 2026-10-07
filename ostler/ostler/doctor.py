@@ -2340,7 +2340,7 @@ def _check_locators(data: dict, f: list[Finding]) -> None:
                 + ", ".join(o.split("#")[-1] for o in collision.nodes if o != node_id)
                 + " on the same screen — `getByRole` cannot tell them apart",
                 ref=collision.ref(node_id),
-                suggestion="give each control a distinct accessible `name:`",
+                suggestion=loc_mod.collision_remedy(book, collision),
                 **_at(node_id)))
 
     for bad in loc_mod.invalid_roles(book):
