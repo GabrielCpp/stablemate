@@ -1,6 +1,8 @@
 """One service's book run against the app: compile the book, bring the stack up, and run every scenario."""
 from __future__ import annotations
 
+import uuid
+
 from workhorse.pyflow import Continue, Done
 from workhorse_workflows.kit.qa.runner import release_stack, stack_stopped
 from workhorse_workflows.okf_book.shared.book_run import (
@@ -16,6 +18,7 @@ from workhorse_workflows.okf_book.shared.book_run import (
 from workhorse_workflows.okf_book.shared.book_flow import BookFlow
 
 SPEC_DIR = "spec"
+_THIS_PROCESS = uuid.uuid4().hex
 
 
 class ExerciseBook(BookFlow):
@@ -30,23 +33,23 @@ class ExerciseBook(BookFlow):
             return Done(failed_run(outcome.gaps, "the book compiles to no plan")).because("the book compiles to no plan")
         return Continue(outcome, self.bring_up_stack, gaps=outcome.gaps).because("bring the app's stack up")
 
-    def bring_up_stack(self, gaps: tuple[str, ...], again: bool = False) -> Continue[...] | Done:
+    def bring_up_stack(self, gaps: tuple[str, ...], retried_in: str = "") -> Continue[...] | Done:
         """Bring the app's stack up, or adopt one serving. A stack that cannot come up ends the run."""
         stack = bring_up(self.logger, self.root, self.service)
         if not stack.up:
             release(self.logger, stack)
             return Done(stack_down_result(gaps, stack.notes)).because("the app's stack cannot come up")
         return Continue(
-            stack, self.run_scenarios, gaps=gaps, serving=stack.serving, owned=stack.owned, app_logs=stack.app_logs, again=again,
+            stack, self.run_scenarios, gaps=gaps, serving=stack.serving, owned=stack.owned, app_logs=stack.app_logs, retried_in=retried_in,
         ).because("run the scenarios")
 
     def run_scenarios(
-        self, gaps: tuple[str, ...], serving: bool, owned: tuple[str, ...] = (), app_logs: tuple[str, ...] = (), again: bool = False,
+        self, gaps: tuple[str, ...], serving: bool, owned: tuple[str, ...] = (), app_logs: tuple[str, ...] = (), retried_in: str = "",
     ) -> Continue[...] | Done:
-        """Run every scenario against the app, on a copy of it when it serves nothing, then stop what bring-up started. A server gone before the first scenario, as when a run resumes after its process died, comes up once more first."""
-        if not again and stack_stopped(owned):
+        """Run every scenario against the app, on a copy of it when it serves nothing, then stop what bring-up started. A server gone before the first scenario comes up once more first. A resumed run gets that once more again, because the process before it stopped the server on its way out."""
+        if retried_in != _THIS_PROCESS and stack_stopped(owned):
             release_stack(self.logger, owned)
-            return Continue(owned, self.bring_up_stack, gaps=gaps, again=True).because("the stack's server is gone: bring it up again")
+            return Continue(owned, self.bring_up_stack, gaps=gaps, retried_in=_THIS_PROCESS).because("the stack's server is gone: bring it up again")
         try:
             stack = StackReadiness(up=True, serving=serving, notes="", owned=owned, app_logs=app_logs)
             exercised = with_app_logs(run_plan(self.root, self.records_dir / SPEC_DIR / self.service, gaps, stack), app_logs)

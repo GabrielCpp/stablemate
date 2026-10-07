@@ -136,3 +136,24 @@ def test_a_server_that_dies_again_after_coming_back_is_run_once_rather_than_rest
     assert brought == ["4242", "4343"]
     assert released == [("4242",), ("4343",)]
     assert gone == [True]
+
+
+def test_a_run_resumed_after_its_retry_brings_the_server_up_once_more(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    released, brought = _stub_dead_server(monkeypatch, [True, True])
+    retry = exercise_book_flow.bring_up
+
+    def _resumed_after(logger: logging.Logger, root: Path, service: str) -> StackReadiness:
+        readiness = retry(logger, root, service)
+        if len(brought) == 2:
+            monkeypatch.setattr(exercise_book_flow, "_THIS_PROCESS", "the resumed process")
+        return readiness
+
+    monkeypatch.setattr(exercise_book_flow, "bring_up", _resumed_after)
+
+    result = _drive(tmp_path)
+
+    assert result.passed
+    assert brought == ["4242", "4343", "4444"]
+    assert released == [("4242",), ("4343",), ("4444",)]
