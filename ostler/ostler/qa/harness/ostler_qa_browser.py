@@ -12,6 +12,7 @@ from urllib.parse import urlsplit
 
 from ostler_qa_browser_state import CLIPBOARD_JS
 from ostler_qa_scan import FRAME_JS, SCAN_JS, merge_rects, summarize
+from ostler_qa_transfer import upload
 from playwright.sync_api import sync_playwright
 
 DIAGNOSTICS_SCHEMA = "browser-diagnostics/2"
@@ -293,6 +294,9 @@ class Browser:
                     continue
                 self._arranging.wait_for_load_state("load", timeout=timeout_ms)
                 found = _locate(self._arranging, action["locator"])
+                if action["act"] == "upload":
+                    upload(self._arranging, found, Path(str(action["value"])))
+                    continue
                 method = ARRANGE_METHODS[str(action["act"])]
                 values = [str(action["value"])] if "value" in action else []
                 getattr(found, method)(*values, timeout=timeout_ms)

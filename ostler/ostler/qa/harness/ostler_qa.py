@@ -1088,6 +1088,8 @@ class Qa:
                 bound[key] = {part: string.Template(text).substitute(env) for part, text in value.items()}
             elif key == "open":
                 bound[key] = self.http.url_for(string.Template(str(value)).substitute(env))
+            elif key == "value" and action.get("act") == "upload":
+                bound[key] = str(self.root / string.Template(str(value)).substitute(env))
             elif key == "value":
                 bound[key] = string.Template(str(value)).substitute(env)
             else:

@@ -85,6 +85,26 @@ def test_a_browser_step_opens_the_screen_route_then_performs_its_acts_in_book_or
     assert "command" not in step
 
 
+
+def test_a_browser_step_uploads_a_file_named_from_the_repository_root(repo: Path) -> None:
+    write(repo / "app/fixtures/well-formed.docx", "PK")
+    _book(repo, _fixture('upload("label=Document", file="app/fixtures/well-formed.docx")'))
+
+    [step] = book_fixtures.resolved(load(repo))["signed-in-editor"]["steps"]
+
+    assert step["browser"][1] == {
+        "act": "upload", "locator": {"label": "Document"}, "value": "app/fixtures/well-formed.docx",
+    }
+
+
+def test_an_upload_naming_a_file_the_checkout_lacks_is_refused_before_a_lap(repo: Path) -> None:
+    _book(repo, _fixture('upload("label=Document", file="app/fixtures/missing.docx")'))
+
+    [step] = book_fixtures.resolved(load(repo))["signed-in-editor"]["steps"]
+
+    assert "browser" not in step
+    assert "names a file this checkout does not carry" in step["unperformable"]
+
 def test_a_browser_step_the_book_cannot_state_reaches_the_harness_as_unperformable(repo: Path) -> None:
     _book(repo, _fixture('click("../login.md#unnamed")'))
 

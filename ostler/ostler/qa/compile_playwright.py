@@ -136,6 +136,9 @@ def perform_acts(
                                 "and so is not a Playwright key")
                             for oid in ids)
                 return PerformedActs(None, gap_filed=True)
+        if spec.name == "upload":
+            lines.append(f"    qa.upload({expr}, file={python_literal(row.text_arg('file'))})  # arrange: {row.call}")
+            continue
         method, value_param = _ACT_METHODS[spec.name]
         argument = "" if value_param is None else python_literal(row.args.get(value_param, ""))
         lines.append(f"    {expr}.{method}({argument})  # arrange: {row.call}")

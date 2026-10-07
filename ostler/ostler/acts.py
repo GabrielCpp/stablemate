@@ -85,6 +85,16 @@ ACTS: tuple[ActSpec, ...] = (
         drivers=(WEB,),
     ),
     ActSpec(
+        name="upload",
+        params=(ActParam("locator", "str", required=True, locator=True),
+                ActParam("file", "str", required=True)),
+        establishes="a file control holds a stated file, which is the only way a claim about "
+                    "what the app does with a chosen file can be made true. `file` is a path "
+                    "from the repository root, so the file the lap chooses is one the checkout "
+                    "carries. Web only: a mobile file picker is a screen the platform owns",
+        drivers=(WEB,),
+    ),
+    ActSpec(
         name="visit",
         params=(ActParam("path", "str", required=True),),
         establishes="the browser is at a stated address, typed or followed rather than reached "

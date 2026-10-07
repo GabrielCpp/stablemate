@@ -5876,3 +5876,34 @@ def test_a_web_journey_step_that_goes_back_needs_no_control_to_act_on() -> None:
     assert "    qa.back()  # step 2: back" in source
     assert _gap_kinds(gaps, oid) == []
     assert oid in _covers(source)
+
+
+def test_an_arranged_upload_hands_its_control_the_file_before_the_trigger() -> None:
+    """A dialog's accept is only operable once a file is chosen, so the book's `upload` act runs before the click it arranges."""
+    accept_oid = "okf:new-widget:import-widgets:does:1"
+    context = _navigation_context(
+        _page_obligation("okf:new-widget:submit-widget-button:visible:1", f"{_SCREEN}#submit-widget-button",
+                          locators={"role": ["button"], "name": ["Add widget"]},
+                          checks=[_visible("button:Add widget")]),
+        _page_obligation(accept_oid, f"{_SCREEN}#import-widgets",
+                          locators={"on": ["[submit-widget-button](#submit-widget-button)"],
+                                    "trigger": ["click"],
+                                    "does": ["the browser navigates to widget-list"]},
+                          acts=[_act("upload", f"{_SCREEN}#file-field",
+                                     {"selector": ["`input[type=\"file\"]`"]},
+                                     locator="#file-field", file="app/fixtures/widgets.docx")],
+                          checks=[_located("#saved-banner", f"{_SCREEN}#saved-banner",
+                                            {"selector": ["`#saved-banner`"]})]),
+        navigation=_arrival_navigation(),
+    )
+    source, gaps = compile_plan_gaps(context, story="demo-story")
+    assert source is not None
+    ast.parse(source)
+    lines = source.splitlines()
+    [upload] = [i for i, line in enumerate(lines) if "qa.upload(" in line]
+    clicks = [i for i, line in enumerate(lines) if "# trigger:" in line]
+    assert lines[upload].strip() == (
+        'qa.upload(qa.by_css("input[type=\\"file\\"]"), file="app/fixtures/widgets.docx")'
+        "  # arrange: upload(locator='#file-field', file='app/fixtures/widgets.docx')")
+    assert upload < clicks[0]
+    assert accept_oid in _covers(source)

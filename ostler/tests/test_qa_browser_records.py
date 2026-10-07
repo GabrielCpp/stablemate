@@ -876,3 +876,23 @@ def test_a_fixture_a_lap_shares_arranges_out_of_the_scenarios_sight(tmp_path: Pa
     browser.session("http://localhost:5173")
 
     assert calls == ["goto /login on side page", "close side page"]
+
+
+def test_an_arranged_upload_hands_the_control_the_file_the_step_names(tmp_path: Path) -> None:
+    """A dialog that summarises a chosen file shows that summary only once a real file is chosen."""
+    sample = tmp_path / "well-formed.docx"
+    sample.write_bytes(b"PK")
+    chosen: list[Path] = []
+    found = SimpleNamespace(
+        evaluate=lambda script: True, set_input_files=chosen.append, count=lambda: 1,
+    )
+    browser = _browser(tmp_path)
+    browser._arranging = SimpleNamespace(
+        wait_for_load_state=lambda state, *, timeout: None,
+        get_by_label=lambda label: found,
+        close=lambda: None,
+    )
+
+    browser.arrange([{"act": "upload", "locator": {"label": "Document"}, "value": str(sample)}])
+
+    assert chosen == [sample]

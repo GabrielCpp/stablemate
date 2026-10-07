@@ -23,7 +23,7 @@ BROWSER_KEYS = ("open", "arrange")
 _ROLE_FORM = re.compile(r'role=([a-z]+)\[name="(.+)"\]')
 _TEXT_FORMS = ("text", "label")
 _ROUTE_PARAM = re.compile(r"(^|/)[:\[{*]|[\]}]")
-_ACT_VALUE = {"fill": "value", "press": "key", "select": "option"}
+_ACT_VALUE = {"fill": "value", "press": "key", "select": "option", "upload": "file"}
 
 
 @dataclass(frozen=True)
@@ -110,6 +110,8 @@ def _act(graph: Graph, step: UINode, value: str) -> dict[str, Any] | str:
         return located
     action: dict[str, Any] = {"act": parsed.name, "locator": located}
     value_param = _ACT_VALUE.get(parsed.name)
+    if parsed.name == "upload" and not (graph.root / str(parsed.args["file"])).is_file():
+        return f"`arrange: {value}` names a file this checkout does not carry: give its path from the repository root"
     if value_param is not None:
         action["value"] = str(parsed.args[value_param])
     return action
