@@ -150,7 +150,7 @@ def _probe_run() -> ExerciseResult:
     return ExerciseResult(lines=("problem: a precondition probe failed, so the book did not run",), summary=summary)
 
 
-def test_a_stack_that_cannot_come_up_goes_to_its_runbook_s_writer_once_then_is_the_app_s_blocker(
+def test_a_stack_that_cannot_come_up_goes_to_its_runbook_s_writer_once_then_is_the_app_s_blocker_naming_only_why(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     book = _book(tmp_path)
@@ -161,7 +161,7 @@ def test_a_stack_that_cannot_come_up_goes_to_its_runbook_s_writer_once_then_is_t
         return failures if exercised.stack_down else {}
 
     monkeypatch.setattr(flow, "stack_down_failures", _runbook)
-    down = stack_down_result((), "port 8080 is taken")
+    down = stack_down_result(("gap: okf:docs/features/tally/tally.md#adds:does:1: no-verify-declared: declare a check",), "port 8080 is taken")
 
     sent = book.settle_run(index=0, run_failures_repaired=False, exercised=down)
     assert (sent.state, sent.params["run_failures"], read_blockers(tmp_path)) == ("copy_source", failures, ())
@@ -169,7 +169,7 @@ def test_a_stack_that_cannot_come_up_goes_to_its_runbook_s_writer_once_then_is_t
     _ = book.settle_run(index=0, run_failures_repaired=True, exercised=down)
     [blocker] = read_blockers(tmp_path)
     assert (blocker.phase, blocker.side) == (Phase.EXERCISE, Side.APP)
-    assert "port 8080 is taken" in blocker.reason
+    assert blocker.reason == "problem: the app's stack cannot come up: port 8080 is taken"
 
 
 def _settle_and_map(book: OkfBook, exercised: ExerciseResult, *, repaired: bool = True) -> str:

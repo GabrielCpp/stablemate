@@ -228,7 +228,7 @@ class OkfBook(BookFlow):
                 "the stack cannot come up: repair its runbook"
             )
         if exercised.stack_down:
-            _ = record_blocker(self.records_dir, Blocker(subject=service, service=service, phase=Phase.EXERCISE, side=Side.APP, reason="\n".join(exercised.lines)))
+            _ = record_blocker(self.records_dir, Blocker(subject=service, service=service, phase=Phase.EXERCISE, side=Side.APP, reason="\n".join(line for line in exercised.lines if not line.startswith("gap: "))))
             return self._next_surface(exercised.passed, index)
         return Continue(exercised.passed, self.map_run_failures, index=index, exercised=exercised,
                         run_failures_repaired=run_failures_repaired).because("the book fails its run")
