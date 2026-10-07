@@ -63,7 +63,8 @@ def run_plan(
     A positive *stop_on_repeat* stops the run once that many scenarios on several pages failed on
     one observation, since one cause no page holds would fail every scenario after them the same way.
     The summary says why under `stopped_on_repeat`, apart from its `runner_errors`, since the
-    scenarios it ran measured the book and their failures are the book's to fix.
+    scenarios it ran measured the book and their failures are the book's to fix. It names the
+    observation itself under `stopped_on_observation`, so a later run can tell the same stop apart.
     """
     if lap is None:
         with tempfile.TemporaryDirectory(prefix="ostler-lap-") as scratch:
@@ -277,6 +278,7 @@ def run_plan(
         summary["runner_errors"] = runner_errors
     if stopped_on_repeat:
         summary["stopped_on_repeat"] = stopped_on_repeat
+        summary["stopped_on_observation"] = watch.stopped_on
     message = (
         f"QA run {status.upper()}: {summary.get('pass_count', 0)} assertions passed, "
         f"{summary.get('fail_count', 0)} failed, {len(results)} scenarios"

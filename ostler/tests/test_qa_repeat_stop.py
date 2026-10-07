@@ -67,6 +67,7 @@ def test_one_observation_on_many_pages_stops_the_run_and_leaves_the_rest_unreach
     assert len(summary["scenarios"]) == 4
     stopped = summary["stopped_on_repeat"]
     assert WALL in stopped and "4 scenarios on 3 pages" in stopped
+    assert summary["stopped_on_observation"] == f"RuntimeError: {WALL}"
     assert summary["verdicts"] == {_obligation(index, 3): "unreached" for index in range(8)}
     assert sum(record["kind"] == "scenario_start" for record in _records(spec)) == 4
     assert "runner_errors" not in summary

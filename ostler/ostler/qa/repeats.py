@@ -31,12 +31,13 @@ def pages(covers: Iterable[object]) -> frozenset[str]:
 
 @dataclass(slots=True)
 class RepeatWatch:
-    """The failure observations a run has seen so far, and the scenarios and pages each one spans."""
+    """The failure observations a run has seen so far, the scenarios and pages each one spans, and the one that stopped the run."""
 
     threshold: int
     min_pages: int = MIN_PAGES
     scenarios: dict[str, list[str]] = field(default_factory=dict)
     pages: dict[str, set[str]] = field(default_factory=dict)
+    stopped_on: str = ""
 
     def observe(self, scenario_id: str, covers: Iterable[object], result: ScenarioResult) -> str:
         """Record one scenario's result, and say why the run should stop when its observation has repeated enough."""
@@ -52,6 +53,7 @@ class RepeatWatch:
         failed, spanned = self.scenarios[seen], sorted(self.pages[seen])
         if len(failed) < self.threshold or len(spanned) < self.min_pages:
             return ""
+        self.stopped_on = seen
         named = ", ".join(spanned[:PAGES_NAMED]) + (f" and {len(spanned) - PAGES_NAMED} more" if len(spanned) > PAGES_NAMED else "")
         likely = ", so one cause outside any single page is likely" if len(spanned) >= MIN_PAGES else ""
         return (f"the run stopped after {len(failed)} scenarios on {len(spanned)} pages failed on one observation{likely}: "
