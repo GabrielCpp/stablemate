@@ -5776,6 +5776,28 @@ def test_a_navigation_click_first_performs_the_acts_of_the_arm_that_lands_on_the
     assert source.index('.fill("the-password")') < source.index(".click()  # Login")
 
 
+def test_a_navigation_hop_the_page_takes_on_load_clicks_nothing() -> None:
+    """A screen that redirects on load is left by the browser on its own, so the walk performs no click for that hop and asks the redirect for no locator."""
+    oid = "okf:home:home-title:visible:1"
+    redirect = f"{_SCREEN}#redirect-to-home"
+    navigation = _arrival_navigation()
+    navigation["policy"]["routes"][_HOME] = [{"node": redirect, "from": _SCREEN, "label": "Redirect home"}]
+    context = _navigation_context(
+        _page_obligation(oid, f"{_HOME}#home-title", source=_HOME,
+                         locators={"selector": ["`#home-title`"]}, checks=[_visible("#home-title")]),
+        _page_obligation(f"{redirect}:carrier", redirect,
+                         locators={"on": ["[app-root](#app-root)"], "trigger": ["load"]},
+                         checks=[]) | {"required": False},
+        navigation=navigation,
+    )
+    source, gaps = compile_plan_gaps(context, story="demo-story")
+    assert source is not None
+    ast.parse(source)
+    assert oid in _covers(source), gaps
+    assert _gap_kinds(gaps, oid) == []
+    assert "# Redirect home" not in source
+
+
 def _click_context(name: str):
     button = f"{_SCREEN}#create-policy-button"
     interaction = f"{_SCREEN}#submit-new-policy"

@@ -212,11 +212,13 @@ def walk_hops(
     gaps: list[Gap],
     oids: list[str],
 ) -> list[str]:
-    """One `.click()` per hop on the way to *destination*, after the acts the book says that click needs to land there."""
+    """One `.click()` per hop on the way to *destination*, after the acts the book says that click needs to land there. A hop the page takes on arrival, such as a redirect on load, needs no click: the browser follows it on its own."""
     lines: list[str] = []
     for index, hop in enumerate(hops):
         target_node = hop.node
         hop_locators = book.locators_by_node.get(target_node, NO_LOCATORS)
+        if trigger_name(next(iter(hop_locators.trigger), "")) in ARRIVAL_TRIGGERS:
+            continue
         expr = page_locator_expr(hop_locators)
         if expr is None:
             lines.append(f"    # TODO(arrange): no locator declared for {target_node!r}"
