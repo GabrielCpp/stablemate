@@ -647,10 +647,11 @@ def _unsatisfiable_http_status(args: Mapping[str, Any]) -> str:
     if "path" not in args:
         return ""
     route = str(args["path"])
-    if urllib.parse.urlsplit(f"http://host{route}").path == route:
+    path = route.partition("?")[0]
+    if urllib.parse.urlsplit(f"http://host{path}").path == path:
         return ""
     return (f"path={route!r} can never be the route that answered: this check reads the path "
-            "component of the request URL, which stops at the first `?` or `#`")
+            "component of the request URL, and a `#` fragment never reaches the server")
 
 
 def _unsatisfiable_json_path(args: Mapping[str, Any]) -> str:

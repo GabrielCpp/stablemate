@@ -97,6 +97,12 @@ def test_http_status_compares_a_declared_query_route_on_its_path() -> None:
     assert verdict.expected["path"] == "/api/videos?root=r-1"
 
 
+def test_a_declared_query_route_is_satisfiable_and_a_fragment_is_not() -> None:
+    """The plan refuses only what the verifier could never match: a query string names its request, a `#` never reaches the server."""
+    assert harness.UNSATISFIABLE["http_status"]({"code": 200, "path": "/links/l-1?format=full"}) == ""
+    assert "can never be the route" in harness.UNSATISFIABLE["http_status"]({"code": 200, "path": "/links/l-1#top"})
+
+
 def test_a_failed_http_status_shows_what_the_app_replied_with_its_tokens_masked() -> None:
     """A refusal's reason is in its reply, and a repair cannot tell a missing token from an unknown user without it."""
     token = "eyJhbGciOiJSUzI1NiJ9.eyJzdWIiOiJ1LTEifQ.c2ln"
