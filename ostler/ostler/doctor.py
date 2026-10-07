@@ -2507,6 +2507,33 @@ def _check_arranged_acts(graph: Graph, node: UINode, rel: str, f: list[Finding])
                     suggestion=f'- {key}: {parsed.name}({param.name}="#<component-anchor>")'))
 
 
+IDENTITY_KEYS = ("role", "name")
+
+
+def _check_identity_arrangement(node: UINode, rel: str, f: list[Finding]) -> None:
+    """`identity-arranged-alone` — a `fixture:` bound to the element's `role:` or `name:`, which every other claim about the element needs as much."""
+    _, per_claim = registry.attributed_fixtures(node.type, node.bullet_order, node.combiners)
+    claims = registry.normative_claims(node.type, node.bullet_order)
+    for (key, index), values in sorted(per_claim.items()):
+        if key not in IDENTITY_KEYS:
+            continue
+        for value in dict.fromkeys(values):
+            without = [claim for claim in claims if value not in per_claim.get(claim, [])]
+            if not without:
+                continue
+            named = ", ".join(f"`{k}:{i}`" for k, i in without[:4]) + (", …" if len(without) > 4 else "")
+            f.append(Finding(
+                "error", "identity-arranged-alone",
+                f"{node.id}: `fixture: {_prose(value)[:60]}` sits under `{key}:{index}`, so document "
+                f"order binds it to that claim alone, and {len(without)} other claim(s) about this "
+                f"element ({named}) are checked on a page it never arranged. A state the element's "
+                f"own {key} needs is a state its existence needs, so every claim about it needs it",
+                path=rel, line=node.line,
+                ref=refs_mod.bullet_ref(node.id, key, index),
+                suggestion=f"move `- fixture: {value}` above the node's first claim, where it "
+                           f"arranges every claim on the node"))
+
+
 def _check_ui(graph: Graph, f: list[Finding],
               resolver: links_mod.LinkResolver | None = None,
               checkouts: dict[str, Path] | None = None) -> None:
@@ -2720,6 +2747,7 @@ def _check_ui(graph: Graph, f: list[Finding],
                         suggestion=f'- {key}: {parsed.name}({param.name}="#<component-anchor>")'))
 
         _check_arranged_acts(graph, node, rel, f)
+        _check_identity_arrangement(node, rel, f)
 
         verify_key = check_keys[0] if check_keys else "verify"
         contract_checks, claim_checks = registry.attributed_checks(
