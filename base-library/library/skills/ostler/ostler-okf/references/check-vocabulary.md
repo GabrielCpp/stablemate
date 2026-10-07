@@ -384,6 +384,7 @@ call grammar as a check and refused against its own names:
 | `upload(locator*, file*)` | a file control holds a stated file, named by its path from the repository root | web |
 | `visit(path*)` | the browser is at an address the reader typed or followed: an unknown route segment, a deep link, a query no link builds | web |
 | `body(field*, value*)` | a member of the request this step sends carries a stated value | http |
+| `no_body()` | the request this step sends carries no body, for a route that reads nothing from its request | http |
 | `header(name*, value*)` | the request this step sends carries a stated header, such as the token a sign-in fixture minted | http |
 
 **An act's argument type is a property of that act's parameter, not of acts in general.**

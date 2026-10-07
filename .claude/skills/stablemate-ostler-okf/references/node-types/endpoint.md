@@ -194,6 +194,10 @@ using the `body(field*, value*)` act (see
 method needs a body and arranges none compiles nothing for it — `unarranged-request-body`
 (see [../doctor-codes.md](../doctor-codes.md)).
 
+A route that reads nothing from its request, such as a `POST` that triggers a refresh, says so
+with `arrange: no_body()`. The run then sends the call with no body. `no_body()` beside a
+`body(...)` act contradicts it, and the call is withheld.
+
 A body member may name a fact a fixture provides, as `value="@seeded-acme.id"`. The run sends
 the value the fixture left, not the characters of the reference.
 
