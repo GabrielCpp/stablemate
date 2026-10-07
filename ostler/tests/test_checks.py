@@ -114,6 +114,7 @@ def test_every_spec_declares_what_it_observes() -> None:
         "focusable": "keyboard",
         "attribute": "dom",
         "focused": "dom",
+        "value": "dom",
         "title": "title",
         "console": "console",
         "url": "url",

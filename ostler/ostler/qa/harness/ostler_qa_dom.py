@@ -1,4 +1,4 @@
-"""The verifiers that read the page's markup beyond what it draws: an element's attribute, and whether keyboard focus sits inside an element."""
+"""The verifiers that read the page's markup beyond what it draws: an element's attribute, what a field holds, and whether keyboard focus sits inside an element."""
 
 from __future__ import annotations
 
@@ -82,6 +82,38 @@ def verify_attribute(reading: AttributeReading, args: Args) -> Verdict:
     actual = reading.values[0] if len(reading.values) == 1 else list(reading.values)
     return verdict(any(_value_matches(value, args) for value in reading.values),
                    {str_arg(args, "name"): actual}, expected)
+
+
+@dataclass(frozen=True)
+class ValueReading:
+    """What each matched field holds, `None` where an element is not a field, and whether anything matched."""
+
+    values: tuple[str | None, ...]
+    present: bool = True
+
+
+def _field_value(element: object) -> str | None:
+    try:
+        held = getattr(element, "input_value")()
+    except Exception:
+        return None
+    return held if isinstance(held, str) else None
+
+
+def read_value(observed: object, args: Args) -> ValueReading:
+    def read(matched: list[object]) -> tuple[str | None, ...]:
+        return tuple(_field_value(element) for element in matched)
+
+    values = _settled(observed, read, lambda values: any(_value_matches(value, args) for value in values))
+    return ValueReading(values=(), present=False) if values is None else ValueReading(values=values)
+
+
+def verify_value(reading: ValueReading, args: Args) -> Verdict:
+    expected = {"equals": args["equals"]} if "equals" in args else {"matches": args["matches"]}
+    if not reading.present:
+        return verdict(False, _ABSENT, {"value": expected})
+    actual = reading.values[0] if len(reading.values) == 1 else list(reading.values)
+    return verdict(any(_value_matches(value, args) for value in reading.values), {"value": actual}, {"value": expected})
 
 
 _FOCUS_JS = (

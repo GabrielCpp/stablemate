@@ -246,6 +246,19 @@ CHECKS: tuple[CheckSpec, ...] = (
         observes="dom",
     ),
     CheckSpec(
+        name="value",
+        params=(
+            CheckParam("locator", "str", required=True, locator=True, identifies=True),
+            CheckParam("equals", "str"),
+            CheckParam("matches", "str", pattern=True),
+        ),
+        one_of=("equals", "matches"),
+        excludes="a field that holds the wrong text, such as a slug the product derived or "
+                 "overwrote, which `visible` cannot read because what a field holds is not "
+                 "its text and `attribute` reads only the value the markup started with",
+        observes="dom",
+    ),
+    CheckSpec(
         name="focused",
         params=(CheckParam("locator", "str", required=True, locator=True, identifies=True),),
         excludes="keyboard focus that escapes an open dialog or lands nowhere after it closes, "

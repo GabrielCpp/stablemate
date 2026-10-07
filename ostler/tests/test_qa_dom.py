@@ -1,4 +1,4 @@
-"""What `attribute` and `focused` read off a real page: markup the user never sees drawn, and where keyboard focus sits."""
+"""What `attribute`, `value` and `focused` read off a real page: markup the user never sees drawn, what a field holds, and where keyboard focus sits."""
 
 from __future__ import annotations
 
@@ -20,7 +20,7 @@ _PAGE = """
 </head>
 <body>
   <button id="open">Open</button>
-  <div id="dialog" role="dialog"><input id="name"><button id="close">Close</button></div>
+  <div id="dialog" role="dialog"><input id="name" value="draft"><button id="close">Close</button></div>
 </body>
 </html>
 """
@@ -75,3 +75,20 @@ def test_focus_inside_the_dialog_passes_and_focus_outside_it_names_where_it_sits
     outside = dom.verify_focused(dom.read_focused(page.locator("#dialog"), {}), {})
     assert not outside.passed
     assert outside.actual == {"focused": False, "at": "button#open"}
+
+
+def _value(page: Any, selector: str, **args: object) -> Any:
+    return dom.verify_value(dom.read_value(page.locator(selector), args), args)
+
+
+def test_a_field_reads_what_the_user_typed_and_not_the_value_the_markup_started_with(page: Any) -> None:
+    page.locator("#name").fill("quarterly-report")
+    assert _value(page, "#name", equals="quarterly-report").passed
+    assert _value(page, "#name", matches="^quarterly-").passed
+    assert not _attribute(page, "#name", name="value", equals="quarterly-report").passed
+
+
+def test_an_element_that_is_not_a_field_holds_no_value(page: Any) -> None:
+    reading = _value(page, "#open", equals="Open")
+    assert not reading.passed
+    assert reading.actual == {"value": None}

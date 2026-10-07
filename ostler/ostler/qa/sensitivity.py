@@ -137,14 +137,20 @@ class _Focusable:
 
 
 class _Marked:
-    """An element carrying one attribute value, or none, and holding keyboard focus or not."""
+    """An element carrying one attribute value, or none, holding one field value, or none, and holding keyboard focus or not."""
 
-    def __init__(self, *, attribute: str | None = None, holds_focus: bool = False) -> None:
+    def __init__(self, *, attribute: str | None = None, field: str | None = None, holds_focus: bool = False) -> None:
         self._attribute = attribute
+        self._field = field
         self._holds_focus = holds_focus
 
     def get_attribute(self, _name: str) -> str | None:
         return self._attribute
+
+    def input_value(self) -> str:
+        if self._field is None:
+            raise ValueError("not a field")
+        return self._field
 
     def evaluate(self, _expression: str) -> Any:
         return [self._holds_focus, "witness" if self._holds_focus else "body"]
@@ -693,6 +699,18 @@ def _plan_attribute(args: Mapping[str, checks.CheckValue]) -> _WitnessPlan | _No
     ])
 
 
+def _plan_value(args: Mapping[str, checks.CheckValue]) -> _WitnessPlan | _NoWitness:
+    value = str(args["equals"]) if "equals" in args else _matching(str(args["matches"]))
+    if value is None:
+        return _NoWitness(f"no field value can be invented for /{args.get('matches')}/")
+    if "matches" in args and re.search(str(args["matches"]), _OTHER):
+        return _NoWitness(f"every field value carries something /{args['matches']}/ matches")
+    return _WitnessPlan.of(_Marked(field=value), [
+        ("the field holds another value", _Marked(field=_OTHER)),
+        ("the element is not a field", _Marked(field=None)),
+    ])
+
+
 def _plan_focused(_args: Mapping[str, checks.CheckValue]) -> _WitnessPlan:
     return _WitnessPlan.of(_Marked(holds_focus=True), [
         ("keyboard focus sits elsewhere", _Marked(holds_focus=False)),
@@ -850,6 +868,7 @@ _PLANNERS: dict[str, Callable[[Mapping[str, checks.CheckValue]], _WitnessPlan | 
     "focusable": _plan_focusable,
     "attribute": _plan_attribute,
     "focused": _plan_focused,
+    "value": _plan_value,
     "inert": _plan_inert,
     "hidden": _plan_hidden,
     "title": _plan_title,

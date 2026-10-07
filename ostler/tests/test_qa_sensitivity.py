@@ -66,6 +66,8 @@ _WITNESSED_CALLS = [
     'attribute(locator="#root", name="lang", equals="fr")',
     'attribute(locator="#alternate", name="hreflang", matches="^fr")',
     'focused(locator="#dialog")',
+    'value(locator="#slug", equals="quarterly-report")',
+    'value(locator="#slug", matches="^quarterly-")',
     'title(equals="Policies · Acme")',
     'title(matches="^Policies")',
     'console(text="saved")',
