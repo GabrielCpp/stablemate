@@ -1106,7 +1106,7 @@ class Qa:
             self._fault(fixture, index, kind, "defect", detail)
             raise RuntimeError(f"qa fixture {fixture!r} step {index} ({kind}) {detail}") from exc
         try:
-            browser.arrange(actions)
+            browser.arrange(actions, on_page=self._book_fixtures[fixture].get("lifetime") == "scenario")
         except Exception as exc:  # noqa: BLE001 - every driver error is this step failing, recorded as a fault
             detail = (str(exc).strip().splitlines() or [type(exc).__name__])[0][:500]
             self._fault(fixture, index, kind, "defect", detail)

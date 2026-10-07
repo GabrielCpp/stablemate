@@ -197,7 +197,7 @@ class Browser:
         self._held: list[Any] = []
         self._body_budget = MAX_BODY_BUDGET_BYTES
         self._secrets = [value for value in secrets if value]
-        self._side: Any = None
+        self._arranging: Any = None
 
 
     def open(self) -> Any:
@@ -272,26 +272,32 @@ class Browser:
             return []
         return ["clipboard-read", "clipboard-write"]
 
-    def arrange(self, actions: Sequence[Mapping[str, Any]], *, timeout_ms: float = ARRANGE_TIMEOUT_MS) -> None:
-        """Perform a fixture's browser actions on a page of this context the scenario never sees.
+    def arrange(
+        self, actions: Sequence[Mapping[str, Any]], *, on_page: bool = False, timeout_ms: float = ARRANGE_TIMEOUT_MS,
+    ) -> None:
+        """Perform a fixture's browser actions on the scenario's own page when *on_page*, else on a page of this context the scenario never sees.
+
+        A fixture each scenario builds afresh hands its scenario the page it left, such as a dialog it
+        opened. A fixture a whole lap shares hands later scenarios only its session, so it arranges out
+        of sight and every scenario that names it starts the same way.
 
         Each action waits for the page the last one opened to finish loading, since a provider's
         page shows its controls before its scripts listen to them and drops a click made earlier.
         """
-        if self._side is None:
-            self._side = self._context.new_page()
+        if self._arranging is None:
+            self._arranging = self.page if on_page else self._context.new_page()
         try:
             for action in actions:
                 if "open" in action:
-                    self._side.goto(str(action["open"]), timeout=timeout_ms)
+                    self._arranging.goto(str(action["open"]), timeout=timeout_ms)
                     continue
-                self._side.wait_for_load_state("load", timeout=timeout_ms)
-                found = _locate(self._side, action["locator"])
+                self._arranging.wait_for_load_state("load", timeout=timeout_ms)
+                found = _locate(self._arranging, action["locator"])
                 method = ARRANGE_METHODS[str(action["act"])]
                 values = [str(action["value"])] if "value" in action else []
                 getattr(found, method)(*values, timeout=timeout_ms)
         except Exception:
-            self._close_side()
+            self._close_arranging()
             raise
 
     def session(self, origin: str, *, timeout_ms: float = ARRANGE_TIMEOUT_MS) -> dict[str, Any]:
@@ -302,13 +308,13 @@ class Browser:
         host = urlsplit(origin).netloc
         try:
             try:
-                self._side.wait_for_url(lambda url: urlsplit(url).netloc == host, timeout=timeout_ms)
+                self._arranging.wait_for_url(lambda url: urlsplit(url).netloc == host, timeout=timeout_ms)
             except Exception as exc:
-                raise TimeoutError(f"the arranged page stayed on {self._side.url}") from exc
-            self._side.wait_for_load_state("networkidle", timeout=timeout_ms)
+                raise TimeoutError(f"the arranged page stayed on {self._arranging.url}") from exc
+            self._arranging.wait_for_load_state("networkidle", timeout=timeout_ms)
             return dict(self._context.storage_state(indexed_db=True))
         finally:
-            self._close_side()
+            self._close_arranging()
 
     def restore(self, state: Mapping[str, Any]) -> None:
         """Put an earlier scenario's arranged session into this context, before the page opens the app."""
@@ -319,10 +325,10 @@ class Browser:
         finally:
             side.close()
 
-    def _close_side(self) -> None:
-        if self._side is not None:
-            self._side.close()
-            self._side = None
+    def _close_arranging(self) -> None:
+        if self._arranging is not None and self._arranging is not self.page:
+            self._arranging.close()
+        self._arranging = None
 
 
     def console_errors(self, *, ignore_urls: Sequence[str] = BROWSER_ISSUED_URLS) -> list[dict[str, Any]]:

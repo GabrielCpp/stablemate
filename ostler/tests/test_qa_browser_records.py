@@ -805,13 +805,13 @@ def test_an_arranged_page_that_never_comes_back_says_where_it_stayed(tmp_path: P
         raise TimeoutError(f"Timeout {timeout}ms exceeded.")
 
     browser = _browser(tmp_path)
-    browser._side = SimpleNamespace(
+    browser._arranging = SimpleNamespace(
         url="http://localhost:9099/emulator/auth/handler", wait_for_url=_never, close=lambda: None,
     )
     with pytest.raises(TimeoutError) as excinfo:
         browser.session("http://localhost:5173")
     assert "stayed on http://localhost:9099/emulator/auth/handler" in str(excinfo.value)
-    assert browser._side is None
+    assert browser._arranging is None
 
 
 def test_an_arranged_click_waits_for_the_page_the_last_step_opened_to_load(tmp_path: Path) -> None:
@@ -819,7 +819,7 @@ def test_an_arranged_click_waits_for_the_page_the_last_step_opened_to_load(tmp_p
     calls: list[str] = []
     found = SimpleNamespace(click=lambda *, timeout: calls.append("click"), count=lambda: 1)
     browser = _browser(tmp_path)
-    browser._side = SimpleNamespace(
+    browser._arranging = SimpleNamespace(
         goto=lambda url, *, timeout: calls.append(f"goto {url}"),
         wait_for_load_state=lambda state, *, timeout: calls.append(f"wait {state}"),
         get_by_role=lambda role, *, name: found,
@@ -834,3 +834,45 @@ def test_an_arranged_click_waits_for_the_page_the_last_step_opened_to_load(tmp_p
     ])
 
     assert calls == ["goto /login", "wait load", "click", "wait load", "click"]
+
+
+def _arranged_page(calls: list[str], name: str) -> Any:
+    found = SimpleNamespace(click=lambda *, timeout: calls.append(f"click on {name}"), count=lambda: 1)
+    return SimpleNamespace(
+        url="http://localhost:5173/fr/editor",
+        goto=lambda url, *, timeout: calls.append(f"goto {url} on {name}"),
+        wait_for_load_state=lambda state, *, timeout: None,
+        wait_for_url=lambda matches, *, timeout: None,
+        get_by_role=lambda role, *, name: found,
+        close=lambda: calls.append(f"close {name}"),
+    )
+
+
+def test_a_fixture_each_scenario_builds_leaves_its_page_to_the_scenario(tmp_path: Path) -> None:
+    """A dialog the fixture opened is still open when the scenario checks it."""
+    calls: list[str] = []
+    browser = _browser(tmp_path)
+    browser.page = _arranged_page(calls, "scenario page")
+    browser._context = SimpleNamespace(
+        new_page=lambda: _arranged_page(calls, "side page"), storage_state=lambda *, indexed_db: {},
+    )
+
+    browser.arrange([{"open": "/fr/editor"}, {"act": "click", "locator": {"role": "button", "name": "New"}}], on_page=True)
+    browser.session("http://localhost:5173")
+
+    assert calls == ["goto /fr/editor on scenario page", "click on scenario page"]
+    assert browser._arranging is None
+
+
+def test_a_fixture_a_lap_shares_arranges_out_of_the_scenarios_sight(tmp_path: Path) -> None:
+    calls: list[str] = []
+    browser = _browser(tmp_path)
+    browser.page = _arranged_page(calls, "scenario page")
+    browser._context = SimpleNamespace(
+        new_page=lambda: _arranged_page(calls, "side page"), storage_state=lambda *, indexed_db: {},
+    )
+
+    browser.arrange([{"open": "/login"}])
+    browser.session("http://localhost:5173")
+
+    assert calls == ["goto /login on side page", "close side page"]
