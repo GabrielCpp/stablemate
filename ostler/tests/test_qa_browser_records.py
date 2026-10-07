@@ -814,6 +814,26 @@ def test_an_arranged_page_that_never_comes_back_says_where_it_stayed(tmp_path: P
     assert browser._arranging is None
 
 
+def test_an_arranged_page_holding_a_request_open_is_read_once_the_settle_budget_passes(tmp_path: Path) -> None:
+    """A provider's connectivity ping that never answers keeps the page from going idle, and the sign-in is already done."""
+    waits: list[tuple[str, float]] = []
+
+    def wait_for_load_state(state: str, *, timeout: float) -> None:
+        waits.append((state, timeout))
+        if state == "networkidle":
+            raise ostler_qa_browser.PlaywrightTimeout(f"Timeout {timeout}ms exceeded.")
+
+    browser = _browser(tmp_path)
+    browser._context = SimpleNamespace(storage_state=lambda *, indexed_db: {"origins": ["signed in"]})
+    browser._arranging = SimpleNamespace(
+        url="http://localhost:5173/fr/editor", wait_for_url=lambda matches, *, timeout: None,
+        wait_for_load_state=wait_for_load_state, close=lambda: None,
+    )
+
+    assert browser.session("http://localhost:5173") == {"origins": ["signed in"]}
+    assert waits == [("networkidle", ostler_qa_browser.SETTLE_TIMEOUT_MS), ("load", ostler_qa_browser.ARRANGE_TIMEOUT_MS)]
+
+
 def test_an_arranged_click_waits_for_the_page_the_last_step_opened_to_load(tmp_path: Path) -> None:
     """A provider's sign-in page lists its accounts before its scripts listen, and a click made then is lost."""
     calls: list[str] = []

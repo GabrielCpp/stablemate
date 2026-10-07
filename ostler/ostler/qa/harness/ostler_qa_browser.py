@@ -13,6 +13,7 @@ from urllib.parse import urlsplit
 from ostler_qa_browser_state import CLIPBOARD_JS
 from ostler_qa_scan import FRAME_JS, SCAN_JS, merge_rects, summarize
 from ostler_qa_transfer import upload
+from playwright.sync_api import TimeoutError as PlaywrightTimeout
 from playwright.sync_api import sync_playwright
 
 DIAGNOSTICS_SCHEMA = "browser-diagnostics/2"
@@ -58,6 +59,7 @@ DEFAULT_VIEWPORT = {"width": 1440, "height": 900}
 BROWSER_ISSUED_URLS: tuple[str, ...] = ("/favicon.ico",)
 
 ARRANGE_TIMEOUT_MS = 30_000
+SETTLE_TIMEOUT_MS = 10_000
 
 QUIET_MS = 500
 QUIET_STEP_MS = 100
@@ -308,6 +310,8 @@ class Browser:
         """The session the arranged page left, once it is back on *origin* and its requests have settled.
 
         A page that never comes back says which page it stayed on, since that page is the step that stalled.
+        A page back on *origin* that holds a request open past the settle budget, such as a provider's
+        connectivity ping that never answers, is read as it stands: the sign-in finished long before.
         """
         host = urlsplit(origin).netloc
         try:
@@ -315,7 +319,10 @@ class Browser:
                 self._arranging.wait_for_url(lambda url: urlsplit(url).netloc == host, timeout=timeout_ms)
             except Exception as exc:
                 raise TimeoutError(f"the arranged page stayed on {self._arranging.url}") from exc
-            self._arranging.wait_for_load_state("networkidle", timeout=timeout_ms)
+            try:
+                self._arranging.wait_for_load_state("networkidle", timeout=min(timeout_ms, SETTLE_TIMEOUT_MS))
+            except PlaywrightTimeout:
+                self._arranging.wait_for_load_state("load", timeout=timeout_ms)
             return dict(self._context.storage_state(indexed_db=True))
         finally:
             self._close_arranging()
