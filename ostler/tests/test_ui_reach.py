@@ -298,7 +298,7 @@ def test_doctor_warns_rather_than_errors_when_no_screen_is_at_the_root(repo: Pat
 
     assert "unreachable-screen" not in _codes(report)
     warn = next(f for f in report.findings if f.code == "no-root-screen")
-    assert "`/`" in warn.message and "no server contract" in warn.message
+    assert "`/`" in warn.message and "no runbook or server contract" in warn.message
 
 
 def test_no_root_screen_now_also_fires_on_a_mobile_surface(repo: Path):
@@ -340,7 +340,7 @@ title: QA stack
     warnings = [f for f in report.findings if f.code == "no-root-screen"]
     assert {f.ref for f in warnings} == {"web", "mobile"}
     web_warn = next(f for f in warnings if f.ref == "web")
-    assert "`/`" in web_warn.message and "no server contract" in web_warn.message
+    assert "`/`" in web_warn.message and "no runbook or server contract" in web_warn.message
     mobile_warn = next(f for f in warnings if f.ref == "mobile")
     assert "`launch-screen:`" in mobile_warn.message
     assert "route:" not in mobile_warn.message and "`/`" not in mobile_warn.message
@@ -392,6 +392,23 @@ def test_several_servers_settle_on_the_first_by_node_id(repo: Path):
 
     assert reach.root_path(data) == ("/static", "docs/features/web/http/static.md")
     assert reach.root_screen(data) is None
+
+
+def test_a_runbook_entry_url_names_the_root_before_the_server(repo: Path):
+    """The runbook that drives the surface states where its walk opens, so its `entry-url:` path outranks the server contract's."""
+    _repo(repo)
+    write(repo / SERVER, _server("http://localhost:3000/static"))
+    write(repo / "docs/features/web/ops/stack.md", (
+        "---\ntype: runbook\nslug: stack\ntitle: Stack\n---\n# Stack\n\n"
+        "- driver: web\n- surfaces: [Landing](../gui/screens/landing.md)\n"
+        "- entry-url: http://localhost:3000/sign-in\n\n"
+        "## Steps\n\n### serve\n- kind: service\n- run: `npm start`\n"
+    ))
+    data = graph.build(load(repo), surface="web")
+
+    assert reach.root_path(data, "web", surface="web") == ("/sign-in", "docs/features/web/ops/stack.md")
+    assert reach.root_screen(data, "web", surface="web") == SIGNIN
+    assert reach.root_path(data, "web") == ("/static", SERVER)
 
 
 def test_root_path_is_unchanged_for_web_and_none_for_a_driver_with_no_path_grammar(repo: Path):

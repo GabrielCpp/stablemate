@@ -197,7 +197,7 @@ def _navigation(dump: dict[str, Any]) -> dict[str, dict[str, Any]]:
         driver = reach.surface_driver(dump, surface)
         bundle_id = reach.surface_bundle_id(dump, surface)
         launch_screen = reach.surface_launch_screen(dump, surface)
-        root_path, _server = reach.root_path(surface_dump, driver)
+        root_path, _server = reach.root_path(surface_dump, driver, surface=surface)
         screens = reach.screens_of(surface_dump)
         entry_url = reach.entry_origin(dump, surface)
         if not screens:

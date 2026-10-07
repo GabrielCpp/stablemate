@@ -2038,9 +2038,9 @@ def _check_reachability(data: dict, f: list[Finding]) -> None:
         if root is None:
             driver_note = f" ({driver} driver)" if driver else ""
             if reason == reach.NO_PATH_ROOT:
-                path, server = reach.root_path(scoped, driver)
+                path, server = reach.root_path(scoped, driver, surface=surface)
                 source = (f"the path of {server}'s `entry-url:`" if server
-                          else "the app root, no server contract states another")
+                          else "the app root, no runbook or server contract states another")
                 f.append(Finding("warn", "no-root-screen",
                                  f"{surface}{driver_note}: no screen's `route:` is `{path}` "
                                  f"({source}) — reachability cannot be checked for this surface",

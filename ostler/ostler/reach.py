@@ -169,10 +169,15 @@ def _norm_path(path: str) -> str:
     return path if path == ROOT_PATH else path.rstrip("/") or ROOT_PATH
 
 
-def root_path(data: dict, driver: str | None = None) -> tuple[str | None, str | None]:
-    """``(path, server)`` — where the surface is entered, and the server contract that says so."""
+def root_path(data: dict, driver: str | None = None, *,
+              surface: str | None = None) -> tuple[str | None, str | None]:
+    """``(path, contract)`` — where the surface is entered, and the runbook or server contract that says so."""
     if not routes_mod.is_path_addressed(driver):
         return None, None
+    for runbook in surface_runbooks(data, surface) if surface is not None else ():
+        url = bullet_value(runbook["bullets"], ENTRY_URL_BULLET).strip()
+        if url:
+            return _norm_path(urlparse(url).path), runbook["id"]
     servers = sorted((n for n in data["nodes"]
                       if n["type"] == SERVER_TYPE and n["kind"] == "file"),
                      key=lambda n: n["id"])
@@ -275,9 +280,10 @@ def surface_launch_screen(dump: dict, surface: str) -> str | None:
     return None
 
 
-def root_screen(data: dict, driver: str | None = None) -> str | None:
+def root_screen(data: dict, driver: str | None = None, *,
+                surface: str | None = None) -> str | None:
     """The screen whose ``route:`` is the surface's root path — the one node a walk starts on."""
-    path, _ = root_path(data, driver)
+    path, _ = root_path(data, driver, surface=surface)
     if path is None:
         return None
     for node in data["nodes"]:
@@ -352,7 +358,7 @@ def surface_root(data: dict, driver: str | None = None, *,
                  ) -> tuple[str | None, str, str | None]:
     """``(root, reason, detail)`` — the start screen, why there is none, and the evidence for why."""
     if routes_mod.is_path_addressed(driver):
-        root = root_screen(data, driver)
+        root = root_screen(data, driver, surface=surface)
         return (root, "", None) if root is not None else (None, NO_PATH_ROOT, None)
     if surface is None:
         return None, NO_SURFACE, None
@@ -396,7 +402,7 @@ def resolve_start(data: dict, start: str | None, driver: str | None = None, *,
         if root is None:
             named = f"a `{driver}` surface" if driver else "this surface"
             if reason == NO_PATH_ROOT:
-                path, _ = root_path(data, driver)
+                path, _ = root_path(data, driver, surface=surface)
                 raise UnknownStart(f"no screen's `route:` is the root path {path}; pass --from")
             if reason == LAUNCH_SCREEN_NOT_SCREEN:
                 raise UnknownStart(
