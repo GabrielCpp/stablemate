@@ -29,6 +29,11 @@ from workhorse_workflows.okf_book.shared.page_check import PageProblem
 WRITE_PROMPT = "main/prompts/write-book.md"
 
 
+def owner_chain(service: str) -> str:
+    """The conversation a book's owner keeps across its turns, so each lap resumes where the last one stopped."""
+    return f"book:{service}"
+
+
 class WriteOutcome(BaseModel):
     """What the writer's turn left: whether its book is committed, and why the turn ended without a reply when it is not."""
 
@@ -70,7 +75,7 @@ class WriteBook(BookFlow):
         return Continue(command_state_file.as_posix(), self.write_book, before=before).because("send the writer")
 
     def write_book(self, before: Snapshot) -> Continue[...]:
-        """One turn, confined to its book folder and to ostler and the two checks, opens on the gates the book last failed and writes the whole book until both pass. A reply that names no side leaves the gates as they were."""
+        """One turn, confined to its book folder and to ostler and the two checks, opens on the gates the book last failed and writes the whole book until both pass. The turn resumes the owner's conversation, and a turn that ends without a reply starts the next one fresh. A reply that names no side leaves the gates as they were."""
         surface = self.surface_to_write
         request = writer_request(self.run_dir, self.root, surface, self.book_folder, self.source_folder)
         gate = gate_template_args(self.root, self.records_dir, surface.service, self._gates())
@@ -87,11 +92,13 @@ class WriteBook(BookFlow):
                 cwd=self.root / self.book_folder,
                 add_dirs=[request.source_view, turn_folder(self.root, OWNER_FOLDER)],
                 profile=request.profile,
+                session=owner_chain(surface.service),
             )
         except OutputParseError as unread:
             self.logger.warning("the owner's reply on %s named no side: %s", surface.service, unread)
         except (AgentTurnFailed, AgentTimeout) as failed:
             failure = f"the writer's turn ended without a reply: {failed}"
+            self.reset_session(owner_chain(surface.service))
         settle_jobs(self.run_dir)
         node = Path(WRITE_PROMPT).stem
         metric = turn_metric(

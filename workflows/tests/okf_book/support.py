@@ -74,6 +74,7 @@ class ScriptedRunner(AgentRunner):
         self.calls: list[tuple[str, dict[str, object]]] = []
         self.nodes: list[AgentNode] = []
         self.refused: list[tuple[str, str]] = []
+        self.chains: list[tuple[str, str]] = []
 
     @property
     def total(self) -> int:
@@ -102,6 +103,7 @@ class ScriptedRunner(AgentRunner):
         self.turns[node.id] += 1
         self.calls.append((node.id, args))
         self.nodes.append(node)
+        self.chains.append((node.id, session_chain))
         reply = self.replies[node.id](args)
         if validate is None:
             return "scripted", reply

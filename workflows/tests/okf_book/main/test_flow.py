@@ -206,7 +206,7 @@ def test_a_book_this_workflow_wrote_that_fails_its_rerun_goes_to_its_writer_once
     assert [b.phase for b in result.blockers] == [Phase.EXERCISE]
 
 
-def test_the_operators_answer_sends_a_book_that_still_fails_back_to_its_repair(
+def test_the_operators_answer_sends_a_book_that_still_fails_back_to_its_owners_conversation(
     app: App, drive_book: DriveBook, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     repo = app("tally-cli")
@@ -220,7 +220,7 @@ def test_the_operators_answer_sends_a_book_that_still_fails_back_to_its_repair(
     result = drive_book(OkfBook(repo_dir=str(repo), surfaces=(TALLY,)), runner)
 
     assert len(asked) == 1
-    assert runner.total == 2
+    assert runner.chains == [("write-book", "book:tally"), ("write-book", "book:tally")]
     assert isinstance(result, BookReport)
     assert result.blockers == ()
 
