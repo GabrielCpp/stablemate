@@ -20,7 +20,7 @@ from workhorse_workflows.okf_book.main.nodes.exercise import USAGE as EXERCISE_U
 from workhorse_workflows.okf_book.main.nodes.exercise import run_exercise
 from workhorse_workflows.okf_book.main.nodes.writer_jobs import Start, Work, finish_job
 from workhorse_workflows.okf_book.main.nodes.writer_stack import KeptStack
-from workhorse_workflows.okf_book.main.nodes.writer_ostler import INDEX_DIR_REFUSED, USAGE as OSTLER_USAGE, run_ostler
+from workhorse_workflows.okf_book.main.nodes.writer_ostler import GC_USAGE, INDEX_DIR_REFUSED, NO_DEAD_PAGE, USAGE as OSTLER_USAGE, run_ostler
 from workhorse_workflows.okf_book.main.nodes.turn_budget import PROMPT_AND_SKILL_ALLOWANCE_TOKENS, folder_tokens
 from workhorse_workflows.okf_book.main.nodes.surface import Surface, SurfaceKind
 from workhorse_workflows.okf_book.main.nodes.writer_request import WriterRequest
@@ -186,13 +186,40 @@ def test_a_turn_that_spent_its_check_runs_is_told_to_stop_and_still_reads_its_la
     assert run_exercise([str(path)]) == CommandOutput(1, (CHECK_AND_SCENARIO_RUNS_SPENT_MESSAGE,))
 
 
-def test_the_ostler_command_runs_only_scaffold_and_fmt(tmp_path: Path) -> None:
+def test_the_ostler_command_runs_only_scaffold_fmt_and_gc(tmp_path: Path) -> None:
     path = write_command_state(tmp_path / "run", WriterCommandState(root=tmp_path, service="ledger"))
 
     assert run_ostler([str(path), "checks"]) == CommandOutput(2, (OSTLER_USAGE,))
     assert run_ostler([str(path)]) == CommandOutput(2, (OSTLER_USAGE,))
     assert run_ostler([str(path), "fmt", "docs", "--index-dir=docs"]) == CommandOutput(2, (INDEX_DIR_REFUSED,))
     assert read_command_state(path).ostler_runs == 0
+
+
+def _book_with_a_stray_page(repo: Path, service: str) -> None:
+    book = repo / "docs" / "features" / service
+    book.mkdir(parents=True)
+    _ = (book / "entries.md").write_text(f"---\ntype: entries\ntitle: {service}\n---\n# {service}\n\n- [Kept](kept.md)\n", encoding="utf-8")
+    for name in ("kept", "stray"):
+        _ = (book / f"{name}.md").write_text(f"---\ntype: concept\ntitle: {name}\n---\n# {name}\n", encoding="utf-8")
+
+
+def test_the_ostler_gc_deletes_only_the_unlinked_pages_of_the_writers_book(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    for service in ("ledger", "other"):
+        _book_with_a_stray_page(repo, service)
+    path = write_command_state(tmp_path / "run", WriterCommandState(root=repo, service="ledger"))
+    stray = "docs/features/ledger/stray.md"
+
+    listed = run_ostler([str(path), "gc"])
+    deleted = run_ostler([str(path), "gc", "--write"])
+
+    assert listed == CommandOutput(0, (f"would delete, with --write: {stray}",))
+    assert deleted == CommandOutput(0, (f"deleted {stray}",))
+    assert not (repo / stray).exists()
+    assert (repo / "docs/features/ledger/kept.md").is_file()
+    assert (repo / "docs/features/other/stray.md").is_file()
+    assert run_ostler([str(path), "gc"]) == CommandOutput(0, (NO_DEAD_PAGE,))
+    assert run_ostler([str(path), "gc", "--json"]) == CommandOutput(2, (GC_USAGE,))
 
 
 def test_the_ostler_command_counts_its_runs_and_stops_at_the_cap(

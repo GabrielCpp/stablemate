@@ -13,9 +13,11 @@ with no redirection, `;` or `&&`. Give such a read an absolute path, in the book
 or the skill. The repository's root is `{{ repo_root }}`, and a path the skill or this prompt
 gives relative to the repository starts there.
 
-- `ostler scaffold` and `ostler fmt` run through this command, with the same arguments after
-  it, `{{ ostler }} scaffold …` or `{{ ostler }} fmt …`. It runs {{ ostler_run_cap }} times in all
-  and prints the head of what ostler says. `ostler checks` does not run here: the check
+- `ostler scaffold`, `ostler fmt` and `ostler gc` run through this command, with the same
+  arguments after it, `{{ ostler }} scaffold …` or `{{ ostler }} fmt …`. `gc` lists the pages of
+  this book that no link path from its entries page reaches, and `gc --write` deletes them. To
+  drop a page, remove every link to it, then run `{{ ostler }} gc --write`. It runs
+  {{ ostler_run_cap }} times in all and prints the head of what ostler says. `ostler checks` does not run here: the check
   vocabulary is the skill's `check-vocabulary.md` reference.
 
   ```
