@@ -84,8 +84,18 @@ parameter list is not a relation.
 ## `## Steps`
 
 Each step under a fixture's `## Steps` carries a `kind:` narrower than a runbook step's: only
-`seed`, `run`, `verify`, `probe` are legal here (`fixture-step-kind`), because a fixture's job is to put
+`seed`, `run`, `serve`, `verify`, `probe` are legal here (`fixture-step-kind`), because a fixture's job is to put
 data in place and confirm it landed — not to boot a stack, which is the runbook's job.
+
+A fixture starts a process the scenario talks to, such as a mock backend on its own port, with a
+`kind: serve` step. The harness starts its `run:` in a process group of its own and moves to the
+next step without waiting for it to exit. It stops the group when the scenario ends, whether the
+scenario passed, failed or timed out, so the next scenario finds the port free. A `serve` step
+belongs only to a `lifetime: scenario` fixture (`fixture-serve-lifetime`), because its process ends
+with the scenario that started it. Follow it with a `kind: verify` step that waits for the process
+to answer, such as `curl --fail --retry 10 --retry-connrefused <health url>`. A `run:` that ends in
+`&` never finishes, because the harness waits on what the backgrounded process holds open, so
+`ostler doctor` refuses it (`fixture-step-backgrounded`).
 
 A fixture confirms it landed with a `kind: verify` step whose `run:` exits non-zero when the
 arrangement did not take. The harness runs that step. A fixture carries no `verify:` bullet,
