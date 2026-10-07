@@ -145,6 +145,27 @@ it is on the screen and enabled — and, when `activates` is given, a control th
 focus but does not fire on the key the book names, which no assertion about what is drawn can
 see: the defect is in what the keypress does, not in what is on the screen.
 
+### `attribute(locator*=<str> (locator), name*=<str>, equals=<str>, matches=<str>) — one of equals, matches`
+Excludes markup the user never sees drawn and still depends on. The page language a screen
+reader speaks in is one. An alternate-language link a search engine follows is another. No
+check on what is drawn sees either. The check reads the attribute `name` on every element the
+locator matches. It passes when any of them carries the value `equals` names, or a value
+`matches` finds. The element need not be shown, so a `<link>` in the document head counts. Point
+the locator at a component whose selector addresses the markup, such as one with the selector
+`html` for `attribute(locator="#document-root", name="lang", equals="fr")`. The browser driver
+reads it and gives a page that writes it late five seconds. A device driver cannot read markup,
+so the claim is a gap there.
+
+### `focused(locator*=<str> (locator))`
+Excludes keyboard focus that escapes an open dialog, or lands nowhere after the dialog closes.
+`focusable` passes both, because it moves focus itself and reads only whether the control can
+take it. This check moves nothing. It passes when focus sits on the element the locator matches
+or inside it. Pair it with the keypress the claim is about: after a `press` of `Tab` in a
+dialog, `focused(locator="#delete-dialog")` claims focus stayed in it. After `Escape`,
+`focused(locator="#delete-button")` claims focus went back to the control that opened it. A
+failure records where focus sat instead. A device driver cannot read focus, so the claim is a
+gap there.
+
 ### `title(equals=<str>, matches=<str>) — one of equals, matches`
 Excludes a screen that draws the right content under the wrong document title. A tab, a
 bookmark and a screen reader's first announcement all read the title, and no check on the page
