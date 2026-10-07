@@ -304,9 +304,12 @@ def _scenario_head(
 
 
 def _arrive(screen: _PageScreen, arranged: list[FixtureRow], gaps: list[Gap], ids: list[str]) -> list[str]:
-    """Arrange the fixtures, open the surface's root, and click through to the screen."""
+    """Arrange the fixtures, then open the surface's root and click through to the screen, unless the last fixture's own browser steps already left it there."""
+    fixtures = [fixture_call(row) for row in arranged]
+    if arranged and screen.book.fixture_screens.get(arranged[-1].name) == screen.screen:
+        return fixtures
     return [
-        *(fixture_call(row) for row in arranged),
+        *fixtures,
         f"    qa.goto({python_literal(screen.path.root_path)})",
         *walk_hops(screen.path.hops, screen.screen, screen.book, gaps, ids),
     ]

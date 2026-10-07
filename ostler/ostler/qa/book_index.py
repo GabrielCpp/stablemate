@@ -39,6 +39,7 @@ class BookIndex:
     fragment_hosts: dict[str, str] = field(default_factory=dict[str, str])
     guards_by_node: dict[str, list[Obligation]] = field(default_factory=dict[str, list[Obligation]])
     server_origins: dict[str, str] = field(default_factory=dict[str, str])
+    fixture_screens: dict[str, str] = field(default_factory=dict[str, str])
 
 
 @dataclass(frozen=True)

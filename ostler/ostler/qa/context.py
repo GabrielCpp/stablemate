@@ -371,6 +371,7 @@ def build_context(
         "serverOrigins": _server_origins(snapshot.book),
         "scenarioFixtures": _scenario_fixtures(snapshot.book),
         "browserFixtures": _browser_fixtures(snapshot.book),
+        "fixtureScreens": _fixture_screens(snapshot.book),
         "fragmentHosts": _fragment_hosts(snapshot.book),
         "screenRoutes": routes_mod.screen_routes(snapshot.head_graph),
         "healthFindings": [*mapping.unmapped, *grounding.health, *requirement.health],
@@ -1412,6 +1413,19 @@ def _browser_fixtures(book: Mapping[str, BookNode]) -> list[str]:
         grew = not needing <= signing
         signing |= needing
     return sorted(Path(path).stem for path in signing)
+
+
+def _fixture_screens(book: Mapping[str, BookNode]) -> dict[str, str]:
+    """The screen each `fixture` file's own browser steps leave the browser on: the one its last `open:` links."""
+    fixtures = {node.path for node in book.values() if node.type == "fixture" and node.kind == "file"}
+    opened: dict[str, tuple[int, str]] = {}
+    for node in book.values():
+        if node.type != "step" or node.path not in fixtures:
+            continue
+        screens = [edge.to.split("#", 1)[0] for edge in node.edges if edge.via == "open" and edge.to]
+        if screens and node.line >= opened.get(node.path, (-1, ""))[0]:
+            opened[node.path] = (node.line, screens[0])
+    return {Path(path).stem: screen for path, (_, screen) in sorted(opened.items())}
 
 
 def _fragment_hosts(book: Mapping[str, BookNode]) -> dict[str, str]:

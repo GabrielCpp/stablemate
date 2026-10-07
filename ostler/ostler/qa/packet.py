@@ -25,6 +25,7 @@ class ContextPacket:
     story_slug: str
     fragment_hosts: dict[str, str]
     browser_fixtures: frozenset[str] = frozenset()
+    fixture_screens: dict[str, str] = field(default_factory=dict[str, str])
     server_origins: dict[str, str] = field(default_factory=dict[str, str])
 
     @property
@@ -78,5 +79,6 @@ def packet_of(context: Mapping[str, Any]) -> ContextPacket:
         story_slug=_string_table(context.get("story"), "story").get("slug", ""),
         fragment_hosts=_string_table(context.get("fragmentHosts"), "fragmentHosts"),
         browser_fixtures=_names(context.get("browserFixtures"), "browserFixtures"),
+        fixture_screens=_string_table(context.get("fixtureScreens"), "fixtureScreens"),
         server_origins=_string_table(context.get("serverOrigins"), "serverOrigins"),
     )
