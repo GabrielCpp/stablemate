@@ -31,23 +31,33 @@ gives relative to the repository starts there.
 - The book's root is `entries.md`, in the folder you run from. It has frontmatter `type: entries`, `slug:
   entries` and `title: {{ service }}`, then one `- [title](page.md)` line per entry page. Every
   other page must be reachable by links from an entry page.
-- Read the product's source first. The book must be complete:
+- Read the product's source first, then size the book to the app. A reader starts at the
+  entries page and finds what the app does in a few links. Expect a page for each
+  {% if kind == "cli" %}command{% elif kind == "http" %}endpoint{% else %}screen{% endif %}, each journey, each fixture and each concept several of them share: tens of
+  pages for a small app, not hundreds. A claim earns its place when a user or a caller can
+  observe it and it would break if the app changed. Merge, shrink or delete pages freely. A
+  smaller book whose claims pass beats a larger one whose claims fail.
+- State what a user or a caller meets:
 {% if kind == "cli" %}
-  every command, option, flag and positional, every message the app prints and every exit
-  code it returns, every file format it reads or writes,
+  the commands, options, flags and positionals, the messages the app prints and the exit
+  codes it returns, the file formats it reads or writes,
 {% elif kind == "http" %}
-  every endpoint with its method and path, every parameter, header and body field it reads,
-  every status code, header and body it answers with, every error it returns, every stored
-  record it reads or writes. Each endpoint is a page of its own beside its server page, with
+  each endpoint with its method and path, the parameters, headers and body fields it reads,
+  the status codes, headers and bodies it answers with, the errors it returns, the stored
+  records it reads or writes. Each endpoint is a page of its own beside its server page, with
   a `server:` link to that page, and the server lists it under `## Endpoints` as a
-  `- [id](page.md)` line. An endpoint written inline under the server is moved onto its own
-  page after your turn,
+  `- [id](page.md)` line,
 {% else %}
-  every screen and route, every control with its role and accessible name, every
-  interaction and what it changes, every message the app shows, every value it stores,
+  the screens and routes, the controls a user works with by role and accessible name, what
+  each interaction changes, the messages the app shows and the values it keeps,
 {% endif %}
-  and every rule the app applies must be stated as a claim with a `verify:` that would fail
-  if the app stopped doing it.
+  and the rules the app applies. Each is a claim with a `verify:` that would fail if the app
+  stopped doing it. One check pinned under several claims of a node proves none of them.
+{% if kind not in ("cli", "http") %}
+- An element that appears only after an act, such as a dialog, a badge or a banner, is checked
+  under the `does:` of the interaction that performs the act, or a fixture arranges the state
+  first. A check on such an element at the screen level fails on the bare screen.
+{% endif %}
 - Every {% if kind == "cli" %}command{% elif kind == "http" %}endpoint{% else %}screen{% endif %} sits on a journey a user takes. Write each journey as a `flow` page under
   `flows/`, as the skill's flow reference says, with its `start:`, its `steps:`, its `end:` and
   its `fixture:`, and link it from a page the entries page reaches. The check names every
@@ -97,12 +107,11 @@ gives relative to the repository starts there.
   Claims on one page run in document order in one working directory, so a claim sees the
   state the claims above it left.
 - A check that passes on the real app can still pass on a wrong one. Before you finish, go
-  through every rule the book states. Name the most plausible wrong implementation of it, the
+  through the rules the book states. Name the most plausible wrong implementation of it, the
   one a hurried developer would write, and check that at least one claim's example would fail
   on it. If none would, change the example or the check until one does.
-- Give every rule an example on each side of every boundary it draws. Where it tells inputs
-  apart by comparing them, show a pair that differs in exactly one part, once for each part.
-  Where it counts or measures, show the values just below, at, and just above the limit.
+- Where a rule draws a boundary, give it an example on each side. Where it counts or measures,
+  show the values just below, at, and just above the limit.
 - A check that parses output passes on any layout. For every structured output the app prints,
   answers or writes, state its layout, and check at least one example against its exact text.
 
