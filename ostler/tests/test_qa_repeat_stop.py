@@ -144,6 +144,14 @@ def test_an_observation_without_a_message_is_the_first_check_observed() -> None:
     assert observation(result) == "N"
 
 
+def test_different_elements_found_absent_are_different_observations_and_one_element_is_one() -> None:
+    def absent(locator: str) -> ScenarioResult:
+        return ScenarioResult(status="failed", failed_checks=[FailedCheck(f"visible(locator='{locator}')", "true", '{"present": false}')])
+
+    assert observation(absent("#picker")) != observation(absent("#upload-dialog"))
+    assert observation(absent("#picker")) == observation(absent("#picker"))
+
+
 def test_a_gapped_failure_never_counts() -> None:
     watch = RepeatWatch(1)
     gapped = ScenarioResult(status="failed", message=WALL, failed_checks=[FailedCheck("probe", "0", "1", gap="payment provider")])

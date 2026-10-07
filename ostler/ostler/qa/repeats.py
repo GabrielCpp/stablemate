@@ -5,7 +5,7 @@ import re
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 
-from ostler.qa.drivers import ScenarioResult
+from ostler.qa.drivers import FailedCheck, ScenarioResult
 
 MIN_PAGES = 3
 OBSERVATION_CHARS = 300
@@ -13,12 +13,20 @@ PAGES_NAMED = 10
 _PAGE = re.compile(r"^okf:(?P<page>[^#:]+\.md)")
 _DIGITS = re.compile(r"\d+")
 _SPACE = re.compile(r"\s+")
+_ABSENT = re.compile(r'"present":\s*false')
+
+
+def _observed(check: FailedCheck) -> str:
+    return f"{check.label}: {check.actual}" if _ABSENT.search(check.actual) else check.actual
 
 
 def observation(result: ScenarioResult, scenario_id: str = "") -> str:
-    """What a failed scenario observed: the last problem on the last line of its message, or its first failed check's actual value, with its own id and numbers blanked."""
+    """What a failed scenario observed: the last problem on the last line of its message, or its first failed check's actual value, with its own id and numbers blanked.
+
+    An element a check found absent is named with that check, since a different element missing on each page is no one cause.
+    """
     lines = [line.strip() for line in result.message.splitlines() if line.strip()]
-    seen = lines[-1].rsplit("; ", 1)[-1] if lines else next((check.actual for check in result.failed_checks if check.actual), "")
+    seen = lines[-1].rsplit("; ", 1)[-1] if lines else next((_observed(check) for check in result.failed_checks if check.actual), "")
     if scenario_id:
         seen = seen.replace(scenario_id, "<scenario>")
     return _SPACE.sub(" ", _DIGITS.sub("N", seen)).strip()[:OBSERVATION_CHARS]
