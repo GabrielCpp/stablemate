@@ -9,6 +9,7 @@ from ostler_qa_documents import read_body, read_countable, read_document, verify
 from ostler_qa_elements import (
     read_console,
     read_control,
+    read_download,
     read_focus,
     read_hidden,
     read_size,
@@ -16,6 +17,7 @@ from ostler_qa_elements import (
     read_visibility,
     verify_actionable,
     verify_console,
+    verify_download,
     verify_emitted,
     verify_focusable,
     verify_hidden,
@@ -82,6 +84,7 @@ VERIFIERS: dict[str, Verifier] = {
     "url": _verifier(read_url, verify_url),
     "stored": _verifier(read_stored, verify_stored),
     "clipboard": _verifier(read_clipboard, verify_clipboard),
+    "downloaded": _verifier(read_download, verify_download),
     "persists": _verifier(read_pair("persists"), verify_persists),
     "emitted": _verifier(read_size, verify_emitted),
     "omits": _verifier(read_body, verify_omits),

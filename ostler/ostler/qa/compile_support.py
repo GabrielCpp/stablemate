@@ -65,12 +65,13 @@ def unobservable_gap(oid: str, name: str | None, driver: DriverSpec) -> Gap:
     remedy = ""
     if "console" in driver.observes and observes in ("subject", "subject-pair"):
         remedy = (": this driver reads the page, its title, its address, what it stores in the browser, what "
-                  "it copies, its console and every request it sends. Claim what "
+                  "it copies, the files it hands the user, its console and every request it sends. Claim what "
                   "the screen shows with `visible`, `hidden`, `actionable` or `inert` on the control's anchor, "
                   "how many it shows with `visible(locator=..., count=3)`, the tab's title with `title`, the address bar with `url(equals=\"/path?query#fragment\")`, a "
                   "localStorage value or IndexedDB records with `stored(key=...)` or "
                   "`stored(records=\"<database>/<store>\", text=..., count=...)`, what a copy action put on the "
-                  "clipboard with `clipboard(text=...)`, a log line with `console`, a request the page sends or must "
+                  "clipboard with `clipboard(text=...)`, a file an export hands the user with `downloaded(name=..., text=...)`, "
+                  "a log line with `console`, a request the page sends or must "
                   "not send with `emitted(event=\"POST /v1/items/{id}\", count=1)`, what a write returned with "
                   "`http_status(method=..., path=...)`, or state the claim on the surface that stores the subject")
     elif "page" in driver.observes and observes in ("subject", "subject-pair"):

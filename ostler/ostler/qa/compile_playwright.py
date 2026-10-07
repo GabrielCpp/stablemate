@@ -144,9 +144,10 @@ def perform_acts(
 
 TRIGGER_ACTS: dict[str, tuple[str, ...]] = {
     "fill": ("value",), "press": ("key",), "paste": ("text", "html"), "drop": ("file",),
+    "upload": ("file",),
 }
 
-_TRIGGER_EXAMPLES = {"press": "Escape", "drop": "fixtures/sample.docx"}
+_TRIGGER_EXAMPLES = {"press": "Escape", "drop": "fixtures/sample.docx", "upload": "fixtures/sample.xml"}
 
 ARRIVAL_TRIGGERS = frozenset({"load", "navigate"})
 
@@ -177,7 +178,7 @@ def _trigger_arguments(raw: str, params: tuple[str, ...]) -> dict[str, str]:
 
 
 def trigger_performance(raw: str, on_expr: str) -> str | ScenarioRefusal:
-    """The line that performs a `fill`, `press`, `paste` or `drop` trigger on *on_expr*, or why the book's spelling of it cannot be performed."""
+    """The line that performs a `fill`, `press`, `paste`, `drop` or `upload` trigger on *on_expr*, or why the book's spelling of it cannot be performed."""
     name = trigger_name(raw)
     params = TRIGGER_ACTS[name]
     arguments = _trigger_arguments(raw, params)
@@ -189,7 +190,7 @@ def trigger_performance(raw: str, on_expr: str) -> str | ScenarioRefusal:
                                f"the {' or '.join(params)} the user hands the `on:` control, which "
                                "is the control it acts on")
     comment = f"  # trigger: {trailing_comment(raw)}"
-    if name in ("paste", "drop"):
+    if name in ("paste", "drop", "upload"):
         keywords = "".join(f", {key}={python_literal(value)}" for key, value in arguments.items())
         return f"    qa.{name}({on_expr}{keywords}){comment}"
     argument = arguments[params[0]]
@@ -324,17 +325,19 @@ def _request_operand(row: CallRow, obligation: Obligation, gaps: list[Gap]) -> s
 
 
 def _browser_operand(row: CallRow, obligation: Obligation, channel: str | None, gaps: list[Gap]) -> str | None:
-    """Where a page scenario is pointed for a row that reads the page's title, address, storage, clipboard, console or requests."""
+    """Where a page scenario is pointed for a row that reads the page's title, address, storage, clipboard, console, downloads or requests."""
     if channel in PAGE_READS:
         return "qa.browser_page"
     if channel == "console":
         return f"{WINDOW_VAR}.console()"
+    if channel == "download":
+        return f"{WINDOW_VAR}.downloads()"
     return _request_operand(row, obligation, gaps)
 
 
 PAGE_READS = frozenset({"title", "url", "stored", "clipboard"})
 
-BROWSER_READS = PAGE_READS | {"console"}
+BROWSER_READS = PAGE_READS | {"console", "download"}
 
 
 def needs_window(lines: list[str]) -> bool:

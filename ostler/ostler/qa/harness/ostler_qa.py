@@ -89,7 +89,7 @@ class DriverSpec:
 
 DRIVERS = (
     DriverSpec("python", frozenset({"response", "body", "subject"})),
-    DriverSpec("playwright", frozenset({"page", "response", "body", "keyboard", "title", "console", "url", "stored", "clipboard"})),
+    DriverSpec("playwright", frozenset({"page", "response", "body", "keyboard", "title", "console", "url", "stored", "clipboard", "download"})),
     DriverSpec("maestro", frozenset({"page", "subject"})),
 )
 DRIVER_NAMES = tuple(driver.name for driver in DRIVERS)
@@ -1679,6 +1679,10 @@ class Qa:
     def drop(self, locator: Any, file: str) -> None:
         """Drop the checkout's *file* on *locator*, as a file manager's drag would."""
         ostler_qa_transfer.drop(locator, self.root / file)
+
+    def upload(self, locator: Any, file: str) -> None:
+        """Hand *locator* the checkout's *file*, as the user picking it in the file picker would."""
+        ostler_qa_transfer.upload(self.browser_page, locator, self.root / file)
 
     def back(self) -> Any:
         """Go back one entry in the page's history, as the browser's Back button does."""

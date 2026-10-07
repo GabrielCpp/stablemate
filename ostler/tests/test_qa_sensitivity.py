@@ -75,6 +75,9 @@ _WITNESSED_CALLS = [
     'stored(key="theme", matches="^dark$")',
     'clipboard(text="/fr/guide?tab=2")',
     'clipboard(matches="^/fr/")',
+    'downloaded(name="policies.xml")',
+    'downloaded(name=".xml", text="<policy", count=1)',
+    'downloaded(matches="^<\\?xml", count=0)',
 ]
 
 

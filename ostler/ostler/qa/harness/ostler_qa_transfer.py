@@ -1,8 +1,9 @@
-"""Paste and drop: the two triggers that hand a control data instead of a press.
+"""Paste, drop and upload: the triggers that hand a control data instead of a press.
 
-A browser fires them with a `DataTransfer` the page reads in its handler, so each one is
-dispatched on the element itself with that payload, the way the user's clipboard or file
-manager would hand it over.
+A browser fires paste and drop with a `DataTransfer` the page reads in its handler, so each one
+is dispatched on the element itself with that payload, the way the user's clipboard or file
+manager would hand it over. An upload goes through the file input, or through the file picker
+the control opens.
 """
 
 from __future__ import annotations
@@ -44,3 +45,18 @@ def drop(locator: Any, path: Path) -> None:
     kind = mimetypes.guess_type(path.name)[0] or "application/octet-stream"
     content = base64.b64encode(path.read_bytes()).decode("ascii")
     locator.evaluate(_DROP, {"name": path.name, "type": kind, "content": content})
+
+
+_FILE_INPUT = "(element) => element instanceof HTMLInputElement && element.type === 'file'"
+
+
+def upload(page: Any, locator: Any, path: Path) -> None:
+    """Hand the file at *path* to *locator*: set it on a file input, or pick it in the file picker the control opens."""
+    if not path.is_file():
+        raise FileNotFoundError(f"upload names {str(path)!r}, which is no file in this checkout")
+    if locator.evaluate(_FILE_INPUT):
+        locator.set_input_files(path)
+        return
+    with page.expect_file_chooser() as chooser:
+        locator.click()
+    chooser.value.set_files(path)

@@ -121,15 +121,16 @@ def path_pattern(path: str) -> re.Pattern[str]:
 
 
 class ResponseWindow:
-    """The exchanges and console messages a page made after one point in a scenario — `Browser.window()`'s handle."""
+    """The exchanges, console messages and downloads a page made after one point in a scenario — `Browser.window()`'s handle."""
 
-    __slots__ = ("_browser", "_console", "_requests", "_since")
+    __slots__ = ("_browser", "_console", "_downloads", "_requests", "_since")
 
-    def __init__(self, browser: Browser, since: int, requests: int = 0, console: int = 0) -> None:
+    def __init__(self, browser: Browser, since: int, requests: int = 0, console: int = 0, downloads: int = 0) -> None:
         self._browser = browser
         self._since = since
         self._requests = requests
         self._console = console
+        self._downloads = downloads
 
     def response_for(self, path: str, *, method: str | None = None) -> RecordedResponse:
         """The one response on *path* (and *method*, if given) inside this window."""
@@ -149,6 +150,11 @@ class ResponseWindow:
         """Every console message inside this window, once the page has gone quiet."""
         self._browser.quiet()
         return self._browser.console()[self._console:]
+
+    def downloads(self) -> list[dict[str, str]]:
+        """Every file the page handed the user inside this window, once the page has gone quiet."""
+        self._browser.quiet()
+        return self._browser.downloads()[self._downloads:]
 
 
 class Browser:
@@ -181,6 +187,7 @@ class Browser:
         self._context: Any = None
         self._console_errors: list[str] = []
         self._console: list[dict[str, Any]] = []
+        self._downloads: list[Any] = []
         self._page_errors: list[dict[str, Any]] = []
         self._requests: list[dict[str, Any]] = []
         self._failed_requests: list[dict[str, Any]] = []
@@ -337,6 +344,18 @@ class Browser:
             entries = [entry for entry in entries if contains in str(entry.get("text", ""))]
         return list(entries)
 
+    def downloads(self) -> list[dict[str, str]]:
+        """Every file the page handed the user so far, by the name it suggested and its content as text."""
+        return [self._downloaded(download) for download in self._downloads]
+
+    @staticmethod
+    def _downloaded(download: Any) -> dict[str, str]:
+        name = str(download.suggested_filename)
+        failure = download.failure()
+        if failure:
+            return {"name": name, "text": "", "failure": str(failure)}
+        return {"name": name, "text": Path(download.path()).read_text(encoding="utf-8", errors="replace")}
+
     def requests(self, *, url_contains: str | None = None) -> list[dict[str, Any]]:
         """Every request issued, with its headers and payload."""
         if url_contains is None:
@@ -365,7 +384,7 @@ class Browser:
 
     def window(self) -> ResponseWindow:
         """An observation window opening here — what a claim about the next action may read."""
-        return ResponseWindow(self, len(self._responses), len(self._requests), len(self._console))
+        return ResponseWindow(self, len(self._responses), len(self._requests), len(self._console), len(self._downloads))
 
     def quiet(self, *, quiet_ms: int = QUIET_MS, timeout_ms: int = QUIET_TIMEOUT_MS) -> None:
         """Wait until no request is in flight and none has started for *quiet_ms*, or *timeout_ms* has passed."""
@@ -437,6 +456,7 @@ class Browser:
 
     def _listen(self, page: Any) -> None:
         page.on("console", self._on_console)
+        page.on("download", self._downloads.append)
         page.on("pageerror", self._on_page_error)
         page.on("request", self._on_request)
         page.on("requestfailed", self._on_failed_request)

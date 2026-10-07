@@ -1770,6 +1770,13 @@ def test_an_address_storage_or_clipboard_claim_reads_the_page_itself(name: str, 
     assert source is not None and f'qa.verify("{name}", qa.browser_page, ' in source
 
 
+def test_a_downloaded_claim_reads_the_files_the_page_handed_over_after_the_action() -> None:
+    source, gaps = _browser_read("downloaded", {"name": "policies.xml", "text": "<policy"})
+    assert not gaps
+    assert source is not None and 'qa.verify("downloaded", exchanges.downloads(), ' in source
+    assert "exchanges = qa.window()" in source
+
+
 def test_a_console_claim_reads_what_the_page_logged_after_the_action() -> None:
     source, gaps = _browser_read("console", {"level": "error", "matches": ".", "count": 0})
     assert not gaps
@@ -1826,7 +1833,7 @@ def test_a_driver_with_no_declared_channels_gaps_every_claim_and_crashes_on_none
 
 def test_playwright_and_maestro_declare_disjoint_but_overlapping_capabilities() -> None:
     """Maestro is nameable from the compiler via its own capability declaration — it declares `page` and `subject`, not the HTTP channels Playwright can see, and not the same page/HTTP mix Playwright declares either."""
-    assert PLAYWRIGHT.observes == frozenset({"page", "response", "body", "keyboard", "title", "console", "url", "stored", "clipboard"})
+    assert PLAYWRIGHT.observes == frozenset({"page", "response", "body", "keyboard", "title", "console", "url", "stored", "clipboard", "download"})
     assert MAESTRO.observes == frozenset({"page", "subject"})
     assert PYTHON.observes == frozenset({"response", "body", "subject"})
 
@@ -2328,8 +2335,9 @@ def test_a_keyed_trigger_sends_its_key_or_text_to_the_on_control(trigger: str, p
      'qa.paste(qa.by_role("textbox", name="Policy title"), html="<b>Q3</b>", text="Q3")'),
     ('drop(file="fixtures/q3.docx")', 'qa.drop(qa.by_role("textbox", name="Policy title"), file="fixtures/q3.docx")'),
     ('drop("fixtures/q3.docx")', 'qa.drop(qa.by_role("textbox", name="Policy title"), file="fixtures/q3.docx")'),
+    ('upload(file="fixtures/q3.xml")', 'qa.upload(qa.by_role("textbox", name="Policy title"), file="fixtures/q3.xml")'),
 ])
-def test_a_paste_or_drop_trigger_hands_its_payload_to_the_on_control(trigger: str, performed: str) -> None:
+def test_a_paste_drop_or_upload_trigger_hands_its_payload_to_the_on_control(trigger: str, performed: str) -> None:
     source, gaps = _keyed_trigger(trigger)
     assert source is not None
     assert _gap_kinds(gaps, "okf:new-policy:rename-policy:does:1") == []
@@ -2338,7 +2346,7 @@ def test_a_paste_or_drop_trigger_hands_its_payload_to_the_on_control(trigger: st
 
 
 @pytest.mark.parametrize("trigger", ["press", "`fill`", 'press(locator="#policy-title")', 'press(key="Control B")',
-                                     "paste", 'paste(file="a.txt")', "`drop`", 'drop(file="")'])
+                                     "paste", 'paste(file="a.txt")', "`drop`", 'drop(file="")', "upload"])
 def test_a_keyed_trigger_without_a_usable_key_is_a_book_repair(trigger: str) -> None:
     source, gaps = _keyed_trigger(trigger)
     rename = [g for g in gaps if g.obligation_id == "okf:new-policy:rename-policy:does:1"]

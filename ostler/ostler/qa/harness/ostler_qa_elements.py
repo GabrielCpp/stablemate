@@ -307,3 +307,35 @@ def verify_console(reading: ConsoleReading, args: Args) -> Verdict:
     if "count" in args:
         return verdict(found == args["count"], list(reading.texts), {"count": args["count"]})
     return verdict(found > 0, list(reading.texts), "at least one")
+
+
+@dataclass(frozen=True)
+class DownloadReading:
+    """The files the page handed the user that the claim names, by their suggested names."""
+
+    names: tuple[str, ...]
+
+
+def read_download(observed: object, args: Args) -> DownloadReading:
+    if not isinstance(observed, list):
+        raise TypeError(f"`downloaded` reads a list of downloads, not {type(observed).__name__}")
+    names: list[str] = []
+    for entry in observed:
+        if not isinstance(entry, dict) or entry.get("failure"):
+            continue
+        name, text = str(entry.get("name", "")), str(entry.get("text", ""))
+        if "name" in args and str_arg(args, "name") not in name:
+            continue
+        if "text" in args and str_arg(args, "text") not in text:
+            continue
+        if "matches" in args and re.search(str_arg(args, "matches"), text) is None:
+            continue
+        names.append(name)
+    return DownloadReading(names=tuple(names))
+
+
+def verify_download(reading: DownloadReading, args: Args) -> Verdict:
+    found = len(reading.names)
+    if "count" in args:
+        return verdict(found == args["count"], list(reading.names), {"count": args["count"]})
+    return verdict(found > 0, list(reading.names), "at least one")

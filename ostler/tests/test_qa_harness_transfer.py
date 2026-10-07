@@ -1,4 +1,4 @@
-"""What a page's own paste and drop handlers receive when a scenario performs those triggers."""
+"""What a page's own paste, drop and upload handlers receive when a scenario performs those triggers, and what a download reads back as."""
 
 from __future__ import annotations
 
@@ -11,12 +11,23 @@ import pytest
 from ostler.qa.harness_host import load_harness_module
 
 transfer = load_harness_module("ostler_qa_transfer")
+browser_module = load_harness_module("ostler_qa_browser")
 sync_api = pytest.importorskip("playwright.sync_api")
 
 _PAGE = """
 <div id="body" contenteditable="true"></div>
 <div id="zone">drop here</div>
+<input id="file" type="file">
+<input id="hidden-file" type="file" style="display: none">
+<button id="export" onclick="const a = document.createElement('a'); a.href = window.URL.createObjectURL(new Blob(['<rule/>'], {type: 'application/xml'})); a.download = 'rules.xml'; document.body.append(a); a.click()">Export</button>
+<button id="pick" onclick="document.getElementById('hidden-file').click()">Import</button>
 <script>
+  for (const id of ["file", "hidden-file"]) {
+    document.getElementById(id).addEventListener("change", async (event) => {
+      const [file] = event.target.files;
+      window.got.upload = {name: file.name, text: await file.text()};
+    });
+  }
   window.got = {};
   document.getElementById("body").addEventListener("paste", (event) => {
     event.preventDefault();
@@ -64,6 +75,28 @@ def test_a_drop_hands_the_page_the_file_with_its_name_type_and_bytes(page: Any, 
     transfer.drop(page.locator("#zone"), dropped)
     page.wait_for_function("window.got.file !== undefined")
     assert page.evaluate("window.got.file") == {"name": "notes.txt", "type": "text/plain", "text": "été"}
+
+
+@pytest.mark.parametrize("control", ["#file", "#pick"])
+def test_an_upload_hands_the_page_the_file_through_its_input_or_the_picker_its_control_opens(
+    page: Any, tmp_path: Path, control: str,
+) -> None:
+    picked = tmp_path / "rules.xml"
+    picked.write_text("<rule/>", encoding="utf-8")
+    transfer.upload(page, page.locator(control), picked)
+    page.wait_for_function("window.got.upload !== undefined")
+    assert page.evaluate("window.got.upload") == {"name": "rules.xml", "text": "<rule/>"}
+
+
+def test_a_download_reads_back_by_the_name_the_page_suggested_and_its_content(page: Any) -> None:
+    with page.expect_download() as downloaded:
+        page.locator("#export").click()
+    assert browser_module.Browser._downloaded(downloaded.value) == {"name": "rules.xml", "text": "<rule/>"}
+
+
+def test_an_upload_of_a_missing_file_names_it(tmp_path: Path) -> None:
+    with pytest.raises(FileNotFoundError, match="missing.xml"):
+        transfer.upload(object(), object(), tmp_path / "missing.xml")
 
 
 def test_a_paste_with_nothing_on_the_clipboard_is_refused() -> None:

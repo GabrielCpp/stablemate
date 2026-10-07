@@ -354,7 +354,7 @@ def _arrival_scenario(
 
 _CLICK_TRIGGER = "click"
 
-NON_PRESS_TRIGGERS = frozenset({"fill", "press", "paste", "drag", "drop", "load", "navigate", "timer", *PAGE_TRIGGERS})
+NON_PRESS_TRIGGERS = frozenset({"fill", "press", "paste", "drag", "drop", "upload", "load", "navigate", "timer", *PAGE_TRIGGERS})
 
 @dataclass(frozen=True)
 class _InteractionArm:

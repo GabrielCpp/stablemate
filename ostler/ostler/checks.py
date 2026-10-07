@@ -287,6 +287,19 @@ CHECKS: tuple[CheckSpec, ...] = (
         observes="clipboard",
     ),
     CheckSpec(
+        name="downloaded",
+        params=(
+            CheckParam("name", "str"),
+            CheckParam("text", "str"),
+            CheckParam("matches", "str", pattern=True),
+            CheckParam("count", "int"),
+        ),
+        one_of=("name", "text", "matches"),
+        excludes="an export that confirms on the screen and hands the user the wrong file, an "
+                 "empty one or none, which no assertion about what is drawn can see",
+        observes="download",
+    ),
+    CheckSpec(
         name="persists",
         params=(CheckParam("subject", "str", required=True, identifies=True),),
         excludes="a write observed only through the same session that made it, which cannot "

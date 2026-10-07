@@ -117,6 +117,7 @@ def test_every_spec_declares_what_it_observes() -> None:
         "url": "url",
         "stored": "stored",
         "clipboard": "clipboard",
+        "downloaded": "download",
         "unchanged": "subject-pair",
         "keys_unchanged": "subject-pair",
         "count": "subject",
@@ -134,7 +135,7 @@ def test_every_spec_declares_what_it_observes() -> None:
     assert {spec.name: spec.observes for spec in checks.CHECKS} == expected
     assert {spec.observes for spec in checks.CHECKS} == {
         "response", "body", "page", "subject", "subject-pair", "keyboard", "title", "console",
-        "url", "stored", "clipboard",
+        "url", "stored", "clipboard", "download",
     }
 
 

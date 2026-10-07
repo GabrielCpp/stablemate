@@ -727,6 +727,27 @@ def _plan_clipboard(args: Mapping[str, checks.CheckValue]) -> _WitnessPlan | _No
     return _WitnessPlan.of([text], [("nothing was copied", []), ("another text was copied last", [text, _OTHER])])
 
 
+def _plan_downloaded(args: Mapping[str, checks.CheckValue]) -> _WitnessPlan | _NoWitness:
+    text = str(args["text"]) if "text" in args else _matching(str(args["matches"])) if "matches" in args else ""
+    if text is None:
+        return _NoWitness(f"no downloaded content can be invented for /{args.get('matches')}/")
+    if "matches" in args and re.search(str(args["matches"]), _OTHER):
+        return _NoWitness(f"every downloaded file carries something /{args['matches']}/ matches")
+    want = _int(args["count"]) if "count" in args else 1
+    file = {"name": str(args.get("name", "export.txt")), "text": text}
+    mutations: list[tuple[str, object]] = []
+    if "count" in args:
+        mutations.append(("one more file was downloaded", [file] * (want + 1)))
+    if want != 0:
+        mutations.append(("nothing was downloaded", []))
+        mutations.append(("the download failed", [{**file, "failure": "canceled"}] * want))
+        if "name" in args:
+            mutations.append(("a file of another name was downloaded", [{**file, "name": _OTHER}] * want))
+        if "text" in args or "matches" in args:
+            mutations.append(("a file of other content was downloaded", [{**file, "text": _OTHER}] * want))
+    return _WitnessPlan.of([file] * want, mutations)
+
+
 def _plan_persists(_args: Mapping[str, checks.CheckValue]) -> _WitnessPlan:
     return _WitnessPlan.of(("written", "written"), [
         ("nothing was re-read after the restart", ("written", None)),
@@ -802,6 +823,7 @@ _PLANNERS: dict[str, Callable[[Mapping[str, checks.CheckValue]], _WitnessPlan | 
     "url": _plan_url,
     "stored": _plan_stored,
     "clipboard": _plan_clipboard,
+    "downloaded": _plan_downloaded,
     "persists": _plan_persists,
     "emitted": _plan_emitted,
     "omits": _plan_omits,

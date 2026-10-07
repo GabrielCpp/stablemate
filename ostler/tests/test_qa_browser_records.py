@@ -753,6 +753,24 @@ def test_a_window_reads_the_requests_and_console_after_the_action_only(tmp_path:
     assert [entry["text"] for entry in window.console()] == ["after"]
 
 
+def test_a_window_reads_the_files_downloaded_after_the_action_only(tmp_path: Path) -> None:
+    def download(name: str, text: str, failure: str | None = None) -> SimpleNamespace:
+        saved = tmp_path / f"{name}.download"
+        saved.write_text(text, encoding="utf-8")
+        return SimpleNamespace(suggested_filename=name, failure=lambda: failure, path=lambda: saved)
+
+    browser = _browser(tmp_path)
+    browser._downloads.append(download("before.xml", "<old/>"))
+    window = browser.window()
+    browser._downloads.append(download("policies.xml", "<policy/>"))
+    browser._downloads.append(download("broken.xml", "", failure="canceled"))
+
+    assert window.downloads() == [
+        {"name": "policies.xml", "text": "<policy/>"},
+        {"name": "broken.xml", "text": "", "failure": "canceled"},
+    ]
+
+
 def test_a_window_waits_for_the_requests_in_flight_before_it_counts(tmp_path: Path) -> None:
     browser = _browser(tmp_path)
     window = browser.window()
