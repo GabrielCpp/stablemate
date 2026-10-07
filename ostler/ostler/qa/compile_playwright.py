@@ -373,7 +373,7 @@ def _page_assertions(
                 f"covers=[{python_literal(obligation.id)}])"
             )
             continue
-        if channel not in {"page", "keyboard"}:
+        if channel not in {"page", "keyboard", "dom"}:
             gaps.append(unobservable_gap(obligation.id, row.name, PLAYWRIGHT))
             whole = False
             continue

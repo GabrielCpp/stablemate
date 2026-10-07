@@ -136,6 +136,20 @@ class _Focusable:
         )
 
 
+class _Marked:
+    """An element carrying one attribute value, or none, and holding keyboard focus or not."""
+
+    def __init__(self, *, attribute: str | None = None, holds_focus: bool = False) -> None:
+        self._attribute = attribute
+        self._holds_focus = holds_focus
+
+    def get_attribute(self, _name: str) -> str | None:
+        return self._attribute
+
+    def evaluate(self, _expression: str) -> Any:
+        return [self._holds_focus, "witness" if self._holds_focus else "body"]
+
+
 @dataclass(frozen=True)
 class Trial:
     """One declared call, put to the experiment."""
@@ -667,6 +681,24 @@ def _plan_hidden(_args: Mapping[str, checks.CheckValue]) -> _WitnessPlan:
     ])
 
 
+def _plan_attribute(args: Mapping[str, checks.CheckValue]) -> _WitnessPlan | _NoWitness:
+    value = str(args["equals"]) if "equals" in args else _matching(str(args["matches"]))
+    if value is None:
+        return _NoWitness(f"no attribute value can be invented for /{args.get('matches')}/")
+    if "matches" in args and re.search(str(args["matches"]), _OTHER):
+        return _NoWitness(f"every attribute value carries something /{args['matches']}/ matches")
+    return _WitnessPlan.of(_Marked(attribute=value), [
+        ("the element carries another value", _Marked(attribute=_OTHER)),
+        ("the element carries no such attribute", _Marked(attribute=None)),
+    ])
+
+
+def _plan_focused(_args: Mapping[str, checks.CheckValue]) -> _WitnessPlan:
+    return _WitnessPlan.of(_Marked(holds_focus=True), [
+        ("keyboard focus sits elsewhere", _Marked(holds_focus=False)),
+    ])
+
+
 def _plan_title(args: Mapping[str, checks.CheckValue]) -> _WitnessPlan | _NoWitness:
     title = str(args["equals"]) if "equals" in args else _matching(str(args["matches"]))
     if title is None:
@@ -816,6 +848,8 @@ _PLANNERS: dict[str, Callable[[Mapping[str, checks.CheckValue]], _WitnessPlan | 
     "visible": _plan_visible,
     "actionable": _plan_actionable,
     "focusable": _plan_focusable,
+    "attribute": _plan_attribute,
+    "focused": _plan_focused,
     "inert": _plan_inert,
     "hidden": _plan_hidden,
     "title": _plan_title,

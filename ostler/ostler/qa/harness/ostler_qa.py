@@ -89,7 +89,7 @@ class DriverSpec:
 
 DRIVERS = (
     DriverSpec("python", frozenset({"response", "body", "subject"})),
-    DriverSpec("playwright", frozenset({"page", "response", "body", "keyboard", "title", "console", "url", "stored", "clipboard", "download"})),
+    DriverSpec("playwright", frozenset({"page", "response", "body", "keyboard", "dom", "title", "console", "url", "stored", "clipboard", "download"})),
     DriverSpec("maestro", frozenset({"page", "subject"})),
 )
 DRIVER_NAMES = tuple(driver.name for driver in DRIVERS)

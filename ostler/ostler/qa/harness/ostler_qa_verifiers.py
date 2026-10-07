@@ -6,6 +6,7 @@ from collections.abc import Callable
 
 from ostler_qa_browser_state import read_clipboard, read_stored, read_url, verify_clipboard, verify_stored, verify_url
 from ostler_qa_documents import read_body, read_countable, read_document, verify_count, verify_json_path, verify_omits
+from ostler_qa_dom import read_attribute, read_focused, verify_attribute, verify_focused
 from ostler_qa_elements import (
     read_console,
     read_control,
@@ -79,6 +80,8 @@ VERIFIERS: dict[str, Verifier] = {
     "inert": _verifier(read_control("inert"), verify_inert),
     "hidden": _verifier(read_hidden, verify_hidden),
     "focusable": _verifier(read_focus, verify_focusable),
+    "attribute": _verifier(read_attribute, verify_attribute),
+    "focused": _verifier(read_focused, verify_focused),
     "title": _verifier(read_title, verify_title),
     "console": _verifier(read_console, verify_console),
     "url": _verifier(read_url, verify_url),

@@ -231,6 +231,29 @@ CHECKS: tuple[CheckSpec, ...] = (
         observes="keyboard",
     ),
     CheckSpec(
+        name="attribute",
+        params=(
+            CheckParam("locator", "str", required=True, locator=True, identifies=True),
+            CheckParam("name", "str", required=True),
+            CheckParam("equals", "str"),
+            CheckParam("matches", "str", pattern=True),
+        ),
+        one_of=("equals", "matches"),
+        excludes="markup the user never sees drawn and still depends on, such as the page "
+                 "language a screen reader speaks in, an alternate-language link a search "
+                 "engine follows or a state a control announces, which no assertion about "
+                 "what is on the screen can see",
+        observes="dom",
+    ),
+    CheckSpec(
+        name="focused",
+        params=(CheckParam("locator", "str", required=True, locator=True, identifies=True),),
+        excludes="keyboard focus that escapes an open dialog or lands nowhere after it closes, "
+                 "which `focusable` passes, because it moves focus itself and reads only "
+                 "whether the control can take it",
+        observes="dom",
+    ),
+    CheckSpec(
         name="title",
         params=(CheckParam("equals", "str"), CheckParam("matches", "str", pattern=True)),
         one_of=("equals", "matches"),

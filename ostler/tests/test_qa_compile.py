@@ -1777,6 +1777,24 @@ def test_a_downloaded_claim_reads_the_files_the_page_handed_over_after_the_actio
     assert "exchanges = qa.window()" in source
 
 
+@pytest.mark.parametrize(("name", "args"), [
+    ("attribute", {"locator": "irrelevant", "name": "lang", "equals": "fr"}),
+    ("focused", {"locator": "irrelevant"}),
+])
+def test_an_attribute_or_focus_claim_reads_the_element_it_names(name: str, args: dict[str, object]) -> None:
+    source, gaps = _browser_read(name, args)
+    assert not gaps
+    assert source is not None and f'qa.verify("{name}", qa.by_role("table", name="Policies on file")' in source
+
+
+@pytest.mark.parametrize("name", ["attribute", "focused"])
+def test_a_markup_claim_on_a_device_is_a_gap_and_never_a_visibility_check(name: str) -> None:
+    """Maestro's fallback for a page check it does not know is `assertVisible`, which would pass an attribute or a focus claim on any control that is drawn."""
+    gap = _unobservable_gap("okf:some:obligation:1", name, MAESTRO)
+    assert gap.kind == "uncompilable-claim"
+    assert "not observable from the maestro driver" in gap.detail
+
+
 def test_a_console_claim_reads_what_the_page_logged_after_the_action() -> None:
     source, gaps = _browser_read("console", {"level": "error", "matches": ".", "count": 0})
     assert not gaps
@@ -1833,7 +1851,7 @@ def test_a_driver_with_no_declared_channels_gaps_every_claim_and_crashes_on_none
 
 def test_playwright_and_maestro_declare_disjoint_but_overlapping_capabilities() -> None:
     """Maestro is nameable from the compiler via its own capability declaration — it declares `page` and `subject`, not the HTTP channels Playwright can see, and not the same page/HTTP mix Playwright declares either."""
-    assert PLAYWRIGHT.observes == frozenset({"page", "response", "body", "keyboard", "title", "console", "url", "stored", "clipboard", "download"})
+    assert PLAYWRIGHT.observes == frozenset({"page", "response", "body", "keyboard", "dom", "title", "console", "url", "stored", "clipboard", "download"})
     assert MAESTRO.observes == frozenset({"page", "subject"})
     assert PYTHON.observes == frozenset({"response", "body", "subject"})
 
