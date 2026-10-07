@@ -1,6 +1,7 @@
 """A failed run's failures go to whoever can fix them: the book's writer, or a blocker per signature for everyone else."""
 from __future__ import annotations
 
+import json
 from dataclasses import replace
 from pathlib import Path
 
@@ -9,7 +10,7 @@ from okf_book.main.tally import TALLY
 from ostler.qa.attribution import Cause, Signature
 
 from workhorse_workflows.okf_book.main import flow
-from workhorse_workflows.okf_book.main.nodes.progress_ledger import LapCounts, read_laps
+from workhorse_workflows.okf_book.main.nodes.progress_ledger import PROGRESS_NAME, UNRECORDED_STOP, LapCounts, read_laps, stalled
 from workhorse_workflows.okf_book.shared.blockers import Blocker, Phase, Side, read_blockers
 from workhorse_workflows.okf_book.shared.book_run import ExerciseResult, stack_down_result
 from workhorse_workflows.okf_book.shared.page_check import PageProblem
@@ -193,15 +194,49 @@ def test_a_book_run_after_a_probe_stopped_one_is_measured_against_the_last_book_
     assert not [blocker for blocker in read_blockers(tmp_path) if blocker.side is Side.WORKFLOW]
 
 
+def _stopped_on(observation: str, count: int) -> ExerciseResult:
+    early = _book_run(replace(MISREAD, count=count))
+    assert early.summary is not None
+    stop = {"stopped_on_repeat": f"the run stopped on one observation: {observation}", "stopped_on_observation": observation}
+    return early.model_copy(update={"summary": early.summary.model_copy(update=stop)})
+
+
 def test_a_whole_book_run_after_one_that_stopped_early_is_measured_against_nothing(tmp_path: Path) -> None:
     book = _book(tmp_path)
-    early = _book_run(replace(MISREAD, count=3))
-    assert early.summary is not None
-    stopped = early.model_copy(update={"summary": early.summary.model_copy(update={"stopped_on_repeat": "the run stopped"})})
-    _ = book.settle_run(index=0, run_failures_repaired=False, exercised=stopped)
+    _ = book.settle_run(index=0, run_failures_repaired=False, exercised=_stopped_on("landed on /login", 3))
 
     assert _settle_and_map(book, _book_run(replace(MISREAD, count=9))) == "copy_source"
     assert [lap.stopped_early for lap in read_laps(tmp_path)] == [True, False]
+
+
+def test_a_run_that_stopped_early_on_another_observation_than_the_last_got_further_and_is_measured_against_nothing(
+    tmp_path: Path,
+) -> None:
+    book = _book(tmp_path)
+    _ = book.settle_run(index=0, run_failures_repaired=False, exercised=_stopped_on("landed on /login", 3))
+
+    assert _settle_and_map(book, _stopped_on("no Save button", 9)) == "copy_source"
+    assert [lap.stopped_on for lap in read_laps(tmp_path)] == ["landed on /login", "no Save button"]
+
+
+def test_a_run_that_stopped_early_on_the_same_observation_as_the_last_and_no_lower_stalls(tmp_path: Path) -> None:
+    book = _book(tmp_path)
+    _ = book.settle_run(index=0, run_failures_repaired=False, exercised=_stopped_on("landed on /login", 3))
+
+    _ = _settle_and_map(book, _stopped_on("landed on /login", 3))
+
+    [stall] = [blocker for blocker in read_blockers(tmp_path) if blocker.side is Side.BOOK]
+    assert stall.reason.startswith("the repair did not lower the book's failed checks, lap by lap: 3 before the run stopped early → 3 before")
+
+
+def test_a_lap_recorded_only_as_stopped_early_stopped_on_an_observation_no_later_lap_repeats(tmp_path: Path) -> None:
+    (tmp_path / PROGRESS_NAME).write_text(
+        json.dumps({"laps": [{"service": "tally", "failures": {"book": 3}, "stopped_early": True}, {"service": "tally"}]}),
+        encoding="utf-8")
+
+    laps = read_laps(tmp_path)
+    assert [lap.stopped_on for lap in laps] == [UNRECORDED_STOP, ""]
+    assert not stalled((laps[0], laps[0]))
 
 
 def test_a_book_run_no_lower_than_the_last_book_run_stalls_with_the_probe_lap_marked_in_its_trend(tmp_path: Path) -> None:

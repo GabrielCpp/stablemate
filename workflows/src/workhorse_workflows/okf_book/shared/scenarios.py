@@ -160,10 +160,16 @@ class RunSummary(BaseModel):
     problems: tuple[str, ...] = ()
     runner_errors: tuple[str, ...] = ()
     stopped_on_repeat: str = ""
+    stopped_on_observation: str = ""
     report_path: str = Field(default="", validation_alias="report")
     signatures: tuple[Signature, ...] = ()
     verdicts: dict[str, Verdict] = {}
     fixture_builds: tuple[FixtureBuilds, ...] = ()
+
+    @property
+    def stopped_on(self) -> str:
+        """The repeated observation that stopped the run before its last scenario, or the whole reason when the runner named none."""
+        return self.stopped_on_observation or self.stopped_on_repeat
 
     @property
     def failed_scenarios(self) -> tuple[str, ...]:
