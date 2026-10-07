@@ -15,21 +15,20 @@ HARNESS_DIR = Path(__file__).resolve().parent / "harness"
 
 
 def load_harness_module(name: str) -> ModuleType:
-    """Import a harness module into *ostler's* interpreter, by path."""
+    """Import a harness module into *ostler's* interpreter, by path, under the name its siblings import it by, so one copy of it holds its settings."""
     source = HARNESS_DIR / f"{name}.py"
-    key = f"ostler_harness_{name}"
-    cached = sys.modules.get(key)
+    cached = sys.modules.get(name)
     if cached is not None:
         return cached
-    spec = importlib.util.spec_from_file_location(key, source)
+    spec = importlib.util.spec_from_file_location(name, source)
     if spec is None or spec.loader is None:  # pragma: no cover - a corrupt installation
         raise ImportError(f"harness module {name!r} is not installed at {source}")
     module = importlib.util.module_from_spec(spec)
-    sys.modules[key] = module
+    sys.modules[name] = module
     try:
         spec.loader.exec_module(module)
     except BaseException:
-        del sys.modules[key]
+        del sys.modules[name]
         raise
     return module
 
