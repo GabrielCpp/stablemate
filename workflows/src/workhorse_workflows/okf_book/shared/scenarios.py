@@ -46,6 +46,7 @@ class Scenario(BaseModel):
 
 
 _ABSENT_CONTROL = re.compile(r'"present":\s*false')
+_STATE_CLAIM = re.compile(r":states:\d+$")
 
 
 class FailedCheck(BaseModel):
@@ -77,6 +78,9 @@ class FailedCheck(BaseModel):
         if _ABSENT_CONTROL.search(self.actual):
             observed += (". No element on that page matched the locator. A control that appears only after a person's "
                          "act is the `does:` of the interaction that performs the act: claim it there")
+        elif _STATE_CLAIM.search(self.claim):
+            observed += (". A state a person's act reaches is the `does:` of the interaction that performs the act: "
+                         "claim it there, or name the fixture that arranges it")
         return f"{observed} (the command it observed ended with {self.command_ending_text})" if self.command_ending_text else observed
 
 

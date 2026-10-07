@@ -278,3 +278,14 @@ def test_a_check_that_found_no_control_tells_the_writer_to_claim_it_after_the_ac
     assert "`does:` of the interaction" in absent.failure_line()
     hidden = FailedCheck(label="slug field shown", expected='{"visible": true}', actual='{"visible": false}')
     assert "`does:`" not in hidden.failure_line()
+
+
+def test_a_failed_state_check_tells_the_writer_to_claim_an_act_reached_state_on_the_interaction() -> None:
+    state = "okf:docs/features/tally/tally.md#slug-status:states:2"
+    unreached = FailedCheck(label="slug status shown", expected='{"text": "Available"}',
+                            actual='{"visible": true, "text": "Derived from the title"}', covers=(state,))
+    assert "name the fixture that arranges it" in unreached.failure_line()
+    effect = FailedCheck(label="slug status shown", expected='{"text": "Available"}',
+                         actual='{"visible": true, "text": "Derived from the title"}',
+                         covers=("okf:docs/features/tally/tally.md#add:does:1",))
+    assert "`does:`" not in effect.failure_line()
