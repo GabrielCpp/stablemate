@@ -28,13 +28,15 @@ def codes_for(capsys: pytest.CaptureFixture[str], repo: Path, slug: str) -> set[
 
 @pytest.mark.parametrize("path", [
     "internal/mocks/real.go", "src/__tests__/real.ts", "svc/real_test.go", "web/real.spec.tsx",
-    "pkg/test_real.py", "pkg/conftest.py", "app/RealTest.php",
+    "pkg/test_real.py", "pkg/conftest.py", "app/RealTest.php", "web/e2e/fixtures.ts",
+    "web/app/testing/urls.ts", "web/app/test-support/focus.ts", "web/lib/__fixtures__/load.ts",
+    "web/tools/qa-mock-backends/server.ts", "web/vitest.setup.ts", "web/playwright.config.ts",
 ])
 def test_test_sources_are_recognised(path: str) -> None:
     assert refs.is_test_source(path)
 
 
-@pytest.mark.parametrize("path", ["internal/real.go", "src/contest.py", "web/testing-page.tsx"])
+@pytest.mark.parametrize("path", ["internal/real.go", "src/contest.py", "web/testing-page.tsx", "web/app/fixture-switcher.tsx", "web/vite.config.ts"])
 def test_product_sources_are_not(path: str) -> None:
     assert not refs.is_test_source(path)
 

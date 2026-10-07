@@ -57,20 +57,25 @@ def render_code_ref(ref: CodeRef) -> str:
     return f"{rendered}@{ref.digest}" if ref.digest else rendered
 
 
-TEST_DIRS = frozenset({"__tests__", "mocks", "test", "tests"})
+TEST_DIRS = frozenset({
+    "__fixtures__", "__tests__", "e2e", "fixtures", "test", "test-support", "testing", "tests",
+})
+TEST_DIR_WORDS = ("mock",)
 TEST_SUFFIXES = (
     "_test.go", ".test.ts", ".test.tsx", ".spec.ts", ".spec.tsx", "_test.py", "Test.php",
 )
-TEST_PREFIXES = ("test_",)
+TEST_PREFIXES = ("test_", "jest.", "playwright.", "vitest.")
 TEST_FILES = ("conftest.py",)
 
 
 def is_test_source(path: str) -> bool:
-    """Whether a repo-relative source path is a test, a test double or a test fixture file."""
+    """Whether a repo-relative source path is a test, a test double, a test fixture file or a test runner's setup."""
     parts = path.replace("\\", "/").split("/")
     name = parts[-1]
-    return (bool(TEST_DIRS.intersection(parts[:-1])) or name.endswith(TEST_SUFFIXES)
-            or name.startswith(TEST_PREFIXES) or name in TEST_FILES)
+    folders = parts[:-1]
+    return (bool(TEST_DIRS.intersection(folders))
+            or any(word in folder for folder in folders for word in TEST_DIR_WORDS)
+            or name.endswith(TEST_SUFFIXES) or name.startswith(TEST_PREFIXES) or name in TEST_FILES)
 
 
 def normalize_ref(value: str) -> str:
