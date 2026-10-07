@@ -389,12 +389,13 @@ call grammar as a check and refused against its own names:
 | `click(locator*)` | a control has been operated once — an expander opened, a row selected | web, mobile |
 | `press(locator*, key*)` | a real keypress has reached a control (focus order, a key-handled shortcut) | web, mobile |
 | `select(locator*, option*)` | a chooser holds a stated option | web |
+| `upload(locator*, file*)` | a file control holds a stated file, named by its path from the repository root | web |
 | `visit(path*)` | the browser is at an address the reader typed or followed: an unknown route segment, a deep link, a query no link builds | web |
 | `body(field*, value*)` | a member of the request this step sends carries a stated value | http |
 | `header(name*, value*)` | the request this step sends carries a stated header, such as the token a sign-in fixture minted | http |
 
 **An act's argument type is a property of that act's parameter, not of acts in general.**
-`fill`/`click`/`press`/`select` are all-`str` because their driver is a person: what a browser
+`fill`/`click`/`press`/`select`/`upload` are all-`str` because their driver is a person: what a browser
 or a device carries out is what the performer types or points at, so
 `fill(locator="#quantity-field", value="3")` and never `value=3`. That reasoning does not
 survive a driver that is not a person — over the wire, `{"quantity": 3}` and `{"quantity": "3"}`
