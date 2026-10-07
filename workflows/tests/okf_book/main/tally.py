@@ -77,7 +77,7 @@ def answering_operator(asked: list[str]) -> Callable[..., None]:
     return _operator
 
 
-def no_problems(_root: Path, _service: str) -> tuple[PageProblem, ...]:
+def no_problems(_root: Path, _service: str, _source_folder: str = "") -> tuple[PageProblem, ...]:
     return ()
 
 
@@ -96,7 +96,7 @@ def refuse_commits_until_answered(repo: Path, asked: list[str]) -> Callable[...,
     return _operator
 
 
-def page_problems_until_noted(root: Path, _service: str) -> tuple[PageProblem, ...]:
+def page_problems_until_noted(root: Path, _service: str, _source_folder: str = "") -> tuple[PageProblem, ...]:
     return () if NOTE.strip() in (root / PAGE).read_text(encoding="utf-8") else (PageProblem(PAGE, "tally.md needs a note"),)
 
 

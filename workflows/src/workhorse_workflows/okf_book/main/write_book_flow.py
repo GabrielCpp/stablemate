@@ -71,7 +71,10 @@ class WriteBook(BookFlow):
     def reset_command_state(self, before: Snapshot) -> Continue[...]:
         """Write the command state the writer's three commands read, with none of their runs spent."""
         settle_jobs(self.run_dir)
-        command_state_file = write_command_state(self.run_dir, WriterCommandState(root=self.root, service=self.surface_to_write.service, records_dir=self.records_dir))
+        state = WriterCommandState(
+            root=self.root, service=self.surface_to_write.service, source_folder=self.source_folder, records_dir=self.records_dir
+        )
+        command_state_file = write_command_state(self.run_dir, state)
         return Continue(command_state_file.as_posix(), self.write_book, before=before).because("send the writer")
 
     def write_book(self, before: Snapshot) -> Continue[...]:

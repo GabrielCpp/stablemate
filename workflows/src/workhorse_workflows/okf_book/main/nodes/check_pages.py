@@ -41,7 +41,7 @@ def scoped_problems(state: WriterCommandState) -> tuple[str, ...]:
     left out, matches one of those.
     """
     root = state.root.resolve()
-    problems = page_problems(root, state.service)
+    problems = page_problems(root, state.service, state.source_folder)
     if state.records_dir is not None:
         problems = unheld(problems, latest_check_findings(read_findings(state.records_dir), state.service))
     if not state.pages:

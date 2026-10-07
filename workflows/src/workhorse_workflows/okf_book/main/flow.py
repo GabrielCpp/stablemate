@@ -107,7 +107,8 @@ class OkfBook(BookFlow):
 
     def route_book(self, index: int, regrounded: bool = False) -> Continue[...]:
         """A missing book, or one the gate left failures for, goes to its owner, so a rerun after the operator's fix repairs what the last run left. A book citing a file that changed since its stamp is regrounded first. A book with problems, or one this workflow last committed, goes through the check again, and any other one goes straight to its run."""
-        service = self.surfaces[index].service
+        surface = self.surfaces[index]
+        service = surface.service
         book = _book_folder(service)
         if not (self.root / book).is_dir():
             return Continue(None, self.copy_source, index=index).because("no book yet: write it")
@@ -118,7 +119,7 @@ class OkfBook(BookFlow):
             return Continue(pending, self.copy_source, index=index, run_failures=pending).because(
                 "the gate left this book's owner failures to fix"
             )
-        found = page_problems(self.root, service)
+        found = page_problems(self.root, service, _source_folder(self.root, surface))
         if found:
             return Continue(len(found), self.check_book, index=index).because("the existing book has problems: check it")
         _ = record_check(self.records_dir, self.root, service, found)
@@ -180,8 +181,9 @@ class OkfBook(BookFlow):
 
     def check_book(self, index: int, run_failures_repaired: bool = False, repaired: bool = False) -> Continue[...]:
         """Repeat the owner's own page check. A problem in a group the owner named another side's is held: it is a blocker on that side. Each problem left is a blocker on its page, and goes back to the owner. After its turn the problems left go back only when they are fewer than the last check left, so a person is asked only about what a turn did not lower."""
-        service = self.surfaces[index].service
-        problems = page_problems(self.root, service)
+        surface = self.surfaces[index]
+        service = surface.service
+        problems = page_problems(self.root, service, _source_folder(self.root, surface))
         findings = latest_check_findings(read_findings(self.records_dir), service)
         left = unheld(problems, findings)
         before = record_check(self.records_dir, self.root, service, problems, findings)

@@ -155,7 +155,7 @@ def test_each_problem_the_check_finds_is_its_own_blocker(
     repo = app("tally-cli")
     asked: list[str] = []
 
-    def _problems(_root: Path, _service: str) -> tuple[PageProblem, ...]:
+    def _problems(_root: Path, _service: str, _source_folder: str = "") -> tuple[PageProblem, ...]:
         return (PageProblem("a.md", "a.md is linked from no page"), PageProblem("b.md", "b.md: unparsed-check"))
 
     stub_the_run_to(monkeypatch, PASSED)
@@ -253,7 +253,7 @@ def test_a_book_this_workflow_repaired_that_fails_its_check_goes_back_to_its_wri
     runner = _writer(repo)
     _written_by_the_workflow(repo, "docs(tally): repair pages of the tally book")
 
-    def _problems_until_noted_again(root: Path, _service: str) -> tuple[PageProblem, ...]:
+    def _problems_until_noted_again(root: Path, _service: str, _source_folder: str = "") -> tuple[PageProblem, ...]:
         if (root / PAGE).read_text(encoding="utf-8").count(NOTE.strip()) > 1:
             return ()
         return (PageProblem(PAGE, "tally.md needs a second note"),)
@@ -275,7 +275,7 @@ def test_a_book_this_workflow_wrote_that_fails_its_check_goes_to_its_writer_and_
     runner = _writer(repo)
     _written_by_the_workflow(repo)
 
-    def _problems(_root: Path, _service: str) -> tuple[PageProblem, ...]:
+    def _problems(_root: Path, _service: str, _source_folder: str = "") -> tuple[PageProblem, ...]:
         return (PageProblem("a.md", "a.md is linked from no page"),)
 
     stub_the_run_to(monkeypatch, PASSED)

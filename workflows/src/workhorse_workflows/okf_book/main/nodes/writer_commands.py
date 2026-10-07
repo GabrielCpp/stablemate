@@ -51,13 +51,15 @@ class WriterCommandState(BaseModel):
     A page in `sections_by_page` is covered only in the `###` sections named for it. The field also
     reads its earlier key, `sections`, and `problems_at_turn_start` also reads its earlier form, the
     problems' texts. With `records_dir` naming the run's records, the check leaves out every problem
-    the last lead of the book's page check held for another side than the book.
+    the last lead of the book's page check held for another side than the book. With `source_folder`
+    naming the surface's source, the check also names each product file there no page cites.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     root: Path
     service: str
+    source_folder: str = ""
     pages: tuple[str, ...] = ()
     sections_by_page: dict[str, tuple[str, ...]] = Field(default={}, validation_alias=AliasChoices("sections_by_page", "sections"))
     problems_at_turn_start: tuple[PageProblem, ...] = ()

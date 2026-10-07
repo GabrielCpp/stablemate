@@ -244,7 +244,7 @@ def test_the_source_size_skips_dependency_folders(tmp_path: Path) -> None:
     assert folder_tokens(tmp_path) == 10
 
 
-def _noisy_problems(root: Path, service: str) -> tuple[PageProblem, ...]:
+def _noisy_problems(root: Path, service: str, _source_folder: str = "") -> tuple[PageProblem, ...]:
     print(f"stdout from {root.name}")
     logging.getLogger("noisy").warning("a warning")
     _ = os.write(2, b"a raw write\n")
@@ -264,8 +264,8 @@ def test_a_check_prints_only_its_own_lines(
     assert capfd.readouterr() == ("", "")
 
 
-def _problems_on(*pages: str) -> Callable[[Path, str], tuple[PageProblem, ...]]:
-    def _problems(_root: Path, _service: str) -> tuple[PageProblem, ...]:
+def _problems_on(*pages: str) -> Callable[[Path, str, str], tuple[PageProblem, ...]]:
+    def _problems(_root: Path, _service: str, _source_folder: str = "") -> tuple[PageProblem, ...]:
         return tuple(PageProblem(page, f"{page} is broken") for page in pages)
 
     return _problems
@@ -293,8 +293,8 @@ def test_a_check_scoped_to_pages_prints_their_problems_and_those_the_turn_made_b
     assert printed == (f"{pages[0]} is broken", f"{pages[3]} is broken")
 
 
-def _page_problems_returning(problems: tuple[PageProblem, ...]) -> Callable[[Path, str], tuple[PageProblem, ...]]:
-    def _problems(_root: Path, _service: str) -> tuple[PageProblem, ...]:
+def _page_problems_returning(problems: tuple[PageProblem, ...]) -> Callable[[Path, str, str], tuple[PageProblem, ...]]:
+    def _problems(_root: Path, _service: str, _source_folder: str = "") -> tuple[PageProblem, ...]:
         return problems
 
     return _problems
