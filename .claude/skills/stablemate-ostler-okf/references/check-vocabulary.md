@@ -164,6 +164,16 @@ the locator at a component whose selector addresses the markup, such as one with
 reads it and gives a page that writes it late five seconds. A device driver cannot read markup,
 so the claim is a gap there.
 
+### `value(locator*=<str> (locator), equals=<str>, matches=<str>) — one of equals, matches`
+Excludes a field that holds the wrong text, such as a slug the product derived from a title or
+overwrote after the user edited it. `visible` cannot read it, because what a field holds is not
+its text. `attribute(name="value")` cannot either, because it reads the value the markup started
+with and not what the user typed. This check reads what every field the locator matches holds
+now. It passes when any of them holds the value `equals` names, or a value `matches` finds. An
+element that is not a field holds nothing. After a `fill` of the title, `value(locator="#slug",
+equals="quarterly-report")` claims the product derived the slug. The browser driver gives a field
+that fills late five seconds. A device driver cannot read it, so the claim is a gap there.
+
 ### `focused(locator*=<str> (locator))`
 Excludes keyboard focus that escapes an open dialog, or lands nowhere after the dialog closes.
 `focusable` passes both, because it moves focus itself and reads only whether the control can
