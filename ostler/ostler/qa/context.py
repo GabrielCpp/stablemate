@@ -729,6 +729,7 @@ def _minted_obligations(
     owing = {node_id for node_id in selection.contracts | selection.journeys if not prefixes or book[node_id].path.startswith(prefixes)}
     fixture_provides = _fixture_provides_index(book)
     fixture_undetermined = _fixture_undetermined_index(book)
+    fixture_needs = _fixture_needs_index(book)
 
     def mint(node_id: str, *, journey: bool, required: bool, owed_keys: frozenset[str] | None) -> list[dict[str, Any]]:
         return _obligations(
@@ -741,6 +742,7 @@ def _minted_obligations(
             judgment=selection.judgment_by_node.get(node_id),
             fixture_provides=fixture_provides,
             fixture_undetermined=fixture_undetermined,
+            fixture_needs=fixture_needs,
             resolve_locator=_locator_resolver(snapshot.head_graph, book, book[node_id]),
             book=book,
         )
@@ -1776,6 +1778,37 @@ def _fixture_undetermined_index(book: Mapping[str, BookNode]) -> dict[str, list[
     return {name: sorted(ref for ref, bad in pairs if bad) for name, pairs in resolved.items()}
 
 
+def _fixture_needs_index(book: Mapping[str, BookNode]) -> dict[str, frozenset[str]]:
+    """Every book fixture's stem, with the stem of each fixture it reaches through `needs:`."""
+    fixtures = {node_id: node for node_id, node in book.items() if node.type == "fixture"}
+    direct = {node_id: [edge.to for edge in node.edges if edge.via == "needs" and edge.to in fixtures]
+              for node_id, node in fixtures.items()}
+    index: dict[str, frozenset[str]] = {}
+    for start in fixtures:
+        reached: set[str] = set()
+        pending = list(direct[start])
+        while pending:
+            node_id = pending.pop()
+            if node_id not in reached:
+                reached.add(node_id)
+                pending.extend(direct[node_id])
+        index[Path(start).stem] = frozenset(Path(node_id).stem for node_id in reached - {start})
+    return index
+
+
+def _needs_first(rows: list[dict[str, Any]], needs: Mapping[str, frozenset[str]] | None) -> list[dict[str, Any]]:
+    """*rows* in the order stated, except that each fixture follows every listed fixture it needs."""
+    pending = list(rows)
+    ordered: list[dict[str, Any]] = []
+    while pending:
+        row = next((row for row in pending
+                    if not any(other["name"] in (needs or {}).get(row["name"], ()) for other in pending if other is not row)),
+                   pending[0])
+        pending = [other for other in pending if other is not row]
+        ordered.append(row)
+    return ordered
+
+
 def _fixture_provides_closure(
     book: Mapping[str, BookNode],
 ) -> dict[str, set[tuple[str, bool]]]:
@@ -2020,6 +2053,7 @@ class _PartReader:
     resolve_locator: Callable[[str], LocatorTarget] | None
     fixture_provides: dict[str, list[str]] | None
     fixture_undetermined: dict[str, list[str]] | None
+    fixture_needs: Mapping[str, frozenset[str]] | None
 
     def node_parts(self, attribution: _Attribution) -> _Parts:
         """The parts the node states for every claim under it."""
@@ -2027,7 +2061,8 @@ class _PartReader:
         return _Parts(
             checks=_dedup_checks(_parse_checks(attribution.checks.own, self.resolve_locator)),
             checks_unparsed=_unparsed_checks(attribution.checks.own),
-            fixtures=_parse_fixtures(fixtures, self.fixture_provides, self.fixture_undetermined),
+            fixtures=_needs_first(_parse_fixtures(fixtures, self.fixture_provides, self.fixture_undetermined),
+                                  self.fixture_needs),
             fixtures_unparsed=_unparsed_fixtures(fixtures),
             arranges_nothing=_no_arrangement_stated(fixtures),
             acts=_parse_acts(attribution.acts.own, self.resolve_locator),
@@ -2046,7 +2081,8 @@ class _PartReader:
         return _Parts(
             checks=_dedup_checks(_parse_checks(checks, self.resolve_locator)),
             checks_unparsed=_unparsed_checks(checks),
-            fixtures=list({(row["name"], tuple(row["args"])): row for row in [*node.fixtures, *arranged]}.values()),
+            fixtures=_needs_first(list({(row["name"], tuple(row["args"])): row for row in [*node.fixtures, *arranged]}.values()),
+                                  self.fixture_needs),
             fixtures_unparsed=_dedup_by_value([*node.fixtures_unparsed, *_unparsed_fixtures(fixtures)]),
             arranges_nothing=node.arranges_nothing or _no_arrangement_stated(fixtures),
             acts=list({row["call"]: row for row in [*node.acts, *_parse_acts(acts, self.resolve_locator)]}.values()),
@@ -2067,6 +2103,7 @@ def _obligations(
     judgment: list[dict[str, Any]] | None = None,
     fixture_provides: dict[str, list[str]] | None = None,
     fixture_undetermined: dict[str, list[str]] | None = None,
+    fixture_needs: Mapping[str, frozenset[str]] | None = None,
     resolve_locator: Callable[[str], LocatorTarget] | None = None,
     book: Mapping[str, BookNode],
 ) -> list[dict[str, Any]]:
@@ -2075,8 +2112,9 @@ def _obligations(
     family = _same_as_component(book_node.id, book)
     representative = min(family)
     base = _node_obligation(book_node, reasons, family, journey=journey, required=required, scope=scope, book=book)
-    reader = _PartReader(resolve_locator, fixture_provides, fixture_undetermined)
-    attribution = _with_guard_fixtures(_attribution(book_node), _guard_fixtures(book_node, book))
+    reader = _PartReader(resolve_locator, fixture_provides, fixture_undetermined, fixture_needs)
+    ambient = [*_guard_fixtures(book_node, book), *_parent_fixtures(book_node, book)]
+    attribution = _with_ambient_fixtures(_attribution(book_node), ambient)
     node_parts = reader.node_parts(attribution)
     node_parts.stamp(base)
     base["docPosition"] = [book_node.line, -1]
@@ -2213,11 +2251,25 @@ def _guard_fixtures(book_node: BookNode, book: Mapping[str, BookNode]) -> list[s
         Path(target).stem for target in linked if (node := book.get(target)) is not None and node.type == "fixture"))
 
 
-def _with_guard_fixtures(attribution: _Attribution, guards: list[str]) -> _Attribution:
-    """*attribution* with each guard fixture ambient to every claim, ahead of the node's own."""
-    if not guards:
+def _parent_fixtures(book_node: BookNode, book: Mapping[str, BookNode]) -> list[str]:
+    """The node-level fixtures of each component *book_node* sits inside through `parent:`, outermost first."""
+    chain: list[BookNode] = []
+    seen = {book_node.id}
+    node: BookNode | None = book_node
+    while node is not None:
+        targets = sorted(edge.to for edge in node.edges if edge.via == "parent" and edge.to in book)
+        node = book[targets[0]] if targets and targets[0] not in seen else None
+        if node is not None:
+            seen.add(node.id)
+            chain.append(node)
+    return [bullet for parent in reversed(chain) for bullet in _attribution(parent).fixtures.own]
+
+
+def _with_ambient_fixtures(attribution: _Attribution, ambient: list[str]) -> _Attribution:
+    """*attribution* with each fixture its screen's guards or its parents arrange ambient to every claim, ahead of the node's own."""
+    if not ambient:
         return attribution
-    fixtures = _Attributed([*guards, *attribution.fixtures.own], attribution.fixtures.per_claim)
+    fixtures = _Attributed([*ambient, *attribution.fixtures.own], attribution.fixtures.per_claim)
     return replace(attribution, fixtures=fixtures)
 
 
