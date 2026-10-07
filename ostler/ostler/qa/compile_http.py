@@ -6,6 +6,7 @@ import json
 import re
 from dataclasses import dataclass
 from dataclasses import field
+from dataclasses import replace
 from typing import Any
 
 from ostler import acts as acts_mod
@@ -202,6 +203,11 @@ class _HttpArrangement:
     """What a step's acts put on the wire: the members of its body and the headers it sends."""
     body: dict[str, CheckValue]
     headers: dict[str, CheckValue]
+    bodiless: bool = False
+
+    def states_body(self) -> bool:
+        """Whether the book said what the request carries: its members, or that it carries none."""
+        return bool(self.body) or self.bodiless
 
     def named_references(self) -> list[references.Reference]:
         """Every `@node.key`/`$name` a body member or a header value names."""
@@ -211,7 +217,7 @@ class _HttpArrangement:
 
     def kwargs_source(self, *, with_body: bool) -> str:
         """The `json_body=`/`headers=` keywords of the call that sends this arrangement."""
-        body = f", json_body={_nested_body_literal(self.body)}" if with_body else ""
+        body = f", json_body={_nested_body_literal(self.body)}" if with_body and not self.bodiless else ""
         headers = f", headers={_resolved_dict_literal(self.headers)}" if self.headers else ""
         return body + headers
 
@@ -223,6 +229,9 @@ def _http_arrangement(rows: tuple[CallRow, ...], *, later_replaces: bool = False
         spec = acts_mod.ACT_BY_NAME.get(row.name)
         if spec is None or acts_mod.HTTP not in spec.drivers:
             return None
+        if spec.name == "no_body":
+            arranged = replace(arranged, bodiless=True)
+            continue
         if spec.name == "header":
             sink, key, value = arranged.headers, row.text_arg("name"), row.text_arg("value")
         else:
@@ -233,6 +242,8 @@ def _http_arrangement(rows: tuple[CallRow, ...], *, later_replaces: bool = False
     if any(other.startswith(f"{key}.") for key in arranged.body for other in arranged.body):
         return None
     if _WHOLE_BODY in arranged.body and len(arranged.body) > 1:
+        return None
+    if arranged.bodiless and arranged.body:
         return None
     return arranged
 
@@ -407,7 +418,7 @@ def _claim_request(
     wants_body = method not in _BODILESS_METHODS
     act_rows = _claim_acts(obligation, credentials, caller)
     arranged = None if (not act_rows or obligation.acts_unparsed) else _http_arrangement(act_rows, later_replaces=True)
-    if wants_body and (arranged is None or not arranged.body):
+    if wants_body and (arranged is None or not arranged.states_body()):
         why = "the book carries no request body"
         return _UnbuiltClaimRequest(why, ScenarioRefusal("unarranged-request-body", why))
     if arranged is not None:
@@ -608,7 +619,7 @@ def _http_request(
     sent_references = (*(arranged.named_references() if arranged else ()), *references.find_references(query))
     if method in _BODILESS_METHODS:
         return _HttpRequest(method, path, arranged.kwargs_source(with_body=False) if arranged else "", sent_references, query)
-    if arranged is None or not arranged.body:
+    if arranged is None or not arranged.states_body():
         gaps.extend(Gap(oid, "unarranged-request-body",
                         f"step {index} is a {method} and the book carries no request body")
                     for oid in ids)

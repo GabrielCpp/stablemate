@@ -40,7 +40,7 @@ def test_an_unknown_name_gets_the_act_vocabulary_not_the_check_vocabulary() -> N
     refused = acts.parse_act('visible(locator="#x")')
     assert isinstance(refused, checks.Refusal)
     assert refused.kind == "unknown-act"
-    assert "body, click, fill, header, invoke, press, select" in refused.message
+    assert "body, click, fill, header, invoke, no_body, press, select" in refused.message
     assert refused.form == acts.vocabulary()
 
 

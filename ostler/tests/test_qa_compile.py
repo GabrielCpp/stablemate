@@ -918,6 +918,45 @@ def test_a_post_that_arranges_only_a_header_still_has_no_body() -> None:
     assert _gap_kinds(result.gaps, oid) == ["unarranged-request-body"]
 
 
+_NO_BODY_ACT = {"call": "no_body()", "name": "no_body", "args": {}}
+
+
+def test_a_post_that_arranges_no_body_is_sent_without_one() -> None:
+    """A route such as `POST /refresh` reads nothing from its request, so the book says so instead of inventing a member the app would ignore."""
+    oid = "okf:docs/features/demo/globex.md#post-refresh:does:1"
+    context = _context(
+        _obligation(
+            oid,
+            locators={"route": ["POST /api/refresh"]},
+            checksDeclared=[_check()],
+            fixturesDeclared=[{"name": "seeded-ledger", "args": [], "provides": "a ledger"}],
+            actsDeclared=[_NO_BODY_ACT, _header_act("X-Tenant", "acme")],
+        )
+    )
+    source, gaps = compile_plan_gaps(context, story="demo-story")
+    assert source is not None
+    assert _gap_kinds(gaps, oid) == []
+    assert "qa.http.post(" in source
+    assert "json_body" not in source
+    assert '"X-Tenant"' in source
+
+
+def test_no_body_beside_a_body_member_is_withheld() -> None:
+    oid = "okf:docs/features/demo/globex.md#post-refresh:does:1"
+    context = _context(
+        _obligation(
+            oid,
+            locators={"route": ["POST /api/refresh"]},
+            checksDeclared=[_check()],
+            fixturesDeclared=[{"name": "seeded-ledger", "args": [], "provides": "a ledger"}],
+            actsDeclared=[_NO_BODY_ACT, _body_act("name", "Widget A")],
+        )
+    )
+    result = _compile_plan_gaps(context, story="demo-story", base_url=_BASE_URL)
+    assert isinstance(result, Refusal)
+    assert _gap_kinds(result.gaps, oid) == ["unarranged-request-body"]
+
+
 def test_a_half_arranged_request_body_is_still_withheld() -> None:
     """One act the HTTP driver cannot perform poisons the whole body, the same all-or-nothing rule `_performed_lines` already applies to `fill`/`click` — a request half the book declared is neither the body it wrote nor no body."""
     oid = "okf:docs/features/demo/globex.md#post-things:does:1"
@@ -4161,6 +4200,28 @@ def test_a_journey_step_sends_the_body_its_node_arranges() -> None:
     assert oid in _covers(source)
     assert _gap_kinds(gaps, oid) == []
     assert 'json_body={"name": "Widget A", "quantity": 3}' in source
+
+
+def test_a_journey_step_whose_node_arranges_no_body_is_sent_without_one() -> None:
+    oid = f"okf:{_FLOW}:end-state"
+    post_node = _step_node(f"{_API}#post-things", {"route": ["POST /api/things"]})
+    post_node["actsDeclared"] = [_NO_BODY_ACT]
+    context = _navigation_context(
+        _flow_obligation(
+            oid, source=_FLOW, surface="api",
+            steps=[_step(f"{_API}#post-things", "endpoint", "api")],
+            checks=[{"call": "it", "name": "http_status", "args": {"status": 201,
+                                                                   "path": "/api/things"}}],
+        ),
+        post_node,
+        navigation=_api_navigation(),
+    )
+    _result = _compile_plan_gaps(context, story="demo-story")
+    assert isinstance(_result, Plan)
+    ast.parse(_result.source)
+    assert oid in _covers(_result.source)
+    assert _gap_kinds(_result.gaps, oid) == []
+    assert "json_body" not in _result.source
 
 
 def test_a_journey_step_sends_the_success_body_when_its_node_arranges_two() -> None:

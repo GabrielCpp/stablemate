@@ -113,6 +113,14 @@ ACTS: tuple[ActSpec, ...] = (
         drivers=(HTTP,),
     ),
     ActSpec(
+        name="no_body",
+        params=(),
+        establishes="the request this step sends carries no body at all — what a route that "
+                    "reads nothing from its request is called with, stated so the book is not "
+                    "left looking as if it forgot one",
+        drivers=(HTTP,),
+    ),
+    ActSpec(
         name="header",
         params=(ActParam("name", "str", required=True),
                 ActParam("value", "str", required=True)),
