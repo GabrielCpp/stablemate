@@ -2526,6 +2526,24 @@ def extract_vets(source: str) -> dict[str, list[str]]:
     return found
 
 
+FIXTURE_METHOD = "fixture"
+
+
+def extract_fixtures(source: str) -> dict[str, list[str]]:
+    """Which book fixtures each scenario arranges, as written, leaving out a name computed at run time."""
+    found: dict[str, list[str]] = {}
+    for name, calls in _parsed(source).reachable.items():
+        fixtures: list[str] = []
+        for call in calls:
+            if not isinstance(call.func, ast.Attribute) or call.func.attr != FIXTURE_METHOD:
+                continue
+            fixture = _literal(call.args[0]) if call.args else None
+            if isinstance(fixture, str) and fixture not in fixtures:
+                fixtures.append(fixture)
+        found[name] = fixtures
+    return found
+
+
 INSTANCE_METHOD = "instance"
 
 
@@ -2587,6 +2605,7 @@ def _describe(module_path: Path) -> dict[str, Any]:
     check_calls = extract_check_calls(source)
     locators = extract_locators(source)
     vets = extract_vets(source)
+    fixtures = extract_fixtures(source)
     instances = extract_instances(source)
     for declared in data["scenarios"]:
         declared["checks"] = counts.get(declared["function"], 0)
@@ -2594,6 +2613,7 @@ def _describe(module_path: Path) -> dict[str, Any]:
         declared["check_calls"] = check_calls.get(declared["function"], [])
         declared["locators"] = locators.get(declared["function"], [])
         declared["vets"] = vets.get(declared["function"], [])
+        declared["fixtures"] = fixtures.get(declared["function"], [])
         declared["instances"] = instances.get(declared["function"], [])
     return data
 

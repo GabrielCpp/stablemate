@@ -17,6 +17,7 @@ from ostler.qa import run_log
 from ostler.qa.plan import PlanDocument, check_runtime_requirements
 from ostler.qa.session import QA_DIRNAME, QaSession
 from ostler.qa.verdict import Verdict, judge, merged
+from ostler.qa.quarantine import FixtureQuarantine
 from ostler.qa.repeats import watch_for
 from ostler.qa.report import REPORT_FILE, ReportError, write_report
 
@@ -52,6 +53,7 @@ def run_plan(
     lap: Path | None = None,
     stack_check: Callable[[], str] | None = None,
     stop_on_repeat: int = 0,
+    quarantine_after: int = 0,
 ) -> tuple[str, str, dict[str, Any]]:
     """Execute a validated plan and return ``(status, message, summary)``.
 
@@ -66,11 +68,17 @@ def run_plan(
     The summary says why under `stopped_on_repeat`, apart from its `runner_errors`, since the
     scenarios it ran measured the book and their failures are the book's to fix. It names the
     observation itself under `stopped_on_observation`, so a later run can tell the same stop apart.
+
+    A positive *quarantine_after* holds back each scenario that needs a book fixture once that
+    fixture failed to build in that many scenarios with no good build between them. The held
+    scenario fails against the fixture's page without running, since running it would only wait
+    out the same failure again, and the rest of the plan still runs.
     """
     if lap is None:
         with tempfile.TemporaryDirectory(prefix="ostler-lap-") as scratch:
             return run_plan(document, root=root, stop_on_fail=stop_on_fail, only=only, qa_dirname=qa_dirname,
-                            lap=Path(scratch), stack_check=stack_check, stop_on_repeat=stop_on_repeat)
+                            lap=Path(scratch), stack_check=stack_check, stop_on_repeat=stop_on_repeat,
+                            quarantine_after=quarantine_after)
     plan = document.data
     spec_dir = document.spec_dir
     scored = qa_dirname == QA_DIRNAME
@@ -123,6 +131,7 @@ def run_plan(
     runner_errors: list[str] = []
     stopped_on_repeat = ""
     watch = watch_for(stop_on_repeat, selected, scoped=only is not None)
+    quarantine = FixtureQuarantine(quarantine_after)
     summary: dict[str, Any] = {}
     evidence: Path | None = None
     try:
@@ -171,7 +180,8 @@ def run_plan(
                     "covers": scenario.get("covers", []),
                 }
             )
-            result = drivers[target_id].run(scenario)
+            held = quarantine.held(scenario)
+            result = held or drivers[target_id].run(scenario)
             results[scenario_id] = result
             session.append(
                 {
@@ -190,6 +200,11 @@ def run_plan(
                 status = result.status
                 if stop_on_fail:
                     break
+            if held is not None:
+                continue
+            quarantined = quarantine.observe(scenario, result)
+            if quarantined:
+                session.append({"kind": "fixture_quarantine", "scenario": scenario_id, "message": quarantined})
             stopped_on_repeat = watch.observe(scenario_id, scenario.get("covers", []), result)
             if stopped_on_repeat:
                 session.append({"kind": "repeat_stop", "status": status, "message": stopped_on_repeat})
