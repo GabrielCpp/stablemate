@@ -64,7 +64,10 @@ def _component_locator(node: UINode) -> dict[str, str] | None:
     role = bullet_text(next(iter(_values(node.meta, "role")), ""))
     name = bullet_text(next(iter(_values(node.meta, "name")), ""))
     if role and name:
-        return {"role": role, "name": name.strip('"')}
+        literal = name.strip('"')
+        if loc_mod.compile_template(literal, ()) is not None:
+            return {"role": role, "template": literal}
+        return {"role": role, "name": literal}
     selector = bullet_text(next(iter(_values(node.meta, "selector")), ""))
     if not selector or selector_forms.parse_scheme_selector(selector) is not None:
         return None

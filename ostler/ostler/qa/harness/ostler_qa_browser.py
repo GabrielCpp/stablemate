@@ -11,6 +11,7 @@ from typing import Any
 from urllib.parse import urlsplit
 
 from ostler_qa_browser_state import CLIPBOARD_JS
+from ostler_qa_elements import template_pattern
 from ostler_qa_scan import FRAME_JS, SCAN_JS, merge_rects, summarize
 from ostler_qa_transfer import upload
 from playwright.sync_api import TimeoutError as PlaywrightTimeout
@@ -69,7 +70,9 @@ ARRANGE_METHODS = {"fill": "fill", "click": "click", "press": "press", "select":
 
 
 def _locate(page: Any, locator: Mapping[str, str]) -> Any:
-    """The element a fixture's locator names: by role and name, label, text or a book-declared selector."""
+    """The element a fixture's locator names: by role and name or name template, label, text or a book-declared selector."""
+    if "template" in locator:
+        return page.get_by_role(locator["role"], name=template_pattern(locator["template"])).first
     if "role" in locator:
         found = page.get_by_role(locator["role"], name=locator["name"])
         if found.count() > 1:

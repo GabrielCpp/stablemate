@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import re
 import sys
 from pathlib import Path
 from types import SimpleNamespace
@@ -916,3 +917,22 @@ def test_an_arranged_upload_hands_the_control_the_file_the_step_names(tmp_path: 
     browser.arrange([{"act": "upload", "locator": {"label": "Document"}, "value": str(sample)}])
 
     assert chosen == [sample]
+
+
+def test_an_arranged_click_on_a_templated_name_clicks_the_first_control_that_fills_it(tmp_path: Path) -> None:
+    """A row's button is named after the row, so a fixture clicks whichever row the page lists first."""
+    patterns: list[re.Pattern[str]] = []
+    clicks: list[str] = []
+    first = SimpleNamespace(click=lambda *, timeout: clicks.append("first"))
+    browser = _browser(tmp_path)
+    browser._arranging = SimpleNamespace(
+        wait_for_load_state=lambda state, *, timeout: None,
+        get_by_role=lambda role, *, name: patterns.append(name) or SimpleNamespace(first=first),
+        close=lambda: None,
+    )
+
+    browser.arrange([{"act": "click", "locator": {"role": "button", "template": "Open {document.title}"}}])
+
+    [pattern] = patterns
+    assert pattern.match("Open Quarterly report") and not pattern.match("{document.title}")
+    assert clicks == ["first"]

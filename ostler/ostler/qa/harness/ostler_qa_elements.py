@@ -11,6 +11,15 @@ from urllib.parse import urlsplit
 from ostler_qa_verdicts import Args, Verdict, str_arg, verdict
 
 
+_TEMPLATE_HOLE = re.compile(r"\$?\{[^{}]*\}")
+
+
+def template_pattern(template: str) -> re.Pattern[str]:
+    """The names a templated control can carry: its literal text in place, any text in each hole."""
+    parts = _TEMPLATE_HOLE.split(template)
+    return re.compile("^" + ".+?".join(re.escape(part) for part in parts) + "$")
+
+
 def _readings(observed: object) -> tuple[str, ...]:
     """Every spelling of an element's text the page can offer, rendered first."""
     readings: list[str] = []

@@ -86,6 +86,21 @@ def test_a_browser_step_opens_the_screen_route_then_performs_its_acts_in_book_or
 
 
 
+def test_a_component_named_after_its_row_is_located_by_its_template(repo: Path) -> None:
+    write(repo / LOGIN_PATH, screen_md("login", "Login", body=LOGIN_COMPONENTS + """
+### open-document
+
+- role: button
+- one-per: document
+- name: {document.title}
+"""))
+    write(repo / FIXTURE_PATH, _fixture('click("../login.md#open-document")'))
+
+    [step] = book_fixtures.resolved(load(repo))["signed-in-editor"]["steps"]
+
+    assert step["browser"][1] == {"act": "click", "locator": {"role": "button", "template": "{document.title}"}}
+
+
 def test_a_browser_step_uploads_a_file_named_from_the_repository_root(repo: Path) -> None:
     write(repo / "app/fixtures/well-formed.docx", "PK")
     _book(repo, _fixture('upload("label=Document", file="app/fixtures/well-formed.docx")'))

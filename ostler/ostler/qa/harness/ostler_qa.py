@@ -31,6 +31,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import ostler_qa_transfer
 from ostler_qa_checkout import copy_checkout
+from ostler_qa_elements import template_pattern
 from ostler_qa_lap import Arranged, LapRecord
 from ostler_qa_paths import is_projection, path_steps, resolve_path
 from ostler_qa_responses import reply_excerpt
@@ -71,7 +72,6 @@ SERVE_STEP = "serve"
 _SERVE_SETTLE_S = 0.5
 
 _BACKGROUNDED = re.compile(r"(?<![&|])&\s*$")
-_TEMPLATE_HOLE = re.compile(r"\$?\{[^{}]*\}")
 
 _NODE_REF = re.compile(r"(?<![\w.])@([a-zA-Z0-9][a-zA-Z0-9_-]*)\.([a-zA-Z0-9][a-zA-Z0-9_-]*)")
 _CAPTURE_REF = re.compile(r"(?<![\w.])\$([a-zA-Z0-9][a-zA-Z0-9_-]*)")
@@ -387,12 +387,6 @@ def _definition_line(func: Callable[..., None]) -> int:
     if code is None or not linecache.getlines(code.co_filename):
         return 0
     return code.co_firstlineno
-
-
-def template_pattern(template: str) -> re.Pattern[str]:
-    """The names a templated control can carry: its literal text in place, any text in each hole."""
-    parts = _TEMPLATE_HOLE.split(template)
-    return re.compile("^" + ".+?".join(re.escape(part) for part in parts) + "$")
 
 
 def stop_server_group(pgid: int) -> None:
