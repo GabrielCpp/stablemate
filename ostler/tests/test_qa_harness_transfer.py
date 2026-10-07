@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Iterator
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
@@ -92,6 +93,17 @@ def test_a_download_reads_back_by_the_name_the_page_suggested_and_its_content(pa
     with page.expect_download() as downloaded:
         page.locator("#export").click()
     assert browser_module.Browser._downloaded(downloaded.value) == {"name": "rules.xml", "text": "<rule/>"}
+
+
+def test_a_download_the_page_hands_over_reaches_the_browser_listening_on_it(page: Any, tmp_path: Path) -> None:
+    listening = browser_module.Browser(
+        SimpleNamespace(recording=None, viewport=None),
+        qa_dir=tmp_path, scenario_id="export", clock=lambda: 0, emit=lambda *_: None,
+    )
+    listening._listen(page)
+    with page.expect_download():
+        page.locator("#export").click()
+    assert listening.downloads() == [{"name": "rules.xml", "text": "<rule/>"}]
 
 
 def test_an_upload_of_a_missing_file_names_it(tmp_path: Path) -> None:

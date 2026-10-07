@@ -456,12 +456,16 @@ class Browser:
 
     def _listen(self, page: Any) -> None:
         page.on("console", self._on_console)
-        page.on("download", self._downloads.append)
+        page.on("download", self._on_download)
         page.on("pageerror", self._on_page_error)
         page.on("request", self._on_request)
         page.on("requestfailed", self._on_failed_request)
         page.on("response", self._on_response)
         page.on("requestfinished", self._on_request_finished)
+
+    def _on_download(self, download: Any) -> None:
+        """Every file the page hands the user, kept for downloads() to read back."""
+        self._downloads.append(download)
 
     def _on_console(self, message: Any) -> None:
         """Every console message, whatever its level."""
