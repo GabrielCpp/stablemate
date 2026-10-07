@@ -37,8 +37,10 @@ gives relative to the repository starts there.
   entries page and finds what the app does in a few links. Expect a page for each
   {% if kind == "cli" %}command{% elif kind == "http" %}endpoint{% else %}screen{% endif %}, each journey, each fixture and each concept several of them share: tens of
   pages for a small app, not hundreds. A claim earns its place when a user or a caller can
-  observe it and it would break if the app changed. Merge, shrink or delete pages freely. A
-  smaller book whose claims pass beats a larger one whose claims fail.
+  observe it and it would break if the app changed. The book covers the whole app: each product
+  file of the source is cited in the `code:` of the page that documents what it does, and the
+  check names each file no page cites. Merge and shrink pages freely, but a page you delete
+  takes its citations with it, and what it documented must move to another page.
 - State what a user or a caller meets:
 {% if kind == "cli" %}
   the commands, options, flags and positionals, the messages the app prints and the exit
@@ -123,7 +125,8 @@ gives relative to the repository starts there.
 You own this book. The run checked it and ran it against the app after your last turn, and
 this is what failed. Read all of it before you edit a page. Many failures that share a status,
 a fixture, a role or a route prefix usually share one cause, and you fix that cause once, in
-the one page that holds it, often a fixture or a shared page.
+the one page that holds it, often a fixture or a shared page. A failure may predate your last
+edits: run its page again before you rewrite or drop what it claims.
 
 Some causes are not the book's, and no page edit fixes them. For each numbered group below,
 name the side that has to change in your reply. A group you name another side's is held back
