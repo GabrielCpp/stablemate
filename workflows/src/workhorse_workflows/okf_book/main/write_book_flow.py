@@ -35,7 +35,7 @@ def owner_chain(service: str) -> str:
 
 
 class WriteOutcome(BaseModel):
-    """What the writer's turn left: whether its book is committed, and why the turn ended without a reply when it is not."""
+    """What the writer's turn left: whether it committed pages of its book, and why the turn ended without a reply when it did."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -141,14 +141,14 @@ class WriteBook(BookFlow):
     def commit_unfinished(self, before: Snapshot, failure: str) -> Done | Await[...]:
         """Commit the pages the failed turn left, under a subject that is not this workflow's, so a rerun sends a writer to finish them.
 
-        A retry after the commit landed finds nothing to commit. A refused commit waits for the operator.
+        A turn that left pages has committed its book, whatever ended it. A retry after the commit landed finds nothing to commit. A refused commit waits for the operator.
         """
         service = self.surface_to_write.service
         pages = book_changes(self.root, service, before)
         waiting = self._commit_or_await(unfinished_book_commit_subject(service), pages, self.commit_unfinished, before=before, failure=failure)
         if waiting:
             return waiting
-        return Done(WriteOutcome(committed=False, failure=failure)).because("the writer's turn failed")
+        return Done(WriteOutcome(committed=bool(pages), failure=failure)).because("the writer's turn failed")
 
     def put_back(self, before: Snapshot) -> Continue[...]:
         """Put back what the writer changed outside its book."""

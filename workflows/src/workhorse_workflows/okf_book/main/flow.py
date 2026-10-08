@@ -172,9 +172,11 @@ class OkfBook(BookFlow):
         ).because("settle the owner's turn")
 
     def settle_write(self, index: int, written: WriteOutcome, run_failures_repaired: bool = False) -> Continue[...]:
-        """A turn that ended without a reply is a blocker on the surface. A committed book goes to its check."""
+        """A turn that ended without a reply and left no page is a blocker on the surface. A committed book goes to its check, whatever ended the turn that wrote it, since the check judges the pages and not the turn."""
         if not written.committed:
             return self._block_surface_and_move_on(index, written.failure)
+        if written.failure:
+            self.logger.warning("%s: %s; the pages it left go to the check", self.surfaces[index].service, written.failure)
         return Continue(written, self.check_book, index=index, run_failures_repaired=run_failures_repaired, repaired=True).because(
             "check the committed book"
         )

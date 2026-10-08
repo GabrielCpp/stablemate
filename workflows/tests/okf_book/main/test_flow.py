@@ -290,7 +290,7 @@ def test_a_book_this_workflow_wrote_that_fails_its_check_goes_to_its_writer_and_
 
 
 @pytest.mark.usefixtures("passing")
-def test_a_writer_turn_that_ends_without_a_reply_is_a_blocker_and_keeps_its_pages_as_unfinished(
+def test_a_writer_turn_that_ends_without_a_reply_keeps_its_pages_as_unfinished_and_sends_them_to_the_check(
     app: App, drive_book: DriveBook, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     repo = app("tally-cli")
@@ -299,6 +299,31 @@ def test_a_writer_turn_that_ends_without_a_reply_is_a_blocker_and_keeps_its_page
         _ = (repo / PAGE).write_text("half a page\n", encoding="utf-8")
         _ = (repo / "docs/features/tally/draft.md").write_text("a draft\n", encoding="utf-8")
         _ = (repo / "tally" / "cli.py").write_text("broken\n", encoding="utf-8")
+        raise BackendInvocationError("error_max_turns")
+
+    def _problems_until_written(root: Path, _service: str, _source_folder: str = "") -> tuple[PageProblem, ...]:
+        if (root / PAGE).read_text(encoding="utf-8") == "half a page\n":
+            return ()
+        return (PageProblem(PAGE, "tally.md needs its rewrite"),)
+
+    monkeypatch.setattr(flow, "page_problems", _problems_until_written)
+
+    result = drive_book(OkfBook(repo_dir=str(repo), surfaces=(TALLY,)), ScriptedRunner({"write-book": _dies}))
+
+    assert isinstance(result, BookReport)
+    assert result.blockers == ()
+    assert "docs(tally): keep the unfinished tally book" in commits(repo)
+    assert sorted(git(repo, "show", "--name-only", "--format=", "HEAD").split()) == ["docs/features/tally/draft.md", PAGE]
+    assert git(repo, "status", "--porcelain").strip() == ""
+
+
+@pytest.mark.usefixtures("passing")
+def test_a_writer_turn_that_ends_without_a_reply_and_leaves_no_page_is_a_blocker(
+    app: App, drive_book: DriveBook, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo = app("tally-cli")
+
+    def _dies(_args: dict[str, object]) -> dict[str, object]:
         raise BackendInvocationError("no result event")
 
     monkeypatch.setattr(pyflow_park, "wait_for_answer", stopping_operator([]))
@@ -308,9 +333,6 @@ def test_a_writer_turn_that_ends_without_a_reply_is_a_blocker_and_keeps_its_page
     assert isinstance(result, BookReport)
     assert [(b.phase, b.side) for b in result.blockers] == [(Phase.WRITE, Side.WORKFLOW)]
     assert "no result event" in result.blockers[0].reason
-    assert commits(repo)[0] == "docs(tally): keep the unfinished tally book"
-    assert sorted(git(repo, "show", "--name-only", "--format=", "HEAD").split()) == ["docs/features/tally/draft.md", PAGE]
-    assert git(repo, "status", "--porcelain").strip() == ""
 
 
 def test_a_stack_that_cannot_come_up_is_the_apps_blocker_and_sends_no_writer(
