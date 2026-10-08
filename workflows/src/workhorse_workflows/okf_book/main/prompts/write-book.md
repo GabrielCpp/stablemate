@@ -80,11 +80,11 @@ gives relative to the repository starts there.
   skill's runbook reference says. Assume the machine it runs on has a shell,
   git, curl and python3, and nothing else: no other language toolchain, no cloud CLI, no
   emulator, no database. The runbook fetches and starts every other tool and service the app
-  needs. That includes each service the app calls, such as the API behind a web app: start it
-  and point the app at it, and never leave a claim gapped on a service the runbook could
-  start. Another book's runbook under `docs/features/` may already start that service. A
-  service this machine already serves on a port belongs to someone else, so start your own on
-  a free port.
+  needs. That includes each service the app calls, such as the API behind a web app. Start it
+  on a free port, as another book's runbook under `docs/features/` may already do, and set the
+  address the app's source calls it at, such as a dev proxy's target, to that port. A service
+  already answering on this machine belongs to someone else, and a claim that passes against
+  it passes only here.
   The health check is a route the app's source serves to say it is ready. Name that route,
   and never invent one. A web app's pages are routes its source serves: with no readiness
   route, name the page route that answers without sign-in, and set `identity` to text its
