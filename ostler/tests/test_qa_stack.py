@@ -778,6 +778,30 @@ def test_boot_keeps_what_the_app_printed_and_names_it_when_the_app_dies(monkeypa
     log = stack.app_log_path(str(tmp_path))
     assert "panic: no database" in log.read_text(encoding="utf-8")
     assert f"its output is in {log}" in out["reason"]
+    assert "panic: no database" in out["reason"]
+
+
+def test_a_launch_with_no_entry_url_says_what_it_printed_when_it_dies(monkeypatch, tmp_path) -> None:
+    """A server that cannot bind exits 1, and only its own last line says why."""
+    real_popen = stack.subprocess.Popen
+
+    def finished(*args, **kwargs):
+        proc = real_popen(*args, **kwargs)
+        proc.wait()
+        return proc
+
+    monkeypatch.setattr(stack.subprocess, "Popen", finished)
+    monkeypatch.setattr(stack.os, "getpgid", lambda pid: pid)
+
+    out = stack.boot_app(
+        "echo 'listen tcp :8080: bind: address already in use'; exit 1", "", "/", str(tmp_path), ".", "",
+        60, logger=LOG, clock=FakeClock(),
+    )
+
+    assert out["boot_ok"] == "no"
+    assert "exited with code 1" in out["reason"]
+    assert "address already in use" in out["reason"]
+    assert f"its output is in {stack.app_log_path(str(tmp_path))}" in out["reason"]
 
 
 def test_ensure_stack_reports_the_log_of_the_app_it_launched(monkeypatch) -> None:

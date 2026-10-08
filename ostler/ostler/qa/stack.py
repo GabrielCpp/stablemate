@@ -258,7 +258,7 @@ def boot_app(
     finally:
         if log:
             log.close()
-    written = f"; its output is in {log_path}" if log else ""
+    output = log_path if log else None
 
     pgid = os.getpgid(proc.pid)
     detached = False  # the command returned; whatever it started serves outside our pgid
@@ -266,7 +266,7 @@ def boot_app(
     # merely the symptom — see :func:`health_probe`.
     why = ""
     if not health_url:
-        return _boot_without_probe(proc, pgid, entry_url, logger=logger, clock=clock)
+        return _boot_without_probe(proc, pgid, entry_url, output, logger=logger, clock=clock)
 
     deadline = clock.monotonic() + timeout_s
     while clock.monotonic() < deadline:
@@ -289,8 +289,7 @@ def boot_app(
                 logger.warning("app exited with code %s during startup", proc.returncode)
                 return {"boot_ok": "no", "entry_url": entry_url, "app_pid": "",
                         "app_pgid": "",
-                        "reason": f"the launch command exited with code {proc.returncode} "
-                                  f"during startup{written}" + _port_hint(health_url)}
+                        "reason": _launch_died(proc.returncode, output) + _port_hint(health_url)}
             # Exit 0 with nothing serving yet: a bring-up command that handed the app off
             # to something it doesn't own (containers, a supervisor). Not death — keep
             # polling health to the deadline.
@@ -316,7 +315,7 @@ def boot_app(
 
 
 def _boot_without_probe(
-    proc: subprocess.Popen[bytes], pgid: int, entry_url: str, *,
+    proc: subprocess.Popen[bytes], pgid: int, entry_url: str, output: Path | None, *,
     logger: logging.Logger, clock: Clock,
 ) -> dict[str, str]:
     """Decide bring-up for a stack that declares no HTTP readiness probe.
@@ -340,7 +339,7 @@ def _boot_without_probe(
     if code != 0:
         logger.warning("launch command exited with code %s", code)
         return {"boot_ok": "no", "entry_url": entry_url, "app_pid": "", "app_pgid": "",
-                "reason": f"the launch command exited with code {code} during startup"}
+                "reason": _launch_died(code, output)}
     logger.info("launch command completed (exit 0) — this run owns no process to reap; "
                 "health gates decide readiness")
     return {"boot_ok": "yes", "entry_url": entry_url, "app_pid": "", "app_pgid": "",
@@ -774,6 +773,23 @@ def _step_error(code: int, stdout: str | None, stderr: str | None) -> str:
     if tails:
         return f"exit {code}: {' | '.join(tails)}"
     return f"exit {code} with no output on either stream"
+
+
+def _launch_died(code: int, output: Path | None) -> str:
+    """Why a launch that exited nonzero failed, ending with the tail of what it printed.
+
+    The tail goes in the reason itself and not only the log's path: the repairer is a
+    confined agent that may not be allowed to open a file under the cache.
+    """
+    reason = f"the launch command exited with code {code} during startup"
+    if output is None:
+        return reason
+    try:
+        tail = output.read_text(encoding="utf-8", errors="replace").strip()[-500:]
+    except OSError:
+        tail = ""
+    printed = f"; it printed last: {tail}" if tail else ""
+    return f"{reason}{printed}; its output is in {output}"
 
 
 def _port_hint(url: str) -> str:
