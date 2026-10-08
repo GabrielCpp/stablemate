@@ -11,6 +11,7 @@ from ostler.qa.attribution import Cause, Signature
 from workhorse_workflows.okf_book.main.nodes import gate
 from workhorse_workflows.okf_book.main.nodes.claim_snapshot import book_claims, changed_claims, write_snapshot
 from workhorse_workflows.okf_book.main.nodes.gate import GATE_DIR, SNAPSHOT_FOLDER, GateRerun, rerun_command, settle_gate, take_failures
+from workhorse_workflows.okf_book.main.nodes.operator_answer import write_answer
 from workhorse_workflows.okf_book.main.nodes.writer_commands import CHECK_MODULE, EXERCISE_MODULE
 from workhorse_workflows.okf_book.shared.blockers import Blocker, Phase, Side, read_blockers, record_blocker
 from workhorse_workflows.okf_book.shared.book_run import ExerciseResult
@@ -143,6 +144,19 @@ def test_an_escalation_whose_rerun_still_fails_is_held_with_the_new_result(tmp_p
     [held] = read_blockers(tmp_path)
     assert routed == ()
     assert held.reason == "the gate's rerun still fails: 3 checks failed this way; for example adds: expected [201], observed 500"
+
+
+def test_an_escalation_the_operator_answered_in_words_goes_to_its_writer(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    _ = record_blocker(_book(tmp_path), _blocker(Side.ENVIRONMENT, "environment"))
+    write_answer(tmp_path, "the stack serves a fake bucket on port 4443")
+    failed = ExerciseResult(lines=("scenario tally-add: failed",), summary=RunSummary(status="failed"))
+    _ = _rerun_with(monkeypatch, GateRerun(result=failed))
+
+    routed = settle_gate(tmp_path, tmp_path, SERVICES)
+
+    [problem] = take_failures(tmp_path, "tally")[ADD]
+    assert routed == SERVICES
+    assert "scenario tally-add: failed" in problem.text
 
 
 def test_an_answer_that_changed_a_claim_routes_its_book_with_the_finding(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

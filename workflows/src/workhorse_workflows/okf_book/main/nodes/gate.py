@@ -14,6 +14,7 @@ from pydantic import BaseModel, ConfigDict, TypeAdapter
 
 from workhorse_workflows.okf_book.main.nodes.claim_snapshot import book_claims, changed_claims, read_snapshot, write_snapshot
 from workhorse_workflows.okf_book.main.nodes.exercise import STACK_LOCK, exercise_book
+from workhorse_workflows.okf_book.main.nodes.operator_answer import read_answer
 from workhorse_workflows.okf_book.main.nodes.writer_commands import (
     WriterCommandState,
     check_command,
@@ -163,13 +164,18 @@ def _still_failing(rerun: GateRerun, blocker: Blocker) -> str:
 
 
 def _settle_runs(root: Path, records_dir: Path, service: str, runs: Sequence[Blocker]) -> RunFailures:
-    """Rerun the blocked pages once, close each blocker whose checks now hold, and keep each escalation that still fails with the rerun's result. Return what the writer gets."""
+    """Rerun the blocked pages once, close each blocker whose checks now hold, and keep each escalation that still fails with the rerun's result. Return what the writer gets.
+
+    An escalation that still fails goes to the writer instead when the operator answered in words: the answer
+    may say the book can supply what the blocker named, and only the writer's next turn reads it.
+    """
     rerun = rerun_pages(root, records_dir, service, tuple(dict.fromkeys(page for blocker in runs for page in blocker.pages)))
+    answered = bool(read_answer(records_dir, service))
     writers: list[Blocker] = []
     for blocker in runs:
         if _passes(rerun, blocker):
             forget_blocker(records_dir, blocker)
-        elif blocker.side in ESCALATED_SIDES:
+        elif blocker.side in ESCALATED_SIDES and not answered:
             _ = record_blocker(records_dir, blocker.model_copy(update={"reason": _still_failing(rerun, blocker)}))
         else:
             writers.append(blocker)
