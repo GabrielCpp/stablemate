@@ -11,6 +11,7 @@ from workhorse_workflows.okf_book.shared.book_run import (
     compile_scenarios,
     failed_run,
     release,
+    book_runbooks,
     run_plan,
     stack_down_result,
     with_app_logs,
@@ -51,7 +52,7 @@ class ExerciseBook(BookFlow):
             release_stack(self.logger, owned)
             return Continue(owned, self.bring_up_stack, gaps=gaps, retried_in=_THIS_PROCESS).because("the stack's server is gone: bring it up again")
         try:
-            stack = StackReadiness(up=True, serving=serving, notes="", owned=owned, app_logs=app_logs)
+            stack = StackReadiness(up=True, serving=serving, notes="", owned=owned, app_logs=app_logs, runbooks=book_runbooks(self.root, self.service))
             exercised = with_app_logs(run_plan(self.root, self.records_dir / SPEC_DIR / self.service, gaps, stack), app_logs)
         finally:
             release_stack(self.logger, owned)

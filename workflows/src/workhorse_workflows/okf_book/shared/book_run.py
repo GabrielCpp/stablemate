@@ -19,6 +19,7 @@ from workhorse.runner.redact import REDACTED, SecretRedactor
 from workhorse_workflows.kit import find_docs_root
 from workhorse_workflows.kit.qa.runner import ensure_stack, release_stack, stack_stopped
 from workhorse_workflows.okf_book.shared.entries import book_dir
+from workhorse_workflows.okf_book.shared.local_calls import CallWatch, Runbook, read_runbook
 from workhorse_workflows.okf_book.shared.book_compilation import gap_page
 from workhorse_workflows.okf_book.shared.page_check import PageProblem
 from workhorse_workflows.okf_book.shared.scenarios import RunSummary, compile_book, plan_scenarios, run_scenarios, select_scenarios
@@ -37,7 +38,7 @@ PROBE_STOPS = frozenset({Cause.ARRANGEMENT, Cause.ENVIRONMENT})
 
 
 class ExerciseResult(BaseModel):
-    """What running the book did: the lines to print, whether every scenario passed, whether the app's stack could not come up, and the run's summary when the plan ran."""
+    """What running the book did: the lines to print, whether every scenario passed, whether the app's stack could not come up, the run's summary when the plan ran, and each local service the app called that no runbook starts."""
 
     model_config = ConfigDict(frozen=True)
 
@@ -45,6 +46,7 @@ class ExerciseResult(BaseModel):
     passed: bool = False
     summary: RunSummary | None = None
     stack_down: bool = False
+    unstarted: tuple[str, ...] = ()
 
     @property
     def stopped_at_probes(self) -> bool:
@@ -104,13 +106,14 @@ class CompileOutcome:
 
 @dataclass(frozen=True, slots=True)
 class StackReadiness:
-    """Whether the app's stack is up, whether it serves, why it is not up, the process groups its bring-up started, and the logs of the apps it launched."""
+    """Whether the app's stack is up, whether it serves, why it is not up, the process groups its bring-up started, the logs of the apps it launched, and the runbooks it came up from."""
 
     up: bool
     serving: bool
     notes: str
     owned: tuple[str, ...] = ()
     app_logs: tuple[str, ...] = ()
+    runbooks: tuple[Runbook, ...] = ()
 
 
 def failed_run(gaps: tuple[str, ...], problem: str) -> ExerciseResult:
@@ -151,13 +154,36 @@ def stack_pages(root: Path, service: str) -> tuple[str, ...]:
     return tuple(node.id for node in select_stack(graph, near=book_dir(root, service)).runbooks)
 
 
+def book_runbooks(root: Path, service: str) -> tuple[Runbook, ...]:
+    """The runbooks the service's stack comes up from, with the ports each names."""
+    return tuple(read_runbook(root, page) for page in stack_pages(root, service))
+
+
+def _own_runbook_problems(root: Path, service: str, problem: str) -> dict[str, tuple[PageProblem, ...]]:
+    folder = book_dir(root, service).relative_to(root).as_posix()
+    return {page: (PageProblem(page, f"{page}: {problem}"),) for page in stack_pages(root, service) if page.startswith(f"{folder}/")}
+
+
 def stack_down_failures(root: Path, service: str, exercised: ExerciseResult) -> dict[str, tuple[PageProblem, ...]]:
     """Each runbook page of the service's own book its stack came up from, with why it did not, or none when the run reached the app."""
     if not exercised.stack_down:
         return {}
-    folder = book_dir(root, service).relative_to(root).as_posix()
-    problem = "\n".join(line.removeprefix("problem: ") for line in exercised.lines if line.startswith("problem: "))
-    return {page: (PageProblem(page, f"{page}: {problem}"),) for page in stack_pages(root, service) if page.startswith(f"{folder}/")}
+    return _own_runbook_problems(root, service, "\n".join(line.removeprefix("problem: ") for line in exercised.lines if line.startswith("problem: ")))
+
+
+def unstarted_failures(root: Path, service: str, exercised: ExerciseResult) -> dict[str, tuple[PageProblem, ...]]:
+    """Each runbook page of the service's own book, with every local service the app called that no runbook starts."""
+    if not exercised.unstarted:
+        return {}
+    return _own_runbook_problems(root, service, "\n".join(exercised.unstarted))
+
+
+def with_unstarted(result: ExerciseResult, unstarted: Sequence[str]) -> ExerciseResult:
+    """The run's result failed by each local service the app called that no runbook starts, since a claim that reached one passes only on this machine."""
+    if not unstarted:
+        return result
+    return result.model_copy(update={"lines": (*(f"problem: {problem}" for problem in unstarted), *result.lines),
+                                     "passed": False, "unstarted": tuple(unstarted)})
 
 
 def bring_up(logger: logging.Logger, root: Path, service: str) -> StackReadiness:
@@ -165,7 +191,7 @@ def bring_up(logger: logging.Logger, root: Path, service: str) -> StackReadiness
     stack = ensure_stack(logger, repo_dir=str(root), near=str(book_dir(root, service)))
     return StackReadiness(
         up=stack.ready not in ("no", "none"), serving=stack.ready == "yes", notes=stack.notes,
-        owned=stack.owned_pgids, app_logs=stack.app_logs)
+        owned=stack.owned_pgids, app_logs=stack.app_logs, runbooks=book_runbooks(root, service))
 
 
 def release(logger: logging.Logger, stack: StackReadiness) -> None:
@@ -197,6 +223,9 @@ class _BetweenScenarios:
 def run_plan(root: Path, spec: Path, gaps: tuple[str, ...], stack: StackReadiness, only: Sequence[str] = ()) -> ExerciseResult:
     """Run the named compiled scenarios, every one when none is named, on a copy of the app when it serves nothing.
 
+    While they run, a watch records each loopback port the app's servers call that none of the stack's
+    runbooks names. The run fails on each, since what answered there was already running on this machine.
+
     The run stops at the first scenario after a server the stack's bring-up launched exited, since
     every later scenario would fail on the app's absence, and the result sends the runbook to repair.
 
@@ -211,12 +240,12 @@ def run_plan(root: Path, spec: Path, gaps: tuple[str, ...], stack: StackReadines
     """
     runner = run_scenarios if stack.serving else _run_in_copy
     between = _BetweenScenarios(stack.owned)
-    with tempfile.TemporaryDirectory(prefix="okf-lap-") as lap:
+    with CallWatch(stack.runbooks) as calls, tempfile.TemporaryDirectory(prefix="okf-lap-") as lap:
         result = _run_lap(root, spec, gaps, only, lambda names: runner(root, spec, names, Path(lap), between))
     if between.halt is not None:
         raise between.halt
     stopped = stack_stopped(stack.owned)
-    return stack_stopped_result(gaps, stopped, stack.app_logs) if stopped else result
+    return stack_stopped_result(gaps, stopped, stack.app_logs) if stopped else with_unstarted(result, calls.unstarted())
 
 
 def _run_lap(root: Path, spec: Path, gaps: tuple[str, ...], only: Sequence[str], run: Callable[[Sequence[str]], RunSummary]) -> ExerciseResult:

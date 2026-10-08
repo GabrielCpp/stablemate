@@ -9,7 +9,7 @@ from pathlib import Path
 
 from pydantic import BaseModel, ConfigDict
 
-from workhorse_workflows.okf_book.shared.book_run import StackReadiness, bring_up, release, stack_pages
+from workhorse_workflows.okf_book.shared.book_run import StackReadiness, book_runbooks, bring_up, release, stack_pages
 
 KEPT_NAME = "writer-stack.json"
 
@@ -61,12 +61,12 @@ class KeptStack:
         runbooks = runbooks_digest(root, service)
         kept = self._read()
         if kept is not None and kept.runbooks == runbooks and all(_group_alive(pgid) for pgid in kept.owned):
-            return StackReadiness(up=True, serving=True, notes="", app_logs=kept.app_logs)
+            return StackReadiness(up=True, serving=True, notes="", app_logs=kept.app_logs, runbooks=book_runbooks(root, service))
         self.release()
         stack = bring_up(self.logger, root, service)
         if stack.serving and stack.owned:
             _ = self.path.write_text(_Kept(runbooks=runbooks, owned=stack.owned, app_logs=stack.app_logs).model_dump_json(), encoding="utf-8")
-            return StackReadiness(up=True, serving=True, notes=stack.notes, app_logs=stack.app_logs)
+            return StackReadiness(up=True, serving=True, notes=stack.notes, app_logs=stack.app_logs, runbooks=stack.runbooks)
         return stack
 
     def release(self) -> None:

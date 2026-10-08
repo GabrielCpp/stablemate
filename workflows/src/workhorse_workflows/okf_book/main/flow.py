@@ -37,7 +37,7 @@ from workhorse_workflows.okf_book.shared.book_commits import (
     repaired_book_commit_subject,
 )
 from workhorse_workflows.okf_book.shared.book_flow import BookFlow
-from workhorse_workflows.okf_book.shared.book_run import ExerciseResult, stack_down_failures
+from workhorse_workflows.okf_book.shared.book_run import ExerciseResult, stack_down_failures, unstarted_failures
 from workhorse_workflows.okf_book.shared.citations import cites_changed_file
 from workhorse_workflows.okf_book.shared.entries import FEATURES_DIR
 from workhorse_workflows.okf_book.shared.page_check import PageProblem, page_problems
@@ -260,12 +260,16 @@ class OkfBook(BookFlow):
                        cause=signature.cause.value, pages=pages, rerun=rerun_command(self.records_dir, service, Phase.EXERCISE, pages))
 
     def _book_failures(self, index: int, exercised: ExerciseResult) -> RunFailures:
+        service = self.surfaces[index].service
+        failures = dict(unstarted_failures(self.root, service, exercised))
         if exercised.summary is None:
-            return {}
-        spec = spec_dir(self.records_dir) / self.surfaces[index].service
+            return failures
+        spec = spec_dir(self.records_dir) / service
         scenarios, _problems = plan_scenarios(self.root, spec)
         plan = spec / PLAN_NAME
-        return exercised.summary.failures_by_page(scenarios, plan.read_text(encoding="utf-8") if plan.is_file() else "")
+        for page, problems in exercised.summary.failures_by_page(scenarios, plan.read_text(encoding="utf-8") if plan.is_file() else "").items():
+            failures[page] = (*failures.get(page, ()), *problems)
+        return failures
 
     def map_run_failures(self, index: int, exercised: ExerciseResult, run_failures_repaired: bool = False) -> Continue[...]:
         """Map each failure of the run the owner can fix to the page that covers it, and hand the book back to its owner with the whole run, since a claim the run cannot exercise is a defect of the book. A run whose every failure is escalated has nothing for the owner, unless a group no side was found for has never been named: the owner names its side first, once per lap. A turn that did not lower the book's failed checks stops the laps, and the attendant is asked with their trend."""

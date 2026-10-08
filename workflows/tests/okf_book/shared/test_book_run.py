@@ -21,11 +21,13 @@ from workhorse_workflows.okf_book.shared.book_run import (
     stack_down_failures,
     stack_down_result,
     stack_pages,
+    unstarted_failures,
     with_app_logs,
 )
 from ostler.qa.attribution import Cause, Signature
 from ostler.qa.plan import PlanDocument
 from ostler.qa.verdict import Verdict
+from workhorse_workflows.okf_book.shared.local_calls import Runbook
 from workhorse_workflows.okf_book.shared.scenarios import FailedCheck, RunSummary, Scenario, ScenarioOutcome, plan_scenarios
 
 PREVIEW = (
@@ -283,6 +285,47 @@ def test_probes_that_pass_let_the_book_run_without_them(monkeypatch: pytest.Monk
 
     assert asked == [("probe-signed-in-editor",), ("docs-a-from-the-book",)]
     assert result.passed
+
+
+class _CalledAnApi:
+    def __init__(self, runbooks: tuple[Runbook, ...]) -> None:
+        self.runbooks = runbooks
+
+    def __enter__(self) -> _CalledAnApi:
+        return self
+
+    def __exit__(self, *_args: object) -> None:
+        return None
+
+    def unstarted(self) -> tuple[str, ...]:
+        return ("the app called localhost:8080",) if self.runbooks else ()
+
+
+def test_a_passing_run_whose_app_called_a_port_no_runbook_starts_fails_on_that_port(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _ = _probed(monkeypatch, None)
+    monkeypatch.setattr(book_run, "CallWatch", _CalledAnApi)
+
+    dev = StackReadiness(up=True, serving=True, notes="", runbooks=(Runbook("docs/features/web-app/ops/dev.md", frozenset({5173})),))
+
+    result = run_plan(tmp_path, tmp_path / "spec", (), dev)
+
+    assert (result.passed, result.unstarted, result.lines[0]) == (
+        False, ("the app called localhost:8080",), "problem: the app called localhost:8080")
+    assert run_plan(tmp_path, tmp_path / "spec", (), SERVING).passed
+
+
+def test_a_port_no_runbook_starts_is_a_problem_on_each_runbook_of_its_own_book(app: Callable[[str], Path]) -> None:
+    repo = app("globex")
+    called = ExerciseResult(lines=(), unstarted=("the app called localhost:8080", "the app called localhost:8081"))
+
+    failures = unstarted_failures(repo, "web-app", called)
+
+    assert {page: [problem.text for problem in problems] for page, problems in failures.items()} == {
+        WEB_STACK.as_posix(): [f"{WEB_STACK.as_posix()}: the app called localhost:8080\nthe app called localhost:8081"]
+    }
+    assert unstarted_failures(repo, "web-app", ExerciseResult(lines=())) == {}
 
 
 def test_a_probe_the_app_fails_leaves_the_book_to_run(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:

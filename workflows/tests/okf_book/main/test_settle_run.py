@@ -296,3 +296,23 @@ def test_a_gapped_check_counts_as_no_failure_of_its_lap(tmp_path: Path) -> None:
     _ = book.settle_run(index=0, run_failures_repaired=False, exercised=_escalated_run(GAPPED, CRASHED))
 
     assert read_laps(tmp_path) == (LapCounts(service="tally", failures={Cause.APP: 2}),)
+
+
+def test_a_run_whose_checks_pass_on_a_service_no_runbook_starts_goes_to_its_runbook_s_writer(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    book = _book(tmp_path)
+    runbook = "docs/features/tally/ops/tally-stack.md"
+    failures: dict[str, tuple[PageProblem, ...]] = {runbook: (PageProblem(runbook, f"{runbook}: the app called localhost:8080"),)}
+
+    def _runbook(_root: Path, _service: str, exercised: ExerciseResult) -> dict[str, tuple[PageProblem, ...]]:
+        return failures if exercised.unstarted else {}
+
+    monkeypatch.setattr(flow, "unstarted_failures", _runbook)
+    summary = RunSummary(status="passed", scenarios={"tally-add": ScenarioOutcome(status="passed")})
+    called = ExerciseResult(lines=("problem: the app called localhost:8080",), summary=summary, unstarted=("the app called localhost:8080",))
+
+    mapped = book.settle_run(index=0, run_failures_repaired=False, exercised=called)
+    sent = book.map_run_failures(index=0, exercised=called)
+
+    assert (mapped.state, sent.state, sent.params["run_failures"], read_blockers(tmp_path)) == ("map_run_failures", "copy_source", failures, ())
