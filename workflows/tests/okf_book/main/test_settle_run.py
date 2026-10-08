@@ -67,6 +67,17 @@ def test_an_absent_capability_is_parked_for_a_person_and_never_reaches_the_write
     assert book.map_run_failures(index=0, exercised=exercised).state == "report"
 
 
+def test_a_blocker_on_the_side_the_lead_named_says_which_lap_the_lead_read(tmp_path: Path) -> None:
+    book = _book(tmp_path)
+    record_findings(tmp_path, (LeadFinding(service="tally", lap=1, signature=UNREACHABLE.text(), count=28, side=Side.ENVIRONMENT,
+                                           evidence="nothing listened on 8080"),))
+
+    _ = book.settle_run(index=0, run_failures_repaired=True, exercised=_escalated_run(replace(UNREACHABLE, count=1)))
+
+    [blocker] = read_blockers(tmp_path)
+    assert blocker.reason.endswith("\nthe lead read the whole of lap 1, when 28 checks failed this way: nothing listened on 8080")
+
+
 def test_a_signature_the_next_run_no_longer_shows_is_forgotten(tmp_path: Path) -> None:
     book = _book(tmp_path)
     _ = book.settle_run(index=0, run_failures_repaired=False, exercised=_escalated_run(UNREACHABLE, CRASHED))

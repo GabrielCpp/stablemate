@@ -183,7 +183,7 @@ def run_escalations(exercised: ExerciseResult) -> tuple[Escalation, ...]:
 
 
 def led_escalations(exercised: ExerciseResult, led: ExerciseResult, findings: Iterable[LeadFinding]) -> tuple[Escalation, ...]:
-    """Each signature of *led*, the run as the lead attributed it, that another party must fix. One the lead named is on the side it named, with what it read."""
+    """Each signature of *led*, the run as the lead attributed it, that another party must fix. One the lead named is on the side it named, with what it read and on which lap, since a later lap's group of the same signature may fail for another reason."""
     if exercised.summary is None or led.summary is None:
         return ()
     named = {finding.signature: finding for finding in findings}
@@ -195,7 +195,8 @@ def led_escalations(exercised: ExerciseResult, led: ExerciseResult, findings: It
         if finding is None or finding.side is Side.BOOK:
             escalations.append((signature, SIDE_BY_ESCALATED_CAUSE[signature.cause], escalation_reason(signature)))
         else:
-            escalations.append((signature, finding.side, f"{escalation_reason(signature)}\nthe lead read the whole lap: {finding.evidence}"))
+            escalations.append((signature, finding.side, f"{escalation_reason(signature)}\nthe lead read the whole of lap {finding.lap}, "
+                                + f"when {finding.count} checks failed this way: {finding.evidence}"))
     return tuple(escalations)
 
 
