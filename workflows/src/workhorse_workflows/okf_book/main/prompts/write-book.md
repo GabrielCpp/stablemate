@@ -66,6 +66,22 @@ gives relative to the repository starts there.
   fixture that edits a seeded account, record or setting breaks whoever uses it next, and
   makes your own scenarios pass or fail by the order they ran in. When a scenario needs a role,
   sign in as a seeded account that already holds it, or create a new account that does.
+{% if kind not in ("cli", "http") %}
+- A journey does what the user came to do, and proves it took. A flow walks the act that
+  changes something, such as a save, a send or a delete, and its `end:` checks the changed
+  value where the user meets it next: on another screen, or on the same screen after a reload.
+  A toast or a closed dialog shows only that the app answered. A check that reads the value
+  back is the one that fails when the change was lost.
+- A flow that changes data stands on data it creates. Its `fixture:` names a fixture with
+  `lifetime: scenario` that creates what the walk changes, the way the app's own api or seed
+  creates it: a new account with a fresh email, as the skill's fixture reference shows, and the
+  records that account owns. That fixture signs the browser in as the new account. Each lap
+  then starts from fresh data, the walk may change or delete what it created, and no seeded
+  record moves. A behaviour is never left unchecked because it changes seeded data, cannot
+  repeat on one account, or needs a record the seed lacks. Those are the cases such a fixture
+  is for. Only an act that reaches a party off this stack, such as a real payment or an email
+  to a real inbox, stays unchecked, and its page names that party.
+{% endif %}
 - Every {% if kind == "cli" %}command{% elif kind == "http" %}endpoint{% else %}screen{% endif %} sits on a journey a user takes. Write each journey as a `flow` page under
   `flows/`, as the skill's flow reference says, with its `start:`, its `steps:`, its `end:` and
   its `fixture:`, and link it from a page the entries page reaches. The check names every
