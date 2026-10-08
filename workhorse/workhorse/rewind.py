@@ -11,7 +11,7 @@ from typing import Any, Final
 
 from pydantic import ValidationError
 
-from workhorse.artifacts import ArtifactWriter
+from workhorse.artifacts import ArtifactWriter, flow_finished
 from workhorse.pyflow.driver import coerce_params
 from workhorse.pyflow.errors import UnknownStateError, WorkflowDefinitionError, WorkflowFailed
 from workhorse.pyflow.registry import Registry
@@ -33,6 +33,7 @@ class Rewound:
     params: dict[str, Any]
     dropped: tuple[str, ...]
     backup: Path
+    abandoned: tuple[str, ...] = ()
 
 
 def rewind(
@@ -108,6 +109,7 @@ def rewind(
     tmp = path.with_name(path.name + ".tmp")
     tmp.write_text(rewritten.model_dump_json(indent=2))
     tmp.replace(path)
+    abandoned = _abandon_sub_flows(run_dir, backup.name)
 
     event = NodeEvent.model_validate({
         "ts": stamp.isoformat(),
@@ -118,11 +120,23 @@ def rewind(
         "from_waiting_on": checkpoint.waiting_on,
         "dropped": list(dropped),
         "backup": backup.name,
+        "abandoned": list(abandoned),
     })
     with (run_dir / ArtifactWriter.EVENTS_FILE).open("a") as events:
         events.write(event.model_dump_json() + "\n")
 
-    return Rewound(checkpoint.state, spec.name, rewritten.params, dropped, backup)
+    return Rewound(checkpoint.state, spec.name, rewritten.params, dropped, backup, abandoned)
+
+
+def _abandon_sub_flows(run_dir: Path, backup_name: str) -> tuple[str, ...]:
+    """Set aside the checkpoint of each sub-flow the rewound visit left unfinished, so the state that hands off to it next enters it fresh."""
+    abandoned: list[str] = []
+    for checkpoint in sorted(run_dir.glob(f"*/_flow/{ArtifactWriter.CHECKPOINT_FILE}")):
+        if flow_finished(checkpoint.parent):
+            continue
+        checkpoint.replace(checkpoint.with_name(backup_name))
+        abandoned.append(checkpoint.parent.parent.name)
+    return tuple(abandoned)
 
 
 __all__ = ["REWIND_PHASE", "RewindError", "Rewound", "rewind"]

@@ -204,9 +204,13 @@ workhorse-coder control --run <id> resume [CLI]                   # relaunch det
   file, relative to the run dir) overlay them. `waiting_on` is cleared: the rewound state
   never asked the gate the old one was parked on. The previous checkpoint is copied to
   `checkpoint.rewound-<UTC stamp>.json` and `events.jsonl` gets a `phase: "rewind"` line
-  naming `from_state`, `from_waiting_on`, `dropped` and `backup`, so the jump in the run's
-  history is explained rather than looking like a driver bug. A rewind spends no gas, no
-  transition and no agent turn.
+  naming `from_state`, `from_waiting_on`, `dropped`, `backup` and `abandoned`, so the jump
+  in the run's history is explained rather than looking like a driver bug. A sub-flow the
+  stopped visit left unfinished (`<run>/<node>/_flow` with no terminal in its `run.json`)
+  is `abandoned`: its checkpoint moves aside under the same backup name, so the next state
+  that hands off to it enters it fresh. Without that, a resume whose handoff arrives with
+  the same inputs would pick up the old visit's sub-flow where it stopped, and measure
+  what that visit built. A rewind spends no gas, no transition and no agent turn.
 - **`resume [CLI]`** — relaunches the run from `launch.json`'s recorded resume line, in
   its recorded cwd, detached into its own session with stdout and stderr appended to
   `<run_dir>/resume.log`, then waits (`--timeout`, default 120s) until the new process

@@ -123,6 +123,8 @@ def run_rewind(
     print(f"  params:  {json.dumps(moved.params, sort_keys=True)}")
     if moved.dropped:
         print(f"  dropped: {', '.join(moved.dropped)}")
+    if moved.abandoned:
+        print(f"  abandoned: {', '.join(moved.abandoned)}, entered fresh next time")
     print(f"  backup:  {moved.backup}")
     print("  resume:  control resume [CLI]")
 

@@ -114,6 +114,44 @@ def test_rewind_moves_the_checkpoint_carries_params_by_name_and_records_it(capsy
         assert "review -> build" in out and "dropped: verdict" in out, out
 
 
+def _sub_flow(run_dir: Path, node: str, *, terminal: str | None) -> Path:
+    sub_dir = run_dir / node / "_flow"
+    sub_dir.mkdir(parents=True)
+    (sub_dir / "run.json").write_text(
+        RunRecord(
+            workflow="Child",
+            run_id=node,
+            started_at="2026-01-01T00:00:00+00:00",
+            terminal=terminal,
+            pid=_dead_pid(),
+        ).model_dump_json()
+    )
+    (sub_dir / ArtifactWriter.CHECKPOINT_FILE).write_text(
+        PyflowCheckpoint(state="measure", flow="Child", workflow="Child", seq=3).model_dump_json()
+    )
+    (sub_dir / "plan.py").write_text("stale")
+    return sub_dir
+
+
+def test_rewind_sets_aside_an_unfinished_sub_flow_so_its_next_entry_starts_fresh(capsys) -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        runs = Path(tmp) / "runs"
+        run_dir = _run_dir(runs)
+        interrupted = _sub_flow(run_dir, "build", terminal=None)
+        finished = _sub_flow(run_dir, "check", terminal="done")
+
+        _control(runs, "rewind", "--to", "review")
+
+        assert not (interrupted / ArtifactWriter.CHECKPOINT_FILE).exists()
+        assert len(list(interrupted.glob("checkpoint.rewound-*.json"))) == 1
+        assert (finished / ArtifactWriter.CHECKPOINT_FILE).exists()
+        entered = ArtifactWriter.resume(run_dir).subscope("build", "Child", resume=True)
+        assert not (entered.run_dir / "plan.py").exists()
+        event = json.loads((run_dir / ArtifactWriter.EVENTS_FILE).read_text().splitlines()[-1])
+        assert event["abandoned"] == ["build"]
+        assert "abandoned: build" in capsys.readouterr().out
+
+
 def test_a_param_can_come_from_a_turn_output_already_on_disk() -> None:
     with tempfile.TemporaryDirectory() as tmp:
         runs = Path(tmp) / "runs"
