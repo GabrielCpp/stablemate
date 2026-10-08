@@ -23,6 +23,22 @@ def test_a_command_prints_its_first_lines_and_counts_the_rest() -> None:
     assert printed_lines(lines[:3]) == tuple(lines[:3])
 
 
+def test_hidden_lines_that_only_continue_the_last_item_hide_no_other_item() -> None:
+    lines = ["scenario a: failed", *(f"    log line {n}" for n in range(MAX_PRINTED_LINES + 5))]
+
+    printed = printed_lines(lines)
+
+    assert printed[-1] == "… and 6 more indented lines of the item above, and no other item"
+
+
+def test_hidden_lines_count_the_items_they_start() -> None:
+    lines = [*(f"scenario {n}: failed" for n in range(MAX_PRINTED_LINES)), "  check x failed", "scenario y: failed", "  check y failed"]
+
+    printed = printed_lines(lines)
+
+    assert printed[-1] == "… and 3 more lines, 1 of them starting another item: fix these, then run it again"
+
+
 def test_a_command_prints_each_line_whole_within_the_characters_of_one_run() -> None:
     lines = ["x" * (PRINTED_LINE_CHARS * 3)] * MAX_PRINTED_LINES
 

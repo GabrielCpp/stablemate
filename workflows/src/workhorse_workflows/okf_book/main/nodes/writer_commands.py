@@ -135,11 +135,12 @@ def _clipped(line: str, chars: int) -> str:
 
 
 def printed_lines(lines: Sequence[str], limit: int = MAX_PRINTED_LINES) -> tuple[str, ...]:
-    """The lines a command prints into the writer's turn, then how many more wait behind them.
+    """The lines a command prints into the writer's turn, then how many more wait behind them and how many of those start an item of their own.
 
     A run prints at most `limit` lines and at most `limit` times `PRINTED_LINE_CHARS` characters.
     Each line is printed whole, since a problem names its remedy and its claims last. Only a
-    first line longer than the whole run's characters is clipped.
+    first line longer than the whole run's characters is clipped. An indented line continues the
+    item above it, so hidden lines that are all indented hide no failure.
     """
     chars_left = limit * PRINTED_LINE_CHARS
     shown: list[str] = []
@@ -150,7 +151,11 @@ def printed_lines(lines: Sequence[str], limit: int = MAX_PRINTED_LINES) -> tuple
         chars_left -= len(shown[-1])
     if len(shown) == len(lines):
         return tuple(shown)
-    return (*shown, f"… and {len(lines) - len(shown)} more: fix these, then run it again")
+    hidden = lines[len(shown):]
+    items = sum(1 for line in hidden if not line[:1].isspace())
+    if not items:
+        return (*shown, f"… and {len(hidden)} more indented lines of the item above, and no other item")
+    return (*shown, f"… and {len(hidden)} more lines, {items} of them starting another item: fix these, then run it again")
 
 
 def run_quietly[T](work: Callable[[], T]) -> tuple[T, str]:
