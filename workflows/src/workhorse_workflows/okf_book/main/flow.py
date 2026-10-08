@@ -63,6 +63,16 @@ def _escalated_signatures(exercised: ExerciseResult) -> tuple[Signature, ...]:
     return tuple(signature for signature in signatures if signature.cause in SIDE_BY_ESCALATED_CAUSE)
 
 
+def _unplaced(exercised: ExerciseResult, findings: tuple[LeadFinding, ...]) -> tuple[Signature, ...]:
+    """The groups of the run its attribution could not place on a side and the owner has never named."""
+    signatures = exercised.summary.signatures if exercised.summary is not None else ()
+    named = {finding.signature for finding in findings}
+    return tuple(
+        signature for signature in signatures
+        if signature.cause is Cause.UNATTRIBUTED and not signature.gap and signature.text() not in named
+    )
+
+
 def _stall(exercised: ExerciseResult, laps: tuple[LapCounts, ...]) -> str:
     """Why the lap after a repair did not help, or nothing when it lowered the book's failed checks."""
     if exercised.summary is None:
@@ -258,11 +268,11 @@ class OkfBook(BookFlow):
         return exercised.summary.failures_by_page(scenarios, plan.read_text(encoding="utf-8") if plan.is_file() else "")
 
     def map_run_failures(self, index: int, exercised: ExerciseResult, run_failures_repaired: bool = False) -> Continue[...]:
-        """Map each failure of the run the owner can fix to the page that covers it, and hand the book back to its owner with the whole run, since a claim the run cannot exercise is a defect of the book. A run whose every failure is escalated has nothing for the owner. A turn that did not lower the book's failed checks stops the laps, and the attendant is asked with their trend."""
+        """Map each failure of the run the owner can fix to the page that covers it, and hand the book back to its owner with the whole run, since a claim the run cannot exercise is a defect of the book. A run whose every failure is escalated has nothing for the owner, unless a group no side was found for has never been named: the owner names its side first, once per lap. A turn that did not lower the book's failed checks stops the laps, and the attendant is asked with their trend."""
         service = self.surfaces[index].service
         led, findings = self._owned(service, exercised)
         failures = with_instructions(self._book_failures(index, led), findings)
-        if not failures and _escalated_signatures(led):
+        if not failures and _escalated_signatures(led) and (run_failures_repaired or not _unplaced(exercised, findings)):
             return self._next_surface(exercised.passed, index)
         if not run_failures_repaired:
             return Continue(failures, self.copy_source, index=index, run_failures=failures, exercised=exercised).because(

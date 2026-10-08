@@ -10,6 +10,7 @@ from okf_book.main.tally import TALLY
 from ostler.qa.attribution import Cause, Signature
 
 from workhorse_workflows.okf_book.main import flow
+from workhorse_workflows.okf_book.main.nodes.lead_findings import LeadFinding, record_findings
 from workhorse_workflows.okf_book.main.nodes.progress_ledger import PROGRESS_NAME, UNRECORDED_STOP, LapCounts, read_laps, stalled
 from workhorse_workflows.okf_book.shared.blockers import Blocker, Phase, Side, read_blockers
 from workhorse_workflows.okf_book.shared.book_run import ExerciseResult, stack_down_result
@@ -20,6 +21,7 @@ from workhorse_workflows.okf_book.workflow import OkfBook
 UNREACHABLE = Signature(Cause.ENVIRONMENT, "", "could not connect", "GET /entries/…", 4, "lists: expected [200], observed null")
 CRASHED = Signature(Cause.APP, "", "500", "POST /entries/…", 2, "adds: expected [201], observed 500")
 MISREAD = Signature(Cause.BOOK, "", "422", "POST /entries/…", 1, "adds: expected [201], observed 422")
+STRANDED = Signature(Cause.UNATTRIBUTED, "", "", "", 1, "signs out: expected /login, observed /editor")
 GAPPED = Signature(Cause.ENVIRONMENT, "docs/fixtures/payment-provider.md", "", "", 3, "charges: probe exited 1", "payment provider")
 
 
@@ -78,6 +80,32 @@ def test_a_run_whose_every_failure_is_escalated_skips_the_repair(tmp_path: Path)
     book = _book(tmp_path)
 
     step = book.map_run_failures(index=0, exercised=_escalated_run(CRASHED))
+
+    assert step.state == "report"
+
+
+def test_a_run_whose_only_failures_no_side_was_found_for_goes_to_the_owner_to_name_their_side(tmp_path: Path) -> None:
+    book = _book(tmp_path)
+    exercised = _escalated_run(STRANDED, CRASHED)
+
+    step = book.map_run_failures(index=0, exercised=exercised)
+
+    assert (step.state, step.params["run_failures"], step.params["exercised"]) == ("copy_source", {}, exercised)
+
+
+def test_a_group_no_side_was_found_for_goes_to_report_once_the_owner_named_it(tmp_path: Path) -> None:
+    book = _book(tmp_path)
+    record_findings(tmp_path, (LeadFinding(service="tally", lap=1, signature=STRANDED.text(), count=1, side=Side.APP, evidence="redirect"),))
+
+    step = book.map_run_failures(index=0, exercised=_escalated_run(STRANDED))
+
+    assert step.state == "report"
+
+
+def test_a_group_no_side_was_found_for_goes_to_report_after_the_owner_s_turn(tmp_path: Path) -> None:
+    book = _book(tmp_path)
+
+    step = book.map_run_failures(index=0, exercised=_escalated_run(STRANDED), run_failures_repaired=True)
 
     assert step.state == "report"
 
