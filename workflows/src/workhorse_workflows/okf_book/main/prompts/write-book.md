@@ -62,6 +62,10 @@ gives relative to the repository starts there.
   under the `does:` of the interaction that performs the act, or a fixture arranges the state
   first. A check on such an element at the screen level fails on the bare screen.
 {% endif %}
+- A fixture changes only what it creates. People and other books share this stack, so a
+  fixture that edits a seeded account, record or setting breaks whoever uses it next, and
+  makes your own scenarios pass or fail by the order they ran in. When a scenario needs a role,
+  sign in as a seeded account that already holds it, or create a new account that does.
 - Every {% if kind == "cli" %}command{% elif kind == "http" %}endpoint{% else %}screen{% endif %} sits on a journey a user takes. Write each journey as a `flow` page under
   `flows/`, as the skill's flow reference says, with its `start:`, its `steps:`, its `end:` and
   its `fixture:`, and link it from a page the entries page reaches. The check names every
