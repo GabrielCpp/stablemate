@@ -276,7 +276,8 @@ promised a later step would be silently unbound at run time instead.
 Two reference forms read those values elsewhere in the book: `@<fixture-id>.<key>` names a value a
 fixture `provides:`, and `$<captured-name>` names a value some earlier `capture:` produced. Both
 are recognized wherever a `fixture:` bullet's args, a `needs:` binding, a route path template, a
-request-body value, a request-header value, or a `verify:` call can appear — parsed by one shared parser
+request-body value, a request-header value, the value an `arrange:` or `trigger:` act types, or a
+`verify:` call can appear — parsed by one shared parser
 (`ostler.qa.references`) rather than reimplemented per call site, and resolved statically (no
 execution) by `compile_plan`. An `@<fixture>.<key>` naming a key the fixture never declares in
 `provides:` is `fixture-undeclared-provides`; naming a key it declares but has not arranged yet in

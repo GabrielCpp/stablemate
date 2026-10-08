@@ -192,7 +192,8 @@ fixture's `provides:` is the equivalent idea for what the arrangement itself lea
   the same fixture.
 - `needs:` links to another `fixture` node's file.
 - `@<fixture>.<key>` and `$<captured-name>` are the two reference forms a route path template,
-  a request-body value, a `fixture:` bullet's args, or a consuming node's `verify:` call may use — parsed by
+  a request-body value, a `fixture:` bullet's args, the value an `arrange:` or `trigger:` act types, or a
+  consuming node's `verify:` call may use — parsed by
   `ostler.qa.references` and resolved statically by `compile_plan` (never executed in this pass).
 
 ## Minimal example

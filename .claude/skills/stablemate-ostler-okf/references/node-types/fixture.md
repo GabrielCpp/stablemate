@@ -108,6 +108,8 @@ key. The harness then gaps every claim that needs the fixture. A gapped claim re
 spaces. A writer never sees a gapped claim, because only a person can supply the capability.
 The claims pass on a stack that has it. Name the fixture after the capability, so
 `payment-provider.md` gaps its claims as `gapped: payment provider absent`.
+A probe asks about a service off this machine. A service on `localhost` is one the runbook
+starts, so `ostler doctor` refuses a probe that names it (`fixture-probe-local`).
 
 A step's `run:` is a command bash runs from the repository root, with the fixture's args and
 secrets in its environment. Each fact the fixture provides is in the environment of every step
@@ -198,7 +200,8 @@ fixture's `provides:` is the equivalent idea for what the arrangement itself lea
   the same fixture.
 - `needs:` links to another `fixture` node's file.
 - `@<fixture>.<key>` and `$<captured-name>` are the two reference forms a route path template,
-  a request-body value, a `fixture:` bullet's args, or a consuming node's `verify:` call may use — parsed by
+  a request-body value, a `fixture:` bullet's args, the value an `arrange:` or `trigger:` act types, or a
+  consuming node's `verify:` call may use — parsed by
   `ostler.qa.references` and resolved statically by `compile_plan` (never executed in this pass).
 
 ## Minimal example
