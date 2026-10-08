@@ -26,7 +26,6 @@ PROC = Path("/proc")
 POLL_S = 0.002
 RESCAN_S = 2.0
 TRIES = 3
-_ESTABLISHED_OR_OPENING = frozenset({"01", "02"})
 _LISTEN = "0A"
 _SOCKET = re.compile(r"^socket:\[(\d+)\]$")
 _PORT = re.compile(r"(?::|\bPORT=|--port[= ])(\d{2,5})\b")
@@ -171,7 +170,7 @@ class Watch:
                 self._pending[inode] = (pid, tries - 1)
                 continue
             del self._pending[inode]
-            if (row is not None and row.state in _ESTABLISHED_OR_OPENING and row.remote_loopback
+            if (row is not None and row.state != _LISTEN and row.remote_port and row.remote_loopback
                     and row.local_port not in self._served and row.remote_port not in self._served | self.named):
                 self.calls.setdefault(row.remote_port, set()).add(self.machine.command(pid))
 

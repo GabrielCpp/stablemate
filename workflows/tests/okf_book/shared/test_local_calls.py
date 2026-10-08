@@ -18,6 +18,7 @@ APP = 10
 OTHER = 20
 LISTENER = 1
 ESTABLISHED = "01"
+CLOSE_WAIT = "08"
 LISTEN = "0A"
 
 
@@ -58,6 +59,15 @@ def test_the_app_calling_a_loopback_port_no_runbook_names_is_a_call() -> None:
     watch.poll()
 
     assert watch.calls == {8080: {f"process {APP}"}}
+
+
+def test_a_call_the_service_already_hung_up_on_is_a_call() -> None:
+    machine, watch = _serving()
+    machine.opens(APP, 50, _call(8081, state=CLOSE_WAIT))
+
+    watch.poll()
+
+    assert watch.calls == {8081: {f"process {APP}"}}
 
 
 def test_a_call_to_a_named_port_a_served_port_or_another_host_is_no_call() -> None:
