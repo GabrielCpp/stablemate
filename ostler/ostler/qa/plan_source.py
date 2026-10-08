@@ -60,6 +60,13 @@ def python_literal(value: object) -> str:
     return json.dumps(value)
 
 
+def typed_literal(value: object) -> str:
+    """A value a step hands the page, resolved by `qa.resolve` when it holds a reference."""
+    if isinstance(value, str) and references.find_references(value):
+        return f"qa.resolve({python_literal(value)})"
+    return python_literal(value)
+
+
 def call_kwargs(args: Mapping[str, object]) -> str:
     """Render a check's declared arguments verbatim, wrapping only literals holding a reference."""
     parts = []

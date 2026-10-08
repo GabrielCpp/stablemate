@@ -2377,6 +2377,7 @@ def _keyed_trigger(trigger: str) -> tuple[str | None, list[Gap]]:
 @pytest.mark.parametrize(("trigger", "performed"), [
     ('`press(key="Escape")`', '.press("Escape")'),
     ('fill(value="Q3 policy")', '.fill("Q3 policy")'),
+    ('fill(value="$policy-title")', '.fill(qa.resolve("$policy-title"))'),
     ('press("Enter")', '.press("Enter")'),
 ])
 def test_a_keyed_trigger_sends_its_key_or_text_to_the_on_control(trigger: str, performed: str) -> None:
@@ -2681,6 +2682,30 @@ def test_an_arranged_interaction_arm_performs_its_acts_and_compiles_its_assertio
     assert "`name` non-empty and `quantity` a non-negative number" in source
     assert _gap_kinds(gaps, refuse_oid) == ["unarranged-interaction-precondition"]
     assert refuse_oid not in _covers(source)
+
+
+def test_an_arranged_act_types_the_value_a_fixture_provides() -> None:
+    button = f"{_SCREEN}#submit-widget-button"
+    submit_oid = "okf:new-widget:submit-new-widget:does:1"
+    context = _navigation_context(
+        _page_obligation("okf:new-widget:submit-widget-button:visible:1", button,
+                          locators={"role": ["button"], "name": ["Add widget"]},
+                          checks=[_visible("button:Add widget")]),
+        _page_obligation(submit_oid, f"{_SCREEN}#submit-new-widget",
+                          locators={"on": ["[submit-widget-button](#submit-widget-button)"],
+                                    "trigger": ["click"],
+                                    "does": ["the browser navigates to widget-list"]},
+                          acts=[_act("fill", f"{_SCREEN}#name-field",
+                                     {"selector": ["`input[name=\"name\"]`"]},
+                                     locator="#name-field", value="Copy of @seeded-widget.name")],
+                          checks=[_located("#saved-banner", f"{_SCREEN}#saved-banner",
+                                            {"selector": ["`#saved-banner`"]})]),
+        navigation=_arrival_navigation(),
+    )
+    source, _ = compile_plan_gaps(context, story="demo-story")
+    assert source is not None
+    ast.parse(source)
+    assert '.fill(qa.resolve("Copy of @seeded-widget.name"))' in source
 
 
 def test_an_act_whose_subject_has_no_locator_withholds_the_whole_arrangement() -> None:

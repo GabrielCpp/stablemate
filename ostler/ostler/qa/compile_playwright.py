@@ -37,6 +37,7 @@ from ostler.qa.plan_source import decline_captures
 from ostler.qa.plan_source import file_refusal
 from ostler.qa.plan_source import out_of_band
 from ostler.qa.plan_source import python_literal
+from ostler.qa.plan_source import typed_literal
 from ostler import selector_forms
 
 
@@ -140,7 +141,7 @@ def perform_acts(
             lines.append(f"    qa.upload({expr}, file={python_literal(row.text_arg('file'))})  # arrange: {row.call}")
             continue
         method, value_param = _ACT_METHODS[spec.name]
-        argument = "" if value_param is None else python_literal(row.args.get(value_param, ""))
+        argument = "" if value_param is None else typed_literal(row.args.get(value_param, ""))
         lines.append(f"    {expr}.{method}({argument})  # arrange: {row.call}")
     return PerformedActs(lines)
 
@@ -194,7 +195,7 @@ def trigger_performance(raw: str, on_expr: str) -> str | ScenarioRefusal:
                                "is the control it acts on")
     comment = f"  # trigger: {trailing_comment(raw)}"
     if name in ("paste", "drop", "upload"):
-        keywords = "".join(f", {key}={python_literal(value)}" for key, value in arguments.items())
+        keywords = "".join(f", {key}={typed_literal(value)}" for key, value in arguments.items())
         return f"    qa.{name}({on_expr}{keywords}){comment}"
     argument = arguments[params[0]]
     if name == "press" and any(ch.isspace() for ch in argument):
@@ -202,7 +203,7 @@ def trigger_performance(raw: str, on_expr: str) -> str | ScenarioRefusal:
                                f"trigger `press` names key {argument!r}, which contains whitespace "
                                "and so is not a Playwright key")
     method, _ = _ACT_METHODS[name]
-    return f"    {on_expr}.{method}({python_literal(argument)}){comment}"
+    return f"    {on_expr}.{method}({typed_literal(argument)}){comment}"
 
 
 def walk_hops(
