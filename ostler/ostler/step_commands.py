@@ -13,6 +13,8 @@ _STEP_COMMAND_KEYS: tuple[str, ...] = ("run", "health")
 
 _BACKGROUNDED = re.compile(r"(?<![&|])&\s*$")
 
+_THIS_MACHINE = re.compile(r"\b(?:localhost|127\.0\.0\.1|0\.0\.0\.0)\b|\[::1\]")
+
 
 def check_step_command_bullets(step: UINode, rel: str, f: list[Finding]) -> None:
     """A `run:`/`health:` bullet is shelled, never parsed — a check expression there is wrong."""
@@ -114,3 +116,18 @@ def check_fixture_step_serves(node: UINode, step: UINode, rel: str, f: list[Find
             f"`lifetime: scenario` so each scenario starts its own",
             path=rel, line=step.line, ref=refs_mod.bullet_ref(step.id, "kind"),
             suggestion="- lifetime: scenario"))
+
+
+def check_fixture_probe_remote(step: UINode, rel: str, f: list[Finding]) -> None:
+    """A `probe` step asks about a service outside the machine, because a service on the machine is the runbook's to start."""
+    run = runbook_mod.bullet_value(step.meta, "run")
+    if runbook_mod.bullet_value(step.meta, "kind") != "probe" or not _THIS_MACHINE.search(run):
+        return
+    f.append(Finding(
+        "error", "fixture-probe-local",
+        f"{step.id}: `run:` probes a service on this machine. A probe gaps its claims when an outside "
+        f"service only a person can supply is absent, such as a payment provider with no key. A "
+        f"service on this machine is one the runbook starts, and whatever answers there now may be "
+        f"someone else's. Start it in the runbook on a free port, as another book's runbook may "
+        f"already do, point the app at it, and drop this probe",
+        path=rel, line=step.line, ref=refs_mod.bullet_ref(step.id, "kind")))

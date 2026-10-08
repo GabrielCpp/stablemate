@@ -559,3 +559,17 @@ def test_a_serve_step_in_a_fixture_other_scenarios_reuse_is_refused(repo: Path) 
           _served_fixture(kind="serve", run="python3 tools/backend.py", lifetime=""))
     found = _findings(repo, "fixture-serve-lifetime")
     assert [(f.severity, f.suggestion) for f in found] == [("error", "- lifetime: scenario")]
+
+
+def test_a_probe_on_this_machine_is_refused(repo: Path) -> None:
+    _stack(repo)
+    write(repo / "docs/features/acme/fixtures/backend.md",
+          _served_fixture(kind="probe", run="curl -s --max-time 5 -o /dev/null http://localhost:8080/"))
+    assert [f.severity for f in _findings(repo, "fixture-probe-local")] == ["error"]
+
+
+def test_a_probe_on_an_outside_service_is_clean(repo: Path) -> None:
+    _stack(repo)
+    write(repo / "docs/features/acme/fixtures/payment-provider.md",
+          _served_fixture(kind="probe", run='test -n "$PAYMENT_KEY" && curl -sf https://api.example.com/ping'))
+    assert _findings(repo, "fixture-probe-local") == []
