@@ -179,3 +179,30 @@ def test_a_gap_another_node_owns_is_one_problem_on_the_owner_page_and_none_on_th
             code="unreachable-screen",
         )
     ]
+
+
+def test_a_section_a_page_heads_as_not_covered_is_a_problem_naming_its_behaviours(app: Callable[[str], Path]) -> None:
+    repo = app("tally-cli")
+    flow = repo / FLOW
+    before = flow.read_text(encoding="utf-8").rstrip("\n")
+    _ = flow.write_text(
+        before + "\n\n```markdown\n## Not covered\n- an example\n```\n\n## Not covered by a check yet\n\n"
+        + "- Importing a second file. It changes the seeded ledger.\n- Exporting to a shared folder.\n  It needs a folder.\n\n"
+        + "## See also\n\n- [tally](../tally.md)\n",
+        encoding="utf-8",
+    )
+    line = before.count("\n") + 8
+
+    assert [problem for problem in book_problems(repo, "tally") if "no check covers" in problem] == [
+        f"{FLOW.as_posix()}:{line}: the section `Not covered by a check yet` lists 2 behaviours no check covers. A fixture "
+        + "with `lifetime: scenario` creates the account and the records a journey changes, so a flow on that fixture walks "
+        + "each one and reads the change back. Walk each so, and delete the section. An act that reaches a party off this "
+        + "stack, such as a real payment or an email to a real inbox, is stated in the prose of the node it belongs to, "
+        + "naming that party. Moving a behaviour under another heading does not cover it."
+    ]
+
+
+def test_a_book_with_no_section_headed_as_not_covered_has_no_such_problem(app: Callable[[str], Path]) -> None:
+    repo = app("tally-cli")
+
+    assert not [problem for problem in book_problems(repo, "tally") if "no check covers" in problem]

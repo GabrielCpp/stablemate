@@ -11,9 +11,11 @@ so it is a problem on the entries page. A binary the repository opts in as no QA
 opt in, so it is a blocker on the environment and no problem of the page. A claim observed out of band is the book's: no run observes it, so the writer
 restates it as what a caller sees, or drops it. Each folder of the surface's source holding a product file no page cites
 is a problem on the entries page, since a book that leaves a file uncited does not cover what that file does.
+A section a page heads as not covered or not checked is a problem on that page: it states behaviour no run exercises.
 """
 from __future__ import annotations
 
+import re
 from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
@@ -41,6 +43,10 @@ REACH_CODES = frozenset({"unreachable-node"})
 CHARGED_WARNINGS = frozenset({"unknown-bullet"})
 JOURNEY_TYPES = frozenset({"command", "endpoint", "screen"})
 WALK_BULLETS = frozenset({"start", "steps", "end"})
+UNCOVERED_CODE = "uncovered-behaviour"
+_HEADING = re.compile(r"^(#{1,6})\s+(.*?)\s*$")
+_UNCOVERED_HEADING = re.compile(r"(not covered|not checked|unchecked|uncovered)\b", re.IGNORECASE)
+_ITEM = re.compile(r"^(?:[-*+]|\d+[.)])\s")
 WRITER_FIXES = {
     "needs-out-of-band-observation": (
         "No run observes this. State what a caller of the surface sees instead: a status, a body "
@@ -305,8 +311,49 @@ def _uncited_problems(entries: str, uncited: dict[str, tuple[str, ...]]) -> list
     ]
 
 
+def _uncovered_sections(text: str) -> list[tuple[int, str, int]]:
+    sections: list[tuple[int, str, int]] = []
+    open_level = 0
+    fenced = False
+    for number, line in enumerate(text.splitlines(), start=1):
+        if line.lstrip().startswith(("```", "~~~")):
+            fenced = not fenced
+            continue
+        heading = None if fenced else _HEADING.match(line)
+        if heading:
+            level = len(heading.group(1))
+            if open_level and level <= open_level:
+                open_level = 0
+            if _UNCOVERED_HEADING.match(heading.group(2)):
+                open_level = level
+                sections.append((number, heading.group(2), 0))
+        elif open_level and not fenced and _ITEM.match(line):
+            start, title, items = sections[-1]
+            sections[-1] = (start, title, items + 1)
+    return sections
+
+
+def _uncovered_problems(root: Path, pages: list[str]) -> list[PageProblem]:
+    return [
+        PageProblem(
+            page,
+            f"{page}:{line}: the section `{title}` lists "
+            + (f"{items} behaviours" if items != 1 else "a behaviour")
+            + " no check covers. A fixture with `lifetime: scenario` creates the account and the records a "
+            + "journey changes, so a flow on that fixture walks each one and reads the change back. Walk each "
+            + "so, and delete the section. An act that reaches a party off this stack, such as a real payment "
+            + "or an email to a real inbox, is stated in the prose of the node it belongs to, naming that party. "
+            + "Moving a behaviour under another heading does not cover it.",
+            line=line,
+            code=UNCOVERED_CODE,
+        )
+        for page in pages
+        for line, title, items in _uncovered_sections((root / page).read_text(encoding="utf-8"))
+    ]
+
+
 def page_problems(root: Path, service: str, source_folder: str = "") -> tuple[PageProblem, ...]:
-    """Every problem on the service's book, each with its page: a missing entries page, a page nothing reaches, a doctor error, a command, endpoint or screen no flow walks, a command page that names no binary, a claim that does not compile, a book no claim of which declares a check, and, given the surface's source folder, each folder of it holding a product file no page cites."""
+    """Every problem on the service's book, each with its page: a missing entries page, a page nothing reaches, a doctor error, a command, endpoint or screen no flow walks, a command page that names no binary, a claim that does not compile, a book no claim of which declares a check, given the surface's source folder, each folder of it holding a product file no page cites, and each section a page heads as not covered."""
     with index.session(root):
         pages = _book_page_paths(root, service)
         book = load(root)
@@ -336,6 +383,7 @@ def page_problems(root: Path, service: str, source_folder: str = "") -> tuple[Pa
             *gap_problems(gaps),
             *(_unchecked_problems(entries.relative_to(root).as_posix(), nodes, pages) if unchecked else []),
             *_uncited_problems(entries.relative_to(root).as_posix(), uncited),
+            *_uncovered_problems(root, pages),
         )
 
 
