@@ -36,6 +36,12 @@ class SurfaceNavigation:
         return self.opens.get(screen, self.root_path)
 
 
+def hops_from(hops: tuple[NavHop, ...], screen: str | None) -> tuple[NavHop, ...] | None:
+    """The rest of *hops* from the last one that leaves *screen*, or None when the route never passes through it."""
+    starts = [index for index, hop in enumerate(hops) if screen and hop.from_page == screen]
+    return hops[starts[-1]:] if starts else None
+
+
 @dataclass(frozen=True)
 class MaestroLaunch:
     """How a mobile surface's app is launched, and the routes that reach past its first screen."""

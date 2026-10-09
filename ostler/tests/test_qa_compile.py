@@ -2895,8 +2895,10 @@ def test_a_journey_step_performs_its_own_acts_before_it_triggers_it() -> None:
     assert first < fill < second
 
 
-def _opening_journey(fixture_screens: dict[str, str]) -> str:
+def _opening_journey(fixture_screens: dict[str, str], route: list[dict[str, str]] | None = None) -> str:
     open_thing = f"{_SCREEN}#open-thing"
+    navigation = _arrival_navigation()
+    navigation["policy"]["routes"] = {_SCREEN: route or []}
     context = _navigation_context(
         _flow_obligation(
             f"okf:{_FLOW}:end-state", source=_FLOW, surface="policy",
@@ -2908,7 +2910,7 @@ def _opening_journey(fixture_screens: dict[str, str]) -> str:
                          checks=[]) | {"required": False},
         _page_obligation(f"{_SCREEN}#open-link:carrier", f"{_SCREEN}#open-link",
                          locators={"selector": ["#open-link"]}, checks=[]) | {"required": False},
-        navigation=_arrival_navigation(),
+        navigation=navigation,
     ) | {"fixtureScreens": fixture_screens}
     result = _compile_plan_gaps(context, story="demo-story")
     assert isinstance(result, Plan)
@@ -2927,6 +2929,19 @@ def test_a_journey_whose_fixture_left_the_browser_elsewhere_opens_its_first_scre
     journey = _opening_journey({"seeded-ledger": "docs/features/policy/gui/screens/landing.md"})
 
     assert journey.index('qa.fixture("seeded-ledger")') < journey.index("qa.goto(") < journey.index('"#open-link"')
+
+
+def test_a_journey_whose_fixture_left_the_browser_on_its_route_walks_on_from_there() -> None:
+    landing, sign_in, dashboard = (f"docs/features/policy/gui/screens/{name}.md" for name in ("landing", "sign-in", "dashboard"))
+    journey = _opening_journey({"seeded-ledger": dashboard}, [
+        {"node": f"{landing}#sign-in-link", "from": landing, "label": "Sign in link"},
+        {"node": f"{sign_in}#submit", "from": sign_in, "label": "Submit sign in"},
+        {"node": f"{dashboard}#policies-link", "from": dashboard, "label": "Policies link"},
+    ])
+
+    assert "qa.goto(" not in journey
+    assert "Submit sign in" not in journey
+    assert journey.index('qa.fixture("seeded-ledger")') < journey.index("Policies link") < journey.index('"#open-link"')
 
 
 def _visit(path: str) -> dict:

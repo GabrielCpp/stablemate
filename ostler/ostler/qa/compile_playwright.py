@@ -23,6 +23,7 @@ from ostler.qa.compile_support import trailing_comment
 from ostler.qa.compile_support import unobservable_gap
 from ostler.qa.compile_support import vet_calls
 from ostler.qa.navigation import NavHop
+from ostler.qa.navigation import hops_from
 from ostler.qa.obligation import CallRow
 from ostler.qa.obligation import FlowStep
 from ostler.qa.obligation import Locators
@@ -427,11 +428,14 @@ def page_observations(
 
 
 def _web_start(walk: JourneyWalk, gaps: list[Gap]) -> list[str] | None:
-    """Open the surface's root and click through to where the journey's first step lives, unless the journey's last fixture already left the browser there."""
+    """Open the surface's root and click through to where the journey's first step lives, unless the journey's last fixture already left the browser there or on its route."""
     first_source = shown_on(walk.steps[0].ref.split("#")[0], walk.nav.routes, walk.book.fragment_hosts)
     if walk.left_on == first_source:
         return []
     hops = walk.nav.routes.get(first_source)
+    onward = hops_from(hops, walk.left_on) if hops is not None else None
+    if onward is not None:
+        return walk_hops(onward, first_source, walk.book, gaps, walk.ids)
     if hops is None:
         gaps.extend(Gap(oid, "uncompilable-claim",
                         f"no route computed to {first_source!r}, where this journey's first "

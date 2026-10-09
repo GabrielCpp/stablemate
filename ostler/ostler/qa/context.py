@@ -372,7 +372,7 @@ def build_context(
         "serverOrigins": _server_origins(snapshot.book),
         "scenarioFixtures": _scenario_fixtures(snapshot.book),
         "browserFixtures": _browser_fixtures(snapshot.book),
-        "fixtureScreens": _fixture_screens(snapshot.book),
+        "fixtureScreens": _fixture_screens(snapshot.head_graph, snapshot.book),
         "fragmentHosts": _fragment_hosts(snapshot.book),
         "screenRoutes": routes_mod.screen_routes(snapshot.head_graph),
         "healthFindings": [*mapping.unmapped, *grounding.health, *requirement.health],
@@ -1424,17 +1424,30 @@ def _browser_fixtures(book: Mapping[str, BookNode]) -> list[str]:
     return sorted(Path(path).stem for path in signing)
 
 
-def _fixture_screens(book: Mapping[str, BookNode]) -> dict[str, str]:
-    """The screen each `fixture` file leaves the scenario's browser on: the one its own last `open:` links when each scenario builds it, else the one the last fixture it `needs:` leaves."""
+def _step_screen(graph: Graph, book: Mapping[str, BookNode], node: BookNode) -> str | None:
+    """The screen fixture step *node* leaves the browser on: the one holding its last `arrange:` act's target, else the one its `open:` links."""
+    for value in reversed(node.bullets.get("arrange", ())):
+        parsed = acts_mod.parse_act(value)
+        if not isinstance(parsed, acts_mod.ActCall) or "locator" not in parsed.args:
+            continue
+        located = locators_mod.located_node(graph, str(parsed.args["locator"]), graph.root / node.path)
+        page = book.get(located.id.split("#", 1)[0]) if located is not None else None
+        if page is not None and page.type == "screen":
+            return page.id
+    return next((edge.to.split("#", 1)[0] for edge in node.edges if edge.via == "open" and edge.to), None)
+
+
+def _fixture_screens(graph: Graph, book: Mapping[str, BookNode]) -> dict[str, str]:
+    """The screen each `fixture` file leaves the scenario's browser on: the one its own last browser step leaves it on when each scenario builds it, else the one the last fixture it `needs:` leaves."""
     fixtures = {node.path: node for node in book.values() if node.type == "fixture" and node.kind == "file"}
     per_scenario = set(_scenario_fixtures(book))
     opened: dict[str, tuple[int, str]] = {}
     for node in book.values():
         if node.type != "step" or node.path not in fixtures or Path(node.path).stem not in per_scenario:
             continue
-        screens = [edge.to.split("#", 1)[0] for edge in node.edges if edge.via == "open" and edge.to]
-        if screens and node.line >= opened.get(node.path, (-1, ""))[0]:
-            opened[node.path] = (node.line, screens[0])
+        screen = _step_screen(graph, book, node)
+        if screen and node.line >= opened.get(node.path, (-1, ""))[0]:
+            opened[node.path] = (node.line, screen)
 
     def left_on(path: str, seen: frozenset[str]) -> str | None:
         if path in opened:

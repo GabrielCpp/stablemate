@@ -27,6 +27,7 @@ from ostler.qa.compile_support import unarranged_state_gap
 from ostler.qa.compile_support import vet_calls
 from ostler.qa.navigation import NavHop
 from ostler.qa.navigation import SurfaceNavigation
+from ostler.qa.navigation import hops_from
 from ostler.qa.obligation import FixtureRow
 from ostler.qa.obligation import Locators
 from ostler.qa.obligation import NO_LOCATORS
@@ -306,10 +307,14 @@ def _scenario_head(
 def _arrive(
     screen: _PageScreen, arranged: list[FixtureRow], gaps: list[Gap], ids: list[str], *, visits: bool = False,
 ) -> list[str]:
-    """Arrange the fixtures, then open the surface's root and click through to the screen, unless the scenario's own first act visits it or the last fixture's own browser steps already left it there."""
+    """Arrange the fixtures, then open the surface's root and click through to the screen, unless the scenario's own first act visits it or the last fixture's own browser steps already left it there or on its route."""
     fixtures = [fixture_call(row) for row in arranged]
-    if visits or (arranged and screen.book.fixture_screens.get(arranged[-1].name) == screen.screen):
+    landed = screen.book.fixture_screens.get(arranged[-1].name) if arranged else None
+    if visits or landed == screen.screen:
         return fixtures
+    onward = hops_from(screen.path.hops, landed)
+    if onward is not None:
+        return [*fixtures, *walk_hops(onward, screen.screen, screen.book, gaps, ids)]
     return [
         *fixtures,
         f"    qa.goto({python_literal(screen.path.root_path)})",
