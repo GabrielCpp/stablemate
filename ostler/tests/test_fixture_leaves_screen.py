@@ -200,3 +200,22 @@ def test_a_fixture_that_left_the_browser_on_the_screens_route_walks_on_from_ther
     assert "qa.goto(" not in result.source
     assert "Submit sign in" not in result.source
     assert result.source.index('qa.fixture("create-form-open")') < result.source.index("Policies link")
+
+
+def test_a_fixture_that_left_the_browser_off_the_screens_route_reopens_the_last_entry_on_it() -> None:
+    landing, sign_in, dashboard, stages = (f"docs/features/policy/gui/screens/{name}.md"
+                                           for name in ("landing", "sign-in", "dashboard", "stages"))
+    context = _context({"create-form-open": stages})
+    context["navigation"]["policy"]["routes"] = {SCREEN: [
+        {"node": f"{landing}#sign-in-link", "from": landing, "label": "Sign in link"},
+        {"node": f"{sign_in}#submit", "from": sign_in, "label": "Submit sign in"},
+        {"node": f"{dashboard}#policies-link", "from": dashboard, "label": "Policies link"},
+    ]}
+    context["navigation"]["policy"]["doors"] = {sign_in: "/sign-in", dashboard: "/dashboard"}
+    result = compile_plan_gaps(context, story="demo-story", base_url=BASE_URL)
+    assert isinstance(result, Plan)
+
+    assert 'qa.goto("/")' not in result.source
+    assert "Submit sign in" not in result.source
+    assert (result.source.index('qa.fixture("create-form-open")') < result.source.index('qa.goto("/dashboard")')
+            < result.source.index("Policies link"))

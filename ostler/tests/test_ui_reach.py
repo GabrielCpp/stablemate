@@ -541,6 +541,16 @@ def test_a_screen_the_start_reaches_keeps_its_click_path(repo: Path):
     assert len(report["routes"][SIGNIN]) == 1
 
 
+def test_every_literal_entry_is_a_door_a_walk_can_reopen(repo: Path):
+    """A fixture that leaves the browser off a route reopens the walk at the last entry on it, so every literal entry is listed, reached by clicks or not."""
+    _repo(repo)
+    write(repo / SCREENS / "sign-in.md", _entry(SIGN_IN, "`/sign-in`"))
+    write(repo / SCREENS / "archive.md", _entry(ORPHAN, "`/archive/:id`"))
+    report = reach.reachability(load(repo), surface="web", start=LAND)
+
+    assert report["doors"] == {SIGNIN: "/sign-in"}
+
+
 MOBILE_SCREENS = "docs/features/mobile-app/gui/screens"
 
 

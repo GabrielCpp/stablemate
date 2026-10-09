@@ -2895,10 +2895,12 @@ def test_a_journey_step_performs_its_own_acts_before_it_triggers_it() -> None:
     assert first < fill < second
 
 
-def _opening_journey(fixture_screens: dict[str, str], route: list[dict[str, str]] | None = None) -> str:
+def _opening_journey(fixture_screens: dict[str, str], route: list[dict[str, str]] | None = None,
+                     doors: dict[str, str] | None = None) -> str:
     open_thing = f"{_SCREEN}#open-thing"
     navigation = _arrival_navigation()
     navigation["policy"]["routes"] = {_SCREEN: route or []}
+    navigation["policy"]["doors"] = doors or {}
     context = _navigation_context(
         _flow_obligation(
             f"okf:{_FLOW}:end-state", source=_FLOW, surface="policy",
@@ -2942,6 +2944,21 @@ def test_a_journey_whose_fixture_left_the_browser_on_its_route_walks_on_from_the
     assert "qa.goto(" not in journey
     assert "Submit sign in" not in journey
     assert journey.index('qa.fixture("seeded-ledger")') < journey.index("Policies link") < journey.index('"#open-link"')
+
+
+def test_a_journey_whose_fixture_left_the_browser_off_its_route_reopens_the_last_entry_on_it() -> None:
+    landing, sign_in, dashboard, stages = (f"docs/features/policy/gui/screens/{name}.md"
+                                           for name in ("landing", "sign-in", "dashboard", "stages"))
+    journey = _opening_journey({"seeded-ledger": stages}, [
+        {"node": f"{landing}#sign-in-link", "from": landing, "label": "Sign in link"},
+        {"node": f"{sign_in}#submit", "from": sign_in, "label": "Submit sign in"},
+        {"node": f"{dashboard}#policies-link", "from": dashboard, "label": "Policies link"},
+    ], {sign_in: "/sign-in", dashboard: "/dashboard"})
+
+    assert 'qa.goto("/")' not in journey
+    assert "Submit sign in" not in journey
+    assert (journey.index('qa.fixture("seeded-ledger")') < journey.index('qa.goto("/dashboard")')
+            < journey.index("Policies link") < journey.index('"#open-link"'))
 
 
 def _visit(path: str) -> dict:

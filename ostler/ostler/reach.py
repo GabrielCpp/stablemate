@@ -468,6 +468,7 @@ def reachability_in(data: dict, *, surface: str | None = None, start: str | None
         },
         "routes": routed,
         "opens": opens,
+        "doors": doors,
         "unreachable": sorted(unreachable),
         "undeclared": sorted(undeclared),
     }

@@ -78,9 +78,10 @@ def page_scenarios(
 
 @dataclass(frozen=True)
 class _ScreenPath:
-    """How a page scenario reaches one screen: its surface's root path and the hops from there."""
+    """How a page scenario reaches one screen: its surface's root path and the hops from there, and the nearest entry path on the way with the hops from it."""
     root_path: str
     hops: tuple[NavHop, ...]
+    reopened: tuple[str, tuple[NavHop, ...]] | None
 
 
 def _screen_path(
@@ -109,7 +110,7 @@ def _screen_path(
     if opened is None:
         return ScenarioRefusal("uncompilable-claim",
                                f"surface {surface!r} states no root path a page scenario can open from")
-    return _ScreenPath(opened, hops)
+    return _ScreenPath(opened, hops, nav.reopen(hops, screen))
 
 
 @dataclass(frozen=True)
@@ -307,7 +308,7 @@ def _scenario_head(
 def _arrive(
     screen: _PageScreen, arranged: list[FixtureRow], gaps: list[Gap], ids: list[str], *, visits: bool = False,
 ) -> list[str]:
-    """Arrange the fixtures, then open the surface's root and click through to the screen, unless the scenario's own first act visits it or the last fixture's own browser steps already left it there or on its route."""
+    """Arrange the fixtures, then open the surface's root and click through to the screen, unless the scenario's own first act visits it or the last fixture's own browser steps already left it there or on its route. A fixture that left the browser off the route reopens the nearest entry path on it rather than the root, so the walk does not sign in again."""
     fixtures = [fixture_call(row) for row in arranged]
     landed = screen.book.fixture_screens.get(arranged[-1].name) if arranged else None
     if visits or landed == screen.screen:
@@ -315,6 +316,9 @@ def _arrive(
     onward = hops_from(screen.path.hops, landed)
     if onward is not None:
         return [*fixtures, *walk_hops(onward, screen.screen, screen.book, gaps, ids)]
+    if landed is not None and screen.path.reopened is not None:
+        door, rest = screen.path.reopened
+        return [*fixtures, f"    qa.goto({python_literal(door)})", *walk_hops(rest, screen.screen, screen.book, gaps, ids)]
     return [
         *fixtures,
         f"    qa.goto({python_literal(screen.path.root_path)})",

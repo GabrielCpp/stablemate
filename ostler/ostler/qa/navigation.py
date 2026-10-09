@@ -30,10 +30,19 @@ class SurfaceNavigation:
     unreachable: frozenset[str]
     undeclared: frozenset[str]
     opens: dict[str, str]
+    doors: dict[str, str]
 
     def path_to(self, screen: str) -> str | None:
         """The path a walk to *screen* opens first: the entry its route starts from, else the surface's root."""
         return self.opens.get(screen, self.root_path)
+
+    def reopen(self, hops: tuple[NavHop, ...], screen: str) -> tuple[str, tuple[NavHop, ...]] | None:
+        """The entry path of the last screen on the walk to *screen* that states one, with the hops left from there, or None when none does."""
+        stops = [*(hop.from_page for hop in hops), screen]
+        for index in reversed(range(len(stops))):
+            if stops[index] in self.doors:
+                return self.doors[stops[index]], hops[index:]
+        return None
 
 
 def hops_from(hops: tuple[NavHop, ...], screen: str | None) -> tuple[NavHop, ...] | None:
@@ -135,6 +144,7 @@ def surface_navigation(surface: str, row: object) -> SurfaceNavigation:
         unreachable=_screen_set(surface, "unreachable", row.get("unreachable")),
         undeclared=_screen_set(surface, "undeclared", row.get("undeclared")),
         opens=_screen_paths(surface, "opens", row.get("opens")),
+        doors=_screen_paths(surface, "doors", row.get("doors")),
     )
 
 
