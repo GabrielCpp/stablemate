@@ -13,7 +13,7 @@ PAGES_NAMED = 10
 _PAGE = re.compile(r"^okf:(?P<page>[^#:]+\.md)")
 _DIGITS = re.compile(r"\d+")
 _SPACE = re.compile(r"\s+")
-_ABSENT = re.compile(r'"present":\s*false')
+_ABSENT = re.compile(r'"present":\s*false|^missing: ')
 
 
 def _observed(check: FailedCheck) -> str:

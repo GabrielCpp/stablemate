@@ -10,6 +10,7 @@ from ostler.qa.drivers import FailedCheck, ScenarioResult
 from ostler.qa.plan import load_plan
 from ostler.qa.repeats import RepeatWatch, observation
 from ostler.qa.v2 import run_plan
+from ostler.vet.placement import ComponentVerdict
 
 from test_qa_runner import _records
 
@@ -150,6 +151,15 @@ def test_different_elements_found_absent_are_different_observations_and_one_elem
 
     assert observation(absent("#picker")) != observation(absent("#upload-dialog"))
     assert observation(absent("#picker")) == observation(absent("#picker"))
+
+
+def test_different_components_placed_nowhere_are_different_observations() -> None:
+    def missing(node_id: str) -> ScenarioResult:
+        verdict = ComponentVerdict(node_id=node_id, selector="div.alert", status="missing", expected="rendered on this screen")
+        return ScenarioResult(status="failed", failed_checks=[FailedCheck(verdict.sentence(), verdict.expected, verdict.observed())])
+
+    assert observation(missing("admin.md#admin-title")) != observation(missing("archive.md#archive-empty-text"))
+    assert observation(missing("admin.md#admin-title")) == observation(missing("admin.md#admin-title"))
 
 
 def test_a_gapped_failure_never_counts() -> None:
