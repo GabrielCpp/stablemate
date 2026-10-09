@@ -303,10 +303,12 @@ def _scenario_head(
     ]
 
 
-def _arrive(screen: _PageScreen, arranged: list[FixtureRow], gaps: list[Gap], ids: list[str]) -> list[str]:
-    """Arrange the fixtures, then open the surface's root and click through to the screen, unless the last fixture's own browser steps already left it there."""
+def _arrive(
+    screen: _PageScreen, arranged: list[FixtureRow], gaps: list[Gap], ids: list[str], *, visits: bool = False,
+) -> list[str]:
+    """Arrange the fixtures, then open the surface's root and click through to the screen, unless the scenario's own first act visits it or the last fixture's own browser steps already left it there."""
     fixtures = [fixture_call(row) for row in arranged]
-    if arranged and screen.book.fixture_screens.get(arranged[-1].name) == screen.screen:
+    if visits or (arranged and screen.book.fixture_screens.get(arranged[-1].name) == screen.screen):
         return fixtures
     return [
         *fixtures,
@@ -498,7 +500,8 @@ def _interaction_scenario(
                          "so its control identity could not be inherited from the base case")
                     for oid in ids)
     arranged = arrangement_of([*book.guards_by_node.get(node_id, []), *obligations]).rows
-    arrived = _arrive(screen, arranged, gaps, ids)
+    node_acts = book.acts_by_node.get(node_id, [])
+    arrived = _arrive(screen, arranged, gaps, ids, visits=bool(node_acts) and node_acts[0].name == "visit")
     trigger = _performed_trigger(book, node_id, arm, gaps, ids)
     if trigger is None:
         return []

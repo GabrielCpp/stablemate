@@ -2968,6 +2968,29 @@ def test_a_journey_step_the_screen_runs_on_arrival_opens_its_screen_when_it_arra
     assert f"okf:{_FLOW}:end-state" in _covers(result.source)
 
 
+def test_a_screen_interaction_whose_first_act_visits_its_screen_opens_no_root_before_it() -> None:
+    oid = "okf:policy-list:open-policy:does:1"
+    context = _navigation_context(
+        _page_obligation(oid, f"{_SCREEN}#open-policy",
+                         locators={"on": ["[policy-table](#policy-table)"], "trigger": ["click"],
+                                   "does": ["opens it"]},
+                         checks=[_located("#policy-table", f"{_SCREEN}#policy-table",
+                                          {"selector": ["#policy-table"]})],
+                         fixtures=[{"name": "signed-in", "args": [], "provides": "a session",
+                                    "providesKeys": []}],
+                         acts=[_visit("/policy-list")]),
+        _page_obligation(f"{_SCREEN}#policy-table:carrier", f"{_SCREEN}#policy-table",
+                         locators={"selector": ["#policy-table"]}, checks=[]) | {"required": False},
+        navigation=_arrival_navigation(),
+    )
+    result = _compile_plan_gaps(context, story="demo-story")
+    assert isinstance(result, Plan)
+    scenario = result.source.split("@scenario(")[-1]
+
+    assert 'qa.goto("/")' not in scenario
+    assert scenario.index('qa.fixture("signed-in")') < scenario.index('qa.goto("/policy-list")')
+
+
 def test_a_visit_that_names_no_path_after_the_origin_is_refused() -> None:
     result = _compile_plan_gaps(_arrival_flow([_visit("https://example.com/de")]), story="demo-story")
     details = [g.detail for g in result.gaps if g.obligation_id == f"okf:{_FLOW}:end-state"]
