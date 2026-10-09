@@ -145,3 +145,15 @@ def test_settling_stops_a_job_still_running_at_the_deadline_with_the_processes_i
 
     assert leader.wait(timeout=5) != 0
     assert not jobs_folder(Path(state).parent).exists()
+
+
+def test_a_call_waits_as_long_as_the_agents_shell_lets_one_command_run(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv(writer_jobs.SHELL_LIMIT_VAR, "600000")
+
+    assert writer_jobs.attach_wait_s() == 600 - writer_jobs.SHELL_LIMIT_MARGIN_S
+
+
+def test_a_call_waits_the_short_default_where_the_shell_names_no_limit(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv(writer_jobs.SHELL_LIMIT_VAR, raising=False)
+
+    assert writer_jobs.attach_wait_s() == writer_jobs.ATTACH_WAIT_S

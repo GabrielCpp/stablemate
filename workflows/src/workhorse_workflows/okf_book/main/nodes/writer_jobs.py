@@ -25,11 +25,13 @@ from workhorse_workflows.okf_book.main.nodes.writer_stack import KeptStack
 
 JOBS_FOLDER = "writer-jobs"
 ATTACH_WAIT_S = 25.0
+SHELL_LIMIT_VAR = "BASH_MAX_TIMEOUT_MS"
+SHELL_LIMIT_MARGIN_S = 60.0
 POLL_S = 0.5
 SETTLE_WAIT_S = 1800.0
 STOP_WAIT_S = 10.0
 STILL_RUNNING_LINE = (
-    "still running: run this same command again to read its result. Each call waits up to 25 seconds for it, and spends no run. "
+    "still running: run this same command again to read its result. Each call waits on it a while, and spends no run. "
     "Keep fixing meanwhile: an edit you make now is not in this result"
 )
 STOPPED_LINE = "the run stopped before it printed its result: run the command again"
@@ -117,8 +119,15 @@ def _collect(job: Path, argv: Sequence[str], wait_s: float) -> CommandOutput:
         time.sleep(POLL_S)
 
 
-def run_or_attach(name: str, argv: Sequence[str], start: Start, wait_s: float = ATTACH_WAIT_S) -> CommandOutput:
-    """The result of the command `name` on `argv`, waiting up to `wait_s` for it.
+def attach_wait_s() -> float:
+    limit_ms = os.environ.get(SHELL_LIMIT_VAR, "")
+    if not limit_ms.isdigit():
+        return ATTACH_WAIT_S
+    return max(ATTACH_WAIT_S, int(limit_ms) / 1000 - SHELL_LIMIT_MARGIN_S)
+
+
+def run_or_attach(name: str, argv: Sequence[str], start: Start, wait_s: float | None = None) -> CommandOutput:
+    """The result of the command `name` on `argv`, waiting up to `wait_s`, or `attach_wait_s()`, for it.
 
     A call whose job is still running waits on it. A call whose job finished reads its result, and
     reads it again while no page changed since. Any other call spends a run and starts the job.
@@ -133,7 +142,7 @@ def run_or_attach(name: str, argv: Sequence[str], start: Start, wait_s: float = 
         shutil.rmtree(job, ignore_errors=True)
         job.mkdir(parents=True)
         start(job, argv)
-    return _collect(job, argv, wait_s)
+    return _collect(job, argv, attach_wait_s() if wait_s is None else wait_s)
 
 
 def finish_job(job: Path, work: Work, argv: Sequence[str]) -> None:
