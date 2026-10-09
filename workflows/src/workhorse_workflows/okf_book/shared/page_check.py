@@ -214,7 +214,8 @@ def _off_journey_problems(nodes: list[_Node]) -> list[PageProblem]:
     return [
         PageProblem(
             node.partition("#")[0],
-            f"{node} is on no flow. Write a flow under flows/ whose steps link it, or link it from a step of a flow you have.",
+            f"{node} is on no flow. Write a flow under flows/ whose steps link it, or link it from a step of a flow you have."
+            " When no control in the app leads a user to it, it is the app's dead code: name this node's side `app` with that evidence.",
             needs_journey=True,
             node=node,
             code="off-journey",
