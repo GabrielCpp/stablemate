@@ -25,6 +25,7 @@ from ostler.qa.plan_source import ScenarioRefusal
 from ostler.qa.plan_source import arrangement_of
 from ostler.qa.plan_source import by_source
 from ostler.qa.plan_source import fixture_call
+from ostler.qa.plan_source import journey_function_name
 from ostler.qa.plan_source import python_identifier
 from ostler.qa.plan_source import python_literal
 from ostler.qa.plan_source import target_lines
@@ -215,7 +216,7 @@ def journey_scenario(
         "    checkpoints=[],  # TODO(arrange): what an observer should see it prove",
         "    forbid=[],  # TODO: the weaker observations this scenario must not settle for",
         ")",
-        f"def {python_identifier(source)}_journey(qa: Qa) -> None:",
+        f"def {journey_function_name(source)}(qa: Qa) -> None:",
         f'    """Walk {source}\'s steps in order, then observe what the walk left."""',
         "",
         *(fixture_call(row) for row in arranged),

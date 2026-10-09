@@ -104,6 +104,13 @@ def test_a_scoped_run_stops_on_a_repeat_on_one_of_its_pages(tmp_path: Path) -> N
     assert "3 scenarios on 1 pages failed on one observation: " in stopped
 
 
+def test_a_scoped_run_reaches_its_scenarios_in_the_order_it_names_them(tmp_path: Path) -> None:
+    _status, summary, _spec = _run(tmp_path, ["pass"] * 3, pages=1, stop_on_repeat=0,
+                                   only=["scenario-2", "scenario-0", "scenario-1"])
+
+    assert list(summary["scenarios"]) == ["scenario-2", "scenario-0", "scenario-1"]
+
+
 def test_different_observations_do_not_add_up(tmp_path: Path) -> None:
     bodies = [_fails(f"missing control {chr(97 + index)}") for index in range(6)]
     _status, summary, _spec = _run(tmp_path, bodies, pages=3, stop_on_repeat=2)

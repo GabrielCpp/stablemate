@@ -250,6 +250,19 @@ def is_probe(scenario_id: str) -> bool:
     return scenario_id.startswith(f"{PROBE_PREFIX}-")
 
 
+JOURNEY_SUFFIX = "journey"
+
+
+def journey_function_name(source: str) -> str:
+    """The function name the journey that walks the flow page *source* gets."""
+    return f"{python_identifier(source)}_{JOURNEY_SUFFIX}"
+
+
+def is_journey(scenario_id: str) -> bool:
+    """Whether *scenario_id* names a journey, a scenario that walks one flow page's steps."""
+    return scenario_id.endswith(f"-{JOURNEY_SUFFIX}")
+
+
 def scenario_lines(scenario: SourceScenario, function_name: str) -> list[str]:
     """The rendered `@scenario` source, named `function_name`, holding every obligation one book page owes live evidence for on one target."""
     arranged = scenario.arranged.rows

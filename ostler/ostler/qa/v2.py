@@ -55,7 +55,8 @@ def run_plan(
 ) -> tuple[str, str, dict[str, Any]]:
     """Execute a validated plan and return ``(status, message, summary)``.
 
-    Each precondition is built once per lap and kept in the lap record under *lap*, so a caller
+    An *only* list runs those scenarios in its own order, so a caller decides what a stopped run
+    reached. Each precondition is built once per lap and kept in the lap record under *lap*, so a caller
     that runs one lap in several calls hands each the same directory. Without one, this call is
     the lap. *stack_check* runs before each scenario and says why the app stopped serving, which
     blocks the run there, since every scenario after it would fail on the app's absence.
@@ -75,12 +76,12 @@ def run_plan(
     scored = qa_dirname == QA_DIRNAME
     selected = list(plan["scenarios"])
     if only is not None:
-        known = {str(scenario["id"]) for scenario in selected}
+        known = {str(scenario["id"]): scenario for scenario in selected}
         unknown = [name for name in only if name not in known]
         if unknown:
             message = f"unknown scenario(s): {', '.join(sorted(unknown))}"
             return "invalid", message, {"status": "invalid", "problems": [message]}
-        selected = [scenario for scenario in selected if str(scenario["id"]) in set(only)]
+        selected = [known[name] for name in dict.fromkeys(only)]
     wanted_targets = {str(scenario["target"]) for scenario in selected}
 
     runtime_problems = check_runtime_requirements(document, targets=wanted_targets)
