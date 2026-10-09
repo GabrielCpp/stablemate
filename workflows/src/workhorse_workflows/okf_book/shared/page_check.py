@@ -339,8 +339,8 @@ def _uncovered_problems(root: Path, pages: list[str]) -> list[PageProblem]:
             page,
             f"{page}:{line}: the section `{title}` lists "
             + (f"{items} behaviours" if items != 1 else "a behaviour")
-            + " no check covers. A fixture with `lifetime: scenario` creates the account and the records a "
-            + "journey changes, so a flow on that fixture walks each one and reads the change back. Walk each "
+            + " no check covers. A journey creates the data it changes, through the UI in its own earlier "
+            + "steps or in a fixture with `lifetime: scenario`, so it walks each one and reads the change back. Walk each "
             + "so, and delete the section. An act that reaches a party off this stack, such as a real payment "
             + "or an email to a real inbox, is stated in the prose of the node it belongs to, naming that party. "
             + "Moving a behaviour under another heading does not cover it.",

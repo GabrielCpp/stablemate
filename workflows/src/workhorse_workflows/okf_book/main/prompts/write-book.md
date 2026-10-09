@@ -72,14 +72,16 @@ gives relative to the repository starts there.
   value where the user meets it next: on another screen, or on the same screen after a reload.
   A toast or a closed dialog shows only that the app answered. A check that reads the value
   back is the one that fails when the change was lost.
-- A flow that changes data stands on data it creates. Its `fixture:` names a fixture with
-  `lifetime: scenario` that creates what the walk changes, the way the app's own api or seed
-  creates it: a new account with a fresh email, as the skill's fixture reference shows, and the
-  records that account owns. That fixture signs the browser in as the new account. Each lap
-  then starts from fresh data, the walk may change or delete what it created, and no seeded
-  record moves. A behaviour is never left unchecked because it changes seeded data, cannot
-  repeat on one account, or needs a record the seed lacks. Those are the cases such a fixture
-  is for. Only an act that reaches a party off this stack, such as a real payment or an email
+- A flow that changes data stands on data it creates. The walk may create it through the UI in
+  its own earlier steps, the way a user would. Or its `fixture:` names a fixture with
+  `lifetime: scenario` that creates it the way the app's own api or seed does: a new account
+  with a fresh email, as the skill's fixture reference shows, and the records that account
+  owns. That fixture signs the browser in as the new account. A value the UI must accept fresh
+  on every lap, such as a sign-up email, comes from a fixture that provides it. Each lap then
+  starts from fresh data, the walk may change or delete what it created, and no seeded record
+  moves. A flow that changes nothing needs no fixture. A behaviour is never left unchecked
+  because it changes seeded data, cannot repeat on one account, or needs a record the seed
+  lacks. Those are the cases fresh data is for. Only an act that reaches a party off this stack, such as a real payment or an email
   to a real inbox, stays unchecked, and its page names that party.
 {% endif %}
 - Every {% if kind == "cli" %}command{% elif kind == "http" %}endpoint{% else %}screen{% endif %} sits on a journey a user takes. Write each journey as a `flow` page under

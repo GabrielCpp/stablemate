@@ -194,9 +194,9 @@ def test_a_section_a_page_heads_as_not_covered_is_a_problem_naming_its_behaviour
     line = before.count("\n") + 8
 
     assert [problem for problem in book_problems(repo, "tally") if "no check covers" in problem] == [
-        f"{FLOW.as_posix()}:{line}: the section `Not covered by a check yet` lists 2 behaviours no check covers. A fixture "
-        + "with `lifetime: scenario` creates the account and the records a journey changes, so a flow on that fixture walks "
-        + "each one and reads the change back. Walk each so, and delete the section. An act that reaches a party off this "
+        f"{FLOW.as_posix()}:{line}: the section `Not covered by a check yet` lists 2 behaviours no check covers. A journey "
+        + "creates the data it changes, through the UI in its own earlier steps or in a fixture with `lifetime: scenario`, "
+        + "so it walks each one and reads the change back. Walk each so, and delete the section. An act that reaches a party off this "
         + "stack, such as a real payment or an email to a real inbox, is stated in the prose of the node it belongs to, "
         + "naming that party. Moving a behaviour under another heading does not cover it."
     ]
