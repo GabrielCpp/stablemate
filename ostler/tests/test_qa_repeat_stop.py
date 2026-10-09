@@ -156,7 +156,7 @@ def test_different_elements_found_absent_are_different_observations_and_one_elem
 def test_different_components_placed_nowhere_are_different_observations() -> None:
     def missing(node_id: str) -> ScenarioResult:
         verdict = ComponentVerdict(node_id=node_id, selector="div.alert", status="missing", expected="rendered on this screen")
-        return ScenarioResult(status="failed", failed_checks=[FailedCheck(verdict.sentence(), verdict.expected, verdict.observed())])
+        return ScenarioResult(status="failed", failed_checks=[FailedCheck.of(verdict.sentence(), verdict.expected, verdict.observed())])
 
     assert observation(missing("admin.md#admin-title")) != observation(missing("archive.md#archive-empty-text"))
     assert observation(missing("admin.md#admin-title")) == observation(missing("admin.md#admin-title"))
