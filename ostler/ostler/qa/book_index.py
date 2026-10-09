@@ -38,6 +38,7 @@ class BookIndex:
     hop_acts: dict[tuple[str, str], list[CallRow]] = field(default_factory=dict[tuple[str, str], list[CallRow]])
     fragment_hosts: dict[str, str] = field(default_factory=dict[str, str])
     guards_by_node: dict[str, list[Obligation]] = field(default_factory=dict[str, list[Obligation]])
+    setups_by_node: dict[str, list[Obligation]] = field(default_factory=dict[str, list[Obligation]])
     server_origins: dict[str, str] = field(default_factory=dict[str, str])
     fixture_screens: dict[str, str] = field(default_factory=dict[str, str])
 
@@ -85,6 +86,15 @@ def guards_by_node(obligations: list[Obligation]) -> dict[str, list[Obligation]]
         if obligation.kind == "when":
             guards.setdefault(obligation.node, []).append(obligation)
     return guards
+
+
+def setups_by_node(obligations: list[Obligation]) -> dict[str, list[Obligation]]:
+    """Each node's other claims that name a fixture, in book order: the state a `fixture:` bullet arranges holds for every claim of its node, not only the one it sits under."""
+    setups: dict[str, list[Obligation]] = {}
+    for obligation in sorted(obligations, key=lambda o: o.doc_position):
+        if obligation.kind != "when" and obligation.fixtures:
+            setups.setdefault(obligation.node, []).append(obligation)
+    return setups
 
 
 def hop_acts(

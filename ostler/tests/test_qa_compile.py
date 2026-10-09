@@ -2819,6 +2819,41 @@ def test_a_when_guard_with_its_own_fixture_is_arranged_by_it() -> None:
     assert does_oid in _covers(source)
 
 
+def test_a_fixture_under_another_claim_of_the_interaction_arranges_its_does_scenario() -> None:
+    """A writer puts `fixture:` under whichever claim of the interaction comes last, so the state it arranges holds for the does scenario too instead of that scenario running on whoever is signed in."""
+    button = f"{_SCREEN}#switch-language-button"
+    interaction = f"{_SCREEN}#switch-language"
+    does_oid = "okf:page-route:switch-language:does:1"
+    locators = {"on": ["[switch-language-button](#switch-language-button)"],
+                "trigger": ["click"],
+                "does": ["the browser navigates to the translated page"]}
+    seeded = {"name": "translated-page", "args": [], "provides": "a page with a French translation"}
+    button_locators = {"role": ["button"], "name": ["Français"]}
+    focusable = {"call": "it", "name": "focusable",
+                 "args": {"locator": "button:Français", "activates": "Enter"},
+                 "locates": {"locator": {"node": button, "locators": button_locators}}}
+    context = _navigation_context(
+        _page_obligation("okf:page-route:switch-language-button:visible:1", button,
+                          locators=button_locators, checks=[_visible("button:Français")]),
+        _page_obligation(does_oid, interaction, kind="does", locators=locators,
+                          checks=[_located("#article", f"{_SCREEN}#article",
+                                            {"selector": ["`#article`"]})]),
+        _page_obligation("okf:page-route:switch-language:keyboard:1", interaction, kind="keyboard",
+                          requirement="Enter on the focused button switches too",
+                          locators=locators, checks=[focusable], fixtures=[seeded]),
+        navigation=_arrival_navigation(),
+    )
+    source, gaps = compile_plan_gaps(context, story="demo-story")
+    assert source is not None
+    ast.parse(source)
+    lines = source.splitlines()
+    trigger = next(i for i, line in enumerate(lines) if "# trigger:" in line)
+    head = max(i for i, line in enumerate(lines[:trigger]) if line.startswith("def "))
+    assert any('qa.fixture("translated-page")' in line for line in lines[head:trigger]), source
+    assert does_oid in _covers(source)
+    assert not _gap_kinds(gaps, does_oid)
+
+
 def test_a_when_guard_without_a_fixture_still_refuses_its_arm() -> None:
     """One fixtured guard does not arrange its sibling: the refusal names every remedy a writer can take."""
     context, does_oid = _fixtured_guard_context(None)

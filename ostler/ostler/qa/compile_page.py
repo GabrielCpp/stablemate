@@ -508,7 +508,8 @@ def _interaction_scenario(
                          "this arm's `extends:` target is missing or not the same node type, "
                          "so its control identity could not be inherited from the base case")
                     for oid in ids)
-    arranged = arrangement_of([*book.guards_by_node.get(node_id, []), *obligations]).rows
+    arranged = arrangement_of([*book.guards_by_node.get(node_id, []), *book.setups_by_node.get(node_id, []),
+                               *obligations]).rows
     node_acts = book.acts_by_node.get(node_id, [])
     arrived = _arrive(screen, arranged, gaps, ids, visits=bool(node_acts) and node_acts[0].name == "visit")
     trigger = _performed_trigger(book, node_id, arm, gaps, ids)
