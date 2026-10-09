@@ -226,10 +226,10 @@ def test_a_check_that_failed_without_a_server_error_leaves_the_log_out(monkeypat
     assert not any("its log" in line for line in result.lines)
 
 
-def _probed(monkeypatch: pytest.MonkeyPatch, probe_cause: Cause | None, gap: str = "") -> list[tuple[str, ...]]:
-    """Run a plan of one probe and one book page, whose probe fails with *probe_cause*, and record what each run was asked for."""
+def _probed(monkeypatch: pytest.MonkeyPatch, probe_cause: Cause | None, gap: str = "", *more: str) -> list[tuple[str, ...]]:
+    """Run a plan of one probe, one book page and *more* scenarios, whose probe fails with *probe_cause*, and record what each run was asked for."""
     plan = (Scenario(id="probe-signed-in-editor", covers=("okf:docs/a.md#get:does:1",)),
-            Scenario(id="docs-a-from-the-book", covers=("okf:docs/a.md#get:does:1",)))
+            Scenario(id="docs-a-from-the-book", covers=("okf:docs/a.md#get:does:1",)), *(Scenario(id=name) for name in more))
     asked: list[tuple[str, ...]] = []
 
     def _plan_scenarios(*_args: object) -> tuple[tuple[Scenario, ...], tuple[str, ...]]:
@@ -285,6 +285,13 @@ def test_probes_that_pass_let_the_book_run_without_them(monkeypatch: pytest.Monk
 
     assert asked == [("probe-signed-in-editor",), ("docs-a-from-the-book",)]
     assert result.passed
+
+
+def test_the_book_runs_its_journeys_before_its_pages(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    asked = _probed(monkeypatch, None, "", "docs-flows-edit-journey", "docs-b-from-the-book")
+    _ = run_plan(tmp_path, tmp_path / "spec", (), SERVING)
+
+    assert asked[-1] == ("docs-flows-edit-journey", "docs-a-from-the-book", "docs-b-from-the-book")
 
 
 class _CalledAnApi:

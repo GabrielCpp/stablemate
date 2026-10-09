@@ -11,7 +11,7 @@ from pathlib import Path
 
 from ostler import index, model
 from ostler.qa.attribution import Cause
-from ostler.qa.plan_source import is_probe
+from ostler.qa.plan_source import is_journey, is_probe
 from ostler.qa.runbook import select_stack
 from pydantic import BaseModel, ConfigDict
 from workhorse.reload import ReloadRequested, cut_requested
@@ -257,7 +257,8 @@ def _run_lap(root: Path, spec: Path, gaps: tuple[str, ...], only: Sequence[str],
             if any(signature.cause in PROBE_STOPS and not signature.gap for signature in probed.signatures):
                 lines = ("problem: a precondition probe failed, so the book did not run", *gaps, *_failure_lines(probed))
                 return ExerciseResult(lines=lines, summary=probed)
-            only = [scenario.id for scenario in scenarios if not is_probe(scenario.id)]
+        rest = [scenario.id for scenario in scenarios if not is_probe(scenario.id)]
+        only = sorted(rest, key=lambda name: not is_journey(name))
     summary = run(only)
     empty = () if summary.scenarios else ("problem: the plan runs no scenario",)
     failures = (*gaps, *_failure_lines(summary), *empty)
