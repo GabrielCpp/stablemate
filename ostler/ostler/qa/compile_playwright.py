@@ -40,6 +40,7 @@ from ostler.qa.plan_source import file_refusal
 from ostler.qa.plan_source import out_of_band
 from ostler.qa.plan_source import python_literal
 from ostler.qa.plan_source import typed_literal
+from ostler.routes import route_pattern
 from ostler import selector_forms
 
 
@@ -458,7 +459,7 @@ def _web_start(walk: JourneyWalk, gaps: list[Gap]) -> list[str] | None:
 
 
 def _step_acts(step: FlowStep, walk: JourneyWalk) -> list[CallRow]:
-    """The acts a journey replays for *step*: all of them, unless the step's claims were written for a fixture the journey does not arrange, whose visits and clicks on other screens reach the step as another user would."""
+    """The acts a journey replays for *step*: all of them, unless the step's claims were written for a fixture the journey does not arrange, whose visits and clicks elsewhere than the step's own screen reach the step as another user would."""
     acts = walk.book.acts_by_node.get(step.ref, [])
     claims = [*walk.book.claims_by_node.get(step.ref, []), *walk.book.setups_by_node.get(step.ref, [])]
     declared = {row.name for claim in claims for row in claim.fixtures}
@@ -466,7 +467,11 @@ def _step_acts(step: FlowStep, walk: JourneyWalk) -> list[CallRow]:
     if not declared or declared & arranged:
         return acts
     page = step.ref.split("#")[0]
-    return [act for act in acts if act.name != "visit"
+    own_route = route_pattern(walk.book.screen_routes.get(
+        shown_on(page, walk.nav.routes, walk.book.fragment_hosts), ""))
+    return [act for act in acts
+            if (act.name != "visit" or (own_route is not None and own_route.fullmatch(
+                act.text_arg("path").split("?")[0]) is not None))
             and all(target.node.split("#")[0] in ("", page) for target in act.locates.values())]
 
 

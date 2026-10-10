@@ -71,6 +71,8 @@ def _journey_through(step_fixture: str) -> str:
     navigation["policy"]["routes"][OTHER] = []
     acts = [
         {"call": "visit(path='/things')", "name": "visit", "args": {"path": "/things"}, "locates": {}},
+        {"call": "visit(path='/policy-list?tab=open')", "name": "visit", "args": {"path": "/policy-list?tab=open"},
+         "locates": {}},
         _act("click", f"{OTHER}#things-link", {"selector": ["#things-link"]}, locator="things.md#things-link"),
         _act("fill", f"{_SCREEN}#name-field", {"selector": ["#name-field"]}, locator="#name-field", value="A"),
     ]
@@ -97,6 +99,7 @@ def test_a_step_written_for_another_fixture_keeps_only_its_own_screens_acts() ->
 
     assert 'qa.goto("/things")' not in journey
     assert '"#things-link"' not in journey
+    assert 'qa.goto("/policy-list?tab=open")' in journey
     assert journey.index('"#name-field"') < journey.index('"#open-link"')
 
 
