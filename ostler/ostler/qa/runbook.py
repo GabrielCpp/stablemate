@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import contextlib
 import logging
 import re
+from collections.abc import Iterator
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -512,6 +514,14 @@ class StackLease:
             return [str(exc)]
         return addresses.book_problems(book, self.addresses.entries)
 
+    @contextlib.contextmanager
+    def holding(self) -> Iterator[None]:
+        """Hold the lease in this process's environment, with a shared stack's book written from its page."""
+        with addresses.leased(self.env):
+            if self.book is not None and self.addresses is not None and not self.per_run:
+                addresses.write_book(self.book, self.addresses.shared_book())
+            yield
+
     def data(self) -> dict[str, Any]:
         """The lease as an outcome reports it."""
         book: dict[str, str] = {}
@@ -537,7 +547,7 @@ def _addressed_environment(graph: Graph, selection: StackSelection) -> Environme
     return found if found.per_run or found.entries else None
 
 
-def _stack_lease(graph: Graph, selection: StackSelection, lease: str) -> StackLease | QaOutcome:
+def stack_lease(graph: Graph, selection: StackSelection, lease: str) -> StackLease | QaOutcome:
     """The lease a bring-up or a teardown runs under, or the refusal that stops it."""
     if lease and (problem := addresses.lease_problem(lease)):
         return QaOutcome(ok=False, status="bad-lease", data={"lease": lease},
@@ -570,20 +580,19 @@ def bring_up_stacks(manifests: list[dict[str, Any]], *, repo_root: str,
 
 
 def cmd_stack_up(root: Path, *, name: str = "", features_root: str = "", lease: str = "",
+                 near: Path | None = None,
                  logger: logging.Logger | None = None) -> QaOutcome:
     """`ostler qa stack up` — bring the book's declared stack to ready, or say why not."""
     log = logger or logging.getLogger(__name__)
     graph = _graph_for(root, features_root)
-    manifests, selection = load_stacks(graph, name=name, logger=log)
+    manifests, selection = load_stacks(graph, name=name, near=near, logger=log)
     refused = _refusal(root, features_root, selection, "bring up")
     if refused is not None and not manifests:
         return refused
-    held = _stack_lease(graph, selection, lease)
+    held = stack_lease(graph, selection, lease)
     if isinstance(held, QaOutcome):
         return held
-    with addresses.leased(held.env):
-        if held.book is not None and held.addresses is not None and not held.per_run:
-            addresses.write_book(held.book, held.addresses.shared_book())
+    with held.holding():
         results = bring_up_stacks(manifests, repo_root=str(root), logger=log)
         problems = held.problems() if results[-1].get("ready") == "yes" else []
     last = results[-1]
@@ -613,18 +622,19 @@ def cmd_stack_up(root: Path, *, name: str = "", features_root: str = "", lease: 
 
 
 def cmd_stack_down(root: Path, *, name: str = "", features_root: str = "", lease: str = "",
+                   near: Path | None = None,
                    logger: logging.Logger | None = None) -> QaOutcome:
     """`ostler qa stack down` — run the declared teardown, or leave an expensive stack up."""
     log = logger or logging.getLogger(__name__)
     graph = _graph_for(root, features_root)
-    manifests, selection = load_stacks(graph, name=name, logger=log)
+    manifests, selection = load_stacks(graph, name=name, near=near, logger=log)
     refused = _refusal(root, features_root, selection, "tear down")
     if refused is not None and not manifests:
         return refused
-    held = _stack_lease(graph, selection, lease)
+    held = stack_lease(graph, selection, lease)
     if isinstance(held, QaOutcome):
         return held
-    with addresses.leased(held.env):
+    with held.holding():
         results = [stack_mod.teardown_stack({}, manifest, logger=log)
                    for manifest in reversed(manifests)]
     torn = {r.get("torn_down", "no") for r in results}
@@ -661,5 +671,6 @@ __all__ = [
     "system_root",
     "select_server",
     "stack_runbooks",
+    "stack_lease",
     "steps_of",
 ]

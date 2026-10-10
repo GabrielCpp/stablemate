@@ -27,16 +27,16 @@ def _own_cache(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv(addresses.BOOK_ENV, raising=False)
 
 
-def _environment(root: Path, *, sharing: str, entries: dict[str, str]) -> None:
+def _environment(root: Path, *, sharing: str, entries: dict[str, str], ops: Path = OPS) -> None:
     lines = "".join(f"  - `{name}`: {value}\n" for name, value in entries.items())
-    write(root / OPS / "test.md",
+    write(root / ops / "test.md",
           f"---\ntype: environment\ntitle: Test\n---\n\n# Test\n\n- sharing: {sharing}\n"
           f"- addresses:\n{lines}")
 
 
 def _runbook(root: Path, *, entry_url: str = "{gateway}", run: str = "make copy",
-             health: str = "curl -fsS {gateway}/health") -> None:
-    write(root / OPS / "web.md",
+             health: str = "curl -fsS {gateway}/health", ops: Path = OPS) -> None:
+    write(root / ops / "web.md",
           "---\ntype: runbook\ntitle: Web\n---\n\n# Web\n\n- driver: web\n"
           f"- environment: [Test](test.md)\n- entry-url: {entry_url}\n- stop: make copy-down\n\n"
           f"## Steps\n\n### serve\n\n- kind: service\n- run: {run}\n- health: {health}\n")
@@ -171,6 +171,43 @@ def test_a_shared_environment_writes_its_book_from_the_page(
     assert outcome.ok, outcome.message
     assert seen[0][addresses.BOOK_ENV].endswith("shared.json")
     assert outcome.data["entry_url"] == "http://localhost:3000"
+
+
+def _fake_teardown(seen: list[dict[str, str]]):
+    def teardown_stack(handles: dict[str, str], manifest: dict[str, Any], *, logger: Any) -> dict[str, str]:
+        seen.append({"source": manifest.get("source", ""),
+                     **{key: os.environ.get(key, "") for key in (addresses.LEASE_ENV, addresses.BOOK_ENV)}})
+        return {"torn_down": "yes"}
+    return teardown_stack
+
+
+def test_a_per_run_teardown_runs_under_its_lease_and_drops_its_book(
+        tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    _per_run_book(tmp_path)
+    monkeypatch.setattr(rb.stack_mod, "ensure_stack",
+                        _fake_bring_up({"gateway": "http://localhost:4321"}, []))
+    assert rb.cmd_stack_up(tmp_path, lease="story-1").ok
+    seen: list[dict[str, str]] = []
+    monkeypatch.setattr(rb.stack_mod, "teardown_stack", _fake_teardown(seen))
+    outcome = rb.cmd_stack_down(tmp_path, lease="story-1")
+    assert outcome.ok, outcome.message
+    assert seen[0][addresses.LEASE_ENV] == "story-1"
+    assert not Path(seen[0][addresses.BOOK_ENV]).exists()
+    assert addresses.LEASE_ENV not in os.environ
+
+
+def test_a_teardown_near_a_book_takes_down_that_books_copy(
+        tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    _per_run_book(tmp_path)
+    other = Path("docs") / "features" / "other" / "ops"
+    _environment(tmp_path, sharing="per-run", entries={"gateway": "the other front door"}, ops=other)
+    _runbook(tmp_path, ops=other)
+    seen: list[dict[str, str]] = []
+    monkeypatch.setattr(rb.stack_mod, "teardown_stack", _fake_teardown(seen))
+    outcome = rb.cmd_stack_down(tmp_path, lease="story-1", near=tmp_path / "docs" / "features" / "other")
+    assert outcome.ok, outcome.message
+    assert [entry["source"] for entry in seen] == [str(other / "web.md")]
+    assert seen[0][addresses.BOOK_ENV] == str(addresses.book_path(tmp_path / other / "test.md", "story-1"))
 
 
 def codes(root: Path) -> list[str]:
