@@ -2249,6 +2249,34 @@ def test_a_check_that_the_claims_own_component_is_gone_still_vets_its_screen() -
     assert _gap_kinds(gaps, oid) == []
 
 
+def test_a_keyboard_claim_on_another_screens_control_vets_that_screen() -> None:
+    """The archive's own link opens it from the dashboard: the arrangement ends on the dashboard, and vetting the archive there photographs the wrong page."""
+    dashboard = _SCREEN.replace("policy-list.md", "dashboard.md")
+    link = f"{dashboard}#policy-list-link"
+    link_locators = {"role": ["link"], "name": ["Policies"]}
+    interaction = f"{_SCREEN}#open-from-dashboard"
+    keyboard_oid = "okf:policy-list:open-from-dashboard:keyboard:1"
+    focusable = {"call": "it", "name": "focusable",
+                 "args": {"locator": "dashboard.md#policy-list-link", "activates": "Enter"},
+                 "locates": {"locator": {"node": link, "locators": link_locators}}}
+    context = _navigation_context(
+        _page_obligation("okf:dashboard:policy-list-link:visible:1", link, source=dashboard,
+                          locators=link_locators, checks=[_visible("link:Policies")]),
+        _page_obligation(keyboard_oid, interaction, kind="keyboard",
+                          locators={"on": ["[policy-list-link](dashboard.md#policy-list-link)"],
+                                    "trigger": ["click"], "keyboard": ["Enter"]},
+                          acts=[_visit("/dashboard")], checks=[focusable]),
+        navigation=_arrival_navigation(),
+        screen_routes={_SCREEN: "/policy-list", dashboard: "/dashboard"},
+    )
+    source, gaps = compile_plan_gaps(context, story="demo-story")
+    assert source is not None
+    assert [g for g in gaps if g.obligation_id == keyboard_oid] == []
+    (scenario,) = [s for s in source.split("@scenario(")[1:] if keyboard_oid in s]
+    assert f'qa.vet("{dashboard}"' in scenario
+    assert f'qa.vet("{_SCREEN}"' not in scenario
+
+
 def test_a_check_locator_that_names_no_component_compiles_to_nothing() -> None:
     """`doctor` refuses this book; `compile_plan` is not `doctor`'s downstream and still sees it."""
     oid = "okf:new-policy:submit:does:1"

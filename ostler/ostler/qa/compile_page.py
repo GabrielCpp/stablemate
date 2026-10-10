@@ -361,9 +361,8 @@ def _arrival_scenario(
     body = _arrive(screen, arranged, gaps, ids, visits=visits)
     if body is None:
         return []
-    vet = vet_calls([screen.screen], screen.book.screen_routes, ids, gaps, screen.book.fragment_hosts)
     if not visits:
-        body.extend(vet)
+        body.extend(vet_calls([screen.screen], screen.book.screen_routes, ids, gaps, screen.book.fragment_hosts))
     refused: set[str] = set()
     for node_id in sorted(arrival.nodes):
         node_acts = screen.book.acts_by_node.get(node_id, [])
@@ -373,10 +372,12 @@ def _arrival_scenario(
         if performed.gap_filed:
             refused.add(node_id)
         body.extend(performed.lines or [])
-    if visits:
-        body.extend(vet)
     observed = page_observations(
         [o for node_id, obs in sorted(arrival.nodes.items()) if node_id not in refused for o in obs], gaps)
+    if visits:
+        shown = [d for d in observed.documents if d in screen.book.screen_routes]
+        landed = shown if shown and screen.screen not in shown else [screen.screen]
+        body.extend(vet_calls(landed, screen.book.screen_routes, ids, gaps, screen.book.fragment_hosts))
     if not observed.covered:
         return []
     for node_id, node_obligations in sorted(arrival.nodes.items()):
