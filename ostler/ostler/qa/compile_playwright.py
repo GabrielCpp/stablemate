@@ -62,9 +62,10 @@ def page_locator_expr(locators: Locators) -> str | None:
     role = bullet_value(next(iter(locators.role), None))
     if role is not None and (_MATCHABLE_ROLES is None or role not in _MATCHABLE_ROLES):
         role = None
-    name = bullet_value(next(iter(locators.name), None))
+    raw_name = next(iter(locators.name), None)
+    name = bullet_value(raw_name)
     selector = bullet_value(next(iter(locators.selector), None))
-    if role and name and not accessible_names.prose_mark(name):
+    if role and name and raw_name and not accessible_names.prose_mark(raw_name):
         literal = accessible_names.literal_name(name)
         keyword = "template" if _TEMPLATE_HOLE.search(literal) else "name"
         return f"qa.by_role({python_literal(role)}, {keyword}={python_literal(literal)})"
@@ -77,8 +78,9 @@ def page_locator_expr(locators: Locators) -> str | None:
 
 def name_refusal(locators: Locators) -> str:
     """Why a node's `name:` could not address it, as a sentence for a gap, or `""`."""
-    name = bullet_value(next(iter(locators.name), None))
-    mark = accessible_names.prose_mark(name) if name else ""
+    raw_name = next(iter(locators.name), None)
+    name = bullet_value(raw_name)
+    mark = accessible_names.prose_mark(raw_name) if name and raw_name else ""
     if not mark:
         return ""
     return (f". Its `name:` {name!r} carries {mark}, so it describes the accessible name "

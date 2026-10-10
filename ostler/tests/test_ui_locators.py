@@ -4,7 +4,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from ostler import doctor, graph, locators
+import pytest
+
+from ostler import accessible_names, doctor, graph, locators
 from ostler.model import load
 from ostler.qa.obligation_frame import Variants
 
@@ -656,3 +658,30 @@ def test_doctor_errors_on_a_name_that_describes_the_label(repo: Path):
 def test_a_wholly_quoted_name_is_a_stated_name(repo: Path):
     data = _build(repo, _screen('### login\n- role: heading\n- name: "Connexion requise"\n'))
     assert locators.prose_names(data) == []
+
+
+@pytest.mark.parametrize(("value", "mark"), [
+    ("(no accessible form name, a11y gap)", "a parenthetical description"),
+    ("project_datasheet_merge", "a translation key"),
+    ("`see_confidentiality_policy`", "a translation key"),
+    ('`t("form.button.add")`', "a call expression"),
+    ("`item.label`", "a code expression"),
+    ("`c.nav.signup`", "a code expression"),
+    ("`fieldLabel`", "a code expression"),
+])
+def test_a_name_written_as_a_description_or_as_code_is_prose(value: str, mark: str):
+    assert accessible_names.prose_mark(value) == mark
+
+
+@pytest.mark.parametrize("value", [
+    "`Plus`", "`Nouveau document`", "`Exporter en .xml`", "`{tab.label}`",
+    "example.com", "Save", '"Connexion requise"', "Sign in (beta)", '"(See user term agreement)"',
+    '"login_required"',
+])
+def test_a_label_a_browser_could_compute_is_not_prose(value: str):
+    assert accessible_names.prose_mark(value) == ""
+
+
+def test_doctor_errors_on_a_name_written_as_a_translation_key(repo: Path):
+    data = _build(repo, _screen("### merge\n- role: button\n- name: `project_datasheet_merge`\n"))
+    assert [p.mark for p in locators.prose_names(data)] == ["a translation key"]

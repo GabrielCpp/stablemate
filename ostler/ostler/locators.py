@@ -418,7 +418,7 @@ def prose_names(book: LocatorBook) -> list[ProseName]:
     out = []
     for screen, node in book.locatables:
         name = _bullet(node, "name")
-        mark = accessible_names.prose_mark(name) if name and not _stated_none(name) else ""
+        mark = accessible_names.prose_mark(_raw_bullet(node, "name")) if name and not _stated_none(name) else ""
         if mark:
             out.append(ProseName(screen, node.id, name, mark))
     return out
