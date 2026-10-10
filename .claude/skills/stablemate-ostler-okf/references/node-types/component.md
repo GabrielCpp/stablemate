@@ -187,7 +187,7 @@ Claim it there, and leave the component the states a fixture alone arranges.
 ## Doctor codes it can trip
 
 `missing-required-bullet`, `invalid-role`, `unnamed-interactive`, `missing-placement`,
-`malformed-placement`, `ambiguous-locator`, `duplicate-bullet`, `undeclared-obligation`,
+`malformed-placement`, `ambiguous-locator`, `unnamed-collision`, `duplicate-bullet`, `undeclared-obligation`,
 `weak-check`, `stale-defect`, `malformed-defect`, `unaddressable-selector`,
 `conflicting-selector-driver`, `unresolved-relation` on any of its link keys,
 `one-way-same-as` if `same-as:` is used, `same-as-disagreement` if a `same-as:` family

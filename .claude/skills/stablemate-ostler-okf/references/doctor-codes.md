@@ -51,8 +51,12 @@ Three scoping rules explain findings that otherwise read as false positives or a
   `unsatisfiable-check`,
   `unstated-precondition`,
   `relation-without-subject`. A legacy app kept documented while nothing drives it is not owed a
-  check per claim, because no QA plan will ever be asked to prove one. Everything mechanical
-  still fires — a dangling link, a missing bullet, a locator collision are about the book. The
+  check per claim, because no QA plan will ever be asked to prove one. It also drops the
+  code-fault findings: `unnamed-interactive`, `unnamed-collision`. Each one exists because the
+  app renders a control with no name, and nobody fixes the code of a surface nothing drives. The
+  book records the fault in an `a11y-gap:` bullet instead. Everything mechanical
+  still fires — a dangling link, a missing bullet, two named controls sharing a name are about
+  the book. The
   declaration has two exits: `malformed-declaration` when the value is not a boolean, and
   `stale-declaration` when the surface has no node left to cover.
 - **`code:` and `tests:` are code refs, not links.** They hold `path::symbol`, and they are
@@ -208,6 +212,7 @@ Three scoping rules explain findings that otherwise read as false positives or a
 | `unreachable-node` | error | A service has an [`entries`](node-types/entries.md) page, and no path of links from it reaches this page. Every link counts, including one inside concept prose, and a link from another service's page counts too. A service with no `entries` page is not checked. Link the page from one the entries page already reaches, or delete it: `ostler gc` lists every such page and `ostler gc --write` deletes them. |
 | `unreachable-screen` | error | The navigation case of `unreachable-node`.  No documented path reaches a screen from the surface's root. Add a `leads-to:` on the component that navigates there, or `entry: /<route>` if it is entered from outside the app. A prose `entry:` does not exempt: a walk can open an address, not a description. |
 | `ambiguous-locator` | error | Two controls on one screen share role+name, so `getByRole` cannot tell them apart. Give each a distinct accessible name — or, if they genuinely never co-render, declare `exclusive-with:`. Also raised when a repeated node's `name:` template — opaque holes wildcarded — pattern-matches a static sibling's literal name. A template with no literal text, such as `{document.title}`, matches whatever its data names it, so the doctor leaves it to the run. |
+| `unnamed-collision` | error | Two operable controls with no accessible name share a role on one screen, and their `selector:` bullets match or are both absent, so `getByRole` cannot tell them apart. Give each control a name in the app, or give each node the distinct `selector:` its markup carries. With no name and no distinct class or id in the markup, the app is the side at fault: record it under a `known-defect:` seed. |
 | `duplicate-bullet` | error | A component states `role:` or `name:` more than once. A control has one of each, so the node cannot say which it is and `collisions` skips it until it is well-formed — this is a book defect, never a locator collision. Keep the bullet the source renders and drop the rest. |
 | `stale-defect` | error | A `known-defect:` record has outlived its work: the seed it names is resolved, dropped, deferred or unknown, or the finding it excused no longer fires. The excused finding is back in the report. Fix the code under an active seed, or drop the bullet. |
 | `malformed-defect` | error | A `known-defect:` value does not state `<seed-id> <finding-code>`. A code with no seed is a waiver; a seed with no code excuses everything. |
@@ -217,7 +222,7 @@ Three scoping rules explain findings that otherwise read as false positives or a
 | `malformed-variants` | warn | `variants:` does not parse. Form: one backticked span holding `path = token \| token \| …`, prose only after ` — `. |
 | `template-outside-repeat` | warn | The `name:` carries balanced `{…}` holes but the node declares no `one-per:` and inherits no repeat scope — every hole is opaque, so consumers match the name as a wildcard instead of the value it was written to pin. Declare the repeat keys if the control renders per member of a collection; otherwise write the literal rendered name. A warn per the migration rule: backfills drain conversions as ordinary worklist items. |
 | `invalid-role` | error | `role:` is not an ARIA role. State the bare computed role and put any caveat in prose. |
-| `prose-name` | error | `name:` carries a link, a code span or a quote among other words, so it describes the name. State the one string a browser computes. A control the page renders once per item has no one string: declare `one-per:` and write the name as a template over the item, such as `` `{tab.label}` `` (see [repeated controls](bullet-grammar.md#repeated-controls-one-per--unique-by--variants)). |
+| `prose-name` | error | `name:` describes the name instead of stating it: it carries a link, a code span or a quote among other words, it is wholly parenthesized, or it is a translation key, a call such as `t("…")`, or a property path or variable written as code. State the one string a browser computes, quoted when it could read as one of these. Put a missing name as `none` with an `a11y-gap:` bullet, and a translated label as its rendered text with an `i18n-gap:` bullet. A control the page renders once per item has no one string: declare `one-per:` and write the name as a template over the item, such as `` `{tab.label}` `` (see [repeated controls](bullet-grammar.md#repeated-controls-one-per--unique-by--variants)). |
 | `unnamed-interactive` | error | An operable role with no accessible `name:` — unannounceable to assistive tech and unaddressable by `getByRole`. |
 | `missing-placement` | error | A page-carrying role with no `placement:`. A role+name assertion passes on a component crushed into a sliver. |
 | `malformed-placement` | error | `placement:` does not parse. Form: `width 60-100%, x 0-20%`. |
