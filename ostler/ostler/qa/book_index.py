@@ -160,7 +160,6 @@ def queries_by_node(obligations: list[Obligation]) -> dict[str, str]:
     return queries
 
 
-
 def checked_paths_by_node(obligations: list[Obligation]) -> dict[str, str]:
     """Each node's checked path: the first one a `path=` check argument of its claims spells, in book order, without its query."""
     paths: dict[str, str] = {}

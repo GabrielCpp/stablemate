@@ -592,7 +592,7 @@ def _step_arrangement(ref: str, node_rows: list[CallRow], book: BookIndex) -> _H
 
 
 def _http_request(
-    index: int, step: FlowStep, book: BookIndex, ids: list[str], gaps: list[Gap],
+    index: int, step: FlowStep, book: BookIndex, ids: list[str], gaps: list[Gap], ended: str | None = None,
 ) -> _HttpRequest | _UnbuiltStep:
     """The request one journey step performs, gapping every claim when the book states none."""
     ref = step.ref
@@ -614,11 +614,13 @@ def _http_request(
                             "holds no response to capture the field from")
     method, path = route
     if "*" in path:
-        member = book.checked_paths_by_node.get(ref)
-        if member is None or not fnmatch.fnmatchcase(member, path):
+        candidates = (ended, book.checked_paths_by_node.get(ref))
+        member = next((c for c in candidates if c is not None and fnmatch.fnmatchcase(c, path)), None)
+        if member is None:
             gaps.extend(Gap(oid, "uncompilable-claim",
                             f"step {index} ({step.href!r}) states the pattern `{path}`, and no check on that "
-                            "node names one address it matches for this journey to request")
+                            "node or on this journey's end names one address it matches for this journey to "
+                            "request")
                         for oid in ids)
             return _UnbuiltStep("this journey could not pick an address for this step, so it holds no "
                                 "response to capture the field from")
@@ -733,6 +735,16 @@ def _refused_status(obligations: list[Obligation]) -> int | None:
     return status if status is not None and status >= 400 else None
 
 
+def _ended_path(obligations: list[Obligation]) -> str | None:
+    """The address a flow's own response check names, without its query: the one its last step must request."""
+    for obligation in obligations:
+        for row in obligation.checks:
+            named = row.args.get("path")
+            if isinstance(named, str) and check_observes(row.name) == "response":
+                return named.partition("?")[0]
+    return None
+
+
 def _http_steps(walk: JourneyWalk, sinks: PlanSinks) -> _HttpSteps | None:
     """Perform each `endpoint` step as a request, or `None` once one step builds no request."""
     book, gaps = walk.book, sinks.gaps
@@ -744,8 +756,10 @@ def _http_steps(walk: JourneyWalk, sinks: PlanSinks) -> _HttpSteps | None:
     owners = _fixture_owners(walk.obligations)
     observed = last_path = ""
     refused_status = _refused_status(walk.obligations)
+    ended = _ended_path(walk.obligations)
     for index, step in enumerate(walk.steps, start=1):
-        request = _http_request(index, step, book, walk.ids, gaps)
+        request = _http_request(index, step, book, walk.ids, gaps,
+                                ended=ended if index == len(walk.steps) else None)
         unprovided = [] if isinstance(request, _UnbuiltStep) else _unprovided_references(request, known)
         if unprovided:
             gaps.extend(_unprovided_reference_gaps(index, unprovided, walk.ids))

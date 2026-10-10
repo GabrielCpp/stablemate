@@ -4883,6 +4883,28 @@ def test_a_journey_step_on_a_pattern_no_check_names_an_address_for_is_uncompilab
     assert _gap_kinds(result.gaps, oid) == ["uncompilable-claim"]
     assert any("`/__/auth/*`" in g.detail for g in result.gaps if g.obligation_id == oid)
 
+
+def test_a_journey_ending_on_a_pattern_requests_the_address_its_own_check_names() -> None:
+    """A journey's claim is about the address its last step requested, so that claim chooses the member of the pattern."""
+    oid = f"okf:{_FLOW}:end-state"
+    handler = _step_node(f"{_API}#auth-handler", {"route": ["GET /__/auth/*"]})
+    handler["checksDeclared"] = [
+        {"call": "it", "name": "http_status", "args": {"code": 200, "method": "GET", "path": "/__/auth/handler"}}]
+    context = _navigation_context(
+        _flow_obligation(
+            oid, source=_FLOW, surface="api",
+            steps=[_step(f"{_API}#auth-handler", "endpoint", "api")],
+            checks=[{"call": "it", "name": "http_status", "args": {"code": 404, "path": "/__/auth/missing"}}],
+        ),
+        handler,
+        navigation=_api_navigation(),
+    )
+    result = _compile_plan_gaps(context, story="demo-story")
+    assert isinstance(result, Plan)
+    assert _gap_kinds(result.gaps, oid) == []
+    assert 'qa.http.get("/__/auth/missing"' in result.source
+
+
 def test_a_check_naming_another_steps_path_is_not_about_this_journeys_end() -> None:
     """A journey's claim is about the world its last step left."""
     oid = f"okf:{_FLOW}:end-state"
