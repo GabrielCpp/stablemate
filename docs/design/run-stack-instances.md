@@ -112,7 +112,7 @@ what it produces instead.
 | Concept | Owns | Never knows |
 |---|---|---|
 | Sharing | whether the environment is one shared place or copied per run | how a copy is made |
-| Address | one named place a tester or the app's browser reaches, with its fixed value on a shared environment | how a copy assigns its value |
+| Address | one named place a tester or the app's browser reaches, with its fixed value on a shared environment and no value on a copied one (revised, R6) | how a copy assigns its value |
 | Browser entry | the one address the browser is given, behind which every browser-facing service answers on the same origin | the services behind it |
 
 The other note's Drive port becomes an Address with a role. Its Health check is unchanged.
@@ -136,7 +136,9 @@ The other note's Drive port becomes an Address with a role. Its Health check is 
 | Readiness | confirming the copy answers at its addresses, sign-in included, through the browser entry | how it was started |
 
 Two variants of Instance maker: a Compose copy on this machine, and a fake for tests that
-writes an address book and starts nothing.
+writes an address book and starts nothing. The Compose variant is the client's own recipe,
+which takes the lease name and writes the address book. The toolchain names the lease and
+checks the book (revised, R3).
 
 **Giving an instance its data**
 
@@ -158,8 +160,9 @@ for one lease. The choice is made by *holding a lease* from the run's story (A1)
 | Address source | the values a run's references read (role) | how they were assigned |
 
 Two variants of Address source: the environment page's fixed values, and a copy's Address
-book. The run picks one from Sharing. Reference is the other note's concept, now covering
-addresses in prose and plans as well as in recipes.
+book. Bring-up picks one from Sharing and writes an address book either way, so every
+Reference reads a book and none falls back to the page (revised, R5). Reference is the other
+note's concept, now covering addresses in prose and plans as well as in recipes.
 
 **Shared values.** Address names cross *describing an environment*, *making an instance*
 and *resolving addresses*. They are a read-only catalog the environment page holds. Lease
@@ -221,8 +224,11 @@ names cross *holding a lease* and *making an instance* as a plain value handed a
   written row, so the cloned variant needs block-level copy-on-write.
 - **Reclaim** sweeps at lease time and asks whether each lease's run is alive (F5). No
   daemon.
-- **Reference** is text substitution of `{name}` at the moment a plan or a prompt is built
-  (F7). Agents read concrete values and never invent a port.
+- **Reference** is text substitution of `{name}` at the moment of use: a recipe as it runs, a
+  plan as it runs, a prompt as it is built (F5, F7). Plans keep the name, so a resumed run
+  whose copy was remade reaches the new one. Prompts carry the name and its current value,
+  so an agent never invents a port. The run's report records each value it used (revised,
+  R4).
 
 ### Claims
 
@@ -236,8 +242,8 @@ names cross *holding a lease* and *making an instance* as a plain value handed a
 5. One emulator for the repository: rejected for copies. Emulator users live in memory and
    each convergence reseeds them, so a shared emulator lets one run's seeding overwrite the
    other's.
-6. The literal base URL: rejected. A plan carries the resolved value of `{gateway}`, built
-   per run (F7).
+6. The literal base URL: rejected. A plan carries `{gateway}`, resolved each time it runs
+   (F5, F7, R4).
 7. The coder's teardown: kept, scoped to its lease (invariant 2).
 8. The story branch in the main checkout: rejected. A copy builds from its run's own
    checkout, so two runs in one checkout build each other's code (A4).
@@ -276,6 +282,17 @@ names cross *holding a lease* and *making an instance* as a plain value handed a
   earlier recommendation and does not fit.
 - R2. Section 3, invariant 5: a shared store is allowed for a run whose story changes no
   schema. Finding: R1.
+- R3. Section 2, Instance maker: the Compose variant is the client's recipe, which reads the
+  lease name and writes the address book. Finding: the toolchain runs recipes it does not
+  own, and reading ports back from Compose would tie it to one engine.
+- R4. Section 4, Reference: resolves at the moment of use, not when a plan is built.
+  Finding: a parked run resumes days later, after Reclaim may have remade its copy on other
+  ports (F5).
+- R5. Section 2, Address source: bring-up writes an address book for a shared environment
+  too, from the page. Finding: a reader that falls back to the page when a book is missing
+  reaches the shared stack, which is the failure of section 1.
+- R6. Section 2, Address: a copied environment's page gives no value. Finding: R5, and S2's
+  done-when that the book names no host port for a copied environment.
 
 ### Parts
 
@@ -299,8 +316,9 @@ names cross *holding a lease* and *making an instance* as a plain value handed a
   (`workflows/src/workhorse_workflows/coder/qa/nodes/qa.py:184`) calls the stack's down
   command (`ostler/ostler/qa/runbook.py:497`), which becomes Give-back.
 - **Instance maker**: reshape of the stack bring-up, which passes no project name.
-- **Port assignment, Address book**: new. Compose publishes a container port on a free host
-  port when the host side is omitted, and reports it back per service and port.
+- **Port assignment, Address book**: new, in the client's recipe (R3). Compose publishes a
+  container port on a free host port when the host side is omitted, and reports it back per
+  service and port.
 - **Readiness**: exists as the health check. Reshape: it reads the address book.
 - **Data source, Data store, Overlay**: Overlay exists in the client. The other two are new.
 - **Reference, Address source**: Reference exists for fixture values only. Address source is
