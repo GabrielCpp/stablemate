@@ -299,6 +299,10 @@ def select_stack(graph: Graph, name: str = "", *, near: Path | None = None) -> S
                   if env and _environment_is_local_only(graph, env)}
     if local_only:
         candidates = local_only
+    if len(candidates) > 1 and near is not None:
+        serving = {environment_of(node, resolver) for node in _serving_target(graph, stacks, near)}
+        if serving & candidates:
+            candidates = serving & candidates
     if len(candidates) == 1 and "" not in candidates:
         return _selection_for(stacks, resolver, next(iter(candidates)))
     named = sorted(env for env in candidates if env)
@@ -332,6 +336,18 @@ def _on_surface_of(graph: Graph, nodes: list[UINode], near: Path) -> list[UINode
     features_root = path_mod.features_root(graph)
     return [node for node in nodes
             if surface and graph_mod.surface_of(node.path, features_root) == surface]
+
+
+def _serving_target(graph: Graph, stacks: list[UINode], near: Path) -> list[UINode]:
+    """The *stacks* on *near*'s surface whose `entry-url:` is the address that surface's checks are compiled against."""
+    from ostler import reach
+
+    surface = _surface_near(graph, near)
+    target = reach.entry_origin(graph_mod.build(graph), surface) if surface else None
+    if not target:
+        return []
+    return [node for node in _on_surface_of(graph, stacks, near)
+            if reach.url_origin(bullet_value(node.meta, "entry-url")) == target]
 
 
 def has_served_surface(graph: Graph, near: Path | None = None) -> bool:

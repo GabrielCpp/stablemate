@@ -586,6 +586,23 @@ def test_near_narrowing_to_two_environments_falls_through_to_the_path_order(
     assert [n.path.stem for n in selection.runbooks] == ["web-stack-a"]
 
 
+def test_near_prefers_the_environment_serving_the_address_its_checks_target(
+        tmp_path: Path) -> None:
+    """Of two local environments on one surface, the one whose runbook serves the server's `entry-url:` is the one the checks run against."""
+    (tmp_path / ".git").mkdir()
+    _environment(tmp_path, "web-app", "local")
+    _environment(tmp_path, "web-app", "staging")
+    _stack_runbook(tmp_path, "web-app", "web-stack-a", 1111, "local.md")
+    _stack_runbook(tmp_path, "web-app", "web-stack-b", 2222, "staging.md")
+    write(tmp_path / "docs" / "features" / "web-app" / "http" / "server.md",
+          "---\ntype: server\n---\n\n# Server\n\n- entry-url: http://localhost:2222\n")
+    graph = model.load(tmp_path)
+    near = tmp_path / "docs" / "features" / "web-app"
+    selection = rb.select_stack(graph, near=near)
+    assert selection.environment.endswith("staging.md")
+    assert [n.path.stem for n in selection.runbooks] == ["web-stack-b"]
+
+
 def test_near_outside_the_features_root_leaves_the_book_wide_answer(tmp_path: Path) -> None:
     """A path that is not under `docs/features/` names no surface, so there is nothing to narrow by — `near` is simply not an argument this selection can use."""
     (tmp_path / ".git").mkdir()
