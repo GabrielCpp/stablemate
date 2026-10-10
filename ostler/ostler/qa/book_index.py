@@ -98,14 +98,16 @@ def setups_by_node(obligations: list[Obligation]) -> dict[str, list[Obligation]]
 
 
 def hop_acts(
-    obligations: list[Obligation], acts_by_node: dict[str, list[CallRow]],
+    obligations: list[Obligation], acts_by_node: dict[str, list[CallRow]], screens: frozenset[str] = frozenset(),
 ) -> dict[tuple[str, str], list[CallRow]]:
-    """The acts a navigation click needs first, keyed by the component clicked and the page it lands on: those of the first interaction on that component whose checks observe that page."""
+    """The acts a navigation click needs first, keyed by the component clicked and the page it lands on: those of the first interaction on that component whose checks observe that page. An interaction whose acts operate another of the *screens* reaches the component by a route of its own, so a walk that already stands on the component's page takes none of them."""
     found: dict[tuple[str, str], list[CallRow]] = {}
     for obligation in sorted(obligations, key=lambda o: o.doc_position):
         acts = acts_by_node.get(obligation.node)
         component = on_node(obligation.source, next(iter(obligation.locators.on), ""))
         if obligation.node_type != "interaction" or not acts or not component:
+            continue
+        if _operates_another_screen(acts, component.split("#")[0], screens):
             continue
         for row in obligation.checks:
             for target in row.locates.values():
@@ -114,6 +116,14 @@ def hop_acts(
                     found.setdefault((component, landed), acts)
     return found
 
+
+
+def _operates_another_screen(acts: list[CallRow], page: str, screens: frozenset[str]) -> bool:
+    """Whether one of *acts* points at a node of a screen other than *page*."""
+    return any(
+        target.node.split("#")[0] in screens - {page}
+        for act in acts for target in act.locates.values()
+    )
 
 def fixture_pages(obligations: list[Obligation], *, rebuilt: frozenset[str] = frozenset()) -> dict[str, frozenset[str]]:
     """Each fixture one lap builds once, and every page whose claims name it; a fixture in *rebuilt* is built for each scenario, so no page shares it."""

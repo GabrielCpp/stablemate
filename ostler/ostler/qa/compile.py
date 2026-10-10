@@ -472,7 +472,7 @@ def _compile_packet(
         resolved_web_base_urls=web_urls, resolved_api_base_urls=api_urls,
         queries_by_node=book_index_mod.queries_by_node(carried),
         claims_by_node=acts.claims_by_node,
-        hop_acts=book_index_mod.hop_acts(carried, acts.by_node),
+        hop_acts=book_index_mod.hop_acts(carried, acts.by_node, frozenset(packet.screen_routes)),
         fixture_pages=book_index_mod.fixture_pages(carried, rebuilt=packet.scenario_fixtures),
         fragment_hosts=packet.fragment_hosts,
         guards_by_node=book_index_mod.guards_by_node(carried),

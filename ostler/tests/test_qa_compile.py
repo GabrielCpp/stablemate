@@ -5959,6 +5959,36 @@ def test_a_navigation_click_first_performs_the_acts_of_the_arm_that_lands_on_the
     assert source.index('.fill("the-password")') < source.index(".click()  # Login")
 
 
+
+def test_a_navigation_click_skips_the_acts_of_an_arm_that_reaches_its_button_through_another_screen() -> None:
+    """An arm whose acts operate another screen is a route of its own to the button, so a walk that already stands on the button's page clicks it without replaying that route."""
+    oid = "okf:home:home-title:visible:1"
+    button = f"{_SCREEN}#open-button"
+    picker = "docs/features/policy/gui/screens/picker.md"
+    navigation = _arrival_navigation()
+    navigation["policy"]["routes"][_HOME] = [{"node": button, "from": _SCREEN, "label": "Open"}]
+    context = _navigation_context(
+        _page_obligation(oid, f"{_HOME}#home-title", source=_HOME,
+                         locators={"selector": ["`#home-title`"]}, checks=[_visible("#home-title")]),
+        _page_obligation(f"{button}:carrier", button,
+                         locators={"selector": ["`#open`"]}, checks=[]) | {"required": False},
+        _page_obligation(f"{_SCREEN}#open-home:carrier", f"{_SCREEN}#open-home",
+                         locators={"on": ["[open-button](#open-button)"], "trigger": ["click"]},
+                         acts=[{"call": "visit(path='/picker')", "name": "visit", "args": {"path": "/picker"}},
+                               _act("click", f"{picker}#access-button", {"selector": ["`#access`"]},
+                                    locator="picker.md#access-button")],
+                         checks=[_located_visible(f"{_HOME}#home-title", {"selector": ["`#home-title`"]})],
+                         ) | {"required": False},
+        navigation=navigation,
+        screen_routes={_SCREEN: "/policy-list", _HOME: "/home", picker: "/picker"},
+    )
+    source, gaps = compile_plan_gaps(context, story="demo-story")
+    assert source is not None
+    ast.parse(source)
+    assert oid in _covers(source), gaps
+    assert "#access" not in source
+    assert '"/picker"' not in source
+
 def test_a_navigation_hop_the_page_takes_on_load_clicks_nothing() -> None:
     """A screen that redirects on load is left by the browser on its own, so the walk performs no click for that hop and asks the redirect for no locator."""
     oid = "okf:home:home-title:visible:1"
