@@ -64,6 +64,9 @@ def _shown(element: object, args: Args) -> bool:
 
 def _count_shown(observed: object, args: Args) -> VisibilityReading:
     """How many elements the locator matches are shown, once a screen that draws them late has had time to."""
+    if isinstance(observed, list):
+        shown = sum(1 for each in observed if _shown(each, args))
+        return VisibilityReading(shown=shown > 0, readings=(), count=shown)
     count = getattr(observed, "count", None)
     if not callable(count):
         raise TypeError(f"`visible(count=...)` counts the elements a locator matches, not {type(observed).__name__}")

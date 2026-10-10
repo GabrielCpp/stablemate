@@ -64,19 +64,6 @@ class _Locator:
         return self._text
 
 
-class _Locators:
-    """Every element a locator matches, read one at a time by index."""
-
-    def __init__(self, elements: list[_Locator]) -> None:
-        self._elements = elements
-
-    def count(self) -> int:
-        return len(self._elements)
-
-    def nth(self, index: int) -> _Locator:
-        return self._elements[index]
-
-
 class _Keyboard:
     """The keypress half of a page, and the record of which key was pressed."""
 
@@ -632,8 +619,8 @@ def _plan_removed(_args: Mapping[str, checks.CheckValue]) -> _WitnessPlan:
 
 
 def _plan_counted(text: str, want: int, *, reads_text: bool) -> _WitnessPlan:
-    def shown(times: int, *, reading: str = text, visible: bool = True) -> _Locators:
-        return _Locators([_Locator(visible=visible, text=reading) for _ in range(times)])
+    def shown(times: int, *, reading: str = text, visible: bool = True) -> list[_Locator]:
+        return [_Locator(visible=visible, text=reading) for _ in range(times)]
 
     mutations: list[tuple[str, object]] = [("one more is shown", shown(want + 1))]
     if want != 0:

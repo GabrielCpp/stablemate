@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+import time
 from pathlib import Path
 
 import pytest
@@ -102,6 +103,14 @@ def test_every_check_in_the_vocabulary_has_a_witness_and_a_defect(call: str) -> 
     trial = _trial(call)
     assert trial.witnessed, trial.note
     assert trial.sensitive, f"no mutation of {call} went red"
+
+
+def test_a_counted_visibility_trial_reads_its_static_screens_without_waiting_for_a_late_draw() -> None:
+    """Every run's report puts each `visible(count=...)` check through this trial, and each mutation shows the wrong count by design: polled like a live page, each one waited the whole late-draw budget, and a book's report stalled ten minutes after its last scenario."""
+    started = time.monotonic()
+    trial = _trial('visible(locator="li", text="Draft", count=2)')
+    assert trial.sensitive and not trial.survived
+    assert time.monotonic() - started < load_harness_module("ostler_qa_elements").COUNT_WAIT_S
 
 
 def test_a_filter_witness_is_the_smallest_document_the_selector_is_satisfied_by() -> None:
