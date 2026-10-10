@@ -215,6 +215,12 @@ def test_a_named_entry_url_keeps_its_name_as_the_origin() -> None:
     assert reach.url_origin("http://localhost:3000/app") == "http://localhost:3000"
 
 
+def test_a_named_entry_url_enters_at_the_path_after_its_name() -> None:
+    assert reach.url_path("{gateway}/app") == "/app"
+    assert reach.url_path("{gateway}") == "/"
+    assert reach.url_path("http://localhost:3000/app") == "/app"
+
+
 def test_a_plan_target_opens_the_runs_copy(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     assert harness.resolve_addresses("{gateway}") == "{gateway}"
     where = tmp_path / "book.json"

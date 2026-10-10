@@ -177,7 +177,7 @@ def root_path(data: dict, driver: str | None = None, *,
     for runbook in surface_runbooks(data, surface) if surface is not None else ():
         url = bullet_value(runbook["bullets"], ENTRY_URL_BULLET).strip()
         if url:
-            return _norm_path(urlparse(url).path), runbook["id"]
+            return _norm_path(url_path(url)), runbook["id"]
     servers = sorted((n for n in data["nodes"]
                       if n["type"] == SERVER_TYPE and n["kind"] == "file"),
                      key=lambda n: n["id"])
@@ -185,7 +185,7 @@ def root_path(data: dict, driver: str | None = None, *,
     if chosen is None:
         return ROOT_PATH, None
     url = bullet_value(chosen["bullets"], ENTRY_URL_BULLET)
-    return _norm_path(urlparse(url).path if url else ROOT_PATH), chosen["id"]
+    return _norm_path(url_path(url) if url else ROOT_PATH), chosen["id"]
 
 
 RUNBOOK_TYPE = "runbook"
@@ -202,6 +202,14 @@ def url_origin(url: str) -> str:
         return named.group(0)
     parsed = urlparse(url)
     return f"{parsed.scheme}://{parsed.netloc}" if parsed.scheme and parsed.netloc else ""
+
+
+def url_path(url: str) -> str:
+    """The path of an ``entry-url:`` value, after its origin or the `{name}` it starts with."""
+    named = _NAMED_ORIGIN.match(url.strip())
+    if named:
+        return url.strip()[named.end():] or ROOT_PATH
+    return urlparse(url).path
 
 
 DRIVER_BULLET = "driver"
