@@ -1,6 +1,7 @@
 """The backlog, both ends of it: what the coder files into it, and what it drains back out."""
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import re
@@ -14,7 +15,6 @@ from workhorse_workflows.kit import commit_paths, find_docs_root
 from workhorse_workflows.coder.shared import commits, paths
 from workhorse_workflows.coder.shared.blueprint import blueprint
 from workhorse_workflows.coder.shared.schemas.backlog import (
-    FixBlocked,
     FixPick,
     FixPruned,
     FixStorySeed,
@@ -37,7 +37,7 @@ class BacklogBullet:
 
     @property
     def blocked(self) -> bool:
-        """Whether `mark_fix_blocked` has already annotated this item."""
+        """Whether the item carries a `(blocked …)` annotation."""
         return "(blocked" in self.text.lower()
 
 
@@ -205,6 +205,36 @@ def file_backlog_items(
 
     note = f"filed {appended}, skipped {skipped} (duplicate/invalid)"
     note += "; removed backlog-items.json" if removed else "; backlog-items.json left in place"
+    logger.info(note)
+    return BacklogDrain(appended=appended, skipped=skipped, notes=note)
+
+
+@blueprint.node
+def file_follow_up_backlog(
+    logger: logging.Logger,
+    docs_path: str = "",
+    parent: str = "",
+    follow_ups: list[dict[str, str]] | None = None,
+    repo_dir: str = "",
+) -> BacklogDrain:
+    """File a follow-up's own follow-ups to the repo backlog, one level past the run's worklist."""
+    okf = Ostler(find_docs_root(docs_path, repo_dir))
+    appended = 0
+    skipped = 0
+    for entry in follow_ups or []:
+        title = str(entry.get("title") or "").strip()
+        reason = str(entry.get("reason") or "").strip()
+        if not title:
+            skipped += 1
+            continue
+        key = hashlib.sha256(f"{title}\n{reason}".encode()).hexdigest()[:8]
+        item_id = kebab(f"{parent}-{key}")
+        text = " ".join(f"{title}: {reason}".split()) if reason else " ".join(title.split())
+        if okf.backlog_add(item_id, text, FILED_TITLE).ok:
+            appended += 1
+        else:
+            skipped += 1
+    note = f"filed {appended} follow-up(s) of {parent} to the backlog, skipped {skipped}"
     logger.info(note)
     return BacklogDrain(appended=appended, skipped=skipped, notes=note)
 
@@ -472,71 +502,14 @@ def _prune_directly(path: Path, bullet_id: str) -> bool:
     return True
 
 
-@blueprint.node
-def mark_fix_blocked(
-    logger: logging.Logger,
-    bullet_id: str = "",
-    note: str = "",
-    docs_path: str = "",
-    backlog_path: str = "",
-    repo_dir: str = "",
-) -> FixBlocked:
-    """Annotate a stuck fix in place instead of pruning it — the drain's "flag and continue"."""
-    bullet_id = bullet_id.strip()
-    reason_note = note.strip() or "qa failed after retry"
-
-    if not bullet_id:
-        logger.warning("no bullet_id supplied — nothing to mark")
-        return FixBlocked(reason="no bullet_id supplied — nothing to mark")
-
-    root = find_docs_root(docs_path, repo_dir)
-    rel = paths.backlog_file(root, backlog_path)
-    path = root / rel
-    if not path.is_file():
-        logger.warning("no backlog file at %s", rel)
-        return FixBlocked(bullet_id=bullet_id, reason=f"no backlog file at {rel}")
-
-    lines = path.read_text(encoding="utf-8").splitlines()
-    target = next(
-        (b for b in backlog_bullets("\n".join(lines)) if b.id == bullet_id), None
-    )
-    found = target is not None
-    changed = False
-    if target is not None and not target.blocked:
-        lines[target.line] = f"{lines[target.line].rstrip()} (blocked: {reason_note})"
-        changed = True
-
-    if not found:
-        logger.warning("no backlog bullet '%s' found to mark", bullet_id)
-        return FixBlocked(
-            bullet_id=bullet_id, reason=f"no backlog bullet '{bullet_id}' found to mark"
-        )
-
-    if changed:
-        path.write_text("\n".join(lines) + "\n", encoding="utf-8")
-        logger.info("marked '%s' blocked: %s", bullet_id, reason_note)
-        return FixBlocked(
-            marked=True,
-            bullet_id=bullet_id,
-            reason=f"marked '{bullet_id}' blocked: {reason_note}",
-        )
-
-    logger.info("'%s' already marked blocked (no-op)", bullet_id)
-    return FixBlocked(
-        marked=True,
-        bullet_id=bullet_id,
-        reason=f"'{bullet_id}' already marked blocked (no-op)",
-    )
-
-
 __all__ = [
     "BacklogBullet",
     "Seen",
     "backlog_bullets",
     "file_backlog_items",
+    "file_follow_up_backlog",
     "id_token_set",
     "kebab",
-    "mark_fix_blocked",
     "norm_desc",
     "prune_fix_item",
     "seed_fix_story",

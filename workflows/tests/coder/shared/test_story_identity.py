@@ -148,14 +148,13 @@ def test_story_sources_reject_a_similar_but_nonexact_trailer(
     assert "no commit carries an exact Story trailer" in result.errors[0]
 
 
-def test_settlement_prompt_commits_with_the_minted_story_identity() -> None:
+def test_the_dev_prompt_commits_with_the_minted_story_identity() -> None:
     prompt = (
-        Path(coder.__file__).parent / "main/prompts/settle-worktree.md"
+        Path(coder.__file__).parent / "dev/prompts/dev-story.md"
     ).read_text(encoding="utf-8")
 
-    assert "`Story: {{ story_id }}`" in prompt
-    assert "`Story: {{ story_slug }}`" not in prompt
-    assert "[{{ story_id }}]" not in prompt
+    assert "`Story: {{ workhorse_var('story_id') }}`" in prompt
+    assert "`Story: {{ workhorse_var('story_slug') }}`" not in prompt
 
 
 def test_no_commit_prompt_brackets_the_story_id_into_the_subject() -> None:

@@ -9,19 +9,7 @@ from workhorse.pyflow.driver import drive
 from workhorse_workflows.coder.docs.flow import Docs
 from workhorse_workflows.coder.qa.flow import Qa
 from workhorse_workflows.author.epic_edit.flow import EpicEdit
-from workhorse_workflows.coder.shared.schemas.docs import (
-    DocsLoop,
-    DocsProgress,
-    DocumentationFinding,
-    DocumentationGate,
-    DocumentationReview,
-)
-from workhorse_workflows.coder.shared.schemas.qa import (
-    AssessmentRecord,
-    AuditRecord,
-    QaFlowResult,
-    QaLoop,
-)
+from workhorse_workflows.coder.shared.schemas.qa import QaFlowResult
 from workhorse_workflows.coder.shared.schemas.story import StoryPaths
 from workhorse_workflows.kit.telemetry import (
     counter_labels,
@@ -42,12 +30,11 @@ def test_a_counter_the_state_does_not_carry_is_absent_not_zero():
 
 
 def test_a_bool_is_not_an_attempt_count():
-    """`bool` is an `int` subclass in Python, and `QaLoop` carries flags beside counters."""
+    """`bool` is an `int` subclass in Python, and a state can carry flags beside counters."""
     assert counter_labels({"bonus_used": True}, "qa", ("bonus_used",)) == {}
 
 
 def test_missing_documentation_taint_fails_closed():
-    assert QaLoop().docs_recheck_required is True
     assert QaFlowResult(status="passed").docs_recheck_required is True
 
 
@@ -66,36 +53,6 @@ def test_epic_edit_reports_reworks_and_omits_defaulted_absent_counters():
         "epic_edit.reworks": "2",
     }
     assert "epic_edit.reworks" not in flow.state_labels({})
-
-
-def test_a_recorded_verdict_reaches_the_labels():
-    loop = QaLoop(
-        assessment=AssessmentRecord(disposition="repair_plan", failure_class="plan"),
-    )
-    labels = _sealed(Qa).state_labels({"loop": loop})
-    assert labels["qa.assessment_disposition"] == "repair_plan"
-    assert labels["qa.assessment_failure_class"] == "plan"
-    assert "qa.audit_verdict" not in labels
-
-
-def test_verdicts_are_forgotten_with_the_notes_they_summarise():
-    """`cleared()` blanks each gate's findings before the plan is re-run."""
-    loop = QaLoop(
-        assessment=AssessmentRecord(
-            disposition="repair_plan", notes="the plan does not test the story"
-        ),
-        audit=AuditRecord(verdict="refuted", refutation_class="plan-defect"),
-        plan_rework=2,
-        plan_validation_rework=1,
-        docs_recheck_required=True,
-    )
-    cleared = loop.cleared()
-    assert cleared.assessment.disposition == ""
-    assert cleared.assessment.notes == ""
-    assert cleared.audit.verdict == "" and cleared.audit.refutation_class == ""
-    assert cleared.plan_rework == 2
-    assert cleared.plan_rework_total == 3
-    assert cleared.docs_recheck_required is True
 
 
 def test_progress_verdict_names_what_a_pass_bought():
@@ -132,78 +89,20 @@ def _sealed(cls: type[Workflow], slug: str = "04-tabs") -> Workflow:
     return flow
 
 
-def test_qa_reports_every_budget_on_its_loop():
-    """The loop is a state parameter, so the counters are in hand with no state stashing a copy of them."""
-    loop = QaLoop(plan_rework=2, plan_validation_rework=1, qa_rework=3)
-    labels = _sealed(Qa).state_labels({"loop": loop})
-    assert labels["work_id"] == "04-tabs"
-    assert labels["qa.plan_rework"] == "2"
-    assert labels["qa.plan_validation_rework"] == "1"
-    assert labels["qa.plan_rework_total"] == "3"
-    assert labels["qa.qa_rework"] == "3"
-    assert labels["qa.setup_rework"] == "0"
+def test_qa_reports_its_repair_laps_and_its_blocks():
+    """The owner's budgets are state parameters, so they land on the span as counters."""
+    labels = _sealed(Qa).state_labels({"laps": 2, "blocks": 1, "report": "a note"})
+    assert labels == {"work_id": "04-tabs", "qa.laps": "2", "qa.blocks": "1"}
 
 
-def test_the_gate_verdict_is_forgotten_with_the_failures_it_summarises():
-    """A passing gate clears the lane, verdict and baseline together."""
-    progress = DocsProgress(gate_ids=["G:a.py::b"], gate_failures=1, gate_verdict="invalid")
-    cleared = progress.after_gate(DocumentationGate(status="passed"))
-    assert cleared.gate_ids == []
-    assert cleared.gate_failures == 0
-    assert cleared.gate_verdict == "passed"
-    assert cleared.gate_progress_verdict == "cleared"
-
-
-def test_only_a_revise_leaves_a_worklist_for_the_next_pass():
-    """`approved` and `blocked` both end the flow, so neither leaves findings outstanding — even if the reviewer attached some to explain itself."""
-    finding = DocumentationFinding(
-        id="D1", kind="overclaim", target="docs/features/widget.md#links"
-    )
-    revised = DocsProgress().after_review(
-        DocumentationReview(status="revise", findings=[finding])
-    )
-    assert revised.review_ids == ["D1"] and revised.review_findings == 1
-    approved = revised.after_review(
-        DocumentationReview(status="approved", findings=[finding])
-    )
-    assert approved.review_ids == [] and approved.review_progress_verdict == "cleared"
-
-
-def test_docs_reports_its_gates_and_whether_the_rework_bought_anything():
-    progress = DocsProgress(
-        gate_verdict="invalid",
-        gate_failures=2,
-        gate_progress_verdict="stalled",
-    )
-    labels = _sealed(Docs).state_labels({"loop": DocsLoop(rework=2, progress=progress)})
-    assert labels["work_id"] == "04-tabs"
-    assert labels["docs.rework"] == "2"
-    assert labels["docs.gate_verdict"] == "invalid"
-    assert labels["docs.gate_failures"] == "2"
-    assert labels["docs.gate_progress_verdict"] == "stalled"
-    assert "docs.review_disposition" not in labels
-    assert "docs.review_progress_verdict" not in labels
-
-
-def test_every_docs_label_lands_in_a_groom_profile_bucket():
-    """The test that keeps the feature from being vacuous."""
-    suffixes = ("_verdict", "_disposition", "_failure_class", "_refutation_class")
-    for name in DocsProgress.VERDICT_LABELS:
-        assert name.endswith(suffixes), name
-
-    counts = counter_labels(
-        DocsProgress(gate_failures=2, review_findings=0).model_dump(),
-        "docs",
-        DocsProgress.COUNT_LABELS,
-    )
-    assert set(counts) == {"docs.gate_failures", "docs.review_findings"}
-    for name, value in counts.items():
-        assert "." in name and not name.startswith("workhorse."), name
-        assert value.isdigit() and str(int(value)) == value, (name, value)
+def test_docs_reports_its_repair_laps_and_its_blocks():
+    """The owner's budgets are state parameters, so they land on the span as counters."""
+    labels = _sealed(Docs).state_labels({"laps": 2, "blocks": 1, "report": "a note"})
+    assert labels == {"work_id": "04-tabs", "docs.laps": "2", "docs.blocks": "1"}
 
 
 def test_a_state_with_no_loop_yet_reports_only_the_base_labels():
-    """`start` runs before any loop exists, and must not invent counters for it."""
+    """`start` runs before any lap, and must not invent counters for it."""
     assert _sealed(Qa).state_labels({}) == {"work_id": "04-tabs"}
     assert _sealed(Docs).state_labels({}) == {"work_id": "04-tabs"}
 

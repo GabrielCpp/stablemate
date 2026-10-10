@@ -2,7 +2,9 @@
 from __future__ import annotations
 
 import ast
+import json
 from pathlib import Path
+from typing import Any
 
 import pytest
 from pydantic import BaseModel
@@ -49,12 +51,30 @@ def _model(name: str) -> type[BaseModel]:
     raise AssertionError(f"{name} is rendered into a prompt but is not a schema class")
 
 
+def _schema_titles(value: Any, where: str = "$") -> list[str]:
+    """Every `title` keyword left in a rendered schema, skipping the field names under `properties`."""
+    if isinstance(value, list):
+        return [t for i, v in enumerate(value) for t in _schema_titles(v, f"{where}[{i}]")]
+    if not isinstance(value, dict):
+        return []
+    found = [where] if "title" in value else []
+    for key, child in value.items():
+        if key == "properties" and isinstance(child, dict):
+            found += [
+                t for name, prop in child.items()
+                for t in _schema_titles(prop, f"{where}.properties.{name}")
+            ]
+        else:
+            found += _schema_titles(child, f"{where}.{key}")
+    return found
+
+
 MODEL_NAMES = sorted(_rendered_model_names())
 
 
 def test_every_lane_renders_at_least_one_contract() -> None:
     """The discovery is the test's own input, so an empty sweep would pass vacuously."""
-    assert len(MODEL_NAMES) >= 10
+    assert len(MODEL_NAMES) >= 8
 
 
 @pytest.mark.parametrize("name", MODEL_NAMES)
@@ -68,7 +88,15 @@ def test_rendered_contracts_ask_for_a_document(name: str) -> None:
     """The block frames the schema as something to comply with, not something to echo."""
     block = render.schema_block(_model(name))
     assert block.startswith(render.PREAMBLE)
-    assert '"title"' not in block
+    schema = json.loads(block[block.index("```json") + len("```json") : block.rindex("```")])
+    assert _schema_titles(schema) == []
+
+
+def test_a_field_named_title_survives_the_pruning() -> None:
+    """The pruner drops a schema's `title` keyword, never a property a model names `title`."""
+    block = render.schema_block(_model("DevResult"))
+    schema = json.loads(block[block.index("```json") + len("```json") : block.rindex("```")])
+    assert "title" in schema["$defs"]["FollowUp"]["properties"]
 
 
 @pytest.mark.parametrize("name", MODEL_NAMES)

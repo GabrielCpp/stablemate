@@ -38,34 +38,37 @@ class PushOutcome(CoderResult):
 
 @dry_run(status="fixed")
 class FixCiResult(CoderResult):
-    """`fix_ci/prompts/fix-ci.md` — the fixer's own report: `fixed`, `failed` or `blocked`."""
+    """`fix_ci/prompts/fix-ci.md`: the CI owner's report, `fixed`, `failed` or `blocked`."""
 
     status: Literal["fixed", "failed", "blocked"] = Field(
-        description="`fixed` — you found the failure, repaired it, verified the gate locally "
-        "and committed. `failed` — you understood the failure but this attempt did not "
-        "repair it, or it looks like infrastructure flake; make no spurious commit, and the "
-        "workflow retries. `blocked` — nothing you can do in this repository would make CI "
-        "green, so another attempt is the same attempt: the checks are unreadable to this "
-        "token, the fix needs a credential or a deployment you cannot perform, the failure "
-        "lives in a repo you were not given, or CI can only be made green by changing an "
-        "observable contract, which this stage may not do because no story documentation "
-        "context exists here.",
+        description="`fixed`: you found the failure, repaired it, verified the failing job's "
+        "commands locally and committed. `failed`: you understood the failure but this turn "
+        "did not repair it, or it looks like infrastructure flake. Make no spurious commit. "
+        "The workflow polls CI again and hands you the result. `blocked`: nothing you can do "
+        "in this repository would make CI green, so another turn is the same turn. The checks "
+        "are unreadable to this token, the fix needs a credential or a deployment you cannot "
+        "perform, the failure lives in a repo you were not given, or CI can only go green by "
+        "changing an observable contract, which this lane may not do because no story "
+        "documentation context exists here. The workflow asks the level above you.",
     )
     notes: str = Field(
         default="",
         description="What you changed, or what you tried and why it did not work. On "
-        "`blocked`, the specific dependency and what you attempted before concluding it.",
+        "`blocked`, the specific dependency, what you attempted before concluding it, and "
+        "the question whose answer would unblock you.",
     )
 
 
 class CiLoop(BaseModel):
-    """What one lap of the CI loop carries to the next: the repo, the tally, the misses."""
+    """What one lap of the ship lane carries to the next: the repo, the repair turns, the misses, the merges."""
 
     repo: str = ""
     repo_dir: str = ""
     processed: list[str] = []
-    attempts: int = 0
+    laps: int = 0
     unread: list[str] = []
+    merging: bool = False
+    merges: int = 0
 
 
 __all__ = [

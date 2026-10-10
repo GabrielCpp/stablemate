@@ -77,8 +77,8 @@ an escalation too. The parking half of this rule is untouched — a block it can
 The place decisions accumulate is `<docs-root>/docs/decisions/`
 (`coder/shared/paths.py::decisions_dir`), and answering writes one, so the second run to
 hit the same question reads the ruling instead of parking on it again. Every lane caps the
-*resolver* rather than the block — `MAX_PLAN_BLOCKS`, `MAX_REVIEW_BLOCKS`, `MAX_QA_BLOCKS`
-— and spends that budget on an answer exactly as on an escalation, so a resolver that keeps
+*resolver* rather than the block, with the one `MAX_BLOCKS` in `coder/shared/owner.py`. A
+lane spends that budget on an answer exactly as on an escalation, so a resolver that keeps
 applying a rule the block does not clear walks toward a person instead of lapping forever.
 The branch, the vocabulary and the argument all live in `coder/shared/resolution.py`.
 
@@ -91,15 +91,15 @@ quietly reappearing, not every way the rule could be broken. It does not cover t
 resolver-authority half of the rule — that an `answered` arm exists only where the answer
 was grounded in something already written, at the `operator_mode` sites in
 `author/main/flow.py`, `author/surveyor/flow.py`, `coder/dev/flow.py`,
-`coder/review/flow.py`, `coder/qa/flow.py` and `coder/docs/flow.py` — which needs the
+`coder/qa/flow.py`, `coder/docs/flow.py`, `coder/fix/flow.py` and
+`coder/fix_ci/flow.py` — which needs the
 control-flow graph, not a grep, same as everything else this check cannot see
 structurally. See the script's own docstring before widening it.
 
 ## A workflow is written after the session that worked (load-bearing)
 
-Aims 8 and 9 of [the constitution](../docs/CONSTITUTION.md) set two rules for every
-workflow here. `/vet-proposal` holds a new workflow, a new stage or a new repair loop to
-both.
+Aim 9 of [the constitution](../docs/CONSTITUTION.md) sets a rule for every workflow
+here. `/vet-proposal` holds a new workflow, a new stage or a new repair loop to it.
 
 **Attended first.** A process becomes a workflow after an attended session has finished
 it at least twice on a real target of the intended size. The proposal cites those
@@ -108,28 +108,9 @@ and what each may touch. A run that does not converge is answered by finishing i
 target attended, then folding that session back in. It is not answered by more
 machinery around the run.
 
-**One owner, with narrow helpers.** Every loop that repairs work has one owner seat that
-holds the whole work and repairs it itself. Code runs the gates between the owner's turns
-and opens its next turn on their results: every failure grouped by what was observed, the
-logs, and what the toolchain sent. The owner names a side for each group: the work, the
-toolchain, a fixture, the environment or the app. Only the groups it names the work's own
-come back to it. The rest stop as findings for the level above, and a lap that does not
-lower the failures asks the operator. A narrow seat checks one thing or retrieves one
-thing for the owner, read-only, and never edits the work. The owner runs on the strongest
-model profile the run has. Helpers may run on a cheaper one.
-
-The reason is what the other shapes cost. A narrow node told to repair a page edits the
-page, because the page is all it can touch. The okf-book run on a large API spent 87 of
-99 hours that way. Its largest causes sat in the test compiler, the fixtures and the
-environment, where no page edit could reach them. Each one was found by an attended
-session reading the whole lap, and fixed once. A lead seat above batches of narrow
-writers did not close that gap. On a web app's book, every batch failed behind the same
-missing sign-in fixture, which no batch held, and the lead's finding reached the writers
-only as text.
-
 ## A prompt is a file, unless it is too small to be one
 
-`self.agent("dev/prompts/implement-plan.md", …)` stays the default spelling. The file is
+`self.agent("fix_ci/prompts/fix-merge.md", …)` stays the default spelling. The file is
 what a repo's `.agents/flavors/**` override replaces, what `references.missing_references`
 reads, and what the AST sweeps under `workflows/tests/` check for output shape, undeclared
 variables and existence.

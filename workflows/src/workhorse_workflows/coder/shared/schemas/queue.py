@@ -1,4 +1,4 @@
-"""The main graph's spine: which epic, which story, on what branch, and what it recorded."""
+"""The main graph's spine: which stories the run works, on what branch, and what it recorded."""
 from __future__ import annotations
 
 from typing import Literal
@@ -10,9 +10,24 @@ from workhorse_workflows.coder.shared.schemas._base import CoderResult
 
 
 class RunScope(CoderResult):
-    """`begin_run` — the per-run skip state a previous run left in this run dir."""
+    """`begin_run` — the state a previous run left in this run dir, now cleared."""
 
     cleared: list[str] = []
+
+
+class LaunchEntry(CoderResult):
+    """One story the launch filed: its slug, its ostler id, and the epic it runs under."""
+
+    slug: str = ""
+    id: str = ""
+    epic: str = ""
+
+
+class LaunchSet(CoderResult):
+    """`resolve_launch` — every story this run works, in the order it works them."""
+
+    mode: Literal["epic", "story"] = "epic"
+    entries: list[LaunchEntry] = []
 
 
 class BaseBranch(CoderResult):
@@ -29,41 +44,11 @@ class StoryBranch(CoderResult):
     repos: list[str] = []
 
 
-class EpicPick(CoderResult):
-    """`select-next-epic.py` — the front epic of the queue that is not set aside."""
-
-    has_epic: bool = False
-    epic: str = ""
-    reason: str = ""
-
-
 class EpicBranch(CoderResult):
     """`branch-epic.py` — the `feat/<epic>` this run is on, and the epic it belongs to."""
 
     working_epic: str = ""
     epic_branch: str = ""
-
-
-class StoryPick(CoderResult):
-    """`select-next-story.py` — the next runnable story in an epic, or why there is none."""
-
-    story_outcome: Literal["story", "done", "blocked"] = "blocked"
-    story_path: str = ""
-    spec_dir: str = ""
-    story_slug: str = ""
-    story_id: str = ""
-    epic: str = ""
-    reason: str = ""
-    progress: str = ""
-    remaining_count: int = 0
-
-
-class EpicBlocked(CoderResult):
-    """`flag-epic-blocked.py` — the epic was set aside for the rest of this run."""
-
-    epic_blocked: bool = False
-    blocked_epics: str = ""
-    reason: str = ""
 
 
 class EpicPruned(CoderResult):
@@ -85,24 +70,6 @@ class WorktreeCleanliness(CoderResult):
     clean: bool = False
     dirty: list[str] = []
     repos: list[str] = []
-
-
-class WorktreeSettled(CoderResult):
-    """`settle-worktree.md` — the one lap given to work the story did not record."""
-
-    status: Literal["settled", "blocked"] = Field(
-        description="`settled` — every path you were shown is either committed or was "
-        "deliberately left, and the tree holds nothing of this story's that is not "
-        "recorded. `blocked` — something on that list needs a human: you cannot tell whose "
-        "it is, committing it would be wrong, or the commit itself failed. Return `blocked` "
-        "rather than guessing: the run parks for an operator, which costs ten minutes; a "
-        "commit of someone else's work under this story's name costs considerably more.",
-    )
-    notes: str = Field(
-        default="",
-        description="What you committed, per package — or which paths you left and why they "
-        "are not yours.",
-    )
 
 
 class StoryStamped(CoderResult):
@@ -130,16 +97,14 @@ class ReplanResult(CoderResult):
 
 __all__ = [
     "BaseBranch",
-    "EpicBlocked",
     "EpicBranch",
-    "EpicPick",
     "EpicPruned",
+    "LaunchEntry",
+    "LaunchSet",
     "ReplanResult",
     "RunScope",
     "StoryBranch",
     "StoryCommitted",
-    "StoryPick",
     "StoryStamped",
     "WorktreeCleanliness",
-    "WorktreeSettled",
 ]

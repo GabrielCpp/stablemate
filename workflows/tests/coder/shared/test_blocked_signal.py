@@ -1,6 +1,7 @@
 """The two questions every coder node's return can now be asked, and their edges."""
 from __future__ import annotations
 
+import json
 import pathlib
 
 from workhorse_workflows.coder.shared.schemas._base import (
@@ -8,13 +9,10 @@ from workhorse_workflows.coder.shared.schemas._base import (
     CoderResult,
     Finding,
 )
-from workhorse_workflows.coder.shared.schemas.docs import (
-    DocumentationFinding,
-    DocumentationReview,
-)
-from workhorse_workflows.coder.shared.schemas.qa import QaAssessment, QaFinding
+from workhorse_workflows.coder.shared.schemas.qa import QaFinding, QaOwnerResult
 from workhorse_workflows.coder.shared.schemas.render import schema_block
-from workhorse_workflows.coder.shared.schemas.review import CodeReviewResult
+from workhorse_workflows.coder.shared.schemas.review import ReviewFinding
+from workhorse_workflows.coder.shared.schemas.dev_story import DevResult
 
 
 class _Stated(CoderResult):
@@ -81,35 +79,22 @@ def test_a_block_with_no_evidence_is_a_block_with_nothing_to_route() -> None:
 
 def test_the_narrowed_finding_lists_still_answer_actionable() -> None:
     """`findings` is read off the subclass, so each lane's own element type must work."""
-    assessment = QaAssessment(
-        status="assessed",
-        disposition="repair_plan",
-        failure_class="plan",
-        objective_reached=False,
+    verdict = QaOwnerResult(
+        status="findings",
         findings=[
-            QaFinding(scope="product-test", target="web/tests/todo.spec.ts:40",
-                      issue="no assertion", repair="assert the row disappears"),
-            QaFinding(scope="plan", issue="thin"),
+            QaFinding(target="web/src/todo.ts:40", issue="the row stays",
+                      repair="remove the row on delete"),
+            QaFinding(issue="thin"),
         ]
     )
-    assert [f.target for f in assessment.actionable] == ["web/tests/todo.spec.ts:40"]
-
-    review = DocumentationReview(
-        status="revise",
-        findings=[
-            DocumentationFinding(id="D1", kind="overclaim", target="okf/api.md",
-                                 issue="stale", repair="cite the new handler"),
-            DocumentationFinding(id="D2", kind="overclaim", target="okf/api.md"),
-        ],
-    )
-    assert [f.repair for f in review.actionable] == ["cite the new handler"]
+    assert [f.target for f in verdict.actionable] == ["web/src/todo.ts:40"]
 
 
-def test_the_review_lane_parses_the_loose_findings_it_used_to_declare() -> None:
-    """`CodeReviewResult.findings` was `list[dict[str, Any]]`."""
-    result = CodeReviewResult.model_validate(
+def test_the_dev_owner_parses_loose_review_findings() -> None:
+    """A finding with no target or repair parses, and nothing can act on it."""
+    result = DevResult.model_validate(
         {
-            "status": "blocked",
+            "status": "ready",
             "findings": [
                 {"target": "api/db.go:20", "issue": "n+1", "repair": "batch the query",
                  "category": "Bug", "severity": "high"},
@@ -117,15 +102,15 @@ def test_the_review_lane_parses_the_loose_findings_it_used_to_declare() -> None:
             ],
         }
     )
-    assert result.blocked
+    assert not result.blocked
     assert [f.repair for f in result.actionable] == ["batch the query"]
 
 
-def test_the_shape_the_review_prompt_emits_is_actionable() -> None:
+def test_the_review_shape_the_dev_prompt_emits_is_actionable() -> None:
     """The finding the prompt asks for, parsed by the model that receives it."""
-    result = CodeReviewResult.model_validate(
+    result = DevResult.model_validate(
         {
-            "status": "findings",
+            "status": "ready",
             "findings": [
                 {
                     "target": "api-service/internal/link/store.go:118",
@@ -149,15 +134,16 @@ def test_the_shape_the_review_prompt_emits_is_actionable() -> None:
     assert [f.score for f in result.findings] == [92, 84]
 
 
-def test_the_review_prompt_asks_for_the_keys_the_model_reads() -> None:
+def test_the_dev_owner_prompt_asks_for_the_finding_keys_the_model_reads() -> None:
     """The other half of the pairing: read the prompt, not a copy of it."""
     prompt = (
         pathlib.Path(__file__).resolve().parents[3]
-        / "src/workhorse_workflows/coder/review/prompts/code-review.md"
+        / "src/workhorse_workflows/coder/dev/prompts/dev-story.md"
     ).read_text()
     assert "{{ result_schema }}" in prompt
-    body = schema_block(CodeReviewResult)
+    body = schema_block(DevResult)
     for key in ("target", "issue", "repair", "category", "score"):
         assert f'"{key}"' in body, key
+    finding = json.dumps(ReviewFinding.model_json_schema())
     for dropped in ("required_fix", '"repo"', '"file"', '"line"'):
-        assert dropped not in body, dropped
+        assert dropped not in finding, dropped

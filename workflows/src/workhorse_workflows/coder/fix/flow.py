@@ -1,45 +1,49 @@
-"""Drain the coder's own backlog, one filed item at a time."""
+"""Drain the coder's own backlog, one filed item at a time, each through one owner turn."""
 from __future__ import annotations
 
-from typing import ClassVar
+from typing import Any, ClassVar
 
 from workhorse.pyflow import Await, Continue, Done, Workflow, WorkflowFailed
 from workhorse_workflows.coder.shared import paths, roles
 from workhorse_workflows.coder.docs.flow import Docs
 from workhorse_workflows.coder.shared.backlog import (
-    mark_fix_blocked,
     prune_fix_item,
     seed_fix_story,
     select_fix_item,
 )
 from workhorse_workflows.coder.shared.conversation import story_chain
-from workhorse_workflows.coder.shared.plan import plan_summary
 from workhorse_workflows.coder.shared.dev import read_operator_context
 from workhorse_workflows.coder.shared.provenance import changed_files
 from workhorse_workflows.coder.shared.service_gates import GATE_ORDER, run_gate
 from workhorse_workflows.coder.shared.escalation import context_path, escalation
 from workhorse_workflows.coder.shared.failure import from_gate
+from workhorse_workflows.coder.shared.owner import (
+    HUMAN_MODES,
+    MAX_BLOCKS,
+    MAX_LAPS,
+    SILENCE_S,
+    UNBOUNDED,
+    owner_profile,
+)
+from workhorse_workflows.coder.shared.resolution import RESOLVER_POWER, answered, resolver_args
 from workhorse_workflows.coder.shared.story_commit import commit_story
 from workhorse_workflows.coder.shared.story import (
     guard_story_file,
     prepare_fix_story,
     resolve_workspace_dirs,
 )
-from workhorse_workflows.coder.shared.schemas._base import CoderResult
-from workhorse_workflows.coder.shared.schemas.dev import FailureReport, ImplResult
-from workhorse_workflows.coder.shared.schemas.qa import QaRunResult
+from workhorse_workflows.coder.shared.schemas.dev import (
+    FailureReport,
+    ImplResult,
+    OperatorResolution,
+)
 from workhorse_workflows.coder.shared.schemas.story import StoryPaths, WorkspaceDirs
-
-BLOCKED_NOTE = "blocked in fix loop (QA still failing after one retry)"
-
-MAX_FIX_LAPS = 3
-
 
 
 def render_gate(report: FailureReport) -> str:
-    """The failing gate, as the prompt's `gate_report` section reads it."""
+    """One failing gate, as the owner prompt's `report` section reads it."""
     return (
-        f"Repair lap {report.lap}: the `{report.source}` gate failed in `{report.cwd}`.\n\n"
+        f"The `{report.source}` gate failed in `{report.cwd}`.\n\n"
         f"Command: `{report.command}`\n\n"
         f"```\n{report.output}\n```"
     )
@@ -51,13 +55,13 @@ class Fix(Workflow):
     docs_path: str = ""
     workspace_file: str = ""
     target_env: str = "local"
+    operator_mode: str = "auto"
 
     injects: ClassVar[tuple[str, ...]] = paths.AMBIENT
 
     def setup(self) -> WorkspaceDirs:
         """Every directory an agent turn in this run may read."""
         return self.call(resolve_workspace_dirs, self.docs_path)
-
 
     def start(self) -> Continue | Done:
         """Draw the next drainable bullet, seed it as a story, and resolve its paths."""
@@ -71,115 +75,57 @@ class Fix(Workflow):
         )
         story = self.call(prepare_fix_story, self.docs_path, seed.story_slug, seed.epic)
         guard_story_file(story)
-        return Continue(story, self.item)
+        return Continue(story, self.work)
 
-    def item(
+    def work(
         self,
-        gate_report: str = "",
         operator_context: str = "",
-        impl_blocks: int = 0,
-        lap: int = 0,
+        report: str = "",
+        laps: int = 0,
+        blocks: int = 0,
     ) -> Continue | Await:
-        """Plan and write the repair, in one session — and re-enter it for each repair lap."""
+        """The owner turn: its subagents fix the item and QA it, in the item's one session."""
         self.logger.info(
-            "fixing %s (lap %d)", self._story.story_slug, lap + 1, extra={"activity": True}
+            "owning %s (lap %d)", self._story.story_slug, laps + 1, extra={"activity": True}
         )
-        repair = bool(gate_report)
-        turn = roles.turn(self, "fix-item-repair" if repair else "fix-item", returns=ImplResult)
+        turn = roles.turn(self, "fix-item", returns=ImplResult)
         result = self.agent(
             turn.prompt,
             returns=turn.returns,
             power="high",
-            add_dirs=self._dirs(),
+            timeout=UNBOUNDED,
+            silence=SILENCE_S,
+            profile=owner_profile("fix"),
             session=story_chain(self._story.story_slug),
+            add_dirs=self._dirs(),
             args=turn.args
+            | self._story_args()
             | {
-                "story_slug": self._story.story_slug,
-                "story_id": self._story.story_id or self._story.story_slug,
-                "epic": self._story.story_epic,
-                "story_path": self._story.story_path,
-                "spec_dir": self._story.spec_dir,
                 "bullet_text": self.output(select_fix_item).fix_bullet_text,
-                "operator_context": operator_context,
-            }
-            | ({"gate_report": gate_report} if repair else {}),
-        )
-        if result.blocked:
-            return self._gate_impl(result, gate_report, impl_blocks, lap)
-        return Continue(result, self.gates, lap=lap)
-
-    def gates(self, lap: int = 0, impl_blocks: int = 0) -> Continue | Await:
-        """Run the repo's own gates over what the turn changed, and buy a lap when one is red."""
-        for repo_dir in self._changed_dirs():
-            for gate in GATE_ORDER:
-                outcome = self.call(run_gate, repo_dir, "", gate)
-                if outcome.status != "dirty":
-                    continue
-                report = from_gate(outcome, repo_dir, lap + 1)
-                if lap + 1 < MAX_FIX_LAPS:
-                    return Continue(
-                        report,
-                        self.item,
-                        gate_report=render_gate(report),
-                        impl_blocks=impl_blocks,
-                        lap=lap + 1,
-                    )
-                return self._gate_red(report, impl_blocks)
-        self.logger.info("gates are clean for %s", self._story.story_slug)
-        return Continue(self._story, self.check)
-
-    def read_operator_impl(
-        self, gate_report: str = "", impl_blocks: int = 0, lap: int = 0
-    ) -> Continue:
-        """Consume the operator's answer and re-enter the turn with it in hand."""
-        answer = self.call(read_operator_context, self._story.story_path)
-        return Continue(
-            answer,
-            self.item,
-            gate_report=gate_report,
-            operator_context=answer.content,
-            impl_blocks=impl_blocks,
-            lap=lap,
-        )
-
-    def check(self) -> Continue:
-        """QA the fix."""
-        result = self._qa()
-        if result.status == "passed":
-            return self._prune(result)
-        return Continue(result, self.apply_once, notes=result.notes)
-
-    def apply_once(self, notes: str = "", impl_blocks: int = 0) -> Continue | Await:
-        """The single retry: apply what QA found."""
-        self.logger.info("applying QA fixes to the drained item", extra={"activity": True})
-        turn = roles.turn(self, "apply-qa-fixes", returns=QaRunResult)
-        result = self.agent(
-            turn.prompt,
-            returns=turn.returns,
-            power="high",
-            add_dirs=self._dirs(),
-            session=story_chain(self._story.story_slug),
-            args=turn.args | {
-                "story_slug": self._story.story_slug,
-                "story_id": self._story.story_id or self._story.story_slug,
-                "epic": self._story.story_epic,
-                "story_path": self._story.story_path,
-                "spec_dir": self._story.spec_dir,
                 "qa_dir": self._story.qa_dir,
-                "qa_notes": notes,
+                "docs_path": self.docs_path,
+                "target_env": self.target_env,
+                "operator_context": operator_context,
+                "report": report,
             },
         )
-        if result.status == "blocked":
-            return self._gate_impl(result, "", impl_blocks, 0)
-        return Continue(result, self.recheck)
+        if result.blocked:
+            return self._block(result, result.notes, "the fix owner turn", blocks)
+        return Continue(result, self.check, laps=laps, blocks=blocks)
 
-    def recheck(self) -> Continue:
-        """QA it again, and settle the item either way."""
-        result = self._qa()
-        if result.status == "passed":
-            return self._prune(result)
-        return self._flag(result)
-
+    def check(self, laps: int = 0, blocks: int = 0) -> Continue | Await:
+        """Run the repo's own gates over what the turn changed, and send what failed back."""
+        failures = self._gate_failures(laps)
+        if not failures:
+            self.logger.info("gates are clean for %s", self._story.story_slug)
+            bullet = self.output(select_fix_item).fix_bullet_id
+            pruned = self.call(prune_fix_item, bullet, self.docs_path)
+            return Continue(pruned, self.document)
+        text = "\n\n".join(render_gate(f) for f in failures)
+        if laps >= MAX_LAPS:
+            notes = f"{text}\n\nThe gates still fail after {laps} repair turn(s)."
+            return self._block(failures[0], notes, "the gates on the fix-drain item", blocks)
+        return Continue(failures[0], self.work, report=text, laps=laps + 1, blocks=blocks)
 
     def document(self) -> Continue:
         """Fold the drained item into the OKF book, by handing off to the `docs` flow."""
@@ -212,86 +158,75 @@ class Fix(Workflow):
         )
         return Continue(result, self.start)
 
-
-    def _prune(self, result: CoderResult) -> Continue:
-        """The fix shipped, so its bullet leaves the backlog."""
-        bullet = self.output(select_fix_item).fix_bullet_id
-        self.call(prune_fix_item, bullet, self.docs_path)
-        return Continue(result, self.document)
-
-    def _flag(self, result: CoderResult) -> Continue:
-        """The bullet is annotated in place, and the drain moves on."""
-        bullet = self.output(select_fix_item).fix_bullet_id
-        self.logger.info("flagging %s as blocked", bullet)
-        self.call(mark_fix_blocked, bullet, BLOCKED_NOTE, self.docs_path)
-        return Continue(result, self.document)
-
-    def _gate_impl(
-        self, result: ImplResult | QaRunResult, gate_report: str, impl_blocks: int, lap: int
-    ) -> Await:
-        """A turn said it could not — park on the story and ask."""
-        gate = escalation(
-            self,
-            block_kind="implementation",
-            where="the fix-drain implementation turn",
-            notes=result.notes,
-            number=impl_blocks + 1,
-            findings=result.actionable,
-            story=self._story,
-        )
-        return Await(
-            context_path(self, self._story.story_path),
-            gate.body,
-            self.read_operator_impl,
-            gate_report=gate_report,
-            impl_blocks=impl_blocks + 1,
-            lap=lap,
-        )
-
-    def _gate_red(self, report: FailureReport, impl_blocks: int) -> Await:
-        """The repair budget is spent and the gate is still red — ask, do not give up."""
-        gate = escalation(
-            self,
-            block_kind="implementation",
-            where=f"the {report.source} gate on the fix-drain item",
-            notes=(
-                f"`{report.command or report.source}` still fails in {report.cwd} after "
-                f"{report.lap} repair lap(s).\n\n{report.output}"
-            ),
-            number=impl_blocks + 1,
-            findings=report.actionable,
-            story=self._story,
-        )
-        return Await(
-            context_path(self, self._story.story_path),
-            gate.body,
-            self.read_operator_impl,
-            gate_report=render_gate(report),
-            impl_blocks=impl_blocks + 1,
-            lap=0,
-        )
-
-    def _qa(self) -> QaRunResult:
-        """`qa-fix-item.md`, which `check` and `recheck` run with identical arguments."""
-        self.logger.info("checking %s", self._story.story_slug, extra={"activity": True})
-        turn = roles.turn(self, "qa-fix-item", returns=QaRunResult)
-        return self.agent(
-            turn.prompt,
-            returns=turn.returns,
-            power="high",
+    def resolve(self, notes: str, where: str, blocks: int = 0) -> Continue | Await:
+        """Answer a block from what is already written down, or ask the operator."""
+        self.logger.info("resolving a block at %s", where, extra={"activity": True})
+        result = self.agent(
+            "shared/prompts/resolve-operator.md",
+            returns=OperatorResolution,
+            power=RESOLVER_POWER,
+            timeout=UNBOUNDED,
             add_dirs=self._dirs(),
-            args=turn.args | {
-                "story_slug": self._story.story_slug,
-                "story_id": self._story.story_id or self._story.story_slug,
-                "epic": self._story.story_epic,
-                "story_path": self._story.story_path,
-                "spec_dir": self._story.spec_dir,
-                "plan_services": self.call(plan_summary, self._story.spec_dir).text,
-                "qa_dir": self._story.qa_dir,
-                "docs_path": self.docs_path,
-                "target_env": self.target_env,
-            },
+            args=resolver_args(
+                self,
+                block_kind="implementation",
+                notes=notes,
+                docs_path=self.docs_path,
+                story=self._story,
+            ),
         )
+        if answered(self, result, "implementation"):
+            return Continue(result, self.read_operator, blocks=blocks + 1)
+        return self._ask(notes, where, blocks, result)
+
+    def read_operator(self, blocks: int = 0) -> Continue:
+        """Resume the owner's session with the answer in hand."""
+        answer = self.call(read_operator_context, self._story.story_path)
+        return Continue(answer, self.work, operator_context=answer.content, blocks=blocks)
+
+    def _block(self, result: object, notes: str, where: str, blocks: int) -> Continue | Await:
+        if self.operator_mode in HUMAN_MODES or blocks >= MAX_BLOCKS:
+            return self._ask(notes, where, blocks)
+        return Continue(result, self.resolve, notes=notes, where=where, blocks=blocks)
+
+    def _ask(
+        self, notes: str, where: str, blocks: int, result: OperatorResolution | None = None
+    ) -> Await:
+        gate = escalation(
+            self,
+            block_kind="implementation",
+            where=where,
+            notes=notes,
+            number=blocks + 1,
+            result=result,
+            story=self._story,
+        )
+        return Await(
+            context_path(self, self._story.story_path),
+            gate.body,
+            self.read_operator,
+            blocks=blocks + 1,
+        )
+
+    def _gate_failures(self, laps: int) -> list[FailureReport]:
+        """The first red gate of each changed repository."""
+        failures: list[FailureReport] = []
+        for repo_dir in self._changed_dirs():
+            for gate in GATE_ORDER:
+                outcome = self.call(run_gate, repo_dir, "", gate)
+                if outcome.status == "dirty":
+                    failures.append(from_gate(outcome, repo_dir, laps + 1))
+                    break
+        return failures
+
+    def _story_args(self) -> dict[str, Any]:
+        return {
+            "story_slug": self._story.story_slug,
+            "story_id": self._story.story_id or self._story.story_slug,
+            "epic": self._story.story_epic,
+            "story_path": self._story.story_path,
+            "spec_dir": self._story.spec_dir,
+        }
 
     def _changed_dirs(self) -> list[str]:
         """The run's repositories that are holding work for this item, git's account of it."""
@@ -311,4 +246,4 @@ class Fix(Workflow):
         return list(self.ctx.dirs)
 
 
-__all__ = ["BLOCKED_NOTE", "MAX_FIX_LAPS", "Fix", "render_gate"]
+__all__ = ["Fix", "render_gate"]

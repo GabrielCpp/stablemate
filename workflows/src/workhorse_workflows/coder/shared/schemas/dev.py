@@ -67,15 +67,9 @@ class PlanFixture(CoderResult):
     )
 
 
-@dry_run(status="done")
-class PlanResult(CoderResult):
-    """What every plan turn returns — `plan-story`, `repair-plan-paths`, `replan-with-answer`."""
+class PlanFields(CoderResult):
+    """The structural half of a plan: which services change, in what order, verified how."""
 
-    status: Literal["done", "blocked"] = Field(
-        description="`done` when the plan artifacts are written and ready for review, "
-        "including when they were already there and you left them standing. `blocked` when "
-        "you could not produce a plan at all.",
-    )
     summary: str = Field(
         default="",
         description="One line describing the plan — or, when blocked, the blocker.",
@@ -149,7 +143,7 @@ class PlanResult(CoderResult):
 
 @dry_run(status="done")
 class ImplResult(CoderResult):
-    """`<flow>/prompts/implement-plan.md` — one service layer implemented, or the blocker."""
+    """`fix/prompts/fix-item.md` — one drained item implemented, or the blocker."""
 
     status: ImplStatus = Field(
         description="`done` only when the implementation is complete, verification passed "
@@ -183,25 +177,6 @@ class FailureReport(CoderResult):
             (self.source, self.command, " ".join(self.output.split()))
         )
         return hashlib.sha256(material.encode("utf-8")).hexdigest()[:12]
-
-
-@dry_run(status="fixed")
-class FixResult(CoderResult):
-    """`dev/prompts/dev-fix.md` — the repair turn's own report, whatever the gate was."""
-
-    status: Literal["fixed", "failed", "blocked"] = Field(
-        description="`fixed` — the gate passes now in this directory. `failed` — findings "
-        "remain, but another lap over the same output could plausibly close them. "
-        "`blocked` — no lap of this stage can make the gate pass: the command does not run "
-        "here at all, the fix demands a behaviour change this stage may not make, or it "
-        "lives in a repo you were not given. This ends the laps and hands the block to "
-        "whoever can decide it; it is not a way to stop trying.",
-    )
-    notes: str = Field(
-        default="",
-        description="What you changed — or, when a finding remains, which one and why. On "
-        "`blocked`, say specifically which of the three cases above applies.",
-    )
 
 
 @dry_run(decision="answered")
@@ -340,15 +315,6 @@ class BranchOutcome(CoderResult):
     already_on_branch: list[str] = []
 
 
-class LayerPick(CoderResult):
-    """`select-next-layer.py` — the next service to implement, or "the list is exhausted"."""
-
-    has_layer: bool = False
-    index: int = -1
-    layer: DispatchEntry = DispatchEntry()
-    dispatch_count: int = 0
-
-
 class GateOutcome(CoderResult):
     """`run_gate` — one of a service's declared gate commands and what it said."""
 
@@ -374,46 +340,26 @@ class GateList(CoderResult):
     text: str = ""
 
 
-class Lap(CoderResult):
-    """Where the repair loop is, as one state parameter."""
-
-    fix_lap: int = 0
-    session_turns: int = 1
-    digest: str = ""
-
-
 class ChangedFiles(CoderResult):
     """What this story has already written into one service, by path."""
 
     paths: list[str] = []
 
 
-class DevResult(CoderResult):
-    """What the dev flow hands back: `ready`, or `replan` when the epic premise was wrong."""
-
-    status: Literal["ready", "replan"] = "ready"
-    operator_notes: str = ""
-    session_turns: int = 0
-
-
 __all__ = [
     "BranchOutcome",
     "ChangedFiles",
-    "DevResult",
     "DispatchEntry",
     "FailureReport",
-    "FixResult",
     "ImplContext",
     "ImplResult",
     "ImplStatus",
     "GateList",
     "GateOutcome",
-    "Lap",
-    "LayerPick",
     "OperatorAnswer",
     "OperatorGate",
     "OperatorResolution",
-    "PlanResult",
+    "PlanFields",
     "PlanValidation",
     "QaRunEntry",
     "StoryStatusCheck",

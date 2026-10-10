@@ -2,25 +2,34 @@
 agent: agent
 ---
 
-# Document the story (OKF UI profile)
+# Own The Story's Documentation
 
-The implementation just passed review and is about to enter QA context generation. Your
-job is to **merge everything this story changed into the current OKF book** so new services,
-screens, components, commands, endpoints, interactions, concepts, formats, and flows are
-documented before QA derives obligations. This is an incremental one-story update, not a
-changelog or a bulk build.
+You own this story's documentation. The implementation passed review, and QA derives its
+obligations from the book next. Your job is to **merge everything this story changed into the
+current OKF book**: new services, screens, components, commands, endpoints, interactions,
+concepts, formats and flows. This is an incremental one-story update, not a changelog or a bulk
+build. You do the work through subagents, and you decide what each one sees. This turn ends
+with the book written, reviewed, repaired and green under `ostler doctor`, and the JSON result
+below.
+
+Your session is resumable. A later turn on this story continues this conversation with the
+workflow's report or an operator's answer.
 
 Load the skill and follow it: {{ skill_command("ostler-okf") }}
-It carries the full loop (scaffold → author → fmt → doctor) and links the written model, which
-is the authority for everything below: `references/node-types/<type>.md` for the type you are
-about to write (its keys, required sections, relationships, doctor codes),
-`references/bullet-grammar.md` for what a normative bullet owes and which claim a `verify:` or a
-`fixture:` attaches to, `references/check-vocabulary.md` for the checks and their signatures, and
-`references/defect-kinds.md` for what the reviewer after you rejects on. Read the type reference
-before authoring a type you have not authored this run.
+It carries the full loop (scaffold, author, fmt, doctor) and links the written model. That model
+is the authority for everything below, and for every seat you brief:
 
-## Inputs
+- `references/node-types/<type>.md`: what a type owes, its keys, sections, relationships and
+  doctor codes.
+- `references/bullet-grammar.md`: what a normative bullet owes, and which claim a `verify:` or a
+  `fixture:` attaches to.
+- `references/check-vocabulary.md`: the checks and their signatures.
+- `references/doctor-codes.md`: a code's trigger and its remedy.
+- `references/defect-kinds.md`: what the review rejects on.
 
+## Inputs (authoritative, do not rediscover)
+
+- Story: `{{ workhorse_var('story_slug') }}` (id `{{ workhorse_var('story_id') }}`, epic `{{ workhorse_var('epic') }}`)
 - Story path: `{{ workhorse_var('story_path') }}`
 - Spec dir: `{{ workhorse_var('spec_dir') }}`
 - Docs root: `{{ workhorse_var('docs_path') }}`
@@ -28,172 +37,190 @@ before authoring a type you have not authored this run.
 - Parent epic with authoritative user journeys: `{{ workhorse_var('epic_path') }}`
 - Context mode: `{{ workhorse_var('context_mode') }}`
 - Context notes: `{{ workhorse_var('context_notes') }}`
-- Previous deterministic gate notes: `{{ workhorse_var('gate_notes') }}`
-- Previous semantic review notes: `{{ workhorse_var('review_notes') }}`
+{% if plan_services %}
 
+The services and repos the story touched:
+
+{{ plan_services }}
+{% endif %}
 {% if workhorse_var('obligations') %}
-## Grounding worklist — already computed, do not re-derive it
 
-The same deterministic mapper the gate uses has already joined this story's diff against the
-book. These are the changed production references no node's `code:` bullet owns yet, spelled
-the way the source inventory spells them:
+## Grounding worklist (already computed, do not re-derive it)
+
+The same deterministic mapper the gate uses has joined this story's diff against the book.
+These are the changed production references no node's `code:` bullet owns yet, spelled the way
+the source inventory spells them:
 
 {% for ref in workhorse_var('obligations') %}
 - `{{ ref }}`
 {% endfor %}
 
-This list **is** step 3's worklist. Do not reconstruct it by hand — do not grep the book for
-each changed symbol, and do not list a repo's files to work out what changed. That join is
-arithmetic the tooling already did, it is slower and less accurate done with shell commands,
-and a reference you re-spell yourself grounds nothing. Copy each entry verbatim into the
-`code:` bullet of the node that documents that behavior.
+This list **is** the grounding worklist. Hand it to the writer verbatim. Nobody reconstructs it
+by hand: no grepping the book for each changed symbol, no listing a repo's files to work out
+what changed. That join is arithmetic the tooling already did, and a reference re-spelled by
+hand grounds nothing. An empty list means the mapper had nothing to map. It is not a cue to
+compute one.
+{% endif %}
+{% if report %}
 
-An empty list where you expected entries means the mapper had nothing to map, not that you
-should go compute one yourself.
+## The checks failed
+
+The workflow checked your last turn, and the grounding gate did not hold. Its report:
+
+{{ workhorse_var('report') }}
+
+This turn repairs what the report names, and runs no new review. If the report points at a
+`doctor-errors.txt`, read that file. It is the full list, and the note only points at it. A
+note beginning `conformant;` is successful gate evidence, not a repair item. Every node the
+report does not name stays exactly as it is.
+{% endif %}
+{% if operator_context %}
+
+## Operator answer (authoritative ground truth)
+
+An operator answered a block on this story. Treat the answer as fact. It overrides any earlier
+assumption in the story, the book or a finding. Do not re-derive it, and do not raise the same
+block again.
+
+{{ workhorse_var('operator_context') }}
 {% endif %}
 
-{% if workhorse_var('gate_notes') or workhorse_var('review_notes') %}
-## Repair pass contract
+## How to work
 
-This is a repair pass. Do **not** re-document the whole graph or rewrite unrelated prose.
-Treat unresolved findings in the previous notes above as the complete worklist for this pass,
-and edit only the files/anchors needed to close them plus any deterministic `ostler fmt`
-reshaping. A deterministic note beginning `conformant;` is successful gate evidence and context,
-not a grounding repair item.
+1. **Scope.** Read the story's acceptance criteria, the parent epic's `## User Journeys` and
+   the spec dir. The implementation delta is the working tree plus every commit on the story
+   branch since its base, including QA, regression, CI and merge remediation. From that delta,
+   name each user-facing surface, element, behavior, concept or format the story added or
+   changed: a screen, component or interaction (GUI), a cli or command (CLI), a server,
+   endpoint or invocation (HTTP/WS), a domain or code `concept`, a `flow`, or a `format`.
+2. **Write.** Have a writer fold the story into the book, under the rules below.
+3. **Review.** Once `ostler doctor` is green for the touched nodes, have a reviewer read the
+   book against the diff. Skip this step on a turn that repairs a failed check.
+4. **Triage.** Sort the review's findings yourself: a real in-scope defect, a pre-existing
+   defect outside this story, or a finding the written model does not support.
+5. **Fix.** Have a fixer repair the real findings, then converge `ostler doctor` again.
+6. **Return** the result.
 
-Before editing, retain the stable `D1`, `D2`, `D3`, ... IDs on semantic review findings and
-normalize only unresolved deterministic grounding failures as `G1`, `G2`, .... For each item:
+## Subagents
 
-- identify the exact file/anchor it names;
-- inspect the implementation symbol or cited test before writing prose;
-- either make the smallest documentation edit that the evidence supports, or weaken an
-  overclaim to the exact behavior the evidence proves;
-- if no implementation or test proves a claim, omit the claim or state the limitation rather
-  than inventing support.
+Spawn subagents through your harness's own task or agent tool. Pick each one's model by the
+task: a lookup on the strongest model wastes it, and a review on the cheapest misses what it is
+there to catch.
 
-Your final `notes` must include a compact checklist summary in this form:
-`D1 resolved: <file#anchor> — <evidence>; D2 resolved: ...`. If an item cannot be resolved
-without a product or author decision, return `blocked` and name that item.
-{% endif %}
+| Seat | Model | Sees | May touch |
+| --- | --- | --- | --- |
+| Lookup: is a symbol grounded, what a file declares | the cheapest and fastest | the question | nothing |
+| Writer | a strong one | the inputs above, the worklist and the skill | the book |
+| Reviewer | the strongest, started fresh | the story, the epic, the diff, the worklist and the nodes the writer touched, never the writer's notes or your reasoning | nothing |
+| Fixer: one group of real findings | a strong one | its findings, their targets and your triage verdict | the nodes its findings cite |
 
-## Steps
+Give each seat its inputs in the brief, and the check that proves its part. No two writing
+seats edit the same node at once. You stay the owner: read what every writing seat changed, run
+`ostler fmt` and `ostler doctor` yourself, and write the result yourself.
 
-1. **Scope what changed.** Read the story's acceptance criteria, its parent epic's `## User
-   Journeys`, and the story's `spec_dir`. Inspect both the working tree and commits made on
-   the current story/epic branch since its base, including QA, regression, CI, and merge
-   remediation. The services/repos the story touched:
-{% if plan_services %}
-{{ plan_services }}
-{% endif %}
-   From that complete implementation delta,
-   identify what *user-facing surface, element, behavior, concept, or format* the story
-   added or changed — a screen/component/interaction (GUI), a cli/command (CLI), a
-   server/endpoint/invocation (HTTP/WS), a domain or code `concept`, a `flow`, or a
-   `format`.
-2. **If the story touched no documentable contract** (pure internal refactor, test-only,
-   or configuration with no externally observable contract), there is no new prose to write.
-   Do **not** invent nodes. New source files or symbols are not automatically internal:
-   represent a new service, surface, element, behavior, domain/code concept, or format unless
-   the diff proves otherwise. **Grounding is still owed** — go to step 3.
-3. **Ground every changed production file, whatever you concluded in step 2.** A
-   deterministic gate runs after you and maps the diff onto the graph: each changed
-   production unit must be owned *directly* — **every** one of its changed symbols named as
-   `path::symbol` in some node's `code:` bullet, or, for a file with no symbols the
-   inventory can see (a config or manifest), the file path itself. A node that describes the
-   behavior in prose but does not name the file does not own it; that is the "broad surface
-   ownership" the gate refuses, and it is the one thing this gate exists to catch.
+## The writer's rules
 
-   The grounding worklist above is that gate's own arithmetic, run before you: work it
-   directly instead of deriving your own. If a previous pass's gate notes are above, they
-   list the still-ungrounded references individually. **Copy each one verbatim** — the spelling is the inventory's, not yours,
-   and a symbol renamed on the way into a bullet grounds nothing. A Go method, for example,
-   is `path.go::(*Type).Method`, not `path.go::Type.Method`. Grounding a file the notes
-   never mentioned, or half its symbols, spends a rework pass and changes nothing.
+- **No documentable contract is no prose, not no work.** A pure internal refactor, a test-only
+  change, or configuration with no observable contract gets no new nodes. A new source file or
+  symbol is not internal by default: represent a new service, surface, element, behavior,
+  concept or format unless the diff proves otherwise. Grounding is still owed.
+- **Ground every changed production file.** The gate maps the diff onto the graph. Each changed
+  production unit must be owned *directly*: **every** changed symbol named as `path::symbol` in
+  some node's `code:` bullet, or, for a file with no symbols the inventory can see (a config or a
+  manifest), the file path itself. A node that describes the behavior in prose without naming
+  the file does not own it. Copy each worklist entry verbatim: a Go method is
+  `path.go::(*Type).Method`, not `path.go::Type.Method`.
+- **A deleted symbol or file needs no citation.** `ostler doctor` rejects every `code:` target
+  that is not there. Remove a bullet that cites something deleted, or the node if it described
+  only what was deleted. A `missing-code-symbol` after a refactor means the citation is stale:
+  open the file, read what it declares now, and cite that.
+- **When a contract moved, author from the code** (Playbook B): `ostler search` or `ostler list`
+  for the node, `ostler scaffold` it if it is missing, then the as-built prose and bullets. Set
+  `code:` and `tests:` to real `path::symbol` references, and omit `tests:` rather than invent
+  one. `verify:` is a call from the check vocabulary, never a test name. Run `ostler checks`
+  before writing a call not yet written this run: `absent` takes `subject`, `visible` takes
+  `locator`, and a guessed argument is a blocking `unparsed-check`.
+- **One provable claim per normative bullet.** Split on the real seams by repeating the key.
+  `doctor` errors past 700 characters.
+- **A check goes under the claim it observes.** A `verify:` binds to the nearest normative bullet
+  above it, and one written before any of them binds to the node's whole contract.
+- **Every node that mints an obligation declares at least one observation.** A node whose
+  `does:`, `raises:` or `states:` bullets carry no `verify:` is `undeclared-obligation`.
+- **A check earns its place only if it can go red on the defect its claim forbids.** Name the
+  subject concretely, assert the before-state, and discriminate the claim from its nearest
+  plausible defect. A split bullet does not owe a new check per fragment.
+- **Fill the whole contract.** Fields with `type`, `required` and `default`, every flag and
+  argument, `does:` as ordered effects, errors and exit or status codes, and for UI the `role:`,
+  `name:`, `placement:`, `keyboard:` and `states:` contract. Prefer narrow, evidence-backed prose:
+  "click controls reorder tabs", not "keyboard reordering works", unless a keyboard test proves it.
+- **Materialize implemented journeys as flows.** If the story implements a journey slice from the
+  epic and the book has no matching `flow`, scaffold one with `ostler scaffold flow
+  <journey-slug> --service <service> --title "<Journey title>"` and fill its `start:`, linked
+  `steps:`, `end:` and `verify:` from the as-built surfaces. A story that only builds a
+  prerequisite documents the prerequisite contract and invents no flow.
+- **Never weaken an author-owned requirement to match the code.** An invariant, a journey
+  completion condition, a persistence rule, an event contract or a concurrency requirement that
+  the code contradicts is a decision that is not yours. Return `blocked` and name it.
 
-   **A symbol or file this story deleted needs no `code:` citation at all.** The gate
-   exempts a deletion on its own — do not add a bullet pointing at something that no longer
-   exists to satisfy it. `ostler doctor` rejects every `code:` target that isn't there, with
-   no exception, so the correct response to a deletion is to remove any bullet that now cites
-   it (if the node it lived in still documents live behavior) or remove the node entirely (if
-   the node described only what was deleted) — never to invent a citation for something gone.
-   So a config-only story is normal work, not a no-op: find the node that already describes
-   that behavior — the gate notes above name the unowned path — and add the `code:` bullet
-   pointing at it. That is a documentation change, so it returns `documented` and lists that
-   node. `not_required` is only correct when every changed production file is *already*
-   directly owned and no contract moved; if a previous pass's gate notes name an unowned
-   path, `not_required` is the one answer that cannot be right, and repeating it just spends
-   the rework budget and fails the flow.
-4. **When a contract did move, apply the skill's loop from existing code (Playbook B):** `ostler search`
-   / `ostler list` for the node if it exists; `ostler scaffold` it if not; author the
-   as-built prose and structured bullets; set `code:` / `tests:` to the **real**
-   `path::symbol` you just wrote (omit `tests:` rather than invent a test that doesn't
-   exist), and `verify:` to the observation that proves the node — a call from the check
-   vocabulary, e.g. `http_status(409, title="Conflict")`, never a test name. Run `ostler checks`
-   for the signatures before writing a call you have not written before — the arguments are not
-   uniform (`absent` takes `subject`, `visible` takes `locator`), and a guessed one is a blocking
-   `unparsed-check` and a wasted gate lap. Keep every path link resolving.
-   Never weaken an invariant, journey completion condition, persistence rule, event
-   contract, or concurrency requirement merely to match the implementation. Such drift
-   is a product/author decision, not a grounding edit.
+## The reviewer's brief
 
-   Four rules decide whether the review after you approves. Each is written out in the skill's
-   references; what follows is what they cost you if you skip them.
+The reviewer starts fresh, so its findings come from the story and the diff, not from the
+writer's account of them. Hand it the story path, the epic path, the spec dir, each changed repo,
+the worklist and the list of nodes the writer touched. Tell it to read the diff itself, and to
+query the graph rather than infer it from the markdown: `ostler graph --path`, `--bullet
+'code=mod.py::Sym' --ids`, `--orphans`.
 
-   - **One provable claim per normative bullet** (`references/bullet-grammar.md`, and which keys
-     are normative is in the type's own reference). Merging this story's delta into a sentence
-     that already holds three requirements makes a bullet where the scenario proves whichever
-     clause the planner read and the rest ships claimed-as-covered. Split on the real seams by
-     repeating the key; `doctor` errors past 700 characters.
-   - **A check goes under the claim it observes.** Document order is the binding: a `verify:` is
-     attributed to the nearest normative bullet **above** it, and one written before any of them
-     belongs to the node's whole contract. A check placed above its claim is credited to the
-     claim before it — the observation of a refusal filed as the observation of the success case.
-   - **Every node that mints an obligation declares at least one observation.** A node whose
-     `does:`/`raises:`/`states:` bullets carry no `verify:` reaches QA where any assertion
-     satisfies it; `doctor` warns `undeclared-obligation` and the review rejects it.
-   - **A check earns its place only if it can go red on the defect the claim forbids**
-     (`references/defect-kinds.md`, `verify-overclaim`). Name the subject concretely, assert the
-     before-state rather than assuming it, and discriminate the claim from its nearest plausible
-     defect. Splitting a bullet does **not** by itself owe a new check per fragment: a `verify:`
-     above a group of normative bullets binds to the node's contract and covers them all.
+Its scope is the nodes that document behavior this story's changed references reach, and the
+nodes the diff should have created. A defect outside that scope is pre-existing and goes in
+`notes`, never in the findings. It lists every in-scope defect it sees in one pass, each as one
+line:
 
-   **Fill the whole contract, not a stub.** The type's reference lists what its bullets are for;
-   the bar is fields with `type`/`required`/`default`, every flag and argument item by item,
-   `does:` as ordered effects, errors/exit/status codes, and for UI the
-   `role:`/`name:`/`placement:`/`keyboard:`/`states:` contract.
-   Prefer narrow, evidence-backed prose over broad claims: write "click controls reorder tabs"
-   instead of "keyboard reordering works" unless a keyboard test proves it; write "new nested
-   insertion is blocked" instead of "containers can never nest" when loaded legacy nested
-   containers are preserved or degraded; and name focus/key behavior exactly as implemented.
-5. **Materialize implemented greenfield journeys as OKF flows.** The author journey plan is
-   planning prose, not the feature book. If the current story implements a journey slice named
-   there and the book has no matching `flow` node yet, create one with `ostler scaffold flow
-   <journey-slug> --service <service> --title "<Journey title>"`, then fill its `start:`, linked
-   `steps:`, `end:`, and `verify:` bullets from the as-built surfaces. A greenfield
-   journey is not complete until the book contains the surfaced nodes it traverses and the `flow`
-   links those steps. If this story only implements an internal prerequisite for a later journey,
-   say that precisely and document the prerequisite contract instead; do not invent a flow before
-   a user can traverse it.
-6. **Converge:** run `ostler fmt <the docs you touched>` then `ostler doctor` (from the
-   docs root, `-C` if needed). Fix any error by its named remedy until `doctor` is green
-   for the nodes you touched. In `semantic` multi-repo mode, repository-local doctor cannot
-   resolve service-repo `code:` paths beneath the separate docs root: report its
-   `dangling-code-ref` / `missing-code-symbol` findings for independent review, but do not return
-   `blocked` for those two grounding codes alone. Every structural, relation, schema, and local
-   grounding error remains blocking. Never silence a finding by deleting a meaningful bullet.
+```text
+D1 [node-type] docs/features/acme/gui/screens/editor.md#insert-widget: browser click action is under ## Invocations; move it to ## Interactions.
+```
 
-This is a hard gate. If the graph cannot be updated without changing an author-owned
-normative decision, return `blocked`; never claim success or remove requirements to pass.
+The kind is one of `node-type`, `missing-node`, `flow-coverage`, `overclaim`,
+`bullet-granularity`, `grounding`, `verify-overclaim` or `author-decision`, each defined in
+`references/defect-kinds.md`. A defect that fits none of them is not a defect. When its reading
+and a reference disagree, the reference wins. In `semantic` mode, repository-local doctor cannot
+resolve service-repo `code:` paths, so a `dangling-code-ref` or `missing-code-symbol` alone is
+not a finding.
+
+## The fixer's brief
+
+Hand the fixer its findings by id, their targets and your verdict. It makes the smallest edit
+the evidence supports, or weakens an overclaim to the behavior the evidence proves. Every node
+the findings do not cite stays exactly as it is: a rewritten node is one the reviewer must read
+again, and it will find a different real defect there.
+
+## Converge
+
+Run `ostler fmt <the docs you touched>`, then `ostler doctor` from the docs root (`-C` if
+needed). Fix, re-run and repeat until `doctor` reports zero errors for the touched nodes. To
+narrow the report, `ostler doctor --json 2>/dev/null` emits `{org, profile, epics, errors,
+warnings, findings}`: `findings` is the list, and `errors` and `warnings` are counts. Keep stderr
+out of the pipe, because one warning line on stdout makes the document unparseable.
+
+In `semantic` multi-repo mode, repository-local doctor cannot resolve service-repo `code:` paths
+beneath the separate docs root. Report its `dangling-code-ref` and `missing-code-symbol` findings
+in `notes`, and do not return `blocked` for those two codes alone. Every structural, relation,
+schema and local grounding error stays blocking. Never silence a finding by deleting a
+meaningful bullet.
+
+## Blocked
+
+Return `blocked` only when the book cannot be made true of this code without a decision that is
+not yours, and name the item in `notes`. Never claim success or remove a requirement to pass.
 
 ## Commit Identity
 
 Every commit carries `Epic: {{ workhorse_var('epic') }}` and
-`Story: {{ workhorse_var('story_id') }}` as footers, spelled exactly so and nowhere else
-in the message — not bracketed into the subject — the run record
-ties a commit back to its story through them.
+`Story: {{ workhorse_var('story_id') }}` as footers, spelled exactly so and nowhere else in the
+message, not bracketed into the subject. The run record ties a commit back to its story through
+them.
 
 ## Output
 
-Return the JSON document as the LAST thing in your final response — its keys at the top level, with no wrapper object around them. Any other shape fails to parse and the node is retried.
+Return the JSON document as the LAST thing in your final response, its keys at the top level, with no wrapper object around them. Any other shape fails to parse and the node is retried.
 
 {{ result_schema }}

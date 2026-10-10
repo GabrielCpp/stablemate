@@ -3,14 +3,17 @@ from __future__ import annotations
 
 import hashlib
 import logging
-import shutil
 import subprocess
 from pathlib import Path
 
 from git.exc import GitError
 from workhorse_workflows.kit import find_docs_root
 from workhorse_workflows.coder.shared.blueprint import blueprint
-from workhorse_workflows.coder.shared.schemas.worktree import DirtyAtStart, PlanScrub, PorcelainSnapshot
+from workhorse_workflows.coder.shared.schemas.worktree import (
+    CodeChange,
+    DirtyAtStart,
+    PorcelainSnapshot,
+)
 from workhorse_workflows.kit import open_repo, resolve_workspace
 
 
@@ -84,84 +87,41 @@ def _git(repo: Path, *args: str) -> str | None:
     return result.stdout if result.returncode == 0 else None
 
 
-def _porcelain_paths(porcelain: str) -> dict[str, str]:
-    """Porcelain lines keyed by the path they name, rename targets included."""
-    entries: dict[str, str] = {}
-    for line in porcelain.splitlines():
-        if len(line) < 4:
-            continue
-        for part in line[3:].split(" -> "):
-            entries[part.strip('"')] = line
-    return entries
+def _code_state(docs_path: str, repo_dir: str, workspace_file: str) -> dict[str, str]:
+    state: dict[str, str] = {}
+    for repo in _code_repos(docs_path, repo_dir, workspace_file):
+        head = _git(repo, "rev-parse", "HEAD")
+        status = _git(repo, "status", "--porcelain")
+        if head is not None and status is not None:
+            state[str(repo)] = head + status
+    return state
 
 
 @blueprint.node
-def snapshot_worktrees(
+def snapshot_code_state(
     logger: logging.Logger, docs_path: str = "", repo_dir: str = "", workspace_file: str = ""
 ) -> PorcelainSnapshot:
-    """Record each code repo's `git status --porcelain` before the plan turn runs."""
-    status: dict[str, str] = {}
-    for repo in _code_repos(docs_path, repo_dir, workspace_file):
-        out = _git(repo, "status", "--porcelain")
-        if out is None:
-            logger.warning("cannot read git status in %s — the clean-tree gate skips it", repo)
-            continue
-        status[str(repo)] = out
-    return PorcelainSnapshot(status=status)
+    """Record each code repo's HEAD and porcelain status, so later edits and commits both show."""
+    return PorcelainSnapshot(status=_code_state(docs_path, repo_dir, workspace_file))
 
 
 @blueprint.node
-def scrub_plan_mutations(
+def code_changed(
     logger: logging.Logger,
     before: dict[str, str] | None = None,
     docs_path: str = "",
     repo_dir: str = "",
     workspace_file: str = "",
-) -> PlanScrub:
-    """Revert whatever the plan turn wrote into the code repos."""
-    before = before or {}
-    reverted: dict[str, str] = {}
-    for repo in _code_repos(docs_path, repo_dir, workspace_file):
-        key = str(repo)
-        if key not in before:
-            continue
-        out = _git(repo, "status", "--porcelain")
-        if out is None:
-            logger.warning("cannot read git status in %s — the clean-tree gate skips it", repo)
-            continue
-        prior = _porcelain_paths(before[key])
-        fresh = {
-            path: line for path, line in _porcelain_paths(out).items() if path not in prior
-        }
-        if not fresh:
-            continue
-        tracked = sorted(p for p, line in fresh.items() if not line.startswith("??"))
-        untracked = sorted(p for p, line in fresh.items() if line.startswith("??"))
-        diff = _git(repo, "diff", "HEAD", "--", *tracked) if tracked else ""
-        if tracked and _git(repo, "checkout", "HEAD", "--", *tracked) is None:
-            logger.warning("could not restore %s in %s", tracked, repo)
-        for path in untracked:
-            target = repo / path
-            if target.is_dir():
-                shutil.rmtree(target, ignore_errors=True)
-            else:
-                target.unlink(missing_ok=True)
-        record = "\n".join(sorted(set(fresh.values())))
-        if diff:
-            record += "\n" + diff[:4000]
-        reverted[key] = record
-        logger.warning(
-            "the plan turn modified %s — reverted, planning must not touch code:\n%s",
-            repo,
-            record,
-        )
-    return PlanScrub(reverted=reverted)
+) -> CodeChange:
+    """Whether any code repo moved since `snapshot_code_state`, or there is no code repo to watch."""
+    now = _code_state(docs_path, repo_dir, workspace_file)
+    return CodeChange(changed=not now or now != (before or {}))
 
 
 __all__ = [
+    "code_changed",
     "digest",
-    "scrub_plan_mutations",
+    "snapshot_code_state",
     "snapshot_worktree_state",
-    "snapshot_worktrees",
     "untouched_since",
 ]

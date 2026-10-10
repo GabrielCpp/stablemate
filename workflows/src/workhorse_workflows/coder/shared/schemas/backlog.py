@@ -34,12 +34,4 @@ class FixPruned(CoderResult):
     reason: str = ""
 
 
-class FixBlocked(CoderResult):
-    """`mark-fix-blocked.py` — the stuck fix's bullet is annotated in place, not removed."""
-
-    marked: bool = False
-    bullet_id: str = ""
-    reason: str = ""
-
-
-__all__ = ["BacklogDrain", "FixBlocked", "FixPick", "FixPruned", "FixStorySeed"]
+__all__ = ["BacklogDrain", "FixPick", "FixPruned", "FixStorySeed"]

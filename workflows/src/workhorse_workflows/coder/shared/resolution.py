@@ -2,24 +2,32 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 
 from workhorse.pyflow import Workflow
 
 from workhorse_workflows.coder.shared import paths
 from workhorse_workflows.coder.shared.schemas.dev import OperatorResolution
 from workhorse_workflows.coder.shared.schemas.render import schema_block
+from workhorse_workflows.coder.shared.schemas.story import StoryPaths
 from workhorse_workflows.kit import find_docs_root
 
 RESOLVER_POWER = "max"
 
 
 def resolver_args(
-    flow: Workflow, *, block_kind: str, notes: str, docs_path: str
+    flow: Workflow,
+    *,
+    block_kind: str,
+    notes: str,
+    docs_path: str,
+    story: StoryPaths | None = None,
 ) -> dict[str, str]:
     """The template arguments a `shared/prompts/resolve-operator.md` turn takes."""
+    ident: StoryPaths | Any = story if story is not None else flow.ctx
     return {
-        "story_path": flow.ctx.story_path,
-        "spec_dir": flow.ctx.spec_dir,
+        "story_path": ident.story_path,
+        "spec_dir": ident.spec_dir,
         "decisions_dir": str(decisions_dir(docs_path, flow.repo_dir)),
         "block_kind": block_kind,
         "block_notes": notes,

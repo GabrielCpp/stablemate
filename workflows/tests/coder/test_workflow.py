@@ -7,12 +7,10 @@ import subprocess
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any, Literal
-from unittest.mock import patch
 
 import pytest
 from workhorse.artifacts import ArtifactWriter
-from workhorse.pyflow import Blueprint, Done, Workflow, WorkflowFailed
-from workhorse.pyflow import park as pyflow_park
+from workhorse.pyflow import Done, Workflow, WorkflowFailed
 from workhorse.pyflow.driver import read_resume
 from workhorse.pyflow.engine import RunEnv
 from workhorse.records import parse_checkpoint
@@ -21,33 +19,21 @@ from workhorse_workflows.kit import commit_all, commit_paths, is_ancestor
 from workhorse_workflows.coder.main import flow as coder_main
 from workhorse_workflows.coder.shared import commits
 from workhorse_workflows.coder.shared.schemas.backlog import FixPick
-from workhorse_workflows.coder.shared.ci import poll_pr_checks
-from workhorse_workflows.coder.main.nodes.pr import (
-    _epic_pr_title,
-    flag_ci_failure,
-    merge_pr,
-    open_pr,
-    open_story_pr,
-)
+from workhorse_workflows.coder.main.nodes.pr import _epic_pr_title, open_pr, open_story_pr
 from workhorse_workflows.coder.shared.branches import CLAIMED_FILE, branch_epic, branch_story
-from workhorse_workflows.coder.shared.queue import (
-    BLOCKED_FILE,
-    SKIP_FILE,
-    begin_run,
-    select_epic,
-)
+from workhorse_workflows.coder.shared import work
+from workhorse_workflows.coder.shared.queue import begin_run, resolve_launch
 from workhorse_workflows.coder.shared.story_commit import check_repos_clean, stamp_story_passed
 from workhorse_workflows.coder.shared.story import prepare_story
 from workhorse_workflows.coder.shared.schemas.ci import CiChecks, CiStatus
-from workhorse_workflows.coder.shared.schemas.dev import DevResult
 from workhorse_workflows.coder.shared.schemas.docs import DocsResult, DocsStatus
 from workhorse_workflows.coder.shared.schemas.qa import (
+    QaFinding,
     QaFlowResult,
     QaFlowStatus,
     QaResult,
 )
-from workhorse_workflows.coder.shared.schemas.pr import MergeOutcome
-from workhorse_workflows.coder.shared.schemas.review import ReviewResult
+from workhorse_workflows.coder.shared.schemas.dev_story import DevOutcome
 from workhorse_workflows.coder.main import Coder
 
 EPIC = "EPIC-1"
@@ -176,7 +162,7 @@ def _story_message(package: str, slug: str) -> str:
 
 
 class _StubFlow(Workflow):
-    """Every keyword the graph's six handoffs pass, because `Workflow` forbids extras."""
+    """Every keyword the graph's five handoffs pass, because `Workflow` forbids extras."""
 
     story: str = ""
     docs_path: str = ""
@@ -185,15 +171,17 @@ class _StubFlow(Workflow):
     operator_mode: str = ""
     target_env: str = ""
     sandbox: bool = False
-    triage_scope: int = 0
     repo: str = ""
     branch: str = ""
-    session_turns: int = 0
-    inherited_turns: int = 0
+    base: str = ""
+    work_id: str = ""
+    follow_up_title: str = ""
+    follow_up_reason: str = ""
+    note: str = ""
 
 
 class _Sub:
-    """The six stand-ins, their call log, and the one file `dev` writes."""
+    """The five stand-ins, their call log, and the one file the dev owner writes."""
 
     def __init__(
         self,
@@ -229,7 +217,6 @@ class _Sub:
     def install(self, monkeypatch: pytest.MonkeyPatch) -> _Sub:
         for name, reply in (
             ("Dev", self._dev),
-            ("Review", self._review),
             ("Docs", self._docs),
             ("Qa", self._qa),
             ("FixCi", self._fix_ci),
@@ -255,21 +242,18 @@ class _Sub:
         return [c for n, c in zip(self.calls, self.seen, strict=True) if n == name]
 
 
-    def _dev(self, child: _StubFlow) -> DevResult:
+    def _dev(self, child: _StubFlow) -> DevOutcome:
         if self.changes:
             path = self.repo / "src" / f"{child.story}.py"
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(f"# {child.story}\n", encoding="utf-8")
-            if not self.leave_dirty:
+            if not (self.leave_dirty and self.calls.count("Dev") == 1):
                 commit_paths(
                     self.repo,
                     _story_message(self.repo.name, child.story),
                     f"src/{child.story}.py",
                 )
-        return DevResult(status=self.dev_status, operator_notes="rescope to the epic")
-
-    def _review(self, child: _StubFlow) -> ReviewResult:
-        return ReviewResult(notes="")
+        return DevOutcome(status=self.dev_status, operator_notes="rescope to the epic")
 
     def _docs(self, child: _StubFlow) -> DocsResult:
         return DocsResult(
@@ -283,8 +267,6 @@ class _Sub:
         return QaFlowResult(
             status=status,
             qa=QaResult(status="passed" if status == "passed" else "failed"),
-            qa_rework=1,
-            triage_scope=child.triage_scope,
             operator_notes="",
             docs_recheck_required=self.qa_docs_recheck_required,
         )
@@ -300,14 +282,12 @@ class _Sub:
 
 
 class _Agent:
-    """The graph's own six prompts."""
+    """The graph's own prompts."""
 
-    def __init__(
-        self, *, services: list[dict[str, Any]] | None = None, settle: str = ""
-    ) -> None:
+    def __init__(self, *, services: list[dict[str, Any]] | None = None) -> None:
         self.services = services if services is not None else []
-        self.settle = settle
         self.calls: list[str] = []
+        self.replans: list[str] = []
 
     def __call__(self, node: Any, ctx: Any, *args: Any, **kwargs: Any) -> Any:
         stem = Path(node.prompt).stem
@@ -332,17 +312,10 @@ class _Agent:
     def _qa_fix_item(self, data: dict[str, Any]) -> dict[str, Any]:
         return {"status": "passed", "notes": ""}
 
-    def _settle_worktree(self, data: dict[str, Any]) -> dict[str, Any]:
-        """The one lap a story gets to record work it left on disk."""
-        assert self.settle, "unexpected settle lap — the story committed nothing"
-        if self.settle == "commit":
-            root = Path.cwd()
-            slug = data["story_slug"]
-            commit_all(root, _story_message(root.name, slug))
-            return {"status": "settled", "notes": f"committed {slug}"}
-        if self.settle == "claimed":
-            return {"status": "settled", "notes": "recorded everything the story wrote"}
-        return {"status": self.settle, "notes": "the tree holds an edit I did not write"}
+    def _replan_epic(self, data: dict[str, Any]) -> dict[str, Any]:
+        self.replans.append(data["operator_context"])
+        return {"status": "done", "notes": "re-grounded the epic"}
+
 
 
 
@@ -385,35 +358,31 @@ def test_one_epic_of_one_story_builds_it_prunes_the_queue_and_ends_on_an_empty_q
 
     result = drive_flow(Coder(), run_env, _Agent())
 
-    assert result.has_epic is False, result
-    assert sub.calls == ["Dev", "Review", "Docs", "Qa", "Fix"], sub.calls
+    assert result is None, result
+    assert sub.calls == ["Dev", "Docs", "Qa", "Fix", "FixCi"], sub.calls
     assert _output(run_env, check_repos_clean)["clean"] is True
     assert _output(run_env, stamp_story_passed)["stamped"] is True
     assert _dirty(repo) == "", _dirty(repo)
     assert (repo / "src" / "STORY-1.py").is_file()
     assert EPIC not in (repo / "docs" / "epics" / "index.md").read_text(encoding="utf-8")
-    assert _output(run_env, select_epic)["reason"], _output(run_env, select_epic)
+    assert _output(run_env, resolve_launch)["mode"] == "epic"
 
 
-def test_no_lane_is_handed_a_conversation_but_the_turn_count_threads(
+def test_the_dev_owner_is_handed_its_work_item_and_the_branch_it_lands_on(
     epic: Callable[..., Path],
     env: Callable[..., RunEnv],
     drive_flow: Callable[..., Any],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The graph names no conversation; it only carries how much of the budget is spent."""
+    """The graph names no conversation: the dev owner keys its own session off the work item."""
     repo = epic()
-
-    class _ChainingSub(_Sub):
-        def _dev(self, child: _StubFlow) -> DevResult:
-            super()._dev(child)
-            return DevResult(status="ready", session_turns=3)
-
-    sub = _ChainingSub(repo).install(monkeypatch)
+    sub = _Sub(repo).install(monkeypatch)
 
     drive_flow(Coder(), env(), _Agent())
 
-    assert sub.calls_to("Review")[0].inherited_turns == 3
+    [dev] = sub.calls_to("Dev")
+    assert dev.work_id == "STORY-1"
+    assert dev.branch == f"feat/{EPIC}"
     assert "session_id" not in _StubFlow.model_fields
 
 
@@ -429,7 +398,7 @@ def test_a_qa_mutation_requires_final_documentation_before_commit(
 
     drive_flow(Coder(), env(), _Agent())
 
-    assert sub.calls == ["Dev", "Review", "Docs", "Qa", "Fix", "Docs"], sub.calls
+    assert sub.calls == ["Dev", "Docs", "Qa", "Fix", "Docs", "FixCi"], sub.calls
     assert "feat(acme): story STORY-1" in _subjects(repo), _subjects(repo)
 
 
@@ -474,26 +443,31 @@ def test_the_graph_records_the_epic_branch_it_cut_in_the_run_dir(
     assert ledger.read_text(encoding="utf-8").split() == [f"feat/{EPIC}"]
 
 
-def test_a_fresh_run_drops_the_skip_state_a_previous_run_left_in_the_run_dir(
+def test_a_fresh_run_drops_the_worklist_and_answers_a_previous_run_left_in_the_run_dir(
     epic: Callable[..., Path],
     env: Callable[..., RunEnv],
     drive_flow: Callable[..., Any],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """A run dir outlives the run that made it, and the two skip files must not."""
+    """A run dir outlives the run that made it, and its worklist and answer log must not."""
     repo = epic()
     _Sub(repo).install(monkeypatch)
     run_env = env()
     run_env.writer.run_dir.mkdir(parents=True, exist_ok=True)
-    (run_env.writer.run_dir / BLOCKED_FILE).write_text(f"{EPIC}\n", encoding="utf-8")
-    (run_env.writer.run_dir / SKIP_FILE).write_text("STORY-1\n", encoding="utf-8")
+    (run_env.writer.run_dir / work.WORKLIST_FILE).write_text(
+        '{"items": [{"id": "STORY-1", "kind": "story", "status": "done"}]}\n',
+        encoding="utf-8",
+    )
+    (run_env.writer.run_dir / work.ANSWER_LOG).write_text(
+        "## STORY-1\n\nA stale answer.\n\n", encoding="utf-8"
+    )
 
     result = drive_flow(Coder(), run_env, _Agent())
 
-    assert _output(run_env, begin_run)["cleared"] == [BLOCKED_FILE, SKIP_FILE]
+    assert _output(run_env, begin_run)["cleared"] == [work.WORKLIST_FILE, work.ANSWER_LOG]
     assert (repo / "src" / "STORY-1.py").is_file()
-    assert "set aside" not in _output(run_env, select_epic)["reason"]
-    assert result.has_epic is False, result
+    assert not (run_env.writer.run_dir / work.ANSWER_LOG).exists()
+    assert result is None, result
 
 
 def test_the_story_is_stamped_and_the_next_selection_reads_it_as_done(
@@ -523,57 +497,15 @@ def test_the_pr_cluster_passes_through_offline_and_still_advances_the_queue(
 ) -> None:
     """`should_gate` is read off the *epic*, not off whether GitHub could be reached."""
     repo = epic()
-    _Sub(repo).install(monkeypatch)
+    sub = _Sub(repo, ci_status="unavailable").install(monkeypatch)
     run_env = env()
 
     drive_flow(Coder(), run_env, _Agent())
 
     assert _output(run_env, open_pr)["should_gate"] is True
     assert _output(run_env, open_pr)["ci_epic"] == EPIC
-    assert _output(run_env, poll_pr_checks)["status"] == "unavailable"
-    assert _output(run_env, merge_pr)["merge_status"] == "unavailable"
+    assert [c.base for c in sub.calls_to("FixCi")] == [_output(run_env, open_pr)["ci_base"]]
     assert _head(repo) == f"feat/{EPIC}"
-
-
-def test_an_epic_branch_carrying_a_set_aside_epic_declines_to_open_a_pr(
-    epic: Callable[..., Path],
-    logger: logging.Logger,
-    tmp_path: Path,
-    git: Callable[..., subprocess.CompletedProcess],
-) -> None:
-    """`flag_epic_blocked`'s "NOT merged" promise, kept at the only boundary that can keep it."""
-    repo = epic()
-    run_dir = tmp_path / "run"
-    run_dir.mkdir()
-
-    git(repo, "checkout", "-q", "-b", "feat/EPIC-0")
-    (repo / "failed.txt").write_text("half-built\n", encoding="utf-8")
-    git(repo, "add", "-A")
-    git(repo, "commit", "-qm", "EPIC-0: story [QA FAILED — needs manual review]")
-    git(repo, "checkout", "-q", "-b", f"feat/{EPIC}")
-    git(repo, "checkout", "-q", "-b", "feat/EPIC-9", "main")
-    (repo / "elsewhere.txt").write_text("other work\n", encoding="utf-8")
-    git(repo, "add", "-A")
-    git(repo, "commit", "-qm", "EPIC-9: story")
-    git(repo, "branch", "feat/EPIC-8", "main")
-    git(repo, "checkout", "-q", f"feat/{EPIC}")
-
-    (run_dir / BLOCKED_FILE).write_text("EPIC-0\n", encoding="utf-8")
-    carried = open_pr(logger, epic=EPIC, base_branch="main", run_dir=str(run_dir),
-                      repo_dir=str(repo))
-
-    assert carried.should_gate is False
-    assert carried.ci_epic == ""
-    assert git(repo, "rev-parse", "--verify", f"feat/{EPIC}").returncode == 0
-
-    (run_dir / BLOCKED_FILE).write_text("EPIC-9\nEPIC-8\n", encoding="utf-8")
-    unrelated = open_pr(logger, epic=EPIC, base_branch="main", run_dir=str(run_dir),
-                        repo_dir=str(repo))
-
-    assert unrelated.should_gate is True, "an unrelated set-aside epic must not block the queue"
-    assert unrelated.ci_epic == EPIC
-
-
 
 
 def test_retrying_at_the_same_commit_continues_and_leaves_no_refs_behind(
@@ -843,16 +775,16 @@ def test_story_mode_cuts_its_own_branch_and_ends_at_its_own_pr(
     drive_flow: Callable[..., Any],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """`decide_mode`'s other arm: no queue, no epic PR, no CI gate."""
+    """`resolve_launch`'s story arm: no epic branch, no epic PR, no CI gate."""
     repo = epic()
     sub = _Sub(repo).install(monkeypatch)
     run_env = env()
 
-    result = drive_flow(Coder(mode="story", story="STORY-1", epic=EPIC), run_env, _Agent())
+    result = drive_flow(Coder(story="STORY-1"), run_env, _Agent())
 
     assert result.story_pr == "skipped", result
-    assert sub.calls == ["Dev", "Review", "Docs", "Qa", "Fix"], sub.calls
-    assert not (run_env.writer.run_dir / select_epic.__name__).exists()
+    assert sub.calls == ["Dev", "Docs", "Qa", "Fix"], sub.calls
+    assert _output(run_env, resolve_launch)["mode"] == "story"
     assert not (run_env.writer.run_dir / open_pr.__name__).exists()
     assert _output(run_env, open_story_pr)["story_pr"] == "skipped"
     assert _head(repo) == _output(run_env, branch_story)["story_branch"]
@@ -877,7 +809,7 @@ def test_the_epic_reaches_the_sub_flows_and_story_mode_passes_its_own(
     repo = epic()
     sub = _Sub(repo).install(monkeypatch)
 
-    drive_flow(Coder(mode="story", story="STORY-1"), env(), _Agent())
+    drive_flow(Coder(story="STORY-1"), env(), _Agent())
 
     assert [c.epic for c in sub.calls_to("Dev")] == [EPIC]
     assert [c.epic for c in sub.calls_to("Qa")] == [EPIC]
@@ -896,7 +828,7 @@ def test_both_flows_that_diff_the_worktree_are_told_what_was_already_dirty(
     orphan.write_text("def strand():\n    return 1\n", encoding="utf-8")
     sub = _Sub(repo).install(monkeypatch)
 
-    drive_flow(Coder(mode="story", story="STORY-1"), env(), _Agent())
+    drive_flow(Coder(story="STORY-1"), env(), _Agent())
 
     recorded = [c.preexisting for c in sub.calls_to("Docs")] + [
         c.preexisting for c in sub.calls_to("Qa")
@@ -921,7 +853,7 @@ def test_re_verifying_given_up_stories_moves_each_status_to_passed(
 
     result = drive_flow(Coder(), run_env, _Agent())
 
-    assert result.has_epic is False, result
+    assert result is None, result
     assert sub.calls.count("Dev") == 4, sub.calls
     assert _output(run_env, open_pr)["should_gate"] is True
     for n in range(1, 5):
@@ -929,94 +861,45 @@ def test_re_verifying_given_up_stories_moves_each_status_to_passed(
         assert "QA passed" in story.read_text(encoding="utf-8"), story
 
 
-def test_a_story_that_left_work_uncommitted_gets_one_lap_to_record_it(
+def test_work_left_uncommitted_after_qa_goes_back_to_the_dev_owner(
     epic: Callable[..., Path],
     env: Callable[..., RunEnv],
     drive_flow: Callable[..., Any],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """A dirty tree is not a failure on the first reading — it is one more turn."""
+    """A dirty tree at commit is the dev owner's to settle, with the paths in its note."""
     repo = epic()
-    _Sub(repo, leave_dirty=True).install(monkeypatch)
+    sub = _Sub(repo, leave_dirty=True).install(monkeypatch)
     run_env = env()
-    agent = _Agent(settle="commit")
-    seen: list[str] = []
 
-    with patch.object(pyflow_park, "wait_for_answer", _answers(seen, {})):
-        result = drive_flow(Coder(), run_env, agent)
+    result = drive_flow(Coder(), run_env, _Agent())
 
-    assert result.has_epic is False, result
-    assert agent.calls == ["settle-worktree"], agent.calls
-    assert seen == [], seen
+    assert result is None, result
+    devs = sub.calls_to("Dev")
+    assert len(devs) == 2, sub.calls
+    assert devs[0].note == "", devs[0].note
+    assert "src/STORY-1.py" in devs[1].note, devs[1].note
     assert _output(run_env, check_repos_clean)["clean"] is True
     assert _output(run_env, stamp_story_passed)["stamped"] is True
     assert _dirty(repo) == "", _dirty(repo)
-    assert "feat(acme): story STORY-1" in _subjects(repo), _subjects(repo)
 
 
-def test_a_settle_lap_that_blocks_parks_the_story_for_an_operator(
+def test_the_dev_owner_is_told_what_was_already_dirty(
     epic: Callable[..., Path],
     env: Callable[..., RunEnv],
     drive_flow: Callable[..., Any],
-    git: Callable[..., subprocess.CompletedProcess],
+    write: Callable[[Path, str], Path],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The arm that used to be a `git commit -a` over whatever happened to be in the tree."""
+    """The dev lane subtracts the same snapshot before it calls a path the story's."""
     repo = epic()
-    _Sub(repo, leave_dirty=True).install(monkeypatch)
-    run_env = env()
-    agent = _Agent(settle="blocked")
-    seen: list[str] = []
+    write(repo / "src" / "scratch.py", "# mine, not the run's\n")
+    sub = _Sub(repo).install(monkeypatch)
 
-    def answered(path: Path, **kwargs: Any) -> None:
-        seen.append(path.read_text(encoding="utf-8"))
-        git(repo, "add", "-A")
-        git(repo, "commit", "-qm", "feat(acme): story STORY-1")
-        path.write_text("STATUS: ANSWERED\n\nCommitted it myself.\n", encoding="utf-8")
+    drive_flow(Coder(), env(), _Agent())
 
-    with patch.object(pyflow_park, "wait_for_answer", answered):
-        result = drive_flow(Coder(), run_env, agent)
-
-    assert result.has_epic is False, result
-    assert agent.calls == ["settle-worktree"], agent.calls
-    assert len(seen) == 1, seen
-    assert "src/STORY-1.py" in seen[0], seen[0]
-    assert "did not write" in seen[0], seen[0]
-    assert _output(run_env, check_repos_clean)["clean"] is True
-    assert _output(run_env, stamp_story_passed)["stamped"] is True
-    assert _dirty(repo) == "M .agents/operator/dirty-tree-operator-context.STORY-1.md", _dirty(repo)
-
-
-def test_a_settle_lap_that_claims_success_it_did_not_achieve_buys_a_reading_not_a_pass(
-    epic: Callable[..., Path],
-    env: Callable[..., RunEnv],
-    drive_flow: Callable[..., Any],
-    git: Callable[..., subprocess.CompletedProcess],
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """The other way a second dirty reading happens — and the one a status field can hide."""
-    repo = epic()
-    _Sub(repo, leave_dirty=True).install(monkeypatch)
-    run_env = env()
-    agent = _Agent(settle="claimed")
-    seen: list[str] = []
-
-    def answered(path: Path, **kwargs: Any) -> None:
-        seen.append(path.read_text(encoding="utf-8"))
-        git(repo, "add", "-A")
-        git(repo, "commit", "-qm", "feat(acme): story STORY-1")
-        path.write_text("STATUS: ANSWERED\n\nCommitted it myself.\n", encoding="utf-8")
-
-    with patch.object(pyflow_park, "wait_for_answer", answered):
-        result = drive_flow(Coder(), run_env, agent)
-
-    assert result.has_epic is False, result
-    assert agent.calls == ["settle-worktree"], agent.calls
-    assert len(seen) == 1, seen
-    assert "src/STORY-1.py" in seen[0], seen[0]
-    assert "recorded everything" not in seen[0], seen[0]
-    assert _output(run_env, check_repos_clean)["clean"] is True
-    assert _output(run_env, stamp_story_passed)["stamped"] is True
+    (dev,) = sub.calls_to("Dev")
+    assert any(entry.startswith("src/scratch.py\0") for entry in dev.preexisting), dev.preexisting
 
 
 def test_the_operators_own_uncommitted_files_are_not_the_storys_to_answer_for(
@@ -1034,144 +917,87 @@ def test_the_operators_own_uncommitted_files_are_not_the_storys_to_answer_for(
 
     result = drive_flow(Coder(), run_env, _Agent())
 
-    assert result.has_epic is False, result
+    assert result is None, result
     assert _output(run_env, check_repos_clean)["clean"] is True
     assert _dirty(repo) == "?? src/scratch.py", _dirty(repo)
 
 
-def test_the_triage_budget_survives_a_rescope_back_to_dev(
+def test_a_refix_files_qas_findings_and_sends_the_story_back_to_its_dev_owner(
     epic: Callable[..., Path],
     env: Callable[..., RunEnv],
     drive_flow: Callable[..., Any],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """`init_triage_counter` sits in `prepare`, not in `qa`, and this is why."""
-    repo = epic()
-
-    class _Rescoping(_Sub):
-        def _qa(self, child: _StubFlow) -> QaFlowResult:
-            nth = self.calls.count("Qa")
-            return QaFlowResult(
-                status="rescope" if nth == 1 else "passed",
-                qa=QaResult(status="passed"),
-                triage_scope=child.triage_scope + 1,
-            )
-
-    sub = _Rescoping(repo).install(monkeypatch)
-    run_env = env()
-
-    drive_flow(Coder(), run_env, _Agent())
-
-    assert [c.triage_scope for c in sub.calls_to("Qa")] == [0, 1], sub.calls
-    assert sub.calls.count("Dev") == 2, sub.calls
-    assert _output(run_env, prepare_story)["story_slug"] == "STORY-1"
-
-
-def test_a_product_class_refix_sends_the_story_back_through_dev(
-    epic: Callable[..., Path],
-    env: Callable[..., RunEnv],
-    drive_flow: Callable[..., Any],
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """`refix` is a `rescope` in wiring and its opposite in meaning, and both re-enter dev."""
+    """QA's product findings land on the worklist by `qa`, and the dev owner answers them."""
     repo = epic()
 
     class _Refixing(_Sub):
         def _qa(self, child: _StubFlow) -> QaFlowResult:
             nth = self.calls.count("Qa")
+            finding = QaFinding(
+                id="qa-1", target="acme/src/links.py:12", issue="relative url accepted"
+            )
             return QaFlowResult(
                 status="refix" if nth == 1 else "passed",
-                qa=QaResult(status="passed"),
-                triage_scope=child.triage_scope + 1,
+                qa=QaResult(status="failed" if nth == 1 else "passed"),
+                findings=[finding] if nth == 1 else [],
             )
 
     sub = _Refixing(repo).install(monkeypatch)
-
-    drive_flow(Coder(), env(), _Agent())
-
-    assert sub.calls.count("Dev") == 2, sub.calls
-    assert [c.triage_scope for c in sub.calls_to("Qa")] == [0, 1], sub.calls
-
-
-def test_a_give_up_names_the_rework_count_in_its_failure_message(
-    epic: Callable[..., Path],
-    env: Callable[..., RunEnv],
-    drive_flow: Callable[..., Any],
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """The failure message is the only thing an operator triaging a give-up reads first."""
-    repo = epic()
-    _Sub(repo, qa_status="inconclusive").install(monkeypatch)
-
-    with pytest.raises(WorkflowFailed, match="after 1 attempt") as caught:
-        drive_flow(Coder(), env(), _Agent())
-
-    assert "nothing was committed" in str(caught.value), caught.value
-    assert not any("QA FAILED" in s for s in _subjects(repo)), _subjects(repo)
-
-
-def test_a_give_up_docs_recheck_that_changes_the_qa_plan_retries_qa(
-    epic: Callable[..., Path],
-    env: Callable[..., RunEnv],
-    drive_flow: Callable[..., Any],
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """A docs recheck can repair the executable QA contract, not merely describe failure."""
-    repo = epic()
-    sub = _Sub(
-        repo,
-        docs_authored_nodes=["docs/specs/STORY-1/qa_plan.py#compare_article_inventory"],
-        qa_statuses=["inconclusive", "passed"],
-    ).install(monkeypatch)
     run_env = env()
 
     drive_flow(Coder(), run_env, _Agent())
 
+    assert sub.calls.count("Dev") == 2, sub.calls
     assert sub.calls.count("Qa") == 2, sub.calls
-    assert not (run_env.writer.run_dir / SKIP_FILE).exists()
-    assert all("QA FAILED" not in subject for subject in _subjects(repo))
+    filed = [
+        it.payload
+        for it in work.worklist(run_env.writer.run_dir).items(work.FINDING)
+        if it.payload.get("source") == "qa"
+    ]
+    assert [(f["round"], f["target"]) for f in filed] == [(1, "acme/src/links.py:12")], filed
 
 
-def test_a_blocked_docs_verdict_parks_for_an_operator_rather_than_shipping_the_story(
+@pytest.mark.parametrize("status", ["blocked", "failed"])
+def test_a_docs_lane_that_does_not_document_the_story_replans_its_epic(
+    status: DocsStatus,
     epic: Callable[..., Path],
     env: Callable[..., RunEnv],
     drive_flow: Callable[..., Any],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """A documentation block parks the run for a human, carrying the refusal's reason."""
+    """The docs lane parks on its own, so what reaches main is a block scoped to the epic."""
     repo = epic(count=2)
 
     class _BlockingFirst(_Sub):
         def _docs(self, child: _StubFlow) -> DocsResult:
             if child.story == "STORY-1" and self.calls.count("Docs") == 1:
-                return DocsResult(status="blocked", notes=BLOCK_REASON)
+                return DocsResult(status=status, notes=BLOCK_REASON)
             return DocsResult(status="passed", notes="")
 
     sub = _BlockingFirst(repo).install(monkeypatch)
-    seen: list[str] = []
+    agent = _Agent()
 
-    with patch.object(pyflow_park, "wait_for_answer", _answers(seen, {"yes": True})):
-        result = drive_flow(Coder(), env(), _Agent())
+    result = drive_flow(Coder(), env(), agent)
 
-    assert result.has_epic is False, result
-    assert len(seen) == 1, seen
-    assert BLOCK_REASON in seen[0], seen[0]
-    assert "STORY-1" in seen[0], seen[0]
+    assert result is None, result
+    assert agent.calls == ["replan-epic"], agent.calls
+    assert agent.replans == [BLOCK_REASON], agent.replans
     documented = [c.story for c in sub.calls_to("Docs")]
     assert documented.count("STORY-1") == 2, documented
     assert sub.calls.count("Qa") == 2, sub.calls
-    assert not any("DOCS BLOCKED" in s for s in _subjects(repo)), _subjects(repo)
+    assert "feat(acme): story STORY-1" in _subjects(repo), _subjects(repo)
 
 
 @pytest.mark.parametrize("mode", ["epic", "story"])
-def test_a_required_final_docs_block_parks_for_an_operator_in_either_mode(
+def test_a_required_final_docs_block_replans_in_either_mode(
     mode: str,
     epic: Callable[..., Path],
     env: Callable[..., RunEnv],
     drive_flow: Callable[..., Any],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """A tainted story's required recheck parks for a human when it blocks — in either mode."""
+    """A tainted story's required recheck goes the same way when it blocks, in either mode."""
     repo = epic()
 
     class _BlockingFinal(_Sub):
@@ -1181,49 +1007,15 @@ def test_a_required_final_docs_block_parks_for_an_operator_in_either_mode(
             return DocsResult(status="passed", notes="")
 
     sub = _BlockingFinal(repo, qa_docs_recheck_required=True).install(monkeypatch)
-    flow = Coder() if mode == "epic" else Coder(mode="story", story="STORY-1", epic=EPIC)
-    seen: list[str] = []
+    flow = Coder() if mode == "epic" else Coder(story="STORY-1")
+    agent = _Agent()
 
-    with patch.object(pyflow_park, "wait_for_answer", _answers(seen, {"yes": True})):
-        drive_flow(flow, env(), _Agent())
+    drive_flow(flow, env(), agent)
 
-    assert len(seen) == 1, seen
-    assert BLOCK_REASON in seen[0], seen[0]
-    assert sub.calls.count("Docs") == 3, sub.calls
-    assert sub.calls.count("Qa") == 1, sub.calls
+    assert agent.replans == [BLOCK_REASON], agent.replans
+    assert sub.calls.count("Docs") == 4, sub.calls
+    assert sub.calls.count("Qa") == 2, sub.calls
     assert "feat(acme): story STORY-1" in _subjects(repo), _subjects(repo)
-    assert not any("DOCS BLOCKED" in subject for subject in _subjects(repo)), _subjects(repo)
-
-
-def test_a_docs_handoff_that_merely_failed_parks_on_the_same_gate_a_block_does(
-    epic: Callable[..., Path],
-    env: Callable[..., RunEnv],
-    drive_flow: Callable[..., Any],
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """`failed` is not a second-class `blocked` — it is the same escalation."""
-    repo = epic()
-
-    class _FailingFirst(_Sub):
-        def _docs(self, child: _StubFlow) -> DocsResult:
-            if self.calls.count("Docs") == 1:
-                return DocsResult(status="failed", notes="the book's coverage check errored")
-            return DocsResult(status="passed", notes="")
-
-    sub = _FailingFirst(repo).install(monkeypatch)
-    seen: list[str] = []
-
-    with patch.object(pyflow_park, "wait_for_answer", _answers(seen, {"yes": True})):
-        drive_flow(Coder(), env(), _Agent())
-
-    assert len(seen) == 1, seen
-    assert "failed" in seen[0], seen[0]
-    assert "the book's coverage check errored" in seen[0], seen[0]
-    assert sub.calls.count("Docs") == 2, sub.calls
-    assert sub.calls.count("Qa") == 1, sub.calls
-    assert "feat(acme): story STORY-1" in _subjects(repo), _subjects(repo)
-
-
 
 
 def test_a_green_story_hands_the_backlog_to_the_fix_flow(
@@ -1275,7 +1067,7 @@ def test_a_run_killed_in_qa_resumes_on_qa_without_rebuilding_the_story(
     drive_flow: Callable[..., Any],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The reason `dev`, `review`, `document` and `qa` are four states and not one."""
+    """The reason `dev`, `document` and `qa` are three states and not one."""
     repo = epic()
     _Sub(repo, explode={"Qa"}).install(monkeypatch)
     run_env = env()
@@ -1292,161 +1084,29 @@ def test_a_run_killed_in_qa_resumes_on_qa_without_rebuilding_the_story(
     sub = _Sub(repo).install(monkeypatch)
     result = drive_flow(Coder(**resume.inputs), env(run_dir=run_dir), _Agent(), resume)
 
-    assert result.has_epic is False, result
+    assert result is None, result
     assert "Dev" not in sub.calls, sub.calls
-    assert sub.calls == ["Qa", "Fix"], sub.calls
+    assert sub.calls == ["Qa", "Fix", "FixCi"], sub.calls
     assert [c.epic for c in sub.calls_to("Qa")] == [EPIC], "the epic is read back, not carried"
 
 
 
 
-_test_bp = Blueprint("test")
-
-
-_ci_seam: dict[str, Any] = {}
-
-
-@_test_bp.node
-def _seamed_poll_pr_checks(logger: Any, repo_dir: str = "", branch: str = "") -> CiChecks:
-    seam = _ci_seam
-    polls: list[str] = seam["polls"]
-    polls.append(branch)
-    if seam["green"]["yes"]:
-        return CiChecks(status="passed", summary="")
-    return CiChecks(status=seam["verdict"], summary=seam["summary"])
-
-
-def _red_ci(
-    polls: list[str],
-    green: dict[str, bool],
-    verdict: CiStatus = "failed",
-    summary: str = "the unit suite is red",
-) -> Any:
-    """`poll_pr_checks`, not green until the operator answers the gate."""
-    _ci_seam.update(polls=polls, green=green, verdict=verdict, summary=summary)
-    return _seamed_poll_pr_checks
-
-
-def _answers(seen: list[str], green: dict[str, bool]) -> Callable[..., None]:
-    """The human the `Await` is waiting on: they fix CI, then touch the file."""
-
-    def answered(path: Path, **kwargs: Any) -> None:
-        seen.append(path.read_text(encoding="utf-8"))
-        green["yes"] = True
-        path.write_text("STATUS: ANSWERED\n\nThe runner was out of disk.\n", encoding="utf-8")
-
-    return answered
-
-
-def test_red_ci_spends_its_three_attempts_and_then_escalates_to_a_human(
+def test_the_ship_lane_owns_red_ci_and_the_merge(
     epic: Callable[..., Path],
     env: Callable[..., RunEnv],
     drive_flow: Callable[..., Any],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """`ci → repair_ci → ci` three times, then the gate — which is human whatever the mode."""
+    """One handoff per epic: the ship lane repairs, parks and merges on its own."""
     repo = epic()
     sub = _Sub(repo).install(monkeypatch)
-    polls: list[str] = []
-    green = {"yes": False}
-    monkeypatch.setattr(coder_main, "poll_pr_checks", _red_ci(polls, green))
     run_env = env()
-    seen: list[str] = []
 
-    with patch.object(pyflow_park, "wait_for_answer", _answers(seen, green)):
-        result = drive_flow(Coder(), run_env, _Agent())
+    drive_flow(Coder(operator_mode="human"), run_env, _Agent())
 
-    assert result.has_epic is False, result
-    assert len(polls) == 5, polls
-    assert set(polls) == {f"feat/{EPIC}"}, polls
-    assert sub.calls.count("FixCi") == 3, sub.calls
-    assert {c.branch for c in sub.calls_to("FixCi")} == {f"feat/{EPIC}"}
-    assert _output(run_env, flag_ci_failure)["ci_flagged"] is False
-    assert len(seen) == 1, seen
-    assert "after 3 automated attempt(s)" in seen[0], seen[0]
-    assert (repo / "docs" / "epics" / EPIC / "ci-operator-context.md").is_file()
-
-
-def test_unreadable_ci_parks_at_once_instead_of_spending_a_repair_lap(
-    epic: Callable[..., Path],
-    env: Callable[..., RunEnv],
-    drive_flow: Callable[..., Any],
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """`blocked` is not `failed` and is not `unavailable`: it is the gate, on the first poll."""
-    repo = epic()
-    sub = _Sub(repo).install(monkeypatch)
-    polls: list[str] = []
-    green = {"yes": False}
-    monkeypatch.setattr(
-        coder_main,
-        "poll_pr_checks",
-        _red_ci(polls, green, "blocked", "CI unreadable: 403 on Actions"),
-    )
-    run_env = env()
-    seen: list[str] = []
-
-    with patch.object(pyflow_park, "wait_for_answer", _answers(seen, green)):
-        result = drive_flow(Coder(), run_env, _Agent())
-
-    assert result.has_epic is False, result
-    assert len(polls) == 2, "one refusal, then the operator's answer re-polls green"
-    assert sub.calls.count("FixCi") == 0, sub.calls
-    assert len(seen) == 1, seen
-    assert "after 0 automated attempt(s)" in seen[0], seen[0]
-    assert "403 on Actions" in seen[0], seen[0]
-
-
-
-
-def _failing_merge(merges: list[str], landed: dict[str, bool]) -> Any:
-    """`merge_pr`, conflicted until the operator answers the gate."""
-
-    @_test_bp.node
-    def merge_pr(
-        logger: Any, epic: str = "", base_branch: str = "main", repo_dir: str = ""
-    ) -> Any:
-        merges.append(epic)
-        if landed["yes"]:
-            return MergeOutcome(merge_status="merged", base_branch=base_branch)
-        return MergeOutcome(merge_status="failed", base_branch=base_branch)
-
-    return merge_pr
-
-
-class _BlockedResolver(_Agent):
-    """`_Agent` plus the one turn this test expects: a resolver that will not choose."""
-
-    def _fix_merge(self, data: dict[str, Any]) -> dict[str, Any]:
-        return {
-            "status": "blocked",
-            "notes": "both sides rewrote the same migration and only you know which wins",
-        }
-
-
-def test_a_merge_resolver_that_cannot_decide_parks_instead_of_spending_the_budget(
-    epic: Callable[..., Path],
-    env: Callable[..., RunEnv],
-    drive_flow: Callable[..., Any],
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """One resolver turn, then the gate — not `MAX_MERGE_REWORKS` of them."""
-    repo = epic()
-    _Sub(repo).install(monkeypatch)
-    merges: list[str] = []
-    landed = {"yes": False}
-    monkeypatch.setattr(coder_main, "merge_pr", _failing_merge(merges, landed))
-    run_env = env()
-    seen: list[str] = []
-
-    agent = _BlockedResolver()
-
-    with patch.object(pyflow_park, "wait_for_answer", _answers(seen, landed)):
-        result = drive_flow(Coder(), run_env, agent)
-
-    assert result.has_epic is False, result
-    assert agent.calls.count("fix-merge") == 1, agent.calls
-    assert merges == [EPIC, EPIC], merges
-    assert len(seen) == 1, seen
-    assert "after 0 automated attempt(s)" in seen[0], seen[0]
-    assert (repo / "docs" / "epics" / EPIC / "merge-operator-context.md").is_file()
+    (lane,) = sub.calls_to("FixCi")
+    assert lane.branch == f"feat/{EPIC}", lane.branch
+    assert lane.operator_mode == "human", lane.operator_mode
+    assert lane.base == _output(run_env, open_pr)["ci_base"], lane.base
+    assert {c.operator_mode for c in sub.calls_to("Fix")} == {"human"}

@@ -1,4 +1,4 @@
-"""`dev` — plan a story and implement it, one service layer at a time."""
+"""`dev`: one dev agent per work item, which builds, reviews and fixes it through subagents."""
 from __future__ import annotations
 
 from workhorse_workflows.coder.dev.flow import Dev

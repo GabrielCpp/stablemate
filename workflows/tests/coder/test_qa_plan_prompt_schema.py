@@ -1,4 +1,4 @@
-"""The `plan-qa` prompt's python example must be a plan the harness would actually accept."""
+"""The QA plan contract's python example must be a plan the harness would actually accept."""
 from __future__ import annotations
 
 import ast
@@ -13,7 +13,7 @@ from workhorse_workflows.coder.qa.flow import Qa
 from workhorse_workflows.coder.qa.nodes.qa import QA_SCRATCH_DIRNAME
 
 PROMPT = (
-    Path(workhorse_workflows.__file__).parent / "coder" / "qa" / "prompts" / "plan-qa.md"
+    Path(workhorse_workflows.__file__).parent / "coder" / "qa" / "prompts" / "_qa-plan-contract.md"
 )
 
 _PYTHON_BLOCK = re.compile(r"```python\n(.*?)```", re.DOTALL)
@@ -22,7 +22,7 @@ _PYTHON_BLOCK = re.compile(r"```python\n(.*?)```", re.DOTALL)
 def _example_source() -> str:
     """The first ```python block in the prompt — the plan skeleton itself."""
     blocks = _PYTHON_BLOCK.findall(PROMPT.read_text())
-    assert blocks, "plan-qa.md no longer carries a ```python example"
+    assert blocks, "_qa-plan-contract.md no longer carries a ```python example"
     return blocks[0]
 
 
@@ -45,7 +45,7 @@ def test_the_example_imports_only_names_the_harness_exports():
     }
     assert imported, "the example no longer imports from ostler_qa"
     unknown = imported - set(harness.__all__)
-    assert not unknown, f"plan-qa.md imports {sorted(unknown)}, which ostler_qa does not export"
+    assert not unknown, f"_qa-plan-contract.md imports {sorted(unknown)}, which ostler_qa does not export"
 
 
 def _qa_attributes() -> set[str]:
@@ -79,7 +79,7 @@ def test_the_example_only_calls_qa_attributes_that_exist():
     }
     assert used, "the example no longer touches `qa`"
     unknown = used - _qa_attributes()
-    assert not unknown, f"plan-qa.md calls qa.{sorted(unknown)}, which the harness does not have"
+    assert not unknown, f"_qa-plan-contract.md calls qa.{sorted(unknown)}, which the harness does not have"
 
 
 def test_the_example_scenario_would_survive_the_substantiveness_gate():
@@ -94,48 +94,59 @@ def test_the_prose_names_only_mechanisms_and_drivers_ostler_accepts():
     """`mechanism` and `driver` are ostler's vocabularies."""
     text = PROMPT.read_text()
     for label, vocabulary in (("mechanism", harness.MECHANISMS), ("driver", harness.DRIVER_NAMES)):
-        clause = re.search(rf"`{label}` is \w+ \(([^)]*)\)", text)
-        assert clause, f"plan-qa.md no longer enumerates the {label} vocabulary"
+        clause = re.search(rf"`{label}` is \w+: (.*?\.)\s", text, re.DOTALL)
+        assert clause, f"_qa-plan-contract.md no longer enumerates the {label} vocabulary"
         named = set(re.findall(r"`([a-z_]+)`", clause.group(1)))
         assert named, f"the {label} clause lists nothing"
         unknown = named - set(vocabulary)
-        assert not unknown, f"plan-qa.md offers {label} {sorted(unknown)}, which ostler rejects"
+        assert not unknown, f"_qa-plan-contract.md offers {label} {sorted(unknown)}, which ostler rejects"
 
 
-PLAN_PROMPTS = (PROMPT, PROMPT.parent / "repair-qa-plan.md")
+PLAN_PROMPTS = (PROMPT, PROMPT.parent / "qa-story.md")
+ALL_PROMPTS = tuple(sorted(PROMPT.parent.glob("*.md")))
 
 _SCALAR_ARG = re.compile(r"workhorse_var\(\s*'([a-z_]+)'\s*\)")
 _STRUCTURED_ARG = re.compile(r"{%-?\s*(?:if|for\s+\w+\s+in)\s+([a-z_]+)(?![a-z_(])")
 
 
-def _plan_arg_keys() -> set[str]:
-    """The literal keys of the dict `_plan_args` returns, read from its source."""
-    tree = ast.parse(inspect.getsource(Qa._plan_args).lstrip())
+def _dict_keys(tree: ast.AST) -> set[str]:
+    return {
+        k.value
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Dict)
+        for k in node.keys
+        if isinstance(k, ast.Constant) and isinstance(k.value, str)
+    }
+
+
+def _owner_arg_keys() -> set[str]:
+    """The literal keys of the dicts `_owner_args` and `work` hand the owner turn, read from their source."""
+    tree = ast.parse(inspect.getsource(Qa._owner_args).lstrip())
     returns = [n for n in ast.walk(tree) if isinstance(n, ast.Return)]
-    assert len(returns) == 1, "_plan_args no longer ends in a single return"
-    literal = returns[0].value
-    assert isinstance(literal, ast.Dict), "_plan_args no longer returns a dict literal"
-    return {k.value for k in literal.keys if isinstance(k, ast.Constant) and isinstance(k.value, str)}
+    assert len(returns) == 1, "_owner_args no longer ends in a single return"
+    assert isinstance(returns[0].value, ast.Dict), "_owner_args no longer returns a dict literal"
+    work = ast.parse(inspect.getsource(Qa.work).lstrip())
+    return _dict_keys(tree) | _dict_keys(work) | {"result_schema"}
 
 
-def test_the_plan_prompts_only_interpolate_arguments_the_flow_passes():
+def test_the_qa_prompts_only_interpolate_arguments_the_flow_passes():
     """A misspelled name renders as empty and says nothing — Jinja has no undefined error here — so the prompt silently loses the brief it was supposed to carry."""
-    keys = _plan_arg_keys()
-    local = {"raw", "endraw", "repo", "f", "p", "r", "scenario"}
-    for prompt in PLAN_PROMPTS:
+    keys = _owner_arg_keys()
+    local = {"raw", "endraw", "repo", "f", "p", "r", "s", "scenario", "not"}
+    assert len(ALL_PROMPTS) > 1
+    for prompt in ALL_PROMPTS:
         text = prompt.read_text()
         named = set(_SCALAR_ARG.findall(text)) | set(_STRUCTURED_ARG.findall(text))
         unknown = named - keys - local
-        assert not unknown, f"{prompt.name} reads {sorted(unknown)}, which _plan_args omits"
+        assert not unknown, f"{prompt.name} reads {sorted(unknown)}, which the owner turn omits"
 
 
 def test_the_dry_run_scratch_directory_nests_inside_the_ignored_one():
     """Scratch is a subdirectory of the ledger directory, not a sibling of it."""
     assert QA_SCRATCH_DIRNAME == QA_DIRNAME
-    for prompt in PLAN_PROMPTS:
-        text = prompt.read_text()
-        assert "--out-dir" in text, f"{prompt.name} does not teach the dry run"
-        assert "qa_scratch_dir" in text, f"{prompt.name} hard-codes the dry-run directory"
+    text = PROMPT.read_text()
+    assert "--out-dir" in text, f"{PROMPT.name} does not teach the dry run"
+    assert "qa_scratch_dir" in text, f"{PROMPT.name} hard-codes the dry-run directory"
 
 
 def test_no_prompt_passes_a_path_to_out_dir():

@@ -10,7 +10,7 @@ from workhorse_workflows.coder.shared.schemas.dev import StoryStatusCheck
 
 CODER = Path(workhorse_workflows.__file__).parent / "coder"
 
-NO_STATUS_AUTHORITY = ("implement-plan.md", "apply-review.md")
+NO_STATUS_AUTHORITY = ("dev-story.md",)
 
 UNAUTHORIZED = sorted(
     p for p in CODER.glob("*/prompts/*.md") if p.name in NO_STATUS_AUTHORITY
@@ -21,6 +21,11 @@ PROHIBITIONS = ("Do **not**", "do **not**", "exactly as you found them")
 
 def _id(path: Path) -> str:
     return f"{path.parent.parent.name}/{path.stem}"
+
+
+def test_every_named_prompt_exists() -> None:
+    """A renamed or deleted prompt fails here instead of leaving the sweep with nothing to check."""
+    assert sorted(p.name for p in UNAUTHORIZED) == sorted(NO_STATUS_AUTHORITY)
 
 
 @pytest.mark.parametrize("prompt", UNAUTHORIZED, ids=_id)

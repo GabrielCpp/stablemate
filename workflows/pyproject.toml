@@ -53,7 +53,7 @@ dependencies = [
   # shell out to the `ostler` on PATH — the coder's QA nodes import the library and
   # runs the plan in *this* interpreter — so a browser target needs Playwright installed
   # beside this package, not beside some other copy of ostler. Without it the run blocks on
-  # "target 'web' requires the Playwright Python package", and the repair the setup-fix node
+  # "target 'web' requires the Playwright Python package", and the repair a QA setup agent
   # reaches for (`uv tool install --force 'ostler[qa]'`) fixes the PATH tool and changes
   # nothing here: a real run spent three laps installing it, proving it worked, and getting
   # the identical blocked bundle back.

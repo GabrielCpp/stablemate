@@ -8,13 +8,13 @@ import pytest
 import yaml
 from workhorse.pyflow import WorkflowFailed
 from workhorse_workflows.coder.shared import roles
-from workhorse_workflows.coder.shared.schemas.dev import FixResult
+from workhorse_workflows.coder.shared.schemas.dev_story import DevResult
 
 CODER = Path(roles.__file__).resolve().parent.parent
 
 PROMPT_DIRS = sorted(CODER.glob("*/prompts"))
 
-MECHANICS = {"resolve-operator", "settle-worktree", "fix-merge"}
+MECHANICS = {"resolve-operator", "fix-merge"}
 
 
 def _stems(directory: Path) -> set[str]:
@@ -96,19 +96,19 @@ def _library(root: Path, role: str, text: str) -> Path:
 
 
 def test_with_no_layers_the_envelope_renders_alone(tmp_path):
-    turn = roles.turn(_flow("dev", tmp_path), "dev-fix", returns=FixResult)
+    turn = roles.turn(_flow("dev", tmp_path), "dev-story", returns=DevResult)
 
-    assert turn.prompt == "dev/prompts/dev-fix.md"
+    assert turn.prompt == "dev/prompts/dev-story.md"
     assert "body_template" not in turn.args
 
 
 def test_the_envelope_is_the_calling_flows_own_copy(tmp_path):
     """The same role, two flows, two files — which is the whole point of taking `flow`."""
-    assert roles.turn(_flow("dev", tmp_path), "plan-story", returns=FixResult).prompt == (
-        "dev/prompts/plan-story.md"
+    assert roles.turn(_flow("qa", tmp_path), "qa-story", returns=DevResult).prompt == (
+        "qa/prompts/qa-story.md"
     )
-    assert roles.turn(_flow("fix", tmp_path), "plan-story", returns=FixResult).prompt == (
-        "fix/prompts/plan-story.md"
+    assert roles.turn(_flow("fix", tmp_path), "qa-story", returns=DevResult).prompt == (
+        "fix/prompts/qa-story.md"
     )
 
 
@@ -117,27 +117,27 @@ def test_a_flow_defined_outside_the_package_is_caught_rather_than_mispathed(tmp_
     stray.__module__ = "somewhere.else"
 
     with pytest.raises(WorkflowFailed, match="outside"):
-        roles.turn(stray(), "dev-fix", returns=FixResult)
+        roles.turn(stray(), "dev-story", returns=DevResult)
 
 
 def test_the_overlay_layer_wins_over_the_base(tmp_path):
-    overlay = _library(tmp_path / "overlay", "dev-fix", "overlay")
-    base = _library(tmp_path / "base", "dev-fix", "base")
+    overlay = _library(tmp_path / "overlay", "dev-story", "overlay")
+    base = _library(tmp_path / "base", "dev-story", "base")
 
-    turn = roles.turn(_flow("dev", tmp_path, (str(overlay), str(base))), "dev-fix", returns=FixResult)
+    turn = roles.turn(_flow("dev", tmp_path, (str(overlay), str(base))), "dev-story", returns=DevResult)
 
-    assert turn.args["body_template"] == "body/dev-fix.md"
-    assert (Path(turn.args["_body_dir"]) / "dev-fix.md").read_text() == "overlay"
+    assert turn.args["body_template"] == "body/dev-story.md"
+    assert (Path(turn.args["_body_dir"]) / "dev-story.md").read_text() == "overlay"
 
 
 def test_a_layer_without_the_role_is_skipped_rather_than_resolved(tmp_path):
     empty = tmp_path / "empty"
     empty.mkdir()
-    base = _library(tmp_path / "base", "dev-fix", "base")
+    base = _library(tmp_path / "base", "dev-story", "base")
 
-    turn = roles.turn(_flow("dev", tmp_path, (str(empty), str(base))), "dev-fix", returns=FixResult)
+    turn = roles.turn(_flow("dev", tmp_path, (str(empty), str(base))), "dev-story", returns=DevResult)
 
-    assert (Path(turn.args["_body_dir"]) / "dev-fix.md").read_text() == "base"
+    assert (Path(turn.args["_body_dir"]) / "dev-story.md").read_text() == "base"
 
 
 def test_one_repo_override_serves_every_flows_copy(tmp_path):
@@ -147,12 +147,12 @@ def test_one_repo_override_serves_every_flows_copy(tmp_path):
     (repo / "go").mkdir()
     (repo / "go" / "plan.md").write_text("the repo's own")
     (repo / "agents.yml").write_text(
-        yaml.safe_dump({"prompts": {"plan-story": "go/plan.md"}})
+        yaml.safe_dump({"prompts": {"qa-story": "go/plan.md"}})
     )
 
-    for name in ("dev", "fix", "main"):
-        turn = roles.turn(_flow(name, repo), "plan-story", returns=FixResult)
-        assert turn.prompt == f"{name}/prompts/plan-story.md"
+    for name in ("qa", "fix"):
+        turn = roles.turn(_flow(name, repo), "qa-story", returns=DevResult)
+        assert turn.prompt == f"{name}/prompts/qa-story.md"
         body = Path(turn.args["_body_dir"]) / Path(turn.args["body_template"]).name
         assert body.read_text() == "the repo's own"
 
@@ -162,10 +162,10 @@ def test_the_repo_outranks_every_library_layer(tmp_path):
     (repo / ".git").mkdir(parents=True)
     (repo / "go").mkdir()
     (repo / "go" / "fix.md").write_text("the repo's own")
-    (repo / "agents.yml").write_text(yaml.safe_dump({"prompts": {"dev-fix": "go/fix.md"}}))
-    base = _library(tmp_path / "base", "dev-fix", "base")
+    (repo / "agents.yml").write_text(yaml.safe_dump({"prompts": {"dev-story": "go/fix.md"}}))
+    base = _library(tmp_path / "base", "dev-story", "base")
 
-    turn = roles.turn(_flow("dev", repo, (str(base),)), "dev-fix", returns=FixResult)
+    turn = roles.turn(_flow("dev", repo, (str(base),)), "dev-story", returns=DevResult)
 
     assert (Path(turn.args["_body_dir"]) / Path(turn.args["body_template"]).name).read_text() == (
         "the repo's own"
@@ -176,12 +176,12 @@ def test_a_repo_override_pointing_nowhere_falls_through_to_the_library(tmp_path)
     """A typo in a hand-edited `agents.yml` leaves the story implemented, not parked."""
     repo = tmp_path / "repo"
     (repo / ".git").mkdir(parents=True)
-    (repo / "agents.yml").write_text(yaml.safe_dump({"prompts": {"dev-fix": "go/gone.md"}}))
-    base = _library(tmp_path / "base", "dev-fix", "base")
+    (repo / "agents.yml").write_text(yaml.safe_dump({"prompts": {"dev-story": "go/gone.md"}}))
+    base = _library(tmp_path / "base", "dev-story", "base")
 
-    turn = roles.turn(_flow("dev", repo, (str(base),)), "dev-fix", returns=FixResult)
+    turn = roles.turn(_flow("dev", repo, (str(base),)), "dev-story", returns=DevResult)
 
-    assert (Path(turn.args["_body_dir"]) / "dev-fix.md").read_text() == "base"
+    assert (Path(turn.args["_body_dir"]) / "dev-story.md").read_text() == "base"
 
 
 def test_a_malformed_agents_yml_means_no_override_not_a_dead_run(tmp_path):
@@ -189,9 +189,9 @@ def test_a_malformed_agents_yml_means_no_override_not_a_dead_run(tmp_path):
     (repo / ".git").mkdir(parents=True)
     (repo / "agents.yml").write_text("prompts: [not, a, mapping\n  - :")
 
-    turn = roles.turn(_flow("dev", repo), "dev-fix", returns=FixResult)
+    turn = roles.turn(_flow("dev", repo), "dev-story", returns=DevResult)
 
-    assert turn.prompt == "dev/prompts/dev-fix.md"
+    assert turn.prompt == "dev/prompts/dev-story.md"
     assert "body_template" not in turn.args
 
 
@@ -200,22 +200,22 @@ def test_the_nested_workflow_block_is_read_too(tmp_path):
     (repo / ".git").mkdir(parents=True)
     (repo / "own.md").write_text("nested")
     (repo / "agents.yml").write_text(
-        yaml.safe_dump({"workflow": {"prompts": {"dev-fix": "own.md"}}})
+        yaml.safe_dump({"workflow": {"prompts": {"dev-story": "own.md"}}})
     )
 
-    turn = roles.turn(_flow("dev", repo), "dev-fix", returns=FixResult)
+    turn = roles.turn(_flow("dev", repo), "dev-story", returns=DevResult)
 
     assert (Path(turn.args["_body_dir"]) / "own.md").read_text() == "nested"
 
 
 def test_an_unregistered_role_is_caught_on_the_transition(tmp_path):
     with pytest.raises(WorkflowFailed, match="unknown prompt role"):
-        roles.turn(_flow("dev", tmp_path), "dev-fx", returns=FixResult)
+        roles.turn(_flow("dev", tmp_path), "dev-stroy", returns=DevResult)
 
 
 def test_no_library_anywhere_is_not_an_error(tmp_path):
     """The workflow is installed standalone and must run with nothing else on the machine."""
-    turn = roles.turn(_flow("dev", tmp_path, ()), "dev-fix", returns=FixResult)
+    turn = roles.turn(_flow("dev", tmp_path, ()), "dev-story", returns=DevResult)
 
-    assert turn.prompt == "dev/prompts/dev-fix.md"
+    assert turn.prompt == "dev/prompts/dev-story.md"
     assert "body_template" not in turn.args

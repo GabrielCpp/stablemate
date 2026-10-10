@@ -314,7 +314,7 @@ naming one of two callers is the mirroring this layout undoes.
 **two files**, one per flow, each free to diverge — nothing checks that copies stay
 identical. That is why `workflow.py` declares `Registry(name, package=__package__)`: the
 package directory is the template root, so a path is written from there down
-(`dev/prompts/implement-plan.md`) and every flow's prompts stay inside the one loader. Were
+(`dev/prompts/dev-story.md`) and every flow's prompts stay inside the one loader. Were
 the root inferred from the entry class instead, moving that class into `main/` would put
 every sibling flow's prompts outside it.
 

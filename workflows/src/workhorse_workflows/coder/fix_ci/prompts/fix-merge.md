@@ -4,6 +4,15 @@ You are running the **resolve merge** stage of the autonomous epic workflow.
 
 The pull request for epic `{{ ci_epic }}` (branch `{{ ci_branch }}` → base `{{ ci_base }}`) **could not be merged**: GitHub refused `gh pr merge` (typically a merge conflict, the branch is behind `{{ ci_base }}` under a "require branch up to date" rule, or — see Step 0 — the remote branch is a stale duplicate of already-integrated work). Your job is to make the branch cleanly mergeable into `{{ ci_base }}`, then commit the result on this branch. A later step pushes your commit and re-attempts the merge — do **not** push, and do **not** run `gh pr merge` yourself, **except** in the Step 0 remediation, which is explicitly allowed to push because there is nothing left to merge.
 
+{% if operator_context %}
+## Operator answer (authoritative ground truth)
+
+The merge parked on a question, and it has been answered. Treat the answer as fact. It
+overrides any earlier assumption. Do not raise the same block again.
+
+{{ operator_context }}
+
+{% endif %}
 ## Step 0 — Rule out a stale duplicate branch before treating this as a content conflict
 
 This failure mode is common: a prior run's push silently landed in the wrong checkout, or an earlier attempt at this epic was squash-merged into `{{ ci_base }}` under a different PR while the local/remote epic branch kept its own divergent history. When that happens, `origin/{{ ci_branch }}` and local `HEAD` have genuinely diverged, but there is no real conflict to resolve — the remote branch just needs to be replaced with the correct (local) lineage. Diagnose this **before** attempting a content merge, since merging a stale divergent branch in would resurrect superseded work.

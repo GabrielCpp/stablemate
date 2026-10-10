@@ -1,13 +1,12 @@
 """The docs flow's models: the OKF pre-gate, the context classifier, the author, the gates."""
 from __future__ import annotations
 
-from typing import ClassVar, Literal
+from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import Field
 from workhorse.pyflow import dry_run
 
-from workhorse_workflows.coder.shared.schemas._base import CoderResult, Finding
-from workhorse_workflows.kit.telemetry import ProgressVerdict, progress_verdict
+from workhorse_workflows.coder.shared.schemas._base import CoderResult
 
 
 class OkfDetection(CoderResult):
@@ -67,134 +66,6 @@ class DocumentationObligations(CoderResult):
     notes: str = ""
 
 
-class DocumentationFinding(Finding):
-    """One semantic documentation review finding handed back to the author."""
-
-    id: str = Field(
-        default="",
-        description="A stable handle for this finding — `D1`, `D2` — reused when you "
-        "restate it on a later pass.",
-    )
-    kind: Literal[
-        "node-type",
-        "missing-node",
-        "flow-coverage",
-        "overclaim",
-        "bullet-granularity",
-        "grounding",
-        "verify-overclaim",
-        "author-decision",
-    ] = Field(description="What class of defect this is, so the repair can be routed.")
-
-
-@dry_run(status="approved")
-class DocumentationReview(CoderResult):
-    """`docs/prompts/review-story-documentation.md` — an independent read of what was written."""
-
-    status: Literal["approved", "revise", "blocked"] = Field(
-        description="`revise` only with at least one structured finding. `blocked` only "
-        "when convergence needs a product or author decision. Never approve on the promise "
-        "of a later documentation update.",
-    )
-    findings: list[DocumentationFinding] = Field(
-        default=[],
-        description="The repair contract the author works from — empty on `approved`.",
-    )
-    notes: str = Field(
-        default="",
-        description="A one or two sentence summary; the findings list, not this, is what "
-        "the author repairs from.",
-    )
-
-
-class DocsProgress(CoderResult):
-    """What each gate last decided, and whether the rework it forced was worth spending."""
-
-    gate_verdict: Literal["", "passed", "invalid"] = ""
-    review_disposition: Literal["", "approved", "revise", "blocked"] = ""
-    gate_progress_verdict: ProgressVerdict | Literal[""] = ""
-    review_progress_verdict: ProgressVerdict | Literal[""] = ""
-
-    gate_failures: int = 0
-    review_findings: int = 0
-
-    gate_ids: list[str] = []
-    review_ids: list[str] = []
-
-    chain_laps: int = 0
-
-    VERDICT_LABELS: ClassVar[tuple[str, ...]] = (
-        "gate_verdict",
-        "review_disposition",
-        "gate_progress_verdict",
-        "review_progress_verdict",
-    )
-
-    COUNT_LABELS: ClassVar[tuple[str, ...]] = ("gate_failures", "review_findings")
-
-    def after_gate(self, gate: DocumentationGate) -> DocsProgress:
-        """Record what the deterministic grounding gate just decided."""
-        ids = list(gate.failures)
-        return self.model_copy(
-            update={
-                "gate_verdict": gate.status,
-                "gate_failures": len(ids),
-                "gate_progress_verdict": progress_verdict(self.gate_ids or None, ids),
-                "gate_ids": ids,
-            }
-        )
-
-    def after_review(self, review: DocumentationReview) -> DocsProgress:
-        """Record what the semantic reviewer just decided."""
-        ids = [finding.id for finding in review.findings] if review.status == "revise" else []
-        return self.model_copy(
-            update={
-                "review_disposition": review.status,
-                "review_findings": len(ids),
-                "review_progress_verdict": progress_verdict(self.review_ids or None, ids),
-                "review_ids": ids,
-            }
-        )
-
-
-class DocsLoop(BaseModel):
-    """Everything one documentation pass carries into the next, as one state parameter."""
-
-    rework: int = 0
-
-    review_rework: int = 0
-
-    blocks: int = 0
-
-    gate_notes: str = ""
-    review_notes: str = ""
-
-    obligations: tuple[str, ...] = ()
-
-    authored_nodes: tuple[str, ...] = ()
-
-    progress: DocsProgress = Field(default_factory=DocsProgress)
-
-    overruns: int = 0
-
-    COUNT_LABELS: ClassVar[tuple[str, ...]] = (
-        "rework",
-        "review_rework",
-        "blocks",
-        "overruns",
-    )
-
-
-class RepairOverran(BaseModel):
-    """What a repair turn cut at its wall-clock budget leaves in the checkpoint."""
-
-    status: Literal["overran"] = "overran"
-
-    lap: int = 0
-
-    notes: str = ""
-
-
 DocsStatus = Literal["passed", "not_applicable", "blocked", "failed"]
 
 
@@ -208,14 +79,9 @@ class DocsResult(CoderResult):
 
 __all__ = [
     "ContextClassification",
-    "DocsLoop",
     "DocsStatus",
-    "DocsProgress",
     "DocsResult",
-    "DocumentationFinding",
     "DocumentationGate",
     "DocumentationResult",
-    "DocumentationReview",
     "OkfDetection",
-    "RepairOverran",
 ]

@@ -20,10 +20,10 @@ limit — take the time you need), with full tool access: read, edit, run comman
 
 ## The block
 
-- Stage: **{{ block_kind }}** — `plan` (a planning block), `implementation`
-  (an implementation turn that could not proceed), `review` (an implementation-review
-  block), `qa` (a QA block), or `docs` (the documentation phase refusing to write the
-  book's claim as true).
+- Stage: **{{ block_kind }}** — `dev` (the story's build owner, or its checks, could
+  not proceed), `implementation` (a backlog item's fix could not proceed), `qa` (a QA
+  block), `docs` (the documentation phase refusing to write the book's claim as true), or
+  `ci` (an epic branch's CI stays red).
 - Story: `{{ story_path }}`
 - Spec dir: `{{ spec_dir }}`
 - Standing decisions: `{{ decisions_dir }}`

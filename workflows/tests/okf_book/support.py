@@ -96,6 +96,7 @@ class ScriptedRunner(AgentRunner):
         run_dir: Path | None = None,
         visit_dir: Path | None = None,
         validate: Callable[[dict[str, object]], object] | None = None,
+        rebrief: Callable[[], str] | None = None,
     ) -> tuple[str, dict[str, object]]:
         args = context.as_dict()
         if node.id == FIX_COMMIT_NODE and node.id not in self.replies:

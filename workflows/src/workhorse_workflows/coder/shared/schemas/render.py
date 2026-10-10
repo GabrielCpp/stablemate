@@ -38,7 +38,10 @@ def _pruned(value: Any) -> Any:
     """`value` without the keys a reader of the block has no use for."""
     if isinstance(value, dict):
         drop = {"title", "description"} if "properties" in value else {"title"}
-        return {k: _pruned(v) for k, v in value.items() if k not in drop}
+        kept = {k: _pruned(v) for k, v in value.items() if k not in drop}
+        if isinstance(value.get("properties"), dict):
+            kept["properties"] = {k: _pruned(v) for k, v in value["properties"].items()}
+        return kept
     if isinstance(value, list):
         return [_pruned(v) for v in value]
     return value

@@ -164,6 +164,36 @@ def stamp_story_passed(
 
 
 @blueprint.node
+def commit_plan_record(
+    logger: logging.Logger,
+    epic: str = "",
+    story_slug: str = "",
+    spec_dir: str = "",
+    repo_dir: str = "",
+) -> StoryCommitted:
+    """Commit what the run itself wrote into the spec dir: the plan projection and the spec stamps."""
+    slug = story_slug or "story"
+    root = find_repo_root(repo_dir)
+    spec = Path(spec_dir) if Path(spec_dir).is_absolute() else root / spec_dir
+    try:
+        rel = str(spec.resolve().relative_to(root.resolve()))
+    except ValueError:
+        logger.info("spec dir %s is outside %s, so the run commits no plan record", spec, root)
+        return StoryCommitted()
+    message = commits.message(
+        "docs",
+        commits.scope(root.name),
+        f"record the plan of {slug}",
+        epic=registry.epic_slug(epic) or epic,
+        story=slug,
+    )
+    committed = bool(spec_dir) and commit_paths(root, message, rel)
+    if committed:
+        logger.info("recorded the plan of %s", slug)
+    return StoryCommitted(committed=committed)
+
+
+@blueprint.node
 def commit_story(
     logger: logging.Logger,
     epic: str = "",
@@ -209,6 +239,7 @@ def commit_story(
 
 __all__ = [
     "check_repos_clean",
+    "commit_plan_record",
     "commit_story",
     "stamp_story_passed",
 ]

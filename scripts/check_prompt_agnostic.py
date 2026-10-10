@@ -35,21 +35,17 @@ ALLOWLIST: dict[str, str] = {
 }
 
 FILE_TOKEN_ALLOW: dict[str, tuple[tuple[str, ...], str]] = {
-    "workflows/src/workhorse_workflows/coder/qa/prompts/plan-qa.md": (
+    "workflows/src/workhorse_workflows/coder/qa/prompts/_qa-plan-contract.md": (
         ("python", "playwright", "maestro"),
         "ostler's own QA DSL and its `driver` enum — a plan file is a Python module because "
         "ostler executes it, and the driver names are values ostler ships, not stacks a repo "
         "chose",
     ),
-    "workflows/src/workhorse_workflows/coder/qa/prompts/setup-fix.md": (
+    "workflows/src/workhorse_workflows/coder/qa/prompts/_qa-setup-brief.md": (
         ("python", "playwright", "maestro", "pip install", "uv tool"),
         "the runner-requirement section repairs the interpreter *this workflow* runs ostler's "
         "QA runner in — which package manager installed it, and which import it must satisfy, "
         "is a fact about the workflow's own process, not about the repo under test",
-    ),
-    "workflows/src/workhorse_workflows/coder/qa/prompts/repair-qa-plan.md": (
-        ("python",),
-        "same DSL: the repair prompt shows the plan-file syntax it is repairing",
     ),
 }
 

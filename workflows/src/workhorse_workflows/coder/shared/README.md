@@ -16,13 +16,14 @@ What more than one coder lane needs. Code that only one lane calls belongs in th
 - `escalation.py`: the body a coder lane writes when it stops and asks a human.
 - `failure.py`: the one failure shape the repair role reads, whatever gate produced it.
 - `okf.py`: the diff-to-OKF obligation packet, its check, and the memo that skips a rebuild when its inputs have not changed.
+- `owner.py`: the budgets, the silence bound and the command cap every lane's owner turn runs under.
 - `paths.py`: where every coder artifact lives: repo roots, epics, the backlog, the feature book and operator context files.
 - `plan.py`: a story's plan context: loading `plan-context.json`, projecting it, and the dispatch order.
 - `provenance.py`: which commits and files belong to a story.
 - `qa_support.py`: a re-export of `kit/qa/support.py` for older coder call sites. New code imports the kit module.
-- `queue.py`: the epic and story queue: which epic and story run next, and what is set aside.
+- `queue.py`: the launch: which stories a run packs into its worklist, the fresh-run reset, and pruning a finished epic.
 - `resolution.py`: the resolver half of an operator gate, which tries to answer a block before the run parks on it.
-- `review.py`: the review lane's work: where review turns run, the settlement gate, and the operator inbox poll.
+- `review.py`: the review's deterministic work: where it reads, ostler's settlement of the dev owner's answers and their evidence, and the operator inbox poll.
 - `roles.py`: which prompt body and model a role resolves to, with the repo's own prompts ahead of the base library.
 - `scenarios.py`: the plan's Test Scenarios list, and which of its scenarios fall to the QA lane.
 - `schemas/`: the reply and return models every coder lane validates against.
@@ -31,4 +32,5 @@ What more than one coder lane needs. Code that only one lane calls belongs in th
 - `story_commit.py`: the clean-tree check, the commit that records a passed story, and its stamp.
 - `story_status.py`: the story's Status line. It is the single place the coder records an outcome.
 - `stubs.py`: what the coder's gates return under `--dry-run`.
+- `work.py`: the run's worklist: filing stories, follow-ups and findings, moving them, and the resume note a compacted dev session reads.
 - `worktree.py`: what the worktrees held before a turn, and what changed since.

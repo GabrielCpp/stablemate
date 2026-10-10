@@ -31,21 +31,15 @@ class StoryPr(CoderResult):
     pr_urls: list[str] = []
 
 
-class CiFlagged(CoderResult):
-    """`flag-ci-failure.py` — did the give-up note reach the PR?"""
-
-    ci_flagged: bool = False
-
-
 class MergeFlagged(CoderResult):
-    """`flag-merge-failure.py` — the merge-side twin of `CiFlagged`, same reading."""
+    """`flag-merge-failure.py` — did the give-up note reach the PR?"""
 
     merge_flagged: bool = False
 
 
 @dry_run(status="fixed")
 class MergeFixResult(CoderResult):
-    """`fix_merge`'s reply — the conflict resolution the agent turn wrote."""
+    """`fix_ci/prompts/fix-merge.md`: the conflict resolution the ship lane's merge turn wrote."""
 
     status: Literal["fixed", "failed", "blocked"] = Field(
         description="`fixed` — the branches merge cleanly now and the resolution is "
@@ -66,7 +60,6 @@ class MergeFixResult(CoderResult):
 
 
 __all__ = [
-    "CiFlagged",
     "MergeFixResult",
     "MergeFlagged",
     "MergeOutcome",

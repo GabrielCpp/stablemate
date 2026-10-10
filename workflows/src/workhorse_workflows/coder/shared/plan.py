@@ -13,7 +13,6 @@ from workhorse_workflows.coder.shared.blueprint import blueprint
 from workhorse_workflows.coder.shared.schemas.dev import (
     DispatchEntry,
     ImplContext,
-    LayerPick,
     PlanFixture,
     PlanSummary,
     PlanValidation,
@@ -283,13 +282,6 @@ def _package_label(item: Any) -> str:
     return str(item)
 
 
-def read_plan_text(spec_dir: str, plan_file: str, logger: logging.Logger) -> str:
-    """The layer's plan as content, inlined into the implement turn rather than read by it."""
-    path = Path(spec_dir) / (plan_file or "plan.md")
-    logger.debug("inlining the plan at %s", path)
-    return path.read_text(encoding="utf-8")
-
-
 @blueprint.node
 def resolve_impl_context(
     logger: logging.Logger,
@@ -404,34 +396,6 @@ def plan_summary(
     return PlanSummary(text="\n".join(lines))
 
 
-@blueprint.node
-def select_next_layer(
-    logger: logging.Logger,
-    spec_dir: str = "",
-    index: int = -1,
-    repo_dir: str = "",
-    workspace_file: str = "",
-    plan: dict[str, Any] | None = None,
-) -> LayerPick:
-    """The next service to implement, or "the dispatch list is exhausted"."""
-    root = find_repo_root(repo_dir)
-    repos = resolve_workspace(workspace_file, repo_dir)
-    plan_ctx, plan_ctx_absent = plan_context(plan, spec_dir, root, repos, logger)
-    planned_none = plan is not None and not (plan.get("services") or [])
-    dispatch = build_dispatch_list(plan_ctx, repos, fallback=plan_ctx_absent or planned_none)
-
-    total = len(dispatch)
-    nxt = index + 1
-    if nxt < total:
-        return LayerPick(
-            has_layer=True,
-            index=nxt,
-            layer=DispatchEntry(**dispatch[nxt]),
-            dispatch_count=total,
-        )
-    return LayerPick(index=index, dispatch_count=total)
-
-
 __all__ = [
     "build_dispatch_list",
     "get_affected_repos",
@@ -439,8 +403,6 @@ __all__ = [
     "plan_context",
     "plan_document",
     "plan_summary",
-    "read_plan_text",
     "record_plan",
     "resolve_impl_context",
-    "select_next_layer",
 ]

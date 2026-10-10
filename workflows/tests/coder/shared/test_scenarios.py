@@ -1,6 +1,7 @@
 """The plan's Test Scenarios section, and the QA-only subset the QA lane reads."""
 from __future__ import annotations
 
+import textwrap
 from pathlib import Path
 
 from workhorse_workflows.coder.shared.scenarios import parse_scenarios, qa_only_scenarios
@@ -81,14 +82,14 @@ def test_the_unnumbered_heading_parses_like_the_numbered_one() -> None:
 
 
 def test_the_prompts_own_scenario_example_parses() -> None:
-    """The example in `plan-story.md` must be a shape this parser reads."""
+    """The example in `dev-story.md` must be a shape this parser reads."""
     prompt = (
         Path(__file__).parents[3]
-        / "src/workhorse_workflows/coder/dev/prompts/plan-story.md"
+        / "src/workhorse_workflows/coder/dev/prompts/dev-story.md"
     ).read_text(encoding="utf-8")
-    start = prompt.index("### Test Scenarios")
+    start = prompt.index("**Test Scenarios.**")
     example = prompt[prompt.index("```markdown", start) + len("```markdown") :]
-    example = example[: example.index("```")]
+    example = textwrap.dedent(example[: example.index("```")])
 
     parsed = parse_scenarios("## Test Scenarios\n" + example)
     assert [(s.ac, s.level) for s in parsed] == [("2", "endpoint")], parsed

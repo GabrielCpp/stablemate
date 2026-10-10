@@ -1,4 +1,4 @@
-"""The shapes a worktree snapshot and a plan scrub record."""
+"""The shapes a worktree snapshot and a code-change check record."""
 from __future__ import annotations
 
 from workhorse_workflows.coder.shared.schemas._base import CoderResult
@@ -12,15 +12,15 @@ class DirtyAtStart(CoderResult):
 
 
 class PorcelainSnapshot(CoderResult):
-    """`snapshot_worktrees` — `git status --porcelain` per code repo, keyed by repo path."""
+    """`snapshot_code_state` — HEAD and `git status --porcelain` per code repo, keyed by repo path."""
 
     status: dict[str, str] = {}
 
 
-class PlanScrub(CoderResult):
-    """`scrub_plan_mutations` — what the post-plan-turn clean-tree gate reverted."""
+class CodeChange(CoderResult):
+    """`code_changed`: whether a code repo moved since its snapshot, or none could be watched."""
 
-    reverted: dict[str, str] = {}
+    changed: bool = True
 
 
-__all__ = ["DirtyAtStart", "PlanScrub", "PorcelainSnapshot"]
+__all__ = ["CodeChange", "DirtyAtStart", "PorcelainSnapshot"]

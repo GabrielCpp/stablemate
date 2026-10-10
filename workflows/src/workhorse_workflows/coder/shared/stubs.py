@@ -7,6 +7,7 @@ from workhorse_workflows.coder.shared.schemas.genesis import (
     Skeleton,
     TargetClassification,
 )
+from workhorse_workflows.coder.shared.schemas.queue import LaunchEntry, LaunchSet
 from workhorse_workflows.coder.shared.schemas.story import StoryPaths
 
 _SLUG = "dry-run-story"
@@ -45,4 +46,9 @@ def story_paths(*_args: object, **_kwargs: object) -> StoryPaths:
     )
 
 
-__all__ = ["built", "classified", "installed", "story_paths", "valid"]
+def launch_set(*_args: object, **_kwargs: object) -> LaunchSet:
+    """`resolve_launch` — one story to work, so the dry run walks the whole item path."""
+    return LaunchSet(mode="epic", entries=[LaunchEntry(slug=_SLUG, id=_SLUG, epic=_EPIC)])
+
+
+__all__ = ["built", "classified", "installed", "launch_set", "story_paths", "valid"]
