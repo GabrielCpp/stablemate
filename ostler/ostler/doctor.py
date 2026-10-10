@@ -2508,31 +2508,34 @@ def _check_arranged_acts(graph: Graph, node: UINode, rel: str, f: list[Finding])
                     suggestion=f'- {key}: {parsed.name}({param.name}="#<component-anchor>")'))
 
 
-IDENTITY_KEYS = ("role", "name")
+IDENTITY_KEYS = ("role", "name", "keyboard")
 
 
 def _check_identity_arrangement(node: UINode, rel: str, f: list[Finding]) -> None:
-    """`identity-arranged-alone` — a `fixture:` bound to the element's `role:` or `name:`, which every other claim about the element needs as much."""
-    _, per_claim = registry.attributed_fixtures(node.type, node.bullet_order, node.combiners)
+    """`identity-arranged-alone` — a `fixture:` or `arrange:` bound to the element's `role:`, `name:` or `keyboard:`, which every other claim about the element needs as much."""
     claims = registry.normative_claims(node.type, node.bullet_order)
-    for (key, index), values in sorted(per_claim.items()):
-        if key not in IDENTITY_KEYS:
-            continue
-        for value in dict.fromkeys(values):
-            without = [claim for claim in claims if value not in per_claim.get(claim, [])]
-            if not without:
+    for arrangement, attributed in (("fixture", registry.attributed_fixtures),
+                                    ("arrange", registry.attributed_acts)):
+        _, per_claim = attributed(node.type, node.bullet_order, node.combiners)
+        for (key, index), values in sorted(per_claim.items()):
+            if key not in IDENTITY_KEYS:
                 continue
-            named = ", ".join(f"`{k}:{i}`" for k, i in without[:4]) + (", …" if len(without) > 4 else "")
-            f.append(Finding(
-                "error", "identity-arranged-alone",
-                f"{node.id}: `fixture: {_prose(value)[:60]}` sits under `{key}:{index}`, so document "
-                f"order binds it to that claim alone, and {len(without)} other claim(s) about this "
-                f"element ({named}) are checked on a page it never arranged. A state the element's "
-                f"own {key} needs is a state its existence needs, so every claim about it needs it",
-                path=rel, line=node.line,
-                ref=refs_mod.bullet_ref(node.id, key, index),
-                suggestion=f"move `- fixture: {value}` above the node's first claim, where it "
-                           f"arranges every claim on the node"))
+            for value in dict.fromkeys(values):
+                without = [claim for claim in claims if value not in per_claim.get(claim, [])]
+                if not without:
+                    continue
+                named = ", ".join(f"`{k}:{i}`" for k, i in without[:4]) + (", …" if len(without) > 4 else "")
+                f.append(Finding(
+                    "error", "identity-arranged-alone",
+                    f"{node.id}: `{arrangement}: {_prose(value)[:60]}` sits under `{key}:{index}`, so "
+                    f"document order binds it to that claim alone, and {len(without)} other claim(s) "
+                    f"about this element ({named}) are checked on a page it never arranged. A state the "
+                    f"element's own {key} needs is a state its existence needs, so every claim about it "
+                    f"needs it",
+                    path=rel, line=node.line,
+                    ref=refs_mod.bullet_ref(node.id, key, index),
+                    suggestion=f"move `- {arrangement}: {value}` above the node's first claim, where it "
+                               f"arranges every claim on the node"))
 
 
 def _check_ui(graph: Graph, f: list[Finding],

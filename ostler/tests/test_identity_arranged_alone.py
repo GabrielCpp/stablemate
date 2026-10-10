@@ -64,3 +64,38 @@ def test_a_fixture_under_one_state_arranges_that_state_alone(repo: Path) -> None
         "- states: shows the quota error once the import is refused\n"
         "- fixture: import-quota-exhausted\n"
         '- verify: visible(locator="#import-dialog", text="quota")\n')) == []
+
+
+DIALOG = (
+    "- role: dialog\n"
+    "- name: Import a file\n"
+    '- verify: visible(locator="#import-dialog", text="Import a file")\n'
+    "\n## Interactions\n\n### close-import\n"
+    "- on: [import-dialog](#import-dialog)\n"
+    '- trigger: press(key="Escape")\n'
+    "- role: dialog\n"
+    "- name: Import a file\n"
+    "- keyboard: Escape closes the dialog\n"
+    '- verify: focusable(locator="#import-dialog", activates="Escape")\n'
+)
+
+
+def test_a_fixture_under_the_keyboard_leaves_the_interaction_unarranged(repo: Path) -> None:
+    [found] = _findings(repo, DIALOG + (
+        "- fixture: import-dialog-open\n"
+        "- does:\n"
+        "  - closes the dialog.\n"
+        '- verify: hidden(locator="#import-dialog")\n'))
+    assert found.ref.endswith("#close-import#keyboard:1")
+    assert "`does:1`" in found.message
+    assert "`- fixture: import-dialog-open`" in (found.suggestion or "")
+
+
+def test_an_arrange_under_the_keyboard_leaves_the_interaction_unarranged(repo: Path) -> None:
+    [found] = _findings(repo, DIALOG + (
+        '- arrange: visit(path="/")\n'
+        "- does:\n"
+        "  - closes the dialog.\n"
+        '- verify: hidden(locator="#import-dialog")\n'))
+    assert found.message.startswith(f"{DASH}#close-import: `arrange: ")
+    assert "`does:1`" in found.message
