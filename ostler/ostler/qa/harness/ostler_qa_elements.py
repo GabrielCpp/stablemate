@@ -20,6 +20,11 @@ def template_pattern(template: str) -> re.Pattern[str]:
     return re.compile("^" + ".+?".join(re.escape(part) for part in parts) + "$")
 
 
+def name_pattern(name: str) -> re.Pattern[str]:
+    """The names an element the book calls *name* can carry: those words whole, in any case, with punctuation such as a required field's `*` around them."""
+    return re.compile(r"^\W*" + r"\s+".join(re.escape(word) for word in name.split()) + r"\W*$", re.IGNORECASE)
+
+
 def _readings(observed: object) -> tuple[str, ...]:
     """Every spelling of an element's text the page can offer, rendered first."""
     readings: list[str] = []

@@ -75,8 +75,17 @@ def test_a_list_that_renders_after_the_call_still_addresses_the_element_that_car
         "Notre processus",)
 
 
-def test_a_name_no_element_carries_whole_stays_ambiguous() -> None:
-    assert _by_role(("Save draft", "Save copy"), "Save") == ("Save draft", "Save copy")
+def test_a_name_no_element_carries_whole_addresses_nothing() -> None:
+    assert _by_role(("Save draft", "Save copy"), "Save") == ()
+
+
+def test_a_longer_name_that_contains_the_name_is_another_element() -> None:
+    """An absence claim on `Acme` must not find the row that reads `Acme (sales@acme.example.com)`."""
+    assert _by_role(("Acme (sales@acme.example.com)",), "Acme") == ()
+
+
+def test_a_name_matches_in_any_case_and_spacing() -> None:
+    assert _by_role(("Sign  in",), "sign in") == ("Sign  in",)
 
 
 def test_a_template_addresses_a_control_whose_name_fills_its_holes() -> None:

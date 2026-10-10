@@ -31,7 +31,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import ostler_qa_transfer
 from ostler_qa_checkout import copy_checkout
-from ostler_qa_elements import template_pattern
+from ostler_qa_elements import name_pattern, template_pattern
 from ostler_qa_lap import Arranged, LapRecord
 from ostler_qa_paths import is_projection, path_steps, resolve_path
 from ostler_qa_responses import reply_excerpt
@@ -1627,7 +1627,7 @@ class Qa:
 
 
     def by_role(self, role: str, *, name: str | None = None, template: str | None = None, **kwargs: Any) -> Any:
-        """The element with this role and name. A name that several elements contain addresses the one that carries it whole.
+        """The element with this role and name. A name addresses an element that carries it whole, never one whose longer name merely contains it.
 
         A page that shows no such element yet is waited on until one appears, so the choice is made against what it renders.
         A page that streams data never goes idle, so the element itself is the signal, not the network.
@@ -1649,18 +1649,14 @@ class Qa:
             except Exception:
                 pass
             return found.first
-        found = self.browser_page.get_by_role(role, name=name, **kwargs)
-        if not isinstance(name, str) or "exact" in kwargs:
-            return found
+        if not isinstance(name, str) or not name.split() or "exact" in kwargs:
+            return self.browser_page.get_by_role(role, name=name, **kwargs)
+        found = self.browser_page.get_by_role(role, name=name_pattern(name), **kwargs)
         if found.count() == 0:
             try:
                 found.first.wait_for(state="attached", timeout=SETTLE_WAIT_MS)
             except Exception:
                 return found
-        if found.count() > 1:
-            whole = self.browser_page.get_by_role(role, name=name, exact=True, **kwargs)
-            if whole.count() == 1:
-                return whole
         return found
 
     def by_label(self, text: str, **kwargs: Any) -> Any:
