@@ -118,7 +118,7 @@ def perform_acts(
                                 'write the path the reader types, starting with `/`, as `visit(path="/fr/guide")`')
                             for oid in ids)
                 return PerformedActs(None, gap_filed=True)
-            lines.append(f"    qa.goto({python_literal(path)})  # arrange: {row.call}")
+            lines.append(f"    qa.goto({typed_literal(path)})  # arrange: {row.call}")
             continue
         located = row.locates.get("locator")
         act_locators = located.locators if located else NO_LOCATORS

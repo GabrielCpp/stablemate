@@ -3064,6 +3064,13 @@ def test_a_visit_that_names_no_path_after_the_origin_is_refused() -> None:
     assert any("starting with `/`" in detail for detail in details), details
 
 
+def test_a_visit_to_an_address_holding_a_reference_opens_it_with_the_reference_resolved() -> None:
+    result = _compile_plan_gaps(_arrival_flow([_visit("/ledgers/@seeded-ledger.ledger")]), story="demo-story")
+    assert isinstance(result, Plan)
+
+    assert 'qa.goto(qa.resolve("/ledgers/@seeded-ledger.ledger"))' in result.source
+
+
 def test_a_wrapped_book_bullet_still_compiles_to_valid_python() -> None:
     """A `does:`/`trigger:` value that wrapped across lines in the book source is still just one string by the time `qa context` hands it here — nothing marks where the line broke."""
     button = f"{_SCREEN}#create-policy-button"
