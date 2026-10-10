@@ -240,6 +240,57 @@ def test_a_5xx_fails_the_scenario_and_a_4xx_does_not(tmp_path: Path) -> None:
     assert "http://127.0.0.1:8099/api/docs" in problems[0]
 
 
+class _Dialog:
+    def __init__(self, message: str) -> None:
+        self.type = "confirm"
+        self.message = message
+        self.answered: list[str] = []
+
+    def accept(self) -> None:
+        self.answered.append("accept")
+
+    def dismiss(self) -> None:
+        self.answered.append("dismiss")
+
+
+def test_a_dialog_no_step_answered_is_dismissed_and_fails_the_scenario(tmp_path: Path) -> None:
+    browser = _browser(tmp_path)
+    dialog = _Dialog("Remove this datasheet?")
+    browser._on_dialog(dialog)
+
+    problems = browser.unclean()
+
+    assert dialog.answered == ["dismiss"]
+    assert len(problems) == 1
+    assert "no step answered" in problems[0]
+    assert "Remove this datasheet?" in problems[0]
+
+
+def test_a_declared_dialog_is_answered_as_declared(tmp_path: Path) -> None:
+    browser = _browser(tmp_path)
+    browser.answer_dialogs("accept")
+    dialog = _Dialog("Remove this datasheet?")
+    browser._on_dialog(dialog)
+
+    assert dialog.answered == ["accept"]
+    assert browser.unclean() == []
+
+
+def test_a_declared_dialog_that_never_opened_fails_the_scenario(tmp_path: Path) -> None:
+    browser = _browser(tmp_path)
+    browser.answer_dialogs("dismiss")
+
+    problems = browser.unclean()
+
+    assert len(problems) == 1
+    assert "none opened" in problems[0]
+
+
+def test_a_dialog_answer_the_browser_cannot_give_is_refused(tmp_path: Path) -> None:
+    with pytest.raises(ValueError, match="accept"):
+        _browser(tmp_path).answer_dialogs("yes")
+
+
 def test_a_failed_request_record_says_why_it_failed(tmp_path: Path) -> None:
     """``requestfailed`` fires for an app cancelling its own fetch just as it does for a refused connection."""
     url = "http://127.0.0.1:8099/v1/pages/p_copy_links/fr"

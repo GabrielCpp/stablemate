@@ -56,6 +56,8 @@ SENSITIVE_HEADERS = frozenset(
 
 DEFAULT_VIEWPORT = {"width": 1440, "height": 900}
 
+DIALOG_ANSWERS = ("accept", "dismiss")
+
 
 BROWSER_ISSUED_URLS: tuple[str, ...] = ("/favicon.ico",)
 
@@ -204,6 +206,8 @@ class Browser:
         self._body_budget = MAX_BODY_BUDGET_BYTES
         self._secrets = [value for value in secrets if value]
         self._arranging: Any = None
+        self._dialog_answer = ""
+        self._dialogs: list[dict[str, Any]] = []
 
 
     def open(self) -> Any:
@@ -267,7 +271,24 @@ class Browser:
                 f"{len(server_errors)} response(s) of status 500 or higher, first: "
                 f"{first.get('method')} {first.get('url')} -> {first.get('status')}"
             )
+        unanswered = [entry for entry in self._dialogs if not entry["answer"]]
+        if unanswered:
+            first = unanswered[0]
+            problems.append(
+                f"{len(unanswered)} browser dialog(s) no step answered, dismissed instead, first: "
+                f"{first['type']} {first['message']!r}"
+            )
+        if self._dialog_answer and not self._dialogs:
+            problems.append(
+                f"the scenario answers a browser dialog with {self._dialog_answer!r}, and none opened"
+            )
         return problems
+
+    def answer_dialogs(self, answer: str) -> None:
+        """Answer every browser dialog the page opens from here on with *answer*, `accept` or `dismiss`."""
+        if answer not in DIALOG_ANSWERS:
+            raise ValueError(f"a browser dialog is answered with one of {', '.join(DIALOG_ANSWERS)}, not {answer!r}")
+        self._dialog_answer = answer
 
     def permissions(self) -> list[str]:
         """The permissions the context is opened with."""
@@ -476,6 +497,7 @@ class Browser:
 
     def _listen(self, page: Any) -> None:
         page.on("console", self._on_console)
+        page.on("dialog", self._on_dialog)
         page.on("download", self._on_download)
         page.on("pageerror", self._on_page_error)
         page.on("request", self._on_request)
@@ -527,6 +549,22 @@ class Browser:
         if isinstance(value, list):
             return [self._shrink(item) for item in value]
         return value
+
+    def _on_dialog(self, dialog: Any) -> None:
+        """A dialog the page opened, answered as the scenario declared, and dismissed when it declared nothing."""
+        answer = self._dialog_answer
+        self._dialogs.append(
+            {
+                "atMs": self.clock(),
+                "type": str(dialog.type),
+                "message": self._safe(str(dialog.message)),
+                "answer": answer,
+            }
+        )
+        if answer == "accept":
+            dialog.accept()
+        else:
+            dialog.dismiss()
 
     def _on_page_error(self, error: Any) -> None:
         """An uncaught exception on the page."""
@@ -685,6 +723,7 @@ class Browser:
             "console": self._console[:DIAGNOSTICS_LIMIT],
             "consoleCount": len(self._console),
             "pageErrors": self._page_errors,
+            "dialogs": self._dialogs,
             "requests": self._requests[:DIAGNOSTICS_LIMIT],
             "requestCount": len(self._requests),
             "failedRequests": self._failed_requests,

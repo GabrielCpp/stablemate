@@ -1695,6 +1695,17 @@ class Qa:
         """Lay the page out for printing, as the browser does when the user prints it, until the scenario ends."""
         self.browser_page.emulate_media(media="print")
 
+    def answer_dialogs(self, answer: str) -> None:
+        """Answer every dialog the page opens from here on with *answer*, as the user would click OK or Cancel."""
+        recorder = self.diagnostics
+        if recorder is None or not hasattr(recorder, "answer_dialogs"):
+            raise RuntimeError(
+                f"scenario {self.scenario_id!r} answers a browser dialog, but its target "
+                f"'{self.target.name}' declares driver '{self.target.driver}'. Only "
+                "driver='playwright' opens a page that shows one"
+            )
+        recorder.answer_dialogs(answer)
+
     def window(self) -> Any:
         """Open an observation window over the exchanges this page is about to make."""
         recorder = self.diagnostics
@@ -2383,7 +2394,8 @@ def _open_browser(qa: Qa) -> Any:
     return browser
 
 
-BROWSER_CLEAN_EXPECTED = "no uncaught page error and no response of status 500 or higher"
+BROWSER_CLEAN_EXPECTED = ("no uncaught page error, no response of status 500 or higher, and every "
+                          "browser dialog answered as the scenario declared")
 
 
 def _bind_browser_unclean(qa: Qa, problems: Sequence[str]) -> list[str]:

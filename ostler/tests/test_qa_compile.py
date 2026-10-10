@@ -2507,6 +2507,51 @@ def test_a_keyboard_claim_is_checked_on_arrival_before_anything_is_clicked() -> 
             'locator="#create-policy-button", activates="Enter"') in scenario
 
 
+def _dialog_context(dialog: str) -> tuple[dict, str, str]:
+    button = f"{_SCREEN}#create-policy-button"
+    button_locators = {"role": ["button"], "name": ["Create policy"]}
+    interaction = f"{_SCREEN}#submit-new-policy"
+    interaction_locators = {"on": ["[create-policy-button](#create-policy-button)"],
+                            "trigger": ["click"], "keyboard": ["Enter"], "dialog": [dialog]}
+    keyboard_oid = "okf:new-policy:submit-new-policy:keyboard:1"
+    does_oid = "okf:new-policy:submit-new-policy:does:1"
+    focusable = {"call": "it", "name": "focusable",
+                 "args": {"locator": "#create-policy-button", "activates": "Enter"},
+                 "locates": {"locator": {"node": button, "locators": button_locators}}}
+    context = _navigation_context(
+        _page_obligation("okf:new-policy:create-policy-button:visible:1", button,
+                          locators=button_locators, checks=[_visible("button:Create policy")]),
+        _page_obligation(keyboard_oid, interaction, locators=interaction_locators,
+                          checks=[focusable]),
+        _page_obligation(does_oid, interaction, locators=interaction_locators,
+                          checks=[_located("#policy-table", f"{_SCREEN}#policy-table",
+                                           {"role": ["table"], "name": ["Policies on file"]})]),
+        navigation=_arrival_navigation(),
+    )
+    return context, keyboard_oid, does_oid
+
+
+def test_a_declared_dialog_is_answered_before_the_trigger_and_the_key_fire() -> None:
+    context, keyboard_oid, does_oid = _dialog_context("accept — the user confirms the policy")
+    source, gaps = compile_plan_gaps(context, story="demo-story")
+    assert source is not None
+    assert [g for g in gaps if g.obligation_id in (keyboard_oid, does_oid)] == []
+    scenarios = source.split("@scenario(")[1:]
+    (keyboard,) = [s for s in scenarios if keyboard_oid in s]
+    (does,) = [s for s in scenarios if does_oid in s]
+    assert keyboard.index('qa.answer_dialogs("accept")') < keyboard.index('qa.verify("focusable"')
+    assert does.index('qa.answer_dialogs("accept")') < does.index(".click()")
+
+
+def test_a_dialog_answer_the_browser_cannot_give_is_a_gap() -> None:
+    context, keyboard_oid, does_oid = _dialog_context("yes")
+    _, gaps = compile_plan_gaps(context, story="demo-story")
+    for oid in (keyboard_oid, does_oid):
+        [gap] = [g for g in gaps if g.obligation_id == oid]
+        assert gap.kind == "unresolved-precondition"
+        assert "`dialog: accept`" in gap.detail and "`dialog: dismiss`" in gap.detail
+
+
 def test_a_keyboard_claim_is_checked_after_the_interactions_arrangement() -> None:
     """A control that only takes focus once the state its interaction arranges holds is pressed in that state."""
     button = f"{_SCREEN}#create-policy-button"

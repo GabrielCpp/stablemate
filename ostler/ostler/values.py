@@ -32,8 +32,24 @@ def _checkout_path(value: str) -> str:
     return ""
 
 
+DIALOG_ANSWERS = ("accept", "dismiss")
+
+
+def dialog_answer(value: str) -> str:
+    """How a `dialog:` bullet answers the browser's dialog: its first word, before any reason."""
+    words = bullet_text(value).split()
+    return words[0].lower() if words else ""
+
+
+def _dialog_answer(value: str) -> str:
+    if dialog_answer(value) in DIALOG_ANSWERS:
+        return ""
+    return "it answers with neither " + " nor ".join(f"`{answer}`" for answer in DIALOG_ANSWERS)
+
+
 VALUE_KINDS: dict[str, Callable[[str], str]] = {
     "url": _url,
     "http-method": _http_method,
     "checkout-path": _checkout_path,
+    "dialog-answer": _dialog_answer,
 }

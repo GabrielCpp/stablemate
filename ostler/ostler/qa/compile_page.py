@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from typing import Literal
 
 from ostler import acts as acts_mod
+from ostler import values as values_mod
 from ostler.qa.book_index import BookIndex
 from ostler.qa.compile_playwright import WINDOW_VAR
 from ostler.qa.compile_playwright import name_refusal
@@ -378,6 +379,14 @@ def _arrival_scenario(
         [o for node_id, obs in sorted(arrival.nodes.items()) if node_id not in refused for o in obs], gaps)
     if not observed.covered:
         return []
+    for node_id, node_obligations in sorted(arrival.nodes.items()):
+        if node_id in refused or not all(_observes_keyboard_only(o) for o in node_obligations):
+            continue
+        answer = _dialog_answer(next(iter(node_obligations[0].locators.dialog), ""), gaps,
+                                sorted(o.id for o in node_obligations))
+        if answer is None:
+            return []
+        body.extend(answer)
     if needs_window(observed.lines):
         body.insert(len(arranged), f"    {WINDOW_VAR} = qa.window()")
     covered.update(observed.covered)
@@ -404,10 +413,11 @@ class _InteractionArm:
     trigger: str
     does: str
     when: str
+    dialog: str
 
 
 def _interaction_arm(source: str, obligation: Obligation) -> _InteractionArm:
-    """The `on:`/`trigger:`/`does:`/`when:` bullets one interaction arm declares."""
+    """The `on:`/`trigger:`/`does:`/`when:`/`dialog:` bullets one interaction arm declares."""
     locators = obligation.locators
 
     def first(values: tuple[str, ...]) -> str:
@@ -415,7 +425,8 @@ def _interaction_arm(source: str, obligation: Obligation) -> _InteractionArm:
 
     on_value = first(locators.on)
     on_node_id = on_node(source, on_value) or (f"{source}#{on_value}" if on_value else "")
-    return _InteractionArm(on_node_id, on_label(on_value), first(locators.trigger), first(locators.does), first(locators.when))
+    return _InteractionArm(on_node_id, on_label(on_value), first(locators.trigger), first(locators.does), first(locators.when),
+                           first(locators.dialog))
 
 
 def _trigger_refusal(arm: _InteractionArm, on_locators: Locators, unarranged: tuple[str, ...]) -> ScenarioRefusal | None:
@@ -513,9 +524,25 @@ def _performed_trigger(
         action = [performance]
     else:
         action = [f"    {on_expr}.click()  # trigger: {trailing_comment(arm.trigger)}"]
+    answer = _dialog_answer(arm.dialog, gaps, ids)
+    if answer is None:
+        return None
     if arm.does:
         action.extend(_prose_comment(arm.does, label="does: "))
-    return _PerformedTrigger(performed or [], action)
+    return _PerformedTrigger(performed or [], [*answer, *action])
+
+
+def _dialog_answer(raw: str, gaps: list[Gap], ids: list[str]) -> list[str] | None:
+    """The line that answers the browser dialogs *raw* declares, none when it declares none, or `None` with the gap filed."""
+    if not raw:
+        return []
+    answer = values_mod.dialog_answer(raw)
+    if answer not in values_mod.DIALOG_ANSWERS:
+        detail = (f"`dialog: {raw}` names no answer the browser can give its dialog: write "
+                  + " or ".join(f"`dialog: {word}`" for word in values_mod.DIALOG_ANSWERS))
+        gaps.extend(Gap(oid, "unresolved-precondition", detail) for oid in ids)
+        return None
+    return [f"    qa.answer_dialogs({python_literal(answer)})"]
 
 
 def _interaction_scenario(

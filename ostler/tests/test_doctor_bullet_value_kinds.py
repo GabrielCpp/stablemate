@@ -11,6 +11,7 @@ from conftest import write
 
 SCREEN_PATH = "docs/features/acme/screens/widgets.md"
 ENDPOINT_PATH = "docs/features/acme/server.md"
+INTERACTION_PATH = "docs/features/acme/screens/policies.md"
 
 
 def _screen_book(route: str = "/widgets", entry: str = "") -> str:
@@ -315,3 +316,42 @@ def test_a_step_directory_that_climbs_out_of_the_checkout_is_reported(repo: Path
 def test_a_relative_step_directory_is_clean(repo: Path) -> None:
     write(repo / WEB_RUNBOOK_PATH, _step_runbook("app/web"))
     assert [f for f in _findings(repo, "unparsable-bullet-value") if "#working-directory:" in f.ref] == []
+
+
+def _interaction_book(dialog: str) -> str:
+    return f"""---
+type: screen
+slug: policies
+title: Policies
+---
+# Policies
+
+- route: /policies
+- requires: none
+- params: none
+
+## Interactions
+
+### remove-policy
+- on: [remove-button](#remove-button)
+- trigger: click
+- role: button
+- name: Remove
+- keyboard: Enter
+- dialog: {dialog}
+- does:
+  - removes the policy from the table
+"""
+
+
+def test_a_dialog_answer_the_browser_cannot_give_is_reported(repo: Path) -> None:
+    write(repo / INTERACTION_PATH, _interaction_book("yes"))
+    found = [f for f in _findings(repo, "unparsable-bullet-value") if "#dialog:" in f.ref]
+    assert [f.severity for f in found] == ["error"]
+    assert "dialog-answer" in found[0].message
+
+
+def test_a_dialog_answer_with_its_reason_is_clean(repo: Path) -> None:
+    write(repo / INTERACTION_PATH, _interaction_book("dismiss — the user keeps the policy"))
+    found = [f for f in _findings(repo, "unparsable-bullet-value") if "#dialog:" in f.ref]
+    assert found == []

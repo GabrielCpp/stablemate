@@ -23,6 +23,7 @@ Section type. A `### <id>` under a `## Interactions` heading, normally in a
 | `name` | **yes** | its accessible name |
 | `keyboard` | **yes** | **mints an obligation** — how it is fired without a pointer, or [its own emptiness](../bullet-grammar.md#a-claim-that-states-its-own-emptiness) |
 | `when` | no | **mints an obligation** — the condition it applies under |
+| `dialog` | no | how the user answers the browser dialog the trigger opens: `accept` presses OK, `dismiss` presses Cancel. A reason may follow the word. A scenario answers every dialog the trigger opens this way, in the keyboard scenario too. A dialog no `dialog:` answers fails the scenario, and so does a `dialog:` whose dialog never opens (`unparsable-bullet-value` on any other word) |
 | `exclusive-with` | no | link — a sibling it can never co-render with |
 | `extends` | no | link — the base arm this one narrows, inheriting its control identity (`on:`/`trigger:`/`role:`/`name:`/`keyboard:`), none of its arrangements |
 | `same-as` | no | link, multi-valued — another node documenting this same interaction |

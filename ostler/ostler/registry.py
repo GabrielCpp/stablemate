@@ -651,6 +651,7 @@ UI_TYPES: tuple[UINodeType, ...] = (
             BulletKey("unique-by"),
             BulletKey("keyboard", required=True, normative=True, locator=True),
             BulletKey("when", normative=True, locator=True, condition=True),
+            BulletKey("dialog", locator=True, value_kind="dialog-answer"),
             BulletKey("exclusive-with", link=True, locator=True),
             BulletKey("extends", link=True),
             BulletKey("same-as", link=True),

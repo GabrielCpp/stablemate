@@ -28,6 +28,7 @@ class Locators:
     trigger: tuple[str, ...] = ()
     does: tuple[str, ...] = ()
     when: tuple[str, ...] = ()
+    dialog: tuple[str, ...] = ()
     exclusive_with: tuple[str, ...] = ()
 
 
