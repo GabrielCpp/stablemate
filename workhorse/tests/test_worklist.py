@@ -313,6 +313,228 @@ def test_settle_scoped_by_kind_leaves_the_other_kind_alone():
     assert [it.status for it in work.items("fix")] == ["pending"]
 
 
+
+def test_digest_covers_content_and_ignores_status_order_and_laps():
+    item = wl.WorkItem(id="f1", kind="finding", order=1, payload={"text": "x"})
+    stamped = wl.payload_digest(item)
+    item.status, item.order, item.laps = "done", 2.5, 3
+    assert wl.payload_digest(item) == stamped
+    item.payload["text"] = "y"
+    assert wl.payload_digest(item) != stamped
+
+
+def test_digest_covers_extra_fields():
+    item = wl.WorkItem.model_validate({"id": "f1", "note": "a"})
+    stamped = wl.payload_digest(item)
+    edited = wl.WorkItem.model_validate({"id": "f1", "note": "b"})
+    assert wl.payload_digest(edited) != stamped
+
+
+def test_add_stamps_digests_and_appends_in_one_write():
+    work, backend = _list([])
+    added = work.add([
+        wl.WorkItem(id="f1", kind="finding", payload={"text": "x"}),
+        wl.WorkItem(id="f2", kind="finding", payload={"text": "y"}),
+    ])
+    assert backend.saves == 1
+    assert [it.id for it in work.items()] == ["f1", "f2"]
+    assert all(it.digest == wl.payload_digest(it) for it in added)
+    assert all(it.digest for it in work.items())
+
+
+def test_add_refuses_a_stored_id_and_writes_nothing():
+    work, backend = _list()
+    try:
+        work.add([wl.WorkItem(id="new"), wl.WorkItem(id="c")])
+    except ValueError as exc:
+        assert "'c'" in str(exc)
+    else:
+        raise AssertionError("an id already on the list must be refused")
+    assert backend.saves == 0
+
+
+def test_add_refuses_an_id_twice_in_one_batch():
+    work, backend = _list([])
+    try:
+        work.add([wl.WorkItem(id="x"), wl.WorkItem(id="x")])
+    except ValueError as exc:
+        assert "'x'" in str(exc)
+    else:
+        raise AssertionError("a batch repeating an id must be refused")
+    assert backend.saves == 0
+
+
+def test_an_edited_payload_fails_every_load_naming_the_item():
+    work, backend = _list([])
+    work.add([wl.WorkItem(id="f1", payload={"text": "x"})])
+    backend.items[0].payload["text"] = "rewritten"
+    calls = [
+        lambda: work.items(),
+        lambda: work.claim(1),
+        lambda: work.counts(),
+        lambda: work.snapshot(),
+        lambda: work.mark("f1", "done"),
+        lambda: work.settle(["f1"], "done"),
+        lambda: work.prune("f1"),
+        lambda: work.select_next(),
+        lambda: work.add([wl.WorkItem(id="f2")]),
+    ]
+    for call in calls:
+        try:
+            call()
+        except wl.DigestMismatch as exc:
+            assert "'f1'" in str(exc)
+        else:
+            raise AssertionError("an edited item must fail the load")
+
+
+def test_a_status_change_keeps_the_digest_valid():
+    work, _backend = _list([])
+    work.add([wl.WorkItem(id="f1", payload={"text": "x"})])
+    assert work.mark("f1", "done")
+    assert [it.status for it in work.items()] == ["done"]
+
+
+def test_an_item_without_a_digest_is_not_checked():
+    work, backend = _list([wl.WorkItem(id="a", payload={"text": "x"})])
+    backend.items[0].payload["text"] = "edited"
+    assert [it.id for it in work.items()] == ["a"]
+
+
+def test_digest_survives_the_json_round_trip(tmp_path):
+    work = wl.WorkList(wl.JsonBackend(tmp_path / "work.json"))
+    work.add([wl.WorkItem(id="f1", kind="finding", order=1.5, payload={"n": 1, "xs": [1, 2]})])
+    work.claim(1)
+    assert work.items()[0].laps == 1
+    rows = json.loads((tmp_path / "work.json").read_text())
+    rows[0]["payload"]["n"] = 2
+    (tmp_path / "work.json").write_text(json.dumps(rows))
+    try:
+        work.items()
+    except wl.DigestMismatch:
+        pass
+    else:
+        raise AssertionError("an edit on disk must fail the load")
+
+
+def test_order_accepts_floats_and_keeps_ints():
+    items = [
+        wl.WorkItem.model_validate({"id": "a", "order": 1}),
+        wl.WorkItem.model_validate({"id": "b", "order": 2}),
+        wl.WorkItem.model_validate({"id": "a1", "order": 1.5}),
+    ]
+    assert [it.id for it in wl.claim(items, 3)] == ["a", "a1", "b"]
+    assert items[0].model_dump(exclude_unset=True)["order"] == 1
+    assert isinstance(items[0].order, int)
+
+
+def test_kind_takes_a_collection_everywhere():
+    items = [
+        wl.WorkItem(id="s1", kind="story", status="pending", order=1),
+        wl.WorkItem(id="f1", kind="finding", status="pending", order=2),
+        wl.WorkItem(id="e1", kind="epic", status="pending", order=3),
+    ]
+    both = {"story", "finding"}
+    assert [it.id for it in wl.claim(items, 5, kind=both)] == ["s1", "f1"]
+    assert present(wl.select_next(items, kind=("finding", "epic"))).id == "f1"
+    assert wl.counts(items, kind=both).total == 2
+    assert wl.snapshot(items, kind=both).progress == "0/2"
+    work, _backend = _list(items)
+    assert [it.id for it in work.items(both)] == ["s1", "f1"]
+    assert work.settle(["s1", "f1", "e1"], "done", both) == 2
+    assert work.mark("e1", "done", ["story"]) is False
+    assert work.prune("e1", ["epic"]) is True
+    assert work.counts(both).done == 2
+
+
+def test_strict_claim_waits_for_every_earlier_item_to_be_done():
+    items = [
+        wl.WorkItem(id="s1", status="done", order=1),
+        wl.WorkItem(id="s2", status="blocked", order=2),
+        wl.WorkItem(id="s3", status="pending", order=3),
+    ]
+    assert wl.claim(items, 5, strict=True) == []
+    assert [it.id for it in wl.claim(items, 5)] == ["s3"]
+    items[1].status = "done"
+    assert [it.id for it in wl.claim(items, 5, strict=True)] == ["s3"]
+
+
+def test_strict_claim_takes_one_pending_item_at_a_time():
+    items = [
+        wl.WorkItem(id="s1", status="pending", order=1),
+        wl.WorkItem(id="s2", status="pending", order=2),
+    ]
+    assert [it.id for it in wl.claim(items, 5, strict=True)] == ["s1"]
+
+
+def test_strict_claim_returns_active_items_first():
+    items = [
+        wl.WorkItem(id="s1", status="pending", order=1),
+        wl.WorkItem(id="s2", status="active", order=2),
+    ]
+    assert [it.id for it in wl.claim(items, 5, strict=True)] == ["s2", "s1"]
+    items[0].status = "blocked"
+    assert [it.id for it in wl.claim(items, 5, strict=True)] == ["s2"]
+
+
+def test_strict_claim_reads_only_the_kinds_it_filters():
+    items = [
+        wl.WorkItem(id="e1", kind="epic", status="pending", order=1),
+        wl.WorkItem(id="s1", kind="story", status="done", order=2),
+        wl.WorkItem(id="s2", kind="story", status="pending", order=3),
+    ]
+    assert [it.id for it in wl.claim(items, 5, kind="story", strict=True)] == ["s2"]
+    assert [it.id for it in wl.claim(items, 5, strict=True)] == ["e1"]
+
+
+def test_strict_worklist_claim_writes_nothing_while_blocked():
+    work, backend = _list([
+        wl.WorkItem(id="s1", status="blocked", order=1),
+        wl.WorkItem(id="s2", status="pending", order=2),
+    ])
+    assert work.claim(5, strict=True) == []
+    assert backend.saves == 0
+
+
+def test_claim_counts_a_lap_on_each_item_it_returns():
+    work, _backend = _list([
+        wl.WorkItem(id="a", status="pending", order=1),
+        wl.WorkItem(id="b", status="pending", order=2),
+    ])
+    assert [(it.id, it.laps) for it in work.claim(1)] == [("a", 1)]
+    assert [(it.id, it.laps) for it in work.claim(1)] == [("a", 2)]
+    work.mark("a", "done")
+    assert [(it.id, it.laps) for it in work.claim(1)] == [("b", 1)]
+    assert {it.id: it.laps for it in work.items()} == {"a": 2, "b": 1}
+
+
+def test_laps_persist_through_the_json_backend(tmp_path):
+    path = tmp_path / "work.json"
+    path.write_text(json.dumps([{"id": "a", "status": "pending"}]))
+    work = wl.WorkList(wl.JsonBackend(path))
+    work.claim(1)
+    work.claim(1)
+    assert json.loads(path.read_text())[0]["laps"] == 2
+
+
+def test_a_scheme_can_name_several_done_statuses():
+    scheme = wl.Scheme(done=frozenset({"done", "settled", "declined"}))
+    items = [
+        wl.WorkItem(id="a", status="done"),
+        wl.WorkItem(id="b", status="settled"),
+        wl.WorkItem(id="c", status="declined"),
+        wl.WorkItem(id="d", status="pending"),
+    ]
+    c = wl.counts(items, scheme=scheme)
+    assert (c.done, c.pending, c.remaining) == (3, 1, 1)
+    assert wl.snapshot(items, scheme=scheme).progress == "3/4"
+    work, _backend = _list(items)
+    work = wl.WorkList(backend=work.backend, scheme=scheme)
+    assert work.counts().done == 3
+    assert work.snapshot().progress == "3/4"
+    assert [it.id for it in work.claim(5, strict=True)] == ["d"]
+
+
 if __name__ == "__main__":
     fns = [v for k, v in sorted(globals().items())
            if k.startswith("test_") and callable(v)]

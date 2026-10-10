@@ -230,6 +230,68 @@ def test_pipeline_only_claims_its_own_kind():
     assert {it.id: it.status for it in work.items()} == {"a": "done", "b": "pending"}
 
 
+
+def test_pipeline_drains_a_collection_of_kinds():
+    chunks: list[list[str]] = []
+    work = wl.WorkList(
+        backend=MemoryBackend([
+            wl.WorkItem(id="s1", status="pending", kind="story", order=1),
+            wl.WorkItem(id="e1", status="pending", kind="epic", order=2),
+            wl.WorkItem(id="f1", status="pending", kind="followup", order=3),
+        ])
+    )
+
+    class Drain(Workflow):
+        def start(self) -> Transition:
+            return Continue(None, self.drain)
+
+        def drain(self) -> Transition:
+            again = self.pipeline(
+                work,
+                {"story", "followup"},
+                5,
+                lambda items: chunks.append([it.id for it in items]),
+            )
+            return again or Done(None)
+
+    _drive(Drain)
+    assert chunks == [["s1", "f1"]]
+    assert {it.id: it.status for it in work.items()} == {
+        "s1": "done", "e1": "pending", "f1": "done"
+    }
+
+
+def test_a_strict_pipeline_stops_at_a_blocked_item():
+    seen: list[str] = []
+    work = wl.WorkList(
+        backend=MemoryBackend([
+            wl.WorkItem(id="s1", status="pending", kind="story", order=1),
+            wl.WorkItem(id="s2", status="pending", kind="story", order=2),
+            wl.WorkItem(id="s3", status="pending", kind="story", order=3),
+        ])
+    )
+
+    def handle(items: list[wl.WorkItem]) -> None:
+        for it in items:
+            seen.append(it.id)
+            if it.id == "s2":
+                work.mark(it.id, "blocked")
+
+    class Drain(Workflow):
+        def start(self) -> Transition:
+            return Continue(None, self.drain)
+
+        def drain(self) -> Transition:
+            again = self.pipeline(work, "story", 5, handle, strict=True)
+            return again or Done(None)
+
+    _drive(Drain)
+    assert seen == ["s1", "s2"]
+    assert {it.id: (it.status, it.laps) for it in work.items()} == {
+        "s1": ("done", 1), "s2": ("blocked", 1), "s3": ("pending", 0)
+    }
+
+
 if __name__ == "__main__":
     fns = [
         v

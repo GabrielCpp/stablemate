@@ -1,13 +1,15 @@
 """A generic backlog/worklist primitive — one place a run is *aware of what it is working through*, instead of every workflow re-deriving "select next / mark / prune / how many remain" against its own bespoke store."""
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 from collections import Counter
+from collections.abc import Collection, Iterable, Iterator, Sequence
 from dataclasses import dataclass
 from itertools import islice
 from pathlib import Path
-from typing import Any, Iterable, Iterator, Protocol, Sequence
+from typing import Any, Protocol
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -20,8 +22,32 @@ class WorkItem(BaseModel):
     id: str = ""
     status: str = ""
     kind: str = ""
-    order: int | None = None
+    order: int | float | None = None
     payload: dict[str, Any] = Field(default_factory=dict)
+    digest: str = ""
+    laps: int = 0
+
+
+KindFilter = str | Collection[str] | None
+
+
+class DigestMismatch(ValueError):
+    """A stored item whose content no longer matches the digest it was filed with."""
+
+
+def payload_digest(item: WorkItem) -> str:
+    """The sha256 of an item's content: its id, kind, payload and extra fields, never its status, order, laps or digest."""
+    content: dict[str, Any] = dict(item.model_extra or {})
+    content.update(id=item.id, kind=item.kind, payload=item.payload)
+    canonical = json.dumps(content, sort_keys=True, separators=(",", ":"), default=str)
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+def verify(items: Iterable[WorkItem]) -> None:
+    """Raise :class:`DigestMismatch` on the first item whose non-empty digest does not match its content."""
+    for it in items:
+        if it.digest and it.digest != payload_digest(it):
+            raise DigestMismatch(f"work item {it.id!r} was edited after it was filed")
 
 
 @dataclass(frozen=True, slots=True)
@@ -71,12 +97,22 @@ def _ordered(items: Iterable[WorkItem]) -> list[WorkItem]:
     return seq
 
 
-def _of_kind(items: Iterable[WorkItem], kind: str | None) -> list[WorkItem]:
-    """The items of one ``kind``, or all of them when ``kind`` is ``None`` — the single filter that lets one worklist serve every list a run tracks."""
-    seq = list(items)
+def _kinds(kind: KindFilter) -> frozenset[str] | None:
+    """The set of kinds a filter names, or ``None`` for every kind."""
     if kind is None:
+        return None
+    if isinstance(kind, str):
+        return frozenset({kind})
+    return frozenset(kind)
+
+
+def _of_kind(items: Iterable[WorkItem], kind: KindFilter) -> list[WorkItem]:
+    """The items of one ``kind`` or a collection of kinds, or all of them when ``kind`` is ``None`` — the single filter that lets one worklist serve every list a run tracks."""
+    seq = list(items)
+    wanted = _kinds(kind)
+    if wanted is None:
         return seq
-    return [it for it in seq if it.kind == kind]
+    return [it for it in seq if it.kind in wanted]
 
 
 def _candidates(
@@ -84,14 +120,28 @@ def _candidates(
     *,
     skip: Iterable[str] = (),
     scheme: Scheme = DEFAULT_SCHEME,
-    kind: str | None = None,
+    kind: KindFilter = None,
+    strict: bool = False,
 ) -> Iterator[WorkItem]:
-    """Every item worth working, in working order — the ones already active first, so a run that crashed mid-item resumes on it rather than opening a second front."""
+    """Every item worth working, in working order — the ones already active first, so a run that crashed mid-item resumes on it rather than opening a second front.
+
+    ``strict`` keeps the sequence: a pending item is a candidate only when every item before it is done.
+    """
     skipped = set(skip)
     ordered = _ordered(_of_kind(items, kind))
     yield from (
         it for it in ordered if it.status in scheme.active and it.id not in skipped
     )
+    if strict:
+        first_open = next((it for it in ordered if it.status not in scheme.done), None)
+        if (
+            first_open is not None
+            and first_open.status not in scheme.active
+            and first_open.status not in scheme.blocked
+            and first_open.id not in skipped
+        ):
+            yield first_open
+        return
     yield from (
         it
         for it in ordered
@@ -107,10 +157,13 @@ def select_next(
     *,
     skip: Iterable[str] = (),
     scheme: Scheme = DEFAULT_SCHEME,
-    kind: str | None = None,
+    kind: KindFilter = None,
+    strict: bool = False,
 ) -> WorkItem | None:
     """The first item to work, or ``None`` when the queue is drained."""
-    return next(_candidates(items, skip=skip, scheme=scheme, kind=kind), None)
+    return next(
+        _candidates(items, skip=skip, scheme=scheme, kind=kind, strict=strict), None
+    )
 
 
 def claim(
@@ -119,12 +172,17 @@ def claim(
     *,
     skip: Iterable[str] = (),
     scheme: Scheme = DEFAULT_SCHEME,
-    kind: str | None = None,
+    kind: KindFilter = None,
+    strict: bool = False,
 ) -> list[WorkItem]:
     """The next ``n`` items to work, or fewer when the queue is shorter than that — :func:`select_next` widened to a chunk, off the one ordering both read."""
     if n <= 0:
         return []
-    return list(islice(_candidates(items, skip=skip, scheme=scheme, kind=kind), n))
+    return list(
+        islice(
+            _candidates(items, skip=skip, scheme=scheme, kind=kind, strict=strict), n
+        )
+    )
 
 
 def counts(
@@ -132,9 +190,9 @@ def counts(
     *,
     scheme: Scheme = DEFAULT_SCHEME,
     category_key: str | None = None,
-    kind: str | None = None,
+    kind: KindFilter = None,
 ) -> WorkCounts:
-    """A count breakdown of the queue, scoped to one ``kind`` (``None`` = every kind)."""
+    """A count breakdown of the queue, scoped to one ``kind`` or a collection of kinds (``None`` = every kind)."""
     seq = _of_kind(items, kind)
     by_status: Counter[str] = Counter(it.status for it in seq)
     done = sum(by_status[s] for s in scheme.done)
@@ -177,7 +235,7 @@ def snapshot(
     current: str | None = None,
     scheme: Scheme = DEFAULT_SCHEME,
     category_key: str | None = None,
-    kind: str | None = None,
+    kind: KindFilter = None,
 ) -> WorkSnapshot:
     """One record a workflow drops into its label/activity context: the current item id, the counts, a ``progress`` "done/total", a ``composition`` line, and a ``kinds`` line ("5 epic · 30 story") — the shape a dashboard reads uniformly no matter which workflow produced it."""
     c = counts(items, scheme=scheme, category_key=category_key, kind=kind)
@@ -233,97 +291,125 @@ class JsonBackend:
 
 @dataclass
 class WorkList:
-    """A worklist bound to a :class:`Backend`, with a :class:`Scheme` and optional ``category_key``."""
+    """A worklist bound to a :class:`Backend`, with a :class:`Scheme` and optional ``category_key``.
+
+    Every read verifies the stored digests, so an item whose content was edited after it was filed raises :class:`DigestMismatch`.
+    """
 
     backend: Backend
     scheme: Scheme = DEFAULT_SCHEME
     category_key: str | None = None
 
-    def items(self, kind: str | None = None) -> list[WorkItem]:
-        """The stored items, optionally just those of one ``kind`` (``None`` = every kind) — the read side of holding many lists in one worklist."""
-        return _of_kind(self.backend.load(), kind)
+    def _load(self) -> list[WorkItem]:
+        items = self.backend.load()
+        verify(items)
+        return items
+
+    def items(self, kind: KindFilter = None) -> list[WorkItem]:
+        """The stored items, optionally just those of some kinds (``None`` = every kind) — the read side of holding many lists in one worklist."""
+        return _of_kind(self._load(), kind)
+
+    def add(self, items: Iterable[WorkItem]) -> list[WorkItem]:
+        """File new items after the stored ones, each stamped with its digest, in one write; an id already stored or repeated in the batch raises ``ValueError`` and writes nothing."""
+        stored = self._load()
+        seen = {it.id for it in stored}
+        batch = list(items)
+        for it in batch:
+            if it.id in seen:
+                raise ValueError(f"work item {it.id!r} is already on the list")
+            seen.add(it.id)
+        for it in batch:
+            it.digest = payload_digest(it)
+        if batch:
+            self.backend.save([*stored, *batch])
+        return batch
 
     def select_next(
-        self, skip: Iterable[str] = (), kind: str | None = None
+        self, skip: Iterable[str] = (), kind: KindFilter = None, strict: bool = False
     ) -> WorkItem | None:
         return select_next(
-            self.backend.load(), skip=skip, scheme=self.scheme, kind=kind
+            self._load(), skip=skip, scheme=self.scheme, kind=kind, strict=strict
         )
 
     def claim(
         self,
         n: int,
         *,
-        kind: str | None = None,
+        kind: KindFilter = None,
         skip: Iterable[str] = (),
         status: str = "active",
+        strict: bool = False,
     ) -> list[WorkItem]:
-        """Take up to ``n`` items of one ``kind``, mark them ``status``, and persist once — an empty list is how a drained queue says so, and it writes nothing."""
-        items = self.backend.load()
-        taken = claim(items, n, skip=skip, scheme=self.scheme, kind=kind)
+        """Take up to ``n`` items, mark them ``status``, count one more lap on each, and persist once — an empty list is how a drained queue says so, and it writes nothing."""
+        items = self._load()
+        taken = claim(
+            items, n, skip=skip, scheme=self.scheme, kind=kind, strict=strict
+        )
         if not taken:
             return []
         for it in taken:
             it.status = status
+            it.laps = it.laps + 1
         self.backend.save(items)
         return taken
 
-    def settle(
-        self, ids: Iterable[str], status: str, kind: str | None = None
-    ) -> int:
+    def settle(self, ids: Iterable[str], status: str, kind: KindFilter = None) -> int:
         """Set the status of every item named in ``ids``, in one write, and say how many rows it set."""
         wanted = set(ids)
         if not wanted:
             return 0
-        items = self.backend.load()
+        kinds = _kinds(kind)
+        items = self._load()
         changed = 0
         for it in items:
-            if it.id in wanted and (kind is None or it.kind == kind):
+            if it.id in wanted and (kinds is None or it.kind in kinds):
                 it.status = status
                 changed += 1
         if changed:
             self.backend.save(items)
         return changed
 
-    def mark(self, item_id: str, status: str, kind: str | None = None) -> bool:
+    def mark(self, item_id: str, status: str, kind: KindFilter = None) -> bool:
         """Set one item's status."""
-        items = self.backend.load()
+        kinds = _kinds(kind)
+        items = self._load()
         hit = False
         for it in items:
-            if it.id == item_id and (kind is None or it.kind == kind):
+            if it.id == item_id and (kinds is None or it.kind in kinds):
                 it.status = status
                 hit = True
         if hit:
             self.backend.save(items)
         return hit
 
-    def prune(self, item_id: str, kind: str | None = None) -> bool:
+    def prune(self, item_id: str, kind: KindFilter = None) -> bool:
         """Drop one item entirely."""
-        items = self.backend.load()
+        kinds = _kinds(kind)
+        items = self._load()
         kept = [
             it
             for it in items
-            if not (it.id == item_id and (kind is None or it.kind == kind))
+            if not (it.id == item_id and (kinds is None or it.kind in kinds))
         ]
         if len(kept) != len(items):
             self.backend.save(kept)
             return True
         return False
 
-    def counts(self, kind: str | None = None) -> WorkCounts:
+    def counts(self, kind: KindFilter = None) -> WorkCounts:
         return counts(
-            self.backend.load(),
+            self._load(),
             scheme=self.scheme,
             category_key=self.category_key,
             kind=kind,
         )
 
     def snapshot(
-        self, current: str | None = None, kind: str | None = None
+        self, current: str | None = None, kind: KindFilter = None
     ) -> WorkSnapshot:
-        """This worklist's :func:`snapshot` — the label/activity-ready record, scoped to one ``kind`` (``None`` = every kind)."""
+        """This worklist's :func:`snapshot` — the label/activity-ready record, scoped to some kinds (``None`` = every kind)."""
         return snapshot(
-            self.backend.load(),
+            self._load(),
             current=current,
             scheme=self.scheme,
             category_key=self.category_key,

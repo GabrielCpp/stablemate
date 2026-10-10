@@ -24,7 +24,7 @@ from workhorse.runner.backends import AgentProfile
 from workhorse.runner.usage import TurnUsage
 from workhorse import references
 from workhorse.runner import worktree_guard
-from workhorse.worklist import WorkItem, WorkList
+from workhorse.worklist import KindFilter, WorkItem, WorkList
 
 P = ParamSpec("P")
 T = TypeVar("T")
@@ -246,11 +246,12 @@ class Workflow(BaseModel):
     def pipeline(
         self,
         work: WorkList,
-        kind: str,
+        kind: KindFilter,
         n: int,
         handler: Callable[[list[WorkItem]], Any],
         *,
         status: str = "done",
+        strict: bool = False,
     ) -> Transition | None:
         """Hand the next `n` items of `kind` to `handler` and come back here for the next chunk, or `None` once the queue is drained.
 
@@ -258,10 +259,12 @@ class Workflow(BaseModel):
         The loop carries this state's own parameters, so nothing is restated. A handler
         that returns a transition takes it instead, which is how a drain gates partway
         through. Claimed rows settle to `status` unless the handler already moved them,
-        so a row it marked blocked keeps that verdict.
+        so a row it marked blocked keeps that verdict. `kind` names one kind, a
+        collection of kinds, or `None` for every kind. With `strict`, an item is claimed
+        only once every item before it is done, so a blocked item stops the drain.
         """
         engine = self._require_engine()
-        items = work.claim(n, kind=kind)
+        items = work.claim(n, kind=kind, strict=strict)
         if not items:
             return None
         outcome = handler(items)
