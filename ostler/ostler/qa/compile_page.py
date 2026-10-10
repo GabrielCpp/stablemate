@@ -337,8 +337,12 @@ def _arrival_scenario(
         "an action that would produce a value to bind"))
     ids = sorted(o.id for o in obligations)
     arranged = arrangement_of(obligations).rows
-    body = _arrive(screen, arranged, gaps, ids)
-    body.extend(vet_calls([screen.screen], screen.book.screen_routes, ids, gaps, screen.book.fragment_hosts))
+    first_acts = [screen.book.acts_by_node.get(node_id, []) for node_id in sorted(arrival.nodes)]
+    visits = bool(first_acts) and bool(first_acts[0]) and first_acts[0][0].name == "visit"
+    body = _arrive(screen, arranged, gaps, ids, visits=visits)
+    vet = vet_calls([screen.screen], screen.book.screen_routes, ids, gaps, screen.book.fragment_hosts)
+    if not visits:
+        body.extend(vet)
     refused: set[str] = set()
     for node_id in sorted(arrival.nodes):
         node_acts = screen.book.acts_by_node.get(node_id, [])
@@ -348,6 +352,8 @@ def _arrival_scenario(
         if performed.gap_filed:
             refused.add(node_id)
         body.extend(performed.lines or [])
+    if visits:
+        body.extend(vet)
     observed = page_observations(
         [o for node_id, obs in sorted(arrival.nodes.items()) if node_id not in refused for o in obs], gaps)
     if not observed.covered:

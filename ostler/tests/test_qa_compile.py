@@ -2535,6 +2535,32 @@ def test_a_keyboard_claim_is_checked_after_the_interactions_arrangement() -> Non
     assert scenario.index('.fill("Policy A")') < scenario.index('qa.verify("focusable"')
 
 
+def test_a_keyboard_claim_that_visits_its_screen_is_not_walked_there_first() -> None:
+    """A keyboard claim whose arrangement opens its own screen lands there from the arranged state, never by the walk an earlier identity would take."""
+    button = f"{_SCREEN}#create-policy-button"
+    button_locators = {"role": ["button"], "name": ["Create policy"]}
+    interaction = f"{_SCREEN}#submit-new-policy"
+    interaction_locators = {"on": ["[create-policy-button](#create-policy-button)"],
+                            "trigger": ["click"], "keyboard": ["Enter"]}
+    keyboard_oid = "okf:new-policy:submit-new-policy:keyboard:1"
+    focusable = {"call": "it", "name": "focusable",
+                 "args": {"locator": "#create-policy-button", "activates": "Enter"},
+                 "locates": {"locator": {"node": button, "locators": button_locators}}}
+    context = _navigation_context(
+        _page_obligation("okf:new-policy:create-policy-button:visible:1", button,
+                          locators=button_locators, checks=[_visible("button:Create policy")]),
+        _page_obligation(keyboard_oid, interaction, locators=interaction_locators,
+                          acts=[_visit("/policies/new")], checks=[focusable]),
+        navigation=_arrival_navigation(),
+    )
+    source, gaps = compile_plan_gaps(context, story="demo-story")
+    assert source is not None
+    assert [g for g in gaps if g.obligation_id == keyboard_oid] == []
+    (scenario,) = [s for s in source.split("@scenario(")[1:] if keyboard_oid in s]
+    assert scenario.count("qa.goto(") == 1
+    assert scenario.index('qa.goto("/policies/new")') < scenario.index('qa.verify("focusable"')
+
+
 def test_a_gapped_but_covered_obligation_is_not_deferred() -> None:
     """The `open-new-widget` shape: a real `covers=[...]` claim stands beside its own gap on purpose (`_ARRANGEMENT_GAPS`)."""
     button = f"{_SCREEN}#create-policy-button"
