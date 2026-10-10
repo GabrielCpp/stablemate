@@ -1378,6 +1378,134 @@ def test_finalize_turn_hands_the_classifier_the_counts_it_stamped():
         raise AssertionError("expected BackendInvocationError")
 
 
+
+def _expect_cut(call):
+    try:
+        call()
+    except failure.BackendInvocationError as exc:
+        assert exc.transient is True
+        return
+    except RuntimeError:
+        return
+    raise AssertionError("a cut turn must fail")
+
+
+def _claude_stream(events, *, cut="silence", seen=None):
+    def fake_stream(cmd, node_id, timeout, on_line, **kwargs):
+        if seen is not None:
+            seen.append(cmd)
+        for event in events:
+            on_line(json.dumps(event))
+        if cut == "exception":
+            raise RuntimeError("stream torn down")
+        return cut == "silence", 0
+
+    return fake_stream
+
+
+def test_claude_records_the_session_id_the_moment_the_stream_names_it():
+    for cut in ("silence", "exception"):
+        sidp = Path(tempfile.mkdtemp()) / ".sessions" / "lead"
+        fake = _claude_stream(
+            [{"type": "system", "subtype": "init", "session_id": "sess-early"}], cut=cut
+        )
+        with patch.object(claude._process, "stream_subprocess", fake):
+            _expect_cut(lambda: _run_turn(ClaudeBackend(), "P", "n", sidp))
+        assert sidp.read_text() == "sess-early", cut
+        assert not (sidp.parent.parent / "sessions.jsonl").exists()
+
+        seen = []
+        resume = _claude_stream(
+            [{"type": "result", "result": "OK", "subtype": "success"}], cut="", seen=seen
+        )
+        with patch.object(claude._process, "stream_subprocess", resume):
+            assert _run_turn(ClaudeBackend(), "P", "n", sidp) == "OK"
+        assert seen[0][seen[0].index("--resume") + 1] == "sess-early"
+
+
+def _jsonl_cut(event, *, cut="silence", seen=None):
+    def fake(cmd, node_id, timeout, stdin_data, on_event, **kwargs):
+        if seen is not None:
+            seen.append(cmd)
+        state = turn.TurnState()
+        if event is not None:
+            on_event(event, state, node_id)
+        if cut == "exception":
+            raise RuntimeError("stream torn down")
+        if cut == "silence":
+            state.timed_out = True
+        else:
+            state.result_text = "OK"
+        return state
+
+    return fake
+
+
+def test_jsonl_backends_record_the_session_id_before_a_cut():
+    cases = [
+        (CodexBackend, {"type": "thread.started", "thread_id": "tid-early"}, "tid-early",
+         lambda cmd: cmd[:3] == ["codex", "exec", "resume"] and "tid-early" in cmd),
+        (OpenCodeBackend, {"type": "step_start", "sessionID": "ses_early"}, "ses_early",
+         lambda cmd: cmd[cmd.index("--session") + 1] == "ses_early"),
+        (ClineBackend, {"type": "hook_event", "taskId": "task-early"}, "task-early",
+         lambda cmd: cmd[cmd.index("--id") + 1] == "task-early"),
+    ]
+    for backend_cls, event, sid, resumed in cases:
+        for cut in ("silence", "exception"):
+            sidp = Path(tempfile.mkdtemp()) / ".sessions" / "lead"
+            backend = backend_cls(_jsonl_cut(event, cut=cut))
+            _expect_cut(lambda: _run_turn(backend, "P", "n", sidp))
+            assert sidp.read_text() == sid, (backend_cls.__name__, cut)
+
+            seen = []
+            again = backend_cls(_jsonl_cut(None, cut="", seen=seen))
+            assert _run_turn(again, "P", "n", sidp) == "OK"
+            assert resumed(seen[0]), (backend_cls.__name__, seen[0])
+
+
+def test_copilot_records_its_session_id_from_the_result_event():
+    sidp = Path(tempfile.mkdtemp()) / ".session_id"
+    backend = CopilotBackend(
+        _jsonl_cut({"type": "result", "sessionId": "cp-1", "exitCode": 0}, cut="silence")
+    )
+    _expect_cut(lambda: _run_turn(backend, "P", "n", sidp))
+    assert sidp.read_text() == "cp-1"
+
+
+def test_a_turn_cut_after_naming_its_session_resumes_it_on_the_ladders_retry():
+    sidp = Path(tempfile.mkdtemp()) / ".sessions" / "lead"
+    seen = []
+    laps = iter([
+        _claude_stream(
+            [{"type": "system", "subtype": "init", "session_id": "sess-1"}], seen=seen
+        ),
+        _claude_stream(
+            [{"type": "result", "result": "OK", "subtype": "success"}], cut="", seen=seen
+        ),
+    ])
+
+    def fake_stream(*args, **kwargs):
+        return next(laps)(*args, **kwargs)
+
+    runner = ladder.AgentRunner(backend=ClaudeBackend(), clock=FakeClock())
+    with patch.object(claude._process, "stream_subprocess", fake_stream):
+        assert runner.turn("P", "lead", sidp, timeout=60) == "OK"
+    assert "--resume" not in seen[0]
+    assert seen[1][seen[1].index("--resume") + 1] == "sess-1"
+
+
+def test_record_session_start_skips_an_unchanged_id_and_a_missing_path():
+    sidp = Path(tempfile.mkdtemp()) / ".session_id"
+    failure.record_session_start(None, "x")
+    failure.record_session_start(sidp, None)
+    assert not sidp.exists()
+    failure.record_session_start(sidp, "x")
+    before = sidp.stat().st_mtime_ns
+    failure.record_session_start(sidp, "x")
+    assert sidp.stat().st_mtime_ns == before
+    assert sidp.read_text() == "x"
+
+
 if __name__ == "__main__":
     fns = [
         v for k, v in sorted(globals().items()) if k.startswith("test_") and callable(v)

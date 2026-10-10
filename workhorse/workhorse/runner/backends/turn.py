@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any, Protocol
 
 from workhorse import otel
 from workhorse.runner import failure as _failure
@@ -25,6 +26,24 @@ class TurnState:
     def diagnostics_text(self) -> str:
         """The diagnostics as the single string ``classify_turn`` scans."""
         return "\n".join(self.diagnostics)
+
+
+class OnEvent(Protocol):
+    """One parsed NDJSON object, folded into the turn's accumulating state."""
+
+    def __call__(self, event: dict[str, Any], state: TurnState, node_id: str) -> None: ...
+
+
+def recording(on_event: OnEvent, session_id_path: Path | None) -> OnEvent:
+    """``on_event``, also writing the session id to ``session_id_path`` the moment an event reveals it."""
+
+    def record(event: dict[str, Any], state: TurnState, node_id: str) -> None:
+        before = state.session_id
+        on_event(event, state, node_id)
+        if state.session_id and state.session_id != before:
+            _failure.record_session_start(session_id_path, state.session_id)
+
+    return record
 
 
 def read_session_id(session_id_path: Path | None) -> str | None:

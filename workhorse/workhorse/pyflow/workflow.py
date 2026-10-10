@@ -185,6 +185,8 @@ class Workflow(BaseModel):
         profile: AgentProfile | None = None,
         label: str | None = None,
         accept: Callable[[T], object] | None = None,
+        rebrief: Callable[[], str] | None = None,
+        silence: float | None = None,
     ) -> T:
         """Render `prompt`, run an agent turn, and validate the reply into `returns`.
 
@@ -194,6 +196,10 @@ class Workflow(BaseModel):
 
         `accept` is handed the validated reply before the turn ends. When it raises, the
         agent is asked again with the exception's message, as for a reply that did not parse.
+
+        `rebrief` returns the text a fresh session opens with when the turn's session
+        cannot be resumed or compaction can no longer shrink it. `silence` is how many
+        seconds the turn may stay quiet before it is cut, apart from its `timeout`.
         """
         engine = self._require_engine()
         if label is not None:
@@ -218,6 +224,8 @@ class Workflow(BaseModel):
                 profile=profile,
                 label=label,
                 accept=accept,
+                rebrief=rebrief,
+                silence=silence,
             )
 
     @staticmethod

@@ -188,6 +188,22 @@ def record_session_map(
     transcript.capture(backend, node_id, session_id)
 
 
+def record_session_start(session_id_path: Path | None, session_id: str | None) -> None:
+    """Write ``session_id`` to the file the resume path reads the moment the stream reveals it, so a turn cut before it ends resumes that session on its next attempt."""
+    if not (session_id_path and session_id):
+        return
+    try:
+        if (
+            session_id_path.exists()
+            and session_id_path.read_text(encoding="utf-8").strip() == session_id
+        ):
+            return
+        session_id_path.parent.mkdir(parents=True, exist_ok=True)
+        session_id_path.write_text(session_id)
+    except OSError:
+        return
+
+
 def classify_turn(
     backend_name: str,
     node_id: str,

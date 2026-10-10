@@ -22,6 +22,7 @@ class AgentNode(BaseModel):
     outputs: list[OutputSpec] = Field(default_factory=list)
     power: str | None = None
     timeout: float | None = None
+    silence: float | None = None
     retries: int | None = None
     invoke_retries: int | None = None
     agent: AgentProfile | None = None
@@ -45,6 +46,14 @@ class AgentNode(BaseModel):
             if s in {"infinity", "inf", "infinite", "unbounded", "never"}:
                 return float("inf")
             return float(s)
+        return v
+
+    @field_validator("silence")
+    @classmethod
+    def _positive_silence(cls, v: float | None) -> float | None:
+        """A silence bound is a positive number of seconds."""
+        if v is not None and not v > 0:
+            raise ValueError(f"silence must be a positive number of seconds, not {v!r}")
         return v
 
     cwd: str | None = None

@@ -1215,6 +1215,58 @@ def test_agent_carries_cwd_and_add_dirs_onto_the_node():
         assert nodes[1].add_dirs == [], nodes[1]
 
 
+def test_agent_carries_silence_onto_the_node_and_rebrief_to_the_ladder():
+    with tempfile.TemporaryDirectory() as tmp:
+        seen: list[tuple[Any, Any]] = []
+
+        def fake_run_agent(node: Any, ctx: Any, *args: Any, **kwargs: Any) -> Any:
+            seen.append((node, kwargs.get("rebrief")))
+            return "rendered", {"kind": "ok", "count": 0}
+
+        env = _env(tmp, agent_runner=ScriptedRunner(fake_run_agent))
+
+        def brief() -> str:
+            return "Here is where the work stands."
+
+        class Asks(Workflow):
+            def start(self) -> Transition:
+                self.agent(
+                    "prompts/lead.md",
+                    returns=Payload,
+                    timeout=float("inf"),
+                    silence=900,
+                    rebrief=brief,
+                )
+                self.agent("prompts/plain.md", returns=Payload)
+                return Done(None)
+
+        drive(Asks(), env)
+
+        (lead, lead_brief), (plain, plain_brief) = seen
+        assert (lead.timeout, lead.silence) == (float("inf"), 900), lead
+        assert lead_brief is brief
+        assert plain.silence is None, plain
+        assert plain_brief is None
+
+
+def test_a_dry_run_accepts_silence_and_rebrief_without_calling_either():
+    with tempfile.TemporaryDirectory() as tmp:
+        env = _env(tmp, dry_run=True)
+        called: list[str] = []
+
+        def brief() -> str:
+            called.append("rebrief")
+            return ""
+
+        class Asks(Workflow):
+            def start(self) -> Transition:
+                self.agent("prompts/lead.md", returns=Payload, silence=900, rebrief=brief)
+                return Done(None)
+
+        drive(Asks(), env)
+        assert called == []
+
+
 def test_an_overrun_turn_reaches_the_state_as_a_catchable_agent_timeout():
     """A state whose deliverable is a FILE has to be able to land a cut turn."""
     with tempfile.TemporaryDirectory() as tmp:

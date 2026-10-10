@@ -13,7 +13,12 @@ from workhorse.runner.backends import (
     prepare_argv_prompt,
 )
 from workhorse.runner.backends.jsonl import JsonlBackend
-from workhorse.runner.backends.turn import TurnState, finalize_turn, read_session_id
+from workhorse.runner.backends.turn import (
+    TurnState,
+    finalize_turn,
+    read_session_id,
+    recording,
+)
 
 _EFFORTS = frozenset({"none", "low", "medium", "high", "xhigh"})
 
@@ -87,7 +92,7 @@ class ClineBackend(JsonlBackend):
         cmd += ["--", argv_prompt]
         ensure_prompt_is_not_in_argv(prompt, cmd)
         state = self.stream(
-            cmd, node_id, timeout, None, _on_event,
+            cmd, node_id, timeout, None, recording(_on_event, session_id_path),
             resilience=resilience, cwd=cwd,
             env_extra=self.harness_env(),
         )

@@ -20,7 +20,12 @@ from workhorse.runner.backends import (
     prepare_argv_prompt,
 )
 from workhorse.runner.backends.jsonl import JsonlBackend
-from workhorse.runner.backends.turn import TurnState, finalize_turn, read_session_id
+from workhorse.runner.backends.turn import (
+    TurnState,
+    finalize_turn,
+    read_session_id,
+    recording,
+)
 from workhorse.runner.usage import TurnUsage
 
 
@@ -338,7 +343,8 @@ class OpenCodeBackend(JsonlBackend):
                 **env_extra,
             }
         state = self.stream(
-            cmd, node_id, timeout, None, _OpenCodeEvents().on_event,
+            cmd, node_id, timeout, None,
+            recording(_OpenCodeEvents().on_event, session_id_path),
             resilience=resilience, cwd=cwd,
             env_extra=env_extra,
         )

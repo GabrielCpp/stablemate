@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import re
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -40,6 +41,8 @@ from workhorse.templates import NODE_ADD_DIRS, render, render_string, render_tex
 
 if TYPE_CHECKING:
     from workhorse.runner.backends import AgentBackend
+
+logger = logging.getLogger(__name__)
 
 
 def _write_prompt_for_inspection(node_id: str, prompt: str, run_dir: Path | None) -> Path | None:
@@ -92,8 +95,12 @@ class AgentRunner:
         run_dir: Path | None = None,
         visit_dir: Path | None = None,
         validate: Callable[[dict[str, Any]], object] | None = None,
+        rebrief: Callable[[], str] | None = None,
     ) -> tuple[str, dict[str, Any]]:
-        """Run one node with cumulative recovery waits that nested retries cannot renew."""
+        """Run one node with cumulative recovery waits that nested retries cannot renew.
+
+        ``rebrief`` returns the text a replacement session opens with, when the node's session cannot be resumed or compaction can no longer shrink it.
+        """
         budget = RecoveryWaitBudget.from_resilience(self.resilience)
         with recovery_wait_scope(budget):
             return self._run(
@@ -106,6 +113,7 @@ class AgentRunner:
                 run_dir=run_dir,
                 visit_dir=visit_dir,
                 validate=validate,
+                rebrief=rebrief,
             )
 
     def _render(self, node: AgentNode, ctx: dict[str, Any], workflow_dir: Path) -> RenderedTurn:
@@ -123,11 +131,12 @@ class AgentRunner:
         )
         effective_timeout = base_timeout * timeout_scale
         unbounded = effective_timeout == float("inf")
-        silence_budget = (
-            effective_timeout
-            if unbounded
-            else max(effective_timeout, resilience.silence_timeout_s * timeout_scale)
-        )
+        if node.silence is not None:
+            silence_budget = node.silence
+        elif unbounded:
+            silence_budget = effective_timeout
+        else:
+            silence_budget = max(effective_timeout, resilience.silence_timeout_s * timeout_scale)
 
         rendered_cwd = render_string(node.cwd, ctx).strip() if node.cwd else None
 
@@ -187,6 +196,7 @@ class AgentRunner:
         run_dir: Path | None = None,
         visit_dir: Path | None = None,
         validate: Callable[[dict[str, Any]], object] | None = None,
+        rebrief: Callable[[], str] | None = None,
     ) -> tuple[str, dict[str, Any]]:
         """Render the prompt, invoke the agent, and parse its declared outputs — resiliently."""
         node_id = node.id
@@ -219,6 +229,7 @@ class AgentRunner:
             resilience.max_rephrase_attempts if node.retries is None else node.retries
         )
         compact_attempts = resilience.max_compact_attempts
+        rebriefed_overflow = False
         while True:
             prompt = (
                 rendered_prompt
@@ -261,6 +272,12 @@ class AgentRunner:
                     otel.turn_event(
                         "session_unresumable", node=node_id, chain=session_chain
                     )
+                    if rebrief is not None:
+                        rendered_prompt = self._rebrief(
+                            rebrief, node_id, session_chain, run_dir,
+                            "the session cannot be resumed",
+                        )
+                        rephrase = 0
                     continue
 
                 if (
@@ -291,6 +308,23 @@ class AgentRunner:
                         f"falling back to reframe",
                         flush=True,
                     )
+
+                if (
+                    isinstance(exc, BackendInvocationError)
+                    and exc.overflow
+                    and rebrief is not None
+                    and not rebriefed_overflow
+                ):
+                    rebriefed_overflow = True
+                    if session_id_path and session_id_path.exists():
+                        session_id_path.unlink()
+                    rendered_prompt = self._rebrief(
+                        rebrief, node_id, session_chain, run_dir,
+                        "compaction can no longer shrink the session",
+                    )
+                    rephrase = 0
+                    compact_attempts = resilience.max_compact_attempts
+                    continue
 
                 if (
                     isinstance(exc, BackendInvocationError)
@@ -341,6 +375,25 @@ class AgentRunner:
                     error_kind=error_kind(exc),
                 )
                 raise
+
+    @staticmethod
+    def _rebrief(
+        rebrief: Callable[[], str],
+        node_id: str,
+        session_chain: str,
+        run_dir: Path | None,
+        reason: str,
+    ) -> str:
+        """The text a replacement session opens with, logged as the replacement it is."""
+        text = rebrief()
+        label = f"chain {session_chain}" if session_chain else "session"
+        logger.warning(
+            "[%s] %s replaced by a fresh session opened with a rebrief, because %s",
+            node_id, label, reason,
+        )
+        otel.turn_event("session_rebrief", node=node_id, chain=session_chain, reason=reason)
+        _write_prompt_for_inspection(node_id, text, run_dir)
+        return text
 
     def _reenter_on(self, cut: control.Request | None, node_id: str, where: str) -> None:
         """Unwind the ladder for a reload that ended one of its waits, or do nothing."""

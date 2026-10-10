@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
@@ -99,7 +100,7 @@ def _record(
         power=node.power,
         model=turn.model,
         effort=turn.effort,
-        silence_budget_s=None if turn.timeout_unbounded else turn.silence_budget_s,
+        silence_budget_s=None if math.isinf(turn.silence_budget_s) else turn.silence_budget_s,
         base_timeout_s=None if turn.timeout_unbounded else turn.base_timeout_s,
         timeout_scale=turn.timeout_scale,
         cwd=turn.cwd,

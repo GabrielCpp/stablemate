@@ -70,6 +70,7 @@ class ClaudeBackend(AgentBackend):
             stdin_data=prompt,
             cwd=cwd or None,
             env_extra={**self.harness_env(), **_command_timeout_env(agent)},
+            session_id_path=session_id_path,
         )
 
         return _failure.classify_turn(
@@ -243,8 +244,12 @@ def _stream_events(
     stdin_data: str | None = None,
     cwd: str | None = None,
     env_extra: dict[str, str] | None = None,
+    session_id_path: Path | None = None,
 ) -> ClaudeTurnStream:
-    """Run ``cmd`` through the shared supervised spawn path and parse Claude's stream-json, echoing a concise live view to stdout."""
+    """Run ``cmd`` through the shared supervised spawn path and parse Claude's stream-json, echoing a concise live view to stdout.
+
+    The session id is written to ``session_id_path`` as soon as the stream names it, so a turn cut mid-stream resumes it.
+    """
     stream = ClaudeTurnStream()
 
     def on_line(raw_line: str) -> None:
@@ -274,6 +279,7 @@ def _stream_events(
                 stream.rate_limited = True
         elif etype == "system" and "session_id" in event:
             stream.session_id = event["session_id"]
+            _failure.record_session_start(session_id_path, stream.session_id)
         _emit_event(node_id, event)
 
     stream.timed_out, stream.returncode = _process.stream_subprocess(

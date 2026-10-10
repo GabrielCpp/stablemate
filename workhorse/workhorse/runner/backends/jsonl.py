@@ -4,21 +4,17 @@ from __future__ import annotations
 
 import json
 import re
-from typing import Any, Protocol
+from typing import Protocol
 
 from workhorse.config_run import AgentResilience
 from workhorse.runner import failure as _failure
 from workhorse.runner import process as _process
 from workhorse.runner.backends import AgentBackend
-from workhorse.runner.backends.turn import TurnState
+from workhorse.runner.backends.turn import OnEvent, TurnState
 
 _LOG_RECORD = re.compile(r"^\d{4}-\d{2}-\d{2}T\S+\s+(?:ERROR|WARN|INFO|DEBUG|TRACE)\b")
 
-
-class OnEvent(Protocol):
-    """One parsed NDJSON object, folded into the turn's accumulating state."""
-
-    def __call__(self, event: dict[str, Any], state: TurnState, node_id: str) -> None: ...
+__all__ = ["JsonlBackend", "JsonlStream", "OnEvent", "stream_jsonl"]
 
 
 class JsonlStream(Protocol):

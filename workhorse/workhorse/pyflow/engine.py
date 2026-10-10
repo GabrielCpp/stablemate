@@ -268,6 +268,8 @@ class Engine:
         profile: AgentProfile | None = None,
         label: str | None = None,
         accept: Callable[[Any], object] | None = None,
+        rebrief: Callable[[], str] | None = None,
+        silence: float | None = None,
     ) -> Any:
         inline = label is not None
         node_id = label if inline else (Path(prompt).stem or "agent")
@@ -304,6 +306,8 @@ class Engine:
                 budget["power"] = power
             if timeout is not None:
                 budget["timeout"] = timeout
+            if silence is not None:
+                budget["silence"] = silence
             if retries is not None:
                 budget["retries"] = retries
             if invoke_retries is not None:
@@ -350,6 +354,7 @@ class Engine:
                             run_dir=writer.run_dir,
                             visit_dir=writer.visit_dir(node_id),
                             validate=_validator(returns, accept),
+                            rebrief=rebrief,
                         )
                     finally:
                         writer.write_usage(node_id, usage_total(usages))
