@@ -11,7 +11,7 @@ from urllib.parse import urlsplit, urlunsplit
 
 from ostler_qa_verdicts import Args, Verdict, str_arg, verdict
 
-STATE_WAIT_S = 3.0
+STATE_WAIT_S = 5.0
 
 CLIPBOARD_KEY = "__ostlerClipboard"
 
