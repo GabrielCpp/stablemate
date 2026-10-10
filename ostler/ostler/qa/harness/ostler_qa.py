@@ -1688,7 +1688,10 @@ class Qa:
         return self.browser_page.locator(selector)
 
     def goto(self, url: str, **kwargs: Any) -> Any:
-        """Navigate a relative path against the target's `base_url`."""
+        """Navigate a relative path against the target's `base_url`, once a save the last step started has landed."""
+        recorder = self.diagnostics
+        if recorder is not None and hasattr(recorder, "writes_done"):
+            recorder.writes_done()
         return self.browser_page.goto(self.http.url_for(url), **kwargs)
 
     def paste(self, locator: Any, *, text: str | None = None, html: str | None = None) -> None:

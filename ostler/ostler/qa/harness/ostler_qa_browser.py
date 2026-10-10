@@ -67,6 +67,7 @@ SETTLE_TIMEOUT_MS = 10_000
 QUIET_MS = 500
 QUIET_STEP_MS = 100
 QUIET_TIMEOUT_MS = 5000
+READ_METHODS = frozenset({"GET", "HEAD", "OPTIONS"})
 
 ARRANGE_METHODS = {"fill": "fill", "click": "click", "press": "press", "select": "select_option"}
 
@@ -201,7 +202,7 @@ class Browser:
         self._failed_requests: list[dict[str, Any]] = []
         self._responses: list[dict[str, Any]] = []
         self._by_request: dict[int, dict[str, Any]] = {}
-        self._open: set[int] = set()
+        self._open: dict[int, str] = {}
         self._held: list[Any] = []
         self._body_budget = MAX_BODY_BUDGET_BYTES
         self._secrets = [value for value in secrets if value]
@@ -447,6 +448,15 @@ class Browser:
             else:
                 still += QUIET_STEP_MS
 
+    def writes_done(self, *, timeout_ms: int = QUIET_TIMEOUT_MS) -> None:
+        """Wait until no request that changes data is in flight, or *timeout_ms* has passed, so leaving the page does not cancel a save."""
+        if self.page is None:
+            return
+        waited = 0
+        while waited < timeout_ms and any(method not in READ_METHODS for method in self._open.values()):
+            self.page.wait_for_timeout(QUIET_STEP_MS)
+            waited += QUIET_STEP_MS
+
     def response_for(
         self, path: str, *, method: str | None = None, since: int = 0
     ) -> RecordedResponse:
@@ -595,11 +605,11 @@ class Browser:
             "requestBody": self._payload(getattr(request, "post_data", None)),
         }
         self._remember(request, record)
-        self._open.add(id(request))
+        self._open[id(request)] = str(request.method).upper()
 
     def _on_failed_request(self, request: Any) -> None:
         """A request that never completed, with *why* it did not."""
-        self._open.discard(id(request))
+        self._open.pop(id(request), None)
         record = self._record(request)
         record["errorText"] = request.failure or ""
         record.setdefault("bodyOmitted", "request did not complete")
@@ -620,7 +630,7 @@ class Browser:
 
     def _on_request_finished(self, request: Any) -> None:
         """The body and the timings, taken at the one moment they are cheap and safe."""
-        self._open.discard(id(request))
+        self._open.pop(id(request), None)
         record = self._record(request)
         timing = getattr(request, "timing", None)
         if isinstance(timing, dict) and timing.get("responseEnd", -1) >= 0:
