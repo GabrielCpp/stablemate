@@ -46,6 +46,15 @@ def test_the_arrival_regex_matches_a_whole_url_at_the_route_and_nothing_short_of
     assert routes.arrival_regex("/files/*") == ""
 
 
+def test_the_arrival_regex_refuses_a_sibling_screen_that_spells_the_path_literally() -> None:
+    """The harness must not photograph the new-link form as the link screen whose id happens to read `new`."""
+    regex = re.compile(routes.arrival_regex("/links/:id/tabs?/:tab?", ["/links/new", "/links/:id/tabs?/:tab?", "/settings"]))
+    assert not regex.fullmatch("http://localhost:18102/links/new")
+    assert not regex.fullmatch("http://localhost:18102/links/new/?step=2")
+    assert regex.fullmatch("http://localhost:18102/links/42")
+    assert regex.fullmatch("http://localhost:18102/links/newest/tabs/7")
+
+
 def test_a_wildcard_route_is_one_no_url_comparison_can_use() -> None:
     assert not routes.is_comparable("/files/*")
     assert not routes.is_comparable("/files/report-{id}.pdf")

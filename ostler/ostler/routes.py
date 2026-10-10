@@ -113,12 +113,16 @@ def is_comparable(route: str) -> bool:
     return route_pattern(route) is not None
 
 
-def arrival_regex(route: str) -> str:
-    """A regex a whole URL fullmatches when the page it names is the screen at *route*, or "" when no URL comparison can say."""
+def arrival_regex(route: str, others: Iterable[str] = ()) -> str:
+    """A regex a whole URL fullmatches when the page it names is the screen at *route*, or "" when no URL comparison can say. A parameterised route loses to any of *others* that spells the same path literally."""
     pattern = route_pattern(route)
     if pattern is None:
         return ""
-    return rf"[^/]+//[^/]+{pattern.pattern}/?(?:[?#].*)?"
+    taken = sorted({
+        literal for other in others
+        if (literal := literal_route(other)) and literal != literal_route(route) and pattern.fullmatch(literal)})
+    refused = "".join(rf"(?!{re.escape(path)}/?(?:[?#].*)?$)" for path in taken)
+    return rf"[^/]+//[^/]+{refused}{pattern.pattern}/?(?:[?#].*)?"
 
 
 def why_unreadable(route: str) -> str:

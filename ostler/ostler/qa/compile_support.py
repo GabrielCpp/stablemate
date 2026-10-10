@@ -211,6 +211,6 @@ def vet_calls(
     """One `qa.vet` line per browser screen in *documents* a vet can establish, each told the address to wait for."""
     return [
         f"    qa.vet({python_literal(document)}, "
-        f"arrives={python_literal(arrival_regex(screen_route(document, screen_routes, hosts or {})))})"
+        f"arrives={python_literal(arrival_regex(screen_route(document, screen_routes, hosts or {}), screen_routes.values()))})"
         for document in vettable(documents, screen_routes, ids, gaps, hosts=hosts)
     ]
