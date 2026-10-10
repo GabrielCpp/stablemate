@@ -632,6 +632,26 @@ def test_a_whole_book_context_scoped_to_one_book_mints_only_that_books_obligatio
     assert scoped["contracts"] == whole["contracts"]
 
 
+def test_a_book_declared_unexercised_owes_no_obligation(tmp_path: Path):
+    """An index that declares `exercised: false` takes its surface out of the proof, as doctor already does, even when a run names that book."""
+    for book in ("demo", "old"):
+        (tmp_path / f"docs/features/{book}/ops").mkdir(parents=True)
+        (tmp_path / f"docs/features/{book}/ops/checkout.md").write_text(
+            "---\ntype: environment\nslug: checkout\ntitle: Checkout\n---\n# Checkout\n\n"
+            "- local-only: true\n- consistency: the interpreter is Python 3.12 or later\n"
+            "- verify: stdout(matches=\"Python 3\")\n",
+            encoding="utf-8",
+        )
+    (tmp_path / "docs/features/old/index.md").write_text("---\nexercised: false\n---\n\n# Old site\n", encoding="utf-8")
+    _git(tmp_path, "init")
+
+    whole = book_context(tmp_path)
+    named = book_context(tmp_path, books=["docs/features/old"])
+
+    assert {item["node"].split("/")[2] for item in whole["obligations"]} == {"demo"}
+    assert named["obligations"] == []
+
+
 def test_a_node_on_a_definition_page_owes_context_not_a_live_run(tmp_path: Path):
     """A concept or format page defines what a surface reads or writes. Its nodes are observed through that surface, so none owes a live run of its own."""
     (tmp_path / "docs/features/demo/concepts").mkdir(parents=True)

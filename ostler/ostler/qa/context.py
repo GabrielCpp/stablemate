@@ -732,7 +732,12 @@ def _minted_obligations(
     """Every selected contract's and journey's obligations on a page under *books*, in id order, each id once."""
     book = snapshot.book
     prefixes = tuple(f"{directory.rstrip('/')}/" for directory in books)
-    owing = {node_id for node_id in selection.contracts | selection.journeys if not prefixes or book[node_id].path.startswith(prefixes)}
+    unexercised = snapshot.head_graph.unexercised_books()
+    owing = {
+        node_id
+        for node_id in selection.contracts | selection.journeys
+        if (not prefixes or book[node_id].path.startswith(prefixes)) and not book[node_id].path.startswith(unexercised)
+    }
     fixture_provides = _fixture_provides_index(book)
     fixture_undetermined = _fixture_undetermined_index(book)
     fixture_needs = _fixture_needs_index(book)

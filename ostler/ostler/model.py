@@ -149,6 +149,14 @@ class Graph:
     _ui_index: tuple[list[UINode] | None, int, dict[str, UINode]] = field(
         default=(None, -1, {}), init=False, repr=False, compare=False)
 
+    def unexercised_books(self) -> tuple[str, ...]:
+        """The repo-relative directory of every surface whose index declares `exercised: false`, each ending in a slash."""
+        try:
+            features = self.doc_roots["features"].resolve().relative_to(self.root.resolve()).as_posix()
+        except (KeyError, ValueError):
+            return ()
+        return tuple(f"{features}/{surface}/" for surface, meta in sorted(self.surfaces.items()) if meta.get("exercised") is False)
+
     def ui_nodes_of_type(self, type_name: str) -> list[UINode]:
         return [n for n in self.ui_nodes if n.type == type_name]
 
