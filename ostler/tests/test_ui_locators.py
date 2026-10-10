@@ -360,6 +360,14 @@ def test_unnamed_nodes_sharing_a_selector_still_collide(repo: Path):
         "### draft-badge\n- selector: `.badge`\n- role: status\n- name: none\n",
         "### save-pill\n- selector: `.badge`\n- role: status\n- name: none\n"))
     assert [c.name for c in locators.collisions(_book(repo))] == [""]
+    assert _codes(repo).count("ambiguous-locator") == 2
+
+
+def test_unnamed_operable_controls_collide_as_the_apps_fault(repo: Path):
+    _build(repo, _screen(UNNAMED, UNNAMED.replace("### icon-button", "### other-icon-button")))
+    codes = _codes(repo)
+    assert codes.count("unnamed-collision") == 2
+    assert "ambiguous-locator" not in codes
 
 
 def _state_rows(one_per: str) -> str:

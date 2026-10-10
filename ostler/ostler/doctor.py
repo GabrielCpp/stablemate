@@ -209,7 +209,7 @@ OBLIGATION_CODES = frozenset({
     "relation-without-subject", "shared-check",
 })
 
-CODE_FAULT_CODES = frozenset({"unnamed-interactive"})
+CODE_FAULT_CODES = frozenset({"unnamed-interactive", "unnamed-collision"})
 
 
 def _apply_surface_declarations(graph: Graph, findings: list[Finding]) -> None:
@@ -2336,15 +2336,19 @@ def _check_locators(data: dict, f: list[Finding]) -> None:
 
     for collision in loc_mod.collisions(book):
         named = f" name={collision.name!r}" if collision.name else " with no name"
+        unnamed = (not collision.name and not collision.template
+                   and collision.role.lower() in loc_mod.INTERACTIVE_ROLES)
+        remedy = loc_mod.collision_remedy(book, collision)
         for node_id in collision.nodes:
-            f.append(Finding(
-                "error", "ambiguous-locator",
-                f"{node_id}: role={collision.role}{named} also matches "
-                + ", ".join(o.split("#")[-1] for o in collision.nodes if o != node_id)
-                + " on the same screen — `getByRole` cannot tell them apart",
-                ref=collision.ref(node_id),
-                suggestion=loc_mod.collision_remedy(book, collision),
-                **_at(node_id)))
+            message = (f"{node_id}: role={collision.role}{named} also matches "
+                       + ", ".join(o.split("#")[-1] for o in collision.nodes if o != node_id)
+                       + " on the same screen — `getByRole` cannot tell them apart")
+            if unnamed:
+                f.append(Finding("error", "unnamed-collision", message,
+                                 ref=collision.ref(node_id), suggestion=remedy, **_at(node_id)))
+            else:
+                f.append(Finding("error", "ambiguous-locator", message,
+                                 ref=collision.ref(node_id), suggestion=remedy, **_at(node_id)))
 
     for bad in loc_mod.invalid_roles(book):
         f.append(Finding(

@@ -8,7 +8,7 @@ from ostler import doctor
 from ostler.model import load
 
 from conftest import write
-from test_ui_locators import UNNAMED, _screen
+from test_ui_locators import DUPLICATE_SAVE, SAVE, UNNAMED, _screen
 
 UNDECLARED = (
     "---\ntype: concept\nslug: publisher\ntitle: Publisher\n---\n# Publisher\n\n"
@@ -101,13 +101,17 @@ def test_the_documented_code_fault_class_is_the_one_the_gate_applies():
     assert set(re.findall(r"`([a-z0-9-]+)`", sentence.group(1))) == doctor.CODE_FAULT_CODES
 
 
-def test_not_exercised_drops_an_unnamed_control_but_keeps_a_collision(repo: Path):
+def test_not_exercised_drops_unnamed_controls_and_their_collision(repo: Path):
     write(repo / "docs/features/legacy/gui/screens/home.md", UNNAMED_BUTTONS)
-    assert {"unnamed-interactive", "ambiguous-locator"} <= _codes(repo)
+    assert {"unnamed-interactive", "unnamed-collision"} <= _codes(repo)
     write(repo / "docs/features/legacy/index.md", "---\nexercised: false\n---\n")
-    codes = _codes(repo)
-    assert "unnamed-interactive" not in codes
-    assert "ambiguous-locator" in codes
+    assert not _codes(repo) & {"unnamed-interactive", "unnamed-collision"}
+
+
+def test_not_exercised_keeps_a_collision_between_named_controls(repo: Path):
+    write(repo / "docs/features/legacy/gui/screens/home.md", _screen(SAVE, DUPLICATE_SAVE))
+    write(repo / "docs/features/legacy/index.md", "---\nexercised: false\n---\n")
+    assert "ambiguous-locator" in _codes(repo)
 
 
 def test_an_unwitnessed_check_is_not_an_obligation_anyone_owes():
