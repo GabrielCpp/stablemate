@@ -96,3 +96,9 @@ def test_a_template_addresses_a_control_whose_name_fills_its_holes() -> None:
 
 def test_a_template_never_matches_its_own_placeholder_text_alone() -> None:
     assert not harness.template_pattern("Supprimer {document.title}").match("Supprimer ")
+
+
+def test_a_name_with_a_slash_leaves_no_bare_slash_to_end_playwrights_selector_pattern() -> None:
+    for pattern in (harness.name_pattern("Wood / Framing"), harness.template_pattern("Wood / {category.name}")):
+        assert "/" not in pattern.pattern.replace("\\/", "")
+        assert pattern.match("Wood / Framing")

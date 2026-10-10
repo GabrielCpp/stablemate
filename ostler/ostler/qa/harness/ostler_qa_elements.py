@@ -14,15 +14,20 @@ from ostler_qa_verdicts import Args, Verdict, str_arg, verdict
 _TEMPLATE_HOLE = re.compile(r"\$?\{[^{}]*\}")
 
 
+def _escape(text: str) -> str:
+    """*text* as a literal in a pattern Playwright writes between slashes into its selector, which leaves a bare slash to end it."""
+    return re.escape(text).replace("/", r"\/")
+
+
 def template_pattern(template: str) -> re.Pattern[str]:
     """The names a templated control can carry: its literal text in place, any text in each hole."""
     parts = _TEMPLATE_HOLE.split(template)
-    return re.compile("^" + ".+?".join(re.escape(part) for part in parts) + "$")
+    return re.compile("^" + ".+?".join(_escape(part) for part in parts) + "$")
 
 
 def name_pattern(name: str) -> re.Pattern[str]:
     """The names an element the book calls *name* can carry: those words whole, in any case, with punctuation such as a required field's `*` around them."""
-    return re.compile(r"^\W*" + r"\s+".join(re.escape(word) for word in name.split()) + r"\W*$", re.IGNORECASE)
+    return re.compile(r"^\W*" + r"\s+".join(_escape(word) for word in name.split()) + r"\W*$", re.IGNORECASE)
 
 
 def _readings(observed: object) -> tuple[str, ...]:
