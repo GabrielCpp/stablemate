@@ -2206,7 +2206,8 @@ def test_a_check_that_another_screens_component_is_absent_vets_only_the_claims_o
                           locators={"on": ["[new-policy-button](#new-policy-button)"],
                                     "trigger": ["click"],
                                     "does": ["shows the clerk's form and no agent heading"]},
-                          checks=[absent],
+                          checks=[_located("#policy-name", f"{_SCREEN}#policy-name",
+                                           {"selector": ["`#policy-name`"]}), absent],
                           fixtures=[{"name": "clerk", "args": [], "provides": "a clerk signed in"}]),
         navigation=_arrival_navigation(),
         screen_routes={_SCREEN: "/policy-list", variant: "/policy-list"},
@@ -2214,6 +2215,7 @@ def test_a_check_that_another_screens_component_is_absent_vets_only_the_claims_o
     source, gaps = compile_plan_gaps(context, story="demo-story")
     assert source is not None
     assert oid in _covers(source), source
+    assert f'qa.vet("{_SCREEN}"' in source
     assert f'qa.vet("{variant}"' not in source
     assert _gap_kinds(gaps, oid) == []
 

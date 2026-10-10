@@ -131,9 +131,9 @@ def _asserts_absence(row: CallRow) -> bool:
 
 
 def check_document(row: CallRow, obligation: Obligation) -> str:
-    """The screen document a check observes — the one its `locator=` names, or its own when the check asserts that what it names is not there."""
+    """The screen document a check observes — the one its `locator=` names, or its own; none when the check asserts that what it names is not there."""
     if _asserts_absence(row):
-        return obligation.source
+        return ""
     for param in sorted(row.locates):
         node_id = row.locates[param].node
         if node_id:
