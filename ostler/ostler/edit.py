@@ -5,12 +5,15 @@ from __future__ import annotations
 import difflib
 import json
 import re
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
 import yaml
 
 from ostler import markdown
+from ostler import path as path_mod
+from ostler.answers import Answer, parse_answers
 from ostler.model import Graph
 from ostler.pages import files_in_book
 
@@ -289,8 +292,8 @@ def _ledger_change(spec_dir: Path, ledger: dict) -> FileChange:
     return FileChange(path, old, new)
 
 
-def settle_review(graph: Graph, slug: str) -> EditPlan:
-    """Settle a story's review **per finding** from its `review-resolution.json`."""
+def settle_review(graph: Graph, slug: str, *, status_write: bool = True) -> EditPlan:
+    """Settle a story's review **per finding** from its `review-resolution.json`; ``status_write=False`` plans the ledger alone."""
     spec_dir = graph.doc_roots["specs"] / slug
     resolution = spec_dir / RESOLUTION_FILE
     if not resolution.is_file():
@@ -307,6 +310,7 @@ def settle_review(graph: Graph, slug: str) -> EditPlan:
     verified: list[str] = []
     open_: list[dict] = []
     blocked: list[str] = []
+    declined: list[dict] = []
     for finding in findings:
         fid = finding.get("id", "<unnamed finding>")
         disposition = str(finding.get("disposition", "")).lower()
@@ -318,23 +322,34 @@ def settle_review(graph: Graph, slug: str) -> EditPlan:
                 verified.append(fid)
         elif disposition == "blocked":
             blocked.append(fid)
+        elif disposition == "declined":
+            reason = str(finding.get("reason") or "").strip()
+            if not reason:
+                return EditPlan([], [], error=f"{fid}: a declined finding needs a non-empty reason")
+            declined.append({"id": fid, "reason": reason})
         else:
             return EditPlan([], [], error=f"{fid}: unknown disposition '{disposition}'")
 
     any_blocked = bool(blocked) or str(verdict.get("status", "")).lower() == "blocked"
     all_verified = not open_ and not any_blocked and len(verified) == len(findings)
+    all_settled = (not open_ and not any_blocked
+                   and len(verified) + len(declined) == len(findings))
     ledger = {
         "verified": verified,
+        "declined": declined,
         "open": open_,
         "blocked": blocked,
         "all_verified": all_verified,
+        "all_settled": all_settled,
         "any_blocked": any_blocked,
     }
     changes: list[FileChange] = [_ledger_change(spec_dir, ledger)]
 
-    if any_blocked:
+    if not status_write:
+        status_change = None
+    elif any_blocked:
         status_change = _story_status_change(graph, slug, STATUS_BLOCKED)
-    elif all_verified:
+    elif all_settled:
         status_change = _story_status_change(graph, slug, STATUS_APPLIED)
     else:
         status_change = None
@@ -343,3 +358,41 @@ def settle_review(graph: Graph, slug: str) -> EditPlan:
     if status_change is not None and status_change.old != status_change.new:
         changes.append(status_change)
     return EditPlan(changes, [])
+
+
+ANSWERS_FILE = "review-answers.md"
+
+
+def settle_answers(graph: Graph, slug: str, filed: Sequence[str], *,
+                   filename: str = ANSWERS_FILE, write: bool = False) -> dict:
+    """Settle a story's markdown Answer list against the *filed* finding ids into ``review-settlement.json``; never touches ``story.md``."""
+    spec_dir = graph.root / path_mod.resolve_spec(graph, slug)
+    wanted = list(dict.fromkeys(filed))
+    errors: list[str] = []
+    by_id: dict[str, Answer] = {}
+    source = spec_dir / filename
+    if source.is_file():
+        try:
+            parsed = parse_answers(source.read_text(encoding="utf-8"))
+        except OSError as exc:
+            errors.append(f"cannot read {source.as_posix()} ({exc})")
+        else:
+            errors.extend(parsed.errors)
+            by_id = parsed.by_id()
+    filed_set = set(wanted)
+    answered = [fid for fid in wanted if fid in by_id]
+    open_ = [fid for fid in wanted if fid not in by_id]
+    ledger = {
+        "fixed": [fid for fid in answered if by_id[fid].disposition == "fixed"],
+        "declined": [{"id": fid, "reason": by_id[fid].reason}
+                     for fid in answered if by_id[fid].disposition == "declined"],
+        "open": open_,
+        "unknown": [fid for fid in by_id if fid not in filed_set],
+        "errors": errors,
+        "answers": {fid: by_id[fid].as_dict() for fid in answered},
+        "all_answered": not open_,
+    }
+    if write:
+        spec_dir.mkdir(parents=True, exist_ok=True)
+        EditPlan([_ledger_change(spec_dir, ledger)], []).apply()
+    return ledger

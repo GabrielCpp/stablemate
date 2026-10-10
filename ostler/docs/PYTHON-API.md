@@ -47,13 +47,17 @@ okf.set_status("01-cart", "QA passed")
 `doc_roots` overrides configured roots for that facade's reads and mutations; relative values
 resolve from the discovered repository root. The loaded graph is a **snapshot**: reads reuse one cached load; a mutation
 (`create_*`/`update_story`/`delete_*`/`add_seed`/`set_status`/`backlog_*`/
-`set_milestone_*`/`todo_*`/`settle_review`) applies
+`set_milestone_*`/`todo_*`/`settle_review`/`settle_answers`) applies
 against a fresh load and invalidates the cache, so the next read reflects it
 (`reload()` forces a refresh). A read never returns `None` — an unloadable graph
 *raises*. The QA/artifact/edit surface is on the same object
 (`qa_context`/`qa_validate`/`qa_run`/`qa_context_validate`, `qa_tools_catalog`,
-`artifact_vet`, `settle_review`), lazy-imported so a read-only caller never loads the QA/vet
-machinery. `from ostler import load` returns the bare `Graph` if you want the
+`artifact_vet`, `settle_review`, `settle_answers`), lazy-imported so a read-only caller never loads the QA/vet
+machinery. `settle_review(slug, status_write=False)` writes the settlement ledger and leaves
+`story.md` alone. `settle_answers(slug, filed)` settles a markdown Answer list against the finding
+ids the caller filed and never writes a status. `open_stories(epic)` lists an epic's unfinished
+stories in dependency order, each with its `spec_dir`, `deps` and `open_deps`. `story(slug)` returns
+one story in that shape, or `None`. `from ostler import load` returns the bare `Graph` if you want the
 functional core directly.
 
 The provenance queries are derived reads, not a ledger. `story-provenance` joins exact Git

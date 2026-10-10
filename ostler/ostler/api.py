@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import builtins
-from collections.abc import Iterable, Mapping
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -268,6 +268,14 @@ class Ostler:
                    need: str = "build") -> dict | None:
         """The next runnable story in ``epic``, or ``None`` (``ostler next-story``)."""
         return select.next_story(self.graph, epic, skip=skip, need=need)
+
+    def open_stories(self, epic: str) -> builtins.list[dict]:
+        """The epic's stories that are not done, in dependency order, each with its spec dir and open deps."""
+        return select.open_stories(self.graph, epic)
+
+    def story(self, slug: str) -> dict | None:
+        """One story in the :meth:`open_stories` entry shape, by slug or id, or ``None`` when unknown."""
+        return select.story_entry(self.graph, slug)
 
     def next_story_report(self, epic: str,
                           skip: frozenset[str] | set[str] | None = None,
@@ -601,12 +609,23 @@ class Ostler:
 
         return cmd_vet(kind, self._resolve(spec), self.root)
 
-    def settle_review(self, slug: str, *, write: bool = False) -> EditPlan:
-        """Settle a story's status from its ``review-resolution.json``, gated on the artifacts/assertions the verdict cites (``ostler edit settle-review``)."""
+    def settle_review(self, slug: str, *, write: bool = False,
+                      status_write: bool = True) -> EditPlan:
+        """Settle a story's status from its ``review-resolution.json``, gated on the artifacts/assertions the verdict cites (``ostler edit settle-review``); ``status_write=False`` writes the ledger alone."""
         from ostler import edit as edit_mod
 
-        plan = edit_mod.settle_review(self._fresh(), slug)
+        plan = edit_mod.settle_review(self._fresh(), slug, status_write=status_write)
         if write and not plan.error:
             plan.apply()
             self._graph = None
         return plan
+
+    def settle_answers(self, slug: str, filed: Sequence[str], *,
+                       filename: str = "review-answers.md", write: bool = False) -> dict:
+        """Settle a story's markdown Answer list against the filed finding ids into its ``review-settlement.json`` ledger; never touches ``story.md``."""
+        from ostler import edit as edit_mod
+
+        ledger = edit_mod.settle_answers(self._fresh(), slug, filed, filename=filename, write=write)
+        if write:
+            self._graph = None
+        return ledger

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from ostler import path as path_mod
 from ostler import registry
 from ostler.model import Epic, Graph, Story
 
@@ -205,3 +206,67 @@ def next_story(graph: Graph, epic_name: str,
                need: str = "build") -> dict | None:
     """The next runnable story in ``epic_name`` — not done, not skipped, all deps done."""
     return next_story_report(graph, epic_name, skip=skip, need=need)["story"]
+
+
+def epic_cycle(epic: Epic) -> list[str]:
+    """The slugs of one dependency cycle inside *epic*, first slug repeated last, or ``[]`` when it has none."""
+    by_slug = {s.slug: s for s in epic.stories if s.slug}
+    seen: set[str] = set()
+    stack: list[str] = []
+
+    def visit(slug: str) -> list[str]:
+        if slug in stack:
+            return [*stack[stack.index(slug):], slug]
+        if slug in seen:
+            return []
+        stack.append(slug)
+        for dep in by_slug[slug].dependencies:
+            if dep in by_slug:
+                cycle = visit(dep)
+                if cycle:
+                    return cycle
+        stack.pop()
+        seen.add(slug)
+        return []
+
+    for slug in by_slug:
+        cycle = visit(slug)
+        if cycle:
+            return cycle
+    return []
+
+
+def _dep_done(graph: Graph, dep: str) -> bool:
+    try:
+        found = graph.find_story(dep)
+    except ValueError:
+        return False
+    return found is not None and is_done(found[1].status)
+
+
+def _work_entry(graph: Graph, epic: Epic, story: Story) -> dict:
+    deps = list(story.dependencies)
+    return {"slug": story.slug, "id": story.eid, "path": story.path,
+            "spec_dir": path_mod.resolve_spec(graph, story.slug), "epic": epic.name,
+            "deps": deps, "open_deps": [dep for dep in deps if not _dep_done(graph, dep)]}
+
+
+def open_stories(graph: Graph, epic_name: str) -> list[dict]:
+    """The epic's stories that are not done, in dependency order; ``[]`` for an unknown epic, ``ValueError`` on a cycle."""
+    epic = epic_by_name(graph, epic_name)
+    if epic is None:
+        return []
+    cycle = epic_cycle(epic)
+    if cycle:
+        raise ValueError(f"epic {epic.name} has a dependency cycle: {' -> '.join(cycle)}")
+    return [_work_entry(graph, epic, story) for story in dag_order(epic)
+            if not is_done(story.status)]
+
+
+def story_entry(graph: Graph, ref: str) -> dict | None:
+    """One story in the shape :func:`open_stories` reports, by slug or id, or ``None`` when unknown."""
+    found = graph.find_story(ref)
+    if found is None:
+        return None
+    epic, story = found
+    return _work_entry(graph, epic, story)

@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
 
 from ostler import Ostler
 
-from conftest import present
+from conftest import present, write
 
 
 def test_reads_match_the_underlying_core(repo: Path):
@@ -193,3 +194,19 @@ def test_qa_context_validate_flags_a_bad_packet(repo: Path):
 def test_settle_review_errors_without_a_verdict(repo: Path):
     plan = Ostler(repo).settle_review("01-foo")
     assert plan.error
+
+
+def test_settle_answers_and_ledger_only_settle_review_through_the_facade(repo: Path):
+    spec = repo / "docs/specs/01-foo"
+    write(spec / "review-answers.md", "## F-1: fixed\n\n- commit: abc\n")
+    okf = Ostler(repo)
+    led = okf.settle_answers("01-foo", ["F-1", "F-2"], write=True)
+    assert led["fixed"] == ["F-1"] and led["open"] == ["F-2"]
+    assert json.loads((spec / "review-settlement.json").read_text()) == led
+
+    write(spec / "review-resolution.json", json.dumps(
+        {"findings": [{"id": "F-1", "disposition": "declined", "reason": "won't fix"}]}))
+    plan = okf.settle_review("01-foo", write=True, status_write=False)
+    assert not plan.error, plan.error
+    assert okf.story("01-foo") is not None
+    assert "Not started" in (repo / "docs/epics/epic-a/stories/01-foo/story.md").read_text()

@@ -6,6 +6,7 @@ says how to use it. This page says where each concern lives.
 ## Map
 
 - `acts.py`: the performances an `arrange:` bullet may declare, as named acts with typed arguments.
+- `answers.py`: the markdown Answer list a lead writes back, one fixed or declined answer per review finding.
 - `api.py`: the in-process entry point to a repository's OKF graph.
 - `autofix.py`: `ostler autofix`, the deterministic repair of format drift a shape check can detect.
 - `backfill.py`: `ostler backfill plan`, what in the book no longer matches the code.

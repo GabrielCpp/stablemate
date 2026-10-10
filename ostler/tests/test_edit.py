@@ -191,3 +191,121 @@ def test_settle_review_dry_run_writes_nothing(repo: Path):
     edit.settle_review(load(repo), "01-foo")
     assert _story_status(repo, "epic-a", "01-foo") == "Not started"
     assert not (spec / edit.SETTLEMENT_FILE).exists()
+
+
+def test_settle_review_declined_with_reason_settles_and_applies(repo: Path):
+    spec = repo / "docs/specs/01-foo"
+    write(spec / "evidence/f1.png", "img")
+    _write_resolution(repo, "01-foo", {
+        "status": "applied",
+        "findings": [
+            {"id": "Finding 1", "disposition": "addressed", "artifacts": ["evidence/f1.png"]},
+            {"id": "Finding 2", "disposition": "declined", "reason": "out of scope"},
+        ],
+    })
+    plan = edit.settle_review(load(repo), "01-foo")
+    assert not plan.error, plan.error
+    plan.apply()
+    assert _story_status(repo, "epic-a", "01-foo") == edit.STATUS_APPLIED
+    led = _ledger(repo, "01-foo")
+    assert led["declined"] == [{"id": "Finding 2", "reason": "out of scope"}]
+    assert led["verified"] == ["Finding 1"]
+    assert led["all_verified"] is False and led["all_settled"] is True
+
+
+def test_settle_review_declined_without_reason_errors(repo: Path):
+    _write_resolution(repo, "01-foo", {
+        "findings": [{"id": "Finding 1", "disposition": "declined", "reason": "  "}],
+    })
+    plan = edit.settle_review(load(repo), "01-foo")
+    assert plan.error and "Finding 1" in plan.error and "reason" in plan.error
+
+
+def test_settle_review_ledger_only_leaves_story_status(repo: Path):
+    spec = repo / "docs/specs/01-foo"
+    write(spec / "evidence/f1.png", "img")
+    _write_resolution(repo, "01-foo", {
+        "findings": [{"id": "Finding 1", "disposition": "addressed",
+                      "artifacts": ["evidence/f1.png"]}],
+    })
+    plan = edit.settle_review(load(repo), "01-foo", status_write=False)
+    assert not plan.error, plan.error
+    assert [c.path.name for c in plan.changes] == [edit.SETTLEMENT_FILE]
+    plan.apply()
+    assert _story_status(repo, "epic-a", "01-foo") == "Not started"
+    assert _ledger(repo, "01-foo")["all_verified"] is True
+
+
+def test_settle_review_ledger_only_skips_the_blocked_stamp(repo: Path):
+    _write_resolution(repo, "01-foo", {
+        "findings": [{"id": "Finding 1", "disposition": "blocked"}],
+    })
+    plan = edit.settle_review(load(repo), "01-foo", status_write=False)
+    plan.apply()
+    assert _story_status(repo, "epic-a", "01-foo") == "Not started"
+    assert _ledger(repo, "01-foo")["any_blocked"] is True
+
+
+def _write_answers(repo: Path, slug: str, text: str, filename: str = edit.ANSWERS_FILE) -> None:
+    write(repo / "docs/specs" / slug / filename, text)
+
+
+ANSWERS = (
+    "# Answers\n\n"
+    "## F-1: fixed\n\n- commit: abc1234\n- path: src/handler.py\n\n"
+    "## F-2: declined\n\nReason: the api-service owns this.\n\n"
+    "## F-9: fixed\n\n- test: test_nine\n\n"
+    "## F-3: fixed\n\nNo evidence here.\n"
+)
+
+
+def test_settle_answers_sorts_filed_ids_by_answer(repo: Path):
+    _write_answers(repo, "01-foo", ANSWERS)
+    led = edit.settle_answers(load(repo), "01-foo", ["F-1", "F-2", "F-3", "F-4"])
+    assert led["fixed"] == ["F-1"]
+    assert led["declined"] == [{"id": "F-2", "reason": "the api-service owns this."}]
+    assert led["open"] == ["F-3", "F-4"]
+    assert led["unknown"] == ["F-9"]
+    assert len(led["errors"]) == 1 and led["errors"][0].startswith("F-3:")
+    assert sorted(led["answers"]) == ["F-1", "F-2"]
+    assert led["answers"]["F-1"] == {"disposition": "fixed", "commits": ["abc1234"],
+                                     "paths": ["src/handler.py"], "tests": [], "reason": ""}
+    assert led["all_answered"] is False
+
+
+def test_settle_answers_all_answered_when_nothing_open(repo: Path):
+    _write_answers(repo, "01-foo", ANSWERS)
+    led = edit.settle_answers(load(repo), "01-foo", ["F-1", "F-2", "F-1"])
+    assert led["fixed"] == ["F-1"] and led["open"] == []
+    assert led["all_answered"] is True
+
+
+def test_settle_answers_missing_file_leaves_every_id_open(repo: Path):
+    led = edit.settle_answers(load(repo), "01-foo", ["F-1", "F-2"])
+    assert led["open"] == ["F-1", "F-2"] and led["errors"] == []
+    assert led["fixed"] == [] and led["answers"] == {} and led["all_answered"] is False
+
+
+def test_settle_answers_dry_run_writes_nothing(repo: Path):
+    _write_answers(repo, "01-foo", ANSWERS)
+    edit.settle_answers(load(repo), "01-foo", ["F-1"])
+    assert not (repo / "docs/specs/01-foo" / edit.SETTLEMENT_FILE).exists()
+
+
+def test_settle_answers_write_records_the_ledger_and_never_the_status(repo: Path):
+    _write_answers(repo, "01-foo", ANSWERS)
+    before = (repo / "docs/epics/epic-a/stories/01-foo/story.md").read_text()
+    led = edit.settle_answers(load(repo), "01-foo", ["F-1", "F-2"], write=True)
+    assert _ledger(repo, "01-foo") == led
+    assert (repo / "docs/epics/epic-a/stories/01-foo/story.md").read_text() == before
+
+
+def test_settle_answers_write_creates_a_missing_spec_dir(repo: Path):
+    led = edit.settle_answers(load(repo), "01-foo", ["F-1"], write=True)
+    assert _ledger(repo, "01-foo") == led and led["open"] == ["F-1"]
+
+
+def test_settle_answers_reads_a_named_file(repo: Path):
+    _write_answers(repo, "01-foo", "## F-1: fixed\n\n- commit: abc\n", filename="round-2.md")
+    led = edit.settle_answers(load(repo), "01-foo", ["F-1"], filename="round-2.md")
+    assert led["fixed"] == ["F-1"]
