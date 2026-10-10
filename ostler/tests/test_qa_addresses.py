@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 from pathlib import Path
 from typing import Any
@@ -107,6 +108,25 @@ def test_a_recipe_reads_its_address_from_the_book_as_it_starts(
     addresses.write_book(where, {"gateway": "http://localhost:4321"})
     assert stack_mod._url_now("{gateway}/") == "http://localhost:4321/"
     assert stack_mod._recipe_argv("curl {gateway}/health")[-1] == "curl http://localhost:4321/health"
+
+
+def test_a_bring_up_reports_the_address_its_copy_wrote_while_the_gates_waited(
+        tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    where = tmp_path / "book.json"
+    monkeypatch.setenv(addresses.BOOK_ENV, str(where))
+    monkeypatch.setattr(stack_mod, "boot_app", lambda *_a, **_kw: {
+        "boot_ok": "yes", "entry_url": "", "app_pid": "", "app_pgid": ""})
+
+    def gates(*_a: Any, **_kw: Any) -> tuple[str, str]:
+        addresses.write_book(where, {"gateway": "http://localhost:4321"})
+        return "", ""
+
+    monkeypatch.setattr(stack_mod, "_seed_then_gate", gates)
+    out = stack_mod.ensure_stack(
+        {"entry_url": "{gateway}/", "launch": "make copy-up", "app_cwd": str(tmp_path)},
+        logger=logging.getLogger(__name__))
+    assert out["ready"] == "yes"
+    assert out["entry_url"] == "http://localhost:4321/"
 
 
 def test_a_per_run_environment_refuses_a_bring_up_with_no_lease(tmp_path: Path) -> None:

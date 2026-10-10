@@ -565,10 +565,10 @@ def ensure_stack(
         else:
             _clear_record(app_cwd)
 
-    entry_url = _url_now(manifest.get("entry_url", ""))
     step_label, err = _seed_then_gate(manifest, app_cwd, timeout_s, logger, clock)
     if step_label:
         return _fail(step_label, err, app_pid, app_pgid)
+    entry_url = _url_now(manifest.get("entry_url", ""))
 
     logger.info("stack is ready at %s", health_url or entry_url or "(no entry url)")
     return {"ready": "yes", "adopted": "no", "entry_url": entry_url,
