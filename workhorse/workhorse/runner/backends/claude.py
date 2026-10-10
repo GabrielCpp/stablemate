@@ -15,6 +15,10 @@ from workhorse.runner import usage as _usage
 from workhorse.runner.backends import AgentBackend, AgentProfile, git_worktree
 
 
+_OUTLIVING_TOOLS = ("Workflow", "Monitor", "ScheduleWakeup", "CronCreate", "RemoteTrigger")
+_FOREGROUND_ENV = {"CLAUDE_CODE_DISABLE_BACKGROUND_TASKS": "1"}
+
+
 class ClaudeBackend(AgentBackend):
     """Claude Code CLI (``claude -p``)."""
 
@@ -43,7 +47,7 @@ class ClaudeBackend(AgentBackend):
             *_permission_flags(agent),
             "--output-format", "stream-json",
             "--verbose",
-            "--disallowedTools", "Agent",
+            "--disallowedTools", *_OUTLIVING_TOOLS,
             *_tool_flags(agent, cwd),
         ]
         if model:
@@ -69,7 +73,7 @@ class ClaudeBackend(AgentBackend):
             resilience=resilience,
             stdin_data=prompt,
             cwd=cwd or None,
-            env_extra={**self.harness_env(), **_command_timeout_env(agent)},
+            env_extra={**_FOREGROUND_ENV, **self.harness_env(), **_command_timeout_env(agent)},
             session_id_path=session_id_path,
         )
 

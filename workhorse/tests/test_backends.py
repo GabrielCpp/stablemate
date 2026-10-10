@@ -315,10 +315,19 @@ def test_claude_caps_a_turn_at_its_profile_steps():
     assert "--max-turns" not in free
 
 
-def test_claude_disallows_the_agent_tool():
-    """A node's turn is one bounded, reaped CLI session; the Agent tool can dispatch work that outlives it (`run_in_background`), which the ladder cannot recover when the session is torn down."""
+def test_claude_denies_every_tool_whose_work_outlives_the_turn():
+    """A node's turn is one bounded, reaped CLI session; a dev turn ran its builders as a background workflow, and the session's end took the half-built work with it."""
     cmd = _capture_claude_cmd(model="opus")
-    assert cmd[cmd.index("--disallowedTools") + 1] == "Agent"
+    start = cmd.index("--disallowedTools") + 1
+    denied = cmd[start:start + 5]
+    assert denied == ["Workflow", "Monitor", "ScheduleWakeup", "CronCreate", "RemoteTrigger"]
+    assert "Agent" not in cmd
+
+
+def test_claude_runs_subagents_and_commands_in_the_foreground():
+    """The coder's owners hand work to subagents, so the turn keeps the Agent tool and loses only its background launch."""
+    env = _capture_claude_env(AgentProfile(name="writer"))
+    assert env["CLAUDE_CODE_DISABLE_BACKGROUND_TASKS"] == "1"
 
 
 def test_claude_turns_every_tool_off_for_a_profile_that_allows_none():
