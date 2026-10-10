@@ -125,8 +125,15 @@ def on_label(on_value: str) -> str:
     return (on_href(on_value) or on_value or "").lstrip("#") or on_value
 
 
+def _asserts_absence(row: CallRow) -> bool:
+    """Whether *row* passes only when what its locator names is not on screen."""
+    return row.name == "hidden" or (row.name == "visible" and row.args.get("count") == 0)
+
+
 def check_document(row: CallRow, obligation: Obligation) -> str:
-    """The screen document a check observes — the one its `locator=` names, or its own."""
+    """The screen document a check observes — the one its `locator=` names, or its own when the check asserts that what it names is not there."""
+    if _asserts_absence(row):
+        return obligation.source
     for param in sorted(row.locates):
         node_id = row.locates[param].node
         if node_id:

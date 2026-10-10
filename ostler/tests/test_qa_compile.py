@@ -2191,6 +2191,33 @@ def test_a_check_is_pointed_at_the_component_its_locator_names() -> None:
     assert _gap_kinds(gaps, oid) == []
 
 
+def test_a_check_that_another_screens_component_is_absent_vets_only_the_claims_own_screen() -> None:
+    """A contractor's form shows no supplier heading, and the supplier's screen on the same route is the one it is not on: vetting that screen demands every supplier component on the contractor's page."""
+    button = f"{_SCREEN}#new-policy-button"
+    oid = "okf:policy-list:open-form:does:1"
+    variant = _SCREEN.replace("policy-list.md", "policy-list.agent.md")
+    absent = _located("#agent-heading", f"{variant}#agent-heading", {"role": ["heading"], "name": ["Agents"]})
+    absent["args"]["count"] = 0
+    context = _navigation_context(
+        _page_obligation("okf:policy-list:new-policy-button:visible:1", button,
+                          locators={"role": ["button"], "name": ["New policy"]},
+                          checks=[_visible("button:New policy")]),
+        _page_obligation(oid, f"{_SCREEN}#open-form", kind="does",
+                          locators={"on": ["[new-policy-button](#new-policy-button)"],
+                                    "trigger": ["click"],
+                                    "does": ["shows the clerk's form and no agent heading"]},
+                          checks=[absent],
+                          fixtures=[{"name": "clerk", "args": [], "provides": "a clerk signed in"}]),
+        navigation=_arrival_navigation(),
+        screen_routes={_SCREEN: "/policy-list", variant: "/policy-list"},
+    )
+    source, gaps = compile_plan_gaps(context, story="demo-story")
+    assert source is not None
+    assert oid in _covers(source), source
+    assert f'qa.vet("{variant}"' not in source
+    assert _gap_kinds(gaps, oid) == []
+
+
 def test_a_check_locator_that_names_no_component_compiles_to_nothing() -> None:
     """`doctor` refuses this book; `compile_plan` is not `doctor`'s downstream and still sees it."""
     oid = "okf:new-policy:submit:does:1"
