@@ -736,6 +736,7 @@ def _minted_obligations(
     fixture_provides = _fixture_provides_index(book)
     fixture_undetermined = _fixture_undetermined_index(book)
     fixture_needs = _fixture_needs_index(book)
+    signing_fixtures = frozenset(_browser_fixtures(book))
 
     def mint(node_id: str, *, journey: bool, required: bool, owed_keys: frozenset[str] | None) -> list[dict[str, Any]]:
         return _obligations(
@@ -749,6 +750,7 @@ def _minted_obligations(
             fixture_provides=fixture_provides,
             fixture_undetermined=fixture_undetermined,
             fixture_needs=fixture_needs,
+            signing_fixtures=signing_fixtures,
             resolve_locator=_locator_resolver(snapshot.head_graph, book, book[node_id]),
             book=book,
             walks=walks or {},
@@ -2132,6 +2134,7 @@ def _obligations(
     fixture_provides: dict[str, list[str]] | None = None,
     fixture_undetermined: dict[str, list[str]] | None = None,
     fixture_needs: Mapping[str, frozenset[str]] | None = None,
+    signing_fixtures: frozenset[str] = frozenset(),
     resolve_locator: Callable[[str], LocatorTarget] | None = None,
     book: Mapping[str, BookNode],
     walks: Mapping[str, tuple[str, ...]] | None = None,
@@ -2143,7 +2146,9 @@ def _obligations(
     base = _node_obligation(book_node, reasons, family, journey=journey, required=required, scope=scope, book=book)
     reader = _PartReader(resolve_locator, fixture_provides, fixture_undetermined, fixture_needs)
     ambient = [*_guard_fixtures(book_node, book, walks or {}), *_parent_fixtures(book_node, book)]
-    attribution = _with_ambient_fixtures(_attribution(book_node), ambient)
+    own = _attribution(book_node)
+    ambient = _without_other_sign_ins(ambient, own.fixtures.own, signing_fixtures, fixture_needs or {})
+    attribution = _with_ambient_fixtures(own, ambient)
     node_parts = reader.node_parts(attribution)
     node_parts.stamp(base)
     base["docPosition"] = [book_node.line, -1]
@@ -2304,6 +2309,23 @@ def _parent_fixtures(book_node: BookNode, book: Mapping[str, BookNode]) -> list[
             seen.add(node.id)
             chain.append(node)
     return [bullet for parent in reversed(chain) for bullet in _attribution(parent).fixtures.own]
+
+
+def _without_other_sign_ins(
+    ambient: list[str], own: list[str], signing: frozenset[str], needs: Mapping[str, frozenset[str]],
+) -> list[str]:
+    """*ambient* less each fixture that signs a browser in when *own* signs one in that does not need it."""
+    signed = [name for value in own if (name := _fixture_name(value)) in signing]
+    if not signed:
+        return ambient
+    kept = {*signed, *(need for name in signed for need in needs.get(name, ()))}
+    return [value for value in ambient if (name := _fixture_name(value)) not in signing or name in kept]
+
+
+def _fixture_name(value: str) -> str:
+    """The fixture a `fixture:` bullet or a bare fixture stem names."""
+    parsed = fixtures_mod.parse_bullet(value)
+    return parsed.name if isinstance(parsed, fixtures_mod.FixtureRef) else value
 
 
 def _with_ambient_fixtures(attribution: _Attribution, ambient: list[str]) -> _Attribution:
