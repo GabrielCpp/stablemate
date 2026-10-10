@@ -43,7 +43,10 @@ Three scoping rules explain findings that otherwise read as false positives or a
   `unsatisfiable-check`,
   `unstated-precondition`,
   `relation-without-subject`. A legacy app kept documented while nothing drives it is not owed a
-  check per claim, because no QA plan will ever be asked to prove one. Everything mechanical
+  check per claim, because no QA plan will ever be asked to prove one. It also drops the
+  code-fault findings: `unnamed-interactive`. Their only exit is a `known-defect:` seed that
+  fixes the app, and nobody fixes the code of a surface nothing drives. The book records the
+  fault in an `a11y-gap:` bullet instead. Everything mechanical
   still fires — a dangling link, a missing bullet, a locator collision are about the book. The
   declaration has two exits: `malformed-declaration` when the value is not a boolean, and
   `stale-declaration` when the surface has no node left to cover.

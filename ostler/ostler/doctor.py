@@ -209,6 +209,8 @@ OBLIGATION_CODES = frozenset({
     "relation-without-subject", "shared-check",
 })
 
+CODE_FAULT_CODES = frozenset({"unnamed-interactive"})
+
 
 def _apply_surface_declarations(graph: Graph, findings: list[Finding]) -> None:
     """Apply ``exercised: false`` from each surface's ``index.md`` frontmatter."""
@@ -245,7 +247,7 @@ def _apply_surface_declarations(graph: Graph, findings: list[Finding]) -> None:
         dropped.append(prefix)
     if dropped:
         findings[:] = [fd for fd in findings
-                       if fd.code not in OBLIGATION_CODES
+                       if fd.code not in OBLIGATION_CODES | CODE_FAULT_CODES
                        or not fd.path.startswith(tuple(dropped))]
 
 
