@@ -106,8 +106,8 @@ such as the toolchain, a fixture's provider or the environment, stops as a findi
 the level above, and the work's own causes come back to the owner. Its findings carry
 from one lap to the next. A lap that leaves the gates where they were asks upward.
 
-Narrow seats exist only to serve the owner. Each one checks one thing or retrieves one
-thing, in a fresh context, and answers with its evidence. It edits nothing. The state
+Narrow seats exist only to serve the owner. Each one does one thing the owner assigns,
+in a fresh context, and answers with its evidence. The state
 machine holds only what must not bend: the gates, the evidence, the budget and the
 checkpoint. The owner gets the strongest model the user has, and the narrow seats may
 run on a cheaper one.
