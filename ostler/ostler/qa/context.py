@@ -1921,7 +1921,7 @@ def _parse_acts(
             if located:
                 row["locates"] = located
         rows.append(row)
-    return list({row["call"]: row for row in rows}.values())
+    return rows
 
 
 def _unparsed_acts(values: list[str]) -> list[dict[str, Any]]:
@@ -2115,7 +2115,7 @@ class _PartReader:
                                   self.fixture_needs),
             fixtures_unparsed=_dedup_by_value([*node.fixtures_unparsed, *_unparsed_fixtures(fixtures)]),
             arranges_nothing=node.arranges_nothing or _no_arrangement_stated(fixtures),
-            acts=list({row["call"]: row for row in [*node.acts, *_parse_acts(acts, self.resolve_locator)]}.values()),
+            acts=[*node.acts, *_parse_acts(acts, self.resolve_locator)],
             acts_unparsed=_dedup_by_value([*node.acts_unparsed, *_unparsed_acts(acts)]),
             captures=_parse_captures(captures),
             captures_unparsed=_unparsed_captures(captures),

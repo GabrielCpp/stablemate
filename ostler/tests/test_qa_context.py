@@ -3046,6 +3046,41 @@ def test_an_arranged_interaction_carries_its_acts_into_the_packet(tmp_path: Path
     assert not when.get("actsUnparsed")
 
 
+def test_an_arrange_step_repeated_on_one_claim_is_kept_in_order(tmp_path: Path):
+    """A claim that reaches its state by doing one step twice needs both steps, so a repeated call is two acts, not one."""
+    (tmp_path / "docs/features/acme/gui/screens").mkdir(parents=True)
+    (tmp_path / "app").mkdir()
+    (tmp_path / "docs/features/acme/gui/screens/items.md").write_text(
+        _ARRANGED_SCREEN.replace(
+            '- arrange: fill(locator="#quantity-field", value="3")',
+            '- arrange: fill(locator="#quantity-field", value="3")\n'
+            '- arrange: fill(locator="#name-field", value="Widget A")',
+        ),
+        encoding="utf-8",
+    )
+    (tmp_path / "app/items.py").write_text(
+        "def render_form():\n    return 'old'\n\n\ndef save_item():\n    return 'old'\n", encoding="utf-8"
+    )
+    _git(tmp_path, "init")
+    _git(tmp_path, "config", "user.email", "qa@example.com")
+    _git(tmp_path, "config", "user.name", "QA")
+    _git(tmp_path, "add", ".")
+    _git(tmp_path, "commit", "-m", "base")
+    base = _git(tmp_path, "rev-parse", "HEAD")
+    (tmp_path / "app/items.py").write_text(
+        "def render_form():\n    return 'new'\n\n\ndef save_item():\n    return 'new'\n", encoding="utf-8"
+    )
+
+    packet = build_context(tmp_path, base=base, source_roots={"acme": ["app"]})
+    by_id = {item["id"].rsplit("#", 1)[-1]: item for item in packet["obligations"]}
+
+    assert [row["call"] for row in by_id["save-item:when:1"]["actsDeclared"]] == [
+        'fill(locator="#name-field", value="Widget A")',
+        'fill(locator="#quantity-field", value="3")',
+        'fill(locator="#name-field", value="Widget A")',
+    ]
+
+
 def test_an_arrange_bullet_the_act_parser_rejects_is_carried_not_dropped(tmp_path: Path):
     """The counterpart of `_unparsed_fixtures`, for the reason that one exists: downstream, a bullet nobody wrote and a bullet that did not parse are the same absent row, so a mistyped arrangement would be gapped at an author who arranged it."""
     (tmp_path / "docs/features/acme/gui/screens").mkdir(parents=True)
