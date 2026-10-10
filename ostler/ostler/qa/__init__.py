@@ -18,7 +18,7 @@ from ostler.qa.lint import cmd_lint
 from ostler.qa.sensitivity import cmd_sensitivity
 from ostler.qa.clean import cmd_clean, legacy_scratch_roots
 from ostler.qa.session import QA_DIRNAME, RESERVED_LABELS, ScratchLabelError, scratch_dirname
-from ostler.qa import fixtures, runbook, tools
+from ostler.qa import addresses, fixtures, runbook, tools
 from ostler.qa.report import (
     REPORT_FILE,
     ReportError,
@@ -87,6 +87,7 @@ __all__ = [
     "run_id_of",
     "write_report",
     "fixtures",
+    "addresses",
     "runbook",
     "tools",
 ]

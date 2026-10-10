@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import shlex
 import sys
 from importlib.metadata import version as _pkg_version
@@ -858,12 +859,18 @@ def _build_parser() -> argparse.ArgumentParser:
     qa_stack_up.add_argument("--spec", default="",
                              help="the qa context packet directory; its `featuresRoot` says "
                                   "which book to bring up")
+    qa_stack_up.add_argument("--lease", default="",
+                             help="the name of this run's copy, for an environment copied per run "
+                                  "(default: $STABLEMATE_LEASE)")
     qa_stack_up.add_argument("--json", action="store_true")
     qa_stack_down = qa_stack_ops.add_parser("down", help="run the declared teardown recipe")
     qa_stack_down.add_argument("--runbook", default="")
     qa_stack_down.add_argument("--spec", default="",
                                help="the qa context packet directory; its `featuresRoot` "
                                     "says which book to tear down")
+    qa_stack_down.add_argument("--lease", default="",
+                               help="the name of this run's copy, for an environment copied per run "
+                                    "(default: $STABLEMATE_LEASE)")
     qa_stack_down.add_argument("--json", action="store_true")
 
     qa_tools = qas.add_parser("tools", help="inspect this repo's opted-in QA tools")
@@ -1689,10 +1696,13 @@ def _cmd_qa(graph, args) -> int:  # noqa: C901 — flat QA subcommand dispatch
 
     if op == "stack":
         aim = _packet_aim(args.spec, root)
+        lease = args.lease or os.environ.get(qa_mod.addresses.LEASE_ENV, "")
         if args.stack_op == "up":
-            result = qa_mod.runbook.cmd_stack_up(root, name=args.runbook, features_root=aim)
+            result = qa_mod.runbook.cmd_stack_up(root, name=args.runbook, features_root=aim,
+                                                 lease=lease)
         else:
-            result = qa_mod.runbook.cmd_stack_down(root, name=args.runbook, features_root=aim)
+            result = qa_mod.runbook.cmd_stack_down(root, name=args.runbook, features_root=aim,
+                                                   lease=lease)
         if args.json:
             _out(json.dumps(result.data, indent=2))
         else:

@@ -4,14 +4,17 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from pathlib import PurePosixPath
+import re
 from urllib.parse import urlsplit
 
 from ostler.qa.compile_http import HTTP_METHODS
 from ostler.qa.runbook import bullet_text
 
+_NAMED_ORIGIN = re.compile(r"^\{[a-z][a-z0-9-]*\}")
+
 
 def _url(value: str) -> str:
-    parts = urlsplit(bullet_text(value))
+    parts = urlsplit(_NAMED_ORIGIN.sub("http://named", bullet_text(value), count=1))
     if parts.scheme in ("http", "https") and parts.netloc:
         return ""
     return "it is not an absolute `http(s)://` URL"

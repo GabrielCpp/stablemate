@@ -61,6 +61,7 @@ from typing import Any
 
 from ostler._vendor.stablemate_core import base_cache
 from ostler._vendor.stablemate_core.clock import SYSTEM_CLOCK, Clock
+from ostler.qa import addresses
 
 #: Manifest commands are **shell** recipes, not argv lists. The contract already asks for
 #: something only a shell can express — an *idempotent* bring-up command is written
@@ -80,6 +81,20 @@ _SHELL = shutil.which("bash") or "/bin/sh"
 def _shell_argv(cmd: str) -> list[str]:
     """The argv that runs *cmd* as a shell recipe. See :data:`_SHELL`."""
     return [_SHELL, "-c", cmd]
+
+
+def _recipe_argv(cmd: str) -> list[str]:
+    """The argv that runs one recipe, its `{name}` addresses read from the run's book as it starts."""
+    return _shell_argv(addresses.resolve_now(cmd))
+
+
+def _url_now(url: str) -> str:
+    """*url* with its `{name}` addresses read from the run's book, or empty while the book cannot give them."""
+    try:
+        resolved = addresses.resolve_now(url)
+    except addresses.AddressError:
+        return ""
+    return "" if addresses.names_in(resolved) else resolved
 
 
 def shell_syntax_error(cmd: str) -> str:
@@ -246,7 +261,7 @@ def boot_app(
         log = None
     try:
         proc = subprocess.Popen(  # noqa: S603 (documented recipe, loopback stack)
-            _shell_argv(launch_cmd), cwd=app_cwd,
+            _recipe_argv(launch_cmd), cwd=app_cwd,
             stdout=log or subprocess.DEVNULL, stderr=subprocess.STDOUT,
             stdin=subprocess.DEVNULL, start_new_session=True,
         )
@@ -367,7 +382,7 @@ def teardown_app(
             logger.info("no app_pgid — running the documented stop recipe: %s", stop_cmd)
             try:
                 done = subprocess.run(  # noqa: S603 (documented recipe, loopback stack)
-                    _shell_argv(stop_cmd), cwd=app_cwd or ".",
+                    _recipe_argv(stop_cmd), cwd=app_cwd or ".",
                     capture_output=True, text=True, timeout=STOP_TIMEOUT_S,
                 )
             except (OSError, ValueError, subprocess.SubprocessError) as exc:
@@ -447,7 +462,7 @@ def ensure_stack(
     """
     app_cwd = manifest.get("app_cwd") or "."
     root = repo_root or manifest.get("repo_root") or app_cwd
-    entry_url = manifest.get("entry_url", "")
+    entry_url = _url_now(manifest.get("entry_url", ""))
     health_path = manifest.get("health_path") or "/"
     identity = manifest.get("identity", "")
     reuse = str(manifest.get("reuse", "if-fresh"))
@@ -517,6 +532,8 @@ def ensure_stack(
             logger.warning("prepare[%d] failed: %s", i, err)
             return _fail(f"prepare[{i}]", err)
 
+    entry_url = _url_now(manifest.get("entry_url", ""))
+    health_url = entry_url.rstrip("/") + "/" + health_path.lstrip("/") if entry_url else ""
     app_pid = app_pgid = app_log = ""
     if launch_cmd:
         # adopt=False: ensure_stack owns the reuse decision above; the launch itself must
@@ -548,6 +565,7 @@ def ensure_stack(
         else:
             _clear_record(app_cwd)
 
+    entry_url = _url_now(manifest.get("entry_url", ""))
     step_label, err = _seed_then_gate(manifest, app_cwd, timeout_s, logger, clock)
     if step_label:
         return _fail(step_label, err, app_pid, app_pgid)
@@ -740,7 +758,7 @@ def _run_step(
     try:
         with tempfile.TemporaryFile("w+") as out, tempfile.TemporaryFile("w+") as errs:
             proc = subprocess.Popen(  # noqa: S603 (documented recipe, loopback stack)
-                _shell_argv(cmd), cwd=cwd, stdout=out, stderr=errs,
+                _recipe_argv(cmd), cwd=cwd, stdout=out, stderr=errs,
                 stdin=subprocess.DEVNULL, text=True, start_new_session=True,
             )
             try:
@@ -856,7 +874,11 @@ def app_log_path(app_cwd: str) -> Path:
 
 def _record_path(app_cwd: str) -> Path:
     """Where the ownership record for *app_cwd*'s stack lives."""
-    key = hashlib.sha256(str(Path(app_cwd).resolve()).encode()).hexdigest()[:16]
+    owner = str(Path(app_cwd).resolve())
+    lease = os.environ.get(addresses.LEASE_ENV, "")
+    if lease:
+        owner = f"{owner}\0{lease}"
+    key = hashlib.sha256(owner.encode()).hexdigest()[:16]
     return base_cache.cache_root() / "qa-stacks" / f"{key}.json"
 
 

@@ -127,6 +127,33 @@ class CheckFailed(AssertionError):
 
 
 
+ADDRESS_BOOK_ENV = "STABLEMATE_ADDRESS_BOOK"
+_ADDRESS = re.compile(r"(?<![$\w])\{([a-z][a-z0-9-]*)\}")
+
+
+def resolve_addresses(text: str) -> str:
+    """*text* with each `{name}` read from the run's address book, unchanged when the run names none."""
+    if not _ADDRESS.search(text):
+        return text
+    where = os.environ.get(ADDRESS_BOOK_ENV, "")
+    if not where:
+        return text
+    try:
+        book = json.loads(Path(where).read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        raise ValueError(f"{text!r} reads the address book at {where}, which is unreadable: {exc}") from exc
+    if not isinstance(book, dict):
+        raise ValueError(f"the address book at {where} is not a JSON object of name to URL")
+
+    def value_of(match: re.Match[str]) -> str:
+        value = book.get(match.group(1))
+        if not isinstance(value, str):
+            raise ValueError(f"{text!r} reads `{match.group(0)}`, which the address book at {where} does not give")
+        return value.rstrip("/")
+
+    return _ADDRESS.sub(value_of, text)
+
+
 @dataclass
 class Target:
     name: str
@@ -271,7 +298,7 @@ def target(
         name=name,
         driver=driver,
         interpreter=interpreter,
-        base_url=base_url,
+        base_url=resolve_addresses(base_url) if base_url is not None else None,
         app_id=app_id,
         browser=browser,
         viewport=dict(viewport) if viewport is not None else None,

@@ -192,8 +192,14 @@ RUNBOOK_TYPE = "runbook"
 SURFACES_BULLET = "surfaces"
 
 
+_NAMED_ORIGIN = re.compile(r"\{[a-z][a-z0-9-]*\}")
+
+
 def url_origin(url: str) -> str:
-    """``scheme://host[:port]`` off a full ``entry-url:`` value; empty when it has none."""
+    """``scheme://host[:port]`` off a full ``entry-url:`` value, or the `{name}` it starts with; empty when it has none."""
+    named = _NAMED_ORIGIN.match(url.strip())
+    if named:
+        return named.group(0)
     parsed = urlparse(url)
     return f"{parsed.scheme}://{parsed.netloc}" if parsed.scheme and parsed.netloc else ""
 

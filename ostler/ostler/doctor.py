@@ -25,8 +25,8 @@ from ostler.finding import Finding
 from ostler.model import Graph, Epic, Story, UINode, read_doc, required_section_problems
 from ostler.path import features_root as features_root_of, specs_root_in
 from ostler.provenance import checkout_for
-from ostler.qa import (captures as captures_mod, fixture_browser, fixtures as fixtures_mod, references,
-                       runbook as runbook_mod, sensitivity)
+from ostler.qa import (addresses as qa_addresses, captures as captures_mod, fixture_browser,
+                       fixtures as fixtures_mod, references, runbook as runbook_mod, sensitivity)
 from ostler.qa.compile import Gap
 from ostler.qa.context import RELATION_KEYS, relation_subject
 from ostler.qa.outcome import QaOutcome
@@ -2165,6 +2165,7 @@ def _check_runbook(graph: Graph, f: list[Finding], resolver: links_mod.LinkResol
             step_commands.check_step_command_checkout_path(graph, step, rel, f)
             step_commands.check_step_not_scenario_frame(graph, step, rel, f)
 
+        _check_runbook_addresses(graph, node, rel, f, resolver)
         if node.id not in stacks:
             _check_runbook_environment(graph, node, rel, f)
             continue
@@ -2191,6 +2192,7 @@ def _check_runbook(graph: Graph, f: list[Finding], resolver: links_mod.LinkResol
         _check_runbook_environment(graph, node, rel, f)
 
     _check_shared_entry_urls([n for n in runbooks if n.id in stacks], graph, f, resolver)
+    _check_environment_addresses(graph, f)
 
 
 def _check_shared_entry_urls(stacks: list[UINode], graph: Graph, f: list[Finding],
@@ -2232,6 +2234,59 @@ def _check_runbook_environment(graph: Graph, node, rel: str, f: list[Finding]) -
                              f"that environment points at {service}",
                              path=rel, line=node.line, ref=target.id,
                              suggestion="point it at localhost, or drop `local-only: true`"))
+
+
+def _check_environment_addresses(graph: Graph, f: list[Finding]) -> None:
+    """An environment names its addresses so a run can read them, and states them only when every run shares them."""
+    for node in graph.ui_nodes_of_type("environment"):
+        rel = _rel_path(graph, node)
+        found = runbook_mod.environment_addresses(node)
+        for name, value in found.entries.items():
+            if not qa_addresses.is_name(name):
+                f.append(Finding("error", "environment-address-name",
+                                 f"{rel}: `{name}` cannot be written as `{{{name}}}` in a "
+                                 f"command or a URL",
+                                 path=rel, line=node.line, ref=name,
+                                 suggestion="name it in lowercase letters, digits and `-`, "
+                                            "starting with a letter"))
+            elif found.per_run and qa_addresses.is_address(value):
+                f.append(Finding("error", "environment-address-value",
+                                 f"{rel}: `{name}` states {value}, but `sharing: per-run` gives "
+                                 f"each run its own copy, so no URL holds for every run",
+                                 path=rel, line=node.line, ref=name,
+                                 suggestion=f"- {name}: <what it serves>, its URL read from "
+                                            f"the run's address book"))
+            elif not found.per_run and not qa_addresses.is_address(value):
+                f.append(Finding("error", "environment-address-value",
+                                 f"{rel}: `{name}` is shared by every run, so the page is where "
+                                 f"its URL comes from, and `{value}` is not an absolute http(s) URL",
+                                 path=rel, line=node.line, ref=name,
+                                 suggestion=f"- {name}: http://localhost:<port>"))
+
+
+def _runbook_address_references(graph: Graph, node: UINode) -> list[str]:
+    """Every `{name}` a runbook's entry URL, stop recipe and step commands read from the address book."""
+    texts = [_bullet_value(node.meta, "entry-url"), _bullet_value(node.meta, "stop")]
+    for step in runbook_mod.steps_of(graph, node):
+        texts += [_bullet_value(step.meta, key) for key in ("run", "health")]
+    return [name for text in texts for name in qa_addresses.names_in(text)]
+
+
+def _check_runbook_addresses(graph: Graph, node: UINode, rel: str, f: list[Finding],
+                             resolver: links_mod.LinkResolver) -> None:
+    """Every `{name}` a runbook reads is an address its environment names."""
+    environment = graph.find_ui_node(runbook_mod.environment_of(node, resolver))
+    known = (runbook_mod.environment_addresses(environment).entries
+             if environment is not None and environment.type == "environment" else {})
+    for name in dict.fromkeys(_runbook_address_references(graph, node)):
+        if name in known:
+            continue
+        where = f"`{environment.id}`" if environment is not None else "no environment"
+        f.append(Finding("error", "runbook-unknown-address",
+                         f"{rel}: reads `{{{name}}}`, but {where} names no such address, so "
+                         f"no address book will ever give it a value",
+                         path=rel, line=node.line, ref=name,
+                         suggestion=f"add `{name}` to the environment's `addresses:`"))
 
 
 _LOCAL_HOSTS = frozenset({"localhost", "127.0.0.1", "0.0.0.0", "::1", "[::1]", "host.docker.internal"})

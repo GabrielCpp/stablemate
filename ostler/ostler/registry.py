@@ -560,6 +560,8 @@ UI_TYPES: tuple[UINodeType, ...] = (
             BulletKey("services", nested=True),
             BulletKey("backing", nested=True),
             BulletKey("local-only"),
+            BulletKey("sharing", values=("shared", "per-run")),
+            BulletKey("addresses", nested=True),
             BulletKey("code", link=True, owns=True),
             BulletKey("config", owns=True),
             BulletKey("verify", check=True),

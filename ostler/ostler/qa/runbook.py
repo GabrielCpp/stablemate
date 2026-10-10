@@ -15,6 +15,7 @@ from ostler import markdown
 from ostler import model
 from ostler import path as path_mod
 from ostler.model import Graph, UINode
+from ostler.qa import addresses
 from ostler.qa import stack as stack_mod
 from ostler.qa.outcome import QaOutcome
 from ostler.registry import SCENARIO_FRAME_TOKEN, STEP_KIND_VALUES
@@ -256,6 +257,33 @@ def environment_of(node: UINode, resolver: links_mod.LinkResolver) -> str:
     return ""
 
 
+@dataclass(frozen=True)
+class EnvironmentAddresses:
+    """An environment page's named addresses, and whether each run gets its own copy of them."""
+
+    environment: UINode
+    per_run: bool
+    entries: dict[str, str]
+
+    def shared_book(self) -> dict[str, str]:
+        """The book a shared environment's page gives: each name's stated URL."""
+        return {name: value.rstrip("/") for name, value in self.entries.items()}
+
+
+def environment_addresses(node: UINode) -> EnvironmentAddresses:
+    """The `addresses:` and `sharing:` bullets of the `environment` node *node*."""
+    entries: dict[str, str] = {}
+    for item in _children(node.meta, "addresses"):
+        idx = markdown.label_colon_index(item)
+        if idx == -1:
+            continue
+        name = item[:idx].strip().strip("`")
+        if name:
+            entries[name] = bullet_text(item[idx + 1:])
+    per_run = bullet_value(node.meta, "sharing").lower() == "per-run"
+    return EnvironmentAddresses(environment=node, per_run=per_run, entries=entries)
+
+
 def _environment_is_local_only(graph: Graph, environment_id: str) -> bool:
     """Whether the `environment` node *environment_id* declares itself `local-only: true`."""
     node = graph.find_ui_node(environment_id)
@@ -454,6 +482,79 @@ def _refusal(root: Path, features_root: str, selection: StackSelection,
                  "nothing to {}".format(where, verb)))
 
 
+@dataclass(frozen=True)
+class StackLease:
+    """The copy one bring-up holds: the name it runs under, and the book its addresses are read from."""
+
+    name: str = ""
+    book: Path | None = None
+    addresses: EnvironmentAddresses | None = None
+
+    @property
+    def env(self) -> dict[str, str]:
+        """What every recipe of this bring-up finds in its environment."""
+        env = {addresses.LEASE_ENV: self.name} if self.name else {}
+        if self.book is not None:
+            env[addresses.BOOK_ENV] = str(self.book)
+        return env
+
+    @property
+    def per_run(self) -> bool:
+        return self.addresses is not None and self.addresses.per_run
+
+    def problems(self) -> list[str]:
+        """Why the book this bring-up left cannot serve the environment, one sentence each."""
+        if self.book is None or self.addresses is None:
+            return []
+        try:
+            book = addresses.read_book(self.book)
+        except addresses.AddressError as exc:
+            return [str(exc)]
+        return addresses.book_problems(book, self.addresses.entries)
+
+    def data(self) -> dict[str, Any]:
+        """The lease as an outcome reports it."""
+        book: dict[str, str] = {}
+        if self.book is not None:
+            try:
+                book = addresses.read_book(self.book)
+            except addresses.AddressError:
+                book = {}
+        return {"lease": self.name, "address_book": str(self.book or ""), "addresses": book}
+
+
+def _addressed_environment(graph: Graph, selection: StackSelection) -> EnvironmentAddresses | None:
+    """The addresses of the environment every selected runbook binds, or None when it names none."""
+    environment = selection.environment
+    if not environment and selection.runbooks:
+        resolver = links_mod.LinkResolver(graph)
+        bound = {environment_of(node, resolver) for node in selection.runbooks}
+        environment = bound.pop() if len(bound) == 1 else ""
+    node = graph.find_ui_node(environment) if environment else None
+    if node is None:
+        return None
+    found = environment_addresses(node)
+    return found if found.per_run or found.entries else None
+
+
+def _stack_lease(graph: Graph, selection: StackSelection, lease: str) -> StackLease | QaOutcome:
+    """The lease a bring-up or a teardown runs under, or the refusal that stops it."""
+    if lease and (problem := addresses.lease_problem(lease)):
+        return QaOutcome(ok=False, status="bad-lease", data={"lease": lease},
+                         message=f"`{lease}` cannot name a copy: {problem}")
+    found = _addressed_environment(graph, selection)
+    if found is None:
+        return StackLease(name=lease)
+    if found.per_run and not lease:
+        return QaOutcome(
+            ok=False, status="lease-required", data={"environment": found.environment.id},
+            message=(f"the environment {found.environment.id} gives each run its own copy, so "
+                     f"the copy needs a name: pass --lease NAME or set {addresses.LEASE_ENV}"))
+    page = graph.root / found.environment.path
+    book = addresses.book_path(page, lease if found.per_run else "")
+    return StackLease(name=lease, book=book, addresses=found)
+
+
 def bring_up_stacks(manifests: list[dict[str, Any]], *, repo_root: str,
                     logger: logging.Logger | None = None) -> list[dict[str, Any]]:
     """Bring every manifest up in document order, stopping at the first that fails."""
@@ -468,15 +569,23 @@ def bring_up_stacks(manifests: list[dict[str, Any]], *, repo_root: str,
     return results
 
 
-def cmd_stack_up(root: Path, *, name: str = "", features_root: str = "",
+def cmd_stack_up(root: Path, *, name: str = "", features_root: str = "", lease: str = "",
                  logger: logging.Logger | None = None) -> QaOutcome:
     """`ostler qa stack up` — bring the book's declared stack to ready, or say why not."""
     log = logger or logging.getLogger(__name__)
-    manifests, selection = load_stacks(_graph_for(root, features_root), name=name, logger=log)
+    graph = _graph_for(root, features_root)
+    manifests, selection = load_stacks(graph, name=name, logger=log)
     refused = _refusal(root, features_root, selection, "bring up")
     if refused is not None and not manifests:
         return refused
-    results = bring_up_stacks(manifests, repo_root=str(root), logger=log)
+    held = _stack_lease(graph, selection, lease)
+    if isinstance(held, QaOutcome):
+        return held
+    with addresses.leased(held.env):
+        if held.book is not None and held.addresses is not None and not held.per_run:
+            addresses.write_book(held.book, held.addresses.shared_book())
+        results = bring_up_stacks(manifests, repo_root=str(root), logger=log)
+        problems = held.problems() if results[-1].get("ready") == "yes" else []
     last = results[-1]
     manifest = last["manifest"]
     if last.get("ready") != "yes":
@@ -485,33 +594,49 @@ def cmd_stack_up(root: Path, *, name: str = "", features_root: str = "",
             message="stack bring-up failed for '{}' at step '{}'{}".format(
                 manifest.get("source", "?"), last.get("failed_step", "unknown"),
                 f": {last['error'].strip()}" if last.get("error") else ""),
-            data={**last, "stacks": results, "source": manifest.get("source", "")})
+            data={**last, "stacks": results, "source": manifest.get("source", ""),
+                  **held.data()})
+    if problems:
+        return QaOutcome(
+            ok=False, status="address-book",
+            message="the stack came up, but the address book it left at {} {}".format(
+                held.book, "; ".join(problems)),
+            data={**last, "stacks": results, "environment": selection.environment,
+                  **held.data()})
     how = "adopted" if last.get("adopted") == "yes" else "brought up"
     where = ", ".join(r.get("entry_url") or "(no entry url)" for r in results)
     plural = "" if len(results) == 1 else f" ({len(results)} services)"
     return QaOutcome(
         ok=True, message=f"stack {how} and healthy at {where}{plural}",
-        data={**last, "stacks": results, "environment": selection.environment})
+        data={**last, "stacks": results, "environment": selection.environment,
+              **held.data()})
 
 
-def cmd_stack_down(root: Path, *, name: str = "", features_root: str = "",
+def cmd_stack_down(root: Path, *, name: str = "", features_root: str = "", lease: str = "",
                    logger: logging.Logger | None = None) -> QaOutcome:
     """`ostler qa stack down` — run the declared teardown, or leave an expensive stack up."""
     log = logger or logging.getLogger(__name__)
-    manifests, selection = load_stacks(_graph_for(root, features_root), name=name, logger=log)
+    graph = _graph_for(root, features_root)
+    manifests, selection = load_stacks(graph, name=name, logger=log)
     refused = _refusal(root, features_root, selection, "tear down")
     if refused is not None and not manifests:
         return refused
-    results = [stack_mod.teardown_stack({}, manifest, logger=log)
-               for manifest in reversed(manifests)]
+    held = _stack_lease(graph, selection, lease)
+    if isinstance(held, QaOutcome):
+        return held
+    with addresses.leased(held.env):
+        results = [stack_mod.teardown_stack({}, manifest, logger=log)
+                   for manifest in reversed(manifests)]
     torn = {r.get("torn_down", "no") for r in results}
     verdict = "no" if "no" in torn else ("skipped" if torn == {"skipped"} else "yes")
+    if verdict == "yes" and held.per_run and held.book is not None:
+        held.book.unlink(missing_ok=True)
     return QaOutcome(
         ok=verdict != "no",
         message={"yes": "stack torn down",
                  "skipped": "no `stop:` recipe — leaving the stack serving"}.get(
                      verdict, "teardown failed"),
-        data={**results[-1], "stacks": results},
+        data={**results[-1], "stacks": results, "lease": held.name},
     )
 
 
@@ -523,6 +648,9 @@ __all__ = [
     "bullet_value",
     "cmd_stack_down",
     "cmd_stack_up",
+    "EnvironmentAddresses",
+    "StackLease",
+    "environment_addresses",
     "is_stack_runbook",
     "StackSelection",
     "environment_of",

@@ -16,12 +16,24 @@ File type under `docs/features/<service>/ops/`, `type: environment` in frontmatt
 | `services` | no | nested; one child per service, its env-scoped URL/host |
 | `backing` | no | nested; backing projects, DBs, buckets, emulators |
 | `local-only` | no | `true` — tooling must refuse to target it without an override |
+| `sharing` | no | `shared` (the default) or `per-run`: whether every run uses one stack or brings up its own copy |
+| `addresses` | no | nested; one child per address a runbook reads as `{name}`: its URL when shared, what it serves when per-run |
 | `code` | no | link, **owns** its file — the stack files it materializes |
 | `config` | no | **owns** the path — the configuration files the stack reads |
 | `verify` | no | a check |
 | `fixture` | no | a fixture |
 | `capture` | no | a capture |
 | `tests` | no | link — the test files covering it |
+
+`addresses:` names the places a client reaches this stack, such as the gateway a browser opens.
+A runbook writes `{gateway}` in its `entry-url:`, `stop:` and step commands instead of a host
+and port. The bring-up reads each name from the run's address book as the command starts. A
+shared environment's book is the page itself, so each entry states its URL. A `sharing:
+per-run` environment gives each run its own copy on its own ports. Its entries say what each
+address serves and state no URL, because no URL holds for every run. The runbook's recipe
+writes the copy's book as a JSON object of name to URL at the path in
+`$STABLEMATE_ADDRESS_BOOK`, and names the copy after `$STABLEMATE_LEASE`. A bring-up of a
+per-run environment needs a lease: `ostler qa stack up --lease NAME`.
 
 `code:` is declared here because the QA-context mapper reads `code:` on every node type to find
 a changed path's owner. Without it an environment's own compose files and emulator configs are
@@ -81,7 +93,7 @@ type: environment
 
 ## Doctor codes it can trip
 
-`runbook-local-only` (raised on the runbook that boots it), `dangling-code-ref`,
+`runbook-local-only` and `runbook-unknown-address` (raised on the runbook that boots it), `environment-address-name`, `environment-address-value`, `dangling-code-ref`,
 `missing-code-symbol`, `undeclared-obligation`, `weak-check`. See
 [../doctor-codes.md](../doctor-codes.md).
 
