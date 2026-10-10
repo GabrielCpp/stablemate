@@ -69,6 +69,8 @@ PROBE_STEP = "probe"
 
 SERVE_STEP = "serve"
 
+WRITING_STEPS = frozenset({"run", "seed"})
+
 _SERVE_SETTLE_S = 0.5
 
 _BACKGROUNDED = re.compile(r"(?<![&|])&\s*$")
@@ -1122,6 +1124,16 @@ class Qa:
             self._fault(fixture, index, "session", "defect", detail)
             raise RuntimeError(f"qa fixture {fixture!r} {detail}") from exc
 
+    def _shown_written(self, fixture: str, index: int) -> None:
+        """Reload the scenario's page, so the data *fixture* wrote outside the browser shows on the screen it left open."""
+        try:
+            self.diagnostics.reload(self.target.base_url)
+        except Exception as exc:
+            first = (str(exc).strip().splitlines() or [type(exc).__name__])[0][:500]
+            detail = f"the page did not load again after the fixture wrote its data: {first}"
+            self._fault(fixture, index, "reload", "defect", detail)
+            raise RuntimeError(f"qa fixture {fixture!r} {detail}") from exc
+
     def _extract_provides(
         self,
         fixture: str,
@@ -1271,6 +1283,7 @@ class Qa:
         result: ToolResult | None = None
         step_results: dict[str, ToolResult] = {}
         signed_in = False
+        wrote = False
         for index, step in enumerate(steps):
             if step.get("missing_run"):
                 detail = "step has no `run:` command"
@@ -1287,6 +1300,7 @@ class Qa:
                 result = self._serve_book_step(name, index, step, env)
             else:
                 result = self._run_book_step(name, index, step, env)
+                wrote = wrote or step.get("kind") in WRITING_STEPS
             step_id = step.get("id")
             if step_id:
                 step_results[step_id] = result
@@ -1294,6 +1308,8 @@ class Qa:
                     env.setdefault(key, value)
         if signed_in:
             self._node_sessions[name] = self._settled_session(name, len(steps) - 1)
+        if wrote and self.diagnostics is not None:
+            self._shown_written(name, len(steps) - 1)
         self._node_facts[name] = self._extract_provides(name, provides, step_results, len(steps) - 1)
         if result is None:
             result = ToolResult(command=[], stdout="", stderr="", exit_code=0)

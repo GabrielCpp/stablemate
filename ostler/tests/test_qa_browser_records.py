@@ -950,6 +950,35 @@ def test_a_fixture_a_lap_shares_arranges_out_of_the_scenarios_sight(tmp_path: Pa
     assert calls == ["goto /login on side page", "close side page"]
 
 
+def _reloading_page(calls: list[str], url: str) -> Any:
+    return SimpleNamespace(
+        url=url,
+        reload=lambda *, timeout: calls.append(f"reload {url}"),
+        wait_for_load_state=lambda state, *, timeout: calls.append(f"wait {state}"),
+    )
+
+
+def test_a_page_showing_the_app_loads_again_to_show_what_a_fixture_wrote(tmp_path: Path) -> None:
+    """A screen opened before a fixture saved data through the API shows the data only once it loads again."""
+    calls: list[str] = []
+    browser = _browser(tmp_path)
+    browser.page = _reloading_page(calls, "http://localhost:5173/projects/abc/stages")
+
+    browser.reload("http://localhost:5173")
+
+    assert calls == ["reload http://localhost:5173/projects/abc/stages", "wait load"]
+
+
+def test_a_page_not_showing_the_app_is_left_alone_after_a_fixture_writes(tmp_path: Path) -> None:
+    calls: list[str] = []
+    browser = _browser(tmp_path)
+    browser.page = _reloading_page(calls, "about:blank")
+
+    browser.reload("http://localhost:5173")
+
+    assert calls == []
+
+
 def test_an_arranged_upload_hands_the_control_the_file_the_step_names(tmp_path: Path) -> None:
     """A dialog that summarises a chosen file shows that summary only once a real file is chosen."""
     sample = tmp_path / "well-formed.docx"

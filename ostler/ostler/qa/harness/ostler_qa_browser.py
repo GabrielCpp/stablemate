@@ -351,6 +351,13 @@ class Browser:
         finally:
             self._close_arranging()
 
+    def reload(self, origin: str, *, timeout_ms: float = ARRANGE_TIMEOUT_MS) -> None:
+        """Load the scenario's page again when it shows the app at *origin*, so data a fixture wrote out of the page's sight shows on it."""
+        if self.page is None or urlsplit(self.page.url).netloc != urlsplit(origin).netloc:
+            return
+        self.page.reload(timeout=timeout_ms)
+        self.page.wait_for_load_state("load", timeout=timeout_ms)
+
     def restore(self, state: Mapping[str, Any]) -> None:
         """Put an earlier scenario's arranged session into this context, before the page opens the app."""
         side = self._context.new_page()
