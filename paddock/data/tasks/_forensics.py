@@ -25,7 +25,7 @@ ESCALATION_NODES = {
 
 PAUSE_RE = re.compile(r"\[([a-zA-Z0-9_.-]+)\]\s*⏸[^\n]*pausing\s*~?(\d+)\s*s")
 
-WATCHED = ("plan-qa", "audit-qa", "document-story", "review-story-documentation")
+WATCHED = ("qa-story", "document-story")
 
 DRIVING_NODE = "run_qa_plan"
 
@@ -235,18 +235,18 @@ def money(rows: list[dict[str, Any]]) -> str:
 
 
 def convergence(trials: list[dict[str, Any]]) -> str:
-    """The cost half of the headline: `| plan-qa 2.1 laps ~$0.94`, pooled over the round."""
+    """The cost half of the headline: `| qa-story 2.1 laps ~$0.94`, pooled over the round."""
     rows = [
         row
         for trial in trials
         for row in (trial.get("laps") or [])
-        if row.get("node") == "plan-qa"
+        if row.get("node") == "qa-story"
     ]
     if not rows:
         return ""
     items = sum(row.get("work_items") or 0 for row in rows)
     turns = sum(row.get("turns") or 0 for row in rows)
-    return f" | plan-qa {turns / items:.1f} laps {money(rows)}" if items else ""
+    return f" | qa-story {turns / items:.1f} laps {money(rows)}" if items else ""
 
 
 def time_leverage(trials: list[dict[str, Any]]) -> str:
