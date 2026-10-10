@@ -575,7 +575,8 @@ def _interaction_scenario(
     if not observed.covered:
         return []
     window = [f"    {WINDOW_VAR} = qa.window()"] if needs_window(observed.lines) else []
-    body = [*arrived, *trigger.setup, *window, *trigger.action]
+    departure = [] if observed.documents else vet_calls([screen.screen], book.screen_routes, ids, gaps, book.fragment_hosts)
+    body = [*arrived, *trigger.setup, *departure, *window, *trigger.action]
     covered.update(observed.covered)
     preconditions = [python_literal(row.precondition) for row in arranged]
     if arm.when:

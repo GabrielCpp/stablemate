@@ -3403,6 +3403,30 @@ def test_an_interaction_photographs_the_screen_its_checks_name() -> None:
     assert interactions[0].index(".click()") < interactions[0].index("qa.vet(")
 
 
+def test_an_interaction_that_claims_only_the_address_photographs_the_screen_it_leaves() -> None:
+    """A link whose claim is where it lands names no element, so the screen the click starts from is the one on record."""
+    interaction = f"{_SCREEN}#back-to-dashboard"
+    interaction_oid = f"okf:{interaction}:does:1"
+    context = _navigation_context(
+        _page_obligation("okf:new-policy:button:role:1", f"{_SCREEN}#create-policy-button",
+                          locators={"role": ["button"], "name": ["Create policy"]},
+                          checks=[_visible("button:Create policy")]),
+        _page_obligation(interaction_oid, interaction,
+                          locators={"on": ["[create-policy-button](#create-policy-button)"],
+                                    "trigger": ["click"],
+                                    "does": ["returns to the dashboard"]},
+                          checks=[{"call": "it", "name": "url", "args": {"equals": "/dashboard"}}]),
+        navigation=_arrival_navigation(),
+        screen_routes={_SCREEN: "/new-policy"},
+    )
+    source, gaps = compile_plan_gaps(context, story="demo-story")
+    assert source is not None
+    assert [g for g in gaps if g.obligation_id == interaction_oid] == []
+    (scenario,) = [s for s in source.split("@scenario(")[1:] if interaction_oid in s]
+    assert re.findall(r"qa\.vet\(\"(.+?)\"", scenario) == [_SCREEN]
+    assert scenario.index("qa.vet(") < scenario.index(".click()")
+
+
 def test_an_obligation_half_of_whose_checks_compile_is_claimed_by_nobody() -> None:
     """A claim whose refusal is visible on screen *and* leaves a stored count alone is one claim, and `unchanged` observes a `subject` no browser can see."""
     interaction = f"{_SCREEN}#submit-new-policy"
