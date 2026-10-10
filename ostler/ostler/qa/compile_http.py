@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import fnmatch
 import json
 import re
 from dataclasses import dataclass
@@ -612,6 +613,16 @@ def _http_request(
         return _UnbuiltStep("this journey could not compile the node this step names, so it "
                             "holds no response to capture the field from")
     method, path = route
+    if "*" in path:
+        member = book.checked_paths_by_node.get(ref)
+        if member is None or not fnmatch.fnmatchcase(member, path):
+            gaps.extend(Gap(oid, "uncompilable-claim",
+                            f"step {index} ({step.href!r}) states the pattern `{path}`, and no check on that "
+                            "node names one address it matches for this journey to request")
+                        for oid in ids)
+            return _UnbuiltStep("this journey could not pick an address for this step, so it holds no "
+                                "response to capture the field from")
+        path = member
     query = "" if "?" in path else book.queries_by_node.get(ref, "")
     node_rows = book.acts_by_node.get(ref, [])
     arranged = (None if (ref in book.acts_refused or not node_rows)

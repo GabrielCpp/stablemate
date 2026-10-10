@@ -33,6 +33,7 @@ class BookIndex:
     resolved_web_base_urls: dict[str, str]
     resolved_api_base_urls: dict[str, str]
     queries_by_node: dict[str, str] = field(default_factory=dict[str, str])
+    checked_paths_by_node: dict[str, str] = field(default_factory=dict[str, str])
     claims_by_node: dict[str, list[Obligation]] = field(default_factory=dict[str, list[Obligation]])
     fixture_pages: dict[str, frozenset[str]] = field(default_factory=dict[str, frozenset[str]])
     hop_acts: dict[tuple[str, str], list[CallRow]] = field(default_factory=dict[tuple[str, str], list[CallRow]])
@@ -158,6 +159,20 @@ def queries_by_node(obligations: list[Obligation]) -> dict[str, str]:
                 break
     return queries
 
+
+
+def checked_paths_by_node(obligations: list[Obligation]) -> dict[str, str]:
+    """Each node's checked path: the first one a `path=` check argument of its claims spells, in book order, without its query."""
+    paths: dict[str, str] = {}
+    for obligation in sorted(obligations, key=lambda o: o.doc_position):
+        if not _is_declared_claim(obligation) or obligation.node in paths:
+            continue
+        for row in obligation.checks:
+            path = row.args.get("path")
+            if isinstance(path, str) and path.startswith("/"):
+                paths[obligation.node] = path.partition("?")[0]
+                break
+    return paths
 
 def captures_by_node(obligations: list[Obligation]) -> dict[str, list[OwnedCapture]]:
     """Every node's declared captures, each tagged with its owning obligation id, in book order."""
