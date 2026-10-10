@@ -131,14 +131,12 @@ def _asserts_absence(row: CallRow) -> bool:
 
 
 def check_document(row: CallRow, obligation: Obligation) -> str:
-    """The screen document a check observes — the one its `locator=` names, or its own; none when the check asserts that what it names is not there."""
-    if _asserts_absence(row):
+    """The screen document a check observes — the one its `locator=` names, or its own; none when the check asserts that a thing another document declares is not there."""
+    document = next((located.node.split("#", 1)[0] for _, located in sorted(row.locates.items())
+                     if located.node), obligation.source)
+    if document != obligation.source and _asserts_absence(row):
         return ""
-    for param in sorted(row.locates):
-        node_id = row.locates[param].node
-        if node_id:
-            return node_id.split("#", 1)[0]
-    return obligation.source
+    return document
 
 
 def why_unmatchable_screen_name(route: str) -> str:

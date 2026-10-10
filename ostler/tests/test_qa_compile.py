@@ -2191,6 +2191,11 @@ def test_a_check_is_pointed_at_the_component_its_locator_names() -> None:
     assert _gap_kinds(gaps, oid) == []
 
 
+def _scenario_named(source: str, name: str) -> str:
+    """The one compiled scenario whose function name contains *name*."""
+    return next(chunk for chunk in source.split("@scenario(") if "def " in chunk and name in chunk)
+
+
 def test_a_check_that_another_screens_component_is_absent_vets_only_the_claims_own_screen() -> None:
     """A contractor's form shows no supplier heading, and the supplier's screen on the same route is the one it is not on: vetting that screen demands every supplier component on the contractor's page."""
     button = f"{_SCREEN}#new-policy-button"
@@ -2214,9 +2219,33 @@ def test_a_check_that_another_screens_component_is_absent_vets_only_the_claims_o
     )
     source, gaps = compile_plan_gaps(context, story="demo-story")
     assert source is not None
-    assert oid in _covers(source), source
-    assert f'qa.vet("{_SCREEN}"' in source
-    assert f'qa.vet("{variant}"' not in source
+    scenario = _scenario_named(source, "_open_form(")
+    assert f'qa.vet("{_SCREEN}"' in scenario
+    assert f'qa.vet("{variant}"' not in scenario
+    assert _gap_kinds(gaps, oid) == []
+
+
+def test_a_check_that_the_claims_own_component_is_gone_still_vets_its_screen() -> None:
+    """Narrowing a list to nothing leaves the rows gone and the list's screen shown: that check is the only one the claim makes, and a scenario that vets no screen fails."""
+    button = f"{_SCREEN}#clear-button"
+    oid = "okf:policy-list:clear-list:does:1"
+    gone = _located("#policy-row", f"{_SCREEN}#policy-row", {"selector": ["`tr.policy-row`"]})
+    gone["args"]["count"] = 0
+    context = _navigation_context(
+        _page_obligation("okf:policy-list:clear-button:visible:1", button,
+                          locators={"role": ["button"], "name": ["Clear"]},
+                          checks=[_visible("button:Clear")]),
+        _page_obligation(oid, f"{_SCREEN}#clear-list", kind="does",
+                          locators={"on": ["[clear-button](#clear-button)"],
+                                    "trigger": ["click"],
+                                    "does": ["empties the list"]},
+                          checks=[gone],
+                          fixtures=[{"name": "clerk", "args": [], "provides": "a clerk signed in"}]),
+        navigation=_arrival_navigation(),
+    )
+    source, gaps = compile_plan_gaps(context, story="demo-story")
+    assert source is not None
+    assert f'qa.vet("{_SCREEN}"' in _scenario_named(source, "_clear_list(")
     assert _gap_kinds(gaps, oid) == []
 
 
