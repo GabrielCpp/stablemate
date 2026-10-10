@@ -1356,6 +1356,46 @@ def test_a_node_that_signs_in_its_own_actor_drops_another_sign_in_on_the_walk(
     assert sorted(row["name"] for row in claim.get("fixturesDeclared", [])) == arranged
 
 
+@pytest.mark.parametrize(("node", "state", "arranged"), [
+    ("reviewer — a reviewer is signed in to the browser", "signed-in — a user is signed in to the browser",
+     ["signed-in"]),
+    ("signed-in — a user is signed in to the browser", "signed-in-with-item — a signed-in user owns one item",
+     ["signed-in", "signed-in-with-item"]),
+])
+def test_a_state_that_signs_in_its_own_actor_drops_its_components_sign_in(
+    tmp_path: Path, node: str, state: str, arranged: list[str],
+):
+    """A browser holds one session, so the component's sign-in yields to the one a state arranges unless the state's needs it."""
+    screens = tmp_path / "docs/features/acme/gui/screens"
+    fixtures = tmp_path / "docs/features/acme/fixtures"
+    screens.mkdir(parents=True)
+    fixtures.mkdir(parents=True)
+    (tmp_path / "app").mkdir()
+    (fixtures / "signed-in.md").write_text(_browser_fixture("Signed in"), encoding="utf-8")
+    (fixtures / "reviewer.md").write_text(_browser_fixture("Reviewer"), encoding="utf-8")
+    (fixtures / "signed-in-with-item.md").write_text(
+        _browser_fixture("Signed in with item", needs="[Signed in](signed-in.md)"), encoding="utf-8")
+    (screens / "items.md").write_text(_LIST_IN_FRONT, encoding="utf-8")
+    (screens / "editor.md").write_text(
+        _EDITOR_BEHIND.replace("- role: textbox", f"- fixture: {node}\n- role: textbox").replace(
+            "- states: shown while an item is open", f"- states: shown while an item is open\n  - fixture: {state}"),
+        encoding="utf-8")
+    (tmp_path / "app/editor.py").write_text("def render_title():\n    return 'old'\n", encoding="utf-8")
+    _git(tmp_path, "init")
+    _git(tmp_path, "config", "user.email", "qa@example.com")
+    _git(tmp_path, "config", "user.name", "QA")
+    _git(tmp_path, "add", ".")
+    _git(tmp_path, "commit", "-m", "base")
+    base = _git(tmp_path, "rev-parse", "HEAD")
+    (tmp_path / "app/editor.py").write_text("def render_title():\n    return 'new'\n", encoding="utf-8")
+
+    packet = build_context(tmp_path, base=base, source_roots={"acme": ["app"]})
+
+    by_id = {item["id"]: item for item in packet["obligations"]}
+    claim = by_id["okf:docs/features/acme/gui/screens/editor.md#title-field:states:1"]
+    assert sorted(row["name"] for row in claim.get("fixturesDeclared", [])) == arranged
+
+
 def test_a_node_the_change_deleted_is_still_described_by_the_base_revision(tmp_path: Path):
     """The counterpart, and the reason the merge exists at all: head wins per key only for a node head still has."""
     (tmp_path / "docs/features/acme/gui/screens").mkdir(parents=True)
