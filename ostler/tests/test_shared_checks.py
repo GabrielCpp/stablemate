@@ -50,3 +50,35 @@ def test_each_claim_with_its_own_check_is_not_reported(repo: Path):
             '- verify: count(subject="ledger entries after a replay", equals=1)\n')
 
     assert _shared(repo, body) == []
+
+
+_ENDPOINT = "docs/features/acme/http/get-ledger.md"
+_ENDPOINT_HEAD = ("---\ntype: endpoint\ntitle: get-ledger\n---\n# get-ledger\n\n"
+                  "- method: GET\n- path: /api/ledger\n")
+_REFUSED = 'http_status(code=401, title="Unauthorized")'
+
+
+def _shared_on_endpoint(repo: Path, body: str) -> list[str]:
+    write(repo / _ENDPOINT, _ENDPOINT_HEAD + body)
+    return [f.message for f in doctor.run(load(repo)).findings if f.code == "shared-check"]
+
+
+def test_one_check_under_two_claims_sending_different_requests_is_not_reported(repo: Path):
+    body = ("- does: returns 401 to an anonymous caller\n"
+            f"- verify: {_REFUSED}\n"
+            "- does: returns 401 to a caller with no account\n"
+            f"- verify: {_REFUSED}\n"
+            '- arrange: header(name="Authorization", value="Bearer unknown")\n')
+
+    assert _shared_on_endpoint(repo, body) == []
+
+
+def test_one_check_under_two_claims_sending_the_same_request_is_reported(repo: Path):
+    body = ("- does: returns 401 to a caller with no account\n"
+            f"- verify: {_REFUSED}\n"
+            '- arrange: header(name="Authorization", value="Bearer unknown")\n'
+            "- does: refuses a caller with no account\n"
+            f"- verify: {_REFUSED}\n"
+            '- arrange: header(name="Authorization", value="Bearer unknown")\n')
+
+    assert len(_shared_on_endpoint(repo, body)) == 1

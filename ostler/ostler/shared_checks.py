@@ -1,9 +1,11 @@
 """`ostler doctor`'s check that one observation is not pinned under several claims of a node.
 
 A check written once under a list of claims observes that list. The same check written again
-under another claim observes nothing new: the second claim reads as proven while no assertion
-looks at what it says. A node that does this has usually padded every claim with whichever
-check was at hand, so the claims that have no observation of their own stop showing as debt.
+under another claim that sends the same request observes nothing new: the second claim reads as
+proven while no assertion looks at what it says. Under a claim that arranges a different request,
+the same check observes a different response, and proves that claim on its own. A node that
+repeats a check for one request has usually padded every claim with whichever check was at hand,
+so the claims that have no observation of their own stop showing as debt.
 """
 
 from __future__ import annotations
@@ -19,16 +21,19 @@ def _spelled(value: str) -> str:
     return parsed.text() if isinstance(parsed, checks.CheckCall) else " ".join(value.split())
 
 
-def _repeated(node: UINode) -> dict[str, tuple[list[int], set[tuple[str, int]]]]:
-    """Each check this node writes at two or more `verify:` bullets: those indexes, and the claims they bind to."""
+def _repeated(node: UINode) -> list[tuple[str, list[int], set[tuple[str, int]]]]:
+    """Each check this node writes at two or more `verify:` bullets of claims arranging the same acts: the check, those indexes, and the claims they bind to."""
     _, bound = registry.attributed_check_bullets(node.type, node.bullet_order, node.combiners)
-    seen: dict[str, tuple[set[int], set[tuple[str, int]]]] = {}
+    _, acts = registry.attributed_acts(node.type, node.bullet_order, node.combiners)
+    seen: dict[tuple[str, frozenset[str]], tuple[set[int], set[tuple[str, int]]]] = {}
     for claim, values in bound.items():
+        arranged = frozenset(" ".join(act.split()) for act in acts.get(claim, []))
         for verify_index, value in values:
-            indexes, claims = seen.setdefault(_spelled(value), (set(), set()))
+            indexes, claims = seen.setdefault((_spelled(value), arranged), (set(), set()))
             indexes.add(verify_index)
             claims.add(claim)
-    return {text: (sorted(indexes), claims) for text, (indexes, claims) in seen.items() if len(indexes) >= 2}
+    repeated = [(text, sorted(indexes), claims) for (text, _), (indexes, claims) in seen.items() if len(indexes) >= 2]
+    return sorted(repeated, key=lambda found: (found[0], found[1]))
 
 
 def check_shared_checks(graph: Graph, f: list[Finding]) -> None:
@@ -39,7 +44,7 @@ def check_shared_checks(graph: Graph, f: list[Finding]) -> None:
             continue
         verify_key = keys[0]
         rel = node.path.resolve().relative_to(graph.root.resolve()).as_posix()
-        for text, (indexes, claims) in sorted(_repeated(node).items()):
+        for text, indexes, claims in _repeated(node):
             named = ", ".join(f"`{key}:{index}`" for key, index in sorted(claims))
             f.append(Finding(
                 "error", "shared-check",
