@@ -3084,6 +3084,55 @@ def test_a_screen_interaction_whose_first_act_visits_its_screen_opens_no_root_be
     assert scenario.index('qa.fixture("signed-in")') < scenario.index('qa.goto("/policy-list")')
 
 
+_OPEN_POLICY = "okf:policy-list:open-policy:does:1"
+
+
+def _signed_in_walk(fixture_screens: dict[str, str]) -> Plan | Refusal:
+    sign_in = "docs/features/policy/gui/screens/sign-in.md"
+    table = {"selector": ["#policy-table"]}
+    navigation = _arrival_navigation()
+    navigation["policy"]["routes"] = {_SCREEN: [{"node": f"{sign_in}#submit", "from": sign_in, "label": "Submit sign in"}]}
+    navigation["policy"]["doors"] = {}
+    context = _navigation_context(
+        _page_obligation(_OPEN_POLICY, f"{_SCREEN}#open-policy",
+                         locators={"on": ["[policy-table](#policy-table)"], "trigger": ["click"],
+                                   "does": ["opens it"]},
+                         checks=[_located("#policy-table", f"{_SCREEN}#policy-table", table)],
+                         fixtures=[{"name": "seeded-ledger", "args": [], "provides": "a ledger",
+                                    "providesKeys": []}]),
+        _page_obligation(f"{_SCREEN}#policy-table:carrier", f"{_SCREEN}#policy-table",
+                         locators=table, checks=[]) | {"required": False},
+        _page_obligation("okf:sign-in:sign-in:does:1", f"{sign_in}#sign-in", source=sign_in,
+                         locators={"on": ["[submit](#submit)"], "trigger": ["click"], "does": ["signs in"]},
+                         checks=[_located("#policy-table", f"{_SCREEN}#policy-table", table)],
+                         acts=[_act("fill", f"{sign_in}#email", {"selector": ["#email"]},
+                                    locator="#email", value="reader@example.com")]),
+        _page_obligation(f"{sign_in}#submit:carrier", f"{sign_in}#submit", source=sign_in,
+                         locators={"selector": ["#submit"]}, checks=[]) | {"required": False},
+        _page_obligation(f"{sign_in}#email:carrier", f"{sign_in}#email", source=sign_in,
+                         locators={"selector": ["#email"]}, checks=[]) | {"required": False},
+        navigation=navigation,
+    ) | {"fixtureScreens": fixture_screens}
+    return _compile_plan_gaps(context, story="demo-story")
+
+
+def test_a_screen_scenario_walks_from_the_root_through_the_sign_in_its_route_needs() -> None:
+    result = _signed_in_walk({})
+    assert isinstance(result, Plan)
+    scenario = result.source.split("@scenario(")[-1]
+
+    assert _OPEN_POLICY in _covers(result.source)
+    assert scenario.index('qa.goto("/")') < scenario.index('.fill("reader@example.com")') < scenario.index('"#submit"')
+
+
+def test_a_fixture_left_off_the_route_refuses_a_walk_that_signs_in_again() -> None:
+    result = _signed_in_walk({"seeded-ledger": "docs/features/policy/gui/screens/stages.md"})
+
+    assert isinstance(result, Refusal) or _OPEN_POLICY not in _covers(result.source)
+    assert _gap_kinds(result.gaps, _OPEN_POLICY) == ["unresolved-precondition"]
+    assert any("replace the fixture's session" in g.detail for g in result.gaps if g.obligation_id == _OPEN_POLICY)
+
+
 def test_a_visit_that_names_no_path_after_the_origin_is_refused() -> None:
     result = _compile_plan_gaps(_arrival_flow([_visit("https://example.com/de")]), story="demo-story")
     details = [g.detail for g in result.gaps if g.obligation_id == f"okf:{_FLOW}:end-state"]

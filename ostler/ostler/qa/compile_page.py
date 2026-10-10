@@ -305,10 +305,19 @@ def _scenario_head(
     ]
 
 
+def _walk_acts(hops: tuple[NavHop, ...], destination: str, book: BookIndex) -> bool:
+    """Whether any click on the walk along *hops* to *destination* needs acts before it."""
+    return any(
+        book.hop_acts.get((hop.node, hops[index + 1].from_page if index + 1 < len(hops) else destination))
+        for index, hop in enumerate(hops)
+        if trigger_name(next(iter(book.locators_by_node.get(hop.node, NO_LOCATORS).trigger), "")) not in ARRIVAL_TRIGGERS
+    )
+
+
 def _arrive(
     screen: _PageScreen, arranged: list[FixtureRow], gaps: list[Gap], ids: list[str], *, visits: bool = False,
-) -> list[str]:
-    """Arrange the fixtures, then open the surface's root and click through to the screen, unless the scenario's own first act visits it or the last fixture's own browser steps already left it there or on its route. A fixture that left the browser off the route reopens the nearest entry path on it rather than the root, so the walk does not sign in again."""
+) -> list[str] | None:
+    """Arrange the fixtures, then open the surface's root and click through to the screen, unless the scenario's own first act visits it or the last fixture's own browser steps already left it there or on its route. A fixture that left the browser off the route reopens the nearest entry path on it rather than the root, so the walk does not sign in again. With no such entry, a walk from the root that performs acts on the way is refused as a gap, and None is returned: those acts, such as a sign-in, would replace the session the fixture left."""
     fixtures = [fixture_call(row) for row in arranged]
     landed = screen.book.fixture_screens.get(arranged[-1].name) if arranged else None
     if visits or landed == screen.screen:
@@ -319,6 +328,15 @@ def _arrive(
     if landed is not None and screen.path.reopened is not None:
         door, rest = screen.path.reopened
         return [*fixtures, f"    qa.goto({python_literal(door)})", *walk_hops(rest, screen.screen, screen.book, gaps, ids)]
+    if landed is not None and _walk_acts(screen.path.hops, screen.screen, screen.book):
+        gaps.extend(Gap(oid, "unresolved-precondition",
+                         f"fixture {arranged[-1].name!r} leaves the browser on {landed!r}, off the route to "
+                         f"{screen.screen!r}, and no screen on that route states an entry path to reopen. "
+                         "The walk from the root performs acts on the way, such as a sign-in, that would "
+                         "replace the fixture's session. Give a screen on the route an entry path, or end "
+                         "the fixture on the route")
+                    for oid in ids)
+        return None
     return [
         *fixtures,
         f"    qa.goto({python_literal(screen.path.root_path)})",
@@ -340,6 +358,8 @@ def _arrival_scenario(
     first_acts = [screen.book.acts_by_node.get(node_id, []) for node_id in sorted(arrival.nodes)]
     visits = bool(first_acts) and bool(first_acts[0]) and first_acts[0][0].name == "visit"
     body = _arrive(screen, arranged, gaps, ids, visits=visits)
+    if body is None:
+        return []
     vet = vet_calls([screen.screen], screen.book.screen_routes, ids, gaps, screen.book.fragment_hosts)
     if not visits:
         body.extend(vet)
@@ -518,6 +538,8 @@ def _interaction_scenario(
                                *obligations]).rows
     node_acts = book.acts_by_node.get(node_id, [])
     arrived = _arrive(screen, arranged, gaps, ids, visits=bool(node_acts) and node_acts[0].name == "visit")
+    if arrived is None:
+        return []
     trigger = _performed_trigger(book, node_id, arm, gaps, ids)
     if trigger is None:
         return []
