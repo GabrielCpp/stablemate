@@ -124,3 +124,17 @@ def test_the_readers_see_what_a_real_page_stored_and_copied() -> None:
             assert verify["clipboard"](page, {"text": "/fr/guide?tab=2"}).passed is True
         finally:
             browser.close()
+
+
+def test_url_sees_a_real_page_move_its_address_late() -> None:
+    playwright = pytest.importorskip("playwright.sync_api")
+    with playwright.sync_playwright() as pw:
+        browser = pw.chromium.launch()
+        try:
+            page = browser.new_page()
+            page.route("http://localhost:9/**", lambda route: route.fulfill(body=_PAGE, content_type="text/html"))
+            page.goto("http://localhost:9/projects/p1/edit")
+            page.evaluate("setTimeout(() => history.pushState({}, '', '/dashboard'), 500)")
+            assert harness.VERIFIERS["url"](page, {"equals": "/dashboard"}).passed is True
+        finally:
+            browser.close()

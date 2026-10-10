@@ -68,14 +68,21 @@ _STORED_READ_JS = """async ({key, database, store}) => {
 T = TypeVar("T")
 
 
-def _settled(read: Callable[[], T], done: Callable[[T], bool]) -> T:
+def _pause(observed: object) -> Callable[[], object]:
+    wait = getattr(observed, "wait_for_timeout", None)
+    if callable(wait):
+        return lambda: wait(100)
+    return lambda: time.sleep(0.1)
+
+
+def _settled(read: Callable[[], T], done: Callable[[T], bool], pause: Callable[[], object]) -> T:
     """What *read* returns once *done* holds of it, or its last reading after `STATE_WAIT_S`, for state a screen writes late."""
     deadline = time.monotonic() + STATE_WAIT_S
     while True:
         reading = read()
         if done(reading) or time.monotonic() >= deadline:
             return reading
-        time.sleep(0.1)
+        pause()
 
 
 def _evaluate(observed: object) -> Callable[..., object]:
@@ -118,7 +125,7 @@ class UrlReading:
 def read_url(observed: object, args: Args) -> UrlReading:
     if isinstance(observed, str):
         return UrlReading(address=_address(observed))
-    address = _settled(lambda: _address(str(getattr(observed, "url"))), lambda read: _url_matches(read, args))
+    address = _settled(lambda: _address(str(getattr(observed, "url"))), lambda read: _url_matches(read, args), _pause(observed))
     return UrlReading(address=address)
 
 
@@ -159,7 +166,7 @@ def read_stored(observed: object, args: Args) -> StoredReading:
         values = _strings(evaluate(_STORED_READ_JS, location))
         return StoredReading(values=tuple(value for value in values if _says(value, args)))
 
-    return _settled(read, lambda reading: _stored_holds(reading, args))
+    return _settled(read, lambda reading: _stored_holds(reading, args), _pause(observed))
 
 
 def verify_stored(reading: StoredReading, args: Args) -> Verdict:
@@ -189,6 +196,7 @@ def read_clipboard(observed: object, args: Args) -> ClipboardReading:
     return _settled(
         lambda: ClipboardReading(writes=_strings(evaluate(_CLIPBOARD_READ_JS))),
         lambda reading: _clipboard_holds(reading, args),
+        _pause(observed),
     )
 
 
