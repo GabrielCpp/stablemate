@@ -33,7 +33,7 @@ from ostler.qa.plan_source import Gap
 from ostler.qa.runbook import bullet_text
 from ostler.qa.tools import opted_in_tools
 from workhorse_workflows.okf_book.shared.blockers import Blocker, Phase, Side
-from workhorse_workflows.okf_book.shared.book_compilation import compile_services, gap_page, obligation_node
+from workhorse_workflows.okf_book.shared.book_compilation import compile_services, declares_unexercised, gap_page, obligation_node
 from workhorse_workflows.okf_book.shared.entries import book_dir, entries_path
 from workhorse_workflows.okf_book.shared.source_coverage import SAMPLE_FILES, UNCITED_CODE, uncited_by_folder
 
@@ -373,7 +373,7 @@ def page_problems(root: Path, service: str, source_folder: str = "") -> tuple[Pa
         compilation = compile_services(root, (service,))
         gaps = [gap for gap in compilation.gaps if gap_page(gap) in wanted and gap_side(gap) is Side.BOOK]
         entries = entries_path(root, service)
-        unchecked = not compilation.planned and not gaps and entries.is_file()
+        unchecked = not compilation.planned and not gaps and entries.is_file() and not declares_unexercised(book, service)
         uncited = uncited_by_folder(root, source_folder, book, service) if entries.is_file() else {}
         return (
             *_entries_problems(root, service),

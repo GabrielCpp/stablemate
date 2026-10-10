@@ -20,7 +20,7 @@ from workhorse_workflows.kit import find_docs_root
 from workhorse_workflows.kit.qa.runner import ensure_stack, release_stack, stack_stopped
 from workhorse_workflows.okf_book.shared.entries import book_dir
 from workhorse_workflows.okf_book.shared.local_calls import CallWatch, Runbook, read_runbook
-from workhorse_workflows.okf_book.shared.book_compilation import gap_page
+from workhorse_workflows.okf_book.shared.book_compilation import declares_unexercised, gap_page
 from workhorse_workflows.okf_book.shared.page_check import PageProblem
 from workhorse_workflows.okf_book.shared.scenarios import RunSummary, compile_book, plan_scenarios, run_scenarios, select_scenarios
 
@@ -130,6 +130,15 @@ def stack_stopped_result(gaps: tuple[str, ...], reason: str, app_logs: Sequence[
     """The run that stopped because the app stopped serving partway through, which measured nothing of the book after that."""
     logs = tuple(f"problem: {line}" for line in app_log_lines(app_logs, "the app stopped serving"))
     return ExerciseResult(lines=(*gaps, f"problem: the app's stack stopped serving: {reason}", *logs), stack_down=True)
+
+
+def unplanned_problem(root: Path, service: str) -> str:
+    """Why the service's book compiled to no plan: its index declares it unexercised, or no claim of it declares a check."""
+    with index.session(root):
+        unexercised = declares_unexercised(model.load(find_docs_root("", str(root))), service)
+    if unexercised:
+        return "the book's index declares it unexercised, so it compiles to no plan and the run exercises nothing"
+    return "the book compiles to no plan"
 
 
 def compile_scenarios(root: Path, service: str, spec: Path, targets: Sequence[str] = ()) -> CompileOutcome:

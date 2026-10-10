@@ -14,6 +14,7 @@ from workhorse_workflows.okf_book.shared.book_run import (
     book_runbooks,
     run_plan,
     stack_down_result,
+    unplanned_problem,
     with_app_logs,
 )
 from workhorse_workflows.okf_book.shared.book_flow import BookFlow
@@ -28,10 +29,11 @@ class ExerciseBook(BookFlow):
     service: str = ""
 
     def start(self) -> Continue[...] | Done:
-        """Compile the book into scenarios. A book that compiles to no plan has failed its run."""
+        """Compile the book into scenarios. A book that compiles to no plan has failed its run, with the reason it has none."""
         outcome = compile_scenarios(self.root, self.service, self.records_dir / SPEC_DIR / self.service)
         if not outcome.planned:
-            return Done(failed_run(outcome.gaps, "the book compiles to no plan")).because("the book compiles to no plan")
+            problem = unplanned_problem(self.root, self.service)
+            return Done(failed_run(outcome.gaps, problem)).because("the book compiles to no plan")
         return Continue(outcome, self.bring_up_stack, gaps=outcome.gaps).because("bring the app's stack up")
 
     def bring_up_stack(self, gaps: tuple[str, ...], retried_in: str = "") -> Continue[...] | Done:

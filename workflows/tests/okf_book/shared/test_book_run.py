@@ -21,6 +21,7 @@ from workhorse_workflows.okf_book.shared.book_run import (
     stack_down_failures,
     stack_down_result,
     stack_pages,
+    unplanned_problem,
     unstarted_failures,
     with_app_logs,
 )
@@ -87,6 +88,15 @@ def test_a_stack_that_cannot_come_up_is_a_problem_on_each_runbook_of_its_own_boo
         WEB_STACK.as_posix(): [f"{WEB_STACK.as_posix()}: the app's stack cannot come up: port 8080 is held by groom"]
     }
     assert stack_down_failures(repo, "web-app", ExerciseResult(lines=("problem: the book compiles to no plan",))) == {}
+
+
+def test_a_book_that_compiles_to_no_plan_says_when_its_index_declares_it_unexercised(app: Callable[[str], Path]) -> None:
+    repo = app("tally-cli")
+    before = unplanned_problem(repo, "tally")
+    _ = (repo / "docs/features/tally/index.md").write_text("---\ntitle: tally\nexercised: false\n---\n# tally\n", encoding="utf-8")
+
+    assert before == "the book compiles to no plan"
+    assert unplanned_problem(repo, "tally") == "the book's index declares it unexercised, so it compiles to no plan and the run exercises nothing"
 
 
 def _bring_up_returns(monkeypatch: pytest.MonkeyPatch, results: list[dict[str, str]]) -> None:

@@ -16,6 +16,7 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, JsonValue, TypeAdapter, model_validator
 
 from ostler import index
+from ostler.model import Graph
 from ostler.qa.compile import Plan, compile_plan_gaps
 from ostler.qa.context import book_context, validate_context, write_context
 from ostler.qa.plan_source import Gap
@@ -117,6 +118,11 @@ class _ServicesContext(BaseModel):
                 arranging[fixture] = (*arranging.get(fixture, ()), obligation.id)
         plan = compiled if isinstance(compiled, Plan) else None
         return BookCompilation(plan=plan, gaps=gaps, obligations=obligations, arranging=arranging)
+
+
+def declares_unexercised(book: Graph, service: str) -> bool:
+    """Whether the service's book declares `exercised: false` on its index, so none of its claims owes a check."""
+    return f"{(FEATURES_DIR / service).as_posix()}/" in book.unexercised_books()
 
 
 def compile_services(root: Path, services: Iterable[str], spec: Path | None = None) -> BookCompilation:

@@ -24,6 +24,7 @@ from workhorse_workflows.okf_book.shared.book_run import (
     release,
     run_plan,
     stack_down_result,
+    unplanned_problem,
     with_app_logs,
 )
 
@@ -51,7 +52,7 @@ def exercise_book(kept: KeptStack, root: Path, service: str, spec: Path, targets
         named = ", ".join(outcome.unmatched)
         return failed_run(outcome.gaps, f"no scenario runs {named}: name a page of the book a scenario covers, or a fixture page a claim arranges")
     if not outcome.planned:
-        return failed_run(outcome.gaps, "the book compiles to no plan")
+        return failed_run(outcome.gaps, unplanned_problem(root, service))
     stack = kept.up(root, service)
     try:
         if not stack.up:

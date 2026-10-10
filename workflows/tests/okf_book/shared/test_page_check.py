@@ -103,10 +103,12 @@ def test_a_cli_page_that_names_no_binary_cannot_be_invoked(app: Callable[[str], 
     ]
 
 
-def _unchecked_book(repo: Path, *, flow: bool) -> list[str]:
+def _unchecked_book(repo: Path, *, flow: bool, unexercised: bool = False) -> list[str]:
     book = repo / "docs/features/tally"
     shutil.rmtree(book)
     book.mkdir()
+    if unexercised:
+        _ = (book / "index.md").write_text("---\ntitle: tally\nexercised: false\n---\n# tally\n", encoding="utf-8")
     links = "- [ledger](ledger.md)\n" + ("- [track a trip](track-a-trip.md)\n" if flow else "")
     _ = (book / "entries.md").write_text(f"---\ntype: entries\ntitle: tally\n---\n# tally\n\n{links}", encoding="utf-8")
     _ = (book / "ledger.md").write_text("---\ntype: concept\ntitle: ledger\n---\n# ledger\n\nThe ledger keeps every expense.\n", encoding="utf-8")
@@ -141,6 +143,12 @@ def test_a_book_with_no_flow_and_no_check_is_a_problem_on_every_page_but_its_ent
         "docs/features/tally/ledger.md: no claim of this book declares a check, so a run has nothing to exercise. Give the claims a "
         + "user can observe on this page a `- verify:` bullet that checks what they see."
     ]
+
+
+def test_a_book_declared_unexercised_owes_no_check(app: Callable[[str], Path]) -> None:
+    repo = app("tally-cli")
+
+    assert _unchecked_book(repo, flow=True, unexercised=True) == []
 
 
 def test_gaps_are_grouped_per_node_so_each_problem_names_the_claims_of_one_node() -> None:
