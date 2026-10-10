@@ -73,6 +73,7 @@ _SERVE_SETTLE_S = 0.5
 
 _BACKGROUNDED = re.compile(r"(?<![&|])&\s*$")
 
+ANNOUNCED_ROLES = frozenset({"alert", "status"})
 _NODE_REF = re.compile(r"(?<![\w.])@([a-zA-Z0-9][a-zA-Z0-9_-]*)\.([a-zA-Z0-9][a-zA-Z0-9_-]*)")
 _CAPTURE_REF = re.compile(r"(?<![\w.])\$([a-zA-Z0-9][a-zA-Z0-9_-]*)")
 _ID_TOKEN = re.compile(r"\b[0-9a-fA-F]{16,}\b")
@@ -1631,7 +1632,16 @@ class Qa:
         A page that shows no such element yet is waited on until one appears, so the choice is made against what it renders.
         A page that streams data never goes idle, so the element itself is the signal, not the network.
         A *template* names a control rendered once per item, so each hole matches any text and the first instance answers.
+        A live region's name is the text it announces, since a browser computes no name from an alert's or a status's content.
         """
+        if role in ANNOUNCED_ROLES and isinstance(name, str) and not kwargs:
+            found = self.browser_page.get_by_role(role).filter(has_text=name)
+            if found.count() == 0:
+                try:
+                    found.first.wait_for(state="attached", timeout=SETTLE_WAIT_MS)
+                except Exception:
+                    return found
+            return found
         if template is not None:
             found = self.browser_page.get_by_role(role, name=template_pattern(template), **kwargs)
             try:
