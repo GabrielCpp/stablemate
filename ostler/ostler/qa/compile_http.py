@@ -328,8 +328,9 @@ def _node_credentials(obligations: list[Obligation]) -> dict[str, tuple[CallRow,
     """Each endpoint's `header` acts, from every claim of it that arranges one and does not expect a refusal, less a name two claims set apart. A claim that expects a 401 or a 403 names the caller the endpoint refuses, which is its own to send."""
     values: dict[str, dict[str, set[str]]] = {}
     rows: dict[str, dict[str, CallRow]] = {}
+    stated = _stated_statuses(obligations)
     for obligation in obligations:
-        if _expect_status(obligation.checks) in _REFUSED:
+        if _claim_status(obligation, stated.get(_request_key(obligation))) in _REFUSED:
             continue
         for row in obligation.acts:
             if row.name != "header" or not obligation.node:
@@ -373,19 +374,43 @@ def _header_pair(row: CallRow) -> tuple[str, str]:
 def _node_caller_headers(obligations: list[Obligation]) -> dict[str, frozenset[tuple[str, str]]]:
     """Each endpoint's headers its claims send as the caller, from every claim of it that does not expect a 401."""
     sent: dict[str, set[tuple[str, str]]] = {}
+    stated = _stated_statuses(obligations)
     for obligation in obligations:
-        if not obligation.node or _expect_status(obligation.checks) == 401:
+        if not obligation.node or _claim_status(obligation, stated.get(_request_key(obligation))) == 401:
             continue
         pairs = sent.setdefault(obligation.node, set())
         pairs.update(_header_pair(row) for row in obligation.acts if row.name == "header")
     return {node: frozenset(pairs) for node, pairs in sent.items()}
 
 
+def _request_key(obligation: Obligation) -> tuple[str, frozenset[str], frozenset[str]]:
+    """The request a claim sends, as its node, its acts and the fixtures it builds."""
+    return (obligation.node, frozenset(row.call for row in obligation.acts),
+            frozenset(row.name for row in obligation.fixtures))
+
+
+def _stated_statuses(obligations: list[Obligation]) -> dict[tuple[str, frozenset[str], frozenset[str]], int]:
+    """The one status the claims sending each request state it is answered with, for each request whose claims state exactly one."""
+    stated: dict[tuple[str, frozenset[str], frozenset[str]], set[int]] = {}
+    for obligation in obligations:
+        status = _expect_status(obligation.checks)
+        if obligation.node and status is not None:
+            stated.setdefault(_request_key(obligation), set()).add(status)
+    return {key: next(iter(codes)) for key, codes in stated.items() if len(codes) == 1}
+
+
+def _claim_status(obligation: Obligation, stated: int | None) -> int | None:
+    """The status a claim expects: its own `http_status`, else the one *stated* by the claims sending the same request."""
+    own = _expect_status(obligation.checks)
+    return own if own is not None else stated
+
+
 def _claim_acts(
     obligation: Obligation, credentials: tuple[CallRow, ...], caller: frozenset[tuple[str, str]] = frozenset(),
+    stated: int | None = None,
 ) -> tuple[CallRow, ...]:
     """The acts a claim sends: its own, plus each endpoint header it does not set. A claim that expects a 401 is about the anonymous caller, so it sends none of the caller's headers, even one it repeats."""
-    if _expect_status(obligation.checks) == 401:
+    if _claim_status(obligation, stated) == 401:
         return tuple(row for row in obligation.acts if row.name != "header" or _header_pair(row) not in caller)
     own = {row.text_arg("name") for row in obligation.acts if row.name == "header"}
     return (*obligation.acts, *(row for row in credentials if row.text_arg("name") not in own))
@@ -394,8 +419,9 @@ def _claim_acts(
 def _claim_request(
     obligation: Obligation, observed: str, produced: _Produced, gaps: list[Gap],
     credentials: tuple[CallRow, ...] = (), caller: frozenset[tuple[str, str]] = frozenset(),
+    stated: int | None = None,
 ) -> _ClaimRequest | _UnbuiltClaimRequest:
-    """The request one endpoint claim makes into *observed*, or why the book gives it none."""
+    """The request one endpoint claim makes into *observed*, or why the book gives it none. A claim that checks no status expects the one *stated* by the claims sending the same request."""
     route = _route(obligation.locators)
     if route is None:
         bad_method = _invalid_method(obligation.locators)
@@ -407,7 +433,7 @@ def _claim_request(
         return _UnbuiltClaimRequest(why, ScenarioRefusal("uncompilable-claim", why))
     method, template = route
     rows = obligation.checks
-    status = _expect_status(rows)
+    status = _claim_status(obligation, stated)
     if status is not None and status >= _SERVER_FAULT:
         why = f"no request a caller sends makes a healthy app answer {status}"
         return _UnbuiltClaimRequest(why, ScenarioRefusal("unarrangeable-server-fault", why))
@@ -417,7 +443,7 @@ def _claim_request(
                     f"the path references {ref!r}, not resolvable without running the plan")
                 for ref in path_refs if not produced.resolves(ref))
     wants_body = method not in _BODILESS_METHODS
-    act_rows = _claim_acts(obligation, credentials, caller)
+    act_rows = _claim_acts(obligation, credentials, caller, stated)
     arranged = None if (not act_rows or obligation.acts_unparsed) else _http_arrangement(act_rows, later_replaces=True)
     if wants_body and (arranged is None or not arranged.states_body()):
         why = "the book carries no request body"
@@ -528,6 +554,7 @@ def _scenario_body(obligations: list[Obligation], arranging: list[Obligation], f
     ordered = sorted(obligations, key=lambda o: o.doc_position)
     credentials = _node_credentials(arranging)
     callers = _node_caller_headers(arranging)
+    statuses = _stated_statuses(arranging)
     for lender in _credential_lenders(obligations, arranging):
         produced.record_fixtures(lender)
     for index, obligation in enumerate(ordered, start=1):
@@ -538,7 +565,8 @@ def _scenario_body(obligations: list[Obligation], arranging: list[Obligation], f
         refusal = _deletes_shared_fixture(obligation, fixture_pages)
         request = (_UnbuiltClaimRequest(refusal.detail, refusal) if refusal is not None
                    else _claim_request(obligation, observed, produced, gaps,
-                                       credentials.get(obligation.node, ()), callers.get(obligation.node, frozenset())))
+                                       credentials.get(obligation.node, ()), callers.get(obligation.node, frozenset()),
+                                       statuses.get(_request_key(obligation))))
         claim_lines = _request_lines(oid, request, observed, gaps)
         responded = observed if isinstance(request, _ClaimRequest) else None
         claim_lines.extend(_claim_captures(obligation, responded, produced, gaps, captured))

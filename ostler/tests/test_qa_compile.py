@@ -845,6 +845,27 @@ def test_each_claim_of_a_page_runs_in_its_own_claim_block() -> None:
     compile(source, "qa_plan.py", "exec")
 
 
+def test_a_claim_checking_only_the_body_expects_the_status_its_same_request_sibling_states() -> None:
+    """A refusal's body and its status are two claims about one request, so the body claim must not demand a success the status claim rules out."""
+    detail, status, other = (f"okf:docs/features/demo/globex.md#get-things:{arm}" for arm in ("does:1", "emits:1", "does:2"))
+    forged = _header_act("Authorization", "Bearer forged")
+    context = _context(
+        _obligation(detail, checksDeclared=[{"call": "d", "name": "json_path",
+                                             "args": {"path": "$.detail", "equals": "no account"}}],
+                    docPosition=[1, 0], node="get-things", actsDeclared=[forged]),
+        _obligation(status, checksDeclared=[{"call": "no", "name": "http_status", "args": {"code": 401}}],
+                    docPosition=[2, 0], node="get-things", actsDeclared=[forged]),
+        _obligation(other, checksDeclared=[{"call": "n", "name": "json_path",
+                                            "args": {"path": "$.name", "equals": "acme"}}],
+                    docPosition=[3, 0], node="get-things"),
+    )
+    source, _gaps = compile_plan_gaps(context, story="demo-story")
+    assert source is not None
+    assert 'observed_1 = qa.http.get("/api/things", expect_status=401, headers={"Authorization": "Bearer forged"})' in source
+    assert 'observed_3 = qa.http.get("/api/things")' in source
+    compile(source, "qa_plan.py", "exec")
+
+
 def test_a_response_header_check_compiles_against_the_response_it_reads() -> None:
     """A route that streams a file is proven by the header that names its type, read off the same response the status came from."""
     oid = "okf:docs/features/demo/globex.md#get-report:does:1"
