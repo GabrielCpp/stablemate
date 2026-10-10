@@ -403,7 +403,7 @@ def _attributed(
     combiners: Mapping[int, str],
     keys: Sequence[str],
 ) -> tuple[list[str], dict[tuple[str, int], list[str]]]:
-    """Bind each bullet in *keys* to the nearest normative bullet above it, in document order.
+    """Bind each bullet in *keys* to the nearest normative bullet above it that mints a claim, in document order.
 
     A bullet nested under one child of a claim list binds to that child alone, whatever the list's combiner.
     """
@@ -433,6 +433,8 @@ def _attributed_indexed(
         key, value, bullet = str(row[0]), str(row[1]), int(row[2])
         if key in normative:
             counts[key] = counts.get(key, 0) + 1
+            if states_no_claim(key, value):
+                continue
             if bullet != authored:
                 owner, authored = [], bullet
             owner.append((key, counts[key]))
