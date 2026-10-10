@@ -73,6 +73,14 @@ class StackTornDown(CoderResult):
     notes: str = ""
 
 
+class StackTarget(CoderResult):
+    """`stack_target`: which book's stack this run brings up, and the copy it holds there."""
+
+    near: str = ""
+    lease: str = ""
+    env: dict[str, str] = Field(default_factory=dict)
+
+
 class BacklogDrain(CoderResult):
     """`append-backlog-item.py` — the coder→author edge, drained into `docs/backlog.md`."""
 
@@ -205,5 +213,6 @@ __all__ = [
     "RegressionSuites",
     "ScreenshotFlush",
     "StackStatus",
+    "StackTarget",
     "StackTornDown",
 ]

@@ -2,12 +2,14 @@
 from __future__ import annotations
 
 import logging
+import re
 import subprocess
 from pathlib import Path
 
-from ostler import Ostler, graph as graph_mod, model, path as path_mod
+from ostler import Ostler, graph as graph_mod, model, path as path_mod, query as query_mod
 from ostler.model import Graph, UINode
 from ostler.qa import runbook, stack
+from ostler.qa.outcome import QaOutcome
 
 from workhorse_workflows.kit.qa.schemas import QaPlanRun, QaStatus, StackStatus
 from workhorse_workflows.kit import find_docs_root
@@ -61,11 +63,55 @@ def _merge_secrets(manifests: list[dict]) -> tuple[dict[str, str], str]:
     return secrets, ""
 
 
+def story_near(graph: Graph, story: str) -> str:
+    """The feature book a story cites, when every book page it cites sits in that one book."""
+    features = path_mod.features_root(graph)
+    books = {
+        graph_mod.surface_of(graph.root / str(row["path"]).partition("#")[0], features)
+        for row in query_mod.query(graph, "surfaces-referenced-by-story", story)
+        if row.get("kind") == "ui"
+    }
+    books.discard("")
+    return str(features / books.pop()) if len(books) == 1 else ""
+
+
+def copy_lease(*parts: str) -> str:
+    """The lease a run names its stack copy with: *parts* joined, lowercased, and reduced to what a container name takes."""
+    joined = "-".join(part for part in parts if part).lower()
+    return re.sub(r"[^a-z0-9_-]+", "-", joined).lstrip("-_")
+
+
+def stack_env(logger: logging.Logger, graph: Graph, near: str = "", lease: str = "") -> dict[str, str]:
+    """What a command run against the stack *near* selects finds in its environment: the lease and its book."""
+    _manifests, selection = runbook.load_stacks(graph, near=Path(near) if near else None, logger=logger)
+    held = runbook.stack_lease(graph, selection, lease)
+    return {} if isinstance(held, QaOutcome) else held.env
+
+
+def release_copy(
+    logger: logging.Logger,
+    docs_path: str = "",
+    repo_dir: str = "",
+    near: str = "",
+    lease: str = "",
+) -> QaOutcome | None:
+    """Tear down the copy *lease* holds of a per-run stack, or None when the stack is shared and stays serving."""
+    root = find_docs_root(docs_path, repo_dir)
+    graph = model.load(root)
+    near_path = Path(near) if near else None
+    _manifests, selection = runbook.load_stacks(graph, near=near_path, logger=logger)
+    held = runbook.stack_lease(graph, selection, lease)
+    if isinstance(held, QaOutcome) or not held.per_run:
+        return None
+    return runbook.cmd_stack_down(root, near=near_path, lease=lease, logger=logger)
+
+
 def ensure_stack(
     logger: logging.Logger,
     docs_path: str = "",
     repo_dir: str = "",
     near: str = "",
+    lease: str = "",
 ) -> StackStatus:
     """Bring the durable QA stack up (or adopt one already serving) before the runner."""
     root = find_docs_root(docs_path, repo_dir)
@@ -98,12 +144,23 @@ def ensure_stack(
                    "reports this as `runbook-missing`."),
         )
 
-    results = runbook.bring_up_stacks(manifests, repo_root=str(root), logger=logger)
+    held = runbook.stack_lease(graph, selection, lease)
+    if isinstance(held, QaOutcome):
+        return StackStatus(ready="no", notes=f"Stack bring-up refused: {held.message}.")
+    with held.holding():
+        results = runbook.bring_up_stacks(manifests, repo_root=str(root), logger=logger)
+        problems = held.problems() if results[-1].get("ready") == "yes" else []
     last = results[-1]
     owned = tuple(
         r["app_pgid"] for r in results
         if r.get("app_pgid") and r.get("adopted") != "yes" and r["app_pgid"].isdigit() and _group_running(int(r["app_pgid"])))
     app_logs = tuple(r["app_log"] for r in results if r.get("app_log"))
+    if problems:
+        return StackStatus(
+            ready="no", owned_pgids=owned, app_logs=app_logs,
+            notes=(f"The stack came up, but the address book it left at {held.book} "
+                   f"{'; '.join(problems)}. Its bring-up recipe must write every address "
+                   "the environment page names before it reports ready."))
     if last.get("ready") == "yes":
         chosen = _entry_result(results, selection.runbooks, near, graph)
         common = {
@@ -228,14 +285,18 @@ def run_qa_plan(
     repo_dir: str = "",
     only: list[str] | None = None,
     plan_file: str | None = None,
+    near: str = "",
+    lease: str = "",
 ) -> QaPlanRun:
     """Execute the QA plan through ostler and normalize its four-state outcome."""
     docs_root = find_docs_root(docs_path, repo_dir)
     plan = plan_file if plan_file is not None else str(Path(spec_dir) / QA_PLAN_FILE)
     docs_graph = model.load(docs_root)
-    near = str(docs_root / spec_dir) if spec_dir else ""
-    manifests, _selection = runbook.load_stacks(
+    near = near or (str(docs_root / spec_dir) if spec_dir else "")
+    manifests, selection = runbook.load_stacks(
         docs_graph, near=Path(near) if near else None, logger=logger)
+    held = runbook.stack_lease(docs_graph, selection, lease)
+    leased = {} if isinstance(held, QaOutcome) else held.env
     secrets, collision = _merge_secrets(manifests)
     if collision:
         return QaPlanRun(status="blocked", notes=collision)
@@ -243,7 +304,7 @@ def run_qa_plan(
     if error:
         logger.warning("QA secret refresh failed: %s", error)
         return QaPlanRun(status="blocked", notes=f"QA secret refresh failed: {error}")
-    with scoped_envs(minted):
+    with scoped_envs(leased | minted):
         outcome = Ostler(docs_root).qa_run(plan, spec=spec_dir, only=only)
     status = RUN_STATUSES.get(outcome.status.lower(), "invalid")
     notes = notes_for(outcome, f"Ostler QA run returned {status}.")
@@ -251,4 +312,4 @@ def run_qa_plan(
     return QaPlanRun(status=status, notes=notes, ostler=outcome.data)
 
 
-__all__ = ["ensure_stack", "run_qa_plan", "stack_stopped"]
+__all__ = ["copy_lease", "ensure_stack", "release_copy", "run_qa_plan", "stack_env", "stack_stopped", "story_near"]

@@ -98,6 +98,12 @@ def publish_records_the_real_author(qa: Qa) -> None:
 
 Declare only the targets the story needs. Every scenario has a target, a mechanism, an
 objective (its docstring), preconditions, checkpoints, `covers`, and at least one `qa.check`.
+
+A target's `base_url` is the address the stack's runbook gives in its `entry-url:`. When that
+address is a braced name such as `{gateway}`, the plan writes the name, never a host and port.
+Each run QAs its own copy of such a stack on ports Docker picks, and the run resolves the name
+from that copy's address book as the plan starts. A port copied from a running copy points the
+next run at a stack that is gone.
 `mechanism` is provenance: `live` drives the running product, and `fixture` drives it from a
 canned input. A test suite standing in for the product is not evidence about the product.
 `driver` is execution: `python`, `playwright` or `maestro`. A scenario's id is its function

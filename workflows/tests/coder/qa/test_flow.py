@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import subprocess
 from collections import Counter
 from collections.abc import Callable, Iterable
@@ -963,6 +964,128 @@ def test_a_shared_environment_brings_both_runbooks_up_together(
     assert status.ready == "yes", status
     assert len(calls) == 2, calls
     assert "(2 services)" in status.notes, status.notes
+
+
+def _per_run_stack(docs: Path, write: Callable[[Path, str], Path]) -> None:
+    """The `docs` fixture's runbook, bound to an environment that gives each run its own copy."""
+    write(
+        docs / "docs" / "features" / "app" / "ops" / "copy.md",
+        "---\ntype: environment\ntitle: Copy\n---\n\n# Copy\n\n- sharing: per-run\n"
+        "- addresses:\n  - `gateway`: the browser's front door\n",
+    )
+    write(
+        docs / RUNBOOK_REL,
+        "---\ntype: runbook\ntitle: QA stack\n---\n\n# QA stack\n\n- driver: web\n"
+        "- environment: [Copy](copy.md)\n- entry-url: {gateway}\n- stop: make copy-down\n\n"
+        "## Steps\n\n### serve\n\n- kind: service\n- run: make copy\n"
+        "- health: curl -fsS {gateway}/health\n",
+    )
+
+
+def _cite(docs: Path, write: Callable[[Path, str], Path], *pages: str) -> None:
+    """The story, citing each of *pages* under `docs/features`."""
+    links = "".join(f"- [{page}](../../../../features/{page})\n" for page in pages)
+    write(docs / STORY_REL / "story.md", STORY_MD.replace("Users need a thing.\n", f"Users need a thing.\n\n{links}"))
+
+
+def test_a_run_names_its_copy_with_what_a_container_name_takes() -> None:
+    """The story id and the run id, joined, lowercased, and stripped of anything Docker refuses."""
+    assert qa_runner_mod.copy_lease("PRED-01X", "20261010-1-ab") == "pred-01x-20261010-1-ab"
+    assert qa_runner_mod.copy_lease("", "_Run 1") == "run-1"
+
+
+def test_a_story_that_cites_one_book_brings_up_that_books_stack(
+    docs: Path,
+    write: Callable[[Path, str], Path],
+) -> None:
+    """Every ui page the story cites sits in `app`, so the run's stack is the one `app` serves."""
+    log = logging.getLogger("test")
+    _cite(docs, write, "app/server.md")
+
+    target = qa_nodes.stack_target(log, STORY, "story-1-run", str(docs))
+
+    assert Path(target.near) == docs / "docs" / "features" / "app", target
+    assert target.env == {"STABLEMATE_LEASE": "story-1-run"}, target
+
+
+def test_a_story_that_cites_two_books_names_no_book(
+    docs: Path,
+    write: Callable[[Path, str], Path],
+) -> None:
+    """Pages in two books leave the choice to the stack selection, which sees the whole tree."""
+    log = logging.getLogger("test")
+    write(docs / "docs" / "features" / "other" / "server.md", SERVER_MD)
+    _cite(docs, write, "app/server.md", "other/server.md")
+
+    assert qa_nodes.stack_target(log, STORY, "story-1-run", str(docs)).near == ""
+
+
+def test_a_shared_stack_outlives_the_run(docs: Path) -> None:
+    """With no per-run environment, the stack other runs adopt is never torn down at the end."""
+    log = logging.getLogger("test")
+
+    released = qa_nodes.release_copy(log, str(docs), lease="story-1-run")
+
+    assert released.torn_down == "skipped", released
+
+
+def test_a_per_run_copy_is_torn_down_under_its_lease(
+    docs: Path,
+    write: Callable[[Path, str], Path],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The release runs the runbook's `stop:` with the run's lease, so it removes that copy only."""
+    log = logging.getLogger("test")
+    _per_run_stack(docs, write)
+    leases: list[str] = []
+
+    def _down(handles: dict[str, str], manifest: dict[str, Any], *, logger: logging.Logger) -> dict[str, str]:
+        leases.append(os.environ.get("STABLEMATE_LEASE", ""))
+        return {"torn_down": "yes"}
+
+    monkeypatch.setattr(qa_stack, "teardown_stack", _down)
+
+    released = qa_nodes.release_copy(log, str(docs), lease="story-1-run")
+
+    assert released.torn_down == "yes", released
+    assert leases == ["story-1-run"]
+
+
+def test_a_per_run_stack_is_not_brought_up_without_a_lease(
+    docs: Path,
+    write: Callable[[Path, str], Path],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A copy with no name could not be found to tear down, so the bring-up refuses it."""
+    log = logging.getLogger("test")
+    _per_run_stack(docs, write)
+
+    def _boom(*a: Any, **k: Any) -> dict[str, Any]:
+        raise AssertionError("a refused bring-up starts nothing")
+
+    monkeypatch.setattr(qa_stack, "ensure_stack", _boom)
+
+    status = qa_nodes.ensure_stack(log, str(docs))
+
+    assert status.ready == "no", status
+    assert "refused" in status.notes, status.notes
+
+
+def test_the_run_releases_the_copy_it_named_when_it_finishes(
+    docs: Path,
+    ostler: Callable[..., _Ostler],
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    """The lease carries the story and the run, and the release at the end uses that same lease."""
+    ostler()
+    run_env = env()
+
+    drive_flow(Qa(story=STORY), run_env, _Agent(docs))
+
+    lease = _output(run_env, qa_nodes.stack_target)["lease"]
+    assert lease.startswith("story-1-"), lease
+    assert _output(run_env, qa_nodes.release_copy)["torn_down"] == "skipped"
 
 
 def test_evidence_the_vetter_keeps_refusing_blocks_after_the_lap_budget(

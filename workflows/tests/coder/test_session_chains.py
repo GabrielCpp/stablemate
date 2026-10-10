@@ -16,9 +16,10 @@ from workhorse_workflows.coder.docs.flow import Docs
 from workhorse_workflows.coder.dev.flow import Dev
 from workhorse_workflows.coder.qa import flow as qa_flow
 from workhorse_workflows.coder.qa.flow import Qa
+from workhorse_workflows.coder.qa.nodes import stack_target
 from workhorse_workflows.coder.shared.owner import UNBOUNDED, owner_profile
 from workhorse_workflows.coder.shared.schemas.docs import DocsResult
-from workhorse_workflows.coder.shared.schemas.qa import QaFlowResult, QaPlanRun
+from workhorse_workflows.coder.shared.schemas.qa import QaFlowResult, QaPlanRun, StackTarget, StackTornDown
 from workhorse_workflows.coder.shared.worktree import snapshot_code_state
 
 STORY = "STORY-1"
@@ -37,7 +38,9 @@ class _Spy:
         self.open_chains: set[str] | None = None
 
     def output(self, node: Any) -> Any:
-        """What `Workflow.output` resolves to here: only the QA entry snapshot is ever asked for."""
+        """What `Workflow.output` resolves to here: the QA entry snapshot, and a stack target holding no copy."""
+        if node is stack_target:
+            return StackTarget()
         if node is not snapshot_code_state:
             raise NodeNotRunError(f"{node} has not run")
         return SimpleNamespace(status="")
@@ -91,6 +94,7 @@ def spy(monkeypatch: pytest.MonkeyPatch) -> _Spy:
     monkeypatch.setattr(
         qa_flow, "code_changed", lambda _log, **_k: SimpleNamespace(changed=False)
     )
+    monkeypatch.setattr(qa_flow, "release_copy", lambda _log, *_a, **_k: StackTornDown(torn_down="skipped"))
     return seen
 
 

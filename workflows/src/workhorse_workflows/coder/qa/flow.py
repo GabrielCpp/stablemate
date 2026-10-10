@@ -16,8 +16,10 @@ from workhorse_workflows.coder.qa.nodes import (
     flush_root_screenshots,
     lint_qa_plan,
     qa_tools_catalog,
+    release_copy,
     run_qa_plan,
     run_regression_suite,
+    stack_target,
     validate_qa_plan,
     verify_qa_dry_run,
     verify_qa_evidence,
@@ -65,6 +67,8 @@ from workhorse_workflows.coder.shared.schemas.qa import (
 from workhorse_workflows.coder.shared.schemas.story import StoryPaths
 from workhorse_workflows.coder.shared.story import prepare_story, stamp_specs
 from workhorse_workflows.coder.shared.worktree import code_changed, snapshot_code_state
+from workhorse_workflows.kit.credentials import scoped_envs
+from workhorse_workflows.kit.qa.runner import copy_lease
 from workhorse_workflows.kit.telemetry import counter_labels
 
 
@@ -82,7 +86,7 @@ class Qa(Workflow):
 
     injects: ClassVar[tuple[str, ...]] = paths.AMBIENT
 
-    INFRA_NODES: ClassVar[frozenset[Any]] = frozenset({ensure_stack})
+    INFRA_NODES: ClassVar[frozenset[Any]] = frozenset({ensure_stack, release_copy})
 
     BUDGET_LABELS: ClassVar[tuple[str, ...]] = ("laps", "blocks")
 
@@ -130,6 +134,8 @@ class Qa(Workflow):
                     "story source provenance could not be resolved: " + "; ".join(sources.errors)
                 )
         okf = self.call(detect_okf_docs, self.docs_path)
+        lease = copy_lease(self.ctx.story_id or self.ctx.story_slug, self.run_id)
+        self.call(stack_target, self.ctx.story_slug, lease, self.docs_path)
         return Continue(okf, self.work, report="\n\n".join(self._preflight()))
 
     @property
@@ -155,7 +161,9 @@ class Qa(Workflow):
         failures = []
         if context.status != "passed":
             failures.append(gate_text("the OKF context packet", context.notes))
-        return failures + stack_failures(self.call(ensure_stack, self.docs_path))
+        target = self.output(stack_target)
+        stack = self.call(ensure_stack, self.docs_path, near=target.near, lease=target.lease)
+        return failures + stack_failures(stack)
 
     def _owner_args(self) -> dict[str, Any]:
         """What the owner reads about its story, its plan and the tools it may drive."""
@@ -202,23 +210,24 @@ class Qa(Workflow):
         """Run the owner turn: its subagents plan, run, audit and repair the story's QA."""
         self.logger.info("owning QA for %s", self.ctx.story_slug, extra={"activity": True})
         turn = roles.turn(self, "qa-story", returns=QaOwnerResult)
-        result: QaOwnerResult = self.agent(
-            turn.prompt,
-            returns=turn.returns,
-            power="high",
-            timeout=UNBOUNDED,
-            silence=SILENCE_S,
-            profile=owner_profile("qa"),
-            session=self._session,
-            add_dirs=self._dirs(),
-            args=turn.args
-            | self._owner_args()
-            | {
-                "report": report,
-                "operator_context": operator_context,
-                "failed_scenarios": failed_scenarios or [],
-            },
-        )
+        with scoped_envs(self.output(stack_target).env):
+            result: QaOwnerResult = self.agent(
+                turn.prompt,
+                returns=turn.returns,
+                power="high",
+                timeout=UNBOUNDED,
+                silence=SILENCE_S,
+                profile=owner_profile("qa"),
+                session=self._session,
+                add_dirs=self._dirs(),
+                args=turn.args
+                | self._owner_args()
+                | {
+                    "report": report,
+                    "operator_context": operator_context,
+                    "failed_scenarios": failed_scenarios or [],
+                },
+            )
         self.call(stamp_specs, self.docs_path, self.ctx.story_slug)
         if result.status == "blocked":
             return self._block(result, result.notes, "the QA turn", blocks)
@@ -244,7 +253,10 @@ class Qa(Workflow):
         if failures:
             return self._lap(None, failures, laps, blocks)
         self.logger.info("running the QA plan", extra={"activity": True})
-        run = self.call(run_qa_plan, self.ctx.spec_dir, self.docs_path)
+        target = self.output(stack_target)
+        run = self.call(
+            run_qa_plan, self.ctx.spec_dir, self.docs_path, near=target.near, lease=target.lease
+        )
         self.call(file_backlog_items, self.ctx.spec_dir, self.docs_path)
         self.call(stamp_specs, self.docs_path, self.ctx.story_slug)
         if run.status == "failed" and (found or self.stop_at_first_verdict):
@@ -338,6 +350,7 @@ class Qa(Workflow):
     ) -> Done:
         before = self.output(snapshot_code_state).status
         changed = self.call(code_changed, before=before, docs_path=self.docs_path)
+        self._release()
         if status != "refix":
             self.reset_session(self._session)
         return Done(
@@ -348,6 +361,11 @@ class Qa(Workflow):
                 docs_recheck_required=changed.changed,
             )
         )
+
+    def _release(self) -> None:
+        """Tear down this run's stack copy: the next pass QAs changed code, so it builds a new one."""
+        target = self.output(stack_target)
+        self.call(release_copy, self.docs_path, near=target.near, lease=target.lease)
 
     def _block(self, result: object, notes: str, where: str, blocks: int) -> Continue | Await:
         if self.operator_mode in HUMAN_MODES or blocks >= MAX_BLOCKS:
@@ -389,6 +407,7 @@ class Qa(Workflow):
         if answer.scope == "epic":
             self.logger.info("the operator scoped the answer to the epic, so the run replans")
             self.reset_session(self._session)
+            self._release()
             return Done(QaFlowResult(status="replan", operator_notes=answer.content))
         return Continue(answer, self.work, operator_context=answer.content, blocks=blocks)
 
