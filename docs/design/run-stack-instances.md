@@ -374,7 +374,8 @@ names cross *holding a lease* and *making an instance* as a plain value handed a
    - Done when: the client's web and API books name no host port for local, and the local
      run passes the same journeys at an assigned port.
 3. **S3. The coder runs on its own copy.**
-   - Touches: the coder's lease per story, its QA plan reading `{gateway}`, Give-back.
+   - Touches: the coder's lease per story, its QA plan reading `{gateway}`, Give-back. The
+     coder takes the stack from the book the story cites, so a story names no stack itself.
    - Done when: an attended coder run on one story passes QA against its own copy, and the
      book run's stack is untouched.
 4. **S4. Reclaim.**
