@@ -58,7 +58,6 @@ def _is_declared_claim(obligation: Obligation) -> bool:
 
 def node_acts(obligations: list[Obligation]) -> NodeActs:
     """Every node's declared acts in book order, the claims that declare them, and the nodes whose act bullets were refused."""
-    rows_by_node: dict[str, list[tuple[tuple[int, ...], int, CallRow]]] = {}
     claims_by_node: dict[str, list[Obligation]] = {}
     refused: set[str] = set()
     for obligation in obligations:
@@ -68,15 +67,23 @@ def node_acts(obligations: list[Obligation]) -> NodeActs:
             refused.add(obligation.node)
         if obligation.acts:
             claims_by_node.setdefault(obligation.node, []).append(obligation)
-        for index, row in enumerate(obligation.acts):
-            rows_by_node.setdefault(obligation.node, []).append((obligation.doc_position, index, row))
-    ordered = {
-        node_id: list({row.call: row
-                       for _, _, row in sorted(rows, key=lambda entry: entry[:2])}.values())
-        for node_id, rows in rows_by_node.items()
-    }
     claims = {node_id: sorted(owned, key=lambda claim: claim.doc_position) for node_id, owned in claims_by_node.items()}
+    ordered = {node_id: _merged_acts(owned) for node_id, owned in claims.items()}
     return NodeActs(ordered, refused, claims)
+
+
+def _merged_acts(claims: list[Obligation]) -> list[CallRow]:
+    """The acts of one node's *claims* in book order, each call kept as many times as the claim that repeats it most."""
+    merged: list[CallRow] = []
+    kept: dict[str, int] = {}
+    for claim in claims:
+        seen: dict[str, int] = {}
+        for row in claim.acts:
+            seen[row.call] = seen.get(row.call, 0) + 1
+            if seen[row.call] > kept.get(row.call, 0):
+                kept[row.call] = seen[row.call]
+                merged.append(row)
+    return merged
 
 
 def guards_by_node(obligations: list[Obligation]) -> dict[str, list[Obligation]]:
