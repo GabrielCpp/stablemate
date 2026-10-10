@@ -3031,7 +3031,7 @@ def test_a_journey_step_the_screen_runs_on_arrival_opens_its_screen_when_it_arra
     result = _compile_plan_gaps(_arrival_flow([]), story="demo-story")
     assert isinstance(result, Plan)
     journey = result.source.split("@scenario(")[-1]
-    assert journey.count("qa.goto(") == 2
+    assert journey.count("qa.goto(") == 1
     assert f"okf:{_FLOW}:end-state" in _covers(result.source)
 
 

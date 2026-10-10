@@ -519,7 +519,7 @@ def _page_step(index: int, step: FlowStep, walk: JourneyWalk, gaps: list[Gap]) -
 
 
 def _arrival_step(index: int, step: FlowStep, walk: JourneyWalk, gaps: list[Gap]) -> list[str] | None:
-    """Perform a step the screen runs on arrival: its `visit` acts when it declares any, else opening the screen it lives on."""
+    """Perform a step the screen runs on arrival: its `visit` acts when it declares any, else nothing for a first step the walk's start already opened, else opening the screen it lives on by its own entry or its route."""
     acts = walk.book.acts_by_node.get(step.ref, [])
     if acts:
         performed = perform_acts(acts, acts_mod.WEB, gaps, walk.ids)
@@ -531,15 +531,24 @@ def _arrival_step(index: int, step: FlowStep, walk: JourneyWalk, gaps: list[Gap]
                             for oid in walk.ids)
             return None
         return performed.lines
+    if index == 1:
+        return []
     source = shown_on(step.ref.split("#")[0], walk.nav.routes, walk.book.fragment_hosts)
+    hops = walk.nav.routes.get(source)
+    reopened = walk.nav.reopen(hops or (), source)
+    if reopened is not None:
+        door, rest = reopened
+        return [f"    qa.goto({python_literal(door)})  # step {index}: arrives at {source}",
+                *walk_hops(rest, source, walk.book, gaps, walk.ids)]
     opened = walk.nav.path_to(source)
-    if opened is None:
+    if opened is None or hops is None:
         gaps.extend(Gap(oid, "uncompilable-claim",
                         f"step {index} runs when {source!r} loads, and no path to open it is known: "
                         'declare `arrange: visit(path="/…")` on the step for the address the reader lands on')
                     for oid in walk.ids)
         return None
-    return [f"    qa.goto({python_literal(opened)})  # step {index}: arrives at {source}"]
+    return [f"    qa.goto({python_literal(opened)})  # step {index}: arrives at {source}",
+            *walk_hops(hops, source, walk.book, gaps, walk.ids)]
 
 
 def web_walk(walk: JourneyWalk, sinks: PlanSinks) -> WalkedJourney:
