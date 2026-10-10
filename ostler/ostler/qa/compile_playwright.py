@@ -32,6 +32,7 @@ from ostler.qa.obligation import Obligation
 from ostler.qa.plan_source import Gap
 from ostler.qa.plan_source import PlanSinks
 from ostler.qa.plan_source import ScenarioRefusal
+from ostler.qa.plan_source import arrangement_of
 from ostler.qa.plan_source import call_kwargs
 from ostler.qa.plan_source import check_observes
 from ostler.qa.plan_source import decline_captures
@@ -456,6 +457,19 @@ def _web_start(walk: JourneyWalk, gaps: list[Gap]) -> list[str] | None:
             *walk_hops(hops, first_source, walk.book, gaps, walk.ids)]
 
 
+def _step_acts(step: FlowStep, walk: JourneyWalk) -> list[CallRow]:
+    """The acts a journey replays for *step*: all of them, unless the step's claims were written for a fixture the journey does not arrange, whose visits and clicks on other screens reach the step as another user would."""
+    acts = walk.book.acts_by_node.get(step.ref, [])
+    claims = [*walk.book.claims_by_node.get(step.ref, []), *walk.book.setups_by_node.get(step.ref, [])]
+    declared = {row.name for claim in claims for row in claim.fixtures}
+    arranged = {row.name for row in arrangement_of(walk.obligations).rows}
+    if not declared or declared & arranged:
+        return acts
+    page = step.ref.split("#")[0]
+    return [act for act in acts if act.name != "visit"
+            and all(target.node.split("#")[0] in ("", page) for target in act.locates.values())]
+
+
 def _web_step(index: int, step: FlowStep, walk: JourneyWalk, gaps: list[Gap]) -> list[str] | None:
     """Arrange and perform one `interaction` or `invocation` step, or `None` once the journey cannot go on."""
     book, ids = walk.book, walk.ids
@@ -485,7 +499,7 @@ def _web_step(index: int, step: FlowStep, walk: JourneyWalk, gaps: list[Gap]) ->
                         f"run in a world this journey never reached{name_refusal(on_locators)}")
                     for oid in ids)
         return None
-    performed = perform_acts(book.acts_by_node.get(ref, []), acts_mod.WEB, gaps, ids)
+    performed = perform_acts(_step_acts(step, walk), acts_mod.WEB, gaps, ids)
     if performed.lines is None or ref in book.acts_refused:
         if not performed.gap_filed:
             gaps.extend(Gap(oid, "uncompilable-claim",
@@ -507,7 +521,7 @@ def _web_step(index: int, step: FlowStep, walk: JourneyWalk, gaps: list[Gap]) ->
 def _page_step(index: int, step: FlowStep, walk: JourneyWalk, gaps: list[Gap]) -> list[str] | None:
     """Perform a step the user takes on the browser rather than on a control of the page: its acts, then going back or printing."""
     trigger_value = next(iter(walk.book.locators_by_node.get(step.ref, NO_LOCATORS).trigger), "")
-    performed = perform_acts(walk.book.acts_by_node.get(step.ref, []), acts_mod.WEB, gaps, walk.ids)
+    performed = perform_acts(_step_acts(step, walk), acts_mod.WEB, gaps, walk.ids)
     if performed.lines is None or step.ref in walk.book.acts_refused:
         if not performed.gap_filed:
             gaps.extend(Gap(oid, "uncompilable-claim",

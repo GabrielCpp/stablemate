@@ -9,6 +9,7 @@ from ostler.qa.compile import Plan, compile_plan_gaps
 from test_qa_compile import (
     _FLOW,
     _SCREEN,
+    _act,
     _arrival_navigation,
     _flow_obligation,
     _located_visible,
@@ -63,3 +64,44 @@ def test_a_later_step_on_arrival_opens_its_screen_by_its_own_entry() -> None:
     after_click = journey[journey.index('"#open-link"'):]
     assert 'qa.goto("/things")' in after_click
     assert 'qa.goto("/")' not in after_click
+
+
+def _journey_through(step_fixture: str) -> str:
+    navigation = _arrival_navigation()
+    navigation["policy"]["routes"][OTHER] = []
+    acts = [
+        {"call": "visit(path='/things')", "name": "visit", "args": {"path": "/things"}, "locates": {}},
+        _act("click", f"{OTHER}#things-link", {"selector": ["#things-link"]}, locator="things.md#things-link"),
+        _act("fill", f"{_SCREEN}#name-field", {"selector": ["#name-field"]}, locator="#name-field", value="A"),
+    ]
+    context = _navigation_context(
+        _flow_obligation(
+            f"okf:{_FLOW}:end-state", source=_FLOW, surface="policy",
+            steps=[_step(OPEN_THING, "interaction", "policy")],
+            checks=[_located_visible(f"{_SCREEN}#things-table", {"selector": ["#things-table"]})],
+        ),
+        _page_obligation(f"{OPEN_THING}:carrier", OPEN_THING, locators={"on": ["[open-link](#open-link)"], "trigger": ["click"]},
+                         checks=[], acts=acts, fixtures=[{"name": step_fixture, "args": [], "provides": "a user"}])
+        | {"required": False},
+        _carrier(f"{_SCREEN}#open-link", {"selector": ["#open-link"]}),
+        navigation=navigation,
+    ) | {"fixtureScreens": {"seeded-ledger": _SCREEN}}
+    result = compile_plan_gaps(context, story="demo-story")
+    assert isinstance(result, Plan)
+    ast.parse(result.source)
+    return next(body for body in result.source.split("@scenario(") if _FLOW in body)
+
+
+def test_a_step_written_for_another_fixture_keeps_only_its_own_screens_acts() -> None:
+    journey = _journey_through("another-user")
+
+    assert 'qa.goto("/things")' not in journey
+    assert '"#things-link"' not in journey
+    assert journey.index('"#name-field"') < journey.index('"#open-link"')
+
+
+def test_a_step_written_for_the_journeys_fixture_replays_every_act() -> None:
+    journey = _journey_through("seeded-ledger")
+
+    assert '"#things-link"' in journey
+    assert '"#name-field"' in journey
