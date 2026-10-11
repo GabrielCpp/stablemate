@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import shutil
 import subprocess
 from collections.abc import Sequence
 from pathlib import Path
@@ -308,3 +309,30 @@ def test_qa_stack_brings_a_stack_file_up_and_a_named_runbook_keeps_its_path(tmp_
     named = runbook.cmd_stack_up(root, name="links-local", lease="story-1")
     assert "do not fit together" not in named.message
     assert runbook.cmd_stack_down(root, lease="story-1").message == "stack torn down"
+
+
+def _worktree(root: Path) -> Path:
+    gitdir = root / ".git" / "worktrees" / "story-1"
+    gitdir.mkdir(parents=True)
+    _file(gitdir, "commondir", "../..\n")
+    tree = root.parent / "worktrees" / "acme-story-1"
+    shutil.copytree(root / "docs", tree / "docs")
+    _file(tree, ".git", f"gitdir: {gitdir}\n")
+    return tree
+
+
+@pytest.mark.parametrize("checkout", ["main", "worktree"])
+def test_secrets_render_from_the_main_checkout_project(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, checkout: str,
+) -> None:
+    root = _repo(tmp_path)
+    target = root / FEATURES / "api" / spec.STACK_FILE
+    data = yaml.safe_load(target.read_text(encoding="utf-8"))
+    target.write_text(yaml.safe_dump({**data, "secrets": "acme-local"}), encoding="utf-8")
+    tree = root if checkout == "main" else _worktree(root)
+    monkeypatch.setattr(commands.shutil, "which", lambda name: f"/usr/bin/{name}")
+    docker = FakeDocker()
+    assert commands.cmd_up(tree, ["api"], copy_name="story-1", runner=docker).ok
+    render = next(call for call in docker.calls if call[0] == "saddlebag")
+    assert render[render.index("--project") + 1] == "acme"
+    assert render[3] == "acme-local"

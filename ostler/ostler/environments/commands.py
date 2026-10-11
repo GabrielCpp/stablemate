@@ -110,7 +110,7 @@ def cmd_up(
     compose = Compose(copy, runner)
     if fresh and (copy.directory / render_mod.COMPOSE_FILE).is_file():
         compose.down(keep_data=False)
-    secret_problem = _render_secrets(prepared, runner)
+    secret_problem = _render_secrets(root, prepared, runner)
     if secret_problem:
         return _fail(secret_problem, copy=copy.name)
     try:
@@ -222,7 +222,7 @@ def _write(root: Path, prepared: Prepared, *, started: bool) -> list[Path]:
     return written
 
 
-def _render_secrets(prepared: Prepared, runner: Runner) -> str:
+def _render_secrets(root: Path, prepared: Prepared, runner: Runner) -> str:
     books = dict.fromkeys(service.book for service in prepared.services)
     wanted = [(book, prepared.catalog.books[book].secrets) for book in books
               if prepared.catalog.books[book].secrets]
@@ -231,10 +231,11 @@ def _render_secrets(prepared: Prepared, runner: Runner) -> str:
     if shutil.which("saddlebag") is None:
         return ("the stack boots with saddlebag environments "
                 f"({', '.join(name for _, name in wanted)}) but `saddlebag` is not on PATH")
+    project = runtime.checkout_name(root)
     for book, name in wanted:
         target = prepared.copy.directory / runtime.SECRETS_DIR / f"{book}.env"
         outcome = runner(["saddlebag", "env", "render", name, "--output", str(target),
-                          "--run-id", prepared.copy.project], capture=True)
+                          "--run-id", prepared.copy.project, "--project", project], capture=True)
         if outcome.returncode != 0:
             return f"saddlebag could not render `{name}` for {book} (exit {outcome.returncode})"
     return ""
