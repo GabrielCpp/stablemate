@@ -213,7 +213,7 @@ def _scenarios(log: list[dict[str, Any]]) -> list[dict[str, Any]]:
             "failures": 0,
             "message": "",
             "steps": [],
-            "outside": {"asserts": [], "artifacts": []},
+            "outside": {"asserts": [], "artifacts": [], "captures": []},
             "artifacts": [],
             "stamped": stamped,
             "_steps": {},
@@ -232,6 +232,8 @@ def _scenarios(log: list[dict[str, Any]]) -> list[dict[str, Any]]:
             scenario["message"] = str(record.get("message", "") or "")
         elif kind == "assert":
             _place(scenario, "asserts", _assert_view(record))
+        elif kind == "capture":
+            _place(scenario, "captures", _capture_view(record))
         elif kind == "step":
             step = _step_of(scenario, str(record.get("id", "")), str(record.get("label", "")))
             step["exit_code"] = record.get("exit_code")
@@ -319,6 +321,7 @@ def _step_of(scenario: dict[str, Any], step_id: str, label: str) -> dict[str, An
             "video": None,
             "asserts": [],
             "artifacts": [],
+            "captures": [],
         }
         scenario["_steps"][step_id] = step
         scenario["steps"].append(step)
@@ -346,6 +349,15 @@ def _assert_view(record: Mapping[str, Any]) -> dict[str, Any]:
         "step": str(record.get("step", "") or ""),
         "stepLabel": str(record.get("step_label", "") or ""),
         "file": f"qa/asserts/{Path(raw).name}" if raw else "",
+    }
+
+
+def _capture_view(record: Mapping[str, Any]) -> dict[str, Any]:
+    return {
+        "key": str(record.get("key", "")),
+        "value": record.get("value"),
+        "step": str(record.get("step", "") or ""),
+        "stepLabel": str(record.get("step_label", "") or ""),
     }
 
 
@@ -715,7 +727,8 @@ def _render_scenario(scenario: Mapping[str, Any], spec_dir: Path | None) -> list
         lines.append("")
         lines.append(f"> {_cell(scenario['message'])}")
     lines.append("")
-    if not scenario["steps"] and not scenario["outside"]["asserts"] and not scenario["outside"]["artifacts"]:
+    outside = scenario["outside"]
+    if not scenario["steps"] and not outside["asserts"] and not outside["artifacts"] and not outside["captures"]:
         lines.append("_No step, assertion or artifact was recorded._")
         lines.append("")
     for number, step in enumerate(scenario["steps"], start=1):
@@ -723,10 +736,10 @@ def _render_scenario(scenario: Mapping[str, Any], spec_dir: Path | None) -> list
         if step["error"]:
             outcome += f" — {_code(_cell(step['error']))}"
         lines.append(f"{number}. **{step['label'] or step['id']}** — {outcome}{_video_note(step, spec_dir)}")
-        lines.extend(_step_items(step["asserts"], step["artifacts"], spec_dir))
-    if scenario["outside"]["asserts"] or scenario["outside"]["artifacts"]:
+        lines.extend(_step_items(step["asserts"], step["artifacts"], spec_dir, captures=step["captures"]))
+    if outside["asserts"] or outside["artifacts"] or outside["captures"]:
         lines.append("- _Outside any step_" if scenario["stamped"] or not scenario["steps"] else "- _Assertions (this ledger does not say which step each ran in)_")
-        lines.extend(_step_items(scenario["outside"]["asserts"], scenario["outside"]["artifacts"], spec_dir, indent="  "))
+        lines.extend(_step_items(outside["asserts"], outside["artifacts"], spec_dir, indent="  ", captures=outside["captures"]))
     lines.append("")
     for view in scenario["artifacts"]:
         lines.append(f"{_kind_title(view['kind'])}: [{view['path']}]({view['path']})  ")
@@ -735,7 +748,14 @@ def _render_scenario(scenario: Mapping[str, Any], spec_dir: Path | None) -> list
     return lines
 
 
-def _step_items(asserts: list[dict[str, Any]], artifacts: list[dict[str, Any]], spec_dir: Path | None, *, indent: str = "   ") -> list[str]:
+def _step_items(
+    asserts: list[dict[str, Any]],
+    artifacts: list[dict[str, Any]],
+    spec_dir: Path | None,
+    *,
+    indent: str = "   ",
+    captures: list[dict[str, Any]] | None = None,
+) -> list[str]:
     lines: list[str] = []
     for view in asserts:
         mark = "✓" if view["result"] == "PASS" else "✗"
@@ -745,6 +765,8 @@ def _step_items(asserts: list[dict[str, Any]], artifacts: list[dict[str, Any]], 
             actual += f", expected {_code(view['expected'])}"
         sentinel = " _(harness sentinel)_" if view["sentinel"] else ""
         lines.append(f"{indent}- {mark} {_cell(view['label'])}{sentinel}{actual}{covers}")
+    for view in captures or []:
+        lines.append(f"{indent}- captured {_code(view['key'])} = {_code(view['value'])}")
     for view in artifacts:
         if view["kind"] == "screenshot":
             lines.append(f"{indent}- 📷 [{Path(view['path']).name}]({view['path']}){_vet_summary(view['path'], spec_dir)}")

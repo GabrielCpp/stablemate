@@ -400,6 +400,15 @@ class PythonDriver(QaDriver):
                 )
             elif kind == "capture":
                 self.session.set_capture(str(record["key"]), str(record["value"]))
+                capture: dict[str, Any] = {
+                    "kind": "capture",
+                    "scenario": scenario_id,
+                    "key": str(record["key"]),
+                    "value": str(record["value"]),
+                }
+                if step:
+                    capture["step"], capture["step_label"] = step
+                self.session.append(capture)
             elif kind == "instance":
                 self.session.append(
                     {

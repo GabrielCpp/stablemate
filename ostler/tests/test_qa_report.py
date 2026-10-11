@@ -284,6 +284,30 @@ def test_assertions_and_screenshots_sit_under_the_step_that_recorded_them(tmp_pa
     assert "✓ tidy-up succeeded — actual `ok` (covers nothing)" in steps
 
 
+def test_a_captured_value_is_a_row_under_the_step_it_ran_in(tmp_path: Path) -> None:
+    log = [
+        _start(),
+        _scenario_start("s", "ac:1"),
+        {"kind": "capture", "scenario": "s", "key": "tenant", "value": "acme"},
+        _assert("s", 1, "sign-in responds 200", "ac:1", step=STEP_ONE),
+        {"kind": "capture", "scenario": "s", "key": "session_id", "value": "sess-7f3", "step": STEP_ONE[0], "step_label": STEP_ONE[1]},
+        _step("s", *STEP_ONE),
+        _scenario_stop("s", assertions=1, failures=0),
+        _stop(),
+    ]
+    spec = _spec(tmp_path, log=log, criteria=[_criterion("ac:1", "Sign in works.")])
+    data = build_report(spec)
+    scenario = data["scenarios"][0]
+    assert [(view["key"], view["value"]) for view in scenario["steps"][0]["captures"]] == [("session_id", "sess-7f3")]
+    assert [(view["key"], view["value"]) for view in scenario["outside"]["captures"]] == [("tenant", "acme")]
+    assert not any("capture" in warning for warning in data["warnings"])
+
+    steps = render_report(data).split("## Scenarios, step by step", 1)[1].split("## Warnings", 1)[0]
+    step_one = steps.split("1. **sign in with the provisioned account**", 1)[1].split("- _Outside any step_", 1)[0]
+    assert "- captured `session_id` = `sess-7f3`" in step_one
+    assert "- captured `tenant` = `acme`" in steps.split("- _Outside any step_", 1)[1]
+
+
 def test_a_step_the_ledger_never_closed_is_marked_unfinished(tmp_path: Path) -> None:
     log = [
         _start(),
