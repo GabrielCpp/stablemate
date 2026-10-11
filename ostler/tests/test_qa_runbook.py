@@ -474,11 +474,13 @@ def _local_stack_runbook(root: Path, name: str, port: int, env: str) -> None:
                  "- health: curl -fsS localhost\n", name=name)
 
 
-def _environment_file(root: Path, env: str, *, local_only: bool | None) -> None:
-    """One `environment` node under `app/ops`, its `local-only` bullet set explicitly."""
+def _environment_file(root: Path, env: str, *, local_only: bool | None, sharing: str = "") -> None:
+    """One `environment` node under `app/ops`, its `local-only` and `sharing` bullets set explicitly."""
     bullets = ""
     if local_only is not None:
         bullets += f"- local-only: {'true' if local_only else 'false'}\n"
+    if sharing:
+        bullets += f"- sharing: {sharing}\n"
     write(root / "docs" / "features" / "app" / "ops" / f"{env}.md",
           f"---\ntype: environment\n---\n\n# {env}\n\n{bullets}")
 
@@ -532,6 +534,18 @@ def test_a_single_local_only_environment_still_early_returns(tmp_path: Path) -> 
     assert selection.reason == ""
     assert selection.environment.endswith("local.md")
     assert len(selection.runbooks) == 2
+
+
+def test_a_bring_up_with_a_lease_prefers_the_environment_copied_per_run(tmp_path: Path) -> None:
+    """A run that holds a lease asks for a copy of its own, and a bring-up with none asks for the shared stack."""
+    (tmp_path / ".git").mkdir()
+    _environment_file(tmp_path, "local", local_only=True, sharing="shared")
+    _environment_file(tmp_path, "run-copy", local_only=True, sharing="per-run")
+    _local_stack_runbook(tmp_path, "dev-stack", 1111, "local")
+    _local_stack_runbook(tmp_path, "copy-stack", 2222, "run-copy")
+    graph = model.load(tmp_path)
+    assert rb.select_stack(graph, leased=True).environment.endswith("run-copy.md")
+    assert rb.select_stack(graph).environment.endswith("local.md")
 
 
 def _environment(root: Path, surface: str, name: str, *, local_only: bool = True) -> None:

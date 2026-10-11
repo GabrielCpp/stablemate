@@ -161,6 +161,17 @@ def test_a_per_run_bring_up_runs_under_its_lease_and_reports_the_addresses_it_le
     assert outcome.data["entry_url"] == "http://localhost:4321"
 
 
+def test_a_per_run_bring_up_never_trusts_a_book_left_before_it_started(
+        tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    _per_run_book(tmp_path)
+    stale = addresses.book_path(tmp_path / OPS / "test.md", "story-1")
+    addresses.write_book(stale, {"gateway": "http://localhost:1"})
+    monkeypatch.setattr(rb.stack_mod, "ensure_stack", _fake_bring_up(None, []))
+    outcome = rb.cmd_stack_up(tmp_path, lease="story-1")
+    assert outcome.status == "address-book"
+    assert not stale.exists()
+
+
 def test_a_copy_that_leaves_no_book_is_not_ready(
         tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     _per_run_book(tmp_path)

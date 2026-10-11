@@ -294,6 +294,12 @@ def _environment_is_local_only(graph: Graph, environment_id: str) -> bool:
     return bullet_value(node.meta, "local-only") in ("true", "yes")
 
 
+def _environment_is_per_run(graph: Graph, environment_id: str) -> bool:
+    """Whether the `environment` node *environment_id* gives each run its own copy."""
+    node = graph.find_ui_node(environment_id)
+    return node is not None and environment_addresses(node).per_run
+
+
 def _selection_for(stacks: list[UINode], resolver: links_mod.LinkResolver,
                    environment: str) -> StackSelection:
     """Every stack runbook bound to *environment*, as a resolved selection."""
@@ -301,8 +307,14 @@ def _selection_for(stacks: list[UINode], resolver: links_mod.LinkResolver,
     return StackSelection(runbooks=selected, environment=environment)
 
 
-def select_stack(graph: Graph, name: str = "", *, near: Path | None = None) -> StackSelection:
-    """Which runbooks bring this book's system up, or why the question has no answer."""
+def select_stack(graph: Graph, name: str = "", *, near: Path | None = None,
+                 leased: bool = False) -> StackSelection:
+    """Which runbooks bring this book's system up, or why the question has no answer.
+
+    A bring-up that holds a lease asks for a copy of its own, so among environments still
+    in the running it prefers the ones copied per run, and one that holds none prefers
+    the shared ones a run without a lease can bring up.
+    """
     runbooks = graph.ui_nodes_of_type("runbook")
     if name:
         for node in runbooks:
@@ -325,6 +337,10 @@ def select_stack(graph: Graph, name: str = "", *, near: Path | None = None) -> S
         narrowed = _on_surface_of(graph, stacks, near)
         if narrowed:
             candidates = {environment_of(node, resolver) for node in narrowed}
+    copies = {env for env in candidates
+              if env and _environment_is_per_run(graph, env) == leased}
+    if copies:
+        candidates = copies
     local_only = {env for env in candidates
                   if env and _environment_is_local_only(graph, env)}
     if local_only:
@@ -423,11 +439,11 @@ def load_stack(root: Path | None = None, *, name: str = "", near: Path | None = 
 
 
 def load_stacks(graph: Graph, *, name: str = "", near: Path | None = None,
-                logger: logging.Logger | None = None,
+                leased: bool = False, logger: logging.Logger | None = None,
                 ) -> tuple[list[dict[str, Any]], StackSelection]:
     """Every manifest this book's bring-up covers, with the selection that produced it."""
     log = logger or logging.getLogger(__name__)
-    selection = select_stack(graph, name, near=near)
+    selection = select_stack(graph, name, near=near, leased=leased)
     if selection.runbooks:
         for node in selection.runbooks:
             log.info("stack declared by runbook %s", node.id)
@@ -585,13 +601,16 @@ def cmd_stack_up(root: Path, *, name: str = "", features_root: str = "", lease: 
     """`ostler qa stack up` — bring the book's declared stack to ready, or say why not."""
     log = logger or logging.getLogger(__name__)
     graph = _graph_for(root, features_root)
-    manifests, selection = load_stacks(graph, name=name, near=near, logger=log)
+    manifests, selection = load_stacks(graph, name=name, near=near, leased=bool(lease),
+                                       logger=log)
     refused = _refusal(root, features_root, selection, "bring up")
     if refused is not None and not manifests:
         return refused
     held = stack_lease(graph, selection, lease)
     if isinstance(held, QaOutcome):
         return held
+    if held.per_run and held.book is not None:
+        held.book.unlink(missing_ok=True)
     with held.holding():
         results = bring_up_stacks(manifests, repo_root=str(root), logger=log)
         problems = held.problems() if results[-1].get("ready") == "yes" else []
@@ -627,7 +646,8 @@ def cmd_stack_down(root: Path, *, name: str = "", features_root: str = "", lease
     """`ostler qa stack down` — run the declared teardown, or leave an expensive stack up."""
     log = logger or logging.getLogger(__name__)
     graph = _graph_for(root, features_root)
-    manifests, selection = load_stacks(graph, name=name, near=near, logger=log)
+    manifests, selection = load_stacks(graph, name=name, near=near, leased=bool(lease),
+                                       logger=log)
     refused = _refusal(root, features_root, selection, "tear down")
     if refused is not None and not manifests:
         return refused
