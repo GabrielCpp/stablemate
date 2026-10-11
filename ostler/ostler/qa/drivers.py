@@ -510,7 +510,7 @@ class PythonDriver(QaDriver):
         """Record one harness `assert` in the session, and count it failed with how its command ended when it did not hold."""
         action = tally.count_assertion()
         passed, _ = self.session.run_assert(
-            str(record.get("id") or f"{scenario_id}-{action}"),
+            f"{scenario_id}-{action}",
             str(record.get("label", "")),
             "scenario_check",
             {

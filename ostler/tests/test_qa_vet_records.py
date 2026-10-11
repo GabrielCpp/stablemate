@@ -437,3 +437,28 @@ def test_a_photograph_with_no_url_says_the_screen_was_never_established(repo: Pa
 
     report = json.loads(shot.with_suffix(".vet.json").read_text(encoding="utf-8"))
     assert report["arrival"] == "unobserved"
+
+
+def test_a_harness_assert_after_a_vet_keeps_its_own_raw_result(repo: Path) -> None:
+    """The harness numbers its asserts and its steps on one counter, and the vet verdicts are numbered on the driver's, so an id taken from the harness lands on a verdict's file and overwrites it."""
+    _book(repo)
+    shot = _shot(
+        repo,
+        [
+            _region("article", "article.prose", (0, 88, 1400, 760)),
+            _region("navigation", "nav.toc", (0, 88, 240, 760)),
+        ],
+    )
+    driver = _driver(repo)
+    vet, scenario = _records(shot)
+    harness_assert = {
+        "type": "assert", "id": "s-1-1", "label": "status is 200",
+        "passed": True, "expected": 200, "actual": 200,
+    }
+
+    result = driver._grade("s-1", [], [vet, harness_assert, scenario], "", 0, timed_out=False)
+
+    assert result.status == "passed"
+    records = _asserts(driver)
+    assert [r["id"] for r in records] == ["s-1-1", "s-1-2", "s-1-3"]
+    assert len({r["raw_result_file"] for r in records}) == 3
