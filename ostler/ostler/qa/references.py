@@ -46,3 +46,15 @@ def parse_reference(value: str) -> Reference | None:
     if matched:
         return CaptureRef(matched.group(1))
     return None
+
+
+def template_pattern(text: str) -> re.Pattern[str]:
+    """What *text* reads as once each reference in it holds a concrete value."""
+    spans = sorted(match.span() for rx in (_NODE_REF, _CAPTURE_REF) for match in rx.finditer(text))
+    parts: list[str] = []
+    at = 0
+    for start, end in spans:
+        parts += [re.escape(text[at:start]), '[^"]+']
+        at = end
+    parts.append(re.escape(text[at:]))
+    return re.compile("".join(parts))

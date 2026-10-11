@@ -371,3 +371,34 @@ def test_a_pass_off_a_check_nothing_could_falsify_is_not_covered(
     assert row["status"] == "insensitive", row["why"]
     assert row["checksInsensitive"] == [DECLARED]
     assert row["checksMissing"] == []
+
+
+def test_a_declared_path_with_a_fixture_reference_matches_the_path_the_run_sent(
+    tmp_path: Path,
+) -> None:
+    declared = 'http_status(code=401, method="GET", path="/projects/@acme-project.id/bundles/$version")'
+    spec = _spec(
+        tmp_path,
+        obligations=[_obligation(CONFLICT, declared=[declared])],
+        log=[
+            _claim("bundle-route", CONFLICT),
+            _assert("bundle-route", 1, "PASS", CONFLICT, check="http_status",
+                    args={"code": 401, "method": "GET", "path": "/projects/p-1/bundles/sha256:ab"}),
+        ],
+    )
+
+    row = _by_id(build_evidence_map(spec))[CONFLICT]
+
+    assert row["checksMissing"] == []
+    assert row["status"] == "covered", row["why"]
+
+    other_route = _spec(
+        tmp_path,
+        obligations=[_obligation(CONFLICT, declared=[declared])],
+        log=[
+            _claim("bundle-route", CONFLICT),
+            _assert("bundle-route", 1, "PASS", CONFLICT, check="http_status",
+                    args={"code": 401, "method": "GET", "path": "/orders/p-1/bundles/sha256:ab"}),
+        ],
+    )
+    assert _by_id(build_evidence_map(other_route))[CONFLICT]["checksMissing"] == [declared]

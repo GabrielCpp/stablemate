@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from ostler import checks
-from ostler.qa import run_log, sensitivity
+from ostler.qa import references, run_log, sensitivity
 from ostler.qa.session import QA_DIRNAME, scratch_dirname
 from ostler.util import is_mapping
 
@@ -76,6 +76,14 @@ def _call_text(name: str, args: Any) -> str | None:
     """The canonical spelling of one recorded check invocation, or `None` if it is not one."""
     bound = checks.bind(name, args if is_mapping(args) else {})
     return bound.text() if isinstance(bound, checks.CheckCall) else None
+
+
+def _observed(declared: str, observed: set[str]) -> bool:
+    """Whether a passing assertion made *declared*, with its references bound to any value."""
+    if declared in observed:
+        return True
+    pattern = references.template_pattern(declared)
+    return any(pattern.fullmatch(call) for call in observed)
 
 
 def build_evidence_map(spec_dir: Path, *, label: str | None = None) -> dict[str, Any]:
@@ -177,7 +185,7 @@ def _row(
         if record.get("check")
         and (call := _call_text(str(record["check"]), record.get("check_args"))) is not None
     }
-    missing = [call for call in declared if call not in observed]
+    missing = [call for call in declared if not _observed(call, observed)]
     insensitive = [
         call for call in declared
         if isinstance(parsed := checks.parse_check(call), checks.CheckCall)
