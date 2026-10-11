@@ -102,6 +102,10 @@ from its `stack.yml` as that copy, and the coder workflow does the same under th
 A call without a lease keeps the stack the book's runbook declares, and takes the shared copy
 only where no runbook declares one.
 
+A run killed before its teardown does not leave its copy up for good. The next leased bring-up
+on the machine tears down every copy whose run is gone, and says which. A copy brought up by
+hand, outside any run, has no holder and stays until `ostler env down` removes it.
+
 ## Doctor codes it can trip
 
 `stack-invalid`, one finding per problem, on the file it was found in. See
