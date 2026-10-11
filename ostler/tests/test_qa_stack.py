@@ -16,7 +16,7 @@ from pathlib import Path
 import pytest
 
 from _fakes import FakeClock
-from ostler.qa import stack
+from ostler.qa import addresses, stack
 
 LOG = logging.getLogger("test-stack")
 
@@ -612,6 +612,32 @@ def test_a_stack_with_no_entry_url_gates_against_its_bring_up_ceiling(monkeypatc
     )
     assert out["ready"] == "no"
     # A 22s window at 5s between attempts: t=0, 5, 10, 15, 20, and the expiry check.
+    assert attempts == ["health[0]"] * 6
+
+
+def test_an_entry_url_the_book_cannot_resolve_yet_gates_against_the_bring_up_ceiling(
+        tmp_path, monkeypatch) -> None:
+    """A per-run copy writes its address book late, so boot had nothing to probe."""
+    attempts: list[str] = []
+
+    def run_step(_step, _cwd, _to, _logger, *, label):
+        attempts.append(label)
+        return False, "still building"
+
+    monkeypatch.setenv(addresses.BOOK_ENV, str(tmp_path / "unwritten-book.json"))
+    monkeypatch.setattr(stack, "health_probe", lambda *_a, **_kw: "nothing is serving")
+    monkeypatch.setattr(stack, "_run_step", run_step)
+    monkeypatch.setattr(
+        stack, "boot_app",
+        lambda *_a, **_kw: {"boot_ok": "yes", "entry_url": "", "app_pid": "9", "app_pgid": "9"},
+    )
+
+    out = stack.ensure_stack(
+        {"entry_url": "{gateway}/", "launch": "make copy-up", "boot_timeout": "22",
+         "health": ["make stack-health"]},
+        logger=LOG, clock=FakeClock(),
+    )
+    assert out["ready"] == "no"
     assert attempts == ["health[0]"] * 6
 
 

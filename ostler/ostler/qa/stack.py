@@ -430,8 +430,9 @@ def ensure_stack(
         gate that fails is re-attempted until the phase's window expires, because boot
         proves only the entry URL answers and a gate may assert on a slower sibling.
       * ``health_timeout`` — that window in seconds, shared by all gates. Undeclared, it
-        falls back to ``boot_timeout`` when the manifest names no ``entry_url`` (the gates
-        are then the readiness proof, not slack after one) and to 120 otherwise.
+        falls back to ``boot_timeout`` when boot had no ``entry_url`` to probe, whether
+        the manifest names none or the run's address book cannot resolve it yet (the
+        gates are then the readiness proof, not slack after one), and to 120 otherwise.
 
     **Staleness — why adoption is earned, not automatic.** A stack left serving from a
     prior story was built from *older* code; adopting it blindly runs QA against a stale
@@ -495,7 +496,8 @@ def ensure_stack(
     # re-launch would have saved.
     if identity and health_url and not health_probe(health_url, identity):
         if _may_adopt(reuse, manifest, app_cwd, timeout_s, logger):
-            step, err = _seed_then_gate(manifest, app_cwd, timeout_s, logger, clock)
+            step, err = _seed_then_gate(manifest, app_cwd, timeout_s, logger, clock,
+                                        proven=True)
             if not step:
                 logger.info("adopting the stack already serving %s (reuse=%s; seed and "
                             "health gates re-proven)", health_url, reuse)
@@ -565,7 +567,8 @@ def ensure_stack(
         else:
             _clear_record(app_cwd)
 
-    step_label, err = _seed_then_gate(manifest, app_cwd, timeout_s, logger, clock)
+    step_label, err = _seed_then_gate(manifest, app_cwd, timeout_s, logger, clock,
+                                      proven=bool(entry_url))
     if step_label:
         return _fail(step_label, err, app_pid, app_pgid)
     entry_url = _url_now(manifest.get("entry_url", ""))
@@ -606,7 +609,7 @@ def teardown_stack(
 
 def _seed_then_gate(
     manifest: dict[str, Any], app_cwd: str, timeout_s: float,
-    logger: logging.Logger, clock: Clock,
+    logger: logging.Logger, clock: Clock, *, proven: bool,
 ) -> tuple[str, str]:
     """Run the `seed` steps then the `health` gates; ``("", "")`` on success.
 
@@ -621,8 +624,9 @@ def _seed_then_gate(
     run into repair. Gates are documented as read-only assertions (`seed` owns the side
     effects), so re-running one is safe.
 
-    How long that window is, :func:`_health_window` decides, because on a manifest with no
-    `entry_url` boot proved nothing at all and these gates wait out the entire bring-up.
+    How long that window is, :func:`_health_window` decides, because when boot had no entry
+    URL to probe (*proven* false) it proved nothing at all and these gates wait out the
+    entire bring-up.
     """
     for i, step in enumerate(manifest.get("seed") or []):
         ok, err = _run_step(step, app_cwd, timeout_s, logger, label=f"seed[{i}]")
@@ -630,7 +634,7 @@ def _seed_then_gate(
             logger.warning("seed[%d] failed: %s", i, err)
             return f"seed[{i}]", err
 
-    health_deadline = clock.monotonic() + _health_window(manifest)
+    health_deadline = clock.monotonic() + _health_window(manifest, proven=proven)
     for i, step in enumerate(manifest.get("health") or []):
         ok, err = _gate_until(
             step, app_cwd, timeout_s, logger,
@@ -667,14 +671,16 @@ def _held_reason(health_url: str) -> str:
             + _port_hint(health_url))
 
 
-def _health_window(manifest: dict[str, Any]) -> float:
+def _health_window(manifest: dict[str, Any], *, proven: bool) -> float:
     """The seconds the `health` phase has, from whichever ceiling the manifest states.
 
     A declared ``health_timeout`` wins, because it is the number written about these gates.
-    Failing that, a manifest with no ``entry_url`` gets its ``boot_timeout``: boot proved
+    Failing that, a bring-up whose boot had no entry URL to probe gets its ``boot_timeout``.
+    That covers a manifest naming no ``entry_url`` and one whose ``{name}`` addresses the
+    run's book could not resolve when boot ran. Boot proved
     nothing on that path, so the gates are not converging after a readiness proof, they *are*
     the readiness proof, and the bring-up's own ceiling is the only stated fact about how long
-    the launch takes. With an ``entry_url`` the gates really are slack after a proof, and
+    the launch takes. After a proof (*proven*) the gates really are slack, and
     :data:`HEALTH_WINDOW_S` is that slack.
 
     Nothing here guesses the launch's cost, because nothing can see it: a bring-up that
@@ -685,7 +691,7 @@ def _health_window(manifest: dict[str, Any]) -> float:
     declared = str(manifest.get("health_timeout", ""))
     if declared:
         return boot_timeout(declared, default=HEALTH_WINDOW_S)
-    if not manifest.get("entry_url"):
+    if not proven:
         return boot_timeout(str(manifest.get("boot_timeout", "")), default=HEALTH_WINDOW_S)
     return HEALTH_WINDOW_S
 
