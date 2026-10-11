@@ -99,6 +99,8 @@ timeout 120 ostler env down --copy story-12
 
 A QA run needs none of these by hand. `ostler qa stack up --lease story-12` brings the book up
 from its `stack.yml` as that copy, and the coder workflow does the same under the run's lease.
+A call without a lease keeps the stack the book's runbook declares, and takes the shared copy
+only where no runbook declares one.
 
 ## Doctor codes it can trip
 
