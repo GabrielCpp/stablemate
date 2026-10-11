@@ -41,7 +41,8 @@ An earlier turn of this story filed this follow-up, and the run now hands it bac
 The follow-up is the scope of this turn, not the whole story. Add its work to `plan.md`
 under its own heading, and leave the story's plan as it stands. Return the structure for
 the services the follow-up changes. A follow-up files no follow-ups of its own, so return
-`follow_ups` empty. Work you find outside the follow-up goes in `notes`.
+`follow_ups` empty. A failure you meet while working it is this turn's to fix, by the rule
+under Scope and follow-ups. An improvement you notice beyond it goes in `notes`.
 {% endif %}
 {% if note %}
 
@@ -176,10 +177,10 @@ order, before triage drops any. The workflow files the nth one as
 
 The triager reads each finding against the story, the plan and the code it targets, and
 gives one verdict with its reason: a real defect, not a defect, behaviour the story asks for,
-or real but outside the story. You decide on its verdicts. The ones you judge real go to
-fixers, grouped so no two fixers share a file. A fix lands at the cause, with the test that
-covers it, and each fix is its own commit on the story branch. Real work outside the story
-is a decline with that reason, and a follow-up.
+or an improvement the working slice does not need. A defect is real wherever its code sits.
+You decide on its verdicts. The ones you judge real go to fixers, grouped so no two fixers
+share a file. A fix lands at the cause, with the test that covers it, and each fix is its own
+commit on the story branch. An improvement is a decline with that reason, and a follow-up.
 
 ## The answer file
 
@@ -207,8 +208,8 @@ The workflow checks every fixed answer: the commit exists in one of the story's 
 path is among the files the story changed, and the test name appears in a file the story
 changed. A finding with no section, or a fixed answer that fails a check, comes back to you
 in the next turn. A decline is final, so its reason must hold for a reviewer: the issue is
-not a defect, the story asks for the behaviour, or the fix is outside the story's scope.
-"Too much work" is not a reason.
+not a defect, the story asks for the behaviour, or the change is an improvement the working
+slice does not need. A failure is never declined. "Too much work" is not a reason.
 
 ## Standards
 
@@ -238,10 +239,15 @@ The Acceptance Criteria are the bar, as a person using the running app would obs
 When meeting one needs a root-cause fix across the surface, that whole fix is in scope. A
 symptom patch that leaves a criterion half met is not done.
 
-A different surface, or a defect you pass through on the way, is not this story's work. Do
-not fix it on the side.{% if not follow_up_title %} File it as a follow-up in the result:
-a title a person can act on, and the reason it falls outside this story. The run works each
-follow-up right after this story, in this same session.{% endif %}
+The story ships a slice of a working app, and its branch starts from a working main. So every
+failure you meet is this story's to fix on the story branch: a gate, a test, the build, the
+stack's bring-up or its setup code, wherever that code sits. A failure is never a follow-up.
+
+A follow-up is an improvement the working slice does not need: a refactor, a wider surface,
+a polish the criteria do not ask for.{% if not follow_up_title %} File it in the result with
+a title a person can act on, and the reason the slice works without it. The run works each
+follow-up right after this story, in this same session.{% endif %} A product call the story
+leaves open is neither. It is a block, under Blocked.
 
 ## The plan files
 

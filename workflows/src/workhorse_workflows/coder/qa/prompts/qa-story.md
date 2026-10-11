@@ -112,9 +112,12 @@ earlier assumption in the story, the plan or a finding. Do not raise the same bl
 7. **Audit.** Have a fresh auditor on the strongest model try to refute the verdict, with
    its brief below. A refutation reopens the run: it is a defect to repair or a finding.
 8. **Triage.** Classify every failure, every refutation and every regression failure:
-   - **product**: the story's code does not do what a criterion says. A finding.
+   - **product**: the repo's code does not do what a criterion says, or fails where it ran
+     before. A finding.
    - **plan**: a scenario that tests the wrong thing, misses a criterion or proves nothing.
-   - **stack or setup**: the environment, a seed, a tool, a stale build.
+   - **stack or setup**: the environment, a seed, a tool, a stale build. When the cause is
+     the repo's own tracked code, such as its stack definition or setup scripts, it is a
+     finding too.
    - **evidence**: the proof is missing, stale or does not support its claim.
    - **regression**: an existing spec this story's change broke, or a stale spec.
 9. **Repair.** Hand each non-product defect to the seat that owns it, then run again from
@@ -124,9 +127,11 @@ earlier assumption in the story, the plan or a finding. Do not raise the same bl
     the scored run fails on product defects, one finding per defect. `blocked` only as
     described below.
 
-A defect on a surface this story touched is this story's, and it is a finding. Work that is
-real but outside the story goes in `{{ workhorse_var('spec_dir') }}/backlog-items.json`, a
-JSON array of `{"id", "description", "section"}` objects. The workflow files each one.
+The story branch starts from a working main, so every failure you meet is this story's. A
+failure in the repo's code is a finding wherever that code sits, and never a backlog item.
+`{{ workhorse_var('spec_dir') }}/backlog-items.json` holds only improvements the working
+slice does not need, as a JSON array of `{"id", "description", "section"}` objects. The
+workflow files each one.
 
 ## Subagents
 

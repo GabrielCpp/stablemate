@@ -47,8 +47,8 @@ any earlier assumption in the item, the story or the code. Do not raise the same
    spec directory first. A turn that was interrupted may have left a plan or a `qa.md` there.
 2. **Fix.** Have a fixer write the repair, with a test that fails without it.
 3. **QA.** Once the gates below are green, have a fresh QA checker exercise the change.
-4. **Triage.** Have a triager sort what QA found: a defect of this fix, a pre-existing failure
-   outside its surface, or behaviour the story asks for.
+4. **Triage.** Have a triager sort what QA found: a defect of this fix, a failure the branch
+   carries from elsewhere, or behaviour the story asks for. Both kinds of failure are real.
 5. **Repair.** Send the real defects back to a fixer, then QA again. Repeat until QA passes.
 6. **Commit** and return the result.
 
@@ -76,7 +76,8 @@ runs the narrowest verification that proves it: the touched packages' tests, the
 gate and, for a user-visible change, the behaviour itself. It rules out the failures a green
 suite hides: a 5xx swallowed by the client, a console error, a partial write, a test that
 asserts presence rather than the behaviour. It confirms the fix stayed inside its scope.
-Pre-existing failures outside the fix's own surface are noted, not counted against it.
+A failure outside the fix's own surface still counts. The branch started from a working main,
+so the fix repairs it too.
 
 It writes what it ran, what it observed and the criterion each observation covers to
 `<spec_dir>/qa.md`. It creates that file through `ostler` first:

@@ -12,11 +12,11 @@ from workhorse_workflows.coder.shared.schemas.review import ReviewFinding
 
 
 class FollowUp(CoderResult):
-    """Work the dev owner found outside its story's scope, filed rather than done on the side."""
+    """An improvement the working slice does not need, filed rather than done on the side."""
 
     title: str = Field(description="What the work is, in one line a person can act on.")
     reason: str = Field(
-        description="Why it is outside this story, and what it would leave broken or missing."
+        description="Why the slice works without it, and what it would improve."
     )
 
 
@@ -37,9 +37,10 @@ class DevResult(PlanFields):
     )
     follow_ups: list[FollowUp] = Field(
         default=[],
-        description="Work you found outside this story's scope, one entry each. The run "
-        "files each one right after this story. Leave it empty when you are working a "
-        "follow-up yourself: a follow-up files none of its own.",
+        description="Improvements the working slice does not need, one entry each. A "
+        "failure is never one: fix it on the story branch. The run files each one right "
+        "after this story. Leave it empty when you are working a follow-up yourself: a "
+        "follow-up files none of its own.",
     )
     findings: list[ReviewFinding] = Field(
         default=[],
