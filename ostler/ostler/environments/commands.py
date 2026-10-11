@@ -100,13 +100,16 @@ def cmd_render(
 def cmd_up(
     root: Path, targets: Sequence[str] = (), *, copy_name: str = SHARED,
     fixtures: Sequence[str] = (), fresh: bool = False, cwd: Path | None = None,
-    wait_seconds: int = DEFAULT_WAIT_SECONDS, runner: Runner = run_command,
+    wait_seconds: int = DEFAULT_WAIT_SECONDS, holder: int | None = None,
+    runner: Runner = run_command,
 ) -> EnvOutcome:
     """Bring *targets* and everything they need up as the copy *copy_name*, then read its addresses."""
     prepared = prepare(root, targets, copy_name=copy_name, fixtures=fixtures, cwd=cwd)
     if isinstance(prepared, EnvOutcome):
         return prepared
     copy = prepared.copy
+    reclaimed = reclaim(keep=copy, runner=runner) if copy.name != SHARED else []
+    holder = holder if holder is not None else runtime.holder_from_env()
     compose = Compose(copy, runner)
     if fresh and (copy.directory / render_mod.COMPOSE_FILE).is_file():
         compose.down(keep_data=False)
@@ -114,7 +117,7 @@ def cmd_up(
     if secret_problem:
         return _fail(secret_problem, copy=copy.name)
     try:
-        _write(root, prepared, started=True)
+        _write(root, prepared, started=True, holder=holder)
     except RenderError as exc:
         return _fail(str(exc), copy=copy.name)
     outcome = compose.up(wait_seconds=wait_seconds)
@@ -135,15 +138,32 @@ def cmd_up(
     entry = next((book[service.address] for service in reversed(prepared.services)
                   if service.address), "")
     lines = [f"{name}: {url}" for name, url in sorted(book.items())]
+    lines += [f"reclaimed {name}, whose run is gone" for name in reclaimed]
     return EnvOutcome(True, "\n".join([f"{copy.name} is up", *lines]),
                       _summary(prepared, addresses=book, address_book=str(book_file),
-                               entry_url=entry))
+                               entry_url=entry, reclaimed=reclaimed))
 
 
 def cmd_down(root: Path, *, copy_name: str = SHARED, keep_data: bool = False,
              runner: Runner = run_command) -> EnvOutcome:
     """Stop the copy and delete its secrets, then its data and directory unless they are kept."""
-    copy = runtime.copy_for(root, copy_name)
+    return _down(runtime.copy_for(root, copy_name), keep_data=keep_data, runner=runner)
+
+
+def reclaim(*, keep: Copy | None = None, runner: Runner = run_command) -> list[str]:
+    """Tear down every copy on this machine whose holding run is gone, and name each one."""
+    gone: list[str] = []
+    for copy, manifest in runtime.held_copies():
+        if keep is not None and copy.directory == keep.directory:
+            continue
+        if runtime.holder_alive(manifest.get("holder")):
+            continue
+        if _down(copy, keep_data=False, runner=runner).ok:
+            gone.append(copy.project)
+    return gone
+
+
+def _down(copy: Copy, *, keep_data: bool, runner: Runner) -> EnvOutcome:
     if not (copy.directory / render_mod.COMPOSE_FILE).is_file():
         runtime.remove(copy)
         return EnvOutcome(True, f"{copy.name} is not up", {"ok": True, "copy": copy.name})
@@ -207,7 +227,7 @@ def _read_book(copy: Copy) -> dict[str, str]:
         return {}
 
 
-def _write(root: Path, prepared: Prepared, *, started: bool) -> list[Path]:
+def _write(root: Path, prepared: Prepared, *, started: bool, holder: int | None = None) -> list[Path]:
     rendered = render_mod.render(prepared.catalog, prepared.services, prepared.copy, repo=root,
                                  fixtures=prepared.fixtures)
     written = render_mod.write(rendered)
@@ -218,6 +238,7 @@ def _write(root: Path, prepared: Prepared, *, started: bool) -> list[Path]:
         "fixtures": prepared.fixtures,
         "rendered_at": datetime.now(UTC).isoformat(timespec="seconds"),
         "started": started,
+        "holder": runtime.holder_stamp(holder) if holder else {},
     }))
     return written
 

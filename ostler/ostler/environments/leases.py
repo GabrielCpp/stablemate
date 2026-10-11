@@ -27,23 +27,27 @@ def books_near(root: Path, near: Path | None = None) -> list[str]:
     return [max(inside, key=lambda name: len(found[name].parts))] if inside else []
 
 
-def run_env(root: Path, lease: str = "", near: Path | None = None) -> dict[str, str] | None:
-    """The lease and the address book a command run against the copy finds in its environment."""
+def run_env(root: Path, lease: str = "", near: Path | None = None,
+            holder: int | None = None) -> dict[str, str] | None:
+    """The lease, its holder and the address book a command run against the copy finds in its environment."""
     if not books_near(root, near):
         return None
     copy = runtime.copy_for(root, lease or SHARED)
     env = {addresses.LEASE_ENV: lease} if lease else {}
+    if lease and holder:
+        env[runtime.HOLDER_ENV] = str(holder)
     env[addresses.BOOK_ENV] = str(copy.directory / runtime.ADDRESSES)
     return env
 
 
-def up(root: Path, *, lease: str = "", near: Path | None = None,
+def up(root: Path, *, lease: str = "", near: Path | None = None, holder: int | None = None,
        runner: Runner = run_command) -> QaOutcome | None:
-    """Bring the books near *near* up as the copy *lease* names, or the shared copy without one."""
+    """Bring the books near *near* up as the copy *lease* names, held by the process *holder*."""
     books = books_near(root, near)
     if not books:
         return None
-    outcome = commands.cmd_up(root, books, copy_name=lease or SHARED, runner=runner)
+    outcome = commands.cmd_up(root, books, copy_name=lease or SHARED, holder=holder,
+                              runner=runner)
     data = {**outcome.data, "lease": lease, "ready": "yes" if outcome.ok else "no"}
     if not outcome.ok:
         return QaOutcome(False, f"stack bring-up failed: {outcome.message}", data)

@@ -17,6 +17,7 @@ from platformdirs import user_state_dir
 from ostler.environments.render import COMPOSE_FILE, SHARED, Copy
 
 HOME_ENV = "OSTLER_ENV_HOME"
+HOLDER_ENV = "STABLEMATE_LEASE_HOLDER"
 MANIFEST = "copy.json"
 ADDRESSES = "addresses.json"
 SECRETS_DIR = "secrets"
@@ -63,16 +64,7 @@ def checkout_name(repo: Path) -> str:
 
 def copies(repo: Path) -> list[Copy]:
     """Every copy of *repo*'s stack this machine holds a directory for."""
-    root = home()
-    if not root.is_dir():
-        return []
-    found: list[Copy] = []
-    for directory in sorted(root.iterdir()):
-        manifest = read_manifest(directory)
-        if manifest.get("repo") == str(repo):
-            found.append(Copy(name=str(manifest.get("copy", "")), project=directory.name,
-                              directory=directory))
-    return found
+    return [copy for copy, manifest in held_copies() if manifest.get("repo") == str(repo)]
 
 
 def read_manifest(directory: Path) -> dict[str, object]:
@@ -88,6 +80,59 @@ def write_manifest(copy: Copy, manifest: dict[str, object]) -> Path:
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     return target
+
+
+def holder_from_env() -> int | None:
+    """The process a command run under a lease names as the lease's holder, if any."""
+    raw = os.environ.get(HOLDER_ENV, "").strip()
+    return int(raw) if raw.isdigit() else None
+
+
+def process_started(pid: int) -> str:
+    """When the process *pid* started, in clock ticks since boot, or empty where unreadable."""
+    try:
+        stat = Path(f"/proc/{pid}/stat").read_text(encoding="utf-8")
+    except OSError:
+        return ""
+    fields = stat.rpartition(")")[2].split()
+    return fields[19] if len(fields) > 19 else ""
+
+
+def holder_stamp(pid: int) -> dict[str, object]:
+    """What a manifest records of the process holding a copy, so a reused pid does not pass for it."""
+    return {"pid": pid, "started": process_started(pid)}
+
+
+def holder_alive(holder: object) -> bool:
+    """Whether the process a manifest records as the holder still runs; a copy with none is kept."""
+    if not isinstance(holder, dict):
+        return True
+    pid = holder.get("pid")
+    if not isinstance(pid, int) or pid <= 0:
+        return True
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        pass
+    started = holder.get("started")
+    current = process_started(pid)
+    return not (started and current and current != started)
+
+
+def held_copies() -> list[tuple[Copy, dict[str, object]]]:
+    """Every copy on this machine, of any repo, with its manifest."""
+    root = home()
+    if not root.is_dir():
+        return []
+    found: list[tuple[Copy, dict[str, object]]] = []
+    for directory in sorted(root.iterdir()):
+        manifest = read_manifest(directory)
+        if manifest:
+            found.append((Copy(name=str(manifest.get("copy", "")), project=directory.name,
+                               directory=directory), manifest))
+    return found
 
 
 def env_files(copy: Copy) -> list[Path]:
