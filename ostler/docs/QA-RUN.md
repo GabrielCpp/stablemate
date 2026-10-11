@@ -164,6 +164,25 @@ Written by `qa.instance(...)`. A declaration, like `fixture` — it grades nothi
 puts on the ledger which concrete instance of a `one-per:` family a scenario exercised, so
 a reader of the run can see the sampled member instead of inferring it from a locator.
 
+**`capture`** — a value the scenario published
+
+```json
+{
+  "ts": "2026-07-10T17:18:04Z",
+  "kind": "capture",
+  "scenario": "a_short_link_redirects",
+  "key": "link_id",
+  "value": "lnk-42",
+  "step": "a_short_link_redirects-step-1",
+  "step_label": "create the link"
+}
+```
+
+Written by `qa.capture(...)`, and so by `qa.capture_field(...)` and `qa.capture_text(...)`.
+It grades nothing. The report lists it under the step it ran in, so a reader can cite the
+value without a separate assertion. `step` and `step_label` are absent for a capture outside
+any step. A declared secret in the value is redacted like every other ledger field.
+
 **`daemon_stop`**
 
 ```json
@@ -733,20 +752,22 @@ decide whether the work was done, and it is written for that reader:
    otherwise — with why: nothing covered it, or the scenario stopped before looking.
 4. **OKF obligations** — the same, with the status `qa evidence-map` computes (the report
    calls it; the two never disagree) and the checks each `verify:` bullet declared.
-5. **Scenarios, step by step** — every step in order with ✓/✗ assertions, artifacts, the
-   trace, diagnostics and non-empty stdout. When the target was recorded, each step also
-   says where it sits in the video — `recording 0:14.9–0:16.8`, a link that seeks a browser
-   player there — and carries the `ostler qa frames` command that pulls the frames around it.
+5. **Scenarios, step by step** — every step in order with ✓/✗ assertions, captured values,
+   artifacts, the trace, diagnostics and non-empty stdout. When the target was recorded,
+   each step also says where it sits in the video — `recording 0:14.9–0:16.8`, a link that
+   seeks a browser player there — and carries the `ostler qa frames` command that pulls the
+   frames around it.
 6. **Warnings** — what would let a rubber stamp through: UNPROVEN criteria, assertions with
    no `covers` or no observed value, aborted scenarios, `covers` ids the context does not
    know.
 
-Attribution is by the `step` stamp the python driver puts on every `assert` and artifact
-record it writes while a `qa.step()` is open; an assertion made outside any step is listed
-as such, and a ledger written before the stamp existed says so in its warnings instead of
-guessing from order. The report is not in the manifest (it is rendered after the manifest
-closes, and re-rendering it must not stale a hash); it is the one `qa` output meant to be
-committed with the story, and it links the artifacts under `qa/` that are not.
+Attribution is by the `step` stamp the python driver puts on every `assert`, `capture` and
+artifact record it writes while a `qa.step()` is open; an assertion or a capture made outside
+any step is listed under "Outside any step", and a ledger written before the stamp existed
+says so in its warnings instead of guessing from order. The report is not in the manifest
+(it is rendered after the manifest closes, and re-rendering it must not stale a hash); it is
+the one `qa` output meant to be committed with the story, and it links the artifacts under
+`qa/` that are not.
 
 ### Where a step sits in the recording, and the frames around it
 
