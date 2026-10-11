@@ -1583,6 +1583,7 @@ def _is_non_production_path(path: str) -> bool:
         "test",
         "tests",
         "__tests__",
+        "__fixtures__",
         "testdata",
         "__snapshots__",
         "snapshots",

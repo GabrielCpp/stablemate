@@ -1186,6 +1186,9 @@ def test_context_excludes_snapshot_fixture_but_keeps_executable_markdown(tmp_pat
     (tmp_path / "testdata").mkdir()
     snapshot = tmp_path / "testdata/output.golden"
     snapshot.write_text("old\n", encoding="utf-8")
+    (tmp_path / "lib/__fixtures__").mkdir(parents=True)
+    bundle = tmp_path / "lib/__fixtures__/bundle.ts"
+    bundle.write_text("export const bundle = 1;\n", encoding="utf-8")
     _git(tmp_path, "init")
     _git(tmp_path, "config", "user.email", "qa@example.com")
     _git(tmp_path, "config", "user.name", "QA")
@@ -1195,6 +1198,7 @@ def test_context_excludes_snapshot_fixture_but_keeps_executable_markdown(tmp_pat
     prompt.write_text("Do the new behavior.\n", encoding="utf-8")
     contributing.write_text("New contributor guide.\n", encoding="utf-8")
     snapshot.write_text("new\n", encoding="utf-8")
+    bundle.write_text("export const bundle = 2;\n", encoding="utf-8")
 
     packet = build_context(tmp_path, base=base, source_roots={"demo": ["."]})
 
