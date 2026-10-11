@@ -7,6 +7,7 @@ import subprocess
 from pathlib import Path
 
 from ostler import Ostler, graph as graph_mod, model, path as path_mod, query as query_mod
+from ostler.environments import leases
 from ostler.model import Graph, UINode
 from ostler.qa import runbook, stack
 from ostler.qa.outcome import QaOutcome
@@ -83,6 +84,9 @@ def copy_lease(*parts: str) -> str:
 
 def stack_env(logger: logging.Logger, graph: Graph, near: str = "", lease: str = "") -> dict[str, str]:
     """What a command run against the stack *near* selects finds in its environment: the lease and its book."""
+    copied = leases.run_env(graph.root, lease, Path(near) if near else None)
+    if copied is not None:
+        return copied
     _manifests, selection = runbook.load_stacks(graph, near=Path(near) if near else None,
                                                 leased=bool(lease), logger=logger)
     held = runbook.stack_lease(graph, selection, lease)
@@ -98,8 +102,10 @@ def release_copy(
 ) -> QaOutcome | None:
     """Tear down the copy *lease* holds of a per-run stack, or None when the stack is shared and stays serving."""
     root = find_docs_root(docs_path, repo_dir)
-    graph = model.load(root)
     near_path = Path(near) if near else None
+    if leases.books_near(root, near_path):
+        return leases.down(root, lease=lease, near=near_path) if lease else None
+    graph = model.load(root)
     _manifests, selection = runbook.load_stacks(graph, near=near_path, leased=bool(lease),
                                                 logger=logger)
     held = runbook.stack_lease(graph, selection, lease)
@@ -126,6 +132,9 @@ def ensure_stack(
                    "to bring up, whatever runbooks it documents. QA scenarios invoke the "
                    "repo's commands directly."),
         )
+    copied = leases.up(root, lease=lease, near=near_path)
+    if copied is not None:
+        return _copy_status(copied)
     manifests, selection = runbook.load_stacks(graph, near=near_path, leased=bool(lease),
                                                logger=logger)
     if not manifests:
@@ -195,6 +204,13 @@ def ensure_stack(
         app_logs=app_logs,
         **common,
     )
+
+
+def _copy_status(outcome: QaOutcome) -> StackStatus:
+    if outcome.ok:
+        return StackStatus(ready="yes", entry_url=str(outcome.data.get("entry_url", "")),
+                           notes=f"Stack {outcome.message.removeprefix('stack ')}.")
+    return StackStatus(ready="no", failed_step="stack.yml", notes=outcome.message)
 
 
 def release_stack(logger: logging.Logger, owned_pgids: tuple[str, ...]) -> None:
