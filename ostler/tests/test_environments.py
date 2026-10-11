@@ -336,3 +336,21 @@ def test_secrets_render_from_the_main_checkout_project(
     render = next(call for call in docker.calls if call[0] == "saddlebag")
     assert render[render.index("--project") + 1] == "acme"
     assert render[3] == "acme-local"
+
+
+def test_a_lease_less_bring_up_keeps_the_stack_a_runbook_declares(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root = _repo(tmp_path)
+    _file(root, f"{FEATURES}/api/ops/qa-stack.md", (
+        "---\ntype: runbook\ntitle: QA stack\n---\n\n# QA stack\n\n"
+        "- driver: web\n- entry-url: http://localhost:18084\n\n"
+        "## Steps\n\n### serve\n\n- kind: service\n- run: ./serve.sh\n"))
+    copied: list[str] = []
+    monkeypatch.setattr(runbook.leases, "up", lambda _root, *, lease, near: copied.append(lease))
+    monkeypatch.setattr(runbook, "bring_up_stacks",
+                        lambda manifests, **_kw: [{"ready": "no", "manifest": manifests[-1]}])
+    runbook.cmd_stack_up(root)
+    assert copied == []
+    runbook.cmd_stack_up(root, lease="story-1")
+    assert copied == ["story-1"]

@@ -5,7 +5,7 @@ from __future__ import annotations
 import contextlib
 import logging
 import re
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -596,11 +596,19 @@ def bring_up_stacks(manifests: list[dict[str, Any]], *, repo_root: str,
     return results
 
 
+def _from_stack_file(root: Path, features_root: str, lease: str, near: Path | None,
+                     act: Callable[..., QaOutcome | None]) -> QaOutcome | None:
+    """A copy from the books' `stack.yml`, or None where a lease-less call keeps a runbook's stack."""
+    if not lease and stack_runbooks(_graph_for(root, features_root)):
+        return None
+    return act(root, lease=lease, near=near)
+
+
 def cmd_stack_up(root: Path, *, name: str = "", features_root: str = "", lease: str = "",
                  near: Path | None = None,
                  logger: logging.Logger | None = None) -> QaOutcome:
     """`ostler qa stack up` — bring the book's declared stack to ready, or say why not."""
-    copied = None if name else leases.up(root, lease=lease, near=near)
+    copied = None if name else _from_stack_file(root, features_root, lease, near, leases.up)
     if copied is not None:
         return copied
     log = logger or logging.getLogger(__name__)
@@ -648,7 +656,7 @@ def cmd_stack_down(root: Path, *, name: str = "", features_root: str = "", lease
                    near: Path | None = None,
                    logger: logging.Logger | None = None) -> QaOutcome:
     """`ostler qa stack down` — run the declared teardown, or leave an expensive stack up."""
-    copied = None if name else leases.down(root, lease=lease, near=near)
+    copied = None if name else _from_stack_file(root, features_root, lease, near, leases.down)
     if copied is not None:
         return copied
     log = logger or logging.getLogger(__name__)
