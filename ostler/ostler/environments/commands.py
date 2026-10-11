@@ -132,9 +132,12 @@ def cmd_up(
         book[service.address] = runtime.host_url(service.scheme, published)
     book_file = copy.directory / runtime.ADDRESSES
     addresses.write_book(book_file, book)
+    entry = next((book[service.address] for service in reversed(prepared.services)
+                  if service.address), "")
     lines = [f"{name}: {url}" for name, url in sorted(book.items())]
     return EnvOutcome(True, "\n".join([f"{copy.name} is up", *lines]),
-                      _summary(prepared, addresses=book, address_book=str(book_file)))
+                      _summary(prepared, addresses=book, address_book=str(book_file),
+                               entry_url=entry))
 
 
 def cmd_down(root: Path, *, copy_name: str = SHARED, keep_data: bool = False,

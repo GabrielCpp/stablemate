@@ -8,10 +8,10 @@ import pytest
 import yaml
 
 from ostler import doctor
-from ostler.environments import commands, runtime, spec
+from ostler.environments import commands, leases, runtime, spec
 from ostler.environments import render as render_mod
 from ostler.model import load
-from ostler.qa import addresses
+from ostler.qa import addresses, runbook
 
 FEATURES = Path("docs/features")
 
@@ -267,3 +267,44 @@ def test_a_copy_name_that_cannot_name_containers_is_refused(tmp_path: Path) -> N
     outcome = commands.cmd_render(_repo(tmp_path), ["web"], copy_name="Story 1")
     assert not outcome.ok
     assert "cannot name a copy" in outcome.message
+
+
+def test_a_run_copy_comes_up_under_its_lease_and_names_the_front_service(tmp_path: Path) -> None:
+    root = _repo(tmp_path)
+    outcome = leases.up(root, lease="story-1", near=root / FEATURES / "web", runner=FakeDocker())
+    assert outcome is not None and outcome.ok, outcome
+    assert outcome.data["entry_url"] == "http://localhost:49200"
+    assert outcome.data["lease"] == "story-1"
+    assert leases.run_env(root, "story-1") == {
+        addresses.LEASE_ENV: "story-1",
+        addresses.BOOK_ENV: outcome.data["address_book"],
+    }
+    down = leases.down(root, lease="story-1", runner=FakeDocker())
+    assert down is not None and down.ok
+    assert runtime.copies(root) == []
+
+
+def test_the_book_near_the_run_is_the_only_one_brought_up(tmp_path: Path) -> None:
+    root = _repo(tmp_path)
+    assert leases.books_near(root, root / FEATURES / "api" / "ops") == ["api"]
+    assert leases.books_near(root) == ["api", "web"]
+    assert leases.books_near(root, tmp_path) == []
+
+
+def test_a_repo_with_no_stack_file_keeps_the_runbook_path(tmp_path: Path) -> None:
+    root = tmp_path / "globex"
+    (root / FEATURES).mkdir(parents=True)
+    assert leases.up(root, lease="story-1") is None
+    assert leases.down(root, lease="story-1") is None
+    assert leases.run_env(root, "story-1") is None
+
+
+def test_qa_stack_brings_a_stack_file_up_and_a_named_runbook_keeps_its_path(tmp_path: Path) -> None:
+    root = _repo(tmp_path)
+    _rewrite_stack(root, "web", {"web": {"define": "ops/services/missing.yml.j2"}})
+    refused = runbook.cmd_stack_up(root, lease="story-1")
+    assert not refused.ok
+    assert "do not fit together" in refused.message
+    named = runbook.cmd_stack_up(root, name="links-local", lease="story-1")
+    assert "do not fit together" not in named.message
+    assert runbook.cmd_stack_down(root, lease="story-1").message == "stack torn down"

@@ -16,6 +16,7 @@ from ostler import links as links_mod
 from ostler import markdown
 from ostler import model
 from ostler import path as path_mod
+from ostler.environments import leases
 from ostler.model import Graph, UINode
 from ostler.qa import addresses
 from ostler.qa import stack as stack_mod
@@ -599,6 +600,9 @@ def cmd_stack_up(root: Path, *, name: str = "", features_root: str = "", lease: 
                  near: Path | None = None,
                  logger: logging.Logger | None = None) -> QaOutcome:
     """`ostler qa stack up` — bring the book's declared stack to ready, or say why not."""
+    copied = None if name else leases.up(root, lease=lease, near=near)
+    if copied is not None:
+        return copied
     log = logger or logging.getLogger(__name__)
     graph = _graph_for(root, features_root)
     manifests, selection = load_stacks(graph, name=name, near=near, leased=bool(lease),
@@ -644,6 +648,9 @@ def cmd_stack_down(root: Path, *, name: str = "", features_root: str = "", lease
                    near: Path | None = None,
                    logger: logging.Logger | None = None) -> QaOutcome:
     """`ostler qa stack down` — run the declared teardown, or leave an expensive stack up."""
+    copied = None if name else leases.down(root, lease=lease, near=near)
+    if copied is not None:
+        return copied
     log = logger or logging.getLogger(__name__)
     graph = _graph_for(root, features_root)
     manifests, selection = load_stacks(graph, name=name, near=near, leased=bool(lease),
