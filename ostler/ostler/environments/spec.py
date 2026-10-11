@@ -109,15 +109,20 @@ def load(root: Path) -> Catalog:
     """The catalog of every book under *root*, with each problem found in it."""
     catalog = Catalog()
     for stack_file in stack_files(root):
-        _read_book(catalog, book_name(root, stack_file), stack_file)
+        _read_book(catalog, book_name(root, stack_file), stack_file, shown(root, stack_file))
     _check_needs(catalog)
     _check_cycles(catalog)
     _check_shared(catalog)
     return catalog
 
 
-def _read_book(catalog: Catalog, name: str, stack_file: Path) -> None:
-    where = stack_file.as_posix()
+def shown(root: Path, stack_file: Path) -> str:
+    """How a problem names *stack_file*: from *root* when it sits under it."""
+    return (stack_file.relative_to(root).as_posix() if stack_file.is_relative_to(root)
+            else stack_file.as_posix())
+
+
+def _read_book(catalog: Catalog, name: str, stack_file: Path, where: str) -> None:
     try:
         raw = yaml.load(stack_file.read_text(encoding="utf-8"), Loader=_UniqueKeyLoader)
     except yaml.YAMLError as exc:
@@ -134,7 +139,7 @@ def _read_book(catalog: Catalog, name: str, stack_file: Path) -> None:
         return
     refs: list[str] = []
     for service_name, body in services.items():
-        service = _read_service(catalog, name, stack_file, str(service_name), body)
+        service = _read_service(catalog, name, stack_file, where, str(service_name), body)
         if service is not None:
             catalog.services[service.ref] = service
             refs.append(service.ref)
@@ -154,9 +159,9 @@ def _read_book(catalog: Catalog, name: str, stack_file: Path) -> None:
 
 
 def _read_service(
-    catalog: Catalog, book: str, stack_file: Path, name: str, body: object
+    catalog: Catalog, book: str, stack_file: Path, shown_file: str, name: str, body: object
 ) -> Service | None:
-    where = f"{stack_file.as_posix()}: service `{name}`"
+    where = f"{shown_file}: service `{name}`"
     if not addresses.is_name(name):
         catalog.errors.append(f"{where}: a service name is lowercase letters, digits and `-`")
         return None

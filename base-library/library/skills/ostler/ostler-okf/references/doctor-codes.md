@@ -226,6 +226,7 @@ Three scoping rules explain findings that otherwise read as false positives or a
 | Code | Sev | Trigger and remedy |
 | --- | --- | --- |
 | `runbook-missing` | error | No `runbook` node brings a system up, so QA has no stack to run against. |
+| `stack-invalid` | error | A book's `stack.yml` cannot boot with the others: a key defined twice or unknown, a file it names that does not exist, an address with no `port:`, a need no book defines, needs that form a cycle, one template defined by two books, two services publishing one address, or a default fixture set no service declares. `ostler env up` refuses the stack for the same reason. Run `ostler env check` for the full list, and fix the file the finding names. |
 | `runbook-bad-reuse` | error | `reuse:` is not an adoption policy (`if-fresh` \| `always` \| `never`). |
 | `runbook-bad-kind` | error | A step's `kind:` is not a boot-step kind. |
 | `runbook-incomplete` | error | A runbook declares a launch but has no `kind: service` step — nothing starts the system. |

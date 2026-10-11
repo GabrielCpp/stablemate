@@ -7,8 +7,10 @@ from pathlib import Path
 import pytest
 import yaml
 
+from ostler import doctor
 from ostler.environments import commands, runtime, spec
 from ostler.environments import render as render_mod
+from ostler.model import load
 from ostler.qa import addresses
 
 FEATURES = Path("docs/features")
@@ -134,6 +136,19 @@ def test_a_misspelt_key_and_a_port_less_address_are_refused(tmp_path: Path) -> N
     errors = spec.load(root).errors
     assert any("`need` is not a service key" in error for error in errors)
     assert any("publishes `site` but names no `port:`" in error for error in errors)
+
+
+def test_doctor_reports_each_stack_problem_on_the_file_it_was_found_in(tmp_path: Path) -> None:
+    root = _repo(tmp_path)
+    assert not [f for f in doctor.run(load(root)).findings if f.code == "stack-invalid"]
+    _rewrite_stack(root, "web", {"web": {"define": "ops/services/web.yml.j2", "need": ["x"],
+                                         "needs": ["api:queue"]}})
+    found = [(f.path, f.message) for f in doctor.run(load(root)).findings
+             if f.code == "stack-invalid"]
+    assert any(path == "docs/features/web/stack.yml"
+               and message.startswith("service `web`: `need` is not a service key")
+               for path, message in found)
+    assert ("", "web:web needs `api:queue`, which no book defines") in found
 
 
 def test_the_render_names_orders_and_publishes_each_service(tmp_path: Path) -> None:
