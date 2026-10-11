@@ -83,7 +83,8 @@ def copy_lease(*parts: str) -> str:
 
 def stack_env(logger: logging.Logger, graph: Graph, near: str = "", lease: str = "") -> dict[str, str]:
     """What a command run against the stack *near* selects finds in its environment: the lease and its book."""
-    _manifests, selection = runbook.load_stacks(graph, near=Path(near) if near else None, logger=logger)
+    _manifests, selection = runbook.load_stacks(graph, near=Path(near) if near else None,
+                                                leased=bool(lease), logger=logger)
     held = runbook.stack_lease(graph, selection, lease)
     return {} if isinstance(held, QaOutcome) else held.env
 
@@ -99,7 +100,8 @@ def release_copy(
     root = find_docs_root(docs_path, repo_dir)
     graph = model.load(root)
     near_path = Path(near) if near else None
-    _manifests, selection = runbook.load_stacks(graph, near=near_path, logger=logger)
+    _manifests, selection = runbook.load_stacks(graph, near=near_path, leased=bool(lease),
+                                                logger=logger)
     held = runbook.stack_lease(graph, selection, lease)
     if isinstance(held, QaOutcome) or not held.per_run:
         return None
@@ -124,7 +126,8 @@ def ensure_stack(
                    "to bring up, whatever runbooks it documents. QA scenarios invoke the "
                    "repo's commands directly."),
         )
-    manifests, selection = runbook.load_stacks(graph, near=near_path, logger=logger)
+    manifests, selection = runbook.load_stacks(graph, near=near_path, leased=bool(lease),
+                                               logger=logger)
     if not manifests:
         if selection.reason == "ambiguous":
             return StackStatus(
@@ -294,7 +297,7 @@ def run_qa_plan(
     docs_graph = model.load(docs_root)
     near = near or (str(docs_root / spec_dir) if spec_dir else "")
     manifests, selection = runbook.load_stacks(
-        docs_graph, near=Path(near) if near else None, logger=logger)
+        docs_graph, near=Path(near) if near else None, leased=bool(lease), logger=logger)
     held = runbook.stack_lease(docs_graph, selection, lease)
     leased = {} if isinstance(held, QaOutcome) else held.env
     secrets, collision = _merge_secrets(manifests)
