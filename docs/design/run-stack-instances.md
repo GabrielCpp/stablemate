@@ -148,9 +148,11 @@ checks the book (revised, R3).
 | Data store | the data one copy reads and writes (role) | the journeys |
 | Overlay | the idempotent test-data changes applied to a new data store | how the store was made |
 
-Two variants of Data store: a **shared store**, where the copy points at one database
-server that every copy shares, and a **cloned store**, a copy-on-write clone of the source
-for one lease. The choice is made by *holding a lease* from the run's story (A1).
+Three variants of Data store: a **seeded store**, a database server of the copy's own that
+starts from the schema and the dev seeds, a **shared store**, where the copy points at one
+database server that every copy shares, and a **cloned store**, a copy-on-write clone of the
+source for one lease. Every copy takes the seeded store for now, and the other two are set
+aside (A1, R7).
 
 **Resolving addresses**
 
@@ -179,8 +181,8 @@ names cross *holding a lease* and *making an instance* as a plain value handed a
    environment names (the other note's invariant 6).
 4. **No built artifact of a copied environment holds an address.** Owner: Readiness, which
    signs in through the browser entry and fails when the app calls any other origin.
-5. **No copy writes the Data source.** Owner: Data store. A shared store is allowed only for
-   a run whose story changes no schema (A1).
+5. **No copy writes the Data source.** Owner: Data store. A seeded store never reads the
+   source, so a copy holds this by construction while it is the one variant in use (A1).
 6. **Every lease is given back.** At the run's end, also after a failure. A lease whose run
    is gone is reclaimed before the next lease on the machine. Owner: Reclaim.
 7. **An address book names every address the environment page names.** Owner: Readiness.
@@ -219,8 +221,9 @@ names cross *holding a lease* and *making an instance* as a plain value handed a
 - **Port assignment** asks the host for any free port and reads it back (F2). No slot table.
 - **Browser entry** is one reverse proxy on one origin (F6). Sign-in, the API, reports and
   stored files are paths behind it, so the built app needs only relative addresses.
-- **Data store** is a role with a shared and a cloned variant (F4, F9). A full copy per run
-  does not fit the disk. A file-level copy-on-write copies the 12.5 GB table on its first
+- **Data store** is a role with a seeded, a shared and a cloned variant (F4, F9). A full copy
+  per run does not fit the disk. The seeded store costs a schema load per copy and no disk
+  beyond it. A file-level copy-on-write copies the 12.5 GB table on its first
   written row, so the cloned variant needs block-level copy-on-write.
 - **Reclaim** sweeps at lease time and asks whether each lease's run is alive (F5). No
   daemon.
@@ -293,6 +296,9 @@ names cross *holding a lease* and *making an instance* as a plain value handed a
   reaches the shared stack, which is the failure of section 1.
 - R6. Section 2, Address: a copied environment's page gives no value. Finding: R5, and S2's
   done-when that the book names no host port for a copied environment.
+- R7. Section 2, Data store: the seeded store became a variant, and the one every copy uses.
+  Section 3, invariant 5, section 6, S3 and S5, and A1 follow it. Finding: the operator
+  decided on 2026-10-10 that a copy moves only an empty database for now.
 
 ### Parts
 
@@ -301,7 +307,7 @@ names cross *holding a lease* and *making an instance* as a plain value handed a
 | Describing an environment | Reshape | node type `environment` (`ostler/ostler/registry.py`). It has no named addresses. Its service bullets hold literal URLs in prose. |
 | Holding a lease | New | ostler, beside the stack code (`ostler/ostler/qa/stack.py`). |
 | Making an instance | Reshape | `ostler/ostler/qa/stack.py` brings a runbook's stack up and down, and the runbook carries the entry URL (`ostler/ostler/qa/runbook.py:32`, `:211`). No lease name, no port readback. |
-| Giving an instance its data | New | the client's bring-up target, with the shared store as its first variant. |
+| Giving an instance its data | New | the client's instance overlay, with the seeded store as its variant (R7). |
 | Resolving addresses | Reshape | the entry URL flows as one value from the runbook manifest (`ostler/ostler/qa/stack.py:450`). No `{name}` resolution exists. |
 
 ### Concepts
@@ -374,31 +380,33 @@ names cross *holding a lease* and *making an instance* as a plain value handed a
    - Done when: the client's web and API books name no host port for local, and the local
      run passes the same journeys at an assigned port.
 3. **S3. The coder runs on its own copy.**
-   - Touches: the coder's lease per story, its QA plan reading `{gateway}`, Give-back. The
-     coder takes the stack from the book the story cites, so a story names no stack itself.
+   - Touches: the coder's lease per story, its QA plan reading `{gateway}`, Give-back, Data
+     store (seeded). The coder takes the stack from the book the story cites, so a story
+     names no stack itself.
    - Done when: an attended coder run on one story passes QA against its own copy, and the
      book run's stack is untouched.
 4. **S4. Reclaim.**
    - Touches: Reclaim.
    - Done when: a copy whose run was killed is removed at the next lease, and a live run's
      copy is not.
-5. **S5. A cloned store for schema-changing stories.**
+5. **S5. A cloned store for stories that need production data.**
    - Touches: Data source, Data store (cloned).
-   - Done when: a story that adds a migration runs on a clone, the shared store's schema is
-     unchanged, and the clone's disk cost stays under 2 GB.
-   - Built after L3 is resolved.
+   - Done when: a story whose journeys read production rows runs on a clone, and the clone's
+     disk cost stays under 2 GB.
+   - Set aside while every copy takes the seeded store (A1). Built after L3 is resolved.
 
 ## 7. Assumptions
 
 Most expensive first.
 
-1. **A1. Most stories change no schema, and journeys write only data they create or
-   idempotent overlays.**
-   - Decided: copies share one database server until S5. A run whose story adds a migration
-     waits for S5.
-   - Basis: the other note's rule that a journey changes only data it created. The disk
-     measurement (F4).
-   - If wrong: invariant 5, Data store, S1. Every run would need a clone, and S5 moves first.
+1. **A1. A story's QA needs only the schema, the dev users and the data its journeys
+   create.**
+   - Decided: every copy starts its own database from the schema and the dev seeds. A story
+     that changes the schema changes it in its own copy only.
+   - Basis: the operator's decision on 2026-10-10. The other note's rule that a journey
+     changes only data it created. The dev stack already runs on the same seeds.
+   - If wrong: Data store, S5. A story whose journeys need production rows brings back the
+     cloned store, or a trimmed source of the rows the books use.
 2. **A2. Block-level copy-on-write can be had on this machine.**
    - Decided: the cloned store waits for S5.
    - Basis: none. Ext4 has no reflinks. A loop-mounted filesystem with reflinks needs a mount
