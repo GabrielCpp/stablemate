@@ -397,3 +397,8 @@ ostler env compose [--copy NAME] -- ARGS...
 `--fresh` drops the copy's volumes before it comes up, so its fixtures load again. `--fixtures`
 replaces each book's `default-fixtures`. `--keep-data` keeps the volumes and the rendered files,
 and deletes only the rendered secrets, so a later `down` without it drops the rest.
+
+A bring-up of any copy but `shared` records the process that holds it: the one named by
+`$STABLEMATE_LEASE_HOLDER`, which a workflow sets for the commands its run starts. The same
+bring-up tears down every other copy on the machine whose holder no longer runs, and names each
+one it reclaimed. A copy with no recorded holder stays until someone runs `down`.
