@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import re
 import subprocess
 from pathlib import Path
@@ -84,7 +85,7 @@ def copy_lease(*parts: str) -> str:
 
 def stack_env(logger: logging.Logger, graph: Graph, near: str = "", lease: str = "") -> dict[str, str]:
     """What a command run against the stack *near* selects finds in its environment: the lease and its book."""
-    copied = leases.run_env(graph.root, lease, Path(near) if near else None)
+    copied = leases.run_env(graph.root, lease, Path(near) if near else None, holder=os.getpid())
     if copied is not None:
         return copied
     _manifests, selection = runbook.load_stacks(graph, near=Path(near) if near else None,
@@ -132,7 +133,7 @@ def ensure_stack(
                    "to bring up, whatever runbooks it documents. QA scenarios invoke the "
                    "repo's commands directly."),
         )
-    copied = leases.up(root, lease=lease, near=near_path)
+    copied = leases.up(root, lease=lease, near=near_path, holder=os.getpid())
     if copied is not None:
         return _copy_status(copied)
     manifests, selection = runbook.load_stacks(graph, near=near_path, leased=bool(lease),
