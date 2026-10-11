@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+import os
 from pathlib import Path
 
 import pytest
@@ -52,3 +53,25 @@ def test_bring_up_reports_the_copys_front_address(repo: Path, monkeypatch: pytes
     assert (status.ready, status.entry_url) == ("yes", "http://localhost:49200")
     monkeypatch.setattr(leases, "up", lambda *_args, **_kw: QaOutcome(False, "stack bring-up failed: x"))
     assert runner.ensure_stack(LOG, repo_dir=str(repo), lease="story-1").ready == "no"
+
+
+def test_the_scored_run_reads_the_address_book_the_copy_wrote(
+    repo: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    seen: dict[str, str] = {}
+
+    class _Ostler:
+        def __init__(self, _root: Path) -> None:
+            pass
+
+        def qa_run(self, *_args: object, **_kw: object) -> QaOutcome:
+            seen["book"] = os.environ.get(addresses.BOOK_ENV, "")
+            return QaOutcome(True, "passed", {"status": "passed"})
+
+    monkeypatch.setattr(runner, "Ostler", _Ostler)
+    near = str(repo / "docs" / "features" / "web")
+    runner.run_qa_plan(LOG, spec_dir="docs/specs/story-1", repo_dir=str(repo), near=near,
+                       lease="story-1")
+    assert seen["book"] == runner.stack_env(LOG, model.load(repo), near=near,
+                                            lease="story-1")[addresses.BOOK_ENV]
+    assert seen["book"].endswith(f"acme-story-1/{runtime.ADDRESSES}")

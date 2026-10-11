@@ -313,10 +313,9 @@ def run_qa_plan(
     plan = plan_file if plan_file is not None else str(Path(spec_dir) / QA_PLAN_FILE)
     docs_graph = model.load(docs_root)
     near = near or (str(docs_root / spec_dir) if spec_dir else "")
-    manifests, selection = runbook.load_stacks(
+    manifests, _selection = runbook.load_stacks(
         docs_graph, near=Path(near) if near else None, leased=bool(lease), logger=logger)
-    held = runbook.stack_lease(docs_graph, selection, lease)
-    leased = {} if isinstance(held, QaOutcome) else held.env
+    leased = stack_env(logger, docs_graph, near=near, lease=lease)
     secrets, collision = _merge_secrets(manifests)
     if collision:
         return QaPlanRun(status="blocked", notes=collision)
