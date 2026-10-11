@@ -7,6 +7,7 @@ from pathlib import Path
 import pytest
 import yaml
 from workhorse.pyflow import WorkflowFailed
+from workhorse.templates import render
 from workhorse_workflows.coder.shared import roles
 from workhorse_workflows.coder.shared.schemas.dev_story import DevResult
 
@@ -47,6 +48,13 @@ def test_every_prompt_is_a_role_or_declared_mechanics(directory: Path):
     stems = _stems(directory)
     assert stems, f"{directory.parent.name}/prompts/ ships nothing"
     assert stems - set(roles.ROLES) - MECHANICS == set()
+
+
+@pytest.mark.parametrize("directory", PROMPT_DIRS, ids=[d.parent.name for d in PROMPT_DIRS])
+def test_every_prompt_renders_with_its_partials(directory: Path):
+    for stem in sorted(_stems(directory)):
+        relative = (directory / f"{stem}.md").relative_to(CODER).as_posix()
+        assert render(relative, {}, CODER).strip(), relative
 
 
 def test_the_operator_resolver_ships_exactly_once():

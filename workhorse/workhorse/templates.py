@@ -168,11 +168,12 @@ def render(template_path: str | Path, context: dict[str, Any], workflow_dir: str
         template_name = template_path.name
     else:
         template_name = str(template_path)
-        search_paths = [str(workflow_dir)]
+        siblings = str(workflow_dir / template_path.parent)
+        search_paths = list(dict.fromkeys([str(workflow_dir), siblings]))
         override = _flavor_override(template_path, context, workflow_dir)
         if override is not None:
             flavor_dir, node_name = override
-            search_paths = [flavor_dir, str(workflow_dir)]
+            search_paths = [flavor_dir, *search_paths]
             template_name = node_name
 
     env = _environment(

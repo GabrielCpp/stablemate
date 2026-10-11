@@ -132,3 +132,29 @@ if __name__ == "__main__":
                 print(f"FAIL  {fn.__name__}: {type(e).__name__}: {e}")
     print(f"\n{len(fns) - failed}/{len(fns)} passed")
     raise SystemExit(1 if failed else 0)
+
+
+def test_a_prompt_includes_a_partial_beside_it(tmp_path):
+    workflow_dir, ctx = _setup(tmp_path)
+    prompts = workflow_dir / "qa" / "prompts"
+    prompts.mkdir(parents=True)
+    (prompts / "_contract.md").write_text("THE CONTRACT")
+    (prompts / "qa-story.md").write_text('Own the story.\n{% include "_contract.md" %}\n')
+    out = render("qa/prompts/qa-story.md", ctx, workflow_dir)
+    assert "THE CONTRACT" in out
+
+
+def test_an_override_includes_the_partial_beside_its_base(tmp_path):
+    workflow_dir, ctx = _setup(tmp_path)
+    prompts = workflow_dir / "qa" / "prompts"
+    prompts.mkdir(parents=True)
+    (prompts / "_contract.md").write_text("THE CONTRACT")
+    (prompts / "qa-story.md").write_text("Own the story.\n")
+    _write_override(
+        Path(ctx["_repo_root"]),
+        node="qa-story.md",
+        content='Repo story.\n{% include "_contract.md" %}\n',
+    )
+    out = render("qa/prompts/qa-story.md", ctx, workflow_dir)
+    assert "Repo story." in out
+    assert "THE CONTRACT" in out
