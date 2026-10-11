@@ -16,6 +16,7 @@ from workhorse_workflows.kit.git import (
     diff_to_commit,
     last_commit_subject,
     last_commit_trailer,
+    trunk_base,
 )
 
 
@@ -185,3 +186,25 @@ def test_a_commit_waits_for_another_git_process_to_release_the_index(tmp_path: P
     release.join()
 
     assert (refusal, _tracked(root)) == ("", {"docs/page.md"})
+
+
+def _git(root: Path, *args: str) -> str:
+    out = subprocess.run(["git", *args], cwd=str(root), check=True, capture_output=True, text=True)
+    return out.stdout.strip()
+
+
+def test_trunk_base_is_the_nearest_trunk_a_branch_left(tmp_path: Path) -> None:
+    """A remote trunk that lags the local one would hand the branch every unpushed trunk commit as its own work."""
+    root = make_git_repo(tmp_path / "acme")
+    _git(root, "branch", "-M", "main")
+    _git(root, "update-ref", "refs/remotes/origin/main", "HEAD")
+    _write(root, "trunk.txt")
+    _git(root, "add", "trunk.txt")
+    _git(root, "commit", "-qm", "unpushed trunk work")
+    local = _git(root, "rev-parse", "HEAD")
+    _git(root, "checkout", "-qb", "story")
+    _write(root, "story.txt")
+    _git(root, "add", "story.txt")
+    _git(root, "commit", "-qm", "the story")
+
+    assert trunk_base(root) == local

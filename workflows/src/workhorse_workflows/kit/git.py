@@ -268,12 +268,12 @@ TRUNK_CANDIDATES = ("origin/master", "origin/main", "master", "main")
 
 
 def trunk_base(path: str | Path) -> str:
-    """The ref a branch's own work starts after: its merge base with trunk, else ``HEAD~1``."""
-    for branch in TRUNK_CANDIDATES:
-        base = merge_base(path, "HEAD", branch)
-        if base:
-            return base
-    return "HEAD~1"
+    """The ref a branch's own work starts after: its nearest merge base with trunk, else ``HEAD~1``."""
+    nearest = None
+    for base in filter(None, (merge_base(path, "HEAD", b) for b in TRUNK_CANDIDATES)):
+        if nearest is None or is_ancestor(path, nearest, base):
+            nearest = base
+    return nearest or "HEAD~1"
 
 
 def merge_ref(path: str | Path, ref: str) -> bool:

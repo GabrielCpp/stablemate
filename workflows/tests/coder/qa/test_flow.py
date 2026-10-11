@@ -665,6 +665,25 @@ def test_an_unmappable_packet_reaches_the_owner_and_is_rebuilt_by_the_check(
     assert okf.contexts == 2, okf.contexts
 
 
+def test_the_packet_maps_the_story_s_commits_and_not_only_what_is_uncommitted(
+    docs: Path,
+    ostler: Callable[..., _Ostler],
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+    git: Callable[..., subprocess.CompletedProcess],
+) -> None:
+    """The coder commits its work before QA, so a packet diffed from HEAD maps nothing and asks for no evidence."""
+    trunk = git(docs, "rev-parse", "HEAD").stdout.strip()
+    git(docs, "checkout", "-qb", "story")
+    git(docs, "add", "-A")
+    git(docs, "commit", "-qm", "the story")
+    okf = ostler()
+
+    drive_flow(Qa(story=STORY), env(), _Agent(docs))
+
+    assert okf.context_args[0]["base"] == trunk
+
+
 def test_a_packet_that_stays_unmappable_blocks_after_the_lap_budget(
     docs: Path,
     ostler: Callable[..., _Ostler],

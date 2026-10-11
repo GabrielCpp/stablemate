@@ -10,7 +10,7 @@ from typing import Literal
 from git.exc import GitError
 from ostler import Ostler
 from ostler.qa.source_context import SourceRepository, SourceScope
-from workhorse_workflows.kit import find_docs_root, open_repo
+from workhorse_workflows.kit import find_docs_root, open_repo, trunk_base
 from workhorse_workflows.coder.shared.blueprint import blueprint
 from workhorse_workflows.coder.shared.qa_support import notes_for, parse_source_roots
 from workhorse_workflows.coder.shared.schemas.okf import OkfContextResult
@@ -24,6 +24,8 @@ PACKET_FILES = (
 )
 
 STAMP_FILE = "qa-okf-context.stamp.json"
+
+TRUNK = "TRUNK"
 
 
 def worktree_signature(
@@ -152,6 +154,8 @@ def build_okf_context(
             ", ".join(inherited),
         )
     root = Path(docs_root).resolve()
+    if base == TRUNK:
+        base = trunk_base(root)
     spec = Path(spec_dir)
     spec_path = spec if spec.is_absolute() else root / spec
     outputs = tuple(
@@ -254,4 +258,4 @@ def validate_okf_context(
     return OkfContextResult(status=status, notes=notes, ostler=outcome.data)
 
 
-__all__ = ["build_okf_context", "validate_okf_context"]
+__all__ = ["TRUNK", "build_okf_context", "validate_okf_context"]

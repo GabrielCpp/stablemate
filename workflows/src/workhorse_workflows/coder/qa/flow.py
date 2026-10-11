@@ -42,7 +42,7 @@ from workhorse_workflows.coder.shared.backlog import file_backlog_items
 from workhorse_workflows.coder.shared.dev import read_operator_context
 from workhorse_workflows.coder.shared.docs import detect_okf_docs, features_root
 from workhorse_workflows.coder.shared.escalation import context_path, escalation
-from workhorse_workflows.coder.shared.okf import build_okf_context, validate_okf_context
+from workhorse_workflows.coder.shared.okf import TRUNK, build_okf_context, validate_okf_context
 from workhorse_workflows.coder.shared.owner import (
     HUMAN_MODES,
     MAX_BLOCKS,
@@ -151,7 +151,7 @@ class Qa(Workflow):
             self.ctx.story_path,
             features_root(self),
             tuple(impl.qa_source_roots),
-            "HEAD",
+            TRUNK,
             "WORKTREE",
             self.docs_path,
             preexisting=tuple(self.preexisting),
