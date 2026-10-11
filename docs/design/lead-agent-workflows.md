@@ -167,7 +167,9 @@ In plain words: the operator picks what to build: everything queued, one epic, o
 story. Everything the run still owes sits on one todo list: the stories, the follow-up
 work found along the way, and every defect a reviewer has written down. One senior
 engineer takes each story and directs helpers until it is done. When the engineer spots
-work outside the story, it adds that work to the list instead of doing it on the side.
+an improvement the working slice does not need, it adds that work to the list instead of
+doing it on the side. A failure is never such work: the story starts from a working main,
+so the engineer fixes every failure it meets.
 Outside
 reviewers who never talk to that engineer pin what is wrong to the list. The engineer
 answers every item, and a clerk checks each answer and crosses the item off or sends it
@@ -184,8 +186,8 @@ silent.
 2. Custody's Route takes the first pending story in Order, and opens the Dev owner with a
    Brief and the Resume note.
 3. The Dev owner plans, builds through helpers, runs the tests, and files a readiness claim.
-   Work it finds outside the story goes onto the list as a follow-up, filed right after
-   the story.
+   An improvement the working slice does not need goes onto the list as a follow-up,
+   filed right after the story. Every failure it meets, it fixes on the story branch.
 4. Custody checks the claim's evidence (the tests ran green), then launches a Judge with
    fixed inputs. Each finding the Judge writes becomes a finding item under the story.
    From then on only its status changes.
@@ -243,7 +245,7 @@ stays in its conversation, because it never crosses a turn boundary.
 | Resume note | the block every Dev owner prompt opens with, rendered from disk: the current item, its open finding items, the follow-ups filed, the answer log and the plan file | what the Dev owner did with it last time |
 | Helper | bulk work the Dev owner delegates inside one of its turns | the run's checkpoint |
 | Readiness claim | the Dev owner's statement that the story is ready, with the commands it ran | the Judges' verdicts |
-| Follow-up | work the Dev owner found outside its story's scope, with a parent story and a reason | when or by whom it will be worked |
+| Follow-up | an improvement the Dev owner found that its working slice does not need, with a parent story and a reason | when or by whom it will be worked |
 
 **Judgment**
 
