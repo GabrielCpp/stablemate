@@ -376,3 +376,24 @@ ostler artifact vet      <kind> --spec SPEC [--json]    # validate against its c
 
 The contracts themselves are in
 [docs/ARTIFACT-CONTRACTS.md](https://github.com/GabrielCpp/stablemate/blob/main/ostler/docs/ARTIFACT-CONTRACTS.md).
+
+## Local environments
+
+`ostler env` renders the services the books' `stack.yml` files declare into one compose file per
+copy, and drives docker compose against it. `TARGET` is a book or one `book:service`. With no
+target, it is the book you stand in, or every book from the repo root. `--copy` defaults to
+`$STABLEMATE_LEASE`, then to `shared`.
+
+```bash
+ostler env check  [--json]
+ostler env render [TARGET...] [--copy NAME] [--fixtures SET[,SET]] [--json]
+ostler env up     [TARGET...] [--copy NAME] [--fixtures SET[,SET]] [--fresh] [--wait SECONDS] [--json]
+ostler env down   [--copy NAME] [--keep-data] [--json]
+ostler env ls     [--json]
+ostler env address NAME [--copy NAME] [--json]
+ostler env compose [--copy NAME] -- ARGS...
+```
+
+`--fresh` drops the copy's volumes before it comes up, so its fixtures load again. `--fixtures`
+replaces each book's `default-fixtures`. `--keep-data` keeps the volumes and the rendered files,
+and deletes only the rendered secrets, so a later `down` without it drops the rest.

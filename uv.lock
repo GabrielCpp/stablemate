@@ -1051,6 +1051,7 @@ name = "ostler"
 version = "2.0.0"
 source = { editable = "ostler" }
 dependencies = [
+    { name = "jinja2" },
     { name = "jsonschema" },
     { name = "markdown-it-py" },
     { name = "mdit-py-plugins" },
@@ -1079,6 +1080,7 @@ vet = [
 
 [package.metadata]
 requires-dist = [
+    { name = "jinja2", specifier = ">=3.1" },
     { name = "jsonschema", specifier = ">=4.0" },
     { name = "markdown-it-py", specifier = ">=3.0" },
     { name = "mdit-py-plugins", specifier = ">=0.4" },

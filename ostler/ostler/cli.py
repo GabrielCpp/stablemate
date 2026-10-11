@@ -25,6 +25,7 @@ from ostler import index as index_mod
 from ostler import source_snapshots
 from ostler import stamp as stamp_mod
 from ostler import behavior_cli
+from ostler.environments import cli as env_cli
 from ostler import book_reach
 from ostler.model import find_root, load
 
@@ -81,6 +82,7 @@ def _build_parser() -> argparse.ArgumentParser:
         "--full-ids", action="store_true", dest="full_ids",
         help="print ids in full (default for --json)")
     sub = p.add_subparsers(dest="command", required=True)
+    env_cli.add_parser(sub)
 
     d = sub.add_parser("doctor", help="referential-integrity check")
     d.add_argument("--epic", help="restrict checks to one epic (name or folder)")
@@ -1905,6 +1907,8 @@ def main(argv: list[str] | None = None) -> int:
         return _cmd_checks(args)
     if args.command == "cache":
         return _cmd_cache(args)
+    if args.command == "env":
+        return env_cli.run(args, find_root(cwd if cwd is not None else Path.cwd()))
     if args.command == "doctor" and args.verify_index:
         return _cmd_verify_index(cwd, args)
     with index_mod.session(

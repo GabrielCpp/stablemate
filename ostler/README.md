@@ -189,6 +189,7 @@ accepted as input either way).
 | `template` `new` `find` `set` `remove` | declare a repo's own Concept kinds and operate on their instances |
 | `graph` `reach` `locators` `coverage` `scaffold` `fmt` `vet` `audit` | the `docs/features/` node/edge book — see below |
 | `qa` `artifact` | the verification control plane — see below |
+| `env` | bring up a local copy of the stack the books declare, and tear it down — see below |
 
 `edit` is **dry-run unless `--write`**, so a rename across a whole graph is reviewable before it
 happens; `create … --json` returns
@@ -294,6 +295,52 @@ The run contract is in
 [docs/QA-RUN.md](https://github.com/GabrielCpp/stablemate/blob/main/ostler/docs/QA-RUN.md); the
 artifact contracts are in
 [docs/ARTIFACT-CONTRACTS.md](https://github.com/GabrielCpp/stablemate/blob/main/ostler/docs/ARTIFACT-CONTRACTS.md).
+
+### Local environments
+
+`ostler env` runs the product on this machine from what the books say it is made of. Each book
+that boots something keeps a `stack.yml` beside its pages, at `docs/features/<book>/stack.yml`.
+The file names the book's services, the compose fragment that defines each one, and what each
+one needs. A need may sit in another book, so the web book names `api:api` and the api book
+defines it once. Two books never define the same service. One names it, and the other needs it.
+
+```yaml
+# docs/features/web/stack.yml
+secrets: web-local            # a saddlebag environment, rendered per copy
+default-fixtures: [schema]
+services:
+  web:
+    define: ops/services/web.yml.j2
+    needs: [api:api, api:provision]
+  gateway:
+    define: ops/services/gateway.yml.j2
+    render: [ops/services/Caddyfile.j2]
+    needs: [web]
+    address: gateway          # the name a run reads its URL by
+    port: 80
+    host-port: 8443           # the shared copy only
+```
+
+A `define` template renders to one compose service. It sees `copy`, `repo`, `book_dir`, `dir`
+(where its `render` helper files land), `fixtures`, and `service('book:name')` for another
+service's host name. ostler writes `depends_on`, `ports` and `container_name` itself, from
+`needs:`, `once:` and `address:`, so a template that sets one is refused. Each copy gets one
+compose file, its own project, its own named volumes and its own host ports. The shared copy is
+the one exception, and keeps each `host-port`.
+
+```bash
+ostler env check                     # every stack.yml fits together: needs, cycles, one define each
+ostler env up web --copy story-12    # web and everything it needs, waited until healthy
+ostler env address gateway --copy story-12
+ostler env compose --copy story-12 -- logs api-api
+ostler env ls
+ostler env down --copy story-12      # data and rendered files go too, unless --keep-data
+```
+
+The copy defaults to `$STABLEMATE_LEASE`, so a workflow run that holds a lease brings up its own
+copy without naming it. A copy's directory lives under the user state directory, or under
+`$OSTLER_ENV_HOME`. It holds the rendered compose file, the helper files, the secrets saddlebag
+rendered for it, and an address book in the format `ostler qa` reads.
 
 ## The parse index
 
