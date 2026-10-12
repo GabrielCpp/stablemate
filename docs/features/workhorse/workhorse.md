@@ -1,769 +1,1046 @@
 ---
 type: cli
 slug: workhorse
-title: workhorse — fail-soft runner for Python agent workflows
+title: workhorse
 ---
 # workhorse
 
-Drives a workflow written as a **Python state machine** — states are methods on a
-`Workflow` subclass, and each returns the transition to the next one — checkpointing
-before every state so a run resumes exactly where it stopped, built to run unattended for
-days. The walk itself is [drive](concepts/pyflow-driver.md); the shape an author writes is
-the [workflow format](formats/workflow-format.md). The agent harness a run drives is an
-[AgentBackend](concepts/agent-backend.md), chosen per run via
-[get_backend](concepts/get-backend.md) from the `--cli` flag.
-The vendored shared runtime supplies the [clock](concepts/clock.md), [base-library
-discovery](concepts/base-library-discovery.md), [base-library cache](concepts/base-library-cache.md),
-and [library layout](concepts/library-layout.md) used by the engine.
-Run directory selection follows [run identity](concepts/run-identity.md), durable records use the
-[run record models](concepts/run-records.md), and agent visit archives use the [visit key](concepts/visit-key.md)
-and [session chains](concepts/session-chains.md). Repository metadata is an [observation](concepts/repository-observation.md);
-disposable machine state uses [machine scratch](concepts/machine-scratch.md), and run limits use
-[per-run configuration](concepts/run-configuration.md).
-The operator-facing live process channel is the [control channel](concepts/control-channel.md);
-operator notes use the [run inbox](concepts/run-inbox.md), and both commands share [run target
-resolution](concepts/run-target-resolution.md).
-Reload decisions follow the [reload policy](concepts/reload-policy.md); gate files use the
-[operator gate file](formats/operator-gate-file.md) format and inbox persistence uses [run inbox JSONL]
-(inbox-jsonl.md).
-[Detached jobs](concepts/job-supervisor.md) measure long-running commands outside agent turns;
-[generic worklists](concepts/worklist.md) provide workflow-agnostic selection and progress
-summaries; and [packaged workflow directories](concepts/packaged-workflow.md) reject prompt
-packages that cannot be read from a real filesystem directory.
-CLI assembly and registry binding are specified by [CLI composition](concepts/cli-composition.md),
-and the package-root public API is [workhorse package exports](concepts/package-exports.md);
-workflow input merging is [parameter loading](concepts/workflow-parameter-loading.md), and the
-run boundary's library roots follow [CLI library resolution](concepts/cli-library-resolution.md).
-Run observation uses [OpenTelemetry instrumentation](concepts/telemetry-instrumentation.md),
-[console and OpenTelemetry logging](concepts/logging-setup.md), and
-[activity labels from flagged logs](concepts/activity-labels.md).
-The pyflow implementation contracts are [blueprints](concepts/pyflow-blueprints.md),
-[registry](concepts/pyflow-registry.md), [transitions](concepts/pyflow-transitions.md),
-[engine seams](concepts/pyflow-engine.md), [name indexes](concepts/pyflow-names.md),
-[errors](concepts/pyflow-errors.md), [run invocation](concepts/pyflow-run.md), and
-[activity tracking](concepts/pyflow-activity.md). The complete import contract is
-[pyflow public exports](concepts/pyflow-public-exports.md).
-The shared NDJSON backend transport is the [JSONL backend](concepts/jsonl-backend.md), which
-separates its supervised stream from each provider adapter's event vocabulary. The
-[argv prompt transport](concepts/prompt-transport.md) keeps oversized prompts out of subprocess
-arguments for the backends that cannot receive them through stdin.
-The complete executable test-module inventory is [test evidence](concepts/test-evidence-inventory.md).
-Engine contributors use the [root Make drivers](ops/workhorse-root-make-drivers.md) for workspace-wide
-setup, gates, builds, and release dispatch, and the [local development runbook](ops/workhorse-local-development.md)
-for package-local Make drivers. Operators running an installed workflow in the isolated Docker harness use
-the [container agent runbook](ops/workhorse-container-agent.md).
+`workhorse` is the engine behind every workflow's console script. A workflow package installs one
+script named `workhorse-<workflow>`, and that script carries the workflow's own registry, so each
+command below acts on that one workflow. The book drives the `workhorse-loop-runner` script, the
+shipped quick-start workflow, whose dry run needs no repository and no agent CLI.
 
-**Workhorse ships no executable.** It is a library, and the only command line it owns is
-the one a *workflow* binds: a distribution declares `workhorse-<name> =
-"<pkg>.workflow:main"` in `[project.scripts]`, where `main = console_script(
-workflow.entry_point(Coder))`. That callable carries the `Registry` object itself, so
-there is no name to resolve, no catalogue of what is installed, and no path to hand
-anywhere — the retired YAML front-end that read a `workflow.yaml` off disk is gone along
-with its loader, and so is the entry-point group that replaced it.
+The script starts runs ([run launch](concepts/run-launch.md)), draws the workflow's
+[state machine](concepts/state-machine-engine.md), steers a run in flight over its
+[control channel](concepts/run-control.md), answers its [operator inbox](concepts/operator-inbox.md)
+and replays one recorded [agent turn](concepts/agent-turns.md). How the first token picks a command
+is in [CLI dispatch](concepts/cli-dispatch.md). What a run writes to disk is in
+[run directory](concepts/run-directory.md). Which agent CLI a run drives is in
+[agent backends](concepts/agent-backends.md) and [profiles and config](concepts/profiles-and-config.md).
+The rest of the engine is in [shared core](concepts/shared-core.md),
+[telemetry and logs](concepts/telemetry-and-logs.md), [prompt rendering](concepts/prompt-rendering.md),
+[job containment](concepts/job-containment.md), [testing helpers](concepts/testing-helpers.md) and
+[packaging](concepts/packaging.md).
 
-- binary: `workhorse-<name>` — one per installed workflow, e.g. `workhorse-coder`
-- code: `workhorse/workhorse/cli/__init__.py::console_script` @408aa8a4f987,
-  `workhorse/workhorse/cli/__init__.py::main` @408aa8a4f987
-- detail: [live-source generation staging](concepts/live-source.md)
-- detail: [CLI composition](concepts/cli-composition.md)
+Ten journeys walk the commands end to end. An author can [check a workflow](flows/check-workflow.md),
+[fix a launch's settings](flows/fix-launch-config.md), [fix a launch's inputs](flows/fix-launch-inputs.md),
+[pick a turn to replay](flows/pick-replay-turn.md) and [size a replay variant](flows/size-replay-variant.md).
+An operator can [answer the inbox](flows/answer-inbox.md), [inspect a stopped run](flows/inspect-stopped-run.md),
+[steer a live run](flows/steer-live-run.md), [rewind a failed run](flows/rewind-failed-run.md) and
+[resume a stopped run](flows/resume-stopped-run.md). The scenarios read run directories seeded by
+[seeded runs](fixtures/seeded-runs.md) and [inbox run](fixtures/inbox-run.md).
 
-**Flows:** end-to-end journeys across these commands — [install a workflow and run
-it](flows/workhorse-setup-and-run.md), [author, visualize, and run a
-workflow](flows/workhorse-author-visualize-run.md), [author and run a workflow's test
-suite](flows/workhorse-author-test.md), [choose the agent CLI backend and
-power tier](flows/workhorse-choose-backend-and-power.md), [crash and resume in
-place](flows/workhorse-crash-resume.md) (see [Flows](#flows) below).
-
-**One parser, every workflow.** The subcommands below are defined once, in this package,
-and every workflow's command gets all of them — which is the point of shipping the wiring
-rather than letting each distribution hand-write an argument parser that would drift from
-the engine it feeds. `console_script` returns the entry callable rather than calling it,
-because a `[project.scripts]` target is imported and *then* called; a module-level call
-would fire on import and could not be a script target at all. It rejects a bare workflow
-**name** by type, since a name is no longer enough to reach a workflow.
-
-**Exit codes:** `0` when the machine reaches `Done` (and when `--dry-run` finds nothing
-wrong), `1` when it fails, `130` on a `KeyboardInterrupt` — which pauses the run rather
-than ending it, printing the command that resumes it. With no recognized subcommand, a
-bare `workhorse-<name> [<flow>]` is treated as `run`; a bare `--help`/`-h` is not, so it
-still shows the subcommand listing.
+- binary: workhorse-loop-runner
+- code: `workhorse/workhorse/cli/__init__.py::main` @408aa8a4f987
+- detail: [CLI dispatch](concepts/cli-dispatch.md)
 
 ## Commands
 
 ### run
-- usage: `workhorse-<name> run [<flow>] [--params JSON]` (the default command)
+
+- usage: workhorse-loop-runner [run] [FLOW] [--cli NAME | --profile NAME] [--config PATH] [--params JSON] [--params-file PATH] [--context-file PATH] [--runs-dir DIR] [--run-id ID] [--dry-run] [--worktree [--worktree-branch NAME] [--worktree-base REF]] [--resume-run PATH_OR_RUN_ID | --resume-latest | --no-cache]
 - flags:
-  - `--context-file <path>` — the per-repo [context manifest](formats/context-manifest.md) (JSON)
-    that library prompts render against. Workhorse reads its `template`, `repo` and `vars`
-    values. When omitted, auto-detected as
-    `$AGENT_REPO_DIR/.agents/agents-context.$AGENT_CLI.json` then
-    `$AGENT_REPO_DIR/.agents/agents-context.json`; if neither exists the run proceeds with
-    an empty manifest. If given explicitly, the path must exist — a typo is a hard error.
-  - `--params <json>` / `--params-file <path>` — set the workflow's inputs (its class
-    attributes) on a *fresh start*; ignored on resume, which reads them back off the
-    checkpoint. Merged when both are given (`--params-file` first, then `--params` — inline
-    wins on key overlap); each source must decode to a JSON object or the run errors out.
-  - `--cli <name>` — pick the agent harness for the run: selects an
-    [AgentBackend](concepts/agent-backend.md) implementation via
-    [get_backend](concepts/get-backend.md); `<name>` ∈ `claude` (default) · `codex` ·
-    `copilot` · `cline` · `opencode`. Per run, not per state. MUTUALLY EXCLUSIVE with
-    `--profile`: a profile carries its own `cli` field, and passing both flags exits the run
-    with code `2` rather than silently picking one. With no `--profile`, the run applies the
-    profile named after the CLI, `[profiles.<name>]`, when that profile declares
-    `cli = "<name>"`, exactly as `--profile <name>` would. A live CLI switch relaunches the run
-    with `--cli`, so the new CLI picks up its own profile the same way.
-  - `--profile <name>` — resolve this run's models from the config's
-    [`[profiles.<name>]`](concepts/config.md#profiles) tables instead of its top-level ones. A
-    profile **replaces** them — nothing outside it is inherited — and declares its own `cli`
-    field naming the CLI it runs under, so passing `--profile` together with `--cli` rejects
-    the run with exit `2` rather than letting the two flags disagree about which CLI runs.
-    Per run, not per state; recorded in [`run.json`](formats/run-artifacts.md#runjson) so a flagless
-    `--resume-run` re-applies it.
-  - `--config <path>` — read the [shared config file](concepts/config.md) from this path instead
-    of the discovered one. Means what `$STABLEMATE_CONFIG` means — *this* file, entirely, with no
-    merge against the machine's — so it must itself carry `library_dir`/`base_dir`/`stablemate_dir`
-    if the run needs them. Overrides `$STABLEMATE_CONFIG`, which overrides `$WORKHORSE_CONFIG`.
-  - `--runs-dir <dir>` — where run artifacts are written (default `<cwd>/.agents/runs`).
-  - `--run-id <id>` — name the stable run dir (`<workflow>-<id>`). Default: a digest of
-    `--params`, so distinct params get distinct dirs and never collide on one run; with no
-    params, `default`.
-  - `--dry-run` — check the workflow without doing its work, then exit (`0` clean, `1` on
-    the first problem). The `--dry-run` bullet below says what it actually checks.
-    - code: `workhorse/tests/test_pyflow_graph.py::test_the_run_parser_carries_dry_run`
-    - tests: `workhorse/tests/test_pyflow_graph.py::test_the_run_parser_carries_dry_run`
-  - `--resume-run <path-or-id>` / `--resume-latest` / `--no-cache` — mutually exclusive
-    with each other. `--resume-run`/`--resume-latest` resume a checkpointed run instead of
-    the default auto-resume-in-place. `--no-cache` deletes the stable run dir before
-    starting, forcing a clean run from scratch.
+  - `--cli NAME` picks the agent CLI backend for the whole run. It overrides `AGENT_CLI`, which overrides the config's `default_cli`. The default is claude.
+  - `--profile NAME` resolves models from `[profiles.NAME]` in the config, and the profile names its own CLI.
+  - `--config PATH` reads this config file and nothing else. It overrides `$STABLEMATE_CONFIG`, which overrides `$WORKHORSE_CONFIG`.
+  - `--params JSON` is an inline JSON object of workflow params. It wins over `--params-file` on a shared key.
+  - `--params-file PATH` reads the same JSON object from a file.
+  - `--context-file PATH` names the farrier context manifest. The default is `$AGENT_REPO_DIR/.agents/agents-context.<cli>.json`, then `agents-context.json`, and a run with neither renders without one.
+  - `--runs-dir DIR` is where run directories go. The default is `./.agents/runs`.
+  - `--run-id ID` names the stable run directory `<workflow>-<id>`. The default is a digest of the params, or `default` with no params.
+  - `--dry-run` stubs every node and agent turn and checks that the workflow binds.
+  - `--worktree` cuts a fresh branch and git worktree for the run. `--worktree-branch` and `--worktree-base` override its branch name and base ref.
+  - `--resume-run`, `--resume-latest` and `--no-cache` exclude each other. The first resumes a named run, the second the newest unfinished one, the third deletes the stable run directory first.
 - args:
-  - `<flow>` — optional: run one of the registry's named flows standalone, as a re-entry
-    point, instead of the entry class. It is the command's **only** positional — which
-    workflow runs is settled by which console script started the process.
+  - `FLOW` runs one flow sub-graph on its own. Omitted, the run starts at the workflow's entry flow.
+- fixture: seeded-runs
 - does:
-  - run: take the `Registry` off the parsed namespace, where the console script put it
-    (`workhorse/workhorse/cli/__init__.py::main` sets `args.registry`). Nothing is looked
-    up: passing the registry is also what lets the command work with the package merely on
-    `sys.path`, uninstalled
-  - run: call `Registry.directory()` **eagerly**, before any state, because it is what
-    refuses a zip-imported or namespace package — deferring it to the first prompt render
-    turns "this wheel is packed wrong" into a `TemplateNotFound` several states into a
-    run. A `PackagedWorkflowError` prints `error: <exc>` to stderr and exits `1`
-  - run: pin `AGENT_REPO_DIR` to the launch directory (`Path.cwd()`) when unset, so a
-    node resolves the consuming repo rather than the directory the installed workflow
-    package happens to sit in
-  - run: `--config`, if given, is written back to `$STABLEMATE_CONFIG`
-    ([`CONFIG_PATH_ENV`](concepts/config.md#location)) before anything reads the file
-  - verify: exit_status(code=0)
-  - run: the config is re-read per node and by every subprocess the run spawns, each through
-    its own `config_path()`, so the selected file remains consistent throughout the run
-  - verify: exit_status(code=0)
-  - run: a `--config` path that is not a file exits `1` rather than reading as an empty config
-  - verify: exit_status(code=1)
-  - run: without `--config`, `$STABLEMATE_CONFIG` is not written, so `load_config` retains its
-    legacy per-tool merge instead of treating a discovered path as explicit
-  - verify: exit_status(code=0)
-  - run: select the [profile](concepts/config.md#profiles) from `--profile`, or from the resumed
-    run's [`run.json`](formats/run-artifacts.md#runjson) after resolving its directory, or under a
-    bare `--cli <name>` from `[profiles.<name>]` when that profile declares `cli = "<name>"`
-  - verify: exit_status(code=0)
-  - run: a resumed run re-applies its recorded profile unless `--profile` overrides it, so its
-    nodes do not silently resolve against the machine's global model set
-  - verify: exit_status(code=0)
-  - run: an undefined profile prints `UnknownProfileError`, including the known names, and exits
-    `1`
-  - verify: exit_status(code=1)
-  - run: refuse `--profile` together with `--cli` by printing the mutually-exclusive error to
-    stderr and exiting `2`, since the profile already names the CLI it runs under
-  - verify: exit_status(code=2)
-  - run: select the CLI from `--cli`, `AGENT_CLI`, the config's
-    [`default_cli`](concepts/config.md#resolve_default_cli), or `claude`
-  - verify: exit_status(code=0)
-  - run: write the resolved CLI name to `AGENT_CLI` so later readers use the selected backend
-    rather than re-deriving it
-  - verify: exit_status(code=0)
-  - run: eagerly validate the selected [AgentBackend](concepts/agent-backend.md) through
-    [get_backend](concepts/get-backend.md) before any state runs
-  - verify: exit_status(code=0)
-  - run: an unknown CLI backend prints an error to stderr and exits `1` before any state runs
-  - verify: exit_status(code=1)
-  - run: refuse a profile that has no model for the selected backend, preventing a harness
-    default model from being used silently
-  - verify: exit_status(code=1)
-  - run: report a profile keyed by an unknown backend name as the same error class as an unknown
-    `--cli` value
-  - verify: exit_status(code=1)
-  - run: validate the selected profile and backend under `--dry-run` as well as a live run
-  - verify: exit_status(code=1)
-  - run: resolve `runs_dir` (`--runs-dir`, else `<cwd>/.agents/runs`)
-  - run: load `--params`/`--params-file` into a starting-params dict via
-    `load_params` (`workhorse/workhorse/cli/params.py::load_params`):
-      - starts from `params = {}`. If `--params-file` is given, reads its path as text
-        (`Path(file).read_text()`)
-      - an `OSError` while reading `--params-file` (missing file, permission error, …) prints
-        `error: cannot read --params-file <file>: <error>` to stderr and exits `1`
-      - processes the two sources **in file-then-inline order** — the `--params-file` text
-        first, then `--params` itself — skipping whichever wasn't given (`None`)
-      - parses each non-`None` source with `json.loads`. A `json.JSONDecodeError` prints
-        `error: <label> is not valid JSON: <error>` to stderr and exits `1`, where `<label>`
-        is `--params-file` or `--params` matching the source
-    - a source that parses to something other than a JSON object (e.g. a list or scalar)
-      prints `error: <label> must be a JSON object (key→value map)` to stderr and exits `1`
-      - folds each valid source dict into `params` with `dict.update`, so **`--params` wins over
-        `--params-file`** on overlapping keys because inline is merged second
-      - returns `{}` when neither parameter source is given
-  - run: load the `--context-file`/auto-detected manifest into a starting manifest dict
-    (`load_context_manifest`)
-  - run: resolve `resume_run_dir` from the mutually-exclusive resume flags — `--resume-run`
-    accepts an absolute path, an existing relative path, or a name under `runs_dir`
-  - run: a `--resume-run` target that is not a directory exits `1`
-  - run: `--resume-latest` resolves the newest unfinished run directory under `runs_dir` through
-    `workhorse/workhorse/rundir.py::find_latest_resumable`:
-    - a `runs_dir` that doesn't exist on disk yields no candidates
-    - otherwise scans `runs_dir`'s immediate children
-    - a child is a candidate only when it is a directory with a
-      [checkpoint file](formats/run-artifacts.md#checkpointjson) (`ArtifactWriter.CHECKPOINT_FILE`, or
-      `checkpoint.json`)
-    - a directory that has not reached its first state is never resumable
-    - reads and parses each candidate's [`run.json`](formats/run-artifacts.md#runjson)
-    - silently drops a candidate whose `run.json` is missing or invalid JSON instead of failing
-      the whole scan
-    - a candidate survives only if its `run.json` `terminal` key is `null`/absent — a
-      finished run is never returned by `--resume-latest`
-    - chooses the surviving candidate whose `checkpoint.json` has the newest mtime
-    - with no surviving candidate, prints `error: no resumable run found under <runs_dir>` to
-      stderr and exits `1`
-    - with neither flag given, `resume_run_dir` stays `None` and the auto-resume-in-place
-      rule inside `run_pyflow` decides
-  - run: hand everything to the driver as one
-    `workhorse/workhorse/pyflow/run.py::RunInvocation`, and `sys.exit()` with
-    `run_pyflow`'s return code. That is where the run actually happens:
-    - **[reference preflight](concepts/reference-preflight.md)** warns before the first state
-      about each prompt that names a skill the workspace has not installed, or calls a retired
-      helper. Either call stops the turn that renders it.
-    - under `--dry-run`, treats the same unresolved-reference list as an exit code
-    - **`--dry-run`** — the [static preflight](concepts/pyflow-state-graph.md) first (every
-      prompt path resolves, every state name binds, no state is unreachable, the machine
-      can terminate), then the machine is driven **for real** with nodes and agent turns
-      substituted for stand-ins, so imports, `setup()` and the transitions along one path
-      are exercised too. It runs in its own `dry-run` run dir, always cleared, so a smoke
-      test can never overwrite the checkpoint of a live week-long run. Reaching the fail
-      terminal is reported but *not* an error unless the workflow declared
-      `stub_agents({…})` — undeclared, every agent reply is a blank model and any workflow
-      with a reachable failure can be walked into one
-    - **run identity** — an explicit `--resume-run` wins
-    - otherwise, resumes the stable directory for this `(workflow, run-id)` when it holds an
-      unfinished checkpoint
-    - otherwise, starts fresh in that same stable directory
-    - **the flow a checkpoint belongs to** — a resume re-enters the flow that wrote the
-      checkpoint. Asking for a different `<flow>` in the same run dir is refused by name:
-      the checkpoint's state and params mean nothing to another flow
-    - **inputs are a model** — the workflow class's own fields are the parameter contract,
-      so a missing or mistyped `--params` key is reported by name by pydantic before the
-      first state
-    - **interrupt** — `Ctrl-C` terminates the active agent, records the interrupt against
-      the state in flight, prints the `--resume-run` command, and exits `130`
+  - A dry run stubs every node and agent turn and reports that each one ran its stand-in.
+- run: invoke(argv=["run", "--dry-run", "--no-cache", "--cli", "claude", "--config", "/tmp/workhorse-book/seeded/config.toml"])
+- verify: stdout(text="[workhorse] dry-run ok — every node ran its stand-in")
+- exits: 0 when a dry run finds nothing wrong.
+- run: invoke(argv=["run", "--dry-run", "--no-cache", "--cli", "claude", "--config", "/tmp/workhorse-book/seeded/config.toml"])
 - verify: exit_status(code=0)
-- verify: exit_status(code=1)
 - code: `workhorse/workhorse/cli/run.py::add_arguments` @fb229bac321d
 - code: `workhorse/workhorse/cli/run.py::run` @fb229bac321d
 - code: `workhorse/workhorse/cli/run.py::invocation` @fb229bac321d
-- detail: [workflow parameter loading](concepts/workflow-parameter-loading.md)
-- detail: [CLI library-directory resolution](concepts/cli-library-resolution.md)
-- tests: `workhorse/tests/test_run_options.py::test_profile_travels_to_the_run_and_carries_its_default_cli`,
-  `workhorse/tests/test_run_options.py::test_cli_flag_still_wins_over_a_profiles_default`,
-  `workhorse/tests/test_run_options.py::test_an_unknown_profile_is_refused_before_the_first_state`,
-  `workhorse/tests/test_run_options.py::test_a_profile_with_nothing_for_the_chosen_backend_is_refused`,
-  `workhorse/tests/test_run_options.py::test_a_flagless_resume_re_applies_the_recorded_profile`,
-  `workhorse/tests/test_run_options.py::test_an_explicit_profile_overrides_the_recorded_one`,
-  `workhorse/tests/test_run_options.py::test_a_bare_cli_runs_under_the_profile_named_after_it`,
-  `workhorse/tests/test_run_options.py::test_a_profile_named_after_a_cli_it_does_not_declare_is_not_implied`
-- tests: `workhorse/tests/test_console_script.py::test_every_flag_reaches_the_engine`,
-  `workhorse/tests/test_console_script.py::test_the_cli_reports_the_zip_failure_and_exits`,
-  `workhorse/tests/test_resume_auto.py::test_find_latest_resumable_picks_newest_of_several_unfinished`,
-  `workhorse/tests/test_resume_auto.py::test_resume_latest_still_errors_when_none`
-
-`workhorse-coder run qa --params '{"story":"ACME-1234"}'` runs the coder workflow's `qa`
-flow standalone. `workhorse-coder run docs --params '{"story":"ACME-1234"}'` independently
-runs the same hard [documentation gate](flows/coder-documentation-gate.md) that the full
-coder pipeline executes before QA and again before commit.
+- code: `workhorse/workhorse/cli/run.py::apply_config_path` @fb229bac321d
+- code: `workhorse/workhorse/cli/run.py::library_dirs` @fb229bac321d
+- code: `workhorse/workhorse/cli/params.py::load_params` @43dababb9ed6
+- code: `workhorse/workhorse/manifest.py::load_context_manifest` @e896594bc36c
+- detail: [run launch](concepts/run-launch.md)
 
 ### dot
-- usage: `workhorse-<name> dot [--name ID] [-o out.dot]`
-- flags:
-  - `--name <id>` — type `str`, default: none (falls back to the registry's own name).
-    Overrides the rendered `digraph` identifier.
-  - `-o, --output <path>` — type `str` (path), default: none (write to stdout). Writes the
-    DOT text to `<path>` instead.
-- does:
-  - run: take the `Registry` off the namespace, exactly as `run` does
-  - verify: count(subject="flow graphs rendered from a namespace carrying a one-flow registry", equals=1)
-  - run: render whichever workflow's console script started the process, without accepting
-    a workflow selection argument
-  - verify: omits(subject="dot command usage after the dot token", matches="(?:<workflow>|--workflow)")
-  - run: derive one graph per distinct flow class from the registry (`registry_graphs`)
-  - verify: count(subject="graphs for a registry with two distinct flow classes", equals=2)
-  - run: render each flow graph with `to_dot` as one `subgraph cluster_*`
-  - verify: count(subject="subgraph clusters in DOT output for a two-flow registry", equals=3)
-  - run: read each flow graph off its states' own source
-  - verify: omits(subject="DOT output for a workflow state renamed with aliases=[…]", text="qa")
-  - run: render live state names only, so an `aliases=[…]` rename never shows up as a second
-    state
-  - verify: omits(subject="DOT output", text="qa")
-  - run: if `--output` is given, write the DOT text to that path
-  - run: if `--output` is given, print `[workhorse] wrote <path>` to stderr
-  - run: if `--output` is not given, write the DOT text to stdout
-The state-source rule is described in the [state graph](concepts/pyflow-state-graph.md).
-- verify: exit_status(code=0)
-- code: `workhorse/workhorse/cli/dot.py::run` @d156b791d036
-- code: `workhorse/workhorse/cli/dot.py::add_arguments` @d156b791d036
-- code: `workhorse/tests/test_pyflow_graph.py::test_dot_renders_a_python_workflow_from_its_registry`
-- code: `workhorse/tests/test_pyflow_graph.py::test_dot_rejects_pin_and_leaf_at_the_parser`
-- tests: `workhorse/tests/test_pyflow_graph.py::test_dot_renders_a_python_workflow_from_its_registry`
-- tests: `workhorse/tests/test_pyflow_graph.py::test_dot_rejects_pin_and_leaf_at_the_parser`
 
-### version
-- usage: `workhorse-<name> version`
-- flags: none; `add_arguments` registers no options
-- args: none; the command accepts no positional arguments
+- usage: workhorse-loop-runner dot [--name NAME] [-o PATH | --output PATH]
+- flags:
+  - `--name NAME` overrides the digraph identifier. The default is the workflow's name. Every character outside `A-Za-z0-9_` becomes `_`.
+  - `-o PATH`, `--output PATH` writes the DOT text to PATH instead of stdout.
+- fixture: none, because the graph comes from the workflow's own registry and reads no file
 - does:
-  - run: read the installed `workhorse-agent` distribution version with
-    `importlib.metadata.version("workhorse-agent")`
-  - run: print the engine distribution version to stdout
-  - run: report the engine version rather than the workflow distribution version
+  - The graph carries a legend cluster beside one cluster per flow.
+- run: invoke(argv=["dot"])
+- verify: stdout(text="subgraph cluster_legend {")
+- exits: 0 after the graph is printed.
+- run: invoke(argv=["dot"])
 - verify: exit_status(code=0)
-- errors: let `importlib.metadata.PackageNotFoundError` propagate when the `workhorse-agent` distribution is not installed
-- verify: exit_status(code=1)
-- code: `workhorse/workhorse/cli/version.py::run` @bf3e2cf7e8dc
-- code: `workhorse/workhorse/cli/version.py::add_arguments` @bf3e2cf7e8dc
+- code: `workhorse/workhorse/cli/dot.py::add_arguments` @d156b791d036
+- code: `workhorse/workhorse/cli/dot.py::run` @d156b791d036
+- code: `workhorse/workhorse/pyflow/dot.py::to_dot` @1de4e44f4848
+- detail: [state machine engine](concepts/state-machine-engine.md)
 
 ### control
-- usage: `workhorse-<name> control {reload,stop,status,questions,answer,switch-cli,switch-profile} [NAME] [options]`
+
+- usage: workhorse-loop-runner control ACTION [NAME] [--run ID|DIR] [--runs-dir DIR] [--gate PATH] [--text TXT] [--core] [--at-boundary] [--to STATE] [--param NAME=VALUE] [--param-from-turn NAME=PATH] [--keep NAME] [--params] [--wait] [--timeout S]
 - flags:
-  - `--run ID|DIR` — select a run by run id, run-directory name, or path; default: the newest
-    unfinished run under `--runs-dir`
-  - `--runs-dir DIR` — run-directory root; default: `<cwd>/.agents/runs`
-  - `--gate PATH` — for `answer` only, target this absolute gate path; default: the gate the run
-    is currently waiting on
-  - `--text TXT` — for `answer` only, use this answer body; default: read all non-terminal stdin
-  - `--core` — for `reload` and `switch-cli`, also replace workhorse itself
-  - `--at-boundary` — for `reload` and `switch-cli`, defer re-entry until the current streaming
-    turn reaches a state boundary
+  - `--run ID|DIR` names the run by its run id, its run-dir name or a path. The default is the newest unfinished run under `--runs-dir`. A name no directory matches is asked of groom's `/api/live` at `$GROOM_URL`, default `http://127.0.0.1:8787`.
+  - `--runs-dir DIR` is where run directories live. The default is `./.agents/runs`.
+  - `--gate PATH` and `--text TXT` belong to `answer` only. Without `--text`, `answer` reads the text from stdin.
+  - `--core` also replaces workhorse itself on `reload`. `--at-boundary` lets the streaming turn finish first. Neither applies to `stop`, `rewind` or `resume`.
+  - `--to STATE`, `--param NAME=VALUE`, `--param-from-turn NAME=PATH` and `--keep NAME` belong to `rewind` only. A `--param` value is JSON when it parses, else the text as typed.
+  - `--params` belongs to `status` only and prints the checkpoint from disk.
+  - `--wait` belongs to `stop` only. `--timeout S` bounds `stop --wait` and `resume`, default 120.
 - args:
-  - `NAME` — for `switch-cli`, the agent CLI to use after re-entry; for `switch-profile`, the
-    profile used from the next turn; absent for every other action
+  - `ACTION` is one of reload, stop, status, questions, answer, switch-cli, switch-profile, rewind and resume. The first seven talk to a live run over its control socket. `rewind` and `resume` act on a stopped run.
+  - `NAME` is the CLI for `switch-cli` and `resume`, and the profile for `switch-profile`. Every other action refuses it.
+- fixture: seeded-runs
 - does:
-  - parse exactly one of `reload`, `stop`, `status`, `questions`, `answer`, `switch-cli`, or
-    `switch-profile`
-  - reject a target name on an action other than `switch-cli` or `switch-profile`
-  - reject either switch action when its target name is absent
-  - reject `--gate` or `--text` on an action other than `answer`
-  - reject `answer` when no `--text` is supplied and stdin is a terminal
-  - resolve the target locally, then ask groom for a named run that is not local
-  - send one request to the selected run and print action-specific evidence
-- errors: print the resolution or control-socket error to stderr when no target or listener can receive the request
-- exits: return `1` for invalid action arguments, target resolution failure, or socket delivery failure
-- exits: return `0` after a request is delivered, except `stop`, `answer` and a refused `switch-profile`, which return `1` when the run does not confirm the action
+  - `status --params` prints the checkpoint's state from disk as sorted JSON.
+- run: invoke(argv=["control", "status", "--params", "--run", "/tmp/workhorse-book/seeded/finished"])
+- verify: json_path(path="$.state", equals="write")
+- does:
+  - `status --params` prints the checkpoint's params.
+- run: invoke(argv=["control", "status", "--params", "--run", "/tmp/workhorse-book/seeded/finished"])
+- verify: json_path(path="$.params.topic", equals="cats")
+- does:
+  - `status --params` prints the checkpoint's flow.
+- run: invoke(argv=["control", "status", "--params", "--run", "/tmp/workhorse-book/seeded/finished"])
+- verify: json_path(path="$.flow", equals="Main")
+- exits: 0 when `status --params` prints the checkpoint.
+- run: invoke(argv=["control", "status", "--params", "--run", "/tmp/workhorse-book/seeded/finished"])
 - verify: exit_status(code=0)
-- verify: exit_status(code=1)
 - code: `workhorse/workhorse/cli/control.py::add_arguments` @d578cf93b87e
 - code: `workhorse/workhorse/cli/control.py::run` @d578cf93b87e
-- detail: [control channel](concepts/control-channel.md)
-- tests: `workhorse/tests/test_control_command.py::_control`
+- code: `workhorse/workhorse/cli/offline.py::run_rewind` @5ec56edba53b
+- code: `workhorse/workhorse/cli/offline.py::run_resume` @5ec56edba53b
+- code: `workhorse/workhorse/cli/offline.py::print_params` @5ec56edba53b
+- code: `workhorse/workhorse/cli/target.py::resolve_target` @8b8132797882
+- detail: [run control](concepts/run-control.md)
 
 ### inbox
-- usage: `workhorse-<name> inbox {read,reply} [ID] [TEXT] [options]`
+
+- usage: workhorse-loop-runner inbox (read [--all] | reply ID TEXT) [--run ID|DIR] [--runs-dir DIR]
 - flags:
-  - `--all` — for `read`, include replied messages; default: outstanding messages only
-  - `--run ID|DIR` — select a run by id, directory name, or path; default: newest unfinished run
-  - `--runs-dir DIR` — run directory root; default: `<cwd>/.agents/runs`
+  - `--all` makes `read` print every message. The default is outstanding messages only.
+  - `--run ID|DIR` and `--runs-dir DIR` pick the run exactly as `control` does.
 - args:
-  - `action` — required action, either `read` or `reply`
-  - `message_id` — optional message id, used by `reply`
-  - `text` — optional reply text, used by `reply`
+  - `ACTION` is `read` or `reply`.
+  - `ID` and `TEXT` are the message id and the reply text, both required by `reply`.
+- fixture: inbox-run dir=answer
 - does:
-  - select exactly one `read` or `reply` action
-  - dispatch the selected action against the resolved run inbox
-- errors: refuse an action other than `read` or `reply`
-- errors: report target-resolution failures before accessing an inbox
-- exits: return `2` when argparse rejects the action or another command-line shape
-- exits: return `1` when reply validation or target resolution fails
-- exits: return `0` after the selected action completes
+  - `read` prints each outstanding message as an id, timestamp and status line.
+- run: invoke(argv=["inbox", "read", "--run", "/tmp/workhorse-book/inbox/answer"])
+- verify: stdout(text="[m1] 2026-01-01T00:00:00+00:00 (outstanding)")
+- exits: 0 after `read` prints.
+- run: invoke(argv=["inbox", "read", "--run", "/tmp/workhorse-book/inbox/answer"])
 - verify: exit_status(code=0)
-- verify: exit_status(code=1)
-- verify: exit_status(code=2)
 - code: `workhorse/workhorse/cli/inbox.py::add_arguments` @7789b147be16
 - code: `workhorse/workhorse/cli/inbox.py::run` @7789b147be16
-- detail: [run inbox](concepts/run-inbox.md)
-- tests: `workhorse/tests/test_inbox_command.py::_inbox`
+- code: `workhorse/workhorse/inbox.py::reply` @e2ad0fc21f23
+- detail: [operator inbox](concepts/operator-inbox.md)
 
-### reload
-- usage: `workhorse-<name> control reload [--run ID|DIR] [--runs-dir DIR] [--core] [--at-boundary]`
-- parent: [control](#control)
+### replay
+
+- usage: workhorse-loop-runner replay TURN --run ID|DIR [--runs-dir DIR] [--prompt FILE] [--max-prompt-chars N] [--repeat N] [--profile NAME] [--config PATH] [--discard]
 - flags:
-  - `--run ID|DIR` — select a run by id, directory name, or path; default: newest unfinished run
-  - `--runs-dir DIR` — run directory root; default: `<cwd>/.agents/runs`
-  - `--core` — reload workhorse and the workflow package
-  - `--at-boundary` — finish the current streaming turn before re-entry
-- does:
-  - send `action=reload` to the selected live run, preserving `--core` and `--at-boundary`
-- does:
-  - report the socket reply, process liveness, and last checkpoint position without waiting for re-entry
-- errors: report a missing target or a run with no listening control socket
-- exits: return `1` when target resolution or socket delivery fails
-- exits: return `0` after the request is delivered
-- verify: exit_status(code=0)
-- verify: exit_status(code=1)
-- code: `workhorse/workhorse/cli/control.py::run` @d578cf93b87e
-- detail: [control channel](concepts/control-channel.md)
-- tests: `workhorse/tests/test_control_command.py::test_reload_says_it_on_the_socket_the_run_is_listening_on`, `workhorse/tests/test_control_command.py::test_a_run_that_does_not_exist_is_an_error_not_a_new_directory`
-
-### status
-- usage: `workhorse-<name> control status [--run ID|DIR] [--runs-dir DIR]`
-- parent: [control](#control)
-- flags: `--run ID|DIR` and `--runs-dir DIR` — select the run as for [reload](#reload)
-- does:
-  - send a status query that the run answers without ending its current wait
-- does:
-  - print the run's self-reported fields when the socket replies
-- does:
-  - print process liveness and checkpoint position when the run does not answer before the control timeout
-- errors: report a missing target or a run with no listening control socket
-- exits: return `1` when target resolution or socket delivery fails
-- exits: return `0` for an answered or timed-out status query
-- verify: exit_status(code=0)
-- verify: exit_status(code=1)
-- code: `workhorse/workhorse/cli/control.py::run` @d578cf93b87e
-- detail: [control channel](concepts/control-channel.md)
-- tests: `workhorse/tests/test_control_command.py::test_status_is_answered_by_the_run_and_not_by_the_run_dir`, `workhorse/tests/test_control_command.py::test_a_run_that_never_answered_reports_from_disk_and_says_which_it_is`
-
-### questions
-- usage: `workhorse-<name> control questions [--run ID|DIR] [--runs-dir DIR]`
-- parent: [control](#control)
-- flags: `--run ID|DIR` and `--runs-dir DIR` — select the run as for [reload](#reload)
-- does:
-  - send a questions query that the run answers without ending its current wait
-- does:
-  - print each pending gate's path, kind, timestamp, and question text
-- does:
-  - report that the run is not blocked when the live reply contains an empty question list
-- does:
-  - report a timeout separately when the run does not answer
-- errors: report a missing target or a run with no listening control socket
-- exits: return `1` when target resolution or socket delivery fails
-- exits: return `0` for an answered or timed-out question query
-- verify: exit_status(code=0)
-- verify: exit_status(code=1)
-- code: `workhorse/workhorse/cli/control.py::run` @d578cf93b87e
-- detail: [control channel](concepts/control-channel.md)
-- tests: `workhorse/tests/test_control_command.py::test_questions_prints_the_gate_the_run_is_parked_on`, `workhorse/tests/test_control_command.py::test_questions_says_when_the_run_is_not_blocked`
-
-### answer
-- usage: `workhorse-<name> control answer [--run ID|DIR] [--runs-dir DIR] [--gate PATH] [--text TXT]`
-- parent: [control](#control)
-- flags:
-  - `--run ID|DIR` and `--runs-dir DIR` — select the run as for [reload](#reload)
-  - `--gate PATH` — absolute gate path; default: the gate currently awaited by the run
-  - `--text TXT` — answer text; default: read all text from non-terminal stdin
-- does:
-  - send `action=answer` with the selected gate path and answer body over the control channel
-- does:
-  - read all stdin text when `--text` is omitted and stdin is non-terminal
-- does:
-  - report the gate path only after the run confirms that it wrote the answer
-- errors: refuse an answer with no text source
-- errors: report the run's refusal when the gate is unavailable or already answered
-- errors: report missing acknowledgement as an error because no gate write was confirmed
-- exits: return `1` when validation, target resolution, delivery, or run confirmation fails
-- exits: return `0` after the run confirms the answer was written
-- verify: exit_status(code=0)
-- verify: exit_status(code=1)
-- code: `workhorse/workhorse/cli/control.py::run` @d578cf93b87e
-- detail: [control channel](concepts/control-channel.md)
-- tests: `workhorse/tests/test_control_command.py::test_an_answer_carries_the_gate_and_the_text_and_reports_the_landing`, `workhorse/tests/test_control_command.py::test_a_refused_answer_exits_nonzero`
-
-### switch-cli
-- usage: `workhorse-<name> control switch-cli CLI [--run ID|DIR] [--runs-dir DIR]`
-- parent: [control](#control)
-- flags: `--run ID|DIR` and `--runs-dir DIR` — select the run as for [reload](#reload)
-- args: `CLI` — required agent CLI name to use after re-entry
-- does:
-  - encode `switch-cli CLI` as `action=reload`, `core=true`, and `cli=CLI`
-- errors: refuse a missing CLI name or a name supplied to a non-switch action
-- exits: return `1` when validation, target resolution, or socket delivery fails
-- exits: return `0` after the switch request is delivered
-- verify: exit_status(code=0)
-- verify: exit_status(code=1)
-- code: `workhorse/workhorse/cli/control.py::run` @d578cf93b87e
-- detail: [control channel](concepts/control-channel.md)
-- tests: `workhorse/tests/test_control_command.py::test_a_cli_switch_travels_as_a_core_reload_naming_the_cli`, `workhorse/tests/test_control_command.py::test_a_switch_with_no_cli_and_a_reload_with_one_are_both_refused`
-
-### switch-profile
-- usage: `workhorse-<name> control switch-profile PROFILE [--run ID|DIR] [--runs-dir DIR]`
-- parent: [control](#control)
-- flags: `--run ID|DIR` and `--runs-dir DIR` — select the run as for [reload](#reload)
-- args: `PROFILE` — required profile name for subsequent model resolution
-- does:
-  - send `action=switch-profile` with the named profile and without a core reload
-- does:
-  - print that the profile applies from the next turn rather than waiting for the switch to complete
-- errors: refuse a missing profile name or report the run's profile-resolution refusal
-- exits: return `1` when validation, target resolution, socket delivery, or profile resolution fails
-- exits: return `0` after the run accepts the profile request
-- verify: exit_status(code=0)
-- verify: exit_status(code=1)
-- code: `workhorse/workhorse/cli/control.py::run` @d578cf93b87e
-- detail: [control channel](concepts/control-channel.md)
-- tests: `workhorse/tests/test_control_command.py::test_a_profile_switch_is_its_own_verb_carrying_the_name`, `workhorse/tests/test_control_command.py::test_a_refused_profile_switch_exits_nonzero`
-
-### read
-- usage: `workhorse-<name> inbox read [--all] [--run ID|DIR] [--runs-dir DIR]`
-- parent: [inbox](#inbox)
-- flags:
-  - `--all` — include replied messages; default: outstanding messages only
-  - `--run ID|DIR` and `--runs-dir DIR` — select the run using shared target resolution
-- args: no message id or text is consumed by this action
-- does:
-  - print each selected message id, timestamp, reply state, and body
-- does:
-  - print a no-messages notice when the selected set is empty
-- does:
-  - leave every message in the run inbox unchanged
-- errors: report a target-resolution failure before reading the inbox
-- exits: return `0` after reading the inbox
-- exits: return `1` when target resolution fails
-- verify: exit_status(code=0)
-- verify: exit_status(code=1)
-- verify: unchanged(subject="run inbox")
-- code: `workhorse/workhorse/cli/inbox.py::run` @7789b147be16
-- detail: [run inbox](concepts/run-inbox.md)
-- tests: `workhorse/tests/test_inbox_command.py::test_read_prints_outstanding_messages_by_default`, `workhorse/tests/test_inbox_command.py::test_read_all_includes_replied_messages`
-
-### reply
-- usage: `workhorse-<name> inbox reply ID TEXT [--run ID|DIR] [--runs-dir DIR]`
-- parent: [inbox](#inbox)
-- flags: `--run ID|DIR` and `--runs-dir DIR` — select the run using shared target resolution
+  - `--run ID|DIR` is required and names the run that recorded the turn. It never asks groom.
+  - `--prompt FILE` sends this prompt instead of the recorded `prompt.md`.
+  - `--max-prompt-chars N` is the largest variant to send. The default is twice the recorded prompt's length.
+  - `--repeat N` runs the turn N times, each from the recorded start. The default is 1.
+  - `--profile NAME` runs under another profile. The default is the one the turn recorded.
+  - `--config PATH` reads profiles from this config file, as `run` does.
+  - `--discard` resets the turn's working trees to its start even when they hold changes or later commits.
 - args:
-  - `ID` — required id of the message to answer
-  - `TEXT` — required reply text
-- does:
-  - attach the reply text and current UTC timestamp to the message with the selected id
-- does:
-  - atomically persist the updated inbox and report the replied message id
-- errors: refuse a missing id or text
-- errors: report a missing message id
-- errors: report a target-resolution failure before modifying the inbox
-- exits: return `1` when validation, target resolution, or message lookup fails
-- exits: return `0` after the reply is persisted
-- verify: exit_status(code=0)
+  - `TURN` is a directory name under the run's `turns/`, such as `000-00023-write-page`.
+- fixture: seeded-runs
+- errors: A working tree whose head moved from the turn's start is refused, because a replay resets it.
+- run: invoke(argv=["replay", "000-00004-moved", "--run", "/tmp/workhorse-book/seeded/replay-run"])
+- verify: stderr(text="and a replay resets its branch to that start, dropping every commit after it. Replay against a copy of the checkout, or pass --discard.")
+- exits: 1 on every refusal after the arguments parse.
+- run: invoke(argv=["replay", "000-00004-moved", "--run", "/tmp/workhorse-book/seeded/replay-run"])
 - verify: exit_status(code=1)
-- code: `workhorse/workhorse/cli/inbox.py::run` @7789b147be16
-- detail: [run inbox](concepts/run-inbox.md)
-- tests: `workhorse/tests/test_inbox_command.py::test_reply_persists_and_is_read_back_as_answered`, `workhorse/tests/test_inbox_command.py::test_reply_to_a_missing_id_is_an_error`
+- code: `workhorse/workhorse/cli/replay.py::add_arguments` @d6c1e9fdd435
+- code: `workhorse/workhorse/cli/replay.py::run` @d6c1e9fdd435
+- code: `workhorse/workhorse/cli/replay.py::replay_turn` @d6c1e9fdd435
+- code: `workhorse/workhorse/cli/replay.py::Replay` @d6c1e9fdd435
+- detail: [agent turns](concepts/agent-turns.md)
 
-### stop
-- usage: `workhorse-<name> control --run ID|DIR stop [--runs-dir DIR]`
-- parent: [control](#control)
-- flags:
-  - `--run ID|DIR` — select a run by id, directory name, or path; default: newest unfinished run
-  - `--runs-dir DIR` — run directory root; default: `<cwd>/.agents/runs`
-- args: none
+### version
+
+- usage: workhorse-loop-runner version
 - does:
-  - send `action=stop` over the selected run's control socket
-- does:
-  - print `stop accepted` after explicit acknowledgment, without waiting for process exit
-- verify: visible(locator="stdout", text="stop accepted")
-- does:
-  - pause the run through its existing interrupt cleanup when control next polls
-- does:
-  - preserve the checkpoint for resume
-- verify: count(subject="resumable checkpoints after stop", equals=1)
-- errors: reject `--core`, `--at-boundary`, a target name, or answer-only flags
-- errors: report a missing listener, unsupported action, or unconfirmed stop without sending OS signals
-- exits: return 0 only after the run explicitly acknowledges stop
+  - Prints the installed workhorse-agent distribution version.
+- run: invoke(argv=["version"])
+- verify: stdout(matches="^[0-9]+[.][0-9]+")
+- exits: 0 after printing.
+- run: invoke(argv=["version"])
 - verify: exit_status(code=0)
-- exits: return 1 when delivery or acknowledgment fails
-- verify: exit_status(code=1)
-- code: `workhorse/workhorse/cli/control.py::run` @d578cf93b87e
-- code: `workhorse/workhorse/reload.py::cut_by` @c7be7ac9ef2a
-- code: `workhorse/workhorse/reload.py::boundary_requested` @c7be7ac9ef2a
-- detail: [control channel](concepts/control-channel.md)
-- tests: `workhorse/tests/test_stop_control.py::test_stop_cli_requires_explicit_acceptance_over_the_socket`
-- tests: `workhorse/tests/test_stop_control.py::test_socket_stop_reaps_the_streaming_child_and_preserves_resume`
-
-## Flows
-
-End-to-end journeys across these commands:
-
-- [Install a workflow and run it](flows/workhorse-setup-and-run.md) — get a workflow's
-  distribution installed so its command is on `PATH`, then `run` it.
-- [Author, visualize, and run a workflow](flows/workhorse-author-visualize-run.md) — write
-  the package, sanity-check it with `--dry-run` and `dot`, then `run` it.
-- [Author and run a workflow's test suite](flows/workhorse-author-test.md) — write
-  `tests/*.py` that substitute the node index and drive them with plain `pytest`; the
-  declared stand-ins are shared with `run --dry-run`.
-- [Choose the agent CLI backend and power tier](flows/workhorse-choose-backend-and-power.md)
-  — point `run --cli` at a different harness, set its power tier in the [shared config
-  file](concepts/config.md), and select a whole named set of models for one run with
-  `--profile`.
-- [Crash and resume in place](flows/workhorse-crash-resume.md) — an unattended `run` dies
-  mid-machine and is re-launched with the identical command to resume from its last
-  checkpoint.
+- code: `workhorse/workhorse/cli/version.py::run` @bf3e2cf7e8dc
+- code: `workhorse/workhorse/cli/version.py::add_arguments` @bf3e2cf7e8dc
+- detail: [packaging](concepts/packaging.md)
 
 ## Invocations
 
-### control
-- on: [control](#control)
-- trigger: a human invokes the workflow console script with the `control` token
-- does:
-  - parse one live-run action and its action-specific arguments
-- does:
-  - resolve the target run before sending any request
-- does:
-  - construct and send the corresponding [control channel](concepts/control-channel.md) request
-- does:
-  - report the reply and on-disk liveness/checkpoint evidence for actions that do not have a dedicated report
-- auth: the operator who can access the run directory and its control socket
-- verify: exit_status(code=0)
-- code: `workhorse/workhorse/cli/control.py::run` @d578cf93b87e
-- detail: [control channel](concepts/control-channel.md)
-- tests: `workhorse/tests/test_control_command.py::_control`
+### show-top-level-help
 
-### inbox
-- on: [inbox](#inbox)
-- trigger: a human invokes the workflow console script with the `inbox` token
+- on: [run](#run)
+- trigger: the first token is `-h` or `--help`
 - does:
-  - resolve the target run before reading or updating its inbox file
+  - Prints the top-level help, which lists every command.
+- run: invoke(argv=["--help"])
+- verify: stdout(text="{run,dot,control,inbox,replay,version}")
+- code: `workhorse/workhorse/cli/__init__.py::main` @408aa8a4f987
+
+### fall-through-to-run
+
+- on: [run](#run)
+- trigger: the first token names no command
 - does:
-  - dispatch `read` to outstanding or all-message retrieval according to `--all`
+  - The script runs `run` with every token as its arguments.
+- run: invoke(argv=["--cli", "BoGuS", "--config", "/tmp/workhorse-book/seeded/config.toml"])
+- verify: stderr(text="error: unknown CLI backend")
 - does:
-  - dispatch `reply` to update the message selected by `ID` with `TEXT` and a UTC timestamp
-- errors: report invalid reply arguments or a missing message id on stderr and exit non-zero
-- errors: report a target-resolution failure on stderr and exit non-zero
-- auth: the operator who can access the run directory and its inbox file
-- verify: exit_status(code=0)
+  - The CLI name is lower-cased before it is looked up, and the refusal lists every backend.
+- run: invoke(argv=["--cli", "BoGuS", "--config", "/tmp/workhorse-book/seeded/config.toml"])
+- verify: stderr(text="error: unknown CLI backend 'bogus' (set AGENT_CLI, --cli or the config's default_cli to one of: claude, cline, codex, copilot, opencode)")
+- code: `workhorse/workhorse/cli/__init__.py::main` @408aa8a4f987
+
+### refuse-cli-with-profile
+
+- on: [run](#run)
+- trigger: an author passes both `--cli` and `--profile`
+- does:
+  - Refuses the launch before reading any config, and says a profile carries its own CLI.
+- run: invoke(argv=["run", "--cli", "claude", "--profile", "cheap"])
+- verify: stderr(matches="error: --cli and --profile are mutually exclusive — a profile carries its own .cli. field[.] Drop one of them[.]")
+- status: 2 on `--cli` with `--profile`.
+- run: invoke(argv=["run", "--cli", "claude", "--profile", "cheap"])
+- verify: exit_status(code=2)
+- code: `workhorse/workhorse/cli/run.py::run` @fb229bac321d
+
+### refuse-missing-config
+
+- on: [run](#run)
+- trigger: an author names a `--config` path that is no file
+- does:
+  - Refuses the launch and names the path as typed.
+- run: invoke(argv=["run", "--config", "nowhere.toml"])
+- verify: stderr(text="error: --config nowhere.toml: no such file")
+- status: 1 on a refused config, profile, params file or context manifest.
+- run: invoke(argv=["run", "--config", "nowhere.toml"])
 - verify: exit_status(code=1)
-- code: `workhorse/workhorse/cli/inbox.py::run` @7789b147be16
-- detail: [run inbox](concepts/run-inbox.md)
-- tests: `workhorse/tests/test_inbox_command.py::_inbox`
+- code: `workhorse/workhorse/cli/run.py::apply_config_path` @fb229bac321d
 
-### reload
-- on: [reload](#reload)
-- trigger: the operator invokes `control reload`
-- does:
-  - send `action=reload`, preserving `--core` and `--at-boundary`
-- does:
-  - print the run's reply, liveness, and checkpoint position without waiting for the reload to finish
-- auth: the operator who can connect to the run's 0600 control socket
-- verify: exit_status(code=0)
-- code: `workhorse/workhorse/cli/control.py::run` @d578cf93b87e
-- detail: [control channel](concepts/control-channel.md)
-- tests: `workhorse/tests/test_control_command.py::test_the_flags_that_were_typed_are_the_flags_that_are_sent`
+### refuse-unknown-resume-run
 
-### status
-- on: [status](#status)
-- trigger: the operator invokes `control status`
+- on: [run](#run)
+- trigger: an author resumes a run id no directory matches
 - does:
-  - obtain the run's status reply without ending its current wait
-- does:
-  - fall back to on-disk liveness and checkpoint evidence when the reply is empty
-- auth: the operator who can connect to the run's control socket
-- verify: exit_status(code=0)
-- code: `workhorse/workhorse/cli/control.py::run` @d578cf93b87e
-- detail: [control channel](concepts/control-channel.md)
-- tests: `workhorse/tests/test_control_command.py::test_status_is_answered_by_the_run_and_not_by_the_run_dir`
+  - Refuses the resume and reports where it looked.
+- run: invoke(argv=["run", "--resume-run", "nope", "--runs-dir", "nowhere"])
+- verify: stderr(matches="error: resume run dir not found for 'nope' [(]looked under /.*/nowhere[)]")
+- code: `workhorse/workhorse/rundir.py::resolve_run_dir` @aa85ef04e897
 
-### questions
-- on: [questions](#questions)
-- trigger: the operator invokes `control questions`
-- does:
-  - obtain the run's current operator-gate list without ending its current wait
-- does:
-  - print each gate entry or state that no operator gate is pending
-- auth: the operator who can connect to the run's control socket
-- verify: exit_status(code=0)
-- code: `workhorse/workhorse/cli/control.py::run` @d578cf93b87e
-- detail: [control channel](concepts/control-channel.md)
-- tests: `workhorse/tests/test_control_command.py::test_questions_prints_the_gate_the_run_is_parked_on`
+### refuse-no-resumable-run
 
-### answer
-- on: [answer](#answer)
-- trigger: the operator invokes `control answer`
+- on: [run](#run)
+- trigger: an author asks for the newest unfinished run
 - does:
-  - send the selected gate path and answer body to the live run
-- does:
-  - report success only after the run confirms that it wrote the answer into the gate file
-- auth: the operator authorized to answer the run's gate
-- verify: exit_status(code=0)
-- code: `workhorse/workhorse/cli/control.py::run` @d578cf93b87e
-- detail: [control channel](concepts/control-channel.md)
-- tests: `workhorse/tests/test_control_command.py::test_an_answer_carries_the_gate_and_the_text_and_reports_the_landing`
+  - Skips every directory with no checkpoint and every finished run, then names the runs directory when none is left.
+- run: invoke(argv=["run", "--resume-latest", "--runs-dir", "/tmp/workhorse-book/seeded"])
+- verify: stderr(text="error: no resumable run found under /tmp/workhorse-book/seeded")
+- code: `workhorse/workhorse/rundir.py::find_latest_resumable` @aa85ef04e897
 
-### switch-cli
-- on: [switch-cli](#switch-cli)
-- trigger: the operator invokes `control switch-cli CLI`
-- does:
-  - send a core reload request carrying the named CLI
-- does:
-  - print that the run will re-enter on the named CLI
-- auth: the operator who can connect to the run's control socket
-- verify: exit_status(code=0)
-- code: `workhorse/workhorse/cli/control.py::run` @d578cf93b87e
-- detail: [control channel](concepts/control-channel.md)
-- tests: `workhorse/tests/test_control_command.py::test_a_cli_switch_travels_as_a_core_reload_naming_the_cli`
+### refuse-two-resume-flags
 
-### switch-profile
-- on: [switch-profile](#switch-profile)
-- trigger: the operator invokes `control switch-profile PROFILE`
+- on: [run](#run)
+- trigger: an author passes two of the resume flags
 - does:
-  - send the named profile for resolution on the next turn without a reload
-- does:
-  - return non-zero when the live run rejects the profile
-- auth: the operator who can connect to the run's control socket
-- verify: exit_status(code=0)
-- verify: exit_status(code=1)
-- code: `workhorse/workhorse/cli/control.py::run` @d578cf93b87e
-- detail: [control channel](concepts/control-channel.md)
-- tests: `workhorse/tests/test_control_command.py::test_a_profile_switch_is_its_own_verb_carrying_the_name`, `workhorse/tests/test_control_command.py::test_a_refused_profile_switch_exits_nonzero`
+  - The argument parser refuses the second flag and names the first one it clashes with.
+- run: invoke(argv=["run", "--resume-latest", "--resume-run", "nope"])
+- verify: stderr(text="error: argument --resume-run: not allowed with argument --resume-latest")
+- code: `workhorse/workhorse/cli/run.py::add_arguments` @fb229bac321d
 
-### read
-- on: [read](#read)
-- trigger: the operator invokes `inbox read`
-- does:
-  - read outstanding messages by default or all messages with `--all`
-- does:
-  - print message bodies and any stored replies without modifying the inbox
-- errors: report a target-resolution failure before reading the inbox
-- auth: the operator who can read the run directory
-- verify: exit_status(code=0)
-- verify: exit_status(code=1)
-- code: `workhorse/workhorse/cli/inbox.py::run` @7789b147be16
-- detail: [run inbox](concepts/run-inbox.md)
-- tests: `workhorse/tests/test_inbox_command.py::test_read_prints_outstanding_messages_by_default`
+### refuse-unknown-profile
 
-### reply
-- on: [reply](#reply)
-- trigger: the operator invokes `inbox reply ID TEXT`
+- on: [run](#run)
+- trigger: an author names a profile the config does not declare
 - does:
-  - rewrite the identified inbox entry with the reply text and UTC reply timestamp
-- does:
-  - report the identified message after persistence
-- errors: report missing reply arguments or a missing message id on stderr
-- errors: report a target-resolution failure before modifying the inbox
-- auth: the operator who can write the run directory
-- verify: exit_status(code=0)
-- verify: exit_status(code=1)
-- code: `workhorse/workhorse/cli/inbox.py::run` @7789b147be16
-- detail: [run inbox](concepts/run-inbox.md)
-- tests: `workhorse/tests/test_inbox_command.py::test_reply_persists_and_is_read_back_as_answered`
+  - Refuses the launch and lists the known profiles in sorted order.
+- run: invoke(argv=["run", "--profile", "ghost", "--config", "/tmp/workhorse-book/seeded/config.toml"])
+- verify: stderr(text="error: unknown profile 'ghost' in /tmp/workhorse-book/seeded/config.toml (known: bare, cheap, odd)")
+- code: `workhorse/workhorse/cli/run.py::run` @fb229bac321d
 
-### version
+### refuse-profile-without-cli
+
+- on: [run](#run)
+- trigger: an author names a profile with no `cli` field
+- does:
+  - Refuses the launch and says every profile must declare its CLI.
+- run: invoke(argv=["run", "--profile", "bare", "--config", "/tmp/workhorse-book/seeded/config.toml"])
+- verify: stderr(text="error: [profiles.bare] has no cli field — every profile must declare the CLI it runs under.")
+- code: `workhorse/workhorse/cli/run.py::run` @fb229bac321d
+
+### refuse-undrivable-profile
+
+- on: [run](#run)
+- trigger: an author names a profile whose CLI this run cannot drive
+- does:
+  - Refuses the launch and lists the CLIs the run can drive.
+- run: invoke(argv=["run", "--profile", "odd", "--config", "/tmp/workhorse-book/seeded/config.toml"])
+- verify: stderr(text="error: profile 'odd' declares cli = 'nope' (in /tmp/workhorse-book/seeded/config.toml), and this run can drive only claude, cline, codex, copilot, opencode")
+- code: `workhorse/workhorse/cli/run.py::run` @fb229bac321d
+
+### refuse-unreadable-params-file
+
+- on: [run](#run)
+- trigger: an author names a `--params-file` that cannot be read
+- does:
+  - Refuses the launch before any JSON is parsed, and names the file as typed.
+- run: invoke(argv=["run", "--cli", "claude", "--config", "/tmp/workhorse-book/seeded/config.toml", "--params-file", "nowhere.json"])
+- verify: stderr(text="error: cannot read --params-file nowhere.json: ")
+- code: `workhorse/workhorse/cli/params.py::load_params` @43dababb9ed6
+
+### refuse-params-not-json
+
+- on: [run](#run)
+- trigger: an author passes inline `--params` that is not JSON
+- does:
+  - Refuses the launch and names the inline flag.
+- run: invoke(argv=["run", "--cli", "claude", "--config", "/tmp/workhorse-book/seeded/config.toml", "--params", "{"])
+- verify: stderr(text="error: --params is not valid JSON: ")
+- code: `workhorse/workhorse/cli/params.py::load_params` @43dababb9ed6
+
+### refuse-params-file-not-object
+
+- on: [run](#run)
+- trigger: an author's `--params-file` holds JSON that is not an object
+- does:
+  - Refuses the launch, names the file flag and asks for a key-to-value map.
+- run: invoke(argv=["run", "--cli", "claude", "--config", "/tmp/workhorse-book/seeded/config.toml", "--params-file", "/tmp/workhorse-book/seeded/params-list.json"])
+- verify: stderr(text="error: --params-file must be a JSON object (key→value map)")
+- code: `workhorse/workhorse/cli/params.py::load_params` @43dababb9ed6
+
+### refuse-params-not-object
+
+- on: [run](#run)
+- trigger: an author's inline `--params` holds a JSON list
+- does:
+  - Refuses the launch, names the inline flag and asks for a key-to-value map.
+- run: invoke(argv=["run", "--cli", "claude", "--config", "/tmp/workhorse-book/seeded/config.toml", "--params", "[1]"])
+- verify: stderr(text="error: --params must be a JSON object (key→value map)")
+- code: `workhorse/workhorse/cli/params.py::load_params` @43dababb9ed6
+
+### refuse-missing-context-file
+
+- on: [run](#run)
+- trigger: an author names a `--context-file` that does not exist
+- does:
+  - Refuses the launch and names the path as given.
+- run: invoke(argv=["run", "--cli", "claude", "--config", "/tmp/workhorse-book/seeded/config.toml", "--context-file", "nowhere.json"])
+- verify: stderr(text="error: --context-file not found: nowhere.json")
+- does:
+  - The refusal names the command that generates a manifest.
+- run: invoke(argv=["run", "--cli", "claude", "--config", "/tmp/workhorse-book/seeded/config.toml", "--context-file", "nowhere.json"])
+- verify: stderr(matches="Run .make agent-install. to generate .agents/agents-context.json")
+- code: `workhorse/workhorse/manifest.py::load_context_manifest` @e896594bc36c
+
+### refuse-context-not-json
+
+- on: [run](#run)
+- trigger: an author's context manifest is not JSON
+- does:
+  - Refuses the launch and names the manifest it could not read.
+- run: invoke(argv=["run", "--cli", "claude", "--config", "/tmp/workhorse-book/seeded/config.toml", "--context-file", "/tmp/workhorse-book/seeded/bad-context.json"])
+- verify: stderr(text="error: cannot read context manifest /tmp/workhorse-book/seeded/bad-context.json: ")
+- code: `workhorse/workhorse/manifest.py::load_context_manifest` @e896594bc36c
+
+### refuse-context-not-object
+
+- on: [run](#run)
+- trigger: an author's context manifest holds a JSON list
+- does:
+  - Refuses the launch and asks for a JSON object.
+- run: invoke(argv=["run", "--cli", "claude", "--config", "/tmp/workhorse-book/seeded/config.toml", "--context-file", "/tmp/workhorse-book/seeded/list-context.json"])
+- verify: stderr(text="error: context manifest /tmp/workhorse-book/seeded/list-context.json must be a JSON object")
+- code: `workhorse/workhorse/manifest.py::load_context_manifest` @e896594bc36c
+
+### dry-run-workflow
+
+- on: [run](#run)
+- trigger: an author checks the workflow binds before an unattended run
+- does:
+  - Stubs every node and names the run directory it wrote.
+- run: invoke(argv=["run", "--dry-run", "--cli", "claude", "--config", "/tmp/workhorse-book/seeded/config.toml", "--run-id", "walk"])
+- verify: stdout(matches="artifacts in /.*/[.]agents/runs/")
+- code: `workhorse/workhorse/pyflow/run.py::run_pyflow` @8ef17f9d42af
+
+### name-the-graph
+
+- on: [dot](#dot)
+- trigger: an author gives the graph a name of their own
+- does:
+  - `--name` replaces every character outside letters, digits and underscore with an underscore.
+- run: invoke(argv=["dot", "--name", "my graph-1"])
+- verify: stdout(text="digraph my_graph_1 {")
+- code: `workhorse/workhorse/pyflow/dot.py::to_dot` @1de4e44f4848
+
+### render-dot-file
+
+- on: [dot](#dot)
+- trigger: an author renders the workflow's graph to a file
+- does:
+  - `-o` writes the graph to the named file.
+- run: invoke(argv=["dot", "-o", "graph.dot"])
+- verify: created(subject="graph.dot")
+- does:
+  - A write to a file names the file on stderr.
+- run: invoke(argv=["dot", "-o", "graph.dot"])
+- verify: stderr(text="[workhorse] wrote graph.dot")
+- code: `workhorse/workhorse/cli/dot.py::run` @d156b791d036
+
+### write-dot-long-flag
+
+- on: [dot](#dot)
+- trigger: an author spells the output flag `--output`
+- does:
+  - The written file holds the DOT text with its legend.
+- run: invoke(argv=["dot", "--output", "graph2.dot"])
+- verify: contents(subject="graph2.dot", text="subgraph cluster_legend {")
+- code: `workhorse/workhorse/cli/dot.py::add_arguments` @d156b791d036
+
+### print-version
+
 - on: [version](#version)
-- trigger: a human invokes the workflow console script with the `version` token
+- trigger: an operator asks which engine release a workflow script runs
 - does:
-  - print the installed `workhorse-agent` distribution version to stdout
-  - return successfully after the version has been printed
-- errors: propagate `importlib.metadata.PackageNotFoundError` when the `workhorse-agent` distribution is absent
-- auth: the operator able to invoke the installed workflow console script
-- verify: exit_status(code=0)
-- verify: exit_status(code=1)
+  - Prints the version on one line.
+- run: invoke(argv=["version"])
+- verify: stdout(matches="^[0-9]+[.][0-9.]+[a-z0-9.+-]*$")
 - code: `workhorse/workhorse/cli/version.py::run` @bf3e2cf7e8dc
+
+### print-checkpoint-params
+
+- on: [control](#control)
+- trigger: an operator reads where a stopped run would resume
+- does:
+  - Prints the checkpoint as JSON with no gate it waits on.
+- run: invoke(argv=["control", "status", "--params", "--run", "/tmp/workhorse-book/seeded/finished"])
+- verify: stdout(matches="waiting_on.: null")
+- code: `workhorse/workhorse/cli/offline.py::print_params` @5ec56edba53b
+
+### refuse-params-without-checkpoint
+
+- on: [control](#control)
+- trigger: an operator asks for the checkpoint of a directory that has none
+- does:
+  - Refuses to print and names the checkpoint path it tried.
+- run: invoke(argv=["control", "status", "--params", "--run", "/tmp/workhorse-book/seeded/bare"])
+- verify: stderr(text="error: cannot read checkpoint /tmp/workhorse-book/seeded/bare/checkpoint.json")
+- code: `workhorse/workhorse/cli/offline.py::print_params` @5ec56edba53b
+
+### refuse-params-yaml-checkpoint
+
+- on: [control](#control)
+- trigger: an operator asks for a checkpoint the retired YAML engine wrote
+- does:
+  - Refuses to print and names the retired engine.
+- run: invoke(argv=["control", "status", "--params", "--run", "/tmp/workhorse-book/seeded/yaml-era"])
+- verify: stderr(text="error: /tmp/workhorse-book/seeded/yaml-era/checkpoint.json is a checkpoint from the retired YAML engine")
+- code: `workhorse/workhorse/cli/offline.py::print_params` @5ec56edba53b
+
+### refuse-unserved-socket
+
+- on: [control](#control)
+- trigger: an operator sends a live verb to a run no process serves
+- does:
+  - Refuses the verb and names the socket it tried.
+- run: invoke(argv=["control", "status", "--run", "/tmp/workhorse-book/seeded/finished"])
+- verify: stderr(text="error: no run is listening on /tmp/workhorse-book/seeded/finished/control.sock")
+- code: `workhorse/workhorse/cli/control.py::run` @d578cf93b87e
+
+### report-finished-run
+
+- on: [control](#control)
+- trigger: an operator sends a live verb to a run that already finished
+- does:
+  - Reports the run's terminal under the refusal.
+- run: invoke(argv=["control", "reload", "--run", "/tmp/workhorse-book/seeded/finished"])
+- verify: stderr(text="  run:     already finished (done) — the request will not be read")
+- code: `workhorse/workhorse/cli/control.py::run` @d578cf93b87e
+
+### report-missing-run-record
+
+- on: [control](#control)
+- trigger: an operator sends a live verb to a directory with no run.json
+- does:
+  - Says nothing here records a run starting.
+- run: invoke(argv=["control", "questions", "--run", "/tmp/workhorse-book/seeded/bare"])
+- verify: stderr(text="  run:     no run.json — nothing here says a run ever started")
+- code: `workhorse/workhorse/cli/control.py::run` @d578cf93b87e
+
+### report-unrecorded-pid
+
+- on: [control](#control)
+- trigger: an operator stops a run whose run.json records no pid
+- does:
+  - Says the run is in flight with no pid recorded.
+- run: invoke(argv=["control", "stop", "--run", "/tmp/workhorse-book/seeded/in-flight"])
+- verify: stderr(text="  run:     in flight, pid not recorded")
+- code: `workhorse/workhorse/cli/control.py::run` @d578cf93b87e
+
+### report-gone-pid
+
+- on: [control](#control)
+- trigger: an operator answers a gate on a run whose recorded pid is gone
+- does:
+  - Names the gone pid and says a resume reloads the run.
+- run: invoke(argv=["control", "answer", "--text", "yes", "--run", "/tmp/workhorse-book/seeded/stale-pid"])
+- verify: stderr(text="  run:     pid 999999 is gone — resume the run and it reloads on entry")
+- code: `workhorse/workhorse/cli/control.py::run` @d578cf93b87e
+
+### refuse-switch-cli-unserved
+
+- on: [control](#control)
+- trigger: an operator switches the CLI of a run no process serves
+- does:
+  - Reaches for the socket of the run it names, and the refusal names that socket.
+- run: invoke(argv=["control", "switch-cli", "codex", "--run", "/tmp/workhorse-book/seeded/contained"])
+- verify: stderr(text="error: no run is listening on /tmp/workhorse-book/seeded/contained/control.sock")
+- code: `workhorse/workhorse/cli/control.py::run` @d578cf93b87e
+
+### refuse-no-unfinished-run
+
+- on: [control](#control)
+- trigger: an operator names no `--run` and no unfinished run is left
+- does:
+  - Refuses the verb, names the runs directory and asks for `--run`.
+- run: invoke(argv=["control", "status", "--runs-dir", "/tmp/workhorse-book/seeded"])
+- verify: stderr(text="error: no unfinished run found under /tmp/workhorse-book/seeded — name one with --run")
+- code: `workhorse/workhorse/cli/target.py::resolve_target` @8b8132797882
+
+### refuse-unknown-control-run
+
+- on: [control](#control)
+- trigger: an operator names a `--run` that matches no directory
+- does:
+  - Asks groom, then refuses and says where it looked.
+- run: invoke(argv=["control", "status", "--run", "nope", "--runs-dir", "nowhere"])
+- verify: stderr(matches="error: no run dir for 'nope' [(]looked under /.*/nowhere[)]")
+- code: `workhorse/workhorse/cli/target.py::groom_live_run` @8b8132797882
+
+### refuse-switch-cli-without-name
+
+- on: [control](#control)
+- trigger: an operator runs `switch-cli` with no name
+- does:
+  - Refuses the verb and gives an example with a CLI name.
+- run: invoke(argv=["control", "switch-cli", "--run", "/tmp/workhorse-book/seeded/finished"])
+- verify: stderr(matches="error: switch-cli needs the name to switch to, e[.]g[.] .control switch-cli claude.")
+- code: `workhorse/workhorse/cli/control.py::run` @d578cf93b87e
+
+### refuse-switch-profile-without-name
+
+- on: [control](#control)
+- trigger: an operator runs `switch-profile` with no name
+- does:
+  - Refuses the verb and gives an example with a profile name.
+- run: invoke(argv=["control", "switch-profile", "--run", "/tmp/workhorse-book/seeded/finished"])
+- verify: stderr(matches="error: switch-profile needs the name to switch to, e[.]g[.] .control switch-profile cheap.")
+- code: `workhorse/workhorse/cli/control.py::run` @d578cf93b87e
+
+### refuse-name-on-status
+
+- on: [control](#control)
+- trigger: an operator puts a name after a verb that takes none
+- does:
+  - Refuses the verb and quotes the stray name.
+- run: invoke(argv=["control", "status", "x", "--run", "/tmp/workhorse-book/seeded/finished"])
+- verify: stderr(text="error: status takes no name (got 'x')")
+- code: `workhorse/workhorse/cli/control.py::run` @d578cf93b87e
+
+### refuse-text-on-status
+
+- on: [control](#control)
+- trigger: an operator passes `--text` to a verb other than `answer`
+- does:
+  - Refuses the verb and names both answer flags.
+- run: invoke(argv=["control", "status", "--text", "hi", "--run", "/tmp/workhorse-book/seeded/finished"])
+- verify: stderr(text="error: status takes no --gate or --text")
+- code: `workhorse/workhorse/cli/control.py::run` @d578cf93b87e
+
+### refuse-rewind-flag-on-status
+
+- on: [control](#control)
+- trigger: an operator passes a rewind flag to another verb
+- does:
+  - Refuses the verb and names all four rewind flags.
+- run: invoke(argv=["control", "status", "--to", "write", "--run", "/tmp/workhorse-book/seeded/finished"])
+- verify: stderr(text="error: status takes no --to, --param, --param-from-turn or --keep")
+- code: `workhorse/workhorse/cli/control.py::run` @d578cf93b87e
+
+### refuse-params-on-stop
+
+- on: [control](#control)
+- trigger: an operator passes `--params` to a verb other than `status`
+- does:
+  - Refuses the verb and points at `status --params`.
+- run: invoke(argv=["control", "stop", "--params", "--run", "/tmp/workhorse-book/seeded/finished"])
+- verify: stderr(matches="error: stop takes no --params [(]it is .status --params.[)]")
+- code: `workhorse/workhorse/cli/control.py::run` @d578cf93b87e
+
+### refuse-wait-on-status
+
+- on: [control](#control)
+- trigger: an operator passes `--wait` to a verb other than `stop`
+- does:
+  - Refuses the verb and points at `stop --wait`.
+- run: invoke(argv=["control", "status", "--wait", "--run", "/tmp/workhorse-book/seeded/finished"])
+- verify: stderr(matches="error: status takes no --wait [(]it is .stop --wait.[)]")
+- code: `workhorse/workhorse/cli/control.py::run` @d578cf93b87e
+
+### refuse-core-on-stop
+
+- on: [control](#control)
+- trigger: an operator passes `--core` to `stop`
+- does:
+  - Refuses the stop and names both reload flags.
+- run: invoke(argv=["control", "stop", "--core", "--run", "/tmp/workhorse-book/seeded/finished"])
+- verify: stderr(text="error: stop takes no --core or --at-boundary")
+- code: `workhorse/workhorse/cli/control.py::run` @d578cf93b87e
+
+### refuse-unknown-action
+
+- on: [control](#control)
+- trigger: an operator types an action outside the nine
+- does:
+  - The argument parser refuses the action and quotes it.
+- run: invoke(argv=["control", "pause", "--run", "/tmp/workhorse-book/seeded/finished"])
+- verify: stderr(text="invalid choice: 'pause'")
+- status: 2 on an action outside the nine.
+- run: invoke(argv=["control", "pause", "--run", "/tmp/workhorse-book/seeded/finished"])
+- verify: exit_status(code=2)
+- code: `workhorse/workhorse/cli/control.py::add_arguments` @d578cf93b87e
+
+### refuse-core-on-rewind
+
+- on: [control](#control)
+- trigger: an operator passes `--core` to `rewind`
+- does:
+  - Refuses the rewind and names both reload flags.
+- run: invoke(argv=["control", "rewind", "--core", "--to", "write", "--run", "/tmp/workhorse-book/seeded/finished"])
+- verify: stderr(text="error: rewind takes no --core or --at-boundary")
+- code: `workhorse/workhorse/cli/control.py::run` @d578cf93b87e
+
+### refuse-rewind-with-name
+
+- on: [control](#control)
+- trigger: an operator puts the state after `rewind` as a name
+- does:
+  - Refuses the rewind, quotes the name and points at `--to`.
+- run: invoke(argv=["control", "rewind", "write", "--run", "/tmp/workhorse-book/seeded/failed-ghost"])
+- verify: stderr(text="error: rewind takes no name (got 'write'); the state is --to")
+- code: `workhorse/workhorse/cli/control.py::run` @d578cf93b87e
+
+### refuse-rewind-without-to
+
+- on: [control](#control)
+- trigger: an operator runs `rewind` with no `--to`
+- does:
+  - Refuses the rewind and shows the full form.
+- run: invoke(argv=["control", "rewind", "--run", "/tmp/workhorse-book/seeded/failed-ghost"])
+- verify: stderr(matches="error: rewind needs the state to move to: .control rewind --to STATE.")
+- code: `workhorse/workhorse/cli/control.py::run` @d578cf93b87e
+
+### refuse-rewind-finished
+
+- on: [control](#control)
+- trigger: an operator rewinds a run that finished with any terminal but fail
+- does:
+  - Refuses the rewind and names the run and its terminal.
+- run: invoke(argv=["control", "rewind", "--to", "write", "--run", "/tmp/workhorse-book/seeded/finished"])
+- verify: stderr(text="error: rewind: /tmp/workhorse-book/seeded/finished already finished (done)")
+- code: `workhorse/workhorse/cli/offline.py::run_rewind` @5ec56edba53b
+
+### refuse-rewind-without-record
+
+- on: [control](#control)
+- trigger: an operator rewinds a directory with no readable run.json
+- does:
+  - Refuses the rewind and says nothing records a run starting there.
+- run: invoke(argv=["control", "rewind", "--to", "write", "--run", "/tmp/workhorse-book/seeded/bare"])
+- verify: stderr(text="error: rewind: /tmp/workhorse-book/seeded/bare has no readable run.json — nothing says a run started here")
+- code: `workhorse/workhorse/cli/offline.py::run_rewind` @5ec56edba53b
+
+### refuse-param-without-equals
+
+- on: [control](#control)
+- trigger: an operator passes a `--param` with no `=`
+- does:
+  - Refuses the rewind and quotes the value and the form it wants.
+- run: invoke(argv=["control", "rewind", "--to", "draft", "--param", "x", "--run", "/tmp/workhorse-book/seeded/failed-ghost"])
+- verify: stderr(text="error: --param wants NAME=VALUE, got 'x'")
+- code: `workhorse/workhorse/cli/offline.py::run_rewind` @5ec56edba53b
+
+### refuse-rewind-unknown-flow
+
+- on: [control](#control)
+- trigger: an operator rewinds a checkpoint whose flow this workflow does not register
+- does:
+  - Refuses the rewind, leaves the checkpoint unchanged and names its flow.
+- run: invoke(argv=["control", "rewind", "--to", "draft", "--run", "/tmp/workhorse-book/seeded/failed-ghost"])
+- verify: stderr(text="error: rewind refused, checkpoint unchanged: /tmp/workhorse-book/seeded/failed-ghost/checkpoint.json names flow 'Ghost', which ")
+- code: `workhorse/workhorse/cli/offline.py::run_rewind` @5ec56edba53b
+
+### refuse-rewind-without-checkpoint
+
+- on: [control](#control)
+- trigger: an operator rewinds a failed run with no checkpoint
+- does:
+  - Refuses the rewind and names the checkpoint path it tried.
+- run: invoke(argv=["control", "rewind", "--to", "draft", "--run", "/tmp/workhorse-book/seeded/no-line"])
+- verify: stderr(text="error: rewind refused, checkpoint unchanged: cannot read checkpoint /tmp/workhorse-book/seeded/no-line/checkpoint.json")
+- code: `workhorse/workhorse/cli/offline.py::run_rewind` @5ec56edba53b
+
+### refuse-rewind-yaml-checkpoint
+
+- on: [control](#control)
+- trigger: an operator rewinds a checkpoint the retired YAML engine wrote
+- does:
+  - Refuses the rewind and names the retired engine.
+- run: invoke(argv=["control", "rewind", "--to", "draft", "--run", "/tmp/workhorse-book/seeded/yaml-era"])
+- verify: stderr(text="error: rewind refused, checkpoint unchanged: /tmp/workhorse-book/seeded/yaml-era/checkpoint.json is a checkpoint from the retired YAML engine")
+- code: `workhorse/workhorse/cli/offline.py::run_rewind` @5ec56edba53b
+
+### refuse-resume-finished
+
+- on: [control](#control)
+- trigger: an operator resumes a run that finished done
+- does:
+  - Refuses the resume and names the run and its terminal.
+- run: invoke(argv=["control", "resume", "--run", "/tmp/workhorse-book/seeded/finished"])
+- verify: stderr(text="error: resume: /tmp/workhorse-book/seeded/finished already finished (done)")
+- code: `workhorse/workhorse/cli/offline.py::run_resume` @5ec56edba53b
+
+### refuse-resume-without-record
+
+- on: [control](#control)
+- trigger: an operator resumes a directory with no run.json
+- does:
+  - Refuses the resume and says nothing records a run starting there.
+- run: invoke(argv=["control", "resume", "--run", "/tmp/workhorse-book/seeded/bare"])
+- verify: stderr(text="error: resume: /tmp/workhorse-book/seeded/bare has no readable run.json — nothing says a run started here")
+- status: 1 on every refusal after the arguments parse.
+- run: invoke(argv=["control", "resume", "--run", "/tmp/workhorse-book/seeded/bare"])
+- verify: exit_status(code=1)
+- code: `workhorse/workhorse/cli/offline.py::run_resume` @5ec56edba53b
+
+### refuse-resume-without-launch
+
+- on: [control](#control)
+- trigger: an operator resumes a failed run that has no launch.json
+- does:
+  - Accepts the failed run, then refuses because it holds no usable launch.json.
+- run: invoke(argv=["control", "resume", "--run", "/tmp/workhorse-book/seeded/failed-ghost"])
+- verify: stderr(text="error: resume: no usable launch.json in /tmp/workhorse-book/seeded/failed-ghost (")
+- code: `workhorse/workhorse/cli/offline.py::run_resume` @5ec56edba53b
+
+### refuse-resume-gone-pid
+
+- on: [control](#control)
+- trigger: an operator resumes a run whose recorded pid is gone
+- does:
+  - Accepts the run, then refuses and names the command to resume it by hand.
+- run: invoke(argv=["control", "resume", "--run", "/tmp/workhorse-book/seeded/stale-pid"])
+- verify: stderr(matches="run .<workflow> run --resume-run /tmp/workhorse-book/seeded/stale-pid. by hand")
+- code: `workhorse/workhorse/cli/offline.py::run_resume` @5ec56edba53b
+
+### refuse-resume-contained
+
+- on: [control](#control)
+- trigger: an operator resumes a run launched inside a container
+- does:
+  - Refuses the resume and says to resume it inside its container.
+- run: invoke(argv=["control", "resume", "--run", "/tmp/workhorse-book/seeded/contained"])
+- verify: stderr(text="error: resume: launch.json holds container coordinates; resume it inside the container it ran in")
+- code: `workhorse/workhorse/cli/offline.py::run_resume` @5ec56edba53b
+
+### refuse-resume-without-line
+
+- on: [control](#control)
+- trigger: an operator resumes a run whose launch.json records no resume line
+- does:
+  - Refuses the resume and names the run's launch.json.
+- run: invoke(argv=["control", "resume", "--run", "/tmp/workhorse-book/seeded/no-line"])
+- verify: stderr(text="error: resume: launch.json in /tmp/workhorse-book/seeded/no-line records no resume line")
+- code: `workhorse/workhorse/cli/offline.py::run_resume` @5ec56edba53b
+
+### read-empty-inbox
+
+- on: [inbox](#inbox)
+- trigger: an operator reads a run that has no inbox file
+- does:
+  - Says the run has no outstanding messages.
+- run: invoke(argv=["inbox", "read", "--run", "/tmp/workhorse-book/inbox"])
+- verify: stdout(text="no outstanding messages in /tmp/workhorse-book/inbox")
+- code: `workhorse/workhorse/inbox.py::outstanding` @e2ad0fc21f23
+
+### read-all-empty-inbox
+
+- on: [inbox](#inbox)
+- trigger: an operator reads every message of a run that has no inbox file
+- does:
+  - Says the run has no messages.
+- run: invoke(argv=["inbox", "read", "--all", "--run", "/tmp/workhorse-book/inbox"])
+- verify: stdout(text="no messages in /tmp/workhorse-book/inbox")
+- code: `workhorse/workhorse/inbox.py::all_messages` @e2ad0fc21f23
+
+### read-all-replied
+
+- on: [inbox](#inbox)
+- trigger: an operator reads every message, replied ones included
+- does:
+  - `read --all` prints a replied message with its reply time.
+- run: invoke(argv=["inbox", "read", "--all", "--run", "/tmp/workhorse-book/inbox/answer"])
+- verify: stdout(text="[m2] 2026-01-01T00:00:00+00:00 (replied 2026-01-02T00:00:00+00:00)")
+- does:
+  - `read` prints the body indented two spaces under its message line.
+- run: invoke(argv=["inbox", "read", "--all", "--run", "/tmp/workhorse-book/inbox/answer"])
+- verify: stdout(text="  tests are red")
+- does:
+  - `read` prints a reply as an arrow line under the body.
+- run: invoke(argv=["inbox", "read", "--all", "--run", "/tmp/workhorse-book/inbox/answer"])
+- verify: stdout(text="  -> no")
+- code: `workhorse/workhorse/cli/inbox.py::run` @7789b147be16
+
+### refuse-reply-without-text
+
+- on: [inbox](#inbox)
+- trigger: an operator replies with an id and no text
+- does:
+  - Refuses the reply and asks for both an id and text.
+- run: invoke(argv=["inbox", "reply", "m1", "--run", "/tmp/workhorse-book/inbox/answer"])
+- verify: stderr(text="error: reply needs an id and text")
+- code: `workhorse/workhorse/cli/inbox.py::run` @7789b147be16
+
+### refuse-unknown-message
+
+- on: [inbox](#inbox)
+- trigger: an operator replies to an id the inbox lacks
+- does:
+  - Refuses the reply, leaves the inbox as it was and names the inbox file it read.
+- run: invoke(argv=["inbox", "reply", "m9", "hi", "--run", "/tmp/workhorse-book/inbox/answer"])
+- verify: stderr(text="no inbox message with id 'm9' in /tmp/workhorse-book/inbox/answer/inbox.jsonl")
+- status: 1 on a refused reply.
+- run: invoke(argv=["inbox", "reply", "m9", "hi", "--run", "/tmp/workhorse-book/inbox/answer"])
+- verify: exit_status(code=1)
+- code: `workhorse/workhorse/inbox.py::reply` @e2ad0fc21f23
+
+### refuse-unknown-inbox-run
+
+- on: [inbox](#inbox)
+- trigger: an operator names a `--run` that matches no directory
+- does:
+  - Refuses the read and says where it looked.
+- run: invoke(argv=["inbox", "read", "--run", "nope", "--runs-dir", "nowhere"])
+- verify: stderr(matches="no run dir for 'nope' [(]looked under /.*/nowhere[)]")
+- code: `workhorse/workhorse/cli/target.py::resolve_target` @8b8132797882
+
+### refuse-unknown-inbox-action
+
+- on: [inbox](#inbox)
+- trigger: an operator types an action other than read and reply
+- does:
+  - The argument parser refuses the action and quotes it.
+- run: invoke(argv=["inbox", "list", "--run", "/tmp/workhorse-book/inbox/answer"])
+- verify: stderr(text="invalid choice: 'list'")
+- status: 2 on an action other than read and reply.
+- run: invoke(argv=["inbox", "list", "--run", "/tmp/workhorse-book/inbox/answer"])
+- verify: exit_status(code=2)
+- code: `workhorse/workhorse/cli/inbox.py::add_arguments` @7789b147be16
+
+### read-outstanding
+
+- on: [inbox](#inbox)
+- trigger: an operator checks what a run is asking
+- does:
+  - Prints the one outstanding message and its body.
+- run: invoke(argv=["inbox", "read", "--run", "/tmp/workhorse-book/inbox/answer"])
+- verify: stdout(text="  may I push?")
+- code: `workhorse/workhorse/inbox.py::outstanding` @e2ad0fc21f23
+
+### reply-to-message
+
+- on: [inbox](#inbox)
+- trigger: an operator answers the outstanding message
+- does:
+  - Records the reply and names the run.
+- run: invoke(argv=["inbox", "reply", "m1", "go ahead", "--run", "/tmp/workhorse-book/inbox/answer"])
+- verify: stdout(text="replied to [m1] in /tmp/workhorse-book/inbox/answer")
+- code: `workhorse/workhorse/inbox.py::reply` @e2ad0fc21f23
+
+### read-all-messages
+
+- on: [inbox](#inbox)
+- trigger: an operator reviews every message after replying
+- does:
+  - Prints the new reply under the message it answers.
+- run: invoke(argv=["inbox", "read", "--all", "--run", "/tmp/workhorse-book/inbox/answer"])
+- verify: stdout(text="  -> go ahead")
+- code: `workhorse/workhorse/inbox.py::all_messages` @e2ad0fc21f23
+
+### replace-reply
+
+- on: [inbox](#inbox)
+- trigger: an operator replies again to a message that already has a reply
+- does:
+  - Replaces the reply and names the run.
+- run: invoke(argv=["inbox", "reply", "m2", "later", "--run", "/tmp/workhorse-book/inbox/answer"])
+- verify: stdout(text="replied to [m2] in /tmp/workhorse-book/inbox/answer")
+- code: `workhorse/workhorse/inbox.py::reply` @e2ad0fc21f23
+
+### read-replaced-reply
+
+- on: [inbox](#inbox)
+- trigger: an operator reads every message after replacing a reply
+- does:
+  - Prints the replaced reply in place of the old one.
+- run: invoke(argv=["inbox", "read", "--all", "--run", "/tmp/workhorse-book/inbox/answer"])
+- verify: stdout(text="  -> later")
+- code: `workhorse/workhorse/inbox.py::all_messages` @e2ad0fc21f23
+
+### refuse-replay-without-run
+
+- on: [replay](#replay)
+- trigger: an author names a turn and no `--run`
+- does:
+  - The argument parser refuses the replay and names the missing flag.
+- run: invoke(argv=["replay", "000-00001-x"])
+- verify: stderr(text="the following arguments are required: --run")
+- status: 2 without `--run`.
+- run: invoke(argv=["replay", "000-00001-x"])
+- verify: exit_status(code=2)
+- code: `workhorse/workhorse/cli/replay.py::add_arguments` @d6c1e9fdd435
+
+### refuse-replay-unknown-run
+
+- on: [replay](#replay)
+- trigger: an author names a `--run` that matches no directory
+- does:
+  - Refuses the replay without asking groom, and asks for the run's directory path.
+- run: invoke(argv=["replay", "000-00001-x", "--run", "nope", "--runs-dir", "nowhere"])
+- verify: stderr(matches="error: no run dir for 'nope' under /.*/nowhere; pass the run's directory path")
+- code: `workhorse/workhorse/cli/replay.py::run` @d6c1e9fdd435
+
+### refuse-missing-turn
+
+- on: [replay](#replay)
+- trigger: an author names a turn with no turn.json
+- does:
+  - Refuses the replay and names the missing turn.json.
+- run: invoke(argv=["replay", "000-09999-none", "--run", "/tmp/workhorse-book/seeded/replay-run"])
+- verify: stderr(text="error: /tmp/workhorse-book/seeded/replay-run/turns/000-09999-none/turn.json does not exist; name a directory under the run's turns/ that holds a turn.json")
+- code: `workhorse/workhorse/cli/replay.py::run` @d6c1e9fdd435
+
+### refuse-bad-turn-record
+
+- on: [replay](#replay)
+- trigger: an author names a turn whose turn.json does not validate
+- does:
+  - Refuses the replay and says the file is not a turn record.
+- run: invoke(argv=["replay", "000-00003-bad", "--run", "/tmp/workhorse-book/seeded/replay-run"])
+- verify: stderr(text="error: /tmp/workhorse-book/seeded/replay-run/turns/000-00003-bad/turn.json is not a turn record: ")
+- status: 1 on a turn record that does not validate.
+- run: invoke(argv=["replay", "000-00003-bad", "--run", "/tmp/workhorse-book/seeded/replay-run"])
+- verify: exit_status(code=1)
+- code: `workhorse/workhorse/cli/replay.py::run` @d6c1e9fdd435
+
+### refuse-missing-prompt
+
+- on: [replay](#replay)
+- trigger: an author replays a turn that recorded no prompt.md, with no `--prompt`
+- does:
+  - Refuses the replay and asks for `--prompt`.
+- run: invoke(argv=["replay", "000-00002-noprompt", "--run", "/tmp/workhorse-book/seeded/replay-run"])
+- verify: stderr(text="error: /tmp/workhorse-book/seeded/replay-run/turns/000-00002-noprompt/prompt.md does not exist; pass --prompt with the prompt file to send")
+- code: `workhorse/workhorse/cli/replay.py::run` @d6c1e9fdd435
+
+### refuse-missing-variant
+
+- on: [replay](#replay)
+- trigger: an author names a `--prompt` that is no file
+- does:
+  - Refuses the replay and names the path as typed.
+- run: invoke(argv=["replay", "000-00001-x", "--run", "/tmp/workhorse-book/seeded/replay-run", "--prompt", "nowhere.md"])
+- verify: stderr(text="error: nowhere.md does not exist; pass --prompt with the prompt file to send")
+- code: `workhorse/workhorse/cli/replay.py::run` @d6c1e9fdd435
+
+### refuse-zero-repeat
+
+- on: [replay](#replay)
+- trigger: an author passes `--repeat` below 1
+- does:
+  - Refuses the replay and says a replay runs at least once.
+- run: invoke(argv=["replay", "000-00004-moved", "--run", "/tmp/workhorse-book/seeded/replay-run", "--repeat", "0"])
+- verify: stderr(text="error: --repeat 0: a replay runs the turn at least once")
+- code: `workhorse/workhorse/cli/replay.py::run` @d6c1e9fdd435
+
+### refuse-unsizable-variant
+
+- on: [replay](#replay)
+- trigger: an author sends a variant for a turn that recorded no prompt, with no limit
+- does:
+  - Refuses the replay because nothing sizes the variant, and asks for `--max-prompt-chars`.
+- run: invoke(argv=["replay", "000-00002-noprompt", "--run", "/tmp/workhorse-book/seeded/replay-run", "--prompt", "/tmp/workhorse-book/seeded/v10.txt"])
+- verify: stderr(text="error: /tmp/workhorse-book/seeded/replay-run/turns/000-00002-noprompt/prompt.md does not exist to size a variant against; pass --max-prompt-chars")
+- code: `workhorse/workhorse/cli/replay.py::run` @d6c1e9fdd435
+
+### refuse-oversized-variant
+
+- on: [replay](#replay)
+- trigger: an author sends a variant one character over twice the recorded prompt
+- does:
+  - Refuses the replay and states both lengths and the default limit's source.
+- run: invoke(argv=["replay", "000-00004-moved", "--run", "/tmp/workhorse-book/seeded/replay-run", "--prompt", "/tmp/workhorse-book/seeded/v11.txt"])
+- verify: stderr(text="error: /tmp/workhorse-book/seeded/v11.txt is 11 characters, over the 10 allowed (2 times the recorded 5-character prompt). Trim the variant, or raise the limit with --max-prompt-chars.")
+- code: `workhorse/workhorse/cli/replay.py::run` @d6c1e9fdd435
+
+### refuse-variant-over-limit
+
+- on: [replay](#replay)
+- trigger: an author sets `--max-prompt-chars` below the variant's length
+- does:
+  - Refuses the replay and names `--max-prompt-chars` as the limit's source.
+- run: invoke(argv=["replay", "000-00004-moved", "--run", "/tmp/workhorse-book/seeded/replay-run", "--prompt", "/tmp/workhorse-book/seeded/v11.txt", "--max-prompt-chars", "10"])
+- verify: stderr(text="is 11 characters, over the 10 allowed (--max-prompt-chars).")
+- code: `workhorse/workhorse/cli/replay.py::run` @d6c1e9fdd435
+
+### accept-variant-at-limit
+
+- on: [replay](#replay)
+- trigger: an author sets `--max-prompt-chars` to the variant's length
+- does:
+  - The variant passes the size check, and the replay then stops at the tree check.
+- run: invoke(argv=["replay", "000-00004-moved", "--run", "/tmp/workhorse-book/seeded/replay-run", "--prompt", "/tmp/workhorse-book/seeded/v11.txt", "--max-prompt-chars", "11"])
+- verify: stderr(text="seeded/bare is at no commit, not the turn's start")
+- code: `workhorse/workhorse/cli/replay.py::run` @d6c1e9fdd435
+
+### refuse-moved-replay
+
+- on: [replay](#replay)
+- trigger: an author replays a turn with a variant at exactly twice the recorded prompt, on a checkout that moved on
+- does:
+  - The variant passes the size check, and the replay refuses to reset the moved tree and names both heads.
+- run: invoke(argv=["replay", "000-00004-moved", "--run", "/tmp/workhorse-book/seeded/replay-run", "--prompt", "/tmp/workhorse-book/seeded/v10.txt"])
+- verify: stderr(text="is at no commit, not the turn's start deadbeefdead, and a replay resets its branch")
+- code: `workhorse/workhorse/cli/replay.py::replay_turn` @d6c1e9fdd435
