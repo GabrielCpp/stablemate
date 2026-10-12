@@ -47,3 +47,109 @@ def test_nothing_filed_commits_nothing(
 
     assert drained.appended == 0, drained
     assert git(repo, "rev-parse", "HEAD").stdout == head
+
+
+HAND_FILED = (
+    "# Backlog\n\n## Filed by coder\n\n"
+    "- [clear-report-snapshots-on-sign-out] Sign-out leaves the saved report snapshots in the browser.\n"
+)
+
+
+def _seeded(repo: Path, write: Callable[[Path, str], Path], git: Callable[..., subprocess.CompletedProcess]) -> str:
+    write(repo / "docs" / "backlog.md", HAND_FILED)
+    git(repo, "add", "docs/backlog.md")
+    git(repo, "commit", "-qm", "seed the backlog")
+    return git(repo, "rev-parse", "HEAD").stdout
+
+
+def test_a_follow_up_that_cites_a_backlog_item_is_not_filed_again(
+    repo: Path,
+    logger: logging.Logger,
+    write: Callable[[Path, str], Path],
+    git: Callable[..., subprocess.CompletedProcess],
+) -> None:
+    head = _seeded(repo, write, git)
+
+    drained = file_follow_up_backlog(
+        logger,
+        parent="acme-story",
+        follow_ups=[
+            {
+                "title": "Wipe stored snapshots when the user leaves",
+                "reason": "It is filed in docs/backlog.md as [clear-report-snapshots-on-sign-out].",
+            }
+        ],
+        repo_dir=str(repo),
+    )
+
+    assert drained.appended == 0, drained
+    assert (repo / "docs" / "backlog.md").read_text(encoding="utf-8") == HAND_FILED
+    assert git(repo, "rev-parse", "HEAD").stdout == head
+
+
+def test_a_follow_up_one_word_off_a_backlog_id_is_not_filed_again(
+    repo: Path,
+    logger: logging.Logger,
+    write: Callable[[Path, str], Path],
+    git: Callable[..., subprocess.CompletedProcess],
+) -> None:
+    head = _seeded(repo, write, git)
+
+    drained = file_follow_up_backlog(
+        logger,
+        parent="acme-story",
+        follow_ups=[{"title": "Clear saved report snapshots on sign-out", "reason": "the slice works without it"}],
+        repo_dir=str(repo),
+    )
+
+    assert drained.appended == 0, drained
+    assert git(repo, "rev-parse", "HEAD").stdout == head
+
+
+def test_a_follow_up_filed_earlier_under_another_reason_is_not_filed_again(
+    repo: Path,
+    logger: logging.Logger,
+    write: Callable[[Path, str], Path],
+    git: Callable[..., subprocess.CompletedProcess],
+) -> None:
+    _seeded(repo, write, git)
+    title = "Return a 404 for an unknown report"
+
+    first = file_follow_up_backlog(
+        logger, parent="acme-story", follow_ups=[{"title": title, "reason": "today it answers 400"}], repo_dir=str(repo)
+    )
+    again = file_follow_up_backlog(
+        logger,
+        parent="acme-story",
+        follow_ups=[{"title": title, "reason": "a missing report answers 400 today"}],
+        repo_dir=str(repo),
+    )
+
+    assert first.appended == 1, first
+    assert again.appended == 0, again
+    assert (repo / "docs" / "backlog.md").read_text(encoding="utf-8").count(title) == 1
+
+
+def test_a_batch_files_a_repeated_follow_up_once_and_a_distinct_one_still(
+    repo: Path,
+    logger: logging.Logger,
+    write: Callable[[Path, str], Path],
+    git: Callable[..., subprocess.CompletedProcess],
+) -> None:
+    _seeded(repo, write, git)
+
+    drained = file_follow_up_backlog(
+        logger,
+        parent="acme-story",
+        follow_ups=[
+            {"title": "Paginate the report list", "reason": "long lists load slowly"},
+            {"title": "Paginate the report list", "reason": "a long list is slow to load"},
+            {"title": "Clear the export cache on sign-in", "reason": "a stale export can show"},
+        ],
+        repo_dir=str(repo),
+    )
+
+    assert drained.appended == 2, drained
+    text = (repo / "docs" / "backlog.md").read_text(encoding="utf-8")
+    assert text.count("Paginate the report list") == 1
+    assert "Clear the export cache on sign-in" in text

@@ -210,6 +210,22 @@ def file_backlog_items(
 
 
 @blueprint.node
+def _filed_as(bullets: list[BacklogBullet], title: str, reason: str) -> str:
+    """The id of the backlog item a follow-up already is: cited, one word off its id, or the same title."""
+    cited = f"{title} {reason}"
+    words = id_token_set(kebab(title))
+    heading = norm_desc(title)
+    for bullet in bullets:
+        if f"[{bullet.id}]" in cited:
+            return bullet.id
+        tokens = id_token_set(bullet.id)
+        if min(len(tokens), len(words)) >= 3 and len(tokens ^ words) <= 1:
+            return bullet.id
+        if heading and norm_desc(bullet.text.split(": ", 1)[0]) == heading:
+            return bullet.id
+    return ""
+
+
 def file_follow_up_backlog(
     logger: logging.Logger,
     docs_path: str = "",
@@ -220,6 +236,8 @@ def file_follow_up_backlog(
     """File a follow-up's own follow-ups to the repo backlog, one level past the run's worklist, and commit them."""
     root = find_docs_root(docs_path, repo_dir)
     okf = Ostler(root)
+    backlog = root / paths.backlog_file(root)
+    bullets = backlog_bullets(backlog.read_text(encoding="utf-8")) if backlog.is_file() else []
     appended = 0
     skipped = 0
     for entry in follow_ups or []:
@@ -228,11 +246,17 @@ def file_follow_up_backlog(
         if not title:
             skipped += 1
             continue
+        filed = _filed_as(bullets, title, reason)
+        if filed:
+            logger.info("follow-up %r is already in the backlog as [%s]", title, filed)
+            skipped += 1
+            continue
         key = hashlib.sha256(f"{title}\n{reason}".encode()).hexdigest()[:8]
         item_id = kebab(f"{parent}-{key}")
         text = " ".join(f"{title}: {reason}".split()) if reason else " ".join(title.split())
         if okf.backlog_add(item_id, text, FILED_TITLE).ok:
             appended += 1
+            bullets.append(BacklogBullet(0, item_id, text))
         else:
             skipped += 1
     note = f"filed {appended} follow-up(s) of {parent} to the backlog, skipped {skipped}"
