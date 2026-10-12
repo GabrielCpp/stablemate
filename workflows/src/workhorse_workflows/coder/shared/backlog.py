@@ -217,8 +217,9 @@ def file_follow_up_backlog(
     follow_ups: list[dict[str, str]] | None = None,
     repo_dir: str = "",
 ) -> BacklogDrain:
-    """File a follow-up's own follow-ups to the repo backlog, one level past the run's worklist."""
-    okf = Ostler(find_docs_root(docs_path, repo_dir))
+    """File a follow-up's own follow-ups to the repo backlog, one level past the run's worklist, and commit them."""
+    root = find_docs_root(docs_path, repo_dir)
+    okf = Ostler(root)
     appended = 0
     skipped = 0
     for entry in follow_ups or []:
@@ -236,6 +237,9 @@ def file_follow_up_backlog(
             skipped += 1
     note = f"filed {appended} follow-up(s) of {parent} to the backlog, skipped {skipped}"
     logger.info(note)
+    if appended:
+        message = commits.message("chore", commits.scope(root.name), f"file the follow-ups of {parent}")
+        commit_paths(root, message, paths.backlog_file(root))
     return BacklogDrain(appended=appended, skipped=skipped, notes=note)
 
 
