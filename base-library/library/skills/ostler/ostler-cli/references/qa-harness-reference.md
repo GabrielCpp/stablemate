@@ -47,6 +47,19 @@ needs a `base_url`.
 - A scenario that proves a refusal names the refusal: `expect_status=409`. The response it
   returns is what `http_status` and `conflict_on_stale` observe.
 
+`HttpError` is importable from `ostler_qa`. It carries the method, the URL, the status and
+the first 500 characters of the reply in its message, and no response object. A request that
+cannot connect raises it too.
+
+- With `expect_status=` given, a status outside it is first written down as a failed
+  assertion, "`<METHOD> <url>` answers [the expected statuses]", against the current covers.
+- An `HttpError` the scenario does not catch ends the scenario as errored, and the report
+  quotes the request that raised it. The harness still closes the browser and stops each
+  served process.
+- Inside `with qa.claim([ID]):` it fails that claim alone, against `ID`, and the scenario
+  goes on to its next claim. Use a claim when one scenario proves several obligations in
+  turn, so one refusal does not hide the rest.
+
 ## The address book
 
 A target's `base_url` may name a service as `{name}`, such as `http://{gateway}/api`. The
