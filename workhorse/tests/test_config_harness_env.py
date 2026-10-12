@@ -116,6 +116,7 @@ def _with_config(cfg):
 
 
 OPENCODE_OWN = {"OPENCODE_EXPERIMENTAL_OUTPUT_TOKEN_MAX": "131072"}
+CLAUDE_OWN = {"CLAUDE_CODE_DISABLE_BACKGROUND_TASKS": "1"}
 
 
 def test_configured_env_reaches_the_spawn():
@@ -123,7 +124,7 @@ def test_configured_env_reaches_the_spawn():
         assert _spawn_env(OpenCodeBackend()) == {
             "OPENCODE_DISABLE_AUTOCOMPACT": "1", **OPENCODE_OWN
         }
-        assert _spawn_env(ClaudeBackend()) == {"MAX_THINKING_TOKENS": "31999"}
+        assert _spawn_env(ClaudeBackend()) == {"MAX_THINKING_TOKENS": "31999", **CLAUDE_OWN}
 
 
 def test_every_backend_forwards_its_own_table():
@@ -137,7 +138,7 @@ def test_every_backend_forwards_its_own_table():
     ):
         marker = {f"{backend.name.upper()}_MARKER": "yes"}
         cfg = {"cli": {backend.name: {"env": marker}}}
-        own = OPENCODE_OWN if isinstance(backend, OpenCodeBackend) else {}
+        own = {"opencode": OPENCODE_OWN, "claude": CLAUDE_OWN}.get(backend.name, {})
         with _with_config(cfg):
             assert _spawn_env(backend) == {**marker, **own}, backend.name
 
@@ -145,7 +146,7 @@ def test_every_backend_forwards_its_own_table():
 def test_unconfigured_backend_spawns_with_no_extra_env():
     """No config must mean no change to the inherited environment — an empty dict is what ``stream_subprocess`` already treats as a no-op."""
     with _with_config({}):
-        assert _spawn_env(ClaudeBackend()) == {}
+        assert _spawn_env(ClaudeBackend()) == CLAUDE_OWN
         assert _spawn_env(OpenCodeBackend()) == OPENCODE_OWN
 
 
