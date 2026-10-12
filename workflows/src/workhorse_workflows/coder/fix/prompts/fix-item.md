@@ -9,6 +9,10 @@ end. Your subagents fix it and QA it, and you triage what QA finds and have it r
 inside this turn. What has to exist when you stop is the committed repair in every
 repository it belongs in, and a QA record that shows it works.
 
+The item is repaired locally, on the local stack, and it is self-contained. These
+repositories and that stack hold everything it needs: the running services, the
+infrastructure declarations and their tests, and the source.
+
 ## Inputs (authoritative, do not rediscover)
 
 - Backlog item: {{ workhorse_var('bullet_text') }}
@@ -105,11 +109,7 @@ yourself before you return `done`, and leave them green.
 
 Return `blocked` only for a decision an operator alone can make: a product or scope call
 written down nowhere, a credential, a spend, or behaviour the item describes that does not
-exist in these repositories. No run reaches a deployed environment, and no operator grants
-one. Never run a command against a deployed environment, even one that only reads. An item
-that names deployed state is proved against the repositories: the local stack, the
-infrastructure declarations and their tests, and the source. First try every route the repo
-offers: its docs, its
+exist in these repositories. First try every route the repo offers: its docs, its
 `docs/decisions/` records, its skills. On `blocked`, `notes` holds the one question that
 would unblock you and what you ruled out. A block loses no work. The answer comes back to
 this session.

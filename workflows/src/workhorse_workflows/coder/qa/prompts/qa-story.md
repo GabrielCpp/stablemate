@@ -10,6 +10,10 @@ believed. You do that work through subagents, each one sized to its task, and yo
 each one sees. This turn ends with a plan that lints and validates, a scored run on disk, a
 `qa.md` that says what it proved, and the JSON result below.
 
+The story is developed locally, on its own local stack, and it is self-contained. Its
+repositories and that stack hold everything its QA proves: the running services, the
+infrastructure declarations and their tests, and the source.
+
 QA never fixes the product. A defect in the story's code is a finding you return, and the
 dev owner fixes it. Everything between the product and the verdict is yours: the plan, the
 context packet, the stack, the setup, the scenarios and the regression specs.
@@ -238,14 +242,8 @@ come back to you: make a scenario assert the defect, or drop the finding.
 
 Return `blocked` only for what a human alone can clear: a real secret, hardware, or a product
 call the story and the repo's decisions leave open. A missing tool, seed, fixture, runbook or
-config is setup, never a block.
-
-No run reaches a deployed environment, and no operator grants one. The repositories hold
-everything QA needs: the local stack, the infrastructure declarations and their tests, and
-the source. Prove a criterion that names deployed state against those. Never run a command
-against a deployed environment, even one that only reads, and never file a read of one as a
-backlog item. On `blocked`, `notes`
-holds the one question that would unblock you and what you ruled out.
+config is setup, never a block. On `blocked`, `notes` holds the one question that would
+unblock you and what you ruled out.
 
 ## Commit Identity
 
