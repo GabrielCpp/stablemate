@@ -172,3 +172,20 @@ It returns a `ToolResult`. A non-zero exit does not raise. Hand the result to
 `page.route` and other Playwright calls on `qa.page` are allowed. The plan lint has no rule
 against them. Locators still come from `qa.by_role` and its siblings, so the validator can
 check them against the book.
+
+## The browser stays clean
+
+Every scenario on a `driver='playwright'` target ends with one more assertion, "the browser
+stayed clean", bound to the scenario's `covers=`. No `qa.verify` call can waive it. It fails
+on any of these:
+
+- an uncaught page error;
+- any response of status 500 or higher, including one that `page.route` fulfils;
+- a dialog the page opened with no answer declared, which the harness dismissed;
+- `qa.answer_dialogs(...)` called when no dialog opened.
+
+`qa.answer_dialogs("accept")` or `qa.answer_dialogs("dismiss")` answers every dialog the page
+opens after the call, as the user clicking OK or Cancel.
+
+A scenario that proves the page's error path drives it without a 5xx: `route.abort()` for a
+network failure, or a 4xx status the product treats as a failure.
