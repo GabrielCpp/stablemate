@@ -64,6 +64,10 @@ Spawn subagents through your harness's own task or agent tool. Pick each one's m
 task: a lookup on the strongest model wastes it, and a QA check on the cheapest misses what
 it is there to catch.
 
+When your harness offers an agent named `lookup` or `worker`, send the cheapest seats to
+`lookup` and the seats marked a strong one to `worker`. Those agents run on the models the
+operator picked for them.
+
 | Seat | Model | Sees | May touch |
 | --- | --- | --- | --- |
 | Lookup: find callers, summarise a file or a log | the cheapest and fastest | the question | nothing |
