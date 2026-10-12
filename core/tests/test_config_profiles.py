@@ -30,6 +30,13 @@ model = "qwen/qwen3.6-7b"
 [profiles.opencode.default]
 model = "qwen/qwen3.6-7b"
 
+[profiles.opencode.delegates.lookup]
+model = "qwen/qwen3.6-7b"
+effort = "low"
+
+[profiles.opencode.delegates.worker]
+effort = "medium"
+
 [profiles.deepseek]
 cli = "opencode"
 
@@ -78,6 +85,19 @@ def test_a_named_profile_overrides_its_tiers_opencode_keeps_its_own(cfg):
         "openrouter/deepseek-v4-flash-0731"
     )
     assert profiles.resolve_power("high", "opencode", profile) == profiles.PowerMapping()
+
+
+def test_delegates_resolve_per_role_and_drop_a_role_with_no_model(cfg):
+    profile = profiles.select_profile(cfg, "opencode")
+
+    assert profiles.resolve_delegates("opencode", profile) == {
+        "lookup": profiles.PowerMapping(model="qwen/qwen3.6-7b", effort="low"),
+    }
+
+
+def test_delegates_are_empty_without_a_table_or_on_another_cli(cfg):
+    assert profiles.resolve_delegates("opencode", profiles.select_profile(cfg, "deepseek")) == {}
+    assert profiles.resolve_delegates("claude", profiles.select_profile(cfg, "opencode")) == {}
 
 
 def test_harness_env_is_not_part_of_a_profile(cfg):

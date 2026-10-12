@@ -1,4 +1,4 @@
-"""Which profile a run resolves from, and the model, effort, timeout scale, harness env and default CLI it yields."""
+"""Which profile a run resolves from, and the model, effort, timeout scale, delegates, harness env and default CLI it yields."""
 
 from __future__ import annotations
 
@@ -20,6 +20,8 @@ DEFAULT_CLI_KEY = "default_cli"
 BUILTIN_DEFAULT_CLI = "claude"
 
 CLI_ENV_KEY = "env"
+
+DELEGATES_KEY = "delegates"
 
 
 @dataclass(frozen=True)
@@ -149,6 +151,22 @@ def resolve_backend_default(backend: str, cfg: dict[str, Any] | None = None) -> 
     if not isinstance(default_table, dict):
         return PowerMapping()
     return _mapping_from_table(default_table)
+
+
+def resolve_delegates(backend: str, cfg: dict[str, Any] | None = None) -> dict[str, PowerMapping]:
+    """The model/effort per subagent role from ``profile.delegates``, for roles that name a model."""
+    data = cfg if cfg is not None else config.load_config()
+    if profile_cli(data) is not None and profile_cli(data) != backend:
+        return {}
+    table = data.get(DELEGATES_KEY)
+    if not isinstance(table, dict):
+        return {}
+    mappings = {
+        role: _mapping_from_table(entry)
+        for role, entry in table.items()
+        if isinstance(role, str) and role and isinstance(entry, dict)
+    }
+    return {role: mapping for role, mapping in mappings.items() if mapping.model}
 
 
 def resolve_harness_env(backend: str, cfg: dict[str, Any] | None = None) -> dict[str, str]:
