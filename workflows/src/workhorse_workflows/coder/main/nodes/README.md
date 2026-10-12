@@ -4,4 +4,4 @@ The non-agent steps only the coder main loop calls.
 
 ## Map
 
-- `pr.py`: the PR boundary: when the epic's PR opens, and the one PR per repo story mode opens.
+- `pr.py`: the PR boundary: one PR per repo the run branch changed, left open for review.

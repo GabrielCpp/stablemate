@@ -30,25 +30,11 @@ class LaunchSet(CoderResult):
     entries: list[LaunchEntry] = []
 
 
-class BaseBranch(CoderResult):
-    """`init-base.py` — the branch an epic's PR will be opened against."""
+class RunBranch(CoderResult):
+    """`cut_run_branch` — the `feat/<name>` branch the run lands on, and the base its PRs target."""
 
     base_branch: str = ""
-
-
-class StoryBranch(CoderResult):
-    """`branch-story.py` — the branch cut for a single story, and where it was cut."""
-
-    base_branch: str = ""
-    story_branch: str = ""
-    repos: list[str] = []
-
-
-class EpicBranch(CoderResult):
-    """`branch-epic.py` — the `feat/<epic>` this run is on, and the epic it belongs to."""
-
-    working_epic: str = ""
-    epic_branch: str = ""
+    branch: str = ""
 
 
 class EpicPruned(CoderResult):
@@ -96,14 +82,12 @@ class ReplanResult(CoderResult):
 
 
 __all__ = [
-    "BaseBranch",
-    "EpicBranch",
     "EpicPruned",
     "LaunchEntry",
     "LaunchSet",
     "ReplanResult",
+    "RunBranch",
     "RunScope",
-    "StoryBranch",
     "StoryCommitted",
     "StoryStamped",
     "WorktreeCleanliness",

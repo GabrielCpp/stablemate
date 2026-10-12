@@ -6,7 +6,7 @@ What more than one coder lane needs. Code that only one lane calls belongs in th
 
 - `backlog.py`: the repo backlog's `Filed by coder` section: what the coder files into it, and what the fix lane drains out.
 - `blueprint.py`: the one `Blueprint` every coder node registers against.
-- `branches.py`: the epic and story branches: their names, cutting them, the claim ledger and catching up with base.
+- `branches.py`: the run branch: its name, its base, and putting the docs repo and the code repos on it.
 - `ci.py`: the CI loop's work: which repo is next, what its Actions runs said, and the push of a fix.
 - `commits.py`: the Conventional Commit subject and trailers of every commit the coder writes.
 - `contract.py`: the one rule for what counts as a service the planner can target.

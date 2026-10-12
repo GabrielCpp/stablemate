@@ -108,7 +108,7 @@ class Dev(Workflow):
             "epic": self.epic,
             "story_path": self.ctx.story_path,
             "spec_dir": self.ctx.spec_dir,
-            "branch": self.branch or self.story,
+            "branch": self.branch,
         }
 
     def start(self) -> Continue:
@@ -210,13 +210,10 @@ class Dev(Workflow):
         self.call(
             resolve_impl_context, self.ctx.spec_dir, self.target_env, self.docs_path, plan=document
         )
-        self.call(
-            branch_code_repos,
-            self.ctx.spec_dir,
-            self.branch or self.story,
-            self.docs_path,
-            plan=document,
-        )
+        if self.branch:
+            self.call(
+                branch_code_repos, self.ctx.spec_dir, self.branch, self.docs_path, plan=document
+            )
         report = self._first_failure(lap)
         return [] if report is None else [report_text(report)]
 

@@ -88,8 +88,8 @@ block again.
 ## How to work
 
 1. **Scope.** Read the story's acceptance criteria, the parent epic's `## User Journeys` and
-   the spec dir. The implementation delta is the working tree plus every commit on the story
-   branch since its base, including QA, regression, CI and merge remediation. From that delta,
+   the spec dir. The implementation delta is the working tree plus every commit that carries
+   the story's `Story:` footer, including QA, regression and CI remediation. From that delta,
    name each user-facing surface, element, behavior, concept or format the story added or
    changed: a screen, component or interaction (GUI), a cli or command (CLI), a server,
    endpoint or invocation (HTTP/WS), a domain or code `concept`, a `flow`, or a `format`.

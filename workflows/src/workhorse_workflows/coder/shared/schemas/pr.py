@@ -1,4 +1,4 @@
-"""What the epic's PR boundary decided: open it, gate on it, merge it, or escalate it."""
+"""What the run's PR boundary decided: open it, merge it, or escalate it."""
 from __future__ import annotations
 
 from typing import Literal
@@ -9,12 +9,11 @@ from workhorse.pyflow import dry_run
 from workhorse_workflows.coder.shared.schemas._base import CoderResult
 
 
-class PrGate(CoderResult):
-    """`open-pr.py` — the epic's PR is (or is not) something to gate CI on."""
+class RunPrs(CoderResult):
+    """`open_run_prs` — one PR per repo the run branch changed, and the URLs that resulted."""
 
-    should_gate: bool = False
-    ci_epic: str = ""
-    ci_base: str = ""
+    status: Literal["opened", "skipped"] = "skipped"
+    pr_urls: list[str] = []
 
 
 class MergeOutcome(CoderResult):
@@ -22,13 +21,6 @@ class MergeOutcome(CoderResult):
 
     merge_status: Literal["merged", "unavailable", "failed"] = "failed"
     base_branch: str = ""
-
-
-class StoryPr(CoderResult):
-    """`open-story-pr.py` — one PR per affected code repo, and the URLs that resulted."""
-
-    story_pr: Literal["opened", "exists", "skipped"] = "skipped"
-    pr_urls: list[str] = []
 
 
 class MergeFlagged(CoderResult):
@@ -63,6 +55,5 @@ __all__ = [
     "MergeFixResult",
     "MergeFlagged",
     "MergeOutcome",
-    "PrGate",
-    "StoryPr",
+    "RunPrs",
 ]

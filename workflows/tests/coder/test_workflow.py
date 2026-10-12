@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import json
-import logging
 import subprocess
 from collections.abc import Callable
 from pathlib import Path
@@ -10,19 +9,20 @@ from typing import Any, Literal
 
 import pytest
 from workhorse.artifacts import ArtifactWriter
-from workhorse.pyflow import Done, Workflow, WorkflowFailed
+from workhorse.pyflow import Done, Workflow
 from workhorse.pyflow.driver import read_resume
 from workhorse.pyflow.engine import RunEnv
 from workhorse.records import parse_checkpoint
 
-from workhorse_workflows.kit import commit_all, commit_paths, is_ancestor
+from workhorse_workflows.kit import commit_all, commit_paths
 from workhorse_workflows.coder.main import flow as coder_main
 from workhorse_workflows.coder.shared import commits
 from workhorse_workflows.coder.shared.schemas.backlog import FixPick
-from workhorse_workflows.coder.main.nodes.pr import _epic_pr_title, open_pr, open_story_pr
-from workhorse_workflows.coder.shared.branches import CLAIMED_FILE, branch_epic, branch_story
+from workhorse_workflows.coder.main.nodes import pr
+from workhorse_workflows.coder.main.nodes.pr import open_run_prs
+from workhorse_workflows.coder.shared.branches import cut_run_branch
 from workhorse_workflows.coder.shared import work
-from workhorse_workflows.coder.shared.queue import begin_run, resolve_launch
+from workhorse_workflows.coder.shared.queue import ALL_EPICS, begin_run, resolve_launch
 from workhorse_workflows.coder.shared.story_commit import check_repos_clean, stamp_story_passed
 from workhorse_workflows.coder.shared.story import prepare_story
 from workhorse_workflows.coder.shared.schemas.ci import CiChecks, CiStatus
@@ -351,15 +351,15 @@ def test_one_epic_of_one_story_builds_it_prunes_the_queue_and_ends_on_an_empty_q
     drive_flow: Callable[..., Any],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The whole loop in one pass: queue → story → PR → CI → merge → empty queue."""
+    """The whole loop in one pass: queue → story → commit → pruned queue → no PR offline."""
     repo = epic()
     sub = _Sub(repo).install(monkeypatch)
     run_env = env()
 
     result = drive_flow(Coder(), run_env, _Agent())
 
-    assert result is None, result
-    assert sub.calls == ["Dev", "Docs", "Qa", "Fix", "FixCi"], sub.calls
+    assert result.status == "skipped", result
+    assert sub.calls == ["Dev", "Docs", "Qa", "Fix"], sub.calls
     assert _output(run_env, check_repos_clean)["clean"] is True
     assert _output(run_env, stamp_story_passed)["stamped"] is True
     assert _dirty(repo) == "", _dirty(repo)
@@ -377,12 +377,13 @@ def test_the_dev_owner_is_handed_its_work_item_and_the_branch_it_lands_on(
     """The graph names no conversation: the dev owner keys its own session off the work item."""
     repo = epic()
     sub = _Sub(repo).install(monkeypatch)
+    run_env = env()
 
-    drive_flow(Coder(), env(), _Agent())
+    drive_flow(Coder(), run_env, _Agent())
 
     [dev] = sub.calls_to("Dev")
     assert dev.work_id == "STORY-1"
-    assert dev.branch == f"feat/{EPIC}"
+    assert dev.branch == _output(run_env, cut_run_branch)["branch"] == "feat/t"
     assert "session_id" not in _StubFlow.model_fields
 
 
@@ -398,7 +399,7 @@ def test_a_qa_mutation_requires_final_documentation_before_commit(
 
     drive_flow(Coder(), env(), _Agent())
 
-    assert sub.calls == ["Dev", "Docs", "Qa", "Fix", "Docs", "FixCi"], sub.calls
+    assert sub.calls == ["Dev", "Docs", "Qa", "Fix", "Docs"], sub.calls
     assert "feat(acme): story STORY-1" in _subjects(repo), _subjects(repo)
 
 
@@ -426,23 +427,6 @@ def test_the_story_and_its_status_stamp_commit_as_conventional_commits(
     assert "Story: STORY-1" in bodies, bodies
 
 
-def test_the_graph_records_the_epic_branch_it_cut_in_the_run_dir(
-    epic: Callable[..., Path],
-    env: Callable[..., RunEnv],
-    drive_flow: Callable[..., Any],
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """`branch_epic` can only recognise its own branch on a later visit if the graph hands it the run dir — and a node that takes `run_dir` but is never given one is silent, not an error, so the ledger is asserted from the graph rather than from the node."""
-    repo = epic()
-    _Sub(repo).install(monkeypatch)
-    run_env = env()
-
-    drive_flow(Coder(), run_env, _Agent())
-
-    ledger = run_env.writer.run_dir / CLAIMED_FILE
-    assert ledger.read_text(encoding="utf-8").split() == [f"feat/{EPIC}"]
-
-
 def test_a_fresh_run_drops_the_worklist_and_answers_a_previous_run_left_in_the_run_dir(
     epic: Callable[..., Path],
     env: Callable[..., RunEnv],
@@ -467,7 +451,7 @@ def test_a_fresh_run_drops_the_worklist_and_answers_a_previous_run_left_in_the_r
     assert _output(run_env, begin_run)["cleared"] == [work.WORKLIST_FILE, work.ANSWER_LOG]
     assert (repo / "src" / "STORY-1.py").is_file()
     assert not (run_env.writer.run_dir / work.ANSWER_LOG).exists()
-    assert result is None, result
+    assert result.status == "skipped", result
 
 
 def test_the_story_is_stamped_and_the_next_selection_reads_it_as_done(
@@ -489,314 +473,122 @@ def test_the_story_is_stamped_and_the_next_selection_reads_it_as_done(
     assert "- **Status**: QA passed" in story, story
 
 
-def test_the_pr_cluster_passes_through_offline_and_still_advances_the_queue(
+def test_a_pr_run_lands_every_item_on_one_branch_and_opens_no_pr_offline(
     epic: Callable[..., Path],
     env: Callable[..., RunEnv],
     drive_flow: Callable[..., Any],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """`should_gate` is read off the *epic*, not off whether GitHub could be reached."""
-    repo = epic()
-    sub = _Sub(repo, ci_status="unavailable").install(monkeypatch)
-    run_env = env()
-
-    drive_flow(Coder(), run_env, _Agent())
-
-    assert _output(run_env, open_pr)["should_gate"] is True
-    assert _output(run_env, open_pr)["ci_epic"] == EPIC
-    assert [c.base for c in sub.calls_to("FixCi")] == [_output(run_env, open_pr)["ci_base"]]
-    assert _head(repo) == f"feat/{EPIC}"
-
-
-def test_retrying_at_the_same_commit_continues_and_leaves_no_refs_behind(
-    epic: Callable[..., Path],
-    logger: logging.Logger,
-    git: Callable[..., subprocess.CompletedProcess],
-) -> None:
-    """A retry after a failure *is* a second attempt at an unchanged HEAD."""
-    repo = epic()
-
-    for _ in range(3):
-        result = branch_epic(logger, epic=EPIC, repo_dir=str(repo))
-        assert result.epic_branch == f"feat/{EPIC}"
-
-    assert _head(repo) == f"feat/{EPIC}"
-    branches = git(repo, "branch", "--format=%(refname:short)").stdout.split()
-    assert not [b for b in branches if b.startswith("archive/")], branches
-
-
-def test_a_resumed_epic_branch_keeps_the_commits_it_already_made(
-    epic: Callable[..., Path],
-    logger: logging.Logger,
-    git: Callable[..., subprocess.CompletedProcess],
-    write: Callable[[Path, str], Path],
-) -> None:
-    """The point of not renaming aside."""
-    repo = epic()
-    branch_epic(logger, epic=EPIC, repo_dir=str(repo))
-    write(repo / "src" / "done.txt", "story one\n")
-    git(repo, "add", "-A")
-    git(repo, "commit", "-qm", "story one")
-    landed = git(repo, "rev-parse", "HEAD").stdout.strip()
-
-    branch_epic(logger, epic=EPIC, repo_dir=str(repo))
-
-    assert git(repo, "rev-parse", "HEAD").stdout.strip() == landed
-    assert (repo / "src" / "done.txt").exists()
-
-
-def test_a_branch_another_working_tree_holds_is_refused_by_name(
-    epic: Callable[..., Path],
-    logger: logging.Logger,
-    git: Callable[..., subprocess.CompletedProcess],
-    tmp_path: Path,
-) -> None:
-    """The case concurrency creates."""
-    repo = epic()
-    other = tmp_path / "other-run"
-    git(repo, "worktree", "add", "--detach", "-q", str(other))
-    git(other, "checkout", "-q", "-b", f"feat/{EPIC}")
-
-    with pytest.raises(WorkflowFailed, match="another working tree"):
-        branch_epic(logger, epic=EPIC, repo_dir=str(repo))
-
-
-def test_unmerged_work_nobody_claimed_is_refused_rather_than_renamed(
-    epic: Callable[..., Path],
-    logger: logging.Logger,
-    git: Callable[..., subprocess.CompletedProcess],
-    write: Callable[[Path, str], Path],
-) -> None:
-    """Archival renamed this aside silently."""
-    repo = epic()
-    base = _head(repo)
-    git(repo, "checkout", "-q", "-b", f"feat/{EPIC}")
-    write(repo / "src" / "someone-elses.txt", "unmerged\n")
-    git(repo, "add", "-A")
-    git(repo, "commit", "-qm", "work in progress")
-    git(repo, "checkout", "-q", base)
-
-    with pytest.raises(WorkflowFailed, match="not in"):
-        branch_epic(logger, epic=EPIC, base_branch=base, repo_dir=str(repo))
-
-    branches = git(repo, "branch", "--format=%(refname:short)").stdout.split()
-    assert f"feat/{EPIC}" in branches
-    assert not [b for b in branches if b.startswith("archive/")], branches
-
-
-def test_a_merged_epic_branch_is_reused_rather_than_refused(
-    epic: Callable[..., Path],
-    logger: logging.Logger,
-    git: Callable[..., subprocess.CompletedProcess],
-) -> None:
-    """The ordinary case after an epic ships: the branch is still lying around, and it holds nothing the base does not."""
-    repo = epic()
-    base = _head(repo)
-    git(repo, "branch", f"feat/{EPIC}", base)
-
-    result = branch_epic(logger, epic=EPIC, base_branch=base, repo_dir=str(repo))
-
-    assert result.epic_branch == f"feat/{EPIC}"
-    assert _head(repo) == f"feat/{EPIC}"
-
-
-def test_a_squash_merged_branch_counts_as_merged(
-    epic: Callable[..., Path],
-    logger: logging.Logger,
-    git: Callable[..., subprocess.CompletedProcess],
-    write: Callable[[Path, str], Path],
-) -> None:
-    """Squash is the default merge on most repos, and it leaves a branch whose commits are ancestors of nothing — so an ancestry-only test would call every landed epic 'unmerged' and refuse it, which is a queue that stops needing a human every time."""
-    repo = epic()
-    base = _head(repo)
-    git(repo, "checkout", "-q", "-b", f"feat/{EPIC}")
-    write(repo / "src" / "shipped.txt", "content\n")
-    git(repo, "add", "-A")
-    git(repo, "commit", "-qm", "the epic")
-    git(repo, "checkout", "-q", base)
-    git(repo, "merge", "-q", "--squash", f"feat/{EPIC}")
-    git(repo, "commit", "-qm", "squashed epic")
-
-    unreachable = subprocess.run(
-        ["git", "merge-base", "--is-ancestor", f"feat/{EPIC}", base],
-        cwd=repo, capture_output=True, text=True, check=False,
-    )
-    assert unreachable.returncode != 0
-    result = branch_epic(logger, epic=EPIC, base_branch=base, repo_dir=str(repo))
-    assert result.epic_branch == f"feat/{EPIC}"
-
-
-def test_a_squash_merged_branch_that_then_diverged_is_still_refused(
-    epic: Callable[..., Path],
-    logger: logging.Logger,
-    git: Callable[..., subprocess.CompletedProcess],
-    write: Callable[[Path, str], Path],
-) -> None:
-    """The one case archival existed to defend against."""
-    repo = epic()
-    base = _head(repo)
-    git(repo, "checkout", "-q", "-b", f"feat/{EPIC}")
-    write(repo / "src" / "shipped.txt", "content\n")
-    git(repo, "add", "-A")
-    git(repo, "commit", "-qm", "the epic")
-    git(repo, "checkout", "-q", base)
-    git(repo, "merge", "-q", "--squash", f"feat/{EPIC}")
-    git(repo, "commit", "-qm", "squashed epic")
-    git(repo, "checkout", "-q", f"feat/{EPIC}")
-    write(repo / "src" / "after.txt", "diverged\n")
-    git(repo, "add", "-A")
-    git(repo, "commit", "-qm", "kept going after the squash")
-    git(repo, "checkout", "-q", base)
-
-    with pytest.raises(WorkflowFailed, match="not in"):
-        branch_epic(logger, epic=EPIC, base_branch=base, repo_dir=str(repo))
-
-
-def test_an_epic_this_run_cut_is_returned_to_rather_than_refused(
-    epic: Callable[..., Path],
-    logger: logging.Logger,
-    git: Callable[..., subprocess.CompletedProcess],
-    write: Callable[[Path, str], Path],
-    tmp_path: Path,
-) -> None:
-    """The multi-epic drain."""
-    repo = epic()
-    base = _head(repo)
-    run_dir = tmp_path / "run"
-    run_dir.mkdir()
-
-    branch_epic(logger, epic=EPIC, base_branch=base, repo_dir=str(repo), run_dir=str(run_dir))
-    write(repo / "src" / "ours.txt", "story one\n")
-    git(repo, "add", "-A")
-    git(repo, "commit", "-qm", "story one")
-    landed = git(repo, "rev-parse", "HEAD").stdout.strip()
-    git(repo, "checkout", "-q", "-b", "feat/another-epic", base)
-
-    result = branch_epic(
-        logger, epic=EPIC, base_branch=base, repo_dir=str(repo), run_dir=str(run_dir)
-    )
-
-    assert result.epic_branch == f"feat/{EPIC}"
-    assert _head(repo) == f"feat/{EPIC}"
-    assert git(repo, "rev-parse", "HEAD").stdout.strip() == landed
-    assert (repo / "src" / "ours.txt").exists()
-
-
-def test_returning_to_a_set_aside_epic_brings_in_what_landed_meanwhile(
-    epic: Callable[..., Path],
-    logger: logging.Logger,
-    git: Callable[..., subprocess.CompletedProcess],
-    write: Callable[[Path, str], Path],
-    tmp_path: Path,
-) -> None:
-    """The other half of the multi-epic drain, and the one that used to ship corruption."""
-    repo = epic()
-    base = _head(repo)
-    run_dir = tmp_path / "run"
-    run_dir.mkdir()
-
-    branch_epic(logger, epic=EPIC, base_branch=base, repo_dir=str(repo), run_dir=str(run_dir))
-    git(repo, "checkout", "-q", base)
-    write(repo / "src" / "epic-b.txt", "finished elsewhere\n")
-    git(repo, "add", "-A")
-    git(repo, "commit", "-qm", "epic B")
-    landed = git(repo, "rev-parse", "HEAD").stdout.strip()
-
-    branch_epic(logger, epic=EPIC, base_branch=base, repo_dir=str(repo), run_dir=str(run_dir))
-
-    assert _head(repo) == f"feat/{EPIC}"
-    assert (repo / "src" / "epic-b.txt").exists()
-    assert is_ancestor(repo, landed, f"feat/{EPIC}")
-
-
-def test_a_set_aside_epic_that_conflicts_with_base_is_refused_not_half_merged(
-    epic: Callable[..., Path],
-    logger: logging.Logger,
-    git: Callable[..., subprocess.CompletedProcess],
-    write: Callable[[Path, str], Path],
-    tmp_path: Path,
-) -> None:
-    """Two epics that edited the same lines are a human's call, not a run's — and the refusal must leave a clean tree, not a conflicted one the next node would commit."""
-    repo = epic()
-    base = _head(repo)
-    run_dir = tmp_path / "run"
-    run_dir.mkdir()
-
-    branch_epic(logger, epic=EPIC, base_branch=base, repo_dir=str(repo), run_dir=str(run_dir))
-    write(repo / "src" / "contested.txt", "epic A's line\n")
-    git(repo, "add", "-A")
-    git(repo, "commit", "-qm", "story one")
-    git(repo, "checkout", "-q", base)
-    write(repo / "src" / "contested.txt", "epic B's line\n")
-    git(repo, "add", "-A")
-    git(repo, "commit", "-qm", "epic B")
-
-    with pytest.raises(WorkflowFailed, match="does not merge cleanly"):
-        branch_epic(
-            logger, epic=EPIC, base_branch=base, repo_dir=str(repo), run_dir=str(run_dir)
-        )
-
-    assert not git(repo, "status", "--porcelain").stdout.strip()
-    assert not (repo / ".git" / "MERGE_HEAD").exists()
-
-
-def test_a_claim_does_not_outlive_the_run_that_made_it(
-    epic: Callable[..., Path],
-    logger: logging.Logger,
-    git: Callable[..., subprocess.CompletedProcess],
-    write: Callable[[Path, str], Path],
-    tmp_path: Path,
-) -> None:
-    """The ledger must not become a way to walk past the refusal."""
-    repo = epic()
-    base = _head(repo)
-    run_dir = tmp_path / "run"
-    run_dir.mkdir()
-
-    branch_epic(logger, epic=EPIC, base_branch=base, repo_dir=str(repo), run_dir=str(run_dir))
-    write(repo / "src" / "ours.txt", "story one\n")
-    git(repo, "add", "-A")
-    git(repo, "commit", "-qm", "story one")
-    git(repo, "checkout", "-q", base)
-
-    begin_run(logger, run_dir=str(run_dir))
-
-    with pytest.raises(WorkflowFailed, match="not in"):
-        branch_epic(
-            logger, epic=EPIC, base_branch=base, repo_dir=str(repo), run_dir=str(run_dir)
-        )
-
-
-
-
-def test_story_mode_cuts_its_own_branch_and_ends_at_its_own_pr(
-    epic: Callable[..., Path],
-    env: Callable[..., RunEnv],
-    drive_flow: Callable[..., Any],
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """`resolve_launch`'s story arm: no epic branch, no epic PR, no CI gate."""
-    repo = epic()
+    """The worklist sets how much one PR carries, not the story count."""
+    repo = epic(count=2)
     sub = _Sub(repo).install(monkeypatch)
     run_env = env()
 
-    result = drive_flow(Coder(story="STORY-1"), run_env, _Agent())
+    result = drive_flow(Coder(), run_env, _Agent())
 
-    assert result.story_pr == "skipped", result
-    assert sub.calls == ["Dev", "Docs", "Qa", "Fix"], sub.calls
-    assert _output(run_env, resolve_launch)["mode"] == "story"
-    assert not (run_env.writer.run_dir / open_pr.__name__).exists()
-    assert _output(run_env, open_story_pr)["story_pr"] == "skipped"
-    assert _head(repo) == _output(run_env, branch_story)["story_branch"]
+    assert [c.branch for c in sub.calls_to("Dev")] == ["feat/t", "feat/t"], sub.calls
+    assert _output(run_env, cut_run_branch) == {"base_branch": "main", "branch": "feat/t"}
+    assert _head(repo) == "feat/t"
+    assert {"feat(acme): story STORY-1", "feat(acme): story STORY-2"} <= set(_subjects(repo))
+    assert result.status == "skipped", result
+    assert "FixCi" not in sub.calls, sub.calls
 
 
-def test_the_epic_pr_title_is_the_subject_a_squash_merge_will_release(
+@pytest.mark.parametrize(
+    ("launched", "story", "branch"),
+    [(EPIC, "", f"feat/{EPIC}"), (ALL_EPICS, "STORY-1", "feat/STORY-1")],
+)
+def test_the_run_branch_is_named_for_what_the_run_was_launched_on(
+    launched: str,
+    story: str,
+    branch: str,
     epic: Callable[..., Path],
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The title is not decoration: under squash-merge it *becomes* the merge commit."""
+    """One epic or one story names the branch, and a run over every epic names it for itself."""
     repo = epic()
+    sub = _Sub(repo).install(monkeypatch)
 
-    assert _epic_pr_title(repo, EPIC) == "feat(acme): epic One"
+    drive_flow(Coder(epic=launched, story=story), env(), _Agent())
+
+    assert _head(repo) == branch
+    assert sub.calls == ["Dev", "Docs", "Qa", "Fix"], sub.calls
+
+
+def test_a_commit_run_stays_on_the_current_branch_and_names_each_story(
+    epic: Callable[..., Path],
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """No branch, no PR, no CI wait: each story is a commit on the branch the run found."""
+    repo = epic(count=2)
+    sub = _Sub(repo).install(monkeypatch)
+    run_env = env()
+
+    result = drive_flow(Coder(delivery="commit"), run_env, _Agent())
+
+    assert result is None, result
+    assert _head(repo) == "main"
+    assert [c.branch for c in sub.calls_to("Dev")] == ["", ""], sub.calls
+    assert "FixCi" not in sub.calls, sub.calls
+    assert not (run_env.writer.run_dir / cut_run_branch.__name__).exists()
+    assert not (run_env.writer.run_dir / open_run_prs.__name__).exists()
+    bodies = subprocess.run(
+        ["git", "log", "--format=%b"], cwd=repo, check=True, capture_output=True, text=True
+    ).stdout
+    assert "Story: STORY-1" in bodies and "Story: STORY-2" in bodies, bodies
+
+
+@pytest.mark.parametrize("delivery", ["pr", "commit"])
+def test_a_finished_epic_is_pruned_from_the_queue_in_its_own_commit(
+    delivery: Literal["pr", "commit"],
+    epic: Callable[..., Path],
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The prune leaves the tree clean whether or not a PR follows."""
+    repo = epic()
+    _Sub(repo).install(monkeypatch)
+
+    drive_flow(Coder(epic=EPIC, delivery=delivery), env(), _Agent())
+
+    assert EPIC not in (repo / "docs" / "epics" / "index.md").read_text(encoding="utf-8")
+    assert "chore(acme): prune completed epic from queue" in _subjects(repo), _subjects(repo)
+    assert _dirty(repo) == "", _dirty(repo)
+
+
+def test_an_opened_pr_goes_to_the_ship_lane_for_ci_and_stays_open(
+    epic: Callable[..., Path],
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The ship lane gets CI green on the run branch, and with no base it merges nothing."""
+    repo = epic()
+    sub = _Sub(repo).install(monkeypatch)
+    opened: list[tuple[str, str, str, str]] = []
+
+    def _push_and_pr(
+        logger: Any, path: Path, branch: str, base: str, title: str, body: str, token: str
+    ) -> tuple[str, str]:
+        opened.append((branch, base, title, body))
+        return "opened", f"https://example.com/{path.name}/pull/1"
+
+    monkeypatch.setattr(pr, "resolve_github_token", lambda path: "token")
+    monkeypatch.setattr(pr, "_push_and_pr", _push_and_pr)
+
+    result = drive_flow(Coder(epic=EPIC, operator_mode="human"), env(), _Agent())
+
+    [(branch, base, title, body)] = opened
+    assert (branch, base, title) == (f"feat/{EPIC}", "main", "feat(acme): epic One")
+    assert "- `STORY-1`" in body, body
+    (lane,) = sub.calls_to("FixCi")
+    assert (lane.branch, lane.base, lane.operator_mode) == (f"feat/{EPIC}", "", "human")
+    assert result.status == "passed", result
 
 
 def test_the_epic_reaches_the_sub_flows_and_story_mode_passes_its_own(
@@ -853,9 +645,8 @@ def test_re_verifying_given_up_stories_moves_each_status_to_passed(
 
     result = drive_flow(Coder(), run_env, _Agent())
 
-    assert result is None, result
+    assert result.status == "skipped", result
     assert sub.calls.count("Dev") == 4, sub.calls
-    assert _output(run_env, open_pr)["should_gate"] is True
     for n in range(1, 5):
         story = repo / "docs" / "epics" / EPIC / "stories" / f"STORY-{n}" / "story.md"
         assert "QA passed" in story.read_text(encoding="utf-8"), story
@@ -874,7 +665,7 @@ def test_work_left_uncommitted_after_qa_goes_back_to_the_dev_owner(
 
     result = drive_flow(Coder(), run_env, _Agent())
 
-    assert result is None, result
+    assert result.status == "skipped", result
     devs = sub.calls_to("Dev")
     assert len(devs) == 2, sub.calls
     assert devs[0].note == "", devs[0].note
@@ -917,7 +708,7 @@ def test_the_operators_own_uncommitted_files_are_not_the_storys_to_answer_for(
 
     result = drive_flow(Coder(), run_env, _Agent())
 
-    assert result is None, result
+    assert result.status == "skipped", result
     assert _output(run_env, check_repos_clean)["clean"] is True
     assert _dirty(repo) == "?? src/scratch.py", _dirty(repo)
 
@@ -980,7 +771,7 @@ def test_a_docs_lane_that_does_not_document_the_story_replans_its_epic(
 
     result = drive_flow(Coder(), env(), agent)
 
-    assert result is None, result
+    assert result.status == "skipped", result
     assert agent.calls == ["replan-epic"], agent.calls
     assert agent.replans == [BLOCK_REASON], agent.replans
     documented = [c.story for c in sub.calls_to("Docs")]
@@ -1084,29 +875,7 @@ def test_a_run_killed_in_qa_resumes_on_qa_without_rebuilding_the_story(
     sub = _Sub(repo).install(monkeypatch)
     result = drive_flow(Coder(**resume.inputs), env(run_dir=run_dir), _Agent(), resume)
 
-    assert result is None, result
+    assert result.status == "skipped", result
     assert "Dev" not in sub.calls, sub.calls
-    assert sub.calls == ["Qa", "Fix", "FixCi"], sub.calls
+    assert sub.calls == ["Qa", "Fix"], sub.calls
     assert [c.epic for c in sub.calls_to("Qa")] == [EPIC], "the epic is read back, not carried"
-
-
-
-
-def test_the_ship_lane_owns_red_ci_and_the_merge(
-    epic: Callable[..., Path],
-    env: Callable[..., RunEnv],
-    drive_flow: Callable[..., Any],
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """One handoff per epic: the ship lane repairs, parks and merges on its own."""
-    repo = epic()
-    sub = _Sub(repo).install(monkeypatch)
-    run_env = env()
-
-    drive_flow(Coder(operator_mode="human"), run_env, _Agent())
-
-    (lane,) = sub.calls_to("FixCi")
-    assert lane.branch == f"feat/{EPIC}", lane.branch
-    assert lane.operator_mode == "human", lane.operator_mode
-    assert lane.base == _output(run_env, open_pr)["ci_base"], lane.base
-    assert {c.operator_mode for c in sub.calls_to("Fix")} == {"human"}

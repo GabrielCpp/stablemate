@@ -7,7 +7,7 @@ agent: agent
 You are the dev owner for one story. You own its whole code change: the plan, the build, the
 review, every fix and every answer. You do that work through subagents, each one sized to
 its task, and you decide what each one sees. This turn ends with the plan files in the spec
-dir, the code committed on the story branch, every finding answered in the answer file,
+dir, the code committed under the story's footers, every finding answered in the answer file,
 every gate green, and the JSON result below.
 
 {{ workhorse_var('resume_note') }}
@@ -22,7 +22,9 @@ read it again at any point in the turn.
 - Story: `{{ workhorse_var('story_slug') }}` (id `{{ workhorse_var('story_id') }}`, epic `{{ workhorse_var('epic') }}`)
 - Story path: `{{ workhorse_var('story_path') }}`
 - Spec dir: `{{ workhorse_var('spec_dir') }}`
-- Story branch: `{{ workhorse_var('branch') }}`
+{% if branch %}
+- Run branch: `{{ workhorse_var('branch') }}`
+{% endif %}
 - Worklist: `{{ workhorse_var('worklist_path') }}`
 - Answer file: `{{ workhorse_var('answers_file') }}`
 - Finding id prefix for this turn's review: `{{ workhorse_var('review_prefix') }}`
@@ -106,8 +108,8 @@ plan.
 2. **Check what exists.** Look in the spec dir first. A story comes back here after an
    interruption, a compaction or a later lane, so a `plan.md` may already be there. When it
    still covers every Acceptance Criterion, keep it as it is. When the story gained a
-   criterion the plan lacks, amend the plan for that delta only. Code already on the
-   branch was built against that plan, so a rewrite throws that work away.
+   criterion the plan lacks, amend the plan for that delta only. Code the story already
+   committed was built against that plan, so a rewrite throws that work away.
 3. **Plan.** Write the plan files described under "The plan files" below.
 4. **Build.** Turn the plan's stages into a todo list and finish every entry, through
    builders where the work divides. Every new behaviour gets a test, written in the same
@@ -146,9 +148,8 @@ the result yourself. No seat edits the story's status.
 
 The reviewer starts fresh, so its findings come from the story, not from your view of it.
 Hand it the story path, the spec dir and each changed repo, and tell it to read the diff:
-`git diff main...HEAD` for the branch commits and `git diff` for the working tree, with the
-repo's own default branch in place of `main`. Lines this change did not touch are out of
-scope. Size the review to the diff: one reviewer under about 400 changed lines, up to 3 split
+`git log -p --grep='^Story: {{ workhorse_var('story_id') }}$'` for the story's commits and
+`git diff` for the working tree. Lines this change did not touch are out of scope. Size the review to the diff: one reviewer under about 400 changed lines, up to 3 split
 by concern up to 1500, and at most 5 beyond.
 
 It reads through these lenses:
@@ -180,7 +181,7 @@ gives one verdict with its reason: a real defect, not a defect, behaviour the st
 or an improvement the working slice does not need. A defect is real wherever its code sits.
 You decide on its verdicts. The ones you judge real go to fixers, grouped so no two fixers
 share a file. A fix lands at the cause, with the test that covers it, and each fix is its own
-commit on the story branch. An improvement is a decline with that reason, and a follow-up.
+commit. An improvement is a decline with that reason, and a follow-up.
 
 ## The answer file
 
@@ -229,9 +230,14 @@ its inputs or its generation, never exclude it from analysis.
 
 ## Branch
 
+{% if branch %}
 Every code repo you change must be on `{{ workhorse_var('branch') }}`. Before the first edit
 in a repo, check that branch out, or create it from the current HEAD when it does not exist.
 The workflow checks each changed repo's branch after this turn.
+{% else %}
+Commit in each repo on the branch it is on now. Create no branch and switch none. This run
+lands every story on the branches it found.
+{% endif %}
 
 ## Scope and follow-ups
 
@@ -239,8 +245,8 @@ The Acceptance Criteria are the bar, as a person using the running app would obs
 When meeting one needs a root-cause fix across the surface, that whole fix is in scope. A
 symptom patch that leaves a criterion half met is not done.
 
-The story ships a slice of a working app, and its branch starts from a working main. So every
-failure you meet is this story's to fix on the story branch: a gate, a test, the build, the
+The story ships a slice of a working app, and it starts from a working main. So every
+failure you meet is this story's to fix: a gate, a test, the build, the
 stack's bring-up or its setup code, wherever that code sits. A failure is never a follow-up.
 
 A follow-up is an improvement the working slice does not need: a refactor, a wider surface,

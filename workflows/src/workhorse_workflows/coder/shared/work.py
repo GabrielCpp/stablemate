@@ -234,6 +234,15 @@ def epic_done(work: wl.WorkList, epic: str) -> bool:
     )
 
 
+def delivered(work: wl.WorkList) -> list[str]:
+    """The ids of the stories the run finished, in the order it worked them."""
+    return [
+        str(it.payload.get("story_id") or it.id)
+        for it in work.items(STORY)
+        if it.status == DONE
+    ]
+
+
 def progress(work: wl.WorkList, current: str | None = None) -> wl.WorkSnapshot:
     """How far the run is through its stories and follow-ups."""
     return work.snapshot(current, PROGRESS_KINDS)
@@ -311,6 +320,7 @@ __all__ = [
     "WORKLIST_FILE",
     "amend",
     "answer_log_path",
+    "delivered",
     "epic_done",
     "file",
     "find",

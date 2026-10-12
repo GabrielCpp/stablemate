@@ -133,7 +133,7 @@ earlier assumption in the story, the plan or a finding. Do not raise the same bl
     the scored run fails on product defects, one finding per defect. `blocked` only as
     described below.
 
-The story branch starts from a working main, so every failure you meet is this story's. A
+The story starts from a working main, so every failure you meet is this story's. A
 failure in the repo's code is a finding wherever that code sits, and never a backlog item.
 `{{ workhorse_var('spec_dir') }}/backlog-items.json` holds only improvements the working
 slice does not need, as a JSON array of `{"id", "description", "section"}` objects. The

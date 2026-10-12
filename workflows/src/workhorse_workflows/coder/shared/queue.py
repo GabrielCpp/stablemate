@@ -1,4 +1,4 @@
-"""The main graph's queue spine: which stories a launch files, and the epic it pops when merged."""
+"""The main graph's queue spine: which stories a launch files, and the epic it pops when done."""
 from __future__ import annotations
 
 import json
@@ -7,9 +7,8 @@ from pathlib import Path
 
 from ostler import Ostler, path as okf_path
 from workhorse.pyflow import WorkflowFailed
-from workhorse_workflows.kit import find_docs_root
-from workhorse_workflows.coder.shared import paths, stubs, work
-from workhorse_workflows.coder.shared.branches import CLAIMED_FILE
+from workhorse_workflows.kit import commit_paths, find_docs_root
+from workhorse_workflows.coder.shared import commits, paths, stubs, work
 from workhorse_workflows.coder.shared.blueprint import blueprint
 from workhorse_workflows.coder.shared.schemas.queue import (
     EpicPruned,
@@ -30,12 +29,12 @@ def legacy_queue(root: Path) -> Path:
 
 @blueprint.node
 def begin_run(logger: logging.Logger, run_dir: str = "") -> RunScope:
-    """Drop the worklist, answer log and branch claims a previous run left in this run dir."""
+    """Drop the worklist and answer log a previous run left in this run dir."""
     if not run_dir:
         return RunScope()
     path = Path(run_dir)
     cleared = []
-    for name in (work.WORKLIST_FILE, work.ANSWER_LOG, CLAIMED_FILE):
+    for name in (work.WORKLIST_FILE, work.ANSWER_LOG):
         stale = path / name
         if stale.exists():
             stale.unlink()
@@ -151,7 +150,7 @@ def _prune_json_sidecar(todo_path: Path, epic: str) -> bool:
 def prune_epic(
     logger: logging.Logger, epic: str = "", todo_path: str = "", repo_dir: str = ""
 ) -> EpicPruned:
-    """Pop a merged epic off the front of the queue."""
+    """Pop a finished epic off the front of the queue, and commit the change on the current branch."""
     if not epic:
         logger.info("no epic given — nothing to prune")
         return EpicPruned()
@@ -163,7 +162,7 @@ def prune_epic(
         if not sidecar.is_absolute():
             sidecar = root / sidecar
         logger.info("explicit sidecar %s given — pruning '%s' from it", sidecar, epic)
-        return EpicPruned(pruned=_prune_json_sidecar(sidecar, epic))
+        return _committed(logger, root, epic, str(sidecar), _prune_json_sidecar(sidecar, epic))
 
     try:
         res = Ostler(root).todo_prune(epic)
@@ -172,10 +171,25 @@ def prune_epic(
         pruned = False
     if pruned:
         logger.info("pruned '%s' via the ostler-managed epics queue", epic)
-        return EpicPruned(pruned=True)
+        return _committed(logger, root, epic, paths.epics_index(root), True)
 
     logger.info("'%s' not found via ostler — falling back to epics-todo.json", epic)
-    return EpicPruned(pruned=_prune_json_sidecar(legacy_queue(root), epic))
+    sidecar = legacy_queue(root)
+    return _committed(logger, root, epic, str(sidecar), _prune_json_sidecar(sidecar, epic))
+
+
+def _committed(
+    logger: logging.Logger, root: Path, epic: str, queue: str, pruned: bool
+) -> EpicPruned:
+    """Commit the pruned queue file, so the next run does not take the epic up again."""
+    if not pruned:
+        return EpicPruned()
+    message = commits.message(
+        "chore", commits.scope(root.name), "prune completed epic from queue", epic=epic
+    )
+    if commit_paths(root, message, queue):
+        logger.info("committed the prune of '%s'", epic)
+    return EpicPruned(pruned=True)
 
 
 __all__ = [

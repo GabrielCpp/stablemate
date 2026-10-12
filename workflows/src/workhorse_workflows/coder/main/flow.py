@@ -18,14 +18,9 @@ from workhorse_workflows.coder.fix_ci import FixCi
 from workhorse_workflows.coder.dev import Dev
 from workhorse_workflows.coder.qa import Qa
 from workhorse_workflows.coder.qa.nodes import teardown_stack
-from workhorse_workflows.coder.shared.branches import (
-    branch_epic,
-    branch_story,
-    epic_branch,
-    init_base,
-)
+from workhorse_workflows.coder.shared.branches import cut_run_branch
 from workhorse_workflows.coder.shared.worktree import snapshot_worktree_state
-from workhorse_workflows.coder.main.nodes.pr import open_pr, open_story_pr
+from workhorse_workflows.coder.main.nodes.pr import open_run_prs
 from workhorse_workflows.coder.shared.queue import (
     ALL_EPICS,
     begin_run,
@@ -34,12 +29,11 @@ from workhorse_workflows.coder.shared.queue import (
 )
 from workhorse_workflows.coder.shared.story_commit import (
     check_repos_clean,
-    commit_story,
     stamp_story_passed,
 )
 from workhorse_workflows.coder.shared.story import prepare_story, resolve_workspace_dirs
 from workhorse_workflows.coder.shared.schemas.docs import DocsResult
-from workhorse_workflows.coder.shared.schemas.queue import ReplanResult
+from workhorse_workflows.coder.shared.schemas.queue import LaunchSet, ReplanResult
 from workhorse_workflows.coder.shared.schemas.story import StoryPaths, WorkspaceDirs
 
 
@@ -49,7 +43,7 @@ def _documented(result: DocsResult) -> bool:
 
 
 class Coder(Workflow):
-    """Work every story the launch names, in order, each by one dev owner, and ship each epic."""
+    """Work every story the launch names, in order, each by one dev owner, and deliver the run."""
 
     docs_path: str = ""
     workspace_file: str = ""
@@ -57,6 +51,7 @@ class Coder(Workflow):
     epic: str = ALL_EPICS
     operator_mode: Literal["auto", "human", "operator"] = "auto"
     target_env: Literal["local", "dev"] = "local"
+    delivery: Literal["pr", "commit"] = "pr"
 
     injects: ClassVar[tuple[str, ...]] = paths.AMBIENT
 
@@ -73,12 +68,13 @@ class Coder(Workflow):
             "work_id": item.id if item else self.story,
             "epic": self._epic,
             "mode": self._mode,
+            "delivery": self.delivery,
             "progress": work.progress(self._worklist, item.id if item else None).progress,
         }
 
 
     def start(self) -> Continue:
-        """File every story the launch names, in order, and cut the branch they land on."""
+        """File every story the launch names, in order, and cut the branch a PR run lands on."""
         self.call(begin_run, str(self.run_dir))
         launch = self.call(resolve_launch, self.docs_path, self.epic, self.story)
         filed = work.file(
@@ -87,26 +83,23 @@ class Coder(Workflow):
             by="launch",
         )
         self.logger.info("filed %d of %d launch stories", len(filed), len(launch.entries))
-        if launch.mode == "story":
-            branch = self.call(branch_story, self.story, self.docs_path)
-            self.logger.info("story mode: %s off %s", branch.story_branch, branch.base_branch)
-            return Continue(branch, self.route)
-        return Continue(self.call(init_base), self.route)
+        if self.delivery == "commit":
+            self.logger.info("commit delivery: every item commits on the current branch")
+            return Continue(launch, self.route)
+        branch = self.call(cut_run_branch, self._run_name(launch), self.docs_path)
+        self.logger.info("pr delivery: %s off %s", branch.branch, branch.base_branch)
+        return Continue(branch, self.route)
 
     def route(self) -> Continue | Done:
-        """Take the next story or follow-up off the worklist, or end the run when none is left."""
+        """Take the next story or follow-up off the worklist, or deliver the run when none is left."""
         taken = self._worklist.claim(1, kind=work.PROGRESS_KINDS, strict=True)
-        if not taken:
-            if self._mode == "story":
-                return Continue(None, self.commit_pr)
-            self.logger.info("the worklist is done")
-            self.call(teardown_stack, self.docs_path)
-            return Done(None)
-        if self._mode == "epic":
-            self.call(
-                branch_epic, self._epic, self.output(init_base).base_branch, str(self.run_dir)
-            )
-        return Continue(None, self.prepare)
+        if taken:
+            return Continue(None, self.prepare)
+        self.logger.info("the worklist is done")
+        if self.delivery == "pr":
+            return Continue(None, self.deliver)
+        self.call(teardown_stack, self.docs_path)
+        return Done(None)
 
     def prepare(self) -> Continue:
         """Resolve the item's story to paths, and record what was already dirty."""
@@ -229,9 +222,7 @@ class Coder(Workflow):
         result = self._document() if docs_recheck_required else None
         if result is not None and not _documented(result):
             return Continue(result, self.replan, notes=result.notes)
-        if self._mode == "epic":
-            return Continue(result, self.commit)
-        return Continue(result, self.standing)
+        return Continue(result, self.commit)
 
     def commit(self) -> Continue:
         """Stamp the item passed, or send what the later lanes left uncommitted to its dev owner."""
@@ -248,63 +239,47 @@ class Coder(Workflow):
         return Continue(state, self.standing)
 
     def standing(self) -> Continue:
-        """The item passed: mark it done, and ship its epic once nothing of it is left."""
+        """The item passed: mark it done, and pop its epic off the queue once nothing of it is left."""
         item = self._item
         epic = self._epic
         w = self._worklist
         work.move(w, [item.id], work.DONE, kind=item.kind, by="standing")
         self.logger.info("%s is done%s", item.id, self._progress(), extra={"activity": True})
         if self._mode == "epic" and work.epic_done(w, epic):
-            self.logger.info("epic %s has nothing left — opening its PR", epic)
-            return Continue(None, self.open_pr, epic=epic)
+            self.logger.info("epic %s has nothing left — pruning it from the queue", epic)
+            self.call(prune_epic, epic)
         return Continue(None, self.route)
 
-    def commit_pr(self) -> Done:
-        """Story mode's end: commit what the story left, and open its PR."""
-        story = self._story
-        branch = self.output(branch_story)
-        self.call(
-            commit_story,
-            "",
-            story.story_slug,
-            story.spec_dir,
-            story.story_path,
-            story_id=story.story_id,
+    def deliver(self) -> Continue | Done:
+        """Open the run branch's PR in every repo it changed."""
+        story = self._launched_story()
+        prs = self.call(
+            open_run_prs,
+            self._branch(),
+            self.output(cut_run_branch).base_branch,
+            "" if self.epic == ALL_EPICS or self._mode == "story" else self.epic,
+            story.story_path if story else "",
+            story.story_slug if story else "",
+            work.delivered(self._worklist),
         )
-        self.call(teardown_stack, self.docs_path)
-        return Done(
-            self.call(
-                open_story_pr,
-                story.story_slug,
-                branch.base_branch,
-                story.story_path,
-                story.spec_dir,
-                branch.story_branch,
-            )
-        )
+        if not prs.pr_urls:
+            self.logger.info("no PR opened for %s — nothing to wait on", self._branch())
+            self.call(teardown_stack, self.docs_path)
+            return Done(prs)
+        return Continue(prs, self.ship)
 
-
-    def open_pr(self, epic: str = "") -> Continue:
-        """The epic is done, so ship it."""
-        self.call(prune_epic, epic)
-        gate = self.call(open_pr, epic, self.output(init_base).base_branch)
-        if not gate.should_gate:
-            self.logger.info("no PR to gate on for %s — taking the next epic", epic)
-            return Continue(gate, self.route)
-        return Continue(gate, self.ship)
-
-    def ship(self) -> Continue:
-        """Hand the epic's PR to the ship lane, which gets it green and merges it."""
-        gate = self.output(open_pr)
+    def ship(self) -> Done:
+        """Hand the run's PRs to the ship lane, which gets CI green and leaves the merge to a reviewer."""
         shipped = self.handoff(
             FixCi,
-            branch=epic_branch(gate.ci_epic),
-            base=gate.ci_base,
+            branch=self._branch(),
+            base="",
             docs_path=self.docs_path,
             operator_mode=self.operator_mode,
         )
-        self.logger.info("shipped %s: %s", gate.ci_epic, shipped.summary)
-        return Continue(shipped, self.route)
+        self.logger.info("shipped %s: %s", self._branch(), shipped.summary)
+        self.call(teardown_stack, self.docs_path)
+        return Done(shipped)
 
     def _document(self) -> DocsResult:
         """The `Docs` handoff, identical at all three points the story reaches it."""
@@ -359,10 +334,27 @@ class Coder(Workflow):
         return epic or ("" if self.epic == ALL_EPICS else self.epic)
 
     def _branch(self) -> str:
-        """The branch the item's commits land on."""
-        if self._mode == "story":
-            return self.output(branch_story).story_branch
-        return epic_branch(self._epic)
+        """The run branch a PR run lands on, or nothing when every repo stays on its own branch."""
+        if self.delivery == "commit":
+            return ""
+        return self.output(cut_run_branch).branch
+
+    def _run_name(self, launch: LaunchSet) -> str:
+        """What the run branch is named for: the story, else the epic, else the run itself."""
+        if launch.mode == "story":
+            return launch.entries[0].slug if launch.entries else self.story
+        if self.epic != ALL_EPICS:
+            return self.epic
+        return self.run_id
+
+    def _launched_story(self) -> StoryPaths | None:
+        """The story a story launch worked, as `prepare` resolved it, or nothing for an epic launch."""
+        if self._mode != "story":
+            return None
+        try:
+            return self.output(prepare_story)
+        except NodeNotRunError:
+            return None
 
     def _progress(self) -> str:
         """The ` · 3/7` suffix an activity line carries when the run knows how far through it is."""
