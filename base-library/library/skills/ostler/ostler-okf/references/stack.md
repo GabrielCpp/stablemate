@@ -104,6 +104,9 @@ only where no runbook declares one.
 
 Each bring-up of a copy that is already up does the same work:
 
+- It holds what this `up` names and what that needs. A service an earlier `up` started and
+  this one leaves out is removed. From the repo root, `up` with no target names every book,
+  so `timeout 900 ostler env up --copy "$STABLEMATE_LEASE"` rebuilds the whole run's copy.
 - It rebuilds every built image from the checkout, through Docker's build cache, so an edit
   reaches the copy on the next `up`. A service whose image or block changed is recreated.
 - It starts every `once` job again, so a job such as a migration or a seed is idempotent.
