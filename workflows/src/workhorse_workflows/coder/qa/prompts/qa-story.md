@@ -236,9 +236,15 @@ come back to you: make a scenario assert the defect, or drop the finding.
 
 ## Blocked
 
-Return `blocked` only for what a human alone can clear: a real secret, a deployed
-environment, hardware, or a product call the story and the repo's decisions leave open. A
-missing tool, seed, fixture, runbook or config is setup, never a block. On `blocked`, `notes`
+Return `blocked` only for what a human alone can clear: a real secret, hardware, or a product
+call the story and the repo's decisions leave open. A missing tool, seed, fixture, runbook or
+config is setup, never a block.
+
+No run reaches a deployed environment, and no operator grants one. The repositories hold
+everything QA needs: the local stack, the infrastructure declarations and their tests, and
+the source. Prove a criterion that names deployed state against those. Never run a command
+against a deployed environment, even one that only reads, and never file a read of one as a
+backlog item. On `blocked`, `notes`
 holds the one question that would unblock you and what you ruled out.
 
 ## Commit Identity

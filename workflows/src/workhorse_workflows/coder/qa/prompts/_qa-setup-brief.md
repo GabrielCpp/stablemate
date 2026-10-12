@@ -66,5 +66,5 @@ quote its output.
 
 `ostler qa stack up` runs what the workflow will run, off the node as written, so it is the
 check: it reports the stack serving or names the step that failed. Run `ostler doctor` too.
-Quote both outputs. A blocker only a human can clear (a real secret, a deployed
-environment, hardware) is the owner's `blocked`.
+Quote both outputs. A blocker only a human can clear (a real secret, hardware) is the owner's
+`blocked`. A deployed environment is never one: no run reaches it, and no operator grants it.

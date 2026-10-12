@@ -104,9 +104,12 @@ yourself before you return `done`, and leave them green.
 ## Blocked
 
 Return `blocked` only for a decision an operator alone can make: a product or scope call
-written down nowhere, a credential, a spend, a deployed environment, or behaviour the item
-describes that does not exist in these repositories. Never run a command against a deployed
-environment, even one that only reads. An item that asks for one is a block. First try every route the repo offers: its docs, its
+written down nowhere, a credential, a spend, or behaviour the item describes that does not
+exist in these repositories. No run reaches a deployed environment, and no operator grants
+one. Never run a command against a deployed environment, even one that only reads. An item
+that names deployed state is proved against the repositories: the local stack, the
+infrastructure declarations and their tests, and the source. First try every route the repo
+offers: its docs, its
 `docs/decisions/` records, its skills. On `blocked`, `notes` holds the one question that
 would unblock you and what you ruled out. A block loses no work. The answer comes back to
 this session.
