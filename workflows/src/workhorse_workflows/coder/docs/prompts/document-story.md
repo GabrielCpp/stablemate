@@ -134,6 +134,11 @@ seats edit the same node at once. You stay the owner: read what every writing se
   that is not there. Remove a bullet that cites something deleted, or the node if it described
   only what was deleted. A `missing-code-symbol` after a refactor means the citation is stale:
   open the file, read what it declares now, and cite that.
+- **A changed file stales every node that cites it.** `ostler doctor` reports `stale-citation`
+  on each node whose `code:` file the story changed, edited by you or not, and the gate refuses
+  every one. This run restamps nothing on commit. Re-read the file, correct the node's claims
+  or confirm they hold, then record that with `ostler stamp --node <node id>`, one `--node` per
+  node you re-read.
 - **When a contract moved, author from the code** (Playbook B): `ostler search` or `ostler list`
   for the node, `ostler scaffold` it if it is missing, then the as-built prose and bullets. Set
   `code:` and `tests:` to real `path::symbol` references, and omit `tests:` rather than invent
