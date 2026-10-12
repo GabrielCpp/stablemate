@@ -16,7 +16,11 @@ gives relative to the repository starts there.
 - `ostler scaffold`, `ostler fmt` and `ostler gc` run through this command, with the same
   arguments after it, `{{ ostler }} scaffold …` or `{{ ostler }} fmt …`. `gc` lists the pages of
   this book that no link path from its entries page reaches, and `gc --write` deletes them. To
-  drop a page, remove every link to it, then run `{{ ostler }} gc --write`. It runs
+  drop a page, remove every link to it, then run `{{ ostler }} gc --write`. When the check
+  names a link from another book that lands on a page or anchor this book no longer has, run
+  `{{ ostler }} relink <old> <new>`, each a page of this book relative to its folder with an
+  optional `#anchor`. It points every link of the other books that lands on `<old>` at `<new>`,
+  the page that now holds the subject, and changes nothing else there. It runs
   {{ ostler_run_cap }} times in all and prints the head of what ostler says. `ostler checks` does not run here: the check
   vocabulary is the skill's `check-vocabulary.md` reference.
 

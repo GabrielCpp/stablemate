@@ -214,3 +214,15 @@ def test_a_book_with_no_section_headed_as_not_covered_has_no_such_problem(app: C
     repo = app("tally-cli")
 
     assert not [problem for problem in book_problems(repo, "tally") if "no check covers" in problem]
+
+
+def test_a_link_from_another_book_to_a_page_the_book_lacks_is_a_problem_on_the_linking_page(app: Callable[[str], Path]) -> None:
+    repo = app("tally-cli")
+    other = repo / "docs/features/other/entries.md"
+    other.parent.mkdir(parents=True)
+    _ = other.write_text("---\ntype: entries\ntitle: other\n---\n# other\n\nSee [gone](../tally/gone.md).\n", encoding="utf-8")
+
+    problems = [problem for problem in book_problems(repo, "tally") if problem.startswith("docs/features/other/entries.md:")]
+
+    assert len(problems) == 1
+    assert "`relink`" in problems[0]

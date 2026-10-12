@@ -12,6 +12,7 @@ opt in, so it is a blocker on the environment and no problem of the page. A clai
 restates it as what a caller sees, or drops it. Each folder of the surface's source holding a product file no page cites
 is a problem on the entries page, since a book that leaves a file uncited does not cover what that file does.
 A section a page heads as not covered or not checked is a problem on that page: it states behaviour no run exercises.
+A link from another book that lands on a page or anchor this book lacks is a problem on the linking page, which the writer retargets.
 """
 from __future__ import annotations
 
@@ -32,6 +33,7 @@ from ostler.qa.compile import HARNESS_LIMIT_GAPS
 from ostler.qa.plan_source import Gap
 from ostler.qa.runbook import bullet_text
 from ostler.qa.tools import opted_in_tools
+from workhorse_workflows.okf_book.shared.book_links import inbound_broken
 from workhorse_workflows.okf_book.shared.blockers import Blocker, Phase, Side
 from workhorse_workflows.okf_book.shared.book_compilation import compile_services, declares_unexercised, gap_page, obligation_node
 from workhorse_workflows.okf_book.shared.entries import book_dir, entries_path
@@ -97,16 +99,18 @@ class PageProblem:
         return self.text if self.line is None else f"{self.page}: " + self.text.removeprefix(f"{self.page}:{self.line}: ")
 
 
-def _doctor_problems(book: Graph, pages: list[str]) -> list[PageProblem]:
+def _doctor_problems(found: doctor.Report, pages: list[str], service: str) -> list[PageProblem]:
     if not pages:
         return []
-    report = doctor.scope_to_paths(doctor.run(book), pages)
+    owned = [
+        f for f in doctor.scope_to_paths(found, pages).findings
+        if (f.severity == "error" or f.code in CHARGED_WARNINGS) and f.code not in RESTAMPED_CODES | REACH_CODES
+    ]
     return [
         PageProblem(
             f.path, f"{f.path}:{f.line}: {f.code}: {f.message}" + (f" {f.suggestion}" if f.suggestion else ""), line=f.line, code=f.code
         )
-        for f in report.findings
-        if (f.severity == "error" or f.code in CHARGED_WARNINGS) and f.code not in RESTAMPED_CODES | REACH_CODES
+        for f in (*owned, *inbound_broken(found, service))
     ]
 
 
@@ -354,7 +358,7 @@ def _uncovered_problems(root: Path, pages: list[str]) -> list[PageProblem]:
 
 
 def page_problems(root: Path, service: str, source_folder: str = "") -> tuple[PageProblem, ...]:
-    """Every problem on the service's book, each with its page: a missing entries page, a page nothing reaches, a doctor error, a command, endpoint or screen no flow walks, a command page that names no binary, a claim that does not compile, a book no claim of which declares a check, given the surface's source folder, each folder of it holding a product file no page cites, and each section a page heads as not covered."""
+    """Every problem on the service's book, each with its page: a missing entries page, a page nothing reaches, a doctor error, a command, endpoint or screen no flow walks, a command page that names no binary, a claim that does not compile, a book no claim of which declares a check, given the surface's source folder, each folder of it holding a product file no page cites, each section a page heads as not covered, and each link from another book that lands on a page or anchor the book lacks."""
     with index.session(root):
         pages = _book_page_paths(root, service)
         book = load(root)
@@ -378,7 +382,7 @@ def page_problems(root: Path, service: str, source_folder: str = "") -> tuple[Pa
         return (
             *_entries_problems(root, service),
             *dead,
-            *_doctor_problems(book, pages),
+            *_doctor_problems(doctor.run(book), pages, service),
             *_off_journey_problems(nodes),
             *_uninvokable_problems(nodes),
             *gap_problems(gaps),

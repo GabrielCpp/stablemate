@@ -1,6 +1,7 @@
 """What a writer's turn changed in the tree, read from git before and after it.
 
-A turn may write only under `docs/`. Code keeps each change inside the service's book, and puts
+A turn may write only under `docs/`. Code keeps each change inside the service's book, and each
+change to a page of another book that only points its links at pages of the service's book. It puts
 back every other path the turn changed.
 """
 from __future__ import annotations
@@ -13,6 +14,7 @@ from pathlib import Path
 
 from pydantic import BaseModel, ConfigDict
 
+from workhorse_workflows.okf_book.shared.book_links import in_book, retargets_only
 from workhorse_workflows.okf_book.shared.entries import FEATURES_DIR
 
 _GIT_TIMEOUT = 60
@@ -83,11 +85,6 @@ def restore(root: Path, paths: Iterable[str], before: Snapshot) -> tuple[str, ..
     return tuple(left)
 
 
-def in_book(service: str, path: str) -> bool:
-    """True for a path in the service's book."""
-    return path.startswith(f"{(FEATURES_DIR / service).as_posix()}/")
-
-
 def book_changes(root: Path, service: str, before: Snapshot) -> tuple[str, ...]:
     """The paths inside the service's book whose content changed since `before`."""
     return tuple(path for path in changed_since(root, before) if in_book(service, path))
@@ -97,10 +94,35 @@ def _is_under(root: Path, path: str, folder: Path) -> bool:
     return (root / path).resolve().is_relative_to(folder.resolve())
 
 
-def put_back_outside(root: Path, service: str, before: Snapshot, run_dir: Path) -> tuple[str, ...]:
-    """Restore every path the turn changed outside the service's book, the run's own directory aside, and return them."""
-    stray = tuple(
+def _outside(root: Path, service: str, before: Snapshot, run_dir: Path) -> tuple[str, ...]:
+    return tuple(
         path for path in changed_since(root, before) if not in_book(service, path) and not _is_under(root, path, run_dir)
+    )
+
+
+def _retargets(root: Path, service: str, path: str, before: Snapshot) -> bool:
+    page = root / path
+    if path in before.digests or not path.startswith(f"{FEATURES_DIR.as_posix()}/") or not path.endswith(".md"):
+        return False
+    if not page.is_file() or not _tracked(root, path):
+        return False
+    return retargets_only(service, path, _git(root, "show", f"HEAD:{path}"), page.read_text(encoding="utf-8"))
+
+
+def retargeted(root: Path, service: str, before: Snapshot, run_dir: Path) -> tuple[str, ...]:
+    """The pages of other books the turn changed only by pointing their links at other pages of the service's book."""
+    return tuple(path for path in _outside(root, service, before, run_dir) if _retargets(root, service, path, before))
+
+
+def kept_changes(root: Path, service: str, before: Snapshot, run_dir: Path) -> tuple[str, ...]:
+    """The paths the turn changed that the book keeps: its own pages and the pages of other books it retargeted, sorted."""
+    return tuple(sorted({*book_changes(root, service, before), *retargeted(root, service, before, run_dir)}))
+
+
+def put_back_outside(root: Path, service: str, before: Snapshot, run_dir: Path) -> tuple[str, ...]:
+    """Restore every path the turn changed outside the service's book, the run's own directory and its retargeted pages aside, and return them."""
+    stray = tuple(
+        path for path in _outside(root, service, before, run_dir) if not _retargets(root, service, path, before)
     )
     _ = restore(root, stray, before)
     return stray
