@@ -6,8 +6,13 @@ import subprocess
 from collections.abc import Callable
 from pathlib import Path
 
+from workhorse.pyflow.blueprint import node_spec
 from workhorse_workflows.coder.shared.backlog import file_follow_up_backlog
 from workhorse_workflows.coder.shared.story_commit import check_repos_clean
+
+
+def test_the_filer_is_a_node_a_flow_can_call() -> None:
+    assert node_spec(file_follow_up_backlog)
 
 
 def test_the_filed_follow_ups_are_committed_and_leave_the_tree_clean(

@@ -209,7 +209,6 @@ def file_backlog_items(
     return BacklogDrain(appended=appended, skipped=skipped, notes=note)
 
 
-@blueprint.node
 def _filed_as(bullets: list[BacklogBullet], title: str, reason: str) -> str:
     """The id of the backlog item a follow-up already is: cited, one word off its id, or the same title."""
     cited = f"{title} {reason}"
@@ -226,6 +225,7 @@ def _filed_as(bullets: list[BacklogBullet], title: str, reason: str) -> str:
     return ""
 
 
+@blueprint.node
 def file_follow_up_backlog(
     logger: logging.Logger,
     docs_path: str = "",
