@@ -383,7 +383,7 @@ call grammar as a check and refused against its own names:
 | `select(locator*, option*)` | a chooser holds a stated option | web |
 | `upload(locator*, file*)` | a file control holds a stated file, named by its path from the repository root | web |
 | `visit(path*)` | the browser is at an address the reader typed or followed: an unknown route segment, a deep link, a query no link builds | web |
-| `body(field*, value*)` | a member of the request this step sends carries a stated value | http |
+| `body(field*, value*)` | a member of the request this step sends carries a stated value. A dotted `field` such as `locales.fr` is a member of a nested object. `field="$"` is the whole body. A `value` that is one `@node.key` naming an object or a list is sent whole | http |
 | `no_body()` | the request this step sends carries no body, for a route that reads nothing from its request | http |
 | `header(name*, value*)` | the request this step sends carries a stated header, such as the token a sign-in fixture minted | http |
 
