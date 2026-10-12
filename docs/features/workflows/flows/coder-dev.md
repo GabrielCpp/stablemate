@@ -97,8 +97,8 @@ validation resumes with the revised plan.
 - kind: run
 
 The approved plan is read back, implementation context is resolved for the target environment,
-and every code repository named by the plan is moved to the story branch. The dispatch list keeps
-the plan's declared implementation order.
+and every code repository named by the plan is moved to the run branch when a pr run supplies one.
+The dispatch list keeps the plan's declared implementation order.
 
 ### layer-selection
 

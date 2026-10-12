@@ -5,88 +5,33 @@ title: Coder main PR boundary
 ---
 # Coder main PR boundary
 
-The main Coder machine owns the pull-request boundary for both execution modes. Epic mode
-prunes its completed queue, opens one epic PR when the branch is independently shippable, polls
-and repairs CI, and merges or parks for an operator. Story mode opens one review-only PR per
-affected code repository and never auto-merges it. Remote operations are best-effort when the
-checkout has no usable GitHub origin or credential: the workflow advances locally and leaves the
-branch for manual follow-up.
+The main Coder machine owns the pull-request boundary of a pr-mode run. Once the worklist is
+empty, it opens one PR per repository the run branch changed and hands the branch to the ship
+lane, which waits for CI and repairs it. The merge is left to a reviewer. A commit-mode run
+never reaches this boundary. Remote operations are best-effort when a checkout has no usable
+GitHub origin or credential: the run ends locally and leaves the branch for a manual PR.
 
-Its result contracts are [pull request gate](../formats/pr-gate.md), [merge outcome](../formats/merge-outcome.md),
-[story pull request](../formats/story-pr.md), [CI failure flag](../formats/ci-flagged.md), [merge failure flag](../formats/merge-flagged.md),
-and [merge fix](../formats/merge-fix-result.md).
+Its result contract is the [run pull requests result](../formats/run-prs.md).
 
-- code: `workflows/src/workhorse_workflows/coder/main/nodes/pr.py` @e8d4d2f497da
+- code: `workflows/src/workhorse_workflows/coder/main/nodes/pr.py` @9d1f4577c2e6
 
 ## Methods
 
-### open_pr
+### open_run_prs
 
-- sig: `open_pr(logger, epic="", base_branch="main", run_dir="", repo_dir="") -> PrGate`
-- does: returns a non-gating result when no epic is supplied
-- verify: count(subject="non-gating PR gate records", equals=1)
-- does: commits the completed epic's queue-prune change before attempting remote PR work
-- verify: count(subject="completed epic queue-prune commits", equals=1)
-- does: declines to open a PR when the branch contains unmerged work from an epic set aside in the same run
-- verify: absent(subject="PR for a branch carrying set-aside work")
-- does: attempts to push and open one epic PR when the branch is independently shippable
-- verify: count(subject="epic PR gate records", equals=1)
-- returns: a `PrGate` identifying the epic and base branch when remote gating is required, otherwise a non-gating result
-- verify: count(subject="epic PR result records", equals=1)
-- code: `workflows/src/workhorse_workflows/coder/main/nodes/pr.py::open_pr` @e8d4d2f497da
-- tests: `workflows/tests/coder/test_workflow.py::test_the_pr_cluster_passes_through_offline_and_still_advances_the_queue`
-- tests: `workflows/tests/coder/test_workflow.py::test_an_epic_branch_carrying_a_set_aside_epic_declines_to_open_a_pr`
-
-### merge_pr
-
-- sig: `merge_pr(logger, epic="", base_branch="main", repo_dir="") -> MergeOutcome`
-- does: reports unavailable without an epic, usable credential, GitHub origin, or reachable repository
-- verify: count(subject="unavailable merge outcome records", equals=1)
-- does: treats an already merged pull request on resume as merged and synchronizes the local base branch
-- verify: count(subject="resumed merged pull-request outcomes", equals=1)
-- does: selects the first merge method allowed by the repository and attempts to merge the epic branch
-- verify: count(subject="merge method selections", equals=1)
-- returns: `merged`, `failed`, or `unavailable` with the base branch recorded
-- verify: count(subject="merge outcome records", equals=1)
-- code: `workflows/src/workhorse_workflows/coder/main/nodes/pr.py::merge_pr` @e8d4d2f497da
-- tests: `workflows/tests/coder/test_workflow.py::test_a_merged_epic_branch_is_reused_rather_than_refused`
-- tests: `workflows/tests/coder/test_workflow.py::test_a_squash_merged_branch_counts_as_merged`
-
-### flag_ci_failure
-
-- sig: `flag_ci_failure(logger, epic="", attempts="?", summary="", repo_dir="") -> CiFlagged`
-- does: records the red CI summary and attempt count in an operator-facing warning
-- verify: count(subject="CI failure operator warnings", equals=1)
-- does: comments on the epic PR when a reachable open PR exists, without making comment failure fatal
-- verify: count(subject="CI failure PR comment attempts", equals=1)
-- returns: whether the CI failure note was posted to the PR
-- verify: count(subject="CI failure flag records", equals=1)
-- code: `workflows/src/workhorse_workflows/coder/main/nodes/pr.py::flag_ci_failure` @e8d4d2f497da
-
-### flag_merge_failure
-
-- sig: `flag_merge_failure(logger, epic="", base_branch="main", attempts="?", repo_dir="") -> MergeFlagged`
-- does: records that merge attempts were exhausted and identifies the epic branch and base branch for operator review
-- verify: count(subject="merge failure operator warnings", equals=1)
-- does: comments on the epic PR when a reachable open PR exists, without making comment failure fatal
-- verify: count(subject="merge failure PR comment attempts", equals=1)
-- returns: whether the merge failure note was posted to the PR
-- verify: count(subject="merge failure flag records", equals=1)
-- code: `workflows/src/workhorse_workflows/coder/main/nodes/pr.py::flag_merge_failure` @e8d4d2f497da
-
-### open_story_pr
-
-- sig: `open_story_pr(logger, story_slug="", base_branch="main", story_path="", spec_dir="", story_branch="", repo_dir="", workspace_file="") -> StoryPr`
-- does: returns an empty result when no story or affected code repository is available
-- verify: count(subject="empty story PR result records", equals=1)
-- does: creates one review-only PR for each affected code repository when no matching PR exists, or reuses the matching PR, committing pending story work on its story branch first
-- verify: created(subject="one review-only PR for the affected code repository")
-- verify: count(subject="affected repository story PR results", equals=1)
-- does: builds each PR from the story description, plan summary, and at most six QA screenshots
-- verify: count(subject="story PR bodies", equals=1)
-- does: excludes the documentation repository and never auto-merges the story PRs
-- verify: absent(subject="story PR merge operations")
-- returns: `opened`, `exists`, or `skipped` aggregate status with URLs for opened or existing PRs
-- verify: count(subject="story PR result records", equals=1)
-- code: `workflows/src/workhorse_workflows/coder/main/nodes/pr.py::open_story_pr` @e8d4d2f497da
-- tests: `workflows/tests/coder/test_workflow.py::test_story_mode_cuts_its_own_branch_and_ends_at_its_own_pr`
+- sig: `open_run_prs(logger, branch="", base_branch="main", epic="", story_path="", story_slug="", stories=None, docs_path="", repo_dir="", workspace_file="") -> RunPrs`
+- does: returns a skipped result when no run branch is supplied
+- verify: json_path(path="$.status", equals="skipped")
+- does: skips a repository that lacks the run branch, whose run branch has nothing past its base, or that has no GitHub token
+- verify: count(subject="PRs for repositories the run branch did not change", equals=0)
+- does: pushes the run branch and opens one PR per remaining repository, targeting the run's base in the docs repository and each code repository's own base elsewhere, or reuses the PR already open for that branch
+- verify: count(subject="PRs opened per changed repository", equals=1)
+- does: titles each PR as a conventional `feat` subject scoped to the repository and described by the story's title, the epic's title, or the branch name
+- verify: json_path(path="$.title", equals="feat(acme): epic One")
+- does: lists the run's delivered stories in the PR body and leaves the merge to a reviewer
+- verify: absent(subject="PR merge operation by the run")
+- returns: `opened` with every PR URL when at least one PR exists, otherwise `skipped`
+- verify: json_path(path="$.status", equals="opened")
+- code: `workflows/src/workhorse_workflows/coder/main/nodes/pr.py::open_run_prs` @9d1f4577c2e6
+- tests: `workflows/tests/coder/test_workflow.py::test_a_pr_run_lands_every_item_on_one_branch_and_opens_no_pr_offline`
+- tests: `workflows/tests/coder/test_workflow.py::test_an_opened_pr_goes_to_the_ship_lane_for_ci_and_stays_open`

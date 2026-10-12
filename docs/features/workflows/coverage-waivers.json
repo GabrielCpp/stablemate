@@ -142,7 +142,7 @@
     },
     {
       "code": "workflows/src/workhorse_workflows/coder/main/nodes/__init__.py",
-      "reason": "declares five node functions (flag_ci_failure, flag_merge_failure, merge_pr, open_pr, open_story_pr) all documented with code: bullets in concepts/coder-main-pr-boundary.md. Reachable through coder-workflow-composition-root.md detail link to coder-main-pr-boundary.md."
+      "reason": "declares one node function, open_run_prs, documented with a code: bullet in concepts/coder-main-pr-boundary.md. Reachable through coder-workflow-composition-root.md detail link to coder-main-pr-boundary.md."
     },
     {
       "code": "workflows/src/workhorse_workflows/coder/qa/nodes/__init__.py",

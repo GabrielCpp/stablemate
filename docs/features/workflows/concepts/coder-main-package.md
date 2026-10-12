@@ -7,8 +7,8 @@ title: Coder main package
 
 The `main` package is the entry-point flow's composition boundary. It sequences eight specialist
 sub-flows (dev, docs, fix, fix-ci, qa, review, and genesis) and retains the queue and transition
-decisions here. It is the default flow entered by a bare `workhorse-coder run`, and composes epic
-and story mode queue processing with mode-specific sub-flow handoffs.
+decisions here. It is the default flow entered by a bare `workhorse-coder run`, and works the
+launch's worklist item by item in either delivery mode, `pr` or `commit`.
 
 The machine returns to queue processing after each sub-flow, so deterministic stages fold forward
 into the queue state that branches on them, while expensive or irreversible work (agent turns,

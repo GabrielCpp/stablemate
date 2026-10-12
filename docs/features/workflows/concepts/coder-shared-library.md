@@ -16,10 +16,8 @@ initializer; the individual modules below own the behavior and models they provi
 - code: `workflows/src/workhorse_workflows/coder/shared/qa_support.py::QA_PLAN_FILE` @dd46fb252212
 - code: `workflows/src/workhorse_workflows/coder/shared/qa_support.py::QA_RUN_LOG` @dd46fb252212
 - detail: [coder queue run scope](../formats/coder-queue-run-scope.md)
-- detail: [coder queue base branch](../formats/coder-queue-base-branch.md)
-- detail: [coder queue story branch](../formats/coder-queue-story-branch.md)
+- detail: [coder queue run branch](../formats/coder-queue-run-branch.md)
 - detail: [coder queue epic pick](../formats/coder-queue-epic-pick.md)
-- detail: [coder queue epic branch](../formats/coder-queue-epic-branch.md)
 - detail: [coder queue story pick](../formats/coder-queue-story-pick.md)
 - detail: [coder queue epic blocked](../formats/coder-queue-epic-blocked.md)
 - detail: [coder queue epic pruned](../formats/coder-queue-epic-pruned.md)
@@ -151,11 +149,11 @@ permissive result models that ignore unknown keys and drop null values before ap
 ### begin_run
 
 - sig: `begin_run(logger: logging.Logger, run_dir: str = "") -> RunScope`
-- does: when `run_dir` is supplied, removes the prior run's `blocked-epics.txt`, `qa-skip-stories.txt`, and `epic-branches.txt` ledgers
+- does: when `run_dir` is supplied, removes the prior run's `worklist.json` worklist and `answers.md` answer log
 - returns: the names of removed ledgers, or an empty list when no run directory or stale files exist
 - verify: absent(subject="stale per-run queue ledgers after a fresh run begins")
 - code: `workflows/src/workhorse_workflows/coder/shared/queue.py::begin_run` @723b6e5574da
-- tests: `workflows/tests/coder/test_workflow.py::test_a_fresh_run_drops_the_skip_state_a_previous_run_left_in_the_run_dir`
+- tests: `workflows/tests/coder/test_workflow.py::test_a_fresh_run_drops_the_worklist_and_answers_a_previous_run_left_in_the_run_dir`
 
 ### epics_set_aside
 
@@ -193,26 +191,16 @@ The legacy queue is used as a fallback by `select_epic` and `prune_epic` when Os
 - verify: json_path(path="$", equals="EPIC-1")
 - code: `workflows/src/workhorse_workflows/coder/shared/branches.py::epic_of_branch` @4f584f6ad5fb
 
-### init_base
+### cut_run_branch
 
-- sig: `init_base(logger: logging.Logger, repo_dir: str = "") -> BaseBranch`
-- does: chooses the attached current branch unless it is a `feat/` or `rewrite/` branch
-- does: falls back through the repository default branch, local `main`, local `master`, and `main`
-- returns: the selected non-empty base branch name
-- verify: json_path(path="$.base_branch", matches=".+")
-- code: `workflows/src/workhorse_workflows/coder/shared/branches.py::init_base` @4f584f6ad5fb
-- tests: `workflows/tests/coder/test_workflow.py::test_one_epic_of_one_story_builds_it_prunes_the_queue_and_ends_on_an_empty_queue`
-
-### branch_story
-
-- sig: `branch_story(logger: logging.Logger, story: str = "", docs_path: str = "", spec_dir: str = "", repo_dir: str = "", workspace_file: str = "") -> StoryBranch`
-- does: cuts or checks out a branch named exactly for the story slug in the documentation repository
-- does: branches each affected workspace repository named by the story plan, excluding the documentation repository when already handled
-- does: reuses an existing story branch without resetting its commits
-- returns: the base branch, story branch, and names of repositories actually branched
-- verify: json_path(path="$.story_branch", matches=".+")
-- code: `workflows/src/workhorse_workflows/coder/shared/branches.py::branch_story` @4f584f6ad5fb
-- tests: `workflows/tests/coder/test_workflow.py::test_story_mode_cuts_its_own_branch_and_ends_at_its_own_pr`
+- sig: `cut_run_branch(logger: logging.Logger, name: str = "", docs_path: str = "", repo_dir: str = "") -> RunBranch`
+- does: reads the base as the docs repository's active branch, or its trunk when that branch is a `feat/` or `rewrite/` branch
+- does: creates or checks out `feat/<name>` in the docs repository without resetting its commits
+- raises: `WorkflowFailed` when the docs root is not a git repository
+- returns: the base branch and the `feat/<name>` run branch
+- verify: json_path(path="$.branch", equals="feat/EPIC-1")
+- code: `workflows/src/workhorse_workflows/coder/shared/branches.py::cut_run_branch` @dc548bba5338
+- tests: `workflows/tests/coder/test_workflow.py::test_the_run_branch_is_named_for_what_the_run_was_launched_on`
 
 ### branch_code_repos
 
@@ -222,24 +210,9 @@ The legacy queue is used as a fallback by `select_epic` and `prune_epic` when Os
 - does: creates or checks out the requested branch in each affected code repository
 - does: leaves repositories already on the requested branch unchanged and skips non-git repositories
 - returns: names of repositories branched and already on the branch
-- verify: count(subject="story branch dispatch", equals=1)
+- verify: count(subject="run branch dispatch", equals=1)
 - code: `workflows/src/workhorse_workflows/coder/shared/branches.py::branch_code_repos` @4f584f6ad5fb
 - tests: `workflows/tests/coder/dev/test_flow.py::test_plans_stamps_branches_and_implements_every_layer`
-
-### branch_epic
-
-- sig: `branch_epic(logger: logging.Logger, epic: str = "", base_branch: str = "", run_dir: str = "", repo_dir: str = "") -> EpicBranch`
-- does: restores the queue index before changing the epic checkout
-- does: creates or checks out `feat/<epic>` when the branch is absent or safely owned by this run
-- does: returns to a previously claimed branch without resetting its committed work
-- does: merges the current base into a previously set-aside branch when the base advanced cleanly
-- does: refuses a branch held by another worktree or containing unclaimed unmerged work
-- does: reconciles the epic queue from the base branch when the base contains a valid queue
-- raises: `WorkflowFailed` when checkout, safe branch reuse, or base reconciliation cannot proceed without discarding or guessing about work
-- returns: the selected epic and its `feat/<epic>` branch name
-- verify: unchanged(subject="unclaimed unmerged branch after branch refusal")
-- code: `workflows/src/workhorse_workflows/coder/shared/branches.py::branch_epic` @4f584f6ad5fb
-- tests: `workflows/tests/coder/test_workflow.py::test_a_branch_another_working_tree_holds_is_refused_by_name`
 
 ### select_epic
 

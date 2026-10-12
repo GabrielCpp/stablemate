@@ -16,7 +16,7 @@ title: Coder branch outcome
 - type: `list[str]`
 - default: empty list
 - required: false
-- semantics: repositories moved onto the requested story branch
+- semantics: repositories moved onto the requested run branch
 - verify: json_path(path="$.branched", matches=".*")
 - code: `workflows/src/workhorse_workflows/coder/shared/schemas/dev.py::BranchOutcome.branched` @b6e19c205b4f
 
