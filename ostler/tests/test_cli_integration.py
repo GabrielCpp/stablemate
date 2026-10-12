@@ -87,9 +87,12 @@ def test_checks_lists_the_vocabulary_without_a_book(tmp_path: Path, capsys):
     ]
     assert spec[0]["excludes"]
     assert spec[0]["cli_reads"].startswith("the working directory at one moment")
+    assert "qa.tree(dir)" in spec[0]["plan_reads"]
 
     assert run(tmp_path, "checks", "exit_status") == 0
-    assert "on a cli, reads the command's exit code" in capsys.readouterr().out
+    out = capsys.readouterr().out
+    assert "in a plan, qa.verify observes the result `qa.tool(name).run(...)`" in out
+    assert "on a cli, reads the command's exit code" in out
     assert run(tmp_path, "checks", "visible") == 0
     assert "on a cli, reads nothing, so it does not compile there" in capsys.readouterr().out
 

@@ -49,6 +49,7 @@ class CheckSpec:
     params: tuple[CheckParam, ...]
     excludes: str
     observes: Observation
+    plan_reads: str
     cli_reads: str = ""
     cli_reads_tree: bool = False
     out_of_band: bool = False
@@ -82,6 +83,7 @@ CHECKS: tuple[CheckSpec, ...] = (
         excludes="a branch that returns the right shape under the wrong status, and an error "
                  "response distinguished from its siblings only by a body nobody read",
         observes="response",
+        plan_reads="the response `qa.http` or `qa.window().response_for(path)` returned, or its integer status. `path=` needs the response itself",
     ),
     CheckSpec(
         name="response_header",
@@ -94,6 +96,7 @@ CHECKS: tuple[CheckSpec, ...] = (
         excludes="a route that answers the right status with the wrong content type or "
                  "disposition, which a client then misreads or saves under the wrong name",
         observes="response",
+        plan_reads="the response `qa.http` or `qa.window().response_for(path)` returned",
     ),
     CheckSpec(
         name="json_path",
@@ -108,6 +111,7 @@ CHECKS: tuple[CheckSpec, ...] = (
         excludes="a field asserted by presence rather than value, which passes on the "
                  "default the defect also produces",
         observes="body",
+        plan_reads="the parsed document, such as `response.json()`. With `file=`, the `qa.tree(dir)` that holds the file",
         cli_reads="the command's stdout, parsed as JSON, with `path` a path into it. With "
                "`file`, it reads the file at that relative path in the working directory "
                "after the run instead, parsed as JSON",
@@ -121,6 +125,7 @@ CHECKS: tuple[CheckSpec, ...] = (
         excludes="collateral damage outside the field under test — the defect a diff that "
                  "masks the whole object before comparing cannot see",
         observes="subject-pair",
+        plan_reads="the pair `(before, after)`: the same subject read either side of the action, or `qa.tree(dir)` twice for files",
         cli_reads="the working directory before and after the run, with `subject` naming a file "
                "in it by its relative path. A file that appears or vanishes counts as changed. "
                "A `subject` that exists neither before nor after reads the whole directory "
@@ -132,6 +137,7 @@ CHECKS: tuple[CheckSpec, ...] = (
         excludes="a move implemented as a copy: every object compared individually matches, "
                  "and only the key inventory shows the old one is still there",
         observes="subject-pair",
+        plan_reads="the pair `(before, after)`: the same subject read either side of the action, or `qa.tree(dir)` twice for files",
         cli_reads="the working directory before and after the run, with `subject` naming a file "
                "in it by its relative path. A `subject` that exists neither before nor after "
                "reads the whole directory instead, so the check passes only when the run "
@@ -146,6 +152,7 @@ CHECKS: tuple[CheckSpec, ...] = (
         ),
         excludes="an operation that produced the expected item *and* extras nobody counted",
         observes="subject",
+        plan_reads="the document or the response the `subject` path resolves in. A list or an int is counted as it is. With `file=`, the `qa.tree(dir)` that holds the file",
         cli_reads="the command's stdout, parsed as JSON: the length of the list at `subject` "
                "when stdout is an object, or of stdout itself when it is a list. With "
                "`file`, it reads the file at that relative path in the working directory "
@@ -157,6 +164,7 @@ CHECKS: tuple[CheckSpec, ...] = (
         excludes="a delete that hid the thing from one surface and left it readable on "
                  "another",
         observes="subject",
+        plan_reads="the value read, which must be empty, or `qa.tree(dir)` with `subject` the file that must not be there",
         cli_reads="the working directory at one moment, with `subject` the exact relative path "
                "of one file: before the first step on a flow's `start:`, after the run "
                "everywhere else. It passes when no file sits there",
@@ -169,6 +177,7 @@ CHECKS: tuple[CheckSpec, ...] = (
                  "only afterwards passes identically on a no-op, so the absence before the "
                  "action is part of the observation rather than an assumption about it",
         observes="subject-pair",
+        plan_reads="the pair `(before, after)`: the same subject read either side of the action, or `qa.tree(dir)` twice for files",
         cli_reads="the working directory before and after the run, with `subject` the exact "
                "relative path of one file. It sees that the file appeared, not what it holds: "
                "`contents` reads that",
@@ -180,6 +189,7 @@ CHECKS: tuple[CheckSpec, ...] = (
                  "the subject was never there — the presence before the action is what makes "
                  "the disappearance attributable to it",
         observes="subject-pair",
+        plan_reads="the pair `(before, after)`: the same subject read either side of the action, or `qa.tree(dir)` twice for files",
         cli_reads="the working directory before and after the run, with `subject` the exact "
                "relative path of one file",
     ),
@@ -193,6 +203,7 @@ CHECKS: tuple[CheckSpec, ...] = (
         excludes="an element present in the tree but not on the screen, the right widget "
                  "showing the wrong content, and one panel drawn where the book promises three",
         observes="page",
+        plan_reads="the locator, such as `qa.by_role(...)`. `count=` counts the matched elements shown",
     ),
     CheckSpec(
         name="actionable",
@@ -201,6 +212,7 @@ CHECKS: tuple[CheckSpec, ...] = (
                  "which `visible` passes, because a greyed-out button is on the screen and "
                  "reads the right label",
         observes="page",
+        plan_reads="the locator of the control itself",
     ),
     CheckSpec(
         name="inert",
@@ -209,6 +221,7 @@ CHECKS: tuple[CheckSpec, ...] = (
                  "it, which no assertion about what is on the screen can see: the defect is "
                  "that the element still accepts the action, not that it is still drawn",
         observes="page",
+        plan_reads="the locator of the control itself",
     ),
     CheckSpec(
         name="hidden",
@@ -217,6 +230,7 @@ CHECKS: tuple[CheckSpec, ...] = (
                  "withdrawn, that the product still draws. `inert` passes a leftover that is "
                  "disabled, and `visible` can only claim the opposite",
         observes="page",
+        plan_reads="the locator. It waits up to three seconds for a closing element to leave",
     ),
     CheckSpec(
         name="focusable",
@@ -230,6 +244,7 @@ CHECKS: tuple[CheckSpec, ...] = (
                  "which no assertion about what is drawn can see: the defect is in what the "
                  "keypress does, not in what is on the screen",
         observes="keyboard",
+        plan_reads="the locator of the control. It focuses the control, then presses `activates` when one is given",
     ),
     CheckSpec(
         name="attribute",
@@ -245,6 +260,7 @@ CHECKS: tuple[CheckSpec, ...] = (
                  "engine follows or a state a control announces, which no assertion about "
                  "what is on the screen can see",
         observes="dom",
+        plan_reads="the locator, such as `qa.by_role(...)`. It reads every matched element until one holds",
     ),
     CheckSpec(
         name="value",
@@ -258,6 +274,7 @@ CHECKS: tuple[CheckSpec, ...] = (
                  "overwrote, which `visible` cannot read because what a field holds is not "
                  "its text and `attribute` reads only the value the markup started with",
         observes="dom",
+        plan_reads="the locator, such as `qa.by_role(...)` of the field. It reads every matched element until one holds",
     ),
     CheckSpec(
         name="focused",
@@ -266,6 +283,7 @@ CHECKS: tuple[CheckSpec, ...] = (
                  "which `focusable` passes, because it moves focus itself and reads only "
                  "whether the control can take it",
         observes="dom",
+        plan_reads="the locator of the element that must hold focus, such as the open dialog",
     ),
     CheckSpec(
         name="title",
@@ -275,6 +293,7 @@ CHECKS: tuple[CheckSpec, ...] = (
                  "the browser tab, the history list and a screen reader announce and no "
                  "assertion about an element on the page can see",
         observes="title",
+        plan_reads="`qa.page`, or the title as a string",
     ),
     CheckSpec(
         name="console",
@@ -289,6 +308,7 @@ CHECKS: tuple[CheckSpec, ...] = (
                  "says the app raises or a log line it says the app never writes, which no "
                  "assertion about what is drawn can see",
         observes="console",
+        plan_reads="a list of console messages: `qa.diagnostics.console()`, or `qa.window().console()` for the messages after one action",
     ),
     CheckSpec(
         name="url",
@@ -299,6 +319,7 @@ CHECKS: tuple[CheckSpec, ...] = (
                  "which a bookmark, a shared link and the back button see and no assertion "
                  "about an element on the page can",
         observes="url",
+        plan_reads="`qa.page`, read until the address settles, or the address as a string",
     ),
     CheckSpec(
         name="stored",
@@ -314,6 +335,7 @@ CHECKS: tuple[CheckSpec, ...] = (
                  "IndexedDB or a preference in localStorage, which no assertion about what is "
                  "on the screen can see until a reload that also discards the evidence",
         observes="stored",
+        plan_reads="`qa.page`, read in the browser, or a list of the stored values",
     ),
     CheckSpec(
         name="clipboard",
@@ -322,6 +344,7 @@ CHECKS: tuple[CheckSpec, ...] = (
         excludes="a copy action that confirms on the screen and puts the wrong text, or "
                  "nothing, on the clipboard, which no assertion about what is drawn can see",
         observes="clipboard",
+        plan_reads="`qa.page`, read in the browser, or a list of the texts written",
     ),
     CheckSpec(
         name="downloaded",
@@ -335,6 +358,7 @@ CHECKS: tuple[CheckSpec, ...] = (
         excludes="an export that confirms on the screen and hands the user the wrong file, an "
                  "empty one or none, which no assertion about what is drawn can see",
         observes="download",
+        plan_reads="a list of downloads: `qa.diagnostics.downloads()`, or `qa.window().downloads()` for the files after one action",
     ),
     CheckSpec(
         name="persists",
@@ -342,6 +366,7 @@ CHECKS: tuple[CheckSpec, ...] = (
         excludes="a write observed only through the same session that made it, which cannot "
                  "tell a commit from a cache",
         observes="subject-pair",
+        plan_reads="the pair `(before, after)`: the same subject read either side of the action, or `qa.tree(dir)` twice for files, where the after read goes through a fresh session",
         out_of_band=True,
     ),
     CheckSpec(
@@ -353,6 +378,7 @@ CHECKS: tuple[CheckSpec, ...] = (
         excludes="an effect asserted at its source instead of at its subscriber, and an "
                  "at-most-once effect fired twice",
         observes="subject",
+        plan_reads="anything with a length, such as `qa.window().requests_to(path, method=...)` for the requests one action made",
         out_of_band=True,
     ),
     CheckSpec(
@@ -369,6 +395,7 @@ CHECKS: tuple[CheckSpec, ...] = (
                  "the subject does hold and a book's clause about what it may *not* hold has "
                  "no positive form",
         observes="response",
+        plan_reads="the response or the value read. It searches the parsed body, or the text when it does not parse",
         cli_reads="the command's stdout: the value at `subject` when stdout is a JSON object, "
                "and the whole stdout otherwise. It never reads stderr",
     ),
@@ -379,6 +406,7 @@ CHECKS: tuple[CheckSpec, ...] = (
                  "read its output — a tool result asserted by what it printed passes identically "
                  "when the process printed it on the way to a non-zero exit",
         observes="subject",
+        plan_reads="the result `qa.tool(name).run(...)`, `qa.fixture(name)` or a Maestro run returned",
         cli_reads="the command's exit code",
     ),
     CheckSpec(
@@ -390,6 +418,7 @@ CHECKS: tuple[CheckSpec, ...] = (
                  "never did — which `exit_status` passes, because it reads how the process ended "
                  "and not what it said",
         observes="subject",
+        plan_reads="the result `qa.tool(name).run(...)` returned",
         cli_reads="the command's stdout, as text",
     ),
     CheckSpec(
@@ -400,6 +429,7 @@ CHECKS: tuple[CheckSpec, ...] = (
                  "non-zero for a missing ledger and tells the user the file is malformed — which "
                  "`exit_status` passes, because every refusal ends with the same code",
         observes="subject",
+        plan_reads="the result `qa.tool(name).run(...)` returned",
         cli_reads="the command's stderr, as text",
     ),
     CheckSpec(
@@ -415,6 +445,7 @@ CHECKS: tuple[CheckSpec, ...] = (
                  "the entry. `created` passes it, because it sees the file appear and not what "
                  "it holds",
         observes="subject",
+        plan_reads="`qa.tree(dir)`, with `subject` the file path inside it",
         cli_reads="the working directory at one moment, with `subject` the exact relative path "
                "of one file, read as text: before the first step on a flow's `start:`, after "
                "the run everywhere else. It fails when no file sits there",
@@ -429,6 +460,7 @@ CHECKS: tuple[CheckSpec, ...] = (
         excludes="an unconditional overwrite standing in for compare-and-swap — a write "
                  "followed by a read cannot tell them apart, only a stale write refused can",
         observes="response",
+        plan_reads="the response to the stale write, from `qa.http` called with `expect_status=` naming the refusal",
     ),
 )
 
@@ -436,9 +468,10 @@ CHECK_BY_NAME: dict[str, CheckSpec] = {c.name: c for c in CHECKS}
 
 
 def describe(specs: tuple[CheckSpec, ...] = CHECKS) -> str:
-    """Each check's signature, the defect it excludes and what it reads on a cli, as text."""
+    """Each check's signature, the defect it excludes, what a plan hands it and what it reads on a cli, as text."""
     return "\n\n".join(
         f"{s.signature()}\n    excludes {s.excludes}\n"
+        f"    in a plan, qa.verify observes {s.plan_reads}\n"
         f"    on a cli, reads {s.cli_reads or 'nothing, so it does not compile there'}"
         for s in specs
     )

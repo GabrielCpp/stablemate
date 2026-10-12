@@ -1891,6 +1891,7 @@ def _cmd_checks(args: argparse.Namespace) -> int:
                             "path": p.path, "locator": p.locator}
                            for p in s.params],
                 "excludes": s.excludes,
+                "plan_reads": s.plan_reads,
                 "cli_reads": s.cli_reads,
             }
             for s in specs
