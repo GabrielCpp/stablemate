@@ -6,12 +6,14 @@ import subprocess
 from pathlib import Path
 
 from ostler import Ostler
+from ostler.edit import SETTLEMENT_FILE
+from workhorse_workflows.coder.shared import commits
 from workhorse_workflows.coder.shared.blueprint import blueprint
 from workhorse_workflows.coder.shared.provenance import changed_files
 from workhorse_workflows.coder.shared.schemas.dev_story import Settlement
 from workhorse_workflows.coder.shared.schemas.review import Feedback, ReviewContext
 from workhorse_workflows.coder.shared.plan import get_affected_repos, load_plan_context
-from workhorse_workflows.kit import find_docs_root, poll_run_inbox, resolve_workspace
+from workhorse_workflows.kit import commit_paths, find_docs_root, poll_run_inbox, resolve_workspace
 
 ANSWERS_FILE = "review-answers.md"
 
@@ -99,11 +101,14 @@ def settle_findings(
     repos: list[str] | None = None,
     repo_dir: str = "",
 ) -> Settlement:
-    """Settle the filed finding ids against the dev owner's answer list, checking each fix's evidence."""
+    """Settle the filed finding ids against the dev owner's answer list, checking each fix's evidence, and commit the ledger."""
     root = find_docs_root(docs_path, repo_dir)
     ids = list(filed or [])
     code = [repo for repo in (repos or []) if Path(repo).is_dir()]
-    ledger = Ostler(root).settle_answers(story_slug, ids, write=True)
+    okf = Ostler(root)
+    ledger = okf.settle_answers(story_slug, ids, write=True)
+    message = commits.message("docs", commits.scope(root.name), f"record the review settlement of {story_slug}")
+    commit_paths(root, message, f"{okf.spec_path(story_slug)}/{SETTLEMENT_FILE}")
     changed = _changed(logger, code, story_slug, story_id)
     settled: list[str] = []
     rejected: dict[str, str] = {}

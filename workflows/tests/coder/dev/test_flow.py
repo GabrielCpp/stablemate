@@ -253,6 +253,7 @@ def test_a_clean_pass_settles_the_fix_and_records_the_decline(
     workspace: dict[str, Path],
     env: Callable[..., RunEnv],
     drive_flow: Callable[..., Any],
+    git: Callable[..., subprocess.CompletedProcess],
 ) -> None:
     """One ready turn with a fixed and a declined answer finishes the run on its first check."""
     agent = _Agent(workspace)
@@ -264,6 +265,7 @@ def test_a_clean_pass_settles_the_fix_and_records_the_decline(
     assert result.settled == [f"{STORY}/review-1.1"], result
     assert result.declined == [f"{STORY}/review-1.2"], result
     assert agent.counts() == {"dev-story": 1}, agent.counts()
+    assert git(docs, "status", "--porcelain").stdout == "", git(docs, "status", "--porcelain").stdout
 
     (first,) = agent.args_for("dev-story")
     assert str(first["review_prefix"]).endswith("/review-1."), first
