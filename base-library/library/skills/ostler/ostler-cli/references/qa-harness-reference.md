@@ -49,14 +49,19 @@ needs a `base_url`.
 
 ## The address book
 
-A target's `base_url`, and any text the harness sends, may name a service as `{name}`,
-such as `http://{gateway}/api`. The run's address book gives the value:
+A target's `base_url` may name a service as `{name}`, such as `http://{gateway}/api`. The
+run's address book gives the value:
 
 - The harness reads the JSON object at `$STABLEMATE_ADDRESS_BOOK`, a map of name to URL.
 - With the variable unset, `{name}` stays as written.
-- A name the book does not give fails the scenario with that name.
+- A name the book does not give fails the plan with that name.
 - A plan that writes `{gateway}` stays valid on every run, whichever port the run's stack
   holds. Write the name, never the port one run happened to get.
+
+The harness fills `{name}` in a target's `base_url` and nowhere else. A tool, a fixture step
+or a scenario that needs another service's URL reads the book itself. Each inherits
+`$STABLEMATE_ADDRESS_BOOK`, so `json.loads(Path(os.environ["STABLEMATE_ADDRESS_BOOK"]).read_text())["api"]`
+gives the `api` address in a scenario.
 
 ## `qa.fixture(name, *args)`
 
@@ -147,6 +152,12 @@ It runs a command this repo opted into in `agents.yml`. The QA prompt lists the 
 whether each is on this host. A name that is not opted in raises with the line to add.
 It returns a `ToolResult`. A non-zero exit does not raise. Hand the result to
 `exit_status`, `stdout` or `stderr`.
+
+- It runs from the repo root. `cwd=` moves it under `qa.dir`: a relative path is read from
+  `qa.dir`, the folder is created when missing, and a path outside `qa.dir` raises.
+- It inherits the run's environment. `env=` overlays it, and each name it sets must be
+  declared once at module level with `tool_env("NAME")`. An undeclared name raises.
+- `timeout=` defaults to 60 seconds. A command that runs past it returns exit code 124.
 
 ## Browser requests
 
