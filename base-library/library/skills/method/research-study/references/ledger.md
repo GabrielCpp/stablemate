@@ -18,8 +18,14 @@ when the step ends. Never delete a row.
 | --- | --- |
 | `start`, `end` | `date -Iseconds` output, taken when the step starts and ends |
 | `step` | what was done, in one line |
-| `kind` | `decisive`, `exploration`, `apparatus` or `reflection` |
-| `settles` | the "this changes the answer" sentence, or null for exploration |
+| `id` | a short name other rows cite, such as `design-check` and `checked` do |
+| `kind` | `decisive`, `exploration`, `apparatus`, `design-check` or `reflection` |
+| `settles` | "A result of X on ⟨clause, quoted⟩ settles ⟨claim⟩", or null for exploration. It carries no comparison of the run to the bar. |
+| `clauses` | for `decisive` only: each clause the run bears on, quoted byte for byte from `QUESTION.md`, with its `arm`, `code` (file and line) and `row` (the id of the row that measured it) |
+| `gaps` | for `decisive` only: each clause the run does not meet, with the row that measured the gap's size. It is the only place a difference from the bar may be stated. |
+| `design_check` | for `decisive` only: the id of the `design-check` row that cleared the registration. The command refuses to start while it is null. |
+| `cheat` | for `design-check` only: the cheat arm in one line, its score per seed, and the no-method control's score beside it |
+| `findings` | for `design-check` only: each as a predicate the checker can run again, with `open` or the row that closed it |
 | `serves` | for `apparatus` only: the decisive step it makes runnable, or `the study` for setup every step needs, such as a snapshot commit |
 | `estimate_min` | wall minutes expected, written before the step starts |
 | `actual_min` | `end` minus `start` in minutes, computed from the two timestamps and never written by hand |
@@ -29,6 +35,14 @@ when the step ends. Never delete a row.
 
 A `reflection` row puts its three answers in `outcome`: where the time went, what is
 settled, and whether the current path is still the cheapest.
+
+A script reads the fields above before a decisive command runs: every `clauses` quote is a
+substring of `QUESTION.md`, every `code` anchor is a line that exists at `commit`, every
+`row` anchor is an earlier row's id, `design_check` names a `design-check` row whose
+`findings` are all closed, and no `cheat` score exceeds its control. It also flags a
+`settles`, `step` or `outcome` sentence that names the bar, a control, compute or a budget
+and cites no row id. What the anchored line does, and whether the cheat was the right one,
+only the checker can read.
 
 ## Reading it back
 

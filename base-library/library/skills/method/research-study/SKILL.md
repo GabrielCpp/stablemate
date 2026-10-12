@@ -26,7 +26,9 @@ Eight traps turn a study into one idea pursued for days, or into days with no re
 - **A number is recorded and never judged.** A result that projects to three weeks against
   an eight-hour purpose gets logged, and the next slice starts.
 - **The number replaces the question.** A study meets its bar with a method that does not
-  answer what the operator asked, and the win is recorded as progress.
+  answer what the operator asked, and the win is recorded as progress. The commonest route
+  is a registration that restates the bar with a clause missing and a sentence saying the
+  loss favours the reference.
 - **Framings inbreed.** Each new framing grows out of the last one's parts, and every brief
   a study writes carries the briefer's reading of the question. Every candidate then shares
   one reading, and a failure of that reading passes for a failure of the question.
@@ -142,9 +144,15 @@ size and a date.
 
 Pick the benchmark: a small fixed set of inputs that covers the kinds the workload holds.
 Run the current system on it and record the baseline row. Pin what defines the yardstick:
-the input set, the commit, the seeds, and the judge or scorer. The judge stays frozen for
-the whole study. The cheapest way to look faster is to make the judge pass sooner, so a
-change to the judge is its own probe, reported as one.
+the input set, the commit, the seeds, and the judge or scorer. The judge scores on cases
+the system under test never saw: a judge that checks only the examples the prompt shows
+credits a copy of them. The judge, the bar and both controls stay frozen for the whole
+study. The cheapest way to look faster is to make the judge pass sooner, so a change to any
+of them is its own ledger row that quotes the old wording beside the new, and the change
+counts only once the operator or a checker has signed that row. A control that drifts one
+word per probe is how a study comes to grade itself. A script checks that the row exists
+and that no later row uses the new wording without it. A checker judges whether the new
+wording still measures the question.
 
 Four cases add a rule, and [references/measurement.md](references/measurement.md) holds
 each under its own heading. Read the section when its case applies: the benchmark is
@@ -355,8 +363,11 @@ every row, are under "The checker" in
 [references/paper-gates.md](references/paper-gates.md).
 
 A checker finding against a gate stays open until a repair answers it in writing or the
-framing dies. No decisive run launches under a framing that carries an open gate finding.
-A run that would read the same fact the finding states is apparatus for a known answer.
+framing dies. A finding is a predicate the checker can run again, such as a line the code
+must hold or a score an arm must not reach. The author's argument closes none. No decisive
+run launches under a framing that carries an open gate finding, and none launches without
+the design check of step 7. A run that would read the same fact the finding states is
+apparatus for a known answer.
 
 Done when at least three framings survive in `FRAMINGS.md` or the rest died on paper,
 every candidate about to be probed has a card that passed both gates in writing, and a
@@ -373,12 +384,37 @@ wherever it is uncertain. A ceiling under the bar kills the run before it costs 
 another system, hand that system the perfect output before building the method's run. If
 the oracle does not clear the bar, no method can.
 
-**Check for leaks before a decisive run.** List every route by which the answer could
-reach the measured path without the method, and test each with a script over the generated
-inputs. Then remove the method's learned part and confirm the result falls to the control.
-"The consumer's ceiling" and "Leaks" in
-[references/measurement.md](references/measurement.md) hold both rules in full. Read them
-before the first decisive run.
+**Register a decisive probe, have its design checked, then launch.** The registration row
+quotes every clause of the done-condition the run bears on, word for word from
+`QUESTION.md`, and gives each clause its anchors: the arm, the code line that enforces it,
+and the ledger row that measured how the run meets it. A clause the run does not meet is a
+`gap` line carrying the row that measured the gap's size. A sentence that compares the run
+to the bar, a control or a budget and cites no row id is an invented argument: "the
+difference favours the reference" and "that is what the question asks" are its usual
+shapes. A script flags such a sentence and the registration fails until it becomes a gap
+line or a cited row.
+
+A second agent that never reads the author's reasoning then writes a `design-check` row.
+It reads `QUESTION.md`, the quoted clauses with their anchors, the code and the commands.
+For each clause it says whether the anchored line does what the clause says, whether the
+control is the strongest no-method one, and whether the method is the mechanism earlier
+items credited. It designs a **cheat arm** for this instrument: the cheapest route from the
+inputs to a passing score that uses none of the method, starting from the unchanged state
+and a copy of whatever answers the prompt shows. It runs the cheat on every seed and writes
+the scores into its row. A cheat that scores above the no-method control kills the
+instrument before the run costs anything. It lists every route by which the answer could
+reach the measured path without the method and tests each with a script over the generated
+inputs. "Leaks" in [references/measurement.md](references/measurement.md) holds the rule.
+Each finding is a predicate it can run again. A clause the run cannot meet, such as a
+budget nobody can define, goes to the operator with the operator's words it reads, never
+into an argument between author and checker.
+
+The decisive command refuses to start until the registration names a `design-check` row
+with no open finding. A script enforces that: the row exists, the clauses match
+`QUESTION.md` byte for byte, every anchor resolves to a line and a row, the cheat scores
+are recorded at or under the control, and the output directory keeps every reply for
+regrading. The checker's judgment covers what a script cannot read: whether an anchored
+line does what its clause says, which cheat to try, and whether a control is the strongest.
 
 **Order by cost before launching anything.** List the next decisive checks with their
 estimates, and run the cheapest first. A long job in the background is not free: a
@@ -388,8 +424,10 @@ nothing.
 Change one variable per probe, on the frozen yardstick. Before each probe, write two
 things into its ledger row:
 
-- **What it settles.** "This changes the answer by ⟨how⟩, and a result of ⟨X⟩ settles
-  ⟨claim⟩." A probe that settles nothing is `exploration`, labelled so.
+- **What it settles.** "A result of ⟨X⟩ on ⟨clause, quoted⟩ settles ⟨claim⟩." A probe
+  whose sentence quotes no clause is `exploration`, labelled so, and that label is a
+  finding about the probe's reach, not a failure. The sentence never argues a gap away. A
+  gap is a line under `gaps` or it is an open finding.
 - **The estimate.** Wall minutes, from the profile or a timed single unit.
 
 Run anything over a few minutes as a background job with its log in `logs/`, and do cheap
@@ -408,6 +446,7 @@ Each row carries its `kind`:
 | `decisive` | its result settles a claim about the purpose |
 | `exploration` | it informs the field without settling anything |
 | `apparatus` | it makes a decisive step runnable, and names that step |
+| `design-check` | a second agent's check of a decisive registration, written before its command runs |
 | `reflection` | a step back, written by the triggers in step 10 |
 
 A failed probe keeps its row with the reason it failed. The row is the report. The row
@@ -437,9 +476,11 @@ zero. Stop that path before spending on it.
 
 **Have a decisive result checked before it counts.** A second agent that did not write the
 probe reads the row's `settles` sentence, the command and the bar, and nothing of the
-study's reasoning. It re-runs the scorer on the recorded outputs, holds its number against
-the bar, and repeats the leak check. Its number goes into the row's `checked` field. When
-the two numbers differ, the row records both and the result stays open until explained.
+study's reasoning. It re-runs the scorer on the retained replies, holds its number against
+the bar, and repeats the leak check. A row whose replies were not retained is unchecked,
+and a recount of success flags is not a regrade. Its number goes into the row's `checked`
+field. When the two numbers differ, the row records both and the result stays open until
+explained.
 
 ## 10. Step back
 

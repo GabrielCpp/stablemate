@@ -262,3 +262,14 @@ facts are read once, on the day of the check, and every row cites that reading. 
 checker proposes a rule that returns every row, it asks whether the rule makes the
 question unsolvable by construction. Such a rule is a finding about the checker, and it
 goes to the study with the operator's words it contradicts.
+
+The checker reads the operator's words, the cards, the code and the commands, and never
+the author's reasoning about them. Its deliverable is a mismatch or a cheat, not a verdict:
+a clause and the line that fails it, or a no-method route and its score. Each finding is a
+predicate it can run again, and the author's argument closes none of them. A clause the
+author and the checker cannot both meet goes to the operator with the words that fix it.
+Agents handed the same brief return the same reading, so their agreement checks nothing.
+The brief carries the briefer's reading, and the briefer's reading is what failed. A second
+agent earns its cost by differing where it can: a brief written from the operator's words
+alone, a different model when one is available, and a mismatch or a cheat as its
+deliverable. A vote among agents that agree adds no evidence.

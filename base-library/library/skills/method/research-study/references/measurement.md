@@ -36,7 +36,9 @@ cases until the margin clears the spread.
 ## A method that learns
 
 When the method learns, hold part of the yardstick out of its training and score only on
-that part. A method that scores on the cases it trained on has shown memory.
+that part. A method that scores on the cases it trained on has shown memory. The same
+holds for any system a prompt shows examples to: the judge scores on cases the prompt did
+not show, or a table copied from the prompt passes it.
 
 ## A repeated unit
 
@@ -57,7 +59,19 @@ faults in another kind and then count as the control for them.
 The field also holds the **broken-link control**: the method's own output, attached to
 the wrong case or the wrong site. A method that beats the no-method control and ties the
 broken-link control wins on what it adds, such as more text or more compute, and not on
-the link it claims.
+the link it claims. A weaker break, such as shuffling labels inside the same case, is a
+different control, and it enters only through the change row that step 3 requires.
+
+Before each decisive run the design checker adds a **cheat arm**: the cheapest route from
+the inputs to a passing score that uses none of the method. It starts from the unchanged
+state and a copy of whatever answers the prompt shows, and the checker writes the next one
+the instrument invites, such as the nearest training case or the most natural-looking
+edit. A cheat that scores above the no-method control kills the instrument. The two named
+cheats are the floor, never the list.
+
+Both controls and the cheat are defined once, in the words the registration quotes. A
+later wording is a change row: it quotes the old words beside the new, and the operator or
+a checker signs it before any row scores under it.
 
 ## The consumer's ceiling
 
