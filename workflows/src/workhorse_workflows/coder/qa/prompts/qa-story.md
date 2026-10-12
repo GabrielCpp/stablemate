@@ -12,7 +12,9 @@ each one sees. This turn ends with a plan that lints and validates, a scored run
 
 The story is developed locally, on its own local stack, and it is self-contained. Its
 repositories and that stack hold everything its QA proves: the running services, the
-infrastructure declarations and their tests, and the source.
+infrastructure code and its tests, and the source. The infrastructure code deploys onto that
+stack, so the stack is a deployment in every sense. Its buckets, access policies, roles and
+stored records are read there, after that code applied.
 
 QA never fixes the product. A defect in the story's code is a finding you return, and the
 dev owner fixes it. Everything between the product and the verdict is yours: the plan, the

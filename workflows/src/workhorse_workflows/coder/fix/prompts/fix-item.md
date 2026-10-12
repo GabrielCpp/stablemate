@@ -11,7 +11,9 @@ repository it belongs in, and a QA record that shows it works.
 
 The item is repaired locally, on the local stack, and it is self-contained. These
 repositories and that stack hold everything it needs: the running services, the
-infrastructure declarations and their tests, and the source.
+infrastructure code and its tests, and the source. The infrastructure code deploys onto that
+stack, so the stack is a deployment in every sense. Its buckets, access policies, roles and
+stored records are read there, after that code applied.
 
 ## Inputs (authoritative, do not rediscover)
 
