@@ -173,5 +173,5 @@ only, so the sweep skips it instead of guessing. The render-time error covers th
 | `--dry-run` | `run_pyflow` prints the report as a `[workhorse] ERROR:` line and returns `1`, before the graph preflight runs. |
 | At render time | A named miss raises `MissingSkill` and a retired helper raises `RetiredHelper`. Either one stops the turn. See [a named miss](template-globals.md#a-named-miss). |
 
-- code: `workhorse/workhorse/pyflow/run.py::run_pyflow` @e11e110ff8f7
+- code: `workhorse/workhorse/pyflow/run.py::run_pyflow` @8ef17f9d42af
 - tests: `workhorse/tests/test_pyflow_graph.py::test_an_unresolvable_skill_reference_warns_a_real_run_and_fails_a_dry_one`, `workhorse/tests/test_pyflow_graph.py::test_a_run_whose_skills_are_installed_is_not_warned_about_references`

@@ -20,7 +20,7 @@ directory and [`ArtifactWriter`](artifact-writer.md) layout, the [agent
 backends](agent-backend.md), telemetry, and the [resilience ladder](run-agent.md) — is
 unchanged by that, which is why a ported workflow's operator knobs still mean what they meant.
 
-- code: `workhorse/workhorse/pyflow/driver.py::drive` @d60f443e957d
+- code: `workhorse/workhorse/pyflow/driver.py::drive` @47ac9d72fffb
 
 ## Methods
 
@@ -29,7 +29,7 @@ unchanged by that, which is why a ported workflow's operator knobs still mean wh
 restore a waiting gate.
 
 - sig: `Resume(state, params, inputs={}, ctx=None, flow=None, waiting_on=None)`
-- code: `workhorse/workhorse/pyflow/driver.py::Resume` @d60f443e957d
+- code: `workhorse/workhorse/pyflow/driver.py::Resume` @47ac9d72fffb
 
 ### read_resume
 - sig: `read_resume(checkpoint: Checkpoint) -> Resume`
@@ -37,7 +37,7 @@ restore a waiting gate.
 - raises: `WorkflowFailed` when the checkpoint belongs to the retired YAML engine
 - returns: resume state, parameters, inputs, context, flow, and waiting gate
 - verify: exit_status(code=1)
-- code: `workhorse/workhorse/pyflow/driver.py::read_resume` @d60f443e957d
+- code: `workhorse/workhorse/pyflow/driver.py::read_resume` @47ac9d72fffb
 
 ### coerce_params
 - sig: `coerce_params(bound, params: dict[str, Any], *, state: str) -> dict[str, Any]`
@@ -45,7 +45,7 @@ restore a waiting gate.
 - raises: `WorkflowFailed` for unknown, invalid, or missing required checkpoint parameters
 - returns: parameters coerced to their annotated runtime types
 - verify: exit_status(code=1)
-- code: `workhorse/workhorse/pyflow/driver.py::coerce_params` @d60f443e957d
+- code: `workhorse/workhorse/pyflow/driver.py::coerce_params` @47ac9d72fffb
 
 ### answered
 - sig: `answered(path: Path) -> bool`

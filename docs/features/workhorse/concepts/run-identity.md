@@ -9,7 +9,7 @@ Run identity determines which run directory a workflow starts or resumes. Explic
 parameterized runs use a stable digest, while parameterless runs use `default` at the caller.
 The resolver accepts a path, a full directory name, or the id that named the directory.
 
-- code: `workhorse/workhorse/rundir.py` @bb4e00c20441
+- code: `workhorse/workhorse/rundir.py` @aa85ef04e897
 
 ### derive_run_id
 - sig: `derive_run_id(run_id: str | None, params: dict[str, Any] | None) -> str | None`
@@ -17,7 +17,7 @@ The resolver accepts a path, a full directory name, or the id that named the dir
 - does: returns `p` plus the first eight hexadecimal SHA-1 characters of canonical sorted JSON when params are non-empty and no explicit id exists
 - does: returns `None` when neither an explicit id nor non-empty params exist
 - returns: an id that is deterministic for equal parameter mappings
-- code: `workhorse/workhorse/rundir.py::derive_run_id` @bb4e00c20441
+- code: `workhorse/workhorse/rundir.py::derive_run_id` @aa85ef04e897
 - verify: json_path(path="$.run_id", equals="psample")
 - tests: `workhorse/tests/test_run_options.py::test_runs_dir_defaults_to_cwd_dot_agents_runs`
 
@@ -37,19 +37,19 @@ The resolver accepts a path, a full directory name, or the id that named the dir
 - consistency: run-record — a terminal `run.json` record returns the effective id with no resume directory
 - verify: absent(subject="resume directory when the run record is terminal")
 - returns: the effective id and an existing non-terminal checkpoint directory, or `None`
-- code: `workhorse/workhorse/rundir.py::auto_resolve` @bb4e00c20441
+- code: `workhorse/workhorse/rundir.py::auto_resolve` @aa85ef04e897
 
 ### resolve_run_dir
 - sig: `resolve_run_dir(spec: str, runs_dir: Path, workflow_name: str) -> Path | None`
 - does: resolves an explicit path before trying the runs-dir spelling and workflow-plus-id spelling
 - returns: the resolved directory when it exists, otherwise `None`
-- code: `workhorse/workhorse/rundir.py::resolve_run_dir` @bb4e00c20441
+- code: `workhorse/workhorse/rundir.py::resolve_run_dir` @aa85ef04e897
 
 ### find_latest_resumable
 - sig: `find_latest_resumable(runs_dir: Path) -> Path | None`
 - does: considers only directories with a checkpoint and a parseable non-terminal run record
 - returns: the candidate with the newest checkpoint modification time, or `None`
-- code: `workhorse/workhorse/rundir.py::find_latest_resumable` @bb4e00c20441
+- code: `workhorse/workhorse/rundir.py::find_latest_resumable` @aa85ef04e897
 - tests: `workhorse/tests/test_run_budget.py::test_budget_stop_is_resumable`
 
 ### runtime_deadline
@@ -58,4 +58,4 @@ The resolver accepts a path, a full directory name, or the id that named the dir
 - verify: json_path(path="$.deadline", absent=true)
 - does: anchors a positive budget to the recorded start timestamp
 - returns: an absolute Unix timestamp deadline
-- code: `workhorse/workhorse/rundir.py::runtime_deadline` @bb4e00c20441
+- code: `workhorse/workhorse/rundir.py::runtime_deadline` @aa85ef04e897

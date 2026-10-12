@@ -17,10 +17,10 @@ which preserves activity across recursive sub-workflow handoffs. Live metrics pr
 `activity`/`work_id` and legacy `wf.activity`/`wf.work_id` spellings, but no other labels, to keep
 metric cardinality bounded.
 
-- code: `workhorse/workhorse/pyflow/activity.py::ActivityLog` @84b8759518fa
-- code: `workhorse/workhorse/pyflow/activity.py::install` @84b8759518fa
-- code: `workhorse/workhorse/pyflow/activity.py::FLAG` @84b8759518fa
-- code: `workhorse/workhorse/pyflow/activity.py::LABEL` @84b8759518fa
+- code: `workhorse/workhorse/pyflow/activity.py::ActivityLog` @fc149a498518
+- code: `workhorse/workhorse/pyflow/activity.py::install` @fc149a498518
+- code: `workhorse/workhorse/pyflow/activity.py::FLAG` @fc149a498518
+- code: `workhorse/workhorse/pyflow/activity.py::LABEL` @fc149a498518
 - tests: `workhorse/tests/test_activity.py`
 - detail: [OpenTelemetry instrumentation](telemetry-instrumentation.md)
 - detail: [Pyflow activity label documentation](pyflow-activity-label-selection.md)
@@ -32,7 +32,7 @@ metric cardinality bounded.
 - does: replaces the workflow-declared base labels and publishes them together with the current activity when present
 - verify: unchanged(subject="current activity label across workflow label rebase")
 - verify: emitted(event="activity labels after workflow label rebase", count=1)
-- code: `workhorse/workhorse/pyflow/activity.py::ActivityLog.rebase` @84b8759518fa
+- code: `workhorse/workhorse/pyflow/activity.py::ActivityLog.rebase` @fc149a498518
 - detail: [ActivityLog rebase documentation](activitylog-rebase-documentation.md)
 
 ### filter
@@ -43,7 +43,7 @@ metric cardinality bounded.
 - verify: unchanged(subject="activity label after malformed or empty flagged record")
 - returns: `True` for every record so the filter never suppresses logging
 - verify: emitted(event="every filtered log record", count=1)
-- code: `workhorse/workhorse/pyflow/activity.py::ActivityLog.filter` @84b8759518fa
+- code: `workhorse/workhorse/pyflow/activity.py::ActivityLog.filter` @fc149a498518
 - detail: [Pyflow activity label documentation](pyflow-activity-label-selection.md)
 
 ### install
@@ -54,5 +54,5 @@ metric cardinality bounded.
 - verify: created(subject="activity tracker attached to the logger")
 - returns: the logger's single activity tracker
 - verify: count(subject="activity trackers attached to the logger", equals=1)
-- code: `workhorse/workhorse/pyflow/activity.py::install` @84b8759518fa
+- code: `workhorse/workhorse/pyflow/activity.py::install` @fc149a498518
 - detail: [Pyflow activity label documentation](pyflow-activity-label-selection.md)

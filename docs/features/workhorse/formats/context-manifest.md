@@ -19,9 +19,9 @@ value. Its `as_context()` lays the keys below under every turn, plus `_repo_root
 `from_context()` reads `_repo_root` back at render time.
 
 - file: `.agents/agents-context.json` (or a per-backend override, `.agents/agents-context.<AGENT_CLI>.json`)
-- code: `workhorse/workhorse/manifest.py::load_context_manifest` @951a977f30ec
-- code: `workhorse/workhorse/manifest.py::ContextManifest` @951a977f30ec
-- code: `workhorse/workhorse/manifest.py::ManifestContext` @951a977f30ec
+- code: `workhorse/workhorse/manifest.py::load_context_manifest` @e896594bc36c
+- code: `workhorse/workhorse/manifest.py::ContextManifest` @e896594bc36c
+- code: `workhorse/workhorse/manifest.py::ManifestContext` @e896594bc36c
 
 The loader's explicit-missing-file error and empty auto-detected-manifest behaviour are covered by
 `workhorse/tests/test_context_manifest.py::test_explicit_missing_context_file_is_hard_error` and
@@ -166,7 +166,7 @@ loader picks the one for the active `$AGENT_CLI` when no `--context-file` names 
 - verify: count(subject="relative repo roots in a projected manifest", equals=0)
 - returns: a `ManifestContext` marked present
 - verify: json_path(path="$.present", equals=true)
-- code: `workhorse/workhorse/manifest.py::ContextManifest.project` @951a977f30ec
+- code: `workhorse/workhorse/manifest.py::ContextManifest.project` @e896594bc36c
 - tests: `workhorse/tests/test_context_manifest.py::test_build_manifest_context_names_what_it_read`
 
 ### method: ManifestContext.as_context
@@ -177,7 +177,7 @@ loader picks the one for the active `$AGENT_CLI` when no `--context-file` names 
 - verify: json_path(path="$._instructions", absent=true)
 - returns: the context layer merged underneath every agent turn's arguments
 - verify: json_path(path="$.present", equals=true)
-- code: `workhorse/workhorse/manifest.py::ManifestContext.as_context` @951a977f30ec
+- code: `workhorse/workhorse/manifest.py::ManifestContext.as_context` @e896594bc36c
 - tests: `workhorse/tests/test_context_manifest.py::test_an_absent_manifest_adds_no_context_key`, `workhorse/tests/test_context_manifest.py::test_the_reserved_keys_round_trip_through_one_type`
 
 ### method: ManifestContext.from_context
@@ -188,7 +188,7 @@ loader picks the one for the active `$AGENT_CLI` when no `--context-file` names 
 - verify: json_path(path="$.present", equals=true)
 - returns: a tolerant `ManifestContext` value that carries no template, repo or vars values
 - verify: count(subject="values carried by a context read back", equals=0)
-- code: `workhorse/workhorse/manifest.py::ManifestContext.from_context` @951a977f30ec
+- code: `workhorse/workhorse/manifest.py::ManifestContext.from_context` @e896594bc36c
 - tests: `workhorse/tests/test_context_manifest.py::test_the_reserved_keys_round_trip_through_one_type`
 
 ### method: build_manifest_context
@@ -199,7 +199,7 @@ loader picks the one for the active `$AGENT_CLI` when no `--context-file` names 
 - verify: count(subject="repo roots on the projected context", equals=1)
 - returns: the `ManifestContext` that `ContextManifest.project` gives for the parsed data
 - verify: json_path(path="$.present", equals=true)
-- code: `workhorse/workhorse/manifest.py::build_manifest_context` @951a977f30ec
+- code: `workhorse/workhorse/manifest.py::build_manifest_context` @e896594bc36c
 - tests: `workhorse/tests/test_context_manifest.py::test_build_manifest_context_names_what_it_read`, `workhorse/tests/test_context_manifest.py::test_a_wrong_typed_field_degrades_instead_of_raising`
 
 ### method: load_context_manifest
@@ -209,7 +209,7 @@ loader picks the one for the active `$AGENT_CLI` when no `--context-file` names 
 - raises: `SystemExit(1)` after reporting an explicit missing file, unreadable JSON, or non-object top level
 - returns: the projected context for a valid manifest
 - verify: exit_status(code=1)
-- code: `workhorse/workhorse/manifest.py::load_context_manifest` @951a977f30ec
+- code: `workhorse/workhorse/manifest.py::load_context_manifest` @e896594bc36c
 
 ## Sample
 

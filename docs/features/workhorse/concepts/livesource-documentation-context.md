@@ -16,6 +16,6 @@ Use [LiveSource — immutable bind-source generations](live-source.md) when reas
 staging, installation, failure recovery, and generation retention. These are complementary
 views of the same type, not choices between implementations.
 
-- code: `workhorse/livesource.py::LiveSource` @8121d901cb22
+- code: `workhorse/livesource.py::LiveSource` @b1e9c59daeb3
 - rule: use the configuration-fields concept for constructor inputs and the immutable-generations concept for staging and refresh behavior; neither supersedes the other
 - detail: [LiveSource documentation guide](live-source-documentation-guide.md)

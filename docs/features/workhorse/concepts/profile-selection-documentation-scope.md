@@ -15,6 +15,6 @@ empty-name meaning, and shared-reference behaviour. Read
 run configuration, and changes it through `switch_profile`. The source deliberately keeps
 the box minimal: configuration tables are re-read at turn time after the name is selected.
 
-- code: `workhorse/workhorse/profile.py::ProfileSelection` @a38096178b9f
+- code: `workhorse/workhorse/profile.py::ProfileSelection` @9dcb7351ca5e
 - rule: use ProfileSelection for the selected-name state contract; use AgentRunner.run for the runner lifecycle that reads and changes that shared state
 - detail: [ProfileSelection selection guidance](profile-selection-guidance.md)

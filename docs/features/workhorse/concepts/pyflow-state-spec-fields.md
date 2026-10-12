@@ -15,6 +15,6 @@ need rather than choosing one field in place of another.
 For registration and state resolution as a whole, see [pyflow state specification registration
 data](pyflow-state-spec-registration-data.md).
 
-- code: `workhorse/workhorse/pyflow/workflow.py::StateSpec` @1a1a48a855c9
+- code: `workhorse/workhorse/pyflow/workflow.py::StateSpec` @1cc9c62be317
 - rule: use `name`, `fn`, and `aliases` for their respective identifier, callable, and retired-checkpoint concerns; none replaces another
 - detail: [pyflow state specification reading guide](pyflow-state-spec-reading-guide.md)

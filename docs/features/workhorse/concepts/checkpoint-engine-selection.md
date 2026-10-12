@@ -13,7 +13,7 @@ the current engine, and its required `state` is the value a resume consumes. A
 by the retired YAML engine can recognize that record and refuse it by name. Nothing writes the
 retired shape, so no new checkpoint or resumed run should select it.
 
-- code: `workhorse/workhorse/records.py::Checkpoint` @9277b8111856
+- code: `workhorse/workhorse/records.py::Checkpoint` @ce33d3ae4195
 - rule: use `PyflowCheckpoint` for every new checkpoint; accept `NodeGraphCheckpoint` only to identify and refuse a retired YAML-engine record
 - prefers: [PyflowCheckpoint](run-records.md#pyflowcheckpoint)
 - deprecates: [NodeGraphCheckpoint](run-records.md#field-nodegraphcheckpoint)

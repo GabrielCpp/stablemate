@@ -16,6 +16,6 @@ distribution; use `by_category` for a caller-selected payload category; and use 
 the first-class kind composition. All fields are current complementary observations, so no
 field supersedes or ranks above another.
 
-- code: `workhorse/workhorse/worklist.py::WorkCounts` @d81b7964cfee
-- code: `workhorse/workhorse/worklist.py::counts` @d81b7964cfee
+- code: `workhorse/workhorse/worklist.py::WorkCounts` @ee16d0fb65f6
+- code: `workhorse/workhorse/worklist.py::counts` @ee16d0fb65f6
 - rule: select the field that answers the requested lifecycle measure or composition; no WorkCounts field is a replacement for another

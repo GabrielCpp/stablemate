@@ -22,7 +22,7 @@ The base and flavor rendering paths are covered by
 `test_override_fills_block_keeps_base`, `test_override_dir_without_file_for_node_is_base`, and
 `test_no_repo_root_renders_base`.
 
-- code: `workhorse/workhorse/templates.py::render` @5308504a0103
+- code: `workhorse/workhorse/templates.py::render` @921bcf52f398
 
 ## Contract
 
@@ -74,7 +74,7 @@ Locates a repo-authored **flavor** — a same-named file a consuming repo drops 
 `<repo_root>/.agents/flavors/<workflow_dir.name>/<prompt_file>.md` to extend a base prompt without
 farrier copying or rewriting it. Presence alone activates it: no config, no selection step.
 
-- code: `workhorse/workhorse/templates.py::_flavor_override` @5308504a0103
+- code: `workhorse/workhorse/templates.py::_flavor_override` @921bcf52f398
 
 **Contract:**
 - **Input:** `template_path: Path` (the prompt path — only `.name` is used, so a flavor is keyed by
@@ -120,7 +120,7 @@ because an inline string has no file name for a flavor to key off.
 The script/call/flow render sites this page used to list are gone with the YAML front-end: a state
 that needs a value computed calls a Python function and passes it, so there is no string to render.
 
-- code: `workhorse/workhorse/templates.py::render_string` @5308504a0103
+- code: `workhorse/workhorse/templates.py::render_string` @921bcf52f398
 - verify: `workhorse/tests/test_templates_resilient.py::test_attribute_on_wrong_typed_value_renders_empty`,
   `test_missing_top_level_var_renders_empty`, `test_deep_chain_through_missing_renders_empty`,
   `test_valid_reference_still_renders`, `test_undefined_use_is_logged`

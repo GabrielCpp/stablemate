@@ -16,9 +16,9 @@ skills from, starting where the turn starts.
 holds three run helpers, five skill reference helpers and one stub for each retired helper. Farrier
 renders a skill body with the same five skill helpers, from the same `SkillRefs` engine.
 
-- code: `workhorse/workhorse/templates.py::template_globals` @5308504a0103
-- code: `workhorse/workhorse/templates.py::skill_refs` @5308504a0103
-- code: `workhorse/workhorse/templates.py::turn_catalog` @5308504a0103
+- code: `workhorse/workhorse/templates.py::template_globals` @921bcf52f398
+- code: `workhorse/workhorse/templates.py::skill_refs` @921bcf52f398
+- code: `workhorse/workhorse/templates.py::turn_catalog` @921bcf52f398
 - code: `workhorse/workhorse/_vendor/stablemate_core/skill_refs.py::SkillRefs` @ebf1b69c7565
 - code: `workhorse/workhorse/_vendor/stablemate_core/skill_refs.py::scan_catalog` @ebf1b69c7565
 - tests: `workhorse/tests/test_references.py::test_a_turn_resolves_repo_and_home_skills_from_its_cwd`, `workhorse/tests/test_references.py::test_the_harness_picks_the_invocation`, `workhorse/tests/test_references.py::test_a_turn_sees_the_skills_of_its_added_dirs`, `workhorse/tests/test_references.py::test_a_named_miss_stops_the_render`, `workhorse/tests/test_references.py::test_a_quiet_render_keeps_a_placeholder`, `workhorse/tests/test_references.py::test_a_retired_helper_names_its_replacement`
@@ -174,7 +174,7 @@ every reference whose name is a constant.
 - verify: count(subject="catalog scans for one render calling three skill helpers", equals=1)
 - returns: a mapping of Jinja global names to callables
 - verify: count(subject="retired helper stubs in the returned mapping", equals=14)
-- code: `workhorse/workhorse/templates.py::template_globals` @5308504a0103
+- code: `workhorse/workhorse/templates.py::template_globals` @921bcf52f398
 - tests: `workhorse/tests/test_references.py::test_a_retired_helper_names_its_replacement`
 
 ### method: skill_refs
@@ -187,7 +187,7 @@ every reference whose name is a constant.
 - verify: count(subject="placeholders a quiet render emits for one missing name", equals=1)
 - returns: a `SkillRefs` bound to the turn's catalog, the active harness, the start folder, the repo root and the home folder
 - verify: count(subject="harnesses a SkillRefs is bound to", equals=1)
-- code: `workhorse/workhorse/templates.py::skill_refs` @5308504a0103
+- code: `workhorse/workhorse/templates.py::skill_refs` @921bcf52f398
 - tests: `workhorse/tests/test_references.py::test_a_turn_resolves_repo_and_home_skills_from_its_cwd`, `workhorse/tests/test_references.py::test_a_turn_sees_the_skills_of_its_added_dirs`, `workhorse/tests/test_context_manifest.py::test_a_turn_without_a_cwd_resolves_skills_from_the_manifest_repo`
 
 ### method: turn_catalog
@@ -196,5 +196,5 @@ every reference whose name is a constant.
 - verify: count(subject="catalog entries for one name present in cwd, repo root and home", equals=1)
 - returns: the catalog with the most local entry first for each name
 - verify: count(subject="entries the catalog answers for one shadowed name", equals=1)
-- code: `workhorse/workhorse/templates.py::turn_catalog` @5308504a0103
+- code: `workhorse/workhorse/templates.py::turn_catalog` @921bcf52f398
 - tests: `core/tests/test_skill_refs.py::test_the_most_local_entry_wins`, `core/tests/test_skill_refs.py::test_the_walk_stops_at_the_repo_root`

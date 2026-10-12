@@ -15,12 +15,12 @@ never triggers discovery.
 returned callable has a public `__name__` and accepts an optional argv list, while the workflow
 registry remains bound in the closure that invokes `main`.
 
-- code: `workhorse/workhorse/cli/__init__.py::console_script` @19166d483bcf
-- code: `workhorse/workhorse/cli/__init__.py::main` @19166d483bcf
-- code: `workhorse/workhorse/cli/__init__.py::ConsoleEntry` @19166d483bcf
-- code: `workhorse/workhorse/cli/parser.py::Command` @b2608d144559
-- code: `workhorse/workhorse/cli/parser.py::COMMANDS` @b2608d144559
-- code: `workhorse/workhorse/cli/parser.py::build_parser` @b2608d144559
+- code: `workhorse/workhorse/cli/__init__.py::console_script` @408aa8a4f987
+- code: `workhorse/workhorse/cli/__init__.py::main` @408aa8a4f987
+- code: `workhorse/workhorse/cli/__init__.py::ConsoleEntry` @408aa8a4f987
+- code: `workhorse/workhorse/cli/parser.py::Command` @6b7ae77922ce
+- code: `workhorse/workhorse/cli/parser.py::COMMANDS` @6b7ae77922ce
+- code: `workhorse/workhorse/cli/parser.py::build_parser` @6b7ae77922ce
 - tests: `workhorse/tests/test_console_script.py::test_console_script_returns_the_callable_without_running_it`
 - tests: `workhorse/tests/test_console_script.py::test_a_bare_name_is_not_enough_to_build_a_script`
 - detail: [Console script documentation selection](console-script-documentation-selection.md)
@@ -37,7 +37,7 @@ registry remains bound in the closure that invokes `main`.
 - returns: the callable entry point without executing the workflow during construction
 - verify: exit_status(code=0)
 - verify: exit_status(code=1)
-- code: `workhorse/workhorse/cli/__init__.py::console_script` @19166d483bcf
+- code: `workhorse/workhorse/cli/__init__.py::console_script` @408aa8a4f987
 - detail: [Console script import selection](console-script-import-selection.md)
 - detail: [Console script concept scope](console-script-concept-scope.md)
 
@@ -49,7 +49,7 @@ registry remains bound in the closure that invokes `main`.
 - does: attach the supplied registry and workflow name to the parsed namespace
 - does: dispatch through the selected `Command` row
 - verify: exit_status(code=0)
-- code: `workhorse/workhorse/cli/__init__.py::main` @19166d483bcf
+- code: `workhorse/workhorse/cli/__init__.py::main` @408aa8a4f987
 - detail: [Main import selection](main-import-selection.md)
 
 ### build-parser
@@ -58,4 +58,4 @@ registry remains bound in the closure that invokes `main`.
 - does: register one subparser for each command row in `COMMANDS`
 - returns: a parser with `command` as the selected-subcommand destination
 - verify: count(subject="registered workflow CLI subcommands", equals=5)
-- code: `workhorse/workhorse/cli/parser.py::build_parser` @b2608d144559
+- code: `workhorse/workhorse/cli/parser.py::build_parser` @6b7ae77922ce

@@ -12,7 +12,7 @@ engine: `run` is intentionally absent because resolving a workflow name must not
 artifact writing, agent execution, or runtime configuration into the declaration import.
 The workhorse command surface points here for the complete pyflow import contract.
 
-- code: `workhorse/workhorse/pyflow/__init__.py::__all__` @f57f935784ea
+- code: `workhorse/workhorse/pyflow/__init__.py::__all__` @7d0a71971848
 - detail: [workhorse command surface](../workhorse.md)
 
 ## Exports

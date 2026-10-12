@@ -16,7 +16,7 @@ import every adapter to map a name to a class, so putting it beside the port wou
 means importing the type costs one small module, and only code that actually *selects* a backend
 pays for the adapters.
 
-- code: `workhorse/workhorse/runner/backends/registry.py::get_backend` @3df83a107adb
+- code: `workhorse/workhorse/runner/backends/registry.py::get_backend` @da60c2e93d28
 
 The selector's default, precedence, validation, environment-variable handling, caching, and
 backend registration behavior are covered by tests in
@@ -53,13 +53,13 @@ and `test_non_claude_backends_registered`.
 - does: returns the selectable registry names in sorted order
 - returns: `['claude', 'cline', 'codex', 'copilot', 'opencode']`
 - verify: count(subject="selectable backend names", equals=5)
-- code: `workhorse/workhorse/runner/backends/registry.py::backend_names` @3df83a107adb
+- code: `workhorse/workhorse/runner/backends/registry.py::backend_names` @da60c2e93d28
 
 ### active_cli
 - sig: `active_cli(name: str | None = None, cfg: dict[str, Any] | None = None) -> str`
 - does: picks the CLI name by the resolution order above, reading `default_cli` from `cfg` when one is given
 - returns: the chosen name, stripped and lowercased, unvalidated
-- code: `workhorse/workhorse/runner/backends/registry.py::active_cli` @3df83a107adb
+- code: `workhorse/workhorse/runner/backends/registry.py::active_cli` @da60c2e93d28
 - tests: `workhorse/tests/test_model_resolution.py::test_the_cli_a_run_starts_on_is_the_one_its_flag_names`
 
 ### get_backend
@@ -68,7 +68,7 @@ and `test_non_claude_backends_registered`.
 - raises: `ValueError` for an unknown resolved name
 - returns: the cached `AgentBackend` instance registered for the resolved name
 - verify: count(subject="backend instances returned for the same name", equals=1)
-- code: `workhorse/workhorse/runner/backends/registry.py::get_backend` @3df83a107adb
+- code: `workhorse/workhorse/runner/backends/registry.py::get_backend` @da60c2e93d28
 
 ## The registry
 
