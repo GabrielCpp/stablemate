@@ -271,6 +271,18 @@ it, and a scenario whose `covers=` names nothing owed. Stateful behaviour exerci
 persistence, reload and isolation. A contract consumer uses the real producer when the repo
 declares one.
 
+### A 500 is a defect
+
+A status of 500 or higher is an engineering failure in the product, whatever the book says
+the code does today. A plan never asserts one as the expected outcome, and `expect_status=`
+lists only the statuses the product owes. A 500 there turns the defect into a pass.
+
+- A 500 on what the slice sends is a finding. The story fixes it.
+- A 500 the book records for input the slice never sends, such as a malformed id only a
+  hand-made request carries, is an improvement the working slice does not need. The plan
+  leaves that input out of its scenarios. `qa-plan.md` names the 500 under the obligation,
+  and `backlog-items.json` carries the improvement: answer the client error instead.
+
 ### Declared checks
 
 Every obligation row carries `checksDeclared`: the observations its `verify:` bullets
