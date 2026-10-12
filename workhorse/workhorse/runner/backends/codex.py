@@ -13,6 +13,7 @@ from workhorse.config_run import AgentResilience
 from workhorse.runner import usage as _usage
 from workhorse.runner.backends import AgentProfile, git_worktree
 from workhorse.runner.backends.codex_guard import Policy, hook_command
+from workhorse.runner.backends.delegates import Delegate
 from workhorse.runner.backends.jsonl import JsonlBackend
 from workhorse.runner.backends.turn import (
     TurnState,
@@ -69,6 +70,40 @@ def flags_with_policy_file(policy: Policy | None) -> Iterator[list[str]]:
         policy_path.unlink(missing_ok=True)
 
 
+def _codex_effort(effort: str) -> str:
+    return "high" if effort in ("xhigh", "max") else effort
+
+
+def _role_toml(delegate: Delegate) -> str:
+    """A codex agent role's config layer: the delegate's model, effort, sandbox and instructions."""
+    _, slug = _parse_codex_model(delegate.model)
+    lines = [f"model = {json.dumps(slug or delegate.model)}"]
+    if delegate.effort:
+        lines.append(f"model_reasoning_effort = {json.dumps(_codex_effort(delegate.effort))}")
+    if delegate.read_only:
+        lines.append('sandbox_mode = "read-only"')
+    lines.append(f"developer_instructions = {json.dumps(delegate.instructions)}")
+    return "\n".join(lines) + "\n"
+
+
+@contextmanager
+def flags_with_role_files(delegates: tuple[Delegate, ...]) -> Iterator[list[str]]:
+    """The ``-c agents.*`` flags that define each delegate as a codex agent role, with its role file lasting as long as the turn."""
+    if not delegates:
+        yield []
+        return
+    with tempfile.TemporaryDirectory(prefix="codex-roles-") as directory:
+        flags: list[str] = []
+        for delegate in delegates:
+            role_file = Path(directory) / f"{delegate.name}.toml"
+            _ = role_file.write_text(_role_toml(delegate), encoding="utf-8")
+            flags += [
+                "-c", f"agents.{delegate.name}.description={json.dumps(delegate.description)}",
+                "-c", f"agents.{delegate.name}.config_file={json.dumps(str(role_file))}",
+            ]
+        yield flags
+
+
 NON_FAILURE_MARKERS = ("apply_patch verification failed", "blocked by PreToolUse hook", "`--dangerously-bypass-hook-trust` is enabled")
 
 
@@ -114,6 +149,7 @@ class CodexBackend(JsonlBackend):
         add_dirs: list[str] | None = None,
         effort: str | None = None,
         agent: AgentProfile | None = None,
+        delegates: tuple[Delegate, ...] = (),
     ) -> str:
         sid = read_session_id(session_id_path)
         profile, model_slug = _parse_codex_model(model)
@@ -128,14 +164,16 @@ class CodexBackend(JsonlBackend):
         if model_slug:
             flags += ["-m", model_slug]
         if effort:
-            codex_effort = "high" if effort in ("xhigh", "max") else effort
-            flags += ["-c", f'model_reasoning_effort="{codex_effort}"']
-        with flags_with_policy_file(guard_policy(agent, cwd, add_dirs)) as hook_flags:
+            flags += ["-c", f'model_reasoning_effort="{_codex_effort(effort)}"']
+        with (
+            flags_with_policy_file(guard_policy(agent, cwd, add_dirs)) as hook_flags,
+            flags_with_role_files(delegates) as role_flags,
+        ):
             if sid:
-                cmd = [*head, "exec", "resume", *flags, *hook_flags, sid, "-"]
+                cmd = [*head, "exec", "resume", *flags, *hook_flags, *role_flags, sid, "-"]
                 print(f"[{node_id}] 🔄 Resuming codex session: {sid[:8]}...", flush=True)
             else:
-                cmd = [*head, "exec", *flags, *hook_flags, "-"]
+                cmd = [*head, "exec", *flags, *hook_flags, *role_flags, "-"]
             state = self.stream(
                 cmd, node_id, timeout, prompt, recording(_on_event, session_id_path),
                 resilience=resilience, cwd=cwd,

@@ -13,10 +13,12 @@ from workhorse.runner import failure as _failure
 from workhorse.runner import process as _process
 from workhorse.runner import usage as _usage
 from workhorse.runner.backends import AgentBackend, AgentProfile, git_worktree
+from workhorse.runner.backends.delegates import Delegate
 
 
 _OUTLIVING_TOOLS = ("Workflow", "Monitor", "ScheduleWakeup", "CronCreate", "RemoteTrigger")
 _FOREGROUND_ENV = {"CLAUDE_CODE_DISABLE_BACKGROUND_TASKS": "1"}
+_READ_ONLY_TOOLS = ("Read", "Grep", "Glob", "Bash")
 
 
 class ClaudeBackend(AgentBackend):
@@ -40,6 +42,7 @@ class ClaudeBackend(AgentBackend):
         add_dirs: list[str] | None = None,
         effort: str | None = None,
         agent: AgentProfile | None = None,
+        delegates: tuple[Delegate, ...] = (),
     ) -> str:
         """Run one Claude CLI turn and return its final result text."""
         cmd = [
@@ -58,6 +61,8 @@ class ClaudeBackend(AgentBackend):
             cmd.extend(["--max-turns", str(agent.steps)])
         for directory in [*(add_dirs or []), *_skill_dirs(agent, cwd)]:
             cmd.extend(["--add-dir", directory])
+        if delegates:
+            cmd.extend(["--agents", _agents_json(delegates)])
         cmd.append("-p")
 
         if session_id_path and session_id_path.exists():
@@ -172,6 +177,23 @@ class ClaudeBackend(AgentBackend):
 
 _CONFINED_TOOLS = ("Skill", "Read", "Edit", "Write", "Glob", "Grep")
 _SKILL_DIR = ".claude/skills"
+
+
+def _agents_json(delegates: tuple[Delegate, ...]) -> str:
+    """The ``--agents`` value that defines each delegate as a subagent for this session."""
+    agents: dict[str, dict[str, object]] = {}
+    for delegate in delegates:
+        entry: dict[str, object] = {
+            "description": delegate.description,
+            "prompt": delegate.instructions,
+            "model": delegate.model,
+        }
+        if delegate.effort:
+            entry["effort"] = delegate.effort
+        if delegate.read_only:
+            entry["tools"] = list(_READ_ONLY_TOOLS)
+        agents[delegate.name] = entry
+    return json.dumps(agents)
 
 
 def _permission_flags(agent: AgentProfile | None) -> list[str]:

@@ -10,6 +10,7 @@ from workhorse.runner.failure import BackendInvocationError
 
 if TYPE_CHECKING:
     from workhorse.config_run import AgentResilience
+    from workhorse.runner.backends.delegates import Delegate
 
 
 class NullBackend(AgentBackend):
@@ -33,6 +34,7 @@ class NullBackend(AgentBackend):
         add_dirs: list[str] | None = None,
         effort: str | None = None,
         agent: AgentProfile | None = None,
+        delegates: tuple[Delegate, ...] = (),
     ) -> str:
         raise BackendInvocationError(
             f"node {node_id!r} needs an agent CLI and this run has none — "

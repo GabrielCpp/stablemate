@@ -19,6 +19,7 @@ from workhorse.runner.backends import (
     git_worktree,
     prepare_argv_prompt,
 )
+from workhorse.runner.backends.delegates import Delegate
 from workhorse.runner.backends.jsonl import JsonlBackend
 from workhorse.runner.backends.turn import (
     TurnState,
@@ -186,12 +187,29 @@ def _agent_config(
     return config
 
 
+def _delegate_config(delegate: Delegate) -> dict[str, Any]:
+    """One delegate as an opencode subagent entry."""
+    entry: dict[str, Any] = {
+        "mode": "subagent",
+        "model": delegate.model,
+        "description": delegate.description,
+        "prompt": delegate.instructions,
+    }
+    variant = _OPENCODE_VARIANT.get(delegate.effort, delegate.effort) if delegate.effort else ""
+    if variant:
+        entry["variant"] = variant
+    if delegate.read_only:
+        entry["permission"] = {"edit": "deny"}
+    return entry
+
+
 def _config_content(
     operator: str | None,
     model: str | None,
     agent: AgentProfile | None,
     cwd: str | None = None,
     add_dirs: list[str] | None = None,
+    delegates: tuple[Delegate, ...] = (),
 ) -> str | None:
     """The ``OPENCODE_CONFIG_CONTENT`` for this turn, merged over whatever the operator configured.
 
@@ -212,6 +230,8 @@ def _config_content(
         overlay["small_model"] = model
     if agent is not None:
         overlay = _merge(overlay, _agent_config(agent, cwd, add_dirs))
+    if delegates:
+        overlay = _merge(overlay, {"agent": {d.name: _delegate_config(d) for d in delegates}})
     if not overlay:
         return operator
     return json.dumps(_merge(base, overlay))
@@ -303,6 +323,7 @@ class OpenCodeBackend(JsonlBackend):
         add_dirs: list[str] | None = None,
         effort: str | None = None,
         agent: AgentProfile | None = None,
+        delegates: tuple[Delegate, ...] = (),
     ) -> str:
         sid = read_session_id(session_id_path)
         argv_prompt, attachment = prepare_argv_prompt(prompt, prompt_path)
@@ -333,7 +354,7 @@ class OpenCodeBackend(JsonlBackend):
         ensure_prompt_is_not_in_argv(prompt, cmd)
         env_extra = self.harness_env()
         config = _config_content(
-            env_extra.get(_OPENCODE_CONFIG_ENV), model, agent, cwd, add_dirs
+            env_extra.get(_OPENCODE_CONFIG_ENV), model, agent, cwd, add_dirs, delegates
         )
         if config is not None:
             env_extra = {**env_extra, _OPENCODE_CONFIG_ENV: config}

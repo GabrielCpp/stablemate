@@ -13,7 +13,7 @@ from workhorse import control, otel, reload
 from workhorse.artifacts import write_unlinked
 from workhorse.config_run import AgentResilience, RunConfig
 from workhorse.context import WorkflowContext
-from workhorse.profile import ProfileSelection, resolve_power_settings
+from workhorse.profile import ProfileSelection, resolve_delegates_for, resolve_power_settings
 from workhorse.runner.backends import AgentProfile
 from workhorse.runner.caps import cap_delay_seconds, sleep_with_notice
 from workhorse._vendor.stablemate_core.clock import SYSTEM_CLOCK, Clock
@@ -482,6 +482,7 @@ class AgentRunner:
         short_attempt = 0
         cap_waits = 0
         attempt_prompt = prompt
+        delegates = resolve_delegates_for(backend.name, self.profile.name)
         while True:
             try:
                 print(f"[{node_id}] 🚀 Invoking {backend.name} (model: {model or 'default'})", flush=True)
@@ -513,6 +514,7 @@ class AgentRunner:
                         add_dirs=add_dirs,
                         effort=effort,
                         agent=agent,
+                        delegates=delegates,
                     )
                 otel.turn_end()
                 return result

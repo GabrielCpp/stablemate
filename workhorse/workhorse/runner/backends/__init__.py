@@ -12,6 +12,7 @@ from workhorse.runner.failure import BackendInvocationError
 
 if TYPE_CHECKING:
     from workhorse.config_run import AgentResilience
+    from workhorse.runner.backends.delegates import Delegate
 
 
 ARGV_PROMPT_LIMIT_BYTES = 96 * 1024
@@ -118,8 +119,13 @@ class AgentBackend(ABC):
         add_dirs: list[str] | None = None,
         effort: str | None = None,
         agent: AgentProfile | None = None,
+        delegates: tuple[Delegate, ...] = (),
     ) -> str:
-        """Run one non-interactive turn for ``prompt`` and return the final result text."""
+        """Run one non-interactive turn for ``prompt`` and return the final result text.
+
+        ``delegates`` are the subagents the turn may hand narrow work to. A backend
+        defines them for its CLI at launch, or warns once that its CLI cannot.
+        """
 
     @abstractmethod
     def compact(

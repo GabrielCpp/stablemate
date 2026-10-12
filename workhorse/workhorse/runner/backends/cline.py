@@ -12,6 +12,7 @@ from workhorse.runner.backends import (
     ensure_prompt_is_not_in_argv,
     prepare_argv_prompt,
 )
+from workhorse.runner.backends.delegates import Delegate, warn_unsupported
 from workhorse.runner.backends.jsonl import JsonlBackend
 from workhorse.runner.backends.turn import (
     TurnState,
@@ -69,7 +70,9 @@ class ClineBackend(JsonlBackend):
         add_dirs: list[str] | None = None,
         effort: str | None = None,
         agent: AgentProfile | None = None,
+        delegates: tuple[Delegate, ...] = (),
     ) -> str:
+        warn_unsupported(self.name, delegates)
         sid = read_session_id(session_id_path)
         argv_prompt, _attachment = prepare_argv_prompt(prompt, prompt_path)
         cmd = [

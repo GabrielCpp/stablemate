@@ -11,6 +11,7 @@ holds a piece several adapters share. A new CLI gets its own module and a line h
 - `codex_guard.py`: the hook that holds a confined codex turn to its policy. It owns the policy, the patch check and the hook entry.
 - `codex_shell.py`: the judge of one shell call a confined codex turn makes.
 - `copilot.py`: the GitHub Copilot CLI's event vocabulary and adapter.
+- `delegates.py`: the subagent roles a turn may hand narrow work to, and the models the operator's profile gives them.
 - `jsonl.py`: the newline-delimited JSON event loop the CLIs that speak one share.
 - `null.py`: the absence of an agent CLI, as an adapter.
 - `opencode.py`: the OpenCode CLI's event vocabulary and adapter, and the probe for its provider's usage-window reset.

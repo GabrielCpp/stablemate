@@ -20,10 +20,12 @@ from workhorse._vendor.stablemate_core.profiles import (
     UnknownProfileError,
     profile_has_backend,
     resolve_backend_default,
+    resolve_delegates,
     resolve_power,
     select_profile,
 )
 from workhorse.records import parse_run_record
+from workhorse.runner.backends.delegates import Delegate, delegates_for
 from workhorse.runner.backends.registry import active_cli, backend_names, get_backend
 
 if TYPE_CHECKING:
@@ -93,6 +95,11 @@ def resolve_power_settings(
     model = mapped.model or model_override or fallback.model
     scale = mapped.timeout_scale or fallback.timeout_scale or 1.0
     return model, mapped.effort or fallback.effort, scale
+
+
+def resolve_delegates_for(backend_name: str, profile: str = "") -> tuple[Delegate, ...]:
+    """The subagents ``profile`` gives a turn on ``backend_name``: none unless it names a model for a role."""
+    return delegates_for(resolve_delegates(backend_name, _profile_config(profile)))
 
 
 def implied_profile(cfg: dict[str, Any], cli: str) -> str:
