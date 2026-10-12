@@ -106,6 +106,12 @@ A third reference is neither face — it is the format ostler *executes*:
   `qa_plan.py`: the `plan`/`target`/`background`/`secret`/`input_file` declarations, the `@scenario`
   decorator, everything a scenario reaches through `qa`, and the rules validation enforces. Read
   it when you are writing or repairing a QA plan.
+- **[references/qa-harness-reference.md](references/qa-harness-reference.md)** — each `qa.*`
+  call's arguments, return value and failure: `qa.http`, `qa.fixture`, `@node.key` and `$name`
+  references, the address book behind `{name}` in a `base_url`, `qa.window()`,
+  `qa.diagnostics`, `qa.tree`, and how the validator matches a `qa.verify` call to the
+  book's declaration. With `ostler checks <name>`, it is the whole harness contract. Read it
+  before a plan calls anything the authoring guide does not show.
 
 **[scripts/check_staged_files.py](scripts/check_staged_files.py)** is the `pre-commit` half of
 that format: a run writes traces, videos and a ledger under `<spec>/qa/`, and this refuses to
