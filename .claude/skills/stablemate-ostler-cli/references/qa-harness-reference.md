@@ -187,5 +187,7 @@ on any of these:
 `qa.answer_dialogs("accept")` or `qa.answer_dialogs("dismiss")` answers every dialog the page
 opens after the call, as the user clicking OK or Cancel.
 
-A scenario that proves the page's error path drives it without a 5xx: `route.abort()` for a
-network failure, or a 4xx status the product treats as a failure.
+A 500 is an engineering failure in the product. The check exists to catch it, so a plan never
+fakes one and never asserts one as expected. A scenario that proves the page's error path
+uses a failure the product is built to return: a 4xx the book documents for that route, or a
+network failure with `route.abort()`.
