@@ -12,8 +12,9 @@ never starts a service and leaves it running.
   bullets are `driver`, `entry-url`, `health-path`, `identity`, `reuse`/`fresh`,
   `boot-timeout`, `health-timeout` and an optional `stop`. Its `## Steps` section holds the
   ordered boot steps, each a `### <id>` with `kind: prepare | service | seed | health` and a
-  `run:`. The full spec is `ostler/docs/okf-runbook.md`. A recipe written anywhere else is
-  invisible to the workflow.
+  `run:`.{% if has_skill("ostler-cli") %} The full spec is
+  `{{ skill_path("ostler-cli", "references/okf-runbook.md") }}`.{% endif %} A recipe written
+  anywhere else is invisible to the workflow.
 - **A stale build.** The `service` step must rebuild from the working tree. The default
   `reuse: if-fresh` with no `fresh` probe never adopts a serving stack. Mark `reuse: always`
   only for a code-independent stack: a stock database or emulator with fixtures.

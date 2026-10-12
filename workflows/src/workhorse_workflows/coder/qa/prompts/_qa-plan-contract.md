@@ -182,6 +182,18 @@ obligation is the story's central claim and no reachable state discriminates at 
 | `qa.diagnostics.layout()` | each region's box as a share of the viewport |
 | `qa.maestro.flow([...])` / `qa.maestro.run(flow)` | build and run a Maestro flow |
 
+This table is the short form. The planner reads the harness contract in full in place of
+ostler's own code:
+
+{% if has_skill("ostler-cli") %}
+- `{{ skill_path("ostler-cli", "references/qa-harness-reference.md") }}`: each call's
+  arguments, return value and failure, including `qa.fixture`, `@node.key` references, the
+  `{name}` address book, `qa.window()`, `qa.tree` and how validation matches a `qa.verify`
+  call to the book.
+{% endif %}
+- `ostler checks <name>`: one check's signature, the defect it excludes and what
+  `qa.verify` observes for it.
+
 Anything the page has to reach is `eventually`, and anything later lines depend on is
 `require_eventually`. `qa.check` receives a collapsed bool, so hand over a sampler instead.
 When a precondition is a plain `eventually` and never arrives, the next line dereferences a
@@ -199,8 +211,10 @@ locator that exists only when a check above passed, that check is a `require`.
 - **Screenshot every documented state a browser scenario reaches.** `qa.screenshot(name)`
   writes a `.layout.json` beside it, and the audit reads it to judge whether the page is laid
   out at all.
-- **Do not invent CLI flags, routes or output shapes.** Check `--help`, the source or the
-  layer's QA skill.
+- **Take every CLI flag, route and output shape from where it is defined.** A product
+  route or output comes from the product's own source and the book. A product command's
+  flags come from its `--help`. An ostler command's flags come from its
+  `--help`{% if has_skill("ostler-cli") %} and {{ skill_command("ostler-cli") }}{% endif %}.
 - **Defeat the test runner's result cache.** A cached runner replays an old pass in the same
   words. Pass the runner's flag that forces execution on every invocation the evidence
   depends on.
