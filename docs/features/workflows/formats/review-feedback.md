@@ -9,7 +9,7 @@ title: Coder review feedback
 - code: `workflows/src/workhorse_workflows/coder/shared/schemas/review.py::Feedback` @2f54962a8770
 - detail: [coder review schema contracts](../concepts/coder-review-schema-contracts.md)
 - detail: [coder review shared nodes](../concepts/coder-review-shared-review.md)
-- detail: [workflow kit run inbox](../../workhorse/concepts/run-inbox.md)
+- detail: [workflow kit run inbox](../../workhorse/concepts/operator-inbox.md)
 
 Feedback is the non-blocking operator note polled after approval or settlement. If present, the
 review flow consumes it and spends exactly one apply pass; if absent, the flow returns its result.

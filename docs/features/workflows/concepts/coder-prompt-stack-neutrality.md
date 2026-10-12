@@ -38,5 +38,5 @@ prompt.
 - code: `workflows/src/workhorse_workflows/coder/dev/prompts/plan-story.md` @131328188261
 - tests: `workflows/tests/coder/test_prompt_stack_neutrality.py::test_each_prompt_is_neutral_for_the_stack_that_renders_it`
 - detail: [Coder prompt role resolution](coder-prompt-role-resolution.md)
-- detail: [`find_by_tags`](../../workhorse/concepts/template-globals.md#find_by_tagstags)
-- detail: [prompt rendering](../../workhorse/concepts/render-prompt.md)
+- detail: [`find_by_tags`](../../workhorse/concepts/prompt-rendering.md#prompt-rendering)
+- detail: [prompt rendering](../../workhorse/concepts/prompt-rendering.md)

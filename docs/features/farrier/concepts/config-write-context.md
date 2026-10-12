@@ -13,7 +13,7 @@ calling that same writer with the path converted to a string.
 
 The [Farrier home-config node](../formats/home-config.md#reading-and-writing) presents that writer in the
 context of Farrier's user-facing configuration commands and explains why those commands cannot
-write nested tables. The [Workhorse config node](../../workhorse/concepts/config.md#write_config_key)
+write nested tables. The [Workhorse config node](../../workhorse/concepts/profiles-and-config.md#profiles-and-config)
 is the cross-tool persistence reference: it describes the shared API, schema guard, wrappers, and
 consumers. Both views are current, and neither supersedes the other.
 

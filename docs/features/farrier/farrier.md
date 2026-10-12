@@ -307,7 +307,7 @@ it — are the operator's to choose, not farrier's.
 - usage: `farrier install --user [--check] [--home DIR] [--library DIR]`
 - flags:
   - `--user` — install into the harness home directories instead of a repo. Selection comes from
-    the [shared config file](../workhorse/concepts/config.md), not from an `agents.yml`; no repo
+    the [shared config file](../workhorse/concepts/profiles-and-config.md), not from an `agents.yml`; no repo
     is read and none is written to.
   - `--home <dir>` — the home directory to install into. Default: `~`. It exists for tests and
     for a container that keeps its agent config somewhere other than `$HOME`.
@@ -386,12 +386,12 @@ it — are the operator's to choose, not farrier's.
 - usage: `farrier config [--config PATH] <set-library|set-stablemate|set-base|set-worktree|show> [args]`
 - flags:
   - `--config <path>` — goes **before** the action (`farrier config --config ./c.toml show`):
-    the [shared config file](../workhorse/concepts/config.md)
+    the [shared config file](../workhorse/concepts/profiles-and-config.md)
     every config verb reads and writes, instead of the discovered one. It is written back to
     `$STABLEMATE_CONFIG` rather than threaded, because `read_config` and every writer resolve
     the path themselves — one assignment moves them together. It lets the question be asked of a
     config that is not this machine's home one (a CI file, the copy a container was launched with).
-  - `show --profile <name>` — print one [`[profiles.<name>]`](../workhorse/concepts/config.md#profiles)
+  - `show --profile <name>` — print one [`[profiles.<name>]`](../workhorse/concepts/profiles-and-config.md#profiles-and-config)
     table instead of the top level, flattened to one dotted line per leaf
     (`power.high.claude.model=haiku`). A profile **replaces** the top-level tables rather than
     layering over them, so what it prints is the whole config that run resolves from, and two
@@ -443,10 +443,10 @@ it — are the operator's to choose, not farrier's.
    `farrier/tests/test_config_profiles_cli.py::test_an_unknown_profile_exits_cleanly_and_lists_the_ones_there_are`,
    `farrier/tests/test_config_profiles_cli.py::test_set_worktree_records_a_directory_that_does_not_exist_yet`
 
-The one command that reads and writes the [shared config file](../workhorse/concepts/config.md):
+The one command that reads and writes the [shared config file](../workhorse/concepts/profiles-and-config.md):
 workhorse is a library and ships no `config` of its own, so `agents.mk` and other scripts go
 through farrier for every shared setting. The nested `[power.<tier>.<backend>]` and
-[`[profiles.<name>]`](../workhorse/concepts/config.md#profiles) tables have no writer subcommand
+[`[profiles.<name>]`](../workhorse/concepts/profiles-and-config.md#profiles-and-config) tables have no writer subcommand
 — they are edited by hand, and read back with `show --profile`.
 
 ### library
