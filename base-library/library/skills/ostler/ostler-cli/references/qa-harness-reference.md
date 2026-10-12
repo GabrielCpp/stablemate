@@ -73,6 +73,10 @@ It puts the product into a state the book or the repo declared, and records that
 - It returns a `ToolResult(command, stdout, stderr, exit_code)` with `.ok` and `.json()`.
 - It raises `RuntimeError` when a step fails. The message names the step and the state
   that is missing.
+- Each step runs in the step's `cwd`, or the repo root. It inherits the run's environment,
+  so `$STABLEMATE_LEASE` names the run's copy and `$STABLEMATE_ADDRESS_BOOK` its book. A step
+  that runs a command inside a service of that copy goes through `ostler env compose`, as
+  ostler-okf's `stack.md` shows.
 
 The fixtures a story may stand up are the ones its `## Fixtures` section and the context
 packet name. The QA prompt lists them.

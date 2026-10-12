@@ -102,6 +102,18 @@ from its `stack.yml` as that copy, and the coder workflow does the same under th
 A call without a lease keeps the stack the book's runbook declares, and takes the shared copy
 only where no runbook declares one.
 
+A fixture or a step that runs a command inside a service reaches it through `ostler env
+compose`. The copy defaults to `$STABLEMATE_LEASE`, so the same line serves every run. Compose
+names each service `<book>-<service>`:
+
+```bash
+timeout 60 ostler env compose -- exec -T api-db mysql -e 'select 1'
+timeout 30 ostler env compose -- ps --format '{{.Service}} {{.Name}}'
+```
+
+A container's name is `<repo>-<copy>-<book>-<service>-1`. It starts with the checkout's
+directory name, so a `docker ps` filter on the lease alone finds it only unanchored.
+
 A run killed before its teardown does not leave its copy up for good. The next leased bring-up
 on the machine tears down every copy whose run is gone, and says which. A copy brought up by
 hand, outside any run, has no holder and stays until `ostler env down` removes it.
