@@ -20,7 +20,7 @@ from workhorse_workflows.okf_book.main.nodes.exercise import USAGE as EXERCISE_U
 from workhorse_workflows.okf_book.main.nodes.exercise import run_exercise
 from workhorse_workflows.okf_book.main.nodes.writer_jobs import Start, Work, finish_job
 from workhorse_workflows.okf_book.main.nodes.writer_stack import KeptStack
-from workhorse_workflows.okf_book.main.nodes.writer_ostler import GC_USAGE, INDEX_DIR_REFUSED, NO_DEAD_PAGE, USAGE as OSTLER_USAGE, run_ostler
+from workhorse_workflows.okf_book.main.nodes.writer_ostler import GC_USAGE, INDEX_DIR_REFUSED, NO_DEAD_PAGE, RELINK_USAGE, USAGE as OSTLER_USAGE, run_ostler
 from workhorse_workflows.okf_book.main.nodes.turn_budget import PROMPT_AND_SKILL_ALLOWANCE_TOKENS, folder_tokens
 from workhorse_workflows.okf_book.main.nodes.surface import Surface, SurfaceKind
 from workhorse_workflows.okf_book.main.nodes.writer_request import WriterRequest
@@ -220,6 +220,24 @@ def test_the_ostler_gc_deletes_only_the_unlinked_pages_of_the_writers_book(tmp_p
     assert (repo / "docs/features/other/stray.md").is_file()
     assert run_ostler([str(path), "gc"]) == CommandOutput(0, (NO_DEAD_PAGE,))
     assert run_ostler([str(path), "gc", "--json"]) == CommandOutput(2, (GC_USAGE,))
+
+
+def test_the_ostler_relink_points_only_other_books_links_at_the_new_page(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    for service in ("ledger", "other"):
+        _book_with_a_stray_page(repo, service)
+    linking = repo / "docs/features/other/kept.md"
+    own = repo / "docs/features/ledger/kept.md"
+    for page in (linking, own):
+        _ = page.write_text(page.read_text(encoding="utf-8") + "\nSee [stray](../ledger/stray.md#sums).\n", encoding="utf-8")
+    path = write_command_state(tmp_path / "run", WriterCommandState(root=repo, service="ledger"))
+
+    relinked = run_ostler([str(path), "relink", "stray.md", "kept.md"])
+
+    assert relinked == CommandOutput(0, ("relinked 1 links on docs/features/other/kept.md",))
+    assert "[stray](../ledger/kept.md#sums)" in linking.read_text(encoding="utf-8")
+    assert "[stray](../ledger/stray.md#sums)" in own.read_text(encoding="utf-8")
+    assert run_ostler([str(path), "relink", "stray.md", "../other/kept.md"]) == CommandOutput(2, (RELINK_USAGE,))
 
 
 def test_the_ostler_command_counts_its_runs_and_stops_at_the_cap(

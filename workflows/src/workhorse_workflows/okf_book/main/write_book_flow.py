@@ -21,7 +21,7 @@ from workhorse_workflows.okf_book.shared.blockers import Phase
 from workhorse_workflows.okf_book.shared.book_commits import book_commit_subject, unfinished_book_commit_subject
 from workhorse_workflows.okf_book.shared.book_flow import BookFlow
 from workhorse_workflows.okf_book.shared.book_run import ExerciseResult
-from workhorse_workflows.okf_book.shared.confine import Snapshot, book_changes, put_back_outside, snapshot
+from workhorse_workflows.okf_book.shared.confine import Snapshot, book_changes, kept_changes, put_back_outside, snapshot
 from workhorse_workflows.okf_book.shared.entries import FEATURES_DIR
 from workhorse_workflows.okf_book.shared.metrics import TurnMetric, record_turn, turn_metric
 from workhorse_workflows.okf_book.shared.page_check import PageProblem
@@ -144,7 +144,7 @@ class WriteBook(BookFlow):
         A turn that left pages has committed its book, whatever ended it. A retry after the commit landed finds nothing to commit. A refused commit waits for the operator.
         """
         service = self.surface_to_write.service
-        pages = book_changes(self.root, service, before)
+        pages = kept_changes(self.root, service, before, self.run_dir)
         waiting = self._commit_or_await(unfinished_book_commit_subject(service), pages, self.commit_unfinished, before=before, failure=failure)
         if waiting:
             return waiting
@@ -158,12 +158,13 @@ class WriteBook(BookFlow):
         return Continue(stray, self.stamp_book, before=before).because("stamp the book's pages")
 
     def stamp_book(self, before: Snapshot) -> Continue[...]:
-        """Stamp every page the writer changed in its book."""
+        """Stamp every page the writer changed in its book. The pages of other books it retargeted go to the commit unstamped."""
         root = self.root
-        pages = tuple(sorted(book_changes(root, self.surface_to_write.service, before)))
-        for page in pages:
+        service = self.surface_to_write.service
+        for page in book_changes(root, service, before):
             if page.endswith(".md") and (root / page).is_file():
                 _ = stamp_page(root, root / FEATURES_DIR, page)
+        pages = kept_changes(root, service, before, self.run_dir)
         return Continue(pages, self.render_agent_files, pages=pages).because("render the agent files")
 
     def render_agent_files(self, pages: tuple[str, ...]) -> Continue[...] | Await[...]:
