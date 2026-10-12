@@ -22,7 +22,7 @@ same shape as a boot step.
 | --- | --- | --- |
 | `args:` | no | The parameters this fixture takes, space-separated names. A `fixture:` bullet elsewhere passes them as `name=value` pairs; passing a name not in this list is `fixture-arg-mismatch`. An arg this fixture's own `needs:` bindings already supply need not also be passed by a `fixture:` caller — and if a caller passes it anyway, that is `fixture-arg-mismatch` too (two sources for one arg). |
 | `provides:` | no | Nested, one child per fact — the keys a `@<this-fixture>.<key>` reference on another node may read. Each child states where its fact comes from with its own `from:`/`read:` or `is:` children (below); an entry stating neither, or both, is `undetermined-provided-fact`. A reference naming a key not listed here is `fixture-undeclared-provides`. |
-| `needs:` | no | Nested, `link`. Another fixture this one composes on top of, referenced as a markdown link to that fixture's file. Runtime runs the needs target once per scenario with no args, then binds the binding's own `name=value` tokens into *this* fixture's env — so a binding's names must be names *this* fixture declares under its own `args:`, not the target's, and are `fixture-arg-mismatch` otherwise. A `needs:` chain that cycles is `fixture-needs-cycle`. A needs target that itself declares `args:` is `fixture-needs-target-args`, because runtime can never pass it anything. |
+| `needs:` | no | Nested, `link`. Another fixture this one composes on top of, referenced as a markdown link to that fixture's file. Runtime runs the needs target once per scenario with no args, then binds the binding's own `name=value` tokens into *this* fixture's env — so a binding's names must be names *this* fixture declares under its own `args:`, not the target's, and are `fixture-arg-mismatch` otherwise. A value is a literal, or `@<target>.<key>` to read a fact the target provides: `- needs:` then `  - [Signed-in API user](signed-in-api-user.md) token=@signed-in-api-user.token` puts the target's `token` in this fixture's steps as `$token`. A `needs:` chain that cycles is `fixture-needs-cycle`. A needs target that itself declares `args:` is `fixture-needs-target-args`, because runtime can never pass it anything. |
 | `secrets:` | no | Nested. Environment-variable NAMES this fixture's steps read — never a value or a mint recipe. The harness resolves each from its own environment at run time; a name that is not a valid environment-variable identifier is `fixture-secret-name`, and a name absent from the harness's environment at run time is a capability fault, not a book/code defect, because the step never got to run. Every claim that needs the fixture is gapped. |
 | `lifetime:` | no | How long what this fixture arranged is reused: `lap` or `scenario`. Left out, it is `lap`: the harness builds the fixture once with each set of args, and every scenario of the run that names it reads the same facts. Write `lifetime: scenario` on a fixture whose arrangement a scenario consumes or changes, such as a record the scenario deletes, so each scenario builds its own. A `scenario` fixture pays its whole build in every scenario that names it, so a sign-in or a seed that takes a minute costs an hour over sixty scenarios. Put what no scenario changes in a `lap` fixture this one `needs:`, and keep here only what each scenario must find fresh. |
 | `code:` | no | Link, **owns** its file — the script or program this fixture's steps call, whether or not it is one of the seven types whose own profile lists the key. |
@@ -192,9 +192,9 @@ fixture's `provides:` is the equivalent idea for what the arrangement itself lea
   the same fixture.
 - `needs:` links to another `fixture` node's file.
 - `@<fixture>.<key>` and `$<captured-name>` are the two reference forms a route path template,
-  a request-body value, a `fixture:` bullet's args, the value an `arrange:` or `trigger:` act types, or a
-  consuming node's `verify:` call may use — parsed by
-  `ostler.qa.references` and resolved statically by `compile_plan` (never executed in this pass).
+  a request-body value, a `fixture:` bullet's args, a `needs:` binding's value, the value an
+  `arrange:` or `trigger:` act types, or a consuming node's `verify:` call may use. The plan
+  compile checks each one statically, and the harness reads its value at run time.
 
 ## Minimal example
 
