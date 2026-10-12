@@ -102,6 +102,17 @@ from its `stack.yml` as that copy, and the coder workflow does the same under th
 A call without a lease keeps the stack the book's runbook declares, and takes the shared copy
 only where no runbook declares one.
 
+Each bring-up of a copy that is already up does the same work:
+
+- It rebuilds every built image from the checkout, through Docker's build cache, so an edit
+  reaches the copy on the next `up`. A service whose image or block changed is recreated.
+- It starts every `once` job again, so a job such as a migration or a seed is idempotent.
+- It keeps the copy's volumes. `ostler env up --fresh` drops them first, so the fixtures load
+  again.
+
+`ostler env down` and `ostler qa stack down --lease` drop the copy's volumes with it.
+`ostler env down --keep-data` keeps them for the next `up`.
+
 A fixture or a step that runs a command inside a service reaches it through `ostler env
 compose`. The copy defaults to `$STABLEMATE_LEASE`, so the same line serves every run. Compose
 names each service `<book>-<service>`:
