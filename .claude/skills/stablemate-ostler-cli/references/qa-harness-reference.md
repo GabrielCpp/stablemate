@@ -8,7 +8,8 @@ Editable path on this machine: `farrier source .claude/skills/stablemate-ostler-
 
 # The QA harness, call by call
 
-This page and `ostler checks` together are the whole harness contract a plan author needs.
+This page, `ostler checks` and ostler-okf's `check-vocabulary.md` together are the whole
+harness contract a plan author needs.
 [qa-plan-authoring.md](qa-plan-authoring.md) says how a plan is shaped. This page says what
 each `qa.*` call takes, returns and raises, and how the validator reads what you wrote.
 
@@ -17,6 +18,8 @@ each `qa.*` call takes, returns and raises, and how the validator reads what you
 `ostler checks <name>` prints one check's signature, the defect it excludes, and the line
 `in a plan, qa.verify observes …`. That line names what `qa.verify(name, observed, …)` takes
 as `observed`. `ostler checks` alone prints every check. `--json` gives the same as data.
+The signature names each argument and its type. What each argument means, such as which browser
+store `stored(records=...)` names, is the check's entry in ostler-okf's `check-vocabulary.md`.
 
 ```bash
 ostler checks emitted
