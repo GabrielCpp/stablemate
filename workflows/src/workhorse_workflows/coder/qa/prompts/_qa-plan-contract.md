@@ -175,6 +175,7 @@ obligation is the story's central claim and no reachable state discriminates at 
 | `qa.capture(key, value)` / `qa.get(key)` | publish a value into the ledger and read it back |
 | `qa.artifact(path, kind="...")` | register a file as evidence, resolved inside `qa.dir` |
 | `qa.secret("NAME")` | a declared secret's value, redacted from the ledger |
+| `qa.tool("name").run(*args, cwd=..., env=..., timeout=60)` | an opted-in command; it inherits the run's environment, and each name `env=` sets is declared once with `tool_env("NAME")` |
 | `qa.http.get/post/put/patch/delete(path, json_body=..., headers=..., expect_status=...)` | HTTP against `base_url` |
 | `qa.goto(url)`, `qa.by_role/by_label/by_test_id/by_text/by_css`, `qa.screenshot(name)`, `qa.page` | the browser, on a `playwright` target |
 | `qa.vet("docs/.../screen.md", name="loaded")` | photograph the screen and check it against the book's placement |
