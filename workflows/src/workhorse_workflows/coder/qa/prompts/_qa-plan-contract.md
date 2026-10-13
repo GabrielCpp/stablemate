@@ -233,7 +233,7 @@ locator that exists only when a check above passed, that check is a `require`.
   `qa/` path out: a pinned path writes into the scored ledger during a dry run.
 - **Arrangement is declared, not improvised.** State two scenarios share is a fixture node in
   the book (`docs/features/<surface>/fixtures/<name>.md`), reached with
-  `qa.fixture("name", arg=value)` by its exact name. A static input is
+  `qa.fixture("name", "arg=value")` by its exact name. A static input is
   `input_file("name", "qa-inputs/thing.json")`. State one scenario needs is reached by driving
   the product's documented operations inside a `qa.step`. Writing rows behind the product's
   back is not.
@@ -302,6 +302,23 @@ move. Shape the observed value to the declared arguments, never the reverse. One
 `qa.verify` may cover every sibling obligation that declares the same call. The ids in
 `covers=` and the check name are literal strings. An obligation with no `checksDeclared` is
 covered with `qa.check`, and `qa-plan.md` names it as a book gap.
+
+### The rest of an obligation row
+
+A row can carry four more lists from its book node. Validation reads none of them, so this
+section is all they ask of a plan.
+
+- `fixturesDeclared` comes from the node's `fixture:` bullets, in the order their `needs:`
+  require. Reach each with `qa.fixture("name", "arg=value")` before the claim's action. Its
+  `providesKeys` are the `@name.key` values later lines read through `qa.resolve`.
+- `arrangesNothing` is true when the book states that the node needs no arranged state.
+  The scenario arranges nothing for it.
+- `actsDeclared` comes from the node's `run:` and `arrange:` bullets. Each is a command, an
+  input or a request the book says drives the claim. Perform each one as written, inside a
+  `qa.step`.
+- `checksUnparsed`, `fixturesUnparsed`, `actsUnparsed` and `capturesUnparsed` hold bullets
+  ostler could not parse. Carry out what the bullet's text says by hand, and name each one
+  in `qa-plan.md` as a book gap.
 
 ### What `qa-plan.md` explains
 
