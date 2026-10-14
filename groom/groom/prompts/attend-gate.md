@@ -13,8 +13,8 @@ the supplied questions are the complete latest set shown in groom.
 ## The rules that do not bend
 
 **Every parked run requires both diagnosis skills.** Before investigating a parked
-run, invoke {{ skill_command("diagnosing-bugs") }} and {{ skill_command("root-cause") }},
-and follow the instructions each invocation loads. Apply diagnosing-bugs
+run, invoke {{ skill_command("isolating-causes") }} and {{ skill_command("root-cause") }},
+and follow the instructions each invocation loads. Apply isolating-causes
 to reproduce and locate the defect, and root-cause to evaluate each proposed fix
 before editing. Invoke both on every parked-run attendance, including a question
 whose answer appears obvious.

@@ -50,7 +50,7 @@ class _FakeProc:
 Configure = Callable[..., _Spawner]
 
 
-DIAGNOSIS_SKILLS = ("diagnosing-bugs", "root-cause")
+DIAGNOSIS_SKILLS = ("isolating-causes", "root-cause")
 
 
 def _skill(folder: Path, installed: str, name: str) -> None:
@@ -207,7 +207,7 @@ def test_the_doctrine_names_each_diagnosis_skill_by_the_command_that_loads_it(at
     job = _gate(spawner=attending())
     assert job is not None
     prompt = job.prompt()
-    assert "/diagnosing-bugs" in prompt and "/root-cause" in prompt
+    assert "/isolating-causes" in prompt and "/root-cause" in prompt
     assert "skill_command" not in prompt
 
 
@@ -230,7 +230,7 @@ def test_a_codex_attendant_gets_the_codex_invocation(attending: Configure, tmp_p
         _skill(tmp_path / "home/.agents/skills", name, name)
     job = _gate(spawner=spawner)
     assert job is not None
-    assert "$diagnosing-bugs" in job.prompt()
+    assert "$isolating-causes" in job.prompt()
 
 
 def test_a_missing_diagnosis_skill_turns_the_doctrine_into_a_refusal(attending: Configure, tmp_path: Path):
