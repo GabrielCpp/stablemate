@@ -33,7 +33,7 @@
 // to it alone (`onDetail`). That subscription is what replaced polling
 // `GET /worker/{id}/live` every five seconds from every open tab.
 
-import { html, render, useState, useEffect } from "/assets/htm-preact.js";
+import { html, render, useState, useEffect, useRef } from "/assets/htm-preact.js";
 
 // --------------------------------------------------------------------------- //
 // Store — one snapshot, subscribed to by every island
@@ -531,14 +531,29 @@ function rememberTrailView(view) {
   } catch (e) {}
 }
 
-function TrailLine({ line }) {
-  if (line.kind === "transcript") {
-    return html`<div class="log-line transcript">
+function TurnGroup({ line, opened }) {
+  const open = line.slug in opened ? opened[line.slug] : line.status === "running";
+  const toggled = (event) => {
+    const now = event.currentTarget.open;
+    if (now !== open) opened[line.slug] = now;
+  };
+  return html`<details class=${"log-line turn" + (line.cls ? " " + line.cls : "")}
+    open=${open} onToggle=${toggled}>
+    <summary class="lt-turn-head">
       <span class="lt-ts" title=${line.ts}>${line.ts}</span>
       <span class="lt-node">${line.node}</span>
-      <div class="lt-entry"><${AttendEntry} entry=${line.entry} /></div>
-    </div>`;
-  }
+      <span class="lt-slug">${line.slug}</span>
+      <span class=${"lt-status " + line.status}>${line.status}</span>
+      <span class="lt-dur">${line.duration}</span>
+    </summary>
+    <div class="lt-turn-body">
+      ${line.entries.map((entry) => html`<${AttendEntry} key=${entry.key} entry=${entry} />`)}
+    </div>
+  </details>`;
+}
+
+function TrailLine({ line, opened }) {
+  if (line.kind === "turn") return html`<${TurnGroup} line=${line} opened=${opened} />`;
   return html`<div class=${"log-line" + (line.cls ? " " + line.cls : "")}>
     <span class="lt-ts" title=${line.ts}>${line.ts}</span>
     <span class="lt-lvl">${line.level}</span>
@@ -554,8 +569,9 @@ function LogTrail({ lines }) {
     setView(id);
     rememberTrailView(id);
   };
+  const opened = useRef({}).current;
   const byView = lines.filter((line) =>
-    view === "all" ? true : (line.kind === "transcript") === (view === "transcript")
+    view === "all" ? !line.absorbed : (line.kind === "turn") === (view === "transcript")
   );
   const shown = kind && view !== "transcript" ? byView.filter((line) => line.kind === kind) : byView;
   return html`<div>
@@ -579,7 +595,7 @@ function LogTrail({ lines }) {
           </label>`}
     </div>
     <div class="log-trail" role="log" aria-label="Telemetry history" aria-live="polite">
-      ${shown.length ? shown.map((line, i) => html`<${TrailLine} key=${line.key ?? i} line=${line} />`)
+      ${shown.length ? shown.map((line, i) => html`<${TrailLine} key=${line.key ?? i} line=${line} opened=${opened} />`)
         : html`<div class="fd-empty">${lines.length
         ? "No records of this type in the recent history."
         : "No telemetry history has been received for this run yet."}</div>`}

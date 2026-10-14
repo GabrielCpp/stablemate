@@ -366,6 +366,41 @@ def test_the_transcript_filter_is_pressable_by_keyboard_and_remembered():
         page.close()
 
 
+def test_a_turn_group_is_open_while_running_and_remembers_the_operators_toggle():
+    from playwright.sync_api import expect
+
+    from groom import state
+
+    live = _live()
+    assert live is not None, _UNAVAILABLE
+    _write_transcript(state.WORKFLOWS["acme12345678"].runs_volume)
+    page = _open(live)
+    try:
+        page.click("#runs-list .row.blocked")
+        history = page.get_by_role("log", name="Telemetry history")
+        group = history.locator("details.turn")
+        expect(group).to_have_count(1)
+        expect(group).to_have_attribute("open", "")
+        summary = group.locator("summary.lt-turn-head")
+        expect(summary).to_contain_text("001-00001-implement")
+        expect(summary).to_contain_text("running")
+        expect(history).to_contain_text("MESSAGETEXT")
+        summary.focus()
+        page.keyboard.press("Enter")
+        expect(group).not_to_have_attribute("open", "")
+        expect(history.get_by_text("MESSAGETEXT")).not_to_be_visible()
+        page.get_by_role("button", name="Telemetry", exact=True).click()
+        expect(history.locator("details.turn")).to_have_count(0)
+        page.get_by_role("button", name="Transcript", exact=True).click()
+        expect(history.locator("details.turn")).not_to_have_attribute("open", "")
+        assert page.evaluate(
+            "() => document.querySelector('.log-trail').scrollWidth <= document.querySelector('.log-trail').clientWidth"
+        )
+        assert not _scan(page)
+    finally:
+        page.close()
+
+
 def test_files_pane_is_accessible():
     _check_mode("files")
 

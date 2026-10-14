@@ -1308,7 +1308,8 @@ def detail_metrics(run: str, limit: int = 60) -> list[dict[str, Any]]:
 def detail_spans(run: str) -> list[dict[str, Any]]:
     """Compact span identities for an open pane's snapshot and idempotent updates."""
     rows = read_connection().execute(
-        "SELECT span_id, node, name, start_ts, end_ts, status FROM spans"
+        "SELECT span_id, node, name, start_ts, end_ts, status,"
+        " json_extract(attrs_json, '$.\"workhorse.visit.slug\"') AS slug FROM spans"
         " WHERE run_id = ?",
         (run,),
     ).fetchall()

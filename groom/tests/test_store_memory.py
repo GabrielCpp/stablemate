@@ -90,6 +90,16 @@ def test_run_summaries_windows_out_old_runs():
         assert ids == {"recent"}
 
 
+def test_detail_spans_carry_the_turn_visit_slug():
+    with _DB():
+        store.insert_spans([
+            {**_span("R", "plan", 100, 101), "attrs": {"workhorse.visit.slug": "001-00001-plan"}},
+            _span("R", "other", 102, 103),
+        ])
+        rows = {row["node"]: row["slug"] for row in store.detail_spans("R")}
+        assert rows == {"plan": "001-00001-plan", "other": None}
+
+
 def test_query_spans_keyset_cursor_pages():
     with _DB():
         store.insert_spans([_span("R", "a", 100, 101)])

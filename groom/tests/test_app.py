@@ -314,7 +314,11 @@ def _transcript_line(text: str, ts: float) -> str:
 
 
 def _transcript_bodies(message: dict) -> list[str]:
-    return [line["body"] for line in message["detail"]["history"] if line["kind"] == "transcript"]
+    return [
+        entry["text"]
+        for line in message["detail"]["history"] if line["kind"] == "turn"
+        for entry in line["entries"]
+    ]
 
 
 def test_a_watched_native_run_pushes_its_transcript_seeded_then_tailed(tmp_path):
@@ -343,8 +347,8 @@ def test_a_watched_native_run_pushes_its_transcript_seeded_then_tailed(tmp_path)
 
     seeded, ticked, again = asyncio.run(drive())
     assert _transcript_bodies(seeded) == ["first"]
-    assert _transcript_bodies(ticked) == ["second", "first"]
-    assert _transcript_bodies(again) == ["second", "first"]
+    assert _transcript_bodies(ticked) == ["first", "second"]
+    assert _transcript_bodies(again) == ["first", "second"]
 
 
 def test_a_container_run_is_not_tailed_from_the_host_filesystem(tmp_path):
@@ -427,7 +431,7 @@ def test_watching_a_container_run_seeds_its_transcript_from_offset_zero():
 
     messages = asyncio.run(drive())
     assert conn.read_offsets() == [0]
-    assert _transcript_bodies(messages[-1]) == ["second", "first"]
+    assert _transcript_bodies(messages[-1]) == ["first", "second"]
 
 
 def test_a_turn_frame_for_a_watched_container_pushes_the_new_transcript_entry():
@@ -454,7 +458,7 @@ def test_a_turn_frame_for_a_watched_container_pushes_the_new_transcript_entry():
     assert conn.calls[0] == ("listTurns", {"run": "run-1"})
     assert conn.read_offsets() == [len(first)]
     assert messages[-1]["type"] == "detail"
-    assert _transcript_bodies(messages[-1]) == ["second", "first"]
+    assert _transcript_bodies(messages[-1]) == ["first", "second"]
 
 
 def test_an_unwatched_container_is_not_tailed():

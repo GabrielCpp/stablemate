@@ -32,6 +32,8 @@ class LiveHistory:
                 "status": row["status"],
                 "node": row.get("node", ""),
                 "name": row.get("name", ""),
+                "slug": row.get("slug")
+                or (row.get("attrs") or {}).get("workhorse.visit.slug", ""),
             }
 
     def update_logs(self, rows: list[dict[str, Any]]) -> None:

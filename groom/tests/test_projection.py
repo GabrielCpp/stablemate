@@ -389,8 +389,24 @@ def test_a_host_run_names_the_directory_it_runs_in_as_its_repo():
     assert projection.repo_label(container) == "—"
 
 
-def _transcript_row(update: dict, ts: float = 100.0, node: str = "implement") -> dict:
-    return {"kind": "transcript", "ts": ts, "node": node, "parent": "", "slug": "s", "update": update}
+def _transcript_row(
+    update: dict, ts: float = 100.0, node: str = "implement", slug: str = "001-00001-implement"
+) -> dict:
+    return {
+        "kind": "transcript", "ts": ts, "node": node, "parent": "", "slug": slug,
+        "key": f"{slug}:{ts}", "update": update,
+    }
+
+
+def _entries(lines: list[dict]) -> list[dict]:
+    return [entry for line in lines if line["kind"] == "turn" for entry in line["entries"]]
+
+
+def _turn_span(slug: str, start: float, end: float, status: str = "OK") -> dict:
+    return {
+        "kind": "span", "ts": end, "start_ts": start, "end_ts": end, "status": status,
+        "node": "implement", "name": "agent_turn", "span_id": f"span-{slug}", "slug": slug,
+    }
 
 
 def _text(kind: str, text: str) -> dict:
@@ -399,10 +415,11 @@ def _text(kind: str, text: str) -> dict:
 
 def test_history_lines_render_the_prompt_as_a_collapsed_user_message():
     [line] = projection.history_lines([_transcript_row(_text("user_message_chunk", "do it"))])
-    assert line["kind"] == "transcript"
+    assert line["kind"] == "turn"
     assert line["node"] == "implement"
-    assert line["entry"] == {
-        "kind": "message", "role": "user", "text": "do it", "collapsed": True
+    [entry] = line["entries"]
+    assert entry == {
+        "kind": "message", "role": "user", "text": "do it", "collapsed": True, "key": "001-00001-implement:100.0"
     }
 
 
@@ -411,10 +428,11 @@ def test_history_lines_render_agent_messages_and_thoughts():
         _transcript_row(_text("agent_message_chunk", "done")),
         _transcript_row(_text("agent_thought_chunk", "hmm")),
     ])
-    assert [(line["entry"]["role"], line["entry"]["text"]) for line in lines] == [
+    entries = _entries(lines)
+    assert [(entry["role"], entry["text"]) for entry in entries] == [
         ("assistant", "done"), ("thought", "hmm"),
     ]
-    assert not any(line["entry"]["collapsed"] for line in lines)
+    assert not any(entry["collapsed"] for entry in entries)
 
 
 def test_history_lines_render_a_tool_call_with_its_input_and_result():
@@ -423,8 +441,7 @@ def test_history_lines_render_a_tool_call_with_its_input_and_result():
         "status": "completed", "rawInput": {"file_path": "a.py"},
         "content": [{"type": "content", "content": {"type": "text", "text": "print(1)"}}],
     }
-    [line] = projection.history_lines([_transcript_row(update)])
-    entry = line["entry"]
+    [entry] = _entries(projection.history_lines([_transcript_row(update)]))
     assert entry["kind"] == "tool"
     assert entry["name"] == "Read a.py"
     assert entry["summary"] == "read · completed"
@@ -435,8 +452,8 @@ def test_history_lines_render_a_tool_call_with_its_input_and_result():
 
 def test_history_lines_mark_a_failed_tool_call():
     update = {"sessionUpdate": "tool_call_update", "toolCallId": "t1", "status": "failed"}
-    [line] = projection.history_lines([_transcript_row(update)])
-    assert line["entry"]["failed"] is True
+    [entry] = _entries(projection.history_lines([_transcript_row(update)]))
+    assert entry["failed"] is True
 
 
 def test_history_lines_render_a_diff_item_with_path_and_both_texts():
@@ -445,8 +462,8 @@ def test_history_lines_render_a_diff_item_with_path_and_both_texts():
         "status": "completed",
         "content": [{"type": "diff", "path": "a.py", "oldText": "x = 1", "newText": "x = 2"}],
     }
-    [line] = projection.history_lines([_transcript_row(update)])
-    result = line["entry"]["result"]
+    [entry] = _entries(projection.history_lines([_transcript_row(update)]))
+    result = entry["result"]
     assert "a.py" in result
     assert "x = 1" in result
     assert "x = 2" in result
@@ -460,13 +477,91 @@ def test_history_lines_render_a_plan_as_a_checklist():
             {"content": "ship", "priority": "low", "status": "pending"},
         ],
     }
-    [line] = projection.history_lines([_transcript_row(update)])
-    assert line["entry"]["role"] == "plan"
-    assert line["entry"]["text"] == "- [x] write tests\n- [ ] ship"
+    [entry] = _entries(projection.history_lines([_transcript_row(update)]))
+    assert entry["role"] == "plan"
+    assert entry["text"] == "- [x] write tests\n- [ ] ship"
 
 
 def test_history_lines_render_a_truncation_marker_as_a_divider():
     update = {"sessionUpdate": "truncated", "bytes": 99}
-    [line] = projection.history_lines([_transcript_row(update)])
-    assert line["entry"]["kind"] == "divider"
-    assert "99" in line["entry"]["label"]
+    [entry] = _entries(projection.history_lines([_transcript_row(update)]))
+    assert entry["kind"] == "divider"
+    assert "99" in entry["label"]
+
+
+def test_two_slugs_form_two_turn_groups_with_their_own_entries():
+    a, b = "001-00001-plan", "001-00002-implement"
+    lines = projection.history_lines([
+        _transcript_row(_text("agent_message_chunk", "b2"), 4.0, slug=b),
+        _transcript_row(_text("agent_message_chunk", "a1"), 1.0, slug=a),
+        _transcript_row(_text("agent_message_chunk", "b1"), 3.0, slug=b),
+    ])
+    turns = [line for line in lines if line["kind"] == "turn"]
+    assert not [line for line in lines if line["kind"] == "transcript"]
+    assert [line["slug"] for line in turns] == [b, a]
+    assert [line["key"] for line in turns] == [b, a]
+    assert [[e["text"] for e in line["entries"]] for line in turns] == [["b1", "b2"], ["a1"]]
+
+
+def test_entries_in_a_turn_are_chronological_and_keyed():
+    rows = [
+        _transcript_row(_text("agent_message_chunk", text), ts) for text, ts in
+        (("third", 3.0), ("first", 1.0), ("second", 2.0))
+    ]
+    [line] = projection.history_lines(rows)
+    assert [e["text"] for e in line["entries"]] == ["first", "second", "third"]
+    assert [e["key"] for e in line["entries"]] == [row["key"] for row in sorted(rows, key=lambda r: r["ts"])]
+
+
+def test_a_matching_agent_turn_span_supplies_status_and_duration_and_is_marked_absorbed():
+    slug = "001-00001-implement"
+    lines = projection.history_lines([
+        _turn_span(slug, 10.0, 75.0, "ERROR"),
+        _transcript_row(_text("agent_message_chunk", "hi"), 20.0),
+        {"kind": "span", "ts": 80.0, "start_ts": 70.0, "end_ts": 80.0, "status": "OK",
+         "node": "implement", "name": "plan", "span_id": "other", "slug": ""},
+    ])
+    turn = next(line for line in lines if line["kind"] == "turn")
+    assert turn["status"] == "failed"
+    assert turn["cls"] == "bad"
+    assert turn["duration"] == projection.fmt_duration(65.0)
+    assert turn["ts"] == projection.fmt_ts(75.0)
+    spans = {line["body"].split(" · ")[0]: line for line in lines if line["kind"] == "span"}
+    assert spans["agent_turn"]["absorbed"] is True
+    assert "absorbed" not in spans["plan"]
+
+
+def test_a_successful_span_marks_the_turn_done():
+    slug = "001-00001-implement"
+    lines = projection.history_lines([
+        _turn_span(slug, 10.0, 12.0), _transcript_row(_text("agent_message_chunk", "hi"), 11.0),
+    ])
+    [turn] = [line for line in lines if line["kind"] == "turn"]
+    assert turn["status"] == "done"
+    assert turn["cls"] == ""
+
+
+def test_a_slug_without_a_span_is_running_with_a_duration_to_now():
+    lines = projection.history_lines(
+        [
+            _transcript_row(_text("agent_message_chunk", "b"), 130.0),
+            _transcript_row(_text("agent_message_chunk", "a"), 100.0),
+        ],
+        now=160.0,
+    )
+    [turn] = lines
+    assert turn["status"] == "running"
+    assert turn["cls"] == ""
+    assert turn["duration"] == projection.fmt_duration(60.0)
+    assert turn["ts"] == projection.fmt_ts(130.0)
+
+
+def test_a_span_without_a_visit_slug_stays_a_plain_span_line():
+    lines = projection.history_lines([
+        {"kind": "span", "ts": 9.0, "start_ts": 1.0, "end_ts": 9.0, "status": "OK",
+         "node": "implement", "name": "agent_turn", "span_id": "x", "slug": ""},
+        _transcript_row(_text("agent_message_chunk", "hi"), 5.0),
+    ])
+    assert sorted(line["kind"] for line in lines) == ["span", "turn"]
+    assert "absorbed" not in next(line for line in lines if line["kind"] == "span")
+    assert next(line for line in lines if line["kind"] == "turn")["status"] == "running"

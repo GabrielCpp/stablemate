@@ -544,12 +544,53 @@ def transcript_entry(update: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def history_lines(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+TURN_SPAN = "agent_turn"
+
+
+def _turn_line(
+    slug: str, rows: list[dict[str, Any]], span: dict[str, Any] | None, now: float
+) -> tuple[float, dict[str, Any]]:
+    """One turn's group: its entries oldest first, with the status and duration of its ``agent_turn`` span, or running until now."""
+    ordered = sorted(rows, key=lambda row: float(row["ts"]))
+    if span is not None:
+        failed = span["status"] == "ERROR"
+        status = "failed" if failed else "done"
+        duration = float(span["end_ts"]) - float(span["start_ts"])
+        ts = float(span["end_ts"])
+    else:
+        failed = False
+        status = "running"
+        duration = max(0.0, now - float(ordered[0]["ts"]))
+        ts = float(ordered[-1]["ts"])
+    line = {
+        "ts": fmt_ts(ts), "kind": "turn", "level": "TURN", "node": str(ordered[0].get("node") or ""),
+        "body": "", "cls": "bad" if failed else "", "severity": "", "key": slug, "slug": slug,
+        "status": status, "duration": fmt_duration(duration),
+        "entries": [{**transcript_entry(row["update"]), "key": row.get("key")} for row in ordered],
+    }
+    return ts, line
+
+
+def history_lines(rows: list[dict[str, Any]], now: float | None = None) -> list[dict[str, Any]]:
     """History describes timestamped observations, never the run's current state."""
-    lines = []
+    now = now if now is not None else time.time()
+    turns: dict[str, list[dict[str, Any]]] = {}
+    for row in rows:
+        if row["kind"] == "transcript" and row.get("slug"):
+            turns.setdefault(str(row["slug"]), []).append(row)
+    spans = {
+        str(row["slug"]): row
+        for row in rows
+        if row["kind"] == "span" and row.get("name") == TURN_SPAN and row.get("slug") in turns
+    }
+    placed: list[tuple[float, dict[str, Any]]] = []
+    for slug, entries in turns.items():
+        placed.append(_turn_line(slug, entries, spans.get(slug), now))
     for row in rows:
         kind = row["kind"]
         node = str(row.get("node") or "")
+        if kind == "transcript":
+            continue
         if kind == "metric":
             attrs = row.get("attrs") or {}
             node = str(attrs.get("node") or "")
@@ -564,22 +605,18 @@ def history_lines(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
         elif kind == "span":
             duration = fmt_duration(float(row["end_ts"]) - float(row["start_ts"]))
             body = f"{row['name']} · {row['status']} · {duration}"
-        elif kind == "transcript":
-            entry = transcript_entry(row["update"])
-            body = str(entry.get("text") or entry.get("name") or entry.get("label") or "")[:200]
-            lines.append({
-                "ts": fmt_ts(float(row["ts"])), "kind": kind, "level": kind.upper(), "node": node,
-                "body": body, "cls": "", "severity": "", "entry": entry, "key": row.get("key"),
-            })
-            continue
         else:
             body = str(row.get("body") or "")
-        lines.append({
+        line = {
             "ts": fmt_ts(float(row["ts"])), "kind": kind, "level": kind.upper(), "node": node,
             "body": body, "cls": SEVERITY_CLASS.get(str(row.get("severity") or ""), ""),
             "severity": str(row.get("severity") or ""),
-        })
-    return lines
+        }
+        if kind == "span" and spans.get(str(row.get("slug"))) is row:
+            line["absorbed"] = True
+        placed.append((float(row["ts"]), line))
+    placed.sort(key=lambda item: item[0], reverse=True)
+    return [line for _, line in placed]
 
 
 def run_live(
@@ -596,7 +633,7 @@ def run_live(
         "head": head(wf, tel, now),
         "metrics": metrics(wf, tel, facts, now),
         "logs": log_lines(logs),
-        "history": history_lines(history or []),
+        "history": history_lines(history or [], now),
     }
 
 

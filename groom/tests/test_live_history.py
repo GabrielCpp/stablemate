@@ -155,3 +155,16 @@ def test_a_line_that_is_not_json_is_skipped():
     history = LiveHistory(log_limit=3)
     history.feed_transcript("001-00001-implement", b"not json\n" + _call("t1"))
     assert len([row for row in history.recent() if row["kind"] == "transcript"]) == 1
+
+
+def test_a_span_keeps_the_visit_slug_from_a_column_or_its_attributes():
+    history = LiveHistory(log_limit=3)
+    base = {"start_ts": 1, "end_ts": 2, "status": "OK", "name": "agent_turn"}
+    history.update_spans([
+        {**base, "span_id": "a", "slug": "001-00001-plan"},
+        {**base, "span_id": "b", "attrs": {"workhorse.visit.slug": "001-00002-impl"}},
+        {**base, "span_id": "c"},
+    ])
+    assert {key: row["slug"] for key, row in history.spans.items()} == {
+        "a": "001-00001-plan", "b": "001-00002-impl", "c": ""
+    }

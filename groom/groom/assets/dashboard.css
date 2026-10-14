@@ -179,9 +179,13 @@ body {
 .trail-views { display:inline-flex; gap:4px; }
 .trail-views .btn { padding:3px 10px; }
 .trail-views .btn[aria-pressed="true"] { background:var(--accent); color:var(--on-accent); border-color:var(--accent); }
-.log-line.transcript { grid-template-columns:112px 130px minmax(0, 1fr); font-family:var(--sans); }
-.log-line .lt-entry { min-width:0; }
-.lt-entry .at-tool-name { flex:0 1 auto; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.log-line.turn { display:block; font-family:var(--sans); }
+.lt-turn-head { display:grid; grid-template-columns:112px 130px minmax(0, 1fr) auto auto; gap:8px; cursor:pointer; }
+.lt-turn-head .lt-slug, .lt-turn-head .lt-status, .lt-turn-head .lt-dur { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.lt-status.running { color:var(--accent); }
+.log-line.bad .lt-status { color:var(--blocked); }
+.lt-turn-body { display:flex; flex-direction:column; gap:8px; padding:8px 0 6px 12px; min-width:0; }
+.lt-turn-body .at-tool-name { flex:0 1 auto; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .at-msg.thought { border-left-style:dashed; }
 .at-msg.thought .at-text { color:var(--text-1); font-style:italic; }
 .at-msg.plan { border-left-color:var(--idle); }
