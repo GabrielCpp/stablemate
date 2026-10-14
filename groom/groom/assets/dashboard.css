@@ -181,6 +181,7 @@ body {
 .trail-views .btn[aria-pressed="true"] { background:var(--accent); color:var(--on-accent); border-color:var(--accent); }
 .log-line.transcript { grid-template-columns:112px 130px minmax(0, 1fr); font-family:var(--sans); }
 .log-line .lt-entry { min-width:0; }
+.lt-entry .at-tool-name { flex:0 1 auto; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .at-msg.thought { border-left-style:dashed; }
 .at-msg.thought .at-text { color:var(--text-1); font-style:italic; }
 .at-msg.plan { border-left-color:var(--idle); }
