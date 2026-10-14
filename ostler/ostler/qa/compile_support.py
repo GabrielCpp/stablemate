@@ -8,10 +8,13 @@ from collections.abc import Container
 from collections.abc import Mapping
 from dataclasses import dataclass
 from types import ModuleType
+from typing import get_args
 
+from ostler import accessible_names
 from ostler.markdown import extract_refs
 from ostler.qa.harness_host import load_harness_module
 from ostler.qa.obligation import CallRow
+from ostler.qa.obligation import Locators
 from ostler.qa.obligation import Obligation
 from ostler.qa.plan_source import Gap
 from ostler.qa.plan_source import arrangement_of
@@ -219,3 +222,29 @@ def vet_calls(
         f"arrives={python_literal(arrival_regex(screen_route(document, screen_routes, hosts or {}), screen_routes.values()))})"
         for document in vettable(documents, screen_routes, ids, gaps, hosts=hosts)
     ]
+
+
+try:
+    from playwright._impl._api_structures import AriaRole as _AriaRole
+    MATCHABLE_ROLES: frozenset[str] | None = frozenset(get_args(_AriaRole)) - {
+        "generic", "none", "presentation",
+    }
+except ImportError:
+    MATCHABLE_ROLES = None
+
+
+TEMPLATE_HOLE = re.compile(r"\{[^{}]+\}")
+
+
+def name_refusal(locators: Locators) -> str:
+    """Why a node's `name:` could not address it, as a sentence for a gap, or `""`."""
+    raw_name = next(iter(locators.name), None)
+    name = bullet_value(raw_name)
+    mark = accessible_names.prose_mark(raw_name) if name and raw_name else ""
+    if not mark:
+        return ""
+    return (f". Its `name:` {name!r} carries {mark}, so it describes the accessible name "
+            "instead of stating the one string a browser computes, and `getByRole` would wait "
+            "for that description and time out. State the literal name, one value per node. "
+            "A control rendered once per item declares `one-per:` and names itself with a "
+            "template over the item, such as `{tab.label}`")

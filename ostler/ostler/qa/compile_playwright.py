@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from typing import get_args as _get_args
 
 from ostler import accessible_names
 from ostler import acts as acts_mod
@@ -14,8 +13,13 @@ from ostler.qa.book_index import BookIndex
 from ostler.qa.compile_journey import JourneyWalk
 from ostler.qa.compile_journey import WalkedJourney
 from ostler.qa.compile_support import PLAYWRIGHT
+from ostler.qa.compile_stops import stop_state_ids
+from ostler.qa.compile_stops import resolve_stop
+from ostler.qa.compile_support import MATCHABLE_ROLES as _MATCHABLE_ROLES
+from ostler.qa.compile_support import TEMPLATE_HOLE as _TEMPLATE_HOLE
 from ostler.qa.compile_support import bullet_value
 from ostler.qa.compile_support import check_document
+from ostler.qa.compile_support import name_refusal
 from ostler.qa.compile_support import on_node
 from ostler.qa.compile_support import on_label
 from ostler.qa.compile_support import shown_on
@@ -45,18 +49,6 @@ from ostler import selector_forms
 
 
 
-try:
-    from playwright._impl._api_structures import AriaRole as _AriaRole
-    _MATCHABLE_ROLES: frozenset[str] | None = frozenset(_get_args(_AriaRole)) - {
-        "generic", "none", "presentation",
-    }
-except ImportError:
-    _MATCHABLE_ROLES = None
-
-
-_TEMPLATE_HOLE = re.compile(r"\{[^{}]+\}")
-
-
 def page_locator_expr(locators: Locators) -> str | None:
     """A concrete Playwright locator expression built from a node's own book-declared locators."""
     role = bullet_value(next(iter(locators.role), None))
@@ -74,20 +66,6 @@ def page_locator_expr(locators: Locators) -> str | None:
             return None
         return f"qa.by_css({python_literal(selector)})"
     return None
-
-
-def name_refusal(locators: Locators) -> str:
-    """Why a node's `name:` could not address it, as a sentence for a gap, or `""`."""
-    raw_name = next(iter(locators.name), None)
-    name = bullet_value(raw_name)
-    mark = accessible_names.prose_mark(raw_name) if name and raw_name else ""
-    if not mark:
-        return ""
-    return (f". Its `name:` {name!r} carries {mark}, so it describes the accessible name "
-            "instead of stating the one string a browser computes, and `getByRole` would wait "
-            "for that description and time out. State the literal name, one value per node. "
-            "A control rendered once per item declares `one-per:` and names itself with a "
-            "template over the item, such as `{tab.label}`")
 
 
 _ACT_METHODS: dict[str, tuple[str, str | None]] = {
@@ -479,98 +457,22 @@ def _step_acts(step: FlowStep, walk: JourneyWalk) -> list[CallRow]:
 
 MARK_LINE = "    mark = qa.mark()"
 
-_STATE_MODIFIERS = frozenset({"absent", "disabled", "checked", "expanded", "selected"})
-
-_MARKDOWN_LINK = re.compile(r"\[[^\]]*\]\([^)]*\)")
-
-
-def _perceivable(entry: str, page: str, book: BookIndex) -> dict[str, object] | str:
-    """The role, accessible name and state modifiers one `shows:` or `busy:` entry addresses, or why it addresses nothing."""
-    node = on_node(page, entry)
-    if not node:
-        return f"{entry!r} links no component"
-    locators = book.locators_by_node.get(node, NO_LOCATORS)
-    role = bullet_value(next(iter(locators.role), None))
-    raw_name = next(iter(locators.name), None)
-    name = bullet_value(raw_name)
-    if not role or not name or not raw_name or _MATCHABLE_ROLES is None or role not in _MATCHABLE_ROLES:
-        return f"`{node}` is found by no role and accessible name{name_refusal(locators)}"
-    literal = accessible_names.literal_name(name)
-    if accessible_names.prose_mark(raw_name) or _TEMPLATE_HOLE.search(literal):
-        return f"`{node}` is found by no role and accessible name{name_refusal(locators)}"
-    modifiers = _MARKDOWN_LINK.sub("", entry).split()
-    unknown = [word for word in modifiers if word not in _STATE_MODIFIERS]
-    if unknown:
-        return f"{entry!r} carries {', '.join(unknown)}, which is no state modifier"
-    return {"role": role, "name": literal, **dict.fromkeys(modifiers, True)}
-
-
-def _request_pairs(locators: Locators) -> list[tuple[str, str]] | str:
-    """The `(method, path)` pairs a screen's `requests:` declares, or why one cannot be read."""
-    pairs: list[tuple[str, str]] = []
-    for entry in locators.requests:
-        method, _, path = (bullet_value(entry) or "").partition(" ")
-        path = path.strip()
-        if not method.isalpha() or not path.startswith("/"):
-            return f"`requests:` entry {entry!r} is not `METHOD /path`"
-        pairs.append((method.upper(), path))
-    return pairs
-
-
 def _stop_step(index: int, step: FlowStep, walk: JourneyWalk, gaps: list[Gap]) -> list[str] | None:
     """Wait for the screen a step stops at to settle, then check it is the declared state that holds, or `None` once the stop cannot be compiled."""
-    book = walk.book
-    page, _, fragment = step.ref.partition("#")
-
-    def refuse(reason: str) -> None:
-        gaps.extend(Gap(oid, "uncompilable-claim", f"step {index} stops at `{step.ref}`: {reason}")
-                    for oid in walk.ids)
-
-    if page not in book.locators_by_node:
-        refuse(f"the packet carries no obligation for its screen `{page}`, so the requests it waits for are unknown")
+    stop = resolve_stop(index, step, walk, gaps, device=False)
+    if stop is None:
         return None
-    screen = book.locators_by_node[page]
-    requests = _request_pairs(screen)
-    if isinstance(requests, str):
-        refuse(requests)
-        return None
-    busy: dict[str, object] | None = None
-    if screen.busy:
-        sign = _perceivable(screen.busy[0], page, book)
-        if isinstance(sign, str):
-            refuse(sign)
-            return None
-        busy = sign
-    siblings = book.states_by_screen.get(page, [])
-    states: dict[str, list[dict[str, object]]] = {}
-    for state in siblings:
-        perceivables: list[dict[str, object]] = []
-        for entry in state.locators.shows:
-            perceivable = _perceivable(entry, page, book)
-            if isinstance(perceivable, str):
-                refuse(perceivable)
-                return None
-            perceivables.append(perceivable)
-        if not perceivables:
-            refuse(f"state `{state.node}` shows nothing, so no screen could be told from it")
-            return None
-        states[state.node.split("#", 1)[1]] = perceivables
-    covers = [state.id for state in siblings if state.node == step.ref]
-    if fragment not in states or not covers:
-        refuse("the packet carries no obligation for this state")
-        return None
-    request_literal = "[" + ", ".join(f"({python_literal(method)}, {python_literal(path)})" for method, path in requests) + "]"
-    title = next(state.requirement for state in siblings if state.node == step.ref).partition(": ")[0]
+    request_literal = "[" + ", ".join(f"({python_literal(method)}, {python_literal(path)})" for method, path in stop.requests) + "]"
     return [
         "    qa.settle(",
-        f"        {python_literal(step.ref)},",
+        f"        {python_literal(stop.node)},",
         "        since=mark,",
         f"        requests={request_literal},",
-        f"        busy={python_literal(busy)},",
-        f"        states={python_literal(states)},",
-        f"        expect={python_literal(fragment)},",
-        f"        covers={python_literal(covers)},",
-        f"    )  # step {index}: stop at {trailing_comment(title)}",
+        f"        busy={python_literal(stop.busy)},",
+        f"        states={python_literal(stop.states)},",
+        f"        expect={python_literal(stop.expect)},",
+        f"        covers={python_literal(list(stop.covers))},",
+        f"    )  # step {index}: stop at {trailing_comment(stop.title)}",
     ]
 
 
@@ -692,8 +594,7 @@ def web_walk(walk: JourneyWalk, sinks: PlanSinks) -> WalkedJourney:
         if performed is None:
             return unwalked
         if step.node_type == "state":
-            covered_stops.update(state.id for state in walk.book.states_by_screen.get(step.ref.split("#")[0], [])
-                                 if state.node == step.ref)
+            covered_stops.update(stop_state_ids(step, walk.book))
         elif stops and performed:
             lines.append(MARK_LINE)
         lines.extend(performed)

@@ -10,12 +10,15 @@ from ostler.checks import CheckValue
 from ostler.qa.book_index import BookIndex
 from ostler.qa.compile_journey import JourneyWalk
 from ostler.qa.compile_journey import WalkedJourney
+from ostler.qa.compile_stops import ScreenStop
+from ostler.qa.compile_stops import resolve_stop
 from ostler.qa.compile_support import MAESTRO
 from ostler.qa.compile_support import bullet_value
 from ostler.qa.compile_support import check_document
 from ostler.qa.compile_support import on_node
 from ostler.qa.compile_support import on_label
 from ostler.qa.compile_support import shown_on
+from ostler.qa.compile_support import trailing_comment
 from ostler.qa.compile_support import unarranged_scenario_gap
 from ostler.qa.compile_support import unarranged_state_gap
 from ostler.qa.compile_support import unobservable_gap
@@ -26,7 +29,6 @@ from ostler.qa.navigation import SurfaceNavigation
 from ostler.qa.navigation import maestro_launch
 from ostler.qa.navigation import surface_row
 from ostler.qa.obligation import CallRow
-from ostler.qa.obligation import FlowStep
 from ostler.qa.obligation import Locators
 from ostler.qa.obligation import NO_LOCATORS
 from ostler.qa.obligation import Obligation
@@ -66,9 +68,9 @@ def maestro_locator(locators: Locators) -> MaestroLocator | None:
     return None
 
 
-def _flow_yaml(commands: list[str], bundle_id: str) -> str:
-    """One Maestro flow file: the app, a cold launch, then *commands* in order."""
-    return "\n".join([f'appId: "{bundle_id}"', "---", "- launchApp", *commands]) + "\n"
+def _flow_yaml(commands: list[str], bundle_id: str, *, launch: bool = True) -> str:
+    """One Maestro flow file: the app, a cold launch unless *launch* is off, then *commands* in order."""
+    return "\n".join([f'appId: "{bundle_id}"', "---", *(["- launchApp"] if launch else []), *commands]) + "\n"
 
 
 _PRESS_KEYS: frozenset[str] = frozenset({
@@ -396,19 +398,25 @@ def mobile_scenarios(
     return lines
 
 
-def _journey_taps(
-    steps: tuple[FlowStep, ...], locators_by_node: dict[str, Locators],
-    ids: list[str], gaps: list[Gap],
-) -> list[str] | None:
-    """One tap per `interaction` step of a journey, or `None` after gapping the first it cannot make."""
-    commands: list[str] = []
-    for index, step in enumerate(steps, start=1):
+@dataclass(frozen=True)
+class _JourneyTaps:
+    """A walk cut at its stops: the taps between them, and the stop that follows each run of taps."""
+    segments: list[list[str]]
+    stops: list[tuple[int, ScreenStop]]
+
+
+def _journey_taps(walk: JourneyWalk, gaps: list[Gap]) -> _JourneyTaps | None:
+    """One tap per `interaction` step of a journey, cut at each stop, or `None` after gapping the first step it cannot make."""
+    ids, locators_by_node = walk.ids, walk.book.locators_by_node
+    taps = _JourneyTaps([[]], [])
+    for index, step in enumerate(walk.steps, start=1):
         if step.node_type == "state":
-            gaps.extend(Gap(oid, "uncompilable-claim",
-                            f"step {index} stops at a screen state, and stops are not compiled for "
-                            "devices yet; this builder performs only `interaction` steps")
-                        for oid in ids)
-            return None
+            stop = resolve_stop(index, step, walk, gaps, device=True)
+            if stop is None:
+                return None
+            taps.stops.append((index, stop))
+            taps.segments.append([])
+            continue
         if step.node_type != "interaction":
             gaps.extend(Gap(oid, "uncompilable-claim",
                             f"step {index} names a {step.node_type or 'untyped'} node, which is a "
@@ -425,12 +433,25 @@ def _journey_taps(
                             "step after it would run in a world this journey never reached")
                         for oid in ids)
             return None
-        commands.extend(_act_commands("click", locator, {}))
-    return commands
+        taps.segments[-1].extend(_act_commands("click", locator, {}))
+    return taps
+
+
+def _settle_lines(index: int, stop: ScreenStop) -> list[str]:
+    """The `qa.settle` call a device walk makes at a stop: the busy sign and the states, with no request feed."""
+    return [
+        "    qa.settle(",
+        f"        {python_literal(stop.node)},",
+        f"        busy={python_literal(stop.busy)},",
+        f"        states={python_literal(stop.states)},",
+        f"        expect={python_literal(stop.expect)},",
+        f"        covers={python_literal(list(stop.covers))},",
+        f"    )  # step {index}: stop at {trailing_comment(stop.title)}",
+    ]
 
 
 def maestro_walk(walk: JourneyWalk, launch: MaestroLaunch, sinks: PlanSinks) -> WalkedJourney:
-    """Walk a flow's `interaction` steps as Maestro `tapOn` commands, then assert the flow's own claims in the same flow file."""
+    """Walk a flow's `interaction` steps as Maestro `tapOn` commands, one flow file per run of taps between stops, then assert the flow's own claims in the last."""
     steps, ids, gaps = walk.steps, walk.ids, sinks.gaps
     empty_walk = WalkedJourney([], frozenset())
     if steps and (first_page := shown_on(steps[0].ref.split("#")[0], {launch.launch_screen},
@@ -441,8 +462,8 @@ def maestro_walk(walk: JourneyWalk, launch: MaestroLaunch, sinks: PlanSinks) -> 
                         "gets from the one to the other")
                     for oid in ids)
         return empty_walk
-    commands = _journey_taps(steps, walk.book.locators_by_node, ids, gaps)
-    if commands is None:
+    taps = _journey_taps(walk, gaps)
+    if taps is None:
         return empty_walk
     result_name = "journey_result"
     covered: set[str] = set()
@@ -459,14 +480,27 @@ def maestro_walk(walk: JourneyWalk, launch: MaestroLaunch, sinks: PlanSinks) -> 
                 page_oids.append(obligation.id)
     if not covered:
         return empty_walk
-    flow_path = f"maestro/{python_identifier('-'.join(ids))}.yaml"
-    sinks.files[flow_path] = _flow_yaml([*commands, *compiled.assertions], launch.bundle_id)
-    lines = [f"    {result_name} = qa.maestro.run(qa.spec_dir / {python_literal(flow_path)})",
-             *compiled.python_lines]
+    segments = [*taps.segments[:-1], [*taps.segments[-1], *compiled.assertions]]
+    flow_stem = f"maestro/{python_identifier('-'.join(ids))}"
+    written = [at for at, commands in enumerate(segments) if commands or at == 0]
+    lines: list[str] = []
+    for at, commands in enumerate(segments):
+        if at in written:
+            flow_path = f"{flow_stem}.yaml" if len(segments) == 1 else f"{flow_stem}-{at + 1}.yaml"
+            sinks.files[flow_path] = _flow_yaml(commands, launch.bundle_id, launch=at == 0)
+            flow = f"qa.spec_dir / {python_literal(flow_path)}"
+            if at == written[-1]:
+                lines.append(f"    {result_name} = qa.maestro.run({flow})")
+            else:
+                lines.append(f"    qa.maestro.run({flow}, require=True)")
+        if at < len(taps.stops):
+            lines.extend(_settle_lines(*taps.stops[at]))
+    lines.extend(compiled.python_lines)
     if page_oids:
         lines.extend(
             f"    qa.vet({python_literal(document)})"
             for document in vettable(compiled.documents, walk.book.screen_routes, page_oids, gaps,
                                      mobile=True, hosts=walk.book.fragment_hosts)
         )
-    return WalkedJourney(lines, frozenset(covered))
+    stop_ids = frozenset(oid for _, stop in taps.stops for oid in stop.covers)
+    return WalkedJourney(lines, frozenset(covered) | stop_ids, stop_ids)

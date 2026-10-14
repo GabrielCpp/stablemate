@@ -82,12 +82,17 @@ def _context(*, loaded_shows: list[str] | None = None, components: dict | None =
 
 
 def _compile(context: dict) -> tuple[str, list[Gap]]:
+    source, _, gaps = _compile_files(context)
+    return source, gaps
+
+
+def _compile_files(context: dict) -> tuple[str, dict[str, str], list[Gap]]:
     result = compile_plan_gaps(context, story="demo-story")
     if isinstance(result, Plan):
         ast.parse(result.source)
-        return result.source.split("@scenario(")[-1], result.gaps
+        return result.source.split("@scenario(")[-1], result.files, result.gaps
     assert isinstance(result, Refusal)
-    return "", result.gaps
+    return "", {}, result.gaps
 
 
 def test_a_stop_waits_for_the_screen_before_the_click_that_follows_it() -> None:
@@ -151,7 +156,66 @@ def test_a_flow_with_no_stop_emits_no_mark() -> None:
     assert '"Open details"' in journey
 
 
-def test_a_stop_in_a_flow_on_a_device_is_a_gap_not_a_skip() -> None:
-    _, gaps = _compile(_context(device=True))
+FLOW_STEM = "maestro/okf_docs_features_demo_flows_add_a_thing_md_end_state"
 
-    assert any("stops are not compiled for devices yet" in gap.detail for gap in gaps)
+
+def test_a_stop_on_a_device_settles_between_two_flow_files_and_goes_on_tapping() -> None:
+    journey, files, gaps = _compile_files(_context(device=True))
+
+    assert not [gap for gap in gaps if gap.detail.startswith("step 1 stops at")]
+    first = journey.index(f'qa.maestro.run(qa.spec_dir / "{FLOW_STEM}-1.yaml", require=True)')
+    settle = journey.index("qa.settle(")
+    second = journey.index(f'journey_result = qa.maestro.run(qa.spec_dir / "{FLOW_STEM}-2.yaml")')
+    assert first < settle < second < journey.index("qa.verify(")
+    assert files[f"{FLOW_STEM}-1.yaml"] == 'appId: "com.example.mobile-app"\n---\n- launchApp\n'
+    assert "- launchApp" not in files[f"{FLOW_STEM}-2.yaml"]
+    assert 'text: "Open details"' in files[f"{FLOW_STEM}-2.yaml"]
+    assert f"{FLOW_STEM}.yaml" not in files
+
+
+def test_a_device_stop_lists_every_state_and_names_no_request_nor_number_of_seconds() -> None:
+    journey, _ = _compile(_context(device=True))
+    settle = journey[journey.index("qa.settle("):journey.index("# step 1: stop at")]
+
+    assert 'expect="loaded"' in settle
+    assert '"loaded"' in settle and '"error"' in settle
+    assert '"role": "progressbar"' in settle
+    assert LOADED_ID in settle
+    assert ERROR_ID not in settle
+    assert "since=" not in settle
+    assert "requests=" not in settle
+    assert not re.search(r"\d+\.\d|timeout|seconds|_s=|_ms", settle)
+
+
+def test_a_device_stop_covers_its_state_obligation() -> None:
+    journey, gaps = _compile(_context(device=True))
+
+    assert LOADED_ID in journey
+    assert [gap.kind for gap in gaps if gap.obligation_id == LOADED_ID] == []
+
+
+def test_an_expanded_modifier_on_a_device_stop_is_a_gap_naming_the_hierarchy() -> None:
+    journey, gaps = _compile(_context(device=True, loaded_shows=["[Results table](#results-table) expanded"]))
+
+    assert "qa.settle(" not in journey
+    assert any("is checked for `expanded`, which a device's view hierarchy does not report" in gap.detail
+               for gap in gaps)
+
+
+def test_the_same_stop_compiles_on_the_web_and_on_a_device() -> None:
+    for device in (False, True):
+        journey, gaps = _compile(_context(device=device))
+
+        assert "qa.settle(" in journey
+        assert not [gap for gap in gaps if gap.detail.startswith("step 1 stops at")]
+
+
+def test_a_device_flow_with_no_stop_is_one_flow_file_that_launches_first() -> None:
+    journey, files, _ = _compile_files(_context(device=True, steps=[OPEN_DETAILS]))
+
+    assert files[f"{FLOW_STEM}.yaml"] == (
+        'appId: "com.example.mobile-app"\n---\n- launchApp\n'
+        '- tapOn:\n    text: "Open details"\n- assertVisible:\n    text: "Results"\n')
+    assert f'    journey_result = qa.maestro.run(qa.spec_dir / "{FLOW_STEM}.yaml")' in journey
+    assert "require=True" not in journey
+    assert "qa.settle(" not in journey

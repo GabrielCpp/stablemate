@@ -6,9 +6,15 @@ import json
 import re
 import shutil
 import subprocess
+import time
 import xml.etree.ElementTree as ET
+from collections.abc import Callable, Mapping
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
+
+from ostler_qa_elements import name_pattern
+from ostler_qa_settle import ANNOUNCED_ROLES, Reading
 
 BOUNDS = re.compile(r"\[(-?\d+),(-?\d+)\]\[(-?\d+),(-?\d+)\]")
 
@@ -43,7 +49,12 @@ CLASS_ROLES = {
     "alertdialoglayout": "dialog",
     "alert": "dialog",
     "webview": "region",
+    "progressbar": "progressbar",
+    "activityindicator": "progressbar",
+    "progressindicator": "progressbar",
 }
+
+SETTLE_NAME_ATTRIBUTES = ("accessibilityText", "content-desc", "text", "hintText")
 
 NAME_ATTRIBUTES = ("resource-id", "accessibilityText", "content-desc", "text", "hintText")
 
@@ -119,6 +130,105 @@ def parse_maestro(raw: str) -> list[dict[str, Any]]:
         elements.extend(_element(attributes, attributes.get("bounds") or ""))
         stack.extend(reversed(node.get("children") or []))
     return elements
+
+
+@dataclass(frozen=True)
+class DeviceNode:
+    """What a settle reads of one drawn hierarchy node: its role, the names it answers to, and its states when the hierarchy reports them."""
+
+    role: str
+    names: tuple[str, ...]
+    enabled: bool | None
+    checked: bool | None
+    selected: bool | None
+
+
+def _flag(node: Mapping[str, Any], attributes: Mapping[str, Any], key: str) -> bool | None:
+    """A node's boolean state, from its own field, else from the attribute string, else unknown."""
+    own = node.get(key)
+    if isinstance(own, bool):
+        return own
+    text = str(attributes.get(key) or "").strip().lower()
+    return {"true": True, "false": False}.get(text)
+
+
+def parse_device_nodes(raw: str) -> list[DeviceNode]:
+    """The drawn nodes of `maestro hierarchy` output, banner and all."""
+    start = raw.find("{")
+    if start < 0:
+        raise ValueError(f"maestro hierarchy printed no JSON object: {raw.strip()[:200]!r}")
+    nodes: list[DeviceNode] = []
+    stack = [json.loads(raw[start:])]
+    while stack:
+        node = stack.pop()
+        attributes = node.get("attributes") or {}
+        stack.extend(reversed(node.get("children") or []))
+        match = BOUNDS.match(attributes.get("bounds") or "")
+        if match is None:
+            continue
+        x, y, x2, y2 = (int(part) for part in match.groups())
+        if x2 <= x or y2 <= y:
+            continue
+        names = tuple(
+            value for key in SETTLE_NAME_ATTRIBUTES if (value := str(attributes.get(key) or "").strip())
+        )
+        class_name = attributes.get("class") or attributes.get("type") or ""
+        nodes.append(DeviceNode(
+            role_for(class_name), names,
+            _flag(node, attributes, "enabled"), _flag(node, attributes, "checked"),
+            _flag(node, attributes, "selected"),
+        ))
+    return nodes
+
+
+def _named(node: DeviceNode, role: str, name: str) -> bool:
+    """Whether the node answers to the book's *name*: announced roles by the text they contain, the rest by the words whole."""
+    if role in ANNOUNCED_ROLES:
+        return any(name.casefold() in found.casefold() for found in node.names)
+    pattern = name_pattern(name)
+    return any(pattern.match(found) for found in node.names)
+
+
+class DeviceReading:
+    """One view hierarchy, asked whether a perceivable is drawn on it."""
+
+    def __init__(self, nodes: list[DeviceNode]) -> None:
+        self._nodes = nodes
+
+    def shown(self, perceivable: Mapping[str, Any]) -> bool:
+        role, name = str(perceivable["role"]), str(perceivable["name"])
+        announced = role in ANNOUNCED_ROLES
+        return any(
+            _named(node, role, name)
+            and (announced or not node.role or node.role == role)
+            and (not perceivable.get("disabled") or node.enabled is False)
+            and (not perceivable.get("checked") or node.checked is True)
+            and (not perceivable.get("selected") or node.selected is True)
+            for node in self._nodes
+        )
+
+
+def _maestro_hierarchy(timeout: float) -> str:
+    if shutil.which("maestro") is None:
+        raise RuntimeError("the maestro CLI is not installed on this machine")
+    return _run(["maestro", "hierarchy"], timeout=timeout)
+
+
+class DeviceScreen:
+    """The device behind `maestro hierarchy`, read one hierarchy at a time."""
+
+    def __init__(self, reader: Callable[[float], str] = _maestro_hierarchy) -> None:
+        self._reader = reader
+
+    def read(self, within: float) -> Reading | None:
+        try:
+            raw = self._reader(within)
+        except subprocess.TimeoutExpired:
+            return None
+        return DeviceReading(parse_device_nodes(raw))
+
+    def pause(self, seconds: float) -> None:
+        time.sleep(seconds)
 
 
 def uiautomator_elements(*, udid: str = "", timeout: float = 120.0) -> list[dict[str, Any]]:

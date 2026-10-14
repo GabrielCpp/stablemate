@@ -5,7 +5,7 @@ from __future__ import annotations
 import time
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Protocol
 
 from ostler_qa_elements import name_pattern
 
@@ -25,6 +25,22 @@ class Settled:
     held: str | None
 
 
+class Reading(Protocol):
+    """One look at a screen, which can tell whether a perceivable is shown."""
+
+    def shown(self, perceivable: Mapping[str, Any]) -> bool: ...
+
+
+class Screen(Protocol):
+    """Where a settle looks: a page in a browser, or the view hierarchy of a device."""
+
+    def read(self, within: float) -> Reading | None:
+        """Take one look using at most *within* seconds, or `None` when it could not look in that time."""
+        ...
+
+    def pause(self, seconds: float) -> None: ...
+
+
 def shown(page: Any, perceivable: Mapping[str, Any]) -> bool:
     """Whether the page shows a visible element with this role and accessible name, in the states the perceivable asks for."""
     options = {key: True for key in ROLE_STATES if perceivable.get(key)}
@@ -36,9 +52,32 @@ def shown(page: Any, perceivable: Mapping[str, Any]) -> bool:
     return any(found.nth(index).is_visible() for index in range(found.count()))
 
 
-def holds(page: Any, perceivable: Mapping[str, Any]) -> bool:
-    """Whether the page is as the perceivable says: shown, or, when it is `absent`, not shown."""
-    return shown(page, perceivable) != bool(perceivable.get("absent"))
+class PageReading:
+    """The live page, queried as each perceivable asks."""
+
+    def __init__(self, page: Any) -> None:
+        self._page = page
+
+    def shown(self, perceivable: Mapping[str, Any]) -> bool:
+        return shown(self._page, perceivable)
+
+
+class PageScreen:
+    """A page in a browser, always readable."""
+
+    def __init__(self, page: Any) -> None:
+        self._page = page
+
+    def read(self, within: float) -> Reading | None:
+        return PageReading(self._page)
+
+    def pause(self, seconds: float) -> None:
+        self._page.wait_for_timeout(max(1, round(seconds * 1000)))
+
+
+def holds(reading: Reading, perceivable: Mapping[str, Any]) -> bool:
+    """Whether the screen is as the perceivable says: shown, or, when it is `absent`, not shown."""
+    return reading.shown(perceivable) != bool(perceivable.get("absent"))
 
 
 def _label(perceivable: Mapping[str, Any]) -> str:
@@ -46,8 +85,8 @@ def _label(perceivable: Mapping[str, Any]) -> str:
 
 
 def settle_screen(
-    browser: Any,
-    page: Any,
+    screen: Screen,
+    exchanges: Any,
     node: str,
     *,
     since: int,
@@ -65,36 +104,49 @@ def settle_screen(
         left = deadline - clock()
         if left <= 0:
             return False
-        page.wait_for_timeout(max(1, min(TICK_MS, int(left * 1000))))
+        screen.pause(max(1, min(TICK_MS, int(left * 1000))) / 1000)
         return True
 
     def timed_out(*pending: str) -> Settled:
         return Settled(False, f"{node}: still waiting after {ceiling_s:g}s, " + "; ".join(pending), None)
 
+    def look() -> Reading | None:
+        return screen.read(max(0.001, deadline - clock()))
+
     waiting = list(requests)
-    while True:
-        waiting = [pair for pair in waiting if browser.exchange_state(*pair, since=since) != "answered"]
+    while waiting:
+        waiting = [pair for pair in waiting if exchanges.exchange_state(*pair, since=since) != "answered"]
         if not waiting:
             break
         if not tick():
             unsent = [f"{method} {path}" for method, path in waiting
-                      if browser.exchange_state(method, path, since=since) == "unsent"]
+                      if exchanges.exchange_state(method, path, since=since) == "unsent"]
             unanswered = [f"{method} {path}" for method, path in waiting
-                          if browser.exchange_state(method, path, since=since) == "sent"]
+                          if exchanges.exchange_state(method, path, since=since) == "sent"]
             reasons = []
             if unsent:
                 reasons.append("requests never sent: " + ", ".join(unsent))
             if unanswered:
                 reasons.append("requests sent and not answered: " + ", ".join(unanswered))
             return timed_out(*reasons)
-    while busy is not None and shown(page, busy):
+    while busy is not None:
+        reading = look()
+        if reading is not None and not reading.shown(busy):
+            break
         if not tick():
+            if reading is None:
+                return timed_out("the screen could not be read while the busy sign was awaited")
             return timed_out(f"busy sign still shown: {_label(busy)}")
     while True:
-        held = [name for name, perceivables in states.items() if all(holds(page, one) for one in perceivables)]
+        reading = look()
+        held = [] if reading is None else [
+            name for name, perceivables in states.items() if all(holds(reading, one) for one in perceivables)
+        ]
         if held:
             break
         if not tick():
+            if reading is None:
+                return timed_out("the screen could not be read while a declared state was awaited")
             return timed_out("no declared state holds: " + ", ".join(states))
     if expect in held:
         return Settled(True, f"{node}: screen shows state {expect!r}", expect)

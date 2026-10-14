@@ -35,7 +35,7 @@ from ostler_qa_elements import name_pattern, template_pattern
 from ostler_qa_lap import Arranged, LapRecord
 from ostler_qa_paths import is_projection, path_steps, resolve_path
 from ostler_qa_responses import reply_excerpt
-from ostler_qa_settle import ANNOUNCED_ROLES, settle_screen
+from ostler_qa_settle import ANNOUNCED_ROLES, PageScreen, Screen, settle_screen
 from ostler_qa_verifiers import (
     VERIFIERS,
     JsonValue,
@@ -1782,8 +1782,8 @@ class Qa:
         self,
         node: str,
         *,
-        since: int,
-        requests: Sequence[tuple[str, str]],
+        since: int | None = None,
+        requests: Sequence[tuple[str, str]] = (),
         busy: Mapping[str, Any] | None,
         states: Mapping[str, Sequence[Mapping[str, Any]]],
         expect: str,
@@ -1791,12 +1791,29 @@ class Qa:
     ) -> bool:
         """Wait for a screen to settle, then record whether the state it settled on is the one the book names.
 
-        The screen has `ceiling_s` seconds, shared by every wait: its requests answering, its busy sign going, a declared state holding.
+        The screen has `ceiling_s` seconds, shared by every wait: its requests answering, its busy sign going, a declared state holding. A device has no request feed, so only a browser waits on `requests`.
         """
-        self.mark()
+        driver = self.target.driver
+        if driver == "playwright":
+            self.mark()
+            screen: Screen = PageScreen(self.browser_page)
+            exchanges = self.diagnostics
+        elif driver == "maestro":
+            if requests:
+                raise ValueError(
+                    f"scenario {self.scenario_id!r} settles '{node}' on a device with requests to wait for, "
+                    "and a device has no request feed"
+                )
+            screen = _harness_module("ostler_qa_hierarchy").DeviceScreen()
+            exchanges = None
+        else:
+            raise RuntimeError(
+                f"scenario {self.scenario_id!r} settles '{node}' on a '{driver}' target, which shows no "
+                "screen to wait for — declare the target with driver='playwright' or driver='maestro'"
+            )
         settled = settle_screen(
-            self.diagnostics, self.browser_page, node,
-            since=since, requests=requests, busy=busy, states=states, expect=expect, ceiling_s=self.ceiling_s,
+            screen, exchanges, node,
+            since=since or 0, requests=requests, busy=busy, states=states, expect=expect, ceiling_s=self.ceiling_s,
         )
         return self._record(settled.message, settled.passed, settled.held, expect, covers)
 
@@ -1906,6 +1923,7 @@ class Maestro:
         *,
         name: str = "",
         timeout: float = 600.0,
+        require: bool = False,
     ) -> MaestroResult:
         if shutil.which("maestro") is None:
             raise RuntimeError("the maestro CLI is not installed on this machine")
@@ -1950,6 +1968,9 @@ class Maestro:
                     else "maestro-diagnostic"
                 )
                 qa.artifact(produced, kind=kind)
+        if require and code != 0:
+            tail = "\n".join(output.strip().splitlines()[-10:])
+            raise RuntimeError(f"maestro flow {path.name} exited {code}:\n{tail}")
         return MaestroResult(exit_code=code, output=output, flow=path)
 
 
