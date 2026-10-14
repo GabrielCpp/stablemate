@@ -235,7 +235,7 @@ three column semantics that make a wrong answer look right (NULL is not `0.0`;
 
 When a `coder` run gives up on a QA gate, the run has handed you a defect and stopped. It is not
 self-recovery, and narrating it as recovery leaves the defect in the tree. It enters
-[[diagnosing-bugs]] at Phase 1 like any other bug, with the run's own artifacts as the starting
+[[isolating-causes]] at Phase 1 like any other bug, with the run's own artifacts as the starting
 evidence:
 
 ```bash

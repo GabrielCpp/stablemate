@@ -1,12 +1,12 @@
 ---
 name: step-back
-description: "Judging whether a stream of attempts is going anywhere, from outside it: the attempts treated as a reference class instead of the next case to fix, four moves (test the aim, test the lever, go wide not deep, split the progress number), the side each stuck failure sits on, and a read-only reviewer with fresh context that recommends and does no work. Load when the same kind of attempt has been made three times on one goal, when a sub-task has grown larger than the task it serves, when a progress number falls slower each round, when a long or unattended run is being tended, when about to report nearly done again, or when a gate asks whether to keep going. For finding a defect once the stuck subset is named, load diagnosing-bugs. For judging the fix, load root-cause."
+description: "Judging whether a stream of attempts is going anywhere, from outside it: the attempts treated as a reference class instead of the next case to fix, four moves (test the aim, test the lever, go wide not deep, split the progress number), the side each stuck failure sits on, and a read-only reviewer with fresh context that recommends and does no work. Load when the same kind of attempt has been made three times on one goal, when a sub-task has grown larger than the task it serves, when a progress number falls slower each round, when a long or unattended run is being tended, when about to report nearly done again, or when a gate asks whether to keep going. For finding a defect once the stuck subset is named, load isolating-causes. For judging the fix, load root-cause."
 tags: [review, process]
 ---
 
 # Step back
 
-[[diagnosing-bugs]] finds a defect from a symptom. [[root-cause]] judges a fix. This skill judges
+[[isolating-causes]] finds the cause of an effect. [[root-cause]] judges a fix. This skill judges
 the **stream**: whether the attempts so far are moving the goal, and which question to ask next.
 It fires on a count, not a topic. Three attempts of the same kind on the same goal is the trigger,
 whatever the attempts were. It fires also on a size: a sub-task that has taken more time than
@@ -81,7 +81,7 @@ attempts already used, one case at a time.
 - **The largest group first.** Rank the groups by size. The top group is worth more than the
   rest of the list together, more often than not.
 - **Read the group's members together.** What do they share that the passing cases lack? That
-  contrast is the hypothesis to hand to [[diagnosing-bugs]].
+  contrast is the hypothesis to hand to [[isolating-causes]].
 
 ## Move 4: split the progress number
 
