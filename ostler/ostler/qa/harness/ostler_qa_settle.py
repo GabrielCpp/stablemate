@@ -95,9 +95,10 @@ def settle_screen(
     states: Mapping[str, Sequence[Mapping[str, Any]]],
     expect: str,
     ceiling_s: float,
+    origins: Sequence[str] = (),
     clock: Callable[[], float] = time.monotonic,
 ) -> Settled:
-    """Wait for the requests to answer, then the busy sign to go, then a declared state to hold, all within one ceiling."""
+    """Wait for the requests to answer, then the busy sign to go, then a declared state to hold, all within one ceiling. With *origins*, the settle then fails on a `fetch` or `xhr` request to one of them that *requests* do not declare."""
     deadline = clock() + ceiling_s
 
     def tick() -> bool:
@@ -148,6 +149,11 @@ def settle_screen(
             if reading is None:
                 return timed_out("the screen could not be read while a declared state was awaited")
             return timed_out("no declared state holds: " + ", ".join(states))
+    if origins:
+        extra = exchanges.undeclared_since(requests, origins=origins, since=since)
+        if extra:
+            sent = ", ".join(f"{method} {path}" for method, path in extra)
+            return Settled(False, f"{node}: requests no passage or screen declares: {sent}", held[0])
     if expect in held:
         return Settled(True, f"{node}: screen shows state {expect!r}", expect)
     return Settled(False, f"{node}: expected state {expect!r}, screen shows {held[0]!r}", held[0])

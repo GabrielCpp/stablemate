@@ -10,13 +10,15 @@ from dataclasses import dataclass, field
 from types import ModuleType
 from typing import Any
 
-from ostler import doctor, fragment_hosts, hidden_claims, page_size, section_hosts, server_membership, shared_checks, stack_checks, step_commands
+from ostler import doctor, fragment_hosts, hidden_claims, page_size, passages, section_hosts, server_membership, shared_checks, stack_checks, step_commands
 
-DOCTOR_MODULES: tuple[ModuleType, ...] = (doctor, fragment_hosts, hidden_claims, page_size, section_hosts, server_membership, shared_checks, stack_checks, step_commands)
+DOCTOR_MODULES: tuple[ModuleType, ...] = (doctor, fragment_hosts, hidden_claims, page_size, passages, section_hosts, server_membership, shared_checks, stack_checks, step_commands)
 
 _BRIDGE = "gap_findings has no product caller; gaps surface via qa compile-plan only"
 
 _NO_MILESTONES = "no book in the corpus declares a milestone, so the dependency walk has nothing to walk"
+
+_NO_PASSAGES = "no book in the corpus declares a passage, so no passage is there to be malformed"
 
 DORMANT_UNREACHABLE: dict[str, str] = {
     "browser-fixture-off-browser": _BRIDGE,
@@ -28,6 +30,7 @@ DORMANT_UNREACHABLE: dict[str, str] = {
     "needs-snapshot": _BRIDGE,
     "needs-target-backend": _BRIDGE,
     "needs-trigger-action": _BRIDGE,
+    "passage-shape": _NO_PASSAGES,
     "precondition-discharged-by-arrangement": _BRIDGE,
     "screen-preconditions-undeclared": _BRIDGE,
     "unarranged-interaction-precondition": _BRIDGE,

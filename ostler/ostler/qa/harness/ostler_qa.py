@@ -1788,22 +1788,25 @@ class Qa:
         states: Mapping[str, Sequence[Mapping[str, Any]]],
         expect: str,
         covers: Sequence[str] | None = None,
+        origins: Sequence[str] = (),
     ) -> bool:
         """Wait for a screen to settle, then record whether the state it settled on is the one the book names.
 
-        The screen has `ceiling_s` seconds, shared by every wait: its requests answering, its busy sign going, a declared state holding. A device has no request feed, so only a browser waits on `requests`.
+        The screen has `ceiling_s` seconds, shared by every wait: its requests answering, its busy sign going, a declared state holding. A device has no request feed, so only a browser waits on `requests` or takes `origins`. With `origins`, a `fetch` or `xhr` request since *since* to the page's own origin or one of them that `requests` do not declare fails the settle.
         """
         driver = self.target.driver
         if driver == "playwright":
             self.mark()
             screen: Screen = PageScreen(self.browser_page)
             exchanges = self.diagnostics
+            watched = [self.browser_page.url, *origins] if origins else []
         elif driver == "maestro":
-            if requests:
+            if requests or origins:
                 raise ValueError(
                     f"scenario {self.scenario_id!r} settles '{node}' on a device with requests to wait for, "
                     "and a device has no request feed"
                 )
+            watched = []
             screen = _harness_module("ostler_qa_hierarchy").DeviceScreen()
             exchanges = None
         else:
@@ -1814,6 +1817,7 @@ class Qa:
         settled = settle_screen(
             screen, exchanges, node,
             since=since or 0, requests=requests, busy=busy, states=states, expect=expect, ceiling_s=self.ceiling_s,
+            origins=watched,
         )
         return self._record(settled.message, settled.passed, settled.held, expect, covers)
 

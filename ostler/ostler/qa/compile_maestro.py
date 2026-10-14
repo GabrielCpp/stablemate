@@ -11,6 +11,7 @@ from ostler.qa.book_index import BookIndex
 from ostler.qa.compile_journey import JourneyWalk
 from ostler.qa.compile_journey import WalkedJourney
 from ostler.qa.compile_stops import ScreenStop
+from ostler.qa.compile_stops import expand_steps
 from ostler.qa.compile_stops import resolve_state
 from ostler.qa.compile_stops import resolve_stop
 from ostler.qa.compile_support import MAESTRO
@@ -412,7 +413,10 @@ def _journey_taps(walk: JourneyWalk, gaps: list[Gap]) -> _JourneyTaps | None:
     """One tap per `interaction` step of a journey, cut at each stop, or `None` after gapping the first step it cannot make."""
     ids, locators_by_node = walk.ids, walk.book.locators_by_node
     taps = _JourneyTaps([[]], [])
-    for index, step in enumerate(walk.steps, start=1):
+    moves = expand_steps(walk, gaps)
+    if moves is None:
+        return None
+    for index, step in ((move.index, move.step) for move in moves):
         if step.node_type == "state":
             stop = resolve_stop(index, step, walk, gaps, device=True)
             if stop is None:

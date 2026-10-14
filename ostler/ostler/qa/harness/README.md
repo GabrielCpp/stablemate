@@ -18,7 +18,7 @@ and Playwright.
 - `ostler_qa_lap.py`: the lap record, what each precondition built once in a lap leaves for the later scenarios.
 - `ostler_qa_paths.py`: the document-path grammar, the steps a path parses into and how it walks a document.
 - `ostler_qa_responses.py`: the verifiers that read what a request or a command answered: status, headers, exit code and output.
-- `ostler_qa_settle.py`: the wait that lets a screen settle: its requests answer, its busy sign goes, and one declared state holds.
+- `ostler_qa_settle.py`: the wait that lets a screen settle: its requests answer, its busy sign goes, and one declared state holds. After a passage it also fails on a `fetch` or `xhr` request the passage and screen do not declare.
 - `ostler_qa_scan.py`: the DOM scan `ostler vet` is built on.
 - `ostler_qa_verdicts.py`: the verdict a check returns, the arguments it reads, and the values its assert record carries.
 - `ostler_qa_verifiers.py`: the claim verifiers, every `verify:` kind by the reading it takes and the judge it applies.

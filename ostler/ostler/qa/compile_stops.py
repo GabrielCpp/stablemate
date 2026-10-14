@@ -6,7 +6,8 @@ import re
 from collections.abc import Sequence
 from dataclasses import dataclass
 
-from ostler import accessible_names
+from ostler import accessible_names, passages as passages_mod
+from ostler.passages import Passage
 from ostler.qa.compile_journey import JourneyWalk
 from ostler.qa.compile_support import MATCHABLE_ROLES
 from ostler.qa.compile_support import TEMPLATE_HOLE
@@ -18,6 +19,7 @@ from ostler.qa.obligation import FlowStep
 from ostler.qa.obligation import Locators
 from ostler.qa.obligation import NO_LOCATORS
 from ostler.qa.plan_source import Gap
+from ostler.qa.plan_source import arrangement_of
 
 _STATE_MODIFIERS = frozenset({"absent", "disabled", "checked", "expanded", "selected"})
 
@@ -57,10 +59,10 @@ def perceivable(entry: str, page: str, book: BookIndex) -> dict[str, object] | s
     return {"role": role, "name": literal, **dict.fromkeys(modifiers, True)}
 
 
-def request_pairs(locators: Locators) -> list[tuple[str, str]] | str:
-    """The `(method, path)` pairs a screen's `requests:` declares, or why one cannot be read."""
+def declared_pairs(entries: Sequence[str]) -> list[tuple[str, str]] | str:
+    """The `(method, path)` pairs a `requests:` list declares, or why one cannot be read."""
     pairs: list[tuple[str, str]] = []
-    for entry in locators.requests:
+    for entry in entries:
         method, _, path = (bullet_value(entry) or "").partition(" ")
         path = path.strip()
         if not method.isalpha() or not path.startswith("/"):
@@ -69,24 +71,90 @@ def request_pairs(locators: Locators) -> list[tuple[str, str]] | str:
     return pairs
 
 
+def request_pairs(locators: Locators) -> list[tuple[str, str]] | str:
+    """The `(method, path)` pairs a screen's `requests:` declares, or why one cannot be read."""
+    return declared_pairs(locators.requests)
+
+
 def stop_state_ids(step: FlowStep, book: BookIndex) -> set[str]:
     """The ids of the state obligations whose node is the one *step* stops at."""
     return {state.id for state in book.states_by_screen.get(step.ref.split("#")[0], [])
             if state.node == step.ref}
 
 
+@dataclass(frozen=True)
+class Move:
+    """One step of a walk once passages are expanded: the flow step it came from, the passage it ends, and whether it goes on from the move before."""
+    index: int
+    step: FlowStep
+    passage: Passage | None = None
+    continues: bool = False
+
+
+def expand_steps(walk: JourneyWalk, gaps: list[Gap]) -> list[Move] | None:
+    """The walk's steps with each passage expanded into its interactions and the stops around it, or `None` once a joint, a passage or a condition cannot be followed."""
+    def refuse(reason: str) -> None:
+        gaps.extend(Gap(oid, "uncompilable-claim", reason) for oid in walk.ids)
+
+    book = walk.book
+    for index, step in enumerate(walk.steps, start=1):
+        if step.node_type == "passage" and step.ref not in book.passages:
+            refuse(f"step {index} links passage `{step.ref}`, which the packet does not carry well formed")
+            return None
+    traced = passages_mod.trace([(step.node_type, step.ref) for step in walk.steps], book.passages)
+    if traced.broken:
+        for _number, message in traced.broken:
+            refuse(message)
+        return None
+    arranged = {row.name for row in arrangement_of(walk.obligations).rows}
+    for stop in traced.stops:
+        if stop.acted:
+            continue
+        for stop_state in book.states_by_screen.get(stop.state.split("#")[0], []):
+            missing = sorted({row.name for row in stop_state.fixtures} - arranged)
+            if stop_state.node == stop.state and missing and not stop_state.arranges_nothing:
+                refuse(passages_mod.unarranged(stop.at + 1, stop.state, missing))
+                return None
+    moves: list[Move] = []
+    for at, step in enumerate(walk.steps):
+        if at in traced.repeated:
+            continue
+        if step.node_type != "passage":
+            moves.append(Move(at + 1, step))
+            continue
+        passage = book.passages[step.ref]
+        if at in traced.opens:
+            moves.append(Move(at + 1, FlowStep(passage.start, "", "state", step.surface)))
+        moves.extend(Move(at + 1, FlowStep(ref, "", "interaction", step.surface), None, number > 0)
+                     for number, ref in enumerate(passage.steps))
+        moves.append(Move(at + 1, FlowStep(passage.end, "", "state", step.surface), passage))
+    return moves
+
+
 def resolve_stop(
     index: int, step: FlowStep, walk: JourneyWalk, gaps: list[Gap], *, device: bool,
+    passage: Passage | None = None,
 ) -> ScreenStop | None:
-    """What the step waits for and checks, or `None` once the stop cannot be compiled."""
+    """What the step waits for and checks, or `None` once the stop cannot be compiled. A stop after *passage* waits for the passage's requests first."""
+    sent: list[tuple[str, str]] = []
+    keep_own = True
+    if passage is not None and not device:
+        declared = declared_pairs(passage.requests)
+        if isinstance(declared, str):
+            gaps.extend(Gap(oid, "uncompilable-claim", f"step {index} stops at `{step.ref}`: {declared}")
+                        for oid in walk.ids)
+            return None
+        sent = declared
+        keep_own = passage.start.split("#")[0] != passage.end.split("#")[0]
     return resolve_state(step.ref, walk.book, walk.ids, gaps, device=device,
-                         where=f"step {index} stops at `{step.ref}`")
+                         where=f"step {index} stops at `{step.ref}`", sent=sent, keep_own=keep_own)
 
 
 def resolve_state(
     ref: str, book: BookIndex, ids: Sequence[str], gaps: list[Gap], *, device: bool, where: str,
+    sent: Sequence[tuple[str, str]] = (), keep_own: bool = True,
 ) -> ScreenStop | None:
-    """What settling on the state *ref* waits for and checks, or `None` once it cannot be compiled."""
+    """What settling on the state *ref* waits for and checks, or `None` once it cannot be compiled. *sent* are requests to wait for before the screen's own, which *keep_own* false leaves out."""
     page, _, fragment = ref.partition("#")
 
     def refuse(reason: str) -> None:
@@ -136,4 +204,4 @@ def resolve_state(
         refuse("the packet carries no obligation for this state")
         return None
     title = next(state.requirement for state in siblings if state.node == ref).partition(": ")[0]
-    return ScreenStop(ref, tuple(requests), busy, states, fragment, covers, title)
+    return ScreenStop(ref, (*sent, *(requests if keep_own else ())), busy, states, fragment, covers, title)

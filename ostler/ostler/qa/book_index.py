@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from dataclasses import field
 
 from ostler import registry
+from ostler.passages import Passage
 from ostler.qa.compile_support import on_node
 from ostler.qa.obligation import CallRow
 from ostler.qa.obligation import Locators
@@ -43,6 +44,7 @@ class BookIndex:
     server_origins: dict[str, str] = field(default_factory=dict[str, str])
     fixture_screens: dict[str, str] = field(default_factory=dict[str, str])
     states_by_screen: dict[str, list[Obligation]] = field(default_factory=dict[str, list[Obligation]])
+    passages: dict[str, Passage] = field(default_factory=dict[str, Passage])
 
 
 @dataclass(frozen=True)

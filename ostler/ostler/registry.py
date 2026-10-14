@@ -188,7 +188,7 @@ STEP_KIND_VALUES = ("prepare", "service", "seed", "health", "run", "verify", "pr
 CODE_GROUNDING_KEYS = frozenset({"code"})
 RELATION_KEYS = ("on", "server", "host", "parent", "extends", "same-as", "steps", "presents", "detail",
                  "environment", "cli", "surfaces", "launch-screen", "requires", "params",
-                 "leads-to", "exclusive-with", "prefers", "deprecates")
+                 "leads-to", "exclusive-with", "prefers", "deprecates", "from", "to")
 
 SHARED_NORMATIVE_KEYS = ("consistency", "consistency rule", "consistency group", "persistence",
                          "emits", "consumes", "concurrency", "idempotency")
@@ -678,6 +678,16 @@ UI_TYPES: tuple[UINodeType, ...] = (
             BulletKey("verify", check=True),
             BulletKey("fixture", arrange=True),
             BulletKey("tests", link=True),
+        ),
+    ),
+    UINodeType(
+        name="passage", kind="section", heading="Passages", host_page_types=("screen",),
+        bullet_keys=(
+            BulletKey("from", required=True, link=True),
+            BulletKey("steps", required=True, nested=True, link=True),
+            BulletKey("to", required=True, link=True),
+            BulletKey("requests", nested=True, locator=True),
+            BulletKey("detail", link=True),
         ),
     ),
     UINodeType(

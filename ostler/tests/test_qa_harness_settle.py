@@ -155,3 +155,66 @@ def test_a_screen_whose_request_never_answers_fails_at_the_ceiling_naming_the_re
     label = silent.checks[0][0]
     assert "GET /api/results" in label
     assert f"{CEILING_S:g}s" in label
+
+
+def _extra_page(fetches: str) -> str:
+    return _PAGE.replace("</script>", fetches + "</script>").replace(
+        "<div id=\"out\"></div>", '<div id="out"></div><script src="/app.js"></script>')
+
+
+def _settle_with_extras(chromium: Any, fetches: str, requests: list[tuple[str, str]]) -> tuple[bool, _Scenario]:
+    page = chromium.new_page()
+    watcher = recorder.Browser(
+        SimpleNamespace(recording=None, viewport=None),
+        qa_dir=Path("."),
+        scenario_id="settle",
+        clock=lambda: 0,
+        emit=lambda *args, **kwargs: None,
+    )
+    watcher._listen(page)
+    page.route("http://fixture.test/results", lambda route: route.fulfill(content_type="text/html", body=_extra_page(fetches)))
+    page.route("http://fixture.test/api/**", lambda route: route.fulfill(status=200, body="[]", headers={"access-control-allow-origin": "*"}))
+    page.route("http://fixture.test/app.js", lambda route: route.fulfill(content_type="text/javascript", body=""))
+    page.route("http://cdn.test/**", lambda route: route.fulfill(status=200, body="[]", headers={"access-control-allow-origin": "*"}))
+    page.route("http://other.test/**", lambda route: route.fulfill(status=200, body="[]", headers={"access-control-allow-origin": "*"}))
+    scenario = _Scenario(page, watcher, CEILING_S)
+    try:
+        since = scenario.mark()
+        page.goto("http://fixture.test/results")
+        return harness.Qa.settle(
+            scenario, NODE, since=since, requests=requests, busy=BUSY, states=STATES, expect="loaded",
+            covers=["okf:gui/screens/results.md#loaded:contract"], origins=["http://other.test"],
+        ), scenario
+    finally:
+        page.close()
+
+
+def test_an_own_origin_request_no_passage_declares_fails_the_settle_naming_it(chromium: Any) -> None:
+    passed, scenario = _settle_with_extras(
+        chromium, 'fetch("/api/track", {method: "POST", body: "{}"});', [("GET", "/api/results")])
+    assert not passed
+    assert scenario.checks[0][0] == f"{NODE}: requests no passage or screen declares: POST /api/track"
+
+
+def test_the_same_request_to_a_third_party_origin_passes(chromium: Any) -> None:
+    passed, _ = _settle_with_extras(
+        chromium, 'fetch("http://cdn.test/api/track", {method: "POST", body: "{}"});', [("GET", "/api/results")])
+    assert passed
+
+
+def test_the_same_request_to_another_origin_the_book_serves_fails(chromium: Any) -> None:
+    passed, scenario = _settle_with_extras(
+        chromium, 'fetch("http://other.test/api/track", {method: "POST", body: "{}"});', [("GET", "/api/results")])
+    assert not passed
+    assert "POST /api/track" in scenario.checks[0][0]
+
+
+def test_a_script_load_is_not_a_request_the_check_counts(chromium: Any) -> None:
+    passed, _ = _settle_with_extras(chromium, "", [("GET", "/api/results")])
+    assert passed
+
+
+def test_a_request_matching_a_declared_path_pattern_passes(chromium: Any) -> None:
+    passed, _ = _settle_with_extras(
+        chromium, 'fetch("/api/results/42");', [("GET", "/api/results"), ("GET", "/api/results/{id}")])
+    assert passed

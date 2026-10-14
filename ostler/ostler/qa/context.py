@@ -19,7 +19,7 @@ from ostler import graph as graph_mod
 from ostler import locators as locators_mod
 from ostler import acts as acts_mod
 from ostler import checks as checks_mod
-from ostler import inventory, markdown, path as path_mod, refs as refs_mod, registry, syntax
+from ostler import inventory, markdown, passages as passages_mod, path as path_mod, refs as refs_mod, registry, syntax
 from ostler.model import Graph, _parse_ui_nodes, load
 from ostler.pages import files_in_book
 from ostler import reach
@@ -375,6 +375,7 @@ def build_context(
         "browserFixtures": _browser_fixtures(snapshot.book),
         "fixtureScreens": _fixture_screens(snapshot.head_graph, snapshot.book),
         "fragmentHosts": _fragment_hosts(snapshot.book),
+        "passages": _passages(snapshot.book, selection.contracts | selection.journeys),
         "screenRoutes": routes_mod.screen_routes(snapshot.head_graph),
         "healthFindings": [*mapping.unmapped, *grounding.health, *requirement.health],
         "story": _story_identity(story_file),
@@ -539,7 +540,8 @@ def _selection(snapshot: _BookSnapshot, direct_reasons: dict[str, list[Reason]])
         if source in journeys and target in snapshot.nodes_by_id and target not in flows:
             contracts.add(target)
             direct_reasons.setdefault(target, []).append(Reason(ReasonKind.FLOW_CONTRACT_CLOSURE, source))
-    perceivables = _close_over_state_perceivables(snapshot, contracts, direct_reasons)
+    perceivables = _close_over_passages(snapshot, contracts, direct_reasons)
+    perceivables |= _close_over_state_perceivables(snapshot, contracts, direct_reasons)
     _close_over_shared_subjects(snapshot.book, contracts, journeys, direct_reasons)
     judgment_by_node = _judgment_context(snapshot, contracts, journeys, direct_reasons)
     return _Selection(
@@ -549,6 +551,34 @@ def _selection(snapshot: _BookSnapshot, direct_reasons: dict[str, list[Reason]])
         judgment_by_node=judgment_by_node,
         perceivables=perceivables,
     )
+
+
+def _close_over_passages(
+    snapshot: _BookSnapshot, contracts: set[str], direct_reasons: dict[str, list[Reason]]
+) -> frozenset[str]:
+    """Add the states a selected passage leaves and lands on, the interactions it performs and the components they act on, as context."""
+    book = snapshot.book
+    perceived: set[str] = set()
+
+    def add(node_id: str, because: str) -> None:
+        if node_id not in snapshot.nodes_by_id:
+            return
+        perceived.add(node_id)
+        if node_id not in contracts:
+            contracts.add(node_id)
+            direct_reasons.setdefault(node_id, []).append(Reason(ReasonKind.GRAPH_CLOSURE, because))
+
+    for node_id in sorted(contracts):
+        passage = book.get(node_id)
+        if passage is None or passage.type != "passage":
+            continue
+        for via in ("from", "steps", "to"):
+            for target in passage.targets(via, book):
+                add(target.id, node_id)
+                if via == "steps":
+                    for component in target.targets("on", book):
+                        add(component.id, target.id)
+    return frozenset(perceived)
 
 
 def _close_over_state_perceivables(
@@ -776,6 +806,7 @@ def _minted_obligations(
         for node_id in selection.contracts | selection.journeys
         if (not prefixes or node_id in selection.perceivables or book[node_id].path.startswith(prefixes))
         and not book[node_id].path.startswith(unexercised)
+        and book[node_id].type != "passage"
     }
     context_only = {node_id for node_id in owing & selection.perceivables if prefixes and not book[node_id].path.startswith(prefixes)}
     fixture_provides = _fixture_provides_index(book)
@@ -1503,6 +1534,17 @@ def _fixture_screens(graph: Graph, book: Mapping[str, BookNode]) -> dict[str, st
         return next((screen for need in reversed(needs) if (screen := left_on(need, seen | {path}))), None)
 
     return {Path(path).stem: screen for path in sorted(fixtures) if (screen := left_on(path, frozenset({path})))}
+
+
+def _passages(book: Mapping[str, BookNode], selected: set[str]) -> dict[str, dict[str, Any]]:
+    """The passages the selection reaches, by node id: the state each leaves and lands on, the interactions it performs and the requests it sends."""
+    rows: dict[str, dict[str, Any]] = {}
+    for node_id in sorted(selected):
+        passage = passages_mod.passage_of(book[node_id], book) if node_id in book and book[node_id].type == "passage" else None
+        if passage is not None:
+            rows[node_id] = {"from": passage.start, "steps": list(passage.steps), "to": passage.end,
+                             "requests": list(passage.requests)}
+    return rows
 
 
 def _fragment_hosts(book: Mapping[str, BookNode]) -> dict[str, str]:

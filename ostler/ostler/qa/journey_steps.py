@@ -19,7 +19,7 @@ from ostler.untyped import JsonValue
 if TYPE_CHECKING:
     from ostler.qa.obligation_frame import BookNode
 
-PERFORMED_TYPES = frozenset({"interaction", "invocation", "endpoint", "command", "state"})
+PERFORMED_TYPES = frozenset({"interaction", "invocation", "endpoint", "command", "state", "passage"})
 PLACE_TYPES = frozenset({"screen", "component", "field"})
 
 

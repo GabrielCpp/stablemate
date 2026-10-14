@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import re
+from collections.abc import Sequence
 from dataclasses import dataclass
 
 from ostler import accessible_names
 from ostler import acts as acts_mod
 from ostler.checks import Call
+from ostler.passages import Passage
 from ostler.checks import parse_call
 from ostler.qa.book_index import BookIndex
 from ostler.qa.compile_journey import JourneyWalk
@@ -15,6 +17,7 @@ from ostler.qa.compile_journey import WalkedJourney
 from ostler.qa.compile_support import PLAYWRIGHT
 from ostler.qa.compile_stops import ScreenStop
 from ostler.qa.compile_stops import stop_state_ids
+from ostler.qa.compile_stops import expand_steps
 from ostler.qa.compile_stops import resolve_stop
 from ostler.qa.compile_support import MATCHABLE_ROLES as _MATCHABLE_ROLES
 from ostler.qa.compile_support import TEMPLATE_HOLE as _TEMPLATE_HOLE
@@ -458,8 +461,8 @@ def _step_acts(step: FlowStep, walk: JourneyWalk) -> list[CallRow]:
 
 MARK_LINE = "    mark = qa.mark()"
 
-def settle_lines(stop: ScreenStop, comment: str) -> list[str]:
-    """The `qa.settle` call a browser walk makes at a stop: the screen's requests since the mark, its busy sign and its states."""
+def settle_lines(stop: ScreenStop, comment: str, origins: Sequence[str] = ()) -> list[str]:
+    """The `qa.settle` call a browser walk makes at a stop: the screen's requests since the mark, its busy sign and its states, and after a passage the origins whose undeclared requests fail it."""
     request_literal = "[" + ", ".join(f"({python_literal(method)}, {python_literal(path)})" for method, path in stop.requests) + "]"
     return [
         "    qa.settle(",
@@ -470,24 +473,26 @@ def settle_lines(stop: ScreenStop, comment: str) -> list[str]:
         f"        states={python_literal(stop.states)},",
         f"        expect={python_literal(stop.expect)},",
         f"        covers={python_literal(list(stop.covers))},",
+        *([f"        origins={python_literal(list(origins))},"] if origins else []),
         f"    )  # {comment}",
     ]
 
 
-def _stop_step(index: int, step: FlowStep, walk: JourneyWalk, gaps: list[Gap]) -> list[str] | None:
-    """Wait for the screen a step stops at to settle, then check it is the declared state that holds, or `None` once the stop cannot be compiled."""
-    stop = resolve_stop(index, step, walk, gaps, device=False)
+def _stop_step(
+    index: int, step: FlowStep, walk: JourneyWalk, gaps: list[Gap], passage: Passage | None = None,
+) -> list[str] | None:
+    """Wait for the screen a step stops at to settle, then check it is the declared state that holds, or `None` once the stop cannot be compiled. After a passage the stop also fails on a request nothing declares."""
+    stop = resolve_stop(index, step, walk, gaps, device=False, passage=passage)
     if stop is None:
         return None
-    return settle_lines(stop, f"step {index}: stop at {trailing_comment(stop.title)}")
+    origins = sorted(set(walk.book.server_origins.values())) if passage is not None else []
+    return settle_lines(stop, f"step {index}: stop at {trailing_comment(stop.title)}", origins)
 
 
 def _web_step(index: int, step: FlowStep, walk: JourneyWalk, gaps: list[Gap]) -> list[str] | None:
     """Arrange and perform one `interaction` or `invocation` step, or `None` once the journey cannot go on."""
     book, ids = walk.book, walk.ids
     node_type = step.node_type
-    if node_type == "state":
-        return _stop_step(index, step, walk, gaps)
     if node_type not in ("interaction", "invocation"):
         gaps.extend(Gap(oid, "uncompilable-claim",
                         f"step {index} names a {node_type or 'untyped'} node, which is a "
@@ -589,19 +594,26 @@ def web_walk(walk: JourneyWalk, sinks: PlanSinks) -> WalkedJourney:
     lines = _web_start(walk, gaps)
     if lines is None:
         return unwalked
-    stops = [step for step in walk.steps if step.node_type == "state"]
+    moves = expand_steps(walk, gaps)
+    if moves is None:
+        return unwalked
+    stops = [move for move in moves if move.step.node_type == "state"]
     if stops:
         opening = next((at for at, line in enumerate(lines) if line.startswith("    qa.goto(")), 0)
         lines.insert(opening, MARK_LINE)
     action_index = len(lines)
     covered_stops: set[str] = set()
-    for index, step in enumerate(walk.steps, start=1):
-        performed = _web_step(index, step, walk, gaps)
+    for move in moves:
+        step = move.step
+        if step.node_type == "state":
+            performed = _stop_step(move.index, step, walk, gaps, move.passage)
+        else:
+            performed = _web_step(move.index, step, walk, gaps)
         if performed is None:
             return unwalked
         if step.node_type == "state":
             covered_stops.update(stop_state_ids(step, walk.book))
-        elif stops and performed:
+        elif stops and performed and not move.continues:
             lines.append(MARK_LINE)
         lines.extend(performed)
     observed = page_observations(walk.obligations, gaps, scenario="journey")

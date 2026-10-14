@@ -147,3 +147,10 @@ def test_a_flow_that_is_not_required_hands_back_its_failure(monkeypatch: pytest.
     )
 
     assert harness.Maestro(_Recorded(tmp_path)).run(flow).exit_code == 1
+
+
+def test_settling_a_device_with_origins_to_watch_is_refused() -> None:
+    with pytest.raises(ValueError, match="a device has no request feed"):
+        harness.Qa.settle(
+            _Device(), NODE, busy=BUSY, states=STATES, expect="loaded", origins=["http://127.0.0.1:8099"],
+        )

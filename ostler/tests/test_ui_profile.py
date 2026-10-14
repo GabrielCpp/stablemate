@@ -94,7 +94,7 @@ def test_ui_types_registered():
         "method", "field",
         "runbook", "environment", "step",
         "fixture",
-        "fragment", "state",
+        "fragment", "state", "passage",
         "untyped",
     }
 
@@ -104,7 +104,7 @@ def test_heading_to_type_map():
         "Components": "component", "Commands": "command", "Endpoints": "endpoint",
         "Interactions": "interaction", "Invocations": "invocation",
         "Methods": "method", "Fields": "field",
-        "Steps": "step", "Screen states": "state",
+        "Steps": "step", "Screen states": "state", "Passages": "passage",
     }
 
 

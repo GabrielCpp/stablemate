@@ -453,6 +453,24 @@ class Browser:
             state = "sent"
         return state
 
+    def undeclared_since(
+        self, declared: Sequence[tuple[str, str]], *, origins: Sequence[str], since: int,
+    ) -> list[tuple[str, str]]:
+        """The distinct `(method, path)` pairs, in the order sent, of `fetch` and `xhr` requests numbered *since* or later to one of *origins* that match none of *declared*."""
+        allowed = {urlsplit(origin).netloc for origin in origins}
+        patterns = [(method.upper(), path_pattern(path)) for method, path in declared]
+        found: list[tuple[str, str]] = []
+        for entry in self._requests[since:]:
+            if entry.get("resourceType") not in ("fetch", "xhr"):
+                continue
+            parts = urlsplit(str(entry.get("url", "")))
+            method = str(entry.get("method", "")).upper()
+            if parts.netloc not in allowed or (method, parts.path) in found:
+                continue
+            if not any(method == known and pattern.fullmatch(parts.path) for known, pattern in patterns):
+                found.append((method, parts.path))
+        return found
+
     def quiet(self, *, quiet_ms: int = QUIET_MS, timeout_ms: int = QUIET_TIMEOUT_MS) -> None:
         """Wait until no request is in flight and none has started for *quiet_ms*, or *timeout_ms* has passed."""
         if self.page is None:

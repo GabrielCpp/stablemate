@@ -6,8 +6,9 @@ import hashlib
 from collections.abc import Mapping
 from dataclasses import dataclass
 from dataclasses import field
-from typing import Any
+from typing import Any, cast
 
+from ostler.passages import Passage
 from ostler.qa.navigation import SurfaceNavigation
 from ostler.qa.navigation import navigation_rows
 from ostler.qa.obligation import Obligation
@@ -27,6 +28,7 @@ class ContextPacket:
     browser_fixtures: frozenset[str] = frozenset()
     fixture_screens: dict[str, str] = field(default_factory=dict[str, str])
     server_origins: dict[str, str] = field(default_factory=dict[str, str])
+    passages: dict[str, Passage] = field(default_factory=dict[str, Passage])
 
     @property
     def owed(self) -> list[Obligation]:
@@ -68,6 +70,25 @@ def _names(value: object, what: str) -> frozenset[str]:
     return frozenset(names)
 
 
+def _passages(value: object) -> dict[str, Passage]:
+    """The packet's passage table, empty when unset, refused loudly when a row is not a passage."""
+    if value is None:
+        return {}
+    if not isinstance(value, dict):
+        raise ValueError(f"context `passages` is not a mapping: {value!r}")
+    table: dict[str, Passage] = {}
+    for node, row in value.items():
+        if not (isinstance(node, str) and isinstance(row, dict)):
+            raise ValueError(f"context `passages` maps {node!r} to {row!r}; a passage is a mapping")
+        start, end, steps, requests = row.get("from"), row.get("to"), row.get("steps"), row.get("requests", [])
+        if not (isinstance(start, str) and isinstance(end, str)
+                and isinstance(steps, list) and all(isinstance(step, str) for step in cast("list[object]", steps))
+                and isinstance(requests, list) and all(isinstance(item, str) for item in cast("list[object]", requests))):
+            raise ValueError(f"context `passages` row {node!r} needs `from`, `to`, `steps` and `requests` as strings: {row!r}")
+        table[node] = Passage(node, start, tuple(cast("list[str]", steps)), end, tuple(cast("list[str]", requests)))
+    return table
+
+
 def packet_of(context: Mapping[str, Any]) -> ContextPacket:
     """*context* validated into a `ContextPacket`, refused loudly wherever it is malformed."""
     return ContextPacket(
@@ -81,4 +102,5 @@ def packet_of(context: Mapping[str, Any]) -> ContextPacket:
         browser_fixtures=_names(context.get("browserFixtures"), "browserFixtures"),
         fixture_screens=_string_table(context.get("fixtureScreens"), "fixtureScreens"),
         server_origins=_string_table(context.get("serverOrigins"), "serverOrigins"),
+        passages=_passages(context.get("passages")),
     )
