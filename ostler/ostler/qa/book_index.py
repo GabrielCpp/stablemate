@@ -62,7 +62,7 @@ class NodeActs:
 
 def _is_declared_claim(obligation: Obligation) -> bool:
     """Whether *obligation* is a claim whose node's acts and captures the book index reads."""
-    return obligation.kind not in registry.refusal_keys(obligation.node_type)
+    return obligation.node_type != "move" and obligation.kind not in registry.refusal_keys(obligation.node_type)
 
 
 def outcomes_by_node(obligations: list[Obligation]) -> dict[str, list[Obligation]]:

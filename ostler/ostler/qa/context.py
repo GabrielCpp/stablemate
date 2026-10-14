@@ -1557,9 +1557,9 @@ def _data_states(book: Mapping[str, BookNode]) -> dict[str, dict[str, Any]]:
             for node_id, state in sorted(data_states_mod.data_states_of(book).items())}
 
 
-def _moves(book: Mapping[str, BookNode]) -> dict[str, list[dict[str, str]]]:
+def _moves(book: Mapping[str, BookNode]) -> dict[str, list[dict[str, str | int]]]:
     """Every endpoint's and invocation's `moves:` rows that land on a state, by node id."""
-    return {node_id: [{"from": move.start, "to": move.end} for move in moves]
+    return {node_id: [{"from": move.start, "to": move.end, "index": move.index} for move in moves]
             for node_id, moves in sorted(data_states_mod.moves_table(book).items())}
 
 
@@ -2132,6 +2132,10 @@ class _Parts:
                 obligation.pop(key, None)
 
 
+_PART_KEYS = ("checksDeclared", "checksUnparsed", "fixturesDeclared", "fixturesUnparsed", "arrangesNothing",
+              "actsDeclared", "actsUnparsed", "capturesDeclared", "capturesUnparsed")
+
+
 @dataclass(frozen=True, slots=True)
 class _PartReader:
     """What parsing a node's parts reads from the book: its locators and each fixture's provided keys."""
@@ -2242,6 +2246,7 @@ def _obligations(
                 obligation["evidenceRequired"] = "context"
             reader.claim_parts(node_parts, attribution, claim).stamp(obligation)
             output.append(obligation)
+    output.extend(_move_obligations(base, book_node, book))
     _discharge_address_pair(book_node.type, output)
     if judgment:
         base["judgment"] = judgment
@@ -2249,6 +2254,27 @@ def _obligations(
     if unspecified:
         base["unspecified"] = unspecified
     return output
+
+
+def _move_obligations(base: dict[str, Any], book_node: BookNode, book: Mapping[str, BookNode]) -> list[dict[str, Any]]:
+    """One obligation per `moves:` row that lands on a state: the row is covered when a compiled walk takes the move."""
+    if book_node.type not in ("endpoint", "invocation"):
+        return []
+    rows = book_node.bullets.get("moves", ())
+    obligations: list[dict[str, Any]] = []
+    for move in data_states_mod.moves_of(book_node, book):
+        obligation = {
+            **base,
+            "id": data_states_mod.move_obligation_id(book_node.id, move.index),
+            "kind": "moves",
+            "nodeType": "move",
+            "requirement": rows[move.index - 1],
+            "docPosition": [book_node.line, -1],
+        }
+        for key in _PART_KEYS:
+            obligation.pop(key, None)
+        obligations.append(obligation)
+    return obligations
 
 
 def _discharge_address_pair(node_type: str, minted: list[dict[str, Any]]) -> None:

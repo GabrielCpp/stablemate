@@ -18,7 +18,9 @@ from ostler.checks import parse_check
 from ostler.checks import _rooted
 from ostler.data_states import DataState
 from ostler.data_states import anchor_of
+from ostler.data_states import move_obligation_id
 from ostler.data_states import siblings_of
+from ostler.data_states import state_obligation_id
 from ostler.qa import references
 from ostler.qa.book_index import BookIndex
 from ostler.qa.book_index import OwnedCapture
@@ -781,6 +783,7 @@ class _HttpSteps:
     observed: str
     last_path: str
     produced: set[str]
+    reached: frozenset[str] = frozenset()
 
 
 def _fixture_owners(obligations: list[Obligation]) -> dict[str, set[str]]:
@@ -879,9 +882,44 @@ def _state_rows(state: DataState, observed: str) -> list[str] | ScenarioRefusal:
     return rows
 
 
+def read_back(
+    where: str, observed: str, target: DataState, book: BookIndex, known: _Produced, produced: set[str],
+    owners: dict[str, set[str]],
+) -> list[str] | str:
+    """The lines that request *target*'s observing endpoint as a step would and hold its checks on the answer, naming the sibling state that holds when they fail, or why the walk cannot read it."""
+    arranged = None
+    node_rows = book.acts_by_node.get(target.observe, [])
+    if node_rows and target.observe not in book.acts_refused:
+        arranged = _step_arrangement(target.observe, node_rows, book)
+    sent = tuple(arranged.named_references()) if arranged else ()
+    unprovided = [ref for ref in sent if not known.resolves(ref)]
+    bound = _bound_path(target.path, produced, owners, set())
+    problem = (f"{where} of `{anchor_of(target.node)}` sends `{_book_spelling(unprovided[0])}`, "
+               "and nothing the walk runs provides it" if unprovided
+               else f"{where} of `{anchor_of(target.node)}` requests `{bound}`, and the walk "
+                    "holds no value for its template variable" if "{" in bound
+               else f"{where} of `{anchor_of(target.node)}` requests `{target.method} "
+                    f"{target.path}`, which is no HTTP request" if target.method not in HTTP_METHODS else "")
+    states = {target.node: _state_rows(target, observed)}
+    states.update({other.node: _state_rows(other, observed) for other in siblings_of(target, book.data_states)})
+    refused = next((rows for rows in states.values() if isinstance(rows, ScenarioRefusal)), None)
+    if isinstance(refused, ScenarioRefusal):
+        problem = problem or f"{where} of `{anchor_of(target.node)}`: {refused.detail}"
+    if problem:
+        return problem
+    target_path = f"qa.resolve({python_literal(bound)})" if references.find_references(bound) else python_literal(bound)
+    kwargs = arranged.kwargs_source(with_body=False) if arranged else ""
+    held = ", ".join(f"{python_literal(anchor_of(node))}: [{', '.join(rows)}]"
+                     for node, rows in states.items() if not isinstance(rows, ScenarioRefusal))
+    return [
+        f"    {observed} = qa.http.{target.method.lower()}({target_path}{kwargs})",
+        f"    qa.holds({python_literal(anchor_of(target.node))}, {{{held}}})",
+    ]
+
+
 def _move_lines(
     index: int, step: FlowStep, walk: JourneyWalk, known: _Produced, produced: set[str],
-    owners: dict[str, set[str]], gaps: list[Gap],
+    owners: dict[str, set[str]], gaps: list[Gap], reached: set[str],
 ) -> list[str]:
     """The read-back after a step that moves a record: the target state's endpoint requested as a step would be, then the target's checks on its answer, naming the sibling state that holds when they fail."""
     book = walk.book
@@ -891,35 +929,12 @@ def _move_lines(
         if target is None:
             continue
         observed = f"moved_{index}" if number == 1 else f"moved_{index}_{number}"
-        arranged = None
-        node_rows = book.acts_by_node.get(target.observe, [])
-        if node_rows and target.observe not in book.acts_refused:
-            arranged = _step_arrangement(target.observe, node_rows, book)
-        sent = tuple(arranged.named_references()) if arranged else ()
-        unprovided = [ref for ref in sent if not known.resolves(ref)]
-        bound = _bound_path(target.path, produced, owners, set())
-        problem = (f"step {index}'s read-back of `{anchor_of(target.node)}` sends `{_book_spelling(unprovided[0])}`, "
-                   "and nothing the walk runs provides it" if unprovided
-                   else f"step {index}'s read-back of `{anchor_of(target.node)}` requests `{bound}`, and the walk "
-                        "holds no value for its template variable" if "{" in bound
-                   else f"step {index}'s read-back of `{anchor_of(target.node)}` requests `{target.method} "
-                        f"{target.path}`, which is no HTTP request" if target.method not in HTTP_METHODS else "")
-        states = {target.node: _state_rows(target, observed)}
-        states.update({other.node: _state_rows(other, observed) for other in siblings_of(target, book.data_states)})
-        refused = next((rows for rows in states.values() if isinstance(rows, ScenarioRefusal)), None)
-        if isinstance(refused, ScenarioRefusal):
-            problem = problem or f"step {index}'s read-back of `{anchor_of(target.node)}`: {refused.detail}"
-        if problem:
-            gaps.extend(Gap(oid, "unresolved-precondition", problem) for oid in walk.ids)
+        found = read_back(f"step {index}'s read-back", observed, target, book, known, produced, owners)
+        if isinstance(found, str):
+            gaps.extend(Gap(oid, "unresolved-precondition", found) for oid in walk.ids)
             continue
-        target_path = f"qa.resolve({python_literal(bound)})" if references.find_references(bound) else python_literal(bound)
-        kwargs = arranged.kwargs_source(with_body=False) if arranged else ""
-        held = ", ".join(f"{python_literal(anchor_of(node))}: [{', '.join(rows)}]"
-                         for node, rows in states.items() if not isinstance(rows, ScenarioRefusal))
-        lines.extend([
-            f"    {observed} = qa.http.{target.method.lower()}({target_path}{kwargs})",
-            f"    qa.holds({python_literal(anchor_of(target.node))}, {{{held}}})",
-        ])
+        lines.extend(found)
+        reached.update((move_obligation_id(step.ref, move.index), state_obligation_id(move.end)))
     return lines
 
 
@@ -967,6 +982,7 @@ def _http_steps(walk: JourneyWalk, sinks: PlanSinks) -> _HttpSteps | None:
     book, gaps = walk.book, sinks.gaps
     lines: list[str] = []
     produced: set[str] = set()
+    reached: set[str] = set()
     known = _Produced(captures=produced)
     for obligation in walk.obligations:
         known.record_fixtures(obligation)
@@ -1025,15 +1041,15 @@ def _http_steps(walk: JourneyWalk, sinks: PlanSinks) -> _HttpSteps | None:
             lines.extend(_step_captures(observed, captures, sinks, produced))
             lines.extend(_checked_with_moves(
                 step, _step_success_checks(index, step, request, observed, walk, known, gaps, outcome.claims),
-                _move_lines(index, step, walk, known, produced, owners, gaps)))
+                _move_lines(index, step, walk, known, produced, owners, gaps, reached)))
             continue
         lines.extend(_step_captures(observed, book.captures_by_node.get(step.ref, []), sinks, produced))
         if not expect:
             lines.extend(_checked_with_moves(
                 step, _step_success_checks(index, step, request, observed, walk, known, gaps,
                                            _success_claims(step.ref, book)),
-                _move_lines(index, step, walk, known, produced, owners, gaps)))
-    return _HttpSteps(lines, observed, last_path, produced)
+                _move_lines(index, step, walk, known, produced, owners, gaps, reached)))
+    return _HttpSteps(lines, observed, last_path, produced, frozenset(reached))
 
 
 def _journey_assertion(
@@ -1094,4 +1110,39 @@ def http_walk(walk: JourneyWalk, sinks: PlanSinks) -> WalkedJourney:
         return WalkedJourney([], frozenset())
     covered: set[str] = set()
     checks = _http_journey_checks(walk.obligations, steps, sinks.gaps, covered)
-    return WalkedJourney([*steps.lines, *checks], frozenset(covered))
+    if not covered:
+        return WalkedJourney([*steps.lines, *checks], frozenset())
+    return WalkedJourney([*steps.lines, *checks], frozenset(covered | steps.reached), steps.reached)
+
+
+def move_walk(walk: JourneyWalk, start: DataState, sinks: PlanSinks) -> WalkedJourney | None:
+    """Read the record in *start*, send the one step of *walk*, and hold the state its `moves:` row lands on, or `None` once a gap says why the walk cannot be built."""
+    book = walk.book
+    known = _Produced()
+    for obligation in walk.obligations:
+        known.record_fixtures(obligation)
+    before = read_back("the read of the starting state", "before_move", start, book, known, set(),
+                       _fixture_owners(walk.obligations))
+    if isinstance(before, str):
+        sinks.gaps.extend(Gap(oid, "unresolved-precondition", before) for oid in walk.ids)
+        return None
+    steps = _http_steps(walk, sinks)
+    if steps is None or not set(walk.ids) <= steps.reached:
+        return None
+    reached = steps.reached | {state_obligation_id(start.node)}
+    lines = [f"    with qa.at_node({python_literal(start.node)}):", *(f"    {line}" for line in before), *steps.lines]
+    return WalkedJourney(lines, frozenset(reached), frozenset(reached))
+
+
+def observe_walk(walk_obligations: list[Obligation], state: DataState, book: BookIndex, sinks: PlanSinks) -> WalkedJourney | None:
+    """Read the record the fixtures of *walk_obligations* arrange in *state*, or `None` once a gap says why the walk cannot read it."""
+    known = _Produced()
+    for obligation in walk_obligations:
+        known.record_fixtures(obligation)
+    read = read_back("the read of the state", "observed", state, book, known, set(), _fixture_owners(walk_obligations))
+    if isinstance(read, str):
+        sinks.gaps.extend(Gap(obligation.id, "unresolved-precondition", read) for obligation in walk_obligations)
+        return None
+    lines = [f"    with qa.at_node({python_literal(state.node)}):", *(f"    {line}" for line in read)]
+    covered = frozenset({state_obligation_id(state.node)})
+    return WalkedJourney(lines, covered, covered)

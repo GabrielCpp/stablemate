@@ -108,3 +108,37 @@ title: Pay a bill
   - [pay-bill](../http/api.md#pay-bill)
 - end: [Bills API](../http/api.md)
 """
+
+PAID_FIXTURE = "docs/features/acme/fixtures/paid-bill.md"
+
+PAID_FIXTURE_PAGE = FIXTURE_PAGE.replace("title: Issued bill", "title: Paid bill").replace(
+    "# Issued bill", "# Paid bill").replace("an issued bill", "a paid bill").replace(
+    "seed-bill.sh", "seed-paid-bill.sh")
+
+VOID = """### Bill void
+- of: bill
+- observe: [read the bill](#get-bill)
+- verify: json_path(path="$.status", equals="void")
+"""
+
+VOID_ENDPOINT = """
+### void-bill
+- method: POST
+- path: /bills/{bill_id}/void
+- arrange: no_body()
+- verify: http_status(code=200)
+"""
+
+ISSUED_ARRANGED = ISSUED + "- fixture: [issued-bill](../fixtures/issued-bill.md)\n"
+
+PAID_ARRANGED = PAID + "- fixture: [paid-bill](../fixtures/paid-bill.md)\n"
+
+VOID_FROM_ISSUED = "- moves: [Bill issued](#bill-issued) to [Bill void](#bill-void)\n"
+
+VOID_FROM_PAID = "- moves: [Bill paid](#bill-paid) to [Bill void](#bill-void)\n"
+
+
+def void_page(*, void_moves: str, states: str = ISSUED_ARRANGED + "\n" + PAID_ARRANGED + "\n" + VOID,
+              pay_moves: str = "") -> str:
+    void = VOID_ENDPOINT.replace("- path: /bills/{bill_id}/void\n", f"- path: /bills/{{bill_id}}/void\n{void_moves}")
+    return api_page(endpoints=ENDPOINTS + void, states=states, pay_moves=pay_moves)

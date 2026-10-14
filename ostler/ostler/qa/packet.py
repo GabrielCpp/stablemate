@@ -126,7 +126,8 @@ def _moves(value: object) -> dict[str, tuple[Move, ...]]:
             start, end = (row.get("from"), row.get("to")) if isinstance(row, dict) else (None, None)
             if not (isinstance(start, str) and isinstance(end, str)):
                 raise ValueError(f"context `moves` row {row!r} of {node!r} needs `from` and `to` as strings")
-            moves.append(Move(start, end))
+            index = row.get("index", 0) if isinstance(row, dict) else 0
+            moves.append(Move(start, end, index if isinstance(index, int) else 0))
         table[node] = tuple(moves)
     return table
 

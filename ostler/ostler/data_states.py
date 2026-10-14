@@ -40,6 +40,7 @@ class Move:
 
     start: str
     end: str
+    index: int = 0
 
 
 def _page_of(node_id: str) -> str:
@@ -51,7 +52,8 @@ def anchor_of(node_id: str) -> str:
     return node_id.split("#", 1)[1] if "#" in node_id else node_id
 
 
-def _of(node: BookNode) -> str:
+def of_of(node: BookNode) -> str:
+    """The record *node*'s `of:` names, or `""` when it is not one plain word."""
     value = bullet_value(next(iter(node.bullets.get("of", ())), None)) or ""
     return value if _OF.fullmatch(value) else ""
 
@@ -71,10 +73,10 @@ def data_state_of(node: BookNode, book: Mapping[str, BookNode]) -> DataState | N
     observed = _endpoints(node, book)
     checks = tuple(value for value in node.bullets.get("verify", ())
                    if isinstance(checks_mod.parse_check(value), checks_mod.CheckCall))
-    if not _of(node) or len(observed) != 1 or not checks:
+    if not of_of(node) or len(observed) != 1 or not checks:
         return None
     method, path = _route(observed[0])
-    return DataState(node.id, _of(node), observed[0].id, checks, method, path)
+    return DataState(node.id, of_of(node), observed[0].id, checks, method, path)
 
 
 def data_states_of(book: Mapping[str, BookNode]) -> dict[str, DataState]:
@@ -95,14 +97,24 @@ def moves_of(node: BookNode, book: Mapping[str, BookNode]) -> list[Move]:
     """The well-formed `moves:` rows of *node* that name a state to land on."""
     resolved = {edge.href: edge.to for edge in node.edges if edge.via == "moves" and edge.href}
     moves: list[Move] = []
-    for value in node.bullets.get("moves", ()):
+    for index, value in enumerate(node.bullets.get("moves", ()), start=1):
         text = " ".join(value.split())
         links = [resolved.get(href, "") for _title, href in markdown.extract_refs(value).links]
         if _FROM_TO_MOVE.fullmatch(text) and len(links) == 2 and all(links):
-            moves.append(Move(links[0], links[1]))
+            moves.append(Move(links[0], links[1], index))
         elif _TO_MOVE.fullmatch(text) and len(links) == 1 and links[0]:
-            moves.append(Move("", links[0]))
+            moves.append(Move("", links[0], index))
     return moves
+
+
+def state_obligation_id(node_id: str) -> str:
+    """The id of the obligation a data state owes: the walk that observes it covers it."""
+    return f"okf:{node_id}:contract"
+
+
+def move_obligation_id(node_id: str, index: int) -> str:
+    """The id of the obligation one `moves:` row owes: the walk that takes the move covers it."""
+    return f"okf:{node_id}:moves:{index}"
 
 
 def _shape_problem(node: BookNode, key: str, message: str, fix: str, f: list[Finding]) -> None:
@@ -116,7 +128,7 @@ def _moves_problem(node: BookNode, message: str, fix: str, f: list[Finding]) -> 
 
 
 def _check_state(node: BookNode, book: Mapping[str, BookNode], f: list[Finding]) -> None:
-    if "of" in node.bullets and not _of(node):
+    if "of" in node.bullets and not of_of(node):
         _shape_problem(node, "of", f"`of:` is {node.bullets['of'][0]!r}, not one plain word",
                        "write `- of: <record>` with one word naming the record, such as `bill`", f)
     if node.bullets.get("observe"):
@@ -148,7 +160,7 @@ def _check_moves(node: BookNode, book: Mapping[str, BookNode], f: list[Finding])
                 _moves_problem(node, f"`moves:` links `{target.id}`, which is no data state",
                            "link a state declared under `## Data states`", f)
         if len(found) == 2 and all(target.type == "data-state" for target in found):
-            start, end = (_of(target) for target in found)
+            start, end = (of_of(target) for target in found)
             if start != end:
                 _moves_problem(node, f"`moves:` leaves `{found[0].id}` (`of: {start}`) for `{found[1].id}` "
                            f"(`of: {end}`), and one move carries one record",

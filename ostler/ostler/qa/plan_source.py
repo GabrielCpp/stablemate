@@ -249,6 +249,30 @@ def state_walk_function_name(state: Obligation, emitted: EmittedScenarios) -> st
     return name
 
 
+def data_state_walk_function_name(state: Obligation, emitted: EmittedScenarios) -> str:
+    """Reserve the function name the observe-only walk of the data state *state* gets, and return it."""
+    page, _, fragment = state.node.partition("#")
+    base = f"{python_identifier(page)}_{python_identifier(fragment)}_reads"
+    name, number = base, 1
+    while name in emitted.functions:
+        number += 1
+        name = f"{base}_{number}"
+    emitted.functions.add(name)
+    return name
+
+
+def move_walk_function_name(move: Obligation, emitted: EmittedScenarios) -> str:
+    """Reserve the function name the one-move walk of *move* gets, and return it."""
+    page, _, fragment = move.node.partition("#")
+    base = f"{python_identifier(page)}_{python_identifier(fragment)}_moves_{move.id.rpartition(':')[2]}"
+    name, number = base, 1
+    while name in emitted.functions:
+        number += 1
+        name = f"{base}_{number}"
+    emitted.functions.add(name)
+    return name
+
+
 PROBE_PREFIX = "probe"
 
 

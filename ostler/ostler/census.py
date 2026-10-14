@@ -10,9 +10,9 @@ from dataclasses import dataclass, field
 from types import ModuleType
 from typing import Any
 
-from ostler import data_states, doctor, fragment_hosts, hidden_claims, page_size, passages, section_hosts, server_membership, shared_checks, stack_checks, step_commands
+from ostler import data_state_ledger, data_states, doctor, fragment_hosts, hidden_claims, page_size, passages, section_hosts, server_membership, shared_checks, stack_checks, step_commands
 
-DOCTOR_MODULES: tuple[ModuleType, ...] = (data_states, doctor, fragment_hosts, hidden_claims, page_size, passages, section_hosts, server_membership, shared_checks, stack_checks, step_commands)
+DOCTOR_MODULES: tuple[ModuleType, ...] = (data_state_ledger, data_states, doctor, fragment_hosts, hidden_claims, page_size, passages, section_hosts, server_membership, shared_checks, stack_checks, step_commands)
 
 _BRIDGE = "gap_findings has no product caller; gaps surface via qa compile-plan only"
 
@@ -32,6 +32,7 @@ DORMANT_UNREACHABLE: dict[str, str] = {
     "needs-multi-target-runtime": _BRIDGE,
     "needs-out-of-band-observation": _BRIDGE,
     "needs-snapshot": _BRIDGE,
+    "unheld-condition": _NO_DATA_STATES,
     "needs-target-backend": _BRIDGE,
     "needs-trigger-action": _BRIDGE,
     "passage-shape": _NO_PASSAGES,

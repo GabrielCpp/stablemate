@@ -22,6 +22,9 @@ from ostler.qa.compile_journey import journey_scenarios
 from ostler.qa.compile_maestro import device_state_walks
 from ostler.qa.compile_maestro import maestro_walk
 from ostler.qa.compile_maestro import mobile_scenarios
+from ostler.qa.compile_moves import move_walks
+from ostler.qa.compile_moves import state_walks
+from ostler.qa.compile_moves import unreached_state_gaps
 from ostler.qa.compile_page import page_scenarios
 from ostler.qa.compile_page import web_state_walks
 from ostler.qa.compile_playwright import web_walk
@@ -178,7 +181,8 @@ def _split_by_entry_url(
 
 def _is_owed_for_dispatch(obligation: Obligation) -> bool:
     """Whether an obligation carries something a builder could act on."""
-    return bool(obligation.checks) or obligation.kind == "states" or obligation.node_type == "state"
+    return (bool(obligation.checks) or obligation.kind == "states"
+            or obligation.node_type in ("state", "data-state", "move"))
 
 
 def compile_plan(
@@ -264,6 +268,8 @@ class ObligationLanes:
     mobile: list[Obligation] = field(default_factory=list[Obligation])
     flow: list[Obligation] = field(default_factory=list[Obligation])
     state: list[Obligation] = field(default_factory=list[Obligation])
+    data_state: list[Obligation] = field(default_factory=list[Obligation])
+    move: list[Obligation] = field(default_factory=list[Obligation])
     no_verify: list[Obligation] = field(default_factory=list[Obligation])
 
 
@@ -311,6 +317,12 @@ def _dispatch(
             continue
         if obligation.node_type == "state":
             lanes.state.append(obligation)
+            continue
+        if obligation.node_type == "data-state":
+            lanes.data_state.append(obligation)
+            continue
+        if obligation.node_type == "move":
+            lanes.move.append(obligation)
             continue
         target = dispatch_target(obligation.node_type, _driver(obligation, navigation))
         if isinstance(target, ScenarioRefusal):
@@ -547,8 +559,12 @@ def _compile_packet(
         *page_scenarios(navigation, page_owed, book, sinks, emitted),
         *journey_scenarios(lanes.flow, journeys, emitted),
         *_state_walks(lanes.state, book, navigation, sinks, emitted),
+        *move_walks(lanes.move, {o.id: o for o in lanes.data_state}, book, navigation, sinks, emitted,
+                    {row.name: row for o in carried for row in o.fixtures}),
+        *state_walks(lanes.data_state, book, navigation, sinks, emitted, {row.name: row for o in carried for row in o.fixtures}),
         *_debt_lines(debt),
     ]
+    sinks.gaps.extend(unreached_state_gaps(lanes.data_state, emitted.covered, {gap.obligation_id for gap in sinks.gaps}))
     _assert_accounted(packet, owed, sinks, emitted.covered)
     if not emitted.targets:
         return Refusal(sinks.gaps)
