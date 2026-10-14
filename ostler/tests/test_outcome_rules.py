@@ -155,6 +155,46 @@ def test_a_refusal_case_that_never_succeeds_needs_no_moves(repo: Path) -> None:
     assert _findings(repo, "unstated-move") == []
 
 
+def test_a_refusal_case_holds_its_body_check_and_its_status_on_one_response(repo: Path) -> None:
+    _invocations(repo, """### refuse-without-role
+
+- on: [change-type](api.md#change-type)
+- when: the caller has no role
+- does: refuses the change with detail `invalid account type`.
+- verify: json_path(path="$.detail", equals="invalid account type")
+- errors: 400
+- verify: http_status(code=400, path="/type-change")
+""")
+    assert _findings(repo, "status-only-outcome") == []
+
+
+def test_a_refusal_case_with_no_body_check_is_still_refused(repo: Path) -> None:
+    _invocations(repo, """### refuse-without-role
+
+- on: [change-type](api.md#change-type)
+- when: the caller has no role
+- does: refuses the change.
+- errors: 400
+- verify: http_status(code=400, path="/type-change")
+""")
+    [found] = _findings(repo, "status-only-outcome")
+    assert "the 400 outcome" in found.message
+
+
+def test_a_case_with_a_success_status_still_reports_a_status_only_refusal(repo: Path) -> None:
+    _invocations(repo, """### change-role
+
+- on: [change-type](api.md#change-type)
+- when: the caller has a role
+- does: changes the type.
+- verify: http_status(code=204, path="/type-change")
+- errors: 400
+- verify: http_status(code=400, path="/type-change")
+""")
+    [found] = _findings(repo, "status-only-outcome")
+    assert "the 400 outcome" in found.message
+
+
 def test_a_case_that_states_a_success_status_without_moves_is_refused(repo: Path) -> None:
     _invocations(repo, """### change-role
 

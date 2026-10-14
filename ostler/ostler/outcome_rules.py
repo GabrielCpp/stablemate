@@ -44,12 +44,15 @@ def _check_steps(flow: BookNode, f: list[Finding]) -> None:
 
 def _outcomes(claims: list[Obligation], node_type: str) -> dict[int | None, list[Obligation]]:
     refusing = registry.refusal_keys(node_type)
+    stated = {status for claim in claims if (status := case_status(claim)) is not None}
+    refused = {status for status in stated if status >= 400}
+    unkeyed = next(iter(refused)) if node_type == "invocation" and len(refused) == len(stated) == 1 else None
     outcomes: dict[int | None, list[Obligation]] = {}
     for claim in claims:
         status = case_status(claim)
         if claim.kind in refusing and status is None:
             continue
-        key = None if status is None or status < 400 else status
+        key = unkeyed if status is None or status < 400 else status
         outcomes.setdefault(key, []).append(claim)
     return outcomes
 
