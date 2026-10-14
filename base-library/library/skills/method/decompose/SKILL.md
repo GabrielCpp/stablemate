@@ -186,11 +186,45 @@ section 5. Open section 5 with a short revision log instead: one line per change
 section and item that changed and the finding that changed it. The changed item keeps its
 earlier verdict and marks it revised, with a pointer to its log line.
 
+### 5b. What must not move
+
+Sections 1 to 5 check what the change adds. This section checks what it takes away. A
+property the code enforces has a check that fails when it breaks. A property the output has
+by accident has no check. It disappears with every check green, and the person from section
+1 is the one who finds it.
+
+Name each thing the change moves: a count, a rate, a threshold, a ranking, the order of two
+steps, the cost of a step. Trace where its effect lands in today's output. Every place,
+person or later step that gets some of it now is a **receiver**. Keep each receiver someone
+would miss if it changed, one row each:
+
+| Receiver | Gets today | Enforced by | Before | Holds when |
+|---|---|---|---|---|
+
+- **Receiver**: who or what gets the effect, in the domain's words.
+- **Gets today**: the property they would miss, stated so it can be observed.
+- **Enforced by**: the check that fails when it breaks, or "nothing".
+- **Before**: the property measured on today's output, on the inputs the slices verify on,
+  with a number. A value you did not measure is an assumption in section 7.
+- **Holds when**: the after-value that still counts as kept.
+
+The budgets the system already meets are receivers too: its speed, its memory, its size,
+and any target the person set in an earlier change. The change spends some of each.
+
+A row enforced by nothing takes one of two exits. The design keeps it on purpose, and the
+row becomes an invariant in section 3 with an owner. Or the design lets it go, and section 1
+lists the loss as out of scope so the person agrees to it before the work starts. Each exit
+is a change to its own section, logged at the top of section 5.
+
 ### 6. Slices
 
 Order the work as vertical slices, following `vertical-slicing`. The first slice is the
 thinnest path that makes the section 1 outcome observable. Each slice names the parts and
 concepts it touches and its done-when.
+
+Every done-when re-measures each row of section 5b on the same inputs and states its before
+and after values. A row outside its holds-when fails the slice, even when the slice's own
+target holds.
 
 ### 7. Assumptions
 
@@ -230,7 +264,7 @@ look up. Do that before writing the note when it takes minutes.
 
 Present the note and stop. Write no code and edit no source file until I approve it. If
 plan mode is on, the note is the plan. When the caller is another agent, return the note's
-path, the level 1 parts and section 7, plus anything else the caller asked for.
+path, the level 1 parts, section 5b and section 7, plus anything else the caller asked for.
 
 When I push back on a part, a concept or an assumption, change its section and re-derive
 what hangs off it: its concepts, its invariants, its pattern, its mapping, and every item
@@ -255,3 +289,6 @@ mapping leaves the design and the code disagreeing on paper before a line is wri
   assumption in section 7.
 - A done-when, a demo or a first run depends on a duration, an input or an environment that
   no assumption in section 7 names.
+- Section 5b is empty on a change that moves a count, a rate, a threshold or an order.
+- A row in section 5b has no measured before-value.
+- A done-when measures only the slice's own target.
