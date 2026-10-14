@@ -8,8 +8,10 @@ import tempfile
 from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
+from typing import Any
 
 from workhorse.config_run import AgentResilience
+from workhorse.runner import acp
 from workhorse.runner import usage as _usage
 from workhorse.runner.backends import AgentProfile, git_worktree
 from workhorse.runner.backends.codex_guard import Policy, hook_command
@@ -128,12 +130,119 @@ def _on_event(event, state: TurnState, node_id):
         state.diagnostics.append(json.dumps(event)[:500])
 
 
+_TOOL_ITEMS = ("command_execution", "file_change", "mcp_tool_call", "web_search")
+
+
+def _output_items(text: str) -> list[dict[str, Any]]:
+    return [acp.text_item(text)] if text else []
+
+
+class CodexTranscript(acp.TranscriptMapper):
+    """Codex's ``exec --json`` items as ACP updates."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self._open: set[str] = set()
+
+    def updates(self, event: dict[str, Any]) -> list[acp.MappedUpdate]:
+        etype = event.get("type")
+        if etype == "thread.started":
+            self.session_id = event.get("thread_id") or self.session_id
+            return []
+        if etype not in ("item.started", "item.updated", "item.completed"):
+            return []
+        item = event.get("item") or {}
+        kind = item.get("type")
+        done = etype == "item.completed"
+        if kind == "todo_list":
+            return [acp.MappedUpdate(self._plan(item))]
+        if kind in _TOOL_ITEMS:
+            return [acp.MappedUpdate(update) for update in self._tool(item, done)]
+        if done and item.get("text"):
+            if kind == "agent_message":
+                return [acp.MappedUpdate(acp.agent_message_chunk(item["text"]))]
+            if kind == "reasoning":
+                return [acp.MappedUpdate(acp.agent_thought_chunk(item["text"]))]
+        return []
+
+    def _plan(self, item: dict[str, Any]) -> acp.Update:
+        return acp.plan(
+            [
+                acp.plan_entry(str(todo.get("text", "")), "completed" if todo.get("completed") else "pending")
+                for todo in item.get("items") or []
+            ]
+        )
+
+    def _tool(self, item: dict[str, Any], done: bool) -> list[acp.Update]:
+        call_id = str(item.get("id", ""))
+        if call_id not in self._open:
+            if not done:
+                self._open.add(call_id)
+                return [self._call(item)]
+            call = self._call(item)
+            status, content = self._outcome(item)
+            call["status"] = status
+            if content:
+                call["content"] = content
+            return [call]
+        if not done:
+            return []
+        self._open.discard(call_id)
+        status, content = self._outcome(item)
+        return [acp.tool_call_update(call_id, status=status, content=content or None)]
+
+    def _call(self, item: dict[str, Any]) -> acp.Update:
+        call_id = str(item.get("id", ""))
+        kind = item.get("type")
+        if kind == "command_execution":
+            command = str(item.get("command", ""))
+            return acp.tool_call(call_id, command, "execute", raw_input={"command": command})
+        if kind == "file_change":
+            paths = [str(change.get("path", "")) for change in item.get("changes") or []]
+            return acp.tool_call(
+                call_id,
+                " ".join(["Edit", *paths]),
+                "edit",
+                locations=[{"path": path} for path in paths],
+            )
+        if kind == "mcp_tool_call":
+            return acp.tool_call(
+                call_id,
+                f"{item.get('server', '?')}.{item.get('tool', '?')}",
+                "other",
+                raw_input=item.get("arguments"),
+            )
+        return acp.tool_call(call_id, "Web search", "fetch")
+
+    def _outcome(self, item: dict[str, Any]) -> tuple[str, list[dict[str, Any]]]:
+        kind = item.get("type")
+        failed = item.get("status") == "failed"
+        if kind == "command_execution":
+            failed = failed or item.get("exit_code") not in (None, 0)
+            text = str(item.get("aggregated_output") or "")
+        elif kind == "mcp_tool_call":
+            error = item.get("error") or {}
+            failed = failed or bool(error)
+            blocks = (item.get("result") or {}).get("content") or []
+            text = str(error.get("message") or "") or "\n".join(
+                str(b.get("text", "")) for b in blocks if isinstance(b, dict) and b.get("type") == "text"
+            )
+        elif kind == "web_search":
+            text = str(item.get("query") or "")
+        else:
+            text = ""
+        return ("failed" if failed else "completed"), _output_items(text)
+
+
 class CodexBackend(JsonlBackend):
     """OpenAI Codex CLI (``codex exec --json``)."""
 
     name = "codex"
     default_model = None
     supports_compaction = False
+
+    def transcript_mapper(self) -> acp.TranscriptMapper:
+        return CodexTranscript()
 
     def run_turn(
         self,
