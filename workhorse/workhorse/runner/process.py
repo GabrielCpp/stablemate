@@ -259,6 +259,7 @@ class ProcessSupervisor:
             line = redactor.redact(raw)
             if tee is not None:
                 tee.write(line)
+            transcript.live_feed(line)
             return on_line(line)
 
         env = {**os.environ, "WORKHORSE_NODE_ID": node_id, **(env_extra or {})}

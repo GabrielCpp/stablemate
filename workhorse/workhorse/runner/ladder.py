@@ -17,6 +17,7 @@ from workhorse.profile import ProfileSelection, resolve_delegates_for, resolve_p
 from workhorse.runner.backends import AgentProfile
 from workhorse.runner.caps import cap_delay_seconds, sleep_with_notice
 from workhorse._vendor.stablemate_core.clock import SYSTEM_CLOCK, Clock
+from workhorse.runner import transcript
 from workhorse.runner.extract import extract_outputs
 from workhorse.runner.failure import (
     BackendInvocationError,
@@ -501,7 +502,10 @@ class AgentRunner:
                         scale=budget_scale,
                         base_timeout_s=base_timeout_s,
                     )
-                with recovery_wait_scope(budget):
+                with (
+                    recovery_wait_scope(budget),
+                    transcript.live_turn(node_id, attempt_prompt, backend.transcript_mapper()),
+                ):
                     result = backend.run_turn(
                         attempt_prompt,
                         node_id,

@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from workhorse._vendor.stablemate_core.profiles import resolve_harness_env
+from workhorse.runner.acp import NullTranscript, TranscriptMapper
 from workhorse.runner.failure import BackendInvocationError
 
 if TYPE_CHECKING:
@@ -103,6 +104,10 @@ class AgentBackend(ABC):
     def harness_env(self) -> dict[str, str]:
         """Operator-configured extra environment for this CLI (``[harness.<name>].env``)."""
         return resolve_harness_env(self.name)
+
+    def transcript_mapper(self) -> TranscriptMapper:
+        """A fresh mapper from this CLI's events to ACP updates, for one turn. The default shows nothing."""
+        return NullTranscript()
 
     @abstractmethod
     def run_turn(

@@ -4,6 +4,7 @@ One agent turn: the process that runs it, how its end is classified, and the fai
 
 ## Map
 
+- `acp.py`: the ACP `session/update` vocabulary a transcript line holds, and the port a backend maps its events through.
 - `backends/`: the agent-CLI port and one adapter per supported CLI.
 - `caps.py`: how long to wait out a scheduled-reset cap, and the visible sleep through it.
 - `extract.py`: recovering a node's declared outputs from an agent's free-form reply.

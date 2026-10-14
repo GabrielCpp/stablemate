@@ -6,9 +6,11 @@ import json
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 
 from workhorse import otel, reload
 from workhorse.config_run import AgentResilience
+from workhorse.runner import acp
 from workhorse.runner import failure as _failure
 from workhorse.runner import process as _process
 from workhorse.runner import usage as _usage
@@ -27,6 +29,9 @@ class ClaudeBackend(AgentBackend):
     name = "claude"
     default_model = "sonnet"
     supports_compaction = True
+
+    def transcript_mapper(self) -> acp.TranscriptMapper:
+        return ClaudeTranscript()
 
     def run_turn(
         self,
@@ -342,3 +347,124 @@ def _tool_summary(inp: dict) -> str:
             flat = " ".join(str(value).split())
             return flat[:120] + "…" if len(flat) > 120 else flat
     return ""
+
+
+_TOOL_KINDS = {
+    "Read": "read",
+    "Edit": "edit",
+    "MultiEdit": "edit",
+    "Write": "edit",
+    "NotebookEdit": "edit",
+    "Bash": "execute",
+    "Grep": "search",
+    "Glob": "search",
+    "WebFetch": "fetch",
+    "WebSearch": "fetch",
+}
+
+
+def _tool_diffs(name: str, inp: dict[str, Any]) -> list[dict[str, Any]]:
+    """The file changes a Claude edit tool's input spells out."""
+    path = str(inp.get("file_path") or inp.get("notebook_path") or "")
+    if name == "Edit" and "old_string" in inp and "new_string" in inp:
+        return [acp.diff_item(path, inp["old_string"], inp["new_string"])]
+    if name == "MultiEdit":
+        return [
+            acp.diff_item(path, edit["old_string"], edit["new_string"])
+            for edit in inp.get("edits") or []
+            if "old_string" in edit and "new_string" in edit
+        ]
+    if name == "Write" and "content" in inp:
+        return [acp.diff_item(path, None, inp["content"])]
+    return []
+
+
+def _plan_status(status: object) -> str:
+    if status in ("in_progress", "completed"):
+        return str(status)
+    return "pending"
+
+
+def _result_text(content: Any) -> str:
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        return "\n".join(
+            str(b.get("text", "")) for b in content if isinstance(b, dict) and b.get("type") == "text"
+        )
+    return ""
+
+
+class ClaudeTranscript(acp.TranscriptMapper):
+    """Claude's stream-json events as ACP updates."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self._plan_calls: set[str] = set()
+        self._diffs: dict[str, list[dict[str, Any]]] = {}
+
+    def updates(self, event: dict[str, Any]) -> list[acp.MappedUpdate]:
+        etype = event.get("type")
+        if etype == "system":
+            if event.get("session_id"):
+                self.session_id = event["session_id"]
+            return []
+        if etype not in ("assistant", "user"):
+            return []
+        content = event.get("message", {}).get("content")
+        if not isinstance(content, list):
+            return []
+        parent = event.get("parent_tool_use_id") or None
+        mapped: list[acp.Update] = []
+        for block in content:
+            if etype == "assistant":
+                mapped.extend(self._assistant_block(block))
+            elif block.get("type") == "tool_result" and block.get("tool_use_id") not in self._plan_calls:
+                mapped.append(self._tool_result(block))
+        return [acp.MappedUpdate(update, parent) for update in mapped]
+
+    def _assistant_block(self, block: dict[str, Any]) -> list[acp.Update]:
+        btype = block.get("type")
+        if btype == "text" and block.get("text", "").strip():
+            return [acp.agent_message_chunk(block["text"])]
+        if btype == "thinking" and block.get("thinking", "").strip():
+            return [acp.agent_thought_chunk(block["thinking"])]
+        if btype == "tool_use":
+            return [self._tool_use(block)]
+        return []
+
+    def _tool_use(self, block: dict[str, Any]) -> acp.Update:
+        name = block.get("name", "?")
+        inp = block.get("input") or {}
+        if name == "TodoWrite":
+            self._plan_calls.add(block["id"])
+            return acp.plan(
+                [
+                    acp.plan_entry(str(todo.get("content", "")), _plan_status(todo.get("status")))
+                    for todo in inp.get("todos") or []
+                ]
+            )
+        kind = _TOOL_KINDS.get(name, "other")
+        path = inp.get("file_path") or inp.get("notebook_path")
+        diffs = _tool_diffs(name, inp)
+        if diffs:
+            self._diffs[block["id"]] = diffs
+        return acp.tool_call(
+            block["id"],
+            f"{name} {_tool_summary(inp)}".rstrip(),
+            kind,
+            content=diffs,
+            locations=[{"path": path}] if path and kind in ("read", "edit") else None,
+            raw_input=inp,
+        )
+
+    def _tool_result(self, block: dict[str, Any]) -> acp.Update:
+        text = _result_text(block.get("content"))
+        content = self._diffs.pop(block["tool_use_id"], [])
+        if text:
+            content = [*content, acp.text_item(text)]
+        return acp.tool_call_update(
+            block["tool_use_id"],
+            status="failed" if block.get("is_error") else "completed",
+            content=content or None,
+        )

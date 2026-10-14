@@ -3,18 +3,24 @@
 from __future__ import annotations
 
 import json
+import logging
 import shutil
 import subprocess
 import time
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Iterable, Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TextIO
+from typing import Any, TextIO
 
 from workhorse import gitstate, turnkey
+from workhorse.runner.acp import MappedUpdate, TranscriptMapper, user_message_chunk
+
+logger = logging.getLogger(__name__)
 
 TRANSCRIPTS_DIR = "transcripts"
 PENDING_DIR = ".pending"
+LIVE_DIR = "live"
 DEFAULT_MAX_BYTES = 32 * 1024 * 1024
 
 
@@ -163,15 +169,18 @@ def transcripts_dir() -> Path | None:
 
 
 class Tee:
-    """A live copy of one turn's stream, written before its session id is known."""
+    """A capped line writer: the turn's raw stream before its session id is known, or its live ACP transcript."""
 
-    def __init__(self, path: Path, max_bytes: int) -> None:
+    def __init__(
+        self, path: Path, max_bytes: int, *, append: bool = False, flush: bool = False
+    ) -> None:
         self._path = path
         self._fh: TextIO | None
         self._max = max_bytes
-        self._written = 0
-        self._truncated = False
-        self._fh = path.open("w", encoding="utf-8")
+        self._flush = flush
+        self._written = path.stat().st_size if append and path.exists() else 0
+        self._truncated = append and self._written >= max_bytes
+        self._fh = path.open("a" if append else "w", encoding="utf-8")
 
     def write(self, line: str) -> None:
         if self._fh is None or self._truncated:
@@ -183,8 +192,12 @@ class Tee:
                 if budget > 0 and not line[:budget].endswith("\n"):
                     self._fh.write("\n")
                 self._truncate()
+                if self._flush and self._fh is not None:
+                    self._fh.flush()
                 return
             self._written += self._fh.write(line)
+            if self._flush:
+                self._fh.flush()
         except OSError:
             self.close()
 
@@ -234,6 +247,89 @@ def tee_begin(node_id: str) -> Tee | None:
         return None
 
 
+
+
+class _LiveTurn:
+    """The open live transcript of one attempt: events in, ACP lines out."""
+
+    def __init__(self, tee: Tee, node_id: str, mapper: TranscriptMapper) -> None:
+        self.tee = tee
+        self._node = node_id
+        self._mapper = mapper
+        self._warned = False
+
+    def emit(self, mapped: MappedUpdate) -> None:
+        meta: dict[str, Any] = {"ts": time.time(), "node": self._node}
+        if mapped.parent:
+            meta["parent"] = mapped.parent
+        record = {"sessionId": self._mapper.session_id, "update": mapped.update, "_meta": meta}
+        self.tee.write(json.dumps(record) + "\n")
+
+    def feed(self, line: str) -> None:
+        try:
+            event = json.loads(line)
+        except ValueError:
+            return
+        if not isinstance(event, dict):
+            return
+        try:
+            for mapped in self._mapper.updates(event):
+                self.emit(mapped)
+        except Exception:
+            if not self._warned:
+                self._warned = True
+                logger.warning("live transcript mapper failed; skipping events it cannot map", exc_info=True)
+
+
+_live: _LiveTurn | None = None
+
+
+def live_feed(line: str) -> None:
+    """Hand one redacted stream line to the open live transcript, if there is one."""
+    if _live is not None:
+        _live.feed(line)
+
+
+@contextmanager
+def live_turn(node_id: str, prompt: str, mapper: TranscriptMapper) -> Iterator[None]:
+    """Write the turn's ACP transcript to ``transcripts/live/<slug>.jsonl`` while it runs."""
+    global _live
+    live: _LiveTurn | None = None
+    key = turnkey.current()
+    root = transcripts_dir()
+    if bound() and key is not None and key.node == node_id and root is not None:
+        try:
+            directory = root / LIVE_DIR
+            directory.mkdir(parents=True, exist_ok=True)
+            tee = Tee(directory / f"{key.slug}.jsonl", _settings.max_bytes, append=True, flush=True)
+            live = _LiveTurn(tee, node_id, mapper)
+            live.emit(MappedUpdate(user_message_chunk(prompt)))
+        except OSError:
+            logger.warning("live transcript could not be opened", exc_info=True)
+            live = None
+    captured = len(_settings.captures)
+    _live = live
+    try:
+        yield
+    finally:
+        _live = None
+        if live is not None and key is not None:
+            live.tee.close()
+            _settle(live.tee.path, key.slug, _settings.captures[captured:])
+
+
+def _settle(live_path: Path, slug: str, captured: list[Path]) -> None:
+    """Move the live file beside the capture this turn made, so the archive harvest takes it with the turn."""
+    stem = next((s for s in captured if s.name.startswith(f"{slug}__")), None)
+    if stem is None:
+        return
+    target = Path(f"{stem}.acp.jsonl")
+    try:
+        with target.open("ab") as out:
+            out.write(live_path.read_bytes())
+        live_path.unlink()
+    except OSError:
+        logger.warning("live transcript could not be filed with its capture", exc_info=True)
 
 
 def _copy_capped(src: Path, dst: Path, budget: int) -> tuple[int, bool]:
