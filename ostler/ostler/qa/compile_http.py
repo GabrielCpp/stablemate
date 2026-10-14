@@ -12,8 +12,13 @@ from typing import Any
 
 from ostler import acts as acts_mod
 from ostler import registry
+from ostler.checks import CheckCall
 from ostler.checks import CheckValue
+from ostler.checks import parse_check
 from ostler.checks import _rooted
+from ostler.data_states import DataState
+from ostler.data_states import anchor_of
+from ostler.data_states import siblings_of
 from ostler.qa import references
 from ostler.qa.book_index import BookIndex
 from ostler.qa.book_index import OwnedCapture
@@ -859,6 +864,73 @@ def _step_success_checks(
     return [f"    with qa.at_node({python_literal(step.ref)}):", *(f"    {line}" for line in lines)]
 
 
+def _state_rows(state: DataState, observed: str) -> list[str] | ScenarioRefusal:
+    """The `(check, operand, args)` tuples that assert *state* on the response held in *observed*, or why no operand observes one."""
+    rows: list[str] = []
+    for text in state.verify:
+        call = parse_check(text)
+        if not isinstance(call, CheckCall):
+            continue
+        operand = operand_for(call.name, observed, call.args)
+        if isinstance(operand, ScenarioRefusal):
+            return operand
+        args = "{" + ", ".join(f"{python_literal(key)}: {_resolved_literal(value)}" for key, value in call.args.items()) + "}"
+        rows.append(f"({python_literal(call.name)}, {operand}, {args})")
+    return rows
+
+
+def _move_lines(
+    index: int, step: FlowStep, walk: JourneyWalk, known: _Produced, produced: set[str],
+    owners: dict[str, set[str]], gaps: list[Gap],
+) -> list[str]:
+    """The read-back after a step that moves a record: the target state's endpoint requested as a step would be, then the target's checks on its answer, naming the sibling state that holds when they fail."""
+    book = walk.book
+    lines: list[str] = []
+    for number, move in enumerate(book.moves.get(step.ref, ()), start=1):
+        target = book.data_states.get(move.end)
+        if target is None:
+            continue
+        observed = f"moved_{index}" if number == 1 else f"moved_{index}_{number}"
+        arranged = None
+        node_rows = book.acts_by_node.get(target.observe, [])
+        if node_rows and target.observe not in book.acts_refused:
+            arranged = _step_arrangement(target.observe, node_rows, book)
+        sent = tuple(arranged.named_references()) if arranged else ()
+        unprovided = [ref for ref in sent if not known.resolves(ref)]
+        bound = _bound_path(target.path, produced, owners, set())
+        problem = (f"step {index}'s read-back of `{anchor_of(target.node)}` sends `{_book_spelling(unprovided[0])}`, "
+                   "and nothing the walk runs provides it" if unprovided
+                   else f"step {index}'s read-back of `{anchor_of(target.node)}` requests `{bound}`, and the walk "
+                        "holds no value for its template variable" if "{" in bound
+                   else f"step {index}'s read-back of `{anchor_of(target.node)}` requests `{target.method} "
+                        f"{target.path}`, which is no HTTP request" if target.method not in HTTP_METHODS else "")
+        states = {target.node: _state_rows(target, observed)}
+        states.update({other.node: _state_rows(other, observed) for other in siblings_of(target, book.data_states)})
+        refused = next((rows for rows in states.values() if isinstance(rows, ScenarioRefusal)), None)
+        if isinstance(refused, ScenarioRefusal):
+            problem = problem or f"step {index}'s read-back of `{anchor_of(target.node)}`: {refused.detail}"
+        if problem:
+            gaps.extend(Gap(oid, "unresolved-precondition", problem) for oid in walk.ids)
+            continue
+        target_path = f"qa.resolve({python_literal(bound)})" if references.find_references(bound) else python_literal(bound)
+        kwargs = arranged.kwargs_source(with_body=False) if arranged else ""
+        held = ", ".join(f"{python_literal(anchor_of(node))}: [{', '.join(rows)}]"
+                         for node, rows in states.items() if not isinstance(rows, ScenarioRefusal))
+        lines.extend([
+            f"    {observed} = qa.http.{target.method.lower()}({target_path}{kwargs})",
+            f"    qa.holds({python_literal(anchor_of(target.node))}, {{{held}}})",
+        ])
+    return lines
+
+
+def _checked_with_moves(step: FlowStep, checks: list[str], moves: list[str]) -> list[str]:
+    """The step's checks and its read-backs in one `qa.at_node` block, so a failed read-back is recorded against the step and stops the walk there."""
+    if not moves:
+        return checks
+    header = checks[:1] or [f"    with qa.at_node({python_literal(step.ref)}):"]
+    return [*header, *checks[1:], *(f"    {line}" for line in moves)]
+
+
 def _success_claims(ref: str, book: BookIndex) -> list[Obligation]:
     """The claims on *ref* that answer success, the outcome an endpoint step expects."""
     return [claim for claim in book.outcomes_by_node.get(ref, ())
@@ -951,12 +1023,16 @@ def _http_steps(walk: JourneyWalk, sinks: PlanSinks) -> _HttpSteps | None:
         if outcome is not None:
             captures = [OwnedCapture(claim.id, row.name, row.source) for claim in outcome.claims for row in claim.captures]
             lines.extend(_step_captures(observed, captures, sinks, produced))
-            lines.extend(_step_success_checks(index, step, request, observed, walk, known, gaps, outcome.claims))
+            lines.extend(_checked_with_moves(
+                step, _step_success_checks(index, step, request, observed, walk, known, gaps, outcome.claims),
+                _move_lines(index, step, walk, known, produced, owners, gaps)))
             continue
         lines.extend(_step_captures(observed, book.captures_by_node.get(step.ref, []), sinks, produced))
         if not expect:
-            lines.extend(_step_success_checks(index, step, request, observed, walk, known, gaps,
-                                              _success_claims(step.ref, book)))
+            lines.extend(_checked_with_moves(
+                step, _step_success_checks(index, step, request, observed, walk, known, gaps,
+                                           _success_claims(step.ref, book)),
+                _move_lines(index, step, walk, known, produced, owners, gaps)))
     return _HttpSteps(lines, observed, last_path, produced)
 
 

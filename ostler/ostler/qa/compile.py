@@ -534,6 +534,8 @@ def _compile_packet(
         fixture_screens=packet.fixture_screens,
         states_by_screen=book_index_mod.states_by_screen(carried),
         passages=packet.passages,
+        data_states=packet.data_states,
+        moves=packet.moves,
     )
     journeys = JourneyPlan(book=book, sinks=sinks, navigation=navigation, walkers=_JOURNEY_WALKERS)
     lines = [

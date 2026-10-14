@@ -1529,6 +1529,25 @@ class Qa:
             extra={"check": check, "check_args": args, **ending_fields},
         )
 
+    def holds(
+        self,
+        state: str,
+        states: Mapping[str, Sequence[tuple[str, Any, Mapping[str, Any]]]],
+    ) -> bool:
+        """Record whether the record read back is in `state`, and when it is not, name the sibling state it is in."""
+        def matches(name: str) -> bool:
+            return all(VERIFIERS[check](operand, args).passed for check, operand, args in states[name])
+
+        if matches(state):
+            return self._record(f"the record is in {state}", True, state, state, None)
+        holding = next((name for name in states if name != state and matches(name)), "")
+        actual = holding or "no state of the lifecycle"
+        return self._record(
+            f"the record should be in {state}, and {holding + ' holds instead' if holding else 'no state of the lifecycle holds'}",
+            False, actual, state, None,
+            extra={"state": state, "holds": holding},
+        )
+
     def _poll(
         self, condition: Callable[[], Any], timeout: float, interval: float
     ) -> tuple[bool, int, int]:

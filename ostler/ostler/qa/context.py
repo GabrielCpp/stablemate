@@ -19,7 +19,7 @@ from ostler import graph as graph_mod
 from ostler import locators as locators_mod
 from ostler import acts as acts_mod
 from ostler import checks as checks_mod
-from ostler import inventory, markdown, passages as passages_mod, path as path_mod, refs as refs_mod, registry, syntax
+from ostler import data_states as data_states_mod, inventory, markdown, passages as passages_mod, path as path_mod, refs as refs_mod, registry, syntax
 from ostler.model import Graph, _parse_ui_nodes, load
 from ostler.pages import files_in_book
 from ostler import reach
@@ -377,6 +377,8 @@ def build_context(
         "fixtureScreens": _fixture_screens(snapshot.head_graph, snapshot.book),
         "fragmentHosts": _fragment_hosts(snapshot.book),
         "passages": _passages(snapshot.book, selection.contracts | selection.journeys),
+        "dataStates": _data_states(snapshot.book),
+        "moves": _moves(snapshot.book),
         "screenRoutes": routes_mod.screen_routes(snapshot.head_graph),
         "healthFindings": [*mapping.unmapped, *grounding.health, *requirement.health],
         "story": _story_identity(story_file),
@@ -1546,6 +1548,19 @@ def _passages(book: Mapping[str, BookNode], selected: set[str]) -> dict[str, dic
             rows[node_id] = {"from": passage.start, "steps": list(passage.steps), "to": passage.end,
                              "requests": list(passage.requests)}
     return rows
+
+
+def _data_states(book: Mapping[str, BookNode]) -> dict[str, dict[str, Any]]:
+    """Every data state of the book, by node id: the record it describes, the endpoint that reads it, that endpoint's route and the checks that tell its answer from a sibling's."""
+    return {node_id: {"of": state.of, "observe": state.observe, "method": state.method, "path": state.path,
+                      "verify": list(data_states_mod.verify_texts(state))}
+            for node_id, state in sorted(data_states_mod.data_states_of(book).items())}
+
+
+def _moves(book: Mapping[str, BookNode]) -> dict[str, list[dict[str, str]]]:
+    """Every endpoint's and invocation's `moves:` rows that land on a state, by node id."""
+    return {node_id: [{"from": move.start, "to": move.end} for move in moves]
+            for node_id, moves in sorted(data_states_mod.moves_table(book).items())}
 
 
 def _fragment_hosts(book: Mapping[str, BookNode]) -> dict[str, str]:

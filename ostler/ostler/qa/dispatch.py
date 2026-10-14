@@ -14,7 +14,7 @@ OBSERVE_ROW: dict[str, str] = {
     "web": "playwright", "mobile": "maestro", "http": "http", "cli": "cli",
 }
 BUILT_TARGETS = frozenset({"playwright", "http", "cli", "maestro"})
-NO_LIVE_EVIDENCE_TYPES = frozenset({"concept", "method"})
+NO_LIVE_EVIDENCE_TYPES = frozenset({"concept", "method", "data-state"})
 NO_LIVE_EVIDENCE_PAGES = frozenset({"concept", "format"})
 
 OPS_TYPES = frozenset({"environment", "runbook", "step", "fixture"})

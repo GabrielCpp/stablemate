@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from dataclasses import field
 from typing import Any, cast
 
+from ostler.data_states import DataState, Move
 from ostler.passages import Passage
 from ostler.qa.navigation import SurfaceNavigation
 from ostler.qa.navigation import navigation_rows
@@ -29,6 +30,8 @@ class ContextPacket:
     fixture_screens: dict[str, str] = field(default_factory=dict[str, str])
     server_origins: dict[str, str] = field(default_factory=dict[str, str])
     passages: dict[str, Passage] = field(default_factory=dict[str, Passage])
+    data_states: dict[str, DataState] = field(default_factory=dict[str, DataState])
+    moves: dict[str, tuple[Move, ...]] = field(default_factory=dict[str, tuple[Move, ...]])
 
     @property
     def owed(self) -> list[Obligation]:
@@ -89,6 +92,45 @@ def _passages(value: object) -> dict[str, Passage]:
     return table
 
 
+def _data_states(value: object) -> dict[str, DataState]:
+    """The packet's data-state table, empty when unset, refused loudly when a row is not a data state."""
+    if value is None:
+        return {}
+    if not isinstance(value, dict):
+        raise ValueError(f"context `dataStates` is not a mapping: {value!r}")
+    table: dict[str, DataState] = {}
+    for node, row in value.items():
+        if not (isinstance(node, str) and isinstance(row, dict)):
+            raise ValueError(f"context `dataStates` maps {node!r} to {row!r}; a data state is a mapping")
+        of, observe, method, path, verify = (row.get(key) for key in ("of", "observe", "method", "path", "verify"))
+        if not (isinstance(of, str) and isinstance(observe, str) and isinstance(method, str) and isinstance(path, str)
+                and isinstance(verify, list) and all(isinstance(item, str) for item in cast("list[object]", verify))):
+            raise ValueError(
+                f"context `dataStates` row {node!r} needs `of`, `observe`, `method`, `path` as strings and `verify` as a list: {row!r}")
+        table[node] = DataState(node, of, observe, tuple(cast("list[str]", verify)), method, path)
+    return table
+
+
+def _moves(value: object) -> dict[str, tuple[Move, ...]]:
+    """The packet's move table, empty when unset, refused loudly when a row is not a move."""
+    if value is None:
+        return {}
+    if not isinstance(value, dict):
+        raise ValueError(f"context `moves` is not a mapping: {value!r}")
+    table: dict[str, tuple[Move, ...]] = {}
+    for node, rows in value.items():
+        if not (isinstance(node, str) and isinstance(rows, list)):
+            raise ValueError(f"context `moves` maps {node!r} to {rows!r}; a node's moves are a list")
+        moves: list[Move] = []
+        for row in cast("list[object]", rows):
+            start, end = (row.get("from"), row.get("to")) if isinstance(row, dict) else (None, None)
+            if not (isinstance(start, str) and isinstance(end, str)):
+                raise ValueError(f"context `moves` row {row!r} of {node!r} needs `from` and `to` as strings")
+            moves.append(Move(start, end))
+        table[node] = tuple(moves)
+    return table
+
+
 def packet_of(context: Mapping[str, Any]) -> ContextPacket:
     """*context* validated into a `ContextPacket`, refused loudly wherever it is malformed."""
     return ContextPacket(
@@ -103,4 +145,6 @@ def packet_of(context: Mapping[str, Any]) -> ContextPacket:
         fixture_screens=_string_table(context.get("fixtureScreens"), "fixtureScreens"),
         server_origins=_string_table(context.get("serverOrigins"), "serverOrigins"),
         passages=_passages(context.get("passages")),
+        data_states=_data_states(context.get("dataStates")),
+        moves=_moves(context.get("moves")),
     )

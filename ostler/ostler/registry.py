@@ -640,6 +640,7 @@ UI_TYPES: tuple[UINodeType, ...] = (
             BulletKey("fixture", arrange=True),
             BulletKey("arrange", performs=True),
             BulletKey("capture", capture=True),
+            BulletKey("moves", link=True),
             BulletKey("tests", link=True),
         ),
     ),
@@ -681,6 +682,17 @@ UI_TYPES: tuple[UINodeType, ...] = (
         ),
     ),
     UINodeType(
+        name="data-state", kind="section", heading="Data states", host_page_types=("server", "cli"),
+        bullet_keys=(
+            BulletKey("of", required=True),
+            BulletKey("observe", required=True, link=True),
+            BulletKey("verify", required=True, check=True),
+            BulletKey("code", link=True, owns=True),
+            BulletKey("detail", link=True),
+            BulletKey("fixture", arrange=True),
+        ),
+    ),
+    UINodeType(
         name="passage", kind="section", heading="Passages", host_page_types=("screen", "server", "cli"),
         bullet_keys=(
             BulletKey("from", link=True),
@@ -713,6 +725,7 @@ UI_TYPES: tuple[UINodeType, ...] = (
             BulletKey("fixture", arrange=True),
             BulletKey("arrange", performs=True),
             BulletKey("capture", capture=True),
+            BulletKey("moves", link=True),
             BulletKey("tests", link=True),
         ),
     ),

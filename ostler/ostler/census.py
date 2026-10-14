@@ -10,9 +10,9 @@ from dataclasses import dataclass, field
 from types import ModuleType
 from typing import Any
 
-from ostler import doctor, fragment_hosts, hidden_claims, page_size, passages, section_hosts, server_membership, shared_checks, stack_checks, step_commands
+from ostler import data_states, doctor, fragment_hosts, hidden_claims, page_size, passages, section_hosts, server_membership, shared_checks, stack_checks, step_commands
 
-DOCTOR_MODULES: tuple[ModuleType, ...] = (doctor, fragment_hosts, hidden_claims, page_size, passages, section_hosts, server_membership, shared_checks, stack_checks, step_commands)
+DOCTOR_MODULES: tuple[ModuleType, ...] = (data_states, doctor, fragment_hosts, hidden_claims, page_size, passages, section_hosts, server_membership, shared_checks, stack_checks, step_commands)
 
 _BRIDGE = "gap_findings has no product caller; gaps surface via qa compile-plan only"
 
@@ -20,11 +20,15 @@ _NO_MILESTONES = "no book in the corpus declares a milestone, so the dependency 
 
 _NO_PASSAGES = "no book in the corpus declares a passage, so no passage is there to be malformed"
 
+_NO_DATA_STATES = "no book in the corpus declares a data state, so none is there to be malformed"
+
 DORMANT_UNREACHABLE: dict[str, str] = {
     "browser-fixture-off-browser": _BRIDGE,
     "deletes-shared-fixture": _BRIDGE,
+    "data-state-shape": _NO_DATA_STATES,
     "invalid-http-method": _BRIDGE,
     "milestone-cycle": _NO_MILESTONES,
+    "moves-shape": _NO_DATA_STATES,
     "needs-multi-target-runtime": _BRIDGE,
     "needs-out-of-band-observation": _BRIDGE,
     "needs-snapshot": _BRIDGE,
