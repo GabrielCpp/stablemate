@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from ostler import accessible_names, locators as loc_mod, markdown, refs as refs_mod
 from ostler.finding import Finding
 from ostler.qa import journey_steps
-from ostler.qa.compile_support import TEMPLATE_HOLE, bullet_value
+from ostler.qa.compile_support import ARRIVAL_TRIGGERS, TEMPLATE_HOLE, bullet_value, trigger_name
 from ostler.qa.obligation_frame import BookNode, book_nodes
 
 _UNMATCHABLE_ROLES = frozenset({"generic", "none", "presentation"})
@@ -202,6 +202,65 @@ def _check_flow(flow: BookNode, book: Mapping[str, BookNode], passages: Mapping[
                          path=path, line=flow.line))
 
 
+def _hosting_screen(step: journey_steps.JourneyStep, book: Mapping[str, BookNode]) -> str:
+    if step.node_type != "interaction":
+        return ""
+    page = step.ref.split("#", 1)[0]
+    host = book.get(page)
+    return page if host is not None and host.type == "screen" else ""
+
+
+def _trigger_of(step: journey_steps.JourneyStep, book: Mapping[str, BookNode]) -> str:
+    node = book.get(step.ref)
+    return trigger_name(next(iter(node.bullets.get("trigger", ())), "")) if node is not None else ""
+
+
+def _check_settled(flow: BookNode, book: Mapping[str, BookNode], f: list[Finding]) -> None:
+    steps = journey_steps.journey_steps(flow, book)
+    acts = [at for at, step in enumerate(steps) if _hosting_screen(step, book)]
+    if not acts:
+        return
+    path = flow.id.split("#", 1)[0]
+    ref = refs_mod.bullet_ref(flow.id, "steps")
+
+    def report(message: str) -> None:
+        f.append(Finding("error", "unsettled-act", f"{flow.id}: {message}", ref=ref, path=path, line=flow.line))
+
+    for at in acts:
+        step = steps[at]
+        if _trigger_of(step, book) == "fill":
+            continue
+        following = steps[at + 1].node_type if at + 1 < len(steps) else ""
+        if following not in ("state", "passage"):
+            screen = _hosting_screen(step, book)
+            report(f"Step `{step.ref}` acts on `{screen}` and no stop follows it. Add the next step as a link to "
+                   f"the state that screen settles in after it, such as `- [Loaded](<relative link to screen>#loaded)`, "
+                   f"or link a passage instead of the act. Declare the state under `## Screen states` on that "
+                   f"screen if it is missing.")
+    first = acts[0]
+    if _trigger_of(steps[first], book) not in ARRIVAL_TRIGGERS and not any(
+            step.node_type in ("state", "passage") for step in steps[:first]):
+        screen = _hosting_screen(steps[first], book)
+        report(f"the walk acts on `{screen}` at step `{steps[first].ref}` before it stopped there. Add a first step "
+               f"linking the state the screen is in when the flow starts, such as "
+               f"`- [Loaded](<relative link to screen>#loaded)`, and arrange its fixture on the flow's `fixture:` "
+               f"when it has one.")
+
+
+def _check_stateful(book: Mapping[str, BookNode], f: list[Finding]) -> None:
+    stated = {node.id.split("#", 1)[0] for node in book.values() if node.type == "state"}
+    for node in book.values():
+        if node.type == "screen" and node.id not in stated:
+            f.append(Finding(
+                "error", "stateless-screen",
+                f"{node.id} declares no screen state. Under `## Screen states`, add one `### <State>` per look "
+                f"the screen settles in (loaded, and empty, error or disabled where the screen has them), each "
+                f"with `shows:` listing the components a person sees in it. A walk stops at these states to "
+                f"check the screen between acts.",
+                path=node.id.split("#", 1)[0], line=node.line, ref=node.id,
+                suggestion="add `## Screen states` holding `### Loaded` with `- shows:` linking its components"))
+
+
 def _fixture_name(target: str) -> str:
     """The fixture's name: the stem of the page it lives in."""
     return target.split("#", 1)[0].rsplit("/", 1)[-1].removesuffix(".md")
@@ -272,4 +331,6 @@ def check_passages(data: dict, f: list[Finding]) -> None:
             _check_requests(node, f)
         elif node.type == "flow":
             _check_flow(node, book, passages, f)
+            _check_settled(node, book, f)
+    _check_stateful(book, f)
     _check_perceivable(book, f)

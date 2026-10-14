@@ -1434,6 +1434,10 @@ Presents the [diff](../../concepts/diff.md) concept and a [gone](./gone.md) one.
 - verify: visible(locator="#changes-file-row", text="marked")
 - does:
   - state: mark row
+
+## Screen states
+
+### Loaded
 """
 
 LINKED_DS = """\

@@ -11,6 +11,7 @@ from types import ModuleType
 from typing import get_args
 
 from ostler import accessible_names
+from ostler.checks import parse_call
 from ostler.markdown import extract_refs
 from ostler.qa.harness_host import load_harness_module
 from ostler.qa.obligation import CallRow
@@ -101,6 +102,16 @@ def bullet_value(raw: str | None) -> str | None:
     if not value or value.lower() == _NONE_SENTINEL:
         return None
     return value
+
+
+ARRIVAL_TRIGGERS = frozenset({"load", "navigate"})
+
+
+def trigger_name(raw: str) -> str:
+    """The act a `trigger:` names: its bare word, or the name of the call it is written as."""
+    value = bullet_value(raw) or ""
+    parsed = parse_call(value)
+    return (parsed.name if parsed is not None else value).lower()
 
 
 def trailing_comment(text: str) -> str:

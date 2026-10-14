@@ -83,7 +83,7 @@ def screen_md(slug: str, title: str, *, entry: bool = False, body: str = "") -> 
            "- requires: none",
            "- params: none",
            ""]
-    return "\n".join(out) + (body or "")
+    return "\n".join(out) + (body or "") + "\n## Screen states\n\n### Loaded\n"
 
 
 UI_DASH_LINKS = """

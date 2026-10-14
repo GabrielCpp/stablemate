@@ -22,6 +22,7 @@ from ostler.qa.compile_stops import expand_steps
 from ostler.qa.compile_stops import resolve_stop
 from ostler.qa.compile_support import MATCHABLE_ROLES as _MATCHABLE_ROLES
 from ostler.qa.compile_support import TEMPLATE_HOLE as _TEMPLATE_HOLE
+from ostler.qa.compile_support import ARRIVAL_TRIGGERS
 from ostler.qa.compile_support import bullet_value
 from ostler.qa.compile_support import check_document
 from ostler.qa.compile_support import name_refusal
@@ -29,6 +30,7 @@ from ostler.qa.compile_support import on_node
 from ostler.qa.compile_support import on_label
 from ostler.qa.compile_support import shown_on
 from ostler.qa.compile_support import trailing_comment
+from ostler.qa.compile_support import trigger_name
 from ostler.qa.compile_support import unobservable_gap
 from ostler.qa.compile_support import vet_calls
 from ostler.qa.navigation import NavHop
@@ -141,16 +143,7 @@ TRIGGER_ACTS: dict[str, tuple[str, ...]] = {
 
 _TRIGGER_EXAMPLES = {"press": "Escape", "drop": "fixtures/sample.docx", "upload": "fixtures/sample.xml"}
 
-ARRIVAL_TRIGGERS = frozenset({"load", "navigate"})
-
 PAGE_TRIGGERS = {"back": "qa.back()", "print": "qa.print_page()"}
-
-
-def trigger_name(raw: str) -> str:
-    """The act a `trigger:` names: its bare word, or the name of the call it is written as."""
-    value = bullet_value(raw) or ""
-    parsed = parse_call(value)
-    return (parsed.name if parsed is not None else value).lower()
 
 
 def _trigger_arguments(raw: str, params: tuple[str, ...]) -> dict[str, str]:

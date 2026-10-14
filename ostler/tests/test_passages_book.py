@@ -16,7 +16,7 @@ RESULTS = "docs/features/acme/gui/screens/results.md"
 DETAILS = "docs/features/acme/gui/screens/details.md"
 FLOW = "docs/features/acme/flows/see.md"
 
-CODES = {"passage-shape", "broken-joint", "unarranged-stop", "unperceivable-element", "unresolved-relation"}
+CODES = {"passage-shape", "broken-joint", "unarranged-stop", "stateless-screen", "unsettled-act", "unperceivable-element", "unresolved-relation"}
 
 RESULTS_PAGE = """---
 type: screen
@@ -137,6 +137,26 @@ LOADED = "Loaded|../gui/screens/results.md#loaded"
 ERROR = "Error|../gui/screens/results.md#error"
 OPEN = "Open details|../gui/screens/results.md#open-details"
 SHOWN = "Shown|../gui/screens/details.md#shown"
+CLICK = "Open details|../gui/screens/results.md#open-details-click"
+FILL = "Search|../gui/screens/results.md#search-fill"
+ARRIVE = "Arrive|../gui/screens/results.md#arrive-load"
+
+EXTRA_INTERACTIONS = """### search-fill
+- on: [Open details button](#open-details-button)
+- trigger: fill(text="acme")
+- does:
+  - request: types
+- code: app/r.py::go
+
+### arrive-load
+- on: [Results table](#results-table)
+- trigger: load
+- does:
+  - request: arrives
+- code: app/r.py::go
+
+## Screen states
+"""
 
 
 def _git(root: Path, *args: str) -> None:
@@ -283,3 +303,80 @@ def test_a_passage_step_that_links_a_component_is_refused(book: Path, capsys: py
 
     assert len(found) == 1
     assert "`steps:`" in found[0]["message"]
+
+
+def _with_extra_interactions(book: Path) -> None:
+    _edit(book / RESULTS, "## Screen states\n", EXTRA_INTERACTIONS)
+
+
+def _unsettled(book: Path, capsys: pytest.CaptureFixture[str]) -> list[dict]:
+    return [f for f in _findings(book, capsys) if f["code"] == "unsettled-act"]
+
+
+def test_a_screen_with_no_state_is_one_finding_until_it_declares_one(book: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    _edit(book / DETAILS, "## Screen states\n\n### Shown\n- shows:\n  - [Details heading](#details-heading)\n", "")
+    found = [f for f in _findings(book, capsys) if f["code"] == "stateless-screen"]
+
+    assert len(found) == 1
+    assert found[0]["path"] == DETAILS
+    assert "Under `## Screen states`" in found[0]["message"] and "`shows:`" in found[0]["message"]
+
+    _edit(book / DETAILS, "## Components", "## Screen states\n\n### Shown\n\n## Components")
+    assert [f for f in _findings(book, capsys) if f["code"] == "stateless-screen"] == []
+
+
+def test_a_screen_whose_states_section_is_empty_is_stateless(book: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    _edit(book / DETAILS, "### Shown\n- shows:\n  - [Details heading](#details-heading)\n", "")
+    found = [f for f in _findings(book, capsys) if f["code"] == "stateless-screen"]
+
+    assert [f["path"] for f in found] == [DETAILS]
+
+
+def test_an_act_followed_by_a_stop_is_settled(book: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    write(book / FLOW, flow_page(LOADED, CLICK, ERROR))
+
+    assert _unsettled(book, capsys) == []
+
+
+def test_an_act_followed_by_an_act_is_unsettled(book: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    write(book / FLOW, flow_page(LOADED, CLICK, CLICK, ERROR))
+    found = _unsettled(book, capsys)
+
+    assert len(found) == 1
+    assert found[0]["path"] == FLOW
+    assert f"`{RESULTS}#open-details-click`" in found[0]["message"] and f"`{RESULTS}`" in found[0]["message"]
+    assert "no stop follows it" in found[0]["message"]
+
+
+def test_an_act_as_the_last_step_is_unsettled(book: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    write(book / FLOW, flow_page(LOADED, CLICK))
+
+    assert len(_unsettled(book, capsys)) == 1
+
+
+def test_a_fill_needs_no_stop_after_it(book: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    _with_extra_interactions(book)
+    write(book / FLOW, flow_page(LOADED, FILL, CLICK, ERROR))
+
+    assert _unsettled(book, capsys) == []
+
+
+def test_a_flow_opening_on_a_click_with_no_stop_is_unsettled(book: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    write(book / FLOW, flow_page(CLICK, ERROR))
+    found = _unsettled(book, capsys)
+
+    assert len(found) == 1
+    assert "before it stopped there" in found[0]["message"]
+
+
+def test_a_flow_opening_on_an_arrival_followed_by_a_stop_is_settled(book: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    _with_extra_interactions(book)
+    write(book / FLOW, flow_page(ARRIVE, LOADED))
+
+    assert _unsettled(book, capsys) == []
+
+
+def test_a_flow_opening_on_a_passage_is_settled(book: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    write(book / FLOW, flow_page(OPEN, SHOWN))
+
+    assert _unsettled(book, capsys) == []

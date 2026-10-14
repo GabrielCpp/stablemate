@@ -84,6 +84,10 @@ The pane the selected file's diff is rendered into.
 - code: `groom/groom/templates/dashboard.html::wireChanges`
 - verify: visible(locator="#single-file-diff")
 - tests: `groom/tests/test_render.py::test_changes_groups_diffs_per_repo`
+
+## Screen states
+
+### Loaded
 """
 
 
@@ -591,7 +595,7 @@ title: Web runbook
 """
 
 DASHBOARD = ("---\ntype: screen\nslug: dashboard\ntitle: Dashboard\n---\n# Dashboard\n\n"
-             "- route: `/dashboard`\n- requires: none\n- params: none\n")
+             "- route: `/dashboard`\n- requires: none\n- params: none\n\n## Screen states\n\n### Loaded\n")
 
 
 def _write_runbook_trio(repo: Path) -> None:
