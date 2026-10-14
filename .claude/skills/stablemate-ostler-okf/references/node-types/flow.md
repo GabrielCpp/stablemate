@@ -107,6 +107,20 @@ performs the node's own `arrange:` acts, so `arrange: visit(path="/de")` opens `
 that arranges nothing opens the screen it sits on, by the book's navigation path. The compiler
 files an arrival that has neither as `uncompilable-claim`.
 
+On a GUI surface, a step that links a [`state`](state.md) is a **stop**. The walk waits there
+for the screen to settle and checks that the named state holds, so a flow checks the screen
+between acts and not only at its `end:`. After each act whose outcome the person sees, such as a
+load, a submit or a filter, write the state the screen should settle in: loaded, empty, error or
+disabled. The state's `shows:` is what the stop checks.
+
+A step that links a [`passage`](passage.md) performs the passage's interactions and stops at both
+of its states. Flows that share a run of acts link one passage instead of repeating the steps.
+Steps join where they meet. A passage leaves the state the walk is at, and the stop after a
+passage names the state it lands on, or `ostler doctor` raises `broken-joint`. A flow that opens
+on a state, by its first step or by the `from:` of its first passage, arranges that state's
+`fixture:` on its own `fixture:` row, or doctor raises `unarranged-stop`. A later stop is
+reached by the flow's own acts and arranges nothing.
+
 A step on an `http` surface sends what its endpoint arranges. Its headers and body are the
 endpoint's `arrange:` acts under its claims, never the ones under its `errors:`. Its query
 string is the one the endpoint's own `http_status` row spells. A flow carries no `arrange:` of
@@ -160,6 +174,22 @@ The `fixture:` signs the editor in, so the create-link step sends the credential
 arranges. That endpoint's `capture: slug from $.slug` hands the new slug to the follow-link
 step's `/{slug}`.
 
+On a GUI surface, the steps alternate acts and stops:
+
+```markdown
+- fixture: signed-in-editor
+- steps:
+  - [Links loaded](../gui/screens/links.md#loaded)
+  - [Open a link](../gui/screens/links.md#open-link)
+  - [Link editor shown](../gui/screens/link-editor.md#shown)
+  - [save-click](../gui/screens/link-editor.md#save-click)
+  - [Link saved](../gui/screens/link-editor.md#saved)
+```
+
+`#open-link` is a passage from `links.md#loaded` to `link-editor.md#shown`, so the stop after it
+names that state. `#save-click` is an interaction, and the stop after it is the state the save
+settles in.
+
 The steps here are http calls, so a token sign-in arranges them. A flow whose steps a browser
 performs needs the session in that browser instead. Its fixture opens the sign-in screen and
 acts on it, as [fixture.md](fixture.md#signing-a-browser-in) shows.
@@ -168,7 +198,7 @@ acts on it, as [fixture.md](fixture.md#signing-a-browser-in) shows.
 
 `unresolved-relation` on a `steps:` child, `undeclared-obligation` when `start:`/`end:` are
 stated with no check, `unarranged-journey` when the flow neither arranges a world nor says it
-needs none, `weak-check`, `compound-normative-bullet`, `overlong-normative-bullet`. See [../doctor-codes.md](../doctor-codes.md).
+needs none, `broken-joint` and `unarranged-stop` on its stops and passages, `weak-check`, `compound-normative-bullet`, `overlong-normative-bullet`. See [../doctor-codes.md](../doctor-codes.md).
 
 ## When bullets are not enough
 
