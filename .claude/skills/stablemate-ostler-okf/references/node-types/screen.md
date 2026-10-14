@@ -93,8 +93,9 @@ which mint an obligation on every type.
 
 ## Required sections
 
-None. `## Components`, `## Interactions` and `## Screen states` are the conventional headings,
-added as the screen gains them.
+None. `## Components`, `## Interactions`, `## Screen states` and `## Passages` are the conventional
+headings, added as the screen gains them. A [passage](passage.md) runs some of the screen's
+interactions between two of its states.
 
 ## Relationships
 
