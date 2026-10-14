@@ -305,7 +305,8 @@ states (A4).
     hold that state for that record at that point. Owner: Condition match. (added, R15)
 19. **Every data state and every move is walked.** Each data state is reached and observed by at
     least one walk, and each move is taken by at least one, either from an itinerary or as a
-    one-move walk. Owner: Gap. (added, R15)
+    one-move walk. A state no move enters counts as reached when a walk arranges it by its
+    fixture. Owner: Gap. (added, R15; revised, R16)
 20. **A request that changes data says what it moves.** An outcome of a route or a command that
     changes what the system keeps names its moves, or says it moves none with a reason. One that
     states neither is a finding on its page. Owner: Move. (added, R15)
@@ -479,6 +480,15 @@ L1 to L6 are resolved in section 5.
   that the server explain the state it manages and how the API moves it. API pages describe it
   today in prose: 271 `state:` children under `does:` across 63 of the client API book's 125
   route pages, each written from its own route, and no page names a situation two routes share.
+- R16. Spelling of part 6, invariant 19, assumptions 16 and 18. A hand measure on the client's
+  account and billing routes named two lifecycles from the source: the account (incomplete,
+  complete) and the order quota (open, reached). It found three shapes the spelling missed.
+  Account completion writes the role without reading it, so a second call lands on complete
+  from complete. A tier change sets the limit from the request body, so the body, not the
+  starting state, picks where the order quota lands. No route in the API raises order usage or
+  writes a bill, so those states are reached only by their fixture. It also found two things a
+  writer must not model as a lifecycle: a flag that is always false, and a value such as the
+  limit itself.
 
 ### Parts
 
@@ -575,6 +585,23 @@ On the pay route's success arm, and on a case that depends on a state:
 `of:` repeats on each state rather than nesting the states under a lifecycle heading, so every
 state stays a plain section with its own anchor. A route that changes nothing says
 `- moves: none, because it only reads`.
+
+A write that does not read the state first lands in one state from any sibling, the target
+included. It names only the target: `- moves: to [Account complete](../server.md#account-complete)`.
+The ledger then holds the target whatever it held before, and Condition match asks nothing of
+the start. (R16)
+
+A route whose request picks the target, such as a tier change that sets the limit from its
+body, splits its arm into cases. Each case arranges its own body and names its own `moves:`.
+(R16)
+
+A data state no route in the book moves, because another system writes it, carries a
+`fixture:` and no route names it in `moves:`. A walk reaches it by that fixture. (R16)
+
+A lifecycle is named when a route's case depends on it through `when:`, or a route moves it.
+A flag a route always answers the same way is not a state, and a value such as a limit or a
+role name is not one either. A case that depends on such a value names the state it puts the
+record in instead. (R16)
 
 ### What the existing system has that the design lacked
 
@@ -763,18 +790,22 @@ state stays a plain section with its own anchor. A route that changes nothing sa
     done-when moves to a second run.
 16. **Assumption:** writers can name each lifecycle and its states from the source, such as a
     status column or enum, within a book run's budget. **Decided:** part 6 is written by the
-    book workflow, not inferred by QA. **Basis:** none. The 271 `state:` sentences show writers
-    already trace effects per route. **If wrong:** part 6 and slice 12. Measure it by hand on the
-    billing routes before slice 12.
+    book workflow, not inferred by QA. **Basis:** measured by hand on the client's five account
+    and billing routes (R16). Their states sit in a role table, a quota column and a usage flag,
+    with no status enum, and a reader still named two lifecycles from the schema, the services
+    and the queries in one pass. The 271 `state:` sentences show writers already trace effects
+    per route. **If wrong:** part 6 and slice 12.
 17. **Assumption:** every data state a walk relies on can be read back through a documented
     route or command. **Decided:** Observation is required on every data state. **Basis:** the
     billing routes include a bill read and a quota read. **If wrong:** Observation becomes
     optional, its absence a finding on the page, and the Move check skips that state.
-18. **Assumption:** an outcome moves a record the same way every time it is reached. **Decided:**
-    `moves:` sits on the arm or the case. **Basis:** the quota route states `reached` as a pure
-    rule, true exactly when `used + 1 > limit`. **If wrong:** an arm that moves differently by
-    situation splits into cases, each with a `when:` naming its starting state, and Move
-    re-derives.
+18. **Assumption:** an outcome moves a record the same way every time one request reaches it
+    from one starting state. **Decided:** `moves:` sits on the arm or the case. An arm whose
+    request picks the target splits into cases by request (R16). **Basis:** the quota route
+    states `reached` as a pure rule, true exactly when `used + 1 > limit`. The tier change is the
+    one billing route whose target depends on its body. **If wrong:** an arm that moves
+    differently by situation splits into cases, each with a `when:` naming its starting state,
+    and Move re-derives.
 19. **Assumption:** a move or an observation acts on the record the request path addresses, or
     on the caller's own when the path names none. **Decided:** the ledger keys each state by the
     captured id, or by the fixture that signs the caller in. Two records of one lifecycle in one
