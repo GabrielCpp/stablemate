@@ -15,6 +15,7 @@ from ostler.qa.book_index import BookIndex
 from ostler.qa.compile_journey import JourneyWalk
 from ostler.qa.compile_journey import WalkedJourney
 from ostler.qa.compile_support import PLAYWRIGHT
+from ostler.qa.compile_stops import Move
 from ostler.qa.compile_stops import ScreenStop
 from ostler.qa.compile_stops import stop_state_ids
 from ostler.qa.compile_stops import expand_steps
@@ -478,11 +479,23 @@ def settle_lines(stop: ScreenStop, comment: str, origins: Sequence[str] = ()) ->
     ]
 
 
+def _arrives(previous: Move | None, step: FlowStep, book: BookIndex) -> bool:
+    """Whether the walk arrives at the screen *step* stops at, false when the move before only acted on that same screen without a trigger that loads it."""
+    if previous is None or previous.step.node_type not in ("interaction", "invocation"):
+        return True
+    ref = previous.step.ref
+    if ref.split("#")[0] != step.ref.split("#")[0]:
+        return True
+    trigger = next(iter(book.locators_by_node.get(ref, NO_LOCATORS).trigger), "")
+    return trigger_name(trigger) in ARRIVAL_TRIGGERS
+
+
 def _stop_step(
     index: int, step: FlowStep, walk: JourneyWalk, gaps: list[Gap], passage: Passage | None = None,
+    arrived: bool = True,
 ) -> list[str] | None:
     """Wait for the screen a step stops at to settle, then check it is the declared state that holds, or `None` once the stop cannot be compiled. After a passage the stop also fails on a request nothing declares."""
-    stop = resolve_stop(index, step, walk, gaps, device=False, passage=passage)
+    stop = resolve_stop(index, step, walk, gaps, device=False, passage=passage, arrived=arrived)
     if stop is None:
         return None
     origins = sorted(set(walk.book.server_origins.values())) if passage is not None else []
@@ -603,10 +616,12 @@ def web_walk(walk: JourneyWalk, sinks: PlanSinks) -> WalkedJourney:
         lines.insert(opening, MARK_LINE)
     action_index = len(lines)
     covered_stops: set[str] = set()
+    previous: Move | None = None
     for move in moves:
         step = move.step
         if step.node_type == "state":
-            performed = _stop_step(move.index, step, walk, gaps, move.passage)
+            arrived = move.passage is not None or _arrives(previous, step, walk.book)
+            performed = _stop_step(move.index, step, walk, gaps, move.passage, arrived)
         else:
             performed = _web_step(move.index, step, walk, gaps)
         if performed is None:
@@ -616,6 +631,7 @@ def web_walk(walk: JourneyWalk, sinks: PlanSinks) -> WalkedJourney:
         elif stops and performed and not move.continues:
             lines.append(MARK_LINE)
         lines.extend(performed)
+        previous = move
     observed = page_observations(walk.obligations, gaps, scenario="journey")
     if not observed.covered:
         return unwalked

@@ -133,11 +133,11 @@ def expand_steps(walk: JourneyWalk, gaps: list[Gap]) -> list[Move] | None:
 
 def resolve_stop(
     index: int, step: FlowStep, walk: JourneyWalk, gaps: list[Gap], *, device: bool,
-    passage: Passage | None = None,
+    passage: Passage | None = None, arrived: bool = True,
 ) -> ScreenStop | None:
-    """What the step waits for and checks, or `None` once the stop cannot be compiled. A stop after *passage* waits for the passage's requests first."""
+    """What the step waits for and checks, or `None` once the stop cannot be compiled. A stop after *passage* waits for the passage's requests first. A stop the walk did not *arrive* at waits for none of its screen's own requests."""
     sent: list[tuple[str, str]] = []
-    keep_own = True
+    keep_own = arrived
     if passage is not None and not device:
         declared = declared_pairs(passage.requests)
         if isinstance(declared, str):

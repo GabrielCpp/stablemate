@@ -156,3 +156,50 @@ def test_the_packet_carries_the_passages_and_a_passage_owes_nothing() -> None:
 
     assert packet.passages[PASSAGE].end == SHOWN
     assert packet.passages[PASSAGE].requests == ("GET /api/results/{id}",)
+
+
+def _acting_walk(refs: list[str], *, arrival: bool = False) -> dict:
+    base = _walk_context([LOADED], passages={})
+    kinds = {OPEN_DETAILS: "interaction", RELOAD: "interaction"}
+    steps = [_step(ref, kinds.get(ref, "state"), "policy") for ref in refs]
+    for obligation in base["obligations"]:
+        if obligation["nodeType"] == "flow":
+            obligation["steps"] = steps
+    if arrival:
+        base["obligations"].append(
+            _page_obligation(f"okf:{RELOAD}:contract", RELOAD, locators={"trigger": ["load"]}, checks=[]))
+    return base
+
+
+RELOAD = f"{_SCREEN}#reload-click"
+
+
+def test_a_stop_after_an_interaction_on_the_same_screen_waits_for_none_of_its_requests() -> None:
+    journey, _, _ = _compile(_acting_walk([LOADED, OPEN_DETAILS, ERROR]))
+
+    opening, after = _settles(journey)
+    assert '("GET", "/api/results")' in opening
+    assert "requests=[]" in after
+    assert '"role": "progressbar"' in after
+    assert '"error"' in after and 'expect="error"' in after
+
+
+def test_a_stop_after_an_interaction_on_another_screen_keeps_that_screens_requests() -> None:
+    journey, _, _ = _compile(_acting_walk([LOADED, OPEN_DETAILS, SHOWN]))
+
+    after = _settles(journey)[1]
+    assert '("GET", "/api/details/{id}")' in after
+    assert 'expect="shown"' in after
+
+
+def test_the_opening_stop_keeps_its_screens_requests() -> None:
+    journey, _, _ = _compile(_acting_walk([LOADED, OPEN_DETAILS, ERROR]))
+
+    assert '("GET", "/api/results")' in _settles(journey)[0]
+
+
+def test_a_stop_after_an_arrival_trigger_on_the_same_screen_keeps_its_requests() -> None:
+    journey, _, _ = _compile(_acting_walk([LOADED, RELOAD, ERROR], arrival=True))
+
+    assert len(_settles(journey)) == 2
+    assert '("GET", "/api/results")' in _settles(journey)[1]
