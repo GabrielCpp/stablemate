@@ -1,6 +1,6 @@
 ---
 name: workhorse-operate
-description: "Acting on a live workhorse run from the terminal — list the runs groom sees, resolve one to its `workflow` and `run_dir`, then `control` it over its socket: `status`, `reload` (pushed code), `switch-cli`, `switch-profile`, `questions`/`answer` (gates), `inbox read`/`reply` — and repair a stopped one with `stop --wait`, `status --params`, `rewind --to STATE` and `resume [CLI]`. Load when asked to reload, restart, rewind, resume, switch, answer, poke, or find a run — including one named from the groom dashboard. Reading *why* a run is stuck is groom-telemetry; groom's own architecture is groom; writing nodes is workhorse-engine."
+description: "Launching, watching and acting on a workhorse run from the terminal. Start `groom serve` before a launch, watch with `groom wait --run <run_id>` and never by tailing a log. Then: list the runs groom sees, resolve one to its `workflow` and `run_dir`, then `control` it over its socket: `status`, `reload` (pushed code), `switch-cli`, `switch-profile`, `questions`/`answer` (gates), `inbox read`/`reply` — and repair a stopped one with `stop --wait`, `status --params`, `rewind --to STATE` and `resume [CLI]`. Load when asked to launch, watch, monitor, attend, reload, restart, rewind, resume, switch, answer, poke, or find a run — including one named from the groom dashboard. Reading *why* a run is stuck is groom-telemetry; groom's own architecture is groom; writing nodes is workhorse-engine."
 tags: [cli]
 ---
 
@@ -11,6 +11,31 @@ reload it onto pushed code, move it to another agent CLI or model profile, answe
 gate it is parked on, or just find where it is. The run is a process holding a control
 socket in its run dir; groom already indexes every live one. Nothing here requires
 searching a disk.
+
+## Launching and watching a run
+
+groom is the only way to watch a run. Never tail its launch log, grep its output or
+poll its run dir.
+
+```bash
+curl -s -o /dev/null http://127.0.0.1:8787/ || setsid nohup groom serve > groom.log 2>&1 < /dev/null &
+workhorse-<workflow> run …                       # launch only once groom answers
+groom wait --run <run_id>                        # in the background; returns one event and exits
+```
+
+- **Start groom before the launch.** A run looks for the collector once, when its
+  process starts. A run launched while groom is down sends groom nothing for its whole
+  life: no row, no gate page, no alert. The repair is `stop --wait`, then `resume`,
+  because the resumed process probes again.
+- **`groom wait` is the monitor.** It stays silent through normal progress and exits on
+  the first of `blocked`, `ended`, `stuck`, `stalled` or `gave-up`. `--until` widens
+  the set, for example with `churn`, `watchdog` and `died`. It has no timeout, so run it
+  as a background task and let its exit wake you.
+- **On each wake, read before acting.** `groom status --run <run_id>` says where the
+  run is. `control questions` and `inbox read` say what it asks. Fix the cause, then
+  answer, then start a new `groom wait`.
+- **`<run_id>` is groom's id, not the run dir's name.** The engine may prefix the dir
+  with the workflow name. `groom status --json` prints both.
 
 ## The recipe
 
