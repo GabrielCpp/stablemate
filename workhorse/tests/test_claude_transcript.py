@@ -221,3 +221,107 @@ def test_write_and_multiedit_tools_map_to_edit_kind():
     assert mapped.update["content"] == [
         {"type": "diff", "path": "/work/a.txt", "oldText": None, "newText": "hi"}
     ]
+
+
+TASKS_FIXTURE = Path(__file__).parent / "fixtures" / "claude_tasks_turn.jsonl"
+_TASK_TOOLS = ("TaskCreate", "TaskUpdate", "TaskList", "TaskGet")
+
+
+def _task_events() -> list[dict[str, Any]]:
+    return [json.loads(line) for line in TASKS_FIXTURE.read_text().splitlines()]
+
+
+def _task_updates() -> list[acp.MappedUpdate]:
+    mapper = ClaudeTranscript()
+    return [update for event in _task_events() for update in mapper.updates(event)]
+
+
+def _task_uses(*names: str) -> list[dict[str, Any]]:
+    return [
+        block
+        for event in _task_events()
+        for block in _blocks(event, "tool_use")
+        if block["name"] in names
+    ]
+
+
+def test_task_tools_emit_no_tool_call_and_no_result_update():
+    ids = {block["id"] for block in _task_uses(*_TASK_TOOLS)}
+    assert ids
+    assert not any(u.update.get("toolCallId") in ids for u in _task_updates())
+
+
+def test_every_other_tool_call_in_a_task_turn_has_one_matching_update():
+    updates = _task_updates()
+    calls = {u.update["toolCallId"] for u in updates if _kind(u) == "tool_call"}
+    results = [u.update["toolCallId"] for u in updates if _kind(u) == "tool_call_update"]
+    assert calls
+    assert sorted(results) == sorted(calls)
+
+
+def test_each_task_create_and_update_emits_the_whole_plan():
+    plans = [u.update["entries"] for u in _task_updates() if _kind(u) == "plan"]
+    changes = _task_uses("TaskCreate", "TaskUpdate")
+    assert len(plans) == len(changes)
+    assert [e["content"] for e in plans[0]] == ["Read notes.txt"]
+    assert [e["content"] for e in plans[2]] == [
+        "Read notes.txt",
+        "Count lines in notes.txt",
+        "Change beta to gamma in notes.txt",
+    ]
+    assert [e["status"] for e in plans[2]] == ["pending", "pending", "pending"]
+    assert [e["status"] for e in plans[3]] == ["in_progress", "pending", "pending"]
+    assert [e["status"] for e in plans[-1]] == ["completed", "completed", "completed"]
+    assert all(e["priority"] == "medium" for plan in plans for e in plan)
+
+
+def test_a_task_update_names_its_task_by_the_id_the_create_result_gave():
+    mapper = ClaudeTranscript()
+    create = {"type": "tool_use", "id": "c1", "name": "TaskCreate", "input": {"subject": "first"}}
+    other = {"type": "tool_use", "id": "c2", "name": "TaskCreate", "input": {"subject": "second"}}
+    mapper.updates({"type": "assistant", "message": {"content": [create, other]}})
+    mapper.updates(
+        {
+            "type": "user",
+            "message": {
+                "content": [
+                    {"type": "tool_result", "tool_use_id": "c2", "content": "Task #7 created successfully: second"},
+                    {"type": "tool_result", "tool_use_id": "c1", "content": "Task #6 created successfully: first"},
+                ]
+            },
+        }
+    )
+    update = {"type": "tool_use", "id": "u1", "name": "TaskUpdate", "input": {"taskId": "7", "status": "completed"}}
+    (mapped,) = mapper.updates({"type": "assistant", "message": {"content": [update]}})
+    assert [(e["content"], e["status"]) for e in mapped.update["entries"]] == [
+        ("first", "pending"),
+        ("second", "completed"),
+    ]
+
+
+def test_a_task_update_can_rename_and_delete():
+    mapper = ClaudeTranscript()
+
+    def create(call_id: str, number: int, subject: str) -> None:
+        use = {"type": "tool_use", "id": call_id, "name": "TaskCreate", "input": {"subject": subject}}
+        mapper.updates({"type": "assistant", "message": {"content": [use]}})
+        result = {"type": "tool_result", "tool_use_id": call_id, "content": f"Task #{number} created successfully: {subject}"}
+        mapper.updates({"type": "user", "message": {"content": [result]}})
+
+    def update(call_id: str, **fields: str) -> acp.MappedUpdate:
+        use = {"type": "tool_use", "id": call_id, "name": "TaskUpdate", "input": fields}
+        (mapped,) = mapper.updates({"type": "assistant", "message": {"content": [use]}})
+        return mapped
+
+    create("c1", 1, "first")
+    create("c2", 2, "second")
+    renamed = update("u1", taskId="1", subject="renamed")
+    assert [e["content"] for e in renamed.update["entries"]] == ["renamed", "second"]
+    deleted = update("u2", taskId="2", status="deleted")
+    assert [e["content"] for e in deleted.update["entries"]] == ["renamed"]
+
+
+def test_a_task_update_for_an_unknown_task_emits_nothing():
+    mapper = ClaudeTranscript()
+    use = {"type": "tool_use", "id": "u1", "name": "TaskUpdate", "input": {"taskId": "9", "status": "completed"}}
+    assert mapper.updates({"type": "assistant", "message": {"content": [use]}}) == []

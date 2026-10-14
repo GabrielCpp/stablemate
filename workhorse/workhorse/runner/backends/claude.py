@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -340,13 +341,11 @@ def _emit_event(node_id: str, event: dict) -> None:
         print(f"[{node_id}] ✓ result received" + (f" ({dur} ms)" if dur else ""), flush=True)
 
 
+_SUMMARY_KEYS = ("file_path", "path", "command", "pattern", "url", "query", "description")
+
+
 def _tool_summary(inp: dict) -> str:
-    for key in ("file_path", "path", "command", "pattern", "url", "query", "description"):
-        value = inp.get(key)
-        if value:
-            flat = " ".join(str(value).split())
-            return flat[:120] + "…" if len(flat) > 120 else flat
-    return ""
+    return acp.summarize(inp, _SUMMARY_KEYS)
 
 
 _TOOL_KINDS = {
@@ -379,6 +378,10 @@ def _tool_diffs(name: str, inp: dict[str, Any]) -> list[dict[str, Any]]:
     return []
 
 
+_TASK_TOOLS = ("TaskCreate", "TaskUpdate", "TaskList", "TaskGet")
+_TASK_ID = re.compile(r"Task #(\w+)")
+
+
 def _plan_status(status: object) -> str:
     if status in ("in_progress", "completed"):
         return str(status)
@@ -401,6 +404,8 @@ class ClaudeTranscript(acp.TranscriptMapper):
     def __init__(self) -> None:
         super().__init__()
         self._plan_calls: set[str] = set()
+        self._tasks: list[dict[str, str | None]] = []
+        self._creating: dict[str, dict[str, str | None]] = {}
         self._diffs: dict[str, list[dict[str, Any]]] = {}
 
     def updates(self, event: dict[str, Any]) -> list[acp.MappedUpdate]:
@@ -419,8 +424,11 @@ class ClaudeTranscript(acp.TranscriptMapper):
         for block in content:
             if etype == "assistant":
                 mapped.extend(self._assistant_block(block))
-            elif block.get("type") == "tool_result" and block.get("tool_use_id") not in self._plan_calls:
-                mapped.append(self._tool_result(block))
+            elif block.get("type") == "tool_result":
+                if block.get("tool_use_id") in self._plan_calls:
+                    self._task_result(block)
+                else:
+                    mapped.append(self._tool_result(block))
         return [acp.MappedUpdate(update, parent) for update in mapped]
 
     def _assistant_block(self, block: dict[str, Any]) -> list[acp.Update]:
@@ -430,10 +438,11 @@ class ClaudeTranscript(acp.TranscriptMapper):
         if btype == "thinking" and block.get("thinking", "").strip():
             return [acp.agent_thought_chunk(block["thinking"])]
         if btype == "tool_use":
-            return [self._tool_use(block)]
+            update = self._tool_use(block)
+            return [update] if update else []
         return []
 
-    def _tool_use(self, block: dict[str, Any]) -> acp.Update:
+    def _tool_use(self, block: dict[str, Any]) -> acp.Update | None:
         name = block.get("name", "?")
         inp = block.get("input") or {}
         if name == "TodoWrite":
@@ -444,6 +453,9 @@ class ClaudeTranscript(acp.TranscriptMapper):
                     for todo in inp.get("todos") or []
                 ]
             )
+        if name in _TASK_TOOLS:
+            self._plan_calls.add(block["id"])
+            return self._task_tool(block["id"], name, inp)
         kind = _TOOL_KINDS.get(name, "other")
         path = inp.get("file_path") or inp.get("notebook_path")
         diffs = _tool_diffs(name, inp)
@@ -457,6 +469,37 @@ class ClaudeTranscript(acp.TranscriptMapper):
             locations=[{"path": path}] if path and kind in ("read", "edit") else None,
             raw_input=inp,
         )
+
+    def _task_plan(self) -> acp.Update:
+        return acp.plan(
+            [acp.plan_entry(task["subject"] or "", _plan_status(task["status"])) for task in self._tasks]
+        )
+
+    def _task_tool(self, call_id: str, name: str, inp: dict[str, Any]) -> acp.Update | None:
+        if name == "TaskCreate":
+            task: dict[str, str | None] = {"id": None, "subject": str(inp.get("subject", "")), "status": "pending"}
+            self._tasks.append(task)
+            self._creating[call_id] = task
+            return self._task_plan()
+        if name != "TaskUpdate":
+            return None
+        found = next((t for t in self._tasks if t["id"] == str(inp.get("taskId"))), None)
+        if found is None:
+            return None
+        if inp.get("status") == "deleted":
+            self._tasks.remove(found)
+        else:
+            if inp.get("subject"):
+                found["subject"] = str(inp["subject"])
+            if inp.get("status"):
+                found["status"] = str(inp["status"])
+        return self._task_plan()
+
+    def _task_result(self, block: dict[str, Any]) -> None:
+        task = self._creating.pop(block["tool_use_id"], None)
+        found = _TASK_ID.search(_result_text(block.get("content")))
+        if task is not None and found and not block.get("is_error"):
+            task["id"] = found.group(1)
 
     def _tool_result(self, block: dict[str, Any]) -> acp.Update:
         text = _result_text(block.get("content"))

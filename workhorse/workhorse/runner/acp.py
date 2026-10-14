@@ -111,6 +111,16 @@ def tool_call_update(
     return update
 
 
+def summarize(inp: dict[str, Any], keys: tuple[str, ...]) -> str:
+    """The first of ``keys`` a tool's input holds, flattened to one line for a call title."""
+    for key in keys:
+        value = inp.get(key)
+        if value:
+            flat = " ".join(str(value).split())
+            return flat[:120] + "…" if len(flat) > 120 else flat
+    return ""
+
+
 def plan(entries: list[dict[str, str]]) -> Update:
     return {"sessionUpdate": "plan", "entries": entries}
 
