@@ -839,6 +839,7 @@ class Qa:
         self._checkout_copy: Path | None = None
         self._exchange: ExchangeEvidence | None = None
         self._claim_fault: ClaimFault | None = None
+        self._node: str | None = None
         self.http = Http(target.base_url, on_unexpected_status=self._status_mismatch, on_exchange=self._saw_exchange)
         self._index = 0
         self.assertions = 0
@@ -1571,6 +1572,8 @@ class Qa:
             "expected": expected,
             "covers": list(covers) if covers is not None else [],
         }
+        if self._node is not None:
+            record["node"] = self._node
         if not passed:
             if self._exchange is not None:
                 record["exchange"] = asdict(self._exchange)
@@ -1591,6 +1594,18 @@ class Qa:
         if not isinstance(exc, HttpError):
             evidence["raised"] = type(exc).__name__
         return evidence
+
+    @contextmanager
+    def at_node(self, ref: str) -> Iterator[None]:
+        """Record the checks inside against the book node `ref`, and stop the scenario after them when any failed."""
+        failed_before = self.failures
+        self._node = ref
+        try:
+            yield
+        finally:
+            self._node = None
+        if self.failures > failed_before:
+            raise CheckFailed(ref)
 
     @contextmanager
     def claim(self, covers: Sequence[str]) -> Iterator[None]:

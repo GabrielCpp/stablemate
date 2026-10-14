@@ -6450,3 +6450,179 @@ def test_an_arranged_upload_hands_its_control_the_file_before_the_trigger() -> N
         "  # arrange: upload(locator='#file-field', file='app/fixtures/widgets.docx')")
     assert upload < clicks[0]
     assert accept_oid in _covers(source)
+
+
+_BILLS = "docs/features/bills/http/api.md"
+_BILLS_FLOW = "docs/features/bills/flows/issue-and-pay-a-bill.md"
+
+
+def _arm(node: str, name: str, route: str, checks: list[dict], position: int = 1) -> dict:
+    row = _step_node(node, {"route": [route]})
+    row["id"] = f"okf:{node}:{name}"
+    row["docPosition"] = [position, 0]
+    row["checksDeclared"] = checks
+    if not route.startswith("GET"):
+        row["actsDeclared"] = [_body_act("name", "Widget A")]
+    return row
+
+
+def _status(code: int) -> dict:
+    return {"call": "it", "name": "http_status", "args": {"code": code}}
+
+
+def _json_path(path: str, equals: object) -> dict:
+    return {"call": "it", "name": "json_path", "args": {"path": path, "equals": equals}}
+
+
+def _three_step_journey(*, flow_checks: list[dict] | None = None) -> tuple[str, dict]:
+    oid = f"okf:{_FLOW}:end-state"
+    nodes = [f"{_API}#post-things", f"{_API}#put-thing", f"{_API}#get-things"]
+    context = _navigation_context(
+        _flow_obligation(
+            oid, source=_FLOW, surface="api",
+            steps=[_step(node, "endpoint", "api") for node in nodes],
+            checks=flow_checks or [{"call": "it", "name": "http_status",
+                                    "args": {"status": 200, "path": "/api/things"}}],
+        ),
+        {**_arm(nodes[0], "created", "POST /api/things", [_status(201), _json_path("$.state", "draft")]),
+         "capturesDeclared": [{"name": "thing_id", "from": "$.id"}]},
+        _arm(nodes[1], "renamed", "PUT /api/things/{thing_id}", [_status(200), _json_path("$.state", "named")]),
+        _arm(nodes[2], "listed", "GET /api/things", [_status(200), _json_path("$.count", 1)]),
+        navigation=_api_navigation(),
+    )
+    return oid, context
+
+
+def test_a_journey_step_runs_every_check_of_its_success_arm_before_the_next_request() -> None:
+    oid, context = _three_step_journey()
+    result = _compile_plan_gaps(context, story="demo-story")
+    assert isinstance(result, Plan)
+    source = result.source
+    ast.parse(source)
+    requests = [source.index(f"observed_{n} = qa.http.") for n in (1, 2, 3)]
+    for number, node in enumerate([f"{_API}#post-things", f"{_API}#put-thing", f"{_API}#get-things"], start=1):
+        block = source.index(f"with qa.at_node({node!r})".replace("'", '"'))
+        assert requests[number - 1] < block
+        if number < 3:
+            assert block < requests[number]
+        assert f'qa.verify("http_status", observed_{number}, code=' in source
+        assert f'qa.verify("json_path", observed_{number}.json()' in source
+    assert f'covers=["okf:{_API}#post-things:created"]' in source
+    assert _gap_kinds(result.gaps, oid) == []
+
+
+def test_the_middle_steps_checks_sit_in_a_block_that_stops_the_walk_before_the_third_request() -> None:
+    _, context = _three_step_journey()
+    result = _compile_plan_gaps(context, story="demo-story")
+    assert isinstance(result, Plan)
+    lines = result.source.splitlines()
+    middle = next(i for i, line in enumerate(lines) if "observed_2 = qa.http." in line)
+    block = lines[middle + 1:]
+    assert block[0].strip() == f'with qa.at_node("{_API}#put-thing"):'
+    inside = block[1:next(i for i, line in enumerate(block) if "observed_3 = qa.http." in line)]
+    verifies = [line for line in inside if line.startswith("        qa.verify")]
+    assert len(verifies) == 2
+    assert all('"okf:' in line and f"{_API}#put-thing" in line for line in verifies)
+
+
+def test_a_billing_walk_counts_every_check_its_routes_declare() -> None:
+    oid = f"okf:{_BILLS_FLOW}:end-state"
+    routes = [
+        ("create", "POST /api/bills", [_status(201), _json_path("$.state", "draft"), _json_path("$.id", "b1")]),
+        ("issue", "POST /api/bills/{bill_id}/issue", [_status(200), _json_path("$.state", "issued")]),
+        ("read", "GET /api/bills/{bill_id}", [_status(200), _json_path("$.total", 10),
+                                              _json_path("$.state", "issued"), _json_path("$.id", "b1")]),
+        ("pay", "POST /api/bills/{bill_id}/pay", [_status(200), _json_path("$.state", "paid"), _json_path("$.paid", True)]),
+        ("quota", "GET /api/quota", [_status(200), _json_path("$.left", 9), _json_path("$.limit", 10)]),
+    ]
+    nodes = [f"{_BILLS}#{name}" for name, _, _ in routes]
+    flow_checks = [{"call": "it", "name": "http_status", "args": {"status": 200, "path": "/api/quota"}}]
+    context = _navigation_context(
+        _flow_obligation(
+            oid, source=_BILLS_FLOW, surface="api",
+            steps=[_step(node, "endpoint", "api") for node in nodes],
+            checks=flow_checks,
+        ),
+        *[{**_arm(node, "ok", route, checks, position),
+           **({"capturesDeclared": [{"name": "bill_id", "from": "$.id"}]} if position == 1 else {})}
+          for position, (node, (_, route, checks)) in enumerate(zip(nodes, routes, strict=True), start=1)],
+        navigation={"api": {"start": _BILLS, "surface": "api", "driver": "http", "entryUrl": _BASE_URL,
+                            "counts": {}, "routes": {}, "unreachable": [], "undeclared": []}},
+    )
+    result = _compile_plan_gaps(context, story="demo-story")
+    assert isinstance(result, Plan)
+    ast.parse(result.source)
+    declared = sum(len(checks) for _, _, checks in routes) + len(flow_checks)
+    assert result.source.count("qa.verify(") == declared
+    assert _gap_kinds(result.gaps, oid) == []
+
+
+def test_a_check_reading_a_capture_a_later_step_takes_is_not_emitted_and_files_a_gap() -> None:
+    oid = f"okf:{_FLOW}:end-state"
+    nodes = [f"{_API}#post-things", f"{_API}#get-things"]
+    first = _arm(nodes[0], "created", "POST /api/things", [_status(201)])
+    first["actsDeclared"] = [_body_act("name", "Widget A")]
+    first["checksDeclared"].append({"call": "it", "name": "json_path",
+                                    "args": {"path": "$.owner", "equals": "$owner_id"}})
+    second = _arm(nodes[1], "listed", "GET /api/things", [_status(200)])
+    second["capturesDeclared"] = [{"name": "owner_id", "from": "$.owner"}]
+    context = _navigation_context(
+        _flow_obligation(
+            oid, source=_FLOW, surface="api",
+            steps=[_step(node, "endpoint", "api") for node in nodes],
+            checks=[{"call": "it", "name": "http_status", "args": {"status": 200, "path": "/api/things"}}],
+        ),
+        first,
+        second,
+        navigation=_api_navigation(),
+    )
+    result = _compile_plan_gaps(context, story="demo-story")
+    assert isinstance(result, Plan)
+    assert "$owner_id" not in result.source.split("observed_2 = ")[0]
+    [gap] = [g for g in result.gaps if g.obligation_id == oid and g.kind == "unresolved-precondition"]
+    assert "step 1" in gap.detail and "$owner_id" in gap.detail
+
+
+def test_a_check_naming_another_route_than_the_steps_is_left_to_that_route() -> None:
+    oid = f"okf:{_FLOW}:end-state"
+    node = f"{_API}#get-thing"
+    arm = _arm(node, "read", "GET /api/things/{thing_id}", [
+        {"call": "it", "name": "http_status", "args": {"code": 200, "path": "/api/things/7"}},
+        {"call": "it", "name": "http_status", "args": {"code": 200, "path": "/api/other"}},
+    ])
+    context = _navigation_context(
+        _flow_obligation(
+            oid, source=_FLOW, surface="api", steps=[_step(node, "endpoint", "api")],
+            checks=[{"call": "it", "name": "http_status",
+                     "args": {"status": 200, "path": "/api/things/{thing_id}"}}],
+            fixtures=[{"name": "seeded-thing", "args": [], "provides": "a thing",
+                       "providesKeys": ["seeded-thing.thing_id"]}],
+        ),
+        arm,
+        navigation=_api_navigation(),
+    )
+    result = _compile_plan_gaps(context, story="demo-story")
+    assert isinstance(result, Plan)
+    assert result.source.count('path="/api/things/7"') == 1
+    assert "/api/other" not in result.source
+    assert _gap_kinds(result.gaps, oid) == []
+
+
+def test_a_refusal_on_the_last_step_runs_none_of_the_success_arms_checks() -> None:
+    oid = f"okf:{_FLOW}:end-state"
+    nodes = [f"{_API}#get-health", f"{_API}#delete-things"]
+    context = _navigation_context(
+        _flow_obligation(
+            oid, source=_FLOW, surface="api",
+            steps=[_step(node, "endpoint", "api") for node in nodes],
+            checks=[{"call": "it", "name": "http_status", "args": {"code": 403, "path": "/api/things"}}],
+        ),
+        _arm(nodes[0], "up", "GET /healthz", [_status(200), _json_path("$.ok", True)]),
+        _arm(nodes[1], "deleted", "DELETE /api/things", [_status(204), _json_path("$.gone", True)]),
+        navigation=_api_navigation(),
+    )
+    result = _compile_plan_gaps(context, story="demo-story")
+    assert isinstance(result, Plan)
+    assert 'observed_2 = qa.http.delete("/api/things", expect_status=403)' in result.source
+    assert 'qa.verify("json_path", observed_1.json()' in result.source
+    assert "observed_2.json()" not in result.source

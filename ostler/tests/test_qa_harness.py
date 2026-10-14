@@ -1230,3 +1230,70 @@ def test_a_failed_check_on_a_command_records_how_the_command_ended(tmp_path: Pat
     qa.verify("exit_status", finished, code=0)
 
     assert [record.get("command_ending") for record in emitted] == [{"exit_code": 1, "stderr": "No module named tally"}, None]
+
+
+WALK_PLAN = '''\
+import threading
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+from ostler_qa import Qa, plan, scenario, target
+
+plan(run_id="qa-07-walk", story="07-walk")
+
+api = target("api")
+SEEN = "@SEEN@"
+NODES = ("docs/a.md#create", "docs/a.md#rename", "docs/a.md#read")
+
+
+class Bills(BaseHTTPRequestHandler):
+    def do_GET(self):  # noqa: N802
+        with open(SEEN, "a") as sink:
+            sink.write(self.path + "\\n")
+        body = b'{"state": "@STATE@"}'
+        self.send_response(200)
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def log_message(self, *args):
+        pass
+
+
+@scenario(target=api, mechanism="live", covers=["okf:docs/a.md#rename:ok"])
+def a_three_step_walk(qa: Qa) -> None:
+    """Three reads, each checked before the next is sent."""
+    server = ThreadingHTTPServer(("127.0.0.1", 0), Bills)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    qa.http.base_url = "http://127.0.0.1:%d" % server.server_address[1]
+    for number, node in enumerate(NODES, start=1):
+        observed = qa.http.get("/step-%d" % number)
+        with qa.at_node(node):
+            qa.verify("http_status", observed, code=200, covers=["okf:docs/a.md#rename:ok"])
+            qa.verify("json_path", observed.json(), path="$.state", equals="@WANT@" if number == 2 else "@STATE@",
+                      covers=["okf:docs/a.md#rename:ok"])
+'''
+
+
+def _walk(tmp_path: Path, state: str, want: str) -> tuple[int, list[dict], list[str]]:
+    seen = tmp_path / "seen.txt"
+    source = (WALK_PLAN.replace("@SEEN@", str(seen)).replace("@STATE@", state).replace("@WANT@", want))
+    code, records = _run(_write(tmp_path, source), "a-three-step-walk", tmp_path)
+    return code, records, seen.read_text(encoding="utf-8").split() if seen.exists() else []
+
+
+def test_a_walk_whose_middle_step_checks_fail_never_sends_the_third_request(tmp_path: Path) -> None:
+    code, records, seen = _walk(tmp_path, "draft", "named")
+
+    assert code == 1
+    assert seen == ["/step-1", "/step-2"]
+    failed = [record for record in _asserts(records) if not record["passed"]]
+    assert [(record["node"], record["check"]) for record in failed] == [("docs/a.md#rename", "json_path")]
+    assert records[-1]["status"] == "failed"
+
+
+def test_a_walk_whose_checks_all_hold_sends_every_request(tmp_path: Path) -> None:
+    code, records, seen = _walk(tmp_path, "draft", "draft")
+
+    assert code == 0
+    assert seen == ["/step-1", "/step-2", "/step-3"]
+    assert all(record["passed"] for record in _asserts(records))

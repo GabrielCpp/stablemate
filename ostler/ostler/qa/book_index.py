@@ -36,6 +36,7 @@ class BookIndex:
     queries_by_node: dict[str, str] = field(default_factory=dict[str, str])
     checked_paths_by_node: dict[str, str] = field(default_factory=dict[str, str])
     claims_by_node: dict[str, list[Obligation]] = field(default_factory=dict[str, list[Obligation]])
+    outcomes_by_node: dict[str, list[Obligation]] = field(default_factory=dict[str, list[Obligation]])
     fixture_pages: dict[str, frozenset[str]] = field(default_factory=dict[str, frozenset[str]])
     hop_acts: dict[tuple[str, str], list[CallRow]] = field(default_factory=dict[tuple[str, str], list[CallRow]])
     fragment_hosts: dict[str, str] = field(default_factory=dict[str, str])
@@ -58,6 +59,15 @@ class NodeActs:
 def _is_declared_claim(obligation: Obligation) -> bool:
     """Whether *obligation* is a claim whose node's acts and captures the book index reads."""
     return obligation.kind not in registry.refusal_keys(obligation.node_type)
+
+
+def outcomes_by_node(obligations: list[Obligation]) -> dict[str, list[Obligation]]:
+    """Every node's declared claims in book order, those that arrange no act included."""
+    owned: dict[str, list[Obligation]] = {}
+    for obligation in obligations:
+        if _is_declared_claim(obligation):
+            owned.setdefault(obligation.node, []).append(obligation)
+    return {node_id: sorted(claims, key=lambda claim: claim.doc_position) for node_id, claims in owned.items()}
 
 
 def node_acts(obligations: list[Obligation]) -> NodeActs:

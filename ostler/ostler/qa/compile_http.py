@@ -516,6 +516,14 @@ def _claim_captures(
     return lines
 
 
+def _verify_line(oid: str, row: CallRow, observed: str) -> str | ScenarioRefusal:
+    """The `qa.verify` line that asserts *row* on *observed* covering *oid*, or why no operand observes it."""
+    operand = operand_for(row.name, observed, row.args)
+    if isinstance(operand, ScenarioRefusal):
+        return operand
+    return f"    qa.verify({python_literal(row.name)}, {operand}{call_kwargs(row.args)}, covers=[{python_literal(oid)}])"
+
+
 @dataclass(frozen=True)
 class _ClaimAssertions:
     """One claim's checks on its response: the `qa.verify` lines, and a TODO per check no operand here observes."""
@@ -535,14 +543,12 @@ def _claim_assertions(
                         f"a verify argument references {ref!r}, not resolvable without running the plan")
                     for ref in references.find_references(json.dumps(row.args))
                     if not produced.resolves(ref))
-        operand = operand_for(row.name, observed, row.args)
-        if isinstance(operand, ScenarioRefusal):
-            todos.append(f"    # TODO(arrange): {operand.detail}")
-            gaps.append(Gap(oid, operand.kind, operand.detail))
+        line = _verify_line(oid, row, observed)
+        if isinstance(line, ScenarioRefusal):
+            todos.append(f"    # TODO(arrange): {line.detail}")
+            gaps.append(Gap(oid, line.kind, line.detail))
             continue
-        assertions.append(
-            f"    qa.verify({python_literal(row.name)}, {operand}{call_kwargs(row.args)}, covers=[{python_literal(oid)}])"
-        )
+        assertions.append(line)
     return _ClaimAssertions(assertions, todos)
 
 
@@ -773,6 +779,44 @@ def _ended_path(obligations: list[Obligation]) -> str | None:
     return None
 
 
+def _route_pattern(path: str) -> re.Pattern[str]:
+    """The addresses a step requesting the route *path* answers, where a `{variable}` matches any one segment and a `*` any run."""
+    pieces = re.split(r"(\{[^/{}]+\}|\*)", path.partition("?")[0])
+    return re.compile("".join(
+        ("[^/]+" if piece.startswith("{") else ".*" if piece == "*" else re.escape(piece)) for piece in pieces))
+
+
+def _step_success_checks(
+    index: int, step: FlowStep, request: _HttpRequest, observed: str, walk: JourneyWalk, known: _Produced,
+    gaps: list[Gap],
+) -> list[str]:
+    """Every check of each success claim on *step*'s node, asserted on *observed* straight after the request that earned it."""
+    pattern = _route_pattern(request.path)
+    lines: list[str] = []
+    for claim in walk.book.outcomes_by_node.get(step.ref, ()):
+        status = _expect_status(claim.checks)
+        if status is not None and status >= 400:
+            continue
+        for row in claim.checks:
+            named = row.args.get("path")
+            if (isinstance(named, str) and check_observes(row.name) == "response"
+                    and not pattern.fullmatch(named.partition("?")[0])):
+                continue
+            unresolved = [ref for ref in references.find_references(json.dumps(row.args)) if not known.resolves(ref)]
+            if unresolved:
+                gaps.extend(Gap(oid, "unresolved-precondition",
+                                f"step {index} ({step.ref}) checks `{row.name}` with `{_book_spelling(ref)}`, "
+                                "and neither a fixture the flow's `fixture:` names nor an earlier step provides it")
+                            for ref in unresolved for oid in walk.ids)
+                continue
+            line = _verify_line(claim.id, row, observed)
+            if not isinstance(line, ScenarioRefusal):
+                lines.append(line)
+    if not lines:
+        return []
+    return [f"    with qa.at_node({python_literal(step.ref)}):", *(f"    {line}" for line in lines)]
+
+
 def _http_steps(walk: JourneyWalk, sinks: PlanSinks) -> _HttpSteps | None:
     """Perform each `endpoint` step as a request, or `None` once one step builds no request."""
     book, gaps = walk.book, sinks.gaps
@@ -811,6 +855,8 @@ def _http_steps(walk: JourneyWalk, sinks: PlanSinks) -> _HttpSteps | None:
                             f"step {index}'s path still carries a template variable")
                         for oid in walk.ids)
         lines.extend(_step_captures(observed, book.captures_by_node.get(step.ref, []), sinks, produced))
+        if not expect:
+            lines.extend(_step_success_checks(index, step, request, observed, walk, known, gaps))
     return _HttpSteps(lines, observed, last_path, produced)
 
 
@@ -835,11 +881,7 @@ def _journey_assertion(
                         "the plan")
                     for ref in unresolved)
         return None
-    operand = operand_for(row.name, steps.observed, row.args)
-    if isinstance(operand, ScenarioRefusal):
-        return operand
-    return (f"    qa.verify({python_literal(row.name)}, {operand}{call_kwargs(row.args)}, "
-            f"covers=[{python_literal(oid)}])")
+    return _verify_line(oid, row, steps.observed)
 
 
 def _http_journey_checks(
