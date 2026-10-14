@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+import base64
 import contextlib
 import inspect
 import json
@@ -364,6 +365,109 @@ def test_a_container_run_is_not_tailed_from_the_host_filesystem(tmp_path):
         return message
 
     assert _transcript_bodies(asyncio.run(drive())) == []
+
+
+class _TranscriptConn(_FakeConn):
+    """A sidecar connection serving one run's live transcript files from memory."""
+
+    def __init__(self, container_id: str) -> None:
+        super().__init__(container_id)
+        self.files: dict[str, bytes] = {}
+        self.calls: list[tuple[str, dict]] = []
+
+    async def rpc(self, method: str, params: dict, *, timeout: float = 0.0):
+        self.calls.append((method, params))
+        if method == "listTurns":
+            return {"run": "run-1", "files": [{"path": p, "size": len(b)} for p, b in self.files.items()]}
+        body = self.files[params["path"]]
+        offset = params.get("offset", 0)
+        return {
+            "data": base64.b64encode(body[offset:]).decode(),
+            "offset": offset,
+            "size": len(body),
+            "eof": True,
+        }
+
+    def read_offsets(self) -> list[int]:
+        return [p.get("offset", 0) for m, p in self.calls if m == "readTurnFile"]
+
+
+_LIVE_FILE = "transcripts/live/001-00001-implement.jsonl"
+
+
+async def _quiet() -> None:
+    while groom_app._TAILS:
+        await asyncio.sleep(0.01)
+
+
+def _container_run() -> _TranscriptConn:
+    _reset()
+    groom_app._TAILS.clear()
+    groom_app._TAIL_RUNS.clear()
+    state.WORKFLOWS["c0ffee"] = WorkflowContainer(
+        container_id="c0ffee", name="w", run_id="run-1", state=WorkflowState.RUNNING
+    )
+    conn = _TranscriptConn("c0ffee")
+    sidecar_hub.register(conn)
+    return conn
+
+
+def test_watching_a_container_run_seeds_its_transcript_from_offset_zero():
+    conn = _container_run()
+    conn.files[_LIVE_FILE] = (_transcript_line("first", 10.0) + _transcript_line("second", 11.0)).encode()
+
+    async def drive():
+        queue = asyncio.Queue()
+        state.add_client(queue)
+        await groom_app._handle_command({"cmd": "watch", "run_id": "c0ffee"}, queue)
+        await _quiet()
+        messages = [queue.get_nowait() for _ in range(queue.qsize())]
+        state.remove_client(queue)
+        return messages
+
+    messages = asyncio.run(drive())
+    assert conn.read_offsets() == [0]
+    assert _transcript_bodies(messages[-1]) == ["second", "first"]
+
+
+def test_a_turn_frame_for_a_watched_container_pushes_the_new_transcript_entry():
+    conn = _container_run()
+    first = _transcript_line("first", 10.0).encode()
+    conn.files[_LIVE_FILE] = first
+
+    async def drive():
+        queue = asyncio.Queue()
+        state.add_client(queue)
+        await groom_app._handle_command({"cmd": "watch", "run_id": "c0ffee"}, queue)
+        await _quiet()
+        while not queue.empty():
+            queue.get_nowait()
+        conn.files[_LIVE_FILE] += _transcript_line("second", 11.0).encode()
+        conn.calls.clear()
+        groom_app._apply_socket_turn(conn, {"type": "turn", "run": "run-1", "run_id": "run-1"})
+        await _quiet()
+        messages = [queue.get_nowait() for _ in range(queue.qsize())]
+        state.remove_client(queue)
+        return messages
+
+    messages = asyncio.run(drive())
+    assert conn.calls[0] == ("listTurns", {"run": "run-1"})
+    assert conn.read_offsets() == [len(first)]
+    assert messages[-1]["type"] == "detail"
+    assert _transcript_bodies(messages[-1]) == ["second", "first"]
+
+
+def test_an_unwatched_container_is_not_tailed():
+    conn = _container_run()
+    conn.files[_LIVE_FILE] = _transcript_line("first", 10.0).encode()
+
+    async def drive():
+        groom_app._apply_socket_turn(conn, {"type": "turn", "run": "run-1", "run_id": "run-1"})
+        await _quiet()
+
+    asyncio.run(drive())
+    assert conn.read_offsets() == []
+    assert groom_app._TAILS == {}
 
 
 @pytest.mark.parametrize("ingest_first", [False, True])

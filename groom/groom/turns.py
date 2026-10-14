@@ -83,6 +83,7 @@ def _sources(run_dir: Path, slug: str, session_id: str) -> list[tuple[str, Path]
     for name, path in (
         ("transcript.jsonl", Path(f"{stem}.jsonl")),
         ("transcript.jsonl", Path(f"{stem}.tee.jsonl")),
+        ("transcript.acp.jsonl", Path(f"{stem}.acp.jsonl")),
         ("transcript.json", Path(f"{stem}.export.json")),
         ("sidechains", Path(f"{stem}.d")),
         ("capture.json", Path(f"{stem}.meta.json")),

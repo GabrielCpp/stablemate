@@ -173,6 +173,18 @@ def test_a_second_pull_refetches_only_what_grew():
         assert (turns.record_path(store.query_turns(run="R1")[0]) / "transcript.jsonl").read_text().count("\n") == 2
 
 
+def test_a_pull_leaves_the_live_transcripts_to_the_tail():
+    with _DB(), _runs_volume() as root:
+        live = root / "run-1" / "transcripts" / "live"
+        live.mkdir()
+        (live / "001-00001-plan-qa.jsonl").write_text("{}\n", encoding="utf-8")
+        conn = _FakeConn()
+        asyncio.run(sidecar_turns.pull(conn, run="run-1", run_id="R1"))
+        staged = sidecar_turns.staging_root() / conn.container_id / "run-1" / "transcripts"
+        assert not (staged / "live").exists()
+        assert (staged / "001-00001-plan-qa__s1.jsonl").is_file()
+
+
 def test_a_failing_pull_is_not_a_broken_groom():
     """The sidecar is non-authoritative."""
 

@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 import subprocess
+from collections.abc import Iterable
 from pathlib import Path
 
 from groom.docker_io import _SKIP_DIRS, DOCKER_TIMEOUT, safe_relpath
@@ -156,19 +157,32 @@ def read_range(path: str, offset: int, /) -> bytes:
         return b""
 
 
+def pick_transcripts(rels: Iterable[str], /) -> dict[str, str]:
+    """Each turn's transcript path by slug from run-dir-relative paths: the captured ``transcripts/<slug>__<session>.acp.jsonl`` when it exists, else the live ``transcripts/live/<slug>.jsonl``."""
+    found: dict[str, str] = {}
+    captured: dict[str, str] = {}
+    for rel in rels:
+        parts = rel.split("/")
+        if len(parts) == 3 and parts[:2] == ["transcripts", "live"] and parts[2].endswith(".jsonl"):
+            found[parts[2].removesuffix(".jsonl")] = rel
+        elif len(parts) == 2 and parts[0] == "transcripts" and parts[1].endswith(_ACP_SUFFIX):
+            slug = parts[1].removesuffix(_ACP_SUFFIX).rpartition("__")[0]
+            if slug:
+                captured[slug] = rel
+    return {**found, **captured}
+
+
 def transcript_files(run_dir: str, /) -> dict[str, str]:
     """Each turn's transcript path by slug: the captured ``<slug>__<session>.acp.jsonl`` when it exists, else the live ``live/<slug>.jsonl``."""
     if not run_dir:
         return {}
-    root = Path(run_dir) / "transcripts"
-    found: dict[str, str] = {}
+    root = Path(run_dir)
     try:
-        for path in (root / "live").glob("*.jsonl"):
-            found[path.stem] = str(path)
-        for path in root.glob(f"*{_ACP_SUFFIX}"):
-            slug = path.name.removesuffix(_ACP_SUFFIX).rpartition("__")[0]
-            if slug:
-                found[slug] = str(path)
+        rels = [
+            path.relative_to(root).as_posix()
+            for pattern in ("transcripts/live/*.jsonl", f"transcripts/*{_ACP_SUFFIX}")
+            for path in root.glob(pattern)
+        ]
     except OSError:
         return {}
-    return found
+    return {slug: str(root / rel) for slug, rel in pick_transcripts(rels).items()}

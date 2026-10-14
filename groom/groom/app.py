@@ -133,6 +133,45 @@ async def _tail_transcript(wf: WorkflowContainer) -> None:
         await asyncio.to_thread(live_transcript.poll, history, run_dir)
 
 
+_TAILS: dict[str, dict[str, bool]] = {}
+_TAIL_RUNS: dict[str, str] = {}
+_TAIL_TASKS: set[asyncio.Task] = set()
+
+
+async def _tail_until_quiet(container_id: str) -> None:
+    """Tail one container's transcript and push its pane, again for as long as new announcements arrive meanwhile."""
+    flags = _TAILS[container_id]
+    try:
+        while True:
+            wf = state.WORKFLOWS.get(container_id)
+            conn = sidecar_hub.get(container_id)
+            history = state.HISTORIES.get(projection.run_id_of(wf)) if wf is not None else None
+            if conn is not None and history is not None and history.loaded:
+                await live_transcript.tail(conn, history, _TAIL_RUNS.get(container_id, ""))
+            await _push_detail(container_id)
+            if not flags["again"]:
+                return
+            flags["again"] = False
+    except Exception:  # noqa: BLE001 - a pane that missed a transcript pass is not a broken groom
+        logger.debug("transcript tail failed for %s", container_id, exc_info=True)
+    finally:
+        _TAILS.pop(container_id, None)
+
+
+def _schedule_tail(container_id: str) -> None:
+    """Ask for a container transcript pass without waiting for it; an unwatched container is skipped."""
+    if not state.watchers_of(container_id):
+        return
+    flags = _TAILS.get(container_id)
+    if flags is not None:
+        flags["again"] = True
+        return
+    _TAILS[container_id] = {"again": False}
+    task = asyncio.create_task(_tail_until_quiet(container_id))
+    _TAIL_TASKS.add(task)
+    task.add_done_callback(_TAIL_TASKS.discard)
+
+
 async def _push_watched() -> None:
     """Refresh every open detail pane on the clock, for the same reason the run list is re-pushed on one: elapsed labels are derived from ``now``."""
     for run_id in state.watched_ids():
@@ -348,6 +387,7 @@ async def _run_facts(wf: WorkflowContainer) -> tuple:
     """Seed history once per subscription; compose subsequent pushes in memory."""
     run_id = projection.run_id_of(wf)
     history = state.HISTORIES.get(run_id)
+    seeded = False
     if history is None or not history.loaded:
         async with state.HISTORY_LOCK:
             history = state.HISTORIES.get(run_id)
@@ -367,8 +407,11 @@ async def _run_facts(wf: WorkflowContainer) -> tuple:
                 if run_dir := _native_run_dir(wf):
                     await asyncio.to_thread(live_transcript.poll, history, run_dir)
                 history.loaded = True
+                seeded = True
             if state.watchers_of(wf.container_id):
                 state.HISTORIES[run_id] = history
+    if seeded and not wf.native and sidecar_hub.get(wf.container_id) is not None:
+        _schedule_tail(wf.container_id)
     facts = next(iter(alerts.live_status(run=run_id)), {}) if run_id else {}
     facts.update(history.facts())
     return state.RUNS.get(run_id), facts, history.logs, history.recent()
@@ -1081,7 +1124,9 @@ async def _apply_socket_progress(container_id: str, data: dict) -> None:
 
 
 def _apply_socket_turn(conn: sidecar_hub.SidecarConnection, data: dict) -> None:
-    """A container says one of its turn records moved; go and fetch it."""
+    """A container says one of its turn records moved; go and fetch it, and show a watching pane what the live transcript gained."""
+    _TAIL_RUNS[conn.container_id] = str(data.get("run", ""))
+    _schedule_tail(conn.container_id)
     sidecar_turns.schedule(
         conn,
         run=str(data.get("run", "")),

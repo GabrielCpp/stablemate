@@ -324,6 +324,21 @@ def test_the_archive_has_no_retention_of_its_own_and_the_store_sweep_spares_it()
         assert (turns.transcripts_root() / "R1" / "001-00001-plan-qa__s1").exists()
 
 
+def test_a_harvested_turn_carries_its_acp_transcript():
+    with _DB(), _workspace() as tmp:
+        rows = _rows()[:1]
+        run_dir = _run_dir(tmp, rows)
+        _visit(run_dir, rows[0])
+        acp = run_dir / "transcripts" / "001-00001-plan-qa__s1.acp.jsonl"
+        acp.write_text('{"sessionId": "s1"}\n', encoding="utf-8")
+
+        assert turns.harvest_run(run_dir, "R1", "coder") == 1
+
+        record = turns.record_path(store.query_turns(run="R1")[0])
+        assert (record / "transcript.acp.jsonl").read_text() == '{"sessionId": "s1"}\n'
+        assert (record / "transcript.jsonl").read_text() == "{}\n"
+
+
 if __name__ == "__main__":
     import sys
     import traceback

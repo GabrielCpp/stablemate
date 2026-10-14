@@ -20,6 +20,8 @@ RPC_TIMEOUT = 30.0
 
 STAGING_DIR = ".incoming"
 
+LIVE_PREFIX = f"{turns.RUN_TRANSCRIPTS}/live/"
+
 _IN_FLIGHT: dict[str, dict[str, bool]] = {}
 
 
@@ -65,6 +67,8 @@ async def pull(conn: Any, *, run: str = "", run_id: str = "", workflow: str = ""
     for entry in listing.get("files") or []:
         rel = str((entry or {}).get("path", ""))
         if not rel or rel.startswith("/") or ".." in rel.split("/"):
+            continue
+        if rel.startswith(LIVE_PREFIX):
             continue
         size = int((entry or {}).get("size", 0))
         target = stage / rel
