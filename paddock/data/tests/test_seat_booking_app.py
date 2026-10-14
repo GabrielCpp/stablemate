@@ -15,7 +15,7 @@ from types import ModuleType
 import pytest
 from ostler import graph as graph_mod
 from ostler.model import load
-from ostler.qa.context import _obligations, _serialized_graph
+from ostler.qa.context import node_obligations, _serialized_graph
 from ostler.qa.obligation_frame import book_nodes
 from ostler.selector_forms import is_addressable
 from paddock.registry import REGISTRY
@@ -223,7 +223,7 @@ def obligation_ids() -> set[str]:
     return {
         obligation["id"]
         for node in book.values()
-        for obligation in _obligations(node, [], journey=node.type in ("flow", "journey"), book=book)
+        for obligation in node_obligations(node, [], journey=node.type in ("flow", "journey"), book=book)
     }
 
 
