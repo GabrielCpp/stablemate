@@ -42,6 +42,7 @@ class BookIndex:
     setups_by_node: dict[str, list[Obligation]] = field(default_factory=dict[str, list[Obligation]])
     server_origins: dict[str, str] = field(default_factory=dict[str, str])
     fixture_screens: dict[str, str] = field(default_factory=dict[str, str])
+    states_by_screen: dict[str, list[Obligation]] = field(default_factory=dict[str, list[Obligation]])
 
 
 @dataclass(frozen=True)
@@ -186,6 +187,15 @@ def captures_by_node(obligations: list[Obligation]) -> dict[str, list[OwnedCaptu
         node_id: [capture for _, _, capture in sorted(rows, key=lambda entry: entry[:2])]
         for node_id, rows in rows_by_node.items()
     }
+
+
+def states_by_screen(obligations: list[Obligation]) -> dict[str, list[Obligation]]:
+    """Each screen's states in book order, keyed by the screen's page."""
+    states: dict[str, list[Obligation]] = {}
+    for obligation in sorted(obligations, key=lambda o: o.doc_position):
+        if obligation.node_type == "state":
+            states.setdefault(obligation.node.split("#", 1)[0], []).append(obligation)
+    return states
 
 
 def node_locator_index(obligations: list[Obligation]) -> dict[str, Locators]:

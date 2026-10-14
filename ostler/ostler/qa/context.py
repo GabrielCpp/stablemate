@@ -287,6 +287,7 @@ class _Selection:
     contracts: set[str]
     journeys: set[str]
     judgment_by_node: dict[str, list[dict[str, Any]]]
+    perceivables: frozenset[str] = frozenset()
 
 
 @dataclass(frozen=True, slots=True)
@@ -538,6 +539,7 @@ def _selection(snapshot: _BookSnapshot, direct_reasons: dict[str, list[Reason]])
         if source in journeys and target in snapshot.nodes_by_id and target not in flows:
             contracts.add(target)
             direct_reasons.setdefault(target, []).append(Reason(ReasonKind.FLOW_CONTRACT_CLOSURE, source))
+    perceivables = _close_over_state_perceivables(snapshot, contracts, direct_reasons)
     _close_over_shared_subjects(snapshot.book, contracts, journeys, direct_reasons)
     judgment_by_node = _judgment_context(snapshot, contracts, journeys, direct_reasons)
     return _Selection(
@@ -545,7 +547,43 @@ def _selection(snapshot: _BookSnapshot, direct_reasons: dict[str, list[Reason]])
         contracts=contracts,
         journeys=journeys,
         judgment_by_node=judgment_by_node,
+        perceivables=perceivables,
     )
+
+
+def _close_over_state_perceivables(
+    snapshot: _BookSnapshot, contracts: set[str], direct_reasons: dict[str, list[Reason]]
+) -> frozenset[str]:
+    """Add the screen of a selected state, its other states, the components they show and the screen's busy sign, as context."""
+    book = snapshot.book
+    screens = {node_id.split("#", 1)[0] for node_id in contracts if book.get(node_id) is not None and book[node_id].type == "state"}
+    perceived = set(screens)
+    for screen in sorted(screens):
+        if screen in snapshot.nodes_by_id and screen not in contracts:
+            contracts.add(screen)
+            direct_reasons.setdefault(screen, []).append(Reason(ReasonKind.GRAPH_CLOSURE, screen))
+    for node_id, node in sorted(book.items()):
+        if node.type == "state" and node_id.split("#", 1)[0] in screens:
+            perceived.add(node_id)
+        if node.type == "state" and node_id.split("#", 1)[0] in screens and node_id not in contracts:
+            contracts.add(node_id)
+            direct_reasons.setdefault(node_id, []).append(Reason(ReasonKind.GRAPH_CLOSURE, node_id.split("#", 1)[0]))
+    for node_id in sorted(contracts):
+        state = book.get(node_id)
+        if state is None or state.type != "state":
+            continue
+        screen = book.get(node_id.split("#", 1)[0])
+        owners = ((state, "shows"), (screen, "busy")) if screen is not None else ((state, "shows"),)
+        for owner, via in owners:
+            for edge in owner.edges:
+                if edge.via != via or edge.to not in snapshot.nodes_by_id:
+                    continue
+                perceived.add(edge.to)
+                if edge.to in contracts:
+                    continue
+                contracts.add(edge.to)
+                direct_reasons.setdefault(edge.to, []).append(Reason(ReasonKind.GRAPH_CLOSURE, node_id))
+    return frozenset(perceived)
 
 
 def _impacted_with_parents(
@@ -736,8 +774,10 @@ def _minted_obligations(
     owing = {
         node_id
         for node_id in selection.contracts | selection.journeys
-        if (not prefixes or book[node_id].path.startswith(prefixes)) and not book[node_id].path.startswith(unexercised)
+        if (not prefixes or node_id in selection.perceivables or book[node_id].path.startswith(prefixes))
+        and not book[node_id].path.startswith(unexercised)
     }
+    context_only = {node_id for node_id in owing & selection.perceivables if prefixes and not book[node_id].path.startswith(prefixes)}
     fixture_provides = _fixture_provides_index(book)
     fixture_undetermined = _fixture_undetermined_index(book)
     fixture_needs = _fixture_needs_index(book)
@@ -767,7 +807,7 @@ def _minted_obligations(
         for obligation in mint(
             node_id,
             journey=False,
-            required=node_id in requirement.required_contracts,
+            required=node_id in requirement.required_contracts and node_id not in context_only,
             owed_keys=None if node_id in requirement.reached_by_the_diff else _SHARED_INVARIANT_KEYS,
         )
     ] + [
@@ -2168,7 +2208,10 @@ def _obligations(
     undetermined = _undetermined_claims(book_node)
     positions = _doc_positions(book_node)
     output = [base]
-    for key in registry.normative_keys(book_node.type):
+    if book_node.type == "state":
+        base["requirement"] = _state_requirement(book_node)
+    claim_keys = () if book_node.type == "state" else registry.normative_keys(book_node.type)
+    for key in claim_keys:
         for index, requirement in enumerate(book_node.bullets.get(key, ()), start=1):
             claim = (key, index)
             if registry.states_no_claim(key, requirement):
@@ -2235,6 +2278,13 @@ def _node_obligation(
     }
     obligation.update(obligation_frame(book_node, locators_mod.repeat_contract(book_node, scope), book).row())
     return obligation
+
+
+def _state_requirement(book_node: BookNode) -> str:
+    """A screen state's one claim: its title and every perceivable it shows."""
+    shows = "; ".join(book_node.bullets.get("shows", ()))
+    title = book_node.title or book_node.id
+    return f"{title}: {shows}" if shows else title
 
 
 def _claim_obligation(

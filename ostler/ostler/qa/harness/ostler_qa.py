@@ -35,6 +35,7 @@ from ostler_qa_elements import name_pattern, template_pattern
 from ostler_qa_lap import Arranged, LapRecord
 from ostler_qa_paths import is_projection, path_steps, resolve_path
 from ostler_qa_responses import reply_excerpt
+from ostler_qa_settle import ANNOUNCED_ROLES, settle_screen
 from ostler_qa_verifiers import (
     VERIFIERS,
     JsonValue,
@@ -75,7 +76,6 @@ _SERVE_SETTLE_S = 0.5
 
 _BACKGROUNDED = re.compile(r"(?<![&|])&\s*$")
 
-ANNOUNCED_ROLES = frozenset({"alert", "status"})
 _NODE_REF = re.compile(r"(?<![\w.])@([a-zA-Z0-9][a-zA-Z0-9_-]*)\.([a-zA-Z0-9][a-zA-Z0-9_-]*)")
 _CAPTURE_REF = re.compile(r"(?<![\w.])\$([a-zA-Z0-9][a-zA-Z0-9_-]*)")
 _ID_TOKEN = re.compile(r"\b[0-9a-fA-F]{16,}\b")
@@ -103,6 +103,8 @@ UI_DRIVER_NAMES = tuple(driver.name for driver in UI_DRIVERS)
 DEVICE_LAYOUT_SCHEMA = "device-layout/1"
 
 DEFAULT_HTTP_TIMEOUT = 30.0
+
+CEILING_S = 30.0
 
 DEFAULT_EVENTUALLY_TIMEOUT = 5.0
 EVENTUALLY_INTERVAL = 0.1
@@ -811,7 +813,9 @@ class Qa:
         book_fixtures: Mapping[str, Mapping[str, Any]] | None = None,
         tool_env: Sequence[str] = (),
         lap_dir: Path | None = None,
+        ceiling_s: float = CEILING_S,
     ) -> None:
+        self.ceiling_s = ceiling_s
         self.scenario_id = scenario_id
         self.target = target
         self.root = root
@@ -1762,6 +1766,39 @@ class Qa:
                 "only driver='playwright' records what the page requested"
             )
         return recorder.window()
+
+    def mark(self) -> int:
+        """The number of the next request the page makes, to hand `settle` as the point after which its requests count."""
+        recorder = self.diagnostics
+        if recorder is None or not hasattr(recorder, "mark"):
+            raise RuntimeError(
+                f"scenario {self.scenario_id!r} marks the requests the browser made, but "
+                f"its target '{self.target.name}' declares driver '{self.target.driver}' — "
+                "only driver='playwright' records what the page requested"
+            )
+        return recorder.mark()
+
+    def settle(
+        self,
+        node: str,
+        *,
+        since: int,
+        requests: Sequence[tuple[str, str]],
+        busy: Mapping[str, Any] | None,
+        states: Mapping[str, Sequence[Mapping[str, Any]]],
+        expect: str,
+        covers: Sequence[str] | None = None,
+    ) -> bool:
+        """Wait for a screen to settle, then record whether the state it settled on is the one the book names.
+
+        The screen has `ceiling_s` seconds, shared by every wait: its requests answering, its busy sign going, a declared state holding.
+        """
+        self.mark()
+        settled = settle_screen(
+            self.diagnostics, self.browser_page, node,
+            since=since, requests=requests, busy=busy, states=states, expect=expect, ceiling_s=self.ceiling_s,
+        )
+        return self._record(settled.message, settled.passed, settled.held, expect, covers)
 
     def capture_text(self, key: str, locator: Any) -> str:
         """Capture a locator's text — a defect if it matches nothing on the page."""

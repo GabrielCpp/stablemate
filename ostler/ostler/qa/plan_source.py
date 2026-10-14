@@ -57,6 +57,8 @@ def python_literal(value: object) -> str:
         return "True" if value else "False"
     if isinstance(value, (list, tuple)):
         return "[" + ", ".join(python_literal(item) for item in value) + "]"
+    if isinstance(value, dict):
+        return "{" + ", ".join(f"{python_literal(key)}: {python_literal(item)}" for key, item in value.items()) + "}"
     return json.dumps(value)
 
 

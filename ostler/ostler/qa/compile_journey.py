@@ -48,6 +48,7 @@ class WalkedJourney:
     """The scenario body a journey's walk compiled, and the obligations that body covers."""
     lines: list[str]
     covered: frozenset[str]
+    stops: frozenset[str] = frozenset()
 
 
 @dataclass(frozen=True)
@@ -209,6 +210,7 @@ def journey_scenario(
         '    mechanism="live",',
         "    covers=[",
         *(f"        {python_literal(oid)}," for oid in ids if oid in walked.covered),
+        *(f"        {python_literal(oid)}," for oid in sorted(walked.stops)),
         "    ],",
         "    preconditions=[",
         *(f"        {python_literal(row.precondition)}," for row in arranged),

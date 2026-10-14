@@ -8,7 +8,7 @@ DISPATCH_TABLE: dict[str, dict[str, str] | str] = {
     "endpoint": {"web": "http", "mobile": "http", "http": "http"},
     "command": "cli",
 }
-OBSERVED_TYPES = frozenset({"flow", "component", "screen", "field", "invocation"})
+OBSERVED_TYPES = frozenset({"flow", "component", "screen", "field", "invocation", "state"})
 OBSERVE_ROW: dict[str, str] = {
     "web": "playwright", "mobile": "maestro", "http": "http", "cli": "cli",
 }

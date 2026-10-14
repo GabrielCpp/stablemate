@@ -403,6 +403,12 @@ def _journey_taps(
     """One tap per `interaction` step of a journey, or `None` after gapping the first it cannot make."""
     commands: list[str] = []
     for index, step in enumerate(steps, start=1):
+        if step.node_type == "state":
+            gaps.extend(Gap(oid, "uncompilable-claim",
+                            f"step {index} stops at a screen state, and stops are not compiled for "
+                            "devices yet; this builder performs only `interaction` steps")
+                        for oid in ids)
+            return None
         if step.node_type != "interaction":
             gaps.extend(Gap(oid, "uncompilable-claim",
                             f"step {index} names a {step.node_type or 'untyped'} node, which is a "

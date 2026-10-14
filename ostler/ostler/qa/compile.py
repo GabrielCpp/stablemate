@@ -167,7 +167,7 @@ def _split_by_entry_url(
 
 def _is_owed_for_dispatch(obligation: Obligation) -> bool:
     """Whether an obligation carries something a builder could act on."""
-    return bool(obligation.checks) or obligation.kind == "states"
+    return bool(obligation.checks) or obligation.kind == "states" or obligation.node_type == "state"
 
 
 def compile_plan(
@@ -252,6 +252,7 @@ class ObligationLanes:
     cli: list[Obligation] = field(default_factory=list[Obligation])
     mobile: list[Obligation] = field(default_factory=list[Obligation])
     flow: list[Obligation] = field(default_factory=list[Obligation])
+    state: list[Obligation] = field(default_factory=list[Obligation])
     no_verify: list[Obligation] = field(default_factory=list[Obligation])
 
 
@@ -297,12 +298,25 @@ def _dispatch(
         if obligation.node_type == "flow":
             lanes.flow.append(obligation)
             continue
+        if obligation.node_type == "state":
+            lanes.state.append(obligation)
+            continue
         target = dispatch_target(obligation.node_type, _driver(obligation, navigation))
         if isinstance(target, ScenarioRefusal):
             gaps.append(Gap(obligation.id, target.kind, target.detail, target.owner))
             continue
         by_target[target].append(obligation)
     return lanes
+
+
+def _unvisited_state_gaps(states: list[Obligation], covered: set[str]) -> list[Gap]:
+    """One gap per owed screen state that no compiled walk stops at."""
+    return [
+        Gap(state.id, "uncompilable-claim", (
+            f"no compiled flow stops at the screen state `{state.node}`, and a state is checked "
+            "mid-walk, so nothing compiled it. Add a flow step that links this state"))
+        for state in states if state.id not in covered
+    ]
 
 
 def _no_verify_detail(obligation: Obligation) -> str:
@@ -480,6 +494,7 @@ def _compile_packet(
         setups_by_node=book_index_mod.setups_by_node(carried),
         server_origins=packet.server_origins,
         fixture_screens=packet.fixture_screens,
+        states_by_screen=book_index_mod.states_by_screen(carried),
     )
     journeys = JourneyPlan(book=book, sinks=sinks, navigation=navigation, walkers=_JOURNEY_WALKERS)
     lines = [
@@ -492,6 +507,7 @@ def _compile_packet(
         *journey_scenarios(lanes.flow, journeys, emitted),
         *_debt_lines(debt),
     ]
+    sinks.gaps.extend(_unvisited_state_gaps(lanes.state, emitted.covered))
     _assert_accounted(packet, owed, sinks, emitted.covered)
     if not emitted.targets:
         return Refusal(sinks.gaps)

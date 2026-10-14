@@ -30,6 +30,9 @@ class Locators:
     when: tuple[str, ...] = ()
     dialog: tuple[str, ...] = ()
     exclusive_with: tuple[str, ...] = ()
+    shows: tuple[str, ...] = ()
+    requests: tuple[str, ...] = ()
+    busy: tuple[str, ...] = ()
 
 
 NO_LOCATORS = Locators()

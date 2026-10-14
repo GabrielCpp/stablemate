@@ -435,6 +435,24 @@ class Browser:
         """An observation window opening here — what a claim about the next action may read."""
         return ResponseWindow(self, len(self._responses), len(self._requests), len(self._console), len(self._downloads))
 
+    def mark(self) -> int:
+        """The number the next request will carry: requests are numbered from zero in the order the page sends them."""
+        return len(self._requests)
+
+    def exchange_state(self, method: str, path: str, *, since: int) -> str:
+        """Whether a request on *path* numbered *since* or later was `answered`, was `sent` and has no response yet, or is `unsent`."""
+        pattern = path_pattern(path)
+        state = "unsent"
+        for entry in self._requests[since:]:
+            if str(entry.get("method", "")).upper() != method.upper():
+                continue
+            if not pattern.fullmatch(urlsplit(str(entry.get("url", ""))).path):
+                continue
+            if "status" in entry:
+                return "answered"
+            state = "sent"
+        return state
+
     def quiet(self, *, quiet_ms: int = QUIET_MS, timeout_ms: int = QUIET_TIMEOUT_MS) -> None:
         """Wait until no request is in flight and none has started for *quiet_ms*, or *timeout_ms* has passed."""
         if self.page is None:
