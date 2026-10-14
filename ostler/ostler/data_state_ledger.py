@@ -57,6 +57,15 @@ def initial_ledger(flow: BookNode, book: Mapping[str, BookNode]) -> Ledger:
     return held
 
 
+@dataclass(frozen=True, slots=True)
+class LedgerStop:
+    """One stop a flow makes: its number among the flow's steps, the screen state it stops at and the ledger before it."""
+
+    number: int
+    ref: str
+    held: Mapping[tuple[str, str], str]
+
+
 def _requests(ref: str, book: Mapping[str, BookNode], passages: Mapping[str, Passage]) -> list[str]:
     passage = passages.get(ref)
     if passage is None:
@@ -64,33 +73,65 @@ def _requests(ref: str, book: Mapping[str, BookNode], passages: Mapping[str, Pas
     return list(passage.steps) if not passage.start else []
 
 
+def _set(held: Ledger, record: str, key: str, state: str) -> None:
+    held.pop((record, key), None)
+    held[(record, key)] = state
+
+
 def _apply(node: BookNode, key: str, book: Mapping[str, BookNode], held: Ledger) -> None:
     for move in data_states.moves_of(node, book):
         if move.end in book:
-            held[(data_states.of_of(book[move.end]), key)] = move.end
+            _set(held, data_states.of_of(book[move.end]), key, move.end)
+
+
+def _send(interaction: BookNode, book: Mapping[str, BookNode], held: Ledger) -> None:
+    for sent in interaction.targets("sends", book):
+        if sent.type in ("endpoint", "invocation"):
+            _apply(sent, record_key(sent, book), book, held)
+
+
+def _walk(flow: BookNode, book: Mapping[str, BookNode]) -> list[LedgerStep | LedgerStop]:
+    passages = passages_of(book)
+    held = initial_ledger(flow, book)
+    found: list[LedgerStep | LedgerStop] = []
+    for number, step in enumerate(journey_steps.journey_steps(flow, book), start=1):
+        if step.node_type == "interaction" and step.ref in book:
+            _send(book[step.ref], book, held)
+        elif step.node_type == "state":
+            found.append(LedgerStop(number, step.ref, dict(held)))
+        elif step.node_type == "passage" and (passage := passages.get(step.ref)) is not None and passage.start:
+            for ref in passage.steps:
+                if ref in book and book[ref].type == "interaction":
+                    _send(book[ref], book, held)
+            found.append(LedgerStop(number, passage.end, dict(held)))
+        elif step.node_type in ("endpoint", "invocation", "passage", "command"):
+            for ref in _requests(step.ref, book, passages):
+                node = book.get(ref)
+                if node is None or node.type not in ("endpoint", "invocation"):
+                    continue
+                key = record_key(node, book)
+                found.append(LedgerStep(number, ref, key, dict(held)))
+                _apply(node, key, book, held)
+    return found
 
 
 def ledger_steps(flow: BookNode, book: Mapping[str, BookNode]) -> list[LedgerStep]:
     """The requests of *flow* in order, passages expanded, each with the ledger as it stands before the request."""
-    passages = passages_of(book)
-    held = initial_ledger(flow, book)
-    found: list[LedgerStep] = []
-    for number, step in enumerate(journey_steps.journey_steps(flow, book), start=1):
-        if step.node_type not in ("endpoint", "invocation", "passage", "command"):
-            continue
-        for ref in _requests(step.ref, book, passages):
-            node = book.get(ref)
-            if node is None or node.type not in ("endpoint", "invocation"):
-                continue
-            key = record_key(node, book)
-            found.append(LedgerStep(number, ref, key, dict(held)))
-            _apply(node, key, book, held)
-    return found
+    return [step for step in _walk(flow, book) if isinstance(step, LedgerStep)]
+
+
+def ledger_stops(flow: BookNode, book: Mapping[str, BookNode]) -> list[LedgerStop]:
+    """The stops of *flow* in order, each with the ledger as it stands when the walk reaches it."""
+    return [step for step in _walk(flow, book) if isinstance(step, LedgerStop)]
 
 
 def _holds(held: Mapping[tuple[str, str], str], record: str, key: str) -> str:
     state = held.get((record, key), "")
     return f"`{data_states.anchor_of(state)}`" if state else f"no state of the {record}"
+
+
+def _touched(held: Mapping[tuple[str, str], str], record: str) -> str:
+    return next((key for held_record, key in reversed(list(held)) if held_record == record), "")
 
 
 def _arranging(state: BookNode) -> str:
@@ -133,9 +174,29 @@ def _check_flow(flow: BookNode, book: Mapping[str, BookNode], f: list[Finding]) 
                     f"there", fix))
 
 
+def _check_stops(flow: BookNode, book: Mapping[str, BookNode], f: list[Finding]) -> None:
+    for stop in ledger_stops(flow, book):
+        node = book.get(stop.ref)
+        if node is None or node.type != "state":
+            continue
+        for state in node.targets("when", book):
+            if state.type != "data-state":
+                continue
+            record = data_states.of_of(state)
+            key = _touched(stop.held, record)
+            if stop.held.get((record, key)) == state.id:
+                continue
+            seen = _holds(stop.held, record, key)
+            fix = f"{_arranging(state)} an earlier step that moves the {record} to `{data_states.anchor_of(state.id)}`"
+            f.append(_finding(
+                flow, f"step {stop.number} stops at `{data_states.anchor_of(stop.ref)}`, which the screen settles in "
+                f"only while the {record} is `{data_states.anchor_of(state.id)}`, and the walk holds {seen} there", fix))
+
+
 def check_conditions(data: dict, f: list[Finding]) -> None:
     """Each case that applies only while a record is in a data state is taken while the flow holds the record in it, and each move leaves the state the flow holds."""
     book = book_nodes({node["id"]: node for node in data["nodes"]})
     for node in book.values():
         if node.type == "flow":
             _check_flow(node, book, f)
+            _check_stops(node, book, f)

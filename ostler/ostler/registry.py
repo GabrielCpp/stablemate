@@ -660,6 +660,7 @@ UI_TYPES: tuple[UINodeType, ...] = (
             BulletKey("exclusive-with", link=True, locator=True),
             BulletKey("extends", link=True),
             BulletKey("same-as", link=True),
+            BulletKey("sends", link=True),
             BulletKey("does", required=True, nested=True, normative=True, locator=True),
             BulletKey("code", link=True, owns=True),
             BulletKey("detail", link=True),
@@ -674,6 +675,7 @@ UI_TYPES: tuple[UINodeType, ...] = (
         name="state", kind="section", heading="Screen states", host_page_types=("screen",),
         bullet_keys=(
             BulletKey("shows", nested=True, link=True, normative=True, locator=True),
+            BulletKey("when", link=True),
             BulletKey("code", link=True, owns=True),
             BulletKey("detail", link=True),
             BulletKey("verify", check=True),

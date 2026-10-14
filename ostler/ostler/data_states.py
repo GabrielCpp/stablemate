@@ -122,9 +122,27 @@ def _shape_problem(node: BookNode, key: str, message: str, fix: str, f: list[Fin
                      line=node.line, ref=refs_mod.bullet_ref(node.id, key), suggestion=fix))
 
 
-def _moves_problem(node: BookNode, message: str, fix: str, f: list[Finding]) -> None:
+def _moves_problem(node: BookNode, message: str, fix: str, f: list[Finding], key: str = "moves") -> None:
     f.append(Finding("error", "moves-shape", f"{node.id}: {message}. {fix}", path=_page_of(node.id),
-                     line=node.line, ref=refs_mod.bullet_ref(node.id, "moves"), suggestion=fix))
+                     line=node.line, ref=refs_mod.bullet_ref(node.id, key), suggestion=fix))
+
+
+def _check_sends(node: BookNode, book: Mapping[str, BookNode], f: list[Finding]) -> None:
+    for edge in node.edges:
+        if edge.via != "sends" or not edge.to or edge.to not in book:
+            continue
+        if book[edge.to].type not in ("endpoint", "invocation"):
+            _moves_problem(node, f"`sends:` links `{edge.to}`, which is no endpoint or invocation",
+                           "link the endpoint or invocation of a server page that the act sends a request to", f, "sends")
+
+
+def _check_when(node: BookNode, book: Mapping[str, BookNode], f: list[Finding]) -> None:
+    for edge in node.edges:
+        if edge.via != "when" or not edge.to or edge.to not in book:
+            continue
+        if book[edge.to].type != "data-state":
+            _shape_problem(node, "when", f"`when:` links `{edge.to}`, which is no data state",
+                           "link a state declared under `## Data states`, or delete the row", f)
 
 
 def _check_state(node: BookNode, book: Mapping[str, BookNode], f: list[Finding]) -> None:
@@ -216,6 +234,10 @@ def check_data_states(data: dict, f: list[Finding]) -> None:
             _check_state(node, book, f)
         elif node.type in ("endpoint", "invocation") and node.bullets.get("moves"):
             _check_moves(node, book, f)
+        elif node.type == "interaction" and node.bullets.get("sends"):
+            _check_sends(node, book, f)
+        elif node.type == "state" and node.bullets.get("when"):
+            _check_when(node, book, f)
     _check_distinct(data_states_of(book), book, f)
 
 
