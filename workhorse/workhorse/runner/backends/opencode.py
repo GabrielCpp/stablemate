@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any
 
 from workhorse.config_run import AgentResilience
+from workhorse.runner import acp
 from workhorse.runner import failure as _failure
 from workhorse.runner import usage as _usage
 from workhorse.runner.backends import (
@@ -58,6 +59,103 @@ class _OpenCodeEvents:
             data = err.get("data") or {}
             msg = data.get("message") or err.get("name") or json.dumps(event)[:300]
             state.diagnostics.append(str(msg)[:500])
+
+
+_TOOL_KINDS = {
+    "read": "read",
+    "edit": "edit",
+    "write": "edit",
+    "patch": "edit",
+    "apply_patch": "edit",
+    "bash": "execute",
+    "grep": "search",
+    "glob": "search",
+    "list": "search",
+    "webfetch": "fetch",
+    "websearch": "fetch",
+}
+_SUMMARY_KEYS = ("filePath", "path", "command", "pattern", "url", "query", "description")
+_PRIORITIES = ("high", "medium", "low")
+
+
+def _diffs(tool: str, inp: dict[str, Any]) -> list[dict[str, Any]]:
+    """The file change an OpenCode edit tool's input spells out."""
+    path = str(inp.get("filePath") or "")
+    if tool == "edit" and "oldString" in inp and "newString" in inp:
+        return [acp.diff_item(path, inp["oldString"], inp["newString"])]
+    if tool == "write" and "content" in inp:
+        return [acp.diff_item(path, None, inp["content"])]
+    return []
+
+
+class OpenCodeTranscript(acp.TranscriptMapper):
+    """OpenCode's ``run --format json`` events as ACP updates.
+
+    A ``tool_use`` event arrives once its tool has finished, so it yields the call and its result together.
+    """
+
+    def __init__(self) -> None:
+        super().__init__()
+        self._seen: dict[str, str] = {}
+
+    def updates(self, event: dict[str, Any]) -> list[acp.MappedUpdate]:
+        self.session_id = event.get("sessionID") or self.session_id
+        part = event.get("part") or {}
+        etype = event.get("type")
+        if etype in ("text", "reasoning"):
+            return [acp.MappedUpdate(u) for u in self._words(etype, part)]
+        if etype == "tool_use":
+            return [acp.MappedUpdate(u) for u in self._tool(part)]
+        return []
+
+    def _words(self, etype: str, part: dict[str, Any]) -> list[acp.Update]:
+        text = str(part.get("text") or "")
+        key = str(part.get("id") or "")
+        before = self._seen.get(key, "") if key else ""
+        if key:
+            self._seen[key] = text
+        fresh = text[len(before):] if text.startswith(before) else text
+        if not fresh.strip():
+            return []
+        chunk = acp.agent_message_chunk if etype == "text" else acp.agent_thought_chunk
+        return [chunk(fresh)]
+
+    def _tool(self, part: dict[str, Any]) -> list[acp.Update]:
+        tool = str(part.get("tool", "?"))
+        state = part.get("state") or {}
+        inp = state.get("input") or {}
+        if tool == "todowrite":
+            return [
+                acp.plan(
+                    [
+                        acp.plan_entry(
+                            str(todo.get("content", "")),
+                            todo["status"] if todo.get("status") in ("in_progress", "completed") else "pending",
+                            todo["priority"] if todo.get("priority") in _PRIORITIES else "medium",
+                        )
+                        for todo in inp.get("todos") or []
+                    ]
+                )
+            ]
+        call_id = str(part.get("callID", ""))
+        kind = _TOOL_KINDS.get(tool, "other")
+        path = inp.get("filePath")
+        diffs = _diffs(tool, inp)
+        call = acp.tool_call(
+            call_id,
+            f"{tool} {acp.summarize(inp, _SUMMARY_KEYS)}".rstrip(),
+            kind,
+            content=diffs,
+            locations=[{"path": path}] if path and kind in ("read", "edit") else None,
+            raw_input=inp,
+        )
+        status = state.get("status")
+        if status not in ("completed", "error"):
+            return [call]
+        failed = status == "error" or state.get("metadata", {}).get("exit") not in (None, 0)
+        text = str(state.get("error") if status == "error" else state.get("output") or "")
+        content = [*diffs, acp.text_item(text)] if text else diffs
+        return [call, acp.tool_call_update(call_id, status="failed" if failed else "completed", content=content or None)]
 
 
 _OPENCODE_VARIANT = {"low": "minimal", "medium": "", "high": "high", "xhigh": "max", "max": "max"}
@@ -308,6 +406,9 @@ class OpenCodeBackend(JsonlBackend):
         None
     )
     supports_compaction = False
+
+    def transcript_mapper(self) -> acp.TranscriptMapper:
+        return OpenCodeTranscript()
 
     def run_turn(
         self,
