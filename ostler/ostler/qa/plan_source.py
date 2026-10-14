@@ -237,6 +237,18 @@ def claim_scenario_function_name(scenario: SourceScenario, emitted: EmittedScena
     return name
 
 
+def state_walk_function_name(state: Obligation, emitted: EmittedScenarios) -> str:
+    """Reserve the function name the one-screen walk of *state* gets, and return it."""
+    page, _, fragment = state.node.partition("#")
+    base = f"{python_identifier(page)}_{python_identifier(fragment)}_settles"
+    name, number = base, 1
+    while name in emitted.functions:
+        number += 1
+        name = f"{base}_{number}"
+    emitted.functions.add(name)
+    return name
+
+
 PROBE_PREFIX = "probe"
 
 

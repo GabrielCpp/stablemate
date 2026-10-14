@@ -203,6 +203,15 @@ def unarranged_state_gap(obligation: Obligation) -> Gap:
                + ". A state only a person's act reaches is the `does:` of the interaction that performs the act: claim it there")
 
 
+def unarranged_state_walk_gap(state: Obligation) -> Gap:
+    """The `unarranged-state` gap for a screen state no flow stops at and that states no condition."""
+    return Gap(state.id, "unarranged-state", (
+        f"no compiled flow stops at the screen state `{state.node}`, and it states no condition, so "
+        "no one-screen walk can arrange it. Indent a `fixture:` under the state that puts the screen "
+        "in it, or `fixture: none, because ...` when the screen settles in that state as it opens on "
+        "the seeded world"))
+
+
 def unarranged_scenario_gap(obligation: Obligation) -> Gap:
     """The `unarranged-scenario` gap for a claim whose state nothing established."""
     return Gap(obligation.id, "unarranged-scenario",

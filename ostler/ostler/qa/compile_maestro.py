@@ -11,6 +11,7 @@ from ostler.qa.book_index import BookIndex
 from ostler.qa.compile_journey import JourneyWalk
 from ostler.qa.compile_journey import WalkedJourney
 from ostler.qa.compile_stops import ScreenStop
+from ostler.qa.compile_stops import resolve_state
 from ostler.qa.compile_stops import resolve_stop
 from ostler.qa.compile_support import MAESTRO
 from ostler.qa.compile_support import bullet_value
@@ -21,6 +22,7 @@ from ostler.qa.compile_support import shown_on
 from ostler.qa.compile_support import trailing_comment
 from ostler.qa.compile_support import unarranged_scenario_gap
 from ostler.qa.compile_support import unarranged_state_gap
+from ostler.qa.compile_support import unarranged_state_walk_gap
 from ostler.qa.compile_support import unobservable_gap
 from ostler.qa.compile_support import vettable
 from ostler.qa.navigation import MaestroLaunch
@@ -47,6 +49,7 @@ from ostler.qa.plan_source import operand_for
 from ostler.qa.plan_source import python_identifier
 from ostler.qa.plan_source import python_literal
 from ostler.qa.plan_source import scenario_lines
+from ostler.qa.plan_source import state_walk_function_name
 from ostler.qa.plan_source import target_lines
 from ostler.qa.plan_source import target_variable
 from ostler import selector_forms
@@ -437,7 +440,7 @@ def _journey_taps(walk: JourneyWalk, gaps: list[Gap]) -> _JourneyTaps | None:
     return taps
 
 
-def _settle_lines(index: int, stop: ScreenStop) -> list[str]:
+def _settle_lines(stop: ScreenStop, comment: str) -> list[str]:
     """The `qa.settle` call a device walk makes at a stop: the busy sign and the states, with no request feed."""
     return [
         "    qa.settle(",
@@ -446,7 +449,7 @@ def _settle_lines(index: int, stop: ScreenStop) -> list[str]:
         f"        states={python_literal(stop.states)},",
         f"        expect={python_literal(stop.expect)},",
         f"        covers={python_literal(list(stop.covers))},",
-        f"    )  # step {index}: stop at {trailing_comment(stop.title)}",
+        f"    )  # {comment}",
     ]
 
 
@@ -494,7 +497,8 @@ def maestro_walk(walk: JourneyWalk, launch: MaestroLaunch, sinks: PlanSinks) -> 
             else:
                 lines.append(f"    qa.maestro.run({flow}, require=True)")
         if at < len(taps.stops):
-            lines.extend(_settle_lines(*taps.stops[at]))
+            index, stop = taps.stops[at]
+            lines.extend(_settle_lines(stop, f"step {index}: stop at {trailing_comment(stop.title)}"))
     lines.extend(compiled.python_lines)
     if page_oids:
         lines.extend(
@@ -504,3 +508,46 @@ def maestro_walk(walk: JourneyWalk, launch: MaestroLaunch, sinks: PlanSinks) -> 
         )
     stop_ids = frozenset(oid for _, stop in taps.stops for oid in stop.covers)
     return WalkedJourney(lines, frozenset(covered) | stop_ids, stop_ids)
+
+
+def device_state_walks(
+    states: list[Obligation], book: BookIndex, navigation: dict[str, SurfaceNavigation],
+    sinks: PlanSinks, emitted: EmittedScenarios,
+) -> list[str]:
+    """One scenario per screen state no flow stopped at: arrange its condition, launch cold, tap to its screen and settle it."""
+    gaps = sinks.gaps
+    lines: list[str] = []
+    for state in sorted(states, key=lambda o: o.id):
+        arrangement = arrangement_of([state])
+        if arrangement.unstated:
+            gaps.append(unarranged_state_walk_gap(state))
+            continue
+        launch = maestro_launch(surface_row(navigation, state.surface))
+        if isinstance(launch, ScenarioRefusal):
+            gaps.append(Gap(state.id, launch.kind, launch.detail))
+            continue
+        page = state.node.split("#")[0]
+        reach = _reach_commands(book.fragment_hosts.get(page, page), launch, book.locators_by_node)
+        if isinstance(reach, ScenarioRefusal):
+            gaps.append(Gap(state.id, reach.kind, reach.detail))
+            continue
+        stop = resolve_state(state.node, book, [state.id], gaps, device=True,
+                             where=f"the walk that settles `{state.node}`")
+        if stop is None:
+            continue
+        name = state_walk_function_name(state, emitted)
+        flow_path = f"maestro/{name}.yaml"
+        sinks.files[flow_path] = _flow_yaml(reach, launch.bundle_id)
+        title = " ".join(stop.title.split()).replace("\\", "").replace('"', "'")
+        body = [
+            f"    qa.maestro.run(qa.spec_dir / {python_literal(flow_path)}, require=True)",
+            *_settle_lines(stop, f"settles in {trailing_comment(stop.title)}"),
+        ]
+        emitted.covered.add(state.id)
+        target_var = target_variable(state.surface, "mobile")
+        lines.extend(target_lines(target_var, MAESTRO.name, f", app_id={python_literal(launch.bundle_id)}", emitted))
+        scenario = SourceScenario(
+            page, target_var, [state.id], arrangement, body,
+            objective=f"Open {page} from a cold launch and check it settles in {title}.")
+        lines.extend(scenario_lines(scenario, name))
+    return lines

@@ -13,6 +13,7 @@ from ostler.qa.book_index import BookIndex
 from ostler.qa.compile_journey import JourneyWalk
 from ostler.qa.compile_journey import WalkedJourney
 from ostler.qa.compile_support import PLAYWRIGHT
+from ostler.qa.compile_stops import ScreenStop
 from ostler.qa.compile_stops import stop_state_ids
 from ostler.qa.compile_stops import resolve_stop
 from ostler.qa.compile_support import MATCHABLE_ROLES as _MATCHABLE_ROLES
@@ -457,11 +458,8 @@ def _step_acts(step: FlowStep, walk: JourneyWalk) -> list[CallRow]:
 
 MARK_LINE = "    mark = qa.mark()"
 
-def _stop_step(index: int, step: FlowStep, walk: JourneyWalk, gaps: list[Gap]) -> list[str] | None:
-    """Wait for the screen a step stops at to settle, then check it is the declared state that holds, or `None` once the stop cannot be compiled."""
-    stop = resolve_stop(index, step, walk, gaps, device=False)
-    if stop is None:
-        return None
+def settle_lines(stop: ScreenStop, comment: str) -> list[str]:
+    """The `qa.settle` call a browser walk makes at a stop: the screen's requests since the mark, its busy sign and its states."""
     request_literal = "[" + ", ".join(f"({python_literal(method)}, {python_literal(path)})" for method, path in stop.requests) + "]"
     return [
         "    qa.settle(",
@@ -472,8 +470,16 @@ def _stop_step(index: int, step: FlowStep, walk: JourneyWalk, gaps: list[Gap]) -
         f"        states={python_literal(stop.states)},",
         f"        expect={python_literal(stop.expect)},",
         f"        covers={python_literal(list(stop.covers))},",
-        f"    )  # step {index}: stop at {trailing_comment(stop.title)}",
+        f"    )  # {comment}",
     ]
+
+
+def _stop_step(index: int, step: FlowStep, walk: JourneyWalk, gaps: list[Gap]) -> list[str] | None:
+    """Wait for the screen a step stops at to settle, then check it is the declared state that holds, or `None` once the stop cannot be compiled."""
+    stop = resolve_stop(index, step, walk, gaps, device=False)
+    if stop is None:
+        return None
+    return settle_lines(stop, f"step {index}: stop at {trailing_comment(stop.title)}")
 
 
 def _web_step(index: int, step: FlowStep, walk: JourneyWalk, gaps: list[Gap]) -> list[str] | None:

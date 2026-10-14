@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from collections.abc import Sequence
 from dataclasses import dataclass
 
 from ostler import accessible_names
@@ -78,12 +79,18 @@ def resolve_stop(
     index: int, step: FlowStep, walk: JourneyWalk, gaps: list[Gap], *, device: bool,
 ) -> ScreenStop | None:
     """What the step waits for and checks, or `None` once the stop cannot be compiled."""
-    book = walk.book
-    page, _, fragment = step.ref.partition("#")
+    return resolve_state(step.ref, walk.book, walk.ids, gaps, device=device,
+                         where=f"step {index} stops at `{step.ref}`")
+
+
+def resolve_state(
+    ref: str, book: BookIndex, ids: Sequence[str], gaps: list[Gap], *, device: bool, where: str,
+) -> ScreenStop | None:
+    """What settling on the state *ref* waits for and checks, or `None` once it cannot be compiled."""
+    page, _, fragment = ref.partition("#")
 
     def refuse(reason: str) -> None:
-        gaps.extend(Gap(oid, "uncompilable-claim", f"step {index} stops at `{step.ref}`: {reason}")
-                    for oid in walk.ids)
+        gaps.extend(Gap(oid, "uncompilable-claim", f"{where}: {reason}") for oid in ids)
 
     def unreadable(entry: str, found: dict[str, object]) -> bool:
         if device and found.get("expanded"):
@@ -124,9 +131,9 @@ def resolve_stop(
             refuse(f"state `{state.node}` shows nothing, so no screen could be told from it")
             return None
         states[state.node.split("#", 1)[1]] = perceivables
-    covers = tuple(state.id for state in siblings if state.node == step.ref)
+    covers = tuple(state.id for state in siblings if state.node == ref)
     if fragment not in states or not covers:
         refuse("the packet carries no obligation for this state")
         return None
-    title = next(state.requirement for state in siblings if state.node == step.ref).partition(": ")[0]
-    return ScreenStop(step.ref, tuple(requests), busy, states, fragment, covers, title)
+    title = next(state.requirement for state in siblings if state.node == ref).partition(": ")[0]
+    return ScreenStop(ref, tuple(requests), busy, states, fragment, covers, title)

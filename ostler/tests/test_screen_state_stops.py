@@ -8,6 +8,7 @@ import re
 from ostler.qa.compile import Gap, Plan, Refusal, compile_plan_gaps
 
 from test_qa_compile import (
+    _covers,
     _FLOW,
     _SCREEN,
     _arrival_navigation,
@@ -21,7 +22,9 @@ from test_qa_compile import (
 LOADED = f"{_SCREEN}#loaded"
 ERROR = f"{_SCREEN}#error"
 OPEN_DETAILS = f"{_SCREEN}#open-details-click"
+EMPTY = f"{_SCREEN}#empty"
 LOADED_ID = f"okf:{LOADED}:contract"
+EMPTY_ID = f"okf:{EMPTY}:contract"
 ERROR_ID = f"okf:{ERROR}:contract"
 FLOW_ID = f"okf:{_FLOW}:end-state"
 
@@ -131,9 +134,11 @@ def test_a_stop_covers_its_state_and_the_other_state_is_left_to_a_walk_that_stop
 
     assert LOADED_ID in journey
     assert [gap.kind for gap in gaps if gap.obligation_id == LOADED_ID] == []
-    assert [gap.kind for gap in gaps if gap.obligation_id == ERROR_ID] == ["uncompilable-claim"]
+    assert [gap.kind for gap in gaps if gap.obligation_id == ERROR_ID] == ["unarranged-state"]
     [gap] = [gap for gap in gaps if gap.obligation_id == ERROR_ID]
     assert "no compiled flow stops at" in gap.detail
+    assert "Indent a `fixture:` under the state" in gap.detail
+    assert "fixture: none, because ..." in gap.detail
 
 
 def test_a_shown_component_with_no_role_and_name_stops_the_walk_with_a_gap() -> None:
@@ -219,3 +224,112 @@ def test_a_device_flow_with_no_stop_is_one_flow_file_that_launches_first() -> No
     assert f'    journey_result = qa.maestro.run(qa.spec_dir / "{FLOW_STEM}.yaml")' in journey
     assert "require=True" not in journey
     assert "qa.settle(" not in journey
+
+
+def _walk_context(*, device: bool = False, error_fixtures: list[dict] | None = None,
+                  empty_arrangement: bool = True, fixture_screens: dict[str, str] | None = None) -> dict:
+    context = _context(steps=[LOADED], device=device)
+    for row in context["obligations"]:
+        if row["id"] == ERROR_ID and error_fixtures is not None:
+            row["fixturesDeclared"] = error_fixtures
+    empty = _state(EMPTY, EMPTY_ID, "Empty: no results", ["[No results](#no-results)"]) | {"docPosition": [3, 0]}
+    if empty_arrangement:
+        empty["arrangesNothing"] = True
+    context["obligations"].extend([empty, _component("no-results", "status", "No results")])
+    if fixture_screens is not None:
+        context["fixtureScreens"] = fixture_screens
+    return context
+
+
+_RESULTS_FAIL = [{"name": "results-fail", "args": [], "provides": "the results request fails"}]
+
+
+def _scenarios(source: str) -> dict[str, str]:
+    return {
+        match.group(1): body
+        for body in source.split("@scenario(")[1:]
+        if (match := re.search(r"def (\w+)\(qa: Qa\)", body))
+    }
+
+
+def _compile_all(context: dict) -> tuple[str, dict[str, str], list[Gap]]:
+    result = compile_plan_gaps(context, story="demo-story")
+    if isinstance(result, Plan):
+        ast.parse(result.source)
+        return result.source, result.files, result.gaps
+    assert isinstance(result, Refusal)
+    return "", {}, result.gaps
+
+
+def test_a_state_no_flow_stops_at_gets_a_one_screen_walk_on_the_web() -> None:
+    source, _, gaps = _compile_all(_walk_context(error_fixtures=_RESULTS_FAIL))
+    scenarios = _scenarios(source)
+
+    assert not [gap for gap in gaps if gap.obligation_id in (LOADED_ID, ERROR_ID, EMPTY_ID)]
+    assert not [name for name in scenarios if name.endswith("loaded_settles")]
+    error = next(body for name, body in scenarios.items() if name.endswith("error_settles"))
+    assert f'covers=[\n        "{ERROR_ID}",\n    ]' in error
+    assert 'qa.fixture("results-fail")' in error
+    assert error.index('qa.fixture("results-fail")') < error.index("mark = qa.mark()") < error.index("qa.goto(")
+    assert error.index("qa.goto(") < error.index("qa.settle(")
+    assert "since=mark" in error
+    assert '("GET", "/api/results")' in error
+    assert 'expect="error"' in error
+    assert f'covers=["{ERROR_ID}"]' in error
+    assert LOADED_ID not in error and EMPTY_ID not in error
+    assert "qa.vet(" not in error and "qa.window(" not in error
+    empty = next(body for name, body in scenarios.items() if name.endswith("empty_settles"))
+    assert "qa.fixture(" not in empty
+    assert empty.index("mark = qa.mark()") < empty.index("qa.goto(") < empty.index("qa.settle(")
+    assert 'expect="empty"' in empty
+    assert f'covers=["{EMPTY_ID}"]' in empty
+    assert "Arrive at" in empty and "check it settles in Empty" in empty
+
+
+def test_a_state_walk_on_a_device_launches_cold_and_settles_without_a_request_feed() -> None:
+    source, files, gaps = _compile_all(_walk_context(device=True, error_fixtures=_RESULTS_FAIL))
+    scenarios = _scenarios(source)
+
+    assert not [gap for gap in gaps if gap.obligation_id in (LOADED_ID, ERROR_ID, EMPTY_ID)]
+    for name, expect in (("error", ERROR_ID), ("empty", EMPTY_ID)):
+        function = next(fn for fn in scenarios if fn.endswith(f"{name}_settles"))
+        body = scenarios[function]
+        flow = f"maestro/{function}.yaml"
+        assert f'qa.maestro.run(qa.spec_dir / "{flow}", require=True)' in body
+        assert files[flow] == 'appId: "com.example.mobile-app"\n---\n- launchApp\n'
+        settle = body[body.index("qa.settle("):]
+        assert f'expect="{name}"' in settle
+        assert "since=" not in settle and "requests=" not in settle
+        assert f'covers=["{expect}"]' in settle
+    assert 'qa.fixture("results-fail")' in scenarios[next(fn for fn in scenarios if fn.endswith("error_settles"))]
+
+
+def test_a_state_with_no_condition_and_no_flow_is_a_gap_naming_the_edit_and_no_scenario() -> None:
+    source, _, gaps = _compile_all(_walk_context(empty_arrangement=False))
+
+    [gap] = [gap for gap in gaps if gap.obligation_id == EMPTY_ID]
+    assert gap.kind == "unarranged-state"
+    assert "Indent a `fixture:` under the state" in gap.detail
+    assert "fixture: none, because ..." in gap.detail
+    assert not [name for name in _scenarios(source) if name.endswith("empty_settles")]
+    assert EMPTY_ID not in _covers(source)
+
+
+def test_a_fixture_that_lands_on_the_screen_is_marked_before_it_and_no_goto_follows() -> None:
+    context = _walk_context(error_fixtures=_RESULTS_FAIL, fixture_screens={"results-fail": _SCREEN})
+    source, _, _ = _compile_all(context)
+    error = next(body for name, body in _scenarios(source).items() if name.endswith("error_settles"))
+
+    assert error.index("mark = qa.mark()") < error.index('qa.fixture("results-fail")') < error.index("qa.settle(")
+    assert "qa.goto(" not in error
+
+
+def test_every_state_obligation_is_covered_by_a_scenario_or_gapped() -> None:
+    for device in (False, True):
+        for fixtures in (_RESULTS_FAIL, None):
+            source, _, gaps = _compile_all(_walk_context(device=device, error_fixtures=fixtures))
+            covered = _covers(source)
+            gapped = {gap.obligation_id for gap in gaps}
+
+            for state_id in (LOADED_ID, ERROR_ID, EMPTY_ID):
+                assert (state_id in covered) != (state_id in gapped), (device, fixtures, state_id)

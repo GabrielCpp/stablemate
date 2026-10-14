@@ -19,10 +19,14 @@ from ostler.qa.compile_http import http_walk
 from ostler.qa.compile_journey import JourneyPlan
 from ostler.qa.compile_journey import JourneyWalkers
 from ostler.qa.compile_journey import journey_scenarios
+from ostler.qa.compile_maestro import device_state_walks
 from ostler.qa.compile_maestro import maestro_walk
 from ostler.qa.compile_maestro import mobile_scenarios
 from ostler.qa.compile_page import page_scenarios
+from ostler.qa.compile_page import web_state_walks
 from ostler.qa.compile_playwright import web_walk
+from ostler.qa.compile_support import MAESTRO
+from ostler.qa.compile_support import PLAYWRIGHT
 from ostler.qa.compile_support import PYTHON
 from ostler.qa.compile_support import unarranged_scenario_gap
 from ostler.qa.compile_support import unarranged_state_gap
@@ -137,6 +141,18 @@ def _declared_captures(obligations: list[Obligation]) -> set[tuple[str, str]]:
     }
 
 
+def _surface_urls(
+    obligations: list[Obligation], navigation: dict[str, SurfaceNavigation], base_url: str | None,
+) -> dict[str, str | None]:
+    """The target `base_url` of each surface *obligations* sit on, `None` where it is unknown."""
+    resolved: dict[str, str | None] = {}
+    for obligation in obligations:
+        surface = obligation.surface
+        if surface not in resolved:
+            resolved[surface] = surface_row(navigation, surface).entry_url or base_url
+    return resolved
+
+
 def _split_by_entry_url(
     obligations: list[Obligation],
     navigation: dict[str, SurfaceNavigation],
@@ -144,12 +160,7 @@ def _split_by_entry_url(
     gaps: list[Gap],
 ) -> tuple[list[Obligation], dict[str, str]]:
     """Partition *obligations* on whether their surface's target `base_url` is known."""
-    resolved_by_surface: dict[str, str | None] = {}
-    for obligation in obligations:
-        surface = obligation.surface
-        if surface in resolved_by_surface:
-            continue
-        resolved_by_surface[surface] = surface_row(navigation, surface).entry_url or base_url
+    resolved_by_surface = _surface_urls(obligations, navigation, base_url)
 
     kept: list[Obligation] = []
     for obligation in obligations:
@@ -309,13 +320,35 @@ def _dispatch(
     return lanes
 
 
-def _unvisited_state_gaps(states: list[Obligation], covered: set[str]) -> list[Gap]:
-    """One gap per owed screen state that no compiled walk stops at."""
+def _state_target(state: Obligation, navigation: dict[str, SurfaceNavigation]) -> str | ScenarioRefusal:
+    """The builder that performs a walk to *state*: its surface's driver, through the dispatch table."""
+    return dispatch_target(state.node_type, _driver(state, navigation))
+
+
+def _undriven_state_gaps(states: list[Obligation]) -> list[Gap]:
+    """One gap per owed screen state no flow stops at whose surface is driven by neither a browser nor a device."""
     return [
         Gap(state.id, "uncompilable-claim", (
-            f"no compiled flow stops at the screen state `{state.node}`, and a state is checked "
-            "mid-walk, so nothing compiled it. Add a flow step that links this state"))
-        for state in states if state.id not in covered
+            f"no compiled flow stops at the screen state `{state.node}`, and its surface is driven "
+            "by neither a browser nor a device, so no one-screen walk can settle it. Add a flow "
+            "step that links this state"))
+        for state in states
+    ]
+
+
+def _state_walks(
+    states: list[Obligation], book: BookIndex, navigation: dict[str, SurfaceNavigation],
+    sinks: PlanSinks, emitted: EmittedScenarios,
+) -> list[str]:
+    """A one-screen walk for each owed state no compiled flow stopped at, by the driver of its surface."""
+    unvisited = [state for state in states if state.id not in emitted.covered]
+    web = [state for state in unvisited if _state_target(state, navigation) == PLAYWRIGHT.name]
+    device = [state for state in unvisited if _state_target(state, navigation) == MAESTRO.name]
+    other = [state for state in unvisited if state not in web and state not in device]
+    sinks.gaps.extend(_undriven_state_gaps(other))
+    return [
+        *web_state_walks(web, book, navigation, sinks, emitted),
+        *device_state_walks(device, book, navigation, sinks, emitted),
     ]
 
 
@@ -475,6 +508,9 @@ def _compile_packet(
     debt = _book_debt(lanes.no_verify, sinks.gaps)
     http_owed, api_urls = _split_by_entry_url(lanes.http, navigation, base_url, sinks.gaps)
     page_owed, web_urls = _split_by_entry_url(lanes.page, navigation, base_url, sinks.gaps)
+    state_urls = _surface_urls(
+        [o for o in lanes.state if _state_target(o, navigation) == PLAYWRIGHT.name], navigation, base_url)
+    web_urls = {**{surface: url for surface, url in state_urls.items() if url is not None}, **web_urls}
     carried = list(packet.obligations)
     acts = book_index_mod.node_acts(carried)
     book = BookIndex(
@@ -505,9 +541,9 @@ def _compile_packet(
         *mobile_scenarios(lanes.mobile, book, navigation, sinks, emitted),
         *page_scenarios(navigation, page_owed, book, sinks, emitted),
         *journey_scenarios(lanes.flow, journeys, emitted),
+        *_state_walks(lanes.state, book, navigation, sinks, emitted),
         *_debt_lines(debt),
     ]
-    sinks.gaps.extend(_unvisited_state_gaps(lanes.state, emitted.covered))
     _assert_accounted(packet, owed, sinks, emitted.covered)
     if not emitted.targets:
         return Refusal(sinks.gaps)

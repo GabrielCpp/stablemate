@@ -8,6 +8,7 @@ from typing import Literal
 from ostler import acts as acts_mod
 from ostler import values as values_mod
 from ostler.qa.book_index import BookIndex
+from ostler.qa.compile_playwright import MARK_LINE
 from ostler.qa.compile_playwright import WINDOW_VAR
 from ostler.qa.compile_playwright import name_refusal
 from ostler.qa.compile_playwright import needs_window
@@ -17,17 +18,21 @@ from ostler.qa.compile_playwright import ARRIVAL_TRIGGERS
 from ostler.qa.compile_playwright import PAGE_TRIGGERS
 from ostler.qa.compile_playwright import TRIGGER_ACTS
 from ostler.qa.compile_playwright import perform_acts
+from ostler.qa.compile_playwright import settle_lines
 from ostler.qa.compile_playwright import trigger_name
 from ostler.qa.compile_playwright import trigger_performance
 from ostler.qa.compile_playwright import walk_hops
+from ostler.qa.compile_stops import resolve_state
 from ostler.qa.compile_support import PLAYWRIGHT
 from ostler.qa.compile_support import on_node
 from ostler.qa.compile_support import on_label
 from ostler.qa.compile_support import trailing_comment
 from ostler.qa.compile_support import unarranged_state_gap
+from ostler.qa.compile_support import unarranged_state_walk_gap
 from ostler.qa.compile_support import vet_calls
 from ostler.qa.navigation import NavHop
 from ostler.qa.navigation import SurfaceNavigation
+from ostler.qa.navigation import entry_url_refusal
 from ostler.qa.navigation import hops_from
 from ostler.qa.obligation import FixtureRow
 from ostler.qa.obligation import Locators
@@ -41,6 +46,7 @@ from ostler.qa.plan_source import arrangement_of
 from ostler.qa.plan_source import check_observes
 from ostler.qa.plan_source import decline_captures
 from ostler.qa.plan_source import fixture_call
+from ostler.qa.plan_source import state_walk_function_name
 from ostler.qa.plan_source import python_identifier
 from ostler.qa.plan_source import python_literal
 from ostler.qa.plan_source import target_variable
@@ -254,6 +260,65 @@ def _compile_page_scenarios(
             bucket.extend(_arrival_scenario(screen, arrival, sinks, covered))
         for node_id, rest in scenarios.interactions.items():
             bucket.extend(_interaction_scenario(screen, node_id, rest, sinks, covered))
+    return _web_target_lines(book, lines_by_surface, emitted)
+
+
+def _state_walk(
+    state: Obligation, book: BookIndex, navigation: dict[str, SurfaceNavigation],
+    sinks: PlanSinks, covered: set[str], function_name: str,
+) -> list[str]:
+    """Arrange the state's condition, open its screen through the book's own navigation and settle it, or no lines once the gap says why not."""
+    gaps = sinks.gaps
+    arranged = arrangement_of([state])
+    if arranged.unstated:
+        gaps.append(unarranged_state_walk_gap(state))
+        return []
+    page = state.node.split("#")[0]
+    shown_on = book.fragment_hosts.get(page, page)
+    screen_path = _screen_path(navigation, state.surface, shown_on)
+    if isinstance(screen_path, ScenarioRefusal):
+        gaps.append(Gap(state.id, screen_path.kind, screen_path.detail, screen_path.owner))
+        return []
+    stop = resolve_state(state.node, book, [state.id], gaps, device=False,
+                         where=f"the walk that settles `{state.node}`")
+    if stop is None:
+        return []
+    screen = _PageScreen(book, page, shown_on, screen_path, target_variable(state.surface, "web"))
+    arrival = _arrive(screen, arranged.rows, gaps, [state.id])
+    if arrival is None:
+        return []
+    opening = len(arranged.rows) if len(arrival) > len(arranged.rows) else 0
+    title = " ".join(stop.title.split()).replace("\\", "").replace('"', "'")
+    covered.add(state.id)
+    return [
+        *_scenario_head(screen.target_var, [state.id], covered,
+                        [python_literal(row.precondition) for row in arranged.rows]),
+        f"def {function_name}(qa: Qa) -> None:",
+        f'    """Arrive at {shown_on} via the book\'s own navigation and check it settles in {title}."""',
+        "",
+        *arrival[:opening],
+        MARK_LINE,
+        *arrival[opening:],
+        *settle_lines(stop, f"settles in {trailing_comment(stop.title)}"),
+    ]
+
+
+def web_state_walks(
+    states: list[Obligation], book: BookIndex, navigation: dict[str, SurfaceNavigation],
+    sinks: PlanSinks, emitted: EmittedScenarios,
+) -> list[str]:
+    """One scenario per screen state no flow stopped at: arrange its condition, open its screen, settle it."""
+    lines_by_surface: dict[str, list[str]] = {}
+    for state in sorted(states, key=lambda o: o.id):
+        if not book.resolved_web_base_urls.get(state.surface):
+            refusal = entry_url_refusal(state.surface)
+            sinks.gaps.append(Gap(state.id, refusal.kind, refusal.detail, refusal.owner))
+            continue
+        name = state_walk_function_name(state, emitted)
+        walk = _state_walk(state, book, navigation, sinks, emitted.covered, name)
+        if not walk:
+            emitted.functions.discard(name)
+        lines_by_surface.setdefault(state.surface, []).extend(walk)
     return _web_target_lines(book, lines_by_surface, emitted)
 
 

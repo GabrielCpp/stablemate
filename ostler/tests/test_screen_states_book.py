@@ -189,3 +189,50 @@ def test_a_walk_selected_by_its_flow_alone_still_waits_for_the_screens_requests(
     settle = result.source[result.source.index("qa.settle("):result.source.index("# step 1: stop at")]
     assert '("GET", "/api/results")' in settle
     assert '"role": "progressbar"' in settle
+
+
+def test_a_fixture_under_a_state_reaches_its_obligation_and_none_because_says_it_arranges_nothing(book: Path) -> None:
+    page = book / SCREEN
+    page.write_text(page.read_text().replace(
+        "### Error\n", "### Error\n- fixture: none, because the screen opens on the failing rows\n",
+    ).replace(
+        "### Loaded\n", "### Loaded\n- fixture: none, because the seeded world loads cleanly\n",
+    ))
+    write(book / "app/r.py", "def go():\n    return 2\n")
+    base = _git(book, "rev-parse", "HEAD")
+
+    packet = build_context(book, base=base, source_roots={"acme": ["app"]})
+    ids = {row["id"]: row for row in packet["obligations"]}
+
+    assert ids[f"okf:{SCREEN}#error:contract"]["arrangesNothing"] is True
+    assert ids[f"okf:{SCREEN}#loaded:contract"]["arrangesNothing"] is True
+
+
+FAIL_FIXTURE = """---
+type: fixture
+title: Results fail
+---
+# Results fail
+
+## Steps
+
+### fail
+
+- kind: seed
+- run: true
+"""
+
+
+def test_a_fixture_under_a_state_reaches_the_fixtures_of_its_obligation(book: Path) -> None:
+    page = book / SCREEN
+    page.write_text(page.read_text().replace(
+        "### Error\n", "### Error\n- fixture: [Results fail](../../fixtures/results-fail.md)\n",
+    ))
+    write(book / "docs/features/acme/fixtures/results-fail.md", FAIL_FIXTURE)
+    write(book / "app/r.py", "def go():\n    return 2\n")
+    base = _git(book, "rev-parse", "HEAD")
+
+    packet = build_context(book, base=base, source_roots={"acme": ["app"]})
+    error = next(row for row in packet["obligations"] if row["id"] == f"okf:{SCREEN}#error:contract")
+
+    assert [row["name"] for row in error["fixturesDeclared"]] == ["results-fail"]
