@@ -225,6 +225,24 @@ def prose_text(text: str) -> str:
     return "".join(out).strip()
 
 
+def text_beside_links(text: str) -> str:
+    """What *text* says outside its links: their labels and hrefs dropped, code spans kept."""
+    out: list[str] = []
+    depth = 0
+    for child in _inline_children(text):
+        if child.type == "link_open":
+            depth += 1
+        elif child.type == "link_close":
+            depth -= 1
+        elif depth:
+            continue
+        elif child.type in ("softbreak", "hardbreak"):
+            out.append(" ")
+        elif child.type in ("text", "code_inline"):
+            out.append(child.content)
+    return " ".join("".join(out).split())
+
+
 def code_line_spans(text: str) -> list[tuple[int, int]]:
     """0-indexed ``[start, end)`` line spans of every code block — fenced or indented."""
     return [(tok.map[0], tok.map[1]) for tok in _MD.parse(_normalize(text))

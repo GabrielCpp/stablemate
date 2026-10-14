@@ -991,7 +991,7 @@ def test_an_interaction_on_the_host_discharges_a_fragment_component_it_proves_vi
 
 
 def test_same_as_triple_collapses_to_one_obligation_not_three(tmp_path: Path):
-    """A three-member family (`screen-a`/`screen-b`/`screen-c`, each reciprocally `same-as:` the other two) still mints one obligation per key, never three — and because each member's own `_obligations` call computes the representative independently off its own id, the three members landing on the same `screen-a`-rooted ids also shows the id does not depend on which member the walk happened to start from."""
+    """A three-member family (`screen-a`/`screen-b`/`screen-c`, each reciprocally `same-as:` the other two) still mints one obligation per key, never three — and because each member's own `node_obligations` call computes the representative independently off its own id, the three members landing on the same `screen-a`-rooted ids also shows the id does not depend on which member the walk happened to start from."""
     base = _same_as_button_screens(tmp_path, ["screen-a", "screen-b", "screen-c"])
 
     packet = build_context(tmp_path, base=base, source_roots={"demo": ["app"]})

@@ -818,7 +818,7 @@ def _minted_obligations(
     signing_fixtures = frozenset(_browser_fixtures(book))
 
     def mint(node_id: str, *, journey: bool, required: bool, owed_keys: frozenset[str] | None) -> list[dict[str, Any]]:
-        return _obligations(
+        return node_obligations(
             book[node_id],
             selection.direct_reasons.get(node_id, []),
             journey=journey,
@@ -2189,7 +2189,7 @@ class _PartReader:
         return [row for row in inherited if row["name"] in names]
 
 
-def _obligations(
+def node_obligations(
     book_node: BookNode,
     reasons: list[Reason],
     *,

@@ -4939,7 +4939,7 @@ def test_a_journey_ending_on_a_pattern_requests_the_address_its_own_check_names(
         _flow_obligation(
             oid, source=_FLOW, surface="api",
             steps=[_step(f"{_API}#auth-handler", "endpoint", "api")],
-            checks=[{"call": "it", "name": "http_status", "args": {"code": 404, "path": "/__/auth/missing"}}],
+            checks=[{"call": "it", "name": "http_status", "args": {"code": 200, "path": "/__/auth/missing"}}],
         ),
         handler,
         navigation=_api_navigation(),
@@ -4972,18 +4972,18 @@ def test_a_check_naming_another_steps_path_is_not_about_this_journeys_end() -> N
     assert "/healthz" in gap.detail and "its last step left" in gap.detail
 
 
-def test_a_journey_whose_claim_expects_a_refusal_lets_only_its_last_step_answer_with_it() -> None:
-    """A journey that ends on a refusal expects that status from its last request, so the refusal reaches its check instead of raising, and every earlier step still has to succeed."""
+def test_a_journey_step_linking_a_refusal_case_answers_with_it_and_every_earlier_step_succeeds() -> None:
+    """A journey that ends on a refusal links the case that answers it, so the refusal reaches its check instead of raising, and every earlier step still has to succeed."""
     oid = f"okf:{_FLOW}:end-state"
+    refusal = f"{_API}#delete-things"
     context = _navigation_context(
         _flow_obligation(
             oid, source=_FLOW, surface="api",
-            steps=[_step(f"{_API}#get-health", "endpoint", "api"),
-                   _step(f"{_API}#delete-things", "endpoint", "api")],
-            checks=[{"call": "it", "name": "http_status", "args": {"code": 403, "path": "/api/things"}}],
+            steps=[_step(f"{_API}#get-health", "endpoint", "api"), _step(refusal, "invocation", "api")],
+            checks=[{"call": "it", "name": "json_path", "args": {"path": "$.error", "equals": "forbidden"}}],
         ),
         _step_node(f"{_API}#get-health", {"route": ["GET /healthz"]}),
-        _step_node(f"{_API}#delete-things", {"route": ["DELETE /api/things"]}),
+        {**_case(refusal, "errors", "403", [_status(403)], 2), "locators": {"route": ["DELETE /api/things"]}},
         navigation=_api_navigation(),
     )
     result = _compile_plan_gaps(context, story="demo-story")
@@ -6614,18 +6614,19 @@ def test_a_refusal_on_the_last_step_runs_none_of_the_success_arms_checks() -> No
     context = _navigation_context(
         _flow_obligation(
             oid, source=_FLOW, surface="api",
-            steps=[_step(node, "endpoint", "api") for node in nodes],
-            checks=[{"call": "it", "name": "http_status", "args": {"code": 403, "path": "/api/things"}}],
+            steps=[_step(nodes[0], "endpoint", "api"), _step(nodes[1], "invocation", "api")],
+            checks=[{"call": "it", "name": "json_path", "args": {"path": "$.error", "equals": "forbidden"}}],
         ),
         _arm(nodes[0], "up", "GET /healthz", [_status(200), _json_path("$.ok", True)]),
         _arm(nodes[1], "deleted", "DELETE /api/things", [_status(204), _json_path("$.gone", True)]),
+        {**_case(nodes[1], "errors", "403", [_status(403)], 3), "locators": {"route": ["DELETE /api/things"]}},
         navigation=_api_navigation(),
     )
     result = _compile_plan_gaps(context, story="demo-story")
     assert isinstance(result, Plan)
     assert 'observed_2 = qa.http.delete("/api/things", expect_status=403)' in result.source
     assert 'qa.verify("json_path", observed_1.json()' in result.source
-    assert "observed_2.json()" not in result.source
+    assert '"$.gone"' not in result.source
 
 
 _HIDDEN = f"{_API}#hidden-from-others"

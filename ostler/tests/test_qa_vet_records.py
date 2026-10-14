@@ -305,7 +305,7 @@ def test_a_vet_speaks_only_for_the_document_it_photographed(repo: Path) -> None:
 def test_a_vet_credits_a_same_as_family_s_obligation_though_the_id_names_another_screen(
     repo: Path,
 ) -> None:
-    """A `same-as:` family collapses onto one id minted for its lexicographic-min member (`context.py::_obligations`), so the id this scenario covers can name a screen other than the one a given vet photographs — `docs/features/groom/gui/screens/other.md` below, never `SCREEN` — while still being the very obligation `SCREEN` states, because the family occupies both documents."""
+    """A `same-as:` family collapses onto one id minted for its lexicographic-min member (`context.py::node_obligations`), so the id this scenario covers can name a screen other than the one a given vet photographs — `docs/features/groom/gui/screens/other.md` below, never `SCREEN` — while still being the very obligation `SCREEN` states, because the family occupies both documents."""
     _book(repo)
     shot = _shot(
         repo,

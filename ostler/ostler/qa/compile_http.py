@@ -62,7 +62,7 @@ HTTP_METHODS = ("GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS")
 _ROUTE = re.compile(rf"^\s*`?\s*({'|'.join(HTTP_METHODS)})\s+(\S+?)\s*`?\s*$", re.I)
 
 
-def _route(locators: Locators) -> tuple[str, str] | None:
+def route_of(locators: Locators) -> tuple[str, str] | None:
     """The HTTP method and path template a node with these *locators* is addressed by."""
     for value in locators.route:
         matched = _ROUTE.match(value)
@@ -76,7 +76,7 @@ def _route(locators: Locators) -> tuple[str, str] | None:
 
 
 def _invalid_method(locators: Locators) -> str | None:
-    """An `endpoint`'s declared `method:` value, when it is not one of the HTTP verbs `_route` (and `_ROUTE`, for the other node type's spelling) already hold every address to."""
+    """An `endpoint`'s declared `method:` value, when it is not one of the HTTP verbs `route_of` (and `_ROUTE`, for the other node type's spelling) already hold every address to."""
     method = bullet_value(next(iter(locators.method), None))
     if method and method.upper() not in HTTP_METHODS:
         return method
@@ -103,7 +103,7 @@ def _request_path(template: str, rows: tuple[CallRow, ...]) -> str:
     return concrete
 
 
-def _expect_status(rows: tuple[CallRow, ...]) -> int | None:
+def expect_status(rows: tuple[CallRow, ...]) -> int | None:
     """The status code a declared `http_status` check expects, when one states it."""
     for row in rows:
         if row.name == "http_status":
@@ -185,8 +185,8 @@ class _Probe:
 
 def _probe(obligation: Obligation, credentials: tuple[CallRow, ...], caller: frozenset[tuple[str, str]]) -> _Probe | None:
     """The probe of the first fixture whose fact *obligation* sends in a header, when the claim is a GET that expects success on a path it can build."""
-    route = _route(obligation.locators)
-    status = _expect_status(obligation.checks)
+    route = route_of(obligation.locators)
+    status = expect_status(obligation.checks)
     if route is None or route[0] != "GET" or status is None or status >= 400:
         return None
     sent = {ref.node for row in _claim_acts(obligation, credentials, caller) if row.name == "header"
@@ -402,7 +402,7 @@ def _stated_statuses(obligations: list[Obligation]) -> dict[tuple[str, frozenset
     """The one status the claims sending each request state it is answered with, for each request whose claims state exactly one."""
     stated: dict[tuple[str, frozenset[str], frozenset[str]], set[int]] = {}
     for obligation in obligations:
-        status = _expect_status(obligation.checks)
+        status = expect_status(obligation.checks)
         if obligation.node and status is not None:
             stated.setdefault(_request_key(obligation), set()).add(status)
     return {key: next(iter(codes)) for key, codes in stated.items() if len(codes) == 1}
@@ -410,7 +410,7 @@ def _stated_statuses(obligations: list[Obligation]) -> dict[tuple[str, frozenset
 
 def _claim_status(obligation: Obligation, stated: int | None) -> int | None:
     """The status a claim expects: its own `http_status`, else the one *stated* by the claims sending the same request."""
-    own = _expect_status(obligation.checks)
+    own = expect_status(obligation.checks)
     return own if own is not None else stated
 
 
@@ -431,7 +431,7 @@ def _claim_request(
     stated: int | None = None,
 ) -> _ClaimRequest | _UnbuiltClaimRequest:
     """The request one endpoint claim makes into *observed*, or why the book gives it none. A claim that checks no status expects the one *stated* by the claims sending the same request."""
-    route = _route(obligation.locators)
+    route = route_of(obligation.locators)
     if route is None:
         bad_method = _invalid_method(obligation.locators)
         if bad_method is not None:
@@ -469,8 +469,8 @@ def _claim_request(
 
 def _deletes_shared_fixture(obligation: Obligation, fixture_pages: dict[str, frozenset[str]]) -> ScenarioRefusal | None:
     """Why a DELETE claim that succeeds must not run: its path names a fact of a fixture other pages name too, and every page of a lap reuses that fixture's one build."""
-    route = _route(obligation.locators)
-    status = _expect_status(obligation.checks)
+    route = route_of(obligation.locators)
+    status = expect_status(obligation.checks)
     if route is None or route[0] != "DELETE" or (status is not None and status >= 400):
         return None
     for ref in references.find_references(_request_path(route[1], obligation.checks)):
@@ -629,9 +629,9 @@ class _Outcome:
     acts_unparsed: bool
 
 
-def _case_status(claim: Obligation) -> int | None:
+def case_status(claim: Obligation) -> int | None:
     """The status one invocation claim expects: its `http_status` code, else the code its `status:` or refusal bullet states."""
-    status = _expect_status(claim.checks)
+    status = expect_status(claim.checks)
     if status is None and claim.kind in (*registry.refusal_keys(claim.node_type), "status"):
         stated = claim.requirement.strip()
         if stated.isdigit():
@@ -641,8 +641,8 @@ def _case_status(claim: Obligation) -> int | None:
 
 def _invocation_outcome(claims: list[Obligation]) -> _Outcome | list[int]:
     """The one outcome an invocation's *claims* expect, or every distinct status when they expect more than one."""
-    owned = [claim for claim in claims if claim.checks or claim.acts or _case_status(claim) is not None]
-    statuses = sorted({status for claim in owned if (status := _case_status(claim)) is not None})
+    owned = [claim for claim in claims if claim.checks or claim.acts or case_status(claim) is not None]
+    statuses = sorted({status for claim in owned if (status := case_status(claim)) is not None})
     if len(statuses) > 1:
         return statuses
     named = [row.args.get("path") for claim in owned for row in claim.checks]
@@ -660,15 +660,15 @@ def _invocation_outcome(claims: list[Obligation]) -> _Outcome | list[int]:
 
 def _step_arrangement(ref: str, node_rows: list[CallRow], book: BookIndex) -> _HttpArrangement | None:
     """What one journey step sends: the acts of every claim on its node that expects no refusal, merged, else the first success claim's own acts when those claims arrange a field differently."""
-    refusing = {row.call for claim in book.claims_by_node.get(ref, ()) if (_expect_status(claim.checks) or 0) >= 400
+    refusing = {row.call for claim in book.claims_by_node.get(ref, ()) if (expect_status(claim.checks) or 0) >= 400
                 for row in claim.acts}
-    admitted = {row.call for claim in book.claims_by_node.get(ref, ()) if (_expect_status(claim.checks) or 0) < 400
+    admitted = {row.call for claim in book.claims_by_node.get(ref, ()) if (expect_status(claim.checks) or 0) < 400
                 for row in claim.acts}
     merged = _http_arrangement(tuple(row for row in node_rows if row.call in admitted or row.call not in refusing))
     if merged is not None:
         return merged
     for claim in book.claims_by_node.get(ref, ()):
-        status = _expect_status(claim.checks)
+        status = expect_status(claim.checks)
         if status is not None and 200 <= status < 300:
             return _http_arrangement(claim.acts, later_replaces=True)
     return None
@@ -681,7 +681,7 @@ def _http_request(
     """The request one journey step performs, gapping every claim when the book states none."""
     ref = step.ref
     step_locators = book.locators_by_node.get(ref, NO_LOCATORS)
-    route = _route(step_locators)
+    route = route_of(step_locators)
     if route is None:
         bad_method = _invalid_method(step_locators)
         if bad_method is not None:
@@ -816,10 +816,10 @@ def _bound_path(path: str, produced: set[str], owners: dict[str, set[str]], name
     return PATH_VARIABLE.sub(bind, path)
 
 
-def _refused_status(obligations: list[Obligation]) -> int | None:
-    """The error status a flow's own `http_status` check expects its last step to answer with, when it expects one."""
-    status = _expect_status(tuple(row for obligation in obligations for row in obligation.checks))
-    return status if status is not None and status >= 400 else None
+_FLOW_REFUSAL = (
+    "a flow's verify: reads the response its last step gets, and a step expects success unless it links a refusal "
+    "case. Link the case that answers {code}, such as an invocation with errors:, as the step, and drop the flow's "
+    "http_status.")
 
 
 def _ended_path(obligations: list[Obligation]) -> str | None:
@@ -949,7 +949,7 @@ def _checked_with_moves(step: FlowStep, checks: list[str], moves: list[str]) -> 
 def _success_claims(ref: str, book: BookIndex) -> list[Obligation]:
     """The claims on *ref* that answer success, the outcome an endpoint step expects."""
     return [claim for claim in book.outcomes_by_node.get(ref, ())
-            if (_expect_status(claim.checks) or 0) < 400]
+            if (expect_status(claim.checks) or 0) < 400]
 
 
 def _expanded_steps(walk: JourneyWalk, gaps: list[Gap]) -> tuple[FlowStep, ...] | None:
@@ -988,7 +988,12 @@ def _http_steps(walk: JourneyWalk, sinks: PlanSinks) -> _HttpSteps | None:
         known.record_fixtures(obligation)
     owners = _fixture_owners(walk.obligations)
     observed = last_path = ""
-    refused_status = _refused_status(walk.obligations)
+    refused = expect_status(tuple(row for obligation in walk.obligations for row in obligation.checks))
+    if refused is not None and refused >= 400:
+        gaps.extend(Gap(oid, "uncompilable-claim", _FLOW_REFUSAL.format(code=refused)) for oid in walk.ids)
+        decline_captures_by_node([s.ref for s in walk.steps], book.captures_by_node, gaps, sinks.captured,
+                                 because="this journey's own verify: expects a refusal no step links")
+        return None
     ended = _ended_path(walk.obligations)
     for index, step in enumerate(walk.steps, start=1):
         outcome = None
@@ -1023,8 +1028,7 @@ def _http_steps(walk: JourneyWalk, sinks: PlanSinks) -> _HttpSteps | None:
         if outcome is not None:
             expect = f", expect_status={outcome.status}" if outcome.status is not None else ""
         else:
-            expect = (f", expect_status={refused_status}"
-                      if refused_status is not None and index == len(walk.steps) else "")
+            expect = ""
         lines.append(f"    # okf:{step.ref}")
         call = f"{observed} = qa.http.{request.method.lower()}({target}{expect}{request.kwargs_source})"
         if outcome is not None and outcome.status is not None:
