@@ -4,6 +4,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import inspect
+import json
 import tempfile
 import threading
 from pathlib import Path
@@ -300,6 +301,69 @@ def test_watched_history_is_not_read_again_on_clock_push():
         state.remove_client(queue)
 
     asyncio.run(drive())
+
+
+def _transcript_line(text: str, ts: float) -> str:
+    record = {
+        "sessionId": "s",
+        "update": {"sessionUpdate": "agent_message_chunk", "content": {"type": "text", "text": text}},
+        "_meta": {"ts": ts, "node": "implement"},
+    }
+    return json.dumps(record) + "\n"
+
+
+def _transcript_bodies(message: dict) -> list[str]:
+    return [line["body"] for line in message["detail"]["history"] if line["kind"] == "transcript"]
+
+
+def test_a_watched_native_run_pushes_its_transcript_seeded_then_tailed(tmp_path):
+    _reset()
+    live = tmp_path / "transcripts" / "live"
+    live.mkdir(parents=True)
+    path = live / "001-00001-implement.jsonl"
+    path.write_text(_transcript_line("first", 10.0))
+    state.WORKFLOWS["run-1"] = WorkflowContainer(
+        container_id="run-1", name="w", run_id="run-1", native=True, runs_volume=str(tmp_path)
+    )
+
+    async def drive():
+        queue = asyncio.Queue()
+        state.add_client(queue)
+        await groom_app._handle_command({"cmd": "watch", "run_id": "run-1"}, queue)
+        seeded = queue.get_nowait()
+        with path.open("a") as handle:
+            handle.write(_transcript_line("second", 11.0))
+        await groom_app._push_watched()
+        ticked = queue.get_nowait()
+        await groom_app._push_watched()
+        again = queue.get_nowait()
+        state.remove_client(queue)
+        return seeded, ticked, again
+
+    seeded, ticked, again = asyncio.run(drive())
+    assert _transcript_bodies(seeded) == ["first"]
+    assert _transcript_bodies(ticked) == ["second", "first"]
+    assert _transcript_bodies(again) == ["second", "first"]
+
+
+def test_a_container_run_is_not_tailed_from_the_host_filesystem(tmp_path):
+    _reset()
+    live = tmp_path / "transcripts" / "live"
+    live.mkdir(parents=True)
+    (live / "001-00001-implement.jsonl").write_text(_transcript_line("first", 10.0))
+    state.WORKFLOWS["run-1"] = WorkflowContainer(
+        container_id="run-1", name="w", run_id="run-1", runs_volume=str(tmp_path)
+    )
+
+    async def drive():
+        queue = asyncio.Queue()
+        state.add_client(queue)
+        await groom_app._handle_command({"cmd": "watch", "run_id": "run-1"}, queue)
+        message = queue.get_nowait()
+        state.remove_client(queue)
+        return message
+
+    assert _transcript_bodies(asyncio.run(drive())) == []
 
 
 @pytest.mark.parametrize("ingest_first", [False, True])

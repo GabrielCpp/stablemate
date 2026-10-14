@@ -140,3 +140,35 @@ def write_file(base: str, /, rel_path: str, content: str) -> bool:
     except OSError:
         return False
     return True
+
+
+_READ_RANGE_CAP = 4 * 1024 * 1024
+_ACP_SUFFIX = ".acp.jsonl"
+
+
+def read_range(path: str, offset: int, /) -> bytes:
+    """The bytes of one file from ``offset`` to its end (capped per call), or empty when it is missing or unreadable."""
+    try:
+        with open(path, "rb") as handle:
+            handle.seek(offset)
+            return handle.read(_READ_RANGE_CAP)
+    except OSError:
+        return b""
+
+
+def transcript_files(run_dir: str, /) -> dict[str, str]:
+    """Each turn's transcript path by slug: the captured ``<slug>__<session>.acp.jsonl`` when it exists, else the live ``live/<slug>.jsonl``."""
+    if not run_dir:
+        return {}
+    root = Path(run_dir) / "transcripts"
+    found: dict[str, str] = {}
+    try:
+        for path in (root / "live").glob("*.jsonl"):
+            found[path.stem] = str(path)
+        for path in root.glob(f"*{_ACP_SUFFIX}"):
+            slug = path.name.removesuffix(_ACP_SUFFIX).rpartition("__")[0]
+            if slug:
+                found[slug] = str(path)
+    except OSError:
+        return {}
+    return found

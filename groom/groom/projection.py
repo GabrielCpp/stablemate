@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 import time
 from datetime import datetime
@@ -487,6 +488,62 @@ def log_lines(logs: list[dict[str, Any]] | None) -> list[dict[str, Any]]:
     return lines
 
 
+PLAN_MARKS = {"completed": "x", "in_progress": "~"}
+
+
+def _content_text(items: Any) -> str:
+    """The text an ACP tool-call content list carries: text items verbatim, diff items as their path with both sides."""
+    parts = []
+    for item in items if isinstance(items, list) else []:
+        if not isinstance(item, dict):
+            continue
+        if item.get("type") == "diff":
+            parts.append(
+                f"{item.get('path', '')}\n--- old\n{item.get('oldText') or ''}"
+                f"\n+++ new\n{item.get('newText') or ''}"
+            )
+        else:
+            inner = item.get("content")
+            text = inner.get("text") if isinstance(inner, dict) else None
+            if text:
+                parts.append(str(text))
+    return "\n\n".join(parts)
+
+
+def transcript_entry(update: dict[str, Any]) -> dict[str, Any]:
+    """One ACP update as the attendant view's entry shape, so the pane reuses its components."""
+    kind = str(update.get("sessionUpdate") or "")
+    if kind in ("user_message_chunk", "agent_message_chunk", "agent_thought_chunk"):
+        content = update.get("content")
+        text = str(content.get("text") or "") if isinstance(content, dict) else ""
+        role = {
+            "user_message_chunk": "user",
+            "agent_message_chunk": "assistant",
+            "agent_thought_chunk": "thought",
+        }[kind]
+        return {"kind": "message", "role": role, "text": text, "collapsed": role == "user"}
+    if kind == "plan":
+        entries = update.get("entries")
+        rows = [row for row in entries if isinstance(row, dict)] if isinstance(entries, list) else []
+        text = "\n".join(
+            f"- [{PLAN_MARKS.get(str(row.get('status')), ' ')}] {row.get('content', '')}"
+            for row in rows
+        )
+        return {"kind": "message", "role": "plan", "text": text, "collapsed": False}
+    if kind == "truncated":
+        return {"kind": "divider", "label": f"transcript truncated at {update.get('bytes', 0)} bytes"}
+    status = str(update.get("status") or "")
+    raw = update.get("rawInput")
+    return {
+        "kind": "tool",
+        "name": str(update.get("title") or update.get("toolCallId") or "tool call"),
+        "summary": " · ".join(part for part in (str(update.get("kind") or ""), status) if part),
+        "detail": json.dumps(raw, indent=2) if raw else "",
+        "result": _content_text(update.get("content")) or str(update.get("rawOutput") or ""),
+        "failed": status == "failed",
+    }
+
+
 def history_lines(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """History describes timestamped observations, never the run's current state."""
     lines = []
@@ -507,6 +564,14 @@ def history_lines(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
         elif kind == "span":
             duration = fmt_duration(float(row["end_ts"]) - float(row["start_ts"]))
             body = f"{row['name']} · {row['status']} · {duration}"
+        elif kind == "transcript":
+            entry = transcript_entry(row["update"])
+            body = str(entry.get("text") or entry.get("name") or entry.get("label") or "")[:200]
+            lines.append({
+                "ts": fmt_ts(float(row["ts"])), "kind": kind, "level": kind.upper(), "node": node,
+                "body": body, "cls": "", "severity": "", "entry": entry, "key": row.get("key"),
+            })
+            continue
         else:
             body = str(row.get("body") or "")
         lines.append({

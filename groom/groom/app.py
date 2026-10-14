@@ -32,6 +32,7 @@ from groom import (
     dispatch,
     dispatch_ledger,
     docker_io,
+    live_transcript,
     localfs,
     notify,
     otlp,
@@ -117,9 +118,27 @@ async def _push_detail(container_id: str) -> None:
         await state.send(queue, message)
 
 
+def _native_run_dir(wf: WorkflowContainer) -> str:
+    """Where a native run's transcripts live on groom's own host, or empty for a container run."""
+    return wf.runs_volume if wf.native else ""
+
+
+async def _tail_transcript(wf: WorkflowContainer) -> None:
+    """Read the new complete transcript lines of a native run whose pane is open into its history."""
+    run_dir = _native_run_dir(wf)
+    history = state.HISTORIES.get(projection.run_id_of(wf))
+    if not run_dir or history is None or not history.loaded:
+        return
+    async with state.HISTORY_LOCK:
+        await asyncio.to_thread(live_transcript.poll, history, run_dir)
+
+
 async def _push_watched() -> None:
     """Refresh every open detail pane on the clock, for the same reason the run list is re-pushed on one: elapsed labels are derived from ``now``."""
     for run_id in state.watched_ids():
+        wf = state.WORKFLOWS.get(run_id)
+        if wf is not None:
+            await _tail_transcript(wf)
         await _push_detail(run_id)
 
 
@@ -345,6 +364,8 @@ async def _run_facts(wf: WorkflowContainer) -> tuple:
                 history.update_spans(spans)
                 history.logs = logs
                 history.metrics = metric_rows
+                if run_dir := _native_run_dir(wf):
+                    await asyncio.to_thread(live_transcript.poll, history, run_dir)
                 history.loaded = True
             if state.watchers_of(wf.container_id):
                 state.HISTORIES[run_id] = history

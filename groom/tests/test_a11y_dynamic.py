@@ -314,6 +314,58 @@ def test_history_shows_loading_then_stored_spans_without_script_logs():
         page.close()
 
 
+def _write_transcript(run_dir: str) -> None:
+    import json
+
+    live = Path(run_dir) / "transcripts" / "live"
+    live.mkdir(parents=True, exist_ok=True)
+    now = time.time()
+    updates = [
+        {"sessionUpdate": "user_message_chunk", "content": {"type": "text", "text": "PROMPTTEXT"}},
+        {"sessionUpdate": "agent_thought_chunk", "content": {"type": "text", "text": "THOUGHTTEXT"}},
+        {"sessionUpdate": "tool_call", "toolCallId": "t1", "title": "TOOLTITLE", "kind": "read",
+         "status": "completed",
+         "content": [{"type": "content", "content": {"type": "text", "text": "TOOLRESULT"}}]},
+        {"sessionUpdate": "agent_message_chunk", "content": {"type": "text", "text": "MESSAGETEXT"}},
+    ]
+    lines = [
+        json.dumps({"sessionId": "s", "update": update, "_meta": {"ts": now - 10 + n, "node": "implement"}})
+        for n, update in enumerate(updates)
+    ]
+    (live / "001-00001-implement.jsonl").write_text("\n".join(lines) + "\n")
+
+
+def test_the_transcript_filter_is_pressable_by_keyboard_and_remembered():
+    from playwright.sync_api import expect
+
+    from groom import state
+
+    live = _live()
+    assert live is not None, _UNAVAILABLE
+    _write_transcript(state.WORKFLOWS["acme12345678"].runs_volume)
+    page = _open(live)
+    try:
+        page.click("#runs-list .row.blocked")
+        history = page.get_by_role("log", name="Telemetry history")
+        expect(history).to_contain_text("MESSAGETEXT")
+        expect(history).to_contain_text("TOOLTITLE")
+        expect(history.get_by_text("PROMPTTEXT")).not_to_be_visible()
+        history.get_by_text("user", exact=True).click()
+        expect(history.get_by_text("PROMPTTEXT")).to_be_visible()
+        telemetry = page.get_by_role("button", name="Telemetry", exact=True)
+        telemetry.focus()
+        page.keyboard.press("Enter")
+        expect(telemetry).to_have_attribute("aria-pressed", "true")
+        expect(history).not_to_contain_text("MESSAGETEXT")
+        page.get_by_role("button", name="Transcript", exact=True).click()
+        expect(history).to_contain_text("MESSAGETEXT")
+        expect(history).not_to_contain_text("SPAN")
+        assert page.evaluate("() => localStorage.getItem('groom.trailView')") == "transcript"
+        assert not _scan(page)
+    finally:
+        page.close()
+
+
 def test_files_pane_is_accessible():
     _check_mode("files")
 

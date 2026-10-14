@@ -387,3 +387,86 @@ def test_a_host_run_names_the_directory_it_runs_in_as_its_repo():
     assert projection.repo_label(host) == "acme"
     assert projection.repo_label(declared) == "globex@main"
     assert projection.repo_label(container) == "—"
+
+
+def _transcript_row(update: dict, ts: float = 100.0, node: str = "implement") -> dict:
+    return {"kind": "transcript", "ts": ts, "node": node, "parent": "", "slug": "s", "update": update}
+
+
+def _text(kind: str, text: str) -> dict:
+    return {"sessionUpdate": kind, "content": {"type": "text", "text": text}}
+
+
+def test_history_lines_render_the_prompt_as_a_collapsed_user_message():
+    [line] = projection.history_lines([_transcript_row(_text("user_message_chunk", "do it"))])
+    assert line["kind"] == "transcript"
+    assert line["node"] == "implement"
+    assert line["entry"] == {
+        "kind": "message", "role": "user", "text": "do it", "collapsed": True
+    }
+
+
+def test_history_lines_render_agent_messages_and_thoughts():
+    lines = projection.history_lines([
+        _transcript_row(_text("agent_message_chunk", "done")),
+        _transcript_row(_text("agent_thought_chunk", "hmm")),
+    ])
+    assert [(line["entry"]["role"], line["entry"]["text"]) for line in lines] == [
+        ("assistant", "done"), ("thought", "hmm"),
+    ]
+    assert not any(line["entry"]["collapsed"] for line in lines)
+
+
+def test_history_lines_render_a_tool_call_with_its_input_and_result():
+    update = {
+        "sessionUpdate": "tool_call", "toolCallId": "t1", "title": "Read a.py", "kind": "read",
+        "status": "completed", "rawInput": {"file_path": "a.py"},
+        "content": [{"type": "content", "content": {"type": "text", "text": "print(1)"}}],
+    }
+    [line] = projection.history_lines([_transcript_row(update)])
+    entry = line["entry"]
+    assert entry["kind"] == "tool"
+    assert entry["name"] == "Read a.py"
+    assert entry["summary"] == "read · completed"
+    assert entry["failed"] is False
+    assert '"file_path": "a.py"' in entry["detail"]
+    assert entry["result"] == "print(1)"
+
+
+def test_history_lines_mark_a_failed_tool_call():
+    update = {"sessionUpdate": "tool_call_update", "toolCallId": "t1", "status": "failed"}
+    [line] = projection.history_lines([_transcript_row(update)])
+    assert line["entry"]["failed"] is True
+
+
+def test_history_lines_render_a_diff_item_with_path_and_both_texts():
+    update = {
+        "sessionUpdate": "tool_call", "toolCallId": "t1", "title": "Edit a.py", "kind": "edit",
+        "status": "completed",
+        "content": [{"type": "diff", "path": "a.py", "oldText": "x = 1", "newText": "x = 2"}],
+    }
+    [line] = projection.history_lines([_transcript_row(update)])
+    result = line["entry"]["result"]
+    assert "a.py" in result
+    assert "x = 1" in result
+    assert "x = 2" in result
+
+
+def test_history_lines_render_a_plan_as_a_checklist():
+    update = {
+        "sessionUpdate": "plan",
+        "entries": [
+            {"content": "write tests", "priority": "high", "status": "completed"},
+            {"content": "ship", "priority": "low", "status": "pending"},
+        ],
+    }
+    [line] = projection.history_lines([_transcript_row(update)])
+    assert line["entry"]["role"] == "plan"
+    assert line["entry"]["text"] == "- [x] write tests\n- [ ] ship"
+
+
+def test_history_lines_render_a_truncation_marker_as_a_divider():
+    update = {"sessionUpdate": "truncated", "bytes": 99}
+    [line] = projection.history_lines([_transcript_row(update)])
+    assert line["entry"]["kind"] == "divider"
+    assert "99" in line["entry"]["label"]

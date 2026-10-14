@@ -20,7 +20,8 @@ The package behind the `groom` dashboard, its OTLP collector and the in-containe
 - `docker_io.py`: every call to the `docker` CLI: listing, exec, file reads and writes, and diffs inside a volume.
 - `export.py`: writing the turn archive out in the by-node layout distillation reads.
 - `gates.py`: the operator gate file format: its status, its question, and writing an answer into it.
-- `live_history.py`: the history an open run pane holds, advanced by each committed OTLP batch.
+- `live_history.py`: the history an open run pane holds, advanced by each committed OTLP batch and by transcript lines.
+- `live_transcript.py`: tailing a native run's transcript files into an open pane's history, from per-turn byte offsets.
 - `localfs.py`: file, git and process reads for native runs on groom's own host. It is the local twin of `docker_io.py`.
 - `models.py`: the plain records shared across groom: workflow, gate, container and per-run telemetry state.
 - `notify.py`: sending an away notification to the configured phone channels.

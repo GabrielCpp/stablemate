@@ -510,28 +510,77 @@ function Metrics({ metrics }) {
   </div>`;
 }
 
+const TRAIL_VIEWS = [
+  ["all", "All"],
+  ["transcript", "Transcript"],
+  ["telemetry", "Telemetry"],
+];
+
+function storedTrailView() {
+  try {
+    const saved = localStorage.getItem("groom.trailView");
+    return TRAIL_VIEWS.some(([id]) => id === saved) ? saved : "all";
+  } catch (e) {
+    return "all";
+  }
+}
+
+function rememberTrailView(view) {
+  try {
+    localStorage.setItem("groom.trailView", view);
+  } catch (e) {}
+}
+
+function TrailLine({ line }) {
+  if (line.kind === "transcript") {
+    return html`<div class="log-line transcript">
+      <span class="lt-ts" title=${line.ts}>${line.ts}</span>
+      <span class="lt-node">${line.node}</span>
+      <div class="lt-entry"><${AttendEntry} entry=${line.entry} /></div>
+    </div>`;
+  }
+  return html`<div class=${"log-line" + (line.cls ? " " + line.cls : "")}>
+    <span class="lt-ts" title=${line.ts}>${line.ts}</span>
+    <span class="lt-lvl">${line.level}</span>
+    <span class="lt-node">${line.node}</span>
+    <span class="lt-body">${line.body}</span>
+  </div>`;
+}
+
 function LogTrail({ lines }) {
   const [kind, setKind] = useState("");
-  const shown = kind ? lines.filter((line) => line.kind === kind) : lines;
+  const [view, setView] = useState(storedTrailView);
+  const pick = (id) => {
+    setView(id);
+    rememberTrailView(id);
+  };
+  const byView = lines.filter((line) =>
+    view === "all" ? true : (line.kind === "transcript") === (view === "transcript")
+  );
+  const shown = kind && view !== "transcript" ? byView.filter((line) => line.kind === kind) : byView;
   return html`<div>
-    <label class="history-filter">Show
-      <select aria-label="Telemetry history type" value=${kind}
-        onChange=${(event) => setKind(event.currentTarget.value)}>
-        <option value="">All telemetry</option>
-        <option value="log">Log records</option>
-        <option value="span">Completed spans</option>
-        <option value="metric">Metric samples</option>
-      </select>
-    </label>
+    <div class="history-filter">
+      <span class="trail-views" role="group" aria-label="History view">
+        ${TRAIL_VIEWS.map(
+          ([id, label]) => html`<button type="button" class="btn ghost" key=${id}
+            aria-pressed=${String(view === id)} onClick=${() => pick(id)}>${label}</button>`
+        )}
+      </span>
+      ${view === "transcript"
+        ? null
+        : html`<label>Show
+            <select aria-label="Telemetry history type" value=${kind}
+              onChange=${(event) => setKind(event.currentTarget.value)}>
+              <option value="">All telemetry</option>
+              <option value="log">Log records</option>
+              <option value="span">Completed spans</option>
+              <option value="metric">Metric samples</option>
+            </select>
+          </label>`}
+    </div>
     <div class="log-trail" role="log" aria-label="Telemetry history" aria-live="polite">
-      ${shown.length ? shown.map(
-        (line, i) => html`<div class=${"log-line" + (line.cls ? " " + line.cls : "")} key=${i}>
-          <span class="lt-ts" title=${line.ts}>${line.ts}</span>
-          <span class="lt-lvl">${line.level}</span>
-          <span class="lt-node">${line.node}</span>
-          <span class="lt-body">${line.body}</span>
-        </div>`
-      ) : html`<div class="fd-empty">${lines.length
+      ${shown.length ? shown.map((line, i) => html`<${TrailLine} key=${line.key ?? i} line=${line} />`)
+        : html`<div class="fd-empty">${lines.length
         ? "No records of this type in the recent history."
         : "No telemetry history has been received for this run yet."}</div>`}
     </div>
@@ -1049,6 +1098,12 @@ function AttendTool({ entry }) {
 function AttendEntry({ entry }) {
   if (entry.kind === "divider") return html`<div class="at-divider">${entry.label}</div>`;
   if (entry.kind === "tool") return html`<${AttendTool} entry=${entry} />`;
+  if (entry.collapsed) {
+    return html`<details class=${"at-msg " + entry.role}>
+      <summary class="at-role">${entry.role}</summary>
+      <${Markdown} className="at-text" source=${entry.text} />
+    </details>`;
+  }
   return html`<div class=${"at-msg " + (entry.role || "assistant") + (entry.sidechain ? " sidechain" : "")}>
     <span class="at-role">${entry.role || "assistant"}</span>
     <${Markdown} className="at-text" source=${entry.text} />
