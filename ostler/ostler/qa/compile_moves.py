@@ -101,7 +101,7 @@ def move_walks(
         step = FlowStep(move_obligation.node, "", node_type, move_obligation.surface)
         walk = JourneyWalk(replace(book, moves={**book.moves, move_obligation.node: (move,)}), (step,), [carrier],
                            [move_obligation.id], surface_row(navigation, move_obligation.surface))
-        walked = move_walk(walk, start, sinks)
+        walked = move_walk(walk, start, sinks, frozenset(row.name for row in starting.rows))
         if walked is None:
             continue
         emitted.covered.update(walked.covered)
@@ -135,7 +135,7 @@ def state_walks(
         named = _named_fixtures([state.observe], book, available)
         rows = list({(row.name, row.args): row for row in [*arrangement.rows, *named]}.values())
         carrier = replace(state_obligation, fixtures=tuple(rows), checks=())
-        walked = observe_walk([carrier], state, book, sinks)
+        walked = observe_walk([carrier], state, book, sinks, frozenset(row.name for row in arrangement.rows))
         if walked is None:
             continue
         emitted.covered.update(walked.covered)

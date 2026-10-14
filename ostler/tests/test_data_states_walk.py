@@ -281,3 +281,56 @@ def test_a_callers_own_state_read_sends_the_token_of_the_fixture_the_state_arran
 def test_a_callers_own_state_read_keeps_the_gap_when_the_fixture_provides_no_such_fact(tmp_path: Path) -> None:
     planned = _compiled(tmp_path, _own_state_page("issued-bill"))
     assert [gap for gap in planned.gaps if "@someone-else.token" in gap.detail]
+
+
+ROLELESS = "docs/features/acme/fixtures/roleless.md"
+ROLELESS_PAGE = SIGNED_IN_PAGE.replace("Signed in", "Roleless").replace("a token", "a roleless token")
+AS_SIGNED_IN = '- arrange: header(name="Authorization", value="Bearer @signed-in.token")\n'
+
+
+def _own_endpoints(*, move_path: str) -> str:
+    return (ENDPOINTS.replace("- path: /bills/{bill_id}\n- verify", f"- path: /me/bill\n{AS_SIGNED_IN}- verify")
+            + "\n### void-bill\n- method: POST\n" + f"- path: {move_path}\n- arrange: no_body()\n" + AS_SIGNED_IN
+            + VOID_FROM_ISSUED + "- verify: http_status(code=200)\n")
+
+
+CARRIES_SIGNED_IN = PAID + "- fixture: [signed-in](../fixtures/signed-in.md)\n"
+
+
+def _roleless_move(root: Path, *, move_path: str):
+    states = ISSUED + "- fixture: [roleless](../fixtures/roleless.md)\n\n" + CARRIES_SIGNED_IN + "\n" + VOID
+    page = api_page(endpoints=_own_endpoints(move_path=move_path), states=states)
+    return _compiled(root, page, (SIGNED_IN, SIGNED_IN_PAGE), (ROLELESS, ROLELESS_PAGE))
+
+
+def test_a_callers_own_state_read_sends_the_token_of_the_state_fixture_the_endpoint_also_names(tmp_path: Path) -> None:
+    states = ISSUED + "- fixture: [roleless](../fixtures/roleless.md)\n\n" + CARRIES_SIGNED_IN
+    page = void_page(void_moves="- moves: none, because nothing changes\n", states=states).replace(
+        "- path: /bills/{bill_id}\n- verify", f"- path: /me/bill\n{AS_SIGNED_IN}- verify")
+    page = page.replace("- arrange: no_body()\n- verify: http_status(code=200)\n\n### void-bill",
+                        f"- arrange: no_body()\n{AS_SIGNED_IN}- verify: http_status(code=200)\n\n### void-bill")
+    planned = _compiled(tmp_path, page, (SIGNED_IN, SIGNED_IN_PAGE), (ROLELESS, ROLELESS_PAGE))
+    assert isinstance(planned, Plan), [(g.obligation_id, g.detail[:80]) for g in planned.gaps]
+    reads = [line for line in planned.source.splitlines() if "observed = qa.http.get" in line]
+    assert sorted("@roleless.token" in line for line in reads) == [False, True]
+    [roleless] = [line for line in reads if "@roleless.token" in line]
+    assert "@signed-in.token" not in roleless
+
+
+def test_a_callers_own_move_sends_the_token_of_the_starting_state_fixture(tmp_path: Path) -> None:
+    planned = _roleless_move(tmp_path, move_path="/me/void")
+    assert isinstance(planned, Plan), [(g.obligation_id, g.detail[:80]) for g in planned.gaps]
+    requests = [line for line in planned.source.splitlines()
+                if "before_move = qa.http" in line or "observed_1 = qa.http.post(\"/me/void\"" in line
+                or "moved_" in line and "qa.http" in line]
+    assert len(requests) == 3
+    assert all("@roleless.token" in line and "@signed-in.token" not in line for line in requests)
+    assert not [gap for gap in planned.gaps if gap.kind == "unresolved-precondition"]
+
+
+def test_a_move_on_a_path_variable_record_keeps_the_endpoints_own_token(tmp_path: Path) -> None:
+    planned = _roleless_move(tmp_path, move_path="/bills/{bill_id}/void")
+    assert isinstance(planned, Plan)
+    posts = [line for line in planned.source.splitlines() if "qa.http.post" in line and "void" in line]
+    assert posts
+    assert all("@signed-in.token" in line and "@roleless.token" not in line for line in posts)
