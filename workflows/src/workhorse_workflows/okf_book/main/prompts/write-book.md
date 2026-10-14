@@ -63,8 +63,19 @@ gives relative to the repository starts there.
   stopped doing it. One check pinned under several claims of a node proves none of them.
 {% if kind not in ("cli", "http") %}
 - An element that appears only after an act, such as a dialog, a badge or a banner, is checked
-  under the `does:` of the interaction that performs the act, or a fixture arranges the state
-  first. A check on such an element at the screen level fails on the bare screen.
+  under the `does:` of the interaction that performs the act, by a state the flow stops at after
+  the act, or a fixture arranges the state first. A check on such an element at the screen level
+  fails on the bare screen.
+- Every screen says how it settles, as the skill's screen and state references show. Its
+  `requests:` lists each `METHOD /path` the page sends to the app's servers on arrival, the
+  shell's own requests on a route change included, such as a session check. Its `busy:` names
+  the element shown while it loads. Its `## Screen states` name each look it settles in, such as
+  loaded, empty, error or disabled, by the elements each shows. Every element a state, a busy
+  sign or a passage uses is found by its role and the literal label the page shows. A flow names
+  the state the screen settles in after each act, and a run of acts several flows share is a
+  passage the flows link. A passage lists under its own `requests:` each request its acts send.
+  A web stop after a passage fails on a request to the app's servers that nobody declared, and
+  the failure names it. Never write a duration. The walk waits for what the page declares.
 {% endif %}
 - A fixture changes only what it creates. People and other books share this stack, so a
   fixture that edits a seeded account, record or setting breaks whoever uses it next, and
