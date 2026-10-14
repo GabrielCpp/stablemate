@@ -122,7 +122,9 @@ merely misplaced. Fix it by promoting `status:`/`errors:` to top-level bullets o
 if `same-as:` is used, `same-as-disagreement` if a `same-as:` family disagrees about a shared
 normative key, `misbound-status-check`, `misnested-bullet` if a child spelled like a declared
 bullet key is buried under a key `invocation` does not declare (`response:`, most commonly),
-`precondition-discharged-by-arrangement` (a check-less `when:`, from `qa compile-plan`).
+`precondition-discharged-by-arrangement` (a check-less `when:`, from `qa compile-plan`),
+`status-only-outcome` on an outcome whose only check is `http_status`, `unstated-move` on a
+succeeding invocation of a `POST`, `PUT`, `PATCH` or `DELETE` route that names no `moves:`.
 See [../doctor-codes.md](../doctor-codes.md).
 
 ## When bullets are not enough

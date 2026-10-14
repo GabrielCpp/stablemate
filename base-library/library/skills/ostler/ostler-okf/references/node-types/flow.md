@@ -122,10 +122,30 @@ needs that fixture on the flow's own `fixture:` row, because a flow runs only th
 names. A flow with `fixture: none` sends no credential, so a route that refuses an anonymous
 caller answers 401 on every walk.
 
-Every step before the last must succeed. A step that answers 4xx or 5xx stops the walk, and the
-flow's checks never run. Each `verify:` on a flow observes the one response its last step got,
-so a flow checks one outcome. A refusal such as 401 or 403 is a claim on the endpoint's
-`errors:`, not a second `end:` of the flow.
+Each step expects exactly one outcome, and its link names it. A step that links an endpoint
+expects its success outcome. A step that links a named case, such as an invocation with its own
+`when:` and `errors:`, expects that case. The walk goes on after it, even when the case is a
+refusal. The walk checks each response in full where it arrives: every `verify:` of the outcome the step
+expects runs before the next request is sent. So a middle step that answers the wrong body fails
+the walk at that step and names the outcome. A step whose link names a node with more than one
+outcome compiles nothing, because the walk cannot tell which one it expects.
+
+A step names what it performs and states nothing about the result. A sentence after the link,
+such as "returns the stored bill", is a claim no check binds to, and `ostler doctor` raises
+`step-claim`. Write it as a `does:` or `verify:` on the node the step links, where every walk
+that takes the step checks it.
+
+Each `verify:` on a flow observes the response its last step got. A refusal the walk expects is a
+step that links the refusal case, never an `http_status` 4xx on the flow: the compiler refuses
+that flow as `uncompilable-claim`.
+
+A step whose node `moves:` a record is read back. After the response, the walk reads the record
+through the target [data state](data-state.md)'s `observe:` endpoint and runs that state's
+checks, so a pay route that answers 200 and leaves the bill issued fails at the pay step. A step
+that links a case whose `when:` names a data state needs the walk to hold the record in that
+state there, from a `fixture:` of the flow or an earlier step's move, or doctor raises
+`unheld-condition`. A run of requests several flows share is a passage on the server page, and a
+step links it like a screen passage.
 
 **A journey whose steps cross targets is legal, and today it compiles to nothing.** A step's
 target is its node type paired with the `driver:` of the surface it lives on, so a flow that
@@ -192,7 +212,8 @@ acts on it, as [fixture.md](fixture.md#signing-a-browser-in) shows.
 `unresolved-relation` on a `steps:` child, `undeclared-obligation` when `start:`/`end:` are
 stated with no check, `unarranged-journey` when the flow neither arranges a world nor says it
 needs none, `broken-joint` and `unarranged-stop` on its stops and passages, `unsettled-act` on an act with no stop
-after it, `weak-check`, `compound-normative-bullet`, `overlong-normative-bullet`. See [../doctor-codes.md](../doctor-codes.md).
+after it, `step-claim` on words beside a step's link, `unheld-condition` on a case or a stop whose
+data state the walk does not hold, `weak-check`, `compound-normative-bullet`, `overlong-normative-bullet`. See [../doctor-codes.md](../doctor-codes.md).
 
 ## When bullets are not enough
 

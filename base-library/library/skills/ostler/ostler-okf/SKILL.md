@@ -93,7 +93,8 @@ reference — the authority wherever this page and it disagree.
 | **root** — where a service's book starts | | | | [`entries`](references/node-types/entries.md) |
 | **surface** — you interact with it | [`screen`](references/node-types/screen.md) | [`cli`](references/node-types/cli.md) | [`server`](references/node-types/server.md) | |
 | **element** — part of a surface | [`component`](references/node-types/component.md) | [`command`](references/node-types/command.md) | [`endpoint`](references/node-types/endpoint.md) | |
-| **look** — a screen settled, and the passage between two | [`state`](references/node-types/state.md), [`passage`](references/node-types/passage.md) | | | |
+| **look** — a screen settled, and the passage between two | [`state`](references/node-types/state.md), [`passage`](references/node-types/passage.md) | | [`passage`](references/node-types/passage.md) | |
+| **situation** — a record the system keeps, as a walk reads it back | | [`data-state`](references/node-types/data-state.md) | [`data-state`](references/node-types/data-state.md) | |
 | **behaviour** — one event or call | [`interaction`](references/node-types/interaction.md) | [`invocation`](references/node-types/invocation.md) | [`invocation`](references/node-types/invocation.md) | |
 | **member** — of a concept or format | | | | [`method`](references/node-types/method.md), [`field`](references/node-types/field.md) |
 | **journey** — an ordered path | | | | [`flow`](references/node-types/flow.md) |
@@ -134,7 +135,7 @@ identified by `path#anchor`. A section gets its type two ways — whichever read
 - **container heading** — a `### <id>` under a typed `## Heading`: `## Components`→`component`,
   `## Commands`→`command`, `## Endpoints`→`endpoint`, `## Interactions`→`interaction`,
   `## Invocations`→`invocation`, `## Methods`→`method`, `## Fields`→`field`,
-  `## Screen states`→`state`, `## Passages`→`passage`.
+  `## Screen states`→`state`, `## Passages`→`passage`, `## Data states`→`data-state`.
 - **inline `type:` prefix** — `## concept: the agent node runs a turn`, `### field: timeout` —
   the token before the first `:` is the type, the rest is a human summary.
 
@@ -212,6 +213,16 @@ the components that show: see [state.md](references/node-types/state.md). A flow
 it expects after each act, so a walk checks the screen between acts and not only at its end. A
 run of acts several flows share is a [passage](references/node-types/passage.md) between two
 states. No page names a duration: one ceiling, set once for the app, bounds every wait.
+
+**Every server says what it keeps.** Under `## Data states` a server page names each situation a
+record can be in, such as a bill that is issued or paid, with the endpoint that reads it back and
+the checks that tell it from its siblings: see [data-state.md](references/node-types/data-state.md).
+Each `POST`, `PUT`, `PATCH` or `DELETE` route says what it `moves:`, or `moves: none, because ...`.
+A case that applies only in one situation links it from `when:`, and so does a screen state that
+shows only then. An interaction names the route it calls with `sends:`. A walk then reads the
+record back after each move, and doctor refuses a step whose situation the walk does not hold.
+Each outcome checks more than its status code, and a flow step is its link alone: the result
+it expects belongs on the node it links.
 
 **Every structural component says where it sits** — a `placement:` bullet of viewport bands, and
 it is the only bullet that can tell a correct page from one crushed into a narrow column, since

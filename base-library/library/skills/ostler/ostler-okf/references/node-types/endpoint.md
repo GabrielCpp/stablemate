@@ -45,6 +45,10 @@ touches. The okf-book run does this itself before the next lap.
 
 A `moves:` row says which data state a record leaves and which it lands on when this route succeeds. Write it one of three ways: `- moves: [Bill issued](../server.md#bill-issued) to [Bill paid](../server.md#bill-paid)`, `- moves: to [Account complete](../server.md#account-complete)` when the record lands there from any sibling state, or `- moves: none, because <reason>` when the route changes nothing. A route that moves several records carries one row per lifecycle. Both links of a row name [`data-state`](data-state.md) sections with the same `of:`. After the step runs in a walk, the walk reads the record back through the target state's `observe:` endpoint and runs that state's `verify:` rows. The step fails there when the target state does not hold, and the failure names the sibling state that does.
 
+A `POST`, `PUT`, `PATCH` or `DELETE` route changes what the server keeps, so it carries a `moves:` row, or `none, because ...` when it changes nothing a walk could read back, such as a route that only validates. A route with neither trips `unstated-move`.
+
+Each outcome checks more than its status code: the success outcome taken as one, and each refusal status under `errors:`. A walk runs every check of the outcome a step expects, so an outcome whose only check is `http_status` lets a wrong body pass, and doctor raises `status-only-outcome`. A 204, a 304 and a `HEAD` route are exempt, since they answer with no body.
+
 `emits:`/`consumes:` carry no `normative` flag of their own here — they are normative because
 the [shared set](../bullet-grammar.md#keys-that-are-normative-on-every-type) makes them so on
 every type. The effect is the same: one obligation per value.
@@ -283,7 +287,8 @@ no scenario is compiled for it.
 `dangling-code-ref`,
 `missing-code-symbol`, `unknown-book-fixture`, `unarranged-request-body`,
 `unarrangeable-server-fault`, `deletes-shared-fixture`, `invalid-http-method`, `misnested-bullet`, `unarranged-scenario`,
-`misbound-status-check`, `endpoint-without-server`, `unlisted-endpoint`, `inline-endpoint`. See
+`misbound-status-check`, `endpoint-without-server`, `unlisted-endpoint`, `inline-endpoint`, `status-only-outcome`,
+`unstated-move`, `moves-shape`. See
 [../doctor-codes.md](../doctor-codes.md).
 
 ## When bullets are not enough

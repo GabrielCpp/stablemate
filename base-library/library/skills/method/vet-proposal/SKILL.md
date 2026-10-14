@@ -1,6 +1,6 @@
 ---
 name: vet-proposal
-description: "Judging whether a proposed change deserves to exist, when it is already defensible on its own terms: goal-fit and design-fit asked as separate passes, a beneficiary named, a new carrier traced back to the variable it stands for, and a cited constraint priced instead of treated as a veto. Load when extending a plan to reach a goal, filtering proposed improvements, deciding what an agent may add on its own, about to reject a proposal by citing something the code already does, or about to add a flag, field, key, kind or state to a format. Reads the project's constitution if it has one, and escalates a conflict it does not rank. For judging whether a fix reaches a defect's origin, load root-cause."
+description: "Judging whether a proposed change deserves to exist, when it is already defensible on its own terms: goal-fit and design-fit asked as separate passes, a beneficiary named, a new carrier traced back to the variable it stands for, and a cited constraint priced instead of treated as a veto. Load when extending a plan to reach a goal, filtering proposed improvements, deciding what an agent may add on its own, about to reject a proposal by citing something the code already does, about to add a flag, field, key, kind or state to a format, or about to limit a new rule to the kind where its first example sat. Reads the project's constitution if it has one, and escalates a conflict it does not rank. For judging whether a fix reaches a defect's origin, load root-cause."
 tags: [standards, review]
 ---
 
@@ -64,7 +64,7 @@ anything.
 ## 3. Design-fit
 
 Does the *shape* of this change belong in the product? A proposal often passes section 2 and
-fails here, because it reaches the goal through a surface nobody would choose. Ask four
+fails here, because it reaches the goal through a surface nobody would choose. Ask five
 questions. Asserting that the change is reasonable answers none of them.
 
 ### Who benefits, and who pays?
@@ -92,6 +92,34 @@ level, and stop there. That is the whole finding, and the fix follows from it.
 A proposal that reads as a list of repairs to something that already exists skipped this
 question. The length of that list measures the accidental complexity of the wrong carrier. It
 does not measure the problem.
+
+### How far does the rule reach?
+
+This question fires on every proposal that adds a rule to a format: a carrier, a check, a
+required section, a naming policy. A format has kinds, such as its node types, page types or
+targets. A rule found on one kind tends to stay on that kind, because the example it was found
+on sets its edge. The format then grows one special shape per kind, and every rule reads as
+an exception.
+
+Answer in this order:
+
+> Why does the rule exist, stated against the goal, with no example in the sentence? Which
+> kinds does the format have? For each kind, does that reason hold?
+
+The reason names what the goal asks of a kind, never the mechanism that delivers it. Where a
+mechanism cannot reach a kind, the design names another mechanism for that kind or files a gap
+there. The kind stays in.
+
+The rule reaches every kind where the reason holds. An exclusion cites the goal, by naming
+what the goal does not ask of that kind. A drop is an exclusion of every kind and owes the
+same answer. Two reasons never exclude a kind:
+
+- **No instance today.** A format is a contract every future item is written against. Today's
+  items show what was written, not what the goal asks for. "Nothing uses it yet" is a reason
+  to leave code unbuilt. It is no reason to narrow a rule in a format.
+- **A collision with existing content.** An existing item the rule would change is migration
+  work, and the next question prices it. A rule renamed or carved out to dodge that work
+  leaves the carve-out in the format for good.
 
 ### If the constraint were not there, what would you propose?
 
@@ -160,6 +188,9 @@ Five kinds of record are malformed. Send each back for restatement before arguin
 - a constraint cited with no price,
 - internal consistency as the whole argument,
 - a new carrier with no variable named behind it,
+- a rule that leaves out a kind its own reason reaches, or excludes one by a count of today's
+  items, by a collision with them or by what its mechanism cannot reach,
+- a **drop** of a format rule with no reach answer,
 - a **keep** that answers none of the section 3 questions. Approval is a judgement too, and it
   is the one that gets waved through.
 
@@ -186,6 +217,7 @@ One record per proposal, in the order given:
   goal-fit:    pass | fail: <one line>
   beneficiary: <stakeholder> (paid for by <stakeholder>)
   carrier:     <the variable> has <n> values, varies per <level>   [omit if none added]
+  reach:       <reason> holds for <kinds>; excludes <kind> by <goal clause>   [omit if no rule added]
   price:       <constraint cited> costs <what changing it takes>   [omit if none cited]
   restriction: <what the product could refuse> removes <the cases>  [omit if none]
   verdict:     keep | reshape → <shape> | drop | escalate
