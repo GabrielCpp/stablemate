@@ -15,6 +15,19 @@ acts on a screen that has not finished loading. Each walk also restates how to r
 recognise the screens it shares with every other walk, so one screen change means editing many
 walks.
 
+The owner of an API or a command-line tool has the same gap (added, R13). A walk over HTTP sends
+each request and asks only that it did not fail, then checks one field of the last response. A
+middle response can carry the wrong body and the walk passes. A refusal the app owes, such as the
+404 that hides another user's bill, can never be walked, because any 4xx stops the walk. Step
+text states what each response holds, and nothing checks it. Request chains that several walks
+share are restated in each.
+
+Behind both sits the data the server keeps (added, R15). A bill is a draft, then issued, then
+paid. An account is under its quota or has used it. No page says which situations a record can
+be in or which requests move it between them. A condition such as "the quota is used" is
+restated as prose on every route it changes, and a walk that pays a bill checks the payment's
+response, never that the bill is now paid.
+
 **Done looks like.**
 
 - Each screen a walk passes through is checked in full, at that point, before the next action.
@@ -31,6 +44,19 @@ walks.
 - A screen's states and the moves out of them are written once, on the screen's page. Changing
   a screen edits that page, and every walk through it picks the change up.
 - Every state a screen page declares is checked by at least one walk.
+- Over HTTP and on a command line, each response or command result is checked against everything
+  its endpoint or command declares for that outcome, before the next step. In the client API
+  book's billing walk, that moves from one check across five responses to every check the five
+  routes declare. (added, R13)
+- A walk can expect a refusal at a step, check it and go on. (added, R13)
+- A run of steps several walks share is written once, as a passage, on any surface. (added, R13)
+- The server page lists every situation each kind of record it keeps can be in, how a caller
+  observes it and how to arrange it. Each route and job says which of them it moves a record
+  between. After a step that moves a record, the walk reads the record back and checks where it
+  landed. (added, R15)
+- A condition a route or a screen depends on, such as a used quota, is defined once and linked,
+  and the validator knows whether a walk holds it before the step that needs it. (added, R15)
+- Every declared situation and every move is walked at least once. (added, R15)
 
 **Out of scope.**
 
@@ -38,8 +64,6 @@ walks.
   this note only gives them a place to write it.
 - Speed budgets beyond one ceiling per app. How fast a screen should be is a separate question.
 - Pixel or layout checks.
-- Walks on a command line or over plain HTTP. They have no screens, and a response already marks
-  the end of each step.
 - Moving existing books to the new shape by hand. The book workflow does that on its next run.
 
 ## 1b. Claims
@@ -58,6 +82,11 @@ From the request:
     labels. (review, R9)
 15. A walk acts on an element by its accessible name, and a button's accessible name is its
     label. (review, R11)
+16. On an API walk, the gap is not only repeated steps. It is the strength of the assertion, and
+    asserting on failure as well. (review, R13)
+17. Passages are available for every book type, not only screens. (review, R13)
+18. The server explains the underlying state it manages and how the API moves it. (review,
+    R15)
 
 From the existing system, read before this note:
 
@@ -94,10 +123,16 @@ From the existing system, read before this note:
    book.
 5. **The tally.** It reports which declared states and moves no walk reaches, and it builds a
    one-screen walk for each such state. It never knows how a walk runs.
+6. **The system's own state.** The kinds of record the server or the tool keeps, the situations
+   each can be in, how a caller observes and arranges each one, and which requests and jobs move
+   a record between them. It hands this to the screen's account, which names the situations a
+   screen state depends on, and to the walk builder, which tracks and checks them. It never knows
+   screens or walks. (added, R15)
 
-Flow between the parts: when the book is written, the screen's account and the itinerary are
-fixed. When QA compiles, the builder reads both and emits walks for the app's device, and the
-tally adds one-screen walks for unreached states and counts what every walk is built to pass.
+Flow between the parts: when the book is written, the system's own state, the screen's account
+and the itinerary are fixed. When QA compiles, the builder reads all three and emits walks for
+the app's device, and the tally adds one-screen and one-move walks for unreached states and
+moves, and counts what every walk is built to pass.
 When QA runs, the runner performs each walk, and a walk that fails stops counting for the states
 after the failure.
 
@@ -123,16 +158,25 @@ style class, a markup structure or a test id (added, R9; revised, R11).
 | Screen request | One request the screen sends, named by method and address, and the moment it goes: on arrival or during a passage | what the answer must contain, which belongs to the request's own page |
 | Busy sign | The perceivable mark that the screen is not settled, such as a progress indicator, an element marked busy, or a control disabled while it sends | which requests cause it |
 | Screen state | The set of perceivables that identify one settled look of the screen, built from the states of the components it holds (R4, R9) | how the screen got there |
-| State condition | What must be true for the screen to settle in one state, by reference to the world's named facts, the screen's own entry requirements, or how a request answers (R3) | the perceivables of the state |
-| Passage | One ordered run of interactions on this screen, from one of its states to a target state on this screen or another, with the requests it sends (renamed from Fragment, R1) | the walks that use it |
+| State condition | What must be true for the screen to settle in one state, by reference to the world's named facts, the screen's own entry requirements, how a request answers, or a data state (R3; revised, R15) | the perceivables of the state |
+| Passage | One ordered run of steps on one surface, written once on that surface's page, that several walks take. On a screen it leaves one of the screen's states and lands on a state of this screen or another, with the requests it sends. Over HTTP or on a command line, each of its steps is a stop of its own (renamed from Fragment, R1; revised, R13) | the walks that use it |
 | Way in | How a person reaches the screen from a known start: its address, or the moves that lead to it (added, R5) | the states it settles in |
+
+**Part 1 over HTTP and on a command line** (added, R13). The surface's account is the server or
+the command-line tool page, and the pages of its endpoints, commands and invocations.
+
+| Concept | Owns | Never knows |
+|---|---|---|
+| Outcome | One declared result of a route or a command: its code and every check that judges the body, the headers, the output or the files. The success outcome is every arm that answers 2xx or exits 0. A refusal, or a result that holds only under a condition, is a named case of its own that a walk can link, with its condition stated as a data state where one applies (revised, R14, R15) | which walks expect it |
+| Outcome request | What a step sends to reach one outcome: the arm's body, headers, query string or argument list | the checks of the outcome |
 
 **Part 2: the walk's itinerary**
 
 | Concept | Owns | Never knows |
 |---|---|---|
 | Itinerary | The ordered stops of one walk and the claim it ends on | how a stop is recognised |
-| Stop | A reference to one screen state the walk must pass, and the passage that leaves it | the state's perceivables and waits |
+| Stop | A reference to one screen state the walk must pass, and the passage that leaves it. Over HTTP or on a command line, every step is a stop at the outcome it expects (revised, R13) | the state's perceivables and waits |
+| Expectation | Which outcome of the performed route or command one step expects. The step's link is the expectation: a route or command expects its success outcome, a named case expects that case (added, R13; revised, R14) | the outcome's checks |
 | World | The arranged starting data and its named facts, by reference to fixtures | the screens |
 
 World is a read-only catalog every part consults. It is the existing fixture, not a new concept.
@@ -144,8 +188,10 @@ World is a read-only catalog every part consults. It is the existing fixture, no
 | Walk | The ordered sequence of act, wait and check steps for one itinerary | the driver calls behind each step |
 | Settle wait | The wait for one arrival: the requests the screen or the passage sent have answered, then the busy sign is gone, then one declared state holds, all within the responsiveness ceiling (revised, R8, R10) | which state the stop expects |
 | Responsiveness ceiling | The one longest time any screen of the app may take to settle, set once for the app (added, R10) | which wait it bounds |
-| Joint | Rejecting a stop whose passage does not leave from it, or does not land on the next stop's state | the world |
-| Condition match | Rejecting a stop whose state condition the walk's world does not arrange | the perceivables |
+| Joint | Rejecting a stop whose passage does not leave from it, or does not land on the next stop's state. Over HTTP or on a command line, rejecting a passage taken before the walk holds a value one of its steps sends and none of its steps captures (revised, R13) | the world |
+| Condition match | Rejecting a stop whose state condition, or a step whose case condition, the walk does not hold at that point (revised, R15) | the perceivables |
+| State ledger | The data states the walk holds after each step: those its fixtures arrange, then each step's moves applied in order, per record (added, R15) | how a state is observed |
+| Move check | After a step whose outcome moves a record, reading the record back through the target state's observation (added, R15) | why the step was taken |
 
 **Part 4: the runner**
 
@@ -158,6 +204,7 @@ World is a read-only catalog every part consults. It is the existing fixture, no
 | Busy watch | Knowing when the busy sign is gone | the requests |
 | State watch | Knowing when one of the screen's declared states holds, and which one (added, R8) | which state the stop expects |
 | State check | Judging, once, that the state the screen settled in is the one the stop expects (revised, R8) | how the screen was reached |
+| Outcome check | Judging, once, that a response or a command result meets every check of the outcome its step expects (added, R13) | the steps around it |
 
 **Part 4, level 3: variants**
 
@@ -165,6 +212,8 @@ World is a read-only catalog every part consults. It is the existing fixture, no
 |---|---|---|---|
 | Browser driver | Screen reader, Actor, Request feed | A web app in a browser page, read through the page's accessibility tree | the device |
 | Device driver | Screen reader, Actor | A mobile app on a device, read through its accessibility hierarchy | the browser |
+| HTTP client | Actor | Sending one outcome request and keeping the response for the outcome check (added, R13) | screens |
+| Command runner | Actor | Running one argument list and keeping its exit code, output and the files it touched (added, R13) | screens |
 
 The choice of variant belongs to QA compile, which knows the surface the book's app runs on. A
 device driver offers no request feed, so a mobile settle wait is the busy sign and the declared
@@ -177,11 +226,24 @@ states (A4).
 | Visit record | Which screen states and passages one walk is built to pass (revised, R6) | how the walk was built |
 | Gap | A declared state or passage that no walk reaches | why it was missed |
 | One-screen walk | A walk that arranges one state's condition, takes the screen's way in, settles and checks that state | the itineraries |
+| One-move walk | A walk that arranges a move's starting data state, performs the move and checks the state it lands on (added, R15) | the itineraries |
+
+**Part 6: the system's own state** (added, R15)
+
+| Concept | Owns | Never knows |
+|---|---|---|
+| Lifecycle | One kind of record the system keeps, such as a bill or an account's quota, and the rule that a record is in exactly one of its data states at a time | the routes that change it |
+| Data state | One named situation a record of one lifecycle can be in, such as a bill that is paid | the screens that show it |
+| Observation | How a caller tells a record is in one data state: one read and the checks on its result that its sibling states fail | how the record got there |
+| Arrangement | The fixture that puts a record in one data state before a walk starts | the observation |
+| Move | One outcome or machine-driven action taking a record of one lifecycle from one data state to another, or into its first state | the walks that take it |
 
 ## 3. Invariants
 
 1. **Consecutive stops are joined.** The passage that leaves a stop starts at that stop's state
-   and lands on the next stop's state. Owner: Joint.
+   and lands on the next stop's state. Over HTTP or on a command line, a passage starts where the
+   walk holds every value its steps send and do not capture themselves, from an earlier capture or
+   from a fixture the flow names. Owner: Joint. (revised, R13)
 2. **A check follows its settle.** Every state check in a walk comes after the settle wait for
    that arrival. Owner: Walk. The builder upholds it during construction.
 3. **Waits end on events, under one ceiling.** Each wait in a walk ends on an event of the
@@ -190,8 +252,10 @@ states (A4).
    still pending. No book page names any other duration, and no check polls against one. Owner:
    Settle wait. (revised, R7, R8, R10)
 4. **One definition per state.** A walk checks a screen state only through that state's own
-   perceivables. An itinerary carries no observation of its own except its end claim. Owner:
-   Itinerary.
+   perceivables, and an outcome only through its own checks. An itinerary carries no observation
+   of its own except its end claim. A step names what it performs and the outcome it expects, and
+   states nothing about the result. A sentence about what a response holds goes on the arm it
+   describes, where a check binds to it. Owner: Itinerary. (revised, R13)
 5. **A busy sign is never a state.** No screen state lists its own screen's busy sign as a
    perceivable that must be present. A transient look is awaited until it goes, never checked
    while it shows. Owner: Screen state.
@@ -217,6 +281,34 @@ states (A4).
     screen, other than typing into a field, is followed by a stop: a state or a passage. A flow
     whose first act leaves a screen it never stopped at is a finding too. Owner: Walk's
     itinerary. (added, R12)
+13. **Every response is checked in full where it arrives.** Over HTTP or on a command line, each
+    step's result meets every check of the outcome the step expects before the next step is
+    sent. Owner: Outcome check. The builder upholds it during construction. (added, R13)
+14. **A step expects exactly one outcome.** The step's link is the expectation. A step that
+    links a route or a command expects its success outcome. A step that links a named case, such
+    as an invocation with its own `when:` and `errors:`, expects that case, and the walk goes on
+    after it, refusal or not. A step whose link names more than one outcome is a finding on the
+    flow. Owner: Expectation. (added, R13; revised, R14)
+15. **An outcome checks more than its code.** Every outcome that answers with a body, and every
+    command outcome that writes output or files, checks more than its status code or exit code.
+    One that checks only its code is a finding on its page, whether or not a walk reaches it. An
+    outcome with no body, such as 204, 304 or a `HEAD`, and a command that writes nothing, are
+    exempt. Owner: Outcome. (added, R13; revised, R14)
+16. **A lifecycle's states are told apart.** Each data state's observation fails for every
+    sibling state of its lifecycle, so a read never matches two. Owner: Lifecycle. (added, R15)
+17. **A move is read back.** After a step whose outcome moves a record, the walk reads the record
+    through the target state's observation before the next step is sent. A pay route that
+    answers 200 and leaves the bill issued fails the walk at that step and names the state the
+    bill is in. Owner: Move check. The builder upholds it during construction. (added, R15)
+18. **A condition the walk relies on, the walk holds.** A step whose expected case names a data
+    state in its `when:`, and a stop whose state condition names one, needs the state ledger to
+    hold that state for that record at that point. Owner: Condition match. (added, R15)
+19. **Every data state and every move is walked.** Each data state is reached and observed by at
+    least one walk, and each move is taken by at least one, either from an itinerary or as a
+    one-move walk. Owner: Gap. (added, R15)
+20. **A request that changes data says what it moves.** An outcome of a route or a command that
+    changes what the system keeps names its moves, or says it moves none with a reason. One that
+    states neither is a finding on its page. Owner: Move. (added, R15)
 
 ## 4. Forces and patterns
 
@@ -231,6 +323,12 @@ states (A4).
 - F6. Walks grow over time while screens get renamed, restyled and reshaped.
 - F7. The same book format serves web and mobile apps, and the two devices expose different
   things: a browser shows its requests, a device does not. (added, R9)
+- F8. A route or a command already declares each of its results with the request that reaches
+  it and the checks that judge it, and those run alone in the route's own arranged world. A walk
+  reaches the same results in a world its earlier steps built, which differs. (added, R13)
+- F9. The data a server or a tool keeps changes only through its routes, commands and jobs. Many
+  routes, screens and walks depend on the same few situations of that data, such as a bill that
+  is paid or a quota that is used up, and each writes them from its own side today. (added, R15)
 
 ### Between parts
 
@@ -260,6 +358,23 @@ states (A4).
   state no itinerary reaches costs the writer nothing extra.
 - Stable ids on states and passages (F6). A rename that breaks an itinerary is a Joint failure,
   not a silent skip.
+- Outcome: catalog by reference over what the route or command page already declares (F1, F8).
+  A walk names an outcome and never restates its checks, the same way it names a screen state.
+- Outcome check: the outcome's own checks, read against the step's response instead of a
+  standalone one (F8). It is a plain function. HTTP client and Command runner are two more
+  variants of Actor, chosen where QA compiles, as the drivers are.
+- Expectation: no value of its own. It is the step's link, which already names one node (F4). A
+  refusal a walk expects is a named case on the route's page, so the walk links it like any
+  other, and the case stays the one place its request and its checks are written. (revised, R14)
+- Data state, Lifecycle, Observation, Arrangement and Move: catalog by reference on the server
+  or command-line page (F9, F5). A route's case, a screen's state condition and a walk all link
+  the one data state, and none restates how it is observed.
+- State ledger: derived, never written (F4, F9). The builder folds each step's declared moves
+  over the fixtures' arranged states, so a writer names no state between steps.
+- Move check: derived, the read-back after a move (F9). It is the target state's observation
+  sent as one more step, so a route that answers well and changes nothing fails where it ran.
+- One-move walk: generated from a move, its starting state's arrangement and the target's
+  observation (F4, F9), as a one-screen walk is from a state.
 
 ### Claims
 
@@ -271,7 +386,8 @@ states (A4).
 5. Re-derived from F1 as Screen state.
 6. Re-derived from F1 and F4 as Itinerary and Stop.
 7. Rejected for screen walks: each stop is checked. The end claim stays. The start is checked
-   first (invariant 8).
+   first (invariant 8). Rejected for HTTP and command-line walks too: each step is checked where
+   it arrives (invariant 13), and the end claim still reads the last result. (revised, R13)
 8. Reshaped: a step that names a screen state now adds a stop, and the stop is checked.
 9. Kept for components: a screen state is built from component states. `does:` stays prose, and
    a passage names its target state as data beside it. (revised, R1, R4)
@@ -283,6 +399,14 @@ states (A4).
 14. Re-derived from F6 and F7 as Perceivable and invariant 10.
 15. Re-derived from F6 and F7: a passage acts through the same Perceivable it checks with, so a
     restyle breaks neither half of a walk.
+16. Re-derived from F8 as Outcome, Expectation and Outcome check, with invariants 13 to 15. Every
+    response is checked in full, and a refusal is a stop like any other.
+17. Re-derived from F1 as Passage on every surface. A server page and a command-line page hold
+    passages under the same section a screen does. Over HTTP the joint is the values the walk
+    holds, not a state (invariant 1).
+18. Re-derived from F9 as part 6, with invariants 16 to 20. The server names each situation its
+    data can be in once, with how to see and arrange it, and each route's case names the move it
+    makes. Walks check every move where it happens, and the tally walks every state and move.
 
 ### SOLID
 
@@ -290,9 +414,11 @@ states (A4).
   three watches under one ceiling, and it does not perform them.
 - Open/closed: a new state, request or passage is a new entry on one screen page, and no
   itinerary changes. A new device is one variant and one line where QA compile chooses.
-- Liskov substitution: each driver plays its roles only and extends no other driver.
+- Liskov substitution: each driver plays its roles only and extends no other driver. The HTTP
+  client and the command runner play Actor only, and offer no screen reader.
 - Interface segregation: Screen reader, Actor and Request feed are separate roles, so the device
-  driver is never asked for a request feed it cannot give.
+  driver is never asked for a request feed it cannot give. A data state offers its observation
+  and its arrangement, and a screen state that depends on it reads neither.
 - Dependency inversion: the watches and the check know the roles, never a driver.
 
 ### Open lookups
@@ -335,6 +461,24 @@ L1 to L6 are resolved in section 5.
 - R12. Invariants 11 and 12 added. The client's two screen books hold 64 screens and 43 flows,
   and none declares a state. Every check in slices 1 to 4 judges only what a page declares, so a
   book run left them as they were. An absence has to be a finding for a run to backfill it.
+- R13. Section 1, claims 7, 16 and 17, Passage, Stop, Joint, Outcome, Outcome request,
+  Expectation, Outcome check, HTTP client, Command runner, invariants 1, 4, 13, 14 and 15, F8,
+  slices 6 to 10, assumptions 13 to 15. The review said the API gap is the strength of the
+  assertion and asserting on failure, not only repeated steps, and that passages belong to every
+  book type. An HTTP walk sends every step but the last with no expected status, so any 4xx
+  raises (`ostler_qa.py:593`). Only the last step may expect a refusal (`compile_http.py:806`),
+  and the flow's checks read only the last response (`compile_http.py:845`). Endpoint arms already
+  hold their request and checks, so an outcome is a reference, not a new declaration.
+- R14. Outcome, Expectation, invariants 14 and 15, Expectation pattern, slices 7 and 12,
+  assumptions 14 and 15. The vet of R13 found the step's link already names one node, so an
+  `expects:` key said the same thing twice. A refusal a walk expects is a named case the step links. The
+  status-only rule covers every outcome with a body, not only the ones a walk reaches, because a
+  one-screen or one-move walk can reach any of them. The flow-level `http_status` refusal goes.
+- R15. Section 1, claim 18, part 6, State condition, Condition match, State ledger, Move check,
+  One-move walk, invariants 16 to 20, F9, slices 9 to 13, assumptions 16 to 19. The review asked
+  that the server explain the state it manages and how the API moves it. API pages describe it
+  today in prose: 271 `state:` children under `does:` across 63 of the client API book's 125
+  route pages, each written from its own route, and no page names a situation two routes share.
 
 ### Parts
 
@@ -345,6 +489,7 @@ L1 to L6 are resolved in section 5.
 | Walk builder | Reshape | `compile_journey.py`, `web_walk` (`compile_playwright.py:575`) and `maestro_walk`. Each emits every action, then every observation at the end. The web walk spans one response window. |
 | Runner | Reshape | The browser harness (`harness/ostler_qa_browser.py`) and Maestro flows. Both run, and neither knows the book. Their locators are not all perceivable (see Perceivable). |
 | Tally | Exists | Coverage from each scenario's static cover list, with a gap per uncovered obligation. One-screen walks exist for component states. |
+| System's own state | New | No page type names a record's situations. Server pages list routes, format pages a record's fields, and route arms describe their effects in `state:` prose (R15). |
 
 ### Concepts
 
@@ -375,6 +520,61 @@ L1 to L6 are resolved in section 5.
 | Visit record | Exists | The scenario's cover list (R6). |
 | Gap | Exists | One per uncovered obligation. |
 | One-screen walk | Exists | `_state_arrivals` and `_arrival_scenario` (`compile_page.py:131`, `:348`) and `_discharge_states_an_interaction_reaches` (`context.py:797`). They extend to screen states. |
+| Outcome | Exists | An endpoint's `does:`, `status:`, `emits:`, `errors:` and `auth:` arms, each with its `arrange:` and `verify:` rows bound by document order, and an invocation with `when:` for alternatives that share a code (R13). Nothing groups the arms by code yet. |
+| Outcome request | Exists | The arm's `arrange:` acts and the query its `http_status` row spells, already sent by a walk step (`compile_http.py:776`). A refusal step sends the acts under its `errors:` arm, which a step never sends today. |
+| Expectation | Reshape | Only the last step may expect a refusal, read from the flow's own `http_status` check (`compile_http.py:760`). The step's link becomes the expectation: an invocation with `when:` and `errors:` is already a named case a step can link (R14). |
+| Stop over HTTP | Reshape | Every step is sent, and none is judged (`compile_http.py:869`). |
+| Outcome check | Reshape | The arm checks compile into standalone endpoint scenarios. In a walk they run against `observed_<n>` instead, using the same `operand_for`. |
+| Passage off screens | Reshape | A passage section anywhere but a screen is `misplaced-section` (`section_hosts.py:19`). Server and command-line pages become hosts. |
+| HTTP client | Exists | `qa.http` with `expect_status`. A refusal step passes its code, as the last step does today. |
+| Command runner | Exists | The CLI walk runs each step and checks the flow at the end (`compile_cli.py:199`, `:240`). |
+| Lifecycle | New | A `## Data states` section on server and command-line pages, grouped by an `of:` key naming the record. A new section type, separate from the screen `state` type, which only screens host (`registry.py:673`). |
+| Data state | New | One entry under `## Data states`, anchored like any section, so a route, a screen and a walk link it. |
+| Observation | Reshape | A read route's arm checks already tell one answer from another, in that arm's own world. An `observe:` link to the read route plus its own `verify:` rows makes them a state's test. |
+| Arrangement | Exists | A fixture, named by the data state's `fixture:` key as a screen state names one. |
+| Move | Reshape | Route arms describe effects in `state:` prose under `does:` (R15). A `moves:` key on the arm or invocation links the from and to data states. |
+| State ledger | New | Nothing tracks what the walk's world holds between steps beyond captured values (`compile_http.py:776`). |
+| Move check | New | Built on the HTTP client and Outcome check: the observation's read sent as an extra step. |
+| One-move walk | New | Built beside the one-screen walk: arrange, perform, observe. |
+| Condition match over data | Reshape | An invocation's `when:` is a prose obligation (`registry.py:698`). A `when:` that links a data state becomes a check the builder can make. |
+
+### Spelling of part 6
+
+On the server page, or the command-line page:
+
+```markdown
+## Data states
+
+### Bill issued
+
+- of: bill
+- observe: [read the bill](http/get-bill.md)
+- verify: json_path(path="$.status", equals="issued")
+- fixture: issued-bill
+
+### Bill paid
+
+- of: bill
+- observe: [read the bill](http/get-bill.md)
+- verify: json_path(path="$.status", equals="paid")
+- fixture: paid-bill
+```
+
+On the pay route's success arm, and on a case that depends on a state:
+
+```markdown
+- moves: [Bill issued](../server.md#bill-issued) to [Bill paid](../server.md#bill-paid)
+
+### Over quota
+
+- on: [create a project](create-project.md)
+- when: [quota used](../server.md#quota-used)
+- errors: 402
+```
+
+`of:` repeats on each state rather than nesting the states under a lifecycle heading, so every
+state stays a plain section with its own anchor. A route that changes nothing says
+`- moves: none, because it only reads`.
 
 ### What the existing system has that the design lacked
 
@@ -391,6 +591,16 @@ L1 to L6 are resolved in section 5.
   R11).
 - Anchors on headings. The stable ids of section 4 exist already as anchors.
 - The web `start:` observed after the walk. A defect, fixed under invariant 8 (R2).
+- Prose on flow step children that states what a response holds, in 139 children across the five
+  client books. Waste under invariant 4: each sentence moves to the arm it describes, where a
+  check binds to it (R13).
+- A flow-level `http_status` check that makes the last step a refusal. Waste once a step links
+  the refusal case it expects. The 11 client flows that end this way move during the backfill
+  (R14).
+- `state:` prose under a route's `does:`. Kept as the route's explanation. The part a walk can
+  check moves to `moves:` and to the data state it names (R15).
+- Format pages for a record's fields. Kept. A lifecycle links its record's format with
+  `detail:`, and a format never lists situations (R15).
 
 ### Claims against both sides
 
@@ -411,6 +621,9 @@ L1 to L6 are resolved in section 5.
 | 13 one max delay | No. Several fixed durations | Responsiveness ceiling |
 | 14 accessibility-based checks | Partly. Style selectors and test ids allowed | Perceivable, invariant 10 |
 | 15 act by accessible name | Partly. Style selectors and test ids allowed | Perceivable, Actor, invariant 10 |
+| 16 full checks and refusals on API walks | No. One check on the last response, a 4xx stops the walk | Outcome check per step, Expectation |
+| 17 passages on every surface | No. Screens only | Passage on server and command-line pages |
+| 18 the server explains its state | No. Per-route prose | Part 6, linked by moves, cases and screen states |
 
 ## 6. Slices
 
@@ -440,6 +653,46 @@ L1 to L6 are resolved in section 5.
 5. **Writers write it.** The book skill and the writer prompt teach the new keys, and the book
    workflow rewrites one client book on its next run. Done when the six-walk sample moves from
    12 of 30 states checked mid-walk to 30 of 30.
+6. **Every HTTP response checked where it arrives.** On a fixture API in the compiler's tests, a
+   three-step flow runs every check of each step's success outcome before the next request.
+   Concepts: Outcome, Stop, Outcome check, HTTP client. Done when a wrong body on the middle step
+   fails the walk at that step, naming the arm, and the billing-shaped fixture walk counts every
+   check its routes declare.
+7. **Refusal steps.** A step links a named case, such as `get-bill.md#hidden-from-others`, an
+   invocation whose `errors:` answers 404. The walk sends that case's acts, checks it and goes
+   on. Concepts: Expectation, Outcome request, invariant 14. Done when a fixture walk creates a
+   record, is refused another user's copy with 404, and then reads its own, and when a step that
+   links a node with two outcomes fails validation. (revised, R14)
+8. **Passages on API pages, and the inputs joint.** A server page holds `## Passages`, and a flow
+   step links one. The validator rejects a passage taken before the walk holds what it sends.
+   Concepts: Passage, Joint, invariant 1. Done when two fixture flows share one passage, and
+   moving it ahead of the step that captures its id fails validation.
+9. **A bill's lifecycle on a fixture API.** The fixture server page declares a bill as issued or
+   paid under `## Data states`, each with its observation and its fixture, and the pay route's
+   arm says `moves:` issued to paid. Concepts: Lifecycle, Data state, Observation, Arrangement,
+   Move, Move check, invariants 16 and 17. Done when a pay route that answers 200 and leaves the
+   bill issued fails the walk at the pay step, naming `bill-issued`, and when two states whose
+   observations both match one bill fail validation. (added, R15)
+10. **Conditions on data, and every move walked.** A case's `when:` links a data state, and the
+    builder keeps the state ledger. A move no flow takes gets a one-move walk. Concepts: State
+    ledger, Condition match, Gap, One-move walk, invariants 18 and 19. Done when a step whose
+    case needs a used-up quota fails validation unless a fixture or an earlier move put the
+    quota there, and when a move no flow takes is walked and passes on the fixture. (added, R15)
+11. **Screens that depend on data.** A screen state's condition links a data state, so a bill
+    screen settles on "paid" only where the ledger holds a paid bill. Concepts: State condition,
+    Condition match. Done when a fixture web flow that pays a bill and opens it passes, and the
+    same flow with the pay step removed fails validation at the stop. (added, R15)
+12. **Writers write it, and the books move.** The book skill teaches cases as step links, API
+    passages, data states and moves. `flow.md` drops "every step before the last must succeed".
+    Doctor raises `step-claim` on prose in a step child, `status-only-outcome` on an outcome that
+    checks only its code, and `unstated-move` on a changing outcome with no `moves:`. Done when a
+    book run on the client API book clears all three codes and its billing walk checks every arm
+    of its five routes and reads the bill back after each move. The docs API, report, web and
+    docs app books follow, one run each. (revised, R14, R15)
+13. **Command-line stops.** Slices 6 to 10 on a fixture command-line tool, where a data state is
+    a file's situation and a case links an invocation with its exit code. Concepts: Command
+    runner. Done when a middle command's wrong output fails the walk at that command. No client
+    book has a command-line surface, so this slice comes after the books move. (revised, R15)
 
 ## 7. Assumptions
 
@@ -492,3 +745,38 @@ L1 to L6 are resolved in section 5.
 12. **Assumption:** the six-walk sample that found the gap represents the client book's 36 flows.
     **Decided:** slice 5 measures on that sample. **Basis:** the spot check. **If wrong:** slice 5
     done-when.
+13. **Assumption:** the checks an endpoint arm states for its own arranged world also hold when a
+    walk reaches that arm in the world its earlier steps built. For example, the quota route's
+    `$.orders.reached equals=false` holds partway through the billing walk. **Decided:** a stop
+    runs every check of the arm it expects. **Basis:** the arms describe the route, not their
+    fixture, in the samples read. **If wrong:** Outcome check runs only the shape checks, such as
+    field presence and type, and invariant 13 narrows to them.
+14. **Assumption:** writers accept one named case per refusal a walk expects. **Decided:** the
+    step's link is the expectation, and a step carries no code of its own. **Basis:** 11 client
+    flows end on a refusal today, and step children already link 205 anchors beside 222 whole
+    pages. **If wrong:** Expectation takes an `expects:` value again, and invariant 14 re-derives.
+15. **Assumption:** the API books can move in one book run each. **Decided:** `step-claim`,
+    `status-only-outcome` and `unstated-move` are errors, so a run must clear them. **Basis:**
+    139 step children carry prose: api 72 of 191, docs-api 53 of 62, web 11 of 110, docs-app 2
+    of 17, report 1 of 34. 33 of 124 api endpoints, 2 of 17 docs-api endpoints and 0 of 26 report
+    endpoints check only a status. **If wrong:** the codes start as warnings, and slice 12's
+    done-when moves to a second run.
+16. **Assumption:** writers can name each lifecycle and its states from the source, such as a
+    status column or enum, within a book run's budget. **Decided:** part 6 is written by the
+    book workflow, not inferred by QA. **Basis:** none. The 271 `state:` sentences show writers
+    already trace effects per route. **If wrong:** part 6 and slice 12. Measure it by hand on the
+    billing routes before slice 12.
+17. **Assumption:** every data state a walk relies on can be read back through a documented
+    route or command. **Decided:** Observation is required on every data state. **Basis:** the
+    billing routes include a bill read and a quota read. **If wrong:** Observation becomes
+    optional, its absence a finding on the page, and the Move check skips that state.
+18. **Assumption:** an outcome moves a record the same way every time it is reached. **Decided:**
+    `moves:` sits on the arm or the case. **Basis:** the quota route states `reached` as a pure
+    rule, true exactly when `used + 1 > limit`. **If wrong:** an arm that moves differently by
+    situation splits into cases, each with a `when:` naming its starting state, and Move
+    re-derives.
+19. **Assumption:** a move or an observation acts on the record the request path addresses, or
+    on the caller's own when the path names none. **Decided:** the ledger keys each state by the
+    captured id, or by the fixture that signs the caller in. Two records of one lifecycle in one
+    walk are told apart by their capture names. **Basis:** routes such as `GET /{key}` already
+    take their id from a capture. **If wrong:** State ledger and invariants 17 and 18.
