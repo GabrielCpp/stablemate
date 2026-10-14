@@ -24,6 +24,8 @@ Canonical order — the order `ostler fmt` will put them in.
 | `requires` | yes | nested; each child resolves as a link — the preconditions to be here |
 | `params` | yes | nested; each child resolves as a link — route/query parameters |
 | `entry` | no | by what means this screen is entered from outside in-app navigation |
+| `requests` | no | nested; each child is `METHOD /path`, a request the screen sends on arrival. A `{param}` segment stands for any value. A walk that stops at one of this screen's [states](state.md) waits for each to be answered |
+| `busy` | no | link, the one [`component`](component.md) of this page that shows the screen is not settled yet, such as a progress indicator. A walk that stops at a state waits for it to go. It needs a `role:` and a `name:` |
 | `code` | no | link, **owns** its file — the screen's own implementation |
 | `detail` | no | link — an explanatory [`concept`](concept.md) |
 | `verify` | no | a check — what observing this screen's claims looks like |
@@ -83,8 +85,8 @@ which mint an obligation on every type.
 
 ## Required sections
 
-None. `## Components` and `## Interactions` are the conventional headings, added as the screen
-gains them.
+None. `## Components`, `## Interactions` and `## Screen states` are the conventional headings,
+added as the screen gains them.
 
 ## Relationships
 
@@ -109,6 +111,17 @@ type: screen
   - [Signed-in editor](../../fixtures/signed-in-editor.md) — only an editor reaches the editor
 - params: id — the short-link id being edited
 ```
+
+A screen that loads data on arrival also names the requests it sends and its busy sign:
+
+```markdown
+- requests:
+  - GET /api/links/{id}
+- busy: [Loading link](#loading-link)
+```
+
+`requests:` and `busy:` mint no obligation. They tell a walk what to wait for before it checks
+one of the screen's [states](state.md).
 
 ## Doctor codes it can trip
 
