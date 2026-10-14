@@ -35,7 +35,10 @@ Section type. A `### <id>` under an `## Invocations` heading. Its id is `path#an
 | `fixture` | no | a fixture |
 | `arrange` | no | an act — a request body member or header the invocation sends, on an HTTP surface |
 | `capture` | no | a capture |
+| `moves` | no | link: the [data states](data-state.md) the record leaves and lands on, or `none, because ...` |
 | `tests` | no | link — the test files covering it |
+
+A `moves:` row says which data state a record leaves and which it lands on when this call succeeds. Write it one of three ways: `- moves: [Bill issued](../server.md#bill-issued) to [Bill paid](../server.md#bill-paid)`, `- moves: to [Account complete](../server.md#account-complete)` when the record lands there from any sibling state, or `- moves: none, because <reason>` when the call changes nothing. A call that moves several records carries one row per lifecycle. Both links of a row name [`data-state`](data-state.md) sections with the same `of:`. After the step runs in a walk, the walk reads the record back through the target state's `observe:` endpoint and runs that state's `verify:` rows. The step fails there when the target state does not hold, and the failure names the sibling state that does.
 
 `emits:`/`consumes:` are normative through the
 [shared set](../bullet-grammar.md#keys-that-are-normative-on-every-type), not through a flag of
