@@ -489,6 +489,12 @@ L1 to L6 are resolved in section 5.
   writes a bill, so those states are reached only by their fixture. It also found two things a
   writer must not model as a lifecycle: a flag that is always false, and a value such as the
   limit itself.
+- R17. State ledger, State condition, slice 11. A browser step links the control a person acts
+  on, and no page linked that act to the request it sends. The ledger could not see a browser
+  walk move a record. An interaction now names that request with `sends:`, a link to the
+  endpoint or invocation, and the ledger applies that node's `moves:`. The move stays stated
+  once, on the route. A screen state names its data state with `when:`. A stop checks the
+  record of that kind the walk last arranged or moved.
 
 ### Parts
 
