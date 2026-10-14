@@ -11,6 +11,7 @@ from dataclasses import replace
 from typing import Any
 
 from ostler import acts as acts_mod
+from ostler import registry
 from ostler.checks import CheckValue
 from ostler.checks import _rooted
 from ostler.qa import references
@@ -609,6 +610,46 @@ class _UnbuiltStep:
     because: str
 
 
+@dataclass(frozen=True)
+class _Outcome:
+    """The one case an invocation step expects: its status, the claims that judge it, and the acts, query and address its own rows spell."""
+    status: int | None
+    claims: tuple[Obligation, ...]
+    acts: tuple[CallRow, ...]
+    query: str
+    checked_path: str | None
+    acts_unparsed: bool
+
+
+def _case_status(claim: Obligation) -> int | None:
+    """The status one invocation claim expects: its `http_status` code, else the code its `status:` or refusal bullet states."""
+    status = _expect_status(claim.checks)
+    if status is None and claim.kind in (*registry.refusal_keys(claim.node_type), "status"):
+        stated = claim.requirement.strip()
+        if stated.isdigit():
+            return int(stated)
+    return status
+
+
+def _invocation_outcome(claims: list[Obligation]) -> _Outcome | list[int]:
+    """The one outcome an invocation's *claims* expect, or every distinct status when they expect more than one."""
+    owned = [claim for claim in claims if claim.checks or claim.acts or _case_status(claim) is not None]
+    statuses = sorted({status for claim in owned if (status := _case_status(claim)) is not None})
+    if len(statuses) > 1:
+        return statuses
+    named = [row.args.get("path") for claim in owned for row in claim.checks]
+    paths = [path for path in named if isinstance(path, str) and path.startswith("/")]
+    query = next((path.partition("?")[2] for path in paths if "?" in path), "")
+    return _Outcome(
+        status=statuses[0] if statuses else None,
+        claims=tuple(owned),
+        acts=tuple(row for claim in owned for row in claim.acts),
+        query=query,
+        checked_path=paths[0].partition("?")[0] if paths else None,
+        acts_unparsed=any(claim.acts_unparsed for claim in owned),
+    )
+
+
 def _step_arrangement(ref: str, node_rows: list[CallRow], book: BookIndex) -> _HttpArrangement | None:
     """What one journey step sends: the acts of every claim on its node that expects no refusal, merged, else the first success claim's own acts when those claims arrange a field differently."""
     refusing = {row.call for claim in book.claims_by_node.get(ref, ()) if (_expect_status(claim.checks) or 0) >= 400
@@ -627,6 +668,7 @@ def _step_arrangement(ref: str, node_rows: list[CallRow], book: BookIndex) -> _H
 
 def _http_request(
     index: int, step: FlowStep, book: BookIndex, ids: list[str], gaps: list[Gap], ended: str | None = None,
+    outcome: _Outcome | None = None,
 ) -> _HttpRequest | _UnbuiltStep:
     """The request one journey step performs, gapping every claim when the book states none."""
     ref = step.ref
@@ -648,7 +690,7 @@ def _http_request(
                             "holds no response to capture the field from")
     method, path = route
     if "*" in path:
-        candidates = (ended, book.checked_paths_by_node.get(ref))
+        candidates = (ended, outcome.checked_path if outcome else book.checked_paths_by_node.get(ref))
         member = next((c for c in candidates if c is not None and fnmatch.fnmatchcase(c, path)), None)
         if member is None:
             gaps.extend(Gap(oid, "uncompilable-claim",
@@ -659,10 +701,15 @@ def _http_request(
             return _UnbuiltStep("this journey could not pick an address for this step, so it holds no "
                                 "response to capture the field from")
         path = member
-    query = "" if "?" in path else book.queries_by_node.get(ref, "")
-    node_rows = book.acts_by_node.get(ref, [])
-    arranged = (None if (ref in book.acts_refused or not node_rows)
-                else _step_arrangement(ref, node_rows, book))
+    if outcome is not None:
+        query = "" if "?" in path else outcome.query
+        arranged = (None if (outcome.acts_unparsed or not outcome.acts)
+                    else _http_arrangement(outcome.acts, later_replaces=True))
+    else:
+        query = "" if "?" in path else book.queries_by_node.get(ref, "")
+        node_rows = book.acts_by_node.get(ref, [])
+        arranged = (None if (ref in book.acts_refused or not node_rows)
+                    else _step_arrangement(ref, node_rows, book))
     sent_references = (*(arranged.named_references() if arranged else ()), *references.find_references(query))
     if method in _BODILESS_METHODS:
         return _HttpRequest(method, path, arranged.kwargs_source(with_body=False) if arranged else "", sent_references, query)
@@ -788,15 +835,12 @@ def _route_pattern(path: str) -> re.Pattern[str]:
 
 def _step_success_checks(
     index: int, step: FlowStep, request: _HttpRequest, observed: str, walk: JourneyWalk, known: _Produced,
-    gaps: list[Gap],
+    gaps: list[Gap], claims: tuple[Obligation, ...] | list[Obligation],
 ) -> list[str]:
-    """Every check of each success claim on *step*'s node, asserted on *observed* straight after the request that earned it."""
+    """Every check of the *claims* the step expects, asserted on *observed* straight after the request that earned it."""
     pattern = _route_pattern(request.path)
     lines: list[str] = []
-    for claim in walk.book.outcomes_by_node.get(step.ref, ()):
-        status = _expect_status(claim.checks)
-        if status is not None and status >= 400:
-            continue
+    for claim in claims:
         for row in claim.checks:
             named = row.args.get("path")
             if (isinstance(named, str) and check_observes(row.name) == "response"
@@ -817,6 +861,12 @@ def _step_success_checks(
     return [f"    with qa.at_node({python_literal(step.ref)}):", *(f"    {line}" for line in lines)]
 
 
+def _success_claims(ref: str, book: BookIndex) -> list[Obligation]:
+    """The claims on *ref* that answer success, the outcome an endpoint step expects."""
+    return [claim for claim in book.outcomes_by_node.get(ref, ())
+            if (_expect_status(claim.checks) or 0) < 400]
+
+
 def _http_steps(walk: JourneyWalk, sinks: PlanSinks) -> _HttpSteps | None:
     """Perform each `endpoint` step as a request, or `None` once one step builds no request."""
     book, gaps = walk.book, sinks.gaps
@@ -830,8 +880,21 @@ def _http_steps(walk: JourneyWalk, sinks: PlanSinks) -> _HttpSteps | None:
     refused_status = _refused_status(walk.obligations)
     ended = _ended_path(walk.obligations)
     for index, step in enumerate(walk.steps, start=1):
+        outcome = None
+        if step.node_type == "invocation" and step.ref in book.invocation_claims:
+            found = _invocation_outcome(book.invocation_claims[step.ref])
+            if isinstance(found, list):
+                gaps.extend(Gap(oid, "uncompilable-claim",
+                                f"step {index} links invocation {step.ref}, whose claims expect more than one "
+                                f"outcome: statuses {', '.join(str(code) for code in found)}. Link one case per step")
+                            for oid in walk.ids)
+                decline_captures_by_node([s.ref for s in walk.steps[index - 1:]], book.captures_by_node,
+                                         gaps, sinks.captured,
+                                         because="this journey links an invocation that expects more than one outcome")
+                return None
+            outcome = found
         request = _http_request(index, step, book, walk.ids, gaps,
-                                ended=ended if index == len(walk.steps) else None)
+                                ended=ended if index == len(walk.steps) else None, outcome=outcome)
         unprovided = [] if isinstance(request, _UnbuiltStep) else _unprovided_references(request, known)
         if unprovided:
             gaps.extend(_unprovided_reference_gaps(index, unprovided, walk.ids))
@@ -846,17 +909,31 @@ def _http_steps(walk: JourneyWalk, sinks: PlanSinks) -> _HttpSteps | None:
         bound = _bound_path(request.path, produced, owners, named) + (f"?{request.query}" if request.query else "")
         target = (f"qa.resolve({python_literal(bound)})" if references.find_references(bound)
                   else python_literal(bound))
-        expect = f", expect_status={refused_status}" if refused_status is not None and index == len(walk.steps) else ""
+        if outcome is not None:
+            expect = f", expect_status={outcome.status}" if outcome.status is not None else ""
+        else:
+            expect = (f", expect_status={refused_status}"
+                      if refused_status is not None and index == len(walk.steps) else "")
         lines.append(f"    # okf:{step.ref}")
-        lines.append(f"    {observed} = qa.http.{request.method.lower()}({target}{expect}{request.kwargs_source})")
+        call = f"{observed} = qa.http.{request.method.lower()}({target}{expect}{request.kwargs_source})"
+        if outcome is not None and outcome.status is not None:
+            lines.extend([f"    with qa.at_node({python_literal(step.ref)}):", f"        {call}"])
+        else:
+            lines.append(f"    {call}")
         if "{" in bound:
             lines.append("    # TODO(arrange): the path above still carries a template variable")
             gaps.extend(Gap(oid, "unresolved-precondition",
                             f"step {index}'s path still carries a template variable")
                         for oid in walk.ids)
+        if outcome is not None:
+            captures = [OwnedCapture(claim.id, row.name, row.source) for claim in outcome.claims for row in claim.captures]
+            lines.extend(_step_captures(observed, captures, sinks, produced))
+            lines.extend(_step_success_checks(index, step, request, observed, walk, known, gaps, outcome.claims))
+            continue
         lines.extend(_step_captures(observed, book.captures_by_node.get(step.ref, []), sinks, produced))
         if not expect:
-            lines.extend(_step_success_checks(index, step, request, observed, walk, known, gaps))
+            lines.extend(_step_success_checks(index, step, request, observed, walk, known, gaps,
+                                              _success_claims(step.ref, book)))
     return _HttpSteps(lines, observed, last_path, produced)
 
 

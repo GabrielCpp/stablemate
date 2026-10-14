@@ -524,6 +524,7 @@ def _compile_packet(
         checked_paths_by_node=book_index_mod.checked_paths_by_node(carried),
         claims_by_node=acts.claims_by_node,
         outcomes_by_node=book_index_mod.outcomes_by_node(carried),
+        invocation_claims=book_index_mod.invocation_claims(carried),
         hop_acts=book_index_mod.hop_acts(carried, acts.by_node, frozenset(packet.screen_routes)),
         fixture_pages=book_index_mod.fixture_pages(carried, rebuilt=packet.scenario_fixtures),
         fragment_hosts=packet.fragment_hosts,

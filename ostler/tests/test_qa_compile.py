@@ -6626,3 +6626,96 @@ def test_a_refusal_on_the_last_step_runs_none_of_the_success_arms_checks() -> No
     assert 'observed_2 = qa.http.delete("/api/things", expect_status=403)' in result.source
     assert 'qa.verify("json_path", observed_1.json()' in result.source
     assert "observed_2.json()" not in result.source
+
+
+_HIDDEN = f"{_API}#hidden-from-others"
+_BILL_ROUTE = "GET /api/bills/{bill_id}"
+_BILL_PATH = "/api/bills/{bill_id}"
+_OTHER_USER = {"name": "other-user", "args": [], "provides": "another user",
+               "providesKeys": ["other-user.token"]}
+
+
+def _case(node: str, kind: str, requirement: str, checks: list[dict], position: int, *,
+          acts: list[dict] | None = None) -> dict:
+    row = _step_node(node, {"route": [_BILL_ROUTE]})
+    row.update({"id": f"okf:{node}:{kind}:1", "nodeType": "invocation", "kind": kind,
+                "requirement": requirement, "docPosition": [position, 0], "checksDeclared": checks})
+    if acts:
+        row["actsDeclared"] = acts
+    return row
+
+
+def _hidden_case_walk(*claims: dict) -> tuple[str, dict]:
+    oid = f"okf:{_FLOW}:end-state"
+    nodes = [f"{_API}#create-bill", _HIDDEN, f"{_API}#get-bill"]
+    steps = [_step(nodes[0], "endpoint", "api"), _step(nodes[1], "invocation", "api"),
+             _step(nodes[2], "endpoint", "api")]
+    context = _navigation_context(
+        _flow_obligation(
+            oid, source=_FLOW, surface="api", steps=steps,
+            checks=[{"call": "it", "name": "http_status", "args": {"code": 200, "path": _BILL_PATH}}],
+            fixtures=[_OTHER_USER],
+        ),
+        {**_arm(nodes[0], "created", "POST /api/bills", [_status(201), _json_path("$.id", "b1")]),
+         "capturesDeclared": [{"name": "bill_id", "from": "$.id"}]},
+        _arm(nodes[2], "read", _BILL_ROUTE, [_status(200), _json_path("$.state", "draft")], 3),
+        *claims,
+        navigation=_api_navigation(),
+    )
+    return oid, context
+
+
+def _hidden_claim(position: int = 2) -> dict:
+    return _case(
+        _HIDDEN, "errors", "404",
+        [{"call": "it", "name": "http_status", "args": {"code": 404, "path": _BILL_PATH}},
+         _json_path("$.error", "not found")],
+        position, acts=[_header_act("Authorization", "Bearer @other-user.token")])
+
+
+def test_a_step_linking_a_refusal_case_expects_its_status_and_runs_its_checks_not_the_success_arms() -> None:
+    oid, context = _hidden_case_walk(_hidden_claim())
+    result = _compile_plan_gaps(context, story="demo-story")
+    assert isinstance(result, Plan)
+    source = result.source
+    ast.parse(source)
+    second = next(line for line in source.splitlines() if "observed_2 = qa.http." in line)
+    assert second.startswith("        observed_2 = qa.http.get(")
+    assert "expect_status=404" in second
+    assert 'qa.resolve("/api/bills/$bill_id")' in second
+    assert 'qa.resolve("Bearer @other-user.token")' in second
+    assert "observed_3 = qa.http." in source
+    assert "expect_status" not in next(line for line in source.splitlines() if "observed_3 = qa.http." in line)
+    between = source[source.index("observed_2 = qa.http."):source.index("observed_3 = qa.http.")]
+    assert between.count(f'with qa.at_node("{_HIDDEN}"):') == 1
+    assert source[:source.index("observed_2 = qa.http.")].rstrip().endswith(f'with qa.at_node("{_HIDDEN}"):')
+    assert 'qa.verify("http_status", observed_2, code=404' in between
+    assert f'covers=["okf:{_HIDDEN}:errors:1"]' in between
+    assert '"json_path", observed_2.json()' in between
+    assert "code=200" not in between
+    after = source[source.index("observed_3 = qa.http."):]
+    assert f'with qa.at_node("{_API}#get-bill"):' in after
+    assert 'qa.verify("json_path", observed_3.json()' in after
+    assert _gap_kinds(result.gaps, oid) == []
+
+
+def test_a_step_linking_a_case_that_expects_two_statuses_files_one_gap_and_compiles_no_walk() -> None:
+    oid, context = _hidden_case_walk(
+        _hidden_claim(),
+        _case(_HIDDEN, "error", "403", [{"call": "it", "name": "http_status", "args": {"code": 403}}], 3))
+    result = _compile_plan_gaps(context, story="demo-story")
+    assert isinstance(result, Refusal)
+    [gap] = [g for g in result.gaps if g.obligation_id == oid and g.kind == "uncompilable-claim"]
+    assert "step 2" in gap.detail and _HIDDEN in gap.detail
+    assert "403" in gap.detail and "404" in gap.detail
+    assert "one case per step" in gap.detail
+
+
+def test_a_case_that_answers_success_and_one_that_refuses_are_two_outcomes() -> None:
+    oid, context = _hidden_case_walk(
+        _hidden_claim(),
+        _case(_HIDDEN, "status", "200", [{"call": "it", "name": "http_status", "args": {"code": 200}}], 3))
+    result = _compile_plan_gaps(context, story="demo-story")
+    assert isinstance(result, Refusal)
+    [gap] = [g for g in result.gaps if g.obligation_id == oid and g.kind == "uncompilable-claim"]
+    assert "200" in gap.detail and "404" in gap.detail

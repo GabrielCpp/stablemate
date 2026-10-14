@@ -37,6 +37,7 @@ class BookIndex:
     checked_paths_by_node: dict[str, str] = field(default_factory=dict[str, str])
     claims_by_node: dict[str, list[Obligation]] = field(default_factory=dict[str, list[Obligation]])
     outcomes_by_node: dict[str, list[Obligation]] = field(default_factory=dict[str, list[Obligation]])
+    invocation_claims: dict[str, list[Obligation]] = field(default_factory=dict[str, list[Obligation]])
     fixture_pages: dict[str, frozenset[str]] = field(default_factory=dict[str, frozenset[str]])
     hop_acts: dict[tuple[str, str], list[CallRow]] = field(default_factory=dict[tuple[str, str], list[CallRow]])
     fragment_hosts: dict[str, str] = field(default_factory=dict[str, str])
@@ -66,6 +67,15 @@ def outcomes_by_node(obligations: list[Obligation]) -> dict[str, list[Obligation
     owned: dict[str, list[Obligation]] = {}
     for obligation in obligations:
         if _is_declared_claim(obligation):
+            owned.setdefault(obligation.node, []).append(obligation)
+    return {node_id: sorted(claims, key=lambda claim: claim.doc_position) for node_id, claims in owned.items()}
+
+
+def invocation_claims(obligations: list[Obligation]) -> dict[str, list[Obligation]]:
+    """Every invocation's claims in book order, a refusal claim included: the acts and checks of the one case the invocation names."""
+    owned: dict[str, list[Obligation]] = {}
+    for obligation in obligations:
+        if obligation.node_type == "invocation" and obligation.kind not in ("contract", "when"):
             owned.setdefault(obligation.node, []).append(obligation)
     return {node_id: sorted(claims, key=lambda claim: claim.doc_position) for node_id, claims in owned.items()}
 

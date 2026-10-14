@@ -59,9 +59,10 @@ def _performed_in(steps: list[JourneyStep]) -> list[JourneyStep]:
 
 
 def _called_endpoints(steps: list[JourneyStep], book: Mapping[str, BookNode]) -> set[str]:
-    """The endpoints the journey's invocations name in their `on:`, which their own requests reach."""
+    """The endpoints the journey's invocations name in their `on:`, which their own requests reach, unless the invocation is a case on the endpoint's own page."""
     return {target.id for step in steps if step.node_type == "invocation" and step.ref in book
-            for target in book[step.ref].targets("on", book) if target.type == "endpoint"}
+            for target in book[step.ref].targets("on", book)
+            if target.type == "endpoint" and target.id.partition("#")[0] != step.ref.partition("#")[0]}
 
 
 def journey_steps(node: BookNode, book: Mapping[str, BookNode]) -> tuple[JourneyStep, ...]:

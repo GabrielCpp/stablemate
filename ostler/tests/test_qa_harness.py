@@ -1297,3 +1297,89 @@ def test_a_walk_whose_checks_all_hold_sends_every_request(tmp_path: Path) -> Non
     assert code == 0
     assert seen == ["/step-1", "/step-2", "/step-3"]
     assert all(record["passed"] for record in _asserts(records))
+
+
+REFUSAL_WALK_PLAN = '''\
+import threading
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+from ostler_qa import Qa, plan, scenario, target
+
+plan(run_id="qa-07-refusal", story="07-refusal")
+
+api = target("api")
+SEEN = "@SEEN@"
+OTHER = "@OTHER@"
+HIDDEN = "docs/a.md#hidden-from-others"
+COVERS = ["okf:docs/a.md#hidden-from-others:errors:1"]
+
+
+class Bills(BaseHTTPRequestHandler):
+    def _answer(self, status, body):
+        with open(SEEN, "a") as sink:
+            sink.write("%s %s\\n" % (self.command, self.path))
+        self.send_response(status)
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def do_POST(self):  # noqa: N802
+        self._answer(201, b'{"id": "b1"}')
+
+    def do_GET(self):  # noqa: N802
+        if self.headers.get("Authorization") == "Bearer other":
+            if OTHER == "404":
+                self._answer(404, b'{"error": "not found"}')
+            else:
+                self._answer(200, b'{"state": "draft"}')
+        else:
+            self._answer(200, b'{"state": "draft"}')
+
+    def log_message(self, *args):
+        pass
+
+
+@scenario(target=api, mechanism="live", covers=COVERS)
+def a_refused_case_walk(qa: Qa) -> None:
+    """Create, the hidden case, then the bill's own read."""
+    server = ThreadingHTTPServer(("127.0.0.1", 0), Bills)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    qa.http.base_url = "http://127.0.0.1:%d" % server.server_address[1]
+    first = qa.http.post("/bills", json_body={"name": "Rent"})
+    qa.capture_field("bill_id", first.json(), "id")
+    with qa.at_node(HIDDEN):
+        second = qa.http.get(qa.resolve("/bills/$bill_id"), expect_status=404, headers={"Authorization": "Bearer other"})
+    with qa.at_node(HIDDEN):
+        qa.verify("http_status", second, code=404, covers=COVERS)
+        qa.verify("json_path", second.json(), path="$.error", equals="not found", covers=COVERS)
+    third = qa.http.get(qa.resolve("/bills/$bill_id"))
+    with qa.at_node("docs/a.md#read"):
+        qa.verify("http_status", third, code=200, covers=COVERS)
+'''
+
+
+def _refusal_walk(tmp_path: Path, other: str) -> tuple[int, list[dict], list[str]]:
+    seen = tmp_path / "seen.txt"
+    source = REFUSAL_WALK_PLAN.replace("@SEEN@", str(seen)).replace("@OTHER@", other)
+    code, records = _run(_write(tmp_path, source), "a-refused-case-walk", tmp_path)
+    return code, records, seen.read_text(encoding="utf-8").splitlines() if seen.exists() else []
+
+
+def test_a_walk_that_is_refused_the_other_users_bill_goes_on_to_read_its_own(tmp_path: Path) -> None:
+    code, records, seen = _refusal_walk(tmp_path, "404")
+
+    assert code == 0
+    assert seen == ["POST /bills", "GET /bills/b1", "GET /bills/b1"]
+    assert all(record["passed"] for record in _asserts(records))
+    assert {record["node"] for record in _asserts(records)} == {"docs/a.md#hidden-from-others", "docs/a.md#read"}
+
+
+def test_a_walk_whose_server_answers_the_other_user_200_fails_at_the_refusal_step(tmp_path: Path) -> None:
+    code, records, seen = _refusal_walk(tmp_path, "200")
+
+    assert code == 1
+    assert seen == ["POST /bills", "GET /bills/b1"]
+    assert records[-1]["status"] == "errored"
+    failed = [record for record in _asserts(records) if not record["passed"]]
+    assert [record["node"] for record in failed] == ["docs/a.md#hidden-from-others"]
+    assert failed[0]["actual"] == {"code": 200, "reply": '{"state": "draft"}'} or failed[0]["actual"] == 200

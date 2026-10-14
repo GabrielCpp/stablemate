@@ -76,3 +76,28 @@ def test_an_unresolved_link_stays_so_the_walk_is_refused_rather_than_shortened()
 def test_a_sentence_that_links_nothing_stays_so_the_walk_is_refused_rather_than_shortened() -> None:
     walk = _walk("[open-menu](shell.md#open-menu)", "the reader waits for the menu to settle")
     assert walk == [("shell.md#open-menu", "interaction"), ("", "")]
+
+
+def _case_book(*steps: str) -> tuple[BookNode, dict[str, BookNode]]:
+    route = "docs/features/api-service/http/get-bill.md"
+    nodes = [
+        _node(route, "endpoint", "api-service"),
+        _node(f"{route}#hidden-from-others", "invocation", "api-service", edges={"get-bill.md": (route, "on")}),
+    ]
+    links = {
+        "get-bill.md": (route, "steps"),
+        "get-bill.md#hidden-from-others": (f"{route}#hidden-from-others", "steps"),
+    }
+    flow = _node("docs/features/api-service/flows/f.md", "flow", "api-service", edges=links, steps=steps)
+    return flow, {node.id: node for node in nodes}
+
+
+def test_a_case_on_the_endpoints_own_page_leaves_the_endpoint_a_step_of_its_own() -> None:
+    flow, book = _case_book("[hidden](get-bill.md#hidden-from-others)", "[get-bill](get-bill.md)")
+    walk = [(step.ref.rsplit("/", 1)[-1], step.node_type) for step in journey_steps(flow, book)]
+    assert walk == [("get-bill.md#hidden-from-others", "invocation"), ("get-bill.md", "endpoint")]
+
+
+def test_an_invocation_on_another_page_still_swallows_the_endpoint_it_calls() -> None:
+    walk = _walk("[fetch-manifest](shell.md#fetch-manifest)", "[manifest](api.md)")
+    assert walk == [("shell.md#fetch-manifest", "invocation")]
