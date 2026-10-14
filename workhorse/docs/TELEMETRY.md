@@ -56,7 +56,8 @@ older producers (`groom purge-tests`).
 
 A root span per run, a span per node visit (nested through flows), a span per agent-CLI
 turn with duration + token usage + cost (and a `session.id` attribute linking it to the CLI
-session transcript), span events for the recovery ladder (retry/reframe/compact/
+session transcript, and `workhorse.visit.*` attributes plus `workhorse.visit.slug` naming the
+visit the way its live transcript file is named), span events for the recovery ladder (retry/reframe/compact/
 watchdog-kill), **log records** from the driver and the node functions it calls
 (`groom logs`), and the live gauges below. Exports are best-effort, so a collector that
 dies mid-run can never slow or wedge a run; `events.jsonl` on disk remains the durable

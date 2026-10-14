@@ -15,6 +15,8 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Iterator, ParamSpec, Protocol, TypeVar
 from urllib.parse import urlparse
 
+from workhorse import turnkey
+
 if TYPE_CHECKING:
     from workhorse.records import NodeEvent
     from workhorse.runner.usage import TurnUsage
@@ -1132,6 +1134,11 @@ class _Telemetry:
             self._turn_node = node_id
             self._turn_has_duration = False
             snapshot = _repository_attrs(cwd, add_dirs)
+            visit = turnkey.current()
+            visit_attrs: dict[str, int | str] = {}
+            if visit is not None and visit.node == node_id:
+                visit_attrs = {f"workhorse.visit.{k}": v for k, v in visit.attributes().items()}
+                visit_attrs["workhorse.visit.slug"] = visit.slug
             self._turn = self._tracer.start_span(
                 "agent_turn",
                 context=self._parent_ctx(),
@@ -1142,6 +1149,7 @@ class _Telemetry:
                     "effort": effort or "",
                     "timeout_s": -1 if timeout == float("inf") else int(timeout),
                     **_span_repository_attrs(snapshot, "start"),
+                    **visit_attrs,
                     **self._labels,
                 },
             )

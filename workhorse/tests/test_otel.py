@@ -15,7 +15,7 @@ from opentelemetry.sdk.metrics.export import InMemoryMetricReader
 from opentelemetry.sdk.trace import TracerProvider
 
 from _fakes import FakeBackend, FakeClock, RecordingTelemetry
-from workhorse import artifacts, otel, records, reload
+from workhorse import artifacts, otel, records, reload, turnkey
 from workhorse.config_run import AgentResilience
 from workhorse.runner import ladder, usage
 
@@ -763,6 +763,38 @@ def test_turn_span_attrs_result_usage_and_fallback_events():
     assert turn.ended
     t.turn_event("cap_wait", False, {"delay_s": 60})
     assert ("cap_wait", {"delay_s": "60"}) in tracer.by_name("impl").events
+
+
+def test_a_turn_span_carries_the_visit_identity():
+    t, tracer, _, _ = _telemetry()
+    key = turnkey.begin(None, "impl", chain="main")
+    try:
+        t.turn_start("impl", "opus", "high", 3600.0)
+    finally:
+        turnkey.clear()
+    attrs = tracer.by_name("agent_turn").attrs
+    assert attrs["workhorse.visit.node"] == "impl"
+    assert attrs["workhorse.visit.seq"] == key.seq
+    assert attrs["workhorse.visit.generation"] == key.generation
+    assert attrs["workhorse.visit.chain"] == "main"
+    assert attrs["workhorse.visit.slug"] == key.slug
+
+
+def test_a_turn_span_ignores_another_nodes_visit():
+    t, tracer, _, _ = _telemetry()
+    turnkey.begin(None, "other")
+    try:
+        t.turn_start("impl", "opus", "high", 3600.0)
+    finally:
+        turnkey.clear()
+    assert not [k for k in tracer.by_name("agent_turn").attrs if k.startswith("workhorse.visit.")]
+
+
+def test_a_turn_span_without_a_visit_has_no_identity():
+    t, tracer, _, _ = _telemetry()
+    turnkey.clear()
+    t.turn_start("impl", "opus", "high", 3600.0)
+    assert "workhorse.visit.slug" not in tracer.by_name("agent_turn").attrs
 
 
 def test_turn_session_tags_open_turn_span():
