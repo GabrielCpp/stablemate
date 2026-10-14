@@ -24,8 +24,19 @@ Section type. A `### <title>` under a `## Data states` heading in a [`server`](s
 | `code` | no | link, **owns** its file |
 | `detail` | no | link: an explanatory [`concept`](concept.md) |
 
-A data state mints no obligation of its own. A route or case that moves a record to it says so
-with `moves:` on the [`endpoint`](endpoint.md) or [`invocation`](invocation.md).
+A data state owes one obligation, and each `moves:` row that lands on it owes one. A walk covers
+the state when it reads a record in it. A flow step covers the state by the read-back after a
+`moves:` row that lands on it. A route or case that moves a record to it says so with `moves:` on
+the [`endpoint`](endpoint.md) or [`invocation`](invocation.md).
+
+A move no flow takes gets a one-move walk. The walk arranges the starting state's `fixture:`, reads
+the record through that state's `observe:`, sends the move's request and reads the record back.
+For `to B` the starting state is the first sibling of B with a `fixture:`, else B. A starting state
+with no `fixture:` leaves the move uncovered, and the gap names that state.
+
+A state with a `fixture:` that no walk reaches is read on its own. The walk arranges the fixture and
+holds the state's `verify:` rows on the answer of its `observe:` request. A state with no `fixture:`
+stays `unreached-data-state`, and so does one with `fixture: none`, which no walk can arrange.
 
 ## How a walk uses it
 

@@ -17,7 +17,7 @@ Section type. A `### <id>` under an `## Invocations` heading. Its id is `path#an
 | --- | --- | --- |
 | `on` | **yes** | link — the node this acts on |
 | `trigger` | **yes** | what fires it |
-| `when` | no | **mints an obligation** — the condition it applies under |
+| `when` | no | **mints an obligation** — the condition it applies under. A link to a [data state](data-state.md) makes it a condition the flow must meet |
 | `extends` | no | link — the base invocation this one narrows |
 | `same-as` | no | link, multi-valued — another node documenting this same job |
 | `does` | **yes** | nested; **mints an obligation** per value |
@@ -39,6 +39,8 @@ Section type. A `### <id>` under an `## Invocations` heading. Its id is `path#an
 | `tests` | no | link — the test files covering it |
 
 A `moves:` row says which data state a record leaves and which it lands on when this call succeeds. Write it one of three ways: `- moves: [Bill issued](../server.md#bill-issued) to [Bill paid](../server.md#bill-paid)`, `- moves: to [Account complete](../server.md#account-complete)` when the record lands there from any sibling state, or `- moves: none, because <reason>` when the call changes nothing. A call that moves several records carries one row per lifecycle. Both links of a row name [`data-state`](data-state.md) sections with the same `of:`. After the step runs in a walk, the walk reads the record back through the target state's `observe:` endpoint and runs that state's `verify:` rows. The step fails there when the target state does not hold, and the failure names the sibling state that does.
+
+A `when:` that links a data state applies only while the record is in that state. A flow step that links the case fails `ostler doctor` with `unheld-condition` unless the flow holds the record in that state at that step. The flow holds a state when a `fixture:` on the flow arranges it, or when an earlier step's `moves:` row lands on it. A `when:` with no data-state link stays prose.
 
 `emits:`/`consumes:` are normative through the
 [shared set](../bullet-grammar.md#keys-that-are-normative-on-every-type), not through a flag of
