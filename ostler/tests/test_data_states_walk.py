@@ -15,7 +15,8 @@ from ostler.qa.compile import Plan, compile_plan_gaps
 from ostler.qa.context import build_context
 
 from conftest import write
-from data_state_books import API, FLOW, FLOW_PAGE, PAY_MOVES, RUNBOOK, RUNBOOK_PAGE, api_page
+from data_state_books import (API, ENDPOINTS, FIXTURE, FIXTURE_PAGE, FLOW, FLOW_PAGE, ISSUED, ISSUED_ARRANGED, PAID, PAY_MOVES,
+                              RUNBOOK, RUNBOOK_PAGE, VOID, VOID_FROM_ISSUED, api_page, void_page)
 
 HARNESS_DIR = Path(__file__).resolve().parents[1] / "ostler" / "qa" / "harness"
 BASE_URL = "http://localhost:18101"
@@ -152,4 +153,131 @@ def test_two_moves_rows_read_back_both_states(tmp_path: Path) -> None:
     assert 'qa.holds("bill-paid"' in planned.source
     assert 'qa.holds("bill-issued"' in planned.source
 
+LOGINS = """## Endpoints
 
+### login-a
+- method: POST
+- path: /login-a
+- arrange: no_body()
+- status: 200 with the token
+- capture: user_a from $.token
+- verify: http_status(code=200)
+
+### login-b
+- method: POST
+- path: /login-b
+- arrange: no_body()
+- status: 200 with the token
+- capture: user_b from $.token
+- verify: http_status(code=200)
+
+### create-bill
+- method: POST
+- path: /bills
+- arrange: no_body()
+- status: 201 with the new bill
+- capture: bill_id from $.id
+- verify: http_status(code=201)
+"""
+
+SENT_AS_B = '- arrange: header(name="Authorization", value="Bearer $user_b")\n'
+OBSERVED_AS_A = '- arrange: header(name="Authorization", value="Bearer $user_a")\n'
+
+
+def _credentialed(root: Path, *, own: bool, observe_extra: str = "") -> str:
+    pay = ("### pay-bill\n- method: POST\n" + ("- path: /me/pay\n" if own else "- path: /bills/{bill_id}/pay\n")
+           + "- arrange: no_body()\n" + SENT_AS_B + PAY_MOVES + "- verify: http_status(code=200)\n")
+    read = ("### read-bill\n- method: GET\n" + ("- path: /me/bill\n" if own else "- path: /bills/{bill_id}\n")
+            + OBSERVED_AS_A + observe_extra + "- verify: http_status(code=200)\n")
+    states = ISSUED.replace("#get-bill", "#read-bill") + "\n" + PAID.replace("#get-bill", "#read-bill")
+    write(root / API, f"---\ntype: server\ntitle: Bills API\n---\n# Bills API\n\n- entry-url: http://localhost:18101\n\n"
+                      f"{LOGINS}\n{pay}\n{read}\n## Data states\n\n{states}")
+    steps = "".join(f"  - [{name}](../http/api.md#{name})\n" for name in ("login-a", "login-b", "create-bill", "pay-bill"))
+    write(root / FLOW, FLOW_WITH_CHECK.replace("  - [create-bill](../http/api.md#create-bill)\n  - [pay-bill](../http/api.md#pay-bill)\n", steps))
+    write(root / RUNBOOK, RUNBOOK_PAGE)
+    _git(root, "init")
+    _git(root, "config", "user.email", "qa@example.com")
+    _git(root, "config", "user.name", "QA")
+    _git(root, "add", ".")
+    _git(root, "commit", "-m", "base")
+    planned = compile_plan_gaps(build_context(root, base="HEAD", whole_book=True), story="demo")
+    assert isinstance(planned, Plan), [(g.obligation_id, g.detail[:60]) for g in planned.gaps if g.kind in ('unresolved-precondition',)]
+    return planned.source
+
+
+def _read_back_request(source: str) -> str:
+    [line] = [line for line in source.splitlines() if "moved_" in line and "qa.http" in line]
+    return line
+
+
+def test_a_move_on_the_callers_own_record_reads_back_with_the_credential_the_step_sent(tmp_path: Path) -> None:
+    line = _read_back_request(_credentialed(tmp_path, own=True))
+    assert "user_b" in line
+    assert "user_a" not in line
+
+
+def test_a_move_on_a_record_a_path_variable_addresses_reads_back_with_the_observe_endpoints_own_headers(
+    tmp_path: Path,
+) -> None:
+    line = _read_back_request(_credentialed(tmp_path, own=False))
+    assert "user_a" in line
+    assert "user_b" not in line
+
+
+def test_the_callers_own_read_back_keeps_a_header_only_the_observe_endpoint_arranges(tmp_path: Path) -> None:
+    extra = '- arrange: header(name="X-Trace", value="on")\n'
+    line = _read_back_request(_credentialed(tmp_path, own=True, observe_extra=extra))
+    assert "user_b" in line
+    assert "user_a" not in line
+    assert '"X-Trace": "on"' in line
+
+OWN_READ = '- path: /me/bill\n- arrange: header(name="authorization", value="Bearer @someone-else.bill_id")\n- verify'
+OWN_VOID = '- arrange: header(name="Authorization", value="Bearer @issued-bill.bill_id")\n'
+SIGNED_IN = "docs/features/acme/fixtures/signed-in.md"
+SIGNED_IN_PAGE = FIXTURE_PAGE.replace("bill_id", "token").replace("Issued bill", "Signed in").replace("an issued bill", "a token")
+
+
+def _compiled(root: Path, page: str, *fixtures: tuple[str, str]):
+    write(root / API, page)
+    write(root / FLOW, FLOW_WITH_CHECK)
+    write(root / RUNBOOK, RUNBOOK_PAGE)
+    write(root / FIXTURE, FIXTURE_PAGE)
+    for path, text in fixtures:
+        write(root / path, text)
+    _git(root, "init")
+    _git(root, "config", "user.email", "qa@example.com")
+    _git(root, "config", "user.name", "QA")
+    _git(root, "add", ".")
+    _git(root, "commit", "-m", "base")
+    return compile_plan_gaps(build_context(root, base="HEAD", whole_book=True), story="demo")
+
+
+def test_the_starting_read_of_a_callers_own_move_sends_the_headers_the_step_sends(tmp_path: Path) -> None:
+    void = (ENDPOINTS.replace("- path: /bills/{bill_id}\n- verify", OWN_READ)
+            + "\n### void-bill\n- method: POST\n- path: /me/void\n- arrange: no_body()\n" + OWN_VOID + VOID_FROM_ISSUED
+            + "- verify: http_status(code=200)\n")
+    planned = _compiled(tmp_path, api_page(endpoints=void, states=ISSUED_ARRANGED + "\n" + VOID))
+    assert isinstance(planned, Plan), [(g.obligation_id, g.detail[:80]) for g in planned.gaps]
+    [before] = [line for line in planned.source.splitlines() if "before_move = qa.http" in line]
+    assert "@issued-bill.bill_id" in before
+    assert "someone-else" not in before
+
+
+def _own_state_page(fixture: str) -> str:
+    states = ISSUED + f"- fixture: [{fixture}](../fixtures/{fixture}.md)\n"
+    return void_page(void_moves="- moves: none, because nothing changes\n", states=states).replace(
+        "- path: /bills/{bill_id}\n- verify",
+        "- path: /me/bill\n- arrange: header(name=\"Authorization\", value=\"Bearer @someone-else.token\")\n- verify")
+
+
+def test_a_callers_own_state_read_sends_the_token_of_the_fixture_the_state_arranges(tmp_path: Path) -> None:
+    planned = _compiled(tmp_path, _own_state_page("signed-in"), (SIGNED_IN, SIGNED_IN_PAGE))
+    assert isinstance(planned, Plan), [(g.obligation_id, g.detail[:80]) for g in planned.gaps]
+    [read] = [line for line in planned.source.splitlines() if "observed = qa.http.get" in line]
+    assert "@signed-in.token" in read
+    assert "someone-else" not in read
+
+
+def test_a_callers_own_state_read_keeps_the_gap_when_the_fixture_provides_no_such_fact(tmp_path: Path) -> None:
+    planned = _compiled(tmp_path, _own_state_page("issued-bill"))
+    assert [gap for gap in planned.gaps if "@someone-else.token" in gap.detail]

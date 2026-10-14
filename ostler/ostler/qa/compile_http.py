@@ -30,6 +30,7 @@ from ostler.qa.compile_journey import WalkedJourney
 from ostler.qa.compile_journey import api_target
 from ostler.qa.compile_support import PATH_VARIABLE
 from ostler.qa.compile_support import PYTHON
+from ostler.qa.compile_support import on_node
 from ostler.qa.compile_support import bullet_value
 from ostler.qa.compile_support import unarranged_scenario_gap
 from ostler.qa.compile_support import unarranged_state_gap
@@ -610,6 +611,7 @@ class _HttpRequest:
     kwargs_source: str
     sent_references: tuple[references.Reference, ...] = ()
     query: str = ""
+    sent_headers: dict[str, CheckValue] = field(default_factory=dict[str, CheckValue])
 
 
 @dataclass(frozen=True)
@@ -720,14 +722,15 @@ def _http_request(
                     else _step_arrangement(ref, node_rows, book))
     sent_references = (*(arranged.named_references() if arranged else ()), *references.find_references(query))
     if method in _BODILESS_METHODS:
-        return _HttpRequest(method, path, arranged.kwargs_source(with_body=False) if arranged else "", sent_references, query)
+        return _HttpRequest(method, path, arranged.kwargs_source(with_body=False) if arranged else "", sent_references, query,
+                            dict(arranged.headers) if arranged else {})
     if arranged is None or not arranged.states_body():
         gaps.extend(Gap(oid, "unarranged-request-body",
                         f"step {index} is a {method} and the book carries no request body")
                     for oid in ids)
         return _UnbuiltStep("this journey could not build this step's request body, so it "
                             "holds no response to capture the field from")
-    return _HttpRequest(method, path, arranged.kwargs_source(with_body=True), sent_references, query)
+    return _HttpRequest(method, path, arranged.kwargs_source(with_body=True), sent_references, query, dict(arranged.headers))
 
 
 def _book_spelling(ref: references.Reference) -> str:
@@ -784,6 +787,7 @@ class _HttpSteps:
     last_path: str
     produced: set[str]
     reached: frozenset[str] = frozenset()
+    first_headers: dict[str, CheckValue] = field(default_factory=dict[str, CheckValue])
 
 
 def _fixture_owners(obligations: list[Obligation]) -> dict[str, set[str]]:
@@ -882,17 +886,44 @@ def _state_rows(state: DataState, observed: str) -> list[str] | ScenarioRefusal:
     return rows
 
 
+_FIXTURE_FACT = re.compile(r"(?<![\w.])@([a-zA-Z0-9][a-zA-Z0-9_-]*)\.([a-zA-Z0-9][a-zA-Z0-9_-]*)")
+
+
+def _rewired(value: CheckValue, known: _Produced) -> CheckValue:
+    """*value* with each `@fixture.fact` of a fixture the walk does not arrange sent from the one fixture the walk arranges that provides that fact, when there is exactly one."""
+    if not isinstance(value, str):
+        return value
+    arranged = {node for node, _key in known.facts}
+
+    def swap(matched: re.Match[str]) -> str:
+        node, key = matched.group(1), matched.group(2)
+        providers = {owner for owner, fact in known.facts if fact == key}
+        if node in arranged or len(providers) != 1:
+            return matched.group(0)
+        return f"@{next(iter(providers))}.{key}"
+
+    return _FIXTURE_FACT.sub(swap, value)
+
+
 def read_back(
     where: str, observed: str, target: DataState, book: BookIndex, known: _Produced, produced: set[str],
-    owners: dict[str, set[str]],
+    owners: dict[str, set[str]], step_headers: dict[str, CheckValue] | None = None, rewire: bool = False,
 ) -> list[str] | str:
-    """The lines that request *target*'s observing endpoint as a step would and hold its checks on the answer, naming the sibling state that holds when they fail, or why the walk cannot read it."""
+    """The lines that request *target*'s observing endpoint as a step would and hold its checks on the answer, naming the sibling state that holds when they fail, or why the walk cannot read it. With *step_headers*, the headers the moving step sent replace the observing endpoint's own of the same name."""
     arranged = None
     node_rows = book.acts_by_node.get(target.observe, [])
     if node_rows and target.observe not in book.acts_refused:
         arranged = _step_arrangement(target.observe, node_rows, book)
+    if rewire and arranged and arranged.headers and _own_record(target.observe, book):
+        arranged = replace(arranged, headers={name: _rewired(value, known) for name, value in arranged.headers.items()})
+    stepped: list[references.Reference] = []
+    if step_headers:
+        replaced = {name.lower() for name in step_headers}
+        kept = {name: value for name, value in (arranged.headers if arranged else {}).items() if name.lower() not in replaced}
+        arranged = _HttpArrangement(arranged.body if arranged else {}, {**kept, **step_headers}, arranged.bodiless if arranged else False)
+        stepped = [ref for value in step_headers.values() if isinstance(value, str) for ref in references.find_references(value)]
     sent = tuple(arranged.named_references()) if arranged else ()
-    unprovided = [ref for ref in sent if not known.resolves(ref)]
+    unprovided = [ref for ref in sent if ref not in stepped and not known.resolves(ref)]
     bound = _bound_path(target.path, produced, owners, set())
     problem = (f"{where} of `{anchor_of(target.node)}` sends `{_book_spelling(unprovided[0])}`, "
                "and nothing the walk runs provides it" if unprovided
@@ -917,19 +948,34 @@ def read_back(
     ]
 
 
+def _own_record(ref: str, book: BookIndex) -> bool:
+    """Whether node *ref* addresses the caller's own record: neither its route nor, for an invocation, its `on:` endpoint's route carries a path variable."""
+
+    def spelled(node: str) -> str:
+        locators = book.locators_by_node.get(node, NO_LOCATORS)
+        return " ".join(bullet_value(value) or "" for value in (*locators.route, *locators.path))
+
+    text = spelled(ref)
+    if not text.strip():
+        on_value = next(iter(book.locators_by_node.get(ref, NO_LOCATORS).on), "")
+        text = spelled(on_node(ref.split("#", 1)[0], on_value)) if on_value else ""
+    return PATH_VARIABLE.search(text) is None
+
+
 def _move_lines(
     index: int, step: FlowStep, walk: JourneyWalk, known: _Produced, produced: set[str],
-    owners: dict[str, set[str]], gaps: list[Gap], reached: set[str],
+    owners: dict[str, set[str]], gaps: list[Gap], reached: set[str], sent_headers: dict[str, CheckValue],
 ) -> list[str]:
     """The read-back after a step that moves a record: the target state's endpoint requested as a step would be, then the target's checks on its answer, naming the sibling state that holds when they fail."""
     book = walk.book
     lines: list[str] = []
+    credentials = sent_headers if _own_record(step.ref, book) else None
     for number, move in enumerate(book.moves.get(step.ref, ()), start=1):
         target = book.data_states.get(move.end)
         if target is None:
             continue
         observed = f"moved_{index}" if number == 1 else f"moved_{index}_{number}"
-        found = read_back(f"step {index}'s read-back", observed, target, book, known, produced, owners)
+        found = read_back(f"step {index}'s read-back", observed, target, book, known, produced, owners, credentials)
         if isinstance(found, str):
             gaps.extend(Gap(oid, "unresolved-precondition", found) for oid in walk.ids)
             continue
@@ -988,6 +1034,7 @@ def _http_steps(walk: JourneyWalk, sinks: PlanSinks) -> _HttpSteps | None:
         known.record_fixtures(obligation)
     owners = _fixture_owners(walk.obligations)
     observed = last_path = ""
+    first_headers: dict[str, CheckValue] | None = None
     refused = expect_status(tuple(row for obligation in walk.obligations for row in obligation.checks))
     if refused is not None and refused >= 400:
         gaps.extend(Gap(oid, "uncompilable-claim", _FLOW_REFUSAL.format(code=refused)) for oid in walk.ids)
@@ -1021,6 +1068,8 @@ def _http_steps(walk: JourneyWalk, sinks: PlanSinks) -> _HttpSteps | None:
                                      gaps, sinks.captured, because=request.because)
             return None
         observed, last_path = f"observed_{index}", request.path
+        if first_headers is None:
+            first_headers = request.sent_headers
         named = {ref.node for ref in request.sent_references if isinstance(ref, references.NodeRef)}
         bound = _bound_path(request.path, produced, owners, named) + (f"?{request.query}" if request.query else "")
         target = (f"qa.resolve({python_literal(bound)})" if references.find_references(bound)
@@ -1045,15 +1094,15 @@ def _http_steps(walk: JourneyWalk, sinks: PlanSinks) -> _HttpSteps | None:
             lines.extend(_step_captures(observed, captures, sinks, produced))
             lines.extend(_checked_with_moves(
                 step, _step_success_checks(index, step, request, observed, walk, known, gaps, outcome.claims),
-                _move_lines(index, step, walk, known, produced, owners, gaps, reached)))
+                _move_lines(index, step, walk, known, produced, owners, gaps, reached, request.sent_headers)))
             continue
         lines.extend(_step_captures(observed, book.captures_by_node.get(step.ref, []), sinks, produced))
         if not expect:
             lines.extend(_checked_with_moves(
                 step, _step_success_checks(index, step, request, observed, walk, known, gaps,
                                            _success_claims(step.ref, book)),
-                _move_lines(index, step, walk, known, produced, owners, gaps, reached)))
-    return _HttpSteps(lines, observed, last_path, produced, frozenset(reached))
+                _move_lines(index, step, walk, known, produced, owners, gaps, reached, request.sent_headers)))
+    return _HttpSteps(lines, observed, last_path, produced, frozenset(reached), first_headers or {})
 
 
 def _journey_assertion(
@@ -1125,13 +1174,14 @@ def move_walk(walk: JourneyWalk, start: DataState, sinks: PlanSinks) -> WalkedJo
     known = _Produced()
     for obligation in walk.obligations:
         known.record_fixtures(obligation)
-    before = read_back("the read of the starting state", "before_move", start, book, known, set(),
-                       _fixture_owners(walk.obligations))
-    if isinstance(before, str):
-        sinks.gaps.extend(Gap(oid, "unresolved-precondition", before) for oid in walk.ids)
-        return None
     steps = _http_steps(walk, sinks)
     if steps is None or not set(walk.ids) <= steps.reached:
+        return None
+    own = bool(walk.steps) and _own_record(walk.steps[0].ref, book)
+    before = read_back("the read of the starting state", "before_move", start, book, known, set(),
+                       _fixture_owners(walk.obligations), steps.first_headers if own else None)
+    if isinstance(before, str):
+        sinks.gaps.extend(Gap(oid, "unresolved-precondition", before) for oid in walk.ids)
         return None
     reached = steps.reached | {state_obligation_id(start.node)}
     lines = [f"    with qa.at_node({python_literal(start.node)}):", *(f"    {line}" for line in before), *steps.lines]
@@ -1143,7 +1193,8 @@ def observe_walk(walk_obligations: list[Obligation], state: DataState, book: Boo
     known = _Produced()
     for obligation in walk_obligations:
         known.record_fixtures(obligation)
-    read = read_back("the read of the state", "observed", state, book, known, set(), _fixture_owners(walk_obligations))
+    read = read_back("the read of the state", "observed", state, book, known, set(), _fixture_owners(walk_obligations),
+                     rewire=True)
     if isinstance(read, str):
         sinks.gaps.extend(Gap(obligation.id, "unresolved-precondition", read) for obligation in walk_obligations)
         return None
