@@ -7,7 +7,7 @@ table, the failure banner, the empty message. A control's own looks stay on its
 
 ## Identity
 
-Section type. A `### <title>` under a `## Screen states` heading in a [`screen`](screen.md)
+Section type. Every [`screen`](screen.md) declares at least one, or doctor raises `stateless-screen`. A `### <title>` under a `## Screen states` heading in a [`screen`](screen.md)
 file, and in no other page type. Its id is `path#anchor`. The heading is `Screen states`, not
 `States`, so a free-form `## States` section of prose keeps parsing as prose.
 
@@ -71,5 +71,5 @@ A flow names a state as a step: `- [Results loaded](../screens/results.md#loaded
 
 ## Doctor codes it can trip
 
-`misplaced-section` on any page that is not a screen, `unresolved-relation` on a `shows:` link,
+`stateless-screen` on a screen that declares none, `misplaced-section` on any page that is not a screen, `unresolved-relation` on a `shows:` link,
 plus the structural codes every section type can trip. See [../doctor-codes.md](../doctor-codes.md).

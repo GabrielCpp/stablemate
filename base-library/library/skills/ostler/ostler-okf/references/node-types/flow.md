@@ -101,9 +101,10 @@ files an arrival that has neither as `uncompilable-claim`.
 
 On a GUI surface, a step that links a [`state`](state.md) is a **stop**. The walk waits there
 for the screen to settle and checks that the named state holds, so a flow checks the screen
-between acts and not only at its `end:`. After each act whose outcome the person sees, such as a
-load, a submit or a filter, write the state the screen should settle in: loaded, empty, error or
-disabled. The state's `shows:` is what the stop checks.
+between acts and not only at its `end:`. Every act other than a `fill` is followed by a stop,
+and a flow that opens with a click stops first. Write the state the screen should settle in after
+the act: loaded, empty, error or disabled. The state's `shows:` is what the stop checks. A flow
+that skips a stop trips `unsettled-act`.
 
 A step that links a [`passage`](passage.md) performs the passage's interactions and stops at both
 of its states. Flows that share a run of acts link one passage instead of repeating the steps.
@@ -190,7 +191,8 @@ acts on it, as [fixture.md](fixture.md#signing-a-browser-in) shows.
 
 `unresolved-relation` on a `steps:` child, `undeclared-obligation` when `start:`/`end:` are
 stated with no check, `unarranged-journey` when the flow neither arranges a world nor says it
-needs none, `broken-joint` and `unarranged-stop` on its stops and passages, `weak-check`, `compound-normative-bullet`, `overlong-normative-bullet`. See [../doctor-codes.md](../doctor-codes.md).
+needs none, `broken-joint` and `unarranged-stop` on its stops and passages, `unsettled-act` on an act with no stop
+after it, `weak-check`, `compound-normative-bullet`, `overlong-normative-bullet`. See [../doctor-codes.md](../doctor-codes.md).
 
 ## When bullets are not enough
 

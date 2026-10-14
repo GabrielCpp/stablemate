@@ -85,8 +85,9 @@ which mint an obligation on every type.
 
 ## Required sections
 
-None. `## Components`, `## Interactions`, `## Screen states` and `## Passages` are the conventional
-headings, added as the screen gains them. A [passage](passage.md) runs some of the screen's
+`## Screen states` is required, with at least one state, or doctor raises `stateless-screen`.
+`## Components`, `## Interactions` and `## Passages` are the conventional headings, added as the
+screen gains them. A [passage](passage.md) runs some of the screen's
 interactions between two of its states.
 
 ## Relationships
@@ -129,7 +130,8 @@ one of the screen's [states](state.md).
 `missing-required-bullet`, `unreachable-screen`, `no-root-screen` (warn, raised against the
 surface when no screen's `route:` is its root path), `unidentifiable-screen` (a scenario ends
 on this screen and its `route:` is a pattern, absent, or stated twice in one file, so nothing
-can say the page photographed is this one), `unresolved-relation`, plus the structural codes
+can say the page photographed is this one), `unresolved-relation`, `stateless-screen` (the page declares no
+[`state`](state.md) under `## Screen states`), plus the structural codes
 every file type can trip. See [../doctor-codes.md](../doctor-codes.md).
 
 ## When bullets are not enough
