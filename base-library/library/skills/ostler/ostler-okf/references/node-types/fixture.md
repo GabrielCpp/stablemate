@@ -225,7 +225,7 @@ title: Seeded acme
 
 ## Doctor codes it can trip
 
-See [`../doctor-codes.md`](../doctor-codes.md): `unknown-book-fixture`, `fixture-step-kind`,
+See [`../doctor-codes.md`](../doctor-codes.md): `unknown-book-fixture`, `duplicate-fixture-name`, `fixture-step-kind`,
 `fixture-step-no-run`, `fixture-browser-step`, `browser-fixture-off-browser`, `fixture-arg-mismatch`, `fixture-needs-target-args`,
 `fixture-needs-cycle`, `fixture-undeclared-provides`, `undetermined-provided-fact`,
 `fixture-secret-name`, `unbacked-precondition`, `missing-required-section`,
