@@ -541,6 +541,21 @@ def test_a_successful_span_marks_the_turn_done():
     assert turn["cls"] == ""
 
 
+def test_a_retried_turn_spans_its_attempts_and_takes_the_last_ones_status():
+    slug = "001-00001-implement"
+    retry = {**_turn_span(slug, 40.0, 50.0), "span_id": "retry"}
+    lines = projection.history_lines([
+        retry,
+        _turn_span(slug, 10.0, 30.0, "ERROR"),
+        _transcript_row(_text("agent_message_chunk", "hi"), 20.0),
+    ])
+    turn = next(line for line in lines if line["kind"] == "turn")
+    assert turn["status"] == "done"
+    assert turn["duration"] == projection.fmt_duration(40.0)
+    assert turn["ts"] == projection.fmt_ts(50.0)
+    assert all(line.get("absorbed") for line in lines if line["kind"] == "span")
+
+
 def test_a_slug_without_a_span_is_running_with_a_duration_to_now():
     lines = projection.history_lines(
         [

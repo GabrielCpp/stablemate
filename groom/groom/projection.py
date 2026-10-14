@@ -548,15 +548,16 @@ TURN_SPAN = "agent_turn"
 
 
 def _turn_line(
-    slug: str, rows: list[dict[str, Any]], span: dict[str, Any] | None, now: float
+    slug: str, rows: list[dict[str, Any]], spans: list[dict[str, Any]], now: float
 ) -> tuple[float, dict[str, Any]]:
-    """One turn's group: its entries oldest first, with the status and duration of its ``agent_turn`` span, or running until now."""
+    """One turn's group: its entries oldest first, with the status of its last ``agent_turn`` span and the time its attempts took, or running until now."""
     ordered = sorted(rows, key=lambda row: float(row["ts"]))
-    if span is not None:
-        failed = span["status"] == "ERROR"
+    if spans:
+        last = max(spans, key=lambda span: float(span["end_ts"]))
+        failed = last["status"] == "ERROR"
         status = "failed" if failed else "done"
-        duration = float(span["end_ts"]) - float(span["start_ts"])
-        ts = float(span["end_ts"])
+        ts = float(last["end_ts"])
+        duration = ts - min(float(span["start_ts"]) for span in spans)
     else:
         failed = False
         status = "running"
@@ -578,14 +579,13 @@ def history_lines(rows: list[dict[str, Any]], now: float | None = None) -> list[
     for row in rows:
         if row["kind"] == "transcript" and row.get("slug"):
             turns.setdefault(str(row["slug"]), []).append(row)
-    spans = {
-        str(row["slug"]): row
-        for row in rows
-        if row["kind"] == "span" and row.get("name") == TURN_SPAN and row.get("slug") in turns
-    }
+    spans: dict[str, list[dict[str, Any]]] = {}
+    for row in rows:
+        if row["kind"] == "span" and row.get("name") == TURN_SPAN and row.get("slug") in turns:
+            spans.setdefault(str(row["slug"]), []).append(row)
     placed: list[tuple[float, dict[str, Any]]] = []
     for slug, entries in turns.items():
-        placed.append(_turn_line(slug, entries, spans.get(slug), now))
+        placed.append(_turn_line(slug, entries, spans.get(slug, []), now))
     for row in rows:
         kind = row["kind"]
         node = str(row.get("node") or "")
@@ -612,7 +612,7 @@ def history_lines(rows: list[dict[str, Any]], now: float | None = None) -> list[
             "body": body, "cls": SEVERITY_CLASS.get(str(row.get("severity") or ""), ""),
             "severity": str(row.get("severity") or ""),
         }
-        if kind == "span" and spans.get(str(row.get("slug"))) is row:
+        if kind == "span" and any(span is row for span in spans.get(str(row.get("slug")), [])):
             line["absorbed"] = True
         placed.append((float(row["ts"]), line))
     placed.sort(key=lambda item: item[0], reverse=True)
