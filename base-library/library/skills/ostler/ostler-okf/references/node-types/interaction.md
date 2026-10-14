@@ -27,6 +27,7 @@ Section type. A `### <id>` under a `## Interactions` heading, normally in a
 | `exclusive-with` | no | link — a sibling it can never co-render with |
 | `extends` | no | link — the base arm this one narrows, inheriting its control identity (`on:`/`trigger:`/`role:`/`name:`/`keyboard:`), none of its arrangements |
 | `same-as` | no | link, multi-valued — another node documenting this same interaction |
+| `sends` | no | link, multi-valued: the [`endpoint`](endpoint.md) or [`invocation`](invocation.md), on a server page, that the act sends a request to. It mints no obligation |
 | `one-per` | no | the iteration variable — one node stands for a whole generated family |
 | `unique-by` | no | a dot-path whose value is distinct per instance, with the evidence in prose |
 | `variants` | no | `path = token \| token \| …` — a closed per-instance axis from the source |
@@ -38,6 +39,8 @@ Section type. A `### <id>` under a `## Interactions` heading, normally in a
 | `arrange` | no | an act performed on this node's own surface |
 | `capture` | no | a capture |
 | `tests` | no | link — the test files covering it |
+
+`sends:` tells doctor what the act moves. The `moves:` rows of each linked node apply to the record that node addresses, so a later screen state with a `when:` on the moved-to data state is held.
 
 An interaction is by definition operable, so five keys are required. `role:`/`name:` give
 `getByRole(role, {name})` instead of a brittle selector. `none` on `keyboard:` is a *claim*

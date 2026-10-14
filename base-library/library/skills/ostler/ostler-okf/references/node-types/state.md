@@ -17,6 +17,7 @@ file, and in no other page type. Its id is `path#anchor`. The heading is `Screen
 | --- | --- | --- |
 | `shows` | no | nested; **mints an obligation** per state. Each child links one component of the same page, then may add `absent`, `disabled`, `checked`, `expanded` or `selected`, in any number. A link with no modifier must be visible |
 | `code` | no | link, **owns** its file |
+| `when` | no | link, one per record: a [`data-state`](data-state.md). The screen settles in this state only while the record is in that data state. It mints no obligation |
 | `detail` | no | link: an explanatory [`concept`](concept.md) |
 | `verify` | no | a check |
 | `fixture` | no | a fixture |
@@ -30,6 +31,12 @@ A [`flow`](flow.md) step that links a state is a stop. At a stop the walk waits 
 the screen declares with `requests:` to be answered, then for its `busy:` component to go, then
 for one of the screen's states to hold. It then checks that the state which holds is the one the
 step names. A different state holding fails the stop at once and names that state.
+
+Doctor also reads the stop against the data. When the state has a `when:` link to a data state, the
+walk must hold that record in that data state at the stop. A fixture of the flow can arrange it, and so can an earlier
+step that sends a request moving the record there. An [`interaction`](interaction.md) with `sends:`
+or a screen passage whose interactions send one counts as that step. The stop fails with
+`unheld-condition` when the walk holds another state of the record, or none.
 
 Every component a state shows, and the screen's `busy:` component, is found by its `role:` and
 its `name:`. A component with neither cannot be found, and the walk is not compiled.
