@@ -211,6 +211,12 @@ states (A4).
     accessibility finding on the app, not a reason for a style or test-id locator. Owner:
     Perceivable, which refuses to be written from a style or a test id. Screen state, Busy sign
     and Passage uphold it by holding only perceivables. (added, R9; revised, R11)
+11. **Every screen declares its states.** A screen page with no screen state is a finding on the
+    page. Owner: Screen state. (added, R12)
+12. **Every act that settles is followed by a stop.** On a screen flow, each step that acts on a
+    screen, other than typing into a field, is followed by a stop: a state or a passage. A flow
+    whose first act leaves a screen it never stopped at is a finding too. Owner: Walk's
+    itinerary. (added, R12)
 
 ## 4. Forces and patterns
 
@@ -326,6 +332,9 @@ L1 to L6 are resolved in section 5.
 - R11. Section 1, Perceivable, invariant 10, claim 15, slice 4, assumptions 5 and 6. The review
   extended invariant 10 to actions: a walk presses a button by its label. Component `selector:`
   forms that are a style or a test id become waste for acting too.
+- R12. Invariants 11 and 12 added. The client's two screen books hold 64 screens and 43 flows,
+  and none declares a state. Every check in slices 1 to 4 judges only what a page declares, so a
+  book run left them as they were. An absence has to be a finding for a run to backfill it.
 
 ### Parts
 
