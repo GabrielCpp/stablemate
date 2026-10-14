@@ -254,6 +254,7 @@ except ImportError:
 
 
 TEMPLATE_HOLE = re.compile(r"\{[^{}]+\}")
+PATH_VARIABLE = re.compile(r"\{([a-zA-Z0-9][a-zA-Z0-9_-]*)\}(?![\w-])")
 
 
 def name_refusal(locators: Locators) -> str:

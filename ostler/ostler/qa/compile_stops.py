@@ -98,7 +98,7 @@ def expand_steps(walk: JourneyWalk, gaps: list[Gap]) -> list[Move] | None:
 
     book = walk.book
     for index, step in enumerate(walk.steps, start=1):
-        if step.node_type == "passage" and step.ref not in book.passages:
+        if step.node_type == "passage" and not (step.ref in book.passages and book.passages[step.ref].start):
             refuse(f"step {index} links passage `{step.ref}`, which the packet does not carry well formed")
             return None
     traced = passages_mod.trace([(step.node_type, step.ref) for step in walk.steps], book.passages)

@@ -7,16 +7,17 @@ from dataclasses import dataclass
 
 from ostler import accessible_names, locators as loc_mod, markdown, refs as refs_mod
 from ostler.finding import Finding
-from ostler.qa import journey_steps
-from ostler.qa.compile_support import ARRIVAL_TRIGGERS, TEMPLATE_HOLE, bullet_value, trigger_name
+from ostler.qa import captures as captures_mod, fixture_provides, journey_steps, references
+from ostler.qa.compile_support import ARRIVAL_TRIGGERS, PATH_VARIABLE, TEMPLATE_HOLE, bullet_value, trigger_name
 from ostler.qa.obligation_frame import BookNode, book_nodes
 
 _UNMATCHABLE_ROLES = frozenset({"generic", "none", "presentation"})
+_RUN_STEP_TYPES = {"server": ("endpoint", "invocation"), "cli": ("command", "invocation")}
 
 
 @dataclass(frozen=True, slots=True)
 class Passage:
-    """One passage as the context packet carries it: the state it leaves, the interactions it performs, the state it lands on and the requests it sends."""
+    """One passage as the context packet carries it: the state it leaves, the interactions it performs, the state it lands on and the requests it sends. A passage on a server or command-line page leaves and lands on no state and performs endpoints, commands or invocations."""
 
     node: str
     start: str
@@ -65,7 +66,7 @@ def trace(steps: Sequence[tuple[str, str]], passages: Mapping[str, Passage]) -> 
                 stops.append(Stop(ref, at, acted))
             current = ref
             continue
-        if node_type == "passage" and ref in passages:
+        if node_type == "passage" and ref in passages and passages[ref].start:
             passage = passages[ref]
             if current and current != passage.start:
                 broken.append((number, joint_before(number, ref, passage.start, current)))
@@ -109,10 +110,20 @@ def _states(node: BookNode, key: str, book: Mapping[str, BookNode]) -> list[Book
             if target.type == "state" and (key == "to" or target.id.split("#", 1)[0] == page)]
 
 
+def _host_type(node: BookNode, book: Mapping[str, BookNode]) -> str:
+    host = book.get(node.id.split("#", 1)[0])
+    return host.type if host is not None else ""
+
+
 def passage_of(node: BookNode, book: Mapping[str, BookNode]) -> Passage | None:
     """The passage *node* declares, or `None` while its `from:`, `to:` or `steps:` do not name what a walk needs."""
-    start, end = _states(node, "from", book), _states(node, "to", book)
     steps = node.targets("steps", book)
+    run_types = _RUN_STEP_TYPES.get(_host_type(node, book))
+    if run_types is not None:
+        if not steps or any(step.type not in run_types for step in steps):
+            return None
+        return Passage(node.id, "", tuple(step.id for step in steps), "", tuple(node.bullets.get("requests", ())))
+    start, end = _states(node, "from", book), _states(node, "to", book)
     if len(start) != 1 or len(end) != 1 or not steps or any(step.type != "interaction" for step in steps):
         return None
     return Passage(node.id, start[0].id, tuple(step.id for step in steps), end[0].id,
@@ -166,6 +177,24 @@ def _check_steps(node: BookNode, book: Mapping[str, BookNode], f: list[Finding])
                 _shape(node, "steps", f"links `{target.id}`, which is no interaction on this screen", f, fix)
 
 
+def _check_run_steps(node: BookNode, book: Mapping[str, BookNode], f: list[Finding]) -> None:
+    run_types = _RUN_STEP_TYPES[_host_type(node, book)]
+    named = " or ".join(run_types)
+    resolved = {edge.href: edge.to for edge in node.edges if edge.via == "steps" and edge.href}
+    fix = f"list one `- [<title>](<page>#<anchor>)` per {named} the passage runs"
+    items = node.bullets.get("steps", ())
+    if not items:
+        _shape(node, "steps", f"lists no {named}", f, fix)
+    for item in items:
+        links = markdown.extract_refs(item).links
+        if not links:
+            _shape(node, "steps", f"entry {item!r} links no {named}", f, fix)
+        for _text, href in links:
+            target = book.get(resolved.get(href, ""))
+            if target is not None and target.type not in run_types:
+                _shape(node, "steps", f"links `{target.id}`, which is no {named}", f, fix)
+
+
 def _check_requests(node: BookNode, f: list[Finding]) -> None:
     for entry in node.bullets.get("requests", ()):
         method, _, path = (bullet_value(entry) or "").partition(" ")
@@ -182,7 +211,69 @@ def _arranges_nothing(node: BookNode) -> bool:
     return any((bullet_value(value) or "").lower().startswith("none") for value in node.bullets.get("fixture", ()))
 
 
-def _check_flow(flow: BookNode, book: Mapping[str, BookNode], passages: Mapping[str, Passage], f: list[Finding]) -> None:
+def _captured_by(node: BookNode | None) -> set[str]:
+    names: set[str] = set()
+    for value in node.bullets.get("capture", ()) if node is not None else ():
+        parsed = captures_mod.parse_bullet(value)
+        if isinstance(parsed, captures_mod.CaptureDecl):
+            names.add(parsed.name)
+    return names
+
+
+def _route_text(node: BookNode, book: Mapping[str, BookNode]) -> str:
+    for source in (node, *node.targets("on", book)):
+        text = " ".join((*source.bullets.get("route", ()), *source.bullets.get("path", ())))
+        if text.strip():
+            return text
+    return ""
+
+
+def _missing_inputs(node: BookNode, book: Mapping[str, BookNode], captured: set[str], facts: set[str]) -> list[str]:
+    route = _route_text(node, book)
+    missing = [f"{{{name}}}" for name in PATH_VARIABLE.findall(route)
+               if name not in captured and not any(fact.rpartition(".")[2] == name for fact in facts)]
+    for ref in references.find_references(" ".join((route, *node.bullets.get("arrange", ())))):
+        if isinstance(ref, references.NodeRef):
+            if f"{ref.node}.{ref.key}" not in facts:
+                missing.append(f"@{ref.node}.{ref.key}")
+        elif ref.name not in captured:
+            missing.append(f"${ref.name}")
+    return list(dict.fromkeys(missing))
+
+
+def _check_inputs(
+    flow: BookNode, book: Mapping[str, BookNode], passages: Mapping[str, Passage],
+    provided: Mapping[str, Sequence[str]], f: list[Finding],
+) -> None:
+    facts = {fact for edge in flow.edges if edge.via == "fixture" and edge.to
+             for fact in provided.get(_fixture_name(edge.to), ())}
+    held: set[str] = set()
+    for number, step in enumerate(journey_steps.journey_steps(flow, book), start=1):
+        node = book.get(step.ref)
+        passage = passages.get(step.ref) if step.node_type == "passage" and node is not None else None
+        if passage is None or node is None or _host_type(node, book) != "server":
+            held |= _captured_by(node) if step.node_type in ("endpoint", "invocation") else set()
+            continue
+        for ref in passage.steps:
+            inner = book[ref]
+            missing = _missing_inputs(inner, book, held, facts)
+            if missing:
+                named = ", ".join(f"`{value}`" for value in missing)
+                f.append(Finding(
+                    "error", "broken-joint",
+                    f"{flow.id}: step {number} links passage `{step.ref}`, whose step `{ref}` sends {named}, and "
+                    f"the walk holds no such value there: no earlier step captures it and no fixture the flow "
+                    f"names provides it. Take the passage after a step that captures it, or add a `- fixture:` "
+                    f"that provides it to the flow",
+                    ref=refs_mod.bullet_ref(flow.id, "steps"), path=flow.id.split("#", 1)[0], line=flow.line))
+            held |= _captured_by(inner)
+
+
+def _check_flow(
+    flow: BookNode, book: Mapping[str, BookNode], passages: Mapping[str, Passage],
+    provided: Mapping[str, Sequence[str]], f: list[Finding],
+) -> None:
+    _check_inputs(flow, book, passages, provided, f)
     steps = [(step.node_type, step.ref) for step in journey_steps.journey_steps(flow, book)]
     walked = trace(steps, passages)
     path = flow.id.split("#", 1)[0]
@@ -324,13 +415,17 @@ def check_passages(data: dict, f: list[Finding]) -> None:
     """Each passage names the states and interactions of its screen, each flow's passages join, each stop's condition is arranged, and every element a walk acts on or looks for is one a person perceives."""
     book = book_nodes({node["id"]: node for node in data["nodes"]})
     passages = passages_of(book)
+    provided = fixture_provides.index(book)
     for node in book.values():
         if node.type == "passage":
-            _check_ends(node, book, f)
-            _check_steps(node, book, f)
+            if _host_type(node, book) in _RUN_STEP_TYPES:
+                _check_run_steps(node, book, f)
+            else:
+                _check_ends(node, book, f)
+                _check_steps(node, book, f)
             _check_requests(node, f)
         elif node.type == "flow":
-            _check_flow(node, book, passages, f)
+            _check_flow(node, book, passages, provided, f)
             _check_settled(node, book, f)
     _check_stateful(book, f)
     _check_perceivable(book, f)

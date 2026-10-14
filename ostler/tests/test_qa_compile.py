@@ -6719,3 +6719,71 @@ def test_a_case_that_answers_success_and_one_that_refuses_are_two_outcomes() -> 
     assert isinstance(result, Refusal)
     [gap] = [g for g in result.gaps if g.obligation_id == oid and g.kind == "uncompilable-claim"]
     assert "200" in gap.detail and "404" in gap.detail
+
+
+_BILL_PASSAGE = f"{_BILLS}#issue-a-bill"
+_BILL_FLOWS = {
+    "docs/features/bills/flows/read-an-issued-bill.md": "get-bill",
+    "docs/features/bills/flows/pay-an-issued-bill.md": "pay-bill",
+}
+
+
+def _shared_passage_context() -> dict:
+    routes = {
+        "create-bill": ("POST /api/bills", [_status(201)]),
+        "issue-bill": ("POST /api/bills/{bill_id}/issue", [_status(200), _json_path("$.state", "issued")]),
+        "get-bill": ("GET /api/bills/{bill_id}", [_status(200), _json_path("$.state", "issued")]),
+        "pay-bill": ("POST /api/bills/{bill_id}/pay", [_status(200), _json_path("$.state", "paid")]),
+    }
+    arms = [
+        {**_arm(f"{_BILLS}#{name}", "ok", route, checks, position),
+         **({"capturesDeclared": [{"name": "bill_id", "from": "$.id"}]} if name == "create-bill" else {})}
+        for position, (name, (route, checks)) in enumerate(routes.items(), start=1)
+    ]
+    flows = [
+        _flow_obligation(
+            f"okf:{source}:end-state", source=source, surface="api",
+            steps=[_step(_BILL_PASSAGE, "passage", "api"), _step(f"{_BILLS}#{own}", "endpoint", "api")],
+            checks=[{"call": "it", "name": "http_status",
+                     "args": {"status": 200, "path": f"/api/bills/{{bill_id}}{suffix}"}}],
+        )
+        for (source, own), suffix in zip(_BILL_FLOWS.items(), ("", "/pay"), strict=True)
+    ]
+    context = _navigation_context(
+        *flows, *arms,
+        navigation={"api": {"start": _BILLS, "surface": "api", "driver": "http", "entryUrl": _BASE_URL,
+                            "counts": {}, "routes": {}, "unreachable": [], "undeclared": []}},
+    )
+    context["passages"] = {_BILL_PASSAGE: {
+        "from": "", "to": "", "requests": [],
+        "steps": [f"{_BILLS}#create-bill", f"{_BILLS}#issue-bill"],
+    }}
+    return context
+
+
+def test_two_flows_sharing_a_server_passage_each_send_its_requests_then_their_own_step() -> None:
+    context = _shared_passage_context()
+    result = _compile_plan_gaps(context, story="demo-story")
+    assert isinstance(result, Plan)
+    ast.parse(result.source)
+    for source, own in _BILL_FLOWS.items():
+        oid = f"okf:{source}:end-state"
+        assert _gap_kinds(result.gaps, oid) == []
+    for inner in ("create-bill", "issue-bill"):
+        assert result.source.count(f'with qa.at_node("{_BILLS}#{inner}"):') == 2
+    for own in _BILL_FLOWS.values():
+        assert result.source.count(f'with qa.at_node("{_BILLS}#{own}"):') == 1
+    assert result.source.count('qa.http.post("/api/bills"') == 2
+    assert result.source.count('qa.capture_field("bill_id"') == 2
+    assert result.source.count('qa.http.post(qa.resolve("/api/bills/$bill_id/issue")') == 2
+    assert result.source.count('qa.http.get(qa.resolve("/api/bills/$bill_id"))') == 1
+    assert result.source.count('qa.http.post(qa.resolve("/api/bills/$bill_id/pay")') == 1
+
+
+def test_a_server_passage_the_packet_does_not_carry_refuses_the_walk() -> None:
+    context = _shared_passage_context()
+    context["passages"] = {}
+    result = _compile_plan_gaps(context, story="demo-story")
+    assert isinstance(result, Refusal)
+    [gap, *_] = [g for g in result.gaps if g.kind == "uncompilable-claim"]
+    assert "passage" in gap.detail

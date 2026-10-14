@@ -5,7 +5,7 @@ from ostler.qa.plan_source import ScenarioRefusal
 
 DISPATCH_TABLE: dict[str, dict[str, str] | str] = {
     "interaction": {"web": "playwright", "mobile": "maestro"},
-    "passage": {"web": "playwright", "mobile": "maestro"},
+    "passage": {"web": "playwright", "mobile": "maestro", "http": "http"},
     "endpoint": {"web": "http", "mobile": "http", "http": "http"},
     "command": "cli",
 }

@@ -27,6 +27,7 @@ from ostler import routes as routes_mod
 from ostler.qa import captures as captures_mod
 from ostler.qa.dispatch import owes_live_evidence
 from ostler.qa.fixture_browser import BROWSER_KEYS
+from ostler.qa import fixture_provides as provides_mod
 from ostler.qa import fixtures as fixtures_mod
 from ostler.qa.compile import annotate_deferred_obligations
 from ostler.qa.obligation_frame import (
@@ -809,7 +810,7 @@ def _minted_obligations(
         and book[node_id].type != "passage"
     }
     context_only = {node_id for node_id in owing & selection.perceivables if prefixes and not book[node_id].path.startswith(prefixes)}
-    fixture_provides = _fixture_provides_index(book)
+    fixture_provides = provides_mod.index(book)
     fixture_undetermined = _fixture_undetermined_index(book)
     fixture_needs = _fixture_needs_index(book)
     signing_fixtures = frozenset(_browser_fixtures(book))
@@ -1884,15 +1885,9 @@ def _dedup_checks(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return list({row["call"]: row for row in rows}.values())
 
 
-def _fixture_provides_index(book: Mapping[str, BookNode]) -> dict[str, list[str]]:
-    """Every book fixture's own `provides:` keys, plus every one reachable through `needs:`."""
-    resolved = _fixture_provides_closure(book)
-    return {name: sorted(ref for ref, _ in pairs) for name, pairs in resolved.items()}
-
-
 def _fixture_undetermined_index(book: Mapping[str, BookNode]) -> dict[str, list[str]]:
     """Every reachable `provides:` key whose *source* the book left undetermined, by fixture stem."""
-    resolved = _fixture_provides_closure(book)
+    resolved = provides_mod.closure(book)
     return {name: sorted(ref for ref, bad in pairs if bad) for name, pairs in resolved.items()}
 
 
@@ -1925,48 +1920,6 @@ def _needs_first(rows: list[dict[str, Any]], needs: Mapping[str, frozenset[str]]
         pending = [other for other in pending if other is not row]
         ordered.append(row)
     return ordered
-
-
-def _fixture_provides_closure(
-    book: Mapping[str, BookNode],
-) -> dict[str, set[tuple[str, bool]]]:
-    """`{fixture stem: {(`<owner>.<key>`, source-undetermined), ...}}` over the `needs:` closure."""
-    fixtures = {node_id: node for node_id, node in book.items() if node.type == "fixture"}
-    provides: dict[str, set[tuple[str, bool]]] = {}
-    needs: dict[str, set[str]] = {}
-    for node_id, node in fixtures.items():
-        keys: set[tuple[str, bool]] = set()
-        stated: dict[str, Mapping[str, str]] = {}
-        for entry in node.entries.get("provides", ()):
-            head = entry.headline.partition("—")[0].split()
-            if head:
-                stated[head[0]] = entry.properties
-        for value in node.bullets.get("provides", ()):
-            head = value.partition("—")[0].split()
-            if not head:
-                continue
-            properties = stated.get(head[0], {})
-            observed = bool(properties.get("from"))
-            asserted = bool(properties.get("is"))
-            keys.add((head[0], observed == asserted))
-        provides[node_id] = keys
-        needs[node_id] = {edge.to for edge in node.edges if edge.via == "needs" and edge.to in fixtures}
-
-    closure: dict[str, set[tuple[str, bool]]] = {}
-
-    def resolve(node_id: str, seen: frozenset[str]) -> set[tuple[str, bool]]:
-        if node_id in closure:
-            return closure[node_id]
-        if node_id in seen:
-            return set()
-        owner = Path(node_id).stem
-        pairs = {(f"{owner}.{key}", bad) for key, bad in provides.get(node_id, ())}
-        for dep in needs.get(node_id, ()):
-            pairs |= resolve(dep, seen | {node_id})
-        closure[node_id] = pairs
-        return pairs
-
-    return {Path(node_id).stem: resolve(node_id, frozenset()) for node_id in fixtures}
 
 
 def _parse_captures(values: list[str]) -> list[dict[str, Any]]:

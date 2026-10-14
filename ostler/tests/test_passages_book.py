@@ -191,7 +191,7 @@ def _edit(path: Path, old: str, new: str) -> None:
 
 def test_the_registry_hosts_passages_on_screen_pages_and_links_their_ends() -> None:
     assert registry.UI_HEADING_TO_TYPE["Passages"] == "passage"
-    assert registry.UI_TYPES_BY_NAME["passage"].host_page_types == ("screen",)
+    assert registry.UI_TYPES_BY_NAME["passage"].host_page_types == ("screen", "server", "cli")
     assert {"from", "to", "steps"} <= set(registry.RELATION_KEYS)
 
 

@@ -681,11 +681,11 @@ UI_TYPES: tuple[UINodeType, ...] = (
         ),
     ),
     UINodeType(
-        name="passage", kind="section", heading="Passages", host_page_types=("screen",),
+        name="passage", kind="section", heading="Passages", host_page_types=("screen", "server", "cli"),
         bullet_keys=(
-            BulletKey("from", required=True, link=True),
+            BulletKey("from", link=True),
             BulletKey("steps", required=True, nested=True, link=True),
-            BulletKey("to", required=True, link=True),
+            BulletKey("to", link=True),
             BulletKey("requests", nested=True, locator=True),
             BulletKey("detail", link=True),
         ),

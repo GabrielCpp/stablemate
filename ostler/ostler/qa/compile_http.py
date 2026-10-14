@@ -21,6 +21,7 @@ from ostler.qa.book_index import decline_captures_by_node
 from ostler.qa.compile_journey import JourneyWalk
 from ostler.qa.compile_journey import WalkedJourney
 from ostler.qa.compile_journey import api_target
+from ostler.qa.compile_support import PATH_VARIABLE
 from ostler.qa.compile_support import PYTHON
 from ostler.qa.compile_support import bullet_value
 from ostler.qa.compile_support import unarranged_scenario_gap
@@ -777,9 +778,6 @@ class _HttpSteps:
     produced: set[str]
 
 
-_PATH_VARIABLE = re.compile(r"\{([a-zA-Z0-9][a-zA-Z0-9_-]*)\}(?![\w-])")
-
-
 def _fixture_owners(obligations: list[Obligation]) -> dict[str, set[str]]:
     """Each key the journey's fixtures provide, and the fixtures that provide it."""
     owners: dict[str, set[str]] = {}
@@ -807,7 +805,7 @@ def _bound_path(path: str, produced: set[str], owners: dict[str, set[str]], name
         if len(provided) == 1:
             return f"@{next(iter(provided))}.{name}"
         return match.group(0)
-    return _PATH_VARIABLE.sub(bind, path)
+    return PATH_VARIABLE.sub(bind, path)
 
 
 def _refused_status(obligations: list[Obligation]) -> int | None:
@@ -867,8 +865,33 @@ def _success_claims(ref: str, book: BookIndex) -> list[Obligation]:
             if (_expect_status(claim.checks) or 0) < 400]
 
 
+def _expanded_steps(walk: JourneyWalk, gaps: list[Gap]) -> tuple[FlowStep, ...] | None:
+    """The walk's steps with each passage replaced by the endpoints and cases it runs, or `None` once one passage is not a run of steps."""
+    steps: list[FlowStep] = []
+    for index, step in enumerate(walk.steps, start=1):
+        if step.node_type != "passage":
+            steps.append(step)
+            continue
+        passage = walk.book.passages.get(step.ref)
+        if passage is None or passage.start:
+            gaps.extend(Gap(oid, "uncompilable-claim",
+                            f"step {index} links passage `{step.ref}`, which the packet does not carry as a run of "
+                            "endpoints and cases")
+                        for oid in walk.ids)
+            return None
+        steps.extend(FlowStep(ref, "", "invocation" if ref in walk.book.invocation_claims else "endpoint", step.surface)
+                     for ref in passage.steps)
+    return tuple(steps)
+
+
 def _http_steps(walk: JourneyWalk, sinks: PlanSinks) -> _HttpSteps | None:
     """Perform each `endpoint` step as a request, or `None` once one step builds no request."""
+    expanded = _expanded_steps(walk, sinks.gaps)
+    if expanded is None:
+        decline_captures_by_node([s.ref for s in walk.steps], walk.book.captures_by_node, sinks.gaps, sinks.captured,
+                                 because="this journey links a passage that is not a run of endpoints and cases")
+        return None
+    walk = replace(walk, steps=expanded)
     book, gaps = walk.book, sinks.gaps
     lines: list[str] = []
     produced: set[str] = set()
