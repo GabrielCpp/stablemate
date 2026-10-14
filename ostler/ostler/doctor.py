@@ -450,6 +450,7 @@ def _check_fixtures(graph: Graph, f: list[Finding]) -> None:
     book_fixtures = {Path(n.id).stem for n in graph.ui_nodes_of_type("fixture")}
     known = set(specs) | book_fixtures
 
+    _check_duplicate_fixture_names(graph, f)
     _check_book_fixtures(graph, known, f)
 
     for name in sorted(set(specs) - book_fixtures):
@@ -539,6 +540,29 @@ def _check_book_captures(graph: Graph, f: list[Finding]) -> None:
                 f"{node.id}: `{key}: {value}` is not a capture declaration — {parsed}",
                 path=rel, line=node.line, ref=value,
                 suggestion=f"- {key}: <name> from <json path | UI locator>"))
+
+
+def _check_duplicate_fixture_names(graph: Graph, f: list[Finding]) -> None:
+    """Fixture names are one namespace per repo, so two files may not share a stem."""
+    by_stem: dict[str, list[UINode]] = {}
+    for node in graph.ui_nodes_of_type("fixture"):
+        by_stem.setdefault(Path(node.id).stem, []).append(node)
+    for stem, nodes in sorted(by_stem.items()):
+        if len(nodes) < 2:
+            continue
+        for node in nodes:
+            rel = _rel_posix(node.path, graph.root)
+            others = ", ".join(
+                sorted(_rel_posix(o.path, graph.root) for o in nodes if o is not node))
+            f.append(Finding(
+                "error", "duplicate-fixture-name",
+                f"{rel}: fixture name '{stem}' is also the name of {others}. A `fixture:` row "
+                f"and an @{stem}.fact reference find a fixture by its name alone, so one of "
+                f"these shadows the other. Rename one file and the references to it.",
+                path=rel, line=node.line, ref=stem,
+                suggestion=f"rename {rel} to a name no other fixture file holds, and point "
+                           f"the `fixture:` rows and @{stem}.fact references that meant it "
+                           f"at the new name"))
 
 
 def _check_book_fixtures(graph: Graph, known: set[str], f: list[Finding]) -> None:

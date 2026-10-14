@@ -573,3 +573,23 @@ def test_a_probe_on_an_outside_service_is_clean(repo: Path) -> None:
     write(repo / "docs/features/acme/fixtures/payment-provider.md",
           _served_fixture(kind="probe", run='test -n "$PAYMENT_KEY" && curl -sf https://api.example.com/ping'))
     assert _findings(repo, "fixture-probe-local") == []
+
+
+def test_two_fixture_files_sharing_a_stem_are_one_error_each(repo: Path) -> None:
+    _stack(repo)
+    write(repo / "docs/features/a/fixtures/x.md", _fixture_book())
+    write(repo / "docs/features/b/fixtures/x.md", _fixture_book())
+    found = _findings(repo, "duplicate-fixture-name")
+    assert sorted((f.severity, f.path, f.ref) for f in found) == [
+        ("error", "docs/features/a/fixtures/x.md", "x"),
+        ("error", "docs/features/b/fixtures/x.md", "x"),
+    ]
+    assert "docs/features/b/fixtures/x.md" in found[0].message or "docs/features/a/fixtures/x.md" in found[0].message
+    assert all(f.suggestion for f in found)
+
+
+def test_differently_named_fixture_files_are_not_duplicates(repo: Path) -> None:
+    _stack(repo)
+    write(repo / "docs/features/a/fixtures/x.md", _fixture_book())
+    write(repo / "docs/features/b/fixtures/y.md", _fixture_book())
+    assert _findings(repo, "duplicate-fixture-name") == []
