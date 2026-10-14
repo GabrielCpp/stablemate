@@ -128,3 +128,50 @@ def test_a_flows_own_refusal_status_compiles_no_scenario() -> None:
     assert gap.kind == "uncompilable-claim"
     assert gap.detail.startswith("a flow's verify: reads the response its last step gets")
     assert "drop the flow's http_status" in gap.detail
+
+
+INVOCATIONS = "docs/features/acme/http/changes.md"
+CHANGE_TYPE = "### change-type\n- method: POST\n- path: /type-change\n- moves: none, because the fixture stores nothing\n"
+
+
+def _invocations(repo: Path, *cases: str) -> None:
+    _server(repo, CHANGE_TYPE)
+    write(repo / INVOCATIONS, "---\ntype: invocation\ntitle: Changes\n---\n# Changes\n\n## Invocations\n\n" + "\n".join(cases))
+
+
+def test_a_refusal_case_that_never_succeeds_needs_no_moves(repo: Path) -> None:
+    _invocations(repo, """### refuse-without-role
+
+- on: [change-type](api.md#change-type)
+- trigger: a POST from a caller with no role
+- when: the caller has no role
+- does: refuses the change with detail `invalid account type`.
+- arrange: header(name="Authorization", value="Bearer @roleless.token")
+- verify: json_path(path="$.detail", equals="invalid account type")
+- errors: 400 with detail `invalid account type`.
+- arrange: header(name="Authorization", value="Bearer @roleless.token")
+- verify: http_status(code=400, path="/type-change")
+""")
+    assert _findings(repo, "unstated-move") == []
+
+
+def test_a_case_that_states_a_success_status_without_moves_is_refused(repo: Path) -> None:
+    _invocations(repo, """### change-role
+
+- on: [change-type](api.md#change-type)
+- trigger: a POST from a caller with a role
+- does: changes the type.
+- verify: http_status(code=204, path="/type-change")
+""")
+    [found] = _findings(repo, "unstated-move")
+    assert "a POST request changes what the server keeps" in found.message
+
+
+def test_a_case_with_no_checks_and_no_errors_without_moves_is_refused(repo: Path) -> None:
+    _invocations(repo, """### change-role
+
+- on: [change-type](api.md#change-type)
+- trigger: a POST from a caller with a role
+- does: changes the type.
+""")
+    assert len(_findings(repo, "unstated-move")) == 1

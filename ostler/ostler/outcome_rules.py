@@ -93,8 +93,10 @@ def _check_moves(node: BookNode, claims: list[Obligation], book: Mapping[str, Bo
     else:
         methods = [_method_of(target, book) for target in node.targets("on", book) if target.type == "endpoint"]
         method = next((name for name in methods if name in _MUTATING), "")
-        succeeds = any(claim.kind not in (*registry.refusal_keys("invocation"), "contract", "when")
-                       and (case_status(claim) or 0) < 400 for claim in claims)
+        refusals = registry.refusal_keys("invocation")
+        stated = [claim for claim in claims if claim.kind not in (*refusals, "contract", "when")]
+        succeeds = any((status := case_status(claim)) is not None and status < 400 for claim in stated) or (
+            bool(stated) and not any(claim.kind in refusals for claim in claims))
         if not succeeds:
             return
     if method not in _MUTATING:
