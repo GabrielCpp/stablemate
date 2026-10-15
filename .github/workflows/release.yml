@@ -112,9 +112,9 @@ jobs:
             git push
           fi
 
-  # The gate. An upload to PyPI cannot be taken back, so the suite that guards the repo's
-  # invariants — lint, the package suites, check-public, check-no-env, check-parsers — runs
-  # against the merged tree before anything leaves the runner.
+  # The gate. An upload to PyPI cannot be taken back, so lint and the suites of the packages
+  # a release ships run against the merged tree before anything leaves the runner. paddock
+  # and saddlebag are left to ci.yml, because nothing they contain is uploaded.
   verify:
     needs: release-please
     if: needs.release-please.outputs.releases_created == 'true' || inputs.force_publish
@@ -139,7 +139,7 @@ jobs:
       # blocking a release on a browser nobody had told CI to download.
       # chromium only: it is the one browser any test here drives.
       - run: uv run playwright install --with-deps chromium
-      - run: make test
+      - run: make test-release
 
   publish:
     needs: [release-please, verify]

@@ -82,8 +82,8 @@ lint: ## Lint every subproject in one pass: ruff (style, imports) + ty + basedpy
 	uv run --all-packages basedpyright -p pyproject.toml
 	uv run python scripts/check_file_length.py
 
-.PHONY: test
-test: ## Run lint and every package suite, exactly as CI does (the check-* guards are their own targets)
+.PHONY: test-release
+test-release: ## Run lint and the suites of the packages a release ships (the release gate)
 	$(MAKE) lint
 	$(MAKE) -C core test
 	$(MAKE) -C workhorse test
@@ -91,9 +91,13 @@ test: ## Run lint and every package suite, exactly as CI does (the check-* guard
 	$(MAKE) -C ostler test
 	$(MAKE) -C farrier test
 	$(MAKE) -C groom test
+	$(MAKE) -C stablemate test
+
+.PHONY: test
+test: ## Run lint and every package suite, exactly as CI does (the check-* guards are their own targets)
+	$(MAKE) test-release
 	$(MAKE) -C saddlebag test
 	$(MAKE) -C paddock test
-	$(MAKE) -C stablemate test
 
 .PHONY: bench-doctor
 bench-doctor: ## Measure `ostler doctor` against a book: make bench-doctor DOCS=<path> [JSON=1]
