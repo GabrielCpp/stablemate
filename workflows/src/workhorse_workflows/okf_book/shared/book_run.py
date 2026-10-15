@@ -5,11 +5,12 @@ import logging
 import re
 import shutil
 import tempfile
-from collections.abc import Callable, Sequence
-from dataclasses import dataclass
+from collections.abc import Callable, Mapping, Sequence
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from ostler import index, model
+from ostler.environments import leases
 from ostler.qa.attribution import Cause
 from ostler.qa.plan_source import is_journey, is_probe
 from ostler.qa.runbook import select_stack
@@ -17,6 +18,7 @@ from pydantic import BaseModel, ConfigDict
 from workhorse.reload import ReloadRequested, cut_requested
 from workhorse.runner.redact import REDACTED, SecretRedactor
 from workhorse_workflows.kit import find_docs_root
+from workhorse_workflows.kit.credentials import scoped_envs
 from workhorse_workflows.kit.qa.runner import ensure_stack, release_stack, stack_stopped
 from workhorse_workflows.okf_book.shared.entries import book_dir
 from workhorse_workflows.okf_book.shared.local_calls import CallWatch, Runbook, read_runbook
@@ -106,7 +108,7 @@ class CompileOutcome:
 
 @dataclass(frozen=True, slots=True)
 class StackReadiness:
-    """Whether the app's stack is up, whether it serves, why it is not up, the process groups its bring-up started, the logs of the apps it launched, and the runbooks it came up from."""
+    """Whether the app's stack is up, whether it serves, why it is not up, the process groups its bring-up started, the logs of the apps it launched, the runbooks it came up from, and the environment its scenarios run in."""
 
     up: bool
     serving: bool
@@ -114,6 +116,7 @@ class StackReadiness:
     owned: tuple[str, ...] = ()
     app_logs: tuple[str, ...] = ()
     runbooks: tuple[Runbook, ...] = ()
+    env: Mapping[str, str] = field(default_factory=dict[str, str])
 
 
 def failed_run(gaps: tuple[str, ...], problem: str) -> ExerciseResult:
@@ -195,12 +198,17 @@ def with_unstarted(result: ExerciseResult, unstarted: Sequence[str]) -> Exercise
                                      "passed": False, "unstarted": tuple(unstarted)})
 
 
+def copy_env(root: Path, service: str) -> dict[str, str]:
+    """The environment the service's scenarios need to find the shared stack copy's addresses, or none when no `stack.yml` covers its book."""
+    return leases.run_env(root, near=book_dir(root, service)) or {}
+
+
 def bring_up(logger: logging.Logger, root: Path, service: str) -> StackReadiness:
     """Bring up the stack the service's book declares, or adopt one serving."""
     stack = ensure_stack(logger, repo_dir=str(root), near=str(book_dir(root, service)))
     return StackReadiness(
         up=stack.ready not in ("no", "none"), serving=stack.ready == "yes", notes=stack.notes,
-        owned=stack.owned_pgids, app_logs=stack.app_logs, runbooks=book_runbooks(root, service))
+        owned=stack.owned_pgids, app_logs=stack.app_logs, runbooks=book_runbooks(root, service), env=copy_env(root, service))
 
 
 def release(logger: logging.Logger, stack: StackReadiness) -> None:
@@ -249,7 +257,7 @@ def run_plan(root: Path, spec: Path, gaps: tuple[str, ...], stack: StackReadines
     """
     runner = run_scenarios if stack.serving else _run_in_copy
     between = _BetweenScenarios(stack.owned)
-    with CallWatch(stack.runbooks) as calls, tempfile.TemporaryDirectory(prefix="okf-lap-") as lap:
+    with scoped_envs(stack.env), CallWatch(stack.runbooks) as calls, tempfile.TemporaryDirectory(prefix="okf-lap-") as lap:
         result = _run_lap(root, spec, gaps, only, lambda names: runner(root, spec, names, Path(lap), between))
     if between.halt is not None:
         raise between.halt
