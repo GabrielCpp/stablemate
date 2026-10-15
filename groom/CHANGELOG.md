@@ -1,5 +1,23 @@
 # Changelog
 
+## [1.3.0](https://github.com/GabrielCpp/stablemate/compare/groom-v1.2.0...groom-v1.3.0) (2026-10-15)
+
+
+### Features
+
+* **groom:** group each turn's transcript under its turn in the run pane ([ab21eb8](https://github.com/GabrielCpp/stablemate/commit/ab21eb85a5183ee5779893af214b17e55cff4225))
+* **groom:** show a container run's live transcript in the run pane ([9cb2ff4](https://github.com/GabrielCpp/stablemate/commit/9cb2ff4c9ab3bd6738cad69f47d8494c6ff55031))
+* **groom:** show a native run's live transcript in the run pane ([ac46dfb](https://github.com/GabrielCpp/stablemate/commit/ac46dfb8fc56951860e8c729cb8ce5ff8b206be5))
+
+
+### Bug Fixes
+
+* **groom:** keep a closed wait closed when its timer replays ([744ce19](https://github.com/GabrielCpp/stablemate/commit/744ce19ce9a8fad1ce98f4498d06de8c2c36972e))
+* **groom:** keep a long tool title inside the trail's width ([e4ba432](https://github.com/GabrielCpp/stablemate/commit/e4ba4321ab06c6c9bfd9cabe43cfa345afd4c86a))
+* **groom:** rename diagnosis skill to isolating-causes ([6b08544](https://github.com/GabrielCpp/stablemate/commit/6b0854402cc7067cf486f9afd859fdda5a78607d))
+* **groom:** time a retried turn across all its attempts ([5c275ed](https://github.com/GabrielCpp/stablemate/commit/5c275edd849a01bd130d9f1e33d2c3efab5086ac))
+* **workhorse:** report a stop a busy run has not read as queued ([5d0b6ad](https://github.com/GabrielCpp/stablemate/commit/5d0b6ad0d9177f97cbc453cbc32e228cd27b9853))
+
 ## [1.2.0](https://github.com/GabrielCpp/stablemate/compare/groom-v1.1.0...groom-v1.2.0) (2026-09-11)
 
 

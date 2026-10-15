@@ -1,5 +1,41 @@
 # Changelog
 
+## [4.0.0](https://github.com/GabrielCpp/stablemate/compare/workhorse-agent-v3.0.0...workhorse-agent-v4.0.0) (2026-10-15)
+
+
+### ⚠ BREAKING CHANGES
+
+* **workflows:** the review lane and its flow are gone, and the old dev, QA, docs and merge prompt files are removed or renamed. A repo flavor that overrides one of those prompts no longer applies, and a run checkpointed by the earlier coder does not resume.
+
+### Features
+
+* **core:** resolve a profile's subagent delegates ([e23e098](https://github.com/GabrielCpp/stablemate/commit/e23e0985759e2f934e1e27b4606b770b7a52b08b))
+* **farrier:** fetch the base library at farrier's release tag ([a28fa96](https://github.com/GabrielCpp/stablemate/commit/a28fa969e3fb41c53a46152cf0c1234e0a351b54))
+* **workflows:** give each coder story one dev owner ([0860050](https://github.com/GabrielCpp/stablemate/commit/0860050340ffab3aa4aa824415dc445638ffbfe1))
+* **workhorse:** declare a dry-run reply on the model it fills ([8d64b2d](https://github.com/GabrielCpp/stablemate/commit/8d64b2d1948238f1221b4ed23676e9c010925607))
+* **workhorse:** drain several kinds in strict order and seal each item ([7a51c87](https://github.com/GabrielCpp/stablemate/commit/7a51c871a7458eebe55c46241666e17004083cc2))
+* **workhorse:** give each turn the profile's subagent delegates ([f5d4c1a](https://github.com/GabrielCpp/stablemate/commit/f5d4c1a37cc9710bf5335558f340f53c98434051))
+* **workhorse:** name the turn's visit on its agent_turn span ([efd684c](https://github.com/GabrielCpp/stablemate/commit/efd684ccbec7a0f1e4e31bf6ef660fbf4308765e))
+* **workhorse:** reopen a lost agent session with a rebrief ([a8c1b5a](https://github.com/GabrielCpp/stablemate/commit/a8c1b5a7226b1ddfee8de880b3707ce6cfd6c113))
+* **workhorse:** show claude's task list as a live transcript plan ([c82f39a](https://github.com/GabrielCpp/stablemate/commit/c82f39aee43904ffc702d85cbf9ce0179c6ab4c4))
+* **workhorse:** write a cline turn's live transcript ([a5d8510](https://github.com/GabrielCpp/stablemate/commit/a5d851040897dbfaa28c855d6a15fc28a6460250))
+* **workhorse:** write a codex turn's live transcript ([f998689](https://github.com/GabrielCpp/stablemate/commit/f998689711df01f87a95ff065c0b2435a699b328))
+* **workhorse:** write a copilot turn's live transcript ([496cc95](https://github.com/GabrielCpp/stablemate/commit/496cc95c9c9e7f26b8a1b85de3ce0eb49185d3e0))
+* **workhorse:** write an opencode turn's live transcript ([b4b71f4](https://github.com/GabrielCpp/stablemate/commit/b4b71f41d7e6f92e425d1b99158156f8a8efc047))
+* **workhorse:** write each turn's live transcript as ACP updates ([4b730b6](https://github.com/GabrielCpp/stablemate/commit/4b730b656b39ccc16c335eecd50b589418e7ba9e))
+
+
+### Bug Fixes
+
+* **workhorse:** keep a claude turn's work inside the turn ([4092e2d](https://github.com/GabrielCpp/stablemate/commit/4092e2dfc4c5176e7400ce0516ffd23cdf1a980f))
+* **workhorse:** queue an operator's request behind a dashboard's polls ([f9ef6ec](https://github.com/GabrielCpp/stablemate/commit/f9ef6eccdfb512c378e44f1c53053d55aa2a378f))
+* **workhorse:** report a stop a busy run has not read as queued ([5d0b6ad](https://github.com/GabrielCpp/stablemate/commit/5d0b6ad0d9177f97cbc453cbc32e228cd27b9853))
+* **workhorse:** resolve a prompt's partials beside it ([1f1c744](https://github.com/GabrielCpp/stablemate/commit/1f1c744abf9e450e5044cd07c2d62b055136b4f5))
+* **workhorse:** run a bare --cli under the profile named after it ([396f33b](https://github.com/GabrielCpp/stablemate/commit/396f33b162580cf179fbc18ea3093a509fb92494))
+* **workhorse:** start a finished sub-flow fresh when a resume re-enters ([222855c](https://github.com/GabrielCpp/stablemate/commit/222855cf95fb6f315e86a3fb279ae64a57a1aa21))
+* **workhorse:** start a rewound run's unfinished sub-flows fresh ([f5fe5ec](https://github.com/GabrielCpp/stablemate/commit/f5fe5ecde596e0afe4528ac779d80c66d9815141))
+* **workhorse:** take a liveness probe for no message, not a bad one ([4b0bdb5](https://github.com/GabrielCpp/stablemate/commit/4b0bdb5b2d2f45b17200baa75ee6c619fdee36d9))
+
 ## [3.0.0](https://github.com/GabrielCpp/stablemate/compare/workhorse-agent-v2.1.0...workhorse-agent-v3.0.0) (2026-09-11)
 
 
