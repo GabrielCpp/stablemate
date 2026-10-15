@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import os
+from pathlib import Path
+
 import pytest
 from ostler import testsupport
 
@@ -20,3 +23,13 @@ def _inline_books_are_legal_okf(request: pytest.FixtureRequest):
         f"{request.node.nodeid} builds a book `unknown-bullet` would flag on a real run — the "
         f"fixture is written against a grammar these types no longer declare: {violations}"
     )
+
+
+TOOL_CACHE = os.environ.get("XDG_CACHE_HOME") or str(Path.home() / ".cache")
+
+
+@pytest.fixture(autouse=True)
+def _no_real_home(tmp_path_factory, monkeypatch):
+    monkeypatch.setenv("XDG_CACHE_HOME", TOOL_CACHE)
+    monkeypatch.setenv("STABLEMATE_CACHE_DIR", str(tmp_path_factory.mktemp("stablemate-cache")))
+    monkeypatch.setenv("HOME", str(tmp_path_factory.mktemp("home")))

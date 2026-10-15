@@ -51,10 +51,15 @@ def test_every_prompt_is_a_role_or_declared_mechanics(directory: Path):
 
 
 @pytest.mark.parametrize("directory", PROMPT_DIRS, ids=[d.parent.name for d in PROMPT_DIRS])
-def test_every_prompt_renders_with_its_partials(directory: Path):
+def test_every_prompt_renders_with_its_partials(directory: Path, tmp_path: Path):
+    repo = tmp_path / "repo"
+    skill = repo / ".claude/skills/ostler-okf/SKILL.md"
+    skill.parent.mkdir(parents=True)
+    _ = skill.write_text("---\nname: ostler-okf\n---\n", encoding="utf-8")
+    (repo / ".git").mkdir()
     for stem in sorted(_stems(directory)):
         relative = (directory / f"{stem}.md").relative_to(CODER).as_posix()
-        assert render(relative, {}, CODER).strip(), relative
+        assert render(relative, {"_node_cwd": str(repo)}, CODER).strip(), relative
 
 
 def test_the_operator_resolver_ships_exactly_once():
