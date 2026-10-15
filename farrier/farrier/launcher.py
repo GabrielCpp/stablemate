@@ -29,10 +29,10 @@ _HEADER = """# Agent launcher — farrier adapter regeneration + containerized r
 """
 
 _CORE = """
-AGENTS_DIR     ?= $(shell farrier config show library_dir)
+AGENTS_DIR     ?= $(shell farrier config show library_dir 2>/dev/null)
 # Public stablemate checkout (holds the farrier installer source). Needed only
 # for SRC=1 local-source runs.
-STABLEMATE_DIR ?= $(shell farrier config show stablemate_dir)
+STABLEMATE_DIR ?= $(shell farrier config show stablemate_dir 2>/dev/null)
 
 # farrier regenerates these adapters from the prompt library. Default uses the
 # installed farrier binary. SRC=1 runs the local source under $(STABLEMATE_DIR)/farrier.

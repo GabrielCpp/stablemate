@@ -147,9 +147,16 @@ def test_compose_file_comes_from_the_stablemate_checkout():
 
 def test_farrier_regeneration_is_library_aware():
     mk = render_agents_mk()
-    assert "AGENTS_DIR     ?= $(shell farrier config show library_dir)" in mk
+    assert "AGENTS_DIR     ?= $(shell farrier config show library_dir 2>/dev/null)" in mk
     assert (
         'FARRIER_LIB_ARG := $(if $(wildcard $(AGENTS_DIR)/library),'
         '--library "$(AGENTS_DIR)",)'
     ) in mk
     assert "uv run --project $(STABLEMATE_DIR)/farrier farrier" in mk
+
+
+def test_a_machine_with_no_overlay_library_reads_no_error():
+    """Only the base library is needed; an unset library_dir or stablemate_dir must not print an error on every make."""
+    mk = render_agents_mk()
+    assert "$(shell farrier config show library_dir 2>/dev/null)" in mk
+    assert "$(shell farrier config show stablemate_dir 2>/dev/null)" in mk
