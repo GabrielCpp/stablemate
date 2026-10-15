@@ -62,7 +62,7 @@ None.
 Pointed at by a runbook's `environment:`. Nothing points outward from here except `code:`.
 
 The services a local copy runs, and what each needs, are not bullets on this page. They are in
-the book's [`stack.yml`](../stack.md), which `ostler env` brings up one copy at a time.
+the book's `stack.yml`, described in the `ostler-cli` skill's `references/stack.md`, which `ostler env` brings up one copy at a time.
 
 A QA bring-up that is not told which environment to boot picks one itself: it narrows to the
 environments declared `local-only: true` and takes the first by page path. Nothing in the book

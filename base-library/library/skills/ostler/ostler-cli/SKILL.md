@@ -89,6 +89,9 @@ Both faces drive the same functional core, and neither is a wrapper over the oth
   mutators, `edit`/`freeze` repair, `scaffold`/`fmt`, `vet`, the `qa` control plane and its
   browser-diagnostics manifest, and `artifact`. Read it when you are writing a shell step,
   a gate, or a prompt that runs ostler from a terminal.
+- **[references/stack.md](references/stack.md)** — the book's `stack.yml`: every key, the
+  template values, the copies and the `ostler env` commands that run them. Read it when you
+  are writing or repairing a stack file.
 - **[references/python-api.md](references/python-api.md)** — `from ostler import Ostler`,
   the CLI-to-method table, `ostler.path` for deriving a doc path without loading a graph,
   and the snapshot/caching semantics. Read it when you are writing a `workhorse` node,

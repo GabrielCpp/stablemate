@@ -97,7 +97,7 @@ It puts the product into a state the book or the repo declared, and records that
 - Each step runs in the step's `cwd`, or the repo root. It inherits the run's environment,
   so `$STABLEMATE_LEASE` names the run's copy and `$STABLEMATE_ADDRESS_BOOK` its book. A step
   that runs a command inside a service of that copy goes through `ostler env compose`, as
-  ostler-okf's `stack.md` shows.
+  the `ostler-cli` skill's `references/stack.md` shows.
 
 The fixtures a story may stand up are the ones its `## Fixtures` section and the context
 packet name. The QA prompt lists them.
