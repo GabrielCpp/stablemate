@@ -23,8 +23,7 @@ context-load/cognitive-load trade in its concrete form:
 - Knowledge that applies *while doing a kind of work* — writing a node, reading a format,
   modelling a surface — is a **skill**. The agent must reach it on its own, because you will
   not be there to type anything.
-- A procedure invoked *at a moment* is a **prompt**. `grill` and `implement-plan-here` are
-  the shape: the moment a design is ready to interrogate, or a plan is ready to build,
+- A procedure invoked *at a moment* is a **prompt**. The moment a plan is ready to build
   never matched an `applyTo`, and a skill loaded on file-glob would have fired at every
   wrong time and never at the right one.
 
