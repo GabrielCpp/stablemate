@@ -30,7 +30,7 @@ def test_fresh_repo_appends_block():
         assert _ignored(repo, ".agents/agents-context.claude.json") is True
         assert _ignored(repo, ".agents/local.compose.yaml") is True
         assert _ignored(repo, ".agents/operator/ci-operator.md") is True
-        assert _ignored(repo, ".agents/agents.mk") is False
+        assert _ignored(repo, ".agents/agents.mk") is True
         assert _ignored(repo, ".agents/flavors/author/write-story.md") is False
         assert _ignored(repo, ".agents/skills/foo/SKILL.md") is False
         assert _ignored(repo, ".agents/prompts/foo.prompt.md") is False
@@ -73,7 +73,7 @@ def test_migrates_legacy_wholesale_agents_line():
         assert _ignored(repo, ".agents/runs/run.json") is True
         assert _ignored(repo, ".agents/skills/foo/SKILL.md") is False
         assert _ignored(repo, ".agents/flavors/author/write-story.md") is False
-        assert _ignored(repo, ".agents/agents.mk") is False
+        assert _ignored(repo, ".agents/agents.mk") is True
     print("ok: migrates legacy .agents line")
 
 

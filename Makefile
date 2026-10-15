@@ -281,5 +281,5 @@ release: ## Open (or refresh) the release-please PR — merging it is what publi
 # >>> farrier: agent launcher include (generated) >>>
 # Surfaces agent-install / agent-check from the generated
 # launcher. Re-created by `farrier install`; remove this block to opt out.
-include .agents/agents.mk
+-include .agents/agents.mk
 # <<< farrier: agent launcher include <<<

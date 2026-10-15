@@ -65,6 +65,7 @@ AGENTS_GITIGNORE_BLOCK = (
     ".agents/local.compose.yaml",
     ".agents/agents-context.json",
     ".agents/agents-context.*.json",
+    ".agents/agents.mk",
 )
 
 
@@ -114,13 +115,8 @@ def ensure_makefile_include(repo: Path) -> bool:
     makefile = repo / LAUNCHER_ROOT_MAKEFILE
     if not makefile.exists():
         return False
-    include_line = f"include {LAUNCHER_AGENTS_MK}"
+    include_line = f"-include {LAUNCHER_AGENTS_MK}"
     existing = makefile.read_text(encoding="utf-8")
-    if include_line in {line.strip() for line in existing.splitlines()}:
-        return False
-    prefix = existing if existing.endswith("\n") else existing + "\n"
-    if not prefix.endswith("\n\n"):
-        prefix += "\n"
     block = (
         f"{MAKEFILE_INCLUDE_MARKER}\n"
         "# Surfaces agent-install / agent-check from the generated\n"
@@ -128,5 +124,22 @@ def ensure_makefile_include(repo: Path) -> bool:
         f"{include_line}\n"
         f"{MAKEFILE_INCLUDE_END}\n"
     )
+    start = existing.find(MAKEFILE_INCLUDE_MARKER)
+    end = existing.find(MAKEFILE_INCLUDE_END, start) if start != -1 else -1
+    if end != -1:
+        end += len(MAKEFILE_INCLUDE_END)
+        if existing[end : end + 1] == "\n":
+            end += 1
+        upgraded = existing[:start] + block + existing[end:]
+        if upgraded == existing:
+            return False
+        makefile.write_text(upgraded, encoding="utf-8")
+        return True
+    bare = {include_line, f"include {LAUNCHER_AGENTS_MK}"}
+    if bare & {line.strip() for line in existing.splitlines()}:
+        return False
+    prefix = existing if existing.endswith("\n") else existing + "\n"
+    if not prefix.endswith("\n\n"):
+        prefix += "\n"
     makefile.write_text(prefix + block, encoding="utf-8")
     return True

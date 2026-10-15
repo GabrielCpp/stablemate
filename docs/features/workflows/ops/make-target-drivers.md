@@ -11,7 +11,7 @@ title: Make-target drivers
 
 This runbook documents the repository's Make-driven operational interface. The workspace
 targets run from the repository root; package targets delegated to `workflows/Makefile` run
-from `workflows/`. The generated `include .agents/agents.mk` line adds the Farrier launcher
+from `workflows/`. The generated `-include .agents/agents.mk` line adds the Farrier launcher
 targets when that file exists; it is part of the root Makefile's command surface but is not a
 second workflow stack. Targets return the exit status of their delegated command, so a non-zero
 status stops the target and its dependent target chain.

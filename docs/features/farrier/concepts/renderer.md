@@ -197,7 +197,7 @@ The launcher set contains `.agents/agents.mk` (`render_agents_mk`, no arguments)
 `.agents/agents-context.<assistant>.json` per enabled assistant (`context_manifest(assistant)`,
 JSON, sorted and indented), plus the generic `.agents/agents-context.json` aliased to the first
 enabled assistant (`"claude"` if none is enabled). When the repository has no root `Makefile`, the
-set additionally contains a thin one (`include .agents/agents.mk`); an existing root `Makefile` is
+set additionally contains a thin one (`-include .agents/agents.mk`); an existing root `Makefile` is
 left intact and `ensure_makefile_include` wires it at install time instead.
 
 - code: `farrier/farrier/renderer.py::Renderer.render` @c90fc5d746a8
