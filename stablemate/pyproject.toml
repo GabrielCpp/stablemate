@@ -18,7 +18,7 @@ classifiers = [
   "Topic :: Utilities",
 ]
 dependencies = [
-  "workhorse-workflows>=2,<3",
+  "workhorse-workflows>=3,<4",
   "farrier>=3,<4",
   "stablemate-groom>=1,<2",
 ]
