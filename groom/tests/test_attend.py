@@ -712,8 +712,9 @@ def test_the_gate_body_falls_back_to_the_preview_when_the_file_is_gone(tmp_path)
     assert job.gate_body() == "What now?"
 
 
-def test_the_prompt_hands_over_the_groom_reads(tmp_path):
+def test_the_prompt_hands_over_the_groom_reads(attending: Configure, tmp_path: Path):
     """The attendant is dispatched by groom and the run's history is already on disk."""
+    attending()
     job = attend.AttendJob(
         job_id="j1", run_id="r1", kind="gate", workflow="okf-builder",
         run_dir="/runs/r1", workspace=str(tmp_path), created_at=0.0,
