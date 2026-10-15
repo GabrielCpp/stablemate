@@ -1,5 +1,5 @@
 description: >
-  Stablemate toolchain skills, and no commands. For workhorse: writing workflow
+  Stablemate toolchain skills. For workhorse: writing workflow
   nodes, writing the prompt a turn dispatches, writing the roadmap item the Author
   workflow consumes, and operating a live run (find it through groom, then reload,
   switch or answer it). For farrier: setup, library maintenance, and how to write
@@ -19,18 +19,3 @@ skills:
   - groom/*
   - ostler/*
   - workhorse/*
-
-# These are *procedures*, so they ship as commands rather than as skills: a skill
-# is loaded when its scope matches, and the moment a change is finished never
-# matched anything.
-#
-# The commit cadence is no longer among them. Every change ends there, so every
-# repo that had it aggregated it into its root instructions — and once the text is
-# resident every turn, nothing ever invokes it by name and the command is a second
-# copy of what is already on screen. It is the `commit-and-push` policy now
-# (`localInstructions: policies:`), templated for the repo's scope vocabulary and
-# gate. Reloading a live run that holds the code you just fixed is not a command
-# either: the ask arrives with no file open ("reload the run I see in groom"), so
-# it is the request-triggered `workhorse-operate` skill, and the file-scoped
-# `workhorse-engine` skill points at it from the moment a fix is pushed.
-prompts: []
