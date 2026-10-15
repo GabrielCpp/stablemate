@@ -12,7 +12,7 @@ and the toolchain that reads them:
 
 | Pack | Contents |
 |------|----------|
-| `general` | the cross-cutting craft every repo owes, whatever it is written in — architecture (ports-and-adapters, code structure), testing, ui/accessibility, vertical slicing, bug diagnosis, code review — plus the `grill`, `brainstorm` and `implement-plan-*` prompts |
+| `general` | the cross-cutting craft every repo owes, whatever it is written in — architecture (ports-and-adapters, code structure), testing, ui/accessibility, vertical slicing, bug diagnosis, code review |
 | `stablemate` | the toolchain — farrier (install/setup, library maintenance), ostler (the doc-graph CLI, the OKF format, repo docs), groom (operator gate + telemetry), workhorse (workflow authoring) |
 
 ## The stack pack on top

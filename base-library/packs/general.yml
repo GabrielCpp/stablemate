@@ -3,6 +3,3 @@ skills:
   - testing/*
   - ui/*
   - method/*
-prompts:
-  - implement-plan-worktree
-  - implement-plan-here

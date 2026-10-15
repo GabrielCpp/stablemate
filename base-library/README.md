@@ -16,10 +16,8 @@ farrier install                                   # renders it into a repo
 | `library/skills/{farrier,groom,ostler,workhorse}/` | the skills documenting the toolchain |
 | `library/skills/method/` | ways of working that hold in any repo: decompose, grill, review, diagnose |
 | `library/skills/{architecture,testing,ui}/` | the cross-language contracts |
-| `library/prompts/` | the `implement-plan-worktree` and `implement-plan-here` commands |
-| `library/prompts/stablemate/` | the `babysit-run` command, which no pack selects yet |
 | `packs/stablemate.yml` | the toolchain skills, which `farrier init` proposes for the user library |
-| `packs/general.yml` | the method skills, the cross-language contracts and the two `implement-plan` commands |
+| `packs/general.yml` | the method skills and the cross-language contracts |
 | `agents.example.yml` | an annotated starting `agents.yml` |
 
 [AGENTS.md](AGENTS.md) is the companion to that table: what may be *added* here, and
