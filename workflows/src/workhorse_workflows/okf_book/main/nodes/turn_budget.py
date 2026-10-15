@@ -1,11 +1,10 @@
-"""What one owner turn is allowed beside the source and the book: the prompt and the format skill, the operator's latest answer, and the steps it takes."""
+"""What one owner turn is allowed beside the source and the book: the operator's latest answer, and the steps it takes."""
 from __future__ import annotations
 
 from collections.abc import Iterator
 from pathlib import Path
 
 CHARS_PER_TOKEN = 4
-PROMPT_AND_SKILL_ALLOWANCE_TOKENS = 80_000
 OPERATOR_ANSWER_ALLOWANCE_TOKENS = 2_000
 WRITER_STEPS = 600
 SKIPPED_DIRS = frozenset({".git", "__pycache__", ".venv", "node_modules"})

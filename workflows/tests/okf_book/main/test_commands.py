@@ -21,7 +21,7 @@ from workhorse_workflows.okf_book.main.nodes.exercise import run_exercise
 from workhorse_workflows.okf_book.main.nodes.writer_jobs import Start, Work, finish_job
 from workhorse_workflows.okf_book.main.nodes.writer_stack import KeptStack
 from workhorse_workflows.okf_book.main.nodes.writer_ostler import GC_USAGE, INDEX_DIR_REFUSED, NO_DEAD_PAGE, RELINK_USAGE, USAGE as OSTLER_USAGE, run_ostler
-from workhorse_workflows.okf_book.main.nodes.turn_budget import PROMPT_AND_SKILL_ALLOWANCE_TOKENS, folder_tokens
+from workhorse_workflows.okf_book.main.nodes.turn_budget import folder_tokens
 from workhorse_workflows.okf_book.main.nodes.surface import Surface, SurfaceKind
 from workhorse_workflows.okf_book.main.nodes.writer_request import WriterRequest
 from workhorse_workflows.okf_book.shared.book_run import CompileOutcome, ExerciseResult, StackReadiness
@@ -355,13 +355,6 @@ def test_a_command_state_reads_the_problems_at_turn_start_an_earlier_run_wrote_a
         f"{page}: step-no-verify: a claim has no verify",
         texts[1],
     ]
-
-
-def test_the_prompt_and_skill_allowance_covers_the_prompt_and_the_format_skill() -> None:
-    repo = Path(__file__).resolve().parents[4]
-    prompt = repo / "workflows/src/workhorse_workflows/okf_book/main/prompts/write-book.md"
-
-    assert folder_tokens(repo / "base-library/library/skills/ostler/ostler-okf") + folder_tokens(prompt.parent) <= PROMPT_AND_SKILL_ALLOWANCE_TOKENS
 
 
 def test_a_check_named_pages_checks_only_those_pages(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
