@@ -1,5 +1,5 @@
 version = 1
-revision = 3
+revision = 5
 requires-python = ">=3.12"
 
 [manifest]
@@ -301,7 +301,7 @@ wheels = [
 
 [[package]]
 name = "farrier"
-version = "3.0.0"
+version = "3.1.0"
 source = { editable = "farrier" }
 dependencies = [
     { name = "jinja2" },
@@ -1048,7 +1048,7 @@ wheels = [
 
 [[package]]
 name = "ostler"
-version = "2.0.0"
+version = "3.0.0"
 source = { editable = "ostler" }
 dependencies = [
     { name = "jinja2" },
@@ -1822,7 +1822,7 @@ wheels = [
 
 [[package]]
 name = "stablemate"
-version = "0.1.0"
+version = "0.1.1"
 source = { editable = "stablemate" }
 dependencies = [
     { name = "farrier" },
@@ -1870,7 +1870,7 @@ provides-extras = ["test"]
 
 [[package]]
 name = "stablemate-groom"
-version = "1.2.0"
+version = "1.3.0"
 source = { editable = "groom" }
 dependencies = [
     { name = "jinja2" },
@@ -2258,7 +2258,7 @@ wheels = [
 
 [[package]]
 name = "workhorse-agent"
-version = "3.0.0"
+version = "4.0.0"
 source = { editable = "workhorse" }
 dependencies = [
     { name = "jinja2" },
@@ -2294,7 +2294,7 @@ provides-extras = ["test", "otel"]
 
 [[package]]
 name = "workhorse-workflows"
-version = "2.0.0"
+version = "3.0.0"
 source = { editable = "workflows" }
 dependencies = [
     { name = "gitpython" },

@@ -1,5 +1,24 @@
 # Changelog
 
+## [3.1.0](https://github.com/GabrielCpp/stablemate/compare/farrier-v3.0.0...farrier-v3.1.0) (2026-10-15)
+
+
+### Features
+
+* **core:** resolve a profile's subagent delegates ([e23e098](https://github.com/GabrielCpp/stablemate/commit/e23e0985759e2f934e1e27b4606b770b7a52b08b))
+* **farrier:** fetch the base library at farrier's release tag ([a28fa96](https://github.com/GabrielCpp/stablemate/commit/a28fa969e3fb41c53a46152cf0c1234e0a351b54))
+* **farrier:** let agents.yml name the repo a checkout installs under ([739fa26](https://github.com/GabrielCpp/stablemate/commit/739fa26a361d1bc0558141a98f8d7170c508c834))
+* **farrier:** offer to install the user library from init ([ecd6d19](https://github.com/GabrielCpp/stablemate/commit/ecd6d1993d3e30bb284e28226265c8b9bc3a001a))
+* **farrier:** seed no packs in init and propose a user library ([c13851d](https://github.com/GabrielCpp/stablemate/commit/c13851dfdf8909d00dd050952993297da5c25bb7))
+
+
+### Bug Fixes
+
+* **farrier:** keep a group's AGENTS.md and CLAUDE.md out of its skills ([e86f0d2](https://github.com/GabrielCpp/stablemate/commit/e86f0d20c5fc5d7f8cbc0c476de287f332eb50a3))
+* **farrier:** keep make working in a clone without agents.mk ([d9a96da](https://github.com/GabrielCpp/stablemate/commit/d9a96da1e6be2c886b11fc8842c7c766e1c3c744))
+* **farrier:** let a sweep race another install of the same tree ([9cc9c2e](https://github.com/GabrielCpp/stablemate/commit/9cc9c2ef446cc95b95e0e9aac386b9152d373300))
+* **farrier:** read unset library paths quietly in agents.mk ([5e0e3da](https://github.com/GabrielCpp/stablemate/commit/5e0e3da1d455ba27a39ec8fc6651dea6587da65a))
+
 ## [3.0.0](https://github.com/GabrielCpp/stablemate/compare/farrier-v2.1.0...farrier-v3.0.0) (2026-09-11)
 
 
