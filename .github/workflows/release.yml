@@ -77,7 +77,7 @@ jobs:
         id: pins
         if: steps.rp.outputs.pr
         env:
-          BRANCH: ${{ fromJSON(steps.rp.outputs.pr).headBranchName }}
+          BRANCH: ${{ fromJSON(steps.rp.outputs.pr || '{}').headBranchName }}
         run: |
           git fetch --depth 1 origin "$BRANCH"
           git worktree add --detach "$RUNNER_TEMP/release" FETCH_HEAD
@@ -99,7 +99,7 @@ jobs:
       - uses: actions/checkout@v4
         if: steps.rp.outputs.pr
         with:
-          ref: ${{ fromJSON(steps.rp.outputs.pr).headBranchName }}
+          ref: ${{ fromJSON(steps.rp.outputs.pr || '{}').headBranchName }}
       - name: Refresh uv.lock on the release branch
         if: steps.rp.outputs.pr
         run: |
@@ -117,7 +117,9 @@ jobs:
   # and saddlebag are left to ci.yml, because nothing they contain is uploaded.
   verify:
     needs: release-please
-    if: needs.release-please.outputs.releases_created == 'true' || inputs.force_publish
+    if: >-
+      !cancelled() &&
+      (needs.release-please.outputs.releases_created == 'true' || inputs.force_publish)
     runs-on: ubuntu-latest
     # Same bound as ci.yml's, and for the same reason: a wedged suite must not hold a
     # runner for six hours. Here it also keeps a release from hanging rather than failing.
@@ -143,7 +145,9 @@ jobs:
 
   publish:
     needs: [release-please, verify]
-    if: needs.release-please.outputs.releases_created == 'true' || inputs.force_publish
+    if: >-
+      !cancelled() && needs.verify.result == 'success' &&
+      (needs.release-please.outputs.releases_created == 'true' || inputs.force_publish)
     runs-on: ubuntu-latest
     # Named so PyPI's trusted publisher can require it, and so an optional required
     # reviewer here turns "merge the PR" into "approve the upload".
