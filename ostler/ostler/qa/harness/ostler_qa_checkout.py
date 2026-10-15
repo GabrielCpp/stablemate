@@ -1,7 +1,8 @@
 """The copy of the checkout a scenario's commands run in.
 
 Git keeps the app's own files, which each scenario gets a fresh copy of. It ignores
-dependency folders, build output and local data, which the copy links to instead.
+dependency folders, build output and local data, which the copy links to instead. The
+copy of a git checkout is a work tree of its own that shares the checkout's history.
 """
 
 from __future__ import annotations
@@ -42,6 +43,32 @@ def _outermost(names: list[str]) -> list[str]:
     return kept
 
 
+def _share_history(root: Path, into: Path) -> None:
+    """Make `into` a git work tree on `root`'s commit that borrows its objects, or leave it absent when git cannot."""
+    git = shutil.which("git")
+    if git is None:
+        return
+    env = {k: v for k, v in os.environ.items() if k not in ("GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE")}
+    try:
+        head = subprocess.run(
+            [git, "-C", str(root), "rev-parse", "--verify", "--quiet", "HEAD"],
+            capture_output=True, check=False, env=env,
+        )
+        cloned = subprocess.run(
+            [git, "clone", "--shared", "--no-checkout", "--quiet", str(root), str(into)],
+            capture_output=True, check=False, env=env,
+        )
+        if cloned.returncode == 0 and head.returncode == 0:
+            subprocess.run(
+                [git, "-C", str(into), "reset", "--quiet", head.stdout.decode().strip()],
+                capture_output=True, check=False, env=env,
+            )
+    except OSError:
+        cloned = None
+    if cloned is None or cloned.returncode != 0:
+        shutil.rmtree(into, ignore_errors=True)
+
+
 def _ignore_git_and_qa_dir(qa_dir: Path) -> Callable[[str, list[str]], set[str]]:
     """A copytree filter that leaves out `.git` and the QA dir."""
 
@@ -66,6 +93,9 @@ def _copy_entry(source: Path, target: Path, qa_dir: Path) -> None:
 def copy_checkout(root: Path, qa_dir: Path, into: Path) -> None:
     """Copy what git keeps under `root` into `into` and link what it ignores, or copy the whole tree outside a git checkout.
 
+    Inside a git checkout the copy is a work tree on the checkout's commit that shares
+    its history, so a command can ask git about it and commits stay in the copy.
+
     Linking the ignored entries lets a command find what the runbook built without
     paying for a copy of each, so a scenario world costs the app's own files rather
     than the whole disk. Nothing under `qa_dir` is copied or linked.
@@ -78,6 +108,7 @@ def copy_checkout(root: Path, qa_dir: Path, into: Path) -> None:
         into.mkdir(parents=True, exist_ok=True)
         return
     kept, ignored = listed
+    _share_history(root, into)
     into.mkdir(parents=True, exist_ok=True)
     for name in kept:
         source = root / name

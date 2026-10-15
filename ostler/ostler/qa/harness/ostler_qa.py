@@ -156,6 +156,20 @@ def resolve_addresses(text: str) -> str:
     return _ADDRESS.sub(value_of, text)
 
 
+def unresolved_address_detail(target_decl: Target) -> str | None:
+    """Why *target_decl*'s base URL still holds `{name}` references with no address book to give them, or None when it holds none."""
+    base_url = target_decl.base_url
+    if not base_url or os.environ.get(ADDRESS_BOOK_ENV, ""):
+        return None
+    names = list(dict.fromkeys(f"{{{name}}}" for name in _ADDRESS.findall(base_url)))
+    if not names:
+        return None
+    return (
+        f"target {target_decl.name!r} base_url {base_url!r} reads {', '.join(names)}, "
+        f"and ${ADDRESS_BOOK_ENV} is unset, so no address book gives it"
+    )
+
+
 @dataclass
 class Target:
     name: str
@@ -2580,6 +2594,10 @@ def _run(module_path: Path, scenario_id: str, context: dict[str, Any]) -> int:
     status, error = "passed", None
     stop: dict[str, Any] = {}
     try:
+        unresolved = unresolved_address_detail(target_decl)
+        if unresolved is not None:
+            qa._fault(declared.id, -1, "address", "environment", unresolved)  # noqa: SLF001 - one module
+            raise RuntimeError(f"qa {declared.id!r}: {unresolved}")
         if target_decl.driver == "playwright":
             browser = _open_browser(qa)
         declared.func(qa)

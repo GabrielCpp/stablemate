@@ -799,6 +799,105 @@ def test_a_copy_links_what_the_checkout_ignores_instead_of_copying_it(tmp_path: 
     assert (world / "out.txt").is_file() and not (root / "out.txt").exists()
 
 
+GIT_SCENARIO = '''\
+@scenario(target=api, mechanism="live", covers=["ac:1"])
+def a_command_asks_git_about_its_copy(qa: Qa) -> None:
+    """The copy answers git as a work tree of its own."""
+    copy = qa.scenario_checkout_copy()
+    top = qa.tool("git").run("rev-parse", "--show-toplevel", cwd=copy)
+    qa.check("git names the copy as its own top level", top.stdout.strip() == str(copy), actual=top.stdout)
+'''
+
+IGNORED_FREE_SCENARIO = '''\
+@scenario(target=api, mechanism="live", covers=["ac:1"])
+def a_command_reads_a_plain_copy(qa: Qa) -> None:
+    """A command reads the copy of a tree that is no checkout."""
+    done = qa.tool("sh").run("-c", "cat app.txt", cwd=qa.scenario_checkout_copy())
+    qa.check("the command read the app", done.stdout == "the app\\n", actual=done.stdout)
+'''
+
+GIT_IDENTITY = {
+    "GIT_AUTHOR_NAME": "Tester", "GIT_AUTHOR_EMAIL": "tester@example.com",
+    "GIT_COMMITTER_NAME": "Tester", "GIT_COMMITTER_EMAIL": "tester@example.com",
+}
+
+
+def _git(where: Path, *args: str) -> str:
+    done = subprocess.run(
+        ["git", "-C", str(where), *args], capture_output=True, text=True, check=True,
+        env={**os.environ, **GIT_IDENTITY},
+    )
+    return done.stdout.strip()
+
+
+def _committed_root(tmp_path: Path) -> Path:
+    root = tmp_path / "checkout"
+    root.mkdir()
+    (root / "app.txt").write_text("the app\n", encoding="utf-8")
+    (root / "other.txt").write_text("other\n", encoding="utf-8")
+    subprocess.run(["git", "init", "-q", str(root)], check=True)
+    _git(root, "add", "app.txt", "other.txt")
+    _git(root, "commit", "-q", "-m", "first")
+    return root
+
+
+def _scenario_copy(tmp_path: Path, root: Path, scenario: str = "a-command-asks-git-about-its-copy") -> Path:
+    module = _write(tmp_path, GIT_SCENARIO)
+    context = json.dumps(
+        {"root": str(root), "spec_dir": str(tmp_path), "qa_dir": str(tmp_path / "qa"), "tools": {"git": "git"}}
+    )
+    code, stdout, records = _harness(
+        "run", str(module), scenario, context,
+        env={"PATH": "/usr/bin:/bin"}, records_to=tmp_path / "records.jsonl",
+    )
+    checks = [r for r in records if r.get("type") == "assert"]
+    assert code == 0, (stdout, records)
+    assert checks and all(c["passed"] for c in checks), (stdout, checks)
+    return tmp_path / "qa" / scenario
+
+
+def test_a_copy_of_a_git_checkout_is_a_work_tree_on_the_checkouts_commit(tmp_path: Path) -> None:
+    root = _committed_root(tmp_path)
+    copy = _scenario_copy(tmp_path, root)
+    assert _git(copy, "rev-parse", "--show-toplevel") == str(copy.resolve())
+    assert _git(copy, "rev-parse", "HEAD") == _git(root, "rev-parse", "HEAD")
+
+
+def test_a_copy_shows_the_checkouts_uncommitted_state(tmp_path: Path) -> None:
+    root = _committed_root(tmp_path)
+    (root / "app.txt").write_text("changed\n", encoding="utf-8")
+    copy = _scenario_copy(tmp_path, root)
+    assert _git(copy, "status", "--porcelain").splitlines() == ["M app.txt"]
+
+
+def test_a_commit_in_the_copy_leaves_the_checkout_alone(tmp_path: Path) -> None:
+    root = _committed_root(tmp_path)
+    head, status = _git(root, "rev-parse", "HEAD"), _git(root, "status", "--porcelain")
+    copy = _scenario_copy(tmp_path, root)
+    (copy / "app.txt").write_text("made in the copy\n", encoding="utf-8")
+    _git(copy, "commit", "-q", "-am", "in the copy")
+    assert _git(copy, "rev-parse", "HEAD") != head
+    assert _git(root, "rev-parse", "HEAD") == head
+    assert _git(root, "status", "--porcelain") == status
+
+
+def test_a_copy_of_a_tree_that_is_no_git_checkout_has_no_git_dir(tmp_path: Path) -> None:
+    root = tmp_path / "plain"
+    root.mkdir()
+    (root / "app.txt").write_text("the app\n", encoding="utf-8")
+    module = _write(tmp_path, IGNORED_FREE_SCENARIO)
+    context = json.dumps(
+        {"root": str(root), "spec_dir": str(tmp_path), "qa_dir": str(tmp_path / "qa"), "tools": {"sh": "sh"}}
+    )
+    code, stdout, records = _harness(
+        "run", str(module), "a-command-reads-a-plain-copy", context,
+        env={"PATH": "/usr/bin:/bin"}, records_to=tmp_path / "records.jsonl",
+    )
+    assert code == 0, (stdout, records)
+    world = tmp_path / "qa" / "a-command-reads-a-plain-copy"
+    assert (world / "app.txt").is_file() and not (world / ".git").exists()
+
+
 NO_COMMAND_SCENARIO = '''\
 @scenario(target=api, mechanism="live", covers=["ac:1"])
 def a_scenario_that_runs_no_command(qa: Qa) -> None:

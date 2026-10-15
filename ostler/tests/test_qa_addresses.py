@@ -5,13 +5,15 @@ from __future__ import annotations
 import json
 import logging
 import os
+import subprocess
+import sys
 from pathlib import Path
 from typing import Any
 
 import pytest
 
 from ostler import doctor, model, reach
-from ostler.qa import addresses, runbook as rb, stack as stack_mod
+from ostler.qa import addresses, attribution, runbook as rb, stack as stack_mod
 from ostler.qa.harness_host import load_harness_module
 
 from conftest import write
@@ -297,3 +299,51 @@ def test_a_plan_target_opens_the_runs_copy(tmp_path: Path, monkeypatch: pytest.M
     assert harness.resolve_addresses("{gateway}") == "http://localhost:4321"
     with pytest.raises(ValueError, match="does not give"):
         harness.resolve_addresses("{api}")
+
+
+def test_a_base_url_with_no_address_book_to_give_it_is_named_as_an_environment_fault(
+        monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv(harness.ADDRESS_BOOK_ENV, raising=False)
+    detail = harness.unresolved_address_detail(harness.Target("web_web", base_url="{gateway}/app"))
+    assert detail is not None
+    assert "'web_web'" in detail and "{gateway}" in detail and f"${harness.ADDRESS_BOOK_ENV} is unset" in detail
+    assert harness.unresolved_address_detail(harness.Target("web_web", base_url="http://localhost:1")) is None
+    assert harness.unresolved_address_detail(harness.Target("web_web")) is None
+
+
+UNRESOLVED_PLAN = '''\
+from ostler_qa import Qa, plan, scenario, target
+
+plan(run_id="qa-addresses", story="addresses")
+
+web = target("web_web", base_url="{gateway}/app")
+
+
+@scenario(target=web, mechanism="live", covers=["ac:1"])
+def opens_the_app(qa: Qa) -> None:
+    """Never reached."""
+    qa.check("reached", True)
+'''
+
+
+def test_a_scenario_whose_address_has_no_book_errors_as_an_environment_fault(tmp_path: Path) -> None:
+    module = tmp_path / "qa_plan.py"
+    module.write_text(UNRESOLVED_PLAN, encoding="utf-8")
+    records_to = tmp_path / "records.jsonl"
+    context = json.dumps({"root": str(tmp_path), "spec_dir": str(tmp_path), "qa_dir": str(tmp_path / "qa")})
+    harness_dir = Path(__file__).resolve().parents[1] / "ostler" / "qa" / "harness"
+    with records_to.open("w") as sink:
+        done = subprocess.run(  # noqa: S603
+            [sys.executable, "-m", "ostler_qa", "run", str(module), "opens-the-app", context],
+            capture_output=True, text=True, check=False, stdin=subprocess.DEVNULL, pass_fds=(sink.fileno(),),
+            env={"PATH": "/usr/bin:/bin", "PYTHONPATH": str(harness_dir),
+                 "OSTLER_QA_RECORD_FD": str(sink.fileno())},
+        )
+    records = [json.loads(line) for line in records_to.read_text(encoding="utf-8").splitlines() if line]
+    scenario = next(r for r in records if r.get("type") == "scenario")
+    assert done.returncode == 1
+    assert scenario["status"] == "errored"
+    assert scenario["stop"]["fault"]["fault_class"] == "environment"
+    assert "{gateway}" in scenario["error"]
+    assert attribution.attribute(attribution.CheckEvidence.model_validate(scenario["stop"])).cause is (
+        attribution.Cause.ENVIRONMENT)
