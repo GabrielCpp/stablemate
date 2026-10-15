@@ -18,7 +18,7 @@ from ostler.qa.outcome import QaOutcome
 
 def books_near(root: Path, near: Path | None = None) -> list[str]:
     """The books a bring-up near *near* starts: the innermost one holding it, or every book."""
-    found = {spec.book_name(root, stack_file): stack_file.parent
+    found = {spec.book_name(root, stack_file): spec.book_dir(stack_file)
              for stack_file in spec.stack_files(root)}
     if near is None:
         return sorted(found)

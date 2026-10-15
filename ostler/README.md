@@ -299,48 +299,65 @@ artifact contracts are in
 ### Local environments
 
 `ostler env` runs the product on this machine from what the books say it is made of. Each book
-that boots something keeps a `stack.yml` beside its pages, at `docs/features/<book>/stack.yml`.
-The file names the book's services, the compose fragment that defines each one, and what each
+that boots something keeps a `stack.yml` in the `ops/` folder beside its pages, at
+`docs/features/<book>/ops/stack.yml`. The file at `docs/features/ops/stack.yml` is the stack root,
+and is also a book. A `stack.yml` at the old place, outside `ops/`, is refused with the path to move
+it to. The file names the book's services, the compose fragment that defines each one, and what each
 one needs. A need may sit in another book, so the web book names `api:api` and the api book
 defines it once. Two books never define the same service. One names it, and the other needs it.
 
 ```yaml
-# docs/features/web/stack.yml
-secrets: web-local            # a saddlebag environment, rendered per copy
+# docs/features/web/ops/stack.yml
 default-fixtures: [schema]
 services:
   web:
-    define: ops/services/web.yml.j2
+    about: the browser app, built from this checkout
+    define: services/web.yml.j2
     needs: [api:api, api:provision]
   gateway:
-    define: ops/services/gateway.yml.j2
-    render: [ops/services/Caddyfile.j2]
+    about: the proxy a browser opens
+    define: services/gateway.yml.j2
+    files:
+      Caddyfile: services/Caddyfile.j2   # rendered, because it ends in .j2
     needs: [web]
     address: gateway          # the name a run reads its URL by
     port: 80
     host-port: 8443           # the shared copy only
 ```
 
-A `define` template renders to one compose service. It sees `copy`, `repo`, `book_dir`, `dir`
-(where its `render` helper files land), `fixtures`, and `service('book:name')` for another
+A `define` template renders to one compose service. It sees `copy`, `repo`, `ops_dir`, `env_dir`, `dir`
+(its folder in the copy, where its `files` land), `fixtures`, and `service('book:name')` for another
 service's host name. ostler writes `depends_on`, `ports` and `container_name` itself, from
 `needs:`, `once:` and `address:`, so a template that sets one is refused. Each copy gets one
 compose file, its own project, its own named volumes and its own host ports. The shared copy is
 the one exception, and keeps each `host-port`.
 
 ```bash
-ostler env check                     # every stack.yml fits together: needs, cycles, one define each
+ostler env check                     # every ops/stack.yml fits together: needs, cycles, one define each
 ostler env up web --copy story-12    # web and everything it needs, waited until healthy
 ostler env address gateway --copy story-12
 ostler env compose --copy story-12 -- logs api-api
-ostler env ls
+ostler env ls                        # each service, what it is, and the copies running it
+ostler env schema                    # the JSON Schema of a stack.yml
 ostler env down --copy story-12      # data and rendered files go too, unless --keep-data
 ```
 
 The copy defaults to `$STABLEMATE_LEASE`, so a workflow run that holds a lease brings up its own
-copy without naming it. A copy's directory lives under the user state directory, or under
-`$OSTLER_ENV_HOME`. It holds the rendered compose file, the helper files, the secrets saddlebag
-rendered for it, and an address book in the format `ostler qa` reads.
+copy without naming it. The stack root, `docs/features/ops/stack.yml`, holds the repo's one secret source: `secrets: {file:
+.env}` for a dotenv file, or `secrets: {decrypt: <command>}` for a command whose stdout is dotenv.
+`ostler env check` and `up` fail by name when a template requires a `${NAME}` the source does not
+define. They never print a value.
+
+A book names the books it needs with `needs: [api]` at its top level, and every service of it then
+waits for every service of those books. A `once` job lists the names it writes in `outputs:`, and
+the services that need it read them as `${NAME}`. See the format reference for both.
+
+Every service needs an `about:` line, which `ostler env ls` shows. The format reference is the
+`references/stack.md` page of the `ostler-cli` skill.
+
+A copy's directory lives under the user state directory, or under
+`$OSTLER_ENV_HOME`. It holds the rendered compose file, the helper files, the secrets file a
+`decrypt:` command wrote for it, and an address book in the format `ostler qa` reads.
 
 ## The parse index
 

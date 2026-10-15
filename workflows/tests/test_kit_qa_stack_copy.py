@@ -26,8 +26,9 @@ def repo(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     book = root / "docs" / "features" / "web"
     (book / "ops").mkdir(parents=True)
     (book / "ops" / "web.yml.j2").write_text("image: nginx\n", encoding="utf-8")
-    (book / "stack.yml").write_text(yaml.safe_dump({"services": {
-        "web": {"define": "ops/web.yml.j2", "address": "web", "port": 80}}}), encoding="utf-8")
+    (book / "ops" / "stack.yml").write_text(yaml.safe_dump({"services": {
+        "web": {"about": "the web app", "define": "web.yml.j2", "address": "web", "port": 80}}}),
+        encoding="utf-8")
     return root
 
 

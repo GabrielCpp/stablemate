@@ -9,7 +9,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from ostler.environments import commands
+from ostler.environments import commands, spec
 from ostler.environments.render import SHARED
 from ostler.qa import addresses
 
@@ -43,7 +43,7 @@ def add_parser(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> None
                       help="keep the copy's volumes and files, so a later `down` drops them")
     down.add_argument("--json", action="store_true")
 
-    ls = ops.add_parser("ls", help="list this stack's copies on this machine")
+    ls = ops.add_parser("ls", help="list this stack's services, what each is and the copies running it")
     ls.add_argument("--json", action="store_true")
 
     render = ops.add_parser("render", help="write the copy's compose file without starting it")
@@ -57,7 +57,9 @@ def add_parser(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> None
     copy_flag(address)
     address.add_argument("--json", action="store_true")
 
-    check = ops.add_parser("check", help="check that every book's stack.yml fits together")
+    ops.add_parser("schema", help="print the JSON Schema of a stack.yml")
+
+    check = ops.add_parser("check", help="check that every book's ops/stack.yml fits together")
     check.add_argument("--json", action="store_true")
 
     compose = ops.add_parser(
@@ -77,6 +79,9 @@ def run(args: argparse.Namespace, root: Path) -> int:
             print(argv.message, file=sys.stderr)
             return 1
         return subprocess.run(argv, check=False).returncode
+    if op == "schema":
+        print(json.dumps(spec.schema(), indent=2))
+        return 0
     if op == "up":
         outcome = commands.cmd_up(root, args.targets, copy_name=copy_name, fixtures=fixtures,
                                   fresh=args.fresh, wait_seconds=args.wait)

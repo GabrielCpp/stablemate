@@ -379,7 +379,7 @@ The contracts themselves are in
 
 ## Local environments
 
-`ostler env` renders the services the books' `stack.yml` files declare into one compose file per
+`ostler env` renders the services the books' `ops/stack.yml` files declare into one compose file per
 copy, and drives docker compose against it. `TARGET` is a book or one `book:service`. With no
 target, it is the book you stand in, or every book from the repo root. `--copy` defaults to
 `$STABLEMATE_LEASE`, then to `shared`.
@@ -390,9 +390,13 @@ ostler env render [TARGET...] [--copy NAME] [--fixtures SET[,SET]] [--json]
 ostler env up     [TARGET...] [--copy NAME] [--fixtures SET[,SET]] [--fresh] [--wait SECONDS] [--json]
 ostler env down   [--copy NAME] [--keep-data] [--json]
 ostler env ls     [--json]
+ostler env schema
 ostler env address NAME [--copy NAME] [--json]
 ostler env compose [--copy NAME] -- ARGS...
 ```
+
+`ls` prints each service with its `about`, its address and the copies that run it, and exits 1 when
+the stack files have errors. `schema` prints a JSON Schema for `stack.yml`.
 
 `--fresh` drops the copy's volumes before it comes up, so its fixtures load again. `--fixtures`
 replaces each book's `default-fixtures`. `--keep-data` keeps the volumes and the rendered files,

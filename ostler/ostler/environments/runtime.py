@@ -48,18 +48,18 @@ def copy_for(repo: Path, name: str = SHARED) -> Copy:
     return Copy(name=name, project=project, directory=home() / project)
 
 
-def checkout_name(repo: Path) -> str:
-    """The name of the main checkout *repo* belongs to, the same from any of its worktrees."""
+def main_checkout(repo: Path) -> Path:
+    """The main checkout *repo* belongs to, the same from any of its worktrees."""
     marker = repo / ".git"
     if not marker.is_file():
-        return repo.resolve().name
+        return repo
     gitdir = Path(marker.read_text().removeprefix("gitdir:").strip())
     if not gitdir.is_absolute():
         gitdir = repo / gitdir
     common = gitdir / "commondir"
     if common.is_file():
         gitdir = gitdir / common.read_text().strip()
-    return gitdir.resolve().parent.name
+    return gitdir.resolve().parent
 
 
 def copies(repo: Path) -> list[Copy]:
@@ -136,9 +136,10 @@ def held_copies() -> list[tuple[Copy, dict[str, object]]]:
 
 
 def env_files(copy: Copy) -> list[Path]:
-    """The rendered secrets files compose reads `${VAR}` values from, one per book."""
-    directory = copy.directory / SECRETS_DIR
-    return sorted(directory.glob("*.env")) if directory.is_dir() else []
+    """The env files the copy's last `up` recorded for compose, those that still exist."""
+    listed = read_manifest(copy.directory).get("env_files")
+    found = [Path(str(item)) for item in listed] if isinstance(listed, list) else []
+    return [path for path in found if path.is_file()]
 
 
 @dataclass
@@ -159,9 +160,11 @@ class Compose:
     def run(self, args: Sequence[str], *, capture: bool = False) -> subprocess.CompletedProcess[str]:
         return self.runner(self.argv(args), capture=capture)
 
-    def up(self, *, wait_seconds: int) -> subprocess.CompletedProcess[str]:
+    def up(
+        self, *, wait_seconds: int, services: Sequence[str] = ()
+    ) -> subprocess.CompletedProcess[str]:
         return self.run(["up", "--detach", "--build", "--remove-orphans", "--wait",
-                         "--wait-timeout", str(wait_seconds)])
+                         "--wait-timeout", str(wait_seconds), *services])
 
     def down(self, *, keep_data: bool) -> subprocess.CompletedProcess[str]:
         args = ["down", "--remove-orphans"]

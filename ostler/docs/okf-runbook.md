@@ -261,7 +261,7 @@ book declares no `stop:`. `down` rather than `stop`, because
 `ostler qa stop` already means "kill this session's daemons" and a verb that means two
 lifecycles in one namespace is a verb somebody eventually spends on the wrong one.
 
-A book that declares its stack in `stack.yml` skips the runbook. `up` brings the books near the
+A book that declares its stack in `ops/stack.yml` skips the runbook. `up` brings the books near the
 run up with `ostler env up`, as the copy `--lease` names, or as the shared copy without one.
 `down` tears that copy down with `ostler env down`. The run's commands read the copy's address
 book. `--runbook` still picks a runbook page by name.

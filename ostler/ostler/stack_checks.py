@@ -15,7 +15,8 @@ from ostler.model import Graph
 def check_stack(graph: Graph, f: list[Finding]) -> None:
     """Each reason the books' stack files do not fit together, on the file it was found in."""
     catalog = spec.load(graph.root)
-    files = [spec.shown(graph.root, stack_file) for stack_file in spec.stack_files(graph.root)]
+    found = [*spec.stack_files(graph.root), *spec.old_stack_files(graph.root)]
+    files = [spec.shown(graph.root, stack_file) for stack_file in found]
     for error in catalog.errors:
         path = next((shown for shown in files if error.startswith(f"{shown}: ")), "")
         message = error.removeprefix(f"{path}: ") if path else error

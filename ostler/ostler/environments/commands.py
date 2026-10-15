@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import shutil
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -10,13 +9,15 @@ from pathlib import Path
 from typing import Any
 
 from ostler.environments import render as render_mod
-from ostler.environments import runtime
+from ostler.environments import runtime, secrets
 from ostler.environments import spec
 from ostler.environments.render import SHARED, Copy, RenderError
 from ostler.environments.runtime import Compose, Runner, run_command
 from ostler.qa import addresses
 
 DEFAULT_WAIT_SECONDS = 900
+OUTPUTS_ENV = "outputs.env"
+ABOUT_WIDTH = 45
 
 
 @dataclass
@@ -60,7 +61,7 @@ def prepare(
         return _fail("the stack files do not fit together:\n- " + "\n- ".join(catalog.errors),
                      errors=catalog.errors)
     if not catalog.books:
-        return _fail(f"no book under {root} has a {spec.STACK_FILE}")
+        return _fail(f"no book under {root} has an {spec.OPS_DIR}/{spec.STACK_FILE}")
     chosen = list(targets) or _default_targets(catalog, cwd or Path.cwd())
     try:
         services = spec.closure(catalog, chosen)
@@ -70,9 +71,11 @@ def prepare(
     return Prepared(catalog, services, runtime.copy_for(root, copy_name), sets)
 
 
-def cmd_check(root: Path) -> EnvOutcome:
-    """Every reason the books' stack files do not fit together."""
+def cmd_check(root: Path, *, runner: Runner = run_command) -> EnvOutcome:
+    """Every reason the books' stack files do not fit together, and every `${NAME}` no source defines."""
     catalog = spec.load(root)
+    if not catalog.errors and catalog.books:
+        catalog.errors += _name_problems(root, catalog, runner)
     data = {"ok": not catalog.errors, "books": sorted(catalog.books),
             "services": sorted(catalog.services), "errors": catalog.errors}
     if catalog.errors:
@@ -90,7 +93,7 @@ def cmd_render(
     if isinstance(prepared, EnvOutcome):
         return prepared
     try:
-        written = _write(root, prepared, started=False)
+        written = _write(root, prepared, _rendered(root, prepared), started=False)
     except RenderError as exc:
         return _fail(str(exc))
     return EnvOutcome(True, f"rendered {prepared.copy.name} into {prepared.copy.directory}",
@@ -113,14 +116,27 @@ def cmd_up(
     compose = Compose(copy, runner)
     if fresh and (copy.directory / render_mod.COMPOSE_FILE).is_file():
         compose.down(keep_data=False)
-    secret_problem = _render_secrets(root, prepared, runner)
-    if secret_problem:
-        return _fail(secret_problem, copy=copy.name)
+    source = secrets.source_for(prepared.catalog, root, runner)
     try:
-        _write(root, prepared, started=True, holder=holder)
+        rendered = _rendered(root, prepared)
+        problems = secrets.missing_names(rendered, prepared.catalog, prepared.services, source)
+        if problems:
+            return _fail(_missing_message(problems), copy=copy.name)
+        env_files = source.files(copy)
     except RenderError as exc:
         return _fail(str(exc), copy=copy.name)
+    except secrets.SecretError as exc:
+        return _fail(str(exc), copy=copy.name)
+    jobs = [service for service in prepared.services if service.outputs]
+    produced = copy.directory / runtime.SECRETS_DIR / OUTPUTS_ENV
+    _write(root, prepared, rendered, started=True, holder=holder,
+           env_files=[*env_files, produced] if jobs else env_files)
+    if jobs:
+        problem = _run_jobs(prepared, jobs, produced, compose, wait_seconds)
+        if problem:
+            return _fail(problem, copy=copy.name)
     outcome = compose.up(wait_seconds=wait_seconds)
+    _drop_raw_outputs(copy, jobs)
     if outcome.returncode != 0:
         return _fail(f"docker compose could not bring {copy.name} up (exit {outcome.returncode}); "
                      f"read `ostler env compose --copy {copy.name} -- logs`", copy=copy.name)
@@ -180,15 +196,21 @@ def _down(copy: Copy, *, keep_data: bool, runner: Runner) -> EnvOutcome:
 
 
 def cmd_ls(root: Path, *, runner: Runner = run_command) -> EnvOutcome:
-    """Every copy of this repo's stack, with what docker says of it."""
+    """Every service of this repo's stack with what it is and the copies running it, then the copies."""
+    catalog = spec.load(root)
     status = runtime.running_projects(runner)
     rows: list[dict[str, Any]] = []
-    lines: list[str] = []
+    copy_lines: list[str] = []
+    by_ref: dict[str, list[str]] = {}
+    states: dict[str, str] = {}
     for copy in runtime.copies(root):
         manifest = runtime.read_manifest(copy.directory)
         listed = manifest.get("targets")
         targets = [str(item) for item in listed] if isinstance(listed, list) else []
         state = status.get(copy.project, "not running")
+        states[copy.name] = state
+        for ref in targets:
+            by_ref.setdefault(ref, []).append(copy.name)
         rows.append({
             "copy": copy.name,
             "project": copy.project,
@@ -197,9 +219,56 @@ def cmd_ls(root: Path, *, runner: Runner = run_command) -> EnvOutcome:
             "rendered_at": manifest.get("rendered_at", ""),
             "addresses": _read_book(copy),
         })
-        lines.append(f"{copy.name}  {state}  {', '.join(targets)}")
-    return EnvOutcome(True, "\n".join(lines) or "no copy of this stack exists",
-                      {"ok": True, "copies": rows})
+        copy_lines.append(f"{copy.name}  {state}  {', '.join(targets)}")
+    services = [_service_row(service, by_ref.get(service.ref, [])) for service in catalog.services.values()]
+    lines = _service_lines(catalog, services, states) if services else [
+        f"no book has an {spec.OPS_DIR}/{spec.STACK_FILE}", *copy_lines]
+    if catalog.errors:
+        lines += ["", "the stack files do not fit together:", *(f"- {error}" for error in catalog.errors)]
+    message = "\n".join(lines) or "no copy of this stack exists"
+    return EnvOutcome(not catalog.errors, message,
+                      {"ok": not catalog.errors, "copies": rows, "services": services,
+                       "errors": catalog.errors})
+
+
+def _service_row(service: spec.Service, copies: list[str]) -> dict[str, Any]:
+    return {
+        "ref": service.ref,
+        "book": service.book,
+        "name": service.name,
+        "about": service.about,
+        "address": service.address,
+        "host_port": service.host_port,
+        "copies": copies,
+    }
+
+
+def _service_lines(catalog: spec.Catalog, services: list[dict[str, Any]],
+                   states: dict[str, str]) -> list[str]:
+    cells = [(row["book"], row["ref"], _short(row["about"]), _published(row),
+              ", ".join(name if states[name].startswith("running") else f"{name} ({states[name]})"
+                        for name in row["copies"])) for row in services]
+    widths = [max(len(cell[column]) for cell in cells) for column in (1, 2, 3)]
+    lines: list[str] = []
+    for book in sorted(catalog.books):
+        owned = [cell for cell in cells if cell[0] == book]
+        if not owned:
+            continue
+        lines.append(book)
+        lines += ["  " + "  ".join(
+            [cell[1].ljust(widths[0]), cell[2].ljust(widths[1]), cell[3].ljust(widths[2]),
+             cell[4]]).rstrip() for cell in owned]
+    return lines
+
+
+def _published(row: dict[str, Any]) -> str:
+    if not row["address"]:
+        return ""
+    return f"{row['address']} :{row['host_port']}" if row["host_port"] else str(row["address"])
+
+
+def _short(about: str) -> str:
+    return about if len(about) <= ABOUT_WIDTH else about[:ABOUT_WIDTH - 1].rstrip() + "…"
 
 
 def cmd_address(root: Path, name: str, *, copy_name: str = SHARED) -> EnvOutcome:
@@ -227,10 +296,79 @@ def _read_book(copy: Copy) -> dict[str, str]:
         return {}
 
 
-def _write(root: Path, prepared: Prepared, *, started: bool, holder: int | None = None) -> list[Path]:
-    rendered = render_mod.render(prepared.catalog, prepared.services, prepared.copy, repo=root,
-                                 fixtures=prepared.fixtures)
+def _run_jobs(
+    prepared: Prepared, jobs: list[spec.Service], produced: Path, compose: Compose,
+    wait_seconds: int,
+) -> str:
+    copy = prepared.copy
+    names = [name for job in jobs for name in job.outputs]
+    secrets.write_private(produced, "".join(f"{name}=pending\n" for name in names))
+    outcome = compose.up(wait_seconds=wait_seconds,
+                         services=[job.compose_name for job in jobs])
+    if outcome.returncode != 0:
+        return (f"docker compose could not bring the jobs {', '.join(job.ref for job in jobs)} "
+                f"up (exit {outcome.returncode}); read `ostler env compose --copy {copy.name} "
+                "-- logs`")
+    lines: list[str] = []
+    for job in jobs:
+        written = _output_lines(render_mod.outputs_dir(copy, job) / render_mod.OUTPUTS_FILE)
+        absent = [name for name in job.outputs if name not in written]
+        if absent:
+            return (f"{job.ref} exited 0 without writing {', '.join(f'`{n}`' for n in absent)} "
+                    f"to ${render_mod.OUTPUTS_VAR}")
+        lines += [written[name] for name in job.outputs]
+    secrets.write_private(produced, "".join(f"{line}\n" for line in lines))
+    _drop_raw_outputs(copy, jobs)
+    return ""
+
+
+def _output_lines(path: Path) -> dict[str, str]:
+    try:
+        text = path.read_text(encoding="utf-8")
+    except OSError:
+        return {}
+    found: dict[str, str] = {}
+    for line in text.splitlines():
+        for name in secrets.parse_names(line):
+            found[name] = line
+    return found
+
+
+def _drop_raw_outputs(copy: Copy, jobs: list[spec.Service]) -> None:
+    for job in jobs:
+        (render_mod.outputs_dir(copy, job) / render_mod.OUTPUTS_FILE).unlink(missing_ok=True)
+
+
+def _rendered(root: Path, prepared: Prepared) -> render_mod.Rendered:
+    return render_mod.render(prepared.catalog, prepared.services, prepared.copy, repo=root,
+                             fixtures=prepared.fixtures)
+
+
+def _missing_message(problems: list[str]) -> str:
+    return ("a `${NAME}` the templates require is in no secret source:\n- "
+            + "\n- ".join(problems))
+
+
+def _name_problems(root: Path, catalog: spec.Catalog, runner: Runner) -> list[str]:
+    services = spec.closure(catalog, sorted(catalog.books))
+    copy = runtime.copy_for(root, SHARED)
+    try:
+        rendered = render_mod.render(catalog, services, copy, repo=root,
+                                     fixtures=render_mod.fixture_sets(catalog, services, []))
+        problems = secrets.missing_names(
+            rendered, catalog, services, secrets.source_for(catalog, root, runner))
+    except (RenderError, secrets.SecretError) as exc:
+        return [str(exc)]
+    return [f"a `${{NAME}}` the templates require is in no secret source: {line}"
+            for line in problems]
+
+
+def _write(
+    root: Path, prepared: Prepared, rendered: render_mod.Rendered, *, started: bool,
+    holder: int | None = None, env_files: list[Path] | None = None,
+) -> list[Path]:
     written = render_mod.write(rendered)
+    kept = runtime.read_manifest(prepared.copy.directory).get("env_files", [])
     written.append(runtime.write_manifest(prepared.copy, {
         "repo": str(root),
         "copy": prepared.copy.name,
@@ -239,27 +377,9 @@ def _write(root: Path, prepared: Prepared, *, started: bool, holder: int | None 
         "rendered_at": datetime.now(UTC).isoformat(timespec="seconds"),
         "started": started,
         "holder": runtime.holder_stamp(holder) if holder else {},
+        "env_files": [str(path) for path in env_files] if env_files is not None else kept,
     }))
     return written
-
-
-def _render_secrets(root: Path, prepared: Prepared, runner: Runner) -> str:
-    books = dict.fromkeys(service.book for service in prepared.services)
-    wanted = [(book, prepared.catalog.books[book].secrets) for book in books
-              if prepared.catalog.books[book].secrets]
-    if not wanted:
-        return ""
-    if shutil.which("saddlebag") is None:
-        return ("the stack boots with saddlebag environments "
-                f"({', '.join(name for _, name in wanted)}) but `saddlebag` is not on PATH")
-    project = runtime.checkout_name(root)
-    for book, name in wanted:
-        target = prepared.copy.directory / runtime.SECRETS_DIR / f"{book}.env"
-        outcome = runner(["saddlebag", "env", "render", name, "--output", str(target),
-                          "--run-id", prepared.copy.project, "--project", project], capture=True)
-        if outcome.returncode != 0:
-            return f"saddlebag could not render `{name}` for {book} (exit {outcome.returncode})"
-    return ""
 
 
 def _summary(prepared: Prepared, **extra: Any) -> dict[str, Any]:

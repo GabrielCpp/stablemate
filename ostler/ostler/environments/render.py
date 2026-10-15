@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+import shutil
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -14,6 +15,10 @@ import yaml
 from ostler.environments.spec import Catalog, Service
 
 COMPOSE_FILE = "compose.yml"
+OUTPUTS_DIR = "outputs"
+OUTPUTS_FILE = "outputs.env"
+OUTPUTS_VAR = "STABLEMATE_OUTPUTS"
+OUTPUTS_MOUNT = "/stablemate/outputs"
 OWNED_KEYS = ("depends_on", "ports", "container_name")
 _NAMED_VOLUME = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]*")
 
@@ -44,6 +49,9 @@ class Rendered:
 
     compose: dict[str, Any]
     files: dict[Path, str] = field(default_factory=dict)
+    copies: dict[Path, Path] = field(default_factory=dict)
+    defines: dict[str, str] = field(default_factory=dict)
+    shared_dirs: list[Path] = field(default_factory=list)
 
 
 def fixture_sets(catalog: Catalog, services: Sequence[Service], chosen: Sequence[str]) -> list[str]:
@@ -71,11 +79,11 @@ def render(
     blocks: dict[str, dict[str, Any]] = {}
     for service in services:
         context = _context(catalog, service, copy, repo=repo, fixtures=fixtures)
-        for template in service.render:
-            target = copy.directory / service.compose_name / _rendered_name(template)
-            rendered.files[target] = _render_file(environment, template, context)
-        block = _block(environment, service, context)
+        _place_files(rendered, environment, service, copy, context)
+        block = _block(rendered, environment, service, context)
         rendered.compose["volumes"].update(_scope_volumes(service, block))
+        if service.outputs:
+            _mount_outputs(rendered, service, copy, block)
         blocks[service.ref] = block
     for service in services:
         block = blocks[service.ref]
@@ -101,11 +109,67 @@ def render(
 
 
 def write(rendered: Rendered) -> list[Path]:
-    """Write every rendered file, replacing what the last render of this copy left."""
+    """Write every rendered file and byte copy, replacing what the last render of this copy left."""
+    for directory in rendered.shared_dirs:
+        directory.mkdir(parents=True, exist_ok=True)
+        directory.chmod(0o777)
     for target, text in rendered.files.items():
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(text, encoding="utf-8")
-    return list(rendered.files)
+    for target, source in rendered.copies.items():
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(source, target)
+    return [*rendered.files, *rendered.copies]
+
+
+def outputs_dir(copy: Copy, service: Service) -> Path:
+    """The host folder a job's `$STABLEMATE_OUTPUTS` file is written in."""
+    return copy.directory / OUTPUTS_DIR / service.compose_name
+
+
+def _mount_outputs(rendered: Rendered, service: Service, copy: Copy, block: dict[str, Any]) -> None:
+    host = outputs_dir(copy, service)
+    rendered.shared_dirs.append(host)
+    mounts = block.setdefault("volumes", [])
+    if not isinstance(mounts, list):
+        raise RenderError(f"{service.define} sets `volumes` that is not a list, so ostler cannot "
+                          "add the outputs mount")
+    mounts.append(f"{host}:{OUTPUTS_MOUNT}")
+    value = f"{OUTPUTS_MOUNT}/{OUTPUTS_FILE}"
+    environment = block.setdefault("environment", {})
+    if isinstance(environment, dict):
+        if OUTPUTS_VAR in environment:
+            raise RenderError(f"{service.define} sets `{OUTPUTS_VAR}`, which ostler writes "
+                              "for a job that declares `outputs:`")
+        environment[OUTPUTS_VAR] = value
+    elif isinstance(environment, list):
+        if any(str(item).partition("=")[0] == OUTPUTS_VAR for item in environment):
+            raise RenderError(f"{service.define} sets `{OUTPUTS_VAR}`, which ostler writes "
+                              "for a job that declares `outputs:`")
+        environment.append(f"{OUTPUTS_VAR}={value}")
+    else:
+        raise RenderError(f"{service.define} sets an `environment` that is neither a mapping "
+                          "nor a list")
+
+
+def _place_files(
+    rendered: Rendered, environment: jinja2.Environment, service: Service, copy: Copy,
+    context: dict[str, Any],
+) -> None:
+    base = copy.directory / service.compose_name
+    for target, source in service.files.items():
+        if source.is_dir():
+            for path in sorted(item for item in source.rglob("*") if item.is_file()):
+                relative = path.relative_to(source).as_posix()
+                if path.suffix == ".j2":
+                    rendered.files[base / target / relative.removesuffix(".j2")] = _render_file(
+                        environment, path, context)
+                else:
+                    rendered.copies[base / target / relative] = path
+        elif source.suffix == ".j2":
+            rendered.files[base / target] = _render_file(environment, source, context)
+        else:
+            rendered.copies[base / target] = source
 
 
 def _context(
@@ -123,7 +187,8 @@ def _context(
         "project": copy.project,
         "shared": copy.shared,
         "repo": str(repo),
-        "book_dir": str(service.book_dir),
+        "ops_dir": str(service.ops_dir),
+        "env_dir": str(copy.directory),
         "dir": str(copy.directory / service.compose_name),
         "fixtures": [{"path": str(path), "name": path.name} for path in files],
         "service": service_name,
@@ -137,12 +202,11 @@ def _render_file(environment: jinja2.Environment, template: Path, context: dict[
         raise RenderError(f"{template}: {exc}") from exc
 
 
-def _rendered_name(template: Path) -> str:
-    return template.name.removesuffix(".j2")
-
-
-def _block(environment: jinja2.Environment, service: Service, context: dict[str, Any]) -> dict[str, Any]:
+def _block(
+    rendered: Rendered, environment: jinja2.Environment, service: Service, context: dict[str, Any]
+) -> dict[str, Any]:
     text = _render_file(environment, service.define, context)
+    rendered.defines[service.ref] = text
     try:
         block = yaml.safe_load(text)
     except yaml.YAMLError as exc:
