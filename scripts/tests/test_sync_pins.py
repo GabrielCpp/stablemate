@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+import sync_pins
 from conftest import git
 from packaging.version import Version
 from sync_pins import commit, compatible_range, member_versions, stale_pins, sync
@@ -142,3 +144,20 @@ def test_each_rewritten_pyproject_is_a_fix_under_its_own_scope(tmp_path: Path) -
         "engine>=3,<4 -> engine>=4,<5"
     )
     assert git(root, "status", "--porcelain") == ""
+
+
+def test_a_stale_pin_in_a_template_holder_is_reported_and_rewritten(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root = _workspace(tmp_path, {"engine": _engine("4.0.0"), "flows": _flows("engine>=4,<5")})
+    template = Path("flows/template/pyproject.toml.tmpl")
+    (root / template).parent.mkdir(parents=True)
+    (root / template).write_text(_flows("engine>=3,<4"), encoding="utf-8")
+    monkeypatch.setattr(sync_pins, "EXTRA_PIN_HOLDERS", (template,))
+
+    assert [pin.pyproject for pin in stale_pins(root)] == [root / template]
+
+    sync(root)
+
+    assert (root / template).read_text(encoding="utf-8") == _flows("engine>=4,<5")
+    assert stale_pins(root) == []

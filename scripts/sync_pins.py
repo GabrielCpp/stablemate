@@ -18,6 +18,7 @@ from packaging.version import Version
 
 REPO = Path(__file__).resolve().parent.parent
 SUBJECT_LIMIT = 72
+EXTRA_PIN_HOLDERS = (Path("workflows/src/workhorse_workflows/new/template/pyproject.toml.tmpl"),)
 
 
 @dataclass(frozen=True)
@@ -86,7 +87,9 @@ def stale_pins(root: Path, versions: dict[str, Version] | None = None) -> list[S
     members = _members(root)
     versions = member_versions(root) if versions is None else versions
     stale: list[StalePin] = []
-    for pyproject, _ in members.values():
+    holders = [pyproject for pyproject, _ in members.values()]
+    holders += [root / extra for extra in EXTRA_PIN_HOLDERS if (root / extra).is_file()]
+    for pyproject in holders:
         for written in _requirements(_load(pyproject)["project"]):
             requirement = Requirement(written)
             version = versions.get(canonicalize_name(requirement.name))
