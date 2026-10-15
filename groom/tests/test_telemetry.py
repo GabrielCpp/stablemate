@@ -1154,6 +1154,53 @@ def test_a_restart_rehydrates_an_already_open_wait_from_the_elapsed_tick() -> No
         assert [alert.rule for alert in fired] == ["BLOCKED"]
 
 
+def test_a_replayed_elapsed_tick_does_not_reopen_a_closed_wait() -> None:
+    attrs = {"wait_kind": "operator", "gate_path": "docs/gate.md", "gate_question": "Proceed?"}
+    with _TelemetryEnv():
+        alerts.ingest_metrics(
+            otlp.parse_metrics(
+                _metrics_request(
+                    "workhorse.wait.active", value=1, node="review_plan", gauge=True, attrs=attrs
+                )
+            )
+            + otlp.parse_metrics(
+                _metrics_request(
+                    "workhorse.wait.elapsed_s",
+                    value=180 * 60,
+                    node="review_plan",
+                    gauge=True,
+                    attrs=attrs,
+                )
+            ),
+            now=1000.0,
+        )
+        alerts.ingest_metrics(
+            otlp.parse_metrics(
+                _metrics_request(
+                    "workhorse.wait.active", value=0, node="review_plan", gauge=True, attrs=attrs
+                )
+            ),
+            now=1010.0,
+        )
+        fired = alerts.ingest_metrics(
+            otlp.parse_metrics(
+                _metrics_request(
+                    "workhorse.wait.elapsed_s",
+                    value=180 * 60,
+                    node="review_plan",
+                    gauge=True,
+                    attrs=attrs,
+                )
+            ),
+            now=1020.0,
+        )
+        run = state.RUNS["run-1"]
+        assert run.wait_kind == ""
+        assert run.wait_elapsed_s == 0
+        assert "BLOCKED" not in run.fired
+        assert [alert.rule for alert in fired] == []
+
+
 def test_a_cap_wait_pages_nobody() -> None:
     """The runner throttling itself is not a question anyone can answer."""
     with _TelemetryEnv(), patch.dict(os.environ, {"GROOM_WAIT_MIN": "30"}):

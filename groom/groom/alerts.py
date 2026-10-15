@@ -308,7 +308,8 @@ def ingest_metrics(points: list[dict[str, Any]], now: float | None = None) -> li
                 and (name == "workhorse.wait.elapsed_s"
                      or (name == "workhorse.wait.active" and value < 1))):
             continue
-        if (name == "workhorse.wait.active" and value >= 1
+        if ((name == "workhorse.wait.active" and value >= 1
+                or name == "workhorse.wait.elapsed_s")
                 and attrs.get("wait_kind")
                 and _wait_series(attrs) in run.closed_wait_series):
             continue
