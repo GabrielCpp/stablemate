@@ -104,6 +104,7 @@ class FlowStep:
     href: str
     node_type: str
     surface: str
+    on_cli_page: bool = False
 
 
 @dataclass(frozen=True)
@@ -232,6 +233,7 @@ def _flow_step(step: Mapping[str, object]) -> FlowStep:
     return FlowStep(
         ref=_text(step, "ref"), href=_text(step, "href"),
         node_type=_text(step, "nodeType"), surface=_text(step, "surface"),
+        on_cli_page=_flag(step, "onCliPage", default=False),
     )
 
 

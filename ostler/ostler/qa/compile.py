@@ -33,7 +33,7 @@ from ostler.qa.compile_support import PLAYWRIGHT
 from ostler.qa.compile_support import PYTHON
 from ostler.qa.compile_support import unarranged_scenario_gap
 from ostler.qa.compile_support import unarranged_state_gap
-from ostler.qa.dispatch import OBSERVED_TYPES
+from ostler.qa.dispatch import claim_driver
 from ostler.qa.dispatch import dispatch_target
 from ostler.qa.navigation import SurfaceNavigation
 from ostler.qa.navigation import entry_url_refusal
@@ -275,9 +275,9 @@ class ObligationLanes:
 
 def _driver(obligation: Obligation, navigation: dict[str, SurfaceNavigation]) -> str | None:
     """The driver that performs *obligation*: a CLI page's own, else its surface's."""
-    if obligation.on_cli_page and obligation.node_type in OBSERVED_TYPES:
-        return "cli"
-    return surface_row(navigation, obligation.surface).driver
+    return claim_driver(
+        obligation.node_type, obligation.on_cli_page, surface_row(navigation, obligation.surface).driver,
+    )
 
 
 def _signs_in_off_browser(

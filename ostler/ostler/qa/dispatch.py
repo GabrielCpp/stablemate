@@ -64,6 +64,13 @@ def owes_live_evidence(node_type: str, page_type: str = "") -> bool:
     return node_type not in NO_LIVE_EVIDENCE_TYPES and page_type not in NO_LIVE_EVIDENCE_PAGES
 
 
+def claim_driver(node_type: str, on_cli_page: bool, surface_driver: str | None) -> str | None:
+    """The driver that performs a node: a CLI page's own for an observed type, else its surface's."""
+    if on_cli_page and node_type in OBSERVED_TYPES:
+        return "cli"
+    return surface_driver
+
+
 def dispatch_target(node_type: str, driver: str | None) -> str | ScenarioRefusal:
     """The built target D1's table — or `OBSERVE_ROW`, for a type nobody performs — names, or why none."""
     row = OBSERVE_ROW if node_type in OBSERVED_TYPES else DISPATCH_TABLE.get(node_type)
@@ -97,5 +104,5 @@ def dispatch_target(node_type: str, driver: str | None) -> str | ScenarioRefusal
 __all__ = [
     "BUILT_TARGETS", "DISPATCH_TABLE", "NO_LIVE_EVIDENCE_PAGES", "NO_LIVE_EVIDENCE_TYPES", "NO_ROW_REASONS", "OBSERVED_TYPES",
     "OBSERVE_ROW", "OPS_TYPES",
-    "dispatch_target", "hosts_observation", "owes_live_evidence",
+    "claim_driver", "dispatch_target", "hosts_observation", "owes_live_evidence",
 ]

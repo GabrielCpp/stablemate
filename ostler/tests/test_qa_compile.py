@@ -5062,6 +5062,22 @@ def test_two_surfaces_with_same_named_flows_compile_to_distinct_scenario_names()
     assert _gap_kinds(gaps, mobile_oid) == []
 
 
+def test_a_journey_of_a_command_and_an_invocation_on_a_cli_page_is_one_cli_target() -> None:
+    oid = f"okf:{_FLOW}:end-state"
+    on_cli = {"onCliPage": True}
+    context = _navigation_context(
+        _flow_obligation(
+            oid, source=_FLOW, surface="policy",
+            steps=[_step(f"{_SCREEN}#build", "command", "policy") | on_cli,
+                   _step(f"{_SCREEN}#build-in-image-stage", "invocation", "policy") | on_cli],
+            checks=[_visible("table:Things on file")],
+        ),
+        navigation=_arrival_navigation(),
+    )
+    result = _compile_plan_gaps(context, story="demo-story")
+    assert "needs-multi-target-runtime" not in _gap_kinds(result.gaps, oid)
+
+
 def test_a_journey_across_two_targets_has_no_scenario_shape_to_fit_into() -> None:
     """A target is the pairing of a driver with a service, and `@scenario(target=...)` binds exactly one."""
     oid = f"okf:{_FLOW}:end-state"

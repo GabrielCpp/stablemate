@@ -31,10 +31,16 @@ class JourneyStep:
     href: str
     node_type: str
     surface: str
+    on_cli_page: bool = False
 
     def row(self) -> dict[str, JsonValue]:
         """The step as the obligation row carries it."""
-        return {"ref": self.ref, "href": self.href, "nodeType": self.node_type, "surface": self.surface}
+        row: dict[str, JsonValue] = {
+            "ref": self.ref, "href": self.href, "nodeType": self.node_type, "surface": self.surface,
+        }
+        if self.on_cli_page:
+            row["onCliPage"] = True
+        return row
 
 
 def _bullet_steps(item: str, resolved: Mapping[str, str], book: Mapping[str, BookNode]) -> list[JourneyStep]:
@@ -47,7 +53,8 @@ def _bullet_steps(item: str, resolved: Mapping[str, str], book: Mapping[str, Boo
         target_id = resolved.get(href, "")
         target = book.get(target_id) if target_id else None
         steps.append(JourneyStep(ref=target_id, href=href, node_type=target.type if target else "",
-                                 surface=target.surface if target else ""))
+                                 surface=target.surface if target else "",
+                                 on_cli_page=target.page_type == "cli" if target else False))
     return steps
 
 

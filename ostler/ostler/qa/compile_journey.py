@@ -9,6 +9,7 @@ from urllib.parse import urlparse
 from ostler import reach
 from ostler.qa.book_index import BookIndex
 from ostler.qa.compile_cli import cli_journey
+from ostler.qa.dispatch import claim_driver
 from ostler.qa.dispatch import dispatch_target
 from ostler.qa.navigation import MaestroLaunch
 from ostler.qa.navigation import SurfaceNavigation
@@ -179,7 +180,8 @@ def journey_target(
               "one step short observes a world it did not reach")
     pairs: list[JourneyTarget] = []
     for step in steps:
-        step_target = dispatch_target(step.node_type, surface_row(navigation, step.surface).driver)
+        driver = claim_driver(step.node_type, step.on_cli_page, surface_row(navigation, step.surface).driver)
+        step_target = dispatch_target(step.node_type, driver)
         if isinstance(step_target, ScenarioRefusal):
             return step_target
         pairs.append(JourneyTarget(step_target, step.surface))
