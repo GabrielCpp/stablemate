@@ -18,7 +18,7 @@ Section type. A `### <title>` under a `## Data states` heading in a [`server`](s
 | key | required | what it does |
 | --- | --- | --- |
 | `of` | yes | one plain word naming the record, such as `bill` |
-| `observe` | yes | link: the [`endpoint`](endpoint.md) that reads the record |
+| `observe` | yes | link: the [`endpoint`](endpoint.md) or [`command`](command.md) that reads the record |
 | `verify` | yes | one or more checks on that read's answer. They tell this state apart from its siblings |
 | `fixture` | no | a fixture that puts a record in this state. A state only another system writes is reached this way |
 | `code` | no | link, **owns** its file |
