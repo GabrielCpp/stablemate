@@ -142,3 +142,74 @@ def void_page(*, void_moves: str, states: str = ISSUED_ARRANGED + "\n" + PAID_AR
               pay_moves: str = "") -> str:
     void = VOID_ENDPOINT.replace("- path: /bills/{bill_id}/void\n", f"- path: /bills/{{bill_id}}/void\n{void_moves}")
     return api_page(endpoints=ENDPOINTS + void, states=states, pay_moves=pay_moves)
+
+
+CLI = "docs/features/tally/tally.md"
+CLI_FLOW = "docs/features/tally/flows/pay-a-bill.md"
+CLI_PAY_MOVES = "- moves: [Bill issued](#issued) to [Bill paid](#paid)\n"
+
+CLI_STATES = """## Data states
+
+### issued
+- of: bill
+- observe: [show](#show)
+- verify: json_path(path="$.status", equals="issued")
+
+### paid
+- of: bill
+- observe: [show](#show)
+- verify: json_path(path="$.status", equals="paid")
+"""
+
+CLI_INVOCATIONS = """
+## Invocations
+
+### pay-a-paid-bill
+- on: [pay](#pay)
+- trigger: the caller pays a bill that is already paid.
+- when: [paid](#paid)
+- run: invoke(argv=["pay"])
+- verify: exit_status(code=0)
+"""
+
+
+def cli_page(*, pay_moves: str = CLI_PAY_MOVES, states: str = CLI_STATES, invocations: str = "") -> str:
+    return f"""---
+type: cli
+title: Tally
+---
+# Tally
+
+- binary: tally
+
+## Commands
+
+### add
+- run: invoke(argv=["add"])
+- verify: exit_status(code=0)
+
+### pay
+{pay_moves}- run: invoke(argv=["pay"])
+- verify: exit_status(code=0)
+
+### show
+- run: invoke(argv=["show"])
+- verify: exit_status(code=0)
+{invocations}
+{states}"""
+
+
+def cli_flow_page(*steps: str) -> str:
+    listed = "\n".join(f"  - [{step}](../tally.md#{step})" for step in steps)
+    return f"""---
+type: flow
+title: Pay a bill
+---
+# Pay a bill
+
+- start: [Tally](../tally.md)
+- fixture: none, because nothing is arranged
+- steps:
+{listed}
+- end: [Tally](../tally.md)
+"""

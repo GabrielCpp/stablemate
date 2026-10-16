@@ -88,11 +88,12 @@ class JourneyBackend:
 
 def _cli_walk(walk: JourneyWalk, sinks: PlanSinks) -> WalkedJourney:
     """Walk the journey as tool runs in one working directory."""
-    book, covered = walk.book, set[str]()
-    lines = cli_journey(walk.steps, walk.obligations, walk.ids, sinks.gaps, covered,
-                        sinks.captured, acts_by_node=book.acts_by_node,
-                        acts_refused=book.acts_refused, cli_binaries=book.cli_binaries)
-    return WalkedJourney(lines, frozenset(covered))
+    covered = set[str]()
+    lines, reached = cli_journey(walk.steps, walk.obligations, walk.ids, sinks.gaps, covered,
+                                 sinks.captured, walk.book)
+    if not covered:
+        return WalkedJourney(lines, frozenset())
+    return WalkedJourney(lines, frozenset(covered | reached), reached)
 
 
 def api_target(surface: str, source: str, book: BookIndex) -> tuple[str, str | None]:

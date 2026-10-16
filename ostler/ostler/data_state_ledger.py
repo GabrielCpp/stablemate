@@ -86,7 +86,7 @@ def _apply(node: BookNode, key: str, book: Mapping[str, BookNode], held: Ledger)
 
 def _send(interaction: BookNode, book: Mapping[str, BookNode], held: Ledger) -> None:
     for sent in interaction.targets("sends", book):
-        if sent.type in ("endpoint", "invocation"):
+        if sent.type in ("endpoint", "invocation", "command"):
             _apply(sent, record_key(sent, book), book, held)
 
 
@@ -107,7 +107,7 @@ def _walk(flow: BookNode, book: Mapping[str, BookNode]) -> list[LedgerStep | Led
         elif step.node_type in ("endpoint", "invocation", "passage", "command"):
             for ref in _requests(step.ref, book, passages):
                 node = book.get(ref)
-                if node is None or node.type not in ("endpoint", "invocation"):
+                if node is None or node.type not in ("endpoint", "invocation", "command"):
                     continue
                 key = record_key(node, book)
                 found.append(LedgerStep(number, ref, key, dict(held)))

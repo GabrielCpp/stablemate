@@ -5,7 +5,7 @@ from ostler.qa.plan_source import ScenarioRefusal
 
 DISPATCH_TABLE: dict[str, dict[str, str] | str] = {
     "interaction": {"web": "playwright", "mobile": "maestro"},
-    "passage": {"web": "playwright", "mobile": "maestro", "http": "http"},
+    "passage": {"web": "playwright", "mobile": "maestro", "http": "http", "cli": "cli"},
     "endpoint": {"web": "http", "mobile": "http", "http": "http"},
     "command": "cli",
 }
@@ -65,8 +65,8 @@ def owes_live_evidence(node_type: str, page_type: str = "") -> bool:
 
 
 def claim_driver(node_type: str, on_cli_page: bool, surface_driver: str | None) -> str | None:
-    """The driver that performs a node: a CLI page's own for an observed type, else its surface's."""
-    if on_cli_page and node_type in OBSERVED_TYPES:
+    """The driver that performs a node: a CLI page's own for an observed type or a passage, else its surface's."""
+    if on_cli_page and (node_type in OBSERVED_TYPES or node_type == "passage"):
         return "cli"
     return surface_driver
 

@@ -8,6 +8,16 @@ from dataclasses import dataclass
 from ostler import registry
 from ostler.checks import CHECK_BY_NAME
 from ostler.checks import CHECKS
+from ostler.checks import CheckCall
+from ostler.checks import parse_check
+from ostler.data_states import DataState
+from ostler.data_states import anchor_of
+from ostler.data_states import move_obligation_id
+from ostler.data_states import siblings_of
+from ostler.data_states import state_obligation_id
+from ostler.qa.book_index import BookIndex
+from ostler.qa.compile_support import expand_passages
+from ostler.qa.compile_support import resolved_literal
 from ostler.qa.obligation import CallRow
 from ostler.qa.obligation import FlowStep
 from ostler.qa.obligation import Obligation
@@ -168,15 +178,11 @@ def cli_scenario_body(
     return lines
 
 
-def _step_call(
-    index: int, step: FlowStep, *,
-    acts_by_node: dict[str, list[CallRow]],
-    acts_refused: set[str],
+def _node_call(
+    where: str, ref: str, acts_by_node: dict[str, list[CallRow]], acts_refused: set[str],
     cli_binaries: dict[str, str],
 ) -> str | StepRefusal:
-    """The `qa.tool(...).run(...)` one journey step performs, or why the book names none."""
-    ref = step.ref
-    where = f"step {index} ({step.href!r})"
+    """The `qa.tool(...).run(...)` the node *ref* performs, or why the book names none."""
     if ref in acts_refused:
         return StepRefusal(f"{where} links a node whose act bullets could not be read")
     argvs = {row.call: row.list_arg("argv")
@@ -196,6 +202,133 @@ def _step_call(
     return f"qa.tool({python_literal(binary)}).run({', '.join([*map(python_literal, argv), 'cwd=qa.scenario_checkout_copy()'])})"
 
 
+def _stated_exit(claim: Obligation) -> int | None:
+    """The exit code a declared `exit_status` check of *claim* expects."""
+    for row in claim.checks:
+        code = row.args.get("code")
+        if row.name == "exit_status" and isinstance(code, int) and not isinstance(code, bool):
+            return code
+    return None
+
+
+def _case_codes(claim: Obligation) -> set[int]:
+    """The exit codes one invocation claim expects: its `exit_status` codes, else the code its refusal bullet states."""
+    codes = {code for row in claim.checks if row.name == "exit_status"
+             if isinstance(code := row.args.get("code"), int) and not isinstance(code, bool)}
+    stated = claim.requirement.strip()
+    if not codes and claim.kind in registry.refusal_keys(claim.node_type) and stated.isdigit():
+        codes.add(int(stated))
+    return codes
+
+
+def _expected_claims(step: FlowStep, book: BookIndex) -> list[Obligation]:
+    """The claims one step's run is held to: an invocation's one case, else a command's success claims."""
+    if step.node_type == "invocation":
+        return list(book.invocation_claims.get(step.ref, ()))
+    refusing = registry.refusal_keys("command")
+    return [claim for claim in book.outcomes_by_node.get(step.ref, ())
+            if claim.kind not in refusing and _stated_exit(claim) in (None, 0)]
+
+
+def _state_rows(state: DataState, observed: str) -> list[str] | str:
+    """The `(check, operand, args)` tuples that assert *state* on the run held in *observed*, or why no operand observes one."""
+    rows: list[str] = []
+    for text in state.verify:
+        call = parse_check(text)
+        if not isinstance(call, CheckCall):
+            continue
+        row = CallRow(call.name, call.text(), dict(call.args), {})
+        if compares_the_tree(row.name):
+            return f"`{row.name}` compares the working directory before and after a run, which a read has no pair of"
+        operand = _operand(row, observed, "", f"{observed}_tree")
+        if isinstance(operand, ScenarioRefusal):
+            return operand.detail
+        args = "{" + ", ".join(f"{python_literal(key)}: {resolved_literal(value)}" for key, value in row.args.items()) + "}"
+        rows.append(f"({python_literal(row.name)}, {operand}, {args})")
+    return rows
+
+
+def cli_read_back(where: str, observed: str, target: DataState, book: BookIndex) -> list[str] | str:
+    """The lines that run *target*'s observing command and hold its checks on what it left, naming the sibling state that holds when they fail, or why the walk cannot read it."""
+    label = f"{where} of `{anchor_of(target.node)}`"
+    call = _node_call(label, target.observe, book.acts_by_node, book.acts_refused, book.cli_binaries)
+    if isinstance(call, StepRefusal):
+        return call.reason
+    states = {target.node: _state_rows(target, observed)}
+    states.update({other.node: _state_rows(other, observed) for other in siblings_of(target, book.data_states)})
+    for rows in states.values():
+        if isinstance(rows, str):
+            return f"{label}: {rows}"
+    held = ", ".join(f"{python_literal(anchor_of(node))}: [{', '.join(rows)}]"
+                     for node, rows in states.items() if not isinstance(rows, str))
+    taken_tree = any(reads_the_tree(CallRow(call.name, call.text(), dict(call.args), {}))
+                     for state in (target, *siblings_of(target, book.data_states))
+                     for call in map(parse_check, state.verify) if isinstance(call, CheckCall))
+    return [
+        f"    {observed} = {call}",
+        *([f"    {observed}_tree = qa.tree(qa.scenario_checkout_copy())"] if taken_tree else []),
+        f"    qa.holds({python_literal(anchor_of(target.node))}, {{{held}}})",
+    ]
+
+
+def _step_lines(
+    index: int, step: FlowStep, call: str, book: BookIndex, ids: list[str], gaps: list[Gap], reached: set[str],
+) -> list[str] | None:
+    """The lines that run one step, hold its outcome and read back the state its `moves:` rows land on, all in one `qa.at_node` block, or `None` once a gap says why the walk stops."""
+    claims = _expected_claims(step, book)
+    if step.node_type == "invocation":
+        codes = sorted({code for claim in claims for code in _case_codes(claim)})
+        if len(codes) > 1:
+            gaps.extend(Gap(oid, "uncompilable-claim", (
+                f"step {index} ({step.href or step.ref!r}) links a node with several outcomes (exit codes "
+                f"{', '.join(map(str, codes))}): link one case per step")) for oid in ids)
+            return None
+    rows = [(claim, row) for claim in claims for row in claim.checks]
+    taped = any(_touches_the_tree(row) for _claim, row in rows)
+    observed, before, after = f"observed_{index}", f"before_{index}", f"after_{index}"
+    lines = [f"    {before} = qa.tree(qa.scenario_checkout_copy())"] if taped else []
+    lines.append(f"    {observed} = {call}")
+    if taped:
+        lines.append(f"    {after} = qa.tree(qa.scenario_checkout_copy())")
+    inside: list[str] = []
+    for claim, row in rows:
+        operand = _operand(row, observed, before, after)
+        if isinstance(operand, ScenarioRefusal):
+            gaps.append(Gap(claim.id, operand.kind, operand.detail))
+            continue
+        inside.append(f"    {_verify_line(row, operand, claim.id)}")
+    for number, move in enumerate(book.moves.get(step.ref, ()), start=1):
+        target = book.data_states.get(move.end)
+        if target is None:
+            continue
+        name = f"moved_{index}" if number == 1 else f"moved_{index}_{number}"
+        found = cli_read_back(f"step {index}'s read-back", name, target, book)
+        if isinstance(found, str):
+            gaps.extend(Gap(oid, "unresolved-precondition", found) for oid in ids)
+            continue
+        inside.extend(f"    {line}" for line in found)
+        reached.update((move_obligation_id(step.ref, move.index), state_obligation_id(move.end)))
+    if inside:
+        lines.append(f"    with qa.at_node({python_literal(step.ref)}):")
+        lines.extend(inside)
+    return lines
+
+
+def _walk_steps(
+    steps: tuple[FlowStep, ...], book: BookIndex, ids: list[str], gaps: list[Gap],
+) -> list[tuple[FlowStep, str]] | None:
+    """Each step with the call it performs, or `None` once a gap says why a step names none."""
+    calls: list[tuple[FlowStep, str]] = []
+    for index, step in enumerate(steps, start=1):
+        call = _node_call(f"step {index} ({step.href or step.ref!r})", step.ref, book.acts_by_node,
+                          book.acts_refused, book.cli_binaries)
+        if isinstance(call, StepRefusal):
+            gaps.extend(Gap(oid, "uncompilable-claim", call.reason) for oid in ids)
+            return None
+        calls.append((step, call))
+    return calls
+
+
 def cli_journey(
     steps: tuple[FlowStep, ...],
     obligations: list[Obligation],
@@ -203,29 +336,32 @@ def cli_journey(
     gaps: list[Gap],
     covered: set[str],
     captured: set[tuple[str, str]],
-    *,
-    acts_by_node: dict[str, list[CallRow]],
-    acts_refused: set[str],
-    cli_binaries: dict[str, str],
-) -> list[str]:
-    """Run each step's `run:` in order in one working directory, then assert the flow's claims on what the walk left."""
+    book: BookIndex,
+) -> tuple[list[str], frozenset[str]]:
+    """Run each step's `run:` in order in one working directory, holding each step's outcome where it ran, then assert the flow's claims on what the walk left. Also the move and state obligations the read-backs reached."""
     decline_captures(obligations, gaps, captured, because=(
         "the CLI builder does not yet capture a fact out of a tool run"))
-    calls: list[str] = []
-    for index, step in enumerate(steps, start=1):
-        call = _step_call(index, step, acts_by_node=acts_by_node,
-                          acts_refused=acts_refused, cli_binaries=cli_binaries)
-        if isinstance(call, StepRefusal):
-            gaps.extend(Gap(oid, "uncompilable-claim", call.reason) for oid in ids)
-            return []
-        calls.append(call)
+    expanded = expand_passages(
+        steps, book.passages, lambda ref: "invocation" if ref in book.invocation_claims else "command", ids, gaps)
+    if expanded is None:
+        return [], frozenset()
+    calls = _walk_steps(expanded, book, ids, gaps)
+    if calls is None:
+        return [], frozenset()
+    reached: set[str] = set()
+    stepped: list[str] = []
+    for index, (step, call) in enumerate(calls, start=1):
+        found = _step_lines(index, step, call, book, ids, gaps, reached)
+        if found is None:
+            return [], frozenset()
+        stepped.extend(found)
     reads_tree_either_side = any(_touches_the_tree(row)
                                  for obligation in obligations for row in obligation.checks)
     lines = ["    before = qa.tree(qa.scenario_checkout_copy())"] if reads_tree_either_side else []
     starts = [obligation for obligation in obligations if obligation.kind == "start"]
     for obligation in starts:
         _append_journey_verifies(obligation, _start_operand, lines, gaps, covered)
-    lines.extend(f"    observed_{index} = {call}" for index, call in enumerate(calls, start=1))
+    lines.extend(stepped)
     if reads_tree_either_side:
         lines.append("    after = qa.tree(qa.scenario_checkout_copy())")
     observed = f"observed_{len(calls)}"
@@ -234,7 +370,38 @@ def cli_journey(
             _append_journey_verifies(
                 obligation, lambda row: _operand(row, observed, "before", "after"),
                 lines, gaps, covered)
-    return lines
+    return lines, frozenset(reached)
+
+
+def cli_move_walk(
+    step: FlowStep, start: DataState, book: BookIndex, gaps: list[Gap], ids: list[str],
+) -> tuple[list[str], frozenset[str]] | None:
+    """Read the record in *start*, run the one step, and hold the state its `moves:` row lands on, or `None` once a gap says why the walk cannot be built."""
+    calls = _walk_steps((step,), book, ids, gaps)
+    if calls is None:
+        return None
+    reached: set[str] = set()
+    stepped = _step_lines(1, step, calls[0][1], book, ids, gaps, reached)
+    if stepped is None or not set(ids) <= reached:
+        return None
+    before = cli_read_back("the read of the starting state", "before_move", start, book)
+    if isinstance(before, str):
+        gaps.extend(Gap(oid, "unresolved-precondition", before) for oid in ids)
+        return None
+    reached.add(state_obligation_id(start.node))
+    lines = [f"    with qa.at_node({python_literal(start.node)}):", *(f"    {line}" for line in before), *stepped]
+    return lines, frozenset(reached)
+
+
+def cli_observe_walk(
+    state: DataState, book: BookIndex, gaps: list[Gap], ids: list[str],
+) -> list[str] | None:
+    """Run the command that reads the record in *state* and hold the state's checks on what it left, or `None` once a gap says why the walk cannot read it."""
+    read = cli_read_back("the read of the state", "observed", state, book)
+    if isinstance(read, str):
+        gaps.extend(Gap(oid, "unresolved-precondition", read) for oid in ids)
+        return None
+    return [f"    with qa.at_node({python_literal(state.node)}):", *(f"    {line}" for line in read)]
 
 
 def _append_journey_verifies(

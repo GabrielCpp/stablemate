@@ -13,9 +13,12 @@ from ostler.data_states import siblings_of
 from ostler.data_states import state_obligation_id
 from ostler.qa import references
 from ostler.qa.book_index import BookIndex
+from ostler.qa.compile_cli import cli_move_walk
+from ostler.qa.compile_cli import cli_observe_walk
 from ostler.qa.compile_http import move_walk
 from ostler.qa.compile_http import observe_walk
 from ostler.qa.compile_journey import JourneyWalk
+from ostler.qa.compile_journey import WalkedJourney
 from ostler.qa.compile_journey import api_target
 from ostler.qa.compile_support import PYTHON
 from ostler.qa.navigation import SurfaceNavigation
@@ -34,6 +37,7 @@ from ostler.qa.plan_source import move_walk_function_name
 from ostler.qa.plan_source import python_literal
 from ostler.qa.plan_source import scenario_lines
 from ostler.qa.plan_source import target_lines
+from ostler.qa.plan_source import target_variable
 
 
 def _start_of(move: Move, book: BookIndex, states: Mapping[str, Obligation]) -> str:
@@ -97,17 +101,26 @@ def move_walks(
                                 book, available)
         rows = list({(row.name, row.args): row for row in [*starting.rows, *named]}.values())
         carrier = replace(start_obligation, fixtures=tuple(rows), checks=())
-        node_type = "invocation" if move_obligation.node in book.invocation_claims else "endpoint"
+        cli = move_obligation.on_cli_page
+        node_type = "invocation" if move_obligation.node in book.invocation_claims else ("command" if cli else "endpoint")
         step = FlowStep(move_obligation.node, "", node_type, move_obligation.surface)
         walk = JourneyWalk(replace(book, moves={**book.moves, move_obligation.node: (move,)}), (step,), [carrier],
                            [move_obligation.id], surface_row(navigation, move_obligation.surface))
-        walked = move_walk(walk, start, sinks, frozenset(row.name for row in starting.rows))
+        if cli:
+            cli_walked = cli_move_walk(step, start, walk.book, sinks.gaps, walk.ids)
+            walked = None if cli_walked is None else WalkedJourney(cli_walked[0], cli_walked[1], cli_walked[1])
+        else:
+            walked = move_walk(walk, start, sinks, frozenset(row.name for row in starting.rows))
         if walked is None:
             continue
         emitted.covered.update(walked.covered)
         source = move_obligation.node.partition("#")[0]
-        target_var, base_url = api_target(move_obligation.surface, source, book)
-        lines.extend(target_lines(target_var, PYTHON.name, f", base_url={python_literal(base_url)}", emitted))
+        if cli:
+            target_var = target_variable(move_obligation.surface, "cli")
+            lines.extend(target_lines(target_var, PYTHON.name, "", emitted))
+        else:
+            target_var, base_url = api_target(move_obligation.surface, source, book)
+            lines.extend(target_lines(target_var, PYTHON.name, f", base_url={python_literal(base_url)}", emitted))
         landing = state_obligation_id(move.end)
         scenario = SourceScenario(
             source, target_var, [move_obligation.id, state_obligation_id(start_id), landing],
@@ -135,13 +148,23 @@ def state_walks(
         named = _named_fixtures([state.observe], book, available)
         rows = list({(row.name, row.args): row for row in [*arrangement.rows, *named]}.values())
         carrier = replace(state_obligation, fixtures=tuple(rows), checks=())
-        walked = observe_walk([carrier], state, book, sinks, frozenset(row.name for row in arrangement.rows))
+        cli = state_obligation.on_cli_page
+        if cli:
+            read = cli_observe_walk(state, book, sinks.gaps, [state_obligation.id])
+            walked = None if read is None else WalkedJourney(read, frozenset({state_obligation_id(state.node)}),
+                                                               frozenset({state_obligation_id(state.node)}))
+        else:
+            walked = observe_walk([carrier], state, book, sinks, frozenset(row.name for row in arrangement.rows))
         if walked is None:
             continue
         emitted.covered.update(walked.covered)
         source = state_obligation.node.partition("#")[0]
-        target_var, base_url = api_target(state_obligation.surface, source, book)
-        lines.extend(target_lines(target_var, PYTHON.name, f", base_url={python_literal(base_url)}", emitted))
+        if cli:
+            target_var = target_variable(state_obligation.surface, "cli")
+            lines.extend(target_lines(target_var, PYTHON.name, "", emitted))
+        else:
+            target_var, base_url = api_target(state_obligation.surface, source, book)
+            lines.extend(target_lines(target_var, PYTHON.name, f", base_url={python_literal(base_url)}", emitted))
         scenario = SourceScenario(
             source, target_var, [state_obligation.id],
             Arrangement(rows, arrangement.stated_none, {(row.name, row.args): [state_obligation.id] for row in rows}),

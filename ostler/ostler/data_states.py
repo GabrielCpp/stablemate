@@ -58,8 +58,8 @@ def of_of(node: BookNode) -> str:
     return value if _OF.fullmatch(value) else ""
 
 
-def _endpoints(node: BookNode, book: Mapping[str, BookNode]) -> list[BookNode]:
-    return [target for target in node.targets("observe", book) if target.type == "endpoint"]
+def _read_nodes(node: BookNode, book: Mapping[str, BookNode]) -> list[BookNode]:
+    return [target for target in node.targets("observe", book) if target.type in ("endpoint", "command")]
 
 
 def _route(endpoint: BookNode) -> tuple[str, str]:
@@ -70,12 +70,12 @@ def _route(endpoint: BookNode) -> tuple[str, str]:
 
 def data_state_of(node: BookNode, book: Mapping[str, BookNode]) -> DataState | None:
     """The data state *node* declares, or `None` while its `of:`, `observe:` or `verify:` do not name what a walk needs."""
-    observed = _endpoints(node, book)
+    observed = _read_nodes(node, book)
     checks = tuple(value for value in node.bullets.get("verify", ())
                    if isinstance(checks_mod.parse_check(value), checks_mod.CheckCall))
     if not of_of(node) or len(observed) != 1 or not checks:
         return None
-    method, path = _route(observed[0])
+    method, path = _route(observed[0]) if observed[0].type == "endpoint" else ("", "")
     return DataState(node.id, of_of(node), observed[0].id, checks, method, path)
 
 
@@ -153,11 +153,11 @@ def _check_state(node: BookNode, book: Mapping[str, BookNode], f: list[Finding])
         linked = [edge for edge in node.edges if edge.via == "observe"]
         if not linked:
             _shape_problem(node, "observe", "`observe:` links nothing",
-                           "write `- observe: [<title>](<server page>#<endpoint anchor>)` naming the endpoint that reads the record",
+                           "write `- observe: [<title>](<page>#<endpoint or command anchor>)` naming the endpoint or command that reads the record",
                      f)
-        elif all(edge.to in book for edge in linked) and len(_endpoints(node, book)) != 1:
-            _shape_problem(node, "observe", "`observe:` does not link exactly one endpoint",
-                           "link the one endpoint that reads the record", f)
+        elif all(edge.to in book for edge in linked) and len(_read_nodes(node, book)) != 1:
+            _shape_problem(node, "observe", "`observe:` does not link exactly one endpoint or command",
+                           "link the one endpoint or command that reads the record", f)
 
 
 def _check_moves(node: BookNode, book: Mapping[str, BookNode], f: list[Finding]) -> None:
@@ -232,7 +232,7 @@ def check_data_states(data: dict, f: list[Finding]) -> None:
     for node in book.values():
         if node.type == "data-state":
             _check_state(node, book, f)
-        elif node.type in ("endpoint", "invocation") and node.bullets.get("moves"):
+        elif node.type in ("endpoint", "invocation", "command") and node.bullets.get("moves"):
             _check_moves(node, book, f)
         elif node.type == "interaction" and node.bullets.get("sends"):
             _check_sends(node, book, f)
@@ -242,9 +242,9 @@ def check_data_states(data: dict, f: list[Finding]) -> None:
 
 
 def moves_table(book: Mapping[str, BookNode]) -> dict[str, list[Move]]:
-    """Every endpoint's and invocation's `moves:` rows that land on a state, by node id."""
+    """Every endpoint's, invocation's and command's `moves:` rows that land on a state, by node id."""
     found = {node.id: moves_of(node, book) for node in book.values()
-             if node.type in ("endpoint", "invocation") and node.bullets.get("moves")}
+             if node.type in ("endpoint", "invocation", "command") and node.bullets.get("moves")}
     return {node_id: moves for node_id, moves in found.items() if moves}
 
 

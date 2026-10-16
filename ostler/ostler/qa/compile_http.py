@@ -33,6 +33,8 @@ from ostler.qa.compile_support import PATH_VARIABLE
 from ostler.qa.compile_support import PYTHON
 from ostler.qa.compile_support import on_node
 from ostler.qa.compile_support import bullet_value
+from ostler.qa.compile_support import expand_passages
+from ostler.qa.compile_support import resolved_literal
 from ostler.qa.compile_support import unarranged_scenario_gap
 from ostler.qa.compile_support import unarranged_state_gap
 from ostler.qa.obligation import CallRow
@@ -260,23 +262,15 @@ def _http_arrangement(rows: tuple[CallRow, ...], *, later_replaces: bool = False
     return arranged
 
 
-def _resolved_literal(value: CheckValue, resolver: str = "resolve") -> str:
-    """One value as `python_literal` spells it, wrapped in `qa.<resolver>` when it names a reference."""
-    literal = python_literal(value)
-    if isinstance(value, str) and references.find_references(value):
-        return f"qa.{resolver}({literal})"
-    return literal
-
-
 def _resolved_dict_literal(fields: dict[str, CheckValue]) -> str:
-    """A `json_body=`/`headers=` dict literal, every value spelled by `_resolved_literal`."""
-    return "{" + ", ".join(f"{json.dumps(k)}: {_resolved_literal(v)}" for k, v in fields.items()) + "}"
+    """A `json_body=`/`headers=` dict literal, every value spelled by `resolved_literal`."""
+    return "{" + ", ".join(f"{json.dumps(k)}: {resolved_literal(v)}" for k, v in fields.items()) + "}"
 
 
 def _nested_body_literal(fields: dict[str, CheckValue]) -> str:
     """A `json_body=` literal: a dotted field such as `locales.fr` is a member of a nested object, and the lone field `$` is the whole body."""
     if list(fields) == [_WHOLE_BODY]:
-        return _resolved_literal(fields[_WHOLE_BODY], "resolve_body")
+        return resolved_literal(fields[_WHOLE_BODY], "resolve_body")
     tree: dict[str, Any] = {}
     for path, value in fields.items():
         *parents, leaf = path.split(".")
@@ -288,8 +282,8 @@ def _nested_body_literal(fields: dict[str, CheckValue]) -> str:
 
 
 def _tree_literal(tree: dict[str, Any]) -> str:
-    """One level of a nested body, each leaf spelled by `_resolved_literal` through `qa.resolve_body`."""
-    members = (f"{json.dumps(k)}: {_tree_literal(v) if isinstance(v, dict) else _resolved_literal(v, 'resolve_body')}"
+    """One level of a nested body, each leaf spelled by `resolved_literal` through `qa.resolve_body`."""
+    members = (f"{json.dumps(k)}: {_tree_literal(v) if isinstance(v, dict) else resolved_literal(v, 'resolve_body')}"
                for k, v in tree.items())
     return "{" + ", ".join(members) + "}"
 
@@ -884,7 +878,7 @@ def _state_rows(state: DataState, observed: str) -> list[str] | ScenarioRefusal:
         operand = operand_for(call.name, observed, call.args)
         if isinstance(operand, ScenarioRefusal):
             return operand
-        args = "{" + ", ".join(f"{python_literal(key)}: {_resolved_literal(value)}" for key, value in call.args.items()) + "}"
+        args = "{" + ", ".join(f"{python_literal(key)}: {resolved_literal(value)}" for key, value in call.args.items()) + "}"
         rows.append(f"({python_literal(call.name)}, {operand}, {args})")
     return rows
 
@@ -1008,21 +1002,9 @@ def _success_claims(ref: str, book: BookIndex) -> list[Obligation]:
 
 def _expanded_steps(walk: JourneyWalk, gaps: list[Gap]) -> tuple[FlowStep, ...] | None:
     """The walk's steps with each passage replaced by the endpoints and cases it runs, or `None` once one passage is not a run of steps."""
-    steps: list[FlowStep] = []
-    for index, step in enumerate(walk.steps, start=1):
-        if step.node_type != "passage":
-            steps.append(step)
-            continue
-        passage = walk.book.passages.get(step.ref)
-        if passage is None or passage.start:
-            gaps.extend(Gap(oid, "uncompilable-claim",
-                            f"step {index} links passage `{step.ref}`, which the packet does not carry as a run of "
-                            "endpoints and cases")
-                        for oid in walk.ids)
-            return None
-        steps.extend(FlowStep(ref, "", "invocation" if ref in walk.book.invocation_claims else "endpoint", step.surface)
-                     for ref in passage.steps)
-    return tuple(steps)
+    return expand_passages(walk.steps, walk.book.passages,
+                           lambda ref: "invocation" if ref in walk.book.invocation_claims else "endpoint",
+                           walk.ids, gaps)
 
 
 def _http_steps(

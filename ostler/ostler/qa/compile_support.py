@@ -4,17 +4,22 @@ from __future__ import annotations
 
 import posixpath
 import re
+from collections.abc import Callable
 from collections.abc import Container
 from collections.abc import Mapping
 from dataclasses import dataclass
 from types import ModuleType
+from typing import TYPE_CHECKING
 from typing import get_args
 
 from ostler import accessible_names
+from ostler.checks import CheckValue
 from ostler.checks import parse_call
 from ostler.markdown import extract_refs
+from ostler.qa import references
 from ostler.qa.harness_host import load_harness_module
 from ostler.qa.obligation import CallRow
+from ostler.qa.obligation import FlowStep
 from ostler.qa.obligation import Locators
 from ostler.qa.obligation import Obligation
 from ostler.qa.plan_source import Gap
@@ -25,6 +30,9 @@ from ostler.routes import arrival_regex
 from ostler.routes import is_comparable
 from ostler.routes import is_screen_name_shaped
 from ostler.routes import why_unreadable
+
+if TYPE_CHECKING:
+    from ostler.passages import Passage
 
 
 @dataclass(frozen=True)
@@ -269,3 +277,32 @@ def name_refusal(locators: Locators) -> str:
             "for that description and time out. State the literal name, one value per node. "
             "A control rendered once per item declares `one-per:` and names itself with a "
             "template over the item, such as `{tab.label}`")
+
+
+def expand_passages(
+    steps: tuple[FlowStep, ...], passages: Mapping[str, "Passage"], run_type: Callable[[str], str],
+    ids: list[str], gaps: list[Gap],
+) -> tuple[FlowStep, ...] | None:
+    """*steps* with each passage replaced by the steps it runs, each typed by *run_type* of its node, or `None` once one passage is not a run of steps."""
+    expanded: list[FlowStep] = []
+    for index, step in enumerate(steps, start=1):
+        if step.node_type != "passage":
+            expanded.append(step)
+            continue
+        passage = passages.get(step.ref)
+        if passage is None or passage.start:
+            gaps.extend(Gap(oid, "uncompilable-claim",
+                            f"step {index} links passage `{step.ref}`, which the packet does not carry as a run of "
+                            "steps")
+                        for oid in ids)
+            return None
+        expanded.extend(FlowStep(ref, "", run_type(ref), step.surface, step.on_cli_page) for ref in passage.steps)
+    return tuple(expanded)
+
+
+def resolved_literal(value: CheckValue, resolver: str = "resolve") -> str:
+    """One value as `python_literal` spells it, wrapped in `qa.<resolver>` when it names a reference."""
+    literal = python_literal(value)
+    if isinstance(value, str) and references.find_references(value):
+        return f"qa.{resolver}({literal})"
+    return literal

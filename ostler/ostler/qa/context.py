@@ -1558,7 +1558,7 @@ def _data_states(book: Mapping[str, BookNode]) -> dict[str, dict[str, Any]]:
 
 
 def _moves(book: Mapping[str, BookNode]) -> dict[str, list[dict[str, str | int]]]:
-    """Every endpoint's and invocation's `moves:` rows that land on a state, by node id."""
+    """Every endpoint's, invocation's and command's `moves:` rows that land on a state, by node id."""
     return {node_id: [{"from": move.start, "to": move.end, "index": move.index} for move in moves]
             for node_id, moves in sorted(data_states_mod.moves_table(book).items())}
 
@@ -2258,7 +2258,7 @@ def node_obligations(
 
 def _move_obligations(base: dict[str, Any], book_node: BookNode, book: Mapping[str, BookNode]) -> list[dict[str, Any]]:
     """One obligation per `moves:` row that lands on a state: the row is covered when a compiled walk takes the move."""
-    if book_node.type not in ("endpoint", "invocation"):
+    if book_node.type not in ("endpoint", "invocation", "command"):
         return []
     rows = book_node.bullets.get("moves", ())
     obligations: list[dict[str, Any]] = []

@@ -606,6 +606,7 @@ UI_TYPES: tuple[UINodeType, ...] = (
             BulletKey("errors", normative=True, refusal=True),
             BulletKey("exits", normative=True),
             BulletKey("run", performs=True),
+            BulletKey("moves", link=True),
             BulletKey("code", link=True, owns=True),
             BulletKey("detail", link=True),
             BulletKey("verify", check=True),

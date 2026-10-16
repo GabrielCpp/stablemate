@@ -8,7 +8,8 @@ from ostler import doctor
 from ostler.model import load
 
 from conftest import write
-from data_state_books import API, ENDPOINTS, FIXTURE, FIXTURE_PAGE, ISSUED, PAID, PAY_MOVES, api_page
+from data_state_books import (API, CLI, CLI_FLOW, CLI_INVOCATIONS, CLI_STATES, ENDPOINTS, FIXTURE, FIXTURE_PAGE, ISSUED, PAID, PAY_MOVES, api_page,
+                              cli_flow_page, cli_page)
 
 
 def _findings(repo: Path, *codes: str) -> list[doctor.Finding]:
@@ -121,3 +122,29 @@ def test_a_fixture_that_resolves_is_clean_and_one_that_does_not_is_a_broken_link
     assert [f for f in doctor.run(load(repo)).findings if "issued-bill" in f.message] == []
     _book(repo, states=with_fixture.replace("issued-bill.md", "missing.md") + "\n" + PAID)
     assert [f for f in doctor.run(load(repo)).findings if "missing.md" in f.message]
+
+
+def _cli_book(repo: Path, **page: str) -> None:
+    write(repo / CLI, cli_page(**page))
+
+
+def test_a_cli_page_whose_states_observe_a_command_is_clean(repo: Path) -> None:
+    _cli_book(repo)
+    assert _findings(repo, "data-state-shape", "unstated-move", "moves-shape", "indistinct-states") == []
+
+
+def test_a_cli_state_observing_two_commands_is_refused(repo: Path) -> None:
+    states = CLI_STATES.replace("- observe: [show](#show)\n- verify: json_path(path=\"$.status\", equals=\"issued\")",
+                                "- observe: [show](#show) and [add](#add)\n- verify: json_path(path=\"$.status\", equals=\"issued\")")
+    _cli_book(repo, states=states)
+    [found] = _findings(repo, "data-state-shape")
+    assert "does not link exactly one endpoint or command" in found.message
+
+
+def test_a_cli_case_taken_before_the_move_into_its_state_is_unheld(repo: Path) -> None:
+    _cli_book(repo, invocations=CLI_INVOCATIONS)
+    write(repo / CLI_FLOW, cli_flow_page("add", "pay-a-paid-bill"))
+    [found] = _findings(repo, "unheld-condition")
+    assert "pay-a-paid-bill" in found.message
+    write(repo / CLI_FLOW, cli_flow_page("add", "pay", "pay-a-paid-bill"))
+    assert _findings(repo, "unheld-condition") == []
