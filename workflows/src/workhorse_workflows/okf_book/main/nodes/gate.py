@@ -214,11 +214,14 @@ def _service_of(page: str, services: Iterable[str]) -> str:
 def settle_gate(root: Path, records_dir: Path, services: Sequence[str]) -> tuple[str, ...]:
     """Rerun each blocker's checks, close those that pass, keep each escalation that still fails, and leave each writer its failures and every claim an answer changed. Return the services to route again.
 
-    A service the blockers named is routed, unless all it has left is escalations that still fail and
-    nothing for its writer. A blocker that names no service routes every service.
+    A service is routed when it has work left: a blocker it still has recorded, failures for its writer, or
+    a page check blocker the settlement closed, since the book has not had its run since. A service whose
+    exercise blockers the rerun all closed is not routed, and nor is one left only with escalations that
+    still fail. A blocker that names no service routes every service.
     """
     blockers = read_blockers(records_dir)
     named = {blocker.service for blocker in blockers}
+    written = {blocker.service for blocker in blockers if blocker.phase is Phase.WRITE}
     failures: dict[str, dict[str, list[PageProblem]]] = {}
     snapshot = records_dir / GATE_DIR / SNAPSHOT_FOLDER
     before = read_snapshot(snapshot)
@@ -241,4 +244,6 @@ def settle_gate(root: Path, records_dir: Path, services: Sequence[str]) -> tuple
     left = read_blockers(records_dir)
     held = {service for service in services if service not in failures and (kept := [b for b in left if b.service == service])
             and all(b.side in ESCALATED_SIDES and b.pages for b in kept)}
-    return tuple(service for service in services if ("" in named or service in named or service in failures) and service not in held)
+    pending = {blocker.service for blocker in left}
+    return tuple(service for service in services
+                 if ("" in named or service in failures or service in written or service in pending) and service not in held)

@@ -341,7 +341,7 @@ class OkfBook(BookFlow):
             named = {blocker.service for blocker in blockers}
             routed = tuple(service for service in self.services if service in named and "" not in named) or self.services
         if not routed:
-            return Continue(None, self.report).because("every blocker left waits on another party: reopen the gate")
+            return Continue(None, self.report).because("no book needs another pass: report the blockers left")
         write_pass(self.records_dir, routed)
         for blocker in blockers:
             if blocker.service in routed or not blocker.service:

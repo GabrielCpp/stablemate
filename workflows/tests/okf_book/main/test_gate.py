@@ -100,8 +100,36 @@ def test_a_blocker_whose_rerun_passes_is_closed(tmp_path: Path, monkeypatch: pyt
 
     assert asked == [(ADD,)]
     assert read_blockers(tmp_path) == ()
-    assert routed == SERVICES
+    assert routed == ()
     assert take_failures(tmp_path, "tally") == {}
+
+
+def _no_problems(root: Path, service: str) -> list[PageProblem]:
+    return []
+
+
+def test_a_page_check_blocker_the_settlement_closes_still_routes_its_book(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(gate, "page_problems", _no_problems)
+    write = _blocker().model_copy(update={"phase": Phase.WRITE})
+    _ = record_blocker(_book(tmp_path), write)
+
+    routed = settle_gate(tmp_path, tmp_path, SERVICES)
+
+    assert read_blockers(tmp_path) == ()
+    assert routed == SERVICES
+
+
+@pytest.mark.parametrize("side", [Side.WORKFLOW, Side.BOOK])
+def test_an_exercise_blocker_whose_rerun_still_fails_routes_its_book(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, side: Side) -> None:
+    _ = record_blocker(_book(tmp_path), _blocker(side))
+    failure = PageProblem(ADD, "adds: expected [201], observed 422")
+    failed = ExerciseResult(lines=("scenario tally-add: failed",), summary=RunSummary(status="failed"))
+    _ = _rerun_with(monkeypatch, GateRerun(result=failed, failures={ADD: (failure,)}))
+
+    routed = settle_gate(tmp_path, tmp_path, SERVICES)
+
+    assert routed == SERVICES
+    assert take_failures(tmp_path, "tally") == {ADD: (failure,)}
 
 
 def test_a_rerun_names_only_the_pages_still_in_the_book_and_a_blocker_left_with_none_is_closed(
