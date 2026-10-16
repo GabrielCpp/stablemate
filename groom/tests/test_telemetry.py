@@ -2313,3 +2313,33 @@ def test_cli_status_without_a_server_exits_with_guidance(capsys, monkeypatch):
 if __name__ == "__main__":
     import pytest
     raise SystemExit(pytest.main([__file__, "-q"]))
+
+
+def test_a_second_park_with_identical_gate_text_and_a_new_wait_id_fires_blocked() -> None:
+    with _TelemetryEnv():
+        now = 1000.0
+
+        def wait_point(value: float, wait_id: str) -> bytes:
+            return _metrics_request(
+                "workhorse.wait.active",
+                value=value,
+                node="resume",
+                gauge=True,
+                attrs={"wait_kind": "operator", "gate_path": "docs/BLOCKED.md",
+                       "gate_question": "Proceed?", "wait_id": wait_id},
+            )
+
+        fired = alerts.ingest_metrics(otlp.parse_metrics(wait_point(1, "1")), now=now)
+        assert [alert.rule for alert in fired] == ["BLOCKED"]
+        alerts.ingest_metrics(otlp.parse_metrics(wait_point(0, "1")), now=now)
+        assert state.RUNS["run-1"].wait_kind == ""
+
+        fired = alerts.ingest_metrics(otlp.parse_metrics(wait_point(1, "1")), now=now)
+        assert fired == []
+        assert state.RUNS["run-1"].wait_kind == ""
+
+        fired = alerts.ingest_metrics(otlp.parse_metrics(wait_point(1, "2")), now=now)
+        run = state.RUNS["run-1"]
+        assert [alert.rule for alert in fired] == ["BLOCKED"]
+        assert run.wait_kind == "operator"
+        assert run.wait_gate_question == "Proceed?"
