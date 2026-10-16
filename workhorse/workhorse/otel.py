@@ -907,7 +907,9 @@ class _Telemetry:
             key = ("wait", node_id, token)
             self._wait_keys[token] = key
             started = time.monotonic()
-            attrs = self._wait_attrs(node_id, kind, gate_path, gate_question)
+            attrs = self._wait_attrs(
+                node_id, kind, gate_path, gate_question, wait_id=str(token)
+            )
             self._wait_live[token] = _LiveWait(started, attrs)
             self._start_execution(
                 key,
@@ -951,8 +953,10 @@ class _Telemetry:
         kind: str,
         gate_path: str = "",
         gate_question: str = "",
+        *,
+        wait_id: str,
     ) -> dict[str, str]:
-        attrs = {**self._live_attrs(node_id), "wait_kind": kind}
+        attrs = {**self._live_attrs(node_id), "wait_kind": kind, "wait_id": wait_id}
         if gate_path:
             attrs["gate_path"] = gate_path
         if gate_question:

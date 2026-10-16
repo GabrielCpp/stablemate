@@ -370,7 +370,7 @@ def test_wait_span_records_kind_node_and_outcome_without_replacing_the_node():
     assert meter.instruments["workhorse.node.active"].records == [
         ("set", 1, {"node": "review"})
     ]
-    wait_attrs = {"node": "review-qa-plan", "wait_kind": "cap"}
+    wait_attrs = {"node": "review-qa-plan", "wait_kind": "cap", "wait_id": str(token)}
     assert meter.instruments["workhorse.wait.active"].records == [
         ("set", 1, wait_attrs)
     ]
@@ -388,6 +388,19 @@ def test_wait_span_records_kind_node_and_outcome_without_replacing_the_node():
         0,
         wait_attrs,
     )
+
+
+def test_two_waits_with_identical_gate_text_carry_distinct_wait_ids():
+    t, _, meter, _ = _telemetry()
+    first = t.wait_start("operator", "resume", "/run/question.md", "Which branch?")
+    t.wait_end(first)
+    second = t.wait_start("operator", "resume", "/run/question.md", "Which branch?")
+    records = meter.instruments["workhorse.wait.active"].records
+    opened_first, closed_first, opened_second = records[0], records[1], records[2]
+    assert opened_first[1] == 1 and closed_first[1] == 0 and opened_second[1] == 1
+    assert closed_first[2]["wait_id"] == opened_first[2]["wait_id"] == str(first)
+    assert opened_second[2]["wait_id"] == str(second)
+    assert opened_first[2]["wait_id"] != opened_second[2]["wait_id"]
 
 
 def test_an_interrupted_node_records_why_on_its_span():
