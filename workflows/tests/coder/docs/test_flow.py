@@ -13,6 +13,7 @@ from typing import Any
 from unittest.mock import patch
 
 import pytest
+from workhorse._vendor.stablemate_core import config as core_config
 from workhorse.artifacts import ArtifactWriter
 from workhorse.pyflow import WorkflowFailed
 from workhorse.pyflow import park as pyflow_park
@@ -38,7 +39,12 @@ from workhorse_workflows.coder.shared.worktree import snapshot_worktree_state
 
 STORY = "STORY-1"
 EPIC = "EPIC-1"
-SPEC_REL = f"docs/specs/{STORY}"
+
+
+def spec_dir() -> Path:
+    """The story's spec folder under this test's artifacts dir."""
+    return core_config.resolve_artifacts_dir() / "specs" / STORY
+
 STORY_REL = f"docs/epics/{EPIC}/stories/{STORY}"
 BLOCK_NOTE = "the slug contract is ambiguous"
 OPERATOR_ANSWER = "One slug per locale."
@@ -58,6 +64,7 @@ status: active
 """
 
 STORY_MD = """---
+id: STORY-1
 type: story
 ---
 
@@ -110,7 +117,7 @@ def docs(repo: Path, write: Callable[[Path, str], Path]) -> Path:
     """A docs repo ostler can load: one epic, one authored story, one spec dir."""
     write(repo / "docs" / "epics" / EPIC / "epic.md", EPIC_MD)
     write(repo / STORY_REL / "story.md", STORY_MD)
-    write(repo / SPEC_REL / "plan-context.json", json.dumps(_plan_context("api"), indent=2))
+    write(repo / spec_dir() / "plan-context.json", json.dumps(_plan_context("api"), indent=2))
     return repo
 
 
@@ -130,6 +137,7 @@ def elsewhere(
     write(api / "main.go", "package main\n")
     git(api, "add", "-A")
     git(api, "commit", "-qm", "Initial commit")
+    git(api, "commit", "-q", "--allow-empty", "-m", f"feat: seed\n\nStory: {STORY}")
     write(root / "acme.code-workspace", json.dumps({"folders": [{"name": "api", "path": "api"}]}))
     ambient["workspace_file"] = str(root / "acme.code-workspace")
     return api
@@ -139,15 +147,17 @@ def elsewhere(
 def alongside(
     tmp_path: Path,
     docs: Path,
+    git: Callable[..., subprocess.CompletedProcess],
     write: Callable[[Path, str], Path],
     ambient: dict[str, str],
 ) -> Path:
     """The docs repo *is* the code repo — the single-worktree shape, i.e."""
-    (docs / SPEC_REL / "plan-context.json").write_text(
+    (docs / spec_dir() / "plan-context.json").write_text(
         json.dumps(_plan_context("acme"), indent=2), encoding="utf-8"
     )
     ws = tmp_path / "acme.code-workspace"
     write(ws, json.dumps({"folders": [{"name": "acme", "path": str(docs)}]}))
+    git(docs, "commit", "-q", "--allow-empty", "-m", f"feat: seed\n\nStory: {STORY}")
     ambient["workspace_file"] = str(ws)
     return docs
 
@@ -312,10 +322,12 @@ def test_an_unresolvable_story_fails_before_anything_else(
 def test_sources_outside_the_docs_worktree_take_the_semantic_route(
     docs: Path,
     elsewhere: Path,
+    ambient: dict[str, str],
     env: Callable[..., RunEnv],
     drive_flow: Callable[..., Any],
 ) -> None:
     """The multi-repo case: no diff to map, so no packet is built and doctor is the authority."""
+    del ambient["workspace_file"]
     agent = _Agent()
     run_env = env()
 
@@ -538,7 +550,7 @@ def test_the_grounding_failure_names_the_symbols_not_the_files(
     controller = "api/internal/app/controllers/link.go"
     settled = "api/internal/app/exceptions/errors.go"
     write_json(
-        docs / SPEC_REL / CONTEXT_FILE,
+        docs / spec_dir() / CONTEXT_FILE,
         {
             "changedCode": [
                 {
@@ -577,7 +589,7 @@ def test_the_grounding_failure_names_the_symbols_not_the_files(
 
     gate = verify_story_documentation(
         logger,
-        spec_dir=SPEC_REL,
+        spec_dir=str(spec_dir()),
         author_status="documented",
         build_status="passed",
         validation_status="passed",
@@ -605,7 +617,7 @@ def test_grounding_the_enclosing_unit_grounds_what_is_nested_inside_it(
     """A nested symbol has no documentable surface of its own, so it cannot be owed alone."""
     panel = "web/app/components/panel.tsx"
     write_json(
-        docs / SPEC_REL / CONTEXT_FILE,
+        docs / spec_dir() / CONTEXT_FILE,
         {
             "changedCode": [
                 {
@@ -627,7 +639,7 @@ def test_grounding_the_enclosing_unit_grounds_what_is_nested_inside_it(
 
     gate = verify_story_documentation(
         logger,
-        spec_dir=SPEC_REL,
+        spec_dir=str(spec_dir()),
         author_status="documented",
         build_status="passed",
         validation_status="passed",
@@ -657,11 +669,11 @@ def test_a_doctor_refusal_carries_the_form_the_checker_would_accept(
         "## Components\n\n### body\n- role: article\n- name: none\n"
         "- placement: mostly the middle\n",
     )
-    write_json(docs / SPEC_REL / CONTEXT_FILE, {"changedCode": [], "directNodes": []})
+    write_json(docs / spec_dir() / CONTEXT_FILE, {"changedCode": [], "directNodes": []})
 
     gate = verify_story_documentation(
         logger,
-        spec_dir=SPEC_REL,
+        spec_dir=str(spec_dir()),
         author_status="documented",
         build_status="passed",
         validation_status="passed",
@@ -710,12 +722,12 @@ def test_an_over_long_doctor_list_is_spilled_to_a_file_the_note_names(
         docs / screen,
         "---\ntype: screen\nslug: s\ntitle: S\n---\n# S\n\n## Components\n\n" + components,
     )
-    write_json(docs / SPEC_REL / CONTEXT_FILE, {"changedCode": [], "directNodes": []})
-    spill = docs / SPEC_REL / DOCTOR_ERRORS_FILE
+    write_json(docs / spec_dir() / CONTEXT_FILE, {"changedCode": [], "directNodes": []})
+    spill = docs / spec_dir() / DOCTOR_ERRORS_FILE
 
     gate = verify_story_documentation(
         logger,
-        spec_dir=SPEC_REL,
+        spec_dir=str(spec_dir()),
         author_status="documented",
         build_status="passed",
         validation_status="passed",
@@ -738,7 +750,7 @@ def test_an_over_long_doctor_list_is_spilled_to_a_file_the_note_names(
     )
     again = verify_story_documentation(
         logger,
-        spec_dir=SPEC_REL,
+        spec_dir=str(spec_dir()),
         author_status="documented",
         build_status="passed",
         validation_status="passed",
@@ -780,7 +792,7 @@ The old handler was retired.
 """,
     )
     write_json(
-        docs / SPEC_REL / CONTEXT_FILE,
+        docs / spec_dir() / CONTEXT_FILE,
         {
             "changedCode": [
                 {
@@ -798,7 +810,7 @@ The old handler was retired.
 
     gate = verify_story_documentation(
         logger,
-        spec_dir=SPEC_REL,
+        spec_dir=str(spec_dir()),
         author_status="documented",
         build_status="passed",
         validation_status="passed",
@@ -835,7 +847,7 @@ def test_work_already_dirty_when_the_story_started_is_not_this_story_s_to_ground
     orphan = "api/legacy.go"
     write(docs / orphan, "package api\n\nfunc Orphan() {}\n")
     write_json(
-        docs / SPEC_REL / CONTEXT_FILE,
+        docs / spec_dir() / CONTEXT_FILE,
         {
             "changedCode": [
                 {
@@ -853,7 +865,7 @@ def test_work_already_dirty_when_the_story_started_is_not_this_story_s_to_ground
     def _gate(preexisting: tuple[str, ...]) -> Any:
         return verify_story_documentation(
             logger,
-            spec_dir=SPEC_REL,
+            spec_dir=str(spec_dir()),
             author_status="not_required",
             build_status="passed",
             validation_status="passed",

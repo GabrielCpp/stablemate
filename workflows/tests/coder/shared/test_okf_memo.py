@@ -35,7 +35,7 @@ class FakeOstler:
         self.root = Path(root)
 
     def qa_context(self, *, spec: str, **kwargs: Any) -> FakeOutcome:
-        spec_dir = self.root / spec
+        spec_dir = Path(spec)
         spec_dir.mkdir(parents=True, exist_ok=True)
         for name in okf.PACKET_FILES:
             (spec_dir / name).write_text("{}\n", encoding="utf-8")
@@ -56,7 +56,7 @@ def repo(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
 
 
 def build(repo: Path) -> Any:
-    return okf.build_okf_context(LOGGER, spec_dir="docs/spec", docs_path=str(repo))
+    return okf.build_okf_context(LOGGER, spec_dir=str(repo / "docs/spec"), docs_path=str(repo))
 
 
 def commit(repo: Path, message: str) -> None:
@@ -183,7 +183,7 @@ def test_multi_repository_context_is_grouped_and_invalidated_by_source_edits(
     )
 
     okf.build_okf_context(
-        LOGGER, spec_dir="docs/spec", docs_path=str(repo), story_sources=sources
+        LOGGER, spec_dir=str(repo / "docs/spec"), docs_path=str(repo), story_sources=sources
     )
     repositories = FakeOstler.contexts[0]["repositories"]
     assert len(repositories) == 1
@@ -191,6 +191,6 @@ def test_multi_repository_context_is_grouped_and_invalidated_by_source_edits(
 
     (source / "src/service.py").write_text("value = 2\n", encoding="utf-8")
     okf.build_okf_context(
-        LOGGER, spec_dir="docs/spec", docs_path=str(repo), story_sources=sources
+        LOGGER, spec_dir=str(repo / "docs/spec"), docs_path=str(repo), story_sources=sources
     )
     assert len(FakeOstler.calls) == 2

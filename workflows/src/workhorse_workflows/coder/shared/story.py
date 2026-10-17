@@ -13,12 +13,12 @@ from workhorse_workflows.coder.shared.schemas.story import SpecsStamped, StoryPa
 from workhorse_workflows.kit import resolve_workspace
 
 
-def _spec_dir_rel(okf: Ostler, slug: str) -> str:
-    """Where this story's specs live, repo-relative, through ostler."""
+def _spec_dir(okf: Ostler, slug: str) -> Path:
+    """Where this story's specs live (absolute, outside the repo by default), through ostler."""
     try:
-        return okf.spec_path(slug) or f"docs/specs/{slug}"
-    except (OSError, ValueError, RuntimeError):
-        return f"docs/specs/{slug}"
+        return Path(okf.spec_path(slug))
+    except ValueError as exc:
+        raise WorkflowFailed(str(exc)) from exc
 
 
 def _story_id(okf: Ostler, slug: str) -> str:
@@ -101,7 +101,7 @@ def prepare_story(
     okf = Ostler(docs_root)
     _guard_authored(okf, story, logger)
 
-    spec_dir = str((docs_root / _spec_dir_rel(okf, story)).resolve())
+    spec_dir = str(_spec_dir(okf, story).resolve())
 
     story_path = ""
     if epic:
@@ -154,13 +154,12 @@ def stamp_specs(
 
     docs_root = find_docs_root(docs_path, repo_dir)
     okf = Ostler(docs_root)
-    spec_rel = _spec_dir_rel(okf, story_slug)
-    spec_dir = docs_root / spec_rel
+    spec_dir = _spec_dir(okf, story_slug)
     if not spec_dir.is_dir():
         logger.info("no spec dir at %s — nothing to stamp", spec_dir)
         return SpecsStamped()
 
-    spec_key = Path(spec_rel).name
+    spec_key = spec_dir.name
     stamped = 0
     for path in sorted(spec_dir.glob("*.md")):
         res = okf.create_spec(spec_key, path.name)

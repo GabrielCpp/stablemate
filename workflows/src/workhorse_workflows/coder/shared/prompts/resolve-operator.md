@@ -42,7 +42,7 @@ applying it is exactly what you are for.
 
 ## Investigate first, whichever way it goes
 
-Read the story, its plan (`docs/specs/<slug>/plan.md`), any QA/spec artifacts under
+Read the story, its plan (`{{ spec_dir }}/plan.md`), any QA/spec artifacts under
 `{{ spec_dir }}`, and the relevant code. Reconstruct the producer's reasoning and rule
 things out concretely — run the command, read the file, trace the code path that would
 confirm or refute each hypothesis for what is actually blocking, and record what you

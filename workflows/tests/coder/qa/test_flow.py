@@ -14,6 +14,7 @@ from unittest.mock import patch
 import pytest
 from workhorse import inbox
 from ostler.qa import stack as qa_stack
+from workhorse._vendor.stablemate_core import config as core_config
 from workhorse.artifacts import ArtifactWriter
 from workhorse.cli.inbox import INBOX_FILE
 from workhorse.pyflow import WorkflowFailed
@@ -39,7 +40,12 @@ from workhorse_workflows.kit.qa import runner as qa_runner_mod
 
 STORY = "STORY-1"
 EPIC = "EPIC-1"
-SPEC_REL = f"docs/specs/{STORY}"
+
+
+def spec_dir() -> Path:
+    """The story's spec folder under this test's artifacts dir."""
+    return core_config.resolve_artifacts_dir() / "specs" / STORY
+
 STORY_REL = f"docs/epics/{EPIC}/stories/{STORY}"
 CONTEXT_REL = f"{STORY_REL}/context.md"
 
@@ -69,6 +75,7 @@ status: active
 """
 
 STORY_MD = """---
+id: STORY-1
 type: story
 ---
 
@@ -171,7 +178,7 @@ def docs(
     write(repo / RUNBOOK_REL, RUNBOOK_MD)
     write(repo / SERVER_REL, SERVER_MD)
     write_json(
-        repo / SPEC_REL / "plan-context.json", {"story": STORY, "services": [API_SERVICE]}
+        repo / spec_dir() / "plan-context.json", {"story": STORY, "services": [API_SERVICE]}
     )
     return repo
 
@@ -187,7 +194,7 @@ def web(
 ) -> Path:
     """A real `web` repo that declares a journey suite, and a plan that names it."""
     write_json(
-        docs / SPEC_REL / "plan-context.json", {"story": STORY, "services": [WEB_SERVICE]}
+        docs / spec_dir() / "plan-context.json", {"story": STORY, "services": [WEB_SERVICE]}
     )
     root = tmp_path / "ws"
     path = root / "web"
@@ -196,6 +203,7 @@ def web(
     write(path / "agents.yml", "services:\n  web-app: {regression: 'run-journeys'}\n")
     git(path, "add", "-A")
     git(path, "commit", "-qm", "Initial commit")
+    git(path, "commit", "-q", "--allow-empty", "-m", f"feat: seed\n\nStory: {STORY}")
     write(root / "acme.code-workspace", json.dumps({"folders": [{"name": "web", "path": "web"}]}))
     ambient["workspace_file"] = str(root / "acme.code-workspace")
     return path
@@ -607,8 +615,8 @@ def test_one_clean_pass_spends_one_owner_turn(
     assert agent.args[0]["standing_plan"] is False
     assert agent.args[0]["report"] == ""
     assert (okf.contexts, okf.runs, okf.vets) == (2, 1, 1)
-    assert (docs / SPEC_REL / "qa-evidence.json").is_file()
-    assert (docs / SPEC_REL / "qa" / "qa-run.ndjson").is_file()
+    assert (docs / spec_dir() / "qa-evidence.json").is_file()
+    assert (docs / spec_dir() / "qa" / "qa-run.ndjson").is_file()
 
 
 def test_a_story_that_cannot_be_resolved_fails_the_run_without_spending_a_turn(
@@ -1299,7 +1307,7 @@ def test_a_standing_valid_plan_is_handed_to_the_owner_to_adopt(
 ) -> None:
     """A `qa_plan.py` that lints and validates is the plan, and the owner is told so."""
     ostler()
-    write(docs / SPEC_REL / "qa_plan.py", QA_PLAN)
+    write(docs / spec_dir() / "qa_plan.py", QA_PLAN)
     agent = _Agent(docs)
 
     result = drive_flow(Qa(story=STORY), env(), agent)
@@ -1316,7 +1324,7 @@ def test_the_lane_runs_standalone_with_no_plan_context(
     drive_flow: Callable[..., Any],
 ) -> None:
     """QA against someone else's checkout: no dev lane ran, so there is no `plan-context.json`."""
-    (docs / SPEC_REL / "plan-context.json").unlink()
+    (docs / spec_dir() / "plan-context.json").unlink()
     ostler()
     monkeypatch.setattr(
         qa_stack, "ensure_stack", lambda *a, **k: {"ready": "yes", "entry_url": "http://x"}

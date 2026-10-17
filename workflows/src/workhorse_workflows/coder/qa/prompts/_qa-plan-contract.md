@@ -344,7 +344,7 @@ ostler qa run <spec_dir>/qa_plan.py --spec <spec_dir> \
 ```
 
 `--out-dir` takes a label, not a path. The run lands in
-`<spec_dir>/{{ workhorse_var('qa_scratch_dir') }}/<scenario-id>/`, which the repo ignores.
+`<spec_dir>/{{ workhorse_var('qa_scratch_dir') }}/<scenario-id>/`, outside the repo.
 Use one label per scenario: the runner clears its out-dir on every run. Return the ids you
 ran green in `proved_scenarios`. The checks read each one's scratch log, and an id that did
 not pass there fails them. Fix what does not resolve and run it again. Runner tooling (the

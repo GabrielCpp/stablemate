@@ -31,6 +31,7 @@ The epic queue, front first.
 """
 
 STORY_MD = """---
+id: STORY-1
 type: story
 ---
 

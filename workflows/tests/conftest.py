@@ -12,6 +12,12 @@ UNKNOWN_BULLET_ALLOWED_TESTS: frozenset[str] = frozenset()
 
 
 @pytest.fixture(autouse=True)
+def _artifacts_dir_is_per_test(tmp_path_factory, monkeypatch):
+    """Specs live in the user's artifacts folder, so no test may resolve to the real one."""
+    monkeypatch.setenv("STABLEMATE_ARTIFACTS_DIR", str(tmp_path_factory.mktemp("artifacts")))
+
+
+@pytest.fixture(autouse=True)
 def _inline_books_are_legal_okf(request: pytest.FixtureRequest):
     start = len(testsupport.CONSTRUCTED_UI_NODES)
     yield

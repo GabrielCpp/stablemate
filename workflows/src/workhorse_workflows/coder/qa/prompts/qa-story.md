@@ -254,7 +254,7 @@ unblock you and what you ruled out.
 
 ## Commit Identity
 
-Commit nothing but QA artifacts: the plan, the runbook node, the regression specs, local
+Commit nothing but QA artifacts that live in the repo: the runbook node, the regression specs, local
 config. Every commit carries `Epic: {{ workhorse_var('epic') }}` and
 `Story: {{ workhorse_var('story_id') }}` as footers, spelled exactly so. Do not push.
 

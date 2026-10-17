@@ -108,7 +108,9 @@ def settle_findings(
     okf = Ostler(root)
     ledger = okf.settle_answers(story_slug, ids, write=True)
     message = commits.message("docs", commits.scope(root.name), f"record the review settlement of {story_slug}")
-    commit_paths(root, message, f"{okf.spec_path(story_slug)}/{SETTLEMENT_FILE}")
+    settlement = Path(okf.spec_path(story_slug)) / SETTLEMENT_FILE
+    if settlement.resolve().is_relative_to(root.resolve()):
+        commit_paths(root, message, str(settlement.resolve().relative_to(root.resolve())))
     changed = _changed(logger, code, story_slug, story_id)
     settled: list[str] = []
     rejected: dict[str, str] = {}

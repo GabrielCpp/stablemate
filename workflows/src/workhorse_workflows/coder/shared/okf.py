@@ -156,8 +156,7 @@ def build_okf_context(
     root = Path(docs_root).resolve()
     if base == TRUNK:
         base = trunk_base(root)
-    spec = Path(spec_dir)
-    spec_path = spec if spec.is_absolute() else root / spec
+    spec_path = Path(spec_dir)
     outputs = tuple(
         (spec_path / name).relative_to(root).as_posix()
         for name in (*PACKET_FILES, STAMP_FILE)

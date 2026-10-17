@@ -45,6 +45,7 @@ The epic queue, front first.
 """
 
 STORY_MD = """---
+id: {slug}
 type: story
 ---
 
@@ -121,7 +122,7 @@ def epic(
         for slug in slugs:
             write(
                 repo / "docs" / "epics" / EPIC / "stories" / slug / "story.md",
-                STORY_MD.format(title=f"Story {slug}", status=status),
+                STORY_MD.format(slug=slug, title=f"Story {slug}", status=status),
             )
         write(repo / "docs" / "epics" / "index.md", INDEX)
         git(repo, "add", "-A")
