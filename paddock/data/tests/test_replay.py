@@ -124,6 +124,9 @@ def test_the_qa_rewind_removes_the_flows_outputs_and_nothing_else(tmp_path: Path
     repo = tmp_path / "repo"
     spec = repo / "docs" / "specs" / "expense-list"
     spec.mkdir(parents=True)
+    (repo / "agents.yml").write_text(
+        "organization:\n  docRoots:\n    specs: docs/specs\n", encoding="utf-8"
+    )
     (spec / "story.md").write_text("the story", encoding="utf-8")
     (spec / "implementation-plan.md").write_text("the plan", encoding="utf-8")
     (spec / "qa-plan.yml").write_text("scenarios: []", encoding="utf-8")

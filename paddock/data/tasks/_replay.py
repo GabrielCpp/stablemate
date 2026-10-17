@@ -86,7 +86,7 @@ def plan_round(run: Run, fixture: Fixture) -> list[tuple[Pin, str]]:
 def rewind(repo: Path, fixture: Fixture, pin: Pin, flow: str) -> None:
     """Put the checked-out tree back into the state the flow was entered in."""
     if flow == "qa":
-        spec = repo / "docs" / "specs" / pin.story
+        spec = sm.spec_dir(repo, pin.story)
         if not spec.is_dir():
             raise sm.TrialError(
                 f"no spec dir {spec} at {pin.commit(flow)} — is the pin for "
@@ -166,6 +166,7 @@ def checkout(
     dest.parent.mkdir(parents=True, exist_ok=True)
     sm.git("clone", "--quiet", str(run.repo), str(dest), cwd=run.scratch)
     sm.git("checkout", "--quiet", pin.commit(flow), cwd=dest)
+    sm.upgrade_spec_layout(dest)
     rewind(dest, fixture, pin, flow)
     restore_harness(dest, fixture)
     if fixture.backfill_dependencies:

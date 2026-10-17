@@ -18,3 +18,9 @@ def git_identity(tmp_path_factory: pytest.TempPathFactory) -> Iterator[None]:
     with pytest.MonkeyPatch.context() as patch:
         patch.setenv("GIT_CONFIG_GLOBAL", str(config))
         yield
+
+
+@pytest.fixture(autouse=True)
+def _artifacts_dir_is_per_test(tmp_path_factory, monkeypatch):
+    """Specs live in the user's artifacts folder, so no test may resolve to the real one."""
+    monkeypatch.setenv("STABLEMATE_ARTIFACTS_DIR", str(tmp_path_factory.mktemp("artifacts")))

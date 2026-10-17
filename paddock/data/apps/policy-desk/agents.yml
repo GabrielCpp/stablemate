@@ -60,3 +60,7 @@ services:
 qa:
   tools:
     - docker
+
+organization:
+  docRoots:
+    specs: docs/specs

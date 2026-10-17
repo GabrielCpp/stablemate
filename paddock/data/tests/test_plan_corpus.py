@@ -60,6 +60,17 @@ def test_a_frozen_plan_passes_the_lint_that_ships_today(plan: Path) -> None:
     assert outcome.ok, outcome.message
 
 
+def _slug_of(app: Path, story_id: str) -> str:
+    """The slug of the story whose id names a spec folder."""
+    found = [
+        story.parent.name
+        for story in app.glob("docs/epics/*/stories/*/story.md")
+        if f"\nid: {story_id}\n" in story.read_text(encoding="utf-8")
+    ]
+    assert len(found) == 1, f"{story_id}: expected one story, found {found}"
+    return found[0]
+
+
 def _story_file(root: Path, story: str) -> Path:
     """The story the spec was planned from, wherever the app filed its epics."""
     found = sorted(root.glob(f"docs/epics/*/stories/{story}/story.md"))
@@ -76,10 +87,10 @@ def test_a_frozen_plan_validates_against_a_trial_packet(plan: Path, tmp_path: Pa
     monkeypatch.setenv("STABLEMATE_CONFIG", str(DATA / "configs" / "opencode.toml"))
 
     app = plan.parents[3]
-    story = plan.parent.name
+    story = _slug_of(app, plan.parent.name)
     dest = _frozenapp.materialize(app, story, tmp_path / app.name)
 
-    spec = dest / "docs" / "specs" / story
+    spec = dest / "docs" / "specs" / plan.parent.name
     context = build_context(
         dest,
         base="HEAD",

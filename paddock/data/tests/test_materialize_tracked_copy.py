@@ -46,6 +46,9 @@ def _build_app(tmp_path: Path) -> Path:
     """A minimal app fixture: one tracked file, a nested untracked artifact beside it."""
     app = tmp_path / "app"
     (app / "docs" / "specs" / "only-story").mkdir(parents=True)
+    (app / "agents.yml").write_text(
+        "organization:\n  docRoots:\n    specs: docs/specs\n", encoding="utf-8"
+    )
     (app / "docs" / "specs" / "only-story" / "spec.md").write_text("spec\n", encoding="utf-8")
     (app / "stories" / "only-story").mkdir(parents=True)
     (app / "stories" / "only-story" / "diff.yml").write_text(

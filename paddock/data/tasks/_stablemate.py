@@ -7,6 +7,8 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
 
+import yaml
+
 from paddock import Run, project
 from stablemate_core import config as core_config
 
@@ -110,3 +112,68 @@ def pin_config(run: Run) -> None:
     effective(run).write_text(
         f"{header}{rendered}\n\n{run.config.read_text(encoding='utf-8')}", encoding="utf-8"
     )
+
+
+def spec_dir(repo: Path, story: str) -> Path:
+    """The story's spec folder in *repo*, as ostler resolves it."""
+    from ostler.api import Ostler  # noqa: PLC0415 - a heavy import only a trial needs
+
+    return Path(Ostler(repo).spec_path(story))
+
+
+_ORGANIZATION_FILES = ("ostler.yml", "ostler.yaml", "agents.yml", ".agents.yml")
+_SPECS_CONFIG = "organization:\n  docRoots:\n    specs: docs/specs\n"
+
+
+def _front_matter(path: Path) -> dict[str, object]:
+    text = path.read_text(encoding="utf-8")
+    if not text.startswith("---\n"):
+        return {}
+    head = text[4:].split("\n---", 1)[0]
+    data = yaml.safe_load(head)
+    return data if isinstance(data, dict) else {}
+
+
+def _specs_root_configured(repo: Path) -> bool:
+    for name in _ORGANIZATION_FILES:
+        path = repo / name
+        if not path.is_file():
+            continue
+        data = yaml.safe_load(path.read_text(encoding="utf-8"))
+        organization = data.get("organization") if isinstance(data, dict) else None
+        if isinstance(organization, dict):
+            roots = organization.get("docRoots")
+            return isinstance(roots, dict) and "specs" in roots
+    return False
+
+
+def upgrade_spec_layout(repo: Path) -> None:
+    """Move an old seed's in-repo slug spec folders to story ids under a configured specs root."""
+    specs = repo / "docs" / "specs"
+    if not specs.is_dir() or _specs_root_configured(repo):
+        return
+    ids: dict[str, str] = {}
+    for story_md in sorted(repo.glob("docs/epics/*/stories/*/story.md")):
+        story_id = _front_matter(story_md).get("id")
+        if isinstance(story_id, str) and story_id:
+            ids[story_md.parent.name] = story_id
+    for folder in sorted(specs.iterdir()):
+        target = ids.get(folder.name)
+        if folder.is_dir() and target and not (specs / target).exists():
+            folder.rename(specs / target)
+    config = repo / "agents.yml"
+    if not config.is_file():
+        config.write_text(_SPECS_CONFIG, encoding="utf-8")
+        return
+    text = config.read_text(encoding="utf-8")
+    data = yaml.safe_load(text)
+    if not isinstance(data, dict) or "organization" not in data:
+        config.write_text(f"{text.rstrip()}\n\n{_SPECS_CONFIG}" if text.strip() else _SPECS_CONFIG, encoding="utf-8")
+        return
+    organization = data["organization"]
+    if not isinstance(organization, dict):
+        organization = {}
+    roots = organization.get("docRoots")
+    organization["docRoots"] = {**(roots if isinstance(roots, dict) else {}), "specs": "docs/specs"}
+    data["organization"] = organization
+    config.write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")

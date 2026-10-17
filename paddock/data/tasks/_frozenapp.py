@@ -15,7 +15,17 @@ from typing import Any
 import yaml
 import _forensics as fx
 from _leverage import LEVERAGE_KEYS, leverage, leverage_line, pool_leverage
-from _stablemate import TrialError, effective, git, no_leaks, pin_held, stablemate_checkout, uv_run
+from _stablemate import (
+    TrialError,
+    effective,
+    git,
+    no_leaks,
+    pin_held,
+    spec_dir,
+    stablemate_checkout,
+    upgrade_spec_layout,
+    uv_run,
+)
 from paddock import Run, Score
 
 
@@ -94,6 +104,7 @@ def materialize(
     dest.parent.mkdir(parents=True, exist_ok=True)
 
     copy_tracked(app, dest)
+    upgrade_spec_layout(dest)
 
     after = {
         rel: story_image(app, story, rel, phase="post").read_bytes()
@@ -121,7 +132,7 @@ def materialize(
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_bytes(body)
 
-    spec = dest / "docs" / "specs" / story
+    spec = spec_dir(dest, story)
     if not spec.is_dir():
         raise TrialError(f"no spec dir {spec} — is the seed the app tree it should be?")
     for name in QA_OUTPUTS:
@@ -267,7 +278,7 @@ def evidence_statuses(witness: Path, story: str) -> dict[str, str] | None:
     from ostler import qa as qa_mod
 
     try:
-        data = qa_mod.build_evidence_map(witness / "docs" / "specs" / story)
+        data = qa_mod.build_evidence_map(spec_dir(witness, story))
     except qa_mod.EvidenceMapError:
         return None
     return {str(row["id"]): str(row["status"]) for row in data["obligations"]}

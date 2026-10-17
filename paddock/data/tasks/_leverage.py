@@ -8,6 +8,8 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
 
+from _stablemate import spec_dir
+
 
 BLANK = "–"
 
@@ -284,7 +286,7 @@ def load_book(repo: Path) -> dict[str, Any] | None:
 
 def leverage(witness: Path, story: str, statuses: dict[str, str] | None) -> dict[str, Any]:
     """Score one trial's artifacts."""
-    spec = witness / "docs" / "specs" / story
+    spec = spec_dir(witness, story)
     plan_file = spec / "qa_plan.py"
     return leverage_from(
         load_book(witness),

@@ -69,3 +69,7 @@ services:
 qa:
   tools:
     - python3
+
+organization:
+  docRoots:
+    specs: docs/specs

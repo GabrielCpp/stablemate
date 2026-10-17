@@ -36,7 +36,7 @@
 #   P1 was written as a canary for deep-linking — a plan that opens the form by its URL would
 #   prove every obligation on it and never touch the broken link. The frozen plan for
 #   `policy-list` reaches the link directly and follows it with the keyboard
-#   (`docs/specs/policy-list/qa_plan.py`), so P1 is an ordinary run row and has been caught
+#   (`docs/specs/POLI-01KZ53S2Z01WKC6Z2Q9TYGVW20/qa_plan.py`), so P1 is an ordinary run row and has been caught
 #   since the first settled round. The deep-links gap it was meant to measure is unmeasured:
 #   nothing gates it (the `entry` bullet is consumed by no check) and no row here probes it.
 #

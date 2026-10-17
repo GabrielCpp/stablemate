@@ -55,3 +55,7 @@ qa:
   tools:
     - make
     - jq
+
+organization:
+  docRoots:
+    specs: docs/specs

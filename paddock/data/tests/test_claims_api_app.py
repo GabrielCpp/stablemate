@@ -215,7 +215,7 @@ def test_the_obligation_packet_builds_clean_on_a_trial(story: str, tmp_path: Pat
     from ostler.api import Ostler  # noqa: PLC0415 - a heavy import only this test needs
 
     dest = frozen.materialize(APP, story, tmp_path / "claims-api")
-    outcome = Ostler(dest).qa_context(base="HEAD", spec=dest / "docs" / "specs" / story)
+    outcome = Ostler(dest).qa_context(base="HEAD", spec=Path(Ostler(dest).spec_path(story)))
     errors = [
         finding for finding in outcome.data.get("healthFindings", [])
         if finding.get("severity") == "error"
