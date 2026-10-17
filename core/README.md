@@ -8,6 +8,10 @@ its public entry point. They share runtime state and must agree about it:
 
 - **the home config** (`~/.config/stablemate/config.toml`) — `library_dir`,
   `stablemate_dir` and `base_dir` only mean anything if every tool reads the same value;
+- **the artifacts folder** — `artifacts_dir` is where per-user story artifacts (the specs
+  tree) live, outside git and shared by every worktree. `$STABLEMATE_ARTIFACTS_DIR` wins,
+  then `artifacts_dir`, then `<user data dir>/stablemate/artifacts`
+  (`~/.local/share/stablemate/artifacts` on Linux);
 - **base-library discovery** — one resolution order (`$STABLEMATE_BASE_DIR` → `base_dir`
   → a `stablemate_dir` checkout → the shared cache);
 - **the base-library cache** (`~/.cache/stablemate`) — one directory, one layout, one

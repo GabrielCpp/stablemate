@@ -12,12 +12,14 @@ from pathlib import Path
 from typing import Any
 
 import tomli_w
-from platformdirs import user_config_dir
+from platformdirs import user_config_dir, user_data_dir
 
 logger = logging.getLogger(__name__)
 
 CONFIG_PATH_ENV = "STABLEMATE_CONFIG"
 LEGACY_CONFIG_PATH_ENV = "WORKHORSE_CONFIG"
+
+ARTIFACTS_DIR_ENV = "STABLEMATE_ARTIFACTS_DIR"
 
 _LEGACY_APPS = ("workhorse", "farrier")
 
@@ -405,6 +407,11 @@ def write_worktree_dir(path: Path) -> None:
     write_config_key("worktree_dir", str(path))
 
 
+def write_artifacts_dir(path: Path) -> None:
+    """Persist ``artifacts_dir`` (where per-user story artifacts live, outside git)."""
+    write_config_key("artifacts_dir", str(path))
+
+
 def resolve_stablemate_dir() -> Path | None:
     """The configured stablemate checkout path, or None if unset."""
     configured = get_config_value("stablemate_dir")
@@ -419,3 +426,14 @@ def resolve_worktree_dir() -> Path | None:
     if isinstance(configured, str) and configured:
         return Path(configured).expanduser().resolve()
     return None
+
+
+def resolve_artifacts_dir() -> Path:
+    """The per-user artifacts folder: the env var, then ``artifacts_dir``, then the data dir."""
+    env = os.environ.get(ARTIFACTS_DIR_ENV)
+    if env:
+        return Path(env).expanduser().resolve()
+    configured = get_config_value("artifacts_dir")
+    if isinstance(configured, str) and configured:
+        return Path(configured).expanduser().resolve()
+    return (Path(user_data_dir("stablemate")) / "artifacts").expanduser().resolve()

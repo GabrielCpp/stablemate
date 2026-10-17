@@ -536,3 +536,33 @@ def test_a_malformed_timeout_scale_reads_as_unset(cfg_file, raw):
 
 if __name__ == "__main__":
     sys.exit(pytest.main([__file__, "-q"]))
+
+def test_artifacts_dir_defaults_under_the_user_data_dir(cfg_file, monkeypatch):
+    monkeypatch.delenv(cfgmod.ARTIFACTS_DIR_ENV, raising=False)
+    cfg_file.write_text(_POWER)
+
+    resolved = cfgmod.resolve_artifacts_dir()
+
+    assert resolved.name == "artifacts"
+    assert resolved.parent.name == "stablemate"
+
+
+def test_artifacts_dir_reads_the_home_config(cfg_file, tmp_path, monkeypatch):
+    monkeypatch.delenv(cfgmod.ARTIFACTS_DIR_ENV, raising=False)
+    cfgmod.write_artifacts_dir(tmp_path / "kept")
+
+    assert cfgmod.resolve_artifacts_dir() == (tmp_path / "kept").resolve()
+
+
+def test_artifacts_dir_env_beats_the_home_config(cfg_file, tmp_path, monkeypatch):
+    cfgmod.write_artifacts_dir(tmp_path / "kept")
+    monkeypatch.setenv(cfgmod.ARTIFACTS_DIR_ENV, str(tmp_path / "from-env"))
+
+    assert cfgmod.resolve_artifacts_dir() == (tmp_path / "from-env").resolve()
+
+
+def test_a_malformed_artifacts_dir_falls_back_to_the_default(cfg_file, monkeypatch):
+    monkeypatch.delenv(cfgmod.ARTIFACTS_DIR_ENV, raising=False)
+    cfg_file.write_text("artifacts_dir = 42\n")
+
+    assert cfgmod.resolve_artifacts_dir().name == "artifacts"
