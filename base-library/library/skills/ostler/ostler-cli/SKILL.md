@@ -10,7 +10,7 @@ hooks:
 # Ostler
 
 Load this skill when a workflow node, script, or prompt needs to read or mutate a repo's planning
-docs (`docs/epics`, `docs/features`, `docs/specs`) — or when authoring a new
+docs (`docs/epics`, `docs/features`, and the story spec folders) — or when authoring a new
 `workhorse` workflow that should integrate with the doc graph instead of hand-rolling its own
 JSON state files.
 
@@ -37,7 +37,9 @@ seeds and its story dependency-DAG live entirely inside that epic's own `epic.md
 | `epic` | `docs/epics/<NNNN-slug>/epic.md` | `<NNNN-slug>` (dir name) | `type`, `id`, `title` |
 | `story` | `docs/epics/<NNNN-slug>/stories/<slug>/story.md` | `<slug>` | `type`, `slug`, `status` |
 | `feature` | `docs/features/<area>/<slug>.md` (or flat `docs/features/<slug>.md`) | `<area>/<slug>` | `type`, `slug`, `title` |
-| `spec.plan` / `spec.review` / `spec.qa` | `docs/specs/<slug>/*.md` | path | `type` |
+| `spec.plan` / `spec.review` / `spec.qa` | `<artifacts_dir>/specs/<story id>/*.md` | path | `type` |
+
+Spec folders live in the user's artifacts folder, outside git, and are named by the story id. `ostler path spec <story>` prints the folder. The `docRoots.specs` key in `ostler.yml` keeps them in the repo instead.
 
 Not Concepts (managed markdown, left in place as-is): `docs/backlog.md` (intake list), `docs/epics/index.md`
 (epics queue).

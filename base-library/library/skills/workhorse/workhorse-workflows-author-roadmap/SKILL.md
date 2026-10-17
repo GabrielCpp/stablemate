@@ -162,8 +162,8 @@ features.
   a portfolio document containing several roadmap items. Split it.
 - **No backlog-item identities.** The roadmap itself is the source; its sections are not
   independently pruned work items.
-- **No story-spec material.** Per-story plans, reviews, QA plans, and evidence belong under
-  `docs/specs/<story>/` after Author has written the story.
+- **No story-spec material.** Per-story plans, reviews, QA plans, and evidence belong in the
+  story's spec folder (`ostler path spec <story>`) after Author has written the story.
 - **No unresolved choice disguised as flexibility.** "Use Datastore or Cloud Storage" is
   an open decision, not an architecture decision. Move it to `Open Decisions` and keep the
   roadmap proposed.

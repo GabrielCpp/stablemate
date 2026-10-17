@@ -19,7 +19,7 @@ from ostler import Ostler
 okf = Ostler(root)                         # root discovered upward, like `ostler -C DIR`
 queue   = okf.todo()                       # ["epic-a", …]            (ostler todo list)
 stories = okf.list("story", epic="epic-a") # [{"slug","status",…}]    (ostler list --type story)
-spec    = okf.spec_path("01-foo")          # "docs/specs/01-foo"      (ostler path spec)
+spec    = okf.spec_path("01-foo")          # "<artifacts_dir>/specs/<story id>" (ostler path spec)
 report  = okf.doctor(epic="epic-a")        # dict, == doctor --json's report
 
 res = okf.create_story("epic-a", "02-baz", "Baz", covers=["seed-1"])  # Result(.ok, .entity_id, .message)

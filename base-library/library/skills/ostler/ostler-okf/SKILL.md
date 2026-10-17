@@ -153,7 +153,7 @@ the service root. Don't hand-pick paths — `ostler scaffold` places every node 
 
 **A typed page belongs under a doc root, or it is invisible.** Every book-facing check —
 conformance, reachability, links, everything — walks in from `graph.doc_roots`
-(`docs/features`, `docs/epics`, `docs/milestones`, `docs/roadmaps`, `docs/specs`, `specs`, or a
+(`docs/features`, `docs/epics`, `docs/milestones`, `docs/roadmaps`, the specs root, `specs`, or a
 paddock app's own `docs/<kind>`, per `ostler.yml`'s `docRoots`). A file carrying a real `type:`
 that a move (or a first draft) leaves outside all of them stops being read by anything — it is
 not `okf-missing-type` (it has a type), it just never enters the graph. `misplaced-book-page`
@@ -170,7 +170,7 @@ if one lands under `docs/features` instead, its file node is correctly suppresse
 not a UI type) but `##` sections inside it still get parsed and seeded into the book as
 `untyped` nodes, with nothing else catching it. `misrooted-book-page` is the doctor code for
 this disagreement between a file's declared type and the root it sits in, and it covers the
-reverse shape too: a `screen`/`concept`/`flow` page filed under `docs/specs` is under *a* root,
+reverse shape too: a `screen`/`concept`/`flow` page filed under the specs root is under *a* root,
 so the misplaced check passes it, and it never becomes a UI node either, because only files
 under `docs/features` are admitted. It also has no surface — a surface is read from the path,
 `docs/features/<service>/…` — so no driver claims it and it can reach no target a flow compiles

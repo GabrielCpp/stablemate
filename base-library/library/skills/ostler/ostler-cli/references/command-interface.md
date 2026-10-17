@@ -152,7 +152,7 @@ the true total, and a `truncated` block names any list the cap actually bit. `pa
 `failedRequests` are uncapped. Full reference: stablemate's
 `ostler/docs/QA-RUN.md`.
 
-**Schema-checked workflow artifacts** (a workflow's plan/review/qa docs under `docs/specs/<slug>/`)
+**Schema-checked workflow artifacts** (a workflow's plan/review/qa docs under `<artifacts_dir>/specs/<story id>/`)
 ```bash
 ostler artifact scaffold <kind> --spec DIR [--force]   # write the kind's skeleton into the spec dir
 ostler artifact vet      <kind> --spec DIR [--json]    # validate the artifact against its contract
