@@ -678,7 +678,7 @@ def _video_note(step: Mapping[str, Any], spec_dir: Path | None) -> str:
 
 
 def _spec_arg(spec_dir: Path | None) -> str:
-    """The ``--spec`` a reader types: the spec dir relative to the working directory when it is under it (the usual ``docs/specs/<story>``), the absolute path otherwise."""
+    """The ``--spec`` a reader types: the spec dir relative to the working directory when it is under it , the absolute path otherwise."""
     if spec_dir is None:
         return "SPEC"
     try:

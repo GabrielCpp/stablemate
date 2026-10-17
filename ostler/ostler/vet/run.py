@@ -7,6 +7,7 @@ from pathlib import Path
 
 from pydantic import BaseModel, ConfigDict
 
+from ostler import path as path_mod
 from ostler.model import Graph
 from ostler.vet import cdp, crop as crop_mod
 from ostler.vet import manifest as manifest_mod
@@ -41,7 +42,7 @@ def run_vet(graph: Graph, screenshot: Path, manifest: Path, slug: str, *,
             state: str = "default", iou_threshold: float = 0.5,
             ) -> tuple[VetOutcome, VetPlan]:
     """Exactly one of *cdp_url*/*regions_file* is set (enforced by the CLI's mutually exclusive group)."""
-    spec_dir = graph.doc_roots["specs"] / slug
+    spec_dir = Path(path_mod.resolve_spec(graph, slug))
     vet_dir = spec_dir / "vet"
     writes: list[VetFileWrite] = []
 

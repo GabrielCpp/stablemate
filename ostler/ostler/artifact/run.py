@@ -6,6 +6,7 @@ import json
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from ostler import path as path_mod
 from ostler.artifact.kinds import KINDS, get_kind
 from ostler.qa.outcome import QaOutcome
 
@@ -28,7 +29,7 @@ class ArtifactOutcome:
 
 
 def _resolve_spec_dir(spec: Path, root: Path) -> Path:
-    return spec if spec.is_absolute() else root / spec
+    return path_mod.resolve_spec_arg(root, spec)
 
 
 def list_kinds() -> list[dict]:

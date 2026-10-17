@@ -16,6 +16,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from ostler import path as path_mod
 from ostler.qa.harness_host import load_harness_module
 from ostler.qa.manifest import RunManifest
 
@@ -75,8 +76,7 @@ def _now() -> str:
 def _spec_dir_from(spec_arg: str | None, root: Path) -> Path:
     if not spec_arg:
         raise ValueError("--spec is required when no session is open")
-    p = Path(spec_arg)
-    return p if p.is_absolute() else root / p
+    return path_mod.resolve_spec_arg(root, Path(spec_arg))
 
 
 

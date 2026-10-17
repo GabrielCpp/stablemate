@@ -62,7 +62,7 @@ class PlanDocument:
 def resolve_spec_dir(plan_file: Path, spec_dir: Path | None, root: Path) -> Path:
     plan_file = plan_file if plan_file.is_absolute() else root / plan_file
     if spec_dir is not None:
-        return (spec_dir if spec_dir.is_absolute() else root / spec_dir).resolve()
+        return path_mod.resolve_spec_arg(root, spec_dir).resolve()
     return plan_file.parent.resolve()
 
 

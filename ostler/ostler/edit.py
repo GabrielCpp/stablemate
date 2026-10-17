@@ -294,7 +294,7 @@ def _ledger_change(spec_dir: Path, ledger: dict) -> FileChange:
 
 def settle_review(graph: Graph, slug: str, *, status_write: bool = True) -> EditPlan:
     """Settle a story's review **per finding** from its `review-resolution.json`; ``status_write=False`` plans the ledger alone."""
-    spec_dir = graph.doc_roots["specs"] / slug
+    spec_dir = Path(path_mod.resolve_spec(graph, slug))
     resolution = spec_dir / RESOLUTION_FILE
     if not resolution.is_file():
         return EditPlan([], [], error=f"no {RESOLUTION_FILE} in {spec_dir.as_posix()}")
@@ -366,7 +366,7 @@ ANSWERS_FILE = "review-answers.md"
 def settle_answers(graph: Graph, slug: str, filed: Sequence[str], *,
                    filename: str = ANSWERS_FILE, write: bool = False) -> dict:
     """Settle a story's markdown Answer list against the *filed* finding ids into ``review-settlement.json``; never touches ``story.md``."""
-    spec_dir = graph.root / path_mod.resolve_spec(graph, slug)
+    spec_dir = Path(path_mod.resolve_spec(graph, slug))
     wanted = list(dict.fromkeys(filed))
     errors: list[str] = []
     by_id: dict[str, Answer] = {}

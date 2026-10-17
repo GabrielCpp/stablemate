@@ -566,7 +566,7 @@ def create_feature(graph: Graph, slug: str, title: str, area: str = "",
 
 
 def create_spec(specs_root: Path, slug: str, doc: str, title: str = "") -> Result:
-    """Create — or retro-stamp — a coder process artifact at ``docs/specs/<slug>/<doc>``."""
+    """Create — or retro-stamp — a coder process artifact in the story's spec folder, ``<slug>/<doc>``."""
     name = doc if doc.endswith(".md") else f"{doc}.md"
     if "/" in slug or "/" in doc:
         return Result(False, f"spec slug/doc must be single path segments, got '{slug}/{doc}'")

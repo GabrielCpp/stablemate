@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -12,10 +13,19 @@ import pytest
 from ostler import index, testsupport
 
 
+FOO_ID = "t-01foo"
+BAR_ID = "t-01bar"
+
+
 def present[T](value: T | None) -> T:
     """``value`` with its ``None`` ruled out — for a lookup the test arranged to hit."""
     assert value is not None
     return value
+
+
+def specs_root() -> Path:
+    """The specs root the per-test artifacts folder gives every repo without a `docRoots: specs:`."""
+    return Path(os.environ["STABLEMATE_ARTIFACTS_DIR"]).resolve() / "specs"
 
 
 def write(path: Path, text: str) -> None:
@@ -48,10 +58,11 @@ def epic_md(eid: str, title: str, seeds: list[tuple[str, str, str]],
 
 def story_md(slug: str, title: str, status: str,
              doc_ref: str | None = None, depends: list[str] | None = None,
-             fixtures: list[str] | None = None) -> str:
+             fixtures: list[str] | None = None, eid: str | None = None) -> str:
     deps = [f"- Blocked by: {d}" for d in (depends or [])] or ["(none)"]
     fixes = [f"- Fixture: {name}" for name in (fixtures or [])] or ["(none)"]
-    body = ["---", "type: story", f"slug: {slug}", f"status: {status}", "---",
+    body = ["---", "type: story", f"slug: {slug}", *([f"id: {eid}"] if eid else []),
+            f"status: {status}", "---",
             f"# Story: {title}", "", "## Dependencies", "", *deps, "",
             "## Fixtures", "", *fixes, "",
             "## Context", "",
@@ -129,7 +140,7 @@ def repo(tmp_path: Path) -> Path:
         stories=[("01-foo", "Foo", ["seed-a1"])],
     ))
     write(root / "docs/epics/epic-a/stories/01-foo/story.md",
-          story_md("01-foo", "Foo", "Not started", "../../../features/area/rec.md"))
+          story_md("01-foo", "Foo", "Not started", "../../../features/area/rec.md", eid=FOO_ID))
 
     write(root / "docs/epics/epic-b/epic.md", epic_md(
         "t-2", "epic-b",
@@ -137,7 +148,7 @@ def repo(tmp_path: Path) -> Path:
         stories=[("01-bar", "Bar", ["seed-b1"])],
     ))
     write(root / "docs/epics/epic-b/stories/01-bar/story.md",
-          story_md("01-bar", "Bar", "Not started"))
+          story_md("01-bar", "Bar", "Not started", eid=BAR_ID))
 
     write(root / "docs/features/area/rec.md", feature_md("rec", "Rec", area="area"))
     write(root / "docs/features/area/rec2.md", feature_md("rec2", "Rec 2", area="area"))
@@ -192,6 +203,12 @@ UNKNOWN_BULLET_ALLOWED_TESTS = frozenset({
     "tests/test_ui_doctor.py::test_a_claim_under_a_non_normative_key_is_reported",
     "tests/test_ui_doctor.py::test_a_minting_node_is_still_asked_about_its_other_bullets",
 })
+
+
+@pytest.fixture(autouse=True)
+def _artifacts_dir_is_per_test(tmp_path_factory, monkeypatch):
+    """Specs live in the user's artifacts folder, so no test may resolve to the real one."""
+    monkeypatch.setenv("STABLEMATE_ARTIFACTS_DIR", str(tmp_path_factory.mktemp("artifacts")))
 
 
 @pytest.fixture(autouse=True)

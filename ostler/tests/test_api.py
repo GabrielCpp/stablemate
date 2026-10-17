@@ -9,7 +9,7 @@ import pytest
 
 from ostler import Ostler
 
-from conftest import present, write
+from conftest import FOO_ID, present, specs_root, write
 
 
 def test_reads_match_the_underlying_core(repo: Path):
@@ -29,7 +29,7 @@ def test_query_and_search(repo: Path):
 
 def test_path_resolution(repo: Path):
     okf = Ostler(repo)
-    assert "01-foo" in okf.spec_path("01-foo")
+    assert FOO_ID in okf.spec_path("01-foo")
     assert "01-foo" in okf.story_path("epic-a", "01-foo")
     assert okf.branch("01-foo") == "01-foo"
     assert okf.branch("epic-a", epic=True) == "feat/epic-a"
@@ -197,7 +197,7 @@ def test_settle_review_errors_without_a_verdict(repo: Path):
 
 
 def test_settle_answers_and_ledger_only_settle_review_through_the_facade(repo: Path):
-    spec = repo / "docs/specs/01-foo"
+    spec = specs_root() / FOO_ID
     write(spec / "review-answers.md", "## F-1: fixed\n\n- commit: abc\n")
     okf = Ostler(repo)
     led = okf.settle_answers("01-foo", ["F-1", "F-2"], write=True)

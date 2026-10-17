@@ -247,7 +247,7 @@ def _dep_done(graph: Graph, dep: str) -> bool:
 def _work_entry(graph: Graph, epic: Epic, story: Story) -> dict:
     deps = list(story.dependencies)
     return {"slug": story.slug, "id": story.eid, "path": story.path,
-            "spec_dir": path_mod.resolve_spec(graph, story.slug), "epic": epic.name,
+            "spec_dir": path_mod.resolve_spec(graph, story.eid) if story.eid else "", "epic": epic.name,
             "deps": deps, "open_deps": [dep for dep in deps if not _dep_done(graph, dep)]}
 
 

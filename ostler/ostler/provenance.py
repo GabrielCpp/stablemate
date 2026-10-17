@@ -75,15 +75,15 @@ def _story_row(epic_name: str, story: Story) -> dict[str, Any]:
 
 
 def _context(graph: Graph, story_ref: str) -> tuple[dict[str, Any] | None, str]:
-    relative = Path(path_mod.resolve_spec(graph, story_ref)) / CONTEXT_FILE
-    context_path = graph.root / relative
+    context_path = Path(path_mod.resolve_spec(graph, story_ref)) / CONTEXT_FILE
+    shown = context_path.as_posix()
     try:
         payload = json.loads(context_path.read_text(encoding="utf-8"))
     except FileNotFoundError:
-        return None, relative.as_posix()
+        return None, shown
     except (OSError, ValueError):
-        return {}, relative.as_posix()
-    return (payload if isinstance(payload, dict) else {}), relative.as_posix()
+        return {}, shown
+    return (payload if isinstance(payload, dict) else {}), shown
 
 
 def source_freshness(
@@ -267,7 +267,7 @@ def node_provenance(
     context_paths = sorted(specs_root.glob(f"*/{CONTEXT_FILE}"))
     if not context_paths:
         warnings.append(
-            f"no {CONTEXT_FILE} was found under {specs_root.relative_to(graph.root).as_posix()},"
+            f"no {CONTEXT_FILE} was found under {path_mod.display_path(graph.root, specs_root)},"
             " so only the book's own links were read"
         )
     for context_path in context_paths:
@@ -301,7 +301,7 @@ def node_provenance(
             "roles": roles,
             "reasons": direct[0].get("reasons", []) if direct else [],
             "commits": provenance[0]["commits"] if provenance else [],
-            "contextPath": context_path.relative_to(graph.root).as_posix(),
+            "contextPath": path_mod.display_path(graph.root, context_path),
         }
     if node is not None:
         for key, book_row in _book_stories_citing(graph, node_id).items():

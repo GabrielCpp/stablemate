@@ -307,7 +307,7 @@ class Ostler:
     def fmt(self, *paths: str | Path, check: bool = False) -> builtins.list[str]:
         """Canonicalize the book's shape; the repo-relative paths that were not already so."""
         result = fmt_mod.run_fmt(self.graph, [str(p) for p in paths], check=check)
-        return [str(p.relative_to(self.graph.root)) for p in result.changed]
+        return [path_mod.display_path(self.graph.root, p) for p in result.changed]
 
     def gc(self, *, write: bool = False) -> builtins.list[str]:
         """The pages no link path from their service's entries page reaches, deleted when *write* (``ostler gc``)."""
@@ -328,7 +328,7 @@ class Ostler:
                                          waivers=waivers)
 
     def spec_path(self, story: str) -> str:
-        """Spec directory for a story, by slug or minted id (``ostler path spec``)."""
+        """Absolute spec directory for a story, named by its id (``ostler path spec``)."""
         return path_mod.resolve_spec(self.graph, story)
 
     def epic_path(self, epic: str) -> str:

@@ -201,8 +201,7 @@ def test_node_provenance_warns_when_no_context_packet_exists_anywhere(
     result = node_provenance(load(docs), node_id, {"api-service": source})[0]
 
     graph = load(docs)
-    specs_root = graph.doc_roots["specs"].relative_to(graph.root).as_posix()
-    assert any(specs_root in warning for warning in result["warnings"])
+    assert any(graph.doc_roots["specs"].as_posix() in warning for warning in result["warnings"])
 
 
 def test_story_for_node_warns_when_the_node_declares_no_code_targets(

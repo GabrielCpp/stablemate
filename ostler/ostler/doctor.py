@@ -474,9 +474,9 @@ def _check_fixtures(graph: Graph, f: list[Finding]) -> None:
                     f"`- {registry.STORY_FIXTURES_LABEL}: <name>`, or "
                     f"`{registry.STORY_FIXTURES_NONE}` when the story arranges nothing",
                     epic.name, story.slug, path=rel, line=1))
-            plan = spec_root / story.slug / "qa_plan.py"
-            plan_rel = _rel_posix(plan, graph.root)
-            names = fixtures_mod.referenced(plan) if plan.is_file() else None
+            plan = spec_root / story.eid / "qa_plan.py" if story.eid else None
+            plan_rel = _rel_posix(plan, graph.root) if plan else "qa_plan.py"
+            names = fixtures_mod.referenced(plan) if plan and plan.is_file() else None
             stated = set(story.fixtures)
 
             for name in story.fixtures:
@@ -2398,7 +2398,10 @@ def _rel_path(graph: Graph, node) -> str:
 
 @functools.lru_cache(maxsize=65536)
 def _rel_posix(path: Path, root: Path) -> str:
-    return path.relative_to(root).as_posix()
+    try:
+        return path.relative_to(root).as_posix()
+    except ValueError:
+        return path.as_posix()
 
 
 @functools.lru_cache(maxsize=65536)

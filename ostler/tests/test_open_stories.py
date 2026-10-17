@@ -16,7 +16,7 @@ def _epic(root: Path, name: str, eid: str, stories: list[tuple[str, str, list[st
         eid, name, seeds=[], stories=[(slug, slug, []) for slug, _, _ in stories]))
     for slug, status, deps in stories:
         write(root / f"docs/epics/{name}/stories/{slug}/story.md",
-              story_md(slug, slug, status, depends=deps))
+              story_md(slug, slug, status, depends=deps, eid=f"id-{slug}"))
 
 
 @pytest.fixture

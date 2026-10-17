@@ -5,8 +5,9 @@ from pathlib import Path
 
 from ostler import doctor, edit, markdown
 from ostler.model import load
+from ostler.path import resolve_spec
 
-from conftest import write
+from conftest import FOO_ID, specs_root, write
 
 
 def _story_status(repo: Path, epic: str, slug: str) -> str:
@@ -15,7 +16,7 @@ def _story_status(repo: Path, epic: str, slug: str) -> str:
 
 
 def _write_resolution(repo: Path, slug: str, verdict: dict) -> Path:
-    p = repo / "docs/specs" / slug / edit.RESOLUTION_FILE
+    p = Path(resolve_spec(load(repo), slug)) / edit.RESOLUTION_FILE
     write(p, json.dumps(verdict, indent=2))
     return p
 
@@ -68,12 +69,12 @@ def test_relink_unknown_path_is_a_noop(repo: Path):
 
 
 def _ledger(repo: Path, slug: str) -> dict:
-    p = repo / "docs/specs" / slug / edit.SETTLEMENT_FILE
+    p = Path(resolve_spec(load(repo), slug)) / edit.SETTLEMENT_FILE
     return json.loads(p.read_text())
 
 
 def test_settle_review_applies_when_all_findings_verified(repo: Path):
-    spec = repo / "docs/specs/01-foo"
+    spec = specs_root() / FOO_ID
     write(spec / "evidence/new-1280.png", "img")
     write(spec / "qa/observations.json", json.dumps({"form": {"headingLabel": "Foundation area"}}))
     _write_resolution(repo, "01-foo", {
@@ -95,7 +96,7 @@ def test_settle_review_applies_when_all_findings_verified(repo: Path):
 
 
 def test_settle_review_partial_keeps_status_and_marks_open(repo: Path):
-    spec = repo / "docs/specs/01-foo"
+    spec = specs_root() / FOO_ID
     write(spec / "evidence/f1.png", "img")
     _write_resolution(repo, "01-foo", {
         "status": "applied",
@@ -131,7 +132,7 @@ def test_settle_review_unproven_artifact_leaves_open_not_applied(repo: Path):
 
 
 def test_settle_review_broadened_assertion_leaves_open_not_applied(repo: Path):
-    spec = repo / "docs/specs/01-foo"
+    spec = specs_root() / FOO_ID
     write(spec / "qa/observations.json", json.dumps({"form": {"headingLabel": "Surface"}}))
     _write_resolution(repo, "01-foo", {
         "status": "applied",
@@ -149,7 +150,7 @@ def test_settle_review_broadened_assertion_leaves_open_not_applied(repo: Path):
 
 
 def test_settle_review_blocked_finding_stamps_blocked_and_escalates(repo: Path):
-    spec = repo / "docs/specs/01-foo"
+    spec = specs_root() / FOO_ID
     write(spec / "evidence/f1.png", "img")
     _write_resolution(repo, "01-foo", {
         "status": "applied",
@@ -181,7 +182,7 @@ def test_settle_review_missing_resolution_errors(repo: Path):
 
 
 def test_settle_review_dry_run_writes_nothing(repo: Path):
-    spec = repo / "docs/specs/01-foo"
+    spec = specs_root() / FOO_ID
     write(spec / "evidence/new-1280.png", "img")
     _write_resolution(repo, "01-foo", {
         "status": "applied",
@@ -194,7 +195,7 @@ def test_settle_review_dry_run_writes_nothing(repo: Path):
 
 
 def test_settle_review_declined_with_reason_settles_and_applies(repo: Path):
-    spec = repo / "docs/specs/01-foo"
+    spec = specs_root() / FOO_ID
     write(spec / "evidence/f1.png", "img")
     _write_resolution(repo, "01-foo", {
         "status": "applied",
@@ -222,7 +223,7 @@ def test_settle_review_declined_without_reason_errors(repo: Path):
 
 
 def test_settle_review_ledger_only_leaves_story_status(repo: Path):
-    spec = repo / "docs/specs/01-foo"
+    spec = specs_root() / FOO_ID
     write(spec / "evidence/f1.png", "img")
     _write_resolution(repo, "01-foo", {
         "findings": [{"id": "Finding 1", "disposition": "addressed",
@@ -247,7 +248,7 @@ def test_settle_review_ledger_only_skips_the_blocked_stamp(repo: Path):
 
 
 def _write_answers(repo: Path, slug: str, text: str, filename: str = edit.ANSWERS_FILE) -> None:
-    write(repo / "docs/specs" / slug / filename, text)
+    write(Path(resolve_spec(load(repo), slug)) / filename, text)
 
 
 ANSWERS = (
@@ -289,7 +290,7 @@ def test_settle_answers_missing_file_leaves_every_id_open(repo: Path):
 def test_settle_answers_dry_run_writes_nothing(repo: Path):
     _write_answers(repo, "01-foo", ANSWERS)
     edit.settle_answers(load(repo), "01-foo", ["F-1"])
-    assert not (repo / "docs/specs/01-foo" / edit.SETTLEMENT_FILE).exists()
+    assert not (specs_root() / FOO_ID / edit.SETTLEMENT_FILE).exists()
 
 
 def test_settle_answers_write_records_the_ledger_and_never_the_status(repo: Path):

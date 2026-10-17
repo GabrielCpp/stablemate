@@ -14,8 +14,8 @@ allocation and is the one tool that reads and writes the graph — so structure 
 humans (or agents) author the prose.
 
 It is a standalone, repo-agnostic CLI that operates relative to the **current working directory**:
-roots default to `<cwd>/docs/{epics,features,specs}` and the organization name to the repo
-folder name. Point it at any repo with `-C/--chdir`.
+roots default to `<cwd>/docs/{epics,features}` and the organization name to the repo
+folder name. Specs default to `<artifacts dir>/specs` outside git (`docRoots: specs:` keeps them in the repo). Point it at any repo with `-C/--chdir`.
 
 The feature graph is also a contract: it is what
 [coder's QA](https://github.com/GabrielCpp/stablemate/blob/main/workflows/README.md#coder-documentation-convergence)
@@ -97,7 +97,7 @@ filenames `index.md` (an ordered listing of a bundle) and `log.md` (history) are
 | `epic` | `docs/epics/<NNNN-slug>/epic.md` | `<NNNN-slug>` (dir name) | `type`, `id`, `title` |
 | `story` | `docs/epics/<NNNN-slug>/stories/<slug>/story.md` | generated `id`; readable `<slug>` and optional `externalKey` are aliases | `type`, `slug`, `status` |
 | `feature` | `docs/features/<area>/<slug>.md` *(or flat `docs/features/<slug>.md`)* | `<area>/<slug>` | `type`, `slug`, `title` |
-| `spec.<stem>` (`spec.plan`, `spec.review`, `spec.qa`, `spec.executive`, `spec.vet`, …) | `docs/specs/<slug>/*.md` | path | `type` |
+| `spec.<stem>` (`spec.plan`, `spec.review`, `spec.qa`, `spec.executive`, `spec.vet`, …) | `<artifacts dir>/specs/<slug>/*.md` (`ostler path spec <slug>`) | path | `type` |
 
 **Epic directories carry their creation order** — `create epic checkout-flow` writes
 `docs/epics/0001-checkout-flow/`, so a listing of `docs/epics` reads as the work order rather than
@@ -251,13 +251,13 @@ returns `passed`, `failed`, `blocked`, or `invalid`. `ostler artifact` schema-ch
 produces (a plan, a review resolution, a QA outcome) against a registered contract.
 
 ```bash
-ostler qa context --base <rev> --head WORKTREE --spec docs/specs/<story> \
+ostler qa context --base <rev> --head WORKTREE --spec $(ostler path spec <story>) \
   --source-root web=web --source-root api=api --story-file docs/epics/.../story.md
-ostler qa validate docs/specs/<story>/qa_plan.py --json
-ostler qa run      docs/specs/<story>/qa_plan.py --json
-ostler qa report       --spec docs/specs/<story>
-ostler qa frames       --spec docs/specs/<story> --step <step-id>
-ostler qa evidence-map --spec docs/specs/<story>
+ostler qa validate $(ostler path spec <story>)/qa_plan.py --json
+ostler qa run      $(ostler path spec <story>)/qa_plan.py --json
+ostler qa report       --spec $(ostler path spec <story>)
+ostler qa frames       --spec $(ostler path spec <story>) --step <step-id>
+ostler qa evidence-map --spec $(ostler path spec <story>)
 ostler qa sensitivity
 ```
 

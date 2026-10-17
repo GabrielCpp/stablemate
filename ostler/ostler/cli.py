@@ -359,7 +359,7 @@ def _build_parser() -> argparse.ArgumentParser:
     crf.add_argument("--prefix")
     crf.add_argument("--json", action="store_true")
     crp = crs.add_parser("spec", help="create/stamp a spec doc (idempotent; safe after the write)")
-    crp.add_argument("slug", help="story slug â€” the docs/specs/<slug>/ directory")
+    crp.add_argument("slug", help="the story id (its spec folder is `ostler path spec <story>`)")
     crp.add_argument("doc", help="file name, e.g. plan.md, qa.md, review.md, executive.md")
     crp.add_argument("--title", default="", help="H1 for a newly created doc")
     crp.add_argument("--json", action="store_true")
@@ -598,7 +598,7 @@ def _build_parser() -> argparse.ArgumentParser:
 
     pa = sub.add_parser("path", help="resolve a slug to its canonical path")
     pas = pa.add_subparsers(dest="what", required=True)
-    pa_spec = pas.add_parser("spec", help="spec dir for a story (slug or minted id)")
+    pa_spec = pas.add_parser("spec", help="spec dir for a story (its id)")
     pa_spec.add_argument("slug")
     pa_epic = pas.add_parser("epic", help="directory for an epic (number or bare slug)")
     pa_epic.add_argument("epic")
@@ -648,7 +648,7 @@ def _build_parser() -> argparse.ArgumentParser:
         "--spec",
         required=True,
         type=Path,
-        help="spec directory (absolute, or relative to the repo root)",
+        help="spec directory (absolute, or relative to the specs root or the repo root)",
     )
     arsc.add_argument("--force", action="store_true")
     arvt = ars.add_parser("vet", help="validate the artifact against its contract")
@@ -670,7 +670,7 @@ def _build_parser() -> argparse.ArgumentParser:
         "--spec",
         required=True,
         type=Path,
-        help="spec directory (absolute or repo-relative)",
+        help="spec directory (absolute, or relative to the specs root or the repo root)",
     )
     qa_start.add_argument(
         "--env",
@@ -1550,7 +1550,7 @@ def _cmd_qa(graph, args) -> int:  # noqa: C901 â€” flat QA subcommand dispatch
         if spec_arg is None:
             _out("error: --spec is required")
             sys.exit(2)
-        return spec_arg if spec_arg.is_absolute() else root / spec_arg
+        return path_mod.resolve_spec_arg(root, spec_arg)
 
     def _resolve_out(out_arg: Path | None) -> Path | None:
         """A path-valued option against the same root `--spec` is read against."""
@@ -2044,7 +2044,12 @@ def _dispatch(graph, args, store: index_mod.IndexStore) -> int:  # noqa: C901 â€
                 args.prefix,
             )
         elif args.what == "spec":
-            res = crud.create_spec(graph.doc_roots["specs"], args.slug, args.doc, args.title)
+            try:
+                key = Path(path_mod.resolve_spec(graph, args.slug)).name
+            except ValueError as exc:
+                _out(f"error: {exc}")
+                return 1
+            res = crud.create_spec(graph.doc_roots["specs"], key, args.doc, args.title)
         else:
             res = crud.create_feature(
                 graph, args.slug, args.title, args.area, args.route, args.prefix
@@ -2128,7 +2133,11 @@ def _dispatch(graph, args, store: index_mod.IndexStore) -> int:  # noqa: C901 â€
         return _emit(todo_mod.list_epics(graph), args.json)
     if c == "path":
         if args.what == "spec":
-            _out(path_mod.resolve_spec(graph, args.slug))
+            try:
+                _out(path_mod.resolve_spec(graph, args.slug))
+            except ValueError as exc:
+                _out(f"error: {exc}")
+                return 1
         elif args.what == "epic":
             _out(path_mod.resolve_epic(graph, args.epic))
         elif args.what == "story":

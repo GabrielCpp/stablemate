@@ -12,6 +12,7 @@ from pathlib import Path
 import yaml
 
 from ostler import dynamic_registry, index, markdown, registry
+from ostler._vendor.stablemate_core import config as core_config
 from ostler.pages import files_in_book
 
 INACTIVE_SEED_STATUS = registry.INACTIVE_SEED_STATUS
@@ -656,6 +657,8 @@ def doc_roots(root: Path, kinds: Sequence[dynamic_registry.TemplateKind] | None 
     """Where each kind of document lives under *root*, honouring `docRoots:` config."""
     cfg = (config if config is not None else _load_config(root)).get("docRoots") or {}
     roots = {key: root / cfg.get(key, default) for key, default in BUILTIN_DOC_ROOTS.items()}
+    if not cfg.get("specs"):
+        roots["specs"] = core_config.resolve_artifacts_dir() / "specs"
     for kind in (dynamic_registry.load_kinds(root) if kinds is None else kinds):
         roots.setdefault(kind.doc_root, root / cfg.get(kind.doc_root, kind.default_path))
     return roots

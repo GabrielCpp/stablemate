@@ -61,6 +61,7 @@ def test_a_typed_page_outside_every_doc_root_is_flagged_as_misplaced(repo: Path)
 
 def test_typed_pages_under_the_configured_doc_roots_are_not_misplaced(repo: Path):
     """The predicate is "outside every doc root", never "outside `docs/features`" alone -- real `epic`/`story`/`spec.*` pages that sit under one of the *other* doc roots must not be flagged, even once git tracking makes the new check actually run."""
+    write(repo / "ostler.yml", "organization:\n  docRoots:\n    specs: docs/specs\n")
     write(repo / "docs/specs/plan.md",
           "---\ntype: spec.plan\ntitle: Plan\n---\n# Plan\n\nBody.\n")
     _git_track(repo)
@@ -106,6 +107,7 @@ def test_a_spec_typed_page_under_features_is_flagged_as_misrooted(repo: Path):
 
 def test_typed_pages_under_their_own_registered_root_are_not_misrooted(repo: Path):
     """The predicate is "inside a doc root that disagrees with the type", never "inside any doc root but `docs/features`" -- a real `spec.*` page under `docs/specs` (its registered home) must not be flagged."""
+    write(repo / "ostler.yml", "organization:\n  docRoots:\n    specs: docs/specs\n")
     write(repo / "docs/specs/plan/plan.md",
           "---\ntype: spec.plan\ntitle: Plan\n---\n# Plan\n\nBody.\n")
     _git_track(repo)
@@ -116,6 +118,7 @@ def test_typed_pages_under_their_own_registered_root_are_not_misrooted(repo: Pat
 
 def test_a_ui_typed_page_outside_features_is_flagged_as_misrooted(repo: Path):
     """The reverse direction: a book page whose type belongs under `features`, filed elsewhere."""
+    write(repo / "ostler.yml", "organization:\n  docRoots:\n    specs: docs/specs\n")
     write(repo / "docs/specs/area/stray.md",
           "---\ntype: screen\ntitle: Stray\n---\n# Stray\n\n- route: /stray\n")
     _git_track(repo)

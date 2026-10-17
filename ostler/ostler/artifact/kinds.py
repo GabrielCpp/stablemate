@@ -121,7 +121,7 @@ def _qa_evidence_scaffold() -> dict:
                 "title": "<criterion text>",
                 "kind": "behavioral | parity | data-entry | transient",
                 "verdict": "Pass | Fail",
-                "evidence": ["docs/specs/<story>/qa/<file>"],
+                "evidence": ["<spec folder>/qa/<file>"],
             }
         ],
         "visual_fidelity": [],

@@ -91,17 +91,36 @@ def epics_index(graph: Graph) -> Path:
     return epics_root(graph) / "index.md"
 
 
+def resolve_spec_arg(root: Path, spec: Path) -> Path:
+    """A ``--spec`` value as an absolute path: as typed, else under the specs root, else under *root*."""
+    if spec.is_absolute():
+        return spec
+    under_specs = specs_root_in(root) / spec
+    under_root = root / spec
+    if under_specs.exists() or not under_root.exists():
+        return under_specs
+    return under_root
+
+
+def display_path(root: Path, path: Path) -> str:
+    """*path* relative to *root* when it sits inside it, absolute otherwise."""
+    try:
+        return path.resolve().relative_to(root.resolve()).as_posix()
+    except ValueError:
+        return path.resolve().as_posix()
+
+
 def resolve_spec(graph: Graph, story: str) -> str:
-    """Resolve a story (slug or minted id) to its spec directory path (relative to root)."""
-    specs_root = graph.doc_roots["specs"]
-    key = story
+    """Resolve a story to its spec directory path (absolute), named by the story's id."""
     found = graph.find_story(story)
-    if found is not None:
-        _, s = found
-        key = s.eid or s.slug
-        if key != s.slug and not (specs_root / key).is_dir() and (specs_root / s.slug).is_dir():
-            key = s.slug
-    return str(specs_root.relative_to(graph.root) / key)
+    if found is None:
+        return str(graph.doc_roots["specs"] / story)
+    _, s = found
+    if not s.eid:
+        raise ValueError(
+            f"story '{s.slug}' has no id, so it has no spec folder: give it an `id:` first "
+            f"(`ostler create story` mints one)")
+    return str(graph.doc_roots["specs"] / s.eid)
 
 
 def epic_dirs_under(epics_root: Path) -> list[Path]:

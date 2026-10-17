@@ -7,10 +7,10 @@ from pathlib import Path
 from ostler import doctor
 from ostler.model import load
 
-from conftest import story_md, write
+from conftest import FOO_ID, specs_root, story_md, write
 
 FOO_STORY = "docs/epics/epic-a/stories/01-foo/story.md"
-FOO_PLAN = "docs/specs/01-foo/qa_plan.py"
+FOO_PLAN = f"{FOO_ID}/qa_plan.py"
 
 AGENTS = """\
 qa:
@@ -38,7 +38,7 @@ def test_a_story_that_arranges_nothing_is_clean(repo: Path) -> None:
 
 def test_a_story_naming_a_fixture_the_repo_never_declared_is_an_error(repo: Path) -> None:
     _declare(repo)
-    write(repo / FOO_STORY, story_md("01-foo", "Foo", "Not started", fixtures=["no-such"]))
+    write(repo / FOO_STORY, story_md("01-foo", "Foo", "Not started", eid=FOO_ID, fixtures=["no-such"]))
     found = _findings(repo, "unknown-story-fixture")
     assert [(f.severity, f.ref) for f in found] == [("error", "no-such")]
     assert "seeded-accounts" in found[0].message
@@ -47,8 +47,8 @@ def test_a_story_naming_a_fixture_the_repo_never_declared_is_an_error(repo: Path
 def test_an_undeclared_name_the_plan_asks_for_is_told_to_declare_it(repo: Path) -> None:
     """The plan reaches for the name, so it is an arrangement nobody declared."""
     _declare(repo)
-    write(repo / FOO_STORY, story_md("01-foo", "Foo", "Not started", fixtures=["no-such"]))
-    write(repo / FOO_PLAN, 'qa.fixture("no-such")\n')
+    write(repo / FOO_STORY, story_md("01-foo", "Foo", "Not started", eid=FOO_ID, fixtures=["no-such"]))
+    write(specs_root() / FOO_PLAN, 'qa.fixture("no-such")\n')
 
     [found] = _findings(repo, "unknown-story-fixture")
 
@@ -59,8 +59,8 @@ def test_an_undeclared_name_the_plan_asks_for_is_told_to_declare_it(repo: Path) 
 def test_an_undeclared_name_no_plan_asks_for_is_told_to_delete_the_bullet(repo: Path) -> None:
     """Nothing declares it and nothing reaches for it, so it was never an arrangement."""
     _declare(repo)
-    write(repo / FOO_STORY, story_md("01-foo", "Foo", "Not started", fixtures=["no-such"]))
-    write(repo / FOO_PLAN, "PLAN = 1\n")
+    write(repo / FOO_STORY, story_md("01-foo", "Foo", "Not started", eid=FOO_ID, fixtures=["no-such"]))
+    write(specs_root() / FOO_PLAN, "PLAN = 1\n")
 
     [found] = _findings(repo, "unknown-story-fixture")
 
@@ -71,7 +71,7 @@ def test_an_undeclared_name_no_plan_asks_for_is_told_to_delete_the_bullet(repo: 
 def test_an_undeclared_name_with_no_plan_yet_prescribes_neither_repair(repo: Path) -> None:
     """No plan means nothing has reached for the name, so which repair is right is unknown."""
     _declare(repo)
-    write(repo / FOO_STORY, story_md("01-foo", "Foo", "Not started", fixtures=["no-such"]))
+    write(repo / FOO_STORY, story_md("01-foo", "Foo", "Not started", eid=FOO_ID, fixtures=["no-such"]))
 
     [found] = _findings(repo, "unknown-story-fixture")
 
@@ -82,15 +82,15 @@ def test_an_undeclared_name_with_no_plan_yet_prescribes_neither_repair(repo: Pat
 
 def test_a_plan_asking_for_a_fixture_the_story_does_not_state_is_an_error(repo: Path) -> None:
     _declare(repo)
-    write(repo / FOO_PLAN, 'qa.fixture("seeded-accounts")\n')
+    write(specs_root() / FOO_PLAN, 'qa.fixture("seeded-accounts")\n')
     found = _findings(repo, "undeclared-story-fixture")
     assert [(f.severity, f.ref) for f in found] == [("error", "seeded-accounts")]
 
 
 def test_a_stated_fixture_no_plan_asks_for_is_a_warning(repo: Path) -> None:
     _declare(repo)
-    write(repo / FOO_STORY, story_md("01-foo", "Foo", "Not started", fixtures=["seeded-accounts"]))
-    write(repo / FOO_PLAN, "PLAN = 1\n")
+    write(repo / FOO_STORY, story_md("01-foo", "Foo", "Not started", eid=FOO_ID, fixtures=["seeded-accounts"]))
+    write(specs_root() / FOO_PLAN, "PLAN = 1\n")
     found = _findings(repo, "unused-story-fixture")
     assert [(f.severity, f.ref) for f in found] == [("warn", "seeded-accounts")]
     assert doctor.run(load(repo)).errors == 0
@@ -99,7 +99,7 @@ def test_a_stated_fixture_no_plan_asks_for_is_a_warning(repo: Path) -> None:
 def test_a_story_with_no_plan_yet_is_not_in_disagreement(repo: Path) -> None:
     """The plan phase has not run."""
     _declare(repo)
-    write(repo / FOO_STORY, story_md("01-foo", "Foo", "Not started", fixtures=["seeded-accounts"]))
+    write(repo / FOO_STORY, story_md("01-foo", "Foo", "Not started", eid=FOO_ID, fixtures=["seeded-accounts"]))
     assert _findings(repo, "unused-story-fixture") == []
     assert doctor.run(load(repo)).errors == 0
 

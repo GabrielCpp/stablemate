@@ -1,4 +1,4 @@
-"""The `VetReport` shape and the `docs/specs/<slug>/vet.md` Concept read-modify-write."""
+"""The `VetReport` shape and the `vet.md` Concept in the story's spec folder read-modify-write."""
 
 from __future__ import annotations
 

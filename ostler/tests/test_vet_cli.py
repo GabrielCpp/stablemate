@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from conftest import write
+from conftest import FOO_ID, specs_root, write
 from ostler import cli, doctor
 from ostler.cli import _build_parser
 from ostler.model import load
@@ -65,7 +65,7 @@ def test_dry_run_writes_nothing(repo: Path):
     manifest = _write_manifest(repo, [NAV_ELEMENT])
     regions = _write_regions(repo, [NAV_REGION])
     screenshot = _screenshot(repo)
-    vet_md = repo / "docs/specs/01-foo/vet.md"
+    vet_md = specs_root() / f"{FOO_ID}/vet.md"
 
     outcome, plan = run_vet(load(repo), screenshot, manifest, "01-foo", regions_file=regions)
     assert not outcome.error
@@ -82,8 +82,8 @@ def test_write_creates_report_and_concept_and_stays_doctor_clean(repo: Path):
     outcome, plan = run_vet(load(repo), screenshot, manifest, "01-foo", regions_file=regions)
     plan.apply()
 
-    report_path = repo / "docs/specs/01-foo/vet/default-report.json"
-    concept_path = repo / "docs/specs/01-foo/vet.md"
+    report_path = specs_root() / f"{FOO_ID}/vet/default-report.json"
+    concept_path = specs_root() / f"{FOO_ID}/vet.md"
     assert report_path.exists()
     assert concept_path.exists()
     assert json.loads(report_path.read_text())["summary"]["status"] == "clean"
@@ -141,7 +141,7 @@ def test_matched_components_get_named_crops(repo: Path):
     outcome, plan = run_vet(load(repo), screenshot, manifest, "01-foo", regions_file=regions)
     plan.apply()
 
-    vet_dir = repo / "docs/specs/01-foo/vet"
+    vet_dir = specs_root() / f"{FOO_ID}/vet"
     assert (vet_dir / "default-activity-inbox-mode.png").exists()
     assert (vet_dir / "default-component-1.png").exists()
     report = json.loads((vet_dir / "default-report.json").read_text())
@@ -207,4 +207,4 @@ def test_cli_write_flag_applies_the_plan(repo: Path, capsys):
                      "--regions", str(regions), "--slug", "01-foo", "--write"])
     assert code == 0
     capsys.readouterr()
-    assert (repo / "docs/specs/01-foo/vet.md").exists()
+    assert (specs_root() / f"{FOO_ID}/vet.md").exists()
