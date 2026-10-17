@@ -6,9 +6,17 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
 SCRIPTS = Path(__file__).resolve().parents[1]
 if str(SCRIPTS) not in sys.path:
     sys.path.insert(0, str(SCRIPTS))
+
+
+@pytest.fixture(autouse=True)
+def _artifacts_dir_is_per_test(tmp_path_factory, monkeypatch):
+    """Specs live in the user's artifacts folder, so no test may resolve to the real one."""
+    monkeypatch.setenv("STABLEMATE_ARTIFACTS_DIR", str(tmp_path_factory.mktemp("artifacts")))
 
 
 def git(repo: Path, *args: str) -> str:
