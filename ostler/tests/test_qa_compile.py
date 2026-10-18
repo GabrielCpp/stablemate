@@ -31,6 +31,7 @@ from ostler.qa.dispatch import BUILT_TARGETS, DISPATCH_TABLE, OBSERVE_ROW, OPS_T
 from ostler.qa.outcome import QaOutcome
 from ostler.qa.packet import packet_of
 from ostler.qa.plan_source import ScenarioRefusal
+from ostler.registry import unknown_bullet_keys
 
 
 _BASE_URL = "http://localhost:8000"
@@ -3880,6 +3881,19 @@ def test_a_concept_node_gets_its_own_gap_message_not_a_generic_no_row_for() -> N
     assert other.kind == "uncompilable-claim"
     assert "names no row for" in other.detail
     assert "definition" not in other.detail
+
+
+def test_a_check_on_a_cli_node_is_sent_to_the_command_whose_run_produces_it() -> None:
+    """A `cli` node names the binary and declares no `run:`, so nothing on it can be observed; the refusal names the command as the place a check belongs instead of inviting a dispatch row."""
+    refusal = dispatch_target("cli", "cli")
+
+    assert isinstance(refusal, ScenarioRefusal)
+    assert refusal.kind == "uncompilable-claim"
+    assert "runs nothing itself" in refusal.detail
+    assert "under the `### <command>`" in refusal.detail
+    assert "names no row for" not in refusal.detail
+    assert "verify" in unknown_bullet_keys("cli", ["binary", "verify", "code"])
+    assert "binary" not in unknown_bullet_keys("cli", ["binary", "verify", "code"])
 
 
 @pytest.mark.parametrize("node_type", sorted(OPS_TYPES))

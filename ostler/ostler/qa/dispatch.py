@@ -36,6 +36,11 @@ NO_ROW_REASONS: dict[str, str] = {
         "the book links this step to a 'method' node, which is source a user never "
         "drives. Link the step to the command, endpoint or interaction that reaches it"
     ),
+    "cli": (
+        "the book links this step to a 'cli' node, which names the binary and runs nothing "
+        "itself. A check needs a `run:` to observe, and `run:` lives on a command: move the "
+        "`verify:` under the `### <command>` whose invocation produces what it observes"
+    ),
     **dict.fromkeys(OPS_TYPES, OPS_REASON),
 }
 

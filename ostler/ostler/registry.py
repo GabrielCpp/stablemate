@@ -475,7 +475,6 @@ UI_TYPES: tuple[UINodeType, ...] = (
             BulletKey("binary"),
             BulletKey("code", link=True, owns=True),
             BulletKey("detail", link=True),
-            BulletKey("verify", check=True),
         ),
     ),
     UINodeType(
