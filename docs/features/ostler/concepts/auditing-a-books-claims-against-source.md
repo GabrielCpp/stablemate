@@ -60,10 +60,7 @@ source file, so it feeds `doctor.py` from the book's own declarations, not from 
 
 `drivers.py` declares the `driver:` vocabulary itself — `DRIVERS` is the fixed tuple
 (`"web"`, `"mobile"`, `"http"`, `"cli"`, `"artifact"`, `"iac"`, `"none"`) every `driver:` bullet
-and compile backend is checked against. `testsupport.py` has two unrelated helpers used only by
-the ostler test suite: `_recording_uinode_init` patches `model.UINode.__init__` to record
-instantiation order, and `unknown_bullet_violations` reports a bullet key no `registry.py` rule
-recognizes.
+and compile backend is checked against.
 
 - code: ostler/ostler/behavior.py::build_audit_packets@9b054226c6dd
 - code: ostler/ostler/behavior.py::extract_evidence@9b054226c6dd
@@ -97,8 +94,6 @@ recognizes.
 - code: ostler/ostler/stack_checks.py::check_stack@2f4549d63d1b
 - code: ostler/ostler/outcome_rules.py::check_outcomes@408c771787b5
 - code: ostler/ostler/drivers.py::DRIVERS@ae00aa05879c
-- code: ostler/ostler/testsupport.py::_recording_uinode_init@282da5039f68
-- code: ostler/ostler/testsupport.py::unknown_bullet_violations@282da5039f68
 - detail: [ostler](../cli.md)
 
 ## Contract
