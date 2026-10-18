@@ -10,7 +10,7 @@ first tidies screenshots without risking committed assets; the second rejects fa
 unreconciled placeholders in newly added shipped source. Both resolve the code repository from
 the supplied `repo_dir`, rather than from the process working directory.
 
-- code: `workflows/src/workhorse_workflows/coder/qa/nodes/hygiene.py` @192f19d68be5
+- code: `workflows/src/workhorse_workflows/coder/qa/nodes/hygiene.py` @c1b9fdea5a7d
 - tests: `workflows/tests/coder/qa/test_hygiene.py`
 - detail: [coder QA subflow](coder-qa-subflow.md)
 
@@ -30,10 +30,10 @@ the supplied `repo_dir`, rather than from the process working directory.
 - does: leaves untracked images in place and logs a warning when `spec_dir` is blank, resolves to the repository root or above it, the destination cannot be created, or an individual move fails
 - verify: count(subject="unmovable root screenshots retained", equals=1)
 - returns: `ScreenshotFlush` with `flushed`, `kept_tracked`, and a human-readable `notes` summary
-- verify: json_path(path="$.notes", matches=".+")
+- verify: json_path(path="$.notes", equals="Applied the change and ran the gates.")
 - returns: all counts remain zero when no matching root image exists
 - verify: json_path(path="$.flushed", equals=0)
-- code: `workflows/src/workhorse_workflows/coder/qa/nodes/hygiene.py::flush_root_screenshots` @192f19d68be5
+- code: `workflows/src/workhorse_workflows/coder/qa/nodes/hygiene.py::flush_root_screenshots` @c1b9fdea5a7d
 
 ### check_sentinel_ids
 - sig: `check_sentinel_ids(logger: logging.Logger, story_slug: str = "", repo_dir: str = "") -> QaResult`
@@ -64,11 +64,9 @@ the supplied `repo_dir`, rather than from the process working directory.
 - does: returns a passed result with a skip note when the trunk base cannot be determined or diff execution fails
 - verify: json_path(path="$.status", equals="passed")
 - does: returns a passed result when the diff has no added lines or no eligible sentinel matches
-- verify: json_path(path="$.status", equals="passed")
 - returns: `QaResult` with status `passed` or `failed` and notes describing the scan, skip, or findings
 - verify: json_path(path="$.status", matches="passed|failed")
-- code: `workflows/src/workhorse_workflows/coder/qa/nodes/hygiene.py::check_sentinel_ids` @192f19d68be5
-- tests: `workflows/tests/coder/qa/test_flow.py::test_one_clean_pass_through_every_gate`
+- code: `workflows/src/workhorse_workflows/coder/qa/nodes/hygiene.py::check_sentinel_ids` @c1b9fdea5a7d
 
 ### _added_lines
 - sig: `_added_lines(root: Path, base_ref: str) -> list[tuple[str, int, str]]`
@@ -76,7 +74,7 @@ the supplied `repo_dir`, rather than from the process working directory.
 - verify: count(subject="parsed added diff lines with target locations", equals=1)
 - does: returns an empty list for an empty diff, a malformed patch, renames, and binary-only changes
 - verify: count(subject="unsupported diff forms safely ignored", equals=1)
-- code: `workflows/src/workhorse_workflows/coder/qa/nodes/hygiene.py::_added_lines` @192f19d68be5
+- code: `workflows/src/workhorse_workflows/coder/qa/nodes/hygiene.py::_added_lines` @c1b9fdea5a7d
 - tests: `workflows/tests/coder/qa/test_hygiene.py::test_added_lines_carry_their_target_line_numbers`
 - tests: `workflows/tests/coder/qa/test_hygiene.py::test_a_diff_committed_as_a_fixture_does_not_forge_a_filename`
 - tests: `workflows/tests/coder/qa/test_hygiene.py::test_renames_and_binaries_add_no_lines`

@@ -5,63 +5,50 @@ title: Coder QA flow
 ---
 # Coder QA flow
 
-- The `Qa` machine resolves one authored story, rebuilds the QA obligation packet from the
-  implementation diff, plans and runs the story's QA scenarios, audits the evidence, and either
-  repairs the owned product/harness, reports a development-target result, or returns a bounded
-  result to its parent. It is entered by Coder or directly with `workhorse-coder run qa`.
-- Inputs include the story slug, optional docs/workspace and epic selectors, operator mode,
-  target environment, stop-at-first-verdict measurement mode, inherited triage scope, and the
-  preexisting worktree snapshot. Ambient repository paths are injected by the workflow engine.
-- `target_env=local` permits product and setup repair; `target_env=dev` reports findings instead
-  of editing code and reports a passing result after the same binding gates.
-- `stop_at_first_verdict=true` reports the first product verdict as `inconclusive` after the
-  deterministic evidence gate, while still classifying environment failures and allowing stack
-  setup to be repaired.
-- start: the configured story slug resolves to a readable story path
-- verify: count(subject="resolved QA story contexts", equals=1)
-- start: the QA context is rebuilt from the story's implementation diff and affected repositories
-- verify: count(subject="QA obligation context builds", equals=1)
+The `Qa` machine hands one story's QA to a single owner session, then reruns and gates what the
+owner claims. The owner plans, runs, audits and repairs through its own subagents. The flow
+rebuilds the context packet and the stack, reruns the plan the owner left, and decides whether
+the story passes, goes back to the dev owner with findings, or replans. The Coder main flow
+enters it after documentation passes, and `workhorse-coder run qa` enters it directly.
+
+Inputs are the story slug, optional docs and workspace selectors, the epic, `operator_mode`
+(default `auto`), `target_env` (default `local`), `stop_at_first_verdict` and the preexisting
+worktree snapshot. The owner turn replies with a [QA owner result](../formats/qa-owner-result.md).
+The flow ends in a `QaFlowResult` whose status is `passed`, `refix` or `replan`. See the
+[QA schema contracts](../concepts/coder-qa-schema-contracts.md) for those types.
+
+- fixture: none, because the walk dry-runs the registered flow, which stands in for every agent turn
 - steps:
-  - [setup](#setup)
-  - [context](#context)
-  - [stack](#stack)
-  - [plan](#plan)
-  - [run-and-assess](#run-and-assess)
-  - [evidence-and-audit](#evidence-and-audit)
-  - [verdict-routing](#verdict-routing)
-  - [feedback-and-regression](#feedback-and-regression)
-  - [operator-resolution](#operator-resolution)
-- end: a local story passes the evidence gate
-- verify: count(subject="QA evidence gate passes", equals=1)
-- end: a local story passes the audit gate
-- verify: count(subject="QA audit gate passes", equals=1)
-- end: a local story passes the sentinel gate
-- verify: count(subject="QA sentinel gate passes", equals=1)
-- end: a local story passes the regression gate
-- verify: count(subject="QA regression gate passes", equals=1)
-- end: a local story returns `status="passed"`
-- verify: count(subject="passed QA flow results", equals=1)
-- end: a product failure, rescope, development-target report, replan, or operator-gated block is returned without silently approving the story
-- verify: count(subject="non-passing QA flow results", equals=1)
+  - [run](../workhorse-coder.md#run)
+- start: the working directory holds no rendered graph
+- verify: absent(subject="workhorse-coder.dot")
+- end: the dry run leaves the command with a zero exit status
+- verify: exit_status(code=0)
 - detail: [coder handoff boundary contract](../concepts/coder-handoff-boundary.md)
 - detail: [coder qa package](../concepts/coder-qa-package.md)
 - detail: [coder main flow](coder-main.md)
 - detail: [coder QA subflow](../concepts/coder-qa-subflow.md)
-- tests: `workflows/tests/coder/qa/test_flow.py::test_one_clean_pass_through_every_gate`
-- tests: `workflows/tests/coder/qa/test_flow.py::test_an_unmappable_packet_is_repaired_and_rebuilt`
-- tests: `workflows/tests/coder/qa/test_flow.py::test_a_failing_run_is_fixed_one_scenario_at_a_time`
-- tests: `workflows/tests/coder/qa/test_flow.py::test_audit_refuting_on_a_product_test_gap_sends_the_fixer_not_the_planner`
-- tests: `workflows/tests/coder/qa/test_flow.py::test_a_run_killed_mid_audit_resumes_on_the_audit`
-- tests: `workflows/tests/coder/qa/test_flow.py`
+- tests: `workflows/tests/coder/qa/test_flow.py::test_one_clean_pass_spends_one_owner_turn`
+- tests: `workflows/tests/coder/qa/test_flow.py::test_a_failed_run_with_findings_sends_them_back_as_a_refix`
+- tests: `workflows/tests/coder/qa/test_flow.py::test_a_blocked_owner_is_answered_and_resumes_with_the_answer`
+- tests: `workflows/tests/coder/qa/test_flow.py::test_an_epic_scoped_answer_hands_the_story_back_to_replan`
+- tests: `workflows/tests/coder/qa/test_flow.py::test_a_dev_target_reports_findings_instead_of_refixing`
+- tests: `workflows/tests/coder/qa/test_flow.py::test_a_run_killed_mid_repair_resumes_on_the_owner_turn_with_its_report`
 
-The flow class `Qa` and the assessment-routing tuple `RoutedFindings` are declared in
-`workflows/src/workhorse_workflows/coder/qa/flow.py`. The checkpointed `QaLoop` carries the QA
-result, context and plan diagnostics, assessment and audit records, repair counters, failure
-fingerprints, setup-problem bundles, regression flags, operator escalations, and docs-recheck
-state. The loop is rebuilt at `build_context` after any product, feedback, regression, or
-grounding change, so the plan always answers the current diff. The QA and plan wall-clock
-budgets are advisory telemetry; bounded repair ceilings, repeated refusal detection, and
-operator gates decide whether work continues.
+`target_env=local` sends product findings back to the dev owner as a `refix`. `target_env=dev`
+reports the findings and passes, so the tracker carries them. `stop_at_first_verdict` finishes
+a green run in one turn and reports the first red run without a repair turn, while a stack
+fault is still the owner's to repair. The owner session is keyed `qa:<story slug>`. The flow
+resets it on every ending except `refix`, so the dev owner's fix returns to the same QA session.
+Each ending releases the run's copy of the stack, and `docs_recheck_required` is true only when
+the owner moved the code.
+
+The flow is implemented by `workflows/src/workhorse_workflows/coder/qa/flow.py::Qa`.
+
+The stages, in order: [setup](#setup), [start](#start), [work](#work), [check](#check), [operator-block](#operator-block).
+
+The flow starts when the configured story slug resolves to a readable story path; or when the previous run's QA evidence is cleared and the OKF context packet and stack are checked.
+It ends in one of these ways: the plan passes and clears every gate; the scored run fails on the product with findings; the operator scopes an answer to the epic; a development target reports its findings and passes; a block parks on the operator when laps or blocks are spent.
 
 ## Steps
 
@@ -69,129 +56,62 @@ operator gates decide whether work continues.
 
 - kind: prepare
 
-The flow resolves the story slug, story path, spec directory, QA directory, and inherited
-conversation. An empty or unresolved story raises `WorkflowFailed` before an agent turn rather
-than producing an exhausted verdict. The flow resets its QA-specific session chains when it
-starts and again when it ends.
+`setup` resolves the slug to the story path, the spec directory and the `qa/` directory. A story
+that does not resolve raises `WorkflowFailed` before any agent turn, because there is nothing to
+QA.
 
-### context
+### start
 
 - kind: prepare
 
-The flow clears prior QA evidence, resolves implementation context and affected repository paths,
-optionally resolves story-source provenance, detects the OKF book, and builds an obligation packet
-from the story diff, using the preexisting worktree snapshot to exclude unrelated dirt. An invalid
-or unmappable packet receives up to `MAX_CONTEXT_REWORKS` low-power context repairs; a repaired
-packet is rebuilt and revalidated. An exhausted or refused repair enters the operator gate.
+`start` snapshots the code state, clears the previous run's QA evidence, and resolves the
+implementation context with the repositories the story touched. When the workspace file and the
+story id are both set, it also resolves story-source provenance and fails the run when the
+sources are invalid. It then detects the OKF book, names the run's lease on a copy of the stack,
+and records the stack target. The preflight builds and validates the OKF context packet and
+brings the stack up. Each failure becomes a line of the first owner turn's report instead of an
+abort, because a broken packet or stack is the owner's to repair.
 
-### stack
+### work
 
-- kind: service
+- kind: drive
 
-`ensure_stack` runs before plan authoring. A ready stack or a book that serves no surface advances
-to planning. A served surface with no declared stack, or a stack that fails to boot, enters the
-bounded setup-fix loop; an identical blocked requirement bundle escalates instead of repeating.
-Setup repair receives the verification setup, declared fixtures, QA run plan, runtime interpreter,
-and the current block notes. `MAX_SETUP_REWORKS` bounds setup repairs.
+`work` runs the `qa-story` owner turn at high power under the shared owner profile, with no
+wall-clock bound and a silence limit. The turn reads the story, the spec directory, the
+verification setup, the fixtures, the QA run plan, the QA tool catalog and the last report. It is
+granted only the repositories the plan touches. It also learns whether a standing `qa_plan.py`
+already lints and validates, so it adopts that plan rather than authoring a new one. The stack's
+environment is scoped around the turn. Specs are stamped after the turn. A `blocked` result goes
+to the block path. Any other result continues to `check` with its findings and the scenarios it
+claims it dry-ran.
 
-### plan
-
-- kind: run
-
-The flow adopts an existing `qa_plan.py` only when its lint and obligation validation pass against
-the rebuilt packet. Otherwise the first draft is authored by the QA planner and later laps edit
-only cited portions of that plan. Lint and validation run before the suite; named riskiest draft
-scenarios and named failed scenarios must pass their dry-run gate before a full run. Schema repairs
-and semantic plan repairs have separate counters, share `MAX_TOTAL_PLAN_LAPS`, and identical
-refusals enter the operator gate. Wall-clock overruns annotate the repair brief but do not end a
-plan that can still be validated.
-
-### run-and-assess
-
-- kind: run
-
-The validated plan runs once through `run_qa_plan`; a killed run resumes at assessment rather than
-rerunning the suite. A passed run advances to evidence verification. A failed run is assessed
-unless first-verdict mode reports it immediately as `inconclusive`. A blocked run is classified
-for setup or plan repair. The assessment turn distinguishes confirmed success, plan extension or
-repair, product failure, environment failure, and objective-not-reached outcomes; findings are
-routed by closed scope (`product-test`, `plan`, or `stack`).
-
-### evidence-and-audit
+### check
 
 - kind: verify
 
-The evidence gate fails closed when the runner's required artifacts or evidence map are missing or
-invalid. A valid pass is then audited adversarially unless first-verdict mode skips repair-only
-auditing. A standing audit requires verdict `stands` with refutation class `none`. A product
-contradiction becomes a QA failure; other refutations are routed to the product-test, plan, or
-stack owner, while plan-only audit blocking stops after `MAX_BLOCKING_AUDITS` and is filed as
-backlog work.
+`check` rebuilds the preflight, then lints the plan, validates it against the packet, and
+verifies that every claimed scenario dry-ran green. Any failure spends a lap and returns to `work`
+with the failure as the report. A clean preflight runs the plan once through `run_qa_plan`, files
+the backlog items the run wrote, and stamps the specs.
 
-### verdict-routing
+A failed run with findings, or any failed run under `stop_at_first_verdict`, ends the flow. A
+failed run with no finding goes back to the owner with its failing scenarios and a note that the
+failure is unclassified. A run that did not finish goes back as unfinished. Findings beside a
+passing run go back as unproved.
 
-- kind: drive
+A passed run must also clear four gates before the story is believed. The evidence gate checks
+the runner's artifacts. The operator feedback inbox is read, and a note goes back to the owner.
+Declared regression suites run, and a suite that is neither passed nor skipped goes back. The
+sentinel ids are checked after the screenshots are flushed. Under `stop_at_first_verdict`, a
+passing run that fails a gate finishes as a `refix` with a fallback finding.
 
-Backlog filing is best-effort and runs for both pass and failure. A confirmed pass proceeds to
-feedback. A failed result enters triage, where in-AC defects use the QA fix loop and scope changes
-return `status="rescope"` to development with docs recheck required. A product-class failure can
-return `status="refix"` to development while its triage scope remains available for bounding.
-In local mode, QA rework is bounded by `MAX_QA_REWORKS`, with one evidence-only bonus pass; a
-repeated identical run failure switches once between plan repair and code repair before gating.
-Budget exhaustion always enters the operator gate rather than silently ending the story. Every
-guard — context repair, plan validation repair, plan judgement repair, code rework, and setup
-repair — preserves the exhausted counter on the routed loop and stamps the spent phrase into the
-gate body, so the operator sees which cap was reached; the shared `MAX_TOTAL_PLAN_LAPS` ceiling
-still bounds the sum when the two plan counters are spent in alternation. Past `MAX_QA_REWORKS`
-the one verification-only pass is granted only for a first `evidence` failure, only when the
-bonus has not already been spent, and never for `code`, `environment`, or untriaged laps.
-
-### feedback-and-regression
-
-- kind: run
-
-After a pass the inbox is polled once. An operator note is applied as one low-power QA fix and
-rebuilds context; no note advances to regression detection. Declared regression suites run after
-the primary pass. A green or skipped regression finalizes unless a preceding regression fix
-invalidated primary evidence, in which case context is rebuilt for one re-QA. Blocked or errored
-regression setup uses the setup loop; failed regression suites receive up to
-`MAX_REGRESSION_FIXES`, then fall into the ordinary QA fix loop.
-
-### operator-resolution
+### operator-block
 
 - kind: drive
 
-QA blocks are counted at the common gate. In `auto` mode, at most `MAX_QA_BLOCKS` resolver turns
-may apply an answer grounded in an existing decision, convention, or acceptance criterion; human
-and operator modes await directly, and later blocks also await directly. An epic-scoped answer
-returns `status="replan"`; a story-scoped answer is applied as a low-power QA fix and rebuilds
-context. A refused report or fix is escalated without spending another repair lap, and report
-write failures resume the same report state rather than re-QAing an already judged story.
-
-The flow's own deterministic and agent-backed operations are implemented by the QA node modules,
-evidence and hygiene modules, regression module, and QA checkpoint schemas. Those bounded source
-groups are the next descent items.
-
-## Phase Details
-
-### Budget routing
-
-Every repair counter — context rework, plan validation rework, plan judgement rework, code
-rework, and setup rework — has a single guard that funnels to the operator gate. Each guard
-preserves the exhausted counter on the routed loop, stamps the spent phrase into the gate body,
-and never ends the run in `WorkflowFailed` on the ground of a cap alone. The two plan counters
-share `MAX_TOTAL_PLAN_LAPS` so that an alternation past one cannot exceed the sum, and the code
-rework counter grants one verification-only bonus pass past its own ceiling only for a first
-`evidence` failure with the bonus still unspent.
-
-- code: `workflows/src/workhorse_workflows/coder/qa/flow.py::Qa._exhausted` @1ae0da2229dc
-- code: `workflows/src/workhorse_workflows/coder/qa/flow.py::Qa._gate` @1ae0da2229dc
-- code: `workflows/src/workhorse_workflows/coder/qa/flow.py::Qa._guard_plan` @1ae0da2229dc
-- code: `workflows/src/workhorse_workflows/coder/qa/flow.py::Qa._guard_plan_validation` @1ae0da2229dc
-- code: `workflows/src/workhorse_workflows/coder/qa/flow.py::Qa._guard_setup` @1ae0da2229dc
-- code: `workflows/src/workhorse_workflows/coder/qa/flow.py::Qa._guard_qa` @1ae0da2229dc
-- code: `workflows/src/workhorse_workflows/coder/qa/flow.py::Qa._plan_lap` @1ae0da2229dc
-- code: `workflows/src/workhorse_workflows/coder/qa/flow.py::Qa._guard_dry_run` @1ae0da2229dc
-- code: `workflows/tests/coder/test_session_chains.py::test_each_spent_qa_budget_routes_to_the_operator_with_its_own_counter`
-- code: `workflows/tests/coder/test_session_chains.py::test_the_total_plan_lap_ceiling_bounds_individually_legal_budgets`
-- code: `workflows/tests/coder/test_session_chains.py::test_only_an_unspent_evidence_bonus_can_cross_the_code_rework_ceiling`
+A repair lap is spent each time `check` sends failures back, up to `MAX_LAPS`. At the cap, or
+on a blocked owner result, the flow takes the block path with the notes. The `resolve` turn runs
+in `auto` mode and answers from what is already written down. In a human operator mode, or
+once `MAX_BLOCKS` blocks are spent, the flow writes the block to the story context file and
+returns `Await`. `read_operator` logs the answer and resumes `work` with it. An answer scoped to
+the epic resets the session, releases the stack copy and ends the flow with `replan`.

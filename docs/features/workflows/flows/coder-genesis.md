@@ -13,16 +13,12 @@ title: Coder genesis flow
   marker, workflow, assistant, and gate values arrive as workflow parameters and are written or
   executed without stack-specific interpretation.
 
-- start: the run has a non-empty target path and checkpointed genesis parameters for the target service
-- verify: count(subject="genesis target classification", equals=1)
+- fixture: none, because the walk dry-runs the registered flow, which stands in for every agent turn
 - steps:
-  - [classify](#classify)
-  - [git-init](#git-init)
-  - [config](#config)
-  - [skeleton](#skeleton)
-  - [farrier](#farrier)
-  - [verify](#verify)
-- end: the target passes all repository, service, tooling-context, documentation-root, and backlog precondition checks
+  - [run](../workhorse-coder.md#run)
+- start: the working directory holds no rendered graph
+- verify: absent(subject="workhorse-coder.dot")
+- end: the dry run leaves the command with a zero exit status
 - verify: exit_status(code=0)
 - detail: [coder workflow composition root](../concepts/coder-workflow-composition-root.md)
 - detail: [coder genesis bootstrap](../concepts/coder-genesis-bootstrap.md)
@@ -32,6 +28,11 @@ title: Coder genesis flow
 - tests: `workflows/tests/coder/genesis/test_flow.py::test_a_blank_target_fails_before_anything_mutates`
 - tests: `workflows/tests/coder/genesis/test_flow.py::test_an_invalid_repo_fails_the_run_with_no_repair_turn`
 - tests: `workflows/tests/coder/genesis/test_flow.py::test_a_run_killed_in_the_farrier_step_resumes_on_that_state_alone`
+
+The stages, in order: [classify](#classify), [git-init](#git-init), [config](#config), [skeleton](#skeleton), [farrier](#farrier), [verify](#verify).
+
+The flow starts when the run has a non-empty target path and checkpointed genesis parameters for the target service.
+It ends in one of these ways: the target passes all repository, service, tooling-context, documentation-root, and backlog precondition checks.
 
 ## Steps
 

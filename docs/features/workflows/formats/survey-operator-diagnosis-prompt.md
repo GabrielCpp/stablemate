@@ -6,7 +6,7 @@ title: Survey operator-diagnosis prompt contract
 # Survey operator-diagnosis prompt contract
 
 - file: `workflows/src/workhorse_workflows/author/surveyor/prompts/resolve-operator.md`
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/survey.py::OperatorResolution` @f79c1c007a97
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/survey.py::OperatorResolution` @7db58efbfd66
 - detail: [author surveyor subflow](../concepts/author-surveyor-subflow.md)
 - tests: `workflows/tests/author/surveyor/test_flow.py::test_human_operator_mode_sends_the_block_straight_to_the_context_file`
 
@@ -22,7 +22,7 @@ only a human answer can resume it.
 - type: number or `unbounded`
 - required: true
 - semantics: investigation time budget
-- verify: json_path(path="$.node_timeout_min", matches=".+")
+- verify: json_path(path="$.node_timeout_min", matches="^[0-9]+$")
 - semantics: survey resolver turns use an unbounded timeout
 - verify: json_path(path="$.node_timeout_min", equals="unbounded")
 
@@ -30,32 +30,32 @@ only a human answer can resume it.
 - type: string
 - required: true
 - semantics: blocked stage, one of `plan-units`, `survey-coverage`, or `partition`
-- verify: json_path(path="$.block_stage", matches=".+")
+- verify: json_path(path="$.block_stage", equals="example block stage")
 
 ### survey_dir
 - type: string path
 - required: true
 - semantics: directory containing rules, inventory, records, partition, and context artifacts
-- verify: json_path(path="$.survey_dir", matches=".+")
+- verify: json_path(path="$.survey_dir", equals="docs/stories/acme-story")
 
 ### context_path
 - type: string path
 - required: true
 - semantics: operator context file whose existing history is preserved and whose first status line is re-armed
-- verify: json_path(path="$.context_path", matches=".+")
+- verify: json_path(path="$.context_path", equals="docs/stories/acme-story/story.md")
 
 ### block_notes
 - type: string
 - required: true
 - semantics: producer's blocking question or validation diagnostics to investigate
-- verify: json_path(path="$.block_notes", matches=".+")
+- verify: json_path(path="$.block_notes", equals="Applied the change and ran the gates.")
 
 ### decision
 - type: string
 - default: empty string
 - required: false
 - semantics: compatibility reply field retained for the response shape
-- verify: json_path(path="$.decision", matches=".*")
+- verify: json_path(path="$.decision", equals="example decision")
 - semantics: resolver emits `escalated` as an advisory value that the flow ignores for branching
 - verify: json_path(path="$.decision", equals="escalated")
 
@@ -64,11 +64,11 @@ only a human answer can resume it.
 - default: empty string
 - required: false
 - semantics: one-line plain-language statement of the unresolved operator decision
-- verify: json_path(path="$.notes", matches=".+")
+- verify: json_path(path="$.notes", equals="Applied the change and ran the gates.")
 
 ### tried
 - type: list[string]
 - default: empty list
 - required: false
 - semantics: concrete investigations and ruled-out hypotheses, one line per checked item
-- verify: json_path(path="$.tried", matches=".*")
+- verify: json_path(path="$.tried", matches="^\[.*\]$")

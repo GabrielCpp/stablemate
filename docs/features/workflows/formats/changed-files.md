@@ -7,7 +7,7 @@ title: Coder changed files
 
 - file: none — in-memory changed-path result
 - config: `ChangedFiles` conversation reseed value
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/dev.py::ChangedFiles` @b6e19c205b4f
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/dev.py::ChangedFiles` @5aa622da8aea
 - detail: [coder development schema contracts](../concepts/coder-dev-schema-contracts.md)
 
 ## Fields
@@ -17,5 +17,5 @@ title: Coder changed files
 - default: empty list
 - required: false
 - semantics: sorted unique modified, staged, untracked, or story-commit paths
-- verify: json_path(path="$.paths", matches=".*")
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/dev.py::ChangedFiles.paths` @b6e19c205b4f
+- verify: json_path(path="$.paths", matches="^\[.*\]$")
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/dev.py::ChangedFiles.paths` @5aa622da8aea

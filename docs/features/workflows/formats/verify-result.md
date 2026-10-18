@@ -5,7 +5,7 @@ title: Survey verification result
 ---
 # Survey verification result
 
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/survey.py::VerifyResult` @f79c1c007a97
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/survey.py::VerifyResult` @7db58efbfd66
 - detail: [shared survey library](../concepts/survey-shared-library.md)
 
 The auditable coverage-gate result for the survey inventory.
@@ -18,7 +18,7 @@ The auditable coverage-gate result for the survey inventory.
 - required: false
 - semantics: whether every current unit has acceptable coverage
 - verify: json_path(path="$.holds", equals=false)
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/survey.py::VerifyResult` @f79c1c007a97
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/survey.py::VerifyResult` @7db58efbfd66
 - detail: [verify result field roles](../concepts/verify-result-field-roles.md)
 
 ### nothing_surveyed
@@ -27,7 +27,7 @@ The auditable coverage-gate result for the survey inventory.
 - required: false
 - semantics: whether the missing inventory means no units were surveyed
 - verify: json_path(path="$.nothing_surveyed", equals=false)
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/survey.py::VerifyResult` @f79c1c007a97
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/survey.py::VerifyResult` @7db58efbfd66
 - detail: [verify result field roles](../concepts/verify-result-field-roles.md)
 
 ### verify_errors
@@ -35,8 +35,8 @@ The auditable coverage-gate result for the survey inventory.
 - default: empty string
 - required: false
 - semantics: coverage defects preventing the gate from holding
-- verify: json_path(path="$.verify_errors", matches=".*")
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/survey.py::VerifyResult` @f79c1c007a97
+- verify: json_path(path="$.verify_errors", equals="example verify errors")
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/survey.py::VerifyResult` @7db58efbfd66
 - detail: [verify result field roles](../concepts/verify-result-field-roles.md)
 
 ### verify_report
@@ -44,6 +44,6 @@ The auditable coverage-gate result for the survey inventory.
 - default: empty string
 - required: false
 - semantics: human-readable coverage counts and outcome
-- verify: json_path(path="$.verify_report", matches=".*")
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/survey.py::VerifyResult` @f79c1c007a97
+- verify: json_path(path="$.verify_report", equals="example verify report")
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/survey.py::VerifyResult` @7db58efbfd66
 - detail: [verify result field roles](../concepts/verify-result-field-roles.md)

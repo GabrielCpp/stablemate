@@ -6,12 +6,8 @@ title: Workflow shared unit tests
 # Workflow shared unit tests
 
 This pytest tier covers cross-workflow contracts and kit helpers outside the individual workflow
-directories: the hello-world quick start, agent-runner test double, prompt static contracts,
-credential scoping, JSON-with-comments parsing, workspace checkout, scoped commits, and the
-no-give-up guard. It drives no browser or running service. The tier's supporting concepts are
-[test agent runner](../concepts/workflow-test-agent-runner.md),
-[prompt static contracts](../concepts/workflow-prompt-static-contracts.md), and
-[no-give-up guard](../concepts/workflow-no-give-up-guard.md).
+directories: prompt static contracts, credential scoping, JSON-with-comments parsing, workspace
+checkout, scoped commits, and the no-give-up guard. It drives no browser or running service.
 
 Specs live at `workflows/tests/test_*.py`, with `workflows/tests/_fakes.py` providing the shared
 scripted-agent double. Add a test to that directory when it verifies a cross-workflow or kit
@@ -22,7 +18,7 @@ repository root runs `$(MAKE) -C workflows test`; the workflow package test targ
 and blocks the aggregate CI gate.
 
 - driver: cli
-- surfaces: [hello-world workflow composition root](../concepts/hello-world-workflow-composition-root.md)
+- surfaces: [loop-runner workflow](../concepts/loop-runner-workflow.md)
 - code: `workflows/Makefile::test` @4f2f1208042e
 - working-directory: workflows
 - detail: [Workflow unit-test tiers](../concepts/workflow-unit-test-tiers.md)

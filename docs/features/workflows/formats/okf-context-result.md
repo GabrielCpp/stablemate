@@ -6,7 +6,7 @@ title: Coder OKF context result
 # Coder OKF context result
 
 - file: none — in-memory result returned by the OKF context build and validation nodes
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/okf.py::OkfContextResult` @f78a0fc9c74d
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/okf.py::OkfContextResult` @4d368de2f378
 - detail: [coder shared OKF context](../concepts/coder-shared-okf-context.md)
 - tests: `workflows/tests/coder/shared/test_okf_memo.py::test_a_repeat_visit_reuses_the_packet_byte_for_byte`
 
@@ -22,20 +22,20 @@ payload. Its status is closed: `passed` means the relevant context operation suc
 - required: false
 - semantics: context build or validation verdict
 - verify: json_path(path="$.status", matches="passed|invalid")
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/okf.py::OkfContextResult.status` @f78a0fc9c74d
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/okf.py::OkfContextResult.status` @4d368de2f378
 
 ### notes
 - type: `str`
 - default: empty string
 - required: false
 - semantics: diagnostic summary associated with the context operation
-- verify: json_path(path="$.notes", matches=".*")
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/okf.py::OkfContextResult.notes` @f78a0fc9c74d
+- verify: json_path(path="$.notes", equals="Applied the change and ran the gates.")
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/okf.py::OkfContextResult.notes` @4d368de2f378
 
 ### ostler
 - type: `dict[str, Any]`
 - default: empty mapping
 - required: false
 - semantics: raw Ostler context output consumed by downstream gates
-- verify: json_path(path="$.ostler", matches=".*")
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/okf.py::OkfContextResult.ostler` @f78a0fc9c74d
+- verify: json_path(path="$.ostler", matches="^\{.*\}$")
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/okf.py::OkfContextResult.ostler` @4d368de2f378

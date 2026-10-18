@@ -18,7 +18,7 @@ title: Story author target
 - default: empty string
 - required: true
 - semantics: trimmed parent epic slug used to resolve the story
-- verify: json_path(path="$.epic", matches=".+")
+- verify: json_path(path="$.epic", equals="acme-epic")
 - code: `workflows/src/workhorse_workflows/author/story_author/schemas.py::StoryTarget` @8eca5014bca5
 - detail: [story author target field roles](../concepts/story-author-target-field-roles.md)
 
@@ -27,7 +27,7 @@ title: Story author target
 - default: empty string
 - required: true
 - semantics: trimmed story slug resolved under `epic`
-- verify: json_path(path="$.story", matches=".+")
+- verify: json_path(path="$.story", equals="acme-story")
 - code: `workflows/src/workhorse_workflows/author/story_author/schemas.py::StoryTarget` @8eca5014bca5
 - detail: [story author target field roles](../concepts/story-author-target-field-roles.md)
 
@@ -36,7 +36,7 @@ title: Story author target
 - default: empty string
 - required: true
 - semantics: canonical directory containing the selected epic
-- verify: json_path(path="$.epic_dir", matches=".+")
+- verify: json_path(path="$.epic_dir", equals="docs/stories/acme-story")
 - code: `workflows/src/workhorse_workflows/author/story_author/schemas.py::StoryTarget` @8eca5014bca5
 - detail: [story author target field roles](../concepts/story-author-target-field-roles.md)
 
@@ -45,7 +45,7 @@ title: Story author target
 - default: empty string
 - required: true
 - semantics: canonical directory containing the selected story document
-- verify: json_path(path="$.story_dir", matches=".+")
+- verify: json_path(path="$.story_dir", equals="docs/stories/acme-story")
 - code: `workflows/src/workhorse_workflows/author/story_author/schemas.py::StoryTarget` @8eca5014bca5
 - detail: [story author target field roles](../concepts/story-author-target-field-roles.md)
 
@@ -72,6 +72,6 @@ title: Story author target
 - default: empty string
 - required: true
 - semantics: Ostler's scaffold result message
-- verify: json_path(path="$.scaffold_message", matches=".*")
+- verify: json_path(path="$.scaffold_message", equals="acme: record the story")
 - code: `workflows/src/workhorse_workflows/author/story_author/schemas.py::StoryTarget` @8eca5014bca5
 - detail: [story author target field roles](../concepts/story-author-target-field-roles.md)

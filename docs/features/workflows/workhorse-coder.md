@@ -6,7 +6,7 @@ title: workhorse-coder
 # workhorse-coder
 
 - binary: `workhorse-coder`
-- code: `workflows/src/workhorse_workflows/coder/workflow.py::main` @169c19e85119
+- code: `workflows/src/workhorse_workflows/coder/workflow.py::main` @a28e84f788c2
 - detail: [coder shared library](concepts/coder-shared-library.md)
 - detail: [operational runbooks index](concepts/ops-runbooks.md)
 
@@ -28,11 +28,12 @@ The [workhorse-coder driver runbook](ops/workhorse-coder.md) exercises this CLI 
   - `--dry-run` runs registered deterministic stand-ins.
   - `--resume-run PATH`, `--resume-latest`, and `--no-cache` select resume or fresh-run behavior.
 - args:
-  - `<flow>` selects `genesis`, `dev`, `review`, `docs`, `qa`, `fix`, or `fix_ci`; omitting it starts Coder.
-- does:
-  - starts the selected registered coder flow
+  - `<flow>` selects `genesis`, `dev`, `docs`, `qa`, `fix`, or `fix_ci`; omitting it starts Coder.
+- does: starts the selected registered coder flow
+- fixture: none, because the command reads only the installed package
+- run: invoke(argv=["run", "--dry-run"])
 - verify: exit_status(code=0)
-- code: `workflows/src/workhorse_workflows/coder/workflow.py::main` @169c19e85119
+- code: `workflows/src/workhorse_workflows/coder/workflow.py::main` @a28e84f788c2
 - detail: [Coder command selection](concepts/coder-command-selection.md)
 
 ### dot
@@ -40,16 +41,18 @@ The [workhorse-coder driver runbook](ops/workhorse-coder.md) exercises this CLI 
 - flags:
   - `--name ID` overrides the rendered graph identifier.
   - `-o, --output PATH` writes DOT output to a file instead of standard output.
-- does:
-  - renders the registered Coder and selectable-flow state graphs
+- does: renders the registered Coder and selectable-flow state graphs
+- fixture: none, because the command reads only the installed package
+- run: invoke(argv=["dot"])
 - verify: exit_status(code=0)
-- code: `workflows/src/workhorse_workflows/coder/workflow.py::main` @169c19e85119
+- code: `workflows/src/workhorse_workflows/coder/workflow.py::main` @a28e84f788c2
 - detail: [Coder command selection](concepts/coder-command-selection.md)
 
 ### version
 - usage: `workhorse-coder version`
-- does:
-  - prints the installed Workhorse engine version
+- does: prints the installed Workhorse engine version
+- fixture: none, because the command reads only the installed package
+- run: invoke(argv=["version"])
 - verify: exit_status(code=0)
-- code: `workflows/src/workhorse_workflows/coder/workflow.py::main` @169c19e85119
+- code: `workflows/src/workhorse_workflows/coder/workflow.py::main` @a28e84f788c2
 - detail: [Coder command selection](concepts/coder-command-selection.md)

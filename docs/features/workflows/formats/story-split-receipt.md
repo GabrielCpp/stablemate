@@ -27,7 +27,6 @@ value additionally carries the repository-relative receipt path.
 - does: serializes the digest input with sorted keys and compact separators before hashing
 - verify: json_path(path="$.graphDigest", matches="^[0-9a-f]{64}$")
 - returns: a deterministic lowercase SHA-256 hexadecimal digest of the split-owned topology
-- verify: json_path(path="$.graphDigest", matches="^[0-9a-f]{64}$")
 - code: `workflows/src/workhorse_workflows/author/shared/story_split_receipt.py::story_split_digest` @4da55cfd1b63
 
 ### story_split_receipt_path
@@ -73,7 +72,6 @@ value additionally carries the repository-relative receipt path.
 - semantics: digest of active seed identities
 - verify: json_path(path="$.graphDigest", matches="^[0-9a-f]{64}$")
 - semantics: digest of each story's slug, title, covered seed items, and dependencies
-- verify: json_path(path="$.graphDigest", matches="^[0-9a-f]{64}$")
 - code: `workflows/src/workhorse_workflows/author/shared/story_split_receipt.py::story_split_digest` @4da55cfd1b63
 
 The on-disk JSON uses `status: "passed"` and camel-case `graphDigest`. The typed

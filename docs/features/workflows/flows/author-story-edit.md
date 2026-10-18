@@ -15,33 +15,23 @@ title: Author story edit
   `resolve_story_intent` in `workflows/src/workhorse_workflows/author/story_edit/flow.py` and
   `workflows/src/workhorse_workflows/author/story_edit/nodes.py`.
 
-- start: an operator invokes `workhorse-author run story-edit` with an `action` of `add` or `remove`
-- start: an add request supplies an existing epic and a non-empty bullet reference
-- start: a remove request supplies a non-empty existing story slug
-- start: a remove request for work whose status is not `Not started` supplies `force: true`
-- start: a plan that removes a story other than the requested story supplies `force: true`
-- start: a plan that removes a seed not covered by the requested story supplies `force: true`
-- start: a plan that removes frozen scope has been unfrozen before execution
+- fixture: none, because the walk dry-runs the registered flow, which stands in for every agent turn
 - steps:
-  - [setup](#setup)
-  - [resolve the story intent](#resolve-the-story-intent)
-  - [reconcile the parent epic](author-epic-edit.md)
-  - [validate and commit](author-epic-edit.md#validate-coverage-and-commit)
-- end: an add operation leaves the requested story covering its resolved source item
-- end: a remove operation leaves the requested story absent
-- end: the parent epic narrative and resulting story graph agree
-- end: backlog ownership and milestone references agree with the resulting graph
-- end: the whole documentation graph passes integrity before the edit is committed
-- verify: created(subject="the requested story under its parent epic")
-- verify: removed(subject="the requested story")
-- verify: unchanged(subject="the remaining authored story")
-- verify: removed(subject="the now-empty epic under the configured epics root")
+  - [run](../workhorse-author.md#run)
+- start: the working directory holds no rendered graph
+- verify: absent(subject="workhorse-author.dot")
+- end: the dry run leaves the command with a zero exit status
 - verify: exit_status(code=0)
 - tests: `workflows/tests/author/test_workflow.py::test_story_edit_add_authors_one_story_and_commits`
 - tests: `workflows/tests/author/test_workflow.py::test_story_edit_remove_reconciles_remaining_epic_scope_and_journey`
 - tests: `workflows/tests/author/test_workflow.py::test_story_edit_remove_deletes_an_unstarted_story_and_commits`
 - tests: `workflows/tests/author/test_workflow.py::test_story_edit_follows_the_configured_epics_root`
 - detail: [workhorse-author run command](../workhorse-author.md#run)
+
+The stages, in order: [setup](#setup), [resolve the story intent](#resolve-the-story-intent), [reconcile the parent epic](author-epic-edit.md), [validate and commit](author-epic-edit.md#validate-coverage-and-commit).
+
+The flow starts when an operator invokes `workhorse-author run story-edit` with an `action` of `add` or `remove`; or when an add request supplies an existing epic and a non-empty bullet reference; or when a remove request supplies a non-empty existing story slug; or when a remove request for work whose status is not `Not started` supplies `force: true`; or when a plan that removes a story other than the requested story supplies `force: true`; or when a plan that removes a seed not covered by the requested story supplies `force: true`; or when a plan that removes frozen scope has been unfrozen before execution.
+It ends in one of these ways: an add operation leaves the requested story covering its resolved source item; a remove operation leaves the requested story absent; the parent epic narrative and resulting story graph agree; backlog ownership and milestone references agree with the resulting graph; the whole documentation graph passes integrity before the edit is committed.
 
 ## Phase Details
 

@@ -10,4 +10,4 @@ registered sub-flow machines, and shared helpers. The composition root is the on
 entry point; every flow remains callable by its registered name, and prompt paths are relative to
 this package directory.
 
-- code: `workflows/src/workhorse_workflows/coder/__init__.py` @769219e1d757
+- code: `workflows/src/workhorse_workflows/coder/__init__.py` @de2c6b873a54

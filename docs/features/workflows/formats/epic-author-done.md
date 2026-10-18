@@ -28,7 +28,7 @@ of automatic operator resolutions used before success.
 - default: `""`
 - required: false
 - semantics: validated canonical name of the authored epic
-- verify: json_path(path="$.epic", matches=".+")
+- verify: json_path(path="$.epic", equals="acme-epic")
 - code: `workflows/src/workhorse_workflows/author/epic_author/schemas.py::EpicAuthorDone` @8605f9723870
 - detail: [epic author completion field roles](../concepts/epic-author-done-field-roles.md)
 
@@ -37,7 +37,7 @@ of automatic operator resolutions used before success.
 - default: `""`
 - required: false
 - semantics: canonical directory containing the authored epic
-- verify: json_path(path="$.epic_dir", matches=".+")
+- verify: json_path(path="$.epic_dir", equals="docs/stories/acme-story")
 - code: `workflows/src/workhorse_workflows/author/epic_author/schemas.py::EpicAuthorDone` @8605f9723870
 - detail: [epic author completion field roles](../concepts/epic-author-done-field-roles.md)
 
@@ -55,7 +55,7 @@ of automatic operator resolutions used before success.
 - default: `0`
 - required: false
 - semantics: number of researched seeds present in the completed epic
-- verify: json_path(path="$.seed_count", matches=".+")
+- verify: json_path(path="$.seed_count", matches="^[0-9]+$")
 - code: `workflows/src/workhorse_workflows/author/epic_author/schemas.py::EpicAuthorDone` @8605f9723870
 - detail: [epic author completion field roles](../concepts/epic-author-done-field-roles.md)
 
@@ -64,7 +64,7 @@ of automatic operator resolutions used before success.
 - default: `0`
 - required: false
 - semantics: number of automatic resolution turns used before the successful completion
-- verify: json_path(path="$.operator_resolutions", matches=".+")
+- verify: json_path(path="$.operator_resolutions", matches="^[0-9]+$")
 - code: `workflows/src/workhorse_workflows/author/epic_author/schemas.py::EpicAuthorDone` @8605f9723870
 - tests: `workflows/tests/author/epic_author/test_flow.py::test_block_is_diagnosed_then_retries_the_same_epic`
 - detail: [epic author completion field roles](../concepts/epic-author-done-field-roles.md)

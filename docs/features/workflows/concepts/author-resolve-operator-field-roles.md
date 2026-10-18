@@ -16,8 +16,8 @@ the diagnostic result carries each report field for its named purpose; none is a
 another. The prompt requires the diagnostic investigator to escalate rather than make the
 operator's decision, so `decision` does not select a different resolver outcome.
 
-- code: `workflows/src/workhorse_workflows/author/epic_author/flow.py::EpicAuthor.resolve_epic` @60dae86955d2
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/survey.py::OperatorResolution` @f79c1c007a97
+- code: `workflows/src/workhorse_workflows/author/epic_author/flow.py::EpicAuthor.resolve_epic` @c1d8cb6e5a9a
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/survey.py::OperatorResolution` @7db58efbfd66
 - code: `workflows/src/workhorse_workflows/author/shared/prompts/resolve-operator.md` @21c220fa256c
 - rule: supply the four named resolver inputs together, then interpret each diagnostic report field by its named role; do not substitute or rank fields
 - detail: [operator resolution documentation context](operator-resolution-documentation-context.md)

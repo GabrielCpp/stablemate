@@ -10,7 +10,7 @@ turn, then charges the story only for paths whose bytes changed after that bound
 abandoned work from a previous story out of the current story's documentation and QA obligations.
 The boundary is conservative: unreadable, deleted, malformed, or changed paths are not excused.
 
-- code: `workflows/src/workhorse_workflows/coder/shared/worktree.py::__all__` @b54c182c7423
+- code: `workflows/src/workhorse_workflows/coder/shared/worktree.py::__all__` @db5461fbdd19
 - detail: [Coder story pipeline](story-pipeline.md)
 
 ## Methods
@@ -21,7 +21,7 @@ The boundary is conservative: unreadable, deleted, malformed, or changed paths a
 - verify: json_path(path="$.digest", matches="^[0-9a-f]{64}$")
 - returns: the empty string when the path cannot be read as a file
 - verify: json_path(path="$.digest", equals="")
-- code: `workflows/src/workhorse_workflows/coder/shared/worktree.py::digest` @b54c182c7423
+- code: `workflows/src/workhorse_workflows/coder/shared/worktree.py::digest` @db5461fbdd19
 
 ### untouched_since
 - sig: `untouched_since(root: Path, snapshot: tuple[str, ...]) -> set[str]`
@@ -34,25 +34,48 @@ The boundary is conservative: unreadable, deleted, malformed, or changed paths a
 - does: excludes paths that were edited, deleted, unreadable, or directories
 - verify: count(subject="changed or unreadable paths excused", equals=0)
 - returns: the set of relative paths that remain byte-identical
-- verify: json_path(path="$.untouched", matches=".*")
-- code: `workflows/src/workhorse_workflows/coder/shared/worktree.py::untouched_since` @b54c182c7423
+- verify: json_path(path="$.untouched", equals="example untouched")
+- code: `workflows/src/workhorse_workflows/coder/shared/worktree.py::untouched_since` @db5461fbdd19
 
 ### snapshot_worktree_state
 - sig: `snapshot_worktree_state(logger: logging.Logger, docs_path: str = "", repo_dir: str = "") -> DirtyAtStart`
 - does: resolves the repository root from the documentation and repository path inputs
-- verify: json_path(path="$.root", matches=".+")
+- verify: json_path(path="$.root", equals="docs/stories")
 - does: records modified tracked paths and untracked paths reported by the repository
 - verify: count(subject="pre-existing dirty paths recorded", equals=2)
 - does: stores each readable path as its repository-relative name, a NUL separator, and its SHA-256 digest
-- verify: json_path(path="$.entries", matches=".*")
+- verify: json_path(path="$.entries", equals="example entries")
 - does: sorts and de-duplicates the recorded path entries
 - verify: count(subject="duplicate snapshot entries", equals=0)
 - does: returns an empty entry list when repository state cannot be read
 - verify: count(subject="snapshot entries after repository state read failure", equals=0)
 - returns: a `DirtyAtStart` containing entries and a human-readable note
-- verify: json_path(path="$.notes", matches=".*")
-- code: `workflows/src/workhorse_workflows/coder/shared/worktree.py::snapshot_worktree_state` @b54c182c7423
+- verify: json_path(path="$.notes", equals="Applied the change and ran the gates.")
+- code: `workflows/src/workhorse_workflows/coder/shared/worktree.py::snapshot_worktree_state` @db5461fbdd19
 - tests: `workflows/tests/coder/docs/test_flow.py::test_the_snapshot_records_what_was_already_dirty_with_its_bytes`
+
+### snapshot_code_state
+- sig: `snapshot_code_state(logger: logging.Logger, docs_path: str = "", repo_dir: str = "", workspace_file: str = "") -> PorcelainSnapshot`
+- does: reads `HEAD` and `git status --porcelain` for every workspace repository that is a directory other than the docs root
+- verify: count(subject="code repositories snapshotted", equals=1)
+- does: omits a repository whose `HEAD` or status cannot be read
+- verify: absent(subject="unreadable repositories in the code snapshot")
+- returns: a `PorcelainSnapshot` keyed by absolute repository path
+- verify: json_path(path="$.status", equals="example status")
+- code: `workflows/src/workhorse_workflows/coder/shared/worktree.py::snapshot_code_state` @db5461fbdd19
+- detail: [Worktree snapshot](../formats/worktree-snapshot.md)
+
+### code_changed
+- sig: `code_changed(logger: logging.Logger, before: dict[str, str] | None = None, docs_path: str = "", repo_dir: str = "", workspace_file: str = "") -> CodeChange`
+- does: reads the current state of the code repositories the same way the snapshot did
+- verify: count(subject="code repositories re-read", equals=1)
+- does: reports a change when the current state differs from `before`, including a new commit
+- verify: json_path(path="$.changed", equals=true)
+- does: reports a change when no code repository can be read
+- returns: a `CodeChange`
+- verify: count(subject="code change results", equals=1)
+- code: `workflows/src/workhorse_workflows/coder/shared/worktree.py::code_changed` @db5461fbdd19
+- detail: [Code change result](../formats/code-change.md)
 
 ## Fields
 
@@ -61,13 +84,13 @@ The boundary is conservative: unreadable, deleted, malformed, or changed paths a
 - default: empty list
 - required: false
 - semantics: each item is `<repo-relative path>\0<sha256 of file bytes>` for a path dirty before the story started
-- verify: json_path(path="$.entries", matches=".*")
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/worktree.py::DirtyAtStart.entries` @69b041a7a063
+- verify: json_path(path="$.entries", matches="^\[.*\]$")
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/worktree.py::DirtyAtStart.entries` @67086ecf5f6c
 
 ### notes
 - type: `str`
 - default: empty string
 - required: false
 - semantics: explains the number of recorded paths or why repository state was unavailable
-- verify: json_path(path="$.notes", matches=".*")
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/worktree.py::DirtyAtStart.notes` @69b041a7a063
+- verify: json_path(path="$.notes", equals="Applied the change and ran the gates.")
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/worktree.py::DirtyAtStart.notes` @67086ecf5f6c

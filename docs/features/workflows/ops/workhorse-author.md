@@ -12,7 +12,7 @@ surface is the [workhorse-author CLI](../workhorse-author.md).
 - driver: cli
 - cli: [workhorse-author](../workhorse-author.md)
 - surfaces: [workhorse-author](../workhorse-author.md)
-- code: `workflows/src/workhorse_workflows/author/workflow.py::main` @b5ac6edbcc21
+- code: `workflows/src/workhorse_workflows/author/workflow.py::main` @a375be671123
 - working-directory: .
 
 ## Steps

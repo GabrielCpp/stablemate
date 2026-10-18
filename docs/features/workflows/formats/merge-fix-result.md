@@ -7,7 +7,7 @@ title: Merge fix result
 
 - file: none — an in-memory agent reply consumed by the merge-fix workflow
 - config: none — the status and notes are supplied by the fixing agent
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/pr.py::MergeFixResult` @67ade9b7b377
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/pr.py::MergeFixResult` @b53b8f97caa4
 - detail: [coder main PR boundary](../concepts/coder-main-pr-boundary.md)
 
 The result records the agent's merge-conflict resolution outcome and its explanation. The status
@@ -24,7 +24,7 @@ outcome.
 - semantics: `failed` means this attempt did not finish but another attempt may succeed
 - semantics: `blocked` means resolving requires an operator decision, a history rewrite, or access to an unavailable repository
 - verify: json_path(path="$.status", equals="blocked")
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/pr.py::MergeFixResult.status` @67ade9b7b377
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/pr.py::MergeFixResult.status` @b53b8f97caa4
 
 ### notes
 
@@ -32,5 +32,5 @@ outcome.
 - default: empty string
 - required: false
 - semantics: what was resolved, or on a blocked result the files, unavailable decision, and first attempted action
-- verify: json_path(path="$.notes", matches=".*")
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/pr.py::MergeFixResult.notes` @67ade9b7b377
+- verify: json_path(path="$.notes", equals="Applied the change and ran the gates.")
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/pr.py::MergeFixResult.notes` @b53b8f97caa4

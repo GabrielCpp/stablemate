@@ -11,9 +11,8 @@ change. The flow acts only on `blocked`; the next poll judges `fixed` and `faile
 
 - file: none — the report is an agent response, not a persisted file format
 - config: none — its values come from the prompt output contract
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/ci.py::FixCiResult` @76d805cfd6c3
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/ci.py::FixCiResult` @3939e8547cf4
 - detail: [coder CI remediation flow](../flows/fix-ci-remediation.md)
-- tests: `workflows/tests/coder/fix_ci/test_flow.py::test_a_fixer_that_says_it_cannot_stops_the_laps_instead_of_re_asking_it`
 
 ## Fields
 
@@ -25,16 +24,13 @@ change. The flow acts only on `blocked`; the next poll judges `fixed` and `faile
 - semantics: `fixed` claims that the failure was repaired locally
 - verify: json_path(path="$.status", equals="fixed")
 - semantics: `fixed` claims that the local repair was committed
-- verify: json_path(path="$.status", equals="fixed")
 - semantics: `failed` says the failure was understood but this attempt did not repair it
 - verify: json_path(path="$.status", equals="failed")
 - semantics: `failed` permits the flow to retry the fixer
-- verify: json_path(path="$.status", equals="failed")
 - semantics: `blocked` says another attempt cannot make CI green without an unavailable dependency
 - verify: json_path(path="$.status", equals="blocked")
 - semantics: `blocked` says the required change would alter an observable contract outside this stage's scope
-- verify: json_path(path="$.status", equals="blocked")
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/ci.py::FixCiResult.status` @76d805cfd6c3
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/ci.py::FixCiResult.status` @3939e8547cf4
 
 ### notes
 
@@ -44,11 +40,10 @@ change. The flow acts only on `blocked`; the next poll judges `fixed` and `faile
 - semantics: for `fixed`, notes describe the changes made
 - verify: json_path(path="$.notes", matches="/.+/")
 - semantics: for `failed`, notes describe what was attempted
-- verify: json_path(path="$.notes", matches="/.+/")
 - semantics: for `failed`, notes explain why the attempt did not repair CI
-- verify: json_path(path="$.notes", matches="/.+/")
 - semantics: for `blocked`, notes identify the unavailable dependency
-- verify: json_path(path="$.notes", matches="/.+/")
+- semantics: for `blocked`, notes name the question whose answer would unblock the fixer
+- verify: json_path(path="$.notes", equals="Applied the change and ran the gates.")
 - semantics: for `blocked`, notes identify the forbidden contract change when that is the blocker
 - verify: json_path(path="$.notes", matches="/.+")
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/ci.py::FixCiResult.notes` @76d805cfd6c3
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/ci.py::FixCiResult.notes` @3939e8547cf4

@@ -5,16 +5,16 @@ title: Coder review shared nodes
 ---
 # Coder review shared nodes
 
-The shared review module supplies deterministic setup, cycle cleanup, settlement verification, and
-non-blocking operator feedback. It resolves review inputs once, passes the resolved context to
-review turns, and treats the settlement ledger rather than an apply turn's claimed status as the
-authority for whether findings are complete.
+The shared review module supplies the deterministic work around the dev owner's review: where the
+review turns read, whether a fix's cited evidence holds up, the settlement of filed findings, and
+the non-blocking operator feedback the QA check polls. It treats the settlement ledger and the
+evidence the owner cites, not the owner's claimed status, as the authority for whether a finding is
+settled.
 
-- code: `workflows/src/workhorse_workflows/coder/shared/review.py::__all__` @8b413c3466c1
-- detail: [coder review flow](../flows/coder-review.md)
+- code: `workflows/src/workhorse_workflows/coder/shared/review.py::__all__` @c34a4c146a18
 - detail: [coder review context](../formats/review-context.md)
 - detail: [coder review feedback](../formats/review-feedback.md)
-- detail: [coder implementation result](../formats/impl-result.md)
+- detail: [settlement](../formats/settlement.md)
 
 ## Methods
 
@@ -22,58 +22,45 @@ authority for whether findings are complete.
 
 - sig: `resolve_review_context(logger, spec_dir="", repo="", docs_path="", repo_dir="", workspace_file="") -> ReviewContext`
 - does: resolves the documentation repository from `docs_path` and `repo_dir`
-- verify: json_path(path="$.docs_repo_path", matches=".+")
+- verify: json_path(path="$.docs_repo_path", equals="docs/stories/acme-story/story.md")
 - does: loads `plan-context.json` from the resolved story spec directory when `spec_dir` is non-empty
 - verify: count(subject="review plan-context reads", equals=1)
 - does: resolves workspace repository records from `workspace_file`, falling back to `repo_dir` as a single repository
 - verify: count(subject="review workspace resolutions", equals=1)
 - does: selects the explicitly named `repo` as the affected set when no plan context exists
-- verify: json_path(path="$.affected_repo_paths", matches=".+")
+- verify: json_path(path="$.affected_repo_paths", equals="example affected repo paths")
 - does: otherwise selects the deduplicated repositories named by plan services
-- verify: json_path(path="$.affected_repo_paths", matches=".+")
 - returns: a `ReviewContext` whose `docs_repo_path` is the judging working directory
-- verify: json_path(path="$.docs_repo_path", matches=".+")
 - returns: a `ReviewContext` whose `affected_repo_paths` contains the selected code repository paths
-- verify: json_path(path="$.affected_repo_paths", matches=".+")
-- code: `workflows/src/workhorse_workflows/coder/shared/review.py::resolve_review_context` @8b413c3466c1
-- tests: `workflows/tests/coder/review/test_flow.py::test_an_approved_review_stamps_the_specs_and_stops`
-- tests: `workflows/tests/coder/review/test_flow.py::test_an_explicit_repo_is_the_whole_affected_set`
+- code: `workflows/src/workhorse_workflows/coder/shared/review.py::resolve_review_context` @c34a4c146a18
 
-### clear_review_resolution
+### evidence_gap
 
-- sig: `clear_review_resolution(logger, spec_dir="", story_slug="") -> ImplResult`
-- does: returns an applied result without deleting files when `story_slug` is empty
-- verify: json_path(path="$.status", equals="applied")
-- does: deletes the current cycle's `review-resolution.json` when it exists under `spec_dir`
-- verify: removed(subject="the stale review-resolution.json sidecar")
-- does: deletes the current cycle's `review-settlement.json` when it exists under `spec_dir`
-- verify: removed(subject="the stale review-settlement.json sidecar")
-- returns: an applied `ImplResult` whose notes list the sidecar filenames that were cleared
-- verify: json_path(path="$.status", equals="applied")
-- code: `workflows/src/workhorse_workflows/coder/shared/review.py::clear_review_resolution` @8b413c3466c1
-- tests: `workflows/tests/coder/review/test_flow.py::test_a_previous_cycles_settlement_cannot_settle_this_ones_findings`
+- sig: `evidence_gap(answer: dict, repos: list[str], changed: dict[str, list[str]]) -> str`
+- does: names the first cited commit that exists in none of the story's code repositories
+- verify: json_path(path="$", matches="^commit [0-9a-f]+ is in none of the story's code repos$")
+- does: names the first cited path that is not among the files the story changed
+- verify: json_path(path="$", matches="^path .+ is not among the files this story changed in its code repos$")
+- does: names the first cited test that appears in no file the story changed
+- verify: json_path(path="$", matches="^test .+ appears in no file this story changed$")
+- returns: an empty string when every citation holds
+- verify: json_path(path="$", equals="")
+- code: `workflows/src/workhorse_workflows/coder/shared/review.py::evidence_gap` @c34a4c146a18
 
-### verify_review_resolution
+### settle_findings
 
-- sig: `verify_review_resolution(logger, spec_dir="", docs_path="", story_slug="", repo_dir="") -> ImplResult`
-- does: returns `needs_changes` when `story_slug` is empty or `review-resolution.json` is absent
-- verify: json_path(path="$.status", equals="needs_changes")
-- does: runs Ostler settlement verification against the story's resolution sidecar and writes the settlement ledger
+- sig: `settle_findings(logger, docs_path="", story_slug="", story_id="", filed=None, repos=None, repo_dir="") -> Settlement`
+- does: settles the filed finding ids against the dev owner's answer list through Ostler and writes the settlement ledger
 - verify: persists(subject="the review settlement ledger")
-- does: returns `needs_changes` when Ostler reports a settlement error
-- verify: json_path(path="$.status", equals="needs_changes")
-- does: returns `needs_changes` when the settlement ledger cannot be read after settlement
-- verify: json_path(path="$.status", equals="needs_changes")
-- does: returns `blocked` when the settlement ledger reports an unresolvable finding
-- verify: json_path(path="$.status", equals="blocked")
-- does: returns `applied` when every finding in the settlement ledger is verified
-- verify: json_path(path="$.status", equals="applied")
-- does: returns `needs_changes` when any finding remains open or its proof is missing or wrong
-- verify: json_path(path="$.status", equals="needs_changes")
-- code: `workflows/src/workhorse_workflows/coder/shared/review.py::verify_review_resolution` @8b413c3466c1
-- tests: `workflows/tests/coder/review/test_flow.py::test_the_settlement_gate_overrules_an_unproven_applied_claim`
-- tests: `workflows/tests/coder/review/test_flow.py::test_a_story_with_no_verdict_sidecar_is_re_applied_not_believed`
-- tests: `workflows/tests/coder/review/test_flow.py::test_a_blocked_settlement_escalates_without_spending_the_budget`
+- does: commits the ledger as a `docs` commit when it lies inside the documentation repository
+- verify: count(subject="review settlement commits", equals=1)
+- does: moves a fixed answer to `rejected` with its evidence gap when its cited evidence does not hold
+- verify: json_path(path="$.rejected", equals="{}")
+- does: lists a finding as open when the ledger leaves it open or its evidence is rejected
+- verify: json_path(path="$.open", equals="[]")
+- returns: a `Settlement` of the settled, declined, open and rejected findings with the ledger's errors
+- verify: json_path(path="$.settled", equals="[]")
+- code: `workflows/src/workhorse_workflows/coder/shared/review.py::settle_findings` @c34a4c146a18
 
 ### check_feedback
 
@@ -88,5 +75,5 @@ authority for whether findings are complete.
 - verify: json_path(path="$.present", equals=true)
 - returns: a `Feedback` with only `present` and `content` fields, without the inbox message scope
 - verify: json_path(path="$.scope", absent=true)
-- code: `workflows/src/workhorse_workflows/coder/shared/review.py::check_feedback` @8b413c3466c1
+- code: `workflows/src/workhorse_workflows/coder/shared/review.py::check_feedback` @c34a4c146a18
 - tests: `workflows/tests/coder/qa/test_flow.py::test_a_dropped_operator_note_buys_exactly_one_re_qa`

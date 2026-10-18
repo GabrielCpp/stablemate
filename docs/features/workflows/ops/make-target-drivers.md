@@ -6,7 +6,7 @@ title: Make-target drivers
 # Make-target drivers
 
 - driver: cli
-- code: `Makefile::install` @c74907b180b7
+- code: `Makefile::install` @7a5a93a6fb1b
 - working-directory: .
 
 This runbook documents the repository's Make-driven operational interface. The workspace
@@ -71,7 +71,15 @@ status stops the target and its dependent target chain.
 - kind: run
 - run: `make test`
 - working-directory: .
-- produces: aggregate package-test and repository-guard results
+- produces: lint results and the test results of every package suite, the repository guards run as their own targets
+- verify: [workspace Makefile](../../../../Makefile)
+
+### test-release-gate
+
+- kind: run
+- run: `make test-release`
+- working-directory: .
+- produces: lint results and the test results of the core, workhorse, workflows, ostler, farrier, groom and stablemate suites that a release ships
 - verify: [workspace Makefile](../../../../Makefile)
 
 ### benchmark-doctor
@@ -200,7 +208,7 @@ status stops the target and its dependent target chain.
 - kind: run
 - run: `make build`
 - working-directory: .
-- produces: package source distributions and wheels in each published package's `dist/` directory
+- produces: package source distributions and wheels, including the groom and stablemate packages, in each published package's `dist/` directory
 - verify: [workspace Makefile](../../../../Makefile)
 
 ### show-versions
@@ -208,7 +216,7 @@ status stops the target and its dependent target chain.
 - kind: run
 - run: `make version`
 - working-directory: .
-- produces: the declared version of every published package
+- produces: the declared version of every published package, including groom and stablemate
 - verify: [workspace Makefile](../../../../Makefile)
 
 ### dispatch-release

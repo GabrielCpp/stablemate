@@ -5,7 +5,7 @@ title: Survey record check
 ---
 # Survey record check
 
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/survey.py::RecordCheck` @f79c1c007a97
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/survey.py::RecordCheck` @7db58efbfd66
 - detail: [shared survey library](../concepts/survey-shared-library.md)
 
 The deterministic validation outcome for one finding record.
@@ -18,7 +18,7 @@ The deterministic validation outcome for one finding record.
 - required: false
 - semantics: whether the selected unit's record is complete and internally consistent
 - verify: json_path(path="$.record_ok", equals=false)
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/survey.py::RecordCheck` @f79c1c007a97
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/survey.py::RecordCheck` @7db58efbfd66
 - detail: [record check field roles](../concepts/record-check-field-roles.md)
 
 ### record_errors
@@ -26,6 +26,6 @@ The deterministic validation outcome for one finding record.
 - default: empty string
 - required: false
 - semantics: diagnostic validation errors for the record
-- verify: json_path(path="$.record_errors", matches=".*")
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/survey.py::RecordCheck` @f79c1c007a97
+- verify: json_path(path="$.record_errors", equals="example record errors")
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/survey.py::RecordCheck` @7db58efbfd66
 - detail: [record check field roles](../concepts/record-check-field-roles.md)

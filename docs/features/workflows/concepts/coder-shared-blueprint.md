@@ -10,7 +10,7 @@ decorate their callables against this object, while the Coder workflow compositi
 same blueprint to its registry. Keeping the object in this standalone module lets node modules
 import it without importing the package that assembles them.
 
-- code: `workflows/src/workhorse_workflows/coder/shared/blueprint.py::blueprint` @aca0e471cc8b
+- code: `workflows/src/workhorse_workflows/coder/shared/blueprint.py::blueprint` @0cbd22929b3f
 
 The module constructs the blueprint with the name `coder` and exports that singleton as its only
 public module export. The imported `Blueprint` implementation belongs to the Workhorse dependency

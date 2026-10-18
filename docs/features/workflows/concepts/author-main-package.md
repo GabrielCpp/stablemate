@@ -19,12 +19,10 @@ gates](author-artifact-gates.md). Story registration, validation, feedback, and 
 documented in the [Author main story processing](author-main-story-processing.md) concept. The package's explicit re-export
 surface is recorded in [Author main node exports](author-main-node-exports.md).
 
-- code: `workflows/src/workhorse_workflows/author/main/flow.py` @cd2d7de1ac05
-- code: `workflows/src/workhorse_workflows/author/main/flow.py::Author` @cd2d7de1ac05
-- code: `workflows/src/workhorse_workflows/author/main/__init__.py::__getattr__` @992f57ce25ed
-- code: `workflows/src/workhorse_workflows/author/main/nodes/_blueprint.py::blueprint` @6a9a28e94866
-- code: `workflows/tests/author/test_workflow.py::test_every_flat_stage_is_directly_registered`
-- code: `workflows/tests/author/test_workflow.py::test_the_labels_name_the_story_and_the_epic.capture`
+- code: `workflows/src/workhorse_workflows/author/main/flow.py` @d4f96f573f8e
+- code: `workflows/src/workhorse_workflows/author/main/flow.py::Author` @d4f96f573f8e
+- code: `workflows/src/workhorse_workflows/author/main/__init__.py::__getattr__` @b16a7b4233aa
+- code: `workflows/src/workhorse_workflows/author/main/nodes/_blueprint.py::blueprint` @29102aa5dc01
 - tests: `workflows/tests/author/test_workflow.py::test_every_flat_stage_is_directly_registered`
 - detail: [author main composition layers](author-main-composition-layers.md)
 - detail: [author schemas exports](author-schemas-exports.md)
@@ -39,7 +37,7 @@ surface is recorded in [Author main node exports](author-main-node-exports.md).
 - verify: absent(subject="an undeclared main package export")
 - returns: the `Author` workflow class for the declared `Author` attribute
 - verify: count(subject="resolved Author workflow classes", equals=1)
-- code: `workflows/src/workhorse_workflows/author/main/__init__.py::__getattr__` @992f57ce25ed
+- code: `workflows/src/workhorse_workflows/author/main/__init__.py::__getattr__` @b16a7b4233aa
 
 ### blueprint
 - sig: `Blueprint("author") -> Blueprint`
@@ -47,4 +45,4 @@ surface is recorded in [Author main node exports](author-main-node-exports.md).
 - verify: count(subject="main Author blueprints", equals=1)
 - returns: a blueprint named `author`
 - verify: json_path(path="$.name", equals="author")
-- code: `workflows/src/workhorse_workflows/author/main/nodes/_blueprint.py::blueprint` @6a9a28e94866
+- code: `workflows/src/workhorse_workflows/author/main/nodes/_blueprint.py::blueprint` @29102aa5dc01

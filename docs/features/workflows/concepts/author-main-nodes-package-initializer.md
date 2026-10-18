@@ -18,7 +18,7 @@ is isolated in a submodule to break circular import cycles: subject modules impo
 register themselves, so the blueprint cannot import them back.
 
 - code: `workflows/src/workhorse_workflows/author/main/nodes/__init__.py` @71db78d78b3d
-- code: `workflows/src/workhorse_workflows/author/main/nodes/_blueprint.py::blueprint` @6a9a28e94866
+- code: `workflows/src/workhorse_workflows/author/main/nodes/_blueprint.py::blueprint` @29102aa5dc01
 - tests: `workflows/tests/author/test_workflow.py::test_every_flat_stage_is_directly_registered`
 - detail: [author main node exports](author-main-node-exports.md)
 - detail: [author main package](author-main-package.md)
@@ -29,7 +29,7 @@ register themselves, so the blueprint cannot import them back.
 ### blueprint
 - type: `Blueprint`
 - semantics: the registration point for the deterministic nodes only the main author flow calls
-- code: `workflows/src/workhorse_workflows/author/main/nodes/_blueprint.py::blueprint` @6a9a28e94866
+- code: `workflows/src/workhorse_workflows/author/main/nodes/_blueprint.py::blueprint` @29102aa5dc01
 
 ## Subject modules
 

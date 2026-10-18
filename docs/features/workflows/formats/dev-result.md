@@ -1,14 +1,15 @@
 ---
 type: format
 slug: dev-result
-title: Coder development result
+title: Coder development outcome
 ---
-# Coder development result
+# Coder development outcome
 
 - file: none — in-memory development-flow result
-- config: `DevResult` parent-flow handoff
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/dev.py::DevResult` @b6e19c205b4f
+- config: `DevOutcome` parent-flow handoff
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/dev_story.py::DevOutcome` @b990c5de7212
 - detail: [coder development schema contracts](../concepts/coder-dev-schema-contracts.md)
+- detail: [coder development story result](dev-story-result.md)
 
 ## Fields
 
@@ -18,20 +19,28 @@ title: Coder development result
 - required: false
 - semantics: whether development is ready for the next lane or requires replanning
 - verify: json_path(path="$.status", matches="ready|replan")
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/dev.py::DevResult.status` @b6e19c205b4f
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/dev_story.py::DevOutcome.status` @b990c5de7212
 
 ### operator_notes
 - type: `str`
 - default: empty string
 - required: false
 - semantics: operator answer text passed back to the parent flow
-- verify: json_path(path="$.operator_notes", matches=".*")
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/dev.py::DevResult.operator_notes` @b6e19c205b4f
+- verify: json_path(path="$.operator_notes", equals="Applied the change and ran the gates.")
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/dev_story.py::DevOutcome.operator_notes` @b990c5de7212
 
-### session_turns
-- type: `int`
-- default: `0`
+### settled
+- type: list of `str`
+- default: empty list
 - required: false
-- semantics: conversation turns spent when the development flow ended
-- verify: json_path(path="$.session_turns", matches="[0-9]+")
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/dev.py::DevResult.session_turns` @b6e19c205b4f
+- semantics: ids of review findings the settlement ledger holds as fixed with evidence
+- verify: json_path(path="$.settled", matches="^\\[.*\\]$")
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/dev_story.py::DevOutcome.settled` @b990c5de7212
+
+### declined
+- type: list of `str`
+- default: empty list
+- required: false
+- semantics: ids of review findings the dev owner declined with a reason
+- verify: json_path(path="$.declined", matches="^\\[.*\\]$")
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/dev_story.py::DevOutcome.declined` @b990c5de7212

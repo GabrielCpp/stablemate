@@ -5,7 +5,7 @@ title: Workflow kit external tools
 ---
 # Workflow kit external tools
 
-- code: `workflows/src/workhorse_workflows/kit/tools.py::run_tool` @4a5bac57a00b
+- code: `workflows/src/workhorse_workflows/kit/tools.py::run_tool` @5a3fc2691e18
 - extends:
 - rule:
 - prefers:
@@ -28,9 +28,9 @@ The genesis workflow patches this callable at its module boundary with a canned
 - verify: exit_status(code=0)
 - does: runs the child with the supplied `cwd`, or inherits the caller's working directory when `cwd` is `None`
 - does: captures standard output as text
-- verify: json_path(path="return.stdout", matches=".*")
+- verify: json_path(path="return.stdout", equals="example stdout")
 - does: captures standard error as text
-- verify: json_path(path="return.stderr", matches=".*")
+- verify: json_path(path="return.stderr", equals="example stderr")
 - does: returns normally for the child's non-zero status when `check` is `False`
 - verify: json_path(path="return.returncode", equals=1)
 - does: for a supplied logger on checked command `example arg` that exits with status `1`, logs the command
@@ -43,7 +43,7 @@ The genesis workflow patches this callable at its module boundary with a canned
 - verify: exit_status(code=1)
 - raises: propagates operating-system or process-launch errors from the subprocess invocation
 - returns: the `subprocess.CompletedProcess` for the child, including its arguments, return code, captured text standard output, and captured text standard error
-- code: `workflows/src/workhorse_workflows/kit/tools.py::run_tool` @4a5bac57a00b
+- code: `workflows/src/workhorse_workflows/kit/tools.py::run_tool` @5a3fc2691e18
 - detail:
 - fixture:
 - tests: `workflows/tests/coder/genesis/test_flow.py::test_a_bare_directory_becomes_a_repo_the_main_loop_will_accept`

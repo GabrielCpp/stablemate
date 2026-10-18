@@ -6,16 +6,14 @@ title: Coder fix-ci package
 # Coder fix-ci package
 
 The `fix-ci` machine checks the configured epic branch in workspace repositories against CI
-gates and repairs failures. It is a sub-flow entered by the Coder main flow after story
-implementation and documentation pass, and can also be run directly with `workhorse-coder run fix-ci`.
+gates and repairs failures. It is a sub-flow entered by the Coder main flow in its ship lane, and can also be run directly with `workhorse-coder run fix-ci`.
 
-The flow polls CI for each repository branch, accumulates failed checks, and offers bounded repair
-cycles for each failure. Repositories are processed in manifest order, and gate failures are
-persisted for operator inspection when repair exhausts its budget. The flow returns all CI
-remediation results collected during the run.
+The flow polls CI for each repository branch, runs bounded owner repair turns for each failure,
+and merges the epic's pull request once every repository is read when it is given a base.
+Repositories are processed in manifest order, and a block that the resolver cannot answer is
+persisted as an operator gate. The flow returns the last CI verdict with a summary of the run.
 
-- code: `workflows/src/workhorse_workflows/coder/fix_ci/flow.py` @7c21c0a5f55c
-- code: `workflows/src/workhorse_workflows/coder/fix_ci/flow.py::FixCi` @7c21c0a5f55c
-- tests: `workflows/tests/coder/test_fix_ci.py`
+- code: `workflows/src/workhorse_workflows/coder/fix_ci/flow.py` @a82754789574
+- code: `workflows/src/workhorse_workflows/coder/fix_ci/flow.py::FixCi` @a82754789574
 - detail: [CI gating helpers](ci-gating.md)
 

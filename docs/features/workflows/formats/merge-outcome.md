@@ -7,7 +7,7 @@ title: Merge outcome result
 
 - file: none — an in-memory result returned between coder workflow nodes
 - config: none — its values are produced by the merge operation
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/pr.py::MergeOutcome` @67ade9b7b377
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/pr.py::MergeOutcome` @b53b8f97caa4
 - detail: [coder main PR boundary](../concepts/coder-main-pr-boundary.md)
 
 The result distinguishes a landed merge from a merge that could not be attempted and one that was
@@ -24,7 +24,7 @@ attempted but failed. Python defaults an unanswered result to the pessimistic `f
 - semantics: `unavailable` means no usable remote operation or open PR existed
 - semantics: `failed` means a merge was attempted and did not land
 - verify: json_path(path="$.merge_status", equals="failed")
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/pr.py::MergeOutcome.merge_status` @67ade9b7b377
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/pr.py::MergeOutcome.merge_status` @b53b8f97caa4
 
 ### base_branch
 
@@ -32,5 +32,5 @@ attempted but failed. Python defaults an unanswered result to the pessimistic `f
 - default: empty string
 - required: false
 - semantics: the base branch targeted by the merge attempt
-- verify: json_path(path="$.base_branch", matches=".*")
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/pr.py::MergeOutcome.base_branch` @67ade9b7b377
+- verify: json_path(path="$.base_branch", equals="story/acme-story")
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/pr.py::MergeOutcome.base_branch` @b53b8f97caa4

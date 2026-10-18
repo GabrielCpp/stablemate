@@ -8,16 +8,13 @@ title: Coder documentation schemas
 - The documentation lane's typed values cross deterministic nodes, agent turns, and checkpointed
   state. Agent replies use closed status vocabularies where an omitted decision must be invalid;
   Python-produced results use pessimistic defaults so an absent result cannot imply success.
-- `DocsProgress` records the last decision and outstanding identities for each independent gate
-  lane. `DocsLoop` carries the repair counters, notes, obligations, authored node identities, and
-  progress bundle across resumes.
+- One owner turn replies with a `DocumentationResult`. The deterministic gate answers with a
+  `DocumentationGate`, and the flow ends with a `DocsResult`.
 
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/docs.py::__all__` @89d705a1dfe2
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/docs.py::DocsStatus` @89d705a1dfe2
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/docs.py::__all__` @61c0c6e9cae9
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/docs.py::DocsStatus` @61c0c6e9cae9
 - detail: [Coder story pipeline](story-pipeline.md)
 - detail: [Coder documentation flow](../flows/coder-docs.md)
-- tests: `workflows/tests/coder/docs/test_flow.py::test_a_failed_gate_reworks_before_the_reviewer_ever_runs`
-- tests: `workflows/tests/coder/test_telemetry.py::test_docs_reports_its_gates_and_whether_the_rework_bought_anything`
 
 ## Models
 
@@ -26,31 +23,35 @@ title: Coder documentation schemas
 - does: reports whether the repository has a usable OKF graph
 - verify: json_path(path="$.has_okf", matches="^(yes|no|invalid)$")
 - does: carries the detected features root
-- verify: json_path(path="$.features_root", matches=".*")
+- verify: json_path(path="$.features_root", equals="docs/stories")
 - does: carries the detection reason
-- verify: json_path(path="$.reason", matches=".*")
+- verify: json_path(path="$.reason", equals="The slice works without it.")
 - returns: a CoderResult whose default `has_okf` is `no`, so no decision cannot enter documentation
 - verify: json_path(path="$.has_okf", equals="no")
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/docs.py::OkfDetection` @89d705a1dfe2
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/docs.py::OkfDetection` @61c0c6e9cae9
 
 ### method: ContextClassification
 - sig: `ContextClassification(mode: Literal["local", "semantic", "error"] = "semantic", source_roots: list[str] = [], notes: str = "") -> ContextClassification`
 - does: classifies documentation grounding as local, semantic, or an unreadable error
+- verify: json_path(path="$.mode", matches="^(local|semantic|error)$")
 - returns: the source roots used for classification
-- verify: json_path(path="$.source_roots", matches=".*")
+- verify: json_path(path="$.source_roots", equals="example source roots")
 - returns: classification notes alongside the mode
-- verify: json_path(path="$.notes", matches=".*")
+- verify: json_path(path="$.notes", equals="Mapped the diff to two source roots.")
+- returns: the semantic mode by default, so an absent classification asks for review
 - verify: json_path(path="$.mode", equals="semantic")
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/docs.py::ContextClassification` @89d705a1dfe2
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/docs.py::ContextClassification` @61c0c6e9cae9
 
 ### method: DocumentationResult
 - sig: `DocumentationResult(status: Literal["documented", "not_required", "blocked"], nodes: list[str] = [], notes: str = "") -> DocumentationResult`
 - does: carries an agent's documentation decision, touched node identities, and explanation
+- does: reserves `not_required` for a story whose changed production files were already directly grounded and changed no observable contract
+- verify: json_path(path="$.nodes", equals="[]")
 - returns: only one of documented, not_required, or blocked
 - verify: json_path(path="$.status", matches="^(documented|not_required|blocked)$")
 - returns: status is required and has no default
 - verify: json_path(path="exception.type", equals="ValidationError")
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/docs.py::DocumentationResult` @89d705a1dfe2
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/docs.py::DocumentationResult` @61c0c6e9cae9
 
 ### method: DocumentationGate
 - sig: `DocumentationGate(status: Literal["passed", "invalid"] = "invalid", notes: str = "", changed_code_count: int = 0, doctor_error_count: int = 0, failures: list[str] = []) -> DocumentationGate`
@@ -59,115 +60,21 @@ title: Coder documentation schemas
 - does: carries changed-code and doctor-error diagnostics
 - verify: json_path(path="$.changed_code_count", matches="^[0-9]+$")
 - does: carries stable failure identities
-- verify: json_path(path="$.failures", matches=".*")
+- verify: json_path(path="$.failures", equals="example failures")
 - returns: an invalid gate by default so an absent gate cannot approve documentation
 - verify: json_path(path="$.status", equals="invalid")
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/docs.py::DocumentationGate` @89d705a1dfe2
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/docs.py::DocumentationGate` @61c0c6e9cae9
 
 ### method: DocumentationObligations
 - sig: `DocumentationObligations(refs: list[str] = [], notes: str = "") -> DocumentationObligations`
 - does: carries changed production references not yet owned by an OKF code bullet
 - returns: the grounding worklist and an explanation when it could not be computed
-- verify: json_path(path="$.refs", matches=".*")
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/docs.py::DocumentationObligations` @89d705a1dfe2
-
-### method: DocumentationFinding
-- sig: `DocumentationFinding(id: str = "", kind: Literal["node-type", "missing-node", "flow-coverage", "overclaim", "bullet-granularity", "grounding", "verify-overclaim", "author-decision"], target: str = "", issue: str = "", repair: str = "") -> DocumentationFinding`
-- does: identifies one semantic documentation defect and its actionable target and repair
-- returns: a finding with a closed defect kind and stable id
-- verify: json_path(path="$.kind", matches=".+")
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/docs.py::DocumentationFinding` @89d705a1dfe2
-
-### method: DocumentationReview
-- sig: `DocumentationReview(status: Literal["approved", "revise", "blocked"], findings: list[DocumentationFinding] = [], notes: str = "") -> DocumentationReview`
-- does: carries the independent review disposition and structured findings
-- returns: an approved, revise, or blocked review
-- verify: json_path(path="$.status", matches="^(approved|revise|blocked)$")
-- returns: status has no default
-- verify: json_path(path="exception.type", equals="ValidationError")
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/docs.py::DocumentationReview` @89d705a1dfe2
-
-### method: DocsProgress
-- sig: `DocsProgress(gate_verdict: Literal["", "passed", "invalid"] = "", review_disposition: Literal["", "approved", "revise", "blocked"] = "", gate_progress_verdict: ProgressVerdict | Literal[""] = "", review_progress_verdict: ProgressVerdict | Literal[""] = "", gate_failures: int = 0, review_findings: int = 0, gate_ids: list[str] = [], review_ids: list[str] = [], chain_laps: int = 0) -> DocsProgress`
-- does: records the latest gate and review decisions
-- verify: json_path(path="$.gate_verdict", matches=".*")
-- does: records failure and finding counts
-- verify: json_path(path="$.gate_failures", matches="^[0-9]+$")
-- does: records failing identities and repair-chain laps
-- verify: json_path(path="$.gate_ids", matches=".*")
-- returns: a checkpointable progress value with empty verdicts and zero counts before either lane runs
-- verify: json_path(path="$.chain_laps", equals=0)
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/docs.py::DocsProgress` @89d705a1dfe2
-
-### method: DocsLoop
-- sig: `DocsLoop(rework: int = 0, review_rework: int = 0, blocks: int = 0, gate_notes: str = "", review_notes: str = "", obligations: tuple[str, ...] = (), authored_nodes: tuple[str, ...] = (), progress: DocsProgress = DocsProgress(), overruns: int = 0) -> DocsLoop`
-- does: carries documentation repair inputs across resumed passes
-- verify: json_path(path="$.obligations", matches=".*")
-- does: carries repair counters across resumed passes
-- verify: json_path(path="$.rework", matches="^[0-9]+$")
-- returns: a state bundle with zero counters, empty worklists, and fresh progress by default
-- verify: json_path(path="$.rework", equals=0)
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/docs.py::DocsLoop` @89d705a1dfe2
-
-### method: RepairOverran
-- sig: `RepairOverran(status: Literal["overran"] = "overran", lap: int = 0, notes: str = "") -> RepairOverran`
-- does: records that a repair turn exceeded its wall-clock budget without fabricating an author result
-- returns: an overran marker with the lap number and notice
-- verify: json_path(path="$.status", equals="overran")
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/docs.py::RepairOverran` @89d705a1dfe2
+- verify: json_path(path="$.refs", equals="example refs")
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/docs.py::DocumentationObligations` @61c0c6e9cae9
 
 ### method: DocsResult
 - sig: `DocsResult(status: DocsStatus = "failed", notes: str = "", authored_nodes: list[str] = []) -> DocsResult`
 - does: reports the documentation subflow's passed, not_applicable, blocked, or pessimistic failed outcome
 - returns: the terminal status, notes, and accumulated authored node identities
 - verify: json_path(path="$.status", equals="failed")
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/docs.py::DocsResult` @89d705a1dfe2
-
-## Methods
-
-### after_gate
-- sig: `DocsProgress.after_gate(gate: DocumentationGate) -> DocsProgress`
-- does: records the gate status and failure count
-- verify: json_path(path="$.gate_verdict", matches=".*")
-- does: computes progress against the prior failure identities
-- verify: json_path(path="$.gate_progress_verdict", matches=".*")
-- does: replaces the gate identity baseline
-- verify: json_path(path="$.gate_ids", matches=".*")
-- does: blanks the verdict, failures, and identity baseline together when the gate passes, so a later span cannot claim a `gate_progress_verdict` of `cleared` against identities that have already been closed
-- returns: a copied progress value containing the current gate decision
-- verify: json_path(path="$.gate_failures", equals=0)
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/docs.py::DocsProgress.after_gate` @89d705a1dfe2
-- code: `workflows/tests/coder/docs/test_flow.py::test_grounding_gate_budget_routes_directly`
-- tests: `workflows/tests/coder/test_telemetry.py::test_the_gate_verdict_is_forgotten_with_the_failures_it_summarises`
-
-### after_review
-- sig: `DocsProgress.after_review(review: DocumentationReview) -> DocsProgress`
-- does: records the review disposition and finding count, retaining finding identities only for revise
-- does: leaves no worklist behind when the review is `approved` or `blocked`, since both end the flow and any attached findings exist only to explain that terminal decision
-- returns: a copied progress value containing the current review decision
-- verify: json_path(path="$.review_findings", equals=0)
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/docs.py::DocsProgress.after_review` @89d705a1dfe2
-- code: `workflows/tests/coder/docs/test_flow.py::test_reviewer_budget_routes_directly`
-- tests: `workflows/tests/coder/test_telemetry.py::test_only_a_revise_leaves_a_worklist_for_the_next_pass`
-
-## Fields
-
-### field: DocsProgress.VERDICT_LABELS
-- type: tuple of strings
-- semantics: the four progress-bundle field names emitted under the `docs.` prefix as verdict-group span dimensions
-- semantics: every name ends in a suffix `groom profile` recognises as a verdict dimension (`_verdict`, `_disposition`, `_failure_class`, `_refutation_class`), so a label cannot drift into the catch-all bucket that the dashboard would silently leave unrendered
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/docs.py::DocsProgress.VERDICT_LABELS` @89d705a1dfe2
-
-### field: DocsProgress.COUNT_LABELS
-- type: tuple of strings
-- semantics: the two progress-bundle field names emitted under the `docs.` prefix as attempt-group span dimensions
-- semantics: each name is a non-negative count of what a pass left outstanding rather than a signed delta, because `groom profile` classifies an attempt dimension with `str.isdigit` and a negative value would silently render nowhere
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/docs.py::DocsProgress.COUNT_LABELS` @89d705a1dfe2
-- tests: `workflows/tests/coder/test_telemetry.py::test_every_docs_label_lands_in_a_groom_profile_bucket`
-
-### field: DocsLoop.COUNT_LABELS
-- type: tuple of strings
-- semantics: the four bundle field names emitted under the `docs.` prefix as attempt-group span dimensions
-- semantics: bare names here, with `Docs.state_labels` supplying the `docs.` prefix at emission time
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/docs.py::DocsLoop.COUNT_LABELS` @89d705a1dfe2
-- tests: `workflows/tests/coder/test_telemetry.py::test_docs_reports_its_gates_and_whether_the_rework_bought_anything`
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/docs.py::DocsResult` @61c0c6e9cae9

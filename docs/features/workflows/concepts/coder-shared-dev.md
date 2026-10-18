@@ -8,8 +8,7 @@ title: Coder shared development helpers
 - code: `workflows/src/workhorse_workflows/coder/shared/dev.py::__all__` @9b78ee9ed6fb
 - code: `workflows/src/workhorse_workflows/coder/shared/provenance.py::__all__` @85eef7ecc7cf
 - code: `workflows/src/workhorse_workflows/coder/shared/service_gates.py::__all__` @2473c5163f54
-- code: `workflows/src/workhorse_workflows/coder/shared/plan.py::__all__` @428bdccd7106
-- code: `workflows/tests/coder/shared/test_gates.py::repo`
+- code: `workflows/src/workhorse_workflows/coder/shared/plan.py::__all__` @e01e5b6a0236
 - detail: [coder development flow](../flows/coder-dev.md)
 - detail: [coder resolver decision handling](coder-shared-resolution.md)
 
@@ -52,7 +51,7 @@ that the flow routes.
 - required: true
 - semantics: marks an operator context that is waiting for an answer
 - verify: count(subject="awaiting operator status", equals=1)
-- code: `workflows/src/workhorse_workflows/coder/shared/dev.py::AWAITING` @11eaf0e506a5
+- code: `workflows/src/workhorse_workflows/coder/shared/dev.py::AWAITING` @9b78ee9ed6fb
 
 ### ANSWERED
 - type: `str`
@@ -60,7 +59,7 @@ that the flow routes.
 - required: true
 - semantics: marks an operator context containing an answer ready for consumption
 - verify: count(subject="answered operator status", equals=1)
-- code: `workflows/src/workhorse_workflows/coder/shared/dev.py::ANSWERED` @11eaf0e506a5
+- code: `workflows/src/workhorse_workflows/coder/shared/dev.py::ANSWERED` @9b78ee9ed6fb
 
 ### CONSUMED
 - type: `str`
@@ -68,7 +67,7 @@ that the flow routes.
 - required: true
 - semantics: marks an operator answer already consumed so a later block can re-arm the context
 - verify: count(subject="consumed operator status", equals=1)
-- code: `workflows/src/workhorse_workflows/coder/shared/dev.py::CONSUMED` @11eaf0e506a5
+- code: `workflows/src/workhorse_workflows/coder/shared/dev.py::CONSUMED` @9b78ee9ed6fb
 
 ## Methods
 
@@ -78,8 +77,7 @@ that the flow routes.
 - does: normalizes plan files that resolve inside the story spec directory to spec-relative paths
 - returns: services, implementation order, shared packages, verification setup, and typed fixture projections
 - verify: count(subject="development plan documents", equals=1)
-- code: `workflows/src/workhorse_workflows/coder/shared/plan.py::plan_document` @428bdccd7106
-- tests: `workflows/tests/coder/dev/test_flow.py::test_the_projection_carries_the_fixtures_under_either_spelling`
+- code: `workflows/src/workhorse_workflows/coder/shared/plan.py::plan_document` @e01e5b6a0236
 
 ### record_plan
 - sig: `record_plan(logger: logging.Logger, plan: dict[str, Any] | None = None, spec_dir: str = "", repo_dir: str = "", workspace_file: str = "") -> PlanValidation`
@@ -90,23 +88,15 @@ that the flow routes.
 - does: permits a service-less plan as a repository-root dispatch when its dispatched files are valid
 - returns: `valid` with the projected document, or `invalid` with deterministic errors
 - verify: persists(subject="the plan-context projection")
-- code: `workflows/src/workhorse_workflows/coder/shared/plan.py::record_plan` @428bdccd7106
-- tests: `workflows/tests/coder/dev/test_flow.py::test_an_unresolvable_service_path_reworks_the_plan`
+- code: `workflows/src/workhorse_workflows/coder/shared/plan.py::record_plan` @e01e5b6a0236
 
-### read_plan_text
-- sig: `read_plan_text(spec_dir: str, plan_file: str, logger: logging.Logger) -> str`
-- does: reads the selected plan file relative to the spec directory
-- raises: `OSError` when the selected plan file cannot be read
-- returns: the plan file's UTF-8 content without fallback text
-- verify: count(subject="inlined implementation plan", equals=1)
-- code: `workflows/src/workhorse_workflows/coder/shared/plan.py::read_plan_text` @428bdccd7106
 
 ### load_plan_context
 - sig: `load_plan_context(root: Path, spec_dir: str, logger: logging.Logger) -> dict[str, Any]`
 - does: reads `plan-context.json` under the spec directory, taken relative to `root` unless absolute
 - returns: the parsed projection, or an empty mapping when the spec directory is empty or the file is missing or unreadable
 - verify: count(subject="plan-context reads", equals=1)
-- code: `workflows/src/workhorse_workflows/coder/shared/plan.py::load_plan_context` @ea0e347812ff
+- code: `workflows/src/workhorse_workflows/coder/shared/plan.py::load_plan_context` @e01e5b6a0236
 
 ### resolve_impl_context
 - sig: `resolve_impl_context(logger: logging.Logger, spec_dir: str = "", target_env: str = "local", docs_path: str = "", repo_dir: str = "", workspace_file: str = "", plan: dict[str, Any] | None = None) -> ImplContext`
@@ -115,11 +105,10 @@ that the flow routes.
 - does: excludes Terraform and documentation layers from the QA run plan
 - does: excludes QA skills ending in `-local` when the target environment is not local
 - does: includes the documentation root in affected repository paths when it is not already affected
-- does: creates one unique `surface=source-root` QA source-root entry for each dispatched surface
+- does: creates one unique `<surface>=<cwd>` QA source-root entry for each dispatched surface
 - returns: dispatch, QA, fixture, shared-package, affected-repository, and source-root context
 - verify: count(subject="resolved implementation contexts", equals=1)
-- code: `workflows/src/workhorse_workflows/coder/shared/plan.py::resolve_impl_context` @428bdccd7106
-- tests: `workflows/tests/coder/dev/test_flow.py::test_the_implement_turn_is_handed_the_two_values_its_prompt_reads`
+- code: `workflows/src/workhorse_workflows/coder/shared/plan.py::resolve_impl_context` @e01e5b6a0236
 
 ### plan_summary
 - sig: `plan_summary(logger: logging.Logger, spec_dir: str = "", repo_dir: str = "", workspace_file: str = "") -> PlanSummary`
@@ -127,16 +116,8 @@ that the flow routes.
 - does: renders implementation order, shared packages, verification setup, named fixtures, and unnamed arrangements when present
 - returns: blank text when the projection is missing or declares no services, otherwise a human-readable plan summary
 - verify: count(subject="rendered plan summaries", equals=1)
-- code: `workflows/src/workhorse_workflows/coder/shared/plan.py::plan_summary` @428bdccd7106
-- tests: `workflows/tests/coder/dev/test_flow.py::test_the_summary_says_the_names_apart_from_the_arrangements`
+- code: `workflows/src/workhorse_workflows/coder/shared/plan.py::plan_summary` @e01e5b6a0236
 
-### select_next_layer
-- sig: `select_next_layer(logger: logging.Logger, spec_dir: str = "", index: int = -1, repo_dir: str = "", workspace_file: str = "", plan: dict[str, Any] | None = None) -> LayerPick`
-- does: selects the dispatch entry immediately after the supplied completed-layer index
-- does: applies repository-root fallback for a producing plan with no services or an absent projection
-- returns: the next layer with its index and dispatch count, or the unchanged index with `has_layer=false` when exhausted
-- verify: count(subject="next development layer selections", equals=1)
-- code: `workflows/src/workhorse_workflows/coder/shared/plan.py::select_next_layer` @428bdccd7106
 
 ### build_dispatch_list
 
@@ -154,7 +135,7 @@ that the flow routes.
 - does: emits one first-repository fallback record only when `fallback` is true, no dispatch records exist, and repositories are available
 - verify: count(subject="fallback dispatch records", equals=1)
 - returns: the ordered dispatch record list
-- code: `workflows/src/workhorse_workflows/coder/shared/plan.py::build_dispatch_list` @428bdccd7106
+- code: `workflows/src/workhorse_workflows/coder/shared/plan.py::build_dispatch_list` @e01e5b6a0236
 
 ### get_affected_repos
 
@@ -165,7 +146,7 @@ that the flow routes.
 - verify: removed(subject="duplicate selected repository name")
 - returns: the sorted, deduplicated repository-name list
 - verify: json_path(path="$.affected", equals="sorted unique repository names")
-- code: `workflows/src/workhorse_workflows/coder/shared/plan.py::get_affected_repos` @428bdccd7106
+- code: `workflows/src/workhorse_workflows/coder/shared/plan.py::get_affected_repos` @e01e5b6a0236
 
 ### service_keys
 - sig: `service_keys(service: str = "", service_type: str = "") -> list[str]`
@@ -237,8 +218,7 @@ that the flow routes.
 - does: reports `dirty` when the status marks the story finished before QA
 - returns: `clean` with the written status when it is not finished, otherwise `dirty` with that status
 - verify: count(subject="pre-QA story status checks", equals=1)
-- code: `workflows/src/workhorse_workflows/coder/shared/dev.py::check_story_status` @11eaf0e506a5
-- tests: `workflows/tests/coder/dev/test_flow.py::test_a_turn_that_stamps_the_story_finished_is_sent_back`
+- code: `workflows/src/workhorse_workflows/coder/shared/dev.py::check_story_status` @9b78ee9ed6fb
 
 ### changed_files
 - sig: `changed_files(logger: logging.Logger, cwd: str = "", story_slug: str = "", story_id: str = "") -> ChangedFiles`
@@ -265,5 +245,4 @@ that the flow routes.
 - does: treats only `SCOPE: epic` as epic scope and narrows every other value to story scope
 - returns: unanswered when the context file is absent, otherwise answered with scope and original content
 - verify: persists(subject="consumed operator answer status")
-- code: `workflows/src/workhorse_workflows/coder/shared/dev.py::read_operator_context` @11eaf0e506a5
-- tests: `workflows/tests/coder/dev/test_flow.py::test_a_resolver_that_grounds_its_answer_settles_the_block_without_a_person`
+- code: `workflows/src/workhorse_workflows/coder/shared/dev.py::read_operator_context` @9b78ee9ed6fb

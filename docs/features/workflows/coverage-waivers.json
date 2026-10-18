@@ -5,10 +5,6 @@
       "reason": "declares no symbols beyond a module docstring; the docstring itself states this was deliberately never made a graph node (the human-run-once program scaffolder, ported verbatim). The actual scaffolding unit is `new_program.py`, documented in research-program-scaffolder.md."
     },
     {
-      "code": "workflows/src/workhorse_workflows/hello_world/workflow.py::HelloWorld",
-      "reason": "folded into concepts/hello-world-workflow-composition-root.md, which cites both of the class's methods directly (`HelloWorld.start`, `HelloWorld.greet`); the bare class symbol carries no behaviour beyond its cited methods."
-    },
-    {
       "code": "workflows/src/workhorse_workflows/coder/shared/schemas/_base.py::CoderResult",
       "reason": "folded into concepts/coder-result-routing.md, which cites `CoderResult.blocked` and `CoderResult.actionable`; the bare class symbol carries no behaviour beyond its cited methods."
     },
@@ -121,10 +117,6 @@
       "reason": "thin re-export of `fix.flow::Fix`; the flow class is documented in flows/coder-fix.md, which cites the flow class's public methods; the bare re-export carries no behaviour beyond the imported class. Symbol reachable through coder-workflow-composition-root.md detail links."
     },
     {
-      "code": "workflows/src/workhorse_workflows/coder/fix/__init__.py::BLOCKED_NOTE",
-      "reason": "thin re-export of `fix.flow::BLOCKED_NOTE`, a string constant; documented in coder-fix.md; the bare re-export carries no behaviour beyond the imported constant. Symbol reachable through coder-workflow-composition-root.md detail links."
-    },
-    {
       "code": "workflows/src/workhorse_workflows/coder/fix_ci/__init__.py::FixCi",
       "reason": "thin re-export of `fix_ci.flow::FixCi`; the flow class is documented in flows/fix-ci-remediation.md, which cites the flow class; the bare re-export carries no behaviour beyond the imported class. Symbol reachable through coder-workflow-composition-root.md detail links."
     },
@@ -135,10 +127,6 @@
     {
       "code": "workflows/src/workhorse_workflows/coder/qa/__init__.py::Qa",
       "reason": "thin re-export of `qa.flow::Qa`; the flow class is documented in flows/coder-qa.md, which cites the flow class's public methods; the bare re-export carries no behaviour beyond the imported class. Symbol also documented in concepts/coder-qa-subflow.md; reachable through coder-workflow-composition-root.md detail links."
-    },
-    {
-      "code": "workflows/src/workhorse_workflows/coder/review/__init__.py::Review",
-      "reason": "thin re-export of `review.flow::Review`; the flow class is documented in flows/coder-review.md, which cites the flow class's public methods; the bare re-export carries no behaviour beyond the imported class. Symbol reachable through coder-workflow-composition-root.md detail links."
     },
     {
       "code": "workflows/src/workhorse_workflows/coder/main/nodes/__init__.py",
@@ -250,7 +238,7 @@
     },
     {
       "code": "workflows/src/workhorse_workflows/author/__init__.py",
-      "reason": "the `author` package docstring describing the workflow's directory layout; the layout it describes (main/, surveyor/, shared/, \u2026) is documented per-package in concepts/author-workflow-composition-root.md and each subflow's own concept doc."
+      "reason": "the `author` package docstring describing the workflow's directory layout; the layout it describes (main/, surveyor/, shared/, …) is documented per-package in concepts/author-workflow-composition-root.md and each subflow's own concept doc."
     },
     {
       "code": "workflows/src/workhorse_workflows/author/main/__init__.py",
@@ -278,7 +266,7 @@
     },
     {
       "code": "workflows/src/workhorse_workflows/coder/shared/backlog.py",
-      "reason": "every public function and class in this module is already cited individually with `code:` bullets in concepts/coder-backlog-contract.md (`backlog_bullets`, `file_backlog_items`, `select_fix_item`, `seed_fix_story`, `prune_fix_item`, `mark_fix_blocked`, `kebab`, `norm_desc`, `id_token_set`, `Seen.add`, `Seen.duplicate`, `BacklogBullet.blocked`). The bare module path adds no behaviour beyond those citations."
+      "reason": "every public function and class in this module is already cited individually with `code:` bullets in concepts/coder-backlog-contract.md (`backlog_bullets`, `file_backlog_items`, `select_fix_item`, `seed_fix_story`, `prune_fix_item`, `kebab`, `norm_desc`, `id_token_set`, `Seen.add`, `Seen.duplicate`, `BacklogBullet.blocked`). The bare module path adds no behaviour beyond those citations."
     },
     {
       "code": "workflows/src/workhorse_workflows/coder/shared/blueprint.py",
@@ -286,7 +274,7 @@
     },
     {
       "code": "workflows/src/workhorse_workflows/coder/shared/schemas/__init__.py",
-      "reason": "package aggregator re-exporting the coder workflow's schema models from their owning submodules (_base, backlog, ci, dev, \u2026); each model is documented individually as a format concept (e.g. finding.md, coder-result-routing.md). The bare module path adds no behaviour beyond the aggregation its docstring explains."
+      "reason": "package aggregator re-exporting the coder workflow's schema models from their owning submodules (_base, backlog, ci, dev, …); each model is documented individually as a format concept (e.g. finding.md, coder-result-routing.md). The bare module path adds no behaviour beyond the aggregation its docstring explains."
     },
     {
       "code": "workflows/src/workhorse_workflows/coder/shared/schemas/_base.py",
@@ -295,10 +283,6 @@
     {
       "code": "workflows/src/workhorse_workflows/coder/workflow.py",
       "reason": "the coder composition root; already cited via `path::symbol` bullets in concepts/coder-workflow-composition-root.md, coder-entry-point-responsibilities.md, coder-command-selection.md, and workhorse-coder.md. The bare module path adds no behaviour beyond what those citations already ground."
-    },
-    {
-      "code": "workflows/src/workhorse_workflows/hello_world/workflow.py",
-      "reason": "already cited symbol-by-symbol (`blueprint`, `workflow`, `main`, `measure`, `HelloWorld.start`, `HelloWorld.greet`) in concepts/hello-world-workflow-composition-root.md; the bare module path adds no behaviour beyond those citations."
     }
   ]
 }

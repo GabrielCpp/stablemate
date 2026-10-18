@@ -10,28 +10,21 @@ title: Author story author
   composition root](../concepts/author-workflow-composition-root.md) registers it as
   `workhorse-author run story-author`.
 
-- start: an operator supplies an existing epic and a non-empty story slug
-- start: the selected story is resolvable under that epic in the configured Ostler graph
-- start: the repository root can be resolved from the optional `repo_dir`
+- fixture: none, because the walk dry-runs the registered flow, which stands in for every agent turn
 - steps:
-  - [prepare-story](#prepare-story)
-  - [design-mockup](#design-mockup)
-  - [write-story](#write-story)
-  - [check-story](#check-story)
-  - [audit-story](#audit-story)
-  - [rework-story](#rework-story)
-  - [resolve-story](#resolve-story)
-  - [story-feedback](#story-feedback)
-  - [apply-feedback](#apply-feedback)
-- end: the selected story has passed structural, grounding, and independent audit checks
-- end: a passing audit receipt records the SHA-256 digest of the exact story bytes
-- end: blocked or exhausted work is parked in an operator-awaiting context or returns a blocked result
-- verify: count(subject="prepared story-author targets", equals=1)
-- verify: created(subject="audit-receipt.json")
-- verify: json_path(path="$.status", equals="authored")
+  - [run](../workhorse-author.md#run)
+- start: the working directory holds no rendered graph
+- verify: absent(subject="workhorse-author.dot")
+- end: the dry run leaves the command with a zero exit status
+- verify: exit_status(code=0)
 - detail: [author story-author subflow](../concepts/author-story-author-subflow.md)
 - detail: [author story-author prompt contracts](../concepts/author-story-author-prompt-contracts.md)
 - tests: `workflows/tests/author/story_author/test_flow.py::test_flow_prepares_explicit_story_before_authoring_without_git_side_effects`
+
+The stages, in order: [prepare-story](#prepare-story), [design-mockup](#design-mockup), [write-story](#write-story), [check-story](#check-story), [audit-story](#audit-story), [rework-story](#rework-story), [resolve-story](#resolve-story), [story-feedback](#story-feedback), [apply-feedback](#apply-feedback).
+
+The flow starts when an operator supplies an existing epic and a non-empty story slug; or when the selected story is resolvable under that epic in the configured Ostler graph; or when the repository root can be resolved from the optional `repo_dir`.
+It ends in one of these ways: the selected story has passed structural, grounding, and independent audit checks; a passing audit receipt records the SHA-256 digest of the exact story bytes; blocked or exhausted work is parked in an operator-awaiting context or returns a blocked result.
 
 ## Steps
 

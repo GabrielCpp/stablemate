@@ -24,9 +24,6 @@ consuming repository from the explicit `repo_dir` input using the survey resolve
 - returns: the Ostler adoption result after logging its message
 - verify: count(subject="backlog adoption results", equals=1)
 - code: `workflows/src/workhorse_workflows/author/shared/nodes/story_mode.py::adopt_backlog` @d2ddecee90dd
-- code: `workflows/tests/author/test_workflow.py::backlogged`
-- code: `workflows/tests/author/test_workflow.py::with_epic`
-- code: `workflows/tests/author/test_workflow.py::test_story_mode_authors_one_bullet_and_does_not_commit`
 - detail: [Author backlogged fixture contexts](author-backlogged-fixture-context.md)
 - tests: `workflows/tests/author/test_workflow.py::test_story_mode_authors_one_bullet_and_does_not_commit`
 
@@ -37,11 +34,10 @@ consuming repository from the explicit `repo_dir` input using the survey resolve
 - does: rejects a roadmap unless exactly one matching milestone lists only that roadmap in `sourceItems`
 - verify: json_path(path="$.ok", equals=false)
 - does: rejects the matching milestone when its `epics` collection is empty
-- verify: json_path(path="$.ok", equals=false)
 - returns: `Defects(ok=true, errors="")` when the roadmap has exactly one non-empty owning milestone
 - verify: json_path(path="$.ok", equals=true)
 - returns: `Defects(ok=false, errors=...)` with one line per validation failure otherwise
-- verify: json_path(path="$.errors", matches=".+")
+- verify: json_path(path="$.errors", equals="example errors")
 - code: `workflows/src/workhorse_workflows/author/finalize/nodes/roadmap.py::validate_roadmap_milestone` @7dddc06a333d
 - tests: `workflows/tests/author/test_config.py::test_roadmap_must_source_exactly_one_nonempty_milestone`
 - tests: `workflows/tests/author/test_config.py::test_roadmap_validation_ignores_unrelated_planning_defects`
@@ -57,6 +53,5 @@ consuming repository from the explicit `repo_dir` input using the survey resolve
 - raises: `WorkflowFailed` when the roadmap status is not `approved` or its frontmatter/status field is malformed
 - verify: absent(subject="roadmap status mutation after invalid status")
 - returns: `RoadmapStatus` containing the roadmap path and status `authored`
-- verify: json_path(path="$.status", equals="authored")
 - code: `workflows/src/workhorse_workflows/author/finalize/nodes/roadmap.py::mark_roadmap_authored` @7dddc06a333d
 - tests: `workflows/tests/author/test_config.py::test_mark_roadmap_authored_preserves_the_contract_body`

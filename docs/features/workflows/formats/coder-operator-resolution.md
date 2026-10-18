@@ -10,7 +10,7 @@ existing written authority; `escalated` decisions carry investigation evidence f
 
 - file: none — in-memory workflow result
 - config: the resolver prompt's structured response
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/dev.py::OperatorResolution` @b6e19c205b4f
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/dev.py::OperatorResolution` @5aa622da8aea
 - detail: [Coder escalation composition](../concepts/coder-shared-escalation.md)
 
 ## Fields
@@ -20,36 +20,36 @@ existing written authority; `escalated` decisions carry investigation evidence f
 - required: true
 - semantics: whether the resolver found written authority or must hand the question to an operator
 - verify: json_path(path="$.decision", matches="answered|escalated")
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/dev.py::OperatorResolution.decision` @b6e19c205b4f
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/dev.py::OperatorResolution.decision` @5aa622da8aea
 
 ### summary
 - type: `str`
 - default: empty string
 - required: false
 - semantics: one-line decision or blocker presented by the escalation
-- verify: json_path(path="$.summary", matches=".*")
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/dev.py::OperatorResolution.summary` @b6e19c205b4f
+- verify: json_path(path="$.summary", equals="Story built and checked.")
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/dev.py::OperatorResolution.summary` @5aa622da8aea
 
 ### grounded
 - type: list of strings
 - default: empty list
 - required: false
 - semantics: written sources and quoted rules supporting an answered decision
-- verify: json_path(path="$.grounded", matches=".*")
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/dev.py::OperatorResolution.grounded` @b6e19c205b4f
+- verify: json_path(path="$.grounded", matches="^\[.*\]$")
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/dev.py::OperatorResolution.grounded` @5aa622da8aea
 
 ### record
 - type: `str`
 - default: empty string
 - required: false
 - semantics: decision-record slug written or cited for the resolution
-- verify: json_path(path="$.record", matches=".*")
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/dev.py::OperatorResolution.record` @b6e19c205b4f
+- verify: json_path(path="$.record", equals="example record")
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/dev.py::OperatorResolution.record` @5aa622da8aea
 
 ### tried
 - type: list of strings
 - default: empty list
 - required: false
 - semantics: concrete investigations and ruled-out hypotheses published verbatim in a later operator gate
-- verify: json_path(path="$.tried", matches=".*")
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/dev.py::OperatorResolution.tried` @b6e19c205b4f
+- verify: json_path(path="$.tried", matches="^\[.*\]$")
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/dev.py::OperatorResolution.tried` @5aa622da8aea

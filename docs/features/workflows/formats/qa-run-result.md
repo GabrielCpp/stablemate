@@ -5,11 +5,11 @@ title: QA run result
 ---
 # QA run result
 
-The verdict one QA grading turn reports — rendered by `qa-fix-item.md` and `apply-qa-fixes.md` — whether an acceptance criterion or QA finding passed, failed, or cannot be completed in this repository.
+The verdict one QA grading turn reports — exported from the coder schemas — whether an acceptance criterion or QA finding passed, failed, or cannot be completed in this repository.
 
 - file: none — agent reply and checkpoint value
 - config: `QaRunResult` agent-turn output contract
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/qa.py::QaRunResult` @2e918886779f
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/qa.py::QaRunResult` @ae2e8b0c6330
 - detail: [coder QA schema contracts](../concepts/coder-qa-schema-contracts.md)
 
 ## Fields
@@ -24,7 +24,7 @@ The verdict one QA grading turn reports — rendered by `qa-fix-item.md` and `ap
 - verify: json_path(path="$.status", equals="failed")
 - semantics: `blocked` only when no further attempt in this repository could succeed because what is missing is external
 - verify: json_path(path="$.status", equals="blocked")
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/qa.py::QaRunResult.status` @2e918886779f
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/qa.py::QaRunResult.status` @ae2e8b0c6330
 
 ### notes
 
@@ -32,6 +32,6 @@ The verdict one QA grading turn reports — rendered by `qa-fix-item.md` and `ap
 - default: empty string
 - required: false
 - semantics: what was run, what was observed and what remains
-- verify: json_path(path="$.notes", matches=".*")
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/qa.py::QaRunResult.notes` @2e918886779f
+- verify: json_path(path="$.notes", equals="Applied the change and ran the gates.")
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/qa.py::QaRunResult.notes` @ae2e8b0c6330
 

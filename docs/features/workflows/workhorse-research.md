@@ -6,7 +6,7 @@ title: workhorse-research
 # workhorse-research
 
 - binary: `workhorse-research`
-- code: `workflows/src/workhorse_workflows/research/workflow.py::main` @e196dc60a365
+- code: `workflows/src/workhorse_workflows/research/workflow.py::main` @b2a751617c3b
 - detail: [research workflow schemas](concepts/research-schemas.md)
 
 Runs the research gate loop registered by the [research workflow composition root](concepts/research-workflow-composition-root.md). Workhorse provides the shared command parser; this package provides the default Research flow.
@@ -26,10 +26,11 @@ The [workhorse-research driver runbook](ops/workhorse-research.md) exercises thi
   - `--runs-dir DIR` and `--run-id ID` select the run-artifact location and stable identity.
   - `--dry-run` runs the registered deterministic stand-ins.
   - `--resume-run PATH`, `--resume-latest`, and `--no-cache` select resume or fresh-run behavior.
-- does:
-  - starts the registered Research flow
+- does: starts the registered Research flow
+- fixture: none, because the command reads only the installed package
+- run: invoke(argv=["run", "--dry-run"])
 - verify: exit_status(code=0)
-- code: `workflows/src/workhorse_workflows/research/workflow.py::main` @e196dc60a365
+- code: `workflows/src/workhorse_workflows/research/workflow.py::main` @b2a751617c3b
 - detail: [Research command selection](concepts/research-command-selection.md)
 
 ### dot
@@ -37,16 +38,18 @@ The [workhorse-research driver runbook](ops/workhorse-research.md) exercises thi
 - flags:
   - `--name ID` overrides the rendered graph identifier.
   - `-o, --output PATH` writes DOT output to a file instead of standard output.
-- does:
-  - renders the registered Research state graph
+- does: renders the registered Research state graph
+- fixture: none, because the command reads only the installed package
+- run: invoke(argv=["dot"])
 - verify: exit_status(code=0)
-- code: `workflows/src/workhorse_workflows/research/workflow.py::main` @e196dc60a365
+- code: `workflows/src/workhorse_workflows/research/workflow.py::main` @b2a751617c3b
 - detail: [Research command selection](concepts/research-command-selection.md)
 
 ### version
 - usage: `workhorse-research version`
-- does:
-  - prints the installed Workhorse engine version
+- does: prints the installed Workhorse engine version
+- fixture: none, because the command reads only the installed package
+- run: invoke(argv=["version"])
 - verify: exit_status(code=0)
-- code: `workflows/src/workhorse_workflows/research/workflow.py::main` @e196dc60a365
+- code: `workflows/src/workhorse_workflows/research/workflow.py::main` @b2a751617c3b
 - detail: [Research command selection](concepts/research-command-selection.md)

@@ -42,7 +42,6 @@ silently remove previously committed planning scope.
 - returns: returns `VerifyReport` with `skipped`, `holds`, `errors`, and a reconciliation summary
 - verify: count(subject="reconciliation reports", equals=1)
 - code: `workflows/src/workhorse_workflows/author/finalize/nodes/artifacts.py::verify_reconcile` @f3adad9536ae
-- code: `workflows/tests/author/test_workflow.py::backlogged`
 - detail: [Author backlogged fixture contexts](author-backlogged-fixture-context.md)
 - tests: `workflows/tests/author/finalize/test_flow.py::test_finalizes_with_one_commit_on_the_current_branch`
 

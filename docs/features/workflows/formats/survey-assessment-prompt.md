@@ -6,7 +6,7 @@ title: Survey assessment prompt contract
 # Survey assessment prompt contract
 
 - file: `workflows/src/workhorse_workflows/author/surveyor/prompts/assess-unit.md`
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/survey.py::UnitAssessment` @f79c1c007a97
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/survey.py::UnitAssessment` @7db58efbfd66
 - detail: [author surveyor subflow](../concepts/author-surveyor-subflow.md)
 - tests: `workflows/tests/author/surveyor/test_flow.py::test_the_assessor_is_handed_the_unit_the_rubric_and_the_context_file`
 
@@ -21,44 +21,44 @@ or a unit that must be split into immediate children.
 - type: string
 - required: true
 - semantics: frozen inventory identifier being assessed
-- verify: json_path(path="$.unit_id", matches=".+")
+- verify: json_path(path="$.unit_id", equals="CASE-1234")
 
 ### unit_path
 - type: string path or locator
 - required: true
 - semantics: repository-relative source location of the unit
-- verify: json_path(path="$.unit_path", matches=".+")
+- verify: json_path(path="$.unit_path", equals="docs/stories/acme-story/story.md")
 
 ### unit_kind
 - type: string
 - required: true
 - semantics: inventory kind, such as `folder`, `file`, or a command-defined kind
-- verify: json_path(path="$.unit_kind", matches=".+")
+- verify: json_path(path="$.unit_kind", equals="example unit kind")
 
 ### record_path
 - type: string path
 - required: true
 - semantics: finding-record Markdown path the assessor must write
-- verify: json_path(path="$.record_path", matches=".+")
+- verify: json_path(path="$.record_path", equals="docs/stories/acme-story/story.md")
 
 ### rubric
 - type: string path
 - required: true
 - semantics: concern definition and referenced stack-specific assessment guidance
-- verify: json_path(path="$.rubric", matches=".+")
+- verify: json_path(path="$.rubric", equals="example rubric")
 
 ### context_path
 - type: string path
 - required: true
 - semantics: operator context whose prior answer must be honored when the unit was previously blocked
-- verify: json_path(path="$.context_path", matches=".+")
+- verify: json_path(path="$.context_path", equals="docs/stories/acme-story/story.md")
 
 ### status
 - type: string
 - default: empty string
 - required: false
 - semantics: `assessed`, `clean`, `split`, or `blocked`
-- verify: json_path(path="$.status", matches=".*")
+- verify: json_path(path="$.status", equals="example status")
 - semantics: `split` replaces the unit
 - verify: json_path(path="$.status", equals="split")
 - semantics: `split` writes no record
@@ -69,4 +69,4 @@ or a unit that must be split into immediate children.
 - default: empty string
 - required: false
 - semantics: concise assessment, split rationale, or blocking explanation
-- verify: json_path(path="$.notes", matches=".*")
+- verify: json_path(path="$.notes", equals="Applied the change and ran the gates.")

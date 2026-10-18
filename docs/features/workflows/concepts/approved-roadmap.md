@@ -11,7 +11,7 @@ order, and reads each candidate's own frontmatter. A caller cannot select an arb
 missing directory behaves like an empty candidate set. The exact frontmatter contract is
 `type: roadmap` together with `status: approved`.
 
-- code: `workflows/src/workhorse_workflows/author/shared/roadmap.py::approved_roadmap` @9c57ac7ec5b1
+- code: `workflows/src/workhorse_workflows/author/shared/roadmap.py::approved_roadmap` @665847d4c905
 - detail: [author milestone subflow](author-milestone-subflow.md)
 
 ## Methods
@@ -31,7 +31,7 @@ missing directory behaves like an empty candidate set. The exact frontmatter con
 - raises: `WorkflowFailed` when more than one candidate qualifies, naming every qualifying path
 - verify: count(subject="ambiguous approved roadmap failures", equals=1)
 - returns: the selected roadmap as a repository-relative POSIX path
-- verify: json_path(path="$.roadmap", matches=".+")
-- code: `workflows/src/workhorse_workflows/author/shared/roadmap.py::approved_roadmap` @9c57ac7ec5b1
+- verify: json_path(path="$.roadmap", equals="example roadmap")
+- code: `workflows/src/workhorse_workflows/author/shared/roadmap.py::approved_roadmap` @665847d4c905
 - tests: `workflows/tests/author/test_config.py::test_epic_authoring_requires_an_approved_roadmap`
 - tests: `workflows/tests/author/test_config.py::test_epic_authoring_does_not_fall_back_to_a_backlog`

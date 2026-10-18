@@ -12,7 +12,7 @@ exposed surface is the [workhorse-coder CLI](../workhorse-coder.md).
 - driver: cli
 - cli: [workhorse-coder](../workhorse-coder.md)
 - surfaces: [workhorse-coder](../workhorse-coder.md)
-- code: `workflows/src/workhorse_workflows/coder/workflow.py::main` @169c19e85119
+- code: `workflows/src/workhorse_workflows/coder/workflow.py::main` @a28e84f788c2
 - working-directory: .
 
 ## Steps

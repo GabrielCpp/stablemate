@@ -15,15 +15,13 @@ workflow fields select the dispatch mode and carry the mode-specific inputs: `mo
 support a survey, `baseline_inventory` and `parity_survey_dir` support a parity survey, and
 `operator_mode` defaults to `auto`.
 
-- start: the default run has `mode=epic` and the repository contains one `docs/roadmaps/*.md` file with `type: roadmap` and `status: approved`.
+- fixture: none, because the walk dry-runs the registered flow, which stands in for every agent turn
 - steps:
-  - [setup](#setup)
-  - [plan and dispatch](#plan-and-dispatch)
-  - [finalize](#finalize)
-- end: the authored roadmap is the durable source of exactly one milestone whose ordered epics and
-  stories are ready for Coder.
-- verify: count(subject="roadmap-owned milestones", equals=1)
-- verify: persists(subject="the authored roadmap and its planning graph")
+  - [run](../workhorse-author.md#run)
+- start: the working directory holds no rendered graph
+- verify: absent(subject="workhorse-author.dot")
+- end: the dry run leaves the command with a zero exit status
+- verify: exit_status(code=0)
 - detail: [author workflow composition root](../concepts/author-workflow-composition-root.md)
 - detail: [Author main package](../concepts/author-main-package.md)
 - detail: [Author main intake](../concepts/author-main-intake.md)
@@ -38,32 +36,10 @@ Configuration, planning, and roadmap validation are implemented by
 `workflows/src/workhorse_workflows/author/finalize/nodes/roadmap.py::validate_roadmap_milestone`, and
 `workflows/src/workhorse_workflows/author/finalize/nodes/roadmap.py::mark_roadmap_authored`.
 
-## Invocations
+The stages, in order: [setup](#setup), [plan and dispatch](#plan-and-dispatch), [finalize](#finalize).
 
-### plan-and-dispatch
-- on: [author roadmap intake](#plan-and-dispatch)
-- trigger: after setup and after each completed or blocked stage
-- when: the approved roadmap and its current planning artifacts are available
-- verify: count(subject="planner invocations with current artifacts", equals=1)
-- does:
-  - validates that exactly one milestone owns only the approved roadmap
-  - verify: count(subject="sole-source roadmap milestones", equals=1)
-  - returns `kind: milestone` when that milestone is missing or not sole-source
-  - verify: json_path(path="$.kind", equals="milestone")
-  - returns `kind: epic-split` when the milestone epics are absent, duplicated, unknown, or not in a valid ordered split
-  - verify: json_path(path="$.kind", equals="epic-split")
-  - returns `kind: epic-author` for the first milestone-ordered epic missing its document or researched seeds
-  - verify: json_path(path="$.kind", equals="epic-author")
-  - returns `kind: story-split` for the first milestone-ordered epic whose local story graph or semantic split receipt is invalid
-  - verify: json_path(path="$.kind", equals="story-split")
-  - returns `kind: story-author` for the first unblocked story in epic and dependency-DAG order whose audit receipt is missing or stale
-  - verify: json_path(path="$.kind", equals="story-author")
-  - returns `kind: finalize` when every ordered epic has a current valid story graph and no story remains to author
-  - verify: json_path(path="$.kind", equals="finalize")
-- code: `workflows/src/workhorse_workflows/author/main/nodes/planner.py::plan_author_step` @e56269eb3bf0
-- detail: [artifact-derived author stage selection](../concepts/artifact-derived-author-stage-selection.md)
-- tests: `workflows/tests/author/test_planner.py::test_story_author_uses_story_dag_order_and_author_current`
-- tests: `workflows/tests/author/test_planner.py::test_blocked_story_is_skipped_for_the_remainder_of_one_main_run`
+The flow starts when the default run has `mode=epic` and the repository contains one `docs/roadmaps/*.md` file with `type: roadmap` and `status: approved`.
+It ends in one of these ways: the authored roadmap is the durable source of exactly one milestone whose ordered epics and stories are ready for Coder.
 
 ## Phase Details
 

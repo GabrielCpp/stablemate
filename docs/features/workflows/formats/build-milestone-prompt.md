@@ -23,7 +23,7 @@ commits, or downstream artifacts. The response is a JSON object accepted by
 - type: string
 - required: true
 - semantics: repository-relative approved roadmap path that is the milestone's sole source item
-- verify: json_path(path="$.roadmap", matches=".+")
+- verify: json_path(path="$.roadmap", equals="example roadmap")
 - code: `workflows/src/workhorse_workflows/author/milestone/flow.py::Milestone.start` @931c134725ac
 - detail: [milestone prompt field roles](../concepts/milestone-prompt-field-roles.md)
 
@@ -39,6 +39,6 @@ commits, or downstream artifacts. The response is a JSON object accepted by
 - type: string
 - required: true
 - semantics: describes the created or reused milestone, or states the blocking question
-- verify: json_path(path="$.notes", matches=".+")
+- verify: json_path(path="$.notes", equals="Applied the change and ran the gates.")
 - code: `workflows/src/workhorse_workflows/author/milestone/flow.py::Milestone.start` @931c134725ac
 - detail: [milestone prompt field roles](../concepts/milestone-prompt-field-roles.md)

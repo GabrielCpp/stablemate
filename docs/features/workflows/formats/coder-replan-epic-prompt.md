@@ -6,7 +6,7 @@ title: Coder epic replan prompt
 # Coder epic replan prompt
 
 - file: `workflows/src/workhorse_workflows/coder/main/prompts/replan-epic.md`
-- code: `workflows/src/workhorse_workflows/coder/main/flow.py::Coder.replan` @e12ee3a76767
+- code: `workflows/src/workhorse_workflows/coder/main/flow.py::Coder.replan` @d70dfde3a1bd
 - detail: [coder main flow](../flows/coder-main.md)
 - detail: [coder prompt role resolution](../concepts/coder-prompt-role-resolution.md)
 - detail: [coder rendered schema contracts](../concepts/coder-render-schema-contracts.md)
@@ -21,41 +21,41 @@ discarding completed work, and return the typed replan result as the final JSON 
 - type: string path
 - required: true
 - semantics: triggering story whose block caused the epic replan
-- verify: json_path(path="$.story_path", matches=".+")
+- verify: json_path(path="$.story_path", equals="docs/stories/acme-story/story.md")
 
 ### spec_dir
 - type: string path
 - required: true
 - semantics: story specification directory containing the planning artifacts
-- verify: json_path(path="$.spec_dir", matches=".+")
+- verify: json_path(path="$.spec_dir", equals="docs/stories/acme-story")
 
 ### epic
 - type: string
 - default: empty string
 - required: false
 - semantics: epic whose premise, stories, and queue position may be re-grounded when the queue identity is available
-- verify: json_path(path="$.epic", matches=".*")
+- verify: json_path(path="$.epic", equals="acme-epic")
 
 ### operator_context
 - type: string
 - required: true
 - semantics: authoritative operator answer that must not be second-guessed or re-raised
-- verify: json_path(path="$.operator_context", matches=".+")
+- verify: json_path(path="$.operator_context", equals="Applied the change.")
 
 ### story_slug
 - type: string
 - required: true
 - semantics: triggering story slug used to identify the affected story
-- verify: json_path(path="$.story_slug", matches=".+")
+- verify: json_path(path="$.story_slug", equals="acme-story")
 
 ### story_id
 - type: string
 - required: true
 - semantics: triggering story identity used for the commit trailer
-- verify: json_path(path="$.story_id", matches=".+")
+- verify: json_path(path="$.story_id", equals="CASE-1234")
 
 ### result_schema
 - type: string
 - required: true
 - semantics: rendered JSON contract for the `ReplanResult` reply
-- verify: json_path(path="$.result_schema", matches=".+")
+- verify: json_path(path="$.result_schema", equals="example result schema")

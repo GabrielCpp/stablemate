@@ -18,7 +18,7 @@ through Ostler. It carries the canonical epic directory and `epic.md` path used 
 - default: `""`
 - required: false
 - semantics: canonical Ostler name of the explicitly requested epic
-- verify: json_path(path="$.epic", matches=".+")
+- verify: json_path(path="$.epic", equals="acme-epic")
 - code: `workflows/src/workhorse_workflows/author/epic_author/schemas.py::EpicTarget` @8605f9723870
 - detail: [epic target field roles](../concepts/epic-target-field-roles.md)
 
@@ -27,7 +27,7 @@ through Ostler. It carries the canonical epic directory and `epic.md` path used 
 - default: `""`
 - required: false
 - semantics: canonical directory resolved for the requested epic
-- verify: json_path(path="$.epic_dir", matches=".+")
+- verify: json_path(path="$.epic_dir", equals="docs/stories/acme-story")
 - code: `workflows/src/workhorse_workflows/author/epic_author/schemas.py::EpicTarget` @8605f9723870
 - detail: [epic target field roles](../concepts/epic-target-field-roles.md)
 

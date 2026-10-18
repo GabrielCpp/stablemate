@@ -23,15 +23,15 @@ straight to the operator. The coverage resolver counter survives the per-unit lo
 reset by an await. A resume consumes the frozen inventory and on-disk finding records rather than
 re-planning completed work.
 
-- code: `workflows/src/workhorse_workflows/author/surveyor/flow.py::Surveyor` @262eac5ce86e
-- code: `workflows/src/workhorse_workflows/author/surveyor/flow.py::MAX_PLAN_REWORKS` @262eac5ce86e
-- code: `workflows/src/workhorse_workflows/author/surveyor/flow.py::MAX_PLAN_RESOLVES` @262eac5ce86e
-- code: `workflows/src/workhorse_workflows/author/surveyor/flow.py::MAX_RECORD_FIXES` @262eac5ce86e
-- code: `workflows/src/workhorse_workflows/author/surveyor/flow.py::MAX_PARTITION_REWORKS` @262eac5ce86e
-- code: `workflows/src/workhorse_workflows/author/surveyor/flow.py::MAX_PARTITION_RESOLVES` @262eac5ce86e
-- code: `workflows/src/workhorse_workflows/author/surveyor/flow.py::MAX_VERIFY_RESOLVES` @262eac5ce86e
-- code: `workflows/src/workhorse_workflows/author/surveyor/nodes/config.py::load_survey_config` @bd999c6757d7
-- code: `workflows/src/workhorse_workflows/author/surveyor/nodes/config.py::check_inventory` @bd999c6757d7
+- code: `workflows/src/workhorse_workflows/author/surveyor/flow.py::Surveyor` @b99c42f1911d
+- code: `workflows/src/workhorse_workflows/author/surveyor/flow.py::MAX_PLAN_REWORKS` @b99c42f1911d
+- code: `workflows/src/workhorse_workflows/author/surveyor/flow.py::MAX_PLAN_RESOLVES` @b99c42f1911d
+- code: `workflows/src/workhorse_workflows/author/surveyor/flow.py::MAX_RECORD_FIXES` @b99c42f1911d
+- code: `workflows/src/workhorse_workflows/author/surveyor/flow.py::MAX_PARTITION_REWORKS` @b99c42f1911d
+- code: `workflows/src/workhorse_workflows/author/surveyor/flow.py::MAX_PARTITION_RESOLVES` @b99c42f1911d
+- code: `workflows/src/workhorse_workflows/author/surveyor/flow.py::MAX_VERIFY_RESOLVES` @b99c42f1911d
+- code: `workflows/src/workhorse_workflows/author/surveyor/nodes/config.py::load_survey_config` @75f4a9e6e509
+- code: `workflows/src/workhorse_workflows/author/surveyor/nodes/config.py::check_inventory` @75f4a9e6e509
 - code: `workflows/src/workhorse_workflows/author/surveyor/nodes/partition.py::validate_partition` @e6f804dfa71e
 - code: `workflows/src/workhorse_workflows/author/surveyor/nodes/partition.py::emit_artifacts` @e6f804dfa71e
 - tests: `workflows/tests/author/surveyor/test_flow.py::test_two_components_are_planned_assessed_verified_and_emitted`
@@ -58,7 +58,7 @@ re-planning completed work.
 - verify: count(subject="missing survey rubric failures", equals=1)
 - returns: returns a `SurveyConfig` containing the resolved repository root and all survey artifact paths
 - verify: count(subject="survey configuration results", equals=1)
-- code: `workflows/src/workhorse_workflows/author/surveyor/flow.py::Surveyor.setup` @262eac5ce86e
+- code: `workflows/src/workhorse_workflows/author/surveyor/flow.py::Surveyor.setup` @b99c42f1911d
 - tests: `workflows/tests/author/surveyor/test_config.py::test_the_config_derives_every_path_from_survey_dir`
 
 ### labels
@@ -67,8 +67,7 @@ re-planning completed work.
 - returns: returns an empty mapping before the first unit-selection node runs
 - returns: returns `work_id` and `progress` labels from the latest unit selection
 - verify: count(subject="surveyor work-label snapshots", equals=1)
-- code: `workflows/src/workhorse_workflows/author/surveyor/flow.py::Surveyor.labels` @262eac5ce86e
-- code: `workflows/tests/author/surveyor/test_flow.py::test_the_labels_name_the_unit_and_the_progress.capture`
+- code: `workflows/src/workhorse_workflows/author/surveyor/flow.py::Surveyor.labels` @b99c42f1911d
 - tests: `workflows/tests/author/surveyor/test_flow.py::test_the_labels_name_the_unit_and_the_progress`
 
 ### state_labels
@@ -76,7 +75,7 @@ re-planning completed work.
 - does: combines work labels with the six survey budget counters carried by the current state
 - returns: returns labels for plan rework, plan resolution, record fixes, coverage resolution, partition rework, and partition resolution
 - verify: count(subject="surveyor state-label snapshots", equals=1)
-- code: `workflows/src/workhorse_workflows/author/surveyor/flow.py::Surveyor.state_labels` @262eac5ce86e
+- code: `workflows/src/workhorse_workflows/author/surveyor/flow.py::Surveyor.state_labels` @b99c42f1911d
 - tests: `workflows/tests/author/surveyor/test_flow.py::test_the_labels_name_the_unit_and_the_progress`
 
 ### start
@@ -89,8 +88,7 @@ re-planning completed work.
 - verify: count(subject="surveyor starts routed to expansion", equals=1)
 - returns: returns a `Continue` carrying the `InventoryCheck` decision and the selected next state
 - verify: count(subject="surveyor start routing decisions", equals=1)
-- code: `workflows/src/workhorse_workflows/author/surveyor/flow.py::Surveyor.start` @262eac5ce86e
-- code: `workflows/tests/author/surveyor/test_flow.py::surveyed`
+- code: `workflows/src/workhorse_workflows/author/surveyor/flow.py::Surveyor.start` @b99c42f1911d
 - tests: `workflows/tests/author/surveyor/test_config.py::test_an_existing_inventory_freezes_the_enumeration`
 
 ### plan
@@ -100,7 +98,7 @@ re-planning completed work.
 - does: routes a completed plan to inventory expansion without resetting the cumulative resolution counter
 - returns: returns `Await` for a human decision when planning remains blocked
 - verify: count(subject="surveyor planning outcomes", equals=1)
-- code: `workflows/src/workhorse_workflows/author/surveyor/flow.py::Surveyor.plan` @262eac5ce86e
+- code: `workflows/src/workhorse_workflows/author/surveyor/flow.py::Surveyor.plan` @b99c42f1911d
 - tests: `workflows/tests/author/surveyor/test_flow.py::test_a_blocked_plan_waits_on_the_operator_then_resumes_the_planner`
 
 ### expand
@@ -109,7 +107,7 @@ re-planning completed work.
 - does: sends an empty or invalid expansion back to planning until the bounded rework limit is reached
 - returns: returns a continuation for unit selection when the inventory is usable
 - verify: count(subject="surveyor inventory expansion outcomes", equals=1)
-- code: `workflows/src/workhorse_workflows/author/surveyor/flow.py::Surveyor.expand` @262eac5ce86e
+- code: `workflows/src/workhorse_workflows/author/surveyor/flow.py::Surveyor.expand` @b99c42f1911d
 - tests: `workflows/tests/author/surveyor/test_flow.py::test_rules_that_expand_to_nothing_send_the_flow_back_to_the_planner`
 
 ### resolve_plan
@@ -118,7 +116,7 @@ re-planning completed work.
 - does: parks the flow for an operator decision without accepting the resolver's decision field
 - returns: returns `Await` targeting planning with the local rework counter reset and cumulative resolution count incremented
 - verify: count(subject="planning operator awaits", equals=1)
-- code: `workflows/src/workhorse_workflows/author/surveyor/flow.py::Surveyor.resolve_plan` @262eac5ce86e
+- code: `workflows/src/workhorse_workflows/author/surveyor/flow.py::Surveyor.resolve_plan` @b99c42f1911d
 
 ### pick
 - sig: `pick(verify_resolve: int = 0) -> Continue`
@@ -126,7 +124,7 @@ re-planning completed work.
 - does: routes directly to coverage verification when no pending unit remains
 - returns: returns a continuation carrying the selected unit identity, path, kind, record path, and progress
 - verify: count(subject="surveyor unit-pick outcomes", equals=1)
-- code: `workflows/src/workhorse_workflows/author/surveyor/flow.py::Surveyor.pick` @262eac5ce86e
+- code: `workflows/src/workhorse_workflows/author/surveyor/flow.py::Surveyor.pick` @b99c42f1911d
 - tests: `workflows/tests/author/surveyor/test_flow.py::test_the_labels_name_the_unit_and_the_progress`
 
 ### assess
@@ -136,7 +134,7 @@ re-planning completed work.
 - does: routes every other assessment result to record validation
 - returns: returns a continuation carrying the unit and record identity needed by the next state
 - verify: count(subject="surveyor unit assessments", equals=1)
-- code: `workflows/src/workhorse_workflows/author/surveyor/flow.py::Surveyor.assess` @262eac5ce86e
+- code: `workflows/src/workhorse_workflows/author/surveyor/flow.py::Surveyor.assess` @b99c42f1911d
 - tests: `workflows/tests/author/surveyor/test_flow.py::test_the_assessor_is_handed_the_unit_the_rubric_and_the_context_file`
 
 ### split
@@ -145,7 +143,7 @@ re-planning completed work.
 - does: marks the unit blocked with split errors when it cannot be split
 - returns: returns a continuation for selecting the next unit
 - verify: count(subject="surveyor unit-split outcomes", equals=1)
-- code: `workflows/src/workhorse_workflows/author/surveyor/flow.py::Surveyor.split` @262eac5ce86e
+- code: `workflows/src/workhorse_workflows/author/surveyor/flow.py::Surveyor.split` @b99c42f1911d
 - tests: `workflows/tests/author/surveyor/test_flow.py::test_a_unit_too_big_to_assess_is_split_into_its_children`
 
 ### check
@@ -155,7 +153,7 @@ re-planning completed work.
 - does: marks a valid record and returns to unit selection
 - returns: returns a continuation for repair or the next unit
 - verify: count(subject="surveyor finding-record checks", equals=1)
-- code: `workflows/src/workhorse_workflows/author/surveyor/flow.py::Surveyor.check` @262eac5ce86e
+- code: `workflows/src/workhorse_workflows/author/surveyor/flow.py::Surveyor.check` @b99c42f1911d
 - tests: `workflows/tests/author/surveyor/test_flow.py::test_an_invalid_record_is_repaired_once_and_the_unit_lands_assessed`
 
 ### fix
@@ -164,7 +162,7 @@ re-planning completed work.
 - does: revalidates the record regardless of the repair reply
 - returns: returns a continuation for record checking with the repair counter incremented
 - verify: count(subject="surveyor finding-record repairs", equals=1)
-- code: `workflows/src/workhorse_workflows/author/surveyor/flow.py::Surveyor.fix` @262eac5ce86e
+- code: `workflows/src/workhorse_workflows/author/surveyor/flow.py::Surveyor.fix` @b99c42f1911d
 
 ### verify
 - sig: `verify(verify_resolve: int = 0) -> Continue | Await`
@@ -173,7 +171,7 @@ re-planning completed work.
 - does: routes a coverage failure to diagnosis or the operator after the cumulative resolution budget is exhausted
 - returns: returns a continuation for partitioning when coverage holds
 - verify: count(subject="surveyor coverage-gate outcomes", equals=1)
-- code: `workflows/src/workhorse_workflows/author/surveyor/flow.py::Surveyor.verify` @262eac5ce86e
+- code: `workflows/src/workhorse_workflows/author/surveyor/flow.py::Surveyor.verify` @b99c42f1911d
 - tests: `workflows/tests/author/surveyor/test_flow.py::test_two_components_are_planned_assessed_verified_and_emitted`
 
 ### resolve_verify
@@ -182,7 +180,7 @@ re-planning completed work.
 - does: parks for the operator and re-enters unit selection after an answer
 - returns: returns `Await` with the cumulative coverage-resolution count incremented
 - verify: count(subject="coverage operator awaits", equals=1)
-- code: `workflows/src/workhorse_workflows/author/surveyor/flow.py::Surveyor.resolve_verify` @262eac5ce86e
+- code: `workflows/src/workhorse_workflows/author/surveyor/flow.py::Surveyor.resolve_verify` @b99c42f1911d
 
 ### partition
 - sig: `partition(partition_rework: int = 0, partition_errors: str = "", partition_resolve: int = 0) -> Continue | Await`
@@ -191,7 +189,7 @@ re-planning completed work.
 - does: retries invalid partitions within the bounded rework budget, then routes the block to diagnosis or the operator
 - returns: returns a continuation for artifact emission when partition validation holds
 - verify: count(subject="surveyor partition outcomes", equals=1)
-- code: `workflows/src/workhorse_workflows/author/surveyor/flow.py::Surveyor.partition` @262eac5ce86e
+- code: `workflows/src/workhorse_workflows/author/surveyor/flow.py::Surveyor.partition` @b99c42f1911d
 - tests: `workflows/tests/author/surveyor/test_flow.py::test_a_partition_that_orphans_a_unit_is_sent_back_with_the_orphan_named`
 
 ### resolve_partition
@@ -200,7 +198,7 @@ re-planning completed work.
 - does: parks the flow for an operator decision without allowing the resolver to resolve the block
 - returns: returns `Await` targeting partitioning with local rework reset and cumulative resolution incremented
 - verify: count(subject="partition operator awaits", equals=1)
-- code: `workflows/src/workhorse_workflows/author/surveyor/flow.py::Surveyor.resolve_partition` @262eac5ce86e
+- code: `workflows/src/workhorse_workflows/author/surveyor/flow.py::Surveyor.resolve_partition` @b99c42f1911d
 
 ### emit
 - sig: `emit() -> Done`
@@ -209,7 +207,7 @@ re-planning completed work.
 - raises: raises `WorkflowFailed` when artifact emission fails
 - returns: returns `Done` with the emission result after both artifacts are written
 - verify: count(subject="surveyor completed emissions", equals=1)
-- code: `workflows/src/workhorse_workflows/author/surveyor/flow.py::Surveyor.emit` @262eac5ce86e
+- code: `workflows/src/workhorse_workflows/author/surveyor/flow.py::Surveyor.emit` @b99c42f1911d
 - tests: `workflows/tests/author/surveyor/test_partition.py::test_the_manifest_carries_every_unit_and_what_covers_it`
 
 ## Nodes
@@ -230,7 +228,7 @@ re-planning completed work.
 - verify: count(subject="loaded survey configurations", equals=1)
 - emits: a `SurveyConfig` whose repository root is resolved
 - verify: count(subject="loaded survey configurations", equals=1)
-- code: `workflows/src/workhorse_workflows/author/surveyor/nodes/config.py::load_survey_config` @bd999c6757d7
+- code: `workflows/src/workhorse_workflows/author/surveyor/nodes/config.py::load_survey_config` @75f4a9e6e509
 - tests: `workflows/tests/author/surveyor/test_config.py::test_a_missing_rubric_halts_the_run`
 
 ### method: check_inventory
@@ -245,7 +243,7 @@ re-planning completed work.
 - verify: count(subject="inventory planning requests", equals=1)
 - returns: returns `InventoryCheck` with the selected planning decision and a human-readable branch reason
 - verify: count(subject="inventory planning decisions", equals=1)
-- code: `workflows/src/workhorse_workflows/author/surveyor/nodes/config.py::check_inventory` @bd999c6757d7
+- code: `workflows/src/workhorse_workflows/author/surveyor/nodes/config.py::check_inventory` @75f4a9e6e509
 - tests: `workflows/tests/author/surveyor/test_config.py::test_with_neither_the_planner_gets_its_one_judgment`
 
 ### validate_partition
@@ -287,7 +285,7 @@ re-planning completed work.
 - verify: unchanged(subject="backlog outside the survey markers")
 - persistence: survey-backlog-section — creates a missing survey backlog with a `# Backlog` heading and `## Survey findings` section before the generated markers when no backlog file exists
 - verify: created(subject="the survey backlog")
-- verify: visible(locator="backlog survey findings", text="## Survey findings")
+- verify: json_path(path="$.await", matches="## Survey findings")
 - does: writes a version-one unit manifest containing every inventory unit's id, path, kind, status, covering bullet ids, and cluster ids
 - verify: count(subject="survey manifest units", equals=1)
 - returns: returns `EmitResult(emit_ok=true)` with the emitted bullet count and manifest-unit count after both writes succeed
@@ -300,12 +298,12 @@ re-planning completed work.
 ### bullet_for
 - sig: `bullet_for(cluster: dict) -> str`
 - does: renders the cluster id as the `survey-<id>` backlog handle and the cluster title as the bullet text
-- verify: visible(locator="generated cluster bullet", text="survey-")
+- verify: json_path(path="$.await", matches="survey-")
 - does: includes the remediation pattern, unit count, and strategy in the bullet hints
-- verify: visible(locator="cluster bullet hints", text="pattern:")
+- verify: json_path(path="$.await", matches="pattern:")
 - emits: a single-line cluster-notes hint with embedded newlines flattened to spaces, only when the cluster's notes are non-empty
   - verify: created(subject="the cluster notes hint")
-  - verify: visible(locator="cluster notes hint", text=" ")
+  - verify: json_path(path="$.await", matches=" ")
 - returns: returns one markdown list item string for the supplied cluster
 - verify: count(subject="rendered cluster bullets", equals=1)
 - code: `workflows/src/workhorse_workflows/author/surveyor/nodes/partition.py::bullet_for` @e6f804dfa71e

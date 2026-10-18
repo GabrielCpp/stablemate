@@ -7,7 +7,7 @@ title: Coder plan summary
 
 - file: none — in-memory rendered plan summary
 - config: `PlanSummary` prompt value
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/dev.py::PlanSummary` @b6e19c205b4f
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/dev.py::PlanSummary` @5aa622da8aea
 - detail: [coder development schema contracts](../concepts/coder-dev-schema-contracts.md)
 
 ## Fields
@@ -17,5 +17,5 @@ title: Coder plan summary
 - default: empty string
 - required: false
 - semantics: human-readable plan structure, blank when no projection exists
-- verify: json_path(path="$.text", matches=".*")
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/dev.py::PlanSummary.text` @b6e19c205b4f
+- verify: json_path(path="$.text", equals="Applied the change.")
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/dev.py::PlanSummary.text` @5aa622da8aea

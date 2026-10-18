@@ -18,7 +18,7 @@ alongside the other author stages. Configuration loading, coverage validation, p
 operator resolution, and telemetry labeling are existing shared author capabilities; this package
 only composes them for one story-split run.
 
-- code: `workflows/src/workhorse_workflows/author/story_split/flow.py::StorySplitFlow` @7e464639145e
+- code: `workflows/src/workhorse_workflows/author/story_split/flow.py::StorySplitFlow` @f7d215b43b0c
 - code: `workflows/src/workhorse_workflows/author/story_split/nodes/_blueprint.py::blueprint` @c780d75bd248
 - tests: `workflows/tests/author/story_split/test_flow.py::test_accepts_one_epic_graph_without_selecting_authoring_or_git`
 - detail: [story-split prompt](../formats/story-split-prompt.md)
@@ -36,22 +36,23 @@ only composes them for one story-split run.
 ### epic
 - type: `str`
 - default: `""` — no epic is selected until the caller supplies one
+- verify: json_path(path="$.epic", equals="")
 - required: true
 - semantics: identifies the single epic whose story graph is split and reviewed
-- verify: json_path(path="$.epic", matches=".+")
 - verify: count(subject="story-split runs with one selected epic", equals=1)
-- code: `workflows/src/workhorse_workflows/author/story_split/flow.py::StorySplitFlow` @7e464639145e
+- code: `workflows/src/workhorse_workflows/author/story_split/flow.py::StorySplitFlow` @f7d215b43b0c
 - detail: [story-split input fields](../concepts/story-split-input-fields.md)
 
 ### operator_mode
 - type: literal `auto` or `human`
 - default: `"auto"` — blocked decisions first receive automatic resolution attempts
+- verify: json_path(path="$.operator_mode", equals="auto")
 - required: true
 - semantics: `human` sends blocked or exhausted work directly to the operator context
-- semantics: `auto` permits up to two automatic split-resolution turns before the operator context
-- verify: json_path(path="$.operator_mode", equals="auto")
 - verify: count(subject="human-mode story-split operator gates", equals=1)
-- code: `workflows/src/workhorse_workflows/author/story_split/flow.py::StorySplitFlow` @7e464639145e
+- semantics: `auto` permits up to two automatic split-resolution turns before the operator context
+- verify: count(subject="auto-mode story-split resolution turns", equals=2)
+- code: `workflows/src/workhorse_workflows/author/story_split/flow.py::StorySplitFlow` @f7d215b43b0c
 - detail: [story-split input fields](../concepts/story-split-input-fields.md)
 
 ## Methods
@@ -68,23 +69,22 @@ only composes them for one story-split run.
 - does: loads author configuration in `story-split` mode
 - returns: returns the configured repository, epic, document-root, and feature paths
 - verify: count(subject="prepared story-split configurations", equals=1)
-- code: `workflows/src/workhorse_workflows/author/story_split/flow.py::StorySplitFlow.setup` @7e464639145e
+- code: `workflows/src/workhorse_workflows/author/story_split/flow.py::StorySplitFlow.setup` @f7d215b43b0c
 
 ### labels
 - sig: `labels() -> dict[str, str]`
 - does: labels the run with the selected epic as `work_id` and `epic`
 - does: labels progress as `splitting stories`
 - returns: returns labels identifying the one selected epic
-- verify: json_path(path="$.epic", matches=".+")
-- code: `workflows/src/workhorse_workflows/author/story_split/flow.py::StorySplitFlow.labels` @7e464639145e
+- verify: json_path(path="$.epic", equals="acme-epic")
+- code: `workflows/src/workhorse_workflows/author/story_split/flow.py::StorySplitFlow.labels` @f7d215b43b0c
 
 ### state_labels
 - sig: `state_labels(params: dict[str, Any]) -> dict[str, str]`
 - does: adds `cov_reworks` and `split_resolves` counters to the base run labels
 - returns: returns labels containing both story-split budget counters
-- verify: json_path(path="$.cov_reworks", matches=".+")
-- code: `workflows/src/workhorse_workflows/author/story_split/flow.py::StorySplitFlow.state_labels` @7e464639145e
-- code: `workflows/tests/author/test_workflow.py::test_coverage_resolver_cycles_share_the_epic_scoped_split_bound.capture`
+- verify: json_path(path="$.cov_reworks", equals="example cov reworks")
+- code: `workflows/src/workhorse_workflows/author/story_split/flow.py::StorySplitFlow.state_labels` @f7d215b43b0c
 
 ### start
 - sig: `start() -> Continue`
@@ -96,7 +96,7 @@ only composes them for one story-split run.
 - verify: count(subject="invalid story-split operator-mode failures", equals=1)
 - returns: returns a continuation targeting `split_stories` for a valid run
 - verify: count(subject="story-split starts", equals=1)
-- code: `workflows/src/workhorse_workflows/author/story_split/flow.py::StorySplitFlow.start` @7e464639145e
+- code: `workflows/src/workhorse_workflows/author/story_split/flow.py::StorySplitFlow.start` @f7d215b43b0c
 
 ### split_stories
 - sig: `split_stories(split_resolves: int = 0, cov_reworks: int = 0, rework_notes: str = "") -> Continue | Await`
@@ -105,20 +105,20 @@ only composes them for one story-split run.
 - does: sends a non-blocked, non-standoff result to `check_coverage`
 - verify: count(subject="story-split coverage checks", equals=1)
 - does: sends a standoff result to the coverage gate with the standoff notes appended to prior rework notes
-- verify: visible(locator="story-split coverage gate", text="declined this rework")
+- verify: json_path(path="$.await", matches="declined this rework")
 - does: returns an operator-awaiting context for blocked work in human mode or after two split resolutions
-- verify: visible(locator="operator-awaiting context", text="blocked")
+- verify: json_path(path="$.await", matches="blocked")
 - does: routes auto-mode blocked work to `resolve_split` while fewer than two split resolutions have occurred
 - verify: count(subject="story-split resolution continuations", equals=1)
-- code: `workflows/src/workhorse_workflows/author/story_split/flow.py::StorySplitFlow.split_stories` @7e464639145e
+- code: `workflows/src/workhorse_workflows/author/story_split/flow.py::StorySplitFlow.split_stories` @f7d215b43b0c
 
 ### resolve_split
 - sig: `resolve_split(notes: str, split_resolves: int = 0, cov_reworks: int = 0, rework_notes: str = "") -> Await`
 - does: asks the shared operator resolver to diagnose a blocked story-split decision
 - verify: count(subject="story-split operator resolutions", equals=1)
 - does: returns an operator-awaiting context that resumes `split_stories` with the resolution counter incremented
-- verify: visible(locator="operator-awaiting context", text="blocked")
-- code: `workflows/src/workhorse_workflows/author/story_split/flow.py::StorySplitFlow.resolve_split` @7e464639145e
+- verify: json_path(path="$.await", matches="blocked")
+- code: `workflows/src/workhorse_workflows/author/story_split/flow.py::StorySplitFlow.resolve_split` @f7d215b43b0c
 
 ### check_coverage
 - sig: `check_coverage(cov_reworks: int = 0, split_resolves: int = 0) -> Continue | Await | Done`
@@ -129,58 +129,55 @@ only composes them for one story-split run.
 - does: records a digest-bound receipt and returns `StorySplitDone` when semantic review status is `ok`
 - verify: created(subject="story-split review receipt")
 - does: routes a blocked semantic review through the coverage gate
-- verify: visible(locator="story-split coverage gate", text="blocked")
+- verify: json_path(path="$.await", matches="blocked")
 - does: routes a non-blocked failed review to story rework
 - verify: count(subject="story-split coverage reworks", equals=1)
-- code: `workflows/src/workhorse_workflows/author/story_split/flow.py::StorySplitFlow.check_coverage` @7e464639145e
+- code: `workflows/src/workhorse_workflows/author/story_split/flow.py::StorySplitFlow.check_coverage` @f7d215b43b0c
 
 ### resolve_coverage
 - sig: `resolve_coverage(notes: str, split_resolves: int = 0) -> Await`
 - does: asks the shared operator resolver to diagnose a coverage decision
 - verify: count(subject="story-split coverage resolutions", equals=1)
 - does: returns an operator-awaiting context that resumes `split_stories` with the resolution counter incremented
-- verify: visible(locator="operator-awaiting context", text="blocked")
-- code: `workflows/src/workhorse_workflows/author/story_split/flow.py::StorySplitFlow.resolve_coverage` @7e464639145e
+- verify: json_path(path="$.await", matches="blocked")
+- code: `workflows/src/workhorse_workflows/author/story_split/flow.py::StorySplitFlow.resolve_coverage` @f7d215b43b0c
 
 ### _rework_coverage
 - sig: `_rework_coverage(result: object, notes: str, cov_reworks: int, split_resolves: int) -> Continue | Await`
 - does: routes coverage findings back to `split_stories` with incremented rework notes while fewer than three reworks have occurred
 - verify: count(subject="bounded story-split rework continuations", equals=1)
 - does: sends exhausted coverage rework to the coverage gate
-- verify: visible(locator="story-split coverage gate", text="coverage")
-- code: `workflows/src/workhorse_workflows/author/story_split/flow.py::StorySplitFlow._rework_coverage` @7e464639145e
+- verify: json_path(path="$.await", matches="coverage")
+- code: `workflows/src/workhorse_workflows/author/story_split/flow.py::StorySplitFlow._rework_coverage` @f7d215b43b0c
 
 ### _gate_coverage
 - sig: `_gate_coverage(result: object, notes: str, split_resolves: int) -> Continue | Await`
 - does: returns an operator-awaiting context for human mode or after two split resolutions
-- verify: visible(locator="operator-awaiting context", text="blocked")
+- verify: json_path(path="$.await", matches="blocked")
 - does: routes automatic unresolved coverage to `resolve_coverage` while its resolution budget remains
 - verify: count(subject="automatic story-split coverage resolutions", equals=1)
-- code: `workflows/src/workhorse_workflows/author/story_split/flow.py::StorySplitFlow._gate_coverage` @7e464639145e
+- code: `workflows/src/workhorse_workflows/author/story_split/flow.py::StorySplitFlow._gate_coverage` @f7d215b43b0c
 
 ### _epic_dir
 - sig: `_epic_dir() -> str`
 - does: resolves the selected epic directory from the workflow repository root and epic name
-- verify: json_path(path="$.epic_dir", matches=".+")
+- verify: json_path(path="$.epic_dir", equals="docs/stories/acme-story")
 - returns: returns the repository-relative epic directory used by the split and coverage stages
-- verify: json_path(path="$.epic_dir", matches=".+")
-- code: `workflows/src/workhorse_workflows/author/story_split/flow.py::StorySplitFlow._epic_dir` @7e464639145e
+- code: `workflows/src/workhorse_workflows/author/story_split/flow.py::StorySplitFlow._epic_dir` @f7d215b43b0c
 
 ### _context
 - sig: `_context() -> str`
 - does: derives `context.md` beneath the selected epic directory
 - verify: json_path(path="$.context_path", matches="context\\.md$")
 - returns: returns the operator context path used by blocked split and coverage decisions
-- verify: json_path(path="$.context_path", matches="context\\.md$")
-- code: `workflows/src/workhorse_workflows/author/story_split/flow.py::StorySplitFlow._context` @7e464639145e
+- code: `workflows/src/workhorse_workflows/author/story_split/flow.py::StorySplitFlow._context` @f7d215b43b0c
 
 ### _abs
 - sig: `_abs(relative: str) -> Path`
 - does: joins a repository-relative path to the workflow repository root
-- verify: json_path(path="$.absolute_path", matches=".+")
+- verify: json_path(path="$.absolute_path", equals="docs/stories/acme-story/story.md")
 - returns: returns an absolute path for an operator-await context file
-- verify: json_path(path="$.absolute_path", matches=".+")
-- code: `workflows/src/workhorse_workflows/author/story_split/flow.py::StorySplitFlow._abs` @7e464639145e
+- code: `workflows/src/workhorse_workflows/author/story_split/flow.py::StorySplitFlow._abs` @f7d215b43b0c
 
 ### _resolve
 - sig: `_resolve(stage: str, notes: str) -> OperatorResolution`
@@ -189,8 +186,8 @@ only composes them for one story-split run.
 - does: gives the resolver high power and no time limit
 - verify: count(subject="unbounded story-split resolver turns", equals=1)
 - returns: returns the resolver's operator decision
-- verify: json_path(path="$.decision", matches=".+")
-- code: `workflows/src/workhorse_workflows/author/story_split/flow.py::StorySplitFlow._resolve` @7e464639145e
+- verify: json_path(path="$.decision", equals="example decision")
+- code: `workflows/src/workhorse_workflows/author/story_split/flow.py::StorySplitFlow._resolve` @f7d215b43b0c
 
 ## Downstream Boundaries
 

@@ -14,23 +14,20 @@ verification fails, and when clustering the findings fails — but it never give
 every block escalates to the operator context for human decision or resolution, checkpointed and
 resumable.
 
-- start: the author runs with `mode="surveyor"`.
-- start: a readable `rubric` path exists under `survey_dir`.
-- start: survey artifacts (inventory, rules, findings records, partition, manifest) are either absent (first run) or present and consistent (resumed run).
+- fixture: none, because the walk dry-runs the registered flow, which stands in for every agent turn
 - steps:
-  - [plan granularity](#plan-granularity)
-  - [expand and freeze inventory](#expand-and-freeze-inventory)
-  - [per-unit assessment loop](#per-unit-assessment-loop)
-  - [verify exhaustive coverage](#verify-exhaustive-coverage)
-  - [cluster findings into work items](#cluster-findings-into-work-items)
-  - [emit backlog and manifest](#emit-backlog-and-manifest)
-- end: the survey has produced a durable backlog (`backlog.yml`) and unit manifest, representing an exhaustive assessment of the rubric against the repo, with every finding attributed to a work item and every work item traceable to at least one non-clean unit.
-- verify: persists(subject="the survey backlog and manifest")
-- verify: persists(subject="the frozen unit inventory")
-- verify: unchanged(subject="the unit inventory after coverage verification")
+  - [run](../workhorse-author.md#run)
+- start: the working directory holds no rendered graph
+- verify: absent(subject="workhorse-author.dot")
+- end: the dry run leaves the command with a zero exit status
+- verify: exit_status(code=0)
 - detail: [surveyor operator resolution field roles](../concepts/surveyor-operator-resolution-field-roles.md)
 - detail: [author-surveyor subflow](../concepts/author-surveyor-subflow.md)
-- tests: `workflows/tests/author/test_workflow.py::test_surveyor_produces_backlog_and_manifest`
+
+The stages, in order: [plan granularity](#plan-granularity), [expand and freeze inventory](#expand-and-freeze-inventory), [per-unit assessment loop](#per-unit-assessment-loop), [verify exhaustive coverage](#verify-exhaustive-coverage), [cluster findings into work items](#cluster-findings-into-work-items), [emit backlog and manifest](#emit-backlog-and-manifest).
+
+The flow starts when the author runs with `mode="surveyor"`; or when a readable `rubric` path exists under `survey_dir`; or when survey artifacts (inventory, rules, findings records, partition, manifest) are either absent (first run) or present and consistent (resumed run).
+It ends in one of these ways: the survey has produced a durable backlog (`backlog.yml`) and unit manifest, representing an exhaustive assessment of the rubric against the repo, with every finding attributed to a work item and every work item traceable to at least one non-clean unit.
 
 ## Plan granularity
 

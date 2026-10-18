@@ -6,7 +6,7 @@ title: Survey record-repair prompt contract
 # Survey record-repair prompt contract
 
 - file: `workflows/src/workhorse_workflows/author/surveyor/prompts/fix-record.md`
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/survey.py::RecordFix` @f79c1c007a97
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/survey.py::RecordFix` @7db58efbfd66
 - detail: [author surveyor subflow](../concepts/author-surveyor-subflow.md)
 - tests: `workflows/tests/author/surveyor/test_flow.py::test_an_invalid_record_is_repaired_once_and_the_unit_lands_assessed`
 
@@ -22,19 +22,19 @@ when validation still fails.
 - type: string path
 - required: true
 - semantics: finding-record Markdown file repaired in place
-- verify: json_path(path="$.record_path", matches=".+")
+- verify: json_path(path="$.record_path", equals="docs/stories/acme-story/story.md")
 
 ### unit_id
 - type: string
 - required: true
 - semantics: exact inventory identifier the record must continue to describe
-- verify: json_path(path="$.unit_id", matches=".+")
+- verify: json_path(path="$.unit_id", equals="CASE-1234")
 
 ### record_errors
 - type: string
 - required: true
 - semantics: validator diagnostics that identify the record shape defects to repair
-- verify: json_path(path="$.record_errors", matches=".+")
+- verify: json_path(path="$.record_errors", equals="example record errors")
 
 ### status
 - type: string
@@ -43,11 +43,10 @@ when validation still fails.
 - semantics: advisory reply outcome, `fixed` or `blocked`
 - verify: json_path(path="$.status", matches="^(fixed|blocked)$")
 - semantics: validation, not this field, decides acceptance
-- verify: json_path(path="$.status", matches="^(fixed|blocked)$")
 
 ### notes
 - type: string
 - default: empty string
 - required: false
 - semantics: concise description of the repair or why no safe repair was possible
-- verify: json_path(path="$.notes", matches=".*")
+- verify: json_path(path="$.notes", equals="Applied the change and ran the gates.")

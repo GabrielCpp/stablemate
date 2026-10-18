@@ -5,11 +5,12 @@ title: Coder queue worktree cleanliness
 ---
 # Coder queue worktree cleanliness
 
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/queue.py::WorktreeCleanliness` @a87cd48ce444
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/queue.py::WorktreeCleanliness` @d94ba7a3bcb5
 - detail: [coder shared library](../concepts/coder-shared-library.md)
 
 The cleanliness result reports whether story-owned implementation paths remain uncommitted after
-the development gate. Paths that were dirty before the story and untouched by it are excluded.
+the development gate. Paths that were dirty before the story and untouched by it are excluded,
+and so are the gate's own context files.
 
 ## Fields
 
@@ -19,7 +20,7 @@ the development gate. Paths that were dirty before the story and untouched by it
 - required: false
 - semantics: whether no story-owned uncommitted paths remain
 - verify: json_path(path="$.clean", equals=false)
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/queue.py::WorktreeCleanliness` @a87cd48ce444
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/queue.py::WorktreeCleanliness` @d94ba7a3bcb5
 - detail: [coder queue worktree cleanliness field roles](../concepts/coder-queue-worktree-cleanliness-field-roles.md)
 
 ### dirty
@@ -28,7 +29,7 @@ the development gate. Paths that were dirty before the story and untouched by it
 - required: false
 - semantics: repository-qualified paths still uncommitted after exclusions
 - verify: count(subject="dirty paths", equals=0)
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/queue.py::WorktreeCleanliness` @a87cd48ce444
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/queue.py::WorktreeCleanliness` @d94ba7a3bcb5
 - detail: [coder queue worktree cleanliness field roles](../concepts/coder-queue-worktree-cleanliness-field-roles.md)
 
 ### repos
@@ -37,5 +38,5 @@ the development gate. Paths that were dirty before the story and untouched by it
 - required: false
 - semantics: repository names inspected for the story
 - verify: count(subject="inspected repositories", equals=0)
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/queue.py::WorktreeCleanliness` @a87cd48ce444
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/queue.py::WorktreeCleanliness` @d94ba7a3bcb5
 - detail: [coder queue worktree cleanliness field roles](../concepts/coder-queue-worktree-cleanliness-field-roles.md)

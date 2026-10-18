@@ -12,7 +12,7 @@ the defining module at access time, so a test that patches that module continues
 that imports a helper from this facade. The facade itself owns no Git, network, filesystem, or
 subprocess behavior.
 
-- code: `workflows/src/workhorse_workflows/kit/__init__.py::__getattr__` @5a85c432d642
+- code: `workflows/src/workhorse_workflows/kit/__init__.py::__getattr__` @ba3b45534868
 
 ## Methods
 
@@ -23,15 +23,15 @@ subprocess behavior.
 - raises: raises `AttributeError` when the requested name is not in the facade's declared export map
 - returns: the current attribute value declared by the selected submodule
 - verify: absent(subject="unknown workflow kit facade attribute")
-- code: `workflows/src/workhorse_workflows/kit/__init__.py::__getattr__` @5a85c432d642
+- code: `workflows/src/workhorse_workflows/kit/__init__.py::__getattr__` @ba3b45534868
 
 ### __dir__
 
 - sig: `__dir__() -> list[str]`
 - does: exposes exactly the facade's declared export names for introspection
 - returns: the sorted facade export names
-- verify: count(subject="workflow kit facade export names", equals=49)
-- code: `workflows/src/workhorse_workflows/kit/__init__.py::__dir__` @5a85c432d642
+- verify: count(subject="workflow kit facade export names", equals=51)
+- code: `workflows/src/workhorse_workflows/kit/__init__.py::__dir__` @ba3b45534868
 
 ## Git operations
 
@@ -46,14 +46,18 @@ Imported from `kit.git`:
 - `clone` — clone a repository
 - `commit_all` — stage and commit all changes
 - `commit_paths` — stage and commit specified paths
+- `commit_returning_refusal` — commit paths and return the hook's refusal text, retrying while the index is locked
 - `commits_ahead` — count commits ahead of base
 - `current_branch` — get the currently checked-out branch
 - `default_branch` — get the repository's default branch
 - `diff_text` — get diff as plain text
+- `diff_to_commit` — the stat and patch of the paths a commit would take
 - `fetch_reset` — fetch and reset to origin
 - `GitError` — exception raised when git operations fail
 - `head_sha` — get the current HEAD commit SHA
 - `is_ancestor` — check if one commit is an ancestor of another
+- `last_commit_subject` — the subject of the last commit touching the paths
+- `last_commit_trailer` — a trailer value of the last commit touching the paths
 - `list_tracked_files` — list all tracked files in the repository
 - `local_branch_exists` — check if a branch exists locally
 - `merge_base` — find the merge base between two commits

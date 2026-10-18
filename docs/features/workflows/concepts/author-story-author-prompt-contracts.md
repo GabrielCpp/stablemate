@@ -11,36 +11,20 @@ renders them from its state methods; each turn receives only the target story pa
 stage-specific evidence named below. The templates are contracts for one bounded planning action,
 not alternate workflow states: they do not select another story, run validation, or commit changes.
 
-The shared prompt static checks ensure that each literal render path exists, every referenced
-`workhorse_var` is supplied by its caller, and each model-returning prompt describes the top-level
-keys of its declared reply. The package's prompt contracts are also covered by the shared
-[workflow prompt static contracts](workflow-prompt-static-contracts.md).
-
 When a story write or validation cannot proceed, the subflow also renders the shared [author
 resolve-operator prompt](../formats/author-resolve-operator-prompt.md) with `block_stage: "write-story"`.
 That diagnostic turn investigates the epic and preserves its findings for the operator; it does
 not decide the product or scope question and the subflow resumes through an operator-awaiting
 context.
 
-- code: `workflows/src/workhorse_workflows/author/story_author/flow.py::StoryAuthor.design_mockup` @6c2b77a93e13
-- code: `workflows/src/workhorse_workflows/author/story_author/flow.py::StoryAuthor.write_story` @6c2b77a93e13
-- code: `workflows/src/workhorse_workflows/author/story_author/flow.py::StoryAuthor.audit_story` @6c2b77a93e13
-- code: `workflows/src/workhorse_workflows/author/story_author/flow.py::StoryAuthor.rework_story` @6c2b77a93e13
+- code: `workflows/src/workhorse_workflows/author/story_author/flow.py::StoryAuthor.design_mockup` @7432e6174f20
+- code: `workflows/src/workhorse_workflows/author/story_author/flow.py::StoryAuthor.write_story` @7432e6174f20
+- code: `workflows/src/workhorse_workflows/author/story_author/flow.py::StoryAuthor.audit_story` @7432e6174f20
+- code: `workflows/src/workhorse_workflows/author/story_author/flow.py::StoryAuthor.rework_story` @7432e6174f20
 - code: `workflows/src/workhorse_workflows/author/story_author/prompts/design-mockup.md` @cb597bcb1e13
 - code: `workflows/src/workhorse_workflows/author/story_author/prompts/write-story.md` @88b776aac349
 - code: `workflows/src/workhorse_workflows/author/story_author/prompts/audit-story.md` @111300f5369c
 - code: `workflows/src/workhorse_workflows/author/story_author/prompts/rework-story.md` @b3bf3930c46b
-- code: `workflows/tests/author/test_prompt_authority.py::test_writer_can_define_in_scope_behavior_without_prior_okf_authority`
-- code: `workflows/tests/author/test_prompt_authority.py::test_writer_separates_build_scope_from_regression_invariants`
-- code: `workflows/tests/author/test_prompt_authority.py::test_writer_records_concise_grounded_technical_notes`
-- code: `workflows/tests/author/test_prompt_authority.py::test_auditor_does_not_demand_prior_citations_for_new_behavior`
-- code: `workflows/tests/author/test_prompt_authority.py::test_auditor_respects_the_bare_minimum_story_boundary`
-- code: `workflows/tests/author/test_prompt_authority.py::test_reworker_makes_in_scope_choices_instead_of_blocking`
-- code: `workflows/tests/author/test_prompt_authority.py::test_mutating_turns_leave_validation_and_delivery_to_author`
-- code: `workflows/tests/author/test_prompt_authority.py::test_mockup_inspection_does_not_leave_screenshot_collateral`
-- code: `workflows/tests/author/test_write_story_prompt.py::test_the_backend_only_story_is_given_something_to_ground_in`
-- code: `workflows/tests/author/test_write_story_prompt.py::test_the_absent_mockup_is_not_a_block`
-- code: `workflows/tests/author/test_write_story_prompt.py::test_the_mockup_arm_survives_for_the_story_that_has_one`
 - tests: `workflows/tests/test_prompts_exist.py::test_the_prompt_file_is_there`
 - tests: `workflows/tests/test_prompt_variables.py::test_the_prompt_reads_only_names_the_workflow_can_supply`
 - tests: `workflows/tests/test_prompt_output_shape.py::test_the_prompt_documents_the_keys_the_turn_is_asked_for`
@@ -56,7 +40,6 @@ context.
 - tests: `workflows/tests/author/test_write_story_prompt.py::test_the_absent_mockup_is_not_a_block`
 - tests: `workflows/tests/author/test_write_story_prompt.py::test_the_mockup_arm_survives_for_the_story_that_has_one`
 - detail: [author story-author subflow](author-story-author-subflow.md)
-- detail: [workflow prompt static contracts](workflow-prompt-static-contracts.md)
 
 The eight `test_prompt_authority.py` symbols above each pin a specific prompt-authority contract
 that the `story_author` and `epic_edit` envelopes must hold in lockstep across every prompt copy.

@@ -5,14 +5,13 @@ title: Coder shared dry-run stubs
 ---
 # Coder shared dry-run stubs
 
-- code: `workflows/src/workhorse_workflows/coder/shared/stubs.py` @ef02913794a7
+- code: `workflows/src/workhorse_workflows/coder/shared/stubs.py` @fb7518db21e4
 
 Coder genesis uses these callbacks as deterministic stand-ins when the workflow runs with
 `--dry-run`. Every callback accepts arbitrary node arguments because the dry-run registry replaces
 the real node body. The successful values keep the run on its forward path; `classified` selects
 the absent-target genesis branch, while `story_paths` supplies a synthetic story so later
-per-story lanes are reached. `select_ci_repo` deliberately remains an undeclared blank stub, so
-the CI loop ends rather than polling a nonexistent pull request.
+per-story lanes are reached. `launch_set` supplies the one-story launch the main flow works.
 
 ## Methods
 
@@ -29,7 +28,7 @@ Classifies the dry-run genesis target as worth processing and chooses the full b
 - verify: json_path(path="$.target_state", equals="absent")
 - returns: the note `dry run`
 - verify: json_path(path="$.note", equals="dry run")
-- code: `workflows/src/workhorse_workflows/coder/shared/stubs.py::classified` @ef02913794a7
+- code: `workflows/src/workhorse_workflows/coder/shared/stubs.py::classified` @fb7518db21e4
 
 ### built
 
@@ -42,7 +41,7 @@ Reports that the synthetic genesis skeleton was created successfully.
 - verify: json_path(path="$.ok", equals=true)
 - returns: the note `dry run`
 - verify: json_path(path="$.note", equals="dry run")
-- code: `workflows/src/workhorse_workflows/coder/shared/stubs.py::built` @ef02913794a7
+- code: `workflows/src/workhorse_workflows/coder/shared/stubs.py::built` @fb7518db21e4
 
 ### installed
 
@@ -55,7 +54,7 @@ Reports that the synthetic Farrier installation completed successfully.
 - verify: json_path(path="$.ok", equals=true)
 - returns: the note `dry run`
 - verify: json_path(path="$.note", equals="dry run")
-- code: `workflows/src/workhorse_workflows/coder/shared/stubs.py::installed` @ef02913794a7
+- code: `workflows/src/workhorse_workflows/coder/shared/stubs.py::installed` @fb7518db21e4
 
 ### valid
 
@@ -66,7 +65,7 @@ Reports that the synthetic genesis result satisfies the main flow’s preconditi
 - verify: count(subject="genesis validation stub invocations", equals=1)
 - returns: a genesis report with `valid=true`
 - verify: json_path(path="$.valid", equals=true)
-- code: `workflows/src/workhorse_workflows/coder/shared/stubs.py::valid` @ef02913794a7
+- code: `workflows/src/workhorse_workflows/coder/shared/stubs.py::valid` @fb7518db21e4
 
 ### story_paths
 
@@ -85,4 +84,17 @@ Provides the synthetic story identity and paths needed to traverse the per-story
 - verify: json_path(path="$.spec_dir", matches="/dry-run/docs/epics/dry-run-epic/stories/dry-run-story/spec")
 - returns: a `qa_dir` beneath the synthetic story directory
 - verify: json_path(path="$.qa_dir", matches="/dry-run/docs/epics/dry-run-epic/stories/dry-run-story/qa")
-- code: `workflows/src/workhorse_workflows/coder/shared/stubs.py::story_paths` @ef02913794a7
+- code: `workflows/src/workhorse_workflows/coder/shared/stubs.py::story_paths` @fb7518db21e4
+
+### launch_set
+
+Provides the synthetic launch set that lets the dry-run main flow reach one story.
+
+- sig: `launch_set(*_args: object, **_kwargs: object) -> LaunchSet`
+- does: ignores all positional and keyword arguments
+- verify: count(subject="launch set stub invocations", equals=1)
+- returns: a launch set in `epic` mode
+- verify: json_path(path="$.mode", equals="epic")
+- returns: one entry for story `dry-run-story` under epic `dry-run-epic`
+- verify: json_path(path="$.entries[0].slug", equals="dry-run-story")
+- code: `workflows/src/workhorse_workflows/coder/shared/stubs.py::launch_set` @fb7518db21e4

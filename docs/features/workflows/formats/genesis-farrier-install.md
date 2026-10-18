@@ -6,7 +6,7 @@ title: Genesis Farrier installation result
 # Genesis Farrier installation result
 
 - file: none — in-memory genesis result
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/genesis.py::FarrierInstall` @24e0e633fcd0
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/genesis.py::FarrierInstall` @e78de4f5acb0
 - detail: [coder genesis bootstrap](../concepts/coder-genesis-bootstrap.md)
 
 The result records whether Farrier setup completed and which requested scaffolds were rendered
@@ -20,15 +20,15 @@ before any failure.
 - required: false
 - semantics: whether pack installation and requested scaffold rendering succeeded
 - verify: json_path(path="$.ok", equals=true)
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/genesis.py::FarrierInstall.ok` @24e0e633fcd0
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/genesis.py::FarrierInstall.ok` @e78de4f5acb0
 
 ### note
 - type: string
 - default: empty string
 - required: false
 - semantics: installation or scaffold explanation
-- verify: json_path(path="$.note", matches=".*")
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/genesis.py::FarrierInstall.note` @24e0e633fcd0
+- verify: json_path(path="$.note", equals="example note")
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/genesis.py::FarrierInstall.note` @e78de4f5acb0
 
 ### scaffolds_rendered
 - type: list of strings
@@ -36,4 +36,4 @@ before any failure.
 - required: false
 - semantics: scaffold identifiers rendered in input order
 - verify: count(subject="scaffolds_rendered", equals=0)
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/genesis.py::FarrierInstall.scaffolds_rendered` @24e0e633fcd0
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/genesis.py::FarrierInstall.scaffolds_rendered` @e78de4f5acb0

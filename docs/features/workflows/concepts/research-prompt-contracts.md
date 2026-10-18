@@ -5,22 +5,20 @@ title: Research prompt contracts
 ---
 # Research prompt contracts
 
-The research workflow renders the thirteen templates in
+The research workflow renders the fourteen templates in
 `workflows/src/workhorse_workflows/research/prompts/` from the `Research` state machine. Each
 template is a persona contract: it receives only the named workflow arguments, instructs one
 bounded decision or write, and returns JSON matching the reply model selected by its render call.
 The workflow owns the render bindings; the [research workflow composition root](research-workflow-composition-root.md)
-owns their routing, and [workflow prompt static contracts](workflow-prompt-static-contracts.md)
-checks that referenced files, variables, and output keys remain aligned.
+owns their routing.
 
 The templates deliberately refer to repository-local research skills by capability name rather
 than embedding implementation instructions. They do not run experiments in an agent turn,
 re-grade an artifact, or choose a path outside the decision assigned to their persona.
 
-- code: `workflows/src/workhorse_workflows/research/workflow.py::Research` @e196dc60a365
+- code: `workflows/src/workhorse_workflows/research/workflow.py::Research` @b2a751617c3b
 - detail: [research workflow documentation boundaries](research-workflow-documentation-boundaries.md)
 - detail: [research workflow composition root](research-workflow-composition-root.md)
-- detail: [workflow prompt static contracts](workflow-prompt-static-contracts.md)
 
 ## Prompt contracts
 
@@ -45,7 +43,14 @@ The engineer reads the design's protocol and gate document, implements the exper
 test under the declared code root, and returns both the full argv and the same experiment's `n=1`
 argv for rehearsal through the real runner. The command writes `result.json` in its declared cwd.
 A fault outside the repository is reported only as `fault_locus: "tooling"` with a named
-`component`. Its JSON result is `Build`.
+`component`. A build that cannot proceed is reported as `status: "blocked"`. Its JSON result is `Build`.
+
+### `code-review-experiment.md`
+
+The reviewer checks the engineer's build against the gate document after lint and the tests have
+passed. It runs the code-review skill, fixes the real correctness findings it can, and re-reads the
+code against the gate's own requirements. Its JSON result is `CodeReview`, with `status` set to
+`approve` or `revise`, the outstanding `findings`, and `notes` for the next turn.
 
 ### `triage-overrun.md`
 
@@ -114,7 +119,9 @@ hint. Its JSON result is `LeadReview`.
 
 The researcher records a reassessment of a wrongly killed gate, preserves the original negative
 finding, marks the gate `REOPENED`, rescopes its corrective plan, and resets dependent gates to
-`NOT STARTED`. Its JSON result is `ReviveResult`.
+`NOT STARTED`. It first tells a rescope from a missing prerequisite, and writes a missing
+prerequisite as its own ladder gate ahead of the revived one. Its JSON result is `ReviveResult`,
+which names that prerequisite gate when there is one.
 
 ### `define-new-direction.md`
 

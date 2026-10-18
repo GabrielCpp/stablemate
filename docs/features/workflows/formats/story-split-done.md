@@ -27,7 +27,7 @@ and semantic review.
 - type: string
 - required: true
 - semantics: explicitly selected epic whose stories were split
-- verify: json_path(path="$.epic", matches=".+")
+- verify: json_path(path="$.epic", equals="acme-epic")
 - code: `workflows/src/workhorse_workflows/author/story_split/schemas.py::StorySplitDone` @1a09df97aba9
 - detail: [story split completion field roles](../concepts/story-split-done-field-roles.md)
 
@@ -35,7 +35,7 @@ and semantic review.
 - type: string path
 - required: true
 - semantics: canonical repository-relative directory containing the selected epic
-- verify: json_path(path="$.epic_dir", matches=".+")
+- verify: json_path(path="$.epic_dir", equals="docs/stories/acme-story")
 - code: `workflows/src/workhorse_workflows/author/story_split/schemas.py::StorySplitDone` @1a09df97aba9
 - detail: [story split completion field roles](../concepts/story-split-done-field-roles.md)
 

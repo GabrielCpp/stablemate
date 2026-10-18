@@ -12,7 +12,7 @@ helpers distinguish an empty tree from a Git refusal: `commit_paths` stages only
 pathspecs, while `commit_all` deliberately stages the whole tree and is safe only in an
 exclusive checkout. `merge_ref` aborts a conflicted merge before reporting failure.
 
-- code: `workflows/src/workhorse_workflows/kit/git.py` @7590b93bc951
+- code: `workflows/src/workhorse_workflows/kit/git.py` @d074161cb8b3
 - tests: `workflows/tests/test_kit_git.py::test_commit_paths_stages_only_the_named_paths`
 - tests: `workflows/tests/test_kit_git.py::test_commit_paths_with_no_pathspecs_commits_nothing`
 - tests: `workflows/tests/test_kit_git.py::test_commit_all_still_sweeps_the_whole_tree`
@@ -28,8 +28,7 @@ exclusive checkout. `merge_ref` aborts a conflicted merge before reporting failu
 - semantics: trunk refs are ordered from highest to lowest priority
 - verify: json_path(path="$.value", equals="origin/master, origin/main, master, main")
 - semantics: remote-tracking refs take precedence over local branches
-- verify: json_path(path="$.value", equals="origin/master, origin/main, master, main")
-- code: `workflows/src/workhorse_workflows/kit/git.py::TRUNK_CANDIDATES` @7590b93bc951
+- code: `workflows/src/workhorse_workflows/kit/git.py::TRUNK_CANDIDATES` @d074161cb8b3
 
 ## Methods
 
@@ -40,7 +39,7 @@ exclusive checkout. `merge_ref` aborts a conflicted merge before reporting failu
 - verify: json_path(path="$.result.working_tree_dir", matches="/repo$")
 - returns: the repository handle for `path`
 - verify: json_path(path="$.result.type", equals="Repo")
-- code: `workflows/src/workhorse_workflows/kit/git.py::open_repo` @7590b93bc951
+- code: `workflows/src/workhorse_workflows/kit/git.py::open_repo` @d074161cb8b3
 
 ### origin_url
 
@@ -49,7 +48,7 @@ exclusive checkout. `merge_ref` aborts a conflicted merge before reporting failu
 - verify: json_path(path="$.result", equals="https://example.com/repo.git")
 - returns: `None` when the repository is invalid, Git fails, or no `origin` remote exists
 - verify: json_path(path="$.result", matches="^null$")
-- code: `workflows/src/workhorse_workflows/kit/git.py::origin_url` @7590b93bc951
+- code: `workflows/src/workhorse_workflows/kit/git.py::origin_url` @d074161cb8b3
 
 ### local_branch_exists
 
@@ -58,7 +57,7 @@ exclusive checkout. `merge_ref` aborts a conflicted merge before reporting failu
 - verify: json_path(path="$.result", equals=true)
 - returns: `true` when the local branch exists, otherwise `false`, including Git failure
 - verify: json_path(path="$.result", equals=false)
-- code: `workflows/src/workhorse_workflows/kit/git.py::local_branch_exists` @7590b93bc951
+- code: `workflows/src/workhorse_workflows/kit/git.py::local_branch_exists` @d074161cb8b3
 
 ### branch_exists
 
@@ -67,7 +66,7 @@ exclusive checkout. `merge_ref` aborts a conflicted merge before reporting failu
 - verify: json_path(path="$.result", equals=true)
 - returns: `true` when Git verifies `ref`, otherwise `false`
 - verify: json_path(path="$.result", equals=false)
-- code: `workflows/src/workhorse_workflows/kit/git.py::branch_exists` @7590b93bc951
+- code: `workflows/src/workhorse_workflows/kit/git.py::branch_exists` @d074161cb8b3
 
 ### current_branch
 
@@ -76,7 +75,7 @@ exclusive checkout. `merge_ref` aborts a conflicted merge before reporting failu
 - verify: json_path(path="$.result", equals="feature")
 - returns: the active branch name, or `"main"` for detached HEAD, an empty name, or Git failure
 - verify: json_path(path="$.result", matches="^(feature|main)$")
-- code: `workflows/src/workhorse_workflows/kit/git.py::current_branch` @7590b93bc951
+- code: `workflows/src/workhorse_workflows/kit/git.py::current_branch` @d074161cb8b3
 
 ### active_branch
 
@@ -85,7 +84,7 @@ exclusive checkout. `merge_ref` aborts a conflicted merge before reporting failu
 - verify: json_path(path="$.result", equals="feature")
 - returns: the active branch name, or `None` for detached HEAD, an empty name, or Git failure
 - verify: json_path(path="$.result", matches="^(feature|null)$")
-- code: `workflows/src/workhorse_workflows/kit/git.py::active_branch` @7590b93bc951
+- code: `workflows/src/workhorse_workflows/kit/git.py::active_branch` @d074161cb8b3
 
 ### checkout
 
@@ -95,10 +94,8 @@ exclusive checkout. `merge_ref` aborts a conflicted merge before reporting failu
 - does: creates `branch` with `-b` when `create` is true
 - verify: created(subject="the requested branch")
 - does: creates or resets `branch` to the current HEAD with `-B` when `reset` is true, taking precedence over `create`
-- verify: created(subject="the requested branch")
-- verify: json_path(path="$.result", equals=true)
 - returns: `true` after checkout succeeds, otherwise `false`
-- code: `workflows/src/workhorse_workflows/kit/git.py::checkout` @7590b93bc951
+- code: `workflows/src/workhorse_workflows/kit/git.py::checkout` @d074161cb8b3
 
 ### branch_owner
 
@@ -106,10 +103,9 @@ exclusive checkout. `merge_ref` aborts a conflicted merge before reporting failu
 - does: scans Git worktree porcelain output for the worktree currently holding `branch`
 - verify: json_path(path="$.result", matches="^/.+")
 - returns: the owning worktree path when a worktree holds `branch`
-- verify: json_path(path="$.result", matches="^/.+")
 - returns: `None` when no matching worktree or Git result exists
 - verify: json_path(path="$.result", absent=true)
-- code: `workflows/src/workhorse_workflows/kit/git.py::branch_owner` @7590b93bc951
+- code: `workflows/src/workhorse_workflows/kit/git.py::branch_owner` @d074161cb8b3
 
 ### branch_merged
 
@@ -117,10 +113,9 @@ exclusive checkout. `merge_ref` aborts a conflicted merge before reporting failu
 - does: treats `branch` as merged when it is an ancestor of `base` or its content is identical to `base`
 - verify: json_path(path="$.result", equals=true)
 - does: tries `base` and then `origin/base` when `base` is an unqualified branch name
-- verify: json_path(path="$.result", equals=true)
 - returns: `true` for ancestry or unchanged squash-merged content, otherwise `false`
 - verify: json_path(path="$.result", equals=false)
-- code: `workflows/src/workhorse_workflows/kit/git.py::branch_merged` @7590b93bc951
+- code: `workflows/src/workhorse_workflows/kit/git.py::branch_merged` @d074161cb8b3
 
 ### commits_ahead
 
@@ -129,18 +124,18 @@ exclusive checkout. `merge_ref` aborts a conflicted merge before reporting failu
 - verify: count(subject="commits reachable from branch but not from origin/base", equals=2)
 - returns: the count, or `-1` when the range cannot be resolved
 - verify: json_path(path="$.result", equals=-1)
-- code: `workflows/src/workhorse_workflows/kit/git.py::commits_ahead` @7590b93bc951
+- code: `workflows/src/workhorse_workflows/kit/git.py::commits_ahead` @d074161cb8b3
 
 ### commit_paths
 
-- sig: `commit_paths(path: str | Path, message: str, *pathspecs: str) -> bool`
+- sig: `commit_paths(path: str | Path, message: str, *pathspecs: str, verify: bool = True) -> bool`
 - does: returns `false` without staging when no pathspecs are supplied
 - does: returns `false` when the named scope has no working-tree changes
-- does: stages and commits only the named pathspecs
+- does: stages and commits only the named pathspecs, running the repository's commit hooks unless `verify` is false
 - raises: `GitCommandError` when Git refuses staging or the commit
 - returns: `true` when a commit is created, otherwise `false` for an empty scope or non-repository path
 - verify: count(subject="paths committed by the scoped helper", equals=1)
-- code: `workflows/src/workhorse_workflows/kit/git.py::commit_paths` @7590b93bc951
+- code: `workflows/src/workhorse_workflows/kit/git.py::commit_paths` @d074161cb8b3
 - tests: `workflows/tests/test_kit_git.py::test_commit_paths_stages_only_the_named_paths`
 - tests: `workflows/tests/test_kit_git.py::test_commit_paths_with_no_pathspecs_commits_nothing`
 - tests: `workflows/tests/test_kit_git.py::test_a_refused_commit_raises_instead_of_reading_as_an_empty_one`
@@ -152,9 +147,47 @@ exclusive checkout. `merge_ref` aborts a conflicted merge before reporting failu
 - raises: `GitCommandError` when Git refuses staging or the commit
 - returns: `true` when a commit is created, otherwise `false` for a clean tree or non-repository path
 - verify: count(subject="whole-tree commits created by the sweeping helper", equals=1)
-- code: `workflows/src/workhorse_workflows/kit/git.py::commit_all` @7590b93bc951
+- code: `workflows/src/workhorse_workflows/kit/git.py::commit_all` @d074161cb8b3
 - tests: `workflows/tests/test_kit_git.py::test_commit_all_still_sweeps_the_whole_tree`
 - tests: `workflows/tests/test_kit_git.py::test_a_refused_commit_raises_instead_of_reading_as_an_empty_one`
+
+### commit_returning_refusal
+
+- sig: `commit_returning_refusal(path: str | Path, message: str, *pathspecs: str) -> str`
+- does: commits the named pathspecs through `commit_paths` and catches a Git refusal such as a failing hook
+- verify: json_path(path="$.result", matches="hook")
+- does: retries after growing waits of 0.2 to 8 seconds while the refusal names an `index.lock`
+- verify: count(subject="index lock retries", equals=1)
+- returns: an empty string after a commit or an empty scope, otherwise the refusal's stderr text
+- verify: json_path(path="$.result", equals="")
+- code: `workflows/src/workhorse_workflows/kit/git.py::commit_returning_refusal` @d074161cb8b3
+
+### last_commit_subject
+
+- sig: `last_commit_subject(path: str | Path, *pathspecs: str) -> str`
+- does: reads the subject line of the last commit that touched the pathspecs
+- verify: json_path(path="$.result", equals="feat(acme): add the thing")
+- returns: the subject, or an empty string when Git fails
+- verify: json_path(path="$.result", equals="")
+- code: `workflows/src/workhorse_workflows/kit/git.py::last_commit_subject` @d074161cb8b3
+
+### last_commit_trailer
+
+- sig: `last_commit_trailer(path: str | Path, key: str, *pathspecs: str) -> str`
+- does: reads the value of the trailer `key` on the last commit that touched the pathspecs
+- verify: json_path(path="$.result", equals="CASE-1234")
+- returns: the trailer value, or an empty string when the commit has none or Git fails
+- verify: json_path(path="$.result", equals="")
+- code: `workflows/src/workhorse_workflows/kit/git.py::last_commit_trailer` @d074161cb8b3
+
+### diff_to_commit
+
+- sig: `diff_to_commit(path: str | Path, *pathspecs: str) -> str`
+- does: stages the pathspecs, reads their cached stat and patch, then unstages them again
+- verify: json_path(path="$.result", matches="^ ")
+- returns: the stat, a blank line, then the patch, or an empty string when no pathspecs are given, nothing changed, or Git fails
+- verify: json_path(path="$.result", equals="")
+- code: `workflows/src/workhorse_workflows/kit/git.py::diff_to_commit` @d074161cb8b3
 
 ### head_sha
 
@@ -163,7 +196,7 @@ exclusive checkout. `merge_ref` aborts a conflicted merge before reporting failu
 - verify: json_path(path="$.result", matches="^[0-9a-f]{40}$")
 - returns: the full SHA, or an empty string when `ref` is unresolved, including an unborn HEAD
 - verify: json_path(path="$.result", equals="")
-- code: `workflows/src/workhorse_workflows/kit/git.py::head_sha` @7590b93bc951
+- code: `workflows/src/workhorse_workflows/kit/git.py::head_sha` @d074161cb8b3
 
 ### short_sha
 
@@ -172,7 +205,7 @@ exclusive checkout. `merge_ref` aborts a conflicted merge before reporting failu
 - verify: json_path(path="$.result", matches="^[0-9a-f]{7,40}$")
 - returns: the abbreviated SHA, or an empty string when `ref` is unresolved
 - verify: json_path(path="$.result", equals="")
-- code: `workflows/src/workhorse_workflows/kit/git.py::short_sha` @7590b93bc951
+- code: `workflows/src/workhorse_workflows/kit/git.py::short_sha` @d074161cb8b3
 
 ### rename_branch
 
@@ -181,7 +214,7 @@ exclusive checkout. `merge_ref` aborts a conflicted merge before reporting failu
 - verify: keys_unchanged(subject="local branch refs")
 - returns: `true` on success, otherwise `false`
 - verify: json_path(path="$.result", equals=true)
-- code: `workflows/src/workhorse_workflows/kit/git.py::rename_branch` @7590b93bc951
+- code: `workflows/src/workhorse_workflows/kit/git.py::rename_branch` @d074161cb8b3
 
 ### restore_paths
 
@@ -192,7 +225,7 @@ exclusive checkout. `merge_ref` aborts a conflicted merge before reporting failu
 - verify: json_path(path="$.result", equals=false)
 - returns: `true` when Git restores the paths, otherwise `false`
 - verify: json_path(path="$.result", equals=true)
-- code: `workflows/src/workhorse_workflows/kit/git.py::restore_paths` @7590b93bc951
+- code: `workflows/src/workhorse_workflows/kit/git.py::restore_paths` @d074161cb8b3
 
 ### default_branch
 
@@ -202,7 +235,7 @@ exclusive checkout. `merge_ref` aborts a conflicted merge before reporting failu
 - verify: json_path(path="$.result", matches="^main$")
 - returns: the remote default branch name, or `None` when the symbolic ref is unavailable
 - verify: json_path(path="$.result", absent=true)
-- code: `workflows/src/workhorse_workflows/kit/git.py::default_branch` @7590b93bc951
+- code: `workflows/src/workhorse_workflows/kit/git.py::default_branch` @d074161cb8b3
 
 ### merge_base
 
@@ -211,18 +244,17 @@ exclusive checkout. `merge_ref` aborts a conflicted merge before reporting failu
 - verify: json_path(path="$.result", matches="^[0-9a-f]{40}$")
 - returns: the merge-base SHA, or `None` when Git cannot resolve one
 - verify: json_path(path="$.result", matches="^null$")
-- code: `workflows/src/workhorse_workflows/kit/git.py::merge_base` @7590b93bc951
+- code: `workflows/src/workhorse_workflows/kit/git.py::merge_base` @d074161cb8b3
 
 ### trunk_base
 
 - sig: `trunk_base(path: str | Path) -> str`
-- does: finds the first candidate in `TRUNK_CANDIDATES` with a merge base against `HEAD`
+- does: takes the merge base against `HEAD` of each candidate in `TRUNK_CANDIDATES` and keeps the one nearest to `HEAD`
 - verify: json_path(path="$.result", matches="^[0-9a-f]{40}$")
-- returns: the merge-base SHA when a trunk candidate resolves
-- verify: json_path(path="$.result", matches="^[0-9a-f]{40}$")
+- returns: the nearest merge-base SHA when any trunk candidate resolves
 - returns: `"HEAD~1"` when no trunk candidate resolves
 - verify: json_path(path="$.result", equals="HEAD~1")
-- code: `workflows/src/workhorse_workflows/kit/git.py::trunk_base` @7590b93bc951
+- code: `workflows/src/workhorse_workflows/kit/git.py::trunk_base` @d074161cb8b3
 
 ### merge_ref
 
@@ -233,7 +265,7 @@ exclusive checkout. `merge_ref` aborts a conflicted merge before reporting failu
 - verify: unchanged(subject="repository working tree and index")
 - returns: `true` on success, otherwise `false`
 - verify: json_path(path="$.result", equals=false)
-- code: `workflows/src/workhorse_workflows/kit/git.py::merge_ref` @7590b93bc951
+- code: `workflows/src/workhorse_workflows/kit/git.py::merge_ref` @d074161cb8b3
 
 ### is_ancestor
 
@@ -242,7 +274,7 @@ exclusive checkout. `merge_ref` aborts a conflicted merge before reporting failu
 - verify: json_path(path="$.result", equals=true)
 - returns: `true` when Git confirms reachability, otherwise `false`
 - verify: json_path(path="$.result", equals=false)
-- code: `workflows/src/workhorse_workflows/kit/git.py::is_ancestor` @7590b93bc951
+- code: `workflows/src/workhorse_workflows/kit/git.py::is_ancestor` @d074161cb8b3
 
 ### show_file
 
@@ -250,7 +282,7 @@ exclusive checkout. `merge_ref` aborts a conflicted merge before reporting failu
 - does: reads `relpath` from the tree identified by `ref`
 - returns: the file contents, or `None` when the file or ref cannot be read
 - verify: json_path(path="$.result", absent=true)
-- code: `workflows/src/workhorse_workflows/kit/git.py::show_file` @7590b93bc951
+- code: `workflows/src/workhorse_workflows/kit/git.py::show_file` @d074161cb8b3
 
 ### diff_text
 
@@ -259,7 +291,7 @@ exclusive checkout. `merge_ref` aborts a conflicted merge before reporting failu
 - verify: json_path(path="$.result", matches="^diff --git ")
 - returns: raw diff output, or an empty string when Git fails
 - verify: json_path(path="$.result", equals="")
-- code: `workflows/src/workhorse_workflows/kit/git.py::diff_text` @7590b93bc951
+- code: `workflows/src/workhorse_workflows/kit/git.py::diff_text` @d074161cb8b3
 
 ### list_tracked_files
 
@@ -269,7 +301,7 @@ exclusive checkout. `merge_ref` aborts a conflicted merge before reporting failu
 - verify: json_path(path="$.result[0]", equals="tracked/README.md")
 - returns: non-empty output lines, or an empty list when Git fails
 - verify: count(subject="tracked files", equals=0)
-- code: `workflows/src/workhorse_workflows/kit/git.py::list_tracked_files` @7590b93bc951
+- code: `workflows/src/workhorse_workflows/kit/git.py::list_tracked_files` @d074161cb8b3
 
 ### remote_urls
 
@@ -283,7 +315,7 @@ exclusive checkout. `merge_ref` aborts a conflicted merge before reporting failu
 - verify: json_path(path="$.result[0]", equals="https://example.com/repo.git")
 - returns: the ordered URL list, or an empty list when the remote or repository is unavailable
 - verify: count(subject="remote URLs", equals=0)
-- code: `workflows/src/workhorse_workflows/kit/git.py::remote_urls` @7590b93bc951
+- code: `workflows/src/workhorse_workflows/kit/git.py::remote_urls` @d074161cb8b3
 
 ### set_identity
 
@@ -292,7 +324,7 @@ exclusive checkout. `merge_ref` aborts a conflicted merge before reporting failu
 - verify: persists(subject="repository-local Git identity")
 - returns: `true` after both values are written, otherwise `false`
 - verify: json_path(path="$.result", equals=true)
-- code: `workflows/src/workhorse_workflows/kit/git.py::set_identity` @7590b93bc951
+- code: `workflows/src/workhorse_workflows/kit/git.py::set_identity` @d074161cb8b3
 
 ### allow_all_directories
 
@@ -302,7 +334,7 @@ exclusive checkout. `merge_ref` aborts a conflicted merge before reporting failu
 - verify: json_path(path="$.safe_directory_wildcard", equals=true)
 - returns: `None` whether or not Git accepts the global configuration change
 - verify: json_path(path="$.result", absent=true)
-- code: `workflows/src/workhorse_workflows/kit/git.py::allow_all_directories` @7590b93bc951
+- code: `workflows/src/workhorse_workflows/kit/git.py::allow_all_directories` @d074161cb8b3
 
 ### clone
 
@@ -313,7 +345,7 @@ exclusive checkout. `merge_ref` aborts a conflicted merge before reporting failu
 - verify: json_path(path="$.clone.ssh_command_scope", equals="clone-only")
 - returns: `true` when cloning succeeds, otherwise `false`
 - verify: json_path(path="$.result", equals=true)
-- code: `workflows/src/workhorse_workflows/kit/git.py::clone` @7590b93bc951
+- code: `workflows/src/workhorse_workflows/kit/git.py::clone` @d074161cb8b3
 
 ### fetch_reset
 
@@ -322,7 +354,7 @@ exclusive checkout. `merge_ref` aborts a conflicted merge before reporting failu
 - verify: json_path(path="$.result", equals=true)
 - returns: `true` when all three operations succeed, otherwise `false`
 - verify: json_path(path="$.result", equals=false)
-- code: `workflows/src/workhorse_workflows/kit/git.py::fetch_reset` @7590b93bc951
+- code: `workflows/src/workhorse_workflows/kit/git.py::fetch_reset` @d074161cb8b3
 
 ### push_to_origin
 
@@ -334,4 +366,4 @@ exclusive checkout. `merge_ref` aborts a conflicted merge before reporting failu
 - verify: conflict_on_stale(subject="remote branch", token="expected remote tip")
 - returns: `true` on a successful push, otherwise `false`
 - verify: json_path(path="$.result", equals=true)
-- code: `workflows/src/workhorse_workflows/kit/git.py::push_to_origin` @7590b93bc951
+- code: `workflows/src/workhorse_workflows/kit/git.py::push_to_origin` @d074161cb8b3

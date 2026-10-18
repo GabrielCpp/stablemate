@@ -11,8 +11,8 @@ remove request, resolves it to an [edit intent](../formats/edit-intent.md), and 
 subflow performs the sole reconciliation and commit pass. Its deterministic nodes are registered
 on one package-local blueprint, which the author composition root imports into its registry.
 
-- code: `workflows/src/workhorse_workflows/author/story_edit/flow.py::StoryEdit` @db742c1e9d74
-- code: `workflows/src/workhorse_workflows/author/story_edit/nodes.py::blueprint` @2855e9ce541e
+- code: `workflows/src/workhorse_workflows/author/story_edit/flow.py::StoryEdit` @ac8fe8fa1fd2
+- code: `workflows/src/workhorse_workflows/author/story_edit/nodes.py::blueprint` @e4502016104b
 - tests: `workflows/tests/author/test_workflow.py::test_story_edit_add_authors_one_story_and_commits`
 
 ## Methods
@@ -22,7 +22,7 @@ on one package-local blueprint, which the author composition root imports into i
 - does: provides the node-registration target for the story-edit resolver
 - returns: returns a blueprint named `author-story-edit`
 - verify: json_path(path="$.name", equals="author-story-edit")
-- code: `workflows/src/workhorse_workflows/author/story_edit/nodes.py::blueprint` @2855e9ce541e
+- code: `workflows/src/workhorse_workflows/author/story_edit/nodes.py::blueprint` @e4502016104b
 
 ### setup
 - sig: `setup() -> Config`
@@ -30,14 +30,14 @@ on one package-local blueprint, which the author composition root imports into i
 - does: refuses to start when the configured backlog file is absent
 - returns: returns the resolved author configuration to the flow context
 - verify: count(subject="story-edit configuration loads", equals=1)
-- code: `workflows/src/workhorse_workflows/author/story_edit/flow.py::StoryEdit.setup` @db742c1e9d74
+- code: `workflows/src/workhorse_workflows/author/story_edit/flow.py::StoryEdit.setup` @ac8fe8fa1fd2
 
 ### labels
 - sig: `labels() -> dict[str, str]`
 - does: labels an add run with its epic and a remove run with its story
 - returns: returns labels containing the work id, epic, and reconciliation progress text
 - verify: json_path(path="$.progress", equals="reconciling epic scope")
-- code: `workflows/src/workhorse_workflows/author/story_edit/flow.py::StoryEdit.labels` @db742c1e9d74
+- code: `workflows/src/workhorse_workflows/author/story_edit/flow.py::StoryEdit.labels` @ac8fe8fa1fd2
 
 ### start
 - sig: `start() -> Done`
@@ -46,7 +46,7 @@ on one package-local blueprint, which the author composition root imports into i
 - does: hands the intent and operator mode to `EpicEdit`
 - returns: returns `Done` containing the epic-edit handoff result
 - verify: count(subject="story-edit epic-edit handoffs", equals=1)
-- code: `workflows/src/workhorse_workflows/author/story_edit/flow.py::StoryEdit.start` @db742c1e9d74
+- code: `workflows/src/workhorse_workflows/author/story_edit/flow.py::StoryEdit.start` @ac8fe8fa1fd2
 
 ## Resolution
 
@@ -95,4 +95,4 @@ on one package-local blueprint, which the author composition root imports into i
 - tests: `workflows/tests/author/test_workflow.py::test_story_edit_add_authors_one_story_and_commits`
 - tests: `workflows/tests/author/test_workflow.py::test_story_edit_remove_refuses_a_started_story_without_force`
 - tests: `workflows/tests/author/test_workflow.py::test_story_edit_remove_deletes_an_unstarted_story_and_commits`
-- code: `workflows/src/workhorse_workflows/author/story_edit/nodes.py::resolve_story_intent` @2855e9ce541e
+- code: `workflows/src/workhorse_workflows/author/story_edit/nodes.py::resolve_story_intent` @e4502016104b

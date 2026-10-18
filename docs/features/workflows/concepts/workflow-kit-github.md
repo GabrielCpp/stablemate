@@ -11,7 +11,7 @@ the [credentials kit](workflow-kit-credentials.md) for token resolution and the 
 for repository and remote operations. GitHub and Git failures are represented as empty or false
 results so callers can treat unavailable remote integration as a best-effort outcome.
 
-- code: `workflows/src/workhorse_workflows/kit/github.py` @f045de206214
+- code: `workflows/src/workhorse_workflows/kit/github.py` @d2eef1f98be4
 
 ## Methods
 
@@ -22,12 +22,10 @@ results so callers can treat unavailable remote integration as a best-effort out
 - verify: json_path(path="$.result", equals="octo/project")
 - does: removes a trailing `.git` suffix from the recognized repository path
 - verify: removed(subject="the recognized repository path's trailing .git suffix")
-- verify: json_path(path="$.result", equals="octo/project")
 - returns: the remaining `owner/repo` path for a recognized prefix
-- verify: json_path(path="$.result", equals="octo/project")
 - returns: `None` when the URL does not use one of the recognized GitHub prefixes
 - verify: json_path(path="$.result", equals="None")
-- code: `workflows/src/workhorse_workflows/kit/github.py::repo_full_name_from_url` @f045de206214
+- code: `workflows/src/workhorse_workflows/kit/github.py::repo_full_name_from_url` @d2eef1f98be4
 
 ### github_client
 
@@ -40,7 +38,7 @@ results so callers can treat unavailable remote integration as a best-effort out
 - verify: json_path(path="$.client.authenticated", equals=true)
 - returns: an unauthenticated PyGithub client when no token is available
 - verify: json_path(path="$.client.authenticated", equals=false)
-- code: `workflows/src/workhorse_workflows/kit/github.py::github_client` @f045de206214
+- code: `workflows/src/workhorse_workflows/kit/github.py::github_client` @d2eef1f98be4
 
 ### resolve_github_token
 
@@ -49,7 +47,7 @@ results so callers can treat unavailable remote integration as a best-effort out
 - verify: json_path(path="$.result", equals="configured-token")
 - returns: the resolved token string, or an empty string when no candidate is set
 - verify: json_path(path="$.result", equals="")
-- code: `workflows/src/workhorse_workflows/kit/github.py::resolve_github_token` @f045de206214
+- code: `workflows/src/workhorse_workflows/kit/github.py::resolve_github_token` @d2eef1f98be4
 
 ### resolve_repo
 
@@ -66,7 +64,7 @@ results so callers can treat unavailable remote integration as a best-effort out
 - verify: json_path(path="$.result", equals="None")
 - returns: `(None, slug)` when the recognized repository cannot be reached through the API
 - verify: json_path(path="$.result.repository", equals="None")
-- code: `workflows/src/workhorse_workflows/kit/github.py::resolve_repo` @f045de206214
+- code: `workflows/src/workhorse_workflows/kit/github.py::resolve_repo` @d2eef1f98be4
 
 ### find_open_pr
 
@@ -78,8 +76,7 @@ results so callers can treat unavailable remote integration as a best-effort out
 - returns: `None` when no matching pull request exists
 - verify: json_path(path="$.result", equals="None")
 - returns: `None` when GitHub rejects the owner or pull-request query
-- verify: json_path(path="$.result", equals="None")
-- code: `workflows/src/workhorse_workflows/kit/github.py::find_open_pr` @f045de206214
+- code: `workflows/src/workhorse_workflows/kit/github.py::find_open_pr` @d2eef1f98be4
 
 ### push_branch
 
@@ -97,8 +94,7 @@ results so callers can treat unavailable remote integration as a best-effort out
 - returns: `true` after a successful push when verification is disabled
 - verify: json_path(path="$.result", equals=true)
 - returns: `true` after a successful push whose remote head equals the local head when verification is enabled
-- verify: json_path(path="$.result", equals=true)
-- code: `workflows/src/workhorse_workflows/kit/github.py::push_branch` @f045de206214
+- code: `workflows/src/workhorse_workflows/kit/github.py::push_branch` @d2eef1f98be4
 
 ### sync_to_origin
 
@@ -113,4 +109,4 @@ results so callers can treat unavailable remote integration as a best-effort out
 - verify: json_path(path="$.result", matches="^[0-9a-f]{7,}$")
 - returns: `None` when the origin is not a recognized GitHub URL, the repository cannot be opened, or any fetch, checkout, or SHA lookup fails
 - verify: json_path(path="$.result", equals="None")
-- code: `workflows/src/workhorse_workflows/kit/github.py::sync_to_origin` @f045de206214
+- code: `workflows/src/workhorse_workflows/kit/github.py::sync_to_origin` @d2eef1f98be4

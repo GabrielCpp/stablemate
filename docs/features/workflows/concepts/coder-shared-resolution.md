@@ -5,7 +5,7 @@ title: Coder resolver decision handling
 ---
 # Coder resolver decision handling
 
-- code: `workflows/src/workhorse_workflows/coder/shared/resolution.py` @e05c618533ae
+- code: `workflows/src/workhorse_workflows/coder/shared/resolution.py` @a3434213f4d9
 - detail: [coder operator resolution result](../formats/coder-operator-resolution.md)
 - detail: [coder path resolution](coder-path-resolution.md)
 
@@ -24,13 +24,13 @@ grounding settles the block.
 - required: true
 - semantics: model-power tier requested for the resolver turn
 - verify: count(subject="resolver power setting", equals=1)
-- code: `workflows/src/workhorse_workflows/coder/shared/resolution.py::RESOLVER_POWER` @e05c618533ae
+- code: `workflows/src/workhorse_workflows/coder/shared/resolution.py::RESOLVER_POWER` @a3434213f4d9
 
 ## Methods
 
 ### resolver_args
-- sig: `resolver_args(flow: Workflow, *, block_kind: str, notes: str, docs_path: str) -> dict[str, str]`
-- does: supplies the story path, specification directory, block kind, and block notes to the shared resolver prompt
+- sig: `resolver_args(flow: Workflow, *, block_kind: str, notes: str, docs_path: str, story: StoryPaths | None = None) -> dict[str, str]`
+- does: supplies the story path and specification directory of the given `story`, or of the flow context when none is given, with the block kind and block notes to the shared resolver prompt
 - verify: json_path(path="$.result", matches="story_path")
 - does: supplies the absolute decisions directory derived from the documentation path and repository directory
 - verify: json_path(path="$.result", matches="decisions_dir")
@@ -38,17 +38,17 @@ grounding settles the block.
 - verify: json_path(path="$.result", matches="result_schema")
 - returns: a string-valued argument mapping for the shared resolver prompt
 - verify: count(subject="resolver prompt argument mappings", equals=1)
-- code: `workflows/src/workhorse_workflows/coder/shared/resolution.py::resolver_args` @e05c618533ae
+- code: `workflows/src/workhorse_workflows/coder/shared/resolution.py::resolver_args` @a3434213f4d9
 
 ### decisions_dir
 - sig: `decisions_dir(docs_path: str, repo_dir: str) -> Path`
 - does: resolves the documentation root from the supplied documentation and repository paths
-- verify: json_path(path="$.result", matches=".*")
+- verify: json_path(path="$.result", equals="example result")
 - does: returns the decisions directory resolved beneath that documentation root
 - verify: json_path(path="$.result", matches="decisions")
 - returns: an absolute `Path` passed to the resolver prompt
 - verify: json_path(path="$.result", matches="/decisions")
-- code: `workflows/src/workhorse_workflows/coder/shared/resolution.py::decisions_dir` @e05c618533ae
+- code: `workflows/src/workhorse_workflows/coder/shared/resolution.py::decisions_dir` @a3434213f4d9
 
 ### answered
 - sig: `answered(flow: Workflow, result: OperatorResolution, block_kind: str) -> bool`
@@ -60,4 +60,4 @@ grounding settles the block.
 - verify: emitted(event="resolver ungrounded-answer warning", count=1)
 - returns: true only when the resolver decision is the literal `answered`
 - verify: json_path(path="$.result", equals=true)
-- code: `workflows/src/workhorse_workflows/coder/shared/resolution.py::answered` @e05c618533ae
+- code: `workflows/src/workhorse_workflows/coder/shared/resolution.py::answered` @a3434213f4d9

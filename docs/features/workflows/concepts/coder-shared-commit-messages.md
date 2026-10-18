@@ -12,7 +12,7 @@ rather than in the subject. The helpers are shared so story commits, status comm
 commits, queue pruning, pull-request titles, and merge commits cannot drift into incompatible
 formats.
 
-- code: `workflows/src/workhorse_workflows/coder/shared/commits.py` @a93da2a75aae
+- code: `workflows/src/workhorse_workflows/coder/shared/commits.py` @a9624922153b
 - tests: `workflows/tests/coder/test_commits.py`
 
 ## Fields
@@ -23,7 +23,7 @@ formats.
 - default: `72`
 - required: true
 - semantics: maximum preferred subject length used to trim the description while preserving its marker suffix
-- code: `workflows/src/workhorse_workflows/coder/shared/commits.py::SUBJECT_LIMIT` @a93da2a75aae
+- code: `workflows/src/workhorse_workflows/coder/shared/commits.py::SUBJECT_LIMIT` @a9624922153b
 
 ## Methods
 
@@ -33,12 +33,13 @@ formats.
 - does: trims surrounding whitespace and lowercases the package name
 - verify: json_path(path="$.scope", equals="api-service")
 - does: replaces every run of characters outside lowercase letters, digits, dot, underscore, and hyphen with a hyphen
-- verify: json_path(path="$.scope", equals="api-service")
+- verify: json_path(path="$.scope", equals="a-b")
 - does: removes leading and trailing dots and hyphens, returning an empty scope when no valid name remains
 - verify: removed(subject="the normalized package name's leading and trailing dots and hyphens")
 - verify: json_path(path="$.scope", absent=true)
 - returns: the cleaned package scope without adding Conventional Commit punctuation
-- code: `workflows/src/workhorse_workflows/coder/shared/commits.py::scope` @a93da2a75aae
+- verify: count(subject="cleaned package scopes returned", equals=1)
+- code: `workflows/src/workhorse_workflows/coder/shared/commits.py::scope` @a9624922153b
 - tests: `workflows/tests/coder/test_commits.py::test_a_package_name_is_lowercased_and_stripped_to_what_a_scope_may_hold`
 
 ### describe
@@ -51,11 +52,12 @@ formats.
 - verify: removed(subject="the normalized description's trailing periods")
 - verify: json_path(path="$.description", equals="add password reset")
 - does: lowercases the first character when the remainder of the first word is lowercase or empty
-- verify: json_path(path="$.description", equals="add password reset")
+- verify: json_path(path="$.description", equals="show cart")
 - does: preserves an identifier-shaped first word when lowercasing it would change that identifier
 - verify: json_path(path="$.description", equals="OAuth token refresh")
 - returns: an empty string for empty or whitespace-only input
-- code: `workflows/src/workhorse_workflows/coder/shared/commits.py::describe` @a93da2a75aae
+- verify: json_path(path="$.description", equals="")
+- code: `workflows/src/workhorse_workflows/coder/shared/commits.py::describe` @a9624922153b
 - tests: `workflows/tests/coder/test_commits.py::test_a_heading_becomes_a_description_without_becoming_a_different_word`
 
 ### subject
@@ -70,7 +72,7 @@ formats.
 - does: trims the description to the available subject budget without trimming the marker suffix
 - verify: json_path(path="$.subject", matches="\\[QA FAILED after 3 attempts")
 - returns: a Conventional Commit subject string
-- code: `workflows/src/workhorse_workflows/coder/shared/commits.py::subject` @a93da2a75aae
+- code: `workflows/src/workhorse_workflows/coder/shared/commits.py::subject` @a9624922153b
 - tests: `workflows/tests/coder/test_commits.py::test_a_long_description_is_trimmed_but_the_give_up_marker_never_is`
 
 ### message
@@ -87,7 +89,8 @@ formats.
 - does: returns only the subject when neither provenance value is supplied
 - verify: count(subject="message lines without provenance trailers", equals=1)
 - returns: the subject plus optional provenance trailers in epic-then-story order
-- code: `workflows/src/workhorse_workflows/coder/shared/commits.py::message` @a93da2a75aae
+- verify: count(subject="messages with trailers in epic-then-story order", equals=1)
+- code: `workflows/src/workhorse_workflows/coder/shared/commits.py::message` @a9624922153b
 - tests: `workflows/tests/coder/test_commits.py::test_the_story_id_is_an_exact_footer_and_nothing_else`
 
 ### story_description
@@ -101,7 +104,8 @@ formats.
 - does: uses the supplied fallback when the file is absent, unreadable, has no level-one heading, or the stripped heading is empty
 - verify: json_path(path="$.description", equals="expense-record")
 - returns: the normalized heading description or the normalized fallback text
-- code: `workflows/src/workhorse_workflows/coder/shared/commits.py::story_description` @a93da2a75aae
+- verify: count(subject="story descriptions returned", equals=1)
+- code: `workflows/src/workhorse_workflows/coder/shared/commits.py::story_description` @a9624922153b
 - tests: `workflows/tests/coder/test_commits.py::test_the_description_comes_from_the_story_heading`
 - tests: `workflows/tests/coder/test_commits.py::test_a_heading_that_labels_itself_a_story_does_not_say_so_twice`
 - tests: `workflows/tests/coder/test_commits.py::test_a_heading_that_is_nothing_but_its_label_falls_back_to_the_slug`

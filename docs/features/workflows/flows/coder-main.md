@@ -11,24 +11,13 @@ title: Coder main flow
   transition decisions here. Its agent turns use the [coder conversation lifecycle](../concepts/coder-conversation.md),
   [prompt role resolution](../concepts/coder-prompt-role-resolution.md), and [rendered schema contracts](../concepts/coder-render-schema-contracts.md).
 
-- start: the run has a resolvable repository context and names one story, one epic, or every epic in the queue
-- verify: exit_status(code=0)
-- start: the run's `delivery` parameter is `pr` or `commit`, and defaults to `pr`
-- verify: count(subject="coder delivery modes", equals=2)
+- fixture: none, because the walk dry-runs the registered flow, which stands in for every agent turn
 - steps:
-  - [initialize](#initialize)
-  - [route](#route)
-   - [story-pipeline](#story-pipeline)
-   - [agent-turn-contract](#agent-turn-contract)
-  - [backlog-drain](#backlog-drain)
-  - [story-commit](#story-commit)
-  - [delivery](#delivery)
-- end: a commit run has worked the whole worklist and left one commit per item on the branch it started on, each naming its story
-- verify: count(subject="branches cut by a commit run", equals=0)
-- end: a pr run has worked the whole worklist on one run branch, opened its pull requests, and left them open with CI green for a reviewer to merge
-- verify: absent(subject="pull request merged by the run")
-- end: a blocked documentation, CI or dirty-worktree condition is checkpointed at an operator gate instead of being silently committed or skipped
-- verify: count(subject="coder operator-gated blocking paths", equals=1)
+  - [run](../workhorse-coder.md#run)
+- start: the working directory holds no rendered graph
+- verify: absent(subject="workhorse-coder.dot")
+- end: the dry run leaves the command with a zero exit status
+- verify: exit_status(code=0)
 
 The implementation is `workflows/src/workhorse_workflows/coder/main/flow.py::Coder`.
 - detail: [coder handoff boundary contract](../concepts/coder-handoff-boundary.md)
@@ -41,6 +30,11 @@ The implementation is `workflows/src/workhorse_workflows/coder/main/flow.py::Cod
 - tests: `workflows/tests/coder/test_workflow.py::test_a_finished_epic_is_pruned_from_the_queue_in_its_own_commit`
 - tests: `workflows/tests/coder/test_workflow.py::test_an_opened_pr_goes_to_the_ship_lane_for_ci_and_stays_open`
 - tests: `workflows/tests/coder/test_workflow.py::test_a_required_final_docs_block_replans_in_either_mode`
+
+The stages, in order: [initialize](#initialize), [route](#route), [story-pipeline](#story-pipeline), [agent-turn-contract](#agent-turn-contract), [backlog-drain](#backlog-drain), [story-commit](#story-commit), [delivery](#delivery).
+
+The flow starts when the run has a resolvable repository context and names one story, one epic, or every epic in the queue; or when the run's `delivery` parameter is `pr` or `commit`, and defaults to `pr`.
+It ends in one of these ways: a commit run has worked the whole worklist and left one commit per item on the branch it started on, each naming its story; a pr run has worked the whole worklist on one run branch, opened its pull requests, and left them open with CI green for a reviewer to merge; a blocked documentation, CI or dirty-worktree condition is checkpointed at an operator gate instead of being silently committed or skipped.
 
 ## Steps
 

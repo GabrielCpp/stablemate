@@ -14,24 +14,22 @@ escalates to an operator gate. A passing review is recorded as a digest-bound re
 The [workhorse-author run command](../workhorse-author.md#run) selects this flow from the
 [author workflow composition root](../concepts/author-workflow-composition-root.md).
 
-- start: an operator supplies an existing epic slug and selects `operator_mode` of `auto` or `human`
-- start: the epic's directory is resolvable under the configured Ostler graph
-- start: the epic has not already been split (or resumes a prior split with coverage findings to address)
+- fixture: none, because the walk dry-runs the registered flow, which stands in for every agent turn
 - steps:
-  - [split-stories](#split-stories)
-  - [check-coverage](#check-coverage)
-  - [done](#done)
-- end: the epic is decomposed into stories with each story covering one or more seeds
-- end: story granularity is reviewed as adequate for independent implementation and QA
-- end: a passing split and review is recorded in a digest-bound receipt
-- end: unresolved product or sequencing decisions are parked at an operator gate
-- verify: created(subject="story-split receipt")
-- verify: emitted(event="story-split completes", count=1)
-- verify: json_path(path="$.epic", matches=".+")
+  - [run](../workhorse-author.md#run)
+- start: the working directory holds no rendered graph
+- verify: absent(subject="workhorse-author.dot")
+- end: the dry run leaves the command with a zero exit status
+- verify: exit_status(code=0)
 - detail: [author story-split subflow](../concepts/story-split-subflow.md)
 - detail: [story-split prompt](../formats/story-split-prompt.md)
 - detail: [coverage review prompt](../formats/coverage-review-prompt.md)
 - tests: `workflows/tests/author/story_split/test_flow.py::test_accepts_one_epic_graph_without_selecting_authoring_or_git`
+
+The stages, in order: [split-stories](#split-stories), [check-coverage](#check-coverage), [done](#done).
+
+The flow starts when an operator supplies an existing epic slug and selects `operator_mode` of `auto` or `human`; or when the epic's directory is resolvable under the configured Ostler graph; or when the epic has not already been split (or resumes a prior split with coverage findings to address).
+It ends in one of these ways: the epic is decomposed into stories with each story covering one or more seeds; story granularity is reviewed as adequate for independent implementation and QA; a passing split and review is recorded in a digest-bound receipt; unresolved product or sequencing decisions are parked at an operator gate.
 
 ## Split stories
 
@@ -56,7 +54,7 @@ every seed is covered, and no edge references another epic.
 - kind: run
 - run: invoke split-stories agent, read rework notes from prior coverage failures, record stories via ostler
 - verify: [split_stories](../concepts/story-split-subflow.md#split_stories)
-- code: `workflows/src/workhorse_workflows/author/story_split/flow.py::StorySplitFlow.split_stories` @7e464639145e
+- code: `workflows/src/workhorse_workflows/author/story_split/flow.py::StorySplitFlow.split_stories` @f7d215b43b0c
 
 ## Check coverage
 
@@ -77,7 +75,7 @@ The review result can be `ok`, `gaps`, or `blocked`:
 - kind: verify
 - run: validate seed coverage and graph integrity; invoke coverage-review agent
 - verify: [check_coverage](../concepts/story-split-subflow.md#check_coverage)
-- code: `workflows/src/workhorse_workflows/author/story_split/flow.py::StorySplitFlow.check_coverage` @7e464639145e
+- code: `workflows/src/workhorse_workflows/author/story_split/flow.py::StorySplitFlow.check_coverage` @f7d215b43b0c
 - detail: [story-split check-coverage step roles](../concepts/story-split-check-coverage-step-roles.md)
 
 ## Done
@@ -89,6 +87,6 @@ recorded under the epic's `story-split-receipt.json` and captures the exact stor
 - run: record the split and review receipt with the exact story digest
 - verify: [check_coverage](../concepts/story-split-subflow.md#check_coverage)
 - verify: created(subject="story-split-receipt.json")
-- code: `workflows/src/workhorse_workflows/author/story_split/flow.py::StorySplitFlow.check_coverage` @7e464639145e
+- code: `workflows/src/workhorse_workflows/author/story_split/flow.py::StorySplitFlow.check_coverage` @f7d215b43b0c
 - detail: [story-split check-coverage step roles](../concepts/story-split-check-coverage-step-roles.md)
 

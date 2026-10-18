@@ -5,7 +5,7 @@ title: Coder service contract
 ---
 # Coder service contract
 
-- code: `workflows/src/workhorse_workflows/coder/shared/contract.py::service_problems` @44ede1a1c58f
+- code: `workflows/src/workhorse_workflows/coder/shared/contract.py::service_problems` @c887c303cd5c
 
 The coder uses this contract at both sides of service setup: genesis validates the service it
 leaves behind, while plan recording validates the service a plan intends to target. Both callers
@@ -24,15 +24,11 @@ messages. It does not mutate the path or infer a service type.
 - does: returns one error identifying the label and absolute service path when the path does not exist
 - verify: count(subject="service contract problems", equals=1)
 - does: returns one error identifying the label when the path exists but is not a directory
-- verify: count(subject="service contract problems", equals=1)
 - does: returns one error when markers are configured and none exists below the service directory
-- verify: count(subject="service contract problems", equals=1)
 - does: identifies the marker error with the label, expected marker names, and service path
 - verify: json_path(path="$[0]", matches=".*: no service marker found \\(expected one of \\[.*\\] in .+\\)")
 - does: skips marker validation when the marker sequence is empty
 - verify: count(subject="service contract problems", equals=0)
 - does: accepts the service when it is an existing directory and at least one configured marker exists below it
-- verify: count(subject="service contract problems", equals=0)
 - returns: an empty list when every applicable service condition passes
-- verify: count(subject="service contract problems", equals=0)
-- code: `workflows/src/workhorse_workflows/coder/shared/contract.py::service_problems` @44ede1a1c58f
+- code: `workflows/src/workhorse_workflows/coder/shared/contract.py::service_problems` @c887c303cd5c

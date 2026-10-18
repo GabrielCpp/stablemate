@@ -23,10 +23,7 @@ needs it, then restores the caller's prior process state even when that callee f
 - `has_git_credential` checks only whether the configured Git credential variable is non-empty.
   It does not return the secret; Git expands the variable inside its credential helper.
 
-- code: `workflows/src/workhorse_workflows/kit/credentials.py` @ff865a4c4eb8
-- code: `workflows/tests/test_kit_credentials.py::test_scoped_env_sets_the_value_for_the_block_and_clears_it_after`
-- code: `workflows/tests/test_kit_credentials.py::test_scoped_env_restores_a_prior_value_rather_than_clearing_it`
-- code: `workflows/tests/test_kit_credentials.py::test_scoped_env_restores_even_when_the_block_raises`
+- code: `workflows/src/workhorse_workflows/kit/credentials.py` @4e51c59cdbfc
 - tests: `workflows/tests/test_kit_credentials.py::test_scoped_env_sets_the_value_for_the_block_and_clears_it_after`
 - tests: `workflows/tests/test_kit_credentials.py::test_scoped_env_restores_a_prior_value_rather_than_clearing_it`
 - tests: `workflows/tests/test_kit_credentials.py::test_scoped_env_restores_even_when_the_block_raises`
@@ -40,7 +37,7 @@ needs it, then restores the caller's prior process state even when that callee f
 - required: true
 - semantics: fallback order for `github_token` after any repository-specific variable
 - verify: count(subject="GitHub fallback environment names", equals=2)
-- code: `workflows/src/workhorse_workflows/kit/credentials.py::GITHUB_FALLBACKS` @ff865a4c4eb8
+- code: `workflows/src/workhorse_workflows/kit/credentials.py::GITHUB_FALLBACKS` @4e51c59cdbfc
 
 ### GIT_CREDENTIAL_ENV
 
@@ -49,7 +46,7 @@ needs it, then restores the caller's prior process state even when that callee f
 - required: true
 - semantics: default variable whose presence enables the transient Git credential helper
 - verify: count(subject="default Git credential environment name", equals=1)
-- code: `workflows/src/workhorse_workflows/kit/credentials.py::GIT_CREDENTIAL_ENV` @ff865a4c4eb8
+- code: `workflows/src/workhorse_workflows/kit/credentials.py::GIT_CREDENTIAL_ENV` @4e51c59cdbfc
 
 ## Methods
 
@@ -60,7 +57,7 @@ needs it, then restores the caller's prior process state even when that callee f
 - does: returns `None` when the file is absent, unreadable, invalid YAML, or has no configured workflow token variable
 - returns: the string from `workflow.githubTokenEnv` or `workflow.github_token_env`, when present
 - verify: count(subject="configured token environment lookup result", equals=1)
-- code: `workflows/src/workhorse_workflows/kit/credentials.py::_configured_token_env` @ff865a4c4eb8
+- code: `workflows/src/workhorse_workflows/kit/credentials.py::_configured_token_env` @4e51c59cdbfc
 
 ### github_token
 
@@ -68,7 +65,7 @@ needs it, then restores the caller's prior process state even when that callee f
 - does: resolves the first non-empty token from the repository-configured variable, `GH_TOKEN`, and `GITHUB_TOKEN`, in that order
 - returns: the selected token value, or an empty string when all candidate variables are unset or empty
 - verify: count(subject="GitHub token resolution result", equals=1)
-- code: `workflows/src/workhorse_workflows/kit/credentials.py::github_token` @ff865a4c4eb8
+- code: `workflows/src/workhorse_workflows/kit/credentials.py::github_token` @4e51c59cdbfc
 
 ### api_token
 
@@ -76,21 +73,20 @@ needs it, then restores the caller's prior process state even when that callee f
 - does: selects `GH_TOKEN` before `WORKHORSE_GIT_TOKEN` for an unconfigured API client
 - returns: the selected token value, or an empty string when both variables are unset or empty
 - verify: count(subject="API token resolution result", equals=1)
-- code: `workflows/src/workhorse_workflows/kit/credentials.py::api_token` @ff865a4c4eb8
+- code: `workflows/src/workhorse_workflows/kit/credentials.py::api_token` @4e51c59cdbfc
 
 ### scoped_env
 
 - sig: `scoped_env(name: str, value: str) -> Iterator[None]`
-- does:
-  - sets `name` to `value` for the duration of the context block
-  - removes `name` when the block exits if it had no prior value
-  - restores the prior value of `name` when the block exits if one existed
-  - restores or removes `name` when the block exits through an exception
+- does: sets `name` to `value` for the duration of the context block
+- verify: created(subject="the environment variable during the block")
+- does: removes `name` when the block exits if it had no prior value
 - verify: removed(subject="the environment variable")
-- code: `workflows/src/workhorse_workflows/kit/credentials.py::scoped_env` @ff865a4c4eb8
-- code: `workflows/tests/test_kit_credentials.py::test_scoped_env_sets_the_value_for_the_block_and_clears_it_after`
-- code: `workflows/tests/test_kit_credentials.py::test_scoped_env_restores_a_prior_value_rather_than_clearing_it`
-- code: `workflows/tests/test_kit_credentials.py::test_scoped_env_restores_even_when_the_block_raises`
+- does: restores the prior value of `name` when the block exits if one existed
+- verify: json_path(path="$.environment.name", equals="the prior value")
+- does: restores or removes `name` when the block exits through an exception
+- verify: count(subject="scoped bindings unwound by an exception", equals=1)
+- code: `workflows/src/workhorse_workflows/kit/credentials.py::scoped_env` @4e51c59cdbfc
 - tests: `workflows/tests/test_kit_credentials.py::test_scoped_env_sets_the_value_for_the_block_and_clears_it_after`
 - tests: `workflows/tests/test_kit_credentials.py::test_scoped_env_restores_a_prior_value_rather_than_clearing_it`
 - tests: `workflows/tests/test_kit_credentials.py::test_scoped_env_restores_even_when_the_block_raises`
@@ -102,7 +98,7 @@ needs it, then restores the caller's prior process state even when that callee f
 - does: restores all bindings in reverse insertion order when the block exits
 - returns: a no-op context for an empty mapping
 - verify: count(subject="multi-variable scoped environment bindings", equals=1)
-- code: `workflows/src/workhorse_workflows/kit/credentials.py::scoped_envs` @ff865a4c4eb8
+- code: `workflows/src/workhorse_workflows/kit/credentials.py::scoped_envs` @4e51c59cdbfc
 
 ### has_git_credential
 
@@ -110,4 +106,4 @@ needs it, then restores the caller's prior process state even when that callee f
 - does: checks whether `name` contains a non-empty value without returning that value
 - returns: `true` when the variable is non-empty and `false` otherwise
 - verify: count(subject="Git credential presence result", equals=1)
-- code: `workflows/src/workhorse_workflows/kit/credentials.py::has_git_credential` @ff865a4c4eb8
+- code: `workflows/src/workhorse_workflows/kit/credentials.py::has_git_credential` @4e51c59cdbfc

@@ -5,52 +5,40 @@ title: Coder development flow
 ---
 # Coder development flow
 
-- The `Dev` machine plans one story, validates the plan's service paths, dispatches each planned
-  service layer, and repairs implementation changes against the layer's declared gates. It is
+- The `Dev` machine builds one story with a single owner turn. The turn plans the story, builds
+  it, reviews it, fixes what the review finds and answers every finding. The flow then checks the
+  turn with the plan record, the service gates, the answer file and a clean-tree test. It is
   entered by the Coder main flow or directly with `workhorse-coder run dev`. Implementation lives
   at `workflows/src/workhorse_workflows/coder/dev/flow.py::Dev`.
-
-- start: the configured story slug resolves to a readable authored story
-- verify: exit_status(code=0)
-- start: the workspace directories and story paths have been resolved before the planning turn
-- verify: count(subject="resolved development inputs", equals=1)
+- fixture: none, because the walk dry-runs the registered flow, which stands in for every agent turn
 - steps:
-  - [setup](#setup)
-  - [plan](#plan)
-  - [path-validation](#path-validation)
-  - [replan-with-answer](#replan-with-answer)
-  - [dispatch](#dispatch)
-  - [layer-selection](#layer-selection)
-  - [implementation](#implementation)
-  - [gates](#gates)
-  - [repair](#repair)
-  - [operator-resolution](#operator-resolution)
-- end: every service layer in the approved plan has passed its story-status and declared service gates
+  - [run](../workhorse-coder.md#run)
+- start: the working directory holds no rendered graph
+- verify: absent(subject="workhorse-coder.dot")
+- end: the dry run leaves the command with a zero exit status
 - verify: exit_status(code=0)
-- end: an epic-scoped operator answer leaves the development flow with the answer for queue-level replanning
-- verify: count(subject="epic-scoped development replans", equals=1)
 - detail: [coder handoff boundary contract](../concepts/coder-handoff-boundary.md)
 - detail: [coder dev package](../concepts/coder-dev-package.md)
 - detail: [coder main flow](coder-main.md)
-- detail: [coder development nodes](../concepts/coder-dev-nodes.md)
-- tests: `workflows/tests/coder/dev/test_flow.py::test_plans_stamps_branches_and_implements_every_layer`
-- tests: `workflows/tests/coder/dev/test_an_epic_scoped_answer_leaves_the_flow_to_be_replanned`
+- detail: [coder dev-story prompt](../formats/coder-dev-story-prompt.md)
+- tests: `workflows/tests/coder/dev/test_flow.py::test_a_clean_pass_settles_the_fix_and_records_the_decline`
+- tests: `workflows/tests/coder/dev/test_flow.py::test_a_red_gate_sends_its_output_back_and_a_green_turn_finishes`
+- tests: `workflows/tests/coder/dev/test_flow.py::test_an_unanswered_finding_comes_back_named_in_the_report`
+- tests: `workflows/tests/coder/dev/test_flow.py::test_a_blocked_turn_in_human_mode_parks_and_resumes_with_the_answer`
+- tests: `workflows/tests/coder/dev/test_flow.py::test_checks_that_stay_red_past_the_lap_budget_park_instead_of_failing`
+- tests: `workflows/tests/coder/dev/test_flow.py::test_work_the_turn_left_uncommitted_comes_back_named_in_the_report`
+- tests: `workflows/tests/coder/dev/test_flow.py::test_a_path_dirty_before_the_story_began_is_not_the_story_s_to_commit`
 
 The `docs` and `workspace` test fixtures stand up the inputs every dev-flow scenario runs
-against: `docs` builds a docs repo carrying one epic and one authored story so the story-slot
-resolution has something real to look up, and `workspace` builds two real git repos under a
-checked-in `.code-workspace` file naming them, since `branch_code_repos` checks out a branch in
-each and the per-layer-gate dispatch walks both. They are documented at the
+against. `docs` builds a docs repo carrying one epic and one authored story. `workspace` builds
+two real git repos under a checked-in `.code-workspace` file naming them, since the gate walk and
+the clean-tree check read both. They are documented at the
 [coder dev package concept](../concepts/coder-dev-package.md).
 
-`setup` resolves workspace directories and the story slug, rejects an unauthored or unreadable
-story before any agent turn, and returns the shared `StoryPaths` context. It also establishes the
-story conversation identity used by later turns.
+The stages, in order: [setup](#setup), [own-the-story](#own-the-story), [checks](#checks), [operator-block](#operator-block), [finish](#finish).
 
-Implementation and repair routing is delegated to the [development nodes](../concepts/coder-dev-nodes.md):
-plan and implementation blocks preserve resolver evidence, repair laps are bounded per layer,
-and an exhausted budget awaits an operator rather than producing a failed or apparently
-successful run.
+The flow starts when the configured story slug resolves to a readable authored story; or when the workspace directories and story paths have been resolved before the owner turn.
+It ends in one of these ways: a turn whose plan record, gates, answers and tree all pass finishes with the settled and declined finding ids; a turn that reports a block, or checks that stay red past the lap budget, waits for an operator; an epic-scoped operator answer leaves the flow as a replan outcome carrying the answer.
 
 ## Steps
 
@@ -58,114 +46,51 @@ successful run.
 
 - kind: prepare
 
-The flow calls workspace and story path preparation, then guards that the resolved story file is
-readable. A missing story, an empty story slug, or an authored story with incomplete sections is
-rejected before planning begins.
+The flow resolves the workspace directories and the story paths, then guards that the resolved
+story file is readable. A missing story, an empty story slug, or an authored story with
+incomplete sections is rejected before any agent turn.
 
-### plan
+### own-the-story
 
 - kind: run
-- detail: [coder plan-story prompt](../formats/coder-plan-story-prompt.md)
+- detail: [coder dev-story prompt](../formats/coder-dev-story-prompt.md)
 
-The high-power `plan-story` turn receives the story, epic, spec directory, workspace markers, and
-story-derived conversation. It snapshots code worktrees first, writes the plan artifacts in the
-docs repository, stamps those plan files as typed specs, and routes a blocked result to the plan
-operator gate. Plan mutations in code repositories are removed while pre-existing dirt is kept.
+One high-power `dev-story` turn runs in the story's conversation with no timeout. It receives the
+story identity, the spec directory, the worklist and answers file paths, a resume note read from
+disk, the review prefix for this round, the open findings, the last gate report and the last
+operator answer. The turn plans, builds, reviews, fixes and commits through its own subagents.
+The flow stamps the spec files the turn wrote. Follow-ups the turn reports are filed in the work
+list after the story, or in the backlog when the turn was itself a follow-up. Findings the review
+reports are filed in the work list under the review prefix. A result of `blocked` goes to the
+operator-block step.
 
-### path-validation
+### checks
 
 - kind: verify
 
-The recorded plan is projected and checked against the workspace. A valid or silent validator
-result advances to dispatch. An invalid service or plan-file path receives at most three low-power
-path-repair turns; an unresolved result then enters the plan operator gate. A successful repair
-resets the repair conversation before validation resumes.
+The flow records the plan structure from the turn's reply and commits the plan record. An invalid
+plan record is the first failure. Otherwise the checks gather every failure of the turn. They
+resolve the implementation context, move the code repositories to the run branch when one was
+supplied, check the story status, and run each service's gates in `GATE_ORDER`, stopping at the
+first dirty one. A status that already reads as finished is a failure. They then settle the open
+findings against the answers file, and name any finding still open with the reason its answer was
+rejected. They last list the paths the story changed and did not commit, minus the paths that were
+dirty before the story began. With no failure the flow finishes. Otherwise the joined report goes
+back to the owner turn as another repair lap. After `MAX_LAPS` laps the flow raises a block.
 
-### replan-with-answer
-
-- kind: run
-- detail: [coder replan-with-answer prompt](../formats/coder-replan-with-answer-prompt.md)
-
-A plan blocked at the validation gate receives an operator answer from the story context. The
-`replan-with-answer` turn re-plans the story around the operator's decision, using a fresh
-conversation scoped to the `block-repair` worklist. If the re-plan is still blocked, the revised
-plan re-enters the validation gate. If the re-plan succeeds, the repair conversation is reset and
-validation resumes with the revised plan.
-
-### dispatch
+### operator-block
 
 - kind: run
 
-The approved plan is read back, implementation context is resolved for the target environment,
-and every code repository named by the plan is moved to the run branch when a pr run supplies one.
-The dispatch list keeps the plan's declared implementation order.
+In `auto` mode a block goes first to the `resolve-operator` turn. The resolver may apply an answer
+only when it can cite an existing decision, rule or acceptance criterion. In `human` or `operator`
+mode, or once `MAX_BLOCKS` blocks have been spent, the flow awaits the operator on the story
+`context.md`. The operator's answer is logged to the work log and re-enters the owner turn as its
+authoritative context. An epic-scoped answer is handed back to the main flow for replanning.
 
-### layer-selection
-
-- kind: run
-
-The cursor selects the next unimplemented service layer from the recorded plan. When no layer
-remains, the flow returns a ready `DevResult`; otherwise it passes the selected layer and cursor to
-implementation.
-
-### implementation
-
-- kind: run
-- detail: [coder implement-plan prompt](../formats/coder-implement-plan-prompt.md)
-
-Each selected layer starts a fresh story implementation conversation on the first entry, spends a
-session turn, and runs one high-power `implement-plan` turn with the layer plan, service path and
-type, verification setup, QA run plan, declared gates, and any operator answer. A blocked result is
-sent to the implementation operator gate rather than being treated as an empty successful layer.
-
-### gates
-
-- kind: verify
-
-The story status is checked before service gates on every lap; a status that says the story is
-finished before QA becomes a repair finding. Otherwise the flow runs the service's configured gates
-in `GATE_ORDER` and stops at the first dirty result. Skipped or silent gates do not fail the layer.
-The clean result advances the cursor to the next layer.
-
-### repair
-
-- kind: run
-- detail: [coder dev-fix prompt](../formats/coder-dev-fix-prompt.md)
-
-A dirty status or gate is converted into a `FailureReport`. While the shared three-lap repair
-budget remains, a `dev-fix` turn receives the report, changed files, service identity, and story
-trailers, then the flow reruns the gates. Repeated report digests raise the turn power; an exhausted
-budget enters the implementation operator gate rather than ending the run.
-
-### operator-resolution
+### finish
 
 - kind: run
 
-In `auto` mode, a resolver may apply an answer only when it can cite an existing decision, rule, or
-acceptance criterion; otherwise the flow awaits the operator on the story `context.md`. `human` and
-`operator` modes skip the resolver and wait directly. A story-scoped answer re-enters planning or
-the current implementation layer with the answer and consumes the context; an epic-scoped answer
-returns `DevResult(status="replan")` to the queue. Resolver turns are capped at three per gate,
-but the underlying block is never abandoned.
-
-## Invocations
-
-### repair-plan-paths
-
-- on: [path-validation step](#path-validation)
-- trigger: invalid service path or plan-file path in validated plan structure
-- does:
-  - corrects repository path, service path, implementation order, or plan-file values
-- does:
-  - leaves plan design and narrative text unchanged
-- does:
-  - returns full replacement `PlanResult` structure
-- consumes: [coder-repair-plan-paths-prompt](../formats/coder-repair-plan-paths-prompt.md)
-- status: returns `PlanResult` with status `rework` when paths are corrected and re-validated
-- verify: json_path(path="$.status", equals="rework")
-- errors: workflow failure if validator continues to reject paths after correction
-- verify: exit_status(code=1)
-- code: `workflows/src/workhorse_workflows/coder/dev/nodes.py::refine` @13266f79223d
-- tests: `workflows/tests/coder/dev/test_flow.py::test_an_unresolvable_service_path_reworks_the_plan`
-- tests:
-
+The flow returns a `DevOutcome` listing the ids of the story's findings that were settled and the
+ids that were declined.

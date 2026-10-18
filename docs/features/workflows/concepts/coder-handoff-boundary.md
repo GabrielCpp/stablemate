@@ -5,42 +5,37 @@ title: Coder handoff boundary contract
 ---
 # Coder handoff boundary contract
 
-The Coder workflow sequences seven specialized sub-flows — `dev`, `docs`, `fix_ci`, `qa`, and `review` as handoff targets, plus `genesis` and `fix` as standalone entry points — each reachable through `Engine.handoff(SubflowClass, ...)`. The handoff mechanism creates an intentional boundary that governs state isolation and resource management.
+The Coder registry holds six specialist flows: `genesis`, `dev`, `docs`, `qa`, `fix` and `fix_ci`. The main `Coder` flow hands off to five of them through `self.handoff(SubflowClass, ...)`. `genesis` is entered only by name. The handoff creates a boundary that governs what crosses between the caller and the sub-flow.
 
 ## The boundary contract
 
-A sub-flow entered via `handoff()` operates under four constraints that are invisible from the callsite but essential to understand:
+A sub-flow entered by `handoff()` runs under three constraints that the call site does not show.
 
-**Return value is the only crossing mechanism.** The sub-flow's `Done(...)` value is the only data structure the caller receives. A parent flow cannot access any node results produced within the sub-flow via `self.output(node)` — that call is scoped to the sub-flow's own nodes and cannot see the parent's work. Conversely, a sub-flow's `self.output()` cannot reach the parent's nodes. Values crossing the boundary must be explicitly passed as arguments on entry or returned in the `Done` value on exit.
+**Return value is the only crossing mechanism.** The sub-flow's `Done(...)` value is the only data the caller receives. A parent flow cannot read a node result recorded inside the sub-flow with `self.output(node)`, because the sub-flow records its outputs under its own writer scope. A sub-flow cannot read the parent's node outputs for the same reason. Values cross as arguments on entry or as the `Done` value on exit.
 
-**Prompt paths resolve upward.** Each sub-flow's prompts are written as paths from the parent `coder/` package root (`dev/prompts/implement-plan.md`, `docs/prompts/document-story.md`, `qa/prompts/qa-story.md`, etc.), not as paths from the sub-package directory. This is because `Engine.handoff` subscopes only the run writer, not the environment, so the package resolution context remains the parent's.
+**Prompt paths belong to the sub-flow.** Each flow resolves its prompt envelope to `<flow>/prompts/<role>.md` from the module that defines the flow class. The caller and callee share no prompt file, so each is free to diverge from the other.
 
-**Each sub-flow has its own transition budget.** `Engine.handoff` drives the sub-flow through a fresh `drive()` call with its own state-transition budget. An implementation loop that exhausts its budget inside one sub-flow (e.g., a per-repo poll in `fix_ci` or a QA repair loop in `qa`) does not starve the parent flow's budget. The per-sub-flow budgets are independent: `MAX_PLAN_BLOCKS`, `MAX_REVIEW_BLOCKS`, `MAX_QA_BLOCKS` each cap their own sub-flow.
+**Sub-flows are registered, standalone flows.** Every sub-flow is a registered flow in the coder `Registry`. It runs standalone with `workhorse-coder run <genesis|dev|docs|qa|fix|fix_ci>`. The same nodes and logic execute when the main loop hands off and when an operator enters the flow by name.
 
-**Sub-flows are registered, standalone flows.** The seven sub-flows are not just internal orchestration helpers — each is a registered flow in the coder `Registry` and can be run standalone with `workhorse-coder run <dev|docs|fix_ci|qa|review>` or `workhorse-coder run <genesis|fix>`. This means the same nodes and logic execute both when handed off to from the main loop and when entered directly by name.
+## The six sub-flows
 
-## The seven sub-flows
-
-- **`Dev`** — plan a story and implement it, one service layer at a time (`dev/__init__.py`).
-- **`Docs`** — fold a finished story into the as-built OKF book, and refuse to believe it was (`docs/__init__.py`).
-- **`FixCi`** — walk the workspace one repo at a time and get the epic branch's CI green (`fix_ci/__init__.py`).
-- **`Qa`** — plan QA for a story, run it, and refuse to believe it passed (`qa/__init__.py`).
-- **`Review`** — review a story's implementation and drive the findings to settled (`review/__init__.py`).
-- **`Genesis`** — bootstrap the preconditions the main loop assumes (`genesis/__init__.py`); entered directly, never handed off to.
-- **`Fix`** — drain the coder's own backlog, one filed item at a time (`fix/__init__.py`); entered directly, never handed off to.
+- **`Dev`** hands one work item to a dev owner that builds, reviews and fixes it through subagents.
+- **`Docs`** folds a finished story into the as-built OKF book and refuses to believe it was.
+- **`FixCi`** walks the workspace one repo at a time and gets the epic branch's CI green.
+- **`Qa`** plans QA for a story, runs it, and refuses to believe it passed.
+- **`Fix`** drains the coder's own backlog, one filed item at a time.
+- **`Genesis`** turns a directory into something the author and coder can both stand on. It is entered directly, never handed off to.
 
 ## When the boundary matters most
 
-The transition-budget independence of `fix_ci` is a canonical use case. A per-repo CI loop inside that sub-flow might retry a flaky check three times; if that exhausts `fix_ci`'s budget but the parent `main` flow still has budget remaining, the retry loop waits at an operator gate without starving the parent's ability to plan or review. This is why the contract mandates a fresh `drive()` call rather than reusing the parent's budget pool.
+The separate prompt directories are why a role name such as `dev-story` can exist once under `dev/prompts/` and a repo or library body can replace it without touching any other flow's envelope.
 
-The prompt-path resolution is why each sub-flow packages its own prompts directory. The same `implement-plan.md` name exists under `main/prompts/`, `dev/prompts/`, and `fix/prompts/`, each free to diverge — the caller and callee are not coupled through shared prompt files, even though they may do similar work.
-
-- code: `workflows/src/workhorse_workflows/coder/__init__.py` @769219e1d757
-- code: `workflows/src/workhorse_workflows/coder/dev/__init__.py` @0dcc713cab88
-- code: `workflows/src/workhorse_workflows/coder/docs/__init__.py` @748f8983f64a
-- code: `workflows/src/workhorse_workflows/coder/fix_ci/__init__.py` @ff0966b9bbd2
-- code: `workflows/src/workhorse_workflows/coder/qa/__init__.py` @ea9ff1f1dfa0
-- code: `workflows/src/workhorse_workflows/coder/review/__init__.py` @3ba7d8d07959
-- code: `workflows/src/workhorse_workflows/coder/genesis/__init__.py` @1e5d7177c25e
-- code: `workflows/src/workhorse_workflows/coder/fix/__init__.py` @dbf830aac3bc
-
+- code: `workflows/src/workhorse_workflows/coder/workflow.py::workflow` @a28e84f788c2
+- code: `workflows/src/workhorse_workflows/coder/main/flow.py::Coder.dev` @d70dfde3a1bd
+- code: `workflows/src/workhorse_workflows/coder/dev/flow.py::Dev` @9db388afe7e0
+- code: `workflows/src/workhorse_workflows/coder/docs/flow.py::Docs` @5070eea353a0
+- code: `workflows/src/workhorse_workflows/coder/fix_ci/flow.py::FixCi` @a82754789574
+- code: `workflows/src/workhorse_workflows/coder/qa/flow.py::Qa` @0a4bcedfcbb5
+- code: `workflows/src/workhorse_workflows/coder/genesis/flow.py::Genesis` @94e8836d807e
+- code: `workflows/src/workhorse_workflows/coder/fix/flow.py::Fix` @3221c750e52d
+- detail: [Coder prompt role resolution](coder-prompt-role-resolution.md)

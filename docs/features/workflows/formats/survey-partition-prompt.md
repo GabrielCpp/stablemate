@@ -6,7 +6,7 @@ title: Survey partition prompt contract
 # Survey partition prompt contract
 
 - file: `workflows/src/workhorse_workflows/author/surveyor/prompts/partition-findings.md`
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/survey.py::PartitionProposal` @f79c1c007a97
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/survey.py::PartitionProposal` @7db58efbfd66
 - detail: [author surveyor subflow](../concepts/author-surveyor-subflow.md)
 - tests: `workflows/tests/author/surveyor/test_partition.py::test_a_partition_covering_every_assessed_unit_is_valid`
 
@@ -21,49 +21,49 @@ least one cluster, while clean and blocked units carry no remediation work.
 - type: string path
 - required: true
 - semantics: directory whose assessed finding records are all read before clustering
-- verify: json_path(path="$.findings_dir", matches=".+")
+- verify: json_path(path="$.findings_dir", equals="docs/stories/acme-story")
 
 ### inventory
 - type: string path
 - required: true
 - semantics: frozen unit list used to enforce lossless cluster coverage
-- verify: json_path(path="$.inventory", matches=".+")
+- verify: json_path(path="$.inventory", equals="example inventory")
 
 ### rubric
 - type: string path
 - required: true
 - semantics: survey concern used to order and prioritize remediation clusters
-- verify: json_path(path="$.rubric", matches=".+")
+- verify: json_path(path="$.rubric", equals="example rubric")
 
 ### context_path
 - type: string path
 - required: true
 - semantics: operator context consulted for a prior partition decision
-- verify: json_path(path="$.context_path", matches=".+")
+- verify: json_path(path="$.context_path", equals="docs/stories/acme-story/story.md")
 
 ### partition_path
 - type: string path
 - required: true
 - semantics: YAML artifact receiving ordered, lossless clusters
-- verify: json_path(path="$.partition_path", matches=".+")
+- verify: json_path(path="$.partition_path", equals="docs/stories/acme-story/story.md")
 
 ### partition_errors
 - type: string
 - default: empty string
 - required: false
 - semantics: deterministic validation errors supplied for partition repair
-- verify: json_path(path="$.partition_errors", matches=".*")
+- verify: json_path(path="$.partition_errors", equals="example partition errors")
 
 ### status
 - type: string
 - default: empty string
 - required: false
 - semantics: reply outcome, `complete` when a partition was written or `blocked` when clustering needs an operator decision
-- verify: json_path(path="$.status", matches=".*")
+- verify: json_path(path="$.status", equals="example status")
 
 ### notes
 - type: string
 - default: empty string
 - required: false
 - semantics: clustering rationale or blocking information
-- verify: json_path(path="$.notes", matches=".*")
+- verify: json_path(path="$.notes", equals="Applied the change and ran the gates.")

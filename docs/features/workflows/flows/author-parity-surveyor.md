@@ -16,24 +16,22 @@ inventory file rather than enumerated rules, and emission suppresses any surface
 by an existing backlog item or epic. No partition step exists — each missing surface is its own
 gap, and clustering would merge exactly what a parity backlog needs kept separate.
 
-- start: the author runs with `mode="parity-surveyor"` and provides a baseline inventory path.
-- start: a readable baseline inventory file exists at the path provided in `baseline_inventory`.
-- start: the current OKF feature book exists under the repo's `docs/features/` root.
-- start: survey artifacts (inventory, findings records, manifest) are either absent (first run) or present and consistent (resumed run).
+- fixture: none, because the walk dry-runs the registered flow, which stands in for every agent turn
 - steps:
-  - [load configuration](#load-configuration)
-  - [freeze the baseline inventory](#freeze-the-baseline-inventory)
-  - [per-unit assessment loop](#per-unit-assessment-loop)
-  - [verify exhaustive coverage](#verify-exhaustive-coverage)
-  - [emit parity backlog](#emit-parity-backlog)
-- end: the survey has produced a durable backlog of findings (`backlog.yml`) and unit manifest, representing an exhaustive assessment of all baseline surfaces against the current book, with every missing surface attributed to one backlog bullet.
-- verify: persists(subject="the survey backlog and manifest")
-- verify: persists(subject="the frozen unit inventory")
-- verify: unchanged(subject="the unit inventory after coverage verification")
+  - [run](../workhorse-author.md#run)
+- start: the working directory holds no rendered graph
+- verify: absent(subject="workhorse-author.dot")
+- end: the dry run leaves the command with a zero exit status
+- verify: exit_status(code=0)
 - detail: [parity surveyor subflow](../concepts/parity-surveyor-subflow.md)
 - detail: [parity surveyor input roles](../concepts/parity-surveyor-input-roles.md)
 - tests: `workflows/tests/author/parity_surveyor/test_parity.py::test_expand_freezes_one_unit_per_baseline_surface`
 - tests: `workflows/tests/author/parity_surveyor/test_parity.py::test_emit_writes_one_bullet_per_uncovered_surface`
+
+The stages, in order: [load configuration](#load-configuration), [freeze the baseline inventory](#freeze-the-baseline-inventory), [per-unit assessment loop](#per-unit-assessment-loop), [verify exhaustive coverage](#verify-exhaustive-coverage), [emit parity backlog](#emit-parity-backlog).
+
+The flow starts when the author runs with `mode="parity-surveyor"` and provides a baseline inventory path; or when a readable baseline inventory file exists at the path provided in `baseline_inventory`; or when the current OKF feature book exists under the repo's `docs/features/` root; or when survey artifacts (inventory, findings records, manifest) are either absent (first run) or present and consistent (resumed run).
+It ends in one of these ways: the survey has produced a durable backlog of findings (`backlog.yml`) and unit manifest, representing an exhaustive assessment of all baseline surfaces against the current book, with every missing surface attributed to one backlog bullet.
 
 ## Load configuration
 

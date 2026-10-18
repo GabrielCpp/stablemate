@@ -28,7 +28,7 @@ title: Story author completion
 - default: empty string
 - required: true
 - semantics: parent epic of the authored story
-- verify: json_path(path="$.epic", matches=".+")
+- verify: json_path(path="$.epic", equals="acme-epic")
 - code: `workflows/src/workhorse_workflows/author/story_author/schemas.py::StoryAuthorDone` @8eca5014bca5
 - detail: [story author completion field roles](../concepts/story-author-done-field-roles.md)
 
@@ -37,7 +37,7 @@ title: Story author completion
 - default: empty string
 - required: true
 - semantics: authored story slug
-- verify: json_path(path="$.story", matches=".+")
+- verify: json_path(path="$.story", equals="acme-story")
 - code: `workflows/src/workhorse_workflows/author/story_author/schemas.py::StoryAuthorDone` @8eca5014bca5
 - detail: [story author completion field roles](../concepts/story-author-done-field-roles.md)
 
@@ -55,7 +55,7 @@ title: Story author completion
 - default: empty string
 - required: true
 - semantics: story-local mockup reference carried through authoring
-- verify: json_path(path="$.mockup", matches=".*")
+- verify: json_path(path="$.mockup", equals="example mockup")
 - code: `workflows/src/workhorse_workflows/author/story_author/schemas.py::StoryAuthorDone` @8eca5014bca5
 - detail: [story author completion field roles](../concepts/story-author-done-field-roles.md)
 
@@ -64,6 +64,6 @@ title: Story author completion
 - default: empty string
 - required: true
 - semantics: blocking or audit notes returned with the result
-- verify: json_path(path="$.notes", matches=".*")
+- verify: json_path(path="$.notes", equals="Applied the change and ran the gates.")
 - code: `workflows/src/workhorse_workflows/author/story_author/schemas.py::StoryAuthorDone` @8eca5014bca5
 - detail: [story author completion field roles](../concepts/story-author-done-field-roles.md)

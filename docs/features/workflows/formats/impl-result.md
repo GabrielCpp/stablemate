@@ -7,7 +7,7 @@ title: Coder implementation result
 
 - file: none — agent reply and checkpoint value
 - config: `ImplResult` implementation-turn output contract
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/dev.py::ImplResult` @b6e19c205b4f
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/dev.py::ImplResult` @5aa622da8aea
 - detail: [coder development schema contracts](../concepts/coder-dev-schema-contracts.md)
 
 ## Fields
@@ -19,7 +19,7 @@ title: Coder implementation result
 - verify: json_path(path="$.status", matches="done|applied|no_changes_needed|needs_changes|blocked")
 - semantics: only `blocked` routes directly to a block
 - verify: json_path(path="$.status", equals="blocked")
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/dev.py::ImplResult.status` @b6e19c205b4f
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/dev.py::ImplResult.status` @5aa622da8aea
 - detail: [implementation result status](../concepts/implementation-result-status.md)
 
 ### notes
@@ -27,6 +27,6 @@ title: Coder implementation result
 - default: empty string
 - required: false
 - semantics: implementation, verification, or blocking explanation
-- verify: json_path(path="$.notes", matches=".*")
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/dev.py::ImplResult.notes` @b6e19c205b4f
+- verify: json_path(path="$.notes", equals="Applied the change and ran the gates.")
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/dev.py::ImplResult.notes` @5aa622da8aea
 - detail: [implementation result notes](../concepts/impl-result-notes.md)

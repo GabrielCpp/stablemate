@@ -11,7 +11,7 @@ title: Workflows orphan classification rule
 
 ## Operationally-rooted orphans
 
-**Runbooks** (6: `workhorse-author`, `workhorse-coder`, `workhorse-hello-world`, `workhorse-research`, `make-target-drivers`, `coder-unit-tests`) document CLI entry points that users and operators invoke by name, not by following a graph edge. These are tools run interactively or in CI, selected by the user who needs them. They are correctly orphaned — a reader discovers them by learning which tool to invoke for a task, not by tracing composition-root edges.
+**Runbooks** (6: `workhorse-author`, `workhorse-coder`, `workhorse-loop-runner`, `workhorse-research`, `make-target-drivers`, `coder-unit-tests`) document CLI entry points that users and operators invoke by name, not by following a graph edge. These are tools run interactively or in CI, selected by the user who needs them. They are correctly orphaned — a reader discovers them by learning which tool to invoke for a task, not by tracing composition-root edges.
 
 **Environment** (`local-python-workspace`) is operationally selected via environment variable or configuration file, not reached via a graph link. It documents how to set up and use a specific runtime context.
 

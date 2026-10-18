@@ -11,7 +11,7 @@ silently discarded.
 
 - file: none — in-memory workflow result
 - config: producing coder node evidence
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/_base.py::Finding` @5964d4cd22a1
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/_base.py::Finding` @cc0150145bd7
 - detail: [Coder escalation composition](../concepts/coder-shared-escalation.md)
 - detail: [Coder result routing contract](../concepts/coder-result-routing.md)
 
@@ -22,24 +22,24 @@ silently discarded.
 - default: empty string
 - required: false
 - semantics: location or identifier where the issue was observed
-- verify: json_path(path="$.target", matches=".*")
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/_base.py::Finding.target` @5964d4cd22a1
+- verify: json_path(path="$.target", equals="src/app.py")
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/_base.py::Finding.target` @cc0150145bd7
 
 ### issue
 - type: `str`
 - default: empty string
 - required: false
 - semantics: description of the observed problem
-- verify: json_path(path="$.issue", matches=".*")
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/_base.py::Finding.issue` @5964d4cd22a1
+- verify: json_path(path="$.issue", equals="The check fails on an empty list.")
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/_base.py::Finding.issue` @cc0150145bd7
 
 ### repair
 - type: `str`
 - default: empty string
 - required: false
 - semantics: smallest acceptable change when a fixer can act on the finding
-- verify: json_path(path="$.repair", matches=".*")
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/_base.py::Finding.repair` @5964d4cd22a1
+- verify: json_path(path="$.repair", equals="Guard the empty list before reading it.")
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/_base.py::Finding.repair` @cc0150145bd7
 
 ## Methods
 
@@ -49,5 +49,5 @@ silently discarded.
 - verify: json_path(path="$.actionable", equals=true)
 - returns: false when either target or repair is empty or whitespace-only
 - verify: json_path(path="$.actionable", equals=false)
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/_base.py::Finding.actionable` @5964d4cd22a1
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/_base.py::Finding.actionable` @cc0150145bd7
 - tests: `workflows/tests/coder/shared/test_blocked_signal.py::test_a_finding_needs_both_a_target_and_a_repair`
