@@ -135,6 +135,18 @@ def ensure_stack(
         )
     copied = leases.up(root, lease=lease, near=near_path, holder=os.getpid())
     if copied is not None:
+        if not copied.ok:
+            return _copy_status(copied)
+        devices = runbook.bring_up_devices(
+            graph, near=near_path, address_book=str(copied.data.get("address_book", "")),
+            logger=logger)
+        if devices and devices[-1].get("ready") != "yes":
+            last = devices[-1]
+            return StackStatus(
+                ready="no", failed_step=last.get("failed_step", ""),
+                notes=bring_up_failure(
+                    last.get("failed_step", "unknown"), (last.get("error") or "").strip(),
+                    last.get("source", "")))
         return _copy_status(copied)
     manifests, selection = runbook.load_stacks(graph, near=near_path, leased=bool(lease),
                                                logger=logger)

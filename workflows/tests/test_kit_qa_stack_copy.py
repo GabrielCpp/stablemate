@@ -76,3 +76,26 @@ def test_the_scored_run_reads_the_address_book_the_copy_wrote(
     assert seen["book"] == runner.stack_env(LOG, model.load(repo), near=near,
                                             lease="story-1")[addresses.BOOK_ENV]
     assert seen["book"].endswith(f"acme-story-1/{runtime.ADDRESSES}")
+
+
+def test_bring_up_boots_the_device_beside_the_copy_and_reports_a_failed_install(
+    repo: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(runbook, "has_served_surface", lambda *_args: True)
+    monkeypatch.setattr(leases, "up", lambda *_args, **_kw: QaOutcome(
+        True, "stack brought up and healthy at http://localhost:49200",
+        {"entry_url": "http://localhost:49200", "address_book": "/copy/addresses.json"}))
+    seen: list[str] = []
+
+    def devices(_graph: object, **kw: object) -> list[dict[str, str]]:
+        seen.append(str(kw["address_book"]))
+        return [{"ready": "no", "failed_step": "prepare[1]", "error": "adb: no devices",
+                 "source": "app-qa"}]
+
+    monkeypatch.setattr(runbook, "bring_up_devices", devices)
+    status = runner.ensure_stack(LOG, repo_dir=str(repo), lease="story-1")
+    assert seen == ["/copy/addresses.json"]
+    assert (status.ready, status.failed_step) == ("no", "prepare[1]")
+    assert "adb: no devices" in status.notes and "app-qa" in status.notes
+    monkeypatch.setattr(runbook, "bring_up_devices", lambda *_a, **_kw: [{"ready": "yes"}])
+    assert runner.ensure_stack(LOG, repo_dir=str(repo), lease="story-1").ready == "yes"
