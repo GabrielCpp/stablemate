@@ -65,11 +65,12 @@ managed markdown tree (backlog, milestones, epics, features) under a repo root.
   backlog-items)
 - exits: 0 — a kind name from the registry, scaffolded at a path that does not yet hold that kind's
   file, writes the skeleton and prints the destination
-- run: invoke(argv=["artifact", "scaffold", "backlog-items", "--spec", "artifact-flow-spec"])
+- run: invoke(argv=["artifact", "scaffold", "backlog-items", "--spec", "cli-book-scaffold-spec"])
 - verify: exit_status(code=0)
-- verify: contents(subject="artifact-flow-spec/backlog-items.json", matches="(?s)^\\[\\]\\n$")
-- fixture: none, because scaffolding into a fresh spec directory needs no seeded state; the
-  directory is created if absent
+- verify: contents(subject="cli-book-scaffold-spec/backlog-items.json", matches="(?s)^\\[\\]\\n$")
+- fixture: [cli scenario arrangement](fixtures/cli-scenario-arrangement.md) — seeds an empty
+  cli-book-scaffold-spec/ under the repo root, so --spec resolves there instead of under the specs
+  root, and the directory does not yet hold the kind's file
 - code: ostler/ostler/artifact/run.py::scaffold@72b226ff9de4
 - code: ostler/ostler/artifact/kinds.py::ArtifactKind@ec25eeaddd5f
 - code: ostler/ostler/path.py::resolve_spec_arg@b434dbc906c6
@@ -108,7 +109,7 @@ managed markdown tree (backlog, milestones, epics, features) under a repo root.
 - exits: 0 — printing the schema reads only the code-declared key table, so this command never fails
 - run: invoke(argv=["env", "schema"])
 - verify: exit_status(code=0)
-- verify: json_path(path="$schema", equals="https://json-schema.org/draft/2020-12/schema")
+- verify: json_path(path=".$schema", equals="https://json-schema.org/draft/2020-12/schema")
 - fixture: none, because the schema is built from the code-declared key table, not read from any
   stack.yml
 - code: ostler/ostler/environments/spec.py::schema@b020ed778dc2
@@ -127,8 +128,8 @@ managed markdown tree (backlog, milestones, epics, features) under a repo root.
 - verify: exit_status(code=1)
 - verify: json_path(path="ok", equals=false)
 - verify: json_path(path="errors[0]", matches="^docs/features/env-check-fixture/ops/stack\\.yml: is not a mapping with a `services:` key$")
-- fixture: env-check-fixture creates docs/features/env-check-fixture/ops/stack.yml, a stack file
-  whose top level is a YAML list rather than a mapping
+- fixture: [cli scenario arrangement](fixtures/cli-scenario-arrangement.md) — creates a second book
+  whose ops/stack.yml is a YAML list instead of a mapping
 - code: ostler/ostler/environments/spec.py::load@b020ed778dc2
 - code: ostler/ostler/environments/spec.py::_read_book@b020ed778dc2
 - code: ostler/ostler/environments/commands.py::cmd_check@36bbc1003620

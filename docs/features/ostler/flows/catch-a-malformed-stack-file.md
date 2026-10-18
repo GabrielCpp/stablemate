@@ -12,5 +12,5 @@ title: Catch a malformed stack file
   being skipped silently
 - verify: json_path(path="ok", equals=false)
 - verify: json_path(path="errors[0]", matches="^docs/features/env-check-fixture/ops/stack\\.yml: is not a mapping with a `services:` key$")
-- fixture: env-check-fixture creates docs/features/env-check-fixture/ops/stack.yml, a stack file
-  whose top level is a YAML list rather than a mapping
+- fixture: [cli scenario arrangement](../fixtures/cli-scenario-arrangement.md) — creates a second
+  book whose ops/stack.yml is a YAML list instead of a mapping

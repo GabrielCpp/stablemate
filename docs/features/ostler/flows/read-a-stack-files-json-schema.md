@@ -10,5 +10,5 @@ title: Read a stack file's JSON Schema
   - [ostler env schema](../cli.md#ostler-env-schema)
 - end: the caller has the JSON Schema a stack.yml is validated against, straight from the
   code-declared key table
-- verify: json_path(path="$schema", equals="https://json-schema.org/draft/2020-12/schema")
+- verify: json_path(path=".$schema", equals="https://json-schema.org/draft/2020-12/schema")
 - fixture: none, because the schema is built from code, not read from any stack.yml
