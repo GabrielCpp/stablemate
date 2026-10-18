@@ -57,6 +57,9 @@ gives relative to the repository starts there.
   records it reads or writes. Each endpoint is a page of its own beside its server page, with
   a `server:` link to that page, and the server lists it under `## Endpoints` as a
   `- [id](page.md)` line,
+{% elif kind == "mobile" %}
+  the screens and routes, the controls a user works with by test id or visible name, what
+  each interaction changes, the messages the app shows and the values it keeps,
 {% else %}
   the screens and routes, the controls a user works with by role and accessible name, what
   each interaction changes, the messages the app shows and the values it keeps,
@@ -68,6 +71,17 @@ gives relative to the repository starts there.
   under the `does:` of the interaction that performs the act, by a state the flow stops at after
   the act, or a fixture arranges the state first. A check on such an element at the screen level
   fails on the bare screen.
+{%- if kind == "mobile" %}
+- Every screen says how it settles, as the skill's screen and state references show. Its `busy:`
+  names the element shown while it loads. Its `## Screen states` name each look it settles in,
+  such as loaded, empty, error or disabled, by the elements each shows. Every element a state, a
+  busy sign or a passage uses is found by its `selector: testID=<id>` or its visible `name:`. A
+  device's view hierarchy does not report `expanded`, so no state or busy sign checks it. A flow
+  names the state the screen settles in after each act, and a run of acts several flows share is
+  a passage the flows link. A device has no request feed, so the walk ignores `requests:`. Leave
+  it out of a screen and of a passage. Never write a duration. The walk waits for what the screen
+  declares.
+{%- else %}
 - Every screen says how it settles, as the skill's screen and state references show. Its
   `requests:` lists each `METHOD /path` the page sends to the app's servers on arrival, the
   shell's own requests on a route change included, such as a session check. Its `busy:` names
@@ -78,12 +92,32 @@ gives relative to the repository starts there.
   passage the flows link. A passage lists under its own `requests:` each request its acts send.
   A web stop after a passage fails on a request to the app's servers that nobody declared, and
   the failure names it. Never write a duration. The walk waits for what the page declares.
+{%- endif %}
 {% endif %}
 - A fixture changes only what it creates. People and other books share this stack, so a
   fixture that edits a seeded account, record or setting breaks whoever uses it next, and
   makes your own scenarios pass or fail by the order they ran in. When a scenario needs a role,
   sign in as a seeded account that already holds it, or create a new account that does.
 {% if kind not in ("cli", "http") %}
+{%- if kind == "mobile" %}
+- A journey does what the user came to do, and proves it took. A flow walks the act that
+  changes something, such as a save, a send or a delete, and its `end:` checks the changed
+  value where the user meets it next, on another screen. A toast or a closed dialog shows only
+  that the app answered. A check that reads the value back is the one that fails when the change
+  was lost.
+- A flow that changes data stands on data it creates. The walk may create it through the app in
+  its own earlier steps, the way a user would. Or its `fixture:` names a fixture with
+  `lifetime: scenario` that creates it the way the app's own backend or seed does: a new account
+  with a fresh email, as the skill's fixture reference shows, and the records that account
+  owns. A fixture cannot sign the app in on the device, so a flow that needs a signed-in app
+  signs in through the app's own screens, in its earlier steps. A value the app must accept
+  fresh on every lap, such as a sign-up email, comes from a fixture that provides it. Each lap
+  then starts from fresh data, the walk may change or delete what it created, and no seeded
+  record moves. A flow that changes nothing needs no fixture. A behaviour is never left
+  unchecked because it changes seeded data, cannot repeat on one account, or needs a record the
+  seed lacks. Those are the cases fresh data is for. Only an act that reaches a party off this stack, such as a real payment or an email
+  to a real inbox, stays unchecked, and its page names that party.
+{%- else %}
 - A journey does what the user came to do, and proves it took. A flow walks the act that
   changes something, such as a save, a send or a delete, and its `end:` checks the changed
   value where the user meets it next: on another screen, or on the same screen after a reload.
@@ -100,6 +134,7 @@ gives relative to the repository starts there.
   because it changes seeded data, cannot repeat on one account, or needs a record the seed
   lacks. Those are the cases fresh data is for. Only an act that reaches a party off this stack, such as a real payment or an email
   to a real inbox, stays unchecked, and its page names that party.
+{%- endif %}
 {% endif %}
 - Every {% if kind == "cli" %}command{% elif kind == "http" %}endpoint{% else %}screen{% endif %} sits on a journey a user takes. Write each journey as a `flow` page under
   `flows/`, as the skill's flow reference says, with its `start:`, its `steps:`, its `end:` and
@@ -110,6 +145,32 @@ gives relative to the repository starts there.
   `start:` checks with `absent(subject="<file>")` that a file the walk creates is not there yet.
 {% endif %}
 {% if kind != "cli" %}
+{%- if kind == "mobile" %}
+- The run brings the app up from the book alone. Write the stack `runbook` under `ops/` with
+  `driver: mobile`, as the skill's runbook reference shows. It states `bundle-id:`, the app's
+  package id from its build config, `launch-screen:`, a link to the screen the app opens on,
+  and `surfaces:`.
+  Assume the machine it runs on has a shell, git, curl, python3, the Android SDK (`adb` and
+  `emulator`) and maestro, and nothing else: no other language toolchain, no cloud CLI, no
+  database. The runbook fetches every other tool and service the app needs. Its `kind: prepare`
+  steps run on the host before any scenario. They boot an emulator and wait for it, then build
+  the app and install it with `adb install`.
+  A runbook has one `kind: service` step. It starts the backend the app calls, on a free port,
+  as another book's runbook under `docs/features/` may already do, and sets the address the app
+  is built against to that port. Its `health:` gate runs a route the backend's source serves to
+  say it is ready. Name that route, and never invent one. A further backend starts in the
+  background from a `kind: prepare` step, on a free port of its own, and the app is built
+  against that port too. A service already answering on this machine belongs to someone else,
+  and a claim that passes against it passes only here. If the app calls no backend, say so in
+  your reply, because a runbook with no `kind: service` step and no `entry-url:` is not a stack,
+  and nothing runs its prepare steps.
+  The command below reports the step where bring-up failed, and it is the only way to probe
+  that machine.
+- A screen's `route:` is the navigator's name for it, an identifier and not a path. An element is found by
+  `selector: testID=<id>` when the source sets a test id, or by its visible `name:`. A control
+  with neither is reported in your reply as one the app must label. Never select a control by
+  its position.
+{%- else %}
 - The run brings the app up from the book alone. Write the stack `runbook` that starts it
   from a clean checkout, with the port, the health check and every service it needs, as the
   skill's runbook reference says. Assume the machine it runs on has a shell,
@@ -129,6 +190,7 @@ gives relative to the repository starts there.
   and the report sends the gap to the app.
   The command below reports the step where bring-up failed, and it is the only way to probe
   that machine.
+{%- endif %}
 {% endif %}
 {% if kind == "cli" %}
 - A scenario runs the app only through a QA tool this repo offers. The page's `binary:` names
