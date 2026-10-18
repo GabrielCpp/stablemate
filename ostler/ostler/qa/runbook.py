@@ -227,7 +227,13 @@ def _from_server(graph: Graph, server: UINode) -> dict[str, Any]:
 
 
 def is_stack_runbook(graph: Graph, node: UINode) -> bool:
-    """Whether this runbook brings a system up, as opposed to merely running a procedure."""
+    """Whether this runbook brings a system up, as opposed to merely running a procedure.
+
+    A `driver: mobile` runbook always does, because its prepare steps boot the device and
+    install the app even when the app calls no backend.
+    """
+    if bullet_value(node.meta, "driver") == "mobile":
+        return True
     if bullet_value(node.meta, "entry-url") or bullet_value(node.meta, "launch"):
         return True
     return any(bullet_value(step.meta, "kind") == "service" for step in steps_of(graph, node))

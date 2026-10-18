@@ -2200,6 +2200,9 @@ def _check_runbook(graph: Graph, f: list[Finding], resolver: links_mod.LinkResol
             continue
 
         if not services:
+            if _bullet_value(meta, "driver") == "mobile":
+                _check_runbook_environment(graph, node, rel, f)
+                continue
             f.append(Finding("error", "runbook-incomplete",
                              f"{rel}: declares a launch but has no `kind: service` step — "
                              f"nothing here starts the system",

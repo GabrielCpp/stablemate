@@ -8,6 +8,7 @@ import pytest
 
 from ostler import model
 from ostler.qa import runbook as rb
+from ostler.qa import stack as stack_mod
 
 from conftest import write
 
@@ -764,6 +765,87 @@ def test_doctor_reports_two_service_steps(tmp_path: Path) -> None:
                  "### api\n\n- kind: service\n- run: ./api.sh\n\n"
                  "### web\n\n- kind: service\n- run: ./web.sh\n")
     assert "runbook-multi-service" in codes(tmp_path)
+
+
+BACKENDLESS_MOBILE = """---
+type: runbook
+---
+
+# Acme (Android emulator)
+
+- driver: mobile
+- bundle-id: com.example.acme
+- reuse: never
+
+## Steps
+
+### boot-emulator
+
+- kind: prepare
+- run: touch booted.marker
+
+### install-app
+
+- kind: prepare
+- run: touch installed.marker
+"""
+
+
+def test_a_mobile_runbook_with_prepare_steps_and_no_service_is_a_stack(tmp_path: Path) -> None:
+    (tmp_path / ".git").mkdir()
+    make_runbook(tmp_path, BACKENDLESS_MOBILE)
+    graph = model.load(tmp_path)
+    assert [n.id for n in rb.stack_runbooks(graph)] == [n.id for n in graph.ui_nodes_of_type("runbook")]
+    manifest = rb.load_stack(tmp_path)
+    assert [s["run"] for s in manifest["prepare"]] == [
+        "touch booted.marker", "touch installed.marker"]
+    assert "launch" not in manifest
+    assert "entry_url" not in manifest
+
+
+def test_a_runbook_of_another_driver_with_only_prepare_steps_is_not_a_stack(
+    tmp_path: Path,
+) -> None:
+    (tmp_path / ".git").mkdir()
+    make_runbook(tmp_path, BACKENDLESS_MOBILE.replace("driver: mobile", "driver: web"))
+    assert rb.stack_runbooks(model.load(tmp_path)) == []
+    assert rb.load_stack(tmp_path) == {}
+
+
+def test_bringing_up_a_backendless_mobile_stack_runs_its_prepare_steps_and_nothing_else(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    (tmp_path / ".git").mkdir()
+    make_runbook(tmp_path, BACKENDLESS_MOBILE)
+    manifest = rb.load_stack(tmp_path)
+
+    def forbidden(*args: object, **kwargs: object) -> None:
+        raise AssertionError("a backend-less stack launches no app and probes no port")
+
+    monkeypatch.setattr(stack_mod, "boot_app", forbidden)
+    monkeypatch.setattr(stack_mod, "health_probe", forbidden)
+    results = rb.bring_up_stacks([manifest], repo_root=str(tmp_path))
+    assert results[0]["ready"] == "yes"
+    assert results[0]["adopted"] == "no"
+    assert results[0]["app_pgid"] == ""
+    assert (tmp_path / "booted.marker").is_file()
+    assert (tmp_path / "installed.marker").is_file()
+
+
+def test_tearing_down_a_backendless_mobile_stack_has_nothing_to_stop(tmp_path: Path) -> None:
+    (tmp_path / ".git").mkdir()
+    make_runbook(tmp_path, BACKENDLESS_MOBILE)
+    outcome = rb.cmd_stack_down(tmp_path)
+    assert outcome.data["torn_down"] == "skipped"
+
+
+def test_doctor_asks_a_backendless_mobile_runbook_for_no_service_step(tmp_path: Path) -> None:
+    (tmp_path / ".git").mkdir()
+    make_runbook(tmp_path, BACKENDLESS_MOBILE)
+    found = codes(tmp_path)
+    assert "runbook-incomplete" not in found
+    assert "runbook-multi-service" not in found
+    assert "runbook-missing" not in found
 
 
 def _local_stack(tmp_path: Path, name: str, url: str) -> None:
