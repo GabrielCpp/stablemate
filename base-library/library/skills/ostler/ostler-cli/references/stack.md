@@ -33,7 +33,7 @@ services:
 | key | where | what it says |
 | --- | --- | --- |
 | `services` | book | one entry per service this book defines, named in lowercase letters, digits and `-` |
-| `secrets` | root | the one source of `${VAR}` values: `file:` a dotenv file, or `decrypt:` a command whose stdout is dotenv. Valid only in the stack root |
+| `secrets` | root | the one source of `${VAR}` values: `file:` a dotenv file, `decrypt:` a command whose stdout is dotenv, or `saddlebag:` the `key=value` tags that select secrets in saddlebag. Valid only in the stack root |
 | `needs` | book | the books whose every service this book's services need. They come up first, and a cycle across books is refused |
 | `default-fixtures` | book | the fixture sets loaded when a bring-up names none |
 | `about` | service | one line on what the service is, required. `ostler env ls` shows it |
@@ -141,14 +141,25 @@ secrets:
   decrypt: sops --decrypt docs/features/ops/secrets.enc.env
 ```
 
+```yaml
+secrets:
+  saddlebag: environment=local
+```
+
 - `file:` is a dotenv file, read from the repo root. Compose reads it in place, so ostler makes
   no copy of it. In a git worktree, a file absent there is read from the main checkout.
 - `decrypt:` is a shell command, run with `sh -c` from the repo root. Its stdout is dotenv. ostler
   runs it once per `up` and writes the output to `secrets/stack.env` in the copy, mode `0600`.
   A failure is reported by exit code and the last five lines of stderr. The output is never
   printed or logged. `down` deletes the file.
+- `saddlebag:` is one or more `key=value` tags separated by spaces. ostler asks
+  `saddlebag list --tag <k=v> --json` for the matching secrets and takes each one's `var` as a
+  name the source defines. Every `docker compose` command for the copy then runs under
+  `saddlebag exec --tag <k=v> --`, so compose reads the values from its own process environment
+  and no secrets file is written. A matching secret with no `var` fails `check` and `up` by name.
 
-The copy's manifest records the env files `up` used, so `ostler env compose` reads the same ones.
+The copy's manifest records the env files and the `saddlebag exec` prefix `up` used, so
+`ostler env compose` runs the same way.
 
 Every `$NAME`, `${NAME}` and `${NAME:?msg}` a rendered template uses must be a name the source defines, or a job it needs writes.
 `$NAME` without braces is checked too. `${NAME:-default}` has a default and is not checked, nor

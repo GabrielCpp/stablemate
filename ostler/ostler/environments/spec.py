@@ -33,17 +33,20 @@ class Key:
 _STRINGS: dict[str, Any] = {"type": "array", "items": {"type": "string"}}
 _SECRETS: dict[str, Any] = {
     "type": "object",
-    "properties": {"file": {"type": "string"}, "decrypt": {"type": "string"}},
+    "properties": {"file": {"type": "string"}, "decrypt": {"type": "string"},
+                   "saddlebag": {"type": "string"}},
     "additionalProperties": False,
-    "oneOf": [{"required": ["file"]}, {"required": ["decrypt"]}],
+    "oneOf": [{"required": ["file"]}, {"required": ["decrypt"]}, {"required": ["saddlebag"]}],
 }
 
 KEYS: tuple[Key, ...] = (
     Key("book", "services", {"type": "object"},
         "one entry per service this book defines, named in lowercase letters, digits and `-`"),
     Key("root", "secrets", _SECRETS,
-        "the one source of `${VAR}` values: `file:` a dotenv file, or `decrypt:` a command "
-        "whose stdout is dotenv. Valid only in the stack root, docs/features/ops/stack.yml"),
+        "the one source of `${VAR}` values: `file:` a dotenv file, `decrypt:` a command "
+        "whose stdout is dotenv, or `saddlebag:` the `key=value` tags that select secrets in "
+        "saddlebag, under which every compose command runs. Valid only in the stack root, "
+        "docs/features/ops/stack.yml"),
     Key("book", "needs", _STRINGS,
         "the books whose every service this book's services need, so they come up first"),
     Key("book", "default-fixtures", _STRINGS,
@@ -166,10 +169,11 @@ class Book:
 
 @dataclass(frozen=True)
 class SecretSpec:
-    """The stack root's `secrets:`: a dotenv file to read or a command whose stdout is dotenv."""
+    """The stack root's `secrets:`: a dotenv file, a command whose stdout is dotenv, or saddlebag tags."""
 
     file: str = ""
     decrypt: str = ""
+    saddlebag: str = ""
 
 
 @dataclass
@@ -378,28 +382,42 @@ def _expand_book_needs(catalog: Catalog, root: Path) -> None:
 def _old_secrets(value: object) -> str:
     if isinstance(value, str):
         return (f" (`{value}` was a saddlebag environment, which is gone: the stack root writes "
-                "`file: <path>` or `decrypt: <command>`)")
+                "`file: <path>`, `decrypt: <command>` or `saddlebag: \"<key>=<value>\"`)")
     return ""
+
+
+def _tag_pairs(text: str) -> bool:
+    for token in text.split():
+        name, separator, value = token.partition("=")
+        if not separator or not name or not value:
+            return False
+    return True
 
 
 def _read_secrets(catalog: Catalog, where: str, value: object) -> SecretSpec:
     if isinstance(value, str):
         catalog.errors.append(
             f"{where}: `secrets: {value}` names a saddlebag environment, which is gone: write "
-            "`secrets: {file: <path>}` or `secrets: {decrypt: <command>}`")
+            "`secrets: {saddlebag: \"<key>=<value>\"}`, `secrets: {file: <path>}` or "
+            "`secrets: {decrypt: <command>}`")
         return SecretSpec()
     if not isinstance(value, dict):
-        catalog.errors.append(f"{where}: `secrets:` is not a mapping with `file:` or `decrypt:`")
+        catalog.errors.append(f"{where}: `secrets:` is not a mapping with `file:`, `decrypt:` or `saddlebag:`")
         return SecretSpec()
-    stray = sorted(str(key) for key in value if key not in {"file", "decrypt"})
+    stray = sorted(str(key) for key in value if key not in {"file", "decrypt", "saddlebag"})
     if stray or len(value) != 1:
         catalog.errors.append(
-            f"{where}: `secrets:` takes exactly one of `file:` or `decrypt:`"
+            f"{where}: `secrets:` takes exactly one of `file:`, `decrypt:` or `saddlebag:`"
             + (f", not {', '.join(f'`{key}`' for key in stray)}" if stray else ""))
         return SecretSpec()
     key, item = next(iter(value.items()))
     if not isinstance(item, str) or not item.strip():
         catalog.errors.append(f"{where}: `secrets: {key}:` is not a path or command")
+        return SecretSpec()
+    if key == "saddlebag" and not _tag_pairs(item):
+        catalog.errors.append(
+            f"{where}: `secrets: saddlebag:` is not one or more `key=value` tags separated by "
+            "spaces")
         return SecretSpec()
     return SecretSpec(**{str(key): item.strip()})
 

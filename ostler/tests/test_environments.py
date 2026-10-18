@@ -595,16 +595,17 @@ def test_secrets_in_a_book_file_is_refused_and_a_saddlebag_name_names_the_new_sh
     assert any(
         error.startswith("docs/features/web/ops/stack.yml: `secrets:` belongs in the stack root, "
                          "docs/features/ops/stack.yml: one repo has one secret source")
-        and "`file: <path>` or `decrypt: <command>`" in error for error in errors)
+        and "`saddlebag: \"<key>=<value>\"`" in error for error in errors)
 
 
 def test_the_stack_root_refuses_a_saddlebag_name_and_two_sources(tmp_path: Path) -> None:
     root = _repo(tmp_path)
     _root_stack(root, "web-local")
     assert any("`secrets: web-local` names a saddlebag environment" in error
+               and "`secrets: {saddlebag: \"<key>=<value>\"}`" in error
                for error in spec.load(root).errors)
     _root_stack(root, {"file": ".env", "decrypt": "true"})
-    assert any("takes exactly one of `file:` or `decrypt:`" in error
+    assert any("takes exactly one of `file:`, `decrypt:` or `saddlebag:`" in error
                for error in spec.load(root).errors)
     _root_stack(root, {"file": ".env"})
     assert spec.load(root).secrets == spec.SecretSpec(file=".env")
@@ -971,3 +972,95 @@ def test_a_job_output_satisfies_the_name_check_for_the_services_that_need_it(
     _rewrite_stack(root, "api", {"provision": {
         "about": "x", "define": "services/provision.yml.j2", "once": True}})
     assert "`UPLOAD_BUCKET` is required by api:api" in commands.cmd_check(root).message
+
+
+class FakeSaddlebag(FakeDocker):
+    def __init__(self, secrets: list[dict] | None = None, status: int = 0) -> None:
+        super().__init__()
+        self.secrets = [{"name": "api-token", "username": None, "description": None,
+                         "var": "TOKEN", "tags": [["environment", "local"]],
+                         "fields": ["value"]}] if secrets is None else secrets
+        self.status = status
+
+    def __call__(self, argv: Sequence[str], *, capture: bool) -> subprocess.CompletedProcess[str]:
+        if argv[0] == "saddlebag":
+            self.calls.append(list(argv))
+            return subprocess.CompletedProcess(
+                list(argv), self.status, json.dumps({"secrets": self.secrets}) if not self.status else "",
+                "the daemon is not running" if self.status else "")
+        return super().__call__(argv, capture=capture)
+
+
+def test_the_saddlebag_key_takes_one_or_more_tags_and_refuses_a_bad_one(tmp_path: Path) -> None:
+    root = _repo(tmp_path)
+    _root_stack(root, {"saddlebag": "environment=local"})
+    assert spec.load(root).secrets == spec.SecretSpec(saddlebag="environment=local")
+    _root_stack(root, {"saddlebag": "environment=local  team=acme"})
+    loaded = spec.load(root)
+    assert loaded.secrets.saddlebag == "environment=local  team=acme"
+    assert not loaded.errors
+    for bad in ("environment", "=local", "environment="):
+        _root_stack(root, {"saddlebag": bad})
+        assert any("`key=value` tags" in error for error in spec.load(root).errors)
+
+
+def test_a_saddlebag_source_wraps_compose_and_writes_no_env_file(tmp_path: Path) -> None:
+    root = _repo(tmp_path)
+    _needs_token(root)
+    _root_stack(root, {"saddlebag": "environment=local"})
+    docker = FakeSaddlebag()
+    outcome = commands.cmd_up(root, ["web"], copy_name="story-1", runner=docker)
+    assert outcome.ok, outcome.message
+    prefix = ["saddlebag", "exec", "--tag", "environment=local", "--"]
+    assert ["saddlebag", "list", "--tag", "environment=local", "--json"] in docker.calls
+    assert _up_calls(docker)[0][:5] == prefix
+    directory = Path(outcome.data["directory"])
+    assert not (directory / runtime.SECRETS_DIR / "stack.env").exists()
+    assert runtime.read_manifest(directory)["exec_prefix"] == prefix
+    assert runtime.exec_prefix(runtime.copy_for(root, "story-1")) == prefix
+    compose = commands.compose_argv(root, ["logs"], copy_name="story-1")
+    assert isinstance(compose, list) and compose[:7] == [*prefix, "docker", "compose"]
+
+
+def test_a_saddlebag_secret_with_no_var_fails_before_docker(tmp_path: Path) -> None:
+    root = _repo(tmp_path)
+    _needs_token(root)
+    _root_stack(root, {"saddlebag": "environment=local"})
+    docker = FakeSaddlebag([{"name": "api-token", "username": None, "description": None,
+                             "var": None, "tags": [], "fields": []}])
+    outcome = commands.cmd_up(root, ["web"], copy_name="story-1", runner=docker)
+    assert not outcome.ok
+    assert "api-token" in outcome.message
+    assert _up_calls(docker) == []
+    assert "api-token" in commands.cmd_check(root, runner=docker).message
+
+
+def test_saddlebag_vars_are_checked_against_the_names_the_templates_require(
+    tmp_path: Path,
+) -> None:
+    root = _repo(tmp_path)
+    _needs_token(root)
+    _root_stack(root, {"saddlebag": "environment=local"})
+    assert commands.cmd_check(root, runner=FakeSaddlebag()).ok
+    other = FakeSaddlebag([{"name": "x", "username": None, "description": None, "var": "OTHER",
+                            "tags": [], "fields": []}])
+    checked = commands.cmd_check(root, runner=other)
+    assert not checked.ok
+    assert "`TOKEN` is required by" in checked.message
+    down = commands.cmd_up(root, ["web"], copy_name="story-1", runner=FakeSaddlebag(status=1))
+    assert not down.ok
+    assert "the daemon is not running" in down.message
+
+
+def test_a_manifest_without_exec_prefix_reads_as_empty(tmp_path: Path) -> None:
+    root = _repo(tmp_path)
+    _root_stack(root, {"file": ".env"})
+    _file(root, ".env", "TOKEN=abc\n")
+    outcome = commands.cmd_up(root, ["web"], copy_name="story-1", runner=FakeDocker())
+    assert outcome.ok, outcome.message
+    copy = runtime.copy_for(root, "story-1")
+    assert runtime.exec_prefix(copy) == []
+    manifest = runtime.read_manifest(copy.directory)
+    manifest.pop("exec_prefix")
+    runtime.write_manifest(copy, manifest)
+    assert runtime.exec_prefix(copy) == []

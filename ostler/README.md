@@ -344,7 +344,10 @@ ostler env down --copy story-12      # data and rendered files go too, unless --
 
 The copy defaults to `$STABLEMATE_LEASE`, so a workflow run that holds a lease brings up its own
 copy without naming it. The stack root, `docs/features/ops/stack.yml`, holds the repo's one secret source: `secrets: {file:
-.env}` for a dotenv file, or `secrets: {decrypt: <command>}` for a command whose stdout is dotenv.
+.env}` for a dotenv file, `secrets: {decrypt: <command>}` for a command whose stdout is dotenv,
+or `secrets: {saddlebag: "environment=local"}` for the saddlebag secrets carrying those tags.
+With saddlebag, every `docker compose` command runs under `saddlebag exec`, and no secrets file
+is written.
 `ostler env check` and `up` fail by name when a template requires a `${NAME}` the source does not
 define. They never print a value.
 

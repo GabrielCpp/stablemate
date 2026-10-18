@@ -130,7 +130,8 @@ def cmd_up(
     jobs = [service for service in prepared.services if service.outputs]
     produced = copy.directory / runtime.SECRETS_DIR / OUTPUTS_ENV
     _write(root, prepared, rendered, started=True, holder=holder,
-           env_files=[*env_files, produced] if jobs else env_files)
+           env_files=[*env_files, produced] if jobs else env_files,
+           exec_prefix=source.exec_prefix())
     if jobs:
         problem = _run_jobs(prepared, jobs, produced, compose, wait_seconds)
         if problem:
@@ -366,9 +367,12 @@ def _name_problems(root: Path, catalog: spec.Catalog, runner: Runner) -> list[st
 def _write(
     root: Path, prepared: Prepared, rendered: render_mod.Rendered, *, started: bool,
     holder: int | None = None, env_files: list[Path] | None = None,
+    exec_prefix: list[str] | None = None,
 ) -> list[Path]:
     written = render_mod.write(rendered)
-    kept = runtime.read_manifest(prepared.copy.directory).get("env_files", [])
+    previous = runtime.read_manifest(prepared.copy.directory)
+    kept = previous.get("env_files", [])
+    kept_prefix = previous.get("exec_prefix", [])
     written.append(runtime.write_manifest(prepared.copy, {
         "repo": str(root),
         "copy": prepared.copy.name,
@@ -378,6 +382,7 @@ def _write(
         "started": started,
         "holder": runtime.holder_stamp(holder) if holder else {},
         "env_files": [str(path) for path in env_files] if env_files is not None else kept,
+        "exec_prefix": exec_prefix if exec_prefix is not None else kept_prefix,
     }))
     return written
 

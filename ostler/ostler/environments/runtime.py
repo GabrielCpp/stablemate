@@ -142,6 +142,12 @@ def env_files(copy: Copy) -> list[Path]:
     return [path for path in found if path.is_file()]
 
 
+def exec_prefix(copy: Copy) -> list[str]:
+    """The command the copy's last `up` recorded to run compose under, empty when none."""
+    listed = read_manifest(copy.directory).get("exec_prefix")
+    return [str(item) for item in listed] if isinstance(listed, list) else []
+
+
 @dataclass
 class Compose:
     """docker compose, pointed at one copy's project, files and secrets."""
@@ -150,7 +156,7 @@ class Compose:
     runner: Runner = run_command
 
     def argv(self, args: Sequence[str]) -> list[str]:
-        base = ["docker", "compose", "--project-name", self.copy.project,
+        base = [*exec_prefix(self.copy), "docker", "compose", "--project-name", self.copy.project,
                 "--project-directory", str(self.copy.directory),
                 "--file", str(self.copy.directory / COMPOSE_FILE)]
         for env_file in env_files(self.copy):

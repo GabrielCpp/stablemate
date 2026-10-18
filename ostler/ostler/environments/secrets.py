@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 import re
 import shlex
@@ -31,6 +32,8 @@ class SecretSource(Protocol):
 
     def files(self, copy: Copy) -> list[Path]: ...
 
+    def exec_prefix(self) -> list[str]: ...
+
 
 class NoSecrets:
     """The source of a repo that names none: no names and no files."""
@@ -39,6 +42,9 @@ class NoSecrets:
         return frozenset()
 
     def files(self, copy: Copy) -> list[Path]:
+        return []
+
+    def exec_prefix(self) -> list[str]:
         return []
 
 
@@ -67,6 +73,9 @@ class DotenvFile:
         if not path.is_file():
             raise SecretError(f"the secret file {path} does not exist")
         return [path]
+
+    def exec_prefix(self) -> list[str]:
+        return []
 
 
 class DecryptCommand:
@@ -99,6 +108,48 @@ class DecryptCommand:
         write_private(target, text)
         return [target]
 
+    def exec_prefix(self) -> list[str]:
+        return []
+
+
+class SaddlebagSource:
+    """The secrets saddlebag holds under some tags, which wraps every compose command."""
+
+    def __init__(self, runner: Runner, query: list[str]) -> None:
+        self._runner = runner
+        self._tags = [part for pair in query for part in ("--tag", pair)]
+        self._names: frozenset[str] | None = None
+
+    def names(self) -> frozenset[str]:
+        if self._names is None:
+            outcome = self._runner(["saddlebag", "list", *self._tags, "--json"], capture=True)
+            if outcome.returncode != 0:
+                tail = "\n".join((outcome.stderr or "").strip().splitlines()[-5:])
+                raise SecretError(
+                    f"saddlebag list exited {outcome.returncode}" + (f":\n{tail}" if tail else ""))
+            self._names = self._parse(outcome.stdout)
+        return self._names
+
+    @staticmethod
+    def _parse(text: str) -> frozenset[str]:
+        try:
+            listed = json.loads(text)["secrets"]
+            found: set[str] = set()
+            for secret in listed:
+                if not secret["var"]:
+                    raise SecretError(
+                        f"the saddlebag secret `{secret['name']}` has no environment variable")
+                found.add(str(secret["var"]))
+        except (ValueError, KeyError, TypeError) as exc:
+            raise SecretError(f"saddlebag list printed an unreadable answer: {exc}") from exc
+        return frozenset(found)
+
+    def files(self, copy: Copy) -> list[Path]:
+        return []
+
+    def exec_prefix(self) -> list[str]:
+        return ["saddlebag", "exec", *self._tags, "--"]
+
 
 def write_private(path: Path, text: str) -> None:
     """Write *text* to *path*, a file created readable by its owner alone."""
@@ -115,6 +166,8 @@ def source_for(catalog: Catalog, repo: Path, runner: Runner) -> SecretSource:
         return DotenvFile(repo, catalog.secrets.file)
     if catalog.secrets.decrypt:
         return DecryptCommand(repo, catalog.secrets.decrypt, runner)
+    if catalog.secrets.saddlebag:
+        return SaddlebagSource(runner, catalog.secrets.saddlebag.split())
     return NoSecrets()
 
 
