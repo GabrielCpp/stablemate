@@ -454,10 +454,9 @@ def test_the_answer_form_is_reachable_and_submittable_by_keyboard():
         )
         assert landed, "Tab out of the answer textarea does not reach its submit button"
         page.keyboard.press("Enter")
-        page.wait_for_function(
-            "() => document.querySelector('form[data-answer] textarea')?.value === ''",
-            timeout=10000,
-        )
+        toast = page.wait_for_selector("#toasts .toast.blocked", timeout=10000)
+        assert toast is not None
+        assert toast.inner_text().splitlines()[0] == "✗ answer not taken"
     finally:
         page.close()
 
@@ -480,6 +479,21 @@ def test_a_rejected_answer_toasts_the_reason_to_the_sending_tab_alone():
     finally:
         sender.close()
         bystander.close()
+
+
+def test_a_rejected_answer_puts_the_typed_text_back_in_its_box():
+    live = _live()
+    if live is None:
+        return
+    page = _open(live)
+    try:
+        _drive(page, "runs")
+        page.fill("form[data-answer] textarea", "sqlite")
+        page.click("form[data-answer] button[type=submit]")
+        page.wait_for_selector("#toasts .toast.blocked", timeout=10000)
+        assert page.input_value("form[data-answer] textarea") == "sqlite"
+    finally:
+        page.close()
 
 
 if __name__ == "__main__":

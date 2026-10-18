@@ -22,7 +22,9 @@ The successful state transition and answered broadcast are covered by
 the failure path's unchanged state and absent answered dispatch are covered by
 `groom/tests/test_app.py::test_handle_answer_failure_does_not_flip_or_dispatch`;
 the refusal frame on the sending tab alone is covered by
-`groom/tests/test_app.py::test_a_rejected_answer_tells_the_sender_alone_why`.
+`groom/tests/test_app.py::test_a_rejected_answer_tells_the_sender_alone_why`;
+the rejected answer's return to its textarea is covered by
+`groom/tests/test_a11y_dynamic.py::test_a_rejected_answer_puts_the_typed_text_back_in_its_box`.
 
 ## Contract
 
@@ -35,8 +37,10 @@ the refusal frame on the sending tab alone is covered by
 - verify: persists(subject="half-typed answer in the same gate textarea across a dashboard push")
 - persistence: detail-answer-textarea — a refused send preserves the typed answer.
 - verify: persists(subject="typed answer in a gate textarea after a refused send")
-- persistence: detail-answer-textarea — the textarea is cleared only when `sendCommand` reports the frame was successfully written.
+- persistence: detail-answer-textarea — the textarea is cleared only when `sendCommand` reports the frame was successfully written. The tab then holds the sent text for that gate until an `answered` or `answer_rejected` frame with the same `id` and `file_path` arrives.
 - verify: absent(subject="answer textarea content after a successful send")
+- persistence: detail-answer-textarea — an `answer_rejected` frame for the gate puts the held answer back into its textarea, unless the operator has typed into the box since.
+- verify: persists(subject="typed answer in a gate textarea after the server rejects it")
 - consumer: the receive loop passes each decoded JSON value to `_handle_command`; the handler's contract is an object with `.get(...)` lookup semantics, and this format defines no recovery payload for malformed JSON or non-object values.
 - command guard: only frames whose `cmd` value is exactly `"answer"` are handled by this format. Any other value — including the dashboard's own `watch` command, which the same socket carries — is handled elsewhere or ignored, with no gate write, log entry, state change, or acknowledgement frame from here.
 - acceptance boundary: a handled answer command performs no schema validation beyond the command guard; it string-normalizes the target and answer fields and delegates semantic validity to the gate-answering layer.
@@ -104,4 +108,4 @@ the refusal frame on the sending tab alone is covered by
 - producer-control: textarea `name="answer"` with an explicit accessible name, rendered in each open gate's answer form.
 - consumer-use: converted with `str(value)` and passed only to the gate-answering layer. It is not copied into the answer log entry, the state payload, or the answered message.
 - meaning: the operator-authored answer text. Blank answers are blocked by neither the browser nor the command handler; the gate-answering layer receives the normalized string and decides the resulting gate-file update.
-- retention: the textarea is cleared only when the send guard reports the frame was written. A refused send keeps the text, because the operator's typing is the one thing on this path that cannot be reconstructed from server state.
+- retention: the textarea is cleared only when the send guard reports the frame was written. A refused send keeps the text, and a rejected answer puts it back, because the operator's typing is the one thing on this path that cannot be reconstructed from server state.

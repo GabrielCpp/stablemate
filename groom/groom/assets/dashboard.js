@@ -719,6 +719,21 @@ function onDetail(msg) {
 // The answer form is rendered by Preact and re-rendered on every push, so the
 // submit handler is delegated rather than bound per-form. The client serializes
 // the frame itself, which is also what lets a failed send *say* it failed.
+const sentAnswers = new Map();
+
+function gateKey(workflowId, filePath) {
+  return workflowId + "\n" + filePath;
+}
+
+function answerBox(workflowId, filePath) {
+  for (const form of document.querySelectorAll("form[data-answer]")) {
+    if (form.elements.workflow_id.value === workflowId && form.elements.file_path.value === filePath) {
+      return form.querySelector("textarea");
+    }
+  }
+  return null;
+}
+
 function wireAnswerForm() {
   document.addEventListener("submit", (e) => {
     const form = e.target.closest("form[data-answer]");
@@ -729,8 +744,10 @@ function wireAnswerForm() {
     data.forEach((value, key) => {
       payload[key] = value;
     });
-    if (sendCommand(payload)) form.querySelector("textarea").value = "";
-    else pushToast("blocked", "✗ not sent", "No connection to groom — your answer is still in the box.", 7000);
+    if (sendCommand(payload)) {
+      sentAnswers.set(gateKey(payload.workflow_id, payload.file_path), payload.answer);
+      form.querySelector("textarea").value = "";
+    } else pushToast("blocked", "✗ not sent", "No connection to groom — your answer is still in the box.", 7000);
   });
 }
 
@@ -1697,15 +1714,21 @@ function onNotify(message) {
   }
 }
 
-// A gate somebody answered. Every tab is told, and the confirmation is all this
-// has to do: the pane itself is refreshed by the `detail` push the same command
-// triggers, which now carries the gates — so no tab re-fetches, and a half-typed
-// answer against a different run is never touched.
-function onAnswered() {
+// A gate somebody answered. Every tab is told, and the confirmation plus dropping
+// the held answer is all this has to do: the pane itself is refreshed by the
+// `detail` push the same command triggers, which now carries the gates — so no
+// tab re-fetches, and a half-typed answer against a different run is never touched.
+function onAnswered(msg) {
+  sentAnswers.delete(gateKey(msg.id, msg.file_path));
   pushToast("ok", "✓ answer sent", "", 3500);
 }
 
 function onAnswerRejected(msg) {
+  const key = gateKey(msg.id, msg.file_path);
+  const sent = sentAnswers.get(key);
+  sentAnswers.delete(key);
+  const box = sent === undefined ? null : answerBox(msg.id, msg.file_path);
+  if (box && !box.value) box.value = sent;
   pushToast("blocked", "✗ answer not taken", msg.reason || "groom refused the answer.", 7000);
 }
 
