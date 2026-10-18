@@ -102,3 +102,34 @@ managed markdown tree (backlog, milestones, epics, features) under a repo root.
 - code: ostler/ostler/artifact/run.py::vet@72b226ff9de4
 - code: ostler/ostler/artifact/kinds.py::_backlog_items_vet@ec25eeaddd5f
 - code: ostler/ostler/cli.py::_cmd_artifact@03c9e301c36d
+
+### ostler-env-schema
+- usage: ostler env schema — prints the JSON Schema of a book's `ops/stack.yml`
+- exits: 0 — printing the schema reads only the code-declared key table, so this command never fails
+- run: invoke(argv=["env", "schema"])
+- verify: exit_status(code=0)
+- verify: json_path(path="$schema", equals="https://json-schema.org/draft/2020-12/schema")
+- fixture: none, because the schema is built from the code-declared key table, not read from any
+  stack.yml
+- code: ostler/ostler/environments/spec.py::schema@b020ed778dc2
+- code: ostler/ostler/environments/spec.py::KEYS@b020ed778dc2
+- code: ostler/ostler/environments/cli.py::run@f1b74cc1cc17
+
+### ostler-env-check
+- usage: ostler env check [--json] — reads every book's `ops/stack.yml`, prints `N services in M
+  books fit together` when none of them disagree, and otherwise prints one `- ` line per problem
+  (or the whole outcome as one JSON object with --json)
+- flags:
+  - --json (print `{ok, books, services, errors}` as one indented JSON object)
+- exits: 1 — a book whose `ops/stack.yml` does not parse to a mapping with a `services:` key is
+  reported by name and path, rather than being skipped silently
+- run: invoke(argv=["env", "check", "--json"])
+- verify: exit_status(code=1)
+- verify: json_path(path="ok", equals=false)
+- verify: json_path(path="errors[0]", matches="^docs/features/env-check-fixture/ops/stack\\.yml: is not a mapping with a `services:` key$")
+- fixture: env-check-fixture creates docs/features/env-check-fixture/ops/stack.yml, a stack file
+  whose top level is a YAML list rather than a mapping
+- code: ostler/ostler/environments/spec.py::load@b020ed778dc2
+- code: ostler/ostler/environments/spec.py::_read_book@b020ed778dc2
+- code: ostler/ostler/environments/commands.py::cmd_check@36bbc1003620
+- code: ostler/ostler/environments/cli.py::run@f1b74cc1cc17
