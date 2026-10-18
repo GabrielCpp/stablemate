@@ -14,6 +14,7 @@ Workflows written as Python state machines. A workflow's states are methods of a
 - `names.py`: the name index that maps live and retired state and node names to their targets.
 - `park.py`: blocking a run on an Await's file until it is answered, over the file and the control socket, and writing the ask.
 - `preflight.py`: what a static read of a flow graph shows is wrong before a run starts.
+- `prompts.py`: the marker a prompt helper carries so the static read can name the path it resolves.
 - `registry.py`: the module-level object a console script points at: flows, nodes and the entry point.
 - `run.py`: one run from its CLI invocation to an exit code: run dir, worktree dispatch, live reload and failure handoff.
 - `transitions.py`: the three ways a state ends: `Continue`, `Done` and `Await`.

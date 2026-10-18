@@ -11,7 +11,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import cast
 
-from workhorse.pyflow.errors import WorkflowDefinitionError
+from workhorse.pyflow.errors import PyflowError, WorkflowDefinitionError
+from workhorse.pyflow.prompts import PromptResolver
 from workhorse.pyflow.registry import Registry
 from workhorse.pyflow.workflow import StateSpec, Workflow
 
@@ -220,7 +221,7 @@ def _scan(
                     Step("agent", label, _text_title(body), inline=True, text=body)
                 )
                 continue
-            prompts = _prompt_literals(cls, node)
+            prompts = _prompt_literals(cls, node, tree)
             for prompt in prompts:
                 found.steps.append(Step("agent", prompt, _prompt_title(prompt, workflow_dir)))
             if not prompts and node.args:
@@ -353,11 +354,12 @@ def _text_title(text: str) -> str:
     return ""
 
 
-def _prompt_literals(cls: type[Workflow], call: ast.Call) -> list[str]:
+def _prompt_literals(cls: type[Workflow], call: ast.Call, scope: ast.AST) -> list[str]:
     """Every prompt path the first positional argument can be, when the source says so.
 
     A bare string is one, a ternary of strings is each of its arms, a module constant is its value,
     and a subscript of a module mapping of strings is the value its key names, or each value when the key is not a constant.
+    A local bound in `scope` to a call of a `PromptResolver` is the path that resolver declares for the call's literals.
     """
     if not call.args:
         return []
@@ -371,6 +373,8 @@ def _prompt_literals(cls: type[Workflow], call: ast.Call) -> list[str]:
             stack[:0] = [expr.body, expr.orelse]
         elif isinstance(expr, ast.Name) and isinstance(value := _module_constant(cls, expr.id), str):
             found.append(value)
+        elif (resolved := _resolved_prompt(cls, expr, scope)) is not None:
+            found.append(resolved)
         elif isinstance(expr, ast.Subscript) and isinstance(expr.value, ast.Name):
             named = _module_constant(cls, expr.value.id)
             if not isinstance(named, dict) or not named:
@@ -384,6 +388,36 @@ def _prompt_literals(cls: type[Workflow], call: ast.Call) -> list[str]:
         else:
             return []
     return found
+
+
+def _resolved_prompt(cls: type[Workflow], expr: ast.expr, scope: ast.AST) -> str | None:
+    """The path a `PromptResolver` declares for the local `expr` reads, when `scope` bound that local to its call."""
+    local = expr.value if isinstance(expr, ast.Attribute) else expr
+    if not isinstance(local, ast.Name):
+        return None
+    call = _local_call(scope, local.id)
+    if call is None:
+        return None
+    resolver = _module_value(cls, call.func)
+    if not isinstance(resolver, PromptResolver):
+        return None
+    literals = [
+        arg.value for arg in call.args if isinstance(arg, ast.Constant) and isinstance(arg.value, str)
+    ]
+    try:
+        return resolver.prompt_path(cls, *literals)
+    except (TypeError, ValueError, PyflowError):
+        return None
+
+
+def _local_call(scope: ast.AST, name: str) -> ast.Call | None:
+    """The call `name = <call>(...)` binds in `scope`, else None."""
+    for node in ast.walk(scope):
+        if not isinstance(node, ast.Assign) or not isinstance(node.value, ast.Call):
+            continue
+        if len(node.targets) == 1 and isinstance(node.targets[0], ast.Name) and node.targets[0].id == name:
+            return node.value
+    return None
 
 
 def _module_constant(cls: type[Workflow], name: str) -> object:

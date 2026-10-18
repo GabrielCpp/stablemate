@@ -25,6 +25,7 @@ from workhorse.pyflow import (  # noqa: E402
     Workflow,
     WorkflowFailed,
     dry_run,
+    resolves_prompt,
     state,
 )
 from workhorse.pyflow.dot import to_dot  # noqa: E402
@@ -302,6 +303,54 @@ def test_a_prompt_picked_from_a_module_mapping_is_each_of_its_values():
 
 def test_a_prompt_picked_by_a_constant_key_is_that_key_s_value():
     assert _state(Named, "fixed").prompts == ("prompts/repair.md",)
+
+
+def _review_or_repair(cls: type, role: str) -> str:
+    del cls
+    return f"prompts/{role}.md"
+
+
+class Picked(BaseModel):
+    prompt: str
+    run_id: str
+
+
+@resolves_prompt(_review_or_repair)
+def pick_turn(flow: Workflow, role: str) -> Picked:
+    """The prompt a role renders, with the flow's run id as its body argument."""
+    return Picked(prompt=f"prompts/{role}.md", run_id=flow.run_id)
+
+
+class Resolved(Workflow):
+    """A state whose prompt comes out of a helper it binds a local to."""
+
+    def start(self) -> Transition:
+        turn = pick_turn(self, "review")
+        self.agent(turn.prompt, returns=str)
+        return Done(None)
+
+
+class Unbound(Workflow):
+    """A state that reads the helper's result without binding the call to a local."""
+
+    def mend(self) -> Transition:
+        prompt = pick_turn(self, "repair").prompt
+        self.agent(prompt, returns=str)
+        return Done(None)
+
+
+def test_a_prompt_bound_through_a_resolver_is_the_path_it_resolves():
+    assert _state(Resolved, "start").prompts == ("prompts/review.md",)
+    with tempfile.TemporaryDirectory() as tmp:
+        (Path(tmp) / "prompts").mkdir()
+        (Path(tmp) / "prompts" / "review.md").write_text("hi")
+        assert preflight([_graph(Resolved)], Path(tmp)) == []
+
+
+def test_a_resolver_result_read_without_a_binding_is_still_a_problem():
+    node = _state(Unbound, "mend")
+    assert node.prompts == ()
+    assert node.steps == (Step("agent", "?", "prompt", dynamic=True),)
 
 
 def test_every_arm_of_a_prompt_ternary_is_a_step():
@@ -814,3 +863,4 @@ if __name__ == "__main__":
             print(f"FAIL  {fn.__name__}: {type(e).__name__}: {e}")
     print(f"\n{len(fns) - failed}/{len(fns)} passed")
     raise SystemExit(1 if failed else 0)
+

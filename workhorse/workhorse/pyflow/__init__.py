@@ -13,6 +13,7 @@ from workhorse.pyflow.errors import (
     WorkflowFailed,
     WorkflowFrozenError,
 )
+from workhorse.pyflow.prompts import PromptResolver, resolves_prompt
 from workhorse.pyflow.registry import Registry
 from workhorse.pyflow.replies import dry_run
 from workhorse.pyflow.transitions import Await, Continue, Done, Transition
@@ -27,6 +28,7 @@ __all__ = [
     "Done",
     "NodeNotRunError",
     "NodeSpec",
+    "PromptResolver",
     "PyflowError",
     "Registry",
     "StateSpec",
@@ -38,5 +40,6 @@ __all__ = [
     "WorkflowFailed",
     "WorkflowFrozenError",
     "dry_run",
+    "resolves_prompt",
     "state",
 ]
