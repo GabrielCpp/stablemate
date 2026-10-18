@@ -5,7 +5,7 @@ title: Renderer naming and relative output paths
 ---
 # Renderer naming and relative output paths
 
-- code: `farrier/farrier/naming.py` @1ebafc33b235
+- code: `farrier/farrier/naming.py` @598d97008c92
 
 These stateless transforms define the names and references used by source selection and rendering.
 They do not inspect a `Source` record or resolve a library layer. Source identifiers use POSIX
@@ -24,11 +24,11 @@ concept, which applies these aliases to selected `Source` records.
 - does: collapse adjacent dashes
 - verify: count(subject="kebab-cased value", equals=1)
 - does: remove leading and trailing dashes
-- verify: count(subject="kebab-cased value", equals=1)
+- verify: count(subject="kebab-cased value without edge dashes", equals=1)
 - does: lowercase the result
-- verify: count(subject="kebab-cased value", equals=1)
+- verify: count(subject="lowercased kebab-cased value", equals=1)
 - returns: a normalized kebab-cased value while preserving slash separators
-- code: `farrier/farrier/naming.py::kebab` @1ebafc33b235
+- code: `farrier/farrier/naming.py::kebab` @598d97008c92
 
 ### method: compose_name
 - sig: `compose_name(prefix: str, base: str) -> str`
@@ -36,7 +36,7 @@ concept, which applies these aliases to selected `Source` records.
 - does: otherwise join the prefix and base with one dash
 - returns: a name with no adjacent duplicate prefix segment
 - verify: count(subject="composed name", equals=1)
-- code: `farrier/farrier/naming.py::compose_name` @1ebafc33b235
+- code: `farrier/farrier/naming.py::compose_name` @598d97008c92
 - tests: `farrier/tests/test_qa_evidence_ignore.py::test_qa_gitignore_follows_the_skill_that_ships_the_gate`
 
 ### method: repo_prefix
@@ -45,7 +45,7 @@ concept, which applies these aliases to selected `Source` records.
 - does: otherwise read the repository directory name
 - returns: that name normalized by `kebab`
 - verify: count(subject="repository-derived install prefix", equals=1)
-- code: `farrier/farrier/naming.py::repo_prefix`
+- code: `farrier/farrier/naming.py::repo_prefix` @598d97008c92
 - tests: `farrier/tests/test_install_prefix.py::test_a_directory_name_is_kebab_cased_into_the_prefix`
 - tests: `farrier/tests/test_install_prefix.py::test_agents_yml_repo_name_sets_the_prefix_whatever_the_directory`
 - tests: `farrier/tests/test_install_prefix.py::test_a_named_repo_checks_clean_under_another_directory`
@@ -56,7 +56,7 @@ concept, which applies these aliases to selected `Source` records.
 - does: replace dots and underscores with dashes without removing glob metacharacters
 - returns: the lowercased pattern used for case-insensitive alias matching
 - verify: count(subject="normalized selection pattern", equals=1)
-- code: `farrier/farrier/naming.py::normalize_pattern` @1ebafc33b235
+- code: `farrier/farrier/naming.py::normalize_pattern` @598d97008c92
 
 ### method: strip_known_suffix
 - sig: `strip_known_suffix(path: Path) -> str`
@@ -64,7 +64,7 @@ concept, which applies these aliases to selected `Source` records.
 - does: otherwise remove `.instructions.md` from the filename when present
 - returns: the filename without its recognized compound suffix, or the ordinary `Path.stem` when neither suffix is present
 - verify: count(subject="recognized source suffix removal", equals=1)
-- code: `farrier/farrier/naming.py::strip_known_suffix` @1ebafc33b235
+- code: `farrier/farrier/naming.py::strip_known_suffix` @598d97008c92
 
 ### method: source_id
 - sig: `source_id(root: Path, path: Path) -> str`
@@ -75,18 +75,18 @@ concept, which applies these aliases to selected `Source` records.
 - does: join the normalized components with literal `/` separators
 - returns: the kebab-cased relative components joined with `/`
 - verify: count(subject="normalized source identifier", equals=1)
-- code: `farrier/farrier/naming.py::source_id` @1ebafc33b235
+- code: `farrier/farrier/naming.py::source_id` @598d97008c92
 
 ### method: yaml_quote
 - sig: `yaml_quote(value: str) -> str`
 - does: escape backslashes and double quotes in the supplied string
 - returns: the escaped string enclosed in double quotes for YAML output
 - verify: count(subject="quoted YAML scalar", equals=1)
-- code: `farrier/farrier/naming.py::yaml_quote` @1ebafc33b235
+- code: `farrier/farrier/naming.py::yaml_quote` @598d97008c92
 
 ### method: relative_reference
 - sig: `relative_reference(from_file: Path, to_file: Path) -> str`
 - does: compute the operating-system relative path from `from_file`'s parent directory to `to_file`
 - returns: the relative reference with forward slashes regardless of the host path separator
 - verify: count(subject="relative output reference", equals=1)
-- code: `farrier/farrier/naming.py::relative_reference` @1ebafc33b235
+- code: `farrier/farrier/naming.py::relative_reference` @598d97008c92

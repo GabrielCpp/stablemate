@@ -18,7 +18,7 @@ renderer, including losses that `yaml.safe_load` would otherwise hide.
 - sig: `Finding.render(root: Path | None = None) -> str`
 - does: render a finding with an optional root-relative path
 - code: `farrier/farrier/library_check.py::Finding.render` @bd3fa29c95db
-- verify: visible(locator="rendered library finding", text="error")
+- verify: json_path(path="return value", matches="error")
 
 ## Methods
 
@@ -74,5 +74,5 @@ renderer, including losses that `yaml.safe_load` would otherwise hide.
 ### method: format_findings
 - sig: `format_findings(findings: list[Finding], checked: int, root: Path | None = None) -> str`
 - does: render errors before warnings and report the checked-source count
-- verify: visible(locator="formatted library check report", text="source")
+- verify: json_path(path="return value", matches="source")
 - code: `farrier/farrier/library_check.py::format_findings` @bd3fa29c95db

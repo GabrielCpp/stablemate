@@ -5,7 +5,7 @@ title: Generated agent launcher
 ---
 # Generated agent launcher
 
-The repository-scope renderer always produces [`.agents/agents.mk`](../farrier.md#install) as a
+The repository-scope renderer always produces [`.agents/agents.mk`](../farrier-commands-install.md#install) as a
 tracked, byte-identical launcher. It is the make entry point for regenerating and checking
 Farrier's adapters and, when requested, for running an installed workflow in an isolated
 container. The launcher is generated from the [renderer](renderer.md), while the set of runnable
@@ -50,13 +50,13 @@ convention-owned cleanup target solely so an older install's per-workflow Compos
 removed; current expected-output and extra-file scans do not inspect it. This is the compatibility
 boundary between the retired YAML-era launcher and the current installed-workflow launcher.
 
-- code: `farrier/farrier/launcher.py::render_agents_mk` @a972806707c9
-- code: `farrier/farrier/launcher.py::LAUNCHER_AGENTS_MK` @a972806707c9
-- code: `farrier/farrier/launcher.py::LAUNCHER_CONTEXT_MANIFEST` @a972806707c9
-- code: `farrier/farrier/launcher.py::LAUNCHER_CONTEXT_MANIFEST_FMT` @a972806707c9
-- code: `farrier/farrier/launcher.py::LAUNCHER_ROOT_MAKEFILE` @a972806707c9
-- code: `farrier/farrier/launcher.py::LAUNCHER_COMPOSE` @a972806707c9
-- code: `farrier/farrier/outputs.py::remove_targets` @3967ecfa24a2
+- code: `farrier/farrier/launcher.py::render_agents_mk` @f719f4c89bcb
+- code: `farrier/farrier/launcher.py::LAUNCHER_AGENTS_MK` @f719f4c89bcb
+- code: `farrier/farrier/launcher.py::LAUNCHER_CONTEXT_MANIFEST` @f719f4c89bcb
+- code: `farrier/farrier/launcher.py::LAUNCHER_CONTEXT_MANIFEST_FMT` @f719f4c89bcb
+- code: `farrier/farrier/launcher.py::LAUNCHER_ROOT_MAKEFILE` @f719f4c89bcb
+- code: `farrier/farrier/launcher.py::LAUNCHER_COMPOSE` @f719f4c89bcb
+- code: `farrier/farrier/outputs.py::remove_targets` @0b63626747f4
 - tests: `farrier/tests/test_launcher_make.py::test_a_discovered_workflow_becomes_a_real_target`
 - tests: `farrier/tests/test_launcher_make.py::test_a_workflow_nobody_installed_fails_instead_of_launching_nothing`
 - tests: `farrier/tests/test_launcher_make.py::test_an_unrelated_target_never_pays_for_discovery`
@@ -72,13 +72,13 @@ boundary between the retired YAML-era launcher and the current installed-workflo
 ### remove_targets
 - sig: `remove_targets(repo: Path, managed: Managed = REPO_MANAGED) -> None`
 - does: sweep each configured managed directory and delete only files classified as Farrier-owned
+- verify: unchanged(subject="untagged file during output cleanup")
 - does: delete each existing Farrier-owned file named by the managed-file list
 - does: delete each regular file matching the scope's assumed-owned path pattern without requiring
   an ownership marker
 - does: leave non-file matches for assumed-owned patterns unchanged
-- returns: `None` after the configured cleanup passes complete
 - verify: removed(subject="assumed-owned output")
-- verify: unchanged(subject="untagged file during output cleanup")
-- code: `farrier/farrier/outputs.py::remove_targets` @3967ecfa24a2
+- returns: `None` after the configured cleanup passes complete
+- code: `farrier/farrier/outputs.py::remove_targets` @0b63626747f4
 - detail: [output cleanup selection](output-cleanup-selection.md)
 - detail: [output cleanup documentation](output-cleanup-documentation.md)

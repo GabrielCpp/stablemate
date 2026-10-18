@@ -11,7 +11,6 @@ repository outputs; it names evidence artifacts rather than ignoring every direc
 so a source package with that name remains visible. This module no longer installs or wires the
 hook itself; [hook manager wiring](hook-manager-wiring.md) owns that contract.
 
-- code: `farrier/farrier/managed_blocks.py` @fad93ccc89d7
 - tests: `farrier/tests/test_qa_evidence_ignore.py`
 
 ## Fields
@@ -24,7 +23,7 @@ hook itself; [hook manager wiring](hook-manager-wiring.md) owns that contract.
 - verify: json_path(path="$.gate_path", equals="scripts/check_staged_files.py")
 - semantics: the gate's presence among install outputs enables the QA ignore block
 - verify: count(subject="QA gate output path", equals=1)
-- code: `farrier/farrier/managed_blocks.py::GATE_SCRIPT` @fad93ccc89d7
+- code: `farrier/farrier/managed_blocks.py::GATE_SCRIPT` @5e7d36ee4e99
 
 ### QA_GITIGNORE_BLOCK
 - type: `tuple[str, ...]`
@@ -36,7 +35,7 @@ hook itself; [hook manager wiring](hook-manager-wiring.md) owns that contract.
 - verify: count(subject="QA evidence ignore patterns", equals=8)
 - semantics: the managed block ends with `# <<< farrier: QA evidence <<<`
 - verify: count(subject="QA evidence ignore block end marker", equals=1)
-- code: `farrier/farrier/managed_blocks.py::QA_GITIGNORE_BLOCK` @fad93ccc89d7
+- code: `farrier/farrier/managed_blocks.py::QA_GITIGNORE_BLOCK` @5e7d36ee4e99
 
 ## Methods
 
@@ -48,10 +47,10 @@ hook itself; [hook manager wiring](hook-manager-wiring.md) owns that contract.
 - does: replaces a complete existing QA block with the current `QA_GITIGNORE_BLOCK`, or appends the current block after the existing text when no complete pair of markers exists
 - does: writes the resulting `.gitignore` as UTF-8 with exactly one trailing newline
 - returns: `true` when the desired `.gitignore` differs from the existing text and is written
-- returns: `false` when the existing text already equals the desired text and no write is needed
 - verify: persists(subject="QA evidence ignore block in .gitignore")
+- returns: `false` when the existing text already equals the desired text and no write is needed
 - verify: unchanged(subject="repository ignore rules outside the QA block")
-- code: `farrier/farrier/managed_blocks.py::ensure_qa_gitignore` @fad93ccc89d7
+- code: `farrier/farrier/managed_blocks.py::ensure_qa_gitignore` @5e7d36ee4e99
 - tests: `farrier/tests/test_qa_evidence_ignore.py::test_the_ignore_block_names_artifacts_not_the_qa_directory`
 - tests: `farrier/tests/test_qa_evidence_ignore.py::test_the_ignore_block_is_idempotent_and_keeps_the_repo_rules`
 - tests: `farrier/tests/test_qa_evidence_ignore.py::test_the_block_is_refreshed_in_place_when_it_changes`

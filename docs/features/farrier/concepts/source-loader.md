@@ -11,14 +11,14 @@ reference and script assets attached to their owning skill. Its result is consum
 loader before selection and rendering; the returned records are described by the
 [library source record](source-record.md).
 
-- code: `farrier/farrier/sources.py::load_sources` @e4e058c012de
+- code: `farrier/farrier/sources.py::load_sources` @38fd583de0b8
 - detail: [skill bundled assets](skill-assets.md)
 
 ## Methods
 
 ### method: load_sources
 - sig: `load_sources(root: Path, kind: str, layer: Layer | None = None) -> list[Source]`
-- does: scan `root` recursively for every `SKILL.md` and every Markdown file except `SKILL.md` and `README.md`
+- does: scan `root` recursively for every `SKILL.md` and every Markdown file except `SKILL.md`, `README.md`, `AGENTS.md` and `CLAUDE.md`
 - verify: count(subject="sources discovered from a library root", equals=1)
 - does: exclude Markdown files beneath `references/` or `scripts/` when that directory belongs directly to a skill directory containing `SKILL.md`
 - does: retain a `references/` or `scripts/` directory as ordinary library content when it is not owned by a skill directory

@@ -6,15 +6,15 @@ title: Verify and repair generated outputs
 # Verify and repair generated outputs
 
 - start: a repository has an `agents.yml` selection and generated outputs that may be missing, changed, extra, or have edited hook-manager fences
-- verify: unchanged(subject="repository before and after farrier install --check")
 - steps:
--  - [install --check](../farrier.md#install)
--  - [check expected outputs](../concepts/output-installation.md#method-check_outputs)
--  - [report drift and its editable source](../concepts/drift-report.md#method-report)
--  - [resolve a generated file to its library source](../farrier.md#source)
--  - [install regenerated outputs](../farrier.md#install)
-- end: the upstream library source is corrected and a subsequent render restores the repository to the expected generated output set
-- verify: count(subject="drift entries after regeneration", equals=0)
+  - [check for drift](../farrier-invocations.md#check-for-drift)
+  - [resolve a generated file to its library source](../farrier-invocations.md#resolve-a-generated-file)
+  - [install regenerated outputs](../farrier-invocations.md#regenerate-outputs)
+- end: a render writes the expected generated output set into the repository (commands: [install](../farrier-commands-install.md#install))
+- verify: created(subject="c203/.claude/skills/acme-demo/SKILL.md")
+- fixture: demo-skill-repo dir=c202
+- fixture: generated-demo-skill dir=c206
+- fixture: demo-skill-repo dir=c203
 - detail: [drift report](../concepts/drift-report.md)
 - tests: `farrier/tests/test_drift_report.py::test_a_hand_edit_names_the_file_the_edit_belongs_in`
 - tests: `farrier/tests/test_drift_report.py::test_the_report_says_the_comparison_is_against_the_working_tree`

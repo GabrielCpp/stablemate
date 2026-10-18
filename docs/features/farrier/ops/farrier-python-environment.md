@@ -20,9 +20,8 @@ checkout requirement.
   - uv-lock-resolution: the repository-root `uv.lock` pins the dependency graph for all workspace members
   - package-index: uv may consult the configured Python package index when a locked dependency is not cached
 - local-only: true
-- code: farrier/pyproject.toml
+- code: farrier/pyproject.toml@20221dbf5f85
 - tests: `farrier/tests/test_pipx.py::test_a_pypi_install_has_no_local_path_to_mount`
-- verify: exit_status(code=0)
 
 The package requires Python 3.12 or newer, declares its runtime dependencies in
 `farrier/pyproject.toml`, and exposes `farrier` through the `farrier.install:main` console-script

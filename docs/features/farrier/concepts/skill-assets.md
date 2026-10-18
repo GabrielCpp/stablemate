@@ -10,7 +10,7 @@ skill, not independent library sources. Markdown references remain addressable b
 skill, while script byproducts under `__pycache__/` are ignored because they were not authored.
 Directories with those names elsewhere in the library remain ordinary source trees.
 
-- code: `farrier/farrier/sources.py::skill_assets` @e4e058c012de
+- code: `farrier/farrier/sources.py::skill_assets` @38fd583de0b8
 - tests: `farrier/tests/test_skill_assets.py::test_nested_skill_dirs_do_not_swallow_each_others_assets`
 
 ## Fields
@@ -20,8 +20,7 @@ Directories with those names elsewhere in the library remain ordinary source tre
 - required: true
 - verify: json_path(path="$.path", matches="^/.+/(references|scripts)/.+")
 - semantics: filesystem path of the bundled asset
-- verify: json_path(path="$.path", matches="^/.+/(references|scripts)/.+")
-- code: `farrier/farrier/sources.py::Asset` @e4e058c012de
+- code: `farrier/farrier/sources.py::Asset` @38fd583de0b8
 - detail: [asset path representations](asset-path-representations.md)
 
 ### field: rel
@@ -29,8 +28,7 @@ Directories with those names elsewhere in the library remain ordinary source tre
 - required: true
 - verify: json_path(path="$.rel", matches="^(references|scripts)/[^/\\\\]+(?:/[^/\\\\]+)*$")
 - semantics: POSIX path relative to the owning skill directory and generated skill document
-- verify: json_path(path="$.rel", matches="^(references|scripts)/[^/\\\\]+(?:/[^/\\\\]+)*$")
-- code: `farrier/farrier/sources.py::Asset` @e4e058c012de
+- code: `farrier/farrier/sources.py::Asset` @38fd583de0b8
 - detail: [asset path representations](asset-path-representations.md)
 
 ## Methods
@@ -40,7 +38,7 @@ Directories with those names elsewhere in the library remain ordinary source tre
 - does: identifies an asset as a script when its relative path begins with `scripts/`
 - returns: `true` for script assets and `false` for reference assets
 - verify: count(subject="script assets classified by relative path", equals=1)
-- code: `farrier/farrier/sources.py::Asset.is_script` @e4e058c012de
+- code: `farrier/farrier/sources.py::Asset.is_script` @38fd583de0b8
 
 ### method: asset_owner
 - sig: `asset_owner(root: Path, path: Path) -> Path | None`
@@ -48,11 +46,11 @@ Directories with those names elsewhere in the library remain ordinary source tre
 - does: identifies a `references/` or `scripts/` directory in an ancestor of `path` as an asset boundary
 - does: accepts that boundary only when the directory immediately above it contains a regular `SKILL.md`
 - raises: `ValueError` when `path` is not located below `root`
-- verify: count(subject="paths assigned to a directly-owned skill asset directory", equals=1)
-- verify: absent(subject="owner for a references directory outside a skill")
 - returns: the directory containing that `SKILL.md` when `path` is below an accepted asset boundary
+  - verify: count(subject="paths assigned to a directly-owned skill asset directory", equals=1)
 - returns: `None` when `path` has no accepted `references/` or `scripts/` ancestor
-- code: `farrier/farrier/sources.py::asset_owner` @e4e058c012de
+  - verify: absent(subject="owner for a references directory outside a skill")
+- code: `farrier/farrier/sources.py::asset_owner` @38fd583de0b8
 - tests: `farrier/tests/test_skill_assets.py::test_nested_skill_dirs_do_not_swallow_each_others_assets`
 - tests: `farrier/tests/test_skill_assets.py::test_a_references_dir_outside_a_skill_still_holds_skills`
 
@@ -62,5 +60,5 @@ Directories with those names elsewhere in the library remain ordinary source tre
 - does: omits files below any `__pycache__/` directory
 - returns: an empty list for a flat source or a skill with no asset directories
 - verify: count(subject="authored assets returned for a skill", equals=1)
-- code: `farrier/farrier/sources.py::skill_assets` @e4e058c012de
+- code: `farrier/farrier/sources.py::skill_assets` @38fd583de0b8
 - tests: `farrier/tests/test_skill_assets.py::test_running_a_bundled_script_does_not_bundle_its_bytecode`

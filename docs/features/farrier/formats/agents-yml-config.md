@@ -5,10 +5,10 @@ title: agents.yml (installer config)
 ---
 # agents.yml (installer config)
 
-The YAML mapping [`install`](../farrier.md#install) reads to decide which skills, prompts and roots
+The YAML mapping [`install`](../farrier-commands-install.md#install) reads to decide which skills, prompts and roots
 from the resolved [library directory](../concepts/library-directory.md) get rendered
 into a target repo's Codex/Claude/Copilot adapters, and which scaffold ids
-[`farrier scaffold`](../farrier.md#scaffold) may apply. Every top-level key is
+[`farrier scaffold`](../farrier-commands-init.md#scaffold) may apply. Every top-level key is
 optional except `agents:`. `read_yaml` checks the path exists first (`SystemExit("Missing config:
 <path>")` if not), parses it with `yaml.safe_load` (an empty file yields `{}` rather than `None`,
 so an empty `agents.yml` fails the required-`agents:` check below rather than crashing on a `None`
@@ -25,8 +25,8 @@ included packs. A missing pack, a non-mapping file, or an inclusion cycle stops 
 rendering; otherwise every pack contribution is unioned with this configuration's direct selections.
 
 - file: `agents.yml` at the repo root (or `--config PATH`)
-- code: `farrier/farrier/outputs.py::render_expected` @3967ecfa24a2
-- code: `farrier/farrier/sources.py::selected_sources` @e4e058c012de
+- code: `farrier/farrier/outputs.py::render_expected` @0b63626747f4
+- code: `farrier/farrier/sources.py::selected_sources` @38fd583de0b8
 - detail: [library source record](../concepts/source-record.md)
 - detail: [layered source resolution](../concepts/layered-source-resolution.md)
 - detail: [source naming and selection](../concepts/source-naming-selection.md)
@@ -78,7 +78,7 @@ Each enabled name turns on a distinct output set in `Renderer.render`:
 
 ### packs
 - type: `list` of `string` (pack ids, `.yml` omitted) — required: no — default: `[]`
-- code: `farrier/farrier/sources.py::collect_selection` @e4e058c012de
+- code: `farrier/farrier/sources.py::collect_selection` @38fd583de0b8
 - detail: [selection aggregation](../concepts/selection-aggregation.md)
 
 ### skills / prompts / roots
@@ -104,7 +104,7 @@ patterns also receive dot/underscore-to-dash normalization without changing glob
 result is sorted by source id before rendering, so selection order is deterministic and exclusion
 always wins over inclusion.
 
-- code: `farrier/farrier/sources.py::selected_sources` @e4e058c012de
+- code: `farrier/farrier/sources.py::selected_sources` @38fd583de0b8
 - tests: `farrier/tests/test_selection_misses.py::test_valid_selection_still_installs`
 - tests: `farrier/tests/test_selection_misses.py::test_glob_selecting_nothing_warns_but_proceeds`
 
@@ -116,7 +116,7 @@ Python distribution that brings its own command — `pip`/`uv` installs it, and 
 - type: `list` of `string` (scaffold definition ids) — required: no — default: `[]`
 
 The catalog of scaffold ids this repo may apply with the
-[`farrier scaffold <id>` command](../farrier.md#scaffold), unioned with the ids contributed by
+[`farrier scaffold <id>` command](../farrier-commands-init.md#scaffold), unioned with the ids contributed by
 every selected pack's own `scaffolds:` list. Ids name definitions in the library's
 [scaffold definition loader](../concepts/scaffold-definition-loader.md) and
 `scaffolds/*.yml` files (parameterized file trees; see the command doc for the definition
@@ -172,11 +172,11 @@ about the repo. `farrier source AGENTS.md` resolves the provenance instead.
 - `prompt` / `prompts` — type: `string` / `list` of `string` — required: no — default: none. The
   same, for already-selected *prompts*, aggregated after the skills. A prompt's standalone
   `$ARGUMENTS` line is dropped on the way in — nothing substitutes it outside a slash-command
-  invocation. An entry must select at least one skill or prompt, or `SystemExit`.
+  invocation. An entry that selects no skill, prompt or policy and carries no `text` raises `SystemExit`.
 - `claudeMd` — type: `bool` — required: no — default: `false`. Whether a `CLAUDE.md` holding the
   provenance banner and `@AGENTS.md` is written beside each `AGENTS.md`. A non-boolean value raises
-  `SystemExit`. Turning it off removes a `CLAUDE.md` farrier generated on the next install, and
-  `--check` reports that file as extra until then. A hand-written `CLAUDE.md` is never touched.
+  `SystemExit`. A `CLAUDE.md` farrier generated earlier shows as extra in `--check` until the next install
+  after it is turned off. A hand-written `CLAUDE.md` stays as written.
 - `includeReadme` — type: `bool` — required: no — default: `true`. Whether a sibling `README.md`
   (in the same directory) is folded in when present. The mechanism follows the files being
   written, not the config: with `claudeMd: true` and `claude` as the only enabled adapter the

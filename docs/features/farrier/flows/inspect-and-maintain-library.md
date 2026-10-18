@@ -6,23 +6,21 @@ title: Inspect and maintain library
 # Inspect and maintain library
 
 This flow uses the same resolved layer stack for catalog inspection and source lookup, then applies
-a repository scaffold without overwriting files the repository already owns.
+a repository scaffold.
 
 - start: a configured library layer stack contains the source of a generated adapter
 - start: the target repository enables a scaffold
-- start: the target repository has an existing file at one scaffold path
-- verify: count(subject="active library layers shown before maintenance", equals=2)
 - steps:
-  - [library](../farrier.md#library)
-  - [source](../farrier.md#source)
-  - [scaffold](../farrier.md#scaffold)
-- end: the operator can identify the winning library layer for the library item
+  - [list the layer stack](../farrier-invocations.md#list-the-layer-stack)
+  - [resolve a generated file](../farrier-invocations.md#resolve-a-generated-file)
+  - [apply a scaffold](../farrier-invocations.md#apply-a-scaffold)
+- end: the operator can identify the winning library layer for the library item (commands: [library](../farrier-commands-init.md#library), [source](../farrier-commands-init.md#source), [scaffold](../farrier-commands-init.md#scaffold))
 - end: the generated adapter resolves to its editable library source
-- end: the scaffold creates absent paths and retains the existing repository file
-- verify: count(subject="resolved winning library layer", equals=1)
-- verify: count(subject="generated adapter source paths", equals=1)
-- verify: created(subject="new scaffold paths")
-- verify: unchanged(subject="existing repository file at a scaffold path")
+- end: the scaffold creates the paths the repository lacks
+- verify: created(subject="c207/api/.gitignore")
+- fixture: overlay-over-base dir=c205
+- fixture: generated-demo-skill dir=c206
+- fixture: scaffold-library dir=c207
 - detail: [library view](../concepts/library-view.md)
 - detail: [scaffold operations](../concepts/scaffold-operations.md)
 - tests: `farrier/tests/test_library_browse.py::test_show_prints_the_winning_layers_source`

@@ -15,7 +15,7 @@ matching, rendering, and availability rules.
 `farrier.sources.collect_selection`; `farrier.install.collect_selection` remains a public
 compatibility import.
 
-- code: `farrier/farrier/sources.py::collect_selection` @e4e058c012de
+- code: `farrier/farrier/sources.py::collect_selection` @38fd583de0b8
 - tests: `farrier/tests/test_scaffold_command.py::test_pack_scaffolds_contribute_available_ids`
 
 ## Methods
@@ -35,9 +35,7 @@ compatibility import.
 - raises: exits when a configured or indirectly included pack id cannot be resolved from the library layers
 - verify: exit_status(code=1)
 - raises: exits when recursive pack inclusion revisits a pack id
-- verify: exit_status(code=1)
 - raises: exits when a local `scaffolds:` entry is not a plain string id
-- verify: exit_status(code=1)
 - returns: the unioned skill selection patterns
 - verify: count(subject="returned skill selection patterns", equals=1)
 - returns: the unioned prompt selection patterns
@@ -46,5 +44,5 @@ compatibility import.
 - verify: count(subject="returned root instruction names", equals=1)
 - returns: the unioned scaffold definition ids
 - verify: count(subject="returned scaffold definition ids", equals=1)
-- code: `farrier/farrier/sources.py::collect_selection` @e4e058c012de
+- code: `farrier/farrier/sources.py::collect_selection` @38fd583de0b8
 - tests: `farrier/tests/test_scaffold_command.py::test_pack_scaffolds_contribute_available_ids`

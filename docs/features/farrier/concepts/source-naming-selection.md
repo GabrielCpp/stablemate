@@ -10,7 +10,7 @@ the folder that holds the source, unique across its library whatever category gr
 case-insensitive and normalizes dots and underscores to dashes without changing
 glob metacharacters. Exclusion is applied after inclusion, and a selected result is sorted by id.
 
-- code: `farrier/farrier/sources.py::selected_sources` @49ff73abb08d
+- code: `farrier/farrier/sources.py::selected_sources` @38fd583de0b8
 - tests: `farrier/tests/test_installed_name.py::test_a_skill_is_selectable_by_its_path_or_its_name`
 - detail: [agents.yml source selections](../formats/agents-yml-config.md#skills-prompts-roots)
 
@@ -21,7 +21,7 @@ glob metacharacters. Exclusion is applied after inclusion, and a selected result
 - does: returns the kebab-cased folder name of the source id, with no category or repository prefix
 - returns: the name every reference to the source uses
 - verify: count(subject="library source name", equals=1)
-- code: `farrier/farrier/sources.py::library_name` @49ff73abb08d
+- code: `farrier/farrier/sources.py::library_name` @38fd583de0b8
 
 ### method: layered_sources
 - sig: `layered_sources(kind: str, *parts: str) -> tuple[list[Source], list[tuple[Source, Source]]]`
@@ -29,14 +29,14 @@ glob metacharacters. Exclusion is applied after inclusion, and a selected result
 - raises: exits when two sources in one layer share a library name
 - returns: the winning sources, and each `(winner, loser)` pair an overlay override produced
 - verify: count(subject="overlay overrides of a base source", equals=1)
-- code: `farrier/farrier/sources.py::layered_sources` @49ff73abb08d
+- code: `farrier/farrier/sources.py::layered_sources` @38fd583de0b8
 
 ### method: public_name
 - sig: `public_name(prefix: str, source: Source) -> str`
 - does: prefixes the library name with the supplied repository prefix
 - returns: the installed public name with adjacent duplicate prefix segments collapsed
 - verify: count(subject="installed public source name", equals=1)
-- code: `farrier/farrier/sources.py::public_name` @49ff73abb08d
+- code: `farrier/farrier/sources.py::public_name` @38fd583de0b8
 
 ### method: matches
 - sig: `matches(source: Source, patterns: set[str]) -> bool`
@@ -44,14 +44,14 @@ glob metacharacters. Exclusion is applied after inclusion, and a selected result
 - does: treats a pattern as matching when any normalized pattern matches any candidate case-insensitively
 - returns: `true` when at least one pattern selects the source
 - verify: count(subject="source aliases matched by one selection pattern", equals=1)
-- code: `farrier/farrier/sources.py::matches` @49ff73abb08d
+- code: `farrier/farrier/sources.py::matches` @38fd583de0b8
 
 ### method: selected_sources
 - sig: `selected_sources(all_sources: list[Source], include_patterns: set[str], exclude_patterns: set[str]) -> list[Source]`
 - does: retains sources matching an inclusion pattern and not matching an exclusion pattern
 - returns: selected sources sorted by source id
 - verify: count(subject="sources retained after exclusion", equals=1)
-- code: `farrier/farrier/sources.py::selected_sources` @49ff73abb08d
+- code: `farrier/farrier/sources.py::selected_sources` @38fd583de0b8
 - tests: `farrier/tests/test_selection_misses.py::test_valid_selection_still_installs`
 
 ### method: is_glob
@@ -59,14 +59,14 @@ glob metacharacters. Exclusion is applied after inclusion, and a selected result
 - does: classifies a selection entry as a filter when it contains `*`, `?`, or `[` characters
 - returns: `true` for glob filters and `false` for literal names
 - verify: count(subject="glob selection classification", equals=1)
-- code: `farrier/farrier/sources.py::is_glob` @49ff73abb08d
+- code: `farrier/farrier/sources.py::is_glob` @38fd583de0b8
 
 ### method: unmatched_patterns
 - sig: `unmatched_patterns(all_sources: list[Source], include_patterns: set[str]) -> tuple[list[str], list[str]]`
 - does: separates include entries that match no source into literal and glob lists
 - returns: `(literals, globs)` sorted within each list
 - verify: count(subject="unmatched literal and glob selections", equals=2)
-- code: `farrier/farrier/sources.py::unmatched_patterns` @49ff73abb08d
+- code: `farrier/farrier/sources.py::unmatched_patterns` @38fd583de0b8
 
 ### method: build_lookup
 - sig: `build_lookup(sources: list[Source]) -> dict[str, Source]`
@@ -74,7 +74,7 @@ glob metacharacters. Exclusion is applied after inclusion, and a selected result
 - raises: exits when two different sources claim the same library name
 - returns: a normalized alias-to-source lookup
 - verify: count(subject="source lookup aliases", equals=1)
-- code: `farrier/farrier/sources.py::build_lookup` @49ff73abb08d
+- code: `farrier/farrier/sources.py::build_lookup` @38fd583de0b8
 
 ### method: build_policy_lookup
 - sig: `build_policy_lookup(sources: list[Source]) -> dict[str, Source]`
@@ -82,4 +82,4 @@ glob metacharacters. Exclusion is applied after inclusion, and a selected result
 - raises: exits when two different policies claim the same normalized lookup key
 - returns: a normalized policy-name lookup
 - verify: count(subject="policy lookup aliases", equals=1)
-- code: `farrier/farrier/sources.py::build_policy_lookup` @49ff73abb08d
+- code: `farrier/farrier/sources.py::build_policy_lookup` @38fd583de0b8

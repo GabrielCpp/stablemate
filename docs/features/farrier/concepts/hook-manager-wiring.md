@@ -15,7 +15,7 @@ hand is not an opt-out: the configured manager still expects it and reports drif
 whole-file Farrier hooks are replaced before the new fence is written so the old gate cannot run
 twice.
 
-- code: `farrier/farrier/hook_managers.py` @5e5b34138e1a
+- code: `farrier/farrier/hook_managers.py` @9db8ba508161
 - tests: `farrier/tests/test_hook_managers.py`
 - detail: [skill hook declarations](skill-hook-declarations.md)
 
@@ -27,7 +27,7 @@ twice.
 - required: true
 - semantics: the sole command delegated by every generated manager entry and runner
 - verify: count(subject="hook-manager generated command", equals=1)
-- code: `farrier/farrier/hook_managers.py::HOOK_COMMAND` @5e5b34138e1a
+- code: `farrier/farrier/hook_managers.py::HOOK_COMMAND` @9db8ba508161
 
 ### FENCE_START
 - type: `str`
@@ -35,7 +35,7 @@ twice.
 - required: true
 - semantics: the line beginning Farrier's replaceable ownership region
 - verify: count(subject="hook fence start marker", equals=1)
-- code: `farrier/farrier/hook_managers.py::FENCE_START` @5e5b34138e1a
+- code: `farrier/farrier/hook_managers.py::FENCE_START` @9db8ba508161
 
 ### FENCE_END
 - type: `str`
@@ -43,7 +43,7 @@ twice.
 - required: true
 - semantics: the line ending Farrier's replaceable ownership region
 - verify: count(subject="hook fence end marker", equals=1)
-- code: `farrier/farrier/hook_managers.py::FENCE_END` @5e5b34138e1a
+- code: `farrier/farrier/hook_managers.py::FENCE_END` @9db8ba508161
 
 ### HOOK_RUNNER
 - type: `str`
@@ -51,7 +51,7 @@ twice.
 - required: true
 - semantics: the generated per-repository script that runs selected skill hooks
 - verify: count(subject="generated hook runner path", equals=1)
-- code: `farrier/farrier/hook_managers.py::HOOK_RUNNER` @5e5b34138e1a
+- code: `farrier/farrier/hook_managers.py::HOOK_RUNNER` @9db8ba508161
 
 ### LEFTHOOK_INCLUDE
 - type: `str`
@@ -59,7 +59,7 @@ twice.
 - required: true
 - semantics: the Farrier-owned lefthook file referenced by the user's lefthook configuration
 - verify: count(subject="lefthook Farrier include path", equals=1)
-- code: `farrier/farrier/hook_managers.py::LEFTHOOK_INCLUDE` @5e5b34138e1a
+- code: `farrier/farrier/hook_managers.py::LEFTHOOK_INCLUDE` @9db8ba508161
 
 ### MANAGERS
 - type: `tuple[str, ...]`
@@ -67,7 +67,7 @@ twice.
 - required: true
 - semantics: the complete accepted hook-manager vocabulary
 - verify: count(subject="accepted hook managers", equals=5)
-- code: `farrier/farrier/hook_managers.py::MANAGERS` @5e5b34138e1a
+- code: `farrier/farrier/hook_managers.py::MANAGERS` @9db8ba508161
 
 ### LEGACY_HOOK_MARKER
 - type: `str`
@@ -75,19 +75,19 @@ twice.
 - required: true
 - semantics: the marker identifying a pre-fence whole-file hook that must be migrated
 - verify: count(subject="legacy hook migration marker", equals=1)
-- code: `farrier/farrier/hook_managers.py::LEGACY_HOOK_MARKER` @5e5b34138e1a
+- code: `farrier/farrier/hook_managers.py::LEGACY_HOOK_MARKER` @9db8ba508161
 
 ## Methods
 
 ### configured_manager
 - sig: `configured_manager(config: dict[str, Any], repo: Path) -> str`
 - does: reads `hooks.manager` when it is a mapping value with non-whitespace content
+- verify: count(subject="configured manager selected from agents.yml", equals=1)
 - does: falls back to repository detection when `hooks.manager` is absent, empty, or not a mapping
 - raises: `SystemExit` when a declared manager is outside `MANAGERS`, naming the invalid value and accepted managers
-- returns: the declared or detected manager name
-- verify: count(subject="configured manager selected from agents.yml", equals=1)
 - verify: count(subject="invalid configured manager rejection", equals=1)
-- code: `farrier/farrier/hook_managers.py::configured_manager` @5e5b34138e1a
+- returns: the declared or detected manager name
+- code: `farrier/farrier/hook_managers.py::configured_manager` @9db8ba508161
 - tests: `farrier/tests/test_hook_managers.py::test_the_config_names_the_manager`
 - tests: `farrier/tests/test_hook_managers.py::test_a_manager_outside_the_vocabulary_is_refused`
 
@@ -99,7 +99,7 @@ twice.
 - does: selects `githooks` when no earlier marker identifies another manager
 - returns: the first matching manager without relying on `core.hooksPath` alone
 - verify: count(subject="marker-based hook manager detection", equals=1)
-- code: `farrier/farrier/hook_managers.py::detect_manager` @5e5b34138e1a
+- code: `farrier/farrier/hook_managers.py::detect_manager` @9db8ba508161
 - tests: `farrier/tests/test_hook_managers.py::test_an_unconfigured_repo_falls_back_to_what_it_looks_like`
 - tests: `farrier/tests/test_hook_managers.py::test_a_bare_repo_detects_as_githooks`
 - tests: `farrier/tests/test_hook_managers.py::test_husky_is_detected_before_npm_install_has_run`
@@ -109,7 +109,7 @@ twice.
 - does: wraps the trimmed body between the exact start and end markers
 - returns: a fenced block ending in one newline
 - verify: count(subject="fence marker pair", equals=1)
-- code: `farrier/farrier/hook_managers.py::fence` @5e5b34138e1a
+- code: `farrier/farrier/hook_managers.py::fence` @9db8ba508161
 
 ### splice
 - sig: `splice(existing: str, block: str) -> str`
@@ -117,7 +117,7 @@ twice.
 - does: appends the block after the existing text when no complete fence is present
 - returns: text with one trailing newline and all non-fenced lines preserved
 - verify: unchanged(subject="user-owned lines outside hook fence")
-- code: `farrier/farrier/hook_managers.py::splice` @5e5b34138e1a
+- code: `farrier/farrier/hook_managers.py::splice` @9db8ba508161
 - tests: `farrier/tests/test_hook_managers.py::test_the_fence_is_replaced_in_place_not_appended`
 
 ### unsplice
@@ -126,7 +126,7 @@ twice.
 - does: returns the input unchanged when no complete fence is present
 - returns: the remaining text with one trailing newline, or an empty string when nothing remains
 - verify: unchanged(subject="user-owned lines after fence removal")
-- code: `farrier/farrier/hook_managers.py::unsplice` @5e5b34138e1a
+- code: `farrier/farrier/hook_managers.py::unsplice` @9db8ba508161
 - tests: `farrier/tests/test_hook_managers.py::test_unsplicing_leaves_the_rest_of_the_file`
 
 ### fenced_body
@@ -135,7 +135,7 @@ twice.
 - does: treats an absent start or end marker as an unfenced file
 - returns: the fenced body, or `None` when no complete fence exists
 - verify: count(subject="fenced body extraction result", equals=1)
-- code: `farrier/farrier/hook_managers.py::fenced_body` @5e5b34138e1a
+- code: `farrier/farrier/hook_managers.py::fenced_body` @9db8ba508161
 
 ### body_for
 - sig: `body_for(manager: str) -> str`
@@ -144,13 +144,13 @@ twice.
 - does: returns the shell command for `husky`, `githooks`, and other non-special manager values
 - returns: the manager-specific fence body
 - verify: count(subject="manager-specific fence bodies", equals=3)
-- code: `farrier/farrier/hook_managers.py::body_for` @5e5b34138e1a
+- code: `farrier/farrier/hook_managers.py::body_for` @9db8ba508161
 
 ### lefthook_include_text
 - sig: `lefthook_include_text() -> str`
 - returns: the complete generated lefthook configuration defining the `pre-commit` Farrier command
-- verify: visible(locator="lefthook include text", text="farrier-hooks")
-- code: `farrier/farrier/hook_managers.py::lefthook_include_text` @5e5b34138e1a
+- verify: json_path(path="return value", matches="farrier-hooks")
+- code: `farrier/farrier/hook_managers.py::lefthook_include_text` @9db8ba508161
 - tests: `farrier/tests/test_hook_managers.py::test_lefthook_references_a_file_farrier_owns_whole`
 
 ### runner_text
@@ -162,25 +162,26 @@ twice.
 - does: invokes each found adapter with `python3`
 - does: stops searching that hook's three adapter paths after the first found file
 - returns: generated `.agents/hooks/pre-commit` text
-- verify: visible(locator="generated hook runner", text="git rev-parse --show-toplevel")
-- code: `farrier/farrier/hook_managers.py::runner_text` @5e5b34138e1a
+- verify: json_path(path="return value", matches="git rev-parse --show-toplevel")
+- code: `farrier/farrier/hook_managers.py::runner_text` @9db8ba508161
 - tests: `farrier/tests/test_hook_managers.py::test_the_runner_tries_every_adapter_path_for_a_declared_hook`
 - tests: `farrier/tests/test_hook_managers.py::test_a_repo_whose_skills_declare_nothing_still_gets_a_runner`
 
 ### install_manager
-- sig: `install_manager(repo: Path, manager: str) -> list[str]`
+- sig: `install_manager(repo: Path, manager: str, *, dry_run: bool = False) -> list[str]`
 - does: removes Farrier's fence from every supported manager file and writes nothing when `manager` is `none`
+- verify: removed(subject="Farrier fenced hook entry when manager is none")
 - does: migrates a legacy whole-file Farrier hook by discarding it before writing the fenced hook
 - does: creates an empty shell preamble for a missing `husky` or `githooks` hook
 - does: writes the manager-specific fenced entry while preserving user-owned surrounding lines
+- verify: unchanged(subject="user-owned hook-manager lines")
 - does: ensures a new pre-commit configuration begins with `repos:` when absent
 - does: makes `husky` and `githooks` hook files executable
 - does: sets `core.hooksPath` to `.githooks` for `githooks`
-- returns: messages for changed or removed files, and an empty list when installation changes nothing
-- verify: removed(subject="Farrier fenced hook entry when manager is none")
-- verify: unchanged(subject="user-owned hook-manager lines")
 - verify: persists(subject="githooks core.hooksPath")
-- code: `farrier/farrier/hook_managers.py::install_manager` @5e5b34138e1a
+- does: writes nothing and prefixes every message with `[dry-run] ` when `dry_run` is true
+- returns: messages for changed or removed files, and an empty list when installation changes nothing
+- code: `farrier/farrier/hook_managers.py::install_manager` @9db8ba508161
 - tests: `farrier/tests/test_hook_managers.py::test_every_manager_gets_the_command_and_keeps_the_users_lines`
 - tests: `farrier/tests/test_hook_managers.py::test_installing_twice_changes_nothing`
 - tests: `farrier/tests/test_hook_managers.py::test_a_shell_hook_farrier_creates_is_executable`
@@ -188,15 +189,25 @@ twice.
 - tests: `farrier/tests/test_hook_managers.py::test_a_legacy_whole_file_hook_is_migrated_not_appended_to`
 - tests: `farrier/tests/test_hook_managers.py::test_none_removes_the_entry_and_leaves_the_file`
 
+### install_runner
+- sig: `install_runner(repo: Path, hooks: list[SkillHook] | None, *, dry_run: bool = False) -> list[str]`
+- does: writes `.agents/hooks/pre-commit` from the declared hooks and makes it executable when the file differs
+- does: leaves the file alone and reports nothing when its text already matches
+- does: reports that the runner would be regenerated, and writes nothing, when `dry_run` is true
+- does: reports that the runner cannot be built without a library, and writes nothing, when `hooks` is `None` under `dry_run`
+- returns: `Wrote .agents/hooks/pre-commit` when it wrote the runner, and an empty list otherwise
+- verify: created(subject=".agents/hooks/pre-commit")
+- code: `farrier/farrier/hook_managers.py::install_runner` @9db8ba508161
+
 ### fence_drift
 - sig: `fence_drift(repo: Path, manager: str) -> list[str]`
 - does: reports every supported file still carrying a Farrier fence when the manager is `none`
 - does: reports the configured manager file when it is missing or its fenced body differs from the desired body
-- does: ignores changes outside the Farrier fence
-- returns: repository-relative paths with drift, or an empty list when the installed fence matches
 - verify: count(subject="missing or edited hook fences reported as drift", equals=1)
+- does: ignores changes outside the Farrier fence
 - verify: count(subject="user-owned edits outside hook fences reported as drift", equals=0)
-- code: `farrier/farrier/hook_managers.py::fence_drift` @5e5b34138e1a
+- returns: repository-relative paths with drift, or an empty list when the installed fence matches
+- code: `farrier/farrier/hook_managers.py::fence_drift` @9db8ba508161
 - tests: `farrier/tests/test_hook_managers.py::test_a_missing_fence_is_drift_not_an_opt_out`
 - tests: `farrier/tests/test_hook_managers.py::test_an_edit_inside_the_fence_is_drift`
 - tests: `farrier/tests/test_hook_managers.py::test_an_edit_outside_the_fence_is_not`

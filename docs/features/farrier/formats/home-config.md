@@ -12,7 +12,7 @@ against. It lives in `stablemate_core`, not in farrier: the keys are shared, so 
 inheriting a farrier-set `library_dir` is the point rather than a leak. Read by `load_config`
 (farrier spells the same function `read_config`; it is an alias, not a second implementation),
 written key-by-key by `write_config_key`, and surfaced to the user by
-[`farrier config show`](../farrier.md#config). The schema is versioned: a config older than this
+[`farrier config show`](../farrier-commands-init.md#config). The schema is versioned: a config older than this
 build's `CONFIG_VERSION` is carried forward in-memory on read, so resolvers always see the current
 shape; the file on disk is lifted to the current version only when a write touches it.
 
@@ -20,8 +20,7 @@ shape; the file on disk is lifted to the current version only when a write touch
   `~/.config/stablemate/config.toml` on Linux, `~/Library/Application Support/stablemate/config.toml`
   on macOS, `%APPDATA%\stablemate\config.toml` on Windows. `$STABLEMATE_CONFIG` (or the
   pre-unification `$WORKHORSE_CONFIG`) overrides the path outright.
-- code: `farrier/farrier/_vendor/stablemate_core/config.py::load_config` @451a081294d0
-- code: `farrier/farrier/_vendor/stablemate_core/config.py` @451a081294d0
+- code: `farrier/farrier/_vendor/stablemate_core/config.py::load_config` @45b4d92edb39
 - detail: [configuration version guard](../concepts/config-version-guard.md)
 - detail: [power mapping](../concepts/power-mapping.md)
 - detail: [profile selection](../concepts/profile-selection.md)
@@ -40,7 +39,7 @@ working until a write lifts it.)
 
 The [library directory](../concepts/library-directory.md) resolution's third-precedence *overlay*
 candidate (after `--library` and `$FARRIER_LIBRARY_DIR`). Written by
-[`farrier config set-library <path>`](../farrier.md#config) via `write_library_dir`, after the path is
+[`farrier config set-library <path>`](../farrier-commands-init.md#config) via `write_library_dir`, after the path is
 validated with `is_library_dir` (must contain `library/`).
 
 ### base_dir
@@ -54,15 +53,23 @@ overlay-only setup working.
 
 ### stablemate_dir
 - type: `string` — required: no — default: unset
-- code: `farrier/farrier/_vendor/stablemate_core/config.py::write_stablemate_dir` @451a081294d0
+- code: `farrier/farrier/_vendor/stablemate_core/config.py::write_stablemate_dir` @45b4d92edb39
 
 ### worktree_dir
 - type: `string` — required: no — default: unset
-- code: `farrier/farrier/_vendor/stablemate_core/config.py::write_worktree_dir` @451a081294d0
+- code: `farrier/farrier/_vendor/stablemate_core/config.py::write_worktree_dir` @45b4d92edb39
+
+### artifacts_dir
+- type: `string` — required: no — default: unset
+- code: `farrier/farrier/_vendor/stablemate_core/config.py::write_artifacts_dir` @45b4d92edb39
+
+Where per-user story artifacts live, outside git. `$STABLEMATE_ARTIFACTS_DIR` wins over this key, and
+an unset key falls back to an `artifacts` folder under the platform data directory for
+`stablemate`.
 
 ### user_library
 - type: `table of tables` — required: no — default: absent (nothing is installed at user scope)
-- code: `farrier/farrier/user_library.py::user_library_tables` @b5d83b01f569
+- code: `farrier/farrier/user_library.py::user_library_tables` @957e574360f9
 
 ### config_version
 - type: `integer` — required: no — default: absent (treated as version 1)
@@ -94,7 +101,7 @@ schemas.
   `config set-base` turned `[power.*]` into a Python-repr string and every node silently fell back
   to the default model with no error anywhere.
 
-- code: `farrier/farrier/_vendor/stablemate_core/config.py::write_config_key` @451a081294d0
+- code: `farrier/farrier/_vendor/stablemate_core/config.py::write_config_key` @45b4d92edb39
 - detail: [config write documentation contexts](../concepts/config-write-context.md)
 
 ## Methods
@@ -104,21 +111,21 @@ schemas.
 - does: returns the legacy workhorse and farrier config paths in migration order
 - returns: one path for each legacy application config location
 - verify: count(subject="legacy config paths", equals=2)
-- code: `farrier/farrier/_vendor/stablemate_core/config.py::legacy_config_paths` @451a081294d0
+- code: `farrier/farrier/_vendor/stablemate_core/config.py::legacy_config_paths` @45b4d92edb39
 
 ### config_path
 - sig: `config_path() -> Path`
 - does: uses `$STABLEMATE_CONFIG`, then `$WORKHORSE_CONFIG`, then the platform shared config path
 - returns: the expanded path selected for reads and writes
 - verify: json_path(path="$.config_path", matches="config\\.toml$")
-- code: `farrier/farrier/_vendor/stablemate_core/config.py::config_path` @451a081294d0
+- code: `farrier/farrier/_vendor/stablemate_core/config.py::config_path` @45b4d92edb39
 
 ### config_version_of
 - sig: `config_version_of(cfg: dict[str, Any]) -> int`
 - does: treats an absent, boolean, non-integer, or below-one version as schema version 1
 - returns: the integer schema version declared by the mapping
 - verify: json_path(path="$.config_version", equals=1)
-- code: `farrier/farrier/_vendor/stablemate_core/config.py::config_version_of` @451a081294d0
+- code: `farrier/farrier/_vendor/stablemate_core/config.py::config_version_of` @45b4d92edb39
 
 ### check_config_version
 - sig: `check_config_version(cfg: dict[str, Any] | None = None) -> int`
@@ -126,14 +133,14 @@ schemas.
 - raises: `ConfigVersionError` when the config declares a newer schema
 - returns: the supported schema version when the config is acceptable
 - verify: json_path(path="$.exception.type", equals="ConfigVersionError")
-- code: `farrier/farrier/_vendor/stablemate_core/config.py::check_config_version` @451a081294d0
+- code: `farrier/farrier/_vendor/stablemate_core/config.py::check_config_version` @45b4d92edb39
 
 ### profile_names
 - sig: `profile_names(cfg: dict[str, Any] | None = None) -> list[str]`
 - does: reads names from the config's `profiles` table
 - returns: names sorted lexicographically, or an empty list when none are defined
 - verify: count(subject="sorted profile names", equals=1)
-- code: `farrier/farrier/_vendor/stablemate_core/profiles.py::profile_names` @a83db0c3bf2d
+- code: `farrier/farrier/_vendor/stablemate_core/profiles.py::profile_names` @0f757c16382b
 
 ### select_profile
 - sig: `select_profile(cfg: dict[str, Any] | None, name: str) -> dict[str, Any]`
@@ -144,7 +151,7 @@ schemas.
 - raises: `ConfigError` when the named profile has no `cli` field
 - returns: the selected profile mapping, or `{}` for an empty `name`
 - verify: json_path(path="$.cli", equals="opencode")
-- code: `farrier/farrier/_vendor/stablemate_core/profiles.py::select_profile` @a83db0c3bf2d
+- code: `farrier/farrier/_vendor/stablemate_core/profiles.py::select_profile` @0f757c16382b
 
 ### profile_backends
 - sig: `profile_backends(profile: dict[str, Any]) -> list[str]`
@@ -152,14 +159,14 @@ schemas.
 - does: returns an empty list when the profile has no usable `cli` field
 - returns: the lowercased CLI name as a one-element list, or `[]` when missing
 - verify: count(subject="profile backends", equals=1)
-- code: `farrier/farrier/_vendor/stablemate_core/profiles.py::profile_backends` @a83db0c3bf2d
+- code: `farrier/farrier/_vendor/stablemate_core/profiles.py::profile_backends` @0f757c16382b
 
 ### profile_has_backend
 - sig: `profile_has_backend(profile: dict[str, Any], backend: str) -> bool`
 - does: reports true when the profile's `cli` field equals `backend`
 - returns: false when the profile has no `cli` field or the names differ
 - verify: json_path(path="$", equals=true)
-- code: `farrier/farrier/_vendor/stablemate_core/profiles.py::profile_has_backend` @a83db0c3bf2d
+- code: `farrier/farrier/_vendor/stablemate_core/profiles.py::profile_has_backend` @0f757c16382b
 
 ### resolve_power
 - sig: `resolve_power(power: str | None, backend: str, cfg: dict[str, Any] | None = None) -> PowerMapping`
@@ -167,7 +174,7 @@ schemas.
 - does: reads the tier entry directly from `profile.powers.<power>` (no per-backend nesting in v2)
 - returns: a `PowerMapping` carrying `model`, `effort`, and `timeout_scale`
 - verify: json_path(path="$.model", equals="haiku")
-- code: `farrier/farrier/_vendor/stablemate_core/profiles.py::resolve_power` @a83db0c3bf2d
+- code: `farrier/farrier/_vendor/stablemate_core/profiles.py::resolve_power` @0f757c16382b
 
 ### resolve_backend_default
 - sig: `resolve_backend_default(backend: str, cfg: dict[str, Any] | None = None) -> PowerMapping`
@@ -175,7 +182,7 @@ schemas.
 - does: returns an empty mapping when the profile's `cli` field disagrees with `backend`
 - returns: a `PowerMapping` carrying `model`, `effort`, and `timeout_scale`, or an empty mapping when the table is absent
 - verify: json_path(path="$.model", equals="opus")
-- code: `farrier/farrier/_vendor/stablemate_core/profiles.py::resolve_backend_default` @a83db0c3bf2d
+- code: `farrier/farrier/_vendor/stablemate_core/profiles.py::resolve_backend_default` @0f757c16382b
 
 ### resolve_harness_env
 - sig: `resolve_harness_env(backend: str, cfg: dict[str, Any] | None = None) -> dict[str, str]`
@@ -183,35 +190,35 @@ schemas.
 - does: drops non-string keys and values instead of coercing them
 - returns: the valid string environment mapping, or `{}` when absent or malformed
 - verify: json_path(path="$.OPENCODE_DISABLE_AUTOCOMPACT", equals="1")
-- code: `farrier/farrier/_vendor/stablemate_core/profiles.py::resolve_harness_env` @a83db0c3bf2d
+- code: `farrier/farrier/_vendor/stablemate_core/profiles.py::resolve_harness_env` @0f757c16382b
 
 ### resolve_default_cli
 - sig: `resolve_default_cli(cfg: dict[str, Any] | None = None) -> str`
 - does: reads and trims the configured `default_cli` value
 - returns: the lower-case configured CLI, or `claude` when absent, empty, or non-string
 - verify: json_path(path="$.default_cli", equals="claude")
-- code: `farrier/farrier/_vendor/stablemate_core/profiles.py::resolve_default_cli` @a83db0c3bf2d
+- code: `farrier/farrier/_vendor/stablemate_core/profiles.py::resolve_default_cli` @0f757c16382b
 
 ### write_default_cli
 - sig: `write_default_cli(name: str) -> None`
 - does: persists a trimmed, lower-case `default_cli` value
 - returns: `None`
 - verify: persists(subject="default_cli")
-- code: `farrier/farrier/_vendor/stablemate_core/profiles.py::write_default_cli` @a83db0c3bf2d
+- code: `farrier/farrier/_vendor/stablemate_core/profiles.py::write_default_cli` @0f757c16382b
 
 ### get_config_value
 - sig: `get_config_value(name: str, cfg: dict[str, Any] | None = None) -> Any`
 - does: walks a dotted key path through the selected config mapping
 - returns: the value at the path, or `None` when a segment is absent or not a mapping
 - verify: json_path(path="$.value", equals="configured")
-- code: `farrier/farrier/_vendor/stablemate_core/config.py::get_config_value` @451a081294d0
+- code: `farrier/farrier/_vendor/stablemate_core/config.py::get_config_value` @45b4d92edb39
 
 ### write_library_dir
 - sig: `write_library_dir(path: Path) -> None`
 - does: persists the overlay library path under `library_dir`
 - returns: `None`
 - verify: persists(subject="library_dir")
-- code: `farrier/farrier/_vendor/stablemate_core/config.py::write_library_dir` @451a081294d0
+- code: `farrier/farrier/_vendor/stablemate_core/config.py::write_library_dir` @45b4d92edb39
 - detail: [config write documentation contexts](../concepts/config-write-context.md)
 
 ### write_stablemate_dir
@@ -219,32 +226,55 @@ schemas.
 - does: persists the stablemate checkout path under `stablemate_dir`
 - returns: `None`
 - verify: persists(subject="stablemate_dir")
-- code: `farrier/farrier/_vendor/stablemate_core/config.py::write_stablemate_dir` @451a081294d0
+- code: `farrier/farrier/_vendor/stablemate_core/config.py::write_stablemate_dir` @45b4d92edb39
 
 ### write_base_dir
 - sig: `write_base_dir(path: Path) -> None`
 - does: persists the base library path under `base_dir`
 - returns: `None`
 - verify: persists(subject="base_dir")
-- code: `farrier/farrier/_vendor/stablemate_core/config.py::write_base_dir` @451a081294d0
+- code: `farrier/farrier/_vendor/stablemate_core/config.py::write_base_dir` @45b4d92edb39
 
 ### write_worktree_dir
 - sig: `write_worktree_dir(path: Path) -> None`
 - does: persists the parent directory for new worktrees without requiring it to exist
 - returns: `None`
 - verify: persists(subject="worktree_dir")
-- code: `farrier/farrier/_vendor/stablemate_core/config.py::write_worktree_dir` @451a081294d0
+- code: `farrier/farrier/_vendor/stablemate_core/config.py::write_worktree_dir` @45b4d92edb39
 
 ### resolve_stablemate_dir
 - sig: `resolve_stablemate_dir() -> Path | None`
 - does: reads the configured `stablemate_dir` value
 - returns: its expanded absolute path, or `None` when unset or not a non-empty string
 - verify: json_path(path="$.stablemate_dir", equals="/checkout")
-- code: `farrier/farrier/_vendor/stablemate_core/config.py::resolve_stablemate_dir` @451a081294d0
+- code: `farrier/farrier/_vendor/stablemate_core/config.py::resolve_stablemate_dir` @45b4d92edb39
 
 ### resolve_worktree_dir
 - sig: `resolve_worktree_dir() -> Path | None`
 - does: reads the configured `worktree_dir` value without requiring the directory to exist
 - returns: its expanded absolute path, or `None` when unset or not a non-empty string
 - verify: json_path(path="$.worktree_dir", equals="/worktrees")
-- code: `farrier/farrier/_vendor/stablemate_core/config.py::resolve_worktree_dir` @451a081294d0
+- code: `farrier/farrier/_vendor/stablemate_core/config.py::resolve_worktree_dir` @45b4d92edb39
+
+### write_artifacts_dir
+- sig: `write_artifacts_dir(path: Path) -> None`
+- does: persists the per-user artifacts folder under `artifacts_dir`
+- returns: `None`
+- verify: persists(subject="artifacts_dir")
+- code: `farrier/farrier/_vendor/stablemate_core/config.py::write_artifacts_dir` @45b4d92edb39
+
+### resolve_artifacts_dir
+- sig: `resolve_artifacts_dir() -> Path`
+- does: uses `$STABLEMATE_ARTIFACTS_DIR`, then the configured `artifacts_dir`, then an `artifacts` folder under the platform data directory
+- returns: the expanded absolute path of the artifacts folder
+- verify: json_path(path="$.artifacts_dir", equals="/artifacts")
+- code: `farrier/farrier/_vendor/stablemate_core/config.py::resolve_artifacts_dir` @45b4d92edb39
+
+### resolve_delegates
+- sig: `resolve_delegates(backend: str, cfg: dict[str, Any] | None = None) -> dict[str, PowerMapping]`
+- does: reads the selected profile's `delegates` table, one mapping per role
+- does: returns an empty mapping when the profile's `cli` field disagrees with `backend`
+- does: keeps only the roles whose entry names a model
+- returns: a mapping from role name to `PowerMapping`
+- verify: json_path(path="$.reviewer.model", equals="haiku")
+- code: `farrier/farrier/_vendor/stablemate_core/profiles.py::resolve_delegates` @0f757c16382b
