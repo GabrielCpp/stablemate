@@ -181,6 +181,45 @@ browser checks. An http or cli claim that names it compiles to the gap
 `browser-fixture-off-browser`, because no browser holds the session there. Arrange that claim
 with a fixture whose steps all `run:`, such as the token sign-in above.
 
+### Signing a device in
+
+A mobile claim behind a sign-in needs the device signed in before the app launches. A
+`lifetime: scenario` fixture whose steps all `run:` does it. Each scenario starts on a cleared
+device, so the fixture signs in again for each one.
+
+```markdown
+---
+type: fixture
+title: Signed-in acme device
+---
+# Signed-in acme device
+
+- lifetime: scenario
+- launch-screen: [Home](../home.md)
+
+## Steps
+
+### clear-app
+
+- kind: run
+- run: adb shell pm clear com.example.acme
+
+### sign-in
+
+- kind: run
+- run: maestro test ops/acme-sign-in.yaml
+```
+
+- A first step clears the app with `adb shell pm clear <bundle-id>` when the app keeps
+  device-side flags.
+- A step runs `maestro test <flow>` with a flow that signs in through the app's own screens.
+  Use the repository's own Maestro flow when it has one. Otherwise the book keeps one under
+  `ops/`.
+- `launch-screen:` links the screen the app opens on afterwards.
+- A claim this fixture arranges launches the app as it is and is reached by taps from that
+  screen. A claim with no such fixture starts on a cleared device.
+- A fixture with `launch-screen:` has no browser step, because the session lives on the device.
+
 A fixture's own steps do **not** carry `capture:`. `capture:` lives on the seven consuming
 node types, where it names what a *scenario* pulled out of a live response or the DOM — a
 fixture's `provides:` is the equivalent idea for what the arrangement itself leaves behind.
