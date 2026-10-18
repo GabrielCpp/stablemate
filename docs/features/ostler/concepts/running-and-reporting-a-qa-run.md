@@ -134,13 +134,13 @@ re-exports the public surface of all of the above (`cmd_run`, `cmd_compile_plan`
 - code: ostler/ostler/qa/dispatch.py::claim_driver@d44c624e5b21
 - code: ostler/ostler/qa/dispatch.py::hosts_observation@d44c624e5b21
 - code: ostler/ostler/qa/dispatch.py::owes_live_evidence@d44c624e5b21
-- code: ostler/ostler/qa/drivers.py::QaDriver@a902a4939789
-- code: ostler/ostler/qa/drivers.py::PythonDriver@a902a4939789
-- code: ostler/ostler/qa/drivers.py::create_driver@a902a4939789
-- code: ostler/ostler/qa/drivers.py::Launcher@a902a4939789
-- code: ostler/ostler/qa/drivers.py::LocalLauncher@a902a4939789
-- code: ostler/ostler/qa/drivers.py::DisplayRecorder@a902a4939789
-- code: ostler/ostler/qa/drivers.py::DeviceRecorder@a902a4939789
+- code: ostler/ostler/qa/drivers.py::QaDriver@6720c03c3ec2
+- code: ostler/ostler/qa/drivers.py::PythonDriver@6720c03c3ec2
+- code: ostler/ostler/qa/drivers.py::create_driver@6720c03c3ec2
+- code: ostler/ostler/qa/drivers.py::Launcher@6720c03c3ec2
+- code: ostler/ostler/qa/drivers.py::LocalLauncher@6720c03c3ec2
+- code: ostler/ostler/qa/drivers.py::DisplayRecorder@6720c03c3ec2
+- code: ostler/ostler/qa/drivers.py::DeviceRecorder@6720c03c3ec2
 - code: ostler/ostler/qa/harness_host.py::load_harness_module@9aece567e098
 - code: ostler/ostler/qa/harness_host.py::default_interpreter@9aece567e098
 - code: ostler/ostler/qa/harness_host.py::harness_argv@9aece567e098
@@ -201,11 +201,11 @@ re-exports the public surface of all of the above (`cmd_run`, `cmd_compile_plan`
 - code: ostler/ostler/qa/stack.py::teardown_stack@10c66bad65f4
 - code: ostler/ostler/qa/stack.py::boot_app@10c66bad65f4
 - code: ostler/ostler/qa/stack.py::health_probe@10c66bad65f4
-- code: ostler/ostler/qa/runbook.py::select_runbook@69d4a599edff
-- code: ostler/ostler/qa/runbook.py::select_stack@69d4a599edff
-- code: ostler/ostler/qa/runbook.py::select_server@69d4a599edff
-- code: ostler/ostler/qa/runbook.py::step_command@69d4a599edff
-- code: ostler/ostler/qa/runbook.py::stack_runbooks@69d4a599edff
+- code: ostler/ostler/qa/runbook.py::select_runbook@f96aea5d3733
+- code: ostler/ostler/qa/runbook.py::select_stack@f96aea5d3733
+- code: ostler/ostler/qa/runbook.py::select_server@f96aea5d3733
+- code: ostler/ostler/qa/runbook.py::step_command@f96aea5d3733
+- code: ostler/ostler/qa/runbook.py::stack_runbooks@f96aea5d3733
 - code: ostler/ostler/qa/__init__.py@16c3e096e515
 - detail: [ostler](../cli.md)
 - detail: [Compiling a book into a QA plan](compiling-a-book-into-a-qa-plan.md)

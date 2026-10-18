@@ -29,7 +29,7 @@ multiple milestones.
 - code: ostler/ostler/backlog.py::adopt@fbc174481294
 - code: ostler/ostler/crud.py::create_milestone@3d486fae1ade
 - code: ostler/ostler/crud.py::set_milestone_source_items@3d486fae1ade
-- code: ostler/ostler/doctor.py::_check_milestones@9f0a19c24a6b
+- code: ostler/ostler/doctor.py::_check_milestones@98013e2efcb5
 - tests: ostler/tests/test_backlog.py::test_create_backlog_item_persists_full_generated_id, ostler/tests/test_backlog.py::test_adopt_names_every_bullet_and_is_idempotent, ostler/tests/test_crud.py::test_create_milestone_allocates_id_and_records_source_items
 
 ## Contract
