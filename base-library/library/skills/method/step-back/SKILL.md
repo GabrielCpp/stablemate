@@ -35,7 +35,8 @@ the questions below. It carries neither the worker's theory of what is wrong nor
 restatement of the goal. A reviewer handed a theory checks the theory, and a reviewer handed a
 restated goal reviews the restatement.
 
-Run it on a slow schedule while the work is long, and at once when the trigger fires. Act on its
+Run it on a slow schedule while the work is long, and at once when the trigger fires.
+A digest tick on a tended run is that schedule: each tick is a point to ask the outside view. Act on its
 top finding before the next review. A finding that stands across two reviews is the finding.
 
 ## Move 1: test the aim

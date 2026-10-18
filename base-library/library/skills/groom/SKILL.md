@@ -62,6 +62,12 @@ doesn't poll. Instead:
   fire-and-forget call. This is a redundant, idempotent-on-the-server-side backstop, not a
   teardown race workaround — the wait script blocks in place on its own `inotify` watch of the gate
   file and only exits (`sys.exit(2)`) if raw inotify init itself fails.
+- **`/feed` is the socket meant for a program, beside `/ws` for tabs and `/sidecar` for
+  containers.** It carries one run: `event` frames the moment an alert fires, and a `digest`
+  frame on a fixed interval even when nothing happened, so silence reads as a signal. The
+  live clock keeps running while a feed is attached, with no tab open. `groom wait` is a
+  client of the same feed that returns on the first matching event, and `groom feed` prints
+  every frame.
 - **Startup/on-demand reconciliation only.** `groom` runs a one-shot `discovery.scan()` on its own
   startup and on `POST /refresh` (`docker ps -a` + `docker inspect`, filtered to
   `/workflow`+`/runs`+`/workspace` mounts, gate files read via a throwaway read-only container).

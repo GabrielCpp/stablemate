@@ -84,6 +84,14 @@ The diagnosis is in the pair *(turn age, agent idle)*, not in either alone:
 | no turn, no wait, node age large | **wedged deterministic work** inside the node |
 | no heartbeat (`DEAD?`) | the process is gone — SIGKILL, OOM, crashed host |
 
+The digest is the windowed read of the same store. `groom feed --run RUN --json` prints
+one every `--every` interval, and the `/feed` socket pushes it to a session. It carries the
+run's standing (the `status` row plus the open gate), then the window: per-node visits,
+turns, cost and output tokens, turns per work item, operator gates with their outcome,
+the events that fired, and up to ten warnings. A digest with `quiet: true` means the
+window held no spans, no events and no warning. Compare digests across ticks to judge
+whether a change helped.
+
 To *act* on what `status` shows — reload the run onto pushed code, switch its CLI or
 profile, answer the gate it is parked on — load [[workhorse-operate]]; its `workflow` and
 `run_dir` columns are the arguments the control command takes.
