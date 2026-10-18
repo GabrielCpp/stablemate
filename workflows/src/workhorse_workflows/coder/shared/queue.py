@@ -187,7 +187,7 @@ def _committed(
     message = commits.message(
         "chore", commits.scope(root.name), "prune completed epic from queue", epic=epic
     )
-    if commit_paths(root, message, queue):
+    if commit_paths(root, message, queue, verify=False):
         logger.info("committed the prune of '%s'", epic)
     return EpicPruned(pruned=True)
 

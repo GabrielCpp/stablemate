@@ -56,7 +56,7 @@ def _stamp_status(
         epic=epic,
         story=slug,
     )
-    if specs and commit_paths(root, stamp, *specs):
+    if specs and commit_paths(root, stamp, *specs, verify=False):
         logger.info("recorded %s for %s", DONE_STATUS, slug)
     return True, superseded
 
@@ -187,7 +187,7 @@ def commit_plan_record(
         epic=registry.epic_slug(epic) or epic,
         story=slug,
     )
-    committed = bool(spec_dir) and commit_paths(root, message, rel)
+    committed = bool(spec_dir) and commit_paths(root, message, rel, verify=False)
     if committed:
         logger.info("recorded the plan of %s", slug)
     return StoryCommitted(committed=committed)

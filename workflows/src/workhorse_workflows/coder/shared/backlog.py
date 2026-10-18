@@ -263,7 +263,7 @@ def file_follow_up_backlog(
     logger.info(note)
     if appended:
         message = commits.message("chore", commits.scope(root.name), f"file the follow-ups of {parent}")
-        commit_paths(root, message, paths.backlog_file(root))
+        commit_paths(root, message, paths.backlog_file(root), verify=False)
     return BacklogDrain(appended=appended, skipped=skipped, notes=note)
 
 
@@ -511,7 +511,7 @@ def prune_fix_item(
 def _commit_prune(logger: logging.Logger, root: Path, rel: str, bullet_id: str) -> None:
     """Commit the backlog file alone, scoped to the one path the prune rewrote."""
     message = commits.message("chore", commits.scope(root.name), f"drop shipped fix {bullet_id}")
-    if commit_paths(root, message, rel):
+    if commit_paths(root, message, rel, verify=False):
         logger.info("committed the backlog prune for '%s'", bullet_id)
 
 

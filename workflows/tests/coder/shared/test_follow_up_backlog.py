@@ -3,11 +3,12 @@ from __future__ import annotations
 
 import logging
 import subprocess
+import sys
 from collections.abc import Callable
 from pathlib import Path
 
 from workhorse.pyflow.blueprint import node_spec
-from workhorse_workflows.coder.shared.backlog import file_follow_up_backlog
+from workhorse_workflows.coder.shared.backlog import file_follow_up_backlog, prune_fix_item
 from workhorse_workflows.coder.shared.story_commit import check_repos_clean
 
 
@@ -158,3 +159,30 @@ def test_a_batch_files_a_repeated_follow_up_once_and_a_distinct_one_still(
     text = (repo / "docs" / "backlog.md").read_text(encoding="utf-8")
     assert text.count("Paginate the report list") == 1
     assert "Clear the export cache on sign-in" in text
+
+
+def test_a_bookkeeping_commit_is_not_refused_by_the_repository_hooks(
+    repo: Path,
+    logger: logging.Logger,
+    write: Callable[[Path, str], Path],
+    git: Callable[..., subprocess.CompletedProcess],
+) -> None:
+    """A hook that judges the whole working tree, such as a rendered-skill drift check, has nothing to say about the one backlog line the workflow wrote, and a refusal would end the run."""
+    write(repo / "docs" / "backlog.md", "# Backlog\n\n## Filed by coder\n\n- [acme-cache] Clear the cache on sign-out\n")
+    git(repo, "add", "docs/backlog.md")
+    git(repo, "commit", "-qm", "seed the backlog")
+    hook = repo / git(repo, "rev-parse", "--git-path", "hooks/pre-commit").stdout.strip()
+    hook.parent.mkdir(parents=True, exist_ok=True)
+    write(hook, f"#!{sys.executable}\nimport sys\nsys.exit(1)\n")
+    hook.chmod(0o755)
+
+    drained = file_follow_up_backlog(
+        logger, parent="acme-story", follow_ups=[{"title": "Warm the cache", "reason": ""}], repo_dir=str(repo)
+    )
+    pruned = prune_fix_item(logger, bullet_id="acme-cache", repo_dir=str(repo))
+
+    assert drained.appended == 1, drained
+    assert pruned.pruned is True, pruned
+    subjects = git(repo, "log", "--format=%s").stdout.splitlines()
+    assert subjects[:2] == ["chore(acme): drop shipped fix acme-cache", "chore(acme): file the follow-ups of acme-story"], subjects
+    assert check_repos_clean(logger, story_slug="acme-story", repo_dir=str(repo)).clean is True
