@@ -832,7 +832,7 @@ class Research(Workflow):
             self.check,
             gate_id=gate_id,
             gate_doc_path=gate_doc_path,
-            collected=collected.model_dump(mode="json"),
+            collected=collected,
             budget=budget,
         )
 

@@ -358,7 +358,9 @@ class Docs(Workflow):
             ),
         )
 
-    def _context_mode(self, classification: ContextClassification) -> str:
+    def _context_mode(
+        self, classification: ContextClassification
+    ) -> Literal["local", "semantic", "error"]:
         """Treat an explicit external repository packet as locally verifiable."""
         if (
             self.workspace_file

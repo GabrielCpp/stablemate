@@ -43,10 +43,12 @@ def program(tmp_path: Path) -> tuple[Path, str]:
     return repo, "docs/research/tracebus"
 
 
-def _build(repo: Path, program_dir: str, **kw) -> Dossier:
+def _build(
+    repo: Path, program_dir: str, today: str = TODAY, **counts: int
+) -> Dossier:
     return D.build_dossier(
         LOG, str(repo), program_dir, f"{program_dir}/PROGRESS.md", "src/phasor",
-        **{"today": TODAY, **kw},
+        today=today, **counts,
     )
 
 

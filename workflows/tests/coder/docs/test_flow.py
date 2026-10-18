@@ -832,7 +832,7 @@ def test_the_snapshot_records_what_was_already_dirty_with_its_bytes(
 
     snapshot = snapshot_worktree_state(logger)
 
-    recorded = dict(entry.partition("\0")[::2] for entry in snapshot.entries)
+    recorded = {path: digest for path, _, digest in (e.partition("\0") for e in snapshot.entries)}
     assert recorded["api/legacy.go"] == _sha256(docs / "api" / "legacy.go"), recorded
     assert recorded["README.md"] == _sha256(docs / "README.md"), recorded
 
