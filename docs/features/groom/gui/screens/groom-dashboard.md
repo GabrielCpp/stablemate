@@ -1204,8 +1204,8 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - parent: [groom dashboard](#groom-dashboard)
 - states: empty most of the time.
 - verify: json_path(path="states.empty_most_of_time", equals=true)
-- states: one entry per blocked notification or answer confirmation.
-- verify: json_path(path="states.entries", equals="one per blocked notification or answer confirmation")
+- states: one entry per blocked notification, answer confirmation or refused answer.
+- verify: json_path(path="states.entries", equals="one per blocked notification, answer confirmation or refused answer")
 - states: removed on its own timer — seven seconds for a block.
 - verify: json_path(path="states.expiration.blocked_seconds", equals=7)
 - states: removed on its own timer — three and a half seconds for a confirmation.
@@ -2202,6 +2202,9 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
   - Shows the `✓ answer sent` confirmation when it receives a [dashboard answered message](../../formats/dashboard-answered-message.md).
 - verify: visible(locator="#toasts", text="✓ answer sent")
 - does:
+  - Shows the `✗ answer not taken` toast with the server's reason as its body when this tab receives an `answer_rejected` frame.
+- verify: visible(locator="#toast-region", text="✗ answer not taken")
+- does:
   - Refreshes the pane from the `detail` push triggered by the answer command.
 - verify: visible(locator=".detail-body", text="fixture refreshed gate detail")
 - does:
@@ -2213,9 +2216,11 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - code: groom/groom/assets/dashboard.js::wireAnswerForm
 - code: groom/groom/assets/dashboard.js::sendCommand
 - code: groom/groom/assets/dashboard.js::onAnswered
+- code: groom/groom/assets/dashboard.js::onAnswerRejected@658c7d7cae33
 - tests: groom/tests/test_app.py::test_handle_answer_flips_state_and_broadcasts_an_answered_event
 - tests: groom/tests/test_app.py::test_handle_answer_failure_does_not_flip_or_dispatch
 - tests: groom/tests/test_a11y_dynamic.py::test_the_answer_form_is_reachable_and_submittable_by_keyboard
+- tests: groom/tests/test_a11y_dynamic.py::test_a_rejected_answer_toasts_the_reason_to_the_sending_tab_alone
 - screenshot: docs/features/groom/gui/screenshots/operator-answers-blocked-gate-answer-drafted.png
 
 ### toggle-detail-working-tree-diff

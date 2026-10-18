@@ -1053,7 +1053,9 @@ async def _handle_command(data: dict, queue: asyncio.Queue | None = None) -> Non
     file_path = str(data.get("file_path", ""))
     answer = str(data.get("answer", ""))
     wf = state.WORKFLOWS.get(container_id)
-    await _answer(wf, container_id, file_path, answer)
+    result = await _answer(wf, container_id, file_path, answer)
+    if not result.ok and queue is not None:
+        await state.send(queue, projection.answer_rejected_message(container_id, file_path, result.message))
 
 
 async def _send_loop(socket: WebSocket, queue: asyncio.Queue) -> None:
@@ -1070,7 +1072,7 @@ async def _recv_loop(socket: WebSocket, queue: asyncio.Queue) -> None:
 
 @websocket("/ws")
 async def dashboard_ws(socket: WebSocket) -> None:
-    """One socket per open tab, carrying JSON in both directions: fleet-wide ``state``/``notify``/``answered`` frames plus this tab's own ``detail`` frames down, ``{"cmd": "answer"|"watch", ...}`` up."""
+    """One socket per open tab, carrying JSON in both directions: fleet-wide ``state``/``notify``/``answered`` frames plus this tab's own ``detail`` and ``answer_rejected`` frames down, ``{"cmd": "answer"|"watch", ...}`` up."""
     await socket.accept()
     queue: asyncio.Queue = asyncio.Queue()
     state.add_client(queue)

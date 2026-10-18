@@ -356,6 +356,11 @@ def run_message(
     return {"type": "run", "ts": now, "run": run_row(wf, tel, now)}
 
 
+def answer_rejected_message(container_id: str, file_path: str, reason: str) -> dict[str, Any]:
+    """The refusal of one answer, addressed to the tab that sent it alone."""
+    return {"type": "answer_rejected", "id": container_id, "file_path": file_path, "reason": reason}
+
+
 def repo_entries(
     entries: list[tuple[WorkflowContainer, list[str]]],
 ) -> list[dict[str, Any]]:

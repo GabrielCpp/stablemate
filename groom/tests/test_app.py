@@ -18,6 +18,7 @@ from groom import app as groom_app
 from groom import discovery, sidecar_hub, state, store
 from groom.models import AnswerResult, GateInfo, RunTelemetry, WorkflowContainer, WorkflowState
 from workhorse import control, inbox
+from workhorse import gates as gate_file
 
 
 @pytest.fixture(autouse=True)
@@ -895,6 +896,45 @@ def test_handle_answer_failure_does_not_flip_or_dispatch():
 
     assert state.WORKFLOWS["abc123"].state == WorkflowState.BLOCKED
     assert "groom:answered" not in captured["fragment"]
+
+
+def test_a_rejected_answer_tells_the_sender_alone_why(tmp_path):
+    _reset()
+    answered = gate_file.apply_answer(gate_file.format_operator_gate("Ship it?"), "yes")
+    (tmp_path / "docs").mkdir()
+    (tmp_path / "docs" / "gate.md").write_text(answered)
+    wf = WorkflowContainer(
+        container_id="abc123", name="w", state=WorkflowState.BLOCKED,
+        native=True, workspace_volume=str(tmp_path),
+    )
+    wf.gates["docs/gate.md"] = GateInfo(workflow_id="abc123", file_path="docs/gate.md", question="Ship it?")
+    state.WORKFLOWS["abc123"] = wf
+
+    async def drive() -> tuple[list[dict], list[dict]]:
+        sender: asyncio.Queue = asyncio.Queue()
+        other: asyncio.Queue = asyncio.Queue()
+        state.add_client(sender)
+        state.add_client(other)
+        await groom_app._handle_command(
+            {"cmd": "answer", "workflow_id": "abc123", "file_path": "docs/gate.md", "answer": "no"}, sender
+        )
+        drained = ([], [])
+        for queue, into in ((sender, drained[0]), (other, drained[1])):
+            while not queue.empty():
+                into.append(queue.get_nowait())
+        return drained
+
+    to_sender, to_other = asyncio.run(drive())
+
+    rejected = [m for m in to_sender if m["type"] == "answer_rejected"]
+    assert rejected == [{
+        "type": "answer_rejected", "id": "abc123", "file_path": "docs/gate.md",
+        "reason": "already answered in another tab",
+    }]
+    assert not [m for m in to_other if m["type"] in ("answer_rejected", "answered")]
+    assert "<" not in json.dumps(rejected)
+    assert (tmp_path / "docs" / "gate.md").read_text() == answered
+    assert state.WORKFLOWS["abc123"].state == WorkflowState.BLOCKED
 
 
 def test_outbox_get_names_the_gate_the_run_is_parked_on():

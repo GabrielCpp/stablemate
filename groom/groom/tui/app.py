@@ -296,6 +296,9 @@ class GroomTui(App[None]):
             self.bell()
         elif kind == "answered":
             await self._on_answered(frame)
+        elif kind == "answer_rejected":
+            reason = clean(frame.get("reason")) or "groom refused it"
+            self.notify(f"Answer not taken: {reason}.", title="groom", severity="error", markup=False)
 
     async def _on_answered(self, frame: Frame) -> None:
         path = client.answered_gate(self.store, frame)

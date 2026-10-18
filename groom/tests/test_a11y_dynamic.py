@@ -462,6 +462,26 @@ def test_the_answer_form_is_reachable_and_submittable_by_keyboard():
         page.close()
 
 
+def test_a_rejected_answer_toasts_the_reason_to_the_sending_tab_alone():
+    live = _live()
+    if live is None:
+        return
+    sender = _open(live)
+    bystander = _open(live)
+    try:
+        _drive(sender, "runs")
+        sender.fill("form[data-answer] textarea", "sqlite")
+        sender.click("form[data-answer] button[type=submit]")
+        toast = sender.wait_for_selector("#toasts .toast.blocked", timeout=10000)
+        assert toast is not None
+        assert toast.inner_text().splitlines() == ["✗ answer not taken", "gate file not found"]
+        bystander.wait_for_timeout(500)
+        assert bystander.query_selector("#toasts .toast") is None
+    finally:
+        sender.close()
+        bystander.close()
+
+
 if __name__ == "__main__":
     failed = 0
     try:

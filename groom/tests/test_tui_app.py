@@ -171,6 +171,28 @@ def test_a_failed_send_toasts_an_error_and_keeps_the_text():
     _run(scenario)
 
 
+def test_a_rejected_answer_toasts_the_cleaned_reason_and_keeps_the_text():
+    async def scenario() -> None:
+        link = support.FakeLink()
+        async with _booted(link) as (app, pilot):
+            block = await _open_blocked(app, pilot, link)
+            await pilot.press("a")
+            await pilot.press(*"sqlite")
+            await pilot.press("ctrl+s")
+            await support.until(lambda: any(f.get("cmd") == "answer" for f in link.sent))
+            link.push({
+                "type": "answer_rejected", "id": support.ACME, "file_path": "context/gate.md",
+                "reason": "[b]failed[/b] to write answer\x1b[2J",
+            })
+            await support.until(lambda: any(n.severity == "error" for n in app._notifications))
+            messages = [n.message for n in app._notifications if n.severity == "error"]
+            assert messages == ["Answer not taken: [b]failed[/b] to write answer."]
+            assert block.answer_box is not None
+            assert block.answer_box.text == "sqlite"
+
+    _run(scenario)
+
+
 def test_an_empty_answer_is_not_sent():
     async def scenario() -> None:
         link = support.FakeLink()

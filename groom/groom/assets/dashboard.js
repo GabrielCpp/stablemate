@@ -183,6 +183,7 @@ function onFrame(msg) {
   else if (msg.type === "detail") onDetail(msg);
   else if (msg.type === "notify") onNotify(msg.message);
   else if (msg.type === "answered") onAnswered(msg);
+  else if (msg.type === "answer_rejected") onAnswerRejected(msg);
 }
 
 /** Tell the server which run's detail pane this tab has open — the subscription
@@ -1702,6 +1703,10 @@ function onNotify(message) {
 // answer against a different run is never touched.
 function onAnswered() {
   pushToast("ok", "✓ answer sent", "", 3500);
+}
+
+function onAnswerRejected(msg) {
+  pushToast("blocked", "✗ answer not taken", msg.reason || "groom refused the answer.", 7000);
 }
 
 // --------------------------------------------------------------------------- //
