@@ -20,7 +20,7 @@ address the defect, and `blocked` with the product decision when coverage cannot
 operator input. The turn reviews only; it does not edit artifacts.
 
 - file: `workflows/src/workhorse_workflows/author/story_split/prompts/review-coverage.md`
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::CoverageReview` @e0c7b3335724
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::CoverageReview` @2bce00d7c202
 - detail: [author story-split subflow](../concepts/story-split-subflow.md)
 - tests: `workflows/tests/author/story_split/test_flow.py::test_coverage_findings_drive_a_bounded_resplit_worklist`
 
@@ -30,13 +30,13 @@ operator input. The turn reviews only; it does not edit artifacts.
 - type: string
 - required: true
 - semantics: the single epic whose story split is judged
-- verify: json_path(path="$.epic", matches=".+")
+- verify: json_path(path="$.epic", equals="acme-epic")
 
 ### epic_dir
 - type: string path
 - required: true
 - semantics: canonical directory containing the epic document and all story documents under review
-- verify: json_path(path="$.epic_dir", matches=".+")
+- verify: json_path(path="$.epic_dir", equals="docs/stories/acme-story")
 
 ### status
 - type: string
@@ -50,4 +50,4 @@ operator input. The turn reviews only; it does not edit artifacts.
 - default: empty string
 - required: true
 - semantics: adequacy rationale, specific stories to add or split, or the blocking question
-- verify: json_path(path="$.notes", matches=".*")
+- verify: json_path(path="$.notes", equals="Applied the change and ran the gates.")

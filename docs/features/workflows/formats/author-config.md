@@ -12,7 +12,7 @@ the intake required by the selected mode. The feature book is read-only groundin
 loading does not create a surface inventory.
 
 - code: `workflows/src/workhorse_workflows/author/shared/nodes/config.py::load_config` @ead9f607b8ce
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::Config` @e0c7b3335724
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::Config` @2bce00d7c202
 - detail: [author shared paths](../concepts/author-shared-paths.md)
 - detail: [approved roadmap](../concepts/approved-roadmap.md)
 - detail: [author story-split subflow](../concepts/story-split-subflow.md)
@@ -25,8 +25,8 @@ loading does not create a surface inventory.
 - default: empty string
 - required: false
 - semantics: absolute repository root selected from the explicit input or repository markers and used for graph and artifact operations
-- verify: json_path(path="$.repo_root", matches=".+")
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::Config` @e0c7b3335724
+- verify: json_path(path="$.repo_root", equals="docs/stories")
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::Config` @2bce00d7c202
 - detail: [author configuration field origin](../concepts/author-config-field-origin.md)
 
 ### backlog_path
@@ -34,8 +34,8 @@ loading does not create a surface inventory.
 - default: empty string
 - required: false
 - semantics: configured backlog path used for story, story-edit, and epic-edit intake checks
-- verify: json_path(path="$.backlog_path", matches=".*")
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::Config` @e0c7b3335724
+- verify: json_path(path="$.backlog_path", equals="docs/stories/acme-story/story.md")
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::Config` @2bce00d7c202
 - detail: [author configuration field origin](../concepts/author-config-field-origin.md)
 
 ### roadmap_path
@@ -43,8 +43,8 @@ loading does not create a surface inventory.
 - default: empty string
 - required: false
 - semantics: the sole approved roadmap path in epic mode, or an empty path in other modes
-- verify: json_path(path="$.roadmap_path", matches=".*")
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::Config` @e0c7b3335724
+- verify: json_path(path="$.roadmap_path", equals="docs/stories/acme-story/story.md")
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::Config` @2bce00d7c202
 - detail: [author configuration field origin](../concepts/author-config-field-origin.md)
 
 ### epics_dir
@@ -52,8 +52,8 @@ loading does not create a surface inventory.
 - default: empty string
 - required: false
 - semantics: configured epic directory used to resolve the selected epic
-- verify: json_path(path="$.epics_dir", matches=".+")
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::Config` @e0c7b3335724
+- verify: json_path(path="$.epics_dir", equals="docs/stories/acme-story")
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::Config` @2bce00d7c202
 - detail: [author configuration field origin](../concepts/author-config-field-origin.md)
 
 ### features_dir
@@ -61,8 +61,8 @@ loading does not create a surface inventory.
 - default: empty string
 - required: false
 - semantics: configured feature-book directory exposed as read-only grounding to author prompts
-- verify: json_path(path="$.features_dir", matches=".+")
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::Config` @e0c7b3335724
+- verify: json_path(path="$.features_dir", equals="docs/stories/acme-story")
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::Config` @2bce00d7c202
 - detail: [author configuration field origin](../concepts/author-config-field-origin.md)
 
 ### layers
@@ -71,7 +71,7 @@ loading does not create a surface inventory.
 - required: false
 - semantics: best-effort local-instruction skill paths used as prompt layer hints
 - verify: json_path(path="$.layers", matches="^\\[\\]$")
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::Config` @e0c7b3335724
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::Config` @2bce00d7c202
 - detail: [author configuration field origin](../concepts/author-config-field-origin.md)
 
 ## Methods
@@ -93,9 +93,8 @@ loading does not create a surface inventory.
 - raises: `WorkflowFailed` in epic mode when no single approved roadmap qualifies
 - verify: count(subject="invalid approved roadmap configuration failures", equals=1)
 - returns: a `Config` containing the absolute repository root and repository-relative configured paths
-- verify: json_path(path="$.repo_root", matches=".+")
+- verify: json_path(path="$.repo_root", equals="docs/stories")
 - code: `workflows/src/workhorse_workflows/author/shared/nodes/config.py::load_config` @ead9f607b8ce
-- code: `workflows/tests/author/test_config.py::test_epic_authoring_requires_an_approved_roadmap`
 - tests: `workflows/tests/author/test_config.py::test_author_config_never_invents_a_surface_inventory`
 - tests: `workflows/tests/author/test_config.py::test_epic_authoring_requires_an_approved_roadmap`
 - tests: `workflows/tests/author/test_config.py::test_epic_authoring_does_not_fall_back_to_a_backlog`
@@ -107,5 +106,5 @@ loading does not create a surface inventory.
 - does: returns an empty mapping when the file is missing, unreadable, invalid YAML, or contains a non-mapping value
 - verify: json_path(path="$.template", matches="^\\{\\}$")
 - returns: the parsed YAML mapping or an empty mapping
-- verify: json_path(path="$.template", matches=".*")
+- verify: json_path(path="$.template", equals="example template")
 - code: `workflows/src/workhorse_workflows/author/shared/nodes/config.py::_template` @ead9f607b8ce

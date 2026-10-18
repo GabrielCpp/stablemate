@@ -19,7 +19,7 @@ The epic-split flow renders this template for its initial milestone-to-skeleton 
 - type: `str`
 - required: true
 - semantics: path to the approved roadmap document that owns the milestone and defines its scope
-- verify: json_path(path="$.roadmap", matches=".+")
+- verify: json_path(path="$.roadmap", equals="example roadmap")
 - code: `workflows/src/workhorse_workflows/author/epic_split/flow.py::EpicSplit._split_args` @0f21033e17f5
 - detail: [epic split prompt args](../concepts/epic-split-prompt-args.md)
 
@@ -27,7 +27,7 @@ The epic-split flow renders this template for its initial milestone-to-skeleton 
 - type: `str`
 - required: true
 - semantics: path to the milestone document inside the roadmap, containing the `epics:` list to be replaced
-- verify: json_path(path="$.milestone", matches=".+")
+- verify: json_path(path="$.milestone", equals="example milestone")
 - code: `workflows/src/workhorse_workflows/author/epic_split/flow.py::EpicSplit._split_args` @0f21033e17f5
 - detail: [epic split prompt args](../concepts/epic-split-prompt-args.md)
 
@@ -35,7 +35,7 @@ The epic-split flow renders this template for its initial milestone-to-skeleton 
 - type: `str`
 - required: true
 - semantics: canonical directory path where new epic skeleton documents are created
-- verify: json_path(path="$.epics_dir", matches=".+")
+- verify: json_path(path="$.epics_dir", equals="docs/stories/acme-story")
 - code: `workflows/src/workhorse_workflows/author/epic_split/flow.py::EpicSplit._split_args` @0f21033e17f5
 - detail: [epic split prompt args](../concepts/epic-split-prompt-args.md)
 
@@ -55,7 +55,7 @@ The epic-split flow renders this template for its initial milestone-to-skeleton 
 - required: true
 - semantics: whether the agent created the ordered skeleton list or encountered a blocking product decision
 - verify: json_path(path="$.status", matches="^(complete|blocked)$")
-- code: `workflows/src/workhorse_workflows/author/epic_split/schemas.py::EpicSplitResult` @4032a5e504d5
+- code: `workflows/src/workhorse_workflows/author/epic_split/schemas.py::EpicSplitResult` @38f4bbac59ba
 - detail: [epic split result](epic-split-result.md)
 
 ### notes
@@ -63,6 +63,6 @@ The epic-split flow renders this template for its initial milestone-to-skeleton 
 - required: true
 - semantics: description of the ordered skeleton list and its rationale, or the blocking question
 - verify: json_path(path="$.notes", matches=".*")
-- code: `workflows/src/workhorse_workflows/author/epic_split/schemas.py::EpicSplitResult` @4032a5e504d5
+- code: `workflows/src/workhorse_workflows/author/epic_split/schemas.py::EpicSplitResult` @38f4bbac59ba
 - detail: [epic split result](epic-split-result.md)
 

@@ -14,6 +14,6 @@ class documentation establishes a preference, deprecation, or replacement relati
 them. A reader chooses the field for the needed role and must not substitute `status` or `notes`
 for `findings` when determining whether an audit passed.
 
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::AuditResult` @e0c7b3335724
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::AuditResult` @2bce00d7c202
 - rule: use `findings` to determine the audit verdict, `status` for agent-reported status, and `notes` for explanatory summary; none substitutes for another
 

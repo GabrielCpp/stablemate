@@ -8,7 +8,7 @@ title: Story split agent result
 The agent result controls whether the selected epic's stories are accepted for coverage checking
 or whether the turn is blocked or declines the requested rework.
 
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::StorySplit` @e0c7b3335724
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::StorySplit` @2bce00d7c202
 - detail: [author story-split subflow](../concepts/story-split-subflow.md)
 
 ## Fields
@@ -18,8 +18,8 @@ or whether the turn is blocked or declines the requested rework.
 - default: empty string
 - required: false
 - semantics: selects coverage checking, the coverage gate, or the normal continuation
-- verify: json_path(path="$.status", matches=".+")
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::StorySplit` @e0c7b3335724
+- verify: json_path(path="$.status", equals="example status")
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::StorySplit` @2bce00d7c202
 - detail: [story split result field roles](../concepts/story-split-result-field-roles.md)
 
 ### notes
@@ -27,6 +27,6 @@ or whether the turn is blocked or declines the requested rework.
 - default: empty string
 - required: false
 - semantics: agent findings passed to a gate or the next rework turn
-- verify: json_path(path="$.notes", matches=".*")
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::StorySplit` @e0c7b3335724
+- verify: json_path(path="$.notes", equals="Applied the change and ran the gates.")
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::StorySplit` @2bce00d7c202
 - detail: [story split result field roles](../concepts/story-split-result-field-roles.md)

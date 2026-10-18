@@ -21,7 +21,7 @@ split or addressed rework returns `complete`; an unresolved product or scope cho
 perform staging, commit, push, or branch operations.
 
 - file: `workflows/src/workhorse_workflows/author/story_split/prompts/split-stories.md`
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::StorySplit` @e0c7b3335724
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::StorySplit` @2bce00d7c202
 - detail: [author story-split subflow](../concepts/story-split-subflow.md)
 - tests: `workflows/tests/author/story_split/test_flow.py::test_accepts_one_epic_graph_without_selecting_authoring_or_git`
 
@@ -31,20 +31,20 @@ perform staging, commit, push, or branch operations.
 - type: string
 - required: true
 - semantics: the single epic whose stories are split and refined
-- verify: json_path(path="$.epic", matches=".+")
+- verify: json_path(path="$.epic", equals="acme-epic")
 
 ### epic_dir
 - type: string path
 - required: true
 - semantics: canonical directory containing the epic document and story documents to inspect
-- verify: json_path(path="$.epic_dir", matches=".+")
+- verify: json_path(path="$.epic_dir", equals="docs/stories/acme-story")
 
 ### rework_notes
 - type: string
 - default: empty string
 - required: true
 - semantics: prior mechanical or semantic coverage findings that bind a rework pass
-- verify: json_path(path="$.rework_notes", matches=".*")
+- verify: json_path(path="$.rework_notes", equals="Applied the change and ran the gates.")
 
 The prompt treats a non-empty value as binding coverage-stage feedback. It may change the split,
 merge or add stories, correct `covers`, or add real same-epic `depends` edges; it must not claim
@@ -62,4 +62,4 @@ completion without either making the requested change or returning a reasoned `s
 - default: empty string
 - required: true
 - semantics: summary of created or refined stories, refusal rationale, or blocking question
-- verify: json_path(path="$.notes", matches=".*")
+- verify: json_path(path="$.notes", equals="Applied the change and ran the gates.")

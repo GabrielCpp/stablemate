@@ -7,7 +7,7 @@ title: Write epic result
 
 The agent reply returned after writing one epic document carries its status and explanatory notes.
 
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::WriteEpicResult` @e0c7b3335724
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::WriteEpicResult` @2bce00d7c202
 - detail: [author shared schemas](../concepts/author-shared-schemas.md)
 
 ## Fields
@@ -17,8 +17,8 @@ The agent reply returned after writing one epic document carries its status and 
 - default: empty string
 - required: false
 - semantics: agent-reported outcome of writing the epic
-- verify: json_path(path="$.status", matches=".*")
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::WriteEpicResult` @e0c7b3335724
+- verify: json_path(path="$.status", equals="example status")
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::WriteEpicResult` @2bce00d7c202
 - detail: [write epic result field roles](../concepts/write-epic-result-field-roles.md)
 
 ### notes
@@ -26,6 +26,6 @@ The agent reply returned after writing one epic document carries its status and 
 - default: empty string
 - required: false
 - semantics: agent notes accompanying the epic-writing outcome
-- verify: json_path(path="$.notes", matches=".*")
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::WriteEpicResult` @e0c7b3335724
+- verify: json_path(path="$.notes", equals="Applied the change and ran the gates.")
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::WriteEpicResult` @2bce00d7c202
 - detail: [write epic result field roles](../concepts/write-epic-result-field-roles.md)

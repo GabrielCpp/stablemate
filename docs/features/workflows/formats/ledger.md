@@ -8,7 +8,7 @@ title: Author attempt ledger
 The rework ledger carries prior attempts and the accumulated failed approaches so the next prompt
 does not repeat them.
 
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::Ledger` @e0c7b3335724
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::Ledger` @2bce00d7c202
 - detail: [author shared schemas](../concepts/author-shared-schemas.md)
 
 ## Fields
@@ -18,8 +18,8 @@ does not repeat them.
 - default: empty string
 - required: false
 - semantics: complete attempt-ledger text supplied to the rework prompt before the current pass
-- verify: json_path(path="$.prior_attempts", matches=".*")
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::Ledger` @e0c7b3335724
+- verify: json_path(path="$.prior_attempts", equals="example prior attempts")
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::Ledger` @2bce00d7c202
 - detail: [attempt ledger field roles](../concepts/attempt-ledger-field-roles.md)
 
 ### ledger
@@ -27,6 +27,6 @@ does not repeat them.
 - default: empty string
 - required: false
 - semantics: repository-relative path of the attempt ledger that `record_attempt` reads or updates
-- verify: json_path(path="$.ledger", matches=".*")
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::Ledger` @e0c7b3335724
+- verify: json_path(path="$.ledger", equals="example ledger")
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::Ledger` @2bce00d7c202
 - detail: [attempt ledger field roles](../concepts/attempt-ledger-field-roles.md)

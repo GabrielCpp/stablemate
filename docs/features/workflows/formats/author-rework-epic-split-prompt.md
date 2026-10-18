@@ -19,7 +19,7 @@ The epic-split flow renders this template for each rework iteration following a 
 - type: `str`
 - required: true
 - semantics: path to the approved roadmap document
-- verify: json_path(path="$.roadmap", matches=".+")
+- verify: json_path(path="$.roadmap", equals="example roadmap")
 - code: `workflows/src/workhorse_workflows/author/epic_split/flow.py::EpicSplit._split_args` @0f21033e17f5
 - detail: [epic split prompt args](../concepts/epic-split-prompt-args.md)
 
@@ -27,7 +27,7 @@ The epic-split flow renders this template for each rework iteration following a 
 - type: `str`
 - required: true
 - semantics: path to the milestone document whose epic skeleton list requires rework
-- verify: json_path(path="$.milestone", matches=".+")
+- verify: json_path(path="$.milestone", equals="example milestone")
 - code: `workflows/src/workhorse_workflows/author/epic_split/flow.py::EpicSplit._split_args` @0f21033e17f5
 - detail: [epic split prompt args](../concepts/epic-split-prompt-args.md)
 
@@ -35,7 +35,7 @@ The epic-split flow renders this template for each rework iteration following a 
 - type: `str`
 - required: true
 - semantics: canonical directory path where the epic skeleton documents are stored
-- verify: json_path(path="$.epics_dir", matches=".+")
+- verify: json_path(path="$.epics_dir", equals="docs/stories/acme-story")
 - code: `workflows/src/workhorse_workflows/author/epic_split/flow.py::EpicSplit._split_args` @0f21033e17f5
 - detail: [epic split prompt args](../concepts/epic-split-prompt-args.md)
 
@@ -43,7 +43,7 @@ The epic-split flow renders this template for each rework iteration following a 
 - type: `str`
 - required: true
 - semantics: exact findings and repairs from the review turn to be applied to the skeletons
-- verify: json_path(path="$.review_notes", matches=".+")
+- verify: json_path(path="$.review_notes", equals="Applied the change and ran the gates.")
 - code: `workflows/src/workhorse_workflows/author/epic_split/flow.py::EpicSplit.rework` @0f21033e17f5
 
 ## Response
@@ -53,7 +53,7 @@ The epic-split flow renders this template for each rework iteration following a 
 - required: true
 - semantics: whether the agent completed all repairs or encountered a new blocking question
 - verify: json_path(path="$.status", matches="^(complete|blocked)$")
-- code: `workflows/src/workhorse_workflows/author/epic_split/schemas.py::EpicSplitResult` @4032a5e504d5
+- code: `workflows/src/workhorse_workflows/author/epic_split/schemas.py::EpicSplitResult` @38f4bbac59ba
 - detail: [epic split result](epic-split-result.md)
 
 ### notes
@@ -61,6 +61,6 @@ The epic-split flow renders this template for each rework iteration following a 
 - required: true
 - semantics: description of what changed in the rework, or the new blocking question
 - verify: json_path(path="$.notes", matches=".*")
-- code: `workflows/src/workhorse_workflows/author/epic_split/schemas.py::EpicSplitResult` @4032a5e504d5
+- code: `workflows/src/workhorse_workflows/author/epic_split/schemas.py::EpicSplitResult` @38f4bbac59ba
 - detail: [epic split result](epic-split-result.md)
 

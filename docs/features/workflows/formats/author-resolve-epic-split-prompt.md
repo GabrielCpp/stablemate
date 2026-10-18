@@ -19,7 +19,7 @@ The epic-split flow renders this template for its resolution turn, which diagnos
 - type: `str`
 - required: true
 - semantics: path to the approved roadmap document
-- verify: json_path(path="$.roadmap", matches=".+")
+- verify: json_path(path="$.roadmap", equals="example roadmap")
 - code: `workflows/src/workhorse_workflows/author/epic_split/flow.py::EpicSplit.resolve` @0f21033e17f5
 - detail: [epic split context](epic-split-context.md)
 - detail: [epic split resolve prompt args](../concepts/epic-split-resolve-prompt-args.md)
@@ -28,7 +28,7 @@ The epic-split flow renders this template for its resolution turn, which diagnos
 - type: `str`
 - required: true
 - semantics: path to the milestone document where the split has blocked
-- verify: json_path(path="$.milestone", matches=".+")
+- verify: json_path(path="$.milestone", equals="example milestone")
 - code: `workflows/src/workhorse_workflows/author/epic_split/flow.py::EpicSplit.resolve` @0f21033e17f5
 - detail: [epic split context](epic-split-context.md)
 - detail: [epic split resolve prompt args](../concepts/epic-split-resolve-prompt-args.md)
@@ -37,7 +37,7 @@ The epic-split flow renders this template for its resolution turn, which diagnos
 - type: `str`
 - required: true
 - semantics: canonical directory path for epic skeletons
-- verify: json_path(path="$.epics_dir", matches=".+")
+- verify: json_path(path="$.epics_dir", equals="docs/stories/acme-story")
 - code: `workflows/src/workhorse_workflows/author/epic_split/flow.py::EpicSplit.resolve` @0f21033e17f5
 - detail: [epic split context](epic-split-context.md)
 - detail: [epic split resolve prompt args](../concepts/epic-split-resolve-prompt-args.md)
@@ -55,7 +55,7 @@ The epic-split flow renders this template for its resolution turn, which diagnos
 - type: `str`
 - required: true
 - semantics: file path to the operator context document where findings and decisions accumulate
-- verify: json_path(path="$.context_path", matches=".+")
+- verify: json_path(path="$.context_path", equals="docs/stories/acme-story/story.md")
 - code: `workflows/src/workhorse_workflows/author/epic_split/flow.py::EpicSplit.resolve` @0f21033e17f5
 - detail: [epic split resolve prompt args](../concepts/epic-split-resolve-prompt-args.md)
 
@@ -63,7 +63,7 @@ The epic-split flow renders this template for its resolution turn, which diagnos
 - type: `str`
 - required: true
 - semantics: explanation of why the prior review/rework cycle could not converge
-- verify: json_path(path="$.block_notes", matches=".+")
+- verify: json_path(path="$.block_notes", equals="Applied the change and ran the gates.")
 - code: `workflows/src/workhorse_workflows/author/epic_split/flow.py::EpicSplit.resolve` @0f21033e17f5
 - detail: [epic split resolve prompt args](../concepts/epic-split-resolve-prompt-args.md)
 
@@ -76,7 +76,7 @@ The epic-split flow renders this template for its resolution turn, which diagnos
 - verify: json_path(path="$.decision", equals="escalated")
 - consistency: operator-resolution — an unwritten decision is never this agent's to make
 - verify: json_path(path="$.decision", equals="escalated")
-- code: `workflows/src/workhorse_workflows/author/epic_split/schemas.py::OperatorResolution` @4032a5e504d5
+- code: `workflows/src/workhorse_workflows/author/epic_split/schemas.py::OperatorResolution` @38f4bbac59ba
 - detail: [operator resolution](operator-resolution.md)
 
 ### notes
@@ -84,7 +84,7 @@ The epic-split flow renders this template for its resolution turn, which diagnos
 - required: true
 - semantics: the specific operator decision required, grounded in evidence or escalated as unwritten
 - verify: json_path(path="$.notes", matches=".*")
-- code: `workflows/src/workhorse_workflows/author/epic_split/schemas.py::OperatorResolution` @4032a5e504d5
+- code: `workflows/src/workhorse_workflows/author/epic_split/schemas.py::OperatorResolution` @38f4bbac59ba
 - detail: [operator resolution](operator-resolution.md)
 
 ### tried
@@ -93,6 +93,6 @@ The epic-split flow renders this template for its resolution turn, which diagnos
 - default: empty array
 - semantics: list of evidence sources checked before escalating
 - verify: json_path(path="$.tried", matches=".*")
-- code: `workflows/src/workhorse_workflows/author/epic_split/schemas.py::OperatorResolution` @4032a5e504d5
+- code: `workflows/src/workhorse_workflows/author/epic_split/schemas.py::OperatorResolution` @38f4bbac59ba
 - detail: [operator resolution](operator-resolution.md)
 

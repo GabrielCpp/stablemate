@@ -14,5 +14,5 @@ No ranking exists among these fields: a consumer uses each field for its named r
 substitute for another. The source model requires `decision` and `notes`, while `tried` defaults to
 an empty list when no diagnostic actions have been recorded.
 
-- code: `workflows/src/workhorse_workflows/author/epic_split/schemas.py::OperatorResolution` @4032a5e504d5
+- code: `workflows/src/workhorse_workflows/author/epic_split/schemas.py::OperatorResolution` @38f4bbac59ba
 - rule: read `decision` for the escalation outcome, `notes` for its explanation, and `tried` for completed diagnostic actions; do not substitute or rank fields

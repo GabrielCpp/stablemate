@@ -19,7 +19,7 @@ The epic-split flow renders this template for its review turn, which validates w
 - type: `str`
 - required: true
 - semantics: path to the approved roadmap document that owns the milestone and defines its scope
-- verify: json_path(path="$.roadmap", matches=".+")
+- verify: json_path(path="$.roadmap", equals="example roadmap")
 - code: `workflows/src/workhorse_workflows/author/epic_split/flow.py::EpicSplit._split_args` @0f21033e17f5
 - detail: [epic split prompt args](../concepts/epic-split-prompt-args.md)
 
@@ -27,7 +27,7 @@ The epic-split flow renders this template for its review turn, which validates w
 - type: `str`
 - required: true
 - semantics: path to the milestone document containing the epic skeleton list to be reviewed
-- verify: json_path(path="$.milestone", matches=".+")
+- verify: json_path(path="$.milestone", equals="example milestone")
 - code: `workflows/src/workhorse_workflows/author/epic_split/flow.py::EpicSplit._split_args` @0f21033e17f5
 - detail: [epic split prompt args](../concepts/epic-split-prompt-args.md)
 
@@ -35,7 +35,7 @@ The epic-split flow renders this template for its review turn, which validates w
 - type: `str`
 - required: true
 - semantics: canonical directory path where the epic skeleton documents reside
-- verify: json_path(path="$.epics_dir", matches=".+")
+- verify: json_path(path="$.epics_dir", equals="docs/stories/acme-story")
 - code: `workflows/src/workhorse_workflows/author/epic_split/flow.py::EpicSplit._split_args` @0f21033e17f5
 - detail: [epic split prompt args](../concepts/epic-split-prompt-args.md)
 
@@ -55,7 +55,7 @@ The epic-split flow renders this template for its review turn, which validates w
 - required: true
 - semantics: `approved` — skeleton list is correct and ready for validation; `needs_rework` — agent has identified repairs; `blocked` — a product decision is required
 - verify: json_path(path="$.status", matches="^(approved|needs_rework|blocked)$")
-- code: `workflows/src/workhorse_workflows/author/epic_split/schemas.py::EpicSplitReview` @4032a5e504d5
+- code: `workflows/src/workhorse_workflows/author/epic_split/schemas.py::EpicSplitReview` @38f4bbac59ba
 - detail: [epic split review](epic-split-review.md)
 
 ### notes
@@ -63,6 +63,6 @@ The epic-split flow renders this template for its review turn, which validates w
 - required: true
 - semantics: exact repairs to apply on rework, or the owner decision required to unblock
 - verify: json_path(path="$.notes", matches=".*")
-- code: `workflows/src/workhorse_workflows/author/epic_split/schemas.py::EpicSplitReview` @4032a5e504d5
+- code: `workflows/src/workhorse_workflows/author/epic_split/schemas.py::EpicSplitReview` @38f4bbac59ba
 - detail: [epic split review](epic-split-review.md)
 

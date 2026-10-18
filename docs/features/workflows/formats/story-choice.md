@@ -9,7 +9,7 @@ The selection result for the next story an author flow should process. `has_stor
 an available story from an exhausted or invalid queue; the remaining fields identify the selected
 story and expose dependency-order progress.
 
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::StoryChoice` @e0c7b3335724
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::StoryChoice` @2bce00d7c202
 - detail: [author main story processing](../concepts/author-main-story-processing.md)
 
 ## Fields
@@ -20,7 +20,7 @@ story and expose dependency-order progress.
 - required: false
 - semantics: whether a story was selected
 - verify: json_path(path="$.has_story", equals=False)
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::StoryChoice` @e0c7b3335724
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::StoryChoice` @2bce00d7c202
 - detail: [story choice field roles](../concepts/story-choice-field-roles.md)
 
 ### story_path
@@ -28,8 +28,8 @@ story and expose dependency-order progress.
 - default: empty string
 - required: false
 - semantics: path to the selected story document
-- verify: json_path(path="$.story_path", matches=".*")
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::StoryChoice` @e0c7b3335724
+- verify: json_path(path="$.story_path", equals="docs/stories/acme-story/story.md")
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::StoryChoice` @2bce00d7c202
 - detail: [story choice field roles](../concepts/story-choice-field-roles.md)
 
 ### story_slug
@@ -37,8 +37,8 @@ story and expose dependency-order progress.
 - default: empty string
 - required: false
 - semantics: selected story identifier
-- verify: json_path(path="$.story_slug", matches=".*")
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::StoryChoice` @e0c7b3335724
+- verify: json_path(path="$.story_slug", equals="acme-story")
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::StoryChoice` @2bce00d7c202
 - detail: [story choice field roles](../concepts/story-choice-field-roles.md)
 
 ### story_dir
@@ -46,8 +46,8 @@ story and expose dependency-order progress.
 - default: empty string
 - required: false
 - semantics: directory containing the selected story
-- verify: json_path(path="$.story_dir", matches=".*")
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::StoryChoice` @e0c7b3335724
+- verify: json_path(path="$.story_dir", equals="docs/stories/acme-story")
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::StoryChoice` @2bce00d7c202
 - detail: [story choice field roles](../concepts/story-choice-field-roles.md)
 
 ### reason
@@ -55,8 +55,8 @@ story and expose dependency-order progress.
 - default: empty string
 - required: false
 - semantics: selection or exhaustion explanation
-- verify: json_path(path="$.reason", matches=".*")
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::StoryChoice` @e0c7b3335724
+- verify: json_path(path="$.reason", equals="The slice works without it.")
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::StoryChoice` @2bce00d7c202
 - detail: [story choice field roles](../concepts/story-choice-field-roles.md)
 
 ### progress
@@ -64,8 +64,8 @@ story and expose dependency-order progress.
 - default: empty string
 - required: false
 - semantics: human-readable completed and remaining progress
-- verify: json_path(path="$.progress", matches=".*")
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::StoryChoice` @e0c7b3335724
+- verify: json_path(path="$.progress", equals="example progress")
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::StoryChoice` @2bce00d7c202
 - detail: [story choice field roles](../concepts/story-choice-field-roles.md)
 
 ### remaining_count
@@ -74,5 +74,5 @@ story and expose dependency-order progress.
 - required: false
 - semantics: count of stories still needing authoring
 - verify: json_path(path="$.remaining_count", equals=0)
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::StoryChoice` @e0c7b3335724
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::StoryChoice` @2bce00d7c202
 - detail: [story choice field roles](../concepts/story-choice-field-roles.md)

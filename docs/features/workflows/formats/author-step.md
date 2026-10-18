@@ -9,7 +9,7 @@ The flat author planner's next artifact-derived operation. `kind` selects one of
 workflow phases; the remaining strings identify the roadmap, epic, story, and reason for that
 operation.
 
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::AuthorStep` @e0c7b3335724
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::AuthorStep` @2bce00d7c202
 - detail: [author shared schemas](../concepts/author-shared-schemas.md)
 
 ## Fields
@@ -20,7 +20,7 @@ operation.
 - required: false
 - semantics: phase of the next author operation
 - verify: json_path(path="$.kind", equals="milestone")
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::AuthorStep` @e0c7b3335724
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::AuthorStep` @2bce00d7c202
 - detail: [author step field roles](../concepts/author-step-field-roles.md)
 
 ### roadmap
@@ -28,8 +28,8 @@ operation.
 - default: empty string
 - required: false
 - semantics: roadmap associated with the planned operation
-- verify: json_path(path="$.roadmap", matches=".*")
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::AuthorStep` @e0c7b3335724
+- verify: json_path(path="$.roadmap", equals="example roadmap")
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::AuthorStep` @2bce00d7c202
 - detail: [author step field roles](../concepts/author-step-field-roles.md)
 
 ### epic
@@ -37,8 +37,8 @@ operation.
 - default: empty string
 - required: false
 - semantics: epic associated with the planned operation
-- verify: json_path(path="$.epic", matches=".*")
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::AuthorStep` @e0c7b3335724
+- verify: json_path(path="$.epic", equals="acme-epic")
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::AuthorStep` @2bce00d7c202
 - detail: [author step field roles](../concepts/author-step-field-roles.md)
 
 ### story
@@ -46,8 +46,8 @@ operation.
 - default: empty string
 - required: false
 - semantics: story associated with the planned operation
-- verify: json_path(path="$.story", matches=".*")
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::AuthorStep` @e0c7b3335724
+- verify: json_path(path="$.story", equals="acme-story")
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::AuthorStep` @2bce00d7c202
 - detail: [author step field roles](../concepts/author-step-field-roles.md)
 
 ### reason
@@ -55,6 +55,6 @@ operation.
 - default: empty string
 - required: false
 - semantics: planner reason for selecting the operation
-- verify: json_path(path="$.reason", matches=".*")
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::AuthorStep` @e0c7b3335724
+- verify: json_path(path="$.reason", equals="The slice works without it.")
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::AuthorStep` @2bce00d7c202
 - detail: [author step field roles](../concepts/author-step-field-roles.md)

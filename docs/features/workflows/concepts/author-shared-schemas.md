@@ -13,7 +13,7 @@ format nodes linked below document the fields exposed by these contracts. `main.
 principal graph's node-return and agent-reply models listed below; the other schema modules are
 separate source-layer groups.
 
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/_base.py::AuthorResult` @9dc6216f013f
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/_base.py::AuthorResult` @6a7046575304
 - tests: [author unit tests](../ops/author-unit-tests.md)
 - detail: [author configuration](../formats/author-config.md)
 - detail: [author run context](../formats/run-context.md)
@@ -76,7 +76,7 @@ separate source-layer groups.
 - verify: count(subject="author schema null filtering", equals=1)
 - returns: the filtered mapping or the original non-mapping input
 - verify: count(subject="author schema validator inputs", equals=1)
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/_base.py::AuthorResult._drop_nulls` @9dc6216f013f
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/_base.py::AuthorResult._drop_nulls` @6a7046575304
 
 ## Schema modules
 
@@ -89,51 +89,51 @@ The edit plan contains seed and story change formats, while an epic snapshot con
 story, and milestone snapshot formats. Their complete field contracts are the existing format
 nodes reached from the author surfaces and subflows.
 
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::Config` @e0c7b3335724
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::RunContext` @e0c7b3335724
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::AuthorStep` @e0c7b3335724
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::StoryChoice` @e0c7b3335724
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::SeededStory` @e0c7b3335724
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::Defects` @e0c7b3335724
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::RoadmapStatus` @e0c7b3335724
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::VerifyReport` @e0c7b3335724
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::Feedback` @e0c7b3335724
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::Pruned` @e0c7b3335724
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::Ledger` @e0c7b3335724
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::Committed` @e0c7b3335724
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::WriteEpicResult` @e0c7b3335724
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::StorySplit` @e0c7b3335724
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::MockupResult` @e0c7b3335724
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::MockupGate` @e0c7b3335724
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::WriteStoryResult` @e0c7b3335724
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::AuditFinding` @e0c7b3335724
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::AuditResult` @e0c7b3335724
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::CoverageReview` @e0c7b3335724
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/edit.py::EditIntent` @ddad101f4da9
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/edit.py::ResolvedBullet` @ddad101f4da9
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/edit.py::SeedSnapshot` @ddad101f4da9
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/edit.py::StorySnapshot` @ddad101f4da9
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/edit.py::MilestoneSnapshot` @ddad101f4da9
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/edit.py::EpicSnapshot` @ddad101f4da9
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/edit.py::SeedChange` @ddad101f4da9
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/edit.py::StoryChange` @ddad101f4da9
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/edit.py::EpicEditPlan` @ddad101f4da9
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/edit.py::AppliedEpicEdit` @ddad101f4da9
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/edit.py::EpicEditReview` @ddad101f4da9
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/edit.py::EpicRewriteResult` @ddad101f4da9
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/survey.py::SurveyConfig` @f79c1c007a97
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/survey.py::InventoryCheck` @f79c1c007a97
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/survey.py::Expansion` @f79c1c007a97
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/survey.py::UnitPick` @f79c1c007a97
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/survey.py::SplitResult` @f79c1c007a97
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/survey.py::MarkResult` @f79c1c007a97
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/survey.py::RecordCheck` @f79c1c007a97
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/survey.py::VerifyResult` @f79c1c007a97
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/survey.py::PartitionCheck` @f79c1c007a97
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/survey.py::EmitResult` @f79c1c007a97
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/survey.py::PlanResult` @f79c1c007a97
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/survey.py::UnitAssessment` @f79c1c007a97
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/survey.py::RecordFix` @f79c1c007a97
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/survey.py::PartitionProposal` @f79c1c007a97
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/survey.py::OperatorResolution` @f79c1c007a97
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/parity.py::ParityConfig` @9c1c30dc1201
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::Config` @2bce00d7c202
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::RunContext` @2bce00d7c202
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::AuthorStep` @2bce00d7c202
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::StoryChoice` @2bce00d7c202
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::SeededStory` @2bce00d7c202
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::Defects` @2bce00d7c202
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::RoadmapStatus` @2bce00d7c202
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::VerifyReport` @2bce00d7c202
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::Feedback` @2bce00d7c202
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::Pruned` @2bce00d7c202
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::Ledger` @2bce00d7c202
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::Committed` @2bce00d7c202
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::WriteEpicResult` @2bce00d7c202
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::StorySplit` @2bce00d7c202
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::MockupResult` @2bce00d7c202
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::MockupGate` @2bce00d7c202
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::WriteStoryResult` @2bce00d7c202
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::AuditFinding` @2bce00d7c202
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::AuditResult` @2bce00d7c202
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::CoverageReview` @2bce00d7c202
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/edit.py::EditIntent` @0cf57cc63031
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/edit.py::ResolvedBullet` @0cf57cc63031
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/edit.py::SeedSnapshot` @0cf57cc63031
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/edit.py::StorySnapshot` @0cf57cc63031
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/edit.py::MilestoneSnapshot` @0cf57cc63031
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/edit.py::EpicSnapshot` @0cf57cc63031
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/edit.py::SeedChange` @0cf57cc63031
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/edit.py::StoryChange` @0cf57cc63031
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/edit.py::EpicEditPlan` @0cf57cc63031
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/edit.py::AppliedEpicEdit` @0cf57cc63031
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/edit.py::EpicEditReview` @0cf57cc63031
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/edit.py::EpicRewriteResult` @0cf57cc63031
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/survey.py::SurveyConfig` @7db58efbfd66
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/survey.py::InventoryCheck` @7db58efbfd66
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/survey.py::Expansion` @7db58efbfd66
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/survey.py::UnitPick` @7db58efbfd66
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/survey.py::SplitResult` @7db58efbfd66
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/survey.py::MarkResult` @7db58efbfd66
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/survey.py::RecordCheck` @7db58efbfd66
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/survey.py::VerifyResult` @7db58efbfd66
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/survey.py::PartitionCheck` @7db58efbfd66
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/survey.py::EmitResult` @7db58efbfd66
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/survey.py::PlanResult` @7db58efbfd66
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/survey.py::UnitAssessment` @7db58efbfd66
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/survey.py::RecordFix` @7db58efbfd66
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/survey.py::PartitionProposal` @7db58efbfd66
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/survey.py::OperatorResolution` @7db58efbfd66
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/parity.py::ParityConfig` @fe368d0765c5
