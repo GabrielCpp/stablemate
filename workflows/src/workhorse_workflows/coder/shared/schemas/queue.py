@@ -50,6 +50,7 @@ class StoryCommitted(CoderResult):
     superseded_outcome: bool = False
 
 
+@dry_run(clean=True)
 class WorktreeCleanliness(CoderResult):
     """`check_repos_clean` — has the agent left uncommitted work behind in any repo?"""
 

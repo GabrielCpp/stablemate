@@ -4,6 +4,7 @@ from __future__ import annotations
 from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
+from workhorse.pyflow import dry_run
 
 BLOCKED_STATUSES = frozenset({"blocked", "unfixable", "not_passed", "invalid"})
 
@@ -38,6 +39,7 @@ class QaBaseResult(_Result):
         return [f for f in found if getattr(f, "actionable", False)]
 
 
+@dry_run(status="passed")
 class QaResult(QaBaseResult):
     """The story's running QA verdict — ostler's four states, plus the blank before one."""
 
@@ -49,12 +51,14 @@ class QaResult(QaBaseResult):
     notes: str = Field(default="", description="One line on why the verdict stands there.")
 
 
+@dry_run(status="passed")
 class QaPlanRun(QaResult):
     """`run_qa_plan`'s verdict, plus the ostler payload only it has."""
 
     ostler: dict[str, Any] = {}
 
 
+@dry_run(ready="unneeded")
 class StackStatus(QaBaseResult):
     """`ensure_stack`'s account of the durable QA stack: up, adopted, undeclared, or broken."""
 

@@ -54,8 +54,10 @@ def _guard_authored(okf: Ostler, slug: str, logger: logging.Logger) -> None:
     )
 
 
-def guard_story_file(story: StoryPaths) -> None:
+@blueprint.node
+def guard_story_file(logger: logging.Logger, story: StoryPaths) -> None:
     """Fail the run when the story a lane was pointed at is not a file it can read."""
+    del logger
     if not story.story_path:
         raise WorkflowFailed(
             f"no story path for {story.story_slug or '(no slug)'!r} — the slug did not "

@@ -36,6 +36,7 @@ class QaRunResult(CoderResult):
     )
 
 
+@dry_run(status="passed")
 class QaPlanValidation(CoderResult):
     """`ostler qa validate` — is the authored `qa_plan.py` a plan the runner can execute?"""
 

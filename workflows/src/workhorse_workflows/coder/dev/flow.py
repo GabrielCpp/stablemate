@@ -73,7 +73,7 @@ class Dev(Workflow):
         """Resolve the slug to paths and the workspace to directories."""
         self.call(resolve_workspace_dirs, self.docs_path)
         story = self.call(prepare_story, self.docs_path, self.story, self.epic)
-        guard_story_file(story)
+        self.call(guard_story_file, story)
         return story
 
     def labels(self) -> dict[str, str]:

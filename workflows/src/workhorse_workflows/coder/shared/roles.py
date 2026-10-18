@@ -7,7 +7,7 @@ from typing import Any, Generic, TypeVar
 
 import yaml
 from pydantic import BaseModel
-from workhorse.pyflow import WorkflowFailed
+from workhorse.pyflow import WorkflowFailed, resolves_prompt
 from workhorse.templates import BODY_PREFIX
 from workhorse_workflows.coder.shared.schemas.render import schema_block
 from workhorse_workflows.kit import find_repo_root
@@ -36,15 +36,21 @@ class Turn(Generic[T]):
     returns: type[T]
 
 
-def turn(flow: Any, role: str, *, returns: type[T]) -> Turn[T]:
-    """Resolve `role` to the envelope, the body arguments and the contract for one turn."""
+def _envelope(cls: type, role: str) -> str:
+    """The envelope path `role` renders from a flow of class `cls`."""
     if role not in ROLES:
         raise WorkflowFailed(
             f"unknown prompt role {role!r}; the coder workflow's roles are: "
             + ", ".join(sorted(ROLES))
         )
+    return f"{_flow_dir_of(cls)}/prompts/{role}.md"
+
+
+@resolves_prompt(_envelope)
+def turn(flow: Any, role: str, *, returns: type[T]) -> Turn[T]:
+    """Resolve `role` to the envelope, the body arguments and the contract for one turn."""
+    prompt = _envelope(type(flow), role)
     body = _body(role, flow.repo_dir, flow.library_dirs)
-    prompt = f"{flow_dir(flow)}/prompts/{role}.md"
     args: dict[str, Any] = {"result_schema": schema_block(returns)}
     if body is not None:
         args |= {"_body_dir": str(body.parent), "body_template": f"{BODY_PREFIX}/{body.name}"}
@@ -53,11 +59,15 @@ def turn(flow: Any, role: str, *, returns: type[T]) -> Turn[T]:
 
 def flow_dir(flow: Any) -> str:
     """The flow package's own directory name, as a prompt path is prefixed with it."""
-    module = type(flow).__module__
+    return _flow_dir_of(type(flow))
+
+
+def _flow_dir_of(cls: type) -> str:
+    module = cls.__module__
     prefix = f"{PACKAGE}."
     if not module.startswith(prefix):
         raise WorkflowFailed(
-            f"{type(flow).__name__} is defined in {module!r}, outside {PACKAGE!r}, so it "
+            f"{cls.__name__} is defined in {module!r}, outside {PACKAGE!r}, so it "
             "has no flow directory to resolve its prompts against. A coder flow lives in "
             "its own package under `coder/`, beside the `prompts/` it renders."
         )

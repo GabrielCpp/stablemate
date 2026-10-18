@@ -3,9 +3,12 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
+from workhorse.pyflow import dry_run
+
 from workhorse_workflows.coder.shared.schemas._base import CoderResult
 
 
+@dry_run(status="passed")
 class OkfContextResult(CoderResult):
     """`ostler qa context` / `ostler qa context-validate` — the packet, and whether it holds."""
 

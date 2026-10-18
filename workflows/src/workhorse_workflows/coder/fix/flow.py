@@ -74,7 +74,7 @@ class Fix(Workflow):
             seed_fix_story, pick.fix_bullet_id, pick.fix_bullet_text, "", "", self.docs_path
         )
         story = self.call(prepare_fix_story, self.docs_path, seed.story_slug, seed.epic)
-        guard_story_file(story)
+        self.call(guard_story_file, story)
         return Continue(story, self.work)
 
     def work(

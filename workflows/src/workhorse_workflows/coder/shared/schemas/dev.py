@@ -325,6 +325,7 @@ class GateOutcome(CoderResult):
     reason: str = ""
 
 
+@dry_run(status="clean")
 class StoryStatusCheck(CoderResult):
     """`check_story_status` — whether the story's Status line still says what it may."""
 
