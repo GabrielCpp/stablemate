@@ -6,7 +6,7 @@ import os
 from pathlib import Path
 
 import pytest
-from ostler import testsupport
+from ostler import testing
 
 UNKNOWN_BULLET_ALLOWED_TESTS: frozenset[str] = frozenset()
 
@@ -19,12 +19,12 @@ def _artifacts_dir_is_per_test(tmp_path_factory, monkeypatch):
 
 @pytest.fixture(autouse=True)
 def _inline_books_are_legal_okf(request: pytest.FixtureRequest):
-    start = len(testsupport.CONSTRUCTED_UI_NODES)
+    start = len(testing.CONSTRUCTED_UI_NODES)
     yield
-    nodes = testsupport.CONSTRUCTED_UI_NODES[start:]
+    nodes = testing.CONSTRUCTED_UI_NODES[start:]
     if not nodes or request.node.nodeid in UNKNOWN_BULLET_ALLOWED_TESTS:
         return
-    violations = testsupport.unknown_bullet_violations(nodes)
+    violations = testing.unknown_bullet_violations(nodes)
     assert not violations, (
         f"{request.node.nodeid} builds a book `unknown-bullet` would flag on a real run — the "
         f"fixture is written against a grammar these types no longer declare: {violations}"
