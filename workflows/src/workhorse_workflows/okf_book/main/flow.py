@@ -8,7 +8,7 @@ from workhorse.pyflow import Await, Continue, Done, WorkflowFailed
 from workhorse_workflows.kit import last_commit_subject, last_commit_trailer
 from workhorse_workflows.okf_book.main.exercise_book_flow import ExerciseBook
 from workhorse_workflows.okf_book.main.nodes import gate
-from workhorse_workflows.okf_book.main.nodes.book_problems import book_problems
+from workhorse_workflows.okf_book.main.nodes.book_problems import book_problems, unopted_tools
 from workhorse_workflows.okf_book.main.nodes.check_lead import latest_check_findings, record_check, unheld
 from workhorse_workflows.okf_book.main.nodes.gate import ESCALATED_SIDES, SIDE_BY_ESCALATED_CAUSE, RunFailures, keep_failures, rerun_command, take_failures
 from workhorse_workflows.okf_book.main.nodes.lead_findings import (
@@ -144,7 +144,7 @@ class OkfBook(BookFlow):
         found = self.call(book_problems, self.root, service, _source_folder(self.root, surface))
         if found:
             return Continue(len(found), self.check_book, index=index).because("the existing book has problems: check it")
-        _ = record_check(self.records_dir, self.root, service, found)
+        _ = record_check(self.records_dir, service, found, self.call(unopted_tools, self.root, service))
         ours = last_commit_subject(self.root, book) in (book_commit_subject(service), repaired_book_commit_subject(service))
         if ours or last_commit_trailer(self.root, BOOK_TRAILER, book) == REPAIRED:
             return Continue(book, self.check_book, index=index).because("this workflow wrote the book: check it")
@@ -210,7 +210,7 @@ class OkfBook(BookFlow):
         problems = self.call(book_problems, self.root, service, _source_folder(self.root, surface))
         findings = latest_check_findings(read_findings(self.records_dir), service)
         left = unheld(problems, findings)
-        before = record_check(self.records_dir, self.root, service, problems, findings)
+        before = record_check(self.records_dir, service, problems, self.call(unopted_tools, self.root, service), findings)
         if left and (not repaired or not before or len(left) < before):
             return Continue(len(left), self.copy_source, index=index, problems=problems, run_failures={} if run_failures_repaired else None).because(
                 "the check finds problems the book holds: back to its owner"
@@ -318,7 +318,7 @@ class OkfBook(BookFlow):
 
     def report(self) -> Await[...] | Done:
         """Publish the report. Any blocker stops the run at a gate, whose answer has the run settle each blocker itself."""
-        report = build_report(self.root, self.records_dir, self.services)
+        report = self.call(build_report, self.root, self.records_dir, self.services)
         page = write_report(self.records_dir, report)
         blockers = read_blockers(self.records_dir)
         if not blockers:

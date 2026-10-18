@@ -15,7 +15,7 @@ from ostler.qa.attribution import Cause
 from workhorse_workflows.okf_book.main.nodes.gate import rerun_command
 from workhorse_workflows.okf_book.main.nodes.lead_findings import CAUSE_BY_OTHER_SIDE, LeadFinding, LeadVerdict, service_findings
 from workhorse_workflows.okf_book.shared.blockers import Blocker, Phase, Side, forget_blockers, read_blockers, record_blocker
-from workhorse_workflows.okf_book.shared.page_check import PageProblem, tool_blockers
+from workhorse_workflows.okf_book.shared.page_check import PageProblem
 
 PROBLEMS_NAME = "check-problems.txt"
 SAMPLES_SHOWN = 3
@@ -119,13 +119,13 @@ def held_reasons(pairs: Iterable[tuple[PageProblem, LeadFinding]]) -> Mapping[Le
     return {finding: tuple(found) for finding, found in by_finding.items()}
 
 
-def record_check(records_dir: Path, root: Path, service: str, problems: tuple[PageProblem, ...], findings: tuple[LeadFinding, ...] = ()) -> int:
-    """Make each problem of a check a blocker on its page, in place of the ones the last check left, and each rule the lead named another side's one blocker on that side. Returns how many problems the last check left the book."""
+def record_check(records_dir: Path, service: str, problems: tuple[PageProblem, ...], tools: tuple[Blocker, ...], findings: tuple[LeadFinding, ...] = ()) -> int:
+    """Make each problem of a check a blocker on its page, in place of the ones the last check left, each unopted QA tool a blocker on the environment, and each rule the lead named another side's one blocker on that side. Returns how many problems the last check left the book."""
     before = sum(1 for blocker in read_blockers(records_dir)
                  if blocker.phase is Phase.WRITE and blocker.side is Side.BOOK and blocker.service == service)
     for side in (Side.BOOK, *CAUSE_BY_OTHER_SIDE):
         forget_blockers(records_dir, Phase.WRITE, side, service)
-    for tool in tool_blockers(root, service):
+    for tool in tools:
         _ = record_blocker(records_dir, tool)
     for problem in unheld(problems, findings):
         blocker = Blocker(subject=f"{service}: {problem.text}", service=service, phase=Phase.WRITE, side=Side.BOOK, reason=problem.text,

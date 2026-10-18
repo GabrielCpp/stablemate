@@ -4,6 +4,7 @@ It also names each page of the run's books that nothing reaches, which the run d
 """
 from __future__ import annotations
 
+import logging
 from collections import defaultdict
 from collections.abc import Iterable
 from pathlib import Path
@@ -13,6 +14,7 @@ from pydantic import BaseModel, ConfigDict
 
 from workhorse_workflows.okf_book.main.nodes.progress_ledger import LapCounts, read_laps, service_laps, trend
 from workhorse_workflows.okf_book.shared.blockers import Blocker, read_blockers
+from workhorse_workflows.okf_book.shared.blueprint import blueprint
 from workhorse_workflows.okf_book.shared.entries import book_dir, entries_path
 from workhorse_workflows.okf_book.shared.metrics import TurnMetric, read_metrics
 from workhorse_workflows.okf_book.shared.page_check import dead_book_pages
@@ -106,7 +108,16 @@ def orphan_pages(root: Path, services: tuple[str, ...]) -> tuple[str, ...]:
     return tuple(sorted(page.rel for page in dead_book_pages(root) if page.service in services))
 
 
-def build_report(root: Path, records_dir: Path, services: tuple[str, ...]) -> BookReport:
+def _bare_in_dry_run(_logger: logging.Logger, _root: Path, records_dir: Path, services: tuple[str, ...]) -> BookReport:
+    metrics = read_metrics(records_dir)
+    return BookReport(services=services, orphans=(), minutes=0.0, costs=book_costs(metrics), blockers=read_blockers(records_dir),
+                      run=read_run(records_dir), reading=(), laps=read_laps(records_dir))
+
+
+@blueprint.node(stub=_bare_in_dry_run)
+def build_report(logger: logging.Logger, root: Path, records_dir: Path, services: tuple[str, ...]) -> BookReport:
+    """Everything the operator reads once the run stops. A dry run reads no page, so it names no orphan and no reading."""
+    del logger
     metrics = read_metrics(records_dir)
     return BookReport(
         services=services,
