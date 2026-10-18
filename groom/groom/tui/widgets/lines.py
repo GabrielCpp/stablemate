@@ -5,12 +5,16 @@ from rich.markdown import Markdown
 from rich.text import Text
 from textual import on
 from textual.markup import escape
-from textual.widgets import Collapsible, Static
+from textual.widgets import Button, Collapsible, Static
 from textual.widgets.collapsible import CollapsibleTitle
 
 from groom.tui.clean import clean
 from groom.tui.link import Frame
 from groom.tui.widgets.reconcile import Reconcilable, reconcile
+
+
+ENTRY_PAGE = 40
+EARLIER_KEY = "earlier"
 
 
 def _prose(text: object) -> RenderableType:
@@ -73,8 +77,43 @@ def _tool_head(entry: Frame) -> Text:
     return Text(_tool_title(entry), style="red" if entry.get("failed") else "")
 
 
-def build_entry(key: str, entry: Frame) -> Static | Collapsible:
+class EarlierEntries(Reconcilable, Button):
+    DEFAULT_CSS = """
+    EarlierEntries { height: 1; min-width: 0; border: none; padding: 0 1; margin: 0; }
+    EarlierEntries:focus { text-style: bold reverse; }
+    """
+
+    def __init__(self, key: str, entry: Frame) -> None:
+        Reconcilable.__init__(self, key, entry)
+        Button.__init__(self, self._label(entry), classes="entry-earlier")
+
+    @staticmethod
+    def _label(entry: Frame) -> str:
+        return f"Show {entry.get('n')} earlier entries ({entry.get('hidden')} hidden)"
+
+    async def update_data(self, data: Frame) -> bool:
+        self.data = data
+        self.label = self._label(data)
+        return True
+
+
+def tail_entries(keyed: list[tuple[str, Frame]], limit: int) -> tuple[int, list[tuple[str, Frame]]]:
+    hidden = max(len(keyed) - limit, 0)
+    return hidden, keyed[hidden:]
+
+
+def windowed(keyed: list[tuple[str, Frame]], limit: int) -> list[tuple[str, Frame]]:
+    hidden, shown = tail_entries(keyed, limit)
+    if not hidden:
+        return shown
+    marker = {"kind": "earlier", "n": min(ENTRY_PAGE, hidden), "hidden": hidden}
+    return [(EARLIER_KEY, marker), *shown]
+
+
+def build_entry(key: str, entry: Frame) -> Static | Collapsible | Button:
     kind = entry.get("kind")
+    if kind == "earlier":
+        return EarlierEntries(key, entry)
     if kind == "divider":
         return DividerEntry(key, entry)
     if kind == "tool":
@@ -103,17 +142,21 @@ class PlainLine(Reconcilable, Static):
 
 
 class TurnGroup(Reconcilable, Collapsible):
-    def __init__(self, key: str, line: Frame, opened: dict[str, bool]) -> None:
+    def __init__(self, key: str, line: Frame, opened: dict[str, bool], limits: dict[str, int]) -> None:
         Reconcilable.__init__(self, key, line)
         self.slug = clean(line.get("slug"))
         self.opened = opened
+        self.limits = limits
         Collapsible.__init__(
             self,
-            *(build_entry(entry_key, entry) for entry_key, entry in entry_keys(line.get("entries") or [])),
+            *(build_entry(entry_key, entry) for entry_key, entry in self._window(line)),
             title=self._heading(line),
             collapsed=not self._wants_open(line),
             classes="trail-turn",
         )
+
+    def _window(self, line: Frame) -> list[tuple[str, Frame]]:
+        return windowed(entry_keys(line.get("entries") or []), self.limits.get(self.slug, ENTRY_PAGE))
 
     def _wants_open(self, line: Frame) -> bool:
         return bool(self.opened.get(self.slug, line.get("status") == "running"))
@@ -130,17 +173,27 @@ class TurnGroup(Reconcilable, Collapsible):
     def _record_choice(self) -> None:
         self.opened[self.slug] = not self.collapsed
 
+    @on(Button.Pressed)
+    async def _show_earlier(self, event: Button.Pressed) -> None:
+        if isinstance(event.button, EarlierEntries):
+            event.stop()
+            self.limits[self.slug] = self.limits.get(self.slug, ENTRY_PAGE) + ENTRY_PAGE
+            await self._render_entries(self.data)
+
+    async def _render_entries(self, data: Frame) -> None:
+        await reconcile(self.query_one(Collapsible.Contents), self._window(data), build_entry)
+
     async def update_data(self, data: Frame) -> bool:
         self.data = data
         self.title = self._heading(data)
         self.collapsed = not self._wants_open(data)
-        await reconcile(self.query_one(Collapsible.Contents), entry_keys(data.get("entries") or []), build_entry)
+        await self._render_entries(data)
         return True
 
 
-def build_line(key: str, line: Frame, opened: dict[str, bool]) -> Static | Collapsible:
+def build_line(key: str, line: Frame, opened: dict[str, bool], limits: dict[str, int]) -> Static | Collapsible:
     if line.get("kind") == "turn":
-        return TurnGroup(key, line, opened)
+        return TurnGroup(key, line, opened, limits)
     return PlainLine(key, line)
 
 

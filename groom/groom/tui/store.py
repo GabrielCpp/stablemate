@@ -17,6 +17,7 @@ class Store:
     trail_kind: str = ""
     repo: Frame | None = None
     query: str = ""
+    attend: Frame = field(default_factory=dict)
 
 
 TRAIL_VIEWS = ("all", "transcript", "telemetry")
@@ -33,6 +34,7 @@ def apply_state(store: Store, msg: Frame) -> Store:
         runs=tuple(msg.get("runs") or ()),
         status=msg.get("status") or store.status,
         scanning=bool(msg.get("scanning")),
+        attend=msg.get("attend") or store.attend,
     )
 
 
@@ -87,6 +89,15 @@ def filter_runs(runs: Sequence[Frame], query: str) -> tuple[Frame, ...]:
 
 def set_query(store: Store, query: str) -> Store:
     return replace(store, query=query)
+
+
+def attendant_of(store: Store, run_id: str) -> Frame | None:
+    return (store.attend.get("by_run") or {}).get(run_id)
+
+
+def selected_attendant(store: Store) -> Frame | None:
+    row = run_by_id(store, store.selected)
+    return attendant_of(store, str(row.get("run_id") or "")) if row else None
 
 
 def run_by_id(store: Store, run_id: str) -> Frame | None:

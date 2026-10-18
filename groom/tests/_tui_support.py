@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import AsyncIterator, Callable
+from collections.abc import AsyncIterator, Awaitable, Callable
 from typing import Any
 
 from groom import projection, state
@@ -109,6 +109,9 @@ class FakeLink:
         self.sent: list[Frame] = []
         self.gets: list[str] = []
         self.posts: list[str] = []
+        self.post_log: list[tuple[str, Frame | None]] = []
+        self.post_replies: dict[str, Frame | Exception] = {}
+        self.post_handlers: dict[str, Callable[[Frame | None], Awaitable[Frame]]] = {}
         self.accept_send = True
         self.fail_open = False
         self.opens = 0
@@ -135,10 +138,13 @@ class FakeLink:
         self.sent.append(command)
         return True
 
-    async def _arrive(self, path: str) -> None:
-        self.gets.append(path)
+    async def _hold(self, path: str) -> None:
         if path in self.holds:
             await self.holds[path].wait()
+
+    async def _arrive(self, path: str) -> None:
+        self.gets.append(path)
+        await self._hold(path)
 
     async def get(self, path: str) -> Frame:
         await self._arrive(path)
@@ -152,9 +158,16 @@ class FakeLink:
             raise LinkError(path)
         return self.list_replies[path]
 
-    async def post(self, path: str) -> Frame:
+    async def post(self, path: str, body: Frame | None = None) -> Frame:
         self.posts.append(path)
-        return {}
+        self.post_log.append((path, body))
+        await self._hold(path)
+        if path in self.post_handlers:
+            return await self.post_handlers[path](body)
+        reply = self.post_replies.get(path, {})
+        if isinstance(reply, Exception):
+            raise reply
+        return reply
 
     async def close(self) -> None:
         return None

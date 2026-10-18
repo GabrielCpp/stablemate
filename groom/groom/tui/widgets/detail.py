@@ -7,6 +7,7 @@ from textual.app import ComposeResult
 from textual.containers import VerticalScroll
 from textual.widgets import Static
 
+from groom.tui import attend
 from groom.tui import store as client
 from groom.tui.clean import clean
 from groom.tui.widgets.diff import DiffTab
@@ -41,6 +42,7 @@ class DetailPane(VerticalScroll):
     def compose(self) -> ComposeResult:
         yield Static(id="head")
         yield Static(id="activity")
+        yield Static(id="attendant")
         yield Static(id="note")
         yield Static(id="tabs")
         yield GateTab(id="gate-tab")
@@ -108,11 +110,13 @@ class DetailPane(VerticalScroll):
         if not store.selected or row is None:
             head.update("")
             self.query_one("#activity", Static).update("")
+            self.query_one("#attendant", Static).update("")
             note.update("Select a run and press enter to read its gates and trail.")
             self._apply("")
             return
         head.update(head_text(row, detail))
         self.query_one("#activity", Static).update(activity_text(detail))
+        self.query_one("#attendant", Static).update(attend.attendant_line(client.attendant_of(store, str(row.get("run_id") or ""))))
         if detail is None:
             note.update("Loading…")
             self._apply("")

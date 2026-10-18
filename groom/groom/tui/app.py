@@ -2,17 +2,17 @@ from __future__ import annotations
 
 import asyncio
 import time
-from typing import Any, ClassVar
+from typing import ClassVar
 
 from rich.text import Text
 from textual import on
-from textual.app import App, ComposeResult
+from textual.app import ComposeResult
 from textual.binding import Binding, BindingType
 from textual.containers import Horizontal, Vertical
-from textual.widgets import Button, Footer, Input, OptionList, Static
-from textual.widgets.option_list import Option
+from textual.widgets import Footer, Input, OptionList, Static
 
 from groom.tui import store as client
+from groom.tui.base import GroomBase
 from groom.tui.clean import clean
 from groom.tui.connection import (
     EVAL_EVERY_S,
@@ -23,9 +23,13 @@ from groom.tui.connection import (
     derive_connection,
 )
 from groom.tui.link import Frame, Link, LinkError
+from groom.tui.screens.attend import AttendScreen
+from groom.tui.screens.panel import Panel
+from groom.tui.screens.settings import SettingsScreen
+from groom.tui.styles import CSS
 from groom.tui.widgets.detail import DetailPane
 from groom.tui.widgets.fleet import NO_MATCH_TEXT, row_text, status_text
-from groom.tui.widgets.gate import GateBlock
+from groom.tui.widgets.options import sync_options
 from groom.tui.widgets.palette import FleetProvider
 from groom.tui.widgets.runfilter import RunFilter
 
@@ -33,31 +37,10 @@ def _now_ms() -> float:
     return time.monotonic() * 1000
 
 
-class GroomTui(App[None]):
+class GroomTui(GroomBase):
     TITLE = "groom"
-    CSS = """
-    #status { height: 1; padding: 0 1; background: $boost; }
-    #left { width: 45%; border-right: solid $primary-darken-2; }
-    #filter { height: 3; }
-    #runs { height: 1fr; }
-    #runs-note { height: auto; padding: 0 1; color: $text-muted; }
-    #detail { width: 1fr; padding: 0 1; }
-    #head { text-style: bold; }
-    #note, #notice, #trail-empty, #activity, #tabs { height: auto; }
-    #metrics, #trail-bar { height: auto; margin-top: 1; }
-    #trail-tab, #trail-lines, #gate-tab { height: auto; }
-    .trail-line { height: auto; }
-    .trail-turn { height: auto; padding-left: 0; }
-    .entry-message, .entry-tool, .entry-divider { height: auto; }
-    .gate-path { color: $text-muted; margin-top: 1; }
-    .question { margin: 0; padding: 0; }
-    .answer { height: 6; }
-    .send { margin-top: 1; }
-    GateBlock { height: auto; }
-    #gates { height: auto; }
-    Collapsible { padding-bottom: 0; }
-    """
-    COMMANDS = App.COMMANDS | {FleetProvider}
+    CSS = CSS
+    COMMANDS = GroomBase.COMMANDS | {FleetProvider}
     BINDINGS: ClassVar[list[BindingType]] = [
         Binding("j", "cursor_down", "Down"),
         Binding("k", "cursor_up", "Up"),
@@ -73,6 +56,8 @@ class GroomTui(App[None]):
         Binding("a", "focus_answer", "Answer"),
         Binding("ctrl+s", "send_answer", "Send"),
         Binding("r", "refresh", "Rescan"),
+        Binding("A", "goto('attend')", "Attendant"),
+        Binding("S", "goto('settings')", "Settings"),
         Binding("escape", "focus_runs", "Runs", show=False),
         Binding("q", "quit", "Quit"),
     ]
@@ -100,17 +85,13 @@ class GroomTui(App[None]):
         yield Footer()
 
     def on_mount(self) -> None:
-        self.query_one("#runs", OptionList).focus()
+        self.main.query_one("#runs", OptionList).focus()
         self._render_status()
         self.run_worker(self._connection_loop(), exit_on_error=False)
         self.set_interval(EVAL_EVERY_S, self.evaluate)
 
     async def on_unmount(self) -> None:
         await self.link.close()
-
-    @property
-    def pane(self) -> DetailPane:
-        return self.query_one(DetailPane)
 
     async def _connection_loop(self) -> None:
         attempt = 0
@@ -178,6 +159,7 @@ class GroomTui(App[None]):
         kind = frame.get("type")
         if kind == "state":
             self.store = client.apply_state(self.store, frame)
+            self._follow_attend()
             self._render_fleet()
             await self._render_detail()
         elif kind == "run":
@@ -194,49 +176,52 @@ class GroomTui(App[None]):
             self.notify(clean(frame.get("message") or "A workflow needs your input."), title="groom: blocked", severity="warning")
             self.bell()
         elif kind == "answered":
-            await self._on_answered(frame)
+            await self.on_answered(frame)
         elif kind == "answer_rejected":
             reason = clean(frame.get("reason")) or "groom refused it"
             self.notify(f"Answer not taken: {reason}.", title="groom", severity="error", markup=False)
 
-    async def _on_answered(self, frame: Frame) -> None:
-        path = client.answered_gate(self.store, frame)
-        if not path:
+    def _follow_attend(self) -> None:
+        rev = float(self.store.attend.get("rev") or 0.0)
+        for screen in self.screen_stack:
+            if isinstance(screen, AttendScreen):
+                screen.rev_changed(rev)
+
+    def check_action(self, action: str, parameters: tuple[object, ...]) -> bool | None:
+        return self.screen is self.main or action in ("goto", "quit")
+
+    def _panel(self, name: str) -> Panel:
+        if name == "settings":
+            return SettingsScreen(self.link)
+        entry = client.selected_attendant(self.store) if self.screen is self.main else None
+        return AttendScreen(
+            self.link, float(self.store.attend.get("rev") or 0.0), str((entry or {}).get("session_id") or "")
+        )
+
+    def action_goto(self, name: str) -> None:
+        current = self.screen
+        wanted = SettingsScreen if name == "settings" else AttendScreen
+        if isinstance(current, wanted) or (current is not self.main and not isinstance(current, Panel)):
             return
-        for block in self.pane.blocks():
-            if block.file_path == path and block.answer_box is not None:
-                block.answer_box.clear()
-        self.notify("Answer sent.", title="groom")
+        if current is self.main:
+            self.push_screen(self._panel(name))
+        else:
+            self.switch_screen(self._panel(name))
 
     def _render_status(self) -> None:
-        self.query_one("#status", Static).update(status_text(self.connection, self.store))
+        self.main.query_one("#status", Static).update(status_text(self.connection, self.store))
 
     def _render_fleet(self) -> None:
         self._render_status()
         runs = client.filter_runs(self.store.runs, self.store.query)
         self._show_note(runs)
-        listing = self.query_one("#runs", OptionList)
-        ids = [str(row["id"]) for row in runs]
-        current = [str(listing.get_option_at_index(i).id) for i in range(listing.option_count)]
-        texts = {str(row["id"]): row_text(row) for row in runs}
-        if ids == current:
-            for run_id, text in texts.items():
-                if self._row_cache.get(run_id) != text:
-                    listing.replace_option_prompt(run_id, text)
-                    self._row_cache[run_id] = text
-            return
-        highlighted = listing.highlighted
-        keep = current[highlighted] if highlighted is not None and highlighted < len(current) else ""
-        listing.clear_options()
-        listing.add_options([Option(texts[run_id], id=run_id) for run_id in ids])
-        self._row_cache = texts
-        if ids:
-            listing.highlighted = ids.index(keep) if keep in ids else 0
+        listing = self.main.query_one("#runs", OptionList)
+        self._row_cache = sync_options(listing, [(str(row["id"]), row_text(row)) for row in runs], self._row_cache)
 
     def _show_note(self, shown: tuple[Frame, ...]) -> None:
         query = self.store.query.strip()
         note = NO_MATCH_TEXT.format(query=clean(query)) if query and not shown else ""
-        self.query_one("#runs-note", Static).update(Text(note))
+        self.main.query_one("#runs-note", Static).update(Text(note))
 
     @on(Input.Changed, "#filter")
     def _filter_changed(self, event: Input.Changed) -> None:
@@ -245,16 +230,13 @@ class GroomTui(App[None]):
 
     @on(Input.Submitted, "#filter")
     def _filter_submitted(self) -> None:
-        listing = self.query_one("#runs", OptionList)
+        listing = self.main.query_one("#runs", OptionList)
         listing.focus()
         if listing.option_count:
             listing.highlighted = 0
 
     def action_filter(self) -> None:
-        self.query_one(RunFilter).reveal()
-
-    async def _render_detail(self) -> None:
-        await self.pane.show(self.store)
+        self.main.query_one(RunFilter).reveal()
 
     @on(OptionList.OptionSelected, "#runs")
     async def _selected(self, event: OptionList.OptionSelected) -> None:
@@ -273,20 +255,20 @@ class GroomTui(App[None]):
         await self.handle_frame({"type": "detail", "id": run_id, "detail": body})
 
     async def action_open_run(self) -> None:
-        listing = self.query_one("#runs", OptionList)
+        listing = self.main.query_one("#runs", OptionList)
         if listing.highlighted is not None:
             option = listing.get_option_at_index(listing.highlighted)
             if option.id is not None:
                 await self.open_run(str(option.id))
 
     def action_cursor_down(self) -> None:
-        self.query_one("#runs", OptionList).action_cursor_down()
+        self.main.query_one("#runs", OptionList).action_cursor_down()
 
     def action_cursor_up(self) -> None:
-        self.query_one("#runs", OptionList).action_cursor_up()
+        self.main.query_one("#runs", OptionList).action_cursor_up()
 
     def action_focus_runs(self) -> None:
-        self.query_one("#runs", OptionList).focus()
+        self.main.query_one("#runs", OptionList).focus()
 
     async def action_show_tab(self, tab: str) -> None:
         self.pane.tab = tab
@@ -306,59 +288,11 @@ class GroomTui(App[None]):
             self.store = client.cycle_kind(self.store)
             await self._render_detail()
 
-    async def action_focus_answer(self) -> None:
-        self.pane.tab = "gate"
-        await self._render_detail()
-        for block in self.pane.blocks():
-            if block.answer_box is not None:
-                block.answer_box.focus()
-                return
-
     async def action_refresh(self) -> None:
         try:
             await self.link.post("/refresh")
         except LinkError as exc:
             self.notify(f"Rescan failed: {clean(exc)}", title="groom", severity="error")
-
-    def _focused_block(self) -> GateBlock | None:
-        node: Any = self.focused
-        while node is not None:
-            if isinstance(node, GateBlock):
-                return node
-            node = node.parent
-        blocks = [block for block in self.pane.blocks() if block.answer_box is not None]
-        return blocks[0] if blocks else None
-
-    async def action_send_answer(self) -> None:
-        block = self._focused_block()
-        if block is not None:
-            await self.send_answer(block)
-
-    @on(Button.Pressed, ".send")
-    async def _send_pressed(self, event: Button.Pressed) -> None:
-        parent = event.button.parent
-        if isinstance(parent, GateBlock):
-            await self.send_answer(parent)
-
-    async def send_answer(self, block: GateBlock) -> None:
-        box = block.answer_box
-        detail = self.store.detail
-        if box is None or detail is None:
-            return
-        if not box.text.strip():
-            self.notify("Write an answer first.", title="groom", severity="warning")
-            return
-        sent = await self.link.send({
-            "cmd": "answer",
-            "workflow_id": detail["id"],
-            "file_path": block.file_path,
-            "answer": box.text,
-        })
-        if not sent:
-            self.notify(
-                "Not sent: no connection to groom. Your answer is still in the box.",
-                title="groom", severity="error",
-            )
 
 
 def run(url: str) -> None:

@@ -82,6 +82,7 @@ class TrailTab(Vertical):
     def __init__(self) -> None:
         super().__init__(id="trail-tab")
         self.opened: dict[str, bool] = {}
+        self.limits: dict[str, int] = {}
         self._shown: list[Frame] | None = None
         self._metrics: Frame | None = None
         self._bar: tuple[str, str] | None = None
@@ -97,6 +98,7 @@ class TrailTab(Vertical):
 
     async def forget(self) -> None:
         self.opened.clear()
+        self.limits.clear()
         self._shown = None
         self._metrics = None
         self._bar = None
@@ -124,5 +126,5 @@ class TrailTab(Vertical):
         await reconcile(
             self.query_one("#trail-lines", Vertical),
             line_keys(shown),
-            lambda key, line: build_line(key, line, self.opened),
+            lambda key, line: build_line(key, line, self.opened, self.limits),
         )
