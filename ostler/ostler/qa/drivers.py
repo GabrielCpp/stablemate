@@ -28,6 +28,8 @@ from ostler.qa import tools as qa_tools
 from ostler.qa.verdict import Verdict, judge
 from ostler.qa.harness_host import (
     DEFAULT_SCENARIO_TIMEOUT,
+    SCENARIO_MEMORY_MAX,
+    capped_argv,
     default_interpreter,
     harness_argv,
     harness_env,
@@ -35,6 +37,12 @@ from ostler.qa.harness_host import (
 from ostler.qa.session import QaSession, _redact_bytes
 from ostler.vet import placement
 from ostler.vet.regions import RegionList
+
+
+_KILLED_HINT = (
+    f", killed before its timeout: it likely passed the {SCENARIO_MEMORY_MAX} memory cap a "
+    "scenario runs under"
+)
 
 
 def _declared(record: Mapping[str, Any]) -> tuple[str, Mapping[str, Any]] | None:
@@ -445,6 +453,7 @@ class PythonDriver(QaDriver):
         elif terminal is None:
             message = (
                 f"scenario '{scenario_id}' produced no result (exit {exit_code})"
+                f"{_KILLED_HINT if exit_code == -9 else ''}"
                 f"{self.launcher.no_result_hint()}: " + output.strip()[-500:]
             )
         elif terminal.get("error"):
@@ -873,12 +882,15 @@ class LocalLauncher(Launcher):
         if driver.launch_env.get("DISPLAY"):
             env["DISPLAY"] = driver.launch_env["DISPLAY"]
         process = subprocess.Popen(  # noqa: S603 — agent-authored plan, explicit user intent
-            harness_argv(
-                driver.interpreter(),
-                "run",
-                str(driver.module_path()),
-                scenario_id,
-                "-",
+            capped_argv(
+                harness_argv(
+                    driver.interpreter(),
+                    "run",
+                    str(driver.module_path()),
+                    scenario_id,
+                    "-",
+                ),
+                env,
             ),
             cwd=driver.root,
             env=env,

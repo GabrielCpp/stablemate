@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import functools
 import importlib.util
 import json
 import os
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -49,6 +51,47 @@ def default_interpreter(root: Path) -> Path:
 
 def harness_argv(interpreter: Path, *args: str) -> list[str]:
     return [str(interpreter), "-m", "ostler_qa", *args]
+
+
+SCENARIO_MEMORY_MAX = "4G"
+
+SCENARIO_CPU_QUOTA = "200%"
+
+
+def _scope_argv(env: dict[str, str]) -> list[str] | None:
+    """The `systemd-run` prefix that caps a scenario's memory and CPU, or None where no user manager answers."""
+    systemd_run = shutil.which("systemd-run", path=env.get("PATH"))
+    if systemd_run is None:
+        return None
+    prefix = [
+        systemd_run, "--user", "--scope", "--quiet", "--collect",
+        "-p", f"MemoryMax={SCENARIO_MEMORY_MAX}", "-p", "MemorySwapMax=0",
+        "-p", f"CPUQuota={SCENARIO_CPU_QUOTA}", "--",
+    ]
+    return prefix if _scopes_answer(tuple(prefix), env.get("XDG_RUNTIME_DIR", ""), env.get("DBUS_SESSION_BUS_ADDRESS", "")) else None
+
+
+@functools.cache
+def _scopes_answer(prefix: tuple[str, ...], runtime_dir: str, bus: str) -> bool:
+    env = {**os.environ, "XDG_RUNTIME_DIR": runtime_dir, "DBUS_SESSION_BUS_ADDRESS": bus}
+    try:
+        done = subprocess.run(  # noqa: S603 — fixed argv
+            [*prefix, "true"], env=env, capture_output=True, timeout=15, check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    return done.returncode == 0
+
+
+def capped_argv(argv: list[str], env: dict[str, str]) -> list[str]:
+    """`argv` inside a systemd user scope, so a scenario that runs away is killed alone instead of starving the machine.
+
+    The scope caps memory at `SCENARIO_MEMORY_MAX` with no swap, and CPU at
+    `SCENARIO_CPU_QUOTA`, over the scenario and every process it starts. Where no
+    systemd user manager answers, such as in a container, `argv` runs uncapped.
+    """
+    prefix = _scope_argv(env)
+    return [*prefix, *argv] if prefix else argv
 
 
 def harness_env(base: dict[str, str] | None = None) -> dict[str, str]:
