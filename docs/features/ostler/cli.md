@@ -161,6 +161,7 @@ managed markdown tree (backlog, milestones, epics, features) under a repo root.
 - code: ostler/ostler/vet/regions.py::merge@94a27f0a4ad7
 - code: ostler/ostler/vet/regions.py::RegionBox@94a27f0a4ad7
 - code: ostler/ostler/vet/register.py::match@4813a8dbde2b
+- code: ostler/ostler/vet/crop.py::maybe_crop@?@116a8b739a47
 - code: ostler/ostler/vet/report.py::build_report@30d577ca0ec9
 - code: ostler/ostler/vet/writes.py::VetFileWrite@d000fa666d75
 - code: ostler/ostler/vet/writes.py::VetPlan@d000fa666d75
