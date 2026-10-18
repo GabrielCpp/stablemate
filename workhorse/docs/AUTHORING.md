@@ -560,6 +560,7 @@ a state missing one of them draws as a bare file name or a parameter list:
 | a docstring on the node, first line a sentence | that line under the node's bubble |
 | a `# <workflow> — <what this turn does>` title on the prompt | the part after the dash under the prompt's bubble |
 | `self.agent("a.md" if x else "b.md", …)` | one bubble per arm; an argument it cannot read draws as `?` and fails preflight |
+| `turn = roles.turn(self, "review", …)` then `self.agent(turn.prompt, …)`, where `turn` is marked `@resolves_prompt(path_of)` | the bubble `path_of(cls, "review")` names, read off the local's binding |
 | `self.agent(text, label="fix-findings", …)` | a bubble named for the label, captioned with the body's own `#` title |
 | `Continue(...).because("…")`, likewise on `Await` and `Done` | the sentence on the edge, in place of the parameter names |
 
@@ -699,6 +700,14 @@ env = RunEnv(..., nodes=workflow.override(measure=lambda logger, subject: Readin
 
 `override` is non-mutating: it returns a copy, so a substitution belongs to the run that
 asked for it and cannot leak into the next one.
+
+A node with no `stub=` of its own still answers with its return model's `@dry_run`
+declaration when there is one, so a check a node performs and an agent turn performs are
+declared the same way. Declare the happy path on every model a guard branches on: a blank
+model reads as "dirty" or "failed", and the dry run then walks the repair loop until it
+reaches an operator gate. Reaching one is a failure under `--dry-run`, with
+`failure_class: dry-run-gate`, because nothing answers it and the run would otherwise
+park forever.
 
 **That is what a test uses instead of patching.** Dependencies are handed to the run:
 
