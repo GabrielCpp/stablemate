@@ -15,6 +15,7 @@ from workhorse_workflows.coder.shared.schemas.queue import (
     WorktreeCleanliness,
 )
 from workhorse_workflows.coder.shared.worktree import untouched_since
+from workhorse_workflows.kit.agent_files import render_agent_files_returning_failure
 from workhorse_workflows.kit import (
     GitError,
     commit_all,
@@ -229,6 +230,9 @@ def commit_story(
 
     any_committed = False
     for name, repo_path in _commit_roots(logger, root, spec_dir, workspace_file, repo_dir, roots):
+        failure = render_agent_files_returning_failure(repo_path)
+        if failure:
+            logger.warning("agent files of %s not rendered: %s", repo_path.name, failure)
         if _commit_in(repo_path, name):
             logger.info("committed in %s", repo_path.name)
             any_committed = True
