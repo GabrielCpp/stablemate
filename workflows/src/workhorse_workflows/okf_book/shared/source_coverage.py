@@ -4,7 +4,8 @@ A book covers its app when every product file is cited by the page that document
 for a user or a caller, from a node whose claims a run can prove. A concept page mints no claim,
 so a file it alone cites is explained and never proven. Tests, test doubles, fixtures and a test
 runner's setup are no product. A type declaration file and a build tool's config state nothing a
-user or a caller meets, so neither needs a page.
+user or a caller meets, so neither needs a page. A file that declares no name, such as an empty
+package marker or one that only re-exports, has no symbol a citation could name, so it needs none.
 """
 from __future__ import annotations
 
@@ -13,7 +14,7 @@ from pathlib import Path, PurePosixPath
 from pydantic import BaseModel, ConfigDict, TypeAdapter
 
 from ostler import graph as graph_mod
-from ostler.inventory import SOURCE_SUFFIXES
+from ostler.inventory import SOURCE_SUFFIXES, declared_names
 from ostler.model import Graph
 from ostler.refs import code_refs, is_test_source, parse_code_ref, strip_digest
 from workhorse_workflows.kit import list_tracked_files
@@ -46,7 +47,17 @@ def product_files(root: Path, source_folder: str) -> tuple[str, ...]:
         and not is_test_source(path)
         and not path.endswith(DECLARATION_SUFFIX)
         and CONFIG_MARK not in PurePosixPath(path).name
+        and _declares_a_name(root, path)
     )
+
+
+def _declares_a_name(root: Path, path: str) -> bool:
+    """Whether the file binds a name other than a dunder like `__all__`, so a `path::symbol` citation can reach it."""
+    try:
+        text = (root / path).read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return True
+    return any(not (name.startswith("__") and name.endswith("__")) for name in declared_names(path, text))
 
 
 def proving_citations(book: Graph, service: str) -> tuple[str, ...]:

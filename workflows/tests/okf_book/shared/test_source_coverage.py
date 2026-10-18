@@ -93,3 +93,17 @@ def test_the_check_puts_each_uncited_folder_on_the_entries_page(tmp_path: Path) 
         ("docs/features/web/entries.md", "web/app/routes"),
     ]
     assert uncited[1].text.startswith("web/app/routes/: no page cites 1 of its product files, `web/app/routes/editor.tsx`.")
+
+
+def test_a_file_that_declares_no_name_needs_no_citation(tmp_path: Path) -> None:
+    repo = _repo(tmp_path, "web/app/routes/login.tsx", "web/app/routes/editor.tsx", "web/app/lib/drafts.ts")
+    markers = {
+        "web/app/__init__.py": "",
+        "web/app/lib/__init__.py": '"""The app\'s helpers."""\n\nfrom web.app.lib.drafts import x\n\n__all__ = ["x"]\n',
+        "web/app/lib/flags.py": "ENABLED = True\n",
+    }
+    for path, text in markers.items():
+        _ = (repo / path).write_text(text, encoding="utf-8")
+    _ = git(repo, "add", "-A")
+
+    assert _uncited(repo) == {"web/app/lib": ("web/app/lib/flags.py",)}
