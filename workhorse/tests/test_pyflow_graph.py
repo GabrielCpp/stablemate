@@ -864,3 +864,73 @@ if __name__ == "__main__":
     print(f"\n{len(fns) - failed}/{len(fns)} passed")
     raise SystemExit(1 if failed else 0)
 
+
+@dry_run(verdict="ok")
+class Checked(Report):
+    pass
+
+
+checking = Blueprint("checking")
+
+
+@checking.node
+def inspect(logger: Any) -> Checked:
+    """A node whose real body would never say ok."""
+    return Checked(verdict="broken")
+
+
+class WalksPastItsOwnNode(Workflow):
+    """A machine whose happy path hinges on a node's reply, not an agent's."""
+
+    def start(self) -> Transition:
+        found = self.call(inspect)
+        if found.verdict == "ok":
+            return Done("clean")
+        raise WorkflowFailed("the node's stand-in did not honour the declared reply")
+
+
+def test_a_node_stand_in_answers_with_the_reply_its_model_declared():
+    from workhorse.pyflow import run as pyflow_run
+
+    registry = RegistryAt("acme")
+    registry.add_blueprints(checking)
+    registry.entry_point(WalksPastItsOwnNode)
+    out = io.StringIO()
+    with tempfile.TemporaryDirectory() as tmp:
+        registry.at = Path(tmp)
+        with contextlib.redirect_stdout(out):
+            code = pyflow_run.run_pyflow(
+                pyflow_run.RunInvocation(
+                    registry, runs_dir=Path(tmp) / "runs", run_id="node", dry_run=True
+                )
+            )
+    assert code == 0, out.getvalue()
+
+
+class ParksOnAGate(Workflow):
+    """A machine whose stand-ins lead straight to an operator gate."""
+
+    def start(self) -> Transition:
+        return Await("questions.md", "why?", self.finish)
+
+    def finish(self) -> Transition:
+        return Done(None)
+
+
+def test_a_dry_run_that_reaches_a_gate_fails_instead_of_parking():
+    from workhorse.pyflow import run as pyflow_run
+
+    registry = RegistryAt("acme")
+    registry.entry_point(ParksOnAGate)
+    out = io.StringIO()
+    with tempfile.TemporaryDirectory() as tmp:
+        registry.at = Path(tmp)
+        with contextlib.redirect_stdout(out):
+            code = pyflow_run.run_pyflow(
+                pyflow_run.RunInvocation(
+                    registry, runs_dir=Path(tmp) / "runs", run_id="gate", dry_run=True
+                )
+            )
+    assert code == 1, out.getvalue()
+    assert "dry-run reached a" in out.getvalue(), out.getvalue()
+    assert "'start'" in out.getvalue(), out.getvalue()

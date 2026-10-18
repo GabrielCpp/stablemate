@@ -73,10 +73,11 @@ def _revive(payload: dict[str, Any], returns: Any) -> Any:
 
 
 def _blank(returns: Any) -> Any:
-    """A stand-in value for `--dry-run`, where no node actually runs."""
+    """A stand-in value for `--dry-run`, where no node actually runs: the reply the model declared, else its defaults."""
     if isinstance(returns, type) and issubclass(returns, BaseModel):
+        reply = declared_reply(returns)
         try:
-            return returns.model_construct()
+            return returns.model_construct() if reply is None else returns.model_validate(reply)
         except Exception:  # noqa: BLE001 — a stand-in is never worth failing over
             return None
     return None

@@ -299,7 +299,8 @@ def run_pyflow(invocation: RunInvocation) -> int:
                              error_kind="fatal")
                 return 1
             declared = registry.declares_replies() or bool(env.declared_answers)
-            if dry_run and isinstance(exc, WorkflowFailed) and not declared:
+            parked = getattr(exc, "failure_class", "") == "dry-run-gate"
+            if dry_run and isinstance(exc, WorkflowFailed) and not declared and not parked:
                 print(
                     f"[workhorse] dry-run reached the fail terminal in "
                     f"'{_state_of(writer)}': {exc}"

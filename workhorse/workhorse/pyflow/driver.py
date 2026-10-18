@@ -248,6 +248,14 @@ def drive(
             return outcome.result
 
         if isinstance(outcome, Await):
+            if env.dry_run:
+                raise WorkflowFailed(
+                    f"dry-run reached a {outcome.kind} gate in '{spec.name}' "
+                    f"({outcome.path}); nothing answers a gate under --dry-run, so the "
+                    "stand-ins that led here must walk past it instead",
+                    failure_class="dry-run-gate",
+                    artifacts={"gate": str(outcome.path), "questions": outcome.questions},
+                )
             ask(outcome.path, outcome.questions, env.log)
             env.writer.write_state_checkpoint(
                 outcome.state,
