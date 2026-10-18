@@ -4,6 +4,7 @@ from __future__ import annotations
 import ast
 import hashlib
 import re
+from functools import lru_cache
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -326,11 +327,16 @@ def symbols(path: str | Path, text: str) -> list[str]:
 
 def declared_names(path: str | Path, text: str) -> set[str]:
     """**Every** name a file declares — grounding's question."""
-    suffix = Path(path).suffix
+    return set(_declared_names(Path(path).suffix, text))
+
+
+@lru_cache(maxsize=512)
+def _declared_names(suffix: str, text: str) -> frozenset[str]:
+    """`declared_names` memoised on the file's text, so one module cited by many symbols is parsed once."""
     if suffix == ".py":
-        return _py_declared(text)
+        return frozenset(_py_declared(text))
     if suffix not in SOURCE_SUFFIXES:
-        return set()
+        return frozenset()
     grammar = syntax.LANGUAGES[suffix]
     if suffix == ".go":
         names = set(_go_symbols(text, exported_only=False))
@@ -340,7 +346,7 @@ def declared_names(path: str | Path, text: str) -> set[str]:
         names = set(_php_symbols(text, public_only=False))
     else:
         names = set(_twig_blocks(text))
-    return names | syntax.error_names(grammar, text)
+    return frozenset(names | syntax.error_names(grammar, text))
 
 
 def declares(path: str | Path, text: str, symbol: str) -> bool:

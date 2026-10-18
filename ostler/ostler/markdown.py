@@ -98,7 +98,7 @@ def _bracketed(text: str) -> bool:
 
 
 def _scan_links(text: str) -> Iterator[tuple[str, str, int]]:
-    for tok, start in _iter_inline(_MD.parse(_normalize(text))):
+    for tok, start in _iter_inline(_block_tokens(_normalize(text))):
         depth, line = 0, start
         label: list[str] = []
         href = ""
@@ -243,15 +243,23 @@ def text_beside_links(text: str) -> str:
     return " ".join("".join(out).split())
 
 
+@lru_cache(maxsize=_CACHED_TEXTS)
+def _block_tokens(text: str) -> tuple[Token, ...]:
+    """The block tokens of *text*, parsed once and shared by every reader: callers only read them."""
+    return tuple(_MD.parse(text))
+
+
 def code_line_spans(text: str) -> list[tuple[int, int]]:
     """0-indexed ``[start, end)`` line spans of every code block — fenced or indented."""
-    return [(tok.map[0], tok.map[1]) for tok in _MD.parse(_normalize(text))
+    return [(tok.map[0], tok.map[1]) for tok in _block_tokens(_normalize(text))
             if tok.type in ("fence", "code_block") and tok.map]
 
 
 def comment_blocks(text: str) -> list[tuple[int, str]]:
     """The 0-indexed start line and text of every HTML comment that opens a block, outside code."""
-    return [(tok.map[0], tok.content) for tok in _MD.parse(_normalize(text))
+    if "<!--" not in text:
+        return []
+    return [(tok.map[0], tok.content) for tok in _block_tokens(_normalize(text))
             if tok.type == "html_block" and tok.map and tok.content.lstrip().startswith("<!--")]
 
 
@@ -486,7 +494,7 @@ class MarkdownDoc:
 def split(text: str) -> MarkdownDoc:
     """Split Markdown text into frontmatter + body, tolerant of files with neither."""
     text = _normalize(text)
-    tokens = _MD.parse(text)
+    tokens = _block_tokens(text)
     if not tokens or tokens[0].type != "front_matter":
         return MarkdownDoc(frontmatter=None, raw_frontmatter="", body=text)
 
@@ -562,7 +570,7 @@ def _top_level_bullets(tree: SyntaxTreeNode) -> list[Bullet]:
 
 def _build_sections(body: str) -> list[Section]:
     lines = body.split("\n")
-    tokens = _MD.parse(body)
+    tokens = _block_tokens(body)
     tree = SyntaxTreeNode(tokens)
 
     headings: list[Section] = []
