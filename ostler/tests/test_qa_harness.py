@@ -1231,6 +1231,21 @@ def test_unchanged_compares_the_named_file_or_else_the_whole_tree(tmp_path: Path
     assert harness.VERIFIERS["keys_unchanged"](quiet, {"subject": "no-such.json"}).passed is True
 
 
+def test_reads_of_the_same_content_share_one_decoded_copy(tmp_path: Path) -> None:
+    harness = load_harness_module("ostler_qa")
+    (tmp_path / "notes.txt").write_bytes(b"one\r\ntwo\n")
+    (tmp_path / "tally.json").write_text('{"n": 1}', encoding="utf-8")
+    first, second = harness.Tree(tmp_path), harness.Tree(tmp_path)
+
+    assert first["notes.txt"] == "one\ntwo\n"
+    assert first.texts["notes.txt"] is second.texts["notes.txt"]
+    assert first["tally.json"] is second["tally.json"]
+    assert first["tally.json"] == {"n": 1}
+    (tmp_path / "notes.txt").write_text("three", encoding="utf-8")
+    assert harness.Tree(tmp_path)["notes.txt"] == "three"
+    assert first["notes.txt"] == "one\ntwo\n"
+
+
 def test_contents_reads_the_text_of_the_file_the_subject_names(tmp_path: Path) -> None:
     harness = load_harness_module("ostler_qa")
     (tmp_path / "out.csv").write_text("date,amount\n2024-01-02,12.50\n", encoding="utf-8")

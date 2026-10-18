@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 from collections.abc import Callable, Mapping, Sized
@@ -15,8 +16,16 @@ from ostler_qa_verdicts import Args, Verdict, json_value, str_arg, strings_arg, 
 _MISSING = object()
 
 
+_READS: dict[tuple[bool, str], tuple[str, JsonValue]] = {}
+
+
 class Tree(dict[str, JsonValue]):
-    """Every file under one directory, keyed by its path relative to it: parsed JSON for a `.json`, text otherwise."""
+    """Every file under one directory, keyed by its path relative to it: parsed JSON for a `.json`, text otherwise.
+
+    Files with the same content share one decoded copy across every read in the process,
+    so a scenario that reads a whole checkout either side of each action holds that
+    checkout once rather than twice per action.
+    """
 
     def __init__(self, root: Path) -> None:
         super().__init__()
@@ -25,14 +34,21 @@ class Tree(dict[str, JsonValue]):
             for path in sorted(root.rglob("*")):
                 if path.is_file():
                     name = path.relative_to(root).as_posix()
-                    self.texts[name] = path.read_text(encoding="utf-8", errors="replace")
-                    self[name] = _read_tree_file(path)
+                    self.texts[name], self[name] = _read_tree_file(path)
 
 
-def _read_tree_file(path: Path) -> JsonValue:
-    text = path.read_text(encoding="utf-8", errors="replace")
-    if path.suffix != ".json":
-        return text
+def _read_tree_file(path: Path) -> tuple[str, JsonValue]:
+    """The file's text and its value: parsed JSON for a `.json`, the text otherwise."""
+    data = path.read_bytes()
+    key = (path.suffix == ".json", hashlib.sha256(data).hexdigest())
+    known = _READS.get(key)
+    if known is None:
+        text = data.decode("utf-8", errors="replace").replace("\r\n", "\n").replace("\r", "\n")
+        known = _READS[key] = (text, _parsed(text) if key[0] else text)
+    return known
+
+
+def _parsed(text: str) -> JsonValue:
     try:
         return json_value(json.loads(text))
     except ValueError:
