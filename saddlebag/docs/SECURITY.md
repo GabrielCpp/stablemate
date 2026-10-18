@@ -1,132 +1,88 @@
-# Security model — where secrets live, and what cannot leak
+# Security model: where secrets live, and what cannot leak
 
-This is the full account of saddlebag's threat model: which store holds a password,
-how the keyring is scoped so two projects cannot clobber each other, and the list of
-guarantees each command is built to keep. The
+This is the account to read before trusting saddlebag with a real credential, or before
+adding a verb that touches one. The
 [README](https://github.com/GabrielCpp/stablemate/blob/main/saddlebag/README.md)
-summarises it in a paragraph; this file is what you read before trusting the pool with
-a real credential, or before adding a command that touches one.
+summarises it in a paragraph.
+
+## The threat
+
+The process saddlebag defends against is an AI agent running as the same user, on the
+same machine or in a container the user started. The agent reads every command's
+output into its context, and that context is logged, summarised and sometimes sent to
+a model provider. The goal is that a secret value never appears there by default, and
+that every path by which it could is a command the user's permission layer can see
+and deny.
+
+The threat is not a hostile root, another user, or a compromised Vault. A process
+running as the same user with the will to do so can read any file the user owns and
+`/proc/<pid>/environ` of any process the user runs. Saddlebag's job is to leave
+nothing there to read.
 
 ## Where secrets live
 
-Saddlebag does not implement encryption. It delegates to a store that already does
-it properly, and picks one by availability:
-
-1. **The OS keyring** — macOS Keychain, Windows Credential Manager, Linux Secret
-   Service — whenever a real backend is present. This is the common case on a
-   developer machine, and needs no configuration at all.
-2. **HashiCorp Vault** (KV v2) otherwise — for containers, CI, and any host with
-   no desktop session.
-
-If neither is available, saddlebag **exits with an error** rather than falling back
-to anything weaker. There is no plaintext path.
-
-```bash
-export SADDLEBAG_BACKEND=vault   # force a backend, skipping autodetection
-export VAULT_ADDR=http://127.0.0.1:8200
-export VAULT_TOKEN=root
-```
-
-`--backend {keyring,vault}` on any command does the same thing for one invocation.
-
-## Two stores, one credential
+Saddlebag implements no encryption and keeps no database. Everything lives in one
+HashiCorp Vault KV v2 mount, under `secret/saddlebag/<name>`:
 
 | Where | What |
 |---|---|
-| Secret store (keyring / Vault) | the **password**, keyed by credential id |
-| Pool database (SQLite) | **metadata** — `username`, `env`, `roles`, `features`, `surface` — and lease state |
+| The secret's data | the `password` and the `totp` seed |
+| The secret's custom metadata | `username`, `description`, `var`, `tags` |
 
-The pool DB never contains a password, not even encrypted. `saddlebag list` and
-`saddlebag scan` read only the pool, which is why they *cannot* leak a secret.
-`acquire` probes the store only to verify the password exists — the value is
-discarded, never emitted. The vault is opaque: `env render` is the sole command
-that turns a stored secret into anything outside the store.
+`list`, `tags` and `doctor` read metadata only, which is why they cannot emit a
+value. `fill` and `exec` are the two readers that use one, and each hands it to a
+consumer rather than to the caller.
 
-**Keyring scoping.** Secrets are namespaced under the service name `saddlebag`. That
-is the whole of the portable cross-OS keyring contract — `(service, username,
-password)` — and it is a genuine isolation boundary: a lookup under any other service
-name returns nothing. There is no "separate keyring file" that works on all three
-operating systems; Linux's Secret Service exposes a `preferred_collection` D-Bus
-hook, but Keychain and Credential Manager have no equivalent, so relying on it would
-be a Linux-only path that silently no-ops elsewhere.
+## The daemon holds the token
 
-**Per-credential keys are project-qualified.** Within that service, each secret's key
-is `project/id` (or the bare `id` when unscoped). The keyring is one global namespace,
-so this is what lets two *separate per-project pools* — e.g. a repo-local
-`SADDLEBAG_DB` in each of two checkouts — both mint `cred-001` without one's password
-clobbering the other's: they resolve to `repo-a/cred-001` and `repo-b/cred-001`. The
-key is derived from the credential's own stored project, so `acquire`/`remove`/`doctor`
-find the secret regardless of the directory you run them from.
+Only `saddlebag serve` talks to Vault. Everything else is a client over a unix socket.
 
-> **Vault mode shares secrets, not the pool.** The metadata and lease table still
-> live in the local `pool.db`, so two machines pointed at one Vault share passwords
-> but keep independent pools and independent leases. A genuinely shared, collision-
-> safe pool would mean holding the whole record in Vault — a change confined to
-> `store.py`.
+- The token arrives on stdin and is held in the daemon's memory. It is never written
+  to a file and never placed in an environment variable. `serve` refuses to start when
+  `VAULT_TOKEN` is set, because that variable is readable from `/proc`.
+- The socket is created with owner-only permissions. It is a boundary against other
+  users, not against the agent, which runs as the owner.
+- `vault login` writes `~/.vault-token`, owned by the same user. A daemon that guards
+  its token carefully next to that file guards nothing. Saddlebag never reads the Vault
+  token helper, and `doctor` reports the file when it exists. The operator's own Vault
+  use on the machine must not leave it behind.
+- A run in a container gets the socket bind-mounted and nothing else. It never holds
+  a token and never sees the browser's debug port.
 
-## Config-only environments need no secret store
+The stronger variant, running the daemon under a second user and chowning the socket,
+is possible and not done. The stdin-and-memory daemon already removes the token from
+everything a same-user process can read without a debugger.
 
-Saddlebag refuses to run without a store — deliberately, because a credential
-without one is meaningless. But an environment made entirely of `config` entries
-needs no store at all, and the hosts where that matters most are exactly the ones
-with no keyring: containers, CI, headless boxes — the places a stack most needs to
-be reproducible. So the store is opened **lazily, and only when an entry actually
-requires it**:
+## The guarantees, by verb
 
-- an environment whose entries are all `config` renders on any host, with no
-  keyring, no Vault and no configuration whatsoever;
-- the moment one `secret` or `credential-ref` entry is in play, the store must open,
-  and if it cannot, saddlebag fails rather than rendering a partial file.
+- **No verb returns a stored value to its caller, with one exception described below.**
+  `set` reports a character count. `list` and `tags` print metadata. There is no
+  lookup verb and no flag that adds one.
+- **A value is entered on stdin only.** `secret set` reads it there. A value on argv
+  would land in the process table and the shell history.
+- **`fill` moves a value into a browser, not back to its caller.** It types through
+  `Input.insertText` and reports a character count, a selector and a URL. The value is
+  never interpolated into an evaluated expression, so it does not reach the browser's
+  protocol log either. Both the DevTools endpoint and the websocket URL it returns
+  must be on loopback. That port is unauthenticated, and a non-local one is a password
+  sent to whoever answers.
+- **A TOTP seed leaves the store only as a computed code**, and only by being typed or
+  bound into a command's environment. The seed itself is never filled anywhere.
+- **`exec` is the one path that carries values out, and it carries them to a child
+  process.** The client asks the daemon for the bound values, places them in the
+  environment of the command it then becomes, and never prints them. A command that
+  prints its own environment prints the secret. What `exec` guarantees is that the
+  value is not in the transcript unless the command puts it there, and is never on
+  disk. Which commands an agent may run under `exec` is the permission layer's
+  decision, and the command line is visible to it in full.
+- **The daemon logs no value.** Its log carries verbs, names, selectors and counts.
+- **There is no plaintext path.** If Vault is unreachable or the token is not
+  authenticated, the daemon does not start. Nothing degrades.
 
-The no-plaintext-fallback rule is untouched: it governs material that *is* secret. It
-was never a claim that non-secret material must be treated as if it were.
+## What this does not protect
 
-## The guarantees
-
-- Secrets are held by the **OS keyring or Vault**, never by saddlebag itself and
-  never in the pool database. For environment entries this is enforced by the
-  database itself: a `CHECK (kind = 'config' OR value IS NULL)` constraint means a
-  bug in a caller — or a caller that has not been written yet — *cannot* quietly put
-  a secret in a row.
-- A credential may instead **point at a keychain item saddlebag did not write**
-  (`saddlebag link`). What the pool then holds is an *address* — a set of Secret
-  Service attributes — never a value, and `list --json` prints it as one. Saddlebag
-  neither writes nor deletes an item it did not create, so `unlink` and `remove`
-  leave it standing. This is a reference precisely so that there are never two copies
-  of one password on the machine: the copy is the one that goes stale silently after
-  a rotation at the source, and the failure surfaces as a login against an account
-  that locks.
-- A secret is only ever *entered* on stdin (`--password-stdin`, `--secret-stdin`) —
-  never as an argv element, where it would land in the process table and shell
-  history. A value supplied on argv is therefore `config`, by definition rather than
-  by policy.
-- `list`, `scan`, `env list`, `env show`, `env doctor` and the agent selection prompt
-  read pool metadata only, and so cannot emit a secret. `acquire` reads the store
-  only as a presence probe; `env render` and `fill` are the sole readers that use a
-  value, and each hands it to a consumer — a `0600` file, a browser field — rather
-  than to the caller.
-- **The vault is opaque.** No command prints, logs, or returns a stored secret —
-  there is no lookup verb and no flag that adds one. `acquire` and
-  `scan --select-via` emit the lease and the identity; the password stays put.
-- `fill` moves a secret **into a browser, not back to its caller**: it types the value
-  over `Input.insertText` and reports a character count, a selector and a URL. The
-  value is never interpolated into an evaluated expression, so it does not reach the
-  browser's protocol log either. `fill` refuses any CDP endpoint that is not on
-  loopback — that port is unauthenticated, and a non-local one is a password sent to
-  whoever answers.
-- A **TOTP enrolment seed** is stored like a password and is additionally barred from
-  `credential-ref`, so no `env render` can write one to a file. It leaves the store
-  only as a computed six-digit code, and only by being typed.
-- **No password ever reaches an agent's context.** The candidate list `scan` renders
-  into the selection prompt is built from pool metadata, and an id the agent returns
-  that was not on that list is rejected rather than trusted.
-- The file written by `env render` is created `0600` before the secret is written,
-  and `env render` prints only the path it wrote, never the contents.
-- The **manifest** (`env export`) is the artefact meant to be committed, and carries
-  no secret values by construction. A manifest that tries to smuggle one in is
-  rejected on import.
-- Leases have a hard TTL (default 2h). `saddlebag expire` in CI cleanup force-releases
-  anything that leaked.
-- When no secret store is available, saddlebag **fails** rather than degrading — for
-  material that *is* secret. A config-only environment needs no store and renders
-  anyway; that is not a fallback, it is the absence of a secret.
+A same-user process that connects to the socket and sends the request `exec` sends
+receives the same values. The socket protocol is not a secret, and the agent is the
+owner of the socket. The protection is that the only tool which does so is
+`saddlebag exec`, invoked with a command line the permission layer sees. An agent
+that writes its own client has crossed a line that no local design closes.

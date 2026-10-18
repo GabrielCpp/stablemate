@@ -2,27 +2,15 @@
 
 > Carry the right credentials for every ride.
 
-`saddlebag` carries the material a run needs **and puts it where it is needed**, so
-that `workhorse` workflows — and the AI agents driving them — never touch a secret
-directly. It holds two kinds of material, in one pool:
+`saddlebag` holds the secrets a QA run needs and puts each one where it is consumed, so
+that an agent driving a `workhorse` workflow never holds a secret in its context. A
+secret leaves the store in exactly two ways. `fill` types it into a field of a browser
+over the Chrome DevTools Protocol. `exec` runs a command with it set in that command's
+process environment. Neither hands the value back to whoever ran them.
 
-- a **credential** — a test identity, scanned, selected and leased for the run, and
-  **filled** into the login form that asks for it;
-- an **environment** — the `.env`-shaped configuration a dev stack needs to *boot*,
-  secret and non-secret alike, rendered to a file on demand.
-
-The point is the last verb in each line. A vault that only *stores* a password
-leaves its holder with the problem it was supposed to solve: something still has to
-read the value out and type it, and that something is an agent's context, a shell
-history, a test process, a log. So saddlebag owns the delivery too, in exactly two
-forms and no others — `env render` writes an environment to its `0600` target file,
-and `fill` types a credential into a field of a browser it drives over the Chrome
-DevTools Protocol. Both hand the value to the thing that consumes it. Neither hands
-it back to the caller.
-
-Saddlebag is also what **packages an environment**: an environment holding no
-secrets at all is still worth owning here, because the value of the pool is
-reproducing a stack anywhere, not merely hiding its passwords.
+One daemon holds the HashiCorp Vault token, and every other command is a thin client
+over a unix socket. That is what lets the same tool serve a run on the host and a run
+in a container: the container sees the socket and nothing else.
 
 ---
 
@@ -30,147 +18,122 @@ reproducing a stack anywhere, not merely hiding its passwords.
 
 | Tool | Job |
 |---|---|
-| **ostler** | Tends the knowledge graph — epics, stories, seeds, specs |
+| **ostler** | Tends the knowledge graph: epics, stories, seeds, specs |
 | **farrier** | Fits the shared prompt library onto each repo |
 | **workhorse** | Runs the workflow graph unattended |
-| **saddlebag** | Carries credentials and environments — scan, select, lease, render |
+| **saddlebag** | Carries secrets and fills them where they are consumed |
 
-Ostler owns the *spec* of what a test needs (roles, envs, surface). Saddlebag owns
-the *runtime identity* that satisfies that spec, and the *environment material* the
-stack boots with. They don't overlap.
+Ostler owns the spec of what a test needs and which environment it runs against.
+Saddlebag owns the secret material that satisfies it. Ostler's stack bring-up asks
+saddlebag for the variables a stack needs, as described under
+[The ostler stack](#the-ostler-stack).
 
 ---
 
 ## Install
 
-**Not on PyPI** — saddlebag is an optional add-on that runs from a checkout of the
-[stablemate](https://github.com/GabrielCpp/stablemate) workspace; no base workflow
-requires it:
+Saddlebag is not on PyPI. It runs from a checkout of the
+[stablemate](https://github.com/GabrielCpp/stablemate) workspace:
 
 ```bash
 make sync                              # at the workspace root
 uv run --package saddlebag saddlebag --help
-# the [vault] extra adds HashiCorp Vault, for hosts with no OS keyring
 ```
 
-Requires Python ≥ 3.12. Pool metadata lives in a local SQLite file whose location
-follows each OS's convention (via `platformdirs`), overridable with `SADDLEBAG_DB`:
-
-| OS | Default pool location |
-|---|---|
-| Linux | `~/.local/share/saddlebag/pool.db` (or `$XDG_DATA_HOME`) |
-| macOS | `~/Library/Application Support/saddlebag/pool.db` |
-| Windows | `%LOCALAPPDATA%\saddlebag\pool.db` |
+Requires Python ≥ 3.12 and a reachable HashiCorp Vault with a KV v2 mount named
+`secret`. For a developer machine, `vault server -dev` is enough.
 
 ---
 
 ## Sixty seconds
 
-Put one test identity in the pool, let an agent pick it, and give it back:
-
 ```bash
-# 1. Add a credential. The password only ever arrives on stdin.
-printf '%s' "$PASSWORD" | saddlebag add \
-  --env staging \
-  --username admin@staging.example.com \
-  --password-stdin \
-  --roles admin billing \
-  --surface checkout/login
+# 1. Start the daemon. The token arrives on stdin and stays in the daemon's memory.
+export VAULT_ADDR=http://127.0.0.1:8200
+printf '%s' "$VAULT_TOKEN_FROM_YOUR_LOGIN" | saddlebag serve
 
-# 2. Ask the pool for something matching, and let the agent CLI choose.
-#    What comes back is the lease and the identity — never the password.
-saddlebag scan \
-  --env staging --roles admin billing --surface checkout/login \
-  --select-via claude --run-id "$RUN_ID" --json
+# 2. In another shell: describe a secret, then give it its value on stdin.
+saddlebag secret create normal_login \
+  --username gab \
+  --description "Log in as a normal user" \
+  --var LOGIN_PASSWORD \
+  --tag environment=local --tag role=user
+printf '%s' "$PASSWORD" | saddlebag secret set normal_login
 
-# 3. Sign in as it. The browser is already running with a debugger port; saddlebag
-#    types into the fields you name and reports character counts, not values.
-saddlebag fill cred-001 --field username --selector "#login_field" --url-contains github.com
-saddlebag fill cred-001 --field password --selector "#password"    --url-contains github.com
-saddlebag fill cred-001 --field totp     --selector "#app_totp"    --url-contains github.com
+# 3. An agent finds it by tag and reads the description. No value is printed.
+saddlebag list --tag environment=local
 
-# 4. …run whatever needed the identity, then give every lease back.
-saddlebag release --run-id "$RUN_ID"
+# 4. Deliver it. Into a browser field, or into a command's environment.
+saddlebag fill normal_login --field username --selector "#login_field" --url-contains example.com
+saddlebag fill normal_login --field password --selector "#password"    --url-contains example.com
+saddlebag exec --tag environment=local -- docker compose up
 ```
 
-The browser the third step talks to is one **you** started and **you** control:
+The browser the fourth step talks to is one you started with a debugger port:
 
 ```bash
 chromium --remote-debugging-port=9222 --user-data-dir=/tmp/qa-profile
 ```
 
-Saddlebag only ever connects to a DevTools endpoint on loopback, and refuses any
-other host outright — that port is unauthenticated and grants total control of the
-browser, so a typo pointing it off-machine would be a password mailed to whoever
-answers.
+Saddlebag connects only to a DevTools endpoint on loopback and refuses any other
+host. That port is unauthenticated and grants total control of the browser.
 
-And the other half — the configuration a stack boots with:
+---
+
+## The daemon
+
+`saddlebag serve` is the one process that talks to Vault. It reads the token from
+stdin, refuses to start if `VAULT_TOKEN` is set in its environment, and listens on a
+unix socket created with owner-only permissions. Every other verb connects to that
+socket, sends one request and reads one reply.
+
+| | |
+|---|---|
+| Socket path | `$SADDLEBAG_SOCKET`, else `$XDG_RUNTIME_DIR/saddlebag.sock`, else the OS runtime dir |
+| Vault address | `$VAULT_ADDR` or `--vault-addr` |
+| Browser | `--cdp`, default `http://127.0.0.1:9222` |
+
+The token is never written to a file and never placed in an environment variable,
+because a process of the same user can read `/proc/<pid>/environ` and any file the
+user owns. For the same reason the operator's own Vault login must not leave
+`~/.vault-token` behind. `saddlebag doctor` warns when that file exists.
+
+### A run in a container
+
+Mount the socket and name it. The client inside the container talks to the daemon
+on the host, which is also where the browser and its debug port live.
 
 ```bash
-saddlebag env add web-local --env local --target web/.env.local
-saddlebag env set web-local VITE_FIREBASE_PROJECT_ID=acme            # argv  -> config
-printf '%s' "$KEY" | saddlebag env set web-local API_KEY --secret-stdin  # stdin -> secret
-saddlebag env render web-local                                       # writes web/.env.local, 0600
+docker run \
+  -v "$SADDLEBAG_SOCKET:/run/saddlebag.sock" \
+  -e SADDLEBAG_SOCKET=/run/saddlebag.sock \
+  ...
 ```
 
 ---
 
-## Where secrets live
+## Secrets and tags
 
-Saddlebag does not implement encryption. It delegates to a store that already does it
-properly, and picks one by availability: the **OS keyring** (macOS Keychain, Windows
-Credential Manager, Linux Secret Service) whenever a real backend is present, and
-**HashiCorp Vault** (KV v2) otherwise, for containers, CI and any host with no desktop
-session. If neither is available, saddlebag **exits with an error** rather than falling
-back to anything weaker — there is no plaintext path.
-
-```bash
-export SADDLEBAG_BACKEND=vault   # force a backend, skipping autodetection
-export VAULT_ADDR=http://127.0.0.1:8200
-export VAULT_TOKEN=root
-```
-
-The password lives in that store; everything else — `username`, `env`, `roles`,
-`features`, `surface`, lease state — lives in the pool database, which never holds a
-password even encrypted. That split is why `list` and `scan` *cannot* leak a secret,
-and why no password ever reaches an agent's context. The full account — keyring
-scoping, project-qualified keys, what Vault mode does and does not share, and the
-list of guarantees each command keeps — is in
-[docs/SECURITY.md](https://github.com/GabrielCpp/stablemate/blob/main/saddlebag/docs/SECURITY.md).
-
----
-
-## Core concepts
-
-A **credential** is one test identity, with metadata the AI can reason over:
+A **secret** has a name, an optional username, a description an agent reads to choose
+between candidates, an optional `var` naming the environment variable `exec` fills it
+into, and a set of `key=value` tags. It holds up to two values: a `password` and a
+`totp` enrolment seed. The username is metadata and may print. The two values never do.
 
 ```jsonc
 {
-  "id":       "cred-007",
-  "username": "admin@staging.example.com",
-  "env":      "staging",
-  "project":  "checkout-web",
-  "roles":    ["admin", "billing"],
-  "features": ["mfa_enabled", "eu_region"],
-  "surface":  "checkout/login",
-  "locked":   false,
-  "lease_id": null
+  "name":        "normal_login",
+  "username":    "gab",
+  "description": "Log in as a normal user",
+  "var":         "LOGIN_PASSWORD",
+  "tags":        [["environment", "local"], ["role", "user"]],
+  "fields":      ["password"]
 }
 ```
 
-`surface` mirrors the ostler seed convention, so a seed's `surface:` field is the
-natural key to query the pool by; `roles` and `features` match as supersets. Acquiring
-a credential **leases** it — no other run can check it out until it is released or its
-TTL (default 2h) elapses, which is what makes parallel cross-env runs collision-free.
-
-An **environment** is the other unit: a named, ordered set of `KEY` entries answering
-"what does the stack need to boot?" rather than "who do I sign in as?". Unlike a
-credential it is *shared*, not leased, so ten runs may render it at once. Each entry is
-`config` (in the pool DB, in the clear), `secret` (in the store), `credential-ref`
-(resolved at render time from a leased credential), or `pending` — a key named but not
-yet supplied. Which kind you get is decided by **the channel you supplied the value on**:
-argv is `config`, stdin is `secret`. A value on argv is already in the process table and
-your shell history, so it cannot honestly be called a secret.
+Tags are the whole query vocabulary. `list --tag environment=local --tag role=admin`
+returns the secrets carrying both pairs. `tags` lists the distinct pairs in use. The
+convention the ostler integration relies on is that a secret for a QA environment
+carries `environment=<ostler environment node id>`.
 
 ---
 
@@ -178,56 +141,70 @@ your shell history, so it cannot honestly be called a secret.
 
 | | |
 |---|---|
-| `add` `list` `remove` `doctor` | manage the credential pool |
-| `scan` | query the pool and let an agent CLI select and lease a match |
-| `acquire` `release` `expire` | leases, by id or by `--run-id` |
-| `fill` | type a credential's username, password or TOTP into a browser field |
-| `totp set` `totp unset` | a credential's second-factor enrolment seed |
-| `link` `unlink` | point a credential at a secret already in the OS keychain |
-| `env add` `import` `set` `unset` `remove` | define an environment and its entries |
-| `env list` `show` `doctor` | inspect it — none of these can emit a secret |
-| `env export` | write the checkable-in YAML manifest |
-| `env render` | materialize the target file (`--check` to diff without writing) |
+| `serve` | run the daemon; token on stdin |
+| `list` `tags` | query by tag; neither can emit a value |
+| `secret create` `set` `unset` `remove` `tag` `untag` | manage a secret; `set` reads its value from stdin |
+| `fill` | type a secret's username, password or current TOTP code into a browser field |
+| `exec` | run a command with matching secrets in its environment |
+| `doctor` | daemon reachable, Vault authenticated, secrets with no value, stray token file |
 
-The vault is **opaque**: no command prints, logs or returns a stored secret — not
-`acquire`, not `scan`, not `fill`, not with any flag. Exactly two verbs move a secret
-out of the store, and neither returns it to whoever ran them:
+```bash
+saddlebag fill NAME --field username|password|totp --selector S [--url-contains X]
+saddlebag exec [--tag k=v]... [--env VAR=NAME[.field]]... -- cmd args...
+```
 
-- `env render` writes the environment to its own `0600` target file, never stdout;
-- `fill` types a credential into a browser field and reports only how many characters
-  it entered, at which URL.
+`exec` fills each tag-matched secret's `var` with its password. An explicit
+`--env VAR=NAME.field` binding may name any field, including the username and the
+current TOTP code. A secret matched by tag that has no `var` is an error naming it,
+not a silent skip.
 
-`fill` is what makes an agent-driven login possible without the agent ever holding the
-password. It is also why a **TOTP seed** is stored but has no `credential-ref`: a seed
-generates every future code, so rendering one to a file would be strictly worse than
-rendering the password beside it. Saddlebag computes the six-digit code itself and
-types that.
+**What each verb guarantees.** `fill` reports a character count, a selector and a URL.
+The value is typed through `Input.insertText` and never interpolated into an evaluated
+expression. A TOTP seed leaves the store only as a computed six-digit code, and only
+by being typed. `exec` is as private as the command it runs: a command that prints its
+own environment prints the secret. What `exec` guarantees is that the value is never
+in the agent's transcript by default and never on disk. The agent's permission layer
+decides which commands it may run under `exec`.
 
-A secret does not have to arrive through `add`. A machine account's password is
-usually put into the OS keychain by whoever created the account, under attributes that
-describe the account rather than the tool reading it. `link` points a credential at that
-item instead of copying it — the pool records the *address*, which is metadata, and
-resolves it on every use. Copying would leave two copies of one password, and the copy
-is the one that goes stale silently after a rotation at the source.
+---
 
-A credential belongs to a **project**, inferred from the enclosing git repository's
-name, so `list` and `scan` show only the current repo's credentials with no flag
-needed; `--project NAME` and `--all-projects` override that.
+## The ostler stack
 
-Then, by topic:
+A repository's `docs/features/ops/stack.yml` names one secret source for its compose
+stack. With saddlebag as that source, ostler asks `saddlebag list` for the variable
+names the matching secrets fill, checks them against the `${VAR}` references in the
+rendered compose file, and runs every `docker compose` command under `saddlebag exec`.
+No `stack.env` file is written.
 
-- **[docs/CREDENTIALS.md](https://github.com/GabrielCpp/stablemate/blob/main/saddlebag/docs/CREDENTIALS.md)**
-  — the credential record and the lease, every pool command, project scoping, importing
-  a password out of a `.env`, and what the AI selection prompt actually contains.
-- **[docs/ENVIRONMENTS.md](https://github.com/GabrielCpp/stablemate/blob/main/saddlebag/docs/ENVIRONMENTS.md)**
-  — the four entry kinds, every `env` command, the YAML manifest that lets an
-  environment leave the machine it was defined on, and the `render --check` gate.
-- **[docs/SECURITY.md](https://github.com/GabrielCpp/stablemate/blob/main/saddlebag/docs/SECURITY.md)**
-  — the threat model: which store holds what, keyring scoping, why a config-only
-  environment needs no store at all, and the guarantees each command is built to keep.
-- **[docs/INTEGRATION.md](https://github.com/GabrielCpp/stablemate/blob/main/saddlebag/docs/INTEGRATION.md)**
-  — driving saddlebag from a workhorse workflow (acquire and release as blueprint
-  nodes) and feeding a scan from ostler seed metadata.
+```yaml
+secrets:
+  saddlebag: environment=local
+```
+
+The value is one or more space-separated tag pairs. The ostler README documents the
+other two sources and the required-name check.
+
+---
+
+## Where secrets live
+
+Saddlebag implements no encryption and keeps no local database. Values and metadata
+both live in Vault, under `secret/saddlebag/<name>`: the values as the secret's data,
+the metadata as its custom metadata. There is no plaintext path and no fallback store.
+If Vault is unreachable, the daemon does not start. The full account, including what
+the socket does and does not protect against, is in
+[docs/SECURITY.md](https://github.com/GabrielCpp/stablemate/blob/main/saddlebag/docs/SECURITY.md).
+Driving saddlebag from a workflow node is in
+[docs/INTEGRATION.md](https://github.com/GabrielCpp/stablemate/blob/main/saddlebag/docs/INTEGRATION.md).
+
+---
+
+## Upgrading from 1.x
+
+Version 2.0 removes the OS keyring backend, the SQLite pool, credential leases,
+AI selection, the `env` command family and the YAML manifest. Nothing is migrated.
+Credentials in a 1.x pool and items in the OS keyring are left in place and orphaned.
+Create each secret you still need with `secret create` and `secret set`.
 
 ---
 
@@ -236,40 +213,24 @@ Then, by topic:
 ```
 saddlebag/
 ├── __init__.py
-├── cli.py               # argparse entry point: add, list, remove, scan, acquire,
-│                        #   release, expire, doctor, fill, totp, and `env`
-├── db.py                # SQLite pool — schema, metadata CRUD, lease management,
-│                        #   environments and their entries
-├── store.py             # Secret stores: OS keyring (default) + Vault (fallback)
-├── keychain.py          # Reading an item saddlebag did not write, addressed by
-│                        #   Secret Service attributes; `link` / `unlink`
-├── browser.py           # `fill` — CDP target discovery and Input.insertText; the
-│                        #   value is typed, and only a length comes back
-├── totp.py              # RFC 6238, computed in-process so the seed never leaves
-├── selector.py          # AI selection: build prompt, call agent CLI, parse response
-├── models.py            # Credential, Lease, Requirement, Environment,
-│                        #   EnvironmentEntry — none of them carries a secret
-├── context.py           # Project inference — the enclosing git repo's name
-├── envfile.py           # Minimal `.env` reader/writer (no python-dotenv)
-├── manifest.py          # The checkable-in YAML an environment travels as
-├── render.py            # Resolve an environment to values; the `--check` gate
-└── workhorse.py         # `write_private` — the 0600-before-content write
+├── cli.py        # argparse thin client: build a request, send it, print the reply; `exec`
+├── daemon.py     # `serve`: the accept loop and every verb, over the store and the browser
+├── protocol.py   # the socket path, newline-JSON framing and the client's send()
+├── vault.py      # Vault KV v2: values in the secret's data, metadata in its custom metadata
+├── models.py     # Secret and tag parsing; no field of it carries a value
+├── browser.py    # CDP target discovery and Input.insertText; only a length comes back
+└── totp.py       # RFC 6238, computed in-process so the seed never leaves
 ```
-
-Two deliberate departures from the original spec: there is no `crypto.py`, because
-delegating to the keyring or Vault means saddlebag never rolls its own encryption;
-and the CLI is built on `argparse`, matching every other package in this workspace,
-rather than Click.
-
----
 
 ## Name
 
-A **saddlebag** is the kit a horse carries on a ride — the right tools, ready when
+A **saddlebag** is the kit a horse carries on a ride: the right tools, ready when
 needed, returned to the stable when the ride is done. It fits the stablemate
-vocabulary: ostler tends the stable, farrier fits the gear, workhorse does the
-riding, saddlebag carries what's needed for the journey.
+vocabulary. Ostler tends the stable, farrier fits the gear, workhorse does the
+riding, and saddlebag carries what the journey needs.
 
 ## Map
 
 - `saddlebag/`: the package behind the `saddlebag` command. [Package layout](#package-layout) says what each module owns.
+- `docs/`: the security model and the workflow integration.
+- `tests/`: the suite, run from the repo root with `uv run --package saddlebag pytest saddlebag/tests`.

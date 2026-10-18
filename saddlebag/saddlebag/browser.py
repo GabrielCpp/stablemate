@@ -88,7 +88,7 @@ def list_targets(endpoint: str) -> tuple[Target, ...]:
             "--remote-debugging-port, e.g. "
             "`chromium --remote-debugging-port=9222 --user-data-dir=/tmp/qa-profile`"
         ) from exc
-    return tuple(
+    targets = tuple(
         Target(
             id=entry.get("id", ""),
             url=entry.get("url", ""),
@@ -98,6 +98,9 @@ def list_targets(endpoint: str) -> tuple[Target, ...]:
         for entry in payload
         if entry.get("type") == "page" and entry.get("webSocketDebuggerUrl")
     )
+    for target in targets:
+        require_loopback(target.websocket_url)
+    return targets
 
 
 def select_target(targets: tuple[Target, ...], url_contains: str | None) -> Target:

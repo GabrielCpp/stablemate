@@ -131,3 +131,36 @@ def test_a_truncated_field_is_reported_but_not_bisectable(caplog: pytest.LogCapt
     assert browser.fill(session, "#pw", "hunter2") == 3
     assert "hunter2" not in caplog.text
     assert "3" in caplog.text
+
+
+class _Listing:
+    def __init__(self, payload: list[dict[str, Any]]) -> None:
+        self._body = json.dumps(payload).encode()
+
+    def __enter__(self) -> "_Listing":
+        return self
+
+    def __exit__(self, *exc: object) -> None:
+        return None
+
+    def read(self) -> bytes:
+        return self._body
+
+
+def _page(websocket_url: str) -> dict[str, Any]:
+    return {"id": "a", "type": "page", "url": "https://example.com/", "title": "", "webSocketDebuggerUrl": websocket_url}
+
+
+def test_a_websocket_url_that_leaves_the_machine_is_refused(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A loopback endpoint can still advertise a debugger URL on another host."""
+    listing = _Listing([_page("ws://192.168.1.10:9222/devtools/page/a")])
+    monkeypatch.setattr(browser.urllib.request, "urlopen", lambda url, timeout: listing)
+    with pytest.raises(browser.BrowserError, match="loopback"):
+        browser.list_targets("http://127.0.0.1:9222")
+
+
+def test_a_loopback_websocket_url_is_returned(monkeypatch: pytest.MonkeyPatch) -> None:
+    listing = _Listing([_page("ws://127.0.0.1:9222/devtools/page/a")])
+    monkeypatch.setattr(browser.urllib.request, "urlopen", lambda url, timeout: listing)
+    [found] = browser.list_targets("http://127.0.0.1:9222")
+    assert found.websocket_url == "ws://127.0.0.1:9222/devtools/page/a"

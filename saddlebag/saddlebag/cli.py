@@ -1,48 +1,23 @@
-"""saddlebag command-line entry point."""
+"""saddlebag command-line entry point: a thin client over the daemon's socket."""
 
 from __future__ import annotations
 
 import argparse
 import json
 import logging
+import os
+import signal
 import sys
-import time
+import threading
 from importlib.metadata import version as _pkg_version
 from pathlib import Path
 
-from saddlebag import browser, envfile, keychain, manifest, render, totp
-from saddlebag.context import infer_project
-from saddlebag.db import DEFAULT_TTL, REF_COLUMNS, Pool, PoolError, default_db_path
-from saddlebag.models import FORMATS, KIND_CONFIG, KIND_CREDENTIAL_REF, KIND_PENDING, KIND_SECRET, Credential, Environment, EnvironmentEntry, KeychainRef, Requirement, parse_cred_ref, utcnow
-from saddlebag.selector import SelectionError, select
-from saddlebag.store import SecretStore, StoreUnavailableError, open_store
-from saddlebag.workhorse import write_private
+from saddlebag import browser, daemon, protocol
+from saddlebag.models import FIELDS, VALUE_FIELDS, parse_tag
+from saddlebag.protocol import DaemonNotRunning, Reply, Request
+from saddlebag.vault import VaultError, VaultStore
 
 logger = logging.getLogger(__name__)
-
-
-def _resolve_project(args: argparse.Namespace) -> str | None:
-    """The project to assign (add) or filter by (list, scan)."""
-    if getattr(args, "all_projects", False):
-        return None
-    if args.project is not None:
-        return args.project or None
-    return infer_project()
-
-
-def _requirement(args: argparse.Namespace) -> Requirement:
-    return Requirement(
-        env=args.env,
-        project=_resolve_project(args),
-        roles=tuple(args.roles or ()),
-        features=tuple(args.features or ()),
-        surface=args.surface,
-    )
-
-
-def _store_key(cred: Credential) -> str:
-    """The secret-store key for a credential."""
-    return cred.store_key
 
 
 def _emit(data: object) -> None:
@@ -50,1083 +25,289 @@ def _emit(data: object) -> None:
     sys.stdout.write("\n")
 
 
-def _table(creds: list[Credential]) -> None:
-    if not creds:
-        print("(pool is empty)")
-        return
-    now = utcnow()
-    width = max(len(c.id) for c in creds)
-    pwidth = max((len(c.project or "-") for c in creds), default=1)
-    for c in creds:
-        state = "locked" if c.is_locked(now) else "free"
-        roles = ",".join(c.roles) or "-"
-        project = c.project or "-"
-        print(f"{c.id:<{width}}  {state:<6}  {project:<{pwidth}}  {c.env:<10}  "
-              f"{roles:<24}  {c.username}")
+def _error(message: str, code: int) -> int:
+    print(f"saddlebag: {message}", file=sys.stderr)
+    return code
 
 
-def _read_password(what: str = "password") -> str:
-    value = sys.stdin.read().strip()
-    if not value:
-        logger.error("no %s on stdin", what.rstrip(": "))
-        raise SystemExit(2)
-    return value
+def _ask(verb: str, args: dict[str, object] | None = None) -> Reply | int:
+    try:
+        reply = protocol.send(Request(verb, args or {}))
+    except DaemonNotRunning as exc:
+        return _error(str(exc), 1)
+    except protocol.ProtocolError as exc:
+        return _error(f"the daemon sent an unreadable reply: {exc}", 1)
+    if not reply.ok:
+        return _error(reply.error or f"{verb} failed", 1)
+    return reply
 
 
-def _resolve_password(args: argparse.Namespace) -> str:
-    """The password to store, from whichever source was requested."""
-    if args.password_env_file:
-        if not args.password_var:
-            logger.error("--password-env-file requires --password-var NAME")
-            raise SystemExit(2)
+class UsageError(Exception):
+    """The command line is malformed. The message is the one line printed."""
+
+
+def _check_tags(tags: list[str]) -> list[str]:
+    for tag in tags:
         try:
-            value = envfile.read_var(args.password_env_file, args.password_var)
-        except FileNotFoundError:
-            logger.error("no such env file: %s", args.password_env_file)
-            raise SystemExit(2) from None
-        except KeyError:
-            logger.error("variable %s not found in %s", args.password_var, args.password_env_file)
-            raise SystemExit(2) from None
-        if not value:
-            logger.error("variable %s in %s is empty", args.password_var, args.password_env_file)
-            raise SystemExit(2)
-        return value
-    if args.password_stdin:
-        return _read_password()
-    logger.error(
-        "a password source is required: --password-stdin, "
-        "or --password-env-file FILE --password-var NAME"
-    )
-    raise SystemExit(2)
-
-
-
-
-def cmd_add(args: argparse.Namespace, pool: Pool) -> int:
-    if args.password_keychain:
-        return _add_linked(args, pool)
-
-    password = _resolve_password(args)
-    store = _open_store(args)
-
-    cred = pool.add(
-        username=args.username,
-        env=args.env,
-        project=_resolve_project(args),
-        roles=args.roles or (),
-        features=args.features or (),
-        surface=args.surface,
-    )
-    try:
-        store.put(_store_key(cred), password)
-    except Exception:
-        pool.remove(cred.id)
-        raise
-
-    if args.json:
-        _emit(cred.to_dict())
-    else:
-        scope = f" in project {cred.project}" if cred.project else ""
-        print(f"added {cred.id} ({cred.username}){scope} to the {store.name} store")
-    return 0
-
-
-def _add_linked(args: argparse.Namespace, pool: Pool) -> int:
-    """``add --password-keychain``: the password stays where somebody already put it."""
-    try:
-        ref = KeychainRef.of(keychain.parse_attributes(args.password_keychain))
-        keychain.lookup(ref)
-    except keychain.KeychainError as exc:
-        return _fail(str(exc))
-
-    cred = pool.add(
-        username=args.username,
-        env=args.env,
-        project=_resolve_project(args),
-        roles=args.roles or (),
-        features=args.features or (),
-        surface=args.surface,
-        password_ref=ref,
-    )
-    if args.json:
-        _emit(cred.to_dict())
-    else:
-        scope = f" in project {cred.project}" if cred.project else ""
-        print(f"added {cred.id} ({cred.username}){scope}, password read from the "
-              f"keychain item {ref.describe()}")
-    return 0
-
-
-def cmd_list(args: argparse.Namespace, pool: Pool) -> int:
-    creds = pool.find(_requirement(args), include_locked=True)
-    if args.json:
-        _emit([c.to_dict() for c in creds])
-    else:
-        _table(creds)
-    return 0
-
-
-def cmd_remove(args: argparse.Namespace, pool: Pool) -> int:
-    cred = pool.get(args.credential_id)
-    if cred is None:
-        logger.error("no such credential: %s", args.credential_id)
-        return 1
-    if cred.is_locked() and not args.force:
-        logger.error("%s is leased; release it first or pass --force", cred.id)
-        return 1
-
-    store = _open_store(args)
-    store.delete(_store_key(cred))
-    store.delete(cred.totp_store_key)
-    pool.remove(cred.id)
-    print(f"removed {cred.id}")
-    for field, ref in (("password", cred.password_ref), ("totp", cred.totp_ref)):
-        if ref is not None:
-            print(f"  its {field} was read from {ref.describe()}, which is untouched")
-    return 0
-
-
-def cmd_scan(args: argparse.Namespace, pool: Pool) -> int:
-    requirement = _requirement(args)
-    candidates = pool.find(requirement)
-
-    if not args.select_via:
-        if args.json:
-            _emit([c.to_dict() for c in candidates])
-        else:
-            _table(candidates)
-        return 0
-
-    if not candidates:
-        logger.error("no available credential matches %s", requirement.describe())
-        return 1
-
-    try:
-        cred, selection = select(requirement, candidates, args.select_via)
-    except SelectionError as exc:
-        logger.error("selection failed: %s", exc)
-        return 1
-
-    logger.info("selected %s: %s", cred.id, selection.reason)
-    return _lease_and_emit(args, pool, cred.id)
-
-
-def cmd_acquire(args: argparse.Namespace, pool: Pool) -> int:
-    return _lease_and_emit(args, pool, args.credential_id)
-
-
-def _lease_and_emit(args: argparse.Namespace, pool: Pool, credential_id: str) -> int:
-    """Lease ``credential_id`` and emit the lease — never the password."""
-    cred = pool.get(credential_id)
-    if cred is None:
-        logger.error("no such credential: %s", credential_id)
-        return 1
-
-    store = _open_store(args)
-    if keychain.password_for(cred, store) is None:
-        logger.error(
-            "%s has no password in the %s store — the pool and the store disagree; "
-            "run 'saddlebag doctor'",
-            credential_id,
-            store.name,
-        )
-        return 1
-
-    lease = pool.acquire(credential_id, ttl=args.ttl, run_id=args.run_id)
-
-    if args.json:
-        _emit({
-            "id": cred.id,
-            "username": cred.username,
-            "env": cred.env,
-            "roles": list(cred.roles),
-            "features": list(cred.features),
-            "surface": cred.surface,
-            **lease.to_dict(),
-        })
-    else:
-        print(f"leased {cred.id} as {lease.lease_id} until {lease.expires_at:%Y-%m-%d %H:%M:%SZ}")
-    return 0
-
-
-def cmd_release(args: argparse.Namespace, pool: Pool) -> int:
-    if args.lease_id:
-        freed = pool.release_lease(args.lease_id)
-        label = f"lease {args.lease_id}"
-    else:
-        freed = pool.release_run(args.run_id)
-        label = f"run {args.run_id}"
-
-    if freed == 0:
-        logger.warning("nothing to release for %s", label)
-        return 0
-    print(f"released {freed} credential{'s' if freed != 1 else ''} for {label}")
-    return 0
-
-
-def cmd_expire(args: argparse.Namespace, pool: Pool) -> int:
-    freed = pool.expire()
-    print(f"expired {freed} stale lease{'s' if freed != 1 else ''}")
-    return 0
-
-
-def cmd_doctor(args: argparse.Namespace, pool: Pool) -> int:
-    now = utcnow()
-    creds = pool.all()
-    problems: list[str] = []
-
-    try:
-        store: SecretStore | None = open_store(args.backend)
-    except StoreUnavailableError as exc:
-        store = None
-        problems.append(str(exc))
-
-    locked = [c for c in creds if c.is_locked(now)]
-    stale = [c for c in creds if c.is_stale(now)]
-
-    orphans: list[str] = []
-    if store is not None:
-        orphans = [c.id for c in creds if _password_missing(c, store)]
-        problems.extend(f"{cid}: metadata in pool, no password behind it" for cid in orphans)
-
-    if args.json:
-        _emit({
-            "db": str(pool.path),
-            "store": store.name if store else None,
-            "credentials": len(creds),
-            "locked": [c.id for c in locked],
-            "stale": [c.id for c in stale],
-            "orphans": orphans,
-            "problems": problems,
-        })
-        return 1 if problems else 0
-
-    print(f"pool:  {pool.path} ({len(creds)} credentials)")
-    print(f"store: {store.name if store else 'UNAVAILABLE'}")
-    print(f"locked: {len(locked)}   stale (expired, reclaimable): {len(stale)}")
-    for cred in stale:
-        print(f"  stale  {cred.id}  lease {cred.lease_id}  expired {cred.expires_at:%Y-%m-%d %H:%M:%SZ}")
-    if stale:
-        print("run 'saddlebag expire' to reclaim them")
-    for problem in problems:
-        print(f"  error  {problem}")
-    return 1 if problems else 0
-
-
-def _open_store(args: argparse.Namespace) -> SecretStore:
-    try:
-        return open_store(getattr(args, "backend", None))
-    except StoreUnavailableError as exc:
-        logger.error("%s", exc)
-        raise SystemExit(1) from exc
-
-
-class _LazyStore:
-    """Opens the secret store on first use — and only then."""
-
-    def __init__(self, args: argparse.Namespace) -> None:
-        self._args = args
-        self._store: SecretStore | None = None
-
-    def __call__(self) -> SecretStore:
-        if self._store is None:
-            self._store = _open_store(self._args)
-        return self._store
-
-    @property
-    def opened(self) -> SecretStore | None:
-        """The store, if anything has needed it yet."""
-        return self._store
-
-
-
-
-def _lookup_env(args: argparse.Namespace, pool: Pool) -> Environment | None:
-    project = _resolve_project(args)
-    environment = pool.env_by_name(args.name, project)
-    if environment is None:
-        scope = f" in project {project}" if project else ""
-        logger.error("no such environment: %s%s", args.name, scope)
-    return environment
-
-
-def _read_secret() -> str:
-    secret = sys.stdin.read().strip()
-    if not secret:
-        logger.error("no secret on stdin")
-        raise SystemExit(2)
-    return secret
-
-
-def cmd_env_add(args: argparse.Namespace, pool: Pool) -> int:
-    environment = pool.env_add(
-        name=args.name,
-        env=args.env,
-        project=_resolve_project(args),
-        target=args.target,
-        format=args.format,
-        description=args.description,
-    )
-    if args.json:
-        _emit(environment.to_dict())
-    else:
-        scope = f" in project {environment.project}" if environment.project else ""
-        print(f"added environment {environment.name} ({environment.id}){scope}")
-    return 0
-
-
-def cmd_env_import(args: argparse.Namespace, pool: Pool) -> int:
-    """Seed an environment from a manifest, or from a checked-in ``.env.example``."""
-    path = Path(args.from_path)
-
-    if manifest.is_manifest_path(path):
-        try:
-            parsed = manifest.load(path)
-        except FileNotFoundError:
-            logger.error("no such manifest: %s", path)
-            return 2
-        except manifest.ManifestError as exc:
-            logger.error("%s: %s", path, exc)
-            return 1
-
-        project = _resolve_project(args)
-        environment = pool.env_by_name(args.name, project)
-        if environment is None:
-            environment = pool.env_add(
-                name=args.name,
-                env=parsed.env,
-                project=project,
-                target=parsed.target,
-                format=parsed.format,
-                description=parsed.description,
-            )
-            verb = "reconstituted"
-        else:
-            pool.env_update(
-                environment.id,
-                env=parsed.env,
-                target=parsed.target,
-                format=parsed.format,
-                description=parsed.description,
-            )
-            verb = "updated"
-
-        for entry in parsed.entries:
-            pool.env_put_entry(environment.id, entry)
-        print(f"{verb} {environment.name} ({environment.id}) with {len(parsed.entries)} keys "
-              f"from {path}")
-        return 0
-
-    environment = _lookup_env(args, pool)
-    if environment is None:
-        return 1
-    try:
-        keys = envfile.read_keys(path)
-    except FileNotFoundError:
-        logger.error("no such env file: %s", path)
-        return 2
-
-    added = [k for k in keys if pool.env_get_entry(environment.id, k) is None]
-    for key in added:
-        pool.env_put_entry(environment.id, EnvironmentEntry(key=key, kind=KIND_PENDING))
-
-    skipped = len(keys) - len(added)
-    note = f" ({skipped} already known)" if skipped else ""
-    print(f"imported {len(added)} key{'s' if len(added) != 1 else ''} into "
-          f"{environment.name} from {path}{note}")
-    if added:
-        print("every key is pending — run 'saddlebag env doctor' to see what needs a value")
-    return 0
-
-
-def cmd_env_set(args: argparse.Namespace, pool: Pool) -> int:
-    """Supply a value."""
-    environment = _lookup_env(args, pool)
-    if environment is None:
-        return 1
-
-    key, sep, value = args.assignment.partition("=")
-    key = key.strip()
-    if not key:
-        logger.error("expected KEY=value or KEY, got %r", args.assignment)
-        return 2
-
-    existing = pool.env_get_entry(environment.id, key)
-    required = existing.required if existing else True
-    if args.optional:
-        required = False
-    if args.required:
-        required = True
-    note = args.note if args.note is not None else (existing.note if existing else None)
-
-    secret: str | None = None
-    if sep:
-        if args.secret_stdin or args.from_credential:
-            logger.error("KEY=value supplies the value on argv; drop the other value source")
-            return 2
-        entry = EnvironmentEntry(key=key, kind=KIND_CONFIG, value=value,
-                                 required=required, note=note)
-    elif args.secret_stdin:
-        secret = _read_secret()
-        entry = EnvironmentEntry(key=key, kind=KIND_SECRET, required=required, note=note)
-    elif args.from_credential:
-        try:
-            credential_id, _field = parse_cred_ref(args.from_credential)
+            parse_tag(tag)
         except ValueError as exc:
-            logger.error("--from-credential %s", exc)
-            return 2
-        if pool.get(credential_id) is None:
-            logger.warning("%s does not exist yet — %s will be a dangling reference "
-                           "until it does", credential_id, key)
-        entry = EnvironmentEntry(key=key, kind=KIND_CREDENTIAL_REF,
-                                 cred_ref=args.from_credential, required=required, note=note)
-    elif args.note is not None or args.optional or args.required:
-        entry = (
-            EnvironmentEntry(key=key, kind=existing.kind, value=existing.value,
-                             cred_ref=existing.cred_ref, required=required, note=note,
-                             position=existing.position)
-            if existing
-            else EnvironmentEntry(key=key, kind=KIND_PENDING, required=required, note=note)
+            raise UsageError(str(exc)) from exc
+    return tags
+
+
+def _table(rows: list[list[str]], header: list[str]) -> None:
+    widths = [max(len(row[i]) for row in [header, *rows]) for i in range(len(header))]
+    for row in [header, *rows]:
+        print("  ".join(cell.ljust(width) for cell, width in zip(row, widths, strict=True)).rstrip())
+
+
+def _pairs(raw: list[list[str]]) -> str:
+    return ",".join(f"{k}={v}" for k, v in raw)
+
+
+def cmd_serve(args: argparse.Namespace) -> int:
+    if "VAULT_TOKEN" in os.environ:
+        return _error(
+            "refusing to start with VAULT_TOKEN in the environment: a same-user process reads it from "
+            "/proc/<pid>/environ. Pipe the token on stdin instead.",
+            2,
         )
-    else:
-        logger.error(
-            "a value source is required: KEY=value (config), KEY --secret-stdin (secret), "
-            "or KEY --from-credential cred-007:password (credential-ref)"
-        )
-        return 2
-
-    store = _LazyStore(args)
-    if secret is not None:
-        store().put(environment.store_key(key), secret)
-    elif existing is not None and existing.kind == KIND_SECRET:
-        store().delete(environment.store_key(key))
-
-    pool.env_put_entry(environment.id, entry)
-    print(f"set {key} ({entry.kind}) in {environment.name}")
-    return 0
-
-
-def cmd_env_unset(args: argparse.Namespace, pool: Pool) -> int:
-    environment = _lookup_env(args, pool)
-    if environment is None:
-        return 1
-    entry = pool.env_get_entry(environment.id, args.key)
-    if entry is None:
-        logger.error("%s has no key %s", environment.name, args.key)
-        return 1
-    if entry.kind == KIND_SECRET:
-        _LazyStore(args)().delete(environment.store_key(args.key))
-    pool.env_remove_entry(environment.id, args.key)
-    print(f"removed {args.key} from {environment.name}")
-    return 0
-
-
-def cmd_env_list(args: argparse.Namespace, pool: Pool) -> int:
-    envs = pool.env_all() if args.all_projects else pool.env_find(_resolve_project(args))
-    if args.json:
-        _emit([e.to_dict() for e in envs])
-        return 0
-    if not envs:
-        print("(no environments)")
-        return 0
-
-    width = max(len(e.name) for e in envs)
-    for environment in envs:
-        pending = sum(1 for e in environment.entries if e.kind == KIND_PENDING and e.required)
-        state = f"{len(environment.entries)} keys"
-        if pending:
-            state += f", {pending} pending"
-        print(f"{environment.name:<{width}}  {environment.id}  {environment.env:<8}  "
-              f"{environment.target or '-':<24}  {state}")
-    return 0
-
-
-def cmd_env_show(args: argparse.Namespace, pool: Pool) -> int:
-    """Print an environment."""
-    environment = _lookup_env(args, pool)
-    if environment is None:
-        return 1
-    if args.json:
-        _emit(environment.to_dict())
-        return 0
-
-    scope = f"  project={environment.project}" if environment.project else ""
-    print(f"{environment.name}  ({environment.id}){scope}  env={environment.env}  "
-          f"target={environment.target or '-'}  format={environment.format}")
-    if environment.description:
-        print(f"  {environment.description}")
-    if not environment.entries:
-        print("  (no keys — seed them with 'saddlebag env import')")
-        return 0
-
-    width = max(len(e.key) for e in environment.entries)
-    kwidth = max(len(e.kind) for e in environment.entries)
-    for entry in environment.entries:
-        flag = "" if entry.required else "  (optional)"
-        note = f"  # {entry.note}" if entry.note else ""
-        print(f"  {entry.key:<{width}}  {entry.kind:<{kwidth}}  "
-              f"{entry.display_value()}{flag}{note}")
-    return 0
-
-
-def cmd_env_export(args: argparse.Namespace, pool: Pool) -> int:
-    """Write the manifest — the artefact that travels, and the one to commit."""
-    environment = _lookup_env(args, pool)
-    if environment is None:
-        return 1
-    text = manifest.dumps(environment)
-    if args.output:
-        path = Path(args.output)
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(text, encoding="utf-8")
-        print(f"wrote {path}")
-    else:
-        sys.stdout.write(text)
-    return 0
-
-
-def cmd_env_render(args: argparse.Namespace, pool: Pool) -> int:
-    """Materialise the environment — the only command that turns a secret into a file."""
-    environment = _lookup_env(args, pool)
-    if environment is None:
-        return 1
-    store = _LazyStore(args)
-
-    if args.check:
-        return _env_check(args, pool, environment, store)
-
-    target = args.output or environment.target
-    if not target:
-        logger.error("%s has no render target: pass --output PATH, or set one with "
-                     "'saddlebag env add --target'", environment.name)
-        return 2
-
-    resolution = render.resolve(environment, pool, store,
-                                run_id=args.run_id, ttl=args.ttl)
-    if not resolution.resolvable:
-        _report_gaps(environment, resolution.gaps)
-        return 1
-
+    addr = args.vault_addr or os.environ.get("VAULT_ADDR")
+    if not addr:
+        return _error("no Vault address: set VAULT_ADDR or pass --vault-addr", 2)
+    token = sys.stdin.readline().strip()
+    if not token:
+        return _error("stdin gave an empty Vault token: pipe the token to `saddlebag serve`", 2)
     try:
-        text = render.format_values(resolution.values, environment.format)
+        store = VaultStore(addr, token)
+    except VaultError as exc:
+        return _error(str(exc), 1)
+    path = protocol.fit_socket_path(args.socket) if args.socket else protocol.socket_path()
+    stop = threading.Event()
+    signal.signal(signal.SIGTERM, lambda *_: stop.set())
+    signal.signal(signal.SIGINT, lambda *_: stop.set())
+    try:
+        daemon.serve(store, socket_path=path, browser_endpoint=args.cdp, stop=stop)
+    except OSError as exc:
+        return _error(str(exc), 1)
+    return 0
+
+
+def cmd_list(args: argparse.Namespace) -> int:
+    reply = _ask("list", {"tags": _check_tags(args.tag)})
+    if isinstance(reply, int):
+        return reply
+    if args.json:
+        _emit(reply.result)
+        return 0
+    rows = [
+        [s["name"], s["username"] or "", s["var"] or "", ",".join(s["fields"]), _pairs(s["tags"]), s["description"] or ""]
+        for s in reply.result["secrets"]
+    ]
+    _table(rows, ["NAME", "USERNAME", "VAR", "VALUES", "TAGS", "DESCRIPTION"])
+    return 0
+
+
+def cmd_tags(args: argparse.Namespace) -> int:
+    reply = _ask("tags", {"tags": _check_tags(args.tag)})
+    if isinstance(reply, int):
+        return reply
+    for pair in reply.result["tags"]:
+        print(f"{pair[0]}={pair[1]}")
+    return 0
+
+
+def cmd_create(args: argparse.Namespace) -> int:
+    reply = _ask(
+        "create",
+        {"name": args.name, "username": args.username, "description": args.description, "var": args.var, "tags": _check_tags(args.tag)},
+    )
+    if isinstance(reply, int):
+        return reply
+    if args.json:
+        _emit(reply.result)
+    else:
+        print(f"created {args.name}")
+    return 0
+
+
+def cmd_set(args: argparse.Namespace) -> int:
+    value = sys.stdin.read().rstrip("\r\n")
+    if not value.strip():
+        return _error("stdin gave an empty value", 2)
+    reply = _ask("set", {"name": args.name, "field": args.field, "value": value})
+    if isinstance(reply, int):
+        return reply
+    print(f"stored {reply.result['characters']} characters as {args.name} {args.field}")
+    return 0
+
+
+def cmd_unset(args: argparse.Namespace) -> int:
+    reply = _ask("unset", {"name": args.name, "field": args.field})
+    if isinstance(reply, int):
+        return reply
+    print(f"cleared {args.field} of {args.name}")
+    return 0
+
+
+def cmd_remove(args: argparse.Namespace) -> int:
+    reply = _ask("remove", {"name": args.name})
+    if isinstance(reply, int):
+        return reply
+    print(f"removed {args.name}")
+    return 0
+
+
+def cmd_tag(args: argparse.Namespace) -> int:
+    reply = _ask(args.command_name, {"name": args.name, "tags": _check_tags(args.tags)})
+    if isinstance(reply, int):
+        return reply
+    print(f"{'tagged' if args.command_name == 'tag' else 'untagged'} {args.name}")
+    return 0
+
+
+def cmd_fill(args: argparse.Namespace) -> int:
+    reply = _ask(
+        "fill",
+        {
+            "name": args.name,
+            "field": args.field,
+            "selector": args.selector,
+            "url_contains": args.url_contains,
+            "cdp": args.cdp,
+            "min_seconds": args.min_seconds,
+        },
+    )
+    if isinstance(reply, int):
+        return reply
+    if args.json:
+        _emit(reply.result)
+        return 0
+    extra = f", valid for {reply.result['valid_for_seconds']}s" if "valid_for_seconds" in reply.result else ""
+    print(f"filled {reply.result['characters']} characters into {args.selector} on {reply.result['url']}{extra}")
+    return 0
+
+
+def _binding(text: str) -> dict[str, object]:
+    var, sep, source = text.partition("=")
+    name, _, field = source.partition(".")
+    if not sep or not var or not name:
+        raise ValueError(f"invalid --env {text!r}: expected VAR=NAME or VAR=NAME.field")
+    return {"var": var, "name": name, "field": field or "password"}
+
+
+def cmd_exec(args: argparse.Namespace) -> int:
+    command = args.command[1:] if args.command[:1] == ["--"] else args.command
+    if not command:
+        return _error("exec needs a command after --", 2)
+    if not args.tag and not args.env:
+        return _error("exec needs at least one --tag or --env", 2)
+    try:
+        bindings = [_binding(text) for text in args.env]
     except ValueError as exc:
-        logger.error("cannot render %s as %s: %s", environment.name, environment.format, exc)
-        return 1
-
-    path = write_private(target, text)
-    pool.env_touch(environment.id)
-    for credential_id, lease_id in resolution.leases.items():
-        logger.info("leased %s as %s for %s", credential_id, lease_id, args.run_id or "no run")
-    print(path)
-    return 0
-
-
-def _report_gaps(environment: Environment, gaps: list[render.Gap]) -> None:
-    """The human-only wall, named precisely."""
-    logger.error("cannot render %s — %d required key%s cannot be resolved:",
-                 environment.name, len(gaps), "s" if len(gaps) != 1 else "")
-    for gap in gaps:
-        logger.error("  %s", gap)
-
-
-def _env_check(
-    args: argparse.Namespace, pool: Pool, environment: Environment, store: _LazyStore
-) -> int:
-    """``--check``: resolve everything, write nothing, take no lease."""
-    report = render.check(environment, pool, store, target=args.output)
-    if args.json:
-        _emit(report.to_dict())
-        return 0 if report.ok else 1
-
-    print(f"{environment.name} -> {report.target or '(no target)'}")
-    for gap in report.gaps:
-        print(f"  gap      {gap}")
-    if not report.target_exists and report.target:
-        print("  missing  the target file does not exist yet")
-    for key in report.missing:
-        print(f"  missing  {key}")
-    for key in report.extra:
-        print(f"  extra    {key} (in the file, not in the environment)")
-    for key in report.drift:
-        print(f"  drift    {key} (the file's value is not the one saddlebag would render)")
-    if report.ok:
-        print("  ok       in sync")
-    return 0 if report.ok else 1
-
-
-def cmd_env_doctor(args: argparse.Namespace, pool: Pool) -> int:
-    """Report what a human still has to supply, and what the pool and store disagree on."""
-    envs = pool.env_all() if args.all_projects else pool.env_find(_resolve_project(args))
-    problems: list[str] = []
-
-    store: SecretStore | None = None
-    if any(e.needs_store for e in envs):
-        try:
-            store = open_store(args.backend)
-        except StoreUnavailableError as exc:
-            problems.append(str(exc))
-
-    reports: list[dict[str, list[str] | str]] = []
-    for environment in envs:
-        pending = [e.key for e in environment.entries if e.kind == KIND_PENDING and e.required]
-        unset: list[str] = []
-        dangling: list[str] = []
-
-        for entry in environment.entries:
-            if entry.kind == KIND_SECRET and store is not None:
-                if store.get(environment.store_key(entry.key)) is None:
-                    unset.append(entry.key)
-            elif entry.kind == KIND_CREDENTIAL_REF:
-                credential_id, cred_field = parse_cred_ref(str(entry.cred_ref))
-                cred = pool.get(credential_id)
-                if cred is None:
-                    dangling.append(f"{entry.key} -> {credential_id} (no such credential)")
-                elif (cred_field == "password" and store is not None
-                      and _password_missing(cred, store)):
-                    dangling.append(f"{entry.key} -> {credential_id} (no password behind it)")
-
-        problems.extend(f"{environment.name}: {k} is pending — a human must supply it"
-                        for k in pending)
-        problems.extend(f"{environment.name}: {k} is declared secret but the store has "
-                        "no value for it" for k in unset)
-        problems.extend(f"{environment.name}: {d}" for d in dangling)
-        reports.append({
-            "id": environment.id,
-            "name": environment.name,
-            "pending": pending,
-            "unset": unset,
-            "dangling": dangling,
-        })
-
-    if args.json:
-        _emit({
-            "db": str(pool.path),
-            "store": store.name if store else None,
-            "environments": reports,
-            "problems": problems,
-        })
-        return 1 if problems else 0
-
-    print(f"pool:  {pool.path} ({len(envs)} environments)")
-    print(f"store: {store.name if store else 'not needed'}")
-    for report in reports:
-        counts = [f"{len(report[k])} {k}" for k in ("pending", "unset", "dangling")
-                  if report[k]]
-        summary = ", ".join(counts) if counts else "ok"
-        print(f"  {report['name']:<16} {summary}")
-    for problem in problems:
-        print(f"  error  {problem}")
-    return 1 if problems else 0
-
-
-def cmd_env_remove(args: argparse.Namespace, pool: Pool) -> int:
-    environment = _lookup_env(args, pool)
-    if environment is None:
-        return 1
-    store = _LazyStore(args)
-    for entry in environment.entries:
-        if entry.kind == KIND_SECRET:
-            store().delete(environment.store_key(entry.key))
-    pool.env_remove(environment.id)
-    print(f"removed environment {environment.name} ({environment.id})")
-    return 0
-
-
-
-
-def _add_requirement_flags(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument("--env", help="environment, e.g. staging")
-    parser.add_argument("--project", help="project scope (default: inferred from the working "
-                        "directory; pass '' for none)")
-    parser.add_argument("--roles", nargs="+", metavar="ROLE", help="roles the credential must hold")
-    parser.add_argument("--features", nargs="+", metavar="FEATURE", help="features it must have")
-    parser.add_argument("--surface", help="ostler surface, e.g. checkout/login")
-
-
-def _add_lease_flags(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument("--ttl", type=int, default=DEFAULT_TTL, help=f"lease seconds (default {DEFAULT_TTL})")
-    parser.add_argument("--run-id", help="tag the lease with a workhorse run id")
-
-
-
-
-
-def cmd_totp_set(args: argparse.Namespace, pool: Pool) -> int:
-    """Store a credential's TOTP enrolment seed."""
-    cred = pool.get(args.credential_id)
-    if cred is None:
-        logger.error("no such credential: %s", args.credential_id)
-        return 1
-
-    seed = _read_password("TOTP seed")
+        return _error(str(exc), 2)
+    tags = _check_tags(args.tag)
+    reply = _ask("env", {"tags": tags, "bindings": bindings})
+    if isinstance(reply, int):
+        return reply
+    values = reply.result.get("values")
+    if not isinstance(values, dict):
+        return _error("the daemon sent no environment", 1)
     try:
-        totp.decode_seed(seed)
-    except totp.SeedError as exc:
-        logger.error("%s", exc)
-        return 2
-
-    if cred.totp_ref is not None:
-        return _fail(
-            f"{cred.id} reads its TOTP seed from the keychain item "
-            f"{cred.totp_ref.describe()}. Update it there, or run "
-            f"'saddlebag unlink {cred.id} --field totp' first"
-        )
-    store = _open_store(args)
-    store.put(cred.totp_store_key, seed)
-    print(f"stored a TOTP seed for {cred.id} in the {store.name} store")
+        os.execvpe(command[0], command, {**os.environ, **values})
+    except OSError as exc:
+        return _error(f"cannot run {command[0]}: {exc.strerror or exc}", 127)
     return 0
 
 
-def cmd_totp_unset(args: argparse.Namespace, pool: Pool) -> int:
-    cred = pool.get(args.credential_id)
-    if cred is None:
-        logger.error("no such credential: %s", args.credential_id)
-        return 1
-    _open_store(args).delete(cred.totp_store_key)
-    print(f"removed the TOTP seed for {cred.id}")
-    return 0
-
-
-def cmd_link(args: argparse.Namespace, pool: Pool) -> int:
-    """Point a credential's password or seed at a keychain item saddlebag did not write."""
-    cred = pool.get(args.credential_id)
-    if cred is None:
-        return _fail(f"no such credential: {args.credential_id}")
-
-    try:
-        attributes = keychain.parse_attributes(args.attributes)
-        ref = KeychainRef.of(attributes)
-        keychain.lookup(ref)
-    except keychain.KeychainError as exc:
-        return _fail(str(exc))
-
-    store = _open_store(args)
-    key = cred.store_key if args.field == "password" else cred.totp_store_key
-    if store.get(key) is not None and not args.force:
-        return _fail(
-            f"{cred.id} already has a {args.field} in the {store.name} store; linking "
-            f"would shadow it. Pass --force to drop the stored copy and use the "
-            f"keychain item instead."
-        )
-    if args.force:
-        store.delete(key)
-
-    updated = pool.set_ref(cred.id, args.field, ref)
+def cmd_doctor(args: argparse.Namespace) -> int:
+    reply = _ask("doctor")
+    if isinstance(reply, int):
+        return reply
+    result = reply.result
     if args.json:
-        _emit(updated.to_dict())
+        _emit(result)
     else:
-        print(f"{updated.id}: {args.field} now reads from {ref.describe()}")
-    return 0
+        print(f"vault authenticated: {'yes' if result['vault_authenticated'] else 'no'}")
+        print(f"secrets without a stored value: {', '.join(result['secrets_without_value']) or 'none'}")
+        if result["vault_token_file"]:
+            print("warning: ~/.vault-token exists on the daemon's host; any process of this user can read it")
+    healthy = result["vault_authenticated"] and not result["secrets_without_value"]
+    return 0 if healthy else 1
 
 
-def cmd_unlink(args: argparse.Namespace, pool: Pool) -> int:
-    """Forget a reference."""
-    cred = pool.get(args.credential_id)
-    if cred is None:
-        return _fail(f"no such credential: {args.credential_id}")
-    ref = cred.password_ref if args.field == "password" else cred.totp_ref
-    if ref is None:
-        return _fail(f"{cred.id}: {args.field} is not linked to a keychain item")
-    pool.set_ref(cred.id, args.field, None)
-    print(f"{cred.id}: {args.field} is no longer linked ({ref.describe()} is untouched). "
-          f"Nothing holds a {args.field} for it now")
-    return 0
-
-
-def _value_to_fill(args: argparse.Namespace, cred: Credential, store: SecretStore) -> tuple[str, dict[str, object]]:
-    """The value for ``--field``, plus whatever is safe to report about it."""
-    if args.field == "username":
-        return cred.username, {}
-    if args.field == "password":
-        password = keychain.password_for(cred, store)
-        if password is None:
-            raise SystemExit(
-                _fail(f"{cred.id} has no password in the {store.name} store — "
-                      "the pool and the store disagree; run 'saddlebag doctor'")
-            )
-        return password, {}
-
-    seed = keychain.seed_for(cred, store)
-    if seed is None:
-        raise SystemExit(
-            _fail(f"{cred.id} has no TOTP seed. Store one with: "
-                  f"saddlebag totp set {cred.id} — or, if it is already in the "
-                  f"keychain, point at it with: saddlebag link {cred.id} --field totp")
-        )
-    remaining = totp.seconds_remaining()
-    if remaining < args.min_seconds:
-        logger.info("current code expires in %ds; waiting for the next window", remaining)
-        time.sleep(remaining)
-        remaining = totp.seconds_remaining()
-    return totp.code(seed), {"valid_for_seconds": remaining}
-
-
-def _fail(message: str) -> int:
-    logger.error("%s", message)
-    return 1
-
-
-def _password_missing(cred: Credential, store: SecretStore) -> bool:
-    """Whether a credential's password cannot be read at all — from either home."""
-    try:
-        return keychain.password_for(cred, store) is None
-    except keychain.KeychainError:
-        return True
-
-
-def cmd_fill(args: argparse.Namespace, pool: Pool) -> int:
-    cred = pool.get(args.credential_id)
-    if cred is None:
-        return _fail(f"no such credential: {args.credential_id}")
-
-    store = _open_store(args)
-    try:
-        value, detail = _value_to_fill(args, cred, store)
-        target = browser.select_target(browser.list_targets(args.cdp), args.url_contains)
-        session = browser.WebSocketSession(target.websocket_url)
-        try:
-            length = browser.fill(session, args.selector, value)
-        finally:
-            session.close()
-    except browser.BrowserError as exc:
-        return _fail(str(exc))
-    except totp.SeedError as exc:
-        return _fail(f"{cred.id}: {exc}")
-
-    report = {
-        "id": cred.id,
-        "field": args.field,
-        "selector": args.selector,
-        "characters": length,
-        "url": target.url,
-        **detail,
-    }
-    if args.json:
-        _emit(report)
-    else:
-        extra = f", valid for {detail['valid_for_seconds']}s" if detail else ""
-        print(f"filled {length} characters into {args.selector} on {target.url}{extra}")
-    return 0
+def _tag_option(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--tag", action="append", default=[], metavar="K=V", help="match secrets carrying this tag; repeatable")
 
 
 def build_parser() -> argparse.ArgumentParser:
-    p = argparse.ArgumentParser(prog="saddlebag", description="Carry the right credentials for every ride.")
+    p = argparse.ArgumentParser(prog="saddlebag", description="Fill secrets into browsers and commands without printing them.")
     p.add_argument("--version", action="version", version=f"saddlebag {_pkg_version('saddlebag')}")
-    p.add_argument("--db", metavar="PATH", help=f"pool database (default {default_db_path()})")
-    p.add_argument("--backend", choices=("keyring", "vault"), help="force a secret store (default: autodetect)")
     p.add_argument("-v", "--verbose", action="store_true", help="debug logging on stderr")
     sub = p.add_subparsers(dest="command", required=True)
 
-    a = sub.add_parser("add", help="add a credential to the pool")
-    a.add_argument("--username", required=True)
-    pw = a.add_mutually_exclusive_group()
-    pw.add_argument("--password-stdin", action="store_true", help="read the password from stdin")
-    pw.add_argument("--password-env-file", metavar="ENVFILE",
-                    help="read the password from a variable in a .env file")
-    pw.add_argument("--password-keychain", metavar="NAME=VALUE", nargs="+",
-                    help="leave the password in an existing keychain item and read it "
-                         "there, addressed by these attributes")
-    a.add_argument("--password-var", metavar="NAME",
-                   help="the variable in --password-env-file to import as the password")
-    a.add_argument("--json", action="store_true")
-    _add_requirement_flags(a)
-    a.set_defaults(func=cmd_add)
+    s = sub.add_parser("serve", help="run the daemon; the Vault token is read from stdin")
+    s.add_argument("--socket", type=Path, metavar="PATH", help="socket to listen on")
+    s.add_argument("--vault-addr", metavar="URL", help="Vault address (default $VAULT_ADDR)")
+    s.add_argument("--cdp", default=browser.DEFAULT_ENDPOINT, metavar="URL", help="DevTools endpoint, loopback only")
+    s.set_defaults(func=cmd_serve)
 
-    ls = sub.add_parser("list", help="list the pool (never shows passwords)")
+    ls = sub.add_parser("list", help="list secrets and what they are for")
+    _tag_option(ls)
     ls.add_argument("--json", action="store_true")
-    ls.add_argument("--all-projects", action="store_true",
-                    help="do not scope to the current project")
-    _add_requirement_flags(ls)
     ls.set_defaults(func=cmd_list)
 
-    rm = sub.add_parser("remove", help="remove a credential and its password")
-    rm.add_argument("credential_id", metavar="ID")
-    rm.add_argument("--force", action="store_true", help="remove even while leased")
+    tg = sub.add_parser("tags", help="list the distinct tags of the matching secrets")
+    _tag_option(tg)
+    tg.set_defaults(func=cmd_tags)
+
+    sec = sub.add_parser("secret", help="create and change secrets")
+    ssub = sec.add_subparsers(dest="secret_command", required=True)
+    c = ssub.add_parser("create", help="create a secret with no value yet")
+    c.add_argument("name")
+    c.add_argument("--username")
+    c.add_argument("--description")
+    c.add_argument("--var", help="environment variable `exec` fills with the password")
+    c.add_argument("--tag", action="append", default=[], metavar="K=V")
+    c.add_argument("--json", action="store_true")
+    c.set_defaults(func=cmd_create)
+    st = ssub.add_parser("set", help="store a value read from stdin")
+    st.add_argument("name")
+    st.add_argument("--field", choices=VALUE_FIELDS, default="password")
+    st.set_defaults(func=cmd_set)
+    us = ssub.add_parser("unset", help="forget a stored value")
+    us.add_argument("name")
+    us.add_argument("--field", choices=VALUE_FIELDS, required=True)
+    us.set_defaults(func=cmd_unset)
+    rm = ssub.add_parser("remove", help="delete a secret and every version")
+    rm.add_argument("name")
     rm.set_defaults(func=cmd_remove)
+    for verb in ("tag", "untag"):
+        t = ssub.add_parser(verb, help=f"{verb} a secret")
+        t.add_argument("name")
+        t.add_argument("tags", nargs="+", metavar="K=V")
+        t.set_defaults(func=cmd_tag, command_name=verb)
 
-    sc = sub.add_parser("scan", help="find candidates, optionally let an agent pick one")
-    sc.add_argument("--all-projects", action="store_true",
-                    help="do not scope to the current project")
-    _add_requirement_flags(sc)
-    _add_lease_flags(sc)
-    sc.add_argument("--select-via", metavar="CLI", help="agent CLI that picks the credential, e.g. claude")
-    sc.add_argument("--json", action="store_true",
-                    help="emit JSON: the candidates without --select-via, the lease with it")
-    sc.set_defaults(func=cmd_scan)
+    f = sub.add_parser("fill", help="type a value into a browser field over CDP")
+    f.add_argument("name")
+    f.add_argument("--field", choices=FIELDS, default="password")
+    f.add_argument("--selector", required=True, metavar="CSS")
+    f.add_argument("--url-contains", metavar="TEXT")
+    f.add_argument("--cdp", metavar="URL", help="DevTools endpoint, loopback only (default: the daemon's)")
+    f.add_argument("--min-seconds", type=int, default=5, metavar="N")
+    f.add_argument("--json", action="store_true")
+    f.set_defaults(func=cmd_fill)
 
-    ac = sub.add_parser("acquire", help="lease a credential by exact id (emits the lease, never a secret)")
-    ac.add_argument("credential_id", metavar="ID")
-    ac.add_argument("--json", action="store_true", help="emit the lease as JSON")
-    _add_lease_flags(ac)
-    ac.set_defaults(func=cmd_acquire)
+    e = sub.add_parser("exec", help="run a command with secrets in its environment")
+    _tag_option(e)
+    e.add_argument("--env", action="append", default=[], metavar="VAR=NAME[.field]")
+    e.add_argument("command", nargs=argparse.REMAINDER, metavar="-- CMD")
+    e.set_defaults(func=cmd_exec)
 
-    rl = sub.add_parser("release", help="release leases")
-    group = rl.add_mutually_exclusive_group(required=True)
-    group.add_argument("--lease-id")
-    group.add_argument("--run-id")
-    rl.set_defaults(func=cmd_release)
-
-    ex = sub.add_parser("expire", help="force-release leases past their TTL")
-    ex.set_defaults(func=cmd_expire)
-
-    dr = sub.add_parser("doctor", help="health check: store, locked and stale leases")
-    dr.add_argument("--json", action="store_true")
-    dr.set_defaults(func=cmd_doctor)
-
-    fl = sub.add_parser(
-        "fill",
-        help="type a credential's value into a browser field over CDP (never prints it)",
-        description=(
-            "Type one of a credential's values into a field of a page in a browser that "
-            "is already running with --remote-debugging-port. The value is typed, not "
-            "returned: fill reports only how many characters it entered."
-        ),
-    )
-    fl.add_argument("credential_id", metavar="ID")
-    fl.add_argument("--selector", required=True, metavar="CSS",
-                    help="the field to type into, e.g. \"input[name='password']\"")
-    fl.add_argument("--field", choices=("username", "password", "totp"), default="password",
-                    help="which value to type (default: password)")
-    fl.add_argument("--cdp", default=browser.DEFAULT_ENDPOINT, metavar="URL",
-                    help=f"DevTools endpoint, loopback only (default {browser.DEFAULT_ENDPOINT})")
-    fl.add_argument("--url-contains", metavar="TEXT",
-                    help="pick the page whose URL contains TEXT; required when several are open")
-    fl.add_argument("--min-seconds", type=int, default=5, metavar="N",
-                    help="with --field totp, wait out a code with fewer than N seconds left")
-    fl.add_argument("--json", action="store_true")
-    fl.set_defaults(func=cmd_fill)
-
-    lk = sub.add_parser(
-        "link",
-        help="read a secret from an existing keychain item instead of storing a copy",
-        description="Point a credential's password or TOTP seed at a keychain item "
-                    "that already exists — one created with secret-tool, the desktop's "
-                    "keychain app, or anything else. saddlebag records the attributes "
-                    "and resolves them on each use, so a rotation at the source is "
-                    "picked up with nothing to re-import.",
-    )
-    lk.add_argument("credential_id", metavar="ID")
-    lk.add_argument("attributes", metavar="NAME=VALUE", nargs="+",
-                    help="attributes identifying exactly one keychain item")
-    lk.add_argument("--field", choices=sorted(REF_COLUMNS), default="password",
-                    help="which secret this item holds (default: password)")
-    lk.add_argument("--force", action="store_true",
-                    help="drop saddlebag's own stored copy, which linking would shadow")
-    lk.add_argument("--json", action="store_true")
-    lk.set_defaults(func=cmd_link)
-
-    ul = sub.add_parser("unlink", help="stop reading a secret from a keychain item")
-    ul.add_argument("credential_id", metavar="ID")
-    ul.add_argument("--field", choices=sorted(REF_COLUMNS), default="password")
-    ul.set_defaults(func=cmd_unlink)
-
-    tp = sub.add_parser("totp", help="a credential's second factor (seed in, codes only ever typed)")
-    tsub = tp.add_subparsers(dest="totp_command", required=True)
-    ts = tsub.add_parser("set", help="store an enrolment seed, read from stdin")
-    ts.add_argument("credential_id", metavar="ID")
-    ts.set_defaults(func=cmd_totp_set)
-    tu = tsub.add_parser("unset", help="forget a credential's seed")
-    tu.add_argument("credential_id", metavar="ID")
-    tu.set_defaults(func=cmd_totp_unset)
-
-    _add_env_commands(sub)
+    d = sub.add_parser("doctor", help="check the daemon, Vault and the stored values")
+    d.add_argument("--json", action="store_true")
+    d.set_defaults(func=cmd_doctor)
     return p
-
-
-def _add_project_flag(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument("--project", help="project scope (default: inferred from the working "
-                        "directory; pass '' for none)")
-
-
-def _add_env_commands(sub: argparse._SubParsersAction) -> None:
-    """The environment pool: what a stack needs to *boot*, secret and non-secret alike."""
-    env = sub.add_parser("env", help="environments: the config a stack needs to boot")
-    esub = env.add_subparsers(dest="env_command", required=True)
-
-    add = esub.add_parser("add", help="define an environment and its render target")
-    add.add_argument("name", metavar="NAME")
-    add.add_argument("--env", required=True, help="environment, e.g. local")
-    add.add_argument("--target", metavar="PATH", help="default render path, e.g. web/.env.local")
-    add.add_argument("--format", choices=FORMATS, default="dotenv")
-    add.add_argument("--description")
-    add.add_argument("--json", action="store_true")
-    _add_project_flag(add)
-    add.set_defaults(func=cmd_env_add)
-
-    imp = esub.add_parser("import", help="seed keys from a manifest or a .env.example")
-    imp.add_argument("name", metavar="NAME")
-    imp.add_argument("--from", dest="from_path", required=True, metavar="PATH",
-                     help="a .yaml manifest (reconstitutes the environment), or any "
-                          ".env-shaped file (keys only — values are read and discarded)")
-    _add_project_flag(imp)
-    imp.set_defaults(func=cmd_env_import)
-
-    st = esub.add_parser("set", help="supply a value (the channel decides the kind)")
-    st.add_argument("name", metavar="NAME")
-    st.add_argument("assignment", metavar="KEY[=VALUE]",
-                    help="KEY=value stores config in the pool DB; a bare KEY takes its "
-                         "value from --secret-stdin or --from-credential")
-    source = st.add_mutually_exclusive_group()
-    source.add_argument("--secret-stdin", action="store_true",
-                        help="read the value from stdin and put it in the secret store")
-    source.add_argument("--from-credential", metavar="REF",
-                        help="resolve at render time from a leased credential, "
-                             "e.g. cred-007:password")
-    st.add_argument("--note", help="why this key exists; surfaced in 'env show'")
-    flag = st.add_mutually_exclusive_group()
-    flag.add_argument("--optional", action="store_true",
-                      help="omit this key from the rendered file when it has no value")
-    flag.add_argument("--required", action="store_true", help="the default; undoes --optional")
-    _add_project_flag(st)
-    st.set_defaults(func=cmd_env_set)
-
-    un = esub.add_parser("unset", help="drop a key, and its stored secret if it had one")
-    un.add_argument("name", metavar="NAME")
-    un.add_argument("key", metavar="KEY")
-    _add_project_flag(un)
-    un.set_defaults(func=cmd_env_unset)
-
-    ls = esub.add_parser("list", help="list environments (cannot emit a secret)")
-    ls.add_argument("--json", action="store_true")
-    ls.add_argument("--all-projects", action="store_true")
-    _add_project_flag(ls)
-    ls.set_defaults(func=cmd_env_list)
-
-    sh = esub.add_parser("show", help="show one environment (cannot emit a secret)")
-    sh.add_argument("name", metavar="NAME")
-    sh.add_argument("--json", action="store_true")
-    _add_project_flag(sh)
-    sh.set_defaults(func=cmd_env_show)
-
-    ex = esub.add_parser("export", help="write the manifest — safe to commit")
-    ex.add_argument("name", metavar="NAME")
-    ex.add_argument("--output", metavar="PATH", help="default: stdout")
-    _add_project_flag(ex)
-    ex.set_defaults(func=cmd_env_export)
-
-    rn = esub.add_parser("render", help="materialise the environment to its target file")
-    rn.add_argument("name", metavar="NAME")
-    rn.add_argument("--output", metavar="PATH", help="override the environment's target")
-    rn.add_argument("--check", action="store_true",
-                    help="resolve everything, write nothing, take no lease; exit non-zero "
-                         "when the target is missing, drifted, or unresolvable")
-    rn.add_argument("--run-id", help="tag any credential-ref leases with a workhorse run id")
-    rn.add_argument("--ttl", type=int, default=DEFAULT_TTL,
-                    help=f"lease seconds for credential-refs (default {DEFAULT_TTL})")
-    rn.add_argument("--json", action="store_true", help="machine-readable --check report")
-    _add_project_flag(rn)
-    rn.set_defaults(func=cmd_env_render)
-
-    dr = esub.add_parser("doctor", help="pending keys, unset secrets, dangling credential-refs")
-    dr.add_argument("--json", action="store_true")
-    dr.add_argument("--all-projects", action="store_true")
-    _add_project_flag(dr)
-    dr.set_defaults(func=cmd_env_doctor)
-
-    rm = esub.add_parser("remove", help="drop an environment and its stored secrets")
-    rm.add_argument("name", metavar="NAME")
-    _add_project_flag(rm)
-    rm.set_defaults(func=cmd_env_remove)
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -1136,15 +317,11 @@ def main(argv: list[str] | None = None) -> None:
         level=logging.DEBUG if args.verbose else logging.INFO,
         format="%(name)s %(levelname)s: %(message)s",
     )
-
-    db_path = Path(args.db) if args.db else None
     try:
-        with Pool(db_path) as pool:
-            raise SystemExit(args.func(args, pool))
-    except PoolError as exc:
-        logger.error("%s", exc)
-        raise SystemExit(1) from exc
-    except BrokenPipeError:  # pragma: no cover - `saddlebag list | head`
+        raise SystemExit(args.func(args))
+    except UsageError as exc:
+        raise SystemExit(_error(str(exc), 2)) from exc
+    except BrokenPipeError:
         raise SystemExit(0) from None
 
 

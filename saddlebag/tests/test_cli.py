@@ -1,504 +1,211 @@
-"""End-to-end CLI behaviour: exit codes, redaction, and the lease bookend."""
+"""The thin client: what it sends, what it prints, and how exec and serve behave."""
 
 from __future__ import annotations
 
-import io
 import json
+import os
+from collections.abc import Callable
 from pathlib import Path
 
 import pytest
 
-from conftest import present
+from saddlebag import browser, cli, daemon
+from saddlebag.models import Secret
 
-from saddlebag import cli
-from saddlebag.db import Pool
+from conftest import RecordingSession, Running
 
-
-@pytest.fixture(autouse=True)
-def isolated_store(monkeypatch: pytest.MonkeyPatch, store):
-    """Every CLI invocation gets the same in-memory fake store — never the real keyring."""
-    monkeypatch.setattr(cli, "open_store", lambda backend=None: store)
-    return store
+PASSWORD = "hunter2-pw"
+Run = Callable[..., int]
 
 
-@pytest.fixture(autouse=True)
-def no_inferred_project(monkeypatch: pytest.MonkeyPatch):
-    """Neutralise project inference by default."""
-    monkeypatch.setattr(cli, "infer_project", lambda: None)
+def seed(running: Running) -> None:
+    running.vault.create(Secret("login", "gab", "A login", "LOGIN_PASSWORD", frozenset({("environment", "local")})))
+    running.vault.set_value("login", "password", PASSWORD)
 
 
-@pytest.fixture
-def run(db_path: Path, capsys, monkeypatch: pytest.MonkeyPatch):
-    """Invoke ``main()`` against the temp pool and return its exit code."""
-    def _run(*argv: str, stdin: str | None = None) -> int:
-        if stdin is not None:
-            monkeypatch.setattr("sys.stdin", io.StringIO(stdin))
-        capsys.readouterr()
-        with pytest.raises(SystemExit) as exc:
-            cli.main(["--db", str(db_path), *argv])
-        code = exc.value.code
-        assert isinstance(code, int)
-        return code
-
-    return _run
+def test_create_set_and_list_round_trip(running: Running, run: Run, capsys: pytest.CaptureFixture[str]) -> None:
+    assert run("secret", "create", "login", "--username", "gab", "--description", "A login", "--var", "LOGIN_PASSWORD", "--tag", "environment=local") == 0
+    assert run("secret", "set", "login", stdin=PASSWORD + "\n") == 0
+    out = capsys.readouterr().out
+    assert "stored 10 characters" in out
+    assert PASSWORD not in out
+    assert running.vault.data["login"] == {"password": PASSWORD}
+    assert run("list", "--tag", "environment=local") == 0
+    table = capsys.readouterr().out
+    assert "login" in table and "LOGIN_PASSWORD" in table and "environment=local" in table and PASSWORD not in table
 
 
-@pytest.fixture
-def add_one(run):
-    def _add(username: str = "admin@staging.example.com", env: str = "staging",
-             roles: tuple[str, ...] = ("admin", "billing"), password: str = "hunter2") -> int:
-        return run("add", "--username", username, "--env", env,
-                   "--roles", *roles, "--password-stdin", stdin=password)
-
-    return _add
-
-
-def out(capsys) -> str:
-    return capsys.readouterr().out
-
-
-
-
-def test_add_stores_metadata_in_pool_and_password_in_store(add_one, db_path, store):
-    assert add_one() == 0
-    with Pool(db_path) as pool:
-        cred = present(pool.get("cred-001"))
-    assert cred.username == "admin@staging.example.com"
-    assert cred.roles == ("admin", "billing")
-    assert store.get("cred-001") == "hunter2"
-
-
-def test_add_without_a_password_source_is_a_usage_error(run):
-    assert run("add", "--username", "a@x.com", "--env", "staging") == 2
-
-
-def test_add_imports_a_password_from_an_env_file(run, tmp_path, db_path, store):
-    env = tmp_path / "cred.env"
-    env.write_text("ADMIN_PW=from-dotenv\nOTHER=ignore\n", encoding="utf-8")
-
-    code = run("add", "--username", "admin@staging.example.com", "--env", "staging",
-               "--roles", "admin", "billing", "--surface", "checkout/login",
-               "--password-env-file", str(env), "--password-var", "ADMIN_PW")
-    assert code == 0
-
-    with Pool(db_path) as pool:
-        cred = present(pool.get("cred-001"))
-    assert cred.username == "admin@staging.example.com"
-    assert cred.roles == ("admin", "billing")
-    assert store.get("cred-001") == "from-dotenv"
-
-
-def test_add_env_file_without_var_is_a_usage_error(run, tmp_path):
-    env = tmp_path / "cred.env"
-    env.write_text("ADMIN_PW=x\n", encoding="utf-8")
-    assert run("add", "--username", "a@x.com", "--env", "staging",
-               "--password-env-file", str(env)) == 2
-
-
-def test_add_env_file_with_missing_var_is_a_usage_error(run, tmp_path):
-    env = tmp_path / "cred.env"
-    env.write_text("ADMIN_PW=x\n", encoding="utf-8")
-    assert run("add", "--username", "a@x.com", "--env", "staging",
-               "--password-env-file", str(env), "--password-var", "NOPE") == 2
-
-
-def test_add_env_file_with_empty_var_is_a_usage_error(run, tmp_path):
-    env = tmp_path / "cred.env"
-    env.write_text("ADMIN_PW=\n", encoding="utf-8")
-    assert run("add", "--username", "a@x.com", "--env", "staging",
-               "--password-env-file", str(env), "--password-var", "ADMIN_PW") == 2
-
-
-def test_add_env_file_that_does_not_exist_is_a_usage_error(run, tmp_path):
-    assert run("add", "--username", "a@x.com", "--env", "staging",
-               "--password-env-file", str(tmp_path / "absent.env"),
-               "--password-var", "ADMIN_PW") == 2
-
-
-def test_add_rejects_two_password_sources_at_once(run, tmp_path):
-    env = tmp_path / "cred.env"
-    env.write_text("ADMIN_PW=x\n", encoding="utf-8")
-    assert run("add", "--username", "a@x.com", "--env", "staging",
-               "--password-stdin", "--password-env-file", str(env),
-               "--password-var", "ADMIN_PW") == 2
-
-
-def test_add_with_empty_stdin_is_a_usage_error(run):
-    assert run("add", "--username", "a@x.com", "--env", "staging",
-               "--password-stdin", stdin="   \n") == 2
-
-
-def test_add_rolls_back_metadata_when_the_store_write_fails(db_path, monkeypatch, store):
-    """A credential whose password never landed must not linger in the pool."""
-    def explode(credential_id: str, password: str) -> None:
-        raise RuntimeError("keyring is locked")
-
-    monkeypatch.setattr(store, "put", explode)
-    monkeypatch.setattr("sys.stdin", io.StringIO("hunter2"))
-    with pytest.raises(RuntimeError, match="keyring is locked"):
-        cli.main(["--db", str(db_path), "add", "--username", "a@x.com",
-                  "--env", "staging", "--password-stdin"])
-
-    with Pool(db_path) as pool:
-        assert pool.all() == []
-
-
-
-
-def test_list_json_never_emits_a_password(add_one, run, capsys):
-    add_one()
+def test_list_json_prints_the_daemons_result(running: Running, run: Run, capsys: pytest.CaptureFixture[str]) -> None:
+    seed(running)
     assert run("list", "--json") == 0
-    payload = out(capsys)
-    assert "hunter2" not in payload
-    row = json.loads(payload)[0]
-    assert row["id"] == "cred-001"
-    assert [k for k in row if "password" in k] == ["password_ref"]
-    assert row["password_ref"] is None
+    assert json.loads(capsys.readouterr().out)["secrets"][0]["name"] == "login"
 
 
-def test_list_filters_by_env(add_one, run, capsys):
-    add_one(username="a@staging.com", env="staging")
-    add_one(username="b@prod.com", env="prod")
-
-    run("list", "--env", "prod", "--json")
-    rows = json.loads(out(capsys))
-    assert [r["username"] for r in rows] == ["b@prod.com"]
+def test_tags_prints_key_value_lines(running: Running, run: Run, capsys: pytest.CaptureFixture[str]) -> None:
+    seed(running)
+    assert run("tags") == 0
+    assert capsys.readouterr().out.splitlines() == ["environment=local"]
 
 
-def test_add_and_list_scope_by_project(run, capsys):
-    run("add", "--username", "a@x.com", "--env", "staging", "--project", "checkout-web",
-        "--password-stdin", stdin="pw1")
-    run("add", "--username", "b@x.com", "--env", "staging", "--project", "billing-api",
-        "--password-stdin", stdin="pw2")
-
-    run("list", "--project", "checkout-web", "--json")
-    rows = json.loads(out(capsys))
-    assert [r["username"] for r in rows] == ["a@x.com"]
-    assert rows[0]["project"] == "checkout-web"
+def test_a_malformed_tag_is_a_usage_error(running: Running, run: Run) -> None:
+    assert run("list", "--tag", "nonsense") == 2
 
 
-def test_scan_scopes_candidates_by_project(run, capsys):
-    run("add", "--username", "a@x.com", "--env", "staging", "--project", "checkout-web",
-        "--roles", "admin", "--password-stdin", stdin="pw1")
-    run("add", "--username", "b@x.com", "--env", "staging", "--project", "billing-api",
-        "--roles", "admin", "--password-stdin", stdin="pw2")
-
-    run("scan", "--env", "staging", "--project", "billing-api", "--roles", "admin", "--json")
-    rows = json.loads(out(capsys))
-    assert [r["username"] for r in rows] == ["b@x.com"]
+def test_an_empty_stdin_value_is_a_usage_error(running: Running, run: Run) -> None:
+    seed(running)
+    assert run("secret", "set", "login", stdin="  \n") == 2
+    assert running.vault.data["login"] == {"password": PASSWORD}
 
 
+def test_a_daemon_error_exits_one_with_its_message(running: Running, run: Run, capsys: pytest.CaptureFixture[str]) -> None:
+    assert run("secret", "remove", "ghost") == 1
+    assert "no such secret: ghost" in capsys.readouterr().err
 
 
-def test_add_infers_project_from_the_working_directory(run, monkeypatch, db_path):
-    monkeypatch.setattr(cli, "infer_project", lambda: "stablemate")
-    run("add", "--username", "a@x.com", "--env", "staging", "--password-stdin", stdin="pw")
-    with Pool(db_path) as pool:
-        assert present(pool.get("cred-001")).project == "stablemate"
+def test_a_missing_daemon_exits_one_and_says_how_to_start_it(daemon_path: Path, run: Run, capsys: pytest.CaptureFixture[str]) -> None:
+    assert run("list") == 1
+    assert "saddlebag serve" in capsys.readouterr().err
 
 
-def test_explicit_project_overrides_inference(run, monkeypatch, db_path):
-    monkeypatch.setattr(cli, "infer_project", lambda: "stablemate")
-    run("add", "--username", "a@x.com", "--env", "staging",
-        "--project", "other-repo", "--password-stdin", stdin="pw")
-    with Pool(db_path) as pool:
-        assert present(pool.get("cred-001")).project == "other-repo"
+def test_unset_tag_untag_and_remove_reach_the_vault(running: Running, run: Run) -> None:
+    seed(running)
+    assert run("secret", "tag", "login", "roles=admin") == 0
+    assert ("roles", "admin") in running.vault.metadata["login"].tags
+    assert run("secret", "untag", "login", "roles=admin") == 0
+    assert ("roles", "admin") not in running.vault.metadata["login"].tags
+    assert run("secret", "unset", "login", "--field", "password") == 0
+    assert running.vault.data["login"] == {}
+    assert run("secret", "remove", "login") == 0
+    assert running.vault.names() == []
 
 
-def test_empty_project_means_no_project(run, monkeypatch, db_path):
-    monkeypatch.setattr(cli, "infer_project", lambda: "stablemate")
-    run("add", "--username", "a@x.com", "--env", "staging",
-        "--project", "", "--password-stdin", stdin="pw")
-    with Pool(db_path) as pool:
-        assert present(pool.get("cred-001")).project is None
+def test_fill_prints_a_count_and_never_the_value(
+    running: Running, run: Run, fake_browser: tuple[browser.Target, ...], capsys: pytest.CaptureFixture[str]
+) -> None:
+    seed(running)
+    assert run("fill", "login", "--selector", "#pw") == 0
+    captured = capsys.readouterr()
+    assert "filled 10 characters into #pw on https://github.com/login" in captured.out
+    assert PASSWORD not in captured.out + captured.err
+    assert RecordingSession.last is not None and RecordingSession.last.typed == PASSWORD
 
 
-def test_list_scopes_to_the_inferred_project(run, monkeypatch, capsys):
-    run("add", "--username", "a@x.com", "--env", "staging", "--project", "stablemate",
-        "--password-stdin", stdin="pw1")
-    run("add", "--username", "b@x.com", "--env", "staging", "--project", "other-repo",
-        "--password-stdin", stdin="pw2")
-
-    monkeypatch.setattr(cli, "infer_project", lambda: "stablemate")
-    run("list", "--json")
-    assert [r["username"] for r in json.loads(out(capsys))] == ["a@x.com"]
+def test_fill_json_reports_the_character_count(running: Running, run: Run, fake_browser: tuple[browser.Target, ...], capsys: pytest.CaptureFixture[str]) -> None:
+    seed(running)
+    assert run("fill", "login", "--selector", "#pw", "--json") == 0
+    assert json.loads(capsys.readouterr().out)["characters"] == 10
 
 
-def test_all_projects_bypasses_inference(run, monkeypatch, capsys):
-    run("add", "--username", "a@x.com", "--env", "staging", "--project", "stablemate",
-        "--password-stdin", stdin="pw1")
-    run("add", "--username", "b@x.com", "--env", "staging", "--project", "other-repo",
-        "--password-stdin", stdin="pw2")
-
-    monkeypatch.setattr(cli, "infer_project", lambda: "stablemate")
-    run("list", "--all-projects", "--json")
-    assert {r["username"] for r in json.loads(out(capsys))} == {"a@x.com", "b@x.com"}
-
-
-
-
-def test_scoped_credential_uses_a_project_prefixed_store_key(run, monkeypatch, store):
-    monkeypatch.setattr(cli, "infer_project", lambda: "stablemate")
-    run("add", "--username", "a@x.com", "--env", "staging", "--password-stdin", stdin="pw")
-    assert store.secrets == {"stablemate/cred-001": "pw"}
-
-
-def test_unscoped_credential_uses_the_bare_id_as_store_key(run, store):
-    run("add", "--username", "a@x.com", "--env", "staging", "--password-stdin", stdin="pw")
-    assert store.secrets == {"cred-001": "pw"}
-
-
-def test_two_projects_minting_the_same_id_do_not_collide(tmp_path, monkeypatch, store):
-    """The whole point: two *separate per-project pools* both mint cred-001 (each db restarts the sequence) yet their secrets do not clobber, because the keyring key is project-qualified."""
-    def add(db_name: str, project: str, username: str, password: str) -> None:
-        monkeypatch.setattr(cli, "infer_project", lambda: project)
-        monkeypatch.setattr("sys.stdin", io.StringIO(password))
-        with pytest.raises(SystemExit) as exc:
-            cli.main(["--db", str(tmp_path / db_name), "add",
-                      "--username", username, "--env", "staging", "--password-stdin"])
-        assert exc.value.code == 0
-
-    add("repo-a.db", "repo-a", "a@x.com", "pw-a")
-    add("repo-b.db", "repo-b", "b@x.com", "pw-b")
-
-    assert store.secrets == {"repo-a/cred-001": "pw-a", "repo-b/cred-001": "pw-b"}
-
-
-def test_acquire_reads_a_project_prefixed_secret(run, monkeypatch, capsys):
-    monkeypatch.setattr(cli, "infer_project", lambda: "stablemate")
-    run("add", "--username", "a@x.com", "--env", "staging", "--password-stdin", stdin="pw")
-    assert run("acquire", "cred-001", "--json") == 0
-    assert json.loads(out(capsys))["id"] == "cred-001"
-
-
-def test_doctor_checks_the_prefixed_key(run, monkeypatch, capsys, store):
-    monkeypatch.setattr(cli, "infer_project", lambda: "stablemate")
-    run("add", "--username", "a@x.com", "--env", "staging", "--password-stdin", stdin="pw")
-    store.delete("stablemate/cred-001")
+def test_doctor_exits_one_when_a_secret_has_no_value(running: Running, run: Run, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    monkeypatch.setattr(daemon, "VAULT_TOKEN_FILE", tmp_path / "none")
+    running.vault.create(Secret("empty"))
+    assert run("doctor") == 1
+    assert "empty" in capsys.readouterr().out
     assert run("doctor", "--json") == 1
-    assert json.loads(out(capsys))["orphans"] == ["cred-001"]
+    assert json.loads(capsys.readouterr().out)["secrets_without_value"] == ["empty"]
 
 
-def test_remove_deletes_the_prefixed_key(run, monkeypatch, store):
-    monkeypatch.setattr(cli, "infer_project", lambda: "stablemate")
-    run("add", "--username", "a@x.com", "--env", "staging", "--password-stdin", stdin="pw")
-    assert run("remove", "cred-001") == 0
-    assert store.secrets == {}
+class ExecCapture:
+    def __init__(self) -> None:
+        self.calls: list[tuple[str, list[str], dict[str, str]]] = []
 
+    def __call__(self, file: str, argv: list[str], env: dict[str, str]) -> None:
+        self.calls.append((file, argv, env))
 
-def test_list_shows_locked_credentials(add_one, run, capsys):
-    add_one()
-    run("acquire", "cred-001")
-    run("list", "--json")
-    assert json.loads(out(capsys))[0]["locked"] is True
 
+@pytest.fixture
+def execvpe(monkeypatch: pytest.MonkeyPatch) -> ExecCapture:
+    capture = ExecCapture()
+    monkeypatch.setattr(os, "execvpe", capture)
+    return capture
 
 
+def test_exec_runs_the_command_with_the_secrets_in_its_environment(running: Running, run: Run, execvpe: ExecCapture, monkeypatch: pytest.MonkeyPatch) -> None:
+    seed(running)
+    monkeypatch.setenv("KEEP_ME", "yes")
+    assert run("exec", "--tag", "environment=local", "--", "sh", "-c", "echo hi") == 0
+    [(file, argv, env)] = execvpe.calls
+    assert (file, argv) == ("sh", ["sh", "-c", "echo hi"])
+    assert env["LOGIN_PASSWORD"] == PASSWORD
+    assert env["KEEP_ME"] == "yes"
 
-def test_scan_json_lists_candidates_without_leasing(add_one, run, capsys, db_path):
-    add_one()
-    assert run("scan", "--env", "staging", "--roles", "admin", "--json") == 0
-    assert json.loads(out(capsys))[0]["id"] == "cred-001"
 
-    with Pool(db_path) as pool:
-        assert not present(pool.get("cred-001")).is_locked()
+def test_exec_binds_an_explicit_field(running: Running, run: Run, execvpe: ExecCapture) -> None:
+    seed(running)
+    assert run("exec", "--env", "WHO=login.username", "--env", "PW=login", "--", "true") == 0
+    [(_, _, env)] = execvpe.calls
+    assert env["WHO"] == "gab"
+    assert env["PW"] == PASSWORD
 
 
-def test_scan_excludes_leased_credentials(add_one, run, capsys):
-    add_one()
-    run("acquire", "cred-001")
-    run("scan", "--env", "staging", "--json")
-    assert json.loads(out(capsys)) == []
+def test_exec_does_not_run_the_command_when_the_daemon_refuses(running: Running, run: Run, execvpe: ExecCapture, capsys: pytest.CaptureFixture[str]) -> None:
+    running.vault.create(Secret("nameless", tags=frozenset({("environment", "local")})))
+    assert run("exec", "--tag", "environment=local", "--", "true") == 1
+    assert execvpe.calls == []
+    assert "nameless" in capsys.readouterr().err
 
 
-def test_scan_with_select_via_leases_the_agents_choice(add_one, run, monkeypatch, capsys, db_path):
-    add_one()
-    monkeypatch.setattr(cli, "select", lambda req, cands, agent: (cands[0], _sel()))
+@pytest.mark.parametrize(
+    "argv",
+    [("exec", "--tag", "environment=local"), ("exec", "--", "true"), ("exec", "--env", "BAD", "--", "true")],
+)
+def test_exec_usage_errors_exit_two(running: Running, run: Run, execvpe: ExecCapture, argv: tuple[str, ...]) -> None:
+    assert run(*argv) == 2
+    assert execvpe.calls == []
 
-    code = run("scan", "--env", "staging", "--roles", "admin",
-               "--select-via", "claude", "--run-id", "run-42", "--json")
-    assert code == 0
 
-    data = json.loads(out(capsys))
-    assert data["id"] == "cred-001"
-    assert data["run_id"] == "run-42"
-    assert "password" not in data
+def test_exec_reports_a_command_that_cannot_start(running: Running, run: Run, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    seed(running)
 
-    with Pool(db_path) as pool:
-        assert present(pool.get("cred-001")).is_locked()
+    def missing(file: str, argv: list[str], env: dict[str, str]) -> None:
+        raise FileNotFoundError(2, "No such file or directory")
 
+    monkeypatch.setattr(os, "execvpe", missing)
+    assert run("exec", "--tag", "environment=local", "--", "nope") == 127
+    assert "cannot run nope" in capsys.readouterr().err
 
-def test_scan_with_no_match_exits_one(add_one, run):
-    add_one()
-    assert run("scan", "--env", "nowhere", "--select-via", "claude") == 1
 
+def test_serve_refuses_when_vault_token_is_in_the_environment(run: Run, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    monkeypatch.setenv("VAULT_TOKEN", "root")
+    monkeypatch.setenv("VAULT_ADDR", "http://127.0.0.1:8200")
+    assert run("serve", stdin="root\n") == 2
+    err = capsys.readouterr().err
+    assert len(err.strip().splitlines()) == 1
+    assert "VAULT_TOKEN" in err
+    assert "root\n" not in err
 
-def test_scan_reports_a_failed_selection(add_one, run, monkeypatch):
-    from saddlebag.selector import SelectionError
 
-    add_one()
+def test_serve_refuses_an_empty_token_on_stdin(run: Run, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    monkeypatch.delenv("VAULT_TOKEN", raising=False)
+    monkeypatch.setenv("VAULT_ADDR", "http://127.0.0.1:8200")
+    assert run("serve", stdin="\n") == 2
+    err = capsys.readouterr().err
+    assert len(err.strip().splitlines()) == 1
+    assert "empty Vault token" in err
 
-    def explode(req, cands, agent):
-        raise SelectionError("agent went rogue")
 
-    monkeypatch.setattr(cli, "select", explode)
-    assert run("scan", "--env", "staging", "--select-via", "claude") == 1
+def test_serve_refuses_without_a_vault_address(run: Run, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    monkeypatch.delenv("VAULT_TOKEN", raising=False)
+    monkeypatch.delenv("VAULT_ADDR", raising=False)
+    assert run("serve", stdin="root\n") == 2
+    assert "VAULT_ADDR" in capsys.readouterr().err
 
 
+def test_serve_hands_the_stdin_token_to_vault(run: Run, monkeypatch: pytest.MonkeyPatch, daemon_path: Path) -> None:
+    monkeypatch.delenv("VAULT_TOKEN", raising=False)
+    seen: dict[str, object] = {}
 
+    class Store:
+        pass
 
-def test_acquire_json_emits_the_lease_and_never_the_password(add_one, run, capsys):
-    """The vault is opaque: no verb emits a stored value, acquire included."""
-    add_one()
-    assert run("acquire", "cred-001", "--json") == 0
-    raw = out(capsys)
-    assert "hunter2" not in raw
-    data = json.loads(raw)
-    assert data["id"] == "cred-001"
-    assert data["username"] == "admin@staging.example.com"
-    assert data["lease_id"]
-    assert "password" not in data
+    def connect(addr: str, token: str) -> Store:
+        seen.update(addr=addr, token=token)
+        return Store()
 
-
-def test_acquire_a_leased_credential_exits_one(add_one, run):
-    add_one()
-    run("acquire", "cred-001")
-    assert run("acquire", "cred-001") == 1
-
-
-def test_acquire_unknown_credential_exits_one(add_one, run):
-    add_one()
-    assert run("acquire", "cred-999") == 1
-
-
-def test_acquire_when_the_store_lost_the_password_exits_one(add_one, run, store):
-    add_one()
-    store.delete("cred-001")
-    assert run("acquire", "cred-001") == 1
-
-
-def test_release_by_lease_id(add_one, run, capsys, db_path):
-    add_one()
-    run("acquire", "cred-001", "--json")
-    lease_id = json.loads(out(capsys))["lease_id"]
-
-    assert run("release", "--lease-id", lease_id) == 0
-    with Pool(db_path) as pool:
-        assert not present(pool.get("cred-001")).is_locked()
-
-
-def test_release_by_run_id(add_one, run, capsys):
-    add_one()
-    add_one(username="b@staging.com")
-    run("acquire", "cred-001", "--run-id", "run-42")
-    run("acquire", "cred-002", "--run-id", "run-42")
-
-    assert run("release", "--run-id", "run-42") == 0
-    assert "released 2 credentials" in out(capsys)
-
-
-def test_release_requires_a_selector(run):
-    assert run("release") == 2
-
-
-def test_release_of_nothing_is_not_an_error(run):
-    """CI cleanup must be idempotent — releasing twice cannot fail the build."""
-    assert run("release", "--lease-id", "ghost") == 0
-
-
-
-
-def test_expire_reclaims_a_stale_lease(add_one, run, capsys, db_path):
-    add_one()
-    run("acquire", "cred-001", "--ttl", "1")
-
-    with Pool(db_path) as pool:
-        pool._conn.execute("UPDATE credentials SET expires_at = 0 WHERE id = 'cred-001'")
-
-    assert run("expire") == 0
-    assert "expired 1 stale lease" in out(capsys)
-
-
-def test_doctor_reports_a_stale_lease(add_one, run, capsys, db_path):
-    """doctor and expire must agree: anything doctor calls stale, expire reclaims."""
-    add_one()
-    run("acquire", "cred-001", "--ttl", "1")
-    with Pool(db_path) as pool:
-        pool._conn.execute("UPDATE credentials SET expires_at = 0 WHERE id = 'cred-001'")
-
-    run("doctor", "--json")
-    assert json.loads(out(capsys))["stale"] == ["cred-001"]
-
-    assert run("expire") == 0
-    assert "expired 1 stale lease" in out(capsys)
-
-
-def test_doctor_is_clean_on_a_healthy_pool(add_one, run, capsys):
-    add_one()
-    assert run("doctor", "--json") == 0
-    assert json.loads(out(capsys))["problems"] == []
-
-
-def test_doctor_flags_a_credential_whose_password_vanished(add_one, run, capsys, store):
-    add_one()
-    store.delete("cred-001")
-
-    assert run("doctor", "--json") == 1
-    assert json.loads(out(capsys))["orphans"] == ["cred-001"]
-
-
-def test_doctor_reports_an_unavailable_store_instead_of_dying(run, monkeypatch, capsys):
-    from saddlebag.store import StoreUnavailableError
-
-    def explode(backend=None):
-        raise StoreUnavailableError("no secret store available: set VAULT_ADDR")
-
-    monkeypatch.setattr(cli, "open_store", explode)
-    assert run("doctor", "--json") == 1
-    report = json.loads(out(capsys))
-    assert report["store"] is None
-    assert "no secret store" in report["problems"][0]
-
-
-def test_an_unavailable_store_fails_other_commands(run, monkeypatch):
-    from saddlebag.store import StoreUnavailableError
-
-    def explode(backend=None):
-        raise StoreUnavailableError("nope")
-
-    monkeypatch.setattr(cli, "open_store", explode)
-    assert run("add", "--username", "a@x.com", "--env", "staging",
-               "--password-stdin", stdin="hunter2") == 1
-
-
-
-
-def test_remove_deletes_metadata_and_password(add_one, run, db_path, store):
-    add_one()
-    assert run("remove", "cred-001") == 0
-    with Pool(db_path) as pool:
-        assert pool.get("cred-001") is None
-    assert store.get("cred-001") is None
-
-
-def test_remove_refuses_a_leased_credential(add_one, run, store):
-    add_one()
-    run("acquire", "cred-001")
-    assert run("remove", "cred-001") == 1
-    assert store.get("cred-001") == "hunter2"
-
-
-def test_remove_force_overrides_the_lease(add_one, run):
-    add_one()
-    run("acquire", "cred-001")
-    assert run("remove", "cred-001", "--force") == 0
-
-
-def test_remove_unknown_credential_exits_one(run):
-    assert run("remove", "cred-404") == 1
-
-
-def _sel():
-    from saddlebag.selector import Selection
-
-    return Selection(selected="cred-001", reason="only match")
+    def serve(store: object, *, socket_path: Path, browser_endpoint: str, stop: object) -> None:
+        seen.update(path=socket_path, cdp=browser_endpoint)
+
+    monkeypatch.setattr(cli, "VaultStore", connect)
+    monkeypatch.setattr(daemon, "serve", serve)
+    assert run("serve", "--vault-addr", "http://vault.example.com:8200", "--cdp", "http://127.0.0.1:9333", stdin="  s.token  \n") == 0
+    assert seen == {"addr": "http://vault.example.com:8200", "token": "s.token", "path": daemon_path, "cdp": "http://127.0.0.1:9333"}

@@ -1,7 +1,7 @@
-"""saddlebag — the runtime credential pool for the stablemate ecosystem."""
+"""saddlebag: a Vault-backed daemon that fills secrets without printing them."""
 
 from __future__ import annotations
 
-__all__ = ["Credential", "Lease"]
+__all__ = ["Secret"]
 
-from saddlebag.models import Credential, Lease
+from saddlebag.models import Secret

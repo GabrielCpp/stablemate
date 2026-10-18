@@ -80,10 +80,6 @@ dev = [
     "basedpyright>=1.31",
     "playwright>=1.40",
     "pillow>=10.0",
-    # saddlebag's `vault` extra. Installed here so ty resolves `hvac` and actually
-    # type-checks the vault backend; without it that adapter is an unresolved import
-    # and its whole body goes unchecked.
-    "hvac>=2.0",
     # `scripts/bench_ostler_doctor.py` imports ostler directly — it measures the library,
     # not the CLI. A bare `uv run` syncs this root and its dev group only, so without the
     # declaration below the harness resolves ostler purely by accident: it works in a
