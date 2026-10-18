@@ -22,7 +22,7 @@ from okf_book.main.tally import (
 from okf_book.support import FIX_COMMIT_NODE, ScriptedRunner, always, git
 from workhorse.pyflow import park as pyflow_park
 
-from workhorse_workflows.okf_book.main import flow
+from workhorse_workflows.okf_book.main.nodes import book_problems
 from workhorse_workflows.okf_book.main.nodes.report import BookReport
 from workhorse_workflows.okf_book.shared import book_flow
 from workhorse_workflows.okf_book.workflow import OkfBook
@@ -40,7 +40,7 @@ def _writer(repo: Path) -> ScriptedRunner:
 @pytest.fixture
 def passing(monkeypatch: pytest.MonkeyPatch) -> None:
     stub_the_run_to(monkeypatch, PASSED)
-    monkeypatch.setattr(flow, "page_problems", page_problems_until_noted)
+    monkeypatch.setattr(book_problems, "page_problems", page_problems_until_noted)
 
 
 @pytest.mark.usefixtures("passing")

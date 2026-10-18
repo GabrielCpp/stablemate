@@ -10,7 +10,8 @@ import pytest
 from okf_book.support import ScriptedRunner, StoppedAtTheGate, git
 from workhorse.pyflow import park as pyflow_park
 
-from workhorse_workflows.okf_book.main import exercise_book_flow, flow
+from workhorse_workflows.okf_book.main.nodes import book_problems
+from workhorse_workflows.okf_book.main import exercise_book_flow
 from workhorse_workflows.okf_book.main.nodes.report import read_report
 from workhorse_workflows.okf_book.main.nodes.surface import Surface, SurfaceKind
 from workhorse_workflows.okf_book.shared.book_run import CompileOutcome, ExerciseResult, StackReadiness
@@ -103,5 +104,5 @@ def page_problems_until_noted(root: Path, _service: str, _source_folder: str = "
 def stub_a_book_sent_back_to_its_owner(monkeypatch: pytest.MonkeyPatch) -> None:
     """Send an existing book that passes its run back to its owner, with the page check clean once tally.md is noted."""
     stub_the_run_to(monkeypatch, PASSED)
-    monkeypatch.setattr(flow, "page_problems", page_problems_until_noted)
+    monkeypatch.setattr(book_problems, "page_problems", page_problems_until_noted)
     monkeypatch.setattr(pyflow_park, "wait_for_answer", stopping_operator([]))

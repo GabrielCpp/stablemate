@@ -60,7 +60,7 @@ def app(tmp_path: Path) -> Callable[[str], Path]:
     return _app
 
 
-def _env(tmp_path: Path, runner: ScriptedRunner, run_id: str) -> RunEnv:
+def run_env(tmp_path: Path, runner: ScriptedRunner, run_id: str) -> RunEnv:
     writer = ArtifactWriter("okf-book", tmp_path / "runs", run_id=run_id)
     env = RunEnv(
         writer=writer,
@@ -80,7 +80,7 @@ def drive_book(tmp_path: Path) -> Callable[[OkfBook, ScriptedRunner], object]:
 
     def _run(flow: OkfBook, runner: ScriptedRunner) -> object:
         run_ids.append(f"t{len(run_ids)}")
-        return driver(flow, _env(tmp_path, runner, run_ids[-1]))
+        return driver(flow, run_env(tmp_path, runner, run_ids[-1]))
 
     return _run
 

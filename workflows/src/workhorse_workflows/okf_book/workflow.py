@@ -7,12 +7,12 @@ from workhorse_workflows.okf_book.main.exercise_book_flow import ExerciseBook
 from workhorse_workflows.okf_book.main.flow import OkfBook
 from workhorse_workflows.okf_book.main.reground_book_flow import RegroundBook
 from workhorse_workflows.okf_book.main.write_book_flow import WriteBook
+from workhorse_workflows.okf_book.shared.blueprint import blueprint
 
 workflow = (
     Registry("okf-book", package=__package__)
-    .add_blueprints()
+    .add_blueprints(blueprint)
     .add_flows(write_book=WriteBook, exercise_book=ExerciseBook, reground_book=RegroundBook)
-    .stub_agents({"write-book": "stub"})
 )
 main = console_script(workflow.entry_point(OkfBook))
 
