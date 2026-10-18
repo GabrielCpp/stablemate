@@ -5,7 +5,7 @@ import argparse
 import json
 import sys
 from collections.abc import Iterator
-from urllib.parse import urlencode, urlsplit, urlunsplit
+from urllib.parse import urlencode
 
 from websockets.exceptions import WebSocketException
 from websockets.sync.client import connect
@@ -18,6 +18,7 @@ from groom.attention import (
     EventFrame,
     EventName,
 )
+from groom.ws_url import ws_url
 
 
 def event_names(value: str) -> frozenset[EventName]:
@@ -32,14 +33,8 @@ def event_names(value: str) -> frozenset[EventName]:
 
 
 def _endpoint(url: str, run: str, **params: object) -> str:
-    parts = urlsplit(url)
-    if parts.scheme not in ("http", "https") or not parts.netloc:
-        raise ValueError("GROOM_URL must be an http:// or https:// URL")
     query = urlencode({"run": run, **{k: v for k, v in params.items() if v is not None}})
-    return urlunsplit((
-        "wss" if parts.scheme == "https" else "ws", parts.netloc,
-        parts.path.rstrip("/") + "/feed", query, "",
-    ))
+    return ws_url(url, "/feed", query)
 
 
 def _event_line(event: AttentionEvent) -> str:

@@ -38,3 +38,4 @@ The package behind the `groom` dashboard, its OTLP collector and the in-containe
 - `store.py`: the SQLite telemetry store: its schema, its connection and the queries over spans, metrics, logs and turns.
 - `turns.py`: the durable archive of turn records and the harvester that fills it from run directories.
 - `wait.py`: `groom wait`, which blocks on the websocket until a chosen attention event arrives.
+- `ws_url.py`: turning the address `groom serve` answers on into the websocket URL for one of its sockets.
