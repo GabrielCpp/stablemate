@@ -8,8 +8,8 @@ from rich.text import Text
 from textual import on
 from textual.app import App, ComposeResult
 from textual.binding import Binding, BindingType
-from textual.containers import Horizontal, Vertical, VerticalScroll
-from textual.widgets import Button, Footer, Markdown, OptionList, Static, TextArea
+from textual.containers import Horizontal
+from textual.widgets import Button, Footer, OptionList, Static
 from textual.widgets.option_list import Option
 
 from groom.tui import store as client
@@ -23,137 +23,12 @@ from groom.tui.connection import (
     derive_connection,
 )
 from groom.tui.link import Frame, Link, LinkError
-
-PHASE_GLYPH = {"live": "●", "stale": "◐", "reconnecting": "◌", "offline": "○"}
-PHASE_STYLE = {"live": "green", "stale": "yellow", "reconnecting": "yellow", "offline": "red"}
-SCANNING_TEXT = "Discovering containers…"
-EMPTY_TEXT = "No workhorse runs — nothing is running."
-MACHINE_TEXT = "Waiting for a machine result."
-
+from groom.tui.widgets.detail import DetailPane
+from groom.tui.widgets.fleet import row_text, status_text
+from groom.tui.widgets.gate import GateBlock
 
 def _now_ms() -> float:
     return time.monotonic() * 1000
-
-
-def status_text(connection: Connection, store: client.Store) -> Text:
-    text = Text(no_wrap=True, overflow="ellipsis")
-    text.append(f"{PHASE_GLYPH[connection.phase]} {connection.phase}", style=f"bold {PHASE_STYLE[connection.phase]}")
-    counts = store.status.get("counts") or {}
-    total = store.status.get("workers", len(store.runs))
-    text.append(f"  {total} runs")
-    for name in ("blocked", "running", "idle", "finished"):
-        if counts.get(name):
-            text.append(f" · {counts[name]} {name}")
-    if not store.runs:
-        text.append("  " + (SCANNING_TEXT if store.scanning else EMPTY_TEXT))
-    return text
-
-
-def row_text(row: Frame) -> Text:
-    text = Text(no_wrap=True, overflow="ellipsis")
-    if int(row.get("gate_count") or 0) > 0:
-        text.append("▲ gate ", style="bold yellow")
-    else:
-        text.append("       ")
-    text.append(f"{clean(row.get('live_label')) or 'unknown':<12}")
-    text.append(clean(row.get("name")), style="bold")
-    doing = clean(row.get("doing") or row.get("node") or "")
-    if doing:
-        text.append("  " + doing, style="dim")
-    return text
-
-
-class GateBlock(Vertical):
-    def __init__(self, gate: Frame) -> None:
-        super().__init__()
-        self.file_path = str(gate.get("file_path") or "")
-        self.machine = gate.get("kind") == "machine"
-        self._question = clean(gate.get("question"))
-
-    def compose(self) -> ComposeResult:
-        yield Static(Text(clean(self.file_path)), classes="gate-path")
-        yield Markdown(self._question, classes="question")
-        if self.machine:
-            yield Static(MACHINE_TEXT, classes="machine")
-        else:
-            yield TextArea(classes="answer")
-            yield Button("Send (ctrl+s)", classes="send")
-
-    async def update_gate(self, gate: Frame) -> None:
-        question = clean(gate.get("question"))
-        if question != self._question:
-            self._question = question
-            await self.query_one(Markdown).update(question)
-
-    @property
-    def answer_box(self) -> TextArea | None:
-        boxes = self.query(TextArea)
-        return boxes.first() if boxes else None
-
-
-class DetailPane(VerticalScroll):
-    def __init__(self) -> None:
-        super().__init__(id="detail")
-        self._lock = asyncio.Lock()
-
-    def compose(self) -> ComposeResult:
-        yield Static(id="head")
-        yield Static(id="notice")
-        yield Vertical(id="gates")
-
-    def blocks(self) -> list[GateBlock]:
-        return list(self.query(GateBlock))
-
-    async def show(self, store: client.Store) -> None:
-        async with self._lock:
-            await self._show(store)
-
-    async def _show(self, store: client.Store) -> None:
-        head = self.query_one("#head", Static)
-        notice = self.query_one("#notice", Static)
-        gates = self.query_one("#gates", Vertical)
-        row = client.run_by_id(store, store.selected)
-        detail = store.detail
-        if not store.selected or row is None:
-            head.update("")
-            notice.update("Select a run and press enter to read its gates.")
-            await gates.remove_children()
-            return
-        state = clean((detail or {}).get("state") or row.get("state"))
-        node = clean((detail or {}).get("node") or row.get("node"))
-        header = Text(clean(row.get("name")), style="bold")
-        header.append(f"  {state}")
-        if node:
-            header.append(f"  at {node}")
-        head.update(header)
-        if detail is None:
-            notice.update("Loading…")
-            await gates.remove_children()
-            return
-        if not detail.get("found", True):
-            notice.update("Run not found.")
-            await gates.remove_children()
-            return
-        wanted = detail.get("gates") or []
-        notice.update(
-            ""
-            if wanted
-            else Text(f"Nothing to answer — this run is {state}" + (f" at node {node}." if node else "."))
-        )
-        await self._reconcile(gates, wanted)
-
-    async def _reconcile(self, container: Vertical, wanted: list[Frame]) -> None:
-        paths = {str(gate.get("file_path") or "") for gate in wanted}
-        existing = {block.file_path: block for block in container.query(GateBlock)}
-        for path, block in existing.items():
-            if path not in paths:
-                await block.remove()
-        for gate in wanted:
-            path = str(gate.get("file_path") or "")
-            if path in existing:
-                await existing[path].update_gate(gate)
-            else:
-                await container.mount(GateBlock(gate))
 
 
 class GroomTui(App[None]):
@@ -163,17 +38,28 @@ class GroomTui(App[None]):
     #runs { width: 45%; border-right: solid $primary-darken-2; }
     #detail { width: 1fr; padding: 0 1; }
     #head { text-style: bold; }
+    #note, #notice, #trail-empty, #activity, #tabs { height: auto; }
+    #metrics, #trail-bar { height: auto; margin-top: 1; }
+    #trail-tab, #trail-lines, #gate-tab { height: auto; }
+    .trail-line { height: auto; }
+    .trail-turn { height: auto; padding-left: 0; }
+    .entry-message, .entry-tool, .entry-divider { height: auto; }
     .gate-path { color: $text-muted; margin-top: 1; }
     .question { margin: 0; padding: 0; }
     .answer { height: 6; }
     .send { margin-top: 1; }
     GateBlock { height: auto; }
     #gates { height: auto; }
+    Collapsible { padding-bottom: 0; }
     """
     BINDINGS: ClassVar[list[BindingType]] = [
         Binding("j", "cursor_down", "Down"),
         Binding("k", "cursor_up", "Up"),
         Binding("enter", "open_run", "Open"),
+        Binding("g", "show_tab('gate')", "Gate"),
+        Binding("t", "show_tab('trail')", "Trail"),
+        Binding("v", "cycle_view", "View"),
+        Binding("K", "cycle_kind", "Telemetry kind"),
         Binding("a", "focus_answer", "Answer"),
         Binding("ctrl+s", "send_answer", "Send"),
         Binding("r", "refresh", "Rescan"),
@@ -368,7 +254,23 @@ class GroomTui(App[None]):
     def action_focus_runs(self) -> None:
         self.query_one("#runs", OptionList).focus()
 
-    def action_focus_answer(self) -> None:
+    async def action_show_tab(self, tab: str) -> None:
+        self.pane.tab = tab
+        await self._render_detail()
+
+    async def action_cycle_view(self) -> None:
+        if self.pane.tab == "trail":
+            self.store = client.cycle_view(self.store)
+            await self._render_detail()
+
+    async def action_cycle_kind(self) -> None:
+        if self.pane.tab == "trail" and self.store.trail_view != "transcript":
+            self.store = client.cycle_kind(self.store)
+            await self._render_detail()
+
+    async def action_focus_answer(self) -> None:
+        self.pane.tab = "gate"
+        await self._render_detail()
         for block in self.pane.blocks():
             if block.answer_box is not None:
                 block.answer_box.focus()
