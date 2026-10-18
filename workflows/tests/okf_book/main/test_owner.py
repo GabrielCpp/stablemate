@@ -19,6 +19,7 @@ from okf_book.main.tally import (
 from okf_book.support import ScriptedRunner
 from ostler.qa.attribution import Cause, Signature
 
+from workhorse import gates
 from workhorse.pyflow import park as pyflow_park
 
 from workhorse_workflows.okf_book.main.nodes import book_problems
@@ -133,3 +134,35 @@ def test_an_owner_that_names_the_book_and_writes_nothing_starts_its_next_turn_af
     assert runner.resumed == [False, True, False]
     assert isinstance(result, BookReport)
     assert result.blockers == ()
+
+
+def test_an_owner_started_afresh_reads_the_operators_answer_again(
+    app: App, drive_book: DriveBook, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo = app("tally-cli")
+    page = repo / PAGE
+    answers = iter(("answer 1",))
+    left = {0: (UNNAMED, UNLINKED), 1: (UNNAMED, UNLINKED), 2: (UNNAMED,)}
+
+    def _reply(_args: dict[str, object]) -> dict[str, object]:
+        if runner.turns["write-book"] == 2:
+            return {"run": [], "check": [{"group": 1, "side": "book", "evidence": "the page says so"}]}
+        _ = page.write_text(page.read_text(encoding="utf-8") + NOTE, encoding="utf-8")
+        return {"run": [], "check": []}
+
+    def _operator(path: Path, **_kwargs: object) -> None:
+        _ = path.write_text(gates.apply_answer(path.read_text(encoding="utf-8"), next(answers)), encoding="utf-8")
+
+    def _problems(_root: Path, _service: str, _source_folder: str = "") -> tuple[PageProblem, ...]:
+        return left.get(runner.turns["write-book"], ())
+
+    runner = ScriptedRunner({"write-book": _reply})
+    written_by_the_workflow(repo)
+    stub_the_runs_to(monkeypatch, PASSED, PASSED, PASSED, PASSED)
+    monkeypatch.setattr(book_problems, "page_problems", _problems)
+    monkeypatch.setattr(pyflow_park, "wait_for_answer", _operator)
+
+    _ = drive_book(OkfBook(repo_dir=str(repo), surfaces=(TALLY,)), runner)
+
+    assert [args["operator_answer"] for args in runner.args_of("write-book")] == ["", "answer 1", "answer 1"]
+    assert runner.resumed == [False, True, False]

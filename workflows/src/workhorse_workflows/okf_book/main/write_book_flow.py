@@ -10,7 +10,7 @@ from workhorse.pyflow import AgentTimeout, AgentTurnFailed, Await, Continue, Don
 from workhorse.runner.failure import OutputParseError
 from workhorse_workflows.okf_book.main.nodes.gate import RunFailures
 from workhorse_workflows.okf_book.main.nodes.lead_findings import OwnerReply
-from workhorse_workflows.okf_book.main.nodes.operator_answer import mark_heard
+from workhorse_workflows.okf_book.main.nodes.operator_answer import forget_heard, mark_heard
 from workhorse_workflows.okf_book.main.nodes.owner_gate import OWNER_FOLDER, Gates, gate_template_args, record_owner_reply
 from workhorse_workflows.okf_book.main.nodes.source_view import turn_folder
 from workhorse_workflows.okf_book.main.nodes.surface import Surface
@@ -126,7 +126,7 @@ class WriteBook(BookFlow):
         return Continue(metric, self.put_back, before=before).because("put back writes outside the book")
 
     def _reset_owner_that_wrote_nothing(self, before: Snapshot, reply: OwnerReply | None) -> None:
-        """Start the owner's conversation afresh when it named the book's side of a group and changed no page of its book."""
+        """Start the owner's conversation afresh when it named the book's side of a group and changed no page of its book, with the operator's answer to read again."""
         service = self.surface_to_write.service
         if reply is None or not any(verdict.side == "book" for verdict in (*reply.run, *reply.check)):
             return
@@ -134,6 +134,7 @@ class WriteBook(BookFlow):
             return
         self.logger.warning("the owner of %s named the book's side and changed no page; its next turn starts a fresh conversation", service)
         self.reset_session(owner_chain(service))
+        forget_heard(self.records_dir, service)
 
     def put_back_after_failed_turn(self, before: Snapshot, failure: str) -> Continue[...]:
         """Put back what the failed writer turn changed outside its book."""

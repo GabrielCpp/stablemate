@@ -1,4 +1,4 @@
-"""The operator's latest answer, kept beside the run's records so each book's owner reads it on its next turn, and not again."""
+"""The operator's latest answer, kept beside the run's records so each book's owner reads it on its next turn, and again only when its conversation starts afresh."""
 from __future__ import annotations
 
 from pathlib import Path
@@ -45,3 +45,13 @@ def mark_heard(records_dir: Path, service: str) -> None:
     if not read_answer(records_dir, service):
         return
     _ = (records_dir / HEARD_NAME).write_text("".join(f"{name}\n" for name in sorted({*_heard(records_dir), service})), encoding="utf-8")
+
+
+def forget_heard(records_dir: Path, service: str) -> None:
+    """Let *service*'s owner read the answer again, since a conversation started afresh has not seen it."""
+    heard = _heard(records_dir) - {service}
+    path = records_dir / HEARD_NAME
+    if heard:
+        _ = path.write_text("".join(f"{name}\n" for name in sorted(heard)), encoding="utf-8")
+    else:
+        path.unlink(missing_ok=True)
