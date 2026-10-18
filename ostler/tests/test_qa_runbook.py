@@ -1027,3 +1027,28 @@ def test_a_teardown_step_is_legal_and_is_not_a_bring_up_phase(tmp_path: Path) ->
     manifest = rb.load_stack(graph=model.load(tmp_path))
     assert [step["run"] for step in manifest["prepare"]] == ["make"]
     assert "docker compose down -v" not in repr(manifest)
+
+
+def test_a_copy_served_backend_leaves_a_mobile_runbook_only_its_device_steps(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    (tmp_path / ".git").mkdir()
+    make_runbook(tmp_path, BACKENDLESS_MOBILE.replace(
+        "touch installed.marker", 'echo "$STABLEMATE_ADDRESS_BOOK" > installed.marker')
+        + "\n### backend\n\n- kind: service\n- run: ./serve.sh\n- health: curl -fsS http://localhost:1\n")
+
+    def forbidden(*args: object, **kwargs: object) -> None:
+        raise AssertionError("the copy serves the backend, so the runbook launches nothing")
+
+    monkeypatch.setattr(stack_mod, "boot_app", forbidden)
+    monkeypatch.setattr(stack_mod, "health_probe", forbidden)
+    results = rb.bring_up_devices(model.load(tmp_path), address_book="/copy/addresses.json")
+    assert [r["ready"] for r in results] == ["yes"]
+    assert (tmp_path / "booted.marker").is_file()
+    assert (tmp_path / "installed.marker").read_text().strip() == "/copy/addresses.json"
+
+
+def test_a_copy_served_backend_without_a_mobile_runbook_brings_no_device_up(tmp_path: Path) -> None:
+    (tmp_path / ".git").mkdir()
+    make_runbook(tmp_path, BACKENDLESS_MOBILE.replace("driver: mobile", "driver: web"))
+    assert rb.bring_up_devices(model.load(tmp_path)) == []

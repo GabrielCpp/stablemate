@@ -160,7 +160,7 @@ def system_root(graph: Graph) -> Path:
     return graph.root / prefix if prefix else graph.root
 
 
-def _from_runbook(graph: Graph, runbook: UINode) -> dict[str, Any]:
+def _from_runbook(graph: Graph, runbook: UINode, *, service: bool = True) -> dict[str, Any]:
     root = system_root(graph)
     meta = runbook.meta
     manifest: dict[str, Any] = {}
@@ -180,6 +180,8 @@ def _from_runbook(graph: Graph, runbook: UINode) -> dict[str, Any]:
             continue
         step = _step_command(node, root, app_cwd)
         if phase == "launch":
+            if not service:
+                continue
             if step and "launch" not in manifest:
                 manifest["launch"] = step["run"]
                 manifest["launch_cwd"] = step.get(
@@ -602,6 +604,25 @@ def bring_up_stacks(manifests: list[dict[str, Any]], *, repo_root: str,
     return results
 
 
+_SERVED_BY_COPY = ("entry_url", "health_path", "identity")
+
+
+def bring_up_devices(graph: Graph, *, near: Path | None = None, address_book: str = "",
+                     logger: logging.Logger | None = None) -> list[dict[str, Any]]:
+    """Boot the device and install the app for each `driver: mobile` runbook beside a stack a copy serves."""
+    mobile = [node for node in stack_runbooks(graph)
+              if bullet_value(node.meta, "driver") == "mobile"]
+    if near is not None:
+        mobile = _on_surface_of(graph, mobile, near) or mobile
+    manifests = [{key: value for key, value in _from_runbook(graph, node, service=False).items()
+                  if key not in _SERVED_BY_COPY} for node in mobile]
+    if not manifests:
+        return []
+    env = {addresses.BOOK_ENV: address_book} if address_book else {}
+    with addresses.leased(env):
+        return bring_up_stacks(manifests, repo_root=str(system_root(graph)), logger=logger)
+
+
 def _from_stack_file(root: Path, features_root: str, lease: str, near: Path | None,
                      act: Callable[..., QaOutcome | None]) -> QaOutcome | None:
     """A copy from the books' `stack.yml`, or None where a lease-less call keeps a runbook's stack."""
@@ -695,6 +716,7 @@ __all__ = [
     "REUSE_POLICIES",
     "STEP_KINDS",
     "STEP_PHASES",
+    "bring_up_devices",
     "bring_up_stacks",
     "bullet_value",
     "cmd_stack_down",
