@@ -109,8 +109,9 @@ gives relative to the repository starts there.
   its own earlier steps, the way a user would. Or its `fixture:` names a fixture with
   `lifetime: scenario` that creates it the way the app's own backend or seed does: a new account
   with a fresh email, as the skill's fixture reference shows, and the records that account
-  owns. A fixture cannot sign the app in on the device, so a flow that needs a signed-in app
-  signs in through the app's own screens, in its earlier steps. A value the app must accept
+  owns. A screen behind sign-in is arranged by a fixture that signs the device in, as the
+  skill's fixture reference shows, with `launch-screen:`. A fixture never signs a browser in for
+  this app. A value the app must accept
   fresh on every lap, such as a sign-up email, comes from a fixture that provides it. Each lap
   then starts from fresh data, the walk may change or delete what it created, and no seeded
   record moves. A flow that changes nothing needs no fixture. A behaviour is never left
