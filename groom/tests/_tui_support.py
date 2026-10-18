@@ -113,6 +113,8 @@ class FakeLink:
         self.fail_open = False
         self.opens = 0
         self.get_replies: dict[str, Frame] = {}
+        self.list_replies: dict[str, list[Frame]] = {}
+        self.holds: dict[str, asyncio.Event] = {}
         self._queue: asyncio.Queue[Frame | None] = asyncio.Queue()
 
     async def open(self) -> None:
@@ -133,11 +135,22 @@ class FakeLink:
         self.sent.append(command)
         return True
 
-    async def get(self, path: str) -> Frame:
+    async def _arrive(self, path: str) -> None:
         self.gets.append(path)
+        if path in self.holds:
+            await self.holds[path].wait()
+
+    async def get(self, path: str) -> Frame:
+        await self._arrive(path)
         if path not in self.get_replies:
             raise LinkError(path)
         return self.get_replies[path]
+
+    async def get_list(self, path: str) -> list[Frame]:
+        await self._arrive(path)
+        if path not in self.list_replies:
+            raise LinkError(path)
+        return self.list_replies[path]
 
     async def post(self, path: str) -> Frame:
         self.posts.append(path)

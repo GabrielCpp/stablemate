@@ -14,6 +14,7 @@ class Store:
     detail: Frame | None = None
     trail_view: str = "all"
     trail_kind: str = ""
+    repo: Frame | None = None
 
 
 TRAIL_VIEWS = ("all", "transcript", "telemetry")
@@ -54,7 +55,12 @@ def apply_detail(store: Store, msg: Frame) -> Store:
 
 
 def select(store: Store, run_id: str) -> Store:
-    return replace(store, selected=run_id, detail=None)
+    return replace(store, selected=run_id, detail=None, repo=store.repo if run_id == store.selected else None)
+
+
+def choose_repo(store: Store, item: Frame) -> Store:
+    chosen = {"container": item["container"], "repo": item.get("repo") or "", "label": item.get("label") or ""}
+    return replace(store, repo=chosen)
 
 
 def answered_gate(store: Store, msg: Frame) -> str:

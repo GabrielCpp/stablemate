@@ -9,11 +9,14 @@ from textual.widgets import Static
 
 from groom.tui import store as client
 from groom.tui.clean import clean
+from groom.tui.widgets.diff import DiffTab
+from groom.tui.widgets.files import FilesTab
 from groom.tui.widgets.gate import GateBlock, GateTab
+from groom.tui.widgets.repo import RepoHost, RepoTab
 from groom.tui.widgets.trail import TrailTab, activity_text, head_text
 
-TABS = ("gate", "trail")
-TAB_LABELS = {"gate": "Gate", "trail": "Trail"}
+TABS = ("gate", "trail", "diff", "files")
+TAB_LABELS = {"gate": "Gate", "trail": "Trail", "diff": "Diff", "files": "Files"}
 
 
 def tabs_text(active: str) -> Text:
@@ -42,6 +45,8 @@ class DetailPane(VerticalScroll):
         yield Static(id="tabs")
         yield GateTab(id="gate-tab")
         yield TrailTab()
+        yield DiffTab()
+        yield FilesTab()
 
     @property
     def gate_tab(self) -> GateTab:
@@ -51,6 +56,28 @@ class DetailPane(VerticalScroll):
     def trail_tab(self) -> TrailTab:
         return self.query_one(TrailTab)
 
+    @property
+    def diff_tab(self) -> DiffTab:
+        return self.query_one(DiffTab)
+
+    @property
+    def files_tab(self) -> FilesTab:
+        return self.query_one(FilesTab)
+
+    def repo_tab(self) -> RepoTab | None:
+        return {"diff": self.diff_tab, "files": self.files_tab}.get(self.tab)
+
+    def open_tab(self, host: RepoHost) -> None:
+        tab = self.repo_tab()
+        if tab is not None and host.store.selected:
+            tab.open(host)
+            tab.focus_list()
+
+    def pick_repo(self, host: RepoHost) -> None:
+        tab = self.repo_tab()
+        if tab is not None and host.store.selected:
+            tab.pick(host)
+
     def blocks(self) -> list[GateBlock]:
         return self.gate_tab.blocks()
 
@@ -58,6 +85,8 @@ class DetailPane(VerticalScroll):
         self.query_one("#tabs", Static).update(tabs_text(tab) if tab else "")
         self.gate_tab.display = tab == "gate"
         self.trail_tab.display = tab == "trail"
+        self.diff_tab.display = tab == "diff"
+        self.files_tab.display = tab == "files"
 
     async def show(self, store: client.Store) -> None:
         async with self._lock:
@@ -73,6 +102,8 @@ class DetailPane(VerticalScroll):
             self.tab = ""
             self._apply("")
             await self.trail_tab.forget()
+            await self.diff_tab.forget()
+            await self.files_tab.forget()
             await self.gate_tab.clear()
         if not store.selected or row is None:
             head.update("")

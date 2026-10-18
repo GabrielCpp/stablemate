@@ -58,6 +58,9 @@ class GroomTui(App[None]):
         Binding("enter", "open_run", "Open"),
         Binding("g", "show_tab('gate')", "Gate"),
         Binding("t", "show_tab('trail')", "Trail"),
+        Binding("d", "show_tab('diff')", "Diff"),
+        Binding("f", "show_tab('files')", "Files"),
+        Binding("p", "pick_repo", "Repository"),
         Binding("v", "cycle_view", "View"),
         Binding("K", "cycle_kind", "Telemetry kind"),
         Binding("a", "focus_answer", "Answer"),
@@ -257,6 +260,10 @@ class GroomTui(App[None]):
     async def action_show_tab(self, tab: str) -> None:
         self.pane.tab = tab
         await self._render_detail()
+        self.pane.open_tab(self)
+
+    def action_pick_repo(self) -> None:
+        self.pane.pick_repo(self)
 
     async def action_cycle_view(self) -> None:
         if self.pane.tab == "trail":
