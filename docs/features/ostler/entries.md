@@ -27,3 +27,4 @@ title: ostler
 - [Vet an artifact that was never scaffolded](flows/vet-an-artifact-that-was-never-scaffolded.md)
 - [Read a stack file's JSON Schema](flows/read-a-stack-files-json-schema.md)
 - [Catch a malformed stack file](flows/catch-a-malformed-stack-file.md)
+- [Register a screenshot against a manifest](flows/register-a-screenshot-against-a-manifest.md)

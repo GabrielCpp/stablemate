@@ -5,7 +5,7 @@ title: Vetting a rendered screen
 ---
 # Vetting a rendered screen
 
-`ostler artifact vet` checks a book's claims about a UI screen — which components render,
+`ostler vet` checks a book's claims about a UI screen — which components render,
 where, and under what accessible name — against what a real browser actually shows. The caller
 supplies a screenshot and a manifest of the elements a QA script found on the page (or, for a
 replay, an already-scanned regions file), and the command registers each documented component
@@ -32,7 +32,7 @@ silently when Pillow is not installed or the screenshot is missing. `writes.py` 
 file the run wants to produce as a dry-run-by-default diff; nothing touches disk until
 `--write` applies it. `report.py` builds the run's `VetReport` and folds it into the story's
 `vet.md` concept page, keyed by `--state` so a second run of the same state replaces its section
-instead of appending a duplicate. `run.py` orchestrates one `ostler artifact vet` invocation
+instead of appending a duplicate. `run.py` orchestrates one `ostler vet` invocation
 end to end, and `__init__.py` re-exports the two names (`VetOutcome`, `run_vet`) the CLI calls.
 
 - code: ostler/ostler/vet/__init__.py@2e20aecf0259

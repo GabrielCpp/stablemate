@@ -116,6 +116,57 @@ managed markdown tree (backlog, milestones, epics, features) under a repo root.
 - code: ostler/ostler/environments/spec.py::KEYS@b020ed778dc2
 - code: ostler/ostler/environments/cli.py::run@f1b74cc1cc17
 
+### ostler-vet
+- usage: ostler vet SCREENSHOT --manifest PATH (--cdp-url URL | --regions PATH) --slug SLUG
+  [--state STATE] [--iou-threshold FLOAT] [--write] [--json] — registers a manifest's documented
+  elements against a scanned-regions file by rectangle overlap, and prints the match as one
+  `VetReport` JSON object with --json, or a dry-run file diff otherwise; writes nothing to disk
+  unless --write is given
+- flags:
+  - --manifest (the JSON list of documented elements to register), --cdp-url (a live Chrome
+    DevTools Protocol URL to scan instead of replaying a regions file; mutually exclusive with
+    --regions), --regions (a previously scanned regions JSON file to replay instead of a live
+    scan), --slug (the story the vet report is filed under), --state (the label this render is
+    recorded under; default "default"), --iou-threshold (the minimum intersection-over-union for
+    a documented element and a region to count as the same thing; default 0.5), --write (apply
+    the planned file writes instead of only printing their diff), --json (print the whole
+    `VetReport` as one indented JSON object instead of the dry-run diff text)
+- args: screenshot — the rendered page's screenshot path; read only to crop matched/unlabeled
+  regions out of, so a path that does not exist still produces a report
+- exits: 1 — at least one documented element is missing, or at least one scanned region is
+  unexpected or unlabeled; exits 0 only when every documented, visible element matches a region
+- run: invoke(argv=["vet", "nonexistent.png", "--manifest", "vet-manifest.json", "--regions", "vet-regions.json", "--slug", "vet-demo", "--json"])
+- verify: exit_status(code=1)
+- verify: json_path(path="summary.status", equals="disagreements")
+- verify: json_path(path="summary.matchedCount", equals=2)
+- verify: json_path(path="summary.missingCount", equals=1)
+- verify: json_path(path="summary.unexpectedCount", equals=1)
+- verify: json_path(path="summary.unlabeledCount", equals=1)
+- verify: json_path(path="matched[0].iou", matches="^0\\.512")
+- verify: json_path(path="matched[1].iou", equals=0.5)
+- verify: json_path(path="missing[0].selector", equals=".below-threshold-dom")
+- verify: json_path(path="unexpected[0].selectors[0]", equals=".below-threshold-region")
+- verify: json_path(path="unlabeled[0].selectors[0]", equals=".stray-region")
+- fixture: [vet manifest and regions](fixtures/vet-manifest-and-regions.md) — writes the
+  `--manifest` and `--regions` files this run reads; the three element/region pairs it seeds sit
+  far enough apart that each pair's overlap is independent of the others, one pair at exactly the
+  default 0.5 threshold, one just above it, one just below it, plus a fourth region with no
+  accessible role and no matching element
+- code: ostler/ostler/vet/__init__.py::__all__@2e20aecf0259
+- code: ostler/ostler/vet/run.py::run_vet@deb0121ace50
+- code: ostler/ostler/vet/geometry.py::BBox@a6d2ef1e40b6
+- code: ostler/ostler/vet/geometry.py::iou@a6d2ef1e40b6
+- code: ostler/ostler/vet/manifest.py::load_manifest@4b54d3b4e9ea
+- code: ostler/ostler/vet/manifest.py::DomElement@4b54d3b4e9ea
+- code: ostler/ostler/vet/regions.py::merge@94a27f0a4ad7
+- code: ostler/ostler/vet/regions.py::RegionBox@94a27f0a4ad7
+- code: ostler/ostler/vet/register.py::match@4813a8dbde2b
+- code: ostler/ostler/vet/report.py::build_report@30d577ca0ec9
+- code: ostler/ostler/vet/writes.py::VetFileWrite@d000fa666d75
+- code: ostler/ostler/vet/writes.py::VetPlan@d000fa666d75
+- code: ostler/ostler/cli.py::_cmd_vet@03c9e301c36d
+- detail: [Vetting a rendered screen](concepts/vetting-a-rendered-screen.md)
+
 ### ostler-env-check
 - usage: ostler env check [--json] — reads every book's `ops/stack.yml`, prints `N services in M
   books fit together` when none of them disagree, and otherwise prints one `- ` line per problem
