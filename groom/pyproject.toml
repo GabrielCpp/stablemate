@@ -44,6 +44,7 @@ dependencies = [
   # groom.store places groom.db in the platform data dir (already transitive
   # via workhorse-agent, but imported directly, so declared).
   "platformdirs>=4.0",
+  "textual>=8.2.8",
 ]
 
 [project.optional-dependencies]
