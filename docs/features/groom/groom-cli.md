@@ -133,6 +133,10 @@ Diff lists the changed files with their added and deleted line counts, and the a
 
 A diff or a file shows at most 3000 lines, then a dimmed note gives the total. The code area scrolls with the arrow keys, the page keys, `home`, `end` and the mouse wheel once the operator focuses it with `tab`. A long line scrolls sideways instead of wrapping. The client highlights in the background, so the terminal keeps responding while a large file loads.
 
+The operator presses `/` to filter the run list and types to narrow it. The filter matches the run's name, repository, type, node, activity, doing line, question and run id, ignoring case, and it needs no request to the server. The status line shows the query and how many of the runs match. `enter` moves to the list on the first match and `escape` clears the filter. The open run stays open when the filter hides its row.
+
+The operator presses `ctrl+p` to open the command palette, which searches every run, including the ones the filter hides, and opens the one chosen. The palette also lists the four tabs and Rescan, along with Textual's own theme and quit commands.
+
 When a run blocks, the terminal rings its bell and a toast names the run. `r` asks the server to rescan containers and `q` quits with status 0.
 
 The client removes terminal control characters and escape sequences from every string the server sends before it draws it. A gate question that holds a clipboard-write or a screen-clear sequence draws as plain text.
