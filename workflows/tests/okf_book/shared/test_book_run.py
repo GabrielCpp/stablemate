@@ -269,14 +269,14 @@ def test_a_second_look_at_an_unchanged_book_reads_its_stack_from_the_index(
     assert stores[0].misses == 0
 
 
-def test_a_copy_of_the_app_skips_the_run_dirs_whose_sockets_cannot_be_copied(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_a_copy_of_the_app_skips_the_agents_dir_whose_sockets_cannot_be_copied(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     import shutil
     import socket
 
     root = tmp_path / "repo"
     (root / ".agents" / "runs" / "okf-book-x").mkdir(parents=True)
-    (root / ".agents" / "skills").mkdir()
-    _ = (root / ".agents" / "skills" / "a.md").write_text("skill\n", encoding="utf-8")
+    (root / ".agents" / "okf-build").mkdir()
+    (root / ".agents" / "okf-build" / "SingletonLock").symlink_to("host-12345")
     _ = (root / "cli.py").write_text("print(1)\n", encoding="utf-8")
     monkeypatch.chdir(root)
     with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as sock:
@@ -285,5 +285,4 @@ def test_a_copy_of_the_app_skips_the_run_dirs_whose_sockets_cannot_be_copied(tmp
         _ = shutil.copytree(root, copy, ignore=book_run.copy_ignored(root))
 
     assert (copy / "cli.py").is_file()
-    assert (copy / ".agents" / "skills" / "a.md").is_file()
-    assert not (copy / ".agents" / "runs").exists()
+    assert not (copy / ".agents").exists()
