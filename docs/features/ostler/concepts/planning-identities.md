@@ -24,15 +24,13 @@ milestone records its initial ownership; `milestone set-source-items` replaces t
 active release absorbs additional intake. Referential validation rejects one source item owned by
 multiple milestones.
 
-- code: ostler/ostler/ids.py::allocate
-- code: ostler/ostler/backlog.py::create
-- code: ostler/ostler/backlog.py::adopt
-- code: ostler/ostler/crud.py::create_milestone
-- code: ostler/ostler/crud.py::set_milestone_source_items
-- code: ostler/ostler/doctor.py::_check_milestones
-- verify: ostler/tests/test_backlog.py::test_create_backlog_item_persists_full_generated_id,
-  ostler/tests/test_backlog.py::test_adopt_names_every_bullet_and_is_idempotent,
-  ostler/tests/test_crud.py::test_create_milestone_allocates_id_and_records_source_items
+- code: ostler/ostler/ids.py::allocate@b37d33a102e8
+- code: ostler/ostler/backlog.py::create@fbc174481294
+- code: ostler/ostler/backlog.py::adopt@fbc174481294
+- code: ostler/ostler/crud.py::create_milestone@3d486fae1ade
+- code: ostler/ostler/crud.py::set_milestone_source_items@3d486fae1ade
+- code: ostler/ostler/doctor.py::_check_milestones@9f0a19c24a6b
+- tests: ostler/tests/test_backlog.py::test_create_backlog_item_persists_full_generated_id, ostler/tests/test_backlog.py::test_adopt_names_every_bullet_and_is_idempotent, ostler/tests/test_crud.py::test_create_milestone_allocates_id_and_records_source_items
 
 ## Contract
 
