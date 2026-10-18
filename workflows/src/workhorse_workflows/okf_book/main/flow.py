@@ -57,6 +57,17 @@ def _source_folder(root: Path, surface: Surface) -> str:
     return (entry if (root / entry).is_dir() else entry.parent).as_posix()
 
 
+def _no_source_folder(root: Path, surface: Surface) -> str:
+    """Why the surface's entry names no source folder, and the nearest folder of the repository it is under."""
+    nearest = next((parent for parent in Path(surface.entry).parents if (root / parent).is_dir()), Path())
+    where = "the repository root" if nearest == Path() else f"`{nearest.as_posix()}/`"
+    return (
+        f"the entry `{surface.entry}` is no folder of the repository, and the folder it names is missing too. "
+        f"An entry is the service's source folder, relative to the repository root, or a file in it. "
+        f"The nearest folder that exists is {where}"
+    )
+
+
 def _escalated_signatures(exercised: ExerciseResult) -> tuple[Signature, ...]:
     """The signatures of the run that a party other than the book's writer must fix."""
     signatures = exercised.summary.signatures if exercised.summary is not None else ()
@@ -154,7 +165,7 @@ class OkfBook(BookFlow):
         surface = self.surfaces[index]
         source = _source_folder(self.root, surface)
         if not (self.root / source).is_dir():
-            return self._block_surface_and_move_on(index, f"the entry {surface.entry} is in no source folder")
+            return self._block_surface_and_move_on(index, _no_source_folder(self.root, surface))
         view = build_source_view(self.root, source)
         return Continue(view.as_posix(), self.write_book, index=index, run_failures=run_failures, problems=problems, exercised=exercised).because(
             "send the book's owner"
