@@ -220,13 +220,15 @@ type: runbook
 - health: curl -fsS http://localhost:8081/healthz
 ```
 
-The app is built before the backend starts, so the address it calls is set in the install
-step, to the port the service step serves on. A stack runbook has exactly one `kind: service`
-step, so the backend the app calls is that step. A runbook with no `kind: service` step and no
-`entry-url:` is not a stack, and nothing runs its prepare steps. A second backend starts in the
-background from a `kind: prepare` step. The prepare steps run only when the run starts the stack
-itself. A stack already serving that the run adopts skips them, and `reuse: never` makes the
-run start its own.
+The app is built before the backend starts, so the install step sets the address the app
+calls to the port the service step serves on. A runbook for an app with a backend has exactly
+one `kind: service` step, and the backend the app calls is that step. A second backend starts in
+the background from a `kind: prepare` step. A `driver: mobile` runbook for an app that calls no
+backend has prepare steps only, and it is still a stack. The run never adopts it, so it runs its
+prepare steps every time. Any other runbook with no `kind: service` step and no `entry-url:` is
+not a stack, and nothing runs its prepare steps. The prepare steps run only when the run starts
+the stack itself. A stack already serving that the run adopts skips them, and `reuse: never`
+makes the run start its own.
 
 ## Doctor codes it can trip
 
