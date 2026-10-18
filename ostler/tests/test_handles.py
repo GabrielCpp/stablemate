@@ -83,6 +83,23 @@ def test_shorten_does_not_touch_things_that_merely_look_id_ish():
         assert ids.shorten(text, table) == text
 
 
+def test_shorten_leaves_an_id_inside_a_path_whole():
+    full = "ACME-" + "0" * 26
+    table = {full: "ACME-KKKKKK"}
+    for text in (f"/home/u/artifacts/specs/{full}",
+                 f"docs/specs/{full}/qa.md",
+                 f"{full}/plan.md",
+                 f"C:\\artifacts\\specs\\{full}",
+                 f"docs/epics/{full}.md"):
+        assert ids.shorten(text, table) == text
+    assert ids.shorten(f"see {full}.", table) == "see ACME-KKKKKK."
+
+
+def test_path_spec_prints_the_full_id_even_with_handles(tmp_path: Path, capsys):
+    okf, minted = _repo(tmp_path)
+    assert run(tmp_path, "path", "spec", minted["story"]) == 0
+    assert capsys.readouterr().out.strip().endswith(f"/specs/{minted['story']}")
+
 
 def test_resolve_expands_a_handle_and_passes_anything_else_through(tmp_path: Path):
     okf, minted = _repo(tmp_path)

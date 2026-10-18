@@ -177,7 +177,9 @@ def table(existing: Iterable[str], min_len: int = HANDLE_MIN) -> dict[str, str]:
     return out
 
 
-_ID_TOKEN = re.compile(rf"\b[A-Za-z][A-Za-z0-9_]{{0,15}}-[{_CROCKFORD}]{{{ULID_LEN}}}\b")
+_ID_TOKEN = re.compile(
+    rf"(?<![/\\])\b[A-Za-z][A-Za-z0-9_]{{0,15}}-[{_CROCKFORD}]{{{ULID_LEN}}}\b(?![/\\]|\.\w)"
+)
 
 
 def shorten(data: Any, handles: dict[str, str]) -> Any:
