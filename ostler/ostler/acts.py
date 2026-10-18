@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
+import re
 from dataclasses import dataclass
 from typing import Any
 
@@ -12,6 +13,8 @@ WEB = "web"
 MOBILE = "mobile"
 HTTP = "http"
 CLI = "cli"
+
+_ENV_NAME = re.compile(r"[A-Z_][A-Z0-9_]*")
 
 ACT_DRIVER_OMISSIONS: dict[str, str] = {
     "artifact": "an arrangement it could make is an arrangement `fixture:` already covers",
@@ -29,6 +32,7 @@ class ActParam:
     type: str
     required: bool = False
     locator: bool = False
+    env_names: bool = False
 
 
 @dataclass(frozen=True)
@@ -131,7 +135,8 @@ ACTS: tuple[ActSpec, ...] = (
     ),
     ActSpec(
         name="invoke",
-        params=(ActParam("argv", "str[]", required=True),),
+        params=(ActParam("argv", "str[]", required=True),
+                ActParam("env", "str{}", env_names=True)),
         establishes="the process this command's binary — named by the owning `cli` node's "
                     "`binary:`, not by this act — was run with the arguments `argv` names, "
                     "and has exited; that exit and those arguments are the only state a "
@@ -221,6 +226,11 @@ def bind(name: str, args: Mapping[str, Any]) -> ActCall | Refusal:
             return wrong(f"`{spec.name}`: `{key}` is {param.type}, got "
                          f"{type(value).__name__} — an act's arguments are what the "
                          f"performer types, points at, or sends")
+        if param.env_names and isinstance(value, dict):
+            bad = sorted(name for name in value if not _ENV_NAME.fullmatch(name))
+            if bad:
+                return wrong(f"`{spec.name}`: `{key}` names {', '.join(map(repr, bad))}, and an "
+                             f"environment variable name matches [A-Z_][A-Z0-9_]*")
         bound[key] = value
     for param in spec.params:
         if param.required and param.name not in bound:

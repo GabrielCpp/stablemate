@@ -4108,6 +4108,33 @@ def _cli_journey_context(*step_nodes: dict, checks: list[dict]) -> tuple[dict, s
     return context, oid
 
 
+def test_a_cli_step_that_sets_an_environment_declares_its_names_and_resolves_them_in_the_scenario() -> None:
+    node = _cli_step_node("init", ["init"])
+    env = {"HOME": "c1/home", "PATH": "stubs:$PATH"}
+    node["actsDeclared"] = [{"call": f"invoke(argv=['init'], env={env!r})", "name": "invoke",
+                             "args": {"argv": ["init"], "env": env}}]
+    context, oid = _cli_journey_context(
+        node, checks=[{"call": "it", "name": "exit_status", "args": {"code": 0}}])
+    result = _compile_plan_gaps(context, story="demo-story")
+    assert isinstance(result, Plan)
+    source = result.source
+    ast.parse(source)
+    assert 'tool_env("HOME", "PATH")' in source
+    assert "from ostler_qa import Qa, plan, scenario, target, tool_env" in source
+    assert ('qa.tool("tally").run("init", cwd=qa.scenario_checkout_copy(), '
+            'env=qa.scenario_env({"HOME": "c1/home", "PATH": "stubs:$PATH"}))') in source
+    assert _gap_kinds(result.gaps, oid) == []
+
+
+def test_a_plan_without_an_environment_declares_no_tool_env() -> None:
+    context, _oid = _cli_journey_context(
+        _cli_step_node("init", ["init"]),
+        checks=[{"call": "it", "name": "exit_status", "args": {"code": 0}}])
+    result = _compile_plan_gaps(context, story="demo-story")
+    assert isinstance(result, Plan)
+    assert "tool_env" not in result.source
+
+
 def test_a_cli_journey_runs_each_step_in_one_directory_and_compares_it_either_side() -> None:
     context, oid = _cli_journey_context(
         _cli_step_node("init", ["init"]),

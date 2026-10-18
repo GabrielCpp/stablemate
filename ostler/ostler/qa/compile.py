@@ -13,6 +13,7 @@ from ostler import registry
 from ostler.qa import book_index as book_index_mod
 from ostler.qa.book_index import BookIndex
 from ostler.qa.compile_cli import cli_scenario_body
+from ostler.qa.compile_cli import invoke_env_names
 from ostler.qa.compile_http import api_scenarios
 from ostler.qa.compile_http import probe_scenarios
 from ostler.qa.compile_http import http_walk
@@ -397,19 +398,21 @@ def _book_debt(no_verify: list[Obligation], gaps: list[Gap]) -> list[Obligation]
     return debt
 
 
-def _plan_header(digest: str, story: str, run_id: str | None) -> list[str]:
-    """The plan module's banner, imports and `plan(...)` call."""
+def _plan_header(digest: str, story: str, run_id: str | None, env_names: list[str]) -> list[str]:
+    """The plan module's banner, imports, `plan(...)` call and the environment names its commands set."""
+    imports = "Qa, plan, scenario, target" + (", tool_env" if env_names else "")
     return [
         "# Compiled from the book by `ostler qa compile-plan`. Every `covers=` below is the",
         "# obligation the book itself attributed the check to. Fill the TODO markers from the",
         "# story, the fixtures and the flows — not from the implementation, which is the thing",
         "# under test and cannot also be the specification it is tested against.",
         "",
-        "from ostler_qa import Qa, plan, scenario, target",
+        f"from ostler_qa import {imports}",
         "",
         "",
         f"plan(run_id={python_literal(run_id or f'qa-{story}')}, story={python_literal(story)}, "
         f"book={python_literal(digest)})",
+        *([f"tool_env({', '.join(map(python_literal, env_names))})"] if env_names else []),
     ]
 
 
@@ -549,9 +552,11 @@ def _compile_packet(
         data_states=packet.data_states,
         moves=packet.moves,
     )
+    env_names = invoke_env_names(
+        [*(row for o in carried for row in o.acts), *(row for rows in acts.by_node.values() for row in rows)])
     journeys = JourneyPlan(book=book, sinks=sinks, navigation=navigation, walkers=_JOURNEY_WALKERS)
     lines = [
-        *_plan_header(packet.digest, story, run_id),
+        *_plan_header(packet.digest, story, run_id, env_names),
         *probe_scenarios(http_owed, book, emitted),
         *api_scenarios(http_owed, book, sinks, emitted),
         *_cli_scenarios(lanes.cli, book, sinks, emitted),

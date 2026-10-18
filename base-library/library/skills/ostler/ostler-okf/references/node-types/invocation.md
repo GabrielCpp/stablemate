@@ -53,6 +53,16 @@ document order, with the executable read from the owning [`cli`](cli.md) node's 
 [command.md](command.md) for the whole rule. On an HTTP surface an invocation has no use for it,
 since the endpoint's route already says where to send the call.
 
+`invoke` takes an optional `env`, a map of environment variable names to strings:
+`invoke(argv=["show"], env={"HOME": "c1/home", "PATH": "stubs:$PATH"})`. The command runs with
+the process environment updated by that map, so a claim that needs its own `HOME` or config file
+does not share one with the other claims of its page. A relative path in a value resolves against
+the scenario directory before the command starts, and each entry of a `PATH`-style list resolves
+the same way. A value without a slash that names nothing in that directory, such as `0`, stays as
+written. `$NAME` in a value expands from the process environment, so `stubs:$PATH` puts the stub
+directory ahead of the inherited `PATH`. Every key must match `[A-Z_][A-Z0-9_]*` and every value
+must be a string.
+
 `arrange:` is what an HTTP invocation sends. An invocation of a route that takes a body
 states that body the way an endpoint arm does, one `body(field=..., value=...)` per member,
 and a caller's credential with `header(name=..., value=...)`. It binds by document order to

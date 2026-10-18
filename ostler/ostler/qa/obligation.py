@@ -67,6 +67,11 @@ class CallRow:
         value = self.args.get(key)
         return [str(item) for item in value] if isinstance(value, list) else []
 
+    def map_arg(self, key: str) -> dict[str, str]:
+        """Argument *key* as a map of strings, empty when the call does not state it."""
+        value = self.args.get(key)
+        return {str(name): str(item) for name, item in value.items()} if isinstance(value, dict) else {}
+
 
 @dataclass(frozen=True)
 class CaptureRow:
@@ -197,6 +202,8 @@ def _check_value(value: object, what: str) -> CheckValue:
         return value
     if isinstance(value, list):
         return list(_texts(value, what))
+    if isinstance(value, dict) and all(isinstance(k, str) and isinstance(v, str) for k, v in value.items()):
+        return {k: v for k, v in value.items() if isinstance(k, str) and isinstance(v, str)}
     raise ValueError(f"{what} is not a call literal: {value!r}")
 
 

@@ -386,6 +386,7 @@ call grammar as a check and refused against its own names:
 | `body(field*, value*)` | a member of the request this step sends carries a stated value. A dotted `field` such as `locales.fr` is a member of a nested object. `field="$"` is the whole body. A `value` that is one `@node.key` naming an object or a list is sent whole | http |
 | `no_body()` | the request this step sends carries no body, for a route that reads nothing from its request | http |
 | `header(name*, value*)` | the request this step sends carries a stated header, such as the token a sign-in fixture minted | http |
+| `invoke(argv*, env)` | a command ran with the stated arguments, under the stated environment | cli |
 
 **An act's argument type is a property of that act's parameter, not of acts in general.**
 `fill`/`click`/`press`/`select`/`upload` are all-`str` because their driver is a person: what a browser
@@ -396,6 +397,16 @@ are different requests, so `body`'s `value` is typed `scalar`, admitting the JSO
 request body actually carries. `locator=` is a reference into the book, the same rule and the
 same reason as a check's — a raw selector is `undeclared-act-locator`. `body`'s `field=` names a
 member of the request instead: there is no control on a wire for a `locator=` to point at.
+
+On a CLI surface `invoke` takes an optional `env`, a map of environment variable names to strings:
+`invoke(argv=["show"], env={"HOME": "c1/home", "PATH": "stubs:$PATH"})`. The command runs with
+the process environment updated by that map, so a claim that needs its own `HOME` or config file
+does not share one with the other claims of its page. A relative path in a value resolves against
+the scenario directory before the command starts, and each entry of a `PATH`-style list resolves
+the same way. A value without a slash that names nothing in that directory, such as `0`, stays as
+written. `$NAME` in a value expands from the process environment, so `stubs:$PATH` puts the stub
+directory ahead of the inherited `PATH`. Every key must match `[A-Z_][A-Z0-9_]*` and every value
+must be a string.
 
 **`arrange:` is not `fixture:`.** A fixture arranges the world *beside* the surface — a seeded
 row, a signed-in session — and is right whenever something other than the performer can

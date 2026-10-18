@@ -1022,6 +1022,26 @@ class Qa:
             self._checkout_copy = into
         return self._checkout_copy
 
+    def scenario_env(self, env: Mapping[str, str]) -> dict[str, str]:
+        """*env* with each `$NAME` expanded from this process and each relative path resolved against the scenario directory.
+
+        An entry of a value split on the path separator is a path when it is relative and either
+        holds a slash or names something that exists in the scenario directory. A value such as
+        `0` or `claude` stays as written.
+        """
+        base = self.scenario_checkout_copy()
+        return {name: self._resolved_env_value(os.path.expandvars(value), base) for name, value in env.items()}
+
+    @staticmethod
+    def _resolved_env_value(value: str, base: Path) -> str:
+        entries = []
+        for entry in value.split(os.pathsep):
+            relative = bool(entry) and not os.path.isabs(entry)
+            if relative and ("/" in entry or (base / entry).exists()):
+                entry = str(base / entry)
+            entries.append(entry)
+        return os.pathsep.join(entries)
+
     def _run_book_step(
         self, fixture: str, index: int, step: Mapping[str, Any], env: Mapping[str, str],
     ) -> "ToolResult":

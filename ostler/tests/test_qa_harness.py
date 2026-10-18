@@ -820,6 +820,57 @@ def test_a_tool_runs_with_a_contained_cwd_and_a_declared_env(tmp_path: Path) -> 
     assert not (tmp_path / "escaped").exists()
 
 
+SCENARIO_ENV_PLAN = '''\
+from ostler_qa import Qa, plan, scenario, target, tool_env
+
+plan(run_id="qa-scenario-env", story="scenario-env")
+api = target("api")
+tool_env("HOME", "PATH", "FLAG", "ABSOLUTE")
+
+
+@scenario(target=api, mechanism="live", covers=["ac:1"])
+def the_command_sees_the_environment_the_scenario_names(qa: Qa) -> None:
+    """A relative path resolves against the scenario directory, and `$NAME` expands from the process."""
+    here = qa.scenario_checkout_copy()
+    env = qa.scenario_env({
+        "HOME": "case/home",
+        "PATH": "stubs:$PATH",
+        "FLAG": "0",
+        "ABSOLUTE": "/etc",
+    })
+    done = qa.tool("sh").run(
+        "-c", 'printf "%s\\n" "$HOME" "$PATH" "$FLAG" "$ABSOLUTE"', cwd=here, env=env)
+    home, path, flag, absolute = done.stdout.splitlines()
+    qa.check("a relative path is absolute", home == str(here / "case/home"), actual=home)
+    qa.check("a relative entry of a list is absolute", path.startswith(str(here / "stubs") + ":"), actual=path)
+    qa.check("the process path is kept", path.split(":")[1:] == __import__("os").environ["PATH"].split(":"), actual=path)
+    qa.check("a plain value stays", flag == "0", actual=flag)
+    qa.check("an absolute path stays", absolute == "/etc", actual=absolute)
+'''
+
+
+def test_a_scenario_env_resolves_paths_against_the_scenario_and_expands_names(tmp_path: Path) -> None:
+    """A command that needs its own HOME and PATH per claim gets absolute paths, since it runs from a directory the book names relatively."""
+    module = _write(tmp_path, SCENARIO_ENV_PLAN)
+    (tmp_path / "stubs").mkdir()
+    context = json.dumps(
+        {
+            "root": str(tmp_path),
+            "spec_dir": str(tmp_path),
+            "qa_dir": str(tmp_path / "qa"),
+            "tools": {"sh": "sh"},
+        }
+    )
+    code, stdout, records = _harness(
+        "run", str(module), "the-command-sees-the-environment-the-scenario-names", context,
+        records_to=tmp_path / "records.jsonl",
+    )
+    checks = [r for r in records if r["type"] == "assert"]
+    assert code == 0, (stdout, records)
+    assert len(checks) == 5
+    assert all(c["passed"] for c in checks), checks
+
+
 def test_a_scenario_stopped_on_a_tool_nobody_opted_in_records_the_missing_capability(tmp_path: Path) -> None:
     """Only a person can opt a tool in, so the stop names the tool as what the stack lacks."""
     module = _write(tmp_path, TOOL_ENV_PLAN)

@@ -13,7 +13,7 @@ from typing import Any
 
 from ostler import keys, markdown, refs
 
-CheckValue = str | int | float | bool | list[str]
+CheckValue = str | int | float | bool | list[str] | dict[str, str]
 
 _TYPES: dict[str, tuple[type, ...]] = {
     "str": (str,),
@@ -21,6 +21,7 @@ _TYPES: dict[str, tuple[type, ...]] = {
     "bool": (bool,),
     "scalar": (str, int, float, bool),
     "str[]": (list,),
+    "str{}": (dict,),
 }
 
 
@@ -514,6 +515,8 @@ def literal(value: CheckValue) -> str:
         return "true" if value else "false"
     if isinstance(value, list):
         return "[" + ", ".join(literal(item) for item in value) + "]"
+    if isinstance(value, dict):
+        return "{" + ", ".join(f"{literal(key)}: {literal(item)}" for key, item in value.items()) + "}"
     if isinstance(value, int):
         return str(value)
     if isinstance(value, float):
@@ -763,6 +766,9 @@ def _typed(value: CheckValue, declared: str) -> bool:
         return False
     if declared == "str[]":
         return isinstance(value, list) and all(isinstance(item, str) for item in value)
+    if declared == "str{}":
+        return isinstance(value, dict) and all(
+            isinstance(key, str) and isinstance(item, str) for key, item in value.items())
     return True
 
 

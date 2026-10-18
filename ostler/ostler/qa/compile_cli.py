@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 
 from ostler import registry
@@ -107,9 +107,23 @@ def _gap_cli_obligations(obligations: list[Obligation], gaps: list[Gap]) -> None
         gaps.append(Gap(obligation.id, "uncompilable-claim", _no_run_remedy(obligation.node_type)))
 
 
-def _cli_actions(obligation: Obligation) -> list[list[str]]:
-    """The argument lists this obligation's `run:`s name, in document order; the last is the one observed."""
-    return [row.list_arg("argv") for row in obligation.acts if row.name == "invoke"]
+def _cli_actions(obligation: Obligation) -> list[CallRow]:
+    """The `run:`s of this obligation, in document order; the last is the one observed."""
+    return [row for row in obligation.acts if row.name == "invoke"]
+
+
+def _run_arguments(row: CallRow) -> str:
+    """The arguments of the `.run(...)` call that performs *row*: its argv, the scenario's checkout copy and its environment."""
+    env = row.map_arg("env")
+    parts = [*map(python_literal, row.list_arg("argv")), "cwd=qa.scenario_checkout_copy()"]
+    if env:
+        parts.append(f"env=qa.scenario_env({python_literal(env)})")
+    return ", ".join(parts)
+
+
+def invoke_env_names(rows: Iterable[CallRow]) -> list[str]:
+    """Every environment variable name an `invoke` among *rows* sets, sorted."""
+    return sorted({name for row in rows if row.name == "invoke" for name in row.map_arg("env")})
 
 
 def _verify_line(row: CallRow, operand: str, oid: str) -> str:
@@ -153,7 +167,7 @@ def cli_scenario_body(
             ))
             continue
         tool = f"qa.tool({python_literal(binary)})"
-        *setup, observed_args = [", ".join([*(python_literal(a) for a in run), "cwd=qa.scenario_checkout_copy()"]) for run in runs]
+        *setup, observed_args = map(_run_arguments, runs)
         lines.extend(f"    _ = {tool}.run({call_args})" for call_args in setup)
         reads_tree_either_side = any(_touches_the_tree(row) for row in rows)
         if reads_tree_either_side:
@@ -185,21 +199,19 @@ def _node_call(
     """The `qa.tool(...).run(...)` the node *ref* performs, or why the book names none."""
     if ref in acts_refused:
         return StepRefusal(f"{where} links a node whose act bullets could not be read")
-    argvs = {row.call: row.list_arg("argv")
-             for row in acts_by_node.get(ref, []) if row.name == "invoke"}
-    if not argvs:
+    invokes = {row.call: row for row in acts_by_node.get(ref, []) if row.name == "invoke"}
+    if not invokes:
         return StepRefusal(f"{where} links a node that declares no `run:` for this journey to perform")
-    if len(argvs) > 1:
+    if len(invokes) > 1:
         return StepRefusal(
-            f"{where} links a node that declares {len(argvs)} different `run:`s, and a "
+            f"{where} links a node that declares {len(invokes)} different `run:`s, and a "
             "step performs one: link the invocation that states the run this step means")
     binary = cli_binaries.get(ref.split("#", 1)[0])
     if binary is None:
         return StepRefusal(
             f"{where} links a node whose owning `cli` node declares no `binary:`, so "
             "the compiler cannot name the executable its `run:` invokes")
-    argv = next(iter(argvs.values()))
-    return f"qa.tool({python_literal(binary)}).run({', '.join([*map(python_literal, argv), 'cwd=qa.scenario_checkout_copy()'])})"
+    return f"qa.tool({python_literal(binary)}).run({_run_arguments(next(iter(invokes.values())))})"
 
 
 def _stated_exit(claim: Obligation) -> int | None:

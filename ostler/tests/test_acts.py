@@ -154,3 +154,27 @@ def test_a_cli_claim_below_the_command_states_the_run_it_is_about() -> None:
     assert registry.performed_keys("command") == ("run",)
     assert registry.performed_keys("invocation") == ("run", "arrange")
     assert registry.performed_keys("field") == ("run",)
+
+
+def test_invoke_takes_an_environment_map_of_strings() -> None:
+    call = acts.parse_act('invoke(argv=["show"], env={"HOME": "c1/home", "PATH": "stubs:$PATH"})')
+    assert isinstance(call, acts.ActCall)
+    assert call.args["env"] == {"HOME": "c1/home", "PATH": "stubs:$PATH"}
+    assert call.text() == 'invoke(argv=["show"], env={"HOME": "c1/home", "PATH": "stubs:$PATH"})'
+
+
+def test_an_environment_map_with_a_non_string_is_refused() -> None:
+    refused = acts.parse_act('invoke(argv=["show"], env={"RETRIES": 3})')
+    assert isinstance(refused, checks.Refusal)
+    assert refused.kind == "bad-arguments"
+    assert "env" in refused.message
+    refused = acts.parse_act('invoke(argv=["show"], env={1: "x"})')
+    assert isinstance(refused, checks.Refusal)
+    refused = acts.parse_act('invoke(argv=["show"], env=["HOME"])')
+    assert isinstance(refused, checks.Refusal)
+
+
+def test_an_environment_name_must_be_one_the_plan_can_declare() -> None:
+    refused = acts.parse_act('invoke(argv=["show"], env={"home": "x"})')
+    assert isinstance(refused, checks.Refusal)
+    assert "'home'" in refused.message
