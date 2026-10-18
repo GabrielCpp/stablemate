@@ -37,4 +37,4 @@ against.
 - code: `workhorse/workhorse/templates.py::template_globals` @921bcf52f398
 - code: `workhorse/workhorse/references.py::missing_references` @c6ff9b16296e
 - code: `workhorse/workhorse/references.py::format_missing` @c6ff9b16296e
-- code: `workhorse/docs/CHECKING.md` @4a88f2550736
+- code: `workhorse/docs/CHECKING.md` @faf1f5296361

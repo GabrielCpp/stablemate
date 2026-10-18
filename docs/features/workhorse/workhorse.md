@@ -383,7 +383,7 @@ An operator can [answer the inbox](flows/answer-inbox.md), [inspect a stopped ru
   - Stubs every node and names the run directory it wrote.
 - run: invoke(argv=["run", "--dry-run", "--cli", "claude", "--config", "/tmp/workhorse-book/seeded/config.toml", "--run-id", "walk"])
 - verify: stdout(matches="artifacts in /.*/[.]agents/runs/")
-- code: `workhorse/workhorse/pyflow/run.py::run_pyflow` @8ef17f9d42af
+- code: `workhorse/workhorse/pyflow/run.py::run_pyflow` @328378c45684
 
 ### name-the-graph
 

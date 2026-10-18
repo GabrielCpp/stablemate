@@ -37,8 +37,10 @@ of known states.
 
 Before a run starts, preflight reads the flow's graph off its source and refuses it when the
 start state does not exist, when no state returns `Done`, when a transition names something that
-is not a state, when a state is unreachable from the start, or when a prompt file is missing. The
-same graph renders to Graphviz DOT through [`dot`](../workhorse.md#dot), and the
+is not a state, when a state is unreachable from the start, or when a prompt file is missing. A
+prompt path that comes from a helper marked `@resolves_prompt` is read through that helper, and
+any other computed path is reported, because a path preflight cannot read is a path nothing
+checks. The same graph renders to Graphviz DOT through [`dot`](../workhorse.md#dot), and the
 [check a workflow](../flows/check-workflow.md) journey renders one.
 
 - code: `workhorse/workhorse/pyflow/workflow.py::Workflow` @1cc9c62be317
@@ -46,19 +48,19 @@ same graph renders to Graphviz DOT through [`dot`](../workhorse.md#dot), and the
 - code: `workhorse/workhorse/pyflow/transitions.py::Continue` @05edc5a834cc
 - code: `workhorse/workhorse/pyflow/transitions.py::Done` @05edc5a834cc
 - code: `workhorse/workhorse/pyflow/transitions.py::Await` @05edc5a834cc
-- code: `workhorse/workhorse/pyflow/engine.py::Engine` @123dc1442e72
-- code: `workhorse/workhorse/pyflow/driver.py::drive` @47ac9d72fffb
-- code: `workhorse/workhorse/pyflow/driver.py::coerce_params` @47ac9d72fffb
-- code: `workhorse/workhorse/pyflow/graph.py::FlowGraph` @f7c1de40dac1
+- code: `workhorse/workhorse/pyflow/engine.py::Engine` @bae15b8016fa
+- code: `workhorse/workhorse/pyflow/driver.py::drive` @6ee79b75b0f1
+- code: `workhorse/workhorse/pyflow/driver.py::coerce_params` @6ee79b75b0f1
+- code: `workhorse/workhorse/pyflow/graph.py::FlowGraph` @87a40181e500
 - code: `workhorse/workhorse/pyflow/names.py::NameIndex` @ec28548d30de
-- code: `workhorse/workhorse/pyflow/blueprint.py::Blueprint` @7664ca1f81b6
+- code: `workhorse/workhorse/pyflow/blueprint.py::Blueprint` @4911263291b8
 - code: `workhorse/workhorse/pyflow/preflight.py::preflight` @3460fa12f550
 - code: `workhorse/workhorse/pyflow/errors.py::PyflowError` @6daae074220e
 - code: `workhorse/workhorse/pyflow/errors.py::UnknownStateError` @6daae074220e
 - code: `workhorse/workhorse/pyflow/activity.py::ActivityLog` @fc149a498518
-- code: `workhorse/workhorse/pyflow/__init__.py` @7d0a71971848
-- code: `workhorse/workhorse/pyflow/README.md` @6ce61d54c034
+- code: `workhorse/workhorse/pyflow/__init__.py` @e2874fdc1f4d
+- code: `workhorse/workhorse/pyflow/README.md` @c504bb5519c2
 - code: `workhorse/workhorse/worklist.py::WorkList` @ee16d0fb65f6
 - code: `workhorse/workhorse/context.py::WorkflowContext` @313726f99d8a
 - code: `workhorse/docs/WORKFLOW.md` @7ac0edfa642f
-- code: `workhorse/docs/AUTHORING.md` @7cfc60af43a7
+- code: `workhorse/docs/AUTHORING.md` @4776eec2728f

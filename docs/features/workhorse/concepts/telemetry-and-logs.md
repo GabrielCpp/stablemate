@@ -17,7 +17,8 @@ hang. Telemetry is off unless a collector is there, and then it does nothing at 
 - `0`, `false` or `no` forces it off.
 
 A run emits one root span, one span per node visit, and one span per agent turn with its
-duration, tokens and cost. The [agent turns](agent-turns.md) ladder adds span events for retry,
+duration, tokens and cost. The turn span also names the node visit it belongs to, under the
+same slug its live transcript file carries. The [agent turns](agent-turns.md) ladder adds span events for retry,
 reframe, compact and watchdog kills. A backend that reports no cost leaves the cost attribute
 absent rather than zero. Exports are best effort, and `events.jsonl` in the
 [run directory](run-directory.md) stays the durable record.
@@ -32,7 +33,7 @@ Logs go to stderr as `[<logger>] <message>`, at the level `WORKHORSE_LOG_LEVEL` 
 `INFO`. While telemetry is on, the same records also go to the collector, stamped with the node
 the run is in. A workflow can add its own span dimensions by overriding `labels()`.
 
-- code: `workhorse/workhorse/otel.py::Telemetry` @566cc9fcd9ff
-- code: `workhorse/workhorse/otel.py::OtelSettings` @566cc9fcd9ff
+- code: `workhorse/workhorse/otel.py::Telemetry` @237a3c33f413
+- code: `workhorse/workhorse/otel.py::OtelSettings` @237a3c33f413
 - code: `workhorse/workhorse/logsetup.py::setup` @dbe8304930de
-- code: `workhorse/docs/TELEMETRY.md` @69e96560e239
+- code: `workhorse/docs/TELEMETRY.md` @1a5a741770e1

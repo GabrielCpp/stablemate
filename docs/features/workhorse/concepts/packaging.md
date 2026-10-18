@@ -5,7 +5,7 @@ title: Packaging
 # Packaging
 
 Workhorse is a library, so nobody runs a command called `workhorse`. The distribution is
-`workhorse-agent`, version 3.0.0, under the MIT license, and it needs Python 3.12 or newer. It
+`workhorse-agent`, version 4.0.0, under the MIT license, and it needs Python 3.12 or newer. It
 declares no console script. A workflow distribution binds its own script, such as
 `workhorse-coder`, to what `console_script(...)` returns, as [CLI dispatch](cli-dispatch.md)
 describes. Installing that distribution pulls workhorse in as a dependency.
@@ -23,8 +23,8 @@ version. The changelog records each release's breaking changes, features and fix
 
 - code: `workhorse/workhorse/packaged.py::package_dir` @7eeb988b4091
 - code: `workhorse/workhorse/packaged.py::PackagedWorkflowError` @7eeb988b4091
-- code: `workhorse/pyproject.toml` @bda9feb737a4
+- code: `workhorse/pyproject.toml` @f025c95695b7
 - code: `workhorse/README.md` @25f0bef45e88
 - code: `workhorse/workhorse/README.md` @ae6c81203345
-- code: `workhorse/CHANGELOG.md` @f796866e5ff2
+- code: `workhorse/CHANGELOG.md` @c90a5202513a
 - code: `workhorse/LICENSE` @cfa64d417f35

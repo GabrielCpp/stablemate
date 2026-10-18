@@ -27,7 +27,9 @@ that exist.
 
 A `--dry-run` swaps every agent turn and every script node for a stand-in. A node whose output
 schema declares a reply gets that reply, so the happy path runs end to end without spending a
-turn. A dry run is how an author checks the workflow binds.
+turn. A dry run that reaches an operator gate fails with `failure_class: dry-run-gate`, because
+nothing answers a gate under a dry run and the stand-ins have to walk past it instead. A dry run
+is how an author checks the workflow binds.
 
 A `--worktree` run cuts a fresh branch and git worktree first and runs inside it. The run's
 records land in its [run directory](run-directory.md). The per-run settings, such as recovery
@@ -35,8 +37,8 @@ budgets and timeouts, are fixed when the run starts and do not change under it.
 
 - code: `workhorse/workhorse/cli/run.py::backend_for_profile` @fb229bac321d
 - code: `workhorse/workhorse/cli/params.py::load_params` @43dababb9ed6
-- code: `workhorse/workhorse/pyflow/run.py::RunInvocation` @8ef17f9d42af
-- code: `workhorse/workhorse/pyflow/run.py::run_pyflow` @8ef17f9d42af
+- code: `workhorse/workhorse/pyflow/run.py::RunInvocation` @328378c45684
+- code: `workhorse/workhorse/pyflow/run.py::run_pyflow` @328378c45684
 - code: `workhorse/workhorse/pyflow/worktree.py::Worktree` @ced6306a4988
 - code: `workhorse/workhorse/pyflow/replies.py::dry_run` @0ccecab8791a
 - code: `workhorse/workhorse/manifest.py::ContextManifest` @e896594bc36c

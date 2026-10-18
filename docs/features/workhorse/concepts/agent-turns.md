@@ -34,7 +34,9 @@ settings come from `AGENT_*` environment variables, which a run reads once when 
 The agent CLI's own output passes through a redactor before it reaches a transcript, a checkpoint
 or telemetry. The redactor masks the values of known secrets and the recognisable shapes of
 others. The run writes `turn.json` with what the turn was started with, and keeps the transcript
-beside the prompt. In a tree other runs share, the turn's git commands that would discard their
+beside the prompt. While the turn runs, its events are also written as Agent Client Protocol
+updates to `transcripts/live/<slug>.jsonl`, and that file is filed beside the turn's capture when
+the turn ends, so a dashboard can follow a turn before it finishes. In a tree other runs share, the turn's git commands that would discard their
 uncommitted work are refused. These are `stash`, `checkout`, `switch`, `restore` of the working
 tree, a hard, merge or keep `reset`, and a `clean` that is not a dry run.
 
@@ -43,7 +45,7 @@ started on, a given number of times, to size a prompt variant. The
 [size a replay variant](../flows/size-replay-variant.md) journey shows its refusal of a turn whose
 tree has moved.
 
-- code: `workhorse/workhorse/runner/ladder.py::AgentRunner` @9a663eaf7e0b
+- code: `workhorse/workhorse/runner/ladder.py::AgentRunner` @d22216e866b4
 - code: `workhorse/workhorse/runner/turn_record.py::TurnRecord` @50530978b759
 - code: `workhorse/workhorse/runner/spec.py::AgentNode` @ea80f1fc2fed
 - code: `workhorse/workhorse/runner/failure.py::classify_turn` @67f43d6fb9ef
@@ -53,11 +55,11 @@ tree has moved.
 - code: `workhorse/workhorse/runner/waits.py::RecoveryWaitBudget` @d0c5459fe618
 - code: `workhorse/workhorse/runner/reframe.py::retry_prompt` @d40203f18c9b
 - code: `workhorse/workhorse/runner/extract.py::extract_outputs` @92cafcbdca28
-- code: `workhorse/workhorse/runner/process.py::ProcessSupervisor` @aa4e41eba7ec
-- code: `workhorse/workhorse/runner/transcript.py::capture` @09ed4eaa39f4
+- code: `workhorse/workhorse/runner/process.py::ProcessSupervisor` @82335d356999
+- code: `workhorse/workhorse/runner/transcript.py::capture` @761e9ee51dc0
 - code: `workhorse/workhorse/runner/usage.py::TurnUsage` @ebb8fd7db412
 - code: `workhorse/workhorse/runner/redact.py::SecretRedactor` @40448a232adc
 - code: `workhorse/workhorse/runner/worktree_guard.py::refusal` @0762312c18d4
 - code: `workhorse/workhorse/runner/__init__.py` @e3b0c44298fc
-- code: `workhorse/workhorse/runner/README.md` @cfdc56e0df78
+- code: `workhorse/workhorse/runner/README.md` @8284b6d47f86
 - code: `workhorse/docs/GUARDRAILS.md` @519e2e8dce08
