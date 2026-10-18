@@ -104,9 +104,9 @@ its first hop.
 - code: ostler/ostler/qa/plan_source.py::ScenarioRefusal@fa73bba2be06
 - code: ostler/ostler/qa/plan_source.py::python_literal@fa73bba2be06
 - code: ostler/ostler/qa/plan_source.py::arrangement_of@fa73bba2be06
-- code: ostler/ostler/qa/obligation.py::Obligation@afc453d3563f
-- code: ostler/ostler/qa/obligation.py::obligation_of@afc453d3563f
-- code: ostler/ostler/qa/obligation.py::obligations_of@afc453d3563f
+- code: ostler/ostler/qa/obligation.py::Obligation@f238f8b8f458
+- code: ostler/ostler/qa/obligation.py::obligation_of@f238f8b8f458
+- code: ostler/ostler/qa/obligation.py::obligations_of@f238f8b8f458
 - code: ostler/ostler/qa/obligation_frame.py::book_nodes@c6e8278e4f37
 - code: ostler/ostler/qa/obligation_frame.py::obligation_frame@c6e8278e4f37
 - code: ostler/ostler/qa/obligation_frame.py::BookNode@c6e8278e4f37
