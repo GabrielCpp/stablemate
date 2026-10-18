@@ -118,11 +118,22 @@ class WriteBook(BookFlow):
             _ = record_owner_reply(self.records_dir, self.surface_to_write.service, self._gates(), reply)
         if failure is None:
             mark_heard(self.records_dir, self.surface_to_write.service)
+            self._reset_owner_that_wrote_nothing(before, reply)
         if failure is not None:
             return Continue(failure, self.put_back_after_failed_turn, before=before, failure=failure).because(
                 "the writer's turn failed"
             )
         return Continue(metric, self.put_back, before=before).because("put back writes outside the book")
+
+    def _reset_owner_that_wrote_nothing(self, before: Snapshot, reply: OwnerReply | None) -> None:
+        """Start the owner's conversation afresh when it named the book's side of a group and changed no page of its book."""
+        service = self.surface_to_write.service
+        if reply is None or not any(verdict.side == "book" for verdict in (*reply.run, *reply.check)):
+            return
+        if book_changes(self.root, service, before):
+            return
+        self.logger.warning("the owner of %s named the book's side and changed no page; its next turn starts a fresh conversation", service)
+        self.reset_session(owner_chain(service))
 
     def put_back_after_failed_turn(self, before: Snapshot, failure: str) -> Continue[...]:
         """Put back what the failed writer turn changed outside its book."""

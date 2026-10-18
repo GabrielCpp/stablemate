@@ -30,6 +30,13 @@ PASSED = ExerciseResult(lines=("All 3 scenarios pass",), passed=True)
 FAILED = ExerciseResult(lines=("scenario add: failed, 1 of 2 checks failed",))
 
 
+def written_by_the_workflow(repo: Path, subject: str = "docs(tally): write the tally book") -> None:
+    """Commit the page as a turn of this workflow did, so the next run treats the book as its own."""
+    _ = (repo / PAGE).write_text((repo / PAGE).read_text(encoding="utf-8") + NOTE, encoding="utf-8")
+    _ = git(repo, "add", PAGE)
+    _ = git(repo, "commit", "-q", "-m", subject)
+
+
 def _no_gaps(_root: Path, _service: str, _spec: Path) -> CompileOutcome:
     return CompileOutcome(gaps=(), planned=True)
 

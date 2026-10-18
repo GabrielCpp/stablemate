@@ -75,6 +75,7 @@ class ScriptedRunner(AgentRunner):
         self.nodes: list[AgentNode] = []
         self.refused: list[tuple[str, str]] = []
         self.chains: list[tuple[str, str]] = []
+        self.resumed: list[bool] = []
 
     @property
     def total(self) -> int:
@@ -105,6 +106,10 @@ class ScriptedRunner(AgentRunner):
         self.calls.append((node.id, args))
         self.nodes.append(node)
         self.chains.append((node.id, session_chain))
+        if session_chain and session_id_path is not None:
+            self.resumed.append(session_id_path.exists())
+            session_id_path.parent.mkdir(parents=True, exist_ok=True)
+            _ = session_id_path.write_text(f"session-{self.total}", encoding="utf-8")
         reply = self.replies[node.id](args)
         if validate is None:
             return "scripted", reply

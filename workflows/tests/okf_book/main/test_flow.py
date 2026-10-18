@@ -14,6 +14,7 @@ from okf_book.main.tally import (
     PASSED,
     REFUSAL,
     TALLY,
+    written_by_the_workflow,
     answering_operator,
     stopping_operator,
     no_problems,
@@ -184,18 +185,12 @@ def test_an_existing_book_that_checks_and_runs_clean_sends_no_writer(
     assert result.blockers == ()
 
 
-def _written_by_the_workflow(repo: Path, subject: str = "docs(tally): write the tally book") -> None:
-    _ = (repo / PAGE).write_text((repo / PAGE).read_text(encoding="utf-8") + NOTE, encoding="utf-8")
-    _ = git(repo, "add", PAGE)
-    _ = git(repo, "commit", "-q", "-m", subject)
-
-
 def test_a_book_this_workflow_wrote_that_fails_its_rerun_goes_to_its_writer_once_then_is_a_blocker(
     app: App, drive_book: DriveBook, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     repo = app("tally-cli")
     runner = _writer(repo)
-    _written_by_the_workflow(repo)
+    written_by_the_workflow(repo)
     stub_the_run_to(monkeypatch, FAILED)
     monkeypatch.setattr(book_problems, "page_problems", no_problems)
     monkeypatch.setattr(pyflow_park, "wait_for_answer", stopping_operator([]))
@@ -213,7 +208,7 @@ def test_the_operators_answer_sends_a_book_that_still_fails_back_to_its_owners_c
     repo = app("tally-cli")
     runner = _writer(repo)
     asked: list[str] = []
-    _written_by_the_workflow(repo)
+    written_by_the_workflow(repo)
     stub_the_runs_to(monkeypatch, FAILED, FAILED, FAILED, PASSED)
     monkeypatch.setattr(book_problems, "page_problems", no_problems)
     monkeypatch.setattr(pyflow_park, "wait_for_answer", answering_operator(asked))
@@ -235,7 +230,7 @@ def test_a_book_this_workflow_repaired_that_fails_its_rerun_goes_to_its_writer_o
 ) -> None:
     repo = app("tally-cli")
     runner = _writer(repo)
-    _written_by_the_workflow(repo, message)
+    written_by_the_workflow(repo, message)
     stub_the_run_to(monkeypatch, FAILED)
     monkeypatch.setattr(book_problems, "page_problems", no_problems)
     monkeypatch.setattr(pyflow_park, "wait_for_answer", stopping_operator([]))
@@ -252,7 +247,7 @@ def test_a_book_this_workflow_repaired_that_fails_its_check_goes_back_to_its_wri
 ) -> None:
     repo = app("tally-cli")
     runner = _writer(repo)
-    _written_by_the_workflow(repo, "docs(tally): repair pages of the tally book")
+    written_by_the_workflow(repo, "docs(tally): repair pages of the tally book")
 
     def _problems_until_noted_again(root: Path, _service: str, _source_folder: str = "") -> tuple[PageProblem, ...]:
         if (root / PAGE).read_text(encoding="utf-8").count(NOTE.strip()) > 1:
@@ -274,7 +269,7 @@ def test_a_book_this_workflow_wrote_that_fails_its_check_goes_to_its_writer_and_
 ) -> None:
     repo = app("tally-cli")
     runner = _writer(repo)
-    _written_by_the_workflow(repo)
+    written_by_the_workflow(repo)
 
     def _problems(_root: Path, _service: str, _source_folder: str = "") -> tuple[PageProblem, ...]:
         return (PageProblem("a.md", "a.md is linked from no page"),)
