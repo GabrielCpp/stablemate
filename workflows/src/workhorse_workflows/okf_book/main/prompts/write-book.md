@@ -43,8 +43,10 @@ gives relative to the repository starts there.
   pages for a small app, not hundreds. A claim earns its place when a user or a caller can
   observe it and it would break if the app changed. The book covers the whole app: each product
   file of the source is cited in the `code:` of the page that documents what it does, and the
-  check names each file no page cites. Merge and shrink pages freely, but a page you delete
-  takes its citations with it, and what it documented must move to another page.
+  check names each file no page cites. Only a node whose claims a run can prove counts as
+  citing: a concept page explains a file, it does not cover it, so a command, an endpoint or a
+  screen page must cite it too. Merge and shrink pages freely, but a page you delete takes its
+  citations with it, and what it documented must move to another page.
 - State what a user or a caller meets:
 {% if kind == "cli" %}
   the commands, options, flags and positionals, the messages the app prints and the exit

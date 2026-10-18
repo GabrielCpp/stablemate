@@ -63,6 +63,18 @@ def test_a_file_cited_with_a_symbol_counts_as_cited(tmp_path: Path) -> None:
     assert _uncited(repo) == {}
 
 
+def test_a_file_only_a_concept_page_cites_stays_uncited(tmp_path: Path) -> None:
+    repo = _repo(tmp_path, "web/app/routes/login.tsx", "web/app/routes/editor.tsx")
+    concept = (
+        "---\ntype: concept\nslug: drafts\ntitle: Drafts\n---\n# Drafts\n\n"
+        "- code: `web/app/lib/drafts.ts`\n\nHow a draft outlives a reload.\n"
+    )
+    _ = (repo / "docs/features/web/drafts.md").write_text(concept, encoding="utf-8")
+    _ = git(repo, "add", "-A")
+
+    assert _uncited(repo) == {"web/app/lib": ("web/app/lib/drafts.ts",)}
+
+
 def test_no_source_folder_names_nothing(tmp_path: Path) -> None:
     repo = _repo(tmp_path)
 

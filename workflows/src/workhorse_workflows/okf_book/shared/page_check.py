@@ -308,7 +308,8 @@ def _uncited_problems(entries: str, uncited: dict[str, tuple[str, ...]]) -> list
             + (f" and {len(paths) - SAMPLE_FILES} more" if len(paths) > SAMPLE_FILES else "")
             + ". Find what each file does for a user or a caller, state it on the page that covers it, with claims "
             + "that prove it, and cite the file in that node's `code:`. A file that serves several pages is cited by "
-            + "each. Deleting a page that cites a file brings its file back here.",
+            + "each. A concept page's citation does not count: it mints no claim a run can prove. Deleting a page "
+            + "that cites a file brings its file back here.",
             node=folder,
             code=UNCITED_CODE,
         )
