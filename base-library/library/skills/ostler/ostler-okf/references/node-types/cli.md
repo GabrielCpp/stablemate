@@ -19,10 +19,13 @@ File type with **no context folder** (`context=""`): it lives under
 | `binary` | no | the executable name as invoked |
 | `code` | no | resolves as a link, and **owns** its file — `path::symbol` |
 | `detail` | no | link — an explanatory [`concept`](concept.md) |
-| `verify` | no | a check — what observing this CLI's claims looks like |
 
 `binary:` deliberately does not own: naming an executable is not grounding it. `code:` is what
 makes `qa context` attribute a change under that path to this node.
+
+A `cli` node takes no `verify:`. A check needs a `run:` to observe, and `run:` lives on a
+[`command`](command.md): a check on the binary as a whole is a check on one of its commands,
+filed under that command after its `run:`.
 
 Plus the [shared normative keys](../bullet-grammar.md#keys-that-are-normative-on-every-type).
 
