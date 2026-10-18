@@ -10,7 +10,11 @@ from pathlib import Path
 import pytest
 import yaml
 
-from ostler import checks
+from conftest import write
+from ostler import checks, graph as graph_mod
+from ostler.model import load as load_book
+from ostler.qa import context as qa_context
+from ostler.qa import runbook as qa_runbook
 from ostler.qa.compile import (
     HARNESS_LIMIT_GAPS,
     Gap,
@@ -6064,6 +6068,91 @@ def test_a_mobile_journey_starting_on_the_launch_screen_compiles_end_to_end() ->
     tap_ids = [c["tapOn"]["id"] for c in flow_commands
               if isinstance(c, dict) and "tapOn" in c]
     assert tap_ids == ["open-link", "save-button"]
+
+
+_MOBILE_RUNBOOK = """---
+type: runbook
+slug: android
+title: Android
+---
+# Android
+
+- driver: mobile
+- surfaces: [home](../gui/screens/home.md)
+- bundle-id: com.example.acme
+- launch-screen: [home](../gui/screens/home.md)
+
+## Steps
+
+### boot-emulator
+
+- kind: prepare
+- run: emulator -avd acme-probe -no-window -no-audio &
+
+### wait-for-device
+
+- kind: prepare
+- run: adb wait-for-device
+
+### wait-for-boot
+
+- kind: prepare
+- run: until [ "$(adb shell getprop sys.boot_completed | tr -d '\\r')" = 1 ]; do sleep 2; done
+
+### install-app
+
+- kind: prepare
+- run: adb install -r app/build/outputs/apk/debug/app-debug.apk
+- env:
+  - API_URL=http://10.0.2.2:8081
+
+### backend
+
+- kind: service
+- run: make serve PORT=8081
+- health: curl -fsS http://localhost:8081/healthz
+"""
+
+_MOBILE_HOME = (
+    "---\ntype: screen\nslug: home\ntitle: Home\n---\n# Home\n\n"
+    "- route: Home\n- requires: none\n- params: none\n"
+)
+
+
+def test_a_mobile_book_compiles_a_flow_at_its_bundle_id_and_keeps_its_prepare_steps(tmp_path: Path) -> None:
+    (tmp_path / ".git").mkdir()
+    write(tmp_path / "docs/features/acme/ops/android.md", _MOBILE_RUNBOOK)
+    write(tmp_path / "docs/features/acme/gui/screens/home.md", _MOBILE_HOME)
+    screen = "docs/features/acme/gui/screens/home.md"
+    graph = load_book(tmp_path)
+    dump = graph_mod.build(graph)
+    oid = "okf:acme-home:greeting:visible:1"
+    context = _navigation_context(
+        _page_obligation(oid, f"{screen}#greeting", surface="acme", source=screen,
+                         locators={"selector": ["testID=greeting"]},
+                         checks=[_visible("text:Welcome")],
+                         fixtures=[{"name": "seeded-ledger", "args": [], "provides": "a ledger"}]),
+        navigation=qa_context._navigation(dump),
+        screen_routes={screen: "Home"},
+    )
+
+    result = _compile_plan_gaps(context, story="demo-story")
+
+    assert isinstance(result, Plan)
+    assert _gap_kinds(result.gaps, oid) == []
+    assert "maestro" in result.source
+    assert 'app_id="com.example.acme"' in result.source
+    (flow_text,) = result.files.values()
+    flow_header, _flow_commands = yaml.safe_load_all(flow_text)
+    assert flow_header["appId"] == "com.example.acme"
+    manifest = qa_runbook.load_stack(graph=graph)
+    assert [step["run"] for step in manifest["prepare"]] == [
+        "emulator -avd acme-probe -no-window -no-audio &",
+        "adb wait-for-device",
+        "until [ \"$(adb shell getprop sys.boot_completed | tr -d '\\r')\" = 1 ]; do sleep 2; done",
+        "export API_URL=http://10.0.2.2:8081; adb install -r app/build/outputs/apk/debug/app-debug.apk",
+    ]
+    assert manifest["launch"] == "make serve PORT=8081"
 
 
 def _maestro_press_probe(book_key: str) -> tuple[dict, str]:
