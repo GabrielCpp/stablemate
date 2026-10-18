@@ -14,8 +14,12 @@ writes against and the runtime that later replays what they wrote: `plan` names 
 starts a long-lived process for the scenario's duration, and `scenario` registers one check
 function under an id and a human title. Each registered function receives a `Qa` instance — the
 object a check calls to make an HTTP request (`Http`), run a step of the book under test, open
-a browser, or read a fixture — and raises `CheckFailed` or lets a `ClaimFault`/`FixtureFault`
-propagate when the book's claim does not hold.
+a browser, read a fixture, or build the environment a tool run needs (`scenario_env`) — and
+raises `CheckFailed` or lets a `ClaimFault`/`FixtureFault` propagate when the book's claim does
+not hold. `scenario_env` expands a `$NAME` reference in a declared value against the process
+environment, then resolves any value shaped like a relative path against
+`scenario_checkout_copy()`, so a compiled CLI run whose `invoke` act declares `env:` gets a
+variable pointing at a file inside the scenario's own checkout rather than the harness's.
 
 Outside a single check, `ostler_qa.py` also carries the pieces a scenario rarely touches
 directly: `Target`/`Secret`/`ScenarioDecl` are the frozen records a `plan()` call accumulates;
@@ -73,6 +77,7 @@ harness as book content.
 - code: ostler/ostler/qa/harness/ostler_qa.py::scenario@5e8e1ba15732
 - code: ostler/ostler/qa/harness/ostler_qa.py::Qa@5e8e1ba15732
 - code: ostler/ostler/qa/harness/ostler_qa.py::Http@5e8e1ba15732
+- code: ostler/ostler/qa/harness/ostler_qa.py::scenario_env@5e8e1ba15732
 - code: ostler/ostler/qa/harness/ostler_qa.py::CheckFailed@5e8e1ba15732
 - code: ostler/ostler/qa/harness/ostler_qa.py::ClaimFault@5e8e1ba15732
 - code: ostler/ostler/qa/harness/ostler_qa.py::FixtureFault@5e8e1ba15732

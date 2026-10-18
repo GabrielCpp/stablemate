@@ -13,7 +13,12 @@ point, walking a `ContextPacket` of `Obligation` records and, for each, choosing
 `## Debt` section at the end lists every obligation whose book entry carries `--no-verify`
 (`_book_debt`, `_no_verify_detail`), so a plan always shows what it chose not to prove alongside
 what it did. `compile_plan_gaps` runs the same walk purely to report what has no driver, before
-any code is generated; `cmd_compile_plan` is the CLI entry point.
+any code is generated; `cmd_compile_plan` is the CLI entry point. All three share `_plan_header`,
+which renders the banner, import line and `plan(...)` call a generated module opens with; when
+`invoke_env_names` finds a CLI `invoke` act in the book that declares `env:`, `_plan_header` adds
+`tool_env` to the import line and a `tool_env(...)` call naming those acts right after
+`plan(...)`, so every compiled plan carries that line whenever the book names an environment
+variable, not only when a check needs one.
 
 Each backend owns one driver. `compile_http.py`'s `api_scenarios` builds a check function around
 an `Http` call for an HTTP-observed obligation, assembling a request body from a `CheckValue`
@@ -22,7 +27,10 @@ assertion (`read_back`); `http_walk` compiles an HTTP-only journey the same way.
 `cli_scenario_body` runs the book's CLI binary as a subprocess and asserts on its exit status or
 captured stdout, deciding first whether a check is about the file tree before or after
 (`reads_the_tree`, `compares_the_tree`); `cli_journey` and `cli_move_walk` compile a CLI-driven
-journey or state walk. `compile_page.py`'s `page_scenarios` builds a web-UI check, holding a
+journey or state walk. `_run_arguments` assembles every emitted `.run(...)` call's keyword
+arguments — `argv`, `cwd=qa.scenario_checkout_copy()`, and, when the act declares `env:`,
+`env=qa.scenario_env(...)` — so a step's or scenario's subprocess call carries whatever
+environment the book's `invoke` act names, in both `cli_scenario_body` and `cli_journey`. `compile_page.py`'s `page_scenarios` builds a web-UI check, holding a
 conditional or mutually-exclusive component's obligations together (`_node_claims`,
 `_shared_shape`) and inserting a navigation step before the assertion when the obligation is not
 already on the right screen (`_arrival_scenario`); `web_state_walks` compiles a `DataState`
@@ -73,14 +81,17 @@ step as a browser action by resolving its locator, screen, or act against the gr
 per surface, and `maestro_launch` derives the mobile launch flow a mobile journey needs before
 its first hop.
 
-- code: ostler/ostler/qa/compile.py::compile_plan@88c78292f5eb
-- code: ostler/ostler/qa/compile.py::compile_plan_gaps@88c78292f5eb
-- code: ostler/ostler/qa/compile.py::cmd_compile_plan@88c78292f5eb
+- code: ostler/ostler/qa/compile.py::compile_plan@08cf0153b44e
+- code: ostler/ostler/qa/compile.py::compile_plan_gaps@08cf0153b44e
+- code: ostler/ostler/qa/compile.py::cmd_compile_plan@08cf0153b44e
+- code: ostler/ostler/qa/compile.py::_plan_header@08cf0153b44e
 - code: ostler/ostler/qa/compile_http.py::api_scenarios@7b561de0b90a
 - code: ostler/ostler/qa/compile_http.py::http_walk@7b561de0b90a
 - code: ostler/ostler/qa/compile_http.py::read_back@7b561de0b90a
-- code: ostler/ostler/qa/compile_cli.py::cli_scenario_body@cbe118f5f6ff
-- code: ostler/ostler/qa/compile_cli.py::cli_journey@cbe118f5f6ff
+- code: ostler/ostler/qa/compile_cli.py::cli_scenario_body@003bdbe757de
+- code: ostler/ostler/qa/compile_cli.py::cli_journey@003bdbe757de
+- code: ostler/ostler/qa/compile_cli.py::_run_arguments@003bdbe757de
+- code: ostler/ostler/qa/compile_cli.py::invoke_env_names@003bdbe757de
 - code: ostler/ostler/qa/compile_page.py::page_scenarios@86e11d4ad1cb
 - code: ostler/ostler/qa/compile_page.py::web_state_walks@86e11d4ad1cb
 - code: ostler/ostler/qa/compile_playwright.py::perform_acts@0f1323f2699e
