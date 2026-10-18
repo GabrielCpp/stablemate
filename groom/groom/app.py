@@ -31,6 +31,7 @@ from groom import (
     discovery,
     dispatch,
     dispatch_ledger,
+    digest,
     docker_io,
     live_transcript,
     localfs,
@@ -45,7 +46,7 @@ from groom import (
     store,
     turns,
 )
-from groom.attention import RULE_EVENTS, AttentionEvent, AttentionFrame
+from groom.attention import RULE_EVENTS, AttentionEvent, AttentionFrame, DigestFrame, EventFrame
 from groom.gates import answer_gate, native_questions
 from groom.live_history import LiveHistory
 from groom.models import AnswerResult, GateInfo, RunTelemetry, WorkflowContainer, WorkflowState
@@ -756,13 +757,18 @@ async def _dispatch_alerts(fired: list[alerts.Alert]) -> None:
     """Fan one batch of newly-fired alerts out to every channel: the activity log, the AFK push (ntfy/webhook, off the event loop — urllib blocks), and the browser notification path blocked-gates already use."""
     for alert in fired:
         telemetry = state.RUNS.get(alert.run_id)
-        await state.broadcast(AttentionFrame(events=[AttentionEvent(
+        event = AttentionEvent(
             run_id=alert.run_id, event=RULE_EVENTS[alert.rule], message=alert.message,
             node=telemetry.current_node if telemetry else "",
             question=telemetry.wait_gate_question if telemetry else "",
             gate_path=telemetry.wait_gate_path if telemetry else "",
             terminal=telemetry.terminal if telemetry else "",
-        )]).model_dump())
+        )
+        now = time.time()
+        state.record_event(alert.run_id, event, now)
+        for feed in state.feeds_of(alert.run_id):
+            _feed_put(feed, event, now)
+        await state.broadcast(AttentionFrame(events=[event]).model_dump())
         state.record_log(
             {"event": "alert", "rule": alert.rule, "run_id": alert.run_id, "message": alert.message}
         )
@@ -1083,6 +1089,96 @@ async def dashboard_ws(socket: WebSocket) -> None:
         state.remove_client(queue)
 
 
+FEED_MIN_EVERY_S = 60.0
+FEED_DEFAULT_EVERY_S = 1800.0
+
+
+_FEED_QUEUE_MAX = 200
+
+
+def _feed_put(queue: asyncio.Queue, event: AttentionEvent, ts: float) -> None:
+    """Queue one event for a feed without ever blocking the collector: a full queue drops it."""
+    try:
+        queue.put_nowait((ts, event))
+    except asyncio.QueueFull:
+        pass
+
+
+async def _until_disconnect(socket: WebSocket) -> None:
+    """Return when the peer goes away; a feed client sends nothing, so anything it does send is dropped."""
+    try:
+        while True:
+            await socket.receive_data("text")
+    except WebSocketDisconnect:
+        return
+
+
+@websocket("/feed")
+async def feed_ws(
+    socket: WebSocket,
+    run: Annotated[str, QueryParameter()],
+    every: Annotated[float, QueryParameter()] = FEED_DEFAULT_EVERY_S,
+    since: Annotated[float | None, QueryParameter()] = None,
+) -> None:
+    """One filtered socket for one run, meant for a program rather than a tab: ``event`` frames the moment an alert fires and a ``digest`` frame every ``every`` seconds, quiet or not, so silence reads as a signal."""
+    await socket.accept()
+    interval = max(every, FEED_MIN_EVERY_S)
+    queue: asyncio.Queue = asyncio.Queue(maxsize=_FEED_QUEUE_MAX)
+    state.add_feed(queue, run)
+    seq = 0
+
+    async def emit(frame: EventFrame | DigestFrame) -> None:
+        await socket.send_text(frame.model_dump_json())
+
+    try:
+        now = time.time()
+        if since is not None:
+            replay = [(ts, event) for ts, event in state.EVENTS.get(run, ()) if ts > since]
+            window_start = since
+        else:
+            replay = [
+                (now, event)
+                for event in projection.attention_events(_all_workflows())
+                if event.run_id == run
+            ]
+            window_start = now - interval
+        for ts, event in replay:
+            seq += 1
+            await emit(EventFrame(seq=seq, ts=ts, event=event))
+        seq += 1
+        await emit(digest.build_digest(run, window_start, now).model_copy(update={"seq": seq, "ts": now}))
+        last = now
+        gone = asyncio.create_task(_until_disconnect(socket))
+        pending = asyncio.create_task(queue.get())
+        try:
+            while True:
+                remaining = last + interval - time.time()
+                done, _ = await asyncio.wait(
+                    {pending, gone}, timeout=max(remaining, 0.0),
+                    return_when=asyncio.FIRST_COMPLETED,
+                )
+                if gone in done:
+                    return
+                if pending in done:
+                    ts, event = pending.result()
+                    pending = asyncio.create_task(queue.get())
+                    seq += 1
+                    await emit(EventFrame(seq=seq, ts=ts, event=event))
+                else:
+                    now = time.time()
+                    seq += 1
+                    frame = digest.build_digest(run, last, now)
+                    await emit(frame.model_copy(update={"seq": seq, "ts": now}))
+                    last = now
+        finally:
+            gone.cancel()
+            pending.cancel()
+    except WebSocketDisconnect:
+        pass
+    finally:
+        state.remove_feed(queue)
+
+
 async def _apply_hello(container_id: str, data: dict) -> None:
     """Fold a sidecar's on-connect ``hello`` into the fleet."""
     identity = data.get("identity") or {}
@@ -1252,7 +1348,7 @@ async def _live_loop() -> None:
     """Re-render the run list on a clock and push it to every open dashboard."""
     while True:
         await asyncio.sleep(LIVE_TICK_S)
-        if not state.CLIENTS:
+        if not state.CLIENTS and not state.FEEDS:
             continue
         try:
             died: list[alerts.Alert] = []
@@ -1267,8 +1363,9 @@ async def _live_loop() -> None:
             for run in runs:
                 _sync_native_row(run, died)
             await _dispatch_alerts(died)
-            await _broadcast_shell()
-            await _push_watched()
+            if state.CLIENTS:
+                await _broadcast_shell()
+                await _push_watched()
         except Exception:  # noqa: BLE001
             pass
 
@@ -1398,6 +1495,7 @@ def create_app() -> Litestar:
             otlp_logs,
             api_live,
             dashboard_ws,
+            feed_ws,
             dashboard_sidecar,
             reload,
             create_static_files_router(path="/assets", directories=[ASSETS_DIR]),

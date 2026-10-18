@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 from collections import deque
 
+from groom.attention import AttentionEvent
 from groom.live_history import LiveHistory
 from groom.models import RunTelemetry, WorkflowContainer
 
@@ -17,6 +18,10 @@ HISTORIES: dict[str, LiveHistory] = {}
 HISTORY_LOCK = asyncio.Lock()
 
 RUNS: dict[str, RunTelemetry] = {}
+
+EVENT_HISTORY = 200
+EVENTS: dict[str, deque[tuple[float, AttentionEvent]]] = {}
+FEEDS: dict[asyncio.Queue, str] = {}
 
 SCANNING: bool = True
 
@@ -70,6 +75,7 @@ def evict_runs(run_ids: list[str]) -> None:
     """Drop telemetry hot-cache entries (and any native dashboard row they back) for the given run ids — the eviction that bounds ``RUNS``/``WORKFLOWS`` growth on a long-lived groom."""
     for run_id in run_ids:
         RUNS.pop(run_id, None)
+        EVENTS.pop(run_id, None)
         wf = WORKFLOWS.get(run_id)
         if wf is not None and wf.native:
             WORKFLOWS.pop(run_id, None)
@@ -89,6 +95,22 @@ def remove_client(queue: asyncio.Queue) -> None:
     CLIENTS.discard(queue)
     WATCHING.pop(queue, None)
     _release_histories()
+
+
+def add_feed(queue: asyncio.Queue, run_id: str) -> None:
+    FEEDS[queue] = run_id
+
+
+def remove_feed(queue: asyncio.Queue) -> None:
+    FEEDS.pop(queue, None)
+
+
+def record_event(run_id: str, event: AttentionEvent, ts: float) -> None:
+    EVENTS.setdefault(run_id, deque(maxlen=EVENT_HISTORY)).append((ts, event))
+
+
+def feeds_of(run_id: str) -> list[asyncio.Queue]:
+    return [queue for queue, fed in FEEDS.items() if fed == run_id]
 
 
 def watch(queue: asyncio.Queue, run_id: str) -> None:

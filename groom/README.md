@@ -34,6 +34,9 @@ spans, per-node timings and error status, filterable without leaving the browser
   the run list is additionally re-rendered and broadcast every `GROOM_LIVE_TICK_S`
   (5s), skipped entirely when no tab is connected. That is what makes the dashboard
   safe to leave open and read without refreshing.
+  The `/feed` socket is the one socket meant for a program rather than a tab: it
+  carries one run's events and a periodic digest, and `groom wait` and
+  `groom feed` read it.
   A selected run loads its span summary, recent logs, and metrics from SQLite
   once when its watch subscription opens. A loading indicator covers that initial
   read. The history lists timestamped log records, completed spans, and metric
@@ -280,34 +283,86 @@ Read it like this:
 | `alive`, no turn or wait, node age large | **wedged deterministic work** inside the node |
 | no heartbeat (`DEAD?`) | the process is gone — SIGKILL, OOM, crashed host |
 
-## Wait until a run needs attention
+## Follow a run: events and a periodic digest
 
 ```bash
+uv run --all-packages groom feed --run RUN --every 30m
+uv run --all-packages groom feed --run RUN --json --since 1792339000.5
 uv run --all-packages groom wait --run RUN --json
 uv run --all-packages groom wait --run RUN --until blocked,ended
 ```
 
-`wait` holds one WebSocket connection to `groom serve` and stays silent during
-normal progress. It returns one event and exits when the named run is blocked,
-ended, stuck, stalled, or gave up. `--until` selects a comma-separated set from
-`blocked,ended,stuck,stalled,gave-up,churn,watchdog,died,waiting`.
-There is no timeout; Ctrl+C cancels the monitor without stopping the workflow.
+`/feed` is a WebSocket on `groom serve` for one run. It carries two kinds of
+frame and works with no dashboard tab open. A program or an agent session reads
+it. A tab reads `/ws`.
 
-Current conditions are checked in the initial server snapshot, including runs
-hidden from the dashboard. A run not yet known to the server is watched until
-it reports a matching condition. This uses the server's current cache, not an
-archive search: an ending evicted from that cache is no longer available.
-Machine, capacity and retry waits do not count as operator gates. Starting a
-new waiter while the same condition remains active returns that condition again.
+| Query parameter | Meaning |
+| --- | --- |
+| `run` | Required. The exact telemetry run ID. An unknown ID is allowed: the feed waits for the run to appear. |
+| `every` | Digest interval in seconds. Default `1800`. Values below `60` are raised to `60`. |
+| `since` | Optional replay cursor, a timestamp. Use the `ts` of the last frame received before a reconnect. |
 
-`--run` takes the exact telemetry run ID. `GROOM_URL` selects the collector, as for `groom status`.
-Both CLI and server must support the wait protocol; an older server is reported
-as a monitoring error. JSON output contains `run_id`, `event`, `node`, `question`,
-`gate_path`, `terminal`, and `message`; unavailable context is an empty string.
-Exit `0` means a matching event, even if the workflow failed; `1` means the
-connection or protocol failed, `2` means invalid arguments, and `130` means
-cancellation. Disconnections are reported instead of silently reconnecting
-across a gap in monitoring.
+Every frame carries `type`, `seq` and `ts`. `seq` counts from 1 on each
+connection. `ts` is the wall clock when the server sent the frame.
+
+An `event` frame arrives the moment an alert fires. Its `event` field holds
+`run_id`, `event`, `node`, `question`, `gate_path`, `terminal` and `message`.
+`event` is one of `blocked,ended,stuck,stalled,gave-up,churn,watchdog,died,waiting`.
+Machine, capacity and retry waits do not count as operator gates.
+
+A `digest` frame arrives every `every` seconds, even when nothing happened.
+Silence is not success: a run that stopped emitting and a run that has nothing
+to report look the same without it. Its fields:
+
+- `since` and `until`: the window the digest covers.
+- `quiet`: true when the window holds no spans, no events and no log line at
+  WARNING or above. A quiet digest needs no action.
+- `summary`: one line to read first, such as
+  `quiet 14:30-15:00 · in reground-file 47m 00s · turn streaming, idle 3.0s · +$1.20`.
+- `standing`: where the run is now. It holds the node and its age, the turn state
+  and idle time, the wait kind and age, gas, liveness, the terminal state, and
+  the open gate's path and question.
+- `window`: what happened between `since` and `until`. It holds per-node visits,
+  turns, cost and output tokens, laps per work item, operator gates with their
+  outcome, the events that fired, up to ten warnings, and the totals.
+
+On connect the feed sends the conditions already active for the run as `event`
+frames, so a run that is blocked before anyone listens is reported at once. It
+then sends a digest for the last `every` seconds. With `since`, it sends instead
+every event recorded after the cursor, then a digest from the cursor to now. The
+server keeps the last 200 events per run in memory. A restart of `groom serve`
+empties that history.
+
+`groom feed` prints one line per frame and never exits on its own. `--json`
+prints each frame as one JSON line. `--every` accepts `30m`, `10m`, `3600s` or a
+bare number of seconds. `--since` takes a timestamp.
+
+`groom wait` is a second client of the same feed. It stays silent during normal
+progress and ignores `digest` frames. It returns one event and exits when the
+named run is blocked, ended, stuck, stalled, or gave up. `--until` selects a
+comma-separated set from `blocked,ended,stuck,stalled,gave-up,churn,watchdog,died,waiting`.
+There is no timeout. Ctrl+C cancels the monitor without stopping the workflow.
+A run not yet known to the server is watched until it reports a matching
+condition. This uses the server's current cache, not an archive search: an
+ending evicted from that cache is no longer available. Starting a new waiter
+while the same condition remains active returns that condition again.
+
+`--run` takes the exact telemetry run ID. `GROOM_URL` selects the collector, as
+for `groom status`. Both CLI and server must support the feed protocol. An older
+server is reported as a monitoring error. JSON output of `wait` contains
+`run_id`, `event`, `node`, `question`, `gate_path`, `terminal`, and `message`;
+unavailable context is an empty string.
+
+| `wait` exit | Meaning |
+| --- | --- |
+| `0` | A matching event arrived, even if the workflow failed. |
+| `1` | The connection or protocol failed. |
+| `2` | Invalid arguments. |
+| `130` | Cancelled. |
+
+Neither command reconnects on its own. A disconnection is reported instead of
+silently crossing a gap in monitoring. `feed --since` is how a caller closes
+that gap.
 
 ## What was it saying? (`groom logs`)
 

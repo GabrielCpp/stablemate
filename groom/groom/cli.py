@@ -8,7 +8,7 @@ import sys
 from typing import Any
 
 from groom.attention import DEFAULT_EVENTS
-from groom.wait import event_names, wait
+from groom.wait import event_names, feed, wait
 
 DEFAULT_HOST = "127.0.0.1"
 DEFAULT_PORT = 8787
@@ -102,6 +102,19 @@ def _format_status(rows: list[dict], now: float) -> str:
             )
         )
     return "\n".join(lines)
+
+
+def _interval(value: str) -> float:
+    text = value.strip().lower()
+    scale = {"s": 1.0, "m": 60.0, "h": 3600.0}.get(text[-1:], 1.0)
+    number = text[:-1] if text[-1:] in ("s", "m", "h") else text
+    try:
+        seconds = float(number) * scale
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"not a duration: {value!r}; use 30m, 3600s or 900") from None
+    if seconds <= 0:
+        raise argparse.ArgumentTypeError("the interval must be positive")
+    return seconds
 
 
 def _serve_url() -> str:
@@ -1002,6 +1015,17 @@ def main(argv: list[str] | None = None) -> None:
                              help=f"Comma-separated events (default: {DEFAULT_EVENTS}).")
     wait_parser.add_argument("--json", action="store_true", dest="as_json")
 
+    feed_parser = subparsers.add_parser(
+        "feed",
+        help="Follow one run: events as they fire and a digest on an interval; never exits on its own.",
+    )
+    feed_parser.add_argument("--run", required=True, help="Exact run_id to follow.")
+    feed_parser.add_argument("--every", type=_interval, default=1800.0,
+                             help="Digest interval: 30m, 3600s or 900 (default: 30m).")
+    feed_parser.add_argument("--since", type=float, default=None,
+                             help="Replay events after this timestamp, then digest from it.")
+    feed_parser.add_argument("--json", action="store_true", dest="as_json")
+
     status_parser = subparsers.add_parser(
         "status",
         help="Where each live run is right now (open node, node age, agent idleness). "
@@ -1325,6 +1349,8 @@ def main(argv: list[str] | None = None) -> None:
         )
     elif args.command == "wait":
         wait(url=_serve_url(), run=args.run, until=args.until, as_json=args.as_json)
+    elif args.command == "feed":
+        feed(url=_serve_url(), run=args.run, every_s=args.every, since=args.since, as_json=args.as_json)
     elif args.command == "status":
         status(run=args.run, as_json=args.as_json)
     elif args.command == "logs":

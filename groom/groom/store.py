@@ -688,6 +688,7 @@ def query_logs(
     contains: str = "",
     limit: int = 200,
     before_ts: float | None = None,
+    since_ts: float | None = None,
 ) -> list[dict[str, Any]]:
     """The log search behind ``groom logs``, newest first."""
     where, params = [], []
@@ -709,6 +710,9 @@ def query_logs(
     if before_ts is not None:
         where.append("ts < ?")
         params.append(float(before_ts))
+    if since_ts is not None:
+        where.append("ts >= ?")
+        params.append(float(since_ts))
     clause = f"WHERE {' AND '.join(where)}" if where else ""
     conn = read_connection()
     rows = conn.execute(
