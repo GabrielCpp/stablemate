@@ -161,9 +161,9 @@ gives relative to the repository starts there.
   say it is ready. Name that route, and never invent one. A further backend starts in the
   background from a `kind: prepare` step, on a free port of its own, and the app is built
   against that port too. A service already answering on this machine belongs to someone else,
-  and a claim that passes against it passes only here. If the app calls no backend, say so in
-  your reply, because a runbook with no `kind: service` step and no `entry-url:` is not a stack,
-  and nothing runs its prepare steps.
+  and a claim that passes against it passes only here. If the app calls no backend, the runbook
+  has prepare steps only and no `kind: service` step. Say so in your reply. The run still brings
+  the stack up, and it runs the prepare steps every time.
   The command below reports the step where bring-up failed, and it is the only way to probe
   that machine.
 - A screen's `route:` is the navigator's name for it, an identifier and not a path. An element is found by
