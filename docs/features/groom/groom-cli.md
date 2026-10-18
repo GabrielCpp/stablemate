@@ -12,6 +12,7 @@ The `groom` CLI is the manually launched host-side surface for the
 [groom dashboard service](groom.md). It has no default action: invoking
 `groom` without a command is an argument error. [`serve`](#serve) starts the
 local [groom server](http/groom.md) and keeps it running until the server exits;
+[`tui`](#tui) watches the fleet and answers operator gates from a terminal;
 [`status`](#status), [`logs`](#logs), and [`cost`](#cost) read the collected
 telemetry; [`loops`](#loops) ranks review→rework cycles by convergence and rework
 cost; [`prices`](#prices) shows the rate card used by `cost`; and [`profile`](#profile)
@@ -104,6 +105,33 @@ standard usage/error path.
   Python's normal unhandled-exception path.
 - verify: exit_status(code=1)
 - code: groom/groom/cli.py::serve
+- detail: [groom server](http/groom.md)
+
+### tui
+- usage: `groom tui [--url URL]`
+- parent: [groom](#groom)
+- flags:
+  - `--url URL`
+    - type: http or https URL
+    - required: false
+    - default: `GROOM_URL`, else `http://127.0.0.1:8787`
+    - Where the running [`groom serve`](#serve) answers. The terminal client opens the server's `/ws` socket under the same address.
+- args:
+  - none: `tui` accepts no positional arguments.
+
+`tui` is a terminal client of the running [groom server](http/groom.md). It reads the same `/ws` socket a dashboard tab reads and needs no browser. The screen has a status line, the run list on the left, the open run on the right and a footer of key bindings. The status line shows the connection phase as a word with a dot (`live`, `stale`, `reconnecting` or `offline`) and the fleet counts. The client derives the phase from how recently a message arrived, with the same thresholds as the dashboard, and rereads `/api/state` every five seconds while the phase is not `live`. A dropped socket reconnects with a growing delay, up to thirty seconds. The client starts when no server listens and recovers when one appears.
+
+Each run row shows a gate marker when the run waits on an operator gate, the run's liveness word, its name and what it is doing. `j` and `k` move through the list and `enter` opens a run. An open run shows each gate's file path and its question rendered as Markdown. An operator gate has an answer box: `a` focuses it and `ctrl+s` sends its text as an answer. A machine gate shows `Waiting for a machine result.` and no answer box. When the server reports the gate answered, the box empties and a toast confirms it. When a run blocks, the terminal rings its bell and a toast names the run. `r` asks the server to rescan containers and `q` quits with status 0.
+
+The client removes terminal control characters and escape sequences from every string the server sends before it draws it. A gate question that holds a clipboard-write or a screen-clear sequence draws as plain text.
+
+- errors:
+  - A `--url` or `GROOM_URL` value that is not an `http://` or `https://` URL with a host is a parser error that names the value.
+    - run: invoke(argv=["tui", "--url", "ftp://127.0.0.1:1"], env={"GROOM_DB": "e1/groom.db", "HOME": "e1/home"})
+    - verify: stderr(matches="'ftp://127\\.0\\.0\\.1:1' must be an http:// or https:// URL")
+    - verify: exit_status(code=2)
+    - fixture: none, because the rejected command line stops before the client starts
+- code: groom/groom/cli.py::main@41ed09bdfa75
 - detail: [groom server](http/groom.md)
 
 ### status
