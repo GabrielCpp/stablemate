@@ -5,12 +5,13 @@ import inspect
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
 from types import FunctionType
-from typing import Any
+from typing import Any, TypeVar, cast, overload
 
 from workhorse.pyflow.errors import UnknownNodeError
 from workhorse.pyflow.names import NameIndex
 
 NODE_ATTR = "__workhorse_node__"
+F = TypeVar("F", bound=Callable[..., Any])
 
 
 @dataclass(frozen=True)
@@ -57,19 +58,32 @@ class Blueprint:
         self.name = name
         self.index: NameIndex[NodeSpec] = NameIndex("node", owner=f"blueprint {name!r}")
 
+    @overload
+    def node(self, fn: F, /) -> F: ...
+
+    @overload
     def node(
         self,
-        fn: FunctionType | None = None,
+        fn: None = None,
+        *,
+        aliases: Iterable[str] = (),
+        retries: int = 0,
+        stub: Callable[..., Any] | None = None,
+    ) -> Callable[[F], F]: ...
+
+    def node(
+        self,
+        fn: Callable[..., Any] | None = None,
         *,
         aliases: Iterable[str] = (),
         retries: int = 0,
         stub: Callable[..., Any] | None = None,
     ) -> Any:
-        """Register a node."""
+        """Register a node. The decorated function keeps its own type."""
         alias_tuple = tuple(aliases)
 
-        def decorate(target: FunctionType) -> FunctionType:
-            name = target.__name__
+        def decorate(target: F) -> F:
+            name = cast("FunctionType", target).__name__
             spec = NodeSpec(
                 fn=target,
                 name=name,
