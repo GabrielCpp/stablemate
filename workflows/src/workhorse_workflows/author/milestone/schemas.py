@@ -10,9 +10,9 @@ from workhorse.pyflow import dry_run
 class MilestoneContext(BaseModel):
     """Validated roadmap identity and the planning graph before the authoring turn."""
 
-    repo_root: str
-    roadmap: str
-    epics_dir: str
+    repo_root: str = ""
+    roadmap: str = ""
+    epics_dir: str = ""
     milestone_path: str = ""
     milestone_epics: list[str] = Field(default_factory=list)
     milestone_fingerprints: dict[str, str] = Field(default_factory=dict)
@@ -27,6 +27,7 @@ class MilestoneResult(BaseModel):
     notes: str
 
 
+@dry_run(ok=True)
 class MilestoneValidation(BaseModel):
     """Deterministic proof that this stage changed only one milestone document."""
 

@@ -10,10 +10,10 @@ from workhorse.pyflow import dry_run
 class EpicSplitContext(BaseModel):
     """The roadmap milestone and graph snapshot that bound the split turn."""
 
-    repo_root: str
-    roadmap: str
-    epics_dir: str
-    milestone_path: str
+    repo_root: str = ""
+    roadmap: str = ""
+    epics_dir: str = ""
+    milestone_path: str = ""
     existing_epics: list[str] = Field(default_factory=list)
     milestone_fingerprints: dict[str, str] = Field(default_factory=dict)
     epic_fingerprints: dict[str, str] = Field(default_factory=dict)
@@ -37,6 +37,7 @@ class EpicSplitReview(BaseModel):
     notes: str
 
 
+@dry_run(ok=True)
 class EpicSplitValidation(BaseModel):
     """Mechanical evidence that the output is skeleton-only and ordered by the milestone."""
 

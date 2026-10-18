@@ -22,6 +22,7 @@ class RunContext(Config):
     """The author's `self.ctx` — the paths `load_config` resolved."""
 
 
+@dry_run(kind="finalize")
 class AuthorStep(AuthorResult):
     """The one artifact-derived unit the flat author planner should run next."""
 
@@ -63,6 +64,7 @@ class SeededStory(AuthorResult):
     reason: str = ""
 
 
+@dry_run(ok=True)
 class Defects(AuthorResult):
     """The four validators' shared shape: does it hold, and if not, what is wrong."""
 
