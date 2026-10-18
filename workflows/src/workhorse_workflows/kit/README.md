@@ -4,6 +4,7 @@ The helpers any workflow family's nodes reuse. A helper that only one family nee
 
 ## Map
 
+- `agent_files.py`: rendering a repo's agent files from its prompt library before a commit, so a skill the library changed does not refuse it.
 - `credentials.py`: the one place a workflow reads the environment, and only for secrets.
 - `git.py`: every git operation a node needs, so no node shells out to git.
 - `github.py`: GitHub access through PyGithub: the repo, its open PR, and token-authenticated push and fetch.

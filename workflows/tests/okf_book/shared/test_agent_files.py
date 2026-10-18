@@ -7,8 +7,8 @@ from pathlib import Path
 
 import pytest
 
-from workhorse_workflows.okf_book.shared import agent_files
-from workhorse_workflows.okf_book.shared.agent_files import AGENTS_CONFIG, render_agent_files_returning_failure
+from workhorse_workflows.kit import agent_files
+from workhorse_workflows.kit.agent_files import AGENTS_CONFIG, render_agent_files_returning_failure
 
 
 def _farrier_exits(code: int, calls: list[list[str]]) -> Callable[[list[str], object], subprocess.CompletedProcess[str]]:

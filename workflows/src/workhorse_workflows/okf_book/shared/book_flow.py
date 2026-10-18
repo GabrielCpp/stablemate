@@ -8,7 +8,7 @@ from pydantic import BaseModel, ConfigDict
 from workhorse.pyflow import AgentTimeout, AgentTurnFailed, Await, Transition, Workflow
 from workhorse.runner.failure import OutputParseError
 from workhorse_workflows.kit import commit_returning_refusal
-from workhorse_workflows.okf_book.shared.agent_files import render_agent_files_returning_failure
+from workhorse_workflows.kit.agent_files import render_agent_files_returning_failure
 
 COMMIT_GATE = "commit-refused.md"
 RENDER_GATE = "agent-files-unrendered.md"

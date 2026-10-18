@@ -1,4 +1,4 @@
-"""Rendering a repo's agent files from its prompt library, so a skill the library changed since the last render does not refuse a book commit."""
+"""Rendering a repo's agent files from its prompt library, so a skill the library changed since the last render does not refuse a commit."""
 from __future__ import annotations
 
 from pathlib import Path
