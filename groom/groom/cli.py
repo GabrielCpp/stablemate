@@ -1026,6 +1026,13 @@ def main(argv: list[str] | None = None) -> None:
                              help="Replay events after this timestamp, then digest from it.")
     feed_parser.add_argument("--json", action="store_true", dest="as_json")
 
+    tui_parser = subparsers.add_parser(
+        "tui", help="Watch the fleet and answer operator gates from the terminal."
+    )
+    tui_parser.add_argument(
+        "--url", default=None, help="Where groom serve answers (default: GROOM_URL or the local default)."
+    )
+
     status_parser = subparsers.add_parser(
         "status",
         help="Where each live run is right now (open node, node age, agent idleness). "
@@ -1351,6 +1358,16 @@ def main(argv: list[str] | None = None) -> None:
         wait(url=_serve_url(), run=args.run, until=args.until, as_json=args.as_json)
     elif args.command == "feed":
         feed(url=_serve_url(), run=args.run, every_s=args.every, since=args.since, as_json=args.as_json)
+    elif args.command == "tui":
+        from groom.tui import app as tui_app
+        from groom.ws_url import ws_url
+
+        url = args.url or _serve_url()
+        try:
+            ws_url(url, "/ws")
+        except ValueError as exc:
+            parser.error(str(exc))
+        tui_app.run(url)
     elif args.command == "status":
         status(run=args.run, as_json=args.as_json)
     elif args.command == "logs":

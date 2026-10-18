@@ -432,11 +432,15 @@ Nothing on this surface renders HTML on the browser's behalf. The single shape a
 - verify: emitted(event="detail", count=1)
 - verify: emitted(event="answered", count=1)
 - does:
+  - Answers a refused `answer` command with one `answer_rejected` frame on the sending tab's queue alone. The frame names the gate and carries the server's reason, such as `already answered in another tab`, so the operator who sent it learns why nothing changed. No other tab receives it.
+- verify: emitted(event="answer_rejected", count=1)
+- does:
   - Ignores any other `cmd` value with no response frame, state mutation, gate write, log entry, or broadcast.
 - verify: count(subject="the tab's outbound queue after receiving an unknown cmd", equals=0)
 - code: groom/groom/app.py::dashboard_ws
 - tests: `groom/tests/test_app.py::test_handle_answer_flips_state_and_broadcasts_an_answered_event`,
   `groom/tests/test_app.py::test_handle_answer_failure_does_not_flip_or_dispatch`,
+  `groom/tests/test_app.py::test_a_rejected_answer_tells_the_sender_alone_why`,
   `groom/tests/test_app.py::test_watch_registers_the_tab_and_pushes_that_run_immediately`,
   `groom/tests/test_app.py::test_a_detail_push_reaches_only_the_tabs_watching_that_run`,
   `groom/tests/test_app.py::test_a_closed_tab_stops_being_a_watcher`
@@ -454,7 +458,7 @@ Nothing on this surface renders HTML on the browser's behalf. The single shape a
   - broadcast-frame: zero or more later JSON messages received from the registered process-local client queue — `state` on every fleet change and on every clock tick, and `notify` when a run newly blocks or an alert rule fires.
   - detail-frame: `{"type": "detail", "ts": float, "id": str, "detail": {…}}` carrying the same object [GET /worker/{container_id}](#get-run-detail) returns. This is the one downstream frame that is not fleet-wide: it goes only to the tabs that sent `watch` for that run, because which run is open is a property of the tab and not of the fleet.
   - answered-frame: [dashboard answered message](../formats/dashboard-answered-message.md) after a gate answer is written, so every tab with that run open can clear its form.
-  - command-response: no per-message acknowledgement frame. An answer's success or failure is reflected through the next `state` and `detail` push, and a successful one additionally through the `answered` frame.
+  - command-response: no acknowledgement frame for a `watch` command or an accepted answer. An answer's outcome is reflected through the next `state` and `detail` push, a successful one also through the `answered` frame for every tab, and a refused one through an `answer_rejected` frame for its sender alone. That frame is `{"type": "answer_rejected", "id": str, "file_path": str, "reason": str}` from `projection.answer_rejected_message`. `id` and `file_path` are the normalized `workflow_id` and `file_path` of that answer frame. `reason` is the [answer result](../formats/answer-result.md) message as plain text, never markup. The reasons the server gives are `already answered in another tab` when the gate file no longer reads `AWAITING_OPERATOR`, `gate file not found`, `failed to write answer`, `unknown workspace volume for this container`, `machine waits require their producer's result`, and the run's own refusal when it answers over its control socket.
 - method: websocket upgrade
 - path: `/ws`
 - status: accepted websocket connection when the route handler starts normally.
@@ -2326,11 +2330,14 @@ Nothing on this surface renders HTML on the browser's behalf. The single shape a
   - emits: `notify` frames to connected dashboard tabs.
   - verify: emitted(event="notify")
   - emits: `answered` frames to connected dashboard tabs.
+  - emits: an `answer_rejected` frame carrying the result message to the one tab whose answer was refused, and to no other queue.
+  - verify: emitted(event="answer_rejected", count=1)
 - consumes: process-local workflow state, process-local dashboard client queues consumed by the [dashboard websocket send loop](../concepts/dashboard-websocket-send-loop.md), inbound frames consumed by the [dashboard websocket receive loop](../concepts/dashboard-websocket-receive-loop.md), [dashboard websocket answer frame](../formats/dashboard-websocket-answer-frame.md) messages, and [answer result](../formats/answer-result.md) values from the gate-answering layer.
 - verify: emitted(event="answered", count=1)
 - code: groom/groom/app.py::dashboard_ws
 - tests: groom/tests/test_app.py::test_handle_answer_flips_state_and_broadcasts_an_answered_event,
   groom/tests/test_app.py::test_handle_answer_failure_does_not_flip_or_dispatch,
+  groom/tests/test_app.py::test_a_rejected_answer_tells_the_sender_alone_why,
   groom/tests/test_app.py::test_watch_registers_the_tab_and_pushes_that_run_immediately,
   groom/tests/test_app.py::test_a_detail_push_reaches_only_the_tabs_watching_that_run,
   groom/tests/test_app.py::test_a_closed_tab_stops_being_a_watcher
@@ -2353,7 +2360,8 @@ Nothing on this surface renders HTML on the browser's behalf. The single shape a
   - queued-frame: zero or more later text frames, each exactly one JSON message dequeued from this tab's registered dashboard client queue by the send loop.
   - detail-frame: `{"type": "detail", …}` carrying one run's pane, delivered only to the tabs subscribed to that run — the sole downstream frame that is not fleet-wide, because which run is open is a property of the tab rather than of the fleet.
   - answered-frame: `{"type": "answered", "id": str, "file_path": str}` broadcast to every tab after a successful answer.
-  - command-response: no per-command acknowledgement frame. A watch command is answered by the detail frame it triggers; an answer attempt is reflected by the state broadcast, the detail push to watching tabs, and — on success only — the `answered` frame.
+  - answer-rejected-frame: `{"type": "answer_rejected", "id": str, "file_path": str, "reason": str}` sent to the sending tab alone after a refused answer. See [websocket-dashboard](#websocket-dashboard) for its members and reasons.
+  - command-response: no per-command acknowledgement frame. A watch command is answered by the detail frame it triggers. An answer attempt is reflected by the state broadcast, the detail push to watching tabs, the `answered` frame on success, and the `answer_rejected` frame to its sender on refusal.
 - status: accepted websocket connection on normal route start.
 - errors: ordinary websocket disconnect from the completed send or receive loop ends the session normally; non-disconnect loop exceptions, initial-projection failures, send failures, malformed receive frames, and command-handler failures propagate through the framework after cleanup rather than producing an endpoint-specific error payload.
 

@@ -36,5 +36,7 @@ The package behind the `groom` dashboard, its OTLP collector and the in-containe
 - `sidecar_turns.py`: pulling a container's turn records over the sidecar socket into the archive.
 - `state.py`: the in-memory process state: tracked workflows, open tabs, watched runs and the broadcast to them.
 - `store.py`: the SQLite telemetry store: its schema, its connection and the queries over spans, metrics, logs and turns.
+- `tui/`: the terminal client behind `groom tui`: a second reader of the dashboard's websocket.
 - `turns.py`: the durable archive of turn records and the harvester that fills it from run directories.
 - `wait.py`: `groom wait`, which blocks on the websocket until a chosen attention event arrives.
+- `ws_url.py`: turning the address `groom serve` answers on into the websocket URL for one of its sockets.

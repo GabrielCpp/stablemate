@@ -95,3 +95,13 @@ def test_a_gate_block_shows_questions_without_a_context_disclosure():
     assert 'source=${gate.question}' in gate_block
     assert "ContextDisclosure" not in src
     assert "Full context" not in src
+
+
+def test_a_rejected_answer_frame_is_toasted_as_text():
+    src = CLIENT.read_text()
+    on_frame = src[src.index("function onFrame") : src.index("export function sendWatch")]
+    assert 'msg.type === "answer_rejected"' in on_frame
+    handler = src[src.index("function onAnswerRejected") :]
+    handler = handler[: handler.index("\n}\n")]
+    assert "pushToast(" in handler and "msg.reason" in handler
+    assert "innerHTML" not in handler
