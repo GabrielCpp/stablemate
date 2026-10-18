@@ -813,7 +813,9 @@ def _check_fixture_grammar(graph: Graph, f: list[Finding]) -> None:
     fixture_steps: set[str] = set()
     for node in fixtures.values():
         rel = _rel_path(graph, node)
-        for step in runbook_mod.steps_of(graph, node):
+        steps = runbook_mod.steps_of(graph, node)
+        step_commands.check_fixture_launch_screen(graph, node, steps, rel, f)
+        for step in steps:
             fixture_steps.add(step.id)
             kind = _bullet_value(step.meta, "kind")
             if kind and kind not in _FIXTURE_STEP_KINDS:
@@ -1159,6 +1161,10 @@ def gap_findings(gaps: list[Gap]) -> list[Finding]:
         elif gap.kind == "undeclared-launch-screen":
             findings.append(
                 Finding("error", "undeclared-launch-screen", message, ref=gap.obligation_id)
+            )
+        elif gap.kind == "fixture-launch-screen-conflict":
+            findings.append(
+                Finding("error", "fixture-launch-screen-conflict", message, ref=gap.obligation_id)
             )
         elif gap.kind == "unreachable-from-launch":
             findings.append(

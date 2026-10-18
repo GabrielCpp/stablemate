@@ -189,9 +189,36 @@ def _changed_code_rows(changes: Sequence[ChangedUnit]) -> list[dict[str, Any]]:
     ]
 
 
+def _fixture_launch_screens(dump: dict[str, Any]) -> dict[str, str]:
+    """The screen each `fixture` file's `launch-screen:` names, by the name a `fixture:` bullet calls the fixture."""
+    screens = {n["id"] for n in dump["nodes"] if n["type"] == "screen"}
+    landing: dict[str, str] = {}
+    for node in dump["nodes"]:
+        if node["type"] != "fixture" or "#" in node["id"]:
+            continue
+        for edge in node["edges"]:
+            target = edge["to"].split("#", 1)[0]
+            if edge["via"] == "launch-screen" and edge["resolves"] and target in screens:
+                landing[Path(node["id"]).stem] = target
+                break
+    return landing
+
+
+def _fixture_launch_routes(
+    surface_dump: dict[str, Any], surface: str, driver: str | None, landings: set[str],
+) -> dict[str, Any]:
+    """The routes from each screen a fixture leaves a signed-in app on, for those screens *surface* holds."""
+    held = reach.screens_of(surface_dump)
+    return {
+        screen: reach.reachability_in(surface_dump, surface=surface, driver=driver, start=screen)["routes"]
+        for screen in sorted(landings & set(held))
+    }
+
+
 def _navigation(dump: dict[str, Any]) -> dict[str, dict[str, Any]]:
     """Every surface's derived screen reachability in *dump*, the head graph's, keyed by surface (Option C, Amendment 1)."""
     surfaces = sorted({n["surface"] for n in dump["nodes"] if n.get("surface")})
+    landings = set(_fixture_launch_screens(dump).values())
     navigation: dict[str, dict[str, Any]] = {}
     for surface in surfaces:
         surface_dump = graph_mod.subset(dump, surface)
@@ -225,6 +252,9 @@ def _navigation(dump: dict[str, Any]) -> dict[str, dict[str, Any]]:
             navigation[surface]["driver"] = driver
             navigation[surface]["bundleId"] = bundle_id
             navigation[surface]["launchScreen"] = launch_screen
+            if driver == "mobile":
+                navigation[surface]["fixtureLaunchRoutes"] = _fixture_launch_routes(
+                    surface_dump, surface, driver, landings)
         except reach.UnknownStart as exc:
             navigation[surface] = {
                 "start": "",
@@ -375,6 +405,7 @@ def build_context(
         "scenarioFixtures": _scenario_fixtures(snapshot.book),
         "browserFixtures": _browser_fixtures(snapshot.book),
         "fixtureScreens": _fixture_screens(snapshot.head_graph, snapshot.book),
+        "fixtureLaunchScreens": _fixture_launch_screens(snapshot.head_dump),
         "fragmentHosts": _fragment_hosts(snapshot.book),
         "passages": _passages(snapshot.book, selection.contracts | selection.journeys),
         "dataStates": _data_states(snapshot.book),

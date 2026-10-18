@@ -172,7 +172,7 @@ def test_a_stop_on_a_device_settles_between_two_flow_files_and_goes_on_tapping()
     settle = journey.index("qa.settle(")
     second = journey.index(f'journey_result = qa.maestro.run(qa.spec_dir / "{FLOW_STEM}-2.yaml")')
     assert first < settle < second < journey.index("qa.verify(")
-    assert files[f"{FLOW_STEM}-1.yaml"] == 'appId: "com.example.mobile-app"\n---\n- launchApp\n'
+    assert files[f"{FLOW_STEM}-1.yaml"] == 'appId: "com.example.mobile-app"\n---\n- launchApp:\n    clearState: true\n'
     assert "- launchApp" not in files[f"{FLOW_STEM}-2.yaml"]
     assert 'text: "Open details"' in files[f"{FLOW_STEM}-2.yaml"]
     assert f"{FLOW_STEM}.yaml" not in files
@@ -219,7 +219,7 @@ def test_a_device_flow_with_no_stop_is_one_flow_file_that_launches_first() -> No
     journey, files, _ = _compile_files(_context(device=True, steps=[OPEN_DETAILS]))
 
     assert files[f"{FLOW_STEM}.yaml"] == (
-        'appId: "com.example.mobile-app"\n---\n- launchApp\n'
+        'appId: "com.example.mobile-app"\n---\n- launchApp:\n    clearState: true\n'
         '- tapOn:\n    text: "Open details"\n- assertVisible:\n    text: "Results"\n')
     assert f'    journey_result = qa.maestro.run(qa.spec_dir / "{FLOW_STEM}.yaml")' in journey
     assert "require=True" not in journey
@@ -296,7 +296,7 @@ def test_a_state_walk_on_a_device_launches_cold_and_settles_without_a_request_fe
         body = scenarios[function]
         flow = f"maestro/{function}.yaml"
         assert f'qa.maestro.run(qa.spec_dir / "{flow}", require=True)' in body
-        assert files[flow] == 'appId: "com.example.mobile-app"\n---\n- launchApp\n'
+        assert files[flow] == 'appId: "com.example.mobile-app"\n---\n- launchApp:\n    clearState: true\n'
         settle = body[body.index("qa.settle("):]
         assert f'expect="{name}"' in settle
         assert "since=" not in settle and "requests=" not in settle

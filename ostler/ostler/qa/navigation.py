@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from collections.abc import Iterable, Mapping
+from dataclasses import dataclass, field, replace
 
 from ostler.qa.plan_source import ScenarioRefusal
 
@@ -31,6 +32,7 @@ class SurfaceNavigation:
     undeclared: frozenset[str]
     opens: dict[str, str]
     doors: dict[str, str]
+    routes_from: dict[str, dict[str, tuple[NavHop, ...]]] = field(default_factory=dict[str, dict[str, tuple[NavHop, ...]]])
 
     def path_to(self, screen: str) -> str | None:
         """The path a walk to *screen* opens first: the entry its route starts from, else the surface's root."""
@@ -57,6 +59,8 @@ class MaestroLaunch:
     bundle_id: str
     launch_screen: str
     routes: dict[str, tuple[NavHop, ...]]
+    routes_from: dict[str, dict[str, tuple[NavHop, ...]]] = field(default_factory=dict[str, dict[str, tuple[NavHop, ...]]])
+    signed_in: bool = False
 
 
 def _nav_hop(screen: str, hop: object) -> NavHop:
@@ -80,6 +84,15 @@ def _nav_hops(routes: object) -> dict[str, tuple[NavHop, ...]]:
             raise ValueError(f"navigation route to {screen!r} is not a list of hops: {hops!r}")
         typed[str(screen)] = tuple(_nav_hop(str(screen), hop) for hop in hops)
     return typed
+
+
+def _routes_from(surface: str, value: object) -> dict[str, dict[str, tuple[NavHop, ...]]]:
+    """The packet's `fixtureLaunchRoutes`, one route table per fixture launch screen, refused loudly when malformed."""
+    if value is None:
+        return {}
+    if not isinstance(value, dict):
+        raise ValueError(f"navigation `fixtureLaunchRoutes` for surface {surface!r} is not a mapping of screen to routes: {value!r}")
+    return {str(screen): _nav_hops(routes) for screen, routes in value.items()}
 
 
 def _optional_text(surface: str, key: str, value: object) -> str | None:
@@ -145,6 +158,7 @@ def surface_navigation(surface: str, row: object) -> SurfaceNavigation:
         undeclared=_screen_set(surface, "undeclared", row.get("undeclared")),
         opens=_screen_paths(surface, "opens", row.get("opens")),
         doors=_screen_paths(surface, "doors", row.get("doors")),
+        routes_from=_routes_from(surface, row.get("fixtureLaunchRoutes")),
     )
 
 
@@ -186,4 +200,23 @@ def maestro_launch(nav: SurfaceNavigation) -> MaestroLaunch | ScenarioRefusal:
             f"surface {nav.surface!r} states no `launch-screen:` on a `runbook` node"
         ))
     routes = nav.routes if nav.start == nav.launch_screen else {}
-    return MaestroLaunch(nav.bundle_id, nav.launch_screen, routes)
+    return MaestroLaunch(nav.bundle_id, nav.launch_screen, routes, nav.routes_from)
+
+
+def fixture_launch(
+    launch: MaestroLaunch, fixtures: Iterable[str], screens: Mapping[str, str],
+) -> MaestroLaunch | ScenarioRefusal:
+    """*launch* as the fixtures an obligation names leave the device: signed in on their `launch-screen:`, or *launch* itself when none declares one."""
+    declared = {name: screens[name] for name in dict.fromkeys(fixtures) if name in screens}
+    landings = sorted(set(declared.values()))
+    if not landings:
+        return launch
+    if len(landings) > 1:
+        named = ", ".join(f"{name} ({screen})" for name, screen in sorted(declared.items()))
+        return ScenarioRefusal("fixture-launch-screen-conflict", (
+            f"fixtures {named} each declare a different `launch-screen:`, and a cold `launchApp` "
+            "opens on one screen: give the claim one fixture that signs the device in"
+        ))
+    screen = landings[0]
+    routes = launch.routes if screen == launch.launch_screen else launch.routes_from.get(screen, {})
+    return replace(launch, launch_screen=screen, routes=routes, signed_in=True)

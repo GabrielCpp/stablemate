@@ -104,6 +104,7 @@ GAP_KINDS = frozenset({
     "invalid-http-method",
     "undeclared-launch-screen",
     "unreachable-from-launch",
+    "fixture-launch-screen-conflict",
 })
 
 HARNESS_LIMIT_GAPS = frozenset({
@@ -292,10 +293,15 @@ def _signs_in_off_browser(
     if target == "playwright":
         return None
     runner = target if isinstance(target, str) else "no runner"
+    device = (
+        " or sign the device in with a fixture whose `run:` steps run the app's own sign-in and "
+        "whose `launch-screen:` names the screen the app opens on"
+        if target == "maestro" else "")
     return Gap(obligation.id, "browser-fixture-off-browser", (
         f"fixture {', '.join(signing)} signs a browser in, and this {obligation.node_type} claim on "
         f"surface {obligation.surface!r} is performed by {runner}, which opens no browser: arrange "
-        "this claim with a fixture whose steps all `run:`, or state it on a screen of a browser surface"))
+        "this claim with a fixture whose steps all `run:`, or state it on a screen of a browser surface"
+        f"{device}"))
 
 
 def _dispatch(
@@ -547,6 +553,7 @@ def _compile_packet(
         setups_by_node=book_index_mod.setups_by_node(carried),
         server_origins=packet.server_origins,
         fixture_screens=packet.fixture_screens,
+        fixture_launch_screens=packet.fixture_launch_screens,
         states_by_screen=book_index_mod.states_by_screen(carried),
         passages=packet.passages,
         data_states=packet.data_states,

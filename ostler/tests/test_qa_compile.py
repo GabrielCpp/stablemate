@@ -5910,7 +5910,7 @@ def test_a_generated_flow_matches_the_hand_written_reference_flows_shape() -> No
 
     flow_header, flow_commands = yaml.safe_load_all(flow_text)
     assert "appId" in flow_header
-    assert flow_commands[0] == "launchApp"
+    assert flow_commands[0] == {"launchApp": {"clearState": True}}
 
 
 def test_the_compiled_maestro_target_and_flow_carry_the_books_own_bundle_id() -> None:
@@ -5996,7 +5996,7 @@ def test_an_obligation_off_the_launch_screen_taps_its_way_there_first() -> None:
     assert oid in _covers(result.source)
     (flow_text,) = [text for text in result.files.values() if "probe-widget" in text]
     _header, commands = yaml.safe_load_all(flow_text)
-    assert commands[0] == "launchApp"
+    assert commands[0] == {"launchApp": {"clearState": True}}
     assert commands[1] == {"tapOn": {"id": "probe-link"}}
 
 
@@ -6023,6 +6023,53 @@ def test_a_launch_route_that_is_not_a_list_refuses_loudly() -> None:
 
     with pytest.raises(ValueError, match="is not a list of hops"):
         _compile_plan_gaps(context, story="demo-story")
+
+
+def _device_fixture_probe(launch_screens: dict[str, str]) -> tuple[dict, str, str]:
+    context, oid, launch = _maestro_hop_probe({"on": ["[probe-link](#probe-link)"]})
+    context["fixtureLaunchScreens"] = launch_screens
+    context["navigation"]["policy"]["fixtureLaunchRoutes"] = {
+        _SCREEN: {_SCREEN: []},
+        launch: {launch: []},
+    }
+    return context, oid, launch
+
+
+def _probe_flow(result: Plan) -> list:
+    (flow_text,) = [text for text in result.files.values() if "probe-widget" in text]
+    _header, commands = yaml.safe_load_all(flow_text)
+    return commands
+
+
+def test_a_device_fixture_reaches_a_screen_by_taps_from_its_launch_screen_with_a_plain_launch() -> None:
+    context, oid, _launch = _device_fixture_probe({"seeded-ledger": _SCREEN})
+
+    result = _compile_plan_gaps(context, story="demo-story")
+    assert isinstance(result, Plan)
+    assert _gap_kinds(result.gaps, oid) == []
+    commands = _probe_flow(result)
+    assert commands[0] == "launchApp"
+    assert {"tapOn": {"id": "probe-link"}} not in commands
+
+
+def test_a_claim_with_no_device_fixture_starts_on_a_cleared_device() -> None:
+    context, oid, _launch = _device_fixture_probe({})
+
+    result = _compile_plan_gaps(context, story="demo-story")
+    assert isinstance(result, Plan)
+    assert _gap_kinds(result.gaps, oid) == []
+    commands = _probe_flow(result)
+    assert commands[0] == {"launchApp": {"clearState": True}}
+    assert commands[1] == {"tapOn": {"id": "probe-link"}}
+
+
+def test_two_fixtures_that_open_the_app_on_different_screens_gap_the_claim() -> None:
+    context, oid, launch = _device_fixture_probe({})
+    context["fixtureLaunchScreens"] = {"seeded-ledger": _SCREEN, "second-ledger": launch}
+    context["obligations"][0]["fixturesDeclared"].append({"name": "second-ledger", "args": [], "provides": "a ledger"})
+
+    result = _compile_plan_gaps(context, story="demo-story")
+    assert "fixture-launch-screen-conflict" in _gap_kinds(result.gaps, oid)
 
 
 def test_a_mobile_journey_starting_on_the_launch_screen_compiles_end_to_end() -> None:
@@ -6064,7 +6111,7 @@ def test_a_mobile_journey_starting_on_the_launch_screen_compiles_end_to_end() ->
 
     (flow_text,) = result.files.values()
     flow_header, flow_commands = yaml.safe_load_all(flow_text)
-    assert flow_commands[0] == "launchApp"
+    assert flow_commands[0] == {"launchApp": {"clearState": True}}
     tap_ids = [c["tapOn"]["id"] for c in flow_commands
               if isinstance(c, dict) and "tapOn" in c]
     assert tap_ids == ["open-link", "save-button"]

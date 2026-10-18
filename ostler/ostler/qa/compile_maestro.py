@@ -29,6 +29,7 @@ from ostler.qa.compile_support import vettable
 from ostler.qa.navigation import MaestroLaunch
 from ostler.qa.navigation import NavHop
 from ostler.qa.navigation import SurfaceNavigation
+from ostler.qa.navigation import fixture_launch
 from ostler.qa.navigation import maestro_launch
 from ostler.qa.navigation import surface_row
 from ostler.qa.obligation import CallRow
@@ -72,9 +73,10 @@ def maestro_locator(locators: Locators) -> MaestroLocator | None:
     return None
 
 
-def _flow_yaml(commands: list[str], bundle_id: str, *, launch: bool = True) -> str:
-    """One Maestro flow file: the app, a cold launch unless *launch* is off, then *commands* in order."""
-    return "\n".join([f'appId: "{bundle_id}"', "---", *(["- launchApp"] if launch else []), *commands]) + "\n"
+def _flow_yaml(commands: list[str], launch: MaestroLaunch, *, first: bool = True) -> str:
+    """One Maestro flow file: the app, then, in the first file of a scenario, a cold launch that clears the device unless a fixture signed it in, then *commands* in order."""
+    opening = [] if not first else ["- launchApp"] if launch.signed_in else ["- launchApp:", "    clearState: true"]
+    return "\n".join([f'appId: "{launch.bundle_id}"', "---", *opening, *commands]) + "\n"
 
 
 _PRESS_KEYS: frozenset[str] = frozenset({
@@ -354,7 +356,7 @@ def _scenario_body(
         if not (commands or compiled.assertions or compiled.python_lines):
             continue
         flow_path = f"maestro/{python_identifier(oid)}.yaml"
-        sinks.files[flow_path] = _flow_yaml([*commands, *compiled.assertions], launch.bundle_id)
+        sinks.files[flow_path] = _flow_yaml([*commands, *compiled.assertions], launch)
         lines.append(f"    {name} = qa.maestro.run(qa.spec_dir / {python_literal(flow_path)})")
         lines.extend(compiled.python_lines)
         if compiled.assertions:
@@ -384,6 +386,9 @@ def mobile_scenarios(
             continue
         surface = obligations[0].surface
         launch = maestro_launch(surface_row(navigation, surface))
+        if not isinstance(launch, ScenarioRefusal):
+            launch = fixture_launch(
+                launch, (row.name for o in obligations for row in o.fixtures), book.fixture_launch_screens)
         if isinstance(launch, ScenarioRefusal):
             sinks.gaps.extend(Gap(o.id, launch.kind, launch.detail) for o in obligations)
             continue
@@ -494,7 +499,7 @@ def maestro_walk(walk: JourneyWalk, launch: MaestroLaunch, sinks: PlanSinks) -> 
     for at, commands in enumerate(segments):
         if at in written:
             flow_path = f"{flow_stem}.yaml" if len(segments) == 1 else f"{flow_stem}-{at + 1}.yaml"
-            sinks.files[flow_path] = _flow_yaml(commands, launch.bundle_id, launch=at == 0)
+            sinks.files[flow_path] = _flow_yaml(commands, launch, first=at == 0)
             flow = f"qa.spec_dir / {python_literal(flow_path)}"
             if at == written[-1]:
                 lines.append(f"    {result_name} = qa.maestro.run({flow})")
@@ -527,6 +532,8 @@ def device_state_walks(
             gaps.append(unarranged_state_walk_gap(state))
             continue
         launch = maestro_launch(surface_row(navigation, state.surface))
+        if not isinstance(launch, ScenarioRefusal):
+            launch = fixture_launch(launch, (row.name for row in state.fixtures), book.fixture_launch_screens)
         if isinstance(launch, ScenarioRefusal):
             gaps.append(Gap(state.id, launch.kind, launch.detail))
             continue
@@ -541,7 +548,7 @@ def device_state_walks(
             continue
         name = state_walk_function_name(state, emitted)
         flow_path = f"maestro/{name}.yaml"
-        sinks.files[flow_path] = _flow_yaml(reach, launch.bundle_id)
+        sinks.files[flow_path] = _flow_yaml(reach, launch)
         title = " ".join(stop.title.split()).replace("\\", "").replace('"', "'")
         body = [
             f"    qa.maestro.run(qa.spec_dir / {python_literal(flow_path)}, require=True)",

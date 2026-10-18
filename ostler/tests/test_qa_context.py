@@ -18,6 +18,7 @@ from ostler.qa.context import (
     OWED_HEADING,
     _acceptance_criteria,
     _book_root,
+    _fixture_launch_screens,
     _graph_at_revision,
     _is_generated_unit,
     _navigation,
@@ -3666,3 +3667,44 @@ title: Planner
     by_anchor = {node_id.rsplit("#", 1)[-1]: scope for node_id, scope in scopes.items() if "#" in node_id}
     assert by_anchor["stage-row"] == ("phase",)
     assert by_anchor["lane-row"] == ("lane",)
+
+
+def _write_device_fixture_book(repo: Path) -> None:
+    _write_navigation_environment(repo)
+    write(repo / "docs/features/groom/gui/screens/dashboard.md", (
+        "---\ntype: screen\nslug: dashboard\ntitle: Dashboard\n---\n# Dashboard\n\n"
+        "- route: `/`\n- requires: none\n- params: none\n"
+    ))
+    write(repo / "docs/features/groom/gui/screens/inbox.md", (
+        "---\ntype: screen\nslug: inbox\ntitle: Inbox\n---\n# Inbox\n\n"
+        "- route: `/inbox`\n- requires: none\n- params: none\n"
+    ))
+    write(repo / "docs/features/groom/ops/rb.md", (
+        "---\ntype: runbook\nslug: rb\ntitle: RB\n---\n# RB\n\n"
+        "- driver: mobile\n- environment: [local](local.md)\n"
+        "- surfaces: [dashboard](../gui/screens/dashboard.md), [inbox](../gui/screens/inbox.md)\n"
+        "- bundle-id: com.example.mobile-app\n"
+        "- launch-screen: [dashboard](../gui/screens/dashboard.md)\n\n"
+        "## Steps\n\n### serve\n- kind: service\n- run: `run`\n"
+    ))
+    write(repo / "docs/features/groom/fixtures/signed-in-device.md", (
+        "---\ntype: fixture\ntitle: Signed-in device\n---\n# Signed-in device\n\n"
+        "- lifetime: scenario\n- launch-screen: [Inbox](../gui/screens/inbox.md)\n\n"
+        "## Steps\n\n### sign-in\n\n- kind: run\n- run: maestro test ops/sign-in.yaml\n"
+    ))
+
+
+def test_the_packet_names_the_screen_each_device_fixture_opens_on(repo: Path):
+    _write_device_fixture_book(repo)
+    dump = graph_mod.build(load(repo))
+    assert _fixture_launch_screens(dump) == {
+        "signed-in-device": "docs/features/groom/gui/screens/inbox.md",
+    }
+
+
+def test_navigation_carries_the_routes_from_each_fixture_launch_screen(repo: Path):
+    _write_device_fixture_book(repo)
+    navigation = _navigation(graph_mod.build(load(repo)))
+    routes = navigation["groom"]["fixtureLaunchRoutes"]
+    assert list(routes) == ["docs/features/groom/gui/screens/inbox.md"]
+    assert "docs/features/groom/gui/screens/inbox.md" in routes["docs/features/groom/gui/screens/inbox.md"]

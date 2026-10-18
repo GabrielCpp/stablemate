@@ -4,10 +4,10 @@ from __future__ import annotations
 
 import re
 
-from ostler import checks, refs as refs_mod, registry
+from ostler import checks, markdown, refs as refs_mod, registry
 from ostler.finding import Finding
 from ostler.model import Graph, UINode
-from ostler.qa import runbook as runbook_mod, stack as stack_mod
+from ostler.qa import fixture_browser, runbook as runbook_mod, stack as stack_mod
 
 _STEP_COMMAND_KEYS: tuple[str, ...] = ("run", "health")
 
@@ -116,6 +116,38 @@ def check_fixture_step_serves(node: UINode, step: UINode, rel: str, f: list[Find
             f"`lifetime: scenario` so each scenario starts its own",
             path=rel, line=step.line, ref=refs_mod.bullet_ref(step.id, "kind"),
             suggestion="- lifetime: scenario"))
+
+
+def check_fixture_launch_screen(graph: Graph, node: UINode, steps: list[UINode], rel: str, f: list[Finding]) -> None:
+    """A fixture's `launch-screen:` names a screen, and only a `lifetime: scenario` fixture with no browser step may state one."""
+    value = runbook_mod.bullet_value(node.meta, "launch-screen")
+    if not value:
+        return
+    ref = refs_mod.bullet_ref(node.id, "launch-screen")
+    links = markdown.extract_refs(value).links
+    target = graph.find_ui_node(graph.resolve_doc_ref(links[0][1], origin=node.path)) if links else None
+    if target is not None and target.type != "screen":
+        f.append(Finding(
+            "error", "unresolved-relation",
+            f"{node.id}: `launch-screen: {value}` resolves to a {target.type or 'untyped'} node, not a "
+            f"screen, so no claim can start from the screen this fixture leaves the app on",
+            path=rel, line=node.line, ref=ref,
+            suggestion="- launch-screen: [<screen>](<screen>.md)"))
+    if runbook_mod.bullet_value(node.meta, "lifetime") != "scenario":
+        f.append(Finding(
+            "error", "fixture-launch-screen-lifetime",
+            f"{node.id}: `launch-screen:` states the screen a cold launch opens on after this fixture "
+            f"ran, and the next scenario clears the device, so a session a lap built would be gone "
+            f"by then. Declare `lifetime: scenario` so each scenario signs the device in again",
+            path=rel, line=node.line, ref=ref,
+            suggestion="- lifetime: scenario"))
+    if any(fixture_browser.is_browser_step(step) for step in steps):
+        f.append(Finding(
+            "error", "fixture-launch-screen-browser",
+            f"{node.id}: `launch-screen:` names a screen of an app on a device, and this fixture has a "
+            f"browser step (`open:` or `arrange:`), which signs a browser in and leaves the device "
+            f"untouched. Sign the device in with `run:` steps, as the fixture reference shows",
+            path=rel, line=node.line, ref=ref))
 
 
 def check_fixture_probe_remote(step: UINode, rel: str, f: list[Finding]) -> None:

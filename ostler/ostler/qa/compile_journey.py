@@ -14,6 +14,7 @@ from ostler.qa.dispatch import dispatch_target
 from ostler.qa.navigation import MaestroLaunch
 from ostler.qa.navigation import SurfaceNavigation
 from ostler.qa.navigation import entry_url_refusal
+from ostler.qa.navigation import fixture_launch
 from ostler.qa.navigation import maestro_launch
 from ostler.qa.navigation import surface_row
 from ostler.qa.obligation import FixtureRow
@@ -136,6 +137,10 @@ def _journey_backends(walkers: JourneyWalkers) -> dict[str, JourneyBackend]:
 
     def bind_maestro(walk: JourneyWalk) -> BoundJourney | ScenarioRefusal:
         launch = maestro_launch(walk.nav)
+        if isinstance(launch, ScenarioRefusal):
+            return launch
+        launch = fixture_launch(
+            launch, (row.name for o in walk.obligations for row in o.fixtures), walk.book.fixture_launch_screens)
         if isinstance(launch, ScenarioRefusal):
             return launch
         return BoundJourney(target_variable(walk.nav.surface, "mobile"), f", app_id={python_literal(launch.bundle_id)}",

@@ -794,6 +794,7 @@ UI_TYPES: tuple[UINodeType, ...] = (
             BulletKey("needs", nested=True, link=True),
             BulletKey("secrets", nested=True),
             BulletKey("lifetime"),
+            BulletKey("launch-screen", link=True),
         ),
     ),
     UINodeType(

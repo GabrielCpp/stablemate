@@ -28,6 +28,7 @@ class ContextPacket:
     fragment_hosts: dict[str, str]
     browser_fixtures: frozenset[str] = frozenset()
     fixture_screens: dict[str, str] = field(default_factory=dict[str, str])
+    fixture_launch_screens: dict[str, str] = field(default_factory=dict[str, str])
     server_origins: dict[str, str] = field(default_factory=dict[str, str])
     passages: dict[str, Passage] = field(default_factory=dict[str, Passage])
     data_states: dict[str, DataState] = field(default_factory=dict[str, DataState])
@@ -144,6 +145,7 @@ def packet_of(context: Mapping[str, Any]) -> ContextPacket:
         fragment_hosts=_string_table(context.get("fragmentHosts"), "fragmentHosts"),
         browser_fixtures=_names(context.get("browserFixtures"), "browserFixtures"),
         fixture_screens=_string_table(context.get("fixtureScreens"), "fixtureScreens"),
+        fixture_launch_screens=_string_table(context.get("fixtureLaunchScreens"), "fixtureLaunchScreens"),
         server_origins=_string_table(context.get("serverOrigins"), "serverOrigins"),
         passages=_passages(context.get("passages")),
         data_states=_data_states(context.get("dataStates")),

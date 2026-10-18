@@ -25,6 +25,7 @@ _NO_DATA_STATES = "no book in the corpus declares a data state, so none is there
 DORMANT_UNREACHABLE: dict[str, str] = {
     "browser-fixture-off-browser": _BRIDGE,
     "deletes-shared-fixture": _BRIDGE,
+    "fixture-launch-screen-conflict": _BRIDGE,
     "data-state-shape": _NO_DATA_STATES,
     "invalid-http-method": _BRIDGE,
     "milestone-cycle": _NO_MILESTONES,

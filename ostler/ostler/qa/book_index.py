@@ -46,6 +46,7 @@ class BookIndex:
     setups_by_node: dict[str, list[Obligation]] = field(default_factory=dict[str, list[Obligation]])
     server_origins: dict[str, str] = field(default_factory=dict[str, str])
     fixture_screens: dict[str, str] = field(default_factory=dict[str, str])
+    fixture_launch_screens: dict[str, str] = field(default_factory=dict[str, str])
     states_by_screen: dict[str, list[Obligation]] = field(default_factory=dict[str, list[Obligation]])
     passages: dict[str, Passage] = field(default_factory=dict[str, Passage])
     data_states: dict[str, DataState] = field(default_factory=dict[str, DataState])

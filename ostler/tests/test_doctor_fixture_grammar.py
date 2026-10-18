@@ -10,7 +10,7 @@ from ostler import doctor
 from ostler.model import load
 from ostler.qa import book_fixtures
 
-from conftest import write
+from conftest import screen_md, write
 
 RUNBOOK = """---
 type: runbook
@@ -593,3 +593,49 @@ def test_differently_named_fixture_files_are_not_duplicates(repo: Path) -> None:
     write(repo / "docs/features/a/fixtures/x.md", _fixture_book())
     write(repo / "docs/features/b/fixtures/y.md", _fixture_book())
     assert _findings(repo, "duplicate-fixture-name") == []
+
+
+HOME_PATH = "docs/features/acme/home.md"
+
+
+def _device_fixture(*, lifetime: str = "scenario", launch: str = "[Home](../home.md)",
+                    browser: bool = False) -> str:
+    lines = ["---", "type: fixture", "title: Signed-in device", "---", "# Signed-in device", ""]
+    if lifetime:
+        lines.append(f"- lifetime: {lifetime}")
+    if launch:
+        lines.append(f"- launch-screen: {launch}")
+    lines += ["", "## Steps", "", "### sign-in", "", "- kind: run"]
+    if browser:
+        lines += ["- open: [Home](../home.md)", '- arrange: click("text=Sign in")']
+    else:
+        lines.append("- run: maestro test ops/acme-sign-in.yaml")
+    return "\n".join(lines) + "\n"
+
+
+def _device_book(repo: Path, fixture: str) -> None:
+    _stack(repo)
+    write(repo / HOME_PATH, screen_md("home", "Home"))
+    write(repo / "docs/features/acme/fixtures/signed-in-device.md", fixture)
+
+
+def test_a_scenario_fixture_naming_its_launch_screen_is_clean(repo: Path) -> None:
+    _device_book(repo, _device_fixture())
+    codes = {"fixture-launch-screen-lifetime", "fixture-launch-screen-browser", "unresolved-relation"}
+    assert [f for f in doctor.run(load(repo)).findings if f.code in codes] == []
+
+
+def test_a_launch_screen_on_a_fixture_other_scenarios_reuse_is_refused(repo: Path) -> None:
+    _device_book(repo, _device_fixture(lifetime=""))
+    found = _findings(repo, "fixture-launch-screen-lifetime")
+    assert [(f.severity, f.suggestion) for f in found] == [("error", "- lifetime: scenario")]
+
+
+def test_a_launch_screen_on_a_fixture_with_a_browser_step_is_refused(repo: Path) -> None:
+    _device_book(repo, _device_fixture(browser=True))
+    assert [f.severity for f in _findings(repo, "fixture-launch-screen-browser")] == ["error"]
+
+
+def test_a_launch_screen_that_resolves_to_no_screen_is_unresolved(repo: Path) -> None:
+    _device_book(repo, _device_fixture(launch="[Gone](../gone.md)"))
+    assert [f.severity for f in _findings(repo, "unresolved-relation")] != []
