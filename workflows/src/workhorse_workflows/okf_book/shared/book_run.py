@@ -26,7 +26,9 @@ from workhorse_workflows.okf_book.shared.book_compilation import declares_unexer
 from workhorse_workflows.okf_book.shared.page_check import PageProblem
 from workhorse_workflows.okf_book.shared.scenarios import RunSummary, compile_book, plan_scenarios, run_scenarios, select_scenarios
 
-COPY_IGNORED = shutil.ignore_patterns(".git", "__pycache__", ".venv", "node_modules", "*.pyc")
+_IGNORED_NAMES = shutil.ignore_patterns(".git", "__pycache__", ".venv", "node_modules", "*.pyc")
+RUNS_DIR = ".agents"
+RUNS_NAME = "runs"
 SERVER_ERROR = re.compile(r"\b(?:HTTP Error|returned|observed|answered HTTP) 5\d\d\b")
 SECRET_SHAPES = (
     re.compile(r"(?i)\b((?:bearer|basic)\s+)[\w.~+/=-]+"),
@@ -89,10 +91,23 @@ def app_log_lines(app_logs: Sequence[str], heading: str = "the app answered a se
     return lines
 
 
+def copy_ignored(root: Path) -> Callable[[str, list[str]], set[str]]:
+    """What a copy of *root* leaves behind: build and dependency folders, and the run dirs under `.agents`, whose control sockets cannot be copied."""
+    runs_parent = (root / RUNS_DIR).resolve()
+
+    def ignore(directory: str, names: list[str]) -> set[str]:
+        ignored = set(_IGNORED_NAMES(directory, names))
+        if Path(directory).resolve() == runs_parent:
+            ignored.add(RUNS_NAME)
+        return ignored
+
+    return ignore
+
+
 def _run_in_copy(root: Path, spec: Path, only: Sequence[str], lap: Path, stack_check: Callable[[], str] | None = None) -> RunSummary:
     with tempfile.TemporaryDirectory(prefix="okf-exercise-") as tmp:
         app = Path(tmp) / "app"
-        _ = shutil.copytree(root, app, ignore=COPY_IGNORED)
+        _ = shutil.copytree(root, app, ignore=copy_ignored(root))
         return run_scenarios(app, spec, only, lap, stack_check)
 
 
