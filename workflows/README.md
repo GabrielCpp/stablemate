@@ -1,7 +1,7 @@
 # workhorse-workflows
 
 The stablemate agent workflows as an installable Python distribution: `loop-runner`,
-`research`, `author` and `coder`, each a checkpointed state machine.
+`research`, `author`, `coder` and `okf-book`, each a checkpointed state machine.
 Workhorse is the engine; this is its content.
 
 Install it from [PyPI](https://pypi.org/project/workhorse-workflows/) — the engine and
@@ -34,6 +34,12 @@ shipped and is now kept only for its reasoning.
   review against the skills' engineering standards, QA of the live app against the book
   with the code not in the room. The reasoning is in the workspace README's
   [methodology section](https://github.com/GabrielCpp/stablemate#the-methodology-three-evidence-bases-none-of-them-the-implementers).
+- **`okf-book`** — writes, checks and runs one OKF feature book per surface of an app:
+  `cli`, `http`, `web` or `mobile`. Each surface is a service slug, its kind and its
+  source folder, passed as `--params '{"surfaces":[…]}'`; the writer reads that folder,
+  ostler checks the pages, and the book's own scenarios run against the app's stack. A
+  book that fails stops at an operator gate. The launch is in
+  [its README](src/workhorse_workflows/okf_book/README.md).
 - **`research`** — runs experiment gates: a protocol is designed, made runnable,
   submitted as a detached measurement job, waited on across resumes, and its artifacts
   classified deterministically — for measurements an agent turn is the wrong container
