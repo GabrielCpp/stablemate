@@ -276,6 +276,18 @@ class PythonDriver(QaDriver):
         app_id = str(self.target.get("app_id", ""))
         device = self.target.get("device", "android")
         if device == "android" and shutil.which("adb"):
+            state = subprocess.run(
+                ["adb", "get-state"],
+                capture_output=True,
+                text=True,
+                timeout=15,
+                check=False,
+            )
+            if state.returncode or state.stdout.strip() != "device":
+                raise DriverBlocked(
+                    "no Android device is attached; the stack runbook boots one in a "
+                    "`kind: prepare` step"
+                )
             probe = subprocess.run(  # noqa: S603 — fixed argv
                 ["adb", "shell", "pm", "path", app_id],
                 capture_output=True,
@@ -284,7 +296,11 @@ class PythonDriver(QaDriver):
                 check=False,
             )
             if probe.returncode or not probe.stdout.strip():
-                raise DriverBlocked(f"app {app_id} is not installed on Android")
+                raise DriverBlocked(
+                    f"app {app_id} is not installed on the Android device; the stack runbook "
+                    "installs it in a `kind: prepare` step, such as `adb install`, because "
+                    "prepare steps run before any scenario"
+                )
         elif device != "android" and shutil.which("xcrun"):
             probe = subprocess.run(  # noqa: S603 — fixed argv
                 ["xcrun", "simctl", "get_app_container", "booted", app_id],
