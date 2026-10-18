@@ -163,6 +163,71 @@ type: runbook
 - health: curl -fsS http://localhost:8080/healthz | grep -q links-api
 ```
 
+## A mobile runbook
+
+A `driver: mobile` runbook brings the device up and installs the app. It states `bundle-id:`
+and `launch-screen:`, and its `kind: prepare` steps run on the host before any scenario. They
+boot an emulator, wait for it, then build the app and install it with `adb install`. A screen
+of the book names its `route:` as the navigator's screen name, an identifier and not a path, and
+an element is found by `selector: testID=<id>` or by its visible `name:`.
+
+```markdown
+---
+type: runbook
+---
+
+# Acme (Android emulator)
+
+- driver: mobile
+- environment: [local](environment-local.md)
+- surfaces: [home](../gui/screens/home.md)
+- bundle-id: com.example.acme
+- launch-screen: [home](../gui/screens/home.md)
+- reuse: never
+
+## Steps
+
+### boot-emulator
+
+- kind: prepare
+- run: nohup emulator -avd acme-probe -no-window -no-audio >/dev/null 2>&1 &
+- timeout: 120
+
+### wait-for-device
+
+- kind: prepare
+- run: adb wait-for-device
+- timeout: 120
+
+### wait-for-boot
+
+- kind: prepare
+- run: until [ "$(adb shell getprop sys.boot_completed | tr -d '\r')" = 1 ]; do sleep 2; done
+- timeout: 240
+
+### install-app
+
+- kind: prepare
+- run: ./gradlew assembleDebug && adb install -r app/build/outputs/apk/debug/app-debug.apk
+- env:
+  - API_URL=http://10.0.2.2:8081
+- timeout: 900
+
+### backend
+
+- kind: service
+- run: make serve PORT=8081
+- health: curl -fsS http://localhost:8081/healthz
+```
+
+The app is built before the backend starts, so the address it calls is set in the install
+step, to the port the service step serves on. A stack runbook has exactly one `kind: service`
+step, so the backend the app calls is that step. A runbook with no `kind: service` step and no
+`entry-url:` is not a stack, and nothing runs its prepare steps. A second backend starts in the
+background from a `kind: prepare` step. The prepare steps run only when the run starts the stack
+itself. A stack already serving that the run adopts skips them, and `reuse: never` makes the
+run start its own.
+
 ## Doctor codes it can trip
 
 `runbook-missing` (warn, raised when no runbook exists at all), `runbook-bad-reuse`,

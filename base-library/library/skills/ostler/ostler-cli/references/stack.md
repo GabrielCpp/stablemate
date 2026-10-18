@@ -259,6 +259,17 @@ A run killed before its teardown does not leave its copy up for good. The next l
 on the machine tears down every copy whose run is gone, and says which. A copy brought up by
 hand, outside any run, has no holder and stays until `ostler env down` removes it.
 
+## Runbook prepare steps
+
+This file describes `stack.yml`. A runbook page declares its own stack, and its `kind: prepare`
+steps run on the host, each through `bash -c`, in document order and before the service starts.
+A step that does not return within 600 seconds is killed and fails the bring-up. A step raises
+its own ceiling with a `timeout:` bullet, in seconds. A stack the run adopts, because it already
+serves, skips the prepare steps and the launch, and still runs the seed and health steps. The
+mobile example in
+[the runbook reference](../../ostler-okf/references/node-types/runbook.md) boots an emulator
+and installs the app in prepare steps.
+
 ## Doctor codes it can trip
 
 `stack-invalid`, one finding per problem, on the file it was found in. See
