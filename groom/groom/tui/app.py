@@ -8,8 +8,8 @@ from rich.text import Text
 from textual import on
 from textual.app import App, ComposeResult
 from textual.binding import Binding, BindingType
-from textual.containers import Horizontal
-from textual.widgets import Button, Footer, OptionList, Static
+from textual.containers import Horizontal, Vertical
+from textual.widgets import Button, Footer, Input, OptionList, Static
 from textual.widgets.option_list import Option
 
 from groom.tui import store as client
@@ -24,8 +24,10 @@ from groom.tui.connection import (
 )
 from groom.tui.link import Frame, Link, LinkError
 from groom.tui.widgets.detail import DetailPane
-from groom.tui.widgets.fleet import row_text, status_text
+from groom.tui.widgets.fleet import NO_MATCH_TEXT, row_text, status_text
 from groom.tui.widgets.gate import GateBlock
+from groom.tui.widgets.palette import FleetProvider
+from groom.tui.widgets.runfilter import RunFilter
 
 def _now_ms() -> float:
     return time.monotonic() * 1000
@@ -35,7 +37,10 @@ class GroomTui(App[None]):
     TITLE = "groom"
     CSS = """
     #status { height: 1; padding: 0 1; background: $boost; }
-    #runs { width: 45%; border-right: solid $primary-darken-2; }
+    #left { width: 45%; border-right: solid $primary-darken-2; }
+    #filter { height: 3; }
+    #runs { height: 1fr; }
+    #runs-note { height: auto; padding: 0 1; color: $text-muted; }
     #detail { width: 1fr; padding: 0 1; }
     #head { text-style: bold; }
     #note, #notice, #trail-empty, #activity, #tabs { height: auto; }
@@ -52,10 +57,12 @@ class GroomTui(App[None]):
     #gates { height: auto; }
     Collapsible { padding-bottom: 0; }
     """
+    COMMANDS = App.COMMANDS | {FleetProvider}
     BINDINGS: ClassVar[list[BindingType]] = [
         Binding("j", "cursor_down", "Down"),
         Binding("k", "cursor_up", "Up"),
         Binding("enter", "open_run", "Open"),
+        Binding("slash", "filter", "Filter"),
         Binding("g", "show_tab('gate')", "Gate"),
         Binding("t", "show_tab('trail')", "Trail"),
         Binding("d", "show_tab('diff')", "Diff"),
@@ -85,7 +92,10 @@ class GroomTui(App[None]):
     def compose(self) -> ComposeResult:
         yield Static(id="status")
         with Horizontal():
-            yield OptionList(id="runs")
+            with Vertical(id="left"):
+                yield RunFilter()
+                yield OptionList(id="runs")
+                yield Static(id="runs-note")
             yield DetailPane()
         yield Footer()
 
@@ -203,7 +213,8 @@ class GroomTui(App[None]):
 
     def _render_fleet(self) -> None:
         self._render_status()
-        runs = self.store.runs
+        runs = client.filter_runs(self.store.runs, self.store.query)
+        self._show_note(runs)
         listing = self.query_one("#runs", OptionList)
         ids = [str(row["id"]) for row in runs]
         current = [str(listing.get_option_at_index(i).id) for i in range(listing.option_count)]
@@ -221,6 +232,26 @@ class GroomTui(App[None]):
         self._row_cache = texts
         if ids:
             listing.highlighted = ids.index(keep) if keep in ids else 0
+
+    def _show_note(self, shown: tuple[Frame, ...]) -> None:
+        query = self.store.query.strip()
+        note = NO_MATCH_TEXT.format(query=clean(query)) if query and not shown else ""
+        self.query_one("#runs-note", Static).update(Text(note))
+
+    @on(Input.Changed, "#filter")
+    def _filter_changed(self, event: Input.Changed) -> None:
+        self.store = client.set_query(self.store, event.value)
+        self._render_fleet()
+
+    @on(Input.Submitted, "#filter")
+    def _filter_submitted(self) -> None:
+        listing = self.query_one("#runs", OptionList)
+        listing.focus()
+        if listing.option_count:
+            listing.highlighted = 0
+
+    def action_filter(self) -> None:
+        self.query_one(RunFilter).reveal()
 
     async def _render_detail(self) -> None:
         await self.pane.show(self.store)

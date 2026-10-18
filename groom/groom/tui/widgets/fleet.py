@@ -10,6 +10,7 @@ from groom.tui.link import Frame
 PHASE_GLYPH = {"live": "●", "stale": "◐", "reconnecting": "◌", "offline": "○"}
 PHASE_STYLE = {"live": "green", "stale": "yellow", "reconnecting": "yellow", "offline": "red"}
 SCANNING_TEXT = "Discovering containers…"
+NO_MATCH_TEXT = "No run matches “{query}”."
 EMPTY_TEXT = "No workhorse runs — nothing is running."
 
 
@@ -24,6 +25,9 @@ def status_text(connection: Connection, store: client.Store) -> Text:
             text.append(f" · {counts[name]} {name}")
     if not store.runs:
         text.append("  " + (SCANNING_TEXT if store.scanning else EMPTY_TEXT))
+    elif store.query.strip():
+        shown = len(client.filter_runs(store.runs, store.query))
+        text.append(f"  filter: {clean(store.query.strip())}  {shown} of {len(store.runs)}")
     return text
 
 

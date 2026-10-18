@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass, field, replace
 
 from groom.tui.link import Frame
@@ -15,6 +16,7 @@ class Store:
     trail_view: str = "all"
     trail_kind: str = ""
     repo: Frame | None = None
+    query: str = ""
 
 
 TRAIL_VIEWS = ("all", "transcript", "telemetry")
@@ -67,6 +69,24 @@ def answered_gate(store: Store, msg: Frame) -> str:
     if store.selected and msg.get("id") == store.selected:
         return str(msg.get("file_path") or "")
     return ""
+
+
+HAYSTACK_FIELDS = ("name", "repo", "type", "node", "activity", "doing", "question", "run_id")
+
+
+def row_haystack(row: Frame) -> str:
+    return " ".join("" if row.get(name) is None else str(row[name]) for name in HAYSTACK_FIELDS).lower()
+
+
+def filter_runs(runs: Sequence[Frame], query: str) -> tuple[Frame, ...]:
+    needle = query.strip().lower()
+    if not needle:
+        return tuple(runs)
+    return tuple(row for row in runs if needle in row_haystack(row))
+
+
+def set_query(store: Store, query: str) -> Store:
+    return replace(store, query=query)
 
 
 def run_by_id(store: Store, run_id: str) -> Frame | None:
