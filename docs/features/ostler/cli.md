@@ -176,12 +176,12 @@ managed markdown tree (backlog, milestones, epics, features) under a repo root.
   - --json (print `{ok, books, services, errors}` as one indented JSON object)
 - exits: 1 — a book whose `ops/stack.yml` does not parse to a mapping with a `services:` key is
   reported by name and path, rather than being skipped silently
-- run: invoke(argv=["env", "check", "--json"])
+- run: invoke(argv=["-C", "env-check-scratch", "env", "check", "--json"])
 - verify: exit_status(code=1)
 - verify: json_path(path="ok", equals=false)
 - verify: json_path(path="errors[0]", matches="^docs/features/env-check-fixture/ops/stack\\.yml: is not a mapping with a `services:` key$")
-- fixture: [cli scenario arrangement](fixtures/cli-scenario-arrangement.md) — creates a second book
-  whose ops/stack.yml is a YAML list instead of a mapping
+- fixture: [cli scenario arrangement](fixtures/cli-scenario-arrangement.md) — creates a scratch repo
+  whose book's ops/stack.yml is a YAML list instead of a mapping, so no other scenario reads it
 - code: ostler/ostler/environments/spec.py::load@b020ed778dc2
 - code: ostler/ostler/environments/spec.py::_read_book@b020ed778dc2
 - code: ostler/ostler/environments/commands.py::cmd_check@36bbc1003620

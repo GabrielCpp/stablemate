@@ -81,10 +81,10 @@ step as a browser action by resolving its locator, screen, or act against the gr
 per surface, and `maestro_launch` derives the mobile launch flow a mobile journey needs before
 its first hop.
 
-- code: ostler/ostler/qa/compile.py::compile_plan@08cf0153b44e
-- code: ostler/ostler/qa/compile.py::compile_plan_gaps@08cf0153b44e
-- code: ostler/ostler/qa/compile.py::cmd_compile_plan@08cf0153b44e
-- code: ostler/ostler/qa/compile.py::_plan_header@08cf0153b44e
+- code: ostler/ostler/qa/compile.py::compile_plan@0cb8f8e9d882
+- code: ostler/ostler/qa/compile.py::compile_plan_gaps@0cb8f8e9d882
+- code: ostler/ostler/qa/compile.py::cmd_compile_plan@0cb8f8e9d882
+- code: ostler/ostler/qa/compile.py::_plan_header@0cb8f8e9d882
 - code: ostler/ostler/qa/compile_http.py::api_scenarios@7b561de0b90a
 - code: ostler/ostler/qa/compile_http.py::http_walk@7b561de0b90a
 - code: ostler/ostler/qa/compile_http.py::read_back@7b561de0b90a
@@ -97,14 +97,14 @@ its first hop.
 - code: ostler/ostler/qa/compile_playwright.py::perform_acts@0f1323f2699e
 - code: ostler/ostler/qa/compile_playwright.py::page_observations@0f1323f2699e
 - code: ostler/ostler/qa/compile_playwright.py::web_walk@0f1323f2699e
-- code: ostler/ostler/qa/compile_maestro.py::mobile_scenarios@f88c740f3674
-- code: ostler/ostler/qa/compile_maestro.py::maestro_walk@f88c740f3674
+- code: ostler/ostler/qa/compile_maestro.py::mobile_scenarios@f72e453ea0dc
+- code: ostler/ostler/qa/compile_maestro.py::maestro_walk@f72e453ea0dc
 - code: ostler/ostler/qa/compile_moves.py::move_walks@357b72ed93c7
 - code: ostler/ostler/qa/compile_moves.py::state_walks@357b72ed93c7
-- code: ostler/ostler/qa/compile_journey.py::journey_target@1dbd04809ecb
-- code: ostler/ostler/qa/compile_journey.py::api_target@1dbd04809ecb
-- code: ostler/ostler/qa/compile_journey.py::journey_scenarios@1dbd04809ecb
-- code: ostler/ostler/qa/compile_journey.py::journey_scenario@1dbd04809ecb
+- code: ostler/ostler/qa/compile_journey.py::journey_target@8075f6afe6b5
+- code: ostler/ostler/qa/compile_journey.py::api_target@8075f6afe6b5
+- code: ostler/ostler/qa/compile_journey.py::journey_scenarios@8075f6afe6b5
+- code: ostler/ostler/qa/compile_journey.py::journey_scenario@8075f6afe6b5
 - code: ostler/ostler/qa/compile_stops.py::resolve_stop@4daf7645d9c5
 - code: ostler/ostler/qa/compile_stops.py::resolve_state@4daf7645d9c5
 - code: ostler/ostler/qa/compile_stops.py::ScreenStop@4daf7645d9c5
@@ -121,15 +121,15 @@ its first hop.
 - code: ostler/ostler/qa/obligation_frame.py::book_nodes@c6e8278e4f37
 - code: ostler/ostler/qa/obligation_frame.py::obligation_frame@c6e8278e4f37
 - code: ostler/ostler/qa/obligation_frame.py::BookNode@c6e8278e4f37
-- code: ostler/ostler/qa/book_index.py::BookIndex@cc5b868a3e45
-- code: ostler/ostler/qa/book_index.py::node_acts@cc5b868a3e45
+- code: ostler/ostler/qa/book_index.py::BookIndex@34df4e06f504
+- code: ostler/ostler/qa/book_index.py::node_acts@34df4e06f504
 - code: ostler/ostler/qa/book_fixtures.py::resolved@360f74516536
 - code: ostler/ostler/qa/journey_steps.py::journey_steps@0794ea6c9659
 - code: ostler/ostler/qa/fixture_provides.py::closure@9053b42918c0
 - code: ostler/ostler/qa/fixture_provides.py::index@9053b42918c0
 - code: ostler/ostler/qa/fixture_browser.py::browser_step@d769665467aa
-- code: ostler/ostler/qa/navigation.py::navigation_rows@4a5908762bb1
-- code: ostler/ostler/qa/navigation.py::maestro_launch@4a5908762bb1
+- code: ostler/ostler/qa/navigation.py::navigation_rows@9f36c4d2fcd8
+- code: ostler/ostler/qa/navigation.py::maestro_launch@9f36c4d2fcd8
 - detail: [ostler](../cli.md)
 
 ## Contract

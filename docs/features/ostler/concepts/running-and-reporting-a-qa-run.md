@@ -103,14 +103,14 @@ re-exports the public surface of all of the above (`cmd_run`, `cmd_compile_plan`
 `cmd_sensitivity`, `cmd_clean`, `build_report`, `build_evidence_map`, `build_context`, …) as
 `ostler.qa`'s flat namespace.
 
-- code: ostler/ostler/qa/context.py::build_context@d86d0f82a92b
-- code: ostler/ostler/qa/context.py::write_context@d86d0f82a92b
-- code: ostler/ostler/qa/context.py::cmd_context@d86d0f82a92b
-- code: ostler/ostler/qa/context.py::cmd_context_validate@d86d0f82a92b
-- code: ostler/ostler/qa/context.py::validate_context@d86d0f82a92b
-- code: ostler/ostler/qa/context.py::node_obligations@d86d0f82a92b
-- code: ostler/ostler/qa/packet.py::ContextPacket@c725537831f8
-- code: ostler/ostler/qa/packet.py::packet_of@c725537831f8
+- code: ostler/ostler/qa/context.py::build_context@ae1dfb851ad2
+- code: ostler/ostler/qa/context.py::write_context@ae1dfb851ad2
+- code: ostler/ostler/qa/context.py::cmd_context@ae1dfb851ad2
+- code: ostler/ostler/qa/context.py::cmd_context_validate@ae1dfb851ad2
+- code: ostler/ostler/qa/context.py::validate_context@ae1dfb851ad2
+- code: ostler/ostler/qa/context.py::node_obligations@ae1dfb851ad2
+- code: ostler/ostler/qa/packet.py::ContextPacket@b67a80c9a6e3
+- code: ostler/ostler/qa/packet.py::packet_of@b67a80c9a6e3
 - code: ostler/ostler/qa/grounding_health.py::resolve_groundings@da8a0b8f6c0f
 - code: ostler/ostler/qa/grounding_health.py::relation_fanout_warnings@da8a0b8f6c0f
 - code: ostler/ostler/qa/owners.py::map_changes@de26fdbd12b7

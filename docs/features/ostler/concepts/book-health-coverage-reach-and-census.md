@@ -94,11 +94,11 @@ flags a step command that duplicates what a scenario's own frame already provide
 - code: ostler/ostler/backfill.py::render@e3c3cac49def
 - code: ostler/ostler/backfill.py::StaleUnit@e3c3cac49def
 - code: ostler/ostler/backfill.py::BackfillPlan@e3c3cac49def
-- code: ostler/ostler/census.py::take_census@7392043137fb
-- code: ostler/ostler/census.py::Census@7392043137fb
-- code: ostler/ostler/census.py::merge@7392043137fb
-- code: ostler/ostler/census.py::code_sites@7392043137fb
-- code: ostler/ostler/census.py::render@7392043137fb
+- code: ostler/ostler/census.py::take_census@f5897dc81658
+- code: ostler/ostler/census.py::Census@f5897dc81658
+- code: ostler/ostler/census.py::merge@f5897dc81658
+- code: ostler/ostler/census.py::code_sites@f5897dc81658
+- code: ostler/ostler/census.py::render@f5897dc81658
 - code: ostler/ostler/reach.py::reachability@9d242d10b584
 - code: ostler/ostler/reach.py::unreachable_screens@9d242d10b584
 - code: ostler/ostler/reach.py::route@9d242d10b584
@@ -110,12 +110,12 @@ flags a step command that duplicates what a scenario's own frame already provide
 - code: ostler/ostler/book_reach.py::DeadPage@1cbfe5c921ec
 - code: ostler/ostler/book_reach.py::fixture_edges@1cbfe5c921ec
 - code: ostler/ostler/hidden_claims.py::check_hidden_claims@97734306adec
-- code: ostler/ostler/step_commands.py::check_step_command_bullets@acdbcadb208c
-- code: ostler/ostler/step_commands.py::check_step_command_syntax@acdbcadb208c
-- code: ostler/ostler/step_commands.py::check_fixture_step_directory@acdbcadb208c
-- code: ostler/ostler/step_commands.py::check_fixture_step_serves@acdbcadb208c
-- code: ostler/ostler/step_commands.py::check_step_not_scenario_frame@acdbcadb208c
-- code: ostler/ostler/step_commands.py::check_fixture_probe_remote@acdbcadb208c
+- code: ostler/ostler/step_commands.py::check_step_command_bullets@c4832c0a1e20
+- code: ostler/ostler/step_commands.py::check_step_command_syntax@c4832c0a1e20
+- code: ostler/ostler/step_commands.py::check_fixture_step_directory@c4832c0a1e20
+- code: ostler/ostler/step_commands.py::check_fixture_step_serves@c4832c0a1e20
+- code: ostler/ostler/step_commands.py::check_step_not_scenario_frame@c4832c0a1e20
+- code: ostler/ostler/step_commands.py::check_fixture_probe_remote@c4832c0a1e20
 - detail: [The book's markdown model](the-books-markdown-model.md)
 - detail: [ostler](../cli.md)
 

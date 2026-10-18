@@ -11,9 +11,7 @@ persistence, the shared base-skill library, and wall-clock access as an injectab
 The copy lives at `ostler/_vendor/stablemate_core/`, written there by `make vendor` from
 `core/stablemate_core` at the repository root; a caller edits the root copy and re-runs
 `make vendor`, never this one, and `make check-vendor` fails the build if the two drift apart.
-Nothing outside `_vendor/` imports from it — ostler's own CLI and library code do not call into
-this package, so what follows documents a copy ostler carries, not a path a CLI invocation
-walks.
+Ostler's `index`, `model`, `qa/stack`, `qa/tools` and `qa/addresses` modules import a few helpers from it, for config, the base-library cache and the clock. Discovery, profiles and skill references are carried but no ostler module calls them.
 
 - code: ostler/ostler/_vendor/__init__.py@d63f5d827a00
 - code: ostler/ostler/_vendor/stablemate_core/__init__.py@3b3d6fe59b0c
