@@ -57,6 +57,7 @@ qa:
     - groom
     - groom-sidecar
     - ostler
+    - python3
     - workhorse-author
     - workhorse-coder
     - workhorse-loop-runner
