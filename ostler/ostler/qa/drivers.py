@@ -354,7 +354,7 @@ class PythonDriver(QaDriver):
         records, output, exit_code, timed_out = self._execute(scenario_id, timeout)
         self._write_output(scenario_id, output)
         return self._grade(
-            scenario_id, covers, records, output, exit_code, timed_out=timed_out
+            scenario_id, covers, records, output, exit_code, timed_out=timed_out, timeout=timeout
         )
 
 
@@ -394,6 +394,7 @@ class PythonDriver(QaDriver):
         exit_code: int,
         *,
         timed_out: bool,
+        timeout: float | None = None,
     ) -> ScenarioResult:
         tally = _Tally()
         terminal: dict[str, Any] | None = None
@@ -468,7 +469,8 @@ class PythonDriver(QaDriver):
 
         message = ""
         if timed_out:
-            message = f"scenario '{scenario_id}' exceeded its timeout and was killed"
+            silence = f" for {timeout:g}s" if timeout else " past its timeout"
+            message = f"scenario '{scenario_id}' reported nothing{silence} and was killed"
         elif terminal is None:
             message = (
                 f"scenario '{scenario_id}' produced no result (exit {exit_code})"
@@ -925,16 +927,24 @@ class LocalLauncher(Launcher):
         )
         os.close(write_fd)
         records: list[dict[str, Any]] = []
-        reader = threading.Thread(target=_drain, args=(read_fd, records), daemon=True)
+        progress = _Progress()
+        reader = threading.Thread(target=_drain, args=(read_fd, records, progress), daemon=True)
         reader.start()
         timed_out = False
-        try:
-            output_raw, _ = process.communicate(json.dumps(context).encode(), timeout=timeout)
-        except subprocess.TimeoutExpired:
-            _kill_group(process, self.kill_grace)
-            output_raw, _ = process.communicate()
-            retire_dead_sessions(self.session_store)
-            timed_out = True
+        pending: bytes | None = json.dumps(context).encode()
+        while True:
+            try:
+                output_raw, _ = process.communicate(pending, timeout=progress.remaining(timeout))
+                break
+            except subprocess.TimeoutExpired:
+                pending = None
+                if progress.remaining(timeout) > 0:
+                    continue
+                _kill_group(process, self.kill_grace)
+                output_raw, _ = process.communicate()
+                retire_dead_sessions(self.session_store)
+                timed_out = True
+                break
         reader.join(timeout=5)
         if timed_out or not any(record.get("type") == "scenario" for record in records):
             stop_servers(records)
@@ -942,10 +952,37 @@ class LocalLauncher(Launcher):
         return records, safe.decode("utf-8", errors="replace"), process.returncode, timed_out
 
 
-def _drain(read_fd: int, records: list[dict[str, Any]]) -> None:
+class _Progress:
+    """When the scenario last said anything, so its timeout measures silence rather than work.
+
+    A scenario is a chain of steps that each end with a record on the stream: an assert, a
+    fixture built, an artifact kept. Wall time alone cannot tell a scenario that is still
+    walking that chain from one that hung, and a plan compiled from a book of sixty flows is
+    long because it is thorough. A record on the stream is the one observation that separates
+    the two, so the ceiling restarts at each one.
+    """
+
+    def __init__(self) -> None:
+        self._last = time.monotonic()
+        self._lock = threading.Lock()
+
+    def mark(self) -> None:
+        with self._lock:
+            self._last = time.monotonic()
+
+    def remaining(self, timeout: float) -> float:
+        """Seconds of silence the scenario still has, never below a short poll so `communicate` keeps draining."""
+        with self._lock:
+            quiet = time.monotonic() - self._last
+        return max(timeout - quiet, 0.0)
+
+
+def _drain(read_fd: int, records: list[dict[str, Any]], progress: _Progress | None = None) -> None:
     """Read the record stream to EOF, keeping whatever parsed."""
     with os.fdopen(read_fd, "r", encoding="utf-8") as stream:
         for line in stream:
+            if progress is not None:
+                progress.mark()
             try:
                 records.append(json.loads(line))
             except json.JSONDecodeError:
