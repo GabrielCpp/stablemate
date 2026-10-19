@@ -11,7 +11,7 @@ from workhorse.pyflow import (
     Workflow,
     WorkflowFailed,
 )
-from workhorse_workflows.coder.shared import paths, roles, work
+from workhorse_workflows.coder.shared import causes, paths, roles, work
 from workhorse_workflows.coder.docs import Docs
 from workhorse_workflows.coder.fix import Fix
 from workhorse_workflows.coder.fix_ci import FixCi
@@ -19,6 +19,17 @@ from workhorse_workflows.coder.dev import Dev
 from workhorse_workflows.coder.qa import Qa
 from workhorse_workflows.coder.qa.nodes import teardown_stack
 from workhorse_workflows.coder.shared.branches import cut_run_branch
+from workhorse_workflows.coder.shared.judge import (
+    Judge,
+    Question,
+    ReadingJudge,
+    RuleJudge,
+    Tiered,
+    judge_args,
+    JUDGE_PROFILE,
+    accepting,
+)
+from workhorse_workflows.coder.shared.schemas.judge import Ruling
 from workhorse_workflows.coder.shared.worktree import snapshot_worktree_state
 from workhorse_workflows.coder.main.nodes.pr import open_run_prs
 from workhorse_workflows.coder.shared.queue import (
@@ -95,6 +106,8 @@ class Coder(Workflow):
 
     def route(self) -> Continue | Done:
         """Take the next story or follow-up off the worklist, or deliver the run when none is left."""
+        causes.consolidate(self._worklist, self.logger)
+        causes.own(self._judge(), self._worklist, self.logger)
         taken = self._worklist.claim(1, kind=work.PROGRESS_KINDS, strict=True)
         if taken:
             return Continue(None, self.prepare)
@@ -177,10 +190,8 @@ class Coder(Workflow):
     def refix(self, number: int = 1, findings: list[dict[str, Any]] | None = None) -> Continue:
         """File QA's findings against the item, and hand them to its dev owner to answer."""
         item = self._item
-        filed = work.file(
-            self._worklist,
-            work.finding_items(item.id, "qa", number, findings or []),
-            by="qa",
+        filed = causes.file_findings(
+            self._judge(), self._worklist, item.id, "qa", number, findings or [], by="qa"
         )
         self.logger.info("filed %d QA finding(s) against %s", len(filed), item.id)
         return Continue(None, self.dev)
@@ -238,6 +249,8 @@ class Coder(Workflow):
     def commit(self) -> Continue:
         """Stamp the item passed, committing or reproving what the later lanes left uncommitted first."""
         story = self._story
+        if work.open_findings(self._worklist, self._item.id):
+            causes.own(self._judge(), self._worklist, self.logger, owners={self._item.id})
         state = self.call(
             check_repos_clean, story.story_slug, story.spec_dir, list(self._preexisting())
         )
@@ -330,6 +343,21 @@ class Coder(Workflow):
             preexisting=self._preexisting(),
             operator_mode=self.operator_mode,
         )
+
+    def _judge(self) -> Judge:
+        """The one judge this flow asks: the word rule first, then one reading of what it left."""
+
+        def read(question: Question) -> Ruling:
+            return self.agent(
+                "shared/prompts/judge.md",
+                returns=Ruling,
+                power="medium",
+                profile=JUDGE_PROFILE,
+                args=judge_args(question),
+                accept=accepting(question),
+            )
+
+        return Tiered(RuleJudge({"cause": causes.cause_rule}), ReadingJudge(read))
 
     def _story_epic(self) -> str:
         """`prepare_story.story_epic or _epic` — the *story's* epic."""

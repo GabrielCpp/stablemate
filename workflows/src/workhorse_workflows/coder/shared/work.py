@@ -23,16 +23,17 @@ DONE = "done"
 OPEN = "open"
 SETTLED = "settled"
 DECLINED = "declined"
+MERGED = "merged"
 
 SCHEME = wl.Scheme(
-    done=frozenset({DONE, SETTLED, DECLINED}),
+    done=frozenset({DONE, SETTLED, DECLINED, MERGED}),
     active=frozenset({ACTIVE}),
     blocked=frozenset(),
 )
 
 FILERS: dict[str, frozenset[str]] = {
     STORY: frozenset({"launch", "amendment"}),
-    FOLLOW_UP: frozenset({"dev"}),
+    FOLLOW_UP: frozenset({"dev", "ownership"}),
     FINDING: frozenset({"review", "qa"}),
 }
 
@@ -96,6 +97,12 @@ def find(work: wl.WorkList, item_id: str) -> wl.WorkItem | None:
     return next((it for it in work.items() if it.id == item_id), None)
 
 
+def replace(work: wl.WorkList, item: wl.WorkItem) -> None:
+    """Swap the stored item of the same id and kind for `item`, keeping it on the list."""
+    work.prune(item.id, item.kind)
+    work.add([item])
+
+
 def story_items(entries: Sequence[dict[str, Any]], start: float = 0.0, stop: float | None = None) -> list[wl.WorkItem]:
     """Story items for ostler's story entries, spread over the order gap they are filed into."""
     step = 1.0 if stop is None else (stop - start) / (len(entries) + 1)
@@ -139,7 +146,7 @@ def amend(work: wl.WorkList, epic: str, entries: Sequence[dict[str, Any]]) -> li
 def follow_up_items(
     work: wl.WorkList, parent: wl.WorkItem, follow_ups: Sequence[dict[str, str]]
 ) -> list[wl.WorkItem]:
-    """Follow-up items for `parent`, ordered after it and its earlier follow-ups."""
+    """Follow-up items for `parent`, ordered after it and its earlier follow-ups; an entry may name the story it `escaped_from`."""
     progress = work.items(PROGRESS_KINDS)
     family = [it.order or 0 for it in progress
               if it.id == parent.id or it.payload.get("parent") == parent.id]
@@ -152,6 +159,7 @@ def follow_up_items(
         title = entry.get("title", "").strip()
         reason = entry.get("reason", "").strip()
         key = hashlib.sha256(f"{title}\n{reason}".encode()).hexdigest()[:8]
+        escaped = entry.get("escaped_from", "").strip()
         items.append(wl.WorkItem(
             id=f"{parent.id}/follow-up-{key}",
             kind=FOLLOW_UP,
@@ -163,6 +171,7 @@ def follow_up_items(
                 "story_id": str(parent.payload.get("story_id") or ""),
                 "title": title,
                 "reason": reason,
+                **({"escaped_from": escaped} if escaped else {}),
             },
         ))
     return items
@@ -193,15 +202,24 @@ def round_filed(work: wl.WorkList, work_id: str, source: str, number: int) -> bo
     )
 
 
+def finding_id(work_id: str, source: str, number: int, index: int) -> str:
+    """The id of the `index`th finding (from 0) of one round of one source."""
+    return f"{work_id}/{source}-{number}.{index + 1}"
+
+
 def finding_items(
-    work_id: str, source: str, number: int, findings: Sequence[dict[str, Any]]
+    work_id: str,
+    source: str,
+    number: int,
+    findings: Sequence[dict[str, Any]],
+    same_as: Sequence[str] = (),
 ) -> list[wl.WorkItem]:
-    """Finding items for one round of one source, numbered in the order it reported them."""
+    """Finding items for one round of one source, numbered in the order it reported them; `same_as[i]` merges the ith into that open finding."""
     return [
         wl.WorkItem(
-            id=f"{work_id}/{source}-{number}.{i + 1}",
+            id=finding_id(work_id, source, number, i),
             kind=FINDING,
-            status=OPEN,
+            status=MERGED if same_of(same_as, i) else OPEN,
             payload={
                 "work_id": work_id,
                 "source": source,
@@ -211,10 +229,16 @@ def finding_items(
                 "repair": str(entry.get("repair") or ""),
                 "category": str(entry.get("category") or ""),
                 "score": int(entry.get("score") or 0),
+                **({"same_as": same_of(same_as, i)} if same_of(same_as, i) else {}),
             },
         )
         for i, entry in enumerate(findings)
     ]
+
+
+def same_of(same_as: Sequence[str], index: int) -> str:
+    """The open finding the `index`th one merges into, or nothing."""
+    return same_as[index] if index < len(same_as) else ""
 
 
 def open_findings(work: wl.WorkList, work_id: str = "") -> list[wl.WorkItem]:
@@ -223,6 +247,11 @@ def open_findings(work: wl.WorkList, work_id: str = "") -> list[wl.WorkItem]:
         it for it in work.items(FINDING)
         if it.status not in SCHEME.done and (not work_id or it.payload.get("work_id") == work_id)
     ]
+
+
+def escapes(work: wl.WorkList, story: str) -> list[wl.WorkItem]:
+    """The follow-ups that name `story` as the one the defect escaped from."""
+    return [it for it in work.items(FOLLOW_UP) if it.payload.get("escaped_from") == story]
 
 
 def epic_done(work: wl.WorkList, epic: str) -> bool:
@@ -310,6 +339,7 @@ __all__ = [
     "FILERS",
     "FINDING",
     "FOLLOW_UP",
+    "MERGED",
     "MOVERS",
     "OPEN",
     "PENDING",
@@ -322,8 +352,10 @@ __all__ = [
     "answer_log_path",
     "delivered",
     "epic_done",
+    "escapes",
     "file",
     "find",
+    "finding_id",
     "finding_items",
     "findings_of",
     "follow_up_items",
@@ -332,8 +364,10 @@ __all__ = [
     "next_round",
     "open_findings",
     "progress",
+    "replace",
     "resume_note",
     "round_filed",
+    "same_of",
     "story_items",
     "story_of",
     "worklist",

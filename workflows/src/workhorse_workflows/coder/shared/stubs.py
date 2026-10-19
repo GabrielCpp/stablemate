@@ -7,6 +7,7 @@ from workhorse_workflows.coder.shared.schemas.genesis import (
     Skeleton,
     TargetClassification,
 )
+from workhorse_workflows.coder.shared.schemas.judge import StoryTexts
 from workhorse_workflows.coder.shared.schemas.queue import LaunchEntry, LaunchSet
 from workhorse_workflows.coder.shared.schemas.story import StoryPaths
 
@@ -51,4 +52,9 @@ def launch_set(*_args: object, **_kwargs: object) -> LaunchSet:
     return LaunchSet(mode="epic", entries=[LaunchEntry(slug=_SLUG, id=_SLUG, epic=_EPIC)])
 
 
-__all__ = ["built", "classified", "installed", "launch_set", "story_paths", "valid"]
+def story_texts(*_args: object, **_kwargs: object) -> StoryTexts:
+    """`done_story_texts` — no committed story to compare a defect with."""
+    return StoryTexts()
+
+
+__all__ = ["built", "classified", "installed", "launch_set", "story_paths", "story_texts", "valid"]

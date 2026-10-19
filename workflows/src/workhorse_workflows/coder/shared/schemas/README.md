@@ -10,6 +10,7 @@ The models every coder agent reply and node return is validated against, one mod
 - `dev.py`: the dev lane's models: the plan, its validation, the dispatch list, the implement and fix replies, and the operator gate.
 - `docs.py`: the docs lane's models: OKF detection, the context classifier, the author reply, the gates and the loop state.
 - `genesis.py`: the genesis lane's models: the target's state, each step's result and the final verdict.
+- `judge.py`: the judge's models: its ruling on a closed question, and the story texts an escape question reads.
 - `okf.py`: the obligation packet's gate result, shared by the docs and QA lanes.
 - `pr.py`: the PR boundary's models: the opened PR, the merge, the merge fix and the give-up notes.
 - `qa.py`: the QA lane's models: every gate result, every agent reply and the loop state.

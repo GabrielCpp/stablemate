@@ -22,6 +22,8 @@ What more than one coder lane needs. Code that only one lane calls belongs in th
 - `provenance.py`: which commits and files belong to a story.
 - `qa_support.py`: a re-export of `kit/qa/support.py` for older coder call sites. New code imports the kit module.
 - `queue.py`: the launch: which stories a run packs into its worklist, the fresh-run reset, and pruning a finished epic.
+- `causes.py`: which reports describe one defect, merging them on filing, handing a finished story's open findings to the follow-up that owns their cause, and recording where a defect escaped from.
+- `judge.py`: a closed question put to a word rule, to one tool-less model call, or to the rule first. Its prompt is `prompts/judge.md`.
 - `resolution.py`: the resolver half of an operator gate, which tries to answer a block before the run parks on it.
 - `review.py`: the review's deterministic work: where it reads, ostler's settlement of the dev owner's answers and their evidence, and the operator inbox poll.
 - `roles.py`: which prompt body and model a role resolves to, with the repo's own prompts ahead of the base library.

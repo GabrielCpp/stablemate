@@ -19,4 +19,6 @@ The work item is a story or one of its follow-ups. The worklist holds both, and 
 
 The dev turn runs with no timeout. The silence bound and the command cap bound it instead. A compacted session reads the worklist's resume note on its next turn.
 
+A follow-up that describes a cause the story already holds is dropped, and an older open finding of the same cause is merged into the newest, and a new follow-up records the finished story it escaped from.
+
 A follow-up files no follow-ups of its own. The run sends that work to the ostler backlog instead.

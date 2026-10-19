@@ -2,7 +2,7 @@
 
 The main loop of the coder workflow. It works through the stories the launch packed into the worklist, end to end. A failed story never lets the run move on: it parks the run at the operator gate.
 
-A story runs one line: dev, docs, QA, commit. Two detours leave it. A replan re-files the epic's stories when a lane cannot finish the story as written, and a docs lane that cannot document the story is one such lane. A refix sends QA's failures back to the dev owner, and the commit sends back any work left uncommitted, with the paths named. A finished epic is pruned from the queue in its own commit. Once the worklist is empty, a `pr` run opens its PRs and hands them to the ship lane, which gets CI green and leaves the merge to a reviewer. A `commit` run ends there.
+A story runs one line: dev, docs, QA, commit. Two detours leave it. A replan re-files the epic's stories when a lane cannot finish the story as written, and a docs lane that cannot document the story is one such lane. A refix sends QA's failures back to the dev owner, and the commit sends back any work left uncommitted, with the paths named. Before each claim, the run merges follow-ups that share a cause and hands the open findings of finished work to the follow-up that owns them. The commit hands any finding the item still holds to the follow-up that owns its cause, filing one when none does. A finished epic is pruned from the queue in its own commit. Once the worklist is empty, a `pr` run opens its PRs and hands them to the ship lane, which gets CI green and leaves the merge to a reviewer. A `commit` run ends there.
 
 ## Map
 

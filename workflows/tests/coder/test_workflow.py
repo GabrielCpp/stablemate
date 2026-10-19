@@ -264,6 +264,10 @@ class _Sub:
             extra = self.repo / self.leftover.format(story=child.story)
             extra.parent.mkdir(parents=True, exist_ok=True)
             extra.write_text("# left behind\n", encoding="utf-8")
+        if child.worklist_dir:
+            held = work.worklist(child.worklist_dir)
+            ids = [it.id for it in work.open_findings(held, child.work_id)]
+            work.move(held, ids, work.SETTLED, kind=work.FINDING, by="settlement")
         return DevOutcome(status=self.dev_status, operator_notes="rescope to the epic")
 
     def _docs(self, child: _StubFlow) -> DocsResult:
@@ -835,6 +839,51 @@ def test_a_refix_files_qas_findings_and_sends_the_story_back_to_its_dev_owner(
     assert [(f["round"], f["target"]) for f in filed] == [(1, "acme/src/links.py:12")], filed
     second = sub.calls_to("Dev")[1]
     assert second.worklist_dir == str(run_env.writer.run_dir), second
+
+
+def test_a_finding_still_open_at_commit_is_owned_by_a_follow_up_filed_for_its_cause(
+    epic: Callable[..., Path],
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The commit files one follow-up that owns the finding, records the escape, and goes on."""
+    repo = epic()
+
+    class _Leaving(_Sub):
+        def _dev(self, child: _StubFlow) -> DevOutcome:
+            outcome = super()._dev(child)
+            held = work.worklist(child.worklist_dir)
+            work.file(
+                held,
+                work.finding_items(child.work_id, "qa", 1, [{"issue": "relative url accepted"}]),
+                by="qa",
+            )
+            return outcome
+
+    sub = _Leaving(repo).install(monkeypatch)
+    run_env = env()
+
+    drive_flow(Coder(), run_env, _Agent())
+
+    held = work.worklist(run_env.writer.run_dir)
+    assert len(sub.calls_to("Dev")) >= 1, sub.calls
+    assert len(work.escapes(held, "STORY-1")) == 1, held.items()
+    assert work.open_findings(held, "STORY-1") == []
+
+
+def test_an_item_with_no_open_finding_commits_without_a_second_dev_turn(
+    epic: Callable[..., Path],
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = epic()
+    sub = _Sub(repo).install(monkeypatch)
+
+    drive_flow(Coder(), env(), _Agent())
+
+    assert len(sub.calls_to("Dev")) == 1, sub.calls
 
 
 @pytest.mark.parametrize("status", ["blocked", "failed"])

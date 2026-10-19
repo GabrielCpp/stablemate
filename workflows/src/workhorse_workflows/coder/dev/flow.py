@@ -8,12 +8,23 @@ from workhorse import worklist as wl
 from workhorse.pyflow import Await, Continue, Done, Workflow
 
 from workhorse_workflows.coder.dev.report import findings_text, plan_arg, rejected_text, report_text
-from workhorse_workflows.coder.shared import paths, roles, work
+from workhorse_workflows.coder.shared import causes, paths, roles, work
 from workhorse_workflows.coder.shared.backlog import file_follow_up_backlog
 from workhorse_workflows.coder.shared.branches import branch_code_repos
 from workhorse_workflows.coder.shared.conversation import story_chain
 from workhorse_workflows.coder.shared.dev import check_story_status, read_operator_context
 from workhorse_workflows.coder.shared.escalation import context_path, escalation
+from workhorse_workflows.coder.shared.judge import (
+    Judge,
+    Question,
+    ReadingJudge,
+    RuleJudge,
+    Tiered,
+    judge_args,
+    JUDGE_PROFILE,
+    accepting,
+)
+from workhorse_workflows.coder.shared.schemas.judge import Ruling
 from workhorse_workflows.coder.shared.failure import from_findings, from_gate
 from workhorse_workflows.coder.shared.owner import (
     HUMAN_MODES,
@@ -40,6 +51,7 @@ from workhorse_workflows.coder.shared.schemas.dev_story import DevOutcome, DevRe
 from workhorse_workflows.coder.shared.schemas.story import StoryPaths
 from workhorse_workflows.coder.shared.service_gates import GATE_ORDER, declared_markers, run_gate
 from workhorse_workflows.coder.shared.story import (
+    done_story_texts,
     guard_story_file,
     prepare_story,
     resolve_workspace_dirs,
@@ -162,7 +174,9 @@ class Dev(Workflow):
         self.call(stamp_specs, self.docs_path, self.ctx.story_slug)
         self._file_follow_ups(result)
         found = [f.model_dump() for f in result.findings]
-        filed = work.file(w, work.finding_items(self._work_id, "review", number, found), by="review")
+        filed = causes.file_findings(
+            self._judge(), w, self._work_id, "review", number, found, by="review"
+        )
         if filed:
             self.logger.info("the review filed %d finding(s) against %s", len(filed), self._work_id)
         if result.status == "blocked":
@@ -180,8 +194,64 @@ class Dev(Workflow):
                 file_follow_up_backlog, self.docs_path, parent=self._work_id, follow_ups=entries
             )
             return
-        filed = work.file(w, work.follow_up_items(w, item, entries), by="dev")
+        judge = self._judge()
+        known = causes.open_causes(w, item.id)
+        same = causes.same_causes(
+            judge, {str(i): entry["title"] for i, entry in enumerate(entries)}, known
+        )
+        fresh = [entry for i, entry in enumerate(entries) if same[str(i)] == causes.NEW]
+        dropped = {same[str(i)] for i in range(len(entries))} - {causes.NEW}
+        if len(fresh) < len(entries):
+            self.logger.info(
+                "dropped %d follow-up(s) already filed as %s",
+                len(entries) - len(fresh),
+                ", ".join(sorted(dropped)),
+            )
+        if not fresh:
+            return
+        escaped = causes.escaped_from(
+            judge,
+            {str(i): f"{e['title']}\n{e['reason']}" for i, e in enumerate(fresh)},
+            self._committed_stories(w, item),
+        )
+        tagged = [
+            {**entry, "escaped_from": escaped[str(i)]} for i, entry in enumerate(fresh)
+        ]
+        made = [it for it in work.follow_up_items(w, item, tagged) if work.find(w, it.id) is None]
+        filed = work.file(w, made, by="dev")
         self.logger.info("filed %d follow-up(s) after %s", len(filed), item.id)
+        for it in filed:
+            if it.payload.get("escaped_from"):
+                self.logger.info(
+                    "escape: %s found after %s committed", it.id, it.payload["escaped_from"]
+                )
+
+    def _committed_stories(self, w: wl.WorkList, item: wl.WorkItem) -> dict[str, str]:
+        """The title and acceptance criteria of the epic's other finished stories, by slug."""
+        slugs = [
+            it.id for it in w.items(work.STORY)
+            if it.status == work.DONE and it.id != item.id
+            and it.payload.get("epic") == item.payload.get("epic")
+        ]
+        if not slugs:
+            return {}
+        epic = str(item.payload.get("epic") or "")
+        return dict(self.call(done_story_texts, self.docs_path, epic, slugs).texts)
+
+    def _judge(self) -> Judge:
+        """The one judge this flow asks: the word rule first, then one reading of what it left."""
+
+        def read(question: Question) -> Ruling:
+            return self.agent(
+                "shared/prompts/judge.md",
+                returns=Ruling,
+                power="medium",
+                profile=JUDGE_PROFILE,
+                args=judge_args(question),
+                accept=accepting(question),
+            )
+
+        return Tiered(RuleJudge({"cause": causes.cause_rule}), ReadingJudge(read))
 
     def check(
         self, plan: dict[str, Any] | None = None, laps: int = 0, blocks: int = 0

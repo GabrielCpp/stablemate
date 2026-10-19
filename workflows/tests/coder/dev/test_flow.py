@@ -151,8 +151,12 @@ class _Agent:
         unanswered: int = 0,
         stray: int = 0,
         also_fixed: tuple[str, ...] = (),
+        follow_ups: tuple[dict[str, str], ...] = (),
+        escapes_to: str = "",
     ) -> None:
         self.workspace = workspace
+        self.follow_ups = follow_ups
+        self.escapes_to = escapes_to
         self.also_fixed = also_fixed
         self.blocked = blocked
         self.red = red
@@ -228,7 +232,14 @@ class _Agent:
             "notes": f"built and reviewed on pass {nth}",
             "services": [API_SERVICE],
             "findings": FINDINGS if first else [],
+            "follow_ups": list(self.follow_ups) if first else [],
         }
+
+    def _judge(self, data: dict[str, Any], nth: int) -> dict[str, Any]:
+        """The judge's ruling: every escape subject to `escapes_to`, every other question left at its default."""
+        if data["kind"] == "escape" and self.escapes_to:
+            return {"answers": dict.fromkeys(json.loads(str(data["subjects"])), self.escapes_to)}
+        return {"answers": {}}
 
     def _resolve_operator(self, data: dict[str, Any], nth: int) -> dict[str, Any]:
         """The resolver's say on a block, which this fake declines to give."""
@@ -356,6 +367,58 @@ def test_a_finding_qa_filed_in_the_parent_run_reaches_the_dev_turn(
     assert first["worklist_path"] == str(work.worklist_path(parent)), first
     assert f"{STORY}/qa-1.1" in result.settled, result
     assert work.open_findings(work.worklist(parent), STORY) == [], work.worklist(parent).items()
+
+
+def _filed_run(tmp_path: Path, docs: Path, titles: tuple[str, ...]) -> Path:
+    """A run whose worklist holds the story, a finished sibling and the story's open follow-ups."""
+    run = tmp_path / "parent-run"
+    w = work.worklist(run)
+    entries = [{"slug": slug, "epic": EPIC, "id": slug} for slug in ("STORY-0", STORY)]
+    work.file(w, work.story_items(entries), by="launch")
+    w.settle(["STORY-0"], work.DONE, work.STORY)
+    story = work.find(w, STORY)
+    assert story is not None
+    for title in titles:
+        work.file(w, work.follow_up_items(w, story, [{"title": title, "reason": "first"}]), by="dev")
+    sibling = docs / "docs" / "epics" / EPIC / "stories" / "STORY-0"
+    sibling.mkdir(parents=True)
+    (sibling / "story.md").write_text(
+        STORY_MD.replace("STORY-1", "STORY-0"), encoding="utf-8"
+    )
+    return run
+
+
+def test_a_follow_up_the_story_already_holds_is_not_filed_again_and_a_new_one_names_its_escape(
+    tmp_path: Path,
+    docs: Path,
+    workspace: dict[str, Path],
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    """Known titles file nothing under a new reason, and a new one is filed once, tagged with the story it escaped."""
+    known = (
+        "Hide tabs/download when calculation yields zero stages",
+        "Guarantee unique report-panel names",
+    )
+    run = _filed_run(tmp_path, docs, known)
+    agent = _Agent(
+        workspace,
+        follow_ups=(
+            {"title": "Hide tabs and download when calculation yields zero stages", "reason": "again"},
+            {"title": "Guarantee unique report panel names", "reason": "reworded"},
+            {"title": "Reconcile story.md Implementation Status", "reason": "new"},
+        ),
+        escapes_to="STORY-0",
+    )
+    dev = Dev(story=STORY, epic=EPIC, docs_path=str(docs), worklist_dir=str(run))
+
+    drive_flow(dev, env(), agent)
+
+    filed = work.worklist(run).items(work.FOLLOW_UP)
+    assert len(filed) == 3, [it.payload["title"] for it in filed]
+    (fresh,) = [it for it in filed if it.payload["title"].startswith("Reconcile")]
+    assert fresh.payload["escaped_from"] == "STORY-0", fresh
+    assert [it.id for it in work.escapes(work.worklist(run), "STORY-0")] == [fresh.id]
 
 
 def test_a_blocked_turn_in_human_mode_parks_and_resumes_with_the_answer(
