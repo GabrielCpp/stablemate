@@ -16,6 +16,12 @@ def sync_options(
             if cache.get(key) != text:
                 listing.replace_option_prompt(key, text)
         return texts
+    if current and ids[: len(current)] == current:
+        for key, text in items[: len(current)]:
+            if cache.get(key) != text:
+                listing.replace_option_prompt(key, text)
+        listing.add_options([Option(text, id=key) for key, text in items[len(current) :]])
+        return texts
     highlighted = listing.highlighted
     keep = current[highlighted] if highlighted is not None and highlighted < len(current) else ""
     listing.clear_options()

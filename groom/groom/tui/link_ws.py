@@ -115,6 +115,9 @@ class WsLink:
         reply = await asyncio.to_thread(_request, self._base, "POST", path, body)
         return _object(reply, "POST", path)
 
+    async def delete(self, path: str) -> Frame:
+        return _object(await asyncio.to_thread(_request, self._base, "DELETE", path), "DELETE", path)
+
     async def close(self) -> None:
         socket, self._socket = self._socket, None
         if socket is not None:

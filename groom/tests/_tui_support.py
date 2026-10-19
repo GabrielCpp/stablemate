@@ -111,6 +111,8 @@ class FakeLink:
         self.posts: list[str] = []
         self.post_log: list[tuple[str, Frame | None]] = []
         self.post_replies: dict[str, Frame | Exception] = {}
+        self.deletes: list[str] = []
+        self.delete_replies: dict[str, Frame | Exception] = {}
         self.post_handlers: dict[str, Callable[[Frame | None], Awaitable[Frame]]] = {}
         self.accept_send = True
         self.fail_open = False
@@ -165,6 +167,14 @@ class FakeLink:
         if path in self.post_handlers:
             return await self.post_handlers[path](body)
         reply = self.post_replies.get(path, {})
+        if isinstance(reply, Exception):
+            raise reply
+        return reply
+
+    async def delete(self, path: str) -> Frame:
+        self.deletes.append(path)
+        await self._hold(path)
+        reply = self.delete_replies.get(path, {})
         if isinstance(reply, Exception):
             raise reply
         return reply

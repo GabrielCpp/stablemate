@@ -11,7 +11,7 @@ The regions of the terminal client's screen, one module per region. Every server
 - `fleet.py`: the status line, with the filter count, and the run list's row text.
 - `gate.py`: a run's gates: the question as Markdown, the answer box and the send button.
 - `lines.py`: the trail's line widgets: a telemetry line, a collapsible turn and its transcript entries.
-- `options.py`: the keyed sync of an option list, which keeps the highlight by key when rows change.
+- `options.py`: the keyed sync of an option list, which keeps the highlight by key when rows change and appends rows that extend the list without rebuilding it.
 - `palette.py`: the command palette's provider: every run, found by the list filter's haystack, and the tab and rescan commands.
 - `reconcile.py`: the keyed diff that mounts, updates, moves and removes a container's children without a remount.
 - `repo.py`: the repository picker and the base of the two tabs that share the chosen repository.

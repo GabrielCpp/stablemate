@@ -24,6 +24,7 @@ from groom.tui.connection import (
 )
 from groom.tui.link import Frame, Link, LinkError
 from groom.tui.screens.attend import AttendScreen
+from groom.tui.screens.dispatch import DispatchScreen
 from groom.tui.screens.panel import Panel
 from groom.tui.screens.settings import SettingsScreen
 from groom.tui.styles import CSS
@@ -57,6 +58,7 @@ class GroomTui(GroomBase):
         Binding("ctrl+s", "send_answer", "Send"),
         Binding("r", "refresh", "Rescan"),
         Binding("A", "goto('attend')", "Attendant"),
+        Binding("D", "goto('dispatch')", "Dispatch"),
         Binding("S", "goto('settings')", "Settings"),
         Binding("escape", "focus_runs", "Runs", show=False),
         Binding("q", "quit", "Quit"),
@@ -193,6 +195,8 @@ class GroomTui(GroomBase):
     def _panel(self, name: str) -> Panel:
         if name == "settings":
             return SettingsScreen(self.link)
+        if name == "dispatch":
+            return DispatchScreen(self.link)
         entry = client.selected_attendant(self.store) if self.screen is self.main else None
         return AttendScreen(
             self.link, float(self.store.attend.get("rev") or 0.0), str((entry or {}).get("session_id") or "")
@@ -200,7 +204,7 @@ class GroomTui(GroomBase):
 
     def action_goto(self, name: str) -> None:
         current = self.screen
-        wanted = SettingsScreen if name == "settings" else AttendScreen
+        wanted = {"settings": SettingsScreen, "dispatch": DispatchScreen}.get(name, AttendScreen)
         if isinstance(current, wanted) or (current is not self.main and not isinstance(current, Panel)):
             return
         if current is self.main:
