@@ -29,7 +29,8 @@ def _carrier(ref: str, locators: dict) -> dict:
                             checks=[]) | {"required": False}
 
 
-def _journey(steps: list[str], fixture_screens: dict[str, str], doors: dict[str, str]) -> str:
+def _journey(steps: list[str], fixture_screens: dict[str, str], doors: dict[str, str],
+             fixtures: list[dict] | None = None) -> str:
     navigation = _arrival_navigation()
     navigation["policy"]["routes"][OTHER] = []
     navigation["policy"]["doors"] = doors
@@ -38,6 +39,7 @@ def _journey(steps: list[str], fixture_screens: dict[str, str], doors: dict[str,
             f"okf:{_FLOW}:end-state", source=_FLOW, surface="policy",
             steps=[_step(ref, "interaction", "policy") for ref in steps],
             checks=[_located_visible(f"{_SCREEN}#things-table", {"selector": ["#things-table"]})],
+            fixtures=fixtures,
         ),
         _carrier(OPEN_THING, {"on": ["[open-link](#open-link)"], "trigger": ["click"]}),
         _carrier(f"{_SCREEN}#open-link", {"selector": ["#open-link"]}),
@@ -56,6 +58,15 @@ def test_a_first_step_on_arrival_opens_nothing_the_fixture_already_opened() -> N
 
     assert "qa.goto(" not in journey
     assert journey.index('qa.fixture("seeded-ledger")') < journey.index('"#open-link"')
+
+
+def test_a_fixture_that_only_seeds_data_keeps_the_screen_the_fixture_before_it_left() -> None:
+    fixtures = [{"name": name, "args": [], "provides": provides}
+                for name, provides in (("seeded-ledger", "a signed-in user"), ("seeded-rows", "rows"))]
+    journey = _journey([SHOW_LIST, OPEN_THING], {"seeded-ledger": _SCREEN}, {}, fixtures)
+
+    assert "qa.goto(" not in journey
+    assert journey.index('qa.fixture("seeded-rows")') < journey.index('"#open-link"')
 
 
 def test_a_later_step_on_arrival_opens_its_screen_by_its_own_entry() -> None:

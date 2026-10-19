@@ -134,8 +134,11 @@ def _context(fixture_screens: dict[str, str]) -> dict:
             "screenRoutes": {SCREEN: "/policy-list"}, "fixtureScreens": fixture_screens}
 
 
-def _source(fixture_screens: dict[str, str]) -> str:
-    result = compile_plan_gaps(_context(fixture_screens), story="demo-story", base_url=BASE_URL)
+def _source(fixture_screens: dict[str, str], *data_fixtures: str) -> str:
+    context = _context(fixture_screens)
+    context["obligations"][0]["fixturesDeclared"].extend(
+        {"name": name, "args": [], "provides": "rows", "providesKeys": []} for name in data_fixtures)
+    result = compile_plan_gaps(context, story="demo-story", base_url=BASE_URL)
     assert isinstance(result, Plan)
     return result.source
 
@@ -144,6 +147,13 @@ def test_a_fixture_that_left_the_browser_on_the_screen_is_not_navigated_away_fro
     source = _source({"create-form-open": SCREEN})
 
     assert 'qa.fixture("create-form-open")' in source
+    assert "qa.goto(" not in source
+
+
+def test_a_fixture_that_only_seeds_data_keeps_the_screen_the_fixture_before_it_left() -> None:
+    source = _source({"create-form-open": SCREEN}, "seeded")
+
+    assert source.index('qa.fixture("create-form-open")') < source.index('qa.fixture("seeded")')
     assert "qa.goto(" not in source
 
 

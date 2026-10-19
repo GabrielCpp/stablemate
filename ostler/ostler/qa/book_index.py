@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 from dataclasses import field
 
@@ -52,6 +53,12 @@ class BookIndex:
     passages: dict[str, Passage] = field(default_factory=dict[str, Passage])
     data_states: dict[str, DataState] = field(default_factory=dict[str, DataState])
     moves: dict[str, tuple[Move, ...]] = field(default_factory=dict[str, tuple[Move, ...]])
+    browser_fixtures: frozenset[str] = frozenset()
+
+    def left_on(self, names: Sequence[str]) -> str | None:
+        """The screen the last browser fixture of *names* leaves the browser on. A fixture with no browser step, such as one that only seeds data, leaves the browser where the one before it did."""
+        browsing = [name for name in names if name in self.browser_fixtures or name in self.fixture_screens]
+        return self.fixture_screens.get(browsing[-1]) if browsing else None
 
 
 @dataclass(frozen=True)

@@ -267,7 +267,7 @@ def journey_scenarios(
                         for oid in ids)
             continue
         arrangement = arrangement_of(obligations)
-        left_on = plan.book.fixture_screens.get(arrangement.rows[-1].name) if arrangement.rows else None
+        left_on = plan.book.left_on([row.name for row in arrangement.rows])
         walk = JourneyWalk(plan.book, steps, obligations, ids, surface_row(plan.navigation, surface), left_on)
         bound = backend.bind(walk)
         if isinstance(bound, ScenarioRefusal):

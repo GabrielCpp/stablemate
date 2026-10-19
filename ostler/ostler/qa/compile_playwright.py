@@ -408,7 +408,7 @@ def page_observations(
 
 
 def _web_start(walk: JourneyWalk, gaps: list[Gap]) -> list[str] | None:
-    """Open the surface's root and click through to where the journey's first step lives, unless the journey's last fixture already left the browser there or on its route. A fixture that left the browser off the route reopens the nearest entry path on it rather than the root, so the walk does not sign in again."""
+    """Open the surface's root and click through to where the journey's first step lives, unless the journey's last fixture that drives the browser already left it there or on its route. A fixture that left the browser off the route reopens the nearest entry path on it rather than the root, so the walk does not sign in again."""
     first_source = shown_on(walk.steps[0].ref.split("#")[0], walk.nav.routes, walk.book.fragment_hosts)
     if walk.left_on == first_source:
         return []

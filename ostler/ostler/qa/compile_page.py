@@ -384,9 +384,9 @@ def _walk_acts(hops: tuple[NavHop, ...], destination: str, book: BookIndex) -> b
 def _arrive(
     screen: _PageScreen, arranged: list[FixtureRow], gaps: list[Gap], ids: list[str], *, visits: bool = False,
 ) -> list[str] | None:
-    """Arrange the fixtures, then open the surface's root and click through to the screen, unless the scenario's own first act visits it or the last fixture's own browser steps already left it there or on its route. A fixture that left the browser off the route reopens the nearest entry path on it rather than the root, so the walk does not sign in again. With no such entry, a walk from the root that performs acts on the way is refused as a gap, and None is returned: those acts, such as a sign-in, would replace the session the fixture left."""
+    """Arrange the fixtures, then open the surface's root and click through to the screen, unless the scenario's own first act visits it or the last fixture that drives the browser already left it there or on its route. A fixture that left the browser off the route reopens the nearest entry path on it rather than the root, so the walk does not sign in again. With no such entry, a walk from the root that performs acts on the way is refused as a gap, and None is returned: those acts, such as a sign-in, would replace the session the fixture left."""
     fixtures = [fixture_call(row) for row in arranged]
-    landed = screen.book.fixture_screens.get(arranged[-1].name) if arranged else None
+    landed = screen.book.left_on([row.name for row in arranged])
     if visits or landed == screen.screen:
         return fixtures
     onward = hops_from(screen.path.hops, landed)
