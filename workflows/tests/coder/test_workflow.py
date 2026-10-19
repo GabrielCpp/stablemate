@@ -179,6 +179,7 @@ class _StubFlow(Workflow):
     follow_up_title: str = ""
     follow_up_reason: str = ""
     note: str = ""
+    worklist_dir: str = ""
 
 
 class _Sub:
@@ -748,6 +749,8 @@ def test_a_refix_files_qas_findings_and_sends_the_story_back_to_its_dev_owner(
         if it.payload.get("source") == "qa"
     ]
     assert [(f["round"], f["target"]) for f in filed] == [(1, "acme/src/links.py:12")], filed
+    second = sub.calls_to("Dev")[1]
+    assert second.worklist_dir == str(run_env.writer.run_dir), second
 
 
 @pytest.mark.parametrize("status", ["blocked", "failed"])

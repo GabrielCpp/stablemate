@@ -64,6 +64,7 @@ class Dev(Workflow):
     follow_up_reason: str = ""
     note: str = ""
     preexisting: tuple[str, ...] = ()
+    worklist_dir: str = ""
 
     injects: ClassVar[tuple[str, ...]] = paths.AMBIENT
 
@@ -90,15 +91,19 @@ class Dev(Workflow):
         return self.work_id or self.ctx.story_slug
 
     @property
+    def _state_dir(self) -> Path:
+        return Path(self.worklist_dir) if self.worklist_dir else self.run_dir
+
+    @property
     def _worklist(self) -> wl.WorkList:
-        return work.worklist(self.run_dir)
+        return work.worklist(self._state_dir)
 
     def _next_round(self) -> int:
         return work.next_round(self._worklist, self._work_id, "review")
 
     def _rebrief(self) -> str:
         return work.resume_note(
-            self.run_dir, self._work_id, self.ctx.story_path, self.ctx.spec_dir
+            self._state_dir, self._work_id, self.ctx.story_path, self.ctx.spec_dir
         )
 
     def _story_args(self) -> dict[str, Any]:
@@ -142,7 +147,7 @@ class Dev(Workflow):
             | self._story_args()
             | {
                 "resume_note": self._rebrief(),
-                "worklist_path": str(work.worklist_path(self.run_dir)),
+                "worklist_path": str(work.worklist_path(self._state_dir)),
                 "answers_file": str(Path(self.ctx.spec_dir) / ANSWERS_FILE),
                 "review_prefix": f"{self._work_id}/review-{number}.",
                 "follow_up_title": self.follow_up_title,

@@ -16,7 +16,7 @@ from workhorse.pyflow.engine import RunEnv
 
 from workhorse_workflows.coder.dev.flow import Dev
 from workhorse_workflows.coder.shared.owner import MAX_LAPS
-from workhorse_workflows.coder.shared import commits
+from workhorse_workflows.coder.shared import commits, work
 from workhorse_workflows.coder.shared.schemas.dev_story import DevOutcome
 from workhorse_workflows.kit.git import commit_all
 
@@ -150,8 +150,10 @@ class _Agent:
         red: int = 0,
         unanswered: int = 0,
         stray: int = 0,
+        also_fixed: tuple[str, ...] = (),
     ) -> None:
         self.workspace = workspace
+        self.also_fixed = also_fixed
         self.blocked = blocked
         self.red = red
         self.unanswered = unanswered
@@ -213,7 +215,11 @@ class _Agent:
                 "- path: api/links.go\n"
                 f"- test: {TEST_NAME}\n\n"
                 f"## {self.prefix}2: declined\n"
-                "Reason: the story's technical notes keep the validator free of new imports.\n",
+                "Reason: the story's technical notes keep the validator free of new imports.\n"
+                + "".join(
+                    f"\n## {item}: fixed\n- commit: {sha}\n- path: api/links.go\n- test: {TEST_NAME}\n"
+                    for item in self.also_fixed
+                ),
                 encoding="utf-8",
             )
         return {
@@ -320,6 +326,36 @@ def test_an_unanswered_finding_comes_back_named_in_the_report(
     assert f"`{STORY}/review-1.1`" in report, report
     assert f"`{STORY}/review-1.2`" in report, report
     assert f"{STORY}/review-1.1" in str(second["findings"]), second
+
+
+def test_a_finding_qa_filed_in_the_parent_run_reaches_the_dev_turn(
+    tmp_path: Path,
+    docs: Path,
+    workspace: dict[str, Path],
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    """QA files its findings in the calling run's worklist, and the dev turn is shown them and settles them."""
+    parent = tmp_path / "parent-run"
+    qa = {
+        "target": "web/app/routes/reports.tsx:516",
+        "issue": "the empty state still shows the report tabs",
+        "repair": "hide the tabs when no report is calculable",
+        "category": "Bug",
+        "score": 80,
+    }
+    work.file(work.worklist(parent), work.finding_items(STORY, "qa", 1, [qa]), by="qa")
+    agent = _Agent(workspace, also_fixed=(f"{STORY}/qa-1.1",))
+    dev = Dev(story=STORY, epic=EPIC, docs_path=str(docs), worklist_dir=str(parent))
+
+    result = drive_flow(dev, env(), agent)
+
+    (first,) = agent.args_for("dev-story")
+    assert f"{STORY}/qa-1.1" in str(first["findings"]), first
+    assert "the empty state still shows the report tabs" in str(first["findings"]), first
+    assert first["worklist_path"] == str(work.worklist_path(parent)), first
+    assert f"{STORY}/qa-1.1" in result.settled, result
+    assert work.open_findings(work.worklist(parent), STORY) == [], work.worklist(parent).items()
 
 
 def test_a_blocked_turn_in_human_mode_parks_and_resumes_with_the_answer(
