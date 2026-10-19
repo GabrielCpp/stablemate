@@ -66,7 +66,7 @@ def _context(*, loaded_shows: list[str] | None = None, components: dict | None =
         navigation["policy"]["driver"] = "mobile"
         navigation["policy"]["bundleId"] = "com.example.mobile-app"
         navigation["policy"]["launchScreen"] = _SCREEN
-    return _navigation_context(
+    context = _navigation_context(
         _flow_obligation(
             FLOW_ID, source=_FLOW, surface="policy",
             steps=[_step(ref, "state" if "click" not in ref else "interaction", "policy") for ref in walk],
@@ -82,6 +82,9 @@ def _context(*, loaded_shows: list[str] | None = None, components: dict | None =
         *(_component(anchor, role, name) for anchor, (role, name) in parts.items()),
         navigation=navigation,
     )
+    if device:
+        context["screenRoutes"][_SCREEN] = "PolicyList"
+    return context
 
 
 def _compile(context: dict) -> tuple[str, list[Gap]]:
@@ -277,7 +280,7 @@ def test_a_state_no_flow_stops_at_gets_a_one_screen_walk_on_the_web() -> None:
     assert 'expect="error"' in error
     assert f'covers=["{ERROR_ID}"]' in error
     assert LOADED_ID not in error and EMPTY_ID not in error
-    assert "qa.vet(" not in error and "qa.window(" not in error
+    assert error.index("qa.settle(") < error.index(f'qa.vet("{_SCREEN}"') and "qa.window(" not in error
     empty = next(body for name, body in scenarios.items() if name.endswith("empty_settles"))
     assert "qa.fixture(" not in empty
     assert empty.index("mark = qa.mark()") < empty.index("qa.goto(") < empty.index("qa.settle(")
@@ -301,7 +304,18 @@ def test_a_state_walk_on_a_device_launches_cold_and_settles_without_a_request_fe
         assert f'expect="{name}"' in settle
         assert "since=" not in settle and "requests=" not in settle
         assert f'covers=["{expect}"]' in settle
+        assert f'qa.vet("{_SCREEN}")' in settle
     assert 'qa.fixture("results-fail")' in scenarios[next(fn for fn in scenarios if fn.endswith("error_settles"))]
+
+
+def test_a_state_walk_vets_the_screen_it_settled_so_the_harness_takes_its_evidence() -> None:
+    """The harness fails a UI scenario that vetted no screen, so a walk that only settled would never go green."""
+    web, _, _ = _compile_all(_walk_context(error_fixtures=_RESULTS_FAIL))
+    device, _, _ = _compile_all(_walk_context(device=True, error_fixtures=_RESULTS_FAIL))
+    for source in (web, device):
+        for name, body in _scenarios(source).items():
+            if name.endswith("_settles"):
+                assert body.index("qa.settle(") < body.index(f'qa.vet("{_SCREEN}"'), name
 
 
 def test_a_state_with_no_condition_and_no_flow_is_a_gap_naming_the_edit_and_no_scenario() -> None:

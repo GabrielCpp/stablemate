@@ -524,7 +524,7 @@ def device_state_walks(
     states: list[Obligation], book: BookIndex, navigation: dict[str, SurfaceNavigation],
     sinks: PlanSinks, emitted: EmittedScenarios,
 ) -> list[str]:
-    """One scenario per screen state no flow stopped at: arrange its condition, launch cold, tap to its screen and settle it."""
+    """One scenario per screen state no flow stopped at: arrange its condition, launch cold, tap to its screen, settle it and vet it there."""
     gaps = sinks.gaps
     lines: list[str] = []
     for state in sorted(states, key=lambda o: o.id):
@@ -555,6 +555,9 @@ def device_state_walks(
         body = [
             f"    qa.maestro.run(qa.spec_dir / {python_literal(flow_path)}, require=True)",
             *_settle_lines(stop, f"settles in {trailing_comment(stop.title)}"),
+            *(f"    qa.vet({python_literal(document)})"
+              for document in vettable([page], book.screen_routes, [state.id], gaps,
+                                       mobile=True, hosts=book.fragment_hosts)),
         ]
         emitted.covered.add(state.id)
         target_var = target_variable(state.surface, "mobile")
