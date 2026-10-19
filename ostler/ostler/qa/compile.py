@@ -554,6 +554,7 @@ def _compile_packet(
         server_origins=packet.server_origins,
         fixture_screens=packet.fixture_screens,
         fixture_launch_screens=packet.fixture_launch_screens,
+        fixture_needs=packet.fixture_needs,
         states_by_screen=book_index_mod.states_by_screen(carried),
         passages=packet.passages,
         data_states=packet.data_states,

@@ -388,7 +388,8 @@ def mobile_scenarios(
         launch = maestro_launch(surface_row(navigation, surface))
         if not isinstance(launch, ScenarioRefusal):
             launch = fixture_launch(
-                launch, (row.name for o in obligations for row in o.fixtures), book.fixture_launch_screens)
+                launch, (row.name for o in obligations for row in o.fixtures), book.fixture_launch_screens,
+                book.fixture_needs)
         if isinstance(launch, ScenarioRefusal):
             sinks.gaps.extend(Gap(o.id, launch.kind, launch.detail) for o in obligations)
             continue
@@ -533,7 +534,8 @@ def device_state_walks(
             continue
         launch = maestro_launch(surface_row(navigation, state.surface))
         if not isinstance(launch, ScenarioRefusal):
-            launch = fixture_launch(launch, (row.name for row in state.fixtures), book.fixture_launch_screens)
+            launch = fixture_launch(
+                launch, (row.name for row in state.fixtures), book.fixture_launch_screens, book.fixture_needs)
         if isinstance(launch, ScenarioRefusal):
             gaps.append(Gap(state.id, launch.kind, launch.detail))
             continue

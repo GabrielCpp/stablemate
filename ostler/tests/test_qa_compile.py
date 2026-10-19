@@ -6072,6 +6072,20 @@ def test_two_fixtures_that_open_the_app_on_different_screens_gap_the_claim() -> 
     assert "fixture-launch-screen-conflict" in _gap_kinds(result.gaps, oid)
 
 
+def test_a_fixture_built_on_another_opens_the_app_on_its_own_launch_screen() -> None:
+    context, oid, launch = _device_fixture_probe({})
+    context["fixtureLaunchScreens"] = {"seeded-ledger": _SCREEN, "signed-in": launch}
+    context["fixtureNeeds"] = {"seeded-ledger": ["signed-in"]}
+    context["obligations"][0]["fixturesDeclared"].insert(0, {"name": "signed-in", "args": [], "provides": "a session"})
+
+    result = _compile_plan_gaps(context, story="demo-story")
+    assert isinstance(result, Plan)
+    assert _gap_kinds(result.gaps, oid) == []
+    commands = _probe_flow(result)
+    assert commands[0] == "launchApp"
+    assert {"tapOn": {"id": "probe-link"}} not in commands
+
+
 def test_a_mobile_journey_starting_on_the_launch_screen_compiles_end_to_end() -> None:
     """The globex shape, pinned directly: a journey whose *first* step's own page is the surface's settled `launch-screen:` still walks and compiles a flow — exercising `_maestro_journey`'s own first-step-only check, which the standalone obligation path `_built_target_probe_maestro` drives never reaches."""
     oid = f"okf:{_FLOW}:end-state"
