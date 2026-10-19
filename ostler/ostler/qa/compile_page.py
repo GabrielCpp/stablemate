@@ -294,12 +294,13 @@ def _state_walk(
         *_scenario_head(screen.target_var, [state.id], covered,
                         [python_literal(row.precondition) for row in arranged.rows]),
         f"def {function_name}(qa: Qa) -> None:",
-        f'    """Arrive at {shown_on} via the book\'s own navigation and check it settles in {title}."""',
+        f'    """Arrive at {shown_on} via the book\'s own navigation, check it settles in {title} and vet it there."""',
         "",
         *arrival[:opening],
         MARK_LINE,
         *arrival[opening:],
         *settle_lines(stop, f"settles in {trailing_comment(stop.title)}"),
+        *vet_calls([page], book.screen_routes, [state.id], gaps, book.fragment_hosts),
     ]
 
 
@@ -307,7 +308,7 @@ def web_state_walks(
     states: list[Obligation], book: BookIndex, navigation: dict[str, SurfaceNavigation],
     sinks: PlanSinks, emitted: EmittedScenarios,
 ) -> list[str]:
-    """One scenario per screen state no flow stopped at: arrange its condition, open its screen, settle it."""
+    """One scenario per screen state no flow stopped at: arrange its condition, open its screen, settle it and vet it there."""
     lines_by_surface: dict[str, list[str]] = {}
     for state in sorted(states, key=lambda o: o.id):
         if not book.resolved_web_base_urls.get(state.surface):
