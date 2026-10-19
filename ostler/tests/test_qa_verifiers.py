@@ -386,6 +386,18 @@ def test_visible_still_fails_on_text_neither_reading_carries() -> None:
     assert verdict.passed is False
 
 
+def test_visible_takes_an_observers_own_verdict_without_reading_a_text_from_it() -> None:
+    """A device flow asserts the text itself and hands back only whether it held, so the harness reports that verdict instead of spelling a boolean as the text it saw."""
+    passed = harness.VERIFIERS["visible"](True, {"locator": "#skip", "text": "Skip"})
+    assert passed.passed is True
+    assert passed.actual == {"visible": True}
+    assert passed.expected == {"visible": True, "text": "Skip"}
+    failed = harness.VERIFIERS["visible"](False, {"locator": "#skip", "text": "Skip"})
+    assert failed.passed is False
+    assert failed.actual == {"visible": False}
+    assert harness.VERIFIERS["visible"]("A1 free", {"text": "free"}).actual == {"visible": True, "text": "A1 free"}
+
+
 class _Matches:
     """Every element a locator matches, each shown or not, and the ones that stop being shown once read *leaves_after* times."""
 

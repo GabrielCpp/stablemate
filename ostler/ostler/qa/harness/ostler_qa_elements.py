@@ -45,12 +45,13 @@ def _readings(observed: object) -> tuple[str, ...]:
 
 @dataclass(frozen=True)
 class VisibilityReading:
-    """Whether the subject is shown, every spelling of its text when the check reads text, and how many are shown when it counts."""
+    """Whether the subject is shown, every spelling of its text when the check reads text, and how many are shown when it counts. An observer that asserted the text itself, such as a device flow, hands back only its verdict."""
 
     shown: bool
     readings: tuple[str, ...]
     count: int | None = None
     absent_at: str | None = None
+    asserted: bool = False
 
 
 COUNT_WAIT_S = 3.0
@@ -90,6 +91,8 @@ def read_visibility(observed: object, args: Args) -> VisibilityReading:
             return VisibilityReading(shown=False, readings=(), absent_at=_page_path(observed))
         shown = shown or bool(is_visible())
         return VisibilityReading(shown=shown, readings=_readings(observed) if shown and "text" in args else ())
+    if isinstance(observed, bool):
+        return VisibilityReading(shown=observed, readings=(), asserted=True)
     readings = (str(observed),) if "text" in args and observed is not None else ()
     return VisibilityReading(shown=bool(observed), readings=readings)
 
@@ -102,6 +105,8 @@ def verify_visible(reading: VisibilityReading, args: Args) -> Verdict:
         return verdict(False, {"present": False, "at": reading.absent_at}, expected)
     if "text" not in args:
         return verdict(reading.shown, {"visible": reading.shown}, {"visible": True})
+    if reading.asserted:
+        return verdict(reading.shown, {"visible": reading.shown}, {"visible": True, "text": str_arg(args, "text")})
     text = reading.readings[0] if reading.readings else None
     contains = reading.shown and any(str_arg(args, "text") in each for each in reading.readings)
     return verdict(contains, {"visible": reading.shown, "text": text}, {"visible": True, "text": str_arg(args, "text")})
