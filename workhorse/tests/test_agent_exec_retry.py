@@ -179,6 +179,37 @@ def test_install_swaps_the_supervisor_and_hands_back_the_old_one():
     assert process._supervisor is previous
 
 
+def test_missing_cwd_fails_nontransient_without_spending_the_exec_budget(tmp_path):
+    """THE book-app-1 regression: the writer's book folder vanished under a rebase mid-turn, Popen raised ENOENT for the cwd, and the spawn loop read it as a self-updating CLI, slept through the whole exec-retry budget and reported that budget instead of the missing folder."""
+    gone = tmp_path / "docs" / "features" / "app"
+    fake = _PopenFailing(99, errno.ENOENT)
+    supervisor, clock = _supervisor()
+    with patch.object(process.subprocess, "Popen", fake), \
+         patch.object(process.shutil, "which", return_value="/x/claude"):
+        try:
+            supervisor.spawn(["claude", "-p"], "n", resilience=RESILIENCE, cwd=str(gone))
+            raise AssertionError("expected BackendInvocationError for a missing cwd")
+        except BackendInvocationError as exc:
+            assert exc.transient is False
+            assert str(gone) in str(exc)
+            assert "working directory" in str(exc)
+    assert fake.calls["n"] == 1
+    assert clock.slept == []
+
+
+def test_enoent_with_a_present_cwd_is_still_the_self_update_retry(tmp_path):
+    """A cwd that exists leaves ENOENT meaning what it meant: the executable is mid-rename, so the bounded retry still runs."""
+    proc = MagicMock()
+    fake = _PopenFailing(2, errno.ENOENT, ok=proc)
+    supervisor, clock = _supervisor()
+    with patch.object(process.subprocess, "Popen", fake), \
+         patch.object(process.shutil, "which", return_value="/x/claude"):
+        got = supervisor.spawn(["claude", "-p"], "n", resilience=RESILIENCE, cwd=str(tmp_path))
+    assert got is proc
+    assert fake.calls["n"] == 3
+    assert len(clock.slept) == 2
+
+
 if __name__ == "__main__":
     fns = [v for k, v in sorted(globals().items()) if k.startswith("test_") and callable(v)]
     failed = 0
