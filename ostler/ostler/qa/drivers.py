@@ -34,6 +34,7 @@ from ostler.qa.harness_host import (
     harness_argv,
     harness_env,
 )
+from ostler.qa.maestro_sessions import SESSION_STORE, retire_dead_sessions
 from ostler.qa.session import QaSession, _redact_bytes
 from ostler.vet import placement
 from ostler.vet.regions import RegionList
@@ -871,8 +872,9 @@ class Launcher:
 class LocalLauncher(Launcher):
     """A subprocess on this machine, under the project's own interpreter."""
 
-    def __init__(self, kill_grace: float = KILL_GRACE_S) -> None:
+    def __init__(self, kill_grace: float = KILL_GRACE_S, session_store: Path = SESSION_STORE) -> None:
         self.kill_grace = kill_grace
+        self.session_store = session_store
 
     def preflight(self, driver: PythonDriver) -> None:
         interpreter = driver.interpreter()
@@ -931,6 +933,7 @@ class LocalLauncher(Launcher):
         except subprocess.TimeoutExpired:
             _kill_group(process, self.kill_grace)
             output_raw, _ = process.communicate()
+            retire_dead_sessions(self.session_store)
             timed_out = True
         reader.join(timeout=5)
         if timed_out or not any(record.get("type") == "scenario" for record in records):
