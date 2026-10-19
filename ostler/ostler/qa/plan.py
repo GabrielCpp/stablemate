@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ast
 import json
 import os
 import re
@@ -84,6 +85,53 @@ def load_plan(plan_file: Path, spec_dir: Path, root: Path) -> tuple[PlanDocument
         return None, [context]
     data["obligationDocuments"] = _obligation_documents(context)
     return PlanDocument(resolved_plan, spec_dir, root, data, context), problems
+
+
+def scenario_covers(plan_file: Path) -> dict[str, list[str]]:
+    """Each scenario id of a `qa_plan.py` → the ids its `covers=` and its checks' `covers=` bind, read from the source without running it."""
+    try:
+        source = plan_file.read_text(encoding="utf-8")
+        tree = ast.parse(source)
+    except (OSError, SyntaxError, ValueError):
+        return {}
+    check_covers = _plan_harness.extract_check_covers(source)
+    found: dict[str, list[str]] = {}
+    for node in tree.body:
+        if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            continue
+        for decorator in node.decorator_list:
+            if not isinstance(decorator, ast.Call) or _decorator_name(decorator) != "scenario":
+                continue
+            keywords = {kw.arg: kw.value for kw in decorator.keywords if kw.arg}
+            written = keywords.get("id")
+            scenario_id = (
+                written.value
+                if isinstance(written, ast.Constant) and isinstance(written.value, str)
+                else node.name.replace("_", "-")
+            )
+            ids = _literal_strings(keywords.get("covers")) + check_covers.get(node.name, [])
+            found[scenario_id] = list(dict.fromkeys(i for i in ids if i != COMPUTED))
+    return found
+
+
+def _decorator_name(call: ast.Call) -> str:
+    """The bare name a decorator call is written under: `scenario` for `scenario(...)` and `qa.scenario(...)`."""
+    if isinstance(call.func, ast.Name):
+        return call.func.id
+    if isinstance(call.func, ast.Attribute):
+        return call.func.attr
+    return ""
+
+
+def _literal_strings(node: ast.expr | None) -> list[str]:
+    """The string literals a list or tuple expression holds, skipping every element that is not one."""
+    if not isinstance(node, (ast.List, ast.Tuple)):
+        return []
+    return [
+        element.value
+        for element in node.elts
+        if isinstance(element, ast.Constant) and isinstance(element.value, str)
+    ]
 
 
 def _read_context(context_path: Path) -> dict[str, Any] | str:
