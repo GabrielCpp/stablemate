@@ -179,8 +179,8 @@ def test_an_unknown_server_language_falls_back_to_a_guessed_lexer():
             await open_files(app, pilot, link)
             app.query_one("#files-tree", Tree).select_node(ch.tree_leaf(app, "src", "app.py"))
             await support.until(lambda: ch.code_of(app, "#file-view") == "x = 1")
-            colours = {span.style for line in app.query_one("#file-view", CodeView).lines for span in line.spans}
-            assert colours
+            view = app.query_one("#file-view", CodeView)
+            await support.until(lambda: any(line.spans for line in view.lines))
 
     ch.run(scenario)
 
