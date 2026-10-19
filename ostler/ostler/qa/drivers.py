@@ -39,6 +39,8 @@ from ostler.vet import placement
 from ostler.vet.regions import RegionList
 
 
+KILL_GRACE_S = 10.0
+
 _KILLED_HINT = (
     f", killed before its timeout: it likely passed the {SCENARIO_MEMORY_MAX} memory cap a "
     "scenario runs under"
@@ -869,6 +871,9 @@ class Launcher:
 class LocalLauncher(Launcher):
     """A subprocess on this machine, under the project's own interpreter."""
 
+    def __init__(self, kill_grace: float = KILL_GRACE_S) -> None:
+        self.kill_grace = kill_grace
+
     def preflight(self, driver: PythonDriver) -> None:
         interpreter = driver.interpreter()
         if not interpreter.exists():
@@ -924,7 +929,7 @@ class LocalLauncher(Launcher):
         try:
             output_raw, _ = process.communicate(json.dumps(context).encode(), timeout=timeout)
         except subprocess.TimeoutExpired:
-            _kill_group(process)
+            _kill_group(process, self.kill_grace)
             output_raw, _ = process.communicate()
             timed_out = True
         reader.join(timeout=5)
@@ -955,10 +960,33 @@ def stop_servers(records: list[dict[str, Any]]) -> None:
             continue
 
 
-def _kill_group(process: subprocess.Popen[bytes]) -> None:
-    """SIGKILL the whole process group: a scenario's own children outlive it otherwise."""
+def _kill_group(process: subprocess.Popen[bytes], grace: float) -> None:
+    """SIGTERM the whole process group, then SIGKILL what is still there after `grace` seconds.
+
+    A scenario's own children outlive it otherwise, and a child that holds something no signal
+    frees must get the chance to let go: a Maestro CLI releases the driver it started on the
+    device only while it exits on its own, and a CLI killed outright leaves every CLI after it
+    unable to reach that driver for minutes.
+    """
     try:
-        os.killpg(os.getpgid(process.pid), signal.SIGKILL)
+        pgid = os.getpgid(process.pid)
+        os.killpg(pgid, signal.SIGTERM)
+    except (ProcessLookupError, PermissionError):
+        process.kill()
+        return
+    deadline = time.monotonic() + grace
+    try:
+        process.wait(timeout=grace)
+    except subprocess.TimeoutExpired:
+        pass
+    while time.monotonic() < deadline:
+        try:
+            os.killpg(pgid, 0)
+        except ProcessLookupError:
+            return
+        time.sleep(0.1)
+    try:
+        os.killpg(pgid, signal.SIGKILL)
     except (ProcessLookupError, PermissionError):
         process.kill()
 
