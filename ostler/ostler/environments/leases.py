@@ -29,11 +29,11 @@ def books_near(root: Path, near: Path | None = None) -> list[str]:
 
 def run_env(root: Path, lease: str = "", near: Path | None = None,
             holder: int | None = None) -> dict[str, str] | None:
-    """The lease, its holder and the address book a command run against the copy finds in its environment."""
+    """The copy's name, its holder and the address book a command run against the copy finds in its environment, the shared copy's without a lease."""
     if not books_near(root, near):
         return None
     copy = runtime.copy_for(root, lease or SHARED)
-    env = {addresses.LEASE_ENV: lease} if lease else {}
+    env = {addresses.LEASE_ENV: lease or SHARED}
     if lease and holder:
         env[runtime.HOLDER_ENV] = str(holder)
     env[addresses.BOOK_ENV] = str(copy.directory / runtime.ADDRESSES)

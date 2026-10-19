@@ -7,6 +7,7 @@ from pathlib import Path
 import pytest
 
 from ostler.environments import runtime
+from ostler.environments.render import SHARED
 from ostler.qa import addresses
 from workhorse_workflows.okf_book.shared import book_run
 from workhorse_workflows.okf_book.shared.book_run import StackReadiness, copy_env, run_plan
@@ -29,7 +30,7 @@ def test_a_book_with_a_stack_file_runs_against_the_shared_copys_address_book(tmp
 
     book = runtime.copy_for(root).directory / runtime.ADDRESSES
 
-    assert copy_env(root, "web") == {addresses.BOOK_ENV: str(book)}
+    assert copy_env(root, "web") == {addresses.LEASE_ENV: SHARED, addresses.BOOK_ENV: str(book)}
 
 
 def test_a_book_no_stack_file_covers_adds_nothing_to_the_environment(tmp_path: Path) -> None:

@@ -334,6 +334,15 @@ def test_a_command_run_under_a_lease_names_its_holder(
         runtime.holder_stamp(os.getpid())
 
 
+def test_a_command_run_without_a_lease_names_the_shared_copy(tmp_path: Path) -> None:
+    root = _repo(tmp_path)
+    env = leases.run_env(root)
+    assert env == {
+        addresses.LEASE_ENV: render_mod.SHARED,
+        addresses.BOOK_ENV: str(runtime.copy_for(root, render_mod.SHARED).directory / runtime.ADDRESSES),
+    }
+
+
 def test_the_book_near_the_run_is_the_only_one_brought_up(tmp_path: Path) -> None:
     root = _repo(tmp_path)
     assert leases.books_near(root, root / FEATURES / "api" / "ops") == ["api"]
