@@ -201,11 +201,11 @@ re-exports the public surface of all of the above (`cmd_run`, `cmd_compile_plan`
 - code: ostler/ostler/qa/stack.py::teardown_stack@10c66bad65f4
 - code: ostler/ostler/qa/stack.py::boot_app@10c66bad65f4
 - code: ostler/ostler/qa/stack.py::health_probe@10c66bad65f4
-- code: ostler/ostler/qa/runbook.py::select_runbook@f96aea5d3733
-- code: ostler/ostler/qa/runbook.py::select_stack@f96aea5d3733
-- code: ostler/ostler/qa/runbook.py::select_server@f96aea5d3733
-- code: ostler/ostler/qa/runbook.py::step_command@f96aea5d3733
-- code: ostler/ostler/qa/runbook.py::stack_runbooks@f96aea5d3733
+- code: ostler/ostler/qa/runbook.py::select_runbook@b0b4e9245916
+- code: ostler/ostler/qa/runbook.py::select_stack@b0b4e9245916
+- code: ostler/ostler/qa/runbook.py::select_server@b0b4e9245916
+- code: ostler/ostler/qa/runbook.py::step_command@b0b4e9245916
+- code: ostler/ostler/qa/runbook.py::stack_runbooks@b0b4e9245916
 - code: ostler/ostler/qa/__init__.py@16c3e096e515
 - detail: [ostler](../cli.md)
 - detail: [Compiling a book into a QA plan](compiling-a-book-into-a-qa-plan.md)

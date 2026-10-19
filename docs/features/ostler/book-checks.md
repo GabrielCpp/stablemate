@@ -61,7 +61,7 @@ checkout, with `-C book-scratch`, so the real books never decide the outcome.
 - code: ostler/ostler/qa/journey_steps.py::journey_steps@0794ea6c9659
 - code: ostler/ostler/qa/obligation_frame.py::book_nodes@c6e8278e4f37
 - code: ostler/ostler/qa/references.py::find_references@087a925ce811
-- code: ostler/ostler/qa/runbook.py::has_served_surface@f96aea5d3733
+- code: ostler/ostler/qa/runbook.py::has_served_surface@b0b4e9245916
 - code: ostler/ostler/qa/sensitivity.py::report@bc503e0d42f7
 - code: ostler/ostler/qa/harness/ostler_qa_responses.py::read_exit@1d4c7f6bc802
 - code: ostler/ostler/qa/harness/ostler_qa_verdicts.py::recorded@6473ea39a89f
@@ -266,7 +266,7 @@ checkout, with `-C book-scratch`, so the real books never decide the outcome.
 - fixture: none, because the groom book is tracked in the repo and holds one screen
 - code: ostler/ostler/reach.py::literal_entries@9d242d10b584
 - code: ostler/ostler/routes.py::entry_address@778f9d4fb9ed
-- code: ostler/ostler/qa/runbook.py::bullet_text@f96aea5d3733
+- code: ostler/ostler/qa/runbook.py::bullet_text@b0b4e9245916
 - code: ostler/ostler/registry.py::base_type@cd37e79abc8c
 
 ### ostler-locators
