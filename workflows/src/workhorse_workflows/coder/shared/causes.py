@@ -38,8 +38,10 @@ def cause_question(reports: Mapping[str, str], causes: Mapping[str, str]) -> Que
     return Question(
         kind="cause",
         ask=(
-            "Which known cause does each report describe: the same user-visible defect, "
-            "broken in the same way, whatever the wording?"
+            "Which known cause does each report describe? A report and a cause are one "
+            "cause when a person using the app would see the same thing go wrong on the "
+            "same screen. A different story, criterion number, trigger wording, evidence "
+            "or proposed fix does not make it a different cause."
         ),
         subjects=dict(reports),
         context=dict(causes),
