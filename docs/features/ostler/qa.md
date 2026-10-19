@@ -48,9 +48,13 @@ are written, because each later command reads what an earlier one wrote.
 - verify: json_path(path="status", equals="passed")
 - verify: json_path(path="changedCode[0].path", equals="src/demo.py")
 - verify: contents(subject="qa-scratch/art/specs/s1/qa-okf-context.json", matches="\"base\": \"HEAD\"")
+- verify: contents(subject="qa-scratch/art/specs/s1/qa-okf-context.json", matches="\"name\": \"greeting\"")
+- verify: contents(subject="qa-scratch/art/specs/s1/qa-okf-context.json", matches="\"from\": \"stdout\"")
+- verify: contents(subject="qa-scratch/art/specs/s1/qa-okf-context.json", matches="names no source")
 - fixture: [qa scratch repo](fixtures/qa-scratch-repo.md) with a QA scratch repo with one changed
   source file and a plan under spec s1
 - code: ostler/ostler/qa/book_index.py::captures_by_node@34df4e06f504
+- code: ostler/ostler/qa/captures.py::CaptureDecl/parse_bullet@248120ebb77f
 - code: ostler/ostler/qa/compile.py::annotate_deferred_obligations@0cb8f8e9d882
 - code: ostler/ostler/qa/compile_cli.py::cli_scenario_body@003bdbe757de
 - code: ostler/ostler/qa/compile_http.py::api_scenarios@7b561de0b90a
@@ -72,7 +76,7 @@ are written, because each later command reads what an earlier one wrote.
 - code: ostler/ostler/qa/owners.py::book_relative@de26fdbd12b7
 - code: ostler/ostler/qa/packet.py::packet_of@b67a80c9a6e3
 - code: ostler/ostler/qa/plan_source.py::arrangement_of@fa73bba2be06
-- code: ostler/ostler/qa/runbook.py::bullet_text@f96aea5d3733
+- code: ostler/ostler/qa/runbook.py::bullet_text@b0b4e9245916
 - detail: [Compiling a book into a QA plan](concepts/compiling-a-book-into-a-qa-plan.md)
 
 ### ostler-qa-context-validate
@@ -132,6 +136,34 @@ are written, because each later command reads what an earlier one wrote.
 - code: ostler/ostler/qa/outcome.py::QaOutcome@a11c201f424c
 - code: ostler/ostler/qa/packet.py::packet_of@b67a80c9a6e3
 - code: ostler/ostler/qa/plan_source.py::arrangement_of@fa73bba2be06
+
+### ostler-qa-context-web-journey
+- usage: ostler qa context --base BASE --spec SPEC --json, BASE naming a commit before a screen's
+  interaction and state both changed production code on a `driver: web` surface
+- exits: 0 when the packet is built and no health finding is an error
+- run: invoke(argv=["-C", "qa-web-scratch", "qa", "context", "--base", "HEAD", "--spec", "s1", "--json"], env={"STABLEMATE_ARTIFACTS_DIR": "qa-web-scratch/art", "GIT_DIR": "repo.git"})
+- verify: exit_status(code=0)
+- verify: json_path(path="available", equals=true)
+- verify: json_path(path="status", equals="passed")
+- verify: json_path(path="changedCode[0].path", equals="src/frontend.py")
+- fixture: [qa web journey repo](fixtures/qa-web-journey-repo.md)
+- code: ostler/ostler/qa/context.py::book_files@ae1dfb851ad2
+- code: ostler/ostler/qa/dispatch.py::claim_driver@d44c624e5b21
+
+### ostler-qa-compile-plan-web-journey
+- usage: ostler qa compile-plan --spec SPEC --out PATH --json, SPEC naming a packet whose flow
+  walks a screen's interaction into a screen state on a `driver: web` surface
+- exits: 0 when the plan compiles
+- run: invoke(argv=["-C", "qa-web-scratch", "qa", "compile-plan", "--spec", "s1", "--out", "art/specs/s1/qa_plan_compiled.py", "--json"], env={"STABLEMATE_ARTIFACTS_DIR": "qa-web-scratch/art", "GIT_DIR": "repo.git"})
+- verify: exit_status(code=0)
+- verify: json_path(path="status", equals="passed")
+- verify: contents(subject="qa-web-scratch/art/specs/s1/qa_plan_compiled.py", matches="qa\\.by_role\\(\"button\", name=\"Open\"\\)")
+- verify: contents(subject="qa-web-scratch/art/specs/s1/qa_plan_compiled.py", matches="qa\\.settle\\(")
+- fixture: [qa web journey repo](fixtures/qa-web-journey-repo.md)
+- code: ostler/ostler/qa/compile_playwright.py::web_walk@0f1323f2699e
+- code: ostler/ostler/qa/compile_playwright.py::page_locator_expr@0f1323f2699e
+- code: ostler/ostler/qa/compile_stops.py::resolve_state@4daf7645d9c5
+- code: ostler/ostler/qa/compile_stops.py::perceivable@4daf7645d9c5
 
 ### ostler-qa-lint
 - usage: ostler qa lint PLAN [--json]: lints a qa_plan.py by its syntax tree, without importing or
@@ -218,6 +250,39 @@ are written, because each later command reads what an earlier one wrote.
 - code: ostler/ostler/qa/verdict.py::judge@667c513201c2
 - code: ostler/ostler/untyped.py::is_mapping@c964a61d4a94
 - code: ostler/ostler/util.py::is_mapping@6c753ed2df8c
+- detail: [Running and reporting a QA run](concepts/running-and-reporting-a-qa-run.md)
+
+### ostler-qa-run-playwright-target
+- usage: ostler qa run PLAN --json, PLAN naming a target whose driver is `playwright` — a run
+  opens that target's browser before its one scenario's body ever runs, so declaring the driver
+  is the whole claim
+- args: none
+- exits: 1 when the scenario cannot record a passing check, which is every outcome short of a
+  real browser opening a real page
+- run: invoke(argv=["-C", "qa-scratch", "qa", "run", "art/specs/s1/qa_plan_browser.py", "--json"], env={"STABLEMATE_ARTIFACTS_DIR": "qa-scratch/art", "STABLEMATE_CONFIG": "qa-scratch/qa.toml", "GIT_DIR": "repo.git"})
+- verify: exit_status(code=1)
+- fixture: [qa scratch repo](fixtures/qa-scratch-repo.md) with a QA scratch repo with one changed
+  source file and a plan under spec s1
+- fixture: [qa browser scratch plan](fixtures/qa-browser-scratch-plan.md)
+- code: ostler/ostler/qa/harness/ostler_qa.py::_open_browser@5e8e1ba15732
+- code: ostler/ostler/qa/harness/ostler_qa_browser.py::Browser@27603f8dc6e3
+- detail: [Running and reporting a QA run](concepts/running-and-reporting-a-qa-run.md)
+
+### ostler-qa-run-maestro-target
+- usage: ostler qa run PLAN --json, PLAN naming a target whose driver is `maestro` — settling a
+  screen on that target reads the device through the `maestro hierarchy` CLI, so the claim that
+  settles is the whole claim
+- args: none
+- exits: 1 when the claim that settles raises before any state it names is ever checked, which
+  is every outcome short of a real device answering `maestro hierarchy`
+- run: invoke(argv=["-C", "qa-scratch", "qa", "run", "art/specs/s1/qa_plan_device.py", "--json"], env={"STABLEMATE_ARTIFACTS_DIR": "qa-scratch/art", "STABLEMATE_CONFIG": "qa-scratch/qa.toml", "GIT_DIR": "repo.git"})
+- verify: exit_status(code=1)
+- fixture: [qa scratch repo](fixtures/qa-scratch-repo.md) with a QA scratch repo with one changed
+  source file and a plan under spec s1
+- fixture: [qa maestro scratch plan](fixtures/qa-maestro-scratch-plan.md)
+- code: ostler/ostler/qa/harness/ostler_qa.py::settle@5e8e1ba15732
+- code: ostler/ostler/qa/harness/ostler_qa_hierarchy.py::DeviceScreen@421f8aef3352
+- code: ostler/ostler/qa/harness/ostler_qa_hierarchy.py::_maestro_hierarchy@421f8aef3352
 - detail: [Running and reporting a QA run](concepts/running-and-reporting-a-qa-run.md)
 
 ### ostler-qa-report
@@ -357,7 +422,7 @@ are written, because each later command reads what an earlier one wrote.
   source file and a plan under spec s1
 - code: ostler/ostler/environments/leases.py::books_near@479047ef621a
 - code: ostler/ostler/qa/outcome.py::QaOutcome@a11c201f424c
-- code: ostler/ostler/qa/runbook.py::cmd_stack_up@f96aea5d3733
+- code: ostler/ostler/qa/runbook.py::cmd_stack_up@b0b4e9245916
 
 ### ostler-qa-stack-down
 - usage: ostler qa stack down: runs the teardown recipe the book declares
@@ -369,7 +434,23 @@ are written, because each later command reads what an earlier one wrote.
   source file and a plan under spec s1
 - code: ostler/ostler/environments/leases.py::books_near@479047ef621a
 - code: ostler/ostler/qa/outcome.py::QaOutcome@a11c201f424c
-- code: ostler/ostler/qa/runbook.py::cmd_stack_down@f96aea5d3733
+- code: ostler/ostler/qa/runbook.py::cmd_stack_down@b0b4e9245916
+
+### ostler-qa-stack-up-no-probe
+- usage: ostler qa stack up: brings a runbook with no `entry-url:` up by its launch command's
+  own exit code, since there is no HTTP probe to poll
+- exits: 0 when the launch command exits zero (a blocking bring-up handed off to something
+  this run does not own)
+- run: invoke(argv=["-C", "qa-stack-scratch", "qa", "stack", "up"])
+- verify: exit_status(code=0)
+- verify: stdout(matches="^stack brought up and healthy at \\(no entry url\\)$")
+- fixture: [qa stack no-probe repo](fixtures/qa-stack-no-probe-repo.md) — a runbook whose one
+  service step launches `true` and declares no `entry-url:`
+- code: ostler/ostler/qa/runbook.py::cmd_stack_up@b0b4e9245916
+- code: ostler/ostler/qa/stack.py::ensure_stack@10c66bad65f4
+- code: ostler/ostler/qa/stack.py::boot_app@10c66bad65f4
+- code: ostler/ostler/qa/stack.py::_boot_without_probe@10c66bad65f4
+- code: ostler/ostler/_vendor/stablemate_core/clock.py::SYSTEM_CLOCK@99322cfda640
 
 ### ostler-qa-start
 - usage: ostler qa start RUN_ID --story STORY --spec SPEC [--env KEY=VALUE] [--daemon NAME:ARGV]:

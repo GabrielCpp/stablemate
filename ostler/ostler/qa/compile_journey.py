@@ -140,7 +140,8 @@ def _journey_backends(walkers: JourneyWalkers) -> dict[str, JourneyBackend]:
         if isinstance(launch, ScenarioRefusal):
             return launch
         launch = fixture_launch(
-            launch, (row.name for o in walk.obligations for row in o.fixtures), walk.book.fixture_launch_screens)
+            launch, (row.name for o in walk.obligations for row in o.fixtures), walk.book.fixture_launch_screens,
+            walk.book.fixture_needs)
         if isinstance(launch, ScenarioRefusal):
             return launch
         return BoundJourney(target_variable(walk.nav.surface, "mobile"), f", app_id={python_literal(launch.bundle_id)}",

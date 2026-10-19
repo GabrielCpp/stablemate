@@ -406,6 +406,7 @@ def build_context(
         "browserFixtures": _browser_fixtures(snapshot.book),
         "fixtureScreens": _fixture_screens(snapshot.head_graph, snapshot.book),
         "fixtureLaunchScreens": _fixture_launch_screens(snapshot.head_dump),
+        "fixtureNeeds": {stem: sorted(needs) for stem, needs in _fixture_needs_index(snapshot.book).items() if needs},
         "fragmentHosts": _fragment_hosts(snapshot.book),
         "passages": _passages(snapshot.book, selection.contracts | selection.journeys),
         "dataStates": _data_states(snapshot.book),

@@ -205,9 +205,12 @@ def maestro_launch(nav: SurfaceNavigation) -> MaestroLaunch | ScenarioRefusal:
 
 def fixture_launch(
     launch: MaestroLaunch, fixtures: Iterable[str], screens: Mapping[str, str],
+    needs: Mapping[str, frozenset[str]],
 ) -> MaestroLaunch | ScenarioRefusal:
-    """*launch* as the fixtures an obligation names leave the device: signed in on their `launch-screen:`, or *launch* itself when none declares one."""
-    declared = {name: screens[name] for name in dict.fromkeys(fixtures) if name in screens}
+    """*launch* as the fixtures an obligation names leave the device: signed in on the `launch-screen:` of the last one built, or *launch* itself when none declares one. A fixture another declaring fixture `needs:` runs first, so its landing gives way."""
+    named = {name: screens[name] for name in dict.fromkeys(fixtures) if name in screens}
+    declared = {name: screen for name, screen in named.items()
+                if not any(name in needs.get(other, frozenset()) for other in named if other != name)}
     landings = sorted(set(declared.values()))
     if not landings:
         return launch

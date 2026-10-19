@@ -29,6 +29,7 @@ class ContextPacket:
     browser_fixtures: frozenset[str] = frozenset()
     fixture_screens: dict[str, str] = field(default_factory=dict[str, str])
     fixture_launch_screens: dict[str, str] = field(default_factory=dict[str, str])
+    fixture_needs: dict[str, frozenset[str]] = field(default_factory=dict[str, frozenset[str]])
     server_origins: dict[str, str] = field(default_factory=dict[str, str])
     passages: dict[str, Passage] = field(default_factory=dict[str, Passage])
     data_states: dict[str, DataState] = field(default_factory=dict[str, DataState])
@@ -57,6 +58,20 @@ def _string_table(value: object, what: str) -> dict[str, str]:
         if not (isinstance(key, str) and isinstance(item, str)):
             raise ValueError(f"context `{what}` maps {key!r} to {item!r}; both must be strings")
         table[key] = item
+    return table
+
+
+def _name_table(value: object, what: str) -> dict[str, frozenset[str]]:
+    """A packet mapping of string to a list of names, empty when unset, refused loudly when anything else."""
+    if value is None:
+        return {}
+    if not isinstance(value, dict):
+        raise ValueError(f"context `{what}` is not a mapping: {value!r}")
+    table: dict[str, frozenset[str]] = {}
+    for key, item in value.items():
+        if not isinstance(key, str):
+            raise ValueError(f"context `{what}` maps {key!r} to {item!r}; the key must be a string")
+        table[key] = _names(item, f"{what}.{key}")
     return table
 
 
@@ -146,6 +161,7 @@ def packet_of(context: Mapping[str, Any]) -> ContextPacket:
         browser_fixtures=_names(context.get("browserFixtures"), "browserFixtures"),
         fixture_screens=_string_table(context.get("fixtureScreens"), "fixtureScreens"),
         fixture_launch_screens=_string_table(context.get("fixtureLaunchScreens"), "fixtureLaunchScreens"),
+        fixture_needs=_name_table(context.get("fixtureNeeds"), "fixtureNeeds"),
         server_origins=_string_table(context.get("serverOrigins"), "serverOrigins"),
         passages=_passages(context.get("passages")),
         data_states=_data_states(context.get("dataStates")),

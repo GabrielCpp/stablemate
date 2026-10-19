@@ -78,6 +78,24 @@ def test_the_scored_run_reads_the_address_book_the_copy_wrote(
     assert seen["book"].endswith(f"acme-story-1/{runtime.ADDRESSES}")
 
 
+def test_a_story_that_spans_books_scores_against_the_copy_its_bring_up_started(
+    repo: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    seen: dict[str, str] = {}
+
+    class _Ostler:
+        def __init__(self, _root: Path) -> None:
+            pass
+
+        def qa_run(self, *_args: object, **_kw: object) -> QaOutcome:
+            seen["book"] = os.environ.get(addresses.BOOK_ENV, "")
+            return QaOutcome(True, "passed", {"status": "passed"})
+
+    monkeypatch.setattr(runner, "Ostler", _Ostler)
+    runner.run_qa_plan(LOG, spec_dir="docs/specs/story-1", repo_dir=str(repo), lease="story-1")
+    assert seen["book"] == runner.stack_env(LOG, model.load(repo), lease="story-1")[addresses.BOOK_ENV]
+    assert seen["book"].endswith(f"acme-story-1/{runtime.ADDRESSES}")
+
 def test_bring_up_boots_the_device_beside_the_copy_and_reports_a_failed_install(
     repo: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:

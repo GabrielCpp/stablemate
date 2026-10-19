@@ -237,6 +237,12 @@ Story: <story id>
   Do not invent one: a change with no story behind it — a drive-by typo fix, a
   release chore — omits the footer rather than making an id up, because a wrong
   id points a reader at somebody else's work.
+- **trailer block stays contiguous**: a trailer added after the story id, such
+  as an attribution line like `Co-Authored-By:`, goes directly under it with no
+  blank line in between. Git's trailer parser reads only the last contiguous
+  run of `key: value` lines in the message. A blank line before
+  `Co-Authored-By:` ends that run one line early, so the story id trailer above
+  it stops parsing, even though it still reads fine on the page.
 
 A repaired defect labelled `chore:` ships to nobody, and the omission surfaces
 weeks later as a bug report against a version that never contained the fix.
