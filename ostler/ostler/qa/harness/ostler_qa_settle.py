@@ -111,8 +111,14 @@ def settle_screen(
     def timed_out(*pending: str) -> Settled:
         return Settled(False, f"{node}: still waiting after {ceiling_s:g}s, " + "; ".join(pending), None)
 
+    seen: Reading | None = None
+
     def look() -> Reading | None:
-        return screen.read(max(0.001, deadline - clock()))
+        nonlocal seen
+        reading = screen.read(max(0.001, deadline - clock()))
+        if reading is not None:
+            seen = reading
+        return reading
 
     waiting = list(requests)
     while waiting:
@@ -135,7 +141,7 @@ def settle_screen(
         if reading is not None and not reading.shown(busy):
             break
         if not tick():
-            if reading is None:
+            if seen is None:
                 return timed_out("the screen could not be read while the busy sign was awaited")
             return timed_out(f"busy sign still shown: {_label(busy)}")
     while True:
@@ -146,7 +152,7 @@ def settle_screen(
         if held:
             break
         if not tick():
-            if reading is None:
+            if seen is None:
                 return timed_out("the screen could not be read while a declared state was awaited")
             return timed_out("no declared state holds: " + ", ".join(states))
     if origins:
