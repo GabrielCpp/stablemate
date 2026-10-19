@@ -2,14 +2,19 @@
 from __future__ import annotations
 
 import logging
+import re
 from pathlib import Path
 
-from ostler import registry
+from ostler import coverage, model, registry
+from ostler import graph as graph_mod
+from ostler.qa.plan import scenario_covers
 from workhorse.pyflow import WorkflowFailed
 from workhorse_workflows.coder.shared import commits, paths, story_status
 from workhorse_workflows.coder.shared.blueprint import blueprint
 from workhorse_workflows.coder.shared.plan import get_affected_repos, load_plan_context
+from workhorse_workflows.coder.shared.proof_scope import inert_paths, scope
 from workhorse_workflows.coder.shared.schemas.queue import (
+    ProofScope,
     StoryCommitted,
     StoryStamped,
     WorktreeCleanliness,
@@ -20,12 +25,15 @@ from workhorse_workflows.kit import (
     GitError,
     commit_all,
     commit_paths,
+    find_docs_root,
     find_repo_root,
     open_repo,
     resolve_workspace,
 )
 
 DONE_STATUS = "QA passed"
+
+_COVERED_PAGE = re.compile(r"^okf:(.+?\.md)(?::|$)")
 
 
 def _stamp_status(
@@ -149,6 +157,122 @@ def check_repos_clean(
     return WorktreeCleanliness(clean=not dirty, dirty=dirty, repos=names)
 
 
+def _key_of(roots: list[tuple[str, Path]], absolute: Path) -> str | None:
+    """The `<repo name>:<repo-relative path>` key of *absolute* in the deepest checkout holding it."""
+    held = [
+        (name, repo_path.resolve())
+        for name, repo_path in roots
+        if absolute.is_relative_to(repo_path.resolve())
+    ]
+    if not held:
+        return None
+    name, repo_path = max(held, key=lambda pair: len(pair[1].parts))
+    return f"{name}:{absolute.relative_to(repo_path).as_posix()}"
+
+
+def _page_key(roots: list[tuple[str, Path]], docs_root: Path, page: str) -> str:
+    """The key of a book page named by its docs-root-relative path."""
+    return _key_of(roots, (docs_root / page).resolve()) or f"{docs_root.name}:{page}"
+
+
+def _citations_by_key(
+    roots: list[tuple[str, Path]], docs_root: Path
+) -> tuple[dict[str, set[str]], set[str]]:
+    """The book's code citations and its pages, both in the key form `check_repos_clean` reports."""
+    graph = model.load(docs_root)
+    cited: dict[str, set[str]] = {}
+    for target, nodes in coverage.citations(graph).items():
+        key = _key_of(roots, (docs_root / target.partition("::")[0]).resolve())
+        if key is not None:
+            cited.setdefault(key, set()).update(
+                _page_key(roots, docs_root, node.partition("#")[0]) for node in nodes
+            )
+    pages = {
+        _page_key(roots, docs_root, str(node["id"]).partition("#")[0])
+        for node in graph_mod.build(graph)["nodes"]
+    }
+    return cited, pages
+
+
+@blueprint.node
+def proof_scope(
+    logger: logging.Logger,
+    story_slug: str = "",
+    spec_dir: str = "",
+    story_path: str = "",
+    dirty: list[str] | None = None,
+    docs_path: str = "",
+    repo_dir: str = "",
+    workspace_file: str = "",
+) -> ProofScope:
+    """How much of the story's proof the paths it left uncommitted reopen."""
+    root = find_repo_root(repo_dir)
+    roots = _affected_roots(logger, root, spec_dir, workspace_file, repo_dir)
+    changed = list(dirty or [])
+    inert: set[str] = set()
+    for name, repo_path in roots:
+        inert |= inert_paths(name, repo_path, story_path, changed)
+    docs_root = find_docs_root(docs_path, repo_dir)
+    cited: dict[str, set[str]] = {}
+    pages: set[str] = set()
+    if any(path not in inert for path in changed):
+        cited, pages = _citations_by_key(roots, docs_root)
+    plan = root / spec_dir / "qa_plan.py"
+    covers: dict[str, set[str]] = {}
+    for scenario_id, ids in scenario_covers(plan).items():
+        matched = (_COVERED_PAGE.match(text) for text in ids)
+        covers[scenario_id] = {_page_key(roots, docs_root, m.group(1)) for m in matched if m}
+    decided = scope(changed, inert, cited, covers, pages)
+    logger.info(
+        "%s: the leftovers reopen %s of the proof (%d scenario(s))%s",
+        story_slug or "story",
+        decided.kind,
+        len(decided.scenarios),
+        "".join(f"\n  {reason}" for reason in decided.reasons),
+    )
+    return decided
+
+
+@blueprint.node
+def commit_leftovers(
+    logger: logging.Logger,
+    epic: str = "",
+    story_slug: str = "",
+    spec_dir: str = "",
+    dirty: list[str] | None = None,
+    repo_dir: str = "",
+    workspace_file: str = "",
+) -> StoryCommitted:
+    """Commit exactly the paths a passed story left uncommitted, and nothing else in the tree."""
+    slug = story_slug or "story"
+    root = find_repo_root(repo_dir)
+    epic_name = registry.epic_slug(epic) or epic
+    committed = False
+    for name, repo_path in _affected_roots(logger, root, spec_dir, workspace_file, repo_dir):
+        prefix = f"{name}:"
+        rels = [key[len(prefix):] for key in dirty or [] if key.startswith(prefix)]
+        if not rels:
+            continue
+        kind = "docs" if all(rel.endswith(".md") for rel in rels) else "fix"
+        message = commits.message(
+            kind,
+            commits.scope(name),
+            f"commit what {slug} left uncommitted",
+            epic=epic_name,
+            story=slug,
+        )
+        try:
+            landed = commit_paths(repo_path, message, *rels, verify=False)
+        except GitError as exc:
+            raise WorkflowFailed(
+                f"git refused the commit for {slug} in {repo_path}: {exc}"
+            ) from exc
+        if landed:
+            logger.info("committed %d leftover path(s) in %s", len(rels), name)
+        committed = committed or landed
+    return StoryCommitted(committed=committed)
+
+
 @blueprint.node
 def stamp_story_passed(
     logger: logging.Logger,
@@ -243,7 +367,9 @@ def commit_story(
 
 __all__ = [
     "check_repos_clean",
+    "commit_leftovers",
     "commit_plan_record",
     "commit_story",
+    "proof_scope",
     "stamp_story_passed",
 ]

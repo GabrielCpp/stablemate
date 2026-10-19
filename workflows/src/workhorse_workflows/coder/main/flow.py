@@ -29,10 +29,13 @@ from workhorse_workflows.coder.shared.queue import (
 )
 from workhorse_workflows.coder.shared.story_commit import (
     check_repos_clean,
+    commit_leftovers,
+    proof_scope,
     stamp_story_passed,
 )
 from workhorse_workflows.coder.shared.story import prepare_story, resolve_workspace_dirs
 from workhorse_workflows.coder.shared.schemas.docs import DocsResult
+from workhorse_workflows.coder.shared.schemas.qa import QaFlowResult
 from workhorse_workflows.coder.shared.schemas.queue import LaunchSet, ReplanResult
 from workhorse_workflows.coder.shared.schemas.story import StoryPaths, WorkspaceDirs
 
@@ -150,6 +153,17 @@ class Coder(Workflow):
             target_env=self.target_env,
             preexisting=self._preexisting(),
         )
+        sent_back = self._sent_back(result)
+        if sent_back is not None:
+            return sent_back
+        return Continue(
+            result,
+            self.drain,
+            docs_recheck_required=result.docs_recheck_required,
+        )
+
+    def _sent_back(self, result: QaFlowResult) -> Continue | None:
+        """Where a QA verdict that is not a pass goes: the replan, or the dev owner with its findings."""
         if result.status == "replan":
             return Continue(result, self.replan, notes=result.operator_notes)
         if result.status == "refix":
@@ -158,11 +172,7 @@ class Coder(Workflow):
             number = work.next_round(self._worklist, self._item.id, "qa")
             findings = [f.model_dump() for f in result.findings]
             return Continue(result, self.refix, number=number, findings=findings)
-        return Continue(
-            result,
-            self.drain,
-            docs_recheck_required=result.docs_recheck_required,
-        )
+        return None
 
     def refix(self, number: int = 1, findings: list[dict[str, Any]] | None = None) -> Continue:
         """File QA's findings against the item, and hand them to its dev owner to answer."""
@@ -226,18 +236,45 @@ class Coder(Workflow):
         return Continue(result, self.commit)
 
     def commit(self) -> Continue:
-        """Stamp the item passed, or send what the later lanes left uncommitted to its dev owner."""
+        """Stamp the item passed, committing or reproving what the later lanes left uncommitted first."""
         story = self._story
         state = self.call(
             check_repos_clean, story.story_slug, story.spec_dir, list(self._preexisting())
         )
         if not state.clean:
-            listing = "\n".join(f"- `{path}`" for path in state.dirty[:40])
-            note = f"These paths are still uncommitted after the item passed QA:\n\n{listing}"
-            return Continue(state, self.dev, note=note)
+            scope = self.call(
+                proof_scope, story.story_slug, story.spec_dir, story.story_path, state.dirty
+            )
+            if scope.kind != "inert":
+                return Continue(scope, self.reprove, dirty=state.dirty, scenarios=scope.scenarios)
+            self.call(
+                commit_leftovers, self._epic, story.story_slug, story.spec_dir, state.dirty
+            )
         if self._item.kind == work.STORY:
             self.call(stamp_story_passed, self._epic, story.story_slug, story.story_path)
         return Continue(state, self.standing)
+
+    def reprove(
+        self, dirty: list[str] | None = None, scenarios: list[str] | None = None
+    ) -> Continue:
+        """Rerun the proof the leftovers reopen, then commit them, or send what failed back to the dev owner."""
+        story = self._story
+        result = self.handoff(
+            Qa,
+            story=story.story_slug,
+            docs_path=self.docs_path,
+            epic=self._story_epic(),
+            operator_mode=self.operator_mode,
+            target_env=self.target_env,
+            preexisting=self._preexisting(),
+            rerun=True,
+            scope=tuple(scenarios or ()),
+        )
+        sent_back = self._sent_back(result)
+        if sent_back is not None:
+            return sent_back
+        self.call(commit_leftovers, self._epic, story.story_slug, story.spec_dir, dirty or [])
+        return Continue(result, self.commit)
 
     def standing(self) -> Continue:
         """The item passed: mark it done, and pop its epic off the queue once nothing of it is left."""

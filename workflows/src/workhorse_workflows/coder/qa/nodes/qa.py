@@ -246,10 +246,17 @@ def run_qa_plan(
     repo_dir: str = "",
     near: str = "",
     lease: str = "",
+    only: list[str] | None = None,
 ) -> QaPlanRun:
     """Execute the QA plan through ostler and normalize its four-state outcome."""
     return _qa_runner.run_qa_plan(
-        logger, spec_dir=spec_dir, docs_path=docs_path, repo_dir=repo_dir, near=near, lease=lease
+        logger,
+        spec_dir=spec_dir,
+        docs_path=docs_path,
+        repo_dir=repo_dir,
+        only=only,
+        near=near,
+        lease=lease,
     )
 
 

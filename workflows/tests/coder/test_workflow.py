@@ -1,6 +1,7 @@
 """End-to-end tests for `coder`'s main graph — the epic/story loop itself."""
 from __future__ import annotations
 
+import os
 import json
 import subprocess
 from collections.abc import Callable
@@ -180,6 +181,8 @@ class _StubFlow(Workflow):
     follow_up_reason: str = ""
     note: str = ""
     worklist_dir: str = ""
+    rerun: bool = False
+    scope: tuple[str, ...] = ()
 
 
 class _Sub:
@@ -191,6 +194,7 @@ class _Sub:
         *,
         changes: bool = True,
         leave_dirty: bool = False,
+        leftover: str = "",
         dev_status: Literal["ready", "replan"] = "ready",
         docs_status: DocsStatus = "passed",
         docs_notes: str = "",
@@ -204,6 +208,7 @@ class _Sub:
         self.repo = repo
         self.changes = changes
         self.leave_dirty = leave_dirty
+        self.leftover = leftover
         self.dev_status: Literal["ready", "replan"] = dev_status
         self.docs_status: DocsStatus = docs_status
         self.docs_notes = docs_notes
@@ -255,6 +260,10 @@ class _Sub:
                     _story_message(self.repo.name, child.story),
                     f"src/{child.story}.py",
                 )
+        if self.leftover and self.calls.count("Dev") == 1:
+            extra = self.repo / self.leftover.format(story=child.story)
+            extra.parent.mkdir(parents=True, exist_ok=True)
+            extra.write_text("# left behind\n", encoding="utf-8")
         return DevOutcome(status=self.dev_status, operator_notes="rescope to the epic")
 
     def _docs(self, child: _StubFlow) -> DocsResult:
@@ -654,13 +663,13 @@ def test_re_verifying_given_up_stories_moves_each_status_to_passed(
         assert "QA passed" in story.read_text(encoding="utf-8"), story
 
 
-def test_work_left_uncommitted_after_qa_goes_back_to_the_dev_owner(
+def test_an_uncited_leftover_reruns_the_whole_plan_without_another_dev_turn(
     epic: Callable[..., Path],
     env: Callable[..., RunEnv],
     drive_flow: Callable[..., Any],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """A dirty tree at commit is the dev owner's to settle, with the paths in its note."""
+    """A leftover no book page cites reproves the whole plan, and the dev owner is not called again."""
     repo = epic()
     sub = _Sub(repo, leave_dirty=True).install(monkeypatch)
     run_env = env()
@@ -668,13 +677,88 @@ def test_work_left_uncommitted_after_qa_goes_back_to_the_dev_owner(
     result = drive_flow(Coder(), run_env, _Agent())
 
     assert result.status == "skipped", result
-    devs = sub.calls_to("Dev")
-    assert len(devs) == 2, sub.calls
-    assert devs[0].note == "", devs[0].note
-    assert "src/STORY-1.py" in devs[1].note, devs[1].note
+    assert len(sub.calls_to("Dev")) == 1, sub.calls
+    qas = sub.calls_to("Qa")
+    assert len(qas) == 2, sub.calls
+    assert (qas[0].rerun, qas[1].rerun, qas[1].scope) == (False, True, ()), qas
     assert _output(run_env, check_repos_clean)["clean"] is True
     assert _output(run_env, stamp_story_passed)["stamped"] is True
     assert _dirty(repo) == "", _dirty(repo)
+
+
+def test_a_leftover_that_is_only_the_storys_markdown_commits_without_a_rerun(
+    epic: Callable[..., Path],
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Story metadata proves nothing new: no second QA, no second dev turn."""
+    repo = epic()
+    notes = "docs/epics/" + EPIC + "/stories/{story}/notes.md"
+    sub = _Sub(repo, leftover=notes).install(monkeypatch)
+    run_env = env()
+
+    result = drive_flow(Coder(), run_env, _Agent())
+
+    assert result.status == "skipped", result
+    assert len(sub.calls_to("Dev")) == 1, sub.calls
+    assert len(sub.calls_to("Qa")) == 1, sub.calls
+    assert _output(run_env, stamp_story_passed)["stamped"] is True
+    assert _dirty(repo) == "", _dirty(repo)
+
+
+def test_a_cited_leftover_reruns_only_the_scenarios_covering_its_page(
+    epic: Callable[..., Path],
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+    write: Callable[[Path, str], Path],
+    git: Callable[..., subprocess.CompletedProcess],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A product file a page cites reproves that page's scenarios and nothing else."""
+    repo = epic()
+    write(
+        repo / "docs" / "features" / "app" / "server.md",
+        "---\ntype: cli\nslug: server\ntitle: the server\n---\n# the server\n\n"
+        "Serves things.\n\n- binary: server\n- code: src/server.py::run\n",
+    )
+    write(repo / "src" / "server.py", "def run():\n    return 1\n")
+    git(repo, "add", "-A")
+    git(repo, "commit", "-qm", "the book")
+    plan = (
+        "from ostler_qa import Qa, scenario, target\n\napp = target('app')\n\n\n"
+        "@scenario(target=app, mechanism='live', id='serves',"
+        " covers=['okf:docs/features/app/server.md:contract'])\n"
+        "def serves(qa: Qa) -> None:\n    qa.check('it serves', True)\n"
+    )
+    sub = _Sub(repo, leftover="src/server.py").install(monkeypatch)
+    run_env = env()
+    write(Path(os.environ["STABLEMATE_ARTIFACTS_DIR"]) / "specs" / "STORY-1" / "qa_plan.py", plan)
+
+    result = drive_flow(Coder(), run_env, _Agent())
+
+    assert result.status == "skipped", result
+    qas = sub.calls_to("Qa")
+    assert len(sub.calls_to("Dev")) == 1, sub.calls
+    assert len(qas) == 2, sub.calls
+    assert (qas[1].rerun, qas[1].scope) == (True, ("serves",)), qas[1]
+
+
+def test_a_red_rerun_of_a_leftover_goes_back_to_refix(
+    epic: Callable[..., Path],
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The rerun is judged like a red QA: its findings go to the dev owner."""
+    repo = epic()
+    sub = _Sub(repo, leave_dirty=True, qa_statuses=["passed", "refix"]).install(monkeypatch)
+
+    drive_flow(Coder(), env(), _Agent())
+
+    assert len(sub.calls_to("Qa")) >= 2, sub.calls
+    assert sub.calls_to("Qa")[1].rerun is True
+    assert len(sub.calls_to("Dev")) >= 2, sub.calls
 
 
 def test_the_dev_owner_is_told_what_was_already_dirty(

@@ -242,6 +242,7 @@ class _Ostler:
         self.plan_validations = 0
         self.vets = 0
         self.context_args: list[dict[str, Any]] = []
+        self.only: list[list[str] | None] = []
 
     def install(self, monkeypatch: pytest.MonkeyPatch) -> _Ostler:
         """Stand in for the `Ostler` the nodes construct, in every module that does."""
@@ -387,6 +388,7 @@ class _Session(Ostler):
     ) -> QaOutcome:
         script = self.script
         script.runs += 1
+        script.only.append(only)
         if script.runs <= script.block_runs:
             return script._blocked(["target 'web' requires the Playwright Python package"])
         if script.blocked_problems is not None:
@@ -1421,3 +1423,62 @@ def test_stop_at_first_verdict_still_repairs_the_environment(
     assert agent.counts()["qa-story"] == 2, agent.counts()
     assert "Playwright" in agent.args[1]["report"]
     assert okf.runs == 2, "the repaired run was never retried"
+
+
+def test_a_rerun_of_the_whole_plan_spends_no_owner_turn(
+    docs: Path,
+    ostler: Callable[..., _Ostler],
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    """The standing plan is rerun and gated, and no model is asked anything."""
+    okf = ostler()
+    agent = _Agent(docs)
+    (docs / spec_dir() / "qa_plan.py").write_text(QA_PLAN, encoding="utf-8")
+
+    result = drive_flow(Qa(story=STORY, rerun=True), env(), agent)
+
+    assert result.status == "passed", result
+    assert agent.calls == [], agent.calls
+    assert okf.only == [None], okf.only
+    assert (okf.runs, okf.vets) == (1, 1)
+    assert (docs / spec_dir() / "qa-evidence.json").is_file()
+
+
+def test_a_scoped_rerun_runs_only_the_named_scenarios_and_keeps_the_evidence(
+    docs: Path,
+    ostler: Callable[..., _Ostler],
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    """The earlier run's evidence stays for the scenarios the rerun does not touch."""
+    okf = ostler()
+    agent = _Agent(docs)
+    spec = docs / spec_dir()
+    (spec / "qa_plan.py").write_text(QA_PLAN, encoding="utf-8")
+    (spec / "qa-evidence.json").write_text('{"kept": true}', encoding="utf-8")
+
+    result = drive_flow(Qa(story=STORY, rerun=True, scope=("copy-link",)), env(), agent)
+
+    assert result.status == "passed", result
+    assert agent.calls == [], agent.calls
+    assert okf.only == [["copy-link"]], okf.only
+
+
+def test_a_red_rerun_goes_back_as_a_refix_without_an_owner_turn(
+    docs: Path,
+    ostler: Callable[..., _Ostler],
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    """A rerun that fails is judged like a red QA: the dev owner gets it."""
+    okf = ostler(fail_runs=99)
+    agent = _Agent(docs)
+    (docs / spec_dir() / "qa_plan.py").write_text(QA_PLAN, encoding="utf-8")
+
+    result = drive_flow(Qa(story=STORY, rerun=True), env(), agent)
+
+    assert result.status == "refix", result
+    assert result.qa.status == "failed", result
+    assert agent.calls == [], agent.calls
+    assert okf.runs == 1, okf.runs

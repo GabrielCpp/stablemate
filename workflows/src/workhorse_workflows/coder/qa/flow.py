@@ -83,6 +83,8 @@ class Qa(Workflow):
     target_env: str = "local"
     stop_at_first_verdict: bool = False
     preexisting: tuple[str, ...] = ()
+    rerun: bool = False
+    scope: tuple[str, ...] = ()
 
     injects: ClassVar[tuple[str, ...]] = paths.AMBIENT
 
@@ -119,7 +121,8 @@ class Qa(Workflow):
     def start(self) -> Continue:
         """Clear the last run's evidence, decode what the story touched, and check its context and stack."""
         self.call(snapshot_code_state, self.docs_path)
-        self.call(clear_qa_evidence, self.ctx.spec_dir)
+        if not (self.rerun and self.scope):
+            self.call(clear_qa_evidence, self.ctx.spec_dir)
         impl = self.call(resolve_impl_context, self.ctx.spec_dir, self.target_env, self.docs_path)
         if self._sourced:
             sources = self.call(
@@ -136,6 +139,8 @@ class Qa(Workflow):
         okf = self.call(detect_okf_docs, self.docs_path)
         lease = copy_lease(self.ctx.story_id or self.ctx.story_slug, self.run_id)
         self.call(stack_target, self.ctx.story_slug, lease, self.docs_path)
+        if self.rerun:
+            return Continue(okf, self.recheck)
         return Continue(okf, self.work, report="\n\n".join(self._preflight()))
 
     @property
@@ -240,6 +245,34 @@ class Qa(Workflow):
             blocks=blocks,
         )
 
+    def recheck(self) -> Continue | Await | Done:
+        """Rerun the standing plan, or the scenarios of `scope`, with no owner turn unless the stack or plan broke."""
+        failures = self._preflight() or self._plan_failures([])
+        if failures:
+            return self._lap(None, failures, 0, 0)
+        self.logger.info("rerunning the QA plan", extra={"activity": True})
+        target = self.output(stack_target)
+        run = self.call(
+            run_qa_plan,
+            self.ctx.spec_dir,
+            self.docs_path,
+            near=target.near,
+            lease=target.lease,
+            only=list(self.scope) or None,
+        )
+        self.call(file_backlog_items, self.ctx.spec_dir, self.docs_path)
+        self.call(stamp_specs, self.docs_path, self.ctx.story_slug)
+        if run.status == "failed":
+            return self._failed(run, [])
+        if run.status != "passed":
+            return self._lap(run, [unfinished_run(run)], 0, 0)
+        failures = ([] if self.scope else self._evidence_failures(run)) or self._standing_failures()
+        if failures:
+            notes = "\n\n".join(failures)
+            return self._finish("refix", run, [fallback_finding(self.ctx.qa_dir, notes)])
+        self.logger.info("QA passed for %s", self.ctx.story_slug)
+        return self._finish("passed", run)
+
     def check(
         self,
         findings: list[dict[str, Any]] | None = None,
@@ -294,9 +327,17 @@ class Qa(Workflow):
 
     def _pass_failures(self, run: QaPlanRun) -> list[str]:
         """The gates a passed run must also clear before the story is believed."""
+        return self._evidence_failures(run) or self._standing_failures()
+
+    def _evidence_failures(self, run: QaPlanRun) -> list[str]:
+        """The evidence gate, which reads every scenario's recording."""
         evidence = self.call(verify_qa_evidence, self.ctx.spec_dir, run.status, run.notes)
         if evidence.status != "passed":
             return [gate_text("the QA evidence", evidence.notes)]
+        return []
+
+    def _standing_failures(self) -> list[str]:
+        """The gates a passed run clears whether it ran the whole plan or part of it."""
         note = self.call(check_feedback, str(self.run_dir))
         if note.present:
             return [gate_text("operator feedback", note.content)]

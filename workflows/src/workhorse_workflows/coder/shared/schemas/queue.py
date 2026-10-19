@@ -59,6 +59,18 @@ class WorktreeCleanliness(CoderResult):
     repos: list[str] = []
 
 
+ScopeKind = Literal["inert", "claims", "whole"]
+
+
+@dry_run(kind="inert")
+class ProofScope(CoderResult):
+    """`proof_scope` — how much of the proof a leftover change reopens."""
+
+    kind: ScopeKind = "whole"
+    scenarios: list[str] = []
+    reasons: list[str] = []
+
+
 class StoryStamped(CoderResult):
     """`stamp_story_passed` — the story's `QA passed` status line, and whether it moved."""
 
@@ -88,7 +100,9 @@ __all__ = [
     "LaunchSet",
     "ReplanResult",
     "RunBranch",
+    "ProofScope",
     "RunScope",
+    "ScopeKind",
     "StoryCommitted",
     "StoryStamped",
     "WorktreeCleanliness",
