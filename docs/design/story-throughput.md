@@ -531,7 +531,17 @@ section 5b after each slice is the third.
    each, check out the revision where it was live, compile the claims of the pages it sits
    on, and run them. **Holds when:** every defect turns at least one scenario red, and the
    red scenario's message names what the user would see.
-   **Result:** not run. It needs a stack the live run holds.
+   **Result:** failed on 2026-10-19, 0 of 4 caught. Each defect ran at its fix's parent
+   and at its fix, with the book compiled at that revision. The empty-state controls: the
+   book asserts the bug as correct, so the fix turned 13 scenarios red. The two story 2
+   states: no fixture reaches them and no claim states them, and the same 12 scenarios
+   stay red before and after. The grouped-query failure: three pages name the stored
+   procedure, none carries a scenario, and the stack database holds no formula. A run
+   took 1 to 15 minutes. The packet the story's builder and QA read held no obligation on
+   any of the epic's last four stories: the docs flow diffs `HEAD` against the worktree
+   after dev has committed. Built on the unary commit's own diff, it reaches only the
+   compiler's contract page as context. Two links further sit the two report journeys
+   that read the compiled formulas, and the packet owes neither.
    **If wrong:** the book strategy changes before slice 1. The miss pattern says how:
    claims about routes and contracts where the user meets states and journeys, missing
    empty and error states, or shallow journeys. That is its own design note for the book
