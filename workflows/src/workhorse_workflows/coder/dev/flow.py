@@ -1,13 +1,21 @@
 """One strong dev agent builds, reviews and fixes a story through its subagents, and the run checks it."""
 from __future__ import annotations
 
+import time
 from pathlib import Path
 from typing import Any, ClassVar
 
 from workhorse import worklist as wl
 from workhorse.pyflow import Await, Continue, Done, Workflow
 
-from workhorse_workflows.coder.dev.report import findings_text, plan_arg, rejected_text, report_text
+from workhorse_workflows.coder.dev.report import (
+    findings_text,
+    plan_arg,
+    rejected_text,
+    report_text,
+    self_check_text,
+    walk_text,
+)
 from workhorse_workflows.coder.shared import causes, paths, roles, work
 from workhorse_workflows.coder.shared.backlog import file_follow_up_backlog
 from workhorse_workflows.coder.shared.branches import branch_code_repos
@@ -25,6 +33,11 @@ from workhorse_workflows.coder.shared.judge import (
     accepting,
 )
 from workhorse_workflows.coder.shared.schemas.judge import Ruling
+from workhorse_workflows.coder.shared.failed import (
+    failed_scenario_ids,
+    failed_scenarios_arg,
+    last_failed_scenarios,
+)
 from workhorse_workflows.coder.shared.failure import from_findings, from_gate
 from workhorse_workflows.coder.shared.owner import (
     HUMAN_MODES,
@@ -50,6 +63,12 @@ from workhorse_workflows.coder.shared.schemas.dev import (
 from workhorse_workflows.coder.shared.schemas.dev_story import DevOutcome, DevResult
 from workhorse_workflows.coder.shared.schemas.story import StoryPaths
 from workhorse_workflows.coder.shared.service_gates import GATE_ORDER, declared_markers, run_gate
+from workhorse_workflows.coder.shared.stack import (
+    ensure_stack,
+    release_copy,
+    run_qa_plan,
+    stack_target,
+)
 from workhorse_workflows.coder.shared.story import (
     done_story_texts,
     guard_story_file,
@@ -59,6 +78,8 @@ from workhorse_workflows.coder.shared.story import (
     workspace_dirs,
 )
 from workhorse_workflows.coder.shared.story_commit import check_repos_clean, commit_plan_record
+from workhorse_workflows.coder.shared.walk import acceptance_walk
+from workhorse_workflows.kit.qa.runner import copy_lease
 from workhorse_workflows.kit.telemetry import counter_labels
 
 class Dev(Workflow):
@@ -79,6 +100,8 @@ class Dev(Workflow):
     worklist_dir: str = ""
 
     injects: ClassVar[tuple[str, ...]] = paths.AMBIENT
+
+    INFRA_NODES: ClassVar[frozenset[Any]] = frozenset({ensure_stack, release_copy})
 
     BUDGET_LABELS: ClassVar[tuple[str, ...]] = ("laps", "blocks", "number")
 
@@ -140,6 +163,7 @@ class Dev(Workflow):
         laps: int = 0,
         blocks: int = 0,
         number: int = 1,
+        rechecked: bool = False,
     ) -> Continue | Await:
         """Run the dev turn: its subagents plan, build, review and fix the work item."""
         self.logger.info("developing %s", self._work_id, extra={"activity": True})
@@ -181,7 +205,14 @@ class Dev(Workflow):
             self.logger.info("the review filed %d finding(s) against %s", len(filed), self._work_id)
         if result.status == "blocked":
             return self._block(result, result.notes, "the dev turn", blocks)
-        return Continue(result, self.check, plan=plan_arg(result), laps=laps, blocks=blocks)
+        return Continue(
+            result,
+            self.check,
+            plan=plan_arg(result),
+            laps=laps,
+            blocks=blocks,
+            rechecked=rechecked,
+        )
 
     def _file_follow_ups(self, result: DevResult) -> None:
         entries = [f.model_dump(include={"title", "reason"}) for f in result.follow_ups]
@@ -254,7 +285,11 @@ class Dev(Workflow):
         return Tiered(RuleJudge({"cause": causes.cause_rule}), ReadingJudge(read))
 
     def check(
-        self, plan: dict[str, Any] | None = None, laps: int = 0, blocks: int = 0
+        self,
+        plan: dict[str, Any] | None = None,
+        laps: int = 0,
+        blocks: int = 0,
+        rechecked: bool = False,
     ) -> Continue | Await:
         """Check the plan, the gates and every answer, and send what failed back to the dev owner."""
         recorded = self.call(record_plan, plan, self.ctx.spec_dir)
@@ -265,6 +300,10 @@ class Dev(Workflow):
                 commit_plan_record, self.epic, self.ctx.story_slug, self.ctx.spec_dir
             )
             failures = self._gate_failures(laps) + self._settle() + self._leftovers()
+            failures += self._walk_failures()
+            if not failures:
+                failures = self._self_check(rechecked)
+                rechecked = rechecked or bool(failures)
         if not failures:
             return Continue(recorded, self.finish)
         text = "\n\n".join(failures)
@@ -278,6 +317,7 @@ class Dev(Workflow):
             laps=laps + 1,
             blocks=blocks,
             number=self._next_round(),
+            rechecked=rechecked,
         )
 
     def _gate_failures(self, lap: int) -> list[str]:
@@ -380,6 +420,51 @@ class Dev(Workflow):
             "Commit what this story wrote. Leave alone what it did not write, and report "
             "`blocked` naming those paths, so the operator decides what happens to them."
         ]
+
+    def _walk_failures(self) -> list[str]:
+        if self.follow_up_title:
+            return []
+        walk = self.call(
+            acceptance_walk, self.ctx.story_path, self.ctx.spec_dir, self.docs_path
+        )
+        return [walk_text(walk.missing, walk.criteria)] if walk.missing else []
+
+    def _self_check(self, rechecked: bool) -> list[str]:
+        ids = self.call(last_failed_scenarios, self.ctx.spec_dir, self.docs_path).ids
+        if not ids:
+            return []
+        lease = copy_lease(self.ctx.story_id or self.ctx.story_slug, self.run_id, "dev")
+        target = self.call(stack_target, self.ctx.story_slug, lease, self.docs_path)
+        started = time.monotonic()
+        try:
+            return self._rerun(ids, target.near, target.lease, rechecked)
+        finally:
+            self.call(release_copy, self.docs_path, near=target.near, lease=target.lease)
+            self.logger.info("self-check took %.0fs", time.monotonic() - started)
+
+    def _rerun(self, ids: list[str], near: str, lease: str, rechecked: bool) -> list[str]:
+        stack = self.call(ensure_stack, self.docs_path, near=near, lease=lease)
+        if stack.ready not in ("yes", "unneeded"):
+            self.logger.info("self-check skipped: the QA stack is not up (%s)", stack.ready)
+            return []
+        run = self.call(
+            run_qa_plan, self.ctx.spec_dir, self.docs_path, near=near, lease=lease, only=ids
+        )
+        if run.status == "passed":
+            self.logger.info("self-check: %d scenario(s) QA failed now pass", len(ids))
+            return []
+        if run.status != "failed":
+            self.logger.info("self-check skipped: the scoped run ended %s", run.status)
+            return []
+        still = list(failed_scenario_ids(run)) or ids
+        if rechecked:
+            self.logger.info(
+                "self-check: %d scenario(s) still fail after one bounce, QA owns them now: %s",
+                len(still),
+                ", ".join(still),
+            )
+            return []
+        return [self_check_text(failed_scenarios_arg(self.ctx.spec_dir, still))]
 
     def finish(self) -> Done:
         """Report which findings settled and which the dev owner declined."""

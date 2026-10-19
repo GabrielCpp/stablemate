@@ -7,7 +7,7 @@ import subprocess
 from collections import Counter
 from collections.abc import Callable
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 from unittest.mock import patch
 
 import pytest
@@ -18,6 +18,10 @@ from workhorse_workflows.coder.dev.flow import Dev
 from workhorse_workflows.coder.shared.owner import MAX_LAPS
 from workhorse_workflows.coder.shared import commits, work
 from workhorse_workflows.coder.shared.schemas.dev_story import DevOutcome
+from workhorse_workflows.coder.shared.schemas.qa import StackStatus
+from workhorse_workflows.kit.qa import runner as qa_runner
+from workhorse_workflows.kit.qa.runner import copy_lease
+from workhorse_workflows.kit.qa.schemas import QaPlanRun
 from workhorse_workflows.kit.git import commit_all
 
 EPIC = "EPIC-1"
@@ -153,8 +157,12 @@ class _Agent:
         also_fixed: tuple[str, ...] = (),
         follow_ups: tuple[dict[str, str], ...] = (),
         escapes_to: str = "",
+        walk: tuple[int, ...] = (1,),
+        failed: tuple[str, ...] = (),
     ) -> None:
         self.workspace = workspace
+        self.failed = failed
+        self.walk = walk
         self.follow_ups = follow_ups
         self.escapes_to = escapes_to
         self.also_fixed = also_fixed
@@ -186,7 +194,18 @@ class _Agent:
             return {"status": "blocked", "notes": BLOCK_NOTE}
         spec = Path(str(data["spec_dir"]))
         spec.mkdir(parents=True, exist_ok=True)
-        (spec / "plan.md").write_text("# Plan\n\nReject relative links in the api.\n", encoding="utf-8")
+        entries = "".join(f"\n### AC {n}: criterion {n}\n\n- **Met by**: api/links.go:3\n" for n in self.walk)
+        (spec / "plan.md").write_text(
+            f"# Plan\n\nReject relative links in the api.\n\n## Acceptance Walk\n{entries}",
+            encoding="utf-8",
+        )
+        if self.failed:
+            log = spec / "qa" / "qa-run.ndjson"
+            log.parent.mkdir(parents=True, exist_ok=True)
+            rows: list[dict[str, Any]] = [{"kind": "session_start", "run_id": "qa-run-1"}]
+            rows += [{"kind": "assert", "scenario": sid, "action": 1, "result": "FAIL"} for sid in self.failed]
+            rows += [{"kind": "assert", "scenario": "scenario-ok", "action": 1, "result": "PASS"}]
+            log.write_text("".join(json.dumps(r) + "\n" for r in rows), encoding="utf-8")
         (spec / "plan-api.md").write_text("# Plan: api\n\nValidate in links.go.\n", encoding="utf-8")
         repo = self.workspace["api"]
         (repo / "links.go").write_text(f"package links\n\n// pass {nth}\n", encoding="utf-8")
@@ -509,3 +528,269 @@ def test_a_path_dirty_before_the_story_began_is_not_the_story_s_to_commit(
     assert result.status == "ready", result
     assert agent.counts() == {"dev-story": 1}, agent.counts()
     assert mine.exists()
+
+
+THREE_CRITERIA = STORY_MD.replace(
+    "- a relative link destination is rejected\n",
+    "- a relative link destination is rejected\n  and the form says why\n"
+    "- a protocol-relative link is rejected\n- an absolute link on the site's host is kept\n",
+)
+
+
+def _three_criteria(docs: Path, git: Callable[..., subprocess.CompletedProcess]) -> None:
+    story = docs / "docs" / "epics" / EPIC / "stories" / STORY / "story.md"
+    story.write_text(THREE_CRITERIA, encoding="utf-8")
+    git(docs, "add", "-A")
+    git(docs, "commit", "-qm", "Three criteria")
+
+
+def test_a_plan_that_skips_a_criterion_goes_back_naming_it(
+    docs: Path,
+    workspace: dict[str, Path],
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+    git: Callable[..., subprocess.CompletedProcess],
+) -> None:
+    """The walk check names the criterion the plan left out, and the next turn's full walk finishes."""
+    _three_criteria(docs, git)
+
+    class Walks(_Agent):
+        def _dev_story(self, data: dict[str, Any], nth: int) -> dict[str, Any]:
+            self.walk = (1, 3) if nth == 1 else (1, 2, 3)
+            return super()._dev_story(data, nth)
+
+    agent = Walks(workspace)
+
+    result = drive_flow(_dev(docs), env(), agent)
+
+    assert result.status == "ready", result
+    assert agent.counts() == {"dev-story": 2}, agent.counts()
+    report = str(agent.args_for("dev-story")[1]["report"])
+    assert "AC 2" in report, report
+    assert "AC 1" not in report and "AC 3" not in report, report
+    assert "Acceptance Walk" in report, report
+
+
+def test_a_full_walk_proceeds(
+    docs: Path,
+    workspace: dict[str, Path],
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+    git: Callable[..., subprocess.CompletedProcess],
+) -> None:
+    """A plan that walks all three criteria costs no repair turn."""
+    _three_criteria(docs, git)
+    agent = _Agent(workspace, walk=(1, 2, 3))
+
+    result = drive_flow(_dev(docs), env(), agent)
+
+    assert result.status == "ready", result
+    assert agent.counts() == {"dev-story": 1}, agent.counts()
+
+
+def test_a_follow_up_turn_needs_no_walk(
+    docs: Path,
+    workspace: dict[str, Path],
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+    git: Callable[..., subprocess.CompletedProcess],
+) -> None:
+    """A follow-up item skips the walk check, whatever the plan holds."""
+    _three_criteria(docs, git)
+    agent = _Agent(workspace, walk=())
+    dev = Dev(story=STORY, epic=EPIC, docs_path=str(docs), follow_up_title="Tidy the validator")
+
+    result = drive_flow(dev, env(), agent)
+
+    assert result.status == "ready", result
+    assert agent.counts() == {"dev-story": 1}, agent.counts()
+
+
+class _Stack:
+    """The stack nodes, scripted: what the scoped rerun returns, and every call the flow made."""
+
+    def __init__(
+        self,
+        status: Literal["passed", "failed", "invalid"] = "passed",
+        ready: Literal["yes", "no", "none", "unneeded"] = "yes",
+        failed: tuple[str, ...] = (),
+        red: int = 0,
+    ) -> None:
+        self.status: Literal["passed", "failed", "invalid"] = status
+        self.red = red
+        self.ready: Literal["yes", "no", "none", "unneeded"] = ready
+        self.failed = failed
+        self.calls: list[str] = []
+        self.leases: list[str] = []
+        self.only: list[str] = []
+
+    def install(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(qa_runner, "story_near", lambda _graph, _story: "book")
+        monkeypatch.setattr(qa_runner, "stack_env", self.env)
+        monkeypatch.setattr(qa_runner, "ensure_stack", self.ensure)
+        monkeypatch.setattr(qa_runner, "run_qa_plan", self.run)
+        monkeypatch.setattr(qa_runner, "release_copy", self.release)
+
+    def env(self, _log: Any, _graph: Any, near: str = "", lease: str = "") -> dict[str, str]:
+        self.calls.append("stack_target")
+        self.leases.append(lease)
+        return {}
+
+    def ensure(self, _log: Any, **_k: Any) -> StackStatus:
+        self.calls.append("ensure_stack")
+        return StackStatus(ready=self.ready)
+
+    def run(self, _log: Any, only: list[str] | None = None, **_k: Any) -> QaPlanRun:
+        self.calls.append("run_qa_plan")
+        self.only = list(only or [])
+        reruns = self.calls.count("run_qa_plan")
+        status: Literal["passed", "failed", "invalid"] = "failed" if reruns <= self.red else self.status
+        scenarios = {sid: {"status": "failed"} for sid in self.failed} if status == "failed" else {}
+        return QaPlanRun(status=status, ostler={"scenarios": scenarios})
+
+    def release(self, _log: Any, **_k: Any) -> None:
+        self.calls.append("release_copy")
+        return None
+
+
+def test_no_failed_record_touches_no_stack(
+    docs: Path,
+    workspace: dict[str, Path],
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A story QA never failed finishes without a stack node running."""
+    stack = _Stack()
+    stack.install(monkeypatch)
+
+    result = drive_flow(_dev(docs), env(), _Agent(workspace))
+
+    assert result.status == "ready", result
+    assert stack.calls == [], stack.calls
+
+
+def test_failed_scenarios_that_now_pass_finish(
+    docs: Path,
+    workspace: dict[str, Path],
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The scoped rerun runs only the failed ids, and a pass lets the item leave dev."""
+    stack = _Stack()
+    stack.install(monkeypatch)
+    agent = _Agent(workspace, failed=("scenario-b", "scenario-a"))
+
+    result = drive_flow(_dev(docs), env(), agent)
+
+    assert result.status == "ready", result
+    assert agent.counts() == {"dev-story": 1}, agent.counts()
+    assert stack.only == ["scenario-a", "scenario-b"], stack.only
+    assert stack.calls == ["stack_target", "ensure_stack", "run_qa_plan", "release_copy"], stack.calls
+
+
+def test_a_scenario_that_still_fails_goes_back_to_build(
+    docs: Path,
+    workspace: dict[str, Path],
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A red rerun is the next turn's report, names the ids, and spends one repair lap."""
+    stack = _Stack(failed=("scenario-a",), red=1)
+    stack.install(monkeypatch)
+    agent = _Agent(workspace, failed=("scenario-a",))
+
+    result = drive_flow(_dev(docs), env(), agent)
+
+    assert result.status == "ready", result
+    assert agent.counts() == {"dev-story": 2}, agent.counts()
+    first, second = agent.args_for("dev-story")
+    assert first["report"] == "", first
+    assert "scenario-a" in str(second["report"]), second
+    assert stack.calls.count("release_copy") == stack.calls.count("run_qa_plan") == 2, stack.calls
+
+
+def test_a_scoped_run_that_does_not_finish_lets_the_item_leave(
+    docs: Path,
+    workspace: dict[str, Path],
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An unfinished or unreachable rerun is QA's to own, and the copy is still released."""
+    stack = _Stack(status="invalid")
+    stack.install(monkeypatch)
+    agent = _Agent(workspace, failed=("scenario-a",))
+
+    result = drive_flow(_dev(docs), env(), agent)
+
+    assert result.status == "ready", result
+    assert agent.counts() == {"dev-story": 1}, agent.counts()
+    assert stack.calls[-1] == "release_copy", stack.calls
+
+
+def test_a_stack_that_will_not_come_up_is_skipped_and_released(
+    docs: Path,
+    workspace: dict[str, Path],
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """No stack means no rerun and no repair turn, and the lease is still released."""
+    stack = _Stack(ready="no")
+    stack.install(monkeypatch)
+    agent = _Agent(workspace, failed=("scenario-a",))
+
+    result = drive_flow(_dev(docs), env(), agent)
+
+    assert result.status == "ready", result
+    assert stack.calls == ["stack_target", "ensure_stack", "release_copy"], stack.calls
+
+
+def test_the_dev_lease_is_not_the_qa_lease(
+    docs: Path,
+    workspace: dict[str, Path],
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Dev's copy of the stack carries its own name, so it never collides with QA's."""
+    stack = _Stack()
+    stack.install(monkeypatch)
+    run_env = env()
+
+    drive_flow(_dev(docs), run_env, _Agent(workspace, failed=("scenario-a",)))
+
+    (lease,) = stack.leases
+    assert lease != copy_lease(STORY, "t"), lease
+    assert lease.endswith("-dev"), lease
+
+
+def test_a_second_failing_self_check_hands_the_item_to_qa(
+    docs: Path,
+    workspace: dict[str, Path],
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """The self-check bounces dev once, and a still-red rerun then finishes the item and says QA owns it."""
+    stack = _Stack(failed=("scenario-a",), red=5)
+    stack.install(monkeypatch)
+    agent = _Agent(workspace, failed=("scenario-a",))
+
+    with caplog.at_level("INFO"):
+        result = drive_flow(_dev(docs), env(), agent)
+
+    assert result.status == "ready", result
+    assert agent.counts() == {"dev-story": 2}, agent.counts()
+    assert stack.calls.count("run_qa_plan") == 2, stack.calls
+    assert stack.calls.count("release_copy") == 2, stack.calls
+    assert "scenario-a" in str(agent.args_for("dev-story")[1]["report"])
+    assert any(
+        "self-check: 1 scenario(s) still fail after one bounce, QA owns them now: scenario-a"
+        in r.getMessage()
+        for r in caplog.records
+    ), [r.getMessage() for r in caplog.records]

@@ -93,3 +93,10 @@ def test_the_prompts_own_scenario_example_parses() -> None:
 
     parsed = parse_scenarios("## Test Scenarios\n" + example)
     assert [(s.ac, s.level) for s in parsed] == [("2", "endpoint")], parsed
+
+
+def test_the_acceptance_walk_section_is_not_read_as_scenarios() -> None:
+    plan = MIXED + "\n## Acceptance Walk\n\n### AC 1: the cache\n\n- **Met by**: a/b.py:3\n- **Observed**: it loads\n"
+
+    assert [s.title for s in parse_scenarios(plan)] == [s.title for s in parse_scenarios(MIXED)]
+    assert len(parse_scenarios(plan)) == 2

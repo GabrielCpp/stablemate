@@ -65,4 +65,29 @@ def rejected_text(rejected: dict[str, str], errors: Sequence[str]) -> str:
     return "\n".join(lines)
 
 
-__all__ = ["findings_text", "plan_arg", "rejected_text", "report_text"]
+def walk_text(missing: Sequence[int], criteria: int) -> str:
+    """The criteria the plan's acceptance walk leaves out, as the dev owner's next turn reads it."""
+    named = ", ".join(f"AC {n}" for n in missing)
+    return (
+        f"Acceptance walk: `## Acceptance Walk` in `plan.md` has no entry for {named} "
+        f"of the story's {criteria} criteria.\n\n"
+        "Walk each one as the story's user would see it. Add a `### AC <n>: ...` heading "
+        "with its `Met by` and `Observed` bullets, and fix the product first where the "
+        "criterion does not hold."
+    )
+
+
+def self_check_text(failed: Sequence[dict[str, Any]]) -> str:
+    """The scenarios QA failed last pass that still fail on the dev owner's code."""
+    lines = [
+        "Self-check: these are the scenarios QA failed on its last pass, and they still fail "
+        "on your code. Fix the product, then rerun them before you hand off.",
+        "",
+    ]
+    for entry in failed:
+        assertions = ", ".join(f"`{a}`" for a in entry["failed_assertions"])
+        lines.append(f"- `{entry['id']}`" + (f": failed {assertions}" if assertions else ""))
+    return "\n".join(lines)
+
+
+__all__ = ["findings_text", "plan_arg", "rejected_text", "report_text", "self_check_text", "walk_text"]

@@ -74,6 +74,12 @@ class StackTornDown(CoderResult):
     notes: str = ""
 
 
+class FailedScenarios(CoderResult):
+    """`last_failed_scenarios`: the scenarios the last scored run did not pass."""
+
+    ids: list[str] = Field(default_factory=list)
+
+
 class StackTarget(CoderResult):
     """`stack_target`: which book's stack this run brings up, and the copy it holds there."""
 
@@ -197,6 +203,7 @@ class QaFlowResult(CoderResult):
 __all__ = [
     "BacklogDrain",
     "DryRunGate",
+    "FailedScenarios",
     "FailureAttribution",
     "QaCleared",
     "QaFinding",

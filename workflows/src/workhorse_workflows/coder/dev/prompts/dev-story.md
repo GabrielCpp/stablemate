@@ -118,11 +118,19 @@ plan.
    touched. Then bring up each touched layer with the plan's Local run (smoke) command, and
    hit the changed path once. Bound every long process with a `timeout`, and stop what you
    started. A docs-only story has no runtime, so skip the smoke and say so in `notes`.
-6. **Review.** Once the build is green, have a reviewer judge the change. Skip this step on
+6. **Walk the criteria.** Under `## Acceptance Walk` in `plan.md`, write one
+   `### AC <n>: <the criterion's first words>` heading per Acceptance Criterion, numbered
+   in the story's order from 1. Under each, two bullets: `- **Met by**:` the
+   `repo/path:line` of the code that meets it, and `- **Observed**:` what a person using
+   the product sees when it holds, and the test or smoke run that showed you. Read it off
+   the running product or a test's output, not off the code. A criterion you cannot
+   observe holding is a defect to fix now, not an entry to write. On a follow-up turn,
+   walk only the criteria the follow-up touches.
+7. **Review.** Once the build is green, have a reviewer judge the change. Skip this step on
    a turn that repairs a failed check.
-7. **Triage.** Have a triager sort every finding: the review's and the ones filed above.
-8. **Fix.** Have fixers repair the real findings, then verify again.
-9. **Answer.** Write the answer file yourself, commit, and return the result. Leave
+8. **Triage.** Have a triager sort every finding: the review's and the ones filed above.
+9. **Fix.** Have fixers repair the real findings, then verify again.
+10. **Answer.** Write the answer file yourself, commit, and return the result. Leave
    nothing this story wrote uncommitted. The run checks every repo the story touched.
 
 ## Subagents
@@ -164,7 +172,8 @@ It reads through these lenses:
 - **Local guidance.** A comment in a changed file whose rule the change now breaks.
 - **Reuse.** Logic the diff repeats, or re-adds where a shared helper already does it.
 - **The spec.** An Acceptance Criterion the code does not meet, or behaviour the plan
-  promises and the code does not deliver.
+  promises and the code does not deliver. A walk entry whose Observed line the code or its
+  tests do not bear out.
 - **Test integrity.** An AC with no test that would fail without the change, or a test
   edit the story did not make necessary.
 
@@ -324,6 +333,16 @@ The docs-only service is the root the repo's book is written under, with `type: 
   The levels are `unit`, `component`, `endpoint`, `integration` and `QA-only`. Use
   `QA-only` only for what a live walk alone can see, and say why. A story with no
   observable change (a rename, a bump) says so in one line instead.
+- **Acceptance Walk.** One entry per Acceptance Criterion, written at step 6. Each entry
+  shows where the criterion is met and what a person using the product sees:
+
+  ```markdown
+  ### AC 2: a relative link destination is rejected
+
+  - **Met by**: api-service/src/links/validate.py:41
+  - **Observed**: posting a relative `url` to `/links` returns `400` with a `title` naming
+    the destination. `test_rejects_relative_destination` and the smoke run both showed it.
+  ```
 - **Verification Commands.** Copy them from each layer's instruction files, per layer: code
   generation, tests, lint and format, build, and a Local run (smoke) with its success
   signal. Do not invent a command the files define. Where one is missing, say so and pick
@@ -335,6 +354,12 @@ The workflow records the plan structure, then runs each touched service's declar
 (lint, then test) from the `services:` block of the repo's `agents.yml`, then checks the
 answer file. Whatever fails comes back to you as the next turn in this session, with the
 report attached. Run those gates yourself before you claim `ready`, and leave them green.
+
+On a story turn, the workflow also reads the plan's `## Acceptance Walk`. A criterion with
+no entry comes back to you as the next turn, naming the criterion. When QA failed scenarios
+on an earlier pass, the workflow reruns exactly those scenarios against your code before the
+story leaves dev. Any that still fail come back to you the same way, so rerun them yourself
+first.
 
 ## Blocked
 

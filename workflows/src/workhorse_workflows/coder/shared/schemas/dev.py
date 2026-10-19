@@ -333,6 +333,13 @@ class StoryStatusCheck(CoderResult):
     written: str = ""
 
 
+class WalkCheck(CoderResult):
+    """`acceptance_walk` — which of the story's criteria the plan's walk leaves out."""
+
+    criteria: int = 0
+    missing: list[int] = []
+
+
 class GateList(CoderResult):
     """`declared_gates` — the commands that will run after the turn being briefed."""
 
@@ -364,4 +371,5 @@ __all__ = [
     "PlanValidation",
     "QaRunEntry",
     "StoryStatusCheck",
+    "WalkCheck",
 ]

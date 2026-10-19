@@ -5,34 +5,10 @@ from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 
-from workhorse_workflows.coder.shared import qa_support
+from workhorse_workflows.coder.shared.failed import failed_scenario_ids, failed_scenarios_arg
 from workhorse_workflows.coder.shared.scenarios import qa_only_scenarios
 from workhorse_workflows.coder.shared.schemas.qa import QaFinding, QaPlanRun, RegressionRun
 from workhorse_workflows.kit.qa.schemas import StackStatus
-
-
-def failed_scenario_ids(result: QaPlanRun) -> tuple[str, ...]:
-    """The scenarios a failed run did not pass, sorted; empty for every other status."""
-    if result.status != "failed":
-        return ()
-    scenarios = result.ostler.get("scenarios")
-    if not isinstance(scenarios, dict):
-        return ()
-    return tuple(
-        sorted(
-            str(name)
-            for name, outcome in scenarios.items()
-            if isinstance(outcome, dict) and outcome.get("status") != "passed"
-        )
-    )
-
-
-def failed_scenarios_arg(spec_dir: str, ids: Sequence[str]) -> list[dict[str, Any]]:
-    """Each failed scenario with the assertions it failed, as the owner prompt lists them."""
-    if not spec_dir or not ids:
-        return []
-    failed = qa_support.failed_assertions(qa_support.scored_run_log(Path(spec_dir)))
-    return [{"id": sid, "failed_assertions": failed.get(sid, [])} for sid in ids]
 
 
 def unfinished_run(run: QaPlanRun) -> str:
