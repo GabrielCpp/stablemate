@@ -561,6 +561,14 @@ section 5b after each slice is the third.
    duplicates. All 8 of its misses paired an arithmetic finding with a unary one, which the
    record itself treats as two stories. It cost $1.04 for 127 questions. Holds on the middle
    tier. The side set had no regression case.
+   **Slice 3:** on a copy of the live work list, the word rule alone settled one story's 16
+   pending follow-ups to 4 with no model call. The judge kept rewordings of one finding
+   together within a story. It answered `new` for story 2's empty-state finding against
+   story 3's follow-up for the same screen, so the defect would have had two owners. The
+   question then keyed on criterion numbers and triggers. It now asks whether a person
+   would see the same thing go wrong on the same screen, and a replay matched all four
+   findings to the follow-up three times out of three. The arithmetic and unary findings
+   are not in this work list, so that half of the done-when was not measured.
    **If wrong:** the Judge variants, and slices 1 and 3.
 4. **Assumption:** the dashboard's per-node cost is the dollar figure the operator means.
    **Probe:** recompute one turn from its transcripts at list prices, and compare with the
