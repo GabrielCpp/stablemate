@@ -88,6 +88,32 @@ def test_a_screen_that_cannot_be_read_fails_at_the_ceiling_saying_so() -> None:
     assert "the screen could not be read" in settled.message
 
 
+def _reader_then_unreadable(document: str) -> Callable[[float], str]:
+    documents = [document]
+
+    def read(timeout: float) -> str:
+        if documents:
+            return documents.pop()
+        raise subprocess.TimeoutExpired("maestro hierarchy", timeout)
+
+    return read
+
+
+def test_a_screen_read_once_and_then_cut_off_by_the_ceiling_fails_on_what_that_reading_showed() -> None:
+    settled = _settle(_reader_then_unreadable(_document({"class": "android.widget.TextView", "text": "Welcome"})))
+
+    assert not settled.passed
+    assert "no declared state holds: loaded, error" in settled.message
+    assert "could not be read" not in settled.message
+
+
+def test_a_busy_screen_read_once_and_then_cut_off_by_the_ceiling_names_the_busy_sign() -> None:
+    settled = _settle(_reader_then_unreadable(BUSY_SCREEN))
+
+    assert not settled.passed
+    assert "busy sign still shown: progressbar 'Loading results'" in settled.message
+
+
 def test_a_screen_that_shows_no_declared_state_fails_at_the_ceiling() -> None:
     settled = _settle(_reader(_document({"class": "android.widget.TextView", "text": "Welcome"})))
 
