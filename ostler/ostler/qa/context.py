@@ -2244,7 +2244,8 @@ def node_obligations(
     representative = min(family)
     base = _node_obligation(book_node, reasons, family, journey=journey, required=required, scope=scope, book=book)
     reader = _PartReader(resolve_locator, fixture_provides, fixture_undetermined, fixture_needs, signing_fixtures)
-    ambient = [*_guard_fixtures(book_node, book, walks or {}), *_parent_fixtures(book_node, book)]
+    ambient = [*_guard_fixtures(book_node, book, walks or {}, signing_fixtures, fixture_needs or {}),
+               *_parent_fixtures(book_node, book)]
     own = _attribution(book_node)
     ambient = _without_other_sign_ins(ambient, own.fixtures.own, signing_fixtures, fixture_needs or {})
     attribution = _with_ambient_fixtures(own, ambient)
@@ -2417,15 +2418,19 @@ def _walks(navigation: Mapping[str, Mapping[str, Any]]) -> dict[str, tuple[str, 
 
 def _guard_fixtures(
     book_node: BookNode, book: Mapping[str, BookNode], walks: Mapping[str, tuple[str, ...]],
+    signing: frozenset[str], needs: Mapping[str, frozenset[str]],
 ) -> list[str]:
-    """The fixture each `requires:` guard links, by name, of every screen the walk to *book_node*'s screen passes through."""
+    """The fixture each `requires:` guard links, by name, of every screen the walk to *book_node*'s screen passes through, a later screen's sign-in replacing an earlier one's."""
     screen = _screen_hosting(book_node, book)
     if screen is None:
         return []
     passed = [page for screen_id in walks.get(screen.id, (screen.id,)) if (page := book.get(screen_id)) is not None]
-    linked = [edge.to for page in passed for edge in page.edges if edge.via == reach.GUARD_BULLET and edge.to]
-    return list(dict.fromkeys(
-        Path(target).stem for target in linked if (node := book.get(target)) is not None and node.type == "fixture"))
+    guarded: list[str] = []
+    for page in passed:
+        linked = [Path(edge.to).stem for edge in page.edges if edge.via == reach.GUARD_BULLET and edge.to
+                  and (node := book.get(edge.to)) is not None and node.type == "fixture"]
+        guarded = [*_without_other_sign_ins(guarded, linked, signing, needs), *linked]
+    return list(dict.fromkeys(guarded))
 
 
 def _parent_fixtures(book_node: BookNode, book: Mapping[str, BookNode]) -> list[str]:

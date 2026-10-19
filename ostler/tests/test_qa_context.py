@@ -1381,6 +1381,43 @@ def test_a_node_that_signs_in_its_own_actor_drops_another_sign_in_on_the_walk(
     assert sorted(row["name"] for row in claim.get("fixturesDeclared", [])) == arranged
 
 
+@pytest.mark.parametrize(("guard", "arranged"), [
+    ("[Reviewer](../../fixtures/reviewer.md) — only a reviewer edits", ["reviewer"]),
+    ("[Signed in with item](../../fixtures/signed-in-with-item.md) — only an item's owner edits",
+     ["signed-in", "signed-in-with-item"]),
+])
+def test_a_screen_that_signs_in_its_own_actor_drops_the_sign_in_of_a_screen_in_front(
+    tmp_path: Path, guard: str, arranged: list[str],
+):
+    """A browser holds one session, so a screen in front yields its sign-in to the one the screen's own guard asks for unless that one needs it."""
+    screens = tmp_path / "docs/features/acme/gui/screens"
+    fixtures = tmp_path / "docs/features/acme/fixtures"
+    screens.mkdir(parents=True)
+    fixtures.mkdir(parents=True)
+    (tmp_path / "app").mkdir()
+    (fixtures / "signed-in.md").write_text(_browser_fixture("Signed in"), encoding="utf-8")
+    (fixtures / "reviewer.md").write_text(_browser_fixture("Reviewer"), encoding="utf-8")
+    (fixtures / "signed-in-with-item.md").write_text(
+        _browser_fixture("Signed in with item", needs="[Signed in](signed-in.md)"), encoding="utf-8")
+    (screens / "items.md").write_text(_LIST_IN_FRONT, encoding="utf-8")
+    (screens / "editor.md").write_text(
+        _EDITOR_BEHIND.replace("- requires: none", f"- requires:\n  - {guard}"), encoding="utf-8")
+    (tmp_path / "app/editor.py").write_text("def render_title():\n    return 'old'\n", encoding="utf-8")
+    _git(tmp_path, "init")
+    _git(tmp_path, "config", "user.email", "qa@example.com")
+    _git(tmp_path, "config", "user.name", "QA")
+    _git(tmp_path, "add", ".")
+    _git(tmp_path, "commit", "-m", "base")
+    base = _git(tmp_path, "rev-parse", "HEAD")
+    (tmp_path / "app/editor.py").write_text("def render_title():\n    return 'new'\n", encoding="utf-8")
+
+    packet = build_context(tmp_path, base=base, source_roots={"acme": ["app"]})
+
+    by_id = {item["id"]: item for item in packet["obligations"]}
+    claim = by_id["okf:docs/features/acme/gui/screens/editor.md#title-field:states:1"]
+    assert sorted(row["name"] for row in claim.get("fixturesDeclared", [])) == arranged
+
+
 @pytest.mark.parametrize(("node", "state", "arranged"), [
     ("reviewer — a reviewer is signed in to the browser", "signed-in — a user is signed in to the browser",
      ["signed-in"]),
