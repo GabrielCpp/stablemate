@@ -11,7 +11,8 @@ from textual.widgets import Markdown, OptionList, Static
 
 from groom import state
 from groom.models import GateInfo
-from groom.tui.app import GroomTui, GateBlock
+from groom.tui.app import GroomTui
+from groom.tui.widgets.gate import GateBlock
 
 
 @pytest.fixture(autouse=True)
