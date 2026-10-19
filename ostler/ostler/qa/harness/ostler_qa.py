@@ -1939,14 +1939,17 @@ class Qa:
             return
 
     def vet(self, screen: str, name: str = "", components: list[str] | None = None, arrives: str = "") -> Path:
-        """Photograph a screen and hand ostler the screen it is supposed to be. *arrives* is the address to wait for first."""
+        """Photograph a screen and hand ostler the screen it is supposed to be. *arrives* is the address to wait for first.
+
+        Each vet files its photograph under its own ordinal: the grader reads the regions back by path once the scenario is over, so a shared name would judge every vet on the last screen photographed."""
         state = name or "vet"
+        artifact = f"{state}-{self.vets + 1}"
         if self.target.driver == "playwright":
             if arrives:
                 self._settle(arrives)
-            path = self.screenshot(state)
+            path = self.screenshot(artifact)
         elif self.target.driver == "maestro":
-            path = self.device_screenshot(state)
+            path = self.device_screenshot(artifact)
         else:
             raise RuntimeError(
                 f"scenario {self.scenario_id!r} vets '{screen}' on a '{self.target.driver}' "
