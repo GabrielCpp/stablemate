@@ -25,8 +25,8 @@ packs:
 # Every repo takes the `stablemate` base-library pack (this toolchain: farrier,
 # groom, ostler, workhorse) and adds its stack pack on top. Here that is
 # `python`, from the overlay library. The cross-cutting craft of the `general`
-# pack (architecture, testing, ui, vertical-slicing, isolating-causes,
-# code-review) installs once per machine instead, from the stablemate config's
+# pack (architecture, testing, ui, vertical-slicing, isolating-causes)
+# installs once per machine instead, from the stablemate config's
 # `[user_library.<harness>]` tables, and a reference to one of its skills
 # resolves to that home copy.
 #

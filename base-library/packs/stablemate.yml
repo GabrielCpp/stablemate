@@ -9,8 +9,7 @@ description: >
 # The `stablemate/` segment is the library namespace and is stripped from the
 # installed name; the skill names themselves no longer repeat it. Each one says
 # which tool it is about — `ostler`, `groom`, `farrier-setup`,
-# `workhorse-engine` — or says nothing when the rule is generic to any repo
-# (`code-review`). The installed name already
+# `workhorse-engine`. The installed name already
 # carries the consuming repo's prefix, so `stablemate-ostler` named this repo
 # twice, and every other repo got `<repo>-stablemate-ostler` — a name that reads
 # as "about stablemate" when the skill is about ostler.

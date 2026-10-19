@@ -98,8 +98,8 @@ Two failure modes, and they are not the same size:
   pack that answers it.
 - **`skill_load_ref` names a skill that is not there.** Not degraded — the coder's
   `document_story` and `code_review` prompts do not ask what the repo has, they say "load
-  this and follow it" and name `ostler-okf` and `code-review`. Absent, the
-  agent is handed a slash command or a path that does not resolve. Both skills are in the
+  this and follow it" and name `ostler-okf`. Absent, the
+  agent is handed a slash command or a path that does not resolve. That skill is in the
   `stablemate` pack, which is also the only pack the benchmark uses that ships in
   `base-library/` rather than the private overlay — so a public clone resolves it.
 

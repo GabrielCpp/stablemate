@@ -190,5 +190,4 @@ A phase with a hatch and no chain is not complete. It improved the routing of an
 Read the failure the diff clears. Then write the chain the author did not write. Where your
 chain goes deeper than the diff, the gap is the finding. A diff that touches a waiver, a skip
 marker, a retry count or a broader `except`, with no chain in its description, is a finding
-before any test runs. [[code-review]] carries the rest of the review. This skill decides
-whether the fix is one.
+before any test runs. This skill decides only whether the fix is one.
