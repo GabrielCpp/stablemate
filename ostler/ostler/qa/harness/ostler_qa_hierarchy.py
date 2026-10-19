@@ -80,8 +80,16 @@ def selectors_for(attributes: dict[str, str]) -> list[str]:
     return found
 
 
+def accessible_name(attributes: dict[str, str]) -> str:
+    """The name a screen reader announces for a node: its first non-empty name attribute, or empty when it has none."""
+    return next(
+        (value for key in SETTLE_NAME_ATTRIBUTES if (value := str(attributes.get(key) or "").strip())),
+        "",
+    )
+
+
 def _element(attributes: dict[str, str], bounds: str) -> list[dict[str, Any]]:
-    """One hierarchy node as zero or more scan elements — one per spelling that names it."""
+    """One hierarchy node as zero or more scan elements — one per spelling that names it, each carrying the name the node announces."""
     match = BOUNDS.match(bounds)
     if match is None:
         return []
@@ -92,8 +100,9 @@ def _element(attributes: dict[str, str], bounds: str) -> list[dict[str, Any]]:
     class_name = attributes.get("class") or attributes.get("type") or ""
     role = role_for(class_name)
     selectors = selectors_for(attributes) or [class_name.rsplit(".", 1)[-1] or "node"]
+    name = accessible_name(attributes)
     return [
-        {"selector": selector, "tag": class_name, "role": role, "bbox": dict(box)}
+        {"selector": selector, "tag": class_name, "role": role, "name": name, "bbox": dict(box)}
         for selector in selectors
     ]
 
