@@ -84,6 +84,50 @@ starts as a background process. Both run through `python3`, not through `ostler`
 - code: ostler/ostler/edit.py::settle_answers@7144473df397
 - detail: [The Ostler facade and book utilities](concepts/the-ostler-facade-and-book-utilities.md)
 
+### verdict-memo-recall
+- usage: python3 -c "...VerdictMemo(store, contract).remember(packet, report)... .recall(packet)..." —
+  stores one packet's claim verdict under a key built from the claim's own digest and the
+  candidate pool beside it, then recalls it for the same packet without a fresh review
+- args: none
+- exits: 0 — a recall before anything is stored is an empty `MemoRecall`, not an error
+- run: invoke(argv=["-c", "import json\nfrom pathlib import Path\nfrom ostler.behavior_memo import VerdictMemo\nfrom ostler.behavior_models import AuditPacket, AuditReport, AuditVerdicts, BookClaim, ClaimVerdict\nfrom ostler.index import IndexStore\nclaim = BookClaim(id='c1', node='n1', path='docs/x.md', line=1, kind='behavior', text='does x', citations=('ostler/x.py::f',))\npacket = AuditPacket(module='m', symbol='s', scope=('ostler/x.py',), inventory_digest='d1', candidates=(), claims=(claim,), omitted_candidates=0, omitted_claims=0, limitations=(), digest='pd1')\nstore = IndexStore(root=Path('memo-scratch'), directory=Path('memo-scratch/cache'))\nmemo = VerdictMemo(store, 'contract1')\nbefore = memo.recall(packet)\nverdict = ClaimVerdict(id='c1', status='supported', candidate_ids=(), explanation='ok')\nreport = AuditReport(packet_digest='pd1', verdicts=AuditVerdicts(claims=(verdict,), candidates=()), limitations=())\nwritten = memo.remember(packet, report)\nafter = memo.recall(packet)\nprint(json.dumps({'before': len(before.claims), 'written': written, 'after': after.claims[0].status}))\n"])
+- verify: exit_status(code=0)
+- verify: json_path(path="before", equals=0)
+- verify: json_path(path="written", equals=1)
+- verify: json_path(path="after", equals="supported")
+- fixture: [memo scratch dir](fixtures/memo-scratch-dir.md)
+- code: ostler/ostler/behavior_memo.py::VerdictMemo@e8aa0356d04e
+- code: ostler/ostler/behavior_memo.py::claim_digest@e8aa0356d04e
+- code: ostler/ostler/behavior_memo.py::claim_context_digest@e8aa0356d04e
+- detail: [Auditing a book's claims against source](concepts/auditing-a-books-claims-against-source.md)
+
+### vendor-base-library-and-skill-lookup
+- usage: python3 -c "...from ostler._vendor.stablemate_core import discovery, layout, profiles, skill_refs..." —
+  the vendored copy of stablemate-core's own base-library lookup, profile lookup and skill
+  catalog, called the same way an unvendored caller elsewhere in stablemate would call the
+  original
+- args: none
+- exits: 0 — `select_profile` raising `UnknownProfileError` for a name the config does not
+  define is caught in the script, not an uncaught error
+- run: invoke(argv=["-c", "import json\nimport os\nfrom pathlib import Path\nos.environ['STABLEMATE_BASE_DIR'] = 'vendor-scratch/base-lib'\nfrom ostler._vendor.stablemate_core.discovery import base_library_dir\nfrom ostler._vendor.stablemate_core.layout import is_library_dir\nfrom ostler._vendor.stablemate_core.profiles import select_profile, profile_names, UnknownProfileError\nfrom ostler._vendor.stablemate_core.skill_refs import scan_catalog, SkillRefs\nfound = base_library_dir()\ncfg = {'profiles': {'demo': {'cli': 'claude'}}}\nnames = profile_names(cfg)\ntry:\n    select_profile(cfg, 'missing')\n    unknown = False\nexcept UnknownProfileError:\n    unknown = True\ncatalog = scan_catalog('claude', Path('vendor-scratch'), home=Path('vendor-scratch/home'), root=Path('vendor-scratch'))\nrefs = SkillRefs(catalog=catalog, harness='claude', base=Path('vendor-scratch'), root=Path('vendor-scratch'), home=Path('vendor-scratch/home'))\nprint(json.dumps({'base_library_dir': str(found), 'is_library_dir': is_library_dir(Path('vendor-scratch/base-lib')), 'profile_names': names, 'unknown_raised': unknown, 'skill_link': refs.skill_link('demo-skill'), 'skill_command': refs.skill_command('demo-skill')}))\n"])
+- verify: exit_status(code=0)
+- verify: json_path(path="base_library_dir", matches="vendor-scratch/base-lib$")
+- verify: json_path(path="is_library_dir", equals=true)
+- verify: json_path(path="profile_names[0]", equals="demo")
+- verify: json_path(path="unknown_raised", equals=true)
+- verify: json_path(path="skill_link", matches="^\\[demo-skill\\]")
+- verify: json_path(path="skill_link", matches="skills/demo-skill/SKILL\\.md\\)$")
+- verify: json_path(path="skill_command", equals="/demo-skill")
+- fixture: [vendor scratch base and skills](fixtures/vendor-scratch-base-and-skills.md)
+- code: ostler/ostler/_vendor/stablemate_core/discovery.py::base_library_dir@42eebfdfea77
+- code: ostler/ostler/_vendor/stablemate_core/layout.py::is_library_dir@d69e52175abc
+- code: ostler/ostler/_vendor/stablemate_core/profiles.py::select_profile@0f757c16382b
+- code: ostler/ostler/_vendor/stablemate_core/profiles.py::profile_names@0f757c16382b
+- code: ostler/ostler/_vendor/stablemate_core/skill_refs.py::scan_catalog@ebf1b69c7565
+- code: ostler/ostler/_vendor/stablemate_core/skill_refs.py::SkillRefs.skill_link@ebf1b69c7565
+- code: ostler/ostler/_vendor/stablemate_core/skill_refs.py::SkillRefs.skill_command@ebf1b69c7565
+- detail: [Vendored stablemate-core](concepts/vendored-stablemate-core.md)
+
 ### qa-context-source-repository
 - usage: python3 -c "...Ostler(root=...).qa_context(..., repositories=[SourceRepository(...)])..." —
   maps a change across one or more independently-versioned checkouts, each scoped to the surfaces

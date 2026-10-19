@@ -137,6 +137,34 @@ are written, because each later command reads what an earlier one wrote.
 - code: ostler/ostler/qa/packet.py::packet_of@b67a80c9a6e3
 - code: ostler/ostler/qa/plan_source.py::arrangement_of@fa73bba2be06
 
+### ostler-qa-context-web-journey
+- usage: ostler qa context --base BASE --spec SPEC --json, BASE naming a commit before a screen's
+  interaction and state both changed production code on a `driver: web` surface
+- exits: 0 when the packet is built and no health finding is an error
+- run: invoke(argv=["-C", "qa-web-scratch", "qa", "context", "--base", "HEAD", "--spec", "s1", "--json"], env={"STABLEMATE_ARTIFACTS_DIR": "qa-web-scratch/art", "GIT_DIR": "repo.git"})
+- verify: exit_status(code=0)
+- verify: json_path(path="available", equals=true)
+- verify: json_path(path="status", equals="passed")
+- verify: json_path(path="changedCode[0].path", equals="src/frontend.py")
+- fixture: [qa web journey repo](fixtures/qa-web-journey-repo.md)
+- code: ostler/ostler/qa/context.py::book_files@ae1dfb851ad2
+- code: ostler/ostler/qa/dispatch.py::claim_driver@d44c624e5b21
+
+### ostler-qa-compile-plan-web-journey
+- usage: ostler qa compile-plan --spec SPEC --out PATH --json, SPEC naming a packet whose flow
+  walks a screen's interaction into a screen state on a `driver: web` surface
+- exits: 0 when the plan compiles
+- run: invoke(argv=["-C", "qa-web-scratch", "qa", "compile-plan", "--spec", "s1", "--out", "art/specs/s1/qa_plan_compiled.py", "--json"], env={"STABLEMATE_ARTIFACTS_DIR": "qa-web-scratch/art", "GIT_DIR": "repo.git"})
+- verify: exit_status(code=0)
+- verify: json_path(path="status", equals="passed")
+- verify: contents(subject="qa-web-scratch/art/specs/s1/qa_plan_compiled.py", matches="qa\\.by_role\\(\"button\", name=\"Open\"\\)")
+- verify: contents(subject="qa-web-scratch/art/specs/s1/qa_plan_compiled.py", matches="qa\\.settle\\(")
+- fixture: [qa web journey repo](fixtures/qa-web-journey-repo.md)
+- code: ostler/ostler/qa/compile_playwright.py::web_walk@0f1323f2699e
+- code: ostler/ostler/qa/compile_playwright.py::page_locator_expr@0f1323f2699e
+- code: ostler/ostler/qa/compile_stops.py::resolve_state@4daf7645d9c5
+- code: ostler/ostler/qa/compile_stops.py::perceivable@4daf7645d9c5
+
 ### ostler-qa-lint
 - usage: ostler qa lint PLAN [--json]: lints a qa_plan.py by its syntax tree, without importing or
   running it
@@ -238,6 +266,23 @@ are written, because each later command reads what an earlier one wrote.
 - fixture: [qa browser scratch plan](fixtures/qa-browser-scratch-plan.md)
 - code: ostler/ostler/qa/harness/ostler_qa.py::_open_browser@5e8e1ba15732
 - code: ostler/ostler/qa/harness/ostler_qa_browser.py::Browser@27603f8dc6e3
+- detail: [Running and reporting a QA run](concepts/running-and-reporting-a-qa-run.md)
+
+### ostler-qa-run-maestro-target
+- usage: ostler qa run PLAN --json, PLAN naming a target whose driver is `maestro` — settling a
+  screen on that target reads the device through the `maestro hierarchy` CLI, so the claim that
+  settles is the whole claim
+- args: none
+- exits: 1 when the claim that settles raises before any state it names is ever checked, which
+  is every outcome short of a real device answering `maestro hierarchy`
+- run: invoke(argv=["-C", "qa-scratch", "qa", "run", "art/specs/s1/qa_plan_device.py", "--json"], env={"STABLEMATE_ARTIFACTS_DIR": "qa-scratch/art", "STABLEMATE_CONFIG": "qa-scratch/qa.toml", "GIT_DIR": "repo.git"})
+- verify: exit_status(code=1)
+- fixture: [qa scratch repo](fixtures/qa-scratch-repo.md) with a QA scratch repo with one changed
+  source file and a plan under spec s1
+- fixture: [qa maestro scratch plan](fixtures/qa-maestro-scratch-plan.md)
+- code: ostler/ostler/qa/harness/ostler_qa.py::settle@5e8e1ba15732
+- code: ostler/ostler/qa/harness/ostler_qa_hierarchy.py::DeviceScreen@421f8aef3352
+- code: ostler/ostler/qa/harness/ostler_qa_hierarchy.py::_maestro_hierarchy@421f8aef3352
 - detail: [Running and reporting a QA run](concepts/running-and-reporting-a-qa-run.md)
 
 ### ostler-qa-report
