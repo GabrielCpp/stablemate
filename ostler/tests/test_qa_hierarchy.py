@@ -105,6 +105,19 @@ def test_the_viewport_is_the_extent_of_what_was_measured() -> None:
     assert frame["document"] == frame["viewport"], "a device screen does not scroll itself"
 
 
+def test_an_element_carries_the_name_the_node_announces_so_placement_can_hold_the_book_to_it() -> None:
+    """Placement compares the book's `name:` against what the scan recorded; a census that records none reads as an observed silence."""
+    submit = [e for e in hierarchy.parse_maestro(MAESTRO) if e["selector"] == "Submit"]
+    assert submit and all(element["name"] == "Submit" for element in submit)
+    region = next(r for r in scan.merge_rects(hierarchy.parse_maestro(MAESTRO)) if "Submit" in r["selectors"])
+    assert region["names"][region["selectors"].index("Submit")] == "Submit"
+    labelled_only_by_text = hierarchy.parse_maestro(
+        '{"attributes": {"resource-id": "x:id/go", "text": "Go", "class": "android.widget.Button", '
+        '"bounds": "[0,0][10,10]"}}'
+    )
+    assert {element["name"] for element in labelled_only_by_text} == {"Go"}
+
+
 def test_an_element_no_attribute_names_falls_back_to_its_class() -> None:
     unnamed = hierarchy.parse_maestro(
         '{"attributes": {"class": "android.widget.LinearLayout", "bounds": "[0,0][10,10]"}}'
