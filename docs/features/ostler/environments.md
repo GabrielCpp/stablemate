@@ -65,3 +65,24 @@ a secret no source supplies, without ever starting docker.
 - code: ostler/ostler/environments/commands.py::cmd_check@36bbc1003620
 - code: ostler/ostler/environments/spec.py::load@b020ed778dc2
 - detail: [Local stack bring-up](concepts/local-stack-bring-up.md)
+
+### ostler-env-address-not-up
+- usage: ostler env address NAME [--copy NAME] [--json] — prints the URL the copy publishes
+  NAME at, read from the `addresses.json` a bring-up wrote into the copy's directory, without
+  starting docker; fails a name no bring-up has published yet, naming every address the copy
+  does publish instead
+- flags:
+  - --copy (which named copy to read from; default: `$STABLEMATE_LEASE_HOLDER`, else `shared`), --json (print `{ok, name, url}` as one indented JSON object)
+- args: name — the address name to resolve
+- exits: 1 — a copy nothing has brought up yet publishes no address book; the name is rejected,
+  and the message says the copy is not up rather than naming an address it never had
+- run: invoke(argv=["env", "address", "demo", "--copy", "okf-book-env-address-never-up", "--json"])
+- verify: exit_status(code=1)
+- verify: json_path(path="ok", equals=false)
+- verify: json_path(path="error", matches="^okf-book-env-address-never-up publishes no `demo` \\(it publishes none, since it is not up\\)$")
+- fixture: none, because nothing is seeded
+- code: ostler/ostler/qa/addresses.py::read_book@910467430420
+- code: ostler/ostler/environments/commands.py::cmd_address@36bbc1003620
+- code: ostler/ostler/environments/runtime.py::copy_for@9c6cee57be4b
+- code: ostler/ostler/environments/cli.py::run@f1b74cc1cc17
+- detail: [Local stack bring-up](concepts/local-stack-bring-up.md)

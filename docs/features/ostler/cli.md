@@ -168,6 +168,24 @@ managed markdown tree (backlog, milestones, epics, features) under a repo root.
 - code: ostler/ostler/cli.py::_cmd_vet@03c9e301c36d
 - detail: [Vetting a rendered screen](concepts/vetting-a-rendered-screen.md)
 
+### ostler-vet-cdp
+- usage: ostler vet SCREENSHOT --manifest PATH --cdp-url URL --slug SLUG [--json] — scans a live
+  page over Chrome DevTools Protocol instead of replaying a `--regions` file, and reports the scan
+  itself failing as a `VetOutcome` error rather than a report
+- flags:
+  - --cdp-url (a live Chrome DevTools Protocol URL to scan; mutually exclusive with --regions)
+- args: none beyond the screenshot already covered by [ostler-vet](#ostler-vet)
+- exits: 1 — a CDP URL nothing answers fails the scan before any manifest is even read, so the
+  run's error names the URL, not a missing manifest
+- run: invoke(argv=["vet", "nonexistent.png", "--manifest", "vet-manifest.json", "--cdp-url", "http://127.0.0.1:1/", "--slug", "vet-demo", "--json"])
+- verify: exit_status(code=1)
+- verify: json_path(path="error", matches="^CDP scan of 'http://127\\.0\\.0\\.1:1/' failed: ")
+- fixture: [vet manifest and regions](fixtures/vet-manifest-and-regions.md) — seeds the
+  `--manifest` file this run reads; its `--regions` file goes unread on this path
+- code: ostler/ostler/vet/cdp.py::connect_and_scan@77027b587d70
+- code: ostler/ostler/qa/harness/ostler_qa_scan.py::SCAN_JS@71decdf2a5c3
+- detail: [Vetting a rendered screen](concepts/vetting-a-rendered-screen.md)
+
 ### ostler-env-check
 - usage: ostler env check [--json] — reads every book's `ops/stack.yml`, prints `N services in M
   books fit together` when none of them disagree, and otherwise prints one `- ` line per problem
