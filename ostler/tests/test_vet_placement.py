@@ -157,6 +157,17 @@ def test_a_component_with_no_placement_is_still_checked_for_being_there() -> Non
     assert present.detail == []
 
 
+def test_a_scheme_address_matches_the_identifier_a_device_census_mints_bare() -> None:
+    """The book writes `testID=action.save`; the hierarchy carries `action.save` as its resource id."""
+    present, other = check(
+        [_component("s.md#save", "testID=action.save"), _component("s.md#undo", "testID=action.undo")],
+        [_region("button", ["action.save"], (1300, 20, 100, 32)),
+         _region("button", ["testID=action.undo.later"], (1300, 60, 100, 32))],
+        VIEWPORT,
+    )
+    assert (present.status, other.status) == ("matched", "missing")
+
+
 def test_a_bare_tag_matches_the_element_a_styling_framework_gave_classes() -> None:
     """A scan names a class-styled element `tag.class:nth(i)`, and the book's `form` is still that element."""
     form, other = check(

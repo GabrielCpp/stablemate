@@ -12,7 +12,7 @@ from ostler.links import LinkResolver
 from ostler.locators import compile_template, name_pattern
 from ostler.model import Graph, UINode
 from ostler.qa.harness_host import load_harness_module
-from ostler.selector_forms import ROLE_SELECTOR
+from ostler.selector_forms import ROLE_SELECTOR, parse_scheme_selector
 from ostler.vet.geometry import BBox
 from ostler.vet.regions import RegionBox
 
@@ -121,7 +121,10 @@ class ComponentVerdict(BaseModel):
 
 
 def _matches(selector: str, scanned: str) -> bool:
-    """Whether a scanned element's selector is the documented one."""
+    """Whether a scanned element's selector is the documented one. A `scheme=value` address names the identifier a device census mints bare."""
+    scheme = parse_scheme_selector(selector)
+    if scheme is not None:
+        selector = scheme[1]
     if scanned == selector or scanned.startswith(f"{selector}:nth("):
         return True
     if selector.startswith("#") or scanned.startswith("#"):
