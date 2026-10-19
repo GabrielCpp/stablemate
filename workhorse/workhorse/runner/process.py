@@ -191,6 +191,13 @@ class ProcessSupervisor:
                 self.successful_executables.add(cmd[0])
                 return proc
             except OSError as exc:
+                cwd = popen_kwargs.get("cwd")
+                if exc.errno == errno.ENOENT and cwd and not Path(cwd).is_dir():
+                    raise BackendInvocationError(
+                        f"agent CLI '{cmd[0]}' could not be launched: its working "
+                        f"directory '{cwd}' does not exist.",
+                        transient=False,
+                    ) from exc
                 retryable = exc.errno in _EXEC_BUSY_ERRNOS or exc.errno == errno.ENOENT
                 attempt += 1
                 if retryable and attempt <= resilience.exec_retry_max:
