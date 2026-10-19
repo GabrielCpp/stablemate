@@ -324,7 +324,6 @@ def run_qa_plan(
     docs_root = find_docs_root(docs_path, repo_dir)
     plan = plan_file if plan_file is not None else str(Path(spec_dir) / QA_PLAN_FILE)
     docs_graph = model.load(docs_root)
-    near = near or (str(docs_root / spec_dir) if spec_dir else "")
     manifests, _selection = runbook.load_stacks(
         docs_graph, near=Path(near) if near else None, leased=bool(lease), logger=logger)
     leased = stack_env(logger, docs_graph, near=near, lease=lease)
