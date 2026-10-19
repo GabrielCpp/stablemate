@@ -118,6 +118,8 @@ HIDE_WAIT_S = 3.0
 def read_hidden(observed: object, args: Args) -> VisibilityReading:
     """Whether any element the locator matches is still shown, once a closing element has had time to leave."""
     count = getattr(observed, "count", None)
+    if isinstance(observed, bool):
+        return VisibilityReading(shown=not observed, readings=(), asserted=True)
     if not callable(count):
         return read_visibility(observed, {})
     deadline = time.monotonic() + HIDE_WAIT_S

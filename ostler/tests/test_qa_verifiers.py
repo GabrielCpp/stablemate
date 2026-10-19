@@ -421,6 +421,14 @@ def test_hidden_passes_when_nothing_the_locator_matches_is_shown() -> None:
     assert harness.VERIFIERS["hidden"](_Matches(False, False), {}).passed is True
 
 
+def test_hidden_takes_an_observers_own_verdict_as_whether_the_subject_left() -> None:
+    """A device flow asserts the absence itself and hands back only whether it held."""
+    held = harness.VERIFIERS["hidden"](True, {"locator": "#apple"})
+    assert held.passed is True
+    assert held.actual == {"visible": False}
+    assert harness.VERIFIERS["hidden"](False, {"locator": "#apple"}).passed is False
+
+
 def test_hidden_fails_when_any_match_is_still_shown(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(load_harness_module("ostler_qa_elements"), "HIDE_WAIT_S", 0.0)
     verdict = harness.VERIFIERS["hidden"](_Matches(False, True), {})
