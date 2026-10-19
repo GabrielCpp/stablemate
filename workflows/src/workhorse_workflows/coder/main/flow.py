@@ -126,6 +126,7 @@ class Coder(Workflow):
             follow_up_reason=str(item.payload.get("reason") or ""),
             note=note,
             preexisting=self._preexisting(),
+            worklist_dir=str(self.run_dir),
         )
         if result.status == "replan":
             return Continue(result, self.replan, notes=result.operator_notes)
