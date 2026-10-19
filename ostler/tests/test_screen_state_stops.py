@@ -223,7 +223,10 @@ def test_a_device_flow_with_no_stop_is_one_flow_file_that_launches_first() -> No
 
     assert files[f"{FLOW_STEM}.yaml"] == (
         'appId: "com.example.mobile-app"\n---\n- launchApp:\n    clearState: true\n'
-        '- tapOn:\n    text: "Open details"\n- assertVisible:\n    text: "Results"\n')
+        '- scrollUntilVisible:\n    element:\n      text: "Open details"\n    direction: DOWN\n'
+        '- tapOn:\n    text: "Open details"\n'
+        '- scrollUntilVisible:\n    element:\n      text: "Results"\n    direction: DOWN\n'
+        '- assertVisible:\n    text: "Results"\n')
     assert f'    journey_result = qa.maestro.run(qa.spec_dir / "{FLOW_STEM}.yaml")' in journey
     assert "require=True" not in journey
     assert "qa.settle(" not in journey

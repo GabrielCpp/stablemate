@@ -5997,7 +5997,8 @@ def test_an_obligation_off_the_launch_screen_taps_its_way_there_first() -> None:
     (flow_text,) = [text for text in result.files.values() if "probe-widget" in text]
     _header, commands = yaml.safe_load_all(flow_text)
     assert commands[0] == {"launchApp": {"clearState": True}}
-    assert commands[1] == {"tapOn": {"id": "probe-link"}}
+    assert commands[1] == {"scrollUntilVisible": {"element": {"id": "probe-link"}, "direction": "DOWN"}}
+    assert commands[2] == {"tapOn": {"id": "probe-link"}}
 
 
 def test_a_launch_hop_with_no_addressable_control_gaps_unresolved_precondition() -> None:
@@ -6052,6 +6053,25 @@ def test_a_device_fixture_reaches_a_screen_by_taps_from_its_launch_screen_with_a
     assert {"tapOn": {"id": "probe-link"}} not in commands
 
 
+def test_a_device_tap_and_a_device_visibility_check_scroll_their_control_into_view_first() -> None:
+    """Maestro finds only what is drawn, so a control below the fold of a scrolling screen is unreachable until the flow scrolls to it."""
+    context, oid, _launch = _device_fixture_probe({})
+
+    result = _compile_plan_gaps(context, story="demo-story")
+    assert isinstance(result, Plan)
+    assert _gap_kinds(result.gaps, oid) == []
+    commands = _probe_flow(result)
+    scroll = {"scrollUntilVisible": {"element": {"id": "probe-link"}, "direction": "DOWN"}}
+    tap_at = commands.index({"tapOn": {"id": "probe-link"}})
+    assert commands[tap_at - 1] == scroll
+    asserts = [i for i, c in enumerate(commands) if isinstance(c, dict) and "assertVisible" in c]
+    assert asserts, commands
+    for i in asserts:
+        assert "scrollUntilVisible" in commands[i - 1], commands[i - 1]
+    assert not any(isinstance(c, dict) and "assertNotVisible" in c and "scrollUntilVisible" in commands[i - 1]
+                   for i, c in enumerate(commands))
+
+
 def test_a_claim_with_no_device_fixture_starts_on_a_cleared_device() -> None:
     context, oid, _launch = _device_fixture_probe({})
 
@@ -6060,7 +6080,8 @@ def test_a_claim_with_no_device_fixture_starts_on_a_cleared_device() -> None:
     assert _gap_kinds(result.gaps, oid) == []
     commands = _probe_flow(result)
     assert commands[0] == {"launchApp": {"clearState": True}}
-    assert commands[1] == {"tapOn": {"id": "probe-link"}}
+    assert commands[1] == {"scrollUntilVisible": {"element": {"id": "probe-link"}, "direction": "DOWN"}}
+    assert commands[2] == {"tapOn": {"id": "probe-link"}}
 
 
 def test_two_fixtures_that_open_the_app_on_different_screens_gap_the_claim() -> None:

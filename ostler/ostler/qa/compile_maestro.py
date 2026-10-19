@@ -99,12 +99,18 @@ def maestro_press_key(key: str) -> str | None:
     return _PRESS_KEYS_BY_NORMAL.get(normal)
 
 
+def _into_view(locator: MaestroLocator) -> list[str]:
+    """The scroll that brings the control at *locator* onto the screen: Maestro sees only what is drawn, where a browser driver scrolls to a control by itself."""
+    key, value = locator
+    return ["- scrollUntilVisible:", "    element:", f'      {key}: "{value}"', "    direction: DOWN"]
+
+
 def _act_commands(
     act_name: str, locator: MaestroLocator, args: Mapping[str, CheckValue],
 ) -> list[str]:
     """The Maestro commands that perform act *act_name* on the control at *locator*."""
     key, value = locator
-    tap = ["- tapOn:", f'    {key}: "{value}"']
+    tap = [*_into_view(locator), "- tapOn:", f'    {key}: "{value}"']
     if act_name == "fill":
         return [*tap, f'- inputText: "{args.get("value", "")}"']
     if act_name == "press":
@@ -119,7 +125,7 @@ def _check_commands(
     key, value = locator
     if check_name == "hidden":
         return ["- assertNotVisible:", f'    {key}: "{value}"']
-    block = ["- assertVisible:", f'    {key}: "{value}"']
+    block = [*_into_view(locator), "- assertVisible:", f'    {key}: "{value}"']
     if check_name == "actionable":
         block.append("    enabled: true")
     elif check_name == "inert":
