@@ -48,7 +48,7 @@ A fault outside the repository is reported only as `fault_locus: "tooling"` with
 ### `code-review-experiment.md`
 
 The reviewer checks the engineer's build against the gate document after lint and the tests have
-passed. It runs the code-review skill, fixes the real correctness findings it can, and re-reads the
+passed. It lists the correctness bugs in the branch's diff, fixes the real ones it can, and re-reads the
 code against the gate's own requirements. Its JSON result is `CodeReview`, with `status` set to
 `approve` or `revise`, the outstanding `findings`, and `notes` for the next turn.
 
