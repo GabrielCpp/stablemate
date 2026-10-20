@@ -79,6 +79,20 @@ def test_a_key_that_neither_clicks_nor_opens_anything_does_not_activate() -> Non
     assert elements.read_focus(already_open, {"activates": "Enter"}).activated is False
 
 
+@dataclass
+class _NavigatingPage(_Page):
+    """A page whose keypress submits a form, so the document a read would ask is already gone."""
+
+    def evaluate(self, _script: str) -> bool:
+        raise RuntimeError("Page.evaluate: Execution context was destroyed, most likely because of a navigation")
+
+
+def test_a_key_that_navigates_away_activates_the_control() -> None:
+    """Enter on a submit button posts the form, and the next page replaces the one that held the button."""
+    reading = elements.read_focus(_Control(_NavigatingPage(clicks_on_key=False)), {"activates": "Enter"})
+    assert (reading.focused, reading.activated) == (True, True)
+
+
 class _Unrendered:
     """A locator whose element the page never rendered: any wait on it outlasts the scenario."""
 

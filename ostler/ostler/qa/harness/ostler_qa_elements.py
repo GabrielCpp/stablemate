@@ -207,7 +207,7 @@ class FocusReading:
 def read_focus(observed: object, args: Args) -> FocusReading:
     """Reachable by a real keypress, and — when `activates` names one — responsive to it.
 
-    A control answers its key when the key clicks it, opens its popup, or is an `Enter` its own
+    A control answers its key when the key clicks it, opens its popup, leaves the page, or is an `Enter` its own
     handler consumed. `Enter` does nothing by default on an element that is not a native control,
     so a handler that prevents it has acted on it. A component library that runs its click handler
     from that keydown dispatches no click.
@@ -231,9 +231,20 @@ def read_focus(observed: object, args: Args) -> FocusReading:
     held = getattr(observed, "element_handle")()
     expanded = held.evaluate(_ARM_ACTIVATION)
     page.keyboard.press(args["activates"])
-    if bool(page.evaluate("() => window.__ostlerActivated === true")):
+    try:
+        clicked = bool(page.evaluate("() => window.__ostlerActivated === true"))
+    except Exception as error:
+        if not _navigated(error):
+            raise
+        return FocusReading(focused=True, activated=True)
+    if clicked:
         return FocusReading(focused=True, activated=True)
     return FocusReading(focused=True, activated=expanded == "false" and _opened(held))
+
+
+def _navigated(error: Exception) -> bool:
+    """Whether a read died because the key it followed replaced the page, as a submit that navigates does."""
+    return "Execution context was destroyed" in str(error)
 
 
 _ARM_ACTIVATION = (
