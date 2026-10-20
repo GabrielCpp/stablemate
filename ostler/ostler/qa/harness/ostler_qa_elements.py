@@ -230,6 +230,7 @@ def read_focus(observed: object, args: Args) -> FocusReading:
     page = getattr(observed, "page")
     held = getattr(observed, "element_handle")()
     expanded = held.evaluate(_ARM_ACTIVATION)
+    before = getattr(page, "url", None)
     page.keyboard.press(args["activates"])
     try:
         clicked = bool(page.evaluate("() => window.__ostlerActivated === true"))
@@ -237,7 +238,7 @@ def read_focus(observed: object, args: Args) -> FocusReading:
         if not _navigated(error):
             raise
         return FocusReading(focused=True, activated=True)
-    if clicked:
+    if clicked or _left(page, before):
         return FocusReading(focused=True, activated=True)
     return FocusReading(focused=True, activated=expanded == "false" and _opened(held))
 
@@ -245,6 +246,11 @@ def read_focus(observed: object, args: Args) -> FocusReading:
 def _navigated(error: Exception) -> bool:
     """Whether a read died because the key it followed replaced the page, as a submit that navigates does."""
     return "Execution context was destroyed" in str(error)
+
+
+def _left(page: object, before: object) -> bool:
+    """Whether the key took the page to another address, so the read that followed it asked the next page, which never saw the click."""
+    return before is not None and getattr(page, "url", before) != before
 
 
 _ARM_ACTIVATION = (

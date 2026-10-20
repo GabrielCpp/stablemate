@@ -17,6 +17,8 @@ class _Page:
 
     clicks_on_key: bool
     control: _Control | None = None
+    url: str = "http://localhost/"
+    follows: str | None = None
 
     @dataclass
     class _Keyboard:
@@ -26,6 +28,8 @@ class _Page:
             control = self.page.control
             assert control is not None
             control.pressed = True
+            if self.page.follows is not None:
+                self.page.url = self.page.follows
 
     @property
     def keyboard(self) -> _Page._Keyboard:
@@ -90,6 +94,12 @@ class _NavigatingPage(_Page):
 def test_a_key_that_navigates_away_activates_the_control() -> None:
     """Enter on a submit button posts the form, and the next page replaces the one that held the button."""
     reading = elements.read_focus(_Control(_NavigatingPage(clicks_on_key=False)), {"activates": "Enter"})
+    assert (reading.focused, reading.activated) == (True, True)
+
+
+def test_a_key_that_loads_the_next_page_before_the_read_activates_the_control() -> None:
+    """The read lands on the page the link opened, where nothing recorded the click."""
+    reading = elements.read_focus(_Control(_Page(clicks_on_key=False, follows="http://localhost/new.html")), {"activates": "Enter"})
     assert (reading.focused, reading.activated) == (True, True)
 
 
