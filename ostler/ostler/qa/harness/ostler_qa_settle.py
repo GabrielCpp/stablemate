@@ -128,7 +128,7 @@ def settle_screen(
 
     waiting = list(requests)
     while waiting:
-        waiting = [pair for pair in waiting if exchanges.exchange_state(*pair, since=since) != "answered"]
+        waiting = [pair for pair in waiting if exchanges.exchange_state(*pair, since=since) not in ("answered", "failed")]
         if not waiting:
             break
         if not tick():

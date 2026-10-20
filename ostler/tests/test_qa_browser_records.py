@@ -1016,3 +1016,18 @@ def test_an_arranged_click_on_a_templated_name_clicks_the_first_control_that_fil
     [pattern] = patterns
     assert pattern.match("Open Quarterly report") and not pattern.match("{document.title}")
     assert clicks == ["first"]
+
+
+def test_a_request_the_browser_gave_up_on_is_no_longer_awaited(tmp_path: Path) -> None:
+    """A refused connection is the outage a screen's error state answers, so a settle stops waiting for it."""
+    url = "http://127.0.0.1:18101/api/widgets"
+    browser = _browser(tmp_path)
+    refused = _request(url, failure="net::ERR_CONNECTION_REFUSED")
+    browser._on_request(refused)
+    assert browser.exchange_state("GET", "/api/widgets", since=0) == "sent"
+    browser._on_failed_request(refused)
+    assert browser.exchange_state("GET", "/api/widgets", since=0) == "failed"
+    browser._on_request(_request(url))
+    assert browser.exchange_state("GET", "/api/widgets", since=0) == "sent", (
+        "a retry the page sent after the failure is still awaited"
+    )

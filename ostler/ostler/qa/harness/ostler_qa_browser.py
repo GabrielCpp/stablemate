@@ -440,7 +440,7 @@ class Browser:
         return len(self._requests)
 
     def exchange_state(self, method: str, path: str, *, since: int) -> str:
-        """Whether a request on *path* numbered *since* or later was `answered`, was `sent` and has no response yet, or is `unsent`."""
+        """Whether a request on *path* numbered *since* or later was `answered`, `failed` without a response, was `sent` and has no response yet, or is `unsent`."""
         pattern = path_pattern(path)
         state = "unsent"
         for entry in self._requests[since:]:
@@ -450,7 +450,7 @@ class Browser:
                 continue
             if "status" in entry:
                 return "answered"
-            state = "sent"
+            state = "failed" if "errorText" in entry else "sent"
         return state
 
     def undeclared_since(
