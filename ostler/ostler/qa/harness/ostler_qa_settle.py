@@ -41,12 +41,18 @@ class Screen(Protocol):
     def pause(self, seconds: float) -> None: ...
 
 
+def announced(page: Any, role: str, name: str, **states: bool) -> Any:
+    """The live regions that answer to *name*: by the label one carries, or else by the text it announces."""
+    return page.get_by_role(role, name=name_pattern(name), **states).or_(
+        page.get_by_role(role, **states).filter(has_text=name))
+
+
 def shown(page: Any, perceivable: Mapping[str, Any]) -> bool:
     """Whether the page shows a visible element with this role and accessible name, in the states the perceivable asks for."""
     options = {key: True for key in ROLE_STATES if perceivable.get(key)}
     role, name = str(perceivable["role"]), str(perceivable["name"])
     if role in ANNOUNCED_ROLES:
-        found = page.get_by_role(role, **options).filter(has_text=name)
+        found = announced(page, role, name, **options)
     else:
         found = page.get_by_role(role, name=name_pattern(name), **options)
     return any(found.nth(index).is_visible() for index in range(found.count()))

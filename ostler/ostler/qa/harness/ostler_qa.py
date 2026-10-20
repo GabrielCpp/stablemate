@@ -35,7 +35,7 @@ from ostler_qa_elements import name_pattern, template_pattern
 from ostler_qa_lap import Arranged, LapRecord
 from ostler_qa_paths import is_projection, path_steps, resolve_path
 from ostler_qa_responses import reply_excerpt
-from ostler_qa_settle import ANNOUNCED_ROLES, PageScreen, Screen, settle_screen
+from ostler_qa_settle import ANNOUNCED_ROLES, PageScreen, Screen, announced, settle_screen
 from ostler_qa_verifiers import (
     VERIFIERS,
     JsonValue,
@@ -1747,10 +1747,10 @@ class Qa:
         A page that shows no such element yet is waited on until one appears, so the choice is made against what it renders.
         A page that streams data never goes idle, so the element itself is the signal, not the network.
         A *template* names a control rendered once per item, so each hole matches any text and the first instance answers.
-        A live region's name is the text it announces, since a browser computes no name from an alert's or a status's content.
+        A live region answers to the label it carries, or else to the text it announces, since a browser computes no name from an alert's or a status's content.
         """
         if role in ANNOUNCED_ROLES and isinstance(name, str) and not kwargs:
-            found = self.browser_page.get_by_role(role).filter(has_text=name)
+            found = announced(self.browser_page, role, name)
             if found.count() == 0:
                 try:
                     found.first.wait_for(state="attached", timeout=SETTLE_WAIT_MS)
