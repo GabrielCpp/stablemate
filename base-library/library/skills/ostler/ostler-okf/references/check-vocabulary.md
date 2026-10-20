@@ -90,6 +90,11 @@ key inventory shows the old one is still there.
 ### `count(subject*=<str>, equals*=<int>, file=<str>)`
 Excludes an operation that produced the expected item *and* extras nobody counted.
 
+A filtered subject counts the elements that pass a test. `count(subject="$.widgets[?(@.quantity<5)]",
+equals=0)` holds when no widget has fewer than 5 on hand. A filter compares with `==`, `!=`, `<`,
+`<=`, `>` or `>=`. The four ordering operators select an element only when its value and the
+literal are both numbers.
+
 On a CLI surface `json_path` and `count` read the command's stdout, parsed as JSON. With `file=`,
 they read the file at that relative path in the working directory instead, parsed as JSON, after
 the run or before the first step on a flow's `start:`. That is how a claim about what a command

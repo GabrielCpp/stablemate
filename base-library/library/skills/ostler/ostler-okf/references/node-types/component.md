@@ -26,6 +26,7 @@ Section type. A `### <id>` under a `## Components` heading, normally in a
 | `unique-by` | no | a dot-path whose value is distinct per instance, with the evidence in prose |
 | `variants` | no | `path = token \| token \| …` — a closed per-instance axis from the source |
 | `states` | no | **mints an obligation** — the states it can be in |
+| `when` | no | link: the [`data-state`](data-state.md) a claim shows under. Nested under one `states:` child, it holds that state alone. Written before the node's first claim, it holds every claim of the node. The run reads it back before the checks. It mints no obligation |
 | `code` | no | link, **owns** its file |
 | `detail` | no | link — an explanatory [`concept`](concept.md) |
 | `verify` | no | a check |
@@ -172,13 +173,51 @@ and `verify:`, indented under the state they prove. Several states go under `- s
 carries its own pair. A `locator=` names a declared anchor such as `#save-button`. A raw selector
 like `button[name=Save]` is refused.
 
+`fixture: none` is legal here because the link editor sends no request, so nothing stored
+decides the button's state. On a screen that declares `requests:`, what a state shows depends
+on the answer, and doctor raises `unnamed-condition` on a `fixture: none` there. Such a state
+names its condition with `when:`, linking the [`data-state`](data-state.md) it shows under, and
+names the fixture that arranges it:
+
+```markdown
+### low-stock-clear
+
+- role: status
+- name: No low stock
+- verify: visible(locator="#low-stock-clear", text="No widget is low on stock")
+- states: shown when widgets exist and none has fewer than 5
+  - when: [none low](../../../api-service/http/api-service.md#none-low)
+  - fixture: well-stocked — the directory holds one widget with 50 on hand
+  - verify: visible(locator="#low-stock-clear")
+```
+
+Before the state's checks, the run reads the data state from the API and holds its `verify:`
+rows. A false read stops the scenario, and the red is the book's: the fixture does not arrange
+the condition the state claims. A held read makes a later failed check the app's: the world
+was right and the screen was not.
+
+A component that shows only under a data state needs the condition on its other claims too. Its
+`name:` and `keyboard:` claims run under the node's own `fixture:`, and without a condition a red
+there has no side. Write the `when:` before the node's first claim, and every claim of the node
+holds under it:
+
+```markdown
+### low-stock-clear
+
+- selector: #low-stock-clear
+- when: [none low](../../../api-service/http/api-service.md#none-low)
+- role: status
+- name: No low stock
+- fixture: well-stocked — the directory holds one widget with 50 on hand
+```
+
 A component cannot perform an act, so it has no way to reach a state that takes a click or a
 keystroke. That state is the `does:` of the [`interaction`](interaction.md) that performs the act.
 Claim it there, and leave the component the states a fixture alone arranges.
 
 ## Doctor codes it can trip
 
-`missing-required-bullet`, `invalid-role`, `unnamed-interactive`, `missing-placement`,
+`missing-required-bullet`, `invalid-role`, `unnamed-interactive`, `missing-placement`, `unnamed-condition`,
 `malformed-placement`, `ambiguous-locator`, `unnamed-collision`, `duplicate-bullet`, `undeclared-obligation`,
 `weak-check`, `stale-defect`, `malformed-defect`, `unaddressable-selector`,
 `conflicting-selector-driver`, `unresolved-relation` on any of its link keys,

@@ -175,7 +175,10 @@ fulfils it*, as a named check with arguments:
 compares as one: `8250` is not `"8250"` and `true` is not `1`. The path language is the one
 every reader of a document shares: `a.b`, `a[0]` and `a.0` name a value; `[*]` and
 `[?(@.key==value)]` *select* — `people[?(@.who=='ana')].total_cents` is a list of selections,
-and `equals` against it holds when exactly one selection matches. Two matches and one claim is
+and `equals` against it holds when exactly one selection matches. A filter may also compare with
+`!=`, `<`, `<=`, `>` or `>=`. The four ordering operators select an element only when its value
+and the literal are both numbers, so `widgets[?(@.quantity<5)]` never selects a quantity spelled
+`"3"`. Two matches and one claim is
 an ambiguous book, not a half-pass, and is reported as what was selected. `exit_status` observes
 a `qa.tool(...).run(...)` (or Maestro) result and is the declared form of "the command exited
 with this code" — a plan that only read the output of a command that failed is exactly what it

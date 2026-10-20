@@ -51,6 +51,27 @@ one and some row of the other must check the same field, by the same check name 
 `path=` or `subject=`, and expect different values. Otherwise doctor raises `indistinct-states`.
 States that observe different endpoints are treated as told apart.
 
+## Read as a claim's condition
+
+A screen [`state`](state.md) or a component's `states:` child links the data state it shows
+under with `when:`. The browser scenario for that claim reads the data state from the API before
+the claim's checks, at the origin of the server page that declares the `observe:` endpoint. Only
+a `GET` can be read this way. A false read is the book's red: the claim's fixture does not
+arrange its condition. A held read makes a failed check after it the app's red.
+
+A condition the browser computes from stored records is stated as a test over those records. A
+path filter compares a number with `<`, `<=`, `>` or `>=`, so "widgets exist and none has fewer
+than 5" is two rows:
+
+```markdown
+### None low
+
+- of: stock
+- observe: [list widgets](#get-widgets)
+- verify: json_path(path="$.widgets[0].name", matches=".")
+- verify: count(subject="$.widgets[?(@.quantity<5)]", equals=0)
+```
+
 ## Minimal example
 
 ```markdown
