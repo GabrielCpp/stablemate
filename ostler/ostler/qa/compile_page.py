@@ -646,12 +646,15 @@ def _interaction_scenario(
     trigger = _performed_trigger(book, node_id, arm, gaps, ids)
     if trigger is None:
         return []
+    conditions = condition_lines(obligations, book, gaps)
+    if conditions is None:
+        return []
     observed = page_observations(obligations, gaps)
     if not observed.covered:
         return []
     window = [f"    {WINDOW_VAR} = qa.window()"] if needs_window(observed.lines) else []
     departure = [] if observed.documents else vet_calls([screen.screen], book.screen_routes, ids, gaps, book.fragment_hosts)
-    body = [*arrived, *trigger.setup, *departure, *window, *trigger.action]
+    body = [*arrived, *conditions, *trigger.setup, *departure, *window, *trigger.action]
     covered.update(observed.covered)
     preconditions = [python_literal(row.precondition) for row in arranged]
     if arm.when:

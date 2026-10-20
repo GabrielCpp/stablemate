@@ -12,6 +12,7 @@ from ostler.checks import Call
 from ostler.passages import Passage
 from ostler.checks import parse_call
 from ostler.qa.book_index import BookIndex
+from ostler.qa.compile_http import condition_lines
 from ostler.qa.compile_journey import JourneyWalk
 from ostler.qa.compile_journey import WalkedJourney
 from ostler.qa.compile_support import PLAYWRIGHT
@@ -590,6 +591,17 @@ def _arrival_step(index: int, step: FlowStep, walk: JourneyWalk, gaps: list[Gap]
             *walk_hops(hops, source, walk.book, gaps, walk.ids)]
 
 
+def _stop_conditions(index: int, step: FlowStep, walk: JourneyWalk, gaps: list[Gap]) -> list[str] | None:
+    """The reads that hold the data states the state *step* stops at declares with `when:`, or `None` with the reason filed on every obligation of the walk."""
+    states = [state for state in walk.book.states_by_screen.get(step.ref.split("#")[0], []) if state.node == step.ref]
+    unread: list[Gap] = []
+    lines = condition_lines(states, walk.book, unread)
+    if lines is None:
+        gaps.extend(Gap(oid, gap.kind, f"step {index} stops at `{step.ref}`: {gap.detail}")
+                    for gap in unread for oid in walk.ids)
+    return lines
+
+
 def web_walk(walk: JourneyWalk, sinks: PlanSinks) -> WalkedJourney:
     """Arrive where the journey starts, click every step in order, then observe the end."""
     gaps = sinks.gaps
@@ -610,13 +622,18 @@ def web_walk(walk: JourneyWalk, sinks: PlanSinks) -> WalkedJourney:
     action_index = len(lines)
     covered_stops: set[str] = set()
     previous: Move | None = None
+    acted = False
     for move in moves:
         step = move.step
         if step.node_type == "state":
             arrived = move.passage is not None or _arrives(previous, step, walk.book)
-            performed = _stop_step(move.index, step, walk, gaps, move.passage, arrived)
+            settled = _stop_step(move.index, step, walk, gaps, move.passage, arrived)
+            conditions = None if settled is None else _stop_conditions(move.index, step, walk, gaps)
+            performed = (None if settled is None or conditions is None
+                         else [*settled, *conditions] if acted else [*conditions, *settled])
         else:
             performed = _web_step(move.index, step, walk, gaps)
+            acted = acted or bool(performed)
         if performed is None:
             return unwalked
         if step.node_type == "state":

@@ -183,3 +183,40 @@ def test_a_server_page_is_never_checked(repo: Path) -> None:
     _book(repo, requests="")
     write(repo / API, API_PAGE.replace("### list-widgets", "### list-widgets\n- fixture: none, because it reads no stored data"))
     assert _findings(repo) == []
+
+
+INTERACTIONS = """
+## Interactions
+
+### restock
+- on: [Widget table](#widget-table)
+- trigger: click
+- does: restocks the widget
+- verify: visible(locator="#widget-table")
+
+### refuse-restock
+- extends: [restock](#restock)
+- when: the widget is retired
+- does: refuses to restock
+- verify: visible(locator="#widget-table")
+"""
+
+
+def test_an_interaction_and_its_extends_arm_read_the_when_of_the_control_they_act_on(tmp_path: Path) -> None:
+    _book(tmp_path, table_when=f"- when: {NONE_LOW}\n")
+    write(tmp_path / SCREEN, (tmp_path / SCREEN).read_text() + INTERACTIONS)
+    rows = _obligations(tmp_path)
+    held = ["docs/features/acme/http/api-service.md#none-low"]
+    for anchor in ("restock", "refuse-restock"):
+        arm = [row for oid, row in rows.items() if oid.startswith(f"okf:{SCREEN}#{anchor}:")
+               and row["kind"] != "contract"]
+        assert arm
+        assert all(row["conditionsDeclared"] == held for row in arm)
+
+
+def test_an_interaction_on_a_control_with_no_when_declares_no_condition(tmp_path: Path) -> None:
+    _book(tmp_path)
+    write(tmp_path / SCREEN, (tmp_path / SCREEN).read_text() + INTERACTIONS)
+    rows = _obligations(tmp_path)
+    assert not [oid for oid, row in rows.items() if oid.startswith(f"okf:{SCREEN}#restock:")
+                and "conditionsDeclared" in row]

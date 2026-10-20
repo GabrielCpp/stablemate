@@ -6,8 +6,27 @@ import ast
 
 from ostler.qa.compile import Plan, compile_plan_gaps
 
-from test_qa_compile import _SCREEN, _arrival_navigation, _gap_kinds, _navigation_context, _page_obligation, _visible
-from test_screen_state_stops import ERROR_ID, _compile_all, _scenarios, _walk_context
+from test_qa_compile import (
+    _SCREEN,
+    _arrival_navigation,
+    _gap_kinds,
+    _located,
+    _navigation_context,
+    _page_obligation,
+    _visible,
+)
+from test_screen_state_stops import (
+    ERROR_ID,
+    FLOW_ID,
+    LOADED,
+    LOADED_ID,
+    OPEN_DETAILS,
+    _compile,
+    _compile_all,
+    _context,
+    _scenarios,
+    _walk_context,
+)
 
 API = "api-service/http/api-service.md"
 NONE_LOW = f"{API}#none-low"
@@ -104,3 +123,62 @@ def test_a_state_walk_whose_condition_cannot_be_read_files_a_gap_and_no_scenario
     source, _, gaps = _compile_all(context)
     assert [gap.kind for gap in gaps if gap.obligation_id == ERROR_ID] == ["unread-condition"]
     assert not [name for name in _scenarios(source) if name.endswith("error_settles")]
+
+
+BUTTON = f"{_SCREEN}#restock-button"
+RESTOCK_ID = "okf:widget-list:restock:does:1"
+
+
+def _restock(*, conditions: list[str]) -> dict:
+    claim = _page_obligation(
+        RESTOCK_ID, f"{_SCREEN}#restock", kind="does",
+        locators={"on": ["[restock-button](#restock-button)"], "trigger": ["click"], "does": ["restocks"]},
+        checks=[_located("#restocked", f"{_SCREEN}#restocked", {"selector": ["`#restocked`"]})])
+    claim["conditionsDeclared"] = conditions
+    context = _navigation_context(
+        _page_obligation("okf:widget-list:restock-button:visible:1", BUTTON,
+                         locators={"role": ["button"], "name": ["Restock"]}, checks=[_visible("button:Restock")]),
+        claim, navigation=_arrival_navigation())
+    context["dataStates"] = STATES
+    context["serverOrigins"] = ORIGINS
+    return context
+
+
+def test_an_interaction_reads_the_condition_after_the_arrival_and_before_the_act() -> None:
+    source = _arrival_body(_restock(conditions=[SOME_LOW]))
+    restock = source[source.index("_restock(qa: Qa)"):]
+    assert 'qa.condition("some-low", "' in restock
+    assert restock.index("qa.goto(") < restock.index("qa.condition(") < restock.index("# trigger: click")
+
+
+def test_an_interaction_whose_condition_cannot_be_read_files_a_gap_and_no_scenario() -> None:
+    result = compile_plan_gaps(_restock(conditions=[f"{API}#missing"]), story="demo-story")
+    assert _gap_kinds(result.gaps, RESTOCK_ID) == ["unread-condition"]
+    assert "_restock(qa: Qa)" not in getattr(result, "source", "")
+
+
+def _journey(*, conditions: list[str]) -> dict:
+    context = _context(steps=[LOADED, OPEN_DETAILS, LOADED])
+    context["dataStates"] = STATES
+    context["serverOrigins"] = ORIGINS
+    for row in context["obligations"]:
+        if row["id"] == LOADED_ID:
+            row["conditionsDeclared"] = conditions
+    return context
+
+
+def test_a_journey_reads_a_stop_before_its_settle_until_an_act_and_after_its_settle_from_then_on() -> None:
+    journey, gaps = _compile(_journey(conditions=[SOME_LOW]))
+    assert not [gap for gap in gaps if gap.obligation_id == FLOW_ID]
+    first, act, second = (journey.index("qa.condition("), journey.index('"Open details"'),
+                          journey.rindex("qa.condition("))
+    assert journey.index("qa.settle(") > first
+    assert first < act < journey.rindex("qa.settle(") < second
+
+
+def test_a_journey_stop_whose_condition_cannot_be_read_files_a_gap_and_no_journey() -> None:
+    journey, gaps = _compile(_journey(conditions=[f"{API}#missing"]))
+    [gap] = [gap for gap in gaps if gap.obligation_id == FLOW_ID]
+    assert gap.kind == "unread-condition"
+    assert gap.detail.startswith(f"step 1 stops at `{LOADED}`: ")
+    assert "qa.settle(" not in journey

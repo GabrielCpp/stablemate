@@ -2261,6 +2261,7 @@ def node_obligations(
         base["requirement"] = _state_requirement(book_node)
         _stamp_conditions(base, _condition_ids(book_node, _all_held(book_node)))
     claim_keys = () if book_node.type == "state" else registry.normative_keys(book_node.type)
+    control = _control_conditions(book_node, book)
     for key in claim_keys:
         for index, requirement in enumerate(book_node.bullets.get(key, ()), start=1):
             claim = (key, index)
@@ -2281,8 +2282,8 @@ def node_obligations(
                 obligation["required"] = False
                 obligation["evidenceRequired"] = "context"
             reader.claim_parts(node_parts, attribution, claim).stamp(obligation)
-            _stamp_conditions(obligation, _condition_ids(
-                book_node, [*attribution.held.own, *attribution.held.of(claim)]))
+            _stamp_conditions(obligation, list(dict.fromkeys([
+                *control, *_condition_ids(book_node, [*attribution.held.own, *attribution.held.of(claim)])])))
             output.append(obligation)
     output.extend(_move_obligations(base, book_node, book))
     _discharge_address_pair(book_node.type, output)
@@ -2297,6 +2298,15 @@ def node_obligations(
 def _all_held(book_node: BookNode) -> list[str]:
     """Every held-condition bullet of *book_node*, wherever it sits."""
     return [value for key in registry.held_keys(book_node.type) for value in book_node.bullets.get(key, ())]
+
+
+def _control_conditions(book_node: BookNode, book: Mapping[str, BookNode]) -> list[str]:
+    """The data states the control an interaction acts on is held under by its own `when:`, which the act needs before it can happen. An `extends:` arm with no `on:` acts on its base's control."""
+    if book_node.type != "interaction":
+        return []
+    base = resolve_extends(book_node, book).target
+    controls = book_node.targets("on", book) or (base.targets("on", book) if base is not None else [])
+    return [node_id for control in controls for node_id in _condition_ids(control, _attribution(control).held.own)]
 
 
 def _condition_ids(book_node: BookNode, values: list[str]) -> list[str]:
