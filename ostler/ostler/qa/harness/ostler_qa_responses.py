@@ -25,7 +25,7 @@ class HttpReading:
 
 
 def read_response(observed: object, args: Args) -> HttpReading:
-    """The status code, parsed body and route of whatever a scenario handed over as a response."""
+    """The status code and route of whatever a scenario handed over as a response, and its parsed body once a check names a title in it."""
     if isinstance(observed, int) and not isinstance(observed, bool):
         status: object = observed
     else:
@@ -37,7 +37,7 @@ def read_response(observed: object, args: Args) -> HttpReading:
         )
     body: JsonValue = None
     reader = getattr(observed, "json", None)
-    if callable(reader):
+    if callable(reader) and "title" in args:
         try:
             body = json_value(reader())
         except ValueError:

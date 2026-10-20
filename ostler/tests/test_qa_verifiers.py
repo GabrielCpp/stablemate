@@ -573,3 +573,15 @@ def test_a_browser_scenario_gets_the_recorder_s_own_window() -> None:
     sentinel = object()
     recorder = SimpleNamespace(window=lambda: sentinel)
     assert harness.Qa.window(_qa(recorder)) is sentinel
+
+
+def test_http_status_reads_the_code_of_a_response_whose_body_was_never_captured() -> None:
+    """A form post that navigates away completes after the page that sent it, so only its status and route are kept."""
+    browser = load_harness_module("ostler_qa_browser")
+    response = browser.RecordedResponse({
+        "status": 201, "url": "http://localhost:18101/api/widgets", "bodyOmitted": "request did not complete",
+    })
+    verdict = harness.VERIFIERS["http_status"](response, {"code": 201, "path": "/api/widgets"})
+    assert verdict.passed is True
+    with pytest.raises(LookupError):
+        harness.VERIFIERS["http_status"](response, {"code": 201, "title": "Created"})
