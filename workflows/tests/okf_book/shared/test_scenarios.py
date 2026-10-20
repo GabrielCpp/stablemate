@@ -289,3 +289,11 @@ def test_a_failed_state_check_tells_the_writer_to_claim_an_act_reached_state_on_
                          actual='{"visible": true, "text": "Derived from the title"}',
                          covers=("okf:docs/features/tally/tally.md#add:does:1",))
     assert "`does:`" not in effect.failure_line()
+
+
+def test_a_failed_state_check_the_app_owns_carries_no_hint_to_change_the_book() -> None:
+    state = "okf:docs/features/tally/tally.md#slug-status:states:2"
+    product = FailedCheck(label="slug status shown", expected='{"text": "Available"}',
+                          actual='{"visible": true, "text": "Derived from the title"}', covers=(state,),
+                          cause=Cause.APP)
+    assert "name the fixture that arranges it" not in product.failure_line()
