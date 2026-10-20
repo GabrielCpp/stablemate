@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import re
 from dataclasses import dataclass
+from typing import TypeGuard
 
 type JsonScalar = None | bool | int | float | str
 type JsonValue = JsonScalar | list[JsonValue] | dict[str, JsonValue]
@@ -22,19 +23,46 @@ WILD = Wild()
 
 @dataclass(frozen=True)
 class Filter:
-    """The `[?(@.key==value)]` segment: the elements whose `key` holds `value`."""
+    """The `[?(@.key<op>value)]` segment: the elements whose `key` stands in relation `op` to `value`."""
 
     key: str
     value: JsonScalar
+    op: str = "=="
 
     def __repr__(self) -> str:
-        return f"[?(@.{self.key}=={json.dumps(self.value)})]"
+        return f"[?(@.{self.key}{self.op}{json.dumps(self.value)})]"
+
+    def selects(self, observed: JsonValue) -> bool:
+        """Whether an element whose `key` holds *observed* is chosen; an order operator needs two numbers, and a bool is no number."""
+        if self.op == "==":
+            return scalar_equal(observed, self.value)
+        if self.op == "!=":
+            return not scalar_equal(observed, self.value)
+        if not (_is_number(observed) and _is_number(self.value)):
+            return False
+        return {
+            "<": observed < self.value, "<=": observed <= self.value,
+            ">": observed > self.value, ">=": observed >= self.value,
+        }[self.op]
+
+    def satisfying(self) -> JsonScalar:
+        """A value that *selects* an element, for a document built to be found by this filter."""
+        if self.op in ("==", "<=", ">="):
+            return self.value
+        if self.op == "!=":
+            return 1 if _is_number(self.value) and self.value == 0 else 0
+        number = self.value if _is_number(self.value) else 0
+        return number - 1 if self.op == "<" else number + 1
+
+
+def _is_number(value: JsonValue) -> TypeGuard[int | float]:
+    return isinstance(value, (int, float)) and not isinstance(value, bool)
 
 
 PathStep = str | int | Wild | Filter
 
 _FILTER = re.compile(
-    r"\[\?\(@\.(?P<key>[^=\s)]+)\s*==\s*"
+    r"\[\?\(@\.(?P<key>[^=!<>\s)]+)\s*(?P<op>==|!=|<=|>=|<|>)\s*"
     r"(?P<value>'[^']*'|\"[^\"]*\"|-?\d+(?:\.\d+)?|true|false|null)\s*\)\]"
 )
 
@@ -58,7 +86,7 @@ def path_steps(path: str) -> list[PathStep]:
                 continue
             hit = _FILTER.match(text, pos)
             if hit is not None:
-                steps.append(Filter(hit.group("key"), json.loads(hit.group("value").replace("'", '"'))))
+                steps.append(Filter(hit.group("key"), json.loads(hit.group("value").replace("'", '"')), hit.group("op")))
                 pos = hit.end()
                 continue
             close = text.find("]", pos)
@@ -113,7 +141,7 @@ def _selected(current: JsonValue, step: Wild | Filter) -> list[JsonValue]:
     chosen: list[JsonValue] = []
     for item in candidates:
         held = resolve_path(item, step.key)
-        if held.found and scalar_equal(held.value, step.value):
+        if held.found and step.selects(held.value):
             chosen.append(item)
     return chosen
 

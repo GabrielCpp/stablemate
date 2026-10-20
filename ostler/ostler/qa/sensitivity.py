@@ -200,7 +200,7 @@ def _set_path(document: dict[str, Any], path: str, value: Any) -> Any:
             elif cursor[0] is None:
                 cursor[0] = nxt
             if isinstance(step, _path_grammar.Filter) and isinstance(cursor[0], dict):
-                _set_path(cursor[0], step.key, step.value)
+                _set_path(cursor[0], step.key, step.satisfying())
             cursor = cursor[0]
             continue
         if isinstance(step, int):
@@ -229,7 +229,7 @@ def _collection(subject: str, size: int) -> dict[str, Any]:
         marker = "[*]" if isinstance(last, _path_grammar.Wild) else "[?("
         parent = subject[: subject.rfind(marker)]
         if isinstance(last, _path_grammar.Filter):
-            key, value = last.key, last.value
+            key, value = last.key, last.satisfying()
             items = [_set_path(item, key, value) for item in items]
         return _set_path({}, parent, items)
     return _set_path({}, subject, items)
