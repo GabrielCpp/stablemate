@@ -1182,6 +1182,8 @@ def gap_findings(gaps: list[Gap]) -> list[Finding]:
             )
         elif gap.kind == "unarranged-state":
             findings.append(Finding("error", "unarranged-state", message, ref=gap.obligation_id))
+        elif gap.kind == "unread-condition":
+            findings.append(Finding("error", "unread-condition", message, ref=gap.obligation_id))
         elif gap.kind == "unarranged-journey":
             findings.append(Finding("error", "unarranged-journey", message, ref=gap.obligation_id))
         elif gap.kind == "unarranged-scenario":

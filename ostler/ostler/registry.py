@@ -151,6 +151,7 @@ class BulletKey:
     capture: bool = False
     locator: bool = False
     condition: bool = False
+    held: bool = False
     address: bool = False
     properties: tuple[str, ...] = ()
     one_of: tuple[str, ...] = ()
@@ -253,6 +254,12 @@ def arrange_keys(node_type: str) -> tuple[str, ...]:
         b.key for b in uitype.bullet_keys if b.arrange or b.performs)
 
 
+def held_keys(node_type: str) -> tuple[str, ...]:
+    """Every bullet key on `node_type` whose value links the data state a claim is observed under."""
+    uitype = UI_TYPES_BY_NAME.get(node_type)
+    return () if uitype is None else tuple(b.key for b in uitype.bullet_keys if b.held)
+
+
 def condition_keys(node_type: str) -> tuple[str, ...]:
     """Every bullet key on `node_type` that names a state a claim holds *under*, not the claim."""
     uitype = UI_TYPES_BY_NAME.get(node_type)
@@ -294,7 +301,8 @@ def capture_keys(node_type: str) -> tuple[str, ...]:
 def attached_keys(node_type: str) -> tuple[str, ...]:
     """Every bullet key on `node_type` that document order binds to a normative bullet above it."""
     return tuple(dict.fromkeys(
-        check_keys(node_type) + arrange_keys(node_type) + capture_keys(node_type)))
+        check_keys(node_type) + arrange_keys(node_type) + capture_keys(node_type)
+        + held_keys(node_type)))
 
 
 def attributed_captures(
@@ -302,6 +310,13 @@ def attributed_captures(
 ) -> tuple[list[str], dict[tuple[str, int], list[str]]]:
     """Split a node's capture bullets between the node and the claims they were captured under."""
     return _attributed(node_type, bullet_order, combiners, capture_keys(node_type))
+
+
+def attributed_held(
+    node_type: str, bullet_order: Iterable[Sequence[Any]], combiners: Mapping[int, str]
+) -> tuple[list[str], dict[tuple[str, int], list[str]]]:
+    """Split a node's held-condition bullets between the node and the claims they are observed under."""
+    return _attributed(node_type, bullet_order, combiners, held_keys(node_type))
 
 
 def attributed_checks(
@@ -587,6 +602,7 @@ UI_TYPES: tuple[UINodeType, ...] = (
             BulletKey("parent", link=True),
             BulletKey("exclusive-with", link=True, locator=True),
             BulletKey("states", normative=True, locator=True, condition=True),
+            BulletKey("when", link=True, held=True),
             BulletKey("code", link=True, owns=True),
             BulletKey("detail", link=True),
             BulletKey("verify", check=True),
@@ -675,7 +691,7 @@ UI_TYPES: tuple[UINodeType, ...] = (
         name="state", kind="section", heading="Screen states", host_page_types=("screen",),
         bullet_keys=(
             BulletKey("shows", nested=True, link=True, normative=True, locator=True),
-            BulletKey("when", link=True),
+            BulletKey("when", link=True, held=True),
             BulletKey("code", link=True, owns=True),
             BulletKey("detail", link=True),
             BulletKey("verify", check=True),

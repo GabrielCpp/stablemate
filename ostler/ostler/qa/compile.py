@@ -86,6 +86,7 @@ GAP_KINDS = frozenset({
     "no-verify-declared",
     "precondition-discharged-by-arrangement",
     "unarranged-state",
+    "unread-condition",
     "unarranged-journey",
     "unarranged-scenario",
     "unarranged-request-body",

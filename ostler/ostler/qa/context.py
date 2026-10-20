@@ -2128,6 +2128,7 @@ class _Attribution:
     fixtures: _Attributed
     acts: _Attributed
     captures: _Attributed
+    held: _Attributed
 
 
 @dataclass(frozen=True, slots=True)
@@ -2165,7 +2166,8 @@ class _Parts:
 
 
 _PART_KEYS = ("checksDeclared", "checksUnparsed", "fixturesDeclared", "fixturesUnparsed", "arrangesNothing",
-              "actsDeclared", "actsUnparsed", "capturesDeclared", "capturesUnparsed")
+              "actsDeclared", "actsUnparsed", "capturesDeclared", "capturesUnparsed",
+              "conditionsDeclared")
 
 
 @dataclass(frozen=True, slots=True)
@@ -2257,6 +2259,7 @@ def node_obligations(
     output = [base]
     if book_node.type == "state":
         base["requirement"] = _state_requirement(book_node)
+        _stamp_conditions(base, _condition_ids(book_node, _all_held(book_node)))
     claim_keys = () if book_node.type == "state" else registry.normative_keys(book_node.type)
     for key in claim_keys:
         for index, requirement in enumerate(book_node.bullets.get(key, ()), start=1):
@@ -2278,6 +2281,8 @@ def node_obligations(
                 obligation["required"] = False
                 obligation["evidenceRequired"] = "context"
             reader.claim_parts(node_parts, attribution, claim).stamp(obligation)
+            _stamp_conditions(obligation, _condition_ids(
+                book_node, [*attribution.held.own, *attribution.held.of(claim)]))
             output.append(obligation)
     output.extend(_move_obligations(base, book_node, book))
     _discharge_address_pair(book_node.type, output)
@@ -2287,6 +2292,26 @@ def node_obligations(
     if unspecified:
         base["unspecified"] = unspecified
     return output
+
+
+def _all_held(book_node: BookNode) -> list[str]:
+    """Every held-condition bullet of *book_node*, wherever it sits."""
+    return [value for key in registry.held_keys(book_node.type) for value in book_node.bullets.get(key, ())]
+
+
+def _condition_ids(book_node: BookNode, values: list[str]) -> list[str]:
+    """The node ids the `when:` *values* link, in order and without repeats; a link that resolves to nothing is left out."""
+    resolved = {edge.href: edge.to for edge in book_node.edges if edge.href and edge.to}
+    ids = [resolved.get(href, "") for value in values for _title, href in markdown.extract_refs(value).links]
+    return list(dict.fromkeys(node_id for node_id in ids if node_id))
+
+
+def _stamp_conditions(obligation: dict[str, Any], ids: list[str]) -> None:
+    """Write *ids* as the obligation's `conditionsDeclared`, and drop the key when there are none."""
+    if ids:
+        obligation["conditionsDeclared"] = ids
+    else:
+        obligation.pop("conditionsDeclared", None)
 
 
 def _move_obligations(base: dict[str, Any], book_node: BookNode, book: Mapping[str, BookNode]) -> list[dict[str, Any]]:
@@ -2395,6 +2420,7 @@ def _attribution(book_node: BookNode) -> _Attribution:
         fixtures=_Attributed(*registry.attributed_fixtures(*args)),
         acts=_Attributed(*registry.attributed_acts(*args)),
         captures=_Attributed(*registry.attributed_captures(*args)),
+        held=_Attributed(*registry.attributed_held(*args)),
     )
 
 

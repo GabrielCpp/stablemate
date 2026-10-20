@@ -8,6 +8,7 @@ from typing import Literal
 from ostler import acts as acts_mod
 from ostler import values as values_mod
 from ostler.qa.book_index import BookIndex
+from ostler.qa.compile_http import condition_lines
 from ostler.qa.compile_playwright import MARK_LINE
 from ostler.qa.compile_playwright import WINDOW_VAR
 from ostler.qa.compile_playwright import name_refusal
@@ -289,6 +290,9 @@ def _state_walk(
         return []
     opening = len(arranged.rows) if len(arrival) > len(arranged.rows) else 0
     title = " ".join(stop.title.split()).replace("\\", "").replace('"', "'")
+    conditions = condition_lines([state], book, gaps)
+    if conditions is None:
+        return []
     covered.add(state.id)
     return [
         *_scenario_head(screen.target_var, [state.id], covered,
@@ -299,6 +303,7 @@ def _state_walk(
         *arrival[:opening],
         MARK_LINE,
         *arrival[opening:],
+        *conditions,
         *settle_lines(stop, f"settles in {trailing_comment(stop.title)}"),
         *vet_calls([page], book.screen_routes, [state.id], gaps, book.fragment_hosts),
     ]
@@ -454,6 +459,10 @@ def _arrival_scenario(
         if answer is None:
             return []
         body.extend(answer)
+    conditions = condition_lines(obligations, screen.book, gaps)
+    if conditions is None:
+        return []
+    body.extend(conditions)
     if needs_window(observed.lines):
         body.insert(len(arranged), f"    {WINDOW_VAR} = qa.window()")
     covered.update(observed.covered)

@@ -104,3 +104,25 @@ def test_failures_on_one_absent_capability_are_one_gapped_signature() -> None:
 
     assert [(s.count, s.gap) for s in grouped] == [(2, "payment provider")]
     assert grouped[0].text() == "gapped: payment provider absent"
+
+
+def test_a_condition_that_read_false_blames_the_book_and_names_the_page() -> None:
+    record = {
+        "label": "a check", "passed": False,
+        "fault": {"fault_class": "condition", "fixture": "none-low", "page": "screens/widget-list.md"},
+    }
+
+    assert attribute(CheckEvidence.model_validate(record)) == Attribution(Cause.BOOK, "screens/widget-list.md")
+
+
+@pytest.mark.parametrize(
+    ("record", "cause"),
+    [
+        ({"label": "a check", "passed": False, "held": ["none-low"]}, Cause.APP),
+        ({"label": "a check", "passed": False, "held": ["none-low"], "raised": "KeyError"}, Cause.UNATTRIBUTED),
+        ({"label": "a check", "passed": False, "held": []}, Cause.UNATTRIBUTED),
+        ({"label": "a check", "passed": False, "held": ["none-low"], "command_ending": {"exit_code": 1, "stderr": ""}}, Cause.BOOK),
+    ],
+)
+def test_a_held_condition_makes_a_browser_check_that_failed_the_app_s(record: dict[str, Any], cause: Cause) -> None:
+    assert attribute(CheckEvidence.model_validate(record)).cause is cause

@@ -10,6 +10,7 @@ from pydantic import BaseModel, ConfigDict
 UNREACHABLE = "could not connect"
 SAMPLE_CHARS = 300
 CAPABILITY_FAULT = "capability"
+CONDITION_FAULT = "condition"
 
 
 class Cause(StrEnum):
@@ -87,6 +88,7 @@ class CheckEvidence(BaseModel):
     exchange: ExchangeEvidence | None = None
     raised: str = ""
     command_ending: CommandEnding | None = None
+    held: tuple[str, ...] = ()
 
 
 def attribute(evidence: CheckEvidence) -> Attribution:
@@ -101,11 +103,17 @@ def attribute(evidence: CheckEvidence) -> Attribution:
             return Attribution(Cause.ENVIRONMENT, fault.page, gap=fault.fixture.replace("-", " "))
         if fault.fault_class == "environment":
             return Attribution(Cause.ENVIRONMENT, fault.page or fault.fixture)
+        if fault.fault_class == CONDITION_FAULT:
+            return Attribution(Cause.BOOK, fault.page)
         if fault.page:
             return Attribution(Cause.ARRANGEMENT, fault.page)
     exchange = evidence.exchange
     if exchange is None:
-        return Attribution(Cause.BOOK if evidence.command_ending is not None else Cause.UNATTRIBUTED)
+        if evidence.command_ending is not None:
+            return Attribution(Cause.BOOK)
+        if evidence.held and not evidence.raised:
+            return Attribution(Cause.APP)
+        return Attribution(Cause.UNATTRIBUTED)
     shape = route_shape(exchange.method, exchange.path)
     status = exchange.status
     if status is None:

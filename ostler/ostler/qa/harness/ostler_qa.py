@@ -853,6 +853,7 @@ class Qa:
         self._checkout_copy: Path | None = None
         self._exchange: ExchangeEvidence | None = None
         self._claim_fault: ClaimFault | None = None
+        self._held: list[str] = []
         self._node: str | None = None
         self.http = Http(target.base_url, on_unexpected_status=self._status_mismatch, on_exchange=self._saw_exchange)
         self._index = 0
@@ -1582,6 +1583,31 @@ class Qa:
             extra={"state": state, "holds": holding},
         )
 
+    def condition(
+        self,
+        state: str,
+        page: str,
+        states: Mapping[str, Sequence[tuple[str, Any, Mapping[str, Any]]]],
+    ) -> None:
+        """Hold the data state a claim is observed under, and stop the scenario with a fault of the book's when the read says it is not in it."""
+        def matches(name: str) -> bool:
+            return all(VERIFIERS[check](operand, args).passed for check, operand, args in states[name])
+
+        if matches(state):
+            self._held.append(state)
+            self._recorder.emit({"type": "condition", "state": state, "held": True})
+            self._exchange = None
+            return
+        holding = next((name for name in states if name != state and matches(name)), "")
+        actual = holding or "no state of the lifecycle"
+        self._claim_fault = ClaimFault("condition", state, page)
+        _ = self._record(
+            f"the condition should be {state}, and {holding + ' holds instead' if holding else 'no state of the lifecycle holds'}",
+            False, actual, state, self.covers,
+            extra={"state": state, "holds": holding},
+        )
+        raise CheckFailed(state)
+
     def _poll(
         self, condition: Callable[[], Any], timeout: float, interval: float
     ) -> tuple[bool, int, int]:
@@ -1632,6 +1658,8 @@ class Qa:
                 record["exchange"] = asdict(self._exchange)
             if self._claim_fault is not None:
                 record["fault"] = asdict(self._claim_fault)
+            if self._held:
+                record["held"] = list(self._held)
         if extra:
             record.update(extra)
         self._recorder.emit(record)
@@ -1644,6 +1672,8 @@ class Qa:
             evidence["exchange"] = asdict(self._exchange)
         if self._claim_fault is not None:
             evidence["fault"] = asdict(self._claim_fault)
+        if self._held:
+            evidence["held"] = list(self._held)
         if not isinstance(exc, HttpError):
             evidence["raised"] = type(exc).__name__
         return evidence

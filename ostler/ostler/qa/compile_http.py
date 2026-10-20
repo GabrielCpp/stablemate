@@ -886,6 +886,16 @@ def _state_rows(state: DataState, observed: str) -> list[str] | ScenarioRefusal:
 _FIXTURE_FACT = re.compile(r"(?<![\w.])@([a-zA-Z0-9][a-zA-Z0-9_-]*)\.([a-zA-Z0-9][a-zA-Z0-9_-]*)")
 
 
+@dataclass(frozen=True)
+class _PlannedRead:
+    """One data-state read ready to be spelled: the request's method, bound path and keyword source, and the rows that hold each sibling state."""
+    method: str
+    path: str
+    kwargs: str
+    anchor: str
+    held: str
+
+
 def _rewired(value: CheckValue, known: _Produced, owners: frozenset[str] = frozenset()) -> CheckValue:
     """*value* with each `@fixture.fact` sent from the one fixture of *owners* that provides that fact when there is exactly one, else from the one fixture the walk arranges that provides it when the named fixture is not arranged."""
     if not isinstance(value, str):
@@ -906,12 +916,12 @@ def _rewired(value: CheckValue, known: _Produced, owners: frozenset[str] = froze
     return _FIXTURE_FACT.sub(swap, value)
 
 
-def read_back(
+def _planned_read(
     where: str, observed: str, target: DataState, book: BookIndex, known: _Produced, produced: set[str],
     owners: dict[str, set[str]], step_headers: dict[str, CheckValue] | None = None, rewire: bool = False,
     record_fixtures: frozenset[str] = frozenset(),
-) -> list[str] | str:
-    """The lines that request *target*'s observing endpoint as a step would and hold its checks on the answer, naming the sibling state that holds when they fail, or why the walk cannot read it. With *step_headers*, the headers the moving step sent replace the observing endpoint's own of the same name."""
+) -> _PlannedRead | str:
+    """*target*'s observing request and the rows that hold it and its sibling states, or why the walk cannot read it. With *step_headers*, the headers the moving step sent replace the observing endpoint's own of the same name."""
     arranged = None
     node_rows = book.acts_by_node.get(target.observe, [])
     if node_rows and target.observe not in book.acts_refused:
@@ -940,14 +950,77 @@ def read_back(
         problem = problem or f"{where} of `{anchor_of(target.node)}`: {refused.detail}"
     if problem:
         return problem
-    target_path = f"qa.resolve({python_literal(bound)})" if references.find_references(bound) else python_literal(bound)
-    kwargs = arranged.kwargs_source(with_body=False) if arranged else ""
     held = ", ".join(f"{python_literal(anchor_of(node))}: [{', '.join(rows)}]"
                      for node, rows in states.items() if not isinstance(rows, ScenarioRefusal))
+    kwargs = arranged.kwargs_source(with_body=False) if arranged else ""
+    return _PlannedRead(target.method.lower(), bound, kwargs, python_literal(anchor_of(target.node)), held)
+
+
+def read_back(
+    where: str, observed: str, target: DataState, book: BookIndex, known: _Produced, produced: set[str],
+    owners: dict[str, set[str]], step_headers: dict[str, CheckValue] | None = None, rewire: bool = False,
+    record_fixtures: frozenset[str] = frozenset(),
+) -> list[str] | str:
+    """The lines that request *target*'s observing endpoint as a step would and hold its checks on the answer, or why the walk cannot read it."""
+    planned = _planned_read(where, observed, target, book, known, produced, owners, step_headers, rewire, record_fixtures)
+    if isinstance(planned, str):
+        return planned
+    path = f"qa.resolve({python_literal(planned.path)})" if references.find_references(planned.path) else python_literal(planned.path)
     return [
-        f"    {observed} = qa.http.{target.method.lower()}({target_path}{kwargs})",
-        f"    qa.holds({python_literal(anchor_of(target.node))}, {{{held}}})",
+        f"    {observed} = qa.http.{planned.method}({path}{planned.kwargs})",
+        f"    qa.holds({planned.anchor}, {{{planned.held}}})",
     ]
+
+
+def condition_read(
+    where: str, observed: str, target: DataState, book: BookIndex, known: _Produced, owners: dict[str, set[str]],
+    origin: str, page: str,
+) -> list[str] | str:
+    """The lines a browser scenario sends to *origin* to read *target*'s state before its claim's checks, or why it cannot be read."""
+    if target.method.upper() != "GET":
+        return f"{where} of `{anchor_of(target.node)}` requests `{target.method} {target.path}`, and only a GET reads a condition"
+    planned = _planned_read(where, observed, target, book, known, set(), owners, None, True, frozenset())
+    if isinstance(planned, str):
+        return planned
+    url = origin.rstrip("/") + planned.path
+    path = f"qa.resolve({python_literal(url)})" if references.find_references(url) else python_literal(url)
+    return [
+        f"    {observed} = qa.http.{planned.method}({path}{planned.kwargs})",
+        f"    qa.condition({planned.anchor}, {python_literal(page)}, {{{planned.held}}})",
+    ]
+
+
+def condition_lines(obligations: list[Obligation], book: BookIndex, gaps: list[Gap]) -> list[str] | None:
+    """The reads that hold each data state the *obligations* declare with `when:`, in order and once each, or `None` once a gap says why a condition cannot be read."""
+    known = _Produced()
+    for obligation in obligations:
+        known.record_fixtures(obligation)
+    owners = _fixture_owners(obligations)
+    lines: list[str] = []
+    seen: set[tuple[str, str]] = set()
+    for obligation in obligations:
+        page = obligation.node.split("#", 1)[0]
+        for condition in obligation.conditions:
+            if (condition, page) in seen:
+                continue
+            seen.add((condition, page))
+            target = book.data_states.get(condition)
+            if target is None:
+                gaps.append(Gap(obligation.id, "unread-condition",
+                                f"`when:` links `{condition}`, which is no data state this plan reads"))
+                return None
+            origin = (book.server_origins.get(target.observe.split("#", 1)[0])
+                      or book.resolved_api_base_urls.get(obligation.surface))
+            if not origin:
+                gaps.append(Gap(obligation.id, "unread-condition", f"no API origin is known to read `{condition}` from"))
+                return None
+            found = condition_read(f"the read of the condition {len(seen)}", f"held_{len(seen)}", target, book, known,
+                                   owners, origin, page)
+            if isinstance(found, str):
+                gaps.append(Gap(obligation.id, "unread-condition", found))
+                return None
+            lines.extend(found)
+    return lines
 
 
 def _own_record(ref: str, book: BookIndex) -> bool:

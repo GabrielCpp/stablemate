@@ -138,6 +138,7 @@ class Obligation:
     acts_unparsed: tuple[UnparsedRow, ...]
     fixtures_unparsed: tuple[UnparsedRow, ...]
     captures_unparsed: tuple[UnparsedRow, ...]
+    conditions: tuple[str, ...] = ()
 
 
 def _mapping(value: object, what: str) -> Mapping[str, object]:
@@ -294,6 +295,7 @@ def obligation_of(raw: Mapping[str, Any]) -> Obligation:
         acts_unparsed=_unparsed(row.get("actsUnparsed"), "`actsUnparsed`"),
         fixtures_unparsed=_unparsed(row.get("fixturesUnparsed"), "`fixturesUnparsed`"),
         captures_unparsed=_unparsed(row.get("capturesUnparsed"), "`capturesUnparsed`"),
+        conditions=_texts(row.get("conditionsDeclared"), "`conditionsDeclared`"),
     )
 
 

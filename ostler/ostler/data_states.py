@@ -7,8 +7,9 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from itertools import combinations
 
-from ostler import checks as checks_mod, markdown, refs as refs_mod
+from ostler import checks as checks_mod, markdown, refs as refs_mod, registry
 from ostler.finding import Finding
+from ostler.qa import fixtures as fixtures_mod
 from ostler.qa.compile_support import bullet_value
 from ostler.qa.obligation_frame import BookNode, book_nodes
 
@@ -145,6 +146,30 @@ def _check_when(node: BookNode, book: Mapping[str, BookNode], f: list[Finding]) 
                            "link a state declared under `## Data states`, or delete the row", f)
 
 
+def _arranges_nothing(values: Sequence[str]) -> bool:
+    return any(isinstance(fixtures_mod.parse_bullet(value), fixtures_mod.NoArrangement) for value in values)
+
+
+def _check_unnamed_condition(node: BookNode, book: Mapping[str, BookNode], f: list[Finding]) -> None:
+    screen = book.get(node.path)
+    requests = screen.bullets.get("requests") if screen is not None and screen.type == "screen" else None
+    if not requests:
+        return
+    if node.type == "state":
+        fixtures = list(node.bullets.get("fixture", ()))
+    else:
+        per_claim = registry.attributed_fixtures(node.type, node.bullet_order, node.combiners)[1]
+        fixtures = [value for claim, values in per_claim.items() if claim[0] == "states" for value in values]
+    if not _arranges_nothing(fixtures):
+        return
+    fix = ("link the data state it holds under with `- when:`, and name the fixture that arranges it")
+    f.append(Finding(
+        "error", "unnamed-condition",
+        f"{node.id}: the screen sends `{requests[0]}`, so what the state shows depends on the answer, and "
+        f"`fixture: none` names no condition. {fix}",
+        path=node.path, line=node.line, ref=refs_mod.bullet_ref(node.id, "fixture"), suggestion=fix))
+
+
 def _check_state(node: BookNode, book: Mapping[str, BookNode], f: list[Finding]) -> None:
     if "of" in node.bullets and not of_of(node):
         _shape_problem(node, "of", f"`of:` is {node.bullets['of'][0]!r}, not one plain word",
@@ -238,6 +263,8 @@ def check_data_states(data: dict, f: list[Finding]) -> None:
             _check_sends(node, book, f)
         elif node.type == "state" and node.bullets.get("when"):
             _check_when(node, book, f)
+        if node.type == "state" or (node.type == "component" and node.bullets.get("states")):
+            _check_unnamed_condition(node, book, f)
     _check_distinct(data_states_of(book), book, f)
 
 
