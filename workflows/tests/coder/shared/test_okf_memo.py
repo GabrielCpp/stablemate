@@ -98,7 +98,7 @@ def test_committing_rebuilds(repo: Path) -> None:
 
 def test_a_different_spec_dir_does_not_read_the_other_ones_memo(repo: Path) -> None:
     build(repo)
-    okf.build_okf_context(LOGGER, spec_dir="docs/other", docs_path=str(repo))
+    okf.build_okf_context(LOGGER, spec_dir=str(repo / "docs/other"), docs_path=str(repo))
     assert len(FakeOstler.calls) == 2
 
 
