@@ -4,6 +4,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import os
 import re
 from dataclasses import dataclass
 from pathlib import Path
@@ -24,6 +25,7 @@ from workhorse_workflows.coder.shared.schemas.qa import BacklogDrain
 
 FILED_HEADING = "## Filed by coder"
 FILED_TITLE = FILED_HEADING.lstrip("#").strip()
+BOOK_CHECKS_TITLE = "Book checks QA could not run"
 
 BLOCKED_SUFFIX_RE = re.compile(r"\s*\(blocked\b.*$", re.IGNORECASE)
 
@@ -303,11 +305,20 @@ def _deferred_text(page: str, obligations: list[dict[str, Any]]) -> str:
     return " ".join([head, *dict.fromkeys(details)])
 
 
+def _feature_path(page: str, features: str, root: Path) -> Path:
+    """A book page's path under the features root, which the context may give as an absolute path."""
+    base = Path(features)
+    if base.is_absolute():
+        base = Path(os.path.relpath(base, root))
+    path = Path(page)
+    return path.relative_to(base) if features and path.is_relative_to(base) else path
+
+
 @blueprint.node
 def file_deferred_obligations(
     logger: logging.Logger, spec_dir: str = "", docs_path: str = "", repo_dir: str = ""
 ) -> BacklogDrain:
-    """File each book page that owes QA a check it could not run to the repo backlog, and commit it."""
+    """File each book page that owes QA a check it could not run to the backlog's own section, which the fix lane leaves alone, and commit it."""
     root = find_docs_root(docs_path, repo_dir)
     spec = spec_dir.strip()
     context_path = root / spec / CONTEXT_FILE
@@ -326,9 +337,9 @@ def file_deferred_obligations(
     appended = 0
     skipped = 0
     for page, obligations in pages.items():
-        rel = page.removeprefix(features).lstrip("/") if features else page
-        item_id = kebab(f"book-checks-{Path(rel).with_suffix('')}")
-        if item_id in filed or not okf.backlog_add(item_id, _deferred_text(page, obligations), FILED_TITLE).ok:
+        rel = _feature_path(page, features, root)
+        item_id = kebab(f"book-checks-{rel.with_suffix('')}")
+        if item_id in filed or not okf.backlog_add(item_id, _deferred_text(page, obligations), BOOK_CHECKS_TITLE).ok:
             skipped += 1
             continue
         filed.add(item_id)
@@ -603,6 +614,7 @@ def _prune_directly(path: Path, bullet_id: str) -> bool:
 
 
 __all__ = [
+    "BOOK_CHECKS_TITLE",
     "BacklogBullet",
     "Seen",
     "backlog_bullets",

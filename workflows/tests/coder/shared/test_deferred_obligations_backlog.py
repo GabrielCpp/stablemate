@@ -7,7 +7,12 @@ import subprocess
 from collections.abc import Callable
 from pathlib import Path
 
-from workhorse_workflows.coder.shared.backlog import file_deferred_obligations
+from workhorse_workflows.coder.shared.backlog import (
+    BOOK_CHECKS_TITLE,
+    backlog_bullets,
+    file_deferred_obligations,
+    select_fix_item,
+)
 from workhorse_workflows.coder.shared.docs import CONTEXT_FILE
 
 PAGE = "docs/features/web-app/gui/screens/reports.md"
@@ -27,10 +32,10 @@ def _obligation(node: str, detail: str, *, required: bool = True) -> dict:
     }
 
 
-def _spec(tmp_path: Path, *obligations: dict) -> str:
+def _spec(tmp_path: Path, *obligations: dict, features: str = "docs/features") -> str:
     spec = tmp_path / "specs" / "ACME-1"
     spec.mkdir(parents=True)
-    context = {"featuresRoot": "docs/features", "obligations": [*obligations, {"id": "okf:proved", "required": True}]}
+    context = {"featuresRoot": features, "obligations": [*obligations, {"id": "okf:proved", "required": True}]}
     (spec / CONTEXT_FILE).write_text(json.dumps(context), encoding="utf-8")
     return str(spec)
 
@@ -63,12 +68,32 @@ def test_each_page_with_deferred_checks_is_filed_once_and_committed(
     backlog = (repo / "docs" / "backlog.md").read_text(encoding="utf-8")
     assert first.appended == 1, first
     assert again.appended == 0, again
-    assert backlog.count("[book-checks-web-app-gui-screens-reports]") == 1, backlog
+    assert [b.id for b in backlog_bullets(backlog, section=BOOK_CHECKS_TITLE)] == [
+        "book-checks-web-app-gui-screens-reports"
+    ], backlog
     assert "the page itself, `#empty-alert`, `#export`" in backlog, backlog
     assert backlog.count("A section sits under a heading") == 1, backlog
     assert "home.md" not in backlog, backlog
     subject = git(repo, "log", "-1", "--format=%s").stdout.strip()
     assert subject == "chore(acme): file the book checks qa could not run", subject
+
+
+def test_the_fix_lane_leaves_book_checks_for_the_book(
+    repo: Path,
+    tmp_path: Path,
+    logger: logging.Logger,
+    write: Callable[[Path, str], Path],
+    git: Callable[..., subprocess.CompletedProcess],
+) -> None:
+    """A book check is the book's to add, and drawing it as a fix story held the passed story's commit for hours."""
+    _seed(repo, write, git)
+    spec = _spec(tmp_path, _obligation(f"{PAGE}#export", UNTYPED), features=str(repo / "docs" / "features"))
+
+    file_deferred_obligations(logger, spec_dir=spec, repo_dir=str(repo))
+
+    backlog = (repo / "docs" / "backlog.md").read_text(encoding="utf-8")
+    assert "[book-checks-web-app-gui-screens-reports]" in backlog, backlog
+    assert not select_fix_item(logger, repo_dir=str(repo)).has_fix
 
 
 def test_a_context_with_nothing_deferred_files_and_commits_nothing(
