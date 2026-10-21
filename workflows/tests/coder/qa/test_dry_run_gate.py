@@ -122,6 +122,45 @@ def test_another_scenarios_records_in_the_out_dir_prove_nothing(tmp_path: Path) 
     assert "no assertion" in gate.notes, gate.notes
 
 
+def _scored_run(spec_dir: Path, *records: dict[str, str]) -> None:
+    out = spec_dir / QA_SCRATCH_DIRNAME
+    out.mkdir(parents=True, exist_ok=True)
+    (out / QA_RUN_LOG).write_text(
+        "".join(json.dumps({"kind": "assert", **r}) + "\n" for r in records), encoding="utf-8"
+    )
+
+
+def test_the_scored_run_proves_a_scenario_whose_dry_run_it_cleared(tmp_path: Path) -> None:
+    _scored_run(
+        tmp_path,
+        {"id": "copy-link-1", "scenario": "copy-link", "result": "PASS"},
+        {"id": "create-document-1", "scenario": "create-document", "result": "PASS"},
+    )
+
+    gate = verify_qa_dry_run(LOGGER, str(tmp_path), ("copy-link", "create-document"))
+
+    assert gate.status == "passed", gate.notes
+    assert gate.verified == ["copy-link", "create-document"], gate.verified
+
+
+def test_the_scored_runs_unlabelled_records_prove_no_scenario(tmp_path: Path) -> None:
+    _scored_run(tmp_path, {"id": "a1", "result": "PASS"})
+
+    gate = verify_qa_dry_run(LOGGER, str(tmp_path), ("copy-link",))
+
+    assert gate.status == "failed"
+    assert "no assertion" in gate.notes, gate.notes
+
+
+def test_a_red_scenario_in_the_scored_run_is_not_a_finished_repair(tmp_path: Path) -> None:
+    _scored_run(tmp_path, {"id": "copy-link-1", "scenario": "copy-link", "result": "FAIL"})
+
+    gate = verify_qa_dry_run(LOGGER, str(tmp_path), ("copy-link",))
+
+    assert gate.status == "failed"
+    assert "copy-link-1" in gate.notes, gate.notes
+
+
 def test_no_scenarios_to_prove_is_a_pass_and_not_a_refusal(tmp_path: Path) -> None:
     """The draft path: nothing failed, so there is nothing for a dry run to demonstrate."""
     gate = verify_qa_dry_run(LOGGER, str(tmp_path), ())

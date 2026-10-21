@@ -115,7 +115,11 @@ def verify_qa_dry_run(
     problems: list[str] = []
     verified: list[str] = []
     for scenario in wanted:
+        names = ("", scenario, scenario.replace("_", "-"))
         log_path = root / scenario / QA_RUN_LOG
+        if not log_path.is_file() and (root / QA_RUN_LOG).is_file():
+            log_path = root / QA_RUN_LOG
+            names = names[1:]
         if not log_path.is_file():
             problems.append(
                 f"`{scenario}`: no dry run at {log_path}. Run it with "
@@ -126,7 +130,7 @@ def verify_qa_dry_run(
         mine = [
             r
             for r in assert_records(log_path)
-            if str(r.get("scenario", "")).strip() in ("", scenario, scenario.replace("_", "-"))
+            if str(r.get("scenario", "")).strip() in names
         ]
         if not mine:
             problems.append(
