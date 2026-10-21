@@ -88,6 +88,24 @@ def test_a_scenarios_own_out_dir_claims_its_unlabelled_assertions(tmp_path: Path
     assert verify_qa_dry_run(LOGGER, str(tmp_path), ("copy-link",)).status == "passed"
 
 
+def test_a_scenario_named_by_its_function_claims_the_records_ostler_ids_with_hyphens(
+    tmp_path: Path,
+) -> None:
+    """ostler ids a scenario by its function name with hyphens, and a turn that named the function was refused for every scenario it proved."""
+    out = tmp_path / QA_SCRATCH_DIRNAME / "copy_link"
+    out.mkdir(parents=True)
+    (out / QA_RUN_LOG).write_text(
+        json.dumps({"kind": "assert", "id": "copy-link-1", "scenario": "copy-link", "result": "PASS"})
+        + "\n",
+        encoding="utf-8",
+    )
+
+    gate = verify_qa_dry_run(LOGGER, str(tmp_path), ("copy_link",))
+
+    assert gate.status == "passed", gate.notes
+    assert gate.verified == ["copy_link"], gate.verified
+
+
 def test_another_scenarios_records_in_the_out_dir_prove_nothing(tmp_path: Path) -> None:
     """A whole-suite run pointed at one scenario's out-dir would otherwise pass the gate for a scenario it left red, because *some* assertion in the file is green."""
     out = tmp_path / QA_SCRATCH_DIRNAME / "copy-link"

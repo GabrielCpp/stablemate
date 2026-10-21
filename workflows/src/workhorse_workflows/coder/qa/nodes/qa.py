@@ -126,7 +126,7 @@ def verify_qa_dry_run(
         mine = [
             r
             for r in assert_records(log_path)
-            if str(r.get("scenario", "")).strip() in ("", scenario)
+            if str(r.get("scenario", "")).strip() in ("", scenario, scenario.replace("_", "-"))
         ]
         if not mine:
             problems.append(
