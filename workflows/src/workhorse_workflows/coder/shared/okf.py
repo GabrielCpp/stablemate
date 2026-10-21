@@ -146,7 +146,13 @@ def build_okf_context(
 ) -> OkfContextResult:
     """Map a diff onto the OKF graph and write the obligation packet into the spec dir."""
     docs_root = find_docs_root(docs_path, repo_dir)
-    inherited = sorted(untouched_since(Path(docs_root).resolve(), tuple(preexisting)))
+    held = Path(docs_root).resolve()
+    checkouts = {Path(source.checkout).resolve() for source in story_sources if source.checkout}
+    inherited = sorted(
+        untouched_since(held, tuple(preexisting)).union(
+            *(untouched_since(checkout, tuple(preexisting)) for checkout in checkouts - {held})
+        )
+    )
     if inherited:
         logger.info(
             "excluding %d path(s) that were already dirty when the story started: %s",

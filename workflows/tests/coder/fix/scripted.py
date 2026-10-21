@@ -11,7 +11,7 @@ from typing import Any
 from workhorse.pyflow.engine import RunEnv
 
 from workhorse_workflows.coder.shared import commits
-from workhorse_workflows.kit.git import commit_all
+from workhorse_workflows.kit.git import commit_paths
 
 BULLET = "widget-pagination"
 TEXT = "the widget list does not paginate"
@@ -27,6 +27,8 @@ BACKLOG = f"""# Backlog
 
 RED_MAKEFILE = "lint:\n\t@echo 'pagination.go:1: undefined: pageSize'; exit 1\n"
 
+SCREENSHOT = "__screenshots__/pagination.test.ts/paginates-1.png"
+
 
 class ScriptedAgent:
     """The owner prompt, the resolver and the `docs` sub-flow's prompts, scripted on their arms."""
@@ -38,12 +40,14 @@ class ScriptedAgent:
         impl_blocked: int = 0,
         gate_red: int = 0,
         docs_blocks: int = 0,
+        screenshots: int = 0,
         explode: set[str] | None = None,
     ) -> None:
         self.workspace = workspace
         self.impl_blocked = impl_blocked
         self.gate_red = gate_red
         self.docs_blocks = docs_blocks
+        self.screenshots = screenshots
         self.explode = explode or set()
         self.calls: list[str] = []
         self.args: list[dict[str, Any]] = []
@@ -67,13 +71,17 @@ class ScriptedAgent:
 
 
     def _fix_item(self, data: dict[str, Any], nth: int) -> dict[str, Any]:
-        """Write the change, so the gates and the commit have something to find."""
+        """Write the change and commit what this turn wrote, so the gates and the commit have something to find."""
         if nth <= self.impl_blocked:
             return {
                 "status": "blocked",
                 "notes": "the page size is a product decision nobody has made",
             }
         repo = self.workspace["api"]
+        before = dirty_paths(repo)
+        screenshot = repo / SCREENSHOT
+        if screenshot.exists():
+            screenshot.unlink()
         (repo / "pagination.go").write_text(f"// pass {nth}\n", encoding="utf-8")
         makefile = repo / "Makefile"
         if nth <= self.gate_red:
@@ -87,7 +95,10 @@ class ScriptedAgent:
             epic=str(data["epic"]),
             story=str(data["story_id"]),
         )
-        commit_all(repo, message)
+        commit_paths(repo, message, *sorted(dirty_paths(repo) - before))
+        if nth <= self.screenshots:
+            screenshot.parent.mkdir(parents=True, exist_ok=True)
+            screenshot.write_bytes(b"\x89PNG failure")
         return {"status": "done", "notes": f"paginated the widget list on pass {nth}"}
 
     def _document_story(self, data: dict[str, Any], nth: int) -> dict[str, Any]:
@@ -124,6 +135,18 @@ def answers(seen: list[str]) -> Callable[..., None]:
         )
 
     return answered
+
+
+def dirty_paths(repo: Path) -> set[str]:
+    """Every path git reports as changed or untracked in *repo*."""
+    status = subprocess.run(
+        ["git", "status", "--porcelain", "-uall"],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout
+    return {line[3:] for line in status.splitlines() if line}
 
 
 def backlog(docs: Path) -> str:

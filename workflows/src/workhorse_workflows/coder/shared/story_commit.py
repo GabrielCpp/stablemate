@@ -23,7 +23,6 @@ from workhorse_workflows.coder.shared.worktree import untouched_since
 from workhorse_workflows.kit.agent_files import render_agent_files_returning_failure
 from workhorse_workflows.kit import (
     GitError,
-    commit_all,
     commit_paths,
     find_docs_root,
     find_repo_root,
@@ -115,7 +114,8 @@ def _uncommitted(root: Path) -> list[str]:
         dirty = {item.a_path for item in repo.index.diff(None) if item.a_path}
         dirty |= set(repo.untracked_files)
         try:
-            dirty |= {item.a_path for item in repo.index.diff("HEAD") if item.a_path}
+            staged = repo.index.diff("HEAD")
+            dirty |= {path for item in staged for path in (item.a_path, item.b_path) if path}
         except (GitError, OSError, TypeError, ValueError, KeyError):
             pass
     except (GitError, OSError, TypeError, ValueError, RuntimeError):
@@ -131,13 +131,14 @@ def check_repos_clean(
     preexisting: list[str] | None = None,
     repo_dir: str = "",
     workspace_file: str = "",
+    roots: list[str] | None = None,
 ) -> WorktreeCleanliness:
     """Did the agent commit its own work in every repo the story touched?"""
     root = find_repo_root(repo_dir)
     snapshot = tuple(preexisting or ())
     dirty: list[str] = []
     names: list[str] = []
-    for name, repo_path in _affected_roots(logger, root, spec_dir, workspace_file, repo_dir):
+    for name, repo_path in _commit_roots(logger, root, spec_dir, workspace_file, repo_dir, roots):
         names.append(name)
         excused = untouched_since(repo_path, snapshot)
         dirty.extend(
@@ -155,6 +156,20 @@ def check_repos_clean(
     else:
         logger.info("%s left nothing uncommitted in %s", slug, ", ".join(names) or "the repo root")
     return WorktreeCleanliness(clean=not dirty, dirty=dirty, repos=names)
+
+
+def leftover_text(dirty: list[str]) -> str:
+    """The report an owner turn gets back when it left uncommitted paths behind."""
+    listing = "\n".join(f"- `{path}`" for path in dirty[:40])
+    elided = f"\n- … and {len(dirty) - 40} more" if len(dirty) > 40 else ""
+    return (
+        "Uncommitted work: these paths changed since the story began and are not "
+        f"committed.\n\n{listing}{elided}\n\n"
+        "Commit what this story wrote. Delete what a tool generated during the turn that is "
+        "not evidence, such as a test runner's failure screenshot or report. Leave alone what "
+        "the story did not write, and report `blocked` naming those paths, so the operator "
+        "decides what happens to them."
+    )
 
 
 def _key_of(roots: list[tuple[str, Path]], absolute: Path) -> str | None:
@@ -250,7 +265,14 @@ def commit_leftovers(
     committed = False
     for name, repo_path in _affected_roots(logger, root, spec_dir, workspace_file, repo_dir):
         prefix = f"{name}:"
-        rels = [key[len(prefix):] for key in dirty or [] if key.startswith(prefix)]
+        keyed = [key[len(prefix):] for key in dirty or [] if key.startswith(prefix)]
+        generated = [rel for rel in keyed if paths.is_tool_output(rel)]
+        if generated:
+            logger.info(
+                "left %d tool-generated path(s) in %s out of the commit: %s",
+                len(generated), name, ", ".join(generated[:10]),
+            )
+        rels = [rel for rel in keyed if rel not in generated]
         if not rels:
             continue
         kind = "docs" if all(rel.endswith(".md") for rel in rels) else "fix"
@@ -330,8 +352,9 @@ def commit_story(
     kind: str = "feat",
     roots: list[str] | None = None,
     story_id: str = "",
+    preexisting: list[str] | None = None,
 ) -> StoryCommitted:
-    """Commit a completed story's changes in each affected code repo, then stamp it passed."""
+    """Commit what a completed story changed in each affected code repo, then stamp it passed."""
     slug = story_slug or "story"
     root = find_repo_root(repo_dir)
 
@@ -343,10 +366,20 @@ def commit_story(
             kind, commits.scope(package), description, epic=epic_name, story=story_id or slug
         )
 
+    snapshot = tuple(preexisting or ())
+
     def _commit_in(repo_path: Path, package: str) -> bool:
-        """``commit_all``, with a git refusal turned into a halt rather than a False."""
+        """Commit the dirty paths that were not dirty and untouched at story start, with a git refusal turned into a halt rather than a False."""
+        dirty = _uncommitted(repo_path)
+        excused = untouched_since(repo_path, snapshot)
+        rels = [rel for rel in dirty if rel not in excused]
+        if len(rels) < len(dirty):
+            logger.info(
+                "left %d pre-existing dirty path(s) in %s out of the commit",
+                len(dirty) - len(rels), package,
+            )
         try:
-            return bool(commit_all(repo_path, _story_message(package)))
+            return commit_paths(repo_path, _story_message(package), *rels)
         except GitError as exc:
             raise WorkflowFailed(
                 f"git refused the commit for {slug} in {repo_path}: {exc}"
@@ -370,6 +403,7 @@ __all__ = [
     "commit_leftovers",
     "commit_plan_record",
     "commit_story",
+    "leftover_text",
     "proof_scope",
     "stamp_story_passed",
 ]

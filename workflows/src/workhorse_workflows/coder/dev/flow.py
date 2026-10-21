@@ -67,7 +67,11 @@ from workhorse_workflows.coder.shared.story import (
     stamp_specs,
     workspace_dirs,
 )
-from workhorse_workflows.coder.shared.story_commit import check_repos_clean, commit_plan_record
+from workhorse_workflows.coder.shared.story_commit import (
+    check_repos_clean,
+    commit_plan_record,
+    leftover_text,
+)
 from workhorse_workflows.coder.shared.walk import acceptance_walk
 from workhorse_workflows.kit.qa.runner import copy_lease
 from workhorse_workflows.kit.telemetry import counter_labels
@@ -397,16 +401,7 @@ class Dev(Workflow):
         state = self.call(
             check_repos_clean, self.ctx.story_slug, self.ctx.spec_dir, list(self.preexisting)
         )
-        if state.clean:
-            return []
-        listing = "\n".join(f"- `{path}`" for path in state.dirty[:40])
-        elided = f"\n- … and {len(state.dirty) - 40} more" if len(state.dirty) > 40 else ""
-        return [
-            "Uncommitted work: these paths changed since the story began and are not "
-            f"committed.\n\n{listing}{elided}\n\n"
-            "Commit what this story wrote. Leave alone what it did not write, and report "
-            "`blocked` naming those paths, so the operator decides what happens to them."
-        ]
+        return [] if state.clean else [leftover_text(state.dirty)]
 
     def _walk_failures(self) -> list[str]:
         if self.follow_up_title:

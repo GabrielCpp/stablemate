@@ -1,9 +1,10 @@
 """Drain the coder's own backlog, one filed item at a time, each through one owner turn."""
 from __future__ import annotations
 
+from collections.abc import Callable
 from typing import Any, ClassVar
 
-from workhorse.pyflow import Await, Continue, Done, Workflow, WorkflowFailed
+from workhorse.pyflow import Await, Continue, Done, NodeNotRunError, Workflow, WorkflowFailed
 from workhorse_workflows.coder.shared import paths, roles
 from workhorse_workflows.coder.docs.flow import Docs
 from workhorse_workflows.coder.shared.backlog import (
@@ -26,7 +27,11 @@ from workhorse_workflows.coder.shared.owner import (
     owner_profile,
 )
 from workhorse_workflows.coder.shared.resolution import RESOLVER_POWER, answered, resolver_args
-from workhorse_workflows.coder.shared.story_commit import commit_story
+from workhorse_workflows.coder.shared.story_commit import (
+    check_repos_clean,
+    commit_story,
+    leftover_text,
+)
 from workhorse_workflows.coder.shared.story import (
     guard_story_file,
     prepare_fix_story,
@@ -38,6 +43,11 @@ from workhorse_workflows.coder.shared.schemas.dev import (
     OperatorResolution,
 )
 from workhorse_workflows.coder.shared.schemas.story import StoryPaths, WorkspaceDirs
+from workhorse_workflows.coder.shared.schemas.worktree import DirtyAtStart
+from workhorse_workflows.coder.shared.worktree import (
+    snapshot_owner_baseline,
+    snapshot_worktree_state,
+)
 
 
 def render_gate(report: FailureReport) -> str:
@@ -64,17 +74,19 @@ class Fix(Workflow):
         return self.call(resolve_workspace_dirs, self.docs_path)
 
     def start(self) -> Continue | Done:
-        """Draw the next drainable bullet, seed it as a story, and resolve its paths."""
+        """Draw the next drainable bullet, record what was already dirty, seed it as a story, and resolve its paths."""
         pick = self.call(select_fix_item, self.docs_path)
         if not pick.has_fix:
             self.logger.info("backlog drained: %s", pick.reason)
             return Done(pick)
         self.logger.info("draining %s: %s", pick.fix_bullet_id, pick.fix_bullet_text)
+        self.call(snapshot_worktree_state, roots=self._dirs())
         seed = self.call(
             seed_fix_story, pick.fix_bullet_id, pick.fix_bullet_text, "", "", self.docs_path
         )
         story = self.call(prepare_fix_story, self.docs_path, seed.story_slug, seed.epic)
         self.call(guard_story_file, story)
+        self.call(snapshot_owner_baseline, roots=self._dirs())
         return Continue(story, self.work)
 
     def work(
@@ -114,18 +126,29 @@ class Fix(Workflow):
         return Continue(result, self.check, laps=laps, blocks=blocks)
 
     def check(self, laps: int = 0, blocks: int = 0) -> Continue | Await:
-        """Run the repo's own gates over what the turn changed, and send what failed back."""
+        """Run the repo's own gates over what the turn changed, check it left nothing behind, and send what failed back."""
         failures = self._gate_failures(laps)
-        if not failures:
+        state = self.call(
+            check_repos_clean,
+            self._story.story_slug,
+            self._story.spec_dir,
+            self._dirty_at(snapshot_owner_baseline),
+            roots=self._changed_dirs(),
+        )
+        reports = [render_gate(f) for f in failures]
+        if not state.clean:
+            reports.append(leftover_text(state.dirty))
+        if not reports:
             self.logger.info("gates are clean for %s", self._story.story_slug)
             bullet = self.output(select_fix_item).fix_bullet_id
             pruned = self.call(prune_fix_item, bullet, self.docs_path)
             return Continue(pruned, self.document)
-        text = "\n\n".join(render_gate(f) for f in failures)
+        text = "\n\n".join(reports)
+        found = failures[0] if failures else state
         if laps >= MAX_LAPS:
             notes = f"{text}\n\nThe gates still fail after {laps} repair turn(s)."
-            return self._block(failures[0], notes, "the gates on the fix-drain item", blocks)
-        return Continue(failures[0], self.work, report=text, laps=laps + 1, blocks=blocks)
+            return self._block(found, notes, "the gates on the fix-drain item", blocks)
+        return Continue(found, self.work, report=text, laps=laps + 1, blocks=blocks)
 
     def document(self) -> Continue:
         """Fold the drained item into the OKF book, by handing off to the `docs` flow."""
@@ -136,6 +159,7 @@ class Fix(Workflow):
             docs_path=self.docs_path,
             epic=seed.epic,
             target_env=self.target_env,
+            preexisting=tuple(self._dirty_at(snapshot_worktree_state)),
         )
         if result.status not in ("passed", "not_applicable"):
             raise WorkflowFailed(
@@ -155,6 +179,7 @@ class Fix(Workflow):
             kind="fix",
             roots=self._changed_dirs(),
             story_id=self._story.story_id,
+            preexisting=self._dirty_at(snapshot_worktree_state),
         )
         return Continue(result, self.start)
 
@@ -235,6 +260,13 @@ class Fix(Workflow):
             for d in self._dirs()
             if self.call(changed_files, d, self._story.story_slug, self._story.story_id).paths
         ]
+
+    def _dirty_at(self, snapshot: Callable[..., DirtyAtStart]) -> list[str]:
+        """What *snapshot* found already dirty, or nothing when it never ran."""
+        try:
+            return list(self.output(snapshot).entries)
+        except NodeNotRunError:
+            return []
 
     @property
     def _story(self) -> StoryPaths:

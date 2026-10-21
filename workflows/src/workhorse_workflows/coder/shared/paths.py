@@ -9,6 +9,18 @@ OPERATOR_DIR = ".agents/operator"
 
 AMBIENT = ("repo_dir", "docs_path", "workspace_file", "library_dirs")
 
+TOOL_OUTPUT_DIRS = frozenset(
+    {
+        "__screenshots__",
+        "__pycache__",
+        ".pytest_cache",
+        ".nyc_output",
+        "blob-report",
+        "playwright-report",
+        "test-results",
+    }
+)
+
 
 def epics_repo_root(repo_dir: str | Path = "") -> Path:
     """Root marked by `agents.yml` or a `docs/epics/` **directory**, never `.git`."""
@@ -108,9 +120,15 @@ def is_gate_context(path: str | Path) -> bool:
     return stem == "context" or stem.split(".", 1)[0].endswith("-context")
 
 
+def is_tool_output(path: str | Path) -> bool:
+    """Is *path* something a test runner or a build tool wrote as a by-product, rather than work or evidence?"""
+    return any(part in TOOL_OUTPUT_DIRS for part in Path(path).parts[:-1])
+
+
 __all__ = [
     "AMBIENT",
     "OPERATOR_DIR",
+    "TOOL_OUTPUT_DIRS",
     "backlog_file",
     "epic_dir",
     "epic_dir_rel",
@@ -119,6 +137,7 @@ __all__ = [
     "epics_repo_root",
     "features_dir",
     "is_gate_context",
+    "is_tool_output",
     "launch_repo_root",
     "operator_context_path",
     "story_context_path",

@@ -26,36 +26,64 @@ def digest(root: Path, rel: str) -> str:
 
 
 def untouched_since(root: Path, snapshot: tuple[str, ...]) -> set[str]:
-    """Which snapshotted paths still hold exactly the bytes they held at story start."""
+    """Which snapshotted paths of *root* still hold exactly the bytes they held at story start."""
+    held = str(root.resolve())
     untouched: set[str] = set()
     for entry in snapshot:
-        rel, separator, recorded = str(entry).partition("\0")
-        if not separator or not rel or not recorded:
+        rel, _, rest = str(entry).partition("\0")
+        recorded, _, owner = rest.partition("\0")
+        if not rel or not recorded or owner not in ("", held):
             continue
         if digest(root, rel) == recorded:
             untouched.add(rel)
     return untouched
 
 
+def _dirty_entries(root: Path, owner: str = "") -> list[str]:
+    """Each dirty path of *root* with its digest, and *owner* when the entry names its checkout."""
+    repo = open_repo(root)
+    dirty = [item.a_path for item in repo.index.diff(None) if item.a_path]
+    dirty.extend(repo.untracked_files)
+    suffix = f"\0{owner}" if owner else ""
+    return [f"{rel}\0{sha}{suffix}" for rel in sorted(set(dirty)) if (sha := digest(root, rel))]
+
+
 @blueprint.node
 def snapshot_worktree_state(
-    logger: logging.Logger, docs_path: str = "", repo_dir: str = ""
+    logger: logging.Logger,
+    docs_path: str = "",
+    repo_dir: str = "",
+    roots: list[str] | None = None,
 ) -> DirtyAtStart:
-    """Record what was already dirty before this story's first dev turn."""
-    root = Path(find_docs_root(docs_path, repo_dir)).resolve()
-    try:
-        repo = open_repo(root)
-        dirty = [item.a_path for item in repo.index.diff(None) if item.a_path]
-        dirty.extend(repo.untracked_files)
-    except (GitError, OSError, TypeError, ValueError, RuntimeError) as exc:
-        logger.info("could not read the worktree state at %s (%s) — snapshot is empty", root, exc)
-        return DirtyAtStart(entries=[], notes=f"worktree state unavailable: {exc}")
-
-    entries = [f"{rel}\0{sha}" for rel in sorted(set(dirty)) if (sha := digest(root, rel))]
-    logger.info("snapshotted %d pre-existing dirty path(s) at %s", len(entries), root)
+    """Record what was already dirty before this story's first dev turn, in the docs root or in each of *roots*."""
+    if roots is None:
+        checkouts = [(Path(find_docs_root(docs_path, repo_dir)).resolve(), "")]
+    else:
+        checkouts = [(resolved, str(resolved)) for resolved in (Path(r).resolve() for r in roots)]
+    entries: list[str] = []
+    for root, owner in checkouts:
+        try:
+            entries.extend(_dirty_entries(root, owner))
+        except (GitError, OSError, TypeError, ValueError, RuntimeError) as exc:
+            logger.info("could not read the worktree state at %s (%s) — nothing snapshotted there", root, exc)
+            if roots is None:
+                return DirtyAtStart(entries=[], notes=f"worktree state unavailable: {exc}")
+    logger.info(
+        "snapshotted %d pre-existing dirty path(s) at %s",
+        len(entries),
+        ", ".join(str(root) for root, _ in checkouts),
+    )
     return DirtyAtStart(
         entries=entries, notes=f"{len(entries)} path(s) were already dirty when the story started"
     )
+
+
+@blueprint.node
+def snapshot_owner_baseline(
+    logger: logging.Logger, roots: list[str] | None = None
+) -> DirtyAtStart:
+    """`snapshot_worktree_state` under a second node id: what was dirty once the run had seeded the item."""
+    return snapshot_worktree_state(logger, roots=list(roots or []))
 
 
 GIT_TIMEOUT = 60
@@ -122,6 +150,7 @@ __all__ = [
     "code_changed",
     "digest",
     "snapshot_code_state",
+    "snapshot_owner_baseline",
     "snapshot_worktree_state",
     "untouched_since",
 ]

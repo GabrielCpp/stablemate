@@ -18,6 +18,7 @@ from coder.fix.scripted import (
     BACKLOG,
     BULLET,
     RED_MAKEFILE,
+    SCREENSHOT,
     STORY_REL,
     TEXT,
     ScriptedAgent,
@@ -25,6 +26,7 @@ from coder.fix.scripted import (
     assert_agent_story_commit,
     backlog,
     branch_of,
+    dirty_paths,
     log_of,
     output,
 )
@@ -226,3 +228,37 @@ def test_a_run_killed_after_the_owner_turn_does_not_run_it_again(
     assert "fix-item" not in agent.counts(), agent.counts()
     assert agent.counts()["document-story"] == 1, agent.counts()
     assert BULLET not in backlog(docs), backlog(docs)
+
+
+def test_a_turn_gets_its_tool_output_back_and_the_commit_leaves_what_was_dirty_before(
+    docs: Path,
+    workspace: dict[str, Path],
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    """A failure screenshot goes back to the owner, and a config edited before the item stays out of every commit."""
+    api = workspace["api"]
+    (api / "config.yml").write_text("port: 8080\n", encoding="utf-8")
+    subprocess.run(["git", "add", "config.yml"], cwd=api, check=True, capture_output=True)
+    subprocess.run(["git", "commit", "-qm", "Add config"], cwd=api, check=True, capture_output=True)
+    (api / "config.yml").write_text("port: 9090\n", encoding="utf-8")
+    agent = ScriptedAgent(workspace, screenshots=1)
+
+    result = drive_flow(Fix(), env(), agent)
+
+    assert result.has_fix is False, result
+    assert agent.counts()["fix-item"] == 2, agent.counts()
+    report = str(agent.args_for("fix-item")[1]["report"])
+    assert f"`api:{SCREENSHOT}`" in report, report
+    assert "config.yml" not in report, report
+    committed = subprocess.run(
+        ["git", "log", "--name-only", "--format="],
+        cwd=api,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.split()
+    assert "pagination.go" in committed, committed
+    assert SCREENSHOT not in committed, committed
+    assert committed.count("config.yml") == 1, committed
+    assert dirty_paths(api) == {"config.yml"}, dirty_paths(api)
