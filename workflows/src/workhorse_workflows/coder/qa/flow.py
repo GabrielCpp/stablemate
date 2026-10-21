@@ -25,10 +25,12 @@ from workhorse_workflows.coder.qa.nodes import (
     verify_qa_evidence,
 )
 from workhorse_workflows.coder.qa.report import (
-    failed_scenario_ids,
+    book_failure,
+    environment_failure,
     failed_scenarios_arg,
     fallback_finding,
     gate_text,
+    product_findings,
     qa_only_arg,
     refix_findings,
     regression_text,
@@ -37,6 +39,7 @@ from workhorse_workflows.coder.qa.report import (
     unfinished_run,
     unproved_findings,
 )
+from workhorse_workflows.coder.qa.sides import run_sides
 from workhorse_workflows.coder.shared import paths, roles, work
 from workhorse_workflows.coder.shared.backlog import file_backlog_items
 from workhorse_workflows.coder.shared.dev import read_operator_context
@@ -263,7 +266,7 @@ class Qa(Workflow):
         self.call(file_backlog_items, self.ctx.spec_dir, self.docs_path)
         self.call(stamp_specs, self.docs_path, self.ctx.story_slug)
         if run.status == "failed":
-            return self._failed(run, [])
+            return self._red(run, [], 0, 0, owner_classifies=False)
         if run.status != "passed":
             return self._lap(run, [unfinished_run(run)], 0, 0)
         failures = ([] if self.scope else self._evidence_failures(run)) or self._standing_failures()
@@ -292,12 +295,9 @@ class Qa(Workflow):
         )
         self.call(file_backlog_items, self.ctx.spec_dir, self.docs_path)
         self.call(stamp_specs, self.docs_path, self.ctx.story_slug)
-        if run.status == "failed" and (found or self.stop_at_first_verdict):
-            return self._failed(run, found)
         if run.status == "failed":
-            ids = failed_scenario_ids(run)
-            failed = failed_scenarios_arg(self.ctx.spec_dir, ids)
-            return self._lap(run, [unclassified_failure(run, ids)], laps, blocks, failed)
+            classify = not self.stop_at_first_verdict
+            return self._red(run, found, laps, blocks, owner_classifies=classify)
         if run.status != "passed":
             failures = [unfinished_run(run)]
         elif found:
@@ -356,6 +356,34 @@ class Qa(Workflow):
         if sentinels.status != "passed":
             return [gate_text("sentinel ids", sentinels.notes)]
         return []
+
+    def _red(
+        self,
+        run: QaPlanRun,
+        found: list[QaFinding],
+        laps: int,
+        blocks: int,
+        *,
+        owner_classifies: bool,
+    ) -> Continue | Await | Done:
+        """Send each failed scenario to the owner of the side ostler gives it."""
+        sides = run_sides(run)
+        if sides.environment:
+            self.logger.info("QA stopped on its environment in %s", self.ctx.story_slug)
+            notes = environment_failure(run, sides.environment)
+            return self._ask(notes, "the QA environment", blocks)
+        product = product_findings(sides.product)
+        if found or product:
+            return self._failed(run, [*found, *product])
+        if not sides.book and not owner_classifies:
+            return self._failed(run, [])
+        failures = [book_failure(sides.book)] if sides.book else []
+        unattributed = [s.id for s in sides.unattributed]
+        if unattributed or not sides.book:
+            failures.append(unclassified_failure(run, unattributed))
+        ids = sorted([s.id for s in sides.book] + unattributed)
+        failed = failed_scenarios_arg(self.ctx.spec_dir, ids)
+        return self._lap(run, failures, laps, blocks, failed)
 
     def _failed(self, run: QaPlanRun, found: list[QaFinding]) -> Done:
         """A failed run with its findings: the dev owner's to fix, or the tracker's in dev."""

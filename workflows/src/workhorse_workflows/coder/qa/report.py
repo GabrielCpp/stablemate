@@ -5,6 +5,9 @@ from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 
+from ostler.qa.attribution import SAMPLE_CHARS
+
+from workhorse_workflows.coder.qa.sides import FailedScenario
 from workhorse_workflows.coder.shared.failed import failed_scenario_ids, failed_scenarios_arg
 from workhorse_workflows.coder.shared.scenarios import qa_only_scenarios
 from workhorse_workflows.coder.shared.schemas.qa import QaFinding, QaPlanRun, RegressionRun
@@ -52,6 +55,61 @@ def unclassified_failure(run: QaPlanRun, ids: Sequence[str]) -> str:
         "stack or the scenario when the cause is there, or return it as a finding when the "
         "product is wrong.",
     )
+
+
+def _clip(text: str) -> str:
+    text = text.strip()
+    return text if len(text) <= SAMPLE_CHARS else f"{text[:SAMPLE_CHARS]}..."
+
+
+def scenario_text(scenario: FailedScenario) -> str:
+    """One failed scenario with each check that failed in it and the page ostler blames."""
+    lines = [f"- `{scenario.id}` ({scenario.cause.value})"]
+    for check in scenario.checks:
+        label = str(check.get("label", "")).strip() or "a check"
+        expected = _clip(str(check.get("expected", "")))
+        line = f"  - {label}: expected {expected}, saw {_clip(str(check.get('actual', '')))}"
+        ending = _clip(str(check.get("command_ending_text", "")))
+        page = str(check.get("precondition", "")).strip()
+        line += f"; {ending}" if ending else ""
+        lines.append(line + (f" (page: `{page}`)" if page else ""))
+    return "\n".join(lines)
+
+
+def environment_failure(run: QaPlanRun, scenarios: Sequence[FailedScenario]) -> str:
+    """Failed scenarios whose fixture step could not start, which only the operator can fix."""
+    listed = "\n".join(scenario_text(s) for s in scenarios)
+    return gate_text(
+        "the QA environment",
+        f"{run.notes}\n\nA fixture step could not start, so the stack lacks something the "
+        f"book needs and neither the book nor the product was tested:\n{listed}\n\n"
+        "Make the environment provide it, then answer this gate so QA reruns.",
+    )
+
+
+def book_failure(scenarios: Sequence[FailedScenario]) -> str:
+    """Failed scenarios that never reached their claim, which the owner repairs in the book."""
+    listed = "\n".join(scenario_text(s) for s in scenarios)
+    return gate_text(
+        "the book",
+        f"These scenarios failed before their claim was tested: a fixture step failed, or "
+        f"the claim's condition read back false. The product was not tested, so they are "
+        f"not findings:\n{listed}\n\nRepair the page ostler names so its fixture builds the "
+        "world the claim needs, then rerun them.",
+    )
+
+
+def product_findings(scenarios: Sequence[FailedScenario]) -> list[QaFinding]:
+    """Failed scenarios whose condition held and whose claim failed, as findings for dev."""
+    return [
+        QaFinding(
+            id=s.id,
+            target=s.id,
+            issue=scenario_text(s),
+            repair=f"make the product hold what scenario `{s.id}` claims, then rerun it",
+        )
+        for s in scenarios
+    ]
 
 
 def unproved_findings(findings: Sequence[QaFinding]) -> str:
@@ -102,14 +160,18 @@ def refix_findings(findings: Sequence[QaFinding], qa_dir: str, notes: str) -> li
 
 
 __all__ = [
+    "book_failure",
+    "environment_failure",
     "failed_scenario_ids",
     "failed_scenarios_arg",
     "fallback_finding",
     "findings_text",
     "gate_text",
+    "product_findings",
     "qa_only_arg",
     "refix_findings",
     "regression_text",
+    "scenario_text",
     "stack_failures",
     "unclassified_failure",
     "unfinished_run",

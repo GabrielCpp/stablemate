@@ -1482,3 +1482,157 @@ def test_a_red_rerun_goes_back_as_a_refix_without_an_owner_turn(
     assert result.qa.status == "failed", result
     assert agent.calls == [], agent.calls
     assert okf.runs == 1, okf.runs
+
+
+FIXTURE_PAGE = "docs/features/web-app/fixtures/well-stocked.md"
+
+
+def _red(sid: str, *causes: str) -> dict[str, Any]:
+    """One failed scenario whose failed checks carry the causes ostler gave them."""
+    checks = [
+        {
+            "label": f"{sid} check {n}",
+            "expected": "true",
+            "actual": "false",
+            "cause": cause,
+            "precondition": FIXTURE_PAGE,
+        }
+        for n, cause in enumerate(causes, 1)
+    ]
+    return {sid: {"status": "failed", "assertions": 9, "failures": 1, "failed_checks": checks}}
+
+
+def test_an_environment_red_stops_at_the_operator_gate_without_a_refix(
+    docs: Path,
+    ostler: Callable[..., _Ostler],
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    """A fixture that cannot start says nothing about the product or the book."""
+    okf = ostler(fail_runs=1, scenarios=(_red("copy-link", "environment", "app"),))
+    agent = _Agent(docs)
+    seen: list[str] = []
+
+    with patch.object(pyflow_park, "wait_for_answer", _parked_at(seen)), pytest.raises(_Parked):
+        drive_flow(Qa(story=STORY), env(), agent)
+
+    assert agent.calls == ["qa-story"], agent.calls
+    assert len(seen) == 1 and "the QA environment" in seen[0], seen
+    assert "copy-link check 1" in seen[0] and FIXTURE_PAGE in seen[0], seen
+    assert okf.runs == 1, okf.runs
+
+
+@pytest.mark.parametrize("cause", ["book", "arrangement"])
+def test_a_book_side_red_goes_back_to_the_owner_to_repair_the_book(
+    docs: Path,
+    ostler: Callable[..., _Ostler],
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+    cause: str,
+) -> None:
+    """A scenario that never reached its claim is the book's to repair, not a finding."""
+    okf = ostler(fail_runs=1, scenarios=(_red("copy-link", cause), {}))
+    agent = _Agent(docs)
+
+    result = drive_flow(Qa(story=STORY), env(), agent)
+
+    assert result.status == "passed", result
+    report = agent.args[1]["report"]
+    assert "Check: the book" in report and FIXTURE_PAGE in report, report
+    assert "returned no finding" not in report, report
+    assert agent.args[1]["failed_scenarios"] == [
+        {"id": "copy-link", "failed_assertions": ["copy-link-1"]}
+    ], agent.args[1]["failed_scenarios"]
+    assert okf.runs == 2, okf.runs
+
+
+def test_a_product_red_goes_to_dev_as_a_finding_named_for_its_scenario(
+    docs: Path,
+    ostler: Callable[..., _Ostler],
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    """A claim that failed on a held condition reaches the developer on the next lap."""
+    okf = ostler(fail_runs=99, scenarios=(_red("copy-link", "app"),))
+    agent = _Agent(docs)
+
+    result = drive_flow(Qa(story=STORY), env(), agent)
+
+    assert result.status == "refix", result
+    assert [f.id for f in result.findings] == ["copy-link"], result.findings
+    assert "copy-link check 1" in result.findings[0].issue, result.findings
+    assert agent.calls == ["qa-story"], agent.calls
+    assert okf.runs == 1, okf.runs
+
+
+def test_a_product_red_beside_a_book_red_goes_to_dev_first(
+    docs: Path,
+    ostler: Callable[..., _Ostler],
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    """The defect reaches the builder now, and the book's repair waits for the next QA."""
+    scenarios = {**_red("copy-link", "app"), **_red("share-link", "book")}
+    ostler(fail_runs=99, scenarios=(scenarios,))
+    agent = _Agent(docs)
+
+    result = drive_flow(Qa(story=STORY), env(), agent)
+
+    assert result.status == "refix", result
+    assert [f.id for f in result.findings] == ["copy-link"], result.findings
+    assert agent.calls == ["qa-story"], agent.calls
+
+
+def test_an_unattributed_red_is_still_the_owner_s_to_classify(
+    docs: Path,
+    ostler: Callable[..., _Ostler],
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    """With no side named, the owner reads the failure and decides whose it is."""
+    ostler(fail_runs=1, scenarios=(_red("copy-link", "unattributed"), {}))
+    agent = _Agent(docs)
+
+    result = drive_flow(Qa(story=STORY), env(), agent)
+
+    assert result.status == "passed", result
+    report = agent.args[1]["report"]
+    assert "returned no finding" in report and "copy-link" in report, report
+    assert "Check: the book" not in report, report
+
+
+def test_stop_at_first_verdict_repairs_a_book_side_red(
+    docs: Path,
+    ostler: Callable[..., _Ostler],
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    """A red that never tested the product is not a verdict on it."""
+    okf = ostler(fail_runs=1, scenarios=(_red("copy-link", "arrangement"), {}))
+    agent = _Agent(docs)
+
+    result = drive_flow(Qa(story=STORY, stop_at_first_verdict=True), env(), agent)
+
+    assert result.status == "passed", result
+    assert agent.counts()["qa-story"] == 2, agent.counts()
+    assert "Check: the book" in agent.args[1]["report"]
+    assert okf.runs == 2, okf.runs
+
+
+def test_a_red_rerun_on_the_book_side_takes_an_owner_turn(
+    docs: Path,
+    ostler: Callable[..., _Ostler],
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    """A rerun hands the developer only what the product failed."""
+    okf = ostler(fail_runs=1, scenarios=(_red("copy-link", "book"), {}))
+    agent = _Agent(docs)
+    (docs / spec_dir() / "qa_plan.py").write_text(QA_PLAN, encoding="utf-8")
+
+    result = drive_flow(Qa(story=STORY, rerun=True), env(), agent)
+
+    assert result.status == "passed", result
+    assert agent.calls == ["qa-story"], agent.calls
+    assert "Check: the book" in agent.args[0]["report"]
+    assert okf.runs == 2, okf.runs
