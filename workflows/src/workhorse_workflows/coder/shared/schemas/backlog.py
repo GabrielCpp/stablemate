@@ -5,6 +5,13 @@ from workhorse_workflows.coder.shared.schemas._base import CoderResult
 from workhorse_workflows.coder.shared.schemas.qa import BacklogDrain
 
 
+class FiledBacklog(CoderResult):
+    """The open `Filed by coder` bullets, and the items a QA run left to file, each by id."""
+
+    filed: dict[str, str] = {}
+    items: dict[str, str] = {}
+
+
 class FixPick(CoderResult):
     """`select-next-fix-item.py` — the next drainable bullet, or "the pool is dry"."""
 
@@ -34,4 +41,4 @@ class FixPruned(CoderResult):
     reason: str = ""
 
 
-__all__ = ["BacklogDrain", "FixPick", "FixPruned", "FixStorySeed"]
+__all__ = ["BacklogDrain", "FiledBacklog", "FixPick", "FixPruned", "FixStorySeed"]

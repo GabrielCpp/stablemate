@@ -157,10 +157,12 @@ class _Agent:
         also_fixed: tuple[str, ...] = (),
         follow_ups: tuple[dict[str, str], ...] = (),
         escapes_to: str = "",
+        same_as: str = "",
         walk: tuple[int, ...] = (1,),
         failed: tuple[str, ...] = (),
     ) -> None:
         self.workspace = workspace
+        self.same_as = same_as
         self.failed = failed
         self.walk = walk
         self.follow_ups = follow_ups
@@ -255,9 +257,11 @@ class _Agent:
         }
 
     def _judge(self, data: dict[str, Any], nth: int) -> dict[str, Any]:
-        """The judge's ruling: every escape subject to `escapes_to`, every other question left at its default."""
+        """The judge's ruling: every escape subject to `escapes_to`, every cause subject to `same_as`, the rest at its default."""
         if data["kind"] == "escape" and self.escapes_to:
             return {"answers": dict.fromkeys(json.loads(str(data["subjects"])), self.escapes_to)}
+        if data["kind"] == "cause" and self.same_as in json.loads(str(data["context"])):
+            return {"answers": dict.fromkeys(json.loads(str(data["subjects"])), self.same_as)}
         return {"answers": {}}
 
     def _resolve_operator(self, data: dict[str, Any], nth: int) -> dict[str, Any]:
@@ -438,6 +442,58 @@ def test_a_follow_up_the_story_already_holds_is_not_filed_again_and_a_new_one_na
     (fresh,) = [it for it in filed if it.payload["title"].startswith("Reconcile")]
     assert fresh.payload["escaped_from"] == "STORY-0", fresh
     assert [it.id for it in work.escapes(work.worklist(run), "STORY-0")] == [fresh.id]
+
+
+FILED_BACKLOG = (
+    "# Backlog\n\n## Filed by coder\n\n"
+    "- [clear-report-snapshots] Sign-out leaves the saved report snapshots in the browser.\n"
+)
+
+
+def test_a_follow_up_that_restates_an_open_backlog_bullet_files_no_line(
+    docs: Path,
+    workspace: dict[str, Path],
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+    write: Callable[[Path, str], Path],
+    git: Callable[..., subprocess.CompletedProcess],
+) -> None:
+    """A follow-up the judge reads as an open bullet under a new title adds nothing to the backlog."""
+    backlog = write(docs / "docs" / "backlog.md", FILED_BACKLOG)
+    git(docs, "add", "docs/backlog.md")
+    git(docs, "commit", "-qm", "seed the backlog")
+    agent = _Agent(
+        workspace,
+        follow_ups=({"title": "Drop cached snapshots when the user logs out", "reason": "privacy"},),
+        same_as="clear-report-snapshots",
+    )
+
+    result = drive_flow(_dev(docs), env(), agent)
+
+    assert result.status == "ready", result
+    assert agent.counts()["judge"] == 1, agent.counts()
+    assert backlog.read_text(encoding="utf-8") == FILED_BACKLOG
+
+
+def test_a_follow_up_no_open_bullet_holds_is_filed(
+    docs: Path,
+    workspace: dict[str, Path],
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+    write: Callable[[Path, str], Path],
+    git: Callable[..., subprocess.CompletedProcess],
+) -> None:
+    """A follow-up the judge reads as new lands under `Filed by coder` beside the open bullet."""
+    backlog = write(docs / "docs" / "backlog.md", FILED_BACKLOG)
+    git(docs, "add", "docs/backlog.md")
+    git(docs, "commit", "-qm", "seed the backlog")
+    agent = _Agent(
+        workspace, follow_ups=({"title": "Paginate the audit log", "reason": "it loads every row"},)
+    )
+
+    drive_flow(_dev(docs), env(), agent)
+
+    assert "Paginate the audit log: it loads every row" in backlog.read_text(encoding="utf-8")
 
 
 def test_a_blocked_turn_in_human_mode_parks_and_resumes_with_the_answer(

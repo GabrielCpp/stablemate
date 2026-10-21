@@ -7,9 +7,21 @@ from collections.abc import Collection, Mapping, Sequence
 from typing import Any
 
 from workhorse import worklist as wl
+from workhorse.pyflow import Workflow
 
 from workhorse_workflows.coder.shared import work
-from workhorse_workflows.coder.shared.judge import Judge, Question, Ruling, answer_of
+from workhorse_workflows.coder.shared.judge import (
+    JUDGE_PROFILE,
+    Judge,
+    Question,
+    ReadingJudge,
+    Ruling,
+    RuleJudge,
+    Tiered,
+    accepting,
+    answer_of,
+    judge_args,
+)
 
 STOP_WORDS = frozenset({"a", "an", "and", "the", "of", "to", "for", "in", "on", "when", "with", "or"})
 NEW = "new"
@@ -31,6 +43,22 @@ def cause_rule(question: Question) -> Ruling:
         if hit is not None:
             answers[subject] = hit
     return Ruling(answers=answers)
+
+
+def cause_judge(flow: Workflow, power: str) -> Judge:
+    """The word rule first, then one tool-less reading at `power` of what the rule left."""
+
+    def read(question: Question) -> Ruling:
+        return flow.agent(
+            "shared/prompts/judge.md",
+            returns=Ruling,
+            power=power,
+            profile=JUDGE_PROFILE,
+            args=judge_args(question),
+            accept=accepting(question),
+        )
+
+    return Tiered(RuleJudge({"cause": cause_rule}), ReadingJudge(read))
 
 
 def cause_question(reports: Mapping[str, str], causes: Mapping[str, str]) -> Question:
@@ -260,6 +288,7 @@ def own(
 __all__ = [
     "NEW",
     "NONE",
+    "cause_judge",
     "cause_question",
     "cause_rule",
     "consolidate",

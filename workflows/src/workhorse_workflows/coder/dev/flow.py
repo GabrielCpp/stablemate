@@ -17,22 +17,12 @@ from workhorse_workflows.coder.dev.report import (
     walk_text,
 )
 from workhorse_workflows.coder.shared import causes, paths, roles, work
-from workhorse_workflows.coder.shared.backlog import file_follow_up_backlog
+from workhorse_workflows.coder.shared.backlog import file_follow_up_backlog, filed_backlog, unfiled
 from workhorse_workflows.coder.shared.branches import branch_code_repos
 from workhorse_workflows.coder.shared.conversation import story_chain
 from workhorse_workflows.coder.shared.dev import check_story_status, read_operator_context
 from workhorse_workflows.coder.shared.escalation import context_path, escalation
-from workhorse_workflows.coder.shared.judge import (
-    Judge,
-    Question,
-    ReadingJudge,
-    RuleJudge,
-    Tiered,
-    judge_args,
-    JUDGE_PROFILE,
-    accepting,
-)
-from workhorse_workflows.coder.shared.schemas.judge import Ruling
+from workhorse_workflows.coder.shared.judge import Judge
 from workhorse_workflows.coder.shared.failed import (
     failed_scenario_ids,
     failed_scenarios_arg,
@@ -221,9 +211,17 @@ class Dev(Workflow):
         w = self._worklist
         item = work.find(w, self._work_id)
         if item is None or item.kind == work.FOLLOW_UP:
-            self.call(
-                file_follow_up_backlog, self.docs_path, parent=self._work_id, follow_ups=entries
-            )
+            filed = self.call(filed_backlog, docs_path=self.docs_path).filed
+            reports = {
+                str(i): f"{e['title']}: {e['reason']}" if e["reason"] else e["title"]
+                for i, e in enumerate(entries)
+            }
+            keep = set(unfiled(self._judge("low"), self.logger, reports, filed))
+            fresh = [entry for i, entry in enumerate(entries) if str(i) in keep]
+            if fresh:
+                self.call(
+                    file_follow_up_backlog, self.docs_path, parent=self._work_id, follow_ups=fresh
+                )
             return
         judge = self._judge()
         known = causes.open_causes(w, item.id)
@@ -269,20 +267,9 @@ class Dev(Workflow):
         epic = str(item.payload.get("epic") or "")
         return dict(self.call(done_story_texts, self.docs_path, epic, slugs).texts)
 
-    def _judge(self) -> Judge:
+    def _judge(self, power: str = "medium") -> Judge:
         """The one judge this flow asks: the word rule first, then one reading of what it left."""
-
-        def read(question: Question) -> Ruling:
-            return self.agent(
-                "shared/prompts/judge.md",
-                returns=Ruling,
-                power="medium",
-                profile=JUDGE_PROFILE,
-                args=judge_args(question),
-                accept=accepting(question),
-            )
-
-        return Tiered(RuleJudge({"cause": causes.cause_rule}), ReadingJudge(read))
+        return causes.cause_judge(self, power)
 
     def check(
         self,

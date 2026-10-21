@@ -135,9 +135,12 @@ earlier assumption in the story, the plan or a finding. Do not raise the same bl
 
 The story starts from a working main, so every failure you meet is this story's. A
 failure in the repo's code is a finding wherever that code sits, and never a backlog item.
-`{{ workhorse_var('spec_dir') }}/backlog-items.json` holds only improvements the working
-slice does not need, as a JSON array of `{"id", "description", "section"}` objects. The
-workflow files each one.
+`{{ workhorse_var('spec_dir') }}/backlog-items.json` holds only product work the working
+slice does not need and nobody has done yet, as a JSON array of `{"id", "description",
+"section"}` objects. The workflow files each one. A finding resolved during this run is
+never an item. A remark about the toolchain, such as commit trailers, ostler or packet
+attribution, is never an item either. Both are run findings for the operator, and they go
+in `notes`.
 
 ## Subagents
 

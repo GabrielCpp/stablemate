@@ -456,8 +456,12 @@ class _Agent:
         scope: str = "story",
         explode_at: int = 0,
         touch: Path | None = None,
+        items: tuple[dict[str, str], ...] = (),
+        same: dict[str, str] | None = None,
     ) -> None:
         self.docs = docs
+        self.items = items
+        self.same = same or {}
         self.statuses = statuses
         self.findings = findings or []
         self.proves = proves
@@ -504,6 +508,10 @@ class _Agent:
             self.touch.write_text("fixed\n", encoding="utf-8")
         if not data["standing_plan"]:
             (Path(data["spec_dir"]) / "qa_plan.py").write_text(QA_PLAN, encoding="utf-8")
+        if self.items:
+            (Path(data["spec_dir"]) / "backlog-items.json").write_text(
+                json.dumps(list(self.items)), encoding="utf-8"
+            )
         shape = self.dry_runs[min(nth, len(self.dry_runs)) - 1]
         for scenario in self.proves:
             self._prove(data, scenario, shape)
@@ -528,6 +536,11 @@ class _Agent:
         (out / qa_support.QA_RUN_LOG).write_text(
             "".join(json.dumps(r) + "\n" for r in records), encoding="utf-8"
         )
+
+    def _judge(self, data: dict[str, Any], nth: int) -> dict[str, Any]:
+        """The judge's ruling: each subject `same` names to its bullet, the rest left new."""
+        subjects = json.loads(str(data["subjects"]))
+        return {"answers": {k: v for k, v in self.same.items() if k in subjects}}
 
     def _resolve_operator(self, data: dict[str, Any], nth: int) -> dict[str, Any]:
         if self.escalate:
@@ -619,6 +632,40 @@ def test_one_clean_pass_spends_one_owner_turn(
     assert (okf.contexts, okf.runs, okf.vets) == (2, 1, 1)
     assert (docs / spec_dir() / "qa-evidence.json").is_file()
     assert (docs / spec_dir() / "qa" / "qa-run.ndjson").is_file()
+
+
+FILED_BACKLOG = (
+    "# Backlog\n\n## Filed by coder\n\n"
+    "- [clear-report-snapshots] Sign-out leaves the saved report snapshots in the browser.\n"
+)
+
+
+def test_a_backlog_item_an_open_bullet_holds_is_dropped_and_a_new_one_is_filed(
+    docs: Path,
+    ostler: Callable[..., _Ostler],
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+    write: Callable[[Path, str], Path],
+) -> None:
+    """The judge reads one item as the open bullet and the other as new, so only the new one lands."""
+    ostler()
+    backlog = write(docs / "docs" / "backlog.md", FILED_BACKLOG)
+    agent = _Agent(
+        docs,
+        items=(
+            {"id": "drop-snapshots-on-logout", "description": "Logging out keeps cached report snapshots."},
+            {"id": "paginate-audit-log", "description": "The audit log loads every row at once."},
+        ),
+        same={"drop-snapshots-on-logout": "clear-report-snapshots"},
+    )
+
+    result = drive_flow(Qa(story=STORY), env(), agent)
+
+    assert result.status == "passed", result
+    text = backlog.read_text(encoding="utf-8")
+    assert "[paginate-audit-log] The audit log loads every row at once." in text, text
+    assert "drop-snapshots-on-logout" not in text, text
+    assert agent.powers[agent.calls.index("judge")] == "low", agent.powers
 
 
 def test_a_story_that_cannot_be_resolved_fails_the_run_without_spending_a_turn(

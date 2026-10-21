@@ -6,6 +6,7 @@ import json
 import logging
 import os
 import re
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -13,10 +14,12 @@ from typing import Any
 from ostler import Ostler, markdown
 from workhorse.pyflow import WorkflowFailed
 from workhorse_workflows.kit import commit_paths, find_docs_root
-from workhorse_workflows.coder.shared import commits, paths
+from workhorse_workflows.coder.shared import causes, commits, paths
 from workhorse_workflows.coder.shared.blueprint import blueprint
 from workhorse_workflows.coder.shared.docs import CONTEXT_FILE
+from workhorse_workflows.coder.shared.judge import Judge
 from workhorse_workflows.coder.shared.schemas.backlog import (
+    FiledBacklog,
     FixPick,
     FixPruned,
     FixStorySeed,
@@ -147,11 +150,46 @@ def _insert_under_section(lines: list[str], section: str, bullet: str) -> list[s
     return lines
 
 
+def _item_entry(item: dict[str, Any]) -> tuple[str, str]:
+    """An item's kebab id and its one-line description."""
+    return kebab(item.get("id") or ""), str(item.get("description") or "").strip().replace("\n", " ")
+
+
+@blueprint.node
+def filed_backlog(
+    logger: logging.Logger, spec_dir: str = "", docs_path: str = "", repo_dir: str = ""
+) -> FiledBacklog:
+    """The open `Filed by coder` bullets, and the items the story's QA left to file, so a flow can judge them first."""
+    root = find_docs_root(docs_path, repo_dir)
+    backlog = root / paths.backlog_file(root)
+    text = backlog.read_text(encoding="utf-8") if backlog.is_file() else ""
+    filed = {b.id: b.text for b in backlog_bullets(text, section=FILED_TITLE)}
+    spec = spec_dir.strip()
+    pending = _load_items(logger, root / spec / "backlog-items.json") if spec else []
+    items = {item_id: desc for item_id, desc in map(_item_entry, pending) if item_id and desc}
+    return FiledBacklog(filed=filed, items=items)
+
+
+def unfiled(
+    judge: Judge, logger: logging.Logger, reports: Mapping[str, str], filed: Mapping[str, str]
+) -> list[str]:
+    """The reports that restate no open `Filed by coder` bullet; each one that does is logged under the bullet it matched."""
+    same = causes.same_causes(judge, reports, filed)
+    for rid, hit in same.items():
+        if hit != causes.NEW:
+            logger.info("[%s] already holds %r, so it is not filed again", hit, reports[rid])
+    return [rid for rid, hit in same.items() if hit == causes.NEW]
+
+
 @blueprint.node
 def file_backlog_items(
-    logger: logging.Logger, spec_dir: str = "", docs_path: str = "", repo_dir: str = ""
+    logger: logging.Logger,
+    spec_dir: str = "",
+    docs_path: str = "",
+    repo_dir: str = "",
+    drop: list[str] | None = None,
 ) -> BacklogDrain:
-    """Append this story's filed items to the repo backlog, de-duplicated, then clear them."""
+    """Append this story's filed items to the repo backlog, less the ones in `drop`, de-duplicated, then clear them."""
     root = find_docs_root(docs_path, repo_dir)
     spec = spec_dir.strip()
     if not spec:
@@ -184,12 +222,12 @@ def file_backlog_items(
     lines = raw.splitlines()
     seen = Seen(raw)
 
+    dropped = set(drop or [])
     appended = 0
     skipped = 0
     for item in items:
-        item_id = kebab(item.get("id") or "")
-        desc = str(item.get("description") or "").strip().replace("\n", " ")
-        if not item_id or not desc or seen.duplicate(item_id, desc):
+        item_id, desc = _item_entry(item)
+        if not item_id or not desc or item_id in dropped or seen.duplicate(item_id, desc):
             skipped += 1
             continue
         lines = _insert_under_section(lines, str(item.get("section") or ""), f"- [{item_id}] {desc}")
@@ -621,10 +659,12 @@ __all__ = [
     "file_backlog_items",
     "file_deferred_obligations",
     "file_follow_up_backlog",
+    "filed_backlog",
     "id_token_set",
     "kebab",
     "norm_desc",
     "prune_fix_item",
     "seed_fix_story",
     "select_fix_item",
+    "unfiled",
 ]

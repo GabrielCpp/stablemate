@@ -40,8 +40,13 @@ from workhorse_workflows.coder.qa.report import (
     unproved_findings,
 )
 from workhorse_workflows.coder.qa.sides import run_sides
-from workhorse_workflows.coder.shared import paths, roles, work
-from workhorse_workflows.coder.shared.backlog import file_backlog_items, file_deferred_obligations
+from workhorse_workflows.coder.shared import causes, paths, roles, work
+from workhorse_workflows.coder.shared.backlog import (
+    file_backlog_items,
+    file_deferred_obligations,
+    filed_backlog,
+    unfiled,
+)
 from workhorse_workflows.coder.shared.dev import read_operator_context
 from workhorse_workflows.coder.shared.docs import detect_okf_docs, features_root
 from workhorse_workflows.coder.shared.escalation import context_path, escalation
@@ -120,6 +125,13 @@ class Qa(Workflow):
     def _dirs(self) -> list[str]:
         """The repos this story's plan touches: every agent turn's `add_dirs`."""
         return list(self.output(resolve_impl_context).affected_repo_paths)
+
+    def _file_backlog(self) -> None:
+        """File the items the owner left for the backlog, less the ones an open bullet already holds."""
+        pending = self.call(filed_backlog, self.ctx.spec_dir, self.docs_path)
+        keep = set(unfiled(causes.cause_judge(self, "low"), self.logger, pending.items, pending.filed))
+        drop = [item_id for item_id in pending.items if item_id not in keep]
+        self.call(file_backlog_items, self.ctx.spec_dir, self.docs_path, drop=drop)
 
     def start(self) -> Continue:
         """Clear the last run's evidence, decode what the story touched, and check its context and stack."""
@@ -263,7 +275,7 @@ class Qa(Workflow):
             lease=target.lease,
             only=list(self.scope) or None,
         )
-        self.call(file_backlog_items, self.ctx.spec_dir, self.docs_path)
+        self._file_backlog()
         self.call(stamp_specs, self.docs_path, self.ctx.story_slug)
         if run.status == "failed":
             return self._red(run, [], 0, 0, owner_classifies=False)
@@ -293,7 +305,7 @@ class Qa(Workflow):
         run = self.call(
             run_qa_plan, self.ctx.spec_dir, self.docs_path, near=target.near, lease=target.lease
         )
-        self.call(file_backlog_items, self.ctx.spec_dir, self.docs_path)
+        self._file_backlog()
         self.call(stamp_specs, self.docs_path, self.ctx.story_slug)
         if run.status == "failed":
             classify = not self.stop_at_first_verdict
