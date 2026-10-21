@@ -93,9 +93,16 @@ def test_the_share_is_the_one_the_evidence_beside_the_screenshot_reports() -> No
     )
 
 
-def _region(role: str | None, selectors: list[str], box: tuple[float, float, float, float]) -> RegionBox:
+def _region(
+    role: str | None,
+    selectors: list[str],
+    box: tuple[float, float, float, float],
+    own_roles: list[str] | None = None,
+) -> RegionBox:
     x, y, w, h = box
-    return RegionBox(bbox=BBox(x=x, y=y, width=w, height=h), role=role, selectors=selectors)
+    return RegionBox(
+        bbox=BBox(x=x, y=y, width=w, height=h), role=role, selectors=selectors, own_roles=own_roles or [],
+    )
 
 
 def _component(node_id: str, selector: str, placement: str | None = None) -> VettedComponent:
@@ -246,8 +253,8 @@ def test_an_occurrence_silent_about_its_states_comes_and_goes_with_its_same_as_f
 def test_a_selector_that_addresses_by_role_matches_the_role_the_scan_recorded() -> None:
     """The scan mints `#id` or `tag.class:nth(i)` — never an attribute selector — so a book that addresses a component the accessibility-first way (`p[role="alert"]`) can never be matched by string comparison."""
     regions = [
-        _region("alert", ["p:nth(14)"], (240, 128.7, 960, 50)),
-        _region("form", ["form:nth(2)"], (240, 194, 960, 600)),
+        _region("alert", ["p:nth(14)"], (240, 128.7, 960, 50), ["alert"]),
+        _region("form", ["form:nth(2)"], (240, 194, 960, 600), ["form"]),
     ]
     verdicts = check(
         [
@@ -267,7 +274,7 @@ def test_a_role_selector_over_an_id_minted_region_matches_on_role_alone() -> Non
     """An element with an id is minted as `#id`, which reveals no tag — the id was the better address, not a hidden disagreement, so the documented tag cannot be held against it."""
     verdicts = check(
         [_component("s.md#banner", 'div[role="alert"]')],
-        [_region("alert", ["#flash"], (0, 0, 1440, 40))],
+        [_region("alert", ["#flash"], (0, 0, 1440, 40), ["alert"])],
         VIEWPORT,
     )
     assert [v.status for v in verdicts] == ["matched"]
@@ -352,7 +359,7 @@ def test_the_name_is_read_off_the_element_the_selector_addresses() -> None:
 def test_a_role_selector_reads_the_name_of_the_element_carrying_that_role() -> None:
     """`region.role` is the nearest ancestor carrying a role, so the member the book addressed is the one whose *own* role is the documented one — not whichever element sorts first."""
     region = _named(
-        "alert", ["div.wrap:nth(3)", "#flash"], (0, 0, 1440, 40), ["", "alert"], ["", "Saved"],
+        "main", ["div.wrap:nth(3)", "#flash"], (0, 0, 1440, 40), ["", "alert"], ["", "Saved"],
     )
     verdicts = check(
         [VettedComponent(node_id="s.md#c", selector='div[role="alert"]', name="Deleted")],

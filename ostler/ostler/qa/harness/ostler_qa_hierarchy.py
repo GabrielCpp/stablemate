@@ -102,7 +102,7 @@ def _element(attributes: dict[str, str], bounds: str) -> list[dict[str, Any]]:
     selectors = selectors_for(attributes) or [class_name.rsplit(".", 1)[-1] or "node"]
     name = accessible_name(attributes)
     return [
-        {"selector": selector, "tag": class_name, "role": role, "name": name, "bbox": dict(box)}
+        {"selector": selector, "tag": class_name, "role": role, "ownRole": role, "name": name, "bbox": dict(box)}
         for selector in selectors
     ]
 

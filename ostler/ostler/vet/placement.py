@@ -152,11 +152,11 @@ def _find_region(selector: str, regions: list[RegionBox]) -> tuple[RegionBox, in
     if by_role:
         tag, role = (by_role.group(1) or "").lower(), by_role.group(2)
         for region in regions:
-            if region.role != role:
+            own = next((i for i, r in enumerate(region.own_roles) if r == role), None)
+            if own is None:
                 continue
             tags = _region_tags(region)
             if not tag or not tags or tag in tags:
-                own = next((i for i, r in enumerate(region.own_roles) if r == role), 0)
                 return region, own
         return None
     for region in regions:
