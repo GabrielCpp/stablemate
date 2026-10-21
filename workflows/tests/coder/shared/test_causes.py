@@ -198,6 +198,35 @@ def test_consolidation_keeps_one_follow_up_per_cause_and_the_active_one(w: wl.Wo
     }
 
 
+def test_consolidation_prunes_a_pending_follow_up_the_story_already_did(w: wl.WorkList) -> None:
+    _stories(w, "story-a")
+    done = _follow_up(w, "story-a", UNIQUE, "first")
+    w.settle([done.id], work.DONE, work.FOLLOW_UP)
+    again = _follow_up(w, "story-a", "Guarantee unique report panel names", "again")
+
+    pruned = causes.consolidate(w, LOG)
+
+    assert pruned == [again.id]
+    assert [(it.id, it.status) for it in w.items(work.FOLLOW_UP)] == [(done.id, work.DONE)]
+
+
+def test_only_the_reports_the_judge_reads_as_no_product_work_are_set_aside() -> None:
+    judge = _Judge({"0": causes.PRE_EXISTING, "1": causes.BOOKKEEPING, "2": causes.PRODUCT})
+    reports = {
+        "0": f"{VERIFY}: the book warnings are pre-existing and unrelated to this change",
+        "1": f"{STATUS}: the table lags",
+        "2": f"{UNIQUE}: two panels can share a name",
+        "3": f"{HIDE}: the tabs show with nothing in them",
+    }
+
+    outside = causes.not_product(judge, reports)
+
+    assert outside == {"0": causes.PRE_EXISTING, "1": causes.BOOKKEEPING}
+    (question,) = judge.asked
+    assert question.kind == "scope" and question.default == causes.PRODUCT
+    assert causes.not_product(_Judge(), reports) == {}
+
+
 def _escaped_setup(w: wl.WorkList) -> wl.WorkItem:
     _stories(w, "story-a", "story-b", done=("story-a",))
     for number in (1, 2, 3, 4):

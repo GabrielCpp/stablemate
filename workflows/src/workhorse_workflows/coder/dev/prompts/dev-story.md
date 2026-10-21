@@ -262,11 +262,17 @@ The story ships a slice of a working app, and it starts from a working main. So 
 failure you meet is this story's to fix: a gate, a test, the build, the
 stack's bring-up or its setup code, wherever that code sits. A failure is never a follow-up.
 
-A follow-up is an improvement the working slice does not need: a refactor, a wider surface,
-a polish the criteria do not ask for.{% if not follow_up_title %} File it in the result with
-a title a person can act on, and the reason the slice works without it. The run works each
-follow-up right after this story, in this same session.{% endif %} A product call the story
-leaves open is neither. It is a block, under Blocked.
+A follow-up is undone product work on this story's feature that the working slice does not
+need: a refactor, a wider surface, a polish the criteria do not ask for.{% if not follow_up_title %}
+File it in the result with a title a person can act on, and the reason the slice works without
+it. The run works each follow-up right after this story, in this same session, through a full
+dev, QA and docs cycle.{% endif %} A product call the story leaves open is neither. It is a
+block, under Blocked.
+
+Some things read like follow-ups and are not. A defect or warning that predates this story
+and that its change did not cause is not one. A remark about docs, or about the status of
+`story.md` or a plan file, is not one. A note about the toolchain is not one. Each is a run
+finding for the operator, and it goes in `notes`.
 
 ## The plan files
 

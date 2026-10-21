@@ -12,7 +12,7 @@ from workhorse_workflows.coder.shared.schemas.review import ReviewFinding
 
 
 class FollowUp(CoderResult):
-    """Product work the working slice does not need and nobody has done yet, filed rather than done on the side."""
+    """Undone product work on this story's feature that the working slice does not need, filed rather than done on the side."""
 
     title: str = Field(description="What the work is, in one line a person can act on.")
     reason: str = Field(
@@ -37,11 +37,14 @@ class DevResult(PlanFields):
     )
     follow_ups: list[FollowUp] = Field(
         default=[],
-        description="Product work the working slice does not need and nobody has done yet, "
-        "one entry each. A failure is never one: fix it on the story branch. A finding "
-        "resolved during this run, or a remark about the toolchain such as commit trailers, "
-        "ostler or packet attribution, is never one either: it is a run finding for the "
-        "operator, so put it in `notes`. The run files each entry right after this story. "
+        description="Product work on this story's feature that the working slice does not "
+        "need and nobody has done yet, one entry each. A failure is never one: fix it on the "
+        "story branch. These are never one either: a finding resolved during this run, a "
+        "defect or warning that predates this story and that its change did not cause, a "
+        "remark about docs or a story or plan file's status, and a remark about the toolchain "
+        "such as commit trailers, ostler or packet attribution. Each is a run finding for "
+        "the operator, so put it in `notes`. The run files each entry right after this story "
+        "and works it through dev, QA and docs. "
         "Leave it empty when you are working a follow-up yourself: a follow-up files none "
         "of its own.",
     )

@@ -1,4 +1,4 @@
-"""Cause identity: which reports describe one defect, who owns each cause, and where a defect escaped from."""
+"""Cause identity: which reports describe one defect, who owns each cause, where a defect escaped from, and which reports are no product work at all."""
 from __future__ import annotations
 
 import logging
@@ -26,6 +26,9 @@ from workhorse_workflows.coder.shared.judge import (
 STOP_WORDS = frozenset({"a", "an", "and", "the", "of", "to", "for", "in", "on", "when", "with", "or"})
 NEW = "new"
 NONE = "none"
+PRODUCT = "product"
+PRE_EXISTING = "pre-existing"
+BOOKKEEPING = "bookkeeping"
 TITLE_CAP = 90
 
 
@@ -109,6 +112,36 @@ def escaped_from(judge: Judge, reports: Mapping[str, str], stories: Mapping[str,
     return {rid: "" if slug == NONE else slug for rid, slug in found.items()}
 
 
+def scope_question(reports: Mapping[str, str]) -> Question:
+    """Whether each proposed follow-up is product work for the story, or something that only reads like work."""
+    return Question(
+        kind="scope",
+        ask=(
+            "Is each proposed follow-up undone product work on this story's feature? Answer "
+            f"`{PRE_EXISTING}` for a defect or warning the report itself says predates this "
+            "story or is unrelated to its change. Answer "
+            f"`{BOOKKEEPING}` for a remark about docs, a story or plan file's status, or other "
+            "bookkeeping, and for a note about the toolchain such as commit trailers, ostler "
+            f"or packet attribution. Answer `{PRODUCT}` for a change to what a person using "
+            "the app would see or do."
+        ),
+        subjects=dict(reports),
+        context={},
+        answers=(PRODUCT, PRE_EXISTING, BOOKKEEPING),
+        default=PRODUCT,
+    )
+
+
+def not_product(judge: Judge, reports: Mapping[str, str]) -> dict[str, str]:
+    """Each report id the judge reads as no product work, to what it is instead."""
+    if not reports:
+        return {}
+    question = scope_question(reports)
+    ruling = judge.rule(question)
+    found = {rid: answer_of(question, ruling, rid) for rid in reports}
+    return {rid: kind for rid, kind in found.items() if kind != PRODUCT}
+
+
 def open_causes(w: wl.WorkList, story: str) -> dict[str, str]:
     """The text of every cause still open under `story`: its pending or active follow-ups and its open findings."""
     causes = {
@@ -118,6 +151,15 @@ def open_causes(w: wl.WorkList, story: str) -> dict[str, str]:
     }
     causes |= {it.id: str(it.payload.get("issue") or "") for it in work.open_findings(w, story)}
     return causes
+
+
+def done_causes(w: wl.WorkList, story: str) -> dict[str, str]:
+    """The title of every follow-up `story` has already done."""
+    return {
+        it.id: str(it.payload.get("title") or "")
+        for it in w.items(work.FOLLOW_UP)
+        if it.payload.get("parent") == story and it.status == work.DONE
+    }
 
 
 def file_findings(
@@ -160,17 +202,20 @@ def file_findings(
 
 
 def consolidate(w: wl.WorkList, logger: logging.Logger) -> list[str]:
-    """Prune the follow-ups of one story that share a cause by words alone, keeping the active one or else the first."""
+    """Prune the follow-ups of one story that share a cause by words alone, keeping the active one, else the done one, else the first."""
     groups: dict[tuple[str, frozenset[str]], list[wl.WorkItem]] = {}
     for it in sorted(w.items(work.FOLLOW_UP), key=lambda x: x.order or 0):
-        if it.status in (work.PENDING, work.ACTIVE):
+        if it.status in (work.PENDING, work.ACTIVE, work.DONE):
             key = (str(it.payload.get("parent") or ""), words(str(it.payload.get("title") or "")))
             groups.setdefault(key, []).append(it)
     pruned: list[str] = []
     for group in groups.values():
-        keep = next((it for it in group if it.status == work.ACTIVE), group[0])
+        keep = next(
+            (it for status in (work.ACTIVE, work.DONE) for it in group if it.status == status),
+            group[0],
+        )
         for it in group:
-            if it.id == keep.id:
+            if it.id == keep.id or it.status == work.DONE:
                 continue
             for finding in work.findings_of(w, it.id):
                 work.replace(w, finding.model_copy(update={
@@ -286,18 +331,24 @@ def own(
 
 
 __all__ = [
+    "BOOKKEEPING",
     "NEW",
     "NONE",
+    "PRE_EXISTING",
+    "PRODUCT",
     "cause_judge",
     "cause_question",
     "cause_rule",
     "consolidate",
+    "done_causes",
     "escape_question",
     "escaped_from",
     "file_findings",
     "first_sentence",
+    "not_product",
     "open_causes",
     "own",
     "same_causes",
+    "scope_question",
     "words",
 ]

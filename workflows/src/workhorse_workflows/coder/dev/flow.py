@@ -76,6 +76,15 @@ from workhorse_workflows.coder.shared.walk import acceptance_walk
 from workhorse_workflows.kit.qa.runner import copy_lease
 from workhorse_workflows.kit.telemetry import counter_labels
 
+
+def _reports(entries: list[dict[str, str]]) -> dict[str, str]:
+    """Each follow-up entry by its index, as its title and the reason it gave."""
+    return {
+        str(i): f"{e['title']}: {e['reason']}" if e["reason"] else e["title"]
+        for i, e in enumerate(entries)
+    }
+
+
 class Dev(Workflow):
     """Dev one work item through one session, then check its plan, gates and answers."""
 
@@ -209,18 +218,16 @@ class Dev(Workflow):
         )
 
     def _file_follow_ups(self, result: DevResult) -> None:
-        entries = [f.model_dump(include={"title", "reason"}) for f in result.follow_ups]
+        entries = self._product_work(
+            [f.model_dump(include={"title", "reason"}) for f in result.follow_ups]
+        )
         if not entries:
             return
         w = self._worklist
         item = work.find(w, self._work_id)
         if item is None or item.kind == work.FOLLOW_UP:
             filed = self.call(filed_backlog, docs_path=self.docs_path).filed
-            reports = {
-                str(i): f"{e['title']}: {e['reason']}" if e["reason"] else e["title"]
-                for i, e in enumerate(entries)
-            }
-            keep = set(unfiled(self._judge("low"), self.logger, reports, filed))
+            keep = set(unfiled(self._judge("low"), self.logger, _reports(entries), filed))
             fresh = [entry for i, entry in enumerate(entries) if str(i) in keep]
             if fresh:
                 self.call(
@@ -228,18 +235,22 @@ class Dev(Workflow):
                 )
             return
         judge = self._judge()
-        known = causes.open_causes(w, item.id)
+        done = causes.done_causes(w, item.id)
         same = causes.same_causes(
-            judge, {str(i): entry["title"] for i, entry in enumerate(entries)}, known
+            judge,
+            {str(i): entry["title"] for i, entry in enumerate(entries)},
+            causes.open_causes(w, item.id) | done,
         )
         fresh = [entry for i, entry in enumerate(entries) if same[str(i)] == causes.NEW]
-        dropped = {same[str(i)] for i in range(len(entries))} - {causes.NEW}
-        if len(fresh) < len(entries):
-            self.logger.info(
-                "dropped %d follow-up(s) already filed as %s",
-                len(entries) - len(fresh),
-                ", ".join(sorted(dropped)),
-            )
+        for i, entry in enumerate(entries):
+            hit = same[str(i)]
+            if hit != causes.NEW:
+                self.logger.info(
+                    "dropped follow-up %r: already %s as %s",
+                    entry["title"],
+                    "done" if hit in done else "filed",
+                    hit,
+                )
         if not fresh:
             return
         escaped = causes.escaped_from(
@@ -258,6 +269,14 @@ class Dev(Workflow):
                 self.logger.info(
                     "escape: %s found after %s committed", it.id, it.payload["escaped_from"]
                 )
+
+    def _product_work(self, entries: list[dict[str, str]]) -> list[dict[str, str]]:
+        """The entries the judge reads as product work; each other one is logged for the operator with what it is instead."""
+        reports = _reports(entries)
+        outside = causes.not_product(self._judge("low"), reports)
+        for rid, kind in outside.items():
+            self.logger.info("[%s] %r is no product work, so it is not filed", kind, reports[rid])
+        return [entry for i, entry in enumerate(entries) if str(i) not in outside]
 
     def _committed_stories(self, w: wl.WorkList, item: wl.WorkItem) -> dict[str, str]:
         """The title and acceptance criteria of the epic's other finished stories, by slug."""

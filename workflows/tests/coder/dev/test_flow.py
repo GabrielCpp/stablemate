@@ -158,11 +158,13 @@ class _Agent:
         follow_ups: tuple[dict[str, str], ...] = (),
         escapes_to: str = "",
         same_as: str = "",
+        outside: dict[str, str] | None = None,
         walk: tuple[int, ...] = (1,),
         failed: tuple[str, ...] = (),
     ) -> None:
         self.workspace = workspace
         self.same_as = same_as
+        self.outside = dict(outside or {})
         self.failed = failed
         self.walk = walk
         self.follow_ups = follow_ups
@@ -257,7 +259,13 @@ class _Agent:
         }
 
     def _judge(self, data: dict[str, Any], nth: int) -> dict[str, Any]:
-        """The judge's ruling: every escape subject to `escapes_to`, every cause subject to `same_as`, the rest at its default."""
+        """The judge's ruling: every escape subject to `escapes_to`, every cause subject to `same_as`, each scope subject its title names in `outside`, the rest at its default."""
+        if data["kind"] == "scope":
+            subjects: dict[str, str] = json.loads(str(data["subjects"]))
+            return {"answers": {
+                rid: kind for rid, text in subjects.items()
+                for title, kind in self.outside.items() if text.startswith(f"{title}:")
+            }}
         if data["kind"] == "escape" and self.escapes_to:
             return {"answers": dict.fromkeys(json.loads(str(data["subjects"])), self.escapes_to)}
         if data["kind"] == "cause" and self.same_as in json.loads(str(data["context"])):
@@ -429,7 +437,7 @@ def test_a_follow_up_the_story_already_holds_is_not_filed_again_and_a_new_one_na
         follow_ups=(
             {"title": "Hide tabs and download when calculation yields zero stages", "reason": "again"},
             {"title": "Guarantee unique report panel names", "reason": "reworded"},
-            {"title": "Reconcile story.md Implementation Status", "reason": "new"},
+            {"title": "Paginate the audit log", "reason": "new"},
         ),
         escapes_to="STORY-0",
     )
@@ -439,9 +447,81 @@ def test_a_follow_up_the_story_already_holds_is_not_filed_again_and_a_new_one_na
 
     filed = work.worklist(run).items(work.FOLLOW_UP)
     assert len(filed) == 3, [it.payload["title"] for it in filed]
-    (fresh,) = [it for it in filed if it.payload["title"].startswith("Reconcile")]
+    (fresh,) = [it for it in filed if it.payload["title"].startswith("Paginate")]
     assert fresh.payload["escaped_from"] == "STORY-0", fresh
     assert [it.id for it in work.escapes(work.worklist(run), "STORY-0")] == [fresh.id]
+
+
+def test_a_follow_up_the_story_already_did_is_dropped_and_logged_as_done(
+    tmp_path: Path,
+    docs: Path,
+    workspace: dict[str, Path],
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """A follow-up that restates one the story already finished is not filed a second time."""
+    run = _filed_run(tmp_path, docs, ("Guarantee unique report-panel names",))
+    (done,) = work.worklist(run).items(work.FOLLOW_UP)
+    work.worklist(run).settle([done.id], work.DONE, work.FOLLOW_UP)
+    agent = _Agent(
+        workspace,
+        follow_ups=({"title": "Guarantee unique report panel names", "reason": "reworded"},),
+    )
+    dev = Dev(story=STORY, epic=EPIC, docs_path=str(docs), worklist_dir=str(run))
+
+    with caplog.at_level("INFO"):
+        drive_flow(dev, env(), agent)
+
+    assert [it.id for it in work.worklist(run).items(work.FOLLOW_UP)] == [done.id]
+    assert any(f"already done as {done.id}" in r.getMessage() for r in caplog.records), [
+        r.getMessage() for r in caplog.records
+    ]
+
+
+@pytest.mark.parametrize(
+    ("entry", "kind"),
+    [
+        (
+            {
+                "title": "Declare verify: checks for #loaded and #banks-open states",
+                "reason": "the book warnings on this page are pre-existing and unrelated to this change",
+            },
+            "pre-existing",
+        ),
+        (
+            {"title": "Reconcile story.md Implementation Status", "reason": "the status table lags"},
+            "bookkeeping",
+        ),
+    ],
+)
+def test_a_follow_up_that_is_no_product_work_is_not_filed(
+    tmp_path: Path,
+    docs: Path,
+    workspace: dict[str, Path],
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+    caplog: pytest.LogCaptureFixture,
+    entry: dict[str, str],
+    kind: str,
+) -> None:
+    """The judge reads the follow-up's own reason, and one it calls no product work never reaches the worklist."""
+    run = _filed_run(tmp_path, docs, ())
+    product = {"title": "Paginate the audit log", "reason": "it loads every row"}
+    agent = _Agent(workspace, follow_ups=(entry, product), outside={entry["title"]: kind})
+    dev = Dev(story=STORY, epic=EPIC, docs_path=str(docs), worklist_dir=str(run))
+
+    with caplog.at_level("INFO"):
+        drive_flow(dev, env(), agent)
+
+    filed = work.worklist(run).items(work.FOLLOW_UP)
+    assert [it.payload["title"] for it in filed] == [product["title"]]
+    (scope,) = [a for a in agent.args_for("judge") if a["kind"] == "scope"]
+    assert entry["reason"] in str(scope["subjects"])
+    assert any(
+        r.getMessage().startswith(f"[{kind}] ") and entry["title"] in r.getMessage()
+        for r in caplog.records
+    ), [r.getMessage() for r in caplog.records]
 
 
 FILED_BACKLOG = (
@@ -471,7 +551,7 @@ def test_a_follow_up_that_restates_an_open_backlog_bullet_files_no_line(
     result = drive_flow(_dev(docs), env(), agent)
 
     assert result.status == "ready", result
-    assert agent.counts()["judge"] == 1, agent.counts()
+    assert [a["kind"] for a in agent.args_for("judge")] == ["scope", "cause"], agent.counts()
     assert backlog.read_text(encoding="utf-8") == FILED_BACKLOG
 
 
