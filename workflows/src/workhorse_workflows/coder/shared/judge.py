@@ -11,7 +11,7 @@ from workhorse.runner.backends import AgentProfile
 from workhorse_workflows.coder.shared.schemas.judge import Ruling
 from workhorse_workflows.coder.shared.schemas.render import schema_block
 
-JUDGE_PROFILE = AgentProfile(name="coder-judge", confined=True, steps=1)
+JUDGE_PROFILE = AgentProfile(name="coder-judge", tools={"*": False}, steps=1)
 
 
 class Question(BaseModel):
