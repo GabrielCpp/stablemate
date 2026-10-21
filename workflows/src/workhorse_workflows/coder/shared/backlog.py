@@ -14,6 +14,7 @@ from workhorse.pyflow import WorkflowFailed
 from workhorse_workflows.kit import commit_paths, find_docs_root
 from workhorse_workflows.coder.shared import commits, paths
 from workhorse_workflows.coder.shared.blueprint import blueprint
+from workhorse_workflows.coder.shared.docs import CONTEXT_FILE
 from workhorse_workflows.coder.shared.schemas.backlog import (
     FixPick,
     FixPruned,
@@ -267,6 +268,77 @@ def file_follow_up_backlog(
     return BacklogDrain(appended=appended, skipped=skipped, notes=note)
 
 
+def _deferred_pages(context: dict[str, Any]) -> dict[str, list[dict[str, Any]]]:
+    """The required obligations ostler deferred, grouped by the book page that owes their check."""
+    pages: dict[str, list[dict[str, Any]]] = {}
+    for obligation in context.get("obligations") or []:
+        if not isinstance(obligation, dict) or obligation.get("required", True) is False:
+            continue
+        if not isinstance(obligation.get("deferred"), dict):
+            continue
+        node = str(obligation.get("node") or "")
+        page = str(obligation.get("source") or node.partition("#")[0])
+        if page:
+            pages.setdefault(page, []).append(obligation)
+    return pages
+
+
+def _deferred_text(page: str, obligations: list[dict[str, Any]]) -> str:
+    """One backlog line for a page: the claims QA skipped, and what the book has to add."""
+    anchors: list[str] = []
+    details: list[str] = []
+    for obligation in obligations:
+        node = str(obligation.get("node") or page)
+        anchor = node.partition("#")[2]
+        anchors.append(f"`#{anchor}`" if anchor else "the page itself")
+        detail = str(obligation["deferred"].get("detail") or "").replace(f"`{node}`", "a section")
+        detail = " ".join(detail.split())
+        if detail:
+            details.append(detail[0].upper() + detail[1:] + ("" if detail.endswith(".") else "."))
+    claims = ", ".join(dict.fromkeys(anchors))
+    head = (
+        f"Book page `{page}` gives QA no check it can run for {claims}, "
+        "so a story that changes its code ships them unproved."
+    )
+    return " ".join([head, *dict.fromkeys(details)])
+
+
+@blueprint.node
+def file_deferred_obligations(
+    logger: logging.Logger, spec_dir: str = "", docs_path: str = "", repo_dir: str = ""
+) -> BacklogDrain:
+    """File each book page that owes QA a check it could not run to the repo backlog, and commit it."""
+    root = find_docs_root(docs_path, repo_dir)
+    spec = spec_dir.strip()
+    context_path = root / spec / CONTEXT_FILE
+    if not spec or not context_path.is_file():
+        return BacklogDrain(notes="no QA context to read deferred obligations from")
+    try:
+        context = json.loads(context_path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError) as exc:
+        logger.warning("QA context unreadable: %s", exc)
+        return BacklogDrain(notes=f"QA context unreadable: {exc}")
+    pages = _deferred_pages(context) if isinstance(context, dict) else {}
+    features = str(context.get("featuresRoot") or "") if isinstance(context, dict) else ""
+    backlog = root / paths.backlog_file(root)
+    filed = {b.id for b in backlog_bullets(backlog.read_text(encoding="utf-8"))} if backlog.is_file() else set()
+    okf = Ostler(root)
+    appended = 0
+    skipped = 0
+    for page, obligations in pages.items():
+        rel = page.removeprefix(features).lstrip("/") if features else page
+        item_id = kebab(f"book-checks-{Path(rel).with_suffix('')}")
+        if item_id in filed or not okf.backlog_add(item_id, _deferred_text(page, obligations), FILED_TITLE).ok:
+            skipped += 1
+            continue
+        filed.add(item_id)
+        appended += 1
+    note = f"filed {appended} book page(s) with deferred checks to the backlog, skipped {skipped}"
+    logger.info(note)
+    if appended:
+        message = commits.message("chore", commits.scope(root.name), "file the book checks qa could not run")
+        commit_paths(root, message, paths.backlog_file(root), verify=False)
+    return BacklogDrain(appended=appended, skipped=skipped, notes=note)
 
 
 @blueprint.node
@@ -535,6 +607,7 @@ __all__ = [
     "Seen",
     "backlog_bullets",
     "file_backlog_items",
+    "file_deferred_obligations",
     "file_follow_up_backlog",
     "id_token_set",
     "kebab",

@@ -19,6 +19,7 @@ QA never fixes the product. A defect the owner proves goes back to the main loop
 3. `check` rebuilds the packet and the stack, lints, validates and dry-runs the plan, runs it, and gates the run's evidence, its hygiene and the journey suites the story put at risk.
 4. A failed run goes to the owner of each scenario's side. A fixture step that cannot start is the environment's, and the run parks at the operator gate. A claim that failed on a held condition is the product's, and it finishes as `refix` with one finding per scenario, beside the owner's own. A dev target passes instead and carries them as its report. A fixture step that failed or a condition that read back false is the book's, and it goes back to the owner to repair. A scenario with no side goes back to the owner to classify.
 5. Anything else that failed goes back to `work` as one report. Checks that still fail after three repair turns park the run at the operator gate.
+6. A required obligation the book gives no runnable check is deferred. The evidence gate skips it, as the plan lint does. A passed story files each page that owes such a check to the backlog under `Filed by coder`, one item per page.
 
 The owner turn runs with no timeout. The silence bound and the command cap bound it instead.
 

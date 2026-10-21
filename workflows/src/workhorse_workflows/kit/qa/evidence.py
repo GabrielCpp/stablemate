@@ -99,6 +99,8 @@ def _obligation_problems(context: dict, data: dict) -> list[str]:
             continue
         if obligation.get("required", True) is False:
             continue
+        if isinstance(obligation.get("deferred"), dict):
+            continue
         obligation_id = str(obligation["id"])
         recorded = obligation_by_id.get(obligation_id)
         if not recorded:

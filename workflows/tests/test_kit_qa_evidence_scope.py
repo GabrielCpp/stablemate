@@ -62,3 +62,16 @@ def test_a_context_only_obligation_that_failed_is_not_a_problem() -> None:
     }
 
     assert evidence._obligation_problems(context, data) == []
+
+
+def test_a_deferred_obligation_is_owed_no_verdict() -> None:
+    """The plan lint already skips an obligation the book gives no runnable check, so the evidence gate held a story on one no scenario could prove."""
+    context = _context(
+        {
+            "id": "okf:docs/features/web-app/gui/screens/reports.md#empty-alert:contract",
+            "required": True,
+            "deferred": {"kind": "no-verify-declared", "detail": "the book declares no check"},
+        }
+    )
+
+    assert evidence._obligation_problems(context, {"obligations": []}) == []

@@ -41,7 +41,7 @@ from workhorse_workflows.coder.qa.report import (
 )
 from workhorse_workflows.coder.qa.sides import run_sides
 from workhorse_workflows.coder.shared import paths, roles, work
-from workhorse_workflows.coder.shared.backlog import file_backlog_items
+from workhorse_workflows.coder.shared.backlog import file_backlog_items, file_deferred_obligations
 from workhorse_workflows.coder.shared.dev import read_operator_context
 from workhorse_workflows.coder.shared.docs import detect_okf_docs, features_root
 from workhorse_workflows.coder.shared.escalation import context_path, escalation
@@ -419,6 +419,8 @@ class Qa(Workflow):
     ) -> Done:
         before = self.output(snapshot_code_state).status
         changed = self.call(code_changed, before=before, docs_path=self.docs_path)
+        if status == "passed":
+            self.call(file_deferred_obligations, self.ctx.spec_dir, self.docs_path)
         self._release()
         if status != "refix":
             self.reset_session(self._session)
