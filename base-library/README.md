@@ -13,7 +13,7 @@ farrier install                                   # renders it into a repo
 
 | Path | Contents |
 |---|---|
-| `library/skills/{farrier,groom,ostler,workhorse}/` | the skills documenting the toolchain |
+| `library/skills/{farrier,groom,ostler,saddlebag,workhorse}/` | the skills documenting the toolchain |
 | `library/skills/method/` | ways of working that hold in any repo: decompose, grill, review, diagnose |
 | `library/skills/{architecture,testing,ui}/` | the cross-language contracts |
 | `packs/stablemate.yml` | the toolchain skills, which `farrier init` proposes for the user library |

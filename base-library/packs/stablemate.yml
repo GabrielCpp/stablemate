@@ -5,7 +5,8 @@ description: >
   switch or answer it). For farrier: setup, library maintenance, and how to write
   a document an agent reads. For ostler: the doc-graph CLI and Python API, the OKF
   format it enforces, and how to write a repo's README and CLAUDE.md. For groom:
-  the operator-gate dashboard and the telemetry store behind it.
+  the operator-gate dashboard and the telemetry store behind it. For saddlebag:
+  signing in and running commands with secrets the agent never sees.
 # The `stablemate/` segment is the library namespace and is stripped from the
 # installed name; the skill names themselves no longer repeat it. Each one says
 # which tool it is about — `ostler`, `groom`, `farrier-setup`,
@@ -17,4 +18,5 @@ skills:
   - farrier/*
   - groom/*
   - ostler/*
+  - saddlebag/*
   - workhorse/*
