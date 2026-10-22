@@ -19,12 +19,13 @@ title: Author story author
 - verify: exit_status(code=0)
 - detail: [author story-author subflow](../concepts/author-story-author-subflow.md)
 - detail: [author story-author prompt contracts](../concepts/author-story-author-prompt-contracts.md)
+- detail: [author PM review](../concepts/author-pm-review.md)
 - tests: `workflows/tests/author/story_author/test_flow.py::test_flow_prepares_explicit_story_before_authoring_without_git_side_effects`
 
-The stages, in order: [prepare-story](#prepare-story), [design-mockup](#design-mockup), [write-story](#write-story), [check-story](#check-story), [audit-story](#audit-story), [rework-story](#rework-story), [resolve-story](#resolve-story), [story-feedback](#story-feedback), [apply-feedback](#apply-feedback).
+The stages, in order: [prepare-story](#prepare-story), [design-mockup](#design-mockup), [write-story](#write-story), [check-story](#check-story), [review](#review), [rework-story](#rework-story), [ask-pm](#ask-pm), [story-feedback](#story-feedback), [apply-feedback](#apply-feedback).
 
 The flow starts when an operator supplies an existing epic and a non-empty story slug; or when the selected story is resolvable under that epic in the configured Ostler graph; or when the repository root can be resolved from the optional `repo_dir`.
-It ends in one of these ways: the selected story has passed structural, grounding, and independent audit checks; a passing audit receipt records the SHA-256 digest of the exact story bytes; blocked or exhausted work is parked in an operator-awaiting context or returns a blocked result.
+It ends in one of these ways: the selected story has passed structural, grounding, and PM review checks; a PM receipt records the SHA-256 digest of the exact story bytes; blocked or exhausted work returns a blocked result that the Author flow keeps on the work list.
 
 ## Steps
 
@@ -49,10 +50,10 @@ It ends in one of these ways: the selected story has passed structural, groundin
 - run: validate story structure and feature-book grounding
 - verify: [check_story](../concepts/author-story-author-subflow.md#check_story)
 
-### audit-story
+### review
 - kind: verify
-- run: invoke the independent story audit and route findings to bounded rework
-- verify: [audit_story](../concepts/author-story-author-subflow.md#audit_story)
+- run: hand the story to the PM review and route findings to bounded rework
+- verify: [review](../concepts/author-story-author-subflow.md#review)
 
 ### rework-story
 - kind: run
@@ -60,15 +61,15 @@ It ends in one of these ways: the selected story has passed structural, groundin
 - verify: [rework_story](../concepts/author-story-author-subflow.md#rework_story)
 - optional: true
 
-### resolve-story
+### ask-pm
 - kind: run
-- run: ask the shared operator resolver for a blocked story decision, then park for resumption
-- verify: [resolve_story](../concepts/author-story-author-subflow.md#resolve_story)
+- run: hand a blocked writer's question to the PM gap answer, then resume with the answer as a note
+- verify: [ask_pm](../concepts/author-story-author-subflow.md#ask_pm)
 - optional: true
 
 ### story-feedback
 - kind: verify
-- run: poll feedback, rework when feedback exists, or record the passing audit receipt
+- run: poll feedback, then rework when feedback exists or finish
 - verify: [story_feedback](../concepts/author-story-author-subflow.md#story_feedback)
 
 ### apply-feedback

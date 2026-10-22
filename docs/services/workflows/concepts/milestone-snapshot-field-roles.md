@@ -13,5 +13,5 @@ The schema declares these as separate attributes with distinct types and empty-v
 contains no legacy marker, delegation, wrapper, or preference between them, so no field supersedes
 another. Readers select the field for the part of the milestone state they need.
 
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/edit.py::MilestoneSnapshot` @952fb9c4cfcb
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/edit.py::MilestoneSnapshot` @7b95d62cfa2c
 - rule: select `name` for the milestone identifier, `source_items` for owned source items, and `epics` for registered epics; the fields are complementary and no ranking exists

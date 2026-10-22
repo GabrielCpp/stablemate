@@ -6,9 +6,8 @@ title: Story-split flow concept selection
 # Story-split flow concept selection
 
 `StorySplitFlow` is one workflow, not a choice among three implementations. The flow requires
-both `epic` and `operator_mode`: `epic` identifies the one epic to process, while
-`operator_mode` controls whether blocked work awaits an operator immediately or can first use
-the bounded automatic-resolution path.
+`epic` to identify the one epic to process, and it accepts a `note` that carries an earlier
+answer into the splitter's prompt.
 
 Read [story-split flow inputs](story-split-flow-inputs.md) for the combined run-input contract,
 [story-split input fields](story-split-input-fields.md) for the individual field definitions, and

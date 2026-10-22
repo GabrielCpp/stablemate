@@ -7,9 +7,10 @@ title: Author story split
 
 The [author story-split subflow](../concepts/story-split-subflow.md) decomposes one explicitly
 named epic into a set of stories, then validates that the stories are complete and granular enough
-to deliver the epic's scope. It operates two autonomous retry budgets — one for story-split agent
-reworks and one for split-decision resolution — bounded at 3 and 2 respectively, above which work
-escalates to an operator gate. A passing review is recorded as a digest-bound receipt.
+to deliver the epic's scope. It operates two autonomous retry budgets, one for rework after PM findings and one for PM answers
+to the splitter's questions, bounded at 3 and 2 respectively. Past either budget the split returns
+blocked and the Author flow keeps the epic's row blocked for the completion gate. A passing review
+is recorded as a PM receipt.
 
 The [workhorse-author run command](../workhorse-author.md#run) selects this flow from the
 [author workflow composition root](../concepts/author-workflow-composition-root.md).
@@ -23,70 +24,62 @@ The [workhorse-author run command](../workhorse-author.md#run) selects this flow
 - verify: exit_status(code=0)
 - detail: [author story-split subflow](../concepts/story-split-subflow.md)
 - detail: [story-split prompt](../formats/story-split-prompt.md)
-- detail: [coverage review prompt](../formats/coverage-review-prompt.md)
+- detail: [author PM review](../concepts/author-pm-review.md)
+- detail: [PM receipt](../formats/pm-receipt.md)
 - tests: `workflows/tests/author/story_split/test_flow.py::test_accepts_one_epic_graph_without_selecting_authoring_or_git`
 
-The stages, in order: [split-stories](#split-stories), [check-coverage](#check-coverage), [done](#done).
+The flow starts when the Author flow supplies an existing epic slug, or when an operator runs the standalone flow on one.
+It ends in one of these ways: the epic is decomposed into stories that cover its seeds, each story names its services, the PM passes every angle and a receipt is written; or the split returns blocked with the findings or question that stopped it.
 
-The flow starts when an operator supplies an existing epic slug and selects `operator_mode` of `auto` or `human`; or when the epic's directory is resolvable under the configured Ostler graph; or when the epic has not already been split (or resumes a prior split with coverage findings to address).
-It ends in one of these ways: the epic is decomposed into stories with each story covering one or more seeds; story granularity is reviewed as adequate for independent implementation and QA; a passing split and review is recorded in a digest-bound receipt; unresolved product or sequencing decisions are parked at an operator gate.
+The stages, in order: [split-stories](#split-stories), [check-coverage](#check-coverage), [review](#review), [done](#done).
 
 ## Split stories
 
 Invokes an agent against the story-split prompt to decompose the epic into stories. The agent
-reads the epic's researched seeds, user journeys, and acceptance criteria, then uses `ostler
-create story` to record each story under the epic's `## Stories` section with its seed coverage
-and dependency blockers recorded.
+reads the epic's seeds, the PM ledger and any note, then uses `ostler create story` to record each
+story with its seed coverage and dependency blockers.
 
 The split result can be `complete`, `standoff`, or `blocked`:
 
-- `complete` — the split is recorded; proceed to coverage review. If rework notes exist from a
-  prior coverage failure, the agent addresses them in this pass.
-- `standoff` — the agent refuses rework notes from a prior coverage failure, judging the change
-  wrong. This escalates to the operator at the `_gate_coverage` decision point.
-- `blocked` — the agent raises a product decision question. If `operator_mode` is `auto` and
-  `split_resolves` < 2, the flow calls `resolve_split` to query the resolver agent; otherwise
-  this escalates to the operator gate.
-
-After a successful split, the flow invokes `ostler doctor --epic` to confirm the graph is acyclic,
-every seed is covered, and no edge references another epic.
+- `complete` proceeds to the coverage check.
+- `blocked` or `standoff` sends the agent's question to the PM, which answers in the ledger. The
+  agent then splits again with the answer as a note. After two answers the split returns blocked.
 
 - kind: run
-- run: invoke split-stories agent, read rework notes from prior coverage failures, record stories via ostler
+- run: invoke split-stories agent, read rework notes and the PM ledger, record stories via ostler
 - verify: [split_stories](../concepts/story-split-subflow.md#split_stories)
-- code: `workflows/src/workhorse_workflows/author/story_split/flow.py::StorySplitFlow.split_stories` @c633afb4c428
+- code: `workflows/src/workhorse_workflows/author/story_split/flow.py::StorySplitFlow.split_stories` @9e26ab4671cb
 
 ## Check coverage
 
-Validates the split stories against the epic's scope. Two sequential steps: first, a deterministic
-mechanical check confirms every seed is claimed and the dependency graph is acyclic; second, a
-high-power agent reviews the stories for adequacy — whether they are granular and complete enough
-to implement and QA independently.
-
-The review result can be `ok`, `gaps`, or `blocked`:
-
-- `ok` — stories cover the epic adequately; record the receipt and finish.
-- `gaps` — the reviewer identifies under-covered scope or coarse stories. This loops back to
-  `split_stories` with the reviewer's notes, reworking the split up to 3 times.
-- `blocked` — the reviewer raises a product decision. If `operator_mode` is `auto` and
-  `split_resolves` < 2, the flow calls `resolve_coverage`; otherwise this escalates to the
-  operator gate.
+Derives each story's services from its covered seeds, then validates seed coverage, story services
+and graph integrity mechanically. Errors go back to the splitter as rework notes, up to three
+times.
 
 - kind: verify
-- run: derive each story's `services` from its covered seeds, then validate seed coverage, story services and graph integrity; invoke coverage-review agent
+- run: derive each story's `services` from its covered seeds, then validate seed coverage, story services and graph integrity
 - verify: [check_coverage](../concepts/story-split-subflow.md#check_coverage)
-- code: `workflows/src/workhorse_workflows/author/story_split/flow.py::StorySplitFlow.check_coverage` @c633afb4c428
-- detail: [story-split check-coverage step roles](../concepts/story-split-check-coverage-step-roles.md)
+- code: `workflows/src/workhorse_workflows/author/story_split/flow.py::StorySplitFlow.check_coverage` @9e26ab4671cb
+
+## Review
+
+Hands the epic directory to the [PM review](../concepts/author-pm-review.md) at the `story-split`
+stage. A pass on every angle accepts the split. Findings go back to the splitter as rework notes
+and count against the same three reworks.
+
+- kind: verify
+- run: PM review of the story split with the previous findings
+- verify: [review](../concepts/story-split-subflow.md#review)
+- code: `workflows/src/workhorse_workflows/author/story_split/flow.py::StorySplitFlow.review` @9e26ab4671cb
 
 ## Done
 
-Records a digest-bound receipt of the split and review when coverage review passes. The receipt is
-recorded under the epic's `story-split-receipt.json` and captures the exact story digest.
+A passing review has written a [PM receipt](../formats/pm-receipt.md) in the epic directory. It
+binds the active seed ids and each story's slug, title, covers and dependencies, so later prose
+edits keep the pass.
 
 - kind: run
-- run: record the split and review receipt with the exact story digest
-- verify: [check_coverage](../concepts/story-split-subflow.md#check_coverage)
-- verify: created(subject="story-split-receipt.json")
-- code: `workflows/src/workhorse_workflows/author/story_split/flow.py::StorySplitFlow.check_coverage` @c633afb4c428
-- detail: [story-split check-coverage step roles](../concepts/story-split-check-coverage-step-roles.md)
-
+- run: accept the split whose receipt the PM review wrote
+- verify: [review](../concepts/story-split-subflow.md#review)
+- verify: created(subject="pm-receipt.json")
+- code: `workflows/src/workhorse_workflows/author/story_split/flow.py::StorySplitFlow.review` @9e26ab4671cb

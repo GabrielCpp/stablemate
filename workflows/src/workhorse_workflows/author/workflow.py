@@ -14,6 +14,8 @@ from workhorse_workflows.author.finalize.nodes import blueprint as finalize_blue
 from workhorse_workflows.author.main.flow import Author
 from workhorse_workflows.author.main.nodes import blueprint
 from workhorse_workflows.author.parity_surveyor import ParitySurveyor
+from workhorse_workflows.author.pm import GapAnswer, PMReview
+from workhorse_workflows.author.pm.nodes import blueprint as pm_blueprint
 from workhorse_workflows.author.shared.nodes import blueprint as shared_blueprint
 from workhorse_workflows.author.shared.survey.blueprint import blueprint as survey_blueprint
 from workhorse_workflows.author.story_edit import StoryEdit
@@ -37,6 +39,7 @@ workflow = (
         story_author_blueprint,
         story_split_blueprint,
         finalize_blueprint,
+        pm_blueprint,
     )
     .add_flows(
         surveyor=Surveyor,
@@ -49,6 +52,8 @@ workflow = (
             "story-split": StorySplitFlow,
             "story-author": StoryAuthor,
             "finalize": Finalize,
+            "pm-review": PMReview,
+            "gap-answer": GapAnswer,
         },
     )
 )

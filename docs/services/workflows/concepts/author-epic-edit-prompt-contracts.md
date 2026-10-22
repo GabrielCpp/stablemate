@@ -5,21 +5,19 @@ title: Author epic edit prompt contracts
 ---
 # Author epic edit prompt contracts
 
-The `epic_edit` flow renders nine agent turns. Planning and review turns are read-only; deterministic
+The `epic_edit` flow renders six agent turns of its own and hands the plan, the stories and the coverage to the [PM review](author-pm-review.md). Planning and review turns are read-only; deterministic
 nodes validate and apply graph changes between turns. Story authoring turns write only the selected
 story's artifacts, while all turns return typed JSON consumed by the next state. The feature book is
 always read-only to these prompts.
 
-- code: `workflows/src/workhorse_workflows/author/epic_edit/prompts/plan-epic-edit.md` @1cc7c8ae003e
+- code: `workflows/src/workhorse_workflows/author/epic_edit/prompts/plan-epic-edit.md` @c5a75c04e473
 - code: `workflows/src/workhorse_workflows/author/epic_edit/prompts/refine-epic-edit-plan.md` @9c92addea733
-- code: `workflows/src/workhorse_workflows/author/epic_edit/prompts/review-epic-edit-plan.md` @ecc93cad9b1a
 - code: `workflows/src/workhorse_workflows/author/epic_edit/prompts/rewrite-epic-edit.md` @031fe29f72ac
 - code: `workflows/src/workhorse_workflows/author/epic_edit/prompts/design-mockup.md` @f918719466f5
-- code: `workflows/src/workhorse_workflows/author/epic_edit/prompts/write-story.md` @adf932ed9e50
-- code: `workflows/src/workhorse_workflows/author/epic_edit/prompts/rework-story.md` @fb4b0b7c5808
-- code: `workflows/src/workhorse_workflows/author/epic_edit/prompts/audit-story.md` @a537b8d9a257
-- code: `workflows/src/workhorse_workflows/author/epic_edit/prompts/review-coverage.md` @2f49fb13d5a1
+- code: `workflows/src/workhorse_workflows/author/epic_edit/prompts/write-story.md` @78b80c91b824
+- code: `workflows/src/workhorse_workflows/author/epic_edit/prompts/rework-story.md` @d16914d79c20
 - detail: [author epic edit subflow](author-epic-edit-subflow.md)
+- detail: [author PM review angles](author-pm-angles.md)
 
 ## Prompt Contracts
 
@@ -33,8 +31,8 @@ findings. It returns a complete replacement `EpicEditPlan` that fixes every find
 the requested operation or mutating files.
 
 ### Review and rewrite turns
-`review-epic-edit-plan.md` receives the intent, snapshot, and statically valid plan. It returns
-`approved`, `needs_rework`, or `blocked` with notes and makes no repository change.
+The plan review is the PM review at the `epic-edit-plan` stage. It receives the intent, snapshot and
+statically valid plan as detail and judges them from the `plan` angle. It makes no repository change.
 
 `rewrite-epic-edit.md` receives the intent, approved plan, pre-edit snapshot, surviving epic directory,
 and prior validation findings. It may rewrite only human-owned epic prose before `## Seeds`, preserving
@@ -49,17 +47,16 @@ directories, feature-book directory, and epic directory. It may write only the s
 mockup path. It writes only the story planning artifact and returns `WriteStoryResult`; a product or
 scope question returns `blocked` with notes.
 
-`rework-story.md` receives the selected story, validation or audit findings, operator feedback, and
+`rework-story.md` receives the selected story, validation or review findings, operator feedback, and
 optional prior attempts and mockup path. It repairs only the named findings in the story artifact
 and returns the same `WriteStoryResult` shape, including `blocked` for an unresolved scope decision.
 
-`audit-story.md` receives the selected story identity and feature-book directory. It writes only the
-story-local audit artifact and returns `AuditResult`; an empty findings list is the pass condition.
+The story review is the PM review at the `story` stage, described in [author PM review](author-pm-review.md).
 
 ### Coverage turn
-`review-coverage.md` receives the epic name, epic directory, backlog, and configured planning rules.
-It reviews whether the deterministic coverage result is granular and complete, returns `ok`,
-`gaps`, or `blocked`, and does not edit repository files.
+The coverage review is the PM review at the `story-split` stage. It judges the epic directory after
+the deterministic coverage lint passes, returns one verdict per angle, and does not edit repository
+files.
 
 The flow owns all routing and retry policy. These templates define the evidence supplied to each
 turn, the artifact boundary, and the response contract.

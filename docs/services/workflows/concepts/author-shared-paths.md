@@ -13,7 +13,7 @@ keeps two root policies: survey work discovers a repository marker, while launch
 current directory when no explicit repository was supplied. Git-specific root lookup remains in
 `workhorse_workflows.kit.find_repo_root` and is not duplicated here.
 
-- code: `workflows/src/workhorse_workflows/author/shared/paths.py::survey_repo_root` @e178ead9e68d
+- code: `workflows/src/workhorse_workflows/author/shared/paths.py::survey_repo_root` @9b0867985135
 - tests: `workflows/tests/author/surveyor/test_config.py::test_the_config_derives_every_path_from_survey_dir`
 - tests: `workflows/tests/author/parity_surveyor/test_parity.py::test_config_derives_every_path_under_the_survey_dir`
 
@@ -31,7 +31,7 @@ current directory when no explicit repository was supplied. Git-specific root lo
 - verify: count(subject="survey repository current-directory fallbacks", equals=1)
 - returns: an absolute repository root path
 - verify: count(subject="survey repository root results", equals=1)
-- code: `workflows/src/workhorse_workflows/author/shared/paths.py::survey_repo_root` @e178ead9e68d
+- code: `workflows/src/workhorse_workflows/author/shared/paths.py::survey_repo_root` @9b0867985135
 
 ### launch_repo_root
 - sig: `launch_repo_root(repo_dir: str | Path = "") -> Path`
@@ -41,7 +41,7 @@ current directory when no explicit repository was supplied. Git-specific root lo
 - verify: count(subject="launch repository current-directory fallback", equals=1)
 - returns: an absolute repository root path
 - verify: count(subject="launch repository root results", equals=1)
-- code: `workflows/src/workhorse_workflows/author/shared/paths.py::launch_repo_root` @e178ead9e68d
+- code: `workflows/src/workhorse_workflows/author/shared/paths.py::launch_repo_root` @9b0867985135
 
 ### epics_dir
 - sig: `epics_dir(root: str | Path) -> str`
@@ -49,7 +49,7 @@ current directory when no explicit repository was supplied. Git-specific root lo
 - verify: count(subject="resolved author epic directories", equals=1)
 - returns: a repository-relative POSIX path
 - verify: count(subject="author epic directory results", equals=1)
-- code: `workflows/src/workhorse_workflows/author/shared/paths.py::epics_dir` @e178ead9e68d
+- code: `workflows/src/workhorse_workflows/author/shared/paths.py::epics_dir` @9b0867985135
 
 ### backlog_file
 - sig: `backlog_file(root: str | Path) -> str`
@@ -57,7 +57,7 @@ current directory when no explicit repository was supplied. Git-specific root lo
 - verify: count(subject="resolved author backlog files", equals=1)
 - returns: a repository-relative POSIX path
 - verify: count(subject="author backlog path results", equals=1)
-- code: `workflows/src/workhorse_workflows/author/shared/paths.py::backlog_file` @e178ead9e68d
+- code: `workflows/src/workhorse_workflows/author/shared/paths.py::backlog_file` @9b0867985135
 
 ### services_dir
 - sig: `services_dir(root: str | Path) -> str`
@@ -65,7 +65,7 @@ current directory when no explicit repository was supplied. Git-specific root lo
 - verify: count(subject="resolved author feature directories", equals=1)
 - returns: a repository-relative POSIX path
 - verify: count(subject="author feature directory results", equals=1)
-- code: `workflows/src/workhorse_workflows/author/shared/paths.py::services_dir` @e178ead9e68d
+- code: `workflows/src/workhorse_workflows/author/shared/paths.py::services_dir` @9b0867985135
 
 ### epic_dir
 - sig: `epic_dir(root: str | Path, epic: str) -> str`
@@ -77,7 +77,7 @@ current directory when no explicit repository was supplied. Git-specific root lo
 - verify: count(subject="unresolved author epic path fallbacks", equals=1)
 - returns: a repository-relative epic directory path
 - verify: count(subject="author epic path results", equals=1)
-- code: `workflows/src/workhorse_workflows/author/shared/paths.py::epic_dir` @e178ead9e68d
+- code: `workflows/src/workhorse_workflows/author/shared/paths.py::epic_dir` @9b0867985135
 
 ### story_dir
 - sig: `story_dir(epic_dir_rel: str, slug: str) -> str`
@@ -85,7 +85,7 @@ current directory when no explicit repository was supplied. Git-specific root lo
 - verify: count(subject="derived author story directories", equals=1)
 - returns: the story directory as a POSIX relative path
 - verify: count(subject="author story directory results", equals=1)
-- code: `workflows/src/workhorse_workflows/author/shared/paths.py::story_dir` @e178ead9e68d
+- code: `workflows/src/workhorse_workflows/author/shared/paths.py::story_dir` @9b0867985135
 
 ### author_context
 - sig: `author_context(root: str | Path) -> str`
@@ -93,21 +93,4 @@ current directory when no explicit repository was supplied. Git-specific root lo
 - verify: count(subject="author run context paths", equals=1)
 - returns: the repository-relative run-wide context path
 - verify: count(subject="author run context results", equals=1)
-- code: `workflows/src/workhorse_workflows/author/shared/paths.py::author_context` @e178ead9e68d
-
-### epic_context
-- sig: `epic_context(epic_dir_rel: str) -> str`
-- does: appends `context.md` to an epic directory after removing trailing separators
-- verify: removed(subject="trailing separators from the epic directory path")
-- verify: count(subject="author epic context paths", equals=1)
-- returns: the epic context path
-- verify: count(subject="author epic context results", equals=1)
-- code: `workflows/src/workhorse_workflows/author/shared/paths.py::epic_context` @e178ead9e68d
-
-### story_context
-- sig: `story_context(story_dir_rel: str) -> str`
-- does: appends `context.md` to a story directory after removing trailing separators
-- verify: removed(subject="trailing separators from the supplied story directory path")
-- returns: the story context path
-- verify: count(subject="author story context results", equals=1)
-- code: `workflows/src/workhorse_workflows/author/shared/paths.py::story_context` @e178ead9e68d
+- code: `workflows/src/workhorse_workflows/author/shared/paths.py::author_context` @9b0867985135

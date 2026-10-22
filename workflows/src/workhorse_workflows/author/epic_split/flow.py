@@ -4,28 +4,25 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, ClassVar
 
-from workhorse.pyflow import Await, Continue, Done, Workflow
+from workhorse.pyflow import Continue, Done, Workflow
 from workhorse_workflows.author.epic_split.nodes import prepare_epic_split, validate_epic_split
 from workhorse_workflows.author.epic_split.schemas import (
     EpicSplitContext,
+    EpicSplitDone,
     EpicSplitResult,
-    EpicSplitReview,
-    OperatorResolution,
 )
-from workhorse_workflows.author.shared import paths
+from workhorse_workflows.author.pm import MAX_ANSWERS, GapAnswer, PMReview
 from workhorse_workflows.kit.telemetry import counter_labels
 
 MAX_REWORKS = 3
-MAX_RESOLVES = 2
-UNBOUNDED = float("inf")
 
 
 class EpicSplit(Workflow):
     """The epic-skeleton boundary; epic prose, seeds, stories, and delivery are unreachable."""
 
-    operator_mode: str = "auto"
+    note: str = ""
 
-    BUDGET_LABELS: ClassVar[tuple[str, ...]] = ("reworks", "resolves")
+    BUDGET_LABELS: ClassVar[tuple[str, ...]] = ("reworks", "answers")
 
     def setup(self) -> EpicSplitContext:
         return self.call(prepare_epic_split)
@@ -36,70 +33,135 @@ class EpicSplit(Workflow):
     def state_labels(self, params: dict[str, Any]) -> dict[str, str]:
         return self.labels() | counter_labels(params, "epic_split", self.BUDGET_LABELS)
 
-    def _context_path(self) -> Path:
-        return Path(self.ctx.repo_root) / paths.author_context(self.ctx.repo_root)
-
-    def _split_args(self, review_notes: str = "") -> dict[str, str]:
+    def _split_args(self, review_notes: str = "", note: str = "") -> dict[str, str]:
         return {
             "milestone": self.ctx.milestone_path,
             "epics_dir": self.ctx.epics_dir,
             "review_notes": review_notes,
+            "note": "\n\n".join(part for part in (self.note, note) if part),
+            "ledger": self.ctx.pm_ledger,
         }
 
-    def start(self, resolves: int = 0) -> Continue:
+    def _blocked(self, notes: str, reworks: int, answers: int) -> Done:
+        self.logger.warning("the epic split stays blocked: %s", notes)
+        return Done(
+            EpicSplitDone(
+                status="blocked",
+                milestone_path=self.ctx.milestone_path,
+                notes=notes,
+                reworks=reworks,
+                answers=answers,
+            )
+        )
+
+    def _ask(
+        self,
+        question: str,
+        phase: str,
+        notes: str,
+        reworks: int,
+        answers: int,
+        prior: str,
+    ) -> Continue | Done:
+        if answers >= MAX_ANSWERS:
+            return self._blocked(question, reworks, answers)
+        return Continue(
+            None,
+            self.ask_pm,
+            question=question,
+            phase=phase,
+            notes=notes,
+            reworks=reworks,
+            answers=answers,
+            prior=prior,
+        )
+
+    def start(self, note: str = "", answers: int = 0) -> Continue | Done:
         result = self.agent(
             "epic_split/prompts/split-epics.md",
             returns=EpicSplitResult,
             power="high",
             cwd=self.ctx.repo_root,
-            args=self._split_args(),
+            args=self._split_args(note=note),
         )
-        return Continue(result, self.review, resolves=resolves)
+        if result.status == "blocked":
+            return self._ask(result.notes, "split", "", 0, answers, "")
+        return Continue(result, self.check, answers=answers)
 
-    def review(self, reworks: int = 0, resolves: int = 0) -> Continue | Await | Done:
-        result = self.agent(
-            "epic_split/prompts/review-epic-split.md",
-            returns=EpicSplitReview,
-            power="high",
-            cwd=self.ctx.repo_root,
-            args=self._split_args(),
+    def check(self, reworks: int = 0, answers: int = 0, prior: str = "") -> Continue | Done:
+        validation = self.call(validate_epic_split, self.ctx)
+        if not validation.ok:
+            return self._rework(validation, validation.errors, reworks, answers, prior)
+        return Continue(validation, self.review, reworks=reworks, answers=answers, prior=prior)
+
+    def review(self, reworks: int = 0, answers: int = 0, prior: str = "") -> Continue | Done:
+        verdict = self.handoff(
+            PMReview,
+            stage="epic-split",
+            subject=self.ctx.milestone_path,
+            prior=prior,
         )
-        notes = result.notes
-        if result.status == "approved":
+        if verdict.passed:
             validation = self.call(validate_epic_split, self.ctx)
-            if validation.ok:
-                return Done(validation)
-            notes = validation.errors
-        if result.status != "blocked" and reworks < MAX_REWORKS:
-            return Continue(result, self.rework, notes=notes, reworks=reworks, resolves=resolves)
-        if self.operator_mode == "human" or resolves >= MAX_RESOLVES:
-            return Await(self._context_path(), notes, self.start, resolves=resolves)
-        return Continue(result, self.resolve, notes=notes, resolves=resolves)
+            return Done(
+                EpicSplitDone(
+                    milestone_path=validation.milestone_path,
+                    ordered_epics=validation.ordered_epics,
+                    reworks=reworks,
+                    answers=answers,
+                )
+            )
+        return self._rework(verdict, verdict.notes, reworks, answers, verdict.notes)
 
-    def rework(self, notes: str, reworks: int = 0, resolves: int = 0) -> Continue:
+    def _rework(
+        self, result: object, notes: str, reworks: int, answers: int, prior: str
+    ) -> Continue | Done:
+        if reworks >= MAX_REWORKS:
+            return self._blocked(notes, reworks, answers)
+        return Continue(
+            result, self.rework, notes=notes, reworks=reworks, answers=answers, prior=prior
+        )
+
+    def rework(
+        self,
+        notes: str,
+        note: str = "",
+        reworks: int = 0,
+        answers: int = 0,
+        prior: str = "",
+    ) -> Continue | Done:
         result = self.agent(
             "epic_split/prompts/rework-epic-split.md",
             returns=EpicSplitResult,
             power="high",
             cwd=self.ctx.repo_root,
-            args=self._split_args(notes),
+            args=self._split_args(notes, note),
         )
-        return Continue(result, self.review, reworks=reworks + 1, resolves=resolves)
+        if result.status == "blocked":
+            return self._ask(result.notes, "rework", notes, reworks, answers, prior)
+        return Continue(result, self.check, reworks=reworks + 1, answers=answers, prior=prior)
 
-    def resolve(self, notes: str, resolves: int = 0) -> Await:
-        self.agent(
-            "epic_split/prompts/resolve-epic-split.md",
-            returns=OperatorResolution,
-            power="high",
-            timeout=UNBOUNDED,
-            cwd=self.ctx.repo_root,
-            args={
-                **self._split_args(),
-                "context_path": str(self._context_path()),
-                "block_notes": notes,
-            },
+    def ask_pm(
+        self,
+        question: str,
+        phase: str,
+        notes: str = "",
+        reworks: int = 0,
+        answers: int = 0,
+        prior: str = "",
+    ) -> Continue:
+        answer = self.handoff(GapAnswer, question=question, asker="epic-split")
+        if phase == "split":
+            return Continue(answer, self.start, note=answer.note, answers=answers + 1)
+        return Continue(
+            answer,
+            self.rework,
+            notes=notes,
+            note=answer.note,
+            reworks=reworks,
+            answers=answers + 1,
+            prior=prior,
         )
-        return Await(self._context_path(), notes, self.start, resolves=resolves + 1)
 
 
-__all__ = ["EpicSplit", "MAX_REWORKS", "MAX_RESOLVES"]
+__all__ = ["EpicSplit", "MAX_REWORKS"]

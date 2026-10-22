@@ -6,7 +6,6 @@ from workhorse_workflows.author.shared.schemas.edit import (
     AppliedEpicEdit,
     EditIntent,
     EpicEditPlan,
-    EpicEditReview,
     EpicRewriteResult,
     EpicSnapshot,
     MilestoneSnapshot,
@@ -17,13 +16,10 @@ from workhorse_workflows.author.shared.schemas.edit import (
     StorySnapshot,
 )
 from workhorse_workflows.author.shared.schemas.main import (
-    AuditFinding,
-    AuditResult,
     Committed,
     Completion,
     Config,
     ContractDigest,
-    CoverageReview,
     Defects,
     Feedback,
     Filled,
@@ -61,20 +57,16 @@ from workhorse_workflows.author.shared.schemas.survey import (
 )
 
 __all__ = [
-    "AuditFinding",
-    "AuditResult",
     "AppliedEpicEdit",
     "AuthorResult",
     "Committed",
     "Completion",
     "Config",
     "ContractDigest",
-    "CoverageReview",
     "Defects",
     "EmitResult",
     "EditIntent",
     "EpicEditPlan",
-    "EpicEditReview",
     "EpicRewriteResult",
     "EpicSnapshot",
     "Expansion",

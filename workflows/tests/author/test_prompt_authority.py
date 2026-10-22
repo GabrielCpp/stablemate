@@ -9,6 +9,7 @@ import workhorse_workflows
 
 AUTHOR = Path(workhorse_workflows.__file__).parent / "author"
 STORY_PROMPTS = AUTHOR / "story_author" / "prompts"
+ANGLES = AUTHOR / "pm" / "prompts" / "angles"
 
 
 def _copies(name: str) -> list[Path]:
@@ -52,22 +53,21 @@ def test_writer_records_concise_grounded_technical_notes(prompt: Path) -> None:
     assert "original or prior implementation" in text
 
 
-@pytest.mark.parametrize("prompt", _copies("audit-story.md"), ids=_id)
-def test_auditor_does_not_demand_prior_citations_for_new_behavior(prompt: Path) -> None:
-    text = _prose(prompt)
+def test_grounding_angle_does_not_demand_prior_citations_for_new_behavior() -> None:
+    text = _prose(ANGLES / "story" / "grounding.md")
 
-    assert "Do not refute new in-scope behavior merely because no prior OKF node defines it" in text
+    assert "Do not fail new in-scope behavior because no earlier node defines it" in text
     assert "contradicts cited existing behavior" in text
 
 
-@pytest.mark.parametrize("prompt", _copies("audit-story.md"), ids=_id)
-def test_auditor_respects_the_bare_minimum_story_boundary(prompt: Path) -> None:
-    text = _prose(prompt)
+def test_story_angles_respect_the_bare_minimum_story_boundary() -> None:
+    grounding = _prose(ANGLES / "story" / "grounding.md")
+    journey = _prose(ANGLES / "story" / "journey.md")
 
-    assert "Do not demand endpoint names, request or response schemas" in text
-    assert "Judge only the behavior changed by this story's covered seeds" in text
-    assert "does not import every guard, state, interaction, or journey" in text
-    assert "Existing guards, chrome, states, and flows outside those covered seeds" in text
+    assert "Do not demand endpoint names, request or response schemas" in grounding
+    assert "Judge only the behavior changed by the covered seeds" in grounding
+    assert "does not import every state or interaction" in journey
+    assert "Existing guards, chrome, states and flows outside those covered seeds" in journey
 
 
 @pytest.mark.parametrize("prompt", _copies("rework-story.md"), ids=_id)
@@ -85,7 +85,6 @@ def test_reworker_makes_in_scope_choices_instead_of_blocking(prompt: Path) -> No
         AUTHOR / "story_split/prompts/split-stories.md",
         STORY_PROMPTS / "write-story.md",
         STORY_PROMPTS / "design-mockup.md",
-        STORY_PROMPTS / "audit-story.md",
         STORY_PROMPTS / "rework-story.md",
         AUTHOR / "finalize/prompts/resolve-integrity.md",
         AUTHOR / "epic_split/prompts/split-epics.md",
@@ -100,11 +99,12 @@ def test_mutating_turns_leave_validation_and_delivery_to_author(prompt: Path) ->
     assert "Author validates and delivers after all authoring" in text
 
 
-def test_epic_review_does_not_inherit_unrelated_planning_debt() -> None:
-    text = _prose(AUTHOR / "epic_split/prompts/review-epic-split.md")
+def test_epic_split_review_does_not_inherit_unrelated_planning_debt() -> None:
+    scope = _prose(ANGLES / "epic-split" / "scope.md")
+    inputs = _prose(AUTHOR / "pm/prompts/_inputs.md")
 
-    assert "Do not edit artifacts" in text
-    assert "bare skeleton" in text
+    assert "Do not edit any file" in inputs
+    assert "bare skeleton" in scope
 
 
 def test_epic_writer_records_the_seed_set_without_per_seed_graph_reloads() -> None:

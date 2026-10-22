@@ -15,5 +15,5 @@ or replacement relationship among them. Choose the field for the required role: 
 proceeds fail-open, while an executed verifier's decision is in `holds`; neither text field
 substitutes for that decision.
 
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::VerifyReport` @69af1329fede
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::VerifyReport` @0c2f7d227faf
 - rule: use `holds` for the gate decision, `skipped` for an unavailable prerequisite, `errors` for author-flow findings, and `report` for the resolver prompt preamble; none substitutes for another

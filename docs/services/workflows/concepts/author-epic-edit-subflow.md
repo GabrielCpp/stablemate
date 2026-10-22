@@ -15,7 +15,7 @@ the deterministic nodes owned by this subflow.
 For the direct-versus-handoff entry context, see [epic edit invocation
 selection](epic-edit-invocation-selection.md).
 
-- code: `workflows/src/workhorse_workflows/author/epic_edit/flow.py::EpicEdit` @4ff1fa77892b
+- code: `workflows/src/workhorse_workflows/author/epic_edit/flow.py::EpicEdit` @3aacff8bdeb8
 - code: `workflows/src/workhorse_workflows/author/epic_edit/nodes/__init__.py` @d1193fd0ea72
 - code: `workflows/src/workhorse_workflows/author/epic_edit/nodes/_blueprint.py::blueprint` @2f9e682267f2
 - tests: `workflows/tests/author/epic_edit/test_edit.py::test_plan_requires_force_for_removals_beyond_requested_story`
@@ -30,7 +30,7 @@ selection](epic-edit-invocation-selection.md).
 - semantics: direct invocation's epic identifier
 - verify: json_path(path="$.epic", equals="acme-epic")
 - semantics: ignored when `intent.epic` is already set
-- code: `workflows/src/workhorse_workflows/author/epic_edit/flow.py::EpicEdit` @4ff1fa77892b
+- code: `workflows/src/workhorse_workflows/author/epic_edit/flow.py::EpicEdit` @3aacff8bdeb8
 - detail: [epic edit input selection](epic-edit-input-selection.md)
 
 ### change
@@ -39,7 +39,7 @@ selection](epic-edit-invocation-selection.md).
 - required: false
 - semantics: direct invocation's requested scope change
 - verify: json_path(path="$.change", equals="example change")
-- code: `workflows/src/workhorse_workflows/author/epic_edit/flow.py::EpicEdit` @4ff1fa77892b
+- code: `workflows/src/workhorse_workflows/author/epic_edit/flow.py::EpicEdit` @3aacff8bdeb8
 - detail: [epic edit input selection](epic-edit-input-selection.md)
 
 ### intent
@@ -48,7 +48,7 @@ selection](epic-edit-invocation-selection.md).
 - required: false
 - semantics: validated edit binding supplied by a story-edit handoff or constructed from direct parameters
 - verify: json_path(path="$.intent", equals="example intent")
-- code: `workflows/src/workhorse_workflows/author/epic_edit/flow.py::EpicEdit` @4ff1fa77892b
+- code: `workflows/src/workhorse_workflows/author/epic_edit/flow.py::EpicEdit` @3aacff8bdeb8
 - detail: [epic edit input selection](epic-edit-input-selection.md)
 
 ### force
@@ -57,7 +57,7 @@ selection](epic-edit-invocation-selection.md).
 - required: false
 - semantics: permits explicitly requested collateral or frozen-scope removal according to plan validation
 - verify: json_path(path="$.force", equals=false)
-- code: `workflows/src/workhorse_workflows/author/epic_edit/flow.py::EpicEdit` @4ff1fa77892b
+- code: `workflows/src/workhorse_workflows/author/epic_edit/flow.py::EpicEdit` @3aacff8bdeb8
 - detail: [epic edit input selection](epic-edit-input-selection.md)
 
 ### operator_mode
@@ -66,7 +66,7 @@ selection](epic-edit-invocation-selection.md).
 - required: false
 - semantics: operator-routing mode carried by the workflow runtime
 - verify: json_path(path="$.operator_mode", equals="auto")
-- code: `workflows/src/workhorse_workflows/author/epic_edit/flow.py::EpicEdit` @4ff1fa77892b
+- code: `workflows/src/workhorse_workflows/author/epic_edit/flow.py::EpicEdit` @3aacff8bdeb8
 - detail: [epic edit input selection](epic-edit-input-selection.md)
 
 ## Methods
@@ -76,14 +76,14 @@ selection](epic-edit-invocation-selection.md).
 - does: loads author configuration in `epic-edit` mode
 - returns: returns a `RunContext` populated from the loaded configuration
 - verify: json_path(path="$.mode", equals="epic-edit")
-- code: `workflows/src/workhorse_workflows/author/epic_edit/flow.py::EpicEdit.setup` @4ff1fa77892b
+- code: `workflows/src/workhorse_workflows/author/epic_edit/flow.py::EpicEdit.setup` @3aacff8bdeb8
 
 ### labels
 - sig: `labels() -> dict[str, str]`
 - does: labels the run with the explicit epic or the handoff intent's epic
 - returns: returns matching `work_id` and `epic` labels
 - verify: count(subject="epic-edit labeled runs", equals=1)
-- code: `workflows/src/workhorse_workflows/author/epic_edit/flow.py::EpicEdit.labels` @4ff1fa77892b
+- code: `workflows/src/workhorse_workflows/author/epic_edit/flow.py::EpicEdit.labels` @3aacff8bdeb8
 
 ### state_labels
 - sig: `state_labels(params: dict[str, Any]) -> dict[str, str]`
@@ -92,7 +92,7 @@ selection](epic-edit-invocation-selection.md).
 - does: omits `reworks` (and every other budget counter) when the state carries it at the default of zero, so a span cannot be silently bucketed as a first attempt for a budget the flow has not spent
 - returns: returns labels used for state telemetry
 - verify: count(subject="epic-edit state label sets", equals=1)
-- code: `workflows/src/workhorse_workflows/author/epic_edit/flow.py::EpicEdit.state_labels` @4ff1fa77892b
+- code: `workflows/src/workhorse_workflows/author/epic_edit/flow.py::EpicEdit.state_labels` @3aacff8bdeb8
 - tests: `workflows/tests/coder/test_telemetry.py::test_epic_edit_reports_reworks_and_omits_defaulted_absent_counters`
 
 ### blueprint
@@ -109,14 +109,14 @@ selection](epic-edit-invocation-selection.md).
 - does: snapshots the selected epic before planning
 - returns: returns a continuation targeting `plan_edit` with the intent and snapshot
 - verify: count(subject="epic-edit starts", equals=1)
-- code: `workflows/src/workhorse_workflows/author/epic_edit/flow.py::EpicEdit.start` @4ff1fa77892b
+- code: `workflows/src/workhorse_workflows/author/epic_edit/flow.py::EpicEdit.start` @3aacff8bdeb8
 
 ### plan_edit
 - sig: `plan_edit(intent: EditIntent, snapshot: EpicSnapshot) -> Continue`
 - does: asks the planning agent for a complete typed replacement plan without mutating repository files
 - returns: returns a continuation targeting `validate_plan`
 - verify: count(subject="epic-edit replacement plans", equals=1)
-- code: `workflows/src/workhorse_workflows/author/epic_edit/flow.py::EpicEdit.plan_edit` @4ff1fa77892b
+- code: `workflows/src/workhorse_workflows/author/epic_edit/flow.py::EpicEdit.plan_edit` @3aacff8bdeb8
 
 ### validate_plan
 - sig: `validate_plan(intent: EditIntent, snapshot: EpicSnapshot, plan: EpicEditPlan, reworks: int = 0) -> Continue | Await`
@@ -126,24 +126,24 @@ selection](epic-edit-invocation-selection.md).
 - does: forwards a valid plan to semantic review
 - returns: returns a continuation for refinement or review, or `Await`
 - verify: count(subject="epic-edit plan validation outcomes", equals=1)
-- code: `workflows/src/workhorse_workflows/author/epic_edit/flow.py::EpicEdit.validate_plan` @4ff1fa77892b
+- code: `workflows/src/workhorse_workflows/author/epic_edit/flow.py::EpicEdit.validate_plan` @3aacff8bdeb8
 
 ### refine_plan
 - sig: `refine_plan(intent: EditIntent, snapshot: EpicSnapshot, plan: EpicEditPlan, findings: str, reworks: int = 0) -> Continue`
 - does: sends validation findings and the prior plan to a replacement planning turn
 - returns: returns a continuation targeting `validate_plan` with an incremented rework count
 - verify: count(subject="epic-edit plan refinements", equals=1)
-- code: `workflows/src/workhorse_workflows/author/epic_edit/flow.py::EpicEdit.refine_plan` @4ff1fa77892b
+- code: `workflows/src/workhorse_workflows/author/epic_edit/flow.py::EpicEdit.refine_plan` @3aacff8bdeb8
 
 ### review_plan
 - sig: `review_plan(intent: EditIntent, snapshot: EpicSnapshot, plan: EpicEditPlan, reworks: int = 0) -> Continue | Await`
-- does: submits only a statically valid plan to the semantic reviewer
+- does: hands only a statically valid plan to the [PM review](author-pm-review.md) at the `epic-edit-plan` stage
 - does: routes an approved review to mutation
-- does: returns a bounded rework review to plan refinement
-- does: parks an unresolved review at the operator gate
+- does: returns the findings to plan refinement while fewer than three reworks were used
+- does: parks an unresolved review at the operator gate on the run's context file
 - returns: returns a continuation for application or refinement, or `Await`
 - verify: count(subject="epic-edit plan reviews", equals=1)
-- code: `workflows/src/workhorse_workflows/author/epic_edit/flow.py::EpicEdit.review_plan` @4ff1fa77892b
+- code: `workflows/src/workhorse_workflows/author/epic_edit/flow.py::EpicEdit.review_plan` @3aacff8bdeb8
 
 ### apply_plan
 - sig: `apply_plan(intent: EditIntent, snapshot: EpicSnapshot, plan: EpicEditPlan) -> Continue`
@@ -157,7 +157,7 @@ selection](epic-edit-invocation-selection.md).
 - verify: count(subject="epic-edit rewrites after a kept epic", equals=1)
 - returns: returns a continuation targeting `finish` (deleted epic) or `rewrite_epic` (surviving epic)
 - verify: json_path(path="$.next_state", matches="^(finish|rewrite_epic)$")
-- code: `workflows/src/workhorse_workflows/author/epic_edit/flow.py::EpicEdit.apply_plan` @4ff1fa77892b
+- code: `workflows/src/workhorse_workflows/author/epic_edit/flow.py::EpicEdit.apply_plan` @3aacff8bdeb8
 
 ### rewrite_epic
 - sig: `rewrite_epic(intent: EditIntent, snapshot: EpicSnapshot, plan: EpicEditPlan, applied: AppliedEpicEdit, findings: str = "", reworks: int = 0) -> Continue | Await`
@@ -167,7 +167,7 @@ selection](epic-edit-invocation-selection.md).
 - does: retries invalid prose up to three times and then parks at the operator gate
 - returns: returns a continuation targeting affected-story selection, or `Await`
 - verify: count(subject="epic-edit epic rewrites", equals=1)
-- code: `workflows/src/workhorse_workflows/author/epic_edit/flow.py::EpicEdit.rewrite_epic` @4ff1fa77892b
+- code: `workflows/src/workhorse_workflows/author/epic_edit/flow.py::EpicEdit.rewrite_epic` @3aacff8bdeb8
 
 ### next_affected_story
 - sig: `next_affected_story(intent: EditIntent, applied: AppliedEpicEdit, index: int = 0) -> Continue`
@@ -176,7 +176,7 @@ selection](epic-edit-invocation-selection.md).
 - does: continues to `design_mockup` with `intent`, `applied`, `pick`, and `index` when an affected story is selected
 - returns: returns a continuation targeting `check_coverage` (exhausted) or `design_mockup` (selected)
 - verify: count(subject="epic-edit affected-story selections", equals=1)
-- code: `workflows/src/workhorse_workflows/author/epic_edit/flow.py::EpicEdit.next_affected_story` @4ff1fa77892b
+- code: `workflows/src/workhorse_workflows/author/epic_edit/flow.py::EpicEdit.next_affected_story` @3aacff8bdeb8
 
 ### design_mockup
 - sig: `design_mockup(intent: EditIntent, applied: AppliedEpicEdit, pick: StoryChoice, index: int) -> Continue`
@@ -184,48 +184,48 @@ selection](epic-edit-invocation-selection.md).
 - does: continues to `write_story` with `intent`, `applied`, `pick`, `index`, and the produced `mockup`
 - returns: returns a continuation targeting `write_story` with the mockup result
 - verify: count(subject="epic-edit mockup designs", equals=1)
-- code: `workflows/src/workhorse_workflows/author/epic_edit/flow.py::EpicEdit.design_mockup` @4ff1fa77892b
+- code: `workflows/src/workhorse_workflows/author/epic_edit/flow.py::EpicEdit.design_mockup` @3aacff8bdeb8
 
 ### write_story
 - sig: `write_story(intent: EditIntent, applied: AppliedEpicEdit, pick: StoryChoice, index: int, mockup: str = "", reworks: int = 0) -> Continue | Await`
 - does: asks the agent to author the selected story body
-- does: parks a blocked story at its story context
+- does: parks a blocked story at the operator gate on the run's context file
 - returns: returns a continuation targeting story validation or `Await`
 - verify: count(subject="epic-edit story writes", equals=1)
-- code: `workflows/src/workhorse_workflows/author/epic_edit/flow.py::EpicEdit.write_story` @4ff1fa77892b
+- code: `workflows/src/workhorse_workflows/author/epic_edit/flow.py::EpicEdit.write_story` @3aacff8bdeb8
 
 ### check_story
 - sig: `check_story(intent: EditIntent, applied: AppliedEpicEdit, pick: StoryChoice, index: int, mockup: str = "", reworks: int = 0) -> Continue | Await`
-- does: validates story structure and grounding before auditing it
+- does: validates story structure and grounding before the PM reviews it
 - does: records validation attempts and reworks invalid stories up to three times
-- does: parks an unresolved story at its story context
-- returns: returns a continuation targeting audit or rework, or `Await`
+- does: parks an unresolved story at the operator gate on the run's context file
+- returns: returns a continuation targeting review or rework, or `Await`
 - verify: count(subject="epic-edit story validation outcomes", equals=1)
-- code: `workflows/src/workhorse_workflows/author/epic_edit/flow.py::EpicEdit.check_story` @4ff1fa77892b
+- code: `workflows/src/workhorse_workflows/author/epic_edit/flow.py::EpicEdit.check_story` @3aacff8bdeb8
 
-### audit_story
-- sig: `audit_story(intent: EditIntent, applied: AppliedEpicEdit, pick: StoryChoice, index: int, mockup: str = "", reworks: int = 0) -> Continue | Await`
-- does: independently audits the authored story
-- does: reworks failed audits within the bounded budget and parks exhausted failures
-- does: advances to the next affected story after a passing audit
+### review_story
+- sig: `review_story(intent: EditIntent, applied: AppliedEpicEdit, pick: StoryChoice, index: int, mockup: str = "", reworks: int = 0, prior: str = "") -> Continue | Await`
+- does: hands the authored story to the [PM review](author-pm-review.md) at the `story` stage with the previous findings
+- verify: count(subject="epic-edit story reviews", equals=1)
+- does: reworks failed reviews within the bounded budget and parks exhausted failures at the operator gate
+- does: advances to the next affected story after a passing review
 - returns: returns a continuation targeting rework or selection, or `Await`
-- verify: count(subject="epic-edit story audits", equals=1)
-- code: `workflows/src/workhorse_workflows/author/epic_edit/flow.py::EpicEdit.audit_story` @4ff1fa77892b
+- code: `workflows/src/workhorse_workflows/author/epic_edit/flow.py::EpicEdit.review_story` @3aacff8bdeb8
 
 ### rework_story
 - sig: `rework_story(intent: EditIntent, applied: AppliedEpicEdit, pick: StoryChoice, index: int, findings: str, mockup: str = "", reworks: int = 0) -> Continue`
-- does: records the audit findings and asks the story agent for a corrected body
+- does: records the review findings and asks the story agent for a corrected body
 - returns: returns a continuation targeting `check_story` with an incremented rework count
 - verify: count(subject="epic-edit story reworks", equals=1)
-- code: `workflows/src/workhorse_workflows/author/epic_edit/flow.py::EpicEdit.rework_story` @4ff1fa77892b
+- code: `workflows/src/workhorse_workflows/author/epic_edit/flow.py::EpicEdit.rework_story` @3aacff8bdeb8
 
 ### check_coverage
 - sig: `check_coverage(intent: EditIntent, applied: AppliedEpicEdit) -> Continue`
 - does: rejects the resulting epic when deterministic coverage fails
-- does: rejects the resulting epic when semantic coverage review is not `ok`
+- does: rejects the resulting epic when the PM review of the story split does not pass
 - returns: returns a continuation targeting `finish` after both coverage gates pass
 - verify: count(subject="epic-edit coverage gates", equals=1)
-- code: `workflows/src/workhorse_workflows/author/epic_edit/flow.py::EpicEdit.check_coverage` @4ff1fa77892b
+- code: `workflows/src/workhorse_workflows/author/epic_edit/flow.py::EpicEdit.check_coverage` @3aacff8bdeb8
 
 ### finish
 - sig: `finish(intent: EditIntent, applied: AppliedEpicEdit) -> Done`
@@ -234,7 +234,7 @@ selection](epic-edit-invocation-selection.md).
 - does: commits the `epic-edit` change after all required checks pass
 - returns: returns `Done` with the applied edit
 - verify: count(subject="completed epic edits", equals=1)
-- code: `workflows/src/workhorse_workflows/author/epic_edit/flow.py::EpicEdit.finish` @4ff1fa77892b
+- code: `workflows/src/workhorse_workflows/author/epic_edit/flow.py::EpicEdit.finish` @3aacff8bdeb8
 
 ## Nodes
 

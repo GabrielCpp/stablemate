@@ -21,7 +21,7 @@ split or addressed rework returns `complete`; an unresolved product or scope cho
 perform staging, commit, push, or branch operations.
 
 - file: `workflows/src/workhorse_workflows/author/story_split/prompts/split-stories.md`
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::StorySplit` @69af1329fede
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::StorySplit` @0c2f7d227faf
 - detail: [author story-split subflow](../concepts/story-split-subflow.md)
 - tests: `workflows/tests/author/story_split/test_flow.py::test_accepts_one_epic_graph_without_selecting_authoring_or_git`
 

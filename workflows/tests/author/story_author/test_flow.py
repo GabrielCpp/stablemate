@@ -8,12 +8,14 @@ from typing import Any
 
 import pytest
 from _fakes import StubRunner
+from _pm import verdict
 from workhorse.artifacts import ArtifactWriter
 from workhorse.config_run import RunConfig
 from workhorse.pyflow import Registry, WorkflowFailed
 from workhorse.pyflow.driver import drive
 from workhorse.pyflow.engine import RunEnv
 from workhorse_workflows import author
+from workhorse_workflows.author.pm.nodes import blueprint as pm_blueprint
 from workhorse_workflows.author.shared.nodes import blueprint as shared_blueprint
 from workhorse_workflows.author.shared.schemas import Defects, Feedback, MockupGate
 from workhorse_workflows.author.story_author import StoryAuthor
@@ -57,7 +59,7 @@ class _Agent:
         replies = {
             "design-mockup": self.mockup,
             "write-story": {"status": "written"},
-            "audit-story": {"status": "passed", "findings": []},
+            "review-inline": verdict("story"),
         }
         return f"scripted {stem}", replies[stem]
 
@@ -119,7 +121,7 @@ def _drive_story(
         events.append("feedback")
         return Feedback()
 
-    registry = Registry("story-author-test").add_blueprints(shared_blueprint, blueprint)
+    registry = Registry("story-author-test").add_blueprints(shared_blueprint, blueprint, pm_blueprint)
     nodes = registry.override(
         prepare_story=prepare,
         check_mockup_needed=mockup,
@@ -156,7 +158,7 @@ def test_flow_prepares_explicit_story_before_authoring_without_git_side_effects(
         "write-story",
         "validate",
         "ground",
-        "audit-story",
+        "review-inline",
         "feedback",
     ]
     assert agent.args["write-story"]["story_slug"] == "sign-in"

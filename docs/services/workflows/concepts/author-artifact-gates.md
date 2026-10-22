@@ -126,6 +126,6 @@ node in a fixture repository and captures the created commit subject.
 - verify: persists(subject="author-owned planning documents")
 - returns: returns `Committed` with `committed` indicating whether the scoped commit was created
 - verify: count(subject="author commit results", equals=1)
-- code: `workflows/src/workhorse_workflows/author/shared/nodes/commit.py::commit_author` @9a9574c908ce
+- code: `workflows/src/workhorse_workflows/author/shared/nodes/commit.py::commit_author` @d5269aa9b09f
 - tests: `workflows/tests/author/finalize/test_flow.py::test_finalizes_with_one_commit_on_the_current_branch`
 - tests: `workflows/tests/author/finalize/test_flow.py::test_terminal_validation_commits_incomplete_then_fails`

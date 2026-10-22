@@ -26,7 +26,6 @@ stories have still shipped with whole defects unnoticed — it just rots and mis
 - Epic: `{{ workhorse_var('epic') }}`
 - Story slug: `{{ workhorse_var('story_slug') }}`
 - Story path: `{{ workhorse_var('story_path') }}`
-- Operator answers: `{{ workhorse_var('story_dir') }}/context.md` when present.
 {%- if workhorse_var('mockup_path') %}
 - Design mockup (new screen): `{{ workhorse_var('mockup_path') }}` — a generated visual reference in the
   app's style, usually story-local as `./mockup.html`; link it from Context as the source of truth the
@@ -42,7 +41,7 @@ stories have still shipped with whole defects unnoticed — it just rots and mis
 
 {%- if workhorse_var('note') %}
 
-## Operator answer
+## Answer to your question
 
 {{ workhorse_var('note') }}
 {%- endif %}
@@ -253,3 +252,4 @@ scope, contradicts an existing source, or genuinely needs the operator, return
   "notes": "one line: the goal this story sets, or the blocking question."
 }
 ```
+{% include "pm/prompts/ledger.md" %}

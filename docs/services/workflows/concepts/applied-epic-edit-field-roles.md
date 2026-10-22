@@ -15,5 +15,5 @@ The schema declares each field directly with an independent default and does not
 legacy, delegated, or preferred. Consumers select the field that answers their specific outcome
 question; no field ranks above or replaces another.
 
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/edit.py::AppliedEpicEdit` @952fb9c4cfcb
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/edit.py::AppliedEpicEdit` @7b95d62cfa2c
 - rule: select the field that answers the outcome question; the six fields are complementary and no ranking exists

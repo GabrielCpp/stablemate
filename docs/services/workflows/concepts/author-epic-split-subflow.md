@@ -11,41 +11,40 @@ boundary: it neither authors epic prose nor creates seeds or stories. The [autho
 composition root](author-workflow-composition-root.md) registers this machine alongside the other
 author stages.
 
-The subflow snapshots the selected milestone and existing graph, delegates skeleton creation and
-review to agent turns, validates that only the selected milestone and new skeletons changed, and
-parks blocked or exhausted work at the operator context. Its deterministic nodes are registered
-on the package-local blueprint. The `operator_mode` field defaults to `auto`; automatic resolution
-is limited to two turns, and review rework is limited to three turns. Human operator mode bypasses
-automatic resolution. A successful split does not commit, author prose, or create seeds or stories.
+The subflow snapshots the selected milestone and existing graph and delegates skeleton creation to
+an agent turn. A deterministic lint then checks that only the selected milestone and new skeletons
+changed. The [product manager review](author-pm-review.md) judges the result from four angles. A
+failed lint or review sends its findings back to a rework turn, at most three times. A writer that
+blocks puts its question to the [product manager](author-pm-gap-answer.md), at most twice. Past
+either cap the subflow returns a blocked result and the Author flow asks the operator. A passing
+review writes a [PM receipt](../formats/pm-receipt.md) beside the milestone. A successful split
+does not commit, author prose, or create seeds or stories.
 
-- code: `workflows/src/workhorse_workflows/author/epic_split/flow.py::EpicSplit` @3bce606b747d
-- code: `workflows/src/workhorse_workflows/author/epic_split/flow.py::EpicSplit.start` @3bce606b747d
-- code: `workflows/src/workhorse_workflows/author/epic_split/flow.py::EpicSplit.review` @3bce606b747d
-- code: `workflows/src/workhorse_workflows/author/epic_split/flow.py::EpicSplit.rework` @3bce606b747d
-- code: `workflows/src/workhorse_workflows/author/epic_split/flow.py::EpicSplit.resolve` @3bce606b747d
-- code: `workflows/src/workhorse_workflows/author/epic_split/nodes/_blueprint.py::blueprint` @3578fa081522
+- code: `workflows/src/workhorse_workflows/author/epic_split/flow.py::EpicSplit` @978c83a852f4 @0
+- code: `workflows/src/workhorse_workflows/author/epic_split/flow.py::EpicSplit.start` @978c83a852f4 @0
+- code: `workflows/src/workhorse_workflows/author/epic_split/flow.py::EpicSplit.check` @978c83a852f4 @0
+- code: `workflows/src/workhorse_workflows/author/epic_split/flow.py::EpicSplit.review` @978c83a852f4 @0
+- code: `workflows/src/workhorse_workflows/author/epic_split/flow.py::EpicSplit.rework` @978c83a852f4 @0
+- code: `workflows/src/workhorse_workflows/author/epic_split/flow.py::EpicSplit.ask_pm` @978c83a852f4 @0
+- code: `workflows/src/workhorse_workflows/author/epic_split/nodes/_blueprint.py::blueprint` @3578fa081522 @0
 - tests: `workflows/tests/author/epic_split/test_flow.py::test_creates_only_ordered_epic_skeletons_after_review_rework`
+- tests: `workflows/tests/author/epic_split/test_flow.py::test_a_blocked_writer_is_answered_by_the_pm_and_retried`
 - detail: [epic split context](../formats/epic-split-context.md)
 - detail: [epic split result](../formats/epic-split-result.md)
-- detail: [epic split review](../formats/epic-split-review.md)
 - detail: [epic split validation](../formats/epic-split-validation.md)
-- detail: [operator resolution](../formats/operator-resolution.md)
 - detail: [author split-epics prompt](../formats/author-split-epics-prompt.md)
-- detail: [author review-epic-split prompt](../formats/author-review-epic-split-prompt.md)
 - detail: [author rework-epic-split prompt](../formats/author-rework-epic-split-prompt.md)
-- detail: [author resolve-epic-split prompt](../formats/author-resolve-epic-split-prompt.md)
-- detail: [epic split resolve documentation scope](epic-split-resolve-documentation-scope.md)
+- detail: [PM review angles](author-pm-angles.md)
 
 ## Fields
 
-### operator_mode
-- type: literal `auto` or `human`
-- default: `auto` — unresolved work is automatically diagnosed before the operator gate
-- required: true
-- semantics: `human` sends exhausted or blocked review directly to the operator context
-- semantics: `auto` permits up to two resolution turns before the operator context
-- verify: json_path(path="$.operator_mode", equals="auto")
-- code: `workflows/src/workhorse_workflows/author/epic_split/flow.py::EpicSplit` @3bce606b747d
+### note
+- type: string
+- default: empty
+- required: false
+- semantics: the operator's or the PM's answer to an earlier blocked split, given to the split turn as `note`
+- verify: json_path(path="$.note", equals="")
+- code: `workflows/src/workhorse_workflows/author/epic_split/flow.py::EpicSplit` @978c83a852f4 @0
 
 ## Methods
 
@@ -54,90 +53,87 @@ automatic resolution. A successful split does not commit, author prose, or creat
 - does: provides the registration target for deterministic epic-split nodes
 - returns: returns a blueprint named `author-epic-split`
 - verify: json_path(path="$.name", equals="author-epic-split")
-- code: `workflows/src/workhorse_workflows/author/epic_split/nodes/_blueprint.py::blueprint` @3578fa081522
+- code: `workflows/src/workhorse_workflows/author/epic_split/nodes/_blueprint.py::blueprint` @3578fa081522 @0
 
 ### setup
 - sig: `setup() -> EpicSplitContext`
 - does: prepares the approved milestone and snapshots the existing planning graph
 - returns: returns the [epic split context](../formats/epic-split-context.md) used by later states
 - verify: count(subject="prepared epic-split contexts", equals=1)
-- code: `workflows/src/workhorse_workflows/author/epic_split/flow.py::EpicSplit.setup` @3bce606b747d
+- code: `workflows/src/workhorse_workflows/author/epic_split/flow.py::EpicSplit.setup` @978c83a852f4 @0
 
 ### labels
 - sig: `labels() -> dict[str, str]`
 - does: labels the run with the milestone's folder name as `work_id`
 - returns: returns a `work_id` derived from the milestone's folder name
 - verify: json_path(path="$.work_id", equals="CASE-1234")
-- code: `workflows/src/workhorse_workflows/author/epic_split/flow.py::EpicSplit.labels` @3bce606b747d
+- code: `workflows/src/workhorse_workflows/author/epic_split/flow.py::EpicSplit.labels` @978c83a852f4 @0
 
 ### state_labels
 - sig: `state_labels(params: dict[str, Any]) -> dict[str, str]`
 - does: adds epic-split budget labels to the run labels
-- returns: returns labels containing `reworks` and `resolves` counters
+- returns: returns labels containing `reworks` and `answers` counters
 - verify: json_path(path="$.reworks", equals="example reworks")
-- code: `workflows/src/workhorse_workflows/author/epic_split/flow.py::EpicSplit.state_labels` @3bce606b747d
+- code: `workflows/src/workhorse_workflows/author/epic_split/flow.py::EpicSplit.state_labels` @978c83a852f4 @0
 
 ### start
-- sig: `start(resolves: int = 0) -> Continue`
+- sig: `start(note: str = "", answers: int = 0) -> Continue | Done`
 - does: asks a high-power agent to create the milestone's ordered epic skeletons
 - verify: count(subject="epic-split planning turns", equals=1)
-- does: runs the split agent from the repository root
-- verify: count(subject="epic-split agent runs from the repository root", equals=1)
-- does: passes the milestone, epic-directory, and empty review-notes arguments
+- does: runs the split agent from the repository root with the milestone, the epics directory, the note and the PM ledger
 - verify: count(subject="epic-split agent arguments", equals=1)
-- returns: returns a continuation targeting `review` with the split result
-- verify: json_path(path="$.next_state", equals="review")
-- code: `workflows/src/workhorse_workflows/author/epic_split/flow.py::EpicSplit.start` @3bce606b747d
+- does: when the writer reports `blocked`, puts its notes to the PM as a question
+- verify: count(subject="epic-split questions put to the PM", equals=1)
+- returns: returns a continuation targeting `check` with the split result
+- verify: json_path(path="$.next_state", equals="check")
+- code: `workflows/src/workhorse_workflows/author/epic_split/flow.py::EpicSplit.start` @978c83a852f4 @0
+
+### check
+- sig: `check(reworks: int = 0, answers: int = 0, prior: str = "") -> Continue | Done`
+- does: validates the split result deterministically before any review
+- verify: json_path(path="$.ok", equals=True)
+- does: when validation fails, sends its errors to `rework` as the notes
+- verify: json_path(path="$.notes", equals="Applied the change and ran the gates.")
+- returns: returns a continuation targeting `review` when validation passes
+- code: `workflows/src/workhorse_workflows/author/epic_split/flow.py::EpicSplit.check` @978c83a852f4 @0
 
 ### review
-- sig: `review(reworks: int = 0, resolves: int = 0) -> Continue | Await | Done`
-- does: asks a high-power independent agent to review the ordered epic skeletons
+- sig: `review(reworks: int = 0, answers: int = 0, prior: str = "") -> Continue | Done`
+- does: hands the milestone to the [PM review](author-pm-review.md) at the `epic-split` stage
 - verify: count(subject="epic-split review turns", equals=1)
-- does: when the review status is `approved`, validates the split result before completing
-- verify: json_path(path="$.ok", equals=True)
-- does: when an approved review fails deterministic validation, replaces the review notes with the validation errors
-- verify: json_path(path="$.notes", equals="Applied the change and ran the gates.")
-- does: when the review status is not `blocked` and fewer than three reworks have occurred, continues to `rework`
+- does: when every angle passes, validates once more and returns an accepted result with the ordered epics
+- verify: json_path(path="$.status", equals="accepted")
+- does: when an angle fails, sends the findings to `rework` and keeps them as the prior findings for the next review
 - verify: count(subject="epic-split rework continuations", equals=1)
-- does: when the review is blocked, or three reworks are exhausted, while operator mode is `auto` and fewer than two resolutions have occurred, continues to `resolve`
-- verify: count(subject="epic-split resolution turns", equals=1)
-- does: when operator mode is `human` or two automatic resolutions have occurred, continues to the operator gate
-- verify: json_path(path="$.await", matches="blocked")
-- does: when a non-blocked review has exhausted three reworks and automatic resolution is unavailable, continues to the operator gate
-- returns: returns `Done` only after validation succeeds, otherwise a rework or await continuation
-- code: `workflows/src/workhorse_workflows/author/epic_split/flow.py::EpicSplit.review` @3bce606b747d
+- returns: returns `Done` only after validation and the review pass, otherwise a rework continuation or a blocked result
+- code: `workflows/src/workhorse_workflows/author/epic_split/flow.py::EpicSplit.review` @978c83a852f4 @0
 
 ### rework
-- sig: `rework(notes: str, reworks: int = 0, resolves: int = 0) -> Continue`
-- does: sends review notes to a high-power agent turn that corrects the epic skeletons
-- does: runs the rework agent from the repository root with the current milestone context
-- does: increments the rework count before returning to review
-- returns: returns a continuation targeting `review` with the incremented rework count
+- sig: `rework(notes: str, note: str = "", reworks: int = 0, answers: int = 0, prior: str = "") -> Continue | Done`
+- does: sends the findings to a high-power agent turn that corrects the epic skeletons
+- does: runs the rework agent from the repository root with the findings, the note and the PM ledger
+- does: increments the rework count before returning to `check`
+- does: when three reworks have run, returns a blocked result carrying the last findings
+- verify: json_path(path="$.status", equals="blocked")
+- returns: returns a continuation targeting `check` with the incremented rework count
 - verify: count(subject="epic-split rework turns", equals=1)
-- code: `workflows/src/workhorse_workflows/author/epic_split/flow.py::EpicSplit.rework` @3bce606b747d
+- code: `workflows/src/workhorse_workflows/author/epic_split/flow.py::EpicSplit.rework` @978c83a852f4 @0
 
-### resolve
-- sig: `resolve(notes: str, resolves: int = 0) -> Await`
-- does: asks an unbounded-timeout resolver agent to diagnose an unresolved split decision
-- does: supplies the operator context path and block notes to the resolver
-- does: parks the flow at the operator context after the resolver returns
-- verify: json_path(path="$.await", matches="blocked")
-- does: increments the resolution count on the continuation that restarts splitting
-- returns: returns an operator-awaiting continuation with the incremented resolution count
-- code: `workflows/src/workhorse_workflows/author/epic_split/flow.py::EpicSplit.resolve` @3bce606b747d
-
-### _context_path
-- sig: `_context_path() -> Path`
-- does: resolves the author operator-context path beneath the workflow repository root
-- verify: json_path(path="$.context_path", equals="docs/stories/acme-story/story.md")
-- code: `workflows/src/workhorse_workflows/author/epic_split/flow.py::EpicSplit._context_path` @3bce606b747d
+### ask_pm
+- sig: `ask_pm(question: str, phase: str, notes: str = "", reworks: int = 0, answers: int = 0, prior: str = "") -> Continue`
+- does: hands the writer's question to the [gap answer](author-pm-gap-answer.md) flow with the asker `epic-split`
+- verify: count(subject="epic-split gap answers", equals=1)
+- does: retries the writer that asked, with the answer as its `note`
+- does: increments the answer count; at two answers a further question returns a blocked result
+- returns: returns a continuation targeting `start` or `rework` according to the phase that asked
+- code: `workflows/src/workhorse_workflows/author/epic_split/flow.py::EpicSplit.ask_pm` @978c83a852f4 @0
 
 ### _split_args
-- sig: `_split_args(review_notes: str = "") -> dict[str, str]`
+- sig: `_split_args(review_notes: str = "", note: str = "") -> dict[str, str]`
 - does: builds the agent arguments from the prepared milestone and epic-directory paths
-- does: includes the supplied review notes and defaults them to an empty string
+- does: includes the review notes, the combined note and the PM ledger path
 - verify: json_path(path="$.review_notes", equals="")
-- code: `workflows/src/workhorse_workflows/author/epic_split/flow.py::EpicSplit._split_args` @3bce606b747d
+- code: `workflows/src/workhorse_workflows/author/epic_split/flow.py::EpicSplit._split_args` @978c83a852f4 @0
 
 ## Nodes
 
@@ -151,7 +147,7 @@ automatic resolution. A successful split does not commit, author prose, or creat
 - verify: created(subject="an epic-split graph snapshot")
 - consistency: epic-split-context — returns the [epic split context](../formats/epic-split-context.md) with the selected milestone path to bound later mutations
 - verify: json_path(path="$.milestone_path", equals="docs/milestones/account-access/milestone.md")
-- code: `workflows/src/workhorse_workflows/author/epic_split/nodes/epics.py::prepare_epic_split` @868f7136431c
+- code: `workflows/src/workhorse_workflows/author/epic_split/nodes/epics.py::prepare_epic_split` @f98938ce7adf
 
 ### validate_epic_split
 - sig: `validate_epic_split(logger: logging.Logger, context: EpicSplitContext) -> EpicSplitValidation`
@@ -172,4 +168,4 @@ automatic resolution. A successful split does not commit, author prose, or creat
 - does: rejects prose, seeds, or stories inside a newly created epic skeleton
 - verify: absent(subject="authored content inside new epic skeletons")
 - returns: returns validation status, milestone path, ordered epics, and newline-separated errors
-- code: `workflows/src/workhorse_workflows/author/epic_split/nodes/epics.py::validate_epic_split` @868f7136431c
+- code: `workflows/src/workhorse_workflows/author/epic_split/nodes/epics.py::validate_epic_split` @f98938ce7adf

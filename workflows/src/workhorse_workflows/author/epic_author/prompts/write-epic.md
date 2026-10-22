@@ -18,13 +18,13 @@ canonical `## Seeds` section. Do not write stories yet.
 - Source milestone: `{{ workhorse_var('milestone') }}`
 {%- if workhorse_var('note') %}
 
-## Operator answer
+## Answer to your question
 
 {{ workhorse_var('note') }}
 {%- endif %}
 
 Read the milestone, its `grills/` records, this epic and its neighboring epics in milestone order, installed planning and
-artifact guidance, `{{ epic_dir }}/context.md` when present, and the read-only OKF book under
+artifact guidance, and the read-only OKF book under
 `{{ workhorse_var('services_dir') }}` when configured. Existing docs and OKF are the discovery
 boundary; do not inspect the running app or source code to invent surfaces, and never write the
 feature book.
@@ -46,13 +46,15 @@ it covers, so a seed with no `services:` leaves its story without any. Every epi
 obligation must map to at least one seed, and every seed id must be stable for story coverage.
 
 If the existing docs cannot establish a required fact, record the uncertainty and return `blocked`
-when an owner decision is required. On re-run, refine existing seeds instead of discarding them.
+when an owner decision is required. The product manager answers it, or the operator does, and you are
+run again with the answer. On re-run, refine existing seeds instead of discarding them.
+{% include "pm/prompts/ledger.md" %}
 
 ## Final Response
 
 ```json
 {
   "status": "complete" | "blocked",
-  "notes": "Items recorded, or the blocking question for the operator."
+  "notes": "Items recorded, or the blocking question."
 }
 ```

@@ -1,0 +1,4 @@
+Judge whether the story's acceptance criteria are observable, verifiable and journey-complete for the behavior it changes.
+
+- Observable and verifiable: each acceptance criterion is something the journey actor can see or do once the coder has built the story. A technical enabler may instead be verified by an operator at the running system boundary, but it must name the epic journey step it unlocks. A DOM selector, a file's presence, framework setup, an implementation detail or a vague claim ("works correctly", "looks right", "is performant") fails.
+- Journey-complete: the journey segment that the story's covered seeds introduce or change is complete. Existing guards, chrome, states and flows outside those covered seeds are inherited behavior, not missing scope. A cited screen or flow grounds the context. It does not import every state or interaction on that surface into this story.

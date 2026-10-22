@@ -13,6 +13,9 @@ from workhorse_workflows.author.shared import paths
 from workhorse_workflows.author.shared.paths import survey_repo_root
 from workhorse_workflows.author.shared.schemas.main import Config
 
+GRILLS_DIR = "grills"
+PM_LEDGER_FILE = "pm.md"
+
 
 def _template(root: Path) -> dict:
     """`agents.yml` as a dict, or an empty one — an unreadable config is not a failure."""
@@ -43,14 +46,17 @@ def approved_milestone_path(root: Path) -> str:
     return milestone.path.resolve().relative_to(root.resolve()).as_posix()
 
 
-def milestone_mockups_dir(root: Path) -> str:
-    """The absolute `mockups/` folder of the approved milestone, or nothing when none is."""
+def pm_ledger_path(folder: Path) -> str:
+    """The absolute `grills/pm.md` the PM keeps beside the milestone at *folder*."""
+    return str(folder / GRILLS_DIR / PM_LEDGER_FILE)
+
+
+def approved_milestone_folder(root: Path) -> Path | None:
+    """The absolute folder of the approved milestone, or nothing when none is."""
     try:
-        milestone = Ostler(root).approved_milestone()
+        return Ostler(root).approved_milestone().path.parent.resolve()
     except MilestoneSelectionError:
-        return ""
-    folder = milestone.path.parent / MOCKUPS_DIR
-    return str(folder.resolve())
+        return None
 
 
 @blueprint.node
@@ -74,6 +80,7 @@ def load_config(
             f"workflow."
         )
 
+    folder = approved_milestone_folder(root)
     data = _template(root)
     services_dir = paths.services_dir(root)
 
@@ -90,7 +97,9 @@ def load_config(
         repo_root=str(root),
         backlog_path=backlog,
         milestone_path=milestone,
-        milestone_mockups_dir=milestone_mockups_dir(root),
+        milestone_mockups_dir=str(folder / MOCKUPS_DIR) if folder is not None else "",
+        milestone_dir=str(folder) if folder is not None else "",
+        pm_ledger=pm_ledger_path(folder) if folder is not None else "",
         epics_dir=epics_dir,
         services_dir=str(services_dir),
         layers=layers,

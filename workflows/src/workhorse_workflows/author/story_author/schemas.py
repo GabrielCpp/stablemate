@@ -17,7 +17,7 @@ class StoryTarget(AuthorResult):
 
 
 class StoryAuthorDone(AuthorResult):
-    """A directly invoked story-author run completed all authoring gates."""
+    """A directly invoked story-author run passed all its gates, or stays blocked with a question."""
 
     status: str = "authored"
     epic: str = ""
@@ -25,13 +25,8 @@ class StoryAuthorDone(AuthorResult):
     story_path: str = ""
     mockup: str = ""
     notes: str = ""
+    reworks: int = 0
+    answers: int = 0
 
 
-class AuditReceipt(AuthorResult):
-    """Durable proof that the current story bytes passed the independent audit."""
-
-    story_digest: str = ""
-    path: str = ""
-
-
-__all__ = ["AuditReceipt", "StoryAuthorDone", "StoryTarget"]
+__all__ = ["StoryAuthorDone", "StoryTarget"]

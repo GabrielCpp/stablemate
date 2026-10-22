@@ -21,7 +21,7 @@ stage does that next.
 - Coverage-stage rework notes to address (empty on a first split): `{{ workhorse_var('rework_notes') }}`
 {%- if workhorse_var('note') %}
 
-## Operator answer
+## Answer to your question
 
 {{ workhorse_var('note') }}
 {%- endif %}
@@ -112,26 +112,25 @@ seed the coverage gate flagged) — keep stories that already have written bodie
 {%- if workhorse_var('rework_notes') %}
 ## Rework notes — binding when non-empty
 
-The rework notes above are the coverage stage's verdict on the split you produced last pass:
-either the adequacy reviewer's gaps or the deterministic validator's errors. If they are empty,
-this is a first split and this section does not apply.
+The rework notes above are the verdict on the split you produced last pass: either the product
+manager's review findings or the deterministic validator's errors. If they are empty, this is a
+first split and this section does not apply.
 
 When they are non-empty you are **not** being asked to re-derive the split from scratch — you are
 being asked to act on that verdict. It is the only reason this node is running again, and nothing
 else about your inputs has changed since the last pass, so *"re-checked, seeds all covered,
 `doctor` clean, no changes made"* cannot be the answer. Your own checks passing is exactly the
-state that produced the notes; they are a judgment about granularity, ownership, and ordering that
-those checks do not make.
+state that produced the notes.
 
 Take one of two positions:
 
 - **Act on them** — make the splits, merges, `--covers` corrections and `--depends` edges they
   name, then return `complete` describing what you changed.
-- **Refuse them** — if you judge the change wrong (the reviewer misread a seed, the split it wants
+- **Refuse them** — if you judge a finding wrong (the reviewer misread a seed, the split it wants
   would produce a story with no concrete deliverable, the dependency it wants is not a real
-  prerequisite), return `standoff` with your reasoning. That escalates the disagreement to the
-  operator, who sees both positions and settles it. Refusing is a legitimate answer; silently
-  declining by returning `complete` unchanged is not — it just burns another lap.
+  prerequisite), return `standoff` with your reasoning. The product manager rules on it, or the
+  operator does, and you are run again with the answer. Silently declining by returning
+  `complete` unchanged is not an answer.
 {%- endif %}
 
 ## Final response (REQUIRED, exact shape)
@@ -145,5 +144,6 @@ Take one of two positions:
 
 - `complete` — the split is recorded, and any rework notes you were given are addressed.
 - `standoff` — you were given rework notes and judge that no change is warranted; `notes` carries
-  the rebuttal the operator will rule on. Only valid when the rework notes are non-empty.
+  the rebuttal the product manager will rule on. Only valid when the rework notes are non-empty.
 - `blocked` — you need a product decision before you can split at all; `notes` is the question.
+{% include "pm/prompts/ledger.md" %}

@@ -6,7 +6,7 @@ title: workhorse-author
 # workhorse-author
 
 - binary: `workhorse-author`
-- code: `workflows/src/workhorse_workflows/author/workflow.py::main` @de28cf5c9d77
+- code: `workflows/src/workhorse_workflows/author/workflow.py::main` @1a18dc6ba866
 
 Runs the author registry described by the [author workflow composition root](concepts/author-workflow-composition-root.md). `run` selects its default Author flow or one of the registered authoring flows; Workhorse owns parsing and execution mechanics.
 
@@ -31,7 +31,7 @@ The [workhorse-author driver runbook](ops/workhorse-author.md) exercises this CL
 - fixture: none, because the command reads only the installed package
 - run: invoke(argv=["run", "--dry-run"])
 - verify: exit_status(code=0)
-- code: `workflows/src/workhorse_workflows/author/workflow.py::main` @de28cf5c9d77
+- code: `workflows/src/workhorse_workflows/author/workflow.py::main` @1a18dc6ba866
 - detail: [author surveyor flow](flows/author-surveyor.md)
 - detail: [author parity surveyor flow](flows/author-parity-surveyor.md)
 - detail: [author epic edit flow](flows/author-epic-edit.md)
@@ -47,7 +47,7 @@ The [workhorse-author driver runbook](ops/workhorse-author.md) exercises this CL
 - fixture: none, because the command reads only the installed package
 - run: invoke(argv=["dot"])
 - verify: exit_status(code=0)
-- code: `workflows/src/workhorse_workflows/author/workflow.py::main` @de28cf5c9d77
+- code: `workflows/src/workhorse_workflows/author/workflow.py::main` @1a18dc6ba866
 - detail: [workhorse-author command selection](concepts/workhorse-author-command-selection.md)
 
 ### version
@@ -56,7 +56,7 @@ The [workhorse-author driver runbook](ops/workhorse-author.md) exercises this CL
 - fixture: none, because the command reads only the installed package
 - run: invoke(argv=["version"])
 - verify: exit_status(code=0)
-- code: `workflows/src/workhorse_workflows/author/workflow.py::main` @de28cf5c9d77
+- code: `workflows/src/workhorse_workflows/author/workflow.py::main` @1a18dc6ba866
 - detail: [workhorse-author command selection](concepts/workhorse-author-command-selection.md)
 
 ## Invocations
@@ -70,7 +70,7 @@ The [workhorse-author driver runbook](ops/workhorse-author.md) exercises this CL
 - does: files each kind of work from the current artifacts, drains it, and walks the run to its close
 - verify: exit_status(code=0)
 - verify: stdout(matches="dry-run ok")
-- code: `workflows/src/workhorse_workflows/author/main/nodes/fill.py::fill_work` @99fa7ca0ba94
+- code: `workflows/src/workhorse_workflows/author/main/nodes/fill.py::fill_work` @0a6247ab8773
 - detail: [artifact-derived author stage selection](concepts/artifact-derived-author-stage-selection.md)
 - tests: `workflows/tests/author/test_fill.py::test_stories_follow_dag_order_inside_milestone_epic_order`
 - tests: `workflows/tests/author/test_workflow.py::test_a_story_nobody_can_fix_is_parked_and_the_epic_carries_on`

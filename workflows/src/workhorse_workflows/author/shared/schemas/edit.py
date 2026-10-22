@@ -114,12 +114,6 @@ class AppliedEpicEdit(AuthorResult):
     removed_stories: list[str] = []
 
 
-@dry_run(status="approved")
-class EpicEditReview(AuthorResult):
-    status: Literal["approved", "needs_rework", "blocked"] = "needs_rework"
-    notes: str = ""
-
-
 @dry_run(status="complete")
 class EpicRewriteResult(AuthorResult):
     status: Literal["complete", "blocked"] = "blocked"
@@ -130,7 +124,6 @@ __all__ = [
     "AppliedEpicEdit",
     "EditIntent",
     "EpicEditPlan",
-    "EpicEditReview",
     "EpicRewriteResult",
     "EpicSnapshot",
     "MilestoneSnapshot",

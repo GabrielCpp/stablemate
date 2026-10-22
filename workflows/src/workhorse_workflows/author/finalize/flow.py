@@ -18,7 +18,6 @@ from workhorse_workflows.author.shared.nodes import (
 from workhorse_workflows.author.shared import paths
 from workhorse_workflows.author.shared.schemas import OperatorResolution, RunContext
 
-MAX_RECONCILE_RESOLVES = 2
 MAX_INTEGRITY_RESOLVES = 2
 UNBOUNDED = float("inf")
 
@@ -68,29 +67,11 @@ class Finalize(Workflow):
             raise WorkflowFailed("finalize operator_mode must be 'auto' or 'human'")
         return Continue(None, self.reconcile)
 
-    def reconcile(self, resolves: int = 0) -> Continue | Await:
+    def reconcile(self) -> Continue | Await:
         report = self.call(verify_reconcile)
         if report.holds or report.skipped:
             return Continue(report, self.integrity)
-        if self.operator_mode == "human" or resolves >= MAX_RECONCILE_RESOLVES:
-            return Await(self._context_path(), report.errors, self.integrity)
-        return Continue(report, self.resolve_reconcile, notes=report.errors, resolves=resolves)
-
-    def resolve_reconcile(self, notes: str, resolves: int = 0) -> Await:
-        self.agent(
-            "shared/prompts/resolve-operator.md",
-            returns=OperatorResolution,
-            power="high",
-            timeout=UNBOUNDED,
-            cwd=self.ctx.repo_root,
-            args={
-                "context_path": self._context(),
-                "epic_dir": self.ctx.epics_dir,
-                "block_stage": "reconciliation",
-                "block_notes": notes,
-            },
-        )
-        return Await(self._context_path(), notes, self.integrity)
+        return Await(self._context_path(), report.errors, self.integrity)
 
     def integrity(self, resolves: int = 0) -> Continue | Await:
         report = self.call(verify_integrity, "")
@@ -138,4 +119,4 @@ class Finalize(Workflow):
         return Done(self.call(commit_author, "epic", "", "", self.ctx.milestone_path))
 
 
-__all__ = ["Finalize", "MAX_INTEGRITY_RESOLVES", "MAX_RECONCILE_RESOLVES"]
+__all__ = ["Finalize", "MAX_INTEGRITY_RESOLVES"]

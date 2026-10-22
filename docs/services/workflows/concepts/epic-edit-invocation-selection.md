@@ -14,6 +14,6 @@ workflow failure instead of silently combining inputs from both contexts.
 `operator_mode` accompanies either context only as workflow-runtime routing metadata. It does not
 select an epic or describe the requested edit.
 
-- code: `workflows/src/workhorse_workflows/author/epic_edit/flow.py::EpicEdit` @4ff1fa77892b
+- code: `workflows/src/workhorse_workflows/author/epic_edit/flow.py::EpicEdit` @3aacff8bdeb8
 - rule: use a handoff `intent` when `intent.epic` is set; otherwise provide both direct `epic` and `change` inputs, with `force` only for permitted removals
 - detail: [epic edit concept selection](epic-edit-concept-selection.md)

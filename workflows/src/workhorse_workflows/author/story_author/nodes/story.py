@@ -2,15 +2,13 @@
 from __future__ import annotations
 
 import logging
-import hashlib
-import json
 from pathlib import Path
 
 from ostler import Ostler
 from workhorse.pyflow import WorkflowFailed
 from workhorse_workflows.author.shared.paths import survey_repo_root
 from workhorse_workflows.author.story_author.nodes._blueprint import blueprint
-from workhorse_workflows.author.story_author.schemas import AuditReceipt, StoryTarget
+from workhorse_workflows.author.story_author.schemas import StoryTarget
 
 
 def _relative(root: Path, value: str | Path) -> str:
@@ -73,24 +71,4 @@ def prepare_story(
     )
 
 
-@blueprint.node
-def record_story_audit(
-    logger: logging.Logger,
-    story_path: str,
-    repo_dir: str = "",
-) -> AuditReceipt:
-    """Record a passing audit against the exact story bytes it judged."""
-    root = survey_repo_root(repo_dir)
-    path = root / story_path
-    digest = hashlib.sha256(path.read_bytes()).hexdigest()
-    receipt = path.parent / "audit-receipt.json"
-    receipt.write_text(
-        json.dumps({"status": "passed", "storyDigest": digest}, indent=2) + "\n",
-        encoding="utf-8",
-    )
-    relative = receipt.relative_to(root).as_posix()
-    logger.info("recorded passing story audit at %s", relative)
-    return AuditReceipt(story_digest=digest, path=relative)
-
-
-__all__ = ["prepare_story", "record_story_audit"]
+__all__ = ["prepare_story"]

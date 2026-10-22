@@ -1,38 +1,27 @@
-"""Standalone split and pre-authoring coverage convergence for one epic."""
+"""Standalone story-split and PM review convergence for one epic."""
 from __future__ import annotations
 
-from pathlib import Path
 from typing import Any, ClassVar
 
-from workhorse.pyflow import Await, Continue, Done, Workflow, WorkflowFailed
-from workhorse_workflows.author.shared.nodes import load_config, validate_coverage
+from workhorse.pyflow import Continue, Done, Workflow, WorkflowFailed
+from workhorse_workflows.author.pm import MAX_ANSWERS, GapAnswer, PMReview
 from workhorse_workflows.author.shared import paths
-from workhorse_workflows.author.shared.schemas import (
-    Config,
-    CoverageReview,
-    OperatorResolution,
-    StorySplit,
-)
+from workhorse_workflows.author.shared.nodes import load_config, validate_coverage
+from workhorse_workflows.author.shared.schemas import Config, StorySplit
+from workhorse_workflows.author.story_split.nodes import derive_story_services
 from workhorse_workflows.author.story_split.schemas import StorySplitDone
-from workhorse_workflows.author.story_split.nodes import (
-    derive_story_services,
-    record_story_split_review,
-)
 from workhorse_workflows.kit.telemetry import counter_labels
 
 MAX_REWORKS = 3
-MAX_SPLIT_RESOLVES = 2
-UNBOUNDED = float("inf")
 
 
 class StorySplitFlow(Workflow):
     """Create and accept the story graph for one explicitly named epic."""
 
     epic: str = ""
-    operator_mode: str = "auto"
     note: str = ""
 
-    BUDGET_LABELS: ClassVar[tuple[str, ...]] = ("cov_reworks", "split_resolves")
+    BUDGET_LABELS: ClassVar[tuple[str, ...]] = ("reworks", "answers")
 
     def setup(self) -> Config:
         return self.call(load_config, mode="story-split")
@@ -46,25 +35,17 @@ class StorySplitFlow(Workflow):
     def _epic_dir(self) -> str:
         return paths.epic_dir(self.ctx.repo_root, self.epic)
 
-    def _context(self) -> str:
-        return paths.epic_context(self._epic_dir())
-
-    def _abs(self, relative: str) -> Path:
-        return Path(self.ctx.repo_root) / relative
-
-    def _resolve(self, stage: str, notes: str) -> OperatorResolution:
-        return self.agent(
-            "shared/prompts/resolve-operator.md",
-            returns=OperatorResolution,
-            power="high",
-            timeout=UNBOUNDED,
-            cwd=self.ctx.repo_root,
-            args={
-                "context_path": self._context(),
-                "epic_dir": self._epic_dir(),
-                "block_stage": stage,
-                "block_notes": notes,
-            },
+    def _blocked(self, notes: str, reworks: int, answers: int) -> Done:
+        self.logger.warning("the story split of %s stays blocked: %s", self.epic, notes)
+        return Done(
+            StorySplitDone(
+                status="blocked",
+                epic=self.epic,
+                epic_dir=self._epic_dir(),
+                notes=notes,
+                reworks=reworks,
+                answers=answers,
+            )
         )
 
     def start(self) -> Continue:
@@ -73,19 +54,16 @@ class StorySplitFlow(Workflow):
                 "story-split needs exactly one non-empty 'epic'",
                 failure_class="story-split-missing-epic",
             )
-        if self.operator_mode not in {"auto", "human"}:
-            raise WorkflowFailed(
-                "story-split operator_mode must be 'auto' or 'human'",
-                failure_class="story-split-invalid-operator-mode",
-            )
         return Continue(None, self.split_stories)
 
     def split_stories(
         self,
-        split_resolves: int = 0,
-        cov_reworks: int = 0,
+        reworks: int = 0,
+        answers: int = 0,
         rework_notes: str = "",
-    ) -> Continue | Await:
+        note: str = "",
+        prior: str = "",
+    ) -> Continue | Done:
         result = self.agent(
             "story_split/prompts/split-stories.md",
             returns=StorySplit,
@@ -95,127 +73,83 @@ class StorySplitFlow(Workflow):
                 "epic": self.epic,
                 "epic_dir": self._epic_dir(),
                 "rework_notes": rework_notes,
-                "note": self.note,
+                "note": "\n\n".join(part for part in (self.note, note) if part),
+                "ledger": self.ctx.pm_ledger,
             },
         )
-        if result.status == "standoff":
-            notes = f"{rework_notes}\n\nStory-split stage declined this rework: {result.notes}"
-            return self._gate_coverage(result, notes, split_resolves)
-        if result.status != "blocked":
+        if result.status in {"blocked", "standoff"}:
+            if answers >= MAX_ANSWERS:
+                return self._blocked(result.notes, reworks, answers)
             return Continue(
                 result,
-                self.check_coverage,
-                cov_reworks=cov_reworks,
-                split_resolves=split_resolves,
-            )
-        if self.operator_mode == "human" or split_resolves >= MAX_SPLIT_RESOLVES:
-            return Await(
-                self._abs(self._context()),
-                result.notes,
-                self.split_stories,
-                split_resolves=split_resolves,
-                cov_reworks=cov_reworks,
+                self.ask_pm,
+                question=result.notes,
+                reworks=reworks,
+                answers=answers,
                 rework_notes=rework_notes,
+                prior=prior,
             )
-        return Continue(
-            result,
-            self.resolve_split,
-            notes=result.notes,
-            split_resolves=split_resolves,
-            cov_reworks=cov_reworks,
-            rework_notes=rework_notes,
-        )
-
-    def resolve_split(
-        self,
-        notes: str,
-        split_resolves: int = 0,
-        cov_reworks: int = 0,
-        rework_notes: str = "",
-    ) -> Await:
-        self._resolve("story-split", notes)
-        return Await(
-            self._abs(self._context()),
-            notes,
-            self.split_stories,
-            split_resolves=split_resolves + 1,
-            cov_reworks=cov_reworks,
-            rework_notes=rework_notes,
-        )
+        return Continue(result, self.check_coverage, reworks=reworks, answers=answers, prior=prior)
 
     def check_coverage(
-        self, cov_reworks: int = 0, split_resolves: int = 0
-    ) -> Continue | Await | Done:
+        self, reworks: int = 0, answers: int = 0, prior: str = ""
+    ) -> Continue | Done:
         self.call(derive_story_services, self.epic)
         mechanical = self.call(validate_coverage, self._epic_dir(), require_authored=False)
         if not mechanical.ok:
-            return self._rework_coverage(
-                mechanical, mechanical.errors, cov_reworks, split_resolves
-            )
-        review = self.agent(
-            "story_split/prompts/review-coverage.md",
-            returns=CoverageReview,
-            power="high",
-            cwd=self.ctx.repo_root,
-            args={"epic": self.epic, "epic_dir": self._epic_dir()},
+            return self._rework(mechanical, mechanical.errors, reworks, answers, prior)
+        return Continue(mechanical, self.review, reworks=reworks, answers=answers, prior=prior)
+
+    def review(self, reworks: int = 0, answers: int = 0, prior: str = "") -> Continue | Done:
+        verdict = self.handoff(
+            PMReview,
+            stage="story-split",
+            subject=self._epic_dir(),
+            prior=prior,
         )
-        if review.status == "ok":
-            receipt = self.call(record_story_split_review, self.epic)
+        if verdict.passed:
             return Done(
                 StorySplitDone(
                     epic=self.epic,
                     epic_dir=self._epic_dir(),
-                    receipt_path=receipt.path,
-                    coverage_reworks=cov_reworks,
-                    operator_resolutions=split_resolves,
+                    reworks=reworks,
+                    answers=answers,
                 )
             )
-        if review.status == "blocked":
-            return self._gate_coverage(review, review.notes, split_resolves)
-        return self._rework_coverage(review, review.notes, cov_reworks, split_resolves)
+        return self._rework(verdict, verdict.notes, reworks, answers, verdict.notes)
 
-    def _rework_coverage(
-        self,
-        result: object,
-        notes: str,
-        cov_reworks: int,
-        split_resolves: int,
-    ) -> Continue | Await:
-        if cov_reworks >= MAX_REWORKS:
-            return self._gate_coverage(result, notes, split_resolves)
+    def _rework(
+        self, result: object, notes: str, reworks: int, answers: int, prior: str
+    ) -> Continue | Done:
+        if reworks >= MAX_REWORKS:
+            return self._blocked(notes, reworks, answers)
         return Continue(
             result,
             self.split_stories,
-            split_resolves=split_resolves,
-            cov_reworks=cov_reworks + 1,
+            reworks=reworks + 1,
+            answers=answers,
             rework_notes=notes,
+            prior=prior,
         )
 
-    def resolve_coverage(self, notes: str, split_resolves: int = 0) -> Await:
-        self._resolve("coverage", notes)
-        return Await(
-            self._abs(self._context()),
-            notes,
-            self.split_stories,
-            split_resolves=split_resolves + 1,
-        )
-
-    def _gate_coverage(
-        self, result: object, notes: str, split_resolves: int
-    ) -> Continue | Await:
-        if self.operator_mode == "human" or split_resolves >= MAX_SPLIT_RESOLVES:
-            return Await(
-                self._abs(self._context()),
-                notes,
-                self.split_stories,
-                split_resolves=split_resolves,
-            )
+    def ask_pm(
+        self,
+        question: str,
+        reworks: int = 0,
+        answers: int = 0,
+        rework_notes: str = "",
+        prior: str = "",
+    ) -> Continue:
+        answer = self.handoff(GapAnswer, question=question, asker="story-split")
         return Continue(
-            result,
-            self.resolve_coverage,
-            notes=notes,
-            split_resolves=split_resolves,
+            answer,
+            self.split_stories,
+            reworks=reworks,
+            answers=answers + 1,
+            rework_notes=rework_notes,
+            note=answer.note,
+            prior=prior,
         )
 
 
-__all__ = ["StorySplitFlow"]
+__all__ = ["StorySplitFlow", "MAX_REWORKS"]

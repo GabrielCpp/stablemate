@@ -1,32 +1,37 @@
 from __future__ import annotations
 
 import subprocess
-from dataclasses import replace
 from pathlib import Path
 from typing import Any
-from unittest.mock import patch
 
 from _fakes import StubRunner
+from _milestones import write_milestone
+from _pm import answer, verdict
 from workhorse.artifacts import ArtifactWriter
 from workhorse.config_run import RunConfig
 from workhorse.pyflow import Registry
-from workhorse.pyflow import park as pyflow_park
 from workhorse.pyflow.driver import drive
 from workhorse.pyflow.engine import RunEnv
 from workhorse_workflows import author
+from workhorse_workflows.author.pm.nodes import blueprint as pm_blueprint
 from workhorse_workflows.author.shared.nodes import blueprint
 from workhorse_workflows.author.shared.schemas import Defects
 from workhorse_workflows.author.story_split import StorySplitDone, StorySplitFlow
 from workhorse_workflows.author.story_split.nodes import blueprint as story_split_blueprint
-from workhorse_workflows.author.story_split.schemas import StoryServices, StorySplitReceipt
+from workhorse_workflows.author.story_split.schemas import StoryServices
 
 EPIC = "accounts"
 EPIC_DIR = "docs/epics/accounts"
 
 
 class _Agent:
-    def __init__(self, coverage: list[str] | None = None) -> None:
-        self.coverage = list(coverage or ["ok"])
+    def __init__(
+        self,
+        reviews: list[dict[str, str]] | None = None,
+        writer: list[dict[str, str]] | None = None,
+    ) -> None:
+        self.reviews = list(reviews or [{}])
+        self.writer = list(writer or [])
         self.calls: list[str] = []
         self.args: dict[str, list[dict[str, Any]]] = {}
 
@@ -35,12 +40,12 @@ class _Agent:
         self.calls.append(stem)
         self.args.setdefault(stem, []).append(ctx.as_dict())
         if stem == "split-stories":
-            return "split", {"status": "complete"}
-        if stem == "review-coverage":
-            status = self.coverage.pop(0)
-            return "reviewed", {"status": status, "notes": "cover the reset flow"}
-        if stem == "resolve-operator":
-            return "resolved", {"decision": "answered"}
+            reply = self.writer.pop(0) if self.writer else {"status": "complete"}
+            return "split", reply
+        if stem == "review-inline":
+            return "reviewed", verdict("story-split", self.reviews.pop(0))
+        if stem == "answer":
+            return "answered", answer("cover the reset flow")
         raise AssertionError(f"unexpected agent turn: {stem}")
 
 
@@ -59,23 +64,16 @@ def _env(tmp_path: Path, agent: _Agent, reports: list[Defects] | None = None) ->
     queue = list(reports or [Defects(ok=True)])
 
     def validate(*args: Any, **kwargs: Any) -> Defects:
-        return queue.pop(0)
-
-    def record(_logger: Any, epic: str, *, repo_dir: str = "") -> StorySplitReceipt:
-        path = Path(repo_dir) / EPIC_DIR / "story-split-receipt.json"
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text('{"status":"passed","graphDigest":"test"}\n', encoding="utf-8")
-        return StorySplitReceipt(graph_digest="test", path=path.relative_to(repo_dir).as_posix())
+        return queue.pop(0) if len(queue) > 1 else queue[0]
 
     def derive(*args: Any, **kwargs: Any) -> StoryServices:
         return StoryServices()
 
     nodes = (
         Registry("story-split-test")
-        .add_blueprints(blueprint, story_split_blueprint)
+        .add_blueprints(blueprint, story_split_blueprint, pm_blueprint)
         .override(
             validate_coverage=validate,
-            record_story_split_review=record,
             derive_story_services=derive,
         )
     )
@@ -106,18 +104,16 @@ def test_accepts_one_epic_graph_without_selecting_authoring_or_git(
     assert result.status == "accepted"
     assert result.epic == EPIC
     assert result.epic_dir == EPIC_DIR
-    assert result.receipt_path == f"{EPIC_DIR}/story-split-receipt.json"
-    assert (repo / result.receipt_path).is_file()
-    assert agent.calls == ["split-stories", "review-coverage"]
+    assert agent.calls == ["split-stories", "review-inline"]
     assert agent.args["split-stories"][0]["epic"] == EPIC
     assert _git(repo, "branch", "--show-current") == branch_before
     assert _git(repo, "rev-parse", "--verify", "HEAD") == head_before
 
 
-def test_coverage_findings_drive_a_bounded_resplit_worklist(
+def test_mechanical_and_pm_findings_drive_a_bounded_resplit(
     repo: Path, tmp_path: Path
 ) -> None:
-    agent = _Agent(coverage=["gaps", "ok"])
+    agent = _Agent(reviews=[{"coverage": "reset flow is uncovered"}, {}])
     reports = [Defects(ok=False, errors="[orphan-seed] reset"), Defects(ok=True), Defects(ok=True)]
 
     result = drive(
@@ -126,39 +122,40 @@ def test_coverage_findings_drive_a_bounded_resplit_worklist(
     )
 
     assert isinstance(result, StorySplitDone)
-    assert result.coverage_reworks == 2
-    split_args = agent.args["split-stories"]
-    assert [row["rework_notes"] for row in split_args] == [
-        "",
-        "[orphan-seed] reset",
-        "cover the reset flow",
-    ]
+    assert result.status == "accepted"
+    assert result.reworks == 2
+    notes = [row["rework_notes"] for row in agent.args["split-stories"]]
+    assert notes[0] == ""
+    assert notes[1] == "[orphan-seed] reset"
+    assert "reset flow is uncovered" in notes[2]
 
 
-def test_blocked_coverage_resolves_then_rechecks_the_same_epic(
+def test_a_blocked_writer_is_answered_by_the_pm_then_retries(
     repo: Path, tmp_path: Path
 ) -> None:
-    agent = _Agent(coverage=["blocked", "ok"])
-    seen: list[Path] = []
+    write_milestone(repo)
+    agent = _Agent(writer=[{"status": "blocked", "notes": "which seed first?"}])
 
-    def answered(path: Path, **kwargs: Any) -> None:
-        seen.append(path)
-
-    env = _env(tmp_path, agent, [Defects(ok=True), Defects(ok=True)])
-    with patch.object(pyflow_park, "wait_for_answer", answered):
-        result = drive(
-            StorySplitFlow(epic=EPIC, repo_dir=str(repo)),
-            replace(env, agent_runner=StubRunner(agent)),
-        )
+    result = drive(
+        StorySplitFlow(epic=EPIC, repo_dir=str(repo)),
+        _env(tmp_path, agent),
+    )
 
     assert isinstance(result, StorySplitDone)
-    assert result.operator_resolutions == 1
-    assert agent.calls == [
-        "split-stories",
-        "review-coverage",
-        "resolve-operator",
-        "split-stories",
-        "review-coverage",
-    ]
-    assert agent.args["resolve-operator"][0]["block_stage"] == "coverage"
-    assert seen == [repo / EPIC_DIR / "context.md"]
+    assert result.status == "accepted"
+    assert result.answers == 1
+    assert agent.calls == ["split-stories", "answer", "split-stories", "review-inline"]
+    assert "cover the reset flow" in agent.args["split-stories"][1]["note"]
+
+
+def test_the_split_blocks_when_the_pm_never_passes(repo: Path, tmp_path: Path) -> None:
+    agent = _Agent(reviews=[{"order": "wrong"}] * 4)
+
+    result = drive(
+        StorySplitFlow(epic=EPIC, repo_dir=str(repo)),
+        _env(tmp_path, agent),
+    )
+
+    assert isinstance(result, StorySplitDone)
+    assert result.status == "blocked"
+    assert result.reworks == 3

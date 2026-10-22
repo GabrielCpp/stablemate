@@ -5,16 +5,16 @@ title: Story-split flow inputs
 ---
 # Story-split flow inputs
 
-`StorySplitFlow` requires both inputs because they govern independent decisions. `epic` names
-the one epic to split and review; `operator_mode` governs how blocked decisions are handled
-during that work. They are not alternative entry points, so neither concept supersedes or is
+`StorySplitFlow` takes two inputs that govern independent decisions. `epic` names the one epic to
+split and review, and it is required. `note` carries an earlier answer into the splitter's prompt,
+and it is optional. They are not alternative entry points, so neither concept supersedes or is
 preferred over the other.
 
-Every run supplies a non-empty `epic` and an `operator_mode` of `auto` or `human`. Use `auto`
-when the flow may make up to two automatic resolution attempts before awaiting operator input;
-use `human` when it must await that input as soon as work is blocked. The mode never changes
-which epic is in scope.
+Every run supplies a non-empty `epic`. The Author flow supplies a `note` when it retries a blocked
+split with the operator's answer. The note never changes which epic is in scope. Blocked decisions
+no longer depend on a mode: the PM answers the splitter's questions, and the operator is asked only
+when the split stays blocked.
 
-- code: `workflows/src/workhorse_workflows/author/story_split/flow.py::StorySplitFlow` @c633afb4c428
-- rule: provide both inputs; select `operator_mode` for blocked-decision handling, not as an alternative to the required `epic`
+- code: `workflows/src/workhorse_workflows/author/story_split/flow.py::StorySplitFlow` @9e26ab4671cb
+- rule: provide `epic` always, and `note` only to carry an earlier answer
 - detail: [story-split flow concept selection](story-split-flow-concept-selection.md)

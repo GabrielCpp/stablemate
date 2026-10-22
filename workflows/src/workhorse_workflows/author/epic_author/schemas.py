@@ -34,14 +34,16 @@ class EpicEvidence(AuthorResult):
 
 
 class EpicAuthorDone(AuthorResult):
-    """One explicit epic completed its authoring boundary."""
+    """One explicit epic completed its authoring boundary, or stays blocked with a question."""
 
-    status: Literal["authored"] = "authored"
+    status: Literal["authored", "blocked"] = "authored"
     epic: str = ""
     epic_dir: str = ""
     epic_path: str = ""
     seed_count: int = 0
-    operator_resolutions: int = 0
+    notes: str = ""
+    reworks: int = 0
+    answers: int = 0
 
 
 __all__ = ["EpicAuthorContext", "EpicAuthorDone", "EpicEvidence", "EpicTarget"]

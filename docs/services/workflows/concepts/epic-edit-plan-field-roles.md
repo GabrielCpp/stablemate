@@ -16,5 +16,5 @@ The schema declares each field directly with its own type and default. It contai
 marker, delegation, wrapper, or preference between them, so no field supersedes another. Readers
 select the field that answers the part of the replacement plan they need.
 
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/edit.py::EpicEditPlan` @952fb9c4cfcb
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/edit.py::EpicEditPlan` @7b95d62cfa2c
 - rule: select the field for the needed part of the replacement plan; the nine fields are complementary and no ranking exists

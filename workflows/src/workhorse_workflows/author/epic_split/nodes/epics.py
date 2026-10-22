@@ -10,7 +10,7 @@ from workhorse_workflows.author.epic_split.nodes._blueprint import blueprint
 from workhorse_workflows.author.epic_split.schemas import EpicSplitContext, EpicSplitValidation
 from workhorse_workflows.author.shared import paths
 from workhorse_workflows.author.shared.paths import survey_repo_root
-from workhorse_workflows.author.shared.nodes.config import approved_milestone_path
+from workhorse_workflows.author.shared.nodes.config import approved_milestone_path, pm_ledger_path
 
 
 def _fingerprints(okf: Ostler) -> dict[str, str]:
@@ -71,6 +71,7 @@ def prepare_epic_split(
         epic_fingerprints=_fingerprints(okf),
         seed_ids=_seed_ids(okf),
         story_slugs=_story_slugs(okf),
+        pm_ledger=pm_ledger_path(milestone.path.parent.resolve()),
     )
 
 

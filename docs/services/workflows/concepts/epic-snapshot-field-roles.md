@@ -15,5 +15,5 @@ The schema declares each field directly with a distinct type and empty-value def
 no legacy marker, delegation, wrapper, or preference between fields, so no field supersedes
 another. Readers select the field for the part of the baseline they need.
 
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/edit.py::EpicSnapshot` @952fb9c4cfcb
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/edit.py::EpicSnapshot` @7b95d62cfa2c
 - rule: select the field for the needed part of the pre-edit baseline; the eight fields are complementary and no ranking exists

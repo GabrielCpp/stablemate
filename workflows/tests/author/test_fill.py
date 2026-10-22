@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import hashlib
-import json
 import logging
 from pathlib import Path
 from typing import Any
@@ -12,7 +10,13 @@ from ostler.model import Epic, Graph, Milestone, SeedItem, Story
 from workhorse.pyflow import WorkflowFailed
 from workhorse.worklist import WORK_FILE, JsonBackend, WorkList
 from workhorse_workflows.author.main.nodes import fill
-from workhorse_workflows.author.shared.story_split_receipt import story_split_digest
+from workhorse_workflows.author.pm.receipt import (
+    MILESTONE_ARTIFACTS,
+    epic_split_digest,
+    story_digest,
+    story_split_digest,
+    write_pm_receipt,
+)
 
 MILESTONE = "docs/milestones/account-access/milestone.md"
 
@@ -79,18 +83,17 @@ def install(
                 path.write_text(f"# {story.title}\n", encoding="utf-8")
                 story.story_md = path
                 if story.authored:
-                    digest = hashlib.sha256(path.read_bytes()).hexdigest()
-                    (path.parent / "audit-receipt.json").write_text(
-                        json.dumps({"status": "passed", "storyDigest": digest}),
-                        encoding="utf-8",
-                    )
+                    write_pm_receipt(path.parent, "story", story_digest(path))
             if fill._story_graph_valid(epic):
-                (epic_dir / "story-split-receipt.json").write_text(
-                    json.dumps(
-                        {"status": "passed", "graphDigest": story_split_digest(epic)}
-                    ),
-                    encoding="utf-8",
-                )
+                write_pm_receipt(epic_dir, "story-split", story_split_digest(epic))
+        milestone_md = tmp_path / MILESTONE
+        milestone_md.parent.mkdir(parents=True, exist_ok=True)
+        milestone_md.write_text("---\nstatus: approved\n---\n\n# Account access\n", encoding="utf-8")
+        write_pm_receipt(
+            milestone_md.parent / MILESTONE_ARTIFACTS,
+            "epic-split",
+            epic_split_digest(tmp_path, MILESTONE, milestone_epics),
+        )
         milestones = [
             Milestone(
                 name="account-access",
@@ -162,6 +165,29 @@ def test_check_epic_split_accepts_an_ordered_split(install: Any) -> None:
     assert result.ok
 
 
+def test_check_epic_split_refuses_a_split_without_a_current_pm_pass(
+    install: Any, tmp_path: Path
+) -> None:
+    install(["accounts"], [_epic("accounts")])
+    (tmp_path / "docs/milestones/account-access" / MILESTONE_ARTIFACTS / "pm-receipt.json").unlink()
+
+    result = fill.check_epic_split(logging.getLogger("test"), repo_dir="unused")
+
+    assert not result.ok
+    assert "PM pass" in result.errors
+
+
+def test_check_epic_split_refuses_a_milestone_changed_after_the_pass(
+    install: Any, tmp_path: Path
+) -> None:
+    install(["accounts"], [_epic("accounts")])
+    (tmp_path / MILESTONE).write_text("---\nstatus: approved\n---\n\n# Changed\n", encoding="utf-8")
+
+    result = fill.check_epic_split(logging.getLogger("test"), repo_dir="unused")
+
+    assert not result.ok
+
+
 def test_a_story_split_is_filed_only_for_an_epic_whose_row_is_done(
     install: Any, tmp_path: Path
 ) -> None:
@@ -179,7 +205,7 @@ def test_an_unreviewed_story_graph_is_filed_pending(install: Any, tmp_path: Path
     epic = _epic("accounts", [_story("sign-in")])
     install(["accounts"], [epic])
     assert epic.epic_md is not None
-    epic.epic_md.parent.joinpath("story-split-receipt.json").unlink()
+    epic.epic_md.parent.joinpath("pm-receipt.json").unlink()
     _fill("epic", tmp_path)
 
     _fill("story-split", tmp_path)

@@ -195,6 +195,9 @@ questions asked, the answers chosen and the reason, so Author and later readers 
 a decision holds. The record is plain markdown. Epic splitting reads the folder, so a
 decision that matters to decomposition belongs in `milestone.md` as well.
 
+`grills/pm.md` is the exception. The PM writes it as its ledger of answers to the writers' gaps.
+The human may edit it, and an edit overrules the PM's answer. Do not file a grill topic under that name.
+
 ## Design links
 
 Decompose notes stay in `docs/design/`. `milestone.md` links them with a relative path such

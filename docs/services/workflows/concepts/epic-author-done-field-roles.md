@@ -9,10 +9,10 @@ title: Epic author completion field roles
 to identify or control the epic. Its fields are complementary: `status` marks successful
 completion, `epic` identifies the validated epic, `epic_dir` scopes its canonical directory,
 `epic_path` identifies its validated `epic.md` document, `seed_count` reports researched seeds,
-and `operator_resolutions` reports automatic resolution turns used before success.
+`notes` carries the reason a blocked epic stopped, and `reworks` and `answers` count the validation reworks and PM answers used.
 
 No ranking exists among these fields. Consumers select the field whose representation or
 completion evidence they need; none replaces another.
 
-- code: `workflows/src/workhorse_workflows/author/epic_author/schemas.py::EpicAuthorDone` @8605f9723870
-- rule: use `status` for completion, `epic` for identity, `epic_dir` for the canonical directory, `epic_path` for the validated document, `seed_count` for researched-seed evidence, and `operator_resolutions` for resolution-turn evidence; none supersedes another
+- code: `workflows/src/workhorse_workflows/author/epic_author/schemas.py::EpicAuthorDone` @9c7cde5bf6d0
+- rule: use `status` for completion, `epic` for identity, `epic_dir` for the canonical directory, `epic_path` for the validated document, `seed_count` for researched-seed evidence, `notes` for the blocking reason, and `reworks` and `answers` for turn evidence; none supersedes another

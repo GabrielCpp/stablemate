@@ -14,6 +14,7 @@ from unittest.mock import patch
 import pytest
 from _fakes import StubRunner
 from _milestones import write_milestone
+from _pm import amendment, answer, verdict
 from ostler import Ostler
 from workhorse import inbox
 from workhorse.artifacts import ArtifactWriter
@@ -284,10 +285,10 @@ class _Agent:
         two_epics: bool = False,
         unwritten: set[str] | None = None,
         fail_audit: set[str] | None = None,
-        audit_replies: dict[str, dict[str, Any]] | None = None,
         feedback: dict[str, str] | None = None,
         run_dir: Path | None = None,
         escalate: bool = False,
+        block: set[str] | None = None,
         explode: set[str] | None = None,
         edit_plans: list[dict[str, Any]] | None = None,
         edit_reviews: list[str] | None = None,
@@ -300,13 +301,15 @@ class _Agent:
         self.two_epics = two_epics
         self.unwritten = set(unwritten or ())
         self.fail_audit = set(fail_audit or ())
-        self.audit_replies = dict(audit_replies or {})
         self.feedback = dict(feedback or {})
         self.escalate = escalate
+        self.block = set(block or ())
         self.explode = set(explode or ())
         self.edit_plans = list(edit_plans or ())
         self.edit_reviews = edit_reviews or ["approved"]
         self.backend_seeds = backend_seeds
+        self.stage_calls: Counter[str] = Counter()
+        self.questions: list[str] = []
         self.calls: list[str] = []
         self.args: list[dict[str, Any]] = []
         self.cwds: list[str] = []
@@ -318,6 +321,9 @@ class _Agent:
         self.calls.append(stem)
         self.args.append(data)
         self.cwds.append(str(node.cwd))
+        if stem in self.block:
+            self.block.discard(stem)
+            return "(scripted) blocked", {"status": "blocked", "notes": "which order?"}
         handler = getattr(self, f"_{stem.replace('-', '_')}")
         return f"(scripted) {node.prompt}", handler(data, self.counts()[stem])
 
@@ -341,16 +347,8 @@ class _Agent:
         _milestone(self.repo, *epics)
         return {"status": "complete", "notes": "ordered epic skeletons created"}
 
-    def _review_epic_split(self, data: dict[str, Any], nth: int) -> dict[str, Any]:
-        verdict = self.review_epics[min(nth, len(self.review_epics)) - 1]
-        return {"status": verdict, "notes": "" if verdict == "approved" else "one epic is two"}
-
     def _rework_epic_split(self, data: dict[str, Any], nth: int) -> dict[str, Any]:
         return self._split_epics(data, nth)
-
-    def _resolve_epic_split(self, data: dict[str, Any], nth: int) -> dict[str, Any]:
-        self.review_epics = ["approved"]
-        return {"decision": "escalated", "notes": "operator decision required", "tried": []}
 
     def _default_edit_plan(self, data: dict[str, Any]) -> dict[str, Any]:
         intent = data["intent"]
@@ -413,13 +411,6 @@ class _Agent:
         if self.edit_plans:
             return self.edit_plans[min(nth + 1, len(self.edit_plans)) - 1]
         return self._default_edit_plan(data)
-
-    def _review_epic_edit_plan(self, data: dict[str, Any], nth: int) -> dict[str, Any]:
-        status = self.edit_reviews[min(nth, len(self.edit_reviews)) - 1]
-        return {
-            "status": status,
-            "notes": "scope and journeys agree" if status == "approved" else "journey drift",
-        }
 
     def _rewrite_epic_edit(self, data: dict[str, Any], nth: int) -> dict[str, Any]:
         path = self.repo / data["epic_dir"] / "epic.md"
@@ -524,45 +515,43 @@ The running system is the source of truth.
         _write_story_doc(self.repo / data["story_path"], title)
         return {"status": "written", "notes": "rewritten"}
 
-    def _audit_story(self, data: dict[str, Any], nth: int) -> dict[str, Any]:
-        slug = str(data["story_slug"])
-        note = self.feedback.pop(slug, "")
-        if note:
-            assert self.run_dir is not None, "feedback scripted without a run_dir"
-            inbox.append(
-                self.run_dir / INBOX_FILE,
-                id=f"{slug}-note",
-                body=note,
-                at="2024-01-01T00:00:00+00:00",
-            )
-        if slug in self.audit_replies:
-            return self.audit_replies[slug]
-        if slug in self.fail_audit:
-            return {
-                "status": "failed",
-                "findings": [{
-                    "id": f"{slug}-01",
-                    "kind": "journey",
-                    "target": "## Acceptance Criteria",
-                    "issue": f"{slug} cannot be built as written",
-                    "repair": "state the observable outcome",
-                }],
-                "notes": f"{slug} cannot be built as written",
-            }
-        return {"status": "passed", "findings": [], "notes": "a coder could build this"}
+    def _review_inline(self, data: dict[str, Any], nth: int) -> dict[str, Any]:
+        stage = str(data["stage"])
+        self.stage_calls[stage] += 1
+        seen = self.stage_calls[stage]
+        failing: dict[str, str] = {}
+        if stage == "epic-split":
+            status = self.review_epics[min(seen, len(self.review_epics)) - 1]
+            if status != "approved":
+                failing = {"order": "one epic is two"}
+        elif stage == "story-split":
+            status = self.coverage_verdicts[min(seen, len(self.coverage_verdicts)) - 1]
+            if status != "ok":
+                failing = {"coverage": "the reset flow is unclaimed"}
+        elif stage == "epic-edit-plan":
+            status = self.edit_reviews[min(seen, len(self.edit_reviews)) - 1]
+            if status != "approved":
+                failing = {"plan": "journey drift"}
+        else:
+            slug = Path(str(data["subject"])).parent.name
+            note = self.feedback.pop(slug, "")
+            if note:
+                assert self.run_dir is not None, "feedback scripted without a run_dir"
+                inbox.append(
+                    self.run_dir / INBOX_FILE,
+                    id=f"{slug}-note",
+                    body=note,
+                    at="2024-01-01T00:00:00+00:00",
+                )
+            if slug in self.fail_audit:
+                failing = {"journey": f"{slug} cannot be built as written"}
+        return verdict(stage, failing)
 
-
-    def _review_coverage(self, data: dict[str, Any], nth: int) -> dict[str, Any]:
-        verdict = self.coverage_verdicts[min(nth, len(self.coverage_verdicts)) - 1]
-        return {"status": verdict, "notes": "" if verdict == "ok" else "the reset flow is unclaimed"}
-
-
-    def _resolve_operator(self, data: dict[str, Any], nth: int) -> dict[str, Any]:
+    def _answer(self, data: dict[str, Any], nth: int) -> dict[str, Any]:
+        self.questions.append(str(data["question"]))
         if self.escalate:
-            return {"decision": "escalated", "notes": "needs a product call"}
-        if data["block_stage"] == "epic-split":
-            self.review_epics = ["approved"]
-        return {"decision": "answered", "notes": f"resolved {data['block_stage']}"}
+            return amendment("needs a product call")
+        return answer(f"decided for {data['asker']}")
 
     def _resolve_integrity(self, data: dict[str, Any], nth: int) -> dict[str, Any]:
         return {"decision": "answered", "notes": "relinked"}
@@ -654,15 +643,20 @@ def test_epic_mode_authors_the_approved_milestone_and_commits_it(
 
     assert agent.counts() == {
         "split-epics": 1,
-        "review-epic-split": 1,
         "write-epic": 1,
         "split-stories": 1,
         "design-mockup": 2,
         "write-story": 2,
-        "audit-story": 2,
-        "review-coverage": 1,
+        "review-inline": 4,
     }, agent.counts()
-    assert agent.calls.index("review-coverage") < agent.calls.index("write-story")
+    assert agent.stage_calls == {"epic-split": 1, "story-split": 1, "story": 2}
+    split_review = agent.calls.index("review-inline", agent.calls.index("split-stories"))
+    assert split_review < agent.calls.index("write-story")
+    artifacts = backlogged / "docs/milestones/account-access/artifacts"
+    assert (artifacts / "pm-receipt.json").is_file()
+    assert (backlogged / EPIC_DIR / "pm-receipt.json").is_file()
+    for slug in SLUGS:
+        assert (backlogged / EPIC_DIR / "stories" / slug / "pm-receipt.json").is_file()
 
     assert _stories(backlogged) == {slug: True for slug in SLUGS}
     assert not [
@@ -770,11 +764,10 @@ def test_every_prompt_is_told_the_resolved_paths_not_the_blank_parameters(
     agent = _Agent(backlogged)
     _drive(_env(tmp_path), agent)
 
-    for stem in ("split-epics", "review-epic-split"):
-        for args in agent.args_for(stem):
-            assert args["epics_dir"] == EPICS, (stem, args)
-            assert args["milestone"] == MILESTONE, (stem, args)
-            assert "roadmap" not in args, (stem, args)
+    for args in agent.args_for("split-epics"):
+        assert args["epics_dir"] == EPICS, args
+        assert args["milestone"] == MILESTONE, args
+        assert "roadmap" not in args, args
     for args in agent.args_for("write-epic"):
         assert args["milestone"] == MILESTONE, args
         assert args["epic_dir"] == EPIC_DIR, args
@@ -915,7 +908,7 @@ def test_a_story_nobody_can_fix_is_parked_and_the_epic_carries_on(
         result = _drive(_env(tmp_path), agent, wait_for_answer=answered)
 
     assert any("parking story '01-sign-in'" in r.message for r in caplog.records), caplog.text
-    assert any("remains audit-blocked" in r.message for r in caplog.records)
+    assert any("remains blocked" in r.message for r in caplog.records)
     written = [args["story_slug"] for args in agent.args_for("write-story")]
     assert written.index("02-reset-password") < len(written) - 1, written
     assert len(seen) == 1 and f"story {EPIC_NAME}/01-sign-in: blocked" in seen[0], seen
@@ -1042,43 +1035,6 @@ def test_auto_mode_does_not_skip_the_completion_gate(backlogged: Path, tmp_path:
     assert len(seen) == 1, seen
 
 
-def test_an_empty_findings_list_is_a_pass_whatever_status_says(
-    backlogged: Path, tmp_path: Path
-) -> None:
-    """A `failed` with nothing to repair cannot be reworked, so it upholds the story."""
-    agent = _Agent(
-        backlogged,
-        audit_replies={"01-sign-in": {"status": "failed", "findings": [], "notes": "unease"}},
-    )
-
-    _drive(_env(tmp_path), agent)
-
-    assert agent.counts()["audit-story"] == 2, agent.counts()
-    assert agent.counts()["rework-story"] == 0, agent.counts()
-    assert _stories(backlogged) == {slug: True for slug in SLUGS}
-
-
-def test_a_finding_the_reworker_cannot_act_on_stops_the_run(
-    backlogged: Path, tmp_path: Path
-) -> None:
-    """Every finding names its repair, or the audit did not answer."""
-    from workhorse.pyflow import WorkflowFailed
-
-    agent = _Agent(
-        backlogged,
-        audit_replies={"01-sign-in": {
-            "status": "failed",
-            "findings": [{"id": "x-01", "kind": "journey", "target": "## Acceptance Criteria",
-                          "issue": "vague", "repair": "   "}],
-            "notes": "",
-        }},
-    )
-
-    with pytest.raises(WorkflowFailed, match="finding 1 missing repair"):
-        _drive(_env(tmp_path), agent)
-    assert "status: approved" in (backlogged / MILESTONE).read_text(encoding="utf-8")
-
-
 def test_an_operator_note_dropped_mid_run_reworks_the_story_once(
     backlogged: Path, tmp_path: Path
 ) -> None:
@@ -1098,7 +1054,7 @@ def test_an_operator_note_dropped_mid_run_reworks_the_story_once(
     messages = inbox.all_messages(env.writer.run_dir / INBOX_FILE)
     assert len(messages) == 1, messages
     assert messages[0].reply, messages
-    assert agent.counts()["audit-story"] == 3, agent.counts()
+    assert agent.stage_calls["story"] == 3, agent.stage_calls
 
 
 def test_a_coverage_gap_re_enters_the_split_with_the_worklist(
@@ -1112,97 +1068,78 @@ def test_a_coverage_gap_re_enters_the_split_with_the_worklist(
     first, second = agent.args_for("split-stories")
     assert first["rework_notes"] == "", first
     assert "reset flow" in second["rework_notes"], second
-    assert agent.counts()["review-coverage"] == 2, agent.counts()
+    assert agent.stage_calls["story-split"] == 2, agent.stage_calls
 
 
-def test_coverage_resolver_cycles_share_the_epic_scoped_split_bound(
+def test_a_split_the_pm_never_passes_stops_at_the_completion_gate(
     backlogged: Path, tmp_path: Path
 ) -> None:
-    """A resolved coverage block cannot reset the epic's cumulative resolution count."""
     seen: list[str] = []
-    labels: list[dict[str, str]] = []
-    agent = _Agent(backlogged, coverage_verdicts=["blocked", "blocked", "ok"])
-    real_rebase = pyflow_activity.ActivityLog.rebase
+    agent = _Agent(backlogged, coverage_verdicts=["gaps"])
+    env = _env(tmp_path)
+
+    with pytest.raises(_Stop):
+        _drive(env, agent, wait_for_answer=_gate_then_stop(seen))
+
+    assert agent.counts()["split-stories"] == 4, agent.counts()
+    assert agent.counts()["write-story"] == 0, agent.counts()
+    assert len(seen) == 1 and "the reset flow is unclaimed" in seen[0], seen
+    assert "blocked" in _work_rows(env.writer.run_dir).values()
+
+
+def test_an_epic_split_the_pm_never_passes_asks_the_operator_then_splits_again(
+    backlogged: Path, tmp_path: Path
+) -> None:
+    seen: list[str] = []
+    agent = _Agent(backlogged, review_epics=["needs_rework"] * 4)
 
     def answered(path: Path, **kwargs: Any) -> None:
         seen.append(path.read_text())
+        agent.review_epics = ["approved"]
 
-    def capture(self: Any, current: dict[str, str]) -> Any:
-        labels.append(dict(current))
-        return real_rebase(self, current)
-
-    with patch.object(pyflow_activity.ActivityLog, "rebase", capture):
-        _drive(_env(tmp_path), agent, wait_for_answer=answered)
-
-    assert agent.counts()["resolve-operator"] == 2, agent.counts()
-    assert len(seen) == 2, seen
-    assert all("the reset flow is unclaimed" in note for note in seen), seen
-    reset_laps = [row for row in labels if row.get("story_split.split_resolves") == "1"]
-    assert any("story_split.cov_reworks" not in row for row in reset_laps), labels
-
-
-def test_an_epic_review_that_will_not_converge_reaches_the_resolver(
-    backlogged: Path, tmp_path: Path
-) -> None:
-    """Three reworks, then the operator stand-in — and the resolver's answer is re-verified."""
-    agent = _Agent(backlogged, review_epics=["needs_rework"] * 4)
-    _drive(_env(tmp_path), agent)
+    _drive(_env(tmp_path), agent, wait_for_answer=answered)
 
     assert agent.counts()["rework-epic-split"] == 3, agent.counts()
-    assert agent.counts()["resolve-epic-split"] == 1, agent.counts()
     assert agent.counts()["split-epics"] == 2, agent.counts()
-    assert agent.counts()["review-epic-split"] == 5, agent.counts()
-    assert "one epic is two" in agent.args_for("resolve-epic-split")[0]["block_notes"]
+    assert "one epic is two" in seen[0], seen
+    assert agent.counts()["answer"] == 0, agent.counts()
     assert _subject(backlogged) == "author: milestone account-access"
 
 
-def test_operator_mode_human_sends_the_block_straight_to_the_context_file(
+def test_a_blocked_epic_split_writer_is_answered_by_the_pm_and_the_answer_is_kept(
     backlogged: Path, tmp_path: Path
 ) -> None:
-    """`human` skips the resolver entirely and waits on the file."""
-    seen: list[str] = []
+    agent = _Agent(backlogged, block={"split-epics"})
 
-    def answered(path: Path, **kwargs: Any) -> None:
-        seen.append(path.read_text())
+    _drive(_env(tmp_path), agent)
 
-    agent = _Agent(backlogged, review_epics=["blocked", "approved"])
-    _drive(_env(tmp_path), agent, wait_for_answer=answered, operator_mode="human")
-
-    assert agent.counts()["resolve-epic-split"] == 0, agent.counts()
-    assert agent.counts()["rework-epic-split"] == 0, agent.counts()
-    assert len(seen) == 1 and "one epic is two" in seen[0], seen
-    assert (backlogged / CONTEXT).is_file()
-    assert agent.counts()["review-epic-split"] == 2, agent.counts()
+    assert agent.counts()["answer"] == 1, agent.counts()
+    assert agent.counts()["split-epics"] == 2, agent.counts()
+    assert agent.questions == ["which order?"]
+    assert "You asked: which order?" in agent.args_for("split-epics")[1]["note"]
+    ledger = backlogged / "docs/milestones/account-access/grills/pm.md"
+    assert "decided for epic-split" in ledger.read_text(encoding="utf-8")
+    assert _subject(backlogged) == "author: milestone account-access"
 
 
-def test_an_escalated_story_block_waits_on_the_story_context(
+def test_a_question_only_the_operator_can_settle_waits_on_the_run_gate(
     backlogged: Path, tmp_path: Path
 ) -> None:
-    """The story gate's other arm: the resolver declines, so a human is waited on."""
     seen: list[Path] = []
 
     def answered(path: Path, **kwargs: Any) -> None:
         seen.append(path)
-        agent.fail_audit.clear()
+        path.write_text(path.read_text() + "\nSign in comes first.\n")
 
-    agent = _Agent(backlogged, fail_audit={"01-sign-in"}, escalate=True)
+    agent = _Agent(backlogged, block={"write-story"}, escalate=True)
     _drive(_env(tmp_path), agent, wait_for_answer=answered)
 
-    assert seen == [backlogged / EPIC_DIR / "stories/01-sign-in/context.md"], seen
-    assert agent.counts()["resolve-operator"] == 1, agent.counts()
-    assert agent.counts()["rework-story"] == 1, agent.counts()
-    story_audits = [
-        args for args in agent.args_for("audit-story") if args["story_slug"] == "01-sign-in"
-    ]
-    assert len(story_audits) == 3, agent.counts()
-    first, convergence, after_operator = story_audits
-    assert first["prior_audit_findings"] == ""
-    assert convergence["prior_audit_findings"] == (
-        "01-sign-in-01 [journey] ## Acceptance Criteria: 01-sign-in cannot be built as "
-        "written. Repair: state the observable outcome\n"
-        "Summary: 01-sign-in cannot be built as written"
-    )
-    assert after_operator["prior_audit_findings"] == ""
+    assert seen == [backlogged / CONTEXT], seen
+    assert agent.counts()["answer"] == 1, agent.counts()
+    retry = [a for a in agent.args_for("write-story") if a["note"]]
+    assert retry and "Sign in comes first." in retry[0]["note"], retry
+    ledger = backlogged / "docs/milestones/account-access/grills/pm.md"
+    assert "Sign in comes first." in ledger.read_text(encoding="utf-8")
     assert _stories(backlogged) == {slug: True for slug in SLUGS}
 
 
@@ -1219,7 +1156,7 @@ def test_story_mode_authors_one_bullet_and_does_not_commit(
     assert agent.counts() == {
         "design-mockup": 1,
         "write-story": 1,
-        "audit-story": 1,
+        "review-inline": 1,
     }, agent.counts()
 
     stories = _stories(with_epic)
@@ -1455,7 +1392,7 @@ def test_a_run_killed_mid_story_resumes_on_that_story_alone(
 
     assert second.counts() == {
         "write-story": 1,
-        "audit-story": 1,
+        "review-inline": 1,
     }, second.counts()
     assert _stories(backlogged) == {slug: True for slug in SLUGS}
     assert result.committed is True, result
@@ -1477,10 +1414,10 @@ def test_the_labels_name_the_story_and_the_epic(backlogged: Path, tmp_path: Path
     stamped = [labels for labels in seen if labels.get("work_id")]
     assert stamped, seen
     assert stamped[0] == {"work_id": "account-access"}, stamped[0]
-    assert {labels["work_id"] for labels in stamped} == {
+    assert {labels["work_id"] for labels in stamped} >= {
         "account-access", EPIC_NAME, *SLUGS,
     }, stamped
     assert any(labels.get("progress") for labels in stamped), stamped
-    assert any(labels.get("story_split.cov_reworks") == "0" for labels in stamped), stamped
-    assert any(labels.get("story_split.split_resolves") == "0" for labels in stamped), stamped
+    assert any(labels.get("story_split.reworks") == "0" for labels in stamped), stamped
+    assert any(labels.get("story_split.answers") == "0" for labels in stamped), stamped
     assert not any(k.startswith("wf.") for labels in seen for k in labels), seen

@@ -10,7 +10,7 @@ parts of that result rather than alternative representations of it. The source d
 property once with its own name and default, and declares no deprecation or preference among
 them.
 
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::StoryChoice` @69af1329fede
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::StoryChoice` @0c2f7d227faf
 - rule: Read `has_story` to determine whether selection succeeded; use the path and slug fields
   to identify a selected story, and use `reason`, `progress`, and `remaining_count` to explain
   the selection state. No field supersedes another or has a source-defined ranking.

@@ -33,7 +33,7 @@ includes the `reworks` counter in state labels. Direct invocation uses `epic`, `
 - tests: workflows/tests/author/test_workflow.py::test_story_edit_follows_the_configured_epics_root
 - tests: ostler/tests/test_crud.py::test_delete_epic_finishes_cleanup_after_interruption
 
-The stages, in order: [start](../concepts/author-epic-edit-subflow.md#start), [plan the replacement](../concepts/author-epic-edit-subflow.md#plan_edit), [validate the projected graph](../concepts/author-epic-edit-subflow.md#validate_plan), [refine or gate invalid plans](../concepts/author-epic-edit-subflow.md#refine_plan), [review the approved plan](../concepts/author-epic-edit-subflow.md#review_plan), [apply and verify graph mutations](../concepts/author-epic-edit-subflow.md#apply_plan), [rewrite epic prose](../concepts/author-epic-edit-subflow.md#rewrite_epic), [select affected stories](../concepts/author-epic-edit-subflow.md#next_affected_story), [design story mockups](../concepts/author-epic-edit-subflow.md#design_mockup), [write and validate stories](../concepts/author-epic-edit-subflow.md#write_story), [audit stories](../concepts/author-epic-edit-subflow.md#audit_story), [validate coverage and commit](../concepts/author-epic-edit-subflow.md#check_coverage).
+The stages, in order: [start](../concepts/author-epic-edit-subflow.md#start), [plan the replacement](../concepts/author-epic-edit-subflow.md#plan_edit), [validate the projected graph](../concepts/author-epic-edit-subflow.md#validate_plan), [refine or gate invalid plans](../concepts/author-epic-edit-subflow.md#refine_plan), [review the approved plan](../concepts/author-epic-edit-subflow.md#review_plan), [apply and verify graph mutations](../concepts/author-epic-edit-subflow.md#apply_plan), [rewrite epic prose](../concepts/author-epic-edit-subflow.md#rewrite_epic), [select affected stories](../concepts/author-epic-edit-subflow.md#next_affected_story), [design story mockups](../concepts/author-epic-edit-subflow.md#design_mockup), [write and validate stories](../concepts/author-epic-edit-subflow.md#write_story), [review stories](../concepts/author-epic-edit-subflow.md#review_story), [validate coverage and commit](../concepts/author-epic-edit-subflow.md#check_coverage).
 
 The flow starts when an operator supplies an existing epic and a non-empty product-scope change to `workhorse-author run epic-edit`; or when a story-edit handoff supplies a validated `add-story` or `remove-story` intent; or when destructive reconciliation has `force: true` when the requested plan removes collateral stories or seeds; or when destructive reconciliation has `force: true` when removing a story beyond `Not started`.
 It ends in one of these ways: the requested epic edit is represented by consistent journeys, seeds, and story contracts; the requested epic edit preserves valid dependencies, backlog ownership, and milestone references; graph integrity passes before the `epic-edit` commit is created; an unresolved validation or review failure is parked at an operator gate.
@@ -45,10 +45,10 @@ The start state is resolved through the configured document roots. The snapshot 
 name, title, epic document hash, seeds and their metadata, stories and their body hashes, frozen
 identities, and milestones that reference the epic.
 
-- code: `workflows/src/workhorse_workflows/author/epic_edit/flow.py::EpicEdit.start` @4ff1fa77892b
-- code: `workflows/src/workhorse_workflows/author/epic_edit/flow.py::EpicEdit.setup` @4ff1fa77892b
-- code: `workflows/src/workhorse_workflows/author/epic_edit/flow.py::EpicEdit.labels` @4ff1fa77892b
-- code: `workflows/src/workhorse_workflows/author/epic_edit/flow.py::EpicEdit.state_labels` @4ff1fa77892b
+- code: `workflows/src/workhorse_workflows/author/epic_edit/flow.py::EpicEdit.start` @3aacff8bdeb8
+- code: `workflows/src/workhorse_workflows/author/epic_edit/flow.py::EpicEdit.setup` @3aacff8bdeb8
+- code: `workflows/src/workhorse_workflows/author/epic_edit/flow.py::EpicEdit.labels` @3aacff8bdeb8
+- code: `workflows/src/workhorse_workflows/author/epic_edit/flow.py::EpicEdit.state_labels` @3aacff8bdeb8
 - code: `workflows/src/workhorse_workflows/author/epic_edit/nodes/edit.py::snapshot_epic` @7d1d71c46ee0
 - code: `workflows/src/workhorse_workflows/author/epic_edit/nodes/_blueprint.py::blueprint` @2f9e682267f2
 
@@ -62,7 +62,7 @@ The initial turn uses the [plan-epic-edit prompt](../concepts/author-epic-edit-p
 a rejected plan is replaced by the [refine-epic-edit-plan prompt](../concepts/author-epic-edit-prompt-contracts.md#plan-turns)
 with the validation findings and prior plan. Both turns return the complete plan shape, not a patch.
 
-- code: `workflows/src/workhorse_workflows/author/epic_edit/flow.py::EpicEdit.plan_edit` @4ff1fa77892b
+- code: `workflows/src/workhorse_workflows/author/epic_edit/flow.py::EpicEdit.plan_edit` @3aacff8bdeb8
 
 ### Validate the projected graph
 Validation compares the snapshot hashes to the working tree, checks plan completion and epic
@@ -80,19 +80,18 @@ Each static finding is passed with the rejected plan to a replacement planning t
 are allowed; a still-invalid plan awaits an operator and resumes at planning. Planner mutation of
 the snapshotted epic or story bodies is a terminal workflow failure rather than a refinement case.
 
-- code: `workflows/src/workhorse_workflows/author/epic_edit/flow.py::EpicEdit.validate_plan` @4ff1fa77892b
-- code: `workflows/src/workhorse_workflows/author/epic_edit/flow.py::EpicEdit.refine_plan` @4ff1fa77892b
+- code: `workflows/src/workhorse_workflows/author/epic_edit/flow.py::EpicEdit.validate_plan` @3aacff8bdeb8
+- code: `workflows/src/workhorse_workflows/author/epic_edit/flow.py::EpicEdit.refine_plan` @3aacff8bdeb8
 
 ### Review the approved plan
-Only a statically valid plan reaches the independent semantic reviewer. The reviewer checks actor
-journeys, story-sized deliverables, and dependency order. An approved review proceeds to mutation;
-a bounded needs-rework review returns to plan refinement, and an unresolved review awaits an operator.
+Only a statically valid plan reaches the [PM review](../concepts/author-pm-review.md), which judges
+it at the `epic-edit-plan` stage from the `plan` angle. A passing review proceeds to mutation. Findings
+return to plan refinement up to three times, and an unresolved review awaits an operator.
 
-The review turn is read-only and returns `approved`, `needs_rework`, or `blocked`; it does not alter
-the plan or repository.
+The review is read-only and does not alter the plan or repository.
 
-- code: `workflows/src/workhorse_workflows/author/epic_edit/flow.py::EpicEdit.review_plan` @4ff1fa77892b
-- detail: [review-epic-edit-plan prompt](../concepts/author-epic-edit-prompt-contracts.md#review-and-rewrite-turns)
+- code: `workflows/src/workhorse_workflows/author/epic_edit/flow.py::EpicEdit.review_plan` @3aacff8bdeb8
+- detail: [plan review](../concepts/author-epic-edit-prompt-contracts.md#review-and-rewrite-turns)
 
 ### Apply and verify graph mutations
 Ostler removes requested stories and seeds, adds or updates seed metadata and story metadata, updates
@@ -100,7 +99,7 @@ milestone source items, and deletes the epic when both projected collections are
 same approved plan is safe for already-removed entities. Post-application validation compares actual
 seed/story sets and metadata with the plan and hashes every unaffected story body for byte stability.
 
-- code: `workflows/src/workhorse_workflows/author/epic_edit/flow.py::EpicEdit.apply_plan` @4ff1fa77892b
+- code: `workflows/src/workhorse_workflows/author/epic_edit/flow.py::EpicEdit.apply_plan` @3aacff8bdeb8
 - code: `workflows/src/workhorse_workflows/author/epic_edit/nodes/edit.py::apply_edit_plan` @7d1d71c46ee0
 - code: `workflows/src/workhorse_workflows/author/epic_edit/nodes/edit.py::validate_applied_edit` @7d1d71c46ee0
 - detail: [applied edit validation](../concepts/applied-edit-validation.md)
@@ -113,32 +112,32 @@ the prose turn did not alter the approved structural graph. Failure reworks thre
 The rewrite turn preserves the `Seeds` and `Stories` sections and returns either `complete` or
 `blocked`.
 
-- code: `workflows/src/workhorse_workflows/author/epic_edit/flow.py::EpicEdit.rewrite_epic` @4ff1fa77892b
+- code: `workflows/src/workhorse_workflows/author/epic_edit/flow.py::EpicEdit.rewrite_epic` @3aacff8bdeb8
 - code: `workflows/src/workhorse_workflows/author/epic_edit/nodes/edit.py::validate_epic_document` @7d1d71c46ee0
 - detail: [rewrite-epic-edit prompt](../concepts/author-epic-edit-prompt-contracts.md#review-and-rewrite-turns)
 
 ### Author affected stories
 The approved affected list is consumed in order. Each existing or newly added story may receive a
-story-local mockup, is authored, structurally and contextually validated, and independently audited.
-Validation or audit findings are recorded in the story attempt ledger and reworked up to three times;
-an unresolved story is parked at its story context. Unaffected stories are never rewritten.
+story-local mockup, is authored, structurally and contextually validated, and reviewed by the PM at the `story` stage.
+Validation or review findings are recorded in the story attempt ledger and reworked up to three times;
+an unresolved story awaits the operator on the run's context file. Unaffected stories are never rewritten.
 
 A story whose services include a web or mobile book receives the design turn first. A failed or missing mockup fails the edit. The writing turn creates only the
-selected story artifact; validation findings and audit findings use the same rework turn, while a
-blocked writing result waits at the story context. The audit turn appends its independent audit
-artifact and passes only when its findings list is empty.
+selected story artifact; validation findings and review findings use the same rework turn, while a
+blocked writing result awaits the operator on the run's context file. The PM review passes only when
+every angle passes.
 
 - code: `workflows/src/workhorse_workflows/author/epic_edit/nodes/edit.py::select_affected_story` @7d1d71c46ee0
-- code: `workflows/src/workhorse_workflows/author/epic_edit/flow.py::EpicEdit.design_mockup` @4ff1fa77892b
-- code: `workflows/src/workhorse_workflows/author/epic_edit/flow.py::EpicEdit.write_story` @4ff1fa77892b
-- code: `workflows/src/workhorse_workflows/author/epic_edit/flow.py::EpicEdit.check_story` @4ff1fa77892b
-- code: `workflows/src/workhorse_workflows/author/epic_edit/flow.py::EpicEdit.audit_story` @4ff1fa77892b
-- code: `workflows/src/workhorse_workflows/author/epic_edit/flow.py::EpicEdit.rework_story` @4ff1fa77892b
+- code: `workflows/src/workhorse_workflows/author/epic_edit/flow.py::EpicEdit.design_mockup` @3aacff8bdeb8
+- code: `workflows/src/workhorse_workflows/author/epic_edit/flow.py::EpicEdit.write_story` @3aacff8bdeb8
+- code: `workflows/src/workhorse_workflows/author/epic_edit/flow.py::EpicEdit.check_story` @3aacff8bdeb8
+- code: `workflows/src/workhorse_workflows/author/epic_edit/flow.py::EpicEdit.review_story` @3aacff8bdeb8
+- code: `workflows/src/workhorse_workflows/author/epic_edit/flow.py::EpicEdit.rework_story` @3aacff8bdeb8
 - detail: [affected story selection](../concepts/affected-story-selection.md)
 - detail: [story authoring prompts](../concepts/author-epic-edit-prompt-contracts.md#story-turns)
 
 ### Validate coverage and commit
-The surviving epic must pass deterministic coverage and semantic coverage review, then whole-graph
+The surviving epic must pass deterministic coverage and the PM review of its story split, then whole-graph
 integrity. An add-story handoff prunes its consumed backlog bullet only after integrity succeeds;
 the flow commits the `epic-edit` change. An empty approved epic skips prose and story work and is
 deleted before the same integrity and commit tail.
@@ -147,6 +146,6 @@ Integrity failure creates an `incomplete` author commit before the workflow fail
 integrity check optionally prunes the consumed add-story bullet, then creates the normal `epic-edit`
 commit and returns the applied edit.
 
-- code: `workflows/src/workhorse_workflows/author/epic_edit/flow.py::EpicEdit.check_coverage` @4ff1fa77892b
-- code: `workflows/src/workhorse_workflows/author/epic_edit/flow.py::EpicEdit.finish` @4ff1fa77892b
-- detail: [coverage review prompt](../concepts/author-epic-edit-prompt-contracts.md#coverage-turn)
+- code: `workflows/src/workhorse_workflows/author/epic_edit/flow.py::EpicEdit.check_coverage` @3aacff8bdeb8
+- code: `workflows/src/workhorse_workflows/author/epic_edit/flow.py::EpicEdit.finish` @3aacff8bdeb8
+- detail: [coverage review](../concepts/author-epic-edit-prompt-contracts.md#coverage-turn)

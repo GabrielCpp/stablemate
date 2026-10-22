@@ -10,7 +10,7 @@ boundaries. All models inherit the same permissive reply behavior: every declare
 default, unknown keys are ignored, and null input values are removed before validation. The
 package groups the main author graph, edit flows, survey flows, and parity configuration; the
 format nodes linked below document the fields exposed by these contracts. `main.py` exports the
-principal graph's node-return and agent-reply models listed below; the other schema modules are
+principal graph's node-return and agent-reply models listed below. The PM's verdict, finding and receipt models live in the `pm` package, documented in [author PM review](author-pm-review.md); the other schema modules are
 separate source-layer groups.
 
 - code: `workflows/src/workhorse_workflows/author/shared/schemas/_base.py::AuthorResult` @6a7046575304
@@ -30,9 +30,6 @@ separate source-layer groups.
 - detail: [mockup gate](../formats/mockup-gate.md)
 - detail: [write epic result](../formats/write-epic-result.md)
 - detail: [write story result](../formats/write-story-result.md)
-- detail: [audit finding](../formats/audit-finding.md)
-- detail: [audit result](../formats/audit-result.md)
-- detail: [coverage review](../formats/coverage-review.md)
 - detail: [author edit intent](../formats/edit-intent.md)
 - detail: [resolved bullet](../formats/resolved-bullet.md)
 - detail: [epic edit snapshot](../formats/epic-snapshot.md)
@@ -43,7 +40,6 @@ separate source-layer groups.
 - detail: [story change](../formats/story-change.md)
 - detail: [epic edit plan](../formats/epic-edit-plan.md)
 - detail: [applied epic edit](../formats/applied-epic-edit.md)
-- detail: [epic edit review](../formats/epic-edit-review.md)
 - detail: [epic rewrite result](../formats/epic-rewrite-result.md)
 - detail: [author story choice](../formats/story-choice.md)
 - detail: [seeded story result](../formats/seeded-story.md)
@@ -88,41 +84,37 @@ The edit plan contains seed and story change formats, while an epic snapshot con
 story, and milestone snapshot formats. Their complete field contracts are the existing format
 nodes reached from the author surfaces and subflows.
 
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::Config` @69af1329fede
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::RunContext` @69af1329fede
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::Filled` @69af1329fede
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::ContractDigest` @69af1329fede
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::UnfinishedRow` @69af1329fede
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::Completion` @69af1329fede
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::StoryChoice` @69af1329fede
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::SeededStory` @69af1329fede
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::Defects` @69af1329fede
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::MilestoneStatus` @69af1329fede
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::VerifyReport` @69af1329fede
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::Feedback` @69af1329fede
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::Pruned` @69af1329fede
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::Ledger` @69af1329fede
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::Committed` @69af1329fede
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::WriteEpicResult` @69af1329fede
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::StorySplit` @69af1329fede
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::MockupResult` @69af1329fede
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::MockupGate` @69af1329fede
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::WriteStoryResult` @69af1329fede
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::AuditFinding` @69af1329fede
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::AuditResult` @69af1329fede
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::CoverageReview` @69af1329fede
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/edit.py::EditIntent` @952fb9c4cfcb
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/edit.py::ResolvedBullet` @952fb9c4cfcb
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/edit.py::SeedSnapshot` @952fb9c4cfcb
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/edit.py::StorySnapshot` @952fb9c4cfcb
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/edit.py::MilestoneSnapshot` @952fb9c4cfcb
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/edit.py::EpicSnapshot` @952fb9c4cfcb
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/edit.py::SeedChange` @952fb9c4cfcb
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/edit.py::StoryChange` @952fb9c4cfcb
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/edit.py::EpicEditPlan` @952fb9c4cfcb
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/edit.py::AppliedEpicEdit` @952fb9c4cfcb
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/edit.py::EpicEditReview` @952fb9c4cfcb
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/edit.py::EpicRewriteResult` @952fb9c4cfcb
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::Config` @0c2f7d227faf
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::RunContext` @0c2f7d227faf
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::Filled` @0c2f7d227faf
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::ContractDigest` @0c2f7d227faf
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::UnfinishedRow` @0c2f7d227faf
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::Completion` @0c2f7d227faf
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::StoryChoice` @0c2f7d227faf
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::SeededStory` @0c2f7d227faf
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::Defects` @0c2f7d227faf
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::MilestoneStatus` @0c2f7d227faf
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::VerifyReport` @0c2f7d227faf
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::Feedback` @0c2f7d227faf
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::Pruned` @0c2f7d227faf
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::Ledger` @0c2f7d227faf
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::Committed` @0c2f7d227faf
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::WriteEpicResult` @0c2f7d227faf
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::StorySplit` @0c2f7d227faf
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::MockupResult` @0c2f7d227faf
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::MockupGate` @0c2f7d227faf
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::WriteStoryResult` @0c2f7d227faf
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/edit.py::EditIntent` @7b95d62cfa2c
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/edit.py::ResolvedBullet` @7b95d62cfa2c
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/edit.py::SeedSnapshot` @7b95d62cfa2c
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/edit.py::StorySnapshot` @7b95d62cfa2c
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/edit.py::MilestoneSnapshot` @7b95d62cfa2c
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/edit.py::EpicSnapshot` @7b95d62cfa2c
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/edit.py::SeedChange` @7b95d62cfa2c
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/edit.py::StoryChange` @7b95d62cfa2c
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/edit.py::EpicEditPlan` @7b95d62cfa2c
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/edit.py::AppliedEpicEdit` @7b95d62cfa2c
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/edit.py::EpicRewriteResult` @7b95d62cfa2c
 - code: `workflows/src/workhorse_workflows/author/shared/schemas/survey.py::SurveyConfig` @7db58efbfd66
 - code: `workflows/src/workhorse_workflows/author/shared/schemas/survey.py::InventoryCheck` @7db58efbfd66
 - code: `workflows/src/workhorse_workflows/author/shared/schemas/survey.py::Expansion` @7db58efbfd66

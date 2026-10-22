@@ -12,7 +12,7 @@ and parity configuration. The initializer imports from each subject module and d
 another registration target; the model implementations remain documented at their declaring
 modules.
 
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/__init__.py::__all__` @b8f4a68b9203
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/__init__.py::__all__` @7b1a4f7a0c9b
 - detail: [Author main package](author-main-package.md)
 
 ## Fields

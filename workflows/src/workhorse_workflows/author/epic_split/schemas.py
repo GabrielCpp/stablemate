@@ -18,6 +18,7 @@ class EpicSplitContext(BaseModel):
     epic_fingerprints: dict[str, str] = Field(default_factory=dict)
     seed_ids: dict[str, list[str]] = Field(default_factory=dict)
     story_slugs: dict[str, list[str]] = Field(default_factory=dict)
+    pm_ledger: str = ""
 
 
 @dry_run(status="complete", notes="")
@@ -25,14 +26,6 @@ class EpicSplitResult(BaseModel):
     """A split or rework turn's reply."""
 
     status: Literal["complete", "blocked"]
-    notes: str
-
-
-@dry_run(status="approved", notes="")
-class EpicSplitReview(BaseModel):
-    """The independent review verdict over the ordered skeletons."""
-
-    status: Literal["approved", "needs_rework", "blocked"]
     notes: str
 
 
@@ -46,19 +39,20 @@ class EpicSplitValidation(BaseModel):
     errors: str = ""
 
 
-@dry_run(decision="escalated", notes="")
-class OperatorResolution(BaseModel):
-    """The diagnostic resolver's report before the flow parks for an operator."""
+class EpicSplitDone(BaseModel):
+    """The epic split's outcome: accepted by the lint and the PM, or blocked with the reason."""
 
-    decision: Literal["escalated"]
-    notes: str
-    tried: list[str] = Field(default_factory=list)
+    status: Literal["accepted", "blocked"] = "accepted"
+    milestone_path: str = ""
+    ordered_epics: list[str] = Field(default_factory=list)
+    notes: str = ""
+    reworks: int = 0
+    answers: int = 0
 
 
 __all__ = [
     "EpicSplitContext",
+    "EpicSplitDone",
     "EpicSplitResult",
-    "EpicSplitReview",
     "EpicSplitValidation",
-    "OperatorResolution",
 ]

@@ -4,59 +4,24 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, ClassVar
 
-from workhorse.pyflow import Await, Continue, Done, Workflow, WorkflowFailed
+from workhorse.pyflow import Continue, Done, Workflow
+from workhorse_workflows.author.pm import MAX_ANSWERS, GapAnswer, PMReview
 from workhorse_workflows.author.shared.nodes import (
     check_story_grounding,
     load_config,
     record_attempt,
     validate_story,
 )
-from workhorse_workflows.author.shared import paths
-from workhorse_workflows.author.shared.schemas import (
-    AuditFinding,
-    AuditResult,
-    Config,
-    MockupResult,
-    OperatorResolution,
-    WriteStoryResult,
-)
+from workhorse_workflows.author.shared.schemas import Config, MockupResult, WriteStoryResult
 from workhorse_workflows.author.story_author.nodes import (
     check_mockup_needed,
     check_story_feedback,
     prepare_story,
-    record_story_audit,
 )
 from workhorse_workflows.author.story_author.schemas import StoryAuthorDone, StoryTarget
 from workhorse_workflows.kit.telemetry import counter_labels
 
 MAX_REWORKS = 3
-MAX_AUDIT_REWORKS = 1
-MAX_RESOLVES = 2
-UNBOUNDED = float("inf")
-AUDIT_FINDING_FIELDS = ("id", "target", "issue", "repair")
-
-
-def _format_audit_finding(finding: AuditFinding) -> str:
-    issue = finding.issue.rstrip(". ")
-    return f"{finding.id} [{finding.kind}] {finding.target}: {issue}. Repair: {finding.repair}"
-
-
-def _audit_finding_problems(result: AuditResult) -> list[str]:
-    problems: list[str] = []
-    for index, finding in enumerate(result.findings, start=1):
-        missing = [
-            field for field in AUDIT_FINDING_FIELDS if not str(getattr(finding, field)).strip()
-        ]
-        if missing:
-            problems.append(f"finding {index} missing {', '.join(missing)}")
-    return problems
-
-
-def _audit_notes(result: AuditResult) -> str:
-    lines = [_format_audit_finding(finding) for finding in result.findings]
-    if result.notes:
-        lines.append(f"Summary: {result.notes}")
-    return "\n".join(lines)
 
 
 class StoryAuthor(Workflow):
@@ -65,14 +30,9 @@ class StoryAuthor(Workflow):
     epic: str = ""
     story: str = ""
     feedback_dir: str = ""
-    operator_mode: str = "auto"
     note: str = ""
 
-    BUDGET_LABELS: ClassVar[tuple[str, ...]] = (
-        "reworks",
-        "resolves",
-        "audit_reworks",
-    )
+    BUDGET_LABELS: ClassVar[tuple[str, ...]] = ("reworks", "answers")
 
     def setup(self) -> Config:
         """Resolve config only; direct story authoring never creates a branch."""
@@ -87,20 +47,33 @@ class StoryAuthor(Workflow):
     def _abs(self, relative: str) -> Path:
         return Path(self.ctx.repo_root) / relative
 
-    def _resolve(self, target: StoryTarget, notes: str) -> OperatorResolution:
-        self.logger.info("resolving the write-story block", extra={"activity": True})
-        return self.agent(
-            "shared/prompts/resolve-operator.md",
-            returns=OperatorResolution,
-            power="high",
-            timeout=UNBOUNDED,
-            cwd=self.ctx.repo_root,
-            args={
-                "context_path": paths.story_context(target.story_dir),
-                "epic_dir": target.epic_dir,
-                "block_stage": "write-story",
-                "block_notes": notes,
-            },
+    def _args(self, target: StoryTarget, mockup: str, **extra: str) -> dict[str, str]:
+        return {
+            "epic": target.epic,
+            "story_path": target.story_path,
+            "story_slug": target.story,
+            "story_dir": target.story_dir,
+            "services_dir": self.ctx.services_dir,
+            "mockup_path": mockup,
+            "ledger": self.ctx.pm_ledger,
+            **extra,
+        }
+
+    def _blocked(
+        self, target: StoryTarget, mockup: str, notes: str, reworks: int, answers: int
+    ) -> Done:
+        self.logger.warning("parking story '%s': %s", target.story, notes)
+        return Done(
+            StoryAuthorDone(
+                status="blocked",
+                epic=target.epic,
+                story=target.story,
+                story_path=target.story_path,
+                mockup=mockup,
+                notes=notes,
+                reworks=reworks,
+                answers=answers,
+            )
         )
 
     def start(self) -> Continue:
@@ -151,37 +124,34 @@ class StoryAuthor(Workflow):
         target: StoryTarget,
         mockup: str = "",
         reworks: int = 0,
-        resolves: int = 0,
-        audit_reworks: int = 0,
-        audit_findings: str = "",
-    ) -> Continue | Await | Done:
+        answers: int = 0,
+        note: str = "",
+        prior: str = "",
+    ) -> Continue | Done:
         self.logger.info("authoring %s", target.story, extra={"activity": True})
         result = self.agent(
             "story_author/prompts/write-story.md",
             returns=WriteStoryResult,
             power="high",
             cwd=self.ctx.repo_root,
-            args={
-                "epic": target.epic,
-                "story_path": target.story_path,
-                "story_slug": target.story,
-                "story_dir": target.story_dir,
-                "services_dir": self.ctx.services_dir,
-                "mockup_path": mockup,
-                "note": self.note,
-            },
+            args=self._args(
+                target,
+                mockup,
+                note="\n\n".join(part for part in (self.note, note) if part),
+            ),
         )
         if result.status == "blocked":
-            return self._gate_story(result, result.notes, target, mockup, resolves)
+            return self._ask(
+                result.notes, "write", target, mockup, "", reworks, answers, prior
+            )
         return Continue(
             result,
             self.check_story,
             target=target,
             mockup=mockup,
             reworks=reworks,
-            resolves=resolves,
-            audit_reworks=audit_reworks,
-            audit_findings=audit_findings,
+            answers=answers,
+            prior=prior,
         )
 
     def check_story(
@@ -189,21 +159,13 @@ class StoryAuthor(Workflow):
         target: StoryTarget,
         mockup: str = "",
         reworks: int = 0,
-        resolves: int = 0,
-        audit_reworks: int = 0,
-        audit_findings: str = "",
-    ) -> Continue | Await | Done:
+        answers: int = 0,
+        prior: str = "",
+    ) -> Continue | Done:
         structure = self.call(validate_story, target.story_dir)
         if not structure.ok:
             return self._rework(
-                structure,
-                structure.errors,
-                target,
-                mockup,
-                reworks,
-                resolves,
-                audit_reworks,
-                audit_findings,
+                structure, structure.errors, target, mockup, reworks, answers, prior
             )
         grounding = self.call(
             check_story_grounding,
@@ -213,77 +175,44 @@ class StoryAuthor(Workflow):
         )
         if not grounding.ok:
             return self._rework(
-                grounding,
-                grounding.errors,
-                target,
-                mockup,
-                reworks,
-                resolves,
-                audit_reworks,
-                audit_findings,
+                grounding, grounding.errors, target, mockup, reworks, answers, prior
             )
         return Continue(
             grounding,
-            self.audit_story,
+            self.review,
             target=target,
             mockup=mockup,
             reworks=reworks,
-            resolves=resolves,
-            audit_reworks=audit_reworks,
-            audit_findings=audit_findings,
+            answers=answers,
+            prior=prior,
         )
 
-    def audit_story(
+    def review(
         self,
         target: StoryTarget,
         mockup: str = "",
         reworks: int = 0,
-        resolves: int = 0,
-        audit_reworks: int = 0,
-        audit_findings: str = "",
-    ) -> Continue | Await | Done:
-        result = self.agent(
-            "story_author/prompts/audit-story.md",
-            returns=AuditResult,
-            power="high",
-            cwd=self.ctx.repo_root,
-            args={
-                "epic": target.epic,
-                "story_path": target.story_path,
-                "story_slug": target.story,
-                "story_dir": target.story_dir,
-                "services_dir": self.ctx.services_dir,
-                "prior_audit_findings": audit_findings,
-            },
+        answers: int = 0,
+        prior: str = "",
+    ) -> Continue | Done:
+        verdict = self.handoff(
+            PMReview,
+            stage="story",
+            subject=target.story_path,
+            epic=target.epic,
+            prior=prior,
         )
-        problems = _audit_finding_problems(result)
-        if problems:
-            raise WorkflowFailed(
-                f"the audit of '{target.story}' returned findings the rework turn cannot act on: "
-                + "; ".join(problems)
-            )
-        if not result.findings:
+        if verdict.passed:
             return Continue(
-                result,
+                verdict,
                 self.story_feedback,
                 target=target,
                 mockup=mockup,
                 reworks=reworks,
-                resolves=resolves,
+                answers=answers,
             )
-        notes = _audit_notes(result)
-        if audit_reworks >= MAX_AUDIT_REWORKS:
-            return self._gate_story(result, notes, target, mockup, resolves)
-        return Continue(
-            result,
-            self.rework_story,
-            target=target,
-            mockup=mockup,
-            notes=notes,
-            reworks=reworks,
-            resolves=resolves,
-            audit_reworks=audit_reworks + 1,
-            audit_findings=notes,
+        return self._rework(
+            verdict, verdict.notes, target, mockup, reworks, answers, verdict.notes
         )
 
     def _rework(
@@ -293,12 +222,11 @@ class StoryAuthor(Workflow):
         target: StoryTarget,
         mockup: str,
         reworks: int,
-        resolves: int,
-        audit_reworks: int,
-        audit_findings: str,
-    ) -> Continue | Await | Done:
+        answers: int,
+        prior: str,
+    ) -> Continue | Done:
         if reworks >= MAX_REWORKS:
-            return self._gate_story(result, notes, target, mockup, resolves)
+            return self._blocked(target, mockup, notes, reworks, answers)
         return Continue(
             result,
             self.rework_story,
@@ -306,50 +234,34 @@ class StoryAuthor(Workflow):
             mockup=mockup,
             notes=notes,
             reworks=reworks,
-            resolves=resolves,
-            audit_reworks=audit_reworks,
-            audit_findings=audit_findings,
+            answers=answers,
+            prior=prior,
         )
 
-    def _gate_story(
+    def _ask(
         self,
-        result: object,
-        notes: str,
+        question: str,
+        phase: str,
         target: StoryTarget,
         mockup: str,
-        resolves: int,
-    ) -> Continue | Await | Done:
-        resume = {
-            "target": target,
-            "mockup": mockup,
-            "reworks": 0,
-            "resolves": resolves,
-        }
-        context = self._abs(paths.story_context(target.story_dir))
-        if self.operator_mode == "human":
-            return Await(context, notes, self.write_story, **resume)
-        if resolves >= MAX_RESOLVES:
-            self.logger.warning(
-                "parking story '%s' after %d autonomous resolutions: %s",
-                target.story,
-                resolves,
-                notes,
-            )
-            return Done(StoryAuthorDone(
-                status="blocked",
-                epic=target.epic,
-                story=target.story,
-                story_path=target.story_path,
-                mockup=mockup,
-                notes=notes,
-            ))
+        notes: str,
+        reworks: int,
+        answers: int,
+        prior: str,
+    ) -> Continue | Done:
+        if answers >= MAX_ANSWERS:
+            return self._blocked(target, mockup, question, reworks, answers)
         return Continue(
-            result,
-            self.resolve_story,
+            None,
+            self.ask_pm,
+            question=question,
+            phase=phase,
             target=target,
             mockup=mockup,
             notes=notes,
-            resolves=resolves,
+            reworks=reworks,
+            answers=answers,
+            prior=prior,
         )
 
     def rework_story(
@@ -358,11 +270,11 @@ class StoryAuthor(Workflow):
         notes: str,
         mockup: str = "",
         reworks: int = 0,
-        resolves: int = 0,
-        audit_reworks: int = 0,
-        audit_findings: str = "",
-    ) -> Continue:
-        ledger = self.call(
+        answers: int = 0,
+        note: str = "",
+        prior: str = "",
+    ) -> Continue | Done:
+        attempts = self.call(
             record_attempt,
             f"{target.story_dir.rstrip('/')}/attempts.md",
             str(reworks),
@@ -373,44 +285,61 @@ class StoryAuthor(Workflow):
             returns=WriteStoryResult,
             power="high",
             cwd=self.ctx.repo_root,
-            args={
-                "epic": target.epic,
-                "story_path": target.story_path,
-                "story_slug": target.story,
-                "story_dir": target.story_dir,
-                "services_dir": self.ctx.services_dir,
-                "mockup_path": mockup,
-                "validation_errors": notes,
-                "prior_attempts": ledger.prior_attempts,
-            },
+            args=self._args(
+                target,
+                mockup,
+                validation_errors=notes,
+                prior_attempts=attempts.prior_attempts,
+                note=note,
+            ),
         )
+        if result.status == "blocked":
+            return self._ask(
+                result.notes, "rework", target, mockup, notes, reworks, answers, prior
+            )
         return Continue(
             result,
             self.check_story,
             target=target,
             mockup=mockup,
             reworks=reworks + 1,
-            resolves=resolves,
-            audit_reworks=audit_reworks,
-            audit_findings=audit_findings,
+            answers=answers,
+            prior=prior,
         )
 
-    def resolve_story(
+    def ask_pm(
         self,
+        question: str,
+        phase: str,
         target: StoryTarget,
-        notes: str,
         mockup: str = "",
-        resolves: int = 0,
-    ) -> Await:
-        self._resolve(target, notes)
-        return Await(
-            self._abs(paths.story_context(target.story_dir)),
-            notes,
-            self.write_story,
+        notes: str = "",
+        reworks: int = 0,
+        answers: int = 0,
+        prior: str = "",
+    ) -> Continue:
+        answer = self.handoff(GapAnswer, question=question, asker="story-author")
+        if phase == "write":
+            return Continue(
+                answer,
+                self.write_story,
+                target=target,
+                mockup=mockup,
+                reworks=reworks,
+                answers=answers + 1,
+                note=answer.note,
+                prior=prior,
+            )
+        return Continue(
+            answer,
+            self.rework_story,
             target=target,
+            notes=notes,
             mockup=mockup,
-            reworks=0,
-            resolves=resolves + 1,
+            reworks=reworks,
+            answers=answers + 1,
+            note=answer.note,
+            prior=prior,
         )
 
     def story_feedback(
@@ -418,7 +347,7 @@ class StoryAuthor(Workflow):
         target: StoryTarget,
         mockup: str = "",
         reworks: int = 0,
-        resolves: int = 0,
+        answers: int = 0,
     ) -> Continue | Done:
         feedback = self.call(check_story_feedback, self.feedback_dir or str(self.run_dir))
         if feedback.present:
@@ -429,15 +358,16 @@ class StoryAuthor(Workflow):
                 mockup=mockup,
                 notes=feedback.content,
                 reworks=reworks,
-                resolves=resolves,
+                answers=answers,
             )
-        self.call(record_story_audit, target.story_path)
         return Done(
             StoryAuthorDone(
                 epic=target.epic,
                 story=target.story,
                 story_path=target.story_path,
                 mockup=mockup,
+                reworks=reworks,
+                answers=answers,
             )
         )
 
@@ -447,23 +377,16 @@ class StoryAuthor(Workflow):
         notes: str,
         mockup: str = "",
         reworks: int = 0,
-        resolves: int = 0,
+        answers: int = 0,
     ) -> Continue:
         result = self.agent(
             "story_author/prompts/rework-story.md",
             returns=WriteStoryResult,
             power="high",
             cwd=self.ctx.repo_root,
-            args={
-                "epic": target.epic,
-                "story_path": target.story_path,
-                "story_slug": target.story,
-                "story_dir": target.story_dir,
-                "services_dir": self.ctx.services_dir,
-                "mockup_path": mockup,
-                "validation_errors": "",
-                "operator_feedback": notes,
-            },
+            args=self._args(
+                target, mockup, validation_errors="", operator_feedback=notes
+            ),
         )
         return Continue(
             result,
@@ -471,7 +394,7 @@ class StoryAuthor(Workflow):
             target=target,
             mockup=mockup,
             reworks=reworks,
-            resolves=resolves,
+            answers=answers,
         )
 
 

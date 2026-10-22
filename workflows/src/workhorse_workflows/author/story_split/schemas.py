@@ -5,21 +5,14 @@ from workhorse_workflows.author.shared.schemas import AuthorResult
 
 
 class StorySplitDone(AuthorResult):
-    """One epic's story graph passed mechanical and semantic coverage review."""
+    """One epic's story graph passed the lint and the PM review, or stays blocked."""
 
-    status: Literal["accepted"] = "accepted"
+    status: Literal["accepted", "blocked"] = "accepted"
     epic: str
     epic_dir: str
-    receipt_path: str
-    coverage_reworks: int = 0
-    operator_resolutions: int = 0
-
-
-class StorySplitReceipt(AuthorResult):
-    """A semantic review bound to the exact current story topology."""
-
-    graph_digest: str
-    path: str
+    notes: str = ""
+    reworks: int = 0
+    answers: int = 0
 
 
 class StoryServices(AuthorResult):
@@ -29,4 +22,4 @@ class StoryServices(AuthorResult):
     services: dict[str, list[str]] = {}
 
 
-__all__ = ["StoryServices", "StorySplitDone", "StorySplitReceipt"]
+__all__ = ["StoryServices", "StorySplitDone"]

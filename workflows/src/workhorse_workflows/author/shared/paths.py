@@ -66,25 +66,13 @@ def author_context(root: str | Path) -> str:
     return f"{epics_dir(root)}/_author-context.md"
 
 
-def epic_context(epic_dir_rel: str) -> str:
-    """One epic's operator context file: the write-epic, split and coverage gates."""
-    return f"{epic_dir_rel.rstrip('/')}/context.md"
-
-
-def story_context(story_dir_rel: str) -> str:
-    """One story's operator context file: the write-story gate."""
-    return f"{story_dir_rel.rstrip('/')}/context.md"
-
-
 __all__ = [
     "author_context",
     "backlog_file",
-    "epic_context",
     "epic_dir",
     "epics_dir",
     "services_dir",
     "launch_repo_root",
-    "story_context",
     "story_dir",
     "survey_repo_root",
 ]

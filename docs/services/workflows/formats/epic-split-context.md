@@ -9,7 +9,7 @@ The context is the immutable boundary captured before an epic-split agent turn. 
 approved milestone and records graph identities and content fingerprints used to
 reject collateral edits.
 
-- code: `workflows/src/workhorse_workflows/author/epic_split/schemas.py::EpicSplitContext` @c07e53f09de1
+- code: `workflows/src/workhorse_workflows/author/epic_split/schemas.py::EpicSplitContext` @ff0a56666e46
 - detail: [author epic split subflow](../concepts/author-epic-split-subflow.md)
 
 ## Fields
@@ -19,7 +19,7 @@ reject collateral edits.
 - required: true
 - semantics: repository root used for all graph reads and validation
 - verify: json_path(path="$.repo_root", equals="docs/stories")
-- code: `workflows/src/workhorse_workflows/author/epic_split/schemas.py::EpicSplitContext` @c07e53f09de1
+- code: `workflows/src/workhorse_workflows/author/epic_split/schemas.py::EpicSplitContext` @ff0a56666e46
 - detail: [epic split context field roles](../concepts/epic-split-context-field-roles.md)
 
 ### epics_dir
@@ -27,7 +27,7 @@ reject collateral edits.
 - required: true
 - semantics: configured directory in which epic skeletons are created
 - verify: json_path(path="$.epics_dir", equals="docs/stories/acme-story")
-- code: `workflows/src/workhorse_workflows/author/epic_split/schemas.py::EpicSplitContext` @c07e53f09de1
+- code: `workflows/src/workhorse_workflows/author/epic_split/schemas.py::EpicSplitContext` @ff0a56666e46
 - detail: [epic split context field roles](../concepts/epic-split-context-field-roles.md)
 
 ### milestone_path
@@ -35,7 +35,7 @@ reject collateral edits.
 - required: true
 - semantics: approved milestone document selected for splitting
 - verify: json_path(path="$.milestone_path", equals="docs/stories/acme-story/story.md")
-- code: `workflows/src/workhorse_workflows/author/epic_split/schemas.py::EpicSplitContext` @c07e53f09de1
+- code: `workflows/src/workhorse_workflows/author/epic_split/schemas.py::EpicSplitContext` @ff0a56666e46
 - detail: [epic split context field roles](../concepts/epic-split-context-field-roles.md)
 
 ### existing_epics
@@ -44,7 +44,7 @@ reject collateral edits.
 - required: true
 - semantics: epic names present before the split
 - verify: count(subject="existing epic names before the split", equals=0)
-- code: `workflows/src/workhorse_workflows/author/epic_split/schemas.py::EpicSplitContext` @c07e53f09de1
+- code: `workflows/src/workhorse_workflows/author/epic_split/schemas.py::EpicSplitContext` @ff0a56666e46
 - detail: [epic split context field roles](../concepts/epic-split-context-field-roles.md)
 
 ### milestone_fingerprints
@@ -53,7 +53,7 @@ reject collateral edits.
 - required: true
 - semantics: SHA-256 content fingerprints for all milestone documents before the split
 - verify: json_path(path="$.milestone_fingerprints", matches="^\\{.*\\}$")
-- code: `workflows/src/workhorse_workflows/author/epic_split/schemas.py::EpicSplitContext` @c07e53f09de1
+- code: `workflows/src/workhorse_workflows/author/epic_split/schemas.py::EpicSplitContext` @ff0a56666e46
 - detail: [epic split context field roles](../concepts/epic-split-context-field-roles.md)
 
 ### epic_fingerprints
@@ -62,7 +62,7 @@ reject collateral edits.
 - required: true
 - semantics: SHA-256 content fingerprints for all existing epic documents before the split
 - verify: json_path(path="$.epic_fingerprints", equals="{}")
-- code: `workflows/src/workhorse_workflows/author/epic_split/schemas.py::EpicSplitContext` @c07e53f09de1
+- code: `workflows/src/workhorse_workflows/author/epic_split/schemas.py::EpicSplitContext` @ff0a56666e46
 - detail: [epic split context field roles](../concepts/epic-split-context-field-roles.md)
 
 ### seed_ids
@@ -71,7 +71,7 @@ reject collateral edits.
 - required: true
 - semantics: seed identities that validation requires to remain unchanged
 - verify: json_path(path="$.seed_ids", matches="^\\{\\}$")
-- code: `workflows/src/workhorse_workflows/author/epic_split/schemas.py::EpicSplitContext` @c07e53f09de1
+- code: `workflows/src/workhorse_workflows/author/epic_split/schemas.py::EpicSplitContext` @ff0a56666e46
 - detail: [epic split context field roles](../concepts/epic-split-context-field-roles.md)
 
 ### story_slugs
@@ -80,5 +80,5 @@ reject collateral edits.
 - required: true
 - semantics: story identities that validation requires to remain unchanged
 - verify: json_path(path="$.story_slugs", matches="^\\{.*\\}$")
-- code: `workflows/src/workhorse_workflows/author/epic_split/schemas.py::EpicSplitContext` @c07e53f09de1
+- code: `workflows/src/workhorse_workflows/author/epic_split/schemas.py::EpicSplitContext` @ff0a56666e46
 - detail: [epic split context field roles](../concepts/epic-split-context-field-roles.md)

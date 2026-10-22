@@ -7,11 +7,11 @@ agent: agent
 This story came back for repair. Fix exactly what was flagged, then return control.
 
 The flags below come from one of two places, and they read differently. The deterministic validator
-emits plain error lines. The independent audit emits **findings**, one per line, shaped
-`<id> [<kind>] <target>: <issue>. Repair: <repair>` — address each one at the `target` it names, and
-do not treat the list as a licence to rewrite the rest of the story. The `id` is how the next audit
-recognises the same defect, so a finding you leave unrepaired will come straight back under its own
-name; if you believe a finding is wrong, say which id and why in `notes` rather than ignoring it.
+emits plain error lines. The product manager's review emits **findings**, one per line, shaped
+`[<angle>] <target>: <issue>. Repair: <repair>` — address each one at the `target` it names, and
+do not treat the list as a licence to rewrite the rest of the story. A finding you leave unrepaired
+comes straight back on the next review; if you believe a finding is wrong, say which one and why in
+`notes` rather than ignoring it.
 
 ## Inputs (authoritative)
 
@@ -28,7 +28,7 @@ name; if you believe a finding is wrong, say which id and why in `notes` rather 
   story cites by node id from its `## Context`. Read it; never write to it, and do not inspect the
   app or source code to discover replacement nodes.
 {%- endif %}
-- Validation errors or audit findings to fix: `{{ workhorse_var('validation_errors') }}`
+- Validation errors or review findings to fix: `{{ workhorse_var('validation_errors') }}`
 - Operator feedback to apply (if any): `{{ workhorse_var('operator_feedback') }}`
 {%- if workhorse_var('prior_attempts') %}
 - **Earlier attempts that already FAILED (do not repeat these approaches):**
@@ -70,8 +70,8 @@ was in progress. Treat it as **required changes for this pass**, within the epic
 If it asks for out-of-scope work or a product decision not present in the epic/seed, return
 `status: "blocked"` with the question rather than expanding scope.
 
-Keep the parts that were already correct. Read `{{ workhorse_var('story_dir') }}/context.md` for
-any operator answer.
+Keep the parts that were already correct.
+{% include "pm/prompts/ledger.md" %}
 
 ## Final response (REQUIRED, exact shape)
 

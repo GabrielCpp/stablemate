@@ -14,5 +14,5 @@ The schema declares each field independently with its own default and contains n
 deprecation, delegation, or migration path. Consumers select the field that answers their
 question; no field replaces or ranks above another.
 
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/edit.py::ResolvedBullet` @952fb9c4cfcb
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/edit.py::ResolvedBullet` @7b95d62cfa2c
 - rule: select the field for the identity, source text, or backlog-origin question at hand; the three fields are complementary and no ranking exists

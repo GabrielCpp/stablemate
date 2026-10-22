@@ -1,7 +1,6 @@
 """What the author's main graph validates: its node returns, and its agent replies."""
 from __future__ import annotations
 
-from typing import Literal
 
 from workhorse_workflows.author.shared.schemas._base import AuthorResult
 from workhorse.pyflow import dry_run
@@ -14,6 +13,8 @@ class Config(AuthorResult):
     backlog_path: str = ""
     milestone_path: str = ""
     milestone_mockups_dir: str = ""
+    milestone_dir: str = ""
+    pm_ledger: str = ""
     epics_dir: str = ""
     services_dir: str = ""
     layers: list[str] = []
@@ -174,41 +175,11 @@ class WriteStoryResult(AuthorResult):
     notes: str = ""
 
 
-class AuditFinding(AuthorResult):
-    """One defect the story auditor is willing to fail the story over."""
-
-    id: str = ""
-    kind: Literal["journey", "chrome", "transient-feedback", "grounding"] = "grounding"
-    target: str = ""
-    issue: str = ""
-    repair: str = ""
-
-
-@dry_run(status="passed")
-class AuditResult(AuthorResult):
-    """`<flow>/prompts/audit-story.md` — the story read back against its epic and seeds."""
-
-    status: str = ""
-    findings: list[AuditFinding] = []
-    notes: str = ""
-
-
-@dry_run(status="ok")
-class CoverageReview(AuthorResult):
-    """`<flow>/prompts/review-coverage.md` — every seed accounted for by some story."""
-
-    status: str = ""
-    notes: str = ""
-
-
 __all__ = [
-    "AuditFinding",
-    "AuditResult",
     "Committed",
     "Completion",
     "Config",
     "ContractDigest",
-    "CoverageReview",
     "Defects",
     "Feedback",
     "Filled",

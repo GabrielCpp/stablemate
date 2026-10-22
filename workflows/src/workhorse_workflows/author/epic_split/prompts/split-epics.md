@@ -20,7 +20,16 @@ todo indexes, branches, commits, or downstream artifacts. The deterministic gate
 epic fingerprints and all seed/story identities, and rejects prose in newly created skeletons.
 
 Preserve every milestone journey, locked decision, constraint, acceptance requirement, and non-goal
-in the split itself. Return `blocked` rather than inventing an unresolved product decision.
+in the split itself. Return `blocked` with the question in `notes` rather than inventing an unresolved
+product decision. The product manager answers it, or the operator does, and you are run again with
+the answer.
+{%- if workhorse_var('note') %}
+
+## Answer to your question
+
+{{ workhorse_var('note') }}
+{%- endif %}
+{% include "pm/prompts/ledger.md" %}
 
 Produce a JSON document that complies with this schema:
 

@@ -1,8 +1,6 @@
 """File the ostler graph's epics, story splits and stories on the run's work list."""
 from __future__ import annotations
 
-import hashlib
-import json
 import logging
 from pathlib import Path
 
@@ -12,13 +10,20 @@ from ostler.select import dag_order, epic_by_name
 from workhorse.pyflow import WorkflowFailed
 from workhorse.worklist import WORK_FILE, JsonBackend, WorkItem, WorkList
 from workhorse_workflows.author.main.nodes._blueprint import blueprint
+from workhorse_workflows.author.pm.receipt import (
+    MILESTONE_ARTIFACTS,
+    epic_split_digest,
+    pm_receipt_current,
+    story_digest,
+    story_split_digest,
+)
 from workhorse_workflows.author.shared.paths import survey_repo_root
 from workhorse_workflows.author.shared.schemas.main import Defects, Filled
-from workhorse_workflows.author.shared.story_split_receipt import story_split_review_current
 
 EPIC = "epic"
 STORY_SPLIT = "story-split"
 STORY = "story"
+EPIC_SPLIT = "epic-split"
 KINDS = (EPIC, STORY_SPLIT, STORY)
 DONE = "done"
 STORY_ORDER_STRIDE = 10_000
@@ -74,19 +79,16 @@ def _story_graph_valid(epic: Epic) -> bool:
     return not any(cyclic(slug) for slug in slugs)
 
 
-def _audit_current(story_path: Path | None) -> bool:
+def _story_reviewed(story_path: Path | None) -> bool:
     if story_path is None:
         return False
-    path = story_path
-    receipt = path.parent / "audit-receipt.json"
-    try:
-        data = json.loads(receipt.read_text(encoding="utf-8"))
-    except (OSError, ValueError, TypeError):
+    return pm_receipt_current(story_path.parent, STORY, story_digest(story_path))
+
+
+def _split_reviewed(epic: Epic) -> bool:
+    if epic.epic_md is None:
         return False
-    return (
-        data.get("status") == "passed"
-        and data.get("storyDigest") == hashlib.sha256(path.read_bytes()).hexdigest()
-    )
+    return pm_receipt_current(epic.epic_md.parent, STORY_SPLIT, story_split_digest(epic))
 
 
 def epic_id(epic: str) -> str:
@@ -124,7 +126,7 @@ def _pending_stories(okf: Ostler, epic: Epic) -> set[str]:
             break
         skipped.add(slug)
     return skipped | {
-        story.slug for story in dag_order(epic) if not _audit_current(story.story_md)
+        story.slug for story in dag_order(epic) if not _story_reviewed(story.story_md)
     }
 
 
@@ -149,7 +151,7 @@ def _story_split_items(epics: list[Epic], finished: set[str]) -> list[WorkItem]:
             order=index,
             payload={"epic": epic.name},
             status=DONE
-            if _story_graph_valid(epic) and story_split_review_current(epic)
+            if _story_graph_valid(epic) and _split_reviewed(epic)
             else "",
         )
         for index, epic in enumerate(epics)
@@ -181,8 +183,14 @@ def check_epic_split(logger: logging.Logger, repo_dir: str = "") -> Defects:
     """Whether the approved milestone already has a valid ordered epic split."""
     okf = Ostler(survey_repo_root(repo_dir))
     milestone = okf.approved_milestone()
+    root = survey_repo_root(repo_dir)
     if _ordered_epics(okf, milestone.epics) is None:
         reason = f"milestone '{milestone.name}' has no valid ordered epic split"
+        logger.info(reason)
+        return Defects(ok=False, errors=reason)
+    digest = epic_split_digest(root, milestone.path.relative_to(root).as_posix(), milestone.epics)
+    if not pm_receipt_current(milestone.path.parent / MILESTONE_ARTIFACTS, EPIC_SPLIT, digest):
+        reason = f"milestone '{milestone.name}' has no current PM pass of its epic split"
         logger.info(reason)
         return Defects(ok=False, errors=reason)
     return Defects(ok=True)

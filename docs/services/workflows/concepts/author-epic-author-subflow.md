@@ -6,20 +6,24 @@ title: Author epic-author subflow
 # Author epic-author subflow
 
 The `epic_author` package is the standalone Author subflow for authoring exactly one explicitly
-named epic. It accepts the epic name and `operator_mode`, loads author configuration, resolves the
+named epic. It accepts the epic name and an optional `note`, loads author configuration, resolves the
 requested epic without consulting a worklist, gives one high-power agent turn the epic prose and
 researched-seed pass, and validates the resulting epic document before returning evidence. A
-blocked turn or failed validation is routed through the operator resolver and then resumes the
-same epic; the subflow never creates a branch or authors stories. The parent [Author workflow
+failed validation sends the errors back to the writer, up to three reworks. A blocked writer is
+answered by the [PM](author-pm-gap-answer.md) up to twice, and the answer reaches it as a note.
+Past either budget the subflow returns a `blocked` result. The subflow never creates a branch or
+authors stories. The parent [Author workflow
 composition root](author-workflow-composition-root.md) registers the flow and its package-local
-node registry. The parent's `epics` drain dispatches this subflow with each pending epic and the parent's
-operator mode; on return, the drain settles the epic's work item.
+node registry. The parent's `epics` drain dispatches this subflow with each pending epic and the row's note. On
+return, the drain settles the epic's work item, and a blocked result keeps the row blocked for the
+completion gate.
 
-- code: `workflows/src/workhorse_workflows/author/epic_author/flow.py::EpicAuthor` @fe667f6c716a
+- code: `workflows/src/workhorse_workflows/author/epic_author/flow.py::EpicAuthor` @dc8c1749d6e7
 - code: `workflows/src/workhorse_workflows/author/epic_author/nodes/_blueprint.py::blueprint` @52b7dc7c36b1
 - tests: `workflows/tests/author/epic_author/test_flow.py::test_authors_only_the_explicit_epic_and_returns_document_evidence`
+- tests: `workflows/tests/author/epic_author/test_flow.py::test_a_blocked_writer_is_answered_by_the_pm_then_retries`
 - detail: [author write-epic prompt](../formats/author-write-epic-prompt.md)
-- detail: [author resolve-operator prompt](../formats/author-resolve-operator-prompt.md)
+- detail: [author PM gap answer](author-pm-gap-answer.md)
 
 ## Methods
 
@@ -52,7 +56,7 @@ operator mode; on return, the drain settles the epic's work item.
 - verify: json_path(path="$.epic_dir", equals="docs/stories/acme-story")
 - returns: returns context containing the resolved epic document path
 - verify: json_path(path="$.epic_path", equals="docs/stories/acme-story/epic.md")
-- code: `workflows/src/workhorse_workflows/author/epic_author/flow.py::EpicAuthor.setup` @fe667f6c716a
+- code: `workflows/src/workhorse_workflows/author/epic_author/flow.py::EpicAuthor.setup` @dc8c1749d6e7
 - emits: [epic-author-context](../formats/epic-author-context.md)
 
 ### labels
@@ -60,70 +64,56 @@ operator mode; on return, the drain settles the epic's work item.
 - does: labels the run with the selected epic as `work_id` and `epic`
 - returns: returns progress text identifying authoring of one epic
 - verify: json_path(path="$.epic", equals="acme-epic")
-- code: `workflows/src/workhorse_workflows/author/epic_author/flow.py::EpicAuthor.labels` @fe667f6c716a
+- code: `workflows/src/workhorse_workflows/author/epic_author/flow.py::EpicAuthor.labels` @dc8c1749d6e7
 
 ### state_labels
 - sig: `state_labels(params: dict[str, Any]) -> dict[str, str]`
 - does: adds integer state counters under the `epic_author` telemetry prefix
-- returns: returns the base epic-author labels plus `epic_author.resolves` when the state supplies an integer resolution count
-- verify: count(subject="epic_author resolution labels", equals=1)
-- code: `workflows/src/workhorse_workflows/author/epic_author/flow.py::EpicAuthor.state_labels` @fe667f6c716a
+- returns: returns the base epic-author labels plus `epic_author.reworks` and `epic_author.answers` when the state supplies integer counts
+- verify: count(subject="epic_author budget labels", equals=1)
+- code: `workflows/src/workhorse_workflows/author/epic_author/flow.py::EpicAuthor.state_labels` @dc8c1749d6e7
+
+### _blocked
+- sig: `_blocked(notes: str, reworks: int, answers: int) -> Done`
+- does: returns an `EpicAuthorDone` with `status: blocked` that carries the notes and both counters
+- verify: json_path(path="$.status", equals="blocked")
+- code: `workflows/src/workhorse_workflows/author/epic_author/flow.py::EpicAuthor._blocked` @dc8c1749d6e7
 
 ### start
 - sig: `start() -> Continue`
 - does: begins authoring by forwarding to the `author_epic` state
 - returns: returns a continuation targeting `author_epic`
 - verify: count(subject="epic-author starts", equals=1)
-- code: `workflows/src/workhorse_workflows/author/epic_author/flow.py::EpicAuthor.start` @fe667f6c716a
+- code: `workflows/src/workhorse_workflows/author/epic_author/flow.py::EpicAuthor.start` @dc8c1749d6e7
 
 ### author_epic
-- sig: `author_epic(resolves: int = 0) -> Continue | Await | Done`
+- sig: `author_epic(reworks: int = 0, answers: int = 0, note: str = "") -> Continue | Done`
 - does: asks the high-power agent to research and write the selected epic's narrative and durable seeds
 - verify: count(subject="epic-author writing turns", equals=1)
-- does: passes the selected epic, its canonical directory, the approved milestone path, and the feature-book directory to the writing turn
+- does: passes the selected epic, its canonical directory, the approved milestone path, the feature-book directory, the note and the PM ledger path to the writing turn
 - verify: json_path(path="$.epic", equals="acme-epic")
-- does: routes a blocked writing result through the gate with the result notes and current resolution count
-- verify: json_path(path="$.await", matches="blocked")
+- does: sends a blocked writing result to `ask_pm` while fewer than two answers were used
+- verify: count(subject="epic-author PM questions", equals=1)
+- does: returns a blocked result when the answer budget is spent
+- verify: json_path(path="$.status", equals="blocked")
 - does: validates the selected epic after a non-blocked writing result
 - verify: count(subject="epic-author document validations", equals=1)
-- does: sends a blocked agent result to the gate with its notes
-- does: sends failed document validation to the gate with its validation errors
-- does: sends blocked work to the operator gate when `operator_mode` is `human`
-- does: sends blocked work to the operator gate when two automatic resolutions have already been attempted
-- does: sends unresolved work to the automatic resolver when automatic resolution remains available
-- verify: count(subject="epic-author resolution turns", equals=1)
+- does: sends failed document validation back to the writer with its errors while fewer than three reworks were used
+- verify: count(subject="epic-author validation reworks", equals=1)
 - does: returns `Done` only when validation reports `ok`
 - verify: json_path(path="$.status", equals="authored")
-- returns: returns the validated epic identity, document path, seed count, and resolution count with status `authored`
+- returns: returns the validated epic identity, document path, seed count, and both counters with status `authored`
 - verify: count(subject="completed epic-author results", equals=1)
-- code: `workflows/src/workhorse_workflows/author/epic_author/flow.py::EpicAuthor.author_epic` @fe667f6c716a
+- code: `workflows/src/workhorse_workflows/author/epic_author/flow.py::EpicAuthor.author_epic` @dc8c1749d6e7
 - emits: [epic-author-done](../formats/epic-author-done.md)
 
-### _context_path
-- sig: `_context_path() -> Path`
-- does: resolves the operator context file beneath the repository root and the epic-author context filename
-- verify: json_path(path="$.context_path", equals="docs/stories/acme-story/story.md")
-- code: `workflows/src/workhorse_workflows/author/epic_author/flow.py::EpicAuthor._context_path` @fe667f6c716a
-
-### _gate
-- sig: `_gate(result: object, notes: str, resolves: int) -> Continue | Await`
-- does: returns `Await` with the epic context path and `author_epic` as the resume state in human mode
-- verify: json_path(path="$.await", matches="blocked")
-- does: returns `Await` with the epic context path and `author_epic` as the resume state after two automatic resolutions
-- does: otherwise schedules `resolve_epic` with the blocked result notes and current resolution count
-- verify: count(subject="epic-author resolution continuations", equals=1)
-
-### resolve_epic
-- sig: `resolve_epic(notes: str, resolves: int = 0) -> Await`
-- does: asks the shared operator resolver to diagnose the blocked write or validation result
-- verify: count(subject="epic-author resolution turns", equals=1)
-- does: passes the epic context path, epic directory, write stage, and block notes to the resolver
-- verify: json_path(path="$.block_stage", equals="write-epic")
-- does: returns an operator-awaiting transition using the epic context path and `author_epic` resume state
-- verify: json_path(path="$.await", matches="blocked")
-- does: increments the resolution count before the resumed authoring state
-- verify: count(subject="incremented epic-author resolutions", equals=1)
-- code: `workflows/src/workhorse_workflows/author/epic_author/flow.py::EpicAuthor.resolve_epic` @fe667f6c716a
+### ask_pm
+- sig: `ask_pm(question: str, reworks: int = 0, answers: int = 0) -> Continue`
+- does: hands the writer's question to the PM gap answer
+- verify: count(subject="epic-author PM answers", equals=1)
+- does: resumes `author_epic` with the answer as the note and the answer counter incremented
+- verify: json_path(path="$.answers", equals=1)
+- code: `workflows/src/workhorse_workflows/author/epic_author/flow.py::EpicAuthor.ask_pm` @dc8c1749d6e7
 
 ## Nodes
 

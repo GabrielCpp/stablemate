@@ -3,15 +3,14 @@ from __future__ import annotations
 from collections import Counter
 from pathlib import Path
 from typing import Any
-from unittest.mock import patch
 
 from _fakes import StubRunner
 from _milestones import write_milestone
+from _pm import answer
 from git import Repo
 from ostler import Ostler
 from workhorse.artifacts import ArtifactWriter
 from workhorse.config_run import RunConfig
-from workhorse.pyflow import park as pyflow_park
 from workhorse.pyflow.driver import drive
 from workhorse.pyflow.engine import RunEnv
 from workhorse_workflows import author
@@ -64,12 +63,8 @@ class _Agent:
                 return "scripted", {"status": "blocked", "notes": "owner must decide"}
             _document_epic(self.repo)
             return "scripted", {"status": "complete", "notes": "documented"}
-        if stem == "resolve-operator":
-            return "scripted", {
-                "decision": "escalated",
-                "notes": "owner must decide",
-                "tried": ["read the milestone"],
-            }
+        if stem == "answer":
+            return "scripted", answer("sign-in first")
         raise AssertionError(stem)
 
 
@@ -111,20 +106,22 @@ def test_authors_only_the_explicit_epic_and_returns_document_evidence(
     assert git.head.commit.hexsha == before
 
 
-def test_block_is_diagnosed_then_retries_the_same_epic(repo: Path, tmp_path: Path) -> None:
+def test_a_blocked_writer_is_answered_by_the_pm_then_retries(
+    repo: Path, tmp_path: Path
+) -> None:
     _planning_input(repo)
     agent = _Agent(repo, block_once=True)
 
-    with patch.object(pyflow_park, "wait_for_answer", return_value=None):
-        result = drive(
-            EpicAuthor(epic="sign-in", repo_dir=str(repo)),
-            _env(tmp_path, agent),
-        )
+    result = drive(
+        EpicAuthor(epic="sign-in", repo_dir=str(repo)),
+        _env(tmp_path, agent),
+    )
 
     assert isinstance(result, EpicAuthorDone)
-    assert result.operator_resolutions == 1
-    assert agent.calls == {"write-epic": 2, "resolve-operator": 1}
-    assert agent.args["resolve-operator"]["block_stage"] == "write-epic"
+    assert result.status == "authored"
+    assert result.answers == 1
+    assert agent.calls == {"write-epic": 2, "answer": 1}
+    assert "sign-in first" in agent.args["write-epic"]["note"]
 
 
 def test_document_validation_uses_epic_md_and_seed_evidence(repo: Path, logger: Any) -> None:

@@ -21,10 +21,10 @@ agent result model declares its own dry-run reply with `dry_run`, including appr
 outcomes for planning and review turns, an answered decision for resolver turns, and the explicit
 `design-mockup` skipped outcome.
 
-- code: `workflows/src/workhorse_workflows/author/workflow.py` @de28cf5c9d77
-- code: `workflows/src/workhorse_workflows/author/workflow.py::workflow` @de28cf5c9d77
-- code: `workflows/src/workhorse_workflows/author/workflow.py::main` @de28cf5c9d77
-- code: `workflows/src/workhorse_workflows/author/workflow.py::__all__` @de28cf5c9d77
+- code: `workflows/src/workhorse_workflows/author/workflow.py` @1a18dc6ba866
+- code: `workflows/src/workhorse_workflows/author/workflow.py::workflow` @1a18dc6ba866
+- code: `workflows/src/workhorse_workflows/author/workflow.py::main` @1a18dc6ba866
+- code: `workflows/src/workhorse_workflows/author/workflow.py::__all__` @1a18dc6ba866
 - tests: `workflows/tests/author/test_workflow.py::test_every_flat_stage_is_directly_registered`
 - detail: [Author milestone intake flow](../flows/author-milestone-intake.md)
 - detail: [Author epic-edit flow](../flows/author-epic-edit.md)

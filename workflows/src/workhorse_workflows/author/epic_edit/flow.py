@@ -13,6 +13,7 @@ from workhorse_workflows.author.epic_edit.nodes import (
     validate_edit_plan,
     validate_epic_document,
 )
+from workhorse_workflows.author.pm import PMReview
 from workhorse_workflows.author.shared.nodes import (
     check_story_grounding,
     commit_author,
@@ -28,12 +29,9 @@ from workhorse_workflows.author.story_author.nodes import check_mockup_needed
 from workhorse_workflows.author.story_split.nodes import derive_story_services
 from workhorse_workflows.author.shared.schemas import (
     AppliedEpicEdit,
-    AuditResult,
-    CoverageReview,
     Defects,
     EditIntent,
     EpicEditPlan,
-    EpicEditReview,
     EpicRewriteResult,
     EpicSnapshot,
     MockupResult,
@@ -67,8 +65,17 @@ class EpicEdit(Workflow):
     def state_labels(self, params: dict[str, Any]) -> dict[str, str]:
         return self.labels() | counter_labels(params, "epic_edit", self.BUDGET_LABELS)
 
-    def _abs(self, rel: str) -> Path:
-        return Path(self.ctx.repo_root) / rel
+    def _gate(self) -> Path:
+        return Path(self.ctx.repo_root) / paths.author_context(self.ctx.repo_root)
+
+    def _plan_detail(
+        self, intent: EditIntent, snapshot: EpicSnapshot, plan: EpicEditPlan
+    ) -> str:
+        return (
+            f"## Intent\n\n{intent.model_dump_json(indent=2)}\n\n"
+            f"## Baseline\n\n{snapshot.model_dump_json(indent=2)}\n\n"
+            f"## Statically valid plan\n\n{plan.model_dump_json(indent=2)}"
+        )
 
     def _plan_args(
         self,
@@ -133,9 +140,8 @@ class EpicEdit(Workflow):
                 reworks=reworks,
             )
         if reworks >= MAX_REWORKS:
-            context = paths.epic_context(snapshot.epic_dir)
             return Await(
-                self._abs(context),
+                self._gate(),
                 report.errors,
                 self.plan_edit,
                 intent=intent,
@@ -187,16 +193,16 @@ class EpicEdit(Workflow):
         plan: EpicEditPlan,
         reworks: int = 0,
     ) -> Continue | Await:
-        review = self.agent(
-            "epic_edit/prompts/review-epic-edit-plan.md",
-            returns=EpicEditReview,
-            power="high",
-            cwd=self.ctx.repo_root,
-            args={"intent": intent, "snapshot": snapshot, "plan": plan},
+        review = self.handoff(
+            PMReview,
+            stage="epic-edit-plan",
+            subject=snapshot.epic_dir,
+            epic=intent.epic,
+            detail=self._plan_detail(intent, snapshot, plan),
         )
-        if review.status == "approved":
+        if review.passed:
             return Continue(review, self.apply_plan, intent=intent, snapshot=snapshot, plan=plan)
-        if review.status == "needs_rework" and reworks < MAX_REWORKS:
+        if reworks < MAX_REWORKS:
             return Continue(
                 review,
                 self.refine_plan,
@@ -206,9 +212,8 @@ class EpicEdit(Workflow):
                 findings=review.notes,
                 reworks=reworks,
             )
-        context = paths.epic_context(snapshot.epic_dir)
         return Await(
-            self._abs(context),
+            self._gate(),
             review.notes,
             self.plan_edit,
             intent=intent,
@@ -291,7 +296,7 @@ class EpicEdit(Workflow):
                 reworks=reworks + 1,
             )
         return Await(
-            self._abs(paths.epic_context(applied.epic_dir)),
+            self._gate(),
             notes,
             self.rewrite_epic,
             intent=intent,
@@ -396,11 +401,12 @@ class EpicEdit(Workflow):
                 "services_dir": self.ctx.services_dir,
                 "mockup_path": mockup,
                 "epic_edit": intent.change,
+                "ledger": self.ctx.pm_ledger,
             },
         )
         if result.status == "blocked":
             return Await(
-                self._abs(paths.story_context(pick.story_dir)),
+                self._gate(),
                 result.notes,
                 self.write_story,
                 intent=intent,
@@ -429,6 +435,7 @@ class EpicEdit(Workflow):
         index: int,
         mockup: str = "",
         reworks: int = 0,
+        prior: str = "",
     ) -> Continue | Await:
         structure = self.call(validate_story, pick.story_dir)
         grounding = (
@@ -445,7 +452,7 @@ class EpicEdit(Workflow):
         if errors:
             if reworks >= MAX_REWORKS:
                 return Await(
-                    self._abs(paths.story_context(pick.story_dir)),
+                    self._gate(),
                     errors,
                     self.write_story,
                     intent=intent,
@@ -476,6 +483,7 @@ class EpicEdit(Workflow):
                     "validation_errors": errors,
                     "prior_attempts": ledger.prior_attempts,
                     "operator_feedback": intent.change,
+                    "ledger": self.ctx.pm_ledger,
                 },
             )
             return Continue(
@@ -487,19 +495,21 @@ class EpicEdit(Workflow):
                 index=index,
                 mockup=mockup,
                 reworks=reworks + 1,
+                prior=prior,
             )
         return Continue(
             grounding,
-            self.audit_story,
+            self.review_story,
             intent=intent,
             applied=applied,
             pick=pick,
             index=index,
             mockup=mockup,
             reworks=reworks,
+            prior=prior,
         )
 
-    def audit_story(
+    def review_story(
         self,
         intent: EditIntent,
         applied: AppliedEpicEdit,
@@ -507,25 +517,20 @@ class EpicEdit(Workflow):
         index: int,
         mockup: str = "",
         reworks: int = 0,
+        prior: str = "",
     ) -> Continue | Await:
-        result = self.agent(
-            "epic_edit/prompts/audit-story.md",
-            returns=AuditResult,
-            power="high",
-            cwd=self.ctx.repo_root,
-            args={
-                "epic": applied.epic,
-                "story_path": pick.story_path,
-                "story_slug": pick.story_slug,
-                "story_dir": pick.story_dir,
-                "services_dir": self.ctx.services_dir,
-            },
+        review = self.handoff(
+            PMReview,
+            stage="story",
+            subject=pick.story_path,
+            epic=applied.epic,
+            prior=prior,
         )
-        if result.status != "passed":
+        if not review.passed:
             if reworks >= MAX_REWORKS:
                 return Await(
-                    self._abs(paths.story_context(pick.story_dir)),
-                    result.notes,
+                    self._gate(),
+                    review.notes,
                     self.write_story,
                     intent=intent,
                     applied=applied,
@@ -535,18 +540,18 @@ class EpicEdit(Workflow):
                     reworks=0,
                 )
             return Continue(
-                result,
+                review,
                 self.rework_story,
                 intent=intent,
                 applied=applied,
                 pick=pick,
                 index=index,
                 mockup=mockup,
-                findings=result.notes,
+                findings=review.notes,
                 reworks=reworks,
             )
         return Continue(
-            result,
+            review,
             self.next_affected_story,
             intent=intent,
             applied=applied,
@@ -584,6 +589,7 @@ class EpicEdit(Workflow):
                 "validation_errors": findings,
                 "prior_attempts": ledger.prior_attempts,
                 "operator_feedback": intent.change,
+                "ledger": self.ctx.pm_ledger,
             },
         )
         return Continue(
@@ -595,6 +601,7 @@ class EpicEdit(Workflow):
             index=index,
             mockup=mockup,
             reworks=reworks + 1,
+            prior=findings,
         )
 
     def check_coverage(self, intent: EditIntent, applied: AppliedEpicEdit) -> Continue:
@@ -605,18 +612,13 @@ class EpicEdit(Workflow):
                 failure_class="epic-edit-coverage-broken",
                 artifacts={"epic_dir": str(applied.epic_dir)},
             )
-        review = self.agent(
-            "epic_edit/prompts/review-coverage.md",
-            returns=CoverageReview,
-            power="high",
-            cwd=self.ctx.repo_root,
-            args={
-                "epic": applied.epic,
-                "epic_dir": applied.epic_dir,
-                "backlog": self.ctx.backlog_path,
-            },
+        review = self.handoff(
+            PMReview,
+            stage="story-split",
+            subject=applied.epic_dir,
+            epic=applied.epic,
         )
-        if review.status != "ok":
+        if not review.passed:
             raise WorkflowFailed(
                 f"epic edit coverage review did not pass:\n{review.notes}",
                 failure_class="epic-edit-coverage-review-failed",

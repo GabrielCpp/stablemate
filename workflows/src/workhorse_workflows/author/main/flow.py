@@ -9,13 +9,13 @@ from workhorse_workflows.author.epic_author import EpicAuthor
 from workhorse_workflows.author.epic_split import EpicSplit
 from workhorse_workflows.author.finalize import Finalize
 from workhorse_workflows.author.main.nodes import (
-    answer_below,
     check_completion,
     check_epic_split,
     contract_digest,
     fill_work,
 )
 from workhorse_workflows.author.shared import paths
+from workhorse_workflows.author.shared.answer import answer_below
 from workhorse_workflows.author.shared.nodes import (
     adopt_backlog,
     load_config,
@@ -79,7 +79,6 @@ class Author(Workflow):
                 epic=self.epic,
                 story=seeded.story_slug,
                 feedback_dir=str(self.run_dir),
-                operator_mode=self.operator_mode,
             )
             return Done(self.call(
                 prune_bullet,
@@ -92,29 +91,60 @@ class Author(Workflow):
     def _context_path(self) -> Path:
         return Path(self.ctx.repo_root) / paths.author_context(self.ctx.repo_root)
 
-    def split_epics(self) -> Continue:
+    def split_epics(self, note: str = "") -> Continue | Await:
         """Split the milestone into epics unless it already has a valid ordered split."""
         if not self.call(check_epic_split).ok:
-            self.handoff(EpicSplit, operator_mode=self.operator_mode)
+            result = self.handoff(EpicSplit, note=note)
+            if result.status == "blocked":
+                return Await(
+                    self._context_path(),
+                    result.notes,
+                    self.answered_split,
+                    question=result.notes,
+                )
         return Continue(None, self.fill_epics)
+
+    def answered_split(self, question: str) -> Continue:
+        """Run the epic split again with the operator's answer as its note."""
+        gate = self._context_path()
+        text = gate.read_text(encoding="utf-8") if gate.is_file() else ""
+        return Continue(None, self.split_epics, note=answer_below(text, question))
 
     def fill_epics(self) -> Continue:
         self.call(fill_work, "epic", str(self.run_dir))
         return Continue(None, self.epics)
 
     def epics(self) -> Continue | Done | Await:
-        return self.pipeline(
-            "epic", to=EpicAuthor, n=1, operator_mode=self.operator_mode
-        ) or Continue(None, self.fill_story_splits)
+        return self.pipeline("epic", to=self.author_epic, n=1) or Continue(
+            None, self.fill_story_splits
+        )
+
+    def author_epic(self, items: list[WorkItem]) -> Continue:
+        """Write one epic, and keep an epic nobody can fix blocked on the work list."""
+        item = items[0]
+        result = self.handoff(EpicAuthor, epic=item.payload["epic"], note=item.note)
+        if result.status == "blocked":
+            self.logger.warning("epic '%s' remains blocked", item.payload["epic"])
+            self.work_list.mark(item.id, "blocked", kind="epic", note=result.notes)
+        return Continue(result, self.epics)
 
     def fill_story_splits(self) -> Continue:
         self.call(fill_work, "story-split", str(self.run_dir))
         return Continue(None, self.story_splits)
 
     def story_splits(self) -> Continue | Done | Await:
-        return self.pipeline(
-            "story-split", to=StorySplitFlow, n=1, operator_mode=self.operator_mode
-        ) or Continue(None, self.fill_stories)
+        return self.pipeline("story-split", to=self.split_epic_stories, n=1) or Continue(
+            None, self.fill_stories
+        )
+
+    def split_epic_stories(self, items: list[WorkItem]) -> Continue:
+        """Split one epic into stories, and keep a split nobody can fix blocked on the work list."""
+        item = items[0]
+        result = self.handoff(StorySplitFlow, epic=item.payload["epic"], note=item.note)
+        if result.status == "blocked":
+            self.logger.warning("the story split of epic '%s' remains blocked", item.payload["epic"])
+            self.work_list.mark(item.id, "blocked", kind="story-split", note=result.notes)
+        return Continue(result, self.story_splits)
 
     def fill_stories(self) -> Continue:
         self.call(fill_work, "story", str(self.run_dir))
@@ -133,12 +163,11 @@ class Author(Workflow):
             epic=item.payload["epic"],
             story=item.payload["story"],
             feedback_dir=str(self.run_dir),
-            operator_mode=self.operator_mode,
             note=item.note,
         )
         if result.status == "blocked":
             self.logger.warning(
-                "story '%s' in epic '%s' remains audit-blocked",
+                "story '%s' in epic '%s' remains blocked",
                 item.payload["story"],
                 item.payload["epic"],
             )

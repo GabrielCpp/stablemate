@@ -5,34 +5,33 @@ title: Author story-author prompt contracts
 ---
 # Author story-author prompt contracts
 
-The story-author package contains four agent-facing templates under
+The story-author package contains three agent-facing templates under
 `workflows/src/workhorse_workflows/author/story_author/prompts/`. The [author story-author subflow](author-story-author-subflow.md)
 renders them from its state methods; each turn receives only the target story paths and the
 stage-specific evidence named below. The templates are contracts for one bounded planning action,
 not alternate workflow states: they do not select another story, run validation, or commit changes.
 
-When a story write or validation cannot proceed, the subflow also renders the shared [author
-resolve-operator prompt](../formats/author-resolve-operator-prompt.md) with `block_stage: "write-story"`.
-That diagnostic turn investigates the epic and preserves its findings for the operator; it does
-not decide the product or scope question and the subflow resumes through an operator-awaiting
-context.
+The independent audit turn is gone. The [PM review](author-pm-review.md) judges the written story
+from the story angles in [author PM review angles](author-pm-angles.md).
 
-- code: `workflows/src/workhorse_workflows/author/story_author/flow.py::StoryAuthor.design_mockup` @bf6e3a7f4fed
-- code: `workflows/src/workhorse_workflows/author/story_author/flow.py::StoryAuthor.write_story` @bf6e3a7f4fed
-- code: `workflows/src/workhorse_workflows/author/story_author/flow.py::StoryAuthor.audit_story` @bf6e3a7f4fed
-- code: `workflows/src/workhorse_workflows/author/story_author/flow.py::StoryAuthor.rework_story` @bf6e3a7f4fed
+When a story write or rework cannot proceed, the writer returns `status: "blocked"` with a
+product question. The subflow hands that question to the [PM gap answer](author-pm-gap-answer.md),
+which answers from the milestone and the ledger. The writer retries with the answer as its `note`.
+
+- code: `workflows/src/workhorse_workflows/author/story_author/flow.py::StoryAuthor.design_mockup` @9b3445987054
+- code: `workflows/src/workhorse_workflows/author/story_author/flow.py::StoryAuthor.write_story` @9b3445987054
+- code: `workflows/src/workhorse_workflows/author/story_author/flow.py::StoryAuthor.rework_story` @9b3445987054
 - code: `workflows/src/workhorse_workflows/author/story_author/prompts/design-mockup.md` @f918719466f5
-- code: `workflows/src/workhorse_workflows/author/story_author/prompts/write-story.md` @dabab75aaf99
-- code: `workflows/src/workhorse_workflows/author/story_author/prompts/audit-story.md` @758403bbd400
-- code: `workflows/src/workhorse_workflows/author/story_author/prompts/rework-story.md` @2d1fd8cff26e
+- code: `workflows/src/workhorse_workflows/author/story_author/prompts/write-story.md` @738413196ebc
+- code: `workflows/src/workhorse_workflows/author/story_author/prompts/rework-story.md` @82b7f0e83713
 - tests: `workflows/tests/test_prompts_exist.py::test_the_prompt_file_is_there`
 - tests: `workflows/tests/test_prompt_variables.py::test_the_prompt_reads_only_names_the_workflow_can_supply`
 - tests: `workflows/tests/test_prompt_output_shape.py::test_the_prompt_documents_the_keys_the_turn_is_asked_for`
 - tests: `workflows/tests/author/test_prompt_authority.py::test_writer_can_define_in_scope_behavior_without_prior_okf_authority`
 - tests: `workflows/tests/author/test_prompt_authority.py::test_writer_separates_build_scope_from_regression_invariants`
 - tests: `workflows/tests/author/test_prompt_authority.py::test_writer_records_concise_grounded_technical_notes`
-- tests: `workflows/tests/author/test_prompt_authority.py::test_auditor_does_not_demand_prior_citations_for_new_behavior`
-- tests: `workflows/tests/author/test_prompt_authority.py::test_auditor_respects_the_bare_minimum_story_boundary`
+- tests: `workflows/tests/author/test_prompt_authority.py::test_grounding_angle_does_not_demand_prior_citations_for_new_behavior`
+- tests: `workflows/tests/author/test_prompt_authority.py::test_story_angles_respect_the_bare_minimum_story_boundary`
 - tests: `workflows/tests/author/test_prompt_authority.py::test_reworker_makes_in_scope_choices_instead_of_blocking`
 - tests: `workflows/tests/author/test_prompt_authority.py::test_mutating_turns_leave_validation_and_delivery_to_author`
 - tests: `workflows/tests/author/test_prompt_authority.py::test_mockup_inspection_does_not_leave_screenshot_collateral`
@@ -42,9 +41,8 @@ context.
 - detail: [author story-author subflow](author-story-author-subflow.md)
 
 The eight `test_prompt_authority.py` symbols above each pin a specific prompt-authority contract
-that the `story_author` and `epic_edit` envelopes must hold in lockstep across every prompt copy.
-The contracts the tests enforce — over both copies of each envelope — are themselves the behaviour
-each symbol carries:
+that the `story_author` and `epic_edit` envelopes and the PM story angles must hold across every
+prompt copy. The contracts the tests enforce are themselves the behaviour each symbol carries:
 
 - `test_writer_can_define_in_scope_behavior_without_prior_okf_authority` asserts that every
   `write-story.md` copy declares "Acceptance Criteria become the authoritative contract", that
@@ -57,13 +55,13 @@ each symbol carries:
 - `test_writer_records_concise_grounded_technical_notes` asserts every `write-story.md` copy
   requires Technical Notes grounded by a `path::symbol` citation into "original or prior
   implementation".
-- `test_auditor_does_not_demand_prior_citations_for_new_behavior` asserts every `audit-story.md`
-  copy refrains from refuting new in-scope behavior "merely because no prior OKF node defines it"
-  and only refutes behavior that "contradicts cited existing behavior".
-- `test_auditor_respects_the_bare_minimum_story_boundary` asserts every `audit-story.md` copy
-  judges only the behavior changed by the story's covered seeds, does not "demand endpoint names,
-  request or response schemas", "does not import every guard, state, interaction, or journey", and
-  treats "existing guards, chrome, states, and flows outside those covered seeds" as out of scope.
+- `test_grounding_angle_does_not_demand_prior_citations_for_new_behavior` asserts the story
+  `grounding` angle does not fail new in-scope behavior because no earlier node defines it, and
+  fails only behavior that "contradicts cited existing behavior".
+- `test_story_angles_respect_the_bare_minimum_story_boundary` asserts the story `grounding` and
+  `journey` angles judge only the behavior changed by the story's covered seeds, do not "demand
+  endpoint names, request or response schemas", do not import every state or interaction, and
+  treat existing guards, chrome, states and flows outside those covered seeds as out of scope.
 - `test_reworker_makes_in_scope_choices_instead_of_blocking` asserts every `rework-story.md` copy
   "makes the concrete choice in the Acceptance Criteria" and does "not block merely because the
   existing OKF book is silent".
@@ -132,24 +130,19 @@ new in-scope behavior may be made explicit, but implementation plans and propose
 library choices are excluded. A blocked product or scope decision returns `status: "blocked"` with
 the question in `notes`; a successful turn returns `status` and `notes` in [WriteStoryResult](../formats/write-story-result.md).
 
-### audit-story.md
+### Story review
 
-The independent audit receives `epic`, `story_slug`, `story_path`, `story_dir`, `services_dir`, and
-any `prior_audit_findings`. It rereads the story, its cited book nodes, and the epic's seed and story
-scope, then tries to refute coder-readiness across observable verifiability, grounding and scope,
-hidden decisions, changed-journey completeness, classification, and technical grounding. It appends
-the independent audit section to the story-local audit artifact and returns `AuditResult`; the
-workflow uses `findings`, not free-text `status`, as the verdict. A finding has `id`, one of
-`journey`, `chrome`, `transient-feedback`, or `grounding` as `kind`, plus its `target`, `issue`, and
-`repair` as specified by [AuditFinding](../formats/audit-finding.md). The response is [AuditResult](../formats/audit-result.md);
-an empty `findings` list is a pass, while non-empty findings are routed to bounded rework.
+The review is the [PM review](author-pm-review.md) at the `story` stage. It reads the story, its
+cited book nodes and the epic's seeds, then returns one verdict for each of the `journey`,
+`chrome`, `transient-feedback`, `grounding` and `mockup` angles. A failing angle returns findings
+with a `target`, an `issue` and a `repair`, and the findings go to bounded rework.
 
 ### rework-story.md
 
 The rework turn receives `epic`, `story_slug`, `story_path`, `story_dir`, `services_dir`, optional
-`mockup_path`, `validation_errors`, `operator_feedback`, and earlier `prior_attempts` when the
+`mockup_path`, `validation_errors`, `operator_feedback`, `note`, `ledger` and earlier `prior_attempts` when the
 caller supplies them. It changes only the story-local planning artifacts named by the task and
-addresses every supplied validation or audit finding without rewriting correct material. It leaves
+addresses every supplied validation or review finding without rewriting correct material. It leaves
 dependencies and fixtures under their owning workflow stages, resolves open decisions when the
 existing epic or evidence settles them, and returns `status` and `notes` in the same
 `WriteStoryResult` shape as the writing turn. Operator feedback is applied within the existing epic
