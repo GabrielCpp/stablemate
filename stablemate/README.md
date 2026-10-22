@@ -1,7 +1,7 @@
 # stablemate
 
 This package installs the stablemate agent tools in one step, at versions that work together.
-It has no code of its own. It depends on four distributions and puts each one's commands on
+It has no code of its own. It depends on five distributions and puts each one's commands on
 your PATH:
 
 | Distribution          | What you get                                                          |
@@ -10,6 +10,7 @@ your PATH:
 | `farrier`             | The `farrier` command, which renders the prompt library into a repository. |
 | `stablemate-groom`    | The `groom` dashboard and telemetry collector, plus `groom-sidecar`.  |
 | `ostler`              | The `ostler` command, which checks and edits a repository's `docs/` graph. |
+| `stablemate-saddlebag` | The `saddlebag` command, which fills secrets into a browser or a command without printing them. |
 
 ## Install
 
@@ -30,11 +31,12 @@ workhorse-loop-runner run --dry-run
 farrier --help
 groom --help
 ostler --help
+saddlebag --help
 ```
 
 ## Versions
 
-Each release of this package allows one major version of each tool. To move all four to
+Each release of this package allows one major version of each tool. To move all five to
 their newest release within it, run:
 
 ```bash

@@ -1,7 +1,7 @@
 [project]
 name = "stablemate"
 version = "0.1.1"
-description = "One install for the stablemate agent tools: the workhorse workflows, farrier and groom, at versions that work together."
+description = "One install for the stablemate agent tools: the workhorse workflows, farrier, groom, ostler and saddlebag, at versions that work together."
 readme = "README.md"
 requires-python = ">=3.12"
 license = "MIT"
@@ -22,6 +22,7 @@ dependencies = [
   "farrier>=3,<4",
   "stablemate-groom>=1,<2",
   "ostler>=3,<4",
+  "stablemate-saddlebag>=2,<3",
 ]
 
 [project.scripts]
@@ -29,6 +30,7 @@ farrier = "farrier.install:main"
 groom = "groom.cli:main"
 groom-sidecar = "groom.cli:sidecar_main"
 ostler = "ostler.cli:main"
+saddlebag = "saddlebag.cli:main"
 workhorse-loop-runner = "workhorse_workflows.loop_runner.workflow:main"
 workhorse-research = "workhorse_workflows.research.workflow:main"
 workhorse-author = "workhorse_workflows.author.workflow:main"
@@ -59,6 +61,7 @@ workhorse-workflows = { workspace = true }
 farrier = { workspace = true }
 stablemate-groom = { workspace = true }
 ostler = { workspace = true }
+stablemate-saddlebag = { workspace = true }
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

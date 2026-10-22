@@ -135,7 +135,7 @@ jobs:
 
       - name: Build the umbrella and every wheel it pulls from the workspace
         run: |
-          for package in ostler workhorse-agent farrier workhorse-workflows stablemate-groom stablemate; do
+          for package in ostler workhorse-agent farrier workhorse-workflows stablemate-groom stablemate-saddlebag stablemate; do
             uv build --package "$package" --wheel --out-dir "$RUNNER_TEMP/wheels"
           done
 
@@ -146,7 +146,7 @@ jobs:
           UV_TOOL_BIN_DIR: ${{ runner.temp }}/bin
         run: |
           uv tool install stablemate --find-links "$RUNNER_TEMP/wheels"
-          for command in workhorse-loop-runner workhorse-coder farrier groom ostler; do
+          for command in workhorse-loop-runner workhorse-coder farrier groom ostler saddlebag; do
             "$UV_TOOL_BIN_DIR/$command" --help >/dev/null
           done
           "$UV_TOOL_BIN_DIR/workhorse-loop-runner" run --dry-run

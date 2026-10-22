@@ -7,10 +7,10 @@ members = [
     "farrier",
     "ostler",
     "paddock",
-    "saddlebag",
     "stablemate",
     "stablemate-core",
     "stablemate-groom",
+    "stablemate-saddlebag",
     "stablemate-workspace",
     "workhorse-agent",
     "workhorse-workflows",
@@ -1697,30 +1697,6 @@ wheels = [
 ]
 
 [[package]]
-name = "saddlebag"
-version = "2.0.0"
-source = { editable = "saddlebag" }
-dependencies = [
-    { name = "hvac" },
-    { name = "platformdirs" },
-    { name = "websockets" },
-]
-
-[package.optional-dependencies]
-test = [
-    { name = "pytest" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "hvac", specifier = ">=2.0" },
-    { name = "platformdirs", specifier = ">=4.0" },
-    { name = "pytest", marker = "extra == 'test'", specifier = ">=8.0" },
-    { name = "websockets", specifier = ">=13.0" },
-]
-provides-extras = ["test"]
-
-[[package]]
 name = "smmap"
 version = "5.0.3"
 source = { registry = "https://pypi.org/simple" }
@@ -1746,6 +1722,7 @@ dependencies = [
     { name = "farrier" },
     { name = "ostler" },
     { name = "stablemate-groom" },
+    { name = "stablemate-saddlebag" },
     { name = "workhorse-workflows" },
 ]
 
@@ -1762,6 +1739,7 @@ requires-dist = [
     { name = "packaging", marker = "extra == 'test'", specifier = ">=24" },
     { name = "pytest", marker = "extra == 'test'", specifier = ">=8.0" },
     { name = "stablemate-groom", editable = "groom" },
+    { name = "stablemate-saddlebag", editable = "saddlebag" },
     { name = "workhorse-workflows", editable = "workflows" },
 ]
 provides-extras = ["test"]
@@ -1825,6 +1803,30 @@ requires-dist = [
     { name = "watchfiles", specifier = ">=0.21" },
     { name = "websockets", specifier = ">=15" },
     { name = "workhorse-agent", editable = "workhorse" },
+]
+provides-extras = ["test"]
+
+[[package]]
+name = "stablemate-saddlebag"
+version = "2.0.0"
+source = { editable = "saddlebag" }
+dependencies = [
+    { name = "hvac" },
+    { name = "platformdirs" },
+    { name = "websockets" },
+]
+
+[package.optional-dependencies]
+test = [
+    { name = "pytest" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "hvac", specifier = ">=2.0" },
+    { name = "platformdirs", specifier = ">=4.0" },
+    { name = "pytest", marker = "extra == 'test'", specifier = ">=8.0" },
+    { name = "websockets", specifier = ">=13.0" },
 ]
 provides-extras = ["test"]
 
