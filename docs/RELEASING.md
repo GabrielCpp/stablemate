@@ -23,7 +23,7 @@ local `uv sync` can pass while the published dependency range is impossible to r
 Only after that smoke test do uploads proceed in dependency order:
 
 ```
-ostler → workhorse-agent → farrier → workhorse-workflows → stablemate-groom → stablemate
+ostler → workhorse-agent → farrier → workhorse-workflows → stablemate-groom → stablemate-saddlebag → stablemate
 ```
 
 `stablemate-core` is not in that chain and never will be: it is vendored, not published
@@ -36,9 +36,17 @@ groom publishes as `stablemate-groom`. The name `groom` on PyPI belongs to an un
 project. The import package, the `groom` command and the release-please component keep the
 short name, so its tags stay `groom-v<version>`.
 
+saddlebag publishes as `stablemate-saddlebag`. The name `saddlebag` is unavailable on PyPI.
+The import package, the `saddlebag` command and the release-please component keep the
+short name, so its tags stay `saddlebag-v<version>`.
+
+The first upload of a new distribution needs a pending trusted publisher registered on PyPI
+for it. Use owner GabrielCpp, repository stablemate, workflow `release.yml` and environment
+`pypi`. `stablemate-saddlebag` needs one before its first release.
+
 `stablemate` is the umbrella. It has no code and allows one major version each of
-`workhorse-workflows`, `farrier` and `stablemate-groom`, so one `uv tool install` brings all
-three. It uploads last, because the versions it allows must already be on the index.
+`workhorse-workflows`, `farrier`, `stablemate-groom`, `ostler` and `stablemate-saddlebag`,
+so one `uv tool install` brings all five. It uploads last, because the versions it allows must already be on the index.
 
 A release PR bumps each member's own version, but never the pins other members hold on
 it. The release job closes that gap right after release-please writes the PR.
@@ -57,10 +65,6 @@ commit, so the tree you merge passes `uv sync --locked`.
 
 A minor or patch release moves no pin, because the new version is still inside the
 range. `make sync-pins` runs the same rewrite locally, against the versions in your tree.
-
-`saddlebag` is versioned and gets changelogs but has no upload step, because it is not in
-scope yet. Adding it means registering its trusted publisher on PyPI and adding its two
-steps to the workflow.
 
 | Commit since last tag | Bump |
 | --- | --- |

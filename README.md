@@ -199,7 +199,7 @@ packages that work alongside an agent prompt library:
 | [`farrier/`](farrier/) | [`farrier`](https://pypi.org/project/farrier/) | Renders an agent-neutral prompt library into a repository's Codex/Claude/Copilot adapters and launcher. |
 | [`ostler/`](ostler/) | [`ostler`](https://pypi.org/project/ostler/) | Tends a repo's `docs/` knowledge graph through its CLI and the in-process facade workflows use. |
 | [`groom/`](groom/) | `stablemate-groom` (unpublished) | Local dashboard + OTLP collector for running workflows: answers operator gates from the browser and pages you when a run stalls. Optional. |
-| [`saddlebag/`](saddlebag/) | `saddlebag` (unpublished) | Credentials and environment manifests a workflow needs at run time, kept out of the repo. Optional. |
+| [`saddlebag/`](saddlebag/) | `stablemate-saddlebag` (unpublished) | Vault-backed daemon that fills secrets into a browser or a command without printing them, so an agent never holds one. Optional. |
 | [`paddock/`](paddock/) | `paddock` (unpublished) | Benchmark harness for reproducible workflow trials and task-owned scoring. |
 | [`core/`](core/) | — (vendored, never published) | Shared plumbing the tools must agree on: the home config, base-library discovery, the base-library cache. `make vendor` copies it into `workhorse`, `farrier` and `ostler`, which ship it inside their own wheels; there is nothing to install. |
 
@@ -265,7 +265,7 @@ uv run workhorse-loop-runner run --dry-run
 
 `groom` and `saddlebag` are optional add-ons, and no base workflow requires either.
 Neither is on PyPI yet, so both run from a checkout. `groom` will publish as
-`stablemate-groom` (see [Status](#status)).
+`stablemate-groom` and `saddlebag` as `stablemate-saddlebag` (see [Status](#status)).
 
 `stablemate-core` is on neither list because it is not a distribution at all: `workhorse`
 and `farrier` each carry a copy of it, so an install resolves from the index alone with
