@@ -14,8 +14,8 @@ allocation and is the one tool that reads and writes the graph — so structure 
 humans (or agents) author the prose.
 
 It is a standalone, repo-agnostic CLI that operates relative to the **current working directory**:
-roots default to `<cwd>/docs/{epics,features}` and the organization name to the repo
-folder name. Specs default to `<artifacts dir>/specs` outside git (`docRoots: specs:` keeps them in the repo). Point it at any repo with `-C/--chdir`.
+roots default to `<cwd>/docs/{epics,services}` and the organization name to the repo
+folder name. Specs default to `<artifacts dir>/specs` outside git. Point it at any repo with `-C/--chdir`.
 
 The feature graph is also a contract: it is what
 [coder's QA](https://github.com/GabrielCpp/stablemate/blob/main/workflows/README.md#coder-documentation-convergence)
@@ -86,7 +86,7 @@ A **Concept** is one `.md` file with a YAML **frontmatter** block (whose only ha
 non-empty `type`) and a markdown **body** using conventional headings.
 
 **Identity is the path.** A Concept's id is its bundle-relative path without `.md`
-(`docs/features/profile/preference-summary.md` → `profile/preference-summary`). The reserved
+(`docs/services/profile/preference-summary.md` → `profile/preference-summary`). The reserved
 filenames `index.md` (an ordered listing of a bundle) and `log.md` (history) are not Concepts.
 
 ### Entity types
@@ -96,7 +96,7 @@ filenames `index.md` (an ordered listing of a bundle) and `log.md` (history) are
 | `milestone` | `docs/milestones/<slug>.md` | generated `id`; readable `<slug>` names the file | `type`, `id`, `title` |
 | `epic` | `docs/epics/<NNNN-slug>/epic.md` | `<NNNN-slug>` (dir name) | `type`, `id`, `title` |
 | `story` | `docs/epics/<NNNN-slug>/stories/<slug>/story.md` | generated `id`; readable `<slug>` and optional `externalKey` are aliases | `type`, `slug`, `status` |
-| `feature` | `docs/features/<area>/<slug>.md` *(or flat `docs/features/<slug>.md`)* | `<area>/<slug>` | `type`, `slug`, `title` |
+| `feature` | `docs/services/<area>/<slug>.md` *(or flat `docs/services/<slug>.md`)* | `<area>/<slug>` | `type`, `slug`, `title` |
 | `spec.<stem>` (`spec.plan`, `spec.review`, `spec.qa`, `spec.executive`, `spec.vet`, …) | `<artifacts dir>/specs/<slug>/*.md` (`ostler path spec <slug>`) | path | `type` |
 
 **Epic directories carry their creation order** — `create epic checkout-flow` writes
@@ -187,7 +187,7 @@ accepted as input either way).
 | `edit` `freeze` `unfreeze` | repair a rename across the whole graph, or pin an approved story as ground truth |
 | `gc` | delete the book pages no link path from their service's `entries` page reaches |
 | `template` `new` `find` `set` `remove` | declare a repo's own Concept kinds and operate on their instances |
-| `graph` `reach` `locators` `coverage` `scaffold` `fmt` `vet` `audit` | the `docs/features/` node/edge book — see below |
+| `graph` `reach` `locators` `coverage` `scaffold` `fmt` `vet` `audit` | the `docs/services/` node/edge book — see below |
 | `qa` `artifact` | the verification control plane — see below |
 | `env` | bring up a local copy of the stack the books declare, and tear it down — see below |
 
@@ -201,7 +201,7 @@ Every verb, with its real flags and what each one operates on, is in
 
 ### The feature graph
 
-Alongside the epic/story planning graph, ostler tends `docs/features/` — a typed node/edge book
+Alongside the epic/story planning graph, ostler tends `docs/services/` — a typed node/edge book
 describing a product's actual surfaces (screens, components, endpoints, flows). `graph` queries it,
 `reach` derives the documented click-path between two screens, `locators` emits the Playwright
 locator for every documented control, `coverage` joins the book's `code:` citations against a source
@@ -300,14 +300,14 @@ artifact contracts are in
 
 `ostler env` runs the product on this machine from what the books say it is made of. Each book
 that boots something keeps a `stack.yml` in the `ops/` folder beside its pages, at
-`docs/features/<book>/ops/stack.yml`. The file at `docs/features/ops/stack.yml` is the stack root,
+`docs/services/<book>/ops/stack.yml`. The file at `docs/services/ops/stack.yml` is the stack root,
 and is also a book. A `stack.yml` at the old place, outside `ops/`, is refused with the path to move
 it to. The file names the book's services, the compose fragment that defines each one, and what each
 one needs. A need may sit in another book, so the web book names `api:api` and the api book
 defines it once. Two books never define the same service. One names it, and the other needs it.
 
 ```yaml
-# docs/features/web/ops/stack.yml
+# docs/services/web/ops/stack.yml
 default-fixtures: [schema]
 services:
   web:
@@ -343,7 +343,7 @@ ostler env down --copy story-12      # data and rendered files go too, unless --
 ```
 
 The copy defaults to `$STABLEMATE_LEASE`, so a workflow run that holds a lease brings up its own
-copy without naming it. The stack root, `docs/features/ops/stack.yml`, holds the repo's one secret source: `secrets: {file:
+copy without naming it. The stack root, `docs/services/ops/stack.yml`, holds the repo's one secret source: `secrets: {file:
 .env}` for a dotenv file, `secrets: {decrypt: <command>}` for a command whose stdout is dotenv,
 or `secrets: {saddlebag: "environment=local"}` for the saddlebag secrets carrying those tags.
 With saddlebag, every `docker compose` command runs under `saddlebag exec`, and no secrets file
@@ -585,7 +585,7 @@ ostler query story-provenance TEAM-123 \
   --checkout api-service=/workspace/api-service --json
 ostler query commit-story api-service@abc123 \
   --checkout api-service=/workspace/api-service --json
-ostler query node-provenance docs/features/billing/create.md \
+ostler query node-provenance docs/services/billing/create.md \
   --checkout api-service=/workspace/api-service --json
 ```
 

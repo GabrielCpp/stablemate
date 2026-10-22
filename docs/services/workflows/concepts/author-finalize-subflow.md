@@ -247,13 +247,13 @@ the two resolution limits and an unbounded timeout used only for resolver turns.
 ## Nodes
 
 ### load_config
-The returned `Config` carries the resolved repository root, the repo-relative backlog and roadmap paths, the epics and features directories, and the layers configured in `agents.yml`'s `localInstructions:`.
+The returned `Config` carries the resolved repository root, the repo-relative backlog and roadmap paths, the epics and services directories, and the layers configured in `agents.yml`'s `localInstructions:`.
 
 - sig: `load_config(logger: logging.Logger, repo_dir: str = "", mode: str = "epic") -> Config`
 - does: resolve the author's paths and prove the selected intake exists
 - verify: count(subject="finalize configuration loads", equals=1)
 - verify: json_path(path="$.repo_root", matches=".+")
-- code: `workflows/src/workhorse_workflows/author/shared/nodes/config.py::load_config` @ead9f607b8ce
+- code: `workflows/src/workhorse_workflows/author/shared/nodes/config.py::load_config` @d32a3c2caaa3
 - detail: [author load_config documentation roles](author-load-config-documentation-roles.md)
 
 ### verify_reconcile

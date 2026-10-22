@@ -123,7 +123,7 @@ def test_create_backlog_item_and_milestone_parse_generated_id_inputs():
 
 
 def test_backlog_adopt_takes_no_path():
-    """The list's location is `docRoots:`' answer, so the CLI has no way to name a second."""
+    """The list lives at `docs/backlog.md`, so the CLI has no way to name a second."""
     args = parse(["backlog", "adopt", "--prefix", "acme"])
     assert args.op == "adopt" and args.prefix == "acme"
     with pytest.raises(SystemExit):

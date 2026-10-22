@@ -21,9 +21,7 @@ def approved_roadmap(root: Path) -> str:
     if not approved:
         raise WorkflowFailed(
             f"authoring requires one roadmap with `type: roadmap` and `status: approved` "
-            f"under {roadmaps}/; none of the {len(candidates)} file(s) there qualifies. "
-            f"Point `docRoots: roadmaps:` at the directory this repo keeps them in if it "
-            f"is not that one."
+            f"under {roadmaps}/; none of the {len(candidates)} file(s) there qualifies."
         )
     if len(approved) > 1:
         raise WorkflowFailed(

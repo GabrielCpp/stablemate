@@ -61,13 +61,13 @@ every repository's `RepositorySnapshot`. `catalog_path`/`load_catalog` locate an
 byte under a repository's declared scopes so a catalog entry can detect its source has moved
 without re-walking the full diff on every run.
 
-- code: ostler/ostler/api.py::Ostler@0001e6a151cb
-- code: ostler/ostler/api.py::Snapshot@0001e6a151cb
-- code: ostler/ostler/api.py::_snapshot_of@0001e6a151cb
-- code: ostler/ostler/api.py::_listing@0001e6a151cb
-- code: ostler/ostler/api.py::_file_sha@0001e6a151cb
-- code: ostler/ostler/api.py::_story_candidates@0001e6a151cb
-- code: ostler/ostler/api.py::_unreadable@0001e6a151cb
+- code: ostler/ostler/api.py::Ostler@1768ac94402a
+- code: ostler/ostler/api.py::Snapshot@1768ac94402a
+- code: ostler/ostler/api.py::_snapshot_of@1768ac94402a
+- code: ostler/ostler/api.py::_listing@1768ac94402a
+- code: ostler/ostler/api.py::_file_sha@1768ac94402a
+- code: ostler/ostler/api.py::_story_candidates@1768ac94402a
+- code: ostler/ostler/api.py::_unreadable@1768ac94402a
 - code: ostler/ostler/select.py::is_done@95d1a37a3be0
 - code: ostler/ostler/select.py::epic_by_name@95d1a37a3be0
 - code: ostler/ostler/select.py::epic_done@95d1a37a3be0
@@ -86,16 +86,16 @@ without re-walking the full diff on every run.
 - code: ostler/ostler/todo.py::_milestone_ordered_epics@eb0ea0bc4039
 - code: ostler/ostler/trace.py::run@627ab268dee3
 - code: ostler/ostler/server_membership.py::check_server_membership@badd1c75c0f9
-- code: ostler/ostler/source_snapshots.py::SourceCatalog@40c4e0bf4525
-- code: ostler/ostler/source_snapshots.py::RepositorySnapshot@40c4e0bf4525
-- code: ostler/ostler/source_snapshots.py::SourceFile@40c4e0bf4525
-- code: ostler/ostler/source_snapshots.py::SourceSymbol@40c4e0bf4525
-- code: ostler/ostler/source_snapshots.py::book_repository@40c4e0bf4525
-- code: ostler/ostler/source_snapshots.py::set_book_repository@40c4e0bf4525
-- code: ostler/ostler/source_snapshots.py::catalog_path@40c4e0bf4525
-- code: ostler/ostler/source_snapshots.py::load_catalog@40c4e0bf4525
-- code: ostler/ostler/source_snapshots.py::resolved_sha@40c4e0bf4525
-- code: ostler/ostler/source_snapshots.py::source_fingerprint@40c4e0bf4525
+- code: ostler/ostler/source_snapshots.py::SourceCatalog@40694806c2b5
+- code: ostler/ostler/source_snapshots.py::RepositorySnapshot@40694806c2b5
+- code: ostler/ostler/source_snapshots.py::SourceFile@40694806c2b5
+- code: ostler/ostler/source_snapshots.py::SourceSymbol@40694806c2b5
+- code: ostler/ostler/source_snapshots.py::book_repository@40694806c2b5
+- code: ostler/ostler/source_snapshots.py::set_book_repository@40694806c2b5
+- code: ostler/ostler/source_snapshots.py::catalog_path@40694806c2b5
+- code: ostler/ostler/source_snapshots.py::load_catalog@40694806c2b5
+- code: ostler/ostler/source_snapshots.py::resolved_sha@40694806c2b5
+- code: ostler/ostler/source_snapshots.py::source_fingerprint@40694806c2b5
 - detail: [The book's markdown model](the-books-markdown-model.md)
 - detail: [ostler](../cli.md)
 

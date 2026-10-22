@@ -9,7 +9,7 @@ Ostler is the planning CLI: one `ostler` binary dispatching to subcommands that 
 managed markdown tree (backlog, milestones, epics, features) under a repo root.
 
 - binary: ostler
-- code: ostler/ostler/cli.py::main@03c9e301c36d
+- code: ostler/ostler/cli.py::main@d36715768389
 - detail: [Planning identities](concepts/planning-identities.md)
 
 ## Commands
@@ -52,7 +52,7 @@ managed markdown tree (backlog, milestones, epics, features) under a repo root.
 - code: ostler/ostler/artifact/run.py::list_kinds@72b226ff9de4
 - code: ostler/ostler/artifact/kinds.py::KINDS@ec25eeaddd5f
 - code: ostler/ostler/artifact/__init__.py::__all__@d177bd2861a0
-- code: ostler/ostler/cli.py::_cmd_artifact@03c9e301c36d
+- code: ostler/ostler/cli.py::_cmd_artifact@d36715768389
 
 ### ostler-artifact-scaffold
 - usage: ostler artifact scaffold KIND --spec PATH [--force] — writes KIND's JSON skeleton to
@@ -73,8 +73,8 @@ managed markdown tree (backlog, milestones, epics, features) under a repo root.
   root, and the directory does not yet hold the kind's file
 - code: ostler/ostler/artifact/run.py::scaffold@72b226ff9de4
 - code: ostler/ostler/artifact/kinds.py::ArtifactKind@ec25eeaddd5f
-- code: ostler/ostler/path.py::resolve_spec_arg@b434dbc906c6
-- code: ostler/ostler/cli.py::_cmd_artifact@03c9e301c36d
+- code: ostler/ostler/path.py::resolve_spec_arg@be3f9e1439fb
+- code: ostler/ostler/cli.py::_cmd_artifact@d36715768389
 
 ### ostler-artifact-scaffold-unknown-kind
 - usage: ostler artifact scaffold KIND --spec PATH — rejects a KIND outside the registry before
@@ -86,7 +86,7 @@ managed markdown tree (backlog, milestones, epics, features) under a repo root.
 - fixture: none, because an unknown kind name fails before the spec directory is read or written
 - code: ostler/ostler/artifact/run.py::scaffold@72b226ff9de4
 - code: ostler/ostler/artifact/kinds.py::ArtifactKind@ec25eeaddd5f
-- code: ostler/ostler/cli.py::_cmd_artifact@03c9e301c36d
+- code: ostler/ostler/cli.py::_cmd_artifact@d36715768389
 
 ### ostler-artifact-vet
 - usage: ostler artifact vet KIND --spec PATH [--json] — validates `<spec-dir>/<kind>.json` against
@@ -102,7 +102,7 @@ managed markdown tree (backlog, milestones, epics, features) under a repo root.
 - fixture: none, because the claim is that a never-scaffolded spec dir is rejected
 - code: ostler/ostler/artifact/run.py::vet@72b226ff9de4
 - code: ostler/ostler/artifact/kinds.py::_backlog_items_vet@ec25eeaddd5f
-- code: ostler/ostler/cli.py::_cmd_artifact@03c9e301c36d
+- code: ostler/ostler/cli.py::_cmd_artifact@d36715768389
 
 ### ostler-env-schema
 - usage: ostler env schema — prints the JSON Schema of a book's `ops/stack.yml`
@@ -112,8 +112,8 @@ managed markdown tree (backlog, milestones, epics, features) under a repo root.
 - verify: json_path(path=".$schema", equals="https://json-schema.org/draft/2020-12/schema")
 - fixture: none, because the schema is built from the code-declared key table, not read from any
   stack.yml
-- code: ostler/ostler/environments/spec.py::schema@b020ed778dc2
-- code: ostler/ostler/environments/spec.py::KEYS@b020ed778dc2
+- code: ostler/ostler/environments/spec.py::schema@d5300931ce33
+- code: ostler/ostler/environments/spec.py::KEYS@d5300931ce33
 - code: ostler/ostler/environments/cli.py::run@f1b74cc1cc17
 
 ### ostler-vet
@@ -165,7 +165,7 @@ managed markdown tree (backlog, milestones, epics, features) under a repo root.
 - code: ostler/ostler/vet/report.py::build_report@30d577ca0ec9
 - code: ostler/ostler/vet/writes.py::VetFileWrite@d000fa666d75
 - code: ostler/ostler/vet/writes.py::VetPlan@d000fa666d75
-- code: ostler/ostler/cli.py::_cmd_vet@03c9e301c36d
+- code: ostler/ostler/cli.py::_cmd_vet@d36715768389
 - detail: [Vetting a rendered screen](concepts/vetting-a-rendered-screen.md)
 
 ### ostler-vet-cdp
@@ -197,10 +197,10 @@ managed markdown tree (backlog, milestones, epics, features) under a repo root.
 - run: invoke(argv=["-C", "env-check-scratch", "env", "check", "--json"])
 - verify: exit_status(code=1)
 - verify: json_path(path="ok", equals=false)
-- verify: json_path(path="errors[0]", matches="^docs/features/env-check-fixture/ops/stack\\.yml: is not a mapping with a `services:` key$")
+- verify: json_path(path="errors[0]", matches="^docs/services/env-check-fixture/ops/stack\\.yml: is not a mapping with a `services:` key$")
 - fixture: [cli scenario arrangement](fixtures/cli-scenario-arrangement.md) — creates a scratch repo
   whose book's ops/stack.yml is a YAML list instead of a mapping, so no other scenario reads it
-- code: ostler/ostler/environments/spec.py::load@b020ed778dc2
-- code: ostler/ostler/environments/spec.py::_read_book@b020ed778dc2
+- code: ostler/ostler/environments/spec.py::load@d5300931ce33
+- code: ostler/ostler/environments/spec.py::_read_book@d5300931ce33
 - code: ostler/ostler/environments/commands.py::cmd_check@36bbc1003620
 - code: ostler/ostler/environments/cli.py::run@f1b74cc1cc17

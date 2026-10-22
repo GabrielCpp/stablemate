@@ -22,9 +22,9 @@ from ostler.vet import placement as placement_mod
 from ostler.pages import files_in_book, in_hidden_folder
 from ostler import refs as refs_mod
 from ostler.finding import Finding
-from ostler.model import Graph, Epic, Story, UINode, read_doc, required_section_problems
-from ostler.path import features_root as features_root_of, specs_root_in
-from ostler.provenance import checkout_for
+from ostler.model import Graph, Epic, Story, UINode, load_config, read_doc, required_section_problems
+from ostler.path import services_root as services_root_of, specs_root_in
+from ostler.provenance import checkout_for, effective_checkouts
 from ostler.qa import (addresses as qa_addresses, captures as captures_mod, fixture_browser,
                        fixtures as fixtures_mod, references, runbook as runbook_mod, sensitivity)
 from ostler.qa.compile import Gap
@@ -110,6 +110,8 @@ def run(graph: Graph, epic_filter: str | None = None, check_schema: bool = True,
 
     resolver = links_mod.LinkResolver(graph)
 
+    _check_legacy_books_root(graph, f)
+    _check_removed_doc_roots(graph, f)
     _check_ui(graph, f, resolver, checkouts)
     server_membership.check_server_membership(graph, f, resolver)
     fragment_hosts.check_fragment_hosts(graph, f, resolver)
@@ -174,6 +176,27 @@ def run(graph: Graph, epic_filter: str | None = None, check_schema: bool = True,
     return report
 
 
+def _check_legacy_books_root(graph: Graph, findings: list[Finding]) -> None:
+    """The books root moved from `docs/features` to `docs/services`, and a directory at the old name is no longer read."""
+    if (graph.root / "docs" / "features").is_dir():
+        findings.append(Finding(
+            "error", "legacy-books-root",
+            "the books root moved: `docs/features` is no longer read, run `git mv docs/features docs/services`",
+            path="docs/features",
+            suggestion="git mv docs/features docs/services"))
+
+
+def _check_removed_doc_roots(graph: Graph, findings: list[Finding]) -> None:
+    """The `docRoots` key is gone, so a config that still carries it is flagged and not read."""
+    if "docRoots" in load_config(graph.root):
+        findings.append(Finding(
+            "error", "removed-doc-roots",
+            "`docRoots` was removed from the organization config and is no longer read: "
+            "every kind lives at its built-in path under `docs/`, and specs live in the "
+            "artifacts dir, so delete the key",
+            suggestion="delete the `docRoots` key from the organization config"))
+
+
 def _check_story_identity(graph: Graph, findings: list[Finding]) -> None:
     """Every accepted story spelling identifies one story, and its two id copies agree."""
     owners: dict[str, list[tuple[Epic, Story]]] = {}
@@ -219,16 +242,16 @@ CODE_FAULT_CODES = frozenset({"unnamed-interactive", "unnamed-collision"})
 
 def _apply_surface_declarations(graph: Graph, findings: list[Finding]) -> None:
     """Apply ``exercised: false`` from each surface's ``index.md`` frontmatter."""
-    froot = graph.doc_roots["features"]
+    froot = graph.doc_roots["services"]
     try:
-        features_rel = _rel_posix(froot, graph.root)
+        services_rel = _rel_posix(froot, graph.root)
     except ValueError:
         return
     dropped: list[str] = []
     for surface, meta in sorted(graph.surfaces.items()):
         if "exercised" not in meta:
             continue
-        rel = f"{features_rel}/{surface}/index.md"
+        rel = f"{services_rel}/{surface}/index.md"
         value = meta["exercised"]
         if not isinstance(value, bool):
             findings.append(Finding(
@@ -240,7 +263,7 @@ def _apply_surface_declarations(graph: Graph, findings: list[Finding]) -> None:
             continue
         if value:
             continue
-        prefix = f"{features_rel}/{surface}/"
+        prefix = f"{services_rel}/{surface}/"
         if not any(_rel_path(graph, n).startswith(prefix) for n in graph.ui_nodes):
             findings.append(Finding(
                 "error", "stale-declaration",
@@ -515,7 +538,7 @@ def _undeclared_fixture_repair(name: str, referenced: set[str] | None, plan_rel:
                 f"write it first.")
     if name in referenced:
         return (f"`{plan_rel}` asks for '{name}', so it is an arrangement nobody declared — add "
-                f"a fixture node under `docs/features/<surface>/fixtures/{name}.md`, or a "
+                f"a fixture node under `docs/services/<surface>/fixtures/{name}.md`, or a "
                 f"hand-written `qa: {{fixtures:}}` entry in agents.yml")
     return (f"`{plan_rel}` never asks for '{name}', so nothing arranges it and nothing wants it "
             f"— delete the bullet, or write `{registry.STORY_FIXTURES_NONE}` if the story "
@@ -589,7 +612,7 @@ def _check_book_fixtures(graph: Graph, known: set[str], f: list[Finding]) -> Non
                 f.append(Finding(
                     "error", "unknown-book-fixture",
                     f"{node.id}: `{key}:` names fixture '{parsed.name}', which this repo does "
-                    f"not declare — add a fixture node under `docs/features/<surface>/fixtures/"
+                    f"not declare — add a fixture node under `docs/services/<surface>/fixtures/"
                     f"{parsed.name}.md`, or a hand-written `qa: {{fixtures:}}` entry in "
                     f"agents.yml. Declared here: {', '.join(sorted(known)) or '(none)'}",
                     path=rel, line=node.line, ref=parsed.name))
@@ -1540,8 +1563,8 @@ def _check_test_subject(node, rel: str, f: list[Finding]) -> None:
 def _check_code_grounding(graph: Graph, f: list[Finding],
                            checkouts: dict[str, Path] | None = None) -> None:
     """`code:` targets name a file that exists, and a symbol that file declares."""
-    checkout_map = checkouts or {}
-    own_repository = book_repository(features_root_of(graph))
+    checkout_map = effective_checkouts(checkouts)
+    own_repository = book_repository(services_root_of(graph))
     for node in graph.ui_nodes:
         rel = _rel_posix(node.path, graph.root)
         _check_test_subject(node, rel, f)
@@ -2649,7 +2672,7 @@ def _check_ui(graph: Graph, f: list[Finding],
     _check_availability_states(graph, f)
     if resolver is None:
         resolver = links_mod.LinkResolver(graph)
-    froot = graph.doc_roots.get("features")
+    froot = graph.doc_roots.get("services")
     if froot is not None and froot.is_dir():
         for path in files_in_book(froot):
             if path.name not in registry.RESERVED_FILES:

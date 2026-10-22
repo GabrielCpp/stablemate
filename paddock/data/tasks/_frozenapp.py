@@ -23,6 +23,8 @@ from _stablemate import (
     pin_held,
     spec_dir,
     stablemate_checkout,
+    trial_artifacts,
+    trial_env,
     upgrade_spec_layout,
     uv_run,
 )
@@ -253,6 +255,10 @@ def capture_witness(repo: Path, dest: Path, extra: tuple[str, ...] = ()) -> Path
     dest.mkdir(parents=True, exist_ok=True)
     if (repo / "docs").is_dir():
         shutil.copytree(repo / "docs", dest / "docs", dirs_exist_ok=True)
+    if (trial_artifacts(repo) / "specs").is_dir():
+        shutil.copytree(
+            trial_artifacts(repo) / "specs", trial_artifacts(dest) / "specs", dirs_exist_ok=True
+        )
     for name in ("agents.yml", ".agents.yml", "ostler.yml", "ostler.yaml"):
         if (repo / name).is_file():
             shutil.copyfile(repo / name, dest / name)
@@ -454,12 +460,12 @@ def run_round(run: Run, fixture: Fixture) -> None:
                 "--config", str(config),
                 "--params", json.dumps(
                     {
-                        "story": story, "docs_path": str(repo),
+                        "story": story, "repo_dir": str(repo),
                         "stop_at_first_verdict": fixture.first_verdict,
                     }
                 ),
                 cwd=repo,
-                env={**os.environ, "WORKHORSE_MAX_RUNTIME_S": str(budget), "AGENT_REPO_DIR": str(repo)},
+                env={**trial_env(repo), "WORKHORSE_MAX_RUNTIME_S": str(budget), "AGENT_REPO_DIR": str(repo)},
                 log_name=f"{run_id}-qa",
             )
             wall = time.monotonic() - started

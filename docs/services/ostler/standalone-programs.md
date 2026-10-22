@@ -15,7 +15,7 @@ starts as a background process. Both run through `python3`, not through `ostler`
 ## Commands
 
 ### okf-migrate
-- usage: python3 -m ostler.scripts.okf_migrate [ROOT] — walks ROOT's `docs/epics`, `docs/features`
+- usage: python3 -m ostler.scripts.okf_migrate [ROOT] — walks ROOT's `docs/epics`, `docs/services`
   and `docs/specs` trees, rewrites whatever legacy JSON-sibling or frontmatter-less markdown it
   finds into the current OKF markdown format, and prints `migrated <root>: <report>`, a dict
   counting how many epics, stories, features and specs it touched and whether it rewrote the
@@ -25,20 +25,20 @@ starts as a background process. Both run through `python3`, not through `ostler`
   left prints a report of all zero counts and `'todo': False`, not an error
 - run: invoke(argv=["-m", "ostler.scripts.okf_migrate", "okf-migrate-fixture"])
 - verify: exit_status(code=0)
-- verify: stdout(matches="^migrated okf-migrate-fixture: \\{'epics': 1, 'stories': 0, 'features': 1, 'specs': 0, 'todo': True\\}$")
+- verify: stdout(matches="^migrated okf-migrate-fixture: \\{'epics': 1, 'stories': 0, 'services': 1, 'specs': 0, 'todo': True\\}$")
 - verify: contents(subject="okf-migrate-fixture/docs/epics/sample-epic/epic.md", matches="(?s)^---\\ntype: epic\\n")
 - verify: absent(subject="okf-migrate-fixture/docs/epics/sample-epic/seed.json")
 - verify: absent(subject="okf-migrate-fixture/docs/epics/sample-epic/dependencies.json")
 - verify: contents(subject="okf-migrate-fixture/docs/epics/index.md", matches="(?m)^- \\[sample-epic\\]\\(sample-epic/epic\\.md\\)$")
-- verify: contents(subject="okf-migrate-fixture/docs/features/legacy-page.md", matches="(?s)^---\\ntype: feature\\n")
+- verify: contents(subject="okf-migrate-fixture/docs/services/legacy-page.md", matches="(?s)^---\\ntype: feature\\n")
 - fixture: [legacy book layout](fixtures/legacy-book-layout.md) — seeds the pre-OKF epic, its
   `seed.json`/`dependencies.json` siblings, the `epics-todo.json` queue naming it, and a
   frontmatter-less feature page, all under `okf-migrate-fixture/`
-- code: ostler/ostler/scripts/okf_migrate.py::migrate@96c0602e35de
-- code: ostler/ostler/scripts/okf_migrate.py::main@96c0602e35de
-- code: ostler/ostler/scripts/okf_migrate.py::_migrate_epic@96c0602e35de
-- code: ostler/ostler/scripts/okf_migrate.py::_migrate_todo@96c0602e35de
-- code: ostler/ostler/scripts/okf_migrate.py::_migrate_features@96c0602e35de
+- code: ostler/ostler/scripts/okf_migrate.py::migrate@06a9c9dae6dd
+- code: ostler/ostler/scripts/okf_migrate.py::main@06a9c9dae6dd
+- code: ostler/ostler/scripts/okf_migrate.py::_migrate_epic@06a9c9dae6dd
+- code: ostler/ostler/scripts/okf_migrate.py::_migrate_todo@06a9c9dae6dd
+- code: ostler/ostler/scripts/okf_migrate.py::_migrate_services@06a9c9dae6dd
 - detail: [Migrating the legacy book layout](concepts/migrating-the-legacy-book-layout.md)
 
 ### sandbox-forwarder
@@ -80,8 +80,8 @@ starts as a background process. Both run through `python3`, not through `ostler`
   story `sx` and its `review-answers.md`, naming one fixed finding with evidence, one declined
   finding with a reason, and one malformed heading
 - code: ostler/ostler/answers.py::parse_answers@6c168f1fb49d
-- code: ostler/ostler/api.py::Ostler.settle_answers@0001e6a151cb
-- code: ostler/ostler/edit.py::settle_answers@7144473df397
+- code: ostler/ostler/api.py::Ostler.settle_answers@1768ac94402a
+- code: ostler/ostler/edit.py::settle_answers@08519cdd058d
 - detail: [The Ostler facade and book utilities](concepts/the-ostler-facade-and-book-utilities.md)
 
 ### verdict-memo-recall
@@ -148,5 +148,5 @@ starts as a background process. Both run through `python3`, not through `ostler`
 - code: ostler/ostler/qa/source_context.py::SourceScope@c8ac0146f0b0
 - code: ostler/ostler/qa/context.py::_repository_changes@ae1dfb851ad2
 - code: ostler/ostler/qa/context.py::_repository_row@ae1dfb851ad2
-- code: ostler/ostler/api.py::Ostler.qa_context@0001e6a151cb
+- code: ostler/ostler/api.py::Ostler.qa_context@1768ac94402a
 - detail: [Compiling a book into a QA plan](concepts/compiling-a-book-into-a-qa-plan.md)

@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import os
 import time
 from pathlib import Path
 from typing import Any
@@ -273,12 +272,12 @@ def run_round(run: Run, fixture: fz.Fixture) -> None:
                 "--config", str(config),
                 "--params", json.dumps(
                     {
-                        "story": story, "docs_path": str(repo),
+                        "story": story, "repo_dir": str(repo),
                         "stop_at_first_verdict": fixture.first_verdict,
                     }
                 ),
                 cwd=repo,
-                env={**os.environ, "WORKHORSE_MAX_RUNTIME_S": str(budget), "AGENT_REPO_DIR": str(repo)},
+                env={**fz.trial_env(repo), "WORKHORSE_MAX_RUNTIME_S": str(budget), "AGENT_REPO_DIR": str(repo)},
                 log_name=f"{run_id}-qa",
             )
             wall = time.monotonic() - started

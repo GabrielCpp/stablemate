@@ -1,4 +1,4 @@
-"""Specs live in the user's artifacts folder unless `docRoots: specs:` keeps them in the repo."""
+"""Specs live in the user's artifacts folder, outside the repo."""
 
 from __future__ import annotations
 
@@ -6,10 +6,9 @@ import subprocess
 from pathlib import Path
 
 from ostler.cli import main
-from ostler.model import load
-from ostler.path import resolve_spec, resolve_spec_arg, specs_root_in
+from ostler.path import resolve_spec_arg, specs_root_in
 
-from conftest import FOO_ID, specs_root, write
+from conftest import FOO_ID, specs_root
 
 
 def _git(repo: Path, *args: str) -> None:
@@ -32,20 +31,6 @@ def test_a_repo_and_its_worktree_share_one_specs_root(repo: Path, tmp_path_facto
     _git(repo, "worktree", "add", "-q", str(tree))
 
     assert specs_root_in(tree) == specs_root_in(repo) == specs_root()
-
-
-def test_doc_roots_specs_keeps_specs_in_the_repo(repo: Path):
-    write(repo / "ostler.yml", "organization:\n  docRoots:\n    specs: docs/specs\n")
-
-    assert specs_root_in(repo) == repo / "docs/specs"
-    assert resolve_spec(load(repo), "01-foo") == str(repo / "docs/specs" / FOO_ID)
-
-
-def test_doc_roots_specs_accepts_an_absolute_path(repo: Path, tmp_path_factory):
-    elsewhere = tmp_path_factory.mktemp("kept")
-    write(repo / "ostler.yml", f"organization:\n  docRoots:\n    specs: {elsewhere}\n")
-
-    assert specs_root_in(repo) == elsewhere
 
 
 def test_path_spec_prints_an_absolute_path_outside_the_repo(repo: Path, capsys):

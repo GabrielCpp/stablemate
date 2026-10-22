@@ -41,7 +41,7 @@ if TYPE_CHECKING:
 
 SNAPSHOT_NAMESPACE = "graph-snapshot/2"
 
-LOADED_DOC_ROOTS = ("features", "epics", "milestones")
+LOADED_DOC_ROOTS = ("services", "epics", "milestones")
 
 
 def _file_sha(path: Path) -> str | None:
@@ -360,16 +360,16 @@ class Ostler:
         return path_mod.story_dir(self.graph, epic, slug)
 
     def backlog_file(self) -> Path:
-        """The intake list — the file :meth:`backlog` reads, wherever ``docRoots:`` puts it."""
+        """The intake list — the file :meth:`backlog` reads, ``docs/backlog.md``."""
         return path_mod.backlog_path(self.graph)
 
     def roadmaps_dir(self) -> Path:
         """Where roadmaps live — join a filename onto this rather than spelling the path."""
         return path_mod.roadmaps_root(self.graph)
 
-    def features_dir(self, service: str = "") -> Path:
+    def services_dir(self, service: str = "") -> Path:
         """The feature book, scoped to one *service* in a multi-service workspace."""
-        return path_mod.features_root(self.graph, service)
+        return path_mod.services_root(self.graph, service)
 
     def waivers_file(self, service: str = "") -> Path:
         """A book's ``coverage-waivers.json`` — what :meth:`coverage` takes as ``waivers``."""
@@ -547,7 +547,7 @@ class Ostler:
 
     def qa_context(self, *, base: str, spec: str | Path, head: str = "WORKTREE",
                    source_roots: dict[str, builtins.list[str]] | None = None,
-                   features_root: str = "",
+                   services_root: str = "",
                    story_file: str | Path | None = None,
                    exclude_paths: Iterable[str] = (),
                    repositories: Iterable[SourceRepository] = ()) -> QaOutcome:
@@ -555,7 +555,7 @@ class Ostler:
 
         return cmd_context(
             self.root, self._resolve(spec), base=base, head=head,
-            source_roots=source_roots or {}, features_root=features_root,
+            source_roots=source_roots or {}, services_root=services_root,
             story_file=self._resolve(story_file) if story_file else None,
             exclude_paths=exclude_paths, repositories=tuple(repositories))
 

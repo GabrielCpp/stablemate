@@ -153,10 +153,10 @@ class Graph:
     def unexercised_books(self) -> tuple[str, ...]:
         """The repo-relative directory of every surface whose index declares `exercised: false`, each ending in a slash."""
         try:
-            features = self.doc_roots["features"].resolve().relative_to(self.root.resolve()).as_posix()
+            services = self.doc_roots["services"].resolve().relative_to(self.root.resolve()).as_posix()
         except (KeyError, ValueError):
             return ()
-        return tuple(f"{features}/{surface}/" for surface, meta in sorted(self.surfaces.items()) if meta.get("exercised") is False)
+        return tuple(f"{services}/{surface}/" for surface, meta in sorted(self.surfaces.items()) if meta.get("exercised") is False)
 
     def ui_nodes_of_type(self, type_name: str) -> list[UINode]:
         return [n for n in self.ui_nodes if n.type == type_name]
@@ -619,7 +619,10 @@ def _parse_stories(doc: markdown.MarkdownDoc, epic_name: str, root: Path,
 
 
 def find_root(start: Path) -> Path:
-    """Walk up from *start* to the nearest dir that looks like a repo root; else *start*."""
+    """The artifacts repo while a workspace is active; else walk up from *start* to the nearest dir that looks like a repo root, else *start*."""
+    home = core_config.docs_home(start)
+    if home is not None:
+        return home
     start = start.resolve()
     for d in [start, *start.parents]:
         if (d / ".git").exists() or (d / "docs").is_dir() \
@@ -628,7 +631,7 @@ def find_root(start: Path) -> Path:
     return start
 
 
-def _load_config(root: Path) -> dict:
+def load_config(root: Path) -> dict:
     for name in ("ostler.yml", "ostler.yaml", "agents.yml", ".agents.yml"):
         p = root / name
         if not p.exists():
@@ -643,7 +646,7 @@ def _load_config(root: Path) -> dict:
 
 
 BUILTIN_DOC_ROOTS: dict[str, str] = {
-    "features": "docs/features",
+    "services": "docs/services",
     "epics": "docs/epics",
     "milestones": "docs/milestones",
     "specs": "docs/specs",
@@ -652,15 +655,12 @@ BUILTIN_DOC_ROOTS: dict[str, str] = {
 }
 
 
-def doc_roots(root: Path, kinds: Sequence[dynamic_registry.TemplateKind] | None = None,
-              config: dict | None = None) -> dict[str, Path]:
-    """Where each kind of document lives under *root*, honouring `docRoots:` config."""
-    cfg = (config if config is not None else _load_config(root)).get("docRoots") or {}
-    roots = {key: root / cfg.get(key, default) for key, default in BUILTIN_DOC_ROOTS.items()}
-    if not cfg.get("specs"):
-        roots["specs"] = core_config.resolve_artifacts_dir() / "specs"
+def doc_roots(root: Path, kinds: Sequence[dynamic_registry.TemplateKind] | None = None) -> dict[str, Path]:
+    """Where each kind of document lives under *root*: its built-in path, and specs in the artifacts dir."""
+    roots = {key: root / default for key, default in BUILTIN_DOC_ROOTS.items()}
+    roots["specs"] = core_config.resolve_artifacts_dir() / "specs"
     for kind in (dynamic_registry.load_kinds(root) if kinds is None else kinds):
-        roots.setdefault(kind.doc_root, root / cfg.get(kind.doc_root, kind.default_path))
+        roots.setdefault(kind.doc_root, root / kind.default_path)
     return roots
 
 
@@ -670,10 +670,10 @@ def load(
     root_overrides: Mapping[str, str | Path] | None = None,
 ) -> Graph:
     root = find_root(cwd or Path.cwd())
-    config = _load_config(root)
+    config = load_config(root)
 
     template_kinds = dynamic_registry.load_kinds(root)
-    roots = doc_roots(root, template_kinds, config)
+    roots = doc_roots(root, template_kinds)
     for kind, configured in (root_overrides or {}).items():
         configured_path = Path(configured)
         roots[kind] = configured_path if configured_path.is_absolute() else root / configured_path
@@ -831,10 +831,10 @@ def _ui_nodes(doc: markdown.MarkdownDoc, path: Path, root: Path) -> list[UINode]
 
 
 def _feature_pages(graph: Graph) -> list[tuple[Path, dict, list[UINode]]]:
-    """Every book page under the features root, with its frontmatter and UI nodes, each page read once.
+    """Every book page under the services root, with its frontmatter and UI nodes, each page read once.
 
     A file's membership in the corpus is a claim the file makes, not a property of where it sits, so a candidate must declare a `type` to count (the same rule `doctor._check_conformance` enforces as `okf-missing-type`, and that check walks its own `etype.location` glob independently of this function, so gating here does not silence it)."""
-    froot = graph.doc_roots["features"]
+    froot = graph.doc_roots["services"]
     if not froot.is_dir():
         return []
     pages = []
@@ -852,7 +852,7 @@ def _feature_pages(graph: Graph) -> list[tuple[Path, dict, list[UINode]]]:
 
 
 def _load_features(graph: Graph, pages: list[tuple[Path, dict, list[UINode]]]) -> None:
-    froot = graph.doc_roots["features"]
+    froot = graph.doc_roots["services"]
     for path, data, _ in pages:
         rel = path.relative_to(froot).with_suffix("")
         slug = str(data.get("slug") or rel.name)
@@ -862,7 +862,7 @@ def _load_features(graph: Graph, pages: list[tuple[Path, dict, list[UINode]]]) -
 
 
 def _load_surfaces(graph: Graph) -> None:
-    froot = graph.doc_roots["features"]
+    froot = graph.doc_roots["services"]
     if not froot.is_dir():
         return
     for index_md in sorted(froot.glob("*/index.md")):

@@ -115,8 +115,8 @@ read-only: author never creates an inventory or registers a mockup outside its s
 
 Removing the last story does not silently strand scope. Its plan must also remove the last
 seeds; once both resulting sets are empty, the epic and its milestone/queue references
-are deleted. The complete behavior is recorded in the [epic edit](https://github.com/GabrielCpp/stablemate/blob/main/docs/features/workflows/flows/author-epic-edit.md)
-and [story edit](https://github.com/GabrielCpp/stablemate/blob/main/docs/features/workflows/flows/author-story-edit.md)
+are deleted. The complete behavior is recorded in the [epic edit](https://github.com/GabrielCpp/stablemate/blob/main/docs/services/workflows/flows/author-epic-edit.md)
+and [story edit](https://github.com/GabrielCpp/stablemate/blob/main/docs/services/workflows/flows/author-story-edit.md)
 flows.
 
 ## Coder documentation convergence
@@ -189,7 +189,7 @@ this package: `workhorse/cli/run.py` and `workhorse/supervisor.py` translate `$F
 `--params` once, on the way in. That is why `repo_dir` reaches every workflow without any
 of them reading `AGENT_REPO_DIR`.
 
-Ambient *paths* — `repo_dir`, `docs_path`, `workspace_file` — are wanted by roughly every
+Ambient *paths* — `repo_dir`, `workspace`, `library_dirs` — are wanted by roughly every
 second node and chosen by no state. They are fields, and `Workflow.injects` (see `coder/shared/paths.AMBIENT`)
 fills them into any node or sub-flow that declares a parameter of the same name and was
 not passed one. A callsite value always wins, and an empty field injects nothing, so the
@@ -213,15 +213,14 @@ make check-no-env    # from the repo root, on its own
 **Where a document lives is ostler's answer.** The epics root, the epic folder, the story
 folder, the epics index, the backlog file, the feature book and its waivers and screenshots
 all come from `ostler.path`; no module under `src/workhorse_workflows/` writes
-`docs/epics`, `docs/backlog.md` or `docs/features` as a literal.
+`docs/epics`, `docs/backlog.md` or `docs/services` as a literal.
 
-The reason is that these locations are **configurable** — a repo moves them with
-`docRoots:` in `ostler.yml` / `agents.yml` — and that epic directories are **numbered**
+The reason is that epic directories are **numbered**
 (`0001-checkout-flow`) while every queue entry, prompt and operator names them by bare
 slug. A hand-built join gets both wrong, and gets them wrong *silently*: the run writes
 into a directory nothing reads, and `ostler doctor` reports a book that is not there. Two
 derivations of the same location is the failure the rule exists for; the second one never
-learns about the config.
+learns the numbering.
 
 What a workflow still owns is the **filename it invented** — `context.md`, `feedback.md`,
 `_author-context.md`, `<gate>-context.md`, `attempts.md` — joined onto

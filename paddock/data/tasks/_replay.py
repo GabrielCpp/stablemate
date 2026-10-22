@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import os
 import shutil
 import time
 from collections.abc import Callable, Mapping
@@ -50,7 +49,7 @@ class Fixture:
     app: str
     pins: tuple[Pin, ...]
     flows: tuple[str, ...] = KNOWN_FLOWS
-    book: str = "docs/features"
+    book: str = "docs/services"
     budget_s: float = BUDGET_S
     packs: tuple[str, ...] = ()
     harness: tuple[str, ...] = ()
@@ -168,6 +167,7 @@ def checkout(
     sm.git("checkout", "--quiet", pin.commit(flow), cwd=dest)
     sm.upgrade_spec_layout(dest)
     rewind(dest, fixture, pin, flow)
+    sm.upgrade_spec_layout(dest)
     restore_harness(dest, fixture)
     if fixture.backfill_dependencies:
         backfill_story_sections(dest)
@@ -205,10 +205,10 @@ def run_round(run: Run, fixture: Fixture) -> None:
                 "workhorse-coder", "run", flow,
                 "--runs-dir", str(runs_dir), "--run-id", run_id,
                 "--config", str(config),
-                "--params", json.dumps({"story": pin.story, "docs_path": str(repo)}),
+                "--params", json.dumps({"story": pin.story, "repo_dir": str(repo)}),
                 cwd=repo,
                 env={
-                    **os.environ,
+                    **sm.trial_env(repo),
                     "WORKHORSE_MAX_RUNTIME_S": str(budget),
                     "AGENT_REPO_DIR": str(repo),
                 },

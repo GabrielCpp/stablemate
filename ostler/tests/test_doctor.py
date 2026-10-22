@@ -46,7 +46,7 @@ def test_clean_repo_has_no_errors(repo: Path):
 
 
 def test_a_typed_page_outside_every_doc_root_is_flagged_as_misplaced(repo: Path):
-    """A real book page (a declared `type:`) that a move -- or a first draft -- leaves outside `docs/features`, `docs/epics`, `docs/milestones`, `docs/roadmaps`, `docs/specs` and `docs/backlog.md` is invisible to every other check: it is not `okf-missing-type` (it has a type), and nothing walks in to find it, since every book-facing check is rooted at `graph.doc_roots`."""
+    """A real book page (a declared `type:`) that a move -- or a first draft -- leaves outside `docs/services`, `docs/epics`, `docs/milestones`, `docs/roadmaps`, `docs/specs` and `docs/backlog.md` is invisible to every other check: it is not `okf-missing-type` (it has a type), and nothing walks in to find it, since every book-facing check is rooted at `graph.doc_roots`."""
     write(repo / "notes/orphan-concept.md",
           "---\ntype: concept\ntitle: Orphan\n---\n# Orphan\n\nStray content.\n")
     _git_track(repo)
@@ -59,11 +59,10 @@ def test_a_typed_page_outside_every_doc_root_is_flagged_as_misplaced(repo: Path)
     assert "concept" in finding.message
 
 
-def test_typed_pages_under_the_configured_doc_roots_are_not_misplaced(repo: Path):
-    """The predicate is "outside every doc root", never "outside `docs/features`" alone -- real `epic`/`story`/`spec.*` pages that sit under one of the *other* doc roots must not be flagged, even once git tracking makes the new check actually run."""
-    write(repo / "ostler.yml", "organization:\n  docRoots:\n    specs: docs/specs\n")
-    write(repo / "docs/specs/plan.md",
-          "---\ntype: spec.plan\ntitle: Plan\n---\n# Plan\n\nBody.\n")
+def test_typed_pages_under_the_doc_roots_are_not_misplaced(repo: Path):
+    """The predicate is "outside every doc root", never "outside `docs/services`" alone -- real `epic`/`story`/`spec.*` pages that sit under one of the *other* doc roots must not be flagged, even once git tracking makes the new check actually run."""
+    write(repo / "docs/epics/epic-x/epic.md",
+          "---\ntype: epic\ntitle: Extra\n---\n# Extra\n\nBody.\n")
     _git_track(repo)
 
     report = doctor.run(load(repo))
@@ -89,9 +88,9 @@ def test_misplaced_book_page_emits_nothing_outside_a_git_repository(repo: Path):
     assert "misplaced-book-page" not in codes(report)
 
 
-def test_a_spec_typed_page_under_features_is_flagged_as_misrooted(repo: Path):
-    """`spec.*` is registered under `docs/specs`, not `docs/features` -- and unlike a page outside every root, a `spec.qa-okf-context.md` dropped under `docs/features` (the shape `ostler qa context` writing its scratch output to the wrong directory would produce) IS under a doc root, so `misplaced-book-page` never fires."""
-    write(repo / "docs/features/area/scratch.md",
+def test_a_spec_typed_page_under_services_is_flagged_as_misrooted(repo: Path):
+    """`spec.*` is registered under `docs/specs`, not `docs/services` -- and unlike a page outside every root, a `spec.qa-okf-context.md` dropped under `docs/services` (the shape `ostler qa context` writing its scratch output to the wrong directory would produce) IS under a doc root, so `misplaced-book-page` never fires."""
+    write(repo / "docs/services/area/scratch.md",
           "---\ntype: spec.qa-okf-context\ntitle: Scratch\n---\n# Scratch\n\n"
           "## Changed Code\n\n- `a.py` (modified): foo\n")
     _git_track(repo)
@@ -99,40 +98,38 @@ def test_a_spec_typed_page_under_features_is_flagged_as_misrooted(repo: Path):
     report = doctor.run(load(repo))
     assert "misrooted-book-page" in codes(report)
     finding = next(f for f in report.findings if f.code == "misrooted-book-page")
-    assert finding.path == "docs/features/area/scratch.md"
+    assert finding.path == "docs/services/area/scratch.md"
     assert finding.severity == "error"
     assert "spec.qa-okf-context" in finding.message
     assert "specs" in finding.message
 
 
 def test_typed_pages_under_their_own_registered_root_are_not_misrooted(repo: Path):
-    """The predicate is "inside a doc root that disagrees with the type", never "inside any doc root but `docs/features`" -- a real `spec.*` page under `docs/specs` (its registered home) must not be flagged."""
-    write(repo / "ostler.yml", "organization:\n  docRoots:\n    specs: docs/specs\n")
-    write(repo / "docs/specs/plan/plan.md",
-          "---\ntype: spec.plan\ntitle: Plan\n---\n# Plan\n\nBody.\n")
+    """The predicate is "inside a doc root that disagrees with the type", never "inside any doc root but `docs/services`" -- a real `spec.*` page under `docs/specs` (its registered home) must not be flagged."""
+    write(repo / "docs/epics/epic-x/epic.md",
+          "---\ntype: epic\ntitle: Extra\n---\n# Extra\n\nBody.\n")
     _git_track(repo)
 
     report = doctor.run(load(repo))
     assert "misrooted-book-page" not in codes(report)
 
 
-def test_a_ui_typed_page_outside_features_is_flagged_as_misrooted(repo: Path):
-    """The reverse direction: a book page whose type belongs under `features`, filed elsewhere."""
-    write(repo / "ostler.yml", "organization:\n  docRoots:\n    specs: docs/specs\n")
-    write(repo / "docs/specs/area/stray.md",
+def test_a_ui_typed_page_outside_services_is_flagged_as_misrooted(repo: Path):
+    """The reverse direction: a book page whose type belongs under `services`, filed elsewhere."""
+    write(repo / "docs/epics/area/stray.md",
           "---\ntype: screen\ntitle: Stray\n---\n# Stray\n\n- route: /stray\n")
     _git_track(repo)
 
     report = doctor.run(load(repo))
     finding = next(f for f in report.findings if f.code == "misrooted-book-page")
-    assert finding.path == "docs/specs/area/stray.md"
-    assert "features" in finding.message
-    assert "specs" in finding.message
+    assert finding.path == "docs/epics/area/stray.md"
+    assert "services" in finding.message
+    assert "epics" in finding.message
 
 
-def test_a_ui_typed_page_under_features_is_not_misrooted(repo: Path):
-    """Every `UINodeType`'s registered root is `features`, so an ordinary screen is clean."""
-    write(repo / "docs/features/web/ok.md",
+def test_a_ui_typed_page_under_services_is_not_misrooted(repo: Path):
+    """Every `UINodeType`'s registered root is `services`, so an ordinary screen is clean."""
+    write(repo / "docs/services/web/ok.md",
           "---\ntype: screen\ntitle: Ok\n---\n# Ok\n\n- route: /ok\n")
     _git_track(repo)
 
@@ -276,14 +273,14 @@ def test_feature_records_parsed(repo: Path):
 
 
 def test_missing_type_is_flagged(repo: Path):
-    write(repo / "docs/features/area/rec.md",
+    write(repo / "docs/services/area/rec.md",
           "---\nslug: rec\ntitle: Rec\n---\n# rec\n\nbody\n")
     assert "okf-missing-type" in codes(doctor.run(load(repo)))
 
 
 def test_a_concept_inserted_mid_file_reparents_its_neighbours_fields(repo: Path):
     """The failure this catches is invisible in the rendered page: a new `## concept:` written directly above an existing `### Fields` steals that block, and nothing else in the graph objects — the fields are still fields, just hanging off the wrong concept."""
-    write(repo / "docs/features/area/rec.md", """---
+    write(repo / "docs/services/area/rec.md", """---
 type: concept
 slug: rec
 title: Rec
@@ -309,11 +306,11 @@ title: Rec
     assert [f.ref for f in findings] == ["Fields"]
     assert findings[0].severity == "error"
     assert "concept: SlugCollisionError" in findings[0].message
-    assert findings[0].path == "docs/features/area/rec.md"
+    assert findings[0].path == "docs/services/area/rec.md"
 
 
 def test_the_same_container_under_two_different_concepts_is_fine(repo: Path):
-    write(repo / "docs/features/area/rec.md", """---
+    write(repo / "docs/services/area/rec.md", """---
 type: concept
 slug: rec
 title: Rec
@@ -664,44 +661,44 @@ def test_a_recorded_conflict_is_an_error_on_the_story_until_cleared(repo: Path):
 
 
 def test_path_scope_keeps_only_that_files_findings(repo: Path):
-    write(repo / "docs/features/area/rec.md", "---\nslug: rec\ntitle: Rec\n---\n# rec\n\nbody\n")
-    write(repo / "docs/features/area/rec2.md", "---\nslug: rec2\ntitle: Rec2\n---\n# rec2\n\nbody\n")
+    write(repo / "docs/services/area/rec.md", "---\nslug: rec\ntitle: Rec\n---\n# rec\n\nbody\n")
+    write(repo / "docs/services/area/rec2.md", "---\nslug: rec2\ntitle: Rec2\n---\n# rec2\n\nbody\n")
     report = doctor.run(load(repo))
     assert {f.path for f in report.findings if f.code == "okf-missing-type"} >= {
-        "docs/features/area/rec.md", "docs/features/area/rec2.md"}
+        "docs/services/area/rec.md", "docs/services/area/rec2.md"}
 
-    scoped = doctor.scope_to_paths(report, ["docs/features/area/rec.md"])
+    scoped = doctor.scope_to_paths(report, ["docs/services/area/rec.md"])
 
     assert scoped.findings
-    assert {f.path for f in scoped.findings} == {"docs/features/area/rec.md"}
-    assert {f.path for f in doctor.scope_to_paths(report, ["docs/features/area/"]).findings} >= {
-        "docs/features/area/rec.md", "docs/features/area/rec2.md"}
+    assert {f.path for f in scoped.findings} == {"docs/services/area/rec.md"}
+    assert {f.path for f in doctor.scope_to_paths(report, ["docs/services/area/"]).findings} >= {
+        "docs/services/area/rec.md", "docs/services/area/rec2.md"}
 
 
 def test_path_scope_keeps_a_group_finding_through_its_related_member():
     member = doctor.Finding("warn", "same-as-disagreement", "m",
-                            path="docs/features/a.md", related=["docs/features/b.md#node-b"])
-    other = doctor.Finding("warn", "unparsed-check", "m", path="docs/features/c.md")
+                            path="docs/services/a.md", related=["docs/services/b.md#node-b"])
+    other = doctor.Finding("warn", "unparsed-check", "m", path="docs/services/c.md")
     report = doctor.Report(org="acme", profile="full", findings=[member, other])
 
-    assert doctor.scope_to_paths(report, ["docs/features/b.md"]).findings == [member]
+    assert doctor.scope_to_paths(report, ["docs/services/b.md"]).findings == [member]
 
 
 def test_path_scoped_doctor_leads_with_its_verdict_about_that_file(repo: Path, capsys):
-    write(repo / "docs/features/area/rec.md", "---\nslug: rec\ntitle: Rec\n---\n# rec\n\nbody\n")
+    write(repo / "docs/services/area/rec.md", "---\nslug: rec\ntitle: Rec\n---\n# rec\n\nbody\n")
 
-    main(["-C", str(repo), "doctor", "--no-index", "--path", "docs/features/area/rec.md"])
+    main(["-C", str(repo), "doctor", "--no-index", "--path", "docs/services/area/rec.md"])
 
     out = capsys.readouterr().out
     first = out.splitlines()[0]
-    assert first.endswith("in docs/features/area/rec.md") and "error(s)" in first
+    assert first.endswith("in docs/services/area/rec.md") and "error(s)" in first
     assert "epic " not in out and "org:" not in out
 
 
 def test_path_outside_the_book_is_refused_rather_than_reported_clean(repo: Path, capsys):
     write(repo / "notes/copy.md", "---\nslug: copy\ntitle: Copy\n---\n# copy\n\nbody\n")
 
-    for path in ("notes/copy.md", "docs/features/area/missing.md"):
+    for path in ("notes/copy.md", "docs/services/area/missing.md"):
         assert main(["-C", str(repo), "doctor", "--no-index", "--path", path]) == 2
         captured = capsys.readouterr()
         assert "not a file of this book" in captured.err and not captured.out
@@ -738,7 +735,7 @@ def test_every_gap_kind_has_its_own_branch_in_the_doctor_bridge():
 
 def test_a_gap_kind_that_is_not_a_doctor_code_is_translated_not_passed_through():
     """`no-verify-declared` is the compiler's spelling; doctor's is `undeclared-obligation`."""
-    oid = "okf:docs/features/demo/api.md#post-things:does:1"
+    oid = "okf:docs/services/demo/api.md#post-things:does:1"
     gap = compile_mod.Gap(oid, "no-verify-declared", "the book declares no check")
 
     [finding] = doctor.gap_findings([gap])
@@ -748,7 +745,7 @@ def test_a_gap_kind_that_is_not_a_doctor_code_is_translated_not_passed_through()
 
 def test_a_when_guarded_gap_keeps_its_own_code_rather_than_undeclared_obligation():
     """`precondition-discharged-by-arrangement` is its own doctor code, not a second spelling of `undeclared-obligation`: the two name different defects."""
-    oid = "okf:docs/features/demo/api.md#submit-widget:when:1"
+    oid = "okf:docs/services/demo/api.md#submit-widget:when:1"
     gap = compile_mod.Gap(
         oid, "precondition-discharged-by-arrangement",
         "this `when:` states a condition under which the node's claims hold, not an "
@@ -762,18 +759,18 @@ def test_a_when_guarded_gap_keeps_its_own_code_rather_than_undeclared_obligation
 
 def test_undeclared_obligation_fires_per_bullet_even_when_the_node_declares_a_check(repo: Path):
     """SITE-GAP is per-obligation; SITE-BOOK's `declared` flag is node-wide."""
-    write(repo / "docs/features/demo/publisher.md",
+    write(repo / "docs/services/demo/publisher.md",
           "---\ntype: concept\ntitle: Publisher\n---\n# Publisher\n\n"
           "## Methods\n\n### Publish\n- returns: the published revision\n"
           "- raises: `ManifestConflict` when the revision moved\n")
     book_only = doctor.run(load(repo))
     zero_check = next(f for f in book_only.findings if f.code == "undeclared-obligation")
-    assert zero_check.ref == "docs/features/demo/publisher.md#publish#verify"
+    assert zero_check.ref == "docs/services/demo/publisher.md#publish#verify"
 
     (repo / "app").mkdir()
     source = repo / "app/service.py"
     source.write_text("def create_thing():\n    return 'old'\n", encoding="utf-8")
-    write(repo / "docs/features/demo/api.md",
+    write(repo / "docs/services/demo/api.md",
           "---\ntype: server\ntitle: Demo API\n---\n# Demo API\n\n"
           "- entry-url: http://localhost:8080\n\n"
           "## Endpoints\n\n### post-things\n"
@@ -785,7 +782,7 @@ def test_undeclared_obligation_fires_per_bullet_even_when_the_node_declares_a_ch
           "- status: 201 on creation\n"
           "- code: app/service.py::create_thing\n")
 
-    api_findings = [f for f in doctor.run(load(repo)).findings if f.path == "docs/features/demo/api.md"]
+    api_findings = [f for f in doctor.run(load(repo)).findings if f.path == "docs/services/demo/api.md"]
     assert "undeclared-obligation" not in {f.code for f in api_findings}
 
     subprocess.run(["git", "init", "-q"], cwd=repo, check=True)
@@ -814,7 +811,7 @@ def test_undeclared_obligation_fires_per_bullet_even_when_the_node_declares_a_ch
 
 def test_an_unparsed_fixture_gap_keeps_the_code_doctor_already_raises_for_that_bullet():
     """`_check_book_fixtures` raises `qa-fixture-bullet` on this bullet from the book alone."""
-    oid = "okf:docs/features/demo/flows/add-a-thing.md:end-state"
+    oid = "okf:docs/services/demo/flows/add-a-thing.md:end-state"
     gap = compile_mod.Gap(oid, "unparsed-fixture", "this claim's arrangement could not be read")
 
     [finding] = doctor.gap_findings([gap])
@@ -825,7 +822,7 @@ def test_an_unparsed_fixture_gap_keeps_the_code_doctor_already_raises_for_that_b
 
 def test_an_unparsed_check_gap_keeps_the_code_doctor_already_raises_for_that_bullet():
     """`_check_ui` raises `unparsed-check` on this bullet from the book alone."""
-    oid = "okf:docs/features/policy/gui/screens/policy-list.md#policy-table:contract"
+    oid = "okf:docs/services/policy/gui/screens/policy-list.md#policy-table:contract"
     gap = compile_mod.Gap(oid, "unparsed-check-bullet", "this claim's check could not be read")
 
     [finding] = doctor.gap_findings([gap])
@@ -836,7 +833,7 @@ def test_an_unparsed_check_gap_keeps_the_code_doctor_already_raises_for_that_bul
 
 def test_a_misfiled_test_ref_on_a_type_with_no_tests_key_does_not_suggest_one(repo: Path):
     """`screen` declares `verify:` and never `tests:` — the message must not send the author to a key the type cannot hold, and the suggestion beside it must offer the check vocabulary rather than either `- tests: …` or the offending value restated under its own key."""
-    write(repo / "docs/features/ui/dash.md", screen_md(
+    write(repo / "docs/services/ui/dash.md", screen_md(
         "dash", "Dash", entry=True,
         body="\n- verify: `e2e/dash_test.go::TestDash`\n"))
 
@@ -852,7 +849,7 @@ def test_a_misfiled_test_ref_on_a_type_with_no_tests_key_does_not_suggest_one(re
 
 def test_a_misfiled_test_ref_on_a_type_that_declares_tests_still_offers_it(repo: Path):
     """`concept` declares both `verify:` and `tests:`, so the same finding on a `concept` page keeps proposing the move — unaffected by the fallback the `screen` case above exercises."""
-    write(repo / "docs/features/concepts/widget.md", (
+    write(repo / "docs/services/concepts/widget.md", (
         "---\ntype: concept\nslug: widget\ntitle: Widget\n---\n\n# Widget\n\n"
         "- verify: `e2e/dash_test.go::TestDash`\n"))
 
@@ -864,7 +861,7 @@ def test_a_misfiled_test_ref_on_a_type_that_declares_tests_still_offers_it(repo:
 
 
 def test_gap_findings_reports_a_compile_plan_gap_as_a_doctor_finding():
-    oid = "okf:docs/features/demo/api.md#post-things:does:1"
+    oid = "okf:docs/services/demo/api.md#post-things:does:1"
     gap = compile_mod.Gap(oid, "unresolved-precondition", "the book carries no request body")
 
     [finding] = doctor.gap_findings([gap])
@@ -877,7 +874,7 @@ def test_gap_findings_reports_a_compile_plan_gap_as_a_doctor_finding():
 
 def test_an_unresolved_extends_gap_is_reported_as_a_doctor_finding():
     """`unresolved-extends` is minted by `qa.compile.compile_plan_gaps`, not by any check `doctor.run` performs on its own walk — `census.py`'s own bridge note says so ("gap_findings has no product caller; gaps surface via qa compile-plan only"), so the only way to exercise the code -> Finding translation is to build the `Gap` directly, the same way every other Gap-based code above is tested."""
-    oid = "okf:docs/features/demo/api.md#refuse-act:does:1"
+    oid = "okf:docs/services/demo/api.md#refuse-act:does:1"
     gap = compile_mod.Gap(
         oid, "unresolved-extends",
         "this arm's `extends:` target is missing or not the same node type, so its control "
@@ -894,7 +891,7 @@ def test_an_unresolved_extends_gap_is_reported_as_a_doctor_finding():
 
 def test_an_unparsed_capture_gap_keeps_the_code_doctor_already_raises_for_that_bullet():
     """`_check_book_captures` raises `unparsed-capture` on this bullet from the book alone."""
-    oid = "okf:docs/features/demo/http/api.md#submit:does:1"
+    oid = "okf:docs/services/demo/http/api.md#submit:does:1"
     gap = compile_mod.Gap(oid, "unparsed-capture-bullet", "this claim's capture could not be read")
 
     [finding] = doctor.gap_findings([gap])
@@ -955,3 +952,35 @@ def test_the_reference_page_states_the_severity_each_code_is_raised_at():
         for code in set(emitted) & set(documented) if emitted[code] != documented[code]
     }
     assert not mismatched, mismatched
+
+
+def test_a_docs_features_directory_is_flagged_as_the_moved_books_root(repo: Path):
+    write(repo / "docs/features/area/old.md", "---\ntype: concept\ntitle: Old\n---\n# Old\n")
+
+    report = doctor.run(load(repo))
+    finding = next(f for f in report.findings if f.code == "legacy-books-root")
+    assert finding.severity == "error"
+    assert finding.path == "docs/features"
+    assert "git mv docs/features docs/services" in finding.message
+
+
+def test_no_docs_features_directory_means_no_legacy_books_root_finding(repo: Path):
+    assert "legacy-books-root" not in codes(doctor.run(load(repo)))
+
+
+@pytest.mark.parametrize("name", ["ostler.yml", "agents.yml"])
+def test_a_doc_roots_key_in_the_organization_config_is_flagged_as_removed(repo: Path, name: str):
+    write(repo / name, "organization:\n  docRoots:\n    epics: docs/plans\n")
+
+    report = doctor.run(load(repo))
+    finding = next(f for f in report.findings if f.code == "removed-doc-roots")
+    assert finding.severity == "error"
+    assert "docRoots" in finding.message
+    assert not (repo / "docs/plans").exists()
+    assert load(repo).doc_roots["epics"] == repo / "docs/epics"
+
+
+def test_no_doc_roots_key_means_no_removed_doc_roots_finding(repo: Path):
+    write(repo / "ostler.yml", "organization:\n  name: demo\n")
+
+    assert "removed-doc-roots" not in codes(doctor.run(load(repo)))

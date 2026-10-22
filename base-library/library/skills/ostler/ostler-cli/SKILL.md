@@ -1,6 +1,6 @@
 ---
 name: ostler-cli
-description: "The ostler tool — the system-of-record for a repo's docs/ knowledge graph (epics, stories, seeds, features and the OKF UI profile's typed nodes): the CLI command interface AND the `from ostler import Ostler` Python API workflow scripts use in-process, epic.md grammar, short handles, the coverage model, id allocation, profiles and templates, the QA control plane, and when a workflow agent should call it. Load it to *drive* ostler; the format it enforces under docs/features/ is ostler-okf."
+description: "The ostler tool — the system-of-record for a repo's docs/ knowledge graph (epics, stories, seeds, features and the OKF UI profile's typed nodes): the CLI command interface AND the `from ostler import Ostler` Python API workflow scripts use in-process, epic.md grammar, short handles, the coverage model, id allocation, profiles and templates, the QA control plane, and when a workflow agent should call it. Load it to *drive* ostler; the format it enforces under docs/services/ is ostler-okf."
 tags: [cli, python, docs]
 hooks:
   - stage: pre-commit
@@ -10,7 +10,7 @@ hooks:
 # Ostler
 
 Load this skill when a workflow node, script, or prompt needs to read or mutate a repo's planning
-docs (`docs/epics`, `docs/features`, and the story spec folders) — or when authoring a new
+docs (`docs/epics`, `docs/services`, and the story spec folders) — or when authoring a new
 `workhorse` workflow that should integrate with the doc graph instead of hand-rolling its own
 JSON state files.
 
@@ -36,10 +36,10 @@ seeds and its story dependency-DAG live entirely inside that epic's own `epic.md
 |---|---|---|---|
 | `epic` | `docs/epics/<NNNN-slug>/epic.md` | `<NNNN-slug>` (dir name) | `type`, `id`, `title` |
 | `story` | `docs/epics/<NNNN-slug>/stories/<slug>/story.md` | `<slug>` | `type`, `slug`, `status` |
-| `feature` | `docs/features/<area>/<slug>.md` (or flat `docs/features/<slug>.md`) | `<area>/<slug>` | `type`, `slug`, `title` |
+| `feature` | `docs/services/<area>/<slug>.md` (or flat `docs/services/<slug>.md`) | `<area>/<slug>` | `type`, `slug`, `title` |
 | `spec.plan` / `spec.review` / `spec.qa` | `<artifacts_dir>/specs/<story id>/*.md` | path | `type` |
 
-Spec folders live in the user's artifacts folder, outside git, and are named by the story id. `ostler path spec <story>` prints the folder. The `docRoots.specs` key in `ostler.yml` keeps them in the repo instead.
+Spec folders live in the user's artifacts folder, outside git, and are named by the story id. `ostler path spec <story>` prints the folder.
 
 Not Concepts (managed markdown, left in place as-is): `docs/backlog.md` (intake list), `docs/epics/index.md`
 (epics queue).
@@ -134,10 +134,10 @@ document — it lengthens as soon as a colliding id is minted.
 
 ```
 story (epic.md ## Stories)  ->  covers: seed (epic.md ## Seeds)
-docs/features OKF nodes     ->  code:/links:/reachability/coverage obligations
+docs/services OKF nodes     ->  code:/links:/reachability/coverage obligations
 ```
 
-Open questions and missing behavioral coverage belong in `docs/features/` as OKF nodes, links, and
+Open questions and missing behavioral coverage belong in `docs/services/` as OKF nodes, links, and
 coverage/reachability obligations, or in the epic/story planning graph as seeds and stories.
 `ostler qa context` then maps a story's diff back onto those nodes through their owning bullets
 (`code:` everywhere, `openapi:` on a server/endpoint, `file:` on a format) — a changed production
@@ -180,7 +180,7 @@ navigable graph of typed nodes (`screen`/`cli`/`server`, `component`/`command`/`
 That branch is a skill of its own: **[[ostler-okf]]** carries the format and the craft — a
 reference per node type, the bullet grammar, the check vocabulary behind `verify:`, every
 `doctor` code, the link and placement rules, and the scaffold→author→fmt→doctor loop. Load it
-when authoring or linting anything under `docs/features/`; the planning graph above needs none
+when authoring or linting anything under `docs/services/`; the planning graph above needs none
 of it, and it is the authority wherever the two disagree.
 
 ## When to reach for it

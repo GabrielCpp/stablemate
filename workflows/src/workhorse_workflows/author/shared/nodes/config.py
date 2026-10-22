@@ -43,11 +43,11 @@ def load_config(
         raise WorkflowFailed(
             f"backlog file not found: {backlog_path}\n"
             f"Create {backlog} (a markdown bullet list of features) before running the author "
-            f"workflow, or point `docRoots: backlog:` at the list this repo keeps."
+            f"workflow."
         )
 
     data = _template(root)
-    features_dir = paths.features_dir(root)
+    services_dir = paths.services_dir(root)
 
     layers = [
         str(li["skill"])
@@ -56,14 +56,14 @@ def load_config(
     ]
 
     logger.info(
-        "loaded config for %s (features_dir=%s, %d layer(s))", root, features_dir, len(layers)
+        "loaded config for %s (services_dir=%s, %d layer(s))", root, services_dir, len(layers)
     )
     return Config(
         repo_root=str(root),
         backlog_path=backlog,
         roadmap_path=roadmap,
         epics_dir=epics_dir,
-        features_dir=str(features_dir),
+        services_dir=str(services_dir),
         layers=layers,
     )
 

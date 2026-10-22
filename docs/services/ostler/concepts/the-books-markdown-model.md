@@ -6,9 +6,9 @@ title: The book's markdown model
 # The book's markdown model
 
 Every `ostler` command that reads or edits a book first loads it into one `Graph`: the in-memory
-model `model.py` builds by walking `docRoots:` and parsing every markdown page underneath. `load`
+model `model.py` builds by walking the fixed doc roots and parsing every markdown page underneath. `load`
 finds the repository root (`find_root`), resolves where each declared kind of document lives
-(`doc_roots`, honouring `docRoots:` config and any `dynamic_registry.TemplateKind`), and returns
+(`doc_roots`: each kind at its built-in path under `docs/`, specs in the artifacts dir, and any `dynamic_registry.TemplateKind` at its default path), and returns
 a `Graph` holding every `UINode` (a typed node of the OKF UI profile), `Story`, `Epic`,
 `Milestone`, `FeatureRecord` and `SeedItem` the walk found. `_Cached` and `_DocProducts` hold one
 path's parsed products for the life of the process, so a second read of the same file in the same
@@ -95,24 +95,24 @@ group (and most of the scaffolding and editing group) returns. `keys.py`'s `pres
 parse a `press:` bullet's key name against the small grammar of pressable key names a book can
 declare. `__init__.py` is empty.
 
-- code: ostler/ostler/model.py::Graph@0ed7e7aad44d
-- code: ostler/ostler/model.py::UINode@0ed7e7aad44d
-- code: ostler/ostler/model.py::Story@0ed7e7aad44d
-- code: ostler/ostler/model.py::Epic@0ed7e7aad44d
-- code: ostler/ostler/model.py::Milestone@0ed7e7aad44d
-- code: ostler/ostler/model.py::FeatureRecord@0ed7e7aad44d
-- code: ostler/ostler/model.py::SeedItem@0ed7e7aad44d
-- code: ostler/ostler/model.py::Entry@0ed7e7aad44d
-- code: ostler/ostler/model.py::load@0ed7e7aad44d
-- code: ostler/ostler/model.py::find_root@0ed7e7aad44d
-- code: ostler/ostler/model.py::doc_roots@0ed7e7aad44d
-- code: ostler/ostler/model.py::read_doc@0ed7e7aad44d
-- code: ostler/ostler/model.py::read_links@0ed7e7aad44d
-- code: ostler/ostler/model.py::required_section_problems@0ed7e7aad44d
-- code: ostler/ostler/model.py::section_order_problems@0ed7e7aad44d
-- code: ostler/ostler/model.py::story_status@0ed7e7aad44d
-- code: ostler/ostler/model.py::story_dependencies@0ed7e7aad44d
-- code: ostler/ostler/model.py::story_fixtures@0ed7e7aad44d
+- code: ostler/ostler/model.py::Graph@a8ae060f7bb7
+- code: ostler/ostler/model.py::UINode@a8ae060f7bb7
+- code: ostler/ostler/model.py::Story@a8ae060f7bb7
+- code: ostler/ostler/model.py::Epic@a8ae060f7bb7
+- code: ostler/ostler/model.py::Milestone@a8ae060f7bb7
+- code: ostler/ostler/model.py::FeatureRecord@a8ae060f7bb7
+- code: ostler/ostler/model.py::SeedItem@a8ae060f7bb7
+- code: ostler/ostler/model.py::Entry@a8ae060f7bb7
+- code: ostler/ostler/model.py::load@a8ae060f7bb7
+- code: ostler/ostler/model.py::find_root@a8ae060f7bb7
+- code: ostler/ostler/model.py::doc_roots@a8ae060f7bb7
+- code: ostler/ostler/model.py::read_doc@a8ae060f7bb7
+- code: ostler/ostler/model.py::read_links@a8ae060f7bb7
+- code: ostler/ostler/model.py::required_section_problems@a8ae060f7bb7
+- code: ostler/ostler/model.py::section_order_problems@a8ae060f7bb7
+- code: ostler/ostler/model.py::story_status@a8ae060f7bb7
+- code: ostler/ostler/model.py::story_dependencies@a8ae060f7bb7
+- code: ostler/ostler/model.py::story_fixtures@a8ae060f7bb7
 - code: ostler/ostler/markdown.py::MarkdownDoc@115245786c4b
 - code: ostler/ostler/markdown.py::Section@115245786c4b
 - code: ostler/ostler/markdown.py::Bullet@115245786c4b
@@ -120,12 +120,12 @@ declare. `__init__.py` is empty.
 - code: ostler/ostler/markdown.py::References@115245786c4b
 - code: ostler/ostler/markdown.py::extract_refs@115245786c4b
 - code: ostler/ostler/markdown.py::split@115245786c4b
-- code: ostler/ostler/graph.py::build@631acb3378b2
-- code: ostler/ostler/graph.py::subset@631acb3378b2
-- code: ostler/ostler/graph.py::select@631acb3378b2
-- code: ostler/ostler/graph.py::render_text@631acb3378b2
-- code: ostler/ostler/graph.py::render_tree@631acb3378b2
-- code: ostler/ostler/graph.py::render_ids@631acb3378b2
+- code: ostler/ostler/graph.py::build@bfbff4611a77
+- code: ostler/ostler/graph.py::subset@bfbff4611a77
+- code: ostler/ostler/graph.py::select@bfbff4611a77
+- code: ostler/ostler/graph.py::render_text@bfbff4611a77
+- code: ostler/ostler/graph.py::render_tree@bfbff4611a77
+- code: ostler/ostler/graph.py::render_ids@bfbff4611a77
 - code: ostler/ostler/links.py::LinkResolver@471fa7366668
 - code: ostler/ostler/links.py::LinkTarget@471fa7366668
 - code: ostler/ostler/links.py::is_doc_link@471fa7366668
@@ -161,11 +161,11 @@ declare. `__init__.py` is empty.
 - code: ostler/ostler/query.py::search@df0758605f55
 - code: ostler/ostler/query.py::query@df0758605f55
 - code: ostler/ostler/query.py::list_entities@df0758605f55
-- code: ostler/ostler/provenance.py::story_commits@e9279b5048ce
-- code: ostler/ostler/provenance.py::source_freshness@e9279b5048ce
-- code: ostler/ostler/provenance.py::story_provenance@e9279b5048ce
-- code: ostler/ostler/provenance.py::node_provenance@e9279b5048ce
-- code: ostler/ostler/provenance.py::checkout_for@e9279b5048ce
+- code: ostler/ostler/provenance.py::story_commits@01646df567c9
+- code: ostler/ostler/provenance.py::source_freshness@01646df567c9
+- code: ostler/ostler/provenance.py::story_provenance@01646df567c9
+- code: ostler/ostler/provenance.py::node_provenance@01646df567c9
+- code: ostler/ostler/provenance.py::checkout_for@01646df567c9
 - code: ostler/ostler/result.py::Result@f4149eb63e51
 - code: ostler/ostler/keys.py::pressable@a22c2b93f53b
 - code: ostler/ostler/__init__.py@994811fd4652

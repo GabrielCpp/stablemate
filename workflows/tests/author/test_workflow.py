@@ -551,7 +551,7 @@ The running system is the source of truth.
                 meta={},
             )
             return {"status": "complete", "notes": "profile seed recorded"}
-        surface = "docs/features/web/accounts.md"
+        surface = "docs/services/web/accounts.md"
         if self.backend_seeds:
             path = self.repo / surface
             path.parent.mkdir(parents=True, exist_ok=True)
@@ -1166,28 +1166,6 @@ def test_story_edit_remove_reconciles_remaining_epic_scope_and_journey(
     assert {row["id"] for row in graph.list("seed", epic=EPIC)} == {"keep"}
     assert "## User Journeys" in (with_epic / EPIC_DIR / "epic.md").read_text(encoding="utf-8")
     assert (with_epic / EPIC_DIR / "stories/keep-story/story.md").read_bytes() == kept_before
-
-
-def test_story_edit_follows_the_configured_epics_root(backlogged: Path, tmp_path: Path) -> None:
-    """A repo that moved its epics in `docRoots:` is followed, with no parameter to disagree."""
-    custom_epics = "product/epics"
-    (backlogged / "ostler.yml").write_text(
-        f"organization:\n  docRoots:\n    epics: {custom_epics}\n", encoding="utf-8"
-    )
-    okf = Ostler(backlogged)
-    assert okf.create_epic(EPIC, "Accounts").ok
-    assert okf.create_story(EPIC, "remove-story", "Remove").ok
-    _commit(backlogged, "custom epic root")
-
-    _drive_story_edit(
-        _env(tmp_path),
-        _Agent(backlogged),
-        action="remove",
-        story="remove-story",
-    )
-
-    assert not (backlogged / custom_epics / EPIC_NAME).exists()
-    assert not (backlogged / EPICS / EPIC_NAME).exists()
 
 
 def test_epic_edit_static_findings_drive_a_replacement_plan(

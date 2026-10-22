@@ -1,12 +1,12 @@
 ---
 name: ostler-okf
-description: "The OKF UI-profile format and the craft of authoring it — the typed node graph under docs/features/** (screen/cli/server, component/command/endpoint, interaction/invocation, method/field, flow, concept, format, runbook/environment/step), the three content rules (the book not a changelog, spec-complete, spec not implementation), the scaffold→author→fmt→doctor loop, the bullet grammar, the check vocabulary behind `verify:` and the bar a check clears to be an observation at all. The bar it holds you to: a book true and complete enough that running it tests the product, and an agent holding only the book can operate the app and say why it behaves as it does. Load whenever you are writing or repairing anything under docs/features/ — a one-story merge after finishing a story, a bulk build of a whole service's surface graph, a prose-only feature doc, or a doctor finding."
+description: "The OKF UI-profile format and the craft of authoring it — the typed node graph under docs/services/** (screen/cli/server, component/command/endpoint, interaction/invocation, method/field, flow, concept, format, runbook/environment/step), the three content rules (the book not a changelog, spec-complete, spec not implementation), the scaffold→author→fmt→doctor loop, the bullet grammar, the check vocabulary behind `verify:` and the bar a check clears to be an observation at all. The bar it holds you to: a book true and complete enough that running it tests the product, and an agent holding only the book can operate the app and say why it behaves as it does. Load whenever you are writing or repairing anything under docs/services/ — a one-story merge after finishing a story, a bulk build of a whole service's surface graph, a prose-only feature doc, or a doctor finding."
 tags: [standards, docs]
 ---
 
-# OKF — the book under `docs/features/`
+# OKF — the book under `docs/services/`
 
-Load this skill whenever you write or repair anything under `docs/features/`. Three jobs reach
+Load this skill whenever you write or repair anything under `docs/services/`. Three jobs reach
 it, and they share this page:
 
 - **A story is finished** and its delta has to be merged into the book — the common case.
@@ -62,7 +62,7 @@ against anything, and a book full of it drifts silently.
 Knowledge Format) **Concept**: one `.md` file with YAML frontmatter (hard requirement — a
 non-empty `type`) plus a markdown body, its identity being its path. **ostler owns the structure
 and the ids; you author the prose into the skeleton it scaffolds.** Never hand-invent frontmatter
-or a `docs/features/` path — call `ostler` so the file is conformant and `ostler doctor` stays
+or a `docs/services/` path — call `ostler` so the file is conformant and `ostler doctor` stays
 green.
 
 ## Three rules govern *what* you write
@@ -147,14 +147,14 @@ is a first-class node you can query. Put a member's filterable attributes in its
 (`sig:`/`abstract:`/`raises:` for a method, `type:`/`default:`/`required:` for a field), one per
 attribute, never crammed into a line. Reserve prose for the summary.
 
-**Layout is per service, then by context.** Each service owns `docs/features/<service>/`, split
+**Layout is per service, then by context.** Each service owns `docs/services/<service>/`, split
 into `gui/`, `http/`, `cli/` only if it genuinely spans contexts; `concepts/` and `flows/` sit at
 the service root. Don't hand-pick paths — `ostler scaffold` places every node for you.
 
 **A typed page belongs under a doc root, or it is invisible.** Every book-facing check —
 conformance, reachability, links, everything — walks in from `graph.doc_roots`
-(`docs/features`, `docs/epics`, `docs/milestones`, `docs/roadmaps`, the specs root, `specs`, or a
-paddock app's own `docs/<kind>`, per `ostler.yml`'s `docRoots`). A file carrying a real `type:`
+(`docs/services`, `docs/epics`, `docs/milestones`, `docs/roadmaps`, the specs root in the artifacts dir, or a
+paddock app's own `docs/<kind>`). These paths are fixed. A file carrying a real `type:`
 that a move (or a first draft) leaves outside all of them stops being read by anything — it is
 not `okf-missing-type` (it has a type), it just never enters the graph. `misplaced-book-page`
 is the doctor code for exactly that: it walks the tracked tree independently of the roots and
@@ -163,17 +163,17 @@ flags a typed page none of them cover. See
 
 **And it belongs under the *right* doc root, not merely *a* doc root.** Each built-in type has
 one registered home (`epic`→`epics`, `story`→`epics`, `milestone`→`milestones`,
-`feature`/the UI profile types→`features`, `spec.*`→`specs`); a page inside the wrong one is
+`feature`/the UI profile types→`services`, `spec.*`→`specs`); a page inside the wrong one is
 just as invisible as a page inside none. The concrete way this happens: `ostler qa context`
 stamps its scratch output `type: spec.qa-okf-context` and writes it into the specs directory —
-if one lands under `docs/features` instead, its file node is correctly suppressed (`spec` is
+if one lands under `docs/services` instead, its file node is correctly suppressed (`spec` is
 not a UI type) but `##` sections inside it still get parsed and seeded into the book as
 `untyped` nodes, with nothing else catching it. `misrooted-book-page` is the doctor code for
 this disagreement between a file's declared type and the root it sits in, and it covers the
 reverse shape too: a `screen`/`concept`/`flow` page filed under the specs root is under *a* root,
 so the misplaced check passes it, and it never becomes a UI node either, because only files
-under `docs/features` are admitted. It also has no surface — a surface is read from the path,
-`docs/features/<service>/…` — so no driver claims it and it can reach no target a flow compiles
+under `docs/services` are admitted. It also has no surface — a surface is read from the path,
+`docs/services/<service>/…` — so no driver claims it and it can reach no target a flow compiles
 to. See [doctor-codes.md](references/doctor-codes.md).
 
 **Links are plain markdown path links, never `[[wikilinks]]`** — `[diff](../concepts/diff.md)`,
@@ -245,13 +245,13 @@ Never hand-write the file.
    heading with conformant frontmatter, the H1, bullet **stubs**, and (for surfaces) the
    required-section skeleton:
    ```bash
-   # a file-level surface/concept → docs/features/<service>/<context>/<name>.md
+   # a file-level surface/concept → docs/services/<service>/<context>/<name>.md
    ostler scaffold screen changes-view --service groom --title "Changes view"
    ostler scaffold concept diff       --service groom --title "Diff"
 
    # a section-level element/behaviour → a `### id` under its typed `## Heading`
-   ostler scaffold interaction click-file-opens-diff --in docs/features/groom/gui/screens/changes-view.md
-   ostler scaffold command  run --in docs/features/workhorse/workhorse.md
+   ostler scaffold interaction click-file-opens-diff --in docs/services/groom/gui/screens/changes-view.md
+   ostler scaffold command  run --in docs/services/workhorse/workhorse.md
    ```
    If the node **already exists, there is no scaffold call** — edit its body and bullets in place
    and go to step 4. Preserve the frontmatter `type`/`slug`; those are the graph identity. To move
@@ -278,7 +278,7 @@ Never hand-write the file.
 
 4. **Canonicalize, then gate:**
    ```bash
-   ostler fmt docs/features/<service>/…   # frontmatter/bullet/heading shape — never touches prose
+   ostler fmt docs/services/<service>/…   # frontmatter/bullet/heading shape — never touches prose
    ostler doctor                           # non-zero exit on any error — safe to gate the story on
    ```
    `ostler fmt` is the mechanical shape-fixer, the `ruff format` to doctor's `ruff check`. Every

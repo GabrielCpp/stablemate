@@ -61,22 +61,6 @@ def test_adopt_names_every_bullet_and_is_idempotent(tmp_path: Path) -> None:
     assert "1. [acme-" in adopted
 
 
-def test_adopt_follows_the_configured_backlog_and_nothing_else(tmp_path: Path) -> None:
-    """`docRoots:` moves the list, and adoption follows it — there is no path argument."""
-    (tmp_path / "ostler.yml").write_text(
-        "organization:\n  docRoots:\n    backlog: docs/intake/worklist.md\n", encoding="utf-8"
-    )
-    custom = tmp_path / "docs/intake/worklist.md"
-    custom.parent.mkdir(parents=True)
-    custom.write_text("# Backlog\n\n## Scope\n\n- Ship it\n", encoding="utf-8")
-
-    result = backlog.adopt(load(tmp_path), prefix="acme")
-
-    assert result.ok and "adopted 1" in result.message
-    assert "[acme-" in custom.read_text(encoding="utf-8")
-    assert not (tmp_path / "docs/backlog.md").exists()
-
-
 def test_prune_refuses_to_discard_an_independently_identified_nested_item(
     tmp_path: Path,
 ) -> None:

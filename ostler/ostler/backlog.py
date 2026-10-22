@@ -10,7 +10,7 @@ from ostler.result import Result
 
 
 def _path(graph: Graph) -> Path:
-    """Where this graph keeps its intake list — ``docRoots: backlog:``, and nothing else."""
+    """Where this graph keeps its intake list: ``docs/backlog.md``, and nothing else."""
     return path_mod.backlog_path(graph)
 
 

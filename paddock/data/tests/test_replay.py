@@ -122,11 +122,8 @@ def test_params_narrow_a_round_and_a_typo_is_refused(tmp_path: Path) -> None:
 def test_the_qa_rewind_removes_the_flows_outputs_and_nothing_else(tmp_path: Path) -> None:
     fixture = expense_split.FIXTURE
     repo = tmp_path / "repo"
-    spec = repo / "docs" / "specs" / "expense-list"
+    spec = sm.trial_artifacts(repo) / "specs" / "expense-list"
     spec.mkdir(parents=True)
-    (repo / "agents.yml").write_text(
-        "organization:\n  docRoots:\n    specs: docs/specs\n", encoding="utf-8"
-    )
     (spec / "story.md").write_text("the story", encoding="utf-8")
     (spec / "implementation-plan.md").write_text("the plan", encoding="utf-8")
     (spec / "qa-plan.yml").write_text("scenarios: []", encoding="utf-8")
@@ -156,15 +153,15 @@ def test_the_qa_rewind_refuses_a_pin_whose_spec_dir_is_absent(tmp_path: Path) ->
 def _book_repo(tmp_path: Path) -> tuple[Path, str]:
     """A two-commit book: `group.md`, then `expense.md` beside it."""
     repo = tmp_path / "repo"
-    features = repo / "docs" / "features"
-    features.mkdir(parents=True)
+    services = repo / "docs" / "services"
+    services.mkdir(parents=True)
     git("init", "--quiet", "--initial-branch", "main", cwd=repo)
     git("config", "user.email", "benchmark@example.com", cwd=repo)
     git("config", "user.name", "stablemate benchmark", cwd=repo)
-    (features / "group.md").write_text("group", encoding="utf-8")
+    (services / "group.md").write_text("group", encoding="utf-8")
     git("add", "--all", cwd=repo)
     git("commit", "--quiet", "-m", "group-membership", cwd=repo)
-    (features / "expense.md").write_text("expense", encoding="utf-8")
+    (services / "expense.md").write_text("expense", encoding="utf-8")
     git("add", "--all", cwd=repo)
     git("commit", "--quiet", "-m", "expense-record", cwd=repo)
     head = subprocess.run(
@@ -179,7 +176,7 @@ def test_the_docs_rewind_leaves_the_book_one_story_behind(tmp_path: Path) -> Non
     pin = replay.Pin(story="expense-record", commits={"docs": head})
     replay.rewind(repo, expense_split.FIXTURE, pin, "docs")
 
-    assert sorted(p.name for p in (repo / "docs" / "features").iterdir()) == ["group.md"]
+    assert sorted(p.name for p in (repo / "docs" / "services").iterdir()) == ["group.md"]
 
 
 def test_book_from_replays_a_story_whose_docs_lane_never_ran(tmp_path: Path) -> None:
@@ -189,7 +186,7 @@ def test_book_from_replays_a_story_whose_docs_lane_never_ran(tmp_path: Path) -> 
     pin = replay.Pin(story="never-documented", commits={"docs": head}, book_from=head)
     replay.rewind(repo, expense_split.FIXTURE, pin, "docs")
 
-    assert sorted(p.name for p in (repo / "docs" / "features").iterdir()) == [
+    assert sorted(p.name for p in (repo / "docs" / "services").iterdir()) == [
         "expense.md",
         "group.md",
     ]

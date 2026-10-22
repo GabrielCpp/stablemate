@@ -38,7 +38,7 @@ PAYLOAD = {"frontmatter": {"type": "feature"}, "nodes": ["screen/save"]}
 
 def make_repo(root: Path, *, doc: str = "one\n") -> Path:
     """A repo root carrying one document plus every file the epoch reads."""
-    write(root / "docs/features/area/rec.md", doc)
+    write(root / "docs/services/area/rec.md", doc)
     write(root / "ostler.yml", "organization: {}\n")
     write(root / ".agents/templates.yml", "{}\n")
     write(root / ".agents/ids.json", '{"frozen": {}}\n')
@@ -63,7 +63,7 @@ def age_everything(directory: Path, seconds: float) -> None:
 def test_a_stored_payload_survives_a_new_store_over_the_same_directory(tmp_path):
     """Persistence is the whole point: the second store is the next process."""
     root = make_repo(tmp_path / "acme")
-    doc = root / "docs/features/area/rec.md"
+    doc = root / "docs/services/area/rec.md"
     directory = tmp_path / "index"
 
     store(root, directory).put(doc, PAYLOAD)
@@ -74,7 +74,7 @@ def test_a_stored_payload_survives_a_new_store_over_the_same_directory(tmp_path)
 def test_editing_the_file_misses_even_when_its_size_and_mtime_do_not_move(tmp_path):
     """The key is the content sha, not a stat — the case the in-process cache was built for."""
     root = make_repo(tmp_path / "acme", doc="one\n")
-    doc = root / "docs/features/area/rec.md"
+    doc = root / "docs/services/area/rec.md"
     directory = tmp_path / "index"
     store(root, directory).put(doc, PAYLOAD)
 
@@ -96,7 +96,7 @@ def test_the_epoch_covers_every_declared_global_input(tmp_path):
 def test_changing_any_single_epoch_input_invalidates_every_entry(tmp_path, monkeypatch, label):
     """One combined hash, so a change to *any* input busts *everything*, not a partition."""
     root = make_repo(tmp_path / "acme")
-    doc = root / "docs/features/area/rec.md"
+    doc = root / "docs/services/area/rec.md"
     directory = tmp_path / "index"
     store(root, directory).put(doc, PAYLOAD)
     before = index.epoch(root)
@@ -117,7 +117,7 @@ def test_changing_any_single_epoch_input_invalidates_every_entry(tmp_path, monke
 @pytest.mark.parametrize(
     ("label", "relpath", "text"),
     [
-        ("config", "ostler.yml", "organization: {docRoots: {features: docs/f}}\n"),
+        ("config", "ostler.yml", "organization: {name: renamed}\n"),
         ("kinds", ".agents/templates.yml", "spike:\n  doc_root: docs/spikes\n"),
         ("freeze", ".agents/ids.json", '{"frozen": {"01-foo": {"hash": "abc"}}}\n'),
     ],
@@ -125,7 +125,7 @@ def test_changing_any_single_epoch_input_invalidates_every_entry(tmp_path, monke
 def test_editing_a_global_input_on_disk_invalidates_every_entry(tmp_path, label, relpath, text):
     """The three inputs that live in the repo, moved the way a run actually moves them."""
     root = make_repo(tmp_path / "acme")
-    doc = root / "docs/features/area/rec.md"
+    doc = root / "docs/services/area/rec.md"
     directory = tmp_path / "index"
     store(root, directory).put(doc, PAYLOAD)
     before = index.epoch(root)
@@ -216,9 +216,9 @@ def test_two_worktrees_of_one_repo_resolve_to_one_entry(tmp_path):
     second = make_repo(tmp_path / "worktrees/b/acme")
     directory = tmp_path / "index"
 
-    store(first, directory).put(first / "docs/features/area/rec.md", PAYLOAD)
+    store(first, directory).put(first / "docs/services/area/rec.md", PAYLOAD)
 
-    assert store(second, directory).get(second / "docs/features/area/rec.md") == PAYLOAD
+    assert store(second, directory).get(second / "docs/services/area/rec.md") == PAYLOAD
 
 
 def test_an_entry_is_named_by_the_real_path_under_the_real_root(tmp_path, monkeypatch):
@@ -229,16 +229,16 @@ def test_an_entry_is_named_by_the_real_path_under_the_real_root(tmp_path, monkey
     monkeypatch.chdir(root)
     named = store(tmp_path / "linked", tmp_path / "index").entry_name
 
-    assert named(root / "docs/features/area/rec.md") == "acme/docs/features/area/rec.md"
-    assert named(Path("docs/features/../features/area/rec.md")) == "acme/docs/features/area/rec.md"
+    assert named(root / "docs/services/area/rec.md") == "acme/docs/services/area/rec.md"
+    assert named(Path("docs/services/../services/area/rec.md")) == "acme/docs/services/area/rec.md"
     assert named(tmp_path / "linked") == "acme/."
     assert named(outside) == str(outside)
 
 
 def test_the_same_bytes_at_a_different_path_do_not_collide(tmp_path):
     root = make_repo(tmp_path / "acme")
-    original = root / "docs/features/area/rec.md"
-    twin = root / "docs/features/area/rec2.md"
+    original = root / "docs/services/area/rec.md"
+    twin = root / "docs/services/area/rec2.md"
     twin.write_text(original.read_text(encoding="utf-8"), encoding="utf-8")
     directory = tmp_path / "index"
 
@@ -248,19 +248,19 @@ def test_the_same_bytes_at_a_different_path_do_not_collide(tmp_path):
 
 
 def test_the_same_relative_path_in_a_different_repo_does_not_collide(tmp_path):
-    """The key carries the repo name, so two repos' `docs/features/area/rec.md` differ."""
+    """The key carries the repo name, so two repos' `docs/services/area/rec.md` differ."""
     acme = make_repo(tmp_path / "checkouts/acme")
     globex = make_repo(tmp_path / "checkouts/globex")
     directory = tmp_path / "index"
 
-    store(acme, directory).put(acme / "docs/features/area/rec.md", PAYLOAD)
+    store(acme, directory).put(acme / "docs/services/area/rec.md", PAYLOAD)
 
-    assert store(globex, directory).get(globex / "docs/features/area/rec.md") is None
+    assert store(globex, directory).get(globex / "docs/services/area/rec.md") is None
 
 
 def test_a_payload_stamped_older_than_the_running_version_is_rejected(tmp_path, monkeypatch):
     root = make_repo(tmp_path / "acme")
-    doc = root / "docs/features/area/rec.md"
+    doc = root / "docs/services/area/rec.md"
     directory = tmp_path / "index"
     store(root, directory).put(doc, PAYLOAD)
 
@@ -272,7 +272,7 @@ def test_a_payload_stamped_older_than_the_running_version_is_rejected(tmp_path, 
 def test_a_payload_stamped_newer_than_the_running_version_is_rejected(tmp_path, monkeypatch):
     """The half a plain `>=` check misses: a newer writer's layout must not be misread."""
     root = make_repo(tmp_path / "acme")
-    doc = root / "docs/features/area/rec.md"
+    doc = root / "docs/services/area/rec.md"
     directory = tmp_path / "index"
 
     monkeypatch.setattr("ostler.index.SCHEMA_VERSION", index.SCHEMA_VERSION + 1)
@@ -332,7 +332,7 @@ def test_a_store_given_no_directory_writes_where_the_resolution_says(isolated_re
     chosen = isolated_resolution / "from-env"
     monkeypatch.setenv(index.INDEX_DIR_ENV, str(chosen))
     root = make_repo(isolated_resolution / "acme")
-    doc = root / "docs/features/area/rec.md"
+    doc = root / "docs/services/area/rec.md"
 
     index.IndexStore(root).put(doc, PAYLOAD)
 
@@ -343,8 +343,8 @@ def test_a_store_given_no_directory_writes_where_the_resolution_says(isolated_re
 def test_a_write_prunes_entries_past_the_age_bound(tmp_path):
     """An unattended machine must not grow the cache without limit."""
     root = make_repo(tmp_path / "acme")
-    stale = root / "docs/features/area/rec.md"
-    fresh = root / "docs/features/area/rec2.md"
+    stale = root / "docs/services/area/rec.md"
+    fresh = root / "docs/services/area/rec2.md"
     write(fresh, "two\n")
     directory = tmp_path / "index"
     bound = 3600.0
@@ -360,8 +360,8 @@ def test_a_write_prunes_entries_past_the_age_bound(tmp_path):
 def test_a_write_keeps_entries_inside_the_age_bound(tmp_path):
     """The bound is a bound, not a sweep — pruning everything on every write is not this."""
     root = make_repo(tmp_path / "acme")
-    kept = root / "docs/features/area/rec.md"
-    other = root / "docs/features/area/rec2.md"
+    kept = root / "docs/services/area/rec.md"
+    other = root / "docs/services/area/rec2.md"
     write(other, "two\n")
     directory = tmp_path / "index"
     bound = 3600.0
@@ -376,8 +376,8 @@ def test_a_write_keeps_entries_inside_the_age_bound(tmp_path):
 def test_a_write_sweeps_at_most_once_per_interval(tmp_path):
     """The bound is an age, and an age does not need checking once per written entry."""
     root = make_repo(tmp_path / "acme")
-    stale = root / "docs/features/area/rec.md"
-    fresh = root / "docs/features/area/rec2.md"
+    stale = root / "docs/services/area/rec.md"
+    fresh = root / "docs/services/area/rec2.md"
     write(fresh, "two\n")
     directory = tmp_path / "index"
     bound = 3600.0
@@ -395,8 +395,8 @@ def test_a_write_sweeps_at_most_once_per_interval(tmp_path):
 def test_a_stale_stamp_lets_the_next_write_sweep_again(tmp_path):
     """The throttle defers a sweep; it does not cancel it."""
     root = make_repo(tmp_path / "acme")
-    stale = root / "docs/features/area/rec.md"
-    fresh = root / "docs/features/area/rec2.md"
+    stale = root / "docs/services/area/rec.md"
+    fresh = root / "docs/services/area/rec2.md"
     write(fresh, "two\n")
     directory = tmp_path / "index"
     bound = 3600.0
@@ -412,7 +412,7 @@ def test_a_stale_stamp_lets_the_next_write_sweep_again(tmp_path):
 def test_the_stamp_is_not_an_entry(tmp_path):
     """Neither mode of `clean` counts or removes it."""
     root = make_repo(tmp_path / "acme")
-    doc = root / "docs/features/area/rec.md"
+    doc = root / "docs/services/area/rec.md"
     directory = tmp_path / "index"
 
     store(root, directory).put(doc, PAYLOAD)
@@ -442,7 +442,7 @@ def test_a_directory_that_cannot_be_stamped_does_not_sweep_on_every_write(tmp_pa
 def test_the_age_bound_has_a_default_a_caller_need_not_supply(tmp_path):
     assert index.DEFAULT_MAX_AGE_S > 0
     root = make_repo(tmp_path / "acme")
-    doc = root / "docs/features/area/rec.md"
+    doc = root / "docs/services/area/rec.md"
     directory = tmp_path / "index"
 
     store(root, directory).put(doc, PAYLOAD)
@@ -460,7 +460,7 @@ def test_the_age_bound_has_a_default_a_caller_need_not_supply(tmp_path):
 )
 def test_a_damaged_entry_reads_as_a_miss(tmp_path, label, damage):
     root = make_repo(tmp_path / "acme")
-    doc = root / "docs/features/area/rec.md"
+    doc = root / "docs/services/area/rec.md"
     directory = tmp_path / "index"
     store(root, directory).put(doc, PAYLOAD)
 
@@ -473,7 +473,7 @@ def test_a_damaged_entry_reads_as_a_miss(tmp_path, label, damage):
 def test_a_damaged_entry_does_not_stop_the_next_write_from_serving(tmp_path):
     """Recovery, not just tolerance: a corrupt entry is overwritten by the next put."""
     root = make_repo(tmp_path / "acme")
-    doc = root / "docs/features/area/rec.md"
+    doc = root / "docs/services/area/rec.md"
     directory = tmp_path / "index"
     store(root, directory).put(doc, PAYLOAD)
     for path in entry_files(directory):
@@ -487,7 +487,7 @@ def test_a_damaged_entry_does_not_stop_the_next_write_from_serving(tmp_path):
 def test_an_unreadable_index_directory_is_a_miss_not_a_failure(tmp_path):
     """The store is an optimisation — it may never be the reason a command fails."""
     root = make_repo(tmp_path / "acme")
-    doc = root / "docs/features/area/rec.md"
+    doc = root / "docs/services/area/rec.md"
     blocked = tmp_path / "not-a-directory"
     blocked.write_text("in the way\n", encoding="utf-8")
 
@@ -499,7 +499,7 @@ def test_a_missing_file_is_a_miss(tmp_path):
     root = make_repo(tmp_path / "acme")
     directory = tmp_path / "index"
 
-    assert store(root, directory).get(root / "docs/features/area/gone.md") is None
+    assert store(root, directory).get(root / "docs/services/area/gone.md") is None
 
 
 PRODUCT_MODULES = ("model.py", "links.py")

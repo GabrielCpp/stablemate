@@ -118,7 +118,7 @@ REGISTRY: tuple[EntityType, ...] = (
         note="Leaf story spec. Edges (covers/depends) live in the epic's `## Stories` section.",
     ),
     EntityType(
-        name="feature", doc_root="features", location="**/*.md",
+        name="feature", doc_root="services", location="**/*.md",
         required=("type", "slug", "title"), schema="feature.schema.json",
         note="Per-surface feature doc; the inventory is derived from these.",
     ),
@@ -164,7 +164,7 @@ class UINodeType:
     """One UI-profile node type."""
     name: str
     kind: str
-    doc_root: str = "features"
+    doc_root: str = "services"
     heading: str = ""
     context: str = ""
     required_sections: tuple[SectionSpec, ...] = ()
@@ -857,7 +857,7 @@ def is_known_type(type_value: str | None) -> bool:
 
 
 def doc_root_of(type_value: str | None) -> str | None:
-    """The docRoots key a page declaring *type_value* belongs under, or None for an unknown type."""
+    """The doc-root key a page declaring *type_value* belongs under, or None for an unknown type."""
     base = base_type(type_value)
     if not base:
         return None

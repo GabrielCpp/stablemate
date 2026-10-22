@@ -2,15 +2,17 @@
 
 from __future__ import annotations
 
+import subprocess
 from pathlib import Path
 
 import pytest
 from paddock import loader
+from test_materialize_tracked_copy import frozenapp
 
 DATA = Path(__file__).parents[1]
 
 APP_BOOKS = sorted(
-    path.parents[1] for path in (DATA / "apps").glob("*/docs/features") if path.is_dir()
+    path.parents[1] for path in (DATA / "apps").glob("*/docs/services") if path.is_dir()
 )
 
 
@@ -24,11 +26,17 @@ def test_the_tree_has_app_books_to_gate() -> None:
 
 
 @pytest.mark.parametrize("app", APP_BOOKS, ids=_app_id)
-def test_doctor_is_clean(app: Path) -> None:
-    """0 errors and 0 warnings — see this module's docstring for why warnings count."""
+def test_doctor_is_clean(app: Path, tmp_path: Path) -> None:
+    """0 errors and 0 warnings — see this module's docstring for why warnings count. The app is checked as a trial sees it, with its specs staged out of the tree."""
     from ostler.api import Ostler  # noqa: PLC0415 - a heavy import only this test needs
 
-    report = Ostler(app).doctor().data
+    staged = tmp_path / app.name
+    frozenapp.copy_tracked(app, staged)
+    frozenapp.upgrade_spec_layout(staged)
+    subprocess.run(["git", "init", "-q"], cwd=staged, check=True)
+    subprocess.run(["git", "add", "-A"], cwd=staged, check=True)
+
+    report = Ostler(staged).doctor().data
     assert report["errors"] == 0, report["findings"]
     assert report["warnings"] == 0, report["findings"]
 

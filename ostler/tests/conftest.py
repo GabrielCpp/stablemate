@@ -24,7 +24,7 @@ def present[T](value: T | None) -> T:
 
 
 def specs_root() -> Path:
-    """The specs root the per-test artifacts folder gives every repo without a `docRoots: specs:`."""
+    """The specs root the per-test artifacts folder gives every repo."""
     return Path(os.environ["STABLEMATE_ARTIFACTS_DIR"]).resolve() / "specs"
 
 
@@ -118,10 +118,10 @@ Sits next to [rec](../area/rec.md) and its [heading](../area/rec.md#rec).
 @pytest.fixture
 def ui_book(repo: Path) -> Path:
     """`repo` plus two screens — an entry screen that reaches a detail screen through a component."""
-    write(repo / "docs/features/ui/dash.md",
+    write(repo / "docs/services/ui/dash.md",
           screen_md("dash", "Dash", entry=True, body=UI_DASH_LINKS))
-    write(repo / "docs/features/ui/detail.md", screen_md("detail", "Detail"))
-    write(repo / "docs/features/app/ops/qa-stack.md", (
+    write(repo / "docs/services/ui/detail.md", screen_md("detail", "Detail"))
+    write(repo / "docs/services/app/ops/qa-stack.md", (
         "---\ntype: runbook\ntitle: QA stack\n---\n\n# QA stack\n\n"
         "- driver: web\n- entry-url: http://localhost:18084\n\n"
         "## Steps\n\n### serve\n\n- kind: service\n- run: ./serve.sh\n"
@@ -140,7 +140,7 @@ def repo(tmp_path: Path) -> Path:
         stories=[("01-foo", "Foo", ["seed-a1"])],
     ))
     write(root / "docs/epics/epic-a/stories/01-foo/story.md",
-          story_md("01-foo", "Foo", "Not started", "../../../features/area/rec.md", eid=FOO_ID))
+          story_md("01-foo", "Foo", "Not started", "../../../services/area/rec.md", eid=FOO_ID))
 
     write(root / "docs/epics/epic-b/epic.md", epic_md(
         "t-2", "epic-b",
@@ -150,8 +150,8 @@ def repo(tmp_path: Path) -> Path:
     write(root / "docs/epics/epic-b/stories/01-bar/story.md",
           story_md("01-bar", "Bar", "Not started", eid=BAR_ID))
 
-    write(root / "docs/features/area/rec.md", feature_md("rec", "Rec", area="area"))
-    write(root / "docs/features/area/rec2.md", feature_md("rec2", "Rec 2", area="area"))
+    write(root / "docs/services/area/rec.md", feature_md("rec", "Rec", area="area"))
+    write(root / "docs/services/area/rec2.md", feature_md("rec2", "Rec 2", area="area"))
 
     return root
 

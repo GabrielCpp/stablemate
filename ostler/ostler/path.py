@@ -9,12 +9,12 @@ from ostler.model import Graph
 
 
 def doc_root_in(root: Path, kind: str) -> Path:
-    """The configured directory for doc kind *kind* (``epics``, ``features``, …) under *root*."""
+    """The configured directory for doc kind *kind* (``epics``, ``services``, …) under *root*."""
     return model.doc_roots(root, kinds=())[kind]
 
 
 def epics_root_in(root: Path) -> Path:
-    """Where epics live under *root* — ``docs/epics`` unless ``docRoots:`` says otherwise."""
+    """Where epics live under *root* — ``docs/epics``."""
     return doc_root_in(root, "epics")
 
 
@@ -23,36 +23,36 @@ def epics_root(graph: Graph) -> Path:
     return graph.doc_roots["epics"]
 
 
-def features_root_in(root: Path, service: str = "") -> Path:
+def services_root_in(root: Path, service: str = "") -> Path:
     """The feature book under *root*, scoped to one *service* when the repo has several."""
-    base = doc_root_in(root, "features")
+    base = doc_root_in(root, "services")
     return base / service if service else base
 
 
-def features_root(graph: Graph, service: str = "") -> Path:
+def services_root(graph: Graph, service: str = "") -> Path:
     """The feature book in this graph, scoped to one *service* when there is one."""
-    base = graph.doc_roots.get("features") or (graph.root / "docs" / "features")
+    base = graph.doc_roots.get("services") or (graph.root / "docs" / "services")
     return base / service if service else base
 
 
-def resolve_features_root(value: str | None, root: Path) -> str:
-    """The `featuresRoot` a QA context packet names, normalised against *root*."""
+def resolve_services_root(value: str | None, root: Path) -> str:
+    """The `servicesRoot` a QA context packet names, normalised against *root*."""
     stripped = (value or "").strip()
-    return stripped or features_root_in(root).relative_to(root).as_posix()
+    return stripped or services_root_in(root).relative_to(root).as_posix()
 
 
-def book_prefix_in(root: Path, features_root: str) -> str:
+def book_prefix_in(root: Path, services_root: str) -> str:
     """Where a book is nested under *root*, relative to it — `""` when it is not nested."""
-    default_suffix = features_root_in(root).relative_to(root).as_posix()
-    if not features_root or features_root == default_suffix:
+    default_suffix = services_root_in(root).relative_to(root).as_posix()
+    if not services_root or services_root == default_suffix:
         return ""
     suffix = f"/{default_suffix}"
-    return features_root[: -len(suffix)] if features_root.endswith(suffix) else ""
+    return services_root[: -len(suffix)] if services_root.endswith(suffix) else ""
 
 
-def book_root_in(root: Path, features_root: str) -> Path:
-    """The root of the system the book at *features_root* describes."""
-    prefix = book_prefix_in(root, features_root)
+def book_root_in(root: Path, services_root: str) -> Path:
+    """The root of the system the book at *services_root* describes."""
+    prefix = book_prefix_in(root, services_root)
     return root / prefix if prefix else root
 
 
@@ -62,7 +62,7 @@ def specs_root_in(root: Path) -> Path:
 
 
 def roadmaps_root_in(root: Path) -> Path:
-    """Where roadmaps live under *root* — ``docs/roadmaps`` unless ``docRoots:`` says otherwise."""
+    """Where roadmaps live under *root* — ``docs/roadmaps``."""
     return doc_root_in(root, "roadmaps")
 
 
@@ -72,7 +72,7 @@ def roadmaps_root(graph: Graph) -> Path:
 
 
 def backlog_path_in(root: Path) -> Path:
-    """The intake list, ``docs/backlog.md`` under *root* unless ``docRoots:`` says otherwise."""
+    """The intake list, ``docs/backlog.md`` under *root*."""
     return doc_root_in(root, "backlog")
 
 
@@ -176,34 +176,34 @@ def story_dir_under(epic_dir_path: Path, slug: str) -> Path:
     return epic_dir_path / "stories" / slug
 
 
-def waivers_path_under(features_root_path: Path) -> Path:
+def waivers_path_under(services_root_path: Path) -> Path:
     """A book's coverage waivers, for a caller that already holds the book directory."""
-    return features_root_path / "coverage-waivers.json"
+    return services_root_path / "coverage-waivers.json"
 
 
 def waivers_path_in(root: Path, service: str = "") -> Path:
     """A feature book's coverage waivers, ``coverage-waivers.json`` beside the book itself."""
-    return waivers_path_under(features_root_in(root, service))
+    return waivers_path_under(services_root_in(root, service))
 
 
 def waivers_path(graph: Graph, service: str = "") -> Path:
     """This graph's coverage waivers, for one *service*'s book when there is one."""
-    return waivers_path_under(features_root(graph, service))
+    return waivers_path_under(services_root(graph, service))
 
 
-def screenshots_dir_under(features_root_path: Path) -> Path:
+def screenshots_dir_under(services_root_path: Path) -> Path:
     """A book's registered screenshots, for a caller that already holds the book directory."""
-    return features_root_path / "gui" / "screenshots"
+    return services_root_path / "gui" / "screenshots"
 
 
 def screenshots_dir_in(root: Path, service: str = "") -> Path:
     """Where a walkthrough's registered screenshots live: ``<book>/gui/screenshots``."""
-    return screenshots_dir_under(features_root_in(root, service))
+    return screenshots_dir_under(services_root_in(root, service))
 
 
 def screenshots_dir(graph: Graph, service: str = "") -> Path:
     """This graph's registered screenshots, for one *service*'s book when there is one."""
-    return screenshots_dir_under(features_root(graph, service))
+    return screenshots_dir_under(services_root(graph, service))
 
 
 def resolve_epic(graph: Graph, name: str) -> str:

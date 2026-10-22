@@ -1,4 +1,4 @@
-"""An old seed keeps its spec folders by slug; a trial upgrades the layout when it unpacks one."""
+"""An old seed keeps its spec folders by slug; a trial upgrades the layout and stages the specs out of the repo when it unpacks one."""
 
 from __future__ import annotations
 
@@ -38,34 +38,37 @@ def _snapshot(root: Path) -> dict[str, bytes]:
     }
 
 
-def test_upgrade_moves_a_slug_folder_to_its_id_and_configures_the_root(tmp_path: Path) -> None:
+def test_upgrade_stages_a_slug_folder_under_its_id_in_the_trial_artifacts_dir(tmp_path: Path) -> None:
     repo = _old_layout(tmp_path / "repo")
 
     frozenapp.upgrade_spec_layout(repo)
 
-    assert frozenapp.spec_dir(repo, "only-story") == repo / "docs" / "specs" / STORY_ID
-    assert (repo / "docs" / "specs" / STORY_ID / "spec.md").is_file()
-    assert not (repo / "docs" / "specs" / "only-story").exists()
+    staged = tmp_path / "repo.artifacts" / "specs" / STORY_ID
+    assert frozenapp.spec_dir(repo, "only-story") == staged
+    assert (staged / "spec.md").is_file()
+    assert not (tmp_path / "repo.artifacts" / "specs" / "only-story").exists()
+    assert not (repo / "docs" / "specs").exists()
     assert "name: demo" in (repo / "agents.yml").read_text(encoding="utf-8")
 
 
-def test_upgrade_creates_the_config_when_the_repo_has_none(tmp_path: Path) -> None:
+def test_upgrade_needs_no_config_in_the_repo(tmp_path: Path) -> None:
     repo = _old_layout(tmp_path / "repo", agents=None)
 
     frozenapp.upgrade_spec_layout(repo)
 
-    assert (repo / "docs" / "specs" / STORY_ID).is_dir()
+    assert (tmp_path / "repo.artifacts" / "specs" / STORY_ID).is_dir()
+    assert not (repo / "agents.yml").exists()
 
 
-def test_upgrade_merges_into_an_existing_organization_block(tmp_path: Path) -> None:
-    repo = _old_layout(tmp_path / "repo", agents="organization:\n  docRoots:\n    epics: docs/epics\n")
+def test_upgrade_replaces_a_spec_folder_already_staged(tmp_path: Path) -> None:
+    repo = _old_layout(tmp_path / "repo")
+    stale = tmp_path / "repo.artifacts" / "specs" / STORY_ID
+    stale.mkdir(parents=True)
+    (stale / "old.md").write_text("old\n", encoding="utf-8")
 
     frozenapp.upgrade_spec_layout(repo)
 
-    text = (repo / "agents.yml").read_text(encoding="utf-8")
-    assert "epics: docs/epics" in text
-    assert "specs: docs/specs" in text
-    assert (repo / "docs" / "specs" / STORY_ID).is_dir()
+    assert sorted(p.name for p in stale.iterdir()) == ["spec.md"]
 
 
 def test_a_second_upgrade_changes_nothing(tmp_path: Path) -> None:
@@ -101,4 +104,13 @@ def test_materialize_accepts_an_old_layout_seed(tmp_path: Path) -> None:
 
     dest = frozenapp.materialize(app, "only-story", tmp_path / "dest")
 
-    assert (dest / "docs" / "specs" / STORY_ID / "spec.md").is_file()
+    assert (tmp_path / "dest.artifacts" / "specs" / STORY_ID / "spec.md").is_file()
+    assert not (dest / "docs" / "specs").exists()
+
+
+def test_a_trial_process_runs_with_the_trial_artifacts_dir(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+
+    env = frozenapp.trial_env(repo, {"KEEP": "1"})
+
+    assert env == {"KEEP": "1", "STABLEMATE_ARTIFACTS_DIR": str(tmp_path / "repo.artifacts")}

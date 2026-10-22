@@ -11,7 +11,7 @@ against a small plan repo seeded under the checkout, with `-C plan-scratch`, and
 on an entity of its own, so the order the claims run in does not change an outcome.
 
 - binary: ostler
-- code: ostler/ostler/cli.py::main@03c9e301c36d
+- code: ostler/ostler/cli.py::main@d36715768389
 
 ## Commands
 
@@ -32,11 +32,11 @@ on an entity of its own, so the order the claims run in does not change an outco
   numbered after the last
 - code: ostler/ostler/_vendor/stablemate_core/base_cache.py::cache_root@79e1cc13c672
 - code: ostler/ostler/_vendor/stablemate_core/config.py::config_path@45b4d92edb39
-- code: ostler/ostler/crud.py::create_epic@3d486fae1ade
+- code: ostler/ostler/crud.py::create_epic@942278999a09
 - code: ostler/ostler/dynamic_registry.py::load_kinds@09b3f9268893
 - code: ostler/ostler/index.py::active@cfb08df1cba1
 - code: ostler/ostler/markdown.py::extract_refs@115245786c4b
-- code: ostler/ostler/model.py::doc_roots@0ed7e7aad44d
+- code: ostler/ostler/model.py::doc_roots@a8ae060f7bb7
 - code: ostler/ostler/pages.py::files_in_book@e9f96e7b3156
 - code: ostler/ostler/registry.py::base_type@cd37e79abc8c
 - detail: [Planning identities](concepts/planning-identities.md)
@@ -53,11 +53,11 @@ on an entity of its own, so the order the claims run in does not change an outco
 - fixture: [plan scratch repo](fixtures/plan-scratch-repo.md) with an epic that holds one story
 - code: ostler/ostler/_vendor/stablemate_core/base_cache.py::cache_root@79e1cc13c672
 - code: ostler/ostler/_vendor/stablemate_core/config.py::config_path@45b4d92edb39
-- code: ostler/ostler/crud.py::create_story@3d486fae1ade
+- code: ostler/ostler/crud.py::create_story@942278999a09
 - code: ostler/ostler/dynamic_registry.py::load_kinds@09b3f9268893
 - code: ostler/ostler/index.py::active@cfb08df1cba1
 - code: ostler/ostler/markdown.py::extract_refs@115245786c4b
-- code: ostler/ostler/model.py::doc_roots@0ed7e7aad44d
+- code: ostler/ostler/model.py::doc_roots@a8ae060f7bb7
 - code: ostler/ostler/pages.py::files_in_book@e9f96e7b3156
 - code: ostler/ostler/registry.py::base_type@cd37e79abc8c
 
@@ -72,11 +72,11 @@ on an entity of its own, so the order the claims run in does not change an outco
 - fixture: [plan scratch repo](fixtures/plan-scratch-repo.md) with two features
 - code: ostler/ostler/_vendor/stablemate_core/base_cache.py::cache_root@79e1cc13c672
 - code: ostler/ostler/_vendor/stablemate_core/config.py::config_path@45b4d92edb39
-- code: ostler/ostler/crud.py::create_feature@3d486fae1ade
+- code: ostler/ostler/crud.py::create_feature@942278999a09
 - code: ostler/ostler/dynamic_registry.py::load_kinds@09b3f9268893
 - code: ostler/ostler/index.py::active@cfb08df1cba1
 - code: ostler/ostler/markdown.py::extract_refs@115245786c4b
-- code: ostler/ostler/model.py::doc_roots@0ed7e7aad44d
+- code: ostler/ostler/model.py::doc_roots@a8ae060f7bb7
 - code: ostler/ostler/pages.py::files_in_book@e9f96e7b3156
 - code: ostler/ostler/registry.py::base_type@cd37e79abc8c
 
@@ -91,11 +91,11 @@ on an entity of its own, so the order the claims run in does not change an outco
 - fixture: [plan scratch repo](fixtures/plan-scratch-repo.md) with one milestone
 - code: ostler/ostler/_vendor/stablemate_core/base_cache.py::cache_root@79e1cc13c672
 - code: ostler/ostler/_vendor/stablemate_core/config.py::config_path@45b4d92edb39
-- code: ostler/ostler/crud.py::create_milestone@3d486fae1ade
+- code: ostler/ostler/crud.py::create_milestone@942278999a09
 - code: ostler/ostler/dynamic_registry.py::load_kinds@09b3f9268893
 - code: ostler/ostler/index.py::active@cfb08df1cba1
 - code: ostler/ostler/markdown.py::extract_refs@115245786c4b
-- code: ostler/ostler/model.py::doc_roots@0ed7e7aad44d
+- code: ostler/ostler/model.py::doc_roots@a8ae060f7bb7
 - code: ostler/ostler/pages.py::files_in_book@e9f96e7b3156
 - code: ostler/ostler/registry.py::base_type@cd37e79abc8c
 
@@ -113,7 +113,7 @@ on an entity of its own, so the order the claims run in does not change an outco
 - code: ostler/ostler/dynamic_registry.py::load_kinds@09b3f9268893
 - code: ostler/ostler/index.py::active@cfb08df1cba1
 - code: ostler/ostler/markdown.py::extract_refs@115245786c4b
-- code: ostler/ostler/model.py::doc_roots@0ed7e7aad44d
+- code: ostler/ostler/model.py::doc_roots@a8ae060f7bb7
 - code: ostler/ostler/pages.py::files_in_book@e9f96e7b3156
 - code: ostler/ostler/registry.py::base_type@cd37e79abc8c
 - code: ostler/ostler/select.py::epic_by_name@95d1a37a3be0
@@ -134,7 +134,7 @@ on an entity of its own, so the order the claims run in does not change an outco
 - code: ostler/ostler/dynamic_registry.py::load_kinds@09b3f9268893
 - code: ostler/ostler/index.py::active@cfb08df1cba1
 - code: ostler/ostler/markdown.py::extract_refs@115245786c4b
-- code: ostler/ostler/model.py::doc_roots@0ed7e7aad44d
+- code: ostler/ostler/model.py::doc_roots@a8ae060f7bb7
 - code: ostler/ostler/pages.py::files_in_book@e9f96e7b3156
 - code: ostler/ostler/registry.py::base_type@cd37e79abc8c
 - code: ostler/ostler/select.py::epic_by_name@95d1a37a3be0
@@ -151,11 +151,11 @@ on an entity of its own, so the order the claims run in does not change an outco
   started
 - code: ostler/ostler/_vendor/stablemate_core/base_cache.py::cache_root@79e1cc13c672
 - code: ostler/ostler/_vendor/stablemate_core/config.py::config_path@45b4d92edb39
-- code: ostler/ostler/crud.py::dump_frontmatter@3d486fae1ade
+- code: ostler/ostler/crud.py::dump_frontmatter@942278999a09
 - code: ostler/ostler/dynamic_registry.py::load_kinds@09b3f9268893
 - code: ostler/ostler/index.py::active@cfb08df1cba1
 - code: ostler/ostler/markdown.py::extract_refs@115245786c4b
-- code: ostler/ostler/model.py::doc_roots@0ed7e7aad44d
+- code: ostler/ostler/model.py::doc_roots@a8ae060f7bb7
 - code: ostler/ostler/pages.py::files_in_book@e9f96e7b3156
 - code: ostler/ostler/registry.py::base_type@cd37e79abc8c
 
@@ -168,11 +168,11 @@ on an entity of its own, so the order the claims run in does not change an outco
 - fixture: [plan scratch repo](fixtures/plan-scratch-repo.md) with a story with no conflict
 - code: ostler/ostler/_vendor/stablemate_core/base_cache.py::cache_root@79e1cc13c672
 - code: ostler/ostler/_vendor/stablemate_core/config.py::config_path@45b4d92edb39
-- code: ostler/ostler/crud.py::dump_frontmatter@3d486fae1ade
+- code: ostler/ostler/crud.py::dump_frontmatter@942278999a09
 - code: ostler/ostler/dynamic_registry.py::load_kinds@09b3f9268893
 - code: ostler/ostler/index.py::active@cfb08df1cba1
 - code: ostler/ostler/markdown.py::extract_refs@115245786c4b
-- code: ostler/ostler/model.py::doc_roots@0ed7e7aad44d
+- code: ostler/ostler/model.py::doc_roots@a8ae060f7bb7
 - code: ostler/ostler/pages.py::files_in_book@e9f96e7b3156
 - code: ostler/ostler/registry.py::base_type@cd37e79abc8c
 
@@ -187,11 +187,11 @@ on an entity of its own, so the order the claims run in does not change an outco
 - fixture: [plan scratch repo](fixtures/plan-scratch-repo.md) with a story that carries a conflict
 - code: ostler/ostler/_vendor/stablemate_core/base_cache.py::cache_root@79e1cc13c672
 - code: ostler/ostler/_vendor/stablemate_core/config.py::config_path@45b4d92edb39
-- code: ostler/ostler/crud.py::dump_frontmatter@3d486fae1ade
+- code: ostler/ostler/crud.py::dump_frontmatter@942278999a09
 - code: ostler/ostler/dynamic_registry.py::load_kinds@09b3f9268893
 - code: ostler/ostler/index.py::active@cfb08df1cba1
 - code: ostler/ostler/markdown.py::extract_refs@115245786c4b
-- code: ostler/ostler/model.py::doc_roots@0ed7e7aad44d
+- code: ostler/ostler/model.py::doc_roots@a8ae060f7bb7
 - code: ostler/ostler/pages.py::files_in_book@e9f96e7b3156
 - code: ostler/ostler/registry.py::base_type@cd37e79abc8c
 
@@ -207,11 +207,11 @@ on an entity of its own, so the order the claims run in does not change an outco
   Blocked
 - code: ostler/ostler/_vendor/stablemate_core/base_cache.py::cache_root@79e1cc13c672
 - code: ostler/ostler/_vendor/stablemate_core/config.py::config_path@45b4d92edb39
-- code: ostler/ostler/crud.py::dump_frontmatter@3d486fae1ade
+- code: ostler/ostler/crud.py::dump_frontmatter@942278999a09
 - code: ostler/ostler/dynamic_registry.py::load_kinds@09b3f9268893
 - code: ostler/ostler/index.py::active@cfb08df1cba1
 - code: ostler/ostler/markdown.py::extract_refs@115245786c4b
-- code: ostler/ostler/model.py::doc_roots@0ed7e7aad44d
+- code: ostler/ostler/model.py::doc_roots@a8ae060f7bb7
 - code: ostler/ostler/pages.py::files_in_book@e9f96e7b3156
 - code: ostler/ostler/registry.py::base_type@cd37e79abc8c
 - code: ostler/ostler/select.py::is_blocked@95d1a37a3be0
@@ -234,7 +234,7 @@ on an entity of its own, so the order the claims run in does not change an outco
 - code: ostler/ostler/freeze.py::fingerprint@fc5b0823b5d9
 - code: ostler/ostler/index.py::active@cfb08df1cba1
 - code: ostler/ostler/markdown.py::extract_refs@115245786c4b
-- code: ostler/ostler/model.py::doc_roots@0ed7e7aad44d
+- code: ostler/ostler/model.py::doc_roots@a8ae060f7bb7
 - code: ostler/ostler/pages.py::files_in_book@e9f96e7b3156
 - code: ostler/ostler/registry.py::base_type@cd37e79abc8c
 
@@ -251,7 +251,7 @@ on an entity of its own, so the order the claims run in does not change an outco
 - code: ostler/ostler/freeze.py::unfreeze@fc5b0823b5d9
 - code: ostler/ostler/index.py::active@cfb08df1cba1
 - code: ostler/ostler/markdown.py::extract_refs@115245786c4b
-- code: ostler/ostler/model.py::doc_roots@0ed7e7aad44d
+- code: ostler/ostler/model.py::doc_roots@a8ae060f7bb7
 - code: ostler/ostler/pages.py::files_in_book@e9f96e7b3156
 - code: ostler/ostler/registry.py::base_type@cd37e79abc8c
 
@@ -267,7 +267,7 @@ on an entity of its own, so the order the claims run in does not change an outco
 - code: ostler/ostler/dynamic_registry.py::load_kinds@09b3f9268893
 - code: ostler/ostler/index.py::active@cfb08df1cba1
 - code: ostler/ostler/markdown.py::extract_refs@115245786c4b
-- code: ostler/ostler/model.py::doc_roots@0ed7e7aad44d
+- code: ostler/ostler/model.py::doc_roots@a8ae060f7bb7
 - code: ostler/ostler/pages.py::files_in_book@e9f96e7b3156
 - code: ostler/ostler/registry.py::base_type@cd37e79abc8c
 
@@ -283,7 +283,7 @@ on an entity of its own, so the order the claims run in does not change an outco
 - code: ostler/ostler/dynamic_registry.py::load_kinds@09b3f9268893
 - code: ostler/ostler/index.py::active@cfb08df1cba1
 - code: ostler/ostler/markdown.py::extract_refs@115245786c4b
-- code: ostler/ostler/model.py::doc_roots@0ed7e7aad44d
+- code: ostler/ostler/model.py::doc_roots@a8ae060f7bb7
 - code: ostler/ostler/pages.py::files_in_book@e9f96e7b3156
 - code: ostler/ostler/registry.py::base_type@cd37e79abc8c
 
@@ -299,7 +299,7 @@ on an entity of its own, so the order the claims run in does not change an outco
 - code: ostler/ostler/dynamic_registry.py::load_kinds@09b3f9268893
 - code: ostler/ostler/index.py::active@cfb08df1cba1
 - code: ostler/ostler/markdown.py::extract_refs@115245786c4b
-- code: ostler/ostler/model.py::doc_roots@0ed7e7aad44d
+- code: ostler/ostler/model.py::doc_roots@a8ae060f7bb7
 - code: ostler/ostler/pages.py::files_in_book@e9f96e7b3156
 - code: ostler/ostler/registry.py::base_type@cd37e79abc8c
 
@@ -315,7 +315,7 @@ on an entity of its own, so the order the claims run in does not change an outco
 - code: ostler/ostler/dynamic_registry.py::load_kinds@09b3f9268893
 - code: ostler/ostler/index.py::active@cfb08df1cba1
 - code: ostler/ostler/markdown.py::extract_refs@115245786c4b
-- code: ostler/ostler/model.py::doc_roots@0ed7e7aad44d
+- code: ostler/ostler/model.py::doc_roots@a8ae060f7bb7
 - code: ostler/ostler/pages.py::files_in_book@e9f96e7b3156
 - code: ostler/ostler/registry.py::base_type@cd37e79abc8c
 - code: ostler/ostler/todo.py::add@eb0ea0bc4039
@@ -332,7 +332,7 @@ on an entity of its own, so the order the claims run in does not change an outco
 - code: ostler/ostler/dynamic_registry.py::load_kinds@09b3f9268893
 - code: ostler/ostler/index.py::active@cfb08df1cba1
 - code: ostler/ostler/markdown.py::extract_refs@115245786c4b
-- code: ostler/ostler/model.py::doc_roots@0ed7e7aad44d
+- code: ostler/ostler/model.py::doc_roots@a8ae060f7bb7
 - code: ostler/ostler/pages.py::files_in_book@e9f96e7b3156
 - code: ostler/ostler/registry.py::base_type@cd37e79abc8c
 - code: ostler/ostler/todo.py::list_epics@eb0ea0bc4039
@@ -349,7 +349,7 @@ on an entity of its own, so the order the claims run in does not change an outco
 - code: ostler/ostler/dynamic_registry.py::load_kinds@09b3f9268893
 - code: ostler/ostler/index.py::active@cfb08df1cba1
 - code: ostler/ostler/markdown.py::extract_refs@115245786c4b
-- code: ostler/ostler/model.py::doc_roots@0ed7e7aad44d
+- code: ostler/ostler/model.py::doc_roots@a8ae060f7bb7
 - code: ostler/ostler/pages.py::files_in_book@e9f96e7b3156
 - code: ostler/ostler/registry.py::base_type@cd37e79abc8c
 - code: ostler/ostler/todo.py::list_epics@eb0ea0bc4039
@@ -366,7 +366,7 @@ on an entity of its own, so the order the claims run in does not change an outco
 - code: ostler/ostler/dynamic_registry.py::load_kinds@09b3f9268893
 - code: ostler/ostler/index.py::active@cfb08df1cba1
 - code: ostler/ostler/markdown.py::extract_refs@115245786c4b
-- code: ostler/ostler/model.py::doc_roots@0ed7e7aad44d
+- code: ostler/ostler/model.py::doc_roots@a8ae060f7bb7
 - code: ostler/ostler/pages.py::files_in_book@e9f96e7b3156
 - code: ostler/ostler/registry.py::base_type@cd37e79abc8c
 - code: ostler/ostler/todo.py::list_epics@eb0ea0bc4039
@@ -383,7 +383,7 @@ on an entity of its own, so the order the claims run in does not change an outco
 - code: ostler/ostler/dynamic_registry.py::load_kinds@09b3f9268893
 - code: ostler/ostler/index.py::active@cfb08df1cba1
 - code: ostler/ostler/markdown.py::extract_refs@115245786c4b
-- code: ostler/ostler/model.py::doc_roots@0ed7e7aad44d
+- code: ostler/ostler/model.py::doc_roots@a8ae060f7bb7
 - code: ostler/ostler/pages.py::files_in_book@e9f96e7b3156
 - code: ostler/ostler/registry.py::base_type@cd37e79abc8c
 
@@ -400,7 +400,7 @@ on an entity of its own, so the order the claims run in does not change an outco
 - code: ostler/ostler/dynamic_registry.py::load_kinds@09b3f9268893
 - code: ostler/ostler/index.py::active@cfb08df1cba1
 - code: ostler/ostler/markdown.py::extract_refs@115245786c4b
-- code: ostler/ostler/model.py::doc_roots@0ed7e7aad44d
+- code: ostler/ostler/model.py::doc_roots@a8ae060f7bb7
 - code: ostler/ostler/pages.py::files_in_book@e9f96e7b3156
 - code: ostler/ostler/registry.py::base_type@cd37e79abc8c
 
@@ -417,7 +417,7 @@ on an entity of its own, so the order the claims run in does not change an outco
 - code: ostler/ostler/dynamic_registry.py::load_kinds@09b3f9268893
 - code: ostler/ostler/index.py::active@cfb08df1cba1
 - code: ostler/ostler/markdown.py::extract_refs@115245786c4b
-- code: ostler/ostler/model.py::doc_roots@0ed7e7aad44d
+- code: ostler/ostler/model.py::doc_roots@a8ae060f7bb7
 - code: ostler/ostler/pages.py::files_in_book@e9f96e7b3156
 - code: ostler/ostler/registry.py::base_type@cd37e79abc8c
 
@@ -433,7 +433,7 @@ on an entity of its own, so the order the claims run in does not change an outco
 - code: ostler/ostler/dynamic_registry.py::load_kinds@09b3f9268893
 - code: ostler/ostler/index.py::active@cfb08df1cba1
 - code: ostler/ostler/markdown.py::extract_refs@115245786c4b
-- code: ostler/ostler/model.py::doc_roots@0ed7e7aad44d
+- code: ostler/ostler/model.py::doc_roots@a8ae060f7bb7
 - code: ostler/ostler/pages.py::files_in_book@e9f96e7b3156
 - code: ostler/ostler/registry.py::base_type@cd37e79abc8c
 
@@ -448,11 +448,11 @@ on an entity of its own, so the order the claims run in does not change an outco
   X-1
 - code: ostler/ostler/_vendor/stablemate_core/base_cache.py::cache_root@79e1cc13c672
 - code: ostler/ostler/_vendor/stablemate_core/config.py::config_path@45b4d92edb39
-- code: ostler/ostler/crud.py::dump_frontmatter@3d486fae1ade
+- code: ostler/ostler/crud.py::dump_frontmatter@942278999a09
 - code: ostler/ostler/dynamic_registry.py::load_kinds@09b3f9268893
 - code: ostler/ostler/index.py::active@cfb08df1cba1
 - code: ostler/ostler/markdown.py::extract_refs@115245786c4b
-- code: ostler/ostler/model.py::doc_roots@0ed7e7aad44d
+- code: ostler/ostler/model.py::doc_roots@a8ae060f7bb7
 - code: ostler/ostler/pages.py::files_in_book@e9f96e7b3156
 - code: ostler/ostler/registry.py::base_type@cd37e79abc8c
 
@@ -470,11 +470,11 @@ on an entity of its own, so the order the claims run in does not change an outco
 - fixture: [plan scratch repo](fixtures/plan-scratch-repo.md) with an epic with no seed
 - code: ostler/ostler/_vendor/stablemate_core/base_cache.py::cache_root@79e1cc13c672
 - code: ostler/ostler/_vendor/stablemate_core/config.py::config_path@45b4d92edb39
-- code: ostler/ostler/crud.py::add_seed@3d486fae1ade
+- code: ostler/ostler/crud.py::add_seed@942278999a09
 - code: ostler/ostler/dynamic_registry.py::load_kinds@09b3f9268893
 - code: ostler/ostler/index.py::active@cfb08df1cba1
 - code: ostler/ostler/markdown.py::extract_refs@115245786c4b
-- code: ostler/ostler/model.py::doc_roots@0ed7e7aad44d
+- code: ostler/ostler/model.py::doc_roots@a8ae060f7bb7
 - code: ostler/ostler/pages.py::files_in_book@e9f96e7b3156
 - code: ostler/ostler/registry.py::base_type@cd37e79abc8c
 
@@ -487,11 +487,11 @@ on an entity of its own, so the order the claims run in does not change an outco
 - fixture: [plan scratch repo](fixtures/plan-scratch-repo.md) with an epic that holds seed SD-2
 - code: ostler/ostler/_vendor/stablemate_core/base_cache.py::cache_root@79e1cc13c672
 - code: ostler/ostler/_vendor/stablemate_core/config.py::config_path@45b4d92edb39
-- code: ostler/ostler/crud.py::remove_seed@3d486fae1ade
+- code: ostler/ostler/crud.py::remove_seed@942278999a09
 - code: ostler/ostler/dynamic_registry.py::load_kinds@09b3f9268893
 - code: ostler/ostler/index.py::active@cfb08df1cba1
 - code: ostler/ostler/markdown.py::extract_refs@115245786c4b
-- code: ostler/ostler/model.py::doc_roots@0ed7e7aad44d
+- code: ostler/ostler/model.py::doc_roots@a8ae060f7bb7
 - code: ostler/ostler/pages.py::files_in_book@e9f96e7b3156
 - code: ostler/ostler/registry.py::base_type@cd37e79abc8c
 
@@ -508,11 +508,11 @@ on an entity of its own, so the order the claims run in does not change an outco
 - fixture: [plan scratch repo](fixtures/plan-scratch-repo.md) with a story named india
 - code: ostler/ostler/_vendor/stablemate_core/base_cache.py::cache_root@79e1cc13c672
 - code: ostler/ostler/_vendor/stablemate_core/config.py::config_path@45b4d92edb39
-- code: ostler/ostler/crud.py::update_story@3d486fae1ade
+- code: ostler/ostler/crud.py::update_story@942278999a09
 - code: ostler/ostler/dynamic_registry.py::load_kinds@09b3f9268893
 - code: ostler/ostler/index.py::active@cfb08df1cba1
 - code: ostler/ostler/markdown.py::extract_refs@115245786c4b
-- code: ostler/ostler/model.py::doc_roots@0ed7e7aad44d
+- code: ostler/ostler/model.py::doc_roots@a8ae060f7bb7
 - code: ostler/ostler/pages.py::files_in_book@e9f96e7b3156
 - code: ostler/ostler/registry.py::base_type@cd37e79abc8c
 
@@ -526,11 +526,11 @@ on an entity of its own, so the order the claims run in does not change an outco
   story
 - code: ostler/ostler/_vendor/stablemate_core/base_cache.py::cache_root@79e1cc13c672
 - code: ostler/ostler/_vendor/stablemate_core/config.py::config_path@45b4d92edb39
-- code: ostler/ostler/crud.py::delete_epic@3d486fae1ade
+- code: ostler/ostler/crud.py::delete_epic@942278999a09
 - code: ostler/ostler/dynamic_registry.py::load_kinds@09b3f9268893
 - code: ostler/ostler/index.py::active@cfb08df1cba1
 - code: ostler/ostler/markdown.py::extract_refs@115245786c4b
-- code: ostler/ostler/model.py::doc_roots@0ed7e7aad44d
+- code: ostler/ostler/model.py::doc_roots@a8ae060f7bb7
 - code: ostler/ostler/pages.py::files_in_book@e9f96e7b3156
 - code: ostler/ostler/registry.py::base_type@cd37e79abc8c
 - code: ostler/ostler/todo.py::list_epics@eb0ea0bc4039
@@ -544,11 +544,11 @@ on an entity of its own, so the order the claims run in does not change an outco
 - fixture: [plan scratch repo](fixtures/plan-scratch-repo.md) with an epic holding one story
 - code: ostler/ostler/_vendor/stablemate_core/base_cache.py::cache_root@79e1cc13c672
 - code: ostler/ostler/_vendor/stablemate_core/config.py::config_path@45b4d92edb39
-- code: ostler/ostler/crud.py::delete_story@3d486fae1ade
+- code: ostler/ostler/crud.py::delete_story@942278999a09
 - code: ostler/ostler/dynamic_registry.py::load_kinds@09b3f9268893
 - code: ostler/ostler/index.py::active@cfb08df1cba1
 - code: ostler/ostler/markdown.py::extract_refs@115245786c4b
-- code: ostler/ostler/model.py::doc_roots@0ed7e7aad44d
+- code: ostler/ostler/model.py::doc_roots@a8ae060f7bb7
 - code: ostler/ostler/pages.py::files_in_book@e9f96e7b3156
 - code: ostler/ostler/registry.py::base_type@cd37e79abc8c
 
@@ -561,11 +561,11 @@ on an entity of its own, so the order the claims run in does not change an outco
 - fixture: [plan scratch repo](fixtures/plan-scratch-repo.md) with two features
 - code: ostler/ostler/_vendor/stablemate_core/base_cache.py::cache_root@79e1cc13c672
 - code: ostler/ostler/_vendor/stablemate_core/config.py::config_path@45b4d92edb39
-- code: ostler/ostler/crud.py::delete_feature@3d486fae1ade
+- code: ostler/ostler/crud.py::delete_feature@942278999a09
 - code: ostler/ostler/dynamic_registry.py::load_kinds@09b3f9268893
 - code: ostler/ostler/index.py::active@cfb08df1cba1
 - code: ostler/ostler/markdown.py::extract_refs@115245786c4b
-- code: ostler/ostler/model.py::doc_roots@0ed7e7aad44d
+- code: ostler/ostler/model.py::doc_roots@a8ae060f7bb7
 - code: ostler/ostler/pages.py::files_in_book@e9f96e7b3156
 - code: ostler/ostler/registry.py::base_type@cd37e79abc8c
 
@@ -582,7 +582,7 @@ on an entity of its own, so the order the claims run in does not change an outco
 - code: ostler/ostler/dynamic_registry.py::load_kinds@09b3f9268893
 - code: ostler/ostler/index.py::active@cfb08df1cba1
 - code: ostler/ostler/markdown.py::extract_refs@115245786c4b
-- code: ostler/ostler/model.py::doc_roots@0ed7e7aad44d
+- code: ostler/ostler/model.py::doc_roots@a8ae060f7bb7
 - code: ostler/ostler/pages.py::files_in_book@e9f96e7b3156
 - code: ostler/ostler/registry.py::base_type@cd37e79abc8c
 - code: ostler/ostler/templates.py::new@401b5b3edc08
@@ -601,7 +601,7 @@ on an entity of its own, so the order the claims run in does not change an outco
 - code: ostler/ostler/dynamic_registry.py::load_kinds@09b3f9268893
 - code: ostler/ostler/index.py::active@cfb08df1cba1
 - code: ostler/ostler/markdown.py::extract_refs@115245786c4b
-- code: ostler/ostler/model.py::doc_roots@0ed7e7aad44d
+- code: ostler/ostler/model.py::doc_roots@a8ae060f7bb7
 - code: ostler/ostler/pages.py::files_in_book@e9f96e7b3156
 - code: ostler/ostler/registry.py::base_type@cd37e79abc8c
 - code: ostler/ostler/templates.py::edit@401b5b3edc08
@@ -619,7 +619,7 @@ on an entity of its own, so the order the claims run in does not change an outco
 - code: ostler/ostler/dynamic_registry.py::load_kinds@09b3f9268893
 - code: ostler/ostler/index.py::active@cfb08df1cba1
 - code: ostler/ostler/markdown.py::extract_refs@115245786c4b
-- code: ostler/ostler/model.py::doc_roots@0ed7e7aad44d
+- code: ostler/ostler/model.py::doc_roots@a8ae060f7bb7
 - code: ostler/ostler/pages.py::files_in_book@e9f96e7b3156
 - code: ostler/ostler/registry.py::base_type@cd37e79abc8c
 - code: ostler/ostler/templates.py::find@401b5b3edc08
@@ -638,7 +638,7 @@ on an entity of its own, so the order the claims run in does not change an outco
 - code: ostler/ostler/dynamic_registry.py::load_kinds@09b3f9268893
 - code: ostler/ostler/index.py::active@cfb08df1cba1
 - code: ostler/ostler/markdown.py::extract_refs@115245786c4b
-- code: ostler/ostler/model.py::doc_roots@0ed7e7aad44d
+- code: ostler/ostler/model.py::doc_roots@a8ae060f7bb7
 - code: ostler/ostler/pages.py::files_in_book@e9f96e7b3156
 - code: ostler/ostler/registry.py::base_type@cd37e79abc8c
 - code: ostler/ostler/templates.py::find@401b5b3edc08
@@ -655,7 +655,7 @@ on an entity of its own, so the order the claims run in does not change an outco
 - code: ostler/ostler/dynamic_registry.py::load_kinds@09b3f9268893
 - code: ostler/ostler/index.py::active@cfb08df1cba1
 - code: ostler/ostler/markdown.py::extract_refs@115245786c4b
-- code: ostler/ostler/model.py::doc_roots@0ed7e7aad44d
+- code: ostler/ostler/model.py::doc_roots@a8ae060f7bb7
 - code: ostler/ostler/pages.py::files_in_book@e9f96e7b3156
 - code: ostler/ostler/registry.py::base_type@cd37e79abc8c
 - code: ostler/ostler/templates.py::delete@401b5b3edc08
@@ -674,7 +674,7 @@ on an entity of its own, so the order the claims run in does not change an outco
 - code: ostler/ostler/dynamic_registry.py::load_kinds@09b3f9268893
 - code: ostler/ostler/index.py::active@cfb08df1cba1
 - code: ostler/ostler/markdown.py::extract_refs@115245786c4b
-- code: ostler/ostler/model.py::doc_roots@0ed7e7aad44d
+- code: ostler/ostler/model.py::doc_roots@a8ae060f7bb7
 - code: ostler/ostler/pages.py::files_in_book@e9f96e7b3156
 - code: ostler/ostler/registry.py::base_type@cd37e79abc8c
 - code: ostler/ostler/templates.py::apply@401b5b3edc08
@@ -690,12 +690,12 @@ on an entity of its own, so the order the claims run in does not change an outco
 - fixture: [plan scratch repo](fixtures/plan-scratch-repo.md) with a declared note kind
 - code: ostler/ostler/_vendor/stablemate_core/base_cache.py::cache_root@79e1cc13c672
 - code: ostler/ostler/_vendor/stablemate_core/config.py::config_path@45b4d92edb39
-- code: ostler/ostler/crud.py::dump_frontmatter@3d486fae1ade
+- code: ostler/ostler/crud.py::dump_frontmatter@942278999a09
 - code: ostler/ostler/crud_generic.py::create_instance@0c22ea0d56ea
 - code: ostler/ostler/dynamic_registry.py::load_kinds@09b3f9268893
 - code: ostler/ostler/index.py::active@cfb08df1cba1
 - code: ostler/ostler/markdown.py::extract_refs@115245786c4b
-- code: ostler/ostler/model.py::doc_roots@0ed7e7aad44d
+- code: ostler/ostler/model.py::doc_roots@a8ae060f7bb7
 - code: ostler/ostler/pages.py::files_in_book@e9f96e7b3156
 - code: ostler/ostler/registry.py::base_type@cd37e79abc8c
 
@@ -714,7 +714,7 @@ on an entity of its own, so the order the claims run in does not change an outco
 - code: ostler/ostler/dynamic_registry.py::load_kinds@09b3f9268893
 - code: ostler/ostler/index.py::active@cfb08df1cba1
 - code: ostler/ostler/markdown.py::extract_refs@115245786c4b
-- code: ostler/ostler/model.py::doc_roots@0ed7e7aad44d
+- code: ostler/ostler/model.py::doc_roots@a8ae060f7bb7
 - code: ostler/ostler/pages.py::files_in_book@e9f96e7b3156
 - code: ostler/ostler/registry.py::base_type@cd37e79abc8c
 
@@ -729,12 +729,12 @@ on an entity of its own, so the order the claims run in does not change an outco
 - fixture: [plan scratch repo](fixtures/plan-scratch-repo.md) with a note n2
 - code: ostler/ostler/_vendor/stablemate_core/base_cache.py::cache_root@79e1cc13c672
 - code: ostler/ostler/_vendor/stablemate_core/config.py::config_path@45b4d92edb39
-- code: ostler/ostler/crud.py::dump_frontmatter@3d486fae1ade
+- code: ostler/ostler/crud.py::dump_frontmatter@942278999a09
 - code: ostler/ostler/crud_generic.py::edit_instance@0c22ea0d56ea
 - code: ostler/ostler/dynamic_registry.py::load_kinds@09b3f9268893
 - code: ostler/ostler/index.py::active@cfb08df1cba1
 - code: ostler/ostler/markdown.py::extract_refs@115245786c4b
-- code: ostler/ostler/model.py::doc_roots@0ed7e7aad44d
+- code: ostler/ostler/model.py::doc_roots@a8ae060f7bb7
 - code: ostler/ostler/pages.py::files_in_book@e9f96e7b3156
 - code: ostler/ostler/registry.py::base_type@cd37e79abc8c
 
@@ -752,7 +752,7 @@ on an entity of its own, so the order the claims run in does not change an outco
 - code: ostler/ostler/dynamic_registry.py::load_kinds@09b3f9268893
 - code: ostler/ostler/index.py::active@cfb08df1cba1
 - code: ostler/ostler/markdown.py::extract_refs@115245786c4b
-- code: ostler/ostler/model.py::doc_roots@0ed7e7aad44d
+- code: ostler/ostler/model.py::doc_roots@a8ae060f7bb7
 - code: ostler/ostler/pages.py::files_in_book@e9f96e7b3156
 - code: ostler/ostler/registry.py::base_type@cd37e79abc8c
 

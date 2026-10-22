@@ -45,7 +45,7 @@ kit.git.commit_paths(repo_path, "prune completed epic from queue", paths.epics_i
 
 The pathspec on that last line comes from the workflow's `shared/paths.py`, never from a
 `docs/…` literal: a workflow joins a filename it owns onto a directory **ostler** resolved,
-so a repo that moved its epics with `docRoots:` still gets the right file staged. The rule
+so a numbered epic directory still gets the right file staged. The rule
 is stated in `workflows/README.md` under "A workflow does not spell a doc path".
 
 `push_branch` handles the transient credential helper (the token rides `GH_TOKEN`, never a

@@ -90,7 +90,7 @@ def test_a_frozen_plan_validates_against_a_trial_packet(plan: Path, tmp_path: Pa
     story = _slug_of(app, plan.parent.name)
     dest = _frozenapp.materialize(app, story, tmp_path / app.name)
 
-    spec = dest / "docs" / "specs" / plan.parent.name
+    spec = _frozenapp.spec_dir(dest, plan.parent.name)
     context = build_context(
         dest,
         base="HEAD",

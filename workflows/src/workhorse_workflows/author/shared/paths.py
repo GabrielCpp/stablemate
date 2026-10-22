@@ -5,23 +5,23 @@ from pathlib import Path
 
 from ostler import path as okf_path
 
+from workhorse_workflows.kit.paths import docs_home_or
+
 
 def survey_repo_root(repo_dir: str | Path = "") -> Path:
-    """The consuming repo, as the surveyor's scripts resolved it."""
+    """The consuming repo, as the surveyor's scripts resolved it; the artifacts repo while a workspace is active."""
     if repo_dir:
-        return Path(repo_dir).resolve()
+        return docs_home_or(Path(repo_dir).resolve())
     here = Path.cwd().resolve()
     for candidate in [here, *here.parents]:
         if (candidate / "agents.yml").exists() or (candidate / "docs" / "epics").is_dir():
-            return candidate
-    return here
+            return docs_home_or(candidate)
+    return docs_home_or(here)
 
 
 def launch_repo_root(repo_dir: str | Path = "") -> Path:
-    """The consuming repo, as the parity surveyor's scripts resolved it: input, else cwd."""
-    if repo_dir:
-        return Path(repo_dir).resolve()
-    return Path.cwd().resolve()
+    """The consuming repo, as the parity surveyor's scripts resolved it: input, else cwd; the artifacts repo while a workspace is active."""
+    return docs_home_or(Path(repo_dir).resolve() if repo_dir else Path.cwd().resolve())
 
 
 
@@ -36,7 +36,7 @@ def _rel(root: str | Path, target: Path) -> str:
 
 
 def epics_dir(root: str | Path) -> str:
-    """Where epics live, repo-relative — ostler's answer, read from `docRoots:`."""
+    """Where epics live, repo-relative — ostler's answer, `docs/epics`."""
     return _rel(root, okf_path.epics_root_in(Path(root)))
 
 
@@ -50,9 +50,9 @@ def roadmaps_dir(root: str | Path) -> str:
     return _rel(root, okf_path.roadmaps_root_in(Path(root)))
 
 
-def features_dir(root: str | Path) -> str:
+def services_dir(root: str | Path) -> str:
     """The OKF feature book, repo-relative — the same directory `ostler coverage` reads."""
-    return _rel(root, okf_path.features_root_in(Path(root)))
+    return _rel(root, okf_path.services_root_in(Path(root)))
 
 
 def epic_dir(root: str | Path, epic: str) -> str:
@@ -87,7 +87,7 @@ __all__ = [
     "epic_context",
     "epic_dir",
     "epics_dir",
-    "features_dir",
+    "services_dir",
     "launch_repo_root",
     "roadmaps_dir",
     "story_context",

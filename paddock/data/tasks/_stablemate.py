@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import os
+import shutil
 import subprocess
-from collections.abc import Iterator
+from collections.abc import Iterator, Mapping
 from contextlib import contextmanager
 from pathlib import Path
 
@@ -114,15 +116,32 @@ def pin_config(run: Run) -> None:
     )
 
 
+def trial_artifacts(repo: Path) -> Path:
+    """The artifacts dir of the trial whose repo is *repo*: a fresh sibling of it, never the user's."""
+    return repo.with_name(f"{repo.name}.artifacts")
+
+
+def trial_env(repo: Path, base: Mapping[str, str] | None = None) -> dict[str, str]:
+    """*base* (default: this process's environment) with the artifacts dir pointed at the trial's."""
+    return {
+        **(os.environ if base is None else base),
+        core_config.ARTIFACTS_DIR_ENV: str(trial_artifacts(repo)),
+    }
+
+
 def spec_dir(repo: Path, story: str) -> Path:
-    """The story's spec folder in *repo*, as ostler resolves it."""
+    """The story's spec folder in the trial that owns *repo*, as ostler resolves it."""
     from ostler.api import Ostler  # noqa: PLC0415 - a heavy import only a trial needs
 
-    return Path(Ostler(repo).spec_path(story))
-
-
-_ORGANIZATION_FILES = ("ostler.yml", "ostler.yaml", "agents.yml", ".agents.yml")
-_SPECS_CONFIG = "organization:\n  docRoots:\n    specs: docs/specs\n"
+    previous = os.environ.get(core_config.ARTIFACTS_DIR_ENV)
+    os.environ[core_config.ARTIFACTS_DIR_ENV] = str(trial_artifacts(repo))
+    try:
+        return Path(Ostler(repo).spec_path(story))
+    finally:
+        if previous is None:
+            os.environ.pop(core_config.ARTIFACTS_DIR_ENV, None)
+        else:
+            os.environ[core_config.ARTIFACTS_DIR_ENV] = previous
 
 
 def _front_matter(path: Path) -> dict[str, object]:
@@ -134,23 +153,10 @@ def _front_matter(path: Path) -> dict[str, object]:
     return data if isinstance(data, dict) else {}
 
 
-def _specs_root_configured(repo: Path) -> bool:
-    for name in _ORGANIZATION_FILES:
-        path = repo / name
-        if not path.is_file():
-            continue
-        data = yaml.safe_load(path.read_text(encoding="utf-8"))
-        organization = data.get("organization") if isinstance(data, dict) else None
-        if isinstance(organization, dict):
-            roots = organization.get("docRoots")
-            return isinstance(roots, dict) and "specs" in roots
-    return False
-
-
 def upgrade_spec_layout(repo: Path) -> None:
-    """Move an old seed's in-repo slug spec folders to story ids under a configured specs root."""
+    """Rename an old seed's slug spec folders to story ids, then stage every spec out of *repo* into the trial's artifacts dir."""
     specs = repo / "docs" / "specs"
-    if not specs.is_dir() or _specs_root_configured(repo):
+    if not specs.is_dir():
         return
     ids: dict[str, str] = {}
     for story_md in sorted(repo.glob("docs/epics/*/stories/*/story.md")):
@@ -161,19 +167,13 @@ def upgrade_spec_layout(repo: Path) -> None:
         target = ids.get(folder.name)
         if folder.is_dir() and target and not (specs / target).exists():
             folder.rename(specs / target)
-    config = repo / "agents.yml"
-    if not config.is_file():
-        config.write_text(_SPECS_CONFIG, encoding="utf-8")
-        return
-    text = config.read_text(encoding="utf-8")
-    data = yaml.safe_load(text)
-    if not isinstance(data, dict) or "organization" not in data:
-        config.write_text(f"{text.rstrip()}\n\n{_SPECS_CONFIG}" if text.strip() else _SPECS_CONFIG, encoding="utf-8")
-        return
-    organization = data["organization"]
-    if not isinstance(organization, dict):
-        organization = {}
-    roots = organization.get("docRoots")
-    organization["docRoots"] = {**(roots if isinstance(roots, dict) else {}), "specs": "docs/specs"}
-    data["organization"] = organization
-    config.write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
+    staged = trial_artifacts(repo) / "specs"
+    staged.mkdir(parents=True, exist_ok=True)
+    for entry in sorted(specs.iterdir()):
+        target = staged / entry.name
+        if target.is_dir():
+            shutil.rmtree(target)
+        elif target.exists():
+            target.unlink()
+        shutil.move(entry, target)
+    shutil.rmtree(specs)
