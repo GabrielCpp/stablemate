@@ -7,7 +7,7 @@ title: Coder story status check
 
 - file: none — in-memory pre-QA status result
 - config: `StoryStatusCheck` status gate result
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/dev.py::StoryStatusCheck` @5aa622da8aea
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/dev.py::StoryStatusCheck` @bcd75ac6f796
 - detail: [coder development schema contracts](../concepts/coder-dev-schema-contracts.md)
 - tests: `workflows/tests/coder/test_status_line_ownership.py::test_the_dev_gate_defaults_to_dirty`
 
@@ -19,7 +19,7 @@ title: Coder story status check
 - required: false
 - semantics: whether the story status is safe before QA
 - verify: json_path(path="$.status", matches="clean|dirty")
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/dev.py::StoryStatusCheck.status` @5aa622da8aea
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/dev.py::StoryStatusCheck.status` @bcd75ac6f796
 
 ### written
 - type: `str`
@@ -27,4 +27,4 @@ title: Coder story status check
 - required: false
 - semantics: status text currently written on the story
 - verify: json_path(path="$.written", equals="example written")
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/dev.py::StoryStatusCheck.written` @5aa622da8aea
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/dev.py::StoryStatusCheck.written` @bcd75ac6f796

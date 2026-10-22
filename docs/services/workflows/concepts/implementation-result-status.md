@@ -17,5 +17,5 @@ review-apply turn, where deterministic settlement checks the result before accep
 contexts use the same five values: `done`, `applied`, `no_changes_needed`, `needs_changes`, and
 `blocked`.
 
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/dev.py::ImplResult.status` @5aa622da8aea
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/dev.py::ImplResult.status` @bcd75ac6f796
 - rule: select the field node by the turn context; neither is a preferred or deprecated implementation

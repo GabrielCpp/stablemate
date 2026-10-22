@@ -31,18 +31,12 @@ scaffolds:
   - shared-docs
   - go-service
 
-workspace:
-  type: mono
-  service_roots:
-    - app/api
-  service_markers:
-    - go.mod
-
 services:
   # Seconds, not minutes — but only on a warm module cache. The Firebase Admin SDK is the
   # one real dependency tree in these fixtures, and the first `go vet` on a cold machine
   # pays for it once.
   api:
+    path: app/api
     regression: go vet ./... && go test ./...
 
 # The one external command the frozen QA plans may reach for. `docker` exists so the
@@ -55,10 +49,6 @@ qa:
   tools:
     - docker
   # The arrangement `seeded_accounts` itself is a book `fixture` node —
-  # `docs/features/claims/fixtures/seeded_accounts.md`. It is not also written here:
+  # `docs/services/claims/fixtures/seeded_accounts.md`. It is not also written here:
   # `Qa.fixture()` reads the book tier first and this file only as a fallback, so a
   # second copy would be a declaration nothing compares against the first.
-
-organization:
-  docRoots:
-    specs: docs/specs

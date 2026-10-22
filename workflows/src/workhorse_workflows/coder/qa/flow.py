@@ -7,6 +7,7 @@ from typing import Any, ClassVar
 
 from workhorse.pyflow import Await, Continue, Done, Workflow, WorkflowFailed
 
+from workhorse_workflows.kit import find_docs_root
 from workhorse_workflows.coder.qa.nodes import (
     QA_SCRATCH_DIRNAME,
     check_sentinel_ids,
@@ -48,7 +49,7 @@ from workhorse_workflows.coder.shared.backlog import (
     unfiled,
 )
 from workhorse_workflows.coder.shared.dev import read_operator_context
-from workhorse_workflows.coder.shared.docs import detect_okf_docs, features_root
+from workhorse_workflows.coder.shared.docs import detect_okf_docs, services_root
 from workhorse_workflows.coder.shared.escalation import context_path, escalation
 from workhorse_workflows.coder.shared.okf import TRUNK, build_okf_context, validate_okf_context
 from workhorse_workflows.coder.shared.owner import (
@@ -84,8 +85,6 @@ class Qa(Workflow):
     """QA one story through one owner session, then rerun and gate what it claims."""
 
     story: str = ""
-    docs_path: str = ""
-    workspace_file: str = ""
     epic: str = ""
     operator_mode: str = "auto"
     target_env: str = "local"
@@ -102,7 +101,7 @@ class Qa(Workflow):
 
     def setup(self) -> StoryPaths:
         """Resolve the slug to the story path, its spec dir and its `qa/` directory."""
-        ctx = self.call(prepare_story, self.docs_path, self.story, self.epic)
+        ctx = self.call(prepare_story, self.story, self.epic)
         if not ctx.story_path:
             raise WorkflowFailed(
                 f"no story path for {self.story!r}. The story could not be resolved, so "
@@ -128,39 +127,38 @@ class Qa(Workflow):
 
     def _file_backlog(self) -> None:
         """File the items the owner left for the backlog, less the ones an open bullet already holds."""
-        pending = self.call(filed_backlog, self.ctx.spec_dir, self.docs_path)
+        pending = self.call(filed_backlog, self.ctx.spec_dir)
         keep = set(unfiled(causes.cause_judge(self, "low"), self.logger, pending.items, pending.filed))
         drop = [item_id for item_id in pending.items if item_id not in keep]
-        self.call(file_backlog_items, self.ctx.spec_dir, self.docs_path, drop=drop)
+        self.call(file_backlog_items, self.ctx.spec_dir, drop=drop)
 
     def start(self) -> Continue:
         """Clear the last run's evidence, decode what the story touched, and check its context and stack."""
-        self.call(snapshot_code_state, self.docs_path)
+        self.call(snapshot_code_state)
         if not (self.rerun and self.scope):
             self.call(clear_qa_evidence, self.ctx.spec_dir)
-        impl = self.call(resolve_impl_context, self.ctx.spec_dir, self.target_env, self.docs_path)
+        impl = self.call(resolve_impl_context, self.ctx.spec_dir)
         if self._sourced:
             sources = self.call(
                 resolve_story_sources,
                 tuple(impl.dispatch_list),
                 self.ctx.story_slug,
                 self.ctx.story_id,
-                self.docs_path,
             )
             if sources.status != "valid":
                 raise WorkflowFailed(
                     "story source provenance could not be resolved: " + "; ".join(sources.errors)
                 )
-        okf = self.call(detect_okf_docs, self.docs_path)
+        okf = self.call(detect_okf_docs)
         lease = copy_lease(self.ctx.story_id or self.ctx.story_slug, self.run_id)
-        self.call(stack_target, self.ctx.story_slug, lease, self.docs_path)
+        self.call(stack_target, self.ctx.story_slug, lease)
         if self.rerun:
             return Continue(okf, self.recheck)
         return Continue(okf, self.work, report="\n\n".join(self._preflight()))
 
     @property
     def _sourced(self) -> bool:
-        return bool(self.workspace_file and self.ctx.story_id)
+        return bool(self.workspace and self.ctx.story_id)
 
     def _preflight(self) -> list[str]:
         """The OKF context packet and the QA stack, as failures the owner repairs."""
@@ -169,20 +167,19 @@ class Qa(Workflow):
             build_okf_context,
             self.ctx.spec_dir,
             self.ctx.story_path,
-            features_root(self),
+            services_root(self),
             tuple(impl.qa_source_roots),
             TRUNK,
             "WORKTREE",
-            self.docs_path,
             preexisting=tuple(self.preexisting),
             story_sources=self.output(resolve_story_sources).sources if self._sourced else (),
         )
-        context = self.call(validate_okf_context, self.ctx.spec_dir, build.status, self.docs_path)
+        context = self.call(validate_okf_context, self.ctx.spec_dir, build.status)
         failures = []
         if context.status != "passed":
             failures.append(gate_text("the OKF context packet", context.notes))
         target = self.output(stack_target)
-        stack = self.call(ensure_stack, self.docs_path, near=target.near, lease=target.lease)
+        stack = self.call(ensure_stack, near=target.near, lease=target.lease)
         return failures + stack_failures(stack)
 
     def _owner_args(self) -> dict[str, Any]:
@@ -197,7 +194,7 @@ class Qa(Workflow):
             "epic": self.epic,
             "qa_dir": self.ctx.qa_dir,
             "qa_scratch_dir": QA_SCRATCH_DIRNAME,
-            "docs_path": self.docs_path,
+            "docs_root": str(find_docs_root(self.repo_dir)),
             "target_env": self.target_env,
             "runtime_python": sys.executable,
             "verification_setup": impl.verification_setup,
@@ -206,7 +203,7 @@ class Qa(Workflow):
             "qa_run_plan": [r.model_dump() for r in impl.qa_run_plan],
             "plan_services": self.call(plan_summary, spec_dir).text,
             "qa_only_scenarios": qa_only_arg(spec_dir),
-            "qa_tools": self.call(qa_tools_catalog, self.docs_path).tools,
+            "qa_tools": self.call(qa_tools_catalog).tools,
             "standing_plan": self._standing_plan(),
         }
 
@@ -215,9 +212,9 @@ class Qa(Workflow):
         spec_dir = self.ctx.spec_dir
         if not spec_dir or not (Path(spec_dir) / "qa_plan.py").is_file():
             return False
-        if self.call(lint_qa_plan, spec_dir, self.docs_path).status != "passed":
+        if self.call(lint_qa_plan, spec_dir).status != "passed":
             return False
-        return self.call(validate_qa_plan, spec_dir, self.docs_path).status == "passed"
+        return self.call(validate_qa_plan, spec_dir).status == "passed"
 
     def work(
         self,
@@ -248,7 +245,7 @@ class Qa(Workflow):
                     "failed_scenarios": failed_scenarios or [],
                 },
             )
-        self.call(stamp_specs, self.docs_path, self.ctx.story_slug)
+        self.call(stamp_specs, self.ctx.story_slug)
         if result.status == "blocked":
             return self._block(result, result.notes, "the QA turn", blocks)
         return Continue(
@@ -270,13 +267,12 @@ class Qa(Workflow):
         run = self.call(
             run_qa_plan,
             self.ctx.spec_dir,
-            self.docs_path,
             near=target.near,
             lease=target.lease,
             only=list(self.scope) or None,
         )
         self._file_backlog()
-        self.call(stamp_specs, self.docs_path, self.ctx.story_slug)
+        self.call(stamp_specs, self.ctx.story_slug)
         if run.status == "failed":
             return self._red(run, [], 0, 0, owner_classifies=False)
         if run.status != "passed":
@@ -303,10 +299,10 @@ class Qa(Workflow):
         self.logger.info("running the QA plan", extra={"activity": True})
         target = self.output(stack_target)
         run = self.call(
-            run_qa_plan, self.ctx.spec_dir, self.docs_path, near=target.near, lease=target.lease
+            run_qa_plan, self.ctx.spec_dir, near=target.near, lease=target.lease
         )
         self._file_backlog()
-        self.call(stamp_specs, self.docs_path, self.ctx.story_slug)
+        self.call(stamp_specs, self.ctx.story_slug)
         if run.status == "failed":
             classify = not self.stop_at_first_verdict
             return self._red(run, found, laps, blocks, owner_classifies=classify)
@@ -326,10 +322,10 @@ class Qa(Workflow):
 
     def _plan_failures(self, proved: list[str]) -> list[str]:
         """The plan's lint, its validation against the packet, and the dry runs it claims."""
-        lint = self.call(lint_qa_plan, self.ctx.spec_dir, self.docs_path)
+        lint = self.call(lint_qa_plan, self.ctx.spec_dir)
         if lint.status != "passed":
             return [gate_text("qa_plan.py lint", lint.notes)]
-        validation = self.call(validate_qa_plan, self.ctx.spec_dir, self.docs_path)
+        validation = self.call(validate_qa_plan, self.ctx.spec_dir)
         if validation.status != "passed":
             return [gate_text("qa_plan.py validation", validation.notes)]
         if not proved:
@@ -430,9 +426,9 @@ class Qa(Workflow):
         self, status: QaFlowStatus, run: QaPlanRun, findings: list[QaFinding] | None = None
     ) -> Done:
         before = self.output(snapshot_code_state).status
-        changed = self.call(code_changed, before=before, docs_path=self.docs_path)
+        changed = self.call(code_changed, before=before)
         if status == "passed":
-            self.call(file_deferred_obligations, self.ctx.spec_dir, self.docs_path)
+            self.call(file_deferred_obligations, self.ctx.spec_dir)
         self._release()
         if status != "refix":
             self.reset_session(self._session)
@@ -448,7 +444,7 @@ class Qa(Workflow):
     def _release(self) -> None:
         """Tear down this run's stack copy: the next pass QAs changed code, so it builds a new one."""
         target = self.output(stack_target)
-        self.call(release_copy, self.docs_path, near=target.near, lease=target.lease)
+        self.call(release_copy, near=target.near, lease=target.lease)
 
     def _block(self, result: object, notes: str, where: str, blocks: int) -> Continue | Await:
         if self.operator_mode in HUMAN_MODES or blocks >= MAX_BLOCKS:
@@ -477,7 +473,7 @@ class Qa(Workflow):
             power=RESOLVER_POWER,
             timeout=UNBOUNDED,
             add_dirs=self._dirs(),
-            args=resolver_args(self, block_kind="qa", notes=notes, docs_path=self.docs_path),
+            args=resolver_args(self, block_kind="qa", notes=notes),
         )
         if answered(self, result, "qa"):
             return Continue(result, self.read_operator, blocks=blocks + 1)

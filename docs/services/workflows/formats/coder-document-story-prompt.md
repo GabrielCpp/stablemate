@@ -6,7 +6,7 @@ title: Coder document-story prompt
 # Coder document-story prompt
 
 - file: `workflows/src/workhorse_workflows/coder/docs/prompts/document-story.md`
-- code: `workflows/src/workhorse_workflows/coder/docs/flow.py::Docs.work` @5070eea353a0
+- code: `workflows/src/workhorse_workflows/coder/docs/flow.py::Docs.work` @b81b0ecba9ab
 - detail: [coder documentation flow](../flows/coder-docs.md)
 - detail: [coder documentation schemas](../concepts/coder-docs-schemas.md)
 - tests: `workflows/tests/coder/docs/test_flow.py::test_sources_outside_the_docs_worktree_take_the_semantic_route`
@@ -51,17 +51,17 @@ before running the grounding gate.
 - semantics: optional epic identifier retained for the commit footer
 - verify: json_path(path="$.epic", equals="acme-epic")
 
-### docs_path
+### docs_root
 - type: string path
 - required: true
 - semantics: documentation repository root containing the story and OKF graph
-- verify: json_path(path="$.docs_path", equals="docs/stories/acme-story/story.md")
+- verify: json_path(path="$.docs_root", equals="docs/stories/acme-story/story.md")
 
-### features_root
+### services_root
 - type: string path
 - required: true
-- semantics: resolved OKF features directory where service nodes are stored
-- verify: json_path(path="$.features_root", equals="docs/stories")
+- semantics: resolved OKF services directory where service nodes are stored
+- verify: json_path(path="$.services_root", equals="docs/stories")
 
 ### epic_path
 - type: string path

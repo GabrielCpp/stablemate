@@ -11,7 +11,7 @@ closed literals; Python-produced results use defaults where the producing node o
 Nested plan and dispatch records preserve service paths, verification setup, fixtures, and source
 provenance without requiring later nodes to re-parse agent-authored files.
 
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/dev.py::__all__` @5aa622da8aea
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/dev.py::__all__` @bcd75ac6f796
 - detail: [coder shared development helpers](coder-shared-dev.md)
 - detail: [coder rendered schema contracts](coder-render-schema-contracts.md)
 - detail: [failure report](../formats/failure-report.md)
@@ -48,4 +48,4 @@ are documented in their existing format nodes rather than duplicated here.
 - does: treats any other string as a fixture provision description
 - returns: a mapping with `name` or with empty `name` and `provides`
 - verify: json_path(path="$.name", equals="acme")
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/dev.py::lift_fixture` @5aa622da8aea
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/dev.py::lift_fixture` @bcd75ac6f796

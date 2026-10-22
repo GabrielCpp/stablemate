@@ -33,7 +33,7 @@ The separate prompt directories are why a role name such as `dev-story` can exis
 - code: `workflows/src/workhorse_workflows/coder/workflow.py::workflow` @a28e84f788c2
 - code: `workflows/src/workhorse_workflows/coder/main/flow.py::Coder.dev` @d70dfde3a1bd
 - code: `workflows/src/workhorse_workflows/coder/dev/flow.py::Dev` @9db388afe7e0
-- code: `workflows/src/workhorse_workflows/coder/docs/flow.py::Docs` @5070eea353a0
+- code: `workflows/src/workhorse_workflows/coder/docs/flow.py::Docs` @7ec0db695dc8
 - code: `workflows/src/workhorse_workflows/coder/fix_ci/flow.py::FixCi` @a82754789574
 - code: `workflows/src/workhorse_workflows/coder/qa/flow.py::Qa` @0a4bcedfcbb5
 - code: `workflows/src/workhorse_workflows/coder/genesis/flow.py::Genesis` @94e8836d807e

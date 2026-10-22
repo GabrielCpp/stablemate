@@ -7,8 +7,8 @@ title: Coder shared development helpers
 
 - code: `workflows/src/workhorse_workflows/coder/shared/dev.py::__all__` @9b78ee9ed6fb
 - code: `workflows/src/workhorse_workflows/coder/shared/provenance.py::__all__` @85eef7ecc7cf
-- code: `workflows/src/workhorse_workflows/coder/shared/service_gates.py::__all__` @2473c5163f54
-- code: `workflows/src/workhorse_workflows/coder/shared/plan.py::__all__` @e01e5b6a0236
+- code: `workflows/src/workhorse_workflows/coder/shared/service_gates.py::__all__` @230a77ce3a3a
+- code: `workflows/src/workhorse_workflows/coder/shared/plan.py::__all__` @9e8d38cfead5
 - detail: [coder development flow](../flows/coder-dev.md)
 - detail: [coder resolver decision handling](coder-shared-resolution.md)
 
@@ -27,7 +27,7 @@ that the flow routes.
 - required: true
 - semantics: failed gate output is retained from its final 4000 characters, prefixed as truncated when longer
 - verify: count(subject="gate output limit", equals=1)
-- code: `workflows/src/workhorse_workflows/coder/shared/service_gates.py::MAX_GATE_OUTPUT` @2473c5163f54
+- code: `workflows/src/workhorse_workflows/coder/shared/service_gates.py::MAX_GATE_OUTPUT` @230a77ce3a3a
 
 ### GATE_TIMEOUT
 - type: `int`
@@ -35,7 +35,7 @@ that the flow routes.
 - required: true
 - semantics: a declared gate command is allowed 600 seconds before it is reported dirty for timeout
 - verify: count(subject="gate timeout", equals=1)
-- code: `workflows/src/workhorse_workflows/coder/shared/service_gates.py::GATE_TIMEOUT` @2473c5163f54
+- code: `workflows/src/workhorse_workflows/coder/shared/service_gates.py::GATE_TIMEOUT` @230a77ce3a3a
 
 ### GATE_ORDER
 - type: `tuple[str, str]`
@@ -43,7 +43,7 @@ that the flow routes.
 - required: true
 - semantics: declared development gates are resolved and run in lint-then-test order
 - verify: count(subject="development gate order", equals=1)
-- code: `workflows/src/workhorse_workflows/coder/shared/service_gates.py::GATE_ORDER` @2473c5163f54
+- code: `workflows/src/workhorse_workflows/coder/shared/service_gates.py::GATE_ORDER` @230a77ce3a3a
 
 ### AWAITING
 - type: `str`
@@ -77,18 +77,18 @@ that the flow routes.
 - does: normalizes plan files that resolve inside the story spec directory to spec-relative paths
 - returns: services, implementation order, shared packages, verification setup, and typed fixture projections
 - verify: count(subject="development plan documents", equals=1)
-- code: `workflows/src/workhorse_workflows/coder/shared/plan.py::plan_document` @e01e5b6a0236
+- code: `workflows/src/workhorse_workflows/coder/shared/plan.py::plan_document` @9e8d38cfead5
 
 ### record_plan
-- sig: `record_plan(logger: logging.Logger, plan: dict[str, Any] | None = None, spec_dir: str = "", repo_dir: str = "", workspace_file: str = "") -> PlanValidation`
+- sig: `record_plan(logger: logging.Logger, plan: dict[str, Any] | None = None, spec_dir: str = "", repo_dir: str = "", workspace: str = "") -> PlanValidation`
 - does: writes the projected plan as `plan-context.json` under the resolved spec directory
 - does: rejects an empty spec directory without writing a plan projection
 - does: checks every dispatched plan file is a readable file
-- does: validates declared service paths and workspace markers for existing services
+- does: validates that each existing service path exists, is a directory, and is declared under the repository's `services:` block when it declares any
 - does: permits a service-less plan as a repository-root dispatch when its dispatched files are valid
 - returns: `valid` with the projected document, or `invalid` with deterministic errors
 - verify: persists(subject="the plan-context projection")
-- code: `workflows/src/workhorse_workflows/coder/shared/plan.py::record_plan` @e01e5b6a0236
+- code: `workflows/src/workhorse_workflows/coder/shared/plan.py::record_plan` @9e8d38cfead5
 
 
 ### load_plan_context
@@ -96,10 +96,10 @@ that the flow routes.
 - does: reads `plan-context.json` under the spec directory, taken relative to `root` unless absolute
 - returns: the parsed projection, or an empty mapping when the spec directory is empty or the file is missing or unreadable
 - verify: count(subject="plan-context reads", equals=1)
-- code: `workflows/src/workhorse_workflows/coder/shared/plan.py::load_plan_context` @e01e5b6a0236
+- code: `workflows/src/workhorse_workflows/coder/shared/plan.py::load_plan_context` @9e8d38cfead5
 
 ### resolve_impl_context
-- sig: `resolve_impl_context(logger: logging.Logger, spec_dir: str = "", target_env: str = "local", docs_path: str = "", repo_dir: str = "", workspace_file: str = "", plan: dict[str, Any] | None = None) -> ImplContext`
+- sig: `resolve_impl_context(logger: logging.Logger, spec_dir: str = "", repo_dir: str = "", workspace: str = "", plan: dict[str, Any] | None = None) -> ImplContext`
 - does: uses the checkpointed plan when present and otherwise loads the plan projection from disk
 - does: creates a repository-root fallback dispatch when the plan is absent or names no services
 - does: excludes Terraform and documentation layers from the QA run plan
@@ -108,15 +108,15 @@ that the flow routes.
 - does: creates one unique `<surface>=<cwd>` QA source-root entry for each dispatched surface
 - returns: dispatch, QA, fixture, shared-package, affected-repository, and source-root context
 - verify: count(subject="resolved implementation contexts", equals=1)
-- code: `workflows/src/workhorse_workflows/coder/shared/plan.py::resolve_impl_context` @e01e5b6a0236
+- code: `workflows/src/workhorse_workflows/coder/shared/plan.py::resolve_impl_context` @9e8d38cfead5
 
 ### plan_summary
-- sig: `plan_summary(logger: logging.Logger, spec_dir: str = "", repo_dir: str = "", workspace_file: str = "") -> PlanSummary`
+- sig: `plan_summary(logger: logging.Logger, spec_dir: str = "", repo_dir: str = "", workspace: str = "") -> PlanSummary`
 - does: renders each planned service with its type and plan file
 - does: renders implementation order, shared packages, verification setup, named fixtures, and unnamed arrangements when present
 - returns: blank text when the projection is missing or declares no services, otherwise a human-readable plan summary
 - verify: count(subject="rendered plan summaries", equals=1)
-- code: `workflows/src/workhorse_workflows/coder/shared/plan.py::plan_summary` @e01e5b6a0236
+- code: `workflows/src/workhorse_workflows/coder/shared/plan.py::plan_summary` @9e8d38cfead5
 
 
 ### build_dispatch_list
@@ -135,7 +135,7 @@ that the flow routes.
 - does: emits one first-repository fallback record only when `fallback` is true, no dispatch records exist, and repositories are available
 - verify: count(subject="fallback dispatch records", equals=1)
 - returns: the ordered dispatch record list
-- code: `workflows/src/workhorse_workflows/coder/shared/plan.py::build_dispatch_list` @e01e5b6a0236
+- code: `workflows/src/workhorse_workflows/coder/shared/plan.py::build_dispatch_list` @9e8d38cfead5
 
 ### get_affected_repos
 
@@ -146,23 +146,24 @@ that the flow routes.
 - verify: removed(subject="duplicate selected repository name")
 - returns: the sorted, deduplicated repository-name list
 - verify: json_path(path="$.affected", equals="sorted unique repository names")
-- code: `workflows/src/workhorse_workflows/coder/shared/plan.py::get_affected_repos` @e01e5b6a0236
+- code: `workflows/src/workhorse_workflows/coder/shared/plan.py::get_affected_repos` @9e8d38cfead5
 
 ### service_keys
 - sig: `service_keys(service: str = "", service_type: str = "") -> list[str]`
 - does: derives lookup keys from the complete dispatch id, its path, the path basename, and the service type
 - returns: unique non-empty keys in narrowest-first order
 - verify: count(subject="service declaration lookup keys", equals=1)
-- code: `workflows/src/workhorse_workflows/coder/shared/service_gates.py::service_keys` @2473c5163f54
+- code: `workflows/src/workhorse_workflows/coder/shared/service_gates.py::service_keys` @230a77ce3a3a
 - tests: `workflows/tests/coder/shared/test_gates.py::test_the_dispatch_id_is_decomposed_into_the_keys_a_repo_actually_writes`
 
 ### service_declaration
 - sig: `service_declaration(service: str = "", service_type: str = "", repo_dir: str = "") -> dict`
 - does: loads the orchestrating repository's service declarations
-- does: returns the first dictionary found by service, path, basename, then service type
+- does: returns the entry whose `path` equals the planned service's path when one does
+- does: otherwise returns the first dictionary found by service, path, basename, then service type
 - returns: the selected gate declaration or an empty mapping
 - verify: count(subject="service declaration selection", equals=1)
-- code: `workflows/src/workhorse_workflows/coder/shared/service_gates.py::service_declaration` @2473c5163f54
+- code: `workflows/src/workhorse_workflows/coder/shared/service_gates.py::service_declaration` @230a77ce3a3a
 - tests: `workflows/tests/coder/shared/test_gates.py::test_a_service_name_beats_its_type`
 
 ### service_dir
@@ -171,7 +172,7 @@ that the flow routes.
 - does: falls back to the supplied checkout for a root service, a missing path, or a non-directory
 - returns: the directory in which that service's gate command runs
 - verify: count(subject="service gate working directories", equals=1)
-- code: `workflows/src/workhorse_workflows/coder/shared/service_gates.py::service_dir` @2473c5163f54
+- code: `workflows/src/workhorse_workflows/coder/shared/service_gates.py::service_dir` @230a77ce3a3a
 - tests: `workflows/tests/coder/shared/test_gates.py::test_a_services_gate_runs_in_the_service_directory_not_the_repo_root`
 
 ### gate_command
@@ -181,7 +182,7 @@ that the flow routes.
 - does: falls back to `make <gate>` only when the service Makefile defines that target
 - returns: the selected command or an empty string when the gate is not adopted
 - verify: count(subject="resolved service gate commands", equals=1)
-- code: `workflows/src/workhorse_workflows/coder/shared/service_gates.py::gate_command` @2473c5163f54
+- code: `workflows/src/workhorse_workflows/coder/shared/service_gates.py::gate_command` @230a77ce3a3a
 - tests: `workflows/tests/coder/shared/test_gates.py::test_a_makefile_target_is_the_last_resort`
 
 ### declared_gates
@@ -190,16 +191,16 @@ that the flow routes.
 - does: reports `(nothing declared)` when no gate is adopted
 - returns: gate names, commands, and their execution-directory annotation
 - verify: count(subject="declared gate summaries", equals=1)
-- code: `workflows/src/workhorse_workflows/coder/shared/service_gates.py::declared_gates` @2473c5163f54
+- code: `workflows/src/workhorse_workflows/coder/shared/service_gates.py::declared_gates` @230a77ce3a3a
 - tests: `workflows/tests/coder/shared/test_gates.py::test_declared_gates_renders_the_commands_that_will_run`
 
-### declared_markers
-- sig: `declared_markers(logger: logging.Logger, repo_dir: str = "", workspace_file: str = "") -> GateList`
-- does: reads each workspace repository's declared service marker files
-- returns: one repository line per repository with markers, or blank text when none are declared
-- verify: count(subject="declared service markers", equals=1)
-- code: `workflows/src/workhorse_workflows/coder/shared/service_gates.py::declared_markers` @2473c5163f54
-- tests: `workflows/tests/coder/shared/test_gates.py::test_the_planner_is_told_the_markers_this_workspace_declares`
+### declared_services
+- sig: `declared_services(logger: logging.Logger, repo_dir: str = "", workspace: str = "") -> GateList`
+- does: reads each workspace repository's `services:` entries
+- returns: one repository line per repository, listing each service as its name at its path, or blank text when none are declared
+- verify: count(subject="declared services", equals=1)
+- code: `workflows/src/workhorse_workflows/coder/shared/service_gates.py::declared_services` @230a77ce3a3a
+- tests: `workflows/tests/coder/shared/test_gates.py::test_the_planner_is_told_the_services_this_workspace_declares`
 
 ### run_gate
 - sig: `run_gate(logger: logging.Logger, cwd: str = "", service: str = "", gate: str = "lint", service_type: str = "", repo_dir: str = "") -> GateOutcome`
@@ -209,11 +210,11 @@ that the flow routes.
 - does: returns `dirty` for a non-zero exit, timeout, or truncated combined output
 - returns: the gate name, status, command, output, and reason
 - verify: count(subject="executed development gates", equals=1)
-- code: `workflows/src/workhorse_workflows/coder/shared/service_gates.py::run_gate` @2473c5163f54
+- code: `workflows/src/workhorse_workflows/coder/shared/service_gates.py::run_gate` @230a77ce3a3a
 - tests: `workflows/tests/coder/shared/test_gates.py::test_a_failing_command_is_dirty_and_carries_its_output`
 
 ### check_story_status
-- sig: `check_story_status(logger: logging.Logger, docs_path: str = "", slug: str = "", epic: str = "", story_path: str = "", repo_dir: str = "") -> StoryStatusCheck`
+- sig: `check_story_status(logger: logging.Logger, slug: str = "", epic: str = "", story_path: str = "", repo_dir: str = "") -> StoryStatusCheck`
 - does: reads the story status through the shared status adapter
 - does: reports `dirty` when the status marks the story finished before QA
 - returns: `clean` with the written status when it is not finished, otherwise `dirty` with that status
@@ -231,7 +232,7 @@ that the flow routes.
 - tests: `workflows/tests/coder/shared/test_gates.py::test_a_new_file_is_in_the_diff_the_gates_read`
 
 ### resolve_story_sources
-- sig: `resolve_story_sources(logger: logging.Logger, dispatch: tuple[DispatchEntry, ...], story_slug: str = "", story_id: str = "", docs_path: str = "", repo_dir: str = "") -> StorySources`
+- sig: `resolve_story_sources(logger: logging.Logger, dispatch: tuple[DispatchEntry, ...], story_slug: str = "", story_id: str = "", repo_dir: str = "") -> StorySources`
 - does: resolves one base commit per implementation repository from the earliest exact story trailer
 - does: deduplicates repeated repository, surface, and service-root entries
 - returns: valid story source provenance, or invalid errors for missing story identity, missing source repositories, conflicting checkouts, or absent story commits

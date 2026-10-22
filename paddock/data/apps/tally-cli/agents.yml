@@ -35,17 +35,11 @@ scaffolds:
   - shared-docs
   - python-cli
 
-workspace:
-  type: mono
-  service_roots:
-    - .
-  service_markers:
-    - pyproject.toml
-
 services:
   # Stdlib only, so there is nothing to install and the regression is the interpreter's own
   # answer about whether the package imports and the parser builds.
   tally:
+    path: .
     regression: python3 -c "import tally.cli; tally.cli.build_parser()"
 
 # The one external command the frozen QA plans reach for, and the reason it is one rather
@@ -69,7 +63,3 @@ services:
 qa:
   tools:
     - python3
-
-organization:
-  docRoots:
-    specs: docs/specs

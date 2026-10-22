@@ -24,9 +24,6 @@ def test_a_repo_with_no_services_block_is_warned_that_nothing_is_gated(tmp_path:
 def test_a_partially_declared_service_is_warned_about_the_missing_gate(tmp_path: Path) -> None:
     _write(
         tmp_path,
-        "workspace:\n"
-        "  service_roots: [api]\n"
-        "  service_markers: [go.mod]\n"
         "services:\n"
         "  api: {lint: 'golangci-lint run'}\n",
     )
@@ -40,9 +37,6 @@ def test_a_partially_declared_service_is_warned_about_the_missing_gate(tmp_path:
 def test_a_fully_declared_repo_has_nothing_to_report(tmp_path: Path) -> None:
     _write(
         tmp_path,
-        "workspace:\n"
-        "  service_roots: [api]\n"
-        "  service_markers: [go.mod]\n"
         "services:\n"
         "  api: {lint: 'golangci-lint run', test: 'go test ./...'}\n",
     )
@@ -54,14 +48,43 @@ def test_the_legacy_lint_map_counts_as_an_adopted_lint_gate(tmp_path: Path) -> N
     """A repo already running the old map is not told to adopt what it has adopted."""
     _write(
         tmp_path,
-        "workspace:\n"
-        "  service_roots: [api]\n"
-        "  service_markers: [go.mod]\n"
         "lint:\n"
         "  api: sh lint.sh\n"
         "services:\n"
         "  api: {test: 'go test ./...'}\n",
     )
+
+    assert diagnose(tmp_path) == []
+
+
+def test_a_leftover_workspace_section_is_an_error_naming_the_move(tmp_path: Path) -> None:
+    _write(
+        tmp_path,
+        "workspace:\n"
+        "  service_roots: [api]\n"
+        "services:\n"
+        "  api: {lint: ruff, test: pytest}\n",
+    )
+
+    findings = diagnose(tmp_path)
+
+    assert [f.level for f in findings] == ["error"]
+    assert "services.<name>.path" in findings[0].message
+    assert "to repo:" in findings[0].message
+
+
+def test_a_service_path_that_does_not_exist_is_an_error(tmp_path: Path) -> None:
+    _write(tmp_path, "services:\n  api: {path: app/api, lint: ruff, test: pytest}\n")
+
+    findings = diagnose(tmp_path)
+
+    assert [f.level for f in findings] == ["error"]
+    assert "services.api.path app/api does not exist" in findings[0].message
+
+
+def test_a_service_path_that_exists_is_not_reported(tmp_path: Path) -> None:
+    (tmp_path / "app" / "api").mkdir(parents=True)
+    _write(tmp_path, "services:\n  api: {path: app/api, lint: ruff, test: pytest}\n")
 
     assert diagnose(tmp_path) == []
 

@@ -28,7 +28,6 @@ class Genesis(Workflow):
     scaffolds: str = ""
     init_cmd: str = ""
     marker: str = ""
-    markers: str = ""
     workflows: str = "coder"
     assistants: str = "claude"
     gates: str = ""
@@ -42,7 +41,6 @@ class Genesis(Workflow):
             self.service,
             self.service_root,
             self.marker,
-            self._split(self.markers),
         )
         if not found.ok:
             raise WorkflowFailed(found.note or "no usable genesis target")
@@ -65,7 +63,6 @@ class Genesis(Workflow):
             found.service,
             self._split(self.packs),
             self.service_root,
-            found.markers,
             self._split(self.workflows),
             self._split(self.scaffolds),
             self._split(self.assistants),
@@ -96,7 +93,7 @@ class Genesis(Workflow):
         """Assert every precondition the main loop assumes, and fail if it does not hold."""
         found = self._target()
         report = self.call(
-            validate_genesis, found.target_dir, self.service_root, found.markers
+            validate_genesis, found.target_dir, self.service_root
         )
         for warning in report.warnings.splitlines():
             self.logger.warning("%s", warning)

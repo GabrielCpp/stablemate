@@ -7,7 +7,7 @@ title: Coder branch outcome
 
 - file: none — in-memory branch operation result
 - config: `BranchOutcome` branch dispatch result
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/dev.py::BranchOutcome` @5aa622da8aea
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/dev.py::BranchOutcome` @bcd75ac6f796
 - detail: [coder development schema contracts](../concepts/coder-dev-schema-contracts.md)
 
 ## Fields
@@ -18,7 +18,7 @@ title: Coder branch outcome
 - required: false
 - semantics: repositories moved onto the requested run branch
 - verify: json_path(path="$.branched", matches="^\[.*\]$")
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/dev.py::BranchOutcome.branched` @5aa622da8aea
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/dev.py::BranchOutcome.branched` @bcd75ac6f796
 
 ### already_on_branch
 - type: `list[str]`
@@ -26,4 +26,4 @@ title: Coder branch outcome
 - required: false
 - semantics: repositories already on the requested branch and left unchanged
 - verify: json_path(path="$.already_on_branch", matches="^\[.*\]$")
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/dev.py::BranchOutcome.already_on_branch` @5aa622da8aea
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/dev.py::BranchOutcome.already_on_branch` @bcd75ac6f796

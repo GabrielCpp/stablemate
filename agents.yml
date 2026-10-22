@@ -5,6 +5,7 @@ agents:
 
 repo:
   name: stablemate
+  base_branch: main
 
 # The hook manager farrier splices its one entry into. `githooks` — git's own
 # `core.hooksPath`, pointed at `.githooks/`, with no runner in front of it. The
@@ -15,7 +16,7 @@ repo:
 # `.githooks/` are already standalone scripts that read the index themselves, so the
 # framework was wiring around scripts that needed none. Farrier owns a fenced region
 # at the end of `.githooks/pre-commit` and nothing outside it, and `farrier install`
-# is what sets `core.hooksPath`; see docs/features/farrier/agents-yml-config.md.
+# is what sets `core.hooksPath`; see docs/services/farrier/agents-yml-config.md.
 hooks:
   manager: githooks
 

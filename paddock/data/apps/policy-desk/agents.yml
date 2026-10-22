@@ -1,9 +1,9 @@
 # policy-desk — the fictive enterprise app the standalone-QA benchmark measures against.
 #
 # Written by `workhorse-coder run genesis` (twice: once per service) and then trimmed by
-# hand to what a fixture needs. The `workspace:` block, the scaffold list and the pack list
-# are genesis' own output; `services:` carries the two deterministic gates a dev lane runs
-# after an implement turn, keyed on each service's directory name.
+# hand to what a fixture needs. The scaffold list and the pack list are genesis' own
+# output; `services:` carries each service's directory and the two deterministic gates a dev
+# lane runs after an implement turn.
 #
 # The pack list is short because this repo is a *fixture*, not a product: `stablemate` is
 # the only pack that ships in `base-library/`, the benchmark has to resolve from a public
@@ -33,22 +33,15 @@ scaffolds:
   - go-service
   - react-router-web
 
-workspace:
-  type: mono
-  service_roots:
-    - app/api
-    - app/web
-  service_markers:
-    - go.mod
-    - package.json
-
 services:
   # Both are seconds, not minutes: the Go module has no dependency to download at gate time
   # and the web build is a cold Vite build of eight files. A gate that outruns the node's
   # SUITE_TIMEOUT reports as a regression the story did not cause.
   api:
+    path: app/api
     regression: go vet ./... && go test ./...
   web:
+    path: app/web
     regression: npm run build
 
 # The one external command the frozen QA plans may reach for. `docker` exists so the
@@ -60,7 +53,3 @@ services:
 qa:
   tools:
     - docker
-
-organization:
-  docRoots:
-    specs: docs/specs

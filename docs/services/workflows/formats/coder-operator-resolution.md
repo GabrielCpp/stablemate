@@ -10,7 +10,7 @@ existing written authority; `escalated` decisions carry investigation evidence f
 
 - file: none — in-memory workflow result
 - config: the resolver prompt's structured response
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/dev.py::OperatorResolution` @5aa622da8aea
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/dev.py::OperatorResolution` @bcd75ac6f796
 - detail: [Coder escalation composition](../concepts/coder-shared-escalation.md)
 
 ## Fields
@@ -20,7 +20,7 @@ existing written authority; `escalated` decisions carry investigation evidence f
 - required: true
 - semantics: whether the resolver found written authority or must hand the question to an operator
 - verify: json_path(path="$.decision", matches="answered|escalated")
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/dev.py::OperatorResolution.decision` @5aa622da8aea
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/dev.py::OperatorResolution.decision` @bcd75ac6f796
 
 ### summary
 - type: `str`
@@ -28,7 +28,7 @@ existing written authority; `escalated` decisions carry investigation evidence f
 - required: false
 - semantics: one-line decision or blocker presented by the escalation
 - verify: json_path(path="$.summary", equals="Story built and checked.")
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/dev.py::OperatorResolution.summary` @5aa622da8aea
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/dev.py::OperatorResolution.summary` @bcd75ac6f796
 
 ### grounded
 - type: list of strings
@@ -36,7 +36,7 @@ existing written authority; `escalated` decisions carry investigation evidence f
 - required: false
 - semantics: written sources and quoted rules supporting an answered decision
 - verify: json_path(path="$.grounded", matches="^\[.*\]$")
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/dev.py::OperatorResolution.grounded` @5aa622da8aea
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/dev.py::OperatorResolution.grounded` @bcd75ac6f796
 
 ### record
 - type: `str`
@@ -44,7 +44,7 @@ existing written authority; `escalated` decisions carry investigation evidence f
 - required: false
 - semantics: decision-record slug written or cited for the resolution
 - verify: json_path(path="$.record", equals="example record")
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/dev.py::OperatorResolution.record` @5aa622da8aea
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/dev.py::OperatorResolution.record` @bcd75ac6f796
 
 ### tried
 - type: list of strings
@@ -52,4 +52,4 @@ existing written authority; `escalated` decisions carry investigation evidence f
 - required: false
 - semantics: concrete investigations and ruled-out hypotheses published verbatim in a later operator gate
 - verify: json_path(path="$.tried", matches="^\[.*\]$")
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/dev.py::OperatorResolution.tried` @5aa622da8aea
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/dev.py::OperatorResolution.tried` @bcd75ac6f796

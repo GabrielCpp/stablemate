@@ -28,7 +28,6 @@ class _Params(TypedDict):
     scaffolds: str
     init_cmd: str
     marker: str
-    markers: str
     gates: str
 
 
@@ -39,7 +38,6 @@ PARAMS: _Params = {
     "scaffolds": "shared-docs:docs,go-service:api",
     "init_cmd": "printf 'module example.com/api\\n' > go.mod",
     "marker": "go.mod",
-    "markers": "go.mod",
     "gates": "lint=golangci-lint run,test=go test ./...",
 }
 
@@ -151,20 +149,19 @@ def test_a_bare_directory_becomes_a_repo_the_main_loop_will_accept(
     assert head.stdout.strip()
 
 
-def test_agents_yml_carries_the_workspace_block_the_planner_reads(
+def test_agents_yml_carries_the_services_block_the_planner_reads(
     env: Callable[..., RunEnv], drive_flow: Callable[..., Any], farrier: _Farrier, target: Path
 ) -> None:
-    """`workspace:` is what makes the service targetable at all, and `scaffolds:` is what lets `farrier scaffold` render anything — the CLI refuses an id the file has not enabled, so a port that wrote it after the farrier step would render nothing."""
+    """`services:` is what makes the service targetable at all, and `scaffolds:` is what lets `farrier scaffold` render anything — the CLI refuses an id the file has not enabled, so a port that wrote it after the farrier step would render nothing."""
     _run(drive_flow, env(), target)
 
     data = YAML(typ="safe").load(target / "agents.yml")
     assert data["repo"]["name"] == "greenfield", data
-    assert data["workspace"]["service_roots"] == ["api"], data
-    assert data["workspace"]["service_markers"] == ["go.mod"], data
+    assert "workspace" not in data, data
     assert data["scaffolds"] == ["shared-docs", "go-service"], data
     assert data["packs"] == ["go-service"], data
     assert data["services"] == {
-        "api": {"lint": "golangci-lint run", "test": "go test ./..."}
+        "api": {"path": "api", "lint": "golangci-lint run", "test": "go test ./..."}
     }, data
     assert data["agents"] == {"claude": True, "codex": False, "copilot": False}, data
 

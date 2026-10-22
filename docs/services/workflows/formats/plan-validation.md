@@ -7,7 +7,7 @@ title: Coder plan validation
 
 - file: none — in-memory plan validation result
 - config: `PlanValidation` result from `record_plan`
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/dev.py::PlanValidation` @5aa622da8aea
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/dev.py::PlanValidation` @bcd75ac6f796
 - detail: [coder development schema contracts](../concepts/coder-dev-schema-contracts.md)
 
 ## Fields
@@ -18,7 +18,7 @@ title: Coder plan validation
 - required: false
 - semantics: whether the projected plan points at valid services and files
 - verify: json_path(path="$.status", matches="valid|invalid")
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/dev.py::PlanValidation.status` @5aa622da8aea
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/dev.py::PlanValidation.status` @bcd75ac6f796
 
 ### errors
 - type: `list[str]`
@@ -26,7 +26,7 @@ title: Coder plan validation
 - required: false
 - semantics: deterministic validation failures handed to plan refinement
 - verify: json_path(path="$.errors", matches="^\[.*\]$")
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/dev.py::PlanValidation.errors` @5aa622da8aea
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/dev.py::PlanValidation.errors` @bcd75ac6f796
 
 ### document
 - type: `dict[str, Any]`
@@ -34,4 +34,4 @@ title: Coder plan validation
 - required: false
 - semantics: projected plan document written to `plan-context.json`
 - verify: json_path(path="$.document", matches="^\{.*\}$")
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/dev.py::PlanValidation.document` @5aa622da8aea
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/dev.py::PlanValidation.document` @bcd75ac6f796

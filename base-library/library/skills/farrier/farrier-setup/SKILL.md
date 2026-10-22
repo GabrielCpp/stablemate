@@ -69,8 +69,8 @@ change it, rename the directory.
 Packs are for bundles reused by ≥2 repos; a repo's own overlays and one-off
 selections go directly under top-level `skills:` / `prompts:` / `workflows:`
 keys (see `agents/packs/CLAUDE.md`). The full key reference (template values,
-`workspace:`, `workflow:` runtime config, `exclude:`, `scaffolds:`) lives in
-the farrier repo: `docs/features/farrier/agents-yml-config.md` and
+`repo:` `base_branch`, `services:`, `workflow:` runtime config, `exclude:`, `scaffolds:`) lives in
+the farrier repo: `docs/services/farrier/agents-yml-config.md` and
 `agents.example.yml`.
 
 ## Scaffolding a New Service or Repo

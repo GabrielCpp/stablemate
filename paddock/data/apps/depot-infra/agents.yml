@@ -30,18 +30,12 @@ scaffolds:
   - shared-docs
   - pulumi-infra
 
-workspace:
-  type: mono
-  service_roots:
-    - pulumi
-  service_markers:
-    - go.mod
-
 services:
   # No test target: the program declares resources and asserts nothing, so `go test ./...`
   # would report a pass earned by having no tests. The regression that means something here
   # is that it still compiles against the pinned provider SDK.
   pulumi:
+    path: pulumi
     regression: go build ./... && go vet ./...
 
 # The two external commands the frozen QA plans may reach for, and both are here because a
@@ -55,7 +49,3 @@ qa:
   tools:
     - make
     - jq
-
-organization:
-  docRoots:
-    specs: docs/specs

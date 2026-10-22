@@ -114,14 +114,14 @@ title: 'farrier — render the agent prompt library into a repository: Commands'
     - run: invoke(argv=["doctor", "--repo", "c170"], env={"HOME": "c170/home", "STABLEMATE_CONFIG": "c170/config.toml", "STABLEMATE_FETCH_BASE": "0", "PATH": "c170/pipx-stub-bin:$PATH"})
     - verify: stdout(text="agents.yml is not a YAML mapping.")
     - fixture: list-agents-yml dir=c170
-  - warn when `workspace.service_roots` is empty
+  - report an error when `agents.yml` still has a `workspace:` section, naming the move to `services.<name>.path`
     - run: invoke(argv=["doctor", "--repo", "c171"], env={"HOME": "c171/home", "STABLEMATE_CONFIG": "c171/config.toml", "STABLEMATE_FETCH_BASE": "0", "PATH": "c171/pipx-stub-bin:$PATH"})
-    - verify: stdout(text="workspace.service_roots is empty")
-    - fixture: bare-agents-yml dir=c171
-  - warn when `workspace.service_markers` is empty
+    - verify: stdout(text="Move each service root to services.<name>.path")
+    - fixture: leftover-workspace-agents-yml dir=c171
+  - report an error when a service entry's `path` does not exist in the repository
     - run: invoke(argv=["doctor", "--repo", "c172"], env={"HOME": "c172/home", "STABLEMATE_CONFIG": "c172/config.toml", "STABLEMATE_FETCH_BASE": "0", "PATH": "c172/pipx-stub-bin:$PATH"})
-    - verify: stdout(text="workspace.service_markers is empty")
-    - fixture: bare-agents-yml dir=c172
+    - verify: stdout(text="services.api.path app/api does not exist")
+    - fixture: missing-service-path-agents-yml dir=c172
   - warn when no top-level `services:` mapping or `workflow.services:` mapping exists
     - run: invoke(argv=["doctor", "--repo", "c173"], env={"HOME": "c173/home", "STABLEMATE_CONFIG": "c173/config.toml", "STABLEMATE_FETCH_BASE": "0", "PATH": "c173/pipx-stub-bin:$PATH"})
     - verify: stdout(text="no services: block")
@@ -135,11 +135,6 @@ title: 'farrier — render the agent prompt library into a repository: Commands'
     - run: invoke(argv=["doctor", "--repo", "c175"], env={"HOME": "c175/home", "STABLEMATE_CONFIG": "c175/config.toml", "STABLEMATE_FETCH_BASE": "0", "PATH": "c175/pipx-stub-bin:$PATH"})
     - verify: stdout(text="services.api declares no test command")
     - fixture: lint-only-agents-yml dir=c175
-  - warn when a workspace service root matches neither a service key nor its complete root
-    path
-    - run: invoke(argv=["doctor", "--repo", "c176"], env={"HOME": "c176/home", "STABLEMATE_CONFIG": "c176/config.toml", "STABLEMATE_FETCH_BASE": "0", "PATH": "c176/pipx-stub-bin:$PATH"})
-    - verify: stdout(text="these service roots match no services: key")
-    - fixture: orphan-root-agents-yml dir=c176
   - print each finding with its severity and operator-facing message
     - run: invoke(argv=["doctor", "--repo", "c177"], env={"HOME": "c177/home", "STABLEMATE_CONFIG": "c177/config.toml", "STABLEMATE_FETCH_BASE": "0", "PATH": "c177/pipx-stub-bin:$PATH"})
     - verify: stdout(text="warning: ")
@@ -157,7 +152,7 @@ title: 'farrier — render the agent prompt library into a repository: Commands'
     - run: invoke(argv=["doctor", "--repo", "c180"], env={"HOME": "c180/home", "STABLEMATE_CONFIG": "c180/config.toml", "STABLEMATE_FETCH_BASE": "0", "PATH": "c180/pipx-stub-bin:$PATH"})
     - verify: exit_status(code=1)
     - fixture: empty-dir dir=c180
-- code: `farrier/farrier/doctor.py::report` @21fff6ebd077
+- code: `farrier/farrier/doctor.py::report` @db3ffdebab2b
 - detail: [repository diagnosis](concepts/doctor-diagnosis.md)
 - tests: `farrier/tests/test_doctor_command.py::test_a_repo_with_no_services_block_is_warned_that_nothing_is_gated`
 - tests: `farrier/tests/test_doctor_command.py::test_a_missing_agents_yml_is_the_one_error`

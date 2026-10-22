@@ -8,7 +8,7 @@ from typing import Any
 
 from ostler import Ostler
 from workhorse_workflows.kit import find_docs_root, find_repo_root, load_json, resolve_workspace
-from workhorse_workflows.coder.shared.contract import service_problems
+from workhorse_workflows.coder.shared.contract import declared_service_paths, service_problems
 from workhorse_workflows.coder.shared.blueprint import blueprint
 from workhorse_workflows.coder.shared.schemas.dev import (
     DispatchEntry,
@@ -133,9 +133,6 @@ def build_dispatch_list(plan_ctx: dict, repos: dict[str, dict], *, fallback: boo
             "service_path": svc["path"],
             "type": svc_type,
             "plan_file": svc.get("plan_file", "plan.md"),
-            "qa_mode": repo_info.get("qa_mode", "cli"),
-            "qa_skills": repo_info.get("qa_skills", []),
-            "verification": repo_info.get("verification", ""),
             "label": label,
         })
 
@@ -149,9 +146,6 @@ def build_dispatch_list(plan_ctx: dict, repos: dict[str, dict], *, fallback: boo
             "service_path": ".",
             "type": "unknown",
             "plan_file": "plan.md",
-            "qa_mode": repo_info.get("qa_mode", "cli"),
-            "qa_skills": [],
-            "verification": repo_info.get("verification", ""),
             "label": repo_name,
         }]
 
@@ -210,7 +204,7 @@ def record_plan(
     plan: dict[str, Any] | None = None,
     spec_dir: str = "",
     repo_dir: str = "",
-    workspace_file: str = "",
+    workspace: str = "",
 ) -> PlanValidation:
     """Write the plan-context projection, and answer whether the plan is implementable."""
     if not spec_dir:
@@ -218,7 +212,7 @@ def record_plan(
 
     root = find_repo_root(repo_dir)
     spec_abs = _spec_dir(spec_dir, root)
-    repos = resolve_workspace(workspace_file, repo_dir)
+    repos = resolve_workspace(workspace, repo_dir)
     doc = plan_document(plan or {}, repos, spec_abs, root)
 
     spec_abs.mkdir(parents=True, exist_ok=True)
@@ -263,8 +257,12 @@ def record_plan(
             logger.info("%s: new_service=true — skipping path existence check", label)
             continue
 
-        markers = repo_info.get("service_markers", [])
-        problems = service_problems(Path(repo_info["path"]) / svc_path, markers, label)
+        problems = service_problems(
+            Path(repo_info["path"]) / svc_path,
+            label,
+            svc_path,
+            declared_service_paths(repo_info.get("services")),
+        )
         if problems:
             errors.extend(problems)
             continue
@@ -286,17 +284,15 @@ def _package_label(item: Any) -> str:
 def resolve_impl_context(
     logger: logging.Logger,
     spec_dir: str = "",
-    target_env: str = "local",
-    docs_path: str = "",
     repo_dir: str = "",
-    workspace_file: str = "",
+    workspace: str = "",
     plan: dict[str, Any] | None = None,
 ) -> ImplContext:
     """Decode the approved plan against the workspace into everything downstream needs."""
     root = find_repo_root(repo_dir)
-    docs_root = find_docs_root(docs_path, repo_dir)
+    docs_root = find_docs_root(repo_dir)
 
-    repos = resolve_workspace(workspace_file, repo_dir)
+    repos = resolve_workspace(workspace, repo_dir)
     plan_ctx, plan_ctx_absent = plan_context(plan, spec_dir, root, repos, logger)
 
     services = plan_ctx.get("services") or []
@@ -312,15 +308,10 @@ def resolve_impl_context(
         QaRunEntry(
             service=entry.service,
             label=entry.label,
-            qa_mode=entry.qa_mode,
-            qa_skill=skills[0] if skills else "",
-            qa_skills=skills,
+            type=entry.type,
         )
         for entry in dispatch
         if entry.type not in ("terraform", "docs")
-        for skills in [
-            [s for s in entry.qa_skills if target_env == "local" or not s.endswith("-local")]
-        ]
     ]
 
     affected_repos = get_affected_repos(plan_ctx, repos)
@@ -355,11 +346,11 @@ def plan_summary(
     logger: logging.Logger,
     spec_dir: str = "",
     repo_dir: str = "",
-    workspace_file: str = "",
+    workspace: str = "",
 ) -> PlanSummary:
     """The plan's structure, rendered for a turn in a lane that did not plan it."""
     root = find_repo_root(repo_dir)
-    repos = resolve_workspace(workspace_file, repo_dir)
+    repos = resolve_workspace(workspace, repo_dir)
     plan_ctx, _ = plan_context(None, spec_dir, root, repos, logger)
 
     services = plan_ctx.get("services") or []

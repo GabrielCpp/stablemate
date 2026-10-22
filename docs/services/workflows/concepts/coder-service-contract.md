@@ -5,13 +5,13 @@ title: Coder service contract
 ---
 # Coder service contract
 
-- code: `workflows/src/workhorse_workflows/coder/shared/contract.py::service_problems` @c887c303cd5c
+- code: `workflows/src/workhorse_workflows/coder/shared/contract.py::service_problems` @997bfb900763
 
 The coder uses this contract at both sides of service setup: genesis validates the service it
 leaves behind, while plan recording validates the service a plan intends to target. Both callers
-pass the configured marker sequence through unchanged. An empty marker sequence means the
-repository has not declared a marker policy, so marker validation is skipped rather than replaced
-with stack-specific defaults.
+pass the paths the repository's `services:` block declares. An empty list means the repository
+declares no services, so declaration validation is skipped and the path only has to exist as a
+directory.
 
 The function reports all validation failures for its one service path as a list of human-readable
 messages. It does not mutate the path or infer a service type.
@@ -20,15 +20,15 @@ messages. It does not mutate the path or infer a service type.
 
 ### service_problems
 
-- sig: `service_problems(service_abs: Path, markers: Sequence[str], label: str) -> list[str]`
+- sig: `service_problems(service_abs: Path, label: str, path: str = "", declared: Iterable[str] = ()) -> list[str]`
 - does: returns one error identifying the label and absolute service path when the path does not exist
 - verify: count(subject="service contract problems", equals=1)
 - does: returns one error identifying the label when the path exists but is not a directory
-- does: returns one error when markers are configured and none exists below the service directory
-- does: identifies the marker error with the label, expected marker names, and service path
-- verify: json_path(path="$[0]", matches=".*: no service marker found \\(expected one of \\[.*\\] in .+\\)")
-- does: skips marker validation when the marker sequence is empty
+- does: returns one error when services are declared and none declares `path`
+- does: identifies the declaration error with the label and the declared paths
+- verify: json_path(path="$[0]", matches=".*: path is not declared under `services:` in agents.yml \\(declared: .*\\)")
+- does: skips declaration validation when no paths are declared
 - verify: count(subject="service contract problems", equals=0)
-- does: accepts the service when it is an existing directory and at least one configured marker exists below it
+- does: accepts the service when it is an existing directory and its path is one the repository declares
 - returns: an empty list when every applicable service condition passes
-- code: `workflows/src/workhorse_workflows/coder/shared/contract.py::service_problems` @c887c303cd5c
+- code: `workflows/src/workhorse_workflows/coder/shared/contract.py::service_problems` @997bfb900763

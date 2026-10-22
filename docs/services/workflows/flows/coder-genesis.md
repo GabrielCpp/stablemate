@@ -44,7 +44,7 @@ It ends in one of these ways: the target passes all repository, service, tooling
 flow immediately. Otherwise the node resolves the absolute target directory, classifies repository
 state as `absent`, `partial` (content without `agents.yml`), or `existing` (an `agents.yml` is
 present), and separately classifies the declared service as `absent` or `existing` from its marker
-file. The resolved marker list uses `markers` when supplied and otherwise the singular `marker`.
+file.
 An existing repository skips only `git-init`; an existing service skips only `skeleton`.
 
 ### git-init
@@ -61,7 +61,7 @@ is left unchanged, while an unborn repository receives the initial commit. No re
 
 `write_agents_yml` round-trip-merges the service into `agents.yml`, preserving existing values and
 comments. It ensures the repository name, assistant map, requested pack/workflow/scaffold ids,
-`workspace.type`, service roots, service markers, and service-specific gate commands are present.
+the service's `services` entry with its `path`, and its gate commands are present.
 Existing configuration is not replaced, and malformed gate entries or unknown assistant names are
 reported in the result rather than interpreted.
 
@@ -88,8 +88,8 @@ missing precondition; the flow does not call an agent to repair deterministic to
 - kind: verify
 
 `validate_genesis` checks that the target is a committed Git repository bound as the current Ostler
-root, that the service marker exists, that the agent context has a non-empty instructions map, and
+root, that the service path exists, that the agent context has a non-empty instructions map, and
 that Ostler resolves both the epics root and backlog. It reuses the shared service contract for
-service markers. A missing lint target is advisory only. Warnings are logged; any error raises
+the service path, which `agents.yml` must declare. A missing lint target is advisory only. Warnings are logged; any error raises
 `WorkflowFailed` with the complete validation report, otherwise the report is returned as the
 terminal result.

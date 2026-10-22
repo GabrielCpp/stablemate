@@ -15,7 +15,7 @@ from workhorse_workflows.coder.shared.docs import (
     classify_documentation_context,
     detect_okf_docs,
     documentation_obligations,
-    features_root,
+    services_root,
     verify_story_documentation,
 )
 from workhorse_workflows.coder.shared.escalation import context_path, escalation
@@ -65,8 +65,6 @@ class Docs(Workflow):
     """Document one story against the OKF graph, and gate the claim against the diff."""
 
     story: str = ""
-    docs_path: str = ""
-    workspace_file: str = ""
     epic: str = ""
     target_env: str = "local"
     preexisting: tuple[str, ...] = ()
@@ -78,8 +76,8 @@ class Docs(Workflow):
 
     def setup(self) -> StoryPaths:
         """Resolve the slug to paths and the workspace to directories."""
-        self.call(resolve_workspace_dirs, self.docs_path)
-        ctx = self.call(prepare_story, self.docs_path, self.story, self.epic)
+        self.call(resolve_workspace_dirs)
+        ctx = self.call(prepare_story, self.story, self.epic)
         return ctx
 
     def labels(self) -> dict[str, str]:
@@ -108,29 +106,26 @@ class Docs(Workflow):
                 f"no story path for {self.story!r}. The story could not be resolved, so "
                 "there is nothing to document."
             )
-        impl = self.call(
-            resolve_impl_context, self.ctx.spec_dir, self.target_env, self.docs_path
-        )
-        okf = self.call(detect_okf_docs, self.docs_path)
+        impl = self.call(resolve_impl_context, self.ctx.spec_dir)
+        okf = self.call(detect_okf_docs)
         if okf.has_okf == "no":
             self.logger.info("no OKF docs here, so there is nothing to document")
             return self._ends(DocsResult(status="not_applicable", notes=okf.reason))
         if okf.has_okf != "yes":
             raise WorkflowFailed(f"OKF documentation is unusable here: {okf.reason}")
         classification = self.call(
-            classify_documentation_context, self.docs_path, tuple(impl.qa_source_roots)
+            classify_documentation_context, tuple(impl.qa_source_roots)
         )
         if classification.mode == "error":
             raise WorkflowFailed(
                 f"the documentation context could not be read: {classification.notes}"
             )
-        if self.workspace_file and self.ctx.story_id:
+        if self.workspace and self.ctx.story_id:
             sources = self.call(
                 resolve_story_sources,
                 tuple(impl.dispatch_list),
                 self.ctx.story_slug,
                 self.ctx.story_id,
-                self.docs_path,
             )
             if sources.status != "valid":
                 raise WorkflowFailed(
@@ -191,8 +186,8 @@ class Docs(Workflow):
             "story_slug": self.ctx.story_slug,
             "story_id": self.ctx.story_id or self.ctx.story_slug,
             "epic": self.epic,
-            "docs_path": self.docs_path,
-            "features_root": features_root(self),
+            "docs_root": str(find_docs_root(self.repo_dir)),
+            "services_root": services_root(self),
             "epic_path": self._epic_path,
             "plan_services": self.call(plan_summary, self.ctx.spec_dir).text,
             "context_mode": classification.mode,
@@ -220,11 +215,10 @@ class Docs(Workflow):
             build = self._okf_packet(classification)
             build_status = build.status
             validate_status = self.call(
-                validate_okf_context, self.ctx.spec_dir, build.status, self.docs_path
+                validate_okf_context, self.ctx.spec_dir, build.status
             ).status
         gate = self.call(
             verify_story_documentation,
-            self.docs_path,
             self.ctx.spec_dir,
             author.status,
             build_status,
@@ -309,7 +303,7 @@ class Docs(Workflow):
             power=RESOLVER_POWER,
             timeout=UNBOUNDED,
             add_dirs=workspace_dirs(self),
-            args=resolver_args(self, block_kind="docs", notes=notes, docs_path=self.docs_path),
+            args=resolver_args(self, block_kind="docs", notes=notes),
         )
         carried = {"obligations": obligations, "authored_nodes": authored_nodes}
         if answered(self, result, "docs"):
@@ -345,15 +339,14 @@ class Docs(Workflow):
             build_okf_context,
             self.ctx.spec_dir,
             self.ctx.story_path,
-            features_root(self),
+            services_root(self),
             tuple(classification.source_roots),
             "HEAD",
             "WORKTREE",
-            self.docs_path,
             preexisting=tuple(self.preexisting),
             story_sources=(
                 self.output(resolve_story_sources).sources
-                if self.workspace_file and self.ctx.story_id
+                if self.workspace and self.ctx.story_id
                 else ()
             ),
         )
@@ -363,7 +356,7 @@ class Docs(Workflow):
     ) -> Literal["local", "semantic", "error"]:
         """Treat an explicit external repository packet as locally verifiable."""
         if (
-            self.workspace_file
+            self.workspace
             and self.ctx.story_id
             and self.output(resolve_story_sources).sources
         ):
@@ -378,7 +371,6 @@ class Docs(Workflow):
             build_status = self._okf_packet(classification).status
         return self.call(
             documentation_obligations,
-            self.docs_path,
             self.ctx.spec_dir,
             mode,
             build_status,
@@ -388,7 +380,7 @@ class Docs(Workflow):
     @property
     def _epic_path(self) -> str:
         """The parent epic whose user journeys this story advances."""
-        root = Path(find_docs_root(self.docs_path, self.repo_dir))
+        root = Path(find_docs_root(self.repo_dir))
         return f"{paths.epic_dir_rel(root, self.ctx.story_epic)}/epic.md"
 
 

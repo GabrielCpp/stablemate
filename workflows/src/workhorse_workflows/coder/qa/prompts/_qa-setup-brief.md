@@ -6,7 +6,7 @@ never starts a service and leaves it running.
 
 ### What it repairs
 
-- **The book's runbook node**, `docs/features/<service>/ops/qa-stack.md`, which the workflow
+- **The book's runbook node**, `docs/services/<service>/ops/qa-stack.md`, which the workflow
   reads through `ostler qa stack up`. `ostler doctor` reports `runbook-missing` when it is
   absent, and `ostler scaffold runbook qa-stack --service <service>` writes the stub. Its
   bullets are `driver`, `entry-url`, `health-path`, `identity`, `reuse`/`fresh`,
@@ -30,7 +30,7 @@ The commands come from `AGENTS.md` and the repo's local-stack runbook, not from 
 QA skills say how each layer comes up:
 {% if qa_run_plan %}
 {%- for r in qa_run_plan %}
-- **{{ r.label }}**: {% for s in (r.qa_skills if r.qa_skills else [r.qa_skill]) %}`{{ s }}`{% if not loop.last %}, {% endif %}{% endfor %}
+- **{{ r.label }}**: {{ find_by_tags("qa", r.type) | default("(none installed)", true) }}
 {%- endfor %}
 {%- else %}
 - None resolved. Fall back to the plan's Verification Commands and its Local run (smoke).

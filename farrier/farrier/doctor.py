@@ -42,23 +42,13 @@ def diagnose(repo: Path) -> list[Finding]:
         return [Finding("error", "agents.yml is not a YAML mapping.")]
 
     findings: list[Finding] = []
-    workspace = config.get("workspace")
-    workspace = workspace if isinstance(workspace, dict) else {}
-    roots = [str(r) for r in (workspace.get("service_roots") or [])]
-    if not roots:
+    if "workspace" in config:
         findings.append(
             Finding(
-                "warning",
-                "workspace.service_roots is empty — a planner has no service to target, "
-                "so every story dispatches one layer at the repo root.",
-            )
-        )
-    if not (workspace.get("service_markers") or []):
-        findings.append(
-            Finding(
-                "warning",
-                "workspace.service_markers is empty — nothing proves a service directory "
-                "is really there, so a plan naming a missing path is caught late.",
+                "error",
+                "agents.yml still has a workspace: section, which nothing reads any more. "
+                "Move each service root to services.<name>.path, move base_branch to repo:, "
+                "drop qa_mode, qa_skills and verification, and delete the section.",
             )
         )
 
@@ -82,6 +72,14 @@ def diagnose(repo: Path) -> list[Finding]:
                     Finding("warning", f"services.{name} is not a mapping — it is ignored.")
                 )
                 continue
+            declared_path = entry.get("path")
+            if declared_path is not None and not (repo / str(declared_path)).exists():
+                findings.append(
+                    Finding(
+                        "error",
+                        f"services.{name}.path {declared_path!s} does not exist in {repo}.",
+                    )
+                )
             missing = [
                 gate
                 for gate in GATES
@@ -98,19 +96,6 @@ def diagnose(repo: Path) -> list[Finding]:
                     )
                 )
 
-    undeclared = [
-        root
-        for root in roots
-        if Path(root).name not in services and root not in services
-    ]
-    if services and undeclared:
-        findings.append(
-            Finding(
-                "warning",
-                "these service roots match no services: key, so they are gated by type "
-                "only (or not at all): " + ", ".join(undeclared),
-            )
-        )
     return findings
 
 

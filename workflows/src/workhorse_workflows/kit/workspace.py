@@ -9,8 +9,9 @@ import sys
 from pathlib import Path
 
 import yaml
+from workhorse._vendor.stablemate_core import config as core_config
 
-from workhorse_workflows.kit import credentials, jsonio
+from workhorse_workflows.kit import credentials
 from workhorse_workflows.kit import paths as paths_kit
 
 
@@ -27,31 +28,21 @@ def _repo_name(path: Path) -> str:
     return re.sub(r"-+", "-", name).strip("-").lower()
 
 
-def _read_workspace_file(workspace_file: str | Path) -> tuple[list[dict], Path] | None:
-    """Parse the `.code-workspace` file at ``workspace_file``, if it exists."""
-    if not workspace_file or not Path(workspace_file).exists():
-        return None
-    ws = jsonio.load_jsonc(Path(workspace_file).read_text(encoding="utf-8"))
-    ws_dir = Path(workspace_file).parent
-    return ws.get("folders", []), ws_dir
-
-
 def resolve_workspace(
-    workspace_file: str | Path = "", repo_dir: str | Path = ""
+    workspace: str = "", repo_dir: str | Path = ""
 ) -> dict[str, dict]:
-    """Build {repo_name: {path, ...}} from a workspace file, or from ``repo_dir`` alone."""
-    parsed = _read_workspace_file(workspace_file)
-    if parsed is not None:
-        folders, ws_dir = parsed
+    """Build {repo_name: {path, ...}} from the named workspace, or from ``repo_dir`` alone."""
+    if workspace:
+        folders = [
+            (member.name, member.path.resolve())
+            for member in core_config.resolve_workspace(workspace)
+        ]
     else:
         cwd = paths_kit.find_repo_root(repo_dir)
-        folders = [{"name": _repo_name(cwd), "path": str(cwd)}]
-        ws_dir = cwd.parent
+        folders = [(_repo_name(cwd), cwd)]
 
     repos: dict[str, dict] = {}
-    for folder in folders:
-        name = folder.get("name", Path(folder["path"]).name)
-        abs_path = (ws_dir / folder["path"]).resolve()
+    for name, abs_path in folders:
         agents_yml = abs_path / "agents.yml"
         if agents_yml.exists():
             try:
@@ -59,9 +50,16 @@ def resolve_workspace(
             except (yaml.YAMLError, OSError):
                 repos[name] = {"path": str(abs_path)}
                 continue
-            ws_section = meta.get("workspace") or {}
             template = meta.get("template") or {}
-            repos[name] = {"path": str(abs_path), "template": template, **ws_section}
+            services = meta.get("services") or {}
+            repo_section = meta.get("repo")
+            base_branch = repo_section.get("base_branch") if isinstance(repo_section, dict) else None
+            repos[name] = {
+                **({"base_branch": base_branch} if base_branch else {}),
+                "path": str(abs_path),
+                "template": template,
+                "services": services if isinstance(services, dict) else {},
+            }
         else:
             repos[name] = {"path": str(abs_path)}
     return repos
@@ -136,7 +134,7 @@ def _add_worktree(source: Path, dest: Path, ref: str, name: str, logger: logging
 
 
 def checkout_workspace(
-    workspace_file: str | Path = "",
+    workspace: str = "",
     workspace_root: str | Path = "/workspace",
     *,
     repo_url: str = "",
@@ -146,7 +144,7 @@ def checkout_workspace(
     source_mode: str = "clone",
     worktree_root: str | Path = "",
 ) -> None:
-    """Clone/update every `url`-bearing folder in the `.code-workspace` file into ``workspace_root``, transparent to whichever workflow graph runs next."""
+    """Clone/update every `url`-bearing member of the named workspace into ``workspace_root``, transparent to whichever workflow graph runs next."""
     logging.basicConfig(stream=sys.stderr, level=logging.INFO, format="[checkout] %(message)s")
     logger = logging.getLogger("workhorse.checkout")
     workspace_root = Path(workspace_root)
@@ -156,12 +154,14 @@ def checkout_workspace(
         )
     tree_root = Path(worktree_root) if worktree_root else workspace_root
 
-    parsed = _read_workspace_file(workspace_file)
-    if parsed is not None:
-        folders, _ws_dir = parsed
+    if workspace:
+        folders = [
+            {"name": member.name, "url": member.url, "branch": member.branch or "main"}
+            for member in core_config.resolve_workspace(workspace)
+        ]
     else:
         if not repo_url:
-            logger.info("no workspace file and no repo url given — nothing to check out")
+            logger.info("no workspace and no repo url given — nothing to check out")
             return
         folders = [{
             "name": repo_name or "repo",
@@ -175,8 +175,8 @@ def checkout_workspace(
         url = folder.get("url")
         if not url:
             continue
-        name = folder.get("name") or Path(folder["path"]).name
-        branch = folder.get("branch", "main")
+        name = folder["name"]
+        branch = folder["branch"]
 
         if source_mode == "worktree":
             _add_worktree(Path(url), tree_root / name, branch, name, logger)
@@ -225,12 +225,12 @@ def get_repo_config(
     default=None,
     *,
     repos: dict | None = None,
-    workspace_file: str | Path = "",
+    workspace: str = "",
     repo_dir: str | Path = "",
 ):
-    """Get a config value from a repo's agents.yml workspace section."""
+    """Get a config value from a repo's resolved info."""
     if repos is None:
-        repos = resolve_workspace(workspace_file, repo_dir)
+        repos = resolve_workspace(workspace, repo_dir)
     repo = repos.get(repo_name, {})
     return repo.get(key, default)
 
@@ -238,12 +238,12 @@ def get_repo_config(
 def _main(argv: list[str] | None = None) -> int:
     """`python -m workhorse_workflows.kit.workspace` — the entrypoint.sh checkout step."""
     parser = argparse.ArgumentParser(prog="workhorse-checkout", description=__doc__)
-    parser.add_argument("--workspace-file", default="", metavar="PATH",
-                        help="A .code-workspace manifest listing the repos to check out.")
+    parser.add_argument("--workspace", default="", metavar="NAME",
+                        help="A [workspaces] entry of the home config naming the repos to check out.")
     parser.add_argument("--workspace-root", default="/workspace", metavar="DIR",
                         help="Directory the folders are checked out under.")
     parser.add_argument("--repo-url", default="", metavar="URL",
-                        help="Single-repo fallback when no workspace file is given.")
+                        help="Single-repo fallback when no workspace is given.")
     parser.add_argument("--repo-name", default="repo", metavar="NAME")
     parser.add_argument("--repo-branch", default="main", metavar="BRANCH")
     parser.add_argument("--token-env", default=credentials.GIT_CREDENTIAL_ENV, metavar="VAR",
@@ -260,7 +260,7 @@ def _main(argv: list[str] | None = None) -> int:
                              "worktree's registration on both sides by absolute path.")
     args = parser.parse_args(argv)
     checkout_workspace(
-        args.workspace_file,
+        args.workspace,
         args.workspace_root,
         repo_url=args.repo_url,
         repo_name=args.repo_name,

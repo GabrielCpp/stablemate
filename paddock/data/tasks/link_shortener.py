@@ -26,7 +26,6 @@ FIXTURE = gf.Fixture(
             scaffolds="go-service:api",
             init_cmd="go mod init example.com/link-shortener/api",
             marker="go.mod",
-            markers="go.mod,main.go",
         ),
     ),
     checks=(

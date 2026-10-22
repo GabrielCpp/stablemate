@@ -16,18 +16,18 @@ fails before documentation when the book is unusable. For a usable book, a faile
 back to the owner as a report for another repair lap, and a spent lap budget escalates to the
 resolver and then to an operator gate.
 
-- code: `workflows/src/workhorse_workflows/coder/docs/flow.py` @5070eea353a0
-- code: `workflows/src/workhorse_workflows/coder/docs/flow.py::Docs` @5070eea353a0
+- code: `workflows/src/workhorse_workflows/coder/docs/flow.py` @b81b0ecba9ab
+- code: `workflows/src/workhorse_workflows/coder/docs/flow.py::Docs` @b81b0ecba9ab
 - tests: `workflows/tests/coder/docs/test_flow.py`
 - detail: [coder docs subflow](coder-docs-subflow.md)
 
 The docs package operates against a docs repository carrying one epic with its `## Stories`
-listing and one authored story, against a workspace file naming the source repositories the
+listing and one authored story, against a named workspace listing the source repositories the
 context classifier decides between, and against the flow machinery that drives the agent turns.
 The `docs`, `elsewhere`, and `alongside` test fixtures stand those inputs up — `docs` builds
 the ostler-loadable repo with an epic, a story, and a spec dir; `elsewhere` builds a sibling
-git repo with an `.code-workspace` file that points outside the docs worktree so the classifier
-returns `semantic`; `alongside` rewrites the same workspace to point inside the docs worktree so
+git repo that a named workspace lists outside the docs worktree so the classifier
+returns `semantic`; `alongside` names the docs worktree itself as the workspace member so
 the classifier returns `local` — so the routing the flow describes runs against the same worktree
 shapes `Docs` is asked to handle in production.
 
@@ -39,6 +39,6 @@ shapes `Docs` is asked to handle in production.
 - verify: count(subject="docs counter labels", equals=1)
 - returns: returns labels used for state telemetry
 - verify: count(subject="docs state label sets", equals=1)
-- code: `workflows/src/workhorse_workflows/coder/docs/flow.py::Docs.state_labels` @5070eea353a0
+- code: `workflows/src/workhorse_workflows/coder/docs/flow.py::Docs.state_labels` @b81b0ecba9ab
 - tests: `workflows/tests/coder/test_telemetry.py::test_docs_reports_its_repair_laps_and_its_blocks`
 

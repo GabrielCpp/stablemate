@@ -7,7 +7,7 @@ title: Coder operator answer
 
 - file: none — in-memory operator context result
 - config: `OperatorAnswer` consumed operator context
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/dev.py::OperatorAnswer` @5aa622da8aea
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/dev.py::OperatorAnswer` @bcd75ac6f796
 - detail: [coder development schema contracts](../concepts/coder-dev-schema-contracts.md)
 
 ## Fields
@@ -18,7 +18,7 @@ title: Coder operator answer
 - required: false
 - semantics: whether an operator context supplied an answer
 - verify: json_path(path="$.answered", matches="true|false")
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/dev.py::OperatorAnswer.answered` @5aa622da8aea
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/dev.py::OperatorAnswer.answered` @bcd75ac6f796
 
 ### scope
 - type: literal `story` or `epic`
@@ -28,7 +28,7 @@ title: Coder operator answer
 - verify: json_path(path="$.scope", matches="story|epic")
 - semantics: only an exact `epic` marker is epic scope
 - verify: json_path(path="$.scope", equals="epic")
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/dev.py::OperatorAnswer.scope` @5aa622da8aea
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/dev.py::OperatorAnswer.scope` @bcd75ac6f796
 
 ### content
 - type: `str`
@@ -36,4 +36,4 @@ title: Coder operator answer
 - required: false
 - semantics: original operator context content
 - verify: json_path(path="$.content", equals="Please recheck the login flow.")
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/dev.py::OperatorAnswer.content` @5aa622da8aea
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/dev.py::OperatorAnswer.content` @bcd75ac6f796

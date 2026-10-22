@@ -59,7 +59,6 @@ class Surface:
     scaffolds: str = ""
     init_cmd: str = ""
     marker: str = ""
-    markers: str = ""
 
 
 @dataclass(frozen=True, slots=True)
@@ -100,7 +99,6 @@ class Fixture:
             "scaffolds": joined(self.docs_scaffold, surface.scaffolds),
             "init_cmd": surface.init_cmd,
             "marker": surface.marker,
-            "markers": surface.markers,
             "workflows": "coder,author",
         })
 
@@ -319,7 +317,7 @@ def run_coder(run: Run, fixture: Fixture) -> None:
         run_phase(
             run, fixture, "coder",
             "workhorse-coder", "run",
-            "--params", json.dumps({"docs_path": str(run.repo)}),
+            "--params", json.dumps({"repo_dir": str(run.repo)}),
         )
     finally:
         stop.set()

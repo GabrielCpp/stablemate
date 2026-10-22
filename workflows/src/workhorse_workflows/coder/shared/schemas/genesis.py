@@ -14,7 +14,6 @@ class TargetClassification(CoderResult):
     target_state: Literal["absent", "partial", "existing"] = "absent"
     service_state: Literal["existing", "absent"] = "absent"
     service: str = ""
-    markers: list[str] = []
     note: str = ""
 
 

@@ -9,6 +9,7 @@ from collections.abc import Sequence
 from pathlib import Path
 from typing import Literal
 
+import yaml
 from git import Repo
 from git.exc import GitError
 from ostler import path as okf_path
@@ -17,7 +18,7 @@ from ruamel.yaml import YAML
 from ruamel.yaml.error import YAMLError
 from ruamel.yaml.scalarstring import ScalarString
 from workhorse_workflows.kit import commit_all, head_sha, load_json, run_tool
-from workhorse_workflows.coder.shared.contract import service_problems
+from workhorse_workflows.coder.shared.contract import declared_service_paths, service_problems
 from workhorse_workflows.coder.shared import stubs
 from workhorse_workflows.coder.shared.blueprint import blueprint
 from workhorse_workflows.coder.shared.schemas.genesis import (
@@ -50,7 +51,6 @@ def resolve_genesis_target(
     service: str = "",
     service_root: str = "",
     marker: str = "",
-    markers: Sequence[str] = (),
 ) -> TargetClassification:
     """Classify the target before anything mutates it, so genesis is safe to re-run."""
     if not target:
@@ -62,7 +62,6 @@ def resolve_genesis_target(
 
     root = Path(target).expanduser().resolve()
     state = _classify(root)
-    declared_markers = [m for m in markers if m] or ([marker] if marker else [])
 
     service_dir = (root / service_root) if service_root else root
     service_state = "existing" if (marker and (service_dir / marker).is_file()) else "absent"
@@ -84,7 +83,6 @@ def resolve_genesis_target(
         target_state=state,
         service_state=service_state,
         service=service,
-        markers=declared_markers,
         note=note,
     )
 
@@ -149,13 +147,12 @@ def write_agents_yml(
     service: str = "",
     packs: Sequence[str] = (),
     service_root: str = "",
-    markers: Sequence[str] = (),
     workflows: Sequence[str] = ("coder",),
     scaffolds: Sequence[str] = (),
     assistants: Sequence[str] = ("claude",),
     gates: Sequence[str] = (),
 ) -> AgentsYml:
-    """Merge this service into the repo's `agents.yml` — packs, scaffolds, `workspace:`."""
+    """Merge this service into the repo's `agents.yml` — packs, scaffolds, `services:`."""
     if not target_dir:
         return AgentsYml(note="no target_dir was provided")
     target = Path(target_dir)
@@ -219,20 +216,15 @@ def write_agents_yml(
         if values:
             _assign_seq(data, key, list(dict.fromkeys([*(data.get(key) or []), *values])))
 
-    if not isinstance(data.get("workspace"), dict):
-        data["workspace"] = {}
-    workspace = data["workspace"]
-    workspace.setdefault("type", "mono")
-    for key, values in (("service_roots", [service_root] if service_root else []),
-                        ("service_markers", list(markers))):
-        if values:
-            _assign_seq(workspace, key, list(dict.fromkeys([*(workspace.get(key) or []), *values])))
-
-    if declared and service:
+    path_value = service_root.strip().strip("/") or "."
+    entry_name = service or (Path(service_root).name if service_root else "")
+    if entry_name and (declared or service_root):
         if not isinstance(data.get("services"), dict):
             data["services"] = {}
-        entry = data["services"].setdefault(service, {})
+        entry = data["services"].setdefault(entry_name, {})
         if isinstance(entry, dict):
+            if service_root:
+                entry.setdefault("path", path_value)
             for gate, command in declared.items():
                 entry.setdefault(gate, command)
 
@@ -248,13 +240,17 @@ def write_agents_yml(
     yml.dump(data, buf)
     path.write_text(buf.getvalue(), encoding="utf-8")
     enabled = ", ".join(sorted(k for k, v in data["agents"].items() if v)) or "<none>"
+    services_note = ", ".join(
+        f"{name} at {entry.get('path') or '.'}"
+        for name, entry in (data.get("services") or {}).items()
+        if isinstance(entry, dict)
+    )
     note = (f"{'updated' if had_existing else 'wrote'} agents.yml for repo '{repo_name}'"
             f"{f", service '{service}'" if service else ''} "
             f"(packs: {', '.join(packs) or '<none>'}; "
             f"scaffolds: {', '.join(scaffold_ids) or '<none>'}; "
             f"agents: {enabled}; "
-            f"service_roots: {', '.join(workspace.get('service_roots') or []) or '<none>'}; "
-            f"service_markers: {', '.join(workspace.get('service_markers') or []) or '<none>'}; "
+            f"services: {services_note or '<none>'}; "
             f"gates: {', '.join(sorted(declared)) or '<none>'})")
     note = _with_drops(note, drops)
     logger.info("%s", note)
@@ -404,7 +400,6 @@ def validate_genesis(
     logger: logging.Logger,
     target_dir: str = "",
     service_root: str = "",
-    markers: Sequence[str] = (),
 ) -> GenesisReport:
     """Assert the genesis repo satisfies every precondition the main loop assumes."""
     errors: list[str] = []
@@ -434,8 +429,12 @@ def validate_genesis(
         )
 
     if service_root:
-        errors.extend(service_problems(target / service_root, markers,
-                                       f"{target.name}::{service_root}"))
+        errors.extend(service_problems(
+            target / service_root,
+            f"{target.name}::{service_root}",
+            service_root,
+            _declared_paths(target),
+        ))
 
     ctx_path = target / ".agents" / "agents-context.json"
     if not ctx_path.is_file():
@@ -470,6 +469,15 @@ def validate_genesis(
     return GenesisReport(
         valid=not errors, errors="\n".join(errors), warnings="\n".join(warnings)
     )
+
+
+def _declared_paths(target: Path) -> list[str]:
+    """The service paths `target`'s agents.yml declares, or `[]` when it declares none."""
+    try:
+        data = yaml.safe_load((target / "agents.yml").read_text(encoding="utf-8"))
+    except (yaml.YAMLError, OSError):
+        return []
+    return declared_service_paths(data.get("services") if isinstance(data, dict) else None)
 
 
 def _ostler_root(target: Path) -> Path | None:

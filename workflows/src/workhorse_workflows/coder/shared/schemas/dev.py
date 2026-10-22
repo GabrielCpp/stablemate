@@ -249,9 +249,6 @@ class DispatchEntry(CoderResult):
     service_path: str = ""
     type: str = ""
     plan_file: str = ""
-    qa_mode: str = ""
-    qa_skills: list[str] = []
-    verification: str = ""
     label: str = ""
 
 
@@ -279,9 +276,7 @@ class QaRunEntry(CoderResult):
 
     service: str = ""
     label: str = ""
-    qa_mode: str = ""
-    qa_skill: str = ""
-    qa_skills: list[str] = []
+    type: str = ""
 
 
 class PlanSummary(CoderResult):

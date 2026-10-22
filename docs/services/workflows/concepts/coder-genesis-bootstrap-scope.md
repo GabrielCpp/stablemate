@@ -14,10 +14,9 @@ Use [coder genesis bootstrap](coder-genesis-bootstrap.md) to understand the comp
 its states, and the conditions that skip repository or service initialization. Use
 [coder genesis bootstrap input selection](coder-genesis-bootstrap-input-selection.md) when
 choosing values for those fields. Repository state and service state remain independent so an
-existing repository can still gain a new service; an empty `markers` input falls back to
-`marker`, while a supplied `markers` input is the complete marker list.
+existing repository can still gain a new service.
 
-- code: `workflows/src/workhorse_workflows/coder/genesis/flow.py::Genesis` @94e8836d807e
+- code: `workflows/src/workhorse_workflows/coder/genesis/flow.py::Genesis` @e3612bb0e317
 - rule: use the bootstrap concept for the deterministic lifecycle and the input-selection concept for cumulative field values; neither is an alternative implementation
 - detail: [coder genesis bootstrap concept selection](coder-genesis-bootstrap-concept-selection.md)
 - detail: [coder genesis bootstrap guide](coder-genesis-bootstrap-guide.md)

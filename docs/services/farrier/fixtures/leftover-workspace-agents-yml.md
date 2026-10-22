@@ -1,10 +1,10 @@
 ---
 type: fixture
-title: Orphan root agents.yml
+title: Leftover workspace agents.yml
 ---
-# Orphan root agents.yml
+# Leftover workspace agents.yml
 
-A directory whose `agents.yml` lists the service root `web` and declares only the service `api`.
+A directory whose `agents.yml` still carries a `workspace:` section with the service root `api`.
 
 - args: dir
 - lifetime: scenario
@@ -21,7 +21,7 @@ A directory whose `agents.yml` lists the service root `web` and declares only th
 
 - kind: seed
 - working-directory: scenario:
-- run: mkdir -p "$(dirname "$dir/agents.yml")" && printf '%s\n' 'repo: {name: acme}' workspace: '  service_roots: [web]' 'services: {api: {lint: ruff, test: pytest}}' > "$dir/agents.yml"
+- run: mkdir -p "$(dirname "$dir/agents.yml")" && printf '%s\n' 'repo: {name: acme}' workspace: '  service_roots: [api]' 'services: {api: {lint: ruff, test: pytest}}' > "$dir/agents.yml"
 
 ### landed
 

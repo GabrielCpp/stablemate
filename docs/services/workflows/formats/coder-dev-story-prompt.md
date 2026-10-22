@@ -6,7 +6,7 @@ title: Coder dev-story prompt
 # Coder dev-story prompt
 
 - file: `workflows/src/workhorse_workflows/coder/dev/prompts/dev-story.md`
-- code: `workflows/src/workhorse_workflows/coder/dev/flow.py::Dev.build` @9db388afe7e0
+- code: `workflows/src/workhorse_workflows/coder/dev/flow.py::Dev.build` @43ea3e1c6c82
 - detail: [coder development flow](../flows/coder-dev.md)
 - tests: `workflows/tests/coder/dev/test_flow.py::test_a_clean_pass_settles_the_fix_and_records_the_decline`
 

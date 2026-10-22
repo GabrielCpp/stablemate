@@ -14,8 +14,8 @@ The flow ends in a `QaFlowResult` that is `passed`, `refix` or `replan`. Repair 
 at `MAX_LAPS` and operator blocks at `MAX_BLOCKS`. A spent cap, or a human operator mode, parks
 the run on the story's context file.
 
-- code: `workflows/src/workhorse_workflows/coder/qa/flow.py` @0a4bcedfcbb5
-- code: `workflows/src/workhorse_workflows/coder/qa/flow.py::Qa` @0a4bcedfcbb5
+- code: `workflows/src/workhorse_workflows/coder/qa/flow.py` @a0ec87936990
+- code: `workflows/src/workhorse_workflows/coder/qa/flow.py::Qa` @a0ec87936990
 - tests: `workflows/tests/coder/qa/test_flow.py::test_one_clean_pass_spends_one_owner_turn`
 - detail: [coder QA subflow](coder-qa-subflow.md)
 - detail: [coder QA flow](../flows/coder-qa.md)
@@ -35,6 +35,6 @@ resumes the owner's session instead of parking the run.
 - does: returns the base run labels alone when the parameters carry no counters
 - returns: labels used for state telemetry
 - verify: count(subject="qa state label sets", equals=1)
-- code: `workflows/src/workhorse_workflows/coder/qa/flow.py::Qa.state_labels` @0a4bcedfcbb5
+- code: `workflows/src/workhorse_workflows/coder/qa/flow.py::Qa.state_labels` @a0ec87936990
 - tests: `workflows/tests/coder/test_telemetry.py::test_qa_reports_its_repair_laps_and_its_blocks`
 - tests: `workflows/tests/coder/test_telemetry.py::test_a_state_with_no_loop_yet_reports_only_the_base_labels`

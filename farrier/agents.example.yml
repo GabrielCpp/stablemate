@@ -30,10 +30,12 @@
 # would rename half the toolchain's view of the repo and not the other half.
 #
 # Any OTHER key here is passed through to Jinja as `repo.<key>` for library
-# templates; `name` and `prefix` are reserved and ignored.
+# templates; `name` and `prefix` are reserved and ignored. The workflows also
+# read one key from here: `base_branch`, the branch a story merges into.
 # ---------------------------------------------------------------------------
 # repo:
 #   support_email: team@example.com
+#   base_branch: develop
 
 
 # ---------------------------------------------------------------------------
@@ -196,8 +198,10 @@ workflow:
 
 
 # ---------------------------------------------------------------------------
-# services — the deterministic gates a workflow runs against a service, keyed by
-# the service's name or (as a fallback) its type. farrier passes this through
+# services — the one section that says which services this repo holds. Each key
+# is a service name and its `path` is the service directory, relative to the
+# repo (no `path` means the repo root). The entry also carries the deterministic
+# gates a workflow runs against that service; a type key is the fallback. farrier passes this through
 # untouched; the coder workflow's dev lane reads it, and it is the ONLY place
 # the commands come from.
 #
@@ -205,6 +209,9 @@ workflow:
 # workflow invented would fail a story on the workflow's assumption about your
 # stack rather than on your code. `farrier doctor` reports which gates a repo
 # has and has not adopted.
+#
+# A declared `path` is the proof a directory is a service, so a plan that names
+# some other directory is refused unless it marks the service as new.
 #
 # The name key beats the type key, so two services of one type in a monorepo can
 # run different commands.
@@ -214,4 +221,5 @@ workflow:
 #     lint: golangci-lint run
 #     test: go test ./...
 #   api-service:              # by name — wins over the type above
+#     path: app/api-service
 #     test: go test -tags integration ./...

@@ -7,6 +7,7 @@ from pathlib import Path
 
 import yaml
 from workhorse_workflows.coder.shared.blueprint import blueprint
+from workhorse_workflows.coder.shared.contract import normalize_service_path
 from workhorse_workflows.coder.shared.schemas.dev import GateList, GateOutcome
 from workhorse_workflows.kit import find_repo_root, resolve_workspace
 
@@ -46,8 +47,14 @@ def service_keys(service: str = "", service_type: str = "") -> list[str]:
 def service_declaration(
     service: str = "", service_type: str = "", repo_dir: str = ""
 ) -> dict:
-    """One service's declared block, looked up by service name and then by type."""
+    """One service's declared block, looked up by its path, then by service name, then by type."""
     block = _services_config(repo_dir)
+    path = service.partition("::")[2]
+    if path.strip():
+        wanted = normalize_service_path(path)
+        for entry in block.values():
+            if normalize_service_path(entry.get("path")) == wanted:
+                return entry
     for key in service_keys(service, service_type):
         entry = block.get(key)
         if isinstance(entry, dict):
@@ -141,19 +148,23 @@ def declared_gates(
 
 
 @blueprint.node
-def declared_markers(
-    logger: logging.Logger, repo_dir: str = "", workspace_file: str = ""
+def declared_services(
+    logger: logging.Logger, repo_dir: str = "", workspace: str = ""
 ) -> GateList:
-    """The marker files each repo says identify a service directory — for the planner."""
-    repos = resolve_workspace(workspace_file, repo_dir)
-    lines = [
-        f"- **{name}** (`{info.get('path', '')}`): "
-        + ", ".join(f"`{marker}`" for marker in markers)
-        for name, info in sorted(repos.items())
-        if (markers := info.get("service_markers") or [])
-    ]
+    """The services each repo declares, as `name` at `path` — for the planner."""
+    repos = resolve_workspace(workspace, repo_dir)
+    lines = []
+    for name, info in sorted(repos.items()):
+        services = info.get("services")
+        if not isinstance(services, dict) or not services:
+            continue
+        listed = ", ".join(
+            f"`{service}` at `{normalize_service_path(entry.get('path') if isinstance(entry, dict) else '')}`"
+            for service, entry in services.items()
+        )
+        lines.append(f"- **{name}** (`{info.get('path', '')}`): {listed}")
     if not lines:
-        logger.info("no repo in this workspace declares service_markers")
+        logger.info("no repo in this workspace declares services")
         return GateList()
     return GateList(text="\n".join(lines))
 
@@ -235,7 +246,7 @@ def run_gate(
 
 __all__ = [
     "declared_gates",
-    "declared_markers",
+    "declared_services",
     "gate_command",
     "run_gate",
     "service_declaration",

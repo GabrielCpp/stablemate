@@ -52,7 +52,7 @@ from workhorse_workflows.coder.shared.schemas.dev import (
 )
 from workhorse_workflows.coder.shared.schemas.dev_story import DevOutcome, DevResult
 from workhorse_workflows.coder.shared.schemas.story import StoryPaths
-from workhorse_workflows.coder.shared.service_gates import GATE_ORDER, declared_markers, run_gate
+from workhorse_workflows.coder.shared.service_gates import GATE_ORDER, declared_services, run_gate
 from workhorse_workflows.coder.shared.stack import (
     ensure_stack,
     release_copy,
@@ -89,8 +89,6 @@ class Dev(Workflow):
     """Dev one work item through one session, then check its plan, gates and answers."""
 
     story: str = ""
-    docs_path: str = ""
-    workspace_file: str = ""
     epic: str = ""
     operator_mode: str = "auto"
     target_env: str = "local"
@@ -110,8 +108,8 @@ class Dev(Workflow):
 
     def setup(self) -> StoryPaths:
         """Resolve the slug to paths and the workspace to directories."""
-        self.call(resolve_workspace_dirs, self.docs_path)
-        story = self.call(prepare_story, self.docs_path, self.story, self.epic)
+        self.call(resolve_workspace_dirs)
+        story = self.call(prepare_story, self.story, self.epic)
         self.call(guard_story_file, story)
         return story
 
@@ -195,10 +193,10 @@ class Dev(Workflow):
                 "report": report,
                 "findings": findings_text(work.open_findings(w, self._work_id)),
                 "operator_context": operator_context,
-                "markers": self.call(declared_markers).text,
+                "services": self.call(declared_services).text,
             },
         )
-        self.call(stamp_specs, self.docs_path, self.ctx.story_slug)
+        self.call(stamp_specs, self.ctx.story_slug)
         self._file_follow_ups(result)
         found = [f.model_dump() for f in result.findings]
         filed = causes.file_findings(
@@ -226,12 +224,12 @@ class Dev(Workflow):
         w = self._worklist
         item = work.find(w, self._work_id)
         if item is None or item.kind == work.FOLLOW_UP:
-            filed = self.call(filed_backlog, docs_path=self.docs_path).filed
+            filed = self.call(filed_backlog).filed
             keep = set(unfiled(self._judge("low"), self.logger, _reports(entries), filed))
             fresh = [entry for i, entry in enumerate(entries) if str(i) in keep]
             if fresh:
                 self.call(
-                    file_follow_up_backlog, self.docs_path, parent=self._work_id, follow_ups=fresh
+                    file_follow_up_backlog, parent=self._work_id, follow_ups=fresh
                 )
             return
         judge = self._judge()
@@ -288,7 +286,7 @@ class Dev(Workflow):
         if not slugs:
             return {}
         epic = str(item.payload.get("epic") or "")
-        return dict(self.call(done_story_texts, self.docs_path, epic, slugs).texts)
+        return dict(self.call(done_story_texts, epic, slugs).texts)
 
     def _judge(self, power: str = "medium") -> Judge:
         """The one judge this flow asks: the word rule first, then one reading of what it left."""
@@ -332,12 +330,10 @@ class Dev(Workflow):
 
     def _gate_failures(self, lap: int) -> list[str]:
         document = self.output(record_plan).document
-        self.call(
-            resolve_impl_context, self.ctx.spec_dir, self.target_env, self.docs_path, plan=document
-        )
+        self.call(resolve_impl_context, self.ctx.spec_dir, plan=document)
         if self.branch:
             self.call(
-                branch_code_repos, self.ctx.spec_dir, self.branch, self.docs_path, plan=document
+                branch_code_repos, self.ctx.spec_dir, self.branch, plan=document
             )
         report = self._first_failure(lap)
         return [] if report is None else [report_text(report)]
@@ -345,7 +341,6 @@ class Dev(Workflow):
     def _first_failure(self, lap: int) -> FailureReport | None:
         stamped = self.call(
             check_story_status,
-            self.docs_path,
             self.ctx.story_slug,
             epic=self.ctx.story_epic,
             story_path=self.ctx.story_path,
@@ -391,12 +386,10 @@ class Dev(Workflow):
         context = self.call(
             resolve_review_context,
             self.ctx.spec_dir,
-            docs_path=self.docs_path,
-            workspace_file=self.workspace_file,
+            workspace=self.workspace,
         )
         verdict = self.call(
             settle_findings,
-            self.docs_path,
             self.ctx.story_slug,
             self.ctx.story_id or self.ctx.story_slug,
             filed=ids,
@@ -426,30 +419,30 @@ class Dev(Workflow):
         if self.follow_up_title:
             return []
         walk = self.call(
-            acceptance_walk, self.ctx.story_path, self.ctx.spec_dir, self.docs_path
+            acceptance_walk, self.ctx.story_path, self.ctx.spec_dir
         )
         return [walk_text(walk.missing, walk.criteria)] if walk.missing else []
 
     def _self_check(self, rechecked: bool) -> list[str]:
-        ids = self.call(last_failed_scenarios, self.ctx.spec_dir, self.docs_path).ids
+        ids = self.call(last_failed_scenarios, self.ctx.spec_dir).ids
         if not ids:
             return []
         lease = copy_lease(self.ctx.story_id or self.ctx.story_slug, self.run_id, "dev")
-        target = self.call(stack_target, self.ctx.story_slug, lease, self.docs_path)
+        target = self.call(stack_target, self.ctx.story_slug, lease)
         started = time.monotonic()
         try:
             return self._rerun(ids, target.near, target.lease, rechecked)
         finally:
-            self.call(release_copy, self.docs_path, near=target.near, lease=target.lease)
+            self.call(release_copy, near=target.near, lease=target.lease)
             self.logger.info("self-check took %.0fs", time.monotonic() - started)
 
     def _rerun(self, ids: list[str], near: str, lease: str, rechecked: bool) -> list[str]:
-        stack = self.call(ensure_stack, self.docs_path, near=near, lease=lease)
+        stack = self.call(ensure_stack, near=near, lease=lease)
         if stack.ready not in ("yes", "unneeded"):
             self.logger.info("self-check skipped: the QA stack is not up (%s)", stack.ready)
             return []
         run = self.call(
-            run_qa_plan, self.ctx.spec_dir, self.docs_path, near=near, lease=lease, only=ids
+            run_qa_plan, self.ctx.spec_dir, near=near, lease=lease, only=ids
         )
         if run.status == "passed":
             self.logger.info("self-check: %d scenario(s) QA failed now pass", len(ids))
@@ -504,7 +497,7 @@ class Dev(Workflow):
             power=RESOLVER_POWER,
             timeout=UNBOUNDED,
             add_dirs=workspace_dirs(self),
-            args=resolver_args(self, block_kind="dev", notes=notes, docs_path=self.docs_path),
+            args=resolver_args(self, block_kind="dev", notes=notes),
         )
         if answered(self, result, "dev"):
             return Continue(result, self.read_operator, blocks=blocks + 1)

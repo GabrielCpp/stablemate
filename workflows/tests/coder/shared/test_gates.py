@@ -10,7 +10,7 @@ from workhorse_workflows.coder.shared.provenance import changed_files
 from workhorse_workflows.coder.shared.service_gates import (
     GATE_ORDER,
     declared_gates,
-    declared_markers,
+    declared_services,
     gate_command,
     run_gate,
     service_declaration,
@@ -165,23 +165,49 @@ def test_declared_gates_renders_the_commands_that_will_run(repo: Path) -> None:
     assert "test: `go test ./...`" in gates.text
 
 
-def test_the_planner_is_told_the_markers_this_workspace_declares(repo: Path) -> None:
-    """Which files mark a service is the repo's answer too, not a list of four this package remembers — a repo whose services are marked some other way had to argue with that list, and one with a single layer was told about three it does not have."""
-    _agents(repo, "workspace:\n  service_markers: [manifest.toml, service.json]\n")
+def test_the_planner_is_told_the_services_this_workspace_declares(repo: Path) -> None:
+    """Which directories are services is the repo's answer, written once under `services:`."""
+    _agents(
+        repo,
+        "services:\n"
+        "  api: {path: app/api, test: 'go test ./...'}\n"
+        "  web: {path: app/web}\n",
+    )
 
-    markers = _call(declared_markers, repo_dir=str(repo))
+    services = _call(declared_services, repo_dir=str(repo))
 
-    assert "`manifest.toml`, `service.json`" in markers.text
-    assert repo.name in markers.text
+    assert "`api` at `app/api`, `web` at `app/web`" in services.text
+    assert repo.name in services.text
 
 
-def test_a_workspace_that_declares_no_markers_says_nothing_rather_than_guessing(
+def test_a_service_with_no_path_is_listed_at_the_repo_root(repo: Path) -> None:
+    _agents(repo, "services:\n  api: {lint: 'true'}\n")
+
+    assert "`api` at `.`" in _call(declared_services, repo_dir=str(repo)).text
+
+
+def test_a_workspace_that_declares_no_services_says_nothing_rather_than_guessing(
     repo: Path,
 ) -> None:
     """The prompt reads an empty `text` as "go and look", which beats a confident list."""
-    _agents(repo, "services:\n  api: {lint: 'true'}\n")
+    _agents(repo, "repo: {name: acme}\n")
 
-    assert _call(declared_markers, repo_dir=str(repo)).text == ""
+    assert _call(declared_services, repo_dir=str(repo)).text == ""
+
+
+def test_a_planned_service_is_matched_by_the_path_it_is_declared_at(repo: Path) -> None:
+    """The directory is the identity: a service keyed `backend` is still the one planned at `app/api`."""
+    _agents(
+        repo,
+        "services:\n"
+        "  backend: {path: app/api, test: 'go test ./...'}\n"
+        "  api: {test: 'make other'}\n",
+    )
+
+    assert service_declaration("acme::app/api", "", str(repo)) == {
+        "path": "app/api",
+        "test": "go test ./...",
+    }
 
 
 def test_declared_gates_says_so_when_the_service_declares_none(repo: Path) -> None:
@@ -296,3 +322,13 @@ def test_a_new_file_is_in_the_diff_the_gates_read(tmp_path: Path) -> None:
     assert "handler_test.go" in paths, "a new file is invisible to the next turn"
     assert "handler.go" in paths
     assert not any(p.startswith("build/") for p in paths), "ignored output is not a change"
+
+
+def test_an_entry_with_no_path_is_matched_as_the_repo_root(repo: Path) -> None:
+    _agents(
+        repo,
+        "services:\n  backend: {test: 'make root'}\n  api: {path: app/api, test: 'make api'}\n",
+    )
+
+    assert service_declaration("acme::.", "", str(repo))["test"] == "make root"
+    assert service_declaration("acme::app/api", "", str(repo))["test"] == "make api"

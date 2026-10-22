@@ -288,20 +288,20 @@ that service's `plan_file`.
 
 ### Services
 
-A service is a directory that holds a marker file. The repo's `agents.yml` is the authority
-for its `path` and its `type`: read `workspace.service_roots`, `service_markers` and the
-`template.*_path` hints.
-{% if markers %}
-Each repo in this workspace declares what marks one of its service directories:
+A service is an entry under `services:` in its repo's `agents.yml`. The entry's key is the
+service name and its `path` is the service directory, relative to the repo. An entry with no
+`path` lives at the repo root. Read `services:` and the `template.*_path` hints for each
+service's `path` and its `type`.
+{% if services %}
+Each repo in this workspace declares these services:
 
-{{ markers }}
+{{ services }}
 
-A directory that holds one of its repo's markers is a service. A marker missing from its
-repo's list does not make one.
+A directory that no `services:` entry names is not a service, unless the plan marks it
+`new_service`.
 {%- else %}
-No repo here declares `workspace.service_markers`. Derive the services from
-`service_roots`, the `template.*_path` hints and the layout you see, and name in `summary`
-what you used.
+No repo here declares `services:`. Derive the services from the `template.*_path` hints and
+the layout you see, and name in `summary` what you used.
 {%- endif %}
 
 The docs-only service is the root the repo's book is written under, with `type: docs`.

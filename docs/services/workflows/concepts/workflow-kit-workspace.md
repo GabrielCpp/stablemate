@@ -5,27 +5,28 @@ title: Workflow kit workspace
 ---
 # Workflow kit workspace
 
-The workspace kit reads the [`.code-workspace` format](../../workhorse/concepts/job-containment.md),
-derives a single-repository workspace from the supplied repository directory when no manifest is
-present, and names that repository by its `agents.yml` `repo.name` before its directory. Its checkout operation supports
+The workspace kit reads a named `[workspaces]` entry of the home config,
+derives a single-repository workspace from the supplied repository directory when no name is
+given, and names that repository by its `agents.yml` `repo.name` before its directory. Its checkout operation supports
 the default disposable clone and a host-backed worktree: worktrees are detached, preserve committed
 and uncommitted work across a restart, prune stale registrations, and refuse remote URLs because
 both sides must share the host path.
 
-- code: `workflows/src/workhorse_workflows/kit/workspace.py::resolve_workspace` @d3eaa3259a68
-- code: `workflows/src/workhorse_workflows/kit/workspace.py::_read_workspace_file` @d3eaa3259a68
-- code: `workflows/src/workhorse_workflows/kit/workspace.py::_repo_name` @d3eaa3259a68
-- code: `workflows/src/workhorse_workflows/kit/workspace.py::_git_network_command` @d3eaa3259a68
-- code: `workflows/src/workhorse_workflows/kit/workspace.py::_has_unsynced_work` @d3eaa3259a68
-- code: `workflows/src/workhorse_workflows/kit/workspace.py::_set_origin_url` @d3eaa3259a68
-- code: `workflows/src/workhorse_workflows/kit/workspace.py::_add_worktree` @d3eaa3259a68
-- code: `workflows/src/workhorse_workflows/kit/workspace.py::checkout_workspace` @d3eaa3259a68
-- code: `workflows/src/workhorse_workflows/kit/workspace.py::get_repo_config` @d3eaa3259a68
-- code: `workflows/src/workhorse_workflows/kit/workspace.py::_main` @d3eaa3259a68
-- code: `workflows/src/workhorse_workflows/kit/workspace.py::SOURCE_MODES` @d3eaa3259a68
+- code: `workflows/src/workhorse_workflows/kit/workspace.py::resolve_workspace` @6368dc029826
+- code: `workflows/src/workhorse_workflows/kit/workspace.py::_repo_name` @6368dc029826
+- code: `workflows/src/workhorse_workflows/kit/workspace.py::_git_network_command` @6368dc029826
+- code: `workflows/src/workhorse_workflows/kit/workspace.py::_has_unsynced_work` @6368dc029826
+- code: `workflows/src/workhorse_workflows/kit/workspace.py::_set_origin_url` @6368dc029826
+- code: `workflows/src/workhorse_workflows/kit/workspace.py::_add_worktree` @6368dc029826
+- code: `workflows/src/workhorse_workflows/kit/workspace.py::checkout_workspace` @6368dc029826
+- code: `workflows/src/workhorse_workflows/kit/workspace.py::get_repo_config` @6368dc029826
+- code: `workflows/src/workhorse_workflows/kit/workspace.py::_main` @6368dc029826
+- code: `workflows/src/workhorse_workflows/kit/workspace.py::SOURCE_MODES` @6368dc029826
 - tests: `workflows/tests/test_kit_workspace.py::test_resolve_workspace_uses_the_repo_dir_argument_over_cwd`
 - tests: `workflows/tests/test_kit_workspace.py::test_a_repo_named_in_its_agents_yml_answers_to_that_name`
 - tests: `workflows/tests/test_kit_workspace.py::test_a_repo_with_no_name_in_its_agents_yml_is_named_by_its_directory`
+- tests: `workflows/tests/test_kit_workspace.py::test_a_named_workspace_resolves_to_its_members`
+- tests: `workflows/tests/test_kit_workspace.py::test_an_unknown_workspace_name_is_refused`
 - tests: `workflows/tests/test_kit_workspace.py::test_git_network_command_uses_configured_token_env`
 - tests: `workflows/tests/test_kit_worktree.py::test_two_concurrent_runs_each_get_their_own_tree_of_one_repo`
 - tests: `workflows/tests/test_kit_worktree.py::test_uncommitted_work_survives_a_restart_too`
@@ -48,45 +49,36 @@ both sides must share the host path.
 - does: lowercases the result
 - returns: the normalized repository key
 - verify: json_path(path="$.repo_name", matches="^[a-z0-9][a-z0-9/-]*$")
-- code: `workflows/src/workhorse_workflows/kit/workspace.py::_repo_name` @d3eaa3259a68
-
-### _read_workspace_file
-
-- sig: `_read_workspace_file(workspace_file: str | Path) -> tuple[list[dict], Path] | None`
-- does: returns no manifest when the supplied path is empty or does not exist
-- verify: absent(subject="workspace manifest result")
-- does: parses an existing manifest as JSONC through the shared JSON loader
-- verify: count(subject="workspace folders parsed", equals=1)
-- raises: propagates the JSON loader's parse error for malformed existing input
-- verify: count(subject="malformed workspace parse errors", equals=1)
-- returns: the manifest's `folders` list and the manifest parent directory
-- verify: json_path(path="$.folders", equals="parsed workspace folders")
-- code: `workflows/src/workhorse_workflows/kit/workspace.py::_read_workspace_file` @d3eaa3259a68
+- code: `workflows/src/workhorse_workflows/kit/workspace.py::_repo_name` @6368dc029826
 
 ### resolve_workspace
 
-- sig: `resolve_workspace(workspace_file: str | Path = "", repo_dir: str | Path = "") -> dict[str, dict]`
-- does: uses an existing workspace manifest when `workspace_file` names one
-- verify: count(subject="workspace folders resolved from an existing manifest", equals=1)
+- sig: `resolve_workspace(workspace: str = "", repo_dir: str | Path = "") -> dict[str, dict]`
+- does: uses the members of the home config workspace that `workspace` names
+- verify: count(subject="workspace members resolved from a named workspace", equals=1)
 - does: otherwise resolves `repo_dir` through the repository-root helper and synthesizes one folder rooted at that checkout
 - verify: json_path(path="$.repo.path", matches=".*/repo")
-- does: resolves each manifest folder path relative to the manifest directory
-- verify: count(subject="manifest-relative workspace folder paths", equals=1)
+- does: refuses an unknown workspace name with the list of known names
+- verify: count(subject="unknown workspace errors", equals=1)
 - does: uses the checkout's normalized repository name for the single-repository fallback key
 - verify: json_path(path="$.repo", equals="normalized repository name")
 - does: adds each folder's absolute `path` to the result
 - verify: json_path(path="$.repo.path", matches="^/")
-- does: merges a valid `agents.yml` `template` mapping and `workspace` mapping into that folder's record
-- verify: json_path(path="$.repo.workspace_value", equals="configured value")
+- does: merges a valid `agents.yml` `template` mapping, `services` mapping and the `repo` mapping's `base_branch` into that folder's record
+- verify: json_path(path="$.repo.services.api.path", equals="configured value")
+- does: records the `repo` mapping's `base_branch` as the folder's base branch
+- verify: json_path(path="$.repo.base_branch", equals="develop")
 - does: degrades an absent, unreadable, or invalid `agents.yml` to a path-only record for that folder
 - verify: count(subject="path-only workspace records", equals=1)
-- returns: a mapping keyed by manifest folder names or the normalized fallback name
+- returns: a mapping keyed by workspace member names or the normalized fallback name
 - verify: count(subject="workspace folder mappings returned", equals=1)
-- code: `workflows/src/workhorse_workflows/kit/workspace.py::resolve_workspace` @d3eaa3259a68
+- code: `workflows/src/workhorse_workflows/kit/workspace.py::resolve_workspace` @6368dc029826
 - tests: `workflows/tests/test_kit_workspace.py::test_resolve_workspace_uses_the_repo_dir_argument_over_cwd`
 - tests: `workflows/tests/test_kit_workspace.py::test_resolve_workspace_falls_back_to_cwd_without_a_repo_dir`
 - tests: `workflows/tests/test_kit_workspace.py::test_a_repo_named_in_its_agents_yml_answers_to_that_name`
 - tests: `workflows/tests/test_kit_workspace.py::test_a_repo_with_no_name_in_its_agents_yml_is_named_by_its_directory`
+- tests: `workflows/tests/test_kit_workspace.py::test_a_named_workspace_resolves_to_its_members`
+- tests: `workflows/tests/test_kit_workspace.py::test_an_unknown_workspace_name_is_refused`
 
 ### _has_unsynced_work
 
@@ -95,7 +87,7 @@ both sides must share the host path.
 - verify: json_path(path="$.unsynced", equals=true)
 - does: detects commits in `HEAD` that are not reachable from `origin/<branch>`
 - returns: `true` when either local changes or local-only commits exist, otherwise `false`
-- code: `workflows/src/workhorse_workflows/kit/workspace.py::_has_unsynced_work` @d3eaa3259a68
+- code: `workflows/src/workhorse_workflows/kit/workspace.py::_has_unsynced_work` @6368dc029826
 
 ### _git_network_command
 
@@ -105,7 +97,7 @@ both sides must share the host path.
 - does: otherwise prepends a transient credential helper that names the variable without embedding its secret value
 - verify: omits(subject="Git command credential helper", text="secret value")
 - returns: a Git argument list suitable for clone or fetch
-- code: `workflows/src/workhorse_workflows/kit/workspace.py::_git_network_command` @d3eaa3259a68
+- code: `workflows/src/workhorse_workflows/kit/workspace.py::_git_network_command` @6368dc029826
 - tests: `workflows/tests/test_kit_workspace.py::test_git_network_command_uses_configured_token_env`
 - tests: `workflows/tests/test_kit_workspace.py::test_git_network_command_needs_no_token_for_public_or_local_clone`
 
@@ -119,7 +111,7 @@ both sides must share the host path.
 - does: adds the destination's `origin` when it has no `origin`
 - verify: created(subject="the destination's origin remote")
 - returns: `None` after the remote has the configured URL
-- code: `workflows/src/workhorse_workflows/kit/workspace.py::_set_origin_url` @d3eaa3259a68
+- code: `workflows/src/workhorse_workflows/kit/workspace.py::_set_origin_url` @6368dc029826
 
 ### _add_worktree
 
@@ -136,21 +128,21 @@ both sides must share the host path.
 - verify: json_path(path="$.worktree.head", equals="detached")
 - raises: raises `ValueError` when the source is not a Git repository
 - verify: json_path(path="$.error_type", equals="ValueError")
-- code: `workflows/src/workhorse_workflows/kit/workspace.py::_add_worktree` @d3eaa3259a68
+- code: `workflows/src/workhorse_workflows/kit/workspace.py::_add_worktree` @6368dc029826
 - tests: `workflows/tests/test_kit_worktree.py::test_the_worktree_is_detached_so_the_branch_stays_free`
 - tests: `workflows/tests/test_kit_worktree.py::test_a_deleted_run_directory_does_not_poison_the_path_forever`
 - tests: `workflows/tests/test_kit_worktree.py::test_pruning_never_touches_a_live_worktree`
 
 ### checkout_workspace
 
-- sig: `checkout_workspace(workspace_file: str | Path = "", workspace_root: str | Path = "/workspace", *, repo_url: str = "", repo_name: str = "repo", repo_branch: str = "main", token_env: str = credentials.GIT_CREDENTIAL_ENV, source_mode: str = "clone", worktree_root: str | Path = "") -> None`
+- sig: `checkout_workspace(workspace: str = "", workspace_root: str | Path = "/workspace", *, repo_url: str = "", repo_name: str = "repo", repo_branch: str = "main", token_env: str = credentials.GIT_CREDENTIAL_ENV, source_mode: str = "clone", worktree_root: str | Path = "") -> None`
 - does: rejects every source mode except `clone` and `worktree`
 - verify: count(subject="unknown checkout source mode errors", equals=1)
-- does: uses every manifest folder carrying `url`, while skipping folders without `url`
+- does: uses every member of the named workspace carrying `url`, while skipping members without `url`
 - verify: count(subject="checked out URL-bearing folders", equals=2)
-- does: falls back to one `repo_url` folder when no manifest exists
+- does: falls back to one `repo_url` folder when no workspace is named
 - verify: created(subject="single-repository checkout")
-- does: returns without creating a checkout when neither a manifest nor `repo_url` is supplied
+- does: returns without creating a checkout when neither a workspace name nor `repo_url` is supplied
 - verify: absent(subject="checkout destination")
 - does: creates a clone under `workspace_root/<name>` with the selected branch and single-branch history
 - verify: created(subject="clone checkout")
@@ -163,7 +155,7 @@ both sides must share the host path.
 - raises: propagates a failed Git subprocess as `CalledProcessError`
 - verify: count(subject="failed Git checkout errors", equals=1)
 - returns: `None` after all selected folders are processed
-- code: `workflows/src/workhorse_workflows/kit/workspace.py::checkout_workspace` @d3eaa3259a68
+- code: `workflows/src/workhorse_workflows/kit/workspace.py::checkout_workspace` @6368dc029826
 - tests: `workflows/tests/test_kit_worktree.py::test_two_concurrent_runs_each_get_their_own_tree_of_one_repo`
 - tests: `workflows/tests/test_kit_worktree.py::test_an_existing_worktree_is_left_exactly_as_it_is`
 - tests: `workflows/tests/test_kit_worktree.py::test_uncommitted_work_survives_a_restart_too`
@@ -172,14 +164,14 @@ both sides must share the host path.
 
 ### get_repo_config
 
-- sig: `get_repo_config(repo_name: str, key: str, default=None, *, repos: dict | None = None, workspace_file: str | Path = "", repo_dir: str | Path = "")`
+- sig: `get_repo_config(repo_name: str, key: str, default=None, *, repos: dict | None = None, workspace: str = "", repo_dir: str | Path = "")`
 - does: resolves the workspace when `repos` is omitted
 - verify: count(subject="workspace resolutions for omitted repository map", equals=1)
 - does: returns the named repository setting when present
 - verify: json_path(path="$.value", equals="configured repository setting")
 - returns: `default` when the repository or setting is absent
 - verify: json_path(path="$.value", equals="caller default")
-- code: `workflows/src/workhorse_workflows/kit/workspace.py::get_repo_config` @d3eaa3259a68
+- code: `workflows/src/workhorse_workflows/kit/workspace.py::get_repo_config` @6368dc029826
 
 ### _main
 
@@ -188,4 +180,4 @@ both sides must share the host path.
 - verify: count(subject="checkout delegations from the module CLI", equals=1)
 - returns: exit status `0` after delegation returns
 - verify: json_path(path="$.exit_status", equals=0)
-- code: `workflows/src/workhorse_workflows/kit/workspace.py::_main` @d3eaa3259a68
+- code: `workflows/src/workhorse_workflows/kit/workspace.py::_main` @6368dc029826
