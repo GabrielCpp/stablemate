@@ -12,6 +12,7 @@ from ostler import backlog as backlog_mod
 from ostler import book_reach
 from ostler import coverage as coverage_mod
 from ostler import crud, doctor
+from ostler import milestones as milestones_mod
 from ostler import fmt as fmt_mod
 from ostler import ids as ids_mod
 from ostler import index as index_mod
@@ -30,7 +31,8 @@ from ostler.qa import (
     cmd_validate,
     tools as qa_tools_mod,
 )
-from ostler.model import Epic, Graph, Story, find_root, load
+from ostler.finding import Finding
+from ostler.model import Epic, Graph, Milestone, Story, find_root, load
 from ostler.pages import files_in_book
 from ostler.qa.source_context import SourceRepository
 
@@ -39,7 +41,7 @@ if TYPE_CHECKING:
 
 
 
-SNAPSHOT_NAMESPACE = "graph-snapshot/2"
+SNAPSHOT_NAMESPACE = "graph-snapshot/3"
 
 LOADED_DOC_ROOTS = ("services", "epics", "milestones")
 
@@ -240,6 +242,17 @@ class Ostler:
         """Concepts of ``etype`` (``ostler list --type``), optionally filtered."""
         return query_mod.list_entities(self.graph, etype, epic, status)
 
+    def approved_milestone(self) -> Milestone:
+        """The one milestone with `status: approved`; raises `MilestoneSelectionError` for none or several."""
+        return milestones_mod.approved_milestone(self.graph)
+
+    def milestone_readiness(self, name: str) -> builtins.list[Finding]:
+        """The readiness findings of milestone *name*: errors once approved, warnings while proposed."""
+        milestone = self.graph.milestone_by_name(name)
+        if milestone is None:
+            raise KeyError(f"no milestone '{name}'")
+        return milestones_mod.check_milestone(self.graph, milestone)
+
     def search(self, q: str, *, etype: str | None = None) -> builtins.list[dict]:
         """Full-text search over Concepts (``ostler search``)."""
         return query_mod.search(self.graph, q, etype)
@@ -362,10 +375,6 @@ class Ostler:
     def backlog_file(self) -> Path:
         """The intake list — the file :meth:`backlog` reads, ``docs/backlog.md``."""
         return path_mod.backlog_path(self.graph)
-
-    def roadmaps_dir(self) -> Path:
-        """Where roadmaps live — join a filename onto this rather than spelling the path."""
-        return path_mod.roadmaps_root(self.graph)
 
     def services_dir(self, service: str = "") -> Path:
         """The feature book, scoped to one *service* in a multi-service workspace."""

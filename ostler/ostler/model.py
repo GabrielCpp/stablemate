@@ -650,7 +650,6 @@ BUILTIN_DOC_ROOTS: dict[str, str] = {
     "epics": "docs/epics",
     "milestones": "docs/milestones",
     "specs": "docs/specs",
-    "roadmaps": "docs/roadmaps",
     "backlog": "docs/backlog.md",
 }
 
@@ -695,8 +694,8 @@ def load(
     _load_features(graph, pages)
     _load_surfaces(graph)
     _load_ui_nodes(graph, pages)
+    _load_milestones(graph)
     if profile == "full":
-        _load_milestones(graph)
         _load_epics(graph)
         _load_ids(graph)
     return graph
@@ -890,8 +889,8 @@ def _load_milestones(graph: Graph) -> None:
     mroot = graph.doc_roots["milestones"]
     if not mroot.is_dir():
         return
-    for path in sorted(mroot.glob("*.md")):
-        if not path.is_file() or path.name in registry.RESERVED_FILES:
+    for path in sorted(mroot.glob(f"*/{registry.MILESTONE_FILE}")):
+        if not path.is_file():
             continue
         try:
             doc = read_doc(path)
@@ -900,12 +899,13 @@ def _load_milestones(graph: Graph) -> None:
         fm = doc.frontmatter or {}
         if registry.base_type(registry.type_of(fm)) != "milestone":
             continue
+        name = path.parent.name
         graph.milestones.append(Milestone(
-            name=path.stem,
+            name=name,
             path=path,
-            title=str(fm.get("title") or path.stem),
+            title=str(fm.get("title") or name),
             status=str(fm.get("status") or ""),
-            eid=str(fm.get("id") or path.stem),
+            eid=str(fm.get("id") or name),
             depends_on=_as_list(fm.get("dependsOn") or fm.get("depends_on")),
             source_items=_as_list(fm.get("sourceItems") or fm.get("source_items")),
             epics=_as_list(fm.get("epics")),

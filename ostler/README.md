@@ -93,7 +93,7 @@ filenames `index.md` (an ordered listing of a bundle) and `log.md` (history) are
 
 | `type` | Location (repo-relative) | Identity | Required frontmatter |
 |---|---|---|---|
-| `milestone` | `docs/milestones/<slug>.md` | generated `id`; readable `<slug>` names the file | `type`, `id`, `title` |
+| `milestone` | `docs/milestones/<slug>/milestone.md` | folder name `<slug>`; optional `id` defaults to it | `type`, `title`, `status` |
 | `epic` | `docs/epics/<NNNN-slug>/epic.md` | `<NNNN-slug>` (dir name) | `type`, `id`, `title` |
 | `story` | `docs/epics/<NNNN-slug>/stories/<slug>/story.md` | generated `id`; readable `<slug>` and optional `externalKey` are aliases | `type`, `slug`, `status` |
 | `feature` | `docs/services/<area>/<slug>.md` *(or flat `docs/services/<slug>.md`)* | `<area>/<slug>` | `type`, `slug`, `title` |

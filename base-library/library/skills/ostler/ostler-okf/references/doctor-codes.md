@@ -87,6 +87,13 @@ Three scoping rules explain findings that otherwise read as false positives or a
 | `epic-without-milestone` | error | An epic is assigned to no milestone. |
 | `epic-in-multiple-milestones` | error | An epic is assigned to more than one milestone. |
 | `backlog-item-in-multiple-milestones` | error | A backlog item is assigned to more than one milestone. |
+| `legacy-milestone-file` | error | A `*.md` page directly under `docs/milestones/` declares `type: milestone`. A milestone is a folder: move it to `docs/milestones/<slug>/milestone.md`. |
+| `multiple-approved-milestones` | error | More than one milestone has `status: approved`. Author authors from exactly one, so move the others to `proposed`, `authored`, `delivered` or `superseded`. |
+| `milestone-missing-section` | error | A milestone lacks prose under one of `## Outcome`, `## Release Boundary`, `## User Journeys`, `## Architecture Decisions`, `## Constraints`, `## Acceptance`, `## Non-Goals`. The readiness codes below are warnings while the milestone is `proposed`, errors once it is `approved`, `authored` or `delivered`, and skipped for `superseded`. |
+| `milestone-open-decisions` | error | A milestone still has a `## Open Decisions` section. Settle each decision into its section and delete the heading. Readiness code. |
+| `milestone-dangling-link` | error | A relative link in `milestone.md` resolves to no file, which is how a link to a `docs/design/` note breaks. Readiness code. |
+| `milestone-journey-services` | error | A `###` journey under `## User Journeys` has no `- services: <book>, <book>` bullet, or names a book that does not exist under `docs/services/`. Readiness code. |
+| `milestone-missing-mockup` | error | A journey lists a book whose driver is `web` or `mobile` and `mockups/<journey-slug>.html` is missing. The slug is the heading lowercased with each run of non-alphanumerics as `-`. Readiness code. |
 
 ## Fixtures
 

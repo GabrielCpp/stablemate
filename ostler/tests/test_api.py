@@ -156,11 +156,11 @@ def test_create_milestone_is_visible_to_the_next_read(repo: Path):
         "name": "docs-app-mvp",
         "id": result.entity_id,
         "title": "Docs App MVP",
-        "status": "planned",
+        "status": "proposed",
         "dependsOn": [],
         "sourceItems": [source],
         "epics": [],
-        "path": "docs/milestones/docs-app-mvp.md",
+        "path": "docs/milestones/docs-app-mvp/milestone.md",
     }]
 
     assert okf.set_milestone_source_items("docs-app-mvp", [source]).ok

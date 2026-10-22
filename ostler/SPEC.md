@@ -58,7 +58,7 @@ maintain. Nothing dispatches on it: only the `spec` base type is checked. Mint t
 also retro-stamps a doc that was written free-form.
 
 **Not Concepts** (managed markdown, not part of the typed graph): `docs/backlog.md` (an
-ostler-managed intake list), `docs/roadmaps/*`, and operational files written by the workflows
+ostler-managed intake list), and operational files written by the workflows
 (`context.md`, `attempts.md`, `feedback.md`, `qa/`). These are named here for completeness and left
 in place.
 

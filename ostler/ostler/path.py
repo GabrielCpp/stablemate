@@ -61,16 +61,6 @@ def specs_root_in(root: Path) -> Path:
     return doc_root_in(root, "specs")
 
 
-def roadmaps_root_in(root: Path) -> Path:
-    """Where roadmaps live under *root* — ``docs/roadmaps``."""
-    return doc_root_in(root, "roadmaps")
-
-
-def roadmaps_root(graph: Graph) -> Path:
-    """Where roadmaps live in this graph."""
-    return graph.doc_roots["roadmaps"]
-
-
 def backlog_path_in(root: Path) -> Path:
     """The intake list, ``docs/backlog.md`` under *root*."""
     return doc_root_in(root, "backlog")

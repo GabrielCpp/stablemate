@@ -1,12 +1,14 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "type": "object",
-  "required": ["type", "id", "title"],
+  "required": ["type", "title", "status"],
   "properties": {
     "type": { "const": "milestone" },
     "id": { "type": "string", "minLength": 1 },
     "title": { "type": "string", "minLength": 1 },
-    "status": { "type": "string" },
+    "status": {
+      "enum": ["proposed", "approved", "authored", "delivered", "superseded"]
+    },
     "dependsOn": {
       "type": "array",
       "items": { "type": "string", "minLength": 1 }

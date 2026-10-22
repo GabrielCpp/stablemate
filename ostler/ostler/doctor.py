@@ -30,7 +30,7 @@ from ostler.qa import (addresses as qa_addresses, captures as captures_mod, fixt
 from ostler.qa.compile import Gap
 from ostler.qa.context import RELATION_KEYS, relation_subject
 from ostler.qa.outcome import QaOutcome
-from ostler import data_state_ledger, data_states, fragment_hosts, hidden_claims, outcome_rules, page_size, passages, section_hosts, server_membership, shared_checks, stack_checks, stamp as stamp_mod, step_commands
+from ostler import data_state_ledger, data_states, fragment_hosts, hidden_claims, milestones as milestones_mod, outcome_rules, page_size, passages, section_hosts, server_membership, shared_checks, stack_checks, stamp as stamp_mod, step_commands
 from ostler import values as values_mod
 from ostler.source_snapshots import book_repository
 
@@ -138,6 +138,7 @@ def run(graph: Graph, epic_filter: str | None = None, check_schema: bool = True,
         data_states.check_data_states(ui_data, f)
         data_state_ledger.check_conditions(ui_data, f)
         outcome_rules.check_outcomes(ui_data, f)
+    milestones_mod.check_milestones(graph, f, ui_data)
     if check_schema:
         _check_conformance(graph, f)
         _check_misplaced_book_pages(graph, f)

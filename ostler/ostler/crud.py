@@ -120,21 +120,23 @@ def create_milestone(
     prefix: str | None = None,
 ) -> Result:
     """Create a release milestone with a generated id and backlog ownership."""
-    path = graph.doc_roots["milestones"] / f"{name}.md"
-    if path.exists():
+    folder = graph.doc_roots["milestones"] / name
+    path = folder / registry.MILESTONE_FILE
+    if folder.exists():
         return Result(False, f"milestone '{name}' already exists")
     eid = ids.allocate(graph, prefix)
     fm = {
         "type": "milestone",
         "id": eid,
         "title": title,
-        "status": "planned",
+        "status": registry.MILESTONE_DEFAULT_STATUS,
         "dependsOn": [],
         "sourceItems": source_items or [],
         "epics": [],
     }
-    text = f"---\n{dump_frontmatter(fm)}---\n# {title}\n"
-    path.parent.mkdir(parents=True, exist_ok=True)
+    stubs = "".join(f"\n## {spec.heading}\n" for spec in registry.MILESTONE_SECTIONS)
+    text = f"---\n{dump_frontmatter(fm)}---\n# {title}\n{stubs}"
+    folder.mkdir(parents=True, exist_ok=True)
     path.write_text(text, encoding="utf-8")
     return Result(
         True,

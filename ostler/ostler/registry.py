@@ -62,6 +62,21 @@ STORY_SECTIONS: tuple[SectionSpec, ...] = (
 
 RESERVED_FILES = {"index.md", "log.md"}
 
+MILESTONE_FILE = "milestone.md"
+MILESTONE_STATUSES = ("proposed", "approved", "authored", "delivered", "superseded")
+MILESTONE_DEFAULT_STATUS = "proposed"
+MILESTONE_JOURNEYS_HEADING = "User Journeys"
+MILESTONE_OPEN_DECISIONS_HEADING = "Open Decisions"
+MILESTONE_SECTIONS: tuple[SectionSpec, ...] = (
+    SectionSpec("Outcome", filled=True),
+    SectionSpec("Release Boundary", filled=True),
+    SectionSpec(MILESTONE_JOURNEYS_HEADING, filled=True),
+    SectionSpec("Architecture Decisions", filled=True),
+    SectionSpec("Constraints", filled=True),
+    SectionSpec("Acceptance", filled=True),
+    SectionSpec("Non-Goals", filled=True),
+)
+
 
 EPIC_SEQ_WIDTH = 4
 EPIC_DIR_RE = re.compile(r"^(\d{4,})-(.+)$")
@@ -108,9 +123,9 @@ REGISTRY: tuple[EntityType, ...] = (
         note="Source of truth for an epic: narrative + `## Seeds` + `## Stories` (the DAG).",
     ),
     EntityType(
-        name="milestone", doc_root="milestones", location="*.md",
-        required=("type", "id", "title"), schema="milestone.schema.json",
-        note="Product/workflow milestone: a dependency-ordered group of epics.",
+        name="milestone", doc_root="milestones", location=f"*/{MILESTONE_FILE}",
+        required=("type", "title", "status"), schema="milestone.schema.json",
+        note="Release contract: `docs/milestones/<slug>/milestone.md`, a dependency-ordered group of epics.",
     ),
     EntityType(
         name="story", doc_root="epics", location="*/stories/*/story.md",

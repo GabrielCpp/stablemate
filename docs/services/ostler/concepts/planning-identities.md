@@ -18,7 +18,7 @@ Backlog items live in the managed `docs/backlog.md` worklist as
 preserving text, ordering, headings, and nesting. The backlog grammar treats every bullet as an item;
 supporting context and non-item detail are prose. Running adoption again changes nothing.
 
-Milestones live at readable `docs/milestones/<slug>.md` paths but carry independently generated full
+Milestones live in readable `docs/milestones/<slug>/milestone.md` folders but carry independently generated full
 ids. Their `sourceItems` list records the full backlog ids whose product outcome they own. Creating a
 milestone records its initial ownership; `milestone set-source-items` replaces that list when an
 active release absorbs additional intake. Referential validation rejects one source item owned by
@@ -27,8 +27,8 @@ multiple milestones.
 - code: ostler/ostler/ids.py::allocate@b37d33a102e8
 - code: ostler/ostler/backlog.py::create@fbc174481294
 - code: ostler/ostler/backlog.py::adopt@fbc174481294
-- code: ostler/ostler/crud.py::create_milestone@942278999a09
-- code: ostler/ostler/crud.py::set_milestone_source_items@942278999a09
+- code: ostler/ostler/crud.py::create_milestone@b34e5b5a7cfb
+- code: ostler/ostler/crud.py::set_milestone_source_items@b34e5b5a7cfb
 - code: ostler/ostler/doctor.py::_check_milestones@b02e27a258c1
 - tests: ostler/tests/test_backlog.py::test_create_backlog_item_persists_full_generated_id, ostler/tests/test_backlog.py::test_adopt_names_every_bullet_and_is_idempotent, ostler/tests/test_crud.py::test_create_milestone_allocates_id_and_records_source_items
 

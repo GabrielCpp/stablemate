@@ -46,7 +46,7 @@ def test_clean_repo_has_no_errors(repo: Path):
 
 
 def test_a_typed_page_outside_every_doc_root_is_flagged_as_misplaced(repo: Path):
-    """A real book page (a declared `type:`) that a move -- or a first draft -- leaves outside `docs/services`, `docs/epics`, `docs/milestones`, `docs/roadmaps`, `docs/specs` and `docs/backlog.md` is invisible to every other check: it is not `okf-missing-type` (it has a type), and nothing walks in to find it, since every book-facing check is rooted at `graph.doc_roots`."""
+    """A real book page (a declared `type:`) that a move -- or a first draft -- leaves outside `docs/services`, `docs/epics`, `docs/milestones`, `docs/specs` and `docs/backlog.md` is invisible to every other check: it is not `okf-missing-type` (it has a type), and nothing walks in to find it, since every book-facing check is rooted at `graph.doc_roots`."""
     write(repo / "notes/orphan-concept.md",
           "---\ntype: concept\ntitle: Orphan\n---\n# Orphan\n\nStray content.\n")
     _git_track(repo)
@@ -495,22 +495,22 @@ def test_missing_milestones_directory_does_not_fail(repo: Path):
 
 
 def test_milestone_files_assign_epics(repo: Path):
-    write(repo / "docs/milestones/foundation.md", """---
+    write(repo / "docs/milestones/foundation/milestone.md", """---
 type: milestone
 id: m0
 title: Foundation
-status: planned
+status: proposed
 dependsOn: []
 epics:
   - epic-a
 ---
 # Foundation
 """)
-    write(repo / "docs/milestones/feature.md", """---
+    write(repo / "docs/milestones/feature/milestone.md", """---
 type: milestone
 id: m1
 title: Feature
-status: planned
+status: proposed
 dependsOn:
   - m0
 epics:
@@ -527,11 +527,11 @@ epics:
 
 
 def test_an_epic_assigned_to_no_milestone_is_flagged(repo: Path):
-    write(repo / "docs/milestones/foundation.md", """---
+    write(repo / "docs/milestones/foundation/milestone.md", """---
 type: milestone
 id: m0
 title: Foundation
-status: planned
+status: proposed
 dependsOn: []
 epics:
   - epic-a
@@ -547,11 +547,11 @@ epics:
 
 
 def test_a_milestone_depending_on_an_unknown_milestone_is_flagged(repo: Path):
-    write(repo / "docs/milestones/foundation.md", """---
+    write(repo / "docs/milestones/foundation/milestone.md", """---
 type: milestone
 id: m0
 title: Foundation
-status: planned
+status: proposed
 dependsOn:
   - no-such-milestone
 epics:
@@ -569,11 +569,11 @@ epics:
 
 
 def test_a_milestone_listing_an_unknown_epic_is_flagged(repo: Path):
-    write(repo / "docs/milestones/foundation.md", """---
+    write(repo / "docs/milestones/foundation/milestone.md", """---
 type: milestone
 id: m0
 title: Foundation
-status: planned
+status: proposed
 dependsOn: []
 epics:
   - epic-a
@@ -591,22 +591,22 @@ epics:
 
 
 def test_an_epic_assigned_to_two_milestones_at_once_is_flagged(repo: Path):
-    write(repo / "docs/milestones/foundation.md", """---
+    write(repo / "docs/milestones/foundation/milestone.md", """---
 type: milestone
 id: m0
 title: Foundation
-status: planned
+status: proposed
 dependsOn: []
 epics:
   - epic-a
 ---
 # Foundation
 """)
-    write(repo / "docs/milestones/feature.md", """---
+    write(repo / "docs/milestones/feature/milestone.md", """---
 type: milestone
 id: m1
 title: Feature
-status: planned
+status: proposed
 dependsOn: []
 epics:
   - epic-a
@@ -626,11 +626,11 @@ epics:
 def test_backlog_item_cannot_belong_to_multiple_milestones(repo: Path):
     source_item = "ACME-01JBXR7K9QZ4M2T8VNF3HD6PWC"
     for name in ("first", "second"):
-        write(repo / f"docs/milestones/{name}.md", f"""---
+        write(repo / f"docs/milestones/{name}/milestone.md", f"""---
 type: milestone
 id: {name}
 title: {name.title()}
-status: planned
+status: proposed
 dependsOn: []
 sourceItems:
   - {source_item}

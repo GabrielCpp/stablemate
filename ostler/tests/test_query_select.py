@@ -99,11 +99,11 @@ def test_story_resolves_by_provider_neutral_external_key(tmp_path: Path):
 
 
 def test_next_epic_uses_milestone_dependency_order(repo: Path):
-    write(repo / "docs/milestones/feature.md", """---
+    write(repo / "docs/milestones/feature/milestone.md", """---
 type: milestone
 id: m1
 title: Feature
-status: planned
+status: proposed
 dependsOn:
   - m0
 epics:
@@ -111,11 +111,11 @@ epics:
 ---
 # Feature
 """)
-    write(repo / "docs/milestones/foundation.md", """---
+    write(repo / "docs/milestones/foundation/milestone.md", """---
 type: milestone
 id: m0
 title: Foundation
-status: planned
+status: proposed
 dependsOn: []
 epics:
   - epic-a

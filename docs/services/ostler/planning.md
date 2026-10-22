@@ -32,7 +32,7 @@ on an entity of its own, so the order the claims run in does not change an outco
   numbered after the last
 - code: ostler/ostler/_vendor/stablemate_core/base_cache.py::cache_root@79e1cc13c672
 - code: ostler/ostler/_vendor/stablemate_core/config.py::config_path@45b4d92edb39
-- code: ostler/ostler/crud.py::create_epic@942278999a09
+- code: ostler/ostler/crud.py::create_epic@b34e5b5a7cfb
 - code: ostler/ostler/dynamic_registry.py::load_kinds@09b3f9268893
 - code: ostler/ostler/index.py::active@cfb08df1cba1
 - code: ostler/ostler/markdown.py::extract_refs@115245786c4b
@@ -53,7 +53,7 @@ on an entity of its own, so the order the claims run in does not change an outco
 - fixture: [plan scratch repo](fixtures/plan-scratch-repo.md) with an epic that holds one story
 - code: ostler/ostler/_vendor/stablemate_core/base_cache.py::cache_root@79e1cc13c672
 - code: ostler/ostler/_vendor/stablemate_core/config.py::config_path@45b4d92edb39
-- code: ostler/ostler/crud.py::create_story@942278999a09
+- code: ostler/ostler/crud.py::create_story@b34e5b5a7cfb
 - code: ostler/ostler/dynamic_registry.py::load_kinds@09b3f9268893
 - code: ostler/ostler/index.py::active@cfb08df1cba1
 - code: ostler/ostler/markdown.py::extract_refs@115245786c4b
@@ -72,7 +72,7 @@ on an entity of its own, so the order the claims run in does not change an outco
 - fixture: [plan scratch repo](fixtures/plan-scratch-repo.md) with two features
 - code: ostler/ostler/_vendor/stablemate_core/base_cache.py::cache_root@79e1cc13c672
 - code: ostler/ostler/_vendor/stablemate_core/config.py::config_path@45b4d92edb39
-- code: ostler/ostler/crud.py::create_feature@942278999a09
+- code: ostler/ostler/crud.py::create_feature@b34e5b5a7cfb
 - code: ostler/ostler/dynamic_registry.py::load_kinds@09b3f9268893
 - code: ostler/ostler/index.py::active@cfb08df1cba1
 - code: ostler/ostler/markdown.py::extract_refs@115245786c4b
@@ -81,8 +81,8 @@ on an entity of its own, so the order the claims run in does not change an outco
 - code: ostler/ostler/registry.py::base_type@cd37e79abc8c
 
 ### ostler-create-milestone
-- usage: ostler create milestone NAME --title TITLE [--json]: writes a milestone page with an
-  allocated id
+- usage: ostler create milestone NAME --title TITLE [--json]: writes a milestone folder holding a `milestone.md`
+  stub with an allocated id
 - exits: 0 when the milestone is created
 - run: invoke(argv=["-C", "plan-scratch", "create", "milestone", "m2", "--title", "M two", "--json"])
 - verify: exit_status(code=0)
@@ -91,7 +91,7 @@ on an entity of its own, so the order the claims run in does not change an outco
 - fixture: [plan scratch repo](fixtures/plan-scratch-repo.md) with one milestone
 - code: ostler/ostler/_vendor/stablemate_core/base_cache.py::cache_root@79e1cc13c672
 - code: ostler/ostler/_vendor/stablemate_core/config.py::config_path@45b4d92edb39
-- code: ostler/ostler/crud.py::create_milestone@942278999a09
+- code: ostler/ostler/crud.py::create_milestone@b34e5b5a7cfb
 - code: ostler/ostler/dynamic_registry.py::load_kinds@09b3f9268893
 - code: ostler/ostler/index.py::active@cfb08df1cba1
 - code: ostler/ostler/markdown.py::extract_refs@115245786c4b
@@ -151,7 +151,7 @@ on an entity of its own, so the order the claims run in does not change an outco
   started
 - code: ostler/ostler/_vendor/stablemate_core/base_cache.py::cache_root@79e1cc13c672
 - code: ostler/ostler/_vendor/stablemate_core/config.py::config_path@45b4d92edb39
-- code: ostler/ostler/crud.py::dump_frontmatter@942278999a09
+- code: ostler/ostler/crud.py::dump_frontmatter@b34e5b5a7cfb
 - code: ostler/ostler/dynamic_registry.py::load_kinds@09b3f9268893
 - code: ostler/ostler/index.py::active@cfb08df1cba1
 - code: ostler/ostler/markdown.py::extract_refs@115245786c4b
@@ -168,7 +168,7 @@ on an entity of its own, so the order the claims run in does not change an outco
 - fixture: [plan scratch repo](fixtures/plan-scratch-repo.md) with a story with no conflict
 - code: ostler/ostler/_vendor/stablemate_core/base_cache.py::cache_root@79e1cc13c672
 - code: ostler/ostler/_vendor/stablemate_core/config.py::config_path@45b4d92edb39
-- code: ostler/ostler/crud.py::dump_frontmatter@942278999a09
+- code: ostler/ostler/crud.py::dump_frontmatter@b34e5b5a7cfb
 - code: ostler/ostler/dynamic_registry.py::load_kinds@09b3f9268893
 - code: ostler/ostler/index.py::active@cfb08df1cba1
 - code: ostler/ostler/markdown.py::extract_refs@115245786c4b
@@ -187,7 +187,7 @@ on an entity of its own, so the order the claims run in does not change an outco
 - fixture: [plan scratch repo](fixtures/plan-scratch-repo.md) with a story that carries a conflict
 - code: ostler/ostler/_vendor/stablemate_core/base_cache.py::cache_root@79e1cc13c672
 - code: ostler/ostler/_vendor/stablemate_core/config.py::config_path@45b4d92edb39
-- code: ostler/ostler/crud.py::dump_frontmatter@942278999a09
+- code: ostler/ostler/crud.py::dump_frontmatter@b34e5b5a7cfb
 - code: ostler/ostler/dynamic_registry.py::load_kinds@09b3f9268893
 - code: ostler/ostler/index.py::active@cfb08df1cba1
 - code: ostler/ostler/markdown.py::extract_refs@115245786c4b
@@ -207,7 +207,7 @@ on an entity of its own, so the order the claims run in does not change an outco
   Blocked
 - code: ostler/ostler/_vendor/stablemate_core/base_cache.py::cache_root@79e1cc13c672
 - code: ostler/ostler/_vendor/stablemate_core/config.py::config_path@45b4d92edb39
-- code: ostler/ostler/crud.py::dump_frontmatter@942278999a09
+- code: ostler/ostler/crud.py::dump_frontmatter@b34e5b5a7cfb
 - code: ostler/ostler/dynamic_registry.py::load_kinds@09b3f9268893
 - code: ostler/ostler/index.py::active@cfb08df1cba1
 - code: ostler/ostler/markdown.py::extract_refs@115245786c4b
@@ -448,7 +448,7 @@ on an entity of its own, so the order the claims run in does not change an outco
   X-1
 - code: ostler/ostler/_vendor/stablemate_core/base_cache.py::cache_root@79e1cc13c672
 - code: ostler/ostler/_vendor/stablemate_core/config.py::config_path@45b4d92edb39
-- code: ostler/ostler/crud.py::dump_frontmatter@942278999a09
+- code: ostler/ostler/crud.py::dump_frontmatter@b34e5b5a7cfb
 - code: ostler/ostler/dynamic_registry.py::load_kinds@09b3f9268893
 - code: ostler/ostler/index.py::active@cfb08df1cba1
 - code: ostler/ostler/markdown.py::extract_refs@115245786c4b
@@ -470,7 +470,7 @@ on an entity of its own, so the order the claims run in does not change an outco
 - fixture: [plan scratch repo](fixtures/plan-scratch-repo.md) with an epic with no seed
 - code: ostler/ostler/_vendor/stablemate_core/base_cache.py::cache_root@79e1cc13c672
 - code: ostler/ostler/_vendor/stablemate_core/config.py::config_path@45b4d92edb39
-- code: ostler/ostler/crud.py::add_seed@942278999a09
+- code: ostler/ostler/crud.py::add_seed@b34e5b5a7cfb
 - code: ostler/ostler/dynamic_registry.py::load_kinds@09b3f9268893
 - code: ostler/ostler/index.py::active@cfb08df1cba1
 - code: ostler/ostler/markdown.py::extract_refs@115245786c4b
@@ -487,7 +487,7 @@ on an entity of its own, so the order the claims run in does not change an outco
 - fixture: [plan scratch repo](fixtures/plan-scratch-repo.md) with an epic that holds seed SD-2
 - code: ostler/ostler/_vendor/stablemate_core/base_cache.py::cache_root@79e1cc13c672
 - code: ostler/ostler/_vendor/stablemate_core/config.py::config_path@45b4d92edb39
-- code: ostler/ostler/crud.py::remove_seed@942278999a09
+- code: ostler/ostler/crud.py::remove_seed@b34e5b5a7cfb
 - code: ostler/ostler/dynamic_registry.py::load_kinds@09b3f9268893
 - code: ostler/ostler/index.py::active@cfb08df1cba1
 - code: ostler/ostler/markdown.py::extract_refs@115245786c4b
@@ -508,7 +508,7 @@ on an entity of its own, so the order the claims run in does not change an outco
 - fixture: [plan scratch repo](fixtures/plan-scratch-repo.md) with a story named india
 - code: ostler/ostler/_vendor/stablemate_core/base_cache.py::cache_root@79e1cc13c672
 - code: ostler/ostler/_vendor/stablemate_core/config.py::config_path@45b4d92edb39
-- code: ostler/ostler/crud.py::update_story@942278999a09
+- code: ostler/ostler/crud.py::update_story@b34e5b5a7cfb
 - code: ostler/ostler/dynamic_registry.py::load_kinds@09b3f9268893
 - code: ostler/ostler/index.py::active@cfb08df1cba1
 - code: ostler/ostler/markdown.py::extract_refs@115245786c4b
@@ -526,7 +526,7 @@ on an entity of its own, so the order the claims run in does not change an outco
   story
 - code: ostler/ostler/_vendor/stablemate_core/base_cache.py::cache_root@79e1cc13c672
 - code: ostler/ostler/_vendor/stablemate_core/config.py::config_path@45b4d92edb39
-- code: ostler/ostler/crud.py::delete_epic@942278999a09
+- code: ostler/ostler/crud.py::delete_epic@b34e5b5a7cfb
 - code: ostler/ostler/dynamic_registry.py::load_kinds@09b3f9268893
 - code: ostler/ostler/index.py::active@cfb08df1cba1
 - code: ostler/ostler/markdown.py::extract_refs@115245786c4b
@@ -544,7 +544,7 @@ on an entity of its own, so the order the claims run in does not change an outco
 - fixture: [plan scratch repo](fixtures/plan-scratch-repo.md) with an epic holding one story
 - code: ostler/ostler/_vendor/stablemate_core/base_cache.py::cache_root@79e1cc13c672
 - code: ostler/ostler/_vendor/stablemate_core/config.py::config_path@45b4d92edb39
-- code: ostler/ostler/crud.py::delete_story@942278999a09
+- code: ostler/ostler/crud.py::delete_story@b34e5b5a7cfb
 - code: ostler/ostler/dynamic_registry.py::load_kinds@09b3f9268893
 - code: ostler/ostler/index.py::active@cfb08df1cba1
 - code: ostler/ostler/markdown.py::extract_refs@115245786c4b
@@ -561,7 +561,7 @@ on an entity of its own, so the order the claims run in does not change an outco
 - fixture: [plan scratch repo](fixtures/plan-scratch-repo.md) with two features
 - code: ostler/ostler/_vendor/stablemate_core/base_cache.py::cache_root@79e1cc13c672
 - code: ostler/ostler/_vendor/stablemate_core/config.py::config_path@45b4d92edb39
-- code: ostler/ostler/crud.py::delete_feature@942278999a09
+- code: ostler/ostler/crud.py::delete_feature@b34e5b5a7cfb
 - code: ostler/ostler/dynamic_registry.py::load_kinds@09b3f9268893
 - code: ostler/ostler/index.py::active@cfb08df1cba1
 - code: ostler/ostler/markdown.py::extract_refs@115245786c4b
@@ -690,7 +690,7 @@ on an entity of its own, so the order the claims run in does not change an outco
 - fixture: [plan scratch repo](fixtures/plan-scratch-repo.md) with a declared note kind
 - code: ostler/ostler/_vendor/stablemate_core/base_cache.py::cache_root@79e1cc13c672
 - code: ostler/ostler/_vendor/stablemate_core/config.py::config_path@45b4d92edb39
-- code: ostler/ostler/crud.py::dump_frontmatter@942278999a09
+- code: ostler/ostler/crud.py::dump_frontmatter@b34e5b5a7cfb
 - code: ostler/ostler/crud_generic.py::create_instance@0c22ea0d56ea
 - code: ostler/ostler/dynamic_registry.py::load_kinds@09b3f9268893
 - code: ostler/ostler/index.py::active@cfb08df1cba1
@@ -729,7 +729,7 @@ on an entity of its own, so the order the claims run in does not change an outco
 - fixture: [plan scratch repo](fixtures/plan-scratch-repo.md) with a note n2
 - code: ostler/ostler/_vendor/stablemate_core/base_cache.py::cache_root@79e1cc13c672
 - code: ostler/ostler/_vendor/stablemate_core/config.py::config_path@45b4d92edb39
-- code: ostler/ostler/crud.py::dump_frontmatter@942278999a09
+- code: ostler/ostler/crud.py::dump_frontmatter@b34e5b5a7cfb
 - code: ostler/ostler/crud_generic.py::edit_instance@0c22ea0d56ea
 - code: ostler/ostler/dynamic_registry.py::load_kinds@09b3f9268893
 - code: ostler/ostler/index.py::active@cfb08df1cba1

@@ -33,7 +33,7 @@ the order they run in does not matter.
 ### write-plan-backlog
 
 - kind: seed
-- run: mkdir -p plan-scratch/docs plan-scratch/docs/services plan-scratch/docs/milestones && printf -- '# Backlog\n\n- \133X-1] first item\n\n- \133X-2] second item\n\n- an unnamed idea\n' > plan-scratch/docs/backlog.md && printf -- '---\ntype: feature\nid: TST-01M585PGNT3613KNWF9FJ5TRPQ\nslug: alpha\ntitle: Alpha\n---\n# Alpha\n\n' > plan-scratch/docs/services/alpha.md && printf -- '---\ntype: feature\nid: TST-01M585PHCYXDYAN9M3JZTR5G7W\nslug: beta\ntitle: Beta\n---\n# Beta\n\n' > plan-scratch/docs/services/beta.md && printf -- '---\ntype: milestone\nid: TST-01M585PJ3RMM086AGTM32KGT2S\ntitle: M one\nstatus: planned\ndependsOn: \133]\nsourceItems: \133]\nepics: \133]\n---\n# M one\n' > plan-scratch/docs/milestones/m1.md
+- run: mkdir -p plan-scratch/docs plan-scratch/docs/services plan-scratch/docs/milestones/m1 && printf -- '# Backlog\n\n- \133X-1] first item\n\n- \133X-2] second item\n\n- an unnamed idea\n' > plan-scratch/docs/backlog.md && printf -- '---\ntype: feature\nid: TST-01M585PGNT3613KNWF9FJ5TRPQ\nslug: alpha\ntitle: Alpha\n---\n# Alpha\n\n' > plan-scratch/docs/services/alpha.md && printf -- '---\ntype: feature\nid: TST-01M585PHCYXDYAN9M3JZTR5G7W\nslug: beta\ntitle: Beta\n---\n# Beta\n\n' > plan-scratch/docs/services/beta.md && printf -- '---\ntype: milestone\nid: TST-01M585PJ3RMM086AGTM32KGT2S\ntitle: M one\nstatus: proposed\ndependsOn: \133]\nsourceItems: \133]\nepics: \133]\n---\n# M one\n' > plan-scratch/docs/milestones/m1/milestone.md
 
 ### write-plan-notes
 

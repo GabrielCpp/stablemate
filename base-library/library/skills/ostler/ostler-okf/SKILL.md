@@ -153,7 +153,7 @@ the service root. Don't hand-pick paths — `ostler scaffold` places every node 
 
 **A typed page belongs under a doc root, or it is invisible.** Every book-facing check —
 conformance, reachability, links, everything — walks in from `graph.doc_roots`
-(`docs/services`, `docs/epics`, `docs/milestones`, `docs/roadmaps`, the specs root in the artifacts dir, or a
+(`docs/services`, `docs/epics`, `docs/milestones`, the specs root in the artifacts dir, or a
 paddock app's own `docs/<kind>`). These paths are fixed. A file carrying a real `type:`
 that a move (or a first draft) leaves outside all of them stops being read by anything — it is
 not `okf-missing-type` (it has a type), it just never enters the graph. `misplaced-book-page`
@@ -162,7 +162,8 @@ flags a typed page none of them cover. See
 [doctor-codes.md](references/doctor-codes.md).
 
 **And it belongs under the *right* doc root, not merely *a* doc root.** Each built-in type has
-one registered home (`epic`→`epics`, `story`→`epics`, `milestone`→`milestones`,
+one registered home (`epic`→`epics`, `story`→`epics`, `milestone`→`milestones` as the folder
+`docs/milestones/<slug>/milestone.md`,
 `feature`/the UI profile types→`services`, `spec.*`→`specs`); a page inside the wrong one is
 just as invisible as a page inside none. The concrete way this happens: `ostler qa context`
 stamps its scratch output `type: spec.qa-okf-context` and writes it into the specs directory —
