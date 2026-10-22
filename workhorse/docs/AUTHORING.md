@@ -583,42 +583,59 @@ def test_every_transition_says_why():
 ## Draining a worklist a chunk at a time (`self.pipeline`)
 
 A state that works through a backlog re-derives the same four things in every workflow:
-take the next few items, mark them taken, hand them to a turn, come back for more.
-`self.pipeline` is that loop, and a `WorkList` (`workhorse.worklist`) is where the items
-live.
+take the next few rows, mark them taken, hand them to a target, come back for more.
+`self.pipeline` is that loop. The rows live on the run's work list (`self.work_list`, a
+`WorkList` from `workhorse.worklist` kept in `work.json` beside the checkpoint), and a
+kind on that list is the list of items to drain.
 
 ```python
-def drain(self, rnd: int = 0, stall: int = 0) -> Transition:
-    again = self.pipeline(self.ctx.work, "error-finding", 3, lambda items:
-        self.agent("main/prompts/fix.md", returns=Fixed, args={"findings": items}))
-    if again:
-        return again
-    return Continue(None, self.report, rnd=rnd).because("queue drained")
+def epics(self) -> Transition:
+    return self.pipeline("epic", to=EpicAuthor, n=1, operator_mode=self.operator_mode) or Continue(
+        None, self.fill_story_splits
+    )
 ```
 
-It claims the next three items of kind `error-finding`, marks them `active`, calls the
-handler, settles them `done`, and returns a `Continue` **back into this same state**
-carrying the parameters this state was entered with. The author never restates
-`rnd=rnd, stall=stall` on the loop edge. A falsy return is how a drained queue says so,
-and that is the branch that leaves the loop.
+The call has three parts that matter. `kind` names one kind, a collection of kinds or
+`None` for every kind. `to` is where the rows go. Every other keyword is passed to the
+target. `n` is the chunk size, `laps` the cap, `strict` stops the drain at the first
+unfinished row, and `work` replaces the run's own list.
 
-One chunk per state visit is the point. Each chunk runs under its own checkpoint, so a
-run killed on chunk four resumes into chunk four rather than the top of the queue. The
-rows that chunk had already claimed are `active`, and `claim` takes active rows first, so
-the resume re-takes exactly them.
-
-Three things a handler can do beyond returning a value:
-
-| The handler | The drain |
+| `to` is | Each chunk |
 |---|---|
-| returns a `Continue`, `Done` or `Await` | takes it, instead of looping — how a drain gates partway through |
-| calls `work.mark(item.id, "blocked")` on a row | leaves that row blocked; only rows still `active` settle |
-| raises | leaves its rows `active`, so the ladder's retry re-takes the same chunk |
+| a `Workflow` subclass | hands off once per row, in order, with the row's `payload` and the extra keywords, and settles the row `done` the moment its handoff returns |
+| a state of this workflow | returns `Continue(None, to, items=rows, **kwargs)`; the state takes `items: list[WorkItem]` and its chain ends by continuing into the drain state |
 
-`pipeline` returns `Transition | None`, never a fourth kind of ending. The
-diagram reads the self-loop off the `self.pipeline` call and the agent bubble off the
-`self.agent` inside the handler, so a chunked drain draws the same way a hand-written one
-does.
+Both targets return a transition back into **this same state** carrying the parameters it
+was entered with, so the author never restates them. A `None` return is how a drained
+list says so, and that is the branch that leaves the loop.
+
+**Settle on entry.** Entering the drain state means every row of the kind that is still
+`active` has come back from its target, so the drain settles those rows to `done`. This is
+what lets a state target finish a row without telling the drain. A row the target moved
+itself, to `blocked` for example, keeps that verdict, because only `active` rows settle.
+
+**Resume.** One chunk runs per state visit, so each chunk runs under its own checkpoint.
+The visit a resume lands on skips the settle, because the rows it claimed are still
+`active`, and the claim takes active rows first. A flow target resumes its child in place.
+A state target resumes in the state it stopped in, and the drain settles its rows when the
+chain reaches it.
+
+**Lap cap.** Each claim counts one lap on the row. A row claimed more than `laps` times
+(`DEFAULT_LAPS`, 3) is marked `blocked` and left out of the chunk, so a row that keeps
+coming back cannot loop the run.
+
+**Note and requeue.** A row carries a `note`, an operator's answer in the usual case. A
+flow target that declares a `note` field receives a non-empty one. `work.requeue(ids,
+note, kind=None)` sends rows back to pending with no laps spent and the note attached, so
+the next drain dispatches them again with the answer.
+
+**Fill before drain.** A barrier state fills a kind before the drain that empties it. The
+barrier reads the source of truth and files one row per item with `work.add`, so a drain
+never works from a list that is still growing.
+
+`pipeline` returns `Transition | None`, never a fourth kind of ending. The diagram reads
+the self-loop and the edge to a state target off the `self.pipeline` call, and a flow
+target draws as a handoff step.
 
 ## Checkpoints and renaming
 

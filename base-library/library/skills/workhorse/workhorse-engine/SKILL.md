@@ -292,6 +292,23 @@ logger.info("gate %s: implementing", gate_id, extra={"activity": True})
 message **is** the activity, so it is never written twice. Workflow-level dimensions
 (`work_id`, epic, service…) go in the `Workflow.labels()` override instead, not in log text.
 
+## Pipeline — drain a kind of the run's work list
+
+A stage that works through many items of one kind uses `self.pipeline`, not a hand-written loop.
+
+```python
+def epics(self) -> Transition:
+    return self.pipeline("epic", to=EpicAuthor, n=1) or Continue(None, self.fill_stories)
+```
+
+- **Rows.** The run's work list is `self.work_list`. A kind on it is the list of items. Items run one at a time, in chunks of `n`. Nothing runs in parallel.
+- **Two targets.** `to` is a `Workflow` subclass or a state of the same workflow. A flow gets one handoff per row, with the row's payload and the extra keywords. A state gets `items: list[WorkItem]`, and its chain must end by continuing into the drain state.
+- **Settle on re-entry.** Entering the drain state settles every row of the kind that is still `active` to `done`. A flow target's row settles right after its handoff returns. A row the target moved itself, to `blocked` for example, keeps that verdict.
+- **Resume.** The visit a resume lands on leaves active rows alone. The claim re-takes them first, so only the row that was in flight runs again.
+- **Lap cap.** Each claim counts a lap. A row claimed more than `laps` times (default 3) is marked `blocked` and not dispatched.
+- **Note and requeue.** A row's `note` reaches a flow target that declares a `note` field. `work.requeue(ids, note)` returns rows to pending with zero laps and the note, which is how an operator's answer sends unfinished rows round again.
+- **Fill before drain.** A barrier state fills a kind from the source of truth before the drain that empties it. The drain never works from a list that is still growing, and the filler skips ids already on the list.
+
 ## The diagram reads what you wrote — so write it
 
 `workhorse-<name> dot` draws each state as the chain of steps it runs and labels each

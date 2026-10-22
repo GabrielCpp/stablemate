@@ -28,8 +28,10 @@ Inside a state, a workflow does its work through four calls:
 - `handoff(flow, ...)` drives another workflow to completion and returns its result.
 - `output(node)` returns the recorded output of a node that already ran.
 
-A worklist gives a run one shared backlog of items to claim, settle and count. `pipeline` drains a
-worklist a chunk per state visit, so every chunk is a resume point.
+A work list gives a run one shared backlog of items to claim, settle and count. `pipeline` drains a
+kind of the run's work list into a flow or a state, a chunk per state visit, so every chunk is a
+resume point. A row settles when the drain state is entered again, and a row claimed more than
+three times is blocked.
 
 States and nodes share one name index. A renamed state keeps its old name as an alias, so a run
 checkpointed under the old name still resumes. A name that resolves to nothing fails with the list
@@ -48,19 +50,19 @@ checks. The same graph renders to Graphviz DOT through [`dot`](../workhorse.md#d
 - code: `workhorse/workhorse/pyflow/transitions.py::Continue` @05edc5a834cc
 - code: `workhorse/workhorse/pyflow/transitions.py::Done` @05edc5a834cc
 - code: `workhorse/workhorse/pyflow/transitions.py::Await` @05edc5a834cc
-- code: `workhorse/workhorse/pyflow/engine.py::Engine` @bae15b8016fa
+- code: `workhorse/workhorse/pyflow/engine.py::Engine` @7fad27ee4d40
 - code: `workhorse/workhorse/pyflow/driver.py::drive` @6ee79b75b0f1
 - code: `workhorse/workhorse/pyflow/driver.py::coerce_params` @6ee79b75b0f1
-- code: `workhorse/workhorse/pyflow/graph.py::FlowGraph` @87a40181e500
+- code: `workhorse/workhorse/pyflow/graph.py::FlowGraph` @2e2ffac17246
 - code: `workhorse/workhorse/pyflow/names.py::NameIndex` @ec28548d30de
 - code: `workhorse/workhorse/pyflow/blueprint.py::Blueprint` @4911263291b8
 - code: `workhorse/workhorse/pyflow/preflight.py::preflight` @3460fa12f550
 - code: `workhorse/workhorse/pyflow/errors.py::PyflowError` @6daae074220e
 - code: `workhorse/workhorse/pyflow/errors.py::UnknownStateError` @6daae074220e
 - code: `workhorse/workhorse/pyflow/activity.py::ActivityLog` @fc149a498518
-- code: `workhorse/workhorse/pyflow/__init__.py` @e2874fdc1f4d
+- code: `workhorse/workhorse/pyflow/__init__.py` @85a539ba0108
 - code: `workhorse/workhorse/pyflow/README.md` @c504bb5519c2
-- code: `workhorse/workhorse/worklist.py::WorkList` @ee16d0fb65f6
+- code: `workhorse/workhorse/worklist.py::WorkList` @af044a280446
 - code: `workhorse/workhorse/context.py::WorkflowContext` @313726f99d8a
 - code: `workhorse/docs/WORKFLOW.md` @7ac0edfa642f
-- code: `workhorse/docs/AUTHORING.md` @4776eec2728f
+- code: `workhorse/docs/AUTHORING.md` @c4845228e953

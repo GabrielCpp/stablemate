@@ -26,9 +26,12 @@ class WorkItem(BaseModel):
     payload: dict[str, Any] = Field(default_factory=dict)
     digest: str = ""
     laps: int = 0
+    note: str = ""
 
 
 KindFilter = str | Collection[str] | None
+
+WORK_FILE = "work.json"
 
 
 class DigestMismatch(ValueError):
@@ -381,6 +384,24 @@ class WorkList:
         if hit:
             self.backend.save(items)
         return hit
+
+    def requeue(self, ids: Iterable[str], note: str, kind: KindFilter = None) -> int:
+        """Send every item named in ``ids`` back to pending with no laps spent and ``note`` attached, in one write, and say how many rows it reset."""
+        wanted = set(ids)
+        if not wanted:
+            return 0
+        kinds = _kinds(kind)
+        items = self._load()
+        changed = 0
+        for it in items:
+            if it.id in wanted and (kinds is None or it.kind in kinds):
+                it.status = ""
+                it.laps = 0
+                it.note = note
+                changed += 1
+        if changed:
+            self.backend.save(items)
+        return changed
 
     def prune(self, item_id: str, kind: KindFilter = None) -> bool:
         """Drop one item entirely."""

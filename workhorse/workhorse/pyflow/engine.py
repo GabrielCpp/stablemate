@@ -162,6 +162,10 @@ class Engine:
         _, bound, params = self._state
         return Continue(None, bound, **params)
 
+    def resuming(self) -> bool:
+        """Whether the state now running is the one a resume landed on, and no handoff in this visit has used that up yet."""
+        return self.env.resume_pending
+
 
     @property
     def logger(self) -> logging.Logger:

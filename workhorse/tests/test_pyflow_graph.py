@@ -138,22 +138,34 @@ class Factored(Workflow):
         self.call(measure, "globex")
 
 
-class Drains(Workflow):
-    """A chunked drain, the shape `self.pipeline` gives a state."""
+class Child(Workflow):
+    """A flow a drain hands its rows to."""
 
     def start(self) -> Transition:
-        again = self.pipeline(
-            self.ctx.work,
-            "finding",
-            3,
-            lambda items: self.agent("prompts/fix.md", returns=str, args={"i": items}),
+        return Done(None)
+
+
+class Drains(Workflow):
+    """A chunked drain into a state, the shape `self.pipeline` gives a state."""
+
+    def start(self) -> Transition:
+        return self.pipeline("finding", to=self.fix, n=3, mode="strict") or Continue(
+            None, self.report
         )
-        if again:
-            return again
-        return Continue(None, self.report)
+
+    def fix(self, items: list[object], mode: str = "") -> Transition:
+        self.agent("prompts/fix.md", returns=str, args={"i": items})
+        return Continue(None, self.start)
 
     def report(self) -> Transition:
         return Done(None)
+
+
+class DrainsToFlow(Workflow):
+    """A chunked drain into a flow."""
+
+    def start(self) -> Transition:
+        return self.pipeline("finding", to=Child) or Done(None)
 
 
 def _graph(cls: type[Workflow]):
@@ -249,14 +261,27 @@ def test_a_seam_inside_a_private_helper_is_attributed_to_the_state():
     assert graph.prompts() == (("start", "prompts/record.md"),)
 
 
-def test_a_pipeline_loops_the_state_back_onto_itself():
-    assert ("start", "continue") in _edges(Drains, "start")
-    reasons = {e.target: e.reason for e in _state(Drains, "start").edges}
-    assert reasons["start"] == "another chunk"
+def test_a_pipeline_shows_both_the_another_chunk_edge_and_its_state_target():
+    edges = {(e.target, e.reason): e for e in _state(Drains, "start").edges}
+    assert ("start", "another chunk") in edges
+    assert edges[("fix", "drain target")].params == ("items", "mode")
+    assert ("report", "") in edges
+    assert not edges[("fix", "drain target")].dangling
 
 
-def test_an_agent_inside_a_pipeline_handler_is_still_a_step():
-    assert _state(Drains, "start").prompts == ("prompts/fix.md",)
+def test_a_pipeline_into_a_flow_is_a_handoff_step():
+    node = _state(DrainsToFlow, "start")
+    assert [(s.kind, s.name) for s in node.steps] == [("handoff", "Child")]
+    assert ("start", "continue") in _edges(DrainsToFlow, "start")
+
+
+def test_the_state_a_pipeline_drains_into_is_reachable():
+    assert "fix" in _graph(Drains).reachable()
+    assert _graph(Drains).unreachable() == ()
+
+
+def test_an_agent_inside_a_pipeline_target_is_still_a_step():
+    assert _state(Drains, "fix").prompts == ("prompts/fix.md",)
 
 
 class Ternary(Workflow):

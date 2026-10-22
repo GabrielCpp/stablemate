@@ -233,6 +233,7 @@ def _scan(
                 found.edges.append(
                     Edge(target=owner, kind="continue", reason="another chunk")
                 )
+            _scan_drain_target(cls, node, found)
         elif dotted == "self.handoff":
             child = _first_ident(node)
             if child:
@@ -242,6 +243,31 @@ def _scan(
             helper = _source_tree(getattr(cls, tail, None))
             if helper is not None:
                 _scan(cls, helper, found, seen, workflow_dir, owner=owner)
+
+
+_PIPELINE_OWN = frozenset({"to", "n", "work", "laps", "strict"})
+
+
+def _scan_drain_target(cls: type[Workflow], call: ast.Call, found: _Found) -> None:
+    """Record where a `self.pipeline(..., to=...)` call sends its rows: an edge to a state, or a handoff step for a flow."""
+    to = next((kw.value for kw in call.keywords if kw.arg == "to"), None)
+    if to is None:
+        return
+    if isinstance(to, ast.Attribute) and _dotted(to.value) == "self":
+        extra = tuple(kw.arg for kw in call.keywords if kw.arg and kw.arg not in _PIPELINE_OWN)
+        found.edges.append(
+            Edge(
+                target=to.attr,
+                kind="continue",
+                params=("items", *extra),
+                reason="drain target",
+                dangling=to.attr not in cls.state_names(),
+            )
+        )
+        return
+    dotted = _dotted(to)
+    if dotted:
+        found.steps.append(Step("handoff", dotted.rsplit(".", 1)[-1]))
 
 
 def _unwrap_because(call: ast.Call) -> tuple[ast.Call | None, str]:

@@ -324,9 +324,9 @@ def test_digest_covers_content_and_ignores_status_order_and_laps():
 
 
 def test_digest_covers_extra_fields():
-    item = wl.WorkItem.model_validate({"id": "f1", "note": "a"})
+    item = wl.WorkItem.model_validate({"id": "f1", "source": "a"})
     stamped = wl.payload_digest(item)
-    edited = wl.WorkItem.model_validate({"id": "f1", "note": "b"})
+    edited = wl.WorkItem.model_validate({"id": "f1", "source": "b"})
     assert wl.payload_digest(edited) != stamped
 
 

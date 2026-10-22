@@ -19,17 +19,19 @@ from workhorse.pyflow.errors import (
     WorkflowFrozenError,
 )
 from workhorse.pyflow.names import NameIndex
-from workhorse.pyflow.transitions import Await, Continue, Done, Transition
+from workhorse.pyflow.transitions import Continue, Transition
 from workhorse.runner.backends import AgentProfile
 from workhorse.runner.usage import TurnUsage
 from workhorse import references
 from workhorse.runner import worktree_guard
-from workhorse.worklist import KindFilter, WorkItem, WorkList
+from workhorse.worklist import WORK_FILE, JsonBackend, KindFilter, WorkList
 
 P = ParamSpec("P")
 T = TypeVar("T")
 
 START_STATE = "start"
+
+DEFAULT_LAPS = 3
 
 _NAMEABLE = (inspect.Parameter.POSITIONAL_OR_KEYWORD, inspect.Parameter.KEYWORD_ONLY)
 
@@ -253,37 +255,67 @@ class Workflow(BaseModel):
                 "turn in a prompt file."
             )
 
+    @property
+    def work_list(self) -> WorkList:
+        """The run's own work list, kept beside its checkpoint."""
+        return WorkList(JsonBackend(self.run_dir / WORK_FILE))
+
     def pipeline(
         self,
-        work: WorkList,
         kind: KindFilter,
-        n: int,
-        handler: Callable[[list[WorkItem]], Any],
         *,
-        status: str = "done",
+        to: Callable[..., Any],
+        n: int = 1,
+        work: WorkList | None = None,
+        laps: int = DEFAULT_LAPS,
         strict: bool = False,
+        **kwargs: Any,
     ) -> Transition | None:
-        """Hand the next `n` items of `kind` to `handler` and come back here for the next chunk, or `None` once the queue is drained.
+        """Drain the work list's rows of `kind` into `to`, `n` at a time, and return `None` once none is left.
 
-        One chunk per state visit, so every chunk is a checkpoint a resume can land on.
-        The loop carries this state's own parameters, so nothing is restated. A handler
-        that returns a transition takes it instead, which is how a drain gates partway
-        through. Claimed rows settle to `status` unless the handler already moved them,
-        so a row it marked blocked keeps that verdict. `kind` names one kind, a
-        collection of kinds, or `None` for every kind. With `strict`, an item is claimed
-        only once every item before it is done, so a blocked item stops the drain.
+        `to` is a flow, handed each row's payload and the extra `kwargs` once per row,
+        or a state of this workflow, which receives the claimed rows as `items` and
+        continues into this state when its chain ends. A row settles to `done` when its
+        flow returns, or when this state is entered again after its state chain. A
+        resumed visit leaves active rows alone, because the claim re-takes them first
+        and dispatches them again. A row that moved itself keeps its verdict. A row
+        claimed more than `laps` times is marked `blocked` instead of dispatched. A
+        row's non-empty `note` reaches a flow that declares a `note` field. With
+        `strict`, a row is claimed only once every row before it is done. The default
+        work list is `self.work_list`, and `work` replaces it. One chunk runs per
+        state visit, so every chunk is a checkpoint a resume can land on.
         """
         engine = self._require_engine()
-        items = work.claim(n, kind=kind, strict=strict)
-        if not items:
+        work = work if work is not None else self.work_list
+        if not engine.resuming():
+            work.settle(
+                [it.id for it in work.items(kind) if it.status in work.scheme.active],
+                "done",
+                kind,
+            )
+        claimed = work.claim(n, kind=kind, strict=strict)
+        if not claimed:
             return None
-        outcome = handler(items)
-        if isinstance(outcome, (Continue, Done, Await)):
-            return outcome
-        held = {
-            it.id for it in work.items(kind) if it.status in work.scheme.active
-        }
-        work.settle([it.id for it in items if it.id in held], status, kind)
+        capped = [it for it in claimed if it.laps > laps]
+        for it in capped:
+            work.mark(it.id, "blocked", kind)
+        dispatched = [it for it in claimed if it.laps <= laps]
+        if not dispatched:
+            return engine.revisit()
+        if not (isinstance(to, type) and issubclass(to, Workflow)):
+            return Continue(None, to, items=dispatched, **kwargs)
+        takes_note = "note" in to.model_fields
+        for it in dispatched:
+            args = {**it.payload, **kwargs}
+            if it.note and takes_note:
+                args["note"] = it.note
+            self.handoff(to, **args)
+            held = [
+                row.id
+                for row in work.items(kind)
+                if row.id == it.id and row.status in work.scheme.active
+            ]
+            work.settle(held, "done", kind)
         return engine.revisit()
 
     def turn_usage(self, node: str) -> TurnUsage:

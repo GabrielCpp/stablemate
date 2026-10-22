@@ -400,11 +400,15 @@ An agent prompt must output JSON matching the model its turn declared in `return
 came back empty: after transient retries and reframing, the runner defaults a turn's
 declared outputs and lets the machine advance rather than crashing the run.
 
-A state that works through a backlog gets that loop written for it. `self.pipeline(work,
-kind, n, handler)` claims the next `n` items of one kind off a `WorkList`, hands them to
-the handler, settles them, and returns a transition back into the same state carrying the
-parameters it was entered with. One chunk per visit, so each chunk is a checkpoint a
-resume lands on, and a falsy return is how a drained queue says so.
+A state that works through a backlog gets that loop written for it. `self.pipeline("epic",
+to=EpicAuthor, n=1)` claims the next `n` rows of one kind off the run's work list and
+hands them to `to`, which is a flow or a state of the same workflow. A flow target runs
+once per row. A state target receives the rows as `items` and continues into the drain
+state when its chain ends. A row settles to `done` when the drain state is entered again,
+and a row claimed more than three times is blocked instead of dispatched. The call returns
+a transition back into the same state with the parameters it was entered with, and `None`
+once no row is left. One chunk runs per visit, so each chunk is a checkpoint a resume
+lands on.
 
 The authoring reference — the package layout, the worked example end to end, the three
 tiers of state and why there is no fourth, when a turn is written inline rather than in a
