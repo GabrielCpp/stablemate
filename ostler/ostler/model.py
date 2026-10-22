@@ -55,6 +55,7 @@ class Story:
     fixtures: list[str] = field(default_factory=list)
     fixture_strays: list[str] = field(default_factory=list)
     misordered_sections: list[str] = field(default_factory=list)
+    services: tuple[str, ...] = ()
 
     @property
     def authored(self) -> bool:
@@ -1082,6 +1083,13 @@ def _load_epics(graph: Graph) -> None:
         graph.epics.append(epic)
 
 
+def _frontmatter_services(frontmatter: Mapping) -> tuple[str, ...]:
+    """A story's `services:` frontmatter list as book names, in file order and without repeats."""
+    value = frontmatter.get("services")
+    parts = value if isinstance(value, list) else []
+    return tuple(dict.fromkeys(str(part).strip() for part in parts if str(part).strip()))
+
+
 def _attach_story_md(graph: Graph, epic: Epic, story: Story) -> None:
     candidates = []
     if story.path:
@@ -1096,6 +1104,8 @@ def _attach_story_md(graph: Graph, epic: Epic, story: Story) -> None:
                 story.external_key = str(doc.frontmatter.get("externalKey") or "")
                 story.raw["externalKey"] = story.external_key
                 story.conflict = str(doc.frontmatter.get("conflict") or "").strip()
+                story.services = _frontmatter_services(doc.frontmatter)
+                story.raw["services"] = list(story.services)
             if not story.eid and story.file_eid:
                 story.eid = story.file_eid
             refs = doc.refs

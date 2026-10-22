@@ -13,7 +13,7 @@ def _story_row(graph: Graph, epic, story) -> dict:
         "type": "story", "id": story.eid, "externalKey": story.external_key,
         "aliases": list(story.aliases), "slug": story.slug, "epic": epic.name,
         "title": story.title, "status": story.status, "covers": story.seed_items,
-        "dependsOn": story.dependencies,
+        "dependsOn": story.dependencies, "services": list(story.services),
         "path": story.path,
         "authored": story.authored, "unwrittenSections": list(story.unwritten_sections),
         "hasStoryMd": story.story_md is not None,
@@ -39,7 +39,8 @@ def _seed_row(epic, seed) -> dict:
             "sourceBullet": raw.get("sourcebullet", ""),
             "backing": raw.get("backing", ""),
             "prerequisites": raw.get("prerequisites", ""),
-            "design": raw.get("design", "")}
+            "design": raw.get("design", ""),
+            "services": list(seed.services)}
 
 
 def list_entities(graph: Graph, etype: str, epic: str | None = None,

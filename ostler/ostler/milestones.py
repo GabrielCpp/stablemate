@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from collections.abc import Iterable
 from dataclasses import replace
 from pathlib import Path
 from urllib.parse import unquote
@@ -32,6 +33,22 @@ class MilestoneSelectionError(ValueError):
 def journey_slug(title: str) -> str:
     """The file stem of a journey's mockup: its heading lowercased, runs of non-alphanumerics as `-`."""
     return _NON_ALNUM.sub("-", title.strip().lower()).strip("-")
+
+
+def service_books(graph: Graph) -> set[str]:
+    """The names of the books under `docs/services/`."""
+    services_root = graph.doc_roots.get("services")
+    if services_root is None or not services_root.is_dir():
+        return set()
+    return {d.name for d in services_root.iterdir() if d.is_dir()}
+
+
+def ui_services(graph: Graph, names: Iterable[str], dump: dict | None = None) -> set[str]:
+    """The books among *names* whose runbook driver is `web` or `mobile`."""
+    wanted = set(names)
+    if not wanted:
+        return set()
+    return wanted & _ui_books(graph, dump)
 
 
 def approved_milestones(graph: Graph) -> list[Milestone]:
@@ -155,7 +172,7 @@ def _journey_findings(graph: Graph, milestone: Milestone, doc: markdown.Markdown
     if journeys is None:
         return []
     found: list[Finding] = []
-    services_root = graph.doc_roots.get("services")
+    known_books = service_books(graph)
     ui_books: set[str] | None = None
     for journey in journeys.children:
         if journey.level != JOURNEY_LEVEL:
@@ -171,7 +188,7 @@ def _journey_findings(graph: Graph, milestone: Milestone, doc: markdown.Markdown
                 f"{rel}: the journey `{title}` has no `- services: <book>, <book>` bullet",
                 path=rel, line=line, ref=slug, suggestion="- services: <book>, <book>"))
             continue
-        unknown = [b for b in books if services_root is None or not (services_root / b).is_dir()]
+        unknown = [b for b in books if b not in known_books]
         for book in unknown:
             found.append(Finding(
                 "error", "milestone-journey-services",

@@ -80,7 +80,7 @@ starts as a background process. Both run through `python3`, not through `ostler`
   story `sx` and its `review-answers.md`, naming one fixed finding with evidence, one declined
   finding with a reason, and one malformed heading
 - code: ostler/ostler/answers.py::parse_answers@6c168f1fb49d
-- code: ostler/ostler/api.py::Ostler.settle_answers@1768ac94402a
+- code: ostler/ostler/api.py::Ostler.settle_answers@dc53cd236858
 - code: ostler/ostler/edit.py::settle_answers@08519cdd058d
 - detail: [The Ostler facade and book utilities](concepts/the-ostler-facade-and-book-utilities.md)
 
@@ -148,5 +148,5 @@ starts as a background process. Both run through `python3`, not through `ostler`
 - code: ostler/ostler/qa/source_context.py::SourceScope@c8ac0146f0b0
 - code: ostler/ostler/qa/context.py::_repository_changes@ae1dfb851ad2
 - code: ostler/ostler/qa/context.py::_repository_row@ae1dfb851ad2
-- code: ostler/ostler/api.py::Ostler.qa_context@1768ac94402a
+- code: ostler/ostler/api.py::Ostler.qa_context@dc53cd236858
 - detail: [Compiling a book into a QA plan](concepts/compiling-a-book-into-a-qa-plan.md)

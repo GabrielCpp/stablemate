@@ -43,7 +43,7 @@ checkout, with `-C book-scratch`, so the real books never decide the outcome.
 - code: ostler/ostler/links.py::is_doc_link@471fa7366668
 - code: ostler/ostler/locators.py::collisions@4e770b42dfdc
 - code: ostler/ostler/markdown.py::all_code_spans@115245786c4b
-- code: ostler/ostler/model.py::anchor_of@a8ae060f7bb7
+- code: ostler/ostler/model.py::anchor_of@7651c0781a8f
 - code: ostler/ostler/outcome_rules.py::check_outcomes@408c771787b5
 - code: ostler/ostler/page_size.py::check_page_size@380a05d10fdd
 - code: ostler/ostler/pages.py::files_in_book@e9f96e7b3156
@@ -83,7 +83,7 @@ checkout, with `-C book-scratch`, so the real books never decide the outcome.
 - code: ostler/ostler/doctor.py::run@b02e27a258c1
 - code: ostler/ostler/finding.py::Finding@9ff7be48f3bd
 - code: ostler/ostler/markdown.py::comment_blocks@115245786c4b
-- code: ostler/ostler/model.py::doc_roots@a8ae060f7bb7
+- code: ostler/ostler/model.py::doc_roots@7651c0781a8f
 - code: ostler/ostler/refs.py::bullet_ref@5de8b2ec8022
 
 ### ostler-checks
@@ -204,7 +204,7 @@ checkout, with `-C book-scratch`, so the real books never decide the outcome.
 - verify: json_path(path="[1].slug", equals="say-hello")
 - verify: json_path(path="[1].path", equals="docs/services/demo/flows/say-hello.md")
 - fixture: [book scratch repo](fixtures/book-scratch-repo.md) — seeds a flow titled "Say hello"
-- code: ostler/ostler/query.py::list_entities@df0758605f55
+- code: ostler/ostler/query.py::list_entities@764fe4f95773
 
 ### ostler-list
 - usage: ostler list --type TYPE [--json] — lists the nodes of one type, one JSON object per line
@@ -217,7 +217,7 @@ checkout, with `-C book-scratch`, so the real books never decide the outcome.
 - verify: json_path(path="[0].type", equals="flow")
 - verify: json_path(path="[0].path", equals="docs/services/demo/flows/say-hello.md")
 - fixture: [book scratch repo](fixtures/book-scratch-repo.md) — seeds one flow
-- code: ostler/ostler/query.py::list_entities@df0758605f55
+- code: ostler/ostler/query.py::list_entities@764fe4f95773
 
 ### ostler-query
 - usage: ostler query KIND ARG [--checkout REPOSITORY=PATH] [--json] — answers a reverse-index
@@ -234,7 +234,7 @@ checkout, with `-C book-scratch`, so the real books never decide the outcome.
 - verify: json_path(path="[0].node.codeRefs[0]", equals="src/demo.py::greet")
 - fixture: [book scratch repo](fixtures/book-scratch-repo.md) — seeds a cli page that cites
   `src/demo.py::greet`
-- code: ostler/ostler/query.py::query@df0758605f55
+- code: ostler/ostler/query.py::query@764fe4f95773
 - code: ostler/ostler/provenance.py::checkout_for@01646df567c9
 
 ### ostler-graph

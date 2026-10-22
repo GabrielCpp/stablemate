@@ -61,13 +61,13 @@ every repository's `RepositorySnapshot`. `catalog_path`/`load_catalog` locate an
 byte under a repository's declared scopes so a catalog entry can detect its source has moved
 without re-walking the full diff on every run.
 
-- code: ostler/ostler/api.py::Ostler@1768ac94402a
-- code: ostler/ostler/api.py::Snapshot@1768ac94402a
-- code: ostler/ostler/api.py::_snapshot_of@1768ac94402a
-- code: ostler/ostler/api.py::_listing@1768ac94402a
-- code: ostler/ostler/api.py::_file_sha@1768ac94402a
-- code: ostler/ostler/api.py::_story_candidates@1768ac94402a
-- code: ostler/ostler/api.py::_unreadable@1768ac94402a
+- code: ostler/ostler/api.py::Ostler@dc53cd236858
+- code: ostler/ostler/api.py::Snapshot@dc53cd236858
+- code: ostler/ostler/api.py::_snapshot_of@dc53cd236858
+- code: ostler/ostler/api.py::_listing@dc53cd236858
+- code: ostler/ostler/api.py::_file_sha@dc53cd236858
+- code: ostler/ostler/api.py::_story_candidates@dc53cd236858
+- code: ostler/ostler/api.py::_unreadable@dc53cd236858
 - code: ostler/ostler/select.py::is_done@95d1a37a3be0
 - code: ostler/ostler/select.py::epic_by_name@95d1a37a3be0
 - code: ostler/ostler/select.py::epic_done@95d1a37a3be0
