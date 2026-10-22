@@ -158,6 +158,11 @@ class Workflow(BaseModel):
     def run_id(self) -> str:
         return self._require_engine().run_id
 
+    @property
+    def subagents(self) -> bool:
+        """Whether the agent CLI running this workflow can spawn subagents. A dry run answers `False` unless the test environment sets it."""
+        return self._require_engine().subagents
+
 
     def call(
         self,

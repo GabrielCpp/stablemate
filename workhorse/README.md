@@ -192,6 +192,11 @@ default_cli = "opencode"
 | `cline` | `cline --json` | — (node names it) | no — ladder reframes on overflow |
 | `opencode` | `opencode run --format json` | — (node names it) | no — ladder reframes on overflow |
 
+Claude, codex and opencode can spawn subagents inside a turn. Cline and copilot cannot.
+A workflow reads the answer as `self.subagents`, and a dry run answers `False` unless the
+test's `RunEnv` sets `subagents`. A workflow that wants one subagent per concern writes
+one prompt for each case and picks by `self.subagents`.
+
 JSONL provider error events and logs that identify a transient failure are aborted
 immediately and retried by workhorse's bounded backoff instead of being left to a CLI's
 opaque internal retry loop.

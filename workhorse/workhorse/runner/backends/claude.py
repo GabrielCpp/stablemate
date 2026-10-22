@@ -30,6 +30,7 @@ class ClaudeBackend(AgentBackend):
     name = "claude"
     default_model = "sonnet"
     supports_compaction = True
+    supports_subagents = True
 
     def transcript_mapper(self) -> acp.TranscriptMapper:
         return ClaudeTranscript()

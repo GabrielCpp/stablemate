@@ -19,6 +19,7 @@ class NullBackend(AgentBackend):
     name = "none"
     default_model = None
     supports_compaction = False
+    supports_subagents = False
 
     def run_turn(
         self,

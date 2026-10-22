@@ -406,6 +406,7 @@ class OpenCodeBackend(JsonlBackend):
         None
     )
     supports_compaction = False
+    supports_subagents = True
 
     def transcript_mapper(self) -> acp.TranscriptMapper:
         return OpenCodeTranscript()

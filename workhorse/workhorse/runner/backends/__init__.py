@@ -100,6 +100,7 @@ class AgentBackend(ABC):
     name: str = "agent"
     default_model: str | None = None
     supports_compaction: bool = False
+    supports_subagents: bool = False
 
     def harness_env(self) -> dict[str, str]:
         """Operator-configured extra environment for this CLI (``[harness.<name>].env``)."""

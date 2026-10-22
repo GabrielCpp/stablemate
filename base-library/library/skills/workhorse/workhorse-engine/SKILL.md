@@ -309,6 +309,12 @@ def epics(self) -> Transition:
 - **Note and requeue.** A row's `note` reaches a flow target that declares a `note` field. `work.requeue(ids, note)` returns rows to pending with zero laps and the note, which is how an operator's answer sends unfinished rows round again.
 - **Fill before drain.** A barrier state fills a kind from the source of truth before the drain that empties it. The drain never works from a list that is still growing, and the filler skips ids already on the list.
 
+## Subagents — choose the prompt by the CLI
+
+`self.subagents` says whether the run's agent CLI can spawn subagents. It is `True` for claude, codex and opencode, and `False` for cline and copilot. A dry run answers `False` unless the test's `RunEnv` sets `subagents`.
+
+A turn that wants one subagent per concern keeps two prompt files. The delegated prompt tells the agent to spawn a subagent for each concern and merge their verdicts. The inline prompt judges every concern in one turn. The state picks the file with `self.subagents`, and both return the same output model.
+
 ## The diagram reads what you wrote — so write it
 
 `workhorse-<name> dot` draws each state as the chain of steps it runs and labels each

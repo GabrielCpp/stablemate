@@ -1529,3 +1529,15 @@ if __name__ == "__main__":
             print(f"FAIL  {fn.__name__}: {type(e).__name__}: {e}")
     print(f"\n{len(fns) - failed}/{len(fns)} passed")
     raise SystemExit(1 if failed else 0)
+
+
+def test_each_backend_says_whether_its_cli_takes_subagents():
+    expected = {
+        "claude": True,
+        "codex": True,
+        "opencode": True,
+        "cline": False,
+        "copilot": False,
+    }
+    assert {name: get_backend(name).supports_subagents for name in expected} == expected
+    assert NullBackend().supports_subagents is False

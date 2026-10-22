@@ -120,6 +120,7 @@ class RunEnv:
     agent_stubs: dict[str, Any] | None = None
     declared_answers: set[str] = field(default_factory=set)
     agent_runner: AgentRunner | None = None
+    subagents: bool = False
     resume_pending: bool = False
     worktree_dispatched: bool = False
 
@@ -161,6 +162,14 @@ class Engine:
             )
         _, bound, params = self._state
         return Continue(None, bound, **params)
+
+    @property
+    def subagents(self) -> bool:
+        """Whether this run's agent CLI can spawn subagents. A dry run answers from `RunEnv.subagents`, which is `False` unless a test sets it."""
+        if self.env.dry_run:
+            return self.env.subagents
+        runner = self.env.agent_runner
+        return runner is not None and runner.backend.supports_subagents
 
     def resuming(self) -> bool:
         """Whether the state now running is the one a resume landed on, and no handoff in this visit has used that up yet."""

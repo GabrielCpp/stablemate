@@ -5,7 +5,7 @@ from __future__ import annotations
 import sys
 import tempfile
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
@@ -16,6 +16,7 @@ from workhorse.pyflow import DEFAULT_LAPS, Continue, Done, Workflow  # noqa: E40
 from workhorse.pyflow.driver import drive, read_resume  # noqa: E402
 from workhorse.pyflow.engine import RunEnv  # noqa: E402
 from workhorse.records import parse_checkpoint  # noqa: E402
+from workhorse.runner.ladder import AgentRunner  # noqa: E402
 
 Transition = Any
 
@@ -381,6 +382,42 @@ def test_an_explicit_work_list_replaces_the_runs_own():
 
         assert drive(Drain(), _env(tmp)) == "drained"
         assert seen == ["o"]
+
+
+def _asks_subagents() -> Workflow:
+    class Asks(Workflow):
+        def start(self) -> Transition:
+            return Done(self.subagents)
+
+    return Asks()
+
+
+def test_a_dry_run_has_no_subagents_unless_the_environment_sets_them():
+    with tempfile.TemporaryDirectory() as tmp:
+        env = _env(tmp)
+        env.dry_run = True
+        assert drive(_asks_subagents(), env) is False
+
+
+def test_a_dry_run_environment_can_grant_subagents():
+    with tempfile.TemporaryDirectory() as tmp:
+        env = _env(tmp)
+        env.dry_run = True
+        env.subagents = True
+        assert drive(_asks_subagents(), env) is True
+
+
+def test_a_live_run_reads_subagents_from_its_backend():
+    class Backend:
+        supports_subagents = True
+
+    class Runner:
+        backend = Backend()
+
+    with tempfile.TemporaryDirectory() as tmp:
+        env = _env(tmp)
+        env.agent_runner = cast(AgentRunner, Runner())
+        assert drive(_asks_subagents(), env) is True
 
 
 if __name__ == "__main__":
