@@ -1,5 +1,5 @@
 [project]
-name = "saddlebag"
+name = "stablemate-saddlebag"
 version = "2.0.0"
 description = "A Vault-backed daemon that fills secrets into browsers and commands without printing them."
 readme = "README.md"

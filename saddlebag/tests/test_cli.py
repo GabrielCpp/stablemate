@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import importlib.metadata
 import os
 from collections.abc import Callable
 from pathlib import Path
@@ -209,3 +210,10 @@ def test_serve_hands_the_stdin_token_to_vault(run: Run, monkeypatch: pytest.Monk
     monkeypatch.setattr(daemon, "serve", serve)
     assert run("serve", "--vault-addr", "http://vault.example.com:8200", "--cdp", "http://127.0.0.1:9333", stdin="  s.token  \n") == 0
     assert seen == {"addr": "http://vault.example.com:8200", "token": "s.token", "path": daemon_path, "cdp": "http://127.0.0.1:9333"}
+
+
+def test_version_reports_the_installed_distribution(capsys: pytest.CaptureFixture[str]) -> None:
+    with pytest.raises(SystemExit) as exc:
+        cli.main(["--version"])
+    assert exc.value.code == 0
+    assert importlib.metadata.version("stablemate-saddlebag") in capsys.readouterr().out

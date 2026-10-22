@@ -32,12 +32,19 @@ saddlebag for the variables a stack needs, as described under
 
 ## Install
 
-Saddlebag is not on PyPI. It runs from a checkout of the
-[stablemate](https://github.com/GabrielCpp/stablemate) workspace:
+Saddlebag publishes to PyPI as `stablemate-saddlebag`, because the name `saddlebag` is
+unavailable. The command and the import package stay `saddlebag`.
 
 ```bash
-make sync                              # at the workspace root
-uv run --package saddlebag saddlebag --help
+uv tool install stablemate-saddlebag
+pipx install stablemate-saddlebag
+```
+
+The `stablemate` package installs it along with the other tools (`uv tool install stablemate`).
+From a checkout of the [stablemate](https://github.com/GabrielCpp/stablemate) workspace:
+
+```bash
+uv run --package stablemate-saddlebag saddlebag --help
 ```
 
 Requires Python ≥ 3.12 and a reachable HashiCorp Vault with a KV v2 mount named
@@ -233,4 +240,4 @@ riding, and saddlebag carries what the journey needs.
 
 - `saddlebag/`: the package behind the `saddlebag` command. [Package layout](#package-layout) says what each module owns.
 - `docs/`: the security model and the workflow integration.
-- `tests/`: the suite, run from the repo root with `uv run --package saddlebag pytest saddlebag/tests`.
+- `tests/`: the suite, run from the repo root with `uv run --package stablemate-saddlebag pytest saddlebag/tests`.

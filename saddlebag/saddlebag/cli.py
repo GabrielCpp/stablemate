@@ -242,7 +242,7 @@ def _tag_option(parser: argparse.ArgumentParser) -> None:
 
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="saddlebag", description="Fill secrets into browsers and commands without printing them.")
-    p.add_argument("--version", action="version", version=f"saddlebag {_pkg_version('saddlebag')}")
+    p.add_argument("--version", action="version", version=f"saddlebag {_pkg_version('stablemate-saddlebag')}")
     p.add_argument("-v", "--verbose", action="store_true", help="debug logging on stderr")
     sub = p.add_subparsers(dest="command", required=True)
 

@@ -96,7 +96,7 @@ class Daemon:
         return [secret for secret in found if secret is not None and matches(secret.tags, tags)]
 
     def verb_ping(self, args: dict[str, Any]) -> dict[str, Any]:
-        return {"version": _pkg_version("saddlebag")}
+        return {"version": _pkg_version("stablemate-saddlebag")}
 
     def verb_list(self, args: dict[str, Any]) -> dict[str, Any]:
         return {"secrets": [secret.to_dict() for secret in self._matching(_tags(args))]}

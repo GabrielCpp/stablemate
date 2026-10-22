@@ -1,7 +1,8 @@
 # saddlebag — build and test tasks.
 #
-# Nothing here publishes: saddlebag is not on PyPI (see the README). Versions still
-# come from release-please so a changelog exists when it ever ships.
+# The distribution is `stablemate-saddlebag`, because the name `saddlebag` is unavailable on
+# PyPI. The import package and the `saddlebag` command keep the short name. The release
+# workflow publishes it.
 
 .DEFAULT_GOAL := help
 
