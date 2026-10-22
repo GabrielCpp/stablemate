@@ -74,6 +74,7 @@ def _clear_stale_terminal(run: RunTelemetry, ts: float) -> None:
     if run.last_session is None and run.terminal and ts > run.terminal_ts:
         run.terminal = ""
         run.terminal_ts = 0.0
+        run.worktree = ""
         run.fired.clear()
 
 
@@ -111,11 +112,21 @@ def _note_alive(run: RunTelemetry) -> None:
 CLEAN_TERMINALS = frozenset({"terminal", "ended"})
 
 
+def _worktree_line(attrs: dict[str, Any]) -> str:
+    """What the run's ending did with its `--worktree` worktree, as one line, or "" for a run that had none."""
+    action = str(attrs.get("workhorse.worktree") or "")
+    if not action:
+        return ""
+    reason = str(attrs.get("workhorse.worktree_reason") or "")
+    return f"worktree {action}: {reason}" if reason else f"worktree {action}"
+
+
 def _ended_message(run: RunTelemetry, label: str, attrs: dict[str, Any]) -> str:
     """What the ENDED page says: the verdict first, then the wreckage if there is any."""
     terminal = run.terminal
+    worktree = f"; {run.worktree}" if run.worktree else ""
     if terminal in CLEAN_TERMINALS:
-        return f"{label}: finished ({terminal}) — nothing is running for it now"
+        return f"{label}: finished ({terminal}) — nothing is running for it now{worktree}"
     detail = str(attrs.get("error.class") or "")
     kind = str(attrs.get("error.kind") or "")
     because = f" [{'/'.join(part for part in (kind, detail) if part)}]" if detail or kind else ""
@@ -123,6 +134,7 @@ def _ended_message(run: RunTelemetry, label: str, attrs: dict[str, Any]) -> str:
         f"{label}: ended '{terminal}'{because} — the run is over and did not get there "
         f"on its own terms"
         + (f" (last in '{run.current_node}')" if run.current_node else "")
+        + worktree
     )
 
 
@@ -181,6 +193,7 @@ def _accept_session(run: RunTelemetry, record: dict[str, Any]) -> bool:
     run.closed_wait_series = set()
     run.terminal = ""
     run.terminal_ts = 0.0
+    run.worktree = ""
     run.last_heartbeat_ts = 0.0
     run.last_beat_ts = 0.0
     run.backend = ""
@@ -237,6 +250,7 @@ def ingest_spans(spans: list[dict[str, Any]], now: float | None = None) -> list[
         if span.get("name", "").startswith("run:"):
             run.terminal = str(attrs.get("workhorse.terminal") or "ended")
             run.terminal_ts = float(span.get("end_ts") or now)
+            run.worktree = _worktree_line(attrs)
             _fire(run, "ENDED", _ended_message(run, label, attrs), alerts)
             continue
 

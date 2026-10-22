@@ -185,3 +185,31 @@ def test_retained_closed_wait_series_cannot_clear_a_reopened_gate(old_first, sam
     tel = state.RUNS["r"]
     assert tel.wait_gate_path == "A" and tel.wait_kind == "operator"
     assert tel.wait_elapsed_s == 42
+
+
+def test_ended_page_and_detail_head_say_what_happened_to_the_worktree():
+    session = {"run_id": "r", "pid": 11, "resume_generation": 1}
+    fired = alerts.ingest_spans([{
+        **session, "name": "run:coder", "end_ts": 100,
+        "attrs": {
+            "workhorse.terminal": "fail",
+            "workhorse.worktree": "kept",
+            "workhorse.worktree_reason": "the run failed in 'dev'",
+        },
+    }], now=100)
+
+    assert [a.rule for a in fired] == ["ENDED"]
+    assert fired[0].message.endswith("; worktree kept: the run failed in 'dev'")
+    tel = state.RUNS["r"]
+    detail = projection.run_detail(WorkflowContainer(container_id="r", name="test"), tel)
+    assert detail["head"]["worktree"] == "worktree kept: the run failed in 'dev'"
+
+
+def test_a_run_without_a_worktree_shows_no_worktree_line():
+    alerts.ingest_spans([{
+        "run_id": "r", "pid": 11, "resume_generation": 1, "name": "run:coder", "end_ts": 100,
+        "attrs": {"workhorse.terminal": "terminal"},
+    }], now=100)
+
+    detail = projection.run_detail(WorkflowContainer(container_id="r", name="test"), state.RUNS["r"])
+    assert detail["head"]["worktree"] == ""

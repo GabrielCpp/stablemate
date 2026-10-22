@@ -112,6 +112,7 @@ class RunTelemetry:
     gas: float | None = None
     terminal: str = ""
     terminal_ts: float = 0.0
+    worktree: str = ""
     node_counts: dict[str, int] = field(default_factory=dict)
     node_labels: dict[str, tuple[tuple[str, str], ...]] = field(default_factory=dict)
     fired: set[str] = field(default_factory=set)

@@ -482,6 +482,7 @@ function RunHead({ head }) {
       ? html`<span class=${"exit-hint " + (head.exit_ok ? "exit-ok" : "exit-err")}>${head.exit_hint}</span>`
       : null}
     ${head.activity ? html`<span class="doing-line">${head.activity}</span>` : null}
+    ${head.worktree ? html`<span class="doing-line">${head.worktree}</span>` : null}
   </div>`;
 }
 
