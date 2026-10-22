@@ -62,7 +62,7 @@ checks. The same graph renders to Graphviz DOT through [`dot`](../workhorse.md#d
 - code: `workhorse/workhorse/pyflow/activity.py::ActivityLog` @fc149a498518
 - code: `workhorse/workhorse/pyflow/__init__.py` @85a539ba0108
 - code: `workhorse/workhorse/pyflow/README.md` @c504bb5519c2
-- code: `workhorse/workhorse/worklist.py::WorkList` @af044a280446
+- code: `workhorse/workhorse/worklist.py::WorkList` @5527e3514bc3
 - code: `workhorse/workhorse/context.py::WorkflowContext` @313726f99d8a
 - code: `workhorse/docs/WORKFLOW.md` @7ac0edfa642f
 - code: `workhorse/docs/AUTHORING.md` @c4845228e953

@@ -90,6 +90,17 @@ def test_json_backend_roundtrip_mark_and_prune(tmp_path):
     assert lst.select_next() is None
 
 
+def test_mark_sets_the_note_only_when_given(tmp_path):
+    path = tmp_path / "queue.json"
+    path.write_text(json.dumps(_raw()))
+    lst = wl.WorkList(wl.JsonBackend(path), category_key="cat")
+
+    assert lst.mark("c", "blocked", note="mockup failed") is True
+    assert lst.mark("c", "blocked") is True
+    on_disk = json.loads(path.read_text())
+    assert next(i for i in on_disk if i["id"] == "c")["note"] == "mockup failed"
+
+
 def test_json_backend_object_with_items_key(tmp_path):
     path = tmp_path / "board.json"
     path.write_text(json.dumps({"meta": {"v": 1}, "items": _raw()}))

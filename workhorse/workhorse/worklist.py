@@ -372,14 +372,18 @@ class WorkList:
             self.backend.save(items)
         return changed
 
-    def mark(self, item_id: str, status: str, kind: KindFilter = None) -> bool:
-        """Set one item's status."""
+    def mark(
+        self, item_id: str, status: str, kind: KindFilter = None, note: str | None = None
+    ) -> bool:
+        """Set one item's status, and its note when ``note`` is given."""
         kinds = _kinds(kind)
         items = self._load()
         hit = False
         for it in items:
             if it.id == item_id and (kinds is None or it.kind in kinds):
                 it.status = status
+                if note is not None:
+                    it.note = note
                 hit = True
         if hit:
             self.backend.save(items)
