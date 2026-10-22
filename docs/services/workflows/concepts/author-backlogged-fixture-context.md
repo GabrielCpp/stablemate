@@ -6,7 +6,7 @@ title: Author backlogged fixture contexts
 # Author backlogged fixture contexts
 
 `backlogged` is shared test setup, not an alternative implementation of either Author node. It
-creates a committed repository containing a two-bullet backlog and a roadmap, with no epics or
+creates a committed repository containing a two-bullet backlog and an approved milestone, with no epics or
 OKF book. The fixture's committed, epics-free baseline lets reconciliation observe the normal
 first-run skip; the same named backlog supplies the identities that backlog adoption assigns
 before story selection or decomposition.

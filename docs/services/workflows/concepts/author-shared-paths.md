@@ -59,14 +59,6 @@ current directory when no explicit repository was supplied. Git-specific root lo
 - verify: count(subject="author backlog path results", equals=1)
 - code: `workflows/src/workhorse_workflows/author/shared/paths.py::backlog_file` @e178ead9e68d
 
-### roadmaps_dir
-- sig: `roadmaps_dir(root: str | Path) -> str`
-- does: resolves the configured roadmaps directory through Ostler
-- verify: count(subject="resolved author roadmap directories", equals=1)
-- returns: a repository-relative POSIX path
-- verify: count(subject="author roadmap directory results", equals=1)
-- code: `workflows/src/workhorse_workflows/author/shared/paths.py::roadmaps_dir` @e178ead9e68d
-
 ### services_dir
 - sig: `services_dir(root: str | Path) -> str`
 - does: resolves the configured feature-book directory through Ostler

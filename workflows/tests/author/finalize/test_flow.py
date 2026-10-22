@@ -6,6 +6,7 @@ from typing import Any
 
 import pytest
 from _fakes import StubRunner
+from _milestones import write_milestone
 from ostler import Ostler
 from workhorse.artifacts import ArtifactWriter
 from workhorse.config_run import RunConfig
@@ -16,7 +17,7 @@ from workhorse_workflows import author
 from workhorse_workflows.author.finalize import Finalize
 from workhorse_workflows.author.workflow import workflow
 
-ROADMAP = "docs/roadmaps/account-access.md"
+MILESTONE = "docs/milestones/account-access/milestone.md"
 EPIC = "accounts"
 STORY = "sign-in"
 
@@ -33,7 +34,7 @@ def _git(repo: Path, *args: str) -> str:
 
 
 def _commit(repo: Path, message: str) -> None:
-    _git(repo, "add", "docs/roadmaps")
+    _git(repo, "add", "docs/milestones")
     _git(repo, "commit", "-m", message)
 
 
@@ -71,14 +72,8 @@ Use the existing account boundary.
 
 
 def _planning_graph(repo: Path, *, selectable: bool) -> None:
-    roadmap = repo / ROADMAP
-    roadmap.parent.mkdir(parents=True)
-    roadmap.write_text(
-        "---\ntype: roadmap\ntitle: Account access\nstatus: approved\n---\n"
-        "# Account access\n\n## User Journeys\n\nAn account holder signs in.\n",
-        encoding="utf-8",
-    )
-    _commit(repo, "approved roadmap")
+    write_milestone(repo, epics=[EPIC])
+    _commit(repo, "approved milestone")
 
     okf = Ostler(repo)
     assert okf.create_epic(EPIC, "Account access").ok
@@ -95,14 +90,6 @@ def _planning_graph(repo: Path, *, selectable: bool) -> None:
         covers=["credentials"],
     ).ok
 
-    milestone = repo / "docs/milestones/account-access.md"
-    milestone.parent.mkdir(parents=True)
-    milestone.write_text(
-        "---\ntype: milestone\nid: account-access\ntitle: Account access\n"
-        "status: planned\ndependsOn: []\nsourceItems:\n"
-        f"  - {ROADMAP}\nepics:\n  - {EPIC}\n---\n# Account access\n",
-        encoding="utf-8",
-    )
 
     story = next(row for row in Ostler(repo).list("story") if row["slug"] == STORY)
     story_path = repo / str(story["path"])
@@ -141,8 +128,8 @@ def test_finalizes_with_one_commit_on_the_current_branch(repo: Path, tmp_path: P
 
     assert int(_git(repo, "rev-list", "--count", "HEAD")) == before + 1
     assert _git(repo, "branch", "--show-current") == branch
-    assert _git(repo, "log", "-1", "--pretty=%s") == "author: roadmap account-access"
-    assert "status: authored" in (repo / ROADMAP).read_text(encoding="utf-8")
+    assert _git(repo, "log", "-1", "--pretty=%s") == "author: milestone account-access"
+    assert "status: authored" in (repo / MILESTONE).read_text(encoding="utf-8")
     assert result.committed is True, result
 
 
@@ -155,6 +142,6 @@ def test_terminal_validation_commits_incomplete_then_fails(repo: Path, tmp_path:
 
     assert int(_git(repo, "rev-list", "--count", "HEAD")) == before + 1
     assert _git(repo, "log", "-1", "--pretty=%s") == (
-        "author: INCOMPLETE — roadmap account-access, do not merge"
+        "author: INCOMPLETE — milestone account-access, do not merge"
     )
-    assert "status: approved" in (repo / ROADMAP).read_text(encoding="utf-8")
+    assert "status: approved" in (repo / MILESTONE).read_text(encoding="utf-8")

@@ -12,7 +12,7 @@ making the product or scope decision. The expected response is an escalated JSON
 one-line notes and concrete investigated items.
 
 - file: `workflows/src/workhorse_workflows/author/shared/prompts/resolve-operator.md`
-- code: `workflows/src/workhorse_workflows/author/epic_author/flow.py::EpicAuthor.resolve_epic` @f869956aefd2
+- code: `workflows/src/workhorse_workflows/author/epic_author/flow.py::EpicAuthor.resolve_epic` @2d207cc584a9
 - code: `workflows/src/workhorse_workflows/author/story_author/flow.py::StoryAuthor._resolve` @c86a66c7960f
 - detail: [author epic-author subflow](../concepts/author-epic-author-subflow.md)
 - detail: [author story-author prompt contracts](../concepts/author-story-author-prompt-contracts.md)
@@ -25,7 +25,7 @@ one-line notes and concrete investigated items.
 - required: true
 - semantics: the operator context file the diagnostic brief must preserve and append to
 - verify: json_path(path="$.context_path", equals="docs/stories/acme-story/story.md")
-- code: `workflows/src/workhorse_workflows/author/epic_author/flow.py::EpicAuthor.resolve_epic` @f869956aefd2
+- code: `workflows/src/workhorse_workflows/author/epic_author/flow.py::EpicAuthor.resolve_epic` @2d207cc584a9
 - code: `workflows/src/workhorse_workflows/author/story_author/flow.py::StoryAuthor._resolve` @c86a66c7960f
 - detail: [author resolve-operator field roles](../concepts/author-resolve-operator-field-roles.md)
 
@@ -34,7 +34,7 @@ one-line notes and concrete investigated items.
 - required: true
 - semantics: the canonical epic directory whose documents and scope the diagnostic turn investigates
 - verify: json_path(path="$.epic_dir", equals="docs/stories/acme-story")
-- code: `workflows/src/workhorse_workflows/author/epic_author/flow.py::EpicAuthor.resolve_epic` @f869956aefd2
+- code: `workflows/src/workhorse_workflows/author/epic_author/flow.py::EpicAuthor.resolve_epic` @2d207cc584a9
 - code: `workflows/src/workhorse_workflows/author/story_author/flow.py::StoryAuthor._resolve` @c86a66c7960f
 - detail: [author resolve-operator field roles](../concepts/author-resolve-operator-field-roles.md)
 
@@ -43,7 +43,7 @@ one-line notes and concrete investigated items.
 - required: true
 - semantics: the authoring stage identifier supplied to the diagnostic turn, such as `write-epic` or `write-story`
 - verify: json_path(path="$.block_stage", equals="example block stage")
-- code: `workflows/src/workhorse_workflows/author/epic_author/flow.py::EpicAuthor.resolve_epic` @f869956aefd2
+- code: `workflows/src/workhorse_workflows/author/epic_author/flow.py::EpicAuthor.resolve_epic` @2d207cc584a9
 - code: `workflows/src/workhorse_workflows/author/story_author/flow.py::StoryAuthor._resolve` @c86a66c7960f
 - detail: [author resolve-operator field roles](../concepts/author-resolve-operator-field-roles.md)
 
@@ -52,7 +52,7 @@ one-line notes and concrete investigated items.
 - required: true
 - semantics: the blocked result or validation errors that define the question for investigation
 - verify: json_path(path="$.block_notes", equals="Applied the change and ran the gates.")
-- code: `workflows/src/workhorse_workflows/author/epic_author/flow.py::EpicAuthor.resolve_epic` @f869956aefd2
+- code: `workflows/src/workhorse_workflows/author/epic_author/flow.py::EpicAuthor.resolve_epic` @2d207cc584a9
 - code: `workflows/src/workhorse_workflows/author/story_author/flow.py::StoryAuthor._resolve` @c86a66c7960f
 - detail: [author resolve-operator field roles](../concepts/author-resolve-operator-field-roles.md)
 
@@ -61,7 +61,7 @@ one-line notes and concrete investigated items.
 - required: true
 - semantics: the diagnostic outcome, which must be `escalated` for this resolver
 - verify: json_path(path="$.decision", equals="escalated")
-- code: `workflows/src/workhorse_workflows/author/epic_author/flow.py::EpicAuthor.resolve_epic` @f869956aefd2
+- code: `workflows/src/workhorse_workflows/author/epic_author/flow.py::EpicAuthor.resolve_epic` @2d207cc584a9
 - code: `workflows/src/workhorse_workflows/author/story_author/flow.py::StoryAuthor._resolve` @c86a66c7960f
 - detail: [author resolve-operator field roles](../concepts/author-resolve-operator-field-roles.md)
 
@@ -70,7 +70,7 @@ one-line notes and concrete investigated items.
 - required: true
 - semantics: the one-line plain-language statement of what remains blocked
 - verify: json_path(path="$.notes", equals="Applied the change and ran the gates.")
-- code: `workflows/src/workhorse_workflows/author/epic_author/flow.py::EpicAuthor.resolve_epic` @f869956aefd2
+- code: `workflows/src/workhorse_workflows/author/epic_author/flow.py::EpicAuthor.resolve_epic` @2d207cc584a9
 - code: `workflows/src/workhorse_workflows/author/story_author/flow.py::StoryAuthor._resolve` @c86a66c7960f
 - detail: [author resolve-operator field roles](../concepts/author-resolve-operator-field-roles.md)
 
@@ -79,6 +79,6 @@ one-line notes and concrete investigated items.
 - required: true
 - semantics: concrete investigations and findings supplied to the operator
 - verify: json_path(path="$.tried", matches="^\[.*\]$")
-- code: `workflows/src/workhorse_workflows/author/epic_author/flow.py::EpicAuthor.resolve_epic` @f869956aefd2
+- code: `workflows/src/workhorse_workflows/author/epic_author/flow.py::EpicAuthor.resolve_epic` @2d207cc584a9
 - code: `workflows/src/workhorse_workflows/author/story_author/flow.py::StoryAuthor._resolve` @c86a66c7960f
 - detail: [author resolve-operator field roles](../concepts/author-resolve-operator-field-roles.md)

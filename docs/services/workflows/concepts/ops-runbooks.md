@@ -9,7 +9,7 @@ This page indexes the operational runbooks and environments that support the wor
 
 **Driver runbooks** exercise each Workhorse CLI in dry-run mode with checkpointed inputs:
 
-- [workhorse-author driver](../ops/workhorse-author.md) — exercises the author registry with seeded flow and roadmap inputs
+- [workhorse-author driver](../ops/workhorse-author.md) — exercises the author registry with seeded flow and milestone inputs
 - [workhorse-coder driver](../ops/workhorse-coder.md) — exercises the coder registry with checkpointed story and epic selection
 - [workhorse-loop-runner driver](../ops/workhorse-loop-runner.md) — exercises the one-turn plan runner
 - [workhorse-research driver](../ops/workhorse-research.md) — exercises the research gate loop

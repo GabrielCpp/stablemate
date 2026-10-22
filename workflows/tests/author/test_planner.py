@@ -12,7 +12,7 @@ from ostler.model import Epic, Graph, Milestone, SeedItem, Story
 from workhorse_workflows.author.main.nodes import planner
 from workhorse_workflows.author.shared.story_split_receipt import story_split_digest
 
-ROADMAP = "docs/roadmaps/account-access.md"
+MILESTONE = "docs/milestones/account-access/milestone.md"
 
 
 def _story(
@@ -50,6 +50,9 @@ class _Ostler:
                            milestones=milestones, epics=epics)
         self.needs: list[str] = []
 
+    def approved_milestone(self) -> Milestone:
+        return self.graph.milestones[0]
+
     def next_story_report(
         self, epic: str, *, need: str = "build", skip: set[str] | None = None
     ) -> dict[str, Any]:
@@ -61,7 +64,7 @@ class _Ostler:
 def install(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> Any:
-    def _install(milestone_epics: list[str] | None, epics: list[Epic]) -> _Ostler:
+    def _install(milestone_epics: list[str], epics: list[Epic]) -> _Ostler:
         for epic in epics:
             epic_dir = tmp_path / "docs/epics" / epic.name
             epic_dir.mkdir(parents=True, exist_ok=True)
@@ -84,20 +87,18 @@ def install(
                     ),
                     encoding="utf-8",
                 )
-        milestones = []
-        if milestone_epics is not None:
-            milestones = [
-                Milestone(
-                    name="account-access",
-                    path=tmp_path / "docs/milestones/account-access.md",
-                    source_items=[ROADMAP],
-                    epics=milestone_epics,
-                )
-            ]
+        milestones = [
+            Milestone(
+                name="account-access",
+                path=tmp_path / MILESTONE,
+                status="approved",
+                epics=milestone_epics,
+            )
+        ]
         fake = _Ostler(tmp_path, milestones, epics)
         monkeypatch.setattr(planner, "Ostler", lambda _root: fake)
         monkeypatch.setattr(planner, "survey_repo_root", lambda _repo: tmp_path)
-        monkeypatch.setattr(planner, "approved_roadmap", lambda _root: ROADMAP)
+        monkeypatch.setattr(planner, "approved_milestone_path", lambda _root: MILESTONE)
         return fake
 
     return _install
@@ -107,30 +108,13 @@ def _plan() -> Any:
     return planner.plan_author_step(logging.getLogger("test"), repo_dir="unused")
 
 
-def test_missing_milestone_is_the_next_unit(install: Any) -> None:
-    install(None, [])
-
-    step = _plan()
-
-    assert step.kind == "milestone"
-    assert step.roadmap == ROADMAP
-
-
-def test_milestone_with_an_additional_source_is_invalid(install: Any) -> None:
-    fake = install([], [])
-    fake.graph.milestones[0].source_items.append("docs/roadmaps/other.md")
-
-    step = _plan()
-
-    assert step.kind == "milestone"
-
-
-def test_missing_epic_split_follows_a_valid_milestone(install: Any) -> None:
+def test_a_milestone_with_no_epics_starts_at_the_epic_split(install: Any) -> None:
     install([], [])
 
     step = _plan()
 
     assert step.kind == "epic-split"
+    assert step.milestone == MILESTONE
 
 
 def test_duplicate_epic_split_is_invalid(install: Any) -> None:

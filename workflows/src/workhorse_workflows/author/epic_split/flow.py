@@ -1,4 +1,4 @@
-"""Split one roadmap milestone into an ordered list of epic skeletons."""
+"""Split one milestone into an ordered list of epic skeletons."""
 from __future__ import annotations
 
 from pathlib import Path
@@ -31,7 +31,7 @@ class EpicSplit(Workflow):
         return self.call(prepare_epic_split)
 
     def labels(self) -> dict[str, str]:
-        return {"work_id": Path(self.ctx.roadmap).stem}
+        return {"work_id": Path(self.ctx.milestone_path).parent.name}
 
     def state_labels(self, params: dict[str, Any]) -> dict[str, str]:
         return self.labels() | counter_labels(params, "epic_split", self.BUDGET_LABELS)
@@ -41,7 +41,6 @@ class EpicSplit(Workflow):
 
     def _split_args(self, review_notes: str = "") -> dict[str, str]:
         return {
-            "roadmap": self.ctx.roadmap,
             "milestone": self.ctx.milestone_path,
             "epics_dir": self.ctx.epics_dir,
             "review_notes": review_notes,

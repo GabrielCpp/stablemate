@@ -13,8 +13,6 @@ from workhorse_workflows.author.finalize import Finalize
 from workhorse_workflows.author.finalize.nodes import blueprint as finalize_blueprint
 from workhorse_workflows.author.main.flow import Author
 from workhorse_workflows.author.main.nodes import blueprint
-from workhorse_workflows.author.milestone import Milestone
-from workhorse_workflows.author.milestone.nodes import blueprint as milestone_blueprint
 from workhorse_workflows.author.parity_surveyor import ParitySurveyor
 from workhorse_workflows.author.shared.nodes import blueprint as shared_blueprint
 from workhorse_workflows.author.shared.survey.blueprint import blueprint as survey_blueprint
@@ -34,7 +32,6 @@ workflow = (
         survey_blueprint,
         epic_edit_blueprint,
         story_edit_blueprint,
-        milestone_blueprint,
         epic_split_blueprint,
         epic_author_blueprint,
         story_author_blueprint,
@@ -47,7 +44,6 @@ workflow = (
             "parity-surveyor": ParitySurveyor,
             "epic-edit": EpicEdit,
             "story-edit": StoryEdit,
-            "milestone": Milestone,
             "epic-split": EpicSplit,
             "epic-author": EpicAuthor,
             "story-split": StorySplitFlow,

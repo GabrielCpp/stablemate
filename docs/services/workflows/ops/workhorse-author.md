@@ -6,13 +6,13 @@ title: workhorse-author driver
 # workhorse-author driver
 
 This CLI runbook installs the workspace package and exercises the author driver in dry-run mode.
-The selected flow and roadmap inputs are supplied through checkpointed `--params`; the exposed
+The selected flow and milestone inputs are supplied through checkpointed `--params`; the exposed
 surface is the [workhorse-author CLI](../workhorse-author.md).
 
 - driver: cli
 - cli: [workhorse-author](../workhorse-author.md)
 - surfaces: [workhorse-author](../workhorse-author.md)
-- code: `workflows/src/workhorse_workflows/author/workflow.py::main` @a375be671123
+- code: `workflows/src/workhorse_workflows/author/workflow.py::main` @de28cf5c9d77
 - working-directory: .
 
 ## Steps

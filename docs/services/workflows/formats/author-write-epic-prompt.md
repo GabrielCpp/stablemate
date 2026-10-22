@@ -6,13 +6,13 @@ title: Author write-epic prompt
 # Author write-epic prompt
 
 The epic-author flow renders this template for its high-power authoring turn. It directs the
-  agent to research one approved roadmap segment, write the complete epic narrative, and record
+  agent to research one segment of the approved milestone, write the complete epic narrative, and record
   researched durable seeds without creating stories or changing the feature book. The expected
   response is a JSON object with `status` set to `complete` or `blocked` and a one-line `notes`
   value.
 
 - file: `workflows/src/workhorse_workflows/author/epic_author/prompts/write-epic.md`
-- code: `workflows/src/workhorse_workflows/author/epic_author/flow.py::EpicAuthor.author_epic` @f869956aefd2
+- code: `workflows/src/workhorse_workflows/author/epic_author/flow.py::EpicAuthor.author_epic` @2d207cc584a9
 - detail: [author epic-author subflow](../concepts/author-epic-author-subflow.md)
 - tests: `workflows/tests/author/epic_author/test_flow.py::_Agent.__call__`
 
@@ -23,7 +23,7 @@ The epic-author flow renders this template for its high-power authoring turn. It
 - required: true
 - semantics: the one explicit epic whose narrative and seeds the agent must author
 - verify: json_path(path="$.epic", equals="acme-epic")
-- code: `workflows/src/workhorse_workflows/author/epic_author/flow.py::EpicAuthor.author_epic` @f869956aefd2
+- code: `workflows/src/workhorse_workflows/author/epic_author/flow.py::EpicAuthor.author_epic` @2d207cc584a9
 - detail: [author write-epic prompt fields](../concepts/author-write-epic-prompt-fields.md)
 
 ### epic_dir
@@ -31,15 +31,15 @@ The epic-author flow renders this template for its high-power authoring turn. It
 - required: true
 - semantics: the canonical epic directory containing the document to author
 - verify: json_path(path="$.epic_dir", equals="docs/stories/acme-story")
-- code: `workflows/src/workhorse_workflows/author/epic_author/flow.py::EpicAuthor.author_epic` @f869956aefd2
+- code: `workflows/src/workhorse_workflows/author/epic_author/flow.py::EpicAuthor.author_epic` @2d207cc584a9
 - detail: [author write-epic prompt fields](../concepts/author-write-epic-prompt-fields.md)
 
-### roadmap
+### milestone
 - type: `str`
 - required: true
-- semantics: the approved roadmap document that supplies the epic's scope and decisions
-- verify: json_path(path="$.roadmap", equals="example roadmap")
-- code: `workflows/src/workhorse_workflows/author/epic_author/flow.py::EpicAuthor.author_epic` @f869956aefd2
+- semantics: the approved milestone document that supplies the epic's scope and decisions
+- verify: json_path(path="$.milestone", equals="example milestone")
+- code: `workflows/src/workhorse_workflows/author/epic_author/flow.py::EpicAuthor.author_epic` @2d207cc584a9
 - detail: [author write-epic prompt fields](../concepts/author-write-epic-prompt-fields.md)
 
 ### services_dir
@@ -47,7 +47,7 @@ The epic-author flow renders this template for its high-power authoring turn. It
 - required: true
 - semantics: the read-only OKF feature-book directory available as discovery context
 - verify: json_path(path="$.services_dir", equals="docs/stories/acme-story")
-- code: `workflows/src/workhorse_workflows/author/epic_author/flow.py::EpicAuthor.author_epic` @f869956aefd2
+- code: `workflows/src/workhorse_workflows/author/epic_author/flow.py::EpicAuthor.author_epic` @2d207cc584a9
 - detail: [author write-epic prompt fields](../concepts/author-write-epic-prompt-fields.md)
 
 ### status
@@ -55,7 +55,7 @@ The epic-author flow renders this template for its high-power authoring turn. It
 - required: true
 - semantics: whether the authoring turn completed or is blocked
 - verify: json_path(path="$.status", matches="^(complete|blocked)$")
-- code: `workflows/src/workhorse_workflows/author/epic_author/flow.py::EpicAuthor.author_epic` @f869956aefd2
+- code: `workflows/src/workhorse_workflows/author/epic_author/flow.py::EpicAuthor.author_epic` @2d207cc584a9
 - detail: [author write-epic prompt fields](../concepts/author-write-epic-prompt-fields.md)
 
 ### notes
@@ -63,5 +63,5 @@ The epic-author flow renders this template for its high-power authoring turn. It
 - required: true
 - semantics: the completion note or blocking question returned with the turn
 - verify: json_path(path="$.notes", equals="Applied the change and ran the gates.")
-- code: `workflows/src/workhorse_workflows/author/epic_author/flow.py::EpicAuthor.author_epic` @f869956aefd2
+- code: `workflows/src/workhorse_workflows/author/epic_author/flow.py::EpicAuthor.author_epic` @2d207cc584a9
 - detail: [author write-epic prompt fields](../concepts/author-write-epic-prompt-fields.md)

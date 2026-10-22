@@ -13,5 +13,5 @@ that decision. The default of `required` is deliberately conservative when story
 classification is missing, whereas the other fields explain the result at the checkpoint and in
 telemetry.
 
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::MockupGate` @f9301e7de2f3
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::MockupGate` @2e101dbcac2e
 - rule: use each field for its distinct decision or explanatory role; none substitutes for another

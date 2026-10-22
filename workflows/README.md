@@ -25,7 +25,7 @@ shipped and is now kept only for its reasoning.
 
 - **`loop-runner`** — one state, one agent turn: hands a plan to the agent's own
   tool-loop and lets it run to completion. It is the install check.
-- **`author`** — turns an approved roadmap into the plan: milestones, epics, stories
+- **`author`** — turns an approved milestone into the plan: epics, stories
   with acceptance criteria, seeds and coverage, as a normalized planning graph ostler
   validates. The feature book is read-only to it.
 - **`coder`** — implements stories from that plan and, after review and before QA,
@@ -60,18 +60,17 @@ choices; the independent audit checks consistency, verifiability, existing docum
 and scope rather than demanding that a greenfield detail already exist in the OKF book. A conflict
 with an existing source or a required scope expansion still goes to the operator.
 
-Epic authoring consumes one explicitly named approved roadmap and produces exactly one milestone:
+Epic authoring consumes the one approved milestone folder, `docs/milestones/<slug>/milestone.md`:
 
 ```bash
-workhorse-author run --params '{
-  "roadmap": "docs/roadmaps/account-access.md"
-}'
+workhorse-author run
 ```
 
-The roadmap path is the milestone's durable source identity. Author preserves the roadmap, writes
-ordered epics and vertical stories, and changes `status: approved` to `status: authored` only after
-the complete planning graph validates. Survey modes stop after discovery; they do not bypass roadmap
-approval by decomposing their generated backlog.
+Author refuses a milestone that fails `ostler doctor`, so a missing section, an open decision, a
+dangling link or a journey without its mockup stops the run before any agent turn. Author preserves
+the milestone, writes ordered epics and vertical stories, and changes `status: approved` to
+`status: authored` only after the complete planning graph validates. Survey modes stop after
+discovery; they do not bypass milestone approval by decomposing their generated backlog.
 
 ## Editing authored scope
 

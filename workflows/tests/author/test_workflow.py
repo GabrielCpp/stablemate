@@ -13,6 +13,7 @@ from unittest.mock import patch
 
 import pytest
 from _fakes import StubRunner
+from _milestones import write_milestone
 from ostler import Ostler
 from workhorse import inbox
 from workhorse.artifacts import ArtifactWriter
@@ -33,7 +34,7 @@ from workhorse_workflows.author.story_edit import StoryEdit
 from workhorse_workflows.author.workflow import Author, workflow
 
 BACKLOG = "docs/backlog.md"
-ROADMAP = "docs/roadmaps/account-access.md"
+MILESTONE = "docs/milestones/account-access/milestone.md"
 EPICS = "docs/epics"
 EPIC = "accounts"
 SECOND_EPIC = "profiles"
@@ -47,48 +48,6 @@ SEEDS = {
     "b1": "[b1] Users can sign in with an email and a password",
     "b2": "[b2] Users can reset a forgotten password",
 }
-ROADMAP_TEXT = """---
-type: roadmap
-title: Account Access
-status: approved
----
-
-# Account Access
-
-## Outcome
-
-Account holders can access and recover their account.
-
-## Release Boundary
-
-One milestone is complete when account access and recovery pass end to end.
-
-## User Journeys
-
-### Sign in
-
-An account holder signs in with email and password.
-
-### Recover access
-
-An account holder resets a forgotten password.
-
-## Architecture Decisions
-
-The existing authentication boundary remains authoritative.
-
-## Constraints
-
-Account data remains compatible.
-
-## Acceptance
-
-Both journeys pass end to end.
-
-## Non-Goals
-
-Profile editing is excluded.
-"""
 SURFACE = "**api** is the only surface and the only writer of stored data."
 STORIES = (
     ("01-sign-in", "Sign in", "b1"),
@@ -116,7 +75,7 @@ def backlogged(repo: Path, write: Callable[[Path, str], Path]) -> Path:
         f"# Backlog\n\nSurfaces this app ships:\n\n{SURFACE}\n\n## Scope items\n\n"
         + "".join(f"- {b}\n" for b in SEEDS.values()),
     )
-    write(repo / ROADMAP, ROADMAP_TEXT)
+    write_milestone(repo)
     _commit(repo, "seed")
     return repo
 
@@ -127,6 +86,7 @@ def with_epic(backlogged: Path) -> Path:
     okf = Ostler(backlogged)
     okf.create_epic(EPIC, "Accounts")
     okf.todo_add(EPIC)
+    _milestone(backlogged, EPIC)
     _commit(backlogged, "epic scaffold")
     return backlogged
 
@@ -174,33 +134,8 @@ def _stories(repo: Path) -> dict[str, bool]:
     return {str(s["slug"]): bool(s.get("authored")) for s in Ostler(repo).list("story")}
 
 
-def _milestone(
-    repo: Path,
-    *epics: str,
-    source_items: tuple[str, ...] = (),
-) -> None:
-    lines = [
-        "---",
-        "type: milestone",
-        "id: account-mvp",
-        "title: Account MVP",
-        "status: planned",
-        "dependsOn: []",
-        *(
-            ["sourceItems:", *(f"  - {item}" for item in source_items)]
-            if source_items
-            else []
-        ),
-        "epics:",
-        *(f"  - {epic}" for epic in epics),
-        "---",
-        "# Account MVP",
-        "",
-        "A visitor can access and recover their account.",
-    ]
-    path = repo / "docs/milestones/account-mvp.md"
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text("\n".join(lines), encoding="utf-8")
+def _milestone(repo: Path, *epics: str) -> None:
+    write_milestone(repo, epics=epics)
 
 
 _BODY = """# Story: {title}
@@ -357,7 +292,6 @@ class _Agent:
         self.calls: list[str] = []
         self.args: list[dict[str, Any]] = []
         self.cwds: list[str] = []
-        self.roadmap_at_decompose = ""
 
 
     def __call__(self, node: Any, ctx: Any, *args: Any, **kwargs: Any) -> Any:
@@ -376,14 +310,8 @@ class _Agent:
         return [a for s, a in zip(self.calls, self.args, strict=True) if s == stem]
 
 
-    def _build_milestone(self, data: dict[str, Any], nth: int) -> dict[str, Any]:
-        """Create the roadmap-owned milestone without crossing into epic splitting."""
-        _milestone(self.repo, source_items=(str(data["roadmap"]),))
-        return {"status": "complete", "notes": "roadmap milestone created"}
-
     def _split_epics(self, data: dict[str, Any], nth: int) -> dict[str, Any]:
         """Create only the epic skeletons and attach them to the existing milestone."""
-        self.roadmap_at_decompose = (self.repo / data["roadmap"]).read_text(encoding="utf-8")
         okf = Ostler(self.repo)
         if not (self.repo / EPIC_DIR / "epic.md").is_file():
             okf.create_epic(EPIC, "Account holder accesses their account")
@@ -392,7 +320,7 @@ class _Agent:
             if not (self.repo / SECOND_EPIC_DIR / "epic.md").is_file():
                 okf.create_epic(SECOND_EPIC, "Account holder updates their profile")
             epics.append(SECOND_EPIC)
-        _milestone(self.repo, *epics, source_items=(str(data["roadmap"]),))
+        _milestone(self.repo, *epics)
         return {"status": "complete", "notes": "ordered epic skeletons created"}
 
     def _review_epic_split(self, data: dict[str, Any], nth: int) -> dict[str, Any]:
@@ -405,31 +333,6 @@ class _Agent:
     def _resolve_epic_split(self, data: dict[str, Any], nth: int) -> dict[str, Any]:
         self.review_epics = ["approved"]
         return {"decision": "escalated", "notes": "operator decision required", "tried": []}
-
-    def _decompose_epics(self, data: dict[str, Any], nth: int) -> dict[str, Any]:
-        """Create journey epic shells in one release milestone; `write-epic` records seeds."""
-        self.roadmap_at_decompose = (self.repo / data["roadmap"]).read_text(encoding="utf-8")
-        okf = Ostler(self.repo)
-        if not (self.repo / EPIC_DIR / "epic.md").is_file():
-            okf.create_epic(EPIC, "Account holder accesses their account")
-        if self.two_epics and not (self.repo / SECOND_EPIC_DIR / "epic.md").is_file():
-            okf.create_epic(SECOND_EPIC, "Account holder updates their profile")
-        _milestone(
-            self.repo,
-            EPIC,
-            *(SECOND_EPIC,) if self.two_epics else (),
-            source_items=(str(data["roadmap"]),),
-        )
-        return {"status": "complete", "notes": "one roadmap milestone"}
-
-    def _rework_epics(self, data: dict[str, Any], nth: int) -> dict[str, Any]:
-        """Same product as the decomposition, which is why it re-runs it."""
-        return self._decompose_epics(data, nth)
-
-    def _review_epics(self, data: dict[str, Any], nth: int) -> dict[str, Any]:
-        verdict = self.review_epics[min(nth, len(self.review_epics)) - 1]
-        return {"status": verdict, "notes": "" if verdict == "approved" else "one epic is two"}
-
 
     def _default_edit_plan(self, data: dict[str, Any]) -> dict[str, Any]:
         intent = data["intent"]
@@ -705,7 +608,6 @@ def _drive_epic_edit(env: RunEnv, agent: _Agent, **inputs: Any) -> Any:
 
 def test_every_flat_stage_is_directly_registered() -> None:
     assert {
-        "milestone",
         "epic-split",
         "epic-author",
         "story-split",
@@ -714,7 +616,11 @@ def test_every_flat_stage_is_directly_registered() -> None:
     }.issubset(workflow.flows)
 
 
-def test_epic_mode_authors_one_roadmap_milestone_and_commits_it(
+def test_the_milestone_stage_is_not_registered() -> None:
+    assert "milestone" not in workflow.flows
+
+
+def test_epic_mode_authors_the_approved_milestone_and_commits_it(
     backlogged: Path, tmp_path: Path
 ) -> None:
     """The straight-through run: one epic, two stories, both gates green, then the git tail."""
@@ -725,7 +631,6 @@ def test_epic_mode_authors_one_roadmap_milestone_and_commits_it(
     result = _drive(_env(tmp_path), agent)
 
     assert agent.counts() == {
-        "build-milestone": 1,
         "split-epics": 1,
         "review-epic-split": 1,
         "write-epic": 1,
@@ -745,15 +650,44 @@ def test_epic_mode_authors_one_roadmap_milestone_and_commits_it(
     assert (backlogged / BACKLOG).read_bytes() == backlog_before
     milestones = Ostler(backlogged).list("milestone")
     assert len(milestones) == 1
-    assert milestones[0]["sourceItems"] == [ROADMAP]
-    assert "status: authored" in (backlogged / ROADMAP).read_text(encoding="utf-8")
+    assert milestones[0]["epics"] == [EPIC]
+    assert "status: authored" in (backlogged / MILESTONE).read_text(encoding="utf-8")
 
-    assert _subject(backlogged) == "author: roadmap account-access"
+    assert _subject(backlogged) == "author: milestone account-access"
     assert _commit_count(backlogged) == commits_before + 1
     assert _current_branch(backlogged) == branch_before
     assert result.committed is True, result
 
     assert set(agent.cwds) == {str(backlogged)}
+
+
+def test_epic_mode_stops_before_any_turn_when_no_milestone_is_approved(
+    backlogged: Path, tmp_path: Path
+) -> None:
+    from workhorse.pyflow import WorkflowFailed
+
+    write_milestone(backlogged, status="proposed")
+    agent = _Agent(backlogged)
+
+    with pytest.raises(WorkflowFailed, match="no milestone is approved"):
+        _drive(_env(tmp_path), agent)
+
+    assert agent.calls == []
+
+
+def test_epic_mode_stops_before_any_turn_on_a_milestone_readiness_error(
+    backlogged: Path, tmp_path: Path
+) -> None:
+    from workhorse.pyflow import WorkflowFailed
+
+    path = backlogged / MILESTONE
+    path.write_text(path.read_text(encoding="utf-8") + "\n## Open Decisions\n\n- x\n", encoding="utf-8")
+    agent = _Agent(backlogged)
+
+    with pytest.raises(WorkflowFailed, match="milestone-open-decisions"):
+        _drive(_env(tmp_path), agent)
+
+    assert agent.calls == []
 
 
 def test_epic_mode_skips_mockups_for_seeds_tagged_without_a_frontend_layer(
@@ -810,16 +744,17 @@ def test_author_nodes_use_milestones_when_todo_is_absent(backlogged: Path) -> No
 def test_every_prompt_is_told_the_resolved_paths_not_the_blank_parameters(
     backlogged: Path, tmp_path: Path
 ) -> None:
-    """`epics_dir` and `roadmap` reach prompts as what `load_config` resolved."""
+    """`epics_dir` and `milestone` reach prompts as what `load_config` resolved."""
     agent = _Agent(backlogged)
     _drive(_env(tmp_path), agent)
 
     for stem in ("split-epics", "review-epic-split"):
         for args in agent.args_for(stem):
             assert args["epics_dir"] == EPICS, (stem, args)
-            assert args["roadmap"] == ROADMAP, (stem, args)
+            assert args["milestone"] == MILESTONE, (stem, args)
+            assert "roadmap" not in args, (stem, args)
     for args in agent.args_for("write-epic"):
-        assert args["roadmap"] == ROADMAP, args
+        assert args["milestone"] == MILESTONE, args
         assert args["epic_dir"] == EPIC_DIR, args
 
 
@@ -852,7 +787,7 @@ def test_the_commit_leaves_work_the_run_did_not_do_alone(
 
     _drive(_env(tmp_path), _Agent(backlogged))
 
-    assert _subject(backlogged) == "author: roadmap account-access"
+    assert _subject(backlogged) == "author: milestone account-access"
     committed = subprocess.run(
         ["git", "show", "--name-only", "--pretty=format:", "HEAD"],
         cwd=backlogged,
@@ -938,7 +873,7 @@ def test_a_finding_the_reworker_cannot_act_on_stops_the_run(
 
     with pytest.raises(WorkflowFailed, match="finding 1 missing repair"):
         _drive(_env(tmp_path), agent)
-    assert "status: approved" in (backlogged / ROADMAP).read_text(encoding="utf-8")
+    assert "status: approved" in (backlogged / MILESTONE).read_text(encoding="utf-8")
 
 
 def test_an_operator_note_dropped_mid_run_reworks_the_story_once(
@@ -1015,7 +950,7 @@ def test_an_epic_review_that_will_not_converge_reaches_the_resolver(
     assert agent.counts()["split-epics"] == 2, agent.counts()
     assert agent.counts()["review-epic-split"] == 5, agent.counts()
     assert "one epic is two" in agent.args_for("resolve-epic-split")[0]["block_notes"]
-    assert _subject(backlogged) == "author: roadmap account-access"
+    assert _subject(backlogged) == "author: milestone account-access"
 
 
 def test_operator_mode_human_sends_the_block_straight_to_the_context_file(
@@ -1266,7 +1201,6 @@ def test_survey_mode_runs_the_surveyor_and_stops_at_discovery(
     assert agent.counts()["plan-units"] == 1, agent.counts()
     assert agent.counts()["assess-unit"] == 1, agent.counts()
     assert agent.counts()["partition-findings"] == 1, agent.counts()
-    assert agent.counts()["build-milestone"] == 0, agent.counts()
 
     assert (backlogged / RULES).is_file()
     assert (backlogged / INVENTORY).is_file()

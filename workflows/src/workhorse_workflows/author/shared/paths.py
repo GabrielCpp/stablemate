@@ -45,11 +45,6 @@ def backlog_file(root: str | Path) -> str:
     return _rel(root, okf_path.backlog_path_in(Path(root)))
 
 
-def roadmaps_dir(root: str | Path) -> str:
-    """Where roadmaps live, repo-relative — the location ostler was finally taught."""
-    return _rel(root, okf_path.roadmaps_root_in(Path(root)))
-
-
 def services_dir(root: str | Path) -> str:
     """The OKF feature book, repo-relative — the same directory `ostler coverage` reads."""
     return _rel(root, okf_path.services_root_in(Path(root)))
@@ -89,7 +84,6 @@ __all__ = [
     "epics_dir",
     "services_dir",
     "launch_repo_root",
-    "roadmaps_dir",
     "story_context",
     "story_dir",
     "survey_repo_root",

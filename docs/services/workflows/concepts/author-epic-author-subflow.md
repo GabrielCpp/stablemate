@@ -12,10 +12,10 @@ researched-seed pass, and validates the resulting epic document before returning
 blocked turn or failed validation is routed through the operator resolver and then resumes the
 same epic; the subflow never creates a branch or authors stories. The parent [Author workflow
 composition root](author-workflow-composition-root.md) registers the flow and its package-local
-node registry. The roadmap planner dispatches this subflow with the selected epic and the parent's
+node registry. The planner dispatches this subflow with the selected epic and the parent's
 operator mode; on return, the parent resumes planning from the artifacts currently on disk.
 
-- code: `workflows/src/workhorse_workflows/author/epic_author/flow.py::EpicAuthor` @f869956aefd2
+- code: `workflows/src/workhorse_workflows/author/epic_author/flow.py::EpicAuthor` @2d207cc584a9
 - code: `workflows/src/workhorse_workflows/author/epic_author/nodes/_blueprint.py::blueprint` @52b7dc7c36b1
 - tests: `workflows/tests/author/epic_author/test_flow.py::test_authors_only_the_explicit_epic_and_returns_document_evidence`
 - detail: [author write-epic prompt](../formats/author-write-epic-prompt.md)
@@ -40,8 +40,8 @@ operator mode; on return, the parent resumes planning from the artifacts current
 - verify: json_path(path="$.repo_root", equals="docs/stories")
 - returns: returns context containing the configured backlog path
 - verify: json_path(path="$.backlog_path", equals="docs/stories/acme-story/story.md")
-- returns: returns context containing the configured roadmap path
-- verify: json_path(path="$.roadmap_path", equals="docs/stories/acme-story/story.md")
+- returns: returns context containing the configured milestone path
+- verify: json_path(path="$.milestone_path", equals="docs/milestones/acme-launch/milestone.md")
 - returns: returns context containing the configured epics directory
 - verify: json_path(path="$.epics_dir", equals="docs/stories/acme-story")
 - returns: returns context containing the configured feature-book directory
@@ -52,7 +52,7 @@ operator mode; on return, the parent resumes planning from the artifacts current
 - verify: json_path(path="$.epic_dir", equals="docs/stories/acme-story")
 - returns: returns context containing the resolved epic document path
 - verify: json_path(path="$.epic_path", equals="docs/stories/acme-story/epic.md")
-- code: `workflows/src/workhorse_workflows/author/epic_author/flow.py::EpicAuthor.setup` @f869956aefd2
+- code: `workflows/src/workhorse_workflows/author/epic_author/flow.py::EpicAuthor.setup` @2d207cc584a9
 - emits: [epic-author-context](../formats/epic-author-context.md)
 
 ### labels
@@ -60,27 +60,27 @@ operator mode; on return, the parent resumes planning from the artifacts current
 - does: labels the run with the selected epic as `work_id` and `epic`
 - returns: returns progress text identifying authoring of one epic
 - verify: json_path(path="$.epic", equals="acme-epic")
-- code: `workflows/src/workhorse_workflows/author/epic_author/flow.py::EpicAuthor.labels` @f869956aefd2
+- code: `workflows/src/workhorse_workflows/author/epic_author/flow.py::EpicAuthor.labels` @2d207cc584a9
 
 ### state_labels
 - sig: `state_labels(params: dict[str, Any]) -> dict[str, str]`
 - does: adds integer state counters under the `epic_author` telemetry prefix
 - returns: returns the base epic-author labels plus `epic_author.resolves` when the state supplies an integer resolution count
 - verify: count(subject="epic_author resolution labels", equals=1)
-- code: `workflows/src/workhorse_workflows/author/epic_author/flow.py::EpicAuthor.state_labels` @f869956aefd2
+- code: `workflows/src/workhorse_workflows/author/epic_author/flow.py::EpicAuthor.state_labels` @2d207cc584a9
 
 ### start
 - sig: `start() -> Continue`
 - does: begins authoring by forwarding to the `author_epic` state
 - returns: returns a continuation targeting `author_epic`
 - verify: count(subject="epic-author starts", equals=1)
-- code: `workflows/src/workhorse_workflows/author/epic_author/flow.py::EpicAuthor.start` @f869956aefd2
+- code: `workflows/src/workhorse_workflows/author/epic_author/flow.py::EpicAuthor.start` @2d207cc584a9
 
 ### author_epic
 - sig: `author_epic(resolves: int = 0) -> Continue | Await | Done`
 - does: asks the high-power agent to research and write the selected epic's narrative and durable seeds
 - verify: count(subject="epic-author writing turns", equals=1)
-- does: passes the selected epic, its canonical directory, the approved roadmap path, and the feature-book directory to the writing turn
+- does: passes the selected epic, its canonical directory, the approved milestone path, and the feature-book directory to the writing turn
 - verify: json_path(path="$.epic", equals="acme-epic")
 - does: routes a blocked writing result through the gate with the result notes and current resolution count
 - verify: json_path(path="$.await", matches="blocked")
@@ -96,14 +96,14 @@ operator mode; on return, the parent resumes planning from the artifacts current
 - verify: json_path(path="$.status", equals="authored")
 - returns: returns the validated epic identity, document path, seed count, and resolution count with status `authored`
 - verify: count(subject="completed epic-author results", equals=1)
-- code: `workflows/src/workhorse_workflows/author/epic_author/flow.py::EpicAuthor.author_epic` @f869956aefd2
+- code: `workflows/src/workhorse_workflows/author/epic_author/flow.py::EpicAuthor.author_epic` @2d207cc584a9
 - emits: [epic-author-done](../formats/epic-author-done.md)
 
 ### _context_path
 - sig: `_context_path() -> Path`
 - does: resolves the operator context file beneath the repository root and the epic-author context filename
 - verify: json_path(path="$.context_path", equals="docs/stories/acme-story/story.md")
-- code: `workflows/src/workhorse_workflows/author/epic_author/flow.py::EpicAuthor._context_path` @f869956aefd2
+- code: `workflows/src/workhorse_workflows/author/epic_author/flow.py::EpicAuthor._context_path` @2d207cc584a9
 
 ### _gate
 - sig: `_gate(result: object, notes: str, resolves: int) -> Continue | Await`
@@ -123,7 +123,7 @@ operator mode; on return, the parent resumes planning from the artifacts current
 - verify: json_path(path="$.await", matches="blocked")
 - does: increments the resolution count before the resumed authoring state
 - verify: count(subject="incremented epic-author resolutions", equals=1)
-- code: `workflows/src/workhorse_workflows/author/epic_author/flow.py::EpicAuthor.resolve_epic` @f869956aefd2
+- code: `workflows/src/workhorse_workflows/author/epic_author/flow.py::EpicAuthor.resolve_epic` @2d207cc584a9
 
 ## Nodes
 

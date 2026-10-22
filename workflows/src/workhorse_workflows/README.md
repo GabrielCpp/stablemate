@@ -4,7 +4,7 @@ The stablemate workflows as code. Each subpackage is one workflow that workhorse
 
 ## Map
 
-- `author/`: the `author` workflow, which turns one approved roadmap into a milestone, epics and stories.
+- `author/`: the `author` workflow, which turns one approved milestone into epics and stories.
 - `coder/`: the `coder` workflow, which implements, documents, reviews and QAs stories from the plan.
 - `kit/`: the helpers every workflow's nodes reuse: git, GitHub, workspaces, paths, JSON, external CLIs and QA stacks.
 - `loop_runner/`: the `loop-runner` workflow, which hands a plan to one agent turn.

@@ -6,12 +6,11 @@ import logging
 from pathlib import Path
 
 from ostler import Ostler, markdown, registry
-from workhorse.pyflow import WorkflowFailed
 from workhorse_workflows.author.epic_split.nodes._blueprint import blueprint
 from workhorse_workflows.author.epic_split.schemas import EpicSplitContext, EpicSplitValidation
 from workhorse_workflows.author.shared import paths
 from workhorse_workflows.author.shared.paths import survey_repo_root
-from workhorse_workflows.author.shared.roadmap import approved_roadmap
+from workhorse_workflows.author.shared.nodes.config import approved_milestone_path
 
 
 def _fingerprints(okf: Ostler) -> dict[str, str]:
@@ -57,22 +56,16 @@ def prepare_epic_split(
     logger: logging.Logger,
     repo_dir: str = "",
 ) -> EpicSplitContext:
-    """Require the milestone stage's unique roadmap-owned document and snapshot content."""
+    """Require the one ready approved milestone and snapshot content."""
     root = survey_repo_root(repo_dir)
-    roadmap = approved_roadmap(root)
+    milestone_path = approved_milestone_path(root)
     okf = Ostler(root)
-    matches = [m for m in okf.graph.milestones if roadmap in m.source_items]
-    if len(matches) != 1 or matches[0].source_items != [roadmap]:
-        raise WorkflowFailed(
-            f"roadmap '{roadmap}' must already source exactly one milestone with no other sources"
-        )
-    milestone = matches[0]
+    milestone = okf.approved_milestone()
     logger.info("prepared milestone %s for epic splitting", milestone.name)
     return EpicSplitContext(
         repo_root=str(root),
-        roadmap=roadmap,
         epics_dir=paths.epics_dir(root),
-        milestone_path=milestone.path.relative_to(root).as_posix(),
+        milestone_path=milestone_path,
         existing_epics=[epic.name for epic in okf.graph.epics],
         milestone_fingerprints=_milestone_fingerprints(okf, root),
         epic_fingerprints=_fingerprints(okf),
@@ -89,17 +82,16 @@ def validate_epic_split(
     """Validate an ordered, non-empty epic list without accepting prose, seeds, or stories."""
     root = Path(context.repo_root)
     okf = Ostler(root)
-    matches = [m for m in okf.graph.milestones if context.roadmap in m.source_items]
+    matches = [
+        m for m in okf.graph.milestones
+        if m.path.relative_to(root).as_posix() == context.milestone_path
+    ]
     errors: list[str] = []
     ordered: list[str] = []
     if len(matches) != 1:
-        errors.append(
-            f"roadmap '{context.roadmap}' must source exactly one milestone; found {len(matches)}"
-        )
+        errors.append(f"milestone '{context.milestone_path}' no longer exists")
     else:
         milestone = matches[0]
-        if milestone.source_items != [context.roadmap]:
-            errors.append("the milestone must list the roadmap as its sole sourceItems value")
         ordered = [str(epic).strip() for epic in milestone.epics if str(epic).strip()]
         if not ordered:
             errors.append("the milestone must contain a non-empty ordered epic list")

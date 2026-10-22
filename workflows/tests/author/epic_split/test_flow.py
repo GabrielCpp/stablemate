@@ -8,6 +8,7 @@ from typing import Any
 from unittest.mock import patch
 
 from _fakes import StubRunner
+from _milestones import write_milestone
 from git import Repo
 from ostler import Ostler
 from workhorse.artifacts import ArtifactWriter
@@ -21,27 +22,18 @@ from workhorse_workflows.author.epic_split.nodes import prepare_epic_split, vali
 from workhorse_workflows.author.epic_split.schemas import EpicSplitValidation
 from workhorse_workflows.author.workflow import workflow
 
-ROADMAP = "docs/roadmaps/account-access.md"
+MILESTONE = "docs/milestones/account-access/milestone.md"
 
 
 def _planning_input(repo: Path) -> None:
-    roadmap = repo / ROADMAP
-    roadmap.parent.mkdir(parents=True)
-    roadmap.write_text(
-        "---\ntype: roadmap\ntitle: Account access\nstatus: approved\n---\n"
-        "# Account access\n\n## User Journeys\n\nSign in, then recover access.\n",
-        encoding="utf-8",
-    )
-    assert Ostler(repo).create_milestone(
-        "account-access", "Account access", source_items=[ROADMAP]
-    ).ok
+    path = write_milestone(repo)
     git = Repo(repo)
-    git.index.add([ROADMAP, "docs/milestones/account-access.md", ".agents/ids.json"])
+    git.index.add([path])
     git.index.commit("planning input")
 
 
 def _set_epics(repo: Path, epics: list[str]) -> None:
-    path = repo / "docs/milestones/account-access.md"
+    path = repo / MILESTONE
     text = path.read_text(encoding="utf-8")
     replacement = "epics:\n" + "".join(f"- {epic}\n" for epic in epics)
     path.write_text(text.replace("epics: []\n", replacement), encoding="utf-8")
@@ -71,7 +63,7 @@ class _Agent:
             return "scripted", {
                 "decision": "escalated",
                 "notes": "owner must choose",
-                "tried": ["read the roadmap"],
+                "tried": ["read the milestone"],
             }
         raise AssertionError(stem)
 

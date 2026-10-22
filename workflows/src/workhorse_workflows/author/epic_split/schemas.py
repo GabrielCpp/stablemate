@@ -8,10 +8,9 @@ from workhorse.pyflow import dry_run
 
 
 class EpicSplitContext(BaseModel):
-    """The roadmap milestone and graph snapshot that bound the split turn."""
+    """The approved milestone and graph snapshot that bound the split turn."""
 
     repo_root: str = ""
-    roadmap: str = ""
     epics_dir: str = ""
     milestone_path: str = ""
     existing_epics: list[str] = Field(default_factory=list)

@@ -10,10 +10,10 @@ from workhorse_workflows.author.shared.nodes.blueprint import blueprint
 from workhorse_workflows.author.shared.schemas.main import Committed
 
 
-def _commit_message(mode: str, epic: str, bullet: str, roadmap: str = "") -> str:
+def _commit_message(mode: str, epic: str, bullet: str, milestone: str = "") -> str:
     if mode == "incomplete":
-        if roadmap:
-            return f"author: INCOMPLETE — roadmap {Path(roadmap).stem}, do not merge"
+        if milestone:
+            return f"author: INCOMPLETE — milestone {Path(milestone).parent.name}, do not merge"
         if epic:
             return f"author: INCOMPLETE — unwritten stories, do not merge ({epic})"
         return "author: INCOMPLETE — unwritten stories, do not merge"
@@ -24,8 +24,8 @@ def _commit_message(mode: str, epic: str, bullet: str, roadmap: str = "") -> str
         trimmed = bullet.strip().splitlines()[0][:72] if bullet.strip() else ""
         epic = registry.epic_slug(epic)
         return f"author: {epic} — {trimmed}" if trimmed else f"author: {epic}"
-    if roadmap:
-        return f"author: roadmap {Path(roadmap).stem}"
+    if milestone:
+        return f"author: milestone {Path(milestone).parent.name}"
     return "author: epic authoring"
 
 
@@ -35,7 +35,7 @@ def commit_author(
     mode: str = "epic",
     epic: str = "",
     bullet: str = "",
-    roadmap: str = "",
+    milestone: str = "",
     repo_dir: str = "",
     docs_dir: str = "docs",
     id_registry: str = ".agents/ids.json",
@@ -53,7 +53,7 @@ def commit_author(
         logger.info("nothing author writes exists under %s — nothing to commit", repo_root)
         return Committed()
 
-    committed = commit_paths(repo_root, _commit_message(mode, epic, bullet, roadmap), *scope)
+    committed = commit_paths(repo_root, _commit_message(mode, epic, bullet, milestone), *scope)
     if committed:
         logger.info("committed %s in %s", " ".join(scope), repo_root)
     return Committed(committed=committed)

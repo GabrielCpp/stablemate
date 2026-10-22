@@ -13,5 +13,5 @@ Read `status` to determine whether the split completed or is blocked. Read `note
 agent's explanation for review or operator resolution. Neither field is preferred or deprecated;
 each answers a different question about the same turn.
 
-- code: `workflows/src/workhorse_workflows/author/epic_split/schemas.py::EpicSplitResult` @38f4bbac59ba
+- code: `workflows/src/workhorse_workflows/author/epic_split/schemas.py::EpicSplitResult` @c07e53f09de1
 - rule: use `status` for the outcome and `notes` for its explanation; read both to understand the reply

@@ -12,7 +12,7 @@ class Config(AuthorResult):
 
     repo_root: str = ""
     backlog_path: str = ""
-    roadmap_path: str = ""
+    milestone_path: str = ""
     epics_dir: str = ""
     services_dir: str = ""
     layers: list[str] = []
@@ -27,14 +27,13 @@ class AuthorStep(AuthorResult):
     """The one artifact-derived unit the flat author planner should run next."""
 
     kind: Literal[
-        "milestone",
         "epic-split",
         "epic-author",
         "story-split",
         "story-author",
         "finalize",
-    ] = "milestone"
-    roadmap: str = ""
+    ] = "epic-split"
+    milestone: str = ""
     epic: str = ""
     story: str = ""
     reason: str = ""
@@ -72,8 +71,8 @@ class Defects(AuthorResult):
     errors: str = ""
 
 
-class RoadmapStatus(AuthorResult):
-    """The durable roadmap lifecycle state after Author's final transition."""
+class MilestoneStatus(AuthorResult):
+    """The durable milestone lifecycle state after Author's final transition."""
 
     path: str = ""
     status: str = ""
@@ -197,9 +196,9 @@ __all__ = [
     "Feedback",
     "Ledger",
     "MockupGate",
+    "MilestoneStatus",
     "MockupResult",
     "Pruned",
-    "RoadmapStatus",
     "RunContext",
     "SeededStory",
     "StoryChoice",

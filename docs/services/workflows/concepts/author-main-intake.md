@@ -6,12 +6,12 @@ title: Author main intake
 # Author main intake
 
 The intake nodes prepare and close the durable inputs used by the Author main flow. Story mode
-adopts unnamed backlog bullets before selecting one; epic mode validates the single milestone
-owned by its roadmap and then advances that roadmap only after finalization. The nodes resolve the
+adopts unnamed backlog bullets before selecting one; epic mode checks that the approved milestone
+lists epics and then advances that milestone only after finalization. The nodes resolve the
 consuming repository from the explicit `repo_dir` input using the survey resolver.
 
 - code: `workflows/src/workhorse_workflows/author/shared/nodes/story_mode.py::adopt_backlog` @d2ddecee90dd
-- detail: [author roadmap intake](../flows/author-roadmap-intake.md)
+- detail: [author milestone intake](../flows/author-milestone-intake.md)
 
 ## Methods
 
@@ -27,31 +27,33 @@ consuming repository from the explicit `repo_dir` input using the survey resolve
 - detail: [Author backlogged fixture contexts](author-backlogged-fixture-context.md)
 - tests: `workflows/tests/author/test_workflow.py::test_story_mode_authors_one_bullet_and_does_not_commit`
 
-### validate_roadmap_milestone
-- sig: `validate_roadmap_milestone(logger: logging.Logger, roadmap: str, repo_dir: str = "") -> Defects`
-- does: selects milestones whose `sourceItems` contains the supplied roadmap path
-- verify: count(subject="milestones matching the roadmap", equals=1)
-- does: rejects a roadmap unless exactly one matching milestone lists only that roadmap in `sourceItems`
+### validate_milestone_epics
+- sig: `validate_milestone_epics(logger: logging.Logger, milestone: str, repo_dir: str = "") -> Defects`
+- does: selects the milestone whose docs-root-relative path equals the supplied path
+- verify: count(subject="milestones matching the path", equals=1)
+- does: rejects the path when no milestone matches it
 - verify: json_path(path="$.ok", equals=false)
 - does: rejects the matching milestone when its `epics` collection is empty
-- returns: `Defects(ok=true, errors="")` when the roadmap has exactly one non-empty owning milestone
+- returns: `Defects(ok=true, errors="")` when the milestone lists at least one epic
 - verify: json_path(path="$.ok", equals=true)
 - returns: `Defects(ok=false, errors=...)` with one line per validation failure otherwise
 - verify: json_path(path="$.errors", equals="example errors")
-- code: `workflows/src/workhorse_workflows/author/finalize/nodes/roadmap.py::validate_roadmap_milestone` @7dddc06a333d
-- tests: `workflows/tests/author/test_config.py::test_roadmap_must_source_exactly_one_nonempty_milestone`
-- tests: `workflows/tests/author/test_config.py::test_roadmap_validation_ignores_unrelated_planning_defects`
+- code: `workflows/src/workhorse_workflows/author/finalize/nodes/milestone.py::validate_milestone_epics` @cbdf7f3f88f8
+- tests: `workflows/tests/author/test_config.py::test_a_milestone_must_list_at_least_one_epic`
+- tests: `workflows/tests/author/test_config.py::test_epic_validation_ignores_other_milestones`
 
-### mark_roadmap_authored
-- sig: `mark_roadmap_authored(logger: logging.Logger, roadmap: str, repo_dir: str = "") -> RoadmapStatus`
-- does: reads the roadmap document and returns its current status without writing when it is already `authored`
-- verify: unchanged(subject="already-authored roadmap", except_fields=[])
+### mark_milestone_authored
+- sig: `mark_milestone_authored(logger: logging.Logger, milestone: str, repo_dir: str = "") -> MilestoneStatus`
+- does: reads the milestone document and returns its current status without writing when it is already `authored`
+- verify: unchanged(subject="already-authored milestone", except_fields=[])
 - does: changes only the first frontmatter `status` field from `approved` to `authored`
 - verify: json_path(path="$.status", equals="authored")
-- does: preserves the roadmap body while writing the authored status
-- verify: unchanged(subject="roadmap body", except_fields=["status"])
-- raises: `WorkflowFailed` when the roadmap status is not `approved` or its frontmatter/status field is malformed
-- verify: absent(subject="roadmap status mutation after invalid status")
-- returns: `RoadmapStatus` containing the roadmap path and status `authored`
-- code: `workflows/src/workhorse_workflows/author/finalize/nodes/roadmap.py::mark_roadmap_authored` @7dddc06a333d
-- tests: `workflows/tests/author/test_config.py::test_mark_roadmap_authored_preserves_the_contract_body`
+- does: preserves the milestone body while writing the authored status
+- verify: unchanged(subject="milestone body", except_fields=["status"])
+- raises: `WorkflowFailed` when the milestone status is not `approved` or its frontmatter/status field is malformed
+- verify: absent(subject="milestone status mutation after invalid status")
+- returns: `MilestoneStatus` containing the milestone path and status `authored`
+- code: `workflows/src/workhorse_workflows/author/finalize/nodes/milestone.py::mark_milestone_authored` @cbdf7f3f88f8
+- tests: `workflows/tests/author/test_config.py::test_mark_milestone_authored_preserves_the_contract_body`
+- tests: `workflows/tests/author/test_config.py::test_marking_an_authored_milestone_is_a_no_op`
+- tests: `workflows/tests/author/test_config.py::test_marking_any_other_status_raises`

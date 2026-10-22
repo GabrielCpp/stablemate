@@ -57,7 +57,7 @@ class EpicAuthor(Workflow):
             args={
                 "epic": self.ctx.epic,
                 "epic_dir": self.ctx.epic_dir,
-                "roadmap": self.ctx.roadmap_path,
+                "milestone": self.ctx.milestone_path,
                 "services_dir": self.ctx.services_dir,
             },
         )

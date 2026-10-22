@@ -10,7 +10,7 @@ story. It resolves and scaffolds that story, optionally designs a story-local mo
 story writing and independent audit turns, validates structure and feature-book grounding, and
 handles feedback, bounded rework, and operator resolution. A passing run records a digest-bound
 audit receipt. It does not select another story, create a branch, or commit changes. The parent
-roadmap dispatcher hands it one epic/story pair and resumes planning after the returned completion
+Author dispatcher hands it one epic/story pair and resumes planning after the returned completion
 value; it does not let this subflow choose a different queued item.
 
 The workflow inputs are `epic`, `story`, optional `feedback_dir`, and `operator_mode` (`auto` by

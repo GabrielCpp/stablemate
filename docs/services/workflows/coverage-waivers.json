@@ -69,10 +69,6 @@
       "reason": "thin re-export of `finalize.flow::Finalize`; the flow class is documented in concepts/author-finalize-subflow.md, which cites the flow class's public methods; the bare re-export carries no behaviour beyond the imported class."
     },
     {
-      "code": "workflows/src/workhorse_workflows/author/milestone/__init__.py::Milestone",
-      "reason": "thin re-export of `milestone.flow::Milestone`; the flow class is documented in concepts/author-milestone-subflow.md, which cites the flow class's public methods; the bare re-export carries no behaviour beyond the imported class."
-    },
-    {
       "code": "workflows/src/workhorse_workflows/author/parity_surveyor/__init__.py::ParitySurveyor",
       "reason": "thin re-export of `parity_surveyor.flow::ParitySurveyor`; folded into author-workflow-composition-root.md prose which names it as an exposed named subflow; the flow class is documented in the corresponding flow node; the bare re-export carries no behaviour beyond the imported class."
     },
@@ -149,10 +145,6 @@
       "reason": "declares only the module-level `blueprint = Blueprint(...)` registry instance, already cited (as `_blueprint.py::blueprint`) in concepts/author-epic-split-subflow.md; the bare module path carries no behaviour beyond that citation."
     },
     {
-      "code": "workflows/src/workhorse_workflows/author/milestone/nodes/_blueprint.py",
-      "reason": "declares only the module-level `blueprint = Blueprint(...)` registry instance, already cited (as `_blueprint.py::blueprint`) in concepts/author-milestone-subflow.md; the bare module path carries no behaviour beyond that citation."
-    },
-    {
       "code": "workflows/src/workhorse_workflows/author/story_author/nodes/_blueprint.py",
       "reason": "declares only the module-level `blueprint = Blueprint(...)` registry instance, already cited (as `_blueprint.py::blueprint`) in concepts/author-story-author-subflow.md; the bare module path carries no behaviour beyond that citation."
     },
@@ -185,10 +177,6 @@
       "reason": "package init re-exporting Finalize for the flow package's public surface; the exported symbol(s) are documented with `code:` bullets in concepts/author-finalize-subflow.md. The bare module path (docstring plus import/`__all__`) carries no behaviour beyond that."
     },
     {
-      "code": "workflows/src/workhorse_workflows/author/milestone/__init__.py",
-      "reason": "package init re-exporting Milestone for the flow package's public surface; the exported symbol(s) are documented with `code:` bullets in concepts/author-milestone-subflow.md. The bare module path (docstring plus import/`__all__`) carries no behaviour beyond that."
-    },
-    {
       "code": "workflows/src/workhorse_workflows/author/parity_surveyor/__init__.py",
       "reason": "package init re-exporting ParitySurveyor for the flow package's public surface; the exported symbol(s) are documented with `code:` bullets in concepts/author-parity-surveyor-subflow.md. The bare module path (docstring plus import/`__all__`) carries no behaviour beyond that."
     },
@@ -219,10 +207,6 @@
     {
       "code": "workflows/src/workhorse_workflows/author/epic_split/nodes/__init__.py",
       "reason": "package init re-exporting prepare_epic_split/validate_epic_split for the flow package's public surface; the exported symbol(s) are documented with `code:` bullets in concepts/author-epic-split-subflow.md. The bare module path (docstring plus import/`__all__`) carries no behaviour beyond that."
-    },
-    {
-      "code": "workflows/src/workhorse_workflows/author/milestone/nodes/__init__.py",
-      "reason": "package init re-exporting prepare_milestone/validate_milestone for the flow package's public surface; the exported symbol(s) are documented with `code:` bullets in concepts/author-milestone-subflow.md. The bare module path (docstring plus import/`__all__`) carries no behaviour beyond that."
     },
     {
       "code": "workflows/src/workhorse_workflows/author/story_author/nodes/__init__.py",

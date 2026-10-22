@@ -14,7 +14,7 @@ flow-level fixtures replace the engine's agent-runner seam and write the artifac
 Specs live at `workflows/tests/author/**/test_*.py`. Add coverage beside the flow or node it exercises, use the
 shared fixtures from `tests/author/conftest.py`, and make a scripted agent create every artifact the subsequent
 real node reads. Run one test with pytest's node selector, for example
-`uv run pytest tests/author/test_config.py::test_epic_authoring_requires_an_approved_roadmap -q`; this tier has no
+`uv run pytest tests/author/test_config.py::test_epic_authoring_selects_the_approved_milestone_folder -q`; this tier has no
 browser controls, so it does not use book-derived UI locators. The repository `test` target invokes
 `$(MAKE) -C workflows test`, so this tier blocks that aggregate CI gate.
 

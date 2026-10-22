@@ -1,14 +1,13 @@
 ---
 type: flow
-slug: author-roadmap-intake
-title: Author roadmap intake
+slug: author-milestone-intake
+title: Author milestone intake
 ---
-# Author roadmap intake
+# Author milestone intake
 
 The [workhorse-author run command](../workhorse-author.md#run) starts the Author machine, which
-turns one approved release contract into exactly one milestone of ordered epics and vertical
-stories. The roadmap remains durable; Author never copies it into or prunes it as a mutable
-worklist. Its composition root is the [author workflow composition root](../concepts/author-workflow-composition-root.md),
+turns one approved milestone into ordered epics and vertical stories. The milestone folder
+remains durable; Author reads it and never copies it into or prunes it as a mutable worklist. Its composition root is the [author workflow composition root](../concepts/author-workflow-composition-root.md),
 and its package boundary is the [Author main package](../concepts/author-main-package.md). The
 workflow fields select the dispatch mode and carry the mode-specific inputs: `mode` defaults to
 `epic`, `epic`, `bullet`, `layers`, and `services` support one story seed, `rubric` and `survey_dir`
@@ -26,34 +25,37 @@ support a survey, `baseline_inventory` and `parity_survey_dir` support a parity 
 - detail: [Author main package](../concepts/author-main-package.md)
 - detail: [Author main intake](../concepts/author-main-intake.md)
 - detail: [author finalize subflow](../concepts/author-finalize-subflow.md)
-- tests: workflows/tests/author/test_workflow.py::test_epic_mode_authors_one_roadmap_milestone_and_commits_it
-- tests: workflows/tests/author/test_config.py::test_roadmap_must_source_exactly_one_nonempty_milestone
+- tests: workflows/tests/author/test_workflow.py::test_epic_mode_authors_the_approved_milestone_and_commits_it
+- tests: workflows/tests/author/test_config.py::test_epic_authoring_selects_the_approved_milestone_folder
+- tests: workflows/tests/author/test_config.py::test_epic_authoring_fails_on_a_readiness_error_and_lists_it
 
 The machine itself is implemented by `workflows/src/workhorse_workflows/author/main/flow.py::Author`.
-Configuration, planning, and roadmap validation are implemented by
+Configuration, planning, and milestone validation are implemented by
 `workflows/src/workhorse_workflows/author/shared/nodes/config.py::load_config`,
 `workflows/src/workhorse_workflows/author/main/nodes/planner.py::plan_author_step`,
-`workflows/src/workhorse_workflows/author/finalize/nodes/roadmap.py::validate_roadmap_milestone`, and
-`workflows/src/workhorse_workflows/author/finalize/nodes/roadmap.py::mark_roadmap_authored`.
+`workflows/src/workhorse_workflows/author/finalize/nodes/milestone.py::validate_milestone_epics`, and
+`workflows/src/workhorse_workflows/author/finalize/nodes/milestone.py::mark_milestone_authored`.
 
 The stages, in order: [setup](#setup), [plan and dispatch](#plan-and-dispatch), [finalize](#finalize).
 
-The flow starts when the default run has `mode=epic` and the repository contains one `docs/roadmaps/*.md` file with `type: roadmap` and `status: approved`.
-It ends in one of these ways: the authored roadmap is the durable source of exactly one milestone whose ordered epics and stories are ready for Coder.
+The flow starts when the default run has `mode=epic` and the repository contains exactly one `docs/milestones/<slug>/milestone.md` with `status: approved` and no readiness finding.
+It ends in one of these ways: the approved milestone becomes `authored`, and its ordered epics and stories are ready for Coder.
 
 ## Phase Details
 
 ### Setup
-The machine resolves the repository root and configured document paths. In epic mode it requires
-one approved roadmap and carries its resolved path in the run context; it does not substitute the
-backlog or create a feature inventory.
+The machine resolves the repository root and configured document paths. In epic mode it selects
+the one approved milestone folder through Ostler and runs its readiness check. Any error finding
+fails the run before a turn, and the finding list is the failure message. It carries the
+milestone's resolved path in the run context and does not substitute the backlog or create a
+feature inventory.
 
 Setup is implemented by `workflows/src/workhorse_workflows/author/main/flow.py::Author.setup`
 and `workflows/src/workhorse_workflows/author/shared/nodes/config.py::load_config`.
 
 ### Plan and dispatch
-After setup, the planner rereads the approved roadmap's planning graph and selects one incomplete
-stage. The machine hands off to milestone creation, epic splitting, [epic authoring](../concepts/author-epic-author-subflow.md), story splitting,
+After setup, the planner rereads the approved milestone's planning graph and selects one incomplete
+stage. A milestone that lists no epics starts at the epic split. The machine hands off to epic splitting, [epic authoring](../concepts/author-epic-author-subflow.md), story splitting,
 story authoring, or finalization, then returns to planning so each stage is selected from the
 artifacts currently on disk. Epic documentation and researched seeds for every queued epic are
 completed before story splitting begins. For a `story-split` stage, the dispatcher hands the
@@ -106,9 +108,9 @@ The story branch is implemented by
 `workflows/src/workhorse_workflows/author/main/flow.py::Author.start`.
 
 ### Finalize
-Finalization verifies reconciliation, whole-graph integrity, and the roadmap-owned milestone. It
-validates the authored artifacts again, advances the roadmap from `approved` to `authored` without
-rewriting its body, and commits the authored planning documents. A failed final validation commits
+Finalization verifies reconciliation, whole-graph integrity, and that the milestone lists at least
+one epic. It validates the authored artifacts again, advances the milestone from `approved` to
+`authored` without rewriting its body, and commits the authored planning documents. A failed final validation commits
 an incomplete marker instead of reporting a successful run.
 
 The [author finalize subflow](../concepts/author-finalize-subflow.md) runs these gates in order. A
@@ -117,8 +119,8 @@ resolution count; human mode, exhausted resolution, or an escalated resolver res
 operator context file. Only passing or explicitly skipped gates proceed to the next validation.
 
 Finalization is implemented by `workflows/src/workhorse_workflows/author/finalize/flow.py::Finalize.close`,
-`workflows/src/workhorse_workflows/author/finalize/nodes/roadmap.py::validate_roadmap_milestone`,
-`workflows/src/workhorse_workflows/author/finalize/nodes/roadmap.py::mark_roadmap_authored`,
+`workflows/src/workhorse_workflows/author/finalize/nodes/milestone.py::validate_milestone_epics`,
+`workflows/src/workhorse_workflows/author/finalize/nodes/milestone.py::mark_milestone_authored`,
 `workflows/src/workhorse_workflows/author/finalize/nodes/artifacts.py::validate_artifacts`,
 `workflows/src/workhorse_workflows/author/shared/nodes/integrity.py::verify_integrity`,
 `workflows/src/workhorse_workflows/author/finalize/nodes/artifacts.py::verify_reconcile`, and

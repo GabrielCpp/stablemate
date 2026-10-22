@@ -11,7 +11,7 @@ from ostler.model import Epic
 from ostler.select import dag_order, epic_by_name
 from workhorse_workflows.author.main.nodes._blueprint import blueprint
 from workhorse_workflows.author.shared.paths import survey_repo_root
-from workhorse_workflows.author.shared.roadmap import approved_roadmap
+from workhorse_workflows.author.shared.nodes.config import approved_milestone_path
 from workhorse_workflows.author.shared.schemas.main import AuthorStep
 from workhorse_workflows.author.shared.story_split_receipt import story_split_review_current
 
@@ -87,30 +87,23 @@ def plan_author_step(
     blocked: tuple[str, ...] = (),
     repo_dir: str = "",
 ) -> AuthorStep:
-    """Select exactly one next stage from the approved roadmap's current artifacts."""
+    """Select exactly one next stage from the approved milestone's current artifacts."""
     root = survey_repo_root(repo_dir)
-    roadmap = approved_roadmap(root)
+    path = approved_milestone_path(root)
     okf = Ostler(root)
-    matches = [milestone for milestone in okf.graph.milestones if roadmap in milestone.source_items]
-
-    if len(matches) != 1 or matches[0].source_items != [roadmap]:
-        reason = f"roadmap '{roadmap}' does not have exactly one sole-source milestone"
-        logger.info(reason)
-        return AuthorStep(kind="milestone", roadmap=roadmap, reason=reason)
-
-    milestone = matches[0]
+    milestone = okf.approved_milestone()
     epics = _ordered_epics(okf, milestone.epics)
     if epics is None:
         reason = f"milestone '{milestone.name}' has no valid ordered epic split"
         logger.info(reason)
-        return AuthorStep(kind="epic-split", roadmap=roadmap, reason=reason)
+        return AuthorStep(kind="epic-split", milestone=path, reason=reason)
 
     for epic in epics:
         if epic.epic_md is None or not epic.seeds:
             reason = f"epic '{epic.name}' needs epic documentation or researched seeds"
             logger.info(reason)
             return AuthorStep(
-                kind="epic-author", roadmap=roadmap, epic=epic.name, reason=reason
+                kind="epic-author", milestone=path, epic=epic.name, reason=reason
             )
 
     for epic in epics:
@@ -118,7 +111,7 @@ def plan_author_step(
             reason = f"epic '{epic.name}' has no current semantically reviewed story graph"
             logger.info(reason)
             return AuthorStep(
-                kind="story-split", roadmap=roadmap, epic=epic.name, reason=reason
+                kind="story-split", milestone=path, epic=epic.name, reason=reason
             )
 
     for epic in epics:
@@ -132,7 +125,7 @@ def plan_author_step(
                     continue
                 return AuthorStep(
                     kind="story-author",
-                    roadmap=roadmap,
+                    milestone=path,
                     epic=epic.name,
                     story=story.slug,
                     reason=f"story '{story.slug}' has no current passing audit receipt",
@@ -144,15 +137,15 @@ def plan_author_step(
         logger.info("story '%s' in epic '%s' needs current authoring", slug, epic.name)
         return AuthorStep(
             kind="story-author",
-            roadmap=roadmap,
+            milestone=path,
             epic=epic.name,
             story=slug,
             reason=reason,
         )
 
-    reason = f"roadmap '{roadmap}' has a complete current planning graph"
+    reason = f"milestone '{milestone.name}' has a complete current planning graph"
     logger.info(reason)
-    return AuthorStep(kind="finalize", roadmap=roadmap, reason=reason)
+    return AuthorStep(kind="finalize", milestone=path, reason=reason)
 
 
 __all__ = ["plan_author_step"]

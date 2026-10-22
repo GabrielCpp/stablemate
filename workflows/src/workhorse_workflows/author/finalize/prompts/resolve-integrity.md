@@ -1,6 +1,6 @@
 # Resolve a referential-integrity block autonomously (author)
 
-Change only the roadmap-owned planning artifacts named by the reported breaks. Leave them
+Change only the milestone-owned planning artifacts named by the reported breaks. Leave them
 uncommitted: do not install dependencies, run repository-wide checks, stage, commit, push, or alter
 branches/remotes; Author validates and delivers after all authoring turns finish.
 

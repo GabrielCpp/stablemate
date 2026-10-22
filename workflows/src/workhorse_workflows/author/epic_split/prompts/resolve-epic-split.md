@@ -4,7 +4,7 @@ agent: agent
 
 # Diagnose an epic-split operator block
 
-Investigate why the approved roadmap at `{{ roadmap }}` and milestone at `{{ milestone }}` could not
+Investigate why the approved milestone at `{{ milestone }}` could not
 converge on an ordered epic skeleton list. Do not decide scope, edit planning documents, author epic
 prose or seeds, branch, commit, or invoke another stage.
 

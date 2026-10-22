@@ -14,7 +14,6 @@ from workhorse_workflows.author.shared.nodes import (
     prune_bullet,
     seed_story,
 )
-from workhorse_workflows.author.milestone import Milestone
 from workhorse_workflows.author.parity_surveyor import ParitySurveyor
 from workhorse_workflows.author.shared.schemas import RunContext
 from workhorse_workflows.author.story_author import StoryAuthor
@@ -23,7 +22,7 @@ from workhorse_workflows.author.surveyor import Surveyor
 
 
 class Author(Workflow):
-    """Compose independently runnable author stages over one roadmap."""
+    """Compose independently runnable author stages over one milestone."""
 
     mode: str = "epic"
     epic: str = ""
@@ -42,7 +41,7 @@ class Author(Workflow):
         return RunContext(**cfg.model_dump())
 
     def start(self) -> Continue | Done:
-        """Dispatch discovery modes, one backlog story, or the flat roadmap planner."""
+        """Dispatch discovery modes, one backlog story, or the flat milestone planner."""
         if self.mode == "survey":
             return Done(self.handoff(
                 Surveyor,
@@ -82,9 +81,7 @@ class Author(Workflow):
     def next_stage(self, blocked: Sequence[str] = ()) -> Continue | Done:
         """Run exactly one artifact-derived stage, then plan again from disk."""
         step = self.call(plan_author_step, blocked=tuple(blocked))
-        if step.kind == "milestone":
-            result = self.handoff(Milestone)
-        elif step.kind == "epic-split":
+        if step.kind == "epic-split":
             result = self.handoff(EpicSplit, operator_mode=self.operator_mode)
         elif step.kind == "epic-author":
             result = self.handoff(

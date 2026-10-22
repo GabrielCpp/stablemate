@@ -5,11 +5,12 @@ import logging
 from pathlib import Path
 
 import yaml
+from ostler import Ostler
+from ostler.milestones import MilestoneSelectionError
 from workhorse.pyflow import WorkflowFailed
 from workhorse_workflows.author.shared.nodes.blueprint import blueprint
 from workhorse_workflows.author.shared import paths
 from workhorse_workflows.author.shared.paths import survey_repo_root
-from workhorse_workflows.author.shared.roadmap import approved_roadmap
 from workhorse_workflows.author.shared.schemas.main import Config
 
 
@@ -25,6 +26,23 @@ def _template(root: Path) -> dict:
     return data if isinstance(data, dict) else {}
 
 
+def approved_milestone_path(root: Path) -> str:
+    """The docs-root-relative path of the one approved milestone, or stop before a turn."""
+    okf = Ostler(root)
+    try:
+        milestone = okf.approved_milestone()
+    except MilestoneSelectionError as exc:
+        raise WorkflowFailed(f"authoring requires exactly one approved milestone: {exc}") from exc
+    errors = [f for f in okf.milestone_readiness(milestone.name) if f.severity == "error"]
+    if errors:
+        listed = "\n".join(f"- [{f.code}] {f.message}" for f in errors)
+        raise WorkflowFailed(
+            f"milestone '{milestone.name}' is not ready to author from, fix it until "
+            f"`ostler doctor` reports no milestone finding:\n{listed}"
+        )
+    return milestone.path.resolve().relative_to(root.resolve()).as_posix()
+
+
 @blueprint.node
 def load_config(
     logger: logging.Logger,
@@ -35,7 +53,7 @@ def load_config(
     root = survey_repo_root(repo_dir)
     backlog = paths.backlog_file(root)
     epics_dir = paths.epics_dir(root)
-    roadmap = approved_roadmap(root) if mode == "epic" else ""
+    milestone = approved_milestone_path(root) if mode == "epic" else ""
 
     backlog_path = (root / backlog).resolve()
     if mode in {"story", "story-edit", "epic-edit"} and not backlog_path.is_file():
@@ -61,7 +79,7 @@ def load_config(
     return Config(
         repo_root=str(root),
         backlog_path=backlog,
-        roadmap_path=roadmap,
+        milestone_path=milestone,
         epics_dir=epics_dir,
         services_dir=str(services_dir),
         layers=layers,

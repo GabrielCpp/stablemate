@@ -88,7 +88,6 @@ def test_reworker_makes_in_scope_choices_instead_of_blocking(prompt: Path) -> No
         STORY_PROMPTS / "audit-story.md",
         STORY_PROMPTS / "rework-story.md",
         AUTHOR / "finalize/prompts/resolve-integrity.md",
-        AUTHOR / "milestone/prompts/build-milestone.md",
         AUTHOR / "epic_split/prompts/split-epics.md",
         AUTHOR / "epic_split/prompts/rework-epic-split.md",
     ],

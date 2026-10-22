@@ -12,5 +12,5 @@ the review findings that explain that verdict to the rework or operator context.
 Neither field supersedes the other. Consumers use `status` to route the review and use `notes` to
 preserve its rationale, so a complete review reads both fields together.
 
-- code: `workflows/src/workhorse_workflows/author/epic_split/schemas.py::EpicSplitReview` @38f4bbac59ba
+- code: `workflows/src/workhorse_workflows/author/epic_split/schemas.py::EpicSplitReview` @c07e53f09de1
 - rule: use `status` to select the review path and `notes` to carry the findings for that path

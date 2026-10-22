@@ -6,6 +6,7 @@ from typing import Any
 from unittest.mock import patch
 
 from _fakes import StubRunner
+from _milestones import write_milestone
 from git import Repo
 from ostler import Ostler
 from workhorse.artifacts import ArtifactWriter
@@ -19,20 +20,11 @@ from workhorse_workflows.author.epic_author.nodes import validate_authored_epic
 from workhorse_workflows.author.epic_author.schemas import EpicAuthorDone
 from workhorse_workflows.author.workflow import workflow
 
-ROADMAP = "docs/roadmaps/account-access.md"
-
-
 def _planning_input(repo: Path) -> None:
-    roadmap = repo / ROADMAP
-    roadmap.parent.mkdir(parents=True)
-    roadmap.write_text(
-        "---\ntype: roadmap\ntitle: Account access\nstatus: approved\n---\n"
-        "# Account access\n\n## User Journeys\n\nPeople sign in securely.\n",
-        encoding="utf-8",
-    )
+    milestone = write_milestone(repo)
     assert Ostler(repo).create_epic("sign-in", "Sign in").ok
     git = Repo(repo)
-    git.index.add([ROADMAP, "docs/epics", ".agents/ids.json"])
+    git.index.add([milestone, "docs/epics", ".agents/ids.json"])
     git.index.commit("planning input")
 
 
@@ -76,7 +68,7 @@ class _Agent:
             return "scripted", {
                 "decision": "escalated",
                 "notes": "owner must decide",
-                "tried": ["read the roadmap"],
+                "tried": ["read the milestone"],
             }
         raise AssertionError(stem)
 

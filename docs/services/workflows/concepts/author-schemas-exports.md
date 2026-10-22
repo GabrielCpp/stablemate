@@ -12,7 +12,7 @@ and parity configuration. The initializer imports from each subject module and d
 another registration target; the model implementations remain documented at their declaring
 modules.
 
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/__init__.py::__all__` @737f9bdfb987
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/__init__.py::__all__` @580f68bb1a46
 - detail: [Author main package](author-main-package.md)
 
 ## Fields
@@ -25,7 +25,7 @@ configuration validation, audit and coverage reviews, epic and story selection a
 seeding and snapshots, edit operations, survey operations, and parity configuration.
 
 - type: `list[str]`
-- default: `['AuditFinding', 'AuditResult', 'AuthorStep', 'AppliedEpicEdit', 'AuthorResult', 'Committed', 'Config', 'CoverageReview', 'Defects', 'EmitResult', 'EditIntent', 'EpicEditPlan', 'EpicEditReview', 'EpicRewriteResult', 'EpicSnapshot', 'Expansion', 'Feedback', 'InventoryCheck', 'Ledger', 'MarkResult', 'MockupGate', 'MockupResult', 'MilestoneSnapshot', 'OperatorResolution', 'ParityConfig', 'PartitionCheck', 'PartitionProposal', 'PlanResult', 'Pruned', 'ResolvedBullet', 'RoadmapStatus', 'RecordCheck', 'RecordFix', 'RunContext', 'SeededStory', 'SeedChange', 'SeedSnapshot', 'SplitResult', 'StoryChoice', 'StoryChange', 'StorySnapshot', 'StorySplit', 'SurveyConfig', 'UnitAssessment', 'UnitPick', 'VerifyReport', 'VerifyResult', 'WriteEpicResult', 'WriteStoryResult']`
+- default: `['AuditFinding', 'AuditResult', 'AuthorStep', 'AppliedEpicEdit', 'AuthorResult', 'Committed', 'Config', 'CoverageReview', 'Defects', 'EmitResult', 'EditIntent', 'EpicEditPlan', 'EpicEditReview', 'EpicRewriteResult', 'EpicSnapshot', 'Expansion', 'Feedback', 'InventoryCheck', 'Ledger', 'MarkResult', 'MockupGate', 'MockupResult', 'MilestoneSnapshot', 'MilestoneStatus', 'OperatorResolution', 'ParityConfig', 'PartitionCheck', 'PartitionProposal', 'PlanResult', 'Pruned', 'ResolvedBullet', 'RecordCheck', 'RecordFix', 'RunContext', 'SeededStory', 'SeedChange', 'SeedSnapshot', 'SplitResult', 'StoryChoice', 'StoryChange', 'StorySnapshot', 'StorySplit', 'SurveyConfig', 'UnitAssessment', 'UnitPick', 'VerifyReport', 'VerifyResult', 'WriteEpicResult', 'WriteStoryResult']`
 - required: true
 - semantics: importing the package exposes exactly the listed models from the author workflow's schemas
 - verify: count(subject="author schemas exports", equals=46)

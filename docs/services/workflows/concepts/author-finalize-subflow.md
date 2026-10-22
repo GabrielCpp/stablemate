@@ -5,10 +5,10 @@ title: Author finalize subflow
 ---
 # Author finalize subflow
 
-`Finalize` validates and delivers an already-authored roadmap. It never performs another authoring
+`Finalize` validates and delivers an already-authored milestone. It never performs another authoring
 agent turn: it resolves the epic-mode configuration, checks for silently dropped planning scope,
-checks whole-graph integrity, validates the roadmap's single milestone, validates the produced
-artifacts again, marks the roadmap authored, and commits the authored documents on the current
+checks whole-graph integrity, checks that the milestone lists epics, validates the produced
+artifacts again, marks the milestone authored, and commits the authored documents on the current
 branch. The gate implementations are described in the [author artifact gates](author-artifact-gates.md)
 module concept. Reconciliation and integrity each allow at most two automatic resolver passes; milestone
 validation uses the integrity cap. Human mode bypasses automatic resolution. Validation failures
@@ -17,10 +17,10 @@ terminal artifact or milestone failure commits an incomplete marker and raises i
 success. A passing or explicitly skipped gate is the only path to the next gate. The module exports
 the two resolution limits and an unbounded timeout used only for resolver turns.
 
-- code: `workflows/src/workhorse_workflows/author/finalize/flow.py::Finalize` @41642305cfb8
+- code: `workflows/src/workhorse_workflows/author/finalize/flow.py::Finalize` @97bbb2aa77b8
 - tests: `workflows/tests/author/finalize/test_flow.py::test_finalizes_with_one_commit_on_the_current_branch`
 - tests: `workflows/tests/author/finalize/test_flow.py::test_terminal_validation_commits_incomplete_then_fails`
-- detail: [author roadmap intake](../flows/author-roadmap-intake.md)
+- detail: [author milestone intake](../flows/author-milestone-intake.md)
 
 ## Fields
 
@@ -31,7 +31,7 @@ the two resolution limits and an unbounded timeout used only for resolver turns.
 - semantics: selects automatic resolution or direct human operator gates
 - verify: json_path(path="$.operator_mode", matches="^(auto|human)$")
 - semantics: accepts only `auto` and `human`
-- code: `workflows/src/workhorse_workflows/author/finalize/flow.py::Finalize.operator_mode` @41642305cfb8
+- code: `workflows/src/workhorse_workflows/author/finalize/flow.py::Finalize.operator_mode` @97bbb2aa77b8
 
 ### MAX_RECONCILE_RESOLVES
 - type: `int`
@@ -39,7 +39,7 @@ the two resolution limits and an unbounded timeout used only for resolver turns.
 - required: true
 - semantics: maximum automatic reconciliation resolver passes before awaiting an operator
 - verify: json_path(path="$.max_reconcile_resolves", equals=2)
-- code: `workflows/src/workhorse_workflows/author/finalize/flow.py::MAX_RECONCILE_RESOLVES` @41642305cfb8
+- code: `workflows/src/workhorse_workflows/author/finalize/flow.py::MAX_RECONCILE_RESOLVES` @97bbb2aa77b8
 
 ### MAX_INTEGRITY_RESOLVES
 - type: `int`
@@ -47,7 +47,7 @@ the two resolution limits and an unbounded timeout used only for resolver turns.
 - required: true
 - semantics: maximum automatic integrity and milestone resolver passes before awaiting an operator
 - verify: json_path(path="$.max_integrity_resolves", equals=2)
-- code: `workflows/src/workhorse_workflows/author/finalize/flow.py::MAX_INTEGRITY_RESOLVES` @41642305cfb8
+- code: `workflows/src/workhorse_workflows/author/finalize/flow.py::MAX_INTEGRITY_RESOLVES` @97bbb2aa77b8
 
 ### UNBOUNDED
 - type: `float`
@@ -55,7 +55,7 @@ the two resolution limits and an unbounded timeout used only for resolver turns.
 - required: true
 - semantics: timeout passed to resolver agent turns so the flow cap does not truncate diagnosis
 - verify: json_path(path="$.resolver_timeout", equals="inf")
-- code: `workflows/src/workhorse_workflows/author/finalize/flow.py::UNBOUNDED` @41642305cfb8
+- code: `workflows/src/workhorse_workflows/author/finalize/flow.py::UNBOUNDED` @97bbb2aa77b8
 
 ## Methods
 
@@ -67,17 +67,17 @@ the two resolution limits and an unbounded timeout used only for resolver turns.
 - verify: count(subject="finalize run contexts", equals=1)
 - returns: returns the resolved [run context](../formats/author-config.md)
 - verify: json_path(path="$.repo_root", equals="docs/stories")
-- code: `workflows/src/workhorse_workflows/author/finalize/flow.py::Finalize.setup` @41642305cfb8
+- code: `workflows/src/workhorse_workflows/author/finalize/flow.py::Finalize.setup` @97bbb2aa77b8
 
 ### labels
 - sig: `labels() -> dict[str, str]`
-- does: labels the run with the roadmap filename stem as `work_id`
+- does: labels the run with the milestone's folder name as `work_id`
 - verify: json_path(path="$.work_id", equals="CASE-1234")
-- does: reports progress as validating and delivering the authored roadmap
-- verify: json_path(path="$.progress", equals="validating and delivering authored roadmap")
+- does: reports progress as validating and delivering the authored milestone
+- verify: json_path(path="$.progress", equals="validating and delivering authored milestone")
 - returns: returns the work identifier and progress labels
 - verify: count(subject="finalize label mappings", equals=1)
-- code: `workflows/src/workhorse_workflows/author/finalize/flow.py::Finalize.labels` @41642305cfb8
+- code: `workflows/src/workhorse_workflows/author/finalize/flow.py::Finalize.labels` @97bbb2aa77b8
 
 ### _context
 - sig: `_context() -> str`
@@ -85,7 +85,7 @@ the two resolution limits and an unbounded timeout used only for resolver turns.
 - verify: json_path(path="$.context_path", equals="docs/stories/acme-story/story.md")
 - returns: returns the path used by finalization's operator gates
 - verify: count(subject="finalize operator context paths", equals=1)
-- code: `workflows/src/workhorse_workflows/author/finalize/flow.py::Finalize._context` @41642305cfb8
+- code: `workflows/src/workhorse_workflows/author/finalize/flow.py::Finalize._context` @97bbb2aa77b8
 
 ### _context_path
 - sig: `_context_path() -> Path`
@@ -93,7 +93,7 @@ the two resolution limits and an unbounded timeout used only for resolver turns.
 - verify: json_path(path="$.context_path", equals="docs/stories/acme-story/story.md")
 - returns: returns the absolute operator context file path
 - verify: count(subject="absolute finalize context paths", equals=1)
-- code: `workflows/src/workhorse_workflows/author/finalize/flow.py::Finalize._context_path` @41642305cfb8
+- code: `workflows/src/workhorse_workflows/author/finalize/flow.py::Finalize._context_path` @97bbb2aa77b8
 
 ### _resolve_integrity
 - sig: `_resolve_integrity(notes: str) -> OperatorResolution`
@@ -105,12 +105,12 @@ the two resolution limits and an unbounded timeout used only for resolver turns.
 - verify: count(subject="unbounded finalize resolver turns", equals=1)
 - returns: returns the resolver's operator resolution
 - verify: json_path(path="$.decision", equals="answered")
-- code: `workflows/src/workhorse_workflows/author/finalize/flow.py::Finalize._resolve_integrity` @41642305cfb8
+- code: `workflows/src/workhorse_workflows/author/finalize/flow.py::Finalize._resolve_integrity` @97bbb2aa77b8
 - detail: [author resolve-integrity prompt](../formats/author-resolve-integrity-prompt.md)
 
 ### _fail_validation
 - sig: `_fail_validation(heading: str, errors: str) -> None`
-- does: commits an incomplete roadmap marker before terminating failed final validation
+- does: commits an incomplete milestone marker before terminating failed final validation
 - verify: count(subject="incomplete finalize commits", equals=1)
 - does: raises workflow failure with the validation heading and errors
 - verify: count(subject="terminal finalize validation failures", equals=1)
@@ -118,7 +118,7 @@ the two resolution limits and an unbounded timeout used only for resolver turns.
 - verify: count(subject="workflow failures after incomplete finalize commits", equals=1)
 - returns: returns no value when validation does not fail before the commit call
 - verify: count(subject="successful _fail_validation returns", equals=0)
-- code: `workflows/src/workhorse_workflows/author/finalize/flow.py::Finalize._fail_validation` @41642305cfb8
+- code: `workflows/src/workhorse_workflows/author/finalize/flow.py::Finalize._fail_validation` @97bbb2aa77b8
 
 ### start
 - sig: `start() -> Continue`
@@ -130,7 +130,7 @@ the two resolution limits and an unbounded timeout used only for resolver turns.
 - verify: count(subject="invalid finalize mode workflow failures", equals=1)
 - returns: returns a continuation targeting reconciliation
 - verify: json_path(path="$.next", equals="reconcile")
-- code: `workflows/src/workhorse_workflows/author/finalize/flow.py::Finalize.start` @41642305cfb8
+- code: `workflows/src/workhorse_workflows/author/finalize/flow.py::Finalize.start` @97bbb2aa77b8
 
 ### reconcile
 - sig: `reconcile(resolves: int = 0) -> Continue | Await`
@@ -146,7 +146,7 @@ the two resolution limits and an unbounded timeout used only for resolver turns.
 - verify: count(subject="automatic reconciliation resolutions", equals=1)
 - returns: returns a continuation or operator await state for the next reconciliation decision
 - verify: count(subject="reconciliation gate outcomes", equals=1)
-- code: `workflows/src/workhorse_workflows/author/finalize/flow.py::Finalize.reconcile` @41642305cfb8
+- code: `workflows/src/workhorse_workflows/author/finalize/flow.py::Finalize.reconcile` @97bbb2aa77b8
 
 ### resolve_reconcile
 - sig: `resolve_reconcile(notes: str, resolves: int = 0) -> Await`
@@ -158,13 +158,13 @@ the two resolution limits and an unbounded timeout used only for resolver turns.
 - verify: count(subject="reconciliation resolver awaits", equals=1)
 - returns: returns an operator await state that resumes at integrity
 - verify: json_path(path="$.next", equals="integrity")
-- code: `workflows/src/workhorse_workflows/author/finalize/flow.py::Finalize.resolve_reconcile` @41642305cfb8
+- code: `workflows/src/workhorse_workflows/author/finalize/flow.py::Finalize.resolve_reconcile` @97bbb2aa77b8
 
 ### integrity
 - sig: `integrity(resolves: int = 0) -> Continue | Await`
 - does: runs whole-graph integrity verification
 - verify: count(subject="finalize integrity checks", equals=1)
-- does: proceeds to roadmap milestone validation when integrity holds or is skipped
+- does: proceeds to milestone epic validation when integrity holds or is skipped
 - verify: count(subject="integrity-to-milestone transitions", equals=1)
 - does: treats an unloadable graph as a skipped integrity gate and proceeds
 - verify: count(subject="fail-open integrity skips", equals=1)
@@ -174,7 +174,7 @@ the two resolution limits and an unbounded timeout used only for resolver turns.
 - verify: count(subject="automatic integrity resolutions", equals=1)
 - returns: returns a continuation or operator await state for the next integrity decision
 - verify: count(subject="integrity gate outcomes", equals=1)
-- code: `workflows/src/workhorse_workflows/author/finalize/flow.py::Finalize.integrity` @41642305cfb8
+- code: `workflows/src/workhorse_workflows/author/finalize/flow.py::Finalize.integrity` @97bbb2aa77b8
 
 ### resolve_graph
 - sig: `resolve_graph(notes: str, resolves: int = 0) -> Continue | Await`
@@ -189,14 +189,14 @@ the two resolution limits and an unbounded timeout used only for resolver turns.
 - raises: an escalated resolver result becomes an operator await
 - returns: returns an integrity continuation or an operator await state
 - verify: count(subject="graph resolution outcomes", equals=1)
-- code: `workflows/src/workhorse_workflows/author/finalize/flow.py::Finalize.resolve_graph` @41642305cfb8
+- code: `workflows/src/workhorse_workflows/author/finalize/flow.py::Finalize.resolve_graph` @97bbb2aa77b8
 - detail: [author resolve-integrity prompt](../formats/author-resolve-integrity-prompt.md)
 
-### roadmap_milestone
-- sig: `roadmap_milestone(resolves: int = 0) -> Continue | Await`
-- does: validates that the approved roadmap owns one non-empty milestone
-- verify: count(subject="finalize roadmap milestone checks", equals=1)
-- does: proceeds to close when the roadmap milestone is valid
+### milestone_epics
+- sig: `milestone_epics(resolves: int = 0) -> Continue | Await`
+- does: validates that the approved milestone lists at least one epic
+- verify: count(subject="finalize milestone epic checks", equals=1)
+- does: proceeds to close when the milestone lists epics
 - verify: count(subject="milestone-to-close transitions", equals=1)
 - does: awaits the operator when human mode is selected or the milestone resolution limit is reached
 - verify: json_path(path="$.await", matches="milestone")
@@ -204,11 +204,11 @@ the two resolution limits and an unbounded timeout used only for resolver turns.
 - verify: count(subject="automatic milestone resolutions", equals=1)
 - returns: returns a continuation or operator await state for the next milestone decision
 - verify: count(subject="milestone gate outcomes", equals=1)
-- code: `workflows/src/workhorse_workflows/author/finalize/flow.py::Finalize.roadmap_milestone` @41642305cfb8
+- code: `workflows/src/workhorse_workflows/author/finalize/flow.py::Finalize.milestone_epics` @97bbb2aa77b8
 
 ### resolve_milestone
 - sig: `resolve_milestone(notes: str, resolves: int = 0) -> Continue | Await`
-- does: asks the integrity resolver to diagnose roadmap milestone validation notes
+- does: asks the integrity resolver to diagnose milestone validation notes
 - verify: count(subject="milestone resolver turns", equals=1)
 - does: awaits the operator when the resolver escalates the milestone findings
 - verify: json_path(path="$.await", matches="milestone")
@@ -219,7 +219,7 @@ the two resolution limits and an unbounded timeout used only for resolver turns.
 - raises: an escalated resolver result becomes an operator await
 - returns: returns a milestone continuation or an operator await state
 - verify: count(subject="milestone resolution outcomes", equals=1)
-- code: `workflows/src/workhorse_workflows/author/finalize/flow.py::Finalize.resolve_milestone` @41642305cfb8
+- code: `workflows/src/workhorse_workflows/author/finalize/flow.py::Finalize.resolve_milestone` @97bbb2aa77b8
 - detail: [author resolve-integrity prompt](../formats/author-resolve-integrity-prompt.md)
 
 ### close
@@ -228,13 +228,13 @@ the two resolution limits and an unbounded timeout used only for resolver turns.
 - verify: count(subject="final authored artifact checks", equals=1)
 - does: commits an incomplete marker and fails when authored artifacts are invalid
 - verify: count(subject="invalid authored artifact failures", equals=1)
-- does: revalidates the roadmap-owned milestone before delivery
-- verify: count(subject="final roadmap milestone rechecks", equals=1)
-- does: commits an incomplete marker and fails when the roadmap milestone is invalid
+- does: revalidates that the milestone lists epics before delivery
+- verify: count(subject="final milestone epic rechecks", equals=1)
+- does: commits an incomplete marker and fails when the milestone is invalid
 - verify: count(subject="invalid final milestone failures", equals=1)
-- does: leaves the roadmap approved when either terminal validation fails
+- does: leaves the milestone approved when either terminal validation fails
 - verify: json_path(path="$.status", equals="approved")
-- does: advances the roadmap status from `approved` to `authored`
+- does: advances the milestone status from `approved` to `authored`
 - verify: json_path(path="$.status", equals="authored")
 - does: commits the authored planning documents on the current branch
 - verify: persists(subject="authored planning documents")
@@ -242,12 +242,12 @@ the two resolution limits and an unbounded timeout used only for resolver turns.
 - verify: count(subject="finalize pull requests", equals=0)
 - returns: returns Done with the commit result
 - verify: json_path(path="$.committed", equals=True)
-- code: `workflows/src/workhorse_workflows/author/finalize/flow.py::Finalize.close` @41642305cfb8
+- code: `workflows/src/workhorse_workflows/author/finalize/flow.py::Finalize.close` @97bbb2aa77b8
 
 ## Nodes
 
 ### load_config
-The returned `Config` carries the resolved repository root, the repo-relative backlog and roadmap paths, the epics and services directories, and the layers configured in `agents.yml`'s `localInstructions:`.
+The returned `Config` carries the resolved repository root, the repo-relative backlog and milestone paths, the epics and services directories, and the layers configured in `agents.yml`'s `localInstructions:`.
 
 - sig: `load_config(logger: logging.Logger, repo_dir: str = "", mode: str = "epic") -> Config`
 - does: resolve the author's paths and prove the selected intake exists
@@ -276,15 +276,15 @@ The returned `Config` carries the resolved repository root, the repo-relative ba
 - verify: json_path(path="$.errors", matches=".+\\].+")
 - code: `workflows/src/workhorse_workflows/author/shared/nodes/integrity.py::verify_integrity` @ca330f6a9a15
 
-### validate_roadmap_milestone
-- sig: `validate_roadmap_milestone(logger: logging.Logger, roadmap: str, repo_dir: str = "") -> Defects`
-- does: prove the roadmap owns exactly one non-empty milestone
-- verify: count(subject="roadmap milestone validations", equals=1)
-- consistency: roadmap-milestone-cardinality — rejects a roadmap with zero or multiple source milestones
-- verify: count(subject="roadmap milestone cardinality checks", equals=1)
+### validate_milestone_epics
+- sig: `validate_milestone_epics(logger: logging.Logger, milestone: str, repo_dir: str = "") -> Defects`
+- does: prove the milestone lists at least one epic
+- verify: count(subject="milestone epic validations", equals=1)
+- consistency: milestone-epic-presence — rejects a milestone that is missing or lists no epics
+- verify: count(subject="milestone epic presence checks", equals=1)
 - returns: returns whether validation holds with zero or more validation errors
-- verify: count(subject="roadmap milestone validation results", equals=1)
-- code: `workflows/src/workhorse_workflows/author/finalize/nodes/roadmap.py::validate_roadmap_milestone` @7dddc06a333d
+- verify: count(subject="milestone epic validation results", equals=1)
+- code: `workflows/src/workhorse_workflows/author/finalize/nodes/milestone.py::validate_milestone_epics` @cbdf7f3f88f8
 
 ### validate_artifacts
 - sig: `validate_artifacts(logger: logging.Logger, repo_dir: str = "") -> Defects`
@@ -298,20 +298,20 @@ The returned `Config` carries the resolved repository root, the repo-relative ba
 - verify: count(subject="artifact validation results", equals=1)
 - code: `workflows/src/workhorse_workflows/author/finalize/nodes/artifacts.py::validate_artifacts` @f3adad9536ae
 
-### mark_roadmap_authored
+### mark_milestone_authored
 
-The node advances one validated roadmap from `approved` to `authored` (idempotently — a roadmap already in `authored` returns without rewriting) and returns a `RoadmapStatus` carrying the roadmap path and the new status.
+The node advances one validated milestone from `approved` to `authored` (idempotently, a milestone already in `authored` returns without rewriting) and returns a `MilestoneStatus` carrying the milestone path and the new status.
 
-- sig: `mark_roadmap_authored(logger: logging.Logger, roadmap: str, repo_dir: str = "") -> RoadmapStatus`
-- does: advance one validated roadmap from approved to authored idempotently
-- verify: count(subject="roadmap status advances", equals=1)
-- does: update the roadmap's frontmatter status field from `approved` to `authored`
+- sig: `mark_milestone_authored(logger: logging.Logger, milestone: str, repo_dir: str = "") -> MilestoneStatus`
+- does: advance one validated milestone from approved to authored idempotently
+- verify: count(subject="milestone status advances", equals=1)
+- does: update the milestone's frontmatter status field from `approved` to `authored`
 - verify: json_path(path="$.status", equals="authored")
-- verify: count(subject="authored roadmap results", equals=1)
-- code: `workflows/src/workhorse_workflows/author/finalize/nodes/roadmap.py::mark_roadmap_authored` @7dddc06a333d
+- verify: count(subject="authored milestone results", equals=1)
+- code: `workflows/src/workhorse_workflows/author/finalize/nodes/milestone.py::mark_milestone_authored` @cbdf7f3f88f8
 
 ### commit_author
-- sig: `commit_author(logger: logging.Logger, mode: str = "epic", epic: str = "", bullet: str = "", roadmap: str = "", repo_dir: str = "", docs_dir: str = "docs", id_registry: str = ".agents/ids.json") -> Committed`
+- sig: `commit_author(logger: logging.Logger, mode: str = "epic", epic: str = "", bullet: str = "", milestone: str = "", repo_dir: str = "", docs_dir: str = "docs", id_registry: str = ".agents/ids.json") -> Committed`
 - does: commit the epic/story docs this run wrote to the current branch
 - verify: count(subject="finalize commits", equals=1)
 - does: scope commits to the docs directory and id registry, skipping paths that do not exist

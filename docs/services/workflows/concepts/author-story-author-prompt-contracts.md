@@ -67,9 +67,9 @@ each symbol carries:
 - `test_reworker_makes_in_scope_choices_instead_of_blocking` asserts every `rework-story.md` copy
   "makes the concrete choice in the Acceptance Criteria" and does "not block merely because the
   existing OKF book is silent".
-- `test_mutating_turns_leave_validation_and_delivery_to_author` asserts that across ten mutating
+- `test_mutating_turns_leave_validation_and_delivery_to_author` asserts that across nine mutating
   prompts (`epic_author/write-epic`, `story_split/split-stories`, the four `story_author` prompts,
-  `finalize/resolve-integrity`, `milestone/build-milestone`, `epic_split/split-epics`, and
+  `finalize/resolve-integrity`, `epic_split/split-epics`, and
   `epic_split/rework-epic-split`) none of them "install dependencies, run repository-wide checks,
   stage, commit, push, or alter branches/remotes" and that "Author validates and delivers after
   all authoring turns finish".

@@ -8,17 +8,19 @@ Change only the milestone and epic skeletons named by this task. Leave them unco
 install dependencies, run repository-wide checks, stage, commit, push, or alter branches/remotes;
 Author validates and delivers after all authoring stages finish.
 
+Read `{{ milestone }}`, the grill records in the `grills/` folder beside it, the mockups in its
+`mockups/` folder, and every design note it links.
+
 Apply every review finding below to the ordered epic list and its bare skeletons, then return control
 to the reviewer.
 
-Roadmap: `{{ roadmap }}`
 Milestone: `{{ milestone }}`
 Review findings:
 
 {{ review_notes }}
 
-Do not author epic prose, seeds, stories, roadmap changes, legacy todo indexes, branches, commits,
-or downstream artifacts. Preserve existing epic documents unchanged.
+Do not author epic prose, seeds, stories, milestone changes beyond the epic list, legacy todo
+indexes, branches, commits, or downstream artifacts. Preserve existing epic documents unchanged.
 
 Produce a JSON document that complies with this schema:
 

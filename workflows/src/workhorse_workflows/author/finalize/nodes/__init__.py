@@ -6,15 +6,15 @@ from workhorse_workflows.author.finalize.nodes.artifacts import (
     validate_artifacts,
     verify_reconcile,
 )
-from workhorse_workflows.author.finalize.nodes.roadmap import (
-    mark_roadmap_authored,
-    validate_roadmap_milestone,
+from workhorse_workflows.author.finalize.nodes.milestone import (
+    mark_milestone_authored,
+    validate_milestone_epics,
 )
 
 __all__ = [
     "blueprint",
-    "mark_roadmap_authored",
+    "mark_milestone_authored",
     "validate_artifacts",
-    "validate_roadmap_milestone",
+    "validate_milestone_epics",
     "verify_reconcile",
 ]
