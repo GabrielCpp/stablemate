@@ -42,7 +42,7 @@ workhorse-loop-runner run --dry-run     # the install check; needs no agent CLI
 
 1. **You plan** in the agent session you already run. `farrier` installs the skills that
    teach it the plan format, into your home or into one repo.
-2. **`workhorse-author`** turns an approved roadmap into epics and stories with
+2. **`workhorse-author`** turns an approved milestone into epics and stories with
    acceptance criteria, written into your repo's `docs/`. The docs checker validates
    them.
 3. **`workhorse-coder`** takes each story. It implements it, has it reviewed in a fresh

@@ -1,6 +1,6 @@
 description: >
   Stablemate toolchain skills. For workhorse: writing workflow
-  nodes, writing the prompt a turn dispatches, writing the roadmap item the Author
+  nodes, writing the prompt a turn dispatches, writing the milestone folder the Author
   workflow consumes, and operating a live run (find it through groom, then reload,
   switch or answer it). For farrier: setup, library maintenance, and how to write
   a document an agent reads. For ostler: the doc-graph CLI and Python API, the OKF

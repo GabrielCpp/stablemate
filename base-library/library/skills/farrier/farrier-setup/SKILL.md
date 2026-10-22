@@ -81,7 +81,7 @@ from the library's scaffold definitions instead of hand-writing them.
 A scaffold exists to get you moving faster — it seeds structure and
 boilerplate, **not** final content. After scaffolding, immediately fill the
 tree with the real thing: write the actual service code into the seeded
-folders and flesh out seeded docs (`docs/roadmaps/`, `docs/epics/`, …) as the
+folders and flesh out seeded docs (`docs/milestones/`, `docs/epics/`, …) as the
 work produces them. A
 scaffolded directory left empty, or a seeded file left as boilerplate, is
 unfinished work — not a deliverable.
