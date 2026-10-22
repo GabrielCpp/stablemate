@@ -94,6 +94,7 @@ class RecordingTelemetry(otel._NullTelemetry):
         self.turns_closed: list[str | None] = []
         self.ended: list[str] = []
         self.run_attributes: list[tuple[str, str]] = []
+        self.stamps: list[tuple[str, int, dict[str, Any]]] = []
         self._wait_token = 0
 
     def enabled(self) -> bool:
@@ -107,6 +108,9 @@ class RecordingTelemetry(otel._NullTelemetry):
 
     def run_attribute(self, name: str, value: str) -> None:
         self.run_attributes.append((name, value))
+
+    def stamp_output(self, node_id: str, seq: int, output: object) -> None:
+        self.stamps.append((node_id, seq, otel.output_attributes(output)))
 
     def turn_event(self, name: str, error: bool, attrs: dict[str, Any]) -> None:
         self.events.append((name, error, dict(attrs)))

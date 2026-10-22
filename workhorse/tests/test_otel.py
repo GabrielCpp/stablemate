@@ -330,6 +330,90 @@ def test_enter_done_pairs_a_node_span_and_records_next():
     assert span.ended and span.attrs["workhorse.next"] == "build"
 
 
+def test_output_attributes_keeps_bools_numbers_and_short_strings():
+    found = otel.output_attributes({"status": "pass", "count": 3, "ratio": 0.5, "ok": True})
+    assert found == {
+        "workhorse.out.status": "pass",
+        "workhorse.out.count": 3,
+        "workhorse.out.ratio": 0.5,
+        "workhorse.out.ok": True,
+    }
+    assert type(found["workhorse.out.ok"]) is bool
+    assert type(found["workhorse.out.count"]) is int
+
+
+def test_output_attributes_skips_non_finite_floats():
+    found = otel.output_attributes({"a": float("nan"), "b": float("inf"), "c": 1.5})
+    assert found == {"workhorse.out.c": 1.5}
+
+
+def test_output_attributes_skips_a_string_past_the_limit_and_keeps_one_at_it():
+    found = otel.output_attributes({"long": "x" * 129, "edge": "y" * 128})
+    assert found == {"workhorse.out.edge": "y" * 128}
+
+
+def test_output_attributes_records_a_list_or_tuple_as_its_length():
+    found = otel.output_attributes({"findings": [1, 2, 3], "pair": (1, 2), "none": []})
+    assert found == {
+        "workhorse.out.findings.len": 3,
+        "workhorse.out.pair.len": 2,
+        "workhorse.out.none.len": 0,
+    }
+
+
+def test_output_attributes_skips_dicts_none_and_other_values():
+    assert otel.output_attributes({"d": {"a": 1}, "n": None, "o": object()}) == {}
+
+
+def test_output_attributes_of_a_non_dict_is_empty():
+    for value in ("pass", 3, None, [1, 2], ("a",)):
+        assert otel.output_attributes(value) == {}
+
+
+def test_output_attributes_stops_after_the_key_cap():
+    found = otel.output_attributes({f"k{i:02d}": i for i in range(40)})
+    assert len(found) == 32
+    assert list(found)[0] == "workhorse.out.k00"
+    assert "workhorse.out.k31" in found and "workhorse.out.k32" not in found
+
+
+def test_output_attributes_counts_a_list_length_against_the_cap():
+    found = otel.output_attributes({f"l{i:02d}": [i] for i in range(40)})
+    assert len(found) == 32
+    assert all(name.endswith(".len") for name in found)
+
+
+def test_stamp_output_lands_on_the_open_node_span_before_it_closes():
+    t, tracer, _, _ = _telemetry()
+    t.record_event(_event("run_qa_plan", 4, "enter"))
+    span = tracer.by_name("run_qa_plan")
+    t.stamp_output("run_qa_plan", 4, {"status": "pass", "findings": [{"a": 1}, {"b": 2}]})
+    assert span.attrs["workhorse.out.status"] == "pass"
+    assert span.attrs["workhorse.out.findings.len"] == 2
+    assert not span.ended
+    t.record_event(_event("run_qa_plan", 4, "done", next=None))
+    assert span.ended and span.attrs["workhorse.out.status"] == "pass"
+
+
+def test_stamp_output_goes_to_the_span_of_its_own_visit():
+    t, tracer, _, _ = _telemetry()
+    t.record_event(_event("outer", 1, "enter"))
+    t.record_event(_event("inner", 1, "enter"))
+    t.stamp_output("outer", 1, {"status": "outer-ok"})
+    assert tracer.by_name("outer").attrs["workhorse.out.status"] == "outer-ok"
+    assert "workhorse.out.status" not in tracer.by_name("inner").attrs
+
+
+def test_stamp_output_with_no_open_span_is_a_no_op():
+    t, tracer, _, _ = _telemetry()
+    t.stamp_output("ghost", 1, {"status": "pass"})
+    t.record_event(_event("plan", 1, "enter"))
+    t.stamp_output("plan", 2, {"status": "pass"})
+    t.record_event(_event("plan", 1, "done"))
+    t.stamp_output("plan", 1, {"status": "late"})
+    assert not any(k.startswith("workhorse.out.") for s in tracer.spans for k in s.attrs)
+
+
 def test_checkpoint_enters_do_not_open_execution_spans():
     """A checkpoint records durable position, not work being executed."""
     t, tracer, _, _ = _telemetry()

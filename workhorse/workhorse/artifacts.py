@@ -380,6 +380,7 @@ class ArtifactWriter:
                 step_dir / "context_after.json",
             ],
         )
+        otel.stamp_output(node_id, self._seq, output)
         self._write_done(node_id, next_node)
 
     def write_branch(

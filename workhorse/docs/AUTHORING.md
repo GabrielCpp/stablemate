@@ -801,6 +801,19 @@ Keep the values low-cardinality; a bounded counter is ideal, a free-text note is
 The engine passes the dict it already holds and never inspects it — what counts as a
 dimension stays the workflow's call.
 
+### What a node's output puts on its span
+
+When a node visit finishes, the engine copies the top-level scalars of its output onto the
+visit's node span as `workhorse.out.<field>`. A list or tuple field becomes
+`workhorse.out.<field>.len`, its length. Booleans, numbers and strings keep their type. The
+stamp skips nested objects, `None`, non-finite floats and strings longer than 128
+characters. It writes at most 32 keys per visit, in field order. A `call` that returns a
+bare value records it as `{"value": ...}`, so the stamp reads `workhorse.out.value`.
+
+The keys live on the node visit span, not on the `agent_turn` span. The stamp covers `call`,
+`agent` and `handoff` visits alike and needs no code in the workflow. Name an output field
+for the question you want a query to ask, because the field name is the attribute name.
+
 ### Nodes that wait on infrastructure
 
 Not every node span is work. `ensure_stack` brings an app stack up and health-gates it,

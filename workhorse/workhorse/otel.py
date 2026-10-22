@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import functools
+import math
 import os
 import socket
 import sys
@@ -183,12 +184,42 @@ def _span_repository_attrs(snapshot: Mapping[str, str], phase: str) -> dict[str,
     return {f"{key}.{phase}": value for key, value in snapshot.items()}
 
 
+_OUT_PREFIX = "workhorse.out."
+_OUT_MAX_KEYS = 32
+_OUT_MAX_CHARS = 128
+
+
+def output_attributes(output: object) -> dict[str, str | int | float | bool]:
+    """A node output's top-level scalars and list sizes, as span attributes."""
+    if not isinstance(output, dict):
+        return {}
+    found: dict[str, str | int | float | bool] = {}
+    for key, value in output.items():
+        if len(found) >= _OUT_MAX_KEYS:
+            break
+        name = f"{_OUT_PREFIX}{key}"
+        if isinstance(value, bool):
+            found[name] = value
+        elif isinstance(value, int):
+            found[name] = value
+        elif isinstance(value, float):
+            if math.isfinite(value):
+                found[name] = value
+        elif isinstance(value, str):
+            if len(value) <= _OUT_MAX_CHARS:
+                found[name] = value
+        elif isinstance(value, (list, tuple)):
+            found[f"{name}.len"] = len(value)
+    return found
+
+
 class Telemetry(Protocol):
     """What the instrumentation sites may ask of telemetry."""
 
     def enabled(self) -> bool: ...
     def record_event(self, event: NodeEvent) -> None: ...
     def run_attribute(self, name: str, value: str) -> None: ...
+    def stamp_output(self, node_id: str, seq: int, output: object) -> None: ...
     def state_start(self, state: str, seq: int) -> None: ...
     def state_end(
         self, state: str, seq: int, next_state: str | None = None, cut: str = ""
@@ -243,6 +274,7 @@ class _NullTelemetry:
 
     def record_event(self, event: NodeEvent) -> None: ...
     def run_attribute(self, name: str, value: str) -> None: ...
+    def stamp_output(self, node_id: str, seq: int, output: object) -> None: ...
     def state_start(self, state: str, seq: int) -> None: ...
     def state_end(
         self, state: str, seq: int, next_state: str | None = None, cut: str = ""
@@ -538,6 +570,11 @@ def record_event(event: NodeEvent) -> None:
 def run_attribute(name: str, value: str) -> None:
     """Stamp a run-level fact on the root span."""
     _host.active.run_attribute(name, value)
+
+
+def stamp_output(node_id: str, seq: int, output: object) -> None:
+    """Stamp a node output's scalars and list sizes on the visit's open span."""
+    _host.active.stamp_output(node_id, seq, output)
 
 
 def state_start(state: str, seq: int) -> None:
@@ -874,6 +911,18 @@ class _Telemetry:
                     target.add_event(
                         "terminal", {"terminal": str(extra.get("terminal") or "")}
                     )
+
+    @_failsoft(None)
+    def stamp_output(self, node_id: str, seq: int, output: object) -> None:
+        attributes = output_attributes(output)
+        if not attributes:
+            return
+        with self._lock:
+            for key, span, _ in reversed(self._stack):
+                if key == ("node", node_id, seq):
+                    for name, value in attributes.items():
+                        span.set_attribute(name, value)
+                    return
 
     @_failsoft(None)
     def state_start(self, state: str, seq: int) -> None:

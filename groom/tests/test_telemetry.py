@@ -314,6 +314,29 @@ def test_repository_snapshots_land_in_span_columns_and_remain_in_attrs():
         assert json.loads(span["attrs_json"])["git.origin.start"] == attrs["git.origin.start"]
 
 
+def test_an_output_stamp_on_a_node_span_is_kept_in_attrs_json():
+    with _TelemetryEnv():
+        store.insert_spans(
+            otlp.parse_traces(
+                _trace_request(
+                    [
+                        {
+                            "name": "run_qa_plan",
+                            "node": "run_qa_plan",
+                            "seq": 3,
+                            "labels": {"workhorse.out.status": "fail"},
+                            "numbers": {"workhorse.out.findings.len": 4},
+                        }
+                    ]
+                )
+            )
+        )
+
+        attrs = json.loads(store.query_spans()[0]["attrs_json"])
+        assert attrs["workhorse.out.status"] == "fail"
+        assert attrs["workhorse.out.findings.len"] == 4
+
+
 def test_promoted_columns_are_added_to_a_database_that_predates_them():
     with _TelemetryEnv():
         legacy = sqlite3.connect(store.db_path())
