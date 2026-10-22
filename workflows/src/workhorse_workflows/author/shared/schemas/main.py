@@ -13,6 +13,7 @@ class Config(AuthorResult):
     repo_root: str = ""
     backlog_path: str = ""
     milestone_path: str = ""
+    milestone_mockups_dir: str = ""
     epics_dir: str = ""
     services_dir: str = ""
     layers: list[str] = []
@@ -43,6 +44,7 @@ class UnfinishedRow(AuthorResult):
     id: str = ""
     status: str = ""
     laps: int = 0
+    note: str = ""
 
 
 @dry_run(matches=True)
@@ -160,7 +162,6 @@ class MockupGate(AuthorResult):
     """Whether the story touches a surface somebody has to design."""
 
     required: bool = True
-    layers: list[str] = []
     services: list[str] = []
     evidence: str = ""
 

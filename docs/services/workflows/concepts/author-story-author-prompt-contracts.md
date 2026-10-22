@@ -17,11 +17,11 @@ That diagnostic turn investigates the epic and preserves its findings for the op
 not decide the product or scope question and the subflow resumes through an operator-awaiting
 context.
 
-- code: `workflows/src/workhorse_workflows/author/story_author/flow.py::StoryAuthor.design_mockup` @287ee28728d8
-- code: `workflows/src/workhorse_workflows/author/story_author/flow.py::StoryAuthor.write_story` @287ee28728d8
-- code: `workflows/src/workhorse_workflows/author/story_author/flow.py::StoryAuthor.audit_story` @287ee28728d8
-- code: `workflows/src/workhorse_workflows/author/story_author/flow.py::StoryAuthor.rework_story` @287ee28728d8
-- code: `workflows/src/workhorse_workflows/author/story_author/prompts/design-mockup.md` @5faf2a6385aa
+- code: `workflows/src/workhorse_workflows/author/story_author/flow.py::StoryAuthor.design_mockup` @bf6e3a7f4fed
+- code: `workflows/src/workhorse_workflows/author/story_author/flow.py::StoryAuthor.write_story` @bf6e3a7f4fed
+- code: `workflows/src/workhorse_workflows/author/story_author/flow.py::StoryAuthor.audit_story` @bf6e3a7f4fed
+- code: `workflows/src/workhorse_workflows/author/story_author/flow.py::StoryAuthor.rework_story` @bf6e3a7f4fed
+- code: `workflows/src/workhorse_workflows/author/story_author/prompts/design-mockup.md` @f918719466f5
 - code: `workflows/src/workhorse_workflows/author/story_author/prompts/write-story.md` @dabab75aaf99
 - code: `workflows/src/workhorse_workflows/author/story_author/prompts/audit-story.md` @758403bbd400
 - code: `workflows/src/workhorse_workflows/author/story_author/prompts/rework-story.md` @2d1fd8cff26e
@@ -83,8 +83,8 @@ The three `test_write_story_prompt.py` symbols above each pin a prose-drift cont
 gates actually produce. The grounding gate in `author/shared/nodes/stories.py` and the mockup
 gate in `author/story_author/nodes/mockup.py` both stand down on a backend-only story:
 `check_story_grounding` puts its cite-a-node requirement behind `if okf.graph.ui_nodes:`,
-and `check_mockup_needed` decides from `layers:` on the covered seeds, so a story tagged
-`layers: backend` is rendered with `mockup_path=""`. The prompt must still give such a story
+and `check_mockup_needed` decides from the story's `services:`, so a story whose services
+are all non-UI books is rendered with `mockup_path=""`. The prompt must still give such a story
 something to ground the Context in and tell the writer not to block on the missing artifact — a
 stricter pair of instructions that demands an OKF node *or* a mockup, in a repo whose book is not
 built yet, hands the writer two empty arms and parks the round at the operator gate. Prose drift
@@ -112,12 +112,12 @@ the author reads:
 
 ### design-mockup.md
 
-The design turn runs only when the covered story has a frontend seed whose mockup gate requires
-design. It receives `epic`, `story_slug`, `story_dir`, `services_dir`, and `epics_dir`. It reads the
+The design turn runs only when the story lists a service whose book is a web or mobile app. It
+receives `epic`, `story_slug`, `story_dir`, `services_dir`, `epics_dir`, and `milestone_mockups_dir`. It reads the
 feature book and prior story-local mockups for style and existing surface behavior, then writes
-only the current story's `mockup.html`; failure to produce a mockup is non-blocking. Its response
+only the current story's `mockup.html`, which must agree with the milestone mockup. A failure to produce a mockup blocks the story. Its response
 is [MockupResult](../formats/mockup-result.md): `status`, `surface`, `mockup`, and `notes`. The returned
-`mockup` path is passed to the writing turn, including an empty path when design failed. Browser
+`mockup` path is passed to the writing turn, and a failed or missing mockup ends the run before the writing turn. Browser
 inspection is ephemeral: screenshots, evidence, and rendered exports are not written to the
 repository.
 

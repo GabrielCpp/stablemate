@@ -21,6 +21,9 @@ read it again at any point in the turn.
 
 - Story: `{{ workhorse_var('story_slug') }}` (id `{{ workhorse_var('story_id') }}`, epic `{{ workhorse_var('epic') }}`)
 - Story path: `{{ workhorse_var('story_path') }}`
+{% if story_services %}
+- Services this story changes (book names under `docs/services/`): {% for name in story_services %}`{{ name }}`{% if not loop.last %}, {% endif %}{% endfor %}
+{% endif %}
 - Spec dir: `{{ workhorse_var('spec_dir') }}`
 {% if branch %}
 - Run branch: `{{ workhorse_var('branch') }}`

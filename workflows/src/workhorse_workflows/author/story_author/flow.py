@@ -110,7 +110,7 @@ class StoryAuthor(Workflow):
             return Continue(gate, self.design_mockup, target=target)
         return Continue(gate, self.write_story, target=target)
 
-    def design_mockup(self, target: StoryTarget) -> Continue:
+    def design_mockup(self, target: StoryTarget) -> Continue | Done:
         result = self.agent(
             "story_author/prompts/design-mockup.md",
             returns=MockupResult,
@@ -122,8 +122,28 @@ class StoryAuthor(Workflow):
                 "story_dir": target.story_dir,
                 "services_dir": self.ctx.services_dir,
                 "epics_dir": self.ctx.epics_dir,
+                "milestone_mockups_dir": self.ctx.milestone_mockups_dir,
             },
         )
+        if result.status == "failed" or not (
+            result.mockup and self._abs(result.mockup).is_file()
+        ):
+            reason = result.notes or "the mockup turn produced no mockup file"
+            self.logger.warning(
+                "blocking story '%s': a story with a UI service cannot be written without a "
+                "mockup: %s",
+                target.story,
+                reason,
+            )
+            return Done(
+                StoryAuthorDone(
+                    status="blocked",
+                    epic=target.epic,
+                    story=target.story,
+                    story_path=target.story_path,
+                    notes=f"no mockup for a story with a UI service: {reason}",
+                )
+            )
         return Continue(result, self.write_story, target=target, mockup=result.mockup)
 
     def write_story(

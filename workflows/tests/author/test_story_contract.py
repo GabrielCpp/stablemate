@@ -8,13 +8,18 @@ from ostler import Ostler
 from workhorse_workflows.author.shared.nodes.stories import validate_story
 
 
-def _authored_story(repo: Path, technical_notes: str) -> str:
+def _authored_story(
+    repo: Path, technical_notes: str, services: tuple[str, ...] = ("api-service",)
+) -> str:
+    (repo / "docs/services/api-service").mkdir(parents=True, exist_ok=True)
     okf = Ostler(repo)
     okf.create_epic("parser", "Parser", prefix="acme")
     assert okf.create_story("parser", "safe-ast", "Safe AST").ok
     story_dir = "docs/epics/0001-parser/stories/safe-ast"
     path = repo / story_dir / "story.md"
     text = path.read_text(encoding="utf-8")
+    if services:
+        text = text.replace("\n---\n", f"\nservices: [{', '.join(services)}]\n---\n", 1)
     text = text.replace("## Context\n", "## Context\n\nCompile formulas safely.\n")
     text = text.replace(
         "## Acceptance Criteria\n",
@@ -99,3 +104,68 @@ def test_technical_notes_require_the_exact_greenfield_statement(
 
     assert result.ok is False
     assert "exact statement" in result.errors
+
+
+_NOTES = "- `legacy/parser.py::parse_ast` recursively maps the supported expression nodes."
+
+
+def _with_pointer(repo: Path) -> None:
+    source = repo / "legacy" / "parser.py"
+    source.parent.mkdir(parents=True, exist_ok=True)
+    source.write_text("def parse_ast():\n    pass\n", encoding="utf-8")
+
+
+def test_a_story_that_lists_no_services_fails(logger: logging.Logger, repo: Path) -> None:
+    _with_pointer(repo)
+    story_dir = _authored_story(repo, _NOTES, services=())
+
+    result = validate_story(logger, story_dir=story_dir, repo_dir=str(repo))
+
+    assert result.ok is False
+    assert "services" in result.errors
+
+
+def test_a_story_that_names_an_unknown_book_fails(logger: logging.Logger, repo: Path) -> None:
+    _with_pointer(repo)
+    story_dir = _authored_story(repo, _NOTES, services=("ghost-service",))
+
+    result = validate_story(logger, story_dir=story_dir, repo_dir=str(repo))
+
+    assert result.ok is False
+    assert "ghost-service" in result.errors
+
+
+def _web_book(repo: Path) -> None:
+    screens = repo / "docs/services/web-app/gui/screens"
+    screens.mkdir(parents=True)
+    (screens / "sign-in.md").write_text(
+        "---\ntype: screen\nslug: sign-in\ntitle: Sign in\n---\n# Sign in\n\n"
+        "- route: `/sign-in`\n- requires: none\n- params: none\n\n"
+        "## Screen states\n\n### Loaded\n- shows: none\n",
+        encoding="utf-8",
+    )
+    ops = repo / "docs/services/web-app/ops"
+    ops.mkdir(parents=True)
+    (ops / "stack.md").write_text(
+        "---\ntype: runbook\nslug: stack\ntitle: Stack\n---\n# Stack\n\n"
+        "- driver: web\n- entry-url: http://localhost:3000\n"
+        "- surfaces: [sign-in](../gui/screens/sign-in.md)\n\n"
+        "## Steps\n\n### serve\n- kind: service\n- run: `serve`\n",
+        encoding="utf-8",
+    )
+
+
+def test_a_story_with_a_ui_service_needs_a_mockup_beside_it(
+    logger: logging.Logger, repo: Path
+) -> None:
+    _with_pointer(repo)
+    _web_book(repo)
+    story_dir = _authored_story(repo, _NOTES, services=("web-app",))
+
+    missing = validate_story(logger, story_dir=story_dir, repo_dir=str(repo))
+    (repo / story_dir / "mockup.html").write_text("<html></html>\n", encoding="utf-8")
+    drawn = validate_story(logger, story_dir=story_dir, repo_dir=str(repo))
+
+    assert missing.ok is False
+    assert "mockup.html" in missing.errors
+    assert drawn.ok is True, drawn.errors

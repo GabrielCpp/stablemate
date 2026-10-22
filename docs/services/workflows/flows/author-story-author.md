@@ -35,7 +35,7 @@ It ends in one of these ways: the selected story has passed structural, groundin
 
 ### design-mockup
 - kind: run
-- run: invoke the story-local design prompt when `check_mockup_needed` reports `required`
+- run: invoke the story-local design prompt when `check_mockup_needed` reports `required`; a failed or missing mockup ends the run as `blocked` before `write-story`
 - verify: [design_mockup](../concepts/author-story-author-subflow.md#design_mockup)
 - optional: true
 

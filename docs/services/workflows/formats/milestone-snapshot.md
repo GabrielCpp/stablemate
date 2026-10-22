@@ -7,7 +7,7 @@ title: Epic milestone snapshot
 
 The milestone references captured alongside an epic so source-item ownership can be reconciled.
 
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/edit.py::MilestoneSnapshot` @0cf57cc63031
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/edit.py::MilestoneSnapshot` @952fb9c4cfcb
 - detail: [epic edit snapshot](epic-snapshot.md)
 
 ## Fields
@@ -17,7 +17,7 @@ The milestone references captured alongside an epic so source-item ownership can
 - required: false
 - semantics: milestone identifier
 - verify: json_path(path="$.name", equals="acme")
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/edit.py::MilestoneSnapshot` @0cf57cc63031
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/edit.py::MilestoneSnapshot` @952fb9c4cfcb
 - detail: [milestone snapshot field roles](../concepts/milestone-snapshot-field-roles.md)
 ### source_items
 - type: list of strings
@@ -25,7 +25,7 @@ The milestone references captured alongside an epic so source-item ownership can
 - required: false
 - semantics: source items owned by the milestone
 - verify: json_path(path="$.source_items", matches="^\\[\\]$")
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/edit.py::MilestoneSnapshot` @0cf57cc63031
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/edit.py::MilestoneSnapshot` @952fb9c4cfcb
 - detail: [milestone snapshot field roles](../concepts/milestone-snapshot-field-roles.md)
 ### epics
 - type: list of strings
@@ -33,5 +33,5 @@ The milestone references captured alongside an epic so source-item ownership can
 - required: false
 - semantics: epics registered under the milestone
 - verify: json_path(path="$.epics", matches="^\\[\\]$")
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/edit.py::MilestoneSnapshot` @0cf57cc63031
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/edit.py::MilestoneSnapshot` @952fb9c4cfcb
 - detail: [milestone snapshot field roles](../concepts/milestone-snapshot-field-roles.md)

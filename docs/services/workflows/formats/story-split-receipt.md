@@ -12,7 +12,7 @@ contains only the review status and camel-case graph digest; the returned `Story
 value additionally carries the repository-relative receipt path.
 
 - file: `<epic directory>/story-split-receipt.json`
-- code: `workflows/src/workhorse_workflows/author/story_split/schemas.py::StorySplitReceipt` @1a09df97aba9
+- code: `workflows/src/workhorse_workflows/author/story_split/schemas.py::StorySplitReceipt` @208802b998c9
 - detail: [author story-split subflow](../concepts/story-split-subflow.md)
 - tests: `workflows/tests/author/story_split/test_flow.py::test_accepts_one_epic_graph_without_selecting_authoring_or_git`
 

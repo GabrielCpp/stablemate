@@ -15,5 +15,5 @@ No field is preferred or deprecated. Each answers a distinct question about the 
 caller needing the feedback state, its target, or its text uses `present`, `scope`, or `content`
 respectively.
 
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::Feedback` @4460b1deea94
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::Feedback` @69af1329fede
 - rule: treat `present`, `scope`, and `content` as complementary fields of one feedback result; choose the field that answers whether feedback exists, which authoring scope it targets, or what note it carries

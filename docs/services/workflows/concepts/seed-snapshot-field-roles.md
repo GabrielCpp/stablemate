@@ -15,5 +15,5 @@ the edit-plan projection and validation compare each one independently. The sche
 legacy marker, delegation, wrapper, or preference between these fields, so no field supersedes
 another. Select the field for the seed attribute required by the baseline.
 
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/edit.py::SeedSnapshot` @0cf57cc63031
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/edit.py::SeedSnapshot` @952fb9c4cfcb
 - rule: select the field for the seed attribute required by the pre-edit baseline; the nine fields are complementary and no ranking exists

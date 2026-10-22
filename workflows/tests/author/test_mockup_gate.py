@@ -1,4 +1,4 @@
-"""The mockup gate, decided from seed tags rather than from a model turn."""
+"""The mockup gate, decided from the story's services rather than from a model turn."""
 from __future__ import annotations
 
 import logging
@@ -6,109 +6,91 @@ from pathlib import Path
 
 import pytest
 from ostler import Ostler
+from workhorse.pyflow import WorkflowFailed
 
 from workhorse_workflows.author.story_author.nodes.mockup import check_mockup_needed
+from workhorse_workflows.author.story_split.nodes.services import derive_story_services
 
 EPIC = "accounts"
 
 
+def _books(root: Path) -> None:
+    screens = root / "docs/services/web-app/gui/screens"
+    screens.mkdir(parents=True)
+    (screens / "sign-in.md").write_text(
+        "---\ntype: screen\nslug: sign-in\ntitle: Sign in\n---\n# Sign in\n\n"
+        "- route: `/sign-in`\n- requires: none\n- params: none\n\n"
+        "## Screen states\n\n### Loaded\n- shows: none\n",
+        encoding="utf-8",
+    )
+    ops = root / "docs/services/web-app/ops"
+    ops.mkdir(parents=True)
+    (ops / "stack.md").write_text(
+        "---\ntype: runbook\nslug: stack\ntitle: Stack\n---\n# Stack\n\n"
+        "- driver: web\n- entry-url: http://localhost:3000\n"
+        "- surfaces: [sign-in](../gui/screens/sign-in.md)\n\n"
+        "## Steps\n\n### serve\n- kind: service\n- run: `serve`\n",
+        encoding="utf-8",
+    )
+    (root / "docs/services/api-service").mkdir(parents=True)
+
+
 def _epic(
-    root: Path,
-    seeds: dict[str, list[str]],
-    covers: list[str],
-    design: dict[str, str] | None = None,
+    logger: logging.Logger, root: Path, seeds: dict[str, list[str]], covers: list[str]
 ) -> None:
-    """One epic, one story covering `covers`, with each seed tagged as given."""
+    _books(root)
     okf = Ostler(root)
     okf.create_epic(EPIC, "Accounts", prefix="acme")
-    for seed_id, layers in seeds.items():
-        meta: dict[str, object] = (
-            {"layers": layers, "services": ["api-service"]} if layers else {}
-        )
-        if design and seed_id in design:
-            meta["design"] = design[seed_id]
+    for seed_id, services in seeds.items():
+        meta: dict[str, object] = {"services": services} if services else {}
         res = okf.add_seed(EPIC, seed_id, status="researched", summary=seed_id, meta=meta)
         assert res.ok, res.message
     assert okf.create_story(EPIC, "01-sign-in", "Sign in", covers=covers).ok
+    epic = str(Ostler(root).list("epic")[0]["name"])
+    derive_story_services(logger, epic, repo_dir=str(root))
 
 
 @pytest.mark.parametrize(
-    ("seeds", "required", "layers"),
+    ("seeds", "required", "services"),
     [
-        ({"s1": ["frontend"]}, True, ["frontend"]),
-        ({"s1": ["backend"]}, False, ["backend"]),
-        ({"s1": ["backend", "infra"]}, False, ["backend", "infra"]),
-        ({"s1": ["frontend", "backend"]}, True, ["frontend", "backend"]),
-        ({"s1": ["backend"], "s2": ["frontend"]}, True, ["backend", "frontend"]),
-        ({"s1": []}, True, []),
-        ({"s1": ["backend"], "s2": []}, True, ["backend"]),
+        ({"s1": ["web-app"]}, True, ["web-app"]),
+        ({"s1": ["api-service"]}, False, ["api-service"]),
+        ({"s1": ["web-app", "api-service"]}, True, ["api-service", "web-app"]),
+        ({"s1": ["api-service"], "s2": ["web-app"]}, True, ["api-service", "web-app"]),
+        ({"s1": []}, False, []),
     ],
 )
-def test_the_gate_is_the_union_of_the_covered_seeds_layers(
+def test_the_gate_is_the_union_of_the_covered_seeds_services(
     logger: logging.Logger, repo: Path, seeds: dict[str, list[str]],
-    required: bool, layers: list[str],
+    required: bool, services: list[str],
 ) -> None:
-    _epic(repo, seeds, covers=list(seeds))
+    _epic(logger, repo, seeds, covers=list(seeds))
 
     gate = check_mockup_needed(logger, story_slug="01-sign-in", repo_dir=str(repo))
 
     assert gate.required is required, gate.evidence
-    assert gate.layers == layers
-    assert gate.evidence, "the decision must say which seeds drove it"
+    assert gate.services == services
+    assert gate.evidence, "the decision must say which services drove it"
 
 
-def test_a_story_the_graph_cannot_resolve_still_gets_a_mockup(
+def test_a_story_the_graph_cannot_resolve_fails_the_run(
     logger: logging.Logger, repo: Path
 ) -> None:
-    """Fail closed on absence."""
-    _epic(repo, {"s1": ["backend"]}, covers=["s1"])
+    _epic(logger, repo, {"s1": ["api-service"]}, covers=["s1"])
 
-    gate = check_mockup_needed(logger, story_slug="99-ghost", repo_dir=str(repo))
-
-    assert gate.required is True
-    assert "absent from the knowledge graph" in gate.evidence
+    with pytest.raises(WorkflowFailed, match="absent from the knowledge graph"):
+        check_mockup_needed(logger, story_slug="99-ghost", repo_dir=str(repo))
 
 
-def test_the_services_of_the_covered_seeds_travel_with_the_decision(
+def test_an_api_only_story_needs_no_mockup_whatever_the_seed_says(
     logger: logging.Logger, repo: Path
 ) -> None:
-    """The tags land in the checkpoint, so why a turn was skipped is legible after the run."""
-    _epic(repo, {"s1": ["backend"]}, covers=["s1"])
-
-    gate = check_mockup_needed(logger, story_slug="01-sign-in", repo_dir=str(repo))
-
-    assert gate.services == ["api-service"]
-
-
-def test_frontend_work_that_preserves_an_existing_surface_skips_design(
-    logger: logging.Logger, repo: Path
-) -> None:
-    """This fails when non-visual frontend widenings still pay for a mockup turn."""
-    _epic(
-        repo,
-        {"worker": ["frontend"], "report": ["frontend", "backend"]},
-        covers=["worker", "report"],
-        design={"worker": "preserve", "report": "preserve"},
+    _epic(logger, repo, {"worker": ["api-service"]}, covers=["worker"])
+    Ostler(repo).add_seed(
+        EPIC, "worker", status="researched", summary="worker",
+        meta={"services": ["api-service"], "design": "required", "layers": ["frontend"]},
     )
 
     gate = check_mockup_needed(logger, story_slug="01-sign-in", repo_dir=str(repo))
 
     assert gate.required is False, gate.evidence
-    assert "preserve" in gate.evidence
-
-
-def test_one_required_visual_change_requires_design(
-    logger: logging.Logger, repo: Path
-) -> None:
-    """This fails when a preserved seed masks another seed's visual design work."""
-    _epic(
-        repo,
-        {"existing": ["frontend"], "new-panel": ["frontend"]},
-        covers=["existing", "new-panel"],
-        design={"existing": "preserve", "new-panel": "required"},
-    )
-
-    gate = check_mockup_needed(logger, story_slug="01-sign-in", repo_dir=str(repo))
-
-    assert gate.required is True
-    assert "new-panel" in gate.evidence

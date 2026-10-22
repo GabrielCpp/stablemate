@@ -4,6 +4,7 @@ from __future__ import annotations
 import hashlib
 import logging
 from pathlib import Path
+from typing import Any
 
 from ostler import Ostler, markdown, registry
 from workhorse.pyflow import WorkflowFailed
@@ -293,8 +294,9 @@ def validate_edit_plan(
     return Defects(ok=not errors, errors="\n".join(errors))
 
 
-def _seed_meta(change) -> dict[str, str]:
+def _seed_meta(change, kept: list[str]) -> dict[str, Any]:
     return {
+        "services": change.services or kept,
         "surface": change.surface,
         "legacySurface": change.legacy_surface,
         "backing": change.backing,
@@ -334,12 +336,17 @@ def apply_edit_plan(
                 if not result.ok:
                     raise WorkflowFailed(result.message)
             continue
+        kept_services = next(
+            (list(row.get("services") or []) for row in okf.list("seed", epic=epic)
+             if str(row["id"]) == change.id),
+            [],
+        )
         result = okf.add_seed(
             epic,
             change.id,
             status=change.status,
             summary=change.summary,
-            meta=_seed_meta(change),
+            meta=_seed_meta(change, kept_services),
         )
         if not result.ok:
             raise WorkflowFailed(result.message)

@@ -5,8 +5,10 @@ import logging
 from pathlib import Path
 
 from ostler import Ostler
+from ostler.select import epic_by_name
 from workhorse_workflows.author.shared.nodes.blueprint import blueprint
 from workhorse_workflows.author.shared.nodes import stubs as _stubs
+from workhorse_workflows.author.shared.nodes.services import service_errors
 from workhorse_workflows.author.shared.paths import survey_repo_root
 from workhorse_workflows.author.shared.schemas.main import Defects
 
@@ -48,6 +50,11 @@ def validate_coverage(
         and f.get("code") in _COVERAGE_CODES
         and (require_authored or f.get("code") != "unwritten-story")
     ]
+
+    found = epic_by_name(okf.graph, epic)
+    if found is not None:
+        for story in found.stories:
+            errors.extend(service_errors(okf, f"story `{story.slug}`", story.services))
 
     logger.info("epic '%s' coverage: %d error(s)", epic, len(errors))
     return Defects(ok=not errors, errors="\n".join(errors))

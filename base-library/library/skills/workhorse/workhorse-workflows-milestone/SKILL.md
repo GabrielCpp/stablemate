@@ -141,6 +141,9 @@ mockup at `mockups/<journey-slug>.html`. The journey slug is the heading lowerca
 every run of non-alphanumeric characters replaced by `-` and the edges trimmed, so
 `Sign in with a code` becomes `sign-in-with-a-code`.
 
+Author also requires a story-local mockup for each story that lists such a book in its
+`services`. A story whose mockup fails is blocked, and the completion gate lists it with the reason.
+
 ### Architecture Decisions
 
 Record choices that materially constrain more than one epic: ownership boundaries,

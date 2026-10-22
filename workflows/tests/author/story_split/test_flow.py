@@ -18,7 +18,7 @@ from workhorse_workflows.author.shared.nodes import blueprint
 from workhorse_workflows.author.shared.schemas import Defects
 from workhorse_workflows.author.story_split import StorySplitDone, StorySplitFlow
 from workhorse_workflows.author.story_split.nodes import blueprint as story_split_blueprint
-from workhorse_workflows.author.story_split.schemas import StorySplitReceipt
+from workhorse_workflows.author.story_split.schemas import StoryServices, StorySplitReceipt
 
 EPIC = "accounts"
 EPIC_DIR = "docs/epics/accounts"
@@ -67,10 +67,17 @@ def _env(tmp_path: Path, agent: _Agent, reports: list[Defects] | None = None) ->
         path.write_text('{"status":"passed","graphDigest":"test"}\n', encoding="utf-8")
         return StorySplitReceipt(graph_digest="test", path=path.relative_to(repo_dir).as_posix())
 
+    def derive(*args: Any, **kwargs: Any) -> StoryServices:
+        return StoryServices()
+
     nodes = (
         Registry("story-split-test")
         .add_blueprints(blueprint, story_split_blueprint)
-        .override(validate_coverage=validate, record_story_split_review=record)
+        .override(
+            validate_coverage=validate,
+            record_story_split_review=record,
+            derive_story_services=derive,
+        )
     )
     writer = ArtifactWriter("story-split", tmp_path / "runs", run_id="t")
     return RunEnv(

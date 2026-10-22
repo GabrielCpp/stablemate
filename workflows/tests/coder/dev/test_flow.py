@@ -37,6 +37,7 @@ The epic queue, front first.
 STORY_MD = """---
 id: STORY-1
 type: story
+services: [api, web]
 ---
 
 # Story STORY-1
@@ -320,6 +321,7 @@ def test_a_clean_pass_settles_the_fix_and_records_the_decline(
     assert first["review_prefix"] == f"{STORY}/review-1.", first
     assert first["report"] == "", first
     assert first["operator_context"] == "", first
+    assert first["story_services"] == ["api", "web"], first
 
 
 def test_a_red_gate_sends_its_output_back_and_a_green_turn_finishes(

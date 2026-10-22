@@ -43,8 +43,11 @@ def _head(repo: Path) -> str:
 
 
 class _Agent:
-    def __init__(self, events: list[str]) -> None:
+    def __init__(
+        self, events: list[str], mockup: dict[str, Any] | None = None
+    ) -> None:
         self.events = events
+        self.mockup = mockup or {"status": "created", "mockup": "docs/mockup.html"}
         self.args: dict[str, dict[str, Any]] = {}
 
     def __call__(self, node: Any, ctx: Any, *args: Any, **kwargs: Any) -> Any:
@@ -52,7 +55,7 @@ class _Agent:
         self.events.append(stem)
         self.args[stem] = ctx.as_dict()
         replies = {
-            "design-mockup": {"status": "complete", "mockup": "docs/mockup.html"},
+            "design-mockup": self.mockup,
             "write-story": {"status": "written"},
             "audit-story": {"status": "passed", "findings": []},
         }
@@ -71,9 +74,9 @@ def _env(tmp_path: Path, nodes: Any, agent: _Agent) -> RunEnv:
     )
 
 
-def test_flow_prepares_explicit_story_before_authoring_without_git_side_effects(
-    repo: Path, tmp_path: Path
-) -> None:
+def _drive_story(
+    repo: Path, tmp_path: Path, design: dict[str, Any] | None = None
+) -> tuple[Any, list[str], _Agent, StoryTarget]:
     events: list[str] = []
     target = StoryTarget(
         epic="accounts",
@@ -124,14 +127,23 @@ def test_flow_prepares_explicit_story_before_authoring_without_git_side_effects(
         check_story_grounding=grounded,
         check_story_feedback=no_feedback,
     )
-    agent = _Agent(events)
-    branch_before = _git(repo, "branch", "--show-current")
-    head_before = _head(repo)
-
+    agent = _Agent(events, design)
     result = drive(
         StoryAuthor(epic="accounts", story="sign-in", repo_dir=str(repo)),
         _env(tmp_path, nodes, agent),
     )
+    return result, events, agent, target
+
+
+def test_flow_prepares_explicit_story_before_authoring_without_git_side_effects(
+    repo: Path, tmp_path: Path
+) -> None:
+    (repo / "docs").mkdir(exist_ok=True)
+    (repo / "docs/mockup.html").write_text("<html></html>\n", encoding="utf-8")
+    branch_before = _git(repo, "branch", "--show-current")
+    head_before = _head(repo)
+
+    result, events, agent, target = _drive_story(repo, tmp_path)
 
     assert isinstance(result, StoryAuthorDone)
     assert result.epic == "accounts"
@@ -150,6 +162,37 @@ def test_flow_prepares_explicit_story_before_authoring_without_git_side_effects(
     assert agent.args["write-story"]["story_slug"] == "sign-in"
     assert _git(repo, "branch", "--show-current") == branch_before
     assert _head(repo) == head_before
+
+
+@pytest.mark.parametrize(
+    "mockup",
+    [
+        {"status": "failed", "mockup": "", "notes": "no design system to draw from"},
+        {"status": "created", "mockup": "docs/missing.html", "notes": ""},
+    ],
+)
+def test_a_story_with_a_ui_service_and_no_mockup_ends_blocked_before_it_is_written(
+    repo: Path, tmp_path: Path, mockup: dict[str, Any]
+) -> None:
+    result, events, _agent, target = _drive_story(repo, tmp_path, mockup)
+
+    assert isinstance(result, StoryAuthorDone)
+    assert result.status == "blocked"
+    assert result.story == "sign-in"
+    assert result.story_path == target.story_path
+    assert "no mockup for a story with a UI service" in result.notes
+    assert events == ["prepare", "mockup-gate", "design-mockup"]
+
+
+def test_the_milestone_mockups_folder_reaches_the_design_turn(
+    repo: Path, tmp_path: Path
+) -> None:
+    (repo / "docs").mkdir(exist_ok=True)
+    (repo / "docs/mockup.html").write_text("<html></html>\n", encoding="utf-8")
+
+    _result, _events, agent, _target = _drive_story(repo, tmp_path)
+
+    assert "milestone_mockups_dir" in agent.args["design-mockup"]
 
 
 def test_prepare_story_rejects_a_story_from_another_epic(

@@ -31,6 +31,15 @@ def _story_id(okf: Ostler, slug: str) -> str:
     return found[1].eid if found is not None else ""
 
 
+def _story_services(okf: Ostler, slug: str) -> list[str]:
+    """The books the story changes, from its `services:` frontmatter, or none."""
+    try:
+        found = okf.graph.find_story(slug)
+    except (OSError, ValueError, RuntimeError):
+        return []
+    return list(found[1].services) if found is not None else []
+
+
 def _guard_authored(okf: Ostler, slug: str, logger: logging.Logger) -> None:
     """Fail the run if the graph knows this story and reports it unauthored."""
     try:
@@ -123,6 +132,7 @@ def prepare_story(
         story_slug=story,
         story_epic=epic,
         story_id=_story_id(okf, story),
+        story_services=_story_services(okf, story),
     )
 
 

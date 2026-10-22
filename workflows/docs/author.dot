@@ -65,16 +65,18 @@ digraph author {
       f0__start__0 [label="contract_digest\nThe sha256 of the milestone body, which the run never writes, so a change is an operator's edit.", shape=box, fillcolor=white];
       f0__start__1 [label="adopt_backlog\nMint ids for every unnamed backlog bullet before decomposition or story lookup.", shape=box, fillcolor=white];
       f0__start__2 [label="seed_story\nRegister ONE bullet as a new story inside an already-existing epic.", shape=box, fillcolor=white];
-      f0__start__3 [label="handoff → story-author", shape=box, fillcolor=plum];
-      f0__start__4 [label="handoff → surveyor", shape=box, fillcolor=plum];
-      f0__start__5 [label="handoff → parity-surveyor", shape=box, fillcolor=plum];
-      f0__start__6 [label="prune_bullet\nRemove the one backlog bullet story mode consumed — story mode's tail.", shape=box, fillcolor=white];
+      f0__start__3 [label="derive_story_services\nEach story's services are the sorted union of the services of the seeds it covers.", shape=box, fillcolor=white];
+      f0__start__4 [label="handoff → story-author", shape=box, fillcolor=plum];
+      f0__start__5 [label="handoff → surveyor", shape=box, fillcolor=plum];
+      f0__start__6 [label="handoff → parity-surveyor", shape=box, fillcolor=plum];
+      f0__start__7 [label="prune_bullet\nRemove the one backlog bullet story mode consumed — story mode's tail.", shape=box, fillcolor=white];
       f0__start__0 -> f0__start__1 [color=gray40, arrowsize=0.6];
       f0__start__1 -> f0__start__2 [color=gray40, arrowsize=0.6];
       f0__start__2 -> f0__start__3 [color=gray40, arrowsize=0.6];
       f0__start__3 -> f0__start__4 [color=gray40, arrowsize=0.6];
       f0__start__4 -> f0__start__5 [color=gray40, arrowsize=0.6];
       f0__start__5 -> f0__start__6 [color=gray40, arrowsize=0.6];
+      f0__start__6 -> f0__start__7 [color=gray40, arrowsize=0.6];
     }
     f0__stories [label="stories"];
     subgraph cluster_f0__story_splits {
@@ -97,8 +99,8 @@ digraph author {
     f0__fill_story_splits__0 -> f0__story_splits__0 [ltail=cluster_f0__fill_story_splits, lhead=cluster_f0__story_splits];
     f0__requeue -> f0__split_epics__0 [lhead=cluster_f0__split_epics];
     f0__split_epics__1 -> f0__fill_epics__0 [ltail=cluster_f0__split_epics, lhead=cluster_f0__fill_epics];
-    f0__start__6 -> f0__split_epics__0 [ltail=cluster_f0__start, lhead=cluster_f0__split_epics];
-    f0__start__6 -> f0____end [color=darkgoldenrod, ltail=cluster_f0__start];
+    f0__start__7 -> f0__split_epics__0 [ltail=cluster_f0__start, lhead=cluster_f0__split_epics];
+    f0__start__7 -> f0____end [color=darkgoldenrod, ltail=cluster_f0__start];
     f0__stories -> f0__stories [label="another chunk"];
     f0__stories -> f0__author_story__0 [label="drain target", lhead=cluster_f0__author_story];
     f0__stories -> f0__complete__0 [lhead=cluster_f0__complete];
@@ -333,6 +335,8 @@ digraph author {
       style="rounded,filled"; fillcolor=lightblue; color=steelblue;
       node [style="filled", fontsize=10];
       f3__design_mockup__0 [label="design-mockup.md\nDesign a mockup for a new screen: `{{ workhorse_var('story_slug') }}`", shape=note, fillcolor=lightyellow];
+      f3__design_mockup__1 [label="check_mockup_needed\nA story needs a mockup exactly when one of its services is a UI book.", shape=box, fillcolor=white];
+      f3__design_mockup__0 -> f3__design_mockup__1 [color=gray40, arrowsize=0.6];
     }
     subgraph cluster_f3__finish {
       label="finish"; fontsize=12;
@@ -349,6 +353,8 @@ digraph author {
       style="rounded,filled"; fillcolor=lightblue; color=steelblue;
       node [style="filled", fontsize=10];
       f3__next_affected_story__0 [label="select_affected_story\nResolve the next approved affected story without widening the edit worklist.", shape=box, fillcolor=white];
+      f3__next_affected_story__1 [label="derive_story_services\nEach story's services are the sorted union of the services of the seeds it covers.", shape=box, fillcolor=white];
+      f3__next_affected_story__0 -> f3__next_affected_story__1 [color=gray40, arrowsize=0.6];
     }
     subgraph cluster_f3__plan_edit {
       label="plan_edit"; fontsize=12;
@@ -416,10 +422,11 @@ digraph author {
     f3__check_story__3 -> f3__audit_story__0 [label="intent, applied, pick, index, mockup, reworks", ltail=cluster_f3__check_story, lhead=cluster_f3__audit_story];
     f3__check_story__3 -> f3__check_story__0 [label="intent, applied, pick, index, mockup, reworks"];
     f3__check_story__3 -> f3__write_story__0 [label="intent, applied, pick, index, mockup, reworks", style=dashed, color=darkorange, ltail=cluster_f3__check_story, lhead=cluster_f3__write_story];
-    f3__design_mockup__0 -> f3__write_story__0 [label="intent, applied, pick, index, mockup", ltail=cluster_f3__design_mockup, lhead=cluster_f3__write_story];
+    f3__design_mockup__1 -> f3__write_story__0 [label="intent, applied, pick, index, mockup", ltail=cluster_f3__design_mockup, lhead=cluster_f3__write_story];
+    f3__design_mockup__1 -> f3__write_story__0 [label="intent, applied, pick, index", ltail=cluster_f3__design_mockup, lhead=cluster_f3__write_story];
     f3__finish__2 -> f3____end [color=darkgoldenrod, ltail=cluster_f3__finish];
-    f3__next_affected_story__0 -> f3__design_mockup__0 [label="intent, applied, pick, index", ltail=cluster_f3__next_affected_story, lhead=cluster_f3__design_mockup];
-    f3__next_affected_story__0 -> f3__check_coverage__0 [label="intent, applied", ltail=cluster_f3__next_affected_story, lhead=cluster_f3__check_coverage];
+    f3__next_affected_story__1 -> f3__design_mockup__0 [label="intent, applied, pick, index", ltail=cluster_f3__next_affected_story, lhead=cluster_f3__design_mockup];
+    f3__next_affected_story__1 -> f3__check_coverage__0 [label="intent, applied", ltail=cluster_f3__next_affected_story, lhead=cluster_f3__check_coverage];
     f3__plan_edit__0 -> f3__validate_plan__0 [label="intent, snapshot, plan", ltail=cluster_f3__plan_edit, lhead=cluster_f3__validate_plan];
     f3__refine_plan__0 -> f3__validate_plan__0 [label="intent, snapshot, plan, reworks", ltail=cluster_f3__refine_plan, lhead=cluster_f3__validate_plan];
     f3__review_plan__0 -> f3__plan_edit__0 [label="intent, snapshot", style=dashed, color=darkorange, ltail=cluster_f3__review_plan, lhead=cluster_f3__plan_edit];
@@ -540,11 +547,13 @@ digraph author {
       label="check_coverage"; fontsize=12;
       style="rounded,filled"; fillcolor=lightblue; color=steelblue;
       node [style="filled", fontsize=10];
-      f7__check_coverage__0 [label="validate_coverage\nEvery seed covered by a story, the story graph acyclic, every story file present.", shape=box, fillcolor=white];
-      f7__check_coverage__1 [label="review-coverage.md\nAdequacy review: do `{{ workhorse_var('epic') }}`'s stories cover the epic?", shape=note, fillcolor=lightyellow];
-      f7__check_coverage__2 [label="record_story_split_review\nBind a passing semantic review to the current seeds and story topology.", shape=box, fillcolor=white];
+      f7__check_coverage__0 [label="derive_story_services\nEach story's services are the sorted union of the services of the seeds it covers.", shape=box, fillcolor=white];
+      f7__check_coverage__1 [label="validate_coverage\nEvery seed covered by a story, the story graph acyclic, every story file present.", shape=box, fillcolor=white];
+      f7__check_coverage__2 [label="review-coverage.md\nAdequacy review: do `{{ workhorse_var('epic') }}`'s stories cover the epic?", shape=note, fillcolor=lightyellow];
+      f7__check_coverage__3 [label="record_story_split_review\nBind a passing semantic review to the current seeds and story topology.", shape=box, fillcolor=white];
       f7__check_coverage__0 -> f7__check_coverage__1 [color=gray40, arrowsize=0.6];
       f7__check_coverage__1 -> f7__check_coverage__2 [color=gray40, arrowsize=0.6];
+      f7__check_coverage__2 -> f7__check_coverage__3 [color=gray40, arrowsize=0.6];
     }
     subgraph cluster_f7__resolve_coverage {
       label="resolve_coverage"; fontsize=12;
@@ -568,10 +577,10 @@ digraph author {
     f7____end [label="END", shape=doublecircle, fillcolor=gold, width=0.4];
 
     f7____start -> f7__start;
-    f7__check_coverage__2 -> f7__split_stories__0 [label="split_resolves, cov_reworks, rework_notes", ltail=cluster_f7__check_coverage, lhead=cluster_f7__split_stories];
-    f7__check_coverage__2 -> f7__resolve_coverage__0 [label="notes, split_resolves", ltail=cluster_f7__check_coverage, lhead=cluster_f7__resolve_coverage];
-    f7__check_coverage__2 -> f7__split_stories__0 [label="split_resolves", style=dashed, color=darkorange, ltail=cluster_f7__check_coverage, lhead=cluster_f7__split_stories];
-    f7__check_coverage__2 -> f7____end [color=darkgoldenrod, ltail=cluster_f7__check_coverage];
+    f7__check_coverage__3 -> f7__split_stories__0 [label="split_resolves, cov_reworks, rework_notes", ltail=cluster_f7__check_coverage, lhead=cluster_f7__split_stories];
+    f7__check_coverage__3 -> f7__resolve_coverage__0 [label="notes, split_resolves", ltail=cluster_f7__check_coverage, lhead=cluster_f7__resolve_coverage];
+    f7__check_coverage__3 -> f7__split_stories__0 [label="split_resolves", style=dashed, color=darkorange, ltail=cluster_f7__check_coverage, lhead=cluster_f7__split_stories];
+    f7__check_coverage__3 -> f7____end [color=darkgoldenrod, ltail=cluster_f7__check_coverage];
     f7__resolve_coverage__0 -> f7__split_stories__0 [label="split_resolves", style=dashed, color=darkorange, ltail=cluster_f7__resolve_coverage, lhead=cluster_f7__split_stories];
     f7__resolve_split__0 -> f7__split_stories__0 [label="split_resolves, cov_reworks, rework_notes", style=dashed, color=darkorange, ltail=cluster_f7__resolve_split, lhead=cluster_f7__split_stories];
     f7__split_stories__0 -> f7__resolve_split__0 [label="notes, split_resolves, cov_reworks, rework_notes", ltail=cluster_f7__split_stories, lhead=cluster_f7__resolve_split];
@@ -632,7 +641,7 @@ digraph author {
       style="rounded,filled"; fillcolor=lightblue; color=steelblue;
       node [style="filled", fontsize=10];
       f8__start__0 [label="prepare_story\nResolve exactly ``epic/story`` and give its document every required section it lacks.", shape=box, fillcolor=white];
-      f8__start__1 [label="check_mockup_needed\nDesign a mockup only for new or materially changed visual behavior.", shape=box, fillcolor=white];
+      f8__start__1 [label="check_mockup_needed\nA story needs a mockup exactly when one of its services is a UI book.", shape=box, fillcolor=white];
       f8__start__0 -> f8__start__1 [color=gray40, arrowsize=0.6];
     }
     subgraph cluster_f8__story_feedback {
@@ -664,6 +673,7 @@ digraph author {
     f8__check_story__1 -> f8__write_story__0 [style=dashed, color=darkorange, ltail=cluster_f8__check_story, lhead=cluster_f8__write_story];
     f8__check_story__1 -> f8____end [color=darkgoldenrod, ltail=cluster_f8__check_story];
     f8__design_mockup__0 -> f8__write_story__0 [label="target, mockup", ltail=cluster_f8__design_mockup, lhead=cluster_f8__write_story];
+    f8__design_mockup__0 -> f8____end [color=darkgoldenrod, ltail=cluster_f8__design_mockup];
     f8__resolve_story__0 -> f8__write_story__0 [label="target, mockup, reworks, resolves", style=dashed, color=darkorange, ltail=cluster_f8__resolve_story, lhead=cluster_f8__write_story];
     f8__rework_story__1 -> f8__check_story__0 [label="target, mockup, reworks, resolves, audit_reworks, audit_findings", ltail=cluster_f8__rework_story, lhead=cluster_f8__check_story];
     f8__start__1 -> f8__write_story__0 [label="target", ltail=cluster_f8__start, lhead=cluster_f8__write_story];

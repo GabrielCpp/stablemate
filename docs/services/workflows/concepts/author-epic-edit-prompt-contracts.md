@@ -10,11 +10,11 @@ nodes validate and apply graph changes between turns. Story authoring turns writ
 story's artifacts, while all turns return typed JSON consumed by the next state. The feature book is
 always read-only to these prompts.
 
-- code: `workflows/src/workhorse_workflows/author/epic_edit/prompts/plan-epic-edit.md` @00a4a19a8c48
+- code: `workflows/src/workhorse_workflows/author/epic_edit/prompts/plan-epic-edit.md` @1cc7c8ae003e
 - code: `workflows/src/workhorse_workflows/author/epic_edit/prompts/refine-epic-edit-plan.md` @9c92addea733
 - code: `workflows/src/workhorse_workflows/author/epic_edit/prompts/review-epic-edit-plan.md` @ecc93cad9b1a
 - code: `workflows/src/workhorse_workflows/author/epic_edit/prompts/rewrite-epic-edit.md` @031fe29f72ac
-- code: `workflows/src/workhorse_workflows/author/epic_edit/prompts/design-mockup.md` @5faf2a6385aa
+- code: `workflows/src/workhorse_workflows/author/epic_edit/prompts/design-mockup.md` @f918719466f5
 - code: `workflows/src/workhorse_workflows/author/epic_edit/prompts/write-story.md` @adf932ed9e50
 - code: `workflows/src/workhorse_workflows/author/epic_edit/prompts/rework-story.md` @fb4b0b7c5808
 - code: `workflows/src/workhorse_workflows/author/epic_edit/prompts/audit-story.md` @a537b8d9a257
@@ -41,9 +41,9 @@ and prior validation findings. It may rewrite only human-owned epic prose before
 the `Seeds` and `Stories` sections, and returns `complete` or `blocked` with notes.
 
 ### Story turns
-`design-mockup.md` runs only for a frontend affected story. It receives the epic, story identity and
+`design-mockup.md` runs only for an affected story that lists a web or mobile service. It receives the epic, story identity and
 directories, feature-book directory, and epic directory. It may write only the story-local
-`mockup.html`; failure returns an empty mockup path and does not block authoring.
+`mockup.html`; failure to produce it fails the edit.
 
 `write-story.md` receives the selected story identity, epic, feature-book directory, and optional
 mockup path. It writes only the story planning artifact and returns `WriteStoryResult`; a product or

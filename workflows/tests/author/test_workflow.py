@@ -77,6 +77,18 @@ def backlogged(repo: Path, write: Callable[[Path, str], Path]) -> Path:
         + "".join(f"- {b}\n" for b in SEEDS.values()),
     )
     write_milestone(repo)
+    write(repo / "docs/services/account/gui/screens/sign-in.md", (
+        "---\ntype: screen\nslug: sign-in\ntitle: Sign in\n---\n# Sign in\n\n"
+        "- route: `/sign-in`\n- requires: none\n- params: none\n\n"
+        "## Screen states\n\n### Loaded\n- shows: none\n"
+    ))
+    write(repo / "docs/services/account/ops/stack.md", (
+        "---\ntype: runbook\nslug: stack\ntitle: Stack\n---\n# Stack\n\n"
+        "- driver: web\n- entry-url: http://localhost:3000\n- surfaces: [sign-in](../gui/screens/sign-in.md)\n\n"
+        "## Steps\n\n### serve\n- kind: service\n- run: `serve`\n"
+    ))
+    write(repo / "docs/milestones/account-access/mockups/sign-in.html", "<html></html>\n")
+    write(repo / "docs/services/api-service/.gitkeep", "")
     _commit(repo, "seed")
     return repo
 
@@ -152,7 +164,8 @@ _BODY = """# Story: {title}
 ## Context
 
 {title} is one of the account surfaces this epic covers. The screen exists in the web app
-already, so this story adds behaviour to it rather than a new surface.
+already, so this story adds behaviour to it rather than a new surface. It works on
+[sign-in](docs/services/account/gui/screens/sign-in.md).
 
 ## Acceptance Criteria
 
@@ -202,9 +215,13 @@ No prior implementation reference exists.
 """
 
 
-def _write_story_doc(path: Path, title: str, *, authored: bool = True) -> None:
+def _write_story_doc(
+    path: Path, title: str, *, authored: bool = True, services: tuple[str, ...] = ()
+) -> None:
     """Fill the scaffold `create_story` left, keeping its front-matter verbatim."""
     front, _, _rest = path.read_text(encoding="utf-8").partition("\n---\n")
+    if services:
+        front += f"\nservices: [{', '.join(services)}]"
     body = (_BODY if authored else _UNWRITTEN_BODY).format(title=title)
     path.write_text(f"{front}\n---\n\n{body}", encoding="utf-8")
 
@@ -373,6 +390,7 @@ class _Agent:
                 "id": intent["bullet_id"],
                 "status": "researched",
                 "summary": source,
+                "services": ["account"],
                 "source_bullet": source,
             }],
             "story_changes": [{
@@ -452,7 +470,7 @@ The running system is the source of truth.
                 "p1",
                 status="researched",
                 summary="[p1] Users can edit their profile",
-                meta={},
+                meta={"services": ["account"]},
             )
             return {"status": "complete", "notes": "profile seed recorded"}
         surface = "docs/services/web/accounts.md"
@@ -465,9 +483,9 @@ The running system is the source of truth.
                 encoding="utf-8",
             )
         for seed_id, text in SEEDS.items():
-            meta: dict[str, Any] = {}
+            meta: dict[str, Any] = {"services": ["account"]}
             if self.backend_seeds:
-                meta |= {"surface": surface, "layers": ["backend"], "services": ["api-service"]}
+                meta |= {"surface": surface, "services": ["api-service"]}
             okf.add_seed(EPIC, seed_id, status="researched", summary=text, meta=meta)
         return {"status": "complete", "notes": "seeds already recorded"}
 
@@ -485,7 +503,10 @@ The running system is the source of truth.
 
     def _design_mockup(self, data: dict[str, Any], nth: int) -> dict[str, Any]:
         assert "surface_manifest" not in data
-        return {"status": "skipped", "surface": "", "mockup": "", "notes": "existing surface"}
+        mockup = self.repo / data["story_dir"] / "mockup.html"
+        mockup.parent.mkdir(parents=True, exist_ok=True)
+        mockup.write_text("<html></html>\n", encoding="utf-8")
+        return {"status": "created", "surface": "", "mockup": f"{data['story_dir']}/mockup.html", "notes": "drawn"}
 
     def _write_story(self, data: dict[str, Any], nth: int) -> dict[str, Any]:
         slug = str(data["story_slug"])
@@ -949,6 +970,30 @@ def test_an_audit_blocked_story_stops_at_the_completion_gate_and_nothing_finaliz
     assert _work_rows(env.writer.run_dir)[f"{EPIC_NAME}/01-sign-in"] == "blocked"
 
 
+def test_a_story_without_its_mockup_is_listed_at_the_completion_gate_with_the_reason(
+    backlogged: Path, tmp_path: Path
+) -> None:
+    seen: list[str] = []
+
+    class _Undrawn(_Agent):
+        def _design_mockup(self, data: dict[str, Any], nth: int) -> dict[str, Any]:
+            if str(data["story_slug"]) == "01-sign-in":
+                return {"status": "failed", "surface": "", "mockup": "", "notes": "no style to copy"}
+            return super()._design_mockup(data, nth)
+
+    agent = _Undrawn(backlogged)
+    env = _env(tmp_path)
+
+    with pytest.raises(_Stop):
+        _drive(env, agent, wait_for_answer=_gate_then_stop(seen))
+
+    assert f"story {EPIC_NAME}/01-sign-in: blocked" in seen[0], seen
+    assert "no mockup for a story with a UI service: no style to copy" in seen[0]
+    assert agent.counts()["write-story"] == 1, agent.counts()
+    assert _work_rows(env.writer.run_dir)[f"{EPIC_NAME}/01-sign-in"] == "blocked"
+    assert _status(backlogged) != "status: authored"
+
+
 def test_an_edit_to_the_milestone_body_ends_at_the_contract_gate(
     backlogged: Path, tmp_path: Path
 ) -> None:
@@ -1167,7 +1212,9 @@ def test_story_mode_authors_one_bullet_and_does_not_commit(
     """One bullet into an existing epic, and it ends *without* committing."""
     before = _commit_count(with_epic)
     agent = _Agent(with_epic)
-    result = _drive(_env(tmp_path), agent, mode="story", epic=EPIC, bullet="b1")
+    result = _drive(
+        _env(tmp_path), agent, mode="story", epic=EPIC, bullet="b1", services="account"
+    )
 
     assert agent.counts() == {
         "design-mockup": 1,
@@ -1237,11 +1284,17 @@ def test_story_edit_remove_reconciles_remaining_epic_scope_and_journey(
     with_epic: Path, tmp_path: Path
 ) -> None:
     okf = Ostler(with_epic)
-    assert okf.add_seed(EPIC, "keep", status="researched", summary="Keep").ok
-    assert okf.add_seed(EPIC, "remove", status="researched", summary="Remove").ok
+    assert okf.add_seed(
+        EPIC, "keep", status="researched", summary="Keep", meta={"services": ["api-service"]}
+    ).ok
+    assert okf.add_seed(
+        EPIC, "remove", status="researched", summary="Remove", meta={"services": ["api-service"]}
+    ).ok
     assert okf.create_story(EPIC, "keep-story", "Keep", covers=["keep"]).ok
     assert okf.create_story(EPIC, "remove-story", "Remove", covers=["remove"]).ok
-    _write_story_doc(with_epic / EPIC_DIR / "stories/keep-story/story.md", "Keep")
+    _write_story_doc(
+        with_epic / EPIC_DIR / "stories/keep-story/story.md", "Keep", services=("api-service",)
+    )
     _write_story_doc(with_epic / EPIC_DIR / "stories/remove-story/story.md", "Remove")
     kept_before = (with_epic / EPIC_DIR / "stories/keep-story/story.md").read_bytes()
     _commit(with_epic, "authored stories")
@@ -1265,7 +1318,10 @@ def test_epic_edit_static_findings_drive_a_replacement_plan(
     with_epic: Path, tmp_path: Path
 ) -> None:
     okf = Ostler(with_epic)
-    assert okf.add_seed(EPIC, "interactive", status="researched", summary="Interactive").ok
+    assert okf.add_seed(
+        EPIC, "interactive", status="researched", summary="Interactive",
+        meta={"services": ["api-service"]},
+    ).ok
     assert okf.create_story(
         EPIC, "interactive-editor", "Interactive editor", covers=["interactive"]
     ).ok
@@ -1291,6 +1347,7 @@ def test_epic_edit_static_findings_drive_a_replacement_plan(
             "id": "raw-xml",
             "status": "researched",
             "summary": "Edit canonical XML",
+            "services": ["api-service"],
             "source_bullet": "[raw-xml] Add raw XML editing",
         }],
         "story_changes": [raw_change],

@@ -22,4 +22,11 @@ class StorySplitReceipt(AuthorResult):
     path: str
 
 
-__all__ = ["StorySplitDone", "StorySplitReceipt"]
+class StoryServices(AuthorResult):
+    """The `services:` written into each story of one epic, by story slug."""
+
+    epic: str = ""
+    services: dict[str, list[str]] = {}
+
+
+__all__ = ["StoryServices", "StorySplitDone", "StorySplitReceipt"]

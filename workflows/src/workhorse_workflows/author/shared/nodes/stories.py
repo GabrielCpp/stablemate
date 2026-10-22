@@ -12,6 +12,7 @@ from ostler.model import (
 )
 from workhorse_workflows.author.shared.nodes.blueprint import blueprint
 from workhorse_workflows.author.shared.nodes import stubs as _stubs
+from workhorse_workflows.author.shared.nodes.services import service_errors, ui_service_names
 from workhorse_workflows.author.shared.paths import survey_repo_root
 from workhorse_workflows.author.shared.schemas.main import Defects, Ledger
 
@@ -35,6 +36,7 @@ _OPEN_QUESTION_PHRASES = [
 ]
 _OPEN_QUESTION_WORDS = {"tbd", "todo", "fixme"}
 _WORD_CHARS = "_-"
+MOCKUP_FILE = "mockup.html"
 _NO_PRIOR_IMPLEMENTATION = "No prior implementation reference exists."
 
 
@@ -73,6 +75,21 @@ def _open_questions(doc: markdown.MarkdownDoc) -> list[str]:
                 f"({', '.join(matched)}): {snippet}"
             )
     return hits
+
+
+def _service_problems(story_md: Path, doc: markdown.MarkdownDoc, root: Path) -> list[str]:
+    """A story names real books, and each UI book it changes has a mockup beside the story."""
+    value = (doc.frontmatter or {}).get("services")
+    services = [str(name) for name in value] if isinstance(value, list) else []
+    okf = Ostler(root)
+    errors = service_errors(okf, "the story", services)
+    ui = ui_service_names(okf, services)
+    if ui and not (story_md.parent / MOCKUP_FILE).is_file():
+        errors.append(
+            f"the story changes the UI service(s) {', '.join(ui)} but has no `{MOCKUP_FILE}` "
+            "beside it: a story with a UI service cannot be written without a mockup"
+        )
+    return errors
 
 
 @blueprint.node(stub=_stubs.clean)
@@ -123,6 +140,7 @@ def validate_story(logger: logging.Logger, story_dir: str = "", repo_dir: str = 
                 )
 
     errors.extend(_open_questions(doc))
+    errors.extend(_service_problems(story_md, doc, survey_repo_root(repo_dir)))
 
     logger.info("story %s: %d error(s)", story_dir_rel, len(errors))
     return Defects(ok=not errors, errors="\n".join(errors))

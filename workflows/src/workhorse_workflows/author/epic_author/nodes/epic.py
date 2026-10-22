@@ -43,7 +43,8 @@ def validate_authored_epic(
 ) -> EpicEvidence:
     """Apply the main worklist's documented-epic evidence to one explicit epic."""
     root = survey_repo_root(repo_dir)
-    found = epic_by_name(Ostler(root).graph, epic)
+    okf = Ostler(root)
+    found = epic_by_name(okf.graph, epic)
     errors: list[str] = []
     if found is None:
         errors.append(f"epic '{epic}' was not found")
@@ -62,6 +63,14 @@ def validate_authored_epic(
             errors.append(f"epic '{found.name}' has no epic.md")
         if not found.seeds:
             errors.append(f"epic '{found.name}' has no researched seeds")
+        books = okf.service_books()
+        for seed in found.seeds:
+            errors.extend(
+                f"seed '{seed.id}' names the service `{name}`, which is no book under "
+                f"`docs/services/`: `services:` lists book names"
+                for name in seed.services
+                if name not in books
+            )
     logger.info("epic document validation: %d error(s)", len(errors))
     return EpicEvidence(
         ok=not errors,

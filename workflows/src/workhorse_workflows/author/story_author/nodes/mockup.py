@@ -4,86 +4,39 @@ from __future__ import annotations
 import logging
 
 from ostler import Ostler
+from workhorse.pyflow import WorkflowFailed
 from workhorse_workflows.author.story_author.nodes._blueprint import blueprint
 from workhorse_workflows.author.shared.paths import survey_repo_root
 from workhorse_workflows.author.shared.schemas.main import MockupGate
-
-MOCKUP_LAYER = "frontend"
-MOCKUP_REQUIRED = "required"
-MOCKUP_PRESERVE = "preserve"
 
 
 @blueprint.node
 def check_mockup_needed(
     logger: logging.Logger, story_slug: str = "", repo_dir: str = ""
 ) -> MockupGate:
-    """Design a mockup only for new or materially changed visual behavior."""
+    """A story needs a mockup exactly when one of its services is a UI book."""
+    slug = story_slug.strip()
     try:
-        graph = Ostler(survey_repo_root(repo_dir)).graph
+        okf = Ostler(survey_repo_root(repo_dir))
+        found = okf.graph.find_story(slug)
+        if found is None:
+            raise WorkflowFailed(f"story '{slug}' is absent from the knowledge graph")
+        _, story = found
+        ui = sorted(okf.ui_services(story.services))
     except (OSError, ValueError, RuntimeError) as exc:
-        return MockupGate(evidence=f"knowledge graph unavailable: {exc}")
-    found = graph.find_story(story_slug.strip())
-    if found is None:
-        return MockupGate(evidence="story is absent from the knowledge graph")
-    epic, story = found
-    if not story.seed_items:
-        return MockupGate(evidence="story has no covered seed evidence")
-
-    seeds = {seed.id: seed for seed in epic.seeds}
-    layers: list[str] = []
-    services: list[str] = []
-    untagged: list[str] = []
-    required: list[str] = []
-    preserved: list[str] = []
-    unclassified_design: list[str] = []
-    for seed_id in story.seed_items:
-        seed = seeds.get(seed_id)
-        if seed is None or not seed.layers:
-            untagged.append(seed_id)
-            continue
-        layers += [t for t in seed.layers if t not in layers]
-        services += [t for t in seed.services if t not in services]
-        if MOCKUP_LAYER not in seed.layers:
-            continue
-        if seed.design == MOCKUP_REQUIRED:
-            required.append(seed_id)
-        elif seed.design == MOCKUP_PRESERVE:
-            preserved.append(seed_id)
-        else:
-            unclassified_design.append(
-                f"{seed_id} ({seed.design or 'missing'})"
-            )
-
-    if untagged:
+        raise WorkflowFailed(f"cannot decide whether story '{slug}' needs a mockup: {exc}") from exc
+    services = list(story.services)
+    if ui:
+        logger.info("story '%s' changes the UI service(s) %s", slug, ", ".join(ui))
         return MockupGate(
-            layers=layers, services=services,
-            evidence="covered seed(s) carry no `layers:`, so a frontend surface cannot be "
-                     "ruled out: " + ", ".join(untagged),
+            services=services,
+            evidence="the story changes the UI service(s): " + ", ".join(ui),
         )
-    if required:
-        return MockupGate(
-            layers=layers, services=services,
-            evidence="frontend seed(s) require visual design: " + ", ".join(required),
-        )
-    if unclassified_design:
-        return MockupGate(
-            layers=layers, services=services,
-            evidence="frontend seed(s) have no valid `design:` classification: "
-                     + ", ".join(unclassified_design),
-        )
-    if preserved:
-        logger.info(
-            "story '%s' preserves existing frontend design (%s)", story_slug, ", ".join(preserved)
-        )
-        return MockupGate(
-            required=False, layers=layers, services=services,
-            evidence="frontend seed(s) preserve the existing visual contract: "
-                     + ", ".join(preserved),
-        )
-    logger.info("story '%s' touches no frontend layer (%s)", story_slug, ", ".join(layers))
+    logger.info("story '%s' changes no UI service (%s)", slug, ", ".join(services))
     return MockupGate(
-        required=False, layers=layers, services=services,
-        evidence=f"covered seeds are tagged {', '.join(layers)} only — no {MOCKUP_LAYER} work",
+        required=False,
+        services=services,
+        evidence=f"the story's services are {', '.join(services) or 'none'}: no UI service",
     )
 
 

@@ -53,7 +53,13 @@ def check_completion(
     digest = _body_digest(survey_repo_root(repo_dir), milestone_path)
     work = WorkList(JsonBackend(Path(run_dir) / WORK_FILE))
     unfinished = [
-        UnfinishedRow(kind=item.kind, id=item.id, status=item.status or "pending", laps=item.laps)
+        UnfinishedRow(
+            kind=item.kind,
+            id=item.id,
+            status=item.status or "pending",
+            laps=item.laps,
+            note=item.note,
+        )
         for item in work.items()
         if item.status != "done"
     ]

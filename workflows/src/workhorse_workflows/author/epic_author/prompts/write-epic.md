@@ -40,10 +40,9 @@ Record each distinct in-scope behavior as a researched `### <stable-seed-id>` bl
 edit; do not launch a separate `ostler seed add` process per seed, because each process reloads the
 whole book. Seeds derive from this epic's milestone journey segment, not independently pruneable
 milestone headings, so omit `sourceBullet`. Populate documented surfaces, backing services,
-prerequisites, layers, and services from evidence. Tag every seed with `frontend`, `backend`, and/or
-`infra` as applicable. On every frontend seed, add `design: required` for a new or materially
-changed visual experience, or `design: preserve` when the existing visual contract remains intact;
-these fields deterministically decide whether a later story receives a design turn. Every epic
+prerequisites, and services from evidence. A seed's `services:` lists book names, each a directory under
+`docs/services/`, and nothing else. The story split derives each story's services from the seeds
+it covers, so a seed with no `services:` leaves its story without any. Every epic
 obligation must map to at least one seed, and every seed id must be stable for story coverage.
 
 If the existing docs cannot establish a required fact, record the uncertainty and return `blocked`

@@ -14,7 +14,10 @@ from workhorse_workflows.author.shared.schemas import (
     StorySplit,
 )
 from workhorse_workflows.author.story_split.schemas import StorySplitDone
-from workhorse_workflows.author.story_split.nodes import record_story_split_review
+from workhorse_workflows.author.story_split.nodes import (
+    derive_story_services,
+    record_story_split_review,
+)
 from workhorse_workflows.kit.telemetry import counter_labels
 
 MAX_REWORKS = 3
@@ -143,6 +146,7 @@ class StorySplitFlow(Workflow):
     def check_coverage(
         self, cov_reworks: int = 0, split_resolves: int = 0
     ) -> Continue | Await | Done:
+        self.call(derive_story_services, self.epic)
         mechanical = self.call(validate_coverage, self._epic_dir(), require_authored=False)
         if not mechanical.ok:
             return self._rework_coverage(

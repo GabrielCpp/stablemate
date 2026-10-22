@@ -10,7 +10,7 @@ payload before constructing an [edit intent](edit-intent.md). It records whether
 from the configured backlog so later reconciliation can distinguish backlog ownership from a
 literal request.
 
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/edit.py::ResolvedBullet` @0cf57cc63031
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/edit.py::ResolvedBullet` @952fb9c4cfcb
 - detail: [author story edit subflow](../concepts/author-story-edit-subflow.md)
 
 ## Fields
@@ -21,7 +21,7 @@ literal request.
 - required: false
 - semantics: identifies the resolved backlog item or normalized literal bullet
 - verify: json_path(path="$.id", equals="CASE-1234")
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/edit.py::ResolvedBullet` @0cf57cc63031
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/edit.py::ResolvedBullet` @952fb9c4cfcb
 - detail: [resolved bullet field roles](../concepts/resolved-bullet-field-roles.md)
 
 ### source_bullet
@@ -30,7 +30,7 @@ literal request.
 - required: false
 - semantics: preserves the source text used as the added story's scope description
 - verify: json_path(path="$.source_bullet", equals="example source bullet")
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/edit.py::ResolvedBullet` @0cf57cc63031
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/edit.py::ResolvedBullet` @952fb9c4cfcb
 - detail: [resolved bullet field roles](../concepts/resolved-bullet-field-roles.md)
 
 ### from_backlog
@@ -39,5 +39,5 @@ literal request.
 - required: false
 - semantics: distinguishes a bullet matched in the configured backlog from a literal or normalized request
 - verify: json_path(path="$.from_backlog", equals=True)
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/edit.py::ResolvedBullet` @0cf57cc63031
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/edit.py::ResolvedBullet` @952fb9c4cfcb
 - detail: [resolved bullet field roles](../concepts/resolved-bullet-field-roles.md)

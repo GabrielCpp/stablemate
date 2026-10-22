@@ -13,7 +13,7 @@ successful no-ops with a zero count.
 
 - file: none — in-memory workflow result
 - config: Ostler spec entity rules and the selected story spec directory
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/story.py::SpecsStamped` @ae123b24b397
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/story.py::SpecsStamped` @20f185804e35
 - detail: [Coder story pipeline](../concepts/story-pipeline.md)
 
 ## Fields
@@ -24,4 +24,4 @@ successful no-ops with a zero count.
 - required: false
 - semantics: number of direct markdown spec documents newly given an OKF type in this pass, excluding reserved files and already typed documents
 - verify: json_path(path="$.stamped", matches="^[0-9]+$")
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/story.py::SpecsStamped.stamped` @ae123b24b397
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/story.py::SpecsStamped.stamped` @20f185804e35

@@ -13,6 +13,7 @@ class StoryPaths(CoderResult):
     story_slug: str = ""
     story_epic: str = ""
     story_id: str = ""
+    story_services: list[str] = []
 
 
 class WorkspaceDirs(CoderResult):

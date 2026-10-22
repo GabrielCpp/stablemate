@@ -24,6 +24,8 @@ from workhorse_workflows.author.shared.nodes import (
     verify_integrity,
 )
 from workhorse_workflows.author.shared import paths
+from workhorse_workflows.author.story_author.nodes import check_mockup_needed
+from workhorse_workflows.author.story_split.nodes import derive_story_services
 from workhorse_workflows.author.shared.schemas import (
     AppliedEpicEdit,
     AuditResult,
@@ -306,6 +308,8 @@ class EpicEdit(Workflow):
         applied: AppliedEpicEdit,
         index: int = 0,
     ) -> Continue:
+        if index == 0:
+            self.call(derive_story_services, applied.epic)
         pick = self.call(
             select_affected_story,
             applied.epic,
@@ -330,6 +334,15 @@ class EpicEdit(Workflow):
         pick: StoryChoice,
         index: int,
     ) -> Continue:
+        if not self.call(check_mockup_needed, pick.story_slug).required:
+            return Continue(
+                None,
+                self.write_story,
+                intent=intent,
+                applied=applied,
+                pick=pick,
+                index=index,
+            )
         result = self.agent(
             "epic_edit/prompts/design-mockup.md",
             returns=MockupResult,
@@ -341,8 +354,16 @@ class EpicEdit(Workflow):
                 "story_dir": pick.story_dir,
                 "services_dir": self.ctx.services_dir,
                 "epics_dir": self.ctx.epics_dir,
+                "milestone_mockups_dir": self.ctx.milestone_mockups_dir,
             },
         )
+        if result.status == "failed" or not result.mockup:
+            raise WorkflowFailed(
+                f"no mockup for story '{pick.story_slug}', which changes a UI service: "
+                f"{result.notes or 'the mockup turn produced no mockup file'}",
+                failure_class="epic-edit-mockup-missing",
+                artifacts={"story_dir": str(pick.story_dir)},
+            )
         return Continue(
             result,
             self.write_story,

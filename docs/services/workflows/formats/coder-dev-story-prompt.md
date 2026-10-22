@@ -6,7 +6,7 @@ title: Coder dev-story prompt
 # Coder dev-story prompt
 
 - file: `workflows/src/workhorse_workflows/coder/dev/prompts/dev-story.md`
-- code: `workflows/src/workhorse_workflows/coder/dev/flow.py::Dev.build` @43ea3e1c6c82
+- code: `workflows/src/workhorse_workflows/coder/dev/flow.py::Dev.build` @1f14ab4796ae
 - detail: [coder development flow](../flows/coder-dev.md)
 - tests: `workflows/tests/coder/dev/test_flow.py::test_a_clean_pass_settles_the_fix_and_records_the_decline`
 
@@ -24,6 +24,13 @@ rescope note, a failed-check report, open findings or an operator answer.
 - required: true
 - semantics: authored story document that is the only target of the turn
 - verify: json_path(path="$.story_path", equals="docs/stories/acme-story/story.md")
+
+### story_services
+- type: list of book names
+- required: false
+- semantics: the `services` of the story, rendered as a line naming the books under `docs/services/` the story changes
+- verify: count(subject="story_services", equals=2)
+- tests: `workflows/tests/coder/dev/test_flow.py::test_a_clean_pass_settles_the_fix_and_records_the_decline`
 
 ### spec_dir
 - type: string path

@@ -58,6 +58,7 @@ Return exactly one JSON object matching this shape:
     "legacy_surface": "",
     "backing": "",
     "prerequisites": "none",
+    "services": ["book names under docs/services/ this seed changes"],
     "source_bullet": "verbatim source bullet",
     "disposition": "retain" | "drop",
     "reason": ""

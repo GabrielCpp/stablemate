@@ -148,6 +148,7 @@ class Dev(Workflow):
             "story_id": self.ctx.story_id or self.ctx.story_slug,
             "epic": self.epic,
             "story_path": self.ctx.story_path,
+            "story_services": self.ctx.story_services,
             "spec_dir": self.ctx.spec_dir,
             "branch": self.branch,
         }

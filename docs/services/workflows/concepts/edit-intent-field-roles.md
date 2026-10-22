@@ -17,6 +17,6 @@ request. For a story addition, `kind` is `add-story` and `bullet_id`, `source_bu
 from that story. Fields outside the selected operation retain their defaults rather than competing
 with the fields that describe that operation.
 
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/edit.py::EditIntent` @0cf57cc63031
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/edit.py::EditIntent` @952fb9c4cfcb
 - code: `workflows/src/workhorse_workflows/author/story_edit/nodes.py::resolve_story_intent` @e4502016104b
 - rule: select fields by the `kind` of edit; combine the fields required by that operation and do not treat any field as a substitute for another

@@ -15,6 +15,6 @@ edit request.
 For the choice between direct and handoff entry contexts, see [epic edit invocation
 selection](epic-edit-invocation-selection.md).
 
-- code: `workflows/src/workhorse_workflows/author/epic_edit/flow.py::EpicEdit` @7fd997a3938c
+- code: `workflows/src/workhorse_workflows/author/epic_edit/flow.py::EpicEdit` @4ff1fa77892b
 - rule: supply `intent` for a story-edit handoff; otherwise supply `epic` and `change`, optionally with `force`; treat `operator_mode` as runtime routing metadata
 - detail: [epic edit concept selection](epic-edit-concept-selection.md)

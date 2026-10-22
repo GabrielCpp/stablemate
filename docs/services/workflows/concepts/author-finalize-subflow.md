@@ -253,7 +253,7 @@ The returned `Config` carries the resolved repository root, the repo-relative ba
 - does: resolve the author's paths and prove the selected intake exists
 - verify: count(subject="finalize configuration loads", equals=1)
 - verify: json_path(path="$.repo_root", matches=".+")
-- code: `workflows/src/workhorse_workflows/author/shared/nodes/config.py::load_config` @d32a3c2caaa3
+- code: `workflows/src/workhorse_workflows/author/shared/nodes/config.py::load_config` @590ea672d9b7
 - detail: [author load_config documentation roles](author-load-config-documentation-roles.md)
 
 ### verify_reconcile

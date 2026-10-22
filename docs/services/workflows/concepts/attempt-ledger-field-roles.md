@@ -11,5 +11,5 @@ updates the file at `ledger`, then returns its content as `prior_attempts`. The 
 passes only `prior_attempts` to the rework prompt, while callers retain `ledger` as the
 repository-relative file location.
 
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::Ledger` @4460b1deea94
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::Ledger` @69af1329fede
 - rule: use `ledger` to locate the attempt file; use `prior_attempts` when the rework prompt needs the failed approaches recorded in that file

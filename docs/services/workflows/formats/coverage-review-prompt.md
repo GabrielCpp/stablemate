@@ -20,7 +20,7 @@ address the defect, and `blocked` with the product decision when coverage cannot
 operator input. The turn reviews only; it does not edit artifacts.
 
 - file: `workflows/src/workhorse_workflows/author/story_split/prompts/review-coverage.md`
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::CoverageReview` @4460b1deea94
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::CoverageReview` @69af1329fede
 - detail: [author story-split subflow](../concepts/story-split-subflow.md)
 - tests: `workflows/tests/author/story_split/test_flow.py::test_coverage_findings_drive_a_bounded_resplit_worklist`
 

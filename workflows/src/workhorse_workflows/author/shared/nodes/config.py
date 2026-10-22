@@ -6,7 +6,7 @@ from pathlib import Path
 
 import yaml
 from ostler import Ostler
-from ostler.milestones import MilestoneSelectionError
+from ostler.milestones import MOCKUPS_DIR, MilestoneSelectionError
 from workhorse.pyflow import WorkflowFailed
 from workhorse_workflows.author.shared.nodes.blueprint import blueprint
 from workhorse_workflows.author.shared import paths
@@ -41,6 +41,16 @@ def approved_milestone_path(root: Path) -> str:
             f"`ostler doctor` reports no milestone finding:\n{listed}"
         )
     return milestone.path.resolve().relative_to(root.resolve()).as_posix()
+
+
+def milestone_mockups_dir(root: Path) -> str:
+    """The absolute `mockups/` folder of the approved milestone, or nothing when none is."""
+    try:
+        milestone = Ostler(root).approved_milestone()
+    except MilestoneSelectionError:
+        return ""
+    folder = milestone.path.parent / MOCKUPS_DIR
+    return str(folder.resolve())
 
 
 @blueprint.node
@@ -80,6 +90,7 @@ def load_config(
         repo_root=str(root),
         backlog_path=backlog,
         milestone_path=milestone,
+        milestone_mockups_dir=milestone_mockups_dir(root),
         epics_dir=epics_dir,
         services_dir=str(services_dir),
         layers=layers,

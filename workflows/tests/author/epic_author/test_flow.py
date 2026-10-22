@@ -140,3 +140,24 @@ def test_document_validation_uses_epic_md_and_seed_evidence(repo: Path, logger: 
     assert documented.ok
     assert documented.seed_count == 1
     assert documented.epic_path.endswith("/epic.md")
+
+
+def test_document_validation_rejects_a_seed_service_that_is_no_book(
+    repo: Path, logger: Any
+) -> None:
+    _planning_input(repo)
+    _document_epic(repo)
+    (repo / "docs/services/account").mkdir(parents=True, exist_ok=True)
+    assert Ostler(repo).add_seed(
+        "sign-in",
+        "recovery",
+        status="researched",
+        summary="Recover a forgotten password",
+        meta={"services": ["account", "ghost-service"]},
+    ).ok
+
+    result = validate_authored_epic(logger, "sign-in", repo_dir=str(repo))
+
+    assert not result.ok
+    assert "ghost-service" in result.errors
+    assert "`account`" not in result.errors

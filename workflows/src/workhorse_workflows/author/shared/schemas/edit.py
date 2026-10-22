@@ -75,6 +75,7 @@ class SeedChange(AuthorResult):
     legacy_surface: str = ""
     backing: str = ""
     prerequisites: str = ""
+    services: list[str] = []
     source_bullet: str = ""
     disposition: Literal["retain", "drop"] = "retain"
     reason: str = ""

@@ -15,8 +15,8 @@ runs the declared service gates, settles the findings against the answers, and c
 story left nothing uncommitted. A failed check goes back to the owner as a report for another
 repair lap. A spent lap budget escalates to an operator gate.
 
-- code: `workflows/src/workhorse_workflows/coder/dev/flow.py` @43ea3e1c6c82
-- code: `workflows/src/workhorse_workflows/coder/dev/flow.py::Dev` @43ea3e1c6c82
+- code: `workflows/src/workhorse_workflows/coder/dev/flow.py` @1f14ab4796ae
+- code: `workflows/src/workhorse_workflows/coder/dev/flow.py::Dev` @1f14ab4796ae
 - tests: `workflows/tests/coder/dev/test_flow.py`
 - detail: [coder dev flow](../flows/coder-dev.md)
 

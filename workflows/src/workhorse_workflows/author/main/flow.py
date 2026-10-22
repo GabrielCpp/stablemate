@@ -26,6 +26,7 @@ from workhorse_workflows.author.parity_surveyor import ParitySurveyor
 from workhorse_workflows.author.shared.schemas import RunContext
 from workhorse_workflows.author.story_author import StoryAuthor
 from workhorse_workflows.author.story_split import StorySplitFlow
+from workhorse_workflows.author.story_split.nodes import derive_story_services
 from workhorse_workflows.author.surveyor import Surveyor
 
 
@@ -72,6 +73,7 @@ class Author(Workflow):
                 layers=self.layers,
                 services=self.services,
             )
+            self.call(derive_story_services, self.epic)
             self.handoff(
                 StoryAuthor,
                 epic=self.epic,
@@ -140,7 +142,7 @@ class Author(Workflow):
                 item.payload["story"],
                 item.payload["epic"],
             )
-            self.work_list.mark(item.id, "blocked", kind="story")
+            self.work_list.mark(item.id, "blocked", kind="story", note=result.notes)
         return Continue(result, self.stories)
 
     def complete(self, baseline: str = "") -> Await | Done:
@@ -162,6 +164,7 @@ class Author(Workflow):
         if check.unfinished:
             listed = "\n".join(
                 f"- {row.kind} {row.id}: {row.status} after {row.laps} laps"
+                + (f". {row.note}" if row.note else "")
                 for row in check.unfinished
             )
             question = (

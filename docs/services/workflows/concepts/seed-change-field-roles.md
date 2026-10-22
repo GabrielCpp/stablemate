@@ -15,5 +15,5 @@ delegation, wrapper, or preference between fields, so no field supersedes anothe
 field that represents the seed attribute being changed; combine fields when one change needs
 multiple attributes.
 
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/edit.py::SeedChange` @0cf57cc63031
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/edit.py::SeedChange` @952fb9c4cfcb
 - rule: select fields by the seed attribute a projected change carries; the fields are complementary and no ranking exists

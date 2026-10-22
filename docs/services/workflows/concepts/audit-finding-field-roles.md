@@ -15,5 +15,5 @@ that `kind` is closed to the four audit axes and that `target` must identify the
 against which the defect is reported. The source establishes no ranking, deprecation, or
 replacement relationship among the fields.
 
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::AuditFinding` @4460b1deea94
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::AuditFinding` @69af1329fede
 - rule: use every field for its named role when reading or producing an audit finding; do not choose one as an alternative to another

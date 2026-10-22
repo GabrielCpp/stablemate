@@ -18,7 +18,7 @@ alongside the other author stages. Configuration loading, coverage validation, p
 operator resolution, and telemetry labeling are existing shared author capabilities; this package
 only composes them for one story-split run.
 
-- code: `workflows/src/workhorse_workflows/author/story_split/flow.py::StorySplitFlow` @1252f202010b
+- code: `workflows/src/workhorse_workflows/author/story_split/flow.py::StorySplitFlow` @c633afb4c428
 - code: `workflows/src/workhorse_workflows/author/story_split/nodes/_blueprint.py::blueprint` @c780d75bd248
 - tests: `workflows/tests/author/story_split/test_flow.py::test_accepts_one_epic_graph_without_selecting_authoring_or_git`
 - detail: [story-split prompt](../formats/story-split-prompt.md)
@@ -40,7 +40,7 @@ only composes them for one story-split run.
 - required: true
 - semantics: identifies the single epic whose story graph is split and reviewed
 - verify: count(subject="story-split runs with one selected epic", equals=1)
-- code: `workflows/src/workhorse_workflows/author/story_split/flow.py::StorySplitFlow` @1252f202010b
+- code: `workflows/src/workhorse_workflows/author/story_split/flow.py::StorySplitFlow` @c633afb4c428
 - detail: [story-split input fields](../concepts/story-split-input-fields.md)
 
 ### operator_mode
@@ -52,7 +52,7 @@ only composes them for one story-split run.
 - verify: count(subject="human-mode story-split operator gates", equals=1)
 - semantics: `auto` permits up to two automatic split-resolution turns before the operator context
 - verify: count(subject="auto-mode story-split resolution turns", equals=2)
-- code: `workflows/src/workhorse_workflows/author/story_split/flow.py::StorySplitFlow` @1252f202010b
+- code: `workflows/src/workhorse_workflows/author/story_split/flow.py::StorySplitFlow` @c633afb4c428
 - detail: [story-split input fields](../concepts/story-split-input-fields.md)
 
 ## Methods
@@ -69,7 +69,7 @@ only composes them for one story-split run.
 - does: loads author configuration in `story-split` mode
 - returns: returns the configured repository, epic, document-root, and feature paths
 - verify: count(subject="prepared story-split configurations", equals=1)
-- code: `workflows/src/workhorse_workflows/author/story_split/flow.py::StorySplitFlow.setup` @1252f202010b
+- code: `workflows/src/workhorse_workflows/author/story_split/flow.py::StorySplitFlow.setup` @c633afb4c428
 
 ### labels
 - sig: `labels() -> dict[str, str]`
@@ -77,14 +77,14 @@ only composes them for one story-split run.
 - does: labels progress as `splitting stories`
 - returns: returns labels identifying the one selected epic
 - verify: json_path(path="$.epic", equals="acme-epic")
-- code: `workflows/src/workhorse_workflows/author/story_split/flow.py::StorySplitFlow.labels` @1252f202010b
+- code: `workflows/src/workhorse_workflows/author/story_split/flow.py::StorySplitFlow.labels` @c633afb4c428
 
 ### state_labels
 - sig: `state_labels(params: dict[str, Any]) -> dict[str, str]`
 - does: adds `cov_reworks` and `split_resolves` counters to the base run labels
 - returns: returns labels containing both story-split budget counters
 - verify: json_path(path="$.cov_reworks", equals="example cov reworks")
-- code: `workflows/src/workhorse_workflows/author/story_split/flow.py::StorySplitFlow.state_labels` @1252f202010b
+- code: `workflows/src/workhorse_workflows/author/story_split/flow.py::StorySplitFlow.state_labels` @c633afb4c428
 
 ### start
 - sig: `start() -> Continue`
@@ -96,7 +96,7 @@ only composes them for one story-split run.
 - verify: count(subject="invalid story-split operator-mode failures", equals=1)
 - returns: returns a continuation targeting `split_stories` for a valid run
 - verify: count(subject="story-split starts", equals=1)
-- code: `workflows/src/workhorse_workflows/author/story_split/flow.py::StorySplitFlow.start` @1252f202010b
+- code: `workflows/src/workhorse_workflows/author/story_split/flow.py::StorySplitFlow.start` @c633afb4c428
 
 ### split_stories
 - sig: `split_stories(split_resolves: int = 0, cov_reworks: int = 0, rework_notes: str = "") -> Continue | Await`
@@ -110,7 +110,7 @@ only composes them for one story-split run.
 - verify: json_path(path="$.await", matches="blocked")
 - does: routes auto-mode blocked work to `resolve_split` while fewer than two split resolutions have occurred
 - verify: count(subject="story-split resolution continuations", equals=1)
-- code: `workflows/src/workhorse_workflows/author/story_split/flow.py::StorySplitFlow.split_stories` @1252f202010b
+- code: `workflows/src/workhorse_workflows/author/story_split/flow.py::StorySplitFlow.split_stories` @c633afb4c428
 
 ### resolve_split
 - sig: `resolve_split(notes: str, split_resolves: int = 0, cov_reworks: int = 0, rework_notes: str = "") -> Await`
@@ -118,7 +118,7 @@ only composes them for one story-split run.
 - verify: count(subject="story-split operator resolutions", equals=1)
 - does: returns an operator-awaiting context that resumes `split_stories` with the resolution counter incremented
 - verify: json_path(path="$.await", matches="blocked")
-- code: `workflows/src/workhorse_workflows/author/story_split/flow.py::StorySplitFlow.resolve_split` @1252f202010b
+- code: `workflows/src/workhorse_workflows/author/story_split/flow.py::StorySplitFlow.resolve_split` @c633afb4c428
 
 ### check_coverage
 - sig: `check_coverage(cov_reworks: int = 0, split_resolves: int = 0) -> Continue | Await | Done`
@@ -132,7 +132,7 @@ only composes them for one story-split run.
 - verify: json_path(path="$.await", matches="blocked")
 - does: routes a non-blocked failed review to story rework
 - verify: count(subject="story-split coverage reworks", equals=1)
-- code: `workflows/src/workhorse_workflows/author/story_split/flow.py::StorySplitFlow.check_coverage` @1252f202010b
+- code: `workflows/src/workhorse_workflows/author/story_split/flow.py::StorySplitFlow.check_coverage` @c633afb4c428
 
 ### resolve_coverage
 - sig: `resolve_coverage(notes: str, split_resolves: int = 0) -> Await`
@@ -140,7 +140,7 @@ only composes them for one story-split run.
 - verify: count(subject="story-split coverage resolutions", equals=1)
 - does: returns an operator-awaiting context that resumes `split_stories` with the resolution counter incremented
 - verify: json_path(path="$.await", matches="blocked")
-- code: `workflows/src/workhorse_workflows/author/story_split/flow.py::StorySplitFlow.resolve_coverage` @1252f202010b
+- code: `workflows/src/workhorse_workflows/author/story_split/flow.py::StorySplitFlow.resolve_coverage` @c633afb4c428
 
 ### _rework_coverage
 - sig: `_rework_coverage(result: object, notes: str, cov_reworks: int, split_resolves: int) -> Continue | Await`
@@ -148,7 +148,7 @@ only composes them for one story-split run.
 - verify: count(subject="bounded story-split rework continuations", equals=1)
 - does: sends exhausted coverage rework to the coverage gate
 - verify: json_path(path="$.await", matches="coverage")
-- code: `workflows/src/workhorse_workflows/author/story_split/flow.py::StorySplitFlow._rework_coverage` @1252f202010b
+- code: `workflows/src/workhorse_workflows/author/story_split/flow.py::StorySplitFlow._rework_coverage` @c633afb4c428
 
 ### _gate_coverage
 - sig: `_gate_coverage(result: object, notes: str, split_resolves: int) -> Continue | Await`
@@ -156,28 +156,28 @@ only composes them for one story-split run.
 - verify: json_path(path="$.await", matches="blocked")
 - does: routes automatic unresolved coverage to `resolve_coverage` while its resolution budget remains
 - verify: count(subject="automatic story-split coverage resolutions", equals=1)
-- code: `workflows/src/workhorse_workflows/author/story_split/flow.py::StorySplitFlow._gate_coverage` @1252f202010b
+- code: `workflows/src/workhorse_workflows/author/story_split/flow.py::StorySplitFlow._gate_coverage` @c633afb4c428
 
 ### _epic_dir
 - sig: `_epic_dir() -> str`
 - does: resolves the selected epic directory from the workflow repository root and epic name
 - verify: json_path(path="$.epic_dir", equals="docs/stories/acme-story")
 - returns: returns the repository-relative epic directory used by the split and coverage stages
-- code: `workflows/src/workhorse_workflows/author/story_split/flow.py::StorySplitFlow._epic_dir` @1252f202010b
+- code: `workflows/src/workhorse_workflows/author/story_split/flow.py::StorySplitFlow._epic_dir` @c633afb4c428
 
 ### _context
 - sig: `_context() -> str`
 - does: derives `context.md` beneath the selected epic directory
 - verify: json_path(path="$.context_path", matches="context\\.md$")
 - returns: returns the operator context path used by blocked split and coverage decisions
-- code: `workflows/src/workhorse_workflows/author/story_split/flow.py::StorySplitFlow._context` @1252f202010b
+- code: `workflows/src/workhorse_workflows/author/story_split/flow.py::StorySplitFlow._context` @c633afb4c428
 
 ### _abs
 - sig: `_abs(relative: str) -> Path`
 - does: joins a repository-relative path to the workflow repository root
 - verify: json_path(path="$.absolute_path", equals="docs/stories/acme-story/story.md")
 - returns: returns an absolute path for an operator-await context file
-- code: `workflows/src/workhorse_workflows/author/story_split/flow.py::StorySplitFlow._abs` @1252f202010b
+- code: `workflows/src/workhorse_workflows/author/story_split/flow.py::StorySplitFlow._abs` @c633afb4c428
 
 ### _resolve
 - sig: `_resolve(stage: str, notes: str) -> OperatorResolution`
@@ -187,7 +187,7 @@ only composes them for one story-split run.
 - verify: count(subject="unbounded story-split resolver turns", equals=1)
 - returns: returns the resolver's operator decision
 - verify: json_path(path="$.decision", equals="example decision")
-- code: `workflows/src/workhorse_workflows/author/story_split/flow.py::StorySplitFlow._resolve` @1252f202010b
+- code: `workflows/src/workhorse_workflows/author/story_split/flow.py::StorySplitFlow._resolve` @c633afb4c428
 
 ## Downstream Boundaries
 
@@ -196,8 +196,8 @@ nodes. Those modules are separate source-layer contracts and are descended indep
 resolution, telemetry labels, receipt persistence, and the agent result formats are already
 documented by the linked shared concepts and formats.
 
-- code: `workflows/src/workhorse_workflows/author/shared/nodes/config.py::load_config` @d32a3c2caaa3
-- code: `workflows/src/workhorse_workflows/author/shared/nodes/coverage.py::validate_coverage` @afd0929bfbc1
+- code: `workflows/src/workhorse_workflows/author/shared/nodes/config.py::load_config` @590ea672d9b7
+- code: `workflows/src/workhorse_workflows/author/shared/nodes/coverage.py::validate_coverage` @2c46e3beb9ac
 - detail: [author coverage validator](coverage-validator.md)
 - detail: [author load_config documentation roles](author-load-config-documentation-roles.md)
 
