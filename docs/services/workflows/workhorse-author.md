@@ -64,13 +64,13 @@ The [workhorse-author driver runbook](ops/workhorse-author.md) exercises this CL
 ### plan-and-dispatch
 - on: [run command](#run)
 - run: invoke(argv=["run", "--dry-run"])
-- trigger: after setup and after each completed or blocked stage
+- trigger: after setup, then after each filled kind drains
 - when: the approved milestone and its current planning artifacts are available
-- fixture: none, because the dry run stands in for every agent turn and the planner reads only the artifacts that `when:` names
-- does: selects the next planning stage from the current artifacts and walks the run to its close
+- fixture: none, because the dry run stands in for every agent turn and the fill reads only the artifacts that `when:` names
+- does: files each kind of work from the current artifacts, drains it, and walks the run to its close
 - verify: exit_status(code=0)
 - verify: stdout(matches="dry-run ok")
-- code: `workflows/src/workhorse_workflows/author/main/nodes/planner.py::plan_author_step` @0e64d8b59cbb
+- code: `workflows/src/workhorse_workflows/author/main/nodes/fill.py::fill_work` @99fa7ca0ba94
 - detail: [artifact-derived author stage selection](concepts/artifact-derived-author-stage-selection.md)
-- tests: `workflows/tests/author/test_planner.py::test_story_author_uses_story_dag_order_and_author_current`
-- tests: `workflows/tests/author/test_planner.py::test_blocked_story_is_skipped_for_the_remainder_of_one_main_run`
+- tests: `workflows/tests/author/test_fill.py::test_stories_follow_dag_order_inside_milestone_epic_order`
+- tests: `workflows/tests/author/test_workflow.py::test_a_story_nobody_can_fix_is_parked_and_the_epic_carries_on`

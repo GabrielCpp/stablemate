@@ -1,4 +1,4 @@
-"""A dry run walks the author's flat planner to its commit without a milestone or an agent."""
+"""A dry run walks the author's stage chain to its commit without a milestone or an agent."""
 from __future__ import annotations
 
 from pathlib import Path

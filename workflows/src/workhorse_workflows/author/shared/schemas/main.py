@@ -22,21 +22,36 @@ class RunContext(Config):
     """The author's `self.ctx` — the paths `load_config` resolved."""
 
 
-@dry_run(kind="finalize")
-class AuthorStep(AuthorResult):
-    """The one artifact-derived unit the flat author planner should run next."""
+class Filled(AuthorResult):
+    """`fill_work` — what one kind's fill filed on the run's work list."""
 
-    kind: Literal[
-        "epic-split",
-        "epic-author",
-        "story-split",
-        "story-author",
-        "finalize",
-    ] = "epic-split"
-    milestone: str = ""
-    epic: str = ""
-    story: str = ""
-    reason: str = ""
+    kind: str = ""
+    filed: int = 0
+    done: int = 0
+
+
+class ContractDigest(AuthorResult):
+    """`contract_digest` — the sha256 of the milestone body, the contract the run authors from."""
+
+    digest: str = ""
+
+
+class UnfinishedRow(AuthorResult):
+    """One work-list row the run has not finished."""
+
+    kind: str = ""
+    id: str = ""
+    status: str = ""
+    laps: int = 0
+
+
+@dry_run(matches=True)
+class Completion(AuthorResult):
+    """`check_completion` — whether the contract held, and every row the run left unfinished."""
+
+    matches: bool = True
+    digest: str = ""
+    unfinished: list[UnfinishedRow] = []
 
 
 class StoryChoice(AuthorResult):
@@ -188,12 +203,14 @@ class CoverageReview(AuthorResult):
 __all__ = [
     "AuditFinding",
     "AuditResult",
-    "AuthorStep",
     "Committed",
+    "Completion",
     "Config",
+    "ContractDigest",
     "CoverageReview",
     "Defects",
     "Feedback",
+    "Filled",
     "Ledger",
     "MockupGate",
     "MilestoneStatus",
@@ -203,6 +220,7 @@ __all__ = [
     "SeededStory",
     "StoryChoice",
     "StorySplit",
+    "UnfinishedRow",
     "VerifyReport",
     "WriteEpicResult",
     "WriteStoryResult",

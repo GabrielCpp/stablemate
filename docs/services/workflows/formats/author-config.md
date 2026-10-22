@@ -12,7 +12,7 @@ the intake required by the selected mode. The feature book is read-only groundin
 loading does not create a surface inventory.
 
 - code: `workflows/src/workhorse_workflows/author/shared/nodes/config.py::load_config` @d32a3c2caaa3
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::Config` @2e101dbcac2e
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::Config` @4460b1deea94
 - detail: [author shared paths](../concepts/author-shared-paths.md)
 - detail: [author story-split subflow](../concepts/story-split-subflow.md)
 - detail: [author load_config documentation roles](../concepts/author-load-config-documentation-roles.md)
@@ -25,7 +25,7 @@ loading does not create a surface inventory.
 - required: false
 - semantics: absolute repository root selected from the explicit input or repository markers and used for graph and artifact operations
 - verify: json_path(path="$.repo_root", equals="docs/stories")
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::Config` @2e101dbcac2e
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::Config` @4460b1deea94
 - detail: [author configuration field origin](../concepts/author-config-field-origin.md)
 
 ### backlog_path
@@ -34,7 +34,7 @@ loading does not create a surface inventory.
 - required: false
 - semantics: configured backlog path used for story, story-edit, and epic-edit intake checks
 - verify: json_path(path="$.backlog_path", equals="docs/stories/acme-story/story.md")
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::Config` @2e101dbcac2e
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::Config` @4460b1deea94
 - detail: [author configuration field origin](../concepts/author-config-field-origin.md)
 
 ### milestone_path
@@ -43,7 +43,7 @@ loading does not create a surface inventory.
 - required: false
 - semantics: the docs-root-relative path of the approved milestone's `milestone.md` in epic mode, or an empty path in other modes
 - verify: json_path(path="$.milestone_path", equals="docs/milestones/acme-launch/milestone.md")
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::Config` @2e101dbcac2e
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::Config` @4460b1deea94
 - detail: [author configuration field origin](../concepts/author-config-field-origin.md)
 
 ### epics_dir
@@ -52,7 +52,7 @@ loading does not create a surface inventory.
 - required: false
 - semantics: configured epic directory used to resolve the selected epic
 - verify: json_path(path="$.epics_dir", equals="docs/stories/acme-story")
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::Config` @2e101dbcac2e
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::Config` @4460b1deea94
 - detail: [author configuration field origin](../concepts/author-config-field-origin.md)
 
 ### services_dir
@@ -61,7 +61,7 @@ loading does not create a surface inventory.
 - required: false
 - semantics: configured feature-book directory exposed as read-only grounding to author prompts
 - verify: json_path(path="$.services_dir", equals="docs/stories/acme-story")
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::Config` @2e101dbcac2e
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::Config` @4460b1deea94
 - detail: [author configuration field origin](../concepts/author-config-field-origin.md)
 
 ### layers
@@ -70,7 +70,7 @@ loading does not create a surface inventory.
 - required: false
 - semantics: best-effort local-instruction skill paths used as prompt layer hints
 - verify: json_path(path="$.layers", matches="^\\[\\]$")
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::Config` @2e101dbcac2e
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::Config` @4460b1deea94
 - detail: [author configuration field origin](../concepts/author-config-field-origin.md)
 
 ## Methods

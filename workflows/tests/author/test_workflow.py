@@ -24,6 +24,7 @@ from workhorse.pyflow import park as pyflow_park
 from workhorse.pyflow.driver import drive, read_resume
 from workhorse.pyflow.engine import RunEnv
 from workhorse.records import parse_checkpoint
+from workhorse.worklist import WORK_FILE, JsonBackend, WorkList
 
 from workhorse_workflows import author
 from workhorse_workflows.author.finalize.nodes.artifacts import validate_artifacts
@@ -779,6 +780,56 @@ def test_epic_docs_are_all_written_before_story_splitting(backlogged: Path, tmp_
     assert _stories(backlogged) == {slug: True for slug in [*SLUGS, *SECOND_SLUGS]}
 
 
+def test_a_fresh_run_goes_split_epics_stories_then_finalizes(backlogged: Path, tmp_path: Path) -> None:
+    agent = _Agent(backlogged, two_epics=True)
+    env = _env(tmp_path)
+
+    result = _drive(env, agent)
+
+    kinds = [stem for stem in agent.calls if stem in {"split-epics", "write-epic", "split-stories", "write-story"}]
+    assert kinds == [
+        "split-epics",
+        "write-epic",
+        "write-epic",
+        "split-stories",
+        "split-stories",
+        "write-story",
+        "write-story",
+        "write-story",
+    ], agent.calls
+    assert [args["story_slug"] for args in agent.args_for("write-story")] == [
+        *SLUGS,
+        *SECOND_SLUGS,
+    ]
+    assert set(_work_rows(env.writer.run_dir).values()) == {"done"}
+    assert result.committed is True, result
+
+
+def test_a_run_stopped_at_a_later_epic_story_resumes_without_redoing_settled_rows(
+    backlogged: Path, tmp_path: Path
+) -> None:
+    first = _Agent(backlogged, two_epics=True, explode={"01-edit-profile"})
+    env = _env(tmp_path)
+    run_dir = env.writer.run_dir
+    with pytest.raises(RuntimeError, match="killed while writing 01-edit-profile"):
+        _drive(env, first)
+
+    checkpoint = parse_checkpoint((run_dir / ArtifactWriter.CHECKPOINT_FILE).read_text())
+    resume = read_resume(checkpoint)
+    second = _Agent(backlogged, two_epics=True)
+    result = drive(
+        Author(**resume.inputs),
+        replace(_env(tmp_path, run_dir=run_dir), agent_runner=StubRunner(second)),
+        resume,
+    )
+
+    assert second.counts()["write-story"] == 1, second.counts()
+    assert second.counts()["write-epic"] == 0, second.counts()
+    assert second.counts()["split-stories"] == 0, second.counts()
+    assert set(_work_rows(run_dir).values()) == {"done"}
+    assert result.committed is True, result
+
+
 def test_the_commit_leaves_work_the_run_did_not_do_alone(
     backlogged: Path, tmp_path: Path, write: Callable[[Path, str], Path]
 ) -> None:
@@ -827,16 +878,123 @@ def test_a_story_that_is_not_a_contract_is_reworked_against_the_gate(
 def test_a_story_nobody_can_fix_is_parked_and_the_epic_carries_on(
     backlogged: Path, tmp_path: Path, caplog: pytest.LogCaptureFixture
 ) -> None:
-    """The give-up arm advances the queue instead of waiting on a human forever."""
+    """The give-up arm advances the queue, then the completion gate asks before the run finishes."""
+    seen: list[str] = []
+
+    def answered(path: Path, **kwargs: Any) -> None:
+        if path != backlogged / CONTEXT:
+            return
+        seen.append(path.read_text())
+        agent.fail_audit.clear()
+        path.write_text(seen[-1] + "\nRewrite the acceptance criteria shorter.\n")
+
     agent = _Agent(backlogged, fail_audit={"01-sign-in"})
 
     with caplog.at_level(logging.WARNING):
-        _drive(_env(tmp_path), agent)
+        result = _drive(_env(tmp_path), agent, wait_for_answer=answered)
 
     assert any("parking story '01-sign-in'" in r.message for r in caplog.records), caplog.text
     assert any("remains audit-blocked" in r.message for r in caplog.records)
-    assert agent.args_for("write-story")[-1]["story_slug"] == "02-reset-password"
-    assert _stories(backlogged)["02-reset-password"] is True
+    written = [args["story_slug"] for args in agent.args_for("write-story")]
+    assert written.index("02-reset-password") < len(written) - 1, written
+    assert len(seen) == 1 and f"story {EPIC_NAME}/01-sign-in: blocked" in seen[0], seen
+    last = agent.args_for("write-story")[-1]
+    assert last["story_slug"] == "01-sign-in"
+    assert last["note"] == "Rewrite the acceptance criteria shorter."
+    assert agent.args_for("write-story")[0]["note"] == ""
+    assert _stories(backlogged) == {slug: True for slug in SLUGS}
+    assert result.committed is True, result
+
+
+class _Stop(Exception):
+    pass
+
+
+def _gate_then_stop(seen: list[str]) -> Callable[..., Any]:
+    def answered(path: Path, **kwargs: Any) -> None:
+        if path.name != "_author-context.md":
+            return
+        seen.append(path.read_text())
+        raise _Stop
+
+    return answered
+
+
+def _status(repo: Path) -> str:
+    return next(
+        line for line in (repo / MILESTONE).read_text(encoding="utf-8").splitlines()
+        if line.startswith("status:")
+    )
+
+
+def _work_rows(run_dir: Path) -> dict[str, str]:
+    items = WorkList(JsonBackend(run_dir / WORK_FILE)).items()
+    return {item.id: item.status for item in items}
+
+
+def test_an_audit_blocked_story_stops_at_the_completion_gate_and_nothing_finalizes(
+    backlogged: Path, tmp_path: Path
+) -> None:
+    seen: list[str] = []
+    agent = _Agent(backlogged, fail_audit={"01-sign-in"})
+    env = _env(tmp_path)
+
+    with pytest.raises(_Stop):
+        _drive(env, agent, wait_for_answer=_gate_then_stop(seen))
+
+    assert len(seen) == 1, seen
+    assert f"story {EPIC_NAME}/01-sign-in: blocked" in seen[0]
+    assert f"{EPIC_NAME}/02-reset-password" not in seen[0]
+    assert _status(backlogged) != "status: authored"
+    assert _work_rows(env.writer.run_dir)[f"{EPIC_NAME}/01-sign-in"] == "blocked"
+
+
+def test_an_edit_to_the_milestone_body_ends_at_the_contract_gate(
+    backlogged: Path, tmp_path: Path
+) -> None:
+    seen: list[str] = []
+
+    class _Editing(_Agent):
+        def _write_epic(self, data: dict[str, Any], nth: int) -> dict[str, Any]:
+            path = self.repo / MILESTONE
+            path.write_text(path.read_text(encoding="utf-8") + "\nOne more journey.\n", encoding="utf-8")
+            return super()._write_epic(data, nth)
+
+    with pytest.raises(_Stop):
+        _drive(_env(tmp_path), _Editing(backlogged), wait_for_answer=_gate_then_stop(seen))
+
+    assert len(seen) == 1 and "milestone body changed" in seen[0], seen
+    assert _status(backlogged) != "status: authored"
+
+
+def test_accepting_a_changed_contract_finishes_the_run(backlogged: Path, tmp_path: Path) -> None:
+    seen: list[str] = []
+
+    class _Editing(_Agent):
+        def _write_epic(self, data: dict[str, Any], nth: int) -> dict[str, Any]:
+            path = self.repo / MILESTONE
+            path.write_text(path.read_text(encoding="utf-8") + "\nOne more journey.\n", encoding="utf-8")
+            return super()._write_epic(data, nth)
+
+    def accepted(path: Path, **kwargs: Any) -> None:
+        if path.name == "_author-context.md":
+            seen.append(path.read_text())
+
+    result = _drive(_env(tmp_path), _Editing(backlogged), wait_for_answer=accepted)
+
+    assert len(seen) == 1, seen
+    assert result.committed is True, result
+    assert _status(backlogged) == "status: authored"
+
+
+def test_auto_mode_does_not_skip_the_completion_gate(backlogged: Path, tmp_path: Path) -> None:
+    seen: list[str] = []
+    agent = _Agent(backlogged, fail_audit={"01-sign-in"})
+
+    with pytest.raises(_Stop):
+        _drive(_env(tmp_path), agent, wait_for_answer=_gate_then_stop(seen), operator_mode="auto")
+
+    assert len(seen) == 1, seen
 
 
 def test_an_empty_findings_list_is_a_pass_whatever_status_says(
@@ -1227,8 +1385,8 @@ def test_a_run_killed_mid_story_resumes_on_that_story_alone(
 
     checkpoint = parse_checkpoint((run_dir / ArtifactWriter.CHECKPOINT_FILE).read_text())
     resume = read_resume(checkpoint)
-    assert resume.state == "next_stage", resume
-    assert resume.params == {"blocked": []}, resume.params
+    assert resume.state == "author_story", resume
+    assert [item["id"] for item in resume.params["items"]] == [f"{EPIC_NAME}/02-reset-password"]
     assert resume.flow == "Author", resume
 
     second = _Agent(backlogged)

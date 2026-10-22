@@ -72,6 +72,12 @@ the milestone, writes ordered epics and vertical stories, and changes `status: a
 `status: authored` only after the complete planning graph validates. Survey modes stop after
 discovery; they do not bypass milestone approval by decomposing their generated backlog.
 
+Author keeps a work list of epics, story splits and stories, and drains each kind in turn. A story it
+cannot fix stays blocked on the list while the others continue. Before it finalizes, Author stops
+at a gate that lists every unfinished item, and your answer requeues them with the answer as
+context. Author stops at a second gate when the milestone body changes during the run. `auto`
+operator mode does not skip either gate.
+
 ## Editing authored scope
 
 The author command exposes two standalone edit flows. `epic-edit` is the reconciliation

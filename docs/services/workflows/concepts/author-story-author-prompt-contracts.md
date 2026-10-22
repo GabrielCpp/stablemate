@@ -17,12 +17,12 @@ That diagnostic turn investigates the epic and preserves its findings for the op
 not decide the product or scope question and the subflow resumes through an operator-awaiting
 context.
 
-- code: `workflows/src/workhorse_workflows/author/story_author/flow.py::StoryAuthor.design_mockup` @c86a66c7960f
-- code: `workflows/src/workhorse_workflows/author/story_author/flow.py::StoryAuthor.write_story` @c86a66c7960f
-- code: `workflows/src/workhorse_workflows/author/story_author/flow.py::StoryAuthor.audit_story` @c86a66c7960f
-- code: `workflows/src/workhorse_workflows/author/story_author/flow.py::StoryAuthor.rework_story` @c86a66c7960f
+- code: `workflows/src/workhorse_workflows/author/story_author/flow.py::StoryAuthor.design_mockup` @287ee28728d8
+- code: `workflows/src/workhorse_workflows/author/story_author/flow.py::StoryAuthor.write_story` @287ee28728d8
+- code: `workflows/src/workhorse_workflows/author/story_author/flow.py::StoryAuthor.audit_story` @287ee28728d8
+- code: `workflows/src/workhorse_workflows/author/story_author/flow.py::StoryAuthor.rework_story` @287ee28728d8
 - code: `workflows/src/workhorse_workflows/author/story_author/prompts/design-mockup.md` @5faf2a6385aa
-- code: `workflows/src/workhorse_workflows/author/story_author/prompts/write-story.md` @1d6680e29487
+- code: `workflows/src/workhorse_workflows/author/story_author/prompts/write-story.md` @dabab75aaf99
 - code: `workflows/src/workhorse_workflows/author/story_author/prompts/audit-story.md` @758403bbd400
 - code: `workflows/src/workhorse_workflows/author/story_author/prompts/rework-story.md` @2d1fd8cff26e
 - tests: `workflows/tests/test_prompts_exist.py::test_the_prompt_file_is_there`

@@ -14,5 +14,5 @@ the transitioned milestone use `path`; consumers that need the resulting lifecyc
 `status`. The schema declares both fields with an empty-string default, so the source records
 no further ranking or selection rule between them.
 
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::MilestoneStatus` @2e101dbcac2e
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::MilestoneStatus` @4460b1deea94
 - rule: use `path` for the transitioned milestone's identity and `status` for its recorded lifecycle state; neither field is preferred over the other

@@ -27,6 +27,7 @@ class StorySplitFlow(Workflow):
 
     epic: str = ""
     operator_mode: str = "auto"
+    note: str = ""
 
     BUDGET_LABELS: ClassVar[tuple[str, ...]] = ("cov_reworks", "split_resolves")
 
@@ -91,6 +92,7 @@ class StorySplitFlow(Workflow):
                 "epic": self.epic,
                 "epic_dir": self._epic_dir(),
                 "rework_notes": rework_notes,
+                "note": self.note,
             },
         )
         if result.status == "standoff":

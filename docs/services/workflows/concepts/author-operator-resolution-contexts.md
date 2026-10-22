@@ -16,6 +16,6 @@ when the reader only needs to interpret the diagnostic report. Neither concept s
 other: they describe the same schema at different scopes.
 
 - code: `workflows/src/workhorse_workflows/author/shared/schemas/survey.py::OperatorResolution` @7db58efbfd66
-- code: `workflows/src/workhorse_workflows/author/epic_author/flow.py::EpicAuthor.resolve_epic` @2d207cc584a9
+- code: `workflows/src/workhorse_workflows/author/epic_author/flow.py::EpicAuthor.resolve_epic` @fe667f6c716a
 - rule: use the Author concept for resolver invocation and report-field roles together; use the Surveyor concept for report-field interpretation alone; neither is preferred over the other
 - detail: [operator resolution documentation context](operator-resolution-documentation-context.md)

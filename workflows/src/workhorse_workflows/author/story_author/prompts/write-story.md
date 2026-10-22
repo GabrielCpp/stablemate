@@ -40,6 +40,13 @@ stories have still shipped with whole defects unnoticed — it just rots and mis
   Notes about existing or legacy mechanics.
 {%- endif %}
 
+{%- if workhorse_var('note') %}
+
+## Operator answer
+
+{{ workhorse_var('note') }}
+{%- endif %}
+
 ## Required reading
 
 - The parent `epic.md` — read its `## Stories` section to find THIS story's entry (its `covers`

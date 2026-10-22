@@ -13,11 +13,11 @@ through one package import. The nodes several author machines call live in
 `workhorse_workflows.author.shared.nodes` on their own blueprint. The nodes one subflow calls live
 in that subflow's `nodes` package.
 
-The package contains one subject module, `planner`. The blueprint itself
+The package contains two subject modules, `fill` and `completion`. The blueprint itself
 is isolated in a submodule to break circular import cycles: subject modules import the blueprint to
 register themselves, so the blueprint cannot import them back.
 
-- code: `workflows/src/workhorse_workflows/author/main/nodes/__init__.py` @71db78d78b3d
+- code: `workflows/src/workhorse_workflows/author/main/nodes/__init__.py` @811e1aa2a1a6
 - code: `workflows/src/workhorse_workflows/author/main/nodes/_blueprint.py::blueprint` @29102aa5dc01
 - tests: `workflows/tests/author/test_workflow.py::test_every_flat_stage_is_directly_registered`
 - detail: [author main node exports](author-main-node-exports.md)
@@ -33,9 +33,12 @@ register themselves, so the blueprint cannot import them back.
 
 ## Subject modules
 
-The following module contains decorated nodes:
+The following modules contain decorated nodes:
 
-### planner
-- semantics: artifact-derived authoring unit planning — select the next work item at the planner level
-- contains: `plan_author_step`
+### fill
+- semantics: files the ostler graph's epics, story splits, and stories on the run's work list
+- contains: `check_epic_split`, `fill_work`
 
+### completion
+- semantics: the completion gate's evidence, the milestone contract digest and the unfinished work rows
+- contains: `contract_digest`, `check_completion`

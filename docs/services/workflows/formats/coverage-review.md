@@ -8,7 +8,7 @@ title: Story split coverage review
 The independent semantic verdict over one epic's seed-to-story coverage after mechanical
 validation.
 
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::CoverageReview` @2e101dbcac2e
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::CoverageReview` @4460b1deea94
 - detail: [author story-split subflow](../concepts/story-split-subflow.md)
 
 ## Fields
@@ -19,7 +19,7 @@ validation.
 - required: false
 - semantics: selects receipt recording, operator resolution, or story rework
 - verify: json_path(path="$.status", equals="example status")
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::CoverageReview` @2e101dbcac2e
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::CoverageReview` @4460b1deea94
 - detail: [coverage review response fields](../concepts/coverage-review-response-fields.md)
 
 ### notes
@@ -28,5 +28,5 @@ validation.
 - required: false
 - semantics: review findings passed to story splitting or the operator context
 - verify: json_path(path="$.notes", equals="Applied the change and ran the gates.")
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::CoverageReview` @2e101dbcac2e
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::CoverageReview` @4460b1deea94
 - detail: [coverage review response fields](../concepts/coverage-review-response-fields.md)

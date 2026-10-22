@@ -54,7 +54,7 @@ every seed is covered, and no edge references another epic.
 - kind: run
 - run: invoke split-stories agent, read rework notes from prior coverage failures, record stories via ostler
 - verify: [split_stories](../concepts/story-split-subflow.md#split_stories)
-- code: `workflows/src/workhorse_workflows/author/story_split/flow.py::StorySplitFlow.split_stories` @f7d215b43b0c
+- code: `workflows/src/workhorse_workflows/author/story_split/flow.py::StorySplitFlow.split_stories` @1252f202010b
 
 ## Check coverage
 
@@ -75,7 +75,7 @@ The review result can be `ok`, `gaps`, or `blocked`:
 - kind: verify
 - run: validate seed coverage and graph integrity; invoke coverage-review agent
 - verify: [check_coverage](../concepts/story-split-subflow.md#check_coverage)
-- code: `workflows/src/workhorse_workflows/author/story_split/flow.py::StorySplitFlow.check_coverage` @f7d215b43b0c
+- code: `workflows/src/workhorse_workflows/author/story_split/flow.py::StorySplitFlow.check_coverage` @1252f202010b
 - detail: [story-split check-coverage step roles](../concepts/story-split-check-coverage-step-roles.md)
 
 ## Done
@@ -87,6 +87,6 @@ recorded under the epic's `story-split-receipt.json` and captures the exact stor
 - run: record the split and review receipt with the exact story digest
 - verify: [check_coverage](../concepts/story-split-subflow.md#check_coverage)
 - verify: created(subject="story-split-receipt.json")
-- code: `workflows/src/workhorse_workflows/author/story_split/flow.py::StorySplitFlow.check_coverage` @f7d215b43b0c
+- code: `workflows/src/workhorse_workflows/author/story_split/flow.py::StorySplitFlow.check_coverage` @1252f202010b
 - detail: [story-split check-coverage step roles](../concepts/story-split-check-coverage-step-roles.md)
 

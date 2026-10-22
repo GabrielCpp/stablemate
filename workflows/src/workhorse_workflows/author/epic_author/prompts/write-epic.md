@@ -16,6 +16,12 @@ canonical `## Seeds` section. Do not write stories yet.
 - Epic: `{{ workhorse_var('epic') }}`
 - Epic directory: `{{ workhorse_var('epic_dir') }}`
 - Source milestone: `{{ workhorse_var('milestone') }}`
+{%- if workhorse_var('note') %}
+
+## Operator answer
+
+{{ workhorse_var('note') }}
+{%- endif %}
 
 Read the milestone, its `grills/` records, this epic and its neighboring epics in milestone order, installed planning and
 artifact guidance, `{{ epic_dir }}/context.md` when present, and the read-only OKF book under

@@ -4,5 +4,5 @@ The default `author` flow.
 
 ## Map
 
-- `flow.py`: the flat author loop: dispatch survey or story mode, else run the next stage the planner picks.
-- `nodes/`: the planner that picks the next authoring stage.
+- `flow.py`: dispatch survey or story mode, else fill and drain the epic, story-split and story work lists, then pass the completion gate.
+- `nodes/`: the fill that files work from the ostler graph, and the completion gate's evidence.

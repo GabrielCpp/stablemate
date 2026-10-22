@@ -8,7 +8,7 @@ title: Seeded story result
 The result of registering one backlog or literal bullet as a story. It carries the created or
 reused story paths, the source bullet identity, provenance, and the reason for the outcome.
 
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::SeededStory` @2e101dbcac2e
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::SeededStory` @4460b1deea94
 - detail: [author main story processing](../concepts/author-main-story-processing.md)
 
 ## Fields
@@ -19,7 +19,7 @@ reused story paths, the source bullet identity, provenance, and the reason for t
 - required: false
 - semantics: epic directory receiving the seeded story
 - verify: json_path(path="$.epic_dir", equals="docs/stories/acme-story")
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::SeededStory` @2e101dbcac2e
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::SeededStory` @4460b1deea94
 - detail: [seeded story field roles](../concepts/seeded-story-field-roles.md)
 
 ### story_slug
@@ -28,7 +28,7 @@ reused story paths, the source bullet identity, provenance, and the reason for t
 - required: false
 - semantics: created or reused story identifier
 - verify: json_path(path="$.story_slug", equals="acme-story")
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::SeededStory` @2e101dbcac2e
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::SeededStory` @4460b1deea94
 - detail: [seeded story field roles](../concepts/seeded-story-field-roles.md)
 
 ### story_dir
@@ -37,7 +37,7 @@ reused story paths, the source bullet identity, provenance, and the reason for t
 - required: false
 - semantics: directory of the created or reused story
 - verify: json_path(path="$.story_dir", equals="docs/stories/acme-story")
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::SeededStory` @2e101dbcac2e
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::SeededStory` @4460b1deea94
 - detail: [seeded story field roles](../concepts/seeded-story-field-roles.md)
 
 ### story_path
@@ -46,7 +46,7 @@ reused story paths, the source bullet identity, provenance, and the reason for t
 - required: false
 - semantics: story document path
 - verify: json_path(path="$.story_path", equals="docs/stories/acme-story/story.md")
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::SeededStory` @2e101dbcac2e
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::SeededStory` @4460b1deea94
 - detail: [seeded story field roles](../concepts/seeded-story-field-roles.md)
 
 ### bullet_id
@@ -55,7 +55,7 @@ reused story paths, the source bullet identity, provenance, and the reason for t
 - required: false
 - semantics: source backlog or literal bullet identifier
 - verify: json_path(path="$.bullet_id", equals="CASE-1234")
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::SeededStory` @2e101dbcac2e
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::SeededStory` @4460b1deea94
 - detail: [seeded story field roles](../concepts/seeded-story-field-roles.md)
 
 ### from_backlog
@@ -64,7 +64,7 @@ reused story paths, the source bullet identity, provenance, and the reason for t
 - required: false
 - semantics: whether the source bullet came from the configured backlog
 - verify: json_path(path="$.from_backlog", equals=False)
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::SeededStory` @2e101dbcac2e
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::SeededStory` @4460b1deea94
 - detail: [seeded story field roles](../concepts/seeded-story-field-roles.md)
 
 ### reason
@@ -73,5 +73,5 @@ reused story paths, the source bullet identity, provenance, and the reason for t
 - required: false
 - semantics: explanation of creation or reuse
 - verify: json_path(path="$.reason", equals="The slice works without it.")
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::SeededStory` @2e101dbcac2e
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::SeededStory` @4460b1deea94
 - detail: [seeded story field roles](../concepts/seeded-story-field-roles.md)

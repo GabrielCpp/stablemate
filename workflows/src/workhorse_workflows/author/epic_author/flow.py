@@ -21,6 +21,7 @@ class EpicAuthor(Workflow):
 
     epic: str = ""
     operator_mode: str = "auto"
+    note: str = ""
 
     BUDGET_LABELS: ClassVar[tuple[str, ...]] = ("resolves",)
 
@@ -59,6 +60,7 @@ class EpicAuthor(Workflow):
                 "epic_dir": self.ctx.epic_dir,
                 "milestone": self.ctx.milestone_path,
                 "services_dir": self.ctx.services_dir,
+                "note": self.note,
             },
         )
         if result.status == "blocked":

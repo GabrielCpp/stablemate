@@ -66,6 +66,7 @@ class StoryAuthor(Workflow):
     story: str = ""
     feedback_dir: str = ""
     operator_mode: str = "auto"
+    note: str = ""
 
     BUDGET_LABELS: ClassVar[tuple[str, ...]] = (
         "reworks",
@@ -147,6 +148,7 @@ class StoryAuthor(Workflow):
                 "story_dir": target.story_dir,
                 "services_dir": self.ctx.services_dir,
                 "mockup_path": mockup,
+                "note": self.note,
             },
         )
         if result.status == "blocked":

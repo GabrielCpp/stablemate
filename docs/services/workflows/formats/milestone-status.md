@@ -8,7 +8,7 @@ title: Milestone status
 The final milestone transition result identifies the milestone file and the lifecycle status written
 to it.
 
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::MilestoneStatus` @2e101dbcac2e
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::MilestoneStatus` @4460b1deea94
 - detail: [author shared schemas](../concepts/author-shared-schemas.md)
 
 ## Fields
@@ -19,7 +19,7 @@ to it.
 - required: false
 - semantics: milestone document whose lifecycle was transitioned
 - verify: json_path(path="$.path", equals="docs/milestones/acme-launch/milestone.md")
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::MilestoneStatus` @2e101dbcac2e
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::MilestoneStatus` @4460b1deea94
 - detail: [milestone status field roles](../concepts/milestone-status-field-roles.md)
 
 ### status
@@ -28,5 +28,5 @@ to it.
 - required: false
 - semantics: lifecycle status recorded on the milestone
 - verify: json_path(path="$.status", equals="example status")
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::MilestoneStatus` @2e101dbcac2e
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::MilestoneStatus` @4460b1deea94
 - detail: [milestone status field roles](../concepts/milestone-status-field-roles.md)

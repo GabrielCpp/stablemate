@@ -11,45 +11,99 @@ digraph author {
     style=dashed; color=gray50; fontsize=11;
 
     f0____start [label="START", shape=circle, fillcolor=lightgreen, width=0.4];
-    subgraph cluster_f0__next_stage {
-      label="next_stage"; fontsize=12;
+    subgraph cluster_f0__author_story {
+      label="author_story"; fontsize=12;
       style="rounded,filled"; fillcolor=lightblue; color=steelblue;
       node [style="filled", fontsize=10];
-      f0__next_stage__0 [label="plan_author_step\nSelect exactly one next stage from the approved milestone's current artifacts.", shape=box, fillcolor=white];
-      f0__next_stage__1 [label="handoff → epic-split", shape=box, fillcolor=plum];
-      f0__next_stage__2 [label="handoff → epic-author", shape=box, fillcolor=plum];
-      f0__next_stage__3 [label="handoff → story-split", shape=box, fillcolor=plum];
-      f0__next_stage__4 [label="handoff → story-author", shape=box, fillcolor=plum];
-      f0__next_stage__5 [label="handoff → finalize", shape=box, fillcolor=plum];
-      f0__next_stage__0 -> f0__next_stage__1 [color=gray40, arrowsize=0.6];
-      f0__next_stage__1 -> f0__next_stage__2 [color=gray40, arrowsize=0.6];
-      f0__next_stage__2 -> f0__next_stage__3 [color=gray40, arrowsize=0.6];
-      f0__next_stage__3 -> f0__next_stage__4 [color=gray40, arrowsize=0.6];
-      f0__next_stage__4 -> f0__next_stage__5 [color=gray40, arrowsize=0.6];
+      f0__author_story__0 [label="handoff → story-author", shape=box, fillcolor=plum];
+    }
+    subgraph cluster_f0__complete {
+      label="complete"; fontsize=12;
+      style="rounded,filled"; fillcolor=lightblue; color=steelblue;
+      node [style="filled", fontsize=10];
+      f0__complete__0 [label="check_completion\nWhether the milestone body still matches *baseline*, and every work-list row not yet done.", shape=box, fillcolor=white];
+      f0__complete__1 [label="handoff → finalize", shape=box, fillcolor=plum];
+      f0__complete__0 -> f0__complete__1 [color=gray40, arrowsize=0.6];
+    }
+    subgraph cluster_f0__epics {
+      label="epics"; fontsize=12;
+      style="rounded,filled"; fillcolor=lightblue; color=steelblue;
+      node [style="filled", fontsize=10];
+      f0__epics__0 [label="handoff → epic-author", shape=box, fillcolor=plum];
+    }
+    subgraph cluster_f0__fill_epics {
+      label="fill_epics"; fontsize=12;
+      style="rounded,filled"; fillcolor=lightblue; color=steelblue;
+      node [style="filled", fontsize=10];
+      f0__fill_epics__0 [label="fill_work\nFile every item of *kind* the ostler graph holds, satisfied ones as done, skipping ids already filed.", shape=box, fillcolor=white];
+    }
+    subgraph cluster_f0__fill_stories {
+      label="fill_stories"; fontsize=12;
+      style="rounded,filled"; fillcolor=lightblue; color=steelblue;
+      node [style="filled", fontsize=10];
+      f0__fill_stories__0 [label="fill_work\nFile every item of *kind* the ostler graph holds, satisfied ones as done, skipping ids already filed.", shape=box, fillcolor=white];
+    }
+    subgraph cluster_f0__fill_story_splits {
+      label="fill_story_splits"; fontsize=12;
+      style="rounded,filled"; fillcolor=lightblue; color=steelblue;
+      node [style="filled", fontsize=10];
+      f0__fill_story_splits__0 [label="fill_work\nFile every item of *kind* the ostler graph holds, satisfied ones as done, skipping ids already filed.", shape=box, fillcolor=white];
+    }
+    f0__requeue [label="requeue"];
+    subgraph cluster_f0__split_epics {
+      label="split_epics"; fontsize=12;
+      style="rounded,filled"; fillcolor=lightblue; color=steelblue;
+      node [style="filled", fontsize=10];
+      f0__split_epics__0 [label="handoff → epic-split", shape=box, fillcolor=plum];
+      f0__split_epics__1 [label="check_epic_split\nWhether the approved milestone already has a valid ordered epic split.", shape=box, fillcolor=white];
+      f0__split_epics__0 -> f0__split_epics__1 [color=gray40, arrowsize=0.6];
     }
     subgraph cluster_f0__start {
       label="start"; fontsize=12;
       style="rounded,filled"; fillcolor=lightblue; color=steelblue;
       node [style="filled", fontsize=10];
-      f0__start__0 [label="adopt_backlog\nMint ids for every unnamed backlog bullet before decomposition or story lookup.", shape=box, fillcolor=white];
-      f0__start__1 [label="seed_story\nRegister ONE bullet as a new story inside an already-existing epic.", shape=box, fillcolor=white];
-      f0__start__2 [label="handoff → story-author", shape=box, fillcolor=plum];
-      f0__start__3 [label="handoff → surveyor", shape=box, fillcolor=plum];
-      f0__start__4 [label="handoff → parity-surveyor", shape=box, fillcolor=plum];
-      f0__start__5 [label="prune_bullet\nRemove the one backlog bullet story mode consumed — story mode's tail.", shape=box, fillcolor=white];
+      f0__start__0 [label="contract_digest\nThe sha256 of the milestone body, which the run never writes, so a change is an operator's edit.", shape=box, fillcolor=white];
+      f0__start__1 [label="adopt_backlog\nMint ids for every unnamed backlog bullet before decomposition or story lookup.", shape=box, fillcolor=white];
+      f0__start__2 [label="seed_story\nRegister ONE bullet as a new story inside an already-existing epic.", shape=box, fillcolor=white];
+      f0__start__3 [label="handoff → story-author", shape=box, fillcolor=plum];
+      f0__start__4 [label="handoff → surveyor", shape=box, fillcolor=plum];
+      f0__start__5 [label="handoff → parity-surveyor", shape=box, fillcolor=plum];
+      f0__start__6 [label="prune_bullet\nRemove the one backlog bullet story mode consumed — story mode's tail.", shape=box, fillcolor=white];
       f0__start__0 -> f0__start__1 [color=gray40, arrowsize=0.6];
       f0__start__1 -> f0__start__2 [color=gray40, arrowsize=0.6];
       f0__start__2 -> f0__start__3 [color=gray40, arrowsize=0.6];
       f0__start__3 -> f0__start__4 [color=gray40, arrowsize=0.6];
       f0__start__4 -> f0__start__5 [color=gray40, arrowsize=0.6];
+      f0__start__5 -> f0__start__6 [color=gray40, arrowsize=0.6];
+    }
+    f0__stories [label="stories"];
+    subgraph cluster_f0__story_splits {
+      label="story_splits"; fontsize=12;
+      style="rounded,filled"; fillcolor=lightblue; color=steelblue;
+      node [style="filled", fontsize=10];
+      f0__story_splits__0 [label="handoff → story-split", shape=box, fillcolor=plum];
     }
     f0____end [label="END", shape=doublecircle, fillcolor=gold, width=0.4];
 
     f0____start -> f0__start__0 [lhead=cluster_f0__start];
-    f0__next_stage__5 -> f0__next_stage__0 [label="blocked"];
-    f0__next_stage__5 -> f0____end [color=darkgoldenrod, ltail=cluster_f0__next_stage];
-    f0__start__5 -> f0__next_stage__0 [ltail=cluster_f0__start, lhead=cluster_f0__next_stage];
-    f0__start__5 -> f0____end [color=darkgoldenrod, ltail=cluster_f0__start];
+    f0__author_story__0 -> f0__stories [ltail=cluster_f0__author_story];
+    f0__complete__1 -> f0____end [color=darkgoldenrod, ltail=cluster_f0__complete];
+    f0__complete__1 -> f0__complete__0 [label="baseline", style=dashed, color=darkorange];
+    f0__complete__1 -> f0__requeue [label="ids, question", style=dashed, color=darkorange, ltail=cluster_f0__complete];
+    f0__epics__0 -> f0__epics__0 [label="another chunk"];
+    f0__epics__0 -> f0__fill_story_splits__0 [ltail=cluster_f0__epics, lhead=cluster_f0__fill_story_splits];
+    f0__fill_epics__0 -> f0__epics__0 [ltail=cluster_f0__fill_epics, lhead=cluster_f0__epics];
+    f0__fill_stories__0 -> f0__stories [ltail=cluster_f0__fill_stories];
+    f0__fill_story_splits__0 -> f0__story_splits__0 [ltail=cluster_f0__fill_story_splits, lhead=cluster_f0__story_splits];
+    f0__requeue -> f0__split_epics__0 [lhead=cluster_f0__split_epics];
+    f0__split_epics__1 -> f0__fill_epics__0 [ltail=cluster_f0__split_epics, lhead=cluster_f0__fill_epics];
+    f0__start__6 -> f0__split_epics__0 [ltail=cluster_f0__start, lhead=cluster_f0__split_epics];
+    f0__start__6 -> f0____end [color=darkgoldenrod, ltail=cluster_f0__start];
+    f0__stories -> f0__stories [label="another chunk"];
+    f0__stories -> f0__author_story__0 [label="drain target", lhead=cluster_f0__author_story];
+    f0__stories -> f0__complete__0 [lhead=cluster_f0__complete];
+    f0__story_splits__0 -> f0__story_splits__0 [label="another chunk"];
+    f0__story_splits__0 -> f0__fill_stories__0 [ltail=cluster_f0__story_splits, lhead=cluster_f0__fill_stories];
   }
 
   subgraph cluster_surveyor_f1__ {

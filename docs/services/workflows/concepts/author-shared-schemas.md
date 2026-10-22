@@ -17,7 +17,6 @@ separate source-layer groups.
 - tests: [author unit tests](../ops/author-unit-tests.md)
 - detail: [author configuration](../formats/author-config.md)
 - detail: [author run context](../formats/run-context.md)
-- detail: [author step](../formats/author-step.md)
 - detail: [story choice](../formats/story-choice.md)
 - detail: [seeded story](../formats/seeded-story.md)
 - detail: [coverage defects](../formats/coverage-defects.md)
@@ -89,26 +88,29 @@ The edit plan contains seed and story change formats, while an epic snapshot con
 story, and milestone snapshot formats. Their complete field contracts are the existing format
 nodes reached from the author surfaces and subflows.
 
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::Config` @2e101dbcac2e
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::RunContext` @2e101dbcac2e
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::AuthorStep` @2e101dbcac2e
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::StoryChoice` @2e101dbcac2e
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::SeededStory` @2e101dbcac2e
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::Defects` @2e101dbcac2e
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::MilestoneStatus` @2e101dbcac2e
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::VerifyReport` @2e101dbcac2e
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::Feedback` @2e101dbcac2e
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::Pruned` @2e101dbcac2e
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::Ledger` @2e101dbcac2e
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::Committed` @2e101dbcac2e
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::WriteEpicResult` @2e101dbcac2e
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::StorySplit` @2e101dbcac2e
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::MockupResult` @2e101dbcac2e
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::MockupGate` @2e101dbcac2e
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::WriteStoryResult` @2e101dbcac2e
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::AuditFinding` @2e101dbcac2e
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::AuditResult` @2e101dbcac2e
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::CoverageReview` @2e101dbcac2e
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::Config` @4460b1deea94
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::RunContext` @4460b1deea94
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::Filled` @4460b1deea94
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::ContractDigest` @4460b1deea94
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::UnfinishedRow` @4460b1deea94
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::Completion` @4460b1deea94
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::StoryChoice` @4460b1deea94
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::SeededStory` @4460b1deea94
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::Defects` @4460b1deea94
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::MilestoneStatus` @4460b1deea94
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::VerifyReport` @4460b1deea94
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::Feedback` @4460b1deea94
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::Pruned` @4460b1deea94
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::Ledger` @4460b1deea94
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::Committed` @4460b1deea94
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::WriteEpicResult` @4460b1deea94
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::StorySplit` @4460b1deea94
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::MockupResult` @4460b1deea94
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::MockupGate` @4460b1deea94
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::WriteStoryResult` @4460b1deea94
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::AuditFinding` @4460b1deea94
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::AuditResult` @4460b1deea94
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::CoverageReview` @4460b1deea94
 - code: `workflows/src/workhorse_workflows/author/shared/schemas/edit.py::EditIntent` @0cf57cc63031
 - code: `workflows/src/workhorse_workflows/author/shared/schemas/edit.py::ResolvedBullet` @0cf57cc63031
 - code: `workflows/src/workhorse_workflows/author/shared/schemas/edit.py::SeedSnapshot` @0cf57cc63031

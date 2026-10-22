@@ -19,6 +19,12 @@ stage does that next.
 - Epic slug: `{{ workhorse_var('epic') }}`
 - Epic directory: `{{ workhorse_var('epic_dir') }}`
 - Coverage-stage rework notes to address (empty on a first split): `{{ workhorse_var('rework_notes') }}`
+{%- if workhorse_var('note') %}
+
+## Operator answer
+
+{{ workhorse_var('note') }}
+{%- endif %}
 
 ## Required reading
 
