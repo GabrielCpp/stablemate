@@ -21,7 +21,20 @@ dependencies = [
   "workhorse-workflows>=3,<4",
   "farrier>=3,<4",
   "stablemate-groom>=1,<2",
+  "ostler>=3,<4",
 ]
+
+[project.scripts]
+farrier = "farrier.install:main"
+groom = "groom.cli:main"
+groom-sidecar = "groom.cli:sidecar_main"
+ostler = "ostler.cli:main"
+workhorse-loop-runner = "workhorse_workflows.loop_runner.workflow:main"
+workhorse-research = "workhorse_workflows.research.workflow:main"
+workhorse-author = "workhorse_workflows.author.workflow:main"
+workhorse-coder = "workhorse_workflows.coder.workflow:main"
+workhorse-okf-book = "workhorse_workflows.okf_book.workflow:main"
+workhorse-new = "workhorse_workflows.new.scaffold:main"
 
 [project.optional-dependencies]
 test = ["pytest>=8.0", "packaging>=24"]
@@ -45,6 +58,7 @@ include = ["README.md", "LICENSE"]
 workhorse-workflows = { workspace = true }
 farrier = { workspace = true }
 stablemate-groom = { workspace = true }
+ostler = { workspace = true }
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

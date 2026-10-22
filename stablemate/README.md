@@ -1,26 +1,27 @@
 # stablemate
 
 This package installs the stablemate agent tools in one step, at versions that work together.
-It has no code and no command of its own. It depends on three distributions:
+It has no code of its own. It depends on four distributions and puts each one's commands on
+your PATH:
 
 | Distribution          | What you get                                                          |
 | --------------------- | --------------------------------------------------------------------- |
 | `workhorse-workflows` | The agent workflows, one command each: `workhorse-loop-runner`, `workhorse-coder` and the rest. |
 | `farrier`             | The `farrier` command, which renders the prompt library into a repository. |
 | `stablemate-groom`    | The `groom` dashboard and telemetry collector, plus `groom-sidecar`.  |
+| `ostler`              | The `ostler` command, which checks and edits a repository's `docs/` graph. |
 
 ## Install
 
 ```bash
-uv tool install workhorse-workflows --with stablemate --with-executables-from farrier,stablemate-groom
+uv tool install stablemate
 ```
 
-You need [uv](https://docs.astral.sh/uv/) and Python 3.12 or newer.
+You need [uv](https://docs.astral.sh/uv/) and Python 3.12 or newer. pipx works too:
 
-The line names `workhorse-workflows` first because uv refuses to install a package with no
-commands as a tool, and this package has none. `--with stablemate` holds all three tools to
-the major versions this package allows. `--with-executables-from` puts the `farrier` and `groom`
-commands on your PATH next to the workflow commands.
+```bash
+pipx install stablemate
+```
 
 Check the install:
 
@@ -28,15 +29,16 @@ Check the install:
 workhorse-loop-runner run --dry-run
 farrier --help
 groom --help
+ostler --help
 ```
 
 ## Versions
 
-Each release of this package allows one major version of each tool. To move all three to
+Each release of this package allows one major version of each tool. To move all four to
 their newest release within it, run:
 
 ```bash
-uv tool upgrade workhorse-workflows
+uv tool upgrade stablemate
 ```
 
 The tools, their docs and their changelogs live in the

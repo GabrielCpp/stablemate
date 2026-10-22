@@ -14,13 +14,17 @@ def _project(path: Path) -> dict:
     return tomllib.loads(path.read_text(encoding="utf-8"))["project"]
 
 
-def _member_versions() -> dict[str, Version]:
+def _members() -> dict[str, dict]:
     workspace = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
-    versions: dict[str, Version] = {}
-    for member in workspace["tool"]["uv"]["workspace"]["members"]:
-        project = _project(ROOT / member / "pyproject.toml")
-        versions[project["name"]] = Version(project["version"])
-    return versions
+    projects = [
+        _project(ROOT / member / "pyproject.toml")
+        for member in workspace["tool"]["uv"]["workspace"]["members"]
+    ]
+    return {project["name"]: project for project in projects}
+
+
+def _member_versions() -> dict[str, Version]:
+    return {name: Version(project["version"]) for name, project in _members().items()}
 
 
 def _next_series(version: Version) -> Version:
@@ -53,11 +57,17 @@ def test_no_pin_falls_behind_its_member() -> None:
     assert stale == {}, "a member released a new major; run make sync-pins"
 
 
-def test_the_readme_install_line_names_every_pinned_distribution() -> None:
+def test_every_pinned_command_is_exposed_by_the_umbrella() -> None:
+    members = _members()
+    wanted = {
+        command: target
+        for name in _pins()
+        for command, target in members[name].get("scripts", {}).items()
+    }
+    assert _project(PACKAGE / "pyproject.toml")["scripts"] == wanted
+
+
+def test_the_readme_installs_the_umbrella_by_name() -> None:
     readme = (PACKAGE / "README.md").read_text(encoding="utf-8")
-    match = re.search(
-        r"uv tool install (\S+) --with stablemate --with-executables-from (\S+)", readme
-    )
-    assert match is not None
-    named = [match.group(1), *match.group(2).split(",")]
-    assert sorted(named) == sorted(_pins())
+    assert re.search(r"^uv tool install stablemate$", readme, re.MULTILINE)
+    assert re.search(r"^pipx install stablemate$", readme, re.MULTILINE)

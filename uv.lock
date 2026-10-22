@@ -1744,6 +1744,7 @@ version = "0.1.1"
 source = { editable = "stablemate" }
 dependencies = [
     { name = "farrier" },
+    { name = "ostler" },
     { name = "stablemate-groom" },
     { name = "workhorse-workflows" },
 ]
@@ -1757,6 +1758,7 @@ test = [
 [package.metadata]
 requires-dist = [
     { name = "farrier", editable = "farrier" },
+    { name = "ostler", editable = "ostler" },
     { name = "packaging", marker = "extra == 'test'", specifier = ">=24" },
     { name = "pytest", marker = "extra == 'test'", specifier = ">=8.0" },
     { name = "stablemate-groom", editable = "groom" },

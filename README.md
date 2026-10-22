@@ -171,7 +171,7 @@ was last checked.
 | What | State | Checked |
 | --- | --- | --- |
 | The dashboard, [groom](groom/): answers a run's questions from the browser and pages you when a run stalls | Runs from a checkout. It will publish as `stablemate-groom`, because the name `groom` on PyPI belongs to another project. | 2026-10-03 |
-| One install line for every command: `uv tool install workhorse-workflows --with stablemate --with-executables-from farrier,stablemate-groom` | Not on PyPI yet | 2026-10-03 |
+| One install line for every command: `uv tool install stablemate` or `pipx install stablemate` | Not on PyPI yet | 2026-10-03 |
 | `workhorse-new NAME --check CMD`: wraps one check from your repo in a workflow that loops the agent until the check passes. [Guide](workflows/docs/first-win.md) | Next `workhorse-workflows` release | 2026-10-03 |
 | `workhorse-loop-runner`, the install check above | Next `workhorse-workflows` release | 2026-10-03 |
 | A site with a replay of a real multi-day run | Waits for launch | 2026-10-03 |

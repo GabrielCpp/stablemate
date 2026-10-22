@@ -145,8 +145,8 @@ jobs:
           UV_TOOL_DIR: ${{ runner.temp }}/tools
           UV_TOOL_BIN_DIR: ${{ runner.temp }}/bin
         run: |
-          uv tool install workhorse-workflows --with stablemate --with-executables-from farrier,stablemate-groom --find-links "$RUNNER_TEMP/wheels"
-          for command in workhorse-loop-runner workhorse-coder farrier groom; do
+          uv tool install stablemate --find-links "$RUNNER_TEMP/wheels"
+          for command in workhorse-loop-runner workhorse-coder farrier groom ostler; do
             "$UV_TOOL_BIN_DIR/$command" --help >/dev/null
           done
           "$UV_TOOL_BIN_DIR/workhorse-loop-runner" run --dry-run
