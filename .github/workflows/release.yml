@@ -114,7 +114,7 @@ jobs:
 
   # The gate. An upload to PyPI cannot be taken back, so lint and the suites of the packages
   # a release ships run against the merged tree before anything leaves the runner. paddock
-  # and saddlebag are left to ci.yml, because nothing they contain is uploaded.
+  # is left to ci.yml, because nothing it contains is uploaded.
   verify:
     needs: release-please
     if: >-
@@ -163,7 +163,7 @@ jobs:
       RELEASED: >-
         ${{ needs.release-please.outputs.releases_created == 'true'
             && needs.release-please.outputs.paths_released
-            || '["ostler","workhorse","farrier","workflows","groom","stablemate"]' }}
+            || '["ostler","workhorse","farrier","workflows","groom","saddlebag","stablemate"]' }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -202,6 +202,10 @@ jobs:
       - name: Build stablemate-groom
         if: contains(fromJSON(env.RELEASED), 'groom')
         run: uv build --package stablemate-groom --out-dir dist/stablemate-groom
+
+      - name: Build stablemate-saddlebag
+        if: contains(fromJSON(env.RELEASED), 'saddlebag')
+        run: uv build --package stablemate-saddlebag --out-dir dist/stablemate-saddlebag
 
       - name: Build stablemate
         if: contains(fromJSON(env.RELEASED), 'stablemate')
@@ -261,6 +265,13 @@ jobs:
           skip-existing: true
           packages-dir: dist/stablemate-groom
 
+      - name: Publish stablemate-saddlebag
+        if: contains(fromJSON(env.RELEASED), 'saddlebag')
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          skip-existing: true
+          packages-dir: dist/stablemate-saddlebag
+
       - name: Publish stablemate
         if: contains(fromJSON(env.RELEASED), 'stablemate')
         uses: pypa/gh-action-pypi-publish@release/v1
@@ -268,7 +279,6 @@ jobs:
           skip-existing: true
           packages-dir: dist/stablemate
 
-      # saddlebag is versioned and gets changelogs, but has no publish step: it is not in
-      # scope. Releasing it means adding its steps here and registering a pending trusted
-      # publisher first. groom publishes as `stablemate-groom`, because the name `groom`
-      # on PyPI belongs to an unrelated project.
+      # groom publishes as `stablemate-groom` and saddlebag as `stablemate-saddlebag`,
+      # because the short names on PyPI are unavailable. The release-please components
+      # keep the short names.

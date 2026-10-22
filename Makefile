@@ -91,12 +91,12 @@ test-release: ## Run lint and the suites of the packages a release ships (the re
 	$(MAKE) -C ostler test
 	$(MAKE) -C farrier test
 	$(MAKE) -C groom test
+	$(MAKE) -C saddlebag test
 	$(MAKE) -C stablemate test
 
 .PHONY: test
 test: ## Run lint and every package suite, exactly as CI does (the check-* guards are their own targets)
 	$(MAKE) test-release
-	$(MAKE) -C saddlebag test
 	$(MAKE) -C paddock test
 
 .PHONY: bench-doctor
@@ -260,6 +260,7 @@ build: ## Build sdists + wheels for the published distributions (into each packa
 	$(MAKE) -C farrier build
 	$(MAKE) -C workflows build
 	$(MAKE) -C groom build
+	$(MAKE) -C saddlebag build
 	$(MAKE) -C stablemate build
 
 .PHONY: version
@@ -269,6 +270,7 @@ version: ## Print every published package's declared version
 	@$(MAKE) -s -C farrier version
 	@$(MAKE) -s -C workflows version
 	@$(MAKE) -s -C groom version
+	@$(MAKE) -s -C saddlebag version
 	@$(MAKE) -s -C stablemate version
 
 .PHONY: release
