@@ -31,8 +31,9 @@ nobody can read two months later.
 
 `{{ template.constitution_path | default("docs/CONSTITUTION.md") }}` is where a project may
 state what it is being built **toward**, who it is for, and how to settle two options that
-both work. It describes no existing code. That makes it the one input here you cannot
-reconstruct by reading the repository. Read it before looking at the proposals.
+both work. It describes no existing code, and it records no single decision. Each line is an
+aspiration that holds across choices nobody has met yet. That makes it the one input here you
+cannot reconstruct by reading the repository. Read it before looking at the proposals.
 
 Projects write these files differently, so take the file's structure from the file. Two kinds
 of statement turn up, and they behave differently under conflict:
@@ -207,6 +208,12 @@ yourself hands the goal every unranked case, and the constitution then binds not
 A ranking statement against an admitting one is always this case. Neither kind outranks the
 other. A collision between them is a finding about one of the two statements. It is not a
 trade to make here.
+
+An operator's answer to an escalation settles one case. It goes into the project's decision
+record, citing the aims it weighed. It never goes into the constitution. A constitution that
+gains a line per escalation turns into a list of past rulings, and a ruling ranks nothing its
+author did not foresee. When several answers point the same way, propose the aim they share,
+worded so that none of the cases appears in it.
 
 ## What to return
 
