@@ -139,9 +139,9 @@ def workspace(
     repo: Path,
     git: Callable[..., subprocess.CompletedProcess],
     write: Callable[[Path, str], Path],
-    ambient: dict[str, str],
+    name_workspace: Callable[[dict[str, Path]], None],
 ) -> Path:
-    """A workspace file naming one code repo, for the drain's `resolve_impl_context`."""
+    """A named workspace listing one code repo, for the drain's `resolve_impl_context`."""
     root = tmp_path / "ws"
     api = root / "api"
     api.mkdir(parents=True)
@@ -149,8 +149,7 @@ def workspace(
     write(api / "README.md", "# api\n")
     git(api, "add", "-A")
     git(api, "commit", "-qm", "Initial commit")
-    write(root / "acme.code-workspace", json.dumps({"folders": [{"name": "api", "path": "api"}]}))
-    ambient["workspace_file"] = str(root / "acme.code-workspace")
+    name_workspace({"api": api})
     return root
 
 
@@ -167,7 +166,6 @@ class _StubFlow(Workflow):
     """Every keyword the graph's five handoffs pass, because `Workflow` forbids extras."""
 
     story: str = ""
-    docs_path: str = ""
     epic: str = ""
     preexisting: tuple[str, ...] = ()
     operator_mode: str = ""
@@ -503,7 +501,7 @@ def test_a_pr_run_lands_every_item_on_one_branch_and_opens_no_pr_offline(
 
     assert [c.branch for c in sub.calls_to("Dev")] == ["feat/t", "feat/t"], sub.calls
     assert _output(run_env, cut_run_branch) == {"base_branch": "main", "branch": "feat/t"}
-    assert _head(repo) == "feat/t"
+    assert _head(repo) == "main"
     assert {"feat(acme): story STORY-1", "feat(acme): story STORY-2"} <= set(_subjects(repo))
     assert result.status == "skipped", result
     assert "FixCi" not in sub.calls, sub.calls
@@ -528,7 +526,10 @@ def test_the_run_branch_is_named_for_what_the_run_was_launched_on(
 
     drive_flow(Coder(epic=launched, story=story), env(), _Agent())
 
-    assert _head(repo) == branch
+    assert _head(repo) == "main"
+    assert subprocess.run(
+        ["git", "branch", "--list", branch], cwd=repo, check=True, capture_output=True, text=True
+    ).stdout.strip()
     assert sub.calls == ["Dev", "Docs", "Qa", "Fix"], sub.calls
 
 
@@ -584,6 +585,7 @@ def test_an_opened_pr_goes_to_the_ship_lane_for_ci_and_stays_open(
 ) -> None:
     """The ship lane gets CI green on the run branch, and with no base it merges nothing."""
     repo = epic()
+    subprocess.run(["git", "remote", "add", "origin", "https://example.com/acme.git"], cwd=repo, check=True)
     sub = _Sub(repo).install(monkeypatch)
     opened: list[tuple[str, str, str, str]] = []
 
@@ -722,7 +724,7 @@ def test_a_cited_leftover_reruns_only_the_scenarios_covering_its_page(
     """A product file a page cites reproves that page's scenarios and nothing else."""
     repo = epic()
     write(
-        repo / "docs" / "features" / "app" / "server.md",
+        repo / "docs" / "services" / "app" / "server.md",
         "---\ntype: cli\nslug: server\ntitle: the server\n---\n# the server\n\n"
         "Serves things.\n\n- binary: server\n- code: src/server.py::run\n",
     )
@@ -732,7 +734,7 @@ def test_a_cited_leftover_reruns_only_the_scenarios_covering_its_page(
     plan = (
         "from ostler_qa import Qa, scenario, target\n\napp = target('app')\n\n\n"
         "@scenario(target=app, mechanism='live', id='serves',"
-        " covers=['okf:docs/features/app/server.md:contract'])\n"
+        " covers=['okf:docs/services/app/server.md:contract'])\n"
         "def serves(qa: Qa) -> None:\n    qa.check('it serves', True)\n"
     )
     sub = _Sub(repo, leftover="src/server.py").install(monkeypatch)

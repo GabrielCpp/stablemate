@@ -289,6 +289,17 @@ def merge_ref(path: str | Path, ref: str) -> bool:
         return False
 
 
+def merge_into(path: str | Path, branch: str, base: str) -> bool:
+    """Merge ``branch`` into ``base`` locally: a fast-forward when possible, else a merge commit."""
+    if not checkout(path, base):
+        return False
+    try:
+        open_repo(path).git.merge("--ff-only", branch)
+        return True
+    except GitError:
+        return merge_ref(path, branch)
+
+
 def is_ancestor(path: str | Path, ancestor: str, descendant: str) -> bool:
     """True if ``ancestor`` is reachable from ``descendant`` (``git merge-base --is-ancestor``)."""
     try:

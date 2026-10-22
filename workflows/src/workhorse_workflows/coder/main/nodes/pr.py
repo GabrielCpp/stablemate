@@ -1,4 +1,4 @@
-"""The PR boundary: one PR per repo the run branch changed, left open for review."""
+"""The PR boundary: one PR per repo the run branch changed, left open for review; a repo with no origin merges locally."""
 from __future__ import annotations
 
 import logging
@@ -17,6 +17,8 @@ from workhorse_workflows.kit import (
     get_repo_config,
     is_ancestor,
     local_branch_exists,
+    merge_into,
+    origin_url,
     push_branch,
     resolve_github_token,
     resolve_repo,
@@ -33,17 +35,16 @@ def open_run_prs(
     story_path: str = "",
     story_slug: str = "",
     stories: list[str] | None = None,
-    docs_path: str = "",
     repo_dir: str = "",
-    workspace_file: str = "",
+    workspace: str = "",
 ) -> RunPrs:
     """Push the run branch and open its PR in the docs repo and in every code repo it changed."""
     if not branch:
         logger.info("no run branch — nothing to PR")
         return RunPrs()
 
-    docs_root = find_docs_root(docs_path, repo_dir)
-    repos = resolve_workspace(workspace_file, repo_dir)
+    docs_root = find_docs_root(repo_dir)
+    repos = resolve_workspace(workspace, repo_dir)
     description = _run_description(docs_root, branch, epic, story_path, story_slug)
     body = _pr_body(stories or [])
 
@@ -54,6 +55,12 @@ def open_run_prs(
             continue
         if is_ancestor(path, branch, base):
             logger.info("%s: %s has nothing past %s, nothing to PR", name, branch, base)
+            continue
+        if not origin_url(path):
+            if merge_into(path, branch, base):
+                logger.info("%s: no origin remote — merged %s into %s locally", name, branch, base)
+            else:
+                logger.warning("%s: no origin remote and %s did not merge into %s", name, branch, base)
             continue
         token = resolve_github_token(path)
         if not token:
