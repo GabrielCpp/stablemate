@@ -45,7 +45,7 @@ every type.
 ## Minimal example
 
 ```bash
-timeout 30 ostler scaffold field expiresAt --in docs/features/acme/link-export.md
+timeout 30 ostler scaffold field expiresAt --in docs/services/acme/link-export.md
 ```
 
 ```markdown

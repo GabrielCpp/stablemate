@@ -11,8 +11,8 @@ from ostler.qa.context import build_context
 
 from conftest import write
 
-SCREEN = "docs/features/acme/web/screens/widget-list.md"
-API = "docs/features/acme/http/api-service.md"
+SCREEN = "docs/services/acme/web/screens/widget-list.md"
+API = "docs/services/acme/http/api-service.md"
 
 SCREEN_PAGE = """---
 type: screen
@@ -131,7 +131,7 @@ def test_a_nested_when_binds_to_its_states_child_alone(repo: Path) -> None:
 def test_each_states_claim_carries_the_condition_ids_of_its_own_when(tmp_path: Path) -> None:
     _book(tmp_path)
     rows = _obligations(tmp_path)
-    api = "docs/features/acme/http/api-service.md"
+    api = "docs/services/acme/http/api-service.md"
     assert rows[f"okf:{SCREEN}#low-stock-panel:states:1"]["conditionsDeclared"] == [f"{api}#some-low"]
     assert rows[f"okf:{SCREEN}#low-stock-panel:states:2"]["conditionsDeclared"] == [f"{api}#none-low"]
     assert "conditionsDeclared" not in rows[f"okf:{SCREEN}#low-stock-panel:name:1"]
@@ -142,14 +142,14 @@ def test_a_node_level_when_is_inherited_by_every_claim_of_the_node(tmp_path: Pat
     rows = _obligations(tmp_path)
     table = [row for oid, row in rows.items() if oid.startswith(f"okf:{SCREEN}#widget-table:") and row["kind"] != "contract"]
     assert table
-    assert all(row["conditionsDeclared"] == ["docs/features/acme/http/api-service.md#none-low"] for row in table)
+    assert all(row["conditionsDeclared"] == ["docs/services/acme/http/api-service.md#none-low"] for row in table)
 
 
 def test_a_state_node_keeps_a_when_written_after_its_shows(tmp_path: Path) -> None:
     _book(tmp_path, state_when=f"- when: {NONE_LOW}\n")
     rows = _obligations(tmp_path)
     assert rows[f"okf:{SCREEN}#loaded:contract"]["conditionsDeclared"] == [
-        "docs/features/acme/http/api-service.md#none-low"]
+        "docs/services/acme/http/api-service.md#none-low"]
 
 
 def test_fixture_none_on_a_component_state_of_a_screen_that_sends_a_request_is_flagged(repo: Path) -> None:
@@ -206,7 +206,7 @@ def test_an_interaction_and_its_extends_arm_read_the_when_of_the_control_they_ac
     _book(tmp_path, table_when=f"- when: {NONE_LOW}\n")
     write(tmp_path / SCREEN, (tmp_path / SCREEN).read_text() + INTERACTIONS)
     rows = _obligations(tmp_path)
-    held = ["docs/features/acme/http/api-service.md#none-low"]
+    held = ["docs/services/acme/http/api-service.md#none-low"]
     for anchor in ("restock", "refuse-restock"):
         arm = [row for oid, row in rows.items() if oid.startswith(f"okf:{SCREEN}#{anchor}:")
                and row["kind"] != "contract"]

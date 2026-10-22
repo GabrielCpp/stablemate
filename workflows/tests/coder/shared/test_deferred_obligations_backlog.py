@@ -15,7 +15,7 @@ from workhorse_workflows.coder.shared.backlog import (
 )
 from workhorse_workflows.coder.shared.docs import CONTEXT_FILE
 
-PAGE = "docs/features/web-app/gui/screens/reports.md"
+PAGE = "docs/services/web-app/gui/screens/reports.md"
 UNTYPED = (
     f"`{PAGE}#empty-alert` sits under a heading that gives its sections no type, "
     "so no `verify:` bullet in it binds to a claim"
@@ -32,10 +32,10 @@ def _obligation(node: str, detail: str, *, required: bool = True) -> dict:
     }
 
 
-def _spec(tmp_path: Path, *obligations: dict, features: str = "docs/features") -> str:
+def _spec(tmp_path: Path, *obligations: dict, services: str = "docs/services") -> str:
     spec = tmp_path / "specs" / "ACME-1"
     spec.mkdir(parents=True)
-    context = {"featuresRoot": features, "obligations": [*obligations, {"id": "okf:proved", "required": True}]}
+    context = {"servicesRoot": services, "obligations": [*obligations, {"id": "okf:proved", "required": True}]}
     (spec / CONTEXT_FILE).write_text(json.dumps(context), encoding="utf-8")
     return str(spec)
 
@@ -59,7 +59,7 @@ def test_each_page_with_deferred_checks_is_filed_once_and_committed(
         _obligation(PAGE, "the book declares no check for this obligation to prove"),
         _obligation(f"{PAGE}#empty-alert", UNTYPED),
         _obligation(f"{PAGE}#export", UNTYPED.replace("#empty-alert", "#export")),
-        _obligation("docs/features/web-app/gui/screens/home.md#banner", "skipped", required=False),
+        _obligation("docs/services/web-app/gui/screens/home.md#banner", "skipped", required=False),
     )
 
     first = file_deferred_obligations(logger, spec_dir=spec, repo_dir=str(repo))
@@ -87,7 +87,7 @@ def test_the_fix_lane_leaves_book_checks_for_the_book(
 ) -> None:
     """A book check is the book's to add, and drawing it as a fix story held the passed story's commit for hours."""
     _seed(repo, write, git)
-    spec = _spec(tmp_path, _obligation(f"{PAGE}#export", UNTYPED), features=str(repo / "docs" / "features"))
+    spec = _spec(tmp_path, _obligation(f"{PAGE}#export", UNTYPED), services=str(repo / "docs" / "services"))
 
     file_deferred_obligations(logger, spec_dir=spec, repo_dir=str(repo))
 

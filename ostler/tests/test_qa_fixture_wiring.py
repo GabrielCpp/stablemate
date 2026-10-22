@@ -35,7 +35,7 @@ title: QA stack
 - health: curl -fsS http://localhost:18099/healthz
 """
 
-RUNBOOK_PATH = "docs/features/app/ops/qa-stack.md"
+RUNBOOK_PATH = "docs/services/app/ops/qa-stack.md"
 
 SEEDED_ACME = """---
 type: fixture
@@ -56,7 +56,7 @@ title: Seeded acme
 - run: ./scripts/seed-acme.sh
 """
 
-SEEDED_ACME_PATH = "docs/features/acme/fixtures/seeded-acme.md"
+SEEDED_ACME_PATH = "docs/services/acme/fixtures/seeded-acme.md"
 
 SEEDED_GLOBEX = """---
 type: fixture
@@ -79,9 +79,9 @@ title: Seeded globex
 - run: ./scripts/seed-globex.sh
 """
 
-SEEDED_GLOBEX_PATH = "docs/features/acme/fixtures/seeded-globex.md"
+SEEDED_GLOBEX_PATH = "docs/services/acme/fixtures/seeded-globex.md"
 
-ENDPOINT_PATH = "docs/features/acme/server.md"
+ENDPOINT_PATH = "docs/services/acme/server.md"
 
 
 def _endpoint_book(*, capture: bool) -> str:

@@ -235,7 +235,7 @@ def _migrate_todo(eroot: Path) -> bool:
 def migrate(root: Path) -> dict:
     root = Path(root)
     docs = root / "docs"
-    report = {"epics": 0, "stories": 0, "features": 0, "specs": 0, "todo": False}
+    report = {"epics": 0, "stories": 0, "services": 0, "specs": 0, "todo": False}
     eroot = docs / "epics"
     if eroot.is_dir():
         for edir in sorted(eroot.iterdir()):
@@ -245,8 +245,11 @@ def migrate(root: Path) -> dict:
                 report["epics"] += 1
             report["stories"] += _stamp_stories(edir)
         report["todo"] = _migrate_todo(eroot)
-    if (docs / "features").is_dir():
-        report["features"] = _migrate_features(docs / "features")
+    legacy = docs / "features"
+    if legacy.is_dir():
+        report["services"] = _migrate_features(legacy)
+        if not (docs / "services").exists():
+            legacy.rename(docs / "services")
     if (docs / "specs").is_dir():
         report["specs"] = _migrate_specs(docs / "specs")
     return report

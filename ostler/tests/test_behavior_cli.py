@@ -10,7 +10,7 @@ from ostler.cli import main
 
 @pytest.fixture
 def behavior_repo(tmp_path: Path) -> Path:
-    docs = tmp_path / "docs/features/api"
+    docs = tmp_path / "docs/services/api"
     docs.mkdir(parents=True)
     (docs / "items.md").write_text(
         "---\ntype: server\ntitle: API\n---\n\n# API\n\n## Endpoints\n\n### items\n\n"
@@ -44,7 +44,7 @@ def test_audit_prepares_uncited_evidence_and_ungrounded_claims(
     assert len(claims) == 1, "The API and endpoint titles must not become semantic claims"
     assert all(packet["digest"] for packet in data["packets"])
     assert data["omitted_candidates"] == data["omitted_claims"] == 0
-    assert not (behavior_repo / "docs/features/sources.json").exists()
+    assert not (behavior_repo / "docs/services/sources.json").exists()
 
 
 def test_audit_prints_the_undocumented_file_finding(
@@ -109,7 +109,7 @@ def test_audit_counts_claims_that_cite_only_unselected_existing_files(
     behavior_repo: Path, capsys: pytest.CaptureFixture[str],
 ) -> None:
     (behavior_repo / "other.py").write_text("def other():\n    return 2\n", encoding="utf-8")
-    doc = behavior_repo / "docs/features/api/items.md"
+    doc = behavior_repo / "docs/services/api/items.md"
     doc.write_text(
         doc.read_text(encoding="utf-8") + "\n### others\n\n- does: Elsewhere.\n- code: other.py::other\n",
         encoding="utf-8",

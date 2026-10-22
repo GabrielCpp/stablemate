@@ -41,7 +41,7 @@ def code_book(repo: Path) -> Path:
     write(repo / "src/gamma.go", GO_GAMMA)
     write(repo / "src/uncited.go", GO_UNCITED)
     for slug, ref in CITATIONS.items():
-        write(repo / f"docs/features/concepts/{slug}.md", concept_md(slug, ref))
+        write(repo / f"docs/services/concepts/{slug}.md", concept_md(slug, ref))
     return repo
 
 
@@ -322,7 +322,7 @@ def test_the_symbols_of_an_uncited_process_local_file_never_enter_the_index(
     warm_index(code_book, directory)
     before = len(entry_files(directory))
 
-    write(code_book / "docs/features/concepts/uncited-now.md",
+    write(code_book / "docs/services/concepts/uncited-now.md",
           concept_md("uncited-now", "src/uncited.go::Uncited"))
     report = doctor_json(code_book, "--index-dir", str(directory), capsys=capsys)
 

@@ -232,10 +232,10 @@ obligation the run owes a check.
 ## Minimal example
 
 ```bash
-timeout 30 ostler scaffold endpoint create-link --in docs/features/acme/http/links-api.md
+timeout 30 ostler scaffold endpoint create-link --in docs/services/acme/http/links-api.md
 ```
 
-The command writes `docs/features/acme/http/create-link.md` and adds
+The command writes `docs/services/acme/http/create-link.md` and adds
 `- [create-link](create-link.md)` under the server's `## Endpoints`.
 
 ```markdown

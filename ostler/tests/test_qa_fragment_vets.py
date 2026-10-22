@@ -12,9 +12,9 @@ from ostler.qa.session import QaSession
 
 from conftest import write
 
-SCREEN = "docs/features/groom/gui/screens/s.md"
-FRAGMENT = "docs/features/groom/gui/screens/s-interactions.md"
-NESTED = "docs/features/groom/gui/screens/s-interactions-export.md"
+SCREEN = "docs/services/groom/gui/screens/s.md"
+FRAGMENT = "docs/services/groom/gui/screens/s-interactions.md"
+NESTED = "docs/services/groom/gui/screens/s-interactions-export.md"
 
 
 def test_a_fragment_s_vet_waits_for_the_route_of_the_screen_its_host_chain_ends_on() -> None:
@@ -47,7 +47,7 @@ def _book(repo: Path) -> None:
 def _driver(repo: Path) -> PythonDriver:
     spec = repo / "docs/specs/story-1"
     spec.mkdir(parents=True, exist_ok=True)
-    (spec / "qa-okf-context.json").write_text(json.dumps({"featuresRoot": "docs/features"}), encoding="utf-8")
+    (spec / "qa-okf-context.json").write_text(json.dumps({"servicesRoot": "docs/services"}), encoding="utf-8")
     session = QaSession.create(spec, "qa-vet-1", "story-1", {})
     return PythonDriver(session, "web", {"driver": "playwright"}, root=repo, variables={})
 

@@ -34,6 +34,6 @@ def test_every_load_graph_call_carries_root_overrides() -> None:
         "found a `load_graph` call at "
         f"{drivers.__file__}:{unframed[0].lineno} with no `root_overrides` keyword — "
         "`self.root` is the checkout, not the book a compiled plan speaks about; frame "
-        "the call through `_packet_features_root()`, the way every other `load_graph` "
+        "the call through `_packet_services_root()`, the way every other `load_graph` "
         "call in this module already is, rather than reading the checkout's own book"
     )

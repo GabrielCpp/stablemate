@@ -27,12 +27,12 @@ context is the place that objection points to.
 
 ### 1.1 Where they live
 
-Under the features doc root, in the service's `ops/` directory, which is where
+Under the services doc root, in the service's `ops/` directory, which is where
 `ostler scaffold` puts them:
 
 ```
-docs/features/<service>/ops/local.md      (type: environment)
-docs/features/<service>/ops/qa-stack.md   (type: runbook)
+docs/services/<service>/ops/local.md      (type: environment)
+docs/services/<service>/ops/qa-stack.md   (type: runbook)
 ```
 
 ## 2. `runbook`
@@ -235,8 +235,8 @@ The nodes scaffold like every other registered type — no special-casing, becau
 is what both the scaffolder and the reader read:
 
 ```bash
-ostler scaffold environment local --service api      # docs/features/api/ops/local.md
-ostler scaffold runbook qa-stack --service api       # docs/features/api/ops/qa-stack.md
+ostler scaffold environment local --service api      # docs/services/api/ops/local.md
+ostler scaffold runbook qa-stack --service api       # docs/services/api/ops/qa-stack.md
 ostler scaffold step serve --in api/ops/qa-stack.md  # a `### serve` under its `## Steps`
 ```
 

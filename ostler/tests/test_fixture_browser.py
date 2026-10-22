@@ -13,9 +13,9 @@ from ostler.qa.context import book_context
 
 from conftest import screen_md, write
 
-LOGIN_PATH = "docs/features/app/login.md"
-FIXTURE_PATH = "docs/features/app/fixtures/signed-in-editor.md"
-NEEDING_PATH = "docs/features/app/fixtures/editor-project.md"
+LOGIN_PATH = "docs/services/app/login.md"
+FIXTURE_PATH = "docs/services/app/fixtures/signed-in-editor.md"
+NEEDING_PATH = "docs/services/app/fixtures/editor-project.md"
 
 LOGIN_COMPONENTS = """
 ## Components
@@ -151,7 +151,7 @@ def test_a_clean_browser_step_carries_no_finding_and_needs_no_run(repo: Path) ->
 
 def test_a_runbook_step_that_opens_a_screen_is_refused(repo: Path) -> None:
     write(repo / LOGIN_PATH, screen_md("login", "Login", body=LOGIN_COMPONENTS))
-    write(repo / "docs/features/app/ops/qa-stack.md", """---
+    write(repo / "docs/services/app/ops/qa-stack.md", """---
 type: runbook
 title: QA stack
 ---
@@ -186,7 +186,7 @@ def _git(root: Path, *args: str) -> None:
 def test_the_context_names_each_fixture_that_signs_a_browser_in_and_each_that_needs_one(repo: Path) -> None:
     _book(repo, _fixture('click("../login.md#sign-in")'))
     write(repo / NEEDING_PATH, NEEDING)
-    write(repo / "docs/features/app/fixtures/plain.md", NEEDING.replace(
+    write(repo / "docs/services/app/fixtures/plain.md", NEEDING.replace(
         "- needs:\n  - [signed-in-editor](signed-in-editor.md)\n\n", "").replace("Editor project", "Plain"))
     _git(repo, "init")
     _git(repo, "-c", "user.email=qa@example.com", "-c", "user.name=QA", "add", ".")
@@ -197,7 +197,7 @@ def test_the_context_names_each_fixture_that_signs_a_browser_in_and_each_that_ne
 
 def _obligation(oid: str, fixture: str) -> dict:
     return {
-        "id": oid, "source": "docs/features/demo/api.md", "node": "list-projects", "nodeType": "endpoint",
+        "id": oid, "source": "docs/services/demo/api.md", "node": "list-projects", "nodeType": "endpoint",
         "requirement": "lists the editor's projects", "required": True,
         "locators": {"route": ["GET /api/projects"]},
         "checksDeclared": [{"call": "ok", "name": "http_status", "args": {"code": 200, "path": "/api/projects"}}],
@@ -206,7 +206,7 @@ def _obligation(oid: str, fixture: str) -> dict:
 
 
 def _gaps(fixture: str, browser_fixtures: list[str], driver: str = "http", node_type: str = "endpoint") -> list[Gap]:
-    oid = "okf:docs/features/demo/api.md#list-projects:does:1"
+    oid = "okf:docs/services/demo/api.md#list-projects:does:1"
     context = {"story": {"slug": "demo-story"}, "obligations": [{**_obligation(oid, fixture), "nodeType": node_type}],
                "navigation": {"": {"driver": driver}}, "browserFixtures": browser_fixtures}
     return [gap for gap in compile_plan_gaps(context, story="demo-story").gaps if gap.obligation_id == oid]

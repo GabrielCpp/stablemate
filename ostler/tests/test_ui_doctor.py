@@ -25,33 +25,33 @@ def _run(repo: Path):
 
 
 def test_unknown_type(repo: Path):
-    write(repo / "docs/features/x.md", "---\ntype: widget\nslug: x\ntitle: X\n---\n# X\n")
+    write(repo / "docs/services/x.md", "---\ntype: widget\nslug: x\ntitle: X\n---\n# X\n")
     report = _run(repo)
     assert "unknown-type" in codes(report)
     finding = next(f for f in report.findings if f.code == "unknown-type")
-    assert finding.path == "docs/features/x.md" and finding.line == 1
+    assert finding.path == "docs/services/x.md" and finding.line == 1
 
 
 def test_link_validation_is_document_wide(repo: Path):
-    write(repo / "docs/features/x.md",
+    write(repo / "docs/services/x.md",
           "---\ntype: concept\nslug: x\ntitle: X\n---\n# X\n\n## Notes\n\nSee [gone](./nope.md).\n")
     assert "dangling-link" in codes(_run(repo))
 
 
 def test_link_validation_skips_code(repo: Path):
-    write(repo / "docs/features/x.md",
+    write(repo / "docs/services/x.md",
           "---\ntype: concept\nslug: x\ntitle: X\n---\n# X\n\n## Notes\n\n"
           "Inline `arr[i](nope.md)` and\n\n```\nf = g[i](also-nope.md)\n```\n")
     assert "dangling-link" not in codes(_run(repo))
 
 
 def test_known_types_not_flagged(repo: Path):
-    write(repo / "docs/features/x.md", "---\ntype: concept\nslug: x\ntitle: X\n---\n# X\n")
+    write(repo / "docs/services/x.md", "---\ntype: concept\nslug: x\ntitle: X\n---\n# X\n")
     assert "unknown-type" not in codes(_run(repo))
 
 
 def test_missing_required_section(repo: Path):
-    write(repo / "docs/features/workhorse/workhorse.md",
+    write(repo / "docs/services/workhorse/workhorse.md",
           "---\ntype: cli\nslug: wh\ntitle: WH\n---\n# WH\n\n- binary: `wh`\n")
     report = _run(repo)
     assert "missing-required-section" in codes(report)
@@ -61,7 +61,7 @@ def test_missing_required_section(repo: Path):
 
 def test_empty_required_section(repo: Path):
     """A server's `## Endpoints` heading exists but carries no prose."""
-    write(repo / "docs/features/api/api.md",
+    write(repo / "docs/services/api/api.md",
           "---\ntype: server\nslug: api\ntitle: API\n---\n# API\n\n## Endpoints\n")
     report = _run(repo)
     hits = [f for f in report.findings if f.code == "empty-required-section"]
@@ -71,7 +71,7 @@ def test_empty_required_section(repo: Path):
 
 def test_an_endpoint_on_a_concept_page_is_misplaced(repo: Path):
     """A concept page that copies an endpoint drives a request its server page does not describe."""
-    write(repo / "docs/features/api/concepts/orders.md",
+    write(repo / "docs/services/api/concepts/orders.md",
           "---\ntype: concept\nslug: orders\ntitle: Orders\n---\n# Orders\n\n"
           "## Endpoints\n\n### list-orders\n\n- method: GET\n- path: /orders\n")
     hits = [f for f in _run(repo).findings if f.code == "misplaced-section"]
@@ -81,14 +81,14 @@ def test_an_endpoint_on_a_concept_page_is_misplaced(repo: Path):
 
 
 def test_an_endpoint_on_its_server_page_is_in_place(repo: Path):
-    write(repo / "docs/features/api/api.md",
+    write(repo / "docs/services/api/api.md",
           "---\ntype: server\nslug: api\ntitle: API\n---\n# API\n\n"
           "## Endpoints\n\n### list-orders\n\n- method: GET\n- path: /orders\n")
     assert "misplaced-section" not in codes(_run(repo))
 
 
 def test_a_command_on_a_flow_page_is_misplaced(repo: Path):
-    write(repo / "docs/features/wh/flows/ship.md",
+    write(repo / "docs/services/wh/flows/ship.md",
           "---\ntype: flow\nslug: ship\ntitle: Ship\n---\n# Ship\n\n"
           "## Commands\n\n### ship\n\n- usage: `wh ship`\n")
     assert "misplaced-section" in codes(_run(repo))
@@ -96,7 +96,7 @@ def test_a_command_on_a_flow_page_is_misplaced(repo: Path):
 
 def test_filled_required_section_not_flagged(repo: Path):
     """The same book, but `## Endpoints` says something — no finding at all."""
-    write(repo / "docs/features/api/api.md",
+    write(repo / "docs/services/api/api.md",
           "---\ntype: server\nslug: api\ntitle: API\n---\n# API\n\n"
           "## Endpoints\n\n`GET /widgets` lists the widgets.\n")
     assert "empty-required-section" not in codes(_run(repo))
@@ -104,14 +104,14 @@ def test_filled_required_section_not_flagged(repo: Path):
 
 def test_empty_required_section_excludes_sub_headings(repo: Path):
     """A `## Commands` with only a `### <id>` sub-heading and no prose is still empty."""
-    write(repo / "docs/features/workhorse/workhorse.md",
+    write(repo / "docs/services/workhorse/workhorse.md",
           "---\ntype: cli\nslug: wh\ntitle: WH\n---\n# WH\n\n"
           "- binary: `wh`\n\n## Commands\n\n### run\n")
     assert "empty-required-section" in codes(_run(repo))
 
 
 def test_missing_required_bullet(repo: Path):
-    write(repo / "docs/features/groom/gui/screens/s.md",
+    write(repo / "docs/services/groom/gui/screens/s.md",
           "---\ntype: screen\nslug: s\ntitle: S\n---\n# S\n\n"
           "## Interactions\n\n### click\n- trigger: click\n")
     report = _run(repo)
@@ -122,7 +122,7 @@ def test_missing_required_bullet(repo: Path):
 
 def _interaction_with_verifies(repo: Path, verifies: list[str]) -> None:
     lines = "\n".join(f"- verify: {v}" for v in verifies)
-    write(repo / "docs/features/groom/gui/screens/s.md",
+    write(repo / "docs/services/groom/gui/screens/s.md",
           "---\ntype: screen\nslug: s\ntitle: S\n---\n# S\n\n"
           "## Components\n\n### btn\n- selector: #btn\n- role: button\n- name: Go\n\n"
           "## Interactions\n\n### act\n- on: [btn](#btn)\n- trigger: click\n- role: button\n"
@@ -182,7 +182,7 @@ def test_a_differing_identifier_is_not_a_conflict_even_where_a_flag_agrees(repo:
 
 def test_two_outcomes_each_with_its_own_check_are_not_one_claim_twice(repo: Path):
     """Two `verify:` bullets conflict only when they observe the same claim: `registry.attributed_checks` binds each to the normative bullet above it, and a success and a refusal are two claims."""
-    write(repo / "docs/features/groom/cli/wh.md",
+    write(repo / "docs/services/groom/cli/wh.md",
           "---\ntype: cli\nslug: wh\ntitle: WH\n---\n# WH\n\n"
           "## Invocations\n\n### run\n- on: [wh](#wh)\n- trigger: `wh run`\n"
           "- does:\n  - state: runs\n- code: `wh/run.py::run`\n"
@@ -193,7 +193,7 @@ def test_two_outcomes_each_with_its_own_check_are_not_one_claim_twice(repo: Path
 
 
 def test_unspelled_alternation_not_tripped_by_an_extends_split(repo: Path):
-    write(repo / "docs/features/groom/gui/screens/s.md",
+    write(repo / "docs/services/groom/gui/screens/s.md",
           "---\ntype: screen\nslug: s\ntitle: S\n---\n# S\n\n"
           "## Components\n\n### btn\n- selector: #btn\n- role: button\n- name: Go\n\n"
           "## Interactions\n\n### act\n- on: [btn](#btn)\n- trigger: click\n- role: button\n"
@@ -217,14 +217,14 @@ _ARM_BOOK = (
 
 
 def test_an_extending_arm_that_arranges_nothing_while_its_base_does_is_a_finding(repo: Path):
-    write(repo / "docs/features/groom/gui/screens/s.md", _ARM_BOOK
+    write(repo / "docs/services/groom/gui/screens/s.md", _ARM_BOOK
           + "### refuse-act\n- extends: [act](#act)\n- when: `name` empty\n- does:\n"
           '  - state: refuse\n- verify: http_status(400, path="/api/widgets")\n')
     assert "unarranged-extending-arm" in all_codes(_run(repo))
 
 
 def test_an_extending_arm_with_its_own_arrangement_is_not_a_finding(repo: Path):
-    write(repo / "docs/features/groom/gui/screens/s.md", _ARM_BOOK
+    write(repo / "docs/services/groom/gui/screens/s.md", _ARM_BOOK
           + "### refuse-act\n- extends: [act](#act)\n- when: `name` empty\n"
           '- arrange: fill(locator="#field", value="")\n- does:\n'
           '  - state: refuse\n- verify: http_status(400, path="/api/widgets")\n')
@@ -234,7 +234,7 @@ def test_an_extending_arm_with_its_own_arrangement_is_not_a_finding(repo: Path):
 def test_an_interaction_that_extends_a_component_instead_of_an_interaction_is_flagged(
         repo: Path):
     """`extends:` can only inherit control identity from another arm of the *same* node type — a component is a real, resolvable target, just the wrong kind of one."""
-    write(repo / "docs/features/groom/gui/screens/s.md", _ARM_BOOK
+    write(repo / "docs/services/groom/gui/screens/s.md", _ARM_BOOK
           + "### act-bad\n- on: [btn](#btn)\n- trigger: click\n- role: button\n- name: Go\n"
           "- keyboard: Enter\n- when: `name` non-empty\n"
           '- arrange: fill(locator="#field", value="Widget A")\n'
@@ -244,7 +244,7 @@ def test_an_interaction_that_extends_a_component_instead_of_an_interaction_is_fl
     report = _run(repo)
     assert "extends-type-mismatch" in codes(report)
     finding = next(f for f in report.findings if f.code == "extends-type-mismatch")
-    assert finding.ref == "docs/features/groom/gui/screens/s.md#act-bad#extends"
+    assert finding.ref == "docs/services/groom/gui/screens/s.md#act-bad#extends"
 
 
 def test_a_selector_written_as_a_css_attribute_predicate_is_flagged_unaddressable(repo: Path):
@@ -253,7 +253,7 @@ def test_a_selector_written_as_a_css_attribute_predicate_is_flagged_unaddressabl
     report = _run(repo)
     assert "unaddressable-selector" in codes(report)
     finding = next(f for f in report.findings if f.code == "unaddressable-selector")
-    assert finding.ref == "docs/features/groom/gui/screens/s.md#body#selector:1"
+    assert finding.ref == "docs/services/groom/gui/screens/s.md#body#selector:1"
 
 
 def test_a_states_bullet_claiming_the_control_is_disabled_with_no_check_is_flagged(repo: Path):
@@ -262,11 +262,11 @@ def test_a_states_bullet_claiming_the_control_is_disabled_with_no_check_is_flagg
     report = _run(repo)
     assert "unchecked-availability-state" in all_codes(report)
     finding = next(f for f in report.findings if f.code == "unchecked-availability-state")
-    assert finding.ref == "docs/features/groom/gui/screens/s.md#body#states:1"
+    assert finding.ref == "docs/services/groom/gui/screens/s.md#body#states:1"
 
 
 def test_a_scaffolded_empty_arrange_bullet_does_not_count_as_an_arrangement(repo: Path):
-    write(repo / "docs/features/groom/gui/screens/s.md", _ARM_BOOK
+    write(repo / "docs/services/groom/gui/screens/s.md", _ARM_BOOK
           + "### refuse-act\n- extends: [act](#act)\n- when: `name` empty\n- arrange:\n"
           '- fixture:\n- does:\n  - state: refuse\n'
           '- verify: http_status(400, path="/api/widgets")\n')
@@ -274,7 +274,7 @@ def test_a_scaffolded_empty_arrange_bullet_does_not_count_as_an_arrangement(repo
 
 
 def _screen_with(repo: Path, bullets: str) -> None:
-    write(repo / "docs/features/groom/gui/screens/s.md",
+    write(repo / "docs/services/groom/gui/screens/s.md",
           "---\ntype: screen\nslug: s\ntitle: S\n---\n# S\n\n"
           f"## Components\n\n### body\n{bullets}")
 
@@ -296,8 +296,8 @@ def test_a_component_that_carries_the_page_says_where_it_sits(repo: Path):
     report = _run(repo)
     assert "missing-placement" in codes(report)
     finding = next(f for f in report.findings if f.code == "missing-placement")
-    assert finding.ref == "docs/features/groom/gui/screens/s.md#body#placement", finding.ref
-    assert finding.path == "docs/features/groom/gui/screens/s.md" and finding.line
+    assert finding.ref == "docs/services/groom/gui/screens/s.md#body#placement", finding.ref
+    assert finding.path == "docs/services/groom/gui/screens/s.md" and finding.line
 
     _screen_with(repo, "- role: article\n- name: none\n- placement: width 60-100%, x 0-20%\n")
     assert "missing-placement" not in codes(_run(repo))
@@ -319,7 +319,7 @@ def test_a_placement_nobody_could_violate_is_a_finding_not_coverage(repo: Path):
 
 
 def test_dangling_link(repo: Path):
-    write(repo / "docs/features/groom/concepts/diff.md",
+    write(repo / "docs/services/groom/concepts/diff.md",
           "---\ntype: concept\nslug: diff\ntitle: Diff\n---\n# Diff\n\n"
           "See [gone](../gui/screens/gone.md).\n")
     report = _run(repo)
@@ -327,16 +327,16 @@ def test_dangling_link(repo: Path):
 
 
 def test_missing_anchor(repo: Path):
-    write(repo / "docs/features/groom/concepts/a.md",
+    write(repo / "docs/services/groom/concepts/a.md",
           "---\ntype: concept\nslug: a\ntitle: A\n---\n# A\n")
-    write(repo / "docs/features/groom/concepts/b.md",
+    write(repo / "docs/services/groom/concepts/b.md",
           "---\ntype: concept\nslug: b\ntitle: B\n---\n# B\n\nSee [a](a.md#ghost).\n")
     report = _run(repo)
     assert "missing-anchor" in codes(report)
 
 
 def test_unresolved_relation(repo: Path):
-    write(repo / "docs/features/groom/gui/screens/s.md",
+    write(repo / "docs/services/groom/gui/screens/s.md",
           "---\ntype: screen\nslug: s\ntitle: S\n---\n# S\n\n"
           "## Components\n\n### row\n"
           "- extends: [nope](../components/missing.md#x)\n")
@@ -345,36 +345,36 @@ def test_unresolved_relation(repo: Path):
 
 
 def test_unresolved_relation_names_where_it_landed_and_the_page_it_meant(repo: Path):
-    write(repo / "docs/features/tally/concepts/ledger-file.md",
+    write(repo / "docs/services/tally/concepts/ledger-file.md",
           "---\ntype: concept\nslug: ledger-file\ntitle: Ledger file\n---\n# Ledger file\n")
-    write(repo / "docs/features/tally/formats/csv-file.md",
+    write(repo / "docs/services/tally/formats/csv-file.md",
           "---\ntype: format\nslug: csv-file\ntitle: CSV file\n---\n# CSV file\n\n"
           "- detail: [The ledger file](concepts/ledger-file.md)\n")
     report = _run(repo)
     finding = next(f for f in report.findings if f.code == "unresolved-relation")
-    assert "docs/features/tally/formats/concepts/ledger-file.md" in finding.message
+    assert "docs/services/tally/formats/concepts/ledger-file.md" in finding.message
     assert "'../concepts/ledger-file.md'" in finding.message
 
 
 def test_dangling_link_names_where_it_landed_and_the_page_it_meant(repo: Path):
-    write(repo / "docs/features/tally/concepts/ledger-file.md",
+    write(repo / "docs/services/tally/concepts/ledger-file.md",
           "---\ntype: concept\nslug: ledger-file\ntitle: Ledger file\n---\n# Ledger file\n")
-    write(repo / "docs/features/tally/formats/csv-file.md",
+    write(repo / "docs/services/tally/formats/csv-file.md",
           "---\ntype: format\nslug: csv-file\ntitle: CSV file\n---\n# CSV file\n\n"
           "Rows land in [the ledger](ledger-file.md).\n")
     report = _run(repo)
     finding = next(f for f in report.findings if f.code == "dangling-link")
-    assert "docs/features/tally/formats/ledger-file.md" in finding.message
+    assert "docs/services/tally/formats/ledger-file.md" in finding.message
     assert "'../concepts/ledger-file.md'" in finding.message
 
 
 def test_nested_flow_steps_are_checked_as_relation_values(repo: Path):
     write(
-        repo / "docs/features/workhorse/concepts/target.md",
+        repo / "docs/services/workhorse/concepts/target.md",
         "---\ntype: concept\nslug: target\ntitle: Target\n---\n# Target\n",
     )
     write(
-        repo / "docs/features/workhorse/flows/journey.md",
+        repo / "docs/services/workhorse/flows/journey.md",
         "---\ntype: flow\nslug: journey\ntitle: Journey\n---\n# Journey\n\n"
         "- start: ready\n"
         "- steps:\n"
@@ -389,7 +389,7 @@ def test_nested_flow_steps_are_checked_as_relation_values(repo: Path):
 
 
 def test_bad_heading_type(repo: Path):
-    write(repo / "docs/features/groom/gui/screens/s.md",
+    write(repo / "docs/services/groom/gui/screens/s.md",
           "---\ntype: screen\nslug: s\ntitle: S\n---\n# S\n\n"
           "## interactions\n\n### click\n- on: [x](#s)\n- trigger: click\n- does:\n  - state: x\n")
     report = _run(repo)
@@ -404,34 +404,34 @@ def _interaction(does: str) -> str:
 
 
 def test_overlong_normative_bullet(repo: Path):
-    write(repo / "docs/features/groom/gui/screens/s.md", _interaction("the row saves. " * 60))
+    write(repo / "docs/services/groom/gui/screens/s.md", _interaction("the row saves. " * 60))
     report = _run(repo)
     finding = next(f for f in report.findings if f.code == "overlong-normative-bullet")
     assert finding.severity == "error"
-    assert finding.path == "docs/features/groom/gui/screens/s.md"
+    assert finding.path == "docs/services/groom/gui/screens/s.md"
     assert finding.ref == f"{finding.path}#click#does:1"
 
 
 def test_a_short_normative_bullet_is_not_flagged(repo: Path):
-    write(repo / "docs/features/groom/gui/screens/s.md", _interaction("the row saves."))
+    write(repo / "docs/services/groom/gui/screens/s.md", _interaction("the row saves."))
     assert "overlong-normative-bullet" not in codes(_run(repo))
 
 
 def test_code_spans_and_link_hrefs_do_not_count_as_prose(repo: Path):
     padding = "`" + "x" * 900 + "` [see](" + "y" * 100 + ".md)"
-    write(repo / "docs/features/groom/gui/screens/s.md",
+    write(repo / "docs/services/groom/gui/screens/s.md",
           _interaction(f"the row saves, per {padding}."))
     assert "overlong-normative-bullet" not in codes(_run(repo))
 
 
 def test_a_parenthetical_counts_as_prose(repo: Path):
-    write(repo / "docs/features/groom/gui/screens/s.md",
+    write(repo / "docs/services/groom/gui/screens/s.md",
           _interaction("the row saves (" + "and the audit row records it. " * 30 + ")"))
     assert "overlong-normative-bullet" in codes(_run(repo))
 
 
 def test_only_normative_bullets_are_measured(repo: Path):
-    write(repo / "docs/features/groom/gui/screens/s.md",
+    write(repo / "docs/services/groom/gui/screens/s.md",
           "---\ntype: screen\nslug: s\ntitle: S\n---\n# S\n\n"
           "## Interactions\n\n### click\n- on: [S](#s)\n"
           f"- trigger: {'click the row. ' * 60}\n- does: the row saves.\n")
@@ -439,7 +439,7 @@ def test_only_normative_bullets_are_measured(repo: Path):
 
 
 def test_a_bullet_enumerating_status_branches_is_compound(repo: Path):
-    write(repo / "docs/features/groom/gui/screens/s.md",
+    write(repo / "docs/services/groom/gui/screens/s.md",
           _interaction("returns `400` on a malformed body, `409` on a stale manifest, "
                        "and `200` with the published page otherwise"))
     finding = next(f for f in _run(repo).findings if f.code == "compound-normative-bullet")
@@ -448,72 +448,72 @@ def test_a_bullet_enumerating_status_branches_is_compound(repo: Path):
 
 
 def test_a_bullet_naming_two_failures_is_compound(repo: Path):
-    write(repo / "docs/features/groom/gui/screens/s.md",
+    write(repo / "docs/services/groom/gui/screens/s.md",
           _interaction("raises `SlugCollisionError` for a duplicate slug or "
                        "`ManifestConflict` when the revision moved"))
     assert "compound-normative-bullet" in all_codes(_run(repo))
 
 
 def test_a_semicolon_joining_clauses_is_compound(repo: Path):
-    write(repo / "docs/features/groom/gui/screens/s.md",
+    write(repo / "docs/services/groom/gui/screens/s.md",
           _interaction("the row saves; the audit trail records the previous value"))
     assert "compound-normative-bullet" in all_codes(_run(repo))
 
 
 def test_a_semicolon_finding_names_the_form_a_reason_takes(repo: Path):
-    write(repo / "docs/features/groom/gui/screens/s.md",
+    write(repo / "docs/services/groom/gui/screens/s.md",
           _interaction("does not cast the value; that decision belongs to the caller"))
     finding = next(f for f in _run(repo).findings if f.code == "compound-normative-bullet")
     assert "parentheses" in finding.message
 
 
 def test_a_semicolon_inside_an_aside_is_not_compound(repo: Path):
-    write(repo / "docs/features/groom/gui/screens/s.md",
+    write(repo / "docs/services/groom/gui/screens/s.md",
           _interaction("the fallback menu opens (this journey exercises the fallback; "
                        "the native hand-off is out of scope)"))
     assert "compound-normative-bullet" not in all_codes(_run(repo))
 
 
 def test_a_semicolon_inside_a_code_span_is_not_compound(repo: Path):
-    write(repo / "docs/features/groom/gui/screens/s.md",
+    write(repo / "docs/services/groom/gui/screens/s.md",
           _interaction("returns `\"application/json; charset=utf-8\"` regardless of the "
                        "ext parameter"))
     assert "compound-normative-bullet" not in all_codes(_run(repo))
 
 
 def test_a_semicolon_outside_an_aside_is_still_compound(repo: Path):
-    write(repo / "docs/features/groom/gui/screens/s.md",
+    write(repo / "docs/services/groom/gui/screens/s.md",
           _interaction("the row saves (the audit trail is written first); "
                        "the previous value is shown beside it"))
     assert "compound-normative-bullet" in all_codes(_run(repo))
 
 
 def test_listing_two_nouns_is_not_compound(repo: Path):
-    write(repo / "docs/features/groom/gui/screens/s.md",
+    write(repo / "docs/services/groom/gui/screens/s.md",
           _interaction("the page and its slug are written to the manifest"))
     assert "compound-normative-bullet" not in all_codes(_run(repo))
 
 
 def test_one_status_code_is_not_compound(repo: Path):
-    write(repo / "docs/features/groom/gui/screens/s.md",
+    write(repo / "docs/services/groom/gui/screens/s.md",
           _interaction("returns `409` when the manifest revision moved under the write"))
     assert "compound-normative-bullet" not in all_codes(_run(repo))
 
 
 def test_a_bare_three_digit_number_is_not_a_status_code(repo: Path):
-    write(repo / "docs/features/groom/gui/screens/s.md",
+    write(repo / "docs/services/groom/gui/screens/s.md",
           _interaction("the label renders at font-weight 500 (vs body's 400)"))
     assert "compound-normative-bullet" not in all_codes(_run(repo))
 
 
 def test_capitalised_prose_words_are_not_two_failures(repo: Path):
-    write(repo / "docs/features/groom/gui/screens/s.md",
+    write(repo / "docs/services/groom/gui/screens/s.md",
           _interaction("the PaymentDenied banner shows the ConflictResolution the merge chose"))
     assert "compound-normative-bullet" not in all_codes(_run(repo))
 
 
 def test_a_bare_three_digit_number_under_a_non_normative_key_mints_nothing(repo: Path):
-    write(repo / "docs/features/groom/concepts/lease.md",
+    write(repo / "docs/services/groom/concepts/lease.md",
           "---\ntype: concept\nslug: lease\ntitle: Lease\n---\n# Lease\n\n"
           "- meaning: a lock over one path\n"
           "- styling: the deadline renders at font-weight 500 (vs body's 400)\n")
@@ -521,7 +521,7 @@ def test_a_bare_three_digit_number_under_a_non_normative_key_mints_nothing(repo:
 
 
 def test_an_overlong_bullet_is_reported_once(repo: Path):
-    write(repo / "docs/features/groom/gui/screens/s.md",
+    write(repo / "docs/services/groom/gui/screens/s.md",
           _interaction("returns `400`; then `500`. " * 60))
     found = all_codes(_run(repo))
     assert "overlong-normative-bullet" in found
@@ -535,7 +535,7 @@ def _method(verify: str) -> str:
 
 
 def test_verify_naming_a_test_is_refused(repo: Path):
-    write(repo / "docs/features/groom/concepts/publisher.md",
+    write(repo / "docs/services/groom/concepts/publisher.md",
           _method("Test_Service_Publish_ShouldConflict"))
     finding = next(f for f in _run(repo).findings if f.code == "unparsed-check")
     assert finding.severity == "error"
@@ -543,7 +543,7 @@ def test_verify_naming_a_test_is_refused(repo: Path):
 
 
 def test_verify_naming_an_unknown_check_lists_the_vocabulary(repo: Path):
-    write(repo / "docs/features/groom/concepts/publisher.md",
+    write(repo / "docs/services/groom/concepts/publisher.md",
           _method('manifest_unchanged_except(page="getting-started")'))
     finding = next(f for f in _run(repo).findings if f.code == "unparsed-check")
     assert "is not a known check" in finding.message
@@ -551,7 +551,7 @@ def test_verify_naming_an_unknown_check_lists_the_vocabulary(repo: Path):
 
 
 def test_a_declared_check_grounds(repo: Path):
-    write(repo / "docs/features/groom/concepts/publisher.md",
+    write(repo / "docs/services/groom/concepts/publisher.md",
           _method('http_status(409, title="Manifest Conflict")'))
     assert "unparsed-check" not in all_codes(_run(repo))
 
@@ -567,30 +567,30 @@ def _screen_with_locator(locator: str, *, declare_table: bool = True) -> str:
 
 
 def test_a_raw_selector_is_not_a_locator(repo: Path):
-    write(repo / "docs/features/groom/gui/screens/s.md",
+    write(repo / "docs/services/groom/gui/screens/s.md",
           _screen_with_locator("table[aria-label='Widgets']"))
     finding = next(f for f in _run(repo).findings if f.code == "undeclared-check-locator")
     assert finding.severity == "error"
     assert "not a reference into the book" in finding.message
-    assert finding.ref == "docs/features/groom/gui/screens/s.md#click#verify:1"
+    assert finding.ref == "docs/services/groom/gui/screens/s.md#click#verify:1"
 
 
 def test_a_locator_naming_no_declared_component_is_reported(repo: Path):
-    write(repo / "docs/features/groom/gui/screens/s.md",
+    write(repo / "docs/services/groom/gui/screens/s.md",
           _screen_with_locator("#widget-table", declare_table=False))
     finding = next(f for f in _run(repo).findings if f.code == "undeclared-check-locator")
     assert "names no component this book declares" in finding.message
 
 
 def test_a_locator_naming_a_declared_component_grounds(repo: Path):
-    write(repo / "docs/features/groom/gui/screens/s.md", _screen_with_locator("#widget-table"))
+    write(repo / "docs/services/groom/gui/screens/s.md", _screen_with_locator("#widget-table"))
     assert "undeclared-check-locator" not in all_codes(_run(repo))
 
 
 def test_a_locator_may_name_a_component_in_another_document(repo: Path):
-    write(repo / "docs/features/groom/gui/screens/other.md",
+    write(repo / "docs/services/groom/gui/screens/other.md",
           _screen_with_locator("#widget-table"))
-    write(repo / "docs/features/groom/gui/screens/s.md",
+    write(repo / "docs/services/groom/gui/screens/s.md",
           _screen_with_locator("other.md#widget-table", declare_table=False))
     assert "undeclared-check-locator" not in all_codes(_run(repo))
 
@@ -609,7 +609,7 @@ def _screen_with_arrangement(act: str, *, declare_field: bool = True) -> str:
 
 
 def test_an_arrange_value_that_is_a_bare_fixture_name_is_relocated(repo: Path):
-    write(repo / "docs/features/groom/gui/screens/s.md",
+    write(repo / "docs/services/groom/gui/screens/s.md",
           _screen_with_arrangement("widgets-on-hand"))
     finding = next(f for f in _run(repo).findings if f.code == "unparsed-act")
     assert finding.severity == "error"
@@ -618,30 +618,30 @@ def test_an_arrange_value_that_is_a_bare_fixture_name_is_relocated(repo: Path):
 
 
 def test_an_arrange_value_naming_a_check_gets_the_act_vocabulary(repo: Path):
-    write(repo / "docs/features/groom/gui/screens/s.md",
+    write(repo / "docs/services/groom/gui/screens/s.md",
           _screen_with_arrangement('visible(locator="#name-field")'))
     finding = next(f for f in _run(repo).findings if f.code == "unparsed-act")
     assert "is not a known act" in finding.message
 
 
 def test_an_act_pointed_at_a_raw_selector_is_reported(repo: Path):
-    write(repo / "docs/features/groom/gui/screens/s.md",
+    write(repo / "docs/services/groom/gui/screens/s.md",
           _screen_with_arrangement('fill(locator="input[name=\'name\']", value="Widget A")'))
     finding = next(f for f in _run(repo).findings if f.code == "undeclared-act-locator")
     assert finding.severity == "error"
     assert "not a reference into the book" in finding.message
-    assert finding.ref == "docs/features/groom/gui/screens/s.md#submit#arrange:1"
+    assert finding.ref == "docs/services/groom/gui/screens/s.md#submit#arrange:1"
 
 
 def test_an_act_naming_no_declared_component_is_reported(repo: Path):
-    write(repo / "docs/features/groom/gui/screens/s.md",
+    write(repo / "docs/services/groom/gui/screens/s.md",
           _screen_with_arrangement('fill(locator="#name-field", value="A")', declare_field=False))
     finding = next(f for f in _run(repo).findings if f.code == "undeclared-act-locator")
     assert "names no component this book declares" in finding.message
 
 
 def test_an_act_on_a_declared_component_grounds(repo: Path):
-    write(repo / "docs/features/groom/gui/screens/s.md",
+    write(repo / "docs/services/groom/gui/screens/s.md",
           _screen_with_arrangement('fill(locator="#name-field", value="A")'))
     codes = all_codes(_run(repo))
     assert "undeclared-act-locator" not in codes
@@ -650,7 +650,7 @@ def test_an_act_on_a_declared_component_grounds(repo: Path):
 
 def test_an_arrange_bullet_is_not_read_as_a_fixture_name(repo: Path):
     """The narrowing that made the key possible: the two fixture checkers iterate every arrangement key, and an act read as a fixture name is a finding against a correct book."""
-    write(repo / "docs/features/groom/gui/screens/s.md",
+    write(repo / "docs/services/groom/gui/screens/s.md",
           _screen_with_arrangement('fill(locator="#name-field", value="A")'))
     codes = all_codes(_run(repo))
     assert "unknown-book-fixture" not in codes
@@ -675,20 +675,20 @@ def _claim_bindings(repo: Path) -> dict[tuple[str, int], list[str]]:
 
 
 def test_a_nested_claim_list_with_a_check_must_say_how_its_children_combine(repo: Path):
-    write(repo / "docs/features/groom/gui/screens/s.md", _branching_interaction())
+    write(repo / "docs/services/groom/gui/screens/s.md", _branching_interaction())
     finding = next(f for f in _run(repo).findings if f.code == "unstated-claim-combiner")
     assert finding.severity == "error"
-    assert finding.ref == "docs/features/groom/gui/screens/s.md#click#does:1"
+    assert finding.ref == "docs/services/groom/gui/screens/s.md#click#does:1"
     assert "branches" in (finding.suggestion or "")
 
 
 def test_a_nested_claim_list_nobody_observes_needs_no_combiner(repo: Path):
-    write(repo / "docs/features/groom/gui/screens/s.md", _branching_interaction(check=False))
+    write(repo / "docs/services/groom/gui/screens/s.md", _branching_interaction(check=False))
     assert "unstated-claim-combiner" not in all_codes(_run(repo))
 
 
 def test_a_conjunction_fans_the_check_out_to_every_child(repo: Path):
-    write(repo / "docs/features/groom/gui/screens/s.md", _branching_interaction("all"))
+    write(repo / "docs/services/groom/gui/screens/s.md", _branching_interaction("all"))
     assert "unstated-claim-combiner" not in all_codes(_run(repo))
     assert _claim_bindings(repo) == {
         ("does", 1): ['visible(locator="#widget-table")'],
@@ -697,7 +697,7 @@ def test_a_conjunction_fans_the_check_out_to_every_child(repo: Path):
 
 
 def test_a_disjunction_binds_the_check_to_no_child(repo: Path):
-    write(repo / "docs/features/groom/gui/screens/s.md", _branching_interaction("branches"))
+    write(repo / "docs/services/groom/gui/screens/s.md", _branching_interaction("branches"))
     assert _claim_bindings(repo) == {}
     branches = [f for f in _run(repo).findings if f.code == "unobserved-branch"]
     assert [f.severity for f in branches] == ["warn", "warn"]
@@ -705,7 +705,7 @@ def test_a_disjunction_binds_the_check_to_no_child(repo: Path):
 
 
 def test_a_stated_combiner_is_not_itself_a_claim(repo: Path):
-    write(repo / "docs/features/groom/gui/screens/s.md", _branching_interaction("all"))
+    write(repo / "docs/services/groom/gui/screens/s.md", _branching_interaction("all"))
     node = load(repo).ui_nodes_of_type("interaction")[0]
     assert [v for k, v, _ in node.bullet_order if k == "does"] == [
         "success: the table appears", "failure: the page stays put"]
@@ -713,7 +713,7 @@ def test_a_stated_combiner_is_not_itself_a_claim(repo: Path):
 
 
 def test_a_combiner_word_on_a_childless_bullet_stays_prose(repo: Path):
-    write(repo / "docs/features/groom/gui/screens/s.md",
+    write(repo / "docs/services/groom/gui/screens/s.md",
           ("---\ntype: screen\nslug: s\ntitle: S\n---\n# S\n\n"
            "## Interactions\n\n### click\n- on: [S](#s)\n- trigger: click\n"
            "- does: all\n"))
@@ -723,7 +723,7 @@ def test_a_combiner_word_on_a_childless_bullet_stays_prose(repo: Path):
 
 
 def test_a_node_that_declares_nothing_is_reported(repo: Path):
-    write(repo / "docs/features/groom/concepts/publisher.md",
+    write(repo / "docs/services/groom/concepts/publisher.md",
           "---\ntype: concept\nslug: publisher\ntitle: Publisher\n---\n# Publisher\n\n"
           "## Methods\n\n### Publish\n- returns: the published revision\n"
           "- raises: `ManifestConflict` when the revision moved\n")
@@ -735,7 +735,7 @@ def test_a_node_that_declares_nothing_is_reported(repo: Path):
 
 
 def test_one_declaration_answers_the_node(repo: Path):
-    write(repo / "docs/features/groom/concepts/publisher.md",
+    write(repo / "docs/services/groom/concepts/publisher.md",
           "---\ntype: concept\nslug: publisher\ntitle: Publisher\n---\n# Publisher\n\n"
           "## Methods\n\n### Publish\n- returns: the published revision\n"
           "- raises: `ManifestConflict` when the revision moved\n"
@@ -744,7 +744,7 @@ def test_one_declaration_answers_the_node(repo: Path):
 
 
 def test_a_declaration_that_does_not_parse_is_reported_once(repo: Path):
-    write(repo / "docs/features/groom/concepts/publisher.md",
+    write(repo / "docs/services/groom/concepts/publisher.md",
           _method("Test_Service_Publish_ShouldConflict"))
     found = all_codes(_run(repo))
     assert "unparsed-check" in found
@@ -752,7 +752,7 @@ def test_a_declaration_that_does_not_parse_is_reported_once(repo: Path):
 
 
 def test_a_claim_with_two_checks_and_a_bare_sibling_is_reported(repo: Path):
-    write(repo / "docs/features/groom/concepts/publisher.md",
+    write(repo / "docs/services/groom/concepts/publisher.md",
           "---\ntype: concept\nslug: publisher\ntitle: Publisher\n---\n# Publisher\n\n"
           "## Methods\n\n### Publish\n"
           "- returns: the published revision\n"
@@ -766,7 +766,7 @@ def test_a_claim_with_two_checks_and_a_bare_sibling_is_reported(repo: Path):
 
 
 def test_a_claim_that_merely_under_verifies_is_not_reported(repo: Path):
-    write(repo / "docs/features/groom/concepts/publisher.md",
+    write(repo / "docs/services/groom/concepts/publisher.md",
           "---\ntype: concept\nslug: publisher\ntitle: Publisher\n---\n# Publisher\n\n"
           "## Methods\n\n### Publish\n"
           "- returns: the published revision\n"
@@ -776,7 +776,7 @@ def test_a_claim_that_merely_under_verifies_is_not_reported(repo: Path):
 
 
 def test_a_self_declared_empty_raises_is_not_the_light_sibling(repo: Path):
-    write(repo / "docs/features/groom/concepts/publisher.md",
+    write(repo / "docs/services/groom/concepts/publisher.md",
           "---\ntype: concept\nslug: publisher\ntitle: Publisher\n---\n# Publisher\n\n"
           "## Methods\n\n### Publish\n"
           "- returns: the published revision\n"
@@ -788,7 +788,7 @@ def test_a_self_declared_empty_raises_is_not_the_light_sibling(repo: Path):
 
 
 def test_a_bare_none_on_raises_is_still_the_light_sibling(repo: Path):
-    write(repo / "docs/features/groom/concepts/publisher.md",
+    write(repo / "docs/services/groom/concepts/publisher.md",
           "---\ntype: concept\nslug: publisher\ntitle: Publisher\n---\n# Publisher\n\n"
           "## Methods\n\n### Publish\n"
           "- returns: the published revision\n"
@@ -800,7 +800,7 @@ def test_a_bare_none_on_raises_is_still_the_light_sibling(repo: Path):
 
 
 def test_a_node_whose_only_claim_self_declares_empty_owes_no_check(repo: Path):
-    write(repo / "docs/features/groom/concepts/publisher.md",
+    write(repo / "docs/services/groom/concepts/publisher.md",
           "---\ntype: concept\nslug: publisher\ntitle: Publisher\n---\n# Publisher\n\n"
           "## Methods\n\n### Publish\n"
           "- raises: nothing at all, because a refusal is a returned message rather than "
@@ -809,7 +809,7 @@ def test_a_node_whose_only_claim_self_declares_empty_owes_no_check(repo: Path):
 
 
 def test_a_node_whose_only_claim_is_a_bare_none_still_owes_a_check(repo: Path):
-    write(repo / "docs/features/groom/concepts/publisher.md",
+    write(repo / "docs/services/groom/concepts/publisher.md",
           "---\ntype: concept\nslug: publisher\ntitle: Publisher\n---\n# Publisher\n\n"
           "## Methods\n\n### Publish\n"
           "- raises: none\n")
@@ -817,7 +817,7 @@ def test_a_node_whose_only_claim_is_a_bare_none_still_owes_a_check(repo: Path):
 
 
 def test_a_live_claim_beside_a_self_declared_empty_one_still_owes_a_check(repo: Path):
-    write(repo / "docs/features/groom/concepts/publisher.md",
+    write(repo / "docs/services/groom/concepts/publisher.md",
           "---\ntype: concept\nslug: publisher\ntitle: Publisher\n---\n# Publisher\n\n"
           "## Methods\n\n### Publish\n"
           "- returns: the published revision\n"
@@ -828,7 +828,7 @@ def test_a_live_claim_beside_a_self_declared_empty_one_still_owes_a_check(repo: 
 
 
 def test_a_check_that_cannot_go_red_is_reported(repo: Path):
-    write(repo / "docs/features/groom/concepts/publisher.md",
+    write(repo / "docs/services/groom/concepts/publisher.md",
           _method('json_path(path="$.revision", absent=false)'))
     finding = next(f for f in _run(repo).findings if f.code == "weak-check")
     assert finding.severity == "error"
@@ -838,12 +838,12 @@ def test_a_check_that_cannot_go_red_is_reported(repo: Path):
 
 
 def test_a_success_status_naming_neither_route_nor_title_is_weak(repo: Path):
-    write(repo / "docs/features/groom/concepts/publisher.md", _method("http_status(200)"))
+    write(repo / "docs/services/groom/concepts/publisher.md", _method("http_status(200)"))
     assert "weak-check" in all_codes(_run(repo))
 
 
 def test_one_discriminating_check_answers_the_claim_it_was_written_under(repo: Path):
-    write(repo / "docs/features/groom/concepts/publisher.md",
+    write(repo / "docs/services/groom/concepts/publisher.md",
           "---\ntype: concept\nslug: publisher\ntitle: Publisher\n---\n# Publisher\n\n"
           "## Methods\n\n### Publish\n- returns: the published revision\n"
           '- verify: json_path(path="$.revision", absent=false)\n'
@@ -852,7 +852,7 @@ def test_one_discriminating_check_answers_the_claim_it_was_written_under(repo: P
 
 
 def test_a_pattern_that_admits_any_value_is_weak_not_insensitive(repo: Path):
-    write(repo / "docs/features/groom/concepts/publisher.md",
+    write(repo / "docs/services/groom/concepts/publisher.md",
           _method('json_path(path="$.state", matches=".*")'))
     found = all_codes(_run(repo))
     assert "insensitive-check" not in found
@@ -862,7 +862,7 @@ def test_a_pattern_that_admits_any_value_is_weak_not_insensitive(repo: Path):
 
 
 def test_a_plus_pattern_that_admits_any_value_is_weak_not_insensitive(repo: Path):
-    write(repo / "docs/features/groom/concepts/publisher.md",
+    write(repo / "docs/services/groom/concepts/publisher.md",
           _method('json_path(path="$.state", matches=".+")'))
     found = all_codes(_run(repo))
     assert "insensitive-check" not in found
@@ -871,7 +871,7 @@ def test_a_plus_pattern_that_admits_any_value_is_weak_not_insensitive(repo: Path
 
 
 def test_a_discriminating_pattern_stays_a_check_not_a_stamp(repo: Path):
-    write(repo / "docs/features/groom/concepts/publisher.md",
+    write(repo / "docs/services/groom/concepts/publisher.md",
           _method('json_path(path="$.level", matches="^(INFO|DEBUG|TRACE)$")'))
     found = all_codes(_run(repo))
     assert "weak-check" not in found
@@ -879,7 +879,7 @@ def test_a_discriminating_pattern_stays_a_check_not_a_stamp(repo: Path):
 
 
 def test_an_equals_check_is_unaffected_by_the_matches_predicate(repo: Path):
-    write(repo / "docs/features/groom/concepts/publisher.md",
+    write(repo / "docs/services/groom/concepts/publisher.md",
           _method('json_path(path="$.state", equals="published")'))
     found = all_codes(_run(repo))
     assert "weak-check" not in found
@@ -887,7 +887,7 @@ def test_an_equals_check_is_unaffected_by_the_matches_predicate(repo: Path):
 
 
 def test_a_pattern_no_witness_can_be_invented_for_has_no_result(repo: Path):
-    write(repo / "docs/features/groom/concepts/publisher.md",
+    write(repo / "docs/services/groom/concepts/publisher.md",
           _method('json_path(path="$.lang", matches="^(?=.{2}$)[a-z]+$")'))
     found = all_codes(_run(repo))
     assert "insensitive-check" not in found
@@ -899,7 +899,7 @@ def test_a_pattern_no_witness_can_be_invented_for_has_no_result(repo: Path):
 
 
 def test_a_creation_verified_only_afterwards_is_reported(repo: Path):
-    write(repo / "docs/features/groom/concepts/publisher.md",
+    write(repo / "docs/services/groom/concepts/publisher.md",
           "---\ntype: concept\nslug: publisher\ntitle: Publisher\n---\n# Publisher\n\n"
           "## Methods\n\n### Publish\n"
           "- returns: the revision it creates under the caller's name\n"
@@ -911,7 +911,7 @@ def test_a_creation_verified_only_afterwards_is_reported(repo: Path):
 
 
 def test_declaring_the_change_as_a_change_clears_it(repo: Path):
-    write(repo / "docs/features/groom/concepts/publisher.md",
+    write(repo / "docs/services/groom/concepts/publisher.md",
           "---\ntype: concept\nslug: publisher\ntitle: Publisher\n---\n# Publisher\n\n"
           "## Methods\n\n### Publish\n"
           "- returns: the revision it creates under the caller's name\n"
@@ -921,7 +921,7 @@ def test_declaring_the_change_as_a_change_clears_it(repo: Path):
 
 
 def test_a_claim_that_changes_no_existence_is_not_asked_for_a_before_read(repo: Path):
-    write(repo / "docs/features/groom/concepts/publisher.md",
+    write(repo / "docs/services/groom/concepts/publisher.md",
           "---\ntype: concept\nslug: publisher\ntitle: Publisher\n---\n# Publisher\n\n"
           "## Methods\n\n### Publish\n"
           "- returns: the issue the caller filed, and the register it was recorded in\n"
@@ -931,7 +931,7 @@ def test_a_claim_that_changes_no_existence_is_not_asked_for_a_before_read(repo: 
 
 def test_a_lifecycle_claim_nothing_observes_is_not_this_rule_s_finding(repo: Path):
     """The shape no edit could clear, and the bulk of the 183 findings this rule used to raise."""
-    write(repo / "docs/features/groom/concepts/publisher.md",
+    write(repo / "docs/services/groom/concepts/publisher.md",
           "---\ntype: concept\nslug: publisher\ntitle: Publisher\n---\n# Publisher\n\n"
           "## Methods\n\n### Publish\n"
           "- returns: the revision it creates under the caller's name\n"
@@ -942,7 +942,7 @@ def test_a_lifecycle_claim_nothing_observes_is_not_this_rule_s_finding(repo: Pat
 
 def test_a_sibling_claim_declaring_the_change_does_not_answer_this_one(repo: Path):
     """One `created(...)` on the node used to silence every lifecycle claim beside it."""
-    write(repo / "docs/features/groom/concepts/publisher.md",
+    write(repo / "docs/services/groom/concepts/publisher.md",
           "---\ntype: concept\nslug: publisher\ntitle: Publisher\n---\n# Publisher\n\n"
           "## Methods\n\n### Publish\n"
           "- returns: the revision it creates under the caller's name\n"
@@ -956,7 +956,7 @@ def test_a_sibling_claim_declaring_the_change_does_not_answer_this_one(repo: Pat
 
 def test_a_verb_its_own_sentence_negates_states_no_lifecycle_change(repo: Path):
     """`created(subject=…)` asserts the very thing the claim says does not happen."""
-    write(repo / "docs/features/groom/concepts/publisher.md",
+    write(repo / "docs/services/groom/concepts/publisher.md",
           "---\ntype: concept\nslug: publisher\ntitle: Publisher\n---\n# Publisher\n\n"
           "## Methods\n\n### Publish\n"
           "- does: a cancelled publish creates no revision and writes no manifest row\n"
@@ -965,7 +965,7 @@ def test_a_verb_its_own_sentence_negates_states_no_lifecycle_change(repo: Path):
 
 
 def test_a_negator_governing_the_verb_from_the_left_also_clears_it(repo: Path):
-    write(repo / "docs/features/groom/concepts/publisher.md",
+    write(repo / "docs/services/groom/concepts/publisher.md",
           "---\ntype: concept\nslug: publisher\ntitle: Publisher\n---\n# Publisher\n\n"
           "## Methods\n\n### Publish\n"
           "- does: a replay reuses the existing revision instead of creating a duplicate\n"
@@ -980,7 +980,7 @@ def test_a_state_dependent_alternative_is_not_an_unstated_precondition(repo: Pat
         "creates the record when absent, or updates the existing record otherwise",
     )
     for claim in claims:
-        write(repo / "docs/features/groom/concepts/publisher.md",
+        write(repo / "docs/services/groom/concepts/publisher.md",
               "---\ntype: concept\nslug: publisher\ntitle: Publisher\n---\n# Publisher\n\n"
               "## Methods\n\n### Publish\n"
               f"- does: {claim}\n"
@@ -995,7 +995,7 @@ def test_a_verb_alternation_is_state_dependent_without_a_cue_word(repo: Path):
         "removes the override, or restores the value the caller shadowed",
     )
     for claim in claims:
-        write(repo / "docs/features/groom/concepts/publisher.md",
+        write(repo / "docs/services/groom/concepts/publisher.md",
               "---\ntype: concept\nslug: publisher\ntitle: Publisher\n---\n# Publisher\n\n"
               "## Methods\n\n### Publish\n"
               f"- does: {claim}\n"
@@ -1005,7 +1005,7 @@ def test_a_verb_alternation_is_state_dependent_without_a_cue_word(repo: Path):
 
 def test_a_lone_alternative_marker_does_not_excuse_an_unconditional_creation(repo: Path):
     """The near-miss that keeps the alternation test tight rather than sentence-wide."""
-    write(repo / "docs/features/groom/concepts/publisher.md",
+    write(repo / "docs/services/groom/concepts/publisher.md",
           "---\ntype: concept\nslug: publisher\ntitle: Publisher\n---\n# Publisher\n\n"
           "## Methods\n\n### Publish\n"
           "- does: creates the revision, then updates the manifest row it points at or the\n"
@@ -1017,7 +1017,7 @@ def test_a_lone_alternative_marker_does_not_excuse_an_unconditional_creation(rep
 
 def test_a_negator_elsewhere_in_the_sentence_does_not_clear_a_real_creation(repo: Path):
     """The near-miss that makes the scoping load-bearing, not a detail of the implementation."""
-    write(repo / "docs/features/groom/concepts/publisher.md",
+    write(repo / "docs/services/groom/concepts/publisher.md",
           "---\ntype: concept\nslug: publisher\ntitle: Publisher\n---\n# Publisher\n\n"
           "## Methods\n\n### Publish\n"
           "- does: creates a new manifest and copies every existing row into it, without\n"
@@ -1028,7 +1028,7 @@ def test_a_negator_elsewhere_in_the_sentence_does_not_clear_a_real_creation(repo
 
 
 def test_a_deletion_the_sentence_only_sequences_still_states_a_lifecycle_change(repo: Path):
-    write(repo / "docs/features/groom/concepts/publisher.md",
+    write(repo / "docs/services/groom/concepts/publisher.md",
           "---\ntype: concept\nslug: publisher\ntitle: Publisher\n---\n# Publisher\n\n"
           "## Methods\n\n### Publish\n"
           "- returns: an empty `204 No Content` after deleting the revision\n"
@@ -1039,7 +1039,7 @@ def test_a_deletion_the_sentence_only_sequences_still_states_a_lifecycle_change(
 
 def test_emitting_a_request_is_not_a_change_of_existence(repo: Path):
     """`issues`/`issuing` left `LIFECYCLE_VERBS` on the constant's own stated criterion."""
-    write(repo / "docs/features/groom/concepts/publisher.md",
+    write(repo / "docs/services/groom/concepts/publisher.md",
           "---\ntype: concept\nslug: publisher\ntitle: Publisher\n---\n# Publisher\n\n"
           "## Methods\n\n### Publish\n"
           "- does: issues one `GET /manifest` against the api, never two\n"
@@ -1048,7 +1048,7 @@ def test_emitting_a_request_is_not_a_change_of_existence(repo: Path):
 
 
 def test_a_key_that_describes_rather_than_acts_is_not_asked_for_a_before_read(repo: Path):
-    write(repo / "docs/features/groom/concepts/publisher.md",
+    write(repo / "docs/services/groom/concepts/publisher.md",
           "---\ntype: concept\nslug: publisher\ntitle: Publisher\n---\n# Publisher\n\n"
           "## Fields\n\n### Row Count\n"
           "- semantics: an empty value is read as zero; any other value the generator\n"
@@ -1058,18 +1058,18 @@ def test_a_key_that_describes_rather_than_acts_is_not_asked_for_a_before_read(re
 
 
 def test_a_node_minting_no_obligation_is_not_asked_to_declare(repo: Path):
-    write(repo / "docs/features/groom/gui/screens/s.md",
+    write(repo / "docs/services/groom/gui/screens/s.md",
           "---\ntype: screen\nslug: s\ntitle: S\n---\n# S\n\n"
           "## Interactions\n\n### click\n- on: [S](#s)\n- trigger: click\n")
     assert "undeclared-obligation" not in all_codes(_run(repo))
 
 
 def test_a_field_inherits_its_observation_from_the_record_that_carries_it(repo: Path):
-    write(repo / "docs/features/groom/concepts/publisher.md",
+    write(repo / "docs/services/groom/concepts/publisher.md",
           "---\ntype: concept\nslug: publisher\ntitle: Publisher\n---\n# Publisher\n\n"
           "## Fields\n\n### rowCount\n- type: integer\n- default: zero\n- required: no\n")
     assert "undeclared-obligation" not in all_codes(_run(repo))
-    write(repo / "docs/features/groom/concepts/publisher.md",
+    write(repo / "docs/services/groom/concepts/publisher.md",
           "---\ntype: concept\nslug: publisher\ntitle: Publisher\n---\n# Publisher\n\n"
           "## Fields\n\n### rowCount\n- type: integer\n- default: zero\n"
           "- verify: Test_Manifest_RowCount_Defaults\n")
@@ -1078,7 +1078,7 @@ def test_a_field_inherits_its_observation_from_the_record_that_carries_it(repo: 
 
 
 def test_a_type_that_carries_no_check_key_is_never_reported(repo: Path):
-    write(repo / "docs/features/groom/runbooks/deploy.md",
+    write(repo / "docs/services/groom/runbooks/deploy.md",
           "---\ntype: runbook\nslug: deploy\ntitle: Deploy\n---\n# Deploy\n\n"
           "## Steps\n\n### Push\n- step: push the image\n"
           "- persistence: the tag is recorded in the registry\n")
@@ -1087,21 +1087,21 @@ def test_a_type_that_carries_no_check_key_is_never_reported(repo: Path):
 
 def test_a_claim_under_a_non_normative_key_is_reported(repo: Path):
     """A concept that mints nothing, stating a status code under its own `errors:` key: no obligation will ever carry it, so no plan is asked to prove it."""
-    write(repo / "docs/features/groom/concepts/lease.md",
+    write(repo / "docs/services/groom/concepts/lease.md",
           "---\ntype: concept\nslug: lease\ntitle: Lease\n---\n# Lease\n\n"
           "- meaning: a lock over one path\n"
           "- errors: `409` when the lease is held by another worker\n"
           "- rules: the owner must renew before the deadline\n")
     report = _run(repo)
     hits = [f for f in report.findings if f.code == "unminted-claim"]
-    assert [f.ref for f in hits] == ["docs/features/groom/concepts/lease.md#errors"]
+    assert [f.ref for f in hits] == ["docs/services/groom/concepts/lease.md#errors"]
     assert hits[0].severity == "warn"
     assert "names status 409" in hits[0].message
     assert "concept mints no obligation" in hits[0].message
 
 
 def test_a_trigger_only_interaction_is_not_reported(repo: Path):
-    write(repo / "docs/features/groom/gui/screens/s.md",
+    write(repo / "docs/services/groom/gui/screens/s.md",
           "---\ntype: screen\nslug: s\ntitle: S\n---\n# S\n\n"
           "## Interactions\n\n### click\n- on: [S](#s)\n- trigger: click\n")
     assert "unminted-claim" not in all_codes(_run(repo))
@@ -1109,16 +1109,16 @@ def test_a_trigger_only_interaction_is_not_reported(repo: Path):
 
 def test_a_minting_node_is_still_asked_about_its_other_bullets(repo: Path):
     """The `persistence:` bullet being in QA's sight says nothing about whether `errors:` is — before this, a node-wide flag let one satisfied bullet vouch for its siblings."""
-    write(repo / "docs/features/groom/concepts/lease.md",
+    write(repo / "docs/services/groom/concepts/lease.md",
           "---\ntype: concept\nslug: lease\ntitle: Lease\n---\n# Lease\n\n"
           "- persistence: the lease row is written once\n"
           "- errors: `409` when the lease is held by another worker\n")
     hits = [f for f in _run(repo).findings if f.code == "unminted-claim"]
-    assert [f.ref for f in hits] == ["docs/features/groom/concepts/lease.md#errors"]
+    assert [f.ref for f in hits] == ["docs/services/groom/concepts/lease.md#errors"]
 
 
 def test_a_minting_nodes_declared_keys_are_still_exempt(repo: Path):
-    write(repo / "docs/features/groom/concepts/lease.md",
+    write(repo / "docs/services/groom/concepts/lease.md",
           "---\ntype: concept\nslug: lease\ntitle: Lease\n---\n# Lease\n\n"
           "- persistence: the lease row is written once\n"
           "- rule: prefer the newer lease when both return `409`\n")
@@ -1126,28 +1126,28 @@ def test_a_minting_nodes_declared_keys_are_still_exempt(repo: Path):
 
 
 def test_an_untyped_section_with_a_status_bullet_is_reported(repo: Path):
-    write(repo / "docs/features/groom/concepts/lease.md",
+    write(repo / "docs/services/groom/concepts/lease.md",
           "---\ntype: concept\nslug: lease\ntitle: Lease\n---\n# Lease\n\n"
           "## Notes\n\n### Renewal\n- outcome: `409` when the lease is held by another worker\n")
     hits = [f for f in _run(repo).findings if f.code == "unminted-claim"]
-    assert [f.ref for f in hits] == ["docs/features/groom/concepts/lease.md#renewal#outcome"]
+    assert [f.ref for f in hits] == ["docs/services/groom/concepts/lease.md#renewal#outcome"]
 
 
 def test_an_undeclared_bullet_key_is_a_warning(repo: Path):
     """A `route:` on a concept is read by nobody — only a screen declares it — while the author who wrote it believes the concept is addressable."""
-    write(repo / "docs/features/groom/concepts/diff.md",
+    write(repo / "docs/services/groom/concepts/diff.md",
           "---\ntype: concept\nslug: diff\ntitle: Diff\n---\n# Diff\n\n"
           "- code: `groom/diff.py::Diff`\n- verify: absent(subject=\"the row\")\n"
           "- route: /diff\n")
     report = _run(repo)
     hits = [f for f in report.findings if f.code == "unknown-bullet"]
-    assert [f.ref for f in hits] == ["docs/features/groom/concepts/diff.md#route"]
+    assert [f.ref for f in hits] == ["docs/services/groom/concepts/diff.md#route"]
     assert hits[0].severity == "warn"
     assert "concept declares" in hits[0].message
 
 
 def test_an_undeclared_bullet_on_an_untyped_section_is_not_asked(repo: Path):
-    write(repo / "docs/features/groom/concepts/diff.md",
+    write(repo / "docs/services/groom/concepts/diff.md",
           "---\ntype: concept\nslug: diff\ntitle: Diff\n---\n# Diff\n\n"
           "## Notes\n\n- verify: a word in prose, not a check\n")
     assert "unknown-bullet" not in all_codes(_run(repo))
@@ -1155,14 +1155,14 @@ def test_an_undeclared_bullet_on_an_untyped_section_is_not_asked(repo: Path):
 
 def test_a_status_bullet_on_an_invocation_is_declared_and_formatted(repo: Path):
     """The key was graded for as long as the mapper existed and declared only now: `fmt` orders it between the effect and its grounding, and the `verify:` under it stays with it (`registry.attributed_checks` binds a check to the nearest claim above)."""
-    write(repo / "docs/features/groom/cli/wh.md",
+    write(repo / "docs/services/groom/cli/wh.md",
           "---\ntype: cli\nslug: wh\ntitle: WH\n---\n# WH\n\n"
           "## Invocations\n\n### run\n- on: [wh](#wh)\n- trigger: `wh run`\n"
           "- does:\n  - state: runs\n- code: `wh/run.py::run`\n"
           "- status: `0` on success\n- verify: exit_status(code=0)\n")
     assert "unknown-bullet" not in all_codes(_run(repo))
     fmt.run_fmt(load(repo), [])
-    text = (repo / "docs/features/groom/cli/wh.md").read_text()
+    text = (repo / "docs/services/groom/cli/wh.md").read_text()
     assert text.index("- status:") < text.index("- verify:") < text.index("- code:")
     inv = load(repo).ui_nodes_of_type("invocation")[0]
     _, per_bullet = registry.attributed_checks(inv.type, inv.bullet_order, inv.combiners)
@@ -1174,9 +1174,9 @@ def test_detail_is_declared_on_every_implementation_bearing_type(repo: Path):
     for node_type in ("screen", "cli", "server", "format", "flow", "component",
                       "interaction", "invocation", "method", "command", "endpoint"):
         assert "detail" in registry.declared_keys(node_type), node_type
-    write(repo / "docs/features/groom/concepts/notify.md",
+    write(repo / "docs/services/groom/concepts/notify.md",
           "---\ntype: concept\nslug: notify\ntitle: Notify\n---\n# Notify\n")
-    write(repo / "docs/features/groom/gui/screens/s.md",
+    write(repo / "docs/services/groom/gui/screens/s.md",
           "---\ntype: screen\nslug: s\ntitle: S\n---\n# S\n\n"
           "## Components\n\n### banner\n- role: `status`\n- name: Banner\n"
           "- keyboard: none\n- states: shown\n"
@@ -1185,7 +1185,7 @@ def test_detail_is_declared_on_every_implementation_bearing_type(repo: Path):
           "- code: `web/src/Banner.tsx::Banner`\n")
     assert "unknown-bullet" not in all_codes(_run(repo))
     fmt.run_fmt(load(repo), [])
-    text = (repo / "docs/features/groom/gui/screens/s.md").read_text()
+    text = (repo / "docs/services/groom/gui/screens/s.md").read_text()
     assert text.index("- verify:") < text.index("- code:") < text.index("- detail:")
 
 
@@ -1194,18 +1194,18 @@ def test_code_is_declared_on_every_type(repo: Path):
     for node_type in registry.UI_TYPES_BY_NAME:
         assert "code" in registry.declared_keys(node_type), node_type
 
-    write(repo / "docs/features/groom/gui/screens/s.md",
+    write(repo / "docs/services/groom/gui/screens/s.md",
           "---\ntype: screen\nslug: s\ntitle: S\n---\n# S\n\n"
           "- route: `/s`\n- requires: none\n- params: none\n"
           "- code: `groom/groom/diff.py::Diff`\n")
-    write(repo / "docs/features/groom/flows/f.md",
+    write(repo / "docs/services/groom/flows/f.md",
           "---\ntype: flow\nslug: f\ntitle: F\n---\n# F\n\n"
           "- start: begins\n- end: ends\n- code: `groom/groom/diff.py::Diff`\n")
-    write(repo / "docs/features/groom/fixtures/fx.md",
+    write(repo / "docs/services/groom/fixtures/fx.md",
           "---\ntype: fixture\nslug: fx\ntitle: FX\n---\n# FX\n\n"
           "- code: `groom/groom/diff.py::Diff`\n\n"
           "## Steps\n\n### boot\n- kind: seed\n- run: `groom/boot.sh`\n")
-    write(repo / "docs/features/groom/concepts/notify.md",
+    write(repo / "docs/services/groom/concepts/notify.md",
           "---\ntype: concept\nslug: notify\ntitle: Notify\n---\n# Notify\n\n"
           "## Steps\n\n### boot\n- kind: prepare\n- code: `groom/groom/diff.py::Diff`\n\n"
           "## Notes\n\n### Detail\n- code: `groom/groom/diff.py::Diff`\n")
@@ -1221,13 +1221,13 @@ def test_concept_judgment_keys_are_advisory_relations(repo: Path):
     for key in ("rule", "prefers", "deprecates"):
         assert key in registry.declared_keys("concept"), key
         assert key not in registry.normative_keys("concept"), key
-    write(repo / "docs/features/groom/concepts/notify.md",
+    write(repo / "docs/services/groom/concepts/notify.md",
           "---\ntype: concept\nslug: notify\ntitle: Notify\n---\n# Notify\n\n"
           "- rule: reach for V2 unless the call site needs a synchronous send receipt\n"
           "- prefers: [gone](../gui/screens/gone.md)\n")
     hits = [f for f in _run(repo).findings if f.code == "unresolved-relation"]
     assert hits and "prefers" in hits[0].message
-    write(repo / "docs/features/groom/http/api.md",
+    write(repo / "docs/services/groom/http/api.md",
           "---\ntype: api\nslug: api\ntitle: API\n---\n# API\n\n"
           "## Endpoints\n\n### submit\n- method: POST\n- path: /x\n"
           "- does:\n  - state: submits the form\n- status: `201` on success\n"
@@ -1235,7 +1235,7 @@ def test_concept_judgment_keys_are_advisory_relations(repo: Path):
           "- code: `api/submit.go::Submit`\n"
           "- rule: the author's own word here, not the concept vocabulary\n")
     codes = {f.code for f in _run(repo).findings
-             if f.path == "docs/features/groom/http/api.md"}
+             if f.path == "docs/services/groom/http/api.md"}
     assert "unknown-bullet" not in codes
 
 
@@ -1248,15 +1248,15 @@ def _endpoint_file(slug: str, symbol: str, extra: str = "") -> str:
 
 
 def test_one_way_same_as_fires_when_the_target_does_not_name_it_back(repo: Path):
-    write(repo / "docs/features/groom/concepts/notify-a.md",
+    write(repo / "docs/services/groom/concepts/notify-a.md",
           "---\ntype: concept\nslug: notify-a\ntitle: Notify A\n---\n# Notify A\n\n"
           "- same-as: [notify-b](../concepts/notify-b.md)\n")
-    write(repo / "docs/features/groom/concepts/notify-b.md",
+    write(repo / "docs/services/groom/concepts/notify-b.md",
           "---\ntype: concept\nslug: notify-b\ntitle: Notify B\n---\n# Notify B\n\nNothing here.\n")
     hits = [f for f in _run(repo).findings if f.code == "one-way-same-as"]
     assert len(hits) == 1 and hits[0].severity == "error"
     hit = hits[0]
-    assert hit.path == "docs/features/groom/concepts/notify-a.md"
+    assert hit.path == "docs/services/groom/concepts/notify-a.md"
     assert "notify-b" in hit.message
     assert hit.suggestion is not None
     assert "notify-b.md" in hit.suggestion
@@ -1265,24 +1265,24 @@ def test_one_way_same_as_fires_when_the_target_does_not_name_it_back(repo: Path)
 
 
 def test_one_way_same_as_silent_when_both_sides_name_each_other(repo: Path):
-    write(repo / "docs/features/groom/concepts/notify-a.md",
+    write(repo / "docs/services/groom/concepts/notify-a.md",
           "---\ntype: concept\nslug: notify-a\ntitle: Notify A\n---\n# Notify A\n\n"
           "- same-as: [notify-b](../concepts/notify-b.md)\n")
-    write(repo / "docs/features/groom/concepts/notify-b.md",
+    write(repo / "docs/services/groom/concepts/notify-b.md",
           "---\ntype: concept\nslug: notify-b\ntitle: Notify B\n---\n# Notify B\n\n"
           "- same-as: [notify-a](../concepts/notify-a.md)\n")
     assert "one-way-same-as" not in all_codes(_run(repo))
 
 
 def test_one_way_same_as_silent_when_same_as_is_never_used(repo: Path):
-    write(repo / "docs/features/groom/concepts/notify.md",
+    write(repo / "docs/services/groom/concepts/notify.md",
           "---\ntype: concept\nslug: notify\ntitle: Notify\n---\n# Notify\n\nNothing here.\n")
     assert "one-way-same-as" not in all_codes(_run(repo))
 
 
 def test_one_way_same_as_does_not_fire_for_a_dangling_target(repo: Path):
     """A `same-as:` value that resolves nowhere is `unresolved-relation`'s finding, raised by the document-wide link pass — this check only judges a claim once it lands on a real node, so the two never double-report the same broken bullet."""
-    write(repo / "docs/features/groom/concepts/notify-a.md",
+    write(repo / "docs/services/groom/concepts/notify-a.md",
           "---\ntype: concept\nslug: notify-a\ntitle: Notify A\n---\n# Notify A\n\n"
           "- same-as: [gone](../concepts/gone.md)\n")
     codeset = all_codes(_run(repo))
@@ -1292,21 +1292,21 @@ def test_one_way_same_as_does_not_fire_for_a_dangling_target(repo: Path):
 
 def test_one_way_same_as_is_checked_per_edge_not_per_family(repo: Path):
     """The addendum's chain: A<->B, B<->C, C<->D, all reciprocated pairwise."""
-    write(repo / "docs/features/groom/concepts/notify-a.md",
+    write(repo / "docs/services/groom/concepts/notify-a.md",
           "---\ntype: concept\nslug: notify-a\ntitle: Notify A\n---\n# Notify A\n\n"
           "- code: `internal/notify.go::Notify`\n"
           "- same-as: [notify-b](../concepts/notify-b.md)\n")
-    write(repo / "docs/features/groom/concepts/notify-b.md",
+    write(repo / "docs/services/groom/concepts/notify-b.md",
           "---\ntype: concept\nslug: notify-b\ntitle: Notify B\n---\n# Notify B\n\n"
           "- code: `internal/notify.go::Notify`\n"
           "- same-as: [notify-a](../concepts/notify-a.md)\n"
           "- same-as: [notify-c](../concepts/notify-c.md)\n")
-    write(repo / "docs/features/groom/concepts/notify-c.md",
+    write(repo / "docs/services/groom/concepts/notify-c.md",
           "---\ntype: concept\nslug: notify-c\ntitle: Notify C\n---\n# Notify C\n\n"
           "- code: `internal/notify.go::Notify`\n"
           "- same-as: [notify-b](../concepts/notify-b.md)\n"
           "- same-as: [notify-d](../concepts/notify-d.md)\n")
-    write(repo / "docs/features/groom/concepts/notify-d.md",
+    write(repo / "docs/services/groom/concepts/notify-d.md",
           "---\ntype: concept\nslug: notify-d\ntitle: Notify D\n---\n# Notify D\n\n"
           "- code: `internal/notify.go::Notify`\n"
           "- same-as: [notify-c](../concepts/notify-c.md)\n")
@@ -1315,20 +1315,20 @@ def test_one_way_same_as_is_checked_per_edge_not_per_family(repo: Path):
 
 def test_deprecation_without_successor(repo: Path):
     """A concept whose `deprecates:` resolves but that names no `prefers:` and no `rule:` reads as "delete this" — usually wrong."""
-    write(repo / "docs/features/groom/concepts/legacy.md",
+    write(repo / "docs/services/groom/concepts/legacy.md",
           "---\ntype: concept\nslug: legacy\ntitle: Legacy\n---\n# Legacy\n\nOld path.\n")
-    write(repo / "docs/features/groom/concepts/notify.md",
+    write(repo / "docs/services/groom/concepts/notify.md",
           "---\ntype: concept\nslug: notify\ntitle: Notify\n---\n# Notify\n\n"
           "- deprecates: [legacy](legacy.md)\n")
     hits = [f for f in _run(repo).findings if f.code == "deprecation-without-successor"]
     assert len(hits) == 1 and hits[0].severity == "warn"
     assert "prefers" in hits[0].message
-    write(repo / "docs/features/groom/concepts/notify.md",
+    write(repo / "docs/services/groom/concepts/notify.md",
           "---\ntype: concept\nslug: notify\ntitle: Notify\n---\n# Notify\n\n"
           "- rule: legacy remains only for the dunning sequence's synchronous receipt\n"
           "- deprecates: [legacy](legacy.md)\n")
     assert "deprecation-without-successor" not in all_codes(_run(repo))
-    write(repo / "docs/features/groom/concepts/notify.md",
+    write(repo / "docs/services/groom/concepts/notify.md",
           "---\ntype: concept\nslug: notify\ntitle: Notify\n---\n# Notify\n\n"
           "- deprecates: [gone](gone.md)\n")
     report = _run(repo)
@@ -1342,17 +1342,17 @@ def test_ungrounded_unspecified(repo: Path):
           "# 0007 — export encoding\n\nEncoding order is the consumer's concern.\n")
     cited = ("- unspecified: the export's field encoding order — settled in "
              "[0007](../../../decisions/0007-export-encoding.md)\n")
-    write(repo / "docs/features/groom/http/v1.md",
+    write(repo / "docs/services/groom/http/v1.md",
           _endpoint_file("v1", "internal/notify.go::Notify", cited))
     assert "ungrounded-unspecified" not in all_codes(_run(repo))
-    write(repo / "docs/features/groom/http/v1.md",
+    write(repo / "docs/services/groom/http/v1.md",
           _endpoint_file("v1", "internal/notify.go::Notify",
                          "- unspecified: the export's field encoding order\n"))
     hits = [f for f in _run(repo).findings if f.code == "ungrounded-unspecified"]
     assert len(hits) == 1 and hits[0].severity == "error"
     assert "cites no record" in hits[0].message
     assert "delete the bullet" in (hits[0].suggestion or "")
-    write(repo / "docs/features/groom/http/v1.md",
+    write(repo / "docs/services/groom/http/v1.md",
           _endpoint_file("v1", "internal/notify.go::Notify",
                          "- unspecified: the export's field encoding order — settled in "
                          "[gone](../../../decisions/gone.md)\n"))
@@ -1362,7 +1362,7 @@ def test_ungrounded_unspecified(repo: Path):
 
 
 def test_all_ui_findings_are_errors(repo: Path):
-    write(repo / "docs/features/groom/concepts/diff.md",
+    write(repo / "docs/services/groom/concepts/diff.md",
           "---\ntype: concept\nslug: diff\ntitle: Diff\n---\n# Diff\n\n"
           "See [gone](../gui/screens/gone.md).\n")
     report = _run(repo)
@@ -1374,7 +1374,7 @@ def test_all_ui_findings_are_errors(repo: Path):
 
 
 def test_scaffold_then_fmt_converges(repo: Path):
-    write(repo / "docs/features/groom/gui/screens/s.md",
+    write(repo / "docs/services/groom/gui/screens/s.md",
           "---\ntype: screen\nslug: s\ntitle: S\n---\n# S\n\n"
           "## interactions\n\n### click\n- on: [x](#s)\n- trigger: click\n- does:\n  - state: x\n")
     assert "bad-heading-type" in codes(_run(repo))
@@ -1389,7 +1389,7 @@ def test_missing_section_fixed_by_scaffold(repo: Path):
 
 
 def test_code_and_tests_not_grounded_at_author_time(repo: Path):
-    write(repo / "docs/features/groom/gui/screens/s.md",
+    write(repo / "docs/services/groom/gui/screens/s.md",
           "---\ntype: screen\nslug: s\ntitle: S\n---\n# S\n\n"
           "## Interactions\n\n### click\n- on: [x](#s)\n- trigger: click\n- does:\n  - state: x\n"
           "- code: `groom/groom/nope.py::ghost`\n- tests: `tests/test_nope.py::ghost`\n")
@@ -1479,10 +1479,10 @@ LINKED_REPORT_JSON = """\
       "epic": "",
       "fixable": true,
       "line": 8,
-      "message": "docs/features/groom/concepts/diff.md: link './diff.md#nope' — file exists but `#nope` heading not found",
+      "message": "docs/services/groom/concepts/diff.md: link './diff.md#nope' — file exists but `#nope` heading not found",
       "node": "",
-      "path": "docs/features/groom/concepts/diff.md",
-      "ref": "docs/features/groom/concepts/diff.md:8:./diff.md#nope",
+      "path": "docs/services/groom/concepts/diff.md",
+      "ref": "docs/services/groom/concepts/diff.md:8:./diff.md#nope",
       "related": [],
       "severity": "error",
       "suggestion": ""
@@ -1492,10 +1492,10 @@ LINKED_REPORT_JSON = """\
       "epic": "",
       "fixable": true,
       "line": 12,
-      "message": "docs/features/groom/gui/screens/changes-view.md: link './gone.md' target file does not exist; it resolves against the linking page's folder, to docs/features/groom/gui/screens/gone.md",
+      "message": "docs/services/groom/gui/screens/changes-view.md: link './gone.md' target file does not exist; it resolves against the linking page's folder, to docs/services/groom/gui/screens/gone.md",
       "node": "",
-      "path": "docs/features/groom/gui/screens/changes-view.md",
-      "ref": "docs/features/groom/gui/screens/changes-view.md:12:./gone.md",
+      "path": "docs/services/groom/gui/screens/changes-view.md",
+      "ref": "docs/services/groom/gui/screens/changes-view.md:12:./gone.md",
       "related": [],
       "severity": "error",
       "suggestion": ""
@@ -1521,9 +1521,9 @@ LINKED_REPORT_JSON = """\
 
 def _linked_book(root: Path) -> Path:
     """A book whose only findings come from link resolution — the machinery being shared."""
-    write(root / "docs/features/groom/gui/screens/changes-view.md", LINKED_SCREEN)
-    write(root / "docs/features/groom/gui/components/design-system.md", LINKED_DS)
-    write(root / "docs/features/groom/concepts/diff.md", LINKED_DIFF)
+    write(root / "docs/services/groom/gui/screens/changes-view.md", LINKED_SCREEN)
+    write(root / "docs/services/groom/gui/components/design-system.md", LINKED_DS)
+    write(root / "docs/services/groom/concepts/diff.md", LINKED_DIFF)
     return root
 
 
@@ -1576,7 +1576,7 @@ def test_sharing_the_resolver_leaves_the_report_byte_identical(tmp_path: Path, m
 
 def test_a_sibling_claims_strong_check_no_longer_answers_this_one(repo: Path):
     """The fan-out this rule used to have: one discriminating check anywhere on the node silenced it for every other bullet, so a claim observed only by a rubber stamp read as judged."""
-    write(repo / "docs/features/groom/concepts/publisher.md",
+    write(repo / "docs/services/groom/concepts/publisher.md",
           "---\ntype: concept\nslug: publisher\ntitle: Publisher\n---\n# Publisher\n\n"
           "## Methods\n\n### Publish\n"
           "- returns: the published revision\n"
@@ -1591,7 +1591,7 @@ def test_a_sibling_claims_strong_check_no_longer_answers_this_one(repo: Path):
 
 def test_the_finding_names_which_claim_when_siblings_share_the_key(repo: Path):
     """Two `does:` bullets, one already answered — the finding has to say which is the other."""
-    write(repo / "docs/features/groom/concepts/publisher.md",
+    write(repo / "docs/services/groom/concepts/publisher.md",
           "---\ntype: concept\nslug: publisher\ntitle: Publisher\n---\n# Publisher\n\n"
           "## Methods\n\n### Publish\n"
           "- does: collapses the manifest and removes its surrounding whitespace\n"
@@ -1606,7 +1606,7 @@ def test_the_finding_names_which_claim_when_siblings_share_the_key(repo: Path):
 
 def _node(repo: Path, body: str) -> Path:
     """A concept with two sibling bullets under one key, at a stable path."""
-    path = repo / "docs/features/groom/concepts/publisher.md"
+    path = repo / "docs/services/groom/concepts/publisher.md"
     write(path, "---\ntype: concept\nslug: publisher\ntitle: Publisher\n---\n# Publisher\n\n"
                 "## Methods\n\n### Publish\n" + body)
     return path
@@ -1616,7 +1616,7 @@ def _refs(repo: Path, code: str) -> list[str]:
     return [f.ref for f in _run(repo).findings if f.code == code]
 
 
-NODE = "docs/features/groom/concepts/publisher.md#publish"
+NODE = "docs/services/groom/concepts/publisher.md#publish"
 
 
 def test_overlong_normative_bullet_names_which_bullet_is_too_long(repo: Path):
@@ -1666,7 +1666,7 @@ def _capture_endpoint(capture: str) -> str:
 
 def test_a_capture_bullet_with_no_source_is_refused(repo: Path):
     """Before this checker existed, nobody read this bullet."""
-    write(repo / "docs/features/groom/http/api.md", _capture_endpoint("claim_id $.id"))
+    write(repo / "docs/services/groom/http/api.md", _capture_endpoint("claim_id $.id"))
     finding = next(f for f in _run(repo).findings if f.code == "unparsed-capture")
     assert finding.severity == "error"
     assert "names no source" in finding.message
@@ -1675,24 +1675,24 @@ def test_a_capture_bullet_with_no_source_is_refused(repo: Path):
 
 def test_a_capture_name_a_reference_could_never_spell_is_refused(repo: Path):
     """The declaration mints the name and `$name` spells it, so a name `references` would not accept is a fact nothing in the book can ever refer to — a declaration that reads fine and resolves for nobody."""
-    write(repo / "docs/features/groom/http/api.md", _capture_endpoint("$claim_id from $.id"))
+    write(repo / "docs/services/groom/http/api.md", _capture_endpoint("$claim_id from $.id"))
     finding = next(f for f in _run(repo).findings if f.code == "unparsed-capture")
     assert "`$` a reference spells" in finding.message
 
 
 def test_a_well_formed_capture_bullet_grounds(repo: Path):
-    write(repo / "docs/features/groom/http/api.md", _capture_endpoint("claim_id from $.id"))
+    write(repo / "docs/services/groom/http/api.md", _capture_endpoint("claim_id from $.id"))
     assert "unparsed-capture" not in all_codes(_run(repo))
 
 
 def test_self_relation_fires_when_a_relation_bullet_points_at_its_own_node(repo: Path):
-    write(repo / "docs/features/groom/concepts/render-context.md",
+    write(repo / "docs/services/groom/concepts/render-context.md",
           "---\ntype: concept\nslug: render-context\ntitle: Render Context\n---\n"
           "# Render Context\n\n- detail: [render-context](render-context.md)\n")
     hits = [f for f in _run(repo).findings if f.code == "self-relation"]
     assert len(hits) == 1 and hits[0].severity == "error"
     hit = hits[0]
-    assert hit.path == "docs/features/groom/concepts/render-context.md"
+    assert hit.path == "docs/services/groom/concepts/render-context.md"
     assert "`detail: render-context.md`" in hit.message
     assert hit.ref.endswith("#detail:1")
     assert hit.suggestion is not None
@@ -1700,7 +1700,7 @@ def test_self_relation_fires_when_a_relation_bullet_points_at_its_own_node(repo:
 
 def test_self_relation_fires_on_any_relation_key_not_just_detail(repo: Path):
     """Nothing about the defect is particular to a key: a relation is between two things whichever key names it, so the check is quantified over `RELATION_KEYS` rather than written once per key."""
-    write(repo / "docs/features/groom/gui/screens/harness.md",
+    write(repo / "docs/services/groom/gui/screens/harness.md",
           "---\ntype: screen\nslug: harness\ntitle: Harness\n---\n# Harness\n\n"
           "- route: `/harness`\n\n## Components\n\n### tab\n- role: tab\n"
           "- exclusive-with: [tab](#tab)\n")
@@ -1711,9 +1711,9 @@ def test_self_relation_fires_on_any_relation_key_not_just_detail(repo: Path):
 
 def test_self_relation_addresses_the_one_bullet_not_the_whole_key(repo: Path):
     """The remedy is per bullet — repoint this link, or delete it — so a node stating the key twice and self-referencing on the second occurrence is addressed at `:2`."""
-    write(repo / "docs/features/groom/concepts/other.md",
+    write(repo / "docs/services/groom/concepts/other.md",
           "---\ntype: concept\nslug: other\ntitle: Other\n---\n# Other\n\nNothing here.\n")
-    write(repo / "docs/features/groom/concepts/schema.md",
+    write(repo / "docs/services/groom/concepts/schema.md",
           "---\ntype: concept\nslug: schema\ntitle: Schema\n---\n# Schema\n\n"
           "- detail: [other](other.md)\n- detail: [schema](schema.md)\n")
     hits = [f for f in _run(repo).findings if f.code == "self-relation"]
@@ -1722,9 +1722,9 @@ def test_self_relation_addresses_the_one_bullet_not_the_whole_key(repo: Path):
 
 
 def test_self_relation_is_silent_for_a_relation_between_two_nodes(repo: Path):
-    write(repo / "docs/features/groom/concepts/other.md",
+    write(repo / "docs/services/groom/concepts/other.md",
           "---\ntype: concept\nslug: other\ntitle: Other\n---\n# Other\n\nNothing here.\n")
-    write(repo / "docs/features/groom/concepts/schema.md",
+    write(repo / "docs/services/groom/concepts/schema.md",
           "---\ntype: concept\nslug: schema\ntitle: Schema\n---\n# Schema\n\n"
           "- detail: [other](other.md)\n")
     codeset = all_codes(_run(repo))
@@ -1734,7 +1734,7 @@ def test_self_relation_is_silent_for_a_relation_between_two_nodes(repo: Path):
 
 def test_self_relation_does_not_fire_for_a_dangling_target(repo: Path):
     """A target that resolves nowhere is `unresolved-relation`'s finding."""
-    write(repo / "docs/features/groom/concepts/schema.md",
+    write(repo / "docs/services/groom/concepts/schema.md",
           "---\ntype: concept\nslug: schema\ntitle: Schema\n---\n# Schema\n\n"
           "- detail: [gone](gone.md)\n")
     codeset = all_codes(_run(repo))
@@ -1744,7 +1744,7 @@ def test_self_relation_does_not_fire_for_a_dangling_target(repo: Path):
 
 def test_self_relation_separates_a_node_from_the_page_it_sits_on(repo: Path):
     """A link with no anchor resolves to the file's root node, so a `### part` citing its own page is a relation between two different nodes and is legal."""
-    write(repo / "docs/features/groom/gui/screens/harness.md",
+    write(repo / "docs/services/groom/gui/screens/harness.md",
           "---\ntype: screen\nslug: harness\ntitle: Harness\n---\n# Harness\n\n"
           "- route: `/harness`\n- detail: [tab](#tab)\n\n## Components\n\n### tab\n"
           "- role: tab\n")

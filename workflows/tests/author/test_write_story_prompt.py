@@ -24,7 +24,7 @@ def _backend_only_story() -> dict[str, object]:
         "story_slug": "create-example",
         "story_path": "docs/epics/0001-example-api/stories/create-example/story.md",
         "story_dir": "docs/epics/0001-example-api/stories/create-example",
-        "features_dir": "docs/okf",
+        "services_dir": "docs/okf",
         "mockup_path": "",
     }
 

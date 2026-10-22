@@ -17,13 +17,13 @@ PINNED_PROVIDER = "8.16.0"
 def the_plan(qa: Qa) -> dict:
     """Take a plan the documented way, and hand back what it says."""
     built = qa.tool("make").run("-C", "pulumi", "build", timeout=900.0)
-    qa.require("the program builds", built.ok, actual=built.stderr[-2000:], covers=["ac:5", "okf:docs/features/depot/ops/depot-stack.md:contract"])
+    qa.require("the program builds", built.ok, actual=built.stderr[-2000:], covers=["ac:5", "okf:docs/services/depot/ops/depot-stack.md:contract"])
 
     planned = qa.tool("make").run("-C", "pulumi", "plan", timeout=900.0)
-    qa.require("the documented plan command produces a plan", planned.ok, actual=planned.stderr[-2000:], covers=["ac:5", "okf:docs/features/depot/ops/depot-stack.md:contract"])
+    qa.require("the documented plan command produces a plan", planned.ok, actual=planned.stderr[-2000:], covers=["ac:5", "okf:docs/services/depot/ops/depot-stack.md:contract"])
 
     read = qa.tool("jq").run(".", "pulumi/preview.json", timeout=120.0)
-    qa.require("the plan it wrote is readable JSON", read.ok, actual=read.stderr[-2000:], covers=["ac:5", "okf:docs/features/depot/ops/depot-stack.md:contract"])
+    qa.require("the plan it wrote is readable JSON", read.ok, actual=read.stderr[-2000:], covers=["ac:5", "okf:docs/services/depot/ops/depot-stack.md:contract"])
     return json.loads(read.stdout)
 
 
@@ -46,10 +46,10 @@ def resources(qa: Qa, planned: dict) -> dict:
     covers=[
         "ac:1",
         "ac:5",
-        "okf:docs/features/depot/concepts/deploy-identity.md:consistency:1",
-        "okf:docs/features/depot/concepts/deploy-identity.md:consistency:2",
-        "okf:docs/features/depot/concepts/deploy-identity.md:contract",
-        "okf:docs/features/depot/ops/depot-stack.md:contract",
+        "okf:docs/services/depot/concepts/deploy-identity.md:consistency:1",
+        "okf:docs/services/depot/concepts/deploy-identity.md:consistency:2",
+        "okf:docs/services/depot/concepts/deploy-identity.md:contract",
+        "okf:docs/services/depot/ops/depot-stack.md:contract",
     ],
     preconditions=[
         "the stack's local backend is empty, so every resource in the plan is a create",
@@ -75,14 +75,14 @@ def the_deploy_identity_holds_one_grant_and_it_is_at_the_bucket(qa: Qa) -> None:
         "the plan declares the deploy identity",
         declared.get("deployer", {}).get("type") == "gcp:serviceaccount/account:Account",
         actual=sorted(declared),
-        covers=["ac:1", "okf:docs/features/depot/concepts/deploy-identity.md:contract"],
+        covers=["ac:1", "okf:docs/services/depot/concepts/deploy-identity.md:contract"],
     )
     qa.verify(
         "json_path",
         qa.field(declared, "deployer"),
         path="$.inputs.accountId",
         equals="depot-deployer",
-        covers=["ac:1", "okf:docs/features/depot/concepts/deploy-identity.md:contract"],
+        covers=["ac:1", "okf:docs/services/depot/concepts/deploy-identity.md:contract"],
     )
 
     grants = {
@@ -98,7 +98,7 @@ def the_deploy_identity_holds_one_grant_and_it_is_at_the_bucket(qa: Qa) -> None:
         to_the_deployer == ["deployer-writes-artifacts"],
         actual=to_the_deployer,
         expected=["deployer-writes-artifacts"],
-        covers=["ac:1", "okf:docs/features/depot/concepts/deploy-identity.md:consistency:1"],
+        covers=["ac:1", "okf:docs/services/depot/concepts/deploy-identity.md:consistency:1"],
     )
 
     grant = declared.get("deployer-writes-artifacts", {})
@@ -108,14 +108,14 @@ def the_deploy_identity_holds_one_grant_and_it_is_at_the_bucket(qa: Qa) -> None:
         and grant.get("inputs", {}).get("bucket") == "depot-artifacts-example",
         actual={"type": grant.get("type"), "bucket": grant.get("inputs", {}).get("bucket")},
         expected={"type": "gcp:storage/bucketIAMMember:BucketIAMMember", "bucket": "depot-artifacts-example"},
-        covers=["ac:1", "okf:docs/features/depot/concepts/deploy-identity.md:consistency:1"],
+        covers=["ac:1", "okf:docs/services/depot/concepts/deploy-identity.md:consistency:1"],
     )
     qa.verify(
         "json_path",
         grant,
         path="$.inputs.role",
         equals="roles/storage.objectAdmin",
-        covers=["ac:1", "okf:docs/features/depot/concepts/deploy-identity.md:consistency:1"],
+        covers=["ac:1", "okf:docs/services/depot/concepts/deploy-identity.md:consistency:1"],
     )
 
     project_level = sorted(name for name, entry in grants.items() if "projects/" in qa.field(entry, "type"))
@@ -124,7 +124,7 @@ def the_deploy_identity_holds_one_grant_and_it_is_at_the_bucket(qa: Qa) -> None:
         project_level == [],
         actual=project_level,
         expected=[],
-        covers=["ac:1", "okf:docs/features/depot/concepts/deploy-identity.md:consistency:2"],
+        covers=["ac:1", "okf:docs/services/depot/concepts/deploy-identity.md:consistency:2"],
     )
 
     qa.verify(
@@ -132,7 +132,7 @@ def the_deploy_identity_holds_one_grant_and_it_is_at_the_bucket(qa: Qa) -> None:
         declared.get("gcp", {}),
         path="$.inputs.version",
         equals=PINNED_PROVIDER,
-        covers=["ac:5", "okf:docs/features/depot/ops/depot-stack.md:contract"],
+        covers=["ac:5", "okf:docs/services/depot/ops/depot-stack.md:contract"],
     )
     json.dump(
         {"grants": grants, "changeSummary": qa.field(planned, "changeSummary")},
@@ -147,7 +147,7 @@ def the_deploy_identity_holds_one_grant_and_it_is_at_the_bucket(qa: Qa) -> None:
     covers=[
         "ac:2",
         "ac:3",
-        "okf:docs/features/depot/concepts/deploy-identity.md:consistency:3",
+        "okf:docs/services/depot/concepts/deploy-identity.md:consistency:3",
     ],
     preconditions=[
         "the deploy token is held in the stack's own configuration, encrypted",
@@ -171,21 +171,21 @@ def the_deploy_token_is_a_secret_everywhere_the_plan_shows_it(qa: Qa) -> None:
         planned,
         path="$.config.depot:deployToken",
         equals="[secret]",
-        covers=["ac:3", "okf:docs/features/depot/concepts/deploy-identity.md:consistency:3"],
+        covers=["ac:3", "okf:docs/services/depot/concepts/deploy-identity.md:consistency:3"],
     )
 
     qa.require(
         "the plan declares the secret version holding the deploy token",
         declared.get("deploy-token-v1", {}).get("type") == "gcp:secretmanager/secretVersion:SecretVersion",
         actual=sorted(declared),
-        covers=["ac:2", "okf:docs/features/depot/concepts/deploy-identity.md:consistency:3"],
+        covers=["ac:2", "okf:docs/services/depot/concepts/deploy-identity.md:consistency:3"],
     )
     qa.verify(
         "json_path",
         qa.field(declared, "deploy-token-v1"),
         path="$.inputs.secretData",
         equals="[secret]",
-        covers=["ac:2", "okf:docs/features/depot/concepts/deploy-identity.md:consistency:3"],
+        covers=["ac:2", "okf:docs/services/depot/concepts/deploy-identity.md:consistency:3"],
     )
     json.dump(
         {"config": qa.field(planned, "config"), "secretVersion": qa.field(declared, "deploy-token-v1")},
@@ -199,9 +199,9 @@ def the_deploy_token_is_a_secret_everywhere_the_plan_shows_it(qa: Qa) -> None:
     timeout=1800.0,
     covers=[
         "ac:4",
-        "okf:docs/features/depot/concepts/artifact-sweep.md:consistency:1",
-        "okf:docs/features/depot/concepts/artifact-sweep.md:consistency:2",
-        "okf:docs/features/depot/concepts/artifact-sweep.md:contract",
+        "okf:docs/services/depot/concepts/artifact-sweep.md:consistency:1",
+        "okf:docs/services/depot/concepts/artifact-sweep.md:consistency:2",
+        "okf:docs/services/depot/concepts/artifact-sweep.md:contract",
     ],
     preconditions=[
         "the plan is taken from the same tree, by the same documented command",
@@ -222,16 +222,16 @@ def the_artifact_sweep_is_the_only_job_and_it_runs_nightly_at_three(qa: Qa) -> N
     declared = resources(qa, the_plan(qa))
 
     jobs = sorted(name for name, entry in declared.items() if qa.field(entry, "type") == "gcp:cloudscheduler/job:Job")
-    qa.verify("count", jobs, equals=1, subject="Cloud Scheduler jobs in the plan", covers=["ac:4", "okf:docs/features/depot/concepts/artifact-sweep.md:consistency:1"])
+    qa.verify("count", jobs, equals=1, subject="Cloud Scheduler jobs in the plan", covers=["ac:4", "okf:docs/services/depot/concepts/artifact-sweep.md:consistency:1"])
     qa.require(
         "the one scheduler job in the plan is the artifact sweep",
         jobs == ["artifact-sweep"],
         actual=jobs,
         expected=["artifact-sweep"],
-        covers=["ac:4", "okf:docs/features/depot/concepts/artifact-sweep.md:consistency:1", "okf:docs/features/depot/concepts/artifact-sweep.md:contract"],
+        covers=["ac:4", "okf:docs/services/depot/concepts/artifact-sweep.md:consistency:1", "okf:docs/services/depot/concepts/artifact-sweep.md:contract"],
     )
 
     sweep = qa.field(declared, "artifact-sweep")
-    qa.verify("json_path", sweep, path="$.inputs.schedule", equals="0 3 * * *", covers=["ac:4", "okf:docs/features/depot/concepts/artifact-sweep.md:consistency:2"])
-    qa.verify("json_path", sweep, path="$.inputs.timeZone", equals="Etc/UTC", covers=["ac:4", "okf:docs/features/depot/concepts/artifact-sweep.md:consistency:2"])
+    qa.verify("json_path", sweep, path="$.inputs.schedule", equals="0 3 * * *", covers=["ac:4", "okf:docs/services/depot/concepts/artifact-sweep.md:consistency:2"])
+    qa.verify("json_path", sweep, path="$.inputs.timeZone", equals="Etc/UTC", covers=["ac:4", "okf:docs/services/depot/concepts/artifact-sweep.md:consistency:2"])
     json.dump({"jobs": jobs, "sweep": sweep}, qa.artifact("steps/artifact-sweep.json", kind="json").open("w"))

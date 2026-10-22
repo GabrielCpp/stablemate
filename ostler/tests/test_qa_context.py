@@ -69,9 +69,9 @@ def _git(root: Path, *args: str) -> str:
 
 
 def test_context_maps_base_grounding_and_preserves_repeated_refs(tmp_path: Path):
-    (tmp_path / "docs/features/demo").mkdir(parents=True)
+    (tmp_path / "docs/services/demo").mkdir(parents=True)
     (tmp_path / "app").mkdir()
-    feature = tmp_path / "docs/features/demo/item.md"
+    feature = tmp_path / "docs/services/demo/item.md"
     feature.write_text(
         """---
 type: concept
@@ -118,9 +118,9 @@ title: Item
 
 def test_a_deletion_needs_no_code_bullet_to_be_mapped(tmp_path: Path):
     """Documenting the absence of something is not documentation — a deletion is satisfied on its own."""
-    (tmp_path / "docs/features/demo").mkdir(parents=True)
+    (tmp_path / "docs/services/demo").mkdir(parents=True)
     (tmp_path / "app").mkdir()
-    feature = tmp_path / "docs/features/demo/item.md"
+    feature = tmp_path / "docs/services/demo/item.md"
     feature.write_text(
         """---
 type: concept
@@ -157,9 +157,9 @@ title: Item
 
 def test_one_code_bullet_citing_two_files_owns_both(tmp_path: Path):
     """The bullet the book actually writes: two backticked refs, one `code:` key."""
-    (tmp_path / "docs/features/demo").mkdir(parents=True)
+    (tmp_path / "docs/services/demo").mkdir(parents=True)
     (tmp_path / "app").mkdir()
-    (tmp_path / "docs/features/demo/shell.md").write_text(
+    (tmp_path / "docs/services/demo/shell.md").write_text(
         "---\ntype: concept\ntitle: Shell\n---\n# Shell\n\n"
         "- code: `app/config.ts`, `app/package.json`\n",
         encoding="utf-8",
@@ -188,8 +188,8 @@ def test_one_code_bullet_citing_two_files_owns_both(tmp_path: Path):
 
 def _owning_repo(tmp_path: Path, book: str, cited: str, *, node_file: str = "node.md") -> str:
     """A repo with one book file and one cited file, committed; returns the base sha."""
-    (tmp_path / "docs/features/demo").mkdir(parents=True)
-    (tmp_path / "docs/features/demo" / node_file).write_text(book, encoding="utf-8")
+    (tmp_path / "docs/services/demo").mkdir(parents=True)
+    (tmp_path / "docs/services/demo" / node_file).write_text(book, encoding="utf-8")
     target = tmp_path / cited
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text("before\n", encoding="utf-8")
@@ -277,7 +277,7 @@ def test_a_config_file_shared_by_two_nodes_is_context_evidence(tmp_path: Path):
         "- code: `infra/main.go`\n- config: `infra/Pulumi.dev.yaml`\n",
         "infra/Pulumi.dev.yaml",
     )
-    (tmp_path / "docs/features/demo/other.md").write_text(
+    (tmp_path / "docs/services/demo/other.md").write_text(
         "---\ntype: environment\ntitle: Other stack\n---\n# Other stack\n\n"
         "- code: `infra/other.go`\n- config: `infra/Pulumi.dev.yaml`\n",
         encoding="utf-8",
@@ -296,8 +296,8 @@ def test_a_config_file_shared_by_two_nodes_is_context_evidence(tmp_path: Path):
 
 def test_a_files_own_sections_citing_one_symbol_stay_one_family(tmp_path: Path):
     """A `cli` file and its own `### ` command sections, all citing the same exact symbol, are one documented surface, not four independent owners — `_family_root` collapses a section id `path#anchor` onto its containing file id when that file is itself one of the citers, so the raw citer count (4) never reaches `_CONTAINER_FANOUT` and the obligations stay required."""
-    (tmp_path / "docs/features/demo").mkdir(parents=True)
-    (tmp_path / "docs/features/demo/cli.md").write_text(
+    (tmp_path / "docs/services/demo").mkdir(parents=True)
+    (tmp_path / "docs/services/demo/cli.md").write_text(
         "---\ntype: cli\nslug: c\ntitle: C\n---\n# C\n\n"
         "- code: `app/cli.py::run`\n\n"
         "## Commands\n\n"
@@ -327,15 +327,15 @@ def test_a_files_own_sections_citing_one_symbol_stay_one_family(tmp_path: Path):
 
 def test_cli_binaries_key_the_owning_files_binary_by_shared_path(tmp_path: Path):
     """A `command` section shares its owning `cli` file's `path` (`graph.py`'s `_node_dict`), so `context.py`'s `_cli_binaries` can key a `run:` obligation's tool by that same `source` without walking `parent` pointers."""
-    (tmp_path / "docs/features/demo").mkdir(parents=True)
-    (tmp_path / "docs/features/demo/tally.md").write_text(
+    (tmp_path / "docs/services/demo").mkdir(parents=True)
+    (tmp_path / "docs/services/demo/tally.md").write_text(
         "---\ntype: cli\nslug: tally\ntitle: Tally\n---\n# Tally\n\n"
         "- binary: tally\n- code: `app/tally.py::run`\n\n"
         "## Commands\n\n"
         "### init\n- code: `app/tally.py::run`\n",
         encoding="utf-8",
     )
-    (tmp_path / "docs/features/demo/unnamed.md").write_text(
+    (tmp_path / "docs/services/demo/unnamed.md").write_text(
         "---\ntype: cli\nslug: unnamed\ntitle: Unnamed\n---\n# Unnamed\n\n"
         "- code: `app/unnamed.py::run`\n\n"
         "## Commands\n\n"
@@ -360,21 +360,21 @@ def test_cli_binaries_key_the_owning_files_binary_by_shared_path(tmp_path: Path)
 
     packet = build_context(tmp_path, base=base, source_roots={"demo": ["app"]})
 
-    assert packet["cliBinaries"] == {"docs/features/demo/tally.md": "tally"}
+    assert packet["cliBinaries"] == {"docs/services/demo/tally.md": "tally"}
 
 
 def test_a_page_s_http_origin_is_the_entry_url_of_the_server_it_names() -> None:
-    server = "docs/features/demo/http/mock-server.md"
-    endpoint = "docs/features/demo/http/manifest.md"
+    server = "docs/services/demo/http/mock-server.md"
+    endpoint = "docs/services/demo/http/manifest.md"
     book = {
         server: BookNode(id=server, type="server", page_type="server", surface="demo", path=server, kind="file",
                          bullets={"entry-url": ("http://127.0.0.1:8099/base",)}, edges=()),
         endpoint: BookNode(id=endpoint, type="endpoint", page_type="endpoint", surface="demo", path=endpoint,
                            kind="file", bullets={},
                            edges=(NodeEdge(to=server, via="server", href="mock-server.md"),)),
-        "docs/features/demo/other.md": BookNode(id="docs/features/demo/other.md", type="endpoint",
+        "docs/services/demo/other.md": BookNode(id="docs/services/demo/other.md", type="endpoint",
                                                 page_type="endpoint", surface="demo",
-                                                path="docs/features/demo/other.md", kind="file",
+                                                path="docs/services/demo/other.md", kind="file",
                                                 bullets={}, edges=()),
     }
 
@@ -385,8 +385,8 @@ def test_a_page_s_http_origin_is_the_entry_url_of_the_server_it_names() -> None:
 
 
 def test_a_binary_explained_after_its_name_is_read_as_its_name(tmp_path: Path):
-    (tmp_path / "docs/features/demo").mkdir(parents=True)
-    (tmp_path / "docs/features/demo/tally.md").write_text(
+    (tmp_path / "docs/services/demo").mkdir(parents=True)
+    (tmp_path / "docs/services/demo/tally.md").write_text(
         "---\ntype: cli\nslug: tally\ntitle: Tally\n---\n# Tally\n\n"
         "- binary: `tally` — a wrapper the image installs at\n  `/usr/local/bin/tally`\n"
         "- code: `app/tally.py::run`\n\n"
@@ -406,18 +406,18 @@ def test_a_binary_explained_after_its_name_is_read_as_its_name(tmp_path: Path):
 
     packet = build_context(tmp_path, base=base, source_roots={"demo": ["app"]})
 
-    assert packet["cliBinaries"] == {"docs/features/demo/tally.md": "tally"}
+    assert packet["cliBinaries"] == {"docs/services/demo/tally.md": "tally"}
 
 
 def test_a_surface_with_one_cli_lends_its_binary_to_its_other_pages(tmp_path: Path):
     """A format's field on a CLI surface states its `run:` against the surface's only `cli`, so it compiles to the same executable."""
-    (tmp_path / "docs/features/demo/formats").mkdir(parents=True)
-    (tmp_path / "docs/features/demo/tally.md").write_text(
+    (tmp_path / "docs/services/demo/formats").mkdir(parents=True)
+    (tmp_path / "docs/services/demo/tally.md").write_text(
         "---\ntype: cli\nslug: tally\ntitle: Tally\n---\n# Tally\n\n"
         "- binary: tally\n- code: `app/tally.py::run`\n\nSee [rows](formats/rows.md).\n",
         encoding="utf-8",
     )
-    (tmp_path / "docs/features/demo/formats/rows.md").write_text(
+    (tmp_path / "docs/services/demo/formats/rows.md").write_text(
         "---\ntype: format\nslug: rows\ntitle: Rows\n---\n# Rows\n\n- code: `app/tally.py::run`\n",
         encoding="utf-8",
     )
@@ -434,14 +434,14 @@ def test_a_surface_with_one_cli_lends_its_binary_to_its_other_pages(tmp_path: Pa
     packet = build_context(tmp_path, base=base, source_roots={"demo": ["app"]})
 
     assert packet["cliBinaries"] == {
-        "docs/features/demo/tally.md": "tally",
-        "docs/features/demo/formats/rows.md": "tally",
+        "docs/services/demo/tally.md": "tally",
+        "docs/services/demo/formats/rows.md": "tally",
     }
 
 
 def test_an_invocation_and_a_field_carry_the_run_their_claim_is_about(tmp_path: Path):
-    (tmp_path / "docs/features/demo").mkdir(parents=True)
-    (tmp_path / "docs/features/demo/tally.md").write_text(
+    (tmp_path / "docs/services/demo").mkdir(parents=True)
+    (tmp_path / "docs/services/demo/tally.md").write_text(
         "---\ntype: cli\nslug: tally\ntitle: Tally\n---\n# Tally\n\n"
         "- binary: tally\n- code: `app/tally.py::run`\n\n"
         "## Commands\n\n"
@@ -482,14 +482,14 @@ def test_an_invocation_and_a_field_carry_the_run_their_claim_is_about(tmp_path: 
 
 def test_six_unrelated_nodes_citing_one_symbol_still_demote(tmp_path: Path):
     """Six genuinely unrelated nodes — no containment, no `extends:` — citing the same exact symbol is the sprawl `_CONTAINER_FANOUT` exists to catch, and family-collapsing must not blunt it: none of them share a declared edge, so each is its own family and the fan-out demotion still fires."""
-    (tmp_path / "docs/features/demo").mkdir(parents=True)
+    (tmp_path / "docs/services/demo").mkdir(parents=True)
     for index in range(6):
-        (tmp_path / f"docs/features/demo/item{index}.md").write_text(
+        (tmp_path / f"docs/services/demo/item{index}.md").write_text(
             f"---\ntype: concept\ntitle: Item {index}\n---\n# Item {index}\n\n"
             "- code: `app/service.py::shared`\n",
             encoding="utf-8",
         )
-    (tmp_path / "docs/features/demo/other.md").write_text(
+    (tmp_path / "docs/services/demo/other.md").write_text(
         "---\ntype: concept\ntitle: Other\n---\n# Other\n\n"
         "- code: `app/other.py::alone`\n",
         encoding="utf-8",
@@ -521,14 +521,14 @@ def test_six_unrelated_nodes_citing_one_symbol_still_demote(tmp_path: Path):
 
 def test_a_whole_book_owes_every_command_citing_one_symbol(tmp_path: Path):
     """The fan-out demotion keeps a change to a shared helper from owing every node that cites it. A whole-book audit has no change to be proportional to, so the same three commands a diff demotes all owe live evidence there."""
-    (tmp_path / "docs/features/demo").mkdir(parents=True)
+    (tmp_path / "docs/services/demo").mkdir(parents=True)
     for name in ("one", "two", "three"):
-        (tmp_path / f"docs/features/demo/{name}.md").write_text(
+        (tmp_path / f"docs/services/demo/{name}.md").write_text(
             f"---\ntype: cli\nslug: {name}\ntitle: {name}\n---\n# {name}\n\n"
             f"## Commands\n\n### {name}-run\n- code: `app/cli.py::run`\n",
             encoding="utf-8",
         )
-    (tmp_path / "docs/features/demo/lone.md").write_text(
+    (tmp_path / "docs/services/demo/lone.md").write_text(
         "---\ntype: cli\nslug: lone\ntitle: lone\n---\n# lone\n\n"
         "## Commands\n\n### lone-run\n- code: `app/other.py::alone`\n",
         encoding="utf-8",
@@ -566,8 +566,8 @@ def test_a_whole_book_owes_every_command_citing_one_symbol(tmp_path: Path):
 
 def test_a_whole_book_owes_the_command_but_not_the_method_it_reaches(tmp_path: Path):
     """A method is source a user never drives. Its claims explain the command that reaches it, and that command owes the live run."""
-    (tmp_path / "docs/features/demo").mkdir(parents=True)
-    (tmp_path / "docs/features/demo/tally.md").write_text(
+    (tmp_path / "docs/services/demo").mkdir(parents=True)
+    (tmp_path / "docs/services/demo/tally.md").write_text(
         "---\ntype: cli\nslug: tally\ntitle: tally\n---\n# tally\n\n"
         "- code: `app/parse.py::parse_rows`\n\n"
         "## Commands\n\n### import\n- does: prints the imported row count\n"
@@ -591,14 +591,14 @@ def test_a_whole_book_owes_the_command_but_not_the_method_it_reaches(tmp_path: P
 
 def test_a_whole_book_owes_the_claims_of_a_page_that_cites_no_code(tmp_path: Path):
     """A whole book has no change to select by, so a page's own claim puts it in scope. An environment that cites no code still owes its claim, and a concept still owes none."""
-    (tmp_path / "docs/features/demo/ops").mkdir(parents=True)
-    (tmp_path / "docs/features/demo/ops/checkout.md").write_text(
+    (tmp_path / "docs/services/demo/ops").mkdir(parents=True)
+    (tmp_path / "docs/services/demo/ops/checkout.md").write_text(
         "---\ntype: environment\nslug: checkout\ntitle: Checkout\n---\n# Checkout\n\n"
         "- local-only: true\n- consistency: the interpreter is Python 3.12 or later\n"
         "- verify: stdout(matches=\"Python 3\")\n",
         encoding="utf-8",
     )
-    (tmp_path / "docs/features/demo/ledger.md").write_text(
+    (tmp_path / "docs/services/demo/ledger.md").write_text(
         "---\ntype: concept\nslug: ledger\ntitle: Ledger\n---\n# Ledger\n\nA ledger holds a trip's expenses.\n",
         encoding="utf-8",
     )
@@ -616,8 +616,8 @@ def test_a_whole_book_owes_the_claims_of_a_page_that_cites_no_code(tmp_path: Pat
 def test_a_whole_book_context_scoped_to_one_book_mints_only_that_books_obligations(tmp_path: Path):
     """Another book's pages still inform the context, and the scoped book's obligations are the ones the whole book mints for its pages."""
     for book in ("demo", "other"):
-        (tmp_path / f"docs/features/{book}/ops").mkdir(parents=True)
-        (tmp_path / f"docs/features/{book}/ops/checkout.md").write_text(
+        (tmp_path / f"docs/services/{book}/ops").mkdir(parents=True)
+        (tmp_path / f"docs/services/{book}/ops/checkout.md").write_text(
             "---\ntype: environment\nslug: checkout\ntitle: Checkout\n---\n# Checkout\n\n"
             "- local-only: true\n- consistency: the interpreter is Python 3.12 or later\n"
             "- verify: stdout(matches=\"Python 3\")\n",
@@ -626,28 +626,28 @@ def test_a_whole_book_context_scoped_to_one_book_mints_only_that_books_obligatio
     _git(tmp_path, "init")
 
     whole = book_context(tmp_path)
-    scoped = book_context(tmp_path, books=["docs/features/demo"])
+    scoped = book_context(tmp_path, books=["docs/services/demo"])
 
     assert {item["node"].split("/")[2] for item in whole["obligations"]} == {"demo", "other"}
-    assert scoped["obligations"] == [item for item in whole["obligations"] if item["node"].startswith("docs/features/demo/")]
+    assert scoped["obligations"] == [item for item in whole["obligations"] if item["node"].startswith("docs/services/demo/")]
     assert scoped["contracts"] == whole["contracts"]
 
 
 def test_a_book_declared_unexercised_owes_no_obligation(tmp_path: Path):
     """An index that declares `exercised: false` takes its surface out of the proof, as doctor already does, even when a run names that book."""
     for book in ("demo", "old"):
-        (tmp_path / f"docs/features/{book}/ops").mkdir(parents=True)
-        (tmp_path / f"docs/features/{book}/ops/checkout.md").write_text(
+        (tmp_path / f"docs/services/{book}/ops").mkdir(parents=True)
+        (tmp_path / f"docs/services/{book}/ops/checkout.md").write_text(
             "---\ntype: environment\nslug: checkout\ntitle: Checkout\n---\n# Checkout\n\n"
             "- local-only: true\n- consistency: the interpreter is Python 3.12 or later\n"
             "- verify: stdout(matches=\"Python 3\")\n",
             encoding="utf-8",
         )
-    (tmp_path / "docs/features/old/index.md").write_text("---\nexercised: false\n---\n\n# Old site\n", encoding="utf-8")
+    (tmp_path / "docs/services/old/index.md").write_text("---\nexercised: false\n---\n\n# Old site\n", encoding="utf-8")
     _git(tmp_path, "init")
 
     whole = book_context(tmp_path)
-    named = book_context(tmp_path, books=["docs/features/old"])
+    named = book_context(tmp_path, books=["docs/services/old"])
 
     assert {item["node"].split("/")[2] for item in whole["obligations"]} == {"demo"}
     assert named["obligations"] == []
@@ -655,15 +655,15 @@ def test_a_book_declared_unexercised_owes_no_obligation(tmp_path: Path):
 
 def test_a_node_on_a_definition_page_owes_context_not_a_live_run(tmp_path: Path):
     """A concept or format page defines what a surface reads or writes. Its nodes are observed through that surface, so none owes a live run of its own."""
-    (tmp_path / "docs/features/demo/concepts").mkdir(parents=True)
-    (tmp_path / "docs/features/demo/formats").mkdir(parents=True)
-    (tmp_path / "docs/features/demo/concepts/ledger.md").write_text(
+    (tmp_path / "docs/services/demo/concepts").mkdir(parents=True)
+    (tmp_path / "docs/services/demo/formats").mkdir(parents=True)
+    (tmp_path / "docs/services/demo/concepts/ledger.md").write_text(
         "---\ntype: concept\nslug: ledger\ntitle: Ledger\n---\n# Ledger\n\nA ledger holds a trip's expenses.\n\n"
         "## Endpoints\n\n### ledger-rows\n- method: GET\n- path: /api/rows\n"
         "- does:\n  - returns the rows\n- verify: http_status(code=200)\n",
         encoding="utf-8",
     )
-    (tmp_path / "docs/features/demo/formats/rows.md").write_text(
+    (tmp_path / "docs/services/demo/formats/rows.md").write_text(
         "---\ntype: format\nslug: rows\ntitle: Rows\n---\n# Rows\n\n"
         "## Fields\n\n### amount\n- type: integer\n- verify: json_path(path=\"$.amount\", equals=\"1\")\n",
         encoding="utf-8",
@@ -681,8 +681,8 @@ def test_a_node_on_a_definition_page_owes_context_not_a_live_run(tmp_path: Path)
 
 def test_an_invocation_carries_the_address_of_the_endpoint_it_calls(tmp_path: Path):
     """An invocation says which endpoint it calls with `on:`, so it is sent to that endpoint's method and path."""
-    (tmp_path / "docs/features/demo/http").mkdir(parents=True)
-    (tmp_path / "docs/features/demo/http/api.md").write_text(
+    (tmp_path / "docs/services/demo/http").mkdir(parents=True)
+    (tmp_path / "docs/services/demo/http/api.md").write_text(
         "---\ntype: server\nslug: api\ntitle: API\n---\n# API\n\n"
         "## Endpoints\n\n### rows\n- method: GET\n- path: /api/rows\n\n"
         "## Invocations\n\n### list-rows\n- on: [rows](#rows)\n- trigger: GET\n"
@@ -700,8 +700,8 @@ def test_an_invocation_carries_the_address_of_the_endpoint_it_calls(tmp_path: Pa
 
 def test_an_invocation_of_a_post_arranges_the_body_it_sends(tmp_path: Path):
     """An invocation of a route that takes a body states that body with `arrange:`, as an endpoint arm does."""
-    (tmp_path / "docs/features/demo/http").mkdir(parents=True)
-    (tmp_path / "docs/features/demo/http/api.md").write_text(
+    (tmp_path / "docs/services/demo/http").mkdir(parents=True)
+    (tmp_path / "docs/services/demo/http/api.md").write_text(
         "---\ntype: server\nslug: api\ntitle: API\n---\n# API\n\n"
         "## Endpoints\n\n### rows\n- method: POST\n- path: /api/rows\n\n"
         "## Invocations\n\n### add-row\n- on: [rows](#rows)\n- trigger: POST\n"
@@ -723,20 +723,20 @@ def test_concepts_chained_by_extends_citing_one_symbol_stay_one_family(tmp_path:
     Each owes context rather than live evidence, because a concept is a piece of thinking
     about the user and the system and there is nothing there to measure.
     """
-    (tmp_path / "docs/features/demo").mkdir(parents=True)
-    (tmp_path / "docs/features/demo/item0.md").write_text(
+    (tmp_path / "docs/services/demo").mkdir(parents=True)
+    (tmp_path / "docs/services/demo/item0.md").write_text(
         "---\ntype: concept\ntitle: Item 0\n---\n# Item 0\n\n"
         "- code: `app/service.py::shared`\n",
         encoding="utf-8",
     )
     for index in range(1, 6):
-        (tmp_path / f"docs/features/demo/item{index}.md").write_text(
+        (tmp_path / f"docs/services/demo/item{index}.md").write_text(
             f"---\ntype: concept\ntitle: Item {index}\n---\n# Item {index}\n\n"
             f"- extends: [Item {index - 1}](item{index - 1}.md)\n"
             "- code: `app/service.py::shared`\n",
             encoding="utf-8",
         )
-    (tmp_path / "docs/features/demo/other.md").write_text(
+    (tmp_path / "docs/services/demo/other.md").write_text(
         "---\ntype: concept\ntitle: Other\n---\n# Other\n\n"
         "- code: `app/other.py::alone`\n",
         encoding="utf-8",
@@ -764,34 +764,34 @@ def test_concepts_chained_by_extends_citing_one_symbol_stay_one_family(tmp_path:
 
 def test_concepts_chained_by_same_as_citing_one_symbol_stay_one_family(tmp_path: Path):
     """Four `concept` nodes reciprocally chained by `same-as:` (A<->B, B<->C, C<->D) are one documented thing written four times, not four owners."""
-    (tmp_path / "docs/features/demo").mkdir(parents=True)
-    (tmp_path / "docs/features/demo/item0.md").write_text(
+    (tmp_path / "docs/services/demo").mkdir(parents=True)
+    (tmp_path / "docs/services/demo/item0.md").write_text(
         "---\ntype: concept\ntitle: Item 0\n---\n# Item 0\n\n"
         "- code: `app/service.py::shared`\n"
         "- same-as: [Item 1](item1.md)\n",
         encoding="utf-8",
     )
-    (tmp_path / "docs/features/demo/item1.md").write_text(
+    (tmp_path / "docs/services/demo/item1.md").write_text(
         "---\ntype: concept\ntitle: Item 1\n---\n# Item 1\n\n"
         "- code: `app/service.py::shared`\n"
         "- same-as: [Item 0](item0.md)\n"
         "- same-as: [Item 2](item2.md)\n",
         encoding="utf-8",
     )
-    (tmp_path / "docs/features/demo/item2.md").write_text(
+    (tmp_path / "docs/services/demo/item2.md").write_text(
         "---\ntype: concept\ntitle: Item 2\n---\n# Item 2\n\n"
         "- code: `app/service.py::shared`\n"
         "- same-as: [Item 1](item1.md)\n"
         "- same-as: [Item 3](item3.md)\n",
         encoding="utf-8",
     )
-    (tmp_path / "docs/features/demo/item3.md").write_text(
+    (tmp_path / "docs/services/demo/item3.md").write_text(
         "---\ntype: concept\ntitle: Item 3\n---\n# Item 3\n\n"
         "- code: `app/service.py::shared`\n"
         "- same-as: [Item 2](item2.md)\n",
         encoding="utf-8",
     )
-    (tmp_path / "docs/features/demo/other.md").write_text(
+    (tmp_path / "docs/services/demo/other.md").write_text(
         "---\ntype: concept\ntitle: Other\n---\n# Other\n\n"
         "- code: `app/other.py::alone`\n",
         encoding="utf-8",
@@ -822,14 +822,14 @@ def _same_as_button_screens(
 ) -> str:
     """`names` screens, each with a `save-button` component reciprocally `same-as:`-linked to every other member and grounded on its own file — so each enters the packet independently of the relation, the invariant `_same_as_component` collapsing must not disturb."""
     extra_bullets = extra_bullets or {}
-    (tmp_path / "docs/features/demo").mkdir(parents=True)
+    (tmp_path / "docs/services/demo").mkdir(parents=True)
     (tmp_path / "app").mkdir()
     for name in names:
         others = [other for other in names if other != name]
         same_as = "".join(
             f"- same-as: [Save button]({other}.md#save-button)\n" for other in others
         )
-        (tmp_path / f"docs/features/demo/{name}.md").write_text(
+        (tmp_path / f"docs/services/demo/{name}.md").write_text(
             f"---\ntype: screen\ntitle: {name}\n---\n# {name}\n\n"
             "## Components\n\n"
             "### save-button\n"
@@ -868,9 +868,9 @@ def test_same_as_pair_collapses_onto_the_lower_member_id(tmp_path: Path):
     ]
     ids = sorted(item["id"] for item in family_obligations)
     assert ids == [
-        "okf:docs/features/demo/screen-a.md#save-button:contract",
-        "okf:docs/features/demo/screen-a.md#save-button:name:1",
-        "okf:docs/features/demo/screen-a.md#save-button:role:1",
+        "okf:docs/services/demo/screen-a.md#save-button:contract",
+        "okf:docs/services/demo/screen-a.md#save-button:name:1",
+        "okf:docs/services/demo/screen-a.md#save-button:role:1",
     ]
 
 
@@ -961,16 +961,16 @@ def test_an_interaction_check_does_not_discharge_a_component_that_is_always_pres
 
 
 def test_an_interaction_on_the_host_discharges_a_fragment_component_it_proves_visible(tmp_path: Path):
-    (tmp_path / "docs/features/demo").mkdir(parents=True)
+    (tmp_path / "docs/services/demo").mkdir(parents=True)
     (tmp_path / "app").mkdir()
-    (tmp_path / "docs/features/demo/screen-a.md").write_text(
+    (tmp_path / "docs/services/demo/screen-a.md").write_text(
         "---\ntype: screen\ntitle: screen-a\n---\n# screen-a\n\n"
         "- [screen-a-components](screen-a-components.md)\n"
         + _PRESS_SAVE.replace("(#save-button)", "(screen-a-components.md#save-button)").replace(
             '"#save-button"', '"screen-a-components.md#save-button"'),
         encoding="utf-8",
     )
-    (tmp_path / "docs/features/demo/screen-a-components.md").write_text(
+    (tmp_path / "docs/services/demo/screen-a-components.md").write_text(
         "---\ntype: fragment\ntitle: 'screen-a: Components'\n---\n# screen-a: Components\n\n"
         "- host: [screen-a](screen-a.md)\n\n"
         "## Components\n\n### save-button\n- role: button\n- name: Save item\n"
@@ -1002,7 +1002,7 @@ def test_same_as_triple_collapses_to_one_obligation_not_three(tmp_path: Path):
     ]
     assert len(family_obligations) == 3
     assert all(
-        item["id"].startswith("okf:docs/features/demo/screen-a.md#save-button:")
+        item["id"].startswith("okf:docs/services/demo/screen-a.md#save-button:")
         for item in family_obligations
     )
 
@@ -1022,13 +1022,13 @@ def test_same_as_member_contributes_a_key_its_siblings_leave_silent(tmp_path: Pa
     ]
     ids = sorted(item["id"] for item in family_obligations)
     assert ids == [
-        "okf:docs/features/demo/screen-a.md#save-button:contract",
-        "okf:docs/features/demo/screen-a.md#save-button:keyboard:1",
-        "okf:docs/features/demo/screen-a.md#save-button:name:1",
-        "okf:docs/features/demo/screen-a.md#save-button:role:1",
+        "okf:docs/services/demo/screen-a.md#save-button:contract",
+        "okf:docs/services/demo/screen-a.md#save-button:keyboard:1",
+        "okf:docs/services/demo/screen-a.md#save-button:name:1",
+        "okf:docs/services/demo/screen-a.md#save-button:role:1",
     ]
     keyboard = next(item for item in family_obligations if item["kind"] == "keyboard")
-    assert keyboard["node"] == "docs/features/demo/screen-b.md#save-button"
+    assert keyboard["node"] == "docs/services/demo/screen-b.md#save-button"
 
 
 def test_a_node_with_no_same_as_family_keeps_its_own_obligation_id(tmp_path: Path):
@@ -1042,9 +1042,9 @@ def test_a_node_with_no_same_as_family_keeps_its_own_obligation_id(tmp_path: Pat
     ]
     ids = sorted(item["id"] for item in family_obligations)
     assert ids == [
-        "okf:docs/features/demo/screen-solo.md#save-button:contract",
-        "okf:docs/features/demo/screen-solo.md#save-button:name:1",
-        "okf:docs/features/demo/screen-solo.md#save-button:role:1",
+        "okf:docs/services/demo/screen-solo.md#save-button:contract",
+        "okf:docs/services/demo/screen-solo.md#save-button:name:1",
+        "okf:docs/services/demo/screen-solo.md#save-button:role:1",
     ]
 
 
@@ -1065,8 +1065,8 @@ def test_one_path_cited_under_two_owning_keys_is_one_owner(tmp_path: Path):
 
 
 def test_context_reports_unmapped_production_change(tmp_path: Path):
-    (tmp_path / "docs/features/demo").mkdir(parents=True)
-    (tmp_path / "docs/features/demo/item.md").write_text(
+    (tmp_path / "docs/services/demo").mkdir(parents=True)
+    (tmp_path / "docs/services/demo/item.md").write_text(
         "---\ntype: concept\ntitle: Item\n---\n# Item\n",
         encoding="utf-8",
     )
@@ -1087,8 +1087,8 @@ def test_context_reports_unmapped_production_change(tmp_path: Path):
 
 
 def test_context_root_source_includes_shared_code_but_excludes_doc_roots(tmp_path: Path):
-    (tmp_path / "docs/features/demo").mkdir(parents=True)
-    feature = tmp_path / "docs/features/demo/item.md"
+    (tmp_path / "docs/services/demo").mkdir(parents=True)
+    feature = tmp_path / "docs/services/demo/item.md"
     feature.write_text(
         "---\ntype: concept\ntitle: Item\n---\n# Item\n\n"
         "- code: internal/shared.py::shared_value\n",
@@ -1119,8 +1119,8 @@ def test_context_root_source_includes_shared_code_but_excludes_doc_roots(tmp_pat
 
 
 def test_context_fallback_symbols_cover_non_python_function_bodies(tmp_path: Path):
-    (tmp_path / "docs/features/demo").mkdir(parents=True)
-    (tmp_path / "docs/features/demo/item.md").write_text(
+    (tmp_path / "docs/services/demo").mkdir(parents=True)
+    (tmp_path / "docs/services/demo/item.md").write_text(
         "---\ntype: concept\ntitle: Item\n---\n# Item\n\n"
         "- code: app/service.ts::second\n",
         encoding="utf-8",
@@ -1146,8 +1146,8 @@ def test_context_fallback_symbols_cover_non_python_function_bodies(tmp_path: Pat
 
 
 def test_context_maps_go_receiver_method_body_to_qualified_symbol(tmp_path: Path):
-    (tmp_path / "docs/features/demo").mkdir(parents=True)
-    (tmp_path / "docs/features/demo/item.md").write_text(
+    (tmp_path / "docs/services/demo").mkdir(parents=True)
+    (tmp_path / "docs/services/demo/item.md").write_text(
         "---\ntype: concept\ntitle: Server\n---\n# Server\n\n"
         "- code: app/server.go::(*Server).Serve\n",
         encoding="utf-8",
@@ -1173,8 +1173,8 @@ def test_context_maps_go_receiver_method_body_to_qualified_symbol(tmp_path: Path
 
 
 def test_context_excludes_snapshot_fixture_but_keeps_executable_markdown(tmp_path: Path):
-    (tmp_path / "docs/features/demo").mkdir(parents=True)
-    (tmp_path / "docs/features/demo/item.md").write_text(
+    (tmp_path / "docs/services/demo").mkdir(parents=True)
+    (tmp_path / "docs/services/demo/item.md").write_text(
         "---\ntype: concept\ntitle: Prompt\n---\n# Prompt\n\n"
         "- code: prompts/system.md\n",
         encoding="utf-8",
@@ -1225,9 +1225,9 @@ title: Items
 
 def test_an_edited_bullet_carries_only_the_head_revisions_value(tmp_path: Path):
     """A bullet's value is a property of one revision, and the union of two is a value no revision states."""
-    (tmp_path / "docs/features/acme/gui/screens").mkdir(parents=True)
+    (tmp_path / "docs/services/acme/gui/screens").mkdir(parents=True)
     (tmp_path / "app").mkdir()
-    book = tmp_path / "docs/features/acme/gui/screens/items.md"
+    book = tmp_path / "docs/services/acme/gui/screens/items.md"
     book.write_text(_REVISED_SCREEN.format(name="No items are on file yet."), encoding="utf-8")
     (tmp_path / "app/items.py").write_text("def render_empty():\n    return 'old'\n", encoding="utf-8")
     _git(tmp_path, "init")
@@ -1243,7 +1243,7 @@ def test_an_edited_bullet_carries_only_the_head_revisions_value(tmp_path: Path):
     packet = build_context(tmp_path, base=base, source_roots={"acme": ["app"]})
 
     by_id = {item["id"]: item for item in packet["obligations"]}
-    node = "okf:docs/features/acme/gui/screens/items.md#empty-notice"
+    node = "okf:docs/services/acme/gui/screens/items.md#empty-notice"
     assert by_id[f"{node}:name:1"]["requirement"] == "none"
     assert f"{node}:name:2" not in by_id, "the pre-edit value minted an obligation of its own"
     assert by_id[f"{node}:name:1"]["locators"]["name"] == ["none"]
@@ -1273,11 +1273,11 @@ def test_a_screen_guard_that_links_a_fixture_arranges_it_for_every_claim_on_the_
     tmp_path: Path, guard: str, arranged: list[tuple[str, tuple[str, ...]]],
 ):
     """A guard stated once on the screen is the state every claim on it is observed in."""
-    (tmp_path / "docs/features/acme/gui/screens").mkdir(parents=True)
-    (tmp_path / "docs/features/acme/fixtures").mkdir(parents=True)
+    (tmp_path / "docs/services/acme/gui/screens").mkdir(parents=True)
+    (tmp_path / "docs/services/acme/fixtures").mkdir(parents=True)
     (tmp_path / "app").mkdir()
-    (tmp_path / "docs/features/acme/fixtures/signed-in.md").write_text(_SIGNED_IN, encoding="utf-8")
-    (tmp_path / "docs/features/acme/gui/screens/items.md").write_text(_guarded_screen(guard), encoding="utf-8")
+    (tmp_path / "docs/services/acme/fixtures/signed-in.md").write_text(_SIGNED_IN, encoding="utf-8")
+    (tmp_path / "docs/services/acme/gui/screens/items.md").write_text(_guarded_screen(guard), encoding="utf-8")
     (tmp_path / "app/items.py").write_text("def render_empty():\n    return 'old'\n", encoding="utf-8")
     _git(tmp_path, "init")
     _git(tmp_path, "config", "user.email", "qa@example.com")
@@ -1290,7 +1290,7 @@ def test_a_screen_guard_that_links_a_fixture_arranges_it_for_every_claim_on_the_
     packet = build_context(tmp_path, base=base, source_roots={"acme": ["app"]})
 
     by_id = {item["id"]: item for item in packet["obligations"]}
-    claim = by_id["okf:docs/features/acme/gui/screens/items.md#empty-notice:states:1"]
+    claim = by_id["okf:docs/services/acme/gui/screens/items.md#empty-notice:states:1"]
     assert [(row["name"], tuple(row["args"])) for row in claim.get("fixturesDeclared", [])] == arranged
 
 
@@ -1314,11 +1314,11 @@ _EDITOR_BEHIND = "\n".join([
 
 def test_a_screen_reached_through_a_guarded_screen_arranges_that_guards_fixture(tmp_path: Path):
     """A scenario walks through every screen in front of its own, so a sign-in the first one asks for is owed before the last."""
-    screens = tmp_path / "docs/features/acme/gui/screens"
+    screens = tmp_path / "docs/services/acme/gui/screens"
     screens.mkdir(parents=True)
-    (tmp_path / "docs/features/acme/fixtures").mkdir(parents=True)
+    (tmp_path / "docs/services/acme/fixtures").mkdir(parents=True)
     (tmp_path / "app").mkdir()
-    (tmp_path / "docs/features/acme/fixtures/signed-in.md").write_text(_SIGNED_IN, encoding="utf-8")
+    (tmp_path / "docs/services/acme/fixtures/signed-in.md").write_text(_SIGNED_IN, encoding="utf-8")
     (screens / "items.md").write_text(_LIST_IN_FRONT, encoding="utf-8")
     (screens / "editor.md").write_text(_EDITOR_BEHIND, encoding="utf-8")
     (tmp_path / "app/editor.py").write_text("def render_title():\n    return 'old'\n", encoding="utf-8")
@@ -1333,7 +1333,7 @@ def test_a_screen_reached_through_a_guarded_screen_arranges_that_guards_fixture(
     packet = build_context(tmp_path, base=base, source_roots={"acme": ["app"]})
 
     by_id = {item["id"]: item for item in packet["obligations"]}
-    claim = by_id["okf:docs/features/acme/gui/screens/editor.md#title-field:states:1"]
+    claim = by_id["okf:docs/services/acme/gui/screens/editor.md#title-field:states:1"]
     assert [row["name"] for row in claim.get("fixturesDeclared", [])] == ["signed-in"]
 
 
@@ -1353,8 +1353,8 @@ def test_a_node_that_signs_in_its_own_actor_drops_another_sign_in_on_the_walk(
     tmp_path: Path, own: str, arranged: list[str],
 ):
     """A browser holds one session, so a sign-in the walk owes yields to the node's own unless the node's needs it."""
-    screens = tmp_path / "docs/features/acme/gui/screens"
-    fixtures = tmp_path / "docs/features/acme/fixtures"
+    screens = tmp_path / "docs/services/acme/gui/screens"
+    fixtures = tmp_path / "docs/services/acme/fixtures"
     screens.mkdir(parents=True)
     fixtures.mkdir(parents=True)
     (tmp_path / "app").mkdir()
@@ -1377,7 +1377,7 @@ def test_a_node_that_signs_in_its_own_actor_drops_another_sign_in_on_the_walk(
     packet = build_context(tmp_path, base=base, source_roots={"acme": ["app"]})
 
     by_id = {item["id"]: item for item in packet["obligations"]}
-    claim = by_id["okf:docs/features/acme/gui/screens/editor.md#title-field:states:1"]
+    claim = by_id["okf:docs/services/acme/gui/screens/editor.md#title-field:states:1"]
     assert sorted(row["name"] for row in claim.get("fixturesDeclared", [])) == arranged
 
 
@@ -1390,8 +1390,8 @@ def test_a_screen_that_signs_in_its_own_actor_drops_the_sign_in_of_a_screen_in_f
     tmp_path: Path, guard: str, arranged: list[str],
 ):
     """A browser holds one session, so a screen in front yields its sign-in to the one the screen's own guard asks for unless that one needs it."""
-    screens = tmp_path / "docs/features/acme/gui/screens"
-    fixtures = tmp_path / "docs/features/acme/fixtures"
+    screens = tmp_path / "docs/services/acme/gui/screens"
+    fixtures = tmp_path / "docs/services/acme/fixtures"
     screens.mkdir(parents=True)
     fixtures.mkdir(parents=True)
     (tmp_path / "app").mkdir()
@@ -1414,7 +1414,7 @@ def test_a_screen_that_signs_in_its_own_actor_drops_the_sign_in_of_a_screen_in_f
     packet = build_context(tmp_path, base=base, source_roots={"acme": ["app"]})
 
     by_id = {item["id"]: item for item in packet["obligations"]}
-    claim = by_id["okf:docs/features/acme/gui/screens/editor.md#title-field:states:1"]
+    claim = by_id["okf:docs/services/acme/gui/screens/editor.md#title-field:states:1"]
     assert sorted(row["name"] for row in claim.get("fixturesDeclared", [])) == arranged
 
 
@@ -1428,8 +1428,8 @@ def test_a_state_that_signs_in_its_own_actor_drops_its_components_sign_in(
     tmp_path: Path, node: str, state: str, arranged: list[str],
 ):
     """A browser holds one session, so the component's sign-in yields to the one a state arranges unless the state's needs it."""
-    screens = tmp_path / "docs/features/acme/gui/screens"
-    fixtures = tmp_path / "docs/features/acme/fixtures"
+    screens = tmp_path / "docs/services/acme/gui/screens"
+    fixtures = tmp_path / "docs/services/acme/fixtures"
     screens.mkdir(parents=True)
     fixtures.mkdir(parents=True)
     (tmp_path / "app").mkdir()
@@ -1454,15 +1454,15 @@ def test_a_state_that_signs_in_its_own_actor_drops_its_components_sign_in(
     packet = build_context(tmp_path, base=base, source_roots={"acme": ["app"]})
 
     by_id = {item["id"]: item for item in packet["obligations"]}
-    claim = by_id["okf:docs/features/acme/gui/screens/editor.md#title-field:states:1"]
+    claim = by_id["okf:docs/services/acme/gui/screens/editor.md#title-field:states:1"]
     assert sorted(row["name"] for row in claim.get("fixturesDeclared", [])) == arranged
 
 
 def test_a_node_the_change_deleted_is_still_described_by_the_base_revision(tmp_path: Path):
     """The counterpart, and the reason the merge exists at all: head wins per key only for a node head still has."""
-    (tmp_path / "docs/features/acme/gui/screens").mkdir(parents=True)
+    (tmp_path / "docs/services/acme/gui/screens").mkdir(parents=True)
     (tmp_path / "app").mkdir()
-    book = tmp_path / "docs/features/acme/gui/screens/items.md"
+    book = tmp_path / "docs/services/acme/gui/screens/items.md"
     book.write_text(_REVISED_SCREEN.format(name="No items are on file yet."), encoding="utf-8")
     (tmp_path / "app/items.py").write_text("def render_empty():\n    return 'old'\n", encoding="utf-8")
     _git(tmp_path, "init")
@@ -1486,15 +1486,15 @@ title: Items
     packet = build_context(tmp_path, base=base, source_roots={"acme": ["app"]})
 
     by_id = {item["id"]: item for item in packet["obligations"]}
-    node = "okf:docs/features/acme/gui/screens/items.md#empty-notice"
+    node = "okf:docs/services/acme/gui/screens/items.md#empty-notice"
     assert by_id[f"{node}:name:1"]["locators"]["name"] == ["No items are on file yet."]
 
 
 def test_context_turns_nested_okf_behavior_into_qa_obligations(tmp_path: Path):
-    (tmp_path / "docs/features/acme/gui/screens").mkdir(parents=True)
+    (tmp_path / "docs/services/acme/gui/screens").mkdir(parents=True)
     (tmp_path / "app").mkdir()
     (tmp_path / "tests").mkdir()
-    (tmp_path / "docs/features/acme/gui/screens/items.md").write_text(
+    (tmp_path / "docs/services/acme/gui/screens/items.md").write_text(
         """---
 type: screen
 title: Items
@@ -1567,9 +1567,9 @@ title: Items
 
 def test_a_channel_endpoints_message_mints_one_obligation_per_frame(tmp_path: Path):
     """`message:` is `nested=True, entries=True, normative=True`: a websocket returns differently-shaped frames, each a thing with its own claims, so the grammar mints one obligation per frame — not one per grandchild (the flat `nested` shape) and not one for the whole block (`record`)."""
-    (tmp_path / "docs/features/acme/http").mkdir(parents=True)
+    (tmp_path / "docs/services/acme/http").mkdir(parents=True)
     (tmp_path / "app").mkdir()
-    (tmp_path / "docs/features/acme/http/stream.md").write_text(
+    (tmp_path / "docs/services/acme/http/stream.md").write_text(
         """---
 type: server
 title: Stream
@@ -1609,22 +1609,22 @@ title: Stream
     message_obligations = {k: v for k, v in by_id.items() if ":message:" in k}
 
     assert set(message_obligations) == {
-        "okf:docs/features/acme/http/stream.md#stream-updates:message:1",
-        "okf:docs/features/acme/http/stream.md#stream-updates:message:2",
+        "okf:docs/services/acme/http/stream.md#stream-updates:message:1",
+        "okf:docs/services/acme/http/stream.md#stream-updates:message:2",
     }
     assert message_obligations[
-        "okf:docs/features/acme/http/stream.md#stream-updates:message:1"
+        "okf:docs/services/acme/http/stream.md#stream-updates:message:1"
     ]["requirement"] == "update"
     assert message_obligations[
-        "okf:docs/features/acme/http/stream.md#stream-updates:message:2"
+        "okf:docs/services/acme/http/stream.md#stream-updates:message:2"
     ]["requirement"] == "ack"
 
 
 def test_a_repeated_component_lifts_its_family_contract_onto_the_obligation(tmp_path: Path):
     """A `one-per:` node's obligations carry the compiled repeat block, camelCase like the packet."""
-    (tmp_path / "docs/features/acme/gui/screens").mkdir(parents=True)
+    (tmp_path / "docs/services/acme/gui/screens").mkdir(parents=True)
     (tmp_path / "app").mkdir()
-    (tmp_path / "docs/features/acme/gui/screens/planner.md").write_text(
+    (tmp_path / "docs/services/acme/gui/screens/planner.md").write_text(
         """---
 type: screen
 title: Planner
@@ -1701,9 +1701,9 @@ title: Planner
 
 def test_a_check_binds_to_the_claim_it_was_written_under(tmp_path: Path):
     """Two sibling claims, each with its own `verify:`, are two separately observed claims."""
-    (tmp_path / "docs/features/acme/http").mkdir(parents=True)
+    (tmp_path / "docs/services/acme/http").mkdir(parents=True)
     (tmp_path / "app").mkdir()
-    (tmp_path / "docs/features/acme/http/claims.md").write_text(
+    (tmp_path / "docs/services/acme/http/claims.md").write_text(
         """---
 type: server
 title: Claims
@@ -1746,9 +1746,9 @@ title: Claims
 
 def test_a_contract_declaring_no_observation_is_a_health_warning(tmp_path: Path):
     """Not "cites no test" — a test citation proves nothing about the running product."""
-    (tmp_path / "docs/features/acme/screens").mkdir(parents=True)
+    (tmp_path / "docs/services/acme/screens").mkdir(parents=True)
     (tmp_path / "app").mkdir()
-    doc = tmp_path / "docs/features/acme/screens/items.md"
+    doc = tmp_path / "docs/services/acme/screens/items.md"
     body = """---
 type: screen
 slug: items
@@ -1785,9 +1785,9 @@ title: Items
 
 def test_a_check_on_one_normative_key_does_not_silence_another(tmp_path: Path):
     """A node with two normative keys and one `verify:` must warn on the uncovered key alone."""
-    (tmp_path / "docs/features/acme/screens").mkdir(parents=True)
+    (tmp_path / "docs/services/acme/screens").mkdir(parents=True)
     (tmp_path / "app").mkdir()
-    doc = tmp_path / "docs/features/acme/screens/items.md"
+    doc = tmp_path / "docs/services/acme/screens/items.md"
     body = """---
 type: screen
 slug: items
@@ -1825,7 +1825,7 @@ title: Items
 
 def test_the_tenth_case_of_a_bullet_sorts_after_the_second():
     """Sorting obligation ids as plain strings puts `:10` between `:1` and `:2`."""
-    node = "okf:docs/features/acme/concepts/store.md#put"
+    node = "okf:docs/services/acme/concepts/store.md#put"
     ids = [f"{node}:raises:{index}" for index in (10, 2, 1, 11)] + [f"{node}:contract"]
     assert sorted(ids, key=_sort_key) == [
         f"{node}:contract",
@@ -1837,9 +1837,9 @@ def test_the_tenth_case_of_a_bullet_sorts_after_the_second():
 
 
 def test_context_indexes_verification_for_unimpacted_nodes(tmp_path: Path):
-    (tmp_path / "docs/features/acme/concepts").mkdir(parents=True)
+    (tmp_path / "docs/services/acme/concepts").mkdir(parents=True)
     (tmp_path / "app").mkdir()
-    (tmp_path / "docs/features/acme/concepts/items.md").write_text(
+    (tmp_path / "docs/services/acme/concepts/items.md").write_text(
         """---
 type: concept
 title: Items
@@ -1850,7 +1850,7 @@ title: Items
 """,
         encoding="utf-8",
     )
-    (tmp_path / "docs/features/acme/concepts/accounts.md").write_text(
+    (tmp_path / "docs/services/acme/concepts/accounts.md").write_text(
         """---
 type: concept
 title: Accounts
@@ -1936,8 +1936,8 @@ def test_the_toolchains_own_footprint_is_not_a_production_unit(tmp_path: Path):
 
 def test_context_ignores_build_files_alongside_real_change(tmp_path: Path):
     """The end-to-end shape of the greenfield-coder failure: a story that touches production code AND its build manifest must not be failed on the manifest."""
-    (tmp_path / "docs/features/demo").mkdir(parents=True)
-    (tmp_path / "docs/features/demo/item.md").write_text(
+    (tmp_path / "docs/services/demo").mkdir(parents=True)
+    (tmp_path / "docs/services/demo/item.md").write_text(
         "---\ntype: concept\ntitle: Item\n---\n# Item\n", encoding="utf-8")
     (tmp_path / "svc").mkdir()
     code = tmp_path / "svc/service.py"
@@ -2006,8 +2006,8 @@ def test_the_generated_marker_is_read_when_the_filename_says_nothing(tmp_path: P
 
 def test_context_ignores_generated_code_alongside_real_change(tmp_path: Path):
     """End-to-end: the story's own controller is owed, its generated server stubs are not."""
-    (tmp_path / "docs/features/demo").mkdir(parents=True)
-    (tmp_path / "docs/features/demo/link.md").write_text(
+    (tmp_path / "docs/services/demo").mkdir(parents=True)
+    (tmp_path / "docs/services/demo/link.md").write_text(
         "---\ntype: concept\ntitle: Link\n---\n# Link\n\n- code: svc/controller.py::create_link\n",
         encoding="utf-8",
     )
@@ -2033,8 +2033,8 @@ def test_context_ignores_generated_code_alongside_real_change(tmp_path: Path):
 
 def test_deleted_binary_does_not_void_the_packet(tmp_path: Path):
     """A binary blob on the base side must not take the whole obligation packet down with it."""
-    (tmp_path / "docs/features/demo").mkdir(parents=True)
-    (tmp_path / "docs/features/demo/link.md").write_text(
+    (tmp_path / "docs/services/demo").mkdir(parents=True)
+    (tmp_path / "docs/services/demo/link.md").write_text(
         "---\ntype: concept\ntitle: Link\n---\n# Link\n\n- code: svc/controller.py::create_link\n",
         encoding="utf-8",
     )
@@ -2063,8 +2063,8 @@ def test_deleted_binary_does_not_void_the_packet(tmp_path: Path):
 
 def test_the_inventory_the_toolchain_writes_into_a_source_root_is_not_owed(tmp_path: Path):
     """`.source-inventory.json` is ours, not the product's, at whatever depth it lands."""
-    (tmp_path / "docs/features/demo").mkdir(parents=True)
-    (tmp_path / "docs/features/demo/link.md").write_text(
+    (tmp_path / "docs/services/demo").mkdir(parents=True)
+    (tmp_path / "docs/services/demo/link.md").write_text(
         "---\ntype: concept\ntitle: Link\n---\n# Link\n\n- code: svc/controller.py::create_link\n",
         encoding="utf-8",
     )
@@ -2089,8 +2089,8 @@ def test_the_inventory_the_toolchain_writes_into_a_source_root_is_not_owed(tmp_p
 
 def test_excluded_paths_leave_the_diff_before_anything_is_obligated_on_them(tmp_path: Path):
     """`head="WORKTREE"` is not a commit, so some of the dirt can be somebody else's."""
-    (tmp_path / "docs/features/demo").mkdir(parents=True)
-    (tmp_path / "docs/features/demo/link.md").write_text(
+    (tmp_path / "docs/services/demo").mkdir(parents=True)
+    (tmp_path / "docs/services/demo/link.md").write_text(
         "---\ntype: concept\ntitle: Link\n---\n# Link\n\n- code: svc/controller.py::create_link\n",
         encoding="utf-8",
     )
@@ -2121,9 +2121,9 @@ def test_excluded_paths_leave_the_diff_before_anything_is_obligated_on_them(tmp_
 
 def test_a_module_level_constant_grounds_like_any_other_declaration(tmp_path: Path):
     """A `code:` bullet naming a module-level binding is satisfiable."""
-    (tmp_path / "docs/features/demo").mkdir(parents=True)
+    (tmp_path / "docs/services/demo").mkdir(parents=True)
     (tmp_path / "svc").mkdir()
-    (tmp_path / "docs/features/demo/backend.md").write_text(
+    (tmp_path / "docs/services/demo/backend.md").write_text(
         "---\ntype: concept\ntitle: Backend\n---\n# Backend\n\n"
         "- code: `svc/backend.py::MANIFEST`, `svc/backend.py::ROUTES`, "
         "`svc/backend.py::serve`, `svc/backend.py::serve.Handler`\n",
@@ -2153,9 +2153,9 @@ def test_a_module_level_constant_grounds_like_any_other_declaration(tmp_path: Pa
 
 def test_a_citation_of_a_binary_file_that_exists_is_not_dangling(tmp_path: Path):
     """A `code:` bullet may cite a file nothing can decode — a `.docx` test fixture, a golden image, a compiled sample — and the gate has to see it."""
-    (tmp_path / "docs/features/demo").mkdir(parents=True)
+    (tmp_path / "docs/services/demo").mkdir(parents=True)
     (tmp_path / "svc/__fixtures__").mkdir(parents=True)
-    (tmp_path / "docs/features/demo/backend.md").write_text(
+    (tmp_path / "docs/services/demo/backend.md").write_text(
         "---\ntype: concept\ntitle: Backend\n---\n# Backend\n\n"
         "- code: `svc/backend.py::serve`, `svc/__fixtures__/well-formed.docx`\n",
         encoding="utf-8",
@@ -2178,9 +2178,9 @@ def test_a_citation_of_a_binary_file_that_exists_is_not_dangling(tmp_path: Path)
 
 def test_a_citation_of_a_file_that_is_nowhere_is_still_dangling(tmp_path: Path):
     """The widened existence check must not become "any path at all" — a citation of a file that is in neither revision nor the worktree is exactly what the finding is for."""
-    (tmp_path / "docs/features/demo").mkdir(parents=True)
+    (tmp_path / "docs/services/demo").mkdir(parents=True)
     (tmp_path / "svc").mkdir()
-    (tmp_path / "docs/features/demo/backend.md").write_text(
+    (tmp_path / "docs/services/demo/backend.md").write_text(
         "---\ntype: concept\ntitle: Backend\n---\n# Backend\n\n"
         "- code: `svc/backend.py::serve`, `svc/__fixtures__/never-written.docx`\n",
         encoding="utf-8",
@@ -2202,9 +2202,9 @@ def test_a_citation_of_a_file_that_is_nowhere_is_still_dangling(tmp_path: Path):
 
 def test_a_citation_whose_definition_left_the_file_is_still_dangling(tmp_path: Path):
     """The widened check must not become "any name mentioned anywhere" — an import is not a declaration, so a symbol that moved out from under its citation stays a finding."""
-    (tmp_path / "docs/features/demo").mkdir(parents=True)
+    (tmp_path / "docs/services/demo").mkdir(parents=True)
     (tmp_path / "svc").mkdir()
-    (tmp_path / "docs/features/demo/backend.md").write_text(
+    (tmp_path / "docs/services/demo/backend.md").write_text(
         "---\ntype: concept\ntitle: Backend\n---\n# Backend\n\n"
         "- code: `svc/backend.py::MANIFEST`\n- code: `svc/backend.py::serve`\n",
         encoding="utf-8",
@@ -2232,9 +2232,9 @@ def test_a_citation_whose_definition_left_the_file_is_still_dangling(tmp_path: P
 
 def test_a_digest_pinned_citation_still_grounds(tmp_path: Path):
     """A stamped `@digest` must not defeat grounding, for a bare file or a symbol citation."""
-    (tmp_path / "docs/features/demo").mkdir(parents=True)
+    (tmp_path / "docs/services/demo").mkdir(parents=True)
     (tmp_path / "svc").mkdir()
-    (tmp_path / "docs/features/demo/backend.md").write_text(
+    (tmp_path / "docs/services/demo/backend.md").write_text(
         "---\ntype: concept\ntitle: Backend\n---\n# Backend\n\n"
         "- code: `svc/backend.py::serve`, `svc/backend.py::serve@0123456789ab`, "
         "`svc/backend.py`, `svc/backend.py@0123456789ab`\n",
@@ -2277,17 +2277,17 @@ def _packet_with_a_wrapped_requirement() -> dict:
     return {
         "obligations": [
             {
-                "id": "okf:docs/features/api/store.md#put:contract",
+                "id": "okf:docs/services/api/store.md#put:contract",
                 "kind": "contract",
-                "node": "docs/features/api/store.md",
+                "node": "docs/services/api/store.md",
                 "requirement": "Put",
                 "required": True,
                 "locators": {"role": ["button"]},
             },
             {
-                "id": "okf:docs/features/app/cold-start.md:end:1",
+                "id": "okf:docs/services/app/cold-start.md:end:1",
                 "kind": "end",
-                "node": "docs/features/app/cold-start.md",
+                "node": "docs/services/app/cold-start.md",
                 "requirement": "the visitor sees the requested content render, not a blank\npage",
                 "required": False,
             },
@@ -2300,10 +2300,10 @@ def test_the_owed_split_survives_a_requirement_that_wraps():
     rendered = render_context(_packet_with_a_wrapped_requirement())
     owed, context = rendered.split(CONTEXT_HEADING)
     assert OWED_HEADING in owed
-    assert "okf:docs/features/api/store.md#put:contract" in owed
-    assert "okf:docs/features/app/cold-start.md:end:1" not in owed
-    assert "okf:docs/features/app/cold-start.md:end:1" in context
-    assert "page" in context.split("okf:docs/features/app/cold-start.md:end:1")[1]
+    assert "okf:docs/services/api/store.md#put:contract" in owed
+    assert "okf:docs/services/app/cold-start.md:end:1" not in owed
+    assert "okf:docs/services/app/cold-start.md:end:1" in context
+    assert "page" in context.split("okf:docs/services/app/cold-start.md:end:1")[1]
     assert "context only" not in rendered
 
 
@@ -2316,13 +2316,13 @@ def test_selecting_obligations_filters_and_pages_without_rebuilding():
     """``build_context`` walks the diff and the graph; reading a slice of the result must not."""
     packet = _packet_with_a_wrapped_requirement()
     owed, matched = select_obligations(packet, required=True)
-    assert [item["id"] for item in owed] == ["okf:docs/features/api/store.md#put:contract"]
+    assert [item["id"] for item in owed] == ["okf:docs/services/api/store.md#put:contract"]
     assert matched == 1
     _, matched = select_obligations(packet, required=False)
     assert matched == 1
     _, matched = select_obligations(packet)
     assert matched == 2
-    _, matched = select_obligations(packet, node="docs/features/app")
+    _, matched = select_obligations(packet, node="docs/services/app")
     assert matched == 1
     _, matched = select_obligations(packet, kind="contract")
     assert matched == 1
@@ -2342,9 +2342,9 @@ def test_rendering_a_slice_can_drop_the_locator_bullets():
 
 def test_a_leading_fixture_is_ambient_while_a_nested_one_binds_to_its_claim(tmp_path: Path):
     """The asymmetry between the two things a bullet above every claim can be."""
-    (tmp_path / "docs/features/acme/http").mkdir(parents=True)
+    (tmp_path / "docs/services/acme/http").mkdir(parents=True)
     (tmp_path / "app").mkdir()
-    (tmp_path / "docs/features/acme/http/claims.md").write_text(
+    (tmp_path / "docs/services/acme/http/claims.md").write_text(
         """---
 type: server
 title: Claims
@@ -2397,8 +2397,8 @@ title: Claims
 
 def _judgment_repo(root: Path, *, with_judgment: bool) -> str:
     """A screen whose interaction competes with an older writer, settled by a concept."""
-    (root / "docs/features/acme/gui/screens").mkdir(parents=True)
-    (root / "docs/features/acme/concepts").mkdir(parents=True)
+    (root / "docs/services/acme/gui/screens").mkdir(parents=True)
+    (root / "docs/services/acme/concepts").mkdir(parents=True)
     (root / "docs/decisions").mkdir(parents=True)
     (root / "app").mkdir()
     judgment_bullets = (
@@ -2408,7 +2408,7 @@ def _judgment_repo(root: Path, *, with_judgment: bool) -> str:
         if with_judgment
         else ""
     )
-    (root / "docs/features/acme/gui/screens/items.md").write_text(
+    (root / "docs/services/acme/gui/screens/items.md").write_text(
         f"""---
 type: screen
 title: Items
@@ -2436,7 +2436,7 @@ title: Items
     )
     if with_judgment:
         (root / "docs/decisions/0001-export.md").write_text("# settled\n", encoding="utf-8")
-        (root / "docs/features/acme/concepts/choice.md").write_text(
+        (root / "docs/services/acme/concepts/choice.md").write_text(
             """---
 type: concept
 title: Export choice
@@ -2449,7 +2449,7 @@ title: Export choice
 """,
             encoding="utf-8",
         )
-        (root / "docs/features/acme/concepts/legacy-writer.md").write_text(
+        (root / "docs/services/acme/concepts/legacy-writer.md").write_text(
             """---
 type: concept
 title: Legacy writer
@@ -2558,12 +2558,12 @@ def test_rendering_shows_judgment_and_unspecified_beside_the_obligation():
     assert any("judgment" in line for line in render_obligations([obligation], locators=False))
 
 
-def test_book_root_derives_from_features_root_nesting():
-    """A book nested under `<prefix>/docs/features` reports `<prefix>` as its own root; a book at the repo's default `docs/features` reports no root at all — it already sits where the host repo's paths are spelled."""
+def test_book_root_derives_from_services_root_nesting():
+    """A book nested under `<prefix>/docs/services` reports `<prefix>` as its own root; a book at the repo's default `docs/services` reports no root at all — it already sits where the host repo's paths are spelled."""
     root = Path("/repo")
-    assert _book_root(root, "docs/features") == ""
-    assert _book_root(root, "nested/docs/features") == "nested"
-    assert _book_root(root, "a/b/docs/features") == "a/b"
+    assert _book_root(root, "docs/services") == ""
+    assert _book_root(root, "nested/docs/services") == "nested"
+    assert _book_root(root, "a/b/docs/services") == "a/b"
 
 
 def test_book_relative_rebases_onto_the_book_root():
@@ -2573,12 +2573,12 @@ def test_book_relative_rebases_onto_the_book_root():
 
 
 def test_nested_book_joins_its_own_root_relative_citations_to_host_relative_changes(tmp_path: Path):
-    """A book need not live at the repo's default `docs/features` to join to its code: the same book joins whether the repo is checked out at the book's own root or nested inside a larger tree."""
+    """A book need not live at the repo's default `docs/services` to join to its code: the same book joins whether the repo is checked out at the book's own root or nested inside a larger tree."""
     service = tmp_path / "service"
-    (service / "docs/features/demo").mkdir(parents=True)
+    (service / "docs/services/demo").mkdir(parents=True)
     (service / "app").mkdir(parents=True)
     (tmp_path / "unrelated").mkdir()
-    feature = service / "docs/features/demo/widget.md"
+    feature = service / "docs/services/demo/widget.md"
     feature.write_text(
         """---
 type: concept
@@ -2610,7 +2610,7 @@ title: Widget
     packet = build_context(
         tmp_path,
         base=base,
-        features_root="service/docs/features",
+        services_root="service/docs/services",
         source_roots={"demo": ["service/app"]},
     )
 
@@ -2625,9 +2625,9 @@ title: Widget
 
 def test_a_check_locator_is_resolved_into_the_packet(tmp_path: Path):
     """The packet says which component a `verify:` points at, and what that component is."""
-    (tmp_path / "docs/features/acme/screens").mkdir(parents=True)
+    (tmp_path / "docs/services/acme/screens").mkdir(parents=True)
     (tmp_path / "app").mkdir()
-    (tmp_path / "docs/features/acme/screens/items.md").write_text(
+    (tmp_path / "docs/services/acme/screens/items.md").write_text(
         """---
 type: screen
 slug: items
@@ -2672,15 +2672,15 @@ title: Items
     obligation = next(item for item in packet["obligations"]
                       if item["id"].endswith("#save-item:does:1"))
     located = obligation["checksDeclared"][0]["locates"]["locator"]
-    assert located["node"] == "docs/features/acme/screens/items.md#save-error"
+    assert located["node"] == "docs/services/acme/screens/items.md#save-error"
     assert located["locators"]["selector"] == ["`#save-error`"]
 
 
 def test_a_check_locator_that_resolves_to_nothing_is_stamped_empty(tmp_path: Path):
     """An empty target, not an absent field."""
-    (tmp_path / "docs/features/acme/screens").mkdir(parents=True)
+    (tmp_path / "docs/services/acme/screens").mkdir(parents=True)
     (tmp_path / "app").mkdir()
-    (tmp_path / "docs/features/acme/screens/items.md").write_text(
+    (tmp_path / "docs/services/acme/screens/items.md").write_text(
         """---
 type: screen
 slug: items
@@ -2754,9 +2754,9 @@ def test_channel_is_read_as_an_endpoints_address_locator():
 
 def test_an_unstated_claim_combiner_is_stamped_on_every_child(tmp_path: Path):
     """The obligation is real and a planner still reads it; nothing may compile it."""
-    (tmp_path / "docs/features/acme/screens").mkdir(parents=True)
+    (tmp_path / "docs/services/acme/screens").mkdir(parents=True)
     (tmp_path / "app").mkdir()
-    (tmp_path / "docs/features/acme/screens/items.md").write_text(
+    (tmp_path / "docs/services/acme/screens/items.md").write_text(
         """---
 type: screen
 slug: items
@@ -2802,10 +2802,10 @@ title: Items
 
 def test_a_flows_steps_reach_the_packet_in_the_order_the_book_wrote_them(tmp_path: Path):
     """A journey is a sequence of what the reader does, and the packet carries it without the places it passes."""
-    (tmp_path / "docs/features/acme/gui/screens").mkdir(parents=True)
-    (tmp_path / "docs/features/acme/flows").mkdir(parents=True)
+    (tmp_path / "docs/services/acme/gui/screens").mkdir(parents=True)
+    (tmp_path / "docs/services/acme/flows").mkdir(parents=True)
     (tmp_path / "app").mkdir()
-    (tmp_path / "docs/features/acme/gui/screens/items.md").write_text(
+    (tmp_path / "docs/services/acme/gui/screens/items.md").write_text(
         """---
 type: screen
 title: Items
@@ -2840,7 +2840,7 @@ title: Items
 """,
         encoding="utf-8",
     )
-    (tmp_path / "docs/features/acme/flows/save-and-return.md").write_text(
+    (tmp_path / "docs/services/acme/flows/save-and-return.md").write_text(
         """---
 type: flow
 title: Save and return
@@ -2874,7 +2874,7 @@ title: Save and return
 
     flow = [
         item for item in packet["obligations"]
-        if item["id"].startswith("okf:docs/features/acme/flows/save-and-return.md")
+        if item["id"].startswith("okf:docs/services/acme/flows/save-and-return.md")
     ]
     assert flow, "the flow minted no obligation to carry a walk"
     walk = [
@@ -2882,8 +2882,8 @@ title: Save and return
     ]
     assert walk and all(entry == walk[0] for entry in walk)
     assert walk[0] == [
-        ("docs/features/acme/gui/screens/items.md#save-item", "interaction"),
-        ("docs/features/acme/gui/screens/items.md#clear-item", "interaction"),
+        ("docs/services/acme/gui/screens/items.md#save-item", "interaction"),
+        ("docs/services/acme/gui/screens/items.md#clear-item", "interaction"),
     ]
     assert {step["surface"] for step in flow[0]["steps"]} == {"acme"}
 
@@ -2892,9 +2892,9 @@ def test_a_fixture_bullet_naming_its_own_emptiness_is_a_decision_the_packet_carr
     tmp_path: Path,
 ):
     """An author who decided the node needs no arrangement, and one who never looked, produce the same empty `fixturesDeclared`."""
-    (tmp_path / "docs/features/acme/http").mkdir(parents=True)
+    (tmp_path / "docs/services/acme/http").mkdir(parents=True)
     (tmp_path / "app").mkdir()
-    (tmp_path / "docs/features/acme/http/claims.md").write_text(
+    (tmp_path / "docs/services/acme/http/claims.md").write_text(
         """---
 type: server
 title: Claims
@@ -2945,9 +2945,9 @@ title: Claims
 
 def test_a_fixture_bullet_the_parser_rejects_is_carried_not_dropped(tmp_path: Path):
     """The packet used to say only what the book successfully declared, and the lint said what it tried to."""
-    (tmp_path / "docs/features/acme/http").mkdir(parents=True)
+    (tmp_path / "docs/services/acme/http").mkdir(parents=True)
     (tmp_path / "app").mkdir()
-    (tmp_path / "docs/features/acme/http/claims.md").write_text(
+    (tmp_path / "docs/services/acme/http/claims.md").write_text(
         """---
 type: server
 title: Claims
@@ -2986,9 +2986,9 @@ title: Claims
 
 def test_a_verify_bullet_the_parser_refuses_is_carried_not_dropped(tmp_path: Path):
     """`checksDeclared` absent meant two different books: one that declared no observation, and one whose observation nobody could read."""
-    (tmp_path / "docs/features/acme/http").mkdir(parents=True)
+    (tmp_path / "docs/services/acme/http").mkdir(parents=True)
     (tmp_path / "app").mkdir()
-    (tmp_path / "docs/features/acme/http/claims.md").write_text(
+    (tmp_path / "docs/services/acme/http/claims.md").write_text(
         """---
 type: server
 title: Claims
@@ -3026,9 +3026,9 @@ title: Claims
 
 def test_a_capture_bullet_the_parser_refuses_is_carried_not_dropped(tmp_path: Path):
     """The packet builder's own docstring said a malformed `capture:` was "left for `ostler doctor` to report", and doctor had no capture checker at all — one comment, no finding."""
-    (tmp_path / "docs/features/acme/http").mkdir(parents=True)
+    (tmp_path / "docs/services/acme/http").mkdir(parents=True)
     (tmp_path / "app").mkdir()
-    (tmp_path / "docs/features/acme/http/claims.md").write_text(
+    (tmp_path / "docs/services/acme/http/claims.md").write_text(
         """---
 type: server
 title: Claims
@@ -3108,9 +3108,9 @@ title: Items
 
 def test_an_arranged_interaction_carries_its_acts_into_the_packet(tmp_path: Path):
     """A `when:` over what the user typed is state no fixture can reach, and the acts that establish it are the packet's only account of the world the claim below is about."""
-    (tmp_path / "docs/features/acme/gui/screens").mkdir(parents=True)
+    (tmp_path / "docs/services/acme/gui/screens").mkdir(parents=True)
     (tmp_path / "app").mkdir()
-    (tmp_path / "docs/features/acme/gui/screens/items.md").write_text(
+    (tmp_path / "docs/services/acme/gui/screens/items.md").write_text(
         _ARRANGED_SCREEN, encoding="utf-8"
     )
     (tmp_path / "app/items.py").write_text(
@@ -3135,7 +3135,7 @@ def test_an_arranged_interaction_carries_its_acts_into_the_packet(tmp_path: Path
         'fill(locator="#quantity-field", value="3")',
     ]
     assert when["actsDeclared"][0]["locates"]["locator"]["node"] == (
-        "docs/features/acme/gui/screens/items.md#name-field"
+        "docs/services/acme/gui/screens/items.md#name-field"
     )
     assert when["actsDeclared"][0]["locates"]["locator"]["locators"]["selector"] == [
         'input[name="name"]'
@@ -3150,9 +3150,9 @@ def test_an_arranged_interaction_carries_its_acts_into_the_packet(tmp_path: Path
 
 def test_an_arrange_step_repeated_on_one_claim_is_kept_in_order(tmp_path: Path):
     """A claim that reaches its state by doing one step twice needs both steps, so a repeated call is two acts, not one."""
-    (tmp_path / "docs/features/acme/gui/screens").mkdir(parents=True)
+    (tmp_path / "docs/services/acme/gui/screens").mkdir(parents=True)
     (tmp_path / "app").mkdir()
-    (tmp_path / "docs/features/acme/gui/screens/items.md").write_text(
+    (tmp_path / "docs/services/acme/gui/screens/items.md").write_text(
         _ARRANGED_SCREEN.replace(
             '- arrange: fill(locator="#quantity-field", value="3")',
             '- arrange: fill(locator="#quantity-field", value="3")\n'
@@ -3185,9 +3185,9 @@ def test_an_arrange_step_repeated_on_one_claim_is_kept_in_order(tmp_path: Path):
 
 def test_an_arrange_bullet_the_act_parser_rejects_is_carried_not_dropped(tmp_path: Path):
     """The counterpart of `_unparsed_fixtures`, for the reason that one exists: downstream, a bullet nobody wrote and a bullet that did not parse are the same absent row, so a mistyped arrangement would be gapped at an author who arranged it."""
-    (tmp_path / "docs/features/acme/gui/screens").mkdir(parents=True)
+    (tmp_path / "docs/services/acme/gui/screens").mkdir(parents=True)
     (tmp_path / "app").mkdir()
-    (tmp_path / "docs/features/acme/gui/screens/items.md").write_text(
+    (tmp_path / "docs/services/acme/gui/screens/items.md").write_text(
         _ARRANGED_SCREEN.replace(
             '- arrange: fill(locator="#name-field", value="Widget A")',
             "- arrange: widgets-on-hand",
@@ -3222,9 +3222,9 @@ def test_an_arrange_bullet_the_act_parser_rejects_is_carried_not_dropped(tmp_pat
 def test_a_book_rooted_below_its_checkout_sees_its_own_changed_files(tmp_path: Path):
     """A book rooted below its checkout's top level still sees what changed under it."""
     book = tmp_path / "service"
-    (book / "docs/features/demo").mkdir(parents=True)
+    (book / "docs/services/demo").mkdir(parents=True)
     (book / "app").mkdir()
-    (book / "docs/features/demo/item.md").write_text(
+    (book / "docs/services/demo/item.md").write_text(
         """---
 type: concept
 title: Item
@@ -3250,14 +3250,14 @@ title: Item
     paths = [change["path"] for change in packet["changedCode"]]
     assert paths == ["app/service.py"], paths
     direct_nodes = {row["node"]: row["reasons"] for row in packet["directNodes"]}
-    assert direct_nodes["docs/features/demo/item.md"][0]["ref"] == "app/service.py::create_item"
+    assert direct_nodes["docs/services/demo/item.md"][0]["ref"] == "app/service.py::create_item"
 
 
 def test_a_book_rooted_at_its_checkout_reports_no_diff_scope_entry(tmp_path: Path):
     """The kind no longer fires at all, for a book at its checkout's root or below it."""
-    (tmp_path / "docs/features/demo").mkdir(parents=True)
+    (tmp_path / "docs/services/demo").mkdir(parents=True)
     (tmp_path / "app").mkdir()
-    (tmp_path / "docs/features/demo/item.md").write_text(
+    (tmp_path / "docs/services/demo/item.md").write_text(
         """---
 type: concept
 title: Item
@@ -3309,7 +3309,7 @@ def test_changed_units_outside_the_book_root_are_not_a_unit_of_this_book(tmp_pat
 
 def _write_navigation_environment(repo: Path) -> None:
     """The `environment:` node the tests below share — `_navigation`'s `bundleId` must reach both shapes it builds per surface: the screen-less stub (no `screen` nodes at all) and the `reach.reachability`/`UnknownStart` dict (a surface with screens, on both the success path and the exception path)."""
-    write(repo / "docs/features/groom/ops/local.md", (
+    write(repo / "docs/services/groom/ops/local.md", (
         "---\ntype: environment\nslug: local\ntitle: Local\n---\n# Local\n\n"
         "- selector: `GROOM_BIND=127.0.0.1`\n- services:\n  - dashboard: `http://127.0.0.1:8787`\n"
         "- local-only: true\n"
@@ -3318,10 +3318,10 @@ def _write_navigation_environment(repo: Path) -> None:
 
 def test_navigation_carries_bundle_id_through_the_screenless_stub_branch(repo: Path):
     _write_navigation_environment(repo)
-    write(repo / "docs/features/groom/cli/tally.md", (
+    write(repo / "docs/services/groom/cli/tally.md", (
         "---\ntype: cli\nslug: tally\ntitle: Tally\n---\n# Tally\n\n## Commands\n"
     ))
-    write(repo / "docs/features/groom/ops/rb.md", (
+    write(repo / "docs/services/groom/ops/rb.md", (
         "---\ntype: runbook\nslug: rb\ntitle: RB\n---\n# RB\n\n"
         "- driver: mobile\n- environment: [local](local.md)\n"
         "- surfaces: [tally](../cli/tally.md)\n"
@@ -3335,11 +3335,11 @@ def test_navigation_carries_bundle_id_through_the_screenless_stub_branch(repo: P
 
 def test_navigation_carries_bundle_id_through_the_reachability_success_path(repo: Path):
     _write_navigation_environment(repo)
-    write(repo / "docs/features/groom/gui/screens/dashboard.md", (
+    write(repo / "docs/services/groom/gui/screens/dashboard.md", (
         "---\ntype: screen\nslug: dashboard\ntitle: Dashboard\n---\n# Dashboard\n\n"
         "- route: `/`\n- requires: none\n- params: none\n"
     ))
-    write(repo / "docs/features/groom/ops/rb.md", (
+    write(repo / "docs/services/groom/ops/rb.md", (
         "---\ntype: runbook\nslug: rb\ntitle: RB\n---\n# RB\n\n"
         "- driver: web\n- environment: [local](local.md)\n"
         "- surfaces: [dashboard](../gui/screens/dashboard.md)\n"
@@ -3356,11 +3356,11 @@ def test_navigation_carries_bundle_id_through_the_reachability_success_path(repo
 def test_a_whole_book_context_builds_the_worktree_graph_once(repo: Path, monkeypatch: pytest.MonkeyPatch):
     """Navigation and the snapshot share one dump of the head graph instead of rebuilding it per surface."""
     _write_navigation_environment(repo)
-    write(repo / "docs/features/groom/gui/screens/dashboard.md", (
+    write(repo / "docs/services/groom/gui/screens/dashboard.md", (
         "---\ntype: screen\nslug: dashboard\ntitle: Dashboard\n---\n# Dashboard\n\n"
         "- route: `/`\n- requires: none\n- params: none\n"
     ))
-    write(repo / "docs/features/groom/ops/rb.md", (
+    write(repo / "docs/services/groom/ops/rb.md", (
         "---\ntype: runbook\nslug: rb\ntitle: RB\n---\n# RB\n\n"
         "- driver: web\n- environment: [local](local.md)\n"
         "- surfaces: [dashboard](../gui/screens/dashboard.md)\n\n"
@@ -3384,11 +3384,11 @@ def test_a_whole_book_context_builds_the_worktree_graph_once(repo: Path, monkeyp
 
 def test_navigation_carries_bundle_id_through_the_unknown_start_exception_path(repo: Path):
     _write_navigation_environment(repo)
-    write(repo / "docs/features/groom/gui/screens/dashboard.md", (
+    write(repo / "docs/services/groom/gui/screens/dashboard.md", (
         "---\ntype: screen\nslug: dashboard\ntitle: Dashboard\n---\n# Dashboard\n\n"
         "- route: `/dashboard`\n- requires: none\n- params: none\n"
     ))
-    write(repo / "docs/features/groom/ops/rb.md", (
+    write(repo / "docs/services/groom/ops/rb.md", (
         "---\ntype: runbook\nslug: rb\ntitle: RB\n---\n# RB\n\n"
         "- driver: web\n- environment: [local](local.md)\n"
         "- surfaces: [dashboard](../gui/screens/dashboard.md)\n"
@@ -3403,12 +3403,12 @@ def test_navigation_carries_bundle_id_through_the_unknown_start_exception_path(r
 
 def test_the_packet_names_the_page_each_fragment_continues(repo: Path):
     _write_navigation_environment(repo)
-    write(repo / "docs/features/groom/gui/screens/dashboard.md", (
+    write(repo / "docs/services/groom/gui/screens/dashboard.md", (
         "---\ntype: screen\nslug: dashboard\ntitle: Dashboard\n---\n# Dashboard\n\n"
         "- route: `/dashboard`\n- requires: none\n- params: none\n\n"
         "- [dashboard-components](dashboard-components.md)\n"
     ))
-    write(repo / "docs/features/groom/gui/screens/dashboard-components.md", (
+    write(repo / "docs/services/groom/gui/screens/dashboard-components.md", (
         "---\ntype: fragment\nslug: dashboard-components\ntitle: 'Dashboard: Components'\n---\n"
         "# Dashboard: Components\n\n- host: [Dashboard](dashboard.md)\n\n"
         "## Components\n\n### run-table\n- role: table\n- name: Runs\n"
@@ -3418,17 +3418,17 @@ def test_the_packet_names_the_page_each_fragment_continues(repo: Path):
     packet = book_context(repo)
 
     assert packet["fragmentHosts"] == {
-        "docs/features/groom/gui/screens/dashboard-components.md": "docs/features/groom/gui/screens/dashboard.md",
+        "docs/services/groom/gui/screens/dashboard-components.md": "docs/services/groom/gui/screens/dashboard.md",
     }
 
 
 def test_navigation_carries_launch_screen_through_the_screenless_stub_branch(repo: Path):
     """A surface with no screen nodes at all takes `_navigation`'s screenless-stub branch — `reach.screens_of` counts every `screen` file under the surface's own directory, so a surface with none has nothing a `launch-screen:` could name either; the stub still carries `launchScreen` (here, correctly `None`, since no screen exists to resolve to) the same way it already carries `driver`/`bundleId` through this branch, rather than dropping the key."""
     _write_navigation_environment(repo)
-    write(repo / "docs/features/groom/cli/tally.md", (
+    write(repo / "docs/services/groom/cli/tally.md", (
         "---\ntype: cli\nslug: tally\ntitle: Tally\n---\n# Tally\n\n## Commands\n"
     ))
-    write(repo / "docs/features/groom/ops/rb.md", (
+    write(repo / "docs/services/groom/ops/rb.md", (
         "---\ntype: runbook\nslug: rb\ntitle: RB\n---\n# RB\n\n"
         "- driver: mobile\n- environment: [local](local.md)\n"
         "- surfaces: [tally](../cli/tally.md)\n"
@@ -3443,11 +3443,11 @@ def test_navigation_carries_launch_screen_through_the_screenless_stub_branch(rep
 
 def test_navigation_carries_launch_screen_through_the_reachability_success_path(repo: Path):
     _write_navigation_environment(repo)
-    write(repo / "docs/features/groom/gui/screens/dashboard.md", (
+    write(repo / "docs/services/groom/gui/screens/dashboard.md", (
         "---\ntype: screen\nslug: dashboard\ntitle: Dashboard\n---\n# Dashboard\n\n"
         "- route: `/`\n- requires: none\n- params: none\n"
     ))
-    write(repo / "docs/features/groom/ops/rb.md", (
+    write(repo / "docs/services/groom/ops/rb.md", (
         "---\ntype: runbook\nslug: rb\ntitle: RB\n---\n# RB\n\n"
         "- driver: web\n- environment: [local](local.md)\n"
         "- surfaces: [dashboard](../gui/screens/dashboard.md)\n"
@@ -3456,7 +3456,7 @@ def test_navigation_carries_launch_screen_through_the_reachability_success_path(
         "## Steps\n\n### serve\n- kind: service\n- run: `run`\n"
     ))
     navigation = _navigation(graph_mod.build(load(repo)))
-    assert navigation["groom"]["launchScreen"] == "docs/features/groom/gui/screens/dashboard.md"
+    assert navigation["groom"]["launchScreen"] == "docs/services/groom/gui/screens/dashboard.md"
     assert navigation["groom"]["counts"]["screens"] == 1
     assert navigation["groom"]["counts"]["reachable"] == 1
     assert "launchScreenError" not in navigation["groom"]
@@ -3464,11 +3464,11 @@ def test_navigation_carries_launch_screen_through_the_reachability_success_path(
 
 def test_navigation_carries_launch_screen_through_the_unknown_start_exception_path(repo: Path):
     _write_navigation_environment(repo)
-    write(repo / "docs/features/groom/gui/screens/dashboard.md", (
+    write(repo / "docs/services/groom/gui/screens/dashboard.md", (
         "---\ntype: screen\nslug: dashboard\ntitle: Dashboard\n---\n# Dashboard\n\n"
         "- route: `/dashboard`\n- requires: none\n- params: none\n"
     ))
-    write(repo / "docs/features/groom/ops/rb.md", (
+    write(repo / "docs/services/groom/ops/rb.md", (
         "---\ntype: runbook\nslug: rb\ntitle: RB\n---\n# RB\n\n"
         "- driver: web\n- environment: [local](local.md)\n"
         "- surfaces: [dashboard](../gui/screens/dashboard.md)\n"
@@ -3477,7 +3477,7 @@ def test_navigation_carries_launch_screen_through_the_unknown_start_exception_pa
         "## Steps\n\n### serve\n- kind: service\n- run: `run`\n"
     ))
     navigation = _navigation(graph_mod.build(load(repo)))
-    assert navigation["groom"]["launchScreen"] == "docs/features/groom/gui/screens/dashboard.md"
+    assert navigation["groom"]["launchScreen"] == "docs/services/groom/gui/screens/dashboard.md"
     assert "error" in navigation["groom"]
     assert navigation["groom"]["counts"]["unreachable"] == 1
 
@@ -3485,15 +3485,15 @@ def test_navigation_carries_launch_screen_through_the_unknown_start_exception_pa
 def test_navigation_settles_a_launch_screen_two_runbooks_state_differently(repo: Path):
     """Two `runbook`s covering one surface may each state a `launch-screen:`."""
     _write_navigation_environment(repo)
-    write(repo / "docs/features/groom/gui/screens/dashboard.md", (
+    write(repo / "docs/services/groom/gui/screens/dashboard.md", (
         "---\ntype: screen\nslug: dashboard\ntitle: Dashboard\n---\n# Dashboard\n\n"
         "- route: `/`\n- requires: none\n- params: none\n"
     ))
-    write(repo / "docs/features/groom/gui/screens/settings.md", (
+    write(repo / "docs/services/groom/gui/screens/settings.md", (
         "---\ntype: screen\nslug: settings\ntitle: Settings\n---\n# Settings\n\n"
         "- route: `/settings`\n- requires: none\n- params: none\n"
     ))
-    write(repo / "docs/features/groom/ops/legacy.md", (
+    write(repo / "docs/services/groom/ops/legacy.md", (
         "---\ntype: runbook\nslug: legacy\ntitle: Legacy\n---\n# Legacy\n\n"
         "- driver: mobile\n- environment: [local](local.md)\n"
         "- surfaces: [dashboard](../gui/screens/dashboard.md)\n"
@@ -3501,7 +3501,7 @@ def test_navigation_settles_a_launch_screen_two_runbooks_state_differently(repo:
         "- launch-screen: [dashboard](../gui/screens/dashboard.md)\n\n"
         "## Steps\n\n### serve\n- kind: service\n- run: `run`\n"
     ))
-    write(repo / "docs/features/groom/ops/current.md", (
+    write(repo / "docs/services/groom/ops/current.md", (
         "---\ntype: runbook\nslug: current\ntitle: Current\n---\n# Current\n\n"
         "- driver: mobile\n- environment: [local](local.md)\n"
         "- surfaces: [dashboard](../gui/screens/dashboard.md)\n"
@@ -3510,28 +3510,28 @@ def test_navigation_settles_a_launch_screen_two_runbooks_state_differently(repo:
         "## Steps\n\n### serve\n- kind: service\n- run: `run --current`\n"
     ))
     navigation = _navigation(graph_mod.build(load(repo)))
-    assert navigation["groom"]["launchScreen"] == "docs/features/groom/gui/screens/settings.md"
+    assert navigation["groom"]["launchScreen"] == "docs/services/groom/gui/screens/settings.md"
     assert "launchScreenError" not in navigation["groom"]
-def test_a_features_root_absent_at_base_is_an_empty_graph_not_an_error(tmp_path: Path):
-    """The features root can genuinely not exist yet at `base` — added or renamed between base and head — and `_graph_at_revision` must answer with the empty graph silently, the same way `book_context` asks for one on purpose when `base` is the empty tree."""
+def test_a_services_root_absent_at_base_is_an_empty_graph_not_an_error(tmp_path: Path):
+    """The services root can genuinely not exist yet at `base` — added or renamed between base and head — and `_graph_at_revision` must answer with the empty graph silently, the same way `book_context` asks for one on purpose when `base` is the empty tree."""
     (tmp_path / "app").mkdir()
     (tmp_path / "app/service.py").write_text("def create_item():\n    return 1\n", "utf-8")
     _git(tmp_path, "init")
     _git(tmp_path, "config", "user.email", "qa@example.com")
     _git(tmp_path, "config", "user.name", "QA")
     _git(tmp_path, "add", ".")
-    _git(tmp_path, "commit", "-m", "base, no features root yet")
+    _git(tmp_path, "commit", "-m", "base, no services root yet")
     base = _git(tmp_path, "rev-parse", "HEAD")
 
-    graph = _graph_at_revision(tmp_path, base, "docs/features")
+    graph = _graph_at_revision(tmp_path, base, "docs/services")
 
     assert graph.ui_nodes == []
 
 
 def test_a_whole_book_reads_the_worktree_once(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     """The empty tree holds no page, so the base side borrows the worktree's org and doc roots instead of reading the whole book a second time."""
-    (tmp_path / "docs/features/demo").mkdir(parents=True)
-    (tmp_path / "docs/features/demo/ledger.md").write_text(
+    (tmp_path / "docs/services/demo").mkdir(parents=True)
+    (tmp_path / "docs/services/demo/ledger.md").write_text(
         "---\ntype: concept\nslug: ledger\ntitle: Ledger\n---\n# Ledger\n\nA ledger holds a trip's expenses.\n",
         encoding="utf-8",
     )
@@ -3551,8 +3551,8 @@ def test_a_whole_book_reads_the_worktree_once(tmp_path: Path, monkeypatch: pytes
 
 def test_a_listed_path_with_no_readable_blob_raises_instead_of_shrinking(tmp_path: Path):
     """A path `ls-tree` names but whose blob the object store cannot produce is corruption, not "nothing to graph": the old bare `except RuntimeError: continue` dropped it and returned a graph that looked exactly like the legitimate empty one above."""
-    (tmp_path / "docs/features/demo").mkdir(parents=True)
-    feature = tmp_path / "docs/features/demo/item.md"
+    (tmp_path / "docs/services/demo").mkdir(parents=True)
+    feature = tmp_path / "docs/services/demo/item.md"
     feature.write_text(
         "---\ntype: concept\ntitle: Item\n---\n# Item\n\n- code: app/service.py::create_item\n",
         encoding="utf-8",
@@ -3563,25 +3563,25 @@ def test_a_listed_path_with_no_readable_blob_raises_instead_of_shrinking(tmp_pat
     _git(tmp_path, "add", ".")
     _git(tmp_path, "commit", "-m", "base")
     base = _git(tmp_path, "rev-parse", "HEAD")
-    blob = _git(tmp_path, "rev-parse", f"{base}:docs/features/demo/item.md")
+    blob = _git(tmp_path, "rev-parse", f"{base}:docs/services/demo/item.md")
     object_path = tmp_path / ".git/objects" / blob[:2] / blob[2:]
     assert object_path.is_file(), object_path
     object_path.unlink()
 
     try:
-        _graph_at_revision(tmp_path, base, "docs/features")
+        _graph_at_revision(tmp_path, base, "docs/services")
     except RuntimeError as exc:
         message = str(exc)
         assert base in message
-        assert "docs/features/demo/item.md" in message
+        assert "docs/services/demo/item.md" in message
     else:
         raise AssertionError("expected a RuntimeError for the unreadable blob")
 
 
 def test_a_filename_git_would_quote_is_not_dropped(tmp_path: Path):
     """`ls-tree` without `-z` shell-quotes a filename holding a newline, so `line.endswith(".md")` used to be False and the file was silently dropped before `git show` was ever tried."""
-    (tmp_path / "docs/features/demo").mkdir(parents=True)
-    weird = tmp_path / "docs/features/demo/weird\nname.md"
+    (tmp_path / "docs/services/demo").mkdir(parents=True)
+    weird = tmp_path / "docs/services/demo/weird\nname.md"
     weird.write_text(
         "---\ntype: concept\ntitle: Weird\n---\n# Weird\n\n- code: app/service.py::create_item\n",
         encoding="utf-8",
@@ -3593,7 +3593,7 @@ def test_a_filename_git_would_quote_is_not_dropped(tmp_path: Path):
     _git(tmp_path, "commit", "-m", "base")
     base = _git(tmp_path, "rev-parse", "HEAD")
 
-    graph = _graph_at_revision(tmp_path, base, "docs/features")
+    graph = _graph_at_revision(tmp_path, base, "docs/services")
 
     assert [node.id for node in graph.ui_nodes]
 
@@ -3602,13 +3602,13 @@ def test_a_nested_book_graphs_its_own_tree_not_the_hosts(tmp_path: Path):
     """`root` is the *subject's* root — `paddock/data/apps/globex`, say — not the repo top level; `_git`/`_git_bytes` run with `cwd=root`, so every path this module hands git is CWD-relative, but `<rev>:<path>` is repo-root-relative unless prefixed `./`."""
     outer = tmp_path
     service = outer / "service"
-    (outer / "docs/features/demo").mkdir(parents=True)
-    (service / "docs/features/demo").mkdir(parents=True)
-    (outer / "docs/features/demo/item.md").write_text(
+    (outer / "docs/services/demo").mkdir(parents=True)
+    (service / "docs/services/demo").mkdir(parents=True)
+    (outer / "docs/services/demo/item.md").write_text(
         "---\ntype: concept\ntitle: Host Item\n---\n# Host Item\n",
         encoding="utf-8",
     )
-    (service / "docs/features/demo/item.md").write_text(
+    (service / "docs/services/demo/item.md").write_text(
         "---\ntype: concept\ntitle: Service Item\n---\n# Service Item\n",
         encoding="utf-8",
     )
@@ -3619,21 +3619,21 @@ def test_a_nested_book_graphs_its_own_tree_not_the_hosts(tmp_path: Path):
     _git(outer, "commit", "-m", "base")
     base = _git(outer, "rev-parse", "HEAD")
 
-    graph = _graph_at_revision(service, base, "docs/features")
+    graph = _graph_at_revision(service, base, "docs/services")
 
     assert [node.title for node in graph.ui_nodes] == ["Service Item"]
 
 
 def test_a_nested_book_graphs_when_the_host_has_no_matching_path(tmp_path: Path):
-    """Companion to the false-positive case above: here the host repo's own `docs/features` tree exists (so the presence guard reports "present" even unprefixed) but holds no file at the path the nested book's `docs/features` actually lists."""
+    """Companion to the false-positive case above: here the host repo's own `docs/services` tree exists (so the presence guard reports "present" even unprefixed) but holds no file at the path the nested book's `docs/services` actually lists."""
     outer = tmp_path
     service = outer / "service"
-    (outer / "docs/features").mkdir(parents=True)
-    (service / "docs/features/demo").mkdir(parents=True)
-    (outer / "docs/features/OTHER.md").write_text(
+    (outer / "docs/services").mkdir(parents=True)
+    (service / "docs/services/demo").mkdir(parents=True)
+    (outer / "docs/services/OTHER.md").write_text(
         "---\ntype: concept\ntitle: Other\n---\n# Other\n", encoding="utf-8"
     )
-    (service / "docs/features/demo/item.md").write_text(
+    (service / "docs/services/demo/item.md").write_text(
         "---\ntype: concept\ntitle: Service Item\n---\n# Service Item\n",
         encoding="utf-8",
     )
@@ -3644,15 +3644,15 @@ def test_a_nested_book_graphs_when_the_host_has_no_matching_path(tmp_path: Path)
     _git(outer, "commit", "-m", "base")
     base = _git(outer, "rev-parse", "HEAD")
 
-    graph = _graph_at_revision(service, base, "docs/features")
+    graph = _graph_at_revision(service, base, "docs/services")
 
     assert [node.title for node in graph.ui_nodes] == ["Service Item"]
 
 
 def test_a_book_at_the_repo_root_is_unaffected_by_the_cwd_fix(tmp_path: Path):
     """The control: a book that already sits at the repository top level — the ordinary case, and every other test in this file — must behave exactly as it did before the `./`-prefix was introduced."""
-    (tmp_path / "docs/features/demo").mkdir(parents=True)
-    (tmp_path / "docs/features/demo/item.md").write_text(
+    (tmp_path / "docs/services/demo").mkdir(parents=True)
+    (tmp_path / "docs/services/demo/item.md").write_text(
         "---\ntype: concept\ntitle: Item\n---\n# Item\n", encoding="utf-8"
     )
     _git(tmp_path, "init")
@@ -3662,14 +3662,14 @@ def test_a_book_at_the_repo_root_is_unaffected_by_the_cwd_fix(tmp_path: Path):
     _git(tmp_path, "commit", "-m", "base")
     base = _git(tmp_path, "rev-parse", "HEAD")
 
-    graph = _graph_at_revision(tmp_path, base, "docs/features")
+    graph = _graph_at_revision(tmp_path, base, "docs/services")
 
     assert [node.title for node in graph.ui_nodes] == ["Item"]
 
 
 def test_a_node_takes_its_repeat_scope_from_head_and_a_removed_one_keeps_its_base_scope(tmp_path: Path):
     """Head wins where both sides hold a node, and a node head removed still iterates what base declared."""
-    screens = tmp_path / "docs/features/acme/gui/screens"
+    screens = tmp_path / "docs/services/acme/gui/screens"
     screens.mkdir(parents=True)
     page = """---
 type: screen
@@ -3699,7 +3699,7 @@ title: Planner
     base = _git(tmp_path, "rev-parse", "HEAD")
     (screens / "planner.md").write_text(page.format(axis="phase", extra=""), encoding="utf-8")
 
-    scopes = context_mod._book_snapshot(tmp_path, base, "WORKTREE", "docs/features").node_scopes
+    scopes = context_mod._book_snapshot(tmp_path, base, "WORKTREE", "docs/services").node_scopes
 
     by_anchor = {node_id.rsplit("#", 1)[-1]: scope for node_id, scope in scopes.items() if "#" in node_id}
     assert by_anchor["stage-row"] == ("phase",)
@@ -3708,15 +3708,15 @@ title: Planner
 
 def _write_device_fixture_book(repo: Path) -> None:
     _write_navigation_environment(repo)
-    write(repo / "docs/features/groom/gui/screens/dashboard.md", (
+    write(repo / "docs/services/groom/gui/screens/dashboard.md", (
         "---\ntype: screen\nslug: dashboard\ntitle: Dashboard\n---\n# Dashboard\n\n"
         "- route: `/`\n- requires: none\n- params: none\n"
     ))
-    write(repo / "docs/features/groom/gui/screens/inbox.md", (
+    write(repo / "docs/services/groom/gui/screens/inbox.md", (
         "---\ntype: screen\nslug: inbox\ntitle: Inbox\n---\n# Inbox\n\n"
         "- route: `/inbox`\n- requires: none\n- params: none\n"
     ))
-    write(repo / "docs/features/groom/ops/rb.md", (
+    write(repo / "docs/services/groom/ops/rb.md", (
         "---\ntype: runbook\nslug: rb\ntitle: RB\n---\n# RB\n\n"
         "- driver: mobile\n- environment: [local](local.md)\n"
         "- surfaces: [dashboard](../gui/screens/dashboard.md), [inbox](../gui/screens/inbox.md)\n"
@@ -3724,7 +3724,7 @@ def _write_device_fixture_book(repo: Path) -> None:
         "- launch-screen: [dashboard](../gui/screens/dashboard.md)\n\n"
         "## Steps\n\n### serve\n- kind: service\n- run: `run`\n"
     ))
-    write(repo / "docs/features/groom/fixtures/signed-in-device.md", (
+    write(repo / "docs/services/groom/fixtures/signed-in-device.md", (
         "---\ntype: fixture\ntitle: Signed-in device\n---\n# Signed-in device\n\n"
         "- lifetime: scenario\n- launch-screen: [Inbox](../gui/screens/inbox.md)\n\n"
         "## Steps\n\n### sign-in\n\n- kind: run\n- run: maestro test ops/sign-in.yaml\n"
@@ -3735,7 +3735,7 @@ def test_the_packet_names_the_screen_each_device_fixture_opens_on(repo: Path):
     _write_device_fixture_book(repo)
     dump = graph_mod.build(load(repo))
     assert _fixture_launch_screens(dump) == {
-        "signed-in-device": "docs/features/groom/gui/screens/inbox.md",
+        "signed-in-device": "docs/services/groom/gui/screens/inbox.md",
     }
 
 
@@ -3743,5 +3743,5 @@ def test_navigation_carries_the_routes_from_each_fixture_launch_screen(repo: Pat
     _write_device_fixture_book(repo)
     navigation = _navigation(graph_mod.build(load(repo)))
     routes = navigation["groom"]["fixtureLaunchRoutes"]
-    assert list(routes) == ["docs/features/groom/gui/screens/inbox.md"]
-    assert "docs/features/groom/gui/screens/inbox.md" in routes["docs/features/groom/gui/screens/inbox.md"]
+    assert list(routes) == ["docs/services/groom/gui/screens/inbox.md"]
+    assert "docs/services/groom/gui/screens/inbox.md" in routes["docs/services/groom/gui/screens/inbox.md"]

@@ -67,13 +67,13 @@ def test_the_writer_runs_in_its_book_and_reads_only_the_surface_source(app: App,
 
     node = runner.nodes[0]
     assert runner.total == 1
-    assert node.cwd == str(repo / "docs/features/tally")
+    assert node.cwd == str(repo / "docs/services/tally")
     assert node.timeout == float("inf")
     assert node.add_dirs == [str(source_view_folder(repo, "tally")), str(source_view_folder(repo, ".owner"))]
     assert node.agent is not None
     assert node.agent.confined
     assert [command.split()[2] for command in node.agent.commands] == [OSTLER_MODULE, CHECK_MODULE, EXERCISE_MODULE]
-    assert runner.args_of("write-book")[0]["book_folder"] == "docs/features/tally"
+    assert runner.args_of("write-book")[0]["book_folder"] == "docs/services/tally"
     assert runner.args_of("write-book")[0]["source_folder"] == "tally"
     assert (source_view_folder(repo, "tally") / "cli.py").is_file()
 
@@ -293,7 +293,7 @@ def test_a_writer_turn_that_ends_without_a_reply_keeps_its_pages_as_unfinished_a
 
     def _dies(_args: dict[str, object]) -> dict[str, object]:
         _ = (repo / PAGE).write_text("half a page\n", encoding="utf-8")
-        _ = (repo / "docs/features/tally/draft.md").write_text("a draft\n", encoding="utf-8")
+        _ = (repo / "docs/services/tally/draft.md").write_text("a draft\n", encoding="utf-8")
         _ = (repo / "tally" / "cli.py").write_text("broken\n", encoding="utf-8")
         raise BackendInvocationError("error_max_turns")
 
@@ -309,7 +309,7 @@ def test_a_writer_turn_that_ends_without_a_reply_keeps_its_pages_as_unfinished_a
     assert isinstance(result, BookReport)
     assert result.blockers == ()
     assert "docs(tally): keep the unfinished tally book" in commits(repo)
-    assert sorted(git(repo, "show", "--name-only", "--format=", "HEAD").split()) == ["docs/features/tally/draft.md", PAGE]
+    assert sorted(git(repo, "show", "--name-only", "--format=", "HEAD").split()) == ["docs/services/tally/draft.md", PAGE]
     assert git(repo, "status", "--porcelain").strip() == ""
 
 

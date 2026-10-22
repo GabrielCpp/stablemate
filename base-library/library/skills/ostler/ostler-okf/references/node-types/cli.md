@@ -10,7 +10,7 @@ Not a CLI: a bounded shell command that a runbook runs to boot a stack — that 
 ## Identity
 
 File type with **no context folder** (`context=""`): it lives under
-`docs/features/<service>/` directly rather than in a subtree, with `type: cli` in frontmatter.
+`docs/services/<service>/` directly rather than in a subtree, with `type: cli` in frontmatter.
 
 ## Bullet keys
 

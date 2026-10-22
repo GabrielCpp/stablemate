@@ -22,12 +22,12 @@ expose. -->
 ## Context
 
 The transition the product exists for, and the only one with a concurrency contract:
-[confirm](../../../../features/booking/concepts/seat.md#confirm) spends a hold on a booking, and it
+[confirm](../../../../services/booking/concepts/seat.md#confirm) spends a hold on a booking, and it
 must be spendable exactly once. The per-seat `version` the hold handed back is the compare-and-swap
 token; a caller quoting any other number is refused rather than served.
 
 The booking also has to be durable. It is written through the
-[seat ledger](../../../../features/booking/concepts/seat-ledger.md) before the response announcing it
+[seat ledger](../../../../services/booking/concepts/seat-ledger.md) before the response announcing it
 is sent, so it survives a restart — a booking that lives only in the memory of the process that
 answered is not a booking.
 

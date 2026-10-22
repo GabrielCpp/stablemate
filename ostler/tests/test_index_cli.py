@@ -337,7 +337,7 @@ def test_the_library_face_loads_with_its_own_store_active(repo, tmp_path, index_
     with pytest.MonkeyPatch.context() as patch:
         patch.setattr(api, "load", spy)
         okf.graph
-        (repo / "docs/features/area/rec3.md").write_text(
+        (repo / "docs/services/area/rec3.md").write_text(
             "---\ntype: feature\nid: t-3\ntitle: Rec 3\n---\n\n# Rec 3\n", encoding="utf-8")
         okf.reload().graph
 

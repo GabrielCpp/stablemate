@@ -20,7 +20,7 @@ from conftest import write
 
 harness = load_harness_module("ostler_qa")
 
-OPS = Path("docs") / "features" / "app" / "ops"
+OPS = Path("docs") / "services" / "app" / "ops"
 
 
 @pytest.fixture(autouse=True)
@@ -232,12 +232,12 @@ def test_a_per_run_teardown_runs_under_its_lease_and_drops_its_book(
 def test_a_teardown_near_a_book_takes_down_that_books_copy(
         tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     _per_run_book(tmp_path)
-    other = Path("docs") / "features" / "other" / "ops"
+    other = Path("docs") / "services" / "other" / "ops"
     _environment(tmp_path, sharing="per-run", entries={"gateway": "the other front door"}, ops=other)
     _runbook(tmp_path, ops=other)
     seen: list[dict[str, str]] = []
     monkeypatch.setattr(rb.stack_mod, "teardown_stack", _fake_teardown(seen))
-    outcome = rb.cmd_stack_down(tmp_path, lease="story-1", near=tmp_path / "docs" / "features" / "other")
+    outcome = rb.cmd_stack_down(tmp_path, lease="story-1", near=tmp_path / "docs" / "services" / "other")
     assert outcome.ok, outcome.message
     assert [entry["source"] for entry in seen] == [str(other / "web.md")]
     assert seen[0][addresses.BOOK_ENV] == str(addresses.book_path(tmp_path / other / "test.md", "story-1"))

@@ -12,7 +12,7 @@ from ostler.model import Graph, UINode
 
 from workhorse_workflows.coder.shared.docs import _finding_affects_nodes, story_touched_lines
 
-DOC_REL = "docs/features/app/editor.md"
+DOC_REL = "docs/services/app/editor.md"
 
 DOC = "\n".join(
     ["# Editor", "", "intro prose", ""]

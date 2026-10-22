@@ -13,7 +13,7 @@ class OkfDetection(CoderResult):
     """`detect-okf-docs.py` — are this repo's docs managed by an OKF graph at all?"""
 
     has_okf: Literal["yes", "no", "invalid"] = "no"
-    features_root: str = ""
+    services_root: str = ""
     reason: str = ""
 
 

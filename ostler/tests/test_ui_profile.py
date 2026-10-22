@@ -26,7 +26,7 @@ def write_cited_code(repo: Path) -> None:
 
 def write_stack_runbook(repo: Path) -> None:
     """A minimal stack runbook — `SCREEN` describes a served surface, so a green doctor now requires one (`runbook-missing` is an error; see `doctor._check_runbook`)."""
-    write(repo / "docs" / "features" / "app" / "ops" / "qa-stack.md", (
+    write(repo / "docs" / "services" / "app" / "ops" / "qa-stack.md", (
         "---\ntype: runbook\ntitle: QA stack\n---\n\n# QA stack\n\n"
         "- driver: web\n- entry-url: http://localhost:18084\n\n"
         "## Steps\n\n### serve\n\n- kind: service\n- run: ./serve.sh\n"
@@ -180,9 +180,9 @@ title: DS
 """
 
 
-def test_screen_doc_under_features_keeps_doctor_green(repo: Path):
-    write(repo / "docs/features/groom/gui/screens/changes-view.md", SCREEN)
-    write(repo / "docs/features/groom/gui/components/design-system.md", DESIGN_SYSTEM)
+def test_screen_doc_under_services_keeps_doctor_green(repo: Path):
+    write(repo / "docs/services/groom/gui/screens/changes-view.md", SCREEN)
+    write(repo / "docs/services/groom/gui/components/design-system.md", DESIGN_SYSTEM)
     write_stack_runbook(repo)
     write_cited_code(repo)
     report = doctor.run(load(repo))
@@ -193,22 +193,22 @@ def test_screen_doc_under_features_keeps_doctor_green(repo: Path):
 
 
 def test_real_feature_still_schema_checked(repo: Path):
-    write(repo / "docs/features/x.md", "---\ntype: feature\nslug: x\n---\n# X\n")
+    write(repo / "docs/services/x.md", "---\ntype: feature\nslug: x\n---\n# X\n")
     report = doctor.run(load(repo))
     assert any(f.code == "schema" and "x.md" in f.message for f in report.findings)
 
 
 def test_typeless_feature_flagged(repo: Path):
-    write(repo / "docs/features/y.md", "---\nslug: y\n---\n# Y\n")
+    write(repo / "docs/services/y.md", "---\nslug: y\n---\n# Y\n")
     report = doctor.run(load(repo))
     assert "okf-missing-type" in codes(report)
 
 
 def test_located_finding_carries_path(repo: Path):
-    write(repo / "docs/features/y.md", "---\nslug: y\n---\n# Y\n")
+    write(repo / "docs/services/y.md", "---\nslug: y\n---\n# Y\n")
     report = doctor.run(load(repo))
     finding = next(f for f in report.findings if f.code == "okf-missing-type")
-    assert finding.path == "docs/features/y.md"
+    assert finding.path == "docs/services/y.md"
     assert finding.line == 1
 
 
@@ -227,7 +227,7 @@ A unified diff.
 
 
 def _concept_report(repo: Path, ref: str, checkouts: dict[str, Path] | None = None):
-    write(repo / "docs/features/groom/concepts/diff.md", CONCEPT.format(ref=ref))
+    write(repo / "docs/services/groom/concepts/diff.md", CONCEPT.format(ref=ref))
     return doctor.run(load(repo), checkouts=checkouts)
 
 
@@ -385,7 +385,7 @@ def test_a_file_region_still_grounds_its_file(repo: Path):
 def test_a_code_finding_is_located_at_its_node(repo: Path):
     report = _concept_report(repo, "groom/groom/gone.py::Diff")
     finding = next(f for f in report.findings if f.code == "dangling-code-ref")
-    assert finding.path == "docs/features/groom/concepts/diff.md"
+    assert finding.path == "docs/services/groom/concepts/diff.md"
     assert finding.line > 0
     assert finding.ref == "groom/groom/gone.py::Diff"
 
@@ -393,7 +393,7 @@ def test_a_code_finding_is_located_at_its_node(repo: Path):
 def test_a_section_node_citing_a_whole_source_file_is_flagged(repo: Path):
     """`code:` on a `kind == "section"` type (here, a `component`) names a *part* of a file, so a bare path with no `::symbol` has said only where to start looking, not where the node is grounded — unlike `concept` (`kind == "file"`), which the earlier whole-file test shows is exempt because its subject genuinely is the whole file."""
     write(repo / "groom/groom/render.py", "def handler():\n    return 1\n")
-    write(repo / "docs/features/groom/gui/screens/s.md",
+    write(repo / "docs/services/groom/gui/screens/s.md",
           "---\ntype: screen\nslug: s\ntitle: S\n---\n# S\n\n"
           "## Components\n\n### body\n"
           "- role: generic\n- name: none\n"
@@ -408,7 +408,7 @@ def test_a_code_symbol_cited_against_a_non_utf8_source_file_is_flagged(repo: Pat
     target = repo / "groom/groom/legacy.py"
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_bytes(b"def broken():\n    return b'\xff\xfe'\n")
-    write(repo / "docs/features/groom/gui/screens/s.md",
+    write(repo / "docs/services/groom/gui/screens/s.md",
           "---\ntype: screen\nslug: s\ntitle: S\n---\n# S\n\n"
           "## Components\n\n### body\n"
           "- role: generic\n- name: none\n"
@@ -439,27 +439,27 @@ def test_code_grounding_is_uniform_across_previously_ungated_types(repo: Path):
     """`_check_code_grounding` used to skip a whole node whenever its registry type left `code` out of `bullet_by_key` — `screen`, `flow`, `step`, `fixture`, `untyped` — so a dangling, directory, stale or unstamped `code:` citation on any of them went unchecked."""
     docs: dict[str, tuple[str, str]] = {
         "screen": (
-            "docs/features/groom/gui/screens/s.md",
+            "docs/services/groom/gui/screens/s.md",
             "---\ntype: screen\nslug: s\ntitle: S\n---\n# S\n\n"
             "- route: `/s`\n- requires: none\n- params: none\n- code: {refs}\n",
         ),
         "flow": (
-            "docs/features/groom/flows/f.md",
+            "docs/services/groom/flows/f.md",
             "---\ntype: flow\nslug: f\ntitle: F\n---\n# F\n\n"
             "- start: begins\n- end: ends\n- code: {refs}\n",
         ),
         "step": (
-            "docs/features/groom/concepts/c-step.md",
+            "docs/services/groom/concepts/c-step.md",
             "---\ntype: concept\nslug: c-step\ntitle: C\n---\n# C\n\n"
             "## Steps\n\n### boot\n- kind: prepare\n- code: {refs}\n",
         ),
         "fixture": (
-            "docs/features/groom/fixtures/fx.md",
+            "docs/services/groom/fixtures/fx.md",
             "---\ntype: fixture\nslug: fx\ntitle: FX\n---\n# FX\n\n"
             "- code: {refs}\n\n## Steps\n\n### boot\n- kind: seed\n- run: `groom/boot.sh`\n",
         ),
         "untyped": (
-            "docs/features/groom/concepts/c-untyped.md",
+            "docs/services/groom/concepts/c-untyped.md",
             "---\ntype: concept\nslug: c-untyped\ntitle: C\n---\n# C\n\n"
             "## Notes\n\n- code: {refs}\n",
         ),
@@ -482,8 +482,8 @@ def test_code_grounding_is_uniform_across_previously_ungated_types(repo: Path):
 
 
 def test_cited_tests_stay_deferred(repo: Path):
-    write(repo / "docs/features/groom/gui/screens/changes-view.md", SCREEN)
-    write(repo / "docs/features/groom/gui/components/design-system.md", DESIGN_SYSTEM)
+    write(repo / "docs/services/groom/gui/screens/changes-view.md", SCREEN)
+    write(repo / "docs/services/groom/gui/components/design-system.md", DESIGN_SYSTEM)
     write_cited_code(repo)
     write_stack_runbook(repo)
     report = doctor.run(load(repo))
@@ -491,24 +491,24 @@ def test_cited_tests_stay_deferred(repo: Path):
 
 
 def test_file_node_loaded(repo: Path):
-    write(repo / "docs/features/groom/gui/screens/changes-view.md", SCREEN)
+    write(repo / "docs/services/groom/gui/screens/changes-view.md", SCREEN)
     graph = load(repo)
     screens = graph.ui_nodes_of_type("screen")
     assert len(screens) == 1
     screen = screens[0]
     assert screen.kind == "file"
-    assert screen.id == "docs/features/groom/gui/screens/changes-view.md"
+    assert screen.id == "docs/services/groom/gui/screens/changes-view.md"
     assert screen.title == "Changes view"
 
 
 def test_section_nodes_loaded_with_anchor_and_meta(repo: Path):
-    write(repo / "docs/features/groom/gui/screens/changes-view.md", SCREEN)
+    write(repo / "docs/services/groom/gui/screens/changes-view.md", SCREEN)
     graph = load(repo)
     comps = graph.ui_nodes_of_type("component")
     assert [c.anchor for c in comps] == ["changes-file-row", "single-file-diff"]
     row = comps[0]
     assert row.kind == "section"
-    assert row.id == "docs/features/groom/gui/screens/changes-view.md#changes-file-row"
+    assert row.id == "docs/services/groom/gui/screens/changes-view.md#changes-file-row"
     assert row.meta["selector"] == "`div.tree-file`"
     assert any("design-system.md#tree-node" in href for _, href, _ in row.links)
 
@@ -518,15 +518,15 @@ def test_section_nodes_loaded_with_anchor_and_meta(repo: Path):
 
 
 def test_section_node_line_is_file_absolute(repo: Path):
-    write(repo / "docs/features/groom/gui/screens/changes-view.md", SCREEN)
+    write(repo / "docs/services/groom/gui/screens/changes-view.md", SCREEN)
     graph = load(repo)
     row = graph.ui_nodes_of_type("component")[0]
-    lines = (repo / "docs/features/groom/gui/screens/changes-view.md").read_text().splitlines()
+    lines = (repo / "docs/services/groom/gui/screens/changes-view.md").read_text().splitlines()
     assert lines[row.line - 1].strip() == "### changes-file-row"
 
 
 def test_section_nodes_in_a_feature_typed_library(repo: Path):
-    write(repo / "docs/features/groom/gui/components/design-system.md",
+    write(repo / "docs/services/groom/gui/components/design-system.md",
           "---\ntype: feature\nslug: design-system\ntitle: DS\n---\n# DS\n\n"
           "## Components\n\n### tree-node\n- selector: `div.tree-file`\n- role: treeitem\n"
           "- name: none\n- states: active, default\n")
@@ -535,7 +535,7 @@ def test_section_nodes_in_a_feature_typed_library(repo: Path):
 
 
 def test_list_type_screen(repo: Path):
-    write(repo / "docs/features/groom/gui/screens/changes-view.md", SCREEN)
+    write(repo / "docs/services/groom/gui/screens/changes-view.md", SCREEN)
     rows = query.list_entities(load(repo), "screen")
     assert len(rows) == 1
     assert rows[0]["type"] == "screen"
@@ -543,14 +543,14 @@ def test_list_type_screen(repo: Path):
 
 
 def test_list_type_interaction_reports_path_anchor(repo: Path):
-    write(repo / "docs/features/groom/gui/screens/changes-view.md", SCREEN)
+    write(repo / "docs/services/groom/gui/screens/changes-view.md", SCREEN)
     rows = query.list_entities(load(repo), "interaction")
     assert rows[0]["id"].endswith("changes-view.md#click-file-opens-diff")
     assert rows[0]["anchor"] == "click-file-opens-diff"
 
 
 def test_search_finds_section_node_by_body(repo: Path):
-    write(repo / "docs/features/groom/gui/screens/changes-view.md", SCREEN)
+    write(repo / "docs/services/groom/gui/screens/changes-view.md", SCREEN)
     hits = query.search(load(repo), "clear siblings")
     assert any(h.get("anchor") == "click-file-opens-diff" for h in hits)
 
@@ -599,9 +599,9 @@ DASHBOARD = ("---\ntype: screen\nslug: dashboard\ntitle: Dashboard\n---\n# Dashb
 
 
 def _write_runbook_trio(repo: Path) -> None:
-    write(repo / "docs/features/groom/ops/local.md", ENVIRONMENT)
-    write(repo / "docs/features/groom/ops/web.md", RUNBOOK)
-    write(repo / "docs/features/groom/gui/screens/dashboard.md", DASHBOARD)
+    write(repo / "docs/services/groom/ops/local.md", ENVIRONMENT)
+    write(repo / "docs/services/groom/ops/web.md", RUNBOOK)
+    write(repo / "docs/services/groom/gui/screens/dashboard.md", DASHBOARD)
     write(repo / "groom/groom/cli.py", "def serve():\n    pass\n")
 
 
@@ -641,7 +641,7 @@ def test_referentially_complete_runbook_is_green(repo: Path):
 
 
 def test_runbook_missing_steps_and_driver_is_flagged(repo: Path):
-    write(repo / "docs/features/groom/ops/bad.md",
+    write(repo / "docs/services/groom/ops/bad.md",
           "---\ntype: runbook\nslug: bad\ntitle: Bad\n---\n# Bad\n\n- environment: [x](x.md)\n")
     report = doctor.run(load(repo))
     bad = {f.code for f in report.findings if f.severity == "error" and "bad.md" in (f.path or "")}
@@ -676,15 +676,15 @@ title: Tally
 def _write_driver_surface_book(repo: Path, driver: str, surface_md: str | None,
                                 surface_rel: str | None) -> None:
     """A minimal runbook wired to at most one surface node, so `no-drivable-surface` can be exercised without dragging in an entire app's fixtures."""
-    write(repo / "docs/features/groom/ops/local.md", ENVIRONMENT)
+    write(repo / "docs/services/groom/ops/local.md", ENVIRONMENT)
     surfaces_line = f"- surfaces: [surface]({surface_rel})\n" if surface_rel else ""
-    write(repo / "docs/features/groom/ops/rb.md", (
+    write(repo / "docs/services/groom/ops/rb.md", (
         "---\ntype: runbook\nslug: rb\ntitle: RB\n---\n# RB\n\n"
         f"- driver: {driver}\n- environment: [local](local.md)\n{surfaces_line}\n"
         "## Steps\n\n### serve\n- kind: service\n- run: `run`\n"
     ))
     if surface_md is not None and surface_rel is not None:
-        write(repo / "docs/features/groom" / surface_rel.replace("../", ""), surface_md)
+        write(repo / "docs/services/groom" / surface_rel.replace("../", ""), surface_md)
 
 
 def test_web_driver_over_server_only_surface_warns(repo: Path):
@@ -709,7 +709,7 @@ def test_iac_driver_with_no_surfaces_is_clean(repo: Path):
 
 
 def test_runbook_with_no_driver_is_clean_on_no_drivable_surface(repo: Path):
-    write(repo / "docs/features/groom/ops/bad.md",
+    write(repo / "docs/services/groom/ops/bad.md",
           "---\ntype: runbook\nslug: bad\ntitle: Bad\n---\n# Bad\n\n- environment: [x](x.md)\n")
     report = doctor.run(load(repo))
     warns = {f.code for f in report.findings if f.severity == "warn"}
@@ -757,7 +757,7 @@ def test_a_misspelt_driver_raises_exactly_one_unknown_driver_error(repo: Path):
 
 
 def test_a_runbook_with_no_driver_bullet_raises_no_unknown_driver(repo: Path):
-    write(repo / "docs/features/groom/ops/bad.md",
+    write(repo / "docs/services/groom/ops/bad.md",
           "---\ntype: runbook\nslug: bad\ntitle: Bad\n---\n# Bad\n\n- environment: [x](x.md)\n")
     report = doctor.run(load(repo))
     errors = {f.code for f in report.findings if f.severity == "error"}
@@ -766,15 +766,15 @@ def test_a_runbook_with_no_driver_bullet_raises_no_unknown_driver(repo: Path):
 
 def _write_two_runbook_book(repo: Path, driver_a: str, driver_b: str) -> None:
     """Two runbooks in one feature directory, both `surfaces:`-linked into the same server node — the shape a legitimate dev-local runbook takes alongside the deployed one, and the only shape `reach.surface_driver` ever has two drivers to choose between."""
-    write(repo / "docs/features/groom/ops/local.md", ENVIRONMENT)
-    write(repo / "docs/features/groom/http/api.md", API_SERVER)
-    write(repo / "docs/features/groom/ops/deployed.md", (
+    write(repo / "docs/services/groom/ops/local.md", ENVIRONMENT)
+    write(repo / "docs/services/groom/http/api.md", API_SERVER)
+    write(repo / "docs/services/groom/ops/deployed.md", (
         "---\ntype: runbook\nslug: deployed\ntitle: Deployed\n---\n# Deployed\n\n"
         f"- driver: {driver_a}\n- environment: [local](local.md)\n"
         "- surfaces: [api](../http/api.md)\n\n"
         "## Steps\n\n### serve\n- kind: service\n- run: `run`\n"
     ))
-    write(repo / "docs/features/groom/ops/local-cli.md", (
+    write(repo / "docs/services/groom/ops/local-cli.md", (
         "---\ntype: runbook\nslug: local-cli\ntitle: Local CLI\n---\n# Local CLI\n\n"
         f"- driver: {driver_b}\n- environment: [local](local.md)\n"
         "- surfaces: [api](../http/api.md)\n\n"
@@ -821,18 +821,18 @@ def test_a_sole_runbook_settles_its_own_driver(repo: Path):
 def _write_two_mobile_runbook_book(repo: Path, bundle_id_a: str | None,
                                     bundle_id_b: str | None) -> None:
     """Two runbooks in one feature directory, both `surfaces:`-linked into the same screen node and both `driver: mobile`, each stating its own `bundle-id:` (or none, when the argument is None)."""
-    write(repo / "docs/features/groom/ops/local.md", ENVIRONMENT)
-    write(repo / "docs/features/groom/gui/screens/dashboard.md", DASHBOARD)
+    write(repo / "docs/services/groom/ops/local.md", ENVIRONMENT)
+    write(repo / "docs/services/groom/gui/screens/dashboard.md", DASHBOARD)
     bundle_a = f"- bundle-id: {bundle_id_a}\n" if bundle_id_a else ""
     bundle_b = f"- bundle-id: {bundle_id_b}\n" if bundle_id_b else ""
-    write(repo / "docs/features/groom/ops/legacy.md", (
+    write(repo / "docs/services/groom/ops/legacy.md", (
         "---\ntype: runbook\nslug: legacy\ntitle: Legacy\n---\n# Legacy\n\n"
         "- driver: mobile\n- environment: [local](local.md)\n"
         "- surfaces: [dashboard](../gui/screens/dashboard.md)\n"
         f"{bundle_a}\n"
         "## Steps\n\n### serve\n- kind: service\n- run: `run`\n"
     ))
-    write(repo / "docs/features/groom/ops/current.md", (
+    write(repo / "docs/services/groom/ops/current.md", (
         "---\ntype: runbook\nslug: current\ntitle: Current\n---\n# Current\n\n"
         "- driver: mobile\n- environment: [local](local.md)\n"
         "- surfaces: [dashboard](../gui/screens/dashboard.md)\n"
@@ -862,9 +862,9 @@ def test_two_runbooks_stating_the_same_bundle_id_settle_on_it(repo: Path):
 
 def test_a_sole_runbook_settles_its_own_bundle_id(repo: Path):
     """Real-book shape: only one runbook names this surface at all."""
-    write(repo / "docs/features/groom/ops/local.md", ENVIRONMENT)
-    write(repo / "docs/features/groom/gui/screens/dashboard.md", DASHBOARD)
-    write(repo / "docs/features/groom/ops/web.md", (
+    write(repo / "docs/services/groom/ops/local.md", ENVIRONMENT)
+    write(repo / "docs/services/groom/gui/screens/dashboard.md", DASHBOARD)
+    write(repo / "docs/services/groom/ops/web.md", (
         "---\ntype: runbook\nslug: web\ntitle: Web runbook\n---\n# Web runbook\n\n"
         "- driver: mobile\n- environment: [local](local.md)\n"
         "- surfaces: [dashboard](../gui/screens/dashboard.md)\n"
@@ -889,12 +889,12 @@ SETTINGS_SCREEN = ("---\ntype: screen\nslug: settings\ntitle: Settings\n---\n# S
 def _write_two_launch_screen_runbook_book(repo: Path, launch_a: str | None,
                                            launch_b: str | None) -> None:
     """Two runbooks in one feature directory, both `surfaces:`-linked into the same screen node, each stating its own `launch-screen:` (or none, when the argument is None)."""
-    write(repo / "docs/features/groom/ops/local.md", ENVIRONMENT)
-    write(repo / "docs/features/groom/gui/screens/dashboard.md", DASHBOARD)
-    write(repo / "docs/features/groom/gui/screens/settings.md", SETTINGS_SCREEN)
+    write(repo / "docs/services/groom/ops/local.md", ENVIRONMENT)
+    write(repo / "docs/services/groom/gui/screens/dashboard.md", DASHBOARD)
+    write(repo / "docs/services/groom/gui/screens/settings.md", SETTINGS_SCREEN)
     line_a = f"- launch-screen: [{launch_a}](../gui/screens/{launch_a}.md)\n" if launch_a else ""
     line_b = f"- launch-screen: [{launch_b}](../gui/screens/{launch_b}.md)\n" if launch_b else ""
-    write(repo / "docs/features/groom/ops/legacy.md", (
+    write(repo / "docs/services/groom/ops/legacy.md", (
         "---\ntype: runbook\nslug: legacy\ntitle: Legacy\n---\n# Legacy\n\n"
         "- driver: mobile\n- environment: [local](local.md)\n"
         "- surfaces: [dashboard](../gui/screens/dashboard.md)\n"
@@ -902,7 +902,7 @@ def _write_two_launch_screen_runbook_book(repo: Path, launch_a: str | None,
         f"{line_a}\n"
         "## Steps\n\n### serve\n- kind: service\n- run: `run`\n"
     ))
-    write(repo / "docs/features/groom/ops/current.md", (
+    write(repo / "docs/services/groom/ops/current.md", (
         "---\ntype: runbook\nslug: current\ntitle: Current\n---\n# Current\n\n"
         "- driver: mobile\n- environment: [local](local.md)\n"
         "- surfaces: [dashboard](../gui/screens/dashboard.md)\n"
@@ -916,7 +916,7 @@ def test_two_runbooks_stating_different_launch_screens_settle_by_node_id(repo: P
     _write_two_launch_screen_runbook_book(repo, "dashboard", "settings")
     dump = graph.build(load(repo))
     assert reach.surface_launch_screen(dump, "groom") == (
-        "docs/features/groom/gui/screens/settings.md"
+        "docs/services/groom/gui/screens/settings.md"
     )
 
 
@@ -924,15 +924,15 @@ def test_a_launch_screen_falls_through_to_the_next_runbook_when_the_first_is_sil
     _write_two_launch_screen_runbook_book(repo, "dashboard", None)
     dump = graph.build(load(repo))
     assert reach.surface_launch_screen(dump, "groom") == (
-        "docs/features/groom/gui/screens/dashboard.md"
+        "docs/services/groom/gui/screens/dashboard.md"
     )
 
 
 def test_a_sole_runbook_settles_its_own_launch_screen(repo: Path):
     """Real-book shape: only one runbook names this surface at all — the same shape `test_a_sole_runbook_settles_its_own_bundle_id` pins for `bundle-id:`."""
-    write(repo / "docs/features/groom/ops/local.md", ENVIRONMENT)
-    write(repo / "docs/features/groom/gui/screens/dashboard.md", DASHBOARD)
-    write(repo / "docs/features/groom/ops/web.md", (
+    write(repo / "docs/services/groom/ops/local.md", ENVIRONMENT)
+    write(repo / "docs/services/groom/gui/screens/dashboard.md", DASHBOARD)
+    write(repo / "docs/services/groom/ops/web.md", (
         "---\ntype: runbook\nslug: web\ntitle: Web runbook\n---\n# Web runbook\n\n"
         "- driver: mobile\n- environment: [local](local.md)\n"
         "- surfaces: [dashboard](../gui/screens/dashboard.md)\n"
@@ -942,7 +942,7 @@ def test_a_sole_runbook_settles_its_own_launch_screen(repo: Path):
     ))
     dump = graph.build(load(repo))
     assert reach.surface_launch_screen(dump, "groom") == (
-        "docs/features/groom/gui/screens/dashboard.md"
+        "docs/services/groom/gui/screens/dashboard.md"
     )
 
 
@@ -955,7 +955,7 @@ def test_a_surface_with_no_launch_screen_at_all_resolves_to_none(repo: Path):
 
 def test_a_surface_carrying_a_screen_resolves_its_driver_for_both_grammar_readers(repo: Path):
     _write_two_runbook_book(repo, "cli", "web")
-    write(repo / "docs/features/groom/gui/screens/dashboard.md", DASHBOARD)
+    write(repo / "docs/services/groom/gui/screens/dashboard.md", DASHBOARD)
     dump = graph.build(load(repo))
     assert reach.surface_driver(dump, "groom") == "web"
     codes_seen = codes(doctor.run(load(repo)))
@@ -963,14 +963,14 @@ def test_a_surface_carrying_a_screen_resolves_its_driver_for_both_grammar_reader
 
 
 def test_a_same_size_rewrite_is_not_served_from_the_parse_cache(repo: Path):
-    doc = repo / "docs/features/web/login.md"
+    doc = repo / "docs/services/web/login.md"
     write(doc, "---\ntype: screen\n---\n\n# Login\n\n## Components\n\n### aaa\n")
-    assert present(load(repo).find_ui_node("docs/features/web/login.md#aaa")).title == "aaa"
+    assert present(load(repo).find_ui_node("docs/services/web/login.md#aaa")).title == "aaa"
 
     write(doc, "---\ntype: screen\n---\n\n# Login\n\n## Components\n\n### bbb\n")
     reloaded = load(repo)
-    assert reloaded.find_ui_node("docs/features/web/login.md#aaa") is None
-    assert present(reloaded.find_ui_node("docs/features/web/login.md#bbb")).title == "bbb"
+    assert reloaded.find_ui_node("docs/services/web/login.md#aaa") is None
+    assert present(reloaded.find_ui_node("docs/services/web/login.md#bbb")).title == "bbb"
 
 
 def _write_same_as_concepts(repo: Path, texts: list[str | None]) -> None:
@@ -982,7 +982,7 @@ def _write_same_as_concepts(repo: Path, texts: list[str | None]) -> None:
             for j in (i - 1, i + 1) if 0 <= j < n
         )
         consistency = f"- consistency: {text}\n" if text is not None else ""
-        write(repo / f"docs/features/groom/concepts/notify-{i}.md",
+        write(repo / f"docs/services/groom/concepts/notify-{i}.md",
               f"---\ntype: concept\nslug: notify-{i}\ntitle: Notify {i}\n---\n"
               f"# Notify {i}\n\n{same_as}{consistency}")
 
@@ -994,8 +994,8 @@ def test_same_as_disagreement_on_two_different_values(repo: Path):
     assert hits[0].severity == "error"
     assert "notify-0" in hits[0].message and "notify-1" in hits[0].message
     assert "at least once" in hits[0].message and "exactly once" in hits[0].message
-    assert set(hits[0].related) == {"docs/features/groom/concepts/notify-0.md",
-                                     "docs/features/groom/concepts/notify-1.md"}
+    assert set(hits[0].related) == {"docs/services/groom/concepts/notify-0.md",
+                                     "docs/services/groom/concepts/notify-1.md"}
 
 
 def test_same_as_disagreement_silent_on_identical_values(repo: Path):
@@ -1009,12 +1009,12 @@ def test_same_as_disagreement_silent_when_one_side_omits_the_key(repo: Path):
 
 
 def test_same_as_disagreement_silent_on_same_values_different_order(repo: Path):
-    write(repo / "docs/features/groom/concepts/notify-0.md",
+    write(repo / "docs/services/groom/concepts/notify-0.md",
           "---\ntype: concept\nslug: notify-0\ntitle: Notify 0\n---\n# Notify 0\n\n"
           "- same-as: [notify-1](notify-1.md)\n"
           "- consistency: at least once\n"
           "- consistency: exactly once\n")
-    write(repo / "docs/features/groom/concepts/notify-1.md",
+    write(repo / "docs/services/groom/concepts/notify-1.md",
           "---\ntype: concept\nslug: notify-1\ntitle: Notify 1\n---\n# Notify 1\n\n"
           "- same-as: [notify-0](notify-0.md)\n"
           "- consistency: exactly once\n"
@@ -1026,20 +1026,20 @@ def test_same_as_disagreement_one_finding_for_a_three_member_family(repo: Path):
     _write_same_as_concepts(repo, ["at least once", "exactly once", "exactly once"])
     hits = [f for f in doctor.run(load(repo)).findings if f.code == "same-as-disagreement"]
     assert len(hits) == 1
-    assert set(hits[0].related) == {"docs/features/groom/concepts/notify-0.md",
-                                     "docs/features/groom/concepts/notify-1.md",
-                                     "docs/features/groom/concepts/notify-2.md"}
+    assert set(hits[0].related) == {"docs/services/groom/concepts/notify-0.md",
+                                     "docs/services/groom/concepts/notify-1.md",
+                                     "docs/services/groom/concepts/notify-2.md"}
 
 
 def _write_two_origin_book(repo: Path, server_url: str, runbook_url: str | None) -> None:
     """A `server` and a `runbook` that both state the surface's address, so `entry_origin` has two sources to rank — the only shape where the ranking is observable."""
-    write(repo / "docs/features/groom/ops/local.md", ENVIRONMENT)
-    write(repo / "docs/features/groom/http/api.md", (
+    write(repo / "docs/services/groom/ops/local.md", ENVIRONMENT)
+    write(repo / "docs/services/groom/http/api.md", (
         "---\ntype: server\nslug: api\ntitle: API\n---\n# API\n\n"
         f"- entry-url: {server_url}\n\n## Endpoints\n"
     ))
     entry = f"- entry-url: {runbook_url}\n" if runbook_url else ""
-    write(repo / "docs/features/groom/ops/deployed.md", (
+    write(repo / "docs/services/groom/ops/deployed.md", (
         "---\ntype: runbook\nslug: deployed\ntitle: Deployed\n---\n# Deployed\n\n"
         "- driver: http\n- environment: [local](local.md)\n"
         f"{entry}"

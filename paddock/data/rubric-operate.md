@@ -33,8 +33,8 @@ Assign exactly one level:
 
 Rules for choosing:
 
-- **Open the book before you score.** Read the runbooks under `docs/features/*/ops/` (for
-  `bring-up`) or the flow page under `docs/features/web-app/flows/` (for `journey`) to
+- **Open the book before you score.** Read the runbooks under `docs/services/*/ops/` (for
+  `bring-up`) or the flow page under `docs/services/web-app/flows/` (for `journey`) to
   confirm what the book states, and — on `bring-up`'s `absence` arm only — what it no
   longer states. Score what the book under `{{repo}}` shows, not what the expected answer
   alone tells you.
@@ -78,7 +78,7 @@ Rules for choosing:
 
 A level of 1 or 2 requires at least one `evidence` entry, and each entry must be a **real,
 repo-relative path** you actually opened while checking the account, e.g.
-`docs/features/api-service/ops/api-service-stack.md`.
+`docs/services/api-service/ops/api-service-stack.md`.
 
 Your citations are checked against the filesystem. Any verdict whose cited paths do not
 resolve is automatically capped at level 1 and reported as unproven, so a guessed path
@@ -91,7 +91,7 @@ A single JSON object and nothing else:
 ```json
 {
   "level": 2,
-  "evidence": ["docs/features/api-service/ops/api-service-stack.md"],
+  "evidence": ["docs/services/api-service/ops/api-service-stack.md"],
   "reason": "one sentence, under 25 words, naming what the book shows or fails to show"
 }
 ```

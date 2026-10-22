@@ -7,7 +7,7 @@ from pathlib import Path
 
 from ostler.qa.context import build_context
 
-SCREEN = "docs/features/acme/gui/screens/items.md"
+SCREEN = "docs/services/acme/gui/screens/items.md"
 NODE = f"okf:{SCREEN}#title-field"
 
 ITEMS = "\n".join([
@@ -46,8 +46,8 @@ def _git(root: Path, *args: str) -> str:
 
 
 def _arranged(tmp_path: Path, items: str) -> dict[str, list[str]]:
-    for path, text in {SCREEN: items, "docs/features/acme/fixtures/signed-in.md": SIGNED_IN,
-                       "docs/features/acme/fixtures/dialog-open.md": DIALOG_OPEN,
+    for path, text in {SCREEN: items, "docs/services/acme/fixtures/signed-in.md": SIGNED_IN,
+                       "docs/services/acme/fixtures/dialog-open.md": DIALOG_OPEN,
                        "app/items.py": "def render_dialog():\n    return 'old'\n"}.items():
         (tmp_path / path).parent.mkdir(parents=True, exist_ok=True)
         (tmp_path / path).write_text(text, encoding="utf-8")

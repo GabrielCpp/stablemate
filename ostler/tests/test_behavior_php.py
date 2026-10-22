@@ -198,7 +198,7 @@ def test_php_parse_errors_reject_whole_file_without_partial_context(tmp_path: Pa
 
 def test_php_book_claims_bind_to_php_symbols(tmp_path: Path) -> None:
     (tmp_path / "service.php").write_text(PHP, encoding="utf-8")
-    book = tmp_path / "docs/features/dispatch.md"
+    book = tmp_path / "docs/services/dispatch.md"
     book.parent.mkdir(parents=True)
     book.write_text("---\ntype: concept\n---\n# Dispatch\n\n## Methods\n\n"
                     "### dispatch\n- does: Appends the selected items to sent.\n- code: service.php::dispatch\n\n"

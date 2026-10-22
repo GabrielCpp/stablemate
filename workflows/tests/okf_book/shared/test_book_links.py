@@ -5,7 +5,7 @@ from ostler.finding import Finding
 
 from workhorse_workflows.okf_book.shared.book_links import inbound_broken, relinked, retargets_only
 
-PAGE = "docs/features/other/guide/start.md"
+PAGE = "docs/services/other/guide/start.md"
 TEXT = "See [old](../../ledger/old.md#totals), [same](../../ledger/old.md) and [kept](../../ledger/kept.md).\n"
 
 
@@ -41,7 +41,7 @@ def _dangling(path: str, href: str) -> Finding:
 def test_a_broken_link_from_another_book_into_the_book_is_the_books_to_retarget() -> None:
     inbound = _dangling(PAGE, "../../ledger/old.md")
     elsewhere = _dangling(PAGE, "../intro.md")
-    own = _dangling("docs/features/ledger/kept.md", "old.md")
+    own = _dangling("docs/services/ledger/kept.md", "old.md")
     report = Report(org="", profile="", findings=[inbound, elsewhere, own])
 
     found = inbound_broken(report, "ledger")

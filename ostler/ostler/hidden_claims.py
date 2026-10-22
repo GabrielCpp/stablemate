@@ -25,7 +25,7 @@ def _hidden(comment: str, keys: frozenset[str]) -> list[str]:
 
 def check_hidden_claims(graph: Graph, f: list[Finding]) -> None:
     """Each comment on a book page holds no bullet a page would read as a claim."""
-    froot = graph.doc_roots.get("features")
+    froot = graph.doc_roots.get("services")
     if froot is None or not froot.is_dir():
         return
     keys = _claim_keys()

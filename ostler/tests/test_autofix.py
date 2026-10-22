@@ -155,7 +155,7 @@ def test_clean_book_is_a_noop():
 
 
 def test_cli_check_then_write(repo: Path):
-    p = repo / "docs/features/s.md"
+    p = repo / "docs/services/s.md"
     write(p, endpoint_doc("`api-service/internal/account/account_service_test.go::Test_Create`"))
     assert main(["-C", str(repo), "autofix", "--check"]) == 1
     assert p.read_text().count("- verify:") == 1

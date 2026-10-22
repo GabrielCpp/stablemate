@@ -46,7 +46,7 @@ KEYS: tuple[Key, ...] = (
         "the one source of `${VAR}` values: `file:` a dotenv file, `decrypt:` a command "
         "whose stdout is dotenv, or `saddlebag:` the `key=value` tags that select secrets in "
         "saddlebag, under which every compose command runs. Valid only in the stack root, "
-        "docs/features/ops/stack.yml"),
+        "docs/services/ops/stack.yml"),
     Key("book", "needs", _STRINGS,
         "the books whose every service this book's services need, so they come up first"),
     Key("book", "default-fixtures", _STRINGS,
@@ -187,8 +187,8 @@ class Catalog:
 
 
 def stack_files(root: Path) -> list[Path]:
-    """The `ops/stack.yml` of the book at the features root and of each book one level below it."""
-    base = path_mod.features_root_in(root)
+    """The `ops/stack.yml` of the book at the services root and of each book one level below it."""
+    base = path_mod.services_root_in(root)
     if not base.is_dir():
         return []
     found = [base / OPS_DIR / STACK_FILE] if (base / OPS_DIR / STACK_FILE).is_file() else []
@@ -199,7 +199,7 @@ def stack_files(root: Path) -> list[Path]:
 
 def old_stack_files(root: Path) -> list[Path]:
     """The `stack.yml` files that sit where books kept them before `ops/`."""
-    base = path_mod.features_root_in(root)
+    base = path_mod.services_root_in(root)
     if not base.is_dir():
         return []
     found = [base / STACK_FILE] if (base / STACK_FILE).is_file() else []
@@ -216,7 +216,7 @@ def book_dir(stack_file: Path) -> Path:
 def book_name(root: Path, stack_file: Path) -> str:
     """The name other books reference *stack_file*'s services by."""
     directory = book_dir(stack_file)
-    return root.name.lower() if directory == path_mod.features_root_in(root) else directory.name
+    return root.name.lower() if directory == path_mod.services_root_in(root) else directory.name
 
 
 def load(root: Path) -> Catalog:
@@ -244,8 +244,8 @@ def shown(root: Path, stack_file: Path) -> str:
 
 def _read_book(catalog: Catalog, root: Path, name: str, stack_file: Path) -> None:
     where = shown(root, stack_file)
-    is_root = book_dir(stack_file) == path_mod.features_root_in(root)
-    root_file = shown(root, path_mod.features_root_in(root) / OPS_DIR / STACK_FILE)
+    is_root = book_dir(stack_file) == path_mod.services_root_in(root)
+    root_file = shown(root, path_mod.services_root_in(root) / OPS_DIR / STACK_FILE)
     try:
         raw = yaml.load(stack_file.read_text(encoding="utf-8"), Loader=_UniqueKeyLoader)
     except yaml.YAMLError as exc:

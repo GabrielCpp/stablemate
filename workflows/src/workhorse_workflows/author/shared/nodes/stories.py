@@ -133,7 +133,7 @@ def check_story_grounding(
     logger: logging.Logger,
     story_dir: str = "",
     epic_dir: str = "",
-    features_dir: str = "",
+    services_dir: str = "",
     repo_dir: str = "",
 ) -> Defects:
     """Was the story written against the surface documentation, or from imagination?"""

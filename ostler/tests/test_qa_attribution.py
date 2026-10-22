@@ -8,7 +8,7 @@ import pytest
 
 from ostler.qa.attribution import Attribution, Cause, CheckEvidence, attribute, route_shape, signatures
 
-SIGNED_IN = "docs/features/tally/fixtures/signed-in.md"
+SIGNED_IN = "docs/services/tally/fixtures/signed-in.md"
 
 
 def _failed(status: int | None, *, path: str = "/api/orders/42", expected: list[int] | None = None, **exchange: Any) -> dict[str, Any]:
@@ -64,7 +64,7 @@ def test_an_environment_fault_is_the_environment_s_even_on_a_book_fixture() -> N
 
 
 def test_an_absent_capability_is_the_environment_s_and_names_the_gap() -> None:
-    page = "docs/features/billing/fixtures/payment-provider.md"
+    page = "docs/services/billing/fixtures/payment-provider.md"
     record = {"label": "a check", "passed": False, "fault": {"fault_class": "capability", "fixture": "payment-provider", "page": page}}
 
     assert attribute(CheckEvidence.model_validate(record)) == Attribution(Cause.ENVIRONMENT, page, gap="payment provider")
@@ -98,7 +98,7 @@ def test_failures_sharing_a_key_are_one_signature_with_their_count() -> None:
 
 
 def test_failures_on_one_absent_capability_are_one_gapped_signature() -> None:
-    gap = Attribution(Cause.ENVIRONMENT, "docs/features/billing/fixtures/payment-provider.md", gap="payment provider")
+    gap = Attribution(Cause.ENVIRONMENT, "docs/services/billing/fixtures/payment-provider.md", gap="payment provider")
 
     grouped = signatures([(gap, "no key"), (gap, "no key again")])
 

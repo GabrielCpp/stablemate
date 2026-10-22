@@ -5,7 +5,7 @@ from ostler.qa import stack
 
 from workhorse_workflows.kit.qa.runner import bring_up_failure
 
-RUNBOOK = "docs/features/api/ops/links-local.md"
+RUNBOOK = "docs/services/api/ops/links-local.md"
 
 
 def test_a_missing_health_route_is_the_apps_to_implement():

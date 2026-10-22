@@ -155,7 +155,7 @@ Check types for `ostler qa assert`:
   "ts": "2026-07-10T17:18:03Z",
   "kind": "instance",
   "scenario": "a_stage_row_can_be_renamed",
-  "obligation": "okf:docs/features/acme/gui/screens/stages.md#stage-row:one-per:1",
+  "obligation": "okf:docs/services/acme/gui/screens/stages.md#stage-row:one-per:1",
   "bindings": { "stage.name": "Foundations" }
 }
 ```
@@ -366,7 +366,7 @@ PAYLOAD = input_file("payload", "qa-inputs/login-payload.json")
 
 @scenario(target=api, mechanism="live", covers=[
     "ac:1",
-    "okf:docs/features/links/http/links.md#create:does:1",
+    "okf:docs/services/links/http/links.md#create:does:1",
 ])
 def create_records_the_real_author(qa: Qa) -> None:
     """Creating a link ignores a spoofed author and persists the token's own UID."""
@@ -387,13 +387,13 @@ def create_records_the_real_author(qa: Qa) -> None:
 # link survived the process, which a read through the session that wrote could never show.
 # `reset_paths` are not re-applied on a restart: the state is what it is there to keep.
 @scenario(target=api, mechanism="live", restart=["api-server"], covers=[
-    "okf:docs/features/links/http/links.md#create:persistence:1",
+    "okf:docs/services/links/http/links.md#create:persistence:1",
 ])
 def a_link_survives_a_restart(qa: Qa) -> None:
     """The link created above is still served after the process came back."""
     stored = qa.http.get(f"/links/{qa.get('link_id')}")
     qa.check("the link is still there", stored.status == 200, actual=stored.status,
-             expected=200, covers=["okf:docs/features/links/http/links.md#create:persistence:1"])
+             expected=200, covers=["okf:docs/services/links/http/links.md#create:persistence:1"])
 ```
 
 ### What a scenario is given

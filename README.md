@@ -178,7 +178,7 @@ was last checked.
 
 The dashboard, once installed:
 
-![groom's dashboard: a blocked coder run asking the operator to pick a storage backend, with the answer typed and ready to send](docs/features/groom/gui/screenshots/operator-answers-blocked-gate-answer-typed.png)
+![groom's dashboard: a blocked coder run asking the operator to pick a storage backend, with the answer typed and ready to send](docs/services/groom/gui/screenshots/operator-answers-blocked-gate-answer-typed.png)
 
 The direction: you hand work to the agent subscription you already pay for, and you get
 back a pull request that passed the gates a colleague's would. Those gates are tests

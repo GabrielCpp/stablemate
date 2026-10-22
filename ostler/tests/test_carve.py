@@ -13,7 +13,7 @@ from ostler.model import load
 
 from conftest import write
 
-_SERVER = "docs/features/acme/http/server.md"
+_SERVER = "docs/services/acme/http/server.md"
 
 _SERVER_TEXT = """---
 type: server
@@ -51,7 +51,7 @@ Widgets are cached for a minute.
 - trigger: the home screen loads
 """
 
-_SCREEN = "docs/features/acme/gui/screens/home.md"
+_SCREEN = "docs/services/acme/gui/screens/home.md"
 
 _SCREEN_TEXT = """---
 type: screen
@@ -116,8 +116,8 @@ def test_carved_book_keeps_its_doctor_findings_and_passes_membership(repo: Path)
     assert after <= before
     assert not after & {"endpoint-without-server", "unlisted-endpoint"}
     endpoints = sorted(n.id for n in load(repo).ui_nodes_of_type("endpoint"))
-    assert endpoints == ["docs/features/acme/http/create-widget.md",
-                         "docs/features/acme/http/get-widget.md"]
+    assert endpoints == ["docs/services/acme/http/create-widget.md",
+                         "docs/services/acme/http/get-widget.md"]
 
 
 def test_carve_refuses_a_page_that_is_not_a_server(repo: Path):
@@ -146,15 +146,15 @@ def test_carve_cli_writes_with_write(repo: Path):
 
 
 def test_endpoint_page_naming_no_server_is_reported(repo: Path):
-    write(repo / "docs/features/acme/http/lone.md",
+    write(repo / "docs/services/acme/http/lone.md",
           "---\ntype: endpoint\ntitle: lone\n---\n# lone\n\n- method: GET\n- path: /lone\n")
     assert "endpoint-without-server" in _codes(repo)
 
 
 def test_endpoint_page_its_server_does_not_list_is_reported(repo: Path):
-    write(repo / "docs/features/acme/http/server.md",
+    write(repo / "docs/services/acme/http/server.md",
           "---\ntype: server\ntitle: A\n---\n# A\n\n## Endpoints\n")
-    write(repo / "docs/features/acme/http/lone.md",
+    write(repo / "docs/services/acme/http/lone.md",
           "---\ntype: endpoint\ntitle: lone\n---\n# lone\n\n- server: [A](server.md)\n- method: GET\n")
     codes = _codes(repo)
     assert "unlisted-endpoint" in codes and "endpoint-without-server" not in codes

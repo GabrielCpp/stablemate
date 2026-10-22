@@ -6,7 +6,7 @@ ostler is, how to install it, and the shortest path to a first epic; this file i
 exhaustive listing you come back to for a flag.
 
 Ostler operates relative to the **current working directory** — roots default to
-`<cwd>/docs/{milestones,epics,features,specs}` plus `docs/backlog.md`. Every read command accepts `--json`; every
+`<cwd>/docs/{milestones,epics,services,specs}` plus `docs/backlog.md`. Every read command accepts `--json`; every
 mutating command allocates ids as needed and writes canonical markdown in place.
 
 The commands fall into three surfaces that barely overlap:
@@ -14,7 +14,7 @@ The commands fall into three surfaces that barely overlap:
 | Surface | Verbs | What it operates on |
 |---|---|---|
 | **The planning graph** | `doctor` `trace` `list` `search` `query` `next-*` `create` `delete` `seed` `set-status` `unblock` `backlog` `milestone` `todo` `edit` `freeze` `path` | `docs/backlog.md`, `docs/milestones/`, `docs/epics/`, `docs/specs/` |
-| **The feature graph** (UI profile) | `reach` `locators` `graph` `coverage` `scaffold` `fmt` `vet` | `docs/features/` — the node/edge book |
+| **The feature graph** (UI profile) | `reach` `locators` `graph` `coverage` `scaffold` `fmt` `vet` | `docs/services/` — the node/edge book |
 | **Verification** | `qa` `artifact` | a story's spec dir, and what a QA run produces |
 
 ## Global
@@ -174,9 +174,9 @@ The schema, a worked 3-level nesting example, and the bundle-vs-leaf shape rules
 
 ## The feature graph (UI profile)
 
-These operate on `docs/features/` — the typed node/edge book describing a product's
+These operate on `docs/services/` — the typed node/edge book describing a product's
 surfaces, not the epic/story planning graph. `--surface` scopes any of them to one service
-subtree (`docs/features/<surface>`).
+subtree (`docs/services/<surface>`).
 
 ```bash
 ostler graph [--surface S] [--type T] [--title T] [--path 'concept:agent / field:timeout'] \
@@ -201,7 +201,7 @@ ostler scaffold <type> <name> [--service SVC] [--in FILE] [--title T] [--json]
 #   types take --in, the surface doc to insert the `### id` into.
 
 ostler gc [--write] [--json]
-#   list every page under docs/features that no link path from its service's
+#   list every page under docs/services that no link path from its service's
 #   entries page reaches; --write deletes them. A service with no entries page is
 #   left alone. The pages doctor reports as unreachable-node.
 
@@ -227,7 +227,7 @@ scope for one story, and `context-validate` re-checks a scope already on disk:
 
 ```bash
 ostler qa context --base <rev> [--head WORKTREE] --spec docs/specs/<story> \
-  [--features-root PATH] [--source-root SURFACE=PATH] [--story-file PATH] [--json]
+  [--services-root PATH] [--source-root SURFACE=PATH] [--story-file PATH] [--json]
 ostler qa context-validate --spec docs/specs/<story> [--json]
 ```
 

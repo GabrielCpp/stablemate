@@ -24,7 +24,7 @@ def env_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
 
 def test_a_book_with_a_stack_file_runs_against_the_shared_copys_address_book(tmp_path: Path) -> None:
     root = tmp_path / "acme"
-    stack = root / "docs" / "features" / "web" / "ops" / "stack.yml"
+    stack = root / "docs" / "services" / "web" / "ops" / "stack.yml"
     stack.parent.mkdir(parents=True)
     _ = stack.write_text("services: {}\n", encoding="utf-8")
 
@@ -34,7 +34,7 @@ def test_a_book_with_a_stack_file_runs_against_the_shared_copys_address_book(tmp
 
 
 def test_a_book_no_stack_file_covers_adds_nothing_to_the_environment(tmp_path: Path) -> None:
-    (tmp_path / "docs" / "features" / "web").mkdir(parents=True)
+    (tmp_path / "docs" / "services" / "web").mkdir(parents=True)
 
     assert copy_env(tmp_path, "web") == {}
 

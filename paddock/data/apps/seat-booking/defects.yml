@@ -34,7 +34,7 @@ defects:
   - id: D1
     story: confirm-booking
     path: app/confirm.py
-    obligation: okf:docs/features/booking/http/seat-booking-api.md#post-seat-booking:concurrency:1
+    obligation: okf:docs/services/booking/http/seat-booking-api.md#post-seat-booking:concurrency:1
     expect: contradicted
     caught_by: run
     why: >
@@ -44,7 +44,7 @@ defects:
   - id: D2
     story: confirm-booking
     path: app/confirm.py
-    obligation: okf:docs/features/booking/http/seat-booking-api.md#post-seat-booking:persistence:1
+    obligation: okf:docs/services/booking/http/seat-booking-api.md#post-seat-booking:persistence:1
     expect: contradicted
     caught_by: run
     why: >
@@ -54,7 +54,7 @@ defects:
   - id: D3
     story: seat-map
     path: app/booking.py
-    obligation: okf:docs/features/booking/http/seat-booking-api.md#get-seat-map:does:3
+    obligation: okf:docs/services/booking/http/seat-booking-api.md#get-seat-map:does:3
     expect: contradicted
     caught_by: run
     why: >
@@ -64,7 +64,7 @@ defects:
   - id: D4
     story: seat-hold
     path: app/hold.py
-    obligation: okf:docs/features/booking/http/seat-booking-api.md#delete-seat-hold:does:2
+    obligation: okf:docs/services/booking/http/seat-booking-api.md#delete-seat-hold:does:2
     expect: contradicted
     caught_by: run
     why: >
@@ -74,7 +74,7 @@ defects:
   - id: D5
     story: seat-map
     path: app/booking.py
-    obligation: okf:docs/features/booking/http/seat-booking-api.md#get-seat-map:does:2
+    obligation: okf:docs/services/booking/http/seat-booking-api.md#get-seat-map:does:2
     expect: contradicted
     caught_by: run
     why: >
@@ -84,7 +84,7 @@ defects:
   - id: D6
     story: seat-hold
     path: app/hold.py
-    obligation: okf:docs/features/booking/concepts/seat.md#hold:raises:1
+    obligation: okf:docs/services/booking/concepts/seat.md#hold:raises:1
     expect: contradicted
     caught_by: run
     why: >
@@ -94,7 +94,7 @@ defects:
   - id: D7
     story: seat-map
     path: app/page.py
-    obligation: okf:docs/features/booking/gui/screens/seat-map.md#seat-button:states:2
+    obligation: okf:docs/services/booking/gui/screens/seat-map.md#seat-button:states:2
     expect: contradicted
     caught_by: run
     why: >
@@ -104,7 +104,7 @@ defects:
   - id: D8
     story: seat-map
     path: app/page.py
-    obligation: okf:docs/features/booking/gui/screens/seat-map.md#free-seat-summary:contract
+    obligation: okf:docs/services/booking/gui/screens/seat-map.md#free-seat-summary:contract
     expect: contradicted
     caught_by: run
     why: >
@@ -114,7 +114,7 @@ defects:
   - id: D9
     story: seat-map
     path: app/page.py
-    obligation: okf:docs/features/booking/gui/screens/seat-map.md#seat-map-region:contract
+    obligation: okf:docs/services/booking/gui/screens/seat-map.md#seat-map-region:contract
     expect: contradicted
     caught_by: audit
     why: >

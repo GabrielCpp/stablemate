@@ -15,7 +15,7 @@ from pathlib import Path
 from pydantic import BaseModel, ConfigDict
 
 from workhorse_workflows.okf_book.shared.book_links import in_book, retargets_only
-from workhorse_workflows.okf_book.shared.entries import FEATURES_DIR
+from workhorse_workflows.okf_book.shared.entries import SERVICES_DIR
 
 _GIT_TIMEOUT = 60
 _LOCK_WAITS = (0.2, 0.5, 1.0, 2.0, 4.0, 8.0)
@@ -102,7 +102,7 @@ def _outside(root: Path, service: str, before: Snapshot, run_dir: Path) -> tuple
 
 def _retargets(root: Path, service: str, path: str, before: Snapshot) -> bool:
     page = root / path
-    if path in before.digests or not path.startswith(f"{FEATURES_DIR.as_posix()}/") or not path.endswith(".md"):
+    if path in before.digests or not path.startswith(f"{SERVICES_DIR.as_posix()}/") or not path.endswith(".md"):
         return False
     if not page.is_file() or not _tracked(root, path):
         return False

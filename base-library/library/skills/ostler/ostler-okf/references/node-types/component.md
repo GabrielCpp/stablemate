@@ -148,7 +148,7 @@ relation key rather than a per-type one, so it appears in no type's key table an
 ## Minimal example
 
 ```bash
-timeout 30 ostler scaffold component save-button --in docs/features/acme/gui/screens/link-editor.md
+timeout 30 ostler scaffold component save-button --in docs/services/acme/gui/screens/link-editor.md
 ```
 
 ```markdown

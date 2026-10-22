@@ -12,7 +12,7 @@ from ostler.qa.session import QaSession
 def _driver(repo: Path, secrets: dict[str, str] | None = None) -> PythonDriver:
     spec = repo / "docs/specs/story-1"
     spec.mkdir(parents=True, exist_ok=True)
-    (spec / "qa-okf-context.json").write_text(json.dumps({"featuresRoot": "docs/features"}), encoding="utf-8")
+    (spec / "qa-okf-context.json").write_text(json.dumps({"servicesRoot": "docs/services"}), encoding="utf-8")
     session = QaSession.create(spec, "qa-capture-1", "story-1", {}, secret_values=secrets)
     return PythonDriver(session, "cli", {"driver": "cli"}, root=repo, variables={})
 

@@ -10,11 +10,11 @@ from ostler.qa.context import book_context
 
 from conftest import screen_md, write
 
-LIST_PATH = "docs/features/app/document-list.md"
-OPEN_PATH = "docs/features/app/fixtures/create-form-open.md"
-SEEDED_PATH = "docs/features/app/fixtures/seeded.md"
-IDLE_PATH = "docs/features/app/fixtures/create-form-idle.md"
-SCREEN = "docs/features/policy/gui/screens/policy-list.md"
+LIST_PATH = "docs/services/app/document-list.md"
+OPEN_PATH = "docs/services/app/fixtures/create-form-open.md"
+SEEDED_PATH = "docs/services/app/fixtures/seeded.md"
+IDLE_PATH = "docs/services/app/fixtures/create-form-idle.md"
+SCREEN = "docs/services/policy/gui/screens/policy-list.md"
 BASE_URL = "http://localhost:5173"
 
 LIST_COMPONENTS = """
@@ -158,13 +158,13 @@ def test_a_fixture_that_only_seeds_data_keeps_the_screen_the_fixture_before_it_l
 
 
 def test_a_fixture_that_left_the_browser_elsewhere_is_followed_by_the_screens_own_navigation() -> None:
-    source = _source({"create-form-open": "docs/features/policy/gui/screens/landing.md"})
+    source = _source({"create-form-open": "docs/services/policy/gui/screens/landing.md"})
 
     assert source.index('qa.fixture("create-form-open")') < source.index('qa.goto("/")')
 
 
-SIGN_IN_PATH = "docs/features/app/sign-in.md"
-DASHBOARD_PATH = "docs/features/app/dashboard.md"
+SIGN_IN_PATH = "docs/services/app/sign-in.md"
+DASHBOARD_PATH = "docs/services/app/dashboard.md"
 
 SIGN_IN_FIXTURE = """---
 type: fixture
@@ -188,7 +188,7 @@ title: Signed in
 def test_a_fixture_whose_last_act_lands_on_another_screen_leaves_the_browser_there(repo: Path) -> None:
     write(repo / SIGN_IN_PATH, screen_md("sign-in", "Sign in", body="\n## Components\n\n### submit\n\n- role: button\n- name: Sign in\n"))
     write(repo / DASHBOARD_PATH, screen_md("dashboard", "Dashboard", body="\n## Components\n\n### dashboard-title\n\n- role: heading\n- name: Dashboard\n"))
-    write(repo / "docs/features/app/fixtures/signed-in.md", SIGN_IN_FIXTURE)
+    write(repo / "docs/services/app/fixtures/signed-in.md", SIGN_IN_FIXTURE)
     _git(repo, "init")
     _git(repo, "add", ".")
     _git(repo, "commit", "-qm", "base")
@@ -197,7 +197,7 @@ def test_a_fixture_whose_last_act_lands_on_another_screen_leaves_the_browser_the
 
 
 def test_a_fixture_that_left_the_browser_on_the_screens_route_walks_on_from_there() -> None:
-    landing, sign_in, dashboard = (f"docs/features/policy/gui/screens/{name}.md" for name in ("landing", "sign-in", "dashboard"))
+    landing, sign_in, dashboard = (f"docs/services/policy/gui/screens/{name}.md" for name in ("landing", "sign-in", "dashboard"))
     context = _context({"create-form-open": dashboard})
     context["navigation"]["policy"]["routes"] = {SCREEN: [
         {"node": f"{landing}#sign-in-link", "from": landing, "label": "Sign in link"},
@@ -213,7 +213,7 @@ def test_a_fixture_that_left_the_browser_on_the_screens_route_walks_on_from_ther
 
 
 def test_a_fixture_that_left_the_browser_off_the_screens_route_reopens_the_last_entry_on_it() -> None:
-    landing, sign_in, dashboard, stages = (f"docs/features/policy/gui/screens/{name}.md"
+    landing, sign_in, dashboard, stages = (f"docs/services/policy/gui/screens/{name}.md"
                                            for name in ("landing", "sign-in", "dashboard", "stages"))
     context = _context({"create-form-open": stages})
     context["navigation"]["policy"]["routes"] = {SCREEN: [

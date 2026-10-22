@@ -22,7 +22,7 @@ from workhorse_workflows.okf_book.shared.book_commits import book_commit_subject
 from workhorse_workflows.okf_book.shared.book_flow import BookFlow
 from workhorse_workflows.okf_book.shared.book_run import ExerciseResult
 from workhorse_workflows.okf_book.shared.confine import Snapshot, book_changes, kept_changes, put_back_outside, snapshot
-from workhorse_workflows.okf_book.shared.entries import FEATURES_DIR
+from workhorse_workflows.okf_book.shared.entries import SERVICES_DIR
 from workhorse_workflows.okf_book.shared.metrics import TurnMetric, record_turn, turn_metric
 from workhorse_workflows.okf_book.shared.page_check import PageProblem
 
@@ -175,7 +175,7 @@ class WriteBook(BookFlow):
         service = self.surface_to_write.service
         for page in book_changes(root, service, before):
             if page.endswith(".md") and (root / page).is_file():
-                _ = stamp_page(root, root / FEATURES_DIR, page)
+                _ = stamp_page(root, root / SERVICES_DIR, page)
         pages = kept_changes(root, service, before, self.run_dir)
         return Continue(pages, self.render_agent_files, pages=pages).because("render the agent files")
 

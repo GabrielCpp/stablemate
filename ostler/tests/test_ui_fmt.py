@@ -125,7 +125,7 @@ def test_unknown_bullet_preserved():
 
 
 def test_fmt_check_exit_code(repo: Path, capsys):
-    write(repo / "docs/features/s.md",
+    write(repo / "docs/services/s.md",
           "---\ntitle: T\ntype: screen\nslug: s\n---\n# T\n")
     assert main(["-C", str(repo), "fmt", "--check"]) == 1
     assert main(["-C", str(repo), "fmt"]) == 0
@@ -134,15 +134,15 @@ def test_fmt_check_exit_code(repo: Path, capsys):
 
 def test_fmt_formats_every_doc_under_a_folder_path(repo: Path):
     """A book scoped to one surface is passed as its folder; that is a target, not a skip."""
-    p = repo / "docs/features/web/screens/s.md"
+    p = repo / "docs/services/web/screens/s.md"
     write(p, "---\ntitle: T\ntype: screen\nslug: s\n---\n# T\n")
-    assert main(["-C", str(repo), "fmt", "--check", "docs/features/web"]) == 1
-    assert main(["-C", str(repo), "fmt", "docs/features/web"]) == 0
+    assert main(["-C", str(repo), "fmt", "--check", "docs/services/web"]) == 1
+    assert main(["-C", str(repo), "fmt", "docs/services/web"]) == 0
     assert p.read_text().startswith("---\ntype: screen\nslug: s\ntitle: T\n")
 
 
 def test_fmt_writes_canonical(repo: Path):
-    p = repo / "docs/features/s.md"
+    p = repo / "docs/services/s.md"
     write(p, "---\ntitle: T\ntype: screen\nslug: s\n---\n# T\n")
     main(["-C", str(repo), "fmt"])
     assert p.read_text().startswith("---\ntype: screen\nslug: s\ntitle: T\n")

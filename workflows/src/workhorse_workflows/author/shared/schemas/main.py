@@ -14,7 +14,7 @@ class Config(AuthorResult):
     backlog_path: str = ""
     roadmap_path: str = ""
     epics_dir: str = ""
-    features_dir: str = ""
+    services_dir: str = ""
     layers: list[str] = []
 
 

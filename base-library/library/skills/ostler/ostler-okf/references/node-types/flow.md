@@ -10,7 +10,7 @@ Not a flow: the boot sequence of a stack — that is a [`runbook`](runbook.md) a
 
 ## Identity
 
-File type under `docs/features/<service>/flows/`, `type: flow` in frontmatter.
+File type under `docs/services/<service>/flows/`, `type: flow` in frontmatter.
 
 ## Bullet keys
 

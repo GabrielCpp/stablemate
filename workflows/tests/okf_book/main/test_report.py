@@ -88,9 +88,9 @@ def test_the_report_shows_the_book_s_failed_checks_lap_by_lap() -> None:
 def test_the_report_names_each_blocker_s_cause_its_pages_and_the_command_that_reruns_them() -> None:
     blocker = Blocker(subject="tally: arrangement: docs/fixtures/admin.md answered 400", service="tally", phase=Phase.EXERCISE,
                       side=Side.BOOK, reason="3 checks failed this way", cause="arrangement",
-                      pages=("docs/fixtures/admin.md", "docs/features/tally/add.md"), rerun="python -m exercise docs/fixtures/admin.md")
+                      pages=("docs/fixtures/admin.md", "docs/services/tally/add.md"), rerun="python -m exercise docs/fixtures/admin.md")
 
     rendered = render_report(_report(None).model_copy(update={"blockers": (blocker,)}))
 
-    assert ("  - cause: arrangement\n  - pages: `docs/fixtures/admin.md`, `docs/features/tally/add.md`\n"
+    assert ("  - cause: arrangement\n  - pages: `docs/fixtures/admin.md`, `docs/services/tally/add.md`\n"
             "  - rerun: `python -m exercise docs/fixtures/admin.md`\n") in rendered

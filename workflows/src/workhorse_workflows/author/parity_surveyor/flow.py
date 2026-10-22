@@ -92,7 +92,7 @@ class ParitySurveyor(Workflow):
                 "unit_kind": unit_kind,
                 "record_path": record_path,
                 "baseline_inventory": self.ctx.baseline_inventory,
-                "target_features": self.ctx.target_features,
+                "target_services": self.ctx.target_services,
                 "backlog": self.ctx.backlog,
                 "epics_dir": self.ctx.epics_dir,
             },

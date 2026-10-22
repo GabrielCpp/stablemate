@@ -20,7 +20,7 @@ from data_state_books import (API, ENDPOINTS, FIXTURE, FIXTURE_PAGE, FLOW, FLOW_
 
 HARNESS_DIR = Path(__file__).resolve().parents[1] / "ostler" / "qa" / "harness"
 BASE_URL = "http://localhost:18101"
-SCENARIO = "docs-features-acme-flows-pay-a-bill-journey"
+SCENARIO = "docs-services-acme-flows-pay-a-bill-journey"
 PAY_REF = f"{API}#pay-bill"
 FLOW_WITH_CHECK = FLOW_PAGE + '- fixture: none, because nothing is arranged\n- verify: http_status(code=200)\n'
 
@@ -233,7 +233,7 @@ def test_the_callers_own_read_back_keeps_a_header_only_the_observe_endpoint_arra
 
 OWN_READ = '- path: /me/bill\n- arrange: header(name="authorization", value="Bearer @someone-else.bill_id")\n- verify'
 OWN_VOID = '- arrange: header(name="Authorization", value="Bearer @issued-bill.bill_id")\n'
-SIGNED_IN = "docs/features/acme/fixtures/signed-in.md"
+SIGNED_IN = "docs/services/acme/fixtures/signed-in.md"
 SIGNED_IN_PAGE = FIXTURE_PAGE.replace("bill_id", "token").replace("Issued bill", "Signed in").replace("an issued bill", "a token")
 
 
@@ -283,7 +283,7 @@ def test_a_callers_own_state_read_keeps_the_gap_when_the_fixture_provides_no_suc
     assert [gap for gap in planned.gaps if "@someone-else.token" in gap.detail]
 
 
-ROLELESS = "docs/features/acme/fixtures/roleless.md"
+ROLELESS = "docs/services/acme/fixtures/roleless.md"
 ROLELESS_PAGE = SIGNED_IN_PAGE.replace("Signed in", "Roleless").replace("a token", "a roleless token")
 AS_SIGNED_IN = '- arrange: header(name="Authorization", value="Bearer @signed-in.token")\n'
 

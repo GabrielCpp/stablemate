@@ -17,8 +17,8 @@ status: Not started
 ## Context
 
 The directory is web-app's landing page: everything on hand, read straight from api-service
-by the browser itself. [The widget-list screen](../../../../features/web-app/gui/screens/widget-list.md)
-is that page, and [browse-and-add-widget](../../../../features/web-app/flows/browse-and-add-widget.md)
+by the browser itself. [The widget-list screen](../../../../services/web-app/gui/screens/widget-list.md)
+is that page, and [browse-and-add-widget](../../../../services/web-app/flows/browse-and-add-widget.md)
 is the one journey that starts and ends on it, crossing to the new-widget form and back.
 
 The read has three outcomes, not one: a populated table, an empty-directory notice, and an

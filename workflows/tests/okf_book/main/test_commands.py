@@ -196,7 +196,7 @@ def test_the_ostler_command_runs_only_scaffold_fmt_and_gc(tmp_path: Path) -> Non
 
 
 def _book_with_a_stray_page(repo: Path, service: str) -> None:
-    book = repo / "docs" / "features" / service
+    book = repo / "docs" / "services" / service
     book.mkdir(parents=True)
     _ = (book / "entries.md").write_text(f"---\ntype: entries\ntitle: {service}\n---\n# {service}\n\n- [Kept](kept.md)\n", encoding="utf-8")
     for name in ("kept", "stray"):
@@ -208,7 +208,7 @@ def test_the_ostler_gc_deletes_only_the_unlinked_pages_of_the_writers_book(tmp_p
     for service in ("ledger", "other"):
         _book_with_a_stray_page(repo, service)
     path = write_command_state(tmp_path / "run", WriterCommandState(root=repo, service="ledger"))
-    stray = "docs/features/ledger/stray.md"
+    stray = "docs/services/ledger/stray.md"
 
     listed = run_ostler([str(path), "gc"])
     deleted = run_ostler([str(path), "gc", "--write"])
@@ -216,8 +216,8 @@ def test_the_ostler_gc_deletes_only_the_unlinked_pages_of_the_writers_book(tmp_p
     assert listed == CommandOutput(0, (f"would delete, with --write: {stray}",))
     assert deleted == CommandOutput(0, (f"deleted {stray}",))
     assert not (repo / stray).exists()
-    assert (repo / "docs/features/ledger/kept.md").is_file()
-    assert (repo / "docs/features/other/stray.md").is_file()
+    assert (repo / "docs/services/ledger/kept.md").is_file()
+    assert (repo / "docs/services/other/stray.md").is_file()
     assert run_ostler([str(path), "gc"]) == CommandOutput(0, (NO_DEAD_PAGE,))
     assert run_ostler([str(path), "gc", "--json"]) == CommandOutput(2, (GC_USAGE,))
 
@@ -226,15 +226,15 @@ def test_the_ostler_relink_points_only_other_books_links_at_the_new_page(tmp_pat
     repo = tmp_path / "repo"
     for service in ("ledger", "other"):
         _book_with_a_stray_page(repo, service)
-    linking = repo / "docs/features/other/kept.md"
-    own = repo / "docs/features/ledger/kept.md"
+    linking = repo / "docs/services/other/kept.md"
+    own = repo / "docs/services/ledger/kept.md"
     for page in (linking, own):
         _ = page.write_text(page.read_text(encoding="utf-8") + "\nSee [stray](../ledger/stray.md#sums).\n", encoding="utf-8")
     path = write_command_state(tmp_path / "run", WriterCommandState(root=repo, service="ledger"))
 
     relinked = run_ostler([str(path), "relink", "stray.md", "kept.md"])
 
-    assert relinked == CommandOutput(0, ("relinked 1 links on docs/features/other/kept.md",))
+    assert relinked == CommandOutput(0, ("relinked 1 links on docs/services/other/kept.md",))
     assert "[stray](../ledger/kept.md#sums)" in linking.read_text(encoding="utf-8")
     assert "[stray](../ledger/stray.md#sums)" in own.read_text(encoding="utf-8")
     assert run_ostler([str(path), "relink", "stray.md", "../other/kept.md"]) == CommandOutput(2, (RELINK_USAGE,))
@@ -267,7 +267,7 @@ def _noisy_problems(root: Path, service: str, _source_folder: str = "") -> tuple
     logging.getLogger("noisy").warning("a warning")
     _ = os.write(2, b"a raw write\n")
     _ = subprocess.run([sys.executable, "-c", "print('a child process')"], check=True)
-    return (PageProblem("docs/features/ledger/ledger.md", f"problem in {service}"),)
+    return (PageProblem("docs/services/ledger/ledger.md", f"problem in {service}"),)
 
 
 def test_a_check_prints_only_its_own_lines(
@@ -293,14 +293,14 @@ def test_a_check_scoped_to_pages_prints_their_problems_and_those_the_turn_made_b
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     repo = make_git_repo(tmp_path / "repo")
-    book = repo / "docs/features/ledger"
+    book = repo / "docs/services/ledger"
     book.mkdir(parents=True)
     _ = (book / "touched.md").write_text("changed\n", encoding="utf-8")
     pages = (
-        "docs/features/ledger/mine.md",
-        "docs/features/ledger/touched.md",
-        "docs/features/ledger/other.md",
-        "docs/features/ledger/orphaned.md",
+        "docs/services/ledger/mine.md",
+        "docs/services/ledger/touched.md",
+        "docs/services/ledger/other.md",
+        "docs/services/ledger/orphaned.md",
     )
     monkeypatch.setattr(check_pages, "page_problems", _problems_on(*pages))
     problems_at_turn_start = tuple(PageProblem(page, f"{page} is broken") for page in pages[:3])
@@ -321,7 +321,7 @@ def _page_problems_returning(problems: tuple[PageProblem, ...]) -> Callable[[Pat
 def test_a_check_scoped_to_sections_prints_their_problems_and_not_one_an_edit_above_only_moved(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    page = "docs/features/ledger/http/ledger-api.md"
+    page = "docs/services/ledger/http/ledger-api.md"
     path = tmp_path / page
     path.parent.mkdir(parents=True)
     _ = path.write_text("# Ledger API\n\n### list-rows\n\n- does: lists\n\n### drop-row\n\n- does: drops\n", encoding="utf-8")
@@ -345,7 +345,7 @@ def test_a_check_scoped_to_sections_prints_their_problems_and_not_one_an_edit_ab
 
 
 def test_a_command_state_reads_the_problems_at_turn_start_an_earlier_run_wrote_as_texts(tmp_path: Path) -> None:
-    page = "docs/features/ledger/http/ledger-api.md"
+    page = "docs/services/ledger/http/ledger-api.md"
     texts = [f"{page}:4: step-no-verify: a claim has no verify", f"{page} is missing"]
 
     state = WriterCommandState.model_validate({"root": str(tmp_path), "service": "ledger", "problems_at_turn_start": texts})
@@ -358,7 +358,7 @@ def test_a_command_state_reads_the_problems_at_turn_start_an_earlier_run_wrote_a
 
 
 def test_a_check_named_pages_checks_only_those_pages(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    pages = ("docs/features/ledger/mine.md", "docs/features/ledger/other.md")
+    pages = ("docs/services/ledger/mine.md", "docs/services/ledger/other.md")
     monkeypatch.setattr(check_pages, "page_problems", _problems_on(*pages))
     problems_at_turn_start = tuple(PageProblem(page, f"{page} is broken") for page in pages)
     path = write_command_state(tmp_path / "run", WriterCommandState(root=tmp_path, service="ledger", problems_at_turn_start=problems_at_turn_start))

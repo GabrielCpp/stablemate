@@ -9,7 +9,7 @@ from ostler.model import load
 
 from conftest import write
 
-_PAGE = "docs/features/acme/concepts/ledger.md"
+_PAGE = "docs/services/acme/concepts/ledger.md"
 _HEAD = "---\ntype: concept\ntitle: Ledger\n---\n# Ledger\n\n- code: `app.py`\n\n"
 
 

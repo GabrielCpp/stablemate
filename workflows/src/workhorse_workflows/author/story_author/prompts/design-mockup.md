@@ -27,8 +27,8 @@ say so and return cleanly; the writer falls back to the feature doc / reference.
 
 - Story slug: `{{ workhorse_var('story_slug') }}`
 - Story folder: `{{ workhorse_var('story_dir') }}`
-{%- if workhorse_var('features_dir') %}
-- **OKF book root**: `{{ workhorse_var('features_dir') }}` — the existing surface documentation.
+{%- if workhorse_var('services_dir') %}
+- **OKF book root**: `{{ workhorse_var('services_dir') }}` — the existing surface documentation.
   **Read it; never write to it.** Where it already describes this surface in part, it is the content
   the mockup must depict. Do not inspect the app or source code to discover surfaces.
 {%- endif %}

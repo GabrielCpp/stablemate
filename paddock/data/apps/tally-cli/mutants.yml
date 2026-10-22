@@ -29,7 +29,7 @@ mutants:
     story: ledger-init-add
     path: tally/cli.py
     symbols: [main]
-    bullet: "okf:docs/features/tally/tally.md#add-an-expense:status:2"
+    bullet: "okf:docs/services/tally/tally.md#add-an-expense:status:2"
     behavior: >-
       main() folds LedgerError and RowError into one except clause returning 1, so a
       refused amount ("0", "abc") exits 1 instead of 2 — the two error classes a caller
@@ -39,7 +39,7 @@ mutants:
     story: import-csv
     path: tally/ledger.py
     symbols: [parse_rows]
-    bullet: "okf:docs/features/tally/tally.md#import-a-malformed-row:errors:1"
+    bullet: "okf:docs/services/tally/tally.md#import-a-malformed-row:errors:1"
     behavior: >-
       parse_rows enumerates data rows from start=1 instead of start=2, so the refusal
       names a line number one short of the 1-based file line the bad row sits on.
@@ -48,7 +48,7 @@ mutants:
     story: import-csv
     path: tally/cli.py
     symbols: [commit_or_preview]
-    bullet: "okf:docs/features/tally/tally.md#dry-run:semantics:2"
+    bullet: "okf:docs/services/tally/tally.md#dry-run:semantics:2"
     behavior: >-
       commit_or_preview writes the would-be ledger to a `.preview` sibling file on a dry
       run — the real file is untouched, but the dry run now writes somewhere else instead.
@@ -57,7 +57,7 @@ mutants:
     story: report-export
     path: tally/report.py
     symbols: [export_rows]
-    bullet: "okf:docs/features/tally/tally.md#export-to-csv:does:1"
+    bullet: "okf:docs/services/tally/tally.md#export-to-csv:does:1"
     behavior: >-
       export_rows collapses exact duplicates, so a ledger legitimately holding the same
       expense twice (recorded twice via `add`) exports one row, not every entry.
@@ -66,7 +66,7 @@ mutants:
     story: ledger-init-add
     path: tally/cli.py
     symbols: [build_parser]
-    bullet: "okf:docs/features/tally/tally.md#file:semantics:2"
+    bullet: "okf:docs/services/tally/tally.md#file:semantics:2"
     behavior: >-
       `--file` moves off the top-level parser onto each subcommand, so the documented
       global placement `tally --file trip.json init` becomes a usage error.

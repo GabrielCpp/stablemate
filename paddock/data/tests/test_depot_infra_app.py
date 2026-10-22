@@ -73,8 +73,8 @@ def defect_ids() -> list[str]:
 
 def test_the_book_describes_nothing_that_runs() -> None:
     """The premise of the whole fixture, pinned so a later edit cannot quietly dilute it."""
-    features = APP / "docs" / "features"
-    contexts = {path.parent.name for path in features.rglob("*.md")}
+    services = APP / "docs" / "services"
+    contexts = {path.parent.name for path in services.rglob("*.md")}
     assert contexts == {"concepts", "ops"}, sorted(contexts)
     assert not (APP / "compose.yml").exists(), "a stackless fixture may not ship a stack"
     from ostler.api import Ostler  # noqa: PLC0415
@@ -356,7 +356,7 @@ def test_the_stack_contract_is_owed_by_the_story_that_rides_it() -> None:
     """D7's anchor is the coarsest in this key, and that is a deliberate choice worth pinning."""
     audit_rows = [row for row in defects() if row["caught_by"] == "audit"]
     assert [row["id"] for row in audit_rows] == ["D7"], audit_rows
-    assert audit_rows[0]["obligation"] == "okf:docs/features/depot/ops/depot-stack.md:contract"
+    assert audit_rows[0]["obligation"] == "okf:docs/services/depot/ops/depot-stack.md:contract"
 
 
 

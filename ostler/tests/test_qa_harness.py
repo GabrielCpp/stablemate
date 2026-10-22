@@ -179,17 +179,17 @@ def test_describe_recovers_the_screens_a_scenario_vets(tmp_path: Path) -> None:
         tmp_path,
         PLAN.replace(
             '    qa.check("published", True)',
-            '    qa.vet("docs/features/demo/screen.md", name="loaded")\n'
+            '    qa.vet("docs/services/demo/screen.md", name="loaded")\n'
             "    qa.vet(SCREEN)\n"
             '    qa.check("published", True)',
         ).replace(
             'plan(run_id="qa-04-publish", story="04-publish")',
-            'SCREEN = "docs/features/demo/other.md"\n\nplan(run_id="qa-04-publish", story="04-publish")',
+            'SCREEN = "docs/services/demo/other.md"\n\nplan(run_id="qa-04-publish", story="04-publish")',
         ),
     )
 
     vets = {s["id"]: s["vets"] for s in _describe(module)["scenarios"]}
-    assert vets["the-page-is-addressed-by-role"] == ["docs/features/demo/screen.md", "*"]
+    assert vets["the-page-is-addressed-by-role"] == ["docs/services/demo/screen.md", "*"]
     assert vets["publish-records-the-real-author"] == []
 
 

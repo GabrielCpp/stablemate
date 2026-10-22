@@ -26,7 +26,7 @@ from workhorse_workflows.okf_book.main.nodes.writer_stack import KeptStack
 from workhorse_workflows.okf_book.shared.blockers import Blocker, Phase, Side, forget_blocker, read_blockers, record_blocker
 from workhorse_workflows.okf_book.shared.book_compilation import obligation_page
 from workhorse_workflows.okf_book.shared.book_run import ExerciseResult
-from workhorse_workflows.okf_book.shared.entries import FEATURES_DIR
+from workhorse_workflows.okf_book.shared.entries import SERVICES_DIR
 from workhorse_workflows.okf_book.shared.page_check import PageProblem, page_problems, tool_blockers
 from workhorse_workflows.okf_book.shared.scenarios import PLAN_NAME, plan_scenarios
 
@@ -208,7 +208,7 @@ def _on_present_pages(root: Path, records_dir: Path, blocker: Blocker) -> Blocke
 
 
 def _service_of(page: str, services: Iterable[str]) -> str:
-    return next((service for service in services if page.startswith(f"{(FEATURES_DIR / service).as_posix()}/")), "")
+    return next((service for service in services if page.startswith(f"{(SERVICES_DIR / service).as_posix()}/")), "")
 
 
 def settle_gate(root: Path, records_dir: Path, services: Sequence[str]) -> tuple[str, ...]:

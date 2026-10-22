@@ -50,7 +50,8 @@ def test_migration_is_lossless(tmp_path: Path):
     epic_text = (tmp_path / "docs/epics/epic-a/epic.md").read_text()
     assert "build it" in epic_text and "## Seeds" in epic_text and "## Stories" in epic_text
 
-    assert (tmp_path / "docs/features/area/rec.md").exists()
+    assert (tmp_path / "docs/services/area/rec.md").exists()
+    assert not (tmp_path / "docs/features").exists()
     assert todo.list_epics(load(tmp_path)) == ["epic-a"]
 
     report = doctor.run(g)

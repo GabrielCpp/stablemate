@@ -58,7 +58,7 @@ class EpicAuthor(Workflow):
                 "epic": self.ctx.epic,
                 "epic_dir": self.ctx.epic_dir,
                 "roadmap": self.ctx.roadmap_path,
-                "features_dir": self.ctx.features_dir,
+                "services_dir": self.ctx.services_dir,
             },
         )
         if result.status == "blocked":

@@ -40,7 +40,7 @@ def run(qa: Qa, ledger, *argv, timeout: float = 120.0):
 
 def read(qa: Qa, path):
     """What is on disk at `path`, read by a separate process after the command exited."""
-    covers = ["okf:docs/features/tally/concepts/ledger-file.md:contract"]
+    covers = ["okf:docs/services/tally/concepts/ledger-file.md:contract"]
     got = qa.tool("python3").run("-c", _READ, str(path), timeout=60.0)
     qa.require(
         f"the harness can read {path.name} back off disk",
@@ -53,7 +53,7 @@ def read(qa: Qa, path):
 
 def census(qa: Qa, directory):
     """Every file in `directory`, by digest — the witness for "no write at all"."""
-    covers = ["okf:docs/features/tally/concepts/ledger-file.md:contract"]
+    covers = ["okf:docs/services/tally/concepts/ledger-file.md:contract"]
     got = qa.tool("python3").run("-c", _CENSUS, str(directory), timeout=60.0)
     qa.require(
         "the harness can census the directory the scenario owns",
@@ -71,21 +71,21 @@ def census(qa: Qa, directory):
     covers=[
         "ac:1",
         "ac:2",
-        "okf:docs/features/tally/concepts/ledger-file.md:consistency:1",
-        "okf:docs/features/tally/concepts/ledger-file.md:contract",
-        "okf:docs/features/tally/concepts/ledger-file.md:persistence:1",
-        "okf:docs/features/tally/flows/track-a-trip.md:end-state",
-        "okf:docs/features/tally/flows/track-a-trip.md:end:1",
-        "okf:docs/features/tally/flows/track-a-trip.md:start:1",
-        "okf:docs/features/tally/tally.md:contract",
-        "okf:docs/features/tally/tally.md#init:contract",
-        "okf:docs/features/tally/tally.md#init:does:1",
-        "okf:docs/features/tally/tally.md#init-a-ledger:contract",
-        "okf:docs/features/tally/tally.md#init-a-ledger:does:1",
-        "okf:docs/features/tally/tally.md#init-a-ledger:does:2",
-        "okf:docs/features/tally/tally.md#init-a-ledger:status:1",
-        "okf:docs/features/tally/tally.md#init-a-ledger:status:2",
-        "okf:docs/features/tally/tally.md#init-a-ledger:when:1",
+        "okf:docs/services/tally/concepts/ledger-file.md:consistency:1",
+        "okf:docs/services/tally/concepts/ledger-file.md:contract",
+        "okf:docs/services/tally/concepts/ledger-file.md:persistence:1",
+        "okf:docs/services/tally/flows/track-a-trip.md:end-state",
+        "okf:docs/services/tally/flows/track-a-trip.md:end:1",
+        "okf:docs/services/tally/flows/track-a-trip.md:start:1",
+        "okf:docs/services/tally/tally.md:contract",
+        "okf:docs/services/tally/tally.md#init:contract",
+        "okf:docs/services/tally/tally.md#init:does:1",
+        "okf:docs/services/tally/tally.md#init-a-ledger:contract",
+        "okf:docs/services/tally/tally.md#init-a-ledger:does:1",
+        "okf:docs/services/tally/tally.md#init-a-ledger:does:2",
+        "okf:docs/services/tally/tally.md#init-a-ledger:status:1",
+        "okf:docs/services/tally/tally.md#init-a-ledger:status:2",
+        "okf:docs/services/tally/tally.md#init-a-ledger:when:1",
     ],
     preconditions=[
         "the scenario owns an empty directory under the evidence dir, so `init` runs against both states the book names",
@@ -112,7 +112,7 @@ def init_creates_the_ledger_and_refuses_to_overwrite_one(qa: Qa) -> None:
         qa.field(before, "exists") is False,
         actual=qa.field(before, "exists"),
         expected=False,
-        covers=["okf:docs/features/tally/tally.md#init-a-ledger:when:1"],
+        covers=["okf:docs/services/tally/tally.md#init-a-ledger:when:1"],
     )
 
     created = run(qa, ledger, "init", "--currency", "EUR")
@@ -123,10 +123,10 @@ def init_creates_the_ledger_and_refuses_to_overwrite_one(qa: Qa) -> None:
         label="`tally init` in a directory with no ledger exits 0",
         covers=[
             "ac:1",
-            "okf:docs/features/tally/tally.md:contract",
-            "okf:docs/features/tally/tally.md#init:contract",
-            "okf:docs/features/tally/tally.md#init:does:1",
-            "okf:docs/features/tally/tally.md#init-a-ledger:status:1",
+            "okf:docs/services/tally/tally.md:contract",
+            "okf:docs/services/tally/tally.md#init:contract",
+            "okf:docs/services/tally/tally.md#init:does:1",
+            "okf:docs/services/tally/tally.md#init-a-ledger:status:1",
         ],
     )
 
@@ -137,16 +137,16 @@ def init_creates_the_ledger_and_refuses_to_overwrite_one(qa: Qa) -> None:
         subject="tally.json",
         covers=[
             "ac:1",
-            "okf:docs/features/tally/flows/track-a-trip.md:end-state",
-            "okf:docs/features/tally/flows/track-a-trip.md:end:1",
-            "okf:docs/features/tally/flows/track-a-trip.md:start:1",
-            "okf:docs/features/tally/tally.md#init:does:1",
-            "okf:docs/features/tally/tally.md#init-a-ledger:contract",
-            "okf:docs/features/tally/tally.md#init-a-ledger:does:1",
-            "okf:docs/features/tally/tally.md#init-a-ledger:does:2",
-            "okf:docs/features/tally/tally.md#init-a-ledger:status:1",
-            "okf:docs/features/tally/tally.md#init-a-ledger:status:2",
-            "okf:docs/features/tally/tally.md#init-a-ledger:when:1",
+            "okf:docs/services/tally/flows/track-a-trip.md:end-state",
+            "okf:docs/services/tally/flows/track-a-trip.md:end:1",
+            "okf:docs/services/tally/flows/track-a-trip.md:start:1",
+            "okf:docs/services/tally/tally.md#init:does:1",
+            "okf:docs/services/tally/tally.md#init-a-ledger:contract",
+            "okf:docs/services/tally/tally.md#init-a-ledger:does:1",
+            "okf:docs/services/tally/tally.md#init-a-ledger:does:2",
+            "okf:docs/services/tally/tally.md#init-a-ledger:status:1",
+            "okf:docs/services/tally/tally.md#init-a-ledger:status:2",
+            "okf:docs/services/tally/tally.md#init-a-ledger:when:1",
         ],
     )
 
@@ -157,10 +157,10 @@ def init_creates_the_ledger_and_refuses_to_overwrite_one(qa: Qa) -> None:
         actual=sorted(document),
         expected=["currency", "entries"],
         covers=[
-            "okf:docs/features/tally/concepts/ledger-file.md:consistency:1",
-            "okf:docs/features/tally/concepts/ledger-file.md:contract",
-            "okf:docs/features/tally/concepts/ledger-file.md:persistence:1",
-            "okf:docs/features/tally/tally.md#init:does:1",
+            "okf:docs/services/tally/concepts/ledger-file.md:consistency:1",
+            "okf:docs/services/tally/concepts/ledger-file.md:contract",
+            "okf:docs/services/tally/concepts/ledger-file.md:persistence:1",
+            "okf:docs/services/tally/tally.md#init:does:1",
         ],
     )
     qa.check(
@@ -168,7 +168,7 @@ def init_creates_the_ledger_and_refuses_to_overwrite_one(qa: Qa) -> None:
         len(qa.field(document, "entries")) == 0,
         actual=qa.field(document, "entries"),
         expected=[],
-        covers=["ac:1", "okf:docs/features/tally/tally.md#init-a-ledger:does:1"],
+        covers=["ac:1", "okf:docs/services/tally/tally.md#init-a-ledger:does:1"],
     )
 
     recorded = run(qa, ledger, "add", "ana", "taxi", "1250", "2026-03-01")
@@ -176,7 +176,7 @@ def init_creates_the_ledger_and_refuses_to_overwrite_one(qa: Qa) -> None:
         "the scenario could put an entry in the ledger to be protected",
         recorded.ok,
         actual=recorded.stderr[-2000:],
-        covers=["okf:docs/features/tally/tally.md#init-a-ledger:does:2"],
+        covers=["okf:docs/services/tally/tally.md#init-a-ledger:does:2"],
     )
     held = read(qa, ledger)
 
@@ -188,8 +188,8 @@ def init_creates_the_ledger_and_refuses_to_overwrite_one(qa: Qa) -> None:
         label="`tally init` where a ledger is already there exits 1",
         covers=[
             "ac:2",
-            "okf:docs/features/tally/tally.md:contract",
-            "okf:docs/features/tally/tally.md#init-a-ledger:status:2",
+            "okf:docs/services/tally/tally.md:contract",
+            "okf:docs/services/tally/tally.md#init-a-ledger:status:2",
         ],
     )
 
@@ -200,12 +200,12 @@ def init_creates_the_ledger_and_refuses_to_overwrite_one(qa: Qa) -> None:
         subject="tally.json",
         covers=[
             "ac:2",
-            "okf:docs/features/tally/tally.md#init-a-ledger:contract",
-            "okf:docs/features/tally/tally.md#init-a-ledger:does:1",
-            "okf:docs/features/tally/tally.md#init-a-ledger:does:2",
-            "okf:docs/features/tally/tally.md#init-a-ledger:status:1",
-            "okf:docs/features/tally/tally.md#init-a-ledger:status:2",
-            "okf:docs/features/tally/tally.md#init-a-ledger:when:1",
+            "okf:docs/services/tally/tally.md#init-a-ledger:contract",
+            "okf:docs/services/tally/tally.md#init-a-ledger:does:1",
+            "okf:docs/services/tally/tally.md#init-a-ledger:does:2",
+            "okf:docs/services/tally/tally.md#init-a-ledger:status:1",
+            "okf:docs/services/tally/tally.md#init-a-ledger:status:2",
+            "okf:docs/services/tally/tally.md#init-a-ledger:when:1",
         ],
     )
     qa.check(
@@ -215,8 +215,8 @@ def init_creates_the_ledger_and_refuses_to_overwrite_one(qa: Qa) -> None:
         expected=1,
         covers=[
             "ac:2",
-            "okf:docs/features/tally/tally.md#init-a-ledger:does:2",
-            "okf:docs/features/tally/concepts/ledger-file.md:persistence:1",
+            "okf:docs/services/tally/tally.md#init-a-ledger:does:2",
+            "okf:docs/services/tally/concepts/ledger-file.md:persistence:1",
         ],
     )
 
@@ -227,10 +227,10 @@ def init_creates_the_ledger_and_refuses_to_overwrite_one(qa: Qa) -> None:
     timeout=600.0,
     covers=[
         "ac:1",
-        "okf:docs/features/tally/tally.md#currency:contract",
-        "okf:docs/features/tally/tally.md#currency:default:1",
-        "okf:docs/features/tally/tally.md#currency:required:1",
-        "okf:docs/features/tally/tally.md#currency:semantics:1",
+        "okf:docs/services/tally/tally.md#currency:contract",
+        "okf:docs/services/tally/tally.md#currency:default:1",
+        "okf:docs/services/tally/tally.md#currency:required:1",
+        "okf:docs/services/tally/tally.md#currency:semantics:1",
     ],
     preconditions=[
         "two ledgers, each named with `--file`: one initialised with `--currency` and one without it",
@@ -256,7 +256,7 @@ def the_currency_is_recorded_once_at_init_and_never_moves(qa: Qa) -> None:
         fell_back.exit_code == 0,
         actual=fell_back.stderr[-2000:],
         expected=0,
-        covers=["okf:docs/features/tally/tally.md#currency:required:1"],
+        covers=["okf:docs/services/tally/tally.md#currency:required:1"],
     )
     told = read(qa, default)
     qa.verify(
@@ -266,8 +266,8 @@ def the_currency_is_recorded_once_at_init_and_never_moves(qa: Qa) -> None:
         equals="EUR",
         covers=[
             "ac:1",
-            "okf:docs/features/tally/tally.md#currency:contract",
-            "okf:docs/features/tally/tally.md#currency:default:1",
+            "okf:docs/services/tally/tally.md#currency:contract",
+            "okf:docs/services/tally/tally.md#currency:default:1",
         ],
     )
 
@@ -276,14 +276,14 @@ def the_currency_is_recorded_once_at_init_and_never_moves(qa: Qa) -> None:
         "`init --currency USD` succeeds",
         chosen.ok,
         actual=chosen.stderr[-2000:],
-        covers=["okf:docs/features/tally/tally.md#currency:contract"],
+        covers=["okf:docs/services/tally/tally.md#currency:contract"],
     )
     spent = run(qa, named, "add", "bo", "coffee", "350", "2026-03-02")
     qa.require(
         "an expense lands in the ledger that named its currency",
         spent.ok,
         actual=spent.stderr[-2000:],
-        covers=["okf:docs/features/tally/tally.md#currency:semantics:1"],
+        covers=["okf:docs/services/tally/tally.md#currency:semantics:1"],
     )
     still = json.loads(qa.field(read(qa, named), "text"))
     qa.check(
@@ -293,8 +293,8 @@ def the_currency_is_recorded_once_at_init_and_never_moves(qa: Qa) -> None:
         expected="USD",
         covers=[
             "ac:1",
-            "okf:docs/features/tally/tally.md#currency:semantics:1",
-            "okf:docs/features/tally/tally.md#currency:contract",
+            "okf:docs/services/tally/tally.md#currency:semantics:1",
+            "okf:docs/services/tally/tally.md#currency:contract",
         ],
     )
     qa.check(
@@ -302,7 +302,7 @@ def the_currency_is_recorded_once_at_init_and_never_moves(qa: Qa) -> None:
         qa.field(json.loads(qa.field(told, "text")), "currency") != qa.field(still, "currency"),
         actual=[qa.field(json.loads(qa.field(told, "text")), "currency"), qa.field(still, "currency")],
         expected=["EUR", "USD"],
-        covers=["okf:docs/features/tally/tally.md#currency:default:1"],
+        covers=["okf:docs/services/tally/tally.md#currency:default:1"],
     )
 
 
@@ -314,16 +314,16 @@ def the_currency_is_recorded_once_at_init_and_never_moves(qa: Qa) -> None:
         "ac:3",
         "ac:4",
         "ac:6",
-        "okf:docs/features/tally/concepts/ledger-file.md:consistency:2",
-        "okf:docs/features/tally/concepts/ledger-file.md:persistence:1",
-        "okf:docs/features/tally/tally.md:contract",
-        "okf:docs/features/tally/tally.md#add:contract",
-        "okf:docs/features/tally/tally.md#add:does:1",
-        "okf:docs/features/tally/tally.md#add-an-expense:contract",
-        "okf:docs/features/tally/tally.md#add-an-expense:does:1",
-        "okf:docs/features/tally/tally.md#add-an-expense:errors:1",
-        "okf:docs/features/tally/tally.md#add-an-expense:status:1",
-        "okf:docs/features/tally/tally.md#add-an-expense:status:2",
+        "okf:docs/services/tally/concepts/ledger-file.md:consistency:2",
+        "okf:docs/services/tally/concepts/ledger-file.md:persistence:1",
+        "okf:docs/services/tally/tally.md:contract",
+        "okf:docs/services/tally/tally.md#add:contract",
+        "okf:docs/services/tally/tally.md#add:does:1",
+        "okf:docs/services/tally/tally.md#add-an-expense:contract",
+        "okf:docs/services/tally/tally.md#add-an-expense:does:1",
+        "okf:docs/services/tally/tally.md#add-an-expense:errors:1",
+        "okf:docs/services/tally/tally.md#add-an-expense:status:1",
+        "okf:docs/services/tally/tally.md#add-an-expense:status:2",
     ],
     preconditions=[
         "a ledger this scenario created, holding nothing, so the count after one `add` is the count of that `add`",
@@ -349,7 +349,7 @@ def add_records_one_expense_and_refuses_an_amount_that_is_not_money(qa: Qa) -> N
         "the scenario has a ledger to add to",
         started.ok,
         actual=started.stderr[-2000:],
-        covers=["okf:docs/features/tally/tally.md#add:contract"],
+        covers=["okf:docs/services/tally/tally.md#add:contract"],
     )
 
     recorded = run(qa, ledger, "add", "ana", "dinner", "4200", "2026-03-03")
@@ -360,9 +360,9 @@ def add_records_one_expense_and_refuses_an_amount_that_is_not_money(qa: Qa) -> N
         label="`tally add` exits 0 when the expense was recorded",
         covers=[
             "ac:3",
-            "okf:docs/features/tally/tally.md:contract",
-            "okf:docs/features/tally/tally.md#add:does:1",
-            "okf:docs/features/tally/tally.md#add-an-expense:status:1",
+            "okf:docs/services/tally/tally.md:contract",
+            "okf:docs/services/tally/tally.md#add:does:1",
+            "okf:docs/services/tally/tally.md#add-an-expense:status:1",
         ],
     )
 
@@ -374,12 +374,12 @@ def add_records_one_expense_and_refuses_an_amount_that_is_not_money(qa: Qa) -> N
         equals=1,
         covers=[
             "ac:3",
-            "okf:docs/features/tally/tally.md#add:does:1",
-            "okf:docs/features/tally/tally.md#add-an-expense:contract",
-            "okf:docs/features/tally/tally.md#add-an-expense:does:1",
-            "okf:docs/features/tally/tally.md#add-an-expense:errors:1",
-            "okf:docs/features/tally/tally.md#add-an-expense:status:1",
-            "okf:docs/features/tally/tally.md#add-an-expense:status:2",
+            "okf:docs/services/tally/tally.md#add:does:1",
+            "okf:docs/services/tally/tally.md#add-an-expense:contract",
+            "okf:docs/services/tally/tally.md#add-an-expense:does:1",
+            "okf:docs/services/tally/tally.md#add-an-expense:errors:1",
+            "okf:docs/services/tally/tally.md#add-an-expense:status:1",
+            "okf:docs/services/tally/tally.md#add-an-expense:status:2",
         ],
     )
     qa.check(
@@ -389,8 +389,8 @@ def add_records_one_expense_and_refuses_an_amount_that_is_not_money(qa: Qa) -> N
         expected="ana",
         covers=[
             "ac:3",
-            "okf:docs/features/tally/concepts/ledger-file.md:persistence:1",
-            "okf:docs/features/tally/tally.md#add:does:1",
+            "okf:docs/services/tally/concepts/ledger-file.md:persistence:1",
+            "okf:docs/services/tally/tally.md#add:does:1",
         ],
     )
 
@@ -402,9 +402,9 @@ def add_records_one_expense_and_refuses_an_amount_that_is_not_money(qa: Qa) -> N
         label="an amount that is not money exits 2",
         covers=[
             "ac:4",
-            "okf:docs/features/tally/tally.md:contract",
-            "okf:docs/features/tally/tally.md#add-an-expense:status:2",
-            "okf:docs/features/tally/tally.md#add-an-expense:errors:1",
+            "okf:docs/services/tally/tally.md:contract",
+            "okf:docs/services/tally/tally.md#add-an-expense:status:2",
+            "okf:docs/services/tally/tally.md#add-an-expense:errors:1",
         ],
     )
     qa.check(
@@ -412,7 +412,7 @@ def add_records_one_expense_and_refuses_an_amount_that_is_not_money(qa: Qa) -> N
         len(refused.stderr.strip()) > 0 and refused.stdout == "",
         actual=[refused.stdout, refused.stderr[-500:]],
         expected="a diagnostic on stderr and an empty stdout",
-        covers=["ac:6", "okf:docs/features/tally/tally.md#add-an-expense:errors:1"],
+        covers=["ac:6", "okf:docs/services/tally/tally.md#add-an-expense:errors:1"],
     )
 
     stood = read(qa, ledger)
@@ -422,11 +422,11 @@ def add_records_one_expense_and_refuses_an_amount_that_is_not_money(qa: Qa) -> N
         subject="tally.json",
         covers=[
             "ac:4",
-            "okf:docs/features/tally/tally.md#add-an-expense:contract",
-            "okf:docs/features/tally/tally.md#add-an-expense:does:1",
-            "okf:docs/features/tally/tally.md#add-an-expense:errors:1",
-            "okf:docs/features/tally/tally.md#add-an-expense:status:1",
-            "okf:docs/features/tally/tally.md#add-an-expense:status:2",
+            "okf:docs/services/tally/tally.md#add-an-expense:contract",
+            "okf:docs/services/tally/tally.md#add-an-expense:does:1",
+            "okf:docs/services/tally/tally.md#add-an-expense:errors:1",
+            "okf:docs/services/tally/tally.md#add-an-expense:status:1",
+            "okf:docs/services/tally/tally.md#add-an-expense:status:2",
         ],
     )
 
@@ -436,7 +436,7 @@ def add_records_one_expense_and_refuses_an_amount_that_is_not_money(qa: Qa) -> N
         sorted(left) == ["tally.json"],
         actual=sorted(left),
         expected=["tally.json"],
-        covers=["okf:docs/features/tally/concepts/ledger-file.md:consistency:2"],
+        covers=["okf:docs/services/tally/concepts/ledger-file.md:consistency:2"],
     )
 
 
@@ -447,12 +447,12 @@ def add_records_one_expense_and_refuses_an_amount_that_is_not_money(qa: Qa) -> N
     covers=[
         "ac:5",
         "ac:6",
-        "okf:docs/features/tally/tally.md#dry-run:contract",
-        "okf:docs/features/tally/tally.md#dry-run:default:1",
-        "okf:docs/features/tally/tally.md#dry-run:required:1",
-        "okf:docs/features/tally/tally.md#dry-run:semantics:1",
-        "okf:docs/features/tally/tally.md#dry-run:semantics:2",
-        "okf:docs/features/tally/tally.md#dry-run:semantics:3",
+        "okf:docs/services/tally/tally.md#dry-run:contract",
+        "okf:docs/services/tally/tally.md#dry-run:default:1",
+        "okf:docs/services/tally/tally.md#dry-run:required:1",
+        "okf:docs/services/tally/tally.md#dry-run:semantics:1",
+        "okf:docs/services/tally/tally.md#dry-run:semantics:2",
+        "okf:docs/services/tally/tally.md#dry-run:semantics:3",
     ],
     preconditions=[
         "a ledger holding one entry, so a dry run has both something to leave alone and something it could plausibly rewrite",
@@ -478,14 +478,14 @@ def a_dry_run_reports_what_it_would_do_and_writes_nothing_anywhere(qa: Qa) -> No
         "the scenario has a ledger",
         started.ok,
         actual=started.stderr[-2000:],
-        covers=["okf:docs/features/tally/tally.md#dry-run:contract"],
+        covers=["okf:docs/services/tally/tally.md#dry-run:contract"],
     )
     seeded = run(qa, ledger, "add", "ana", "hotel", "9000", "2026-03-05")
     qa.require(
         "the ledger holds something a dry run could damage",
         seeded.ok,
         actual=seeded.stderr[-2000:],
-        covers=["okf:docs/features/tally/tally.md#dry-run:semantics:1"],
+        covers=["okf:docs/services/tally/tally.md#dry-run:semantics:1"],
     )
 
     before = census(qa, directory)
@@ -499,8 +499,8 @@ def a_dry_run_reports_what_it_would_do_and_writes_nothing_anywhere(qa: Qa) -> No
         label="a dry run still exits 0",
         covers=[
             "ac:5",
-            "okf:docs/features/tally/tally.md#dry-run:contract",
-            "okf:docs/features/tally/tally.md#dry-run:semantics:3",
+            "okf:docs/services/tally/tally.md#dry-run:contract",
+            "okf:docs/services/tally/tally.md#dry-run:semantics:3",
         ],
     )
     qa.check(
@@ -508,13 +508,13 @@ def a_dry_run_reports_what_it_would_do_and_writes_nothing_anywhere(qa: Qa) -> No
         "dry-run" in previewed.stderr and previewed.stdout == "",
         actual=[previewed.stdout, previewed.stderr[-500:]],
         expected="a preview line on stderr and an empty stdout",
-        covers=["ac:5", "ac:6", "okf:docs/features/tally/tally.md#dry-run:semantics:3"],
+        covers=["ac:5", "ac:6", "okf:docs/services/tally/tally.md#dry-run:semantics:3"],
     )
     qa.verify(
         "unchanged",
         ({"tally.json": before.get("tally.json")}, {"tally.json": after.get("tally.json")}),
         subject="tally.json",
-        covers=["ac:5", "okf:docs/features/tally/tally.md#dry-run:semantics:1"],
+        covers=["ac:5", "okf:docs/services/tally/tally.md#dry-run:semantics:1"],
     )
     qa.verify(
         "unchanged",
@@ -522,8 +522,8 @@ def a_dry_run_reports_what_it_would_do_and_writes_nothing_anywhere(qa: Qa) -> No
         subject="the working directory",
         covers=[
             "ac:5",
-            "okf:docs/features/tally/tally.md#dry-run:semantics:2",
-            "okf:docs/features/tally/tally.md#dry-run:contract",
+            "okf:docs/services/tally/tally.md#dry-run:semantics:2",
+            "okf:docs/services/tally/tally.md#dry-run:contract",
         ],
     )
 
@@ -535,8 +535,8 @@ def a_dry_run_reports_what_it_would_do_and_writes_nothing_anywhere(qa: Qa) -> No
         actual=[committed.exit_code, settled.get("tally.json"), after.get("tally.json")],
         expected="a different digest, from an invocation that differs only by the flag",
         covers=[
-            "okf:docs/features/tally/tally.md#dry-run:default:1",
-            "okf:docs/features/tally/tally.md#dry-run:required:1",
+            "okf:docs/services/tally/tally.md#dry-run:default:1",
+            "okf:docs/services/tally/tally.md#dry-run:required:1",
         ],
     )
 
@@ -546,12 +546,12 @@ def a_dry_run_reports_what_it_would_do_and_writes_nothing_anywhere(qa: Qa) -> No
     mechanism="live",
     timeout=600.0,
     covers=[
-        "okf:docs/features/tally/tally.md:contract",
-        "okf:docs/features/tally/tally.md#file:contract",
-        "okf:docs/features/tally/tally.md#file:default:1",
-        "okf:docs/features/tally/tally.md#file:required:1",
-        "okf:docs/features/tally/tally.md#file:semantics:1",
-        "okf:docs/features/tally/tally.md#file:semantics:2",
+        "okf:docs/services/tally/tally.md:contract",
+        "okf:docs/services/tally/tally.md#file:contract",
+        "okf:docs/services/tally/tally.md#file:default:1",
+        "okf:docs/services/tally/tally.md#file:required:1",
+        "okf:docs/services/tally/tally.md#file:semantics:1",
+        "okf:docs/services/tally/tally.md#file:semantics:2",
     ],
     preconditions=[
         "two ledgers in one directory, so `--file` is the only thing separating them",
@@ -576,7 +576,7 @@ def two_ledgers_in_one_directory_never_see_each_other(qa: Qa) -> None:
             f"the scenario could create {ledger.name}",
             started.ok,
             actual=started.stderr[-2000:],
-            covers=["okf:docs/features/tally/tally.md#file:contract"],
+            covers=["okf:docs/services/tally/tally.md#file:contract"],
         )
 
     untouched = read(qa, there)
@@ -585,7 +585,7 @@ def two_ledgers_in_one_directory_never_see_each_other(qa: Qa) -> None:
         "one of the two ledgers took an expense",
         recorded.ok,
         actual=recorded.stderr[-2000:],
-        covers=["okf:docs/features/tally/tally.md#file:semantics:1"],
+        covers=["okf:docs/services/tally/tally.md#file:semantics:1"],
     )
 
     trip = json.loads(qa.field(read(qa, here), "text"))
@@ -595,7 +595,7 @@ def two_ledgers_in_one_directory_never_see_each_other(qa: Qa) -> None:
         len(qa.field(trip, "entries")) == 1,
         actual=qa.field(trip, "entries"),
         expected=1,
-        covers=["okf:docs/features/tally/tally.md#file:semantics:1"],
+        covers=["okf:docs/services/tally/tally.md#file:semantics:1"],
     )
     qa.check(
         "the other ledger in the same directory never saw it",
@@ -603,8 +603,8 @@ def two_ledgers_in_one_directory_never_see_each_other(qa: Qa) -> None:
         actual=qa.field(rent, "entries"),
         expected=0,
         covers=[
-            "okf:docs/features/tally/tally.md#file:semantics:1",
-            "okf:docs/features/tally/tally.md#file:contract",
+            "okf:docs/services/tally/tally.md#file:semantics:1",
+            "okf:docs/services/tally/tally.md#file:contract",
         ],
     )
     stood = read(qa, there)
@@ -612,7 +612,7 @@ def two_ledgers_in_one_directory_never_see_each_other(qa: Qa) -> None:
         "unchanged",
         ({"rent.json": qa.field(untouched, "sha256")}, {"rent.json": qa.field(stood, "sha256")}),
         subject="the ledger --file did not name",
-        covers=["okf:docs/features/tally/tally.md#file:semantics:1"],
+        covers=["okf:docs/services/tally/tally.md#file:semantics:1"],
     )
 
     described = qa.tool("python3").run("-m", "tally", "--help", timeout=60.0)
@@ -622,8 +622,8 @@ def two_ledgers_in_one_directory_never_see_each_other(qa: Qa) -> None:
         actual=described.stdout[:600],
         expected="an optional `--file` documented as defaulting to tally.json",
         covers=[
-            "okf:docs/features/tally/tally.md#file:default:1",
-            "okf:docs/features/tally/tally.md#file:required:1",
+            "okf:docs/services/tally/tally.md#file:default:1",
+            "okf:docs/services/tally/tally.md#file:required:1",
         ],
     )
 
@@ -636,7 +636,7 @@ def two_ledgers_in_one_directory_never_see_each_other(qa: Qa) -> None:
         actual=[misplaced.exit_code, misplaced.stderr[-500:]],
         expected="a non-zero exit",
         covers=[
-            "okf:docs/features/tally/tally.md:contract",
-            "okf:docs/features/tally/tally.md#file:semantics:2",
+            "okf:docs/services/tally/tally.md:contract",
+            "okf:docs/services/tally/tally.md#file:semantics:2",
         ],
     )

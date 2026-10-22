@@ -230,7 +230,7 @@ def _build_parser() -> argparse.ArgumentParser:
         help="screen node id the walk starts on (default: the surface's root screen — the one "
              "whose `route:` is the path of its server's `entry-url:`, or `/`)",
     )
-    rc.add_argument("--surface", help="scope to one service (docs/features/<surface>)")
+    rc.add_argument("--surface", help="scope to one service (docs/services/<surface>)")
     rc.add_argument("--json", action="store_true")
 
     lc = sub.add_parser(
@@ -238,13 +238,13 @@ def _build_parser() -> argparse.ArgumentParser:
         help="the Playwright locator for every documented control (and where it is ambiguous)",
     )
     lc.add_argument("screen", nargs="?", help="screen slug or node id; omit for every screen")
-    lc.add_argument("--surface", help="scope to one service (docs/features/<surface>)")
+    lc.add_argument("--surface", help="scope to one service (docs/services/<surface>)")
     lc.add_argument("--json", action="store_true")
 
     gp = sub.add_parser(
         "graph", help="query the node/edge/bullet graph (nested + typed)"
     )
-    gp.add_argument("--surface", help="scope to one service (docs/features/<surface>)")
+    gp.add_argument("--surface", help="scope to one service (docs/services/<surface>)")
     gp.add_argument(
         "--type", dest="etype", help="nodes of this type (concept, field, method, …)"
     )
@@ -282,7 +282,7 @@ def _build_parser() -> argparse.ArgumentParser:
     cv = sub.add_parser(
         "coverage", help="join a book's `code:` citations against a source inventory"
     )
-    cv.add_argument("--surface", help="scope to one book (docs/features/<surface>)")
+    cv.add_argument("--surface", help="scope to one book (docs/services/<surface>)")
     cv.add_argument(
         "--inventory", required=True, metavar="PATH",
         help="the source inventory to diff against",
@@ -302,7 +302,7 @@ def _build_parser() -> argparse.ArgumentParser:
         "plan",
         help="the stale set — uncovered, drifted, moved and dangling `code:` targets",
     )
-    bfp.add_argument("--surface", help="scope to one book (docs/features/<surface>)")
+    bfp.add_argument("--surface", help="scope to one book (docs/services/<surface>)")
     bfp.add_argument(
         "--inventory", required=True, metavar="PATH",
         help="the source inventory to diff against — the same artifact `ostler coverage` reads",
@@ -539,14 +539,14 @@ def _build_parser() -> argparse.ArgumentParser:
         help="move each endpoint of a server page to its own page beside it, "
         "with the invocations that call it, rewriting every link the move touches",
     )
-    ce.add_argument("server", help="the server page, relative to the repo or to docs/features")
+    ce.add_argument("server", help="the server page, relative to the repo or to docs/services")
     cf = esub.add_parser(
         "carve-fragments",
         parents=[write_parent],
         help="move the subsections of a page's largest sections onto fragment pages beside it "
         "until it fits the page size limit, rewriting every link the move touches",
     )
-    cf.add_argument("page", help="the page, relative to the repo or to docs/features")
+    cf.add_argument("page", help="the page, relative to the repo or to docs/services")
 
     sc = sub.add_parser(
         "scaffold", help="create a UI-profile node in the right place (§9)"
@@ -554,7 +554,7 @@ def _build_parser() -> argparse.ArgumentParser:
     sc.add_argument("type", help=f"one of {', '.join(registry.UI_TYPES_BY_NAME)}")
     sc.add_argument("name")
     sc.add_argument(
-        "--service", help="file-level types: the service subtree (docs/features/<svc>/)"
+        "--service", help="file-level types: the service subtree (docs/services/<svc>/)"
     )
     sc.add_argument(
         "--in",
@@ -568,7 +568,7 @@ def _build_parser() -> argparse.ArgumentParser:
         "fmt", help="canonicalize UI-profile docs (frontmatter/bullets/headings)"
     )
     fm.add_argument(
-        "paths", nargs="*", help="files to format (default: all docs/features/**/*.md)"
+        "paths", nargs="*", help="files to format (default: all docs/services/**/*.md)"
     )
     fm.add_argument(
         "--check",
@@ -580,7 +580,7 @@ def _build_parser() -> argparse.ArgumentParser:
         "autofix", help="fix shape-detectable format drift (e.g. verify: holding test ids)"
     )
     af.add_argument(
-        "paths", nargs="*", help="files to fix (default: all docs/features/**/*.md)"
+        "paths", nargs="*", help="files to fix (default: all docs/services/**/*.md)"
     )
     af.add_argument(
         "--check",
@@ -859,7 +859,7 @@ def _build_parser() -> argparse.ArgumentParser:
     qa_stack_up.add_argument("--runbook", default="",
                              help="which runbook, when the book carries more than one")
     qa_stack_up.add_argument("--spec", default="",
-                             help="the qa context packet directory; its `featuresRoot` says "
+                             help="the qa context packet directory; its `servicesRoot` says "
                                   "which book to bring up")
     qa_stack_up.add_argument("--lease", default="",
                              help="the name of this run's copy, for an environment copied per run "
@@ -868,7 +868,7 @@ def _build_parser() -> argparse.ArgumentParser:
     qa_stack_down = qa_stack_ops.add_parser("down", help="run the declared teardown recipe")
     qa_stack_down.add_argument("--runbook", default="")
     qa_stack_down.add_argument("--spec", default="",
-                               help="the qa context packet directory; its `featuresRoot` "
+                               help="the qa context packet directory; its `servicesRoot` "
                                     "says which book to tear down")
     qa_stack_down.add_argument("--lease", default="",
                                help="the name of this run's copy, for an environment copied per run "
@@ -900,7 +900,7 @@ def _build_parser() -> argparse.ArgumentParser:
     qa_context.add_argument("--base", required=True)
     qa_context.add_argument("--head", default="WORKTREE")
     qa_context.add_argument("--spec", required=True, type=Path)
-    qa_context.add_argument("--features-root", default="",
+    qa_context.add_argument("--services-root", default="",
                             help="repo-relative feature book; default: as configured")
     qa_context.add_argument(
         "--source-root",
@@ -1057,17 +1057,17 @@ def _parse_checkouts(raw_checkouts: list[str]) -> dict[str, Path] | None:
 
 
 def _packet_aim(spec: str, root: Path) -> str:
-    """The `featuresRoot` the qa context packet in `spec` recorded, normalised against `root`."""
+    """The `servicesRoot` the qa context packet in `spec` recorded, normalised against `root`."""
     if not spec:
-        return path_mod.resolve_features_root(None, root)
+        return path_mod.resolve_services_root(None, root)
     packet = Path(spec) / provenance.CONTEXT_FILE
     if not packet.is_file():
-        return path_mod.resolve_features_root(None, root)
+        return path_mod.resolve_services_root(None, root)
     try:
         data = json.loads(packet.read_text(encoding="utf-8"))
     except (OSError, ValueError):
-        return path_mod.resolve_features_root(None, root)
-    return path_mod.resolve_features_root(data.get("featuresRoot"), root)
+        return path_mod.resolve_services_root(None, root)
+    return path_mod.resolve_services_root(data.get("servicesRoot"), root)
 
 
 def _out(value="") -> None:
@@ -1187,7 +1187,7 @@ def _cmd_stamp_from_catalog(graph, args) -> int:
         print(f"ostler stamp --from-catalog: unreadable sources.json: {exc}", file=sys.stderr)
         return 2
     if catalog is None:
-        print("ostler stamp --from-catalog: no docs/features/sources.json to migrate from",
+        print("ostler stamp --from-catalog: no docs/services/sources.json to migrate from",
               file=sys.stderr)
         return 2
     if args.path:
@@ -1243,7 +1243,7 @@ def _cmd_stamp(graph, args) -> int:
     checkouts = _parse_checkouts(args.checkout)
     if checkouts is None:
         return 2
-    features_root = path_mod.features_root(graph)
+    services_root = path_mod.services_root(graph)
 
     if args.node:
         pages: dict[str, list[tuple[int, int]]] = {}
@@ -1261,7 +1261,7 @@ def _cmd_stamp(graph, args) -> int:
                 only_targets.setdefault(rel, {}).setdefault(node_range, set()).add(file_target)
         results = [
             stamp_mod.stamp_page(
-                graph.root, features_root, rel, line_ranges=ranges,
+                graph.root, services_root, rel, line_ranges=ranges,
                 only_targets=(
                     {r: frozenset(t) for r, t in only_targets[rel].items()}
                     if rel in only_targets else None
@@ -1278,7 +1278,7 @@ def _cmd_stamp(graph, args) -> int:
                   file=sys.stderr)
             return 2
         results = [
-            stamp_mod.stamp_page(graph.root, features_root, rel, checkouts=checkouts)
+            stamp_mod.stamp_page(graph.root, services_root, rel, checkouts=checkouts)
             for rel in scope if rel is not None
         ]
     _print_stamp_results(results, args)
@@ -1700,10 +1700,10 @@ def _cmd_qa(graph, args) -> int:  # noqa: C901 — flat QA subcommand dispatch
         aim = _packet_aim(args.spec, root)
         lease = args.lease or os.environ.get(qa_mod.addresses.LEASE_ENV, "")
         if args.stack_op == "up":
-            result = qa_mod.runbook.cmd_stack_up(root, name=args.runbook, features_root=aim,
+            result = qa_mod.runbook.cmd_stack_up(root, name=args.runbook, services_root=aim,
                                                  lease=lease)
         else:
-            result = qa_mod.runbook.cmd_stack_down(root, name=args.runbook, features_root=aim,
+            result = qa_mod.runbook.cmd_stack_down(root, name=args.runbook, services_root=aim,
                                                    lease=lease)
         if args.json:
             _out(json.dumps(result.data, indent=2))
@@ -1749,7 +1749,7 @@ def _cmd_qa(graph, args) -> int:  # noqa: C901 — flat QA subcommand dispatch
             base=args.base,
             head=args.head,
             source_roots=source_roots,
-            features_root=args.features_root,
+            services_root=args.services_root,
             story_file=story_file,
         )
         if result.status == "invalid":

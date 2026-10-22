@@ -45,8 +45,8 @@ def test_rename_does_not_touch_unrelated_substrings(repo: Path):
 
 
 def test_relink_replaces_path_everywhere(repo: Path):
-    plan = edit.relink(load(repo), "../../../features/area/rec.md",
-                       "../../../features/area/renamed.md")
+    plan = edit.relink(load(repo), "../../../services/area/rec.md",
+                       "../../../services/area/renamed.md")
     assert plan.changes
     plan.apply()
     story = (repo / "docs/epics/epic-a/stories/01-foo/story.md").read_text()
@@ -57,13 +57,13 @@ def test_relink_replaces_path_everywhere(repo: Path):
 def test_edit_dry_run_writes_nothing(repo: Path):
     story = repo / "docs/epics/epic-a/stories/01-foo/story.md"
     before = story.read_text()
-    plan = edit.relink(load(repo), "../../../features/area/rec.md", "../../../features/area/renamed.md")
+    plan = edit.relink(load(repo), "../../../services/area/rec.md", "../../../services/area/renamed.md")
     assert plan.changes
     assert story.read_text() == before
 
 
 def test_relink_unknown_path_is_a_noop(repo: Path):
-    plan = edit.relink(load(repo), "../../../features/area/nope.md", "../../../features/area/other.md")
+    plan = edit.relink(load(repo), "../../../services/area/nope.md", "../../../services/area/other.md")
     assert not plan.changes
 
 

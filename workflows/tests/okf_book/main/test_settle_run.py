@@ -135,7 +135,7 @@ def test_a_repaired_run_whose_every_failure_is_escalated_blocks_nothing_on_the_b
 
 def _book_run(*signatures: Signature) -> ExerciseResult:
     misread = FailedCheck(label="adds", expected="[201]", actual="422", cause=Cause.BOOK, status="422", shape="POST /entries/…",
-                          covers=("okf:docs/features/tally/tally.md#add:does:1",))
+                          covers=("okf:docs/services/tally/tally.md#add:does:1",))
     summary = RunSummary(status="failed", scenarios={"tally-add": ScenarioOutcome(status="failed", failed_checks=(misread,))},
                          signatures=signatures)
     return ExerciseResult(lines=("failed",), summary=summary)
@@ -165,8 +165,8 @@ def test_a_repair_that_leaves_the_book_s_failed_checks_flat_asks_the_attendant_w
     [stall] = [blocker for blocker in read_blockers(tmp_path) if blocker.side is Side.BOOK]
     assert stall.subject == "tally: book: POST /entries/… answered 422"
     assert stall.reason.startswith("the repair did not lower the book's failed checks, lap by lap: 1 → 1; 1 checks failed this way")
-    assert (stall.cause, stall.pages) == ("book", ("docs/features/tally/tally.md",))
-    assert stall.rerun.endswith(" docs/features/tally/tally.md")
+    assert (stall.cause, stall.pages) == ("book", ("docs/services/tally/tally.md",))
+    assert stall.rerun.endswith(" docs/services/tally/tally.md")
 
 
 def test_a_stall_no_signature_attributes_to_the_book_asks_the_attendant_about_the_workflow(tmp_path: Path) -> None:
@@ -179,7 +179,7 @@ def test_a_stall_no_signature_attributes_to_the_book_asks_the_attendant_about_th
 
     [stall] = [blocker for blocker in read_blockers(tmp_path) if blocker.side is Side.WORKFLOW]
     assert stall.subject == "tally: the book's failed checks did not fall"
-    assert stall.pages == ("docs/features/tally/tally.md",)
+    assert stall.pages == ("docs/services/tally/tally.md",)
 
 
 def _probe_run() -> ExerciseResult:
@@ -193,14 +193,14 @@ def test_a_stack_that_cannot_come_up_goes_to_its_runbook_s_writer_once_then_is_t
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     book = _book(tmp_path)
-    runbook = "docs/features/tally/ops/tally-stack.md"
+    runbook = "docs/services/tally/ops/tally-stack.md"
     failures: dict[str, tuple[PageProblem, ...]] = {runbook: (PageProblem(runbook, f"{runbook}: the app's stack cannot come up: port 8080 is taken"),)}
 
     def _runbook(_root: Path, _service: str, exercised: ExerciseResult) -> dict[str, tuple[PageProblem, ...]]:
         return failures if exercised.stack_down else {}
 
     monkeypatch.setattr(flow, "stack_down_failures", _runbook)
-    down = stack_down_result(("gap: okf:docs/features/tally/tally.md#adds:does:1: no-verify-declared: declare a check",), "port 8080 is taken")
+    down = stack_down_result(("gap: okf:docs/services/tally/tally.md#adds:does:1: no-verify-declared: declare a check",), "port 8080 is taken")
 
     sent = book.settle_run(index=0, run_failures_repaired=False, exercised=down)
     assert (sent.state, sent.params["run_failures"], read_blockers(tmp_path)) == ("copy_source", failures, ())
@@ -313,7 +313,7 @@ def test_a_run_whose_checks_pass_on_a_service_no_runbook_starts_goes_to_its_runb
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     book = _book(tmp_path)
-    runbook = "docs/features/tally/ops/tally-stack.md"
+    runbook = "docs/services/tally/ops/tally-stack.md"
     failures: dict[str, tuple[PageProblem, ...]] = {runbook: (PageProblem(runbook, f"{runbook}: the app called localhost:8080"),)}
 
     def _runbook(_root: Path, _service: str, exercised: ExerciseResult) -> dict[str, tuple[PageProblem, ...]]:

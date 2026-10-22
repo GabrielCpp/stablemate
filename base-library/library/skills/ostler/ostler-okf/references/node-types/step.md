@@ -82,7 +82,7 @@ may be `kind: service`.
 ## Minimal example
 
 ```bash
-timeout 30 ostler scaffold step serve --in docs/features/acme/ops/links-local.md
+timeout 30 ostler scaffold step serve --in docs/services/acme/ops/links-local.md
 ```
 
 ```markdown

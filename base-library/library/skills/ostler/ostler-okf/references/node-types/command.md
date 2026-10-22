@@ -55,7 +55,7 @@ when two commands do the same job in different contexts.
 ## Minimal example
 
 ```bash
-timeout 30 ostler scaffold command create --in docs/features/acme/shortener-cli.md
+timeout 30 ostler scaffold command create --in docs/services/acme/shortener-cli.md
 ```
 
 ```markdown

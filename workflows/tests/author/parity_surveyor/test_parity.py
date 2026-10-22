@@ -36,13 +36,13 @@ def test_config_derives_every_path_under_the_survey_dir(
     logger: logging.Logger, repo: Path, write: Callable[[Path, str], Path]
 ) -> None:
     write(repo / "docs/legacy/inventory.json", "{}")
-    (repo / "docs/features").mkdir(parents=True)
+    (repo / "docs/services").mkdir(parents=True)
 
     cfg = load_parity_config(logger, baseline="docs/legacy/inventory.json")
 
     assert cfg.repo_root == str(repo)
     assert cfg.baseline_inventory == "docs/legacy/inventory.json"
-    assert cfg.target_features == "docs/features"
+    assert cfg.target_services == "docs/services"
     assert cfg.survey_dir == "docs/survey/legacy-vs-new"
     assert cfg.inventory == "docs/survey/legacy-vs-new/inventory.json"
     assert cfg.findings_dir == "docs/survey/legacy-vs-new/findings"
@@ -55,7 +55,7 @@ def test_config_honours_an_overridden_survey_dir(
     logger: logging.Logger, repo: Path, write: Callable[[Path, str], Path]
 ) -> None:
     write(repo / "base.json", "{}")
-    (repo / "docs/features").mkdir(parents=True)
+    (repo / "docs/services").mkdir(parents=True)
 
     cfg = load_parity_config(
         logger,
@@ -63,8 +63,8 @@ def test_config_honours_an_overridden_survey_dir(
         survey_dir="docs/parity",
     )
 
-    assert (cfg.target_features, cfg.backlog, cfg.epics_dir) == (
-        "docs/features",
+    assert (cfg.target_services, cfg.backlog, cfg.epics_dir) == (
+        "docs/services",
         "docs/backlog.md",
         "docs/epics",
     )
@@ -77,11 +77,11 @@ def test_config_blank_overrides_fall_back_to_the_defaults(
 ) -> None:
     """The script took `sys.argv[n] or <default>`, so an empty positional meant "default"."""
     write(repo / "base.json", "{}")
-    (repo / "docs/features").mkdir(parents=True)
+    (repo / "docs/services").mkdir(parents=True)
 
     cfg = load_parity_config(logger, baseline="base.json", survey_dir="  ")
 
-    assert cfg.target_features == "docs/features"
+    assert cfg.target_services == "docs/services"
     assert cfg.survey_dir == "docs/survey/legacy-vs-new"
 
 
@@ -89,14 +89,14 @@ def test_config_fails_without_a_baseline_inventory(
     logger: logging.Logger, repo: Path
 ) -> None:
     """A parity survey with no baseline has nothing to be exhaustive about."""
-    (repo / "docs/features").mkdir(parents=True)
+    (repo / "docs/services").mkdir(parents=True)
 
     with pytest.raises(WorkflowFailed, match="baseline inventory not found: docs/legacy.json"):
         load_parity_config(logger, baseline="docs/legacy.json")
 
 
 def test_config_names_an_empty_baseline_as_empty(logger: logging.Logger, repo: Path) -> None:
-    (repo / "docs/features").mkdir(parents=True)
+    (repo / "docs/services").mkdir(parents=True)
 
     with pytest.raises(WorkflowFailed, match=r"baseline inventory not found: \(empty\)"):
         load_parity_config(logger, baseline="")
@@ -108,7 +108,7 @@ def test_config_fails_without_a_target_feature_book(
     """With no target book every legacy surface would be reported as missing."""
     write(repo / "base.json", "{}")
 
-    with pytest.raises(WorkflowFailed, match="target feature book not found: docs/features"):
+    with pytest.raises(WorkflowFailed, match="target feature book not found: docs/services"):
         load_parity_config(logger, baseline="base.json")
 
 

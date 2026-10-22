@@ -22,7 +22,7 @@ from ostler.qa.run import cmd_run, cmd_validate
 from ostler.qa import session
 from ostler.qa.session import _kill_pid
 
-OBLIGATION = "okf:docs/features/demo/item.md:contract"
+OBLIGATION = "okf:docs/services/demo/item.md:contract"
 
 
 @pytest.fixture(autouse=True)
@@ -70,13 +70,13 @@ def _spec(tmp_path: Path) -> Path:
                         "id": OBLIGATION,
                         "kind": "contract",
                         "node": "item",
-                        "source": "docs/features/demo/item.md",
+                        "source": "docs/services/demo/item.md",
                         "requirement": "item is emitted",
                         "evidenceRequired": "live",
                         "reasons": [],
                     }
                 ],
-                "bookFiles": book_files(tmp_path, "docs/features"),
+                "bookFiles": book_files(tmp_path, "docs/services"),
                 "storyFile": None,
             }
         ),
@@ -433,7 +433,7 @@ def test_a_documented_node_is_separated_from_a_genuinely_unknown_id(tmp_path: Pa
     """A node the diff does not touch is not "unknown" — and saying so costs a rework lap."""
     spec = _spec(tmp_path)
     context = json.loads((spec / "qa-okf-context.json").read_text(encoding="utf-8"))
-    context["contracts"] = ["docs/features/demo/api.md#tooling"]
+    context["contracts"] = ["docs/services/demo/api.md#tooling"]
     (spec / "qa-okf-context.json").write_text(json.dumps(context), encoding="utf-8")
     module = _plan(
         spec,
@@ -441,9 +441,9 @@ def test_a_documented_node_is_separated_from_a_genuinely_unknown_id(tmp_path: Pa
             'covers=["{obligation}"]',
             'covers=[\n'
             '    "{obligation}",\n'
-            '    "okf:docs/features/demo/api.md#tooling:contract",  # documented, not owed here\n'
-            '    "okf:docs/features/demo/api.md#tooling:raises:2",  # ditto, one bullet value\n'
-            '    "okf:docs/features/demo/invented.md:contract",     # not in the book at all\n'
+            '    "okf:docs/services/demo/api.md#tooling:contract",  # documented, not owed here\n'
+            '    "okf:docs/services/demo/api.md#tooling:raises:2",  # ditto, one bullet value\n'
+            '    "okf:docs/services/demo/invented.md:contract",     # not in the book at all\n'
             ']',
         ),
     )
@@ -506,7 +506,7 @@ def test_recording_cannot_be_disabled_by_the_plan_itself(tmp_path: Path) -> None
         ).replace(
             '    qa.check("the value is ok", True, actual="ok", expected="ok",'
             ' covers=["{obligation}"])',
-            '    qa.vet("docs/features/demo/item.md", name="loaded")\n'
+            '    qa.vet("docs/services/demo/item.md", name="loaded")\n'
             '    qa.check("the value is ok", True, actual="ok", expected="ok",\n'
             '             covers=["{obligation}"])',
         ),

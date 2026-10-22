@@ -169,7 +169,7 @@ def test_ts_parse_errors_reject_whole_file_without_partial_context(tmp_path: Pat
 
 def test_ts_book_claims_bind_to_typescript_symbols(tmp_path: Path) -> None:
     (tmp_path / "service.ts").write_text(TS, encoding="utf-8")
-    book = tmp_path / "docs/features/dispatch.md"
+    book = tmp_path / "docs/services/dispatch.md"
     book.parent.mkdir(parents=True)
     book.write_text("---\ntype: concept\n---\n# Dispatch\n\n## Methods\n\n"
                     "### dispatch\n- does: Appends the selected items to sent.\n- code: service.ts::dispatch\n\n"

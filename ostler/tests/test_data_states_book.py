@@ -52,7 +52,7 @@ def test_states_that_observe_different_endpoints_are_treated_as_told_apart(repo:
 
 
 def test_a_move_naming_a_screen_state_is_refused(repo: Path) -> None:
-    write(repo / "docs/features/acme/screens/bills.md", """---
+    write(repo / "docs/services/acme/screens/bills.md", """---
 type: screen
 title: Bills
 ---
@@ -86,7 +86,7 @@ def test_the_landing_only_and_none_spellings_are_clean(repo: Path) -> None:
 
 
 def test_data_states_on_a_page_that_is_not_a_server_or_cli_page_are_misplaced(repo: Path) -> None:
-    write(repo / "docs/features/acme/screens/bills.md", f"""---
+    write(repo / "docs/services/acme/screens/bills.md", f"""---
 type: screen
 title: Bills
 ---

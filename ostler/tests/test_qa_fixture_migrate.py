@@ -37,26 +37,26 @@ def _agents_yml(root: Path, body: str) -> None:
 def test_a_well_formed_fixture_is_written_as_a_run_step(tmp_path: Path) -> None:
     _agents_yml(tmp_path, ONE_FIXTURE)
 
-    result = fixtures.migrate(tmp_path, "docs/features/acme/fixtures", cfg=_CFG)
+    result = fixtures.migrate(tmp_path, "docs/services/acme/fixtures", cfg=_CFG)
 
     assert result.ok, result.message
-    written = tmp_path / "docs/features/acme/fixtures/three-identities.md"
+    written = tmp_path / "docs/services/acme/fixtures/three-identities.md"
     assert written.is_file()
     body = written.read_text(encoding="utf-8")
     assert "title: Three identities" in body
     assert "- run: node auth/seed.mjs --holders=2" in body
     assert "provides:" not in body.split("## Steps")[1]
     assert "the adjuster, holder A and holder B exist in the auth emulator" in body
-    assert result.data["paths"] == ["docs/features/acme/fixtures/three-identities.md"]
+    assert result.data["paths"] == ["docs/services/acme/fixtures/three-identities.md"]
 
 
 def test_kind_run_is_the_reading_that_claims_nothing(tmp_path: Path) -> None:
     """`seed` and `run` are different claims and an `agents.yml` entry states neither."""
     _agents_yml(tmp_path, ONE_FIXTURE)
 
-    result = fixtures.migrate(tmp_path, "docs/features/acme/fixtures", cfg=_CFG)
+    result = fixtures.migrate(tmp_path, "docs/services/acme/fixtures", cfg=_CFG)
 
-    body = (tmp_path / "docs/features/acme/fixtures/three-identities.md").read_text("utf-8")
+    body = (tmp_path / "docs/services/acme/fixtures/three-identities.md").read_text("utf-8")
     assert "- kind: run" in body
     assert "claims nothing" in result.message
 
@@ -65,50 +65,50 @@ def test_the_outcome_says_the_provides_did_not_survive(tmp_path: Path) -> None:
     """A migration that drops the field its own loader calls load-bearing must say so."""
     _agents_yml(tmp_path, ONE_FIXTURE)
 
-    result = fixtures.migrate(tmp_path, "docs/features/acme/fixtures", cfg=_CFG)
+    result = fixtures.migrate(tmp_path, "docs/services/acme/fixtures", cfg=_CFG)
 
     assert result.ok, result.message
     assert result.status == "incomplete"
     assert "provides:` did not survive" in result.message
     assert "three-identities.md" in result.message
     assert result.data["provides_not_migrated"] == [
-        "docs/features/acme/fixtures/three-identities.md"]
+        "docs/services/acme/fixtures/three-identities.md"]
 
 
 def test_no_fixtures_declared_is_a_no_op(tmp_path: Path) -> None:
-    result = fixtures.migrate(tmp_path, "docs/features/acme/fixtures")
+    result = fixtures.migrate(tmp_path, "docs/services/acme/fixtures")
 
     assert result.ok
-    assert not (tmp_path / "docs/features/acme/fixtures").exists()
+    assert not (tmp_path / "docs/services/acme/fixtures").exists()
 
 
 def test_a_malformed_declaration_refuses_before_writing_anything(tmp_path: Path) -> None:
     _agents_yml(tmp_path, "qa:\n  tools: [node]\n  fixtures:\n    seeded: 'node auth/seed.mjs'\n")
 
-    result = fixtures.migrate(tmp_path, "docs/features/acme/fixtures", cfg=_CFG)
+    result = fixtures.migrate(tmp_path, "docs/services/acme/fixtures", cfg=_CFG)
 
     assert not result.ok
-    assert not (tmp_path / "docs/features/acme/fixtures").exists()
+    assert not (tmp_path / "docs/services/acme/fixtures").exists()
 
 
 def test_an_unresolved_tool_refuses_before_writing_anything(tmp_path: Path) -> None:
     _agents_yml(tmp_path, ONE_FIXTURE)
 
-    result = fixtures.migrate(tmp_path, "docs/features/acme/fixtures")
+    result = fixtures.migrate(tmp_path, "docs/services/acme/fixtures")
 
     assert not result.ok
     assert "three-identities" in result.message
     assert "node" in result.message
-    assert not (tmp_path / "docs/features/acme/fixtures").exists()
+    assert not (tmp_path / "docs/services/acme/fixtures").exists()
 
 
 def test_an_existing_destination_file_is_never_overwritten(tmp_path: Path) -> None:
     _agents_yml(tmp_path, ONE_FIXTURE)
-    dest = tmp_path / "docs/features/acme/fixtures"
+    dest = tmp_path / "docs/services/acme/fixtures"
     dest.mkdir(parents=True)
     (dest / "three-identities.md").write_text("hand-written\n", encoding="utf-8")
 
-    result = fixtures.migrate(tmp_path, "docs/features/acme/fixtures", cfg=_CFG)
+    result = fixtures.migrate(tmp_path, "docs/services/acme/fixtures", cfg=_CFG)
 
     assert not result.ok
     assert "three-identities" in result.message
@@ -133,7 +133,7 @@ def test_a_migrated_node_round_trips_through_book_fixtures_and_doctor_clean(
     _agents_yml(tmp_path, ONE_FIXTURE)
     write(tmp_path / RUNBOOK_PATH, RUNBOOK)
 
-    result = fixtures.migrate(tmp_path, "docs/features/acme/fixtures", cfg=_CFG)
+    result = fixtures.migrate(tmp_path, "docs/services/acme/fixtures", cfg=_CFG)
     assert result.ok, result.message
     [written_path] = result.data["paths"]
 
@@ -170,13 +170,13 @@ def test_cli_migrate_reports_an_unresolved_tool(
 
     code, out = _run(
         tmp_path,
-        ["qa", "fixtures", "migrate", "--in", "docs/features/acme/fixtures"],
+        ["qa", "fixtures", "migrate", "--in", "docs/services/acme/fixtures"],
         capsys,
     )
 
     assert code == 1
     assert "node" in out
-    assert not (tmp_path / "docs/features/acme/fixtures").exists()
+    assert not (tmp_path / "docs/services/acme/fixtures").exists()
 
 
 def test_cli_migrate_json_envelope_carries_status(
@@ -184,7 +184,7 @@ def test_cli_migrate_json_envelope_carries_status(
 ) -> None:
     code, out = _run(
         tmp_path,
-        ["qa", "fixtures", "migrate", "--in", "docs/features/acme/fixtures", "--json"],
+        ["qa", "fixtures", "migrate", "--in", "docs/services/acme/fixtures", "--json"],
         capsys,
     )
 

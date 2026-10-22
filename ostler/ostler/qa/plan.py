@@ -184,8 +184,8 @@ def _book_drift_problems(context: dict[str, Any], root: Path) -> list[str]:
         for entry in recorded
         if is_mapping(entry) and "path" in entry and "sha256" in entry
     }
-    features_root = path_mod.resolve_features_root(context.get("featuresRoot"), root)
-    current_by_path = {entry["path"]: entry["sha256"] for entry in book_files(root, features_root)}
+    services_root = path_mod.resolve_services_root(context.get("servicesRoot"), root)
+    current_by_path = {entry["path"]: entry["sha256"] for entry in book_files(root, services_root)}
     changed = sorted(
         path
         for path in recorded_by_path.keys() & current_by_path.keys()

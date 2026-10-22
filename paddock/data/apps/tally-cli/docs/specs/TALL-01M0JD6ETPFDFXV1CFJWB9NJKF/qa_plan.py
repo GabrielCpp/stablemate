@@ -47,7 +47,7 @@ def run(qa: Qa, ledger, *argv, timeout: float = 120.0):
 
 def read(qa: Qa, path):
     """What is on disk at `path`, read by a separate process after the command exited."""
-    covers = ["okf:docs/features/tally/tally.md#export:contract"]
+    covers = ["okf:docs/services/tally/tally.md#export:contract"]
     got = qa.tool("python3").run("-c", _READ, str(path), timeout=60.0)
     qa.require(
         f"the harness can read {path.name} back off disk",
@@ -104,15 +104,15 @@ def trip(qa: Qa, ledger):
         started.ok,
         actual=started.stderr[-1000:],
         covers=[
-            "okf:docs/features/tally/tally.md:contract",
-            "okf:docs/features/tally/tally.md#init:contract",
+            "okf:docs/services/tally/tally.md:contract",
+            "okf:docs/services/tally/tally.md#init:contract",
         ],
     )
     qa.verify(
         "created",
         (lines(qa, before), lines(qa, read(qa, ledger))),
         subject="tally.json",
-        covers=["okf:docs/features/tally/tally.md#init:does:1"],
+        covers=["okf:docs/services/tally/tally.md#init:does:1"],
     )
 
     first = run(qa, ledger, "add", "ana", "taxi", "1250", "2026-03-01")
@@ -120,14 +120,14 @@ def trip(qa: Qa, ledger):
         "the scenario could record the first expense",
         first.ok,
         actual=first.stderr[-500:],
-        covers=["okf:docs/features/tally/tally.md#add:contract"],
+        covers=["okf:docs/services/tally/tally.md#add:contract"],
     )
     qa.verify(
         "count",
         entries(qa, ledger),
         subject="entries in the ledger",
         equals=1,
-        covers=["okf:docs/features/tally/tally.md#add:does:1"],
+        covers=["okf:docs/services/tally/tally.md#add:does:1"],
     )
 
     spent = [
@@ -138,7 +138,7 @@ def trip(qa: Qa, ledger):
         "the scenario could build the ledger it reports on",
         all(one.ok for one in spent),
         actual="".join(one.stderr[-500:] for one in spent),
-        covers=["okf:docs/features/tally/tally.md#report:contract"],
+        covers=["okf:docs/services/tally/tally.md#report:contract"],
     )
 
 
@@ -150,17 +150,17 @@ def trip(qa: Qa, ledger):
         "ac:1",
         "ac:2",
         "ac:3",
-        "okf:docs/features/tally/tally.md:contract",
-        "okf:docs/features/tally/tally.md#init:contract",
-        "okf:docs/features/tally/tally.md#init:does:1",
-        "okf:docs/features/tally/tally.md#add:contract",
-        "okf:docs/features/tally/tally.md#add:does:1",
-        "okf:docs/features/tally/tally.md#report:contract",
-        "okf:docs/features/tally/tally.md#report:does:1",
-        "okf:docs/features/tally/tally.md#report-as-json:consistency:1",
-        "okf:docs/features/tally/tally.md#report-as-json:consistency:2",
-        "okf:docs/features/tally/tally.md#report-as-json:contract",
-        "okf:docs/features/tally/tally.md#report-as-json:does:1",
+        "okf:docs/services/tally/tally.md:contract",
+        "okf:docs/services/tally/tally.md#init:contract",
+        "okf:docs/services/tally/tally.md#init:does:1",
+        "okf:docs/services/tally/tally.md#add:contract",
+        "okf:docs/services/tally/tally.md#add:does:1",
+        "okf:docs/services/tally/tally.md#report:contract",
+        "okf:docs/services/tally/tally.md#report:does:1",
+        "okf:docs/services/tally/tally.md#report-as-json:consistency:1",
+        "okf:docs/services/tally/tally.md#report-as-json:consistency:2",
+        "okf:docs/services/tally/tally.md#report-as-json:contract",
+        "okf:docs/services/tally/tally.md#report-as-json:does:1",
     ],
     preconditions=[
         "the ledger holds three expenses across two people, so per-person and overall totals differ",
@@ -190,8 +190,8 @@ def report_json_puts_one_object_on_stdout_and_everything_else_on_stderr(qa: Qa) 
         expected="a report naming 3 entries",
         covers=[
             "ac:1",
-            "okf:docs/features/tally/tally.md#report:contract",
-            "okf:docs/features/tally/tally.md#report:does:1",
+            "okf:docs/services/tally/tally.md#report:contract",
+            "okf:docs/services/tally/tally.md#report:does:1",
         ],
     )
 
@@ -201,7 +201,7 @@ def report_json_puts_one_object_on_stdout_and_everything_else_on_stderr(qa: Qa) 
         piped.exit_code == 0,
         actual=piped.exit_code,
         expected=0,
-        covers=["ac:2", "okf:docs/features/tally/tally.md#report-as-json:contract"],
+        covers=["ac:2", "okf:docs/services/tally/tally.md#report-as-json:contract"],
     )
 
     decoded = None
@@ -215,13 +215,13 @@ def report_json_puts_one_object_on_stdout_and_everything_else_on_stderr(qa: Qa) 
         parsed and isinstance(decoded, dict),
         actual=piped.stdout[-2000:],
         expected="one JSON object and nothing else on stdout",
-        covers=["ac:2", "okf:docs/features/tally/tally.md#report-as-json:consistency:1"],
+        covers=["ac:2", "okf:docs/services/tally/tally.md#report-as-json:consistency:1"],
     )
     qa.require(
         "there is a report to make claims about",
         parsed,
         actual=piped.stdout[-2000:],
-        covers=["okf:docs/features/tally/tally.md#report-as-json:consistency:1"],
+        covers=["okf:docs/services/tally/tally.md#report-as-json:consistency:1"],
     )
     qa.verify(
         "json_path",
@@ -230,10 +230,10 @@ def report_json_puts_one_object_on_stdout_and_everything_else_on_stderr(qa: Qa) 
         equals="EUR",
         covers=[
             "ac:3",
-            "okf:docs/features/tally/tally.md#report-as-json:consistency:1",
-            "okf:docs/features/tally/tally.md#report-as-json:consistency:2",
-            "okf:docs/features/tally/tally.md#report-as-json:contract",
-            "okf:docs/features/tally/tally.md#report-as-json:does:1",
+            "okf:docs/services/tally/tally.md#report-as-json:consistency:1",
+            "okf:docs/services/tally/tally.md#report-as-json:consistency:2",
+            "okf:docs/services/tally/tally.md#report-as-json:contract",
+            "okf:docs/services/tally/tally.md#report-as-json:does:1",
         ],
     )
     qa.check(
@@ -241,7 +241,7 @@ def report_json_puts_one_object_on_stdout_and_everything_else_on_stderr(qa: Qa) 
         "totalling" in piped.stderr and "totalling" not in piped.stdout,
         actual={"stdout": piped.stdout[-1000:], "stderr": piped.stderr[-1000:]},
         expected="the progress line on stderr and absent from stdout",
-        covers=["ac:2", "okf:docs/features/tally/tally.md#report-as-json:consistency:2"],
+        covers=["ac:2", "okf:docs/services/tally/tally.md#report-as-json:consistency:2"],
     )
     qa.verify(
         "json_path",
@@ -251,8 +251,8 @@ def report_json_puts_one_object_on_stdout_and_everything_else_on_stderr(qa: Qa) 
         covers=[
             "ac:1",
             "ac:3",
-            "okf:docs/features/tally/tally.md#report:does:1",
-            "okf:docs/features/tally/tally.md#report-as-json:does:1",
+            "okf:docs/services/tally/tally.md#report:does:1",
+            "okf:docs/services/tally/tally.md#report-as-json:does:1",
         ],
     )
     qa.check(
@@ -260,7 +260,7 @@ def report_json_puts_one_object_on_stdout_and_everything_else_on_stderr(qa: Qa) 
         qa.field(decoded, "entries") == 3 and (sum(qa.field(decoded, "per_person").values()) == qa.field(decoded, "total_cents")),
         actual=decoded,
         expected={"entries": 3, "total_cents": 7450, "per_person": {"ana": 3050, "bo": 4400}},
-        covers=["ac:1", "ac:3", "okf:docs/features/tally/tally.md#report-as-json:does:1"],
+        covers=["ac:1", "ac:3", "okf:docs/services/tally/tally.md#report-as-json:does:1"],
     )
 
 
@@ -271,14 +271,14 @@ def report_json_puts_one_object_on_stdout_and_everything_else_on_stderr(qa: Qa) 
     covers=[
         "ac:4",
         "ac:5",
-        "okf:docs/features/tally/tally.md#export:contract",
-        "okf:docs/features/tally/tally.md#export:does:1",
-        "okf:docs/features/tally/flows/track-a-trip.md:start:1",
-        "okf:docs/features/tally/flows/track-a-trip.md:end:1",
-        "okf:docs/features/tally/flows/track-a-trip.md:end-state",
-        "okf:docs/features/tally/tally.md#export-to-csv:consistency:1",
-        "okf:docs/features/tally/tally.md#export-to-csv:contract",
-        "okf:docs/features/tally/tally.md#export-to-csv:does:1",
+        "okf:docs/services/tally/tally.md#export:contract",
+        "okf:docs/services/tally/tally.md#export:does:1",
+        "okf:docs/services/tally/flows/track-a-trip.md:start:1",
+        "okf:docs/services/tally/flows/track-a-trip.md:end:1",
+        "okf:docs/services/tally/flows/track-a-trip.md:end-state",
+        "okf:docs/services/tally/tally.md#export-to-csv:consistency:1",
+        "okf:docs/services/tally/tally.md#export-to-csv:contract",
+        "okf:docs/services/tally/tally.md#export-to-csv:does:1",
     ],
     preconditions=[
         "the ledger is built the way the journey builds one, with `init` and then `add`",
@@ -308,7 +308,7 @@ def an_export_leads_with_its_header_even_when_there_is_nothing_under_it(qa: Qa) 
         "nothing is at the destination before the export",
         not qa.field(before, "exists"),
         actual=before,
-        covers=["okf:docs/features/tally/tally.md#export:contract"],
+        covers=["okf:docs/services/tally/tally.md#export:contract"],
     )
 
     exported = run(qa, ledger, "export", str(destination))
@@ -319,9 +319,9 @@ def an_export_leads_with_its_header_even_when_there_is_nothing_under_it(qa: Qa) 
         expected="exit 0 and a stderr line naming 3 rows",
         covers=[
             "ac:4",
-            "okf:docs/features/tally/tally.md#export:contract",
-            "okf:docs/features/tally/tally.md#export:does:1",
-            "okf:docs/features/tally/flows/track-a-trip.md:end:1",
+            "okf:docs/services/tally/tally.md#export:contract",
+            "okf:docs/services/tally/tally.md#export:does:1",
+            "okf:docs/services/tally/flows/track-a-trip.md:end:1",
         ],
     )
 
@@ -331,10 +331,10 @@ def an_export_leads_with_its_header_even_when_there_is_nothing_under_it(qa: Qa) 
         (lines(qa, before), lines(qa, after)),
         subject="the exported CSV file",
         covers=[
-            "okf:docs/features/tally/tally.md#export:does:1",
-            "okf:docs/features/tally/tally.md#export-to-csv:consistency:1",
-            "okf:docs/features/tally/tally.md#export-to-csv:contract",
-            "okf:docs/features/tally/tally.md#export-to-csv:does:1",
+            "okf:docs/services/tally/tally.md#export:does:1",
+            "okf:docs/services/tally/tally.md#export-to-csv:consistency:1",
+            "okf:docs/services/tally/tally.md#export-to-csv:contract",
+            "okf:docs/services/tally/tally.md#export-to-csv:does:1",
         ],
     )
 
@@ -344,14 +344,14 @@ def an_export_leads_with_its_header_even_when_there_is_nothing_under_it(qa: Qa) 
         written[:1] == ["who,what,amount_cents,spent_on"],
         actual=written[:1],
         expected=["who,what,amount_cents,spent_on"],
-        covers=["ac:5", "okf:docs/features/tally/tally.md#export-to-csv:consistency:1"],
+        covers=["ac:5", "okf:docs/services/tally/tally.md#export-to-csv:consistency:1"],
     )
     qa.check(
         "under it is one line per entry in the ledger",
         len(written) == 4,
         actual=written,
         expected="a header and three data lines",
-        covers=["ac:4", "okf:docs/features/tally/flows/track-a-trip.md:end:1", "okf:docs/features/tally/tally.md#export-to-csv:does:1"],
+        covers=["ac:4", "okf:docs/services/tally/flows/track-a-trip.md:end:1", "okf:docs/services/tally/tally.md#export-to-csv:does:1"],
     )
 
     walked = run(qa, ledger, "report", "--json")
@@ -359,14 +359,14 @@ def an_export_leads_with_its_header_even_when_there_is_nothing_under_it(qa: Qa) 
         "the journey's ledger still reports after the trip has been handed on",
         walked.ok,
         actual=walked.stderr[-1000:],
-        covers=["okf:docs/features/tally/flows/track-a-trip.md:end-state"],
+        covers=["okf:docs/services/tally/flows/track-a-trip.md:end-state"],
     )
     qa.verify(
         "json_path",
         json.loads(walked.stdout),
         path="$.currency",
         equals="EUR",
-        covers=["okf:docs/features/tally/flows/track-a-trip.md:start:1", "okf:docs/features/tally/flows/track-a-trip.md:end:1", "okf:docs/features/tally/flows/track-a-trip.md:end-state"],
+        covers=["okf:docs/services/tally/flows/track-a-trip.md:start:1", "okf:docs/services/tally/flows/track-a-trip.md:end:1", "okf:docs/services/tally/flows/track-a-trip.md:end-state"],
     )
 
     empty_ledger = qa.artifact("export-empty/tally.json", kind="json")
@@ -377,14 +377,14 @@ def an_export_leads_with_its_header_even_when_there_is_nothing_under_it(qa: Qa) 
         "the scenario could export a ledger with nothing in it",
         started.ok and emptied.ok,
         actual=started.stderr[-1000:] + emptied.stderr[-1000:],
-        covers=["okf:docs/features/tally/tally.md#export-to-csv:consistency:1"],
+        covers=["okf:docs/services/tally/tally.md#export-to-csv:consistency:1"],
     )
     qa.check(
         "the export of an empty ledger is the header alone",
         lines(qa, read(qa, empty_csv)) == ["who,what,amount_cents,spent_on"],
         actual=lines(qa, read(qa, empty_csv)),
         expected=["who,what,amount_cents,spent_on"],
-        covers=["ac:5", "okf:docs/features/tally/tally.md#export-to-csv:consistency:1"],
+        covers=["ac:5", "okf:docs/services/tally/tally.md#export-to-csv:consistency:1"],
     )
 
 
@@ -393,11 +393,11 @@ def an_export_leads_with_its_header_even_when_there_is_nothing_under_it(qa: Qa) 
     mechanism="live",
     timeout=600.0,
     covers=[
-        "okf:docs/features/tally/tally.md#file:contract",
-        "okf:docs/features/tally/tally.md#file:default:1",
-        "okf:docs/features/tally/tally.md#file:required:1",
-        "okf:docs/features/tally/tally.md#file:semantics:1",
-        "okf:docs/features/tally/tally.md#file:semantics:2",
+        "okf:docs/services/tally/tally.md#file:contract",
+        "okf:docs/services/tally/tally.md#file:default:1",
+        "okf:docs/services/tally/tally.md#file:required:1",
+        "okf:docs/services/tally/tally.md#file:semantics:1",
+        "okf:docs/services/tally/tally.md#file:semantics:2",
     ],
     preconditions=[
         "two ledgers in one directory, with different contents, each named on its own invocations",
@@ -425,7 +425,7 @@ def a_report_totals_the_ledger_it_was_given_and_not_its_neighbour(qa: Qa) -> Non
         "the second ledger exists and holds something the first one does not",
         started.ok and lone.ok,
         actual=started.stderr[-1000:] + lone.stderr[-1000:],
-        covers=["okf:docs/features/tally/tally.md#file:contract"],
+        covers=["okf:docs/services/tally/tally.md#file:contract"],
     )
 
     neighbour = run(qa, there, "report", "--json")
@@ -434,14 +434,14 @@ def a_report_totals_the_ledger_it_was_given_and_not_its_neighbour(qa: Qa) -> Non
         neighbour.exit_code == 0,
         actual=neighbour.exit_code,
         expected=0,
-        covers=["okf:docs/features/tally/tally.md#file:contract"],
+        covers=["okf:docs/services/tally/tally.md#file:contract"],
     )
     qa.check(
         "and it gets that ledger's numbers, not the other one's in the same directory",
         qa.field(json.loads(neighbour.stdout), "total_cents") == 300,
         actual=json.loads(neighbour.stdout),
         expected="the 300 the second ledger holds, not the 7450 the first does",
-        covers=["okf:docs/features/tally/tally.md#file:semantics:1"],
+        covers=["okf:docs/services/tally/tally.md#file:semantics:1"],
     )
 
     untouched = read(qa, there)
@@ -450,14 +450,14 @@ def a_report_totals_the_ledger_it_was_given_and_not_its_neighbour(qa: Qa) -> Non
         "the named ledger took an expense",
         landed.ok,
         actual=landed.stderr[-2000:],
-        covers=["okf:docs/features/tally/tally.md#file:contract"],
+        covers=["okf:docs/services/tally/tally.md#file:contract"],
     )
     stood = read(qa, there)
     qa.verify(
         "unchanged",
         ({"other.json": qa.field(untouched, "sha256")}, {"other.json": qa.field(stood, "sha256")}),
         subject="the ledger --file did not name",
-        covers=["okf:docs/features/tally/tally.md#file:semantics:1"],
+        covers=["okf:docs/services/tally/tally.md#file:semantics:1"],
     )
 
     helped = qa.tool("python3").run("-m", "tally", "--help", timeout=60.0)
@@ -466,14 +466,14 @@ def a_report_totals_the_ledger_it_was_given_and_not_its_neighbour(qa: Qa) -> Non
         "default: tally.json" in helped.stdout,
         actual=helped.stdout[-2000:],
         expected="a usage line naming tally.json as the default",
-        covers=["okf:docs/features/tally/tally.md#file:default:1"],
+        covers=["okf:docs/services/tally/tally.md#file:default:1"],
     )
     qa.check(
         "`--help` shows `--file` as optional",
         "[--file FILE]" in helped.stdout,
         actual=helped.stdout[-2000:],
         expected="an optional --file in the usage line",
-        covers=["okf:docs/features/tally/tally.md#file:required:1"],
+        covers=["okf:docs/services/tally/tally.md#file:required:1"],
     )
 
     misplaced = qa.tool("python3").run("-m", "tally", "report", "--file", str(there), timeout=60.0)
@@ -482,7 +482,7 @@ def a_report_totals_the_ledger_it_was_given_and_not_its_neighbour(qa: Qa) -> Non
         misplaced.exit_code != 0,
         actual=misplaced.exit_code,
         expected="a non-zero exit",
-        covers=["okf:docs/features/tally/tally.md#file:semantics:2"],
+        covers=["okf:docs/services/tally/tally.md#file:semantics:2"],
     )
 
 
@@ -491,14 +491,14 @@ def a_report_totals_the_ledger_it_was_given_and_not_its_neighbour(qa: Qa) -> Non
     mechanism="live",
     timeout=600.0,
     covers=[
-        "okf:docs/features/tally/tally.md#import:contract",
-        "okf:docs/features/tally/tally.md#import:does:1",
-        "okf:docs/features/tally/tally.md#dry-run:contract",
-        "okf:docs/features/tally/tally.md#dry-run:default:1",
-        "okf:docs/features/tally/tally.md#dry-run:required:1",
-        "okf:docs/features/tally/tally.md#dry-run:semantics:1",
-        "okf:docs/features/tally/tally.md#dry-run:semantics:2",
-        "okf:docs/features/tally/tally.md#dry-run:semantics:3",
+        "okf:docs/services/tally/tally.md#import:contract",
+        "okf:docs/services/tally/tally.md#import:does:1",
+        "okf:docs/services/tally/tally.md#dry-run:contract",
+        "okf:docs/services/tally/tally.md#dry-run:default:1",
+        "okf:docs/services/tally/tally.md#dry-run:required:1",
+        "okf:docs/services/tally/tally.md#dry-run:semantics:1",
+        "okf:docs/services/tally/tally.md#dry-run:semantics:2",
+        "okf:docs/services/tally/tally.md#dry-run:semantics:3",
     ],
     preconditions=[
         "a ledger built the way the journey builds one, with `init` and then `add`",
@@ -532,8 +532,8 @@ def a_report_totals_what_import_puts_in_the_ledger_and_a_dry_run_leaves_alone(qa
         code=0,
         label="`import --dry-run` exits 0",
         covers=[
-            "okf:docs/features/tally/tally.md#dry-run:contract",
-            "okf:docs/features/tally/tally.md#dry-run:semantics:3",
+            "okf:docs/services/tally/tally.md#dry-run:contract",
+            "okf:docs/services/tally/tally.md#dry-run:semantics:3",
         ],
     )
     qa.check(
@@ -541,19 +541,19 @@ def a_report_totals_what_import_puts_in_the_ledger_and_a_dry_run_leaves_alone(qa
         "dry-run" in previewed.stderr,
         actual=previewed.stderr[-2000:],
         expected="a line on stderr naming the dry run",
-        covers=["okf:docs/features/tally/tally.md#dry-run:semantics:3"],
+        covers=["okf:docs/services/tally/tally.md#dry-run:semantics:3"],
     )
     qa.verify(
         "unchanged",
         (before.get("tally.json"), after.get("tally.json")),
         subject="tally.json",
-        covers=["okf:docs/features/tally/tally.md#dry-run:semantics:1"],
+        covers=["okf:docs/services/tally/tally.md#dry-run:semantics:1"],
     )
     qa.verify(
         "unchanged",
         (before, after),
         subject="the working directory",
-        covers=["okf:docs/features/tally/tally.md#dry-run:semantics:2"],
+        covers=["okf:docs/services/tally/tally.md#dry-run:semantics:2"],
     )
 
     before_entries = entries(qa, ledger)
@@ -565,9 +565,9 @@ def a_report_totals_what_import_puts_in_the_ledger_and_a_dry_run_leaves_alone(qa
         actual=sorted(landed),
         expected="a directory whose ledger digest has moved",
         covers=[
-            "okf:docs/features/tally/tally.md#dry-run:default:1",
-            "okf:docs/features/tally/tally.md#dry-run:required:1",
-            "okf:docs/features/tally/tally.md#import:contract",
+            "okf:docs/services/tally/tally.md#dry-run:default:1",
+            "okf:docs/services/tally/tally.md#dry-run:required:1",
+            "okf:docs/services/tally/tally.md#import:contract",
         ],
     )
 
@@ -576,7 +576,7 @@ def a_report_totals_what_import_puts_in_the_ledger_and_a_dry_run_leaves_alone(qa
         "created",
         (before_entries, after_entries),
         subject="the rows the ledger did not already hold",
-        covers=["okf:docs/features/tally/tally.md#import:does:1"],
+        covers=["okf:docs/services/tally/tally.md#import:does:1"],
     )
 
     totalled = run(qa, ledger, "report")
@@ -585,5 +585,5 @@ def a_report_totals_what_import_puts_in_the_ledger_and_a_dry_run_leaves_alone(qa
         totalled.exit_code == 0 and "4 entries" in totalled.stdout,
         actual=totalled.stdout[-2000:],
         expected="a report naming 4 entries",
-        covers=["okf:docs/features/tally/tally.md#import:does:1"],
+        covers=["okf:docs/services/tally/tally.md#import:does:1"],
     )

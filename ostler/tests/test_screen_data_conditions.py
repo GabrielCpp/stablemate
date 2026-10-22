@@ -10,8 +10,8 @@ from ostler.model import load
 from conftest import write
 from data_state_books import (FIXTURE, FIXTURE_PAGE, ISSUED_ARRANGED, PAID, PAY_MOVES, api_page)
 
-SCREEN = "docs/features/acme/web/screens/bill.md"
-FLOW = "docs/features/acme/flows/see-a-bill-paid.md"
+SCREEN = "docs/services/acme/web/screens/bill.md"
+FLOW = "docs/services/acme/flows/see-a-bill-paid.md"
 FIXTURE_STEP = "- fixture: [issued-bill](../fixtures/issued-bill.md)\n"
 
 SCREEN_PAGE = """---
@@ -96,7 +96,7 @@ title: See a bill paid
 def _book(repo: Path, steps: tuple[str, ...], *, fixture: str = FIXTURE_STEP, sends: str = SENDS_PAY,
           unpaid_when: str = WHEN_ISSUED, paid_when: str = WHEN_PAID) -> None:
     states = ISSUED_ARRANGED + "\n" + PAID
-    write(repo / "docs/features/acme/http/api.md", api_page(states=states, pay_moves=PAY_MOVES))
+    write(repo / "docs/services/acme/http/api.md", api_page(states=states, pay_moves=PAY_MOVES))
     write(repo / FIXTURE, FIXTURE_PAGE)
     write(repo / SCREEN, SCREEN_PAGE.format(sends=sends, unpaid_when=unpaid_when, paid_when=paid_when))
     write(repo / FLOW, _flow(steps, fixture))

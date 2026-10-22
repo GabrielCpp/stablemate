@@ -119,7 +119,7 @@ class StoryAuthor(Workflow):
                 "epic": target.epic,
                 "story_slug": target.story,
                 "story_dir": target.story_dir,
-                "features_dir": self.ctx.features_dir,
+                "services_dir": self.ctx.services_dir,
                 "epics_dir": self.ctx.epics_dir,
             },
         )
@@ -145,7 +145,7 @@ class StoryAuthor(Workflow):
                 "story_path": target.story_path,
                 "story_slug": target.story,
                 "story_dir": target.story_dir,
-                "features_dir": self.ctx.features_dir,
+                "services_dir": self.ctx.services_dir,
                 "mockup_path": mockup,
             },
         )
@@ -187,7 +187,7 @@ class StoryAuthor(Workflow):
             check_story_grounding,
             target.story_dir,
             target.epic_dir,
-            self.ctx.features_dir,
+            self.ctx.services_dir,
         )
         if not grounding.ok:
             return self._rework(
@@ -230,7 +230,7 @@ class StoryAuthor(Workflow):
                 "story_path": target.story_path,
                 "story_slug": target.story,
                 "story_dir": target.story_dir,
-                "features_dir": self.ctx.features_dir,
+                "services_dir": self.ctx.services_dir,
                 "prior_audit_findings": audit_findings,
             },
         )
@@ -356,7 +356,7 @@ class StoryAuthor(Workflow):
                 "story_path": target.story_path,
                 "story_slug": target.story,
                 "story_dir": target.story_dir,
-                "features_dir": self.ctx.features_dir,
+                "services_dir": self.ctx.services_dir,
                 "mockup_path": mockup,
                 "validation_errors": notes,
                 "prior_attempts": ledger.prior_attempts,
@@ -437,7 +437,7 @@ class StoryAuthor(Workflow):
                 "story_path": target.story_path,
                 "story_slug": target.story,
                 "story_dir": target.story_dir,
-                "features_dir": self.ctx.features_dir,
+                "services_dir": self.ctx.services_dir,
                 "mockup_path": mockup,
                 "validation_errors": "",
                 "operator_feedback": notes,

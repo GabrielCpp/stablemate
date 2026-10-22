@@ -138,7 +138,7 @@ title: DS
 A panel.
 """
 
-SCREENS = "docs/features/web/gui/screens"
+SCREENS = "docs/services/web/gui/screens"
 LAND = f"{SCREENS}/landing.md"
 SIGNIN = f"{SCREENS}/sign-in.md"
 FORGOT_ID = f"{SCREENS}/forgot-password.md"
@@ -152,9 +152,9 @@ def _repo(repo: Path):
     write(repo / SCREENS / "forgot-password.md", FORGOT)
     write(repo / SCREENS / "dashboard.md", DASHBOARD)
     write(repo / SCREENS / "archive.md", ORPHAN)
-    write(repo / "docs/features/web/flows/sign-in-to-dashboard.md", FLOW)
-    write(repo / "docs/features/web/gui/components/ds.md", DS)
-    write(repo / "docs/features/web/gui/components/auth-guards.md", GUARDS)
+    write(repo / "docs/services/web/flows/sign-in-to-dashboard.md", FLOW)
+    write(repo / "docs/services/web/gui/components/ds.md", DS)
+    write(repo / "docs/services/web/gui/components/auth-guards.md", GUARDS)
     return load(repo)
 
 
@@ -273,7 +273,7 @@ def _codes(report, severity: str = "error"):
     return [f.code for f in report.findings if f.severity == severity]
 
 
-SERVER = "docs/features/web/http/web.md"
+SERVER = "docs/services/web/http/web.md"
 
 
 def _server(entry_url: str) -> str:
@@ -305,7 +305,7 @@ def test_no_root_screen_now_also_fires_on_a_mobile_surface(repo: Path):
     """`no-root-screen` must keep firing on a `web` surface with a real, book-stated defect (no screen at the root the book states no root for) — and, now that a mobile surface can state its root via `launch-screen:`, a mobile surface that has not settled one gets the same warning too, in its own words: no mention of `route:` or `/`, a suggestion naming `launch-screen:` instead."""
     _repo(repo)
     write(repo / SCREENS / "landing.md", LANDING.replace("- route: `/`", "- route: `/home`"))
-    write(repo / "docs/features/mobile/gui/screens/widget-list.md", """\
+    write(repo / "docs/services/mobile/gui/screens/widget-list.md", """\
 ---
 type: screen
 slug: widget-list
@@ -317,7 +317,7 @@ title: Widget list
 - requires: none
 - params: none
 """)
-    write(repo / "docs/features/mobile/ops/qa-stack.md", """\
+    write(repo / "docs/services/mobile/ops/qa-stack.md", """\
 ---
 type: runbook
 title: QA stack
@@ -386,11 +386,11 @@ def test_several_servers_settle_on_the_first_by_node_id(repo: Path):
     """Two contracts on one surface: the engine reads the root off the first by node id rather than leaving a surface that plainly states an address rootless."""
     _repo(repo)
     write(repo / SERVER, _server("http://localhost:3000/app"))
-    write(repo / "docs/features/web/http/static.md",
+    write(repo / "docs/services/web/http/static.md",
           _server("http://localhost:8080/static").replace("slug: web", "slug: static"))
     data = graph.build(load(repo), surface="web")
 
-    assert reach.root_path(data) == ("/static", "docs/features/web/http/static.md")
+    assert reach.root_path(data) == ("/static", "docs/services/web/http/static.md")
     assert reach.root_screen(data) is None
 
 
@@ -398,7 +398,7 @@ def test_a_runbook_entry_url_names_the_root_before_the_server(repo: Path):
     """The runbook that drives the surface states where its walk opens, so its `entry-url:` path outranks the server contract's."""
     _repo(repo)
     write(repo / SERVER, _server("http://localhost:3000/static"))
-    write(repo / "docs/features/web/ops/stack.md", (
+    write(repo / "docs/services/web/ops/stack.md", (
         "---\ntype: runbook\nslug: stack\ntitle: Stack\n---\n# Stack\n\n"
         "- driver: web\n- surfaces: [Landing](../gui/screens/landing.md)\n"
         "- entry-url: http://localhost:3000/sign-in\n\n"
@@ -406,7 +406,7 @@ def test_a_runbook_entry_url_names_the_root_before_the_server(repo: Path):
     ))
     data = graph.build(load(repo), surface="web")
 
-    assert reach.root_path(data, "web", surface="web") == ("/sign-in", "docs/features/web/ops/stack.md")
+    assert reach.root_path(data, "web", surface="web") == ("/sign-in", "docs/services/web/ops/stack.md")
     assert reach.root_screen(data, "web", surface="web") == SIGNIN
     assert reach.root_path(data, "web") == ("/static", SERVER)
 
@@ -551,7 +551,7 @@ def test_every_literal_entry_is_a_door_a_walk_can_reopen(repo: Path):
     assert report["doors"] == {SIGNIN: "/sign-in"}
 
 
-MOBILE_SCREENS = "docs/features/mobile-app/gui/screens"
+MOBILE_SCREENS = "docs/services/mobile-app/gui/screens"
 
 
 def _mobile_repo(repo: Path, launch_screen: bool = False):
@@ -562,7 +562,7 @@ def _mobile_repo(repo: Path, launch_screen: bool = False):
     ))
     launch = ("- launch-screen: [widget-list](../gui/screens/widget-list.md)\n"
               if launch_screen else "")
-    write(repo / "docs/features/mobile-app/ops/stack.md", (
+    write(repo / "docs/services/mobile-app/ops/stack.md", (
         "---\ntype: runbook\nslug: stack\ntitle: Stack\n---\n# Stack\n\n"
         "- driver: mobile\n- surfaces: [widget-list](../gui/screens/widget-list.md)\n"
         f"{launch}\n"
@@ -577,11 +577,11 @@ def _mobile_repo_with_an_unusable_launch_screen(repo: Path):
         "---\ntype: screen\nslug: widget-list\ntitle: Widgets\n---\n# Widgets\n\n"
         "- route: `WidgetList`\n- requires: none\n- params: none\n"
     ))
-    write(repo / "docs/features/mobile-app/gui/components/toolbar.md", (
+    write(repo / "docs/services/mobile-app/gui/components/toolbar.md", (
         "---\ntype: component\nslug: toolbar\ntitle: Toolbar\n---\n# Toolbar\n\n"
         "- renders: a row of actions\n"
     ))
-    write(repo / "docs/features/mobile-app/ops/stack.md", (
+    write(repo / "docs/services/mobile-app/ops/stack.md", (
         "---\ntype: runbook\nslug: stack\ntitle: Stack\n---\n# Stack\n\n"
         "- driver: mobile\n- surfaces: [widget-list](../gui/screens/widget-list.md)\n"
         "- launch-screen: [toolbar](../gui/components/toolbar.md)\n\n"
@@ -600,14 +600,14 @@ def _mobile_repo_with_two_launch_screens(repo: Path):
         "---\ntype: screen\nslug: new-widget\ntitle: New widget\n---\n# New widget\n\n"
         "- route: `NewWidget`\n- requires: none\n- params: none\n"
     ))
-    write(repo / "docs/features/mobile-app/ops/legacy.md", (
+    write(repo / "docs/services/mobile-app/ops/legacy.md", (
         "---\ntype: runbook\nslug: legacy\ntitle: Legacy\n---\n# Legacy\n\n"
         "- driver: mobile\n"
         "- surfaces: [widget-list](../gui/screens/widget-list.md)\n"
         "- launch-screen: [widget-list](../gui/screens/widget-list.md)\n\n"
         "## Steps\n\n### serve\n- kind: service\n- run: `metro`\n"
     ))
-    write(repo / "docs/features/mobile-app/ops/current.md", (
+    write(repo / "docs/services/mobile-app/ops/current.md", (
         "---\ntype: runbook\nslug: current\ntitle: Current\n---\n# Current\n\n"
         "- driver: mobile\n"
         "- surfaces: [widget-list](../gui/screens/widget-list.md)\n"
@@ -669,7 +669,7 @@ def test_a_stated_launch_screen_that_is_not_a_screen_says_so(repo: Path):
         reach.resolve_start(data, None, "mobile", surface="mobile-app")
 
     message = str(exc.value)
-    assert "docs/features/mobile-app/gui/components/toolbar.md" in message
+    assert "docs/services/mobile-app/gui/components/toolbar.md" in message
     assert "not a screen on this surface" in message
     assert "states no `launch-screen:`" not in message
 
@@ -679,7 +679,7 @@ def test_two_launch_screens_settle_on_one_start_rather_than_refusing(repo: Path)
     data = graph.build(_mobile_repo_with_two_launch_screens(repo), surface="mobile-app")
 
     assert reach.resolve_start(data, None, "mobile", surface="mobile-app") == (
-        "docs/features/mobile-app/gui/screens/new-widget.md"
+        "docs/services/mobile-app/gui/screens/new-widget.md"
     )
 
 
@@ -703,11 +703,11 @@ def test_a_path_addressed_surface_never_consults_a_launch_screen(repo: Path):
 
 def _cli_repo_with_no_screens(repo: Path):
     """A `cli` surface: a `type: cli` node under its own directory, no screens anywhere — the shape `workflows`, `farrier` and `workhorse` actually take in this repo's own book."""
-    write(repo / "docs/features/toolbox/toolbox.md", (
+    write(repo / "docs/services/toolbox/toolbox.md", (
         "---\ntype: cli\nslug: toolbox\ntitle: Toolbox\n---\n# Toolbox\n\n"
         "- binary: `toolbox`\n"
     ))
-    write(repo / "docs/features/toolbox/ops/stack.md", (
+    write(repo / "docs/services/toolbox/ops/stack.md", (
         "---\ntype: runbook\nslug: stack\ntitle: Stack\n---\n# Stack\n\n"
         "- driver: cli\n- surfaces: [toolbox](../toolbox.md)\n\n"
         "## Steps\n\n### serve\n- kind: service\n- run: `toolbox --help`\n"
@@ -748,7 +748,7 @@ def test_the_reach_command_degrades_when_the_book_does_not_settle_a_driver(repo:
     """Two runbooks disagreeing is `doctor`'s finding to raise."""
     _repo(repo)
     for slug, driver in (("deployed", "web"), ("local-cli", "cli")):
-        write(repo / f"docs/features/web/ops/{slug}.md", (
+        write(repo / f"docs/services/web/ops/{slug}.md", (
             f"---\ntype: runbook\nslug: {slug}\ntitle: {slug}\n---\n# {slug}\n\n"
             f"- driver: {driver}\n- surfaces: [landing](../gui/screens/landing.md)\n\n"
             "## Steps\n\n### serve\n- kind: service\n- run: `serve`\n"
@@ -837,7 +837,7 @@ def _mobile_repo_with_an_unreachable_screen(repo: Path):
         "---\ntype: screen\nslug: widget-detail\ntitle: Widget detail\n---\n# Widget detail\n\n"
         "- route: `WidgetDetail`\n- requires: none\n- params: none\n"
     ))
-    write(repo / "docs/features/mobile-app/ops/stack.md", (
+    write(repo / "docs/services/mobile-app/ops/stack.md", (
         "---\ntype: runbook\nslug: stack\ntitle: Stack\n---\n# Stack\n\n"
         "- driver: mobile\n"
         "- surfaces: [widget-list](../gui/screens/widget-list.md)\n"

@@ -125,14 +125,14 @@ def _reject_commits(root: Path) -> None:
 def test_commit_paths_runs_the_repo_hooks_unless_told_not_to(tmp_path: Path) -> None:
     root = make_git_repo(tmp_path / "acme")
     _reject_commits(root)
-    _write(root, "docs/features/api/index.md")
+    _write(root, "docs/services/api/index.md")
 
     with pytest.raises(GitError):
         commit_paths(root, "docs: update the book", "docs")
     assert _head_subject(root) == "init"
 
     assert commit_paths(root, "docs: update the book", "docs", verify=False) is True
-    assert _tracked(root) == {"docs/features/api/index.md"}
+    assert _tracked(root) == {"docs/services/api/index.md"}
 
 
 def test_commit_all_still_sweeps_the_whole_tree(tmp_path: Path) -> None:

@@ -63,15 +63,15 @@ def two_holders_file_one_claim_each(qa: Qa) -> dict:
         "ac:1",
         "ac:2",
         "ac:4",
-        "okf:docs/features/claims/http/claims-api.md#list-claims:does:1",
-        "okf:docs/features/claims/http/claims-api.md#list-claims:authorization:1",
-        "okf:docs/features/claims/http/claims-api.md#list-claims:authorization:2",
-        "okf:docs/features/claims/http/claims-api.md#list-claims:errors:1",
-        "okf:docs/features/claims/concepts/claim-tenancy.md:contract",
-        "okf:docs/features/claims/http/claims-api.md#list-claims:contract",
-        "okf:docs/features/claims/flows/file-a-claim.md:start:1",
-        "okf:docs/features/claims/flows/file-a-claim.md:end:1",
-        "okf:docs/features/claims/flows/file-a-claim.md:end-state",
+        "okf:docs/services/claims/http/claims-api.md#list-claims:does:1",
+        "okf:docs/services/claims/http/claims-api.md#list-claims:authorization:1",
+        "okf:docs/services/claims/http/claims-api.md#list-claims:authorization:2",
+        "okf:docs/services/claims/http/claims-api.md#list-claims:errors:1",
+        "okf:docs/services/claims/concepts/claim-tenancy.md:contract",
+        "okf:docs/services/claims/http/claims-api.md#list-claims:contract",
+        "okf:docs/services/claims/flows/file-a-claim.md:start:1",
+        "okf:docs/services/claims/flows/file-a-claim.md:end:1",
+        "okf:docs/services/claims/flows/file-a-claim.md:end-state",
     ],
     preconditions=[
         "the desk is emptied through DELETE /api/claims, holding the adjuster's token",
@@ -95,24 +95,24 @@ def a_register_holds_the_claims_of_whoever_asked(qa: Qa) -> None:
 
     mine = qa.http.get("/api/claims", headers=bearer(qa, qa.field(who, "a")), expect_status=200)
     mine_body = mine.json()
-    qa.verify("http_status", mine, code=200, path="/api/claims", covers=["ac:1", "okf:docs/features/claims/http/claims-api.md#list-claims:does:1", "okf:docs/features/claims/http/claims-api.md#list-claims:contract"])
-    qa.verify("json_path", mine_body, path="$.claims[0].version", absent=False, covers=["ac:1", "okf:docs/features/claims/http/claims-api.md#list-claims:does:1"])
-    qa.verify("json_path", mine_body, path="claims[0].status", matches="Submitted|Approved|Denied", covers=["okf:docs/features/claims/http/claims-api.md#list-claims:does:1"])
-    qa.verify("json_path", mine_body, path="claims[0].status", equals="Submitted", covers=["ac:1", "okf:docs/features/claims/flows/file-a-claim.md:start:1", "okf:docs/features/claims/flows/file-a-claim.md:end:1", "okf:docs/features/claims/flows/file-a-claim.md:end-state"])
-    qa.verify("count", qa.field(mine_body, "claims"), subject="claims", equals=1, covers=["ac:2", "okf:docs/features/claims/http/claims-api.md#list-claims:authorization:1", "okf:docs/features/claims/flows/file-a-claim.md:start:1", "okf:docs/features/claims/flows/file-a-claim.md:end:1", "okf:docs/features/claims/flows/file-a-claim.md:end-state"])
-    qa.verify("json_path", mine_body, path="claims[0].holder_uid", absent=False, covers=["okf:docs/features/claims/http/claims-api.md#list-claims:authorization:1"])
-    qa.verify("json_path", mine_body, path="$.claims[0].holder_uid", equals=qa.field(who, "a.uid"), covers=["ac:2", "okf:docs/features/claims/http/claims-api.md#list-claims:authorization:1"])
+    qa.verify("http_status", mine, code=200, path="/api/claims", covers=["ac:1", "okf:docs/services/claims/http/claims-api.md#list-claims:does:1", "okf:docs/services/claims/http/claims-api.md#list-claims:contract"])
+    qa.verify("json_path", mine_body, path="$.claims[0].version", absent=False, covers=["ac:1", "okf:docs/services/claims/http/claims-api.md#list-claims:does:1"])
+    qa.verify("json_path", mine_body, path="claims[0].status", matches="Submitted|Approved|Denied", covers=["okf:docs/services/claims/http/claims-api.md#list-claims:does:1"])
+    qa.verify("json_path", mine_body, path="claims[0].status", equals="Submitted", covers=["ac:1", "okf:docs/services/claims/flows/file-a-claim.md:start:1", "okf:docs/services/claims/flows/file-a-claim.md:end:1", "okf:docs/services/claims/flows/file-a-claim.md:end-state"])
+    qa.verify("count", qa.field(mine_body, "claims"), subject="claims", equals=1, covers=["ac:2", "okf:docs/services/claims/http/claims-api.md#list-claims:authorization:1", "okf:docs/services/claims/flows/file-a-claim.md:start:1", "okf:docs/services/claims/flows/file-a-claim.md:end:1", "okf:docs/services/claims/flows/file-a-claim.md:end-state"])
+    qa.verify("json_path", mine_body, path="claims[0].holder_uid", absent=False, covers=["okf:docs/services/claims/http/claims-api.md#list-claims:authorization:1"])
+    qa.verify("json_path", mine_body, path="$.claims[0].holder_uid", equals=qa.field(who, "a.uid"), covers=["ac:2", "okf:docs/services/claims/http/claims-api.md#list-claims:authorization:1"])
 
     theirs = qa.field(qa.http.get("/api/claims", headers=bearer(qa, qa.field(who, "b")), expect_status=200).json(), "claims")
-    qa.verify("count", theirs, subject="claims", equals=1, covers=["ac:2", "okf:docs/features/claims/http/claims-api.md#list-claims:authorization:1"])
-    qa.check("the second holder is shown their own claim and not the first holder's", qa.field(theirs, "0.id") == "cl-1002" and qa.field(theirs, "0.holder_uid") == qa.field(who, "b.uid"), covers=["ac:2", "okf:docs/features/claims/concepts/claim-tenancy.md:contract"])
+    qa.verify("count", theirs, subject="claims", equals=1, covers=["ac:2", "okf:docs/services/claims/http/claims-api.md#list-claims:authorization:1"])
+    qa.check("the second holder is shown their own claim and not the first holder's", qa.field(theirs, "0.id") == "cl-1002" and qa.field(theirs, "0.holder_uid") == qa.field(who, "b.uid"), covers=["ac:2", "okf:docs/services/claims/concepts/claim-tenancy.md:contract"])
 
     everything = qa.field(qa.http.get("/api/claims", headers=bearer(qa, qa.field(who, "adjuster")), expect_status=200).json(), "claims")
-    qa.verify("count", everything, subject="claims", equals=2, covers=["ac:1", "okf:docs/features/claims/http/claims-api.md#list-claims:authorization:2"])
+    qa.verify("count", everything, subject="claims", equals=2, covers=["ac:1", "okf:docs/services/claims/http/claims-api.md#list-claims:authorization:2"])
     anonymous = qa.http.get("/api/claims", expect_status=401)
-    qa.verify("http_status", anonymous, code=401, title="Unauthorized", path="/api/claims", covers=["okf:docs/features/claims/http/claims-api.md#list-claims:errors:1"])
+    qa.verify("http_status", anonymous, code=401, title="Unauthorized", path="/api/claims", covers=["okf:docs/services/claims/http/claims-api.md#list-claims:errors:1"])
 
-    qa.check("the adjuster's register is in the order the claims were written", [qa.field(claim, "id") for claim in everything] == ["cl-1001", "cl-1002"], covers=["okf:docs/features/claims/concepts/claim-tenancy.md:contract"])
+    qa.check("the adjuster's register is in the order the claims were written", [qa.field(claim, "id") for claim in everything] == ["cl-1001", "cl-1002"], covers=["okf:docs/services/claims/concepts/claim-tenancy.md:contract"])
 
     qa.http.delete("/api/claims", headers=bearer(qa, qa.field(who, "adjuster")), expect_status=204)
     emptied = qa.http.get("/api/claims", headers=bearer(qa, qa.field(who, "a")), expect_status=200)
@@ -126,9 +126,9 @@ def a_register_holds_the_claims_of_whoever_asked(qa: Qa) -> None:
     mechanism="live",
     covers=[
         "ac:3",
-        "okf:docs/features/claims/http/claims-api.md#get-claim:does:1",
-        "okf:docs/features/claims/http/claims-api.md#get-claim:contract",
-        "okf:docs/features/claims/concepts/claim-tenancy.md:contract",
+        "okf:docs/services/claims/http/claims-api.md#get-claim:does:1",
+        "okf:docs/services/claims/http/claims-api.md#get-claim:contract",
+        "okf:docs/services/claims/concepts/claim-tenancy.md:contract",
     ],
     preconditions=[
         "cl-1001 belongs to holder A and cl-1002 to holder B",
@@ -146,13 +146,13 @@ def a_claim_answers_to_its_holder_and_to_an_adjuster(qa: Qa) -> None:
 
     owned = qa.http.get("/api/claims/cl-1001", headers=bearer(qa, qa.field(who, "a")), expect_status=200)
     owned_body = owned.json()
-    qa.verify("http_status", owned, code=200, path="/api/claims/cl-1001", covers=["ac:3", "okf:docs/features/claims/http/claims-api.md#get-claim:does:1", "okf:docs/features/claims/http/claims-api.md#get-claim:contract"])
-    qa.verify("json_path", owned_body, path="$.claim.id", equals="cl-1001", covers=["ac:3", "okf:docs/features/claims/http/claims-api.md#get-claim:does:1"])
-    qa.check("the claim the holder is shown is the one they filed", qa.field(owned_body, "claim.holder_uid") == qa.field(who, "a.uid"), covers=["ac:3", "okf:docs/features/claims/concepts/claim-tenancy.md:contract"])
+    qa.verify("http_status", owned, code=200, path="/api/claims/cl-1001", covers=["ac:3", "okf:docs/services/claims/http/claims-api.md#get-claim:does:1", "okf:docs/services/claims/http/claims-api.md#get-claim:contract"])
+    qa.verify("json_path", owned_body, path="$.claim.id", equals="cl-1001", covers=["ac:3", "okf:docs/services/claims/http/claims-api.md#get-claim:does:1"])
+    qa.check("the claim the holder is shown is the one they filed", qa.field(owned_body, "claim.holder_uid") == qa.field(who, "a.uid"), covers=["ac:3", "okf:docs/services/claims/concepts/claim-tenancy.md:contract"])
 
     overseen = qa.http.get("/api/claims/cl-1001", headers=bearer(qa, qa.field(who, "adjuster")), expect_status=200)
-    qa.verify("http_status", overseen, code=200, path="/api/claims/cl-1001", covers=["ac:3", "okf:docs/features/claims/http/claims-api.md#get-claim:contract"])
-    qa.verify("unchanged", (qa.field(owned_body, "claim"), qa.field(overseen.json(), "claim")), subject="claim cl-1001", covers=["ac:3", "okf:docs/features/claims/concepts/claim-tenancy.md:contract"])
+    qa.verify("http_status", overseen, code=200, path="/api/claims/cl-1001", covers=["ac:3", "okf:docs/services/claims/http/claims-api.md#get-claim:contract"])
+    qa.verify("unchanged", (qa.field(owned_body, "claim"), qa.field(overseen.json(), "claim")), subject="claim cl-1001", covers=["ac:3", "okf:docs/services/claims/concepts/claim-tenancy.md:contract"])
 
 
 @scenario(
@@ -160,10 +160,10 @@ def a_claim_answers_to_its_holder_and_to_an_adjuster(qa: Qa) -> None:
     mechanism="live",
     covers=[
         "ac:5",
-        "okf:docs/features/claims/http/claims-api.md#get-claim:authorization:1",
-        "okf:docs/features/claims/http/claims-api.md#get-claim:errors:1",
-        "okf:docs/features/claims/http/claims-api.md#get-claim:errors:2",
-        "okf:docs/features/claims/concepts/claim-tenancy.md:contract",
+        "okf:docs/services/claims/http/claims-api.md#get-claim:authorization:1",
+        "okf:docs/services/claims/http/claims-api.md#get-claim:errors:1",
+        "okf:docs/services/claims/http/claims-api.md#get-claim:errors:2",
+        "okf:docs/services/claims/concepts/claim-tenancy.md:contract",
     ],
     preconditions=[
         "cl-1002 is on file and belongs to holder B",
@@ -182,13 +182,13 @@ def a_stranger_is_refused_differently_from_a_claim_that_is_not_there(qa: Qa) -> 
     who = two_holders_file_one_claim_each(qa)
 
     forbidden = qa.http.get("/api/claims/cl-1002", headers=bearer(qa, qa.field(who, "a")), expect_status=403)
-    qa.verify("http_status", forbidden, code=403, title="Not Your Claim", path="/api/claims/cl-1002", covers=["ac:5", "okf:docs/features/claims/http/claims-api.md#get-claim:authorization:1", "okf:docs/features/claims/concepts/claim-tenancy.md:contract"])
+    qa.verify("http_status", forbidden, code=403, title="Not Your Claim", path="/api/claims/cl-1002", covers=["ac:5", "okf:docs/services/claims/http/claims-api.md#get-claim:authorization:1", "okf:docs/services/claims/concepts/claim-tenancy.md:contract"])
 
     missing = qa.http.get("/api/claims/cl-9999", headers=bearer(qa, qa.field(who, "a")), expect_status=404)
-    qa.verify("http_status", missing, code=404, title="No Such Claim", path="/api/claims/cl-9999", covers=["ac:5", "okf:docs/features/claims/http/claims-api.md#get-claim:errors:1"])
-    qa.check("one caller is answered 403 for a claim that exists and 404 for one that does not", forbidden.status != missing.status, covers=["ac:5", "okf:docs/features/claims/http/claims-api.md#get-claim:authorization:1", "okf:docs/features/claims/http/claims-api.md#get-claim:errors:1"])
+    qa.verify("http_status", missing, code=404, title="No Such Claim", path="/api/claims/cl-9999", covers=["ac:5", "okf:docs/services/claims/http/claims-api.md#get-claim:errors:1"])
+    qa.check("one caller is answered 403 for a claim that exists and 404 for one that does not", forbidden.status != missing.status, covers=["ac:5", "okf:docs/services/claims/http/claims-api.md#get-claim:authorization:1", "okf:docs/services/claims/http/claims-api.md#get-claim:errors:1"])
     anonymous = qa.http.get("/api/claims/cl-9999", expect_status=401)
-    qa.verify("http_status", anonymous, code=401, title="Unauthorized", path="/api/claims/cl-9999", covers=["okf:docs/features/claims/http/claims-api.md#get-claim:errors:2"])
-    qa.check("the same id that is not on the books is refused 401 without an identity and 404 with one", anonymous.status == 401 and missing.status == 404, covers=["okf:docs/features/claims/http/claims-api.md#get-claim:errors:2"])
+    qa.verify("http_status", anonymous, code=401, title="Unauthorized", path="/api/claims/cl-9999", covers=["okf:docs/services/claims/http/claims-api.md#get-claim:errors:2"])
+    qa.check("the same id that is not on the books is refused 401 without an identity and 404 with one", anonymous.status == 401 and missing.status == 404, covers=["okf:docs/services/claims/http/claims-api.md#get-claim:errors:2"])
     json.dump({"forbidden": forbidden.json(), "missing": missing.json(), "anonymous": anonymous.json()}, qa.artifact("steps/refusals.json", kind="json").open("w"))
 

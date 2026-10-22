@@ -8,7 +8,7 @@ covers install and the commands used below.
 
 ## The ostler stack
 
-A repository's `docs/features/ops/stack.yml` names one secret source. With saddlebag:
+A repository's `docs/services/ops/stack.yml` names one secret source. With saddlebag:
 
 ```yaml
 secrets:

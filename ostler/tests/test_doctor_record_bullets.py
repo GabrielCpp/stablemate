@@ -9,7 +9,7 @@ from ostler.model import UINode, load
 
 from conftest import write
 
-ENDPOINT_PATH = "docs/features/acme/server.md"
+ENDPOINT_PATH = "docs/services/acme/server.md"
 
 
 def _endpoint_book(*response_children: str) -> str:

@@ -15,8 +15,8 @@ from workhorse_workflows.okf_book.shared.page_check import (
     tool_blockers,
 )
 
-FLOW = Path("docs/features/tally/flows/track-a-trip.md")
-COMMANDS = Path("docs/features/tally/tally.md")
+FLOW = Path("docs/services/tally/flows/track-a-trip.md")
+COMMANDS = Path("docs/services/tally/tally.md")
 UNINVOKABLE_FIX = (
     "When the app itself runs it, delete the page and every page under it, move each other link they hold to "
     + "the page of what calls it so no page they reached is left unlinked, point each link to them at that page, "
@@ -104,7 +104,7 @@ def test_a_cli_page_that_names_no_binary_cannot_be_invoked(app: Callable[[str], 
 
 
 def _unchecked_book(repo: Path, *, flow: bool, unexercised: bool = False) -> list[str]:
-    book = repo / "docs/features/tally"
+    book = repo / "docs/services/tally"
     shutil.rmtree(book)
     book.mkdir()
     if unexercised:
@@ -129,7 +129,7 @@ def test_a_book_no_claim_of_which_declares_a_check_is_a_problem_on_each_flow_pag
 
     assert not [problem for problem in checked if "declares a check" in problem]
     assert unchecked == [
-        "docs/features/tally/track-a-trip.md: no claim of this book declares a check, so a run has nothing to exercise. Give each "
+        "docs/services/tally/track-a-trip.md: no claim of this book declares a check, so a run has nothing to exercise. Give each "
         + "step of this flow a `- verify:` bullet that checks what the user sees once the step is done."
     ]
 
@@ -140,7 +140,7 @@ def test_a_book_with_no_flow_and_no_check_is_a_problem_on_every_page_but_its_ent
     unchecked = _unchecked_book(repo, flow=False)
 
     assert unchecked == [
-        "docs/features/tally/ledger.md: no claim of this book declares a check, so a run has nothing to exercise. Give the claims a "
+        "docs/services/tally/ledger.md: no claim of this book declares a check, so a run has nothing to exercise. Give the claims a "
         + "user can observe on this page a `- verify:` bullet that checks what they see."
     ]
 
@@ -173,7 +173,7 @@ def test_gaps_are_grouped_per_node_so_each_problem_names_the_claims_of_one_node(
 
 def test_a_gap_another_node_owns_is_one_problem_on_the_owner_page_and_none_on_the_claim_pages() -> None:
     page = COMMANDS.as_posix()
-    owner = "docs/features/tally/gui/screens/editor.md"
+    owner = "docs/services/tally/gui/screens/editor.md"
     gaps = [
         Gap(f"okf:{page}#add:does:1", "unreachable-screen", "nothing leads here.", owner),
         Gap(f"okf:{page}#export:does:1", "unreachable-screen", "nothing leads here.", owner),
@@ -218,11 +218,11 @@ def test_a_book_with_no_section_headed_as_not_covered_has_no_such_problem(app: C
 
 def test_a_link_from_another_book_to_a_page_the_book_lacks_is_a_problem_on_the_linking_page(app: Callable[[str], Path]) -> None:
     repo = app("tally-cli")
-    other = repo / "docs/features/other/entries.md"
+    other = repo / "docs/services/other/entries.md"
     other.parent.mkdir(parents=True)
     _ = other.write_text("---\ntype: entries\ntitle: other\n---\n# other\n\nSee [gone](../tally/gone.md).\n", encoding="utf-8")
 
-    problems = [problem for problem in book_problems(repo, "tally") if problem.startswith("docs/features/other/entries.md:")]
+    problems = [problem for problem in book_problems(repo, "tally") if problem.startswith("docs/services/other/entries.md:")]
 
     assert len(problems) == 1
     assert "`relink`" in problems[0]

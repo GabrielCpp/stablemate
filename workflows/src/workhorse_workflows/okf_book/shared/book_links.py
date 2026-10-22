@@ -13,7 +13,7 @@ from dataclasses import replace
 
 from ostler.doctor import Report
 from ostler.finding import Finding
-from workhorse_workflows.okf_book.shared.entries import FEATURES_DIR
+from workhorse_workflows.okf_book.shared.entries import SERVICES_DIR
 
 _LINK_TARGET = re.compile(r"(\]\()([^)\s]*)")
 _INTO_BOOK = "\0"
@@ -22,7 +22,7 @@ LINK_CODES = frozenset({"dangling-link", "unresolved-relation", "missing-anchor"
 
 def in_book(service: str, path: str) -> bool:
     """True for a path in the service's book."""
-    return path.startswith(f"{(FEATURES_DIR / service).as_posix()}/")
+    return path.startswith(f"{(SERVICES_DIR / service).as_posix()}/")
 
 
 def lands_in_book(service: str, page: str, href: str) -> bool:
@@ -40,7 +40,7 @@ def relinked(service: str, page: str, text: str, old: str, new: str) -> tuple[st
     `#anchor`. An *old* with no anchor matches a link with any anchor, and a *new* with no anchor
     keeps the link's own.
     """
-    book = (FEATURES_DIR / service).as_posix()
+    book = (SERVICES_DIR / service).as_posix()
     old_path, _, old_anchor = old.partition("#")
     new_path, _, new_anchor = new.partition("#")
     old_full = posixpath.normpath(posixpath.join(book, old_path))

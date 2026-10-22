@@ -5,7 +5,7 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 
-FEATURES_DIR = Path("docs") / "features"
+SERVICES_DIR = Path("docs") / "services"
 ENTRIES_NAME = "entries.md"
 
 _LINK = re.compile(r"^\s*[-*]\s+\[(?P<title>[^\]]+)\]\((?P<target>[^)\s]+)\)\s*$")
@@ -28,7 +28,7 @@ class EntryLink:
 
 
 def book_dir(root: Path, service: str) -> Path:
-    return root / FEATURES_DIR / service
+    return root / SERVICES_DIR / service
 
 
 def entries_path(root: Path, service: str) -> Path:
@@ -37,10 +37,10 @@ def entries_path(root: Path, service: str) -> Path:
 
 def services(root: Path) -> tuple[str, ...]:
     """Every service whose book has an entries page, by name."""
-    features = root / FEATURES_DIR
-    if not features.is_dir():
+    services = root / SERVICES_DIR
+    if not services.is_dir():
         return ()
-    return tuple(sorted(d.name for d in features.iterdir() if (d / ENTRIES_NAME).is_file()))
+    return tuple(sorted(d.name for d in services.iterdir() if (d / ENTRIES_NAME).is_file()))
 
 
 def read_entries(root: Path, service: str) -> tuple[EntryLink, ...]:

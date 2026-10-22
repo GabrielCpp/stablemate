@@ -9,7 +9,7 @@ from ostler.model import load
 
 from conftest import write
 
-_PAGE = "docs/features/acme/concepts/ledger.md"
+_PAGE = "docs/services/acme/concepts/ledger.md"
 _HEAD = "---\ntype: concept\ntitle: Ledger\n---\n# Ledger\n\n- code: `app.py`\n"
 _COUNT = 'count(subject="ledger entries", equals=1)'
 
@@ -52,7 +52,7 @@ def test_each_claim_with_its_own_check_is_not_reported(repo: Path):
     assert _shared(repo, body) == []
 
 
-_ENDPOINT = "docs/features/acme/http/get-ledger.md"
+_ENDPOINT = "docs/services/acme/http/get-ledger.md"
 _ENDPOINT_HEAD = ("---\ntype: endpoint\ntitle: get-ledger\n---\n# get-ledger\n\n"
                   "- method: GET\n- path: /api/ledger\n")
 _REFUSED = 'http_status(code=401, title="Unauthorized")'

@@ -113,8 +113,8 @@ def _counts(leaves: list[tuple[str, object]], *patterns: str) -> list[float]:
 @pytest.fixture
 def book(repo: Path) -> Path:
     """The shared fixture repo, plus a screen and a third feature doc."""
-    write(repo / "docs/features/groom/gui/screens/dash.md", SCREEN)
-    write(repo / "docs/features/area/rec3.md", feature_md("rec3", "Rec 3", area="area"))
+    write(repo / "docs/services/groom/gui/screens/dash.md", SCREEN)
+    write(repo / "docs/services/area/rec3.md", feature_md("rec3", "Rec 3", area="area"))
     return repo
 
 

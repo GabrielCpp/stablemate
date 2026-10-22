@@ -89,7 +89,7 @@ sentence of its own to be useful.
 
 ## Identity
 
-File type under `docs/features/<service>/concepts/`, `type: concept` in frontmatter.
+File type under `docs/services/<service>/concepts/`, `type: concept` in frontmatter.
 
 ## Bullet keys
 

@@ -35,7 +35,7 @@ def _fixture(tmp_path: Path) -> tuple[Path, Path, str, str]:
     story = load(docs).find_story("create-invoice")
     assert story is not None
     story_id = story[1].eid
-    feature = docs / "docs/features/billing/create.md"
+    feature = docs / "docs/services/billing/create.md"
     feature.parent.mkdir(parents=True)
     feature.write_text(
         "---\ntype: concept\nslug: create\ntitle: Create invoice\n---\n"
@@ -58,7 +58,7 @@ def _fixture(tmp_path: Path) -> tuple[Path, Path, str, str]:
     _commit(source, f"chore: unrelated trailer\n\nStory: {story_id}-extra")
 
     graph = load(docs)
-    node = graph.find_ui_node("docs/features/billing/create.md")
+    node = graph.find_ui_node("docs/services/billing/create.md")
     assert node is not None
     packet = {
         "version": 2,
@@ -208,7 +208,7 @@ def test_story_for_node_warns_when_the_node_declares_no_code_targets(
     tmp_path: Path,
 ) -> None:
     docs, source, _story_id, node_id = _fixture(tmp_path)
-    (docs / "docs/features/billing/create.md").write_text(
+    (docs / "docs/services/billing/create.md").write_text(
         "---\ntype: concept\nslug: create\ntitle: Create invoice\n---\n"
         "# Create invoice\n\nNo code targets here.\n", encoding="utf-8",
     )
@@ -223,7 +223,7 @@ def test_node_provenance_survives_a_node_removed_from_the_current_graph(
     tmp_path: Path,
 ) -> None:
     docs, source, story_id, node_id = _fixture(tmp_path)
-    (docs / "docs/features/billing/create.md").unlink()
+    (docs / "docs/services/billing/create.md").unlink()
 
     result = node_provenance(
         load(docs), node_id, {"api-service": source}
@@ -330,13 +330,13 @@ def test_story_for_node_with_no_trailer_means_the_code_is_the_intent(tmp_path: P
     assert result["story"] is None and result["commit"] is None
     assert result["warnings"] == ["no checkout supplied for repository 'api-service'"]
 
-    (docs / "docs/features/billing/create.md").write_text(
+    (docs / "docs/services/billing/create.md").write_text(
         "---\ntype: concept\nslug: create\ntitle: Create invoice\n---\n"
         "# Create invoice\n\n- code: `src/service.py::x`\n", encoding="utf-8")
     result = Ostler(docs).query("story-for-node", node_id, checkouts={"web-app": other})[0]
     assert result == {"node": result["node"], "commit": None, "story": None,
                       "resolved": False, "warnings": []}
-    assert Ostler(docs).query("story-for-node", "docs/features/nope.md",
+    assert Ostler(docs).query("story-for-node", "docs/services/nope.md",
                               checkouts={"web-app": other}) == []
     assert "story-for-node" in query_mod.QUERIES
 
@@ -355,37 +355,37 @@ def test_a_books_default_repository_resolves_unqualified_refs(
     (other / "src/service.py").write_text("x = 1\n", encoding="utf-8")
     _commit(other, f"feat: the only repo with this file\n\nStory: {story_id}")
 
-    (docs / "docs/features/billing/create.md").write_text(
+    (docs / "docs/services/billing/create.md").write_text(
         "---\ntype: concept\nslug: create\ntitle: Create invoice\n---\n"
         "# Create invoice\n\n- code: `src/service.py::x`\n", encoding="utf-8")
 
     from ostler import source_snapshots
 
     bare = Ostler(docs).query(
-        "story-for-node", "docs/features/billing/create.md",
+        "story-for-node", "docs/services/billing/create.md",
         checkouts={"web-app": other},
     )[0]
     assert bare["commit"]["repository"] == "web-app"
 
-    source_snapshots.set_book_repository(docs / "docs/features", "web-app")
+    source_snapshots.set_book_repository(docs / "docs/services", "web-app")
     declared = Ostler(docs).query(
-        "story-for-node", "docs/features/billing/create.md",
+        "story-for-node", "docs/services/billing/create.md",
         checkouts={"api-service": _source, "web-app": other},
     )[0]
     assert declared["commit"]["repository"] == "web-app"
     assert declared["warnings"] == []
 
-    source_snapshots.set_book_repository(docs / "docs/features", "ios-app")
+    source_snapshots.set_book_repository(docs / "docs/services", "ios-app")
     quiet = Ostler(docs).query(
-        "story-for-node", "docs/features/billing/create.md",
+        "story-for-node", "docs/services/billing/create.md",
         checkouts={"api-service": _source, "web-app": other},
     )[0]
     assert quiet["commit"] is None
     assert any("no checkout supplied" in w for w in quiet["warnings"])
 
-    (docs / "docs/features/repository.txt").unlink()
+    (docs / "docs/services/repository.txt").unlink()
     no_decl = Ostler(docs).query(
-        "story-for-node", "docs/features/billing/create.md",
+        "story-for-node", "docs/services/billing/create.md",
         checkouts={"api-service": _source, "web-app": other},
     )[0]
     assert no_decl["commit"] is None

@@ -22,7 +22,7 @@ from workhorse_workflows.okf_book.shared.page_check import PageProblem
 from workhorse_workflows.okf_book.workflow import OkfBook, workflow
 
 LEDGER = "tally/ledger.py"
-LEDGER_PAGE = "docs/features/tally/concepts/ledger-file.md"
+LEDGER_PAGE = "docs/services/tally/concepts/ledger-file.md"
 CHANGE = "\n\ndef archive(path):\n    return path\n"
 SAID = "`merge` now keeps the newer of two entries with one id, and the node says the older"
 

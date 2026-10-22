@@ -37,7 +37,7 @@ def _symbol(path: str, symbol: str) -> dict:
 
 def _book(root: Path, *code_refs: str) -> Graph:
     bullets = "\n".join(f"- code: `{ref}`" for ref in code_refs)
-    write(root / "docs/features/api/concepts/thing.md",
+    write(root / "docs/services/api/concepts/thing.md",
           "---\ntype: concept\nslug: thing\ntitle: Thing\n---\n"
           f"# Thing\n\n{bullets}\n\nA thing.\n")
     return load(root)
@@ -173,7 +173,7 @@ def test_the_gate_passes_when_the_book_matches(tmp_path: Path) -> None:
 
 def test_another_books_broken_bullet_is_not_this_books_work(tmp_path: Path) -> None:
     graph = _repo(tmp_path, "api/thing.py::alpha")
-    write(tmp_path / "docs/features/web/concepts/other.md",
+    write(tmp_path / "docs/services/web/concepts/other.md",
           "---\ntype: concept\nslug: other\ntitle: Other\n---\n"
           "# Other\n\n- code: `web/gone.py::vanished`\n\nAnother book.\n")
     graph = load(tmp_path)

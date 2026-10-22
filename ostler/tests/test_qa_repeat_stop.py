@@ -32,7 +32,7 @@ def scenario_{index}(qa: Qa) -> None:
 
 
 def _obligation(index: int, pages: int) -> str:
-    return f"okf:docs/features/demo/page-{index % pages}.md:contract:{index}"
+    return f"okf:docs/services/demo/page-{index % pages}.md:contract:{index}"
 
 
 def _run(

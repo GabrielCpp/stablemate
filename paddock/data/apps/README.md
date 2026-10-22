@@ -139,7 +139,7 @@ A frozen app ships four things:
 | Part | What it is |
 | --- | --- |
 | the code | a runnable service, small enough to read in one sitting, with a `compose.yml` |
-| the book | an OKF subgraph under `docs/features/`, every normative bullet carrying a `verify:` check call |
+| the book | an OKF subgraph under `docs/services/`, every normative bullet carrying a `verify:` check call |
 | the stories | an epic, its stories, and a spec dir per story under `docs/specs/` |
 | the answer key | `defects.yml` plus whole-file variants under `defects/`, each naming the obligation it should contradict |
 

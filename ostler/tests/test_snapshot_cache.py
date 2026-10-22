@@ -90,7 +90,7 @@ def test_editing_a_story_invalidates(repo, index_home):
 def test_a_new_document_invalidates(repo, index_home):
     """The listing half: a per-file digest can only speak for files that already existed."""
     Ostler(repo).graph
-    write(repo / "docs/features/area/rec3.md", feature_md("rec3", "Rec 3", area="area"))
+    write(repo / "docs/services/area/rec3.md", feature_md("rec3", "Rec 3", area="area"))
 
     okf = Ostler(repo)
     features = {f.slug for f in okf.graph.features}
@@ -101,7 +101,7 @@ def test_a_new_document_invalidates(repo, index_home):
 
 def test_a_deleted_document_invalidates(repo, index_home):
     Ostler(repo).graph
-    (repo / "docs/features/area/rec2.md").unlink()
+    (repo / "docs/services/area/rec2.md").unlink()
 
     okf = Ostler(repo)
     features = {f.slug for f in okf.graph.features}
@@ -130,7 +130,7 @@ def test_a_story_file_appearing_where_none_was_invalidates(repo, index_home):
 
 def test_a_different_book_gets_a_different_snapshot(repo, tmp_path, index_home):
     other = tmp_path / "other"
-    write(other / "docs/features/area/only.md", feature_md("only", "Only", area="area"))
+    write(other / "docs/services/area/only.md", feature_md("only", "Only", area="area"))
     Ostler(repo).graph
 
     okf = Ostler(other)
@@ -227,7 +227,7 @@ def test_the_probe_order_matches_the_loader(repo, index_home):
 def big_book(root: Path, features: int = 400, epics: int = 4, stories: int = 8) -> Path:
     """A book of a few hundred documents — the scale the saving is actually about."""
     for i in range(features):
-        write(root / f"docs/features/area{i % 8}/rec{i}.md",
+        write(root / f"docs/services/area{i % 8}/rec{i}.md",
               feature_md(f"rec{i}", f"Rec {i}", area=f"area{i % 8}"))
     for e in range(epics):
         write(root / f"docs/epics/epic-{e}/epic.md", epic_md(

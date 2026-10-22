@@ -42,30 +42,30 @@ def warm(ui_book: Path, tmp_path: Path, index_home: Path) -> Path:
 
 
 def test_a_deleted_file_still_dangles_every_link_into_it(ui_book: Path, warm: Path):
-    (ui_book / "docs" / "features" / "area" / "rec.md").unlink()
+    (ui_book / "docs" / "services" / "area" / "rec.md").unlink()
 
     cached = doctor_report(ui_book, "--index-dir", str(warm))
     uncached = doctor_report(ui_book, "--no-index")
 
     dangling = [f for f in cached["findings"] if f["code"] == "dangling-link"]
     assert {f["ref"] for f in dangling} == {
-        "docs/features/ui/dash.md:12:../area/rec.md",
-        "docs/features/ui/dash.md:12:../area/rec.md#rec"}
+        "docs/services/ui/dash.md:12:../area/rec.md",
+        "docs/services/ui/dash.md:12:../area/rec.md#rec"}
     assert_agree(cached, uncached)
     assert cached["index"]["hits"] > 0, "the files that did not change are still served warm"
 
 
 def test_a_renamed_file_is_not_served_under_its_old_path(ui_book: Path, warm: Path):
     """Same bytes, new path: a key on content alone would answer for both."""
-    area = ui_book / "docs" / "features" / "area"
+    area = ui_book / "docs" / "services" / "area"
     shutil.move(area / "rec.md", area / "moved.md")
 
     cached = doctor_report(ui_book, "--index-dir", str(warm))
     uncached = doctor_report(ui_book, "--no-index")
 
     assert {f["ref"] for f in cached["findings"] if f["code"] == "dangling-link"} == {
-        "docs/features/ui/dash.md:12:../area/rec.md",
-        "docs/features/ui/dash.md:12:../area/rec.md#rec"}
+        "docs/services/ui/dash.md:12:../area/rec.md",
+        "docs/services/ui/dash.md:12:../area/rec.md#rec"}
     assert_agree(cached, uncached)
     assert cached["index"]["hits"] > 0
 
@@ -145,7 +145,7 @@ def test_verify_index_catches_a_store_that_round_trips_a_document_wrongly(
 def test_verify_index_agrees_against_a_partially_stale_index(ui_book: Path, warm: Path, capsys):
     """One file edited, the rest warm — the state a working tree is in nearly all the time."""
     before = len(entry_files(warm))
-    write(ui_book / "docs" / "features" / "ui" / "detail.md",
+    write(ui_book / "docs" / "services" / "ui" / "detail.md",
           screen_md("detail", "Detail", body="\nA line of prose the warm entry has never seen.\n"))
 
     code = main(["-C", str(ui_book), "doctor", "--verify-index", "--index-dir", str(warm)])

@@ -82,7 +82,7 @@ class EpicEdit(Workflow):
             "validation_findings": findings,
             "epic_dir": snapshot.epic_dir,
             "backlog": self.ctx.backlog_path,
-            "features_dir": self.ctx.features_dir,
+            "services_dir": self.ctx.services_dir,
         }
 
     def start(self) -> Continue:
@@ -339,7 +339,7 @@ class EpicEdit(Workflow):
                 "epic": applied.epic,
                 "story_slug": pick.story_slug,
                 "story_dir": pick.story_dir,
-                "features_dir": self.ctx.features_dir,
+                "services_dir": self.ctx.services_dir,
                 "epics_dir": self.ctx.epics_dir,
             },
         )
@@ -372,7 +372,7 @@ class EpicEdit(Workflow):
                 "story_path": pick.story_path,
                 "story_slug": pick.story_slug,
                 "story_dir": pick.story_dir,
-                "features_dir": self.ctx.features_dir,
+                "services_dir": self.ctx.services_dir,
                 "mockup_path": mockup,
                 "epic_edit": intent.change,
             },
@@ -415,7 +415,7 @@ class EpicEdit(Workflow):
                 check_story_grounding,
                 pick.story_dir,
                 applied.epic_dir,
-                self.ctx.features_dir,
+                self.ctx.services_dir,
             )
             if structure.ok
             else Defects()
@@ -450,7 +450,7 @@ class EpicEdit(Workflow):
                     "story_path": pick.story_path,
                     "story_slug": pick.story_slug,
                     "story_dir": pick.story_dir,
-                    "features_dir": self.ctx.features_dir,
+                    "services_dir": self.ctx.services_dir,
                     "mockup_path": mockup,
                     "validation_errors": errors,
                     "prior_attempts": ledger.prior_attempts,
@@ -497,7 +497,7 @@ class EpicEdit(Workflow):
                 "story_path": pick.story_path,
                 "story_slug": pick.story_slug,
                 "story_dir": pick.story_dir,
-                "features_dir": self.ctx.features_dir,
+                "services_dir": self.ctx.services_dir,
             },
         )
         if result.status != "passed":
@@ -558,7 +558,7 @@ class EpicEdit(Workflow):
                 "story_path": pick.story_path,
                 "story_slug": pick.story_slug,
                 "story_dir": pick.story_dir,
-                "features_dir": self.ctx.features_dir,
+                "services_dir": self.ctx.services_dir,
                 "mockup_path": mockup,
                 "validation_errors": findings,
                 "prior_attempts": ledger.prior_attempts,

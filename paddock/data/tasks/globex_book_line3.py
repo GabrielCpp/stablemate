@@ -39,21 +39,21 @@ class Node:
 
 NODES = (
     Node(
-        path="features/web-app/gui/screens/widget-list.md",
+        path="services/web-app/gui/screens/widget-list.md",
         citing_story="widget-list",
-        decoy="features/web-app/ops/web-app-stack.md",
+        decoy="services/web-app/ops/web-app-stack.md",
         other_story="add-widget",
     ),
     Node(
-        path="features/api-service/concepts/widget.md",
+        path="services/api-service/concepts/widget.md",
         citing_story="add-widget",
-        decoy="features/api-service/ops/local.md",
+        decoy="services/api-service/ops/local.md",
         other_story="widget-list",
     ),
     Node(
-        path="features/mobile-app/gui/screens/widget-list.md",
+        path="services/mobile-app/gui/screens/widget-list.md",
         citing_story="mobile-widget-directory",
-        decoy="features/mobile-app/ops/mobile-app-stack.md",
+        decoy="services/mobile-app/ops/mobile-app-stack.md",
         other_story="add-widget",
     ),
 )
@@ -64,7 +64,7 @@ LINK_RE = re.compile(r"\[([^\]]+)\]\(([^)]+)\)")
 
 QUESTION_TEMPLATE = (
     "You are looking at part of a product's documentation, laid out as an OKF book: "
-    "`docs/features/<surface>/...` describes the product's parts, and "
+    "`docs/services/<surface>/...` describes the product's parts, and "
     "`docs/epics/*/stories/<slug>/story.md` are the stories that asked for them. A story "
     "cites the parts it is responsible for as ordinary markdown links in its own prose. "
     "You have not been given any source code — only `docs/`.\n\n"

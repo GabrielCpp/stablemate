@@ -33,7 +33,7 @@ from workhorse_workflows.okf_book.shared.page_check import PageProblem
 from workhorse_workflows.okf_book.shared.scenarios import RUN_NAME, FailedCheck, RunSummary, ScenarioOutcome
 from workhorse_workflows.okf_book.workflow import OkfBook
 
-PAGE = "docs/features/tally/tally.md"
+PAGE = "docs/services/tally/tally.md"
 MISREAD = Signature(Cause.BOOK, "", "422", "POST /entries/…", 1, "adds: expected [201], observed 422")
 UNNAMED = PageProblem(PAGE, f"{PAGE}:4: prose-name: the control has no name", node=f"{PAGE}#add", code="prose-name")
 UNLINKED = PageProblem(PAGE, f"{PAGE}:9: off-journey: no flow links it", node=f"{PAGE}#list", code="off-journey")

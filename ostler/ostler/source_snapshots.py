@@ -18,9 +18,9 @@ SELF_REPOSITORY = ""
 REPOSITORY_DECL_FILENAME = "repository.txt"
 
 
-def book_repository(features_root: Path) -> str:
+def book_repository(services_root: Path) -> str:
     """The repository a book declares its unqualified ``code:`` refs resolve to."""
-    path = Path(features_root) / REPOSITORY_DECL_FILENAME
+    path = Path(services_root) / REPOSITORY_DECL_FILENAME
     if not path.is_file():
         return ""
     try:
@@ -29,9 +29,9 @@ def book_repository(features_root: Path) -> str:
         return ""
 
 
-def set_book_repository(features_root: Path, repository_id: str) -> Path:
+def set_book_repository(services_root: Path, repository_id: str) -> Path:
     """Write the book's repository declaration."""
-    path = Path(features_root) / REPOSITORY_DECL_FILENAME
+    path = Path(services_root) / REPOSITORY_DECL_FILENAME
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(repository_id.strip() + "\n", encoding="utf-8")
     return path
@@ -86,7 +86,7 @@ class SourceCatalog(BaseModel):
 
 
 def catalog_path(root: Path) -> Path:
-    return path_mod.features_root_in(root) / "sources.json"
+    return path_mod.services_root_in(root) / "sources.json"
 
 
 def load_catalog(root: Path) -> SourceCatalog | None:

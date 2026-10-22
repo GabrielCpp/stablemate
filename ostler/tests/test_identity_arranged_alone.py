@@ -9,7 +9,7 @@ from ostler.model import load
 
 from conftest import write
 
-DASH = "docs/features/web/gui/screens/dashboard.md"
+DASH = "docs/services/web/gui/screens/dashboard.md"
 
 HEAD = """\
 ---

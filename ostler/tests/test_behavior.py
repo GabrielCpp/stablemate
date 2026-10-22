@@ -59,7 +59,7 @@ def test_extraction_keeps_failed_and_empty_files_and_rejects_escape(tmp_path: Pa
 
 
 def test_claims_use_real_graph_normative_ids_lines_and_citations(tmp_path: Path) -> None:
-    docs = tmp_path / "docs/features/api"
+    docs = tmp_path / "docs/services/api"
     docs.mkdir(parents=True)
     (docs / "items.md").write_text(
         "---\ntype: server\ntitle: API\n---\n\n# API\n\n## Endpoints\n\n### items\n\n"
@@ -70,7 +70,7 @@ def test_claims_use_real_graph_normative_ids_lines_and_citations(tmp_path: Path)
     claims = extract_claims(load(tmp_path))
     rules = [claim for claim in claims if claim.kind == "does"]
     assert [claim.id for claim in rules] == [
-        "okf:docs/features/api/items.md#items:does:1", "okf:docs/features/api/items.md#items:does:2",
+        "okf:docs/services/api/items.md#items:does:1", "okf:docs/services/api/items.md#items:does:2",
     ]
     assert [claim.line for claim in rules] == [12, 13]
     assert rules[0].citations == ("api.py::items",)
@@ -148,7 +148,7 @@ def test_normalized_file_binding_keeps_uncited_source_and_ungrounded_book(tmp_pa
 
 
 def test_normative_claims_inherit_nearest_same_document_citations_not_titles(tmp_path: Path) -> None:
-    docs = tmp_path / "docs/features/api"
+    docs = tmp_path / "docs/services/api"
     docs.mkdir(parents=True)
     (docs / "items.md").write_text(
         "---\ntype: server\ntitle: API\n---\n\n# API\n\n- code: `server.py::app`\n"
@@ -389,7 +389,7 @@ def test_packet_shows_side_effect_preceding_return_and_prior_guard(tmp_path: Pat
 
 
 def test_book_context_retains_signature_output_and_neighboring_prose_not_siblings(tmp_path: Path) -> None:
-    path = tmp_path / "docs/features/api.md"
+    path = tmp_path / "docs/services/api.md"
     path.parent.mkdir(parents=True)
     text = (
         "---\ntype: server\ntitle: API\n---\n# API\n\n## Endpoints\n\n"
@@ -431,7 +431,7 @@ def test_book_context_retains_signature_output_and_neighboring_prose_not_sibling
 def test_packet_budget_counts_indivisible_context_without_truncation(tmp_path: Path, side: str) -> None:
     source = "def send():\n    # " + "context " * (1500 if side == "source" else 1) + "\n    return 1\n"
     (tmp_path / "api.py").write_text(source, encoding="utf-8")
-    path = tmp_path / "docs/features/api.md"
+    path = tmp_path / "docs/services/api.md"
     path.parent.mkdir(parents=True)
     path.write_text("---\ntype: server\n---\n# API\n\n## Endpoints\n\n### send\n"
                     "- does: Sends items.\n- code: api.py::send\n\n"
@@ -534,7 +534,7 @@ def test_support_context_budget_counts_full_file_and_empty_files(tmp_path: Path)
 @pytest.fixture
 def signature_packet(tmp_path: Path) -> AuditPacket:
     (tmp_path / "api.py").write_text("def review(run_dir=''):\n    return run_dir\n", encoding="utf-8")
-    book = tmp_path / "docs/features/api.md"
+    book = tmp_path / "docs/services/api.md"
     book.parent.mkdir(parents=True)
     book.write_text(
         "---\ntype: server\n---\n# API\n\n## Endpoints\n\n### review\n"
@@ -613,7 +613,7 @@ def test_old_receipt_without_book_evidence_still_validates(audit_packet: AuditPa
 
 def test_two_sections_sharing_a_heading_are_both_audited(tmp_path: Path) -> None:
     """A repeated heading is two nodes at two anchors, so neither claim is dropped."""
-    docs = tmp_path / "docs/features/api"
+    docs = tmp_path / "docs/services/api"
     docs.mkdir(parents=True)
     (docs / "items.md").write_text(
         "---\ntype: server\ntitle: API\n---\n\n# API\n\n## Endpoints\n\n### items\n\n"
@@ -624,9 +624,9 @@ def test_two_sections_sharing_a_heading_are_both_audited(tmp_path: Path) -> None
     (tmp_path / "api.py").write_text("def items():\n    return 50\n\ndef other():\n    return 1\n", encoding="utf-8")
     graph = load(tmp_path)
     book = extract_book(graph)
-    assert [claim.node for claim in book.claims] == ["docs/features/api/items.md#items",
-                                                     "docs/features/api/items.md#items-1",
-                                                     "docs/features/api/items.md#other"]
+    assert [claim.node for claim in book.claims] == ["docs/services/api/items.md#items",
+                                                     "docs/services/api/items.md#items-1",
+                                                     "docs/services/api/items.md#other"]
     assert book.limitations == ()
     preparation = build_audit_packets(extract_evidence(tmp_path, ["api.py"]), book)
     assert len(preparation.packets) >= 1
@@ -767,7 +767,7 @@ def test_a_packet_carries_its_own_file_limitations_not_another_files(tmp_path: P
 
 
 def test_book_context_is_windowed_around_the_packets_claims(tmp_path: Path) -> None:
-    path = tmp_path / "docs/features/api.md"
+    path = tmp_path / "docs/services/api.md"
     path.parent.mkdir(parents=True)
     filler = "".join(f"Prose line {i}.\n" for i in range(120))
     text = ("---\ntype: server\ntitle: API\n---\n# API\n\n## Endpoints\n\n### send\n"
@@ -799,7 +799,7 @@ def test_book_context_is_windowed_around_the_packets_claims(tmp_path: Path) -> N
 def test_a_scoped_read_never_opens_another_service_book(tmp_path: Path) -> None:
     """One service's audit must not fail on another service's documents."""
     for service, symbol in (("api", "items"), ("web", "render")):
-        docs = tmp_path / "docs/features" / service
+        docs = tmp_path / "docs/services" / service
         docs.mkdir(parents=True)
         (docs / f"{service}.md").write_text(
             f"---\ntype: server\ntitle: {service}\n---\n\n# {service}\n\n## Endpoints\n\n### {symbol}\n\n"
@@ -808,21 +808,21 @@ def test_a_scoped_read_never_opens_another_service_book(tmp_path: Path) -> None:
         )
         (tmp_path / f"{service}.py").write_text(f"def {symbol}():\n    return 1\n", encoding="utf-8")
     graph = load(tmp_path)
-    web = tmp_path / "docs/features/web/web.md"
+    web = tmp_path / "docs/services/web/web.md"
     web.write_text(web.read_text(encoding="utf-8").replace(
         "# web\n", "# web\n\nA new paragraph.\n\nAnd another one.\n"), encoding="utf-8")
 
-    with pytest.raises(ValueError, match="docs/features/web/web.md#render"):
+    with pytest.raises(ValueError, match="docs/services/web/web.md#render"):
         extract_book(graph)
 
-    book = extract_book(graph, scope="docs/features/api/")
-    assert [claim.node for claim in book.claims] == ["docs/features/api/api.md#items"]
+    book = extract_book(graph, scope="docs/services/api/")
+    assert [claim.node for claim in book.claims] == ["docs/services/api/api.md#items"]
     assert "web.py::render" in book.cited_symbols
 
 
 def test_last_sections_book_evidence_span_is_citable_to_its_final_line(tmp_path: Path) -> None:
     """The file's last section must not advertise a line its own text does not carry."""
-    path = tmp_path / "docs/features/api.md"
+    path = tmp_path / "docs/services/api.md"
     path.parent.mkdir(parents=True)
     text = (
         "---\ntype: server\ntitle: API\n---\n# API\n\n## Endpoints\n\n"

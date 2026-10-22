@@ -9,7 +9,7 @@ a runbook supersedes it.
 
 ## Identity
 
-File type under `docs/features/<service>/http/`, `type: server` in frontmatter.
+File type under `docs/services/<service>/http/`, `type: server` in frontmatter.
 
 ## Bullet keys
 

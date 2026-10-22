@@ -115,7 +115,7 @@ def test_a_socket_the_table_never_lists_is_dropped() -> None:
 
 
 def test_a_runbook_names_the_ports_of_its_bullets_and_not_of_its_prose(tmp_path: Path) -> None:
-    page = "docs/features/web-app/ops/dev.md"
+    page = "docs/services/web-app/ops/dev.md"
     (tmp_path / page).parent.mkdir(parents=True)
     _ = (tmp_path / page).write_text(
         "# Dev\n\nThe dev server proxies `/api` to `http://localhost:8080`.\n\n"
@@ -126,13 +126,13 @@ def test_a_runbook_names_the_ports_of_its_bullets_and_not_of_its_prose(tmp_path:
 
 
 def test_each_unstarted_port_names_who_called_it_and_the_runbooks_that_do_not_start_it() -> None:
-    calls = CallWatch((Runbook("docs/features/web-app/ops/dev.md", frozenset({5173})),))
+    calls = CallWatch((Runbook("docs/services/web-app/ops/dev.md", frozenset({5173})),))
     calls.calls = {8080: ("`node vite dev` in /repo/web",)}
 
     [problem] = calls.unstarted()
 
     assert problem.startswith("while the book ran, `node vite dev` in /repo/web called localhost:8080, and no step of the runbooks "
-                              + "docs/features/web-app/ops/dev.md starts or names that port.")
+                              + "docs/services/web-app/ops/dev.md starts or names that port.")
 
 
 def test_a_watch_with_no_named_port_starts_nothing() -> None:
@@ -149,7 +149,7 @@ def test_the_watch_sees_this_process_call_a_server_another_process_runs() -> Non
         with subprocess.Popen([sys.executable, "-c", _ANSWER, str(other.fileno())], pass_fds=(other.fileno(),)) as answering:
             other.server_close()
             try:
-                with CallWatch((Runbook("docs/features/web-app/ops/dev.md", frozenset({named.server_port})),)) as calls:
+                with CallWatch((Runbook("docs/services/web-app/ops/dev.md", frozenset({named.server_port})),)) as calls:
                     until = time.monotonic() + local_calls.RESCAN_S + 1
                     while time.monotonic() < until:
                         with socket.create_connection(("127.0.0.1", port)):

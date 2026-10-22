@@ -39,7 +39,7 @@ def test_a_git_failure_says_what_git_said(tmp_path: Path) -> None:
         _ = snapshot(tmp_path)
 
 
-OTHER = "docs/features/other/start.md"
+OTHER = "docs/services/other/start.md"
 LINK = "See [totals](../ledger/old.md#totals).\n"
 
 

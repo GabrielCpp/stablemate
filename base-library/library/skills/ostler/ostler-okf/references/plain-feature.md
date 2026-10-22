@@ -20,7 +20,7 @@ holding a hand-written list of commands is a `cli` that was not modelled.
    ```bash
    ostler create feature <slug> --title "<Human title>" [--area <area>] [--route <path>]
    ```
-   It writes `docs/features/<area>/<slug>.md` (or flat `docs/features/<slug>.md` with no `--area`):
+   It writes `docs/services/<area>/<slug>.md` (or flat `docs/services/<slug>.md` with no `--area`):
    ```markdown
    ---
    type: feature
@@ -74,7 +74,7 @@ spec-complete, and spec not implementation.
 
 ## The legacy caveat
 
-Some `docs/features/*.md` predate the format and were hand-authored **with no frontmatter** —
+Some `docs/services/*.md` predate the format and were hand-authored **with no frontmatter** —
 straight to the `# Title`. Those are **not** valid OKF Concepts and fail `ostler doctor`'s schema
 checks. To bring one under management, add the required `type: feature` / `slug` / `title`
 frontmatter that `ostler create feature` would have generated — either by scaffolding a fresh

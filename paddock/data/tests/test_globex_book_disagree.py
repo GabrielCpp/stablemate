@@ -329,7 +329,7 @@ def test_perturb_app_wrong_refuses_when_the_anchor_is_not_found(tmp_path: Path) 
 
 
 def test_perturb_book_wrong_refuses_when_the_name_bullets_are_not_found(tmp_path: Path) -> None:
-    docs = tmp_path / "docs" / "features" / "web-app" / "gui" / "screens"
+    docs = tmp_path / "docs" / "services" / "web-app" / "gui" / "screens"
     docs.mkdir(parents=True)
     (docs / "widget-list.md").write_text("# nothing here\n", encoding="utf-8")
     with pytest.raises(TASK.TrialError, match="name"):
@@ -358,7 +358,7 @@ def test_appraise_caps_a_level_two_verdict_whose_citation_does_not_resolve(tmp_p
 
 
 def test_appraise_leaves_a_well_formed_level_two_verdict_alone(tmp_path: Path) -> None:
-    real = tmp_path / "docs" / "features" / "web-app" / "gui" / "screens" / "widget-list.md"
+    real = tmp_path / "docs" / "services" / "web-app" / "gui" / "screens" / "widget-list.md"
     real.parent.mkdir(parents=True)
     real.write_text("- name: Add a widget\n", encoding="utf-8")
 

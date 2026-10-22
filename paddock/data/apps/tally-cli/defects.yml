@@ -76,7 +76,7 @@ defects:
   - id: T1
     story: import-csv
     path: tally/cli.py
-    obligation: okf:docs/features/tally/tally.md#import-a-malformed-row:status:1
+    obligation: okf:docs/services/tally/tally.md#import-a-malformed-row:status:1
     expect: contradicted
     caught_by: run
     why: >
@@ -89,7 +89,7 @@ defects:
   - id: T2
     story: report-export
     path: tally/cli.py
-    obligation: okf:docs/features/tally/tally.md#report-as-json:consistency:1
+    obligation: okf:docs/services/tally/tally.md#report-as-json:consistency:1
     expect: contradicted
     caught_by: run
     why: >
@@ -102,7 +102,7 @@ defects:
   - id: T3
     story: import-csv
     path: tally/cli.py
-    obligation: okf:docs/features/tally/tally.md#dry-run:semantics:1
+    obligation: okf:docs/services/tally/tally.md#dry-run:semantics:1
     expect: contradicted
     caught_by: run
     why: >
@@ -116,7 +116,7 @@ defects:
   - id: T4
     story: import-csv
     path: tally/ledger.py
-    obligation: okf:docs/features/tally/tally.md#import-a-csv:consistency:1
+    obligation: okf:docs/services/tally/tally.md#import-a-csv:consistency:1
     expect: contradicted
     caught_by: run
     why: >
@@ -129,7 +129,7 @@ defects:
   - id: T5
     story: ledger-init-add
     path: tally/ledger.py
-    obligation: okf:docs/features/tally/tally.md#add-an-expense:errors:1
+    obligation: okf:docs/services/tally/tally.md#add-an-expense:errors:1
     expect: contradicted
     caught_by: run
     why: >
@@ -142,7 +142,7 @@ defects:
   - id: T6
     story: report-export
     path: tally/report.py
-    obligation: okf:docs/features/tally/tally.md#export-to-csv:consistency:1
+    obligation: okf:docs/services/tally/tally.md#export-to-csv:consistency:1
     expect: contradicted
     caught_by: run
     why: >
@@ -156,7 +156,7 @@ defects:
   - id: T7
     story: ledger-init-add
     path: tally/ledger.py
-    obligation: okf:docs/features/tally/tally.md#init-a-ledger:status:2
+    obligation: okf:docs/services/tally/tally.md#init-a-ledger:status:2
     expect: contradicted
     caught_by: run
     why: >

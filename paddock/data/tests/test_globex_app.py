@@ -53,7 +53,7 @@ TASK = _load("_task_under_test", DATA / "tasks" / "globex_qa.py")
 
 def test_every_screen_selector_is_one_the_render_scan_can_address() -> None:
     """A documented selector must be a form `ostler vet` can resolve, or the node reads missing."""
-    screens = sorted((APP / "docs" / "features").rglob("gui/screens/*.md"))
+    screens = sorted((APP / "docs" / "services").rglob("gui/screens/*.md"))
     assert screens, "the fixture documents no screens"
     checked = 0
     for screen in screens:
@@ -71,10 +71,10 @@ def test_every_screen_selector_is_one_the_render_scan_can_address() -> None:
 
 
 def test_the_fixture_ships_the_screens_it_claims() -> None:
-    """Every screen file under `docs/features` is a screen node `ostler` actually parses."""
+    """Every screen file under `docs/services` is a screen node `ostler` actually parses."""
     from ostler.api import Ostler  # noqa: PLC0415 - a heavy import only this test needs
 
-    screens = sorted((APP / "docs" / "features").rglob("gui/screens/*.md"))
+    screens = sorted((APP / "docs" / "services").rglob("gui/screens/*.md"))
     paths = {node["path"] for node in Ostler(APP).list("screen")}
     for screen in screens:
         rel = screen.relative_to(APP).as_posix()
@@ -108,7 +108,7 @@ def test_compose_port_matches_the_ops_page_entry_url(service: str) -> None:
     port = COMPOSE_SERVICES[service]["port"]
     assert f"{port}:{port}" in published, f"{service}: compose.yml does not publish {port}"
 
-    runbook = APP / "docs" / "features" / service / "ops" / f"{service}-stack.md"
+    runbook = APP / "docs" / "services" / service / "ops" / f"{service}-stack.md"
     text = runbook.read_text(encoding="utf-8")
     assert f"entry-url: http://localhost:{port}" in text, (
         f"{service}: {runbook.name} does not name port {port}"

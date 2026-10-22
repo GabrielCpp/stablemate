@@ -1,7 +1,7 @@
 # Score one agent's attempt to say which one is wrong: the app, or the book
 
 You are grading an agent's attempt to compare globex's web-app widget directory screen,
-driven live in a browser, against what `docs/features/web-app/gui/screens/widget-list.md`
+driven live in a browser, against what `docs/services/web-app/gui/screens/widget-list.md`
 says about that same screen — using a browser MCP, its own reading of the book, and
 nothing else it was told directly. On some trials the app's own source was edited so what
 it renders no longer matches the book; on others the book's own prose was edited so it
@@ -39,7 +39,7 @@ Assign exactly one level:
 Rules for choosing:
 
 - **Open the book and the app file before you score.** Read
-  `docs/features/web-app/gui/screens/widget-list.md`'s `new-widget-link` component and
+  `docs/services/web-app/gui/screens/widget-list.md`'s `new-widget-link` component and
   `open-new-widget` interaction, and read `app/web-app/static/index.html`'s anchor text,
   to confirm what each actually states and renders under `{{repo}}`. Score what the trial
   tree shows, not what the expected answer alone tells you.
@@ -69,7 +69,7 @@ Rules for choosing:
 
 A level of 1 or 2 requires at least one `evidence` entry, and each entry must be a **real,
 repo-relative path** you actually opened while checking the account, e.g.
-`docs/features/web-app/gui/screens/widget-list.md` or
+`docs/services/web-app/gui/screens/widget-list.md` or
 `app/web-app/static/index.html`.
 
 Your citations are checked against the filesystem. Any verdict whose cited paths do not
@@ -83,7 +83,7 @@ A single JSON object and nothing else:
 ```json
 {
   "level": 2,
-  "evidence": ["docs/features/web-app/gui/screens/widget-list.md", "app/web-app/static/index.html"],
+  "evidence": ["docs/services/web-app/gui/screens/widget-list.md", "app/web-app/static/index.html"],
   "reason": "one sentence, under 25 words, naming what the book, the app, and the digest show"
 }
 ```

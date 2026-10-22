@@ -34,7 +34,7 @@ def _symbol(path: str, symbol: str) -> dict:
 def _book(repo: Path, *code_refs: str):
     """A one-node book citing each of *code_refs*."""
     bullets = "\n".join(f"- code: `{ref}`" for ref in code_refs)
-    write(repo / "docs/features/api/concepts/thing.md",
+    write(repo / "docs/services/api/concepts/thing.md",
           f"---\ntype: concept\nslug: thing\ntitle: Thing\n---\n# Thing\n\n{bullets}\n\nA thing.\n")
     return load(repo)
 
@@ -207,9 +207,9 @@ def test_cmd_coverage_carries_the_join_and_its_verdict(tmp_path: Path) -> None:
 
 
 def test_surface_scopes_the_citations_to_one_book(tmp_path: Path) -> None:
-    write(tmp_path / "docs/features/api/concepts/a.md",
+    write(tmp_path / "docs/services/api/concepts/a.md",
           "---\ntype: concept\nslug: a\ntitle: A\n---\n# A\n\n- code: `api/x.go::Write`\n\nA.\n")
-    write(tmp_path / "docs/features/web/concepts/b.md",
+    write(tmp_path / "docs/services/web/concepts/b.md",
           "---\ntype: concept\nslug: b\ntitle: B\n---\n# B\n\n- code: `web/y.ts::Render`\n\nB.\n")
     graph = load(tmp_path)
     inv = _inventory(tmp_path, [_symbol("api/x.go", "Write"), _symbol("web/y.ts", "Render")])

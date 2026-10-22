@@ -12,9 +12,9 @@ from ostler.qa import sensitivity
 from ostler.qa.evidence_map import EvidenceMapError, build_evidence_map, render_evidence_map
 from ostler.qa.harness_host import load_harness_module
 
-CONTRACT = "okf:docs/features/orders/publish.md:contract"
-CONFLICT = "okf:docs/features/orders/publish.md:does:1"
-UNTOUCHED = "okf:docs/features/orders/publish.md:does:2"
+CONTRACT = "okf:docs/services/orders/publish.md:contract"
+CONFLICT = "okf:docs/services/orders/publish.md:does:1"
+UNTOUCHED = "okf:docs/services/orders/publish.md:does:2"
 
 DECLARED = 'conflict_on_stale(subject="manifest", token="etag")'
 
@@ -50,7 +50,7 @@ def _obligation(identifier: str, *, declared: list[str] | None = None) -> dict[s
         "id": identifier,
         "kind": "contract" if identifier.endswith("contract") else "does",
         "node": "publish",
-        "source": "docs/features/orders/publish.md",
+        "source": "docs/services/orders/publish.md",
         "requirement": "a stale manifest write is refused",
         "evidenceRequired": "live",
         "reasons": [],

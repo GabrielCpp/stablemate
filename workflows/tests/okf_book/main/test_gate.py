@@ -19,8 +19,8 @@ from workhorse_workflows.okf_book.shared.page_check import PageProblem, tool_blo
 from workhorse_workflows.okf_book.shared.scenarios import FailedCheck, RunSummary, ScenarioOutcome
 from workhorse_workflows.okf_book.workflow import OkfBook
 
-ADD = "docs/features/tally/add.md"
-SIGNED_IN = "docs/features/tally/fixtures/signed-in.md"
+ADD = "docs/services/tally/add.md"
+SIGNED_IN = "docs/services/tally/fixtures/signed-in.md"
 SERVICES = ("tally",)
 
 
@@ -57,10 +57,10 @@ def _rerun_with(monkeypatch: pytest.MonkeyPatch, rerun: GateRerun) -> list[tuple
 
 
 def test_a_rerun_command_names_the_check_its_phase_runs_and_only_the_blockers_pages(tmp_path: Path) -> None:
-    exercise = rerun_command(tmp_path, "tally", Phase.EXERCISE, (ADD, "docs/features/tally/a page.md"))
+    exercise = rerun_command(tmp_path, "tally", Phase.EXERCISE, (ADD, "docs/services/tally/a page.md"))
     check = rerun_command(tmp_path, "tally", Phase.WRITE, (ADD,))
 
-    assert EXERCISE_MODULE in exercise and exercise.endswith(f"{ADD} 'docs/features/tally/a page.md'")
+    assert EXERCISE_MODULE in exercise and exercise.endswith(f"{ADD} 'docs/services/tally/a page.md'")
     assert CHECK_MODULE in check and check.endswith(ADD)
     assert rerun_command(tmp_path, "tally", Phase.EXERCISE, ()) == ""
 

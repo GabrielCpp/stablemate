@@ -6,7 +6,7 @@ how it is started — that is a [`runbook`](runbook.md), which points here with 
 
 ## Identity
 
-File type under `docs/features/<service>/ops/`, `type: environment` in frontmatter.
+File type under `docs/services/<service>/ops/`, `type: environment` in frontmatter.
 
 ## Bullet keys
 

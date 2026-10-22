@@ -9,7 +9,7 @@ from ostler.model import load
 
 from conftest import write
 
-ENDPOINT_PATH = "docs/features/acme/server.md"
+ENDPOINT_PATH = "docs/services/acme/server.md"
 
 
 def _endpoint_book_with(container_key: str, *children: str) -> str:

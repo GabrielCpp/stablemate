@@ -9,7 +9,7 @@ A runbook supersedes the fallback launch contract on a [`server`](server.md) nod
 
 ## Identity
 
-File type under `docs/features/<service>/ops/`, `type: runbook` in frontmatter.
+File type under `docs/services/<service>/ops/`, `type: runbook` in frontmatter.
 
 ## Bullet keys
 

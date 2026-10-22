@@ -103,7 +103,7 @@ def test_a_passing_run_whose_app_called_a_port_no_runbook_starts_fails_on_that_p
     _ = _probed(monkeypatch, None)
     monkeypatch.setattr(book_run, "CallWatch", _CalledAnApi)
 
-    dev = StackReadiness(up=True, serving=True, notes="", runbooks=(Runbook("docs/features/web-app/ops/dev.md", frozenset({5173})),))
+    dev = StackReadiness(up=True, serving=True, notes="", runbooks=(Runbook("docs/services/web-app/ops/dev.md", frozenset({5173})),))
 
     result = run_plan(tmp_path, tmp_path / "spec", (), dev)
 

@@ -15,8 +15,8 @@ from ostler.qa.context import build_context
 from conftest import write
 
 HARNESS_DIR = Path(__file__).resolve().parents[1] / "ostler" / "qa" / "harness"
-CLI = "docs/features/tally/tally.md"
-FLOW = "docs/features/tally/flows/pay-a-bill.md"
+CLI = "docs/services/tally/tally.md"
+FLOW = "docs/services/tally/flows/pay-a-bill.md"
 PAY = f"{CLI}#pay"
 ADD = f"{CLI}#add"
 SHOW = f"{CLI}#show"

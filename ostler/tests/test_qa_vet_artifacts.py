@@ -13,8 +13,8 @@ from ostler.qa.harness_host import load_harness_module
 harness = load_harness_module("ostler_qa")
 hierarchy = load_harness_module("ostler_qa_hierarchy")
 
-LOGIN = "docs/features/app/gui/screens/login.md"
-ONBOARDING = "docs/features/app/gui/screens/onboarding.md"
+LOGIN = "docs/services/app/gui/screens/login.md"
+ONBOARDING = "docs/services/app/gui/screens/onboarding.md"
 
 
 def _element(selector: str) -> dict[str, Any]:

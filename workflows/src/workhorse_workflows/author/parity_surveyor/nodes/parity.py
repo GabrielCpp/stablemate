@@ -38,7 +38,7 @@ def load_parity_config(
     survey_dir = survey_dir.strip() or "docs/survey/legacy-vs-new"
 
     root = launch_repo_root(repo_dir)
-    target = paths.features_dir(root)
+    target = paths.services_dir(root)
     backlog = paths.backlog_file(root)
     epics = paths.epics_dir(root)
     if not baseline or not (root / baseline).is_file():
@@ -62,7 +62,7 @@ def load_parity_config(
     return ParityConfig(
         repo_root=str(root),
         baseline_inventory=baseline,
-        target_features=target,
+        target_services=target,
         survey_dir=survey_dir,
         inventory=f"{survey_dir}/inventory.json",
         findings_dir=f"{survey_dir}/findings",

@@ -50,12 +50,12 @@ def test_capture_is_declared_on_exactly_the_seven_fixture_and_verify_types() -> 
 
 
 def test_a_fixture_node_parses_args_provides_needs_with_no_unknown_bullet(repo: Path) -> None:
-    write(repo / "docs/features/acme/fixtures/seeded-acme.md",
+    write(repo / "docs/services/acme/fixtures/seeded-acme.md",
           "---\ntype: fixture\ntitle: Seeded acme\n---\n# Seeded acme\n\n"
           "- args: id\n"
           "- provides:\n  - id — the seeded account's id\n"
           "\n## Steps\n\n### seed-it\n- kind: seed\n- run: ./scripts/seed-acme.sh\n")
-    write(repo / "docs/features/acme/fixtures/seeded-globex.md",
+    write(repo / "docs/services/acme/fixtures/seeded-globex.md",
           "---\ntype: fixture\ntitle: Seeded globex\n---\n# Seeded globex\n\n"
           "- provides:\n  - id — the seeded project's id\n"
           "- needs:\n  - [seeded-acme](seeded-acme.md)\n"
@@ -69,7 +69,7 @@ def test_a_fixture_node_parses_args_provides_needs_with_no_unknown_bullet(repo: 
 def test_attributed_captures_mirrors_attributed_fixtures_via_the_shared_engine(
     repo: Path,
 ) -> None:
-    write(repo / "docs/features/acme/server.md",
+    write(repo / "docs/services/acme/server.md",
           "---\ntype: server\ntitle: Acme accounts\n---\n# Acme accounts\n\n"
           "## Endpoints\n\n### list-accounts\n"
           "- method: GET\n- path: /api/accounts\n"

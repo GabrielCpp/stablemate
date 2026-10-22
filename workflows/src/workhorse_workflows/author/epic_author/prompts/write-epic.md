@@ -19,7 +19,7 @@ canonical `## Seeds` section. Do not write stories yet.
 
 Read the roadmap, this epic and its neighboring epics in milestone order, installed planning and
 artifact guidance, `{{ epic_dir }}/context.md` when present, and the read-only OKF book under
-`{{ workhorse_var('features_dir') }}` when configured. Existing docs and OKF are the discovery
+`{{ workhorse_var('services_dir') }}` when configured. Existing docs and OKF are the discovery
 boundary; do not inspect the running app or source code to invent surfaces, and never write the
 feature book.
 

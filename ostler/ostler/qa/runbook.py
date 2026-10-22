@@ -151,11 +151,11 @@ def _secrets_of(meta: dict) -> dict[str, str]:
 
 def system_root(graph: Graph) -> Path:
     """The root of the system this book describes, which is not always where it was read."""
-    features = path_mod.features_root(graph)
+    services = path_mod.services_root(graph)
     try:
-        relative = features.relative_to(graph.root).as_posix()
+        relative = services.relative_to(graph.root).as_posix()
     except ValueError:
-        return features.parent.parent
+        return services.parent.parent
     prefix = path_mod.book_prefix_in(graph.root, relative)
     return graph.root / prefix if prefix else graph.root
 
@@ -382,15 +382,15 @@ def select_server(graph: Graph) -> UINode | None:
 def _surface_near(graph: Graph, near: Path) -> str:
     """The surface *near* belongs to, or "" when it sits on none."""
     return graph_mod.surface_of(near if near.is_absolute() else graph.root / near,
-                                path_mod.features_root(graph))
+                                path_mod.services_root(graph))
 
 
 def _on_surface_of(graph: Graph, nodes: list[UINode], near: Path) -> list[UINode]:
     """The *nodes* on the surface *near* belongs to, or none when *near* sits on no surface."""
     surface = _surface_near(graph, near)
-    features_root = path_mod.features_root(graph)
+    services_root = path_mod.services_root(graph)
     return [node for node in nodes
-            if surface and graph_mod.surface_of(node.path, features_root) == surface]
+            if surface and graph_mod.surface_of(node.path, services_root) == surface]
 
 
 def _serving_target(graph: Graph, stacks: list[UINode], near: Path) -> list[UINode]:
@@ -472,27 +472,27 @@ def load_stacks(graph: Graph, *, name: str = "", near: Path | None = None,
     return [], selection
 
 
-def _aimed(root: Path, features_root: str) -> Graph | None:
-    """The graph for the book `features_root` names, or None to let the caller default."""
-    if not features_root:
+def _aimed(root: Path, services_root: str) -> Graph | None:
+    """The graph for the book `services_root` names, or None to let the caller default."""
+    if not services_root:
         return None
-    return model.load(root, root_overrides={"features": features_root})
+    return model.load(root, root_overrides={"services": services_root})
 
 
-def _aim_label(root: Path, features_root: str) -> str:
-    return path_mod.resolve_features_root(features_root, root)
+def _aim_label(root: Path, services_root: str) -> str:
+    return path_mod.resolve_services_root(services_root, root)
 
 
-def _graph_for(root: Path, features_root: str) -> Graph:
-    aimed = _aimed(root, features_root)
+def _graph_for(root: Path, services_root: str) -> Graph:
+    aimed = _aimed(root, services_root)
     return aimed if aimed is not None else model.load(root)
 
 
-def _refusal(root: Path, features_root: str, selection: StackSelection,
+def _refusal(root: Path, services_root: str, selection: StackSelection,
              verb: str) -> QaOutcome | None:
     """The outcome for a selection that chose nothing, or None when it chose something."""
-    where = _aim_label(root, features_root)
-    data: dict[str, Any] = {"manifest": {}, "featuresRoot": features_root,
+    where = _aim_label(root, services_root)
+    data: dict[str, Any] = {"manifest": {}, "servicesRoot": services_root,
                             "runbooks": list(selection.candidates)}
     if selection.reason == "no-such-name":
         return QaOutcome(ok=False, status="unknown-runbook", data=data,
@@ -623,26 +623,26 @@ def bring_up_devices(graph: Graph, *, near: Path | None = None, address_book: st
         return bring_up_stacks(manifests, repo_root=str(system_root(graph)), logger=logger)
 
 
-def _from_stack_file(root: Path, features_root: str, lease: str, near: Path | None,
+def _from_stack_file(root: Path, services_root: str, lease: str, near: Path | None,
                      act: Callable[..., QaOutcome | None]) -> QaOutcome | None:
     """A copy from the books' `stack.yml`, or None where a lease-less call keeps a runbook's stack."""
-    if not lease and stack_runbooks(_graph_for(root, features_root)):
+    if not lease and stack_runbooks(_graph_for(root, services_root)):
         return None
     return act(root, lease=lease, near=near)
 
 
-def cmd_stack_up(root: Path, *, name: str = "", features_root: str = "", lease: str = "",
+def cmd_stack_up(root: Path, *, name: str = "", services_root: str = "", lease: str = "",
                  near: Path | None = None,
                  logger: logging.Logger | None = None) -> QaOutcome:
     """`ostler qa stack up` — bring the book's declared stack to ready, or say why not."""
-    copied = None if name else _from_stack_file(root, features_root, lease, near, leases.up)
+    copied = None if name else _from_stack_file(root, services_root, lease, near, leases.up)
     if copied is not None:
         return copied
     log = logger or logging.getLogger(__name__)
-    graph = _graph_for(root, features_root)
+    graph = _graph_for(root, services_root)
     manifests, selection = load_stacks(graph, name=name, near=near, leased=bool(lease),
                                        logger=log)
-    refused = _refusal(root, features_root, selection, "bring up")
+    refused = _refusal(root, services_root, selection, "bring up")
     if refused is not None and not manifests:
         return refused
     held = stack_lease(graph, selection, lease)
@@ -679,18 +679,18 @@ def cmd_stack_up(root: Path, *, name: str = "", features_root: str = "", lease: 
               **held.data()})
 
 
-def cmd_stack_down(root: Path, *, name: str = "", features_root: str = "", lease: str = "",
+def cmd_stack_down(root: Path, *, name: str = "", services_root: str = "", lease: str = "",
                    near: Path | None = None,
                    logger: logging.Logger | None = None) -> QaOutcome:
     """`ostler qa stack down` — run the declared teardown, or leave an expensive stack up."""
-    copied = None if name else _from_stack_file(root, features_root, lease, near, leases.down)
+    copied = None if name else _from_stack_file(root, services_root, lease, near, leases.down)
     if copied is not None:
         return copied
     log = logger or logging.getLogger(__name__)
-    graph = _graph_for(root, features_root)
+    graph = _graph_for(root, services_root)
     manifests, selection = load_stacks(graph, name=name, near=near, leased=bool(lease),
                                        logger=log)
-    refused = _refusal(root, features_root, selection, "tear down")
+    refused = _refusal(root, services_root, selection, "tear down")
     if refused is not None and not manifests:
         return refused
     held = stack_lease(graph, selection, lease)

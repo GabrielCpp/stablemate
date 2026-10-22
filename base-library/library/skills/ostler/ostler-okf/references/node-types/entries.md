@@ -11,7 +11,7 @@ agent edits it by hand.
 ## Identity
 
 File type with **no context folder** (`context=""`): it lives at
-`docs/features/<service>/entries.md`, with `type: entries` in frontmatter. A service has at most
+`docs/services/<service>/entries.md`, with `type: entries` in frontmatter. A service has at most
 one.
 
 ## Bullet keys

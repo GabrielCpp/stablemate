@@ -22,8 +22,8 @@ expose. -->
 ## Context
 
 A seat has to be reservable before it can be sold. This story adds the first two transitions —
-[hold](../../../../features/booking/concepts/seat.md#hold) and
-[release](../../../../features/booking/concepts/seat.md#release) — and the endpoints over them.
+[hold](../../../../services/booking/concepts/seat.md#hold) and
+[release](../../../../services/booking/concepts/seat.md#release) — and the endpoints over them.
 
 The narrow write is the part worth stating: releasing one seat must touch that seat only. A release
 implemented by rebuilding the map from a fresh showing looks correct from the released seat and is

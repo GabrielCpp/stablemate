@@ -1,6 +1,6 @@
 ---
 name: ostler-repo-docs
-description: "How to write and maintain a repo's prose entry surface — CLAUDE.md (root and nested), README.md, and <package>/docs/*.md: the admission test that decides what earns a slot in every-turn agent context, the root/nested/skill/README/docs placement table, why `@`-imports are not splitting, and the README-outgrew-itself refactor (extract whole sections into <package>/docs/<TOPIC>.md, leave a summary plus an absolute link). Load when creating or editing a CLAUDE.md or README.md, when adding a rule an agent keeps getting wrong, when a file has outgrown its budget, or when a change makes an existing instruction stale. Not for docs/features/** — that is ostler's OKF graph."
+description: "How to write and maintain a repo's prose entry surface — CLAUDE.md (root and nested), README.md, and <package>/docs/*.md: the admission test that decides what earns a slot in every-turn agent context, the root/nested/skill/README/docs placement table, why `@`-imports are not splitting, and the README-outgrew-itself refactor (extract whole sections into <package>/docs/<TOPIC>.md, leave a summary plus an absolute link). Load when creating or editing a CLAUDE.md or README.md, when adding a rule an agent keeps getting wrong, when a file has outgrown its budget, or when a change makes an existing instruction stale. Not for docs/services/** — that is ostler's OKF graph."
 tags: [standards, docs]
 ---
 
@@ -10,9 +10,9 @@ Load this skill when you are writing or maintaining the repo's **prose entry sur
 `CLAUDE.md` files an agent loads, the `README.md` a human lands on, and the long-form
 `<package>/docs/*.md` files both link to.
 
-This skill does **not** cover `docs/features/**`. That is the OKF knowledge graph — ostler
+This skill does **not** cover `docs/services/**`. That is the OKF knowledge graph — ostler
 owns its structure and ids, and it is never hand-written. For anything under
-`docs/features/` — a story's docs, a whole surface graph, or a prose-only feature — load
+`docs/services/` — a story's docs, a whole surface graph, or a prose-only feature — load
 [[ostler-okf]]. If you are about to create a file there, you are in the wrong skill.
 
 ## The four surfaces, and who pays for them
@@ -25,7 +25,7 @@ The whole discipline follows from *when* each file is read:
 | `CLAUDE.md` (nested) | the agent | every turn *touching that subtree* | free elsewhere — this is the budget lever |
 | `README.md` | a human deciding whether/how to use the package | on demand | also the PyPI landing page when published |
 | `<package>/docs/*.md` | whoever follows a link | on demand | unbounded; where long-form belongs |
-| `docs/features/**` | ostler + agents via `ostler` queries | queried | **not yours** — see [[ostler-okf]] |
+| `docs/services/**` | ostler + agents via `ostler` queries | queried | **not yours** — see [[ostler-okf]] |
 
 `CLAUDE.md` is not documentation. It is a standing instruction loaded into every request,
 so every line it carries is a line the agent re-reads forever. Treat it as a budget.
@@ -67,7 +67,7 @@ trimmed on the next pass.
 | relevant only while doing a **task** (writing docs, reviewing, testing, releasing) | a skill — loaded on demand |
 | an explanation of how or why the system works | `README.md` |
 | long-form reference, design rationale, or an ops procedure | `<package>/docs/<TOPIC>.md` |
-| the behavioral spec of a surface, command, or endpoint | `docs/features/**` via [[ostler-okf]] |
+| the behavioral spec of a surface, command, or endpoint | `docs/services/**` via [[ostler-okf]] |
 
 The nested `CLAUDE.md` is a **context-budget tool**, not filing. Pushing a rule down one
 directory makes it cost nothing on every turn that never goes there. When a root section
@@ -196,8 +196,8 @@ grep -nE '^(hooks|test|check-public):' Makefile
 # 2. The real context cost, imports included.
 wc -c CLAUDE.md $(grep -oP '(?<=^@)\S+' CLAUDE.md)
 
-# 3. Nothing under docs/features/ was hand-written by this change.
-git diff --name-only | grep '^docs/features/' && echo "use ostler — see [[ostler-okf]]"
+# 3. Nothing under docs/services/ was hand-written by this change.
+git diff --name-only | grep '^docs/services/' && echo "use ostler — see [[ostler-okf]]"
 ```
 
 Then read the file top to bottom once and ask the admission question of every line. Anything
@@ -205,7 +205,7 @@ that fails it goes to its place in the placement table, or goes away.
 
 ## When to reach for the neighbors
 
-- **A story's behavioral docs, or anything under `docs/features/**`** → [[ostler-okf]], which
+- **A story's behavioral docs, or anything under `docs/services/**`** → [[ostler-okf]], which
   covers the per-story merge and the whole-surface build alike. ostler owns structure and ids there.
 - **The `docs/` knowledge-graph CLI, epics, stories, coverage** → [[ostler-cli]].
 - **How the material is written, once you know where it goes** — the context pointer and

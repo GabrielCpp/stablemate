@@ -170,7 +170,7 @@ decides which commands it may run under `exec`.
 
 ## The ostler stack
 
-A repository's `docs/features/ops/stack.yml` names one secret source for its compose
+A repository's `docs/services/ops/stack.yml` names one secret source for its compose
 stack. With saddlebag as that source, ostler asks `saddlebag list` for the variable
 names the matching secrets fill, checks them against the `${VAR}` references in the
 rendered compose file, and runs every `docker compose` command under `saddlebag exec`.

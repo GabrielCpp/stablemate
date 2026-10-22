@@ -16,10 +16,10 @@ APPS = sorted(
 
 
 def _promises_restart(app: Path) -> bool:
-    features = app / "docs" / "features"
+    services = app / "docs" / "services"
     return any(
         re.search(r"\brestarts?\b", doc.read_text(encoding="utf-8"))
-        for doc in features.rglob("*.md")
+        for doc in services.rglob("*.md")
     )
 
 

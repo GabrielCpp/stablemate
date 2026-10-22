@@ -32,15 +32,15 @@ web = target(
     mechanism="live",
     covers=[
         "ac:1",
-        "okf:docs/features/policy/http/policy-desk-api.md:contract",
-        "okf:docs/features/policy/http/policy-desk-api.md#get-health:contract",
-        "okf:docs/features/policy/http/policy-desk-api.md#get-health:does:1",
-        "okf:docs/features/policy/http/policy-desk-api.md#delete-policies:contract",
-        "okf:docs/features/policy/http/policy-desk-api.md#delete-policies:does:1",
-        "okf:docs/features/policy/http/policy-desk-api.md#delete-policies:does:2",
-        "okf:docs/features/policy/http/policy-desk-api.md#get-policies:contract",
-        "okf:docs/features/policy/http/policy-desk-api.md#get-policies:does:1",
-        "okf:docs/features/policy/http/policy-desk-api.md#get-policies:does:2",
+        "okf:docs/services/policy/http/policy-desk-api.md:contract",
+        "okf:docs/services/policy/http/policy-desk-api.md#get-health:contract",
+        "okf:docs/services/policy/http/policy-desk-api.md#get-health:does:1",
+        "okf:docs/services/policy/http/policy-desk-api.md#delete-policies:contract",
+        "okf:docs/services/policy/http/policy-desk-api.md#delete-policies:does:1",
+        "okf:docs/services/policy/http/policy-desk-api.md#delete-policies:does:2",
+        "okf:docs/services/policy/http/policy-desk-api.md#get-policies:contract",
+        "okf:docs/services/policy/http/policy-desk-api.md#get-policies:does:1",
+        "okf:docs/services/policy/http/policy-desk-api.md#get-policies:does:2",
     ],
     preconditions=["GET /healthz returns status ok", "the register can be reset through its documented route"],
     checkpoints=["register lists every policy ordered by policy number", "each record carries the fields the register renders"],
@@ -49,29 +49,29 @@ web = target(
 def register_api(qa: Qa) -> None:
     """List the register over HTTP: ordering and record shape."""
     health = qa.http.get("/healthz")
-    qa.verify("http_status", health, code=200, path="/healthz", covers=["okf:docs/features/policy/http/policy-desk-api.md#get-health:contract", "okf:docs/features/policy/http/policy-desk-api.md#get-health:does:1"])
-    qa.verify("json_path", health.json(), path="status", equals="ok", covers=["okf:docs/features/policy/http/policy-desk-api.md#get-health:does:1"])
+    qa.verify("http_status", health, code=200, path="/healthz", covers=["okf:docs/services/policy/http/policy-desk-api.md#get-health:contract", "okf:docs/services/policy/http/policy-desk-api.md#get-health:does:1"])
+    qa.verify("json_path", health.json(), path="status", equals="ok", covers=["okf:docs/services/policy/http/policy-desk-api.md#get-health:does:1"])
     reset = qa.http.delete("/api/policies", expect_status=204)
-    qa.verify("http_status", reset, code=204, path="/api/policies", covers=["okf:docs/features/policy/http/policy-desk-api.md#delete-policies:contract", "okf:docs/features/policy/http/policy-desk-api.md#delete-policies:does:1"])
+    qa.verify("http_status", reset, code=204, path="/api/policies", covers=["okf:docs/services/policy/http/policy-desk-api.md#delete-policies:contract", "okf:docs/services/policy/http/policy-desk-api.md#delete-policies:does:1"])
     emptied = qa.field(qa.http.get("/api/policies", expect_status=200).json(), "policies")
-    qa.verify("count", emptied, subject="policies", equals=0, covers=["okf:docs/features/policy/http/policy-desk-api.md#delete-policies:does:1"])
+    qa.verify("count", emptied, subject="policies", equals=0, covers=["okf:docs/services/policy/http/policy-desk-api.md#delete-policies:does:1"])
     reset_again = qa.http.delete("/api/policies", expect_status=204)
-    qa.verify("http_status", reset_again, code=204, path="/api/policies", covers=["okf:docs/features/policy/http/policy-desk-api.md#delete-policies:does:2"])
+    qa.verify("http_status", reset_again, code=204, path="/api/policies", covers=["okf:docs/services/policy/http/policy-desk-api.md#delete-policies:does:2"])
     still_empty = qa.field(qa.http.get("/api/policies", expect_status=200).json(), "policies")
-    qa.verify("count", still_empty, subject="policies", equals=0, covers=["okf:docs/features/policy/http/policy-desk-api.md#delete-policies:does:2"])
+    qa.verify("count", still_empty, subject="policies", equals=0, covers=["okf:docs/services/policy/http/policy-desk-api.md#delete-policies:does:2"])
 
     for number in ("PN-1003", "PN-1001", "PN-1002"):
         qa.http.post("/api/policies", json_body=valid_policy(number), expect_status=201)
     listing = qa.http.get("/api/policies", expect_status=200)
     policies = qa.field(listing.json(), "policies")
-    qa.verify("http_status", listing, code=200, path="/api/policies", covers=["ac:1", "okf:docs/features/policy/http/policy-desk-api.md:contract", "okf:docs/features/policy/http/policy-desk-api.md#get-policies:contract", "okf:docs/features/policy/http/policy-desk-api.md#get-policies:does:1"])
+    qa.verify("http_status", listing, code=200, path="/api/policies", covers=["ac:1", "okf:docs/services/policy/http/policy-desk-api.md:contract", "okf:docs/services/policy/http/policy-desk-api.md#get-policies:contract", "okf:docs/services/policy/http/policy-desk-api.md#get-policies:does:1"])
     numbers = [qa.field(policy, "policy_number") for policy in policies]
-    qa.check("every policy on file is listed, ordered by policy number", numbers == ["PN-1001", "PN-1002", "PN-1003"], actual=numbers, expected=["PN-1001", "PN-1002", "PN-1003"], covers=["ac:1", "okf:docs/features/policy/http/policy-desk-api.md#get-policies:does:1"])
+    qa.check("every policy on file is listed, ordered by policy number", numbers == ["PN-1001", "PN-1002", "PN-1003"], actual=numbers, expected=["PN-1001", "PN-1002", "PN-1003"], covers=["ac:1", "okf:docs/services/policy/http/policy-desk-api.md#get-policies:does:1"])
     fields = ("id", "policy_number", "holder_email", "coverage_type", "start_date", "end_date", "premium", "status", "version")
-    qa.check("each record carries the register's fields without a second request", all(field in policy for policy in policies for field in fields), covers=["okf:docs/features/policy/http/policy-desk-api.md#get-policies:does:2"])
-    qa.verify("json_path", listing.json(), path="$.policies[0].id", equals="pn-1001", covers=["okf:docs/features/policy/http/policy-desk-api.md#get-policies:does:1"])
-    qa.verify("json_path", listing.json(), path="policies[0].version", absent=False, covers=["okf:docs/features/policy/http/policy-desk-api.md#get-policies:does:2"])
-    qa.verify("json_path", listing.json(), path="policies[0].status", matches="Draft|Cancelled", covers=["okf:docs/features/policy/http/policy-desk-api.md#get-policies:does:2"])
+    qa.check("each record carries the register's fields without a second request", all(field in policy for policy in policies for field in fields), covers=["okf:docs/services/policy/http/policy-desk-api.md#get-policies:does:2"])
+    qa.verify("json_path", listing.json(), path="$.policies[0].id", equals="pn-1001", covers=["okf:docs/services/policy/http/policy-desk-api.md#get-policies:does:1"])
+    qa.verify("json_path", listing.json(), path="policies[0].version", absent=False, covers=["okf:docs/services/policy/http/policy-desk-api.md#get-policies:does:2"])
+    qa.verify("json_path", listing.json(), path="policies[0].status", matches="Draft|Cancelled", covers=["okf:docs/services/policy/http/policy-desk-api.md#get-policies:does:2"])
 
 
 
@@ -80,22 +80,22 @@ def register_api(qa: Qa) -> None:
     mechanism="live",
     covers=[
         "ac:2", "ac:5", "ac:6",
-        "okf:docs/features/policy/gui/screens/policy-list.md:contract",
-        "okf:docs/features/policy/gui/screens/policy-list.md#policy-table:contract",
-        "okf:docs/features/policy/gui/screens/policy-list.md#policy-table:keyboard:1",
-        "okf:docs/features/policy/gui/screens/policy-list.md#policy-table:name:1",
-        "okf:docs/features/policy/gui/screens/policy-list.md#policy-table:role:1",
-        "okf:docs/features/policy/gui/screens/policy-list.md#open-policy:contract",
-        "okf:docs/features/policy/gui/screens/policy-list.md#open-policy:does:1",
-        "okf:docs/features/policy/gui/screens/policy-list.md#open-policy:keyboard:1",
-        "okf:docs/features/policy/gui/screens/edit-policy.md#new-policy-link:contract",
-        "okf:docs/features/policy/gui/screens/edit-policy.md#new-policy-link:keyboard:1",
-        "okf:docs/features/policy/gui/screens/edit-policy.md#new-policy-link:name:1",
-        "okf:docs/features/policy/gui/screens/edit-policy.md#new-policy-link:role:1",
-        "okf:docs/features/policy/gui/screens/policy-detail.md:contract",
-        "okf:docs/features/policy/gui/screens/policy-detail.md#edit-policy-link:contract",
-        "okf:docs/features/policy/gui/screens/policy-detail.md#edit-policy-link:name:1",
-        "okf:docs/features/policy/gui/screens/policy-detail.md#edit-policy-link:role:1",
+        "okf:docs/services/policy/gui/screens/policy-list.md:contract",
+        "okf:docs/services/policy/gui/screens/policy-list.md#policy-table:contract",
+        "okf:docs/services/policy/gui/screens/policy-list.md#policy-table:keyboard:1",
+        "okf:docs/services/policy/gui/screens/policy-list.md#policy-table:name:1",
+        "okf:docs/services/policy/gui/screens/policy-list.md#policy-table:role:1",
+        "okf:docs/services/policy/gui/screens/policy-list.md#open-policy:contract",
+        "okf:docs/services/policy/gui/screens/policy-list.md#open-policy:does:1",
+        "okf:docs/services/policy/gui/screens/policy-list.md#open-policy:keyboard:1",
+        "okf:docs/services/policy/gui/screens/edit-policy.md#new-policy-link:contract",
+        "okf:docs/services/policy/gui/screens/edit-policy.md#new-policy-link:keyboard:1",
+        "okf:docs/services/policy/gui/screens/edit-policy.md#new-policy-link:name:1",
+        "okf:docs/services/policy/gui/screens/edit-policy.md#new-policy-link:role:1",
+        "okf:docs/services/policy/gui/screens/policy-detail.md:contract",
+        "okf:docs/services/policy/gui/screens/policy-detail.md#edit-policy-link:contract",
+        "okf:docs/services/policy/gui/screens/policy-detail.md#edit-policy-link:name:1",
+        "okf:docs/services/policy/gui/screens/policy-detail.md#edit-policy-link:role:1",
     ],
     preconditions=["the register is reset and holds two policies created through the documented route"],
     checkpoints=["the register renders one named row per policy", "a row's link is a client route to that policy's detail", "the navigation region rides along to the detail screen"],
@@ -109,23 +109,23 @@ def register_browser(qa: Qa) -> None:
     qa.goto("/policies")
     table = qa.by_role("table", name="Policies on file")
     qa.eventually("the register draws its table of policies", table.is_visible)
-    qa.vet("docs/features/policy/gui/screens/policy-list.md", name="register", components=["policy-table", "new-policy-link"])
+    qa.vet("docs/services/policy/gui/screens/policy-list.md", name="register", components=["policy-table", "new-policy-link"])
     qa.screenshot("register")
-    qa.verify("visible", table, locator="#policy-table", covers=["ac:2", "okf:docs/features/policy/gui/screens/policy-list.md:contract", "okf:docs/features/policy/gui/screens/policy-list.md#policy-table:contract", "okf:docs/features/policy/gui/screens/policy-list.md#policy-table:name:1", "okf:docs/features/policy/gui/screens/policy-list.md#policy-table:role:1"])
-    qa.verify("visible", table, locator="#policy-table", text="PN-1001", covers=["ac:2", "okf:docs/features/policy/gui/screens/policy-list.md#policy-table:name:1"])
-    qa.verify("focusable", table, locator="#policy-table", covers=["okf:docs/features/policy/gui/screens/policy-list.md#policy-table:keyboard:1"])
+    qa.verify("visible", table, locator="#policy-table", covers=["ac:2", "okf:docs/services/policy/gui/screens/policy-list.md:contract", "okf:docs/services/policy/gui/screens/policy-list.md#policy-table:contract", "okf:docs/services/policy/gui/screens/policy-list.md#policy-table:name:1", "okf:docs/services/policy/gui/screens/policy-list.md#policy-table:role:1"])
+    qa.verify("visible", table, locator="#policy-table", text="PN-1001", covers=["ac:2", "okf:docs/services/policy/gui/screens/policy-list.md#policy-table:name:1"])
+    qa.verify("focusable", table, locator="#policy-table", covers=["okf:docs/services/policy/gui/screens/policy-list.md#policy-table:keyboard:1"])
     rows = qa.by_css("table tbody tr")
-    qa.check("the register renders one row per policy", rows.count() == 2, actual=rows.count(), expected=2, covers=["ac:2", "okf:docs/features/policy/gui/screens/policy-list.md#policy-table:contract"])
+    qa.check("the register renders one row per policy", rows.count() == 2, actual=rows.count(), expected=2, covers=["ac:2", "okf:docs/services/policy/gui/screens/policy-list.md#policy-table:contract"])
     first_row_link = qa.by_role("link", name="PN-1001")
-    qa.verify("visible", first_row_link, locator="#open-policy", covers=["ac:2", "okf:docs/features/policy/gui/screens/policy-list.md#policy-table:contract", "okf:docs/features/policy/gui/screens/policy-list.md#policy-table:name:1"])
+    qa.verify("visible", first_row_link, locator="#open-policy", covers=["ac:2", "okf:docs/services/policy/gui/screens/policy-list.md#policy-table:contract", "okf:docs/services/policy/gui/screens/policy-list.md#policy-table:name:1"])
 
     new_link = qa.by_role("link", name="New policy")
-    qa.verify("visible", new_link, locator="#new-policy-link", covers=["okf:docs/features/policy/gui/screens/edit-policy.md#new-policy-link:contract", "okf:docs/features/policy/gui/screens/edit-policy.md#new-policy-link:name:1", "okf:docs/features/policy/gui/screens/edit-policy.md#new-policy-link:role:1"])
+    qa.verify("visible", new_link, locator="#new-policy-link", covers=["okf:docs/services/policy/gui/screens/edit-policy.md#new-policy-link:contract", "okf:docs/services/policy/gui/screens/edit-policy.md#new-policy-link:name:1", "okf:docs/services/policy/gui/screens/edit-policy.md#new-policy-link:role:1"])
     new_link.focus()
     qa.page.keyboard.press("Enter")
     form = qa.by_css('form[aria-label="New policy"]')
     qa.eventually("the keyboard-operated entry opens the new-policy form", form.is_visible)
-    qa.check("New policy is keyboard-operable and lands on the form as a client route", qa.page.url.endswith("/policies/new"), actual=qa.page.url, expected="/policies/new", covers=["ac:6", "okf:docs/features/policy/gui/screens/edit-policy.md#new-policy-link:contract", "okf:docs/features/policy/gui/screens/edit-policy.md#new-policy-link:keyboard:1"])
+    qa.check("New policy is keyboard-operable and lands on the form as a client route", qa.page.url.endswith("/policies/new"), actual=qa.page.url, expected="/policies/new", covers=["ac:6", "okf:docs/services/policy/gui/screens/edit-policy.md#new-policy-link:contract", "okf:docs/services/policy/gui/screens/edit-policy.md#new-policy-link:keyboard:1"])
     qa.by_role("link", name="Policies").click()
     qa.eventually("navigating back reaches the register again", table.is_visible)
 
@@ -133,20 +133,20 @@ def register_browser(qa: Qa) -> None:
     qa.by_role("link", name="PN-1001").click()
     detail = qa.by_css("dl")
     qa.eventually("following a row reaches that policy's summary", detail.is_visible)
-    qa.vet("docs/features/policy/gui/screens/policy-detail.md", name="opened-detail", components=["edit-policy-link"])
+    qa.vet("docs/services/policy/gui/screens/policy-detail.md", name="opened-detail", components=["edit-policy-link"])
     qa.screenshot("opened-detail")
     heading = qa.by_role("heading", name="Policy PN-1001")
-    qa.verify("visible", heading, locator="policy-detail.md#policy-heading", text="Policy PN-1001", covers=["ac:5", "okf:docs/features/policy/gui/screens/policy-list.md#open-policy:contract", "okf:docs/features/policy/gui/screens/policy-list.md#open-policy:does:1", "okf:docs/features/policy/gui/screens/policy-list.md#open-policy:keyboard:1", "okf:docs/features/policy/gui/screens/policy-detail.md:contract"])
-    qa.check("the clicked policy is the one shown, not a neighbour", qa.by_css("main h1").count() == 1 and "PN-1002" not in qa.by_css("main h1").inner_text(), covers=["ac:5", "okf:docs/features/policy/gui/screens/policy-list.md#open-policy:does:1"])
+    qa.verify("visible", heading, locator="policy-detail.md#policy-heading", text="Policy PN-1001", covers=["ac:5", "okf:docs/services/policy/gui/screens/policy-list.md#open-policy:contract", "okf:docs/services/policy/gui/screens/policy-list.md#open-policy:does:1", "okf:docs/services/policy/gui/screens/policy-list.md#open-policy:keyboard:1", "okf:docs/services/policy/gui/screens/policy-detail.md:contract"])
+    qa.check("the clicked policy is the one shown, not a neighbour", qa.by_css("main h1").count() == 1 and "PN-1002" not in qa.by_css("main h1").inner_text(), covers=["ac:5", "okf:docs/services/policy/gui/screens/policy-list.md#open-policy:does:1"])
     not_reloaded = qa.page.evaluate("() => window.__qa_register_mounted === true")
-    qa.check("following the row link did not reload the document", not_reloaded is True, covers=["ac:5", "okf:docs/features/policy/gui/screens/policy-list.md#open-policy:does:1"])
+    qa.check("following the row link did not reload the document", not_reloaded is True, covers=["ac:5", "okf:docs/services/policy/gui/screens/policy-list.md#open-policy:does:1"])
     edit_link = qa.by_role("link", name="Edit policy")
-    qa.verify("visible", edit_link, locator="#edit-policy-link", covers=["okf:docs/features/policy/gui/screens/policy-detail.md#edit-policy-link:contract", "okf:docs/features/policy/gui/screens/policy-detail.md#edit-policy-link:name:1", "okf:docs/features/policy/gui/screens/policy-detail.md#edit-policy-link:role:1"])
+    qa.verify("visible", edit_link, locator="#edit-policy-link", covers=["okf:docs/services/policy/gui/screens/policy-detail.md#edit-policy-link:contract", "okf:docs/services/policy/gui/screens/policy-detail.md#edit-policy-link:name:1", "okf:docs/services/policy/gui/screens/policy-detail.md#edit-policy-link:role:1"])
     qa.check("the navigation region rides along to the detail screen", qa.by_role("link", name="New policy").is_visible() and qa.by_role("link", name="Policies").is_visible(), covers=["ac:6"])
 
     qa.goto("/policies/pn-1002")
     qa.eventually("the deep link draws the summary on a fresh load", detail.is_visible)
-    qa.check("a policy detail URL is a working deep link", qa.by_css("main h1").count() == 1 and "PN-1002" in qa.by_css("main h1").inner_text(), covers=["okf:docs/features/policy/gui/screens/policy-detail.md:contract"])
+    qa.check("a policy detail URL is a working deep link", qa.by_css("main h1").count() == 1 and "PN-1002" in qa.by_css("main h1").inner_text(), covers=["okf:docs/services/policy/gui/screens/policy-detail.md:contract"])
 
 
 @scenario(
@@ -154,16 +154,16 @@ def register_browser(qa: Qa) -> None:
     mechanism="live",
     covers=[
         "ac:3", "ac:4",
-        "okf:docs/features/policy/gui/screens/policy-list.md:contract",
-        "okf:docs/features/policy/gui/screens/policy-list.md#empty-register-notice:contract",
-        "okf:docs/features/policy/gui/screens/policy-list.md#empty-register-notice:keyboard:1",
-        "okf:docs/features/policy/gui/screens/policy-list.md#empty-register-notice:name:1",
-        "okf:docs/features/policy/gui/screens/policy-list.md#empty-register-notice:role:1",
-        "okf:docs/features/policy/gui/screens/policy-list.md#register-error-alert:contract",
-        "okf:docs/features/policy/gui/screens/policy-list.md#register-error-alert:keyboard:1",
-        "okf:docs/features/policy/gui/screens/policy-list.md#register-error-alert:name:1",
-        "okf:docs/features/policy/gui/screens/policy-list.md#register-error-alert:role:1",
-        "okf:docs/features/policy/gui/screens/policy-list.md#register-error-alert:states:1",
+        "okf:docs/services/policy/gui/screens/policy-list.md:contract",
+        "okf:docs/services/policy/gui/screens/policy-list.md#empty-register-notice:contract",
+        "okf:docs/services/policy/gui/screens/policy-list.md#empty-register-notice:keyboard:1",
+        "okf:docs/services/policy/gui/screens/policy-list.md#empty-register-notice:name:1",
+        "okf:docs/services/policy/gui/screens/policy-list.md#empty-register-notice:role:1",
+        "okf:docs/services/policy/gui/screens/policy-list.md#register-error-alert:contract",
+        "okf:docs/services/policy/gui/screens/policy-list.md#register-error-alert:keyboard:1",
+        "okf:docs/services/policy/gui/screens/policy-list.md#register-error-alert:name:1",
+        "okf:docs/services/policy/gui/screens/policy-list.md#register-error-alert:role:1",
+        "okf:docs/services/policy/gui/screens/policy-list.md#register-error-alert:states:1",
     ],
     preconditions=["the register is reset through its documented route"],
     checkpoints=["an empty register shows the notice and no table", "the timer re-read replaces the notice once a policy exists", "a failed re-read raises the alert instead of a stale table"],
@@ -175,26 +175,26 @@ def register_empty_and_unreadable_browser(qa: Qa) -> None:
     qa.goto("/policies")
     notice = qa.by_css("p.empty-notice")
     qa.eventually("an empty register says so rather than drawing an empty table", notice.is_visible)
-    qa.vet("docs/features/policy/gui/screens/policy-list.md", name="empty-register", components=["empty-register-notice"])
+    qa.vet("docs/services/policy/gui/screens/policy-list.md", name="empty-register", components=["empty-register-notice"])
     qa.screenshot("empty-register")
-    qa.verify("visible", notice, locator="#empty-register-notice", text="No policies are on file yet", covers=["ac:3", "okf:docs/features/policy/gui/screens/policy-list.md:contract", "okf:docs/features/policy/gui/screens/policy-list.md#empty-register-notice:contract", "okf:docs/features/policy/gui/screens/policy-list.md#empty-register-notice:keyboard:1", "okf:docs/features/policy/gui/screens/policy-list.md#empty-register-notice:name:1", "okf:docs/features/policy/gui/screens/policy-list.md#empty-register-notice:role:1"])
-    qa.check("an empty register renders no table", qa.by_css("table").count() == 0, covers=["ac:3", "okf:docs/features/policy/gui/screens/policy-list.md#empty-register-notice:contract"])
+    qa.verify("visible", notice, locator="#empty-register-notice", text="No policies are on file yet", covers=["ac:3", "okf:docs/services/policy/gui/screens/policy-list.md:contract", "okf:docs/services/policy/gui/screens/policy-list.md#empty-register-notice:contract", "okf:docs/services/policy/gui/screens/policy-list.md#empty-register-notice:keyboard:1", "okf:docs/services/policy/gui/screens/policy-list.md#empty-register-notice:name:1", "okf:docs/services/policy/gui/screens/policy-list.md#empty-register-notice:role:1"])
+    qa.check("an empty register renders no table", qa.by_css("table").count() == 0, covers=["ac:3", "okf:docs/services/policy/gui/screens/policy-list.md#empty-register-notice:contract"])
 
     qa.http.post("/api/policies", json_body=valid_policy("PN-1001"), expect_status=201)
     table = qa.by_role("table", name="Policies on file")
     qa.eventually("the register picks the new policy up", table.is_visible, timeout=20.0)
-    qa.check("the timer re-read replaces the notice without a reload", table.is_visible() and notice.count() == 0, covers=["okf:docs/features/policy/gui/screens/policy-list.md#empty-register-notice:contract"])
+    qa.check("the timer re-read replaces the notice without a reload", table.is_visible() and notice.count() == 0, covers=["okf:docs/services/policy/gui/screens/policy-list.md#empty-register-notice:contract"])
 
     alert = qa.by_role("alert")
-    qa.check("no alert is present while the register is readable", alert.count() == 0, covers=["okf:docs/features/policy/gui/screens/policy-list.md#register-error-alert:states:1"])
+    qa.check("no alert is present while the register is readable", alert.count() == 0, covers=["okf:docs/services/policy/gui/screens/policy-list.md#register-error-alert:states:1"])
     def _abort_register_read(route) -> None:
         route.abort()
 
     qa.page.route("**/api/policies", _abort_register_read)
     qa.eventually("the unreadable register raises an alert", alert.is_visible, timeout=20.0)
     qa.screenshot("register-unreadable")
-    qa.verify("visible", alert, locator="#register-error-alert", covers=["ac:4", "okf:docs/features/policy/gui/screens/policy-list.md#register-error-alert:contract", "okf:docs/features/policy/gui/screens/policy-list.md#register-error-alert:keyboard:1", "okf:docs/features/policy/gui/screens/policy-list.md#register-error-alert:name:1", "okf:docs/features/policy/gui/screens/policy-list.md#register-error-alert:role:1", "okf:docs/features/policy/gui/screens/policy-list.md#register-error-alert:states:1"])
-    qa.check("the failed re-read is announced rather than leaving a stale empty table", alert.is_visible(), covers=["ac:4", "okf:docs/features/policy/gui/screens/policy-list.md#register-error-alert:contract", "okf:docs/features/policy/gui/screens/policy-list.md#register-error-alert:states:1"])
+    qa.verify("visible", alert, locator="#register-error-alert", covers=["ac:4", "okf:docs/services/policy/gui/screens/policy-list.md#register-error-alert:contract", "okf:docs/services/policy/gui/screens/policy-list.md#register-error-alert:keyboard:1", "okf:docs/services/policy/gui/screens/policy-list.md#register-error-alert:name:1", "okf:docs/services/policy/gui/screens/policy-list.md#register-error-alert:role:1", "okf:docs/services/policy/gui/screens/policy-list.md#register-error-alert:states:1"])
+    qa.check("the failed re-read is announced rather than leaving a stale empty table", alert.is_visible(), covers=["ac:4", "okf:docs/services/policy/gui/screens/policy-list.md#register-error-alert:contract", "okf:docs/services/policy/gui/screens/policy-list.md#register-error-alert:states:1"])
     qa.page.unroute("**/api/policies")
 
 
@@ -202,9 +202,9 @@ def register_empty_and_unreadable_browser(qa: Qa) -> None:
     target=web,
     mechanism="live",
     covers=[
-        "okf:docs/features/policy/flows/create-policy.md:start:1",
-        "okf:docs/features/policy/flows/create-policy.md:end:1",
-        "okf:docs/features/policy/flows/create-policy.md:end-state",
+        "okf:docs/services/policy/flows/create-policy.md:start:1",
+        "okf:docs/services/policy/flows/create-policy.md:end:1",
+        "okf:docs/services/policy/flows/create-policy.md:end-state",
     ],
     preconditions=["the register is reset through its documented route"],
     checkpoints=["the walk starts on the register rather than on the form", "New policy is followed from the register", "the accepted submit ends on the new policy's detail screen at Draft"],
@@ -227,21 +227,21 @@ def underwrite_journey_browser(qa: Qa) -> None:
     qa.by_role("button", name="Create policy").click()
     detail = qa.by_css("dl")
     qa.eventually("the accepted submit lands on a policy summary", detail.is_visible)
-    qa.vet("docs/features/policy/gui/screens/policy-detail.md", name="journey-end", components=["policy-summary"])
+    qa.vet("docs/services/policy/gui/screens/policy-detail.md", name="journey-end", components=["policy-summary"])
     qa.screenshot("journey-end")
     journey_heading = qa.by_role("heading", name="Policy PN-1001")
-    qa.verify("visible", journey_heading, locator="../gui/screens/policy-detail.md#policy-heading", text="Policy PN-1001", covers=["okf:docs/features/policy/flows/create-policy.md:start:1", "okf:docs/features/policy/flows/create-policy.md:end:1", "okf:docs/features/policy/flows/create-policy.md:end-state"])
-    qa.verify("visible", detail, locator="../gui/screens/policy-detail.md#policy-summary", text="Draft", covers=["okf:docs/features/policy/flows/create-policy.md:start:1", "okf:docs/features/policy/flows/create-policy.md:end:1", "okf:docs/features/policy/flows/create-policy.md:end-state"])
-    qa.check("the journey ends on the new policy's detail route, not back on the register", qa.page.url.endswith("/policies/pn-1001"), actual=qa.page.url, expected="/policies/pn-1001", covers=["okf:docs/features/policy/flows/create-policy.md:end:1", "okf:docs/features/policy/flows/create-policy.md:end-state"])
+    qa.verify("visible", journey_heading, locator="../gui/screens/policy-detail.md#policy-heading", text="Policy PN-1001", covers=["okf:docs/services/policy/flows/create-policy.md:start:1", "okf:docs/services/policy/flows/create-policy.md:end:1", "okf:docs/services/policy/flows/create-policy.md:end-state"])
+    qa.verify("visible", detail, locator="../gui/screens/policy-detail.md#policy-summary", text="Draft", covers=["okf:docs/services/policy/flows/create-policy.md:start:1", "okf:docs/services/policy/flows/create-policy.md:end:1", "okf:docs/services/policy/flows/create-policy.md:end-state"])
+    qa.check("the journey ends on the new policy's detail route, not back on the register", qa.page.url.endswith("/policies/pn-1001"), actual=qa.page.url, expected="/policies/pn-1001", covers=["okf:docs/services/policy/flows/create-policy.md:end:1", "okf:docs/services/policy/flows/create-policy.md:end-state"])
 
 
 @scenario(
     target=web,
     mechanism="live",
     covers=[
-        "okf:docs/features/policy/flows/edit-policy.md:start:1",
-        "okf:docs/features/policy/flows/edit-policy.md:end:1",
-        "okf:docs/features/policy/flows/edit-policy.md:end-state",
+        "okf:docs/services/policy/flows/edit-policy.md:start:1",
+        "okf:docs/services/policy/flows/edit-policy.md:end:1",
+        "okf:docs/services/policy/flows/edit-policy.md:end-state",
     ],
     preconditions=["the register is reset and holds one policy created through the documented route"],
     checkpoints=[
@@ -289,16 +289,16 @@ def amend_journey_browser(qa: Qa) -> None:
     qa.eventually("the stale write is answered with an alert rather than a navigation", alert.is_visible)
     qa.check("the form reports the write moved out from under it", "Stale Policy" in alert.inner_text())
     qa.check("the browser stays on the edit route rather than the write silently landing", qa.page.url.endswith("/policies/pn-1001/edit"))
-    qa.verify("conflict_on_stale", stale_submission.value.status, subject="policy pn-1001", token="version", covers=["okf:docs/features/policy/flows/edit-policy.md:start:1", "okf:docs/features/policy/flows/edit-policy.md:end:1", "okf:docs/features/policy/flows/edit-policy.md:end-state"])
+    qa.verify("conflict_on_stale", stale_submission.value.status, subject="policy pn-1001", token="version", covers=["okf:docs/services/policy/flows/edit-policy.md:start:1", "okf:docs/services/policy/flows/edit-policy.md:end:1", "okf:docs/services/policy/flows/edit-policy.md:end-state"])
 
     qa.goto("/policies/pn-1001/edit")
     qa.eventually("re-opening the form reads the record at its current version", form.is_visible)
     qa.by_css("#premium").fill("1350")
     save.click()
     qa.eventually("the accepted retry lands back on the policy summary", detail.is_visible)
-    qa.vet("docs/features/policy/gui/screens/policy-detail.md", name="amend-end", components=["policy-summary"])
+    qa.vet("docs/services/policy/gui/screens/policy-detail.md", name="amend-end", components=["policy-summary"])
     qa.screenshot("amend-end")
     amend_heading = qa.by_role("heading", name="Policy PN-1001")
-    qa.verify("visible", amend_heading, locator="../gui/screens/policy-detail.md#policy-heading", text="Policy PN-1001", covers=["okf:docs/features/policy/flows/edit-policy.md:start:1", "okf:docs/features/policy/flows/edit-policy.md:end:1", "okf:docs/features/policy/flows/edit-policy.md:end-state"])
-    qa.verify("visible", detail, locator="../gui/screens/policy-detail.md#policy-summary", text="$1350.00", covers=["okf:docs/features/policy/flows/edit-policy.md:start:1", "okf:docs/features/policy/flows/edit-policy.md:end:1", "okf:docs/features/policy/flows/edit-policy.md:end-state"])
-    qa.check("the journey ends on the amended policy's detail route, not on the edit form", qa.page.url.endswith("/policies/pn-1001"), actual=qa.page.url, expected="/policies/pn-1001", covers=["okf:docs/features/policy/flows/edit-policy.md:end:1", "okf:docs/features/policy/flows/edit-policy.md:end-state"])
+    qa.verify("visible", amend_heading, locator="../gui/screens/policy-detail.md#policy-heading", text="Policy PN-1001", covers=["okf:docs/services/policy/flows/edit-policy.md:start:1", "okf:docs/services/policy/flows/edit-policy.md:end:1", "okf:docs/services/policy/flows/edit-policy.md:end-state"])
+    qa.verify("visible", detail, locator="../gui/screens/policy-detail.md#policy-summary", text="$1350.00", covers=["okf:docs/services/policy/flows/edit-policy.md:start:1", "okf:docs/services/policy/flows/edit-policy.md:end:1", "okf:docs/services/policy/flows/edit-policy.md:end-state"])
+    qa.check("the journey ends on the amended policy's detail route, not on the edit form", qa.page.url.endswith("/policies/pn-1001"), actual=qa.page.url, expected="/policies/pn-1001", covers=["okf:docs/services/policy/flows/edit-policy.md:end:1", "okf:docs/services/policy/flows/edit-policy.md:end-state"])

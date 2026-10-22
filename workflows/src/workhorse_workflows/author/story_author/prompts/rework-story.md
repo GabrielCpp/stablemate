@@ -27,8 +27,8 @@ name; if you believe a finding is wrong, say which id and why in `notes` rather 
 - Design mockup: `{{ workhorse_var('mockup_path') }}` — keep the story's Context linked to this visual
   source of truth when the validation issue does not supersede it.
 {%- endif %}
-{%- if workhorse_var('features_dir') %}
-- **OKF book root**: `{{ workhorse_var('features_dir') }}` — the existing surface documentation the
+{%- if workhorse_var('services_dir') %}
+- **OKF book root**: `{{ workhorse_var('services_dir') }}` — the existing surface documentation the
   story cites by node id from its `## Context`. Read it; never write to it, and do not inspect the
   app or source code to discover replacement nodes.
 {%- endif %}

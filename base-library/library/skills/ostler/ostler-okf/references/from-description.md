@@ -13,7 +13,7 @@ exists yet. The shared method (the six layers, the order, the convergence gate) 
    ```bash
    ostler scaffold concept diff   --service groom --title "Diff"
    ostler scaffold screen  changes-view --service groom --title "Changes view"
-   ostler scaffold interaction click-file-opens-diff --in docs/features/groom/gui/screens/changes-view.md
+   ostler scaffold interaction click-file-opens-diff --in docs/services/groom/gui/screens/changes-view.md
    ```
 3. **Author the prose and structured bullets** from the description — the *why*, the states, the
    guards (`when:`), the effects (`does:`). Set relation bullets (`on:`/`parent:`/`extends:`) to real

@@ -56,17 +56,17 @@ A unified diff.
 
 
 def _repo(repo: Path):
-    write(repo / "docs/features/groom/gui/screens/dash.md", SCREEN)
-    write(repo / "docs/features/groom/gui/components/ds.md", DS)
-    write(repo / "docs/features/groom/concepts/diff.md", DIFF)
+    write(repo / "docs/services/groom/gui/screens/dash.md", SCREEN)
+    write(repo / "docs/services/groom/gui/components/ds.md", DS)
+    write(repo / "docs/services/groom/concepts/diff.md", DIFF)
     return load(repo)
 
 
 def test_graph_emits_nodes_bullets(repo: Path):
     data = graph.build(_repo(repo))
     ids = {n["id"] for n in data["nodes"]}
-    assert "docs/features/groom/gui/screens/dash.md" in ids
-    assert "docs/features/groom/concepts/diff.md" in ids
+    assert "docs/services/groom/gui/screens/dash.md" in ids
+    assert "docs/services/groom/concepts/diff.md" in ids
     assert any(n["id"].endswith("#file-row") for n in data["nodes"])
 
     row = next(n for n in data["nodes"] if n["id"].endswith("#file-row"))
@@ -117,8 +117,8 @@ Trailing prose links to [t](target.md) again, and even cites
 
 def test_graph_edges_attribute_by_link_position(repo: Path):
     """`via` follows where a link sits, not what its href is."""
-    write(repo / "docs/features/demo/target.md", TARGET)
-    write(repo / "docs/features/demo/multi.md", MULTI_VIA)
+    write(repo / "docs/services/demo/target.md", TARGET)
+    write(repo / "docs/services/demo/multi.md", MULTI_VIA)
     data = graph.build(load(repo))
     node = next(n for n in data["nodes"] if n["id"].endswith("multi.md"))
     edges = node["edges"]
@@ -195,7 +195,7 @@ Plain prose heading — not a typed node.
 
 
 def test_nesting_container_and_inline_typing(repo: Path):
-    write(repo / "docs/features/demo/wf.md", NESTED)
+    write(repo / "docs/services/demo/wf.md", NESTED)
     d = graph.build(load(repo))
     by_title = {n["title"]: n for n in d["nodes"]}
 
@@ -213,7 +213,7 @@ def test_nesting_container_and_inline_typing(repo: Path):
 
 
 def test_selectors(repo: Path):
-    write(repo / "docs/features/demo/wf.md", NESTED)
+    write(repo / "docs/services/demo/wf.md", NESTED)
     d = graph.build(load(repo))
 
     hit = graph.select(d, path="concept:agent / field:timeout")
@@ -253,36 +253,36 @@ Jump to the [second one](./queue.md#effects-1).
 
 def test_a_repeated_heading_gets_the_anchor_github_renders(repo: Path):
     """Two headings with one title are two nodes, at the two anchors a browser jumps to."""
-    write(repo / "docs/features/groom/concepts/queue.md", REPEATED_HEADING)
+    write(repo / "docs/services/groom/concepts/queue.md", REPEATED_HEADING)
     g = load(repo)
 
     ids = [n.id for n in g.ui_nodes]
     assert len(ids) == len(set(ids)), f"node ids stated twice: {ids}"
-    assert "docs/features/groom/concepts/queue.md#effects" in ids
-    assert "docs/features/groom/concepts/queue.md#effects-1" in ids
+    assert "docs/services/groom/concepts/queue.md#effects" in ids
+    assert "docs/services/groom/concepts/queue.md#effects-1" in ids
 
-    first = g.find_ui_node("docs/features/groom/concepts/queue.md#effects")
-    second = g.find_ui_node("docs/features/groom/concepts/queue.md#effects-1")
+    first = g.find_ui_node("docs/services/groom/concepts/queue.md#effects")
+    second = g.find_ui_node("docs/services/groom/concepts/queue.md#effects-1")
     assert first is not None and second is not None and first.line < second.line
     assert first.meta["does"] == "the client is added"
     assert second.meta["does"] == "the client is dropped"
 
     resolver = links.LinkResolver(g)
-    assert "effects-1" in resolver.anchors(repo / "docs/features/groom/concepts/queue.md")
+    assert "effects-1" in resolver.anchors(repo / "docs/services/groom/concepts/queue.md")
 
 
 def test_orphans_are_whole_pages_nothing_reaches(repo: Path):
     """A heading inside a linked page is reached through its page, and an unlinked page is one orphan."""
-    write(repo / "docs/features/demo/wf.md", NESTED)
-    write(repo / "docs/features/demo/lonely.md", NESTED.replace("slug: wf", "slug: lonely"))
-    write(repo / "docs/features/demo/hub.md",
+    write(repo / "docs/services/demo/wf.md", NESTED)
+    write(repo / "docs/services/demo/lonely.md", NESTED.replace("slug: wf", "slug: lonely"))
+    write(repo / "docs/services/demo/hub.md",
           "---\ntype: concept\nslug: hub\ntitle: Hub\n---\n# Hub\n\n"
           "Runs [a turn](wf.md#run_turn-executes-one-turn).\n")
     d = graph.build(load(repo))
     orphans = graph.select(d, orphans=True)
 
-    assert sorted(n["path"] for n in orphans) == ["docs/features/demo/hub.md",
-                                                   "docs/features/demo/lonely.md"]
+    assert sorted(n["path"] for n in orphans) == ["docs/services/demo/hub.md",
+                                                   "docs/services/demo/lonely.md"]
     assert all(n["parent"] not in {m["id"] for m in d["nodes"]} for n in orphans)
 
 
@@ -321,4 +321,4 @@ def test_a_graph_load_reads_each_book_page_once(repo: Path, monkeypatch: pytest.
     pages = [p for p in reads if p.name != "index.md"]
     assert pages and len(pages) == len(set(pages))
     assert {"dash", "ds", "diff"} <= {f.slug for f in g.features}
-    assert g.find_ui_node("docs/features/groom/concepts/diff.md") is not None
+    assert g.find_ui_node("docs/services/groom/concepts/diff.md") is not None

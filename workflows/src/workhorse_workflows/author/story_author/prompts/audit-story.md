@@ -38,8 +38,8 @@ to depict. Do not expand the story to make the whole parent surface independentl
 - Story slug: `{{ workhorse_var('story_slug') }}`
 - Story path: `{{ workhorse_var('story_path') }}`
 - Story folder: `{{ workhorse_var('story_dir') }}`
-{%- if workhorse_var('features_dir') %}
-- **OKF book root**: `{{ workhorse_var('features_dir') }}` — the existing surface documentation, and
+{%- if workhorse_var('services_dir') %}
+- **OKF book root**: `{{ workhorse_var('services_dir') }}` — the existing surface documentation, and
   the grounding source of truth. Read it; never write to it. Do not inspect the app or source code to
   discover missing OKF nodes or surfaces.
 {%- endif %}
@@ -47,7 +47,7 @@ to depict. Do not expand the story to make the whole parent surface independentl
 ## Read
 
 - the story file — judge **Context**, both Acceptance Criteria sections, and **Technical Notes**
-{%- if workhorse_var('features_dir') %}
+{%- if workhorse_var('services_dir') %}
 - **the OKF nodes the story cites** — its `## Context` links them by id (a node id is a
   repo-relative path, optionally `path#anchor`). These are the surface's documented components,
   interactions, and flows: what the story claims to work on, in the book's own words.

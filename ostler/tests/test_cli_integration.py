@@ -104,8 +104,8 @@ def _minimal_packet() -> dict:
         "story": {"slug": "demo-story"},
         "obligations": [
             {
-                "id": "okf:docs/features/demo/api.md#get-things:does:1",
-                "source": "docs/features/demo/api.md",
+                "id": "okf:docs/services/demo/api.md#get-things:does:1",
+                "source": "docs/services/demo/api.md",
                 "nodeType": "endpoint",
                 "requirement": "returns the record",
                 "required": True,

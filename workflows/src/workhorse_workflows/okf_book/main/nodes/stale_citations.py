@@ -23,7 +23,7 @@ from workhorse.pyflow import dry_run
 
 from workhorse_workflows.okf_book.main.nodes.source_view import turn_folder
 from workhorse_workflows.okf_book.shared.citations import book_pages
-from workhorse_workflows.okf_book.shared.entries import FEATURES_DIR
+from workhorse_workflows.okf_book.shared.entries import SERVICES_DIR
 from workhorse_workflows.okf_book.shared.page_check import PageProblem
 
 STALE_CODE = "stale-citation"
@@ -178,6 +178,6 @@ def stamp_spared(root: Path, pairs: Iterable[tuple[str, str]]) -> tuple[tuple[st
     if not wanted:
         return (), 0
     with index.session(root):
-        results = stamp_targets(load(root), root / FEATURES_DIR, wanted)
+        results = stamp_targets(load(root), root / SERVICES_DIR, wanted)
     pages = tuple(sorted(result.page for result in results if result.page and result.changed))
     return pages, sum(result.stamped for result in results)

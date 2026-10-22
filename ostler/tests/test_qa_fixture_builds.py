@@ -9,14 +9,14 @@ from ostler.qa.drivers import FixtureBuild, PythonDriver, ScenarioResult
 from ostler.qa.session import QaSession
 from ostler.qa.v2 import _fixture_builds
 
-SESSION = "docs/features/acme/fixtures/editor-session.md"
-STACK = "docs/features/acme/fixtures/test-stack.md"
+SESSION = "docs/services/acme/fixtures/editor-session.md"
+STACK = "docs/services/acme/fixtures/test-stack.md"
 
 
 def _driver(repo: Path) -> PythonDriver:
     spec = repo / "docs/specs/story-1"
     spec.mkdir(parents=True, exist_ok=True)
-    (spec / "qa-okf-context.json").write_text(json.dumps({"featuresRoot": "docs/features"}), encoding="utf-8")
+    (spec / "qa-okf-context.json").write_text(json.dumps({"servicesRoot": "docs/services"}), encoding="utf-8")
     session = QaSession.create(spec, "qa-fixture-builds-1", "story-1", {})
     return PythonDriver(session, "cli", {"driver": "cli"}, root=repo, variables={})
 

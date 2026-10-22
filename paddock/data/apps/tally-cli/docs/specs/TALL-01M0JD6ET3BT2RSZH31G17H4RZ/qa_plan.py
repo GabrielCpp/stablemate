@@ -76,7 +76,7 @@ ROW_THREE_IS_ROW_ONE_AGAIN = (
 
 def read(qa: Qa, path):
     """What is on disk at `path`, read by a separate process after the command exited."""
-    covers = ["okf:docs/features/tally/tally.md#import:contract"]
+    covers = ["okf:docs/services/tally/tally.md#import:contract"]
     got = qa.tool("python3").run("-c", _READ, str(path), timeout=60.0)
     qa.require(
         f"the harness can read {path.name} back off disk",
@@ -89,7 +89,7 @@ def read(qa: Qa, path):
 
 def census(qa: Qa, sibling):
     """Every file in the directory `sibling` lives in, by digest."""
-    covers = ["okf:docs/features/tally/tally.md#import:contract"]
+    covers = ["okf:docs/services/tally/tally.md#import:contract"]
     got = qa.tool("python3").run("-c", _CENSUS, str(sibling), timeout=60.0)
     qa.require(
         "the harness can census the directory the scenario owns",
@@ -102,7 +102,7 @@ def census(qa: Qa, sibling):
 
 def write(qa: Qa, path, text):
     """Put a file where the product will read it, without touching the disk from the plan."""
-    covers = ["okf:docs/features/tally/tally.md#import:contract"]
+    covers = ["okf:docs/services/tally/tally.md#import:contract"]
     got = qa.tool("python3").run("-c", _WRITE, str(path), text, timeout=60.0)
     qa.require(
         f"the harness can lay down {path.name} for the product to read",
@@ -125,21 +125,21 @@ def entries(qa: Qa, ledger):
     covers=[
         "ac:1",
         "ac:2",
-        "okf:docs/features/tally/flows/track-a-trip.md:end-state",
-        "okf:docs/features/tally/flows/track-a-trip.md:end:1",
-        "okf:docs/features/tally/flows/track-a-trip.md:start:1",
-        "okf:docs/features/tally/tally.md:contract",
-        "okf:docs/features/tally/tally.md#init:contract",
-        "okf:docs/features/tally/tally.md#init:does:1",
-        "okf:docs/features/tally/tally.md#import:contract",
-        "okf:docs/features/tally/tally.md#import:does:1",
-        "okf:docs/features/tally/tally.md#import-a-csv:consistency:1",
-        "okf:docs/features/tally/tally.md#import-a-csv:contract",
-        "okf:docs/features/tally/tally.md#import-a-csv:does:1",
-        "okf:docs/features/tally/concepts/ledger-file.md:contract",
-        "okf:docs/features/tally/concepts/ledger-file.md:consistency:1",
-        "okf:docs/features/tally/concepts/ledger-file.md:consistency:2",
-        "okf:docs/features/tally/concepts/ledger-file.md:persistence:1",
+        "okf:docs/services/tally/flows/track-a-trip.md:end-state",
+        "okf:docs/services/tally/flows/track-a-trip.md:end:1",
+        "okf:docs/services/tally/flows/track-a-trip.md:start:1",
+        "okf:docs/services/tally/tally.md:contract",
+        "okf:docs/services/tally/tally.md#init:contract",
+        "okf:docs/services/tally/tally.md#init:does:1",
+        "okf:docs/services/tally/tally.md#import:contract",
+        "okf:docs/services/tally/tally.md#import:does:1",
+        "okf:docs/services/tally/tally.md#import-a-csv:consistency:1",
+        "okf:docs/services/tally/tally.md#import-a-csv:contract",
+        "okf:docs/services/tally/tally.md#import-a-csv:does:1",
+        "okf:docs/services/tally/concepts/ledger-file.md:contract",
+        "okf:docs/services/tally/concepts/ledger-file.md:consistency:1",
+        "okf:docs/services/tally/concepts/ledger-file.md:consistency:2",
+        "okf:docs/services/tally/concepts/ledger-file.md:persistence:1",
     ],
     preconditions=[
         "the scenario owns a directory under the evidence dir holding a freshly initialised ledger",
@@ -168,10 +168,10 @@ def importing_the_same_file_twice_leaves_what_importing_it_once_left(qa: Qa) -> 
         started.ok,
         actual=started.stderr[-2000:],
         covers=[
-            "okf:docs/features/tally/tally.md:contract",
-            "okf:docs/features/tally/tally.md#init:contract",
-            "okf:docs/features/tally/tally.md#init:does:1",
-            "okf:docs/features/tally/tally.md#import-a-csv:contract",
+            "okf:docs/services/tally/tally.md:contract",
+            "okf:docs/services/tally/tally.md#init:contract",
+            "okf:docs/services/tally/tally.md#init:does:1",
+            "okf:docs/services/tally/tally.md#import-a-csv:contract",
         ],
     )
     write(qa, rows, THREE_ROWS)
@@ -182,7 +182,7 @@ def importing_the_same_file_twice_leaves_what_importing_it_once_left(qa: Qa) -> 
         len(before) == 0,
         actual=before,
         expected=[],
-        covers=["okf:docs/features/tally/tally.md#import-a-csv:does:1"],
+        covers=["okf:docs/services/tally/tally.md#import-a-csv:does:1"],
     )
 
     imported = run(qa, ledger, "import", str(rows))
@@ -193,8 +193,8 @@ def importing_the_same_file_twice_leaves_what_importing_it_once_left(qa: Qa) -> 
         label="`tally import` on a file whose every row parses exits 0",
         covers=[
             "ac:1",
-            "okf:docs/features/tally/tally.md#import:contract",
-            "okf:docs/features/tally/tally.md#import:does:1",
+            "okf:docs/services/tally/tally.md#import:contract",
+            "okf:docs/services/tally/tally.md#import:does:1",
         ],
     )
 
@@ -204,11 +204,11 @@ def importing_the_same_file_twice_leaves_what_importing_it_once_left(qa: Qa) -> 
         (before, after),
         subject="the rows the ledger did not already hold",
         covers=[
-            "okf:docs/features/tally/tally.md#import:does:1",
-            "okf:docs/features/tally/tally.md#import-a-csv:consistency:1",
-            "okf:docs/features/tally/tally.md#import-a-csv:contract",
-            "okf:docs/features/tally/tally.md#import-a-csv:does:1",
-            "okf:docs/features/tally/tally.md#import-a-csv:does:2",
+            "okf:docs/services/tally/tally.md#import:does:1",
+            "okf:docs/services/tally/tally.md#import-a-csv:consistency:1",
+            "okf:docs/services/tally/tally.md#import-a-csv:contract",
+            "okf:docs/services/tally/tally.md#import-a-csv:does:1",
+            "okf:docs/services/tally/tally.md#import-a-csv:does:2",
         ],
     )
     after_doc = read(qa, ledger)
@@ -219,7 +219,7 @@ def importing_the_same_file_twice_leaves_what_importing_it_once_left(qa: Qa) -> 
         again,
         code=0,
         label="importing the same file a second time exits 0",
-        covers=["ac:2", "okf:docs/features/tally/tally.md#import-a-csv:consistency:1"],
+        covers=["ac:2", "okf:docs/services/tally/tally.md#import-a-csv:consistency:1"],
     )
 
     settled = entries(qa, ledger)
@@ -229,13 +229,13 @@ def importing_the_same_file_twice_leaves_what_importing_it_once_left(qa: Qa) -> 
         subject="entries in the ledger",
         equals=3,
         covers=[
-            "okf:docs/features/tally/flows/track-a-trip.md:end-state",
-            "okf:docs/features/tally/flows/track-a-trip.md:end:1",
-            "okf:docs/features/tally/flows/track-a-trip.md:start:1",
-            "okf:docs/features/tally/tally.md#import-a-csv:consistency:1",
-            "okf:docs/features/tally/tally.md#import-a-csv:contract",
-            "okf:docs/features/tally/tally.md#import-a-csv:does:1",
-            "okf:docs/features/tally/tally.md#import-a-csv:does:2",
+            "okf:docs/services/tally/flows/track-a-trip.md:end-state",
+            "okf:docs/services/tally/flows/track-a-trip.md:end:1",
+            "okf:docs/services/tally/flows/track-a-trip.md:start:1",
+            "okf:docs/services/tally/tally.md#import-a-csv:consistency:1",
+            "okf:docs/services/tally/tally.md#import-a-csv:contract",
+            "okf:docs/services/tally/tally.md#import-a-csv:does:1",
+            "okf:docs/services/tally/tally.md#import-a-csv:does:2",
         ],
     )
     qa.check(
@@ -243,7 +243,7 @@ def importing_the_same_file_twice_leaves_what_importing_it_once_left(qa: Qa) -> 
         sorted((qa.field(entry, "what") for entry in settled)) == ["dinner", "museum", "taxi"],
         actual=sorted((qa.field(entry, "what") for entry in settled)),
         expected=["dinner", "museum", "taxi"],
-        covers=["ac:2", "okf:docs/features/tally/tally.md#import-a-csv:consistency:1"],
+        covers=["ac:2", "okf:docs/services/tally/tally.md#import-a-csv:consistency:1"],
     )
 
     settled_doc = read(qa, ledger)
@@ -251,7 +251,7 @@ def importing_the_same_file_twice_leaves_what_importing_it_once_left(qa: Qa) -> 
         "unchanged",
         ({"tally.json": qa.field(after_doc, "sha256")}, {"tally.json": qa.field(settled_doc, "sha256")}),
         subject="tally.json",
-        covers=["okf:docs/features/tally/tally.md#import-a-csv:consistency:1"],
+        covers=["okf:docs/services/tally/tally.md#import-a-csv:consistency:1"],
     )
 
     document = json.loads(qa.field(settled_doc, "text"))
@@ -263,8 +263,8 @@ def importing_the_same_file_twice_leaves_what_importing_it_once_left(qa: Qa) -> 
         actual=sorted(document) if isinstance(document, dict) else document,
         expected="an object with a string `currency` and a list `entries`",
         covers=[
-            "okf:docs/features/tally/concepts/ledger-file.md:contract",
-            "okf:docs/features/tally/concepts/ledger-file.md:consistency:1",
+            "okf:docs/services/tally/concepts/ledger-file.md:contract",
+            "okf:docs/services/tally/concepts/ledger-file.md:consistency:1",
         ],
     )
     qa.verify(
@@ -272,8 +272,8 @@ def importing_the_same_file_twice_leaves_what_importing_it_once_left(qa: Qa) -> 
         (settled, entries(qa, ledger)),
         subject="the ledger file",
         covers=[
-            "okf:docs/features/tally/concepts/ledger-file.md:contract",
-            "okf:docs/features/tally/concepts/ledger-file.md:persistence:1",
+            "okf:docs/services/tally/concepts/ledger-file.md:contract",
+            "okf:docs/services/tally/concepts/ledger-file.md:persistence:1",
         ],
     )
     directory = census(qa, ledger)
@@ -282,7 +282,7 @@ def importing_the_same_file_twice_leaves_what_importing_it_once_left(qa: Qa) -> 
         sorted(directory) == ["tally.csv", "tally.json"] or sorted(directory) == ["tally.json", "trip.csv"],
         actual=sorted(directory),
         expected="only the ledger and the file that was imported",
-        covers=["okf:docs/features/tally/concepts/ledger-file.md:consistency:2"],
+        covers=["okf:docs/services/tally/concepts/ledger-file.md:consistency:2"],
     )
 
 
@@ -292,12 +292,12 @@ def importing_the_same_file_twice_leaves_what_importing_it_once_left(qa: Qa) -> 
     timeout=600.0,
     covers=[
         "ac:3",
-        "okf:docs/features/tally/tally.md#add:contract",
-        "okf:docs/features/tally/tally.md#add:does:1",
-        "okf:docs/features/tally/tally.md#import-a-malformed-row:contract",
-        "okf:docs/features/tally/tally.md#import-a-malformed-row:does:1",
-        "okf:docs/features/tally/tally.md#import-a-malformed-row:errors:1",
-        "okf:docs/features/tally/tally.md#import-a-malformed-row:status:1",
+        "okf:docs/services/tally/tally.md#add:contract",
+        "okf:docs/services/tally/tally.md#add:does:1",
+        "okf:docs/services/tally/tally.md#import-a-malformed-row:contract",
+        "okf:docs/services/tally/tally.md#import-a-malformed-row:does:1",
+        "okf:docs/services/tally/tally.md#import-a-malformed-row:errors:1",
+        "okf:docs/services/tally/tally.md#import-a-malformed-row:status:1",
     ],
     preconditions=[
         "the ledger already holds an entry, so a partial import has something to be partial against",
@@ -323,7 +323,7 @@ def a_malformed_row_refuses_the_whole_file_and_leaves_the_ledger_alone(qa: Qa) -
         "the scenario could initialise the ledger",
         started.ok,
         actual=started.stderr[-2000:],
-        covers=["okf:docs/features/tally/tally.md#import-a-malformed-row:contract"],
+        covers=["okf:docs/services/tally/tally.md#import-a-malformed-row:contract"],
     )
     recorded = run(qa, ledger, "add", "ana", "taxi", "1250", "2026-03-01")
     qa.require(
@@ -331,9 +331,9 @@ def a_malformed_row_refuses_the_whole_file_and_leaves_the_ledger_alone(qa: Qa) -
         recorded.ok,
         actual=recorded.stderr[-2000:],
         covers=[
-            "okf:docs/features/tally/tally.md#add:contract",
-            "okf:docs/features/tally/tally.md#add:does:1",
-            "okf:docs/features/tally/tally.md#import-a-malformed-row:does:1",
+            "okf:docs/services/tally/tally.md#add:contract",
+            "okf:docs/services/tally/tally.md#add:does:1",
+            "okf:docs/services/tally/tally.md#import-a-malformed-row:does:1",
         ],
     )
     write(qa, rows, ROW_FOUR_IS_NOT_MONEY)
@@ -347,14 +347,14 @@ def a_malformed_row_refuses_the_whole_file_and_leaves_the_ledger_alone(qa: Qa) -
         refused,
         code=2,
         label="`tally import` on a file with a row that is not an expense exits 2",
-        covers=["ac:3", "okf:docs/features/tally/tally.md#import-a-malformed-row:status:1"],
+        covers=["ac:3", "okf:docs/services/tally/tally.md#import-a-malformed-row:status:1"],
     )
     qa.check(
         "the refusal names the 1-based line number of the offending row",
         "line 4" in refused.stderr,
         actual=refused.stderr[-2000:],
         expected="a message naming line 4",
-        covers=["ac:3", "okf:docs/features/tally/tally.md#import-a-malformed-row:errors:1"],
+        covers=["ac:3", "okf:docs/services/tally/tally.md#import-a-malformed-row:errors:1"],
     )
     qa.verify(
         "unchanged",
@@ -362,10 +362,10 @@ def a_malformed_row_refuses_the_whole_file_and_leaves_the_ledger_alone(qa: Qa) -
         subject="tally.json",
         covers=[
             "ac:3",
-            "okf:docs/features/tally/tally.md#import-a-malformed-row:contract",
-            "okf:docs/features/tally/tally.md#import-a-malformed-row:does:1",
-            "okf:docs/features/tally/tally.md#import-a-malformed-row:errors:1",
-            "okf:docs/features/tally/tally.md#import-a-malformed-row:status:1",
+            "okf:docs/services/tally/tally.md#import-a-malformed-row:contract",
+            "okf:docs/services/tally/tally.md#import-a-malformed-row:does:1",
+            "okf:docs/services/tally/tally.md#import-a-malformed-row:errors:1",
+            "okf:docs/services/tally/tally.md#import-a-malformed-row:status:1",
         ],
     )
     qa.check(
@@ -373,7 +373,7 @@ def a_malformed_row_refuses_the_whole_file_and_leaves_the_ledger_alone(qa: Qa) -
         len(qa.field(json.loads(qa.field(after, "text")), "entries")) == 1,
         actual=qa.field(json.loads(qa.field(after, "text")), "entries"),
         expected="the single entry added before the import",
-        covers=["ac:3", "okf:docs/features/tally/tally.md#import-a-malformed-row:does:1"],
+        covers=["ac:3", "okf:docs/services/tally/tally.md#import-a-malformed-row:does:1"],
     )
 
 
@@ -383,9 +383,9 @@ def a_malformed_row_refuses_the_whole_file_and_leaves_the_ledger_alone(qa: Qa) -
     timeout=600.0,
     covers=[
         "ac:4",
-        "okf:docs/features/tally/tally.md#import:contract",
-        "okf:docs/features/tally/tally.md#import-a-malformed-row:contract",
-        "okf:docs/features/tally/tally.md#import-a-malformed-row:status:1",
+        "okf:docs/services/tally/tally.md#import:contract",
+        "okf:docs/services/tally/tally.md#import-a-malformed-row:contract",
+        "okf:docs/services/tally/tally.md#import-a-malformed-row:status:1",
     ],
     preconditions=[
         "every row under the wrong header is a perfectly good expense",
@@ -413,7 +413,7 @@ def a_file_under_the_wrong_header_is_refused_whole(qa: Qa) -> None:
         "the scenario could build a ledger a wrongly-headed import could damage",
         started.ok and seeded.ok,
         actual=started.stderr[-1000:] + seeded.stderr[-1000:],
-        covers=["okf:docs/features/tally/tally.md#import:contract"],
+        covers=["okf:docs/services/tally/tally.md#import:contract"],
     )
 
     before = read(qa, ledger)
@@ -425,14 +425,14 @@ def a_file_under_the_wrong_header_is_refused_whole(qa: Qa) -> None:
         refused,
         code=2,
         label="`tally import` on a file whose header is not the documented one exits 2",
-        covers=["ac:4", "okf:docs/features/tally/tally.md#import-a-malformed-row:status:1"],
+        covers=["ac:4", "okf:docs/services/tally/tally.md#import-a-malformed-row:status:1"],
     )
     qa.check(
         "the refusal names line 1, where the header is",
         "line 1" in refused.stderr,
         actual=refused.stderr[-2000:],
         expected="a message naming line 1",
-        covers=["ac:4", "okf:docs/features/tally/tally.md#import:contract"],
+        covers=["ac:4", "okf:docs/services/tally/tally.md#import:contract"],
     )
     qa.verify(
         "unchanged",
@@ -440,8 +440,8 @@ def a_file_under_the_wrong_header_is_refused_whole(qa: Qa) -> None:
         subject="tally.json",
         covers=[
             "ac:4",
-            "okf:docs/features/tally/tally.md#import-a-malformed-row:contract",
-            "okf:docs/features/tally/tally.md#import-a-malformed-row:status:1",
+            "okf:docs/services/tally/tally.md#import-a-malformed-row:contract",
+            "okf:docs/services/tally/tally.md#import-a-malformed-row:status:1",
         ],
     )
 
@@ -452,12 +452,12 @@ def a_file_under_the_wrong_header_is_refused_whole(qa: Qa) -> None:
     timeout=600.0,
     covers=[
         "ac:5",
-        "okf:docs/features/tally/tally.md#dry-run:contract",
-        "okf:docs/features/tally/tally.md#dry-run:default:1",
-        "okf:docs/features/tally/tally.md#dry-run:required:1",
-        "okf:docs/features/tally/tally.md#dry-run:semantics:1",
-        "okf:docs/features/tally/tally.md#dry-run:semantics:2",
-        "okf:docs/features/tally/tally.md#dry-run:semantics:3",
+        "okf:docs/services/tally/tally.md#dry-run:contract",
+        "okf:docs/services/tally/tally.md#dry-run:default:1",
+        "okf:docs/services/tally/tally.md#dry-run:required:1",
+        "okf:docs/services/tally/tally.md#dry-run:semantics:1",
+        "okf:docs/services/tally/tally.md#dry-run:semantics:2",
+        "okf:docs/services/tally/tally.md#dry-run:semantics:3",
     ],
     preconditions=[
         "the scenario owns a directory nothing else writes to, so a census of it is a census of what the command did",
@@ -484,7 +484,7 @@ def a_dry_run_reports_what_it_would_do_and_writes_nothing_anywhere(qa: Qa) -> No
         "the scenario could set up a ledger with something in it",
         started.ok and recorded.ok,
         actual=started.stderr[-1000:] + recorded.stderr[-1000:],
-        covers=["okf:docs/features/tally/tally.md#dry-run:contract"],
+        covers=["okf:docs/services/tally/tally.md#dry-run:contract"],
     )
     write(qa, rows, THREE_ROWS)
 
@@ -499,8 +499,8 @@ def a_dry_run_reports_what_it_would_do_and_writes_nothing_anywhere(qa: Qa) -> No
         label="`import --dry-run` exits 0",
         covers=[
             "ac:5",
-            "okf:docs/features/tally/tally.md#dry-run:contract",
-            "okf:docs/features/tally/tally.md#dry-run:semantics:3",
+            "okf:docs/services/tally/tally.md#dry-run:contract",
+            "okf:docs/services/tally/tally.md#dry-run:semantics:3",
         ],
     )
     qa.check(
@@ -508,7 +508,7 @@ def a_dry_run_reports_what_it_would_do_and_writes_nothing_anywhere(qa: Qa) -> No
         "dry-run" in previewed.stderr,
         actual=previewed.stderr[-2000:],
         expected="a line on stderr naming the dry run",
-        covers=["ac:5", "okf:docs/features/tally/tally.md#dry-run:semantics:3"],
+        covers=["ac:5", "okf:docs/services/tally/tally.md#dry-run:semantics:3"],
     )
     qa.verify(
         "unchanged",
@@ -516,7 +516,7 @@ def a_dry_run_reports_what_it_would_do_and_writes_nothing_anywhere(qa: Qa) -> No
         subject="tally.json",
         covers=[
             "ac:5",
-            "okf:docs/features/tally/tally.md#dry-run:semantics:1",
+            "okf:docs/services/tally/tally.md#dry-run:semantics:1",
         ],
     )
     qa.verify(
@@ -525,7 +525,7 @@ def a_dry_run_reports_what_it_would_do_and_writes_nothing_anywhere(qa: Qa) -> No
         subject="the working directory",
         covers=[
             "ac:5",
-            "okf:docs/features/tally/tally.md#dry-run:semantics:2",
+            "okf:docs/services/tally/tally.md#dry-run:semantics:2",
         ],
     )
 
@@ -537,8 +537,8 @@ def a_dry_run_reports_what_it_would_do_and_writes_nothing_anywhere(qa: Qa) -> No
         actual=sorted(landed),
         expected="a directory whose ledger digest has moved",
         covers=[
-            "okf:docs/features/tally/tally.md#dry-run:default:1",
-            "okf:docs/features/tally/tally.md#dry-run:required:1",
+            "okf:docs/services/tally/tally.md#dry-run:default:1",
+            "okf:docs/services/tally/tally.md#dry-run:required:1",
         ],
     )
 
@@ -548,11 +548,11 @@ def a_dry_run_reports_what_it_would_do_and_writes_nothing_anywhere(qa: Qa) -> No
     mechanism="live",
     timeout=600.0,
     covers=[
-        "okf:docs/features/tally/tally.md#file:contract",
-        "okf:docs/features/tally/tally.md#file:default:1",
-        "okf:docs/features/tally/tally.md#file:required:1",
-        "okf:docs/features/tally/tally.md#file:semantics:1",
-        "okf:docs/features/tally/tally.md#file:semantics:2",
+        "okf:docs/services/tally/tally.md#file:contract",
+        "okf:docs/services/tally/tally.md#file:default:1",
+        "okf:docs/services/tally/tally.md#file:required:1",
+        "okf:docs/services/tally/tally.md#file:semantics:1",
+        "okf:docs/services/tally/tally.md#file:semantics:2",
     ],
     preconditions=[
         "two ledgers in one directory, each named on its own invocations",
@@ -579,7 +579,7 @@ def two_ledgers_in_one_directory_never_see_each_other(qa: Qa) -> None:
         "the scenario could create two ledgers side by side",
         first.ok and second.ok,
         actual=first.stderr[-1000:] + second.stderr[-1000:],
-        covers=["okf:docs/features/tally/tally.md#file:contract"],
+        covers=["okf:docs/services/tally/tally.md#file:contract"],
     )
     write(qa, rows, THREE_ROWS)
 
@@ -590,28 +590,28 @@ def two_ledgers_in_one_directory_never_see_each_other(qa: Qa) -> None:
         imported,
         code=0,
         label="an import names the ledger it acts on and exits 0",
-        covers=["okf:docs/features/tally/tally.md#file:contract"],
+        covers=["okf:docs/services/tally/tally.md#file:contract"],
     )
     qa.check(
         "the ledger it named holds the three rows",
         len(entries(qa, here)) == 3,
         actual=len(entries(qa, here)),
         expected=3,
-        covers=["okf:docs/features/tally/tally.md#file:semantics:1"],
+        covers=["okf:docs/services/tally/tally.md#file:semantics:1"],
     )
     stood = read(qa, there)
     qa.verify(
         "unchanged",
         ({"rent.json": qa.field(untouched, "sha256")}, {"rent.json": qa.field(stood, "sha256")}),
         subject="the ledger --file did not name",
-        covers=["okf:docs/features/tally/tally.md#file:semantics:1"],
+        covers=["okf:docs/services/tally/tally.md#file:semantics:1"],
     )
     qa.check(
         "and it is still the empty ledger it was — the import landed in one file, not both",
         len(entries(qa, there)) == 0,
         actual=len(entries(qa, there)),
         expected=0,
-        covers=["okf:docs/features/tally/tally.md#file:semantics:1"],
+        covers=["okf:docs/services/tally/tally.md#file:semantics:1"],
     )
 
     helped = qa.tool("python3").run("-m", "tally", "--help", timeout=60.0)
@@ -620,14 +620,14 @@ def two_ledgers_in_one_directory_never_see_each_other(qa: Qa) -> None:
         "default: tally.json" in helped.stdout,
         actual=helped.stdout[-2000:],
         expected="a usage line naming tally.json as the default",
-        covers=["okf:docs/features/tally/tally.md#file:default:1"],
+        covers=["okf:docs/services/tally/tally.md#file:default:1"],
     )
     qa.check(
         "`--help` shows `--file` as optional",
         "[--file FILE]" in helped.stdout,
         actual=helped.stdout[-2000:],
         expected="an optional --file in the usage line",
-        covers=["okf:docs/features/tally/tally.md#file:required:1"],
+        covers=["okf:docs/services/tally/tally.md#file:required:1"],
     )
 
     misplaced = qa.tool("python3").run(
@@ -638,7 +638,7 @@ def two_ledgers_in_one_directory_never_see_each_other(qa: Qa) -> None:
         misplaced.exit_code != 0,
         actual=misplaced.exit_code,
         expected="a non-zero exit",
-        covers=["okf:docs/features/tally/tally.md#file:semantics:2"],
+        covers=["okf:docs/services/tally/tally.md#file:semantics:2"],
     )
 
 
@@ -647,8 +647,8 @@ def two_ledgers_in_one_directory_never_see_each_other(qa: Qa) -> None:
     mechanism="live",
     timeout=600.0,
     covers=[
-        "okf:docs/features/tally/tally.md#import-a-csv:contract",
-        "okf:docs/features/tally/tally.md#import-a-csv:does:2",
+        "okf:docs/services/tally/tally.md#import-a-csv:contract",
+        "okf:docs/services/tally/tally.md#import-a-csv:does:2",
     ],
     preconditions=[
         "the ledger starts empty, so every entry it ends with came from this one import",
@@ -675,7 +675,7 @@ def a_row_the_file_lists_twice_imports_once(qa: Qa) -> None:
         "the scenario could initialise the ledger it imports into",
         started.ok,
         actual=started.stderr[-2000:],
-        covers=["okf:docs/features/tally/tally.md#import-a-csv:contract"],
+        covers=["okf:docs/services/tally/tally.md#import-a-csv:contract"],
     )
     write(qa, rows, ROW_THREE_IS_ROW_ONE_AGAIN)
 
@@ -685,7 +685,7 @@ def a_row_the_file_lists_twice_imports_once(qa: Qa) -> None:
         imported,
         code=0,
         label="`tally import` on a file whose every row parses exits 0, duplicate included",
-        covers=["okf:docs/features/tally/tally.md#import-a-csv:contract"],
+        covers=["okf:docs/services/tally/tally.md#import-a-csv:contract"],
     )
 
     landed = entries(qa, ledger)
@@ -694,7 +694,7 @@ def a_row_the_file_lists_twice_imports_once(qa: Qa) -> None:
         landed,
         subject="entries in the ledger",
         equals=2,
-        covers=["okf:docs/features/tally/tally.md#import-a-csv:does:2"],
+        covers=["okf:docs/services/tally/tally.md#import-a-csv:does:2"],
     )
     taxis = [
         entry
@@ -707,8 +707,8 @@ def a_row_the_file_lists_twice_imports_once(qa: Qa) -> None:
         subject="entries the ledger holds for a row the file lists twice",
         equals=1,
         covers=[
-            "okf:docs/features/tally/tally.md#import-a-csv:does:1",
-            "okf:docs/features/tally/tally.md#import-a-csv:does:2",
+            "okf:docs/services/tally/tally.md#import-a-csv:does:1",
+            "okf:docs/services/tally/tally.md#import-a-csv:does:2",
         ],
     )
 
@@ -718,10 +718,10 @@ def a_row_the_file_lists_twice_imports_once(qa: Qa) -> None:
     mechanism="live",
     timeout=600.0,
     covers=[
-        "okf:docs/features/tally/tally.md#import-without-a-ledger:contract",
-        "okf:docs/features/tally/tally.md#import-without-a-ledger:does:1",
-        "okf:docs/features/tally/tally.md#import-without-a-ledger:errors:1",
-        "okf:docs/features/tally/tally.md#import-without-a-ledger:status:1",
+        "okf:docs/services/tally/tally.md#import-without-a-ledger:contract",
+        "okf:docs/services/tally/tally.md#import-without-a-ledger:does:1",
+        "okf:docs/services/tally/tally.md#import-without-a-ledger:errors:1",
+        "okf:docs/services/tally/tally.md#import-without-a-ledger:status:1",
     ],
     preconditions=[
         "`tally init` has never run in the scenario's directory — the only file there is the CSV",
@@ -754,8 +754,8 @@ def importing_without_a_ledger_refuses_and_conjures_nothing(qa: Qa) -> None:
         code=1,
         label="`tally import` in a directory with no ledger exits 1",
         covers=[
-            "okf:docs/features/tally/tally.md#import-without-a-ledger:contract",
-            "okf:docs/features/tally/tally.md#import-without-a-ledger:status:1",
+            "okf:docs/services/tally/tally.md#import-without-a-ledger:contract",
+            "okf:docs/services/tally/tally.md#import-without-a-ledger:status:1",
         ],
     )
     qa.check(
@@ -763,15 +763,15 @@ def importing_without_a_ledger_refuses_and_conjures_nothing(qa: Qa) -> None:
         "does not exist" in refused.stderr and "tally init" in refused.stderr,
         actual=refused.stderr[-2000:],
         expected="a message naming the missing ledger and `tally init`",
-        covers=["okf:docs/features/tally/tally.md#import-without-a-ledger:errors:1"],
+        covers=["okf:docs/services/tally/tally.md#import-without-a-ledger:errors:1"],
     )
     qa.verify(
         "unchanged",
         (before, after),
         subject="the working directory",
         covers=[
-            "okf:docs/features/tally/tally.md#import-without-a-ledger:contract",
-            "okf:docs/features/tally/tally.md#import-without-a-ledger:does:1",
+            "okf:docs/services/tally/tally.md#import-without-a-ledger:contract",
+            "okf:docs/services/tally/tally.md#import-without-a-ledger:does:1",
         ],
     )
     qa.check(
@@ -779,5 +779,5 @@ def importing_without_a_ledger_refuses_and_conjures_nothing(qa: Qa) -> None:
         sorted(after) == ["trip.csv"],
         actual=sorted(after),
         expected="only the CSV the scenario wrote",
-        covers=["okf:docs/features/tally/tally.md#import-without-a-ledger:does:1"],
+        covers=["okf:docs/services/tally/tally.md#import-without-a-ledger:does:1"],
     )

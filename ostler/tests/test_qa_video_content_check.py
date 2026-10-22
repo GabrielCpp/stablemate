@@ -12,7 +12,7 @@ from ostler.qa.session import QaSession
 
 from conftest import write
 
-SCREEN = "docs/features/groom/gui/screens/s.md"
+SCREEN = "docs/services/groom/gui/screens/s.md"
 
 
 def _book(repo: Path) -> None:
@@ -49,7 +49,7 @@ def _driver(repo: Path) -> PythonDriver:
     spec = repo / "docs/specs/story-1"
     spec.mkdir(parents=True, exist_ok=True)
     (spec / "qa-okf-context.json").write_text(
-        json.dumps({"featuresRoot": "docs/features"}), encoding="utf-8"
+        json.dumps({"servicesRoot": "docs/services"}), encoding="utf-8"
     )
     session = QaSession.create(spec, "qa-video-1", "story-1", {})
     return PythonDriver(

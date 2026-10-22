@@ -18,10 +18,10 @@ def _rel(path: Path, root: Path) -> str:
         return path.as_posix()
 
 
-def surface_of(node_path: Path, features_root: Path) -> str:
-    """The service a path belongs to: the first path component under ``docs/features/``."""
+def surface_of(node_path: Path, services_root: Path) -> str:
+    """The service a path belongs to: the first path component under ``docs/services/``."""
     try:
-        rel = node_path.relative_to(features_root)
+        rel = node_path.relative_to(services_root)
     except ValueError:
         return ""
     return rel.parts[0] if rel.parts else ""
@@ -54,7 +54,7 @@ def _edge_sources(node: UINode) -> list[str]:
     return [_via(line, text, href) for text, href, line in node.links]
 
 
-def _node_dict(node: UINode, resolver: LinkResolver, graph: Graph, features_root: Path,
+def _node_dict(node: UINode, resolver: LinkResolver, graph: Graph, services_root: Path,
                path_cache: dict[Path, tuple[str, str]]) -> dict:
     edges = []
     via = _edge_sources(node)
@@ -66,7 +66,7 @@ def _node_dict(node: UINode, resolver: LinkResolver, graph: Graph, features_root
                       "via": source})
     cached = path_cache.get(node.path)
     if cached is None:
-        cached = (_rel(node.path, graph.root), surface_of(node.path, features_root))
+        cached = (_rel(node.path, graph.root), surface_of(node.path, services_root))
         path_cache[node.path] = cached
     rel, surface = cached
     return {
@@ -112,7 +112,7 @@ def build(graph: Graph, *, etype: str | None = None, surface: str | None = None,
     """Assemble the graph: every node (with bullets + out-edges) and a flat edge list."""
     if resolver is None:
         resolver = LinkResolver(graph)
-    features_root = path_mod.features_root(graph)
+    services_root = path_mod.services_root(graph)
     by_id = {n.id: n for n in graph.ui_nodes}
     nodes: list[dict] = []
     edges: list[dict] = []
@@ -120,7 +120,7 @@ def build(graph: Graph, *, etype: str | None = None, surface: str | None = None,
     for n in graph.ui_nodes:
         if etype and n.type != etype:
             continue
-        d = _node_dict(n, resolver, graph, features_root, path_cache)
+        d = _node_dict(n, resolver, graph, services_root, path_cache)
         if surface and d["surface"] != surface:
             continue
         d["title_path"], d["type_path"] = _paths(n.id, by_id)

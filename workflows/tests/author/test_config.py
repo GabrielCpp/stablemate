@@ -66,7 +66,7 @@ def test_author_config_never_invents_a_surface_inventory(tmp_path: Path) -> None
     survey_manifest.parent.mkdir(parents=True)
     survey_manifest.write_text("{}\n", encoding="utf-8")
     (tmp_path / "agents.yml").write_text(
-        "template:\n  surface_manifest: docs/features/inventory.json\n",
+        "template:\n  surface_manifest: docs/services/inventory.json\n",
         encoding="utf-8",
     )
 
@@ -76,7 +76,7 @@ def test_author_config_never_invents_a_surface_inventory(tmp_path: Path) -> None
 
     assert "surface_manifest" not in config.model_dump()
     assert config.roadmap_path == ROADMAP
-    assert not (tmp_path / "docs/features/inventory.json").exists()
+    assert not (tmp_path / "docs/services/inventory.json").exists()
 
 
 @pytest.mark.parametrize(

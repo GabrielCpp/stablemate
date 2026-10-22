@@ -44,7 +44,7 @@ def _scaffold_type(repo: Path, name: str) -> Path:
     host = _SECTION_HOSTS[name]
     host_res = scaffold.scaffold(load(repo), host, host, service="acme")
     assert host_res.ok, host_res.message
-    in_file = host_res.paths[0].relative_to(load(repo).doc_roots["features"]).as_posix()
+    in_file = host_res.paths[0].relative_to(load(repo).doc_roots["services"]).as_posix()
     res = scaffold.scaffold(load(repo), name, name, in_file=in_file)
     assert res.ok, res.message
     return host_res.paths[0]
@@ -67,7 +67,7 @@ def test_scaffold_output_is_canonical_for_every_type(repo: Path, type_name: str)
 def test_scaffold_file_level_screen_placement(repo: Path):
     res = scaffold.scaffold(load(repo), "screen", "changes-view", service="groom")
     assert res.ok
-    path = repo / "docs/features/groom/gui/screens/changes-view.md"
+    path = repo / "docs/services/groom/gui/screens/changes-view.md"
     assert path.exists()
     text = path.read_text()
     assert text.startswith("---\ntype: screen\nslug: changes-view\ntitle: changes-view\n---\n")
@@ -76,7 +76,7 @@ def test_scaffold_file_level_screen_placement(repo: Path):
 
 def test_scaffold_cli_emits_required_section_and_bullets(repo: Path):
     scaffold.scaffold(load(repo), "cli", "workhorse", service="workhorse", title="workhorse")
-    text = (repo / "docs/features/workhorse/workhorse.md").read_text()
+    text = (repo / "docs/services/workhorse/workhorse.md").read_text()
     assert "- binary:" in text
     assert "- code:" in text
     assert "## Commands" in text
@@ -95,31 +95,31 @@ def test_scaffold_section_inserts_under_heading(repo: Path):
     graph = load(repo)
     inter = graph.ui_nodes_of_type("interaction")
     assert [i.anchor for i in inter] == ["click-file"]
-    text = (repo / "docs/features/groom/gui/screens/changes-view.md").read_text()
+    text = (repo / "docs/services/groom/gui/screens/changes-view.md").read_text()
     assert "## Interactions" in text
     assert "- on:" in text and "- trigger:" in text and "- does:" in text
 
 
 def test_scaffold_endpoint_writes_a_page_beside_its_server_and_lists_it(repo: Path):
-    write(repo / "docs/features/groom/http/server.md",
+    write(repo / "docs/services/groom/http/server.md",
           "---\ntype: server\nslug: s\ntitle: S\n---\n# S\n\n- code: `app.py`\n")
     res = scaffold.scaffold(load(repo), "endpoint", "get-worker",
                             in_file="groom/http/server.md")
     assert res.ok, res.message
-    page = (repo / "docs/features/groom/http/get-worker.md").read_text()
+    page = (repo / "docs/services/groom/http/get-worker.md").read_text()
     assert page.startswith("---\ntype: endpoint\nslug: get-worker\n")
     assert "- server: [S](server.md)" in page
-    host = (repo / "docs/features/groom/http/server.md").read_text()
+    host = (repo / "docs/services/groom/http/server.md").read_text()
     assert "## Endpoints\n\n- [get-worker](get-worker.md)\n" in host
     assert [n.id for n in load(repo).ui_nodes_of_type("endpoint")] == [
-        "docs/features/groom/http/get-worker.md"]
+        "docs/services/groom/http/get-worker.md"]
 
 
 def test_scaffold_endpoint_appends_to_an_existing_list(repo: Path):
-    write(repo / "docs/features/groom/http/server.md",
+    write(repo / "docs/services/groom/http/server.md",
           "---\ntype: server\ntitle: S\n---\n# S\n\n## Endpoints\n\n- [a](a.md)\n\n## Notes\n\nx\n")
     assert scaffold.scaffold(load(repo), "endpoint", "b", in_file="groom/http/server.md").ok
-    host = (repo / "docs/features/groom/http/server.md").read_text()
+    host = (repo / "docs/services/groom/http/server.md").read_text()
     assert "## Endpoints\n\n- [a](a.md)\n- [b](b.md)\n\n## Notes\n" in host
 
 
@@ -133,7 +133,7 @@ def test_scaffold_endpoint_refuses_a_host_that_is_not_a_server(repo: Path):
 
 def test_scaffold_endpoints_bare_channel_and_message_raise_no_new_finding(repo: Path):
     """The corpus shape today: every book's `channel:`/`message:` is a bare scaffold stub with no value, so widening their grammar (locator/address on `channel:`, entries/normative on `message:`) must be invisible until a book actually writes content into one."""
-    write(repo / "docs/features/acme/server.md",
+    write(repo / "docs/services/acme/server.md",
           "---\ntype: server\ntitle: API\n---\n# API\n\n- code: `app/server.py`\n")
     write(repo / "app/server.py", "x = 1\n")
     res = scaffold.scaffold(load(repo), "endpoint", "get-worker", in_file="acme/server.md")
@@ -160,10 +160,10 @@ def test_scaffold_duplicate_section_refused(repo: Path):
 
 
 def test_scaffold_fixture_writes_to_the_path_a_book_loads_fixtures_from(repo: Path):
-    """`context="fixtures"` (fixed from a stray `qa/fixtures`) must place the file where the fixture node grammar's own id convention says: `docs/features/<surface>/fixtures/<name>.md`, no `qa/` segment — and the book must find it back there as a `fixture` node."""
+    """`context="fixtures"` (fixed from a stray `qa/fixtures`) must place the file where the fixture node grammar's own id convention says: `docs/services/<surface>/fixtures/<name>.md`, no `qa/` segment — and the book must find it back there as a `fixture` node."""
     res = scaffold.scaffold(load(repo), "fixture", "seeded-acme", service="acme")
     assert res.ok
-    path = repo / "docs/features/acme/fixtures/seeded-acme.md"
+    path = repo / "docs/services/acme/fixtures/seeded-acme.md"
     assert path.exists()
     graph = load(repo)
     [node] = graph.ui_nodes_of_type("fixture")
@@ -184,13 +184,13 @@ def test_scaffold_unknown_type(repo: Path):
 
 def test_scaffold_cli_command_roundtrip(repo: Path):
     assert main(["-C", str(repo), "scaffold", "concept", "diff", "--service", "groom"]) == 0
-    assert (repo / "docs/features/groom/concepts/diff.md").exists()
+    assert (repo / "docs/services/groom/concepts/diff.md").exists()
 
 
 def test_scaffold_runbook_emits_steps_section_and_driver(repo: Path):
     res = scaffold.scaffold(load(repo), "runbook", "web", service="groom")
     assert res.ok
-    text = (repo / "docs/features/groom/ops/web.md").read_text()
+    text = (repo / "docs/services/groom/ops/web.md").read_text()
     assert text.startswith("---\ntype: runbook\n")
     assert "- driver:" in text and "- surfaces:" in text
     assert "## Steps" in text
@@ -201,7 +201,7 @@ def test_scaffold_step_inserts_under_steps_heading(repo: Path):
     scaffold.scaffold(load(repo), "runbook", "web", service="groom")
     res = scaffold.scaffold(load(repo), "step", "serve", in_file="groom/ops/web.md")
     assert res.ok
-    text = (repo / "docs/features/groom/ops/web.md").read_text()
+    text = (repo / "docs/services/groom/ops/web.md").read_text()
     assert "### serve" in text and "- kind:" in text
     assert [s.anchor for s in load(repo).ui_nodes_of_type("step")] == ["serve"]
 

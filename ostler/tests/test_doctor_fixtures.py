@@ -147,7 +147,7 @@ title: Claims
 - authorization: an adjuster reads every claim on file.
 """
 
-BOOK_PATH = "docs/features/area/claims.md"
+BOOK_PATH = "docs/services/area/claims.md"
 
 
 def test_a_book_fixture_the_repo_never_declared_is_an_error(repo: Path) -> None:
@@ -177,7 +177,7 @@ def test_a_hand_written_fixture_with_a_book_node_behind_it_is_clean(repo: Path) 
     _declare(repo)
     write(repo / BOOK_PATH, BOOK.format(bullet="seeded-accounts 2 — two claims on file"))
     write(
-        repo / "docs/features/area/fixtures/seeded-accounts.md",
+        repo / "docs/services/area/fixtures/seeded-accounts.md",
         "---\ntype: fixture\ntitle: Seeded accounts\n---\n"
         "# Seeded accounts\n\n"
         "- provides:\n"

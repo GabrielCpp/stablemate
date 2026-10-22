@@ -39,7 +39,7 @@ def _resolve_in_file(graph: Graph, in_file: str) -> Path:
         return candidate
     if (graph.root / in_file).exists():
         return graph.root / in_file
-    return graph.doc_roots["features"] / in_file
+    return graph.doc_roots["services"] / in_file
 
 
 def _scaffold_file(graph: Graph, uitype: registry.UINodeType, name: str,
@@ -48,7 +48,7 @@ def _scaffold_file(graph: Graph, uitype: registry.UINodeType, name: str,
         return Result(False, f"file-level type '{uitype.name}' requires --service")
     if "/" in name or name in (".", ".."):
         return Result(False, f"invalid name '{name}'")
-    froot = graph.doc_roots["features"]
+    froot = graph.doc_roots["services"]
     rel = Path(service)
     if uitype.context:
         rel = rel / uitype.context

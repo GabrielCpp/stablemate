@@ -30,7 +30,7 @@ GRAPH_COMMANDS: dict[str, list[str]] = {
     "list": ["list", "--type", "story"],
     "search": ["search", "Foo"],
     "graph": ["graph"],
-    "reach": ["reach", "--from", "docs/features/ui/dash.md"],
+    "reach": ["reach", "--from", "docs/services/ui/dash.md"],
     "locators": ["locators"],
     "next-epic": ["next-epic"],
     "next-story": ["next-story", "epic-a"],
@@ -67,7 +67,7 @@ def record_parses(monkeypatch: pytest.MonkeyPatch) -> tuple[list[str], list[str]
 
 def feature_docs(book: Path) -> list[Path]:
     """The documents this increment's five read-only call sites all read."""
-    return sorted((book / "docs" / "features").rglob("*.md"))
+    return sorted((book / "docs" / "services").rglob("*.md"))
 
 
 def parse_counts(path: Path, texts: list[str], bodies: list[str]) -> tuple[int, int]:
@@ -165,7 +165,7 @@ def test_a_warm_doctor_scans_no_file_for_its_links(
     """Link validation is document-wide: every file in the book, every run."""
     real = importlib.import_module("ostler.model")
     directory = tmp_path / "index"
-    dash = ui_book / "docs" / "features" / "ui" / "dash.md"
+    dash = ui_book / "docs" / "services" / "ui" / "dash.md"
     expected = tuple(markdown.iter_links(dash.read_text(encoding="utf-8")))
     assert expected, "the fixture file has no links to serve"
     warm_index(ui_book, directory)
@@ -187,7 +187,7 @@ def test_a_warm_doctor_scans_no_file_for_its_links(
 
 
 def test_the_read_only_accessor_hands_back_one_document_per_file(ui_book: Path, index_home: Path):
-    path = ui_book / "docs" / "features" / "area" / "rec.md"
+    path = ui_book / "docs" / "services" / "area" / "rec.md"
 
     with index.session(ui_book):
         first = model.read_doc(path)
@@ -200,7 +200,7 @@ def test_the_read_only_accessor_hands_back_one_document_per_file(ui_book: Path, 
 
 def test_a_writer_never_receives_a_shared_cached_document(ui_book: Path, index_home: Path):
     """`replace_body` mutates in place and drops the parsed sections."""
-    path = ui_book / "docs" / "features" / "area" / "rec.md"
+    path = ui_book / "docs" / "services" / "area" / "rec.md"
 
     with index.session(ui_book):
         shared = model.read_doc(path)
@@ -222,7 +222,7 @@ def test_a_command_that_writes_is_never_served_a_stale_document(
     warm_index(ui_book, directory)
     before = len(entry_files(directory))
 
-    write(ui_book / "docs" / "features" / "ui" / "detail.md",
+    write(ui_book / "docs" / "services" / "ui" / "detail.md",
           screen_md("detail", "Renamed Detail"))
 
     assert main(["-C", str(ui_book), "list", "--type", "screen", "--json",
@@ -265,12 +265,12 @@ def test_a_global_finding_appears_from_a_change_to_a_different_file(
     """Reachability is transitive, which is exactly what a per-file cache cannot hold."""
     directory = tmp_path / "index"
     warm_index(ui_book, directory)
-    write(ui_book / "docs" / "features" / "ui" / "dash.md",
+    write(ui_book / "docs" / "services" / "ui" / "dash.md",
           screen_md("dash", "Dash", entry=True, body=UI_DASH_UNLINKED))
 
     assert main(["-C", str(ui_book), "doctor", "--json", "--index-dir", str(directory)]) == 1
     report = report_of(capsys)
 
     unreachable = [f for f in report["findings"] if f["code"] == "unreachable-screen"]
-    assert [f["ref"] for f in unreachable] == ["docs/features/ui/detail.md"]
+    assert [f["ref"] for f in unreachable] == ["docs/services/ui/detail.md"]
     assert report["index"]["hits"] > 0, "detail.md was unchanged and should have been served warm"

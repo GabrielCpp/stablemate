@@ -354,7 +354,7 @@ def test_the_benchmark_corpus_declares_no_check_that_cannot_go_red() -> None:
 
 
 def _book(tmp_path: Path, endpoint: str) -> Path:
-    docs = tmp_path / "docs" / "features"
+    docs = tmp_path / "docs" / "services"
     docs.mkdir(parents=True)
     (docs / "api.md").write_text(
         "---\ntype: server\nslug: api\ntitle: API\n---\n# API\n\n"
@@ -372,8 +372,8 @@ def test_a_claim_no_check_observes_is_counted_undeclared_not_dropped(tmp_path: P
         "- errors: `422` when a field does not validate\n"
     ))
     rows = {row.claim: row.status for row in sensitivity.report(model.load(root))}
-    assert rows["docs/features/api.md#post-policies:errors:1"] == "sensitive"
-    assert rows["docs/features/api.md#post-policies:errors:2"] == "undeclared"
+    assert rows["docs/services/api.md#post-policies:errors:1"] == "sensitive"
+    assert rows["docs/services/api.md#post-policies:errors:2"] == "undeclared"
 
 
 def test_an_unobserved_claim_does_not_fail_the_command_but_is_named(tmp_path: Path) -> None:
@@ -384,4 +384,4 @@ def test_an_unobserved_claim_does_not_fail_the_command_but_is_named(tmp_path: Pa
     assert "0 insensitive" in outcome.message
     assert "unobserved" in outcome.message
     unobserved = [row["claim"] for row in outcome.data["claims"] if row["status"] == "undeclared"]
-    assert "docs/features/api.md#post-policies:errors:1" in unobserved
+    assert "docs/services/api.md#post-policies:errors:1" in unobserved

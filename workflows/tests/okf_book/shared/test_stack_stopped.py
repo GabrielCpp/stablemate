@@ -17,7 +17,7 @@ from workhorse_workflows.okf_book.shared import book_run
 from workhorse_workflows.okf_book.shared.book_run import StackReadiness, run_plan, stack_down_failures
 from workhorse_workflows.okf_book.shared.scenarios import RunSummary, ScenarioOutcome
 
-WEB_STACK = "docs/features/web-app/ops/web-app-stack.md"
+WEB_STACK = "docs/services/web-app/ops/web-app-stack.md"
 
 
 def _exited_group() -> str:

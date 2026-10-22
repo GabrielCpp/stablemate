@@ -10,7 +10,7 @@ class ParityConfig(AuthorResult):
 
     repo_root: str = ""
     baseline_inventory: str = ""
-    target_features: str = ""
+    target_services: str = ""
     survey_dir: str = ""
     inventory: str = ""
     findings_dir: str = ""

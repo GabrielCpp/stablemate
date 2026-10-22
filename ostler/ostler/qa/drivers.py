@@ -328,11 +328,11 @@ class PythonDriver(QaDriver):
 
     def _resolved_book_fixtures(self) -> dict[str, dict[str, Any]]:
         if self._book_fixtures_cache is None:
-            features_root, problem = self._packet_features_root()
+            services_root, problem = self._packet_services_root()
             if problem is not None:
                 raise DriverBlocked(problem)
             self._book_fixtures_cache = qa_book_fixtures.resolved(
-                load_graph(self.root, root_overrides={"features": features_root})
+                load_graph(self.root, root_overrides={"services": services_root})
             )
         return self._book_fixtures_cache
 
@@ -732,13 +732,13 @@ class PythonDriver(QaDriver):
         return []
 
 
-    def _packet_features_root(self) -> tuple[str, str | None]:
-        """The frame a `qa.vet` argument is spelled in — the packet's `featuresRoot` — or the reason there is none."""
+    def _packet_services_root(self) -> tuple[str, str | None]:
+        """The frame a `qa.vet` argument is spelled in — the packet's `servicesRoot` — or the reason there is none."""
         packet = self.session.spec_dir / "qa-okf-context.json"
         if not packet.is_file():
             return "", (
                 f"no QA context packet at {packet} — a compiled plan's `qa.vet` arguments "
-                "are spelled against the book the packet's `featuresRoot` names, and with "
+                "are spelled against the book the packet's `servicesRoot` names, and with "
                 "no packet there is no root to resolve them against; run `ostler qa "
                 "context` for this spec before `qa run`, or pass `--spec` at a directory "
                 "it wrote"
@@ -747,16 +747,16 @@ class PythonDriver(QaDriver):
             data = json.loads(packet.read_text(encoding="utf-8"))
         except (OSError, ValueError) as exc:
             return "", f"QA context packet at {packet} is unreadable: {exc}"
-        features_root = path_mod.resolve_features_root(data.get("featuresRoot"), self.root)
-        return features_root, None
+        services_root = path_mod.resolve_services_root(data.get("servicesRoot"), self.root)
+        return services_root, None
 
     def _book(self) -> dict[str, list[placement.VettedComponent]]:
-        """The documented screens, read once per target and kept, keyed the way a compiled plan spells its `qa.vet` arguments — see `_packet_features_root`."""
+        """The documented screens, read once per target and kept, keyed the way a compiled plan spells its `qa.vet` arguments — see `_packet_services_root`."""
         if self._screens is None:
             self._screens = {}
-            features_root, self._book_problem = self._packet_features_root()
+            services_root, self._book_problem = self._packet_services_root()
             if self._book_problem is None:
-                graph = load_graph(self.root, root_overrides={"features": features_root})
+                graph = load_graph(self.root, root_overrides={"services": services_root})
                 self._screens = placement.screen_components(graph)
                 self._routes = vet_routes(graph)
         return self._screens

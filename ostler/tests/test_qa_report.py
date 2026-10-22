@@ -19,7 +19,7 @@ from ostler.qa.report import (
     write_report,
 )
 
-CONTRACT = "okf:docs/features/orders/publish.md:contract"
+CONTRACT = "okf:docs/services/orders/publish.md:contract"
 DECLARED = 'conflict_on_stale(subject="manifest", token="etag")'
 
 
@@ -359,7 +359,7 @@ def test_a_ledger_without_stamps_lists_assertions_per_scenario_and_says_so(tmp_p
 def test_an_obligation_s_status_is_the_evidence_map_s(tmp_path: Path) -> None:
     obligation = {
         "id": CONTRACT, "kind": "contract", "node": "publish",
-        "source": "docs/features/orders/publish.md",
+        "source": "docs/services/orders/publish.md",
         "requirement": "a stale manifest write is refused", "evidenceRequired": "live", "reasons": [],
         "checksDeclared": [{"call": DECLARED, "name": "conflict_on_stale", "args": {}}],
     }
@@ -477,7 +477,7 @@ def test_a_screenshot_s_vet_verdict_is_read_off_its_sidecar(tmp_path: Path) -> N
     (spec / "qa/screenshots").mkdir(parents=True)
     (spec / "qa/screenshots/after-sign-in.vet.json").write_text(
         json.dumps({
-            "schema": "vet-placement/1", "screen": "docs/features/web/gui/screens/tree.md", "state": "",
+            "schema": "vet-placement/1", "screen": "docs/services/web/gui/screens/tree.md", "state": "",
             "screenshot": "qa/screenshots/after-sign-in.png", "regionCount": 4,
             "verdicts": [
                 {"node_id": "tree-root", "status": "matched", "detail": [], "bbox": None},
@@ -487,7 +487,7 @@ def test_a_screenshot_s_vet_verdict_is_read_off_its_sidecar(tmp_path: Path) -> N
         encoding="utf-8",
     )
     text = render_report(build_report(spec), spec_dir=spec)
-    assert "vet: screen `docs/features/web/gui/screens/tree.md`, 1 finding(s): sign-out missing" in text
+    assert "vet: screen `docs/services/web/gui/screens/tree.md`, 1 finding(s): sign-out missing" in text
     assert "vet:" not in render_report(build_report(spec))
 
 

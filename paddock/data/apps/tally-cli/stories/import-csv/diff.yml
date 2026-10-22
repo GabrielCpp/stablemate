@@ -15,5 +15,5 @@ changed:
   - tally/cli.py
   - tally/ledger.py
 pinned:
-  - docs/features/tally/tally.md
-  - docs/features/tally/flows/track-a-trip.md
+  - docs/services/tally/tally.md
+  - docs/services/tally/flows/track-a-trip.md

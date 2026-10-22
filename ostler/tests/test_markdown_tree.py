@@ -17,10 +17,10 @@ Intro preamble line.
 
 ## Acceptance Criteria
 
-- First criterion works. See [first](docs/features/area/first.md).
+- First criterion works. See [first](docs/services/area/first.md).
 - Second one too.
-  - a nested detail in [nested](docs/features/area/nested.md)
-- Links to [record](docs/features/area/rec.md).
+  - a nested detail in [nested](docs/services/area/nested.md)
+- Links to [record](docs/services/area/rec.md).
 
 ## Evidence
 
@@ -49,16 +49,16 @@ def test_section_scoped_refs():
     doc = markdown.split(DOC)
     ac = doc.section("Acceptance Criteria")
     assert ac.refs.doc_hrefs == [
-        "docs/features/area/first.md",
-        "docs/features/area/nested.md",
-        "docs/features/area/rec.md",
+        "docs/services/area/first.md",
+        "docs/services/area/nested.md",
+        "docs/services/area/rec.md",
     ]
     ev = doc.section("Evidence")
     assert ev.refs.links == [("old shot", "docs/evidence/old.png")]
     assert ac.refs.links == [
-        ("first", "docs/features/area/first.md"),
-        ("nested", "docs/features/area/nested.md"),
-        ("record", "docs/features/area/rec.md"),
+        ("first", "docs/services/area/first.md"),
+        ("nested", "docs/services/area/nested.md"),
+        ("record", "docs/services/area/rec.md"),
     ]
 
 
@@ -68,8 +68,8 @@ def test_bullets_and_nesting():
     assert len(ac.bullets) == 3
     second = ac.bullets[1]
     assert second.children and "nested detail" in second.children[0].text
-    assert ac.bullets[0].refs.doc_hrefs == ["docs/features/area/first.md"]
-    assert second.children[0].refs.doc_hrefs == ["docs/features/area/nested.md"]
+    assert ac.bullets[0].refs.doc_hrefs == ["docs/services/area/first.md"]
+    assert second.children[0].refs.doc_hrefs == ["docs/services/area/nested.md"]
 
 
 def test_source_spans_map_back_to_body():

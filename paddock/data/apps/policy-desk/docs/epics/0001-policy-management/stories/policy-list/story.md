@@ -17,7 +17,7 @@ status: Not started
 ## Context
 
 The register is the desk's front door: every policy on file, in policy-number order, each row a
-link into [its detail screen](../../../../features/policy/gui/screens/policy-detail.md).
+link into [its detail screen](../../../../services/policy/gui/screens/policy-detail.md).
 
 It is also where the navigation region arrives, and navigation is the half of this story a live
 scenario can miss. A link that reloads the document reaches the same screen as one that does not,

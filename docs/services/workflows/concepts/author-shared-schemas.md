@@ -1,0 +1,139 @@
+---
+type: concept
+slug: author-shared-schemas
+title: Author shared schemas
+---
+# Author shared schemas
+
+The shared schema package defines the typed values crossing author workflow node and agent
+boundaries. All models inherit the same permissive reply behavior: every declared field has a
+default, unknown keys are ignored, and null input values are removed before validation. The
+package groups the main author graph, edit flows, survey flows, and parity configuration; the
+format nodes linked below document the fields exposed by these contracts. `main.py` exports the
+principal graph's node-return and agent-reply models listed below; the other schema modules are
+separate source-layer groups.
+
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/_base.py::AuthorResult` @6a7046575304
+- tests: [author unit tests](../ops/author-unit-tests.md)
+- detail: [author configuration](../formats/author-config.md)
+- detail: [author run context](../formats/run-context.md)
+- detail: [author step](../formats/author-step.md)
+- detail: [story choice](../formats/story-choice.md)
+- detail: [seeded story](../formats/seeded-story.md)
+- detail: [coverage defects](../formats/coverage-defects.md)
+- detail: [roadmap status](../formats/roadmap-status.md)
+- detail: [verification report](../formats/verify-report.md)
+- detail: [feedback](../formats/feedback.md)
+- detail: [pruned backlog result](../formats/pruned.md)
+- detail: [attempt ledger](../formats/ledger.md)
+- detail: [commit result](../formats/committed.md)
+- detail: [mockup result](../formats/mockup-result.md)
+- detail: [mockup gate](../formats/mockup-gate.md)
+- detail: [write epic result](../formats/write-epic-result.md)
+- detail: [write story result](../formats/write-story-result.md)
+- detail: [audit finding](../formats/audit-finding.md)
+- detail: [audit result](../formats/audit-result.md)
+- detail: [coverage review](../formats/coverage-review.md)
+- detail: [author edit intent](../formats/edit-intent.md)
+- detail: [resolved bullet](../formats/resolved-bullet.md)
+- detail: [epic edit snapshot](../formats/epic-snapshot.md)
+- detail: [seed snapshot](../formats/seed-snapshot.md)
+- detail: [story snapshot](../formats/story-snapshot.md)
+- detail: [milestone snapshot](../formats/milestone-snapshot.md)
+- detail: [seed change](../formats/seed-change.md)
+- detail: [story change](../formats/story-change.md)
+- detail: [epic edit plan](../formats/epic-edit-plan.md)
+- detail: [applied epic edit](../formats/applied-epic-edit.md)
+- detail: [epic edit review](../formats/epic-edit-review.md)
+- detail: [epic rewrite result](../formats/epic-rewrite-result.md)
+- detail: [author story choice](../formats/story-choice.md)
+- detail: [seeded story result](../formats/seeded-story.md)
+- detail: [write story result](../formats/write-story-result.md)
+- detail: [survey shared library](survey-shared-library.md)
+- detail: [parity configuration](../formats/parity-config.md)
+- detail: [survey configuration](../formats/survey-config.md)
+- detail: [survey inventory check](../formats/inventory-check.md)
+- detail: [survey expansion result](../formats/expansion.md)
+- detail: [survey unit pick](../formats/unit-pick.md)
+- detail: [survey split result](../formats/split-result.md)
+- detail: [survey mark result](../formats/mark-result.md)
+- detail: [survey record check](../formats/record-check.md)
+- detail: [survey verification result](../formats/verify-result.md)
+- detail: [survey partition check](../formats/partition-check.md)
+- detail: [survey emission result](../formats/emit-result.md)
+- detail: [survey plan reply](../formats/plan-result.md)
+- detail: [survey unit assessment reply](../formats/unit-assessment.md)
+- detail: [survey record-fix reply](../formats/record-fix.md)
+- detail: [survey partition proposal reply](../formats/partition-proposal.md)
+- detail: [survey operator resolution reply](../formats/survey-operator-resolution.md)
+
+## Methods
+
+### _drop_nulls
+- sig: `_drop_nulls(data: Any) -> Any`
+- does: removes dictionary entries whose values are null before model validation
+- verify: removed(subject="null-valued entries in the author schema input mapping")
+- verify: count(subject="author schema null filtering", equals=1)
+- returns: the filtered mapping or the original non-mapping input
+- verify: count(subject="author schema validator inputs", equals=1)
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/_base.py::AuthorResult._drop_nulls` @6a7046575304
+
+## Schema modules
+
+The package's public models are grouped by source module. `main.py` supplies node returns and
+agent replies for the principal author graph; `edit.py` supplies the edit intent and resolved
+source bullet, the epic/seed/story/milestone snapshots, projected seed and story changes, the
+replacement plan, the applied result, and the review and rewrite replies; `survey.py` supplies
+survey node returns and agent replies; and `parity.py` supplies the separate parity configuration.
+The edit plan contains seed and story change formats, while an epic snapshot contains seed,
+story, and milestone snapshot formats. Their complete field contracts are the existing format
+nodes reached from the author surfaces and subflows.
+
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::Config` @f9301e7de2f3
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::RunContext` @f9301e7de2f3
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::AuthorStep` @f9301e7de2f3
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::StoryChoice` @f9301e7de2f3
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::SeededStory` @f9301e7de2f3
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::Defects` @f9301e7de2f3
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::RoadmapStatus` @f9301e7de2f3
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::VerifyReport` @f9301e7de2f3
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::Feedback` @f9301e7de2f3
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::Pruned` @f9301e7de2f3
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::Ledger` @f9301e7de2f3
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::Committed` @f9301e7de2f3
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::WriteEpicResult` @f9301e7de2f3
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::StorySplit` @f9301e7de2f3
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::MockupResult` @f9301e7de2f3
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::MockupGate` @f9301e7de2f3
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::WriteStoryResult` @f9301e7de2f3
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::AuditFinding` @f9301e7de2f3
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::AuditResult` @f9301e7de2f3
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::CoverageReview` @f9301e7de2f3
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/edit.py::EditIntent` @0cf57cc63031
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/edit.py::ResolvedBullet` @0cf57cc63031
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/edit.py::SeedSnapshot` @0cf57cc63031
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/edit.py::StorySnapshot` @0cf57cc63031
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/edit.py::MilestoneSnapshot` @0cf57cc63031
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/edit.py::EpicSnapshot` @0cf57cc63031
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/edit.py::SeedChange` @0cf57cc63031
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/edit.py::StoryChange` @0cf57cc63031
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/edit.py::EpicEditPlan` @0cf57cc63031
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/edit.py::AppliedEpicEdit` @0cf57cc63031
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/edit.py::EpicEditReview` @0cf57cc63031
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/edit.py::EpicRewriteResult` @0cf57cc63031
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/survey.py::SurveyConfig` @7db58efbfd66
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/survey.py::InventoryCheck` @7db58efbfd66
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/survey.py::Expansion` @7db58efbfd66
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/survey.py::UnitPick` @7db58efbfd66
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/survey.py::SplitResult` @7db58efbfd66
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/survey.py::MarkResult` @7db58efbfd66
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/survey.py::RecordCheck` @7db58efbfd66
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/survey.py::VerifyResult` @7db58efbfd66
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/survey.py::PartitionCheck` @7db58efbfd66
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/survey.py::EmitResult` @7db58efbfd66
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/survey.py::PlanResult` @7db58efbfd66
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/survey.py::UnitAssessment` @7db58efbfd66
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/survey.py::RecordFix` @7db58efbfd66
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/survey.py::PartitionProposal` @7db58efbfd66
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/survey.py::OperatorResolution` @7db58efbfd66
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/parity.py::ParityConfig` @dc5b0f21a8ae

@@ -15,7 +15,7 @@ APPS = Path(__file__).resolve().parents[2] / "paddock" / "data" / "apps"
 @pytest.fixture(scope="module")
 def corpus() -> census.Census:
     """One census per app of the corpus, merged."""
-    books = sorted(app for app in APPS.iterdir() if (app / "docs" / "features").is_dir())
+    books = sorted(app for app in APPS.iterdir() if (app / "docs" / "services").is_dir())
     assert books, f"no corpus books under {APPS} — the gate below would pass vacuously"
     return census.merge(
         census.take_census(lambda graph=load(app): doctor.run(graph, check_schema=True))

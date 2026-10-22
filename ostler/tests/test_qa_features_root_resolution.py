@@ -1,4 +1,4 @@
-"""Every reader of a QA context packet's `featuresRoot` agrees on what the field means."""
+"""Every reader of a QA context packet's `servicesRoot` agrees on what the field means."""
 
 from __future__ import annotations
 
@@ -17,33 +17,33 @@ from conftest import write_json
 @pytest.mark.parametrize(
     ("packet_data", "expected"),
     [
-        ({}, "docs/features"),
-        ({"featuresRoot": None}, "docs/features"),
-        ({"featuresRoot": ""}, "docs/features"),
-        ({"featuresRoot": " docs/features "}, "docs/features"),
+        ({}, "docs/services"),
+        ({"servicesRoot": None}, "docs/services"),
+        ({"servicesRoot": ""}, "docs/services"),
+        ({"servicesRoot": " docs/services "}, "docs/services"),
     ],
     ids=["key-absent", "json-null", "empty-string", "padded"],
 )
-def test_resolve_features_root_pins_the_four_packet_shapes(
+def test_resolve_services_root_pins_the_four_packet_shapes(
     repo: Path, packet_data: dict, expected: str
 ) -> None:
     """The shapes a hand-written or legacy packet can hold all resolve to one answer."""
-    assert path_mod.resolve_features_root(packet_data.get("featuresRoot"), repo) == expected
+    assert path_mod.resolve_services_root(packet_data.get("servicesRoot"), repo) == expected
 
 
 @pytest.mark.parametrize(
     "packet_data",
     [
         {},
-        {"featuresRoot": None},
-        {"featuresRoot": ""},
-        {"featuresRoot": " docs/features "},
-        {"featuresRoot": "other-book/docs/features"},
+        {"servicesRoot": None},
+        {"servicesRoot": ""},
+        {"servicesRoot": " docs/services "},
+        {"servicesRoot": "other-book/docs/services"},
     ],
     ids=["key-absent", "json-null", "empty-string", "padded", "real-value"],
 )
 def test_cli_and_drivers_readers_agree_on_the_same_packet(repo: Path, packet_data: dict) -> None:
-    """`cli._packet_aim` and `drivers._packet_features_root` read the same packet the same way — this is the test that would have caught `cli._packet_aim` returning the literal string `"None"` for a JSON `null` `featuresRoot`, or an unstripped value."""
+    """`cli._packet_aim` and `drivers._packet_services_root` read the same packet the same way — this is the test that would have caught `cli._packet_aim` returning the literal string `"None"` for a JSON `null` `servicesRoot`, or an unstripped value."""
     spec = repo / "docs/specs/story-1"
     spec.mkdir(parents=True, exist_ok=True)
     write_json(spec / "qa-okf-context.json", packet_data)
@@ -52,7 +52,7 @@ def test_cli_and_drivers_readers_agree_on_the_same_packet(repo: Path, packet_dat
 
     session = QaSession.create(spec, "qa-frame-1", "story-1", {})
     driver = PythonDriver(session, "api", {"driver": "python"}, root=repo, variables={})
-    driver_answer, driver_error = driver._packet_features_root()
+    driver_answer, driver_error = driver._packet_services_root()
 
     assert driver_error is None
     assert cli_answer == driver_answer

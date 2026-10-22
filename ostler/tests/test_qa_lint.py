@@ -22,7 +22,7 @@ def seat_record(qa: Qa, seat: str) -> dict:
     return {"seat": seat}
 
 
-@scenario(target=api, mechanism="live", covers=["okf:docs/features/demo/item.md:contract"])
+@scenario(target=api, mechanism="live", covers=["okf:docs/services/demo/item.md:contract"])
 def item_is_emitted(qa: Qa) -> None:
     """The emitted item carries the id it was asked for."""
     record = seat_record(qa, "A1")
@@ -35,7 +35,7 @@ def item_is_emitted(qa: Qa) -> None:
             qa.field(payload, "item.id") == qa.field(record, "seat"),
             actual=qa.field(payload, "item.id"),
             expected=qa.field(record, "seat"),
-            covers=["okf:docs/features/demo/item.md:contract"],
+            covers=["okf:docs/services/demo/item.md:contract"],
         )
 '''
 
@@ -187,7 +187,7 @@ plan(run_id="qa-story-1", story="story-1")
 api = target("api")
 
 
-@scenario(target=api, mechanism="live", covers=["okf:docs/features/demo/item.md:contract"])
+@scenario(target=api, mechanism="live", covers=["okf:docs/services/demo/item.md:contract"])
 def reads_a_field_by_subscript(qa: Qa) -> None:
     body = qa.http.get("/api/items/1", expect_status=200).json()
     qa.check("the item is named", body["item"]["name"] == "chair", covers=["ac:1"])

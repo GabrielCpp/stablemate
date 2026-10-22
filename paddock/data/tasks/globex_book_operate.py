@@ -22,11 +22,11 @@ task(
 )
 
 BRING_UP_DOCS = (
-    "features/api-service/ops/api-service-stack.md",
-    "features/web-app/ops/web-app-stack.md",
+    "services/api-service/ops/api-service-stack.md",
+    "services/web-app/ops/web-app-stack.md",
 )
 
-JOURNEY_DOC = "features/web-app/flows/browse-and-add-widget.md"
+JOURNEY_DOC = "services/web-app/flows/browse-and-add-widget.md"
 
 
 @dataclass(frozen=True, slots=True)
@@ -74,8 +74,8 @@ LINES = (
         expected={
             "control": (
                 "the stack comes up from the `run:` command each of "
-                "`docs/features/api-service/ops/api-service-stack.md` and "
-                "`docs/features/web-app/ops/web-app-stack.md` names, and the web-app "
+                "`docs/services/api-service/ops/api-service-stack.md` and "
+                "`docs/services/web-app/ops/web-app-stack.md` names, and the web-app "
                 "landing screen is reached at the `entry-url:` those same runbooks give, "
                 "http://localhost:18102"
             ),
@@ -106,7 +106,7 @@ LINES = (
         expected={
             "control": (
                 "the journey starts at the `start:` bullet in "
-                "`docs/features/web-app/flows/browse-and-add-widget.md` and runs its two "
+                "`docs/services/web-app/flows/browse-and-add-widget.md` and runs its two "
                 "`steps:` children in order, open-new-widget then submit-new-widget"
             ),
         },
@@ -196,27 +196,27 @@ def _strip_code_bullet_citing(
 
 
 BRING_UP_BULLETS: tuple[tuple[str, str, str], ...] = (
-    ("features/api-service/ops/api-service-stack.md", "run", "scalar"),
-    ("features/api-service/ops/api-service-stack.md", "entry-url", "scalar"),
-    ("features/api-service/ops/api-service-stack.md", "health", "scalar"),
-    ("features/api-service/ops/api-service-stack.md", "produces", "scalar"),
-    ("features/api-service/ops/api-service-stack.md", "stop", "scalar"),
-    ("features/web-app/ops/web-app-stack.md", "run", "scalar"),
-    ("features/web-app/ops/web-app-stack.md", "entry-url", "scalar"),
-    ("features/web-app/ops/web-app-stack.md", "health", "scalar"),
-    ("features/web-app/ops/web-app-stack.md", "produces", "scalar"),
-    ("features/web-app/ops/web-app-stack.md", "stop", "scalar"),
-    ("features/web-app/http/web-app.md", "entry-url", "scalar"),
-    ("features/api-service/ops/local.md", "services", "list"),
-    ("features/api-service/ops/local.md", "persistence", "scalar"),
-    ("features/web-app/fixtures/widgets-on-hand.md", "run", "scalar-first"),
+    ("services/api-service/ops/api-service-stack.md", "run", "scalar"),
+    ("services/api-service/ops/api-service-stack.md", "entry-url", "scalar"),
+    ("services/api-service/ops/api-service-stack.md", "health", "scalar"),
+    ("services/api-service/ops/api-service-stack.md", "produces", "scalar"),
+    ("services/api-service/ops/api-service-stack.md", "stop", "scalar"),
+    ("services/web-app/ops/web-app-stack.md", "run", "scalar"),
+    ("services/web-app/ops/web-app-stack.md", "entry-url", "scalar"),
+    ("services/web-app/ops/web-app-stack.md", "health", "scalar"),
+    ("services/web-app/ops/web-app-stack.md", "produces", "scalar"),
+    ("services/web-app/ops/web-app-stack.md", "stop", "scalar"),
+    ("services/web-app/http/web-app.md", "entry-url", "scalar"),
+    ("services/api-service/ops/local.md", "services", "list"),
+    ("services/api-service/ops/local.md", "persistence", "scalar"),
+    ("services/web-app/fixtures/widgets-on-hand.md", "run", "scalar-first"),
 )
 
 CODE_BULLET_ROUTES: tuple[tuple[str, str, int], ...] = (
-    ("features/api-service/ops/api-service-stack.md", "compose.yml", 1),
-    ("features/api-service/ops/local.md", "compose.yml", 1),
-    ("features/web-app/ops/web-app-stack.md", "compose.yml", 1),
-    ("features/web-app/http/web-app.md", "app/web-app/main.go", 2),
+    ("services/api-service/ops/api-service-stack.md", "compose.yml", 1),
+    ("services/api-service/ops/local.md", "compose.yml", 1),
+    ("services/web-app/ops/web-app-stack.md", "compose.yml", 1),
+    ("services/web-app/http/web-app.md", "app/web-app/main.go", 2),
 )
 
 

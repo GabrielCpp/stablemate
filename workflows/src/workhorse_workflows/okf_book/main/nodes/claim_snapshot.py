@@ -8,7 +8,7 @@ from ostler import registry
 from ostler.model import UINode, load
 from pydantic import BaseModel, ConfigDict, TypeAdapter
 
-from workhorse_workflows.okf_book.shared.entries import FEATURES_DIR
+from workhorse_workflows.okf_book.shared.entries import SERVICES_DIR
 from workhorse_workflows.okf_book.shared.page_check import PageProblem
 
 SNAPSHOT_FILE = "claims.json"
@@ -49,7 +49,7 @@ def _node_claims(page: str, node: UINode) -> list[Claim]:
 
 def book_claims(root: Path, services: Iterable[str]) -> tuple[Claim, ...]:
     """Every claim the books of *services* state, leaving out fixture, precondition and setup pages, whose edits are free."""
-    folders = tuple(f"{(FEATURES_DIR / service).as_posix()}/" for service in services)
+    folders = tuple(f"{(SERVICES_DIR / service).as_posix()}/" for service in services)
     resolved = root.resolve()
     claims: list[Claim] = []
     for node in load(root).ui_nodes:

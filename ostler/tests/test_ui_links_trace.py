@@ -62,60 +62,60 @@ A unified diff.
 
 
 def _repo_with_graph(repo: Path):
-    write(repo / "docs/features/groom/gui/screens/changes-view.md", SCREEN)
-    write(repo / "docs/features/groom/gui/components/design-system.md", DESIGN)
-    write(repo / "docs/features/groom/concepts/diff.md", DIFF)
+    write(repo / "docs/services/groom/gui/screens/changes-view.md", SCREEN)
+    write(repo / "docs/services/groom/gui/components/design-system.md", DESIGN)
+    write(repo / "docs/services/groom/concepts/diff.md", DIFF)
     return load(repo)
 
 
 def test_resolve_cross_file_anchor(repo: Path):
     graph = _repo_with_graph(repo)
-    src = repo / "docs/features/groom/gui/screens/changes-view.md"
+    src = repo / "docs/services/groom/gui/screens/changes-view.md"
     r = links.LinkResolver(graph)
     tgt = present(r.resolve(src, "../components/design-system.md#tree-node"))
     assert tgt.file_exists and tgt.anchor_exists and tgt.resolved
-    assert tgt.node_id == "docs/features/groom/gui/components/design-system.md#tree-node"
+    assert tgt.node_id == "docs/services/groom/gui/components/design-system.md#tree-node"
 
 
 def test_resolve_same_file_anchor(repo: Path):
     graph = _repo_with_graph(repo)
-    src = repo / "docs/features/groom/gui/screens/changes-view.md"
+    src = repo / "docs/services/groom/gui/screens/changes-view.md"
     tgt = present(links.LinkResolver(graph).resolve(src, "#changes-file-row"))
     assert tgt.resolved and tgt.anchor == "changes-file-row"
 
 
 def test_resolve_dangling_file(repo: Path):
     graph = _repo_with_graph(repo)
-    src = repo / "docs/features/groom/gui/screens/changes-view.md"
+    src = repo / "docs/services/groom/gui/screens/changes-view.md"
     tgt = present(links.LinkResolver(graph).resolve(src, "../nope/missing.md"))
     assert not tgt.file_exists and not tgt.resolved
 
 
 def test_resolve_missing_anchor(repo: Path):
     graph = _repo_with_graph(repo)
-    src = repo / "docs/features/groom/gui/screens/changes-view.md"
+    src = repo / "docs/services/groom/gui/screens/changes-view.md"
     tgt = present(links.LinkResolver(graph).resolve(src, "../../concepts/diff.md#ghost"))
     assert tgt.file_exists and not tgt.anchor_exists and not tgt.resolved
 
 
 def test_resolve_follows_a_symlinked_page_to_its_target(repo: Path):
     graph = _repo_with_graph(repo)
-    src = repo / "docs/features/groom/gui/screens/changes-view.md"
-    (repo / "docs/features/groom/gui/screens/alias.md").symlink_to(
-        repo / "docs/features/groom/gui/components/design-system.md")
+    src = repo / "docs/services/groom/gui/screens/changes-view.md"
+    (repo / "docs/services/groom/gui/screens/alias.md").symlink_to(
+        repo / "docs/services/groom/gui/components/design-system.md")
     tgt = present(links.LinkResolver(graph).resolve(src, "alias.md#tree-node"))
-    assert tgt.node_id == "docs/features/groom/gui/components/design-system.md#tree-node"
+    assert tgt.node_id == "docs/services/groom/gui/components/design-system.md#tree-node"
     assert tgt.resolved
 
 
 def test_resolve_reads_a_climbing_link_the_same_as_a_direct_one(repo: Path):
     graph = _repo_with_graph(repo)
-    src = repo / "docs/features/groom/gui/screens/changes-view.md"
+    src = repo / "docs/services/groom/gui/screens/changes-view.md"
     resolver = links.LinkResolver(graph)
     direct = present(resolver.resolve(src, "../components/design-system.md"))
     climbing = present(resolver.resolve(src, "../../gui/screens/../components/design-system.md"))
-    assert climbing.node_id == direct.node_id == "docs/features/groom/gui/components/design-system.md"
-    assert present(resolver.resolve(src, "..")).node_id == "docs/features/groom/gui"
+    assert climbing.node_id == direct.node_id == "docs/services/groom/gui/components/design-system.md"
+    assert present(resolver.resolve(src, "..")).node_id == "docs/services/groom/gui"
 
 
 def test_code_ref_is_not_a_doc_link():
@@ -142,7 +142,7 @@ def test_trace_file_node_by_slug(repo: Path):
 
 
 def test_trace_reports_dangling(repo: Path):
-    write(repo / "docs/features/groom/flows/f.md",
+    write(repo / "docs/services/groom/flows/f.md",
           "---\ntype: flow\nslug: f\ntitle: F\n---\n# F\n\n"
           "- steps:\n  1. [gone](../gui/screens/gone.md)\n")
     graph = load(repo)

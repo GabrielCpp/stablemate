@@ -23,7 +23,7 @@ def concept_md(slug: str, *targets: str) -> str:
 def codes_for(capsys: pytest.CaptureFixture[str], repo: Path, slug: str) -> set[str]:
     main(["-C", str(repo), "doctor", "--json"])
     return {finding["code"] for finding in report_of(capsys)["findings"]
-            if finding.get("path") == f"docs/features/concepts/{slug}.md"}
+            if finding.get("path") == f"docs/services/concepts/{slug}.md"}
 
 
 @pytest.mark.parametrize("path", [
@@ -45,7 +45,7 @@ def test_node_citing_only_test_source_is_a_test_subject(
         repo: Path, capsys: pytest.CaptureFixture[str]) -> None:
     write(repo / "internal/mocks/real.go", GO)
     write(repo / "internal/real_test.go", GO)
-    write(repo / "docs/features/concepts/mock-real.md",
+    write(repo / "docs/services/concepts/mock-real.md",
           concept_md("mock-real", "internal/mocks/real.go::MockReal", "internal/real_test.go::Real"))
 
     codes = codes_for(capsys, repo, "mock-real")
@@ -58,7 +58,7 @@ def test_node_mixing_product_and_test_source_drops_the_test_citation(
         repo: Path, capsys: pytest.CaptureFixture[str]) -> None:
     write(repo / "internal/real.go", GO)
     write(repo / "internal/real_test.go", GO)
-    write(repo / "docs/features/concepts/real.md",
+    write(repo / "docs/services/concepts/real.md",
           concept_md("real", "internal/real.go::Real", "internal/real_test.go::Real"))
 
     codes = codes_for(capsys, repo, "real")
@@ -70,6 +70,6 @@ def test_node_mixing_product_and_test_source_drops_the_test_citation(
 def test_node_citing_product_source_is_clean(
         repo: Path, capsys: pytest.CaptureFixture[str]) -> None:
     write(repo / "internal/real.go", GO)
-    write(repo / "docs/features/concepts/real.md", concept_md("real", "internal/real.go::Real"))
+    write(repo / "docs/services/concepts/real.md", concept_md("real", "internal/real.go::Real"))
 
     assert not {"test-subject", "code-cites-test"} & codes_for(capsys, repo, "real")

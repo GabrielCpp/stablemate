@@ -552,8 +552,8 @@ The role map, in the user's words:
 | Measurement | Reshape. paddock defines backlog satisfaction (`paddock/data/README.md:61`), but recorded results are DIAGNOSTIC and cover 3 bullets. Not publishable (R4). |
 | Compliance trial | New (R11). A paddock task: the same tasks on a public seed app, one arm with the rules in `AGENTS.md`, the other with the same rules as checks in a scaffolded workflow, scored by rules broken at the end. |
 | Comparison | New. A table rendered from the measurements file. |
-| Recording | Reshape. groom screenshots exist (22 under `docs/features/`, one in the README). No recording. |
-| Exhibit | Exists. `docs/features/` is a feature book the toolchain wrote, and QA renders a `qa-report.md` per run. |
+| Recording | Reshape. groom screenshots exist (22 under `docs/services/`, one in the README). No recording. |
+| Exhibit | Exists. `docs/services/` is a feature book the toolchain wrote, and QA renders a `qa-report.md` per run. |
 | Replay | Reshape (R9). `link-shortener-dev/l2-batched-impl` is a 24-minute trial on a public seed app that scored 9/12, with no gate and no cap sleep. The event log lacks cap sleeps (A9). |
 
 **Storefront: Reshape.**

@@ -78,7 +78,7 @@ ADMIN = secret("ADMIN_TOKEN", from_env="QA_ADMIN_TOKEN")
 @scenario(
     target=api,
     mechanism="live",
-    covers=["ac:1", "okf:docs/features/demo/http/api.md#publish:does:1"],
+    covers=["ac:1", "okf:docs/services/demo/http/api.md#publish:does:1"],
     preconditions=["the service health check reports ready"],
     checkpoints=["the publish request is accepted", "the stored object carries the token uid"],
     forbid=["the author field is taken from the request body"],
@@ -232,7 +232,7 @@ locator that exists only when a check above passed, that check is a `require`.
 - Files a scenario writes go under `qa.dir` through `qa.artifact(...)`. Never spell the
   `qa/` path out: a pinned path writes into the scored ledger during a dry run.
 - **Arrangement is declared, not improvised.** State two scenarios share is a fixture node in
-  the book (`docs/features/<surface>/fixtures/<name>.md`), reached with
+  the book (`docs/services/<surface>/fixtures/<name>.md`), reached with
   `qa.fixture("name", "arg=value")` by its exact name. A static input is
   `input_file("name", "qa-inputs/thing.json")`. State one scenario needs is reached by driving
   the product's documented operations inside a `qa.step`. Writing rows behind the product's

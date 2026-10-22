@@ -52,7 +52,7 @@ def surveyed(repo: Path, write_json: Callable[[Path, Any], Path]) -> Path:
             ]
         },
     )
-    (repo / "docs/features").mkdir(parents=True, exist_ok=True)
+    (repo / "docs/services").mkdir(parents=True, exist_ok=True)
     (repo / "docs/epics").mkdir(parents=True, exist_ok=True)
     subprocess.run(["git", "add", "-A"], cwd=repo, check=True, stdout=subprocess.DEVNULL)
     subprocess.run(
@@ -149,7 +149,7 @@ def test_a_two_surface_baseline_surveys_both_and_emits_only_the_unowned_one(
     surveyed: Path, tmp_path: Path
 ) -> None:
     """One full pass: freeze, assess each unit once, verify coverage, emit."""
-    agent = _Assessor(surveyed, owners={STATEMENTS: "features/billing/statements.md"})
+    agent = _Assessor(surveyed, owners={STATEMENTS: "services/billing/statements.md"})
     result = _drive(_env(tmp_path), agent)
 
     assert isinstance(result, EmitResult), result
@@ -165,7 +165,7 @@ def test_a_two_surface_baseline_surveys_both_and_emits_only_the_unowned_one(
     manifest = {u["id"]: u for u in json.loads((surveyed / MANIFEST).read_text())["units"]}
     assert manifest[INVOICES]["bullet"] == "legacy-parity-billing-invoices", manifest
     assert manifest[STATEMENTS]["bullet"] == "", manifest
-    assert manifest[STATEMENTS]["existingOwner"] == "features/billing/statements.md"
+    assert manifest[STATEMENTS]["existingOwner"] == "services/billing/statements.md"
 
 
 def test_the_assessor_is_handed_the_unit_and_both_sides_of_the_compare(
@@ -180,7 +180,7 @@ def test_the_assessor_is_handed_the_unit_and_both_sides_of_the_compare(
     assert first["unit_kind"] == "legacy-surface", first
     assert first["record_path"] == f"{FINDINGS}/legacy-billing-invoices.md", first
     assert first["baseline_inventory"] == BASELINE, first
-    assert first["target_features"] == "docs/features", first
+    assert first["target_services"] == "docs/services", first
     assert first["epics_dir"] == "docs/epics", first
 
 
@@ -220,7 +220,7 @@ def test_a_baseline_with_nothing_to_survey_fails_the_freeze(
     """Every entry already owned by the rewrite leaves no units, and a survey with no units cannot prove anything — `parity_decide_expand`'s default arm."""
     write_json(repo / BASELINE, {"entries": [{"area": "a", "slug": "b",
                                               "rewriteSurface": True}]})
-    (repo / "docs/features").mkdir(parents=True, exist_ok=True)
+    (repo / "docs/services").mkdir(parents=True, exist_ok=True)
 
     with pytest.raises(WorkflowFailed, match="no non-rewrite surfaces"):
         _drive(_env(tmp_path), _Assessor(repo))
@@ -228,7 +228,7 @@ def test_a_baseline_with_nothing_to_survey_fails_the_freeze(
 
 def test_a_missing_baseline_fails_in_setup(repo: Path, tmp_path: Path) -> None:
     """`load_parity_config` runs in `setup()`, so this halts before the first state and before any checkpoint exists — the paths every state reads are not a state's decision."""
-    (repo / "docs/features").mkdir(parents=True, exist_ok=True)
+    (repo / "docs/services").mkdir(parents=True, exist_ok=True)
 
     with pytest.raises(WorkflowFailed, match="baseline inventory not found"):
         _drive(_env(tmp_path), _Assessor(repo))

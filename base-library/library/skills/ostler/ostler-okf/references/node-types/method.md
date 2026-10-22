@@ -46,7 +46,7 @@ every type.
 ## Minimal example
 
 ```bash
-timeout 30 ostler scaffold method MintSlug --in docs/features/acme/concepts/slug-minting.md
+timeout 30 ostler scaffold method MintSlug --in docs/services/acme/concepts/slug-minting.md
 ```
 
 ```markdown

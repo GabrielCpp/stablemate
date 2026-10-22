@@ -23,7 +23,7 @@ def repo(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     monkeypatch.setenv(runtime.HOME_ENV, str(tmp_path / "env-home"))
     root = tmp_path / "acme"
     (root / ".git").mkdir(parents=True)
-    book = root / "docs" / "features" / "web"
+    book = root / "docs" / "services" / "web"
     (book / "ops").mkdir(parents=True)
     (book / "ops" / "web.yml.j2").write_text("image: nginx\n", encoding="utf-8")
     (book / "ops" / "stack.yml").write_text(yaml.safe_dump({"services": {
@@ -33,7 +33,7 @@ def repo(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
 
 
 def test_a_command_against_the_copy_reads_the_copys_address_book(repo: Path) -> None:
-    env = runner.stack_env(LOG, model.load(repo), near=str(repo / "docs" / "features" / "web"),
+    env = runner.stack_env(LOG, model.load(repo), near=str(repo / "docs" / "services" / "web"),
                            lease="story-1")
     assert env[addresses.LEASE_ENV] == "story-1"
     assert env[addresses.BOOK_ENV].endswith(f"acme-story-1/{runtime.ADDRESSES}")
@@ -70,7 +70,7 @@ def test_the_scored_run_reads_the_address_book_the_copy_wrote(
             return QaOutcome(True, "passed", {"status": "passed"})
 
     monkeypatch.setattr(runner, "Ostler", _Ostler)
-    near = str(repo / "docs" / "features" / "web")
+    near = str(repo / "docs" / "services" / "web")
     runner.run_qa_plan(LOG, spec_dir="docs/specs/story-1", repo_dir=str(repo), near=near,
                        lease="story-1")
     assert seen["book"] == runner.stack_env(LOG, model.load(repo), near=near,

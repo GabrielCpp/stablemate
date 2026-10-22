@@ -12,7 +12,7 @@ feature nodes, epics, stories, or source code. Write only the survey finding rec
 - unit: `{{ workhorse_var('unit_id') }}`
 - baseline surface doc: `{{ workhorse_var('unit_path') }}`
 - baseline inventory: `{{ workhorse_var('baseline_inventory') }}`
-- current OKF books: `{{ workhorse_var('target_features') }}`
+- current OKF books: `{{ workhorse_var('target_services') }}`
 - existing backlog: `{{ workhorse_var('backlog') }}`
 - existing epics: `{{ workhorse_var('epics_dir') }}`
 - record: `{{ workhorse_var('record_path') }}`

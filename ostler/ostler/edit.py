@@ -63,7 +63,7 @@ class EditPlan:
 
 def _doc_files(graph: Graph) -> list[Path]:
     files: list[Path] = []
-    for key in ("epics", "specs", "features"):
+    for key in ("epics", "specs", "services"):
         root = graph.doc_roots[key]
         if root.is_dir():
             files.extend(files_in_book(root, (".json", ".md")))
@@ -131,8 +131,8 @@ def migrate_context(graph: Graph, node_type: str, service: str) -> EditPlan:
         return EditPlan([], [], error=f"no UI node type named {node_type!r}")
 
     root = graph.root.resolve()
-    features_root = graph.doc_roots["features"]
-    service_root = (features_root / service).resolve()
+    services_root = graph.doc_roots["services"]
+    service_root = (services_root / service).resolve()
     if not service_root.is_dir():
         return EditPlan([], [], error=f"no service directory {service_root.as_posix()}")
     expected_dir = (service_root / uitype.context) if uitype.context else service_root

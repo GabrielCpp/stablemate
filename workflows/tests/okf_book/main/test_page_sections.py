@@ -4,7 +4,7 @@ from __future__ import annotations
 from workhorse_workflows.okf_book.main.nodes.page_sections import HEAD_SECTION_ID, Section, page_sections
 from workhorse_workflows.okf_book.shared.page_check import PageProblem
 
-PAGE = "docs/features/ledger/http/ledger-api.md"
+PAGE = "docs/services/ledger/http/ledger-api.md"
 TEXT = """---
 type: server
 ---

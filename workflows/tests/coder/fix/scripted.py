@@ -106,7 +106,7 @@ class ScriptedAgent:
             return {"status": "blocked", "notes": "this change cannot be described as built"}
         story_path = Path(str(data["story_path"]))
         docs_dir = next(parent for parent in story_path.parents if parent.name == "docs")
-        feature = docs_dir / "features/api/concepts/widget.md"
+        feature = docs_dir / "services/api/concepts/widget.md"
         feature.parent.mkdir(parents=True, exist_ok=True)
         feature.write_text(
             "---\ntype: concept\nslug: widget\ntitle: Widget\n---\n"
@@ -115,7 +115,7 @@ class ScriptedAgent:
         )
         return {
             "status": "documented",
-            "nodes": ["docs/features/api/concepts/widget.md"],
+            "nodes": ["docs/services/api/concepts/widget.md"],
             "notes": f"documented on pass {nth}",
         }
 

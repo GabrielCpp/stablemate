@@ -37,7 +37,7 @@ input_file("seed", "qa-inputs/seed.json")
 @scenario(
     target=api,
     mechanism="live",
-    covers=["ac:1", "okf:docs/features/demo/http/api.md#publish:does:1"],
+    covers=["ac:1", "okf:docs/services/demo/http/api.md#publish:does:1"],
     preconditions=["the service health check reports ready"],
     checkpoints=["the publish request is accepted", "the stored object carries the token uid"],
     forbid=["the author field is taken from the request body"],
@@ -53,7 +53,7 @@ def publish_records_the_real_author(qa: Qa) -> None:
              covers=["ac:1"])
     qa.check("message is verbatim", stored["metadata"]["message"] == "hello",
              actual=stored["metadata"]["message"], expected="hello",
-             covers=["okf:docs/features/demo/http/api.md#publish:does:1"])
+             covers=["okf:docs/services/demo/http/api.md#publish:does:1"])
     json.dump(stored, qa.artifact("steps/publish-stored.json", kind="json").open("w"))
 ```
 
@@ -219,7 +219,7 @@ anything downstream can read, and the independent audit refutes a pass from them
 assertion cannot stand in for it: `by_role` finds an element in the accessibility tree whether
 the page lays it out across the window or crushes it into a column against one margin.
 
-`qa.vet("docs/features/web-app/gui/screens/reference.md", name="loaded")` is `qa.screenshot`
+`qa.vet("docs/services/web-app/gui/screens/reference.md", name="loaded")` is `qa.screenshot`
 plus the verdict: it registers each scanned region against the `placement:` band the book gives
 that component, and every disagreement becomes a failed assertion in the ledger quoting the
 measured share. A UI scenario must call it — `validate` rejects a `playwright` or `maestro`

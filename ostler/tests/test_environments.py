@@ -19,7 +19,7 @@ from ostler.environments import render as render_mod
 from ostler.model import load
 from ostler.qa import addresses, runbook
 
-FEATURES = Path("docs/features")
+SERVICES = Path("docs/services")
 
 
 @pytest.fixture(autouse=True)
@@ -41,7 +41,7 @@ def _file(root: Path, relative: str, text: str) -> Path:
 def _repo(tmp_path: Path) -> Path:
     root = tmp_path / "acme"
     (root / ".git").mkdir(parents=True)
-    api = f"{FEATURES}/api"
+    api = f"{SERVICES}/api"
     _file(root, f"{api}/ops/services/db.yml.j2", "\n".join([
         "image: mysql:8.0",
         "volumes:",
@@ -70,7 +70,7 @@ def _repo(tmp_path: Path) -> Path:
                     "needs": ["db", "provision"], "address": "api", "port": 8080},
         },
     }))
-    web = f"{FEATURES}/web"
+    web = f"{SERVICES}/web"
     _file(root, f"{web}/ops/services/web.yml.j2", "build: {{ repo }}/web-app\n")
     _file(root, f"{web}/ops/services/gateway.yml.j2",
           "image: caddy:2\nvolumes:\n  - {{ dir }}/Caddyfile:/etc/caddy/Caddyfile:ro\n")
@@ -90,7 +90,7 @@ def _repo(tmp_path: Path) -> Path:
 
 
 def _rewrite_stack(root: Path, book: str, change: dict) -> None:
-    target = root / FEATURES / book / spec.OPS_DIR / spec.STACK_FILE
+    target = root / SERVICES / book / spec.OPS_DIR / spec.STACK_FILE
     data = yaml.safe_load(target.read_text(encoding="utf-8"))
     data["services"].update(change)
     target.write_text(yaml.safe_dump(data), encoding="utf-8")
@@ -133,7 +133,7 @@ def test_needs_that_loop_are_refused(tmp_path: Path) -> None:
 
 def test_a_service_named_twice_in_one_file_is_refused(tmp_path: Path) -> None:
     root = _repo(tmp_path)
-    target = root / FEATURES / "web" / spec.OPS_DIR / spec.STACK_FILE
+    target = root / SERVICES / "web" / spec.OPS_DIR / spec.STACK_FILE
     target.write_text(target.read_text(encoding="utf-8")
                       + "  web:\n    about: x\n    define: services/web.yml.j2\n", encoding="utf-8")
     assert any("`web` is defined twice" in error for error in spec.load(root).errors)
@@ -155,7 +155,7 @@ def test_doctor_reports_each_stack_problem_on_the_file_it_was_found_in(tmp_path:
                                          "needs": ["api:queue"]}})
     found = [(f.path, f.message) for f in doctor.run(load(root)).findings
              if f.code == "stack-invalid"]
-    assert any(path == "docs/features/web/ops/stack.yml"
+    assert any(path == "docs/services/web/ops/stack.yml"
                and message.startswith("service `web`: `need` is not a service key")
                for path, message in found)
     assert ("", "web:web needs `api:queue`, which no book defines") in found
@@ -209,7 +209,7 @@ def test_a_chosen_fixture_set_replaces_the_defaults(tmp_path: Path) -> None:
 
 def test_a_template_that_sets_its_own_ports_is_refused(tmp_path: Path) -> None:
     root = _repo(tmp_path)
-    _file(root, f"{FEATURES}/web/ops/services/web.yml.j2", "image: web\nports: ['3000:3000']\n")
+    _file(root, f"{SERVICES}/web/ops/services/web.yml.j2", "image: web\nports: ['3000:3000']\n")
     outcome = commands.cmd_render(root, ["web"])
     assert not outcome.ok
     assert "`ports`" in outcome.message
@@ -217,7 +217,7 @@ def test_a_template_that_sets_its_own_ports_is_refused(tmp_path: Path) -> None:
 
 def test_the_book_you_stand_in_is_the_default_target(tmp_path: Path) -> None:
     root = _repo(tmp_path)
-    outcome = commands.cmd_render(root, copy_name="c2", cwd=root / FEATURES / "api" / "ops")
+    outcome = commands.cmd_render(root, copy_name="c2", cwd=root / SERVICES / "api" / "ops")
     assert outcome.data["services"] == ["api:db", "api:provision", "api:api"]
 
 
@@ -281,7 +281,7 @@ def test_a_copy_name_that_cannot_name_containers_is_refused(tmp_path: Path) -> N
 
 def test_a_run_copy_comes_up_under_its_lease_and_names_the_front_service(tmp_path: Path) -> None:
     root = _repo(tmp_path)
-    outcome = leases.up(root, lease="story-1", near=root / FEATURES / "web", runner=FakeDocker())
+    outcome = leases.up(root, lease="story-1", near=root / SERVICES / "web", runner=FakeDocker())
     assert outcome is not None and outcome.ok, outcome
     assert outcome.data["entry_url"] == "http://localhost:49200"
     assert outcome.data["lease"] == "story-1"
@@ -305,7 +305,7 @@ def test_a_copy_whose_run_is_gone_is_reclaimed_at_the_next_lease(tmp_path: Path)
     docker = FakeDocker()
     commands.cmd_up(root, ["web"], copy_name="by-hand", runner=docker)
     commands.cmd_up(root, ["web"], copy_name="story-1", holder=_gone_pid(), runner=docker)
-    live = leases.up(root, lease="story-2", near=root / FEATURES / "web", holder=os.getpid(),
+    live = leases.up(root, lease="story-2", near=root / SERVICES / "web", holder=os.getpid(),
                      runner=docker)
     assert live is not None and live.ok, live
     assert live.data["reclaimed"] == ["acme-story-1"]
@@ -345,14 +345,14 @@ def test_a_command_run_without_a_lease_names_the_shared_copy(tmp_path: Path) -> 
 
 def test_the_book_near_the_run_is_the_only_one_brought_up(tmp_path: Path) -> None:
     root = _repo(tmp_path)
-    assert leases.books_near(root, root / FEATURES / "api" / "ops") == ["api"]
+    assert leases.books_near(root, root / SERVICES / "api" / "ops") == ["api"]
     assert leases.books_near(root) == ["api", "web"]
     assert leases.books_near(root, tmp_path) == []
 
 
 def test_a_repo_with_no_stack_file_keeps_the_runbook_path(tmp_path: Path) -> None:
     root = tmp_path / "globex"
-    (root / FEATURES).mkdir(parents=True)
+    (root / SERVICES).mkdir(parents=True)
     assert leases.up(root, lease="story-1") is None
     assert leases.down(root, lease="story-1") is None
     assert leases.run_env(root, "story-1") is None
@@ -383,7 +383,7 @@ def test_a_lease_less_bring_up_keeps_the_stack_a_runbook_declares(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     root = _repo(tmp_path)
-    _file(root, f"{FEATURES}/api/ops/qa-stack.md", (
+    _file(root, f"{SERVICES}/api/ops/qa-stack.md", (
         "---\ntype: runbook\ntitle: QA stack\n---\n\n# QA stack\n\n"
         "- driver: web\n- entry-url: http://localhost:18084\n\n"
         "## Steps\n\n### serve\n\n- kind: service\n- run: ./serve.sh\n"))
@@ -401,28 +401,28 @@ def test_a_book_reads_its_paths_from_its_ops_folder(tmp_path: Path) -> None:
     root = _repo(tmp_path)
     catalog = spec.load(root)
     book = catalog.books["web"]
-    assert book.directory == root / FEATURES / "web"
-    assert book.ops_dir == root / FEATURES / "web" / "ops"
+    assert book.directory == root / SERVICES / "web"
+    assert book.ops_dir == root / SERVICES / "web" / "ops"
     assert catalog.services["web:gateway"].ops_dir == book.ops_dir
     assert catalog.services["web:gateway"].define == book.ops_dir / "services" / "gateway.yml.j2"
 
 
 def test_the_stack_root_is_a_book_named_after_the_repo(tmp_path: Path) -> None:
     root = _repo(tmp_path)
-    _file(root, f"{FEATURES}/ops/services/cache.yml.j2", "image: redis:7\n")
-    _file(root, f"{FEATURES}/ops/stack.yml", yaml.safe_dump({"services": {
+    _file(root, f"{SERVICES}/ops/services/cache.yml.j2", "image: redis:7\n")
+    _file(root, f"{SERVICES}/ops/stack.yml", yaml.safe_dump({"services": {
         "cache": {"about": "the cache", "define": "services/cache.yml.j2"}}}))
     catalog = spec.load(root)
     assert catalog.errors == []
-    assert catalog.books["acme"].directory == root / FEATURES
-    assert catalog.books["acme"].ops_dir == root / FEATURES / "ops"
+    assert catalog.books["acme"].directory == root / SERVICES
+    assert catalog.books["acme"].ops_dir == root / SERVICES / "ops"
     assert "acme:cache" in catalog.services
 
 
 @pytest.mark.parametrize("book", ["", "web"])
 def test_a_stack_file_at_the_old_place_names_where_it_moves_to(tmp_path: Path, book: str) -> None:
     root = _repo(tmp_path)
-    folder = root / FEATURES / book if book else root / FEATURES
+    folder = root / SERVICES / book if book else root / SERVICES
     old = folder / spec.STACK_FILE
     old.write_text("services: {}\n", encoding="utf-8")
     shown = old.relative_to(root).as_posix()
@@ -434,24 +434,24 @@ def test_a_stack_file_at_the_old_place_names_where_it_moves_to(tmp_path: Path, b
 
 def test_doctor_attaches_an_old_place_error_to_the_old_file(tmp_path: Path) -> None:
     root = _repo(tmp_path)
-    _file(root, f"{FEATURES}/web/stack.yml", "services: {}\n")
+    _file(root, f"{SERVICES}/web/stack.yml", "services: {}\n")
     found = [f for f in doctor.run(load(root)).findings if f.code == "stack-invalid"]
     assert [(f.path, f.message) for f in found] == [(
-        "docs/features/web/stack.yml",
-        "is the old place: move it to docs/features/web/ops/stack.yml, whose paths are read "
+        "docs/services/web/stack.yml",
+        "is the old place: move it to docs/services/web/ops/stack.yml, whose paths are read "
         "from ops/")]
 
 
 def test_a_template_sees_ops_dir_and_no_longer_book_dir(tmp_path: Path) -> None:
     root = _repo(tmp_path)
-    _file(root, f"{FEATURES}/web/ops/services/web.yml.j2",
+    _file(root, f"{SERVICES}/web/ops/services/web.yml.j2",
           "image: web\nlabels:\n  from: {{ ops_dir }}\n")
     outcome = commands.cmd_render(root, ["web"], copy_name="c1")
     assert outcome.ok, outcome.message
     compose = yaml.safe_load(
         (Path(outcome.data["directory"]) / render_mod.COMPOSE_FILE).read_text(encoding="utf-8"))
-    assert compose["services"]["web-web"]["labels"]["from"] == str(root / FEATURES / "web" / "ops")
-    _file(root, f"{FEATURES}/web/ops/services/web.yml.j2", "image: {{ book_dir }}\n")
+    assert compose["services"]["web-web"]["labels"]["from"] == str(root / SERVICES / "web" / "ops")
+    _file(root, f"{SERVICES}/web/ops/services/web.yml.j2", "image: {{ book_dir }}\n")
     stale = commands.cmd_render(root, ["web"], copy_name="c1")
     assert not stale.ok
     assert "book_dir" in stale.message
@@ -460,7 +460,7 @@ def test_a_template_sees_ops_dir_and_no_longer_book_dir(tmp_path: Path) -> None:
 def test_a_service_with_no_about_is_refused_by_name(tmp_path: Path) -> None:
     root = _repo(tmp_path)
     _rewrite_stack(root, "web", {"web": {"define": "services/web.yml.j2"}})
-    assert ("docs/features/web/ops/stack.yml: service `web`: names no `about:`, "
+    assert ("docs/services/web/ops/stack.yml: service `web`: names no `about:`, "
             "the line `ostler env ls` shows for it") in spec.load(root).errors
 
 
@@ -565,7 +565,7 @@ def test_ls_still_lists_what_loaded_when_the_catalog_has_errors(tmp_path: Path) 
 
 def test_ls_with_no_stack_file_says_so_and_lists_the_copies(tmp_path: Path) -> None:
     root = tmp_path / "globex"
-    (root / FEATURES).mkdir(parents=True)
+    (root / SERVICES).mkdir(parents=True)
     empty = commands.cmd_ls(root, runner=FakeDocker())
     assert empty.ok
     assert empty.message == "no book has an ops/stack.yml"
@@ -576,17 +576,17 @@ def test_ls_with_no_stack_file_says_so_and_lists_the_copies(tmp_path: Path) -> N
 
 
 def _book_stack(root: Path, book: str, change: dict) -> None:
-    target = root / FEATURES / book / "ops" / spec.STACK_FILE
+    target = root / SERVICES / book / "ops" / spec.STACK_FILE
     data = yaml.safe_load(target.read_text(encoding="utf-8"))
     target.write_text(yaml.safe_dump({**data, **change}), encoding="utf-8")
 
 
 def _root_stack(root: Path, secrets: object) -> None:
-    _file(root, f"{FEATURES}/ops/stack.yml", yaml.safe_dump({"secrets": secrets}))
+    _file(root, f"{SERVICES}/ops/stack.yml", yaml.safe_dump({"secrets": secrets}))
 
 
 def _needs_token(root: Path) -> None:
-    _file(root, f"{FEATURES}/web/ops/services/web.yml.j2",
+    _file(root, f"{SERVICES}/web/ops/services/web.yml.j2",
           "image: web\nenvironment:\n  TOKEN: ${TOKEN}\n  LITERAL: $${NOT_A_NAME}\n"
           "  OPTIONAL: ${OPT:-none}\n")
 
@@ -602,8 +602,8 @@ def test_secrets_in_a_book_file_is_refused_and_a_saddlebag_name_names_the_new_sh
     _book_stack(root, "web", {"secrets": "web-local"})
     errors = spec.load(root).errors
     assert any(
-        error.startswith("docs/features/web/ops/stack.yml: `secrets:` belongs in the stack root, "
-                         "docs/features/ops/stack.yml: one repo has one secret source")
+        error.startswith("docs/services/web/ops/stack.yml: `secrets:` belongs in the stack root, "
+                         "docs/services/ops/stack.yml: one repo has one secret source")
         and "`saddlebag: \"<key>=<value>\"`" in error for error in errors)
 
 
@@ -779,7 +779,7 @@ def test_a_files_target_outside_the_service_folder_or_a_missing_source_is_refuse
 
 def test_files_render_j2_sources_and_copy_every_other_file_byte_for_byte(tmp_path: Path) -> None:
     root = _repo(tmp_path)
-    ops = root / FEATURES / "web" / "ops"
+    ops = root / SERVICES / "web" / "ops"
     _file(ops, "static/run.sh", "#!/bin/sh\necho {{ not_a_template }}\n")
     (ops / "static" / "run.sh").chmod(0o755)
     _file(ops, "static/conf/app.ini.j2", "host={{ service('api:api') }}\n")
@@ -802,7 +802,7 @@ def test_files_render_j2_sources_and_copy_every_other_file_byte_for_byte(tmp_pat
 
 def test_a_dockerfile_placed_in_the_copy_builds_against_the_checkout(tmp_path: Path) -> None:
     root = _repo(tmp_path)
-    ops = root / FEATURES / "web" / "ops"
+    ops = root / SERVICES / "web" / "ops"
     _file(ops, "services/web.yml.j2",
           'build:\n  context: "{{ repo }}"\n  dockerfile: "{{ dir }}/Dockerfile"\n')
     _file(ops, "images/web.Dockerfile.j2", "FROM node:22\nCOPY . /app\n# {{ copy }}\n")
@@ -818,7 +818,7 @@ def test_a_dockerfile_placed_in_the_copy_builds_against_the_checkout(tmp_path: P
 
 
 def _web_needs_api(root: Path) -> None:
-    target = root / FEATURES / "web" / "ops" / spec.STACK_FILE
+    target = root / SERVICES / "web" / "ops" / spec.STACK_FILE
     target.write_text(yaml.safe_dump({"needs": ["api"], "services": {
         "web": {"about": "the browser app", "define": "services/web.yml.j2"},
         "gateway": {"about": "the proxy", "define": "services/gateway.yml.j2",
@@ -844,9 +844,9 @@ def test_a_book_needing_an_unknown_book_or_itself_is_refused(tmp_path: Path) -> 
     root = _repo(tmp_path)
     _book_stack(root, "web", {"needs": ["queue", "web"]})
     errors = spec.load(root).errors
-    assert ("docs/features/web/ops/stack.yml: `needs:` names the book `queue`, which no "
+    assert ("docs/services/web/ops/stack.yml: `needs:` names the book `queue`, which no "
             "stack.yml defines") in errors
-    assert "docs/features/web/ops/stack.yml: book `web` lists itself in `needs:`" in errors
+    assert "docs/services/web/ops/stack.yml: book `web` lists itself in `needs:`" in errors
 
 
 def test_books_that_need_each_other_form_a_cycle_naming_the_services(tmp_path: Path) -> None:
@@ -870,11 +870,11 @@ def test_outputs_need_once_and_an_environment_name(tmp_path: Path) -> None:
 
 
 def _with_outputs(root: Path, template: str = "image: pulumi/pulumi\n") -> None:
-    _file(root, f"{FEATURES}/api/ops/services/provision.yml.j2", template)
+    _file(root, f"{SERVICES}/api/ops/services/provision.yml.j2", template)
     _rewrite_stack(root, "api", {"provision": {
         "about": "creates the bucket", "define": "services/provision.yml.j2", "once": True,
         "outputs": ["UPLOAD_BUCKET"]}})
-    _file(root, f"{FEATURES}/api/ops/services/api.yml.j2",
+    _file(root, f"{SERVICES}/api/ops/services/api.yml.j2",
           "build: {{ repo }}/api-service\nenvironment:\n  BUCKET: ${UPLOAD_BUCKET}\n")
 
 

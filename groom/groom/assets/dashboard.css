@@ -1,6 +1,6 @@
 /* groom — IDE console theme. Bespoke, dark-first, dense; no framework.
    Loaded after diff2html.min.css so diff panels pick up the dark scheme.
-   Mirrors docs/features/groom-redesign/design-system.md. */
+   Mirrors docs/services/groom-redesign/design-system.md. */
 
 :root {
   --bg-0:#16181d; --bg-1:#1b1e24; --bg-2:#21252d; --bg-3:#2a2f39;

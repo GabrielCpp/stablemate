@@ -11,7 +11,7 @@ from ostler.qa.session import QaSession
 
 from conftest import write
 
-SCREEN = "docs/features/groom/gui/screens/s.md"
+SCREEN = "docs/services/groom/gui/screens/s.md"
 
 
 def _book(repo: Path) -> None:
@@ -50,7 +50,7 @@ def _driver(repo: Path, obligation_documents: dict[str, list[str]] | None = None
     spec = repo / "docs/specs/story-1"
     spec.mkdir(parents=True, exist_ok=True)
     (spec / "qa-okf-context.json").write_text(
-        json.dumps({"featuresRoot": "docs/features"}), encoding="utf-8"
+        json.dumps({"servicesRoot": "docs/services"}), encoding="utf-8"
     )
     session = QaSession.create(spec, "qa-vet-1", "story-1", {})
     return PythonDriver(
@@ -143,7 +143,7 @@ def test_a_vet_of_a_screen_the_book_does_not_document_fails_the_scenario(repo: P
     driver = _driver(repo)
 
     result = driver._grade(
-        "s-1", [], _records(shot, "docs/features/groom/gui/screens/ghost.md"), "", 0,
+        "s-1", [], _records(shot, "docs/services/groom/gui/screens/ghost.md"), "", 0,
         timed_out=False,
     )
 
@@ -179,8 +179,8 @@ def test_a_vet_of_a_screen_whose_components_carry_no_selector_places_nothing(rep
 def test_a_vet_spelled_in_the_packet_s_frame_resolves_against_a_book_rooted_elsewhere(
     repo: Path,
 ) -> None:
-    """The defect this closes: a compiled plan spells `qa.vet(...)` relative to the packet's `featuresRoot`, not to the checkout's own default `docs/features`."""
-    nested_screen = "shed/docs/features/groom/gui/screens/s.md"
+    """The defect this closes: a compiled plan spells `qa.vet(...)` relative to the packet's `servicesRoot`, not to the checkout's own default `docs/services`."""
+    nested_screen = "shed/docs/services/groom/gui/screens/s.md"
     write(
         repo / nested_screen,
         "---\ntype: screen\nslug: s\ntitle: S\n---\n# S\n\n"
@@ -191,7 +191,7 @@ def test_a_vet_spelled_in_the_packet_s_frame_resolves_against_a_book_rooted_else
     spec = repo / "docs/specs/story-1"
     spec.mkdir(parents=True, exist_ok=True)
     (spec / "qa-okf-context.json").write_text(
-        json.dumps({"featuresRoot": "shed/docs/features"}), encoding="utf-8"
+        json.dumps({"servicesRoot": "shed/docs/services"}), encoding="utf-8"
     )
     session = QaSession.create(spec, "qa-vet-1", "story-1", {})
     driver = PythonDriver(
@@ -283,14 +283,14 @@ def test_a_vet_speaks_only_for_the_document_it_photographed(repo: Path) -> None:
         repo,
         obligation_documents={
             f"okf:{SCREEN}#loads:does:1": [SCREEN],
-            "okf:docs/features/groom/http/groom.md#get-runs:does:2": [
-                "docs/features/groom/http/groom.md"
+            "okf:docs/services/groom/http/groom.md#get-runs:does:2": [
+                "docs/services/groom/http/groom.md"
             ],
         },
     )
     covers = [
         f"okf:{SCREEN}#loads:does:1",
-        "okf:docs/features/groom/http/groom.md#get-runs:does:2",
+        "okf:docs/services/groom/http/groom.md#get-runs:does:2",
         "ac:1",
     ]
 
@@ -305,7 +305,7 @@ def test_a_vet_speaks_only_for_the_document_it_photographed(repo: Path) -> None:
 def test_a_vet_credits_a_same_as_family_s_obligation_though_the_id_names_another_screen(
     repo: Path,
 ) -> None:
-    """A `same-as:` family collapses onto one id minted for its lexicographic-min member (`context.py::node_obligations`), so the id this scenario covers can name a screen other than the one a given vet photographs — `docs/features/groom/gui/screens/other.md` below, never `SCREEN` — while still being the very obligation `SCREEN` states, because the family occupies both documents."""
+    """A `same-as:` family collapses onto one id minted for its lexicographic-min member (`context.py::node_obligations`), so the id this scenario covers can name a screen other than the one a given vet photographs — `docs/services/groom/gui/screens/other.md` below, never `SCREEN` — while still being the very obligation `SCREEN` states, because the family occupies both documents."""
     _book(repo)
     shot = _shot(
         repo,
@@ -314,13 +314,13 @@ def test_a_vet_credits_a_same_as_family_s_obligation_though_the_id_names_another
             _region("navigation", "nav.toc", (0, 88, 240, 760)),
         ],
     )
-    family_id = "okf:docs/features/groom/gui/screens/other.md#body:contract"
-    other_document_id = "okf:docs/features/groom/http/groom.md#get-runs:does:2"
+    family_id = "okf:docs/services/groom/gui/screens/other.md#body:contract"
+    other_document_id = "okf:docs/services/groom/http/groom.md#get-runs:does:2"
     driver = _driver(
         repo,
         obligation_documents={
-            family_id: [SCREEN, "docs/features/groom/gui/screens/other.md"],
-            other_document_id: ["docs/features/groom/http/groom.md"],
+            family_id: [SCREEN, "docs/services/groom/gui/screens/other.md"],
+            other_document_id: ["docs/services/groom/http/groom.md"],
         },
     )
     covers = [family_id, other_document_id, "ac:1"]

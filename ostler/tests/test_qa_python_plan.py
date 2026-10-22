@@ -14,7 +14,7 @@ from ostler.qa.harness_host import load_harness_module
 from ostler.qa.plan import load_plan, resolve_spec_dir, validate_v2
 from ostler.qa.run import cmd_run, cmd_validate
 
-OBLIGATION = "okf:docs/features/demo/item.md:contract"
+OBLIGATION = "okf:docs/services/demo/item.md:contract"
 
 PLAN = '''\
 import json
@@ -48,7 +48,7 @@ def item_is_shown(qa: Qa) -> None:
     """The item is on the page."""
     qa.goto("/items")
     {locator}
-    qa.vet("docs/features/demo/item.md", name="items")
+    qa.vet("docs/services/demo/item.md", name="items")
     qa.check("the item is shown", True, covers=["{obligation}"])
 '''
 
@@ -65,7 +65,7 @@ web = target("web", driver="playwright", base_url="http://localhost:5173")
 def reader_is_keyboard_operable(qa: Qa) -> None:
     """The reader route satisfies the story acceptance criterion."""
     qa.goto("/reader")
-    qa.vet("docs/features/demo/reader.md", name="reader")
+    qa.vet("docs/services/demo/reader.md", name="reader")
     qa.check("the reader was operable", True, covers=["ac:1"])
 '''
 
@@ -85,13 +85,13 @@ def _spec(tmp_path: Path) -> Path:
                         "id": OBLIGATION,
                         "kind": "contract",
                         "node": "item",
-                        "source": "docs/features/demo/item.md",
+                        "source": "docs/services/demo/item.md",
                         "requirement": "item is emitted",
                         "evidenceRequired": "live",
                         "reasons": [],
                     }
                 ],
-                "bookFiles": book_files(tmp_path, "docs/features"),
+                "bookFiles": book_files(tmp_path, "docs/services"),
                 "storyFile": None,
             }
         ),
@@ -103,8 +103,8 @@ def _spec(tmp_path: Path) -> Path:
 def _ac_spec(tmp_path: Path) -> Path:
     spec = tmp_path / "docs/specs/story-1"
     spec.mkdir(parents=True)
-    (tmp_path / "docs/features/demo").mkdir(parents=True)
-    (tmp_path / "docs/features/demo/reader.md").write_text(
+    (tmp_path / "docs/services/demo").mkdir(parents=True)
+    (tmp_path / "docs/services/demo/reader.md").write_text(
         """---
 type: screen
 title: Reader
@@ -130,7 +130,7 @@ title: Reader
                 ],
                 "healthFindings": [],
                 "obligations": [],
-                "bookFiles": book_files(tmp_path, "docs/features"),
+                "bookFiles": book_files(tmp_path, "docs/services"),
                 "storyFile": None,
             }
         ),
@@ -232,8 +232,8 @@ def test_a_plan_compiled_from_a_different_book_is_stale(tmp_path: Path) -> None:
 
 def _spec_with_book_file(tmp_path: Path, content: str = "content-1") -> Path:
     """`_spec`, plus a real book file on disk whose digest the packet's `bookFiles` records."""
-    (tmp_path / "docs/features/demo").mkdir(parents=True)
-    (tmp_path / "docs/features/demo/item.md").write_text(content, encoding="utf-8")
+    (tmp_path / "docs/services/demo").mkdir(parents=True)
+    (tmp_path / "docs/services/demo/item.md").write_text(content, encoding="utf-8")
     return _spec(tmp_path)
 
 
@@ -250,7 +250,7 @@ def test_editing_a_book_file_after_the_packet_is_written_is_caught_and_named(
     spec = _spec_with_book_file(tmp_path)
     document, problems = load_plan(_plan(spec), spec, tmp_path)
     assert not problems and document is not None
-    (tmp_path / "docs/features/demo/item.md").write_text("content-2", encoding="utf-8")
+    (tmp_path / "docs/services/demo/item.md").write_text("content-2", encoding="utf-8")
     reported = validate_v2(document)
     assert any(
         item.startswith("stale-context:") and "changed" in item and "demo/item.md" in item
@@ -262,7 +262,7 @@ def test_adding_a_book_file_after_the_packet_is_written_is_caught(tmp_path: Path
     spec = _spec_with_book_file(tmp_path)
     document, problems = load_plan(_plan(spec), spec, tmp_path)
     assert not problems and document is not None
-    (tmp_path / "docs/features/demo/new.md").write_text("new content", encoding="utf-8")
+    (tmp_path / "docs/services/demo/new.md").write_text("new content", encoding="utf-8")
     reported = validate_v2(document)
     assert any(
         item.startswith("stale-context:") and "added" in item and "demo/new.md" in item
@@ -274,7 +274,7 @@ def test_deleting_a_book_file_after_the_packet_is_written_is_caught(tmp_path: Pa
     spec = _spec_with_book_file(tmp_path)
     document, problems = load_plan(_plan(spec), spec, tmp_path)
     assert not problems and document is not None
-    (tmp_path / "docs/features/demo/item.md").unlink()
+    (tmp_path / "docs/services/demo/item.md").unlink()
     reported = validate_v2(document)
     assert any(
         item.startswith("stale-context:") and "removed" in item and "demo/item.md" in item
@@ -315,13 +315,13 @@ def _spec_with_story_file(tmp_path: Path, content: str = "# Story 1\n") -> tuple
                         "id": OBLIGATION,
                         "kind": "contract",
                         "node": "item",
-                        "source": "docs/features/demo/item.md",
+                        "source": "docs/services/demo/item.md",
                         "requirement": "item is emitted",
                         "evidenceRequired": "live",
                         "reasons": [],
                     }
                 ],
-                "bookFiles": book_files(tmp_path, "docs/features"),
+                "bookFiles": book_files(tmp_path, "docs/services"),
                 "storyFile": story_file_record(tmp_path, story_file),
             }
         ),
@@ -938,7 +938,7 @@ def test_a_covers_list_of_module_constants_binds(tmp_path: Path) -> None:
 def test_a_rebound_module_constant_claims_nothing(tmp_path: Path) -> None:
     """Which value reached the call is a question the parse genuinely cannot answer."""
     spec = _spec(tmp_path)
-    rebound = f'CLAIM = "{OBLIGATION}"\nCLAIM = "okf:docs/features/demo/item.md:does:1"\n' + PLAN.replace(
+    rebound = f'CLAIM = "{OBLIGATION}"\nCLAIM = "okf:docs/services/demo/item.md:does:1"\n' + PLAN.replace(
         'expected="abc", covers=["{obligation}"])',
         "expected=\"abc\", covers=[CLAIM])",
     )
@@ -988,7 +988,7 @@ def test_a_scenario_whose_only_assertion_retries_validates_clean(tmp_path: Path)
     assert validate_v2(document) == []
 
 
-SIBLING = "okf:docs/features/demo/item.md:returns:1"
+SIBLING = "okf:docs/services/demo/item.md:returns:1"
 
 TWO_OBLIGATION_PLAN = '''\
 import json
@@ -1000,8 +1000,8 @@ plan(run_id="qa-story-1", story="story-1")
 api = target("api")
 
 @scenario(target=api, mechanism="live",
-          covers=["okf:docs/features/demo/item.md:contract",
-                  "okf:docs/features/demo/item.md:returns:1"])
+          covers=["okf:docs/services/demo/item.md:contract",
+                  "okf:docs/services/demo/item.md:returns:1"])
 def item_is_emitted(qa: Qa) -> None:
     """The emitted item carries the id it was asked for."""
     payload = json.load((qa.root / "out.json").open(encoding="utf-8"))
@@ -1026,7 +1026,7 @@ def test_one_missing_call_is_reported_once_for_every_obligation_declaring_it(
     spec = _spec(tmp_path)
     _two_declaring(spec)
     source = TWO_OBLIGATION_PLAN.replace(
-        "{assertion}", 'qa.check("weak", True, covers=["okf:docs/features/demo/item.md:contract", "okf:docs/features/demo/item.md:returns:1"])'
+        "{assertion}", 'qa.check("weak", True, covers=["okf:docs/services/demo/item.md:contract", "okf:docs/services/demo/item.md:returns:1"])'
     )
     document, problems = load_plan(_plan(spec, source), spec, tmp_path)
     assert not problems and document is not None
@@ -1044,7 +1044,7 @@ def test_one_call_covering_both_obligations_binds_both(tmp_path: Path) -> None:
     _two_declaring(spec)
     source = TWO_OBLIGATION_PLAN.replace(
         "{assertion}",
-        'qa.verify("json_path", payload, path="item.id", equals="abc", covers=["okf:docs/features/demo/item.md:contract", "okf:docs/features/demo/item.md:returns:1"])',
+        'qa.verify("json_path", payload, path="item.id", equals="abc", covers=["okf:docs/services/demo/item.md:contract", "okf:docs/services/demo/item.md:returns:1"])',
     )
     document, problems = load_plan(_plan(spec, source), spec, tmp_path)
     assert not problems and document is not None
@@ -1176,7 +1176,7 @@ def test_a_stale_report_does_not_outlive_the_run_that_wrote_it(tmp_path: Path) -
 
 
 
-REPEAT_OBLIGATION = "okf:docs/features/demo/board.md#stage-row:contract"
+REPEAT_OBLIGATION = "okf:docs/services/demo/board.md#stage-row:contract"
 
 
 def _repeat_spec(tmp_path: Path, **repeat_overrides: Any) -> Path:
@@ -1208,14 +1208,14 @@ def _repeat_spec(tmp_path: Path, **repeat_overrides: Any) -> Path:
                         "id": REPEAT_OBLIGATION,
                         "kind": "contract",
                         "node": "stage-row",
-                        "source": "docs/features/demo/board.md",
+                        "source": "docs/services/demo/board.md",
                         "requirement": "one row per stage",
                         "evidenceRequired": "live",
                         "reasons": [],
                         "repeat": repeat,
                     }
                 ],
-                "bookFiles": book_files(tmp_path, "docs/features"),
+                "bookFiles": book_files(tmp_path, "docs/services"),
                 "storyFile": None,
             }
         ),
@@ -1348,7 +1348,7 @@ def test_an_instance_for_an_unrepeated_or_uncovered_obligation_is_rejected(tmp_p
     reported = _repeat_problems(
         tmp_path,
         _repeat_spec(tmp_path),
-        'qa.instance("okf:docs/features/demo/other.md:contract", {"stage.name": "X"})\n'
+        'qa.instance("okf:docs/services/demo/other.md:contract", {"stage.name": "X"})\n'
         'qa.instance(OB, {"stage.name": "Toiture", "stage.kind": "draft"})\n'
         'qa.instance(OB, {"stage.name": "Autre", "stage.kind": "active"})\n'
         'qa.check("rows are shown", True, covers=[OB])',

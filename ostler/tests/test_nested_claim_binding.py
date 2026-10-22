@@ -31,7 +31,7 @@ BRANCHES = PAGE + (
 
 
 def _command(repo: Path, text: str) -> UINode:
-    write(repo / "docs/features/tally/cli/tally.md", text)
+    write(repo / "docs/services/tally/cli/tally.md", text)
     return load(repo).ui_nodes_of_type("command")[0]
 
 

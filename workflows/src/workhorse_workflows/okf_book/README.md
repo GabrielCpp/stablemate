@@ -18,7 +18,7 @@ workhorse-okf-book run --run-id book-api-1 --profile claude \
   --params '{"surfaces":[{"service":"api","kind":"http","entry":"api"}]}'
 ```
 
-- `service`: the book's folder under `docs/features/`.
+- `service`: the book's folder under `docs/services/`.
 - `kind`: `cli`, `http`, `web` or `mobile`. It picks the writer's branch of the skill and the driver the scenarios run on.
 - `entry`: the service's source folder, relative to the repository root. The writer copies it and reads nothing outside it. A path that is not a folder stops the run before the first turn.
 

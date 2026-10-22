@@ -34,9 +34,9 @@ title: QA stack
 - health: curl -fsS http://localhost:18099/healthz
 """
 
-RUNBOOK_PATH = "docs/features/app/ops/qa-stack.md"
+RUNBOOK_PATH = "docs/services/app/ops/qa-stack.md"
 
-ENDPOINT_PATH = "docs/features/acme/server.md"
+ENDPOINT_PATH = "docs/services/acme/server.md"
 
 
 def _endpoint_book(fixture_bullet: str, extra: str = "") -> str:
@@ -88,7 +88,7 @@ def _stack(repo: Path) -> None:
 
 def test_a_book_fixture_bullet_naming_a_fixture_node_is_clean(repo: Path) -> None:
     _stack(repo)
-    write(repo / "docs/features/acme/fixtures/seeded-acme.md",
+    write(repo / "docs/services/acme/fixtures/seeded-acme.md",
           _fixture_book(args="id", provides="id — the seeded account's id"))
     write(repo / ENDPOINT_PATH, _endpoint_book("seeded-acme — an account exists"))
     assert _findings(repo, "unknown-book-fixture") == []
@@ -96,7 +96,7 @@ def test_a_book_fixture_bullet_naming_a_fixture_node_is_clean(repo: Path) -> Non
 
 def test_a_book_fixture_bullet_linking_a_fixture_page_names_it_by_stem(repo: Path) -> None:
     _stack(repo)
-    write(repo / "docs/features/acme/fixtures/seeded-acme.md",
+    write(repo / "docs/services/acme/fixtures/seeded-acme.md",
           _fixture_book(args="id", provides="id — the seeded account's id"))
     write(repo / ENDPOINT_PATH, _endpoint_book("[Seeded acme](fixtures/seeded-acme.md) id=7 — an account exists"))
     findings = doctor.run(load(repo)).findings
@@ -112,7 +112,7 @@ def test_a_book_fixture_bullet_naming_no_fixture_node_is_unknown_book_fixture(re
 
 def test_a_fixture_steps_kind_outside_seed_run_verify_probe_is_an_error(repo: Path) -> None:
     _stack(repo)
-    write(repo / "docs/features/acme/fixtures/seeded-acme.md",
+    write(repo / "docs/services/acme/fixtures/seeded-acme.md",
           _fixture_book(args="id", provides="id — the seeded account's id", step_kind="prepare"))
     found = _findings(repo, "fixture-step-kind")
     assert [(f.severity, f.ref) for f in found] == [("error", "prepare")]
@@ -121,14 +121,14 @@ def test_a_fixture_steps_kind_outside_seed_run_verify_probe_is_an_error(repo: Pa
 @pytest.mark.parametrize("step_kind", ["seed", "probe"])
 def test_a_fixture_steps_kind_of_seed_or_probe_is_clean(repo: Path, step_kind: str) -> None:
     _stack(repo)
-    write(repo / "docs/features/acme/fixtures/seeded-acme.md",
+    write(repo / "docs/services/acme/fixtures/seeded-acme.md",
           _fixture_book(args="id", provides="id — the seeded account's id", step_kind=step_kind))
     assert _findings(repo, "fixture-step-kind") == []
 
 
 def test_fixture_arg_mismatch_when_a_fixture_bullet_passes_an_undeclared_arg(repo: Path) -> None:
     _stack(repo)
-    write(repo / "docs/features/acme/fixtures/seeded-acme.md",
+    write(repo / "docs/services/acme/fixtures/seeded-acme.md",
           _fixture_book(args="id", provides="id — the seeded account's id"))
     write(repo / ENDPOINT_PATH, _endpoint_book("seeded-acme name=globex — an account exists"))
     found = _findings(repo, "fixture-arg-mismatch")
@@ -139,7 +139,7 @@ def test_fixture_arg_mismatch_when_a_fixture_bullet_passes_an_undeclared_arg(rep
 
 def test_fixture_arg_mismatch_is_clean_when_every_arg_is_declared(repo: Path) -> None:
     _stack(repo)
-    write(repo / "docs/features/acme/fixtures/seeded-acme.md",
+    write(repo / "docs/services/acme/fixtures/seeded-acme.md",
           _fixture_book(args="id", provides="id — the seeded account's id"))
     write(repo / ENDPOINT_PATH, _endpoint_book("seeded-acme id=globex — an account exists"))
     assert _findings(repo, "fixture-arg-mismatch") == []
@@ -148,7 +148,7 @@ def test_fixture_arg_mismatch_is_clean_when_every_arg_is_declared(repo: Path) ->
 @pytest.mark.parametrize("args", ["none", "none, because every account is seeded the same way"])
 def test_fixture_arg_mismatch_is_clean_when_args_states_there_are_none(repo: Path, args: str) -> None:
     _stack(repo)
-    write(repo / "docs/features/acme/fixtures/seeded-acme.md",
+    write(repo / "docs/services/acme/fixtures/seeded-acme.md",
           _fixture_book(args=args, provides="id — the seeded account's id"))
     write(repo / ENDPOINT_PATH, _endpoint_book("seeded-acme — an account exists"))
     assert _findings(repo, "fixture-arg-mismatch") == []
@@ -157,7 +157,7 @@ def test_fixture_arg_mismatch_is_clean_when_args_states_there_are_none(repo: Pat
 def test_fixture_arg_mismatch_when_a_fixture_bullet_never_passes_a_declared_arg(repo: Path) -> None:
     """The grammar has no defaults — a declared arg the binding never passes leaves a call without a value it requires, exactly as surely as an unknown one is a typo."""
     _stack(repo)
-    write(repo / "docs/features/acme/fixtures/seeded-acme.md",
+    write(repo / "docs/services/acme/fixtures/seeded-acme.md",
           _fixture_book(args="id name", provides="id — the seeded account's id"))
     write(repo / ENDPOINT_PATH, _endpoint_book("seeded-acme id=globex — an account exists"))
     found = _findings(repo, "fixture-arg-mismatch")
@@ -168,9 +168,9 @@ def test_fixture_arg_mismatch_when_a_fixture_bullet_never_passes_a_declared_arg(
 def test_fixture_arg_mismatch_applies_to_a_needs_binding(repo: Path) -> None:
     """A `needs:` binding's `name=value` tokens are checked against the CONSUMER's own `args:` — they land in *its* env, never the target's, which runtime always runs with `{}`."""
     _stack(repo)
-    write(repo / "docs/features/acme/fixtures/seeded-acme.md",
+    write(repo / "docs/services/acme/fixtures/seeded-acme.md",
           _fixture_book(provides="id — the seeded account's id"))
-    write(repo / "docs/features/acme/fixtures/seeded-globex.md",
+    write(repo / "docs/services/acme/fixtures/seeded-globex.md",
           _fixture_book(args="acme_id", provides="id — the seeded project's id",
                         needs="[seeded-acme](seeded-acme.md) name=globex"))
     write(repo / ENDPOINT_PATH, _endpoint_book("seeded-globex acme_id=5 — a project exists"))
@@ -184,9 +184,9 @@ def test_fixture_arg_mismatch_is_clean_for_a_needs_binding_matching_declared_arg
     repo: Path,
 ) -> None:
     _stack(repo)
-    write(repo / "docs/features/acme/fixtures/seeded-acme.md",
+    write(repo / "docs/services/acme/fixtures/seeded-acme.md",
           _fixture_book(provides="id — the seeded account's id"))
-    write(repo / "docs/features/acme/fixtures/seeded-globex.md",
+    write(repo / "docs/services/acme/fixtures/seeded-globex.md",
           _fixture_book(args="id", provides="id — the seeded project's id",
                         needs="[seeded-acme](seeded-acme.md) id=globex"))
     write(repo / ENDPOINT_PATH, _endpoint_book("seeded-globex — a project exists"))
@@ -196,9 +196,9 @@ def test_fixture_arg_mismatch_is_clean_for_a_needs_binding_matching_declared_arg
 def test_fixture_needs_target_args_when_a_needs_target_declares_its_own_args(repo: Path) -> None:
     """Runtime always runs a needs target with `{}` — a target that declares `args:` of its own can never be satisfied, regardless of what the binding passes."""
     _stack(repo)
-    write(repo / "docs/features/acme/fixtures/seeded-acme.md",
+    write(repo / "docs/services/acme/fixtures/seeded-acme.md",
           _fixture_book(args="id", provides="id — the seeded account's id"))
-    write(repo / "docs/features/acme/fixtures/seeded-globex.md",
+    write(repo / "docs/services/acme/fixtures/seeded-globex.md",
           _fixture_book(provides="id — the seeded project's id",
                         needs="[seeded-acme](seeded-acme.md)"))
     write(repo / ENDPOINT_PATH, _endpoint_book("seeded-globex — a project exists"))
@@ -208,9 +208,9 @@ def test_fixture_needs_target_args_when_a_needs_target_declares_its_own_args(rep
 
 def test_fixture_needs_target_args_is_clean_when_the_target_declares_no_args(repo: Path) -> None:
     _stack(repo)
-    write(repo / "docs/features/acme/fixtures/seeded-acme.md",
+    write(repo / "docs/services/acme/fixtures/seeded-acme.md",
           _fixture_book(provides="id — the seeded account's id"))
-    write(repo / "docs/features/acme/fixtures/seeded-globex.md",
+    write(repo / "docs/services/acme/fixtures/seeded-globex.md",
           _fixture_book(provides="id — the seeded project's id",
                         needs="[seeded-acme](seeded-acme.md)"))
     write(repo / ENDPOINT_PATH, _endpoint_book("seeded-globex — a project exists"))
@@ -222,9 +222,9 @@ def test_fixture_arg_mismatch_is_clean_when_a_caller_omits_an_arg_supplied_by_ne
 ) -> None:
     """A `fixture:` caller need not pass an arg the target's own `needs:` bindings already supply into its env."""
     _stack(repo)
-    write(repo / "docs/features/acme/fixtures/seeded-acme.md",
+    write(repo / "docs/services/acme/fixtures/seeded-acme.md",
           _fixture_book(provides="id — the seeded account's id"))
-    write(repo / "docs/features/acme/fixtures/seeded-globex.md",
+    write(repo / "docs/services/acme/fixtures/seeded-globex.md",
           _fixture_book(args="id", provides="id — the seeded project's id",
                         needs="[seeded-acme](seeded-acme.md) id=@seeded-acme.id"))
     write(repo / ENDPOINT_PATH, _endpoint_book("seeded-globex — a project exists"))
@@ -236,9 +236,9 @@ def test_fixture_arg_mismatch_when_a_caller_also_passes_an_arg_supplied_by_needs
 ) -> None:
     """A `fixture:` caller passing an arg the target's `needs:` bindings already supply is a second source for the same arg — its own finding, not silently accepted."""
     _stack(repo)
-    write(repo / "docs/features/acme/fixtures/seeded-acme.md",
+    write(repo / "docs/services/acme/fixtures/seeded-acme.md",
           _fixture_book(provides="id — the seeded account's id"))
-    write(repo / "docs/features/acme/fixtures/seeded-globex.md",
+    write(repo / "docs/services/acme/fixtures/seeded-globex.md",
           _fixture_book(args="id", provides="id — the seeded project's id",
                         needs="[seeded-acme](seeded-acme.md) id=@seeded-acme.id"))
     write(repo / ENDPOINT_PATH, _endpoint_book("seeded-globex id=5 — a project exists"))
@@ -250,10 +250,10 @@ def test_fixture_arg_mismatch_when_a_caller_also_passes_an_arg_supplied_by_needs
 
 def test_fixture_needs_cycle_between_two_fixtures(repo: Path) -> None:
     _stack(repo)
-    write(repo / "docs/features/acme/fixtures/seeded-acme.md",
+    write(repo / "docs/services/acme/fixtures/seeded-acme.md",
           _fixture_book(provides="id — the seeded account's id",
                         needs="[seeded-globex](seeded-globex.md)"))
-    write(repo / "docs/features/acme/fixtures/seeded-globex.md",
+    write(repo / "docs/services/acme/fixtures/seeded-globex.md",
           _fixture_book(provides="id — the seeded project's id",
                         needs="[seeded-acme](seeded-acme.md)"))
     found = _findings(repo, "fixture-needs-cycle")
@@ -262,9 +262,9 @@ def test_fixture_needs_cycle_between_two_fixtures(repo: Path) -> None:
 
 def test_fixture_needs_with_no_cycle_is_clean(repo: Path) -> None:
     _stack(repo)
-    write(repo / "docs/features/acme/fixtures/seeded-globex.md",
+    write(repo / "docs/services/acme/fixtures/seeded-globex.md",
           _fixture_book(provides="id — the seeded project's id"))
-    write(repo / "docs/features/acme/fixtures/seeded-acme.md",
+    write(repo / "docs/services/acme/fixtures/seeded-acme.md",
           _fixture_book(provides="id — the seeded account's id",
                         needs="[seeded-globex](seeded-globex.md)"))
     assert _findings(repo, "fixture-needs-cycle") == []
@@ -272,7 +272,7 @@ def test_fixture_needs_with_no_cycle_is_clean(repo: Path) -> None:
 
 def test_fixture_undeclared_provides_when_a_reference_names_an_undeclared_key(repo: Path) -> None:
     _stack(repo)
-    write(repo / "docs/features/acme/fixtures/seeded-acme.md",
+    write(repo / "docs/services/acme/fixtures/seeded-acme.md",
           _fixture_book(provides="id — the seeded account's id"))
     write(repo / ENDPOINT_PATH,
           _endpoint_book("seeded-acme — an account exists",
@@ -283,7 +283,7 @@ def test_fixture_undeclared_provides_when_a_reference_names_an_undeclared_key(re
 
 def test_fixture_undeclared_provides_is_clean_for_a_declared_key(repo: Path) -> None:
     _stack(repo)
-    write(repo / "docs/features/acme/fixtures/seeded-acme.md",
+    write(repo / "docs/services/acme/fixtures/seeded-acme.md",
           _fixture_book(provides="id — the seeded account's id"))
     write(repo / ENDPOINT_PATH,
           _endpoint_book("seeded-acme — an account exists",
@@ -293,7 +293,7 @@ def test_fixture_undeclared_provides_is_clean_for_a_declared_key(repo: Path) -> 
 
 def test_fixture_secret_name_when_a_secrets_child_is_not_an_env_var_name(repo: Path) -> None:
     _stack(repo)
-    write(repo / "docs/features/acme/fixtures/seeded-acme.md",
+    write(repo / "docs/services/acme/fixtures/seeded-acme.md",
           _fixture_book(provides="id — the seeded account's id", secrets="API-TOKEN"))
     found = _findings(repo, "fixture-secret-name")
     assert [(f.severity, f.ref) for f in found] == [("error", "API-TOKEN")]
@@ -301,7 +301,7 @@ def test_fixture_secret_name_when_a_secrets_child_is_not_an_env_var_name(repo: P
 
 def test_fixture_secret_name_is_clean_for_a_valid_env_var_name(repo: Path) -> None:
     _stack(repo)
-    write(repo / "docs/features/acme/fixtures/seeded-acme.md",
+    write(repo / "docs/services/acme/fixtures/seeded-acme.md",
           _fixture_book(provides="id — the seeded account's id", secrets="API_TOKEN"))
     assert _findings(repo, "fixture-secret-name") == []
 
@@ -309,7 +309,7 @@ def test_fixture_secret_name_is_clean_for_a_valid_env_var_name(repo: Path) -> No
 @pytest.mark.parametrize("secrets", ["none.", "none, because the fixture reads no credential"])
 def test_secrets_stating_there_are_none_declare_no_secret(repo: Path, secrets: str) -> None:
     _stack(repo)
-    write(repo / "docs/features/acme/fixtures/seeded-acme.md",
+    write(repo / "docs/services/acme/fixtures/seeded-acme.md",
           _fixture_book(provides="id — the seeded account's id", secrets=secrets))
     assert _findings(repo, "fixture-secret-name") == []
     assert book_fixtures.resolved(load(repo))["seeded-acme"]["secrets"] == []
@@ -317,7 +317,7 @@ def test_secrets_stating_there_are_none_declare_no_secret(repo: Path, secrets: s
 
 def test_fixture_step_no_run_when_a_step_has_no_run_bullet(repo: Path) -> None:
     _stack(repo)
-    write(repo / "docs/features/acme/fixtures/seeded-acme.md",
+    write(repo / "docs/services/acme/fixtures/seeded-acme.md",
           _fixture_book(provides="id — the seeded account's id", no_run=True))
     found = _findings(repo, "fixture-step-no-run")
     assert [f.severity for f in found] == ["error"]
@@ -325,14 +325,14 @@ def test_fixture_step_no_run_when_a_step_has_no_run_bullet(repo: Path) -> None:
 
 def test_fixture_step_no_run_is_clean_when_the_step_has_a_run_bullet(repo: Path) -> None:
     _stack(repo)
-    write(repo / "docs/features/acme/fixtures/seeded-acme.md",
+    write(repo / "docs/services/acme/fixtures/seeded-acme.md",
           _fixture_book(provides="id — the seeded account's id"))
     assert _findings(repo, "fixture-step-no-run") == []
 
 
 def test_fixture_step_run_is_check_expression_as_command(repo: Path) -> None:
     _stack(repo)
-    write(repo / "docs/features/acme/fixtures/seeded-acme.md",
+    write(repo / "docs/services/acme/fixtures/seeded-acme.md",
           "---\ntype: fixture\ntitle: Seeded acme\n---\n# Seeded acme\n\n"
           "- provides:\n  - id — the seeded account's id\n\n"
           "## Steps\n\n### seed-it\n\n- kind: seed\n"
@@ -344,7 +344,7 @@ def test_fixture_step_run_is_check_expression_as_command(repo: Path) -> None:
 def test_fixture_step_scenario_frame_token_is_not_a_doctor_finding(repo: Path) -> None:
     """A fixture step runs inside a scenario, so `scenario:` names something real — `runbook-scenario-frame` fires only on a runbook step, where no scenario exists."""
     _stack(repo)
-    write(repo / "docs/features/acme/fixtures/seeded-acme.md",
+    write(repo / "docs/services/acme/fixtures/seeded-acme.md",
           "---\ntype: fixture\ntitle: Seeded acme\n---\n# Seeded acme\n\n"
           "- provides:\n  - id — the seeded account's id\n\n"
           "## Steps\n\n### seed-it\n\n- kind: seed\n"
@@ -354,7 +354,7 @@ def test_fixture_step_scenario_frame_token_is_not_a_doctor_finding(repo: Path) -
 
 def test_fixture_checks_hold_with_no_stack_runbook(repo: Path) -> None:
     """A CLI book brings no stack up, yet its fixtures arrange each scenario's directory, so their grammar is held all the same."""
-    write(repo / "docs/features/acme/fixtures/seeded-acme.md",
+    write(repo / "docs/services/acme/fixtures/seeded-acme.md",
           _fixture_book(args="id", provides="id — the seeded account's id", step_kind="prepare"))
     assert [f.severity for f in _findings(repo, "fixture-step-kind")] == ["error"]
 
@@ -362,7 +362,7 @@ def test_fixture_checks_hold_with_no_stack_runbook(repo: Path) -> None:
 def test_unbacked_precondition_when_the_target_declares_no_provides(repo: Path) -> None:
     """The consumer states the state; the producer never claimed to leave it."""
     _stack(repo)
-    write(repo / "docs/features/acme/fixtures/seeded-acme.md", _fixture_book(args="id"))
+    write(repo / "docs/services/acme/fixtures/seeded-acme.md", _fixture_book(args="id"))
     write(repo / ENDPOINT_PATH, _endpoint_book("seeded-acme id=globex — an account exists"))
     found = _findings(repo, "unbacked-precondition")
     assert [(f.severity, f.ref) for f in found] == [("warn", "seeded-acme")]
@@ -371,7 +371,7 @@ def test_unbacked_precondition_when_the_target_declares_no_provides(repo: Path) 
 
 def test_unbacked_precondition_is_clean_when_the_target_declares_provides(repo: Path) -> None:
     _stack(repo)
-    write(repo / "docs/features/acme/fixtures/seeded-acme.md",
+    write(repo / "docs/services/acme/fixtures/seeded-acme.md",
           _fixture_book(args="id", provides="id — the seeded account's id"))
     write(repo / ENDPOINT_PATH, _endpoint_book("seeded-acme id=globex — an account exists"))
     assert _findings(repo, "unbacked-precondition") == []
@@ -382,7 +382,7 @@ def test_unbacked_precondition_is_silent_when_the_bullet_states_no_precondition(
 ) -> None:
     """No em-dash prose is no claim about state, so there is nothing for a `provides:` to back."""
     _stack(repo)
-    write(repo / "docs/features/acme/fixtures/seeded-acme.md", _fixture_book(args="id"))
+    write(repo / "docs/services/acme/fixtures/seeded-acme.md", _fixture_book(args="id"))
     write(repo / ENDPOINT_PATH, _endpoint_book("seeded-acme id=globex"))
     assert _findings(repo, "unbacked-precondition") == []
 
@@ -390,7 +390,7 @@ def test_unbacked_precondition_is_silent_when_the_bullet_states_no_precondition(
 def test_a_provides_entry_with_its_own_properties_parses_as_one_value(repo: Path) -> None:
     """`provides:` is `entries=True` (`registry.BulletKey`): each direct child is one fact, and that fact's own `from:`/`read:` children are its properties, not further facts."""
     _stack(repo)
-    write(repo / "docs/features/acme/fixtures/seeded-acme.md", (
+    write(repo / "docs/services/acme/fixtures/seeded-acme.md", (
         "---\ntype: fixture\ntitle: Seeded acme\n---\n# Seeded acme\n\n"
         "- provides:\n"
         "  - count — the number of widgets the directory holds\n"
@@ -430,7 +430,7 @@ def _declare_provides_properties(monkeypatch, *names: str) -> None:
 def test_an_entry_property_the_key_does_not_admit_is_reported(repo: Path, monkeypatch) -> None:
     _declare_provides_properties(monkeypatch, "from", "read")
     _stack(repo)
-    write(repo / "docs/features/acme/fixtures/seeded-acme.md", _PROVIDES_BOOK)
+    write(repo / "docs/services/acme/fixtures/seeded-acme.md", _PROVIDES_BOOK)
     finding, = _findings(repo, "unknown-entry-property")
     assert "`freshness:`" in finding.message
     assert finding.ref == "provides:freshness"
@@ -440,13 +440,13 @@ def test_a_key_that_declares_no_property_vocabulary_admits_anything(repo: Path, 
     """A key with an empty `properties` tuple — the default, and other entries=True keys'"""
     _declare_provides_properties(monkeypatch)
     _stack(repo)
-    write(repo / "docs/features/acme/fixtures/seeded-acme.md", _PROVIDES_BOOK)
+    write(repo / "docs/services/acme/fixtures/seeded-acme.md", _PROVIDES_BOOK)
     assert _findings(repo, "unknown-entry-property") == []
 
 
 def test_undetermined_provided_fact_when_an_entry_states_neither_from_nor_is(repo: Path) -> None:
     _stack(repo)
-    write(repo / "docs/features/acme/fixtures/seeded-acme.md",
+    write(repo / "docs/services/acme/fixtures/seeded-acme.md",
           _fixture_book(provides="id — the seeded account's id"))
     found = _findings(repo, "undetermined-provided-fact")
     assert [f.severity for f in found] == ["error"]
@@ -455,7 +455,7 @@ def test_undetermined_provided_fact_when_an_entry_states_neither_from_nor_is(rep
 
 def test_undetermined_provided_fact_when_an_entry_states_both(repo: Path) -> None:
     _stack(repo)
-    write(repo / "docs/features/acme/fixtures/seeded-acme.md",
+    write(repo / "docs/services/acme/fixtures/seeded-acme.md",
           _fixture_book(provides="id — the seeded account's id"
                                  "|from: [seed-it](#seed-it)|read: account.id|is: 7"))
     found = _findings(repo, "undetermined-provided-fact")
@@ -465,7 +465,7 @@ def test_undetermined_provided_fact_when_an_entry_states_both(repo: Path) -> Non
 
 def test_an_observed_fact_is_clean(repo: Path) -> None:
     _stack(repo)
-    write(repo / "docs/features/acme/fixtures/seeded-acme.md",
+    write(repo / "docs/services/acme/fixtures/seeded-acme.md",
           _fixture_book(provides="id — the seeded account's id"
                                  "|from: [seed-it](#seed-it)|read: account.id"))
     assert _findings(repo, "undetermined-provided-fact") == []
@@ -473,7 +473,7 @@ def test_an_observed_fact_is_clean(repo: Path) -> None:
 
 def test_a_fact_asserted_by_construction_is_clean(repo: Path) -> None:
     _stack(repo)
-    write(repo / "docs/features/acme/fixtures/seeded-acme.md",
+    write(repo / "docs/services/acme/fixtures/seeded-acme.md",
           _fixture_book(provides="id — the seeded account's id|is: 7"))
     assert _findings(repo, "undetermined-provided-fact") == []
 
@@ -485,14 +485,14 @@ def _fixture_in(directory: str) -> str:
 
 def test_fixture_step_directory_refuses_a_path_the_checkout_lacks_and_names_the_scenario_token(repo: Path) -> None:
     _stack(repo)
-    write(repo / "docs/features/acme/fixtures/seeded-acme.md", _fixture_in("services/missing"))
+    write(repo / "docs/services/acme/fixtures/seeded-acme.md", _fixture_in("services/missing"))
     found = _findings(repo, "fixture-step-directory")
     assert [(f.severity, f.suggestion) for f in found] == [("error", "- working-directory: scenario:")]
 
 
 def test_a_bare_scenario_names_the_scenario_frame_when_the_checkout_has_no_such_directory(repo: Path) -> None:
     _stack(repo)
-    write(repo / "docs/features/acme/fixtures/seeded-acme.md", _fixture_in("scenario"))
+    write(repo / "docs/services/acme/fixtures/seeded-acme.md", _fixture_in("scenario"))
     assert _findings(repo, "fixture-step-directory") == []
     [step] = book_fixtures.resolved(load(repo))["seeded-acme"]["steps"]
     assert step["cwd-frame"] == "scenario"
@@ -501,7 +501,7 @@ def test_a_bare_scenario_names_the_scenario_frame_when_the_checkout_has_no_such_
 def test_a_bare_scenario_is_a_path_when_the_checkout_holds_that_directory(repo: Path) -> None:
     _stack(repo)
     (repo / "scenario").mkdir()
-    write(repo / "docs/features/acme/fixtures/seeded-acme.md", _fixture_in("scenario"))
+    write(repo / "docs/services/acme/fixtures/seeded-acme.md", _fixture_in("scenario"))
     [step] = book_fixtures.resolved(load(repo))["seeded-acme"]["steps"]
     assert "cwd-frame" not in step and step["cwd"] == str((repo / "scenario").resolve())
 
@@ -509,8 +509,8 @@ def test_a_bare_scenario_is_a_path_when_the_checkout_holds_that_directory(repo: 
 def test_fixture_step_directory_is_clean_for_the_scenario_token_and_a_real_directory(repo: Path) -> None:
     _stack(repo)
     (repo / "services/acme").mkdir(parents=True)
-    write(repo / "docs/features/acme/fixtures/seeded-acme.md", _fixture_in("scenario:"))
-    write(repo / "docs/features/acme/fixtures/other-acme.md", _fixture_in("services/acme"))
+    write(repo / "docs/services/acme/fixtures/seeded-acme.md", _fixture_in("scenario:"))
+    write(repo / "docs/services/acme/fixtures/other-acme.md", _fixture_in("services/acme"))
     assert _findings(repo, "fixture-step-directory") == []
 
 
@@ -518,10 +518,10 @@ def test_a_step_that_names_the_checkout_by_its_absolute_path_is_refused_and_a_re
     _stack(repo)
     absolute = _fixture_book(provides="id — the seeded account's id").replace(
         "- run: ./scripts/seed-acme.sh", f"- run: python3 {repo.resolve()}/scripts/seed_acme.py")
-    write(repo / "docs/features/acme/fixtures/seeded-acme.md", absolute)
-    write(repo / "docs/features/acme/fixtures/other-acme.md", _fixture_in("scripts"))
+    write(repo / "docs/services/acme/fixtures/seeded-acme.md", absolute)
+    write(repo / "docs/services/acme/fixtures/other-acme.md", _fixture_in("scripts"))
     found = _findings(repo, "checkout-absolute-path")
-    assert [(f.path, f.severity) for f in found] == [("docs/features/acme/fixtures/seeded-acme.md", "error")]
+    assert [(f.path, f.severity) for f in found] == [("docs/services/acme/fixtures/seeded-acme.md", "error")]
 
 
 def _served_fixture(*, kind: str, run: str, lifetime: str = "scenario") -> str:
@@ -532,7 +532,7 @@ def _served_fixture(*, kind: str, run: str, lifetime: str = "scenario") -> str:
 
 def test_a_fixture_step_that_backgrounds_its_command_is_refused_naming_serve(repo: Path) -> None:
     _stack(repo)
-    write(repo / "docs/features/acme/fixtures/mock-backend.md",
+    write(repo / "docs/services/acme/fixtures/mock-backend.md",
           _served_fixture(kind="seed", run="python3 tools/backend.py &"))
     found = _findings(repo, "fixture-step-backgrounded")
     assert [(f.severity, f.suggestion) for f in found] == [("error", "- kind: serve")]
@@ -540,14 +540,14 @@ def test_a_fixture_step_that_backgrounds_its_command_is_refused_naming_serve(rep
 
 def test_a_command_joined_with_double_ampersand_is_not_backgrounded(repo: Path) -> None:
     _stack(repo)
-    write(repo / "docs/features/acme/fixtures/mock-backend.md",
+    write(repo / "docs/services/acme/fixtures/mock-backend.md",
           _served_fixture(kind="seed", run="./scripts/seed-acme.sh && echo done"))
     assert _findings(repo, "fixture-step-backgrounded") == []
 
 
 def test_a_serve_step_in_a_scenario_fixture_is_clean(repo: Path) -> None:
     _stack(repo)
-    write(repo / "docs/features/acme/fixtures/mock-backend.md",
+    write(repo / "docs/services/acme/fixtures/mock-backend.md",
           _served_fixture(kind="serve", run="python3 tools/backend.py"))
     findings = doctor.run(load(repo)).findings
     assert [f for f in findings if f.code in {"fixture-step-kind", "fixture-serve-lifetime"}] == []
@@ -555,7 +555,7 @@ def test_a_serve_step_in_a_scenario_fixture_is_clean(repo: Path) -> None:
 
 def test_a_serve_step_in_a_fixture_other_scenarios_reuse_is_refused(repo: Path) -> None:
     _stack(repo)
-    write(repo / "docs/features/acme/fixtures/mock-backend.md",
+    write(repo / "docs/services/acme/fixtures/mock-backend.md",
           _served_fixture(kind="serve", run="python3 tools/backend.py", lifetime=""))
     found = _findings(repo, "fixture-serve-lifetime")
     assert [(f.severity, f.suggestion) for f in found] == [("error", "- lifetime: scenario")]
@@ -563,39 +563,39 @@ def test_a_serve_step_in_a_fixture_other_scenarios_reuse_is_refused(repo: Path) 
 
 def test_a_probe_on_this_machine_is_refused(repo: Path) -> None:
     _stack(repo)
-    write(repo / "docs/features/acme/fixtures/backend.md",
+    write(repo / "docs/services/acme/fixtures/backend.md",
           _served_fixture(kind="probe", run="curl -s --max-time 5 -o /dev/null http://localhost:8080/"))
     assert [f.severity for f in _findings(repo, "fixture-probe-local")] == ["error"]
 
 
 def test_a_probe_on_an_outside_service_is_clean(repo: Path) -> None:
     _stack(repo)
-    write(repo / "docs/features/acme/fixtures/payment-provider.md",
+    write(repo / "docs/services/acme/fixtures/payment-provider.md",
           _served_fixture(kind="probe", run='test -n "$PAYMENT_KEY" && curl -sf https://api.example.com/ping'))
     assert _findings(repo, "fixture-probe-local") == []
 
 
 def test_two_fixture_files_sharing_a_stem_are_one_error_each(repo: Path) -> None:
     _stack(repo)
-    write(repo / "docs/features/a/fixtures/x.md", _fixture_book())
-    write(repo / "docs/features/b/fixtures/x.md", _fixture_book())
+    write(repo / "docs/services/a/fixtures/x.md", _fixture_book())
+    write(repo / "docs/services/b/fixtures/x.md", _fixture_book())
     found = _findings(repo, "duplicate-fixture-name")
     assert sorted((f.severity, f.path, f.ref) for f in found) == [
-        ("error", "docs/features/a/fixtures/x.md", "x"),
-        ("error", "docs/features/b/fixtures/x.md", "x"),
+        ("error", "docs/services/a/fixtures/x.md", "x"),
+        ("error", "docs/services/b/fixtures/x.md", "x"),
     ]
-    assert "docs/features/b/fixtures/x.md" in found[0].message or "docs/features/a/fixtures/x.md" in found[0].message
+    assert "docs/services/b/fixtures/x.md" in found[0].message or "docs/services/a/fixtures/x.md" in found[0].message
     assert all(f.suggestion for f in found)
 
 
 def test_differently_named_fixture_files_are_not_duplicates(repo: Path) -> None:
     _stack(repo)
-    write(repo / "docs/features/a/fixtures/x.md", _fixture_book())
-    write(repo / "docs/features/b/fixtures/y.md", _fixture_book())
+    write(repo / "docs/services/a/fixtures/x.md", _fixture_book())
+    write(repo / "docs/services/b/fixtures/y.md", _fixture_book())
     assert _findings(repo, "duplicate-fixture-name") == []
 
 
-HOME_PATH = "docs/features/acme/home.md"
+HOME_PATH = "docs/services/acme/home.md"
 
 
 def _device_fixture(*, lifetime: str = "scenario", launch: str = "[Home](../home.md)",
@@ -616,7 +616,7 @@ def _device_fixture(*, lifetime: str = "scenario", launch: str = "[Home](../home
 def _device_book(repo: Path, fixture: str) -> None:
     _stack(repo)
     write(repo / HOME_PATH, screen_md("home", "Home"))
-    write(repo / "docs/features/acme/fixtures/signed-in-device.md", fixture)
+    write(repo / "docs/services/acme/fixtures/signed-in-device.md", fixture)
 
 
 def test_a_scenario_fixture_naming_its_launch_screen_is_clean(repo: Path) -> None:

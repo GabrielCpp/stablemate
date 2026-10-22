@@ -1,10 +1,10 @@
 # The book's stack: `stack.yml`
 
 A book that boots something says what it is made of in one file, `stack.yml`, in the `ops/`
-folder beside its pages, at `docs/features/<book>/ops/stack.yml`. The file at
-`docs/features/ops/stack.yml` is the stack root. It is also a book, and takes the repo
-directory's name in lowercase. A file at an old place, `docs/features/<book>/stack.yml` or
-`docs/features/stack.yml`, is an error that names where to move it.
+folder beside its pages, at `docs/services/<book>/ops/stack.yml`. The file at
+`docs/services/ops/stack.yml` is the stack root. It is also a book, and takes the repo
+directory's name in lowercase. A file at an old place, `docs/services/<book>/stack.yml` or
+`docs/services/stack.yml`, is an error that names where to move it.
 
 `ostler env` reads every book's file together and runs the product on this machine from them,
 one compose project per copy. The file replaces a hand-kept compose file, the make targets that
@@ -56,7 +56,7 @@ the rows above.
 
 A book's `ops/` folder holds everything it takes to run the book on a machine: `stack.yml`, the
 templates and plain files it places, and the `environment` and `runbook` pages that describe it.
-Nothing in `ops/` is product. The stack root, `docs/features/ops/stack.yml`, is the file of a
+Nothing in `ops/` is product. The stack root, `docs/services/ops/stack.yml`, is the file of a
 one-book repo as well.
 
 ## One service, one book
@@ -128,7 +128,7 @@ files:
 
 ## Secrets
 
-One repo has one secret source, named in the stack root, `docs/features/ops/stack.yml`. A
+One repo has one secret source, named in the stack root, `docs/services/ops/stack.yml`. A
 `secrets:` key in any other book's file is an error.
 
 ```yaml
@@ -138,7 +138,7 @@ secrets:
 
 ```yaml
 secrets:
-  decrypt: sops --decrypt docs/features/ops/secrets.enc.env
+  decrypt: sops --decrypt docs/services/ops/secrets.enc.env
 ```
 
 ```yaml

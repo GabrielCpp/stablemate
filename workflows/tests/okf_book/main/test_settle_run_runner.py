@@ -41,7 +41,7 @@ def test_a_driver_that_could_not_start_is_an_environment_blocker(tmp_path: Path)
 def test_a_run_stopped_on_one_repeated_book_failure_goes_to_the_book_s_owner_as_a_lap_that_stopped_early(tmp_path: Path) -> None:
     repeat = "the run stopped after 3 scenarios on 3 pages failed on one observation: landed on /login"
     redirected = FailedCheck(label="opens", expected="/editor", actual="/login", cause=Cause.BOOK,
-                             covers=("okf:docs/features/tally/tally.md#list:does:1",))
+                             covers=("okf:docs/services/tally/tally.md#list:does:1",))
     summary = RunSummary(status="failed", stopped_on_repeat=repeat,
                          scenarios={"tally-list": ScenarioOutcome(status="failed", failed_checks=(redirected,))},
                          signatures=(Signature(Cause.BOOK, "", "", "/editor", 3, "opens: expected /editor, observed /login"),))

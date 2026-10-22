@@ -19,7 +19,7 @@ from workhorse_workflows.okf_book.main.nodes.writer_commands import (
     run_quietly,
 )
 from workhorse_workflows.okf_book.shared.book_links import in_book, lands_in_book, relinked
-from workhorse_workflows.okf_book.shared.entries import FEATURES_DIR
+from workhorse_workflows.okf_book.shared.entries import SERVICES_DIR
 from workhorse_workflows.okf_book.shared.page_check import dead_book_pages
 
 GC = "gc"
@@ -59,12 +59,12 @@ def _collect_garbage(state_path: Path, options: Sequence[str]) -> CommandOutput:
 def _relink(state_path: Path, arguments: Sequence[str]) -> CommandOutput:
     state = read_command_state(state_path)
     service = state.service
-    book = (FEATURES_DIR / service).as_posix()
+    book = (SERVICES_DIR / service).as_posix()
     if len(arguments) != 2 or not all(lands_in_book(service, f"{book}/entries.md", target) for target in arguments):
         return CommandOutput(2, (RELINK_USAGE,))
     old, new = arguments
     said: list[str] = []
-    for path in sorted((state.root / FEATURES_DIR).rglob("*.md")):
+    for path in sorted((state.root / SERVICES_DIR).rglob("*.md")):
         page = path.relative_to(state.root).as_posix()
         if in_book(service, page):
             continue

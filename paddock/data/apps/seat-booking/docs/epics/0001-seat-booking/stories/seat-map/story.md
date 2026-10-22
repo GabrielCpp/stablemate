@@ -23,8 +23,8 @@ expose. -->
 
 The showing has to be visible before anything can be taken. This story stands up the service
 itself — the ledger, the seat vocabulary of three rows by four — and the two read surfaces over it:
-the JSON seat map at [GET /api/seats](../../../../features/booking/http/seat-booking-api.md#get-seat-map)
-and the server-rendered [seat map screen](../../../../features/booking/gui/screens/seat-map.md) the
+the JSON seat map at [GET /api/seats](../../../../services/booking/http/seat-booking-api.md#get-seat-map)
+and the server-rendered [seat map screen](../../../../services/booking/gui/screens/seat-map.md) the
 API serves on `/`. It also lands `/healthz`, because everything that waits for the stack to come up
 waits on that.
 

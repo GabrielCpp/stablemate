@@ -17,12 +17,12 @@ status: Not started
 ## Context
 
 Nothing in the directory reads until something writes, so this story is the write path for
-[the widget concept](../../../../features/api-service/concepts/widget.md) end to end: the
+[the widget concept](../../../../services/api-service/concepts/widget.md) end to end: the
 store, the create endpoint, and the two clients that post to it.
 
-There are two separate ways in. [The new-widget screen](../../../../features/web-app/gui/screens/new-widget.md)
-is the browser's own cross-origin POST, form-driven and refused per field. [add-widget-via-api](../../../../features/api-service/flows/add-widget-via-api.md)
-is a second, independent actor — an API caller against [api-service](../../../../features/api-service/http/api-service.md)
+There are two separate ways in. [The new-widget screen](../../../../services/web-app/gui/screens/new-widget.md)
+is the browser's own cross-origin POST, form-driven and refused per field. [add-widget-via-api](../../../../services/api-service/flows/add-widget-via-api.md)
+is a second, independent actor — an API caller against [api-service](../../../../services/api-service/http/api-service.md)
 directly, with no browser and no form involved — and both have to land on the same store
 rule: a widget is accepted only with a non-empty `name` and a `quantity` of zero or more.
 

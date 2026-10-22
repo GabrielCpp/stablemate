@@ -21,7 +21,7 @@ Concepts). A **Concept** is one `.md` file with:
 - a markdown **body** using conventional section headings.
 
 **Identity is the path.** A Concept's id is its bundle-relative path without the `.md` suffix
-(`docs/features/profile/preference-summary.md` → `profile/preference-summary`). Cross-references
+(`docs/services/profile/preference-summary.md` → `profile/preference-summary`). Cross-references
 are bundle-relative paths or plain markdown links.
 
 Reserved filenames per bundle (OKF): **`index.md`** (an ordered listing of the bundle) and
@@ -36,7 +36,7 @@ Every Concept declares `type`. Ostler knows these types (the machine registry is
 |---|---|---|---|
 | `epic` | `docs/epics/<NNNN-slug>/epic.md` | `<NNNN-slug>` (dir name) | `type`, `id`, `title` |
 | `story` | `docs/epics/<NNNN-slug>/stories/<slug>/story.md` | `<slug>` | `type`, `slug`, `status` |
-| `feature` | `docs/features/<area>/<slug>.md` *(or flat `docs/features/<slug>.md`)* | `<area>/<slug>` | `type`, `slug`, `title` |
+| `feature` | `docs/services/<area>/<slug>.md` *(or flat `docs/services/<slug>.md`)* | `<area>/<slug>` | `type`, `slug`, `title` |
 | `spec.<stem>` (`spec.plan`, `spec.review`, `spec.qa`, `spec.executive`, `spec.vet`, …) | `docs/specs/<slug>/*.md` | path | `type` |
 
 An epic's directory is minted `NNNN-<slug>` (four digits minimum, one past the highest number
@@ -171,7 +171,7 @@ contract position on request — the same operation for a story written last yea
 emptied, and one scaffolded a moment ago.
 
 The coverage edge (`covers`) is *not* here — it names seeds defined in the epic, so it lives in the
-epic's `## Stories` section (§3). Prose may link to `docs/features/…` OKF nodes with ordinary
+epic's `## Stories` section (§3). Prose may link to `docs/services/…` OKF nodes with ordinary
 markdown links.
 
 The generated `id` is canonical and immutable. `externalKey`, when present, is an opaque alias for
@@ -181,7 +181,7 @@ recorded here must agree with the copy in the parent epic's `## Stories` block.
 
 ## 5. The feature Concept and the epics index
 
-- **Feature** Concepts (`type: feature`) are per-surface markdown under `docs/features/`. The feature
+- **Feature** Concepts (`type: feature`) are per-surface markdown under `docs/services/`. The feature
   **inventory** is *derived* from these via `ostler list --type feature`; there is no `inventory.json`.
 - **`docs/epics/index.md`** is the epics bundle's OKF index: an **ordered** list of the epics to be
   worked (the former `epics-todo.json`). Ostler manages its order via `ostler todo`. The coder's

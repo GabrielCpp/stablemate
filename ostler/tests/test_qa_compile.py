@@ -78,7 +78,7 @@ def cmd_compile_plan(
 def _obligation(oid: str, **extra: object) -> dict:
     base = {
         "id": oid,
-        "source": "docs/features/demo/api.md",
+        "source": "docs/services/demo/api.md",
         "nodeType": "endpoint",
         "requirement": "writes the record and answers with it",
         "required": True,
@@ -113,7 +113,7 @@ def _covers(source: str) -> set[str]:
 def test_a_compiled_plan_is_valid_python() -> None:
     context = _context(
         _obligation(
-            "okf:docs/features/demo/api.md#post-things:does:1",
+            "okf:docs/services/demo/api.md#post-things:does:1",
             checksDeclared=[
                 {"call": "created", "name": "http_status", "args": {"code": 201, "path": "/api/things"}},
                 {"call": "the record", "name": "json_path", "args": {"path": "thing.status", "equals": "Draft"}},
@@ -130,7 +130,7 @@ def test_a_compiled_plan_carries_the_books_own_digest() -> None:
     """`plan(book=...)` names the obligation id set this compile pass read, so a run against a book that has since changed can tell it apart from one still current."""
     context = _context(
         _obligation(
-            "okf:docs/features/demo/api.md#post-things:does:1",
+            "okf:docs/services/demo/api.md#post-things:does:1",
             checksDeclared=[
                 {"call": "created", "name": "http_status", "args": {"code": 201, "path": "/api/things"}},
             ],
@@ -142,16 +142,16 @@ def test_a_compiled_plan_carries_the_books_own_digest() -> None:
 
 def test_the_books_digest_ignores_order_and_context_only_obligations() -> None:
     """Stable under a rewalk that visits the same ids in a different order, and blind to a `required: False` obligation — the plan never owed that one a scenario in the first place, so its coming or going is not a reason to call the plan stale."""
-    a = _obligation("okf:docs/features/demo/api.md#post-things:does:1")
-    b = _obligation("okf:docs/features/demo/api.md#post-things:does:2")
-    context_only = _obligation("okf:docs/features/demo/api.md#post-things:does:3", required=False)
+    a = _obligation("okf:docs/services/demo/api.md#post-things:does:1")
+    b = _obligation("okf:docs/services/demo/api.md#post-things:does:2")
+    context_only = _obligation("okf:docs/services/demo/api.md#post-things:does:3", required=False)
     assert book_digest(_context(a, b)) == book_digest(_context(b, a))
     assert book_digest(_context(a, b)) == book_digest(_context(a, b, context_only))
 
 
 def test_the_books_digest_changes_with_the_obligation_set() -> None:
-    a = _obligation("okf:docs/features/demo/api.md#post-things:does:1")
-    b = _obligation("okf:docs/features/demo/api.md#post-things:does:2")
+    a = _obligation("okf:docs/services/demo/api.md#post-things:does:1")
+    b = _obligation("okf:docs/services/demo/api.md#post-things:does:2")
     assert book_digest(_context(a)) != book_digest(_context(a, b))
 
 
@@ -159,7 +159,7 @@ def test_a_boolean_argument_compiles_to_python_not_json() -> None:
     """`absent: false` is the book's spelling and a `NameError` in a plan."""
     context = _context(
         _obligation(
-            "okf:docs/features/demo/api.md#post-things:does:1",
+            "okf:docs/services/demo/api.md#post-things:does:1",
             checksDeclared=[
                 {"call": "the draft", "name": "absent", "args": {"absent": False, "of": "thing"}},
             ],
@@ -175,21 +175,21 @@ def test_an_obligation_with_no_declared_check_is_book_debt_not_coverage() -> Non
     """Claiming an id the body never asserts would read as covered in every report."""
     context = _context(
         _obligation(
-            "okf:docs/features/demo/api.md#post-things:does:1",
+            "okf:docs/services/demo/api.md#post-things:does:1",
             checksDeclared=[
                 {"call": "created", "name": "http_status", "args": {"code": 201, "path": "/api/things"}},
             ],
         ),
-        _obligation("okf:docs/features/demo/api.md#post-things:does:2"),
+        _obligation("okf:docs/services/demo/api.md#post-things:does:2"),
     )
     source = compile_plan(context, story="demo-story")
-    assert _covers(source) == {"okf:docs/features/demo/api.md#post-things:does:1"}
+    assert _covers(source) == {"okf:docs/services/demo/api.md#post-things:does:1"}
     assert "# Book debt." in source
-    assert "#   okf:docs/features/demo/api.md#post-things:does:2" in source
+    assert "#   okf:docs/services/demo/api.md#post-things:does:2" in source
 
 
 def test_a_source_document_owing_nothing_observable_emits_no_scenario() -> None:
-    context = _context(_obligation("okf:docs/features/demo/api.md#post-things:does:1"))
+    context = _context(_obligation("okf:docs/services/demo/api.md#post-things:does:1"))
     result = _compile_plan_gaps(context, story="demo-story")
     assert isinstance(result, Refusal)
 
@@ -197,7 +197,7 @@ def test_a_source_document_owing_nothing_observable_emits_no_scenario() -> None:
 def test_an_obligation_the_change_does_not_owe_is_not_compiled() -> None:
     context = _context(
         _obligation(
-            "okf:docs/features/demo/api.md#post-things:does:9",
+            "okf:docs/services/demo/api.md#post-things:does:9",
             required=False,
             checksDeclared=[{"call": "ok", "name": "http_status", "args": {"code": 200, "path": "/api/things"}}],
         )
@@ -211,7 +211,7 @@ def test_a_check_needing_a_subject_the_book_never_gave_compiles_to_a_marker() ->
     """`unchanged` observes a before and an after."""
     context = _context(
         _obligation(
-            "okf:docs/features/demo/api.md#post-things:persistence:1",
+            "okf:docs/services/demo/api.md#post-things:persistence:1",
             checksDeclared=[
                 {"call": "created", "name": "http_status", "args": {"code": 201, "path": "/api/things"}},
                 {"call": "the ledger", "name": "unchanged", "args": {"of": "thing.version"}},
@@ -219,7 +219,7 @@ def test_a_check_needing_a_subject_the_book_never_gave_compiles_to_a_marker() ->
         )
     )
     result = _compile_plan_gaps(context, story="demo-story", base_url=_BASE_URL)
-    oid = "okf:docs/features/demo/api.md#post-things:persistence:1"
+    oid = "okf:docs/services/demo/api.md#post-things:persistence:1"
     assert isinstance(result, Refusal)
     assert "needs-snapshot" in _gap_kinds(result.gaps, oid)
 
@@ -231,12 +231,12 @@ def test_the_command_writes_the_plan_and_reports_the_debt(tmp_path: Path) -> Non
         json.dumps(
             _context(
                 _obligation(
-                    "okf:docs/features/demo/api.md#post-things:does:1",
+                    "okf:docs/services/demo/api.md#post-things:does:1",
                     checksDeclared=[
                         {"call": "created", "name": "http_status", "args": {"code": 201, "path": "/api/things"}},
                     ],
                 ),
-                _obligation("okf:docs/features/demo/api.md#post-things:does:2"),
+                _obligation("okf:docs/services/demo/api.md#post-things:does:2"),
             )
         ),
         encoding="utf-8",
@@ -246,13 +246,13 @@ def test_the_command_writes_the_plan_and_reports_the_debt(tmp_path: Path) -> Non
     assert result.ok
     assert result.data["owed"] == 2
     assert result.data["declared"] == 1
-    assert result.data["debt"] == ["okf:docs/features/demo/api.md#post-things:does:2"]
+    assert result.data["debt"] == ["okf:docs/services/demo/api.md#post-things:does:2"]
     ast.parse(out.read_text(encoding="utf-8"))
 
 
 def test_the_command_reports_gaps_in_doctors_own_finding_shape(tmp_path: Path) -> None:
     """`compile_plan_gaps`'s `Gap` list surfaces in `cmd_compile_plan`'s JSON output as doctor-shaped dicts — a caller reads `severity`/`code`/`message`/`ref` the same way it would read a `doctor.Finding`, without re-parsing the compiled plan's Python."""
-    oid = "okf:docs/features/demo/api.md#post-things:does:1"
+    oid = "okf:docs/services/demo/api.md#post-things:does:1"
     context = _context(_obligation(
         oid,
         locators={"route": ["POST /api/things"]},
@@ -275,7 +275,7 @@ def test_the_command_reports_gaps_in_doctors_own_finding_shape(tmp_path: Path) -
 
 def test_the_command_writes_no_file_when_nothing_compiled(tmp_path: Path) -> None:
     """A `Refusal` is not a plan with nothing in it — writing an empty or comment-only file over `out` would let a later run believe a plan already exists there, when what actually happened is that nothing here compiled to one at all."""
-    oid = "okf:docs/features/demo/api.md#get-things:does:1"
+    oid = "okf:docs/services/demo/api.md#get-things:does:1"
     context = _context(
         _obligation(
             oid,
@@ -295,7 +295,7 @@ def test_the_command_writes_no_file_when_nothing_compiled(tmp_path: Path) -> Non
 
 def test_the_command_reports_the_ledger_even_on_a_refusal(tmp_path: Path) -> None:
     """`owed`/`declared`/`debt`/`gaps` are the same ledger a caller reads on a success — a `Refusal` still owes a reader the count of what the book asked for and what it declared, not just the gaps that explain why none of it reached a scenario."""
-    oid = "okf:docs/features/demo/api.md#get-things:does:1"
+    oid = "okf:docs/services/demo/api.md#get-things:does:1"
     context = _context(
         _obligation(
             oid,
@@ -344,7 +344,7 @@ def test_the_book_arrangement_compiles_to_the_call_and_the_precondition() -> Non
     """Both halves of a `fixture:` bullet land, in the two places a plan keeps them."""
     context = _context(
         _obligation(
-            "okf:docs/features/demo/api.md#post-things:does:1",
+            "okf:docs/services/demo/api.md#post-things:does:1",
             checksDeclared=[_check()],
             fixturesDeclared=[
                 {"name": "seeded-ledger", "args": ["2", "draft"],
@@ -363,9 +363,9 @@ def test_one_state_two_claims_is_arranged_once() -> None:
     """Two claims documented in the same seeded ledger name one arrangement between them."""
     ledger = {"name": "seeded-ledger", "args": ["2"], "provides": "two policies on file"}
     context = _context(
-        _obligation("okf:docs/features/demo/api.md#post-things:does:1",
+        _obligation("okf:docs/services/demo/api.md#post-things:does:1",
                     checksDeclared=[_check()], fixturesDeclared=[ledger]),
-        _obligation("okf:docs/features/demo/api.md#post-things:does:2",
+        _obligation("okf:docs/services/demo/api.md#post-things:does:2",
                     checksDeclared=[_check()], fixturesDeclared=[ledger]),
     )
     source = compile_plan(context, story="demo-story")
@@ -382,24 +382,24 @@ def test_a_fixture_that_fails_fails_only_the_claims_that_declare_it() -> None:
     ledger = {"name": "seeded-ledger", "args": ["2"], "provides": "two policies on file"}
     signed_in = {"name": "signed-in-clerk", "args": [], "provides": "a clerk's token"}
     context = _context(
-        _obligation("okf:docs/features/demo/api.md#post-things:does:1",
+        _obligation("okf:docs/services/demo/api.md#post-things:does:1",
                     checksDeclared=[_check()], fixturesDeclared=[ledger, signed_in]),
-        _obligation("okf:docs/features/demo/api.md#post-things:does:2",
+        _obligation("okf:docs/services/demo/api.md#post-things:does:2",
                     checksDeclared=[_check()], fixturesDeclared=[signed_in]),
     )
     source = compile_plan(context, story="demo-story")
     ast.parse(source)
-    assert ('    with qa.claim(["okf:docs/features/demo/api.md#post-things:does:1"]):\n'
+    assert ('    with qa.claim(["okf:docs/services/demo/api.md#post-things:does:1"]):\n'
             '        qa.fixture("seeded-ledger", "2")') in source
-    assert ('    with qa.claim(["okf:docs/features/demo/api.md#post-things:does:1", '
-            '"okf:docs/features/demo/api.md#post-things:does:2"]):\n'
+    assert ('    with qa.claim(["okf:docs/services/demo/api.md#post-things:does:1", '
+            '"okf:docs/services/demo/api.md#post-things:does:2"]):\n'
             '        qa.fixture("signed-in-clerk")') in source
 
 
 def test_a_book_that_says_it_needs_nothing_arranged_gets_an_empty_precondition_list() -> None:
     """`fixture: none, because ...` is an answer, and the plan states it as one."""
     context = _context(
-        _obligation("okf:docs/features/demo/api.md#post-things:does:1", checksDeclared=[_check()])
+        _obligation("okf:docs/services/demo/api.md#post-things:does:1", checksDeclared=[_check()])
     )
     source = compile_plan(context, story="demo-story")
     assert "preconditions=[]," in source
@@ -412,7 +412,7 @@ def _gap_kinds(gaps: list[Gap], oid: str) -> list[str]:
 
 def test_a_scenario_that_arranges_nothing_and_says_nothing_compiles_to_nothing() -> None:
     """Neither an arrangement nor a stated need for none is the one answer nothing may compile."""
-    oid = "okf:docs/features/demo/api.md#get-things:does:1"
+    oid = "okf:docs/services/demo/api.md#get-things:does:1"
     context = _context(
         _obligation(
             oid,
@@ -428,7 +428,7 @@ def test_a_scenario_that_arranges_nothing_and_says_nothing_compiles_to_nothing()
 
 def test_a_refusal_carries_every_gap_and_is_never_also_a_plan() -> None:
     """`Refusal` and `Plan` are a sum, not two views of the same result — a caller that gets a `Refusal` back must never find a `Plan` underneath it, and the gap that explains why nothing compiled must be the whole of what `compile_plan_gaps` hands back, not a value alongside a `source` a caller could read instead of asking which case it has."""
-    oid = "okf:docs/features/demo/api.md#get-things:does:1"
+    oid = "okf:docs/services/demo/api.md#get-things:does:1"
     context = _context(
         _obligation(
             oid,
@@ -447,7 +447,7 @@ def test_a_compiling_context_yields_a_plan_whose_source_declares_a_scenario() ->
     """`Plan.source` is a plan file the plan format admits — at least one `@scenario(` — never the empty, decorator-free module `compile_plan_gaps` used to hand back for "nothing compiled"."""
     context = _context(
         _obligation(
-            "okf:docs/features/demo/api.md#post-things:does:1",
+            "okf:docs/services/demo/api.md#post-things:does:1",
             checksDeclared=[_check()],
             fixturesDeclared=[{"name": "seeded-ledger", "args": [], "provides": "a ledger"}],
         )
@@ -459,7 +459,7 @@ def test_a_compiling_context_yields_a_plan_whose_source_declares_a_scenario() ->
 
 def test_a_missing_request_body_is_an_unarranged_request_body() -> None:
     """`json_body={}` against an endpoint that needs a real one gets refused by the app (422) — a false failure against code that did nothing wrong."""
-    oid = "okf:docs/features/demo/globex.md#post-things:does:1"
+    oid = "okf:docs/services/demo/globex.md#post-things:does:1"
     context = _context(
         _obligation(
             oid,
@@ -480,7 +480,7 @@ def _body_act(field: str, value: object) -> dict:
 
 def test_an_arranged_request_body_compiles_to_json_body() -> None:
     """`arrange: body(field=..., value=...)` under the arm fills what `_check`'s bare POST otherwise withholds — the whole reason `body` exists as an act rather than a new key."""
-    oid = "okf:docs/features/demo/globex.md#post-things:does:1"
+    oid = "okf:docs/services/demo/globex.md#post-things:does:1"
     context = _context(
         _obligation(
             oid,
@@ -499,7 +499,7 @@ def test_an_arranged_request_body_compiles_to_json_body() -> None:
 
 def test_a_dotted_body_field_sends_a_nested_member() -> None:
     """A route that decodes a map, such as one draft per locale, reads a nested object, and a scalar `value` can only reach it through a dotted `field`."""
-    oid = "okf:docs/features/demo/globex.md#post-things:does:1"
+    oid = "okf:docs/services/demo/globex.md#post-things:does:1"
     context = _context(
         _obligation(
             oid,
@@ -520,7 +520,7 @@ def test_a_dotted_body_field_sends_a_nested_member() -> None:
 
 def test_the_body_field_dollar_sends_the_value_as_the_whole_body() -> None:
     """A route that decodes a top-level array reads no object, so the one field `$` names the body itself."""
-    oid = "okf:docs/features/demo/globex.md#post-things:does:1"
+    oid = "okf:docs/services/demo/globex.md#post-things:does:1"
     context = _context(
         _obligation(
             oid,
@@ -538,7 +538,7 @@ def test_the_body_field_dollar_sends_the_value_as_the_whole_body() -> None:
 
 
 def test_the_whole_body_beside_a_member_is_not_sent() -> None:
-    oid = "okf:docs/features/demo/globex.md#post-things:does:1"
+    oid = "okf:docs/services/demo/globex.md#post-things:does:1"
     context = _context(
         _obligation(
             oid,
@@ -553,7 +553,7 @@ def test_the_whole_body_beside_a_member_is_not_sent() -> None:
 
 def test_a_body_field_that_is_also_a_parent_of_another_is_not_sent() -> None:
     """`locales` set to a value and `locales.fr` set beside it describe two different bodies, and sending either would grade a request the book never wrote."""
-    oid = "okf:docs/features/demo/globex.md#post-things:does:1"
+    oid = "okf:docs/services/demo/globex.md#post-things:does:1"
     context = _context(
         _obligation(
             oid,
@@ -575,7 +575,7 @@ def _header_act(name: str, value: str) -> dict:
 
 def test_an_arranged_header_is_sent_with_its_fixture_reference_resolved() -> None:
     """A guarded route answers 401 to an anonymous caller, so the token a fixture minted has to ride on the request itself, resolved at run time rather than sent as the literal text the book wrote."""
-    oid = "okf:docs/features/demo/globex.md#get-things:does:1"
+    oid = "okf:docs/services/demo/globex.md#get-things:does:1"
     context = _context(
         _obligation(
             oid,
@@ -597,7 +597,7 @@ def test_an_endpoint_credential_rides_on_every_claim_but_the_one_about_a_401() -
     """A writer arranges the token once per endpoint, yet the route refuses every claim sent without it, and the claim about the anonymous caller must stay anonymous."""
     signed_in = [{"name": "signed-in-editor", "args": [], "provides": "a signed-in editor",
                   "providesKeys": ["signed-in-editor.token"]}]
-    arranged, served, refused = (f"okf:docs/features/demo/globex.md#get-things:{arm}" for arm in ("message:1", "does:1", "emits:2"))
+    arranged, served, refused = (f"okf:docs/services/demo/globex.md#get-things:{arm}" for arm in ("message:1", "does:1", "emits:2"))
     context = _context(
         _obligation(arranged, checksDeclared=[{"call": "ok", "name": "http_status", "args": {"code": 200}}],
                     fixturesDeclared=signed_in, docPosition=[1, 0], node="get-things",
@@ -619,7 +619,7 @@ def test_a_credential_arranged_under_a_claim_with_no_check_still_rides_on_the_ch
     """A writer sets up the caller beneath a `when:` that states a precondition and checks nothing, and the claims below it are refused with 401 unless that token reaches them."""
     signed_in = [{"name": "signed-in-editor", "args": [], "provides": "a signed-in editor",
                   "providesKeys": ["signed-in-editor.token"]}]
-    condition, served = (f"okf:docs/features/demo/globex.md#get-things:{arm}" for arm in ("when:1", "does:1"))
+    condition, served = (f"okf:docs/services/demo/globex.md#get-things:{arm}" for arm in ("when:1", "does:1"))
     context = _context(
         _obligation(condition, fixturesDeclared=signed_in, docPosition=[1, 0], node="get-things",
                     actsDeclared=[_header_act("Authorization", "Bearer @signed-in-editor.token")]),
@@ -637,7 +637,7 @@ def test_a_refused_caller_named_under_a_403_claim_replaces_the_endpoint_credenti
     """A claim about a caller the route refuses names that caller itself, and the token it names must neither reach the claims the route serves nor lose to the endpoint's own."""
     callers = [{"name": "signed-in-editor", "args": [], "provides": "a signed-in editor",
                 "providesKeys": ["signed-in-editor.token", "signed-in-editor.strangerToken"]}]
-    arranged, served, refused = (f"okf:docs/features/demo/globex.md#get-things:{arm}" for arm in ("message:1", "does:1", "emits:2"))
+    arranged, served, refused = (f"okf:docs/services/demo/globex.md#get-things:{arm}" for arm in ("message:1", "does:1", "emits:2"))
     editor = _header_act("Authorization", "Bearer @signed-in-editor.token")
     stranger = _header_act("Authorization", "Bearer @signed-in-editor.strangerToken")
     context = _context(
@@ -658,7 +658,7 @@ def test_a_refused_caller_named_under_a_403_claim_replaces_the_endpoint_credenti
 
 def test_a_body_arranged_under_a_claim_replaces_the_one_its_endpoint_arranges() -> None:
     """An endpoint arranges the body its claims share, and the one claim about a different body writes its own after it."""
-    oid = "okf:docs/features/demo/globex.md#post-things:does:1"
+    oid = "okf:docs/services/demo/globex.md#post-things:does:1"
     context = _context(
         _obligation(
             oid,
@@ -680,7 +680,7 @@ def test_the_fixture_behind_a_credential_from_a_claim_with_no_check_is_arranged_
     """The token a `when:` lends to the claims below it is minted by that `when:`'s own fixture, so a scenario that sends the header without building the fixture fails every one of them on a reference nothing resolved."""
     signed_in = [{"name": "signed-in-editor", "args": [], "provides": "a signed-in editor",
                   "providesKeys": ["signed-in-editor.token"]}]
-    condition, served = (f"okf:docs/features/demo/globex.md#get-things:{arm}" for arm in ("when:1", "does:1"))
+    condition, served = (f"okf:docs/services/demo/globex.md#get-things:{arm}" for arm in ("when:1", "does:1"))
     context = _context(
         _obligation(condition, fixturesDeclared=signed_in, docPosition=[1, 0], node="get-things",
                     actsDeclared=[_header_act("Authorization", "Bearer @signed-in-editor.token")]),
@@ -700,7 +700,7 @@ def test_a_claim_about_a_401_stays_anonymous_though_it_repeats_the_callers_token
     signed_in = [{"name": "signed-in-editor", "args": [], "provides": "a signed-in editor",
                   "providesKeys": ["signed-in-editor.token"]}]
     token = _header_act("Authorization", "Bearer @signed-in-editor.token")
-    served, repeated, forged, inherited = (f"okf:docs/features/demo/globex.md#get-things:{arm}"
+    served, repeated, forged, inherited = (f"okf:docs/services/demo/globex.md#get-things:{arm}"
                                            for arm in ("does:1", "errors:1", "errors:2", "does:2"))
     context = _context(
         _obligation(served, checksDeclared=[{"call": "ok", "name": "http_status", "args": {"code": 200}}],
@@ -727,7 +727,7 @@ def test_a_fixture_whose_token_a_get_claim_sends_is_probed_before_the_book() -> 
     signed_in = [{"name": "signed-in-editor", "args": [], "provides": "a signed-in editor",
                   "providesKeys": ["signed-in-editor.token"]}]
     token = _header_act("Authorization", "Bearer @signed-in-editor.token")
-    served, refused = (f"okf:docs/features/demo/globex.md#get-things:{arm}" for arm in ("does:1", "errors:1"))
+    served, refused = (f"okf:docs/services/demo/globex.md#get-things:{arm}" for arm in ("does:1", "errors:1"))
     context = _context(
         _obligation(refused, checksDeclared=[{"call": "no", "name": "http_status", "args": {"code": 401}}],
                     fixturesDeclared=signed_in, docPosition=[1, 0], node="get-things", actsDeclared=[token]),
@@ -751,7 +751,7 @@ def test_a_fixture_whose_token_a_get_claim_sends_is_probed_before_the_book() -> 
 def test_no_probe_is_compiled_for_a_claim_it_could_not_send_on_its_own(route: str, code: int) -> None:
     """A probe sends one request with nothing but the fixture behind it, so a claim with a body, an unbound path or an expected refusal gives it nothing to ask."""
     context = _context(
-        _obligation("okf:docs/features/demo/globex.md#things:does:1", locators={"route": [route]},
+        _obligation("okf:docs/services/demo/globex.md#things:does:1", locators={"route": [route]},
                     checksDeclared=[{"call": "ok", "name": "http_status", "args": {"code": code}}],
                     fixturesDeclared=[{"name": "signed-in-editor", "args": [], "provides": "a signed-in editor",
                                        "providesKeys": ["signed-in-editor.token"]}],
@@ -763,7 +763,7 @@ def test_no_probe_is_compiled_for_a_claim_it_could_not_send_on_its_own(route: st
 
 def test_a_claim_about_a_server_fault_is_withheld_as_unarrangeable() -> None:
     """No request makes a healthy app fail, so a claim that expects a 5xx is a gap, not a check the run fails every time."""
-    served, faulted = (f"okf:docs/features/demo/globex.md#post-things:{arm}" for arm in ("does:1", "emits:1"))
+    served, faulted = (f"okf:docs/services/demo/globex.md#post-things:{arm}" for arm in ("does:1", "emits:1"))
     body = [_body_act("name", "Widget A")]
     context = _context(
         _obligation(served, checksDeclared=[_check()], docPosition=[1, 0], node="post-things",
@@ -784,7 +784,7 @@ def _ledger_fixture(name: str) -> dict:
 
 
 def _ledger_delete(oid: str, fixture: str) -> dict:
-    return _obligation(oid, source="docs/features/demo/delete-ledger.md", node="delete-ledger",
+    return _obligation(oid, source="docs/services/demo/delete-ledger.md", node="delete-ledger",
                        locators={"route": ["DELETE /api/ledgers/{id}"]},
                        checksDeclared=[{"call": "ok", "name": "http_status",
                                         "args": {"code": 204, "path": f"/api/ledgers/@{fixture}.id"}}],
@@ -792,7 +792,7 @@ def _ledger_delete(oid: str, fixture: str) -> dict:
 
 
 def _ledger_read(oid: str) -> dict:
-    return _obligation(oid, source="docs/features/demo/read-ledger.md", node="read-ledger",
+    return _obligation(oid, source="docs/services/demo/read-ledger.md", node="read-ledger",
                        locators={"route": ["GET /api/ledgers/{id}"]},
                        checksDeclared=[{"call": "ok", "name": "http_status",
                                         "args": {"code": 200, "path": "/api/ledgers/@seeded-ledger.id"}}],
@@ -801,8 +801,8 @@ def _ledger_read(oid: str) -> dict:
 
 def test_a_delete_of_a_fixture_other_pages_share_sends_no_request() -> None:
     """Every page of a run reuses one build of a fixture, so a claim that deletes its resource breaks every page after it."""
-    deleting = "okf:docs/features/demo/delete-ledger.md#delete-ledger:does:1"
-    reading = "okf:docs/features/demo/read-ledger.md#read-ledger:does:1"
+    deleting = "okf:docs/services/demo/delete-ledger.md#delete-ledger:does:1"
+    reading = "okf:docs/services/demo/read-ledger.md#read-ledger:does:1"
     source, gaps = compile_plan_gaps(_context(_ledger_delete(deleting, "seeded-ledger"), _ledger_read(reading)),
                                      story="demo-story")
     assert source is not None
@@ -813,8 +813,8 @@ def test_a_delete_of_a_fixture_other_pages_share_sends_no_request() -> None:
 
 def test_a_delete_of_a_fixture_only_its_page_names_is_sent() -> None:
     """A fixture one page names is that page's own, and deleting its resource leaves no other page without it."""
-    deleting = "okf:docs/features/demo/delete-ledger.md#delete-ledger:does:1"
-    reading = "okf:docs/features/demo/read-ledger.md#read-ledger:does:1"
+    deleting = "okf:docs/services/demo/delete-ledger.md#delete-ledger:does:1"
+    reading = "okf:docs/services/demo/read-ledger.md#read-ledger:does:1"
     source, gaps = compile_plan_gaps(_context(_ledger_delete(deleting, "doomed-ledger"), _ledger_read(reading)),
                                      story="demo-story")
     assert source is not None
@@ -824,8 +824,8 @@ def test_a_delete_of_a_fixture_only_its_page_names_is_sent() -> None:
 
 def test_a_delete_of_a_fixture_each_scenario_rebuilds_is_sent_though_other_pages_name_it() -> None:
     """A fixture built again for every scenario hands each page its own resource, so one page deleting it takes nothing from another."""
-    deleting = "okf:docs/features/demo/delete-ledger.md#delete-ledger:does:1"
-    reading = "okf:docs/features/demo/read-ledger.md#read-ledger:does:1"
+    deleting = "okf:docs/services/demo/delete-ledger.md#delete-ledger:does:1"
+    reading = "okf:docs/services/demo/read-ledger.md#read-ledger:does:1"
     context = _context(_ledger_delete(deleting, "seeded-ledger"), _ledger_read(reading))
     context["scenarioFixtures"] = ["seeded-ledger"]
     source, gaps = compile_plan_gaps(context, story="demo-story")
@@ -836,7 +836,7 @@ def test_a_delete_of_a_fixture_each_scenario_rebuilds_is_sent_though_other_pages
 
 def test_each_claim_of_a_page_runs_in_its_own_claim_block() -> None:
     """A page's first refused request must not stop the run from trying the claims after it."""
-    first, second = (f"okf:docs/features/demo/globex.md#get-things:{arm}" for arm in ("does:1", "emits:1"))
+    first, second = (f"okf:docs/services/demo/globex.md#get-things:{arm}" for arm in ("does:1", "emits:1"))
     context = _context(
         _obligation(first, checksDeclared=[{"call": "ok", "name": "http_status", "args": {"code": 200}}],
                     docPosition=[1, 0], node="get-things"),
@@ -852,7 +852,7 @@ def test_each_claim_of_a_page_runs_in_its_own_claim_block() -> None:
 
 def test_a_claim_checking_only_the_body_expects_the_status_its_same_request_sibling_states() -> None:
     """A refusal's body and its status are two claims about one request, so the body claim must not demand a success the status claim rules out."""
-    detail, status, other = (f"okf:docs/features/demo/globex.md#get-things:{arm}" for arm in ("does:1", "emits:1", "does:2"))
+    detail, status, other = (f"okf:docs/services/demo/globex.md#get-things:{arm}" for arm in ("does:1", "emits:1", "does:2"))
     forged = _header_act("Authorization", "Bearer forged")
     context = _context(
         _obligation(detail, checksDeclared=[{"call": "d", "name": "json_path",
@@ -873,7 +873,7 @@ def test_a_claim_checking_only_the_body_expects_the_status_its_same_request_sibl
 
 def test_a_response_header_check_compiles_against_the_response_it_reads() -> None:
     """A route that streams a file is proven by the header that names its type, read off the same response the status came from."""
-    oid = "okf:docs/features/demo/globex.md#get-report:does:1"
+    oid = "okf:docs/services/demo/globex.md#get-report:does:1"
     context = _context(
         _obligation(
             oid,
@@ -893,7 +893,7 @@ def test_a_response_header_check_compiles_against_the_response_it_reads() -> Non
 
 
 def test_a_header_naming_a_fact_no_fixture_provides_is_an_unresolved_precondition() -> None:
-    oid = "okf:docs/features/demo/globex.md#get-things:does:1"
+    oid = "okf:docs/services/demo/globex.md#get-things:does:1"
     context = _context(
         _obligation(
             oid,
@@ -909,7 +909,7 @@ def test_a_header_naming_a_fact_no_fixture_provides_is_an_unresolved_preconditio
 
 def test_a_body_member_naming_a_fixture_fact_is_resolved_at_run_time() -> None:
     """A body member that names `@node.key` means the value the fixture left, not the characters of the reference."""
-    oid = "okf:docs/features/demo/globex.md#post-things:does:1"
+    oid = "okf:docs/services/demo/globex.md#post-things:does:1"
     context = _context(
         _obligation(
             oid,
@@ -929,7 +929,7 @@ def test_a_body_member_naming_a_fixture_fact_is_resolved_at_run_time() -> None:
 
 
 def test_a_post_that_arranges_only_a_header_still_has_no_body() -> None:
-    oid = "okf:docs/features/demo/globex.md#post-things:does:1"
+    oid = "okf:docs/services/demo/globex.md#post-things:does:1"
     context = _context(
         _obligation(
             oid,
@@ -949,7 +949,7 @@ _NO_BODY_ACT = {"call": "no_body()", "name": "no_body", "args": {}}
 
 def test_a_post_that_arranges_no_body_is_sent_without_one() -> None:
     """A route such as `POST /refresh` reads nothing from its request, so the book says so instead of inventing a member the app would ignore."""
-    oid = "okf:docs/features/demo/globex.md#post-refresh:does:1"
+    oid = "okf:docs/services/demo/globex.md#post-refresh:does:1"
     context = _context(
         _obligation(
             oid,
@@ -968,7 +968,7 @@ def test_a_post_that_arranges_no_body_is_sent_without_one() -> None:
 
 
 def test_no_body_beside_a_body_member_is_withheld() -> None:
-    oid = "okf:docs/features/demo/globex.md#post-refresh:does:1"
+    oid = "okf:docs/services/demo/globex.md#post-refresh:does:1"
     context = _context(
         _obligation(
             oid,
@@ -985,7 +985,7 @@ def test_no_body_beside_a_body_member_is_withheld() -> None:
 
 def test_a_half_arranged_request_body_is_still_withheld() -> None:
     """One act the HTTP driver cannot perform poisons the whole body, the same all-or-nothing rule `_performed_lines` already applies to `fill`/`click` — a request half the book declared is neither the body it wrote nor no body."""
-    oid = "okf:docs/features/demo/globex.md#post-things:does:1"
+    oid = "okf:docs/services/demo/globex.md#post-things:does:1"
     context = _context(
         _obligation(
             oid,
@@ -1005,7 +1005,7 @@ def test_a_half_arranged_request_body_is_still_withheld() -> None:
 
 def test_an_unparsed_act_is_still_an_unarranged_request_body() -> None:
     """A bullet under `arrange:` that failed to parse is the same absent body as none at all — a compiler that emitted `json_body={}` around it would be filling in for a mistake it never saw, not for what the author actually wrote."""
-    oid = "okf:docs/features/demo/globex.md#post-things:does:1"
+    oid = "okf:docs/services/demo/globex.md#post-things:does:1"
     context = _context(
         _obligation(
             oid,
@@ -1022,7 +1022,7 @@ def test_an_unparsed_act_is_still_an_unarranged_request_body() -> None:
 
 
 def test_an_unresolved_path_template_variable_is_an_unresolved_precondition() -> None:
-    oid = "okf:docs/features/demo/globex.md#get-thing:does:1"
+    oid = "okf:docs/services/demo/globex.md#get-thing:does:1"
     context = _context(
         _obligation(
             oid,
@@ -1038,7 +1038,7 @@ def test_an_unresolved_path_template_variable_is_an_unresolved_precondition() ->
 
 def test_a_reference_in_the_path_is_an_unresolved_precondition() -> None:
     """`@node.key`/`$name` are static syntax `compile_plan` cannot resolve without running the plan — a gap, not a compile-time crash, and the same grammar `fixture:`/`needs:` share."""
-    oid = "okf:docs/features/demo/globex.md#get-thing:does:1"
+    oid = "okf:docs/services/demo/globex.md#get-thing:does:1"
     context = _context(
         _obligation(
             oid,
@@ -1053,7 +1053,7 @@ def test_a_reference_in_the_path_is_an_unresolved_precondition() -> None:
 
 
 def test_a_verify_argument_reference_is_an_unresolved_precondition() -> None:
-    oid = "okf:docs/features/demo/globex.md#post-thing:does:1"
+    oid = "okf:docs/services/demo/globex.md#post-thing:does:1"
     context = _context(
         _obligation(
             oid,
@@ -1067,7 +1067,7 @@ def test_a_verify_argument_reference_is_an_unresolved_precondition() -> None:
 
 def test_no_route_at_all_is_an_uncompilable_claim() -> None:
     """No `route:` to act on is a book that gives QA nothing to observe — a different repair from a fixture-shaped gap, so it earns its own kind rather than folding into the other."""
-    oid = "okf:docs/features/demo/globex.md#note:does:1"
+    oid = "okf:docs/services/demo/globex.md#note:does:1"
     context = _context(
         _obligation(
             oid,
@@ -1082,7 +1082,7 @@ def test_no_route_at_all_is_an_uncompilable_claim() -> None:
 
 def test_an_unrecognized_method_is_an_invalid_http_method_not_uncompilable() -> None:
     """A `method:` that does not spell a recognized HTTP verb is undetermined, not absent — a different repair (fix the spelling) from `uncompilable-claim` (state a `route:` at all), so it earns its own gap kind naming the value that failed, and it must not fall through to `unarranged-request-body` either (that code is about a method that parsed but has no body)."""
-    oid = "okf:docs/features/demo/globex.md#weird-things:does:1"
+    oid = "okf:docs/services/demo/globex.md#weird-things:does:1"
     context = _context(
         _obligation(
             oid,
@@ -1100,7 +1100,7 @@ def test_an_unrecognized_method_is_an_invalid_http_method_not_uncompilable() -> 
 
 def test_a_subject_pair_check_wanting_a_snapshot_is_a_named_gap() -> None:
     """`unchanged` wants a before and an after this compiler has no snapshot mechanism to take — a named `needs-snapshot` gap, not the generic `uncompilable-claim`."""
-    oid = "okf:docs/features/demo/globex.md#post-things:persistence:1"
+    oid = "okf:docs/services/demo/globex.md#post-things:persistence:1"
     context = _context(
         _obligation(
             oid,
@@ -1117,7 +1117,7 @@ def test_a_subject_pair_check_wanting_a_snapshot_is_a_named_gap() -> None:
 
 @pytest.mark.parametrize("verb", ["created", "removed", "keys_unchanged"])
 def test_every_snapshot_needing_verb_gets_the_named_gap(verb: str) -> None:
-    oid = "okf:docs/features/demo/globex.md#post-things:persistence:1"
+    oid = "okf:docs/services/demo/globex.md#post-things:persistence:1"
     context = _context(
         _obligation(
             oid,
@@ -1134,7 +1134,7 @@ def test_every_snapshot_needing_verb_gets_the_named_gap(verb: str) -> None:
 
 @pytest.mark.parametrize("verb", ["persists", "emitted"])
 def test_every_out_of_band_verb_gets_the_named_gap(verb: str) -> None:
-    oid = "okf:docs/features/demo/globex.md#post-things:persistence:1"
+    oid = "okf:docs/services/demo/globex.md#post-things:persistence:1"
     args = {"subject": "thing.version"} if verb == "persists" else {"event": "thing.updated"}
     context = _context(
         _obligation(
@@ -1157,7 +1157,7 @@ def test_every_out_of_band_verb_gets_the_named_gap(verb: str) -> None:
 ])
 def test_every_single_observation_verb_compiles_for_real(verb: str, args: dict) -> None:
     """`count`/`absent`/`exit_status` are read once, after the action, from what the scenario already holds — they compile to a real `qa.verify(...)` call, not a gap."""
-    oid = "okf:docs/features/demo/globex.md#get-things:persistence:1"
+    oid = "okf:docs/services/demo/globex.md#get-things:persistence:1"
     context = _context(
         _obligation(
             oid,
@@ -1177,7 +1177,7 @@ def test_every_single_observation_verb_compiles_for_real(verb: str, args: dict) 
 
 def test_checkpoints_and_forbid_scaffolding_never_appear_in_the_gap_report() -> None:
     """`checkpoints=[]`/`forbid=[]` are unconditional TODO scaffolding, not a fact discovered about any one obligation — so they stay plain source comments, outside the structured report `doctor` reads."""
-    oid = "okf:docs/features/demo/globex.md#post-things:does:1"
+    oid = "okf:docs/services/demo/globex.md#post-things:does:1"
     context = _context(_obligation(oid, checksDeclared=[_check()]))
     source, gaps = compile_plan_gaps(context, story="demo-story")
     assert source is not None
@@ -1188,7 +1188,7 @@ def test_checkpoints_and_forbid_scaffolding_never_appear_in_the_gap_report() -> 
 
 def test_a_reference_to_a_fixture_key_arranged_in_the_same_obligation_is_resolved() -> None:
     """A fixture arranged for this obligation arranges before it verifies — so a reference to a key that fixture's own `provides:` declares resolves, and is not a gap."""
-    oid = "okf:docs/features/acme/api.md#get-thing:does:1"
+    oid = "okf:docs/services/acme/api.md#get-thing:does:1"
     context = _context(
         _obligation(
             oid,
@@ -1204,7 +1204,7 @@ def test_a_reference_to_a_fixture_key_arranged_in_the_same_obligation_is_resolve
 
 def test_only_the_literal_a_reference_was_found_in_is_wrapped_in_resolve() -> None:
     """`qa.resolve(...)` is the harness's one explicit substitution entry point (Fix 2) — the compiler wraps a literal in it only where `references.find_references` actually found a `@node.key`/`$name`, and leaves every other literal, including one that merely starts with `$` in a way that is not a reference, exactly as it read it."""
-    oid = "okf:docs/features/acme/api.md#get-thing:does:1"
+    oid = "okf:docs/services/acme/api.md#get-thing:does:1"
     context = _context(
         _obligation(
             oid,
@@ -1222,7 +1222,7 @@ def test_only_the_literal_a_reference_was_found_in_is_wrapped_in_resolve() -> No
 
 
 def test_a_check_path_that_drops_the_routes_fixture_fact_does_not_replace_the_route() -> None:
-    oid = "okf:docs/features/acme/api.md#get-thing:does:1"
+    oid = "okf:docs/services/acme/api.md#get-thing:does:1"
     context = _context(
         _obligation(
             oid,
@@ -1239,7 +1239,7 @@ def test_a_check_path_that_drops_the_routes_fixture_fact_does_not_replace_the_ro
 
 
 def test_a_check_path_that_names_another_fixture_fact_replaces_the_route() -> None:
-    oid = "okf:docs/features/acme/api.md#get-thing:errors:1"
+    oid = "okf:docs/services/acme/api.md#get-thing:errors:1"
     context = _context(
         _obligation(
             oid,
@@ -1256,8 +1256,8 @@ def test_a_check_path_that_names_another_fixture_fact_replaces_the_route() -> No
 
 def test_a_capture_resolves_a_reference_on_a_strictly_later_obligation() -> None:
     """`$name` names a fact an earlier `capture:` bullet left behind — an obligation after the one that captures it may reference it with no gap."""
-    capturing = "okf:docs/features/acme/api.md#post-thing:does:1"
-    referencing = "okf:docs/features/acme/api.md#get-thing:does:1"
+    capturing = "okf:docs/services/acme/api.md#post-thing:does:1"
+    referencing = "okf:docs/services/acme/api.md#get-thing:does:1"
     context = _context(
         _obligation(
             capturing,
@@ -1277,8 +1277,8 @@ def test_a_capture_resolves_a_reference_on_a_strictly_later_obligation() -> None
 
 def test_a_dollar_capture_with_no_route_credits_nothing_and_still_gaps() -> None:
     """No `route:` means `observed_N` compiles to `None` — nothing was ever requested to read a `$.`-rooted capture off of."""
-    capturing = "okf:docs/features/demo/globex.md#note:does:1"
-    referencing = "okf:docs/features/acme/api.md#get-thing:does:1"
+    capturing = "okf:docs/services/demo/globex.md#note:does:1"
+    referencing = "okf:docs/services/acme/api.md#get-thing:does:1"
     context = _context(
         _obligation(
             capturing,
@@ -1302,8 +1302,8 @@ def test_a_dollar_capture_with_no_route_credits_nothing_and_still_gaps() -> None
 
 def test_a_capture_declared_only_on_a_later_obligation_is_still_a_gap() -> None:
     """The same-obligation exception generalises to ordering: a reference does not see into the future, so a capture the book only produces afterward leaves the earlier reference a gap."""
-    referencing = "okf:docs/features/acme/api.md#get-thing:does:1"
-    capturing = "okf:docs/features/acme/api.md#post-thing:does:1"
+    referencing = "okf:docs/services/acme/api.md#get-thing:does:1"
+    capturing = "okf:docs/services/acme/api.md#post-thing:does:1"
     context = _context(
         _obligation(
             referencing,
@@ -1323,7 +1323,7 @@ def test_a_capture_declared_only_on_a_later_obligation_is_still_a_gap() -> None:
 
 def test_a_reference_to_an_unarranged_fixtures_key_is_a_gap() -> None:
     """`@node.key` names a fact only that fixture's own arrangement produces — a scenario that never arranges it leaves the reference unresolved regardless of what else it did arrange."""
-    oid = "okf:docs/features/acme/api.md#get-thing:does:1"
+    oid = "okf:docs/services/acme/api.md#get-thing:does:1"
     context = _context(
         _obligation(
             oid,
@@ -1339,7 +1339,7 @@ def test_a_reference_to_an_unarranged_fixtures_key_is_a_gap() -> None:
 
 def test_a_key_reached_only_through_needs_is_resolved() -> None:
     """`seeded-globex` `needs:` `seeded-acme` — arranging the former also arranges the latter, so a reference to a key only `seeded-acme` declares under `provides:` still resolves."""
-    oid = "okf:docs/features/acme/api.md#get-thing:does:1"
+    oid = "okf:docs/services/acme/api.md#get-thing:does:1"
     context = _context(
         _obligation(
             oid,
@@ -1357,7 +1357,7 @@ def test_the_producer_walk_follows_document_order_not_alphabetical_id_order() ->
     """A node written `returns:` (captures `account_id`) before `raises:` (reads `$account_id`) resolves cleanly — even though `raises` sorts before `returns` alphabetically, and `_sort_key` is what orders `obligations` on the way in here."""
     ledger = {"name": "seeded-ledger", "args": [], "provides": "an account exists"}
     returns = _obligation(
-        "okf:docs/features/acme/api.md#post-thing:returns:1",
+        "okf:docs/services/acme/api.md#post-thing:returns:1",
         docPosition=[10, 1],
         locators={"route": ["GET /api/things"]},
         checksDeclared=[_check(path="/api/things")],
@@ -1365,7 +1365,7 @@ def test_the_producer_walk_follows_document_order_not_alphabetical_id_order() ->
         fixturesDeclared=[ledger],
     )
     raises = _obligation(
-        "okf:docs/features/acme/api.md#post-thing:raises:1",
+        "okf:docs/services/acme/api.md#post-thing:raises:1",
         docPosition=[10, 2],
         locators={"route": ["GET /api/things"]},
         checksDeclared=[{"call": "ok", "name": "json_path", "args": {"path": "$account_id"}}],
@@ -1380,14 +1380,14 @@ def test_the_producer_walk_still_gaps_a_reference_that_precedes_its_producer() -
     """The mirror of the case above: `raises:` written *before* `returns:` in the book still leaves the reference a gap, because the capture it needs has not happened yet at that point in document order — regardless of what the two obligations' ids alphabetize to."""
     ledger = {"name": "seeded-ledger", "args": [], "provides": "an account exists"}
     raises = _obligation(
-        "okf:docs/features/acme/api.md#post-thing:raises:1",
+        "okf:docs/services/acme/api.md#post-thing:raises:1",
         docPosition=[10, 1],
         locators={"route": ["GET /api/things"]},
         checksDeclared=[{"call": "ok", "name": "json_path", "args": {"path": "$account_id"}}],
         fixturesDeclared=[ledger],
     )
     returns = _obligation(
-        "okf:docs/features/acme/api.md#post-thing:returns:1",
+        "okf:docs/services/acme/api.md#post-thing:returns:1",
         docPosition=[10, 2],
         locators={"route": ["GET /api/things"]},
         checksDeclared=[_check(path="/api/things")],
@@ -1401,7 +1401,7 @@ def test_the_producer_walk_still_gaps_a_reference_that_precedes_its_producer() -
 
 def test_a_checkless_obligation_names_the_bullet_to_add() -> None:
     """A writer handed only "declares no check" guesses at the fix. The gap names the bullet and where the checks are listed."""
-    oid = "okf:docs/features/demo/globex.md#post-things:does:3"
+    oid = "okf:docs/services/demo/globex.md#post-things:does:3"
     result = _compile_plan_gaps(_context(_obligation(oid)), story="demo-story")
     assert isinstance(result, Refusal)
     (gap,) = [g for g in result.gaps if g.obligation_id == oid]
@@ -1410,20 +1410,20 @@ def test_a_checkless_obligation_names_the_bullet_to_add() -> None:
 
 
 def test_an_untyped_section_s_claim_is_sent_to_a_typing_heading_not_to_add_a_verify() -> None:
-    oid = "okf:docs/features/demo/api.md#list-things:emits:1"
-    context = _context(_obligation(oid, nodeType="untyped", node="docs/features/demo/api.md#list-things"))
+    oid = "okf:docs/services/demo/api.md#list-things:emits:1"
+    context = _context(_obligation(oid, nodeType="untyped", node="docs/services/demo/api.md#list-things"))
 
     gap = next(gap for gap in _compile_plan_gaps(context, story="demo-story").gaps if gap.obligation_id == oid)
 
     assert gap.kind == "no-verify-declared"
-    assert "`docs/features/demo/api.md#list-things` sits under a heading that gives its sections no type" in gap.detail
+    assert "`docs/services/demo/api.md#list-things` sits under a heading that gives its sections no type" in gap.detail
     assert "`## Endpoints`" in gap.detail
     assert "Add a `- verify:" not in gap.detail
 
 
 def test_a_checkless_obligation_never_reaches_the_scenario_body() -> None:
     """The dead `TODO(undeclared)` branch removed from `_scenario_body`: a checkless obligation is book debt, filtered out before the body is ever asked to render one — no scenario is emitted for it, but it is not a silent drop either: the same code that declined to compile it is the code that gaps it, so it still lands in `{emitted, gap}` like every owed id."""
-    oid = "okf:docs/features/demo/globex.md#post-things:does:2"
+    oid = "okf:docs/services/demo/globex.md#post-things:does:2"
     context = _context(_obligation(oid))
     result = _compile_plan_gaps(context, story="demo-story")
     assert isinstance(result, Refusal)
@@ -1432,7 +1432,7 @@ def test_a_checkless_obligation_never_reaches_the_scenario_body() -> None:
 
 def test_a_when_guarded_checkless_obligation_is_not_book_debt() -> None:
     """`when:` states a condition the node's other claims hold under, not a claim of its own — there is nothing for a check to prove, so a check-less `when:` obligation is not the same defect `no-verify-declared` names ("the book declares no check for this obligation to prove"), which would send an author looking for a check nothing could ever fail."""
-    oid = "okf:docs/features/demo/globex.md#submit-widget:when:1"
+    oid = "okf:docs/services/demo/globex.md#submit-widget:when:1"
     context = _context(_obligation(oid, kind="when"))
     result = _compile_plan_gaps(context, story="demo-story")
     assert isinstance(result, Refusal)
@@ -1441,9 +1441,9 @@ def test_a_when_guarded_checkless_obligation_is_not_book_debt() -> None:
 
 def test_a_when_guarded_checkless_obligation_is_left_out_of_the_book_debt_listing() -> None:
     """The compiled plan's `# Book debt` comment tells an author to go add a `verify:` — the right instruction for a checkless `does:`, and the wrong one for a checkless `when:`, which is discharged by arrangement rather than by a check at all."""
-    debt_oid = "okf:docs/features/demo/globex.md#post-things:does:2"
-    when_oid = "okf:docs/features/demo/globex.md#submit-widget:when:1"
-    compiled_oid = "okf:docs/features/demo/globex.md#post-things:does:1"
+    debt_oid = "okf:docs/services/demo/globex.md#post-things:does:2"
+    when_oid = "okf:docs/services/demo/globex.md#submit-widget:when:1"
+    compiled_oid = "okf:docs/services/demo/globex.md#post-things:does:1"
     context = _context(
         _obligation(compiled_oid, checksDeclared=[_check()]),
         _obligation(debt_oid),
@@ -1458,7 +1458,7 @@ def test_a_when_guarded_checkless_obligation_is_left_out_of_the_book_debt_listin
 
 
 
-_SCREEN = "docs/features/policy/gui/screens/policy-list.md"
+_SCREEN = "docs/services/policy/gui/screens/policy-list.md"
 
 
 def _page_obligation(oid: str, node: str, *, surface: str = "policy",
@@ -1593,7 +1593,7 @@ def test_a_page_scenario_on_a_screen_with_its_own_entry_opens_that_entry() -> No
     """A screen the start cannot click to, whose page states a literal `entry:`, is opened at that path and not at the surface root."""
     oid = "okf:policy-list:policy-table:visible:1"
     nav = _arrival_navigation()
-    nav["policy"]["start"] = "docs/features/policy/gui/screens/landing.md"
+    nav["policy"]["start"] = "docs/services/policy/gui/screens/landing.md"
     nav["policy"]["opens"] = {_SCREEN: "/policies"}
     context = _navigation_context(
         _page_obligation(oid, f"{_SCREEN}#policy-table",
@@ -1983,7 +1983,7 @@ def test_an_on_bullet_names_the_component_on_the_page_its_link_points_at(on_valu
     assert on_node("docs/gui/screens/editor.md", on_value) == node
 
 
-_FRAGMENT = "docs/features/policy/gui/screens/policy-list-components.md"
+_FRAGMENT = "docs/services/policy/gui/screens/policy-list-components.md"
 
 
 def _fragment_claim() -> dict:
@@ -2017,10 +2017,10 @@ def test_a_claim_on_a_page_that_is_no_screen_and_continues_none_says_so() -> Non
 
 def test_a_zero_screen_book_grows_no_playwright_target() -> None:
     """Condition 1: a book with no screen nodes on any surface never grows a `web` target, even if a stray page-checked obligation somehow reached the compiler."""
-    node = "docs/features/policy/http/policy-desk-api.md#note"
+    node = "docs/services/policy/http/policy-desk-api.md#note"
     context = _navigation_context(
         _page_obligation("okf:note:visible:1", node, surface="policy",
-                          source="docs/features/policy/http/policy-desk-api.md",
+                          source="docs/services/policy/http/policy-desk-api.md",
                           checks=[_visible("text=irrelevant")]),
         navigation={
             "policy": {
@@ -2036,8 +2036,8 @@ def test_a_zero_screen_book_grows_no_playwright_target() -> None:
 
 def test_navigation_is_keyed_by_surface_even_for_a_single_surface_book() -> None:
     """Amendment 1: `navigation` is keyed by surface, no special-casing a one-surface book — pinned here with two surfaces so a screen on one never resolves against the other's route."""
-    policy_screen = "docs/features/policy/gui/screens/policy-list.md"
-    claims_screen = "docs/features/claims/gui/screens/claims-list.md"
+    policy_screen = "docs/services/policy/gui/screens/policy-list.md"
+    claims_screen = "docs/services/claims/gui/screens/claims-list.md"
     policy_node = f"{policy_screen}#policy-table"
     claims_node = f"{claims_screen}#claims-table"
     context = _navigation_context(
@@ -2106,7 +2106,7 @@ def _string_args(call: ast.Call) -> list[str]:
 
 def test_a_compiled_plan_never_hands_playwright_an_unconstructible_locator() -> None:
     """Five ways a compiled `by_role`/`by_css` call can be wrong and only fail at runtime, all pinned against one plan compiled from bullets that provoke each of them:"""
-    screen = "docs/features/policy/gui/screens/policy-list.md"
+    screen = "docs/services/policy/gui/screens/policy-list.md"
     context = _navigation_context(
         _page_obligation("okf:policy-list:backticked:visible:1", f"{screen}#backticked",
                           locators={"role": ["`button`"], "name": ["`Cancel policy`"]},
@@ -2156,7 +2156,7 @@ def test_a_compiled_plan_never_hands_playwright_an_unconstructible_locator() -> 
 
 def test_a_bullet_value_wrapped_across_source_lines_still_compiles() -> None:
     """A long `name:` is prose an author wraps at the margin, and the reader hands back the newlines."""
-    screen = "docs/features/policy/gui/screens/policy-list.md"
+    screen = "docs/services/policy/gui/screens/policy-list.md"
     context = _navigation_context(
         _page_obligation("okf:policy-list:wrapped:visible:1", f"{screen}#wrapped",
                           locators={"role": ["button"],
@@ -2175,7 +2175,7 @@ def test_an_unavailable_role_set_degrades_to_a_selector_never_to_skipped_validat
     import ostler.qa.compile_playwright as compile_playwright
 
     monkeypatch.setattr(compile_playwright, "_MATCHABLE_ROLES", None)
-    screen = "docs/features/policy/gui/screens/policy-list.md"
+    screen = "docs/services/policy/gui/screens/policy-list.md"
     context = _navigation_context(
         _page_obligation("okf:policy-list:generic-role:visible:1", f"{screen}#generic-role",
                           locators={"role": ["generic"], "name": ["Summary"], "selector": ["dl"]},
@@ -2339,7 +2339,7 @@ def test_a_named_component_with_no_addressable_locator_is_an_uncompilable_claim(
 
 def test_an_undetermined_claim_combiner_emits_no_code_at_all() -> None:
     """A claim whose siblings may be alternatives is undetermined, and undetermined never runs."""
-    oid = "okf:docs/features/demo/api.md#post-things:does:1"
+    oid = "okf:docs/services/demo/api.md#post-things:does:1"
     context = _context(
         _obligation(
             oid,
@@ -2791,7 +2791,7 @@ def test_interaction_arms_with_an_unarranged_when_emit_no_assertion() -> None:
                                              "number"],
                                     "does": ["the browser navigates to widget-list"]},
                           checks=[_located("widget-list.md#widget-table",
-                                            "docs/features/globex/gui/screens/widget-list.md"
+                                            "docs/services/globex/gui/screens/widget-list.md"
                                             "#widget-table", {"role": ["table"]})]),
         _page_obligation(refuse_oid, f"{_SCREEN}#refuse-new-widget",
                           locators={"on": ["[submit-widget-button](#submit-widget-button)"],
@@ -3146,13 +3146,13 @@ def test_a_journey_whose_fixture_left_the_browser_on_its_first_screen_starts_the
 
 
 def test_a_journey_whose_fixture_left_the_browser_elsewhere_opens_its_first_screen() -> None:
-    journey = _opening_journey({"seeded-ledger": "docs/features/policy/gui/screens/landing.md"})
+    journey = _opening_journey({"seeded-ledger": "docs/services/policy/gui/screens/landing.md"})
 
     assert journey.index('qa.fixture("seeded-ledger")') < journey.index("qa.goto(") < journey.index('"#open-link"')
 
 
 def test_a_journey_whose_fixture_left_the_browser_on_its_route_walks_on_from_there() -> None:
-    landing, sign_in, dashboard = (f"docs/features/policy/gui/screens/{name}.md" for name in ("landing", "sign-in", "dashboard"))
+    landing, sign_in, dashboard = (f"docs/services/policy/gui/screens/{name}.md" for name in ("landing", "sign-in", "dashboard"))
     journey = _opening_journey({"seeded-ledger": dashboard}, [
         {"node": f"{landing}#sign-in-link", "from": landing, "label": "Sign in link"},
         {"node": f"{sign_in}#submit", "from": sign_in, "label": "Submit sign in"},
@@ -3165,7 +3165,7 @@ def test_a_journey_whose_fixture_left_the_browser_on_its_route_walks_on_from_the
 
 
 def test_a_journey_whose_fixture_left_the_browser_off_its_route_reopens_the_last_entry_on_it() -> None:
-    landing, sign_in, dashboard, stages = (f"docs/features/policy/gui/screens/{name}.md"
+    landing, sign_in, dashboard, stages = (f"docs/services/policy/gui/screens/{name}.md"
                                            for name in ("landing", "sign-in", "dashboard", "stages"))
     journey = _opening_journey({"seeded-ledger": stages}, [
         {"node": f"{landing}#sign-in-link", "from": landing, "label": "Sign in link"},
@@ -3245,7 +3245,7 @@ _OPEN_POLICY = "okf:policy-list:open-policy:does:1"
 
 
 def _signed_in_walk(fixture_screens: dict[str, str]) -> Plan | Refusal:
-    sign_in = "docs/features/policy/gui/screens/sign-in.md"
+    sign_in = "docs/services/policy/gui/screens/sign-in.md"
     table = {"selector": ["#policy-table"]}
     navigation = _arrival_navigation()
     navigation["policy"]["routes"] = {_SCREEN: [{"node": f"{sign_in}#submit", "from": sign_in, "label": "Submit sign in"}]}
@@ -3283,7 +3283,7 @@ def test_a_screen_scenario_walks_from_the_root_through_the_sign_in_its_route_nee
 
 
 def test_a_fixture_left_off_the_route_refuses_a_walk_that_signs_in_again() -> None:
-    result = _signed_in_walk({"seeded-ledger": "docs/features/policy/gui/screens/stages.md"})
+    result = _signed_in_walk({"seeded-ledger": "docs/services/policy/gui/screens/stages.md"})
 
     assert isinstance(result, Refusal) or _OPEN_POLICY not in _covers(result.source)
     assert _gap_kinds(result.gaps, _OPEN_POLICY) == ["unresolved-precondition"]
@@ -3407,7 +3407,7 @@ def test_an_interaction_photographs_the_screen_its_checks_name() -> None:
     """The state an interaction's claims are about is the one the trigger produced."""
     interaction = f"{_SCREEN}#submit-new-policy"
     interaction_oid = f"okf:{interaction}:does:1"
-    elsewhere = "docs/features/demo/gui/screens/policy-list.md"
+    elsewhere = "docs/services/demo/gui/screens/policy-list.md"
     context = _navigation_context(
         _page_obligation("okf:new-policy:button:role:1", f"{_SCREEN}#create-policy-button",
                           locators={"role": ["button"], "name": ["Create policy"]},
@@ -3483,7 +3483,7 @@ def test_an_obligation_half_of_whose_checks_compile_is_claimed_by_nobody() -> No
 
 def test_a_two_surface_book_compiles_two_different_base_urls() -> None:
     """The `api` target's address comes from the http obligation's own surface, and the `web` target's from the page obligation's — a book with two services on two ports must not see either one's address bleed onto the other's target line."""
-    api_oid = "okf:docs/features/acme/api.md#post-things:does:1"
+    api_oid = "okf:docs/services/acme/api.md#post-things:does:1"
     page_oid = "okf:new-policy:button:role:1"
     context = _navigation_context(
         _obligation(
@@ -3517,12 +3517,12 @@ def test_a_two_surface_book_compiles_two_different_base_urls() -> None:
 
 def test_two_surfaces_sharing_one_driver_kind_each_keep_their_own_address() -> None:
     """Two http surfaces — not one http surface and one page surface — land in the *same* `http_owed` partition (both are `_is_page_obligation` false), which is exactly the case the old `known[0]` alphabetic-first fallback used to collapse onto one address."""
-    alpha_oid = "okf:docs/features/acme/alpha.md#post-things:does:1"
-    zulu_oid = "okf:docs/features/acme/zulu.md#post-things:does:1"
+    alpha_oid = "okf:docs/services/acme/alpha.md#post-things:does:1"
+    zulu_oid = "okf:docs/services/acme/zulu.md#post-things:does:1"
     context = _navigation_context(
         _obligation(
             alpha_oid,
-            source="docs/features/acme/alpha.md",
+            source="docs/services/acme/alpha.md",
             surface="alpha-service",
             locators={"route": ["GET /api/things"]},
             checksDeclared=[
@@ -3532,7 +3532,7 @@ def test_two_surfaces_sharing_one_driver_kind_each_keep_their_own_address() -> N
         ),
         _obligation(
             zulu_oid,
-            source="docs/features/acme/zulu.md",
+            source="docs/services/acme/zulu.md",
             surface="zulu-service",
             locators={"route": ["GET /api/things"]},
             checksDeclared=[
@@ -3559,8 +3559,8 @@ def test_two_surfaces_sharing_one_driver_kind_each_keep_their_own_address() -> N
 
 
 def test_an_endpoint_on_its_own_server_is_sent_to_that_server_and_not_the_surface() -> None:
-    oid = "okf:docs/features/acme/http/manifest.md#manifest:does:1"
-    source = "docs/features/acme/http/manifest.md"
+    oid = "okf:docs/services/acme/http/manifest.md#manifest:does:1"
+    source = "docs/services/acme/http/manifest.md"
     context = _navigation_context(
         _obligation(
             oid,
@@ -3584,8 +3584,8 @@ def test_an_endpoint_on_its_own_server_is_sent_to_that_server_and_not_the_surfac
 
 
 def test_an_endpoint_whose_server_is_the_surface_s_keeps_the_surface_target() -> None:
-    oid = "okf:docs/features/acme/api.md#post-things:does:1"
-    source = "docs/features/acme/api.md"
+    oid = "okf:docs/services/acme/api.md#post-things:does:1"
+    source = "docs/services/acme/api.md"
     context = _navigation_context(
         _obligation(
             oid,
@@ -3608,7 +3608,7 @@ def test_an_endpoint_whose_server_is_the_surface_s_keeps_the_surface_target() ->
 
 def test_a_surface_with_no_entry_url_and_no_fallback_gaps_instead_of_guessing() -> None:
     """No `--base-url` and no book-stated `entry-url:` on this obligation's surface: the compiler drops it as `undeclared-entry-url` rather than compiling it against an address nobody wrote down — the failure mode Phase 2h exists to replace (one CLI default applied to every surface, right or wrong)."""
-    oid = "okf:docs/features/acme/api.md#post-things:does:1"
+    oid = "okf:docs/services/acme/api.md#post-things:does:1"
     context = _context(
         _obligation(
             oid,
@@ -3626,7 +3626,7 @@ def test_a_surface_with_no_entry_url_and_no_fallback_gaps_instead_of_guessing() 
 
 def test_a_checkless_obligation_on_a_surface_with_no_entry_url_is_book_debt_not_undeclared_entry_url() -> None:
     """A bucket that names a performer cannot also carry the things nothing performs: a check-less obligation has no claim for any driver to dispatch, so an unrelated surface with no `entry-url:` must not decide its gap kind."""
-    oid = "okf:docs/features/acme/api.md#post-things:does:1"
+    oid = "okf:docs/services/acme/api.md#post-things:does:1"
     context = _context(
         _obligation(oid, surface="api-service"),
     )
@@ -3654,7 +3654,7 @@ def _settled_origin_context(oid: str, entry_url: str) -> dict:
 
 def test_an_address_the_book_states_outranks_the_operators_base_url() -> None:
     """`--base-url` answers a book that states no address."""
-    oid = "okf:docs/features/acme/api.md#post-things:does:1"
+    oid = "okf:docs/services/acme/api.md#post-things:does:1"
     result = _compile_plan_gaps(_settled_origin_context(oid, "http://localhost:18101"),
                                 story="demo-story", base_url="http://localhost:8000")
     assert isinstance(result, Plan)
@@ -3665,7 +3665,7 @@ def test_an_address_the_book_states_outranks_the_operators_base_url() -> None:
 
 def test_a_surface_stating_no_address_compiles_against_the_base_url() -> None:
     """Non-vacuity for the test above: the same obligation with the surface's own address removed — the only difference — takes the operator's flag rather than gapping, so the verdict there is a verdict on the book outranking the flag and not on the flag being unusable."""
-    oid = "okf:docs/features/acme/api.md#post-things:does:1"
+    oid = "okf:docs/services/acme/api.md#post-things:does:1"
     context = _settled_origin_context(oid, "http://localhost:18101")
     del context["navigation"]["api-service"]["entryUrl"]
     result = _compile_plan_gaps(context, story="demo-story", base_url="http://localhost:8000")
@@ -3692,7 +3692,7 @@ def _driverless_context(oid: str) -> dict:
 
 def test_a_surface_stating_no_driver_at_all_gaps_the_absence() -> None:
     """D1's dispatch table (§4.1) has nothing to look the performer up by, so the obligation cannot be compiled — and the message says the book states no `driver:`, which is the remedy: write one on a runbook covering the surface."""
-    oid = "okf:docs/features/acme/api.md#post-things:does:1"
+    oid = "okf:docs/services/acme/api.md#post-things:does:1"
     result = _compile_plan_gaps(_driverless_context(oid), story="demo-story")
     assert isinstance(result, Refusal)
     assert _gap_kinds(result.gaps, oid) == ["uncompilable-claim"]
@@ -3701,7 +3701,7 @@ def test_a_surface_stating_no_driver_at_all_gaps_the_absence() -> None:
 
 def test_a_surface_whose_runbooks_settled_on_a_driver_compiles_the_claim() -> None:
     """Non-vacuity for the test above: the same obligation with a settled `driver:` — the only difference — compiles, so the gap there is a verdict on the absence and not on the shape of the obligation."""
-    oid = "okf:docs/features/acme/api.md#post-things:does:1"
+    oid = "okf:docs/services/acme/api.md#post-things:does:1"
     context = _driverless_context(oid)
     context["navigation"]["api-service"] = {"driver": "http", "entryUrl": "http://localhost:18101"}
     result = _compile_plan_gaps(context, story="demo-story")
@@ -3711,7 +3711,7 @@ def test_a_surface_whose_runbooks_settled_on_a_driver_compiles_the_claim() -> No
 
 def test_a_selector_the_census_cannot_read_still_compiles_one_whole_scenario() -> None:
     """Phase 3p': a compile-time gap is a statement about the plan being compiled, and vet's render census is a different observer."""
-    oid = "okf:docs/features/policy/gui/screens/policy-list.md#seat-grid:verify:1"
+    oid = "okf:docs/services/policy/gui/screens/policy-list.md#seat-grid:verify:1"
     context = _navigation_context(
         _page_obligation(
             oid, "seat-grid",
@@ -3741,7 +3741,7 @@ def _http_status(code: int, path: str) -> dict[str, object]:
 
 
 def test_an_endpoint_refuses_a_check_that_reads_a_file() -> None:
-    oid = "okf:docs/features/demo/api.md#post-things:does:1"
+    oid = "okf:docs/services/demo/api.md#post-things:does:1"
     context = _context(_obligation(oid, checksDeclared=[
         {"call": "it", "name": "json_path", "args": {"path": "status", "equals": "Draft", "file": "thing.json"}},
     ]))
@@ -3947,7 +3947,7 @@ def test_a_field_claim_on_a_cli_surface_compiles_through_the_cli_builder() -> No
         )
     )
     context["navigation"][""]["driver"] = "cli"
-    context["cliBinaries"] = {"docs/features/demo/api.md": "tally"}
+    context["cliBinaries"] = {"docs/services/demo/api.md": "tally"}
     source, gaps = compile_plan_gaps(context, story="demo-story")
     assert source is not None
     ast.parse(source)
@@ -3956,7 +3956,7 @@ def test_a_field_claim_on_a_cli_surface_compiles_through_the_cli_builder() -> No
 
 def test_a_concept_claim_still_does_not_compile_with_the_new_message() -> None:
     """Even with a well-formed check declared, a `concept` claim still fails to compile — the change is the message, not the outcome."""
-    oid = "okf:docs/features/demo/concepts/policy.md:contract:1"
+    oid = "okf:docs/services/demo/concepts/policy.md:contract:1"
     context = _context(
         _obligation(
             oid,
@@ -4012,8 +4012,8 @@ def _step_node(node: str, locators: dict) -> dict:
             "locators": locators, "checksDeclared": []}
 
 
-_API = "docs/features/demo/http/api.md"
-_FLOW = "docs/features/demo/flows/add-a-thing.md"
+_API = "docs/services/demo/http/api.md"
+_FLOW = "docs/services/demo/flows/add-a-thing.md"
 
 
 def _api_navigation(surface: str = "api") -> dict:
@@ -4024,10 +4024,10 @@ def _api_navigation(surface: str = "api") -> dict:
 
 def test_a_flow_that_names_no_steps_has_no_walk_to_compile() -> None:
     """A flow's claim is about what its `steps:` did, so a flow that names none states a claim about a journey nobody wrote down."""
-    oid = "okf:docs/features/policy/flows/file-a-policy.md:end-state"
+    oid = "okf:docs/services/policy/flows/file-a-policy.md:end-state"
     context = _navigation_context(
         _obligation(oid, nodeType="flow", surface="policy",
-                    source="docs/features/policy/flows/file-a-policy.md",
+                    source="docs/services/policy/flows/file-a-policy.md",
                     locators={}, checksDeclared=[_visible("table:Policies on file")]),
         navigation=_arrival_navigation(),
     )
@@ -4086,8 +4086,8 @@ def test_a_journeys_claim_is_observed_where_its_last_step_left_the_world() -> No
     assert _gap_kinds(gaps, oid) == []
 
 
-_CLI = "docs/features/tally/tally.md"
-_CLI_FLOW = "docs/features/tally/flows/track-a-trip.md"
+_CLI = "docs/services/tally/tally.md"
+_CLI_FLOW = "docs/services/tally/flows/track-a-trip.md"
 
 
 def _cli_step_node(anchor: str, *argvs: list[str]) -> dict:
@@ -4226,12 +4226,12 @@ def _cli_command_context(oid: str, check: dict) -> dict:
         )
     )
     context["navigation"][""]["driver"] = "cli"
-    context["cliBinaries"] = {"docs/features/demo/api.md": "tally"}
+    context["cliBinaries"] = {"docs/services/demo/api.md": "tally"}
     return context
 
 
 def test_a_command_on_a_cli_page_runs_through_the_cli_lane_on_an_http_surface() -> None:
-    oid = "okf:docs/features/demo/api.md#import:does:1"
+    oid = "okf:docs/services/demo/api.md#import:does:1"
     context = _cli_command_context(oid, {"call": "exit_status(code=0)", "name": "exit_status", "args": {"code": 0}})
     context["navigation"][""]["driver"] = "http"
     context["obligations"][0]["onCliPage"] = True
@@ -4244,7 +4244,7 @@ def test_a_command_on_a_cli_page_runs_through_the_cli_lane_on_an_http_surface() 
 
 
 def test_an_endpoint_on_a_cli_page_keeps_the_surface_driver() -> None:
-    oid = "okf:docs/features/demo/api.md#things:does:1"
+    oid = "okf:docs/services/demo/api.md#things:does:1"
     check = {"call": "http_status(code=200)", "name": "http_status", "args": {"code": 200}}
     context = _context(_obligation(oid, onCliPage=True, checksDeclared=[check]))
 
@@ -4255,8 +4255,8 @@ def test_an_endpoint_on_a_cli_page_keeps_the_surface_driver() -> None:
 
 
 def test_a_page_with_an_endpoint_and_a_command_names_each_scenario_apart() -> None:
-    command = "okf:docs/features/demo/api.md#import:does:1"
-    endpoint = "okf:docs/features/demo/api.md#things:does:1"
+    command = "okf:docs/services/demo/api.md#import:does:1"
+    endpoint = "okf:docs/services/demo/api.md#things:does:1"
     context = _cli_command_context(command, {"call": "exit_status(code=0)", "name": "exit_status", "args": {"code": 0}})
     context["navigation"][""]["driver"] = "http"
     context["obligations"][0]["onCliPage"] = True
@@ -4273,7 +4273,7 @@ def test_a_page_with_an_endpoint_and_a_command_names_each_scenario_apart() -> No
 
 
 def test_a_cli_command_refuses_a_check_that_reads_nothing_a_command_shows() -> None:
-    oid = "okf:docs/features/demo/api.md#import:does:1"
+    oid = "okf:docs/services/demo/api.md#import:does:1"
     context = _cli_command_context(oid, {"call": "it", "name": "visible", "args": {"locator": "a total"}})
 
     _source, gaps = compile_plan_gaps(context, story="demo-story")
@@ -4284,7 +4284,7 @@ def test_a_cli_command_refuses_a_check_that_reads_nothing_a_command_shows() -> N
 
 
 def test_a_cli_command_asserts_absent_on_the_working_directory_the_run_left() -> None:
-    oid = "okf:docs/features/demo/api.md#import:does:1"
+    oid = "okf:docs/services/demo/api.md#import:does:1"
     context = _cli_command_context(oid, {"call": "it", "name": "absent", "args": {"subject": "tally.json"}})
 
     result = _compile_plan_gaps(context, story="demo-story")
@@ -4350,7 +4350,7 @@ def test_a_cli_journeys_start_refuses_a_check_that_reads_what_a_command_did(chec
 
 
 def test_a_cli_command_reads_a_json_file_the_run_left_through_file() -> None:
-    oid = "okf:docs/features/demo/api.md#import:does:1"
+    oid = "okf:docs/services/demo/api.md#import:does:1"
     context = _cli_command_context(oid, {"call": "it", "name": "json_path", "args": {
         "path": "entries[0].amount", "equals": 12.5, "file": "tally.json"}})
 
@@ -4367,7 +4367,7 @@ def test_a_cli_command_reads_a_json_file_the_run_left_through_file() -> None:
 
 
 def test_a_cli_command_reads_the_text_of_a_file_the_run_left() -> None:
-    oid = "okf:docs/features/demo/api.md#import:does:1"
+    oid = "okf:docs/services/demo/api.md#import:does:1"
     context = _cli_command_context(oid, {"call": "it", "name": "contents", "args": {
         "subject": "out.csv", "text": "date,amount"}})
 
@@ -4486,7 +4486,7 @@ def test_a_journey_across_two_servers_is_refused_for_the_one_base_url_a_scenario
     context = _follow_journey(oid, captures=[{"name": "thing_id", "from": "$.thing.id"}], fixtures=[
         {"name": "mock-server", "args": [], "provides": "the mock server answers"},
     ])
-    other = "docs/features/demo/http/other.md"
+    other = "docs/services/demo/http/other.md"
     context["obligations"][0]["steps"][1]["ref"] = f"{other}#get-thing"
     context["serverOrigins"] = {_API: "http://127.0.0.1:8099"}
     result = _compile_plan_gaps(context, story="demo-story")
@@ -5523,7 +5523,7 @@ def test_a_capture_bullet_the_parser_refused_gaps_where_it_was_written() -> None
 
 def test_a_capture_no_builder_can_emit_stands_beside_the_claim_rather_than_against_it() -> None:
     """A UI-locator capture on a routed obligation: the assertion compiles, the binding does not."""
-    oid = "okf:docs/features/acme/api.md#get-things:does:1"
+    oid = "okf:docs/services/acme/api.md#get-things:does:1"
     context = _context(
         _obligation(
             oid,
@@ -5545,7 +5545,7 @@ def test_a_capture_no_builder_can_emit_stands_beside_the_claim_rather_than_again
 
 def test_a_declared_capture_that_no_builder_accounts_for_is_refused() -> None:
     """The guard, exercised by removing the thing it guards."""
-    oid = "okf:docs/features/acme/api.md#get-things:does:1"
+    oid = "okf:docs/services/acme/api.md#get-things:does:1"
     context = _context(
         _obligation(
             oid,
@@ -5566,7 +5566,7 @@ def test_a_declared_capture_that_no_builder_accounts_for_is_refused() -> None:
 
 def test_a_capture_on_an_obligation_nobody_observed_goes_with_its_obligation() -> None:
     """One silence, reported once."""
-    oid = "okf:docs/features/acme/api.md#get-things:does:1"
+    oid = "okf:docs/services/acme/api.md#get-things:does:1"
     context = _context(
         _obligation(oid, capturesDeclared=[{"name": "widget_id", "from": "#widget-id"}])
     )
@@ -5644,7 +5644,7 @@ def _built_target_probe_cli() -> tuple[dict, str]:
         )
     )
     context["navigation"][""]["driver"] = "cli"
-    context["cliBinaries"] = {"docs/features/demo/api.md": "tally"}
+    context["cliBinaries"] = {"docs/services/demo/api.md": "tally"}
     return context, oid
 
 
@@ -5695,7 +5695,7 @@ def test_a_claim_with_no_run_names_the_edit_its_node_type_admits(node_type: str,
         )
     )
     context["navigation"][""]["driver"] = "cli"
-    context["cliBinaries"] = {"docs/features/demo/api.md": "tally"}
+    context["cliBinaries"] = {"docs/services/demo/api.md": "tally"}
 
     _source, gaps = compile_plan_gaps(context, story="demo-story")
 
@@ -5721,7 +5721,7 @@ def test_an_empty_argv_is_a_legal_bare_invocation() -> None:
         )
     )
     context["navigation"][""]["driver"] = "cli"
-    context["cliBinaries"] = {"docs/features/demo/api.md": "tally"}
+    context["cliBinaries"] = {"docs/services/demo/api.md": "tally"}
 
     source, gaps = compile_plan_gaps(context, story="demo-story")
     assert source is not None
@@ -5748,7 +5748,7 @@ def test_an_invocation_on_a_cli_driven_surface_compiles_to_a_real_scenario() -> 
         )
     )
     context["navigation"][""]["driver"] = "cli"
-    context["cliBinaries"] = {"docs/features/demo/api.md": "tally"}
+    context["cliBinaries"] = {"docs/services/demo/api.md": "tally"}
 
     source, gaps = compile_plan_gaps(context, story="demo-story")
     assert source is not None
@@ -5780,7 +5780,7 @@ def test_a_cli_claim_about_what_the_run_changed_compares_the_directory_either_si
         )
     )
     context["navigation"][""]["driver"] = "cli"
-    context["cliBinaries"] = {"docs/features/demo/api.md": "tally"}
+    context["cliBinaries"] = {"docs/services/demo/api.md": "tally"}
 
     source, gaps = compile_plan_gaps(context, story="demo-story")
     assert source is not None
@@ -5817,7 +5817,7 @@ def test_a_cli_claim_runs_every_run_in_order_and_observes_the_last() -> None:
         )
     )
     context["navigation"][""]["driver"] = "cli"
-    context["cliBinaries"] = {"docs/features/demo/api.md": "tally"}
+    context["cliBinaries"] = {"docs/services/demo/api.md": "tally"}
 
     source, gaps = compile_plan_gaps(context, story="demo-story")
     assert source is not None
@@ -5952,7 +5952,7 @@ def test_a_surface_with_no_launch_screen_gaps_undeclared_launch_screen_and_emits
 def test_an_obligation_off_the_launch_screen_gaps_unreachable_from_launch() -> None:
     """A settled `launch-screen:` does not make every mobile obligation reachable: this obligation's own page (`_SCREEN`, via `_built_target_probe_maestro`) is a *different* screen than the one the surface's `launch-screen:` now names, and the book states no way from the one to the other — so it gaps `unreachable-from-launch` rather than compiling a flow that opens on the wrong screen and asserts against it anyway."""
     context, oid = _built_target_probe_maestro()
-    other_screen = "docs/features/policy/gui/screens/other.md"
+    other_screen = "docs/services/policy/gui/screens/other.md"
     context["navigation"]["policy"]["launchScreen"] = other_screen
 
     result = _compile_plan_gaps(context, story="demo-story")
@@ -5964,7 +5964,7 @@ def test_an_obligation_off_the_launch_screen_gaps_unreachable_from_launch() -> N
 
 def _maestro_hop_probe(hop_locators: dict[str, list[str]]) -> tuple[dict, str, str]:
     context, oid = _built_target_probe_maestro()
-    launch = "docs/features/policy/gui/screens/home.md"
+    launch = "docs/services/policy/gui/screens/home.md"
     hop_node = f"{launch}#open-probe"
     policy = context["navigation"]["policy"]
     policy["start"] = launch
@@ -6203,9 +6203,9 @@ _MOBILE_HOME = (
 
 def test_a_mobile_book_compiles_a_flow_at_its_bundle_id_and_keeps_its_prepare_steps(tmp_path: Path) -> None:
     (tmp_path / ".git").mkdir()
-    write(tmp_path / "docs/features/acme/ops/android.md", _MOBILE_RUNBOOK)
-    write(tmp_path / "docs/features/acme/gui/screens/home.md", _MOBILE_HOME)
-    screen = "docs/features/acme/gui/screens/home.md"
+    write(tmp_path / "docs/services/acme/ops/android.md", _MOBILE_RUNBOOK)
+    write(tmp_path / "docs/services/acme/gui/screens/home.md", _MOBILE_HOME)
+    screen = "docs/services/acme/gui/screens/home.md"
     graph = load_book(tmp_path)
     dump = graph_mod.build(graph)
     oid = "okf:acme-home:greeting:visible:1"
@@ -6460,7 +6460,7 @@ def test_a_states_claim_the_seeded_world_is_already_in_compiles_without_a_fixtur
     assert state_oid in _covers(source)
 
 
-_HOME = "docs/features/policy/gui/screens/home.md"
+_HOME = "docs/services/policy/gui/screens/home.md"
 
 
 def test_a_navigation_click_first_performs_the_acts_of_the_arm_that_lands_on_the_next_screen() -> None:
@@ -6500,7 +6500,7 @@ def test_a_navigation_click_skips_the_acts_of_an_arm_that_reaches_its_button_thr
     """An arm whose acts operate another screen is a route of its own to the button, so a walk that already stands on the button's page clicks it without replaying that route."""
     oid = "okf:home:home-title:visible:1"
     button = f"{_SCREEN}#open-button"
-    picker = "docs/features/policy/gui/screens/picker.md"
+    picker = "docs/services/policy/gui/screens/picker.md"
     navigation = _arrival_navigation()
     navigation["policy"]["routes"][_HOME] = [{"node": button, "from": _SCREEN, "label": "Open"}]
     context = _navigation_context(
@@ -6680,8 +6680,8 @@ def test_an_arranged_upload_hands_its_control_the_file_before_the_trigger() -> N
     assert accept_oid in _covers(source)
 
 
-_BILLS = "docs/features/bills/http/api.md"
-_BILLS_FLOW = "docs/features/bills/flows/issue-and-pay-a-bill.md"
+_BILLS = "docs/services/bills/http/api.md"
+_BILLS_FLOW = "docs/services/bills/flows/issue-and-pay-a-bill.md"
 
 
 def _arm(node: str, name: str, route: str, checks: list[dict], position: int = 1) -> dict:
@@ -6952,8 +6952,8 @@ def test_a_case_that_answers_success_and_one_that_refuses_are_two_outcomes() -> 
 
 _BILL_PASSAGE = f"{_BILLS}#issue-a-bill"
 _BILL_FLOWS = {
-    "docs/features/bills/flows/read-an-issued-bill.md": "get-bill",
-    "docs/features/bills/flows/pay-an-issued-bill.md": "pay-bill",
+    "docs/services/bills/flows/read-an-issued-bill.md": "get-bill",
+    "docs/services/bills/flows/pay-an-issued-bill.md": "pay-bill",
 }
 
 

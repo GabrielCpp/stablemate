@@ -10,7 +10,7 @@ Not a screen: a modal or drawer that has no route of its own (that is a componen
 
 ## Identity
 
-File type. Its own `.md` under `docs/features/<service>/gui/screens/`, with `type: screen` in
+File type. Its own `.md` under `docs/services/<service>/gui/screens/`, with `type: screen` in
 frontmatter — stamped by `ostler create` / `ostler scaffold`, never hand-written. Its id is the
 file path; section nodes inside it are `path#anchor`.
 

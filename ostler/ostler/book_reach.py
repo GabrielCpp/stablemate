@@ -33,7 +33,7 @@ class BookPages:
 
 
 def _service_of(graph: Graph, page: Path) -> str:
-    parts = page.relative_to(graph.doc_roots["features"].resolve()).parts
+    parts = page.relative_to(graph.doc_roots["services"].resolve()).parts
     return parts[0] if len(parts) > 1 else ""
 
 

@@ -31,7 +31,7 @@ declares, so an access rule that lives outside the program is invisible to every
 reads one.
 
 Nothing here is applied. `make -C pulumi plan` is the whole of the observable surface, and
-[the runbook](../../../../features/depot/ops/preview-the-plan.md) is how it is taken.
+[the runbook](../../../../services/depot/ops/preview-the-plan.md) is how it is taken.
 
 ## Acceptance Criteria
 

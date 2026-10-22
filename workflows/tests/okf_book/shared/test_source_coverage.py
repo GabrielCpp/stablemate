@@ -32,7 +32,7 @@ def _repo(tmp_path: Path, *cited: str) -> Path:
     for path in SOURCES:
         (repo / path).parent.mkdir(parents=True, exist_ok=True)
         _ = (repo / path).write_text("export const x = 1;\n", encoding="utf-8")
-    page = repo / "docs/features/web/login.md"
+    page = repo / "docs/services/web/login.md"
     page.parent.mkdir(parents=True)
     _ = page.write_text(_page(*cited), encoding="utf-8")
     _ = git(repo, "init", "-q")
@@ -69,7 +69,7 @@ def test_a_file_only_a_concept_page_cites_stays_uncited(tmp_path: Path) -> None:
         "---\ntype: concept\nslug: drafts\ntitle: Drafts\n---\n# Drafts\n\n"
         "- code: `web/app/lib/drafts.ts`\n\nHow a draft outlives a reload.\n"
     )
-    _ = (repo / "docs/features/web/drafts.md").write_text(concept, encoding="utf-8")
+    _ = (repo / "docs/services/web/drafts.md").write_text(concept, encoding="utf-8")
     _ = git(repo, "add", "-A")
 
     assert _uncited(repo) == {"web/app/lib": ("web/app/lib/drafts.ts",)}
@@ -84,13 +84,13 @@ def test_no_source_folder_names_nothing(tmp_path: Path) -> None:
 def test_the_check_puts_each_uncited_folder_on_the_entries_page(tmp_path: Path) -> None:
     repo = _repo(tmp_path, "web/app/routes/login.tsx")
     entries = "---\ntype: entries\nslug: entries\ntitle: web\n---\n# web\n\n- [Login](login.md)\n"
-    _ = (repo / "docs/features/web/entries.md").write_text(entries, encoding="utf-8")
+    _ = (repo / "docs/services/web/entries.md").write_text(entries, encoding="utf-8")
 
     uncited = [problem for problem in page_problems(repo, "web", "web") if problem.code == UNCITED_CODE]
 
     assert [(problem.page, problem.node) for problem in uncited] == [
-        ("docs/features/web/entries.md", "web/app/lib"),
-        ("docs/features/web/entries.md", "web/app/routes"),
+        ("docs/services/web/entries.md", "web/app/lib"),
+        ("docs/services/web/entries.md", "web/app/routes"),
     ]
     assert uncited[1].text.startswith("web/app/routes/: no page cites 1 of its product files, `web/app/routes/editor.tsx`.")
 

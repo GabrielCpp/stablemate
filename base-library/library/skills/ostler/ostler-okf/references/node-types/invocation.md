@@ -93,7 +93,7 @@ names rather than another writing of the same thing.
 ## Minimal example
 
 ```bash
-timeout 30 ostler scaffold invocation expire-stale-links --in docs/features/acme/http/links-api.md
+timeout 30 ostler scaffold invocation expire-stale-links --in docs/services/acme/http/links-api.md
 ```
 
 ```markdown

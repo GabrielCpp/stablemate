@@ -64,7 +64,7 @@ node documenting this same interaction.
 ## Minimal example
 
 ```bash
-timeout 30 ostler scaffold interaction save-link --in docs/features/acme/gui/screens/link-editor.md
+timeout 30 ostler scaffold interaction save-link --in docs/services/acme/gui/screens/link-editor.md
 ```
 
 ```markdown

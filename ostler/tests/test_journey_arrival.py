@@ -18,7 +18,7 @@ from test_qa_compile import (
     _step,
 )
 
-OTHER = "docs/features/policy/gui/screens/things.md"
+OTHER = "docs/services/policy/gui/screens/things.md"
 OPEN_THING = f"{_SCREEN}#open-thing"
 SHOW_LIST = f"{_SCREEN}#show-list"
 SHOW_THINGS = f"{OTHER}#show-things"

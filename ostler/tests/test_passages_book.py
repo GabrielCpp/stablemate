@@ -12,9 +12,9 @@ from ostler.cli import main
 
 from conftest import report_of, write
 
-RESULTS = "docs/features/acme/gui/screens/results.md"
-DETAILS = "docs/features/acme/gui/screens/details.md"
-FLOW = "docs/features/acme/flows/see.md"
+RESULTS = "docs/services/acme/gui/screens/results.md"
+DETAILS = "docs/services/acme/gui/screens/details.md"
+FLOW = "docs/services/acme/flows/see.md"
 
 CODES = {"passage-shape", "broken-joint", "unarranged-stop", "stateless-screen", "unsettled-act", "unperceivable-element", "unresolved-relation"}
 
@@ -168,7 +168,7 @@ def book(tmp_path: Path) -> Path:
     write(tmp_path / RESULTS, RESULTS_PAGE)
     write(tmp_path / DETAILS, DETAILS_PAGE)
     write(tmp_path / FLOW, flow_page(LOADED, OPEN, SHOWN))
-    write(tmp_path / "docs/features/acme/fixtures/results-fail.md", FIXTURE)
+    write(tmp_path / "docs/services/acme/fixtures/results-fail.md", FIXTURE)
     write(tmp_path / "app/r.py", "def go():\n    return 1\n")
     _git(tmp_path, "init")
     _git(tmp_path, "config", "user.email", "a@b.c")

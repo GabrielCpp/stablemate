@@ -1,6 +1,6 @@
 # One service, no build step, stock image. The QA sandbox reaches it by forwarding a
 # container-loopback port at this service, so the port number is a contract with
-# the book's `runbook` node (`docs/features/booking/ops/qa-stack.md`) and with
+# the book's `runbook` node (`docs/services/booking/ops/qa-stack.md`) and with
 # `paddock/data/apps/README.md`'s port register, not a preference.
 
 # Named explicitly, because the default is the *directory basename* and every trial
@@ -11,7 +11,7 @@
 # One fixed project name instead, whose volume the harness drops once per trial before the
 # run starts, so a trial always begins on an empty ledger without the stack's own `launch`
 # line having to destroy state mid-story (see the runbook at
-# `docs/features/booking/ops/qa-stack.md`).
+# `docs/services/booking/ops/qa-stack.md`).
 name: seat-booking-bench
 
 services:

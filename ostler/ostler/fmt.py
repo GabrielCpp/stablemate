@@ -191,7 +191,7 @@ def _target_files(graph: Graph, paths: list[str]) -> list[Path]:
     """The docs a mutating pass reads: each named file, and every doc under each named folder."""
     roots = [Path(p) if Path(p).is_absolute() else graph.root / p for p in paths]
     if not roots:
-        froot = graph.doc_roots["features"]
+        froot = graph.doc_roots["services"]
         roots = [froot] if froot.is_dir() else []
     files: list[Path] = []
     for root in roots:

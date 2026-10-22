@@ -12,28 +12,28 @@ def _context(*obligations: dict) -> dict:
 
 def test_a_context_only_obligation_is_owed_no_verdict() -> None:
     context = _context(
-        {"id": "okf:docs/features/docs-api/http/docs-api.md#get-pages:does:1", "required": False},
-        {"id": "okf:docs/features/docs-api/http/docs-api.md#publish:does:1", "required": True},
+        {"id": "okf:docs/services/docs-api/http/docs-api.md#get-pages:does:1", "required": False},
+        {"id": "okf:docs/services/docs-api/http/docs-api.md#publish:does:1", "required": True},
     )
-    data = {"obligations": [{"id": "okf:docs/features/docs-api/http/docs-api.md#publish:does:1", **PROVED}]}
+    data = {"obligations": [{"id": "okf:docs/services/docs-api/http/docs-api.md#publish:does:1", **PROVED}]}
 
     assert evidence._obligation_problems(context, data) == []
 
 
 def test_a_required_obligation_still_needs_a_verdict() -> None:
-    context = _context({"id": "okf:docs/features/docs-api/http/docs-api.md#publish:does:1"})
+    context = _context({"id": "okf:docs/services/docs-api/http/docs-api.md#publish:does:1"})
 
     problems = evidence._obligation_problems(context, {"obligations": []})
 
     assert problems == [
-        "okf:docs/features/docs-api/http/docs-api.md#publish:does:1: "
+        "okf:docs/services/docs-api/http/docs-api.md#publish:does:1: "
         "required OKF obligation has no evidence verdict."
     ]
 
 
 def test_an_unflagged_obligation_is_required() -> None:
     """A packet written before the flag existed says nothing about which members are real."""
-    context = _context({"id": "okf:docs/features/docs-api/manifest.md:contract"})
+    context = _context({"id": "okf:docs/services/docs-api/manifest.md:contract"})
 
     problems = evidence._obligation_problems(context, {"obligations": []})
 
@@ -41,23 +41,23 @@ def test_an_unflagged_obligation_is_required() -> None:
 
 
 def test_a_required_obligation_needs_executed_logs_behind_its_pass() -> None:
-    context = _context({"id": "okf:docs/features/docs-api/manifest.md:contract", "required": True})
-    data = {"obligations": [{"id": "okf:docs/features/docs-api/manifest.md:contract", "verdict": "pass"}]}
+    context = _context({"id": "okf:docs/services/docs-api/manifest.md:contract", "required": True})
+    data = {"obligations": [{"id": "okf:docs/services/docs-api/manifest.md:contract", "verdict": "pass"}]}
 
     problems = evidence._obligation_problems(context, data)
 
     assert problems == [
-        "okf:docs/features/docs-api/manifest.md:contract: "
+        "okf:docs/services/docs-api/manifest.md:contract: "
         "required OKF obligation has no executed log_refs."
     ]
 
 
 def test_a_context_only_obligation_that_failed_is_not_a_problem() -> None:
     """Evidence for a context-only id is welcome; it is simply not held against the pass."""
-    context = _context({"id": "okf:docs/features/docs-app/gui/screens/app-shell.md:contract", "required": False})
+    context = _context({"id": "okf:docs/services/docs-app/gui/screens/app-shell.md:contract", "required": False})
     data = {
         "obligations": [
-            {"id": "okf:docs/features/docs-app/gui/screens/app-shell.md:contract", "verdict": "fail"}
+            {"id": "okf:docs/services/docs-app/gui/screens/app-shell.md:contract", "verdict": "fail"}
         ]
     }
 
@@ -68,7 +68,7 @@ def test_a_deferred_obligation_is_owed_no_verdict() -> None:
     """The plan lint already skips an obligation the book gives no runnable check, so the evidence gate held a story on one no scenario could prove."""
     context = _context(
         {
-            "id": "okf:docs/features/web-app/gui/screens/reports.md#empty-alert:contract",
+            "id": "okf:docs/services/web-app/gui/screens/reports.md#empty-alert:contract",
             "required": True,
             "deferred": {"kind": "no-verify-declared", "detail": "the book declares no check"},
         }

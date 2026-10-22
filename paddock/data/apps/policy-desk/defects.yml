@@ -56,7 +56,7 @@ defects:
   - id: P1
     story: policy-list
     path: app/web/src/Nav.tsx
-    obligation: okf:docs/features/policy/gui/screens/edit-policy.md#new-policy-link:contract
+    obligation: okf:docs/services/policy/gui/screens/edit-policy.md#new-policy-link:contract
     expect: contradicted
     caught_by: run
     why: >
@@ -72,7 +72,7 @@ defects:
   - id: P2
     story: create-policy
     path: app/web/src/NewPolicy.tsx
-    obligation: okf:docs/features/policy/gui/screens/policy-detail.md#policy-summary:contract
+    obligation: okf:docs/services/policy/gui/screens/policy-detail.md#policy-summary:contract
     expect: contradicted
     caught_by: run
     why: >
@@ -84,7 +84,7 @@ defects:
   - id: P3
     story: create-policy
     path: app/api/validate.go
-    obligation: okf:docs/features/policy/http/policy-desk-api.md#post-policies:errors:1
+    obligation: okf:docs/services/policy/http/policy-desk-api.md#post-policies:errors:1
     expect: contradicted
     caught_by: run
     why: >
@@ -95,7 +95,7 @@ defects:
   - id: P4
     story: create-policy
     path: app/api/validate.go
-    obligation: okf:docs/features/policy/http/policy-desk-api.md#post-policies:errors:1
+    obligation: okf:docs/services/policy/http/policy-desk-api.md#post-policies:errors:1
     expect: contradicted
     caught_by: run
     why: >
@@ -106,7 +106,7 @@ defects:
   - id: P5
     story: create-policy
     path: app/api/validate.go
-    obligation: okf:docs/features/policy/http/policy-desk-api.md#post-policies:errors:1
+    obligation: okf:docs/services/policy/http/policy-desk-api.md#post-policies:errors:1
     expect: contradicted
     caught_by: run
     why: >
@@ -118,7 +118,7 @@ defects:
   - id: P6
     story: create-policy
     path: app/api/create.go
-    obligation: okf:docs/features/policy/http/policy-desk-api.md#post-policies:errors:2
+    obligation: okf:docs/services/policy/http/policy-desk-api.md#post-policies:errors:2
     expect: contradicted
     caught_by: run
     why: >
@@ -129,7 +129,7 @@ defects:
   - id: P7
     story: edit-policy
     path: app/api/update.go
-    obligation: okf:docs/features/policy/http/policy-desk-api.md#put-policy:concurrency:1
+    obligation: okf:docs/services/policy/http/policy-desk-api.md#put-policy:concurrency:1
     expect: contradicted
     caught_by: run
     why: >
@@ -140,7 +140,7 @@ defects:
   - id: P8
     story: create-policy
     path: app/api/store.go
-    obligation: okf:docs/features/policy/http/policy-desk-api.md#post-policies:persistence:1
+    obligation: okf:docs/services/policy/http/policy-desk-api.md#post-policies:persistence:1
     expect: contradicted
     caught_by: run
     why: >
@@ -151,7 +151,7 @@ defects:
   - id: P9
     story: create-policy
     path: app/web/src/FieldError.tsx
-    obligation: okf:docs/features/policy/gui/screens/new-policy.md#field-error-message:contract
+    obligation: okf:docs/services/policy/gui/screens/new-policy.md#field-error-message:contract
     expect: contradicted
     caught_by: run
     why: >
@@ -165,7 +165,7 @@ defects:
   - id: P10
     story: edit-policy
     path: app/web/src/PolicyDetail.tsx
-    obligation: okf:docs/features/policy/gui/screens/policy-detail.md#policy-summary:contract
+    obligation: okf:docs/services/policy/gui/screens/policy-detail.md#policy-summary:contract
     expect: contradicted
     caught_by: run
     why: >
@@ -178,7 +178,7 @@ defects:
   - id: P11
     story: policy-list
     path: app/web/src/PolicyList.tsx
-    obligation: okf:docs/features/policy/gui/screens/policy-list.md#register-error-alert:contract
+    obligation: okf:docs/services/policy/gui/screens/policy-list.md#register-error-alert:contract
     expect: contradicted
     caught_by: run
     why: >

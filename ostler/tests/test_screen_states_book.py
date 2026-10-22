@@ -14,7 +14,7 @@ from ostler.qa.context import build_context
 
 from conftest import report_of, write
 
-SCREEN = "docs/features/acme/gui/screens/results.md"
+SCREEN = "docs/services/acme/gui/screens/results.md"
 
 PAGE = """---
 type: screen
@@ -124,7 +124,7 @@ def _git(root: Path, *args: str) -> str:
 @pytest.fixture
 def book(tmp_path: Path) -> Path:
     write(tmp_path / SCREEN, PAGE)
-    write(tmp_path / "docs/features/acme/flows/see.md", FLOW)
+    write(tmp_path / "docs/services/acme/flows/see.md", FLOW)
     write(tmp_path / "app/r.py", "def go():\n    return 1\n")
     _git(tmp_path, "init")
     _git(tmp_path, "config", "user.email", "a@b.c")
@@ -166,7 +166,7 @@ def test_a_state_owes_one_obligation_and_requests_and_busy_owe_none(book: Path) 
 
 
 def test_a_walk_selected_by_its_flow_alone_still_waits_for_the_screens_requests(book: Path) -> None:
-    flow = book / "docs/features/acme/flows/see.md"
+    flow = book / "docs/services/acme/flows/see.md"
     flow.write_text(flow.read_text().replace(
         "  - [open-details-click](../gui/screens/results.md#open-details-click)\n", "",
     ).replace(
@@ -175,14 +175,14 @@ def test_a_walk_selected_by_its_flow_alone_still_waits_for_the_screens_requests(
         '- verify: visible(locator="../gui/screens/results.md#open-details")\n- start:',
         1,
     ))
-    write(book / "docs/features/acme/ops/qa-stack.md", RUNBOOK)
-    write(book / "docs/features/acme/ops/local.md", ENVIRONMENT)
+    write(book / "docs/services/acme/ops/qa-stack.md", RUNBOOK)
+    write(book / "docs/services/acme/ops/local.md", ENVIRONMENT)
     _git(book, "add", ".")
     _git(book, "commit", "-m", "runbook")
     base = _git(book, "rev-parse", "HEAD")
 
     packet = build_context(book, base=base, source_roots={"acme": ["app"]}, whole_book=True,
-                           books=("docs/features/acme/flows",))
+                           books=("docs/services/acme/flows",))
     result = compile_plan_gaps(packet, story="demo-story")
 
     assert isinstance(result, Plan), [(gap.kind, gap.detail) for gap in result.gaps]
@@ -228,7 +228,7 @@ def test_a_fixture_under_a_state_reaches_the_fixtures_of_its_obligation(book: Pa
     page.write_text(page.read_text().replace(
         "### Error\n", "### Error\n- fixture: [Results fail](../../fixtures/results-fail.md)\n",
     ))
-    write(book / "docs/features/acme/fixtures/results-fail.md", FAIL_FIXTURE)
+    write(book / "docs/services/acme/fixtures/results-fail.md", FAIL_FIXTURE)
     write(book / "app/r.py", "def go():\n    return 2\n")
     base = _git(book, "rev-parse", "HEAD")
 

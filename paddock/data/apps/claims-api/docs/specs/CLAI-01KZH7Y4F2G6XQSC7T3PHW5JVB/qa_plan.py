@@ -61,15 +61,15 @@ def one_claim_awaiting_a_decision(qa: Qa) -> dict:
     covers=[
         "ac:1",
         "ac:2",
-        "okf:docs/features/claims/http/claims-api.md#decide-claim:does:1",
-        "okf:docs/features/claims/http/claims-api.md#decide-claim:persistence:1",
-        "okf:docs/features/claims/http/claims-api.md#decide-claim:contract",
-        "okf:docs/features/claims/flows/decide-a-claim.md:start:1",
-        "okf:docs/features/claims/flows/decide-a-claim.md:end:1",
-        "okf:docs/features/claims/flows/decide-a-claim.md:end-state",
-        "okf:docs/features/claims/http/claims-api.md#submit-claim:consistency:1",
-        "okf:docs/features/claims/http/claims-api.md#submit-claim:persistence:1",
-        "okf:docs/features/claims/http/claims-api.md#submit-claim:contract",
+        "okf:docs/services/claims/http/claims-api.md#decide-claim:does:1",
+        "okf:docs/services/claims/http/claims-api.md#decide-claim:persistence:1",
+        "okf:docs/services/claims/http/claims-api.md#decide-claim:contract",
+        "okf:docs/services/claims/flows/decide-a-claim.md:start:1",
+        "okf:docs/services/claims/flows/decide-a-claim.md:end:1",
+        "okf:docs/services/claims/flows/decide-a-claim.md:end-state",
+        "okf:docs/services/claims/http/claims-api.md#submit-claim:consistency:1",
+        "okf:docs/services/claims/http/claims-api.md#submit-claim:persistence:1",
+        "okf:docs/services/claims/http/claims-api.md#submit-claim:contract",
     ],
     preconditions=[
         "cl-1001 is on file at version 1, filed by holder A",
@@ -92,17 +92,17 @@ def a_decision_is_recorded_and_outlives_the_process(qa: Qa) -> None:
     adjuster = qa.field(who, "adjuster")
 
     register = qa.field(qa.http.get("/api/claims", headers=bearer(qa, adjuster), expect_status=200).json(), "claims")
-    qa.check("the adjuster reaches the claim through their own register", [qa.field(claim, "id") for claim in register] == ["cl-1001"], covers=["ac:1", "okf:docs/features/claims/flows/decide-a-claim.md:start:1"])
+    qa.check("the adjuster reaches the claim through their own register", [qa.field(claim, "id") for claim in register] == ["cl-1001"], covers=["ac:1", "okf:docs/services/claims/flows/decide-a-claim.md:start:1"])
 
     decided = qa.http.post("/api/claims/cl-1001/decision", json_body={"decision": "approve", "version": 1, "note": "Cover confirmed against the schedule."}, headers=bearer(qa, adjuster), expect_status=200)
     body = decided.json()
-    qa.verify("http_status", decided, code=200, path="/api/claims/cl-1001/decision", covers=["ac:1", "okf:docs/features/claims/http/claims-api.md#decide-claim:does:1", "okf:docs/features/claims/http/claims-api.md#decide-claim:contract"])
-    qa.verify("json_path", body, path="claim.status", equals="Approved", covers=["ac:1", "okf:docs/features/claims/http/claims-api.md#decide-claim:does:1", "okf:docs/features/claims/flows/decide-a-claim.md:start:1", "okf:docs/features/claims/flows/decide-a-claim.md:end:1", "okf:docs/features/claims/flows/decide-a-claim.md:end-state"])
-    qa.verify("json_path", body, path="claim.version", equals="2", covers=["ac:1", "okf:docs/features/claims/http/claims-api.md#decide-claim:does:1"])
-    qa.check("the adjuster's note is carried onto the decided claim", qa.field(body, "claim.decision_note") == "Cover confirmed against the schedule.", covers=["ac:1", "okf:docs/features/claims/flows/decide-a-claim.md:end:1"])
+    qa.verify("http_status", decided, code=200, path="/api/claims/cl-1001/decision", covers=["ac:1", "okf:docs/services/claims/http/claims-api.md#decide-claim:does:1", "okf:docs/services/claims/http/claims-api.md#decide-claim:contract"])
+    qa.verify("json_path", body, path="claim.status", equals="Approved", covers=["ac:1", "okf:docs/services/claims/http/claims-api.md#decide-claim:does:1", "okf:docs/services/claims/flows/decide-a-claim.md:start:1", "okf:docs/services/claims/flows/decide-a-claim.md:end:1", "okf:docs/services/claims/flows/decide-a-claim.md:end-state"])
+    qa.verify("json_path", body, path="claim.version", equals="2", covers=["ac:1", "okf:docs/services/claims/http/claims-api.md#decide-claim:does:1"])
+    qa.check("the adjuster's note is carried onto the decided claim", qa.field(body, "claim.decision_note") == "Cover confirmed against the schedule.", covers=["ac:1", "okf:docs/services/claims/flows/decide-a-claim.md:end:1"])
 
     restart = qa.tool("docker").run("compose", "-f", "compose.yml", "restart", "app", timeout=120.0)
-    qa.check("the service restarts cleanly between the decision and the re-read", restart.ok, covers=["ac:2", "okf:docs/features/claims/http/claims-api.md#decide-claim:persistence:1"])
+    qa.check("the service restarts cleanly between the decision and the re-read", restart.ok, covers=["ac:2", "okf:docs/services/claims/http/claims-api.md#decide-claim:persistence:1"])
 
     def restarted_service_answers() -> bool:
         try:
@@ -110,16 +110,16 @@ def a_decision_is_recorded_and_outlives_the_process(qa: Qa) -> None:
         except HttpError:
             return False
 
-    qa.eventually("the restarted service answers /healthz again", restarted_service_answers, timeout=90.0, interval=0.5, covers=["ac:2", "okf:docs/features/claims/http/claims-api.md#decide-claim:persistence:1"])
+    qa.eventually("the restarted service answers /healthz again", restarted_service_answers, timeout=90.0, interval=0.5, covers=["ac:2", "okf:docs/services/claims/http/claims-api.md#decide-claim:persistence:1"])
     reread = qa.field(qa.http.get("/api/claims/cl-1001", headers=bearer(qa, adjuster), expect_status=200).json(), "claim")
-    qa.verify("persists", (qa.field(body, "claim"), reread), subject="claim cl-1001", covers=["ac:2", "okf:docs/features/claims/http/claims-api.md#decide-claim:persistence:1", "okf:docs/features/claims/flows/decide-a-claim.md:start:1", "okf:docs/features/claims/flows/decide-a-claim.md:end:1", "okf:docs/features/claims/flows/decide-a-claim.md:end-state"])
+    qa.verify("persists", (qa.field(body, "claim"), reread), subject="claim cl-1001", covers=["ac:2", "okf:docs/services/claims/http/claims-api.md#decide-claim:persistence:1", "okf:docs/services/claims/flows/decide-a-claim.md:start:1", "okf:docs/services/claims/flows/decide-a-claim.md:end:1", "okf:docs/services/claims/flows/decide-a-claim.md:end-state"])
 
     filed = qa.field(who, "claim")
     filed_body = qa.field(who, "filed_body")
-    qa.verify("json_path", filed_body, path="claim.amount_cents", equals="125000", covers=["okf:docs/features/claims/http/claims-api.md#submit-claim:consistency:1", "okf:docs/features/claims/http/claims-api.md#submit-claim:contract"])
-    qa.verify("json_path", filed_body, path="claim.incident_date", equals="2099-03-14", covers=["okf:docs/features/claims/http/claims-api.md#submit-claim:consistency:1"])
+    qa.verify("json_path", filed_body, path="claim.amount_cents", equals="125000", covers=["okf:docs/services/claims/http/claims-api.md#submit-claim:consistency:1", "okf:docs/services/claims/http/claims-api.md#submit-claim:contract"])
+    qa.verify("json_path", filed_body, path="claim.incident_date", equals="2099-03-14", covers=["okf:docs/services/claims/http/claims-api.md#submit-claim:consistency:1"])
     authored = ("id", "policy_number", "incident_date", "amount_cents", "description")
-    qa.verify("persists", ({key: filed[key] for key in authored}, {key: reread[key] for key in authored}), subject="claim cl-1001", covers=["okf:docs/features/claims/http/claims-api.md#submit-claim:persistence:1"])
+    qa.verify("persists", ({key: filed[key] for key in authored}, {key: reread[key] for key in authored}), subject="claim cl-1001", covers=["okf:docs/services/claims/http/claims-api.md#submit-claim:persistence:1"])
     json.dump({"filed": qa.field(who, "claim"), "decided": body, "after_restart": reread}, qa.artifact("steps/decision.json", kind="json").open("w"))
 
 
@@ -128,7 +128,7 @@ def a_decision_is_recorded_and_outlives_the_process(qa: Qa) -> None:
     mechanism="live",
     covers=[
         "ac:3",
-        "okf:docs/features/claims/http/claims-api.md#decide-claim:concurrency:1",
+        "okf:docs/services/claims/http/claims-api.md#decide-claim:concurrency:1",
     ],
     preconditions=[
         "cl-1001 is on file at version 1 and is read exactly once",
@@ -153,14 +153,14 @@ def a_decision_quoting_a_spent_version_is_refused(qa: Qa) -> None:
     version = qa.field(opened, "version")
 
     first = qa.field(qa.http.post("/api/claims/cl-1001/decision", json_body={"decision": "approve", "version": version, "note": "Approved on the first reading."}, headers=bearer(qa, adjuster), expect_status=200).json(), "claim")
-    qa.check("the first decision off the reading is accepted", qa.field(first, "status") == "Approved" and qa.field(first, "version") == version + 1, covers=["ac:3", "okf:docs/features/claims/http/claims-api.md#decide-claim:concurrency:1"])
+    qa.check("the first decision off the reading is accepted", qa.field(first, "status") == "Approved" and qa.field(first, "version") == version + 1, covers=["ac:3", "okf:docs/services/claims/http/claims-api.md#decide-claim:concurrency:1"])
 
     stale = qa.http.post("/api/claims/cl-1001/decision", json_body={"decision": "deny", "version": version, "note": "Denied from a stale reading."}, headers=bearer(qa, adjuster), expect_status=409)
-    qa.verify("conflict_on_stale", stale.status, subject="claim cl-1001", token="version", covers=["ac:3", "okf:docs/features/claims/http/claims-api.md#decide-claim:concurrency:1"])
-    qa.verify("http_status", stale, code=409, title="Stale Decision", path="/api/claims/cl-1001/decision", covers=["ac:3", "okf:docs/features/claims/http/claims-api.md#decide-claim:concurrency:1"])
+    qa.verify("conflict_on_stale", stale.status, subject="claim cl-1001", token="version", covers=["ac:3", "okf:docs/services/claims/http/claims-api.md#decide-claim:concurrency:1"])
+    qa.verify("http_status", stale, code=409, title="Stale Decision", path="/api/claims/cl-1001/decision", covers=["ac:3", "okf:docs/services/claims/http/claims-api.md#decide-claim:concurrency:1"])
 
     current = qa.field(qa.http.get("/api/claims/cl-1001", headers=bearer(qa, adjuster), expect_status=200).json(), "claim")
-    qa.verify("unchanged", (first, current), subject="claim cl-1001", covers=["ac:3", "okf:docs/features/claims/http/claims-api.md#decide-claim:concurrency:1"])
+    qa.verify("unchanged", (first, current), subject="claim cl-1001", covers=["ac:3", "okf:docs/services/claims/http/claims-api.md#decide-claim:concurrency:1"])
     json.dump({"opened": opened, "accepted": first, "refused": stale.json(), "current": current}, qa.artifact("steps/stale-decision.json", kind="json").open("w"))
 
 
@@ -170,10 +170,10 @@ def a_decision_quoting_a_spent_version_is_refused(qa: Qa) -> None:
     covers=[
         "ac:4",
         "ac:5",
-        "okf:docs/features/claims/http/claims-api.md#decide-claim:authorization:1",
-        "okf:docs/features/claims/http/claims-api.md#decide-claim:errors:1",
-        "okf:docs/features/claims/http/claims-api.md#decide-claim:errors:2",
-        "okf:docs/features/claims/http/claims-api.md#decide-claim:errors:3",
+        "okf:docs/services/claims/http/claims-api.md#decide-claim:authorization:1",
+        "okf:docs/services/claims/http/claims-api.md#decide-claim:errors:1",
+        "okf:docs/services/claims/http/claims-api.md#decide-claim:errors:2",
+        "okf:docs/services/claims/http/claims-api.md#decide-claim:errors:3",
     ],
     preconditions=[
         "cl-1001 is on file at version 1, filed by the holder who is refused below",
@@ -197,22 +197,22 @@ def only_an_adjuster_decides_and_only_in_the_documented_shape(qa: Qa) -> None:
     adjuster, holder = qa.field(who, "adjuster"), qa.field(who, "holder")
 
     forbidden = qa.http.post("/api/claims/cl-9999/decision", json_body={"decision": "approve", "version": 1}, headers=bearer(qa, holder), expect_status=403)
-    qa.verify("http_status", forbidden, code=403, title="Adjusters Only", path="/api/claims/cl-9999/decision", covers=["ac:4", "okf:docs/features/claims/http/claims-api.md#decide-claim:authorization:1"])
+    qa.verify("http_status", forbidden, code=403, title="Adjusters Only", path="/api/claims/cl-9999/decision", covers=["ac:4", "okf:docs/services/claims/http/claims-api.md#decide-claim:authorization:1"])
 
     unknown_word = qa.http.post("/api/claims/cl-1001/decision", json_body={"decision": "escalate", "version": 1}, headers=bearer(qa, adjuster), expect_status=422)
-    qa.verify("http_status", unknown_word, code=422, path="/api/claims/cl-1001/decision", covers=["ac:5", "okf:docs/features/claims/http/claims-api.md#decide-claim:errors:1"])
-    qa.verify("json_path", unknown_word.json(), path="$.errors.decision", absent=False, covers=["ac:5", "okf:docs/features/claims/http/claims-api.md#decide-claim:errors:1"])
+    qa.verify("http_status", unknown_word, code=422, path="/api/claims/cl-1001/decision", covers=["ac:5", "okf:docs/services/claims/http/claims-api.md#decide-claim:errors:1"])
+    qa.verify("json_path", unknown_word.json(), path="$.errors.decision", absent=False, covers=["ac:5", "okf:docs/services/claims/http/claims-api.md#decide-claim:errors:1"])
 
     bad_version = qa.http.post("/api/claims/cl-1001/decision", json_body={"decision": "approve", "version": 0}, headers=bearer(qa, adjuster), expect_status=422)
-    qa.verify("json_path", bad_version.json(), path="$.errors.version", absent=False, covers=["ac:5", "okf:docs/features/claims/http/claims-api.md#decide-claim:errors:1"])
+    qa.verify("json_path", bad_version.json(), path="$.errors.version", absent=False, covers=["ac:5", "okf:docs/services/claims/http/claims-api.md#decide-claim:errors:1"])
 
     missing = qa.http.post("/api/claims/cl-9999/decision", json_body={"decision": "approve", "version": 1}, headers=bearer(qa, adjuster), expect_status=404)
-    qa.verify("http_status", missing, code=404, title="No Such Claim", path="/api/claims/cl-9999/decision", covers=["ac:5", "okf:docs/features/claims/http/claims-api.md#decide-claim:errors:2"])
+    qa.verify("http_status", missing, code=404, title="No Such Claim", path="/api/claims/cl-9999/decision", covers=["ac:5", "okf:docs/services/claims/http/claims-api.md#decide-claim:errors:2"])
 
     anonymous = qa.http.post("/api/claims/cl-9999/decision", json_body={"decision": "approve", "version": 1}, expect_status=401)
-    qa.verify("http_status", anonymous, code=401, title="Unauthorized", path="/api/claims/cl-9999/decision", covers=["okf:docs/features/claims/http/claims-api.md#decide-claim:errors:3"])
-    qa.check("the unknown id is refused 401 without an identity and 404 with an adjuster's", anonymous.status == 401 and missing.status == 404, covers=["okf:docs/features/claims/http/claims-api.md#decide-claim:errors:3"])
+    qa.verify("http_status", anonymous, code=401, title="Unauthorized", path="/api/claims/cl-9999/decision", covers=["okf:docs/services/claims/http/claims-api.md#decide-claim:errors:3"])
+    qa.check("the unknown id is refused 401 without an identity and 404 with an adjuster's", anonymous.status == 401 and missing.status == 404, covers=["okf:docs/services/claims/http/claims-api.md#decide-claim:errors:3"])
 
     survived = qa.field(qa.http.get("/api/claims/cl-1001", headers=bearer(qa, adjuster), expect_status=200).json(), "claim")
-    qa.verify("unchanged", (qa.field(who, "claim"), survived), subject="claim cl-1001", covers=["ac:4", "okf:docs/features/claims/http/claims-api.md#decide-claim:authorization:1"])
+    qa.verify("unchanged", (qa.field(who, "claim"), survived), subject="claim cl-1001", covers=["ac:4", "okf:docs/services/claims/http/claims-api.md#decide-claim:authorization:1"])
     json.dump({"forbidden": forbidden.json(), "unknown_word": unknown_word.json(), "bad_version": bad_version.json(), "missing": missing.json(), "anonymous": anonymous.json()}, qa.artifact("steps/refused-decisions.json", kind="json").open("w"))

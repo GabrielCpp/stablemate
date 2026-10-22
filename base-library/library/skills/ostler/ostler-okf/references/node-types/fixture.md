@@ -11,7 +11,7 @@ types' own `fixture:`/`verify:` pair is about *this one claim's* arrangement and
 
 A `fixture` node is **file-level** (`kind="file"`, `context="fixtures"`) — the whole file is
 the node, not a `### id` heading inside one. Its id is the repo-relative path
-(`docs/features/<surface>/fixtures/<name>.md`), and the name other bullets reference it by is the
+(`docs/services/<surface>/fixtures/<name>.md`), and the name other bullets reference it by is the
 file's stem: `seeded-acme.md` is named `seeded-acme`. It reuses `## Steps` for its own body — the
 same section type a [`runbook`](runbook.md) uses — because "seed this, then verify it took" is the
 same shape as a boot step.
@@ -239,7 +239,7 @@ fixture's `provides:` is the equivalent idea for what the arrangement itself lea
 ## Minimal example
 
 ```bash
-timeout 30 ostler scaffold fixture seeded-acme --in docs/features/acme/fixtures/
+timeout 30 ostler scaffold fixture seeded-acme --in docs/services/acme/fixtures/
 ```
 
 ```markdown

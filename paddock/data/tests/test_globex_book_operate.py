@@ -156,7 +156,7 @@ def test_bring_up_absence_empties_every_bullet_in_the_table_but_keeps_the_keys(
                     index + 1 < len(lines) and lines[index + 1].startswith("  - ")
                 )
 
-    run_lines = (tree / "docs" / "features/web-app/fixtures/widgets-on-hand.md").read_text(
+    run_lines = (tree / "docs" / "services/web-app/fixtures/widgets-on-hand.md").read_text(
         encoding="utf-8",
     )
     assert "- run: curl -sf -X POST http://localhost:18101/api/widgets" in run_lines
@@ -229,7 +229,7 @@ def test_appraise_caps_a_level_two_verdict_whose_citation_does_not_resolve(tmp_p
 
 
 def test_appraise_leaves_a_well_formed_level_two_verdict_alone(tmp_path: Path) -> None:
-    real = tmp_path / "docs" / "features" / "api-service" / "ops" / "api-service-stack.md"
+    real = tmp_path / "docs" / "services" / "api-service" / "ops" / "api-service-stack.md"
     real.parent.mkdir(parents=True)
     real.write_text("- run: `docker compose up --build api-service`\n", encoding="utf-8")
 

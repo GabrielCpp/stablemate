@@ -198,7 +198,7 @@ def book(tmp_path: Path) -> Path:
     root = tmp_path / "book"
     write(root / "docs" / "decisions" / "sort-order.md", "# Sort order\n\nUnordered.\n")
     write(
-        root / "docs" / "features" / "svc" / "gui" / "screens" / "widget.md",
+        root / "docs" / "services" / "svc" / "gui" / "screens" / "widget.md",
         "---\ntype: screen\nslug: widget\ntitle: Widget\n---\n# Widget\n\n"
         "- route: `/widget`\n"
         "- unspecified: result order ([sort order](../../../../decisions/sort-order.md))\n",

@@ -49,9 +49,9 @@ def app(tmp_path: Path) -> Callable[[str], Path]:
     def _app(name: str) -> Path:
         repo = tmp_path / name
         _ = shutil.copytree(APPS / name, repo, ignore=shutil.ignore_patterns("__pycache__", "node_modules"))
-        features = repo / "docs" / "features"
-        for page in sorted(features.rglob("*.md")):
-            _ = stamp_page(repo, features, page.relative_to(repo).as_posix())
+        services = repo / "docs" / "services"
+        for page in sorted(services.rglob("*.md")):
+            _ = stamp_page(repo, services, page.relative_to(repo).as_posix())
         _ = git(repo, "init", "-q")
         _ = git(repo, "add", "-A")
         _ = git(repo, "commit", "-q", "-m", "fixture")

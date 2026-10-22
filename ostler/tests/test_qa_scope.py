@@ -18,9 +18,9 @@ def _git(root: Path, *args: str) -> str:
 
 def _book(tmp_path: Path) -> Path:
     """A screen that documents a route but grounds no code, holding one implemented child."""
-    (tmp_path / "docs/features/demo").mkdir(parents=True)
+    (tmp_path / "docs/services/demo").mkdir(parents=True)
     (tmp_path / "app").mkdir()
-    (tmp_path / "docs/features/demo/screen.md").write_text(
+    (tmp_path / "docs/services/demo/screen.md").write_text(
         "---\ntype: screen\ntitle: Demo Screen\n---\n# Demo Screen\n\n"
         "- route: /demo\n"
         "- entry: from the home page\n"
@@ -52,11 +52,11 @@ def test_container_reached_only_by_closure_is_context_not_live_evidence(tmp_path
     assert validate_context(packet) == []
     by_id = {item["id"]: item for item in packet["obligations"]}
 
-    child = by_id["okf:docs/features/demo/screen.md#widget:contract"]
+    child = by_id["okf:docs/services/demo/screen.md#widget:contract"]
     assert child["required"] is True
     assert child["evidenceRequired"] == "live"
 
-    parent = by_id["okf:docs/features/demo/screen.md:contract"]
+    parent = by_id["okf:docs/services/demo/screen.md:contract"]
     assert parent["required"] is False
     assert parent["evidenceRequired"] == "context"
     assert {reason["kind"] for reason in parent["reasons"]} == {"contains-impacted-node"}
@@ -64,9 +64,9 @@ def test_container_reached_only_by_closure_is_context_not_live_evidence(tmp_path
 
 def _shared_stylesheet_book(tmp_path: Path) -> Path:
     """Two widgets and a stylesheet both of them are documented against."""
-    (tmp_path / "docs/features/demo").mkdir(parents=True)
+    (tmp_path / "docs/services/demo").mkdir(parents=True)
     (tmp_path / "app").mkdir()
-    (tmp_path / "docs/features/demo/screen.md").write_text(
+    (tmp_path / "docs/services/demo/screen.md").write_text(
         "---\ntype: screen\ntitle: Demo Screen\n---\n# Demo Screen\n\n"
         "- route: /demo\n"
         "- code:\n\n"
@@ -100,7 +100,7 @@ def test_a_file_cited_by_many_nodes_is_context_not_live_evidence(tmp_path: Path)
     by_id = {item["id"]: item for item in packet["obligations"]}
 
     for node in ("alert", "banner"):
-        obligation = by_id[f"okf:docs/features/demo/screen.md#{node}:contract"]
+        obligation = by_id[f"okf:docs/services/demo/screen.md#{node}:contract"]
         assert obligation["required"] is False, f"{node} is owed live evidence"
         assert obligation["evidenceRequired"] == "context"
         assert {reason["kind"] for reason in obligation["reasons"]} == {"file-owner"}
@@ -108,9 +108,9 @@ def test_a_file_cited_by_many_nodes_is_context_not_live_evidence(tmp_path: Path)
 
 def test_a_file_owned_by_one_node_still_owes_live_evidence(tmp_path: Path):
     """The narrowing is about a citation that stopped discriminating, not about bare files."""
-    (tmp_path / "docs/features/demo").mkdir(parents=True)
+    (tmp_path / "docs/services/demo").mkdir(parents=True)
     (tmp_path / "app").mkdir()
-    (tmp_path / "docs/features/demo/screen.md").write_text(
+    (tmp_path / "docs/services/demo/screen.md").write_text(
         "---\ntype: screen\ntitle: Demo Screen\n---\n# Demo Screen\n\n"
         "- route: /demo\n"
         "- code:\n\n"
@@ -131,7 +131,7 @@ def test_a_file_owned_by_one_node_still_owes_live_evidence(tmp_path: Path):
 
     packet = build_context(tmp_path, base="HEAD", source_roots={"demo": ["app"]})
     obligation = {item["id"]: item for item in packet["obligations"]}[
-        "okf:docs/features/demo/screen.md#alert:contract"
+        "okf:docs/services/demo/screen.md#alert:contract"
     ]
     assert obligation["required"] is True
     assert obligation["evidenceRequired"] == "live"
@@ -139,9 +139,9 @@ def test_a_file_owned_by_one_node_still_owes_live_evidence(tmp_path: Path):
 
 def _shared_container_book(tmp_path: Path) -> Path:
     """Three controls documented against one toolbar component, one of them brand new."""
-    (tmp_path / "docs/features/demo").mkdir(parents=True)
+    (tmp_path / "docs/services/demo").mkdir(parents=True)
     (tmp_path / "app").mkdir()
-    (tmp_path / "docs/features/demo/screen.md").write_text(
+    (tmp_path / "docs/services/demo/screen.md").write_text(
         "---\ntype: screen\ntitle: Demo Screen\n---\n# Demo Screen\n\n"
         "- route: /demo\n"
         "- code:\n\n"
@@ -187,20 +187,20 @@ def test_a_symbol_cited_by_many_nodes_is_context_not_live_evidence(tmp_path: Pat
     by_id = {item["id"]: item for item in packet["obligations"]}
 
     for node in ("undo", "redo"):
-        obligation = by_id[f"okf:docs/features/demo/screen.md#{node}:contract"]
+        obligation = by_id[f"okf:docs/services/demo/screen.md#{node}:contract"]
         assert obligation["required"] is False, f"{node} is owed live evidence"
         assert obligation["evidenceRequired"] == "context"
 
-    published = by_id["okf:docs/features/demo/screen.md#publish:contract"]
+    published = by_id["okf:docs/services/demo/screen.md#publish:contract"]
     assert published["required"] is True
     assert published["evidenceRequired"] == "live"
 
 
 def test_the_demotion_is_dropped_rather_than_owe_nothing_at_all(tmp_path: Path):
     """When every changed symbol is a container, the story still owes proof of something."""
-    (tmp_path / "docs/features/demo").mkdir(parents=True)
+    (tmp_path / "docs/services/demo").mkdir(parents=True)
     (tmp_path / "app").mkdir()
-    (tmp_path / "docs/features/demo/screen.md").write_text(
+    (tmp_path / "docs/services/demo/screen.md").write_text(
         "---\ntype: screen\ntitle: Demo Screen\n---\n# Demo Screen\n\n"
         "- route: /demo\n"
         "- code:\n\n"
@@ -241,9 +241,9 @@ def test_the_demotion_is_dropped_rather_than_owe_nothing_at_all(tmp_path: Path):
 
 def _two_readings_book(tmp_path: Path) -> Path:
     """One function, documented twice: the wire contract and the domain rule."""
-    (tmp_path / "docs/features/demo").mkdir(parents=True)
+    (tmp_path / "docs/services/demo").mkdir(parents=True)
     (tmp_path / "app").mkdir()
-    (tmp_path / "docs/features/demo/api.md").write_text(
+    (tmp_path / "docs/services/demo/api.md").write_text(
         "---\ntype: screen\ntitle: Booking API\n---\n# Booking API\n\n"
         "- route: /api\n"
         "- code:\n\n"
@@ -254,7 +254,7 @@ def _two_readings_book(tmp_path: Path) -> Path:
         "- tests: tests/api_test.py::confirms\n",
         encoding="utf-8",
     )
-    (tmp_path / "docs/features/demo/seat.md").write_text(
+    (tmp_path / "docs/services/demo/seat.md").write_text(
         "---\ntype: screen\ntitle: Seat\n---\n# Seat\n\n"
         "- route: /seat\n"
         "- code:\n\n"
@@ -284,7 +284,7 @@ def test_a_symbol_cited_by_two_nodes_still_owes_live_evidence(tmp_path: Path):
     assert validate_context(packet) == []
     by_id = {item["id"]: item for item in packet["obligations"]}
 
-    for node in ("docs/features/demo/api.md#confirm", "docs/features/demo/seat.md#held"):
+    for node in ("docs/services/demo/api.md#confirm", "docs/services/demo/seat.md#held"):
         obligation = by_id[f"okf:{node}:contract"]
         assert obligation["required"] is True, f"{node} is not owed live evidence"
         assert obligation["evidenceRequired"] == "live"
@@ -292,9 +292,9 @@ def test_a_symbol_cited_by_two_nodes_still_owes_live_evidence(tmp_path: Path):
 
 def _event_book(tmp_path: Path) -> Path:
     """A changed producer, and an untouched consumer the relation fixpoint walks to."""
-    (tmp_path / "docs/features/demo").mkdir(parents=True)
+    (tmp_path / "docs/services/demo").mkdir(parents=True)
     (tmp_path / "app").mkdir()
-    (tmp_path / "docs/features/demo/producer.md").write_text(
+    (tmp_path / "docs/services/demo/producer.md").write_text(
         "---\ntype: screen\ntitle: Checkout\n---\n# Checkout\n\n"
         "- route: /checkout\n"
         "- code:\n\n"
@@ -306,7 +306,7 @@ def _event_book(tmp_path: Path) -> Path:
         "- tests: tests/producer_test.py::places\n",
         encoding="utf-8",
     )
-    (tmp_path / "docs/features/demo/consumer.md").write_text(
+    (tmp_path / "docs/services/demo/consumer.md").write_text(
         "---\ntype: screen\ntitle: Receipts\n---\n# Receipts\n\n"
         "- route: /receipts\n"
         "- code:\n\n"
@@ -338,11 +338,11 @@ def test_the_consumer_of_a_changed_event_is_owed_live_evidence(tmp_path: Path):
     assert validate_context(packet) == []
     by_id = {item["id"]: item for item in packet["obligations"]}
 
-    producer = by_id["okf:docs/features/demo/producer.md#place:contract"]
+    producer = by_id["okf:docs/services/demo/producer.md#place:contract"]
     assert producer["required"] is True
     assert producer["evidenceRequired"] == "live"
 
-    consumer = by_id["okf:docs/features/demo/consumer.md#mail:contract"]
+    consumer = by_id["okf:docs/services/demo/consumer.md#mail:contract"]
     kinds = {reason["kind"] for reason in consumer["reasons"]}
     assert kinds == {"event-consumer", "relation-of-required"}
     assert consumer["required"] is True
@@ -351,14 +351,14 @@ def test_the_consumer_of_a_changed_event_is_owed_live_evidence(tmp_path: Path):
 
 def test_the_hop_does_not_chain_past_one_node(tmp_path: Path):
     """A hop is one hop."""
-    (tmp_path / "docs/features/demo").mkdir(parents=True)
+    (tmp_path / "docs/services/demo").mkdir(parents=True)
     (tmp_path / "app").mkdir()
     for slug, title, bullets, module in (
         ("producer", "Placer", "- emits: order.placed\n", "place"),
         ("consumer", "Mailer", "- consumes: order.placed\n- emits: mail.sent\n", "mail"),
         ("archiver", "Archiver", "- consumes: mail.sent\n", "archive"),
     ):
-        (tmp_path / f"docs/features/demo/{slug}.md").write_text(
+        (tmp_path / f"docs/services/demo/{slug}.md").write_text(
             f"---\ntype: screen\ntitle: {title}\n---\n# {title} Screen\n\n"
             "- route: /demo\n"
             "- code:\n\n"
@@ -382,17 +382,17 @@ def test_the_hop_does_not_chain_past_one_node(tmp_path: Path):
     assert validate_context(packet) == []
     by_id = {item["id"]: item for item in packet["obligations"]}
 
-    assert by_id["okf:docs/features/demo/consumer.md#mailer:contract"]["required"] is True
-    archiver = by_id["okf:docs/features/demo/archiver.md#archiver:contract"]
+    assert by_id["okf:docs/services/demo/consumer.md#mailer:contract"]["required"] is True
+    archiver = by_id["okf:docs/services/demo/archiver.md#archiver:contract"]
     assert archiver["required"] is False
     assert archiver["evidenceRequired"] == "context"
 
 
 def _record_book(tmp_path: Path) -> dict:
     """Two grounded screens bound to one named record, and a third nobody has built."""
-    (tmp_path / "docs/features/demo").mkdir(parents=True)
+    (tmp_path / "docs/services/demo").mkdir(parents=True)
     (tmp_path / "app").mkdir()
-    (tmp_path / "docs/features/demo/detail.md").write_text(
+    (tmp_path / "docs/services/demo/detail.md").write_text(
         "---\ntype: screen\ntitle: Booking Detail\n---\n# Booking Detail\n\n"
         "- route: /booking\n"
         "- code:\n\n"
@@ -405,7 +405,7 @@ def _record_book(tmp_path: Path) -> dict:
         "- tests: tests/detail_test.py::shows\n",
         encoding="utf-8",
     )
-    (tmp_path / "docs/features/demo/create.md").write_text(
+    (tmp_path / "docs/services/demo/create.md").write_text(
         "---\ntype: screen\ntitle: New Booking\n---\n# New Booking\n\n"
         "- route: /booking/new\n"
         "- code:\n\n"
@@ -419,7 +419,7 @@ def _record_book(tmp_path: Path) -> dict:
         "- tests: tests/create_test.py::writes\n",
         encoding="utf-8",
     )
-    (tmp_path / "docs/features/demo/report.md").write_text(
+    (tmp_path / "docs/services/demo/report.md").write_text(
         "---\ntype: screen\ntitle: Booking Report\n---\n# Booking Report\n\n"
         "- route: /booking/report\n"
         "- code:\n\n"
@@ -449,15 +449,15 @@ def test_the_screen_that_creates_the_record_is_owed_when_the_record_changes(tmp_
     assert validate_context(packet) == []
     by_id = {item["id"]: item for item in packet["obligations"]}
 
-    create = by_id["okf:docs/features/demo/create.md#create:contract"]
+    create = by_id["okf:docs/services/demo/create.md#create:contract"]
     assert create["required"] is True, "the screen that writes the record owes nothing"
     assert {"kind": "relation-of-required", "ref": "booking-record"} in create["reasons"]
 
-    bullet = by_id["okf:docs/features/demo/create.md#create:persistence:1"]
+    bullet = by_id["okf:docs/services/demo/create.md#create:persistence:1"]
     assert bullet["subject"] == "booking-record"
     assert bullet["requirement"] == "submitting the form writes one booking and no more."
 
-    report = by_id["okf:docs/features/demo/report.md#report:contract"]
+    report = by_id["okf:docs/services/demo/report.md#report:contract"]
     assert report["required"] is False
     assert report["evidenceRequired"] == "context"
 
@@ -467,15 +467,15 @@ def test_a_hopped_node_owes_the_invariant_it_shares_and_not_its_whole_surface(tm
     packet = _record_book(tmp_path)
     by_id = {item["id"]: item for item in packet["obligations"]}
 
-    shared = by_id["okf:docs/features/demo/create.md#create:persistence:1"]
+    shared = by_id["okf:docs/services/demo/create.md#create:persistence:1"]
     assert shared["required"] is True
     assert shared["evidenceRequired"] == "live"
 
-    its_own = by_id["okf:docs/features/demo/create.md#create:keyboard:1"]
+    its_own = by_id["okf:docs/services/demo/create.md#create:keyboard:1"]
     assert its_own["required"] is False
     assert its_own["evidenceRequired"] == "context"
 
-    assert by_id["okf:docs/features/demo/detail.md#detail:persistence:1"]["required"] is True
+    assert by_id["okf:docs/services/demo/detail.md#detail:persistence:1"]["required"] is True
 
 
 def test_a_relation_bullet_without_a_subject_names_nothing_and_joins_nothing(tmp_path: Path):
@@ -539,11 +539,11 @@ def test_obligations_carry_the_book_locators_for_the_node(tmp_path: Path):
     packet = build_context(tmp_path, base="HEAD", source_roots={"demo": ["app"]})
     by_id = {item["id"]: item for item in packet["obligations"]}
 
-    assert by_id["okf:docs/features/demo/screen.md#widget:contract"]["locators"] == {
+    assert by_id["okf:docs/services/demo/screen.md#widget:contract"]["locators"] == {
         "role": ["alert"],
         "name": ["the failure message"],
     }
-    assert by_id["okf:docs/features/demo/screen.md:contract"]["locators"] == {
+    assert by_id["okf:docs/services/demo/screen.md:contract"]["locators"] == {
         "route": ["/demo"],
         "entry": ["from the home page"],
     }
@@ -600,20 +600,20 @@ def _context_with(spec: Path, *, required: bool) -> None:
     spec.mkdir(parents=True, exist_ok=True)
     obligations = [
         {
-            "id": "okf:docs/features/demo/item.md:contract",
+            "id": "okf:docs/services/demo/item.md:contract",
             "kind": "contract",
             "node": "item",
-            "source": "docs/features/demo/item.md",
+            "source": "docs/services/demo/item.md",
             "requirement": "item is emitted",
             "required": True,
             "evidenceRequired": "live",
             "reasons": [],
         },
         {
-            "id": "okf:docs/features/demo/unbuilt.md:contract",
+            "id": "okf:docs/services/demo/unbuilt.md:contract",
             "kind": "contract",
             "node": "unbuilt",
-            "source": "docs/features/demo/unbuilt.md",
+            "source": "docs/services/demo/unbuilt.md",
             "requirement": "an endpoint nobody has written",
             "required": required,
             "evidenceRequired": "live" if required else "context",
@@ -646,7 +646,7 @@ def test_coverage_gate_skips_context_only_obligations(tmp_path: Path):
     """A plan covering only what the story built validates; the same plan used to be rejected."""
     spec = tmp_path / "docs/specs/story-1"
     _context_with(spec, required=False)
-    plan = _plan_covering(spec, "okf:docs/features/demo/item.md:contract")
+    plan = _plan_covering(spec, "okf:docs/services/demo/item.md:contract")
 
     document, load_problems = load_plan(plan, spec, tmp_path)
     assert not load_problems and document is not None
@@ -657,10 +657,10 @@ def _context_with_deferred(spec: Path, *, deferred: bool) -> None:
     """Same shape as `_context_with`, but the second obligation is compiler-deferred."""
     spec.mkdir(parents=True, exist_ok=True)
     unbuilt: dict = {
-        "id": "okf:docs/features/demo/unbuilt.md:contract",
+        "id": "okf:docs/services/demo/unbuilt.md:contract",
         "kind": "contract",
         "node": "unbuilt",
-        "source": "docs/features/demo/unbuilt.md",
+        "source": "docs/services/demo/unbuilt.md",
         "requirement": "an endpoint the book declares no fixture for",
         "required": True,
         "evidenceRequired": "live",
@@ -673,10 +673,10 @@ def _context_with_deferred(spec: Path, *, deferred: bool) -> None:
         }
     obligations = [
         {
-            "id": "okf:docs/features/demo/item.md:contract",
+            "id": "okf:docs/services/demo/item.md:contract",
             "kind": "contract",
             "node": "item",
-            "source": "docs/features/demo/item.md",
+            "source": "docs/services/demo/item.md",
             "requirement": "item is emitted",
             "required": True,
             "evidenceRequired": "live",
@@ -710,7 +710,7 @@ def test_coverage_gate_skips_obligations_the_compiler_already_deferred(tmp_path:
     """A `deferred` obligation is not demanded, the same way a `required: false` one is not."""
     spec = tmp_path / "docs/specs/story-1"
     _context_with_deferred(spec, deferred=True)
-    plan = _plan_covering(spec, "okf:docs/features/demo/item.md:contract")
+    plan = _plan_covering(spec, "okf:docs/services/demo/item.md:contract")
 
     document, load_problems = load_plan(plan, spec, tmp_path)
     assert not load_problems and document is not None
@@ -721,7 +721,7 @@ def test_coverage_gate_still_demands_an_undeferred_obligation(tmp_path: Path):
     """The mirror: an obligation with no `deferred` stamp is still genuinely unhandled."""
     spec = tmp_path / "docs/specs/story-1"
     _context_with_deferred(spec, deferred=False)
-    plan = _plan_covering(spec, "okf:docs/features/demo/item.md:contract")
+    plan = _plan_covering(spec, "okf:docs/services/demo/item.md:contract")
 
     document, load_problems = load_plan(plan, spec, tmp_path)
     assert not load_problems and document is not None
@@ -730,7 +730,7 @@ def test_coverage_gate_still_demands_an_undeferred_obligation(tmp_path: Path):
     )
 
 
-_GUI = "okf:docs/features/demo/screen.md#widget:contract"
+_GUI = "okf:docs/services/demo/screen.md#widget:contract"
 
 
 def _gui_context(spec: Path, *, role: str = "alert", route: str = "/demo") -> None:
@@ -755,7 +755,7 @@ def _gui_context(spec: Path, *, role: str = "alert", route: str = "/demo") -> No
                         "id": _GUI,
                         "kind": "contract",
                         "node": "widget",
-                        "source": "docs/features/demo/screen.md",
+                        "source": "docs/services/demo/screen.md",
                         "requirement": "the failure message is shown",
                         "required": True,
                         "evidenceRequired": "live",
@@ -799,7 +799,7 @@ def _gui_plan(
         '    """The widget is on the page."""\n'
         f"    qa.goto({url!r})\n"
         f"{body}"
-        '    qa.vet("docs/features/demo/screen.md", name="loaded")\n'
+        '    qa.vet("docs/services/demo/screen.md", name="loaded")\n'
         f'    qa.check("the widget is shown", True, covers={[_GUI, *covers]!r})\n',
         encoding="utf-8",
     )
@@ -870,13 +870,13 @@ def test_text_is_allowed_when_a_covered_node_has_no_documented_address(tmp_path:
     _gui_context(spec)
     packet = json.loads((spec / "qa-okf-context.json").read_text())
     packet["obligations"].append(
-        {**packet["obligations"][0], "id": "okf:docs/features/demo/screen.md:contract", "locators": {}}
+        {**packet["obligations"][0], "id": "okf:docs/services/demo/screen.md:contract", "locators": {}}
     )
     (spec / "qa-okf-context.json").write_text(json.dumps(packet), encoding="utf-8")
     plan = _gui_plan(
         spec,
         locator={"role": "alert", "name": "the failure message"},
-        covers=("okf:docs/features/demo/screen.md:contract",),
+        covers=("okf:docs/services/demo/screen.md:contract",),
         also={"text": "Demo"},
     )
 
@@ -897,7 +897,7 @@ def test_coverage_gate_still_demands_required_obligations(tmp_path: Path):
     """The narrowing is the flag, not the reason kind — a required obligation stays required."""
     spec = tmp_path / "docs/specs/story-1"
     _context_with(spec, required=True)
-    plan = _plan_covering(spec, "okf:docs/features/demo/item.md:contract")
+    plan = _plan_covering(spec, "okf:docs/services/demo/item.md:contract")
 
     document, load_problems = load_plan(plan, spec, tmp_path)
     assert not load_problems and document is not None
@@ -910,17 +910,17 @@ def test_coverage_gate_still_demands_required_obligations(tmp_path: Path):
 
 def _two_flows_over_one_contract(tmp_path: Path) -> Path:
     """Two sibling journeys over the same changed contract, one of them linking to the other."""
-    (tmp_path / "docs/features/demo/flows").mkdir(parents=True)
-    (tmp_path / "docs/features/demo/http").mkdir()
+    (tmp_path / "docs/services/demo/flows").mkdir(parents=True)
+    (tmp_path / "docs/services/demo/http").mkdir()
     (tmp_path / "app").mkdir()
-    (tmp_path / "docs/features/demo/http/api.md").write_text(
+    (tmp_path / "docs/services/demo/http/api.md").write_text(
         "---\ntype: endpoint\nslug: api\ntitle: Read API\n---\n# Read API\n\n"
         "- does: serves the stored object verbatim\n"
         "- code: app/api.go::Read\n"
         "- tests: tests/api_test.go::TestRead\n",
         encoding="utf-8",
     )
-    (tmp_path / "docs/features/demo/flows/serves-object.md").write_text(
+    (tmp_path / "docs/services/demo/flows/serves-object.md").write_text(
         "---\ntype: flow\nslug: serves-object\ntitle: Serves object\n---\n# Serves object\n\n"
         "- start: a caller issues the read request\n"
         "- steps:\n"
@@ -928,7 +928,7 @@ def _two_flows_over_one_contract(tmp_path: Path) -> Path:
         "- end: the caller receives the object verbatim\n",
         encoding="utf-8",
     )
-    (tmp_path / "docs/features/demo/flows/cold-start.md").write_text(
+    (tmp_path / "docs/services/demo/flows/cold-start.md").write_text(
         "---\ntype: flow\nslug: cold-start\ntitle: Cold start\n---\n# Cold start\n\n"
         "- start: the app boots\n"
         "- steps:\n"
@@ -954,7 +954,7 @@ def test_a_flow_linked_from_another_flow_is_not_also_a_contract(tmp_path: Path):
 
     packet = build_context(tmp_path, base="HEAD", source_roots={"demo": ["app"]})
 
-    linked = "docs/features/demo/flows/serves-object.md"
+    linked = "docs/services/demo/flows/serves-object.md"
     assert linked in packet["journeys"]
     assert linked not in packet["contracts"]
     assert not [node for node in packet["contracts"] if "/flows/" in node]
@@ -967,8 +967,8 @@ def test_a_flow_linked_from_another_flow_is_not_also_a_contract(tmp_path: Path):
 def test_a_journey_over_a_required_contract_is_itself_required(tmp_path: Path):
     """A flow carries no `code:` bullet, so the grounding rule made every journey context."""
     _book(tmp_path)
-    (tmp_path / "docs/features/demo/flows").mkdir()
-    (tmp_path / "docs/features/demo/flows/reads-widget.md").write_text(
+    (tmp_path / "docs/services/demo/flows").mkdir()
+    (tmp_path / "docs/services/demo/flows/reads-widget.md").write_text(
         "---\ntype: flow\nslug: reads-widget\ntitle: Reads widget\n---\n# Reads widget\n\n"
         "- start: [Demo Screen](../screen.md)\n"
         "- steps:\n"
@@ -976,7 +976,7 @@ def test_a_journey_over_a_required_contract_is_itself_required(tmp_path: Path):
         "- end: the operator has read the failure\n",
         encoding="utf-8",
     )
-    (tmp_path / "docs/features/demo/flows/opens-screen.md").write_text(
+    (tmp_path / "docs/services/demo/flows/opens-screen.md").write_text(
         "---\ntype: flow\nslug: opens-screen\ntitle: Opens screen\n---\n# Opens screen\n\n"
         "- start: the operator is elsewhere\n"
         "- steps:\n"
@@ -994,15 +994,15 @@ def test_a_journey_over_a_required_contract_is_itself_required(tmp_path: Path):
         if item.get("kind") == "journey"
     }
     assert journeys == {
-        "docs/features/demo/flows/reads-widget.md": True,
-        "docs/features/demo/flows/opens-screen.md": False,
+        "docs/services/demo/flows/reads-widget.md": True,
+        "docs/services/demo/flows/opens-screen.md": False,
     }
 
 
 def test_a_whole_book_owes_a_journey_whose_steps_link_no_contract(tmp_path: Path):
     _book(tmp_path)
-    (tmp_path / "docs/features/demo/flows").mkdir()
-    (tmp_path / "docs/features/demo/flows/presses-keys.md").write_text(
+    (tmp_path / "docs/services/demo/flows").mkdir()
+    (tmp_path / "docs/services/demo/flows/presses-keys.md").write_text(
         "---\ntype: flow\nslug: presses-keys\ntitle: Presses keys\n---\n# Presses keys\n\n"
         "- start: the operator is on the demo screen\n"
         "- steps:\n"
@@ -1014,14 +1014,14 @@ def test_a_whole_book_owes_a_journey_whose_steps_link_no_contract(tmp_path: Path
     packet = book_context(tmp_path, source_roots={"demo": ["app"]})
 
     journeys = {item["node"]: item["required"] for item in packet["obligations"] if item.get("kind") == "journey"}
-    assert journeys == {"docs/features/demo/flows/presses-keys.md": True}
+    assert journeys == {"docs/services/demo/flows/presses-keys.md": True}
 
 
 def test_a_journey_is_required_of_the_story_that_walked_it_not_of_its_neighbour(tmp_path: Path):
     """Two journeys end on the same screen, and only one of them is this story's."""
     _book(tmp_path)
-    (tmp_path / "docs/features/demo/flows").mkdir()
-    (tmp_path / "docs/features/demo/flows/fills-widget.md").write_text(
+    (tmp_path / "docs/services/demo/flows").mkdir()
+    (tmp_path / "docs/services/demo/flows/fills-widget.md").write_text(
         "---\ntype: flow\nslug: fills-widget\ntitle: Fills widget\n---\n# Fills widget\n\n"
         "- start: the operator is on the home page\n"
         "- steps:\n"
@@ -1029,7 +1029,7 @@ def test_a_journey_is_required_of_the_story_that_walked_it_not_of_its_neighbour(
         "- end: [Demo Screen](../screen.md)\n",
         encoding="utf-8",
     )
-    (tmp_path / "docs/features/demo/flows/passes-through.md").write_text(
+    (tmp_path / "docs/services/demo/flows/passes-through.md").write_text(
         "---\ntype: flow\nslug: passes-through\ntitle: Passes through\n---\n# Passes through\n\n"
         "- start: the operator is elsewhere\n"
         "- steps:\n"
@@ -1047,8 +1047,8 @@ def test_a_journey_is_required_of_the_story_that_walked_it_not_of_its_neighbour(
         if item.get("kind") == "journey"
     }
     assert journeys == {
-        "docs/features/demo/flows/fills-widget.md": True,
-        "docs/features/demo/flows/passes-through.md": False,
+        "docs/services/demo/flows/fills-widget.md": True,
+        "docs/services/demo/flows/passes-through.md": False,
     }
 
 
@@ -1059,7 +1059,7 @@ def test_a_ui_scenario_that_vets_no_screen_is_rejected(tmp_path: Path):
     plan = _gui_plan(spec, locator={"role": "alert", "name": "the failure message"})
     plan.write_text(
         plan.read_text(encoding="utf-8").replace(
-            '    qa.vet("docs/features/demo/screen.md", name="loaded")\n', ""
+            '    qa.vet("docs/services/demo/screen.md", name="loaded")\n', ""
         ),
         encoding="utf-8",
     )
@@ -1074,7 +1074,7 @@ def test_a_vetted_screen_the_packet_does_not_name_is_rejected(tmp_path: Path):
     plan = _gui_plan(spec, locator={"role": "alert", "name": "the failure message"})
     plan.write_text(
         plan.read_text(encoding="utf-8").replace(
-            "docs/features/demo/screen.md", "docs/features/demo/invented.md"
+            "docs/services/demo/screen.md", "docs/services/demo/invented.md"
         ),
         encoding="utf-8",
     )
@@ -1090,10 +1090,10 @@ def test_a_computed_vet_target_is_rejected(tmp_path: Path):
     plan = _gui_plan(spec, locator={"role": "alert", "name": "the failure message"})
     plan.write_text(
         plan.read_text(encoding="utf-8").replace(
-            '"docs/features/demo/screen.md"', 'SCREEN_DIR + "/screen.md"'
+            '"docs/services/demo/screen.md"', 'SCREEN_DIR + "/screen.md"'
         ).replace(
             'plan(run_id="qa-run-1", story="story-1")',
-            'SCREEN_DIR = "docs/features/demo"\n\nplan(run_id="qa-run-1", story="story-1")',
+            'SCREEN_DIR = "docs/services/demo"\n\nplan(run_id="qa-run-1", story="story-1")',
         ),
         encoding="utf-8",
     )
@@ -1103,24 +1103,24 @@ def test_a_computed_vet_target_is_rejected(tmp_path: Path):
 
 def _crossing_journey(tmp_path: Path) -> None:
     """One journey that starts in a browser and ends at an HTTP endpoint on another surface."""
-    (tmp_path / "docs/features/web/gui/screens").mkdir(parents=True)
-    (tmp_path / "docs/features/web/flows").mkdir(parents=True)
-    (tmp_path / "docs/features/api/http").mkdir(parents=True)
+    (tmp_path / "docs/services/web/gui/screens").mkdir(parents=True)
+    (tmp_path / "docs/services/web/flows").mkdir(parents=True)
+    (tmp_path / "docs/services/api/http").mkdir(parents=True)
     (tmp_path / "app").mkdir()
-    (tmp_path / "docs/features/web/gui/screens/list.md").write_text(
+    (tmp_path / "docs/services/web/gui/screens/list.md").write_text(
         "---\ntype: screen\ntitle: List\n---\n# List\n\n"
         "- route: `/`\n- requires: none\n- params: none\n\n"
         "## Components\n\n### widget\n\n- role: alert\n- name: the failure message\n"
         "- code: app/widget.ts::render\n- tests: tests/widget.test.ts::renders\n",
         encoding="utf-8",
     )
-    (tmp_path / "docs/features/api/http/api.md").write_text(
+    (tmp_path / "docs/services/api/http/api.md").write_text(
         "---\ntype: server\ntitle: API\n---\n# API\n\n## Endpoints\n\n### get-widgets\n\n"
         "- method: GET\n- path: /api/widgets\n- does: lists the widgets\n"
         "- code: app/api.go::List\n",
         encoding="utf-8",
     )
-    (tmp_path / "docs/features/web/flows/cross.md").write_text(
+    (tmp_path / "docs/services/web/flows/cross.md").write_text(
         "---\ntype: flow\nslug: cross\ntitle: Cross\n---\n# Cross\n\n"
         "- start: [List](../gui/screens/list.md)\n"
         "- steps:\n  1. [get-widgets](../../api/http/api.md#get-widgets) answers\n"
@@ -1145,7 +1145,7 @@ def test_a_flows_claim_is_surfaced_where_its_own_bullet_points(tmp_path: Path):
     packet = build_context(tmp_path, base="HEAD", source_roots={"web": ["app"], "api": ["app"]})
     assert validate_context(packet) == []
     by_id = {item["id"]: item for item in packet["obligations"]}
-    flow = "okf:docs/features/web/flows/cross.md"
+    flow = "okf:docs/services/web/flows/cross.md"
     assert by_id[f"{flow}:start:1"]["surface"] == "web"
     assert by_id[f"{flow}:end:1"]["surface"] == "api"
     assert by_id[f"{flow}:end-state"]["surface"] == "api"

@@ -21,7 +21,7 @@ from workhorse_workflows.okf_book.workflow import OkfBook
 App = Callable[[str], Path]
 DriveBook = Callable[[OkfBook, ScriptedRunner], object]
 TALLY = Surface(service="tally", kind=SurfaceKind.CLI, entry="tally/__main__.py")
-PAGE = "docs/features/tally/tally.md"
+PAGE = "docs/services/tally/tally.md"
 NOTE = "\nThe ledger keeps every expense in the order it was added.\n"
 REFUSAL = "the hook refuses this commit"
 

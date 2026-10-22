@@ -292,4 +292,4 @@ diagnosed and fixed is a bug closed. One that is narrated comes back on the next
   wall-clock limit is workhorse's `WORKHORSE_MAX_RUNTIME_S`, not something to infer here.
 
 Full as-built reference: `groom/README.md` in the stablemate workspace, and the design book
-under `docs/features/groom/` (`ostler graph --surface groom`).
+under `docs/services/groom/` (`ostler graph --surface groom`).

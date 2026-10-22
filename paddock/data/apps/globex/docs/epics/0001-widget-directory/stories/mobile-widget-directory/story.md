@@ -18,9 +18,9 @@ status: Not started
 
 mobile-app is a second, independent client of the same api-service — it never talks to
 web-app, and it makes the same claims against the same directory from a device instead of a
-browser. [The mobile widget-list screen](../../../../features/mobile-app/gui/screens/widget-list.md)
-and [the mobile new-widget screen](../../../../features/mobile-app/gui/screens/new-widget.md)
-are that client's two screens, and [browse-and-add-widget](../../../../features/mobile-app/flows/browse-and-add-widget.md)
+browser. [The mobile widget-list screen](../../../../services/mobile-app/gui/screens/widget-list.md)
+and [the mobile new-widget screen](../../../../services/mobile-app/gui/screens/new-widget.md)
+are that client's two screens, and [browse-and-add-widget](../../../../services/mobile-app/flows/browse-and-add-widget.md)
 is the one journey that crosses between them — the same "user crossing" shape web-app's own
 flow walks, driven from a device instead.
 

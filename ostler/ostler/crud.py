@@ -550,7 +550,7 @@ def remove_seed(graph: Graph, epic_name: str, seed_id: str) -> Result:
 
 def create_feature(graph: Graph, slug: str, title: str, area: str = "",
                    route: str = "", prefix: str | None = None) -> Result:
-    froot = graph.doc_roots["features"]
+    froot = graph.doc_roots["services"]
     path = (froot / area / f"{slug}.md") if area else (froot / f"{slug}.md")
     if path.exists():
         return Result(False, f"feature '{slug}' already exists")

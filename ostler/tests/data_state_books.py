@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-API = "docs/features/acme/http/api.md"
-FLOW = "docs/features/acme/flows/pay-a-bill.md"
-FIXTURE = "docs/features/acme/fixtures/issued-bill.md"
-RUNBOOK = "docs/features/acme/ops/qa-stack.md"
+API = "docs/services/acme/http/api.md"
+FLOW = "docs/services/acme/flows/pay-a-bill.md"
+FIXTURE = "docs/services/acme/fixtures/issued-bill.md"
+RUNBOOK = "docs/services/acme/ops/qa-stack.md"
 
 RUNBOOK_PAGE = """---
 type: runbook
@@ -109,7 +109,7 @@ title: Pay a bill
 - end: [Bills API](../http/api.md)
 """
 
-PAID_FIXTURE = "docs/features/acme/fixtures/paid-bill.md"
+PAID_FIXTURE = "docs/services/acme/fixtures/paid-bill.md"
 
 PAID_FIXTURE_PAGE = FIXTURE_PAGE.replace("title: Issued bill", "title: Paid bill").replace(
     "# Issued bill", "# Paid bill").replace("an issued bill", "a paid bill").replace(
@@ -144,8 +144,8 @@ def void_page(*, void_moves: str, states: str = ISSUED_ARRANGED + "\n" + PAID_AR
     return api_page(endpoints=ENDPOINTS + void, states=states, pay_moves=pay_moves)
 
 
-CLI = "docs/features/tally/tally.md"
-CLI_FLOW = "docs/features/tally/flows/pay-a-bill.md"
+CLI = "docs/services/tally/tally.md"
+CLI_FLOW = "docs/services/tally/flows/pay-a-bill.md"
 CLI_PAY_MOVES = "- moves: [Bill issued](#issued) to [Bill paid](#paid)\n"
 
 CLI_STATES = """## Data states

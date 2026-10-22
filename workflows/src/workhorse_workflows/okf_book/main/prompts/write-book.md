@@ -157,7 +157,7 @@ gives relative to the repository starts there.
   steps run on the host before any scenario. They boot an emulator and wait for it, then build
   the app and install it with `adb install`.
   A runbook has one `kind: service` step. It starts the backend the app calls, on a free port,
-  as another book's runbook under `docs/features/` may already do, and sets the address the app
+  as another book's runbook under `docs/services/` may already do, and sets the address the app
   is built against to that port. Its `health:` gate runs a route the backend's source serves to
   say it is ready. Name that route, and never invent one. A further backend starts in the
   background from a `kind: prepare` step, on a free port of its own, and the app is built
@@ -178,7 +178,7 @@ gives relative to the repository starts there.
   git, curl and python3, and nothing else: no other language toolchain, no cloud CLI, no
   emulator, no database. The runbook fetches and starts every other tool and service the app
   needs. That includes each service the app calls, such as the API behind a web app. Start it
-  on a free port, as another book's runbook under `docs/features/` may already do, and set the
+  on a free port, as another book's runbook under `docs/services/` may already do, and set the
   address the app's source calls it at, such as a dev proxy's target, to that port. A service
   already answering on this machine belongs to someone else, and a claim that passes against
   it passes only here.

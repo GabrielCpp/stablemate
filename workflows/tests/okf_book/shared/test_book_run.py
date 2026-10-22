@@ -32,7 +32,7 @@ PREVIEW = (
     "---\ntype: environment\nslug: preview\ntitle: Preview\n---\n# Preview\n\n"
     "- selector: local-only\n- local-only: true\n"
 )
-WEB_STACK = Path("docs/features/web-app/ops/web-app-stack.md")
+WEB_STACK = Path("docs/services/web-app/ops/web-app-stack.md")
 SERVING = StackReadiness(up=True, serving=True, notes="")
 
 
@@ -70,7 +70,7 @@ def test_another_service_leaves_that_stack_down(app: Callable[[str], Path], brou
 
     _ = bring_up(logging.getLogger(__name__), repo, "api-service")
 
-    assert "docs/features/api-service/ops/api-service-stack.md" in brought_up
+    assert "docs/services/api-service/ops/api-service-stack.md" in brought_up
     assert WEB_STACK.as_posix() not in brought_up
 
 
@@ -80,7 +80,7 @@ def test_a_stack_that_cannot_come_up_is_a_problem_on_each_runbook_of_its_own_boo
 
     failures = stack_down_failures(repo, "web-app", down)
 
-    assert "docs/features/api-service/ops/api-service-stack.md" not in failures
+    assert "docs/services/api-service/ops/api-service-stack.md" not in failures
     assert {page: [problem.text for problem in problems] for page, problems in failures.items()} == {
         WEB_STACK.as_posix(): [f"{WEB_STACK.as_posix()}: the app's stack cannot come up: port 8080 is held by groom"]
     }
@@ -90,7 +90,7 @@ def test_a_stack_that_cannot_come_up_is_a_problem_on_each_runbook_of_its_own_boo
 def test_a_book_that_compiles_to_no_plan_says_when_its_index_declares_it_unexercised(app: Callable[[str], Path]) -> None:
     repo = app("tally-cli")
     before = unplanned_problem(repo, "tally")
-    _ = (repo / "docs/features/tally/index.md").write_text("---\ntitle: tally\nexercised: false\n---\n# tally\n", encoding="utf-8")
+    _ = (repo / "docs/services/tally/index.md").write_text("---\ntitle: tally\nexercised: false\n---\n# tally\n", encoding="utf-8")
 
     assert before == "the book compiles to no plan"
     assert unplanned_problem(repo, "tally") == "the book's index declares it unexercised, so it compiles to no plan and the run exercises nothing"
@@ -141,12 +141,12 @@ def test_a_failed_bring_up_still_owns_the_servers_it_started(app: Callable[[str]
 
 
 def test_a_run_scoped_to_a_flow_page_compiles_the_whole_book_and_runs_only_that_flow(app: Callable[[str], Path], tmp_path: Path) -> None:
-    flow_page = "docs/features/api-service/flows/add-widget-via-api.md"
+    flow_page = "docs/services/api-service/flows/add-widget-via-api.md"
 
     outcome = compile_scenarios(app("globex"), "api-service", tmp_path / "spec", (flow_page,))
 
     assert outcome.planned
-    assert outcome.only == ("docs-features-api-service-flows-add-widget-via-api-journey",)
+    assert outcome.only == ("docs-services-api-service-flows-add-widget-via-api-journey",)
     assert all(f"okf:{flow_page}" in gap for gap in outcome.gaps)
 
 
@@ -168,7 +168,7 @@ def test_a_check_describes_its_compiled_plan_once_to_pick_and_run_its_scenarios(
     repo, spec = app("globex"), tmp_path / "spec"
     described = _described(monkeypatch)
 
-    outcome = compile_scenarios(repo, "api-service", spec, ("docs/features/api-service/flows/add-widget-via-api.md",))
+    outcome = compile_scenarios(repo, "api-service", spec, ("docs/services/api-service/flows/add-widget-via-api.md",))
     planned, _problems = plan_scenarios(repo, spec)
 
     assert set(outcome.only) <= {scenario.id for scenario in planned}
@@ -177,7 +177,7 @@ def test_a_check_describes_its_compiled_plan_once_to_pick_and_run_its_scenarios(
 
 def test_a_plan_compiled_again_is_described_again(app: Callable[[str], Path], tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     repo, spec = app("globex"), tmp_path / "spec"
-    flow_page = "docs/features/api-service/flows/add-widget-via-api.md"
+    flow_page = "docs/services/api-service/flows/add-widget-via-api.md"
     described = _described(monkeypatch)
     _ = compile_scenarios(repo, "api-service", spec, (flow_page,))
 

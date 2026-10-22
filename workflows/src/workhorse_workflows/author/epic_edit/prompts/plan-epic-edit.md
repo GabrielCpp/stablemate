@@ -19,7 +19,7 @@ plan only after it passes static validation and an independent semantic review.
 
 - `{{ workhorse_var('epic_dir') }}/epic.md` and its current stories.
 - The configured backlog at `{{ workhorse_var('backlog') }}`.
-- Existing feature documentation under `{{ workhorse_var('features_dir') }}`; read only, never write.
+- Existing feature documentation under `{{ workhorse_var('services_dir') }}`; read only, never write.
 - `{{ workhorse_var('epic_dir') }}/context.md` when present.
 
 ## Plan contract

@@ -11,8 +11,8 @@ from ostler.qa.compile import Plan, Refusal, compile_plan_gaps
 from conftest import write
 from test_qa_compile import _API, _FLOW, _api_navigation, _flow_obligation, _navigation_context, _status, _step, _step_node
 
-PAGE = "docs/features/acme/http/api.md"
-FLOW = "docs/features/acme/flows/bill.md"
+PAGE = "docs/services/acme/http/api.md"
+FLOW = "docs/services/acme/flows/bill.md"
 
 HEAD = """---
 type: server
@@ -130,7 +130,7 @@ def test_a_flows_own_refusal_status_compiles_no_scenario() -> None:
     assert "drop the flow's http_status" in gap.detail
 
 
-INVOCATIONS = "docs/features/acme/http/changes.md"
+INVOCATIONS = "docs/services/acme/http/changes.md"
 CHANGE_TYPE = "### change-type\n- method: POST\n- path: /type-change\n- moves: none, because the fixture stores nothing\n"
 
 

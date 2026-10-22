@@ -6,7 +6,7 @@ from ostler.qa.book_index import node_acts
 from ostler.qa.obligation import Obligation
 from ostler.qa.obligation import obligation_of
 
-_NODE = "docs/features/acme/gui/screens/items.md#reopen-item"
+_NODE = "docs/services/acme/gui/screens/items.md#reopen-item"
 
 
 def _claim(kind: str, position: int, calls: list[str]) -> Obligation:
@@ -15,7 +15,7 @@ def _claim(kind: str, position: int, calls: list[str]) -> Obligation:
         "kind": kind,
         "node": _NODE,
         "nodeType": "interaction",
-        "source": "docs/features/acme/gui/screens/items.md",
+        "source": "docs/services/acme/gui/screens/items.md",
         "docPosition": [position],
         "actsDeclared": [{"call": call, "name": call.split("(")[0]} for call in calls],
     })

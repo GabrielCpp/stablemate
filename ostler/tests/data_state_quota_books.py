@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-API = "docs/features/acme/http/orders.md"
-FLOW = "docs/features/acme/flows/place-an-order.md"
-QUOTA_FIXTURE = "docs/features/acme/fixtures/quota-used-up.md"
+API = "docs/services/acme/http/orders.md"
+FLOW = "docs/services/acme/flows/place-an-order.md"
+QUOTA_FIXTURE = "docs/services/acme/fixtures/quota-used-up.md"
 
 QUOTA_FIXTURE_PAGE = """---
 type: fixture

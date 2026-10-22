@@ -69,8 +69,8 @@ def defect_ids() -> list[str]:
 
 def test_the_book_has_no_screen_in_it() -> None:
     """The premise of the whole fixture, pinned so a later edit cannot quietly dilute it."""
-    features = APP / "docs" / "features"
-    contexts = {path.parent.name for path in features.rglob("*.md")}
+    services = APP / "docs" / "services"
+    contexts = {path.parent.name for path in services.rglob("*.md")}
     assert "http" in contexts
     assert not contexts & {"gui", "screens", "mobile"}, sorted(contexts)
 

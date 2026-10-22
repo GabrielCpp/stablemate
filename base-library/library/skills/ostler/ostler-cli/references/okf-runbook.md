@@ -7,8 +7,8 @@ repair prompt reached *after* QA had already run against nothing.
 
 | type | kind | where |
 | --- | --- | --- |
-| `runbook` | file | `docs/features/<service>/ops/<name>.md` — how one stack comes up |
-| `environment` | file | `docs/features/<service>/ops/<name>.md` — where it points once it is up |
+| `runbook` | file | `docs/services/<service>/ops/<name>.md` — how one stack comes up |
+| `environment` | file | `docs/services/<service>/ops/<name>.md` — where it points once it is up |
 | `step` | section | a `### <id>` under the runbook's `## Steps` |
 
 ## Scaffold it, do not hand-write it

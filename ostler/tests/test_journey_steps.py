@@ -5,9 +5,9 @@ from __future__ import annotations
 from ostler.qa.journey_steps import journey_steps
 from ostler.qa.obligation_frame import BookNode, NodeEdge
 
-_SHELL = "docs/features/web-app/gui/screens/shell.md"
-_API = "docs/features/api-service/http/manifest.md"
-_FORMAT = "docs/features/api-service/formats/manifest.md"
+_SHELL = "docs/services/web-app/gui/screens/shell.md"
+_API = "docs/services/api-service/http/manifest.md"
+_FORMAT = "docs/services/api-service/formats/manifest.md"
 
 
 def _node(node_id: str, node_type: str, surface: str, edges: dict[str, tuple[str, str]] | None = None,
@@ -37,7 +37,7 @@ def _book(*steps: str) -> tuple[BookNode, dict[str, BookNode]]:
         "api.md": (_API, "steps"),
         "format.md#field-pages": (f"{_FORMAT}#field-pages", "steps"),
     }
-    flow = _node("docs/features/web-app/flows/f.md", "flow", "web-app", edges=links, steps=steps)
+    flow = _node("docs/services/web-app/flows/f.md", "flow", "web-app", edges=links, steps=steps)
     return flow, {node.id: node for node in nodes}
 
 
@@ -79,7 +79,7 @@ def test_a_sentence_that_links_nothing_stays_so_the_walk_is_refused_rather_than_
 
 
 def _case_book(*steps: str) -> tuple[BookNode, dict[str, BookNode]]:
-    route = "docs/features/api-service/http/get-bill.md"
+    route = "docs/services/api-service/http/get-bill.md"
     nodes = [
         _node(route, "endpoint", "api-service"),
         _node(f"{route}#hidden-from-others", "invocation", "api-service", edges={"get-bill.md": (route, "on")}),
@@ -88,7 +88,7 @@ def _case_book(*steps: str) -> tuple[BookNode, dict[str, BookNode]]:
         "get-bill.md": (route, "steps"),
         "get-bill.md#hidden-from-others": (f"{route}#hidden-from-others", "steps"),
     }
-    flow = _node("docs/features/api-service/flows/f.md", "flow", "api-service", edges=links, steps=steps)
+    flow = _node("docs/services/api-service/flows/f.md", "flow", "api-service", edges=links, steps=steps)
     return flow, {node.id: node for node in nodes}
 
 

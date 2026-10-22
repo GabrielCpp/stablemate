@@ -8,7 +8,7 @@ from ostler.model import load
 
 from conftest import write
 
-SCREEN = "docs/features/gui/screens/settings.md"
+SCREEN = "docs/services/gui/screens/settings.md"
 SCREEN_MD = """\
 ---
 type: screen
@@ -58,9 +58,9 @@ def refs(root: Path) -> list[dict]:
 
 def test_doc_hrefs_keeps_document_links_verbatim():
     r = markdown.extract_refs(
-        "See [a](docs/features/x.md) and [b](../x.md#anchor) and [c](/docs/x.md)."
+        "See [a](docs/services/x.md) and [b](../x.md#anchor) and [c](/docs/x.md)."
     )
-    assert r.doc_hrefs == ["docs/features/x.md", "../x.md#anchor", "/docs/x.md"]
+    assert r.doc_hrefs == ["docs/services/x.md", "../x.md#anchor", "/docs/x.md"]
 
 
 def test_doc_hrefs_drops_non_documents_and_dedupes():
@@ -77,7 +77,7 @@ def test_resolve_doc_ref_accepts_all_three_link_forms(tmp_path: Path):
     origin = tmp_path / STORY_DIR / "story.md"
     for href in (SCREEN,
                  f"/{SCREEN}",
-                 "../../../../features/gui/screens/settings.md"):
+                 "../../../../services/gui/screens/settings.md"):
         assert g.resolve_doc_ref(href, origin=origin) == SCREEN, href
 
 
@@ -121,7 +121,7 @@ def test_a_document_that_is_not_a_node_is_a_file_row(tmp_path: Path):
 
 
 def test_a_path_that_resolves_to_nothing_is_a_missing_row(tmp_path: Path):
-    rows = refs(book_repo(tmp_path, "Reworks [settings](docs/features/gui/screens/setttings.md)."))
+    rows = refs(book_repo(tmp_path, "Reworks [settings](docs/services/gui/screens/setttings.md)."))
     assert [r["kind"] for r in rows] == ["missing"]
 
 
@@ -142,7 +142,7 @@ def test_citations_are_deduped_across_link_forms(tmp_path: Path):
     rows = refs(book_repo(
         tmp_path,
         f"Reworks [settings]({SCREEN}), see also "
-        "[settings again](../../../../features/gui/screens/settings.md).",
+        "[settings again](../../../../services/gui/screens/settings.md).",
     ))
     assert [r["path"] for r in rows] == [SCREEN]
 

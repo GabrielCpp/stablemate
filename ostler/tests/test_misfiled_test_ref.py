@@ -9,8 +9,8 @@ from ostler.model import load
 
 from conftest import screen_md, write
 
-ENDPOINT_PATH = "docs/features/acme/server.md"
-SCREEN_PATH = "docs/features/ui/dash.md"
+ENDPOINT_PATH = "docs/services/acme/server.md"
+SCREEN_PATH = "docs/services/ui/dash.md"
 
 VALUES: dict[str, str] = {
     "`api-service/internal/account/account_test.go::Test_Create`": "citation",

@@ -111,14 +111,14 @@ def _sort_key(obligation_id: str) -> list[tuple[int, int | str]]:
     return [(1, int(part)) if part.isdigit() else (0, part) for part in obligation_id.split(":")]
 
 
-def _book_root(root: Path, features_root: str) -> str:
-    """The book's own root, relative to *root*, when `--features-root` names a nested book."""
-    return path_mod.book_prefix_in(root, features_root)
+def _book_root(root: Path, services_root: str) -> str:
+    """The book's own root, relative to *root*, when `--services-root` names a nested book."""
+    return path_mod.book_prefix_in(root, services_root)
 
 
-def book_files(root: Path, features_root: str) -> list[dict[str, str]]:
-    """Every `*.md` file under the book at *features_root*, with its path and sha256."""
-    book_dir = root / features_root if features_root else root
+def book_files(root: Path, services_root: str) -> list[dict[str, str]]:
+    """Every `*.md` file under the book at *services_root*, with its path and sha256."""
+    book_dir = root / services_root if services_root else root
     files: list[dict[str, str]] = []
     if not book_dir.is_dir():
         return files
@@ -149,7 +149,7 @@ def book_context(
     root: Path,
     *,
     source_roots: dict[str, list[str]] | None = None,
-    features_root: str = "",
+    services_root: str = "",
     repositories: Sequence[SourceRepository] = (),
     books: Sequence[str] = (),
 ) -> dict[str, Any]:
@@ -163,7 +163,7 @@ def book_context(
         base=EMPTY_TREE_SHA,
         head="WORKTREE",
         source_roots=source_roots,
-        features_root=features_root,
+        services_root=services_root,
         repositories=repositories,
         whole_book=True,
         books=books,
@@ -344,7 +344,7 @@ def build_context(
     base: str,
     head: str = "WORKTREE",
     source_roots: dict[str, list[str]] | None = None,
-    features_root: str = "",
+    services_root: str = "",
     story_file: Path | None = None,
     exclude_paths: Iterable[str] = (),
     repositories: Sequence[SourceRepository] = (),
@@ -358,10 +358,10 @@ def build_context(
     directories whose pages owe obligations, every page's when empty.
     """
     root = root.resolve()
-    features_root = path_mod.resolve_features_root(features_root, root)
+    services_root = path_mod.resolve_services_root(services_root, root)
     source_roots = source_roots or {}
-    book_root = _book_root(root, features_root)
-    snapshot = _book_snapshot(root, base, head, features_root)
+    book_root = _book_root(root, services_root)
+    snapshot = _book_snapshot(root, base, head, services_root)
     change_set = _change_set(root, base, head, source_roots, repositories)
     changes = _production_changes(root, change_set.changes, snapshot, {str(path) for path in exclude_paths})
     mapping = _direct_mapping(changes, snapshot, book_root, source_roots, whole_book=whole_book)
@@ -381,8 +381,8 @@ def build_context(
         "available": bool(snapshot.nodes_by_id),
         "base": base,
         "head": head,
-        "featuresRoot": features_root,
-        "bookFiles": book_files(root, features_root),
+        "servicesRoot": services_root,
+        "bookFiles": book_files(root, services_root),
         "storyFile": story_file_record(root, story_file),
         "changedCode": changed_code,
         **({"changedUnits": changed_code, "repositories": change_set.repository_rows} if repositories else {}),
@@ -419,11 +419,11 @@ def build_context(
     }
 
 
-def _book_snapshot(root: Path, base: str, head: str, features_root: str) -> _BookSnapshot:
+def _book_snapshot(root: Path, base: str, head: str, services_root: str) -> _BookSnapshot:
     """The book at *base* and at *head*, merged so a node either side holds is in it."""
-    current = load(root, root_overrides={"features": features_root})
-    base_graph = _graph_at_revision(root, base, features_root, current)
-    head_graph = current if head == "WORKTREE" else _graph_at_revision(root, head, features_root, current)
+    current = load(root, root_overrides={"services": services_root})
+    base_graph = _graph_at_revision(root, base, services_root, current)
+    head_graph = current if head == "WORKTREE" else _graph_at_revision(root, head, services_root, current)
     head_dump = graph_mod.build(head_graph)
     base_dump = graph_mod.build(base_graph)
     base_nodes, base_edges, base_ends, base_details = _serialized_graph(base_dump)
@@ -1086,7 +1086,7 @@ def cmd_context(
     base: str,
     head: str = "WORKTREE",
     source_roots: dict[str, list[str]] | None = None,
-    features_root: str = "",
+    services_root: str = "",
     story_file: Path | None = None,
     exclude_paths: Iterable[str] = (),
     repositories: Sequence[SourceRepository] = (),
@@ -1098,7 +1098,7 @@ def cmd_context(
             base=base,
             head=head,
             source_roots=source_roots or {},
-            features_root=features_root,
+            services_root=services_root,
             story_file=story_file,
             exclude_paths=exclude_paths,
             repositories=repositories,
@@ -1141,25 +1141,25 @@ def _revision_path_arg(revision: str, path: str) -> str:
     return f"{revision}:./{path}"
 
 
-def _graph_at_revision(root: Path, revision: str, features_root: str, current: Graph | None = None) -> Graph:
-    """The base-side graph at `revision`, built from every `.md` file under `features_root`, on the org, profile and doc roots of `current`, the worktree's graph, which is loaded when not given."""
+def _graph_at_revision(root: Path, revision: str, services_root: str, current: Graph | None = None) -> Graph:
+    """The base-side graph at `revision`, built from every `.md` file under `services_root`, on the org, profile and doc roots of `current`, the worktree's graph, which is loaded when not given."""
     current = current if current is not None else load(root)
     graph = Graph(
         root=root,
         org_name=current.org_name,
         profile=current.profile,
-        doc_roots={**current.doc_roots, "features": root / features_root},
+        doc_roots={**current.doc_roots, "services": root / services_root},
     )
-    if not _revision_holds(root, revision, features_root):
+    if not _revision_holds(root, revision, services_root):
         return graph
-    result = _git(root, "ls-tree", "-r", "-z", "--name-only", revision, "--", features_root)
+    result = _git(root, "ls-tree", "-r", "-z", "--name-only", revision, "--", services_root)
     entries = [entry for entry in result.split("\0") if entry]
     for rel in sorted(entry for entry in entries if entry.endswith(".md")):
         try:
             text = _git(root, "show", _revision_path_arg(revision, rel))
         except RuntimeError as exc:
             raise RuntimeError(
-                f"{revision} lists {rel} under {features_root} but its blob is unreadable: {exc}"
+                f"{revision} lists {rel} under {services_root} but its blob is unreadable: {exc}"
             ) from exc
         graph.ui_nodes.extend(_parse_ui_nodes(markdown.split(text), root / rel, root))
     return graph

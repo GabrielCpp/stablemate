@@ -11,7 +11,7 @@ RUNBOOK = "---\ntype: runbook\nslug: run\ntitle: Run\n---\n# Run\n\n- run: `make
 
 
 def _repo(tmp_path: Path, makefile: str, runbook: str = RUNBOOK) -> Path:
-    book = tmp_path / "docs" / "features" / "svc" / "ops"
+    book = tmp_path / "docs" / "services" / "svc" / "ops"
     book.mkdir(parents=True)
     _ = (book / "run.md").write_text(runbook, encoding="utf-8")
     _ = (tmp_path / "Makefile").write_text(makefile, encoding="utf-8")

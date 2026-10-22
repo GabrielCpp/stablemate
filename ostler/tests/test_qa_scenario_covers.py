@@ -5,7 +5,7 @@ from pathlib import Path
 
 from ostler.qa.plan import scenario_covers
 
-PAGE = "okf:docs/features/api/http/get-thing.md"
+PAGE = "okf:docs/services/api/http/get-thing.md"
 
 PLAN = f'''
 from ostler_qa import Qa, plan, scenario, target
@@ -20,7 +20,7 @@ def reads_thing(qa: Qa) -> None:
 
 @scenario(target=api, mechanism="live", covers=[])
 def lists_things(qa: Qa) -> None:
-    qa.require("it lists", True, covers=["okf:docs/features/api/http/list-things.md:contract"])
+    qa.require("it lists", True, covers=["okf:docs/services/api/http/list-things.md:contract"])
 
 
 @scenario(target=api, mechanism="live", covers=COMPUTED_IDS)
@@ -36,7 +36,7 @@ def test_scenario_level_and_per_check_ids_are_both_collected(tmp_path: Path) -> 
     found = scenario_covers(plan_file)
 
     assert found["reads-thing"] == [f"{PAGE}:contract", f"{PAGE}:emits:1"]
-    assert found["lists-things"] == ["okf:docs/features/api/http/list-things.md:contract"]
+    assert found["lists-things"] == ["okf:docs/services/api/http/list-things.md:contract"]
     assert found["computed"] == []
 
 

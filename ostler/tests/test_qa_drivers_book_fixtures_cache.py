@@ -35,7 +35,7 @@ def _driver(repo: Path) -> PythonDriver:
     spec = repo / "docs/specs/story-1"
     spec.mkdir(parents=True, exist_ok=True)
     (spec / "qa-okf-context.json").write_text(
-        json.dumps({"featuresRoot": "docs/features"}), encoding="utf-8"
+        json.dumps({"servicesRoot": "docs/services"}), encoding="utf-8"
     )
     session = QaSession.create(spec, "qa-cache-1", "story-1", {})
     return PythonDriver(session, "api", {"driver": "python"}, root=repo, variables={})
@@ -44,7 +44,7 @@ def _driver(repo: Path) -> PythonDriver:
 def test_resolved_book_fixtures_is_built_once_and_reused(
     repo: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    write(repo / "docs/features/acme/fixtures/seeded-acme.md", FIXTURE)
+    write(repo / "docs/services/acme/fixtures/seeded-acme.md", FIXTURE)
     driver = _driver(repo)
 
     from ostler.qa import drivers as drivers_mod

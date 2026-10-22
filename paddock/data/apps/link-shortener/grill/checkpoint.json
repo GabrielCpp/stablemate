@@ -19,7 +19,7 @@
     "rubric": "docs/survey/rubric.md",
     "survey_dir": "docs/survey",
     "baseline_inventory": "",
-    "target_features": "",
+    "target_services": "",
     "parity_survey_dir": "docs/survey/legacy-vs-new",
     "operator_mode": "auto"
   },
@@ -27,7 +27,7 @@
     "repo_root": "",
     "backlog_path": "docs/backlog.md",
     "epics_dir": "docs/epics",
-    "features_dir": "docs/features",
+    "services_dir": "docs/services",
     "mockup_dir": "docs/design",
     "layers": [],
     "base_branch": "main",

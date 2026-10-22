@@ -28,8 +28,8 @@ stories have still shipped with whole defects unnoticed — it just rots and mis
   app's style, usually story-local as `./mockup.html`; link it from Context as the source of truth the
   criteria are judged against.
 {%- endif %}
-{%- if workhorse_var('features_dir') %}
-- **OKF book root**: `{{ workhorse_var('features_dir') }}` — the surface documentation, already built.
+{%- if workhorse_var('services_dir') %}
+- **OKF book root**: `{{ workhorse_var('services_dir') }}` — the surface documentation, already built.
   **Read it; never write to it.** This is where the story's grounding comes
   from — see *Ground the story in the book* below. Do not inspect source code to invent product
   surfaces; cite only OKF nodes that already exist. Inspect source separately for concise Technical
@@ -57,11 +57,11 @@ authoritative for behavior they already describe, so a new decision must not con
 documented behavior, broaden the epic's scope, or silently change another journey. Block only when
 the required choice would do one of those things or the supplied sources genuinely conflict.
 
-{%- if workhorse_var('features_dir') %}
+{%- if workhorse_var('services_dir') %}
 
 ## Ground the story in the book (cite node ids)
 
-The OKF book under `{{ workhorse_var('features_dir') }}` already describes the surfaces author may
+The OKF book under `{{ workhorse_var('services_dir') }}` already describes the surfaces author may
 reference — screens, components, interactions, flows, endpoints, commands. **That gathering is done;
 do not redo it and do not add to it.** Your job is to find the handful of existing nodes this story
 touches and *cite* them.
@@ -123,7 +123,7 @@ selectors, file presence, framework setup, or implementation details:
 - Changed states the goal introduces: happy path plus empty / loading / error / reachability only
   where this story builds or changes them.
 
-{%- if workhorse_var('features_dir') %}
+{%- if workhorse_var('services_dir') %}
 The criteria MUST cover the parts of cited nodes this story changes — read from the book, never invented:
 
 - **The documented user journey(s)** — the `flow` nodes the cited surface takes part in: at least

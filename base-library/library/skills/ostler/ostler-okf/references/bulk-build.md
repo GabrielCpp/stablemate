@@ -1,7 +1,7 @@
 # Building a whole service's subgraph
 
 Read this when you are modelling an **entire service** — its surfaces, elements, behaviours,
-concepts, flows and formats — as a conformant subgraph under `docs/features/<service>/`, rather
+concepts, flows and formats — as a conformant subgraph under `docs/services/<service>/`, rather
 than merging one story's delta. The format itself, the three content rules and the
 scaffold→author→fmt→doctor loop are in the parent `SKILL.md` and are assumed here; so is the type
 you are about to build (`references/node-types/<type>.md`) and `references/bullet-grammar.md`.
@@ -47,7 +47,7 @@ markdown path links, never `[[wikilinks]]`.
    nested-bullet effect list.
 4. **Concepts.** Every durable noun the system is *about* — domain (`Worker`, `Diff`, `Gate`) or
    **code** (a function, class or module, carrying a `code:` bullet and no domain prose). Each
-   `concept` gets its **own file** under `docs/features/<service>/concepts/` so others can link it.
+   `concept` gets its **own file** under `docs/services/<service>/concepts/` so others can link it.
    For an abstraction with implementations: model the base as a code concept, each implementation
    as a code concept that `extends:` it, and whatever *selects* one at runtime `refs:` the base.
    - **A concept is a real explanation, not a stub.** Cover its *parts* — a "Workflow" explains its
@@ -101,7 +101,7 @@ work you are standing on.
 A service's subgraph is **done** when:
 
 ```bash
-ostler fmt docs/features/<service>     # every file canonical (or: ostler fmt --check → exit 0)
+ostler fmt docs/services/<service>     # every file canonical (or: ostler fmt --check → exit 0)
 ostler doctor                          # 0 errors
 ostler list --type screen              # spot-check: the surfaces you expect are present
 ostler trace <surface-root>            # from the cli/screen/server index — must reach every node

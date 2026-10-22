@@ -146,7 +146,7 @@ def test_mixed_go_python_real_book_packets_support_and_receipts(tmp_path: Path, 
     (tmp_path / "api.py").write_text("def read():\n    return 1\n", encoding="utf-8")
     helper = tmp_path / "helper.go"
     helper.write_text("package api\nfunc deliver() { panic(1) }", encoding="utf-8")
-    book = tmp_path / "docs/features/api.md"
+    book = tmp_path / "docs/services/api.md"
     book.parent.mkdir(parents=True)
     book.write_text("---\ntype: server\n---\n# API\n\n## Endpoints\n\n"
                     "### send\n- does: Sends a message.\n- code: api.go::Send\n\n"

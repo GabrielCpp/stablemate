@@ -72,7 +72,7 @@ defects:
   - id: D1
     story: artifact-store
     path: pulumi/bucket.go
-    obligation: okf:docs/features/depot/concepts/artifact-store.md:consistency:5
+    obligation: okf:docs/services/depot/concepts/artifact-store.md:consistency:5
     expect: contradicted
     caught_by: run
     why: >
@@ -85,7 +85,7 @@ defects:
   - id: D2
     story: artifact-store
     path: pulumi/bucket.go
-    obligation: okf:docs/features/depot/concepts/artifact-store.md:consistency:1
+    obligation: okf:docs/services/depot/concepts/artifact-store.md:consistency:1
     expect: contradicted
     caught_by: run
     why: >
@@ -97,7 +97,7 @@ defects:
   - id: D3
     story: deploy-identity
     path: pulumi/identity.go
-    obligation: okf:docs/features/depot/concepts/deploy-identity.md:consistency:2
+    obligation: okf:docs/services/depot/concepts/deploy-identity.md:consistency:2
     expect: contradicted
     caught_by: run
     why: >
@@ -109,7 +109,7 @@ defects:
   - id: D4
     story: deploy-identity
     path: pulumi/Pulumi.dev.yaml
-    obligation: okf:docs/features/depot/concepts/deploy-identity.md:consistency:3
+    obligation: okf:docs/services/depot/concepts/deploy-identity.md:consistency:3
     expect: contradicted
     caught_by: run
     why: >
@@ -122,7 +122,7 @@ defects:
   - id: D5
     story: artifact-store
     path: pulumi/bucket.go
-    obligation: okf:docs/features/depot/concepts/artifact-store.md:consistency:2
+    obligation: okf:docs/services/depot/concepts/artifact-store.md:consistency:2
     expect: contradicted
     caught_by: run
     why: >
@@ -134,7 +134,7 @@ defects:
   - id: D6
     story: deploy-identity
     path: pulumi/scheduler.go
-    obligation: okf:docs/features/depot/concepts/artifact-sweep.md:consistency:1
+    obligation: okf:docs/services/depot/concepts/artifact-sweep.md:consistency:1
     expect: contradicted
     caught_by: run
     why: >
@@ -146,7 +146,7 @@ defects:
   - id: D7
     story: artifact-store
     path: pulumi/main.go
-    obligation: okf:docs/features/depot/ops/depot-stack.md:contract
+    obligation: okf:docs/services/depot/ops/depot-stack.md:contract
     expect: contradicted
     caught_by: audit
     why: >

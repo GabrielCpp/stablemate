@@ -12,7 +12,7 @@ from ostler.qa.obligation_frame import Variants
 
 from conftest import write
 
-SCREENS = "docs/features/web/gui/screens"
+SCREENS = "docs/services/web/gui/screens"
 DASH = f"{SCREENS}/dashboard.md"
 
 HEAD = """\
@@ -249,7 +249,7 @@ def test_doctor_builds_the_ui_graph_once(repo: Path, monkeypatch):
     assert [c for c in calls if c is not None] == []
 
 
-LIB = "docs/features/web/gui/components/app-shell.md"
+LIB = "docs/services/web/gui/components/app-shell.md"
 
 SHARED = """\
 ---

@@ -5,8 +5,8 @@ from pathlib import Path
 
 from workhorse_workflows.coder.shared.proof_scope import inert_paths, scope
 
-PAGE = "repo:docs/features/api/http/x.md"
-OTHER = "repo:docs/features/api/http/y.md"
+PAGE = "repo:docs/services/api/http/x.md"
+OTHER = "repo:docs/services/api/http/y.md"
 
 
 def test_the_storys_own_markdown_is_inert_and_nothing_else_is(tmp_path: Path) -> None:

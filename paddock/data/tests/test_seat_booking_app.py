@@ -66,7 +66,7 @@ def manifest(story: str) -> dict[str, list[str]]:
 
 def test_every_screen_selector_is_one_the_render_scan_can_address() -> None:
     """A documented selector must be a form `ostler vet` can resolve, or the node reads missing."""
-    screens = sorted((APP / "docs" / "features").rglob("gui/screens/*.md"))
+    screens = sorted((APP / "docs" / "services").rglob("gui/screens/*.md"))
     assert screens, "the fixture documents no screens"
     for screen in screens:
         for line in screen.read_text(encoding="utf-8").splitlines():

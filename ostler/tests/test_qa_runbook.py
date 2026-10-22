@@ -14,7 +14,7 @@ from conftest import write
 
 
 def make_runbook(root: Path, body: str, *, name: str = "qa-stack") -> None:
-    write(root / "docs" / "features" / "app" / "ops" / f"{name}.md", body)
+    write(root / "docs" / "services" / "app" / "ops" / f"{name}.md", body)
 
 
 RUNBOOK = """---
@@ -190,7 +190,7 @@ def test_every_step_is_the_mapping_form(repo: Path) -> None:
 
 def test_source_names_the_node_the_recipe_came_from(repo: Path) -> None:
     manifest = rb.load_stack(repo)
-    assert manifest["source"] == "docs/features/app/ops/qa-stack.md"
+    assert manifest["source"] == "docs/services/app/ops/qa-stack.md"
 
 
 def test_step_timeout_and_optional_and_env(tmp_path: Path) -> None:
@@ -286,14 +286,14 @@ type: runbook
 
 def test_empty_when_the_book_declares_nothing(tmp_path: Path) -> None:
     (tmp_path / ".git").mkdir()
-    write(tmp_path / "docs" / "features" / "app" / "home.md",
+    write(tmp_path / "docs" / "services" / "app" / "home.md",
           "---\ntype: feature\nslug: home\n---\n\n# Home\n\nprose\n")
     assert rb.load_stack(tmp_path) == {}
 
 
 def test_falls_back_to_the_books_server(tmp_path: Path) -> None:
     (tmp_path / ".git").mkdir()
-    write(tmp_path / "docs" / "features" / "api" / "server.md", """---
+    write(tmp_path / "docs" / "services" / "api" / "server.md", """---
 type: server
 title: API
 ---
@@ -314,7 +314,7 @@ title: API
 def test_several_servers_fall_back_to_the_first_by_id(tmp_path: Path) -> None:
     (tmp_path / ".git").mkdir()
     for slug, port in (("one", 3001), ("two", 3002)):
-        write(tmp_path / "docs" / "features" / "api" / f"{slug}.md",
+        write(tmp_path / "docs" / "services" / "api" / f"{slug}.md",
               f"---\ntype: server\ntitle: {slug}\n---\n\n# {slug}\n\n"
               f"- launch: npm start\n- entry-url: http://localhost:{port}\n")
     assert rb.load_stack(tmp_path)["entry_url"] == "http://localhost:3001"
@@ -364,7 +364,7 @@ def test_cmd_stack_down_without_a_stop_recipe_leaves_it_serving(tmp_path: Path) 
 def _two_stacks(root: Path, *, environments: tuple[str, str]) -> None:
     """Two stack runbooks under `app/ops`, each binding to the named environment file."""
     for env in set(environments):
-        write(root / "docs" / "features" / "app" / "ops" / f"{env}.md",
+        write(root / "docs" / "services" / "app" / "ops" / f"{env}.md",
               f"---\ntype: environment\n---\n\n# {env}\n\n- local-only: true\n")
     for name, port, env in (("api-stack", 1111, environments[0]),
                             ("web-stack", 2222, environments[1])):
@@ -390,11 +390,11 @@ def test_stack_runbooks_sharing_an_environment_come_up_together(tmp_path: Path) 
 
 def test_an_environment_link_is_resolved_not_compared_as_text(tmp_path: Path) -> None:
     (tmp_path / ".git").mkdir()
-    write(tmp_path / "docs" / "features" / "api" / "ops" / "local.md",
+    write(tmp_path / "docs" / "services" / "api" / "ops" / "local.md",
           "---\ntype: environment\n---\n\n# local\n\n- local-only: true\n")
     for svc, port, href in (("api", 1111, "local.md"),
                             ("web", 2222, "../../api/ops/local.md")):
-        write(tmp_path / "docs" / "features" / svc / "ops" / f"{svc}-stack.md",
+        write(tmp_path / "docs" / "services" / svc / "ops" / f"{svc}-stack.md",
               f"---\ntype: runbook\n---\n\n# {svc}\n\n- driver: web\n"
               f"- entry-url: http://localhost:{port}\n- environment: [local]({href})\n\n"
               "## Steps\n\n### serve\n\n- kind: service\n- run: ./serve.sh\n"
@@ -436,7 +436,7 @@ def test_a_settled_stack_outranks_a_servers_launch_contract(tmp_path: Path) -> N
     """`load_stack` falls through to a `server` node only when nothing in the book resolves to a stack at all."""
     (tmp_path / ".git").mkdir()
     _two_stacks(tmp_path, environments=("local", "staging"))
-    write(tmp_path / "docs" / "features" / "other" / "server.md", """---
+    write(tmp_path / "docs" / "services" / "other" / "server.md", """---
 type: server
 title: Other
 ---
@@ -482,7 +482,7 @@ def _environment_file(root: Path, env: str, *, local_only: bool | None, sharing:
         bullets += f"- local-only: {'true' if local_only else 'false'}\n"
     if sharing:
         bullets += f"- sharing: {sharing}\n"
-    write(root / "docs" / "features" / "app" / "ops" / f"{env}.md",
+    write(root / "docs" / "services" / "app" / "ops" / f"{env}.md",
           f"---\ntype: environment\n---\n\n# {env}\n\n{bullets}")
 
 
@@ -550,13 +550,13 @@ def test_a_bring_up_with_a_lease_prefers_the_environment_copied_per_run(tmp_path
 
 
 def _environment(root: Path, surface: str, name: str, *, local_only: bool = True) -> None:
-    write(root / "docs" / "features" / surface / "ops" / f"{name}.md",
+    write(root / "docs" / "services" / surface / "ops" / f"{name}.md",
           f"---\ntype: environment\n---\n\n# {name}\n\n"
           f"- local-only: {'true' if local_only else 'false'}\n")
 
 
 def _stack_runbook(root: Path, surface: str, name: str, port: int, env_href: str) -> None:
-    write(root / "docs" / "features" / surface / "ops" / f"{name}.md",
+    write(root / "docs" / "services" / surface / "ops" / f"{name}.md",
           f"---\ntype: runbook\n---\n\n# {name}\n\n"
           f"- driver: web\n- entry-url: http://localhost:{port}\n"
           f"- environment: [env]({env_href})\n\n"
@@ -578,7 +578,7 @@ def test_near_narrows_the_selection_to_its_surfaces_environment(tmp_path: Path) 
     assert baseline.environment.endswith("api-service/ops/staging.md")
     assert [n.path.stem for n in baseline.runbooks] == ["api-stack"]
 
-    near = tmp_path / "docs" / "features" / "web-app" / "specs" / "home.md"
+    near = tmp_path / "docs" / "services" / "web-app" / "specs" / "home.md"
     selection = rb.select_stack(graph, near=near)
     assert selection.reason == ""
     assert {n.path.stem for n in selection.runbooks} == {"web-stack", "mobile-stack"}
@@ -594,7 +594,7 @@ def test_near_narrowing_to_two_environments_falls_through_to_the_path_order(
     _stack_runbook(tmp_path, "web-app", "web-stack-a", 1111, "local.md")
     _stack_runbook(tmp_path, "web-app", "web-stack-b", 2222, "staging.md")
     graph = model.load(tmp_path)
-    near = tmp_path / "docs" / "features" / "web-app" / "specs" / "home.md"
+    near = tmp_path / "docs" / "services" / "web-app" / "specs" / "home.md"
     selection = rb.select_stack(graph, near=near)
     assert selection.reason == ""
     assert selection.environment.endswith("local.md")
@@ -609,17 +609,17 @@ def test_near_prefers_the_environment_serving_the_address_its_checks_target(
     _environment(tmp_path, "web-app", "staging")
     _stack_runbook(tmp_path, "web-app", "web-stack-a", 1111, "local.md")
     _stack_runbook(tmp_path, "web-app", "web-stack-b", 2222, "staging.md")
-    write(tmp_path / "docs" / "features" / "web-app" / "http" / "server.md",
+    write(tmp_path / "docs" / "services" / "web-app" / "http" / "server.md",
           "---\ntype: server\n---\n\n# Server\n\n- entry-url: http://localhost:2222\n")
     graph = model.load(tmp_path)
-    near = tmp_path / "docs" / "features" / "web-app"
+    near = tmp_path / "docs" / "services" / "web-app"
     selection = rb.select_stack(graph, near=near)
     assert selection.environment.endswith("staging.md")
     assert [n.path.stem for n in selection.runbooks] == ["web-stack-b"]
 
 
-def test_near_outside_the_features_root_leaves_the_book_wide_answer(tmp_path: Path) -> None:
-    """A path that is not under `docs/features/` names no surface, so there is nothing to narrow by — `near` is simply not an argument this selection can use."""
+def test_near_outside_the_services_root_leaves_the_book_wide_answer(tmp_path: Path) -> None:
+    """A path that is not under `docs/services/` names no surface, so there is nothing to narrow by — `near` is simply not an argument this selection can use."""
     (tmp_path / ".git").mkdir()
     _environment(tmp_path, "web-app", "local")
     _environment(tmp_path, "api-service", "staging")
@@ -638,7 +638,7 @@ def test_an_explicit_name_wins_over_near(tmp_path: Path) -> None:
     _stack_runbook(tmp_path, "web-app", "web-stack", 1111, "local.md")
     _stack_runbook(tmp_path, "api-service", "api-stack", 2222, "staging.md")
     graph = model.load(tmp_path)
-    near = tmp_path / "docs" / "features" / "web-app" / "specs" / "home.md"
+    near = tmp_path / "docs" / "services" / "web-app" / "specs" / "home.md"
     selection = rb.select_stack(graph, name="api-stack", near=near)
     assert selection.reason == ""
     assert [n.path.stem for n in selection.runbooks] == ["api-stack"]
@@ -655,7 +655,7 @@ def test_near_outranks_a_lone_local_only_environment_elsewhere(tmp_path: Path) -
 
     assert rb.select_stack(graph).environment.endswith("devbox.md")
 
-    near = tmp_path / "docs" / "features" / "web-app" / "specs" / "home.md"
+    near = tmp_path / "docs" / "services" / "web-app" / "specs" / "home.md"
     selection = rb.select_stack(graph, near=near)
     assert selection.reason == ""
     assert [n.path.stem for n in selection.runbooks] == ["web-stack"]
@@ -667,7 +667,7 @@ def test_near_is_a_no_op_when_the_book_already_resolves(tmp_path: Path) -> None:
     _two_stacks(tmp_path, environments=("local", "local"))
     graph = model.load(tmp_path)
     without_near = rb.select_stack(graph)
-    near = tmp_path / "docs" / "features" / "app" / "specs" / "home.md"
+    near = tmp_path / "docs" / "services" / "app" / "specs" / "home.md"
     with_near = rb.select_stack(graph, near=near)
     assert with_near == without_near
 
@@ -675,12 +675,12 @@ def test_near_is_a_no_op_when_the_book_already_resolves(tmp_path: Path) -> None:
 def test_a_nested_book_resolves_paths_against_the_system_it_describes(tmp_path: Path) -> None:
     (tmp_path / ".git").mkdir()
     nested = tmp_path / "fixtures" / "globex"
-    write(nested / "docs" / "features" / "app" / "ops" / "qa-stack.md",
+    write(nested / "docs" / "services" / "app" / "ops" / "qa-stack.md",
           "---\ntype: runbook\n---\n\n# QA\n\n- driver: web\n"
           "- entry-url: http://localhost:1111\n- working-directory: `.`\n\n"
           "## Steps\n\n### serve\n\n- kind: service\n- run: docker compose up\n"
           "- health: curl -fsS localhost\n")
-    graph = model.load(tmp_path, root_overrides={"features": "fixtures/globex/docs/features"})
+    graph = model.load(tmp_path, root_overrides={"services": "fixtures/globex/docs/services"})
     assert rb.system_root(graph) == nested
     manifest = rb.load_stack(graph=graph)
     assert manifest["app_cwd"] == str(nested.resolve())
@@ -696,7 +696,7 @@ def codes(root: Path) -> list[str]:
 
 def test_doctor_warns_once_when_no_stack_is_declared(tmp_path: Path) -> None:
     (tmp_path / ".git").mkdir()
-    write(tmp_path / "docs" / "features" / "app" / "gui" / "screens" / "home.md",
+    write(tmp_path / "docs" / "services" / "app" / "gui" / "screens" / "home.md",
           "---\ntype: screen\nslug: home\n---\n\n# Home\n\nprose\n")
     assert codes(tmp_path).count("runbook-missing") == 1
 
@@ -704,14 +704,14 @@ def test_doctor_warns_once_when_no_stack_is_declared(tmp_path: Path) -> None:
 def test_doctor_asks_for_no_stack_from_a_book_with_nothing_to_serve(tmp_path: Path) -> None:
     """A CLI, a library and an infrastructure program have nothing to bring up."""
     (tmp_path / ".git").mkdir()
-    write(tmp_path / "docs" / "features" / "tally" / "tally.md",
+    write(tmp_path / "docs" / "services" / "tally" / "tally.md",
           "---\ntype: cli\nslug: tally\n---\n\n# tally\n\nprose\n")
     assert "runbook-missing" not in codes(tmp_path)
 
 
 def test_doctor_stays_quiet_when_a_server_declares_a_launch(tmp_path: Path) -> None:
     (tmp_path / ".git").mkdir()
-    write(tmp_path / "docs" / "features" / "api" / "server.md",
+    write(tmp_path / "docs" / "services" / "api" / "server.md",
           "---\ntype: server\ntitle: API\n---\n\n# API\n\n- launch: npm start\n"
           "- entry-url: http://localhost:3000\n")
     assert "runbook-missing" not in codes(tmp_path)
@@ -741,7 +741,7 @@ def test_doctor_reports_a_runbook_that_declares_a_launch_but_starts_nothing(
 def test_doctor_holds_only_stack_runbooks_to_the_stack_shape(tmp_path: Path) -> None:
     """A runbook that starts nothing is a procedure, not a broken stack."""
     (tmp_path / ".git").mkdir()
-    write(tmp_path / "docs" / "features" / "app" / "gui" / "screens" / "home.md",
+    write(tmp_path / "docs" / "services" / "app" / "gui" / "screens" / "home.md",
           "---\ntype: screen\nslug: home\n---\n\n# Home\n\nprose\n")
     make_runbook(tmp_path, "---\ntype: runbook\n---\n\n# Rotate the keys\n\n- driver: cli\n"
                  "\n## Steps\n\n### rotate\n\n- kind: run\n- run: ./rotate.sh\n",
@@ -857,7 +857,7 @@ def _local_stack(tmp_path: Path, name: str, url: str) -> None:
 def test_doctor_reports_two_stacks_of_one_environment_serving_one_address(
         tmp_path: Path) -> None:
     (tmp_path / ".git").mkdir()
-    write(tmp_path / "docs" / "features" / "app" / "ops" / "local.md",
+    write(tmp_path / "docs" / "services" / "app" / "ops" / "local.md",
           "---\ntype: environment\ntitle: Local\n---\n\n# Local\n\n- selector: local\n")
     _local_stack(tmp_path, "web", "http://localhost:5173")
     _local_stack(tmp_path, "browser", "http://localhost:5173/")
@@ -866,7 +866,7 @@ def test_doctor_reports_two_stacks_of_one_environment_serving_one_address(
 
 def test_doctor_lets_two_stacks_of_one_environment_serve_two_addresses(tmp_path: Path) -> None:
     (tmp_path / ".git").mkdir()
-    write(tmp_path / "docs" / "features" / "app" / "ops" / "local.md",
+    write(tmp_path / "docs" / "services" / "app" / "ops" / "local.md",
           "---\ntype: environment\ntitle: Local\n---\n\n# Local\n\n- selector: local\n")
     _local_stack(tmp_path, "web", "http://localhost:5173")
     _local_stack(tmp_path, "api", "http://localhost:8080")
@@ -876,7 +876,7 @@ def test_doctor_lets_two_stacks_of_one_environment_serve_two_addresses(tmp_path:
 def test_doctor_refuses_a_local_only_environment_pointing_off_the_machine(
         tmp_path: Path) -> None:
     (tmp_path / ".git").mkdir()
-    write(tmp_path / "docs" / "features" / "app" / "ops" / "staging.md",
+    write(tmp_path / "docs" / "services" / "app" / "ops" / "staging.md",
           "---\ntype: environment\ntitle: staging\n---\n\n# staging\n\n"
           "- selector: staging\n- services:\n  - api: `https://api.example.com`\n"
           "- local-only: true\n")
@@ -888,7 +888,7 @@ def test_doctor_refuses_a_local_only_environment_pointing_off_the_machine(
 
 def test_a_loopback_service_is_not_a_local_only_violation(tmp_path: Path) -> None:
     (tmp_path / ".git").mkdir()
-    write(tmp_path / "docs" / "features" / "app" / "ops" / "local.md",
+    write(tmp_path / "docs" / "services" / "app" / "ops" / "local.md",
           "---\ntype: environment\ntitle: local\n---\n\n# local\n\n"
           "- selector: `APP_BIND=127.0.0.1`\n- services:\n  - api: `http://127.0.0.1:8787`\n"
           "- local-only: true\n")
@@ -1008,7 +1008,7 @@ def test_cmd_stack_up_outcome_is_unchanged_for_success_and_failure(
     outcome = rb.cmd_stack_up(tmp_path)
     assert not outcome.ok
     assert outcome.message == (
-        "stack bring-up failed for 'docs/features/app/ops/web-stack.md' at step 'health': "
+        "stack bring-up failed for 'docs/services/app/ops/web-stack.md' at step 'health': "
         "never answered")
     assert len(outcome.data["stacks"]) == 2
     assert outcome.data["stacks"][0]["ready"] == "yes"

@@ -445,5 +445,5 @@ The last one is why this stays local: `run_dir` is a resource attribute on every
 span, so a query hands you the path to the prompt and outputs on disk — a join a
 hosted trace backend cannot make.
 
-For the full design, see `docs/features/groom/` at the repo root — groom's own OKF book,
+For the full design, see `docs/services/groom/` at the repo root — groom's own OKF book,
 queryable with `ostler graph --surface groom`.

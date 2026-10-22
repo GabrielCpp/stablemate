@@ -77,7 +77,7 @@ def test_shorten_leaves_keys_alone(tmp_path: Path):
 def test_shorten_does_not_touch_things_that_merely_look_id_ish():
     table = {"ACME-" + "0" * 26: "ACME-KKKKKK"}
     for text in ("docs/epics/0001-checkout/stories/01-pay/story.md",
-                 "docs/features/area/rec.md#the-anchor",
+                 "docs/services/area/rec.md#the-anchor",
                  "a hyphenated-word in prose",
                  "ACME-" + "0" * 25):
         assert ids.shorten(text, table) == text

@@ -20,7 +20,7 @@ task(
     config=CONFIG,
 )
 
-TARGET_DOC = "features/web-app/gui/screens/widget-list.md"
+TARGET_DOC = "services/web-app/gui/screens/widget-list.md"
 
 TARGET_APP = "app/web-app/static/index.html"
 
@@ -36,7 +36,7 @@ QUESTION = (
     "yet.\n\n"
     "Bring the stack up, then use a browser to look at the widget directory screen "
     "(web-app's landing page) and compare what you see there with what "
-    "`docs/features/web-app/gui/screens/widget-list.md` says about that same screen — in "
+    "`docs/services/web-app/gui/screens/widget-list.md` says about that same screen — in "
     "particular, the label on the link that leads to the add-a-widget form.\n\n"
     "If the app and the book agree, say so. If they disagree, report which one is "
     "wrong — the app, or the book — and how you know. Answer in a few sentences of "

@@ -27,7 +27,7 @@ unprotected service, and every scenario written against it would go on passing a
 protection arrived.
 
 The part worth stating is where that protection comes from. It is not wired per route:
-[the contract](../../../../features/claims/http/claims-api.md) is what marks an operation as
+[the contract](../../../../services/claims/http/claims-api.md) is what marks an operation as
 secured, the generated router puts the bearer scope into the request context for exactly those
 operations, and the middleware verifies whatever it finds there. `/healthz` is open because the
 document says so. Nothing in a handler names a path.

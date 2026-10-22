@@ -53,8 +53,8 @@ def test_markdown_no_frontmatter():
 
 
 def test_exploration_profile_when_no_epics(tmp_path: Path):
-    (tmp_path / "docs/features/area").mkdir(parents=True)
-    (tmp_path / "docs/features/area/note.md").write_text(
+    (tmp_path / "docs/services/area").mkdir(parents=True)
+    (tmp_path / "docs/services/area/note.md").write_text(
         "---\ntype: feature\nslug: note\ntitle: Note\n---\nhi\n", encoding="utf-8")
     graph = load(tmp_path)
     assert graph.profile == "exploration"
@@ -62,9 +62,9 @@ def test_exploration_profile_when_no_epics(tmp_path: Path):
     assert len(graph.features) == 1
 
 
-def test_a_typeless_prose_file_under_features_is_not_a_feature_record(repo: Path):
-    """Membership in the OKF book is a claim the file makes (a declared `type:`), not a property of sitting under `docs/features/` -- the same rule `_load_milestones` already applies via `registry.base_type(registry.type_of(fm))`, and the same rule `doctor._check_conformance` enforces independently as `okf-missing-type`."""
-    write(repo / "docs/features/area/scratch-note.md",
+def test_a_typeless_prose_file_under_services_is_not_a_feature_record(repo: Path):
+    """Membership in the OKF book is a claim the file makes (a declared `type:`), not a property of sitting under `docs/services/` -- the same rule `_load_milestones` already applies via `registry.base_type(registry.type_of(fm))`, and the same rule `doctor._check_conformance` enforces independently as `okf-missing-type`."""
+    write(repo / "docs/services/area/scratch-note.md",
           "# Just some notes\n\nNo frontmatter here, plain prose scratch note.\n")
     graph = load(repo)
     slugs = {r.slug for r in graph.features}
@@ -74,11 +74,11 @@ def test_a_typeless_prose_file_under_features_is_not_a_feature_record(repo: Path
 
     report = doctor.run(graph)
     missing_type = {f.path for f in report.findings if f.code == "okf-missing-type"}
-    assert "docs/features/area/scratch-note.md" in missing_type
+    assert "docs/services/area/scratch-note.md" in missing_type
 
 
 def test_org_name_override_from_config(tmp_path: Path):
-    (tmp_path / "docs/features").mkdir(parents=True)
+    (tmp_path / "docs/services").mkdir(parents=True)
     (tmp_path / "ostler.yml").write_text(
         "organization:\n  name: custom-org\n", encoding="utf-8")
     graph = load(tmp_path)
@@ -99,8 +99,8 @@ def test_trace_story_and_seed(repo: Path):
 
 def test_a_flags_entry_with_its_own_properties_parses_as_one_value(tmp_path: Path) -> None:
     """`flags:` is `entries=True` (`registry.BulletKey`): each direct child is one flag, and that flag's own `type:`/`required:`/`default:` children are its properties, not further flags."""
-    (tmp_path / "docs/features/area").mkdir(parents=True)
-    (tmp_path / "docs/features/area/cli.md").write_text(
+    (tmp_path / "docs/services/area").mkdir(parents=True)
+    (tmp_path / "docs/services/area/cli.md").write_text(
         "---\ntype: cli\nslug: c\ntitle: C\n---\n# C\n\n"
         "## Commands\n\n### serve\n"
         "- usage: `c serve [--host HOST] [--port PORT]`\n"
@@ -123,8 +123,8 @@ def test_a_flags_entry_with_its_own_properties_parses_as_one_value(tmp_path: Pat
 
 def test_an_entrys_properties_land_on_the_entry_and_not_in_meta(tmp_path: Path) -> None:
     """Stopping at the entry kept the two shapes apart; it also dropped the properties."""
-    (tmp_path / "docs/features/area").mkdir(parents=True)
-    (tmp_path / "docs/features/area/cli.md").write_text(
+    (tmp_path / "docs/services/area").mkdir(parents=True)
+    (tmp_path / "docs/services/area/cli.md").write_text(
         "---\ntype: cli\nslug: c\ntitle: C\n---\n# C\n\n"
         "## Commands\n\n### serve\n"
         "- usage: `c serve [--host HOST] [--port PORT]`\n"
@@ -152,8 +152,8 @@ def test_an_entrys_properties_land_on_the_entry_and_not_in_meta(tmp_path: Path) 
 
 def test_a_nested_key_that_is_not_an_entries_key_keeps_its_whole_subtree(tmp_path: Path) -> None:
     """`does:` is `nested=True` and *not* `entries=True`: its children are claims all the way down, so every descendant is a value and none of them is a property of another."""
-    (tmp_path / "docs/features/area").mkdir(parents=True)
-    (tmp_path / "docs/features/area/screen.md").write_text(
+    (tmp_path / "docs/services/area").mkdir(parents=True)
+    (tmp_path / "docs/services/area/screen.md").write_text(
         "---\ntype: screen\nslug: s\ntitle: S\nroute: /s\n---\n# S\n\n"
         "## Interactions\n\n### submit\n"
         "- trigger: click [go](#go)\n"

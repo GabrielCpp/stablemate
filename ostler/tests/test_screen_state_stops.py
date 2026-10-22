@@ -164,7 +164,7 @@ def test_a_flow_with_no_stop_emits_no_mark() -> None:
     assert '"Open details"' in journey
 
 
-FLOW_STEM = "maestro/okf_docs_features_demo_flows_add_a_thing_md_end_state"
+FLOW_STEM = "maestro/okf_docs_services_demo_flows_add_a_thing_md_end_state"
 
 
 def test_a_stop_on_a_device_settles_between_two_flow_files_and_goes_on_tapping() -> None:

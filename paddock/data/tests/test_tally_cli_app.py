@@ -78,7 +78,7 @@ def code_bullets(page: Path) -> list[str]:
 def test_the_book_grounds_at_symbol_level() -> None:
     """The premise of the fixture, pinned so an ordinary edit cannot dilute it."""
     cited: dict[str, list[CodeRef]] = {}
-    for page in (APP / "docs" / "features").rglob("*.md"):
+    for page in (APP / "docs" / "services").rglob("*.md"):
         for target in code_bullets(page):
             ref = parse_code_ref(target)
             cited.setdefault(ref.path, []).append(ref)
@@ -99,8 +99,8 @@ def test_the_book_describes_a_product_with_no_service_in_it() -> None:
     from ostler.model import load  # noqa: PLC0415 - a heavy import only this test needs
     from ostler.qa.runbook import stack_runbooks  # noqa: PLC0415
 
-    features = APP / "docs" / "features"
-    contexts = {path.parent.name for path in features.rglob("*.md")}
+    services = APP / "docs" / "services"
+    contexts = {path.parent.name for path in services.rglob("*.md")}
     assert contexts == {"tally", "concepts", "flows", "ops", "fixtures"}, sorted(contexts)
     assert not (APP / "compose.yml").exists(), "a serviceless fixture may not ship a stack"
     assert not stack_runbooks(load(APP)), (
@@ -208,7 +208,7 @@ def test_each_story_starts_where_the_previous_one_ended() -> None:
 def test_every_early_story_pins_its_own_book(story: str) -> None:
     """Every story but the last carries its own trimmed book under `pinned:`, and the image is not the finished one: a pinned copy identical to the app tree would be the anachronism with extra steps."""
     pinned = set(manifest(story)["pinned"])
-    for rel in ("docs/features/tally/tally.md", "docs/features/tally/flows/track-a-trip.md"):
+    for rel in ("docs/services/tally/tally.md", "docs/services/tally/flows/track-a-trip.md"):
         assert rel in pinned, f"{story} must pin {rel}"
         image = APP / "stories" / story / "pinned" / rel
         assert image.read_bytes() != (APP / rel).read_bytes(), (

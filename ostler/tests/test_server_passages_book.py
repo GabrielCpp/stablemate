@@ -9,9 +9,9 @@ from ostler.model import load
 
 from conftest import write
 
-API = "docs/features/acme/http/api.md"
-FLOW = "docs/features/acme/flows/bill.md"
-FIXTURE = "docs/features/acme/fixtures/seeded-bills.md"
+API = "docs/services/acme/http/api.md"
+FLOW = "docs/services/acme/flows/bill.md"
+FIXTURE = "docs/services/acme/fixtures/seeded-bills.md"
 
 API_PAGE = """---
 type: server
@@ -135,7 +135,7 @@ def test_a_fixture_the_flow_names_holds_the_value_a_passage_sends(repo: Path) ->
 
 def test_two_flows_may_share_one_server_passage(repo: Path) -> None:
     _book(repo, flow_page(ISSUE_PASSAGE))
-    write(repo / "docs/features/acme/flows/bill-again.md", flow_page(ISSUE_PASSAGE, PAY_PASSAGE))
+    write(repo / "docs/services/acme/flows/bill-again.md", flow_page(ISSUE_PASSAGE, PAY_PASSAGE))
     assert _findings(repo, "broken-joint") == []
 
 

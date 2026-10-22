@@ -169,7 +169,7 @@ def test_todo_add_does_not_warn_for_a_real_epic(tmp_path: Path):
 
 
 def test_backlog(tmp_path: Path):
-    write(tmp_path / "docs/features/.keep", "")
+    write(tmp_path / "docs/services/.keep", "")
     g = load(tmp_path)
     assert backlog.add(g, "b1", "do a thing").ok
     assert backlog.add(load(tmp_path), "b2", "do another", section="Filed by coder").ok

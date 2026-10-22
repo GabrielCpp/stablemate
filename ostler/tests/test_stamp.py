@@ -106,7 +106,7 @@ def test_restamp_leaves_an_empty_token_bullet_unchanged():
 
 
 def _book(root: Path, code: str) -> Path:
-    feature = root / "docs/features/billing/charge.md"
+    feature = root / "docs/services/billing/charge.md"
     feature.parent.mkdir(parents=True, exist_ok=True)
     feature.write_text(
         "---\ntype: concept\nslug: charge\ntitle: Charge\n---\n"
@@ -126,7 +126,7 @@ def _service(root: Path, text: str = SERVICE) -> Path:
 def test_stamp_page_writes_a_digest_onto_the_cited_file(tmp_path: Path):
     feature = _book(tmp_path, "`src/service.py::charge`")
     _service(tmp_path)
-    result = stamp.stamp_page(tmp_path, tmp_path, "docs/features/billing/charge.md")
+    result = stamp.stamp_page(tmp_path, tmp_path, "docs/services/billing/charge.md")
     expected = stamp.digest_file(SERVICE.encode())
     assert result.stamped == 1
     assert result.unresolved == []
@@ -136,7 +136,7 @@ def test_stamp_page_writes_a_digest_onto_the_cited_file(tmp_path: Path):
 
 def test_stamp_page_reports_a_missing_file_as_unresolved(tmp_path: Path):
     _book(tmp_path, "`src/missing.py::charge`")
-    result = stamp.stamp_page(tmp_path, tmp_path, "docs/features/billing/charge.md")
+    result = stamp.stamp_page(tmp_path, tmp_path, "docs/services/billing/charge.md")
     assert result.stamped == 0
     assert result.unresolved == ["src/missing.py::charge"]
     assert result.changed is False
@@ -144,14 +144,14 @@ def test_stamp_page_reports_a_missing_file_as_unresolved(tmp_path: Path):
 
 def test_stamp_page_reports_a_bare_missing_target_as_unresolved(tmp_path: Path):
     _book(tmp_path, "src/missing.py::charge")
-    result = stamp.stamp_page(tmp_path, tmp_path, "docs/features/billing/charge.md")
+    result = stamp.stamp_page(tmp_path, tmp_path, "docs/services/billing/charge.md")
     assert result.stamped == 0
     assert result.unresolved == ["src/missing.py::charge"]
     assert result.changed is False
 
 
 def test_stamp_page_stamps_both_a_backticked_and_a_bare_code_bullet(tmp_path: Path):
-    feature = tmp_path / "docs/features/billing/charge.md"
+    feature = tmp_path / "docs/services/billing/charge.md"
     feature.parent.mkdir(parents=True, exist_ok=True)
     feature.write_text(
         "---\ntype: concept\nslug: charge\ntitle: Charge\n---\n"
@@ -163,7 +163,7 @@ def test_stamp_page_stamps_both_a_backticked_and_a_bare_code_bullet(tmp_path: Pa
     _service(tmp_path)
     (tmp_path / "src/other.py").write_text("def other():\n    pass\n", encoding="utf-8")
 
-    result = stamp.stamp_page(tmp_path, tmp_path, "docs/features/billing/charge.md")
+    result = stamp.stamp_page(tmp_path, tmp_path, "docs/services/billing/charge.md")
 
     expected = stamp.digest_file(SERVICE.encode())
     other_digest = stamp.digest_file(b"def other():\n    pass\n")
@@ -175,7 +175,7 @@ def test_stamp_page_stamps_both_a_backticked_and_a_bare_code_bullet(tmp_path: Pa
 
 
 def test_unstamp_text_gives_back_the_page_as_it_read_before_the_stamp(tmp_path: Path):
-    feature = tmp_path / "docs/features/billing/charge.md"
+    feature = tmp_path / "docs/services/billing/charge.md"
     feature.parent.mkdir(parents=True, exist_ok=True)
     before = (
         "---\ntype: concept\nslug: charge\ntitle: Charge\n---\n"
@@ -186,7 +186,7 @@ def test_unstamp_text_gives_back_the_page_as_it_read_before_the_stamp(tmp_path: 
     feature.write_text(before, encoding="utf-8")
     _service(tmp_path)
     (tmp_path / "src/other.py").write_text("def other():\n    pass\n", encoding="utf-8")
-    _ = stamp.stamp_page(tmp_path, tmp_path, "docs/features/billing/charge.md")
+    _ = stamp.stamp_page(tmp_path, tmp_path, "docs/services/billing/charge.md")
 
     stamped = feature.read_text(encoding="utf-8")
 
@@ -198,7 +198,7 @@ def test_stamp_page_leaves_a_ref_to_a_different_repository_unresolved(tmp_path: 
     (tmp_path / "repository.txt").write_text("acme\n", encoding="utf-8")
     _book(tmp_path, "`repo://globex/src/service.py::charge`")
     _service(tmp_path)
-    result = stamp.stamp_page(tmp_path, tmp_path, "docs/features/billing/charge.md")
+    result = stamp.stamp_page(tmp_path, tmp_path, "docs/services/billing/charge.md")
     assert result.stamped == 0
     assert result.unresolved == ["repo://globex/src/service.py::charge"]
     assert result.changed is False
@@ -212,7 +212,7 @@ def test_stamp_page_resolves_a_foreign_repository_ref_through_a_supplied_checkou
     checkout = tmp_path / "checkouts" / "globex"
     _service(checkout)
     result = stamp.stamp_page(
-        tmp_path, tmp_path, "docs/features/billing/charge.md",
+        tmp_path, tmp_path, "docs/services/billing/charge.md",
         checkouts={"globex": checkout},
     )
     expected = stamp.digest_file(SERVICE.encode())
@@ -229,7 +229,7 @@ def test_stamp_page_leaves_an_unmapped_foreign_repository_ref_unreachable(tmp_pa
     checkout = tmp_path / "checkouts" / "other-repo"
     _service(checkout)
     result = stamp.stamp_page(
-        tmp_path, tmp_path, "docs/features/billing/charge.md",
+        tmp_path, tmp_path, "docs/services/billing/charge.md",
         checkouts={"other-repo": checkout},
     )
     assert result.stamped == 0
@@ -241,7 +241,7 @@ def test_stamp_page_resolves_a_ref_qualified_with_the_books_own_repository(tmp_p
     (tmp_path / "repository.txt").write_text("acme\n", encoding="utf-8")
     feature = _book(tmp_path, "`repo://acme/src/service.py::charge`")
     _service(tmp_path)
-    result = stamp.stamp_page(tmp_path, tmp_path, "docs/features/billing/charge.md")
+    result = stamp.stamp_page(tmp_path, tmp_path, "docs/services/billing/charge.md")
     expected = stamp.digest_file(SERVICE.encode())
     assert result.stamped == 1
     assert f"@{expected}" in feature.read_text(encoding="utf-8")
@@ -250,15 +250,15 @@ def test_stamp_page_resolves_a_ref_qualified_with_the_books_own_repository(tmp_p
 def test_restamping_an_unchanged_file_is_a_noop_write(tmp_path: Path):
     feature = _book(tmp_path, "`src/service.py::charge`")
     _service(tmp_path)
-    stamp.stamp_page(tmp_path, tmp_path, "docs/features/billing/charge.md")
+    stamp.stamp_page(tmp_path, tmp_path, "docs/services/billing/charge.md")
     before = feature.read_text(encoding="utf-8")
-    result = stamp.stamp_page(tmp_path, tmp_path, "docs/features/billing/charge.md")
+    result = stamp.stamp_page(tmp_path, tmp_path, "docs/services/billing/charge.md")
     assert result.changed is False
     assert feature.read_text(encoding="utf-8") == before
 
 
 def _two_node_book(root: Path, code: str) -> Path:
-    feature = root / "docs/features/billing/charge.md"
+    feature = root / "docs/services/billing/charge.md"
     feature.parent.mkdir(parents=True, exist_ok=True)
     feature.write_text(
         "---\ntype: concept\nslug: charge\ntitle: Charge\n---\n"
@@ -280,7 +280,7 @@ def test_stamp_page_scoped_to_a_line_range_leaves_the_other_nodes_bullet_stale(t
     beta_line = next(i for i, line in enumerate(lines, start=1) if line == "## Beta")
 
     result = stamp.stamp_page(
-        tmp_path, tmp_path, "docs/features/billing/charge.md",
+        tmp_path, tmp_path, "docs/services/billing/charge.md",
         line_ranges=[(alpha_line, beta_line)],
     )
 
@@ -305,7 +305,7 @@ def test_stamp_page_only_targets_leaves_a_sibling_citation_on_the_same_node_unto
     node_range = (heading_line, len(lines) + 1)
 
     result = stamp.stamp_page(
-        tmp_path, tmp_path, "docs/features/billing/charge.md",
+        tmp_path, tmp_path, "docs/services/billing/charge.md",
         line_ranges=[node_range],
         only_targets={node_range: frozenset({"src/service.py"})},
     )
@@ -332,7 +332,7 @@ def test_stamp_page_only_targets_leaves_an_already_stamped_sibling_digest_standi
     node_range = (heading_line, len(lines) + 1)
 
     result = stamp.stamp_page(
-        tmp_path, tmp_path, "docs/features/billing/charge.md",
+        tmp_path, tmp_path, "docs/services/billing/charge.md",
         line_ranges=[node_range],
         only_targets={node_range: frozenset({"src/service.py"})},
     )
@@ -347,7 +347,7 @@ def test_stamp_page_only_targets_leaves_an_already_stamped_sibling_digest_standi
 def test_stamp_page_leaves_a_stamped_target_whose_file_was_deleted_standing(tmp_path: Path):
     feature = _book(tmp_path, "`src/service.py::charge` @000000000000")
 
-    result = stamp.stamp_page(tmp_path, tmp_path, "docs/features/billing/charge.md")
+    result = stamp.stamp_page(tmp_path, tmp_path, "docs/services/billing/charge.md")
 
     assert result.stamped == 0
     assert "src/service.py::charge" in result.unresolved
@@ -364,7 +364,7 @@ def test_cli_stamp_node_file_pair_scopes_the_restamp_to_one_citation(
 
     rc = main([
         "-C", str(tmp_path), "stamp", "--no-index",
-        "--node", "docs/features/billing/charge.md", "--file", "src/service.py",
+        "--node", "docs/services/billing/charge.md", "--file", "src/service.py",
     ])
     assert rc == 0
     text = feature.read_text(encoding="utf-8")
@@ -380,7 +380,7 @@ def test_cli_stamp_checkout_flag_resolves_a_foreign_repository_ref(tmp_path: Pat
 
     rc = main([
         "-C", str(tmp_path), "stamp", "--no-index",
-        "--path", "docs/features/billing/charge.md", "--whole-page",
+        "--path", "docs/services/billing/charge.md", "--whole-page",
         "--checkout", f"globex={checkout}",
     ])
     assert rc == 0
@@ -392,7 +392,7 @@ def test_cli_stamp_checkout_flag_rejects_a_malformed_value(tmp_path: Path, capsy
     _book(tmp_path, "`src/service.py::charge`")
     rc = main([
         "-C", str(tmp_path), "stamp", "--no-index",
-        "--path", "docs/features/billing/charge.md", "--whole-page",
+        "--path", "docs/services/billing/charge.md", "--whole-page",
         "--checkout", "not-a-pair",
     ])
     assert rc == 2
@@ -403,7 +403,7 @@ def test_node_line_range_runs_to_end_of_file_for_a_lone_node(tmp_path: Path):
     feature = _book(tmp_path, "`src/service.py::charge`")
     _service(tmp_path)
     graph = load(tmp_path)
-    node = graph.find_ui_node("docs/features/billing/charge.md")
+    node = graph.find_ui_node("docs/services/billing/charge.md")
     assert node is not None
     line_count = len(feature.read_text(encoding="utf-8").splitlines())
     assert stamp.node_line_range(graph, node) == (node.line, line_count + 1)
@@ -413,8 +413,8 @@ def test_node_line_range_stops_at_the_next_sibling_on_the_page(tmp_path: Path):
     _two_node_book(tmp_path, "`src/service.py::charge`")
     _service(tmp_path)
     graph = load(tmp_path)
-    alpha = graph.find_ui_node("docs/features/billing/charge.md#alpha")
-    beta = graph.find_ui_node("docs/features/billing/charge.md#beta")
+    alpha = graph.find_ui_node("docs/services/billing/charge.md#alpha")
+    beta = graph.find_ui_node("docs/services/billing/charge.md#beta")
     assert alpha is not None
     assert beta is not None
     assert stamp.node_line_range(graph, alpha) == (alpha.line, beta.line)
@@ -427,12 +427,12 @@ def test_stamp_targets_scopes_the_restamp_to_the_given_node_and_file(tmp_path: P
     graph = load(tmp_path)
 
     results = stamp.stamp_targets(
-        graph, tmp_path, [("docs/features/billing/charge.md", "src/service.py")],
+        graph, tmp_path, [("docs/services/billing/charge.md", "src/service.py")],
     )
 
     assert len(results) == 1
     assert results[0].unresolved == []
-    text = (tmp_path / "docs/features/billing/charge.md").read_text(encoding="utf-8")
+    text = (tmp_path / "docs/services/billing/charge.md").read_text(encoding="utf-8")
     assert "`src/service.py::charge` @" in text
     assert "`src/other.py::other` @" not in text
 
@@ -447,13 +447,13 @@ def test_stamp_targets_leaves_a_nodes_other_stamped_citations_standing(tmp_path:
     graph = load(tmp_path)
 
     results = stamp.stamp_targets(
-        graph, tmp_path, [("docs/features/billing/charge.md", "src/service.py")],
+        graph, tmp_path, [("docs/services/billing/charge.md", "src/service.py")],
     )
 
     assert len(results) == 1
     assert results[0].stamped == 1
     expected = stamp.digest_file(SERVICE.encode())
-    text = (tmp_path / "docs/features/billing/charge.md").read_text(encoding="utf-8")
+    text = (tmp_path / "docs/services/billing/charge.md").read_text(encoding="utf-8")
     assert f"`src/service.py::charge` @{expected}" in text
     assert "`src/other.py::other` @111111111111" in text
 
@@ -466,12 +466,12 @@ def test_stamp_targets_leaves_a_sibling_nodes_citation_of_the_same_file_untouche
     graph = load(tmp_path)
 
     results = stamp.stamp_targets(
-        graph, tmp_path, [("docs/features/billing/charge.md#alpha", "src/service.py")],
+        graph, tmp_path, [("docs/services/billing/charge.md#alpha", "src/service.py")],
     )
 
     assert len(results) == 1
     assert results[0].stamped == 1
-    text = (tmp_path / "docs/features/billing/charge.md").read_text(encoding="utf-8")
+    text = (tmp_path / "docs/services/billing/charge.md").read_text(encoding="utf-8")
     lines = text.splitlines()
     alpha_line = next(i for i, line in enumerate(lines) if line == "## Alpha")
     beta_line = next(i for i, line in enumerate(lines) if line == "## Beta")
@@ -486,14 +486,14 @@ def test_stamp_targets_reports_an_unresolved_node_without_dropping_the_others(tm
 
     results = stamp.stamp_targets(
         graph, tmp_path, [
-            ("docs/features/billing/charge.md", "src/service.py"),
-            ("docs/features/billing/missing.md#nope", "src/service.py"),
+            ("docs/services/billing/charge.md", "src/service.py"),
+            ("docs/services/billing/missing.md#nope", "src/service.py"),
         ],
     )
 
     by_page = {r.page: r for r in results}
-    assert by_page["docs/features/billing/charge.md"].stamped == 1
-    assert by_page[""].unresolved == ["docs/features/billing/missing.md#nope"]
+    assert by_page["docs/services/billing/charge.md"].stamped == 1
+    assert by_page[""].unresolved == ["docs/services/billing/missing.md#nope"]
 
 
 def test_cli_stamp_file_without_node_is_rejected(tmp_path: Path, capsys):
@@ -512,7 +512,7 @@ def test_stamp_page_reports_a_bullet_whose_line_count_changed_as_unresolved(
         stamp, "restamp_leading_code_spans",
         lambda value, digest_for: original(value, digest_for) + "\nextra",
     )
-    result = stamp.stamp_page(tmp_path, tmp_path, "docs/features/billing/charge.md")
+    result = stamp.stamp_page(tmp_path, tmp_path, "docs/services/billing/charge.md")
     assert result.unresolved == ["- code: `src/service.py::charge`"]
     assert result.changed is False
     assert "@" not in feature.read_text(encoding="utf-8")
@@ -533,10 +533,10 @@ def test_stamp_page_from_catalog_uses_the_catalogs_digest_not_the_live_files(tmp
             ),
         ),
     )
-    result = stamp.stamp_page_from_catalog(root, "docs/features/billing/charge.md", catalog)
+    result = stamp.stamp_page_from_catalog(root, "docs/services/billing/charge.md", catalog)
     assert result.stamped == 1
     assert result.unresolved == []
-    text = (root / "docs/features/billing/charge.md").read_text(encoding="utf-8")
+    text = (root / "docs/services/billing/charge.md").read_text(encoding="utf-8")
     assert f"`src/service.py::charge` @{stale_digest[:12]}" in text
     assert stale_digest[:12] != stamp.digest_file((root / "src/service.py").read_bytes())
 
@@ -550,7 +550,7 @@ def test_stamp_page_from_catalog_leaves_a_file_with_no_catalog_row_unstamped(tmp
             ),
         ),
     )
-    result = stamp.stamp_page_from_catalog(tmp_path, "docs/features/billing/charge.md", catalog)
+    result = stamp.stamp_page_from_catalog(tmp_path, "docs/services/billing/charge.md", catalog)
     assert result.stamped == 0
     assert result.unresolved == ["src/missing_from_catalog.py::charge"]
     assert result.changed is False
@@ -559,7 +559,7 @@ def test_stamp_page_from_catalog_leaves_a_file_with_no_catalog_row_unstamped(tmp
 def test_cli_stamp_from_catalog_migrates_the_whole_book_and_deletes_the_catalog(
     tmp_path: Path,
 ):
-    feature = tmp_path / "docs/features/billing/charge.md"
+    feature = tmp_path / "docs/services/billing/charge.md"
     feature.parent.mkdir(parents=True, exist_ok=True)
     feature.write_text(
         "---\ntype: concept\nslug: charge\ntitle: Charge\n---\n"
@@ -598,14 +598,14 @@ def test_cli_stamp_from_catalog_migrates_the_whole_book_and_deletes_the_catalog(
 def test_cli_stamp_from_catalog_with_path_leaves_the_catalog_and_other_pages_migratable(
     tmp_path: Path,
 ):
-    billing = tmp_path / "docs/features/billing/charge.md"
+    billing = tmp_path / "docs/services/billing/charge.md"
     billing.parent.mkdir(parents=True, exist_ok=True)
     billing.write_text(
         "---\ntype: concept\nslug: charge\ntitle: Charge\n---\n"
         "# Charge\n\n- code: `src/service.py::charge`\n",
         encoding="utf-8",
     )
-    refund = tmp_path / "docs/features/billing/refund.md"
+    refund = tmp_path / "docs/services/billing/refund.md"
     refund.write_text(
         "---\ntype: concept\nslug: refund\ntitle: Refund\n---\n"
         "# Refund\n\n- code: `src/refund.py::refund`\n",
@@ -636,7 +636,7 @@ def test_cli_stamp_from_catalog_with_path_leaves_the_catalog_and_other_pages_mig
 
     assert main([
         "-C", str(tmp_path), "stamp", "--from-catalog", "--path",
-        "docs/features/billing/charge.md",
+        "docs/services/billing/charge.md",
     ]) == 0
 
     assert f"@{service_digest[:12]}" in billing.read_text(encoding="utf-8")
@@ -645,14 +645,14 @@ def test_cli_stamp_from_catalog_with_path_leaves_the_catalog_and_other_pages_mig
 
     assert main([
         "-C", str(tmp_path), "stamp", "--from-catalog", "--path",
-        "docs/features/billing/refund.md",
+        "docs/services/billing/refund.md",
     ]) == 0
     assert f"@{refund_digest[:12]}" in refund.read_text(encoding="utf-8")
     assert catalog_path.exists(), "a --path migration must not delete the catalog"
 
 
 def test_cli_stamp_from_catalog_whole_book_keep_catalog_flag_skips_deletion(tmp_path: Path):
-    feature = tmp_path / "docs/features/billing/charge.md"
+    feature = tmp_path / "docs/services/billing/charge.md"
     feature.parent.mkdir(parents=True, exist_ok=True)
     feature.write_text(
         "---\ntype: concept\nslug: charge\ntitle: Charge\n---\n"
@@ -685,14 +685,14 @@ def test_cli_stamp_from_catalog_whole_book_keep_catalog_flag_skips_deletion(tmp_
 def test_cli_stamp_from_catalog_whole_book_covers_every_surface_sharing_one_catalog(
     tmp_path: Path,
 ):
-    billing = tmp_path / "docs/features/billing/charge.md"
+    billing = tmp_path / "docs/services/billing/charge.md"
     billing.parent.mkdir(parents=True, exist_ok=True)
     billing.write_text(
         "---\ntype: concept\nslug: charge\ntitle: Charge\n---\n"
         "# Charge\n\n- code: `src/service.py::charge`\n",
         encoding="utf-8",
     )
-    shipping = tmp_path / "docs/features/shipping/track.md"
+    shipping = tmp_path / "docs/services/shipping/track.md"
     shipping.parent.mkdir(parents=True, exist_ok=True)
     shipping.write_text(
         "---\ntype: concept\nslug: track\ntitle: Track\n---\n"
@@ -733,7 +733,7 @@ def test_stamp_touches_exactly_the_targets_doctor_flags_as_unstamped_citation(tm
     from ostler import doctor
     from ostler.model import load
 
-    feature = tmp_path / "docs/features/billing/charge.md"
+    feature = tmp_path / "docs/services/billing/charge.md"
     feature.parent.mkdir(parents=True, exist_ok=True)
     feature.write_text(
         "---\ntype: concept\nslug: charge\ntitle: Charge\n---\n"
@@ -749,7 +749,7 @@ def test_stamp_touches_exactly_the_targets_doctor_flags_as_unstamped_citation(tm
     flagged = {f.ref for f in before.findings if f.code == "unstamped-citation"}
     assert flagged == {"src/service.py::charge", "src/other.py::other"}
 
-    result = stamp.stamp_page(tmp_path, tmp_path, "docs/features/billing/charge.md")
+    result = stamp.stamp_page(tmp_path, tmp_path, "docs/services/billing/charge.md")
     assert result.stamped == len(flagged)
     assert result.unresolved == []
 
@@ -764,7 +764,7 @@ def test_stamp_page_stamps_a_non_utf8_file_without_crashing(tmp_path: Path):
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_bytes(data)
 
-    result = stamp.stamp_page(tmp_path, tmp_path, "docs/features/billing/charge.md")
+    result = stamp.stamp_page(tmp_path, tmp_path, "docs/services/billing/charge.md")
 
     assert result.stamped == 1
     assert result.unresolved == []
@@ -796,12 +796,12 @@ def test_stamp_page_from_catalog_migrates_an_unchanged_crlf_file_to_its_byte_dig
         ),
     )
 
-    result = stamp.stamp_page_from_catalog(root, "docs/features/billing/charge.md", catalog)
+    result = stamp.stamp_page_from_catalog(root, "docs/services/billing/charge.md", catalog)
 
     byte_digest = stamp.digest_file(crlf_bytes)
     assert byte_digest != legacy_digest[:12]
     assert result.stamped == 1
-    text = (root / "docs/features/billing/charge.md").read_text(encoding="utf-8")
+    text = (root / "docs/services/billing/charge.md").read_text(encoding="utf-8")
     assert f"`src/service.py::charge` @{byte_digest}" in text
 
     report = doctor.run(load(root))
@@ -835,10 +835,10 @@ def test_stamp_page_from_catalog_keeps_a_changed_crlf_files_catalog_digest_and_i
     target = _service(root, "def charge(amount):\n    return amount * 2\n")
     target.write_bytes(target.read_text(encoding="utf-8").replace("\n", "\r\n").encode())
 
-    result = stamp.stamp_page_from_catalog(root, "docs/features/billing/charge.md", catalog)
+    result = stamp.stamp_page_from_catalog(root, "docs/services/billing/charge.md", catalog)
 
     assert result.stamped == 1
-    text = (root / "docs/features/billing/charge.md").read_text(encoding="utf-8")
+    text = (root / "docs/services/billing/charge.md").read_text(encoding="utf-8")
     assert f"`src/service.py::charge` @{legacy_digest[:12]}" in text
     assert f"@{legacy_digest[:12]}" != f"@{stamp.digest_file(original_crlf)}"
 

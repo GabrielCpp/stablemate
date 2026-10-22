@@ -21,7 +21,7 @@ on the answer. Reading is where a multi-tenant service is usually wrong, and it 
 invisibly: a register that returns everybody's claims renders perfectly, answers `200`, and
 carries every field the contract promises.
 
-[Claim tenancy](../../../../features/claims/concepts/claim-tenancy.md) is the whole of the
+[Claim tenancy](../../../../services/claims/concepts/claim-tenancy.md) is the whole of the
 rule and lives in one place, so a scenario that catches a widened register names the rule
 rather than the route. Scope is decided from the verified token and never from a query
 parameter — there is no way to *ask* for someone else's claims, which is what makes a wrong

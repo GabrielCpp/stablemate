@@ -9,7 +9,7 @@ tags: [python, backend, standards]
 Load this skill when working on `stablemate/groom/`, when a `workhorse` workflow's operator-gate
 scripts (`await_operator.py`/`await-operator.py` and friends) need to change, or when explaining
 how blocked workflow containers become visible to a human operator. Full as-built reference:
-`stablemate/docs/features/groom.md`.
+`stablemate/docs/services/groom.md`.
 
 **Reading a run rather than building one** — where is it stuck, why does that loop repeat,
 what did it cost, what did the node actually say — is [[groom-telemetry]], which covers the

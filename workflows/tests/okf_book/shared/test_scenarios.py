@@ -10,16 +10,16 @@ from workhorse_workflows.okf_book.shared.scenarios import FailedCheck, RunSummar
 ADD_SCENARIO = Scenario(
     id="tally-add",
     covers=(
-        "okf:docs/features/tally/tally.md#add:does:1",
-        "okf:docs/features/tally/tally.md#add:does:2",
-        "okf:docs/features/tally/flows/budget.md:end:1",
+        "okf:docs/services/tally/tally.md#add:does:1",
+        "okf:docs/services/tally/tally.md#add:does:2",
+        "okf:docs/services/tally/flows/budget.md:end:1",
     ),
 )
-LIST_SCENARIO = Scenario(id="tally-list", covers=("okf:docs/features/tally/tally.md#list:does:1",))
+LIST_SCENARIO = Scenario(id="tally-list", covers=("okf:docs/services/tally/tally.md#list:does:1",))
 
 
 def test_a_scenario_names_each_page_its_obligations_sit_on_once() -> None:
-    assert ADD_SCENARIO.pages == ("docs/features/tally/tally.md", "docs/features/tally/flows/budget.md")
+    assert ADD_SCENARIO.pages == ("docs/services/tally/tally.md", "docs/services/tally/flows/budget.md")
 
 
 def test_each_failed_scenario_reports_on_every_page_it_covers_and_a_passing_one_on_none() -> None:
@@ -37,14 +37,14 @@ def test_each_failed_scenario_reports_on_every_page_it_covers_and_a_passing_one_
         "the run of scenario tally-add failed: the ledger refused the entry",
     )
     assert {page: tuple(problem.text for problem in problems) for page, problems in by_page.items()} == {
-        "docs/features/tally/flows/budget.md": expected,
-        "docs/features/tally/tally.md": expected,
+        "docs/services/tally/flows/budget.md": expected,
+        "docs/services/tally/tally.md": expected,
     }
     assert all(problem.page == page and not problem.node for page, problems in by_page.items() for problem in problems)
 
 
 def test_a_check_made_for_one_claim_is_reported_on_that_claims_page_alone() -> None:
-    claim = "okf:docs/features/tally/tally.md#add:does:2"
+    claim = "okf:docs/services/tally/tally.md#add:does:2"
     failed = ScenarioOutcome(
         status="failed",
         failed_checks=(FailedCheck(label="POST /add answers [201]", expected="[201]", actual="403", covers=(claim,)),),
@@ -53,20 +53,20 @@ def test_a_check_made_for_one_claim_is_reported_on_that_claims_page_alone() -> N
 
     by_page = summary.failures_by_page((ADD_SCENARIO,))
 
-    assert by_page == {"docs/features/tally/tally.md": (PageProblem(
-        "docs/features/tally/tally.md",
+    assert by_page == {"docs/services/tally/tally.md": (PageProblem(
+        "docs/services/tally/tally.md",
         f"the run of scenario tally-add failed at {claim}: POST /add answers [201]: expected [201], observed 403",
-        node="docs/features/tally/tally.md#add"),)}
+        node="docs/services/tally/tally.md#add"),)}
 
 
 def test_a_scenario_stopped_inside_the_plan_is_reported_at_the_obligation_it_stopped_in() -> None:
     plan = "\n".join(
         (
             "def tally_add(qa):",
-            "    # okf:docs/features/tally/tally.md#add:does:1",
+            "    # okf:docs/services/tally/tally.md#add:does:1",
             "    qa.http.post('/entries', expect_status=400)",
             "",
-            "    # okf:docs/features/tally/tally.md#add:does:2",
+            "    # okf:docs/services/tally/tally.md#add:does:2",
             "    # records the entry.",
             "    observed = qa.http.post('/entries', json_body={'amount': 3})",
             "    qa.verify('http_status', observed, code=201)",
@@ -86,12 +86,12 @@ def test_a_scenario_stopped_inside_the_plan_is_reported_at_the_obligation_it_sto
     by_page = summary.failures_by_page((LIST_SCENARIO,), plan)
 
     assert by_page == {
-        "docs/features/tally/tally.md": (
+        "docs/services/tally/tally.md": (
             PageProblem(
-                "docs/features/tally/tally.md",
-                "the run of scenario tally-list failed at okf:docs/features/tally/tally.md#add:does:2: "
+                "docs/services/tally/tally.md",
+                "the run of scenario tally-list failed at okf:docs/services/tally/tally.md#add:does:2: "
                 + "HttpError: POST http://localhost/entries returned 404: ledger not found",
-                node="docs/features/tally/tally.md#add",
+                node="docs/services/tally/tally.md#add",
             ),
         )
     }
@@ -101,12 +101,12 @@ def test_a_scenario_stopped_before_its_first_mark_names_no_obligation_of_the_sce
     plan = "\n".join(
         (
             "def tally_add(qa):",
-            "    # okf:docs/features/tally/tally.md#add:does:1",
+            "    # okf:docs/services/tally/tally.md#add:does:1",
             "    qa.http.post('/entries', expect_status=400)",
             "",
             "def tally_list(qa):",
             "    token = qa.fixture('signed-in-user')",
-            "    # okf:docs/features/tally/tally.md#list:does:1",
+            "    # okf:docs/services/tally/tally.md#list:does:1",
             "    qa.http.get('/entries')",
         )
     )
@@ -123,20 +123,20 @@ def test_a_scenario_stopped_before_its_first_mark_names_no_obligation_of_the_sce
     by_page = summary.failures_by_page((LIST_SCENARIO,), plan)
 
     assert by_page == {
-        "docs/features/tally/tally.md": (
-            PageProblem("docs/features/tally/tally.md", "the run of scenario tally-list failed: FixtureError: step 1 exited 22"),
+        "docs/services/tally/tally.md": (
+            PageProblem("docs/services/tally/tally.md", "the run of scenario tally-list failed: FixtureError: step 1 exited 22"),
         )
     }
 
 
 def test_a_journey_stopped_at_a_step_is_reported_on_the_page_of_the_node_that_step_performs() -> None:
-    journey = Scenario(id="budget-journey", covers=("okf:docs/features/tally/flows/budget.md:end:1",))
+    journey = Scenario(id="budget-journey", covers=("okf:docs/services/tally/flows/budget.md:end:1",))
     plan = "\n".join(
         (
             "def budget_journey(qa):",
-            "    # okf:docs/features/tally/api.md#list-entries",
+            "    # okf:docs/services/tally/api.md#list-entries",
             "    observed_1 = qa.http.get('/entries')",
-            "    # okf:docs/features/tally/flows/budget.md:end:1",
+            "    # okf:docs/services/tally/flows/budget.md:end:1",
             "    qa.verify('http_status', observed_1, code=200)",
         )
     )
@@ -153,20 +153,20 @@ def test_a_journey_stopped_at_a_step_is_reported_on_the_page_of_the_node_that_st
     by_page = summary.failures_by_page((journey,), plan)
 
     text = (
-        "the run of scenario budget-journey failed at okf:docs/features/tally/api.md#list-entries: "
+        "the run of scenario budget-journey failed at okf:docs/services/tally/api.md#list-entries: "
         + "HttpError: GET http://localhost/entries returned 400: month is required"
     )
     assert by_page == {
-        "docs/features/tally/api.md": (PageProblem("docs/features/tally/api.md", text, node="docs/features/tally/api.md#list-entries"),),
-        "docs/features/tally/flows/budget.md": (PageProblem("docs/features/tally/flows/budget.md", text),),
+        "docs/services/tally/api.md": (PageProblem("docs/services/tally/api.md", text, node="docs/services/tally/api.md#list-entries"),),
+        "docs/services/tally/flows/budget.md": (PageProblem("docs/services/tally/flows/budget.md", text),),
     }
 
 
-SIGNED_IN = "docs/features/tally/fixtures/signed-in.md"
+SIGNED_IN = "docs/services/tally/fixtures/signed-in.md"
 
 
 def test_checks_a_precondition_arranged_wrong_land_once_on_its_page_and_not_on_their_claims() -> None:
-    claim = "okf:docs/features/tally/tally.md#add:does:2"
+    claim = "okf:docs/services/tally/tally.md#add:does:2"
     refused = FailedCheck(label="POST /add answers [201]", expected="[201]", actual="403", covers=(claim,),
                           cause=Cause.ARRANGEMENT, precondition=SIGNED_IN, status="403")
     signature = Signature(Cause.ARRANGEMENT, SIGNED_IN, "403", "", 7, "POST /add answers [201]: expected [201], observed 403")
@@ -179,7 +179,7 @@ def test_checks_a_precondition_arranged_wrong_land_once_on_its_page_and_not_on_t
         SIGNED_IN,
         f"7 checks failed on what this page arranges (arrangement: {SIGNED_IN} answered 403); "
         + "for example POST /add answers [201]: expected [201], observed 403",
-        requests=("docs/features/tally/tally.md",)),)}
+        requests=("docs/services/tally/tally.md",)),)}
 
 
 def test_a_scenario_whose_every_check_another_party_must_fix_reaches_no_page() -> None:
@@ -201,9 +201,9 @@ def test_a_check_from_a_run_that_attributed_nothing_is_the_books() -> None:
 
 
 def test_a_per_scenario_fixture_the_run_rebuilt_for_ten_minutes_lands_on_its_page_and_a_lap_one_does_not() -> None:
-    session = "docs/features/tally/fixtures/editor-session.md"
-    stack = "docs/features/tally/fixtures/test-stack.md"
-    quick = "docs/features/tally/fixtures/signed-in.md"
+    session = "docs/services/tally/fixtures/editor-session.md"
+    stack = "docs/services/tally/fixtures/test-stack.md"
+    quick = "docs/services/tally/fixtures/signed-in.md"
     summary = RunSummary.model_validate({"status": "passed", "fixture_builds": [
         {"name": "editor-session", "page": session, "lifetime": "scenario", "builds": 20, "seconds": 800.0},
         {"name": "test-stack", "page": stack, "lifetime": "lap", "builds": 30, "seconds": 1200.0},
@@ -227,7 +227,7 @@ def test_a_run_summary_reads_back_its_signatures() -> None:
 
 
 def test_a_run_summary_reads_back_each_claims_verdict_and_what_a_stop_left_unreached() -> None:
-    claims = ("okf:docs/features/tally/tally.md#list:does:1", "okf:docs/features/tally/tally.md#list:does:2")
+    claims = ("okf:docs/services/tally/tally.md#list:does:1", "okf:docs/services/tally/tally.md#list:does:2")
     summary = RunSummary.model_validate({
         "status": "failed",
         "scenarios": {"tally-list": {"status": "failed", "unreached": [claims[1]]}},
@@ -239,37 +239,37 @@ def test_a_run_summary_reads_back_each_claims_verdict_and_what_a_stop_left_unrea
     assert RunSummary.model_validate_json(summary.model_dump_json()) == summary
 
 
-SEED_SCENARIO = Scenario(id="tally-seeded", covers=("okf:docs/features/tally/reports.md#monthly:does:1",))
-SEEDED = {"seeded-ledger": ("okf:docs/features/tally/reports.md#monthly:does:1", "okf:docs/features/tally/tally.md#list:does:1")}
+SEED_SCENARIO = Scenario(id="tally-seeded", covers=("okf:docs/services/tally/reports.md#monthly:does:1",))
+SEEDED = {"seeded-ledger": ("okf:docs/services/tally/reports.md#monthly:does:1", "okf:docs/services/tally/tally.md#list:does:1")}
 
 
 def test_a_page_selects_every_scenario_that_covers_it() -> None:
-    selected = select_scenarios((ADD_SCENARIO, LIST_SCENARIO, SEED_SCENARIO), SEEDED, ("docs/features/tally/tally.md",))
+    selected = select_scenarios((ADD_SCENARIO, LIST_SCENARIO, SEED_SCENARIO), SEEDED, ("docs/services/tally/tally.md",))
 
     assert selected == Selection(scenarios=("tally-add", "tally-list"))
 
 
 def test_a_fixture_page_selects_the_first_scenario_that_arranges_its_fixture() -> None:
-    selected = select_scenarios((ADD_SCENARIO, LIST_SCENARIO, SEED_SCENARIO), SEEDED, ("docs/features/tally/fixtures/seeded-ledger.md",))
+    selected = select_scenarios((ADD_SCENARIO, LIST_SCENARIO, SEED_SCENARIO), SEEDED, ("docs/services/tally/fixtures/seeded-ledger.md",))
 
     assert selected == Selection(scenarios=("tally-list",))
 
 
 def test_a_target_no_scenario_runs_is_named_back() -> None:
-    selected = select_scenarios((ADD_SCENARIO,), SEEDED, ("docs/features/tally/flows/budget.md", "docs/features/tally/missing.md"))
+    selected = select_scenarios((ADD_SCENARIO,), SEEDED, ("docs/services/tally/flows/budget.md", "docs/services/tally/missing.md"))
 
-    assert selected == Selection(scenarios=("tally-add",), unmatched=("docs/features/tally/missing.md",))
+    assert selected == Selection(scenarios=("tally-add",), unmatched=("docs/services/tally/missing.md",))
 
 
 def test_a_signature_names_the_page_that_arranged_its_checks_then_the_pages_they_cover() -> None:
     refused = FailedCheck(label="adds", cause=Cause.ARRANGEMENT, precondition="docs/fixtures/admin.md", status="400",
-                          covers=("okf:docs/features/tally/tally.md#list:does:1", "okf:docs/features/tally/add.md:contract"))
-    other = FailedCheck(label="lists", cause=Cause.APP, status="500", covers=("okf:docs/features/tally/other.md:contract",))
+                          covers=("okf:docs/services/tally/tally.md#list:does:1", "okf:docs/services/tally/add.md:contract"))
+    other = FailedCheck(label="lists", cause=Cause.APP, status="500", covers=("okf:docs/services/tally/other.md:contract",))
     summary = RunSummary(status="failed", scenarios={"tally-add": ScenarioOutcome(status="failed", failed_checks=(refused, other))})
     signature = Signature(Cause.ARRANGEMENT, "docs/fixtures/admin.md", "400", "", 1, "adds")
 
     assert summary.signature_pages(signature) == (
-        "docs/fixtures/admin.md", "docs/features/tally/add.md", "docs/features/tally/tally.md")
+        "docs/fixtures/admin.md", "docs/services/tally/add.md", "docs/services/tally/tally.md")
 
 
 def test_a_check_that_found_no_control_tells_the_writer_to_claim_it_after_the_act_that_opens_it() -> None:
@@ -281,18 +281,18 @@ def test_a_check_that_found_no_control_tells_the_writer_to_claim_it_after_the_ac
 
 
 def test_a_failed_state_check_tells_the_writer_to_claim_an_act_reached_state_on_the_interaction() -> None:
-    state = "okf:docs/features/tally/tally.md#slug-status:states:2"
+    state = "okf:docs/services/tally/tally.md#slug-status:states:2"
     unreached = FailedCheck(label="slug status shown", expected='{"text": "Available"}',
                             actual='{"visible": true, "text": "Derived from the title"}', covers=(state,))
     assert "name the fixture that arranges it" in unreached.failure_line()
     effect = FailedCheck(label="slug status shown", expected='{"text": "Available"}',
                          actual='{"visible": true, "text": "Derived from the title"}',
-                         covers=("okf:docs/features/tally/tally.md#add:does:1",))
+                         covers=("okf:docs/services/tally/tally.md#add:does:1",))
     assert "`does:`" not in effect.failure_line()
 
 
 def test_a_failed_state_check_the_app_owns_carries_no_hint_to_change_the_book() -> None:
-    state = "okf:docs/features/tally/tally.md#slug-status:states:2"
+    state = "okf:docs/services/tally/tally.md#slug-status:states:2"
     product = FailedCheck(label="slug status shown", expected='{"text": "Available"}',
                           actual='{"visible": true, "text": "Derived from the title"}', covers=(state,),
                           cause=Cause.APP)

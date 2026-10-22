@@ -20,7 +20,7 @@ from test_screen_state_stops import (
     _state,
 )
 
-DETAILS = "docs/features/policy/gui/screens/details.md"
+DETAILS = "docs/services/policy/gui/screens/details.md"
 SHOWN = f"{DETAILS}#shown"
 SHOWN_ID = f"okf:{SHOWN}:contract"
 PASSAGE = f"{_SCREEN}#open-details"

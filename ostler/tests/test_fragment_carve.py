@@ -12,8 +12,8 @@ from ostler.model import load
 
 from conftest import write
 
-_PAGE = "docs/features/acme/concepts/ledger.md"
-_LINKER = "docs/features/acme/concepts/budget.md"
+_PAGE = "docs/services/acme/concepts/ledger.md"
+_LINKER = "docs/services/acme/concepts/budget.md"
 _LIMIT = 2400
 _PROSE = "The ledger keeps this rule for every entry it records, whichever account the entry lands in. " * 3
 
@@ -189,7 +189,7 @@ def test_a_fragment_the_host_does_not_link_is_reported(repo: Path, small_limit: 
 
 
 def test_a_fragment_with_no_host_is_reported(repo: Path):
-    rel = "docs/features/acme/concepts/orphan.md"
+    rel = "docs/services/acme/concepts/orphan.md"
     write(repo / rel, "\n".join(["---", "type: fragment", "title: Orphan", "---", "# Orphan", "",
                                  "- host: [gone](gone.md)", ""]))
 
@@ -197,8 +197,8 @@ def test_a_fragment_with_no_host_is_reported(repo: Path):
 
 
 def test_a_fragment_hosted_by_a_fragment_is_reported(repo: Path):
-    first = "docs/features/acme/concepts/one.md"
-    second = "docs/features/acme/concepts/two.md"
+    first = "docs/services/acme/concepts/one.md"
+    second = "docs/services/acme/concepts/two.md"
     write(repo / first, "\n".join(["---", "type: fragment", "title: One", "---", "# One", "",
                                    "- host: [two](two.md)", ""]))
     write(repo / second, "\n".join(["---", "type: fragment", "title: Two", "---", "# Two", "",

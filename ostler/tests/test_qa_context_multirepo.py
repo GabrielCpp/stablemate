@@ -29,7 +29,7 @@ def _init(root: Path) -> str:
 def test_external_source_repository_maps_qualified_code_ref(tmp_path: Path) -> None:
     docs = tmp_path / "product-docs"
     source = tmp_path / "api-service"
-    (docs / "docs/features/billing").mkdir(parents=True)
+    (docs / "docs/services/billing").mkdir(parents=True)
     story = docs / "docs/epics/billing/stories/create-invoice/story.md"
     story.parent.mkdir(parents=True)
     story.write_text(
@@ -38,7 +38,7 @@ def test_external_source_repository_maps_qualified_code_ref(tmp_path: Path) -> N
         encoding="utf-8",
     )
     (source / "src").mkdir(parents=True)
-    (docs / "docs/features/billing/create.md").write_text(
+    (docs / "docs/services/billing/create.md").write_text(
         """---
 type: concept
 title: Create invoice
@@ -130,9 +130,9 @@ def test_external_file_owner_reason_keeps_repository_qualification(
 ) -> None:
     docs = tmp_path / "product-docs"
     source = tmp_path / "api-service"
-    (docs / "docs/features/billing").mkdir(parents=True)
+    (docs / "docs/services/billing").mkdir(parents=True)
     (source / "src").mkdir(parents=True)
-    (docs / "docs/features/billing/create.md").write_text(
+    (docs / "docs/services/billing/create.md").write_text(
         "---\ntype: concept\ntitle: Create invoice\n---\n# Create invoice\n\n"
         "- code: `repo://api-service/src/service.py`\n",
         encoding="utf-8",
@@ -169,8 +169,8 @@ def test_identical_paths_in_two_repositories_do_not_cross_map(tmp_path: Path) ->
     docs = tmp_path / "product-docs"
     first = tmp_path / "api-service"
     second = tmp_path / "web-app"
-    (docs / "docs/features/billing").mkdir(parents=True)
-    (docs / "docs/features/billing/create.md").write_text(
+    (docs / "docs/services/billing").mkdir(parents=True)
+    (docs / "docs/services/billing/create.md").write_text(
         """---
 type: concept
 title: Create invoice

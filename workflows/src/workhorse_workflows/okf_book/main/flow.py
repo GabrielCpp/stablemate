@@ -40,7 +40,7 @@ from workhorse_workflows.okf_book.shared.book_commits import (
 from workhorse_workflows.okf_book.shared.book_flow import BookFlow
 from workhorse_workflows.okf_book.shared.book_run import ExerciseResult, stack_down_failures, unstarted_failures
 from workhorse_workflows.okf_book.shared.citations import cites_changed_file
-from workhorse_workflows.okf_book.shared.entries import FEATURES_DIR
+from workhorse_workflows.okf_book.shared.entries import SERVICES_DIR
 from workhorse_workflows.okf_book.shared.page_check import PageProblem
 from workhorse_workflows.okf_book.shared.scenarios import PLAN_NAME, plan_scenarios, spec_dir, write_run
 
@@ -50,7 +50,7 @@ WRITER_CAUSES = frozenset({Cause.BOOK, Cause.ARRANGEMENT})
 
 
 def _book_folder(service: str) -> str:
-    return (FEATURES_DIR / service).as_posix()
+    return (SERVICES_DIR / service).as_posix()
 
 
 def _source_folder(root: Path, surface: Surface) -> str:

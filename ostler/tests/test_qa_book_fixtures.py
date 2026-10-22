@@ -56,7 +56,7 @@ title: Seeded globex
 
 
 def test_resolved_carries_steps_args_provides_and_secret_names(repo: Path) -> None:
-    write(repo / "docs/features/acme/fixtures/seeded-acme.md", SEEDED_ACME)
+    write(repo / "docs/services/acme/fixtures/seeded-acme.md", SEEDED_ACME)
     graph = load(repo)
 
     fixtures = book_fixtures.resolved(graph)
@@ -101,7 +101,7 @@ title: Seeded acme
 
 
 def test_resolved_carries_a_provides_entrys_from_and_read_properties(repo: Path) -> None:
-    write(repo / "docs/features/acme/fixtures/seeded-acme.md", SEEDED_ACME_WITH_FROM_READ)
+    write(repo / "docs/services/acme/fixtures/seeded-acme.md", SEEDED_ACME_WITH_FROM_READ)
     graph = load(repo)
 
     fixtures = book_fixtures.resolved(graph)
@@ -114,8 +114,8 @@ def test_resolved_carries_a_provides_entrys_from_and_read_properties(repo: Path)
 
 
 def test_resolved_defaults_a_step_with_no_timeout_bullet_to_step_timeout_s(repo: Path) -> None:
-    write(repo / "docs/features/acme/fixtures/seeded-acme.md", SEEDED_ACME)
-    write(repo / "docs/features/acme/fixtures/seeded-globex.md", SEEDED_GLOBEX)
+    write(repo / "docs/services/acme/fixtures/seeded-acme.md", SEEDED_ACME)
+    write(repo / "docs/services/acme/fixtures/seeded-globex.md", SEEDED_GLOBEX)
     graph = load(repo)
 
     fixtures = book_fixtures.resolved(graph)
@@ -125,8 +125,8 @@ def test_resolved_defaults_a_step_with_no_timeout_bullet_to_step_timeout_s(repo:
 
 
 def test_resolved_parses_a_needs_binding_with_its_args(repo: Path) -> None:
-    write(repo / "docs/features/acme/fixtures/seeded-acme.md", SEEDED_ACME)
-    write(repo / "docs/features/acme/fixtures/seeded-globex.md", SEEDED_GLOBEX)
+    write(repo / "docs/services/acme/fixtures/seeded-acme.md", SEEDED_ACME)
+    write(repo / "docs/services/acme/fixtures/seeded-globex.md", SEEDED_GLOBEX)
     graph = load(repo)
 
     fixtures = book_fixtures.resolved(graph)
@@ -137,7 +137,7 @@ def test_resolved_parses_a_needs_binding_with_its_args(repo: Path) -> None:
 
 
 def test_resolved_never_carries_a_secret_value_anywhere_in_the_dict(repo: Path) -> None:
-    write(repo / "docs/features/acme/fixtures/seeded-acme.md", SEEDED_ACME)
+    write(repo / "docs/services/acme/fixtures/seeded-acme.md", SEEDED_ACME)
     graph = load(repo)
 
     fixtures = book_fixtures.resolved(graph)
@@ -149,8 +149,8 @@ def test_resolved_never_carries_a_secret_value_anywhere_in_the_dict(repo: Path) 
 
 def test_resolved_steps_cwd_against_the_subject_root_not_the_checkout(tmp_path: Path) -> None:
     """A fixture step with no `working-directory:` of its own defaults to `.` against the *subject's* root — the directory the book describes — never the directory the book happened to be checked out from."""
-    write(tmp_path / "service/docs/features/acme/fixtures/seeded-acme.md", SEEDED_ACME)
-    graph = load(tmp_path, root_overrides={"features": "service/docs/features"})
+    write(tmp_path / "service/docs/services/acme/fixtures/seeded-acme.md", SEEDED_ACME)
+    graph = load(tmp_path, root_overrides={"services": "service/docs/services"})
 
     fixtures = book_fixtures.resolved(graph)
 

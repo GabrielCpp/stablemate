@@ -9,9 +9,9 @@ from ostler.model import load
 
 from conftest import write
 
-SCREEN_PATH = "docs/features/acme/screens/widgets.md"
-ENDPOINT_PATH = "docs/features/acme/server.md"
-INTERACTION_PATH = "docs/features/acme/screens/policies.md"
+SCREEN_PATH = "docs/services/acme/screens/widgets.md"
+ENDPOINT_PATH = "docs/services/acme/server.md"
+INTERACTION_PATH = "docs/services/acme/screens/policies.md"
 
 
 def _screen_book(route: str = "/widgets", entry: str = "") -> str:
@@ -108,7 +108,7 @@ def test_an_endpoint_path_a_prose_line_joined_is_reported(repo: Path) -> None:
 
 
 def test_a_valid_server_entry_url_is_clean(repo: Path) -> None:
-    write(repo / "docs/features/app/ops/qa-stack.md", (
+    write(repo / "docs/services/app/ops/qa-stack.md", (
         "---\ntype: runbook\ntitle: QA stack\n---\n\n# QA stack\n\n"
         "- driver: web\n- entry-url: http://localhost:18099\n\n"
         "## Steps\n\n### serve\n\n- kind: service\n- run: ./serve.sh\n"
@@ -119,7 +119,7 @@ def test_a_valid_server_entry_url_is_clean(repo: Path) -> None:
 
 
 def test_a_malformed_server_entry_url_is_reported(repo: Path) -> None:
-    write(repo / "docs/features/app/ops/qa-stack.md", (
+    write(repo / "docs/services/app/ops/qa-stack.md", (
         "---\ntype: runbook\ntitle: QA stack\n---\n\n# QA stack\n\n"
         "- driver: web\n- entry-url: localhost:18099\n\n"
         "## Steps\n\n### serve\n\n- kind: service\n- run: ./serve.sh\n"
@@ -130,8 +130,8 @@ def test_a_malformed_server_entry_url_is_reported(repo: Path) -> None:
     assert "url" in found[0].message
 
 
-MOBILE_SCREEN_PATH = "docs/features/mobile/gui/screens/widget-list.md"
-MOBILE_RUNBOOK_PATH = "docs/features/mobile/ops/qa-stack.md"
+MOBILE_SCREEN_PATH = "docs/services/mobile/gui/screens/widget-list.md"
+MOBILE_RUNBOOK_PATH = "docs/services/mobile/ops/qa-stack.md"
 
 
 def _mobile_screen_book(route: str) -> str:
@@ -171,8 +171,8 @@ def test_a_route_on_a_surface_with_no_driver_declared_keeps_the_path_grammar(rep
     assert "not a path" in found[0].message
 
 
-CLI_SCREEN_PATH = "docs/features/tally/gui/screens/widget-list.md"
-CLI_RUNBOOK_PATH = "docs/features/tally/ops/qa-stack.md"
+CLI_SCREEN_PATH = "docs/services/tally/gui/screens/widget-list.md"
+CLI_RUNBOOK_PATH = "docs/services/tally/ops/qa-stack.md"
 
 
 def _cli_screen_book(route: str) -> str:
@@ -196,8 +196,8 @@ def test_a_route_on_a_route_less_cli_surface_is_reported(repo: Path) -> None:
     assert "states no routes at all" in found[0].message
 
 
-WEB_SCREEN_PATH = "docs/features/acme/gui/screens/widget-list.md"
-WEB_RUNBOOK_PATH = "docs/features/acme/ops/qa-stack.md"
+WEB_SCREEN_PATH = "docs/services/acme/gui/screens/widget-list.md"
+WEB_RUNBOOK_PATH = "docs/services/acme/ops/qa-stack.md"
 
 
 def _component_screen_book(selector: str) -> str:

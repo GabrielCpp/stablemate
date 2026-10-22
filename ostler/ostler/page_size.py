@@ -12,7 +12,7 @@ PAGE_SIZE_LIMIT = 64 * 1024
 
 def check_page_size(graph: Graph, f: list[Finding]) -> None:
     """Each page of the book stays within `PAGE_SIZE_LIMIT` bytes."""
-    froot = graph.doc_roots.get("features")
+    froot = graph.doc_roots.get("services")
     if froot is None or not froot.is_dir():
         return
     for path in files_in_book(froot):

@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "ostler/feature.schema.json",
-  "title": "Feature Concept frontmatter (docs/features/**/<slug>.md)",
+  "title": "Feature Concept frontmatter (docs/services/**/<slug>.md)",
   "type": "object",
   "required": ["type", "slug", "title"],
   "additionalProperties": true,
