@@ -22,14 +22,13 @@ CONSUMED = "CONSUMED"
 @blueprint.node
 def check_story_status(
     logger: logging.Logger,
-    docs_path: str = "",
     slug: str = "",
     epic: str = "",
     story_path: str = "",
     repo_dir: str = "",
 ) -> StoryStatusCheck:
     """Whether the turn just taken stamped the story finished."""
-    root = find_docs_root(docs_path, repo_dir)
+    root = find_docs_root(repo_dir)
     written = story_status.current(root, slug, epic=epic, story_path=story_path).strip()
     if not is_done(written):
         return StoryStatusCheck(status="clean", written=written)

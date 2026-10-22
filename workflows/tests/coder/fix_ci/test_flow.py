@@ -47,10 +47,9 @@ def workspace(
     tmp_path: Path,
     repo: Path,
     git: Callable[..., subprocess.CompletedProcess],
-    write_json: Callable[[Path, Any], Path],
-    ambient: dict[str, str],
+    name_workspace: Callable[[dict[str, Path]], None],
 ) -> dict[str, Path]:
-    """Two real repos and the VSCode workspace file that names them, in order."""
+    """Two real repos and the named workspace that lists them, in order."""
     root = tmp_path / "ws"
     root.mkdir()
     paths: dict[str, Path] = {}
@@ -64,12 +63,7 @@ def workspace(
         git(path, "branch", BRANCH)
         paths[name] = path
 
-    workspace_file = root / "acme.code-workspace"
-    write_json(
-        workspace_file,
-        {"folders": [{"name": "api", "path": "api"}, {"name": "web", "path": "web"}]},
-    )
-    ambient["workspace_file"] = str(workspace_file)
+    name_workspace(paths)
     return {"docs": repo, **paths}
 
 

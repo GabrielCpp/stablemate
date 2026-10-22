@@ -27,11 +27,10 @@ def stack_target(
     logger: logging.Logger,
     story: str = "",
     lease: str = "",
-    docs_path: str = "",
     repo_dir: str = "",
 ) -> StackTarget:
     """The book whose stack this story's QA runs against, and the copy *lease* names there."""
-    graph = model.load(find_docs_root(docs_path, repo_dir))
+    graph = model.load(find_docs_root(repo_dir))
     near = _qa_runner.story_near(graph, story) if story else ""
     env = _qa_runner.stack_env(logger, graph, near=near, lease=lease)
     logger.info("QA stack for %s: near=%s lease=%s", story, near or "(none)", lease or "(none)")
@@ -41,28 +40,26 @@ def stack_target(
 @blueprint.node
 def ensure_stack(
     logger: logging.Logger,
-    docs_path: str = "",
     repo_dir: str = "",
     near: str = "",
     lease: str = "",
 ) -> StackStatus:
     """Bring the durable QA stack up (or adopt one already serving) before the runner."""
     return _qa_runner.ensure_stack(
-        logger, docs_path=docs_path, repo_dir=repo_dir, near=near, lease=lease
+        logger, repo_dir=repo_dir, near=near, lease=lease
     )
 
 
 @blueprint.node
 def release_copy(
     logger: logging.Logger,
-    docs_path: str = "",
     repo_dir: str = "",
     near: str = "",
     lease: str = "",
 ) -> StackTornDown:
     """Tear down this run's copy of a per-run stack, so the next pass builds the code it QAs."""
     outcome = _qa_runner.release_copy(
-        logger, docs_path=docs_path, repo_dir=repo_dir, near=near, lease=lease
+        logger, repo_dir=repo_dir, near=near, lease=lease
     )
     if outcome is None:
         return StackTornDown(torn_down="skipped", notes="The stack is shared, so it stays serving.")
@@ -77,7 +74,6 @@ def release_copy(
 def run_qa_plan(
     logger: logging.Logger,
     spec_dir: str = "",
-    docs_path: str = "",
     repo_dir: str = "",
     near: str = "",
     lease: str = "",
@@ -87,7 +83,6 @@ def run_qa_plan(
     return _qa_runner.run_qa_plan(
         logger,
         spec_dir=spec_dir,
-        docs_path=docs_path,
         repo_dir=repo_dir,
         only=only,
         near=near,

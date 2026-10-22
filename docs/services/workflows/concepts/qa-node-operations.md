@@ -70,7 +70,7 @@ credential boundary.
 - code: `workflows/src/workhorse_workflows/coder/qa/nodes/qa.py::clear_qa_evidence` @1f36d89a4f3d
 
 ### stack_target
-- sig: `stack_target(logger: logging.Logger, story: str = "", lease: str = "", docs_path: str = "", repo_dir: str = "") -> StackTarget`
+- sig: `stack_target(logger: logging.Logger, story: str = "", lease: str = "", repo_dir: str = "") -> StackTarget`
 - does: loads the documentation graph and finds the one feature book the story's cited screens sit in
 - verify: count(subject="QA stack target book lookups", equals=1)
 - does: leaves `near` empty when the story is empty or cites screens in more than one book
@@ -82,7 +82,7 @@ credential boundary.
 - code: `workflows/src/workhorse_workflows/coder/qa/nodes/qa.py::stack_target` @1f36d89a4f3d
 
 ### ensure_stack
-- sig: `ensure_stack(logger: logging.Logger, docs_path: str = "", repo_dir: str = "", near: str = "", lease: str = "") -> StackStatus`
+- sig: `ensure_stack(logger: logging.Logger, repo_dir: str = "", near: str = "", lease: str = "") -> StackStatus`
 - does: resolves the docs root and loads the book's graph
 - verify: count(subject="QA docs root resolutions", equals=1)
 - does: returns `ready="unneeded"` when the book serves no screen or server surface and therefore needs no stack
@@ -105,7 +105,7 @@ credential boundary.
 - tests: `workflows/tests/coder/qa/test_flow.py::test_an_empty_manifest_splits_on_whether_the_book_serves_anything`
 
 ### release_copy
-- sig: `release_copy(logger: logging.Logger, docs_path: str = "", repo_dir: str = "", near: str = "", lease: str = "") -> StackTornDown`
+- sig: `release_copy(logger: logging.Logger, repo_dir: str = "", near: str = "", lease: str = "") -> StackTornDown`
 - does: tears down the copy of a per-run stack that the lease holds, so the next pass builds the code it QAs
 - verify: json_path(path="$.torn_down", matches="^(yes|no)$")
 - does: returns `torn_down="skipped"` and leaves the stack serving when the stack is shared
@@ -115,7 +115,7 @@ credential boundary.
 - code: `workflows/src/workhorse_workflows/coder/qa/nodes/qa.py::release_copy` @1f36d89a4f3d
 
 ### lint_qa_plan
-- sig: `lint_qa_plan(logger: logging.Logger, spec_dir: str = "", docs_path: str = "", repo_dir: str = "") -> QaPlanValidation`
+- sig: `lint_qa_plan(logger: logging.Logger, spec_dir: str = "", repo_dir: str = "") -> QaPlanValidation`
 - does: runs Ostler QA lint against `<spec_dir>/qa_plan.py` before the plan is imported or validated
 - verify: count(subject="QA plan lint executions", equals=1)
 - does: maps a successful lint outcome to `status="passed"` and any lint refusal to `status="invalid"`, preserving Ostler data and notes
@@ -125,7 +125,7 @@ credential boundary.
 - code: `workflows/src/workhorse_workflows/coder/qa/nodes/qa.py::lint_qa_plan` @1f36d89a4f3d
 
 ### qa_tools_catalog
-- sig: `qa_tools_catalog(logger: logging.Logger, docs_path: str = "", repo_dir: str = "") -> QaToolCatalog`
+- sig: `qa_tools_catalog(logger: logging.Logger, repo_dir: str = "") -> QaToolCatalog`
 - does: resolves the docs root and asks Ostler for the QA tools configured by the repository and available on the current host
 - verify: count(subject="QA tool catalog resolutions", equals=1)
 - returns: a `QaToolCatalog` containing the resolved tool records and any catalog errors, suitable for checkpointing across resume
@@ -133,7 +133,7 @@ credential boundary.
 - code: `workflows/src/workhorse_workflows/coder/qa/nodes/qa.py::qa_tools_catalog` @1f36d89a4f3d
 
 ### validate_qa_plan
-- sig: `validate_qa_plan(logger: logging.Logger, spec_dir: str = "", docs_path: str = "", repo_dir: str = "") -> QaPlanValidation`
+- sig: `validate_qa_plan(logger: logging.Logger, spec_dir: str = "", repo_dir: str = "") -> QaPlanValidation`
 - does: runs Ostler QA validation against `<spec_dir>/qa_plan.py`, including importability and binding each claimed obligation to its declared verification check
 - verify: count(subject="QA plan validation executions", equals=1)
 - does: maps a valid outcome to `status="passed"` and any validation refusal to `status="invalid"`, preserving Ostler data and notes
@@ -160,7 +160,7 @@ credential boundary.
 - tests: `workflows/tests/coder/qa/test_dry_run_gate.py::test_a_green_dry_run_for_every_named_scenario_passes`
 
 ### teardown_stack
-- sig: `teardown_stack(logger: logging.Logger, docs_path: str = "", repo_dir: str = "") -> StackTornDown`
+- sig: `teardown_stack(logger: logging.Logger, repo_dir: str = "") -> StackTornDown`
 - does: resolves the docs root and invokes the runbook stop recipe after the QA run reaches a terminal path
 - verify: count(subject="QA stack teardown attempts", equals=1)
 - does: maps the lifecycle outcome to `yes`, `no`, or `skipped` and never turns cleanup failure into a failed QA verdict
@@ -186,7 +186,7 @@ credential boundary.
 - code: `workflows/src/workhorse_workflows/kit/qa/runner.py::_mint_qa_secrets` @3f145f33a1c9
 
 ### run_qa_plan
-- sig: `run_qa_plan(logger: logging.Logger, spec_dir: str = "", docs_path: str = "", repo_dir: str = "", near: str = "", lease: str = "") -> QaPlanRun`
+- sig: `run_qa_plan(logger: logging.Logger, spec_dir: str = "", repo_dir: str = "", near: str = "", lease: str = "") -> QaPlanRun`
 - does: resolves the docs root from the supplied documentation or repository path
 - verify: count(subject="resolved QA docs roots", equals=1)
 - does: resolves the QA plan path from the supplied specification directory

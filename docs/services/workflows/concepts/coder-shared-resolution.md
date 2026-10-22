@@ -29,7 +29,7 @@ grounding settles the block.
 ## Methods
 
 ### resolver_args
-- sig: `resolver_args(flow: Workflow, *, block_kind: str, notes: str, docs_path: str, story: StoryPaths | None = None) -> dict[str, str]`
+- sig: `resolver_args(flow: Workflow, *, block_kind: str, notes: str, story: StoryPaths | None = None) -> dict[str, str]`
 - does: supplies the story path and specification directory of the given `story`, or of the flow context when none is given, with the block kind and block notes to the shared resolver prompt
 - verify: json_path(path="$.result", matches="story_path")
 - does: supplies the absolute decisions directory derived from the documentation path and repository directory
@@ -41,7 +41,7 @@ grounding settles the block.
 - code: `workflows/src/workhorse_workflows/coder/shared/resolution.py::resolver_args` @a3434213f4d9
 
 ### decisions_dir
-- sig: `decisions_dir(docs_path: str, repo_dir: str) -> Path`
+- sig: `decisions_dir(repo_dir: str) -> Path`
 - does: resolves the documentation root from the supplied documentation and repository paths
 - verify: json_path(path="$.result", equals="example result")
 - does: returns the decisions directory resolved beneath that documentation root

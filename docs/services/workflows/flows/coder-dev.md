@@ -31,7 +31,7 @@ title: Coder development flow
 
 The `docs` and `workspace` test fixtures stand up the inputs every dev-flow scenario runs
 against. `docs` builds a docs repo carrying one epic and one authored story. `workspace` builds
-two real git repos under a checked-in `.code-workspace` file naming them, since the gate walk and
+two real git repos under a home config workspace naming them, since the gate walk and
 the clean-tree check read both. They are documented at the
 [coder dev package concept](../concepts/coder-dev-package.md).
 

@@ -76,11 +76,10 @@ def _branch_repo(repo_path: Path, repo_name: str, branch: str, logger: logging.L
 def cut_run_branch(
     logger: logging.Logger,
     name: str = "",
-    docs_path: str = "",
     repo_dir: str = "",
 ) -> RunBranch:
     """Put the docs repo on `feat/<name>`, the one branch every item of the run lands on."""
-    docs_root = find_docs_root(docs_path, repo_dir)
+    docs_root = find_docs_root(repo_dir)
     base = _resolve_base(logger, docs_root)
     branch = epic_branch(name)
     if _branch_repo(docs_root, docs_root.name, branch, logger) == "skipped":
@@ -93,14 +92,13 @@ def branch_code_repos(
     logger: logging.Logger,
     spec_dir: str = "",
     branch: str = "",
-    docs_path: str = "",
     repo_dir: str = "",
-    workspace_file: str = "",
+    workspace: str = "",
     plan: dict[str, Any] | None = None,
 ) -> BranchOutcome:
     """Put every code repo the plan names onto the run branch."""
-    docs_root = find_docs_root(docs_path, repo_dir)
-    repos = resolve_workspace(workspace_file, repo_dir)
+    docs_root = find_docs_root(repo_dir)
+    repos = resolve_workspace(workspace, repo_dir)
     plan_ctx, _ = plan_context(plan, spec_dir, docs_root, repos, logger)
 
     if not branch:

@@ -30,7 +30,7 @@ earlier turn.
 - Story path: `{{ workhorse_var('story_path') }}`
 - Spec dir: `{{ workhorse_var('spec_dir') }}`
 - QA dir: `{{ workhorse_var('qa_dir') }}`
-- Docs root: `{{ workhorse_var('docs_path') or '.' }}`
+- Docs root: `{{ workhorse_var('docs_root') }}`
 - Target environment: `{{ workhorse_var('target_env') }}`
 - The QA runner's interpreter: `{{ workhorse_var('runtime_python') }}`
 {% if standing_plan %}- A `qa_plan.py` already stands in the spec dir, and it lints and validates against the

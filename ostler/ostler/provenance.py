@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from ostler import path as path_mod, refs
+from ostler._vendor.stablemate_core import config as core_config
 from ostler.model import Graph, Story, UINode
 from ostler.qa.source_context import SourceRepository, SourceScope
 from ostler.source_snapshots import resolved_sha, source_fingerprint
@@ -326,6 +327,20 @@ def node_provenance(
     ]
 
 
+def effective_checkouts(explicit: dict[str, Path] | None) -> dict[str, Path]:
+    """The checkout map a run resolves repository-qualified refs against: the active workspace's members, overridden by any explicit ``--checkout``."""
+    merged: dict[str, Path] = {}
+    workspace = core_config.active_workspace()
+    if workspace:
+        try:
+            members = core_config.resolve_workspace(workspace)
+        except ValueError:
+            members = []
+        merged.update({member.name: member.path.resolve() for member in members})
+    merged.update(explicit or {})
+    return merged
+
+
 def checkout_for(repository: str, checkouts: dict[str, Path],
                   *, default: str = "") -> Path | None:
     """The checkout a ``code:`` target lives in."""
@@ -341,8 +356,8 @@ def checkout_for(repository: str, checkouts: dict[str, Path],
 def default_repository(graph: Graph) -> str:
     """The repository a book's unqualified ``code:`` refs resolve to, if it declared one."""
     from ostler import source_snapshots
-    features = path_mod.features_root_in(graph.root)
-    return source_snapshots.book_repository(features)
+    services = path_mod.services_root_in(graph.root)
+    return source_snapshots.book_repository(services)
 
 
 def story_for_node(

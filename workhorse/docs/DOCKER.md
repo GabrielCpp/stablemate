@@ -141,7 +141,7 @@ needs no agent CLI at all — see the [README](../README.md#quick-start).
 | `AGENT_WORKTREE_ROOT` | _(= workspace root)_ | Where this run's worktree is created. Must be the same path on the host — see the repo-bind note above |
 | `AGENT_REPO_HOST_DIR` | _(unset)_ | Host path of the repo to bind, mounted at this same path. Unset, nothing is bound and `clone` is the only usable mode |
 | `AGENT_REPO_DIR` | _(cwd)_ | `repo_dir`, the run's one universal input — in worktree mode, **this run's tree**, not the shared source |
-| `AGENT_PARAM_<NAME>` | _(unset)_ | Becomes run parameter `<name>` (`AGENT_PARAM_DOCS_PATH=/docs` → `{"docs_path": "/docs"}`) |
+| `AGENT_PARAM_<NAME>` | _(unset)_ | Becomes run parameter `<name>` (`AGENT_PARAM_WORKSPACE=acme` → `{"workspace": "acme"}`) |
 | `AGENT_PROFILE` | _(unset)_ | Name of a `[profiles.<name>]` table in the config below; passed on as `--profile`. Unset, the run resolves models from the top-level tables as it always has |
 | `AGENT_CONFIG` | _(unset)_ | Config file the profile is looked up in, as a **container** path; passed on as `--config`. Set together with `AGENT_CONFIG_FILE`, which is the same path on the host |
 | `AGENT_CONFIG_FILE` | _(unset)_ | Host path of the config to bind, mounted at this same path. The launcher points it at a per-run **copy**: the config is re-read every turn, so binding the operator's own file live would let an edit move the models of every run already going |

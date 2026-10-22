@@ -3,6 +3,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from workhorse._vendor.stablemate_core import config as core_config
+
 
 def find_repo_root(repo_dir: str | Path = "") -> Path:
     """The consuming repo: ``repo_dir`` when given, else walk up from the CWD."""
@@ -15,11 +17,12 @@ def find_repo_root(repo_dir: str | Path = "") -> Path:
     return here
 
 
-def find_docs_root(docs_path: str = "", repo_dir: str | Path = "") -> Path:
-    """Resolve the docs repo root: ``docs_path`` when given, else the repo root."""
-    if docs_path:
-        p = Path(docs_path)
-        if p.is_absolute():
-            return p.resolve()
-        return (find_repo_root(repo_dir) / p).resolve()
-    return find_repo_root(repo_dir)
+def docs_home_or(root: Path) -> Path:
+    """The artifacts repo while a workspace is active, else ``root``."""
+    home = core_config.docs_home(root)
+    return home if home is not None else root
+
+
+def find_docs_root(repo_dir: str | Path = "") -> Path:
+    """The docs root: the artifacts repo while a workspace is active, else the repo root."""
+    return docs_home_or(find_repo_root(repo_dir))

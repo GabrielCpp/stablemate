@@ -10,7 +10,7 @@ from pathlib import Path
 
 from ostler.markdown import split
 from ostler.model import Graph, UINode
-from ostler.provenance import checkout_for
+from ostler.provenance import checkout_for, effective_checkouts
 from ostler.refs import bare_targets, normalize_ref, parse_code_ref
 from ostler.registry import EMPTY_TOKENS
 from ostler.source_snapshots import SourceCatalog, book_repository
@@ -83,7 +83,7 @@ class StampResult:
     changed: bool = False
 
 
-def stamp_page(root: Path, features_root: Path, page: str, *,
+def stamp_page(root: Path, services_root: Path, page: str, *,
                 line_ranges: list[tuple[int, int]] | None = None,
                 only_targets: dict[tuple[int, int], frozenset[str]] | None = None,
                 checkouts: dict[str, Path] | None = None) -> StampResult:
@@ -91,8 +91,8 @@ def stamp_page(root: Path, features_root: Path, page: str, *,
     path = root / page
     text = path.read_text(encoding="utf-8")
     doc = split(text)
-    repository = book_repository(features_root)
-    checkout_map = checkouts or {}
+    repository = book_repository(services_root)
+    checkout_map = effective_checkouts(checkouts)
     unresolved: list[str] = []
     stamped = 0
 
@@ -195,7 +195,7 @@ def node_line_range(graph: Graph, node: UINode) -> tuple[int, int]:
 
 
 def stamp_targets(
-    graph: Graph, features_root: Path, pairs: Iterable[tuple[str, str]], *,
+    graph: Graph, services_root: Path, pairs: Iterable[tuple[str, str]], *,
     checkouts: dict[str, Path] | None = None,
 ) -> list[StampResult]:
     """Stamp exactly the ``(node, cited-file)`` pairs given — never a node's other citations."""
@@ -213,7 +213,7 @@ def stamp_targets(
         only_targets.setdefault(rel, {}).setdefault(node_range, set()).add(file_target)
     results = [
         stamp_page(
-            graph.root, features_root, rel, line_ranges=ranges,
+            graph.root, services_root, rel, line_ranges=ranges,
             only_targets={r: frozenset(t) for r, t in only_targets[rel].items()},
             checkouts=checkouts,
         )

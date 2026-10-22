@@ -11,8 +11,11 @@ from typing import Any
 from workhorse import otel
 from workhorse._vendor.stablemate_core.config import (
     CONFIG_PATH_ENV,
+    WORKSPACE_ENV,
+    ensure_artifacts_repo,
     get_config_value,
     load_config,
+    resolve_workspace,
 )
 from workhorse._vendor.stablemate_core.discovery import base_library_dir
 from workhorse.cli.params import load_params
@@ -22,6 +25,7 @@ from workhorse.packaged import PackagedWorkflowError
 from workhorse.profile import ProfileError, implied_profile, recorded_profile, select_backend
 from workhorse.pyflow.registry import Registry
 from workhorse.pyflow.run import RunInvocation, run_pyflow
+from workhorse.records import PyflowCheckpoint, parse_checkpoint
 from workhorse.rundir import find_latest_resumable as _find_latest_resumable
 from workhorse.rundir import resolve_run_dir
 from workhorse.runner.backends import AgentBackend
@@ -107,6 +111,16 @@ def add_arguments(parser: argparse.ArgumentParser) -> None:
         "no merge with the machine's config, so it must itself carry library_dir / "
         "base_dir / stablemate_dir if the run needs them. Overrides "
         "$STABLEMATE_CONFIG, which in turn overrides $WORKHORSE_CONFIG.",
+    )
+    parser.add_argument(
+        "--workspace",
+        default=None,
+        metavar="NAME",
+        help="Run across the named [workspaces] entry of the home config. Sets "
+        "$STABLEMATE_WORKSPACE for every agent turn and for ostler, passes the "
+        "name to the workflow as its `workspace` param, and initialises the "
+        "artifacts repo where the run's epics and stories live. A resume without "
+        "this flag restores the workspace the run recorded.",
     )
     parser.add_argument(
         "--dry-run",
@@ -201,6 +215,14 @@ def invocation(args: argparse.Namespace) -> RunInvocation:
     backend = _select_backend(cfg, profile_name, args.cli)
 
     params = load_params(args.params, args.params_file)
+    workspace_name = (getattr(args, "workspace", None) or "").strip()
+    if workspace_name:
+        _enter_workspace(workspace_name)
+        params["workspace"] = workspace_name
+    elif resume_run_dir is not None:
+        recorded = _recorded_workspace(resume_run_dir)
+        if recorded:
+            _enter_workspace(recorded)
     params.setdefault("repo_dir", os.environ.get("AGENT_REPO_DIR") or str(Path.cwd().resolve()))
     params.setdefault("library_dirs", library_dirs(cfg))
 
@@ -222,6 +244,28 @@ def invocation(args: argparse.Namespace) -> RunInvocation:
         ),
         telemetry=otel.TelemetryHost(otel.OtelSettings.from_env(os.environ)),
     )
+
+
+def _enter_workspace(name: str) -> None:
+    """Validate ``name``, export it for the turns and ostler, and make sure the artifacts repo exists."""
+    try:
+        resolve_workspace(name)
+    except ValueError as exc:
+        print(f"error: --workspace {name}: {exc}", file=sys.stderr)
+        sys.exit(1)
+    os.environ[WORKSPACE_ENV] = name
+    ensure_artifacts_repo()
+
+
+def _recorded_workspace(run_dir: Path) -> str:
+    """The workspace a run was started under, read back off its checkpoint."""
+    try:
+        checkpoint = parse_checkpoint((run_dir / "checkpoint.json").read_text())
+    except (OSError, ValueError):
+        return ""
+    if not isinstance(checkpoint, PyflowCheckpoint):
+        return ""
+    return str(checkpoint.inputs.get("workspace") or "")
 
 
 def library_dirs(cfg: dict[str, Any]) -> list[str]:

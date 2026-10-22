@@ -59,8 +59,6 @@ def _documented(result: DocsResult) -> bool:
 class Coder(Workflow):
     """Work every story the launch names, in order, each by one dev owner, and deliver the run."""
 
-    docs_path: str = ""
-    workspace_file: str = ""
     story: str = ""
     epic: str = ALL_EPICS
     operator_mode: Literal["auto", "human", "operator"] = "auto"
@@ -73,7 +71,7 @@ class Coder(Workflow):
 
     def setup(self) -> WorkspaceDirs:
         """Resolve every directory this run's agent turns may read, once."""
-        return self.call(resolve_workspace_dirs, self.docs_path)
+        return self.call(resolve_workspace_dirs)
 
     def labels(self) -> dict[str, str]:
         """Which item, which epic, which mode, how far through: what a run's activity line shows."""
@@ -90,7 +88,7 @@ class Coder(Workflow):
     def start(self) -> Continue:
         """File every story the launch names, in order, and cut the branch a PR run lands on."""
         self.call(begin_run, str(self.run_dir))
-        launch = self.call(resolve_launch, self.docs_path, self.epic, self.story)
+        launch = self.call(resolve_launch, self.epic, self.story)
         filed = work.file(
             self._worklist,
             work.story_items([entry.model_dump() for entry in launch.entries]),
@@ -100,7 +98,7 @@ class Coder(Workflow):
         if self.delivery == "commit":
             self.logger.info("commit delivery: every item commits on the current branch")
             return Continue(launch, self.route)
-        branch = self.call(cut_run_branch, self._run_name(launch), self.docs_path)
+        branch = self.call(cut_run_branch, self._run_name(launch))
         self.logger.info("pr delivery: %s off %s", branch.branch, branch.base_branch)
         return Continue(branch, self.route)
 
@@ -114,14 +112,14 @@ class Coder(Workflow):
         self.logger.info("the worklist is done")
         if self.delivery == "pr":
             return Continue(None, self.deliver)
-        self.call(teardown_stack, self.docs_path)
+        self.call(teardown_stack)
         return Done(None)
 
     def prepare(self) -> Continue:
         """Resolve the item's story to paths, and record what was already dirty."""
         item = self._item
-        self.call(snapshot_worktree_state, self.docs_path)
-        story = self.call(prepare_story, self.docs_path, work.story_of(item), self._epic)
+        self.call(snapshot_worktree_state)
+        story = self.call(prepare_story, work.story_of(item), self._epic)
         self.logger.info("preparing %s%s", item.id, self._progress(), extra={"activity": True})
         return Continue(story, self.dev)
 
@@ -132,7 +130,6 @@ class Coder(Workflow):
         result = self.handoff(
             Dev,
             story=self._story.story_slug,
-            docs_path=self.docs_path,
             epic=self._story_epic(),
             operator_mode=self.operator_mode,
             target_env=self.target_env,
@@ -160,7 +157,6 @@ class Coder(Workflow):
         result = self.handoff(
             Qa,
             story=self._story.story_slug,
-            docs_path=self.docs_path,
             epic=self._story_epic(),
             operator_mode=self.operator_mode,
             target_env=self.target_env,
@@ -216,9 +212,9 @@ class Coder(Workflow):
             },
         )
         if self._mode == "story":
-            launch = self.call(resolve_launch, self.docs_path, self.epic, self.story)
+            launch = self.call(resolve_launch, self.epic, self.story)
         else:
-            launch = self.call(resolve_launch, self.docs_path, epic)
+            launch = self.call(resolve_launch, epic)
         filed = work.amend(
             self._worklist, epic, [entry.model_dump() for entry in launch.entries]
         )
@@ -229,7 +225,6 @@ class Coder(Workflow):
         """Hand the backlog to the `fix` flow, which drains it to dry and returns."""
         result = self.handoff(
             Fix,
-            docs_path=self.docs_path,
             target_env=self.target_env,
             operator_mode=self.operator_mode,
         )
@@ -275,7 +270,6 @@ class Coder(Workflow):
         result = self.handoff(
             Qa,
             story=story.story_slug,
-            docs_path=self.docs_path,
             epic=self._story_epic(),
             operator_mode=self.operator_mode,
             target_env=self.target_env,
@@ -315,7 +309,7 @@ class Coder(Workflow):
         )
         if not prs.pr_urls:
             self.logger.info("no PR opened for %s — nothing to wait on", self._branch())
-            self.call(teardown_stack, self.docs_path)
+            self.call(teardown_stack)
             return Done(prs)
         return Continue(prs, self.ship)
 
@@ -325,11 +319,10 @@ class Coder(Workflow):
             FixCi,
             branch=self._branch(),
             base="",
-            docs_path=self.docs_path,
             operator_mode=self.operator_mode,
         )
         self.logger.info("shipped %s: %s", self._branch(), shipped.summary)
-        self.call(teardown_stack, self.docs_path)
+        self.call(teardown_stack)
         return Done(shipped)
 
     def _document(self) -> DocsResult:
@@ -337,7 +330,6 @@ class Coder(Workflow):
         return self.handoff(
             Docs,
             story=self._story.story_slug,
-            docs_path=self.docs_path,
             epic=self._story_epic(),
             target_env=self.target_env,
             preexisting=self._preexisting(),

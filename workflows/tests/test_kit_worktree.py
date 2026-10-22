@@ -177,21 +177,23 @@ def test_clone_mode_is_still_the_default(host_repo: Path, tmp_path: Path):
 
 
 
-def test_every_repo_in_a_workspace_file_gets_its_own_tree(host_repo: Path, tmp_path: Path):
+def test_every_url_member_of_a_named_workspace_gets_its_own_tree(host_repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     web = host_repo.parent / "web-app"
     shutil.copytree(host_repo, web)
 
-    manifest = tmp_path / "acme.code-workspace"
-    manifest.write_text(
-        '{"folders": ['
-        f'{{"name": "api-service", "path": ".", "url": "{host_repo}", "branch": "main"}},'
-        f'{{"name": "web-app", "path": ".", "url": "{web}", "branch": "main"}},'
-        '{"name": "docs", "path": "./docs"}'
-        "]}"
+    config = tmp_path / "home-config.toml"
+    config.write_text(
+        "[workspaces]\nacme = [\n"
+        f'  {{ path = "{tmp_path / "api-service"}", name = "api-service", url = "{host_repo}", branch = "main" }},\n'
+        f'  {{ path = "{tmp_path / "web-app"}", name = "web-app", url = "{web}", branch = "main" }},\n'
+        f'  {{ path = "{tmp_path / "docs"}", name = "docs" }},\n'
+        "]\n",
+        encoding="utf-8",
     )
+    monkeypatch.setenv("STABLEMATE_CONFIG", str(config))
     root = tmp_path / "worktrees" / "run-1"
 
-    checkout_workspace(manifest, root, source_mode="worktree", worktree_root=str(root))
+    checkout_workspace("acme", root, source_mode="worktree", worktree_root=str(root))
 
     assert (root / "api-service" / ".git").is_file()
     assert (root / "web-app" / ".git").is_file()

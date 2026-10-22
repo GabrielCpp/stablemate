@@ -81,7 +81,6 @@ def guard_story_file(logger: logging.Logger, story: StoryPaths) -> None:
 @blueprint.node(stub=stubs.story_paths)
 def prepare_story(
     logger: logging.Logger,
-    docs_path: str = "",
     story: str = "",
     epic: str = "",
     repo_dir: str = "",
@@ -91,7 +90,7 @@ def prepare_story(
         logger.info("no story slug — nothing to resolve")
         return StoryPaths()
 
-    docs_root = find_docs_root(docs_path, repo_dir)
+    docs_root = find_docs_root(repo_dir)
 
     if not epic:
         epics_root = okf_path.epics_root_in(docs_root)
@@ -129,11 +128,11 @@ def prepare_story(
 
 @blueprint.node(aliases=("resolve_ci_workspace",))
 def resolve_workspace_dirs(
-    logger: logging.Logger, docs_path: str = "", repo_dir: str = "", workspace_file: str = ""
+    logger: logging.Logger, repo_dir: str = "", workspace: str = ""
 ) -> WorkspaceDirs:
     """Every directory this run's agent turns may read: the workspace repos plus the docs."""
-    docs_root = find_docs_root(docs_path, repo_dir)
-    repos = resolve_workspace(workspace_file, repo_dir)
+    docs_root = find_docs_root(repo_dir)
+    repos = resolve_workspace(workspace, repo_dir)
     dirs = [r["path"] for r in repos.values() if Path(r["path"]).is_dir()]
     if str(docs_root) not in dirs:
         dirs = [str(docs_root), *dirs]
@@ -148,14 +147,14 @@ def workspace_dirs(flow: Workflow) -> list[str]:
 
 @blueprint.node
 def stamp_specs(
-    logger: logging.Logger, docs_path: str = "", story_slug: str = "", repo_dir: str = ""
+    logger: logging.Logger, story_slug: str = "", repo_dir: str = ""
 ) -> SpecsStamped:
     """Give every spec doc in the story's spec dir an OKF `type`, or fail the run."""
     if not story_slug:
         logger.info("no story slug — nothing to stamp")
         return SpecsStamped()
 
-    docs_root = find_docs_root(docs_path, repo_dir)
+    docs_root = find_docs_root(repo_dir)
     okf = Ostler(docs_root)
     spec_dir = _spec_dir(okf, story_slug)
     if not spec_dir.is_dir():
@@ -189,25 +188,23 @@ def stamp_specs(
 @blueprint.node
 def prepare_fix_story(
     logger: logging.Logger,
-    docs_path: str = "",
     story: str = "",
     epic: str = "",
     repo_dir: str = "",
 ) -> StoryPaths:
     """`prepare_story` under a second node id, for the backlog drain nested in the main loop."""
-    return prepare_story(logger, docs_path=docs_path, story=story, epic=epic, repo_dir=repo_dir)
+    return prepare_story(logger, story=story, epic=epic, repo_dir=repo_dir)
 
 
 @blueprint.node(stub=stubs.story_texts)
 def done_story_texts(
     logger: logging.Logger,
-    docs_path: str = "",
     epic: str = "",
     slugs: list[str] | None = None,
     repo_dir: str = "",
 ) -> StoryTexts:
     """Each named story's title and acceptance criteria lines, read from its story file."""
-    docs_root = find_docs_root(docs_path, repo_dir)
+    docs_root = find_docs_root(repo_dir)
     texts: dict[str, str] = {}
     for slug in slugs or []:
         path = okf_path.story_dir_in(docs_root, epic, slug) / "story.md"

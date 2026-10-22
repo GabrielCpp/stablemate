@@ -308,18 +308,18 @@ def test_params_come_from_a_generic_prefix_not_a_workflows_vocabulary():
     """workhorse/** must never learn one workflow's field names."""
     params = supervisor.run_params(
         {
-            "AGENT_PARAM_DOCS_PATH": "/docs",
-            "AGENT_PARAM_WORKSPACE_FILE": "/mnt/ws.code-workspace",
+            "AGENT_PARAM_BOOK": "/docs",
+            "AGENT_PARAM_WORKSPACE": "acme",
             "AGENT_PARAM_EMPTY": "",
             "PATH": "/usr/bin",
         }
     )
-    assert params == {"docs_path": "/docs", "workspace_file": "/mnt/ws.code-workspace"}
+    assert params == {"book": "/docs", "workspace": "acme"}
 
 
 def test_boundary_params_land_in_a_file_so_explicit_params_still_win(tmp_path: Path):
-    out = supervisor.write_boundary_params(tmp_path / "p.json", {"docs_path": "/docs"})
-    assert json.loads(out.read_text()) == {"docs_path": "/docs"}
+    out = supervisor.write_boundary_params(tmp_path / "p.json", {"book": "/docs"})
+    assert json.loads(out.read_text()) == {"book": "/docs"}
 
 
 def _bin_with(tmp_path: Path, *names: str) -> Path:
@@ -393,10 +393,10 @@ def test_no_profile_flags_when_the_launcher_selected_none(tmp_path: Path):
     assert "--profile" not in cmd and "--config" not in cmd
 
 
-def test_checkout_reads_the_workspace_file_from_the_params_not_a_second_variable(
+def test_checkout_reads_the_workspace_name_from_the_params_not_a_second_variable(
     monkeypatch,
 ):
-    """One source of truth: the run and its checkout cannot disagree about which manifest they are using."""
+    """One source of truth: the run and its checkout cannot disagree about which workspace they are using."""
     seen: dict[str, object] = {}
     monkeypatch.setattr(
         supervisor.workspace,
@@ -405,9 +405,9 @@ def test_checkout_reads_the_workspace_file_from_the_params_not_a_second_variable
     )
     supervisor.checkout(
         {"WORKSPACE_ROOT": "/workspace", "REPO_URL": "https://example.com/acme.git"},
-        {"workspace_file": "/mnt/ws.code-workspace"},
+        {"workspace": "acme"},
     )
-    assert seen["ws"] == "/mnt/ws.code-workspace"
+    assert seen["ws"] == "acme"
     assert seen["repo_url"] == "https://example.com/acme.git"
 
 

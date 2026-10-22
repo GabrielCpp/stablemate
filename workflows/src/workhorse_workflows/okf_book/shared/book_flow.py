@@ -8,6 +8,7 @@ from pydantic import BaseModel, ConfigDict
 from workhorse.pyflow import AgentTimeout, AgentTurnFailed, Await, Transition, Workflow
 from workhorse.runner.failure import OutputParseError
 from workhorse_workflows.kit import commit_returning_refusal
+from workhorse_workflows.kit.paths import docs_home_or
 from workhorse_workflows.kit.agent_files import render_agent_files_returning_failure
 
 COMMIT_GATE = "commit-refused.md"
@@ -31,7 +32,7 @@ class BookFlow(Workflow):
 
     @property
     def root(self) -> Path:
-        return Path(self.repo_dir).resolve()
+        return docs_home_or(Path(self.repo_dir).resolve())
 
     @property
     def records_dir(self) -> Path:

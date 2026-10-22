@@ -32,8 +32,8 @@ is the authority for everything below, and for every seat you brief:
 - Story: `{{ workhorse_var('story_slug') }}` (id `{{ workhorse_var('story_id') }}`, epic `{{ workhorse_var('epic') }}`)
 - Story path: `{{ workhorse_var('story_path') }}`
 - Spec dir: `{{ workhorse_var('spec_dir') }}`
-- Docs root: `{{ workhorse_var('docs_path') }}`
-- OKF features root: `{{ workhorse_var('features_root') }}`
+- Docs root: `{{ workhorse_var('docs_root') }}`
+- OKF services root: `{{ workhorse_var('services_root') }}`
 - Parent epic with authoritative user journeys: `{{ workhorse_var('epic_path') }}`
 - Context mode: `{{ workhorse_var('context_mode') }}`
 - Context notes: `{{ workhorse_var('context_notes') }}`
@@ -185,7 +185,7 @@ nodes the diff should have created. A defect outside that scope is pre-existing 
 line:
 
 ```text
-D1 [node-type] docs/features/acme/gui/screens/editor.md#insert-widget: browser click action is under ## Invocations; move it to ## Interactions.
+D1 [node-type] docs/services/acme/gui/screens/editor.md#insert-widget: browser click action is under ## Invocations; move it to ## Interactions.
 ```
 
 The kind is one of `node-type`, `missing-node`, `flow-coverage`, `overclaim`,

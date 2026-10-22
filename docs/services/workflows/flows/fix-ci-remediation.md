@@ -16,8 +16,8 @@ push behavior are defined by the [CI gating helpers](../concepts/ci-gating.md).
 `repo` defaults to empty and selects every workspace repository in manifest order; a non-empty
 value pins the run to that repository. `branch` defaults to empty and is the full branch ref,
 normally `feat/<epic>`. `pr_number` defaults to empty and makes polling resolve the open PR by
-branch; a supplied number selects that PR directly. `docs_path` and `workspace_file` default to
-empty and are resolved from the repository context. `base` defaults to empty and turns the merge
+branch; a supplied number selects that PR directly. `workspace` defaults to
+empty and resolves from the repository context. `base` defaults to empty and turns the merge
 lane on when set. `operator_mode` defaults to `auto`. Each repository gets its own budget of
 `MAX_LAPS` repair turns, and the epic's merge gets the same cap.
 

@@ -5,9 +5,11 @@ from pathlib import Path
 
 from ostler import path as okf_path
 
+from workhorse_workflows.kit.paths import docs_home_or
+
 OPERATOR_DIR = ".agents/operator"
 
-AMBIENT = ("repo_dir", "docs_path", "workspace_file", "library_dirs")
+AMBIENT = ("repo_dir", "workspace", "library_dirs")
 
 TOOL_OUTPUT_DIRS = frozenset(
     {
@@ -23,27 +25,27 @@ TOOL_OUTPUT_DIRS = frozenset(
 
 
 def epics_repo_root(repo_dir: str | Path = "") -> Path:
-    """Root marked by `agents.yml` or a `docs/epics/` **directory**, never `.git`."""
+    """Root marked by `agents.yml` or a `docs/epics/` **directory**, never `.git`; the artifacts repo while a workspace is active."""
     if repo_dir:
-        return Path(repo_dir).resolve()
+        return docs_home_or(Path(repo_dir).resolve())
     here = Path.cwd().resolve()
     for candidate in [here, *here.parents]:
         if (candidate / "agents.yml").exists() or (candidate / "docs" / "epics").is_dir():
-            return candidate
-    return here
+            return docs_home_or(candidate)
+    return docs_home_or(here)
 
 
 def launch_repo_root(repo_dir: str | Path = "") -> Path:
-    """The operator gates' root: prefer `cwd` when it already looks like one."""
+    """The operator gates' root: prefer `cwd` when it already looks like one; the artifacts repo while a workspace is active."""
     if repo_dir:
-        return Path(repo_dir).resolve()
+        return docs_home_or(Path(repo_dir).resolve())
     cwd = Path.cwd()
     if (cwd / "docs" / "epics").is_dir() or (cwd / "agents.yml").exists() or (cwd / ".git").exists():
-        return cwd
+        return docs_home_or(cwd)
     for candidate in cwd.parents:
         if (candidate / "agents.yml").exists() or (candidate / ".git").exists():
-            return candidate
-    return cwd
+            return docs_home_or(candidate)
+    return docs_home_or(cwd)
 
 
 def operator_context_path(root: Path, gate: str, epic: str = "") -> Path:
@@ -79,9 +81,9 @@ def epic_dir_rel(root: Path, epic: str, configured: str = "") -> str:
     return _rel(root, okf_path.epic_dir_under(root / epics_dir(root, configured), epic))
 
 
-def features_dir(root: Path, configured: str = "") -> str:
+def services_dir(root: Path, configured: str = "") -> str:
     """The OKF feature book, repo-relative: what the run was told, else ostler's."""
-    return configured.strip().rstrip("/") or _rel(root, okf_path.features_root_in(root))
+    return configured.strip().rstrip("/") or _rel(root, okf_path.services_root_in(root))
 
 
 def epics_index(root: Path) -> str:
@@ -135,7 +137,7 @@ __all__ = [
     "epics_dir",
     "epics_index",
     "epics_repo_root",
-    "features_dir",
+    "services_dir",
     "is_gate_context",
     "is_tool_output",
     "launch_repo_root",

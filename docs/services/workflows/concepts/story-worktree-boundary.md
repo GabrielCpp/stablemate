@@ -38,7 +38,7 @@ The boundary is conservative: unreadable, deleted, malformed, or changed paths a
 - code: `workflows/src/workhorse_workflows/coder/shared/worktree.py::untouched_since` @db5461fbdd19
 
 ### snapshot_worktree_state
-- sig: `snapshot_worktree_state(logger: logging.Logger, docs_path: str = "", repo_dir: str = "") -> DirtyAtStart`
+- sig: `snapshot_worktree_state(logger: logging.Logger, repo_dir: str = "") -> DirtyAtStart`
 - does: resolves the repository root from the documentation and repository path inputs
 - verify: json_path(path="$.root", equals="docs/stories")
 - does: records modified tracked paths and untracked paths reported by the repository
@@ -55,7 +55,7 @@ The boundary is conservative: unreadable, deleted, malformed, or changed paths a
 - tests: `workflows/tests/coder/docs/test_flow.py::test_the_snapshot_records_what_was_already_dirty_with_its_bytes`
 
 ### snapshot_code_state
-- sig: `snapshot_code_state(logger: logging.Logger, docs_path: str = "", repo_dir: str = "", workspace_file: str = "") -> PorcelainSnapshot`
+- sig: `snapshot_code_state(logger: logging.Logger, repo_dir: str = "", workspace: str = "") -> PorcelainSnapshot`
 - does: reads `HEAD` and `git status --porcelain` for every workspace repository that is a directory other than the docs root
 - verify: count(subject="code repositories snapshotted", equals=1)
 - does: omits a repository whose `HEAD` or status cannot be read
@@ -66,7 +66,7 @@ The boundary is conservative: unreadable, deleted, malformed, or changed paths a
 - detail: [Worktree snapshot](../formats/worktree-snapshot.md)
 
 ### code_changed
-- sig: `code_changed(logger: logging.Logger, before: dict[str, str] | None = None, docs_path: str = "", repo_dir: str = "", workspace_file: str = "") -> CodeChange`
+- sig: `code_changed(logger: logging.Logger, before: dict[str, str] | None = None, repo_dir: str = "", workspace: str = "") -> CodeChange`
 - does: reads the current state of the code repositories the same way the snapshot did
 - verify: count(subject="code repositories re-read", equals=1)
 - does: reports a change when the current state differs from `before`, including a new commit

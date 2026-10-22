@@ -179,7 +179,7 @@ The legacy queue is used as a fallback by `resolve_launch` and `prune_epic` when
 
 ### cut_run_branch
 
-- sig: `cut_run_branch(logger: logging.Logger, name: str = "", docs_path: str = "", repo_dir: str = "") -> RunBranch`
+- sig: `cut_run_branch(logger: logging.Logger, name: str = "", repo_dir: str = "") -> RunBranch`
 - does: reads the base as the docs repository's active branch, or its trunk when that branch is a `feat/` or `rewrite/` branch
 - does: creates or checks out `feat/<name>` in the docs repository without resetting its commits
 - raises: `WorkflowFailed` when the docs root is not a git repository
@@ -190,7 +190,7 @@ The legacy queue is used as a fallback by `resolve_launch` and `prune_epic` when
 
 ### branch_code_repos
 
-- sig: `branch_code_repos(logger: logging.Logger, spec_dir: str = "", branch: str = "", docs_path: str = "", repo_dir: str = "", workspace_file: str = "", plan: dict[str, Any] | None = None) -> BranchOutcome`
+- sig: `branch_code_repos(logger: logging.Logger, spec_dir: str = "", branch: str = "", repo_dir: str = "", workspace: str = "", plan: dict[str, Any] | None = None) -> BranchOutcome`
 - does: derives the affected repositories from the plan
 - does: uses the documentation repository branch when no branch is supplied, or `main` when that root is not a git repository
 - does: creates or checks out the requested branch in each affected code repository
@@ -213,7 +213,7 @@ The legacy queue is used as a fallback by `resolve_launch` and `prune_epic` when
 
 ### resolve_launch
 
-- sig: `resolve_launch(logger: logging.Logger, docs_path: str = "", epic: str = "all", story: str = "", repo_dir: str = "") -> LaunchSet`
+- sig: `resolve_launch(logger: logging.Logger, epic: str = "all", story: str = "", repo_dir: str = "") -> LaunchSet`
 - does: returns the one named story with its slug, minted id and epic when `story` is set
 - verify: json_path(path="$.mode", equals="story")
 - raises: `WorkflowFailed` when the book holds no story of that name
@@ -230,7 +230,7 @@ The legacy queue is used as a fallback by `resolve_launch` and `prune_epic` when
 
 ### check_repos_clean
 
-- sig: `check_repos_clean(logger: logging.Logger, story_slug: str = "", spec_dir: str = "", preexisting: list[str] | None = None, repo_dir: str = "", workspace_file: str = "") -> WorktreeCleanliness`
+- sig: `check_repos_clean(logger: logging.Logger, story_slug: str = "", spec_dir: str = "", preexisting: list[str] | None = None, repo_dir: str = "", workspace: str = "") -> WorktreeCleanliness`
 - does: resolves repositories affected by the story plan, falling back to the repository root when none are named
 - does: reports staged, unstaged, and untracked paths
 - verify: count(subject="story-owned staged, unstaged, and untracked paths", equals=3)
@@ -266,7 +266,7 @@ The legacy queue is used as a fallback by `resolve_launch` and `prune_epic` when
 
 ### commit_story
 
-- sig: `commit_story(logger: logging.Logger, epic: str = "", story_slug: str = "", spec_dir: str = "", story_path: str = "", repo_dir: str = "", workspace_file: str = "", kind: str = "feat", roots: list[str] | None = None, story_id: str = "") -> StoryCommitted`
+- sig: `commit_story(logger: logging.Logger, epic: str = "", story_slug: str = "", spec_dir: str = "", story_path: str = "", repo_dir: str = "", workspace: str = "", kind: str = "feat", roots: list[str] | None = None, story_id: str = "") -> StoryCommitted`
 - does: commits implementation changes in each affected repository using the requested Conventional Commit kind and repository scope
 - does: excludes the documentation host repository unless the story plan explicitly lists it as an implementation target
 - does: renders the agent files of each repository before committing in it, and logs a warning when that render fails

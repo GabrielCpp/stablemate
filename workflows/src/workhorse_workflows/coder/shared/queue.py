@@ -83,7 +83,6 @@ def _open_entries(okf: Ostler, epic: str) -> list[dict]:
 @blueprint.node(stub=stubs.launch_set)
 def resolve_launch(
     logger: logging.Logger,
-    docs_path: str = "",
     epic: str = ALL_EPICS,
     story: str = "",
     repo_dir: str = "",
@@ -94,7 +93,7 @@ def resolve_launch(
         raise WorkflowFailed(
             f"the launch names both story={story!r} and epic={epic!r}: name one of them"
         )
-    root = find_docs_root(docs_path, repo_dir)
+    root = find_docs_root(repo_dir)
     okf = Ostler(root)
     if story:
         entry = okf.story(story)

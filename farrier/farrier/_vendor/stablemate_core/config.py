@@ -4,9 +4,12 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 import shutil
+import subprocess
 import tomllib
 from collections.abc import Callable
+from dataclasses import dataclass
 from importlib import metadata
 from pathlib import Path
 from typing import Any
@@ -20,6 +23,10 @@ CONFIG_PATH_ENV = "STABLEMATE_CONFIG"
 LEGACY_CONFIG_PATH_ENV = "WORKHORSE_CONFIG"
 
 ARTIFACTS_DIR_ENV = "STABLEMATE_ARTIFACTS_DIR"
+
+WORKSPACE_ENV = "STABLEMATE_WORKSPACE"
+
+WORKSPACES_KEY = "workspaces"
 
 _LEGACY_APPS = ("workhorse", "farrier")
 
@@ -437,3 +444,80 @@ def resolve_artifacts_dir() -> Path:
     if isinstance(configured, str) and configured:
         return Path(configured).expanduser().resolve()
     return (Path(user_data_dir("stablemate")) / "artifacts").expanduser().resolve()
+
+
+@dataclass(frozen=True)
+class WorkspaceMember:
+    """One repository of a named workspace."""
+
+    name: str
+    path: Path
+    url: str = ""
+    branch: str = ""
+
+
+def member_name(path: Path) -> str:
+    """A folder's workspace name: its basename, normalised the way farrier derives an install prefix."""
+    raw = path.name
+    name = re.sub(r"[^a-zA-Z0-9/-]+", "-", raw.replace(".", "-").replace("_", "-"))
+    return re.sub(r"-+", "-", name).strip("-").lower()
+
+
+def _member_of(workspace: str, entry: Any) -> WorkspaceMember:
+    if isinstance(entry, str):
+        entry = {"path": entry}
+    if not isinstance(entry, dict) or not isinstance(entry.get("path"), str) or not entry["path"]:
+        raise ConfigError(
+            f"workspace {workspace!r}: every entry is a path string or a table with a `path`"
+        )
+    path = Path(entry["path"]).expanduser()
+    name = entry.get("name")
+    return WorkspaceMember(
+        name=str(name) if name else member_name(path),
+        path=path,
+        url=str(entry.get("url") or ""),
+        branch=str(entry.get("branch") or ""),
+    )
+
+
+def resolve_workspace(name: str) -> list[WorkspaceMember]:
+    """The members of the workspace ``name`` in the home config; an unknown name lists the known ones."""
+    table = load_config().get(WORKSPACES_KEY)
+    workspaces = table if isinstance(table, dict) else {}
+    if name not in workspaces:
+        known = ", ".join(sorted(workspaces)) or "(none)"
+        raise ValueError(f"unknown workspace {name!r}; known workspaces: {known}")
+    entries = workspaces[name]
+    if not isinstance(entries, list):
+        raise ConfigError(f"workspace {name!r} must be a list of entries")
+    members = [_member_of(name, entry) for entry in entries]
+    seen: set[str] = set()
+    for member in members:
+        if member.name in seen:
+            raise ValueError(f"workspace {name!r} names {member.name!r} twice")
+        seen.add(member.name)
+    return members
+
+
+def active_workspace() -> str:
+    """The workspace this process runs under, or an empty string."""
+    return os.environ.get(WORKSPACE_ENV, "").strip()
+
+
+def docs_home(start: Path) -> Path | None:
+    """The artifacts repo while a workspace is active, else None so the caller walks up from ``start``."""
+    if active_workspace():
+        return resolve_artifacts_dir()
+    return None
+
+
+def ensure_artifacts_repo() -> Path:
+    """Create the artifacts dir as a git repository that ignores ``specs/``; never adds a remote."""
+    root = resolve_artifacts_dir()
+    root.mkdir(parents=True, exist_ok=True)
+    if not (root / ".git").exists():
+        subprocess.run(["git", "-C", str(root), "init", "--quiet"], check=True, timeout=30)
+    ignore = root / ".gitignore"
+    if not ignore.exists():
+        ignore.write_text("specs/\n", encoding="utf-8")
+    return root

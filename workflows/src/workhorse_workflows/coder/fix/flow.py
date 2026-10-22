@@ -62,8 +62,6 @@ def render_gate(report: FailureReport) -> str:
 class Fix(Workflow):
     """Drain the backlog's `Filed by coder` items, each as a one-AC story, each committed."""
 
-    docs_path: str = ""
-    workspace_file: str = ""
     target_env: str = "local"
     operator_mode: str = "auto"
 
@@ -71,20 +69,20 @@ class Fix(Workflow):
 
     def setup(self) -> WorkspaceDirs:
         """Every directory an agent turn in this run may read."""
-        return self.call(resolve_workspace_dirs, self.docs_path)
+        return self.call(resolve_workspace_dirs)
 
     def start(self) -> Continue | Done:
         """Draw the next drainable bullet, record what was already dirty, seed it as a story, and resolve its paths."""
-        pick = self.call(select_fix_item, self.docs_path)
+        pick = self.call(select_fix_item)
         if not pick.has_fix:
             self.logger.info("backlog drained: %s", pick.reason)
             return Done(pick)
         self.logger.info("draining %s: %s", pick.fix_bullet_id, pick.fix_bullet_text)
         self.call(snapshot_worktree_state, roots=self._dirs())
         seed = self.call(
-            seed_fix_story, pick.fix_bullet_id, pick.fix_bullet_text, "", "", self.docs_path
+            seed_fix_story, pick.fix_bullet_id, pick.fix_bullet_text, "", ""
         )
-        story = self.call(prepare_fix_story, self.docs_path, seed.story_slug, seed.epic)
+        story = self.call(prepare_fix_story, seed.story_slug, seed.epic)
         self.call(guard_story_file, story)
         self.call(snapshot_owner_baseline, roots=self._dirs())
         return Continue(story, self.work)
@@ -115,7 +113,6 @@ class Fix(Workflow):
             | {
                 "bullet_text": self.output(select_fix_item).fix_bullet_text,
                 "qa_dir": self._story.qa_dir,
-                "docs_path": self.docs_path,
                 "target_env": self.target_env,
                 "operator_context": operator_context,
                 "report": report,
@@ -141,7 +138,7 @@ class Fix(Workflow):
         if not reports:
             self.logger.info("gates are clean for %s", self._story.story_slug)
             bullet = self.output(select_fix_item).fix_bullet_id
-            pruned = self.call(prune_fix_item, bullet, self.docs_path)
+            pruned = self.call(prune_fix_item, bullet)
             return Continue(pruned, self.document)
         text = "\n\n".join(reports)
         found = failures[0] if failures else state
@@ -156,7 +153,6 @@ class Fix(Workflow):
         result = self.handoff(
             Docs,
             story=self._story.story_slug,
-            docs_path=self.docs_path,
             epic=seed.epic,
             target_env=self.target_env,
             preexisting=tuple(self._dirty_at(snapshot_worktree_state)),
@@ -196,7 +192,6 @@ class Fix(Workflow):
                 self,
                 block_kind="implementation",
                 notes=notes,
-                docs_path=self.docs_path,
                 story=self._story,
             ),
         )

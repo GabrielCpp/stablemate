@@ -18,8 +18,8 @@ operator-gate sandboxes, and the plain engine resolver is used by callers outsid
 ## Fields
 
 ### AMBIENT
-- type: `tuple[str, str, str, str]`
-- default: `("repo_dir", "docs_path", "workspace_file", "library_dirs")`
+- type: `tuple[str, str, str]`
+- default: `("repo_dir", "workspace", "library_dirs")`
 - required: true
 - semantics: workflow parameters injected into nodes when a node declares the same parameter and no call-site value was supplied
 - verify: json_path(path="$.ambient", matches=".*repo_dir.*")
@@ -99,13 +99,13 @@ operator-gate sandboxes, and the plain engine resolver is used by callers outsid
 - verify: json_path(path="$.result", equals="example result")
 - code: `workflows/src/workhorse_workflows/coder/shared/paths.py::epic_dir_rel` @89c936920021
 
-### features_dir
-- sig: `features_dir(root: Path, configured: str = "") -> str`
+### services_dir
+- sig: `services_dir(root: Path, configured: str = "") -> str`
 - does: returns the trimmed configured feature-book directory when configured is non-empty
 - does: otherwise resolves the feature-book root through Ostler and returns its repository-relative POSIX path
 - returns: the repository-relative feature-book directory
 - verify: json_path(path="$.result", equals="example result")
-- code: `workflows/src/workhorse_workflows/coder/shared/paths.py::features_dir` @89c936920021
+- code: `workflows/src/workhorse_workflows/coder/shared/paths.py::services_dir` @20023eaab7f8
 
 ### epics_index
 - sig: `epics_index(root: Path) -> str`

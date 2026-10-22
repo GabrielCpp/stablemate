@@ -68,7 +68,7 @@ from ostler_qa import Qa, scenario, target
 app = target("app")
 
 
-@scenario(target=app, mechanism="live", covers=["okf:docs/features/app/server.md:contract"], id="serves")
+@scenario(target=app, mechanism="live", covers=["okf:docs/services/app/server.md:contract"], id="serves")
 def serves(qa: Qa) -> None:
     qa.check("it serves", True)
 """
@@ -84,7 +84,7 @@ def _book(
     """A one-repo book with a cited file, a story folder and a plan, all committed; returns the spec dir."""
     spec = tmp_path / "artifacts" / SPEC
     write(spec / "qa_plan.py", PLAN)
-    write(repo / "docs" / "features" / "app" / "server.md", SERVER_PAGE)
+    write(repo / "docs" / "services" / "app" / "server.md", SERVER_PAGE)
     write(repo / "src" / "server.py", "def run():\n    return 1\n")
     write(repo / STORY_FOLDER / "story.md", "# story\n")
     git(repo, "add", "-A")
@@ -102,7 +102,6 @@ def _scope(
         spec_dir=spec,
         story_path=f"{STORY_FOLDER}/story.md",
         dirty=dirty,
-        docs_path=str(repo),
         repo_dir=str(repo),
     )
 
@@ -147,7 +146,7 @@ def test_an_edited_book_page_reruns_its_scenarios(
 ) -> None:
     spec = _book(repo, write, git, monkeypatch, tmp_path)
 
-    result = _scope(logger, repo, spec, [f"{repo.name}:docs/features/app/server.md"])
+    result = _scope(logger, repo, spec, [f"{repo.name}:docs/services/app/server.md"])
 
     assert (result.kind, result.scenarios) == ("claims", ["serves"]), result
 

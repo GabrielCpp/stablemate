@@ -120,9 +120,9 @@ def inventory(logger: Any) -> Payload:
 
 
 @bp.node
-def locate(logger: Any, subject: str = "?", repo_dir: str = "own-default", docs_path: str = "") -> Payload:
+def locate(logger: Any, subject: str = "?", repo_dir: str = "own-default", book_path: str = "") -> Payload:
     """A node that declares two of the ambient inputs — the shape `injects` fills."""
-    return Payload(kind=f"{subject}:{repo_dir}:{docs_path}", count=0)
+    return Payload(kind=f"{subject}:{repo_dir}:{book_path}", count=0)
 
 
 
@@ -252,7 +252,7 @@ def test_the_checkpoint_is_the_state_and_its_params():
         assert cp["params"] == {"attempt": 2}, cp
         assert cp["flow"] == "Stops", cp
         assert cp["inputs"] == {
-            "subject": "login", "repo_dir": "", "library_dirs": []
+            "subject": "login", "repo_dir": "", "workspace": "", "library_dirs": []
         }, cp
         assert cp["waiting_on"] is None, cp
 
@@ -1021,13 +1021,13 @@ def test_call_fills_an_injects_field_the_node_declares_and_the_callsite_omitted(
         env = _env(tmp)
 
         class Run(Workflow):
-            docs_path: str = ""
-            injects: ClassVar[tuple[str, ...]] = ("repo_dir", "docs_path")
+            book_path: str = ""
+            injects: ClassVar[tuple[str, ...]] = ("repo_dir", "book_path")
 
             def start(self) -> Transition:
                 return Done(self.call(locate, "login").kind)
 
-        assert drive(Run(repo_dir="/src", docs_path="/book"), env) == "login:/src:/book"
+        assert drive(Run(repo_dir="/src", book_path="/book"), env) == "login:/src:/book"
 
 
 def test_a_field_the_workflow_did_not_list_is_never_injected():
@@ -1092,20 +1092,20 @@ def test_handoff_propagates_the_injects_fields_to_the_sub_flow():
         env = _env(tmp)
 
         class SubFlow(Workflow):
-            docs_path: str = ""
-            injects: ClassVar[tuple[str, ...]] = ("repo_dir", "docs_path")
+            book_path: str = ""
+            injects: ClassVar[tuple[str, ...]] = ("repo_dir", "book_path")
 
             def start(self) -> Transition:
                 return Done(self.call(locate, "sub").kind)
 
         class Parent(Workflow):
-            docs_path: str = ""
-            injects: ClassVar[tuple[str, ...]] = ("repo_dir", "docs_path")
+            book_path: str = ""
+            injects: ClassVar[tuple[str, ...]] = ("repo_dir", "book_path")
 
             def start(self) -> Transition:
                 return Done(self.handoff(SubFlow))
 
-        assert drive(Parent(repo_dir="/src", docs_path="/book"), env) == "sub:/src:/book"
+        assert drive(Parent(repo_dir="/src", book_path="/book"), env) == "sub:/src:/book"
 
 
 

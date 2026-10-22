@@ -152,7 +152,7 @@ def stack_stopped_result(gaps: tuple[str, ...], reason: str, app_logs: Sequence[
 def unplanned_problem(root: Path, service: str) -> str:
     """Why the service's book compiled to no plan: its index declares it unexercised, or no claim of it declares a check."""
     with index.session(root):
-        unexercised = declares_unexercised(model.load(find_docs_root("", str(root))), service)
+        unexercised = declares_unexercised(model.load(find_docs_root(str(root))), service)
     if unexercised:
         return "the book's index declares it unexercised, so it compiles to no plan and the run exercises nothing"
     return "the book compiles to no plan"
@@ -176,7 +176,7 @@ def stack_pages(root: Path, service: str) -> tuple[str, ...]:
     The pages parse through ostler's index, so a turn's later checks reparse only the pages written since.
     """
     with index.session(root):
-        graph = model.load(find_docs_root("", str(root)))
+        graph = model.load(find_docs_root(str(root)))
     return tuple(node.id for node in select_stack(graph, near=book_dir(root, service)).runbooks)
 
 

@@ -73,21 +73,21 @@ def _commit_roots(
     logger: logging.Logger,
     root: Path,
     spec_dir: str,
-    workspace_file: str,
+    workspace: str,
     repo_dir: str,
     roots: list[str] | None,
 ) -> list[tuple[str, Path]]:
     """Which checkouts this story's commit covers — the caller's list, or the plan's."""
     if roots:
         return [(Path(p).name, Path(p)) for p in roots]
-    return _affected_roots(logger, root, spec_dir, workspace_file, repo_dir)
+    return _affected_roots(logger, root, spec_dir, workspace, repo_dir)
 
 
 def _affected_roots(
-    logger: logging.Logger, root: Path, spec_dir: str, workspace_file: str, repo_dir: str
+    logger: logging.Logger, root: Path, spec_dir: str, workspace: str, repo_dir: str
 ) -> list[tuple[str, Path]]:
     """The repos this story's plan says it touched, as `(package name, checkout)` pairs."""
-    repos = resolve_workspace(workspace_file, repo_dir)
+    repos = resolve_workspace(workspace, repo_dir)
     plan_ctx = load_plan_context(root, spec_dir, logger)
     affected = get_affected_repos(plan_ctx, repos)
     if not affected:
@@ -130,7 +130,7 @@ def check_repos_clean(
     spec_dir: str = "",
     preexisting: list[str] | None = None,
     repo_dir: str = "",
-    workspace_file: str = "",
+    workspace: str = "",
     roots: list[str] | None = None,
 ) -> WorktreeCleanliness:
     """Did the agent commit its own work in every repo the story touched?"""
@@ -138,7 +138,7 @@ def check_repos_clean(
     snapshot = tuple(preexisting or ())
     dirty: list[str] = []
     names: list[str] = []
-    for name, repo_path in _commit_roots(logger, root, spec_dir, workspace_file, repo_dir, roots):
+    for name, repo_path in _commit_roots(logger, root, spec_dir, workspace, repo_dir, roots):
         names.append(name)
         excused = untouched_since(repo_path, snapshot)
         dirty.extend(
@@ -216,18 +216,17 @@ def proof_scope(
     spec_dir: str = "",
     story_path: str = "",
     dirty: list[str] | None = None,
-    docs_path: str = "",
     repo_dir: str = "",
-    workspace_file: str = "",
+    workspace: str = "",
 ) -> ProofScope:
     """How much of the story's proof the paths it left uncommitted reopen."""
     root = find_repo_root(repo_dir)
-    roots = _affected_roots(logger, root, spec_dir, workspace_file, repo_dir)
+    roots = _affected_roots(logger, root, spec_dir, workspace, repo_dir)
     changed = list(dirty or [])
     inert: set[str] = set()
     for name, repo_path in roots:
         inert |= inert_paths(name, repo_path, story_path, changed)
-    docs_root = find_docs_root(docs_path, repo_dir)
+    docs_root = find_docs_root(repo_dir)
     cited: dict[str, set[str]] = {}
     pages: set[str] = set()
     if any(path not in inert for path in changed):
@@ -256,14 +255,14 @@ def commit_leftovers(
     spec_dir: str = "",
     dirty: list[str] | None = None,
     repo_dir: str = "",
-    workspace_file: str = "",
+    workspace: str = "",
 ) -> StoryCommitted:
     """Commit exactly the paths a passed story left uncommitted, and nothing else in the tree."""
     slug = story_slug or "story"
     root = find_repo_root(repo_dir)
     epic_name = registry.epic_slug(epic) or epic
     committed = False
-    for name, repo_path in _affected_roots(logger, root, spec_dir, workspace_file, repo_dir):
+    for name, repo_path in _affected_roots(logger, root, spec_dir, workspace, repo_dir):
         prefix = f"{name}:"
         keyed = [key[len(prefix):] for key in dirty or [] if key.startswith(prefix)]
         generated = [rel for rel in keyed if paths.is_tool_output(rel)]
@@ -348,7 +347,7 @@ def commit_story(
     spec_dir: str = "",
     story_path: str = "",
     repo_dir: str = "",
-    workspace_file: str = "",
+    workspace: str = "",
     kind: str = "feat",
     roots: list[str] | None = None,
     story_id: str = "",
@@ -386,7 +385,7 @@ def commit_story(
             ) from exc
 
     any_committed = False
-    for name, repo_path in _commit_roots(logger, root, spec_dir, workspace_file, repo_dir, roots):
+    for name, repo_path in _commit_roots(logger, root, spec_dir, workspace, repo_dir, roots):
         failure = render_agent_files_returning_failure(repo_path)
         if failure:
             logger.warning("agent files of %s not rendered: %s", repo_path.name, failure)

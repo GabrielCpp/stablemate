@@ -55,11 +55,11 @@ def clear_qa_evidence(logger: logging.Logger, spec_dir: str = "") -> QaCleared:
 
 @blueprint.node
 def lint_qa_plan(
-    logger: logging.Logger, spec_dir: str = "", docs_path: str = "", repo_dir: str = ""
+    logger: logging.Logger, spec_dir: str = "", repo_dir: str = ""
 ) -> QaPlanValidation:
     """`ostler qa lint` on `<spec_dir>/qa_plan.py` — is this plan's AST safe to import?"""
     plan = str(Path(spec_dir) / QA_PLAN_FILE)
-    docs_root = find_docs_root(docs_path, repo_dir)
+    docs_root = find_docs_root(repo_dir)
     outcome = Ostler(docs_root).qa_lint(plan)
     status = "passed" if outcome.ok else "invalid"
     notes = notes_for(
@@ -71,10 +71,10 @@ def lint_qa_plan(
 
 @blueprint.node
 def qa_tools_catalog(
-    logger: logging.Logger, docs_path: str = "", repo_dir: str = ""
+    logger: logging.Logger, repo_dir: str = ""
 ) -> QaToolCatalog:
     """`ostler qa tools list` — the tools this repo opted into, resolved for this host."""
-    docs_root = find_docs_root(docs_path, repo_dir)
+    docs_root = find_docs_root(repo_dir)
     outcome = Ostler(docs_root).qa_tools_catalog()
     tools = outcome.data.get("tools", [])
     errors = outcome.data.get("errors", [])
@@ -84,11 +84,11 @@ def qa_tools_catalog(
 
 @blueprint.node
 def validate_qa_plan(
-    logger: logging.Logger, spec_dir: str = "", docs_path: str = "", repo_dir: str = ""
+    logger: logging.Logger, spec_dir: str = "", repo_dir: str = ""
 ) -> QaPlanValidation:
     """`ostler qa validate` on `<spec_dir>/qa_plan.py` — is this plan executable?"""
     plan = str(Path(spec_dir) / QA_PLAN_FILE)
-    docs_root = find_docs_root(docs_path, repo_dir)
+    docs_root = find_docs_root(repo_dir)
     outcome = Ostler(docs_root).qa_validate(plan, spec=spec_dir)
     status = "passed" if outcome.ok else "invalid"
     notes = notes_for(
@@ -174,11 +174,10 @@ def verify_qa_dry_run(
 @blueprint.node
 def teardown_stack(
     logger: logging.Logger,
-    docs_path: str = "",
     repo_dir: str = "",
 ) -> StackTornDown:
     """Run the runbook's `stop:` recipe now that the run is finished."""
-    root = find_docs_root(docs_path, repo_dir)
+    root = find_docs_root(repo_dir)
     outcome = runbook.cmd_stack_down(root, logger=logger)
     torn = TEARDOWN_STATES.get(
         str(outcome.data.get("torn_down") or outcome.status or "no"), "no"

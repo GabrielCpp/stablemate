@@ -122,7 +122,7 @@ def query(
     arg: str,
     checkouts: dict[str, Path] | None = None,
 ) -> list[dict]:
-    source_checkouts = checkouts or {}
+    source_checkouts = provenance.effective_checkouts(checkouts)
     if name == "story-provenance":
         return provenance.story_provenance(graph, arg, source_checkouts)
     if name == "commit-story":

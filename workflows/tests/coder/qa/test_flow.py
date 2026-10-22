@@ -141,7 +141,7 @@ def the_thing_exists(qa: Qa) -> None:
 
 
 
-RUNBOOK_REL = "docs/features/app/ops/qa-stack.md"
+RUNBOOK_REL = "docs/services/app/ops/qa-stack.md"
 
 RUNBOOK_MD = """---
 type: runbook
@@ -161,7 +161,7 @@ title: QA stack
 - health: true
 """
 
-SERVER_REL = "docs/features/app/server.md"
+SERVER_REL = "docs/services/app/server.md"
 
 SERVER_MD = "---\ntype: server\ntitle: App server\n---\n\n# App server\n"
 
@@ -190,7 +190,7 @@ def web(
     git: Callable[..., subprocess.CompletedProcess],
     write: Callable[[Path, str], Path],
     write_json: Callable[[Path, Any], Path],
-    ambient: dict[str, str],
+    name_workspace: Callable[[dict[str, Path]], None],
 ) -> Path:
     """A real `web` repo that declares a journey suite, and a plan that names it."""
     write_json(
@@ -204,8 +204,7 @@ def web(
     git(path, "add", "-A")
     git(path, "commit", "-qm", "Initial commit")
     git(path, "commit", "-q", "--allow-empty", "-m", f"feat: seed\n\nStory: {STORY}")
-    write(root / "acme.code-workspace", json.dumps({"folders": [{"name": "web", "path": "web"}]}))
-    ambient["workspace_file"] = str(root / "acme.code-workspace")
+    name_workspace({"web": path})
     return path
 
 
@@ -323,7 +322,7 @@ class _Session(Ostler):
         spec: str | Path,
         head: str = "WORKTREE",
         source_roots: dict[str, list[str]] | None = None,
-        features_root: str = "",
+        services_root: str = "",
         story_file: str | Path | None = None,
         exclude_paths: Iterable[str] = (),
         repositories: Iterable[SourceRepository] = (),
@@ -946,11 +945,11 @@ def test_a_book_that_serves_nothing_needs_no_stack_beside_one_that_does(
     """The served-surface question is asked of the book being run, not of the whole repository."""
     log = logging.getLogger("test")
     (docs / RUNBOOK_REL).unlink()
-    features = docs / "docs" / "features"
-    write(features / "tool" / "command.md", "---\ntype: concept\ntitle: Command\n---\n\n# Command\n")
+    services = docs / "docs" / "services"
+    write(services / "tool" / "command.md", "---\ntype: concept\ntitle: Command\n---\n\n# Command\n")
 
-    beside = qa_runner_mod.ensure_stack(log, str(docs), near=str(features / "tool"))
-    served = qa_runner_mod.ensure_stack(log, str(docs), near=str(features / "app"))
+    beside = qa_runner_mod.ensure_stack(log, str(docs), near=str(services / "tool"))
+    served = qa_runner_mod.ensure_stack(log, str(docs), near=str(services / "app"))
 
     assert beside.ready == "unneeded", beside
     assert served.ready == "none", served
@@ -962,13 +961,13 @@ def test_a_book_that_serves_nothing_brings_up_none_of_its_runbooks(
 ) -> None:
     """A command-line book's service runbook documents a procedure; QA invokes the commands instead."""
     log = logging.getLogger("test")
-    features = docs / "docs" / "features"
-    write(features / "tool" / "command.md", "---\ntype: concept\ntitle: Command\n---\n\n# Command\n")
-    write(features / "tool" / "ops" / "container-job.md",
+    services = docs / "docs" / "services"
+    write(services / "tool" / "command.md", "---\ntype: concept\ntitle: Command\n---\n\n# Command\n")
+    write(services / "tool" / "ops" / "container-job.md",
           "---\ntype: runbook\ntitle: Container job\n---\n\n# Container job\n\n- driver: cli\n\n"
           "## Steps\n\n### serve\n\n- kind: service\n- run: false\n- health: false\n")
 
-    status = qa_runner_mod.ensure_stack(log, str(docs), near=str(features / "tool"))
+    status = qa_runner_mod.ensure_stack(log, str(docs), near=str(services / "tool"))
 
     assert status.ready == "unneeded", status
 
@@ -978,7 +977,7 @@ def _stack_runbook(root: Path, write: Callable[[Path, str], Path], *, name: str,
     """A second stack runbook under `app/ops`, distinct from the `docs` fixture's own."""
     environment = f"- environment: [{env_href}]({env_href}.md)\n" if env_href else ""
     write(
-        root / "docs" / "features" / "app" / "ops" / f"{name}.md",
+        root / "docs" / "services" / "app" / "ops" / f"{name}.md",
         f"---\ntype: runbook\ntitle: {name}\n---\n\n# {name}\n\n- driver: web\n"
         f"- entry-url: http://localhost:{port}\n{environment}\n"
         "## Steps\n\n### serve\n\n- kind: service\n- run: true\n- health: true\n",
@@ -992,7 +991,7 @@ def test_a_refusal_says_what_the_book_declares_not_to_author_one(
     """Several stack runbooks and no name given is a refusal, not an absence."""
     log = logging.getLogger("test")
     write(
-        docs / "docs" / "features" / "app" / "server.md",
+        docs / "docs" / "services" / "app" / "server.md",
         "---\ntype: server\ntitle: App server\n---\n\n# App server\n",
     )
     _stack_runbook(docs, write, name="second-stack", port=2222)
@@ -1012,11 +1011,11 @@ def test_a_shared_environment_brings_both_runbooks_up_together(
     """Two stack runbooks bound to one `environment:` node have a manifest each, not none."""
     log = logging.getLogger("test")
     write(
-        docs / "docs" / "features" / "app" / "server.md",
+        docs / "docs" / "services" / "app" / "server.md",
         "---\ntype: server\ntitle: App server\n---\n\n# App server\n",
     )
     write(
-        docs / "docs" / "features" / "app" / "ops" / "local.md",
+        docs / "docs" / "services" / "app" / "ops" / "local.md",
         "---\ntype: environment\ntitle: local\n---\n\n# local\n\n- local-only: true\n",
     )
     write(
@@ -1045,7 +1044,7 @@ def test_a_shared_environment_brings_both_runbooks_up_together(
 def _per_run_stack(docs: Path, write: Callable[[Path, str], Path]) -> None:
     """The `docs` fixture's runbook, bound to an environment that gives each run its own copy."""
     write(
-        docs / "docs" / "features" / "app" / "ops" / "copy.md",
+        docs / "docs" / "services" / "app" / "ops" / "copy.md",
         "---\ntype: environment\ntitle: Copy\n---\n\n# Copy\n\n- sharing: per-run\n"
         "- addresses:\n  - `gateway`: the browser's front door\n",
     )
@@ -1059,8 +1058,8 @@ def _per_run_stack(docs: Path, write: Callable[[Path, str], Path]) -> None:
 
 
 def _cite(docs: Path, write: Callable[[Path, str], Path], *pages: str) -> None:
-    """The story, citing each of *pages* under `docs/features`."""
-    links = "".join(f"- [{page}](../../../../features/{page})\n" for page in pages)
+    """The story, citing each of *pages* under `docs/services`."""
+    links = "".join(f"- [{page}](../../../../services/{page})\n" for page in pages)
     write(docs / STORY_REL / "story.md", STORY_MD.replace("Users need a thing.\n", f"Users need a thing.\n\n{links}"))
 
 
@@ -1080,7 +1079,7 @@ def test_a_story_that_cites_one_book_brings_up_that_books_stack(
 
     target = qa_nodes.stack_target(log, STORY, "story-1-run", str(docs))
 
-    assert Path(target.near) == docs / "docs" / "features" / "app", target
+    assert Path(target.near) == docs / "docs" / "services" / "app", target
     assert target.env == {"STABLEMATE_LEASE": "story-1-run"}, target
 
 
@@ -1090,7 +1089,7 @@ def test_a_story_that_cites_two_books_names_no_book(
 ) -> None:
     """Pages in two books leave the choice to the stack selection, which sees the whole tree."""
     log = logging.getLogger("test")
-    write(docs / "docs" / "features" / "other" / "server.md", SERVER_MD)
+    write(docs / "docs" / "services" / "other" / "server.md", SERVER_MD)
     _cite(docs, write, "app/server.md", "other/server.md")
 
     assert qa_nodes.stack_target(log, STORY, "story-1-run", str(docs)).near == ""
@@ -1531,7 +1530,7 @@ def test_a_red_rerun_goes_back_as_a_refix_without_an_owner_turn(
     assert okf.runs == 1, okf.runs
 
 
-FIXTURE_PAGE = "docs/features/web-app/fixtures/well-stocked.md"
+FIXTURE_PAGE = "docs/services/web-app/fixtures/well-stocked.md"
 
 
 def _red(sid: str, *causes: str) -> dict[str, Any]:

@@ -1,7 +1,6 @@
 """The docs repo and the code workspace every `fix` flow test drains against."""
 from __future__ import annotations
 
-import json
 import subprocess
 from collections.abc import Callable
 from pathlib import Path
@@ -24,9 +23,9 @@ def workspace(
     docs: Path,
     git: Callable[..., subprocess.CompletedProcess],
     write: Callable[[Path, str], Path],
-    ambient: dict[str, str],
+    name_workspace: Callable[[dict[str, Path]], None],
 ) -> dict[str, Path]:
-    """Two real code repos and the workspace file that names them, outside the docs tree."""
+    """Two real code repos and the named workspace that lists them, outside the docs tree."""
     root = tmp_path / "ws"
     repos: dict[str, Path] = {}
     for name in ("api", "web"):
@@ -37,9 +36,5 @@ def workspace(
         git(path, "add", "-A")
         git(path, "commit", "-qm", "Initial commit")
         repos[name] = path
-    write(
-        root / "acme.code-workspace",
-        json.dumps({"folders": [{"name": n, "path": n} for n in repos]}),
-    )
-    ambient["workspace_file"] = str(root / "acme.code-workspace")
+    name_workspace(repos)
     return repos

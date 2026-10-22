@@ -56,7 +56,7 @@ def repo(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
 
 
 def build(repo: Path) -> Any:
-    return okf.build_okf_context(LOGGER, spec_dir=str(repo / "docs/spec"), docs_path=str(repo))
+    return okf.build_okf_context(LOGGER, spec_dir=str(repo / "docs/spec"), repo_dir=str(repo))
 
 
 def commit(repo: Path, message: str) -> None:
@@ -98,7 +98,7 @@ def test_committing_rebuilds(repo: Path) -> None:
 
 def test_a_different_spec_dir_does_not_read_the_other_ones_memo(repo: Path) -> None:
     build(repo)
-    okf.build_okf_context(LOGGER, spec_dir=str(repo / "docs/other"), docs_path=str(repo))
+    okf.build_okf_context(LOGGER, spec_dir=str(repo / "docs/other"), repo_dir=str(repo))
     assert len(FakeOstler.calls) == 2
 
 
@@ -139,7 +139,7 @@ def test_the_stamp_records_the_key_the_next_visit_recomputes(repo: Path) -> None
         {
             "spec": str(repo.resolve() / "docs/spec"),
             "story_file": "",
-            "features_root": "",
+            "services_root": "",
             "source_roots": [],
             "base": "HEAD",
             "head": "WORKTREE",
@@ -183,7 +183,7 @@ def test_multi_repository_context_is_grouped_and_invalidated_by_source_edits(
     )
 
     okf.build_okf_context(
-        LOGGER, spec_dir=str(repo / "docs/spec"), docs_path=str(repo), story_sources=sources
+        LOGGER, spec_dir=str(repo / "docs/spec"), repo_dir=str(repo), story_sources=sources
     )
     repositories = FakeOstler.contexts[0]["repositories"]
     assert len(repositories) == 1
@@ -191,6 +191,6 @@ def test_multi_repository_context_is_grouped_and_invalidated_by_source_edits(
 
     (source / "src/service.py").write_text("value = 2\n", encoding="utf-8")
     okf.build_okf_context(
-        LOGGER, spec_dir=str(repo / "docs/spec"), docs_path=str(repo), story_sources=sources
+        LOGGER, spec_dir=str(repo / "docs/spec"), repo_dir=str(repo), story_sources=sources
     )
     assert len(FakeOstler.calls) == 2

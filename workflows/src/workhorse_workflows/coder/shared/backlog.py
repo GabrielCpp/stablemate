@@ -157,10 +157,10 @@ def _item_entry(item: dict[str, Any]) -> tuple[str, str]:
 
 @blueprint.node
 def filed_backlog(
-    logger: logging.Logger, spec_dir: str = "", docs_path: str = "", repo_dir: str = ""
+    logger: logging.Logger, spec_dir: str = "", repo_dir: str = ""
 ) -> FiledBacklog:
     """The open `Filed by coder` bullets, and the items the story's QA left to file, so a flow can judge them first."""
-    root = find_docs_root(docs_path, repo_dir)
+    root = find_docs_root(repo_dir)
     backlog = root / paths.backlog_file(root)
     text = backlog.read_text(encoding="utf-8") if backlog.is_file() else ""
     filed = {b.id: b.text for b in backlog_bullets(text, section=FILED_TITLE)}
@@ -185,12 +185,11 @@ def unfiled(
 def file_backlog_items(
     logger: logging.Logger,
     spec_dir: str = "",
-    docs_path: str = "",
     repo_dir: str = "",
     drop: list[str] | None = None,
 ) -> BacklogDrain:
     """Append this story's filed items to the repo backlog, less the ones in `drop`, de-duplicated, then clear them."""
-    root = find_docs_root(docs_path, repo_dir)
+    root = find_docs_root(repo_dir)
     spec = spec_dir.strip()
     if not spec:
         logger.info("no spec_dir supplied — nothing to drain")
@@ -269,13 +268,12 @@ def _filed_as(bullets: list[BacklogBullet], title: str, reason: str) -> str:
 @blueprint.node
 def file_follow_up_backlog(
     logger: logging.Logger,
-    docs_path: str = "",
     parent: str = "",
     follow_ups: list[dict[str, str]] | None = None,
     repo_dir: str = "",
 ) -> BacklogDrain:
     """File a follow-up's own follow-ups to the repo backlog, one level past the run's worklist, and commit them."""
-    root = find_docs_root(docs_path, repo_dir)
+    root = find_docs_root(repo_dir)
     okf = Ostler(root)
     backlog = root / paths.backlog_file(root)
     bullets = backlog_bullets(backlog.read_text(encoding="utf-8")) if backlog.is_file() else []
@@ -343,21 +341,21 @@ def _deferred_text(page: str, obligations: list[dict[str, Any]]) -> str:
     return " ".join([head, *dict.fromkeys(details)])
 
 
-def _feature_path(page: str, features: str, root: Path) -> Path:
-    """A book page's path under the features root, which the context may give as an absolute path."""
-    base = Path(features)
+def _feature_path(page: str, services: str, root: Path) -> Path:
+    """A book page's path under the services root, which the context may give as an absolute path."""
+    base = Path(services)
     if base.is_absolute():
         base = Path(os.path.relpath(base, root))
     path = Path(page)
-    return path.relative_to(base) if features and path.is_relative_to(base) else path
+    return path.relative_to(base) if services and path.is_relative_to(base) else path
 
 
 @blueprint.node
 def file_deferred_obligations(
-    logger: logging.Logger, spec_dir: str = "", docs_path: str = "", repo_dir: str = ""
+    logger: logging.Logger, spec_dir: str = "", repo_dir: str = ""
 ) -> BacklogDrain:
     """File each book page that owes QA a check it could not run to the backlog's own section, which the fix lane leaves alone, and commit it."""
-    root = find_docs_root(docs_path, repo_dir)
+    root = find_docs_root(repo_dir)
     spec = spec_dir.strip()
     context_path = root / spec / CONTEXT_FILE
     if not spec or not context_path.is_file():
@@ -368,14 +366,14 @@ def file_deferred_obligations(
         logger.warning("QA context unreadable: %s", exc)
         return BacklogDrain(notes=f"QA context unreadable: {exc}")
     pages = _deferred_pages(context) if isinstance(context, dict) else {}
-    features = str(context.get("featuresRoot") or "") if isinstance(context, dict) else ""
+    services = str(context.get("servicesRoot") or "") if isinstance(context, dict) else ""
     backlog = root / paths.backlog_file(root)
     filed = {b.id for b in backlog_bullets(backlog.read_text(encoding="utf-8"))} if backlog.is_file() else set()
     okf = Ostler(root)
     appended = 0
     skipped = 0
     for page, obligations in pages.items():
-        rel = _feature_path(page, features, root)
+        rel = _feature_path(page, services, root)
         item_id = kebab(f"book-checks-{rel.with_suffix('')}")
         if item_id in filed or not okf.backlog_add(item_id, _deferred_text(page, obligations), BOOK_CHECKS_TITLE).ok:
             skipped += 1
@@ -392,10 +390,10 @@ def file_deferred_obligations(
 
 @blueprint.node
 def select_fix_item(
-    logger: logging.Logger, docs_path: str = "", backlog_path: str = "", repo_dir: str = ""
+    logger: logging.Logger, backlog_path: str = "", repo_dir: str = ""
 ) -> FixPick:
     """Draw the next drainable bullet from `## Filed by coder`, or report the pool dry."""
-    root = find_docs_root(docs_path, repo_dir)
+    root = find_docs_root(repo_dir)
     rel = paths.backlog_file(root, backlog_path)
     path = root / rel
 
@@ -437,7 +435,6 @@ def seed_fix_story(
     bullet_text: str = "",
     epics_dir: str = "",
     epic: str = "",
-    docs_path: str = "",
     repo_dir: str = "",
 ) -> FixStorySeed:
     """Register the drawn bullet as a single-AC story in the perpetual `fixes` bucket."""
@@ -456,7 +453,7 @@ def seed_fix_story(
             "no bullet_text supplied (expected select_fix_item's fix_bullet_text output)"
         )
 
-    root = find_docs_root(docs_path, repo_dir)
+    root = find_docs_root(repo_dir)
     okf = Ostler(root)
     backlog_rel = paths.backlog_file(root)
     bucket = _ensure_fixes_epic(okf, bucket)
@@ -594,7 +591,6 @@ def _author_story_body(
 def prune_fix_item(
     logger: logging.Logger,
     bullet_id: str = "",
-    docs_path: str = "",
     backlog_path: str = "",
     repo_dir: str = "",
 ) -> FixPruned:
@@ -605,7 +601,7 @@ def prune_fix_item(
         logger.info("no bullet_id supplied — nothing to prune")
         return FixPruned(reason="no bullet_id supplied — nothing to prune")
 
-    root = find_docs_root(docs_path, repo_dir)
+    root = find_docs_root(repo_dir)
     rel = paths.backlog_file(root, backlog_path)
     if Ostler(root).backlog_prune(bullet_id).ok:
         logger.info("pruned '%s' via ostler", bullet_id)

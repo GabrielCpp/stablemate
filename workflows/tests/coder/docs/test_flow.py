@@ -127,7 +127,7 @@ def elsewhere(
     docs: Path,
     git: Callable[..., subprocess.CompletedProcess],
     write: Callable[[Path, str], Path],
-    ambient: dict[str, str],
+    name_workspace: Callable[[dict[str, Path]], None],
 ) -> Path:
     """A code repo *outside* the docs worktree — the multi-repo shape, i.e."""
     root = tmp_path / "ws"
@@ -138,8 +138,7 @@ def elsewhere(
     git(api, "add", "-A")
     git(api, "commit", "-qm", "Initial commit")
     git(api, "commit", "-q", "--allow-empty", "-m", f"feat: seed\n\nStory: {STORY}")
-    write(root / "acme.code-workspace", json.dumps({"folders": [{"name": "api", "path": "api"}]}))
-    ambient["workspace_file"] = str(root / "acme.code-workspace")
+    name_workspace({"api": api})
     return api
 
 
@@ -149,16 +148,14 @@ def alongside(
     docs: Path,
     git: Callable[..., subprocess.CompletedProcess],
     write: Callable[[Path, str], Path],
-    ambient: dict[str, str],
+    name_workspace: Callable[[dict[str, Path]], None],
 ) -> Path:
     """The docs repo *is* the code repo — the single-worktree shape, i.e."""
     (docs / spec_dir() / "plan-context.json").write_text(
         json.dumps(_plan_context("acme"), indent=2), encoding="utf-8"
     )
-    ws = tmp_path / "acme.code-workspace"
-    write(ws, json.dumps({"folders": [{"name": "acme", "path": str(docs)}]}))
+    name_workspace({"acme": docs})
     git(docs, "commit", "-q", "--allow-empty", "-m", f"feat: seed\n\nStory: {STORY}")
-    ambient["workspace_file"] = str(ws)
     return docs
 
 
@@ -171,7 +168,7 @@ class _Agent:
         self,
         *,
         author_status: str = "documented",
-        author_nodes: tuple[str, ...] = ("docs/features/widget.md",),
+        author_nodes: tuple[str, ...] = ("docs/services/widget.md",),
         nodes_until: int | None = None,
         blocked: int = 0,
         explode: set[str] | None = None,
@@ -279,7 +276,7 @@ class _Grounding(_Agent):
 
     def _document_story(self, data: dict[str, Any], nth: int) -> dict[str, Any]:
         if nth >= self.grounds_on:
-            path = self.root / "docs/features/widget.md"
+            path = self.root / "docs/services/widget.md"
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(
                 "---\ntype: concept\nslug: widget\ntitle: Widget\n---\n"
@@ -302,7 +299,7 @@ def test_a_repo_with_no_okf_book_ends_successfully_without_an_agent_turn(
     result = drive_flow(Docs(story=STORY, epic=EPIC), env(), agent)
 
     assert result.status == "not_applicable", result
-    assert result.notes == "no OKF configuration or features tree", result
+    assert result.notes == "no OKF configuration or services tree", result
     assert agent.calls == [], agent.calls
 
 
@@ -327,14 +324,14 @@ def test_sources_outside_the_docs_worktree_take_the_semantic_route(
     drive_flow: Callable[..., Any],
 ) -> None:
     """The multi-repo case: no diff to map, so no packet is built and doctor is the authority."""
-    del ambient["workspace_file"]
+    del ambient["workspace"]
     agent = _Agent()
     run_env = env()
 
     result = drive_flow(Docs(story=STORY, epic=EPIC), run_env, agent)
 
     assert result.status == "passed", result
-    assert result.authored_nodes == ["docs/features/widget.md"], result
+    assert result.authored_nodes == ["docs/services/widget.md"], result
     assert _output(run_env, classify_documentation_context)["mode"] == "semantic"
     assert not (run_env.writer.run_dir / build_okf_context.__name__).exists()
     assert agent.counts() == {"document-story": 1}
@@ -374,7 +371,7 @@ def test_minted_story_maps_an_external_repository_from_its_story_commit(
     class _ExternalGrounding(_Agent):
         def _document_story(self, data: dict[str, Any], nth: int) -> dict[str, Any]:
             write(
-                docs / "docs/features/widget.md",
+                docs / "docs/services/widget.md",
                 "---\ntype: concept\nslug: widget\ntitle: Widget\n---\n"
                 "# Widget\n\n- code: `repo://api/widget.go::Widget`\n",
             )
@@ -512,8 +509,8 @@ def test_a_repair_lap_with_nothing_left_to_edit_keeps_the_nodes_already_named(
 
     assert result.status == "passed", result
     assert agent.authored() == 2, agent.counts()
-    assert [call[7] for call in seen] == [("docs/features/widget.md",)] * 2, seen
-    assert result.authored_nodes == ["docs/features/widget.md"], result
+    assert [call[6] for call in seen] == [("docs/services/widget.md",)] * 2, seen
+    assert result.authored_nodes == ["docs/services/widget.md"], result
 
 
 def test_checks_that_stay_red_past_the_lap_budget_park_instead_of_failing(
@@ -577,7 +574,7 @@ def test_the_grounding_failure_names_the_symbols_not_the_files(
             ],
             "directNodes": [
                 {
-                    "node": "docs/features/widget.md#links",
+                    "node": "docs/services/widget.md#links",
                     "reasons": [
                         {"kind": "changed-code", "ref": f"{controller}::(*LinkController).Create"},
                         {"kind": "changed-code", "ref": f"{settled}::ErrNotFound"},
@@ -594,7 +591,7 @@ def test_the_grounding_failure_names_the_symbols_not_the_files(
         build_status="passed",
         validation_status="passed",
         context_mode="local",
-        author_nodes=("docs/features/widget.md#links",),
+        author_nodes=("docs/services/widget.md#links",),
     )
 
     assert gate.status == "invalid", gate
@@ -630,7 +627,7 @@ def test_grounding_the_enclosing_unit_grounds_what_is_nested_inside_it(
             ],
             "directNodes": [
                 {
-                    "node": "docs/features/widget.md#panel",
+                    "node": "docs/services/widget.md#panel",
                     "reasons": [{"kind": "changed-code", "ref": f"{panel}::Panel"}],
                 }
             ],
@@ -644,7 +641,7 @@ def test_grounding_the_enclosing_unit_grounds_what_is_nested_inside_it(
         build_status="passed",
         validation_status="passed",
         context_mode="local",
-        author_nodes=("docs/features/widget.md#panel",),
+        author_nodes=("docs/services/widget.md#panel",),
     )
 
     assert gate.status == "invalid", gate
@@ -662,7 +659,7 @@ def test_a_doctor_refusal_carries_the_form_the_checker_would_accept(
     write_json: Callable[[Path, Any], Path],
 ) -> None:
     """The same trap as the grounding message above, one gate over."""
-    screen = "docs/features/groom/gui/screens/s.md"
+    screen = "docs/services/groom/gui/screens/s.md"
     write(
         docs / screen,
         "---\ntype: screen\nslug: s\ntitle: S\n---\n# S\n\n"
@@ -690,7 +687,7 @@ def test_every_affected_doctor_error_reaches_the_repair_turn() -> None:
     """Nothing is omitted, because omitting is what made the loop."""
     findings = [
         {
-            "path": "docs/features/groom/gui/screens/s.md",
+            "path": "docs/services/groom/gui/screens/s.md",
             "line": index,
             "code": "unparsed-check",
             "message": "`verify:` names a test id instead of an observation",
@@ -713,7 +710,7 @@ def test_an_over_long_doctor_list_is_spilled_to_a_file_the_note_names(
     write_json: Callable[[Path, Any], Path],
 ) -> None:
     """A list too big for an argv becomes a path, never a truncation."""
-    screen = "docs/features/groom/gui/screens/s.md"
+    screen = "docs/services/groom/gui/screens/s.md"
     components = "".join(
         f"### body{index}\n- role: article\n- name: none\n- placement: mostly the middle\n\n"
         for index in range(200)
@@ -780,7 +777,7 @@ def test_a_deletion_needs_no_code_bullet(
     """A deletion is satisfied on its own — no `code:` bullet names it, because a live bullet pointing at a gone target is exactly what `ostler doctor` rejects as a dangling reference, and there is no marker that exempts a ref from having to exist."""
     deleted = "api/legacy/handler.go"
     write(
-        docs / "docs/features/widget.md",
+        docs / "docs/services/widget.md",
         """---
 type: concept
 slug: widget
@@ -815,7 +812,7 @@ The old handler was retired.
         build_status="passed",
         validation_status="passed",
         context_mode="local",
-        author_nodes=("docs/features/widget.md",),
+        author_nodes=("docs/services/widget.md",),
     )
 
     assert gate.status == "passed", gate
@@ -1047,7 +1044,7 @@ def test_a_run_killed_mid_repair_resumes_knowing_what_was_outstanding(
     assert resume.params["laps"] == 1, resume.params
     assert "one symbol is not directly grounded" in resume.params["report"], resume.params
     assert list(resume.params["obligations"]) == ["api/widget.go::Widget"], resume.params
-    assert list(resume.params["authored_nodes"]) == ["docs/features/widget.md"], resume.params
+    assert list(resume.params["authored_nodes"]) == ["docs/services/widget.md"], resume.params
 
     agent = _Agent()
     result = drive_flow(Docs(**resume.inputs), env(run_dir=run_dir), agent, resume)

@@ -37,12 +37,12 @@ def _entry_result(
     """Of a successful bring-up, the result the caller actually needs to drive."""
     if near and len(results) > 1:
         near_path = Path(near)
-        features_root = path_mod.features_root(graph)
+        services_root = path_mod.services_root(graph)
         near_abs = near_path if near_path.is_absolute() else graph.root / near_path
-        target_surface = graph_mod.surface_of(near_abs, features_root)
+        target_surface = graph_mod.surface_of(near_abs, services_root)
         if target_surface:
             for result, node in zip(results, runbooks, strict=False):
-                if graph_mod.surface_of(node.path, features_root) == target_surface:
+                if graph_mod.surface_of(node.path, services_root) == target_surface:
                     return result
     return results[-1]
 
@@ -67,14 +67,14 @@ def _merge_secrets(manifests: list[dict]) -> tuple[dict[str, str], str]:
 
 def story_near(graph: Graph, story: str) -> str:
     """The feature book a story cites, when every book page it cites sits in that one book."""
-    features = path_mod.features_root(graph)
+    services = path_mod.services_root(graph)
     books = {
-        graph_mod.surface_of(graph.root / str(row["path"]).partition("#")[0], features)
+        graph_mod.surface_of(graph.root / str(row["path"]).partition("#")[0], services)
         for row in query_mod.query(graph, "surfaces-referenced-by-story", story)
         if row.get("kind") == "ui"
     }
     books.discard("")
-    return str(features / books.pop()) if len(books) == 1 else ""
+    return str(services / books.pop()) if len(books) == 1 else ""
 
 
 def copy_lease(*parts: str) -> str:
@@ -96,13 +96,12 @@ def stack_env(logger: logging.Logger, graph: Graph, near: str = "", lease: str =
 
 def release_copy(
     logger: logging.Logger,
-    docs_path: str = "",
     repo_dir: str = "",
     near: str = "",
     lease: str = "",
 ) -> QaOutcome | None:
     """Tear down the copy *lease* holds of a per-run stack, or None when the stack is shared and stays serving."""
-    root = find_docs_root(docs_path, repo_dir)
+    root = find_docs_root(repo_dir)
     near_path = Path(near) if near else None
     if leases.books_near(root, near_path):
         return leases.down(root, lease=lease, near=near_path) if lease else None
@@ -117,13 +116,12 @@ def release_copy(
 
 def ensure_stack(
     logger: logging.Logger,
-    docs_path: str = "",
     repo_dir: str = "",
     near: str = "",
     lease: str = "",
 ) -> StackStatus:
     """Bring the durable QA stack up (or adopt one already serving) before the runner."""
-    root = find_docs_root(docs_path, repo_dir)
+    root = find_docs_root(repo_dir)
     graph = model.load(root)
     near_path = Path(near) if near else None
     if not runbook.has_served_surface(graph, near_path):
@@ -313,7 +311,6 @@ def _mint_qa_secrets(
 def run_qa_plan(
     logger: logging.Logger,
     spec_dir: str = "",
-    docs_path: str = "",
     repo_dir: str = "",
     only: list[str] | None = None,
     plan_file: str | None = None,
@@ -321,7 +318,7 @@ def run_qa_plan(
     lease: str = "",
 ) -> QaPlanRun:
     """Execute the QA plan through ostler and normalize its four-state outcome."""
-    docs_root = find_docs_root(docs_path, repo_dir)
+    docs_root = find_docs_root(repo_dir)
     plan = plan_file if plan_file is not None else str(Path(spec_dir) / QA_PLAN_FILE)
     docs_graph = model.load(docs_root)
     manifests, _selection = runbook.load_stacks(

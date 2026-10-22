@@ -20,7 +20,6 @@ def resolver_args(
     *,
     block_kind: str,
     notes: str,
-    docs_path: str,
     story: StoryPaths | None = None,
 ) -> dict[str, str]:
     """The template arguments a `shared/prompts/resolve-operator.md` turn takes."""
@@ -28,16 +27,16 @@ def resolver_args(
     return {
         "story_path": ident.story_path,
         "spec_dir": ident.spec_dir,
-        "decisions_dir": str(decisions_dir(docs_path, flow.repo_dir)),
+        "decisions_dir": str(decisions_dir(flow.repo_dir)),
         "block_kind": block_kind,
         "block_notes": notes,
         "result_schema": schema_block(OperatorResolution),
     }
 
 
-def decisions_dir(docs_path: str, repo_dir: str) -> Path:
+def decisions_dir(repo_dir: str) -> Path:
     """Where this run's standing decisions live, absolute — see `paths.decisions_dir`."""
-    return paths.decisions_dir(find_docs_root(docs_path, repo_dir))
+    return paths.decisions_dir(find_docs_root(repo_dir))
 
 
 def answered(flow: Workflow, result: OperatorResolution, block_kind: str) -> bool:

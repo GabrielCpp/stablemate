@@ -128,9 +128,9 @@ def workspace(
     docs: Path,
     git: Callable[..., subprocess.CompletedProcess],
     write: Callable[[Path, str], Path],
-    ambient: dict[str, str],
+    name_workspace: Callable[[dict[str, Path]], None],
 ) -> dict[str, Path]:
-    """One real code repo and the workspace file that names it, outside the docs tree."""
+    """One real code repo and the named workspace that lists it, outside the docs tree."""
     root = tmp_path / "ws"
     api = root / "api"
     api.mkdir(parents=True)
@@ -138,8 +138,7 @@ def workspace(
     write(api / "README.md", "# api\n")
     git(api, "add", "-A")
     git(api, "commit", "-qm", "Initial commit")
-    write(root / "acme.code-workspace", json.dumps({"folders": [{"name": "api", "path": "api"}]}))
-    ambient["workspace_file"] = str(root / "acme.code-workspace")
+    name_workspace({"api": api})
     return {"api": api}
 
 
@@ -294,7 +293,7 @@ def _head(repo: Path) -> str:
 
 
 def _dev(docs: Path, operator_mode: str = "auto") -> Dev:
-    return Dev(story=STORY, epic=EPIC, docs_path=str(docs), operator_mode=operator_mode)
+    return Dev(story=STORY, epic=EPIC, operator_mode=operator_mode)
 
 
 def test_a_clean_pass_settles_the_fix_and_records_the_decline(
@@ -388,7 +387,7 @@ def test_a_finding_qa_filed_in_the_parent_run_reaches_the_dev_turn(
     }
     work.file(work.worklist(parent), work.finding_items(STORY, "qa", 1, [qa]), by="qa")
     agent = _Agent(workspace, also_fixed=(f"{STORY}/qa-1.1",))
-    dev = Dev(story=STORY, epic=EPIC, docs_path=str(docs), worklist_dir=str(parent))
+    dev = Dev(story=STORY, epic=EPIC, worklist_dir=str(parent))
 
     result = drive_flow(dev, env(), agent)
 
@@ -441,7 +440,7 @@ def test_a_follow_up_the_story_already_holds_is_not_filed_again_and_a_new_one_na
         ),
         escapes_to="STORY-0",
     )
-    dev = Dev(story=STORY, epic=EPIC, docs_path=str(docs), worklist_dir=str(run))
+    dev = Dev(story=STORY, epic=EPIC, worklist_dir=str(run))
 
     drive_flow(dev, env(), agent)
 
@@ -468,7 +467,7 @@ def test_a_follow_up_the_story_already_did_is_dropped_and_logged_as_done(
         workspace,
         follow_ups=({"title": "Guarantee unique report panel names", "reason": "reworded"},),
     )
-    dev = Dev(story=STORY, epic=EPIC, docs_path=str(docs), worklist_dir=str(run))
+    dev = Dev(story=STORY, epic=EPIC, worklist_dir=str(run))
 
     with caplog.at_level("INFO"):
         drive_flow(dev, env(), agent)
@@ -509,7 +508,7 @@ def test_a_follow_up_that_is_no_product_work_is_not_filed(
     run = _filed_run(tmp_path, docs, ())
     product = {"title": "Paginate the audit log", "reason": "it loads every row"}
     agent = _Agent(workspace, follow_ups=(entry, product), outside={entry["title"]: kind})
-    dev = Dev(story=STORY, epic=EPIC, docs_path=str(docs), worklist_dir=str(run))
+    dev = Dev(story=STORY, epic=EPIC, worklist_dir=str(run))
 
     with caplog.at_level("INFO"):
         drive_flow(dev, env(), agent)
@@ -734,7 +733,7 @@ def test_a_follow_up_turn_needs_no_walk(
     """A follow-up item skips the walk check, whatever the plan holds."""
     _three_criteria(docs, git)
     agent = _Agent(workspace, walk=())
-    dev = Dev(story=STORY, epic=EPIC, docs_path=str(docs), follow_up_title="Tidy the validator")
+    dev = Dev(story=STORY, epic=EPIC, follow_up_title="Tidy the validator")
 
     result = drive_flow(dev, env(), agent)
 

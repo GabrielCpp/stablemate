@@ -82,8 +82,8 @@ services:
       AGENT_SOURCE_MODE: ${AGENT_SOURCE_MODE:-clone}
       AGENT_WORKTREE_ROOT: ${AGENT_WORKTREE_ROOT:-}
 
-      # The repo to check out, for the single-repo case. A workspace file
-      # (AGENT_PARAM_WORKSPACE_FILE) supersedes these and names several.
+      # The repo to check out, for the single-repo case. A named workspace
+      # (AGENT_PARAM_WORKSPACE) supersedes these and names several.
       REPO_URL: ${REPO_URL:-}
       REPO_NAME: ${REPO_NAME:-}
       REPO_BRANCH: ${REPO_BRANCH:-}
@@ -181,11 +181,11 @@ services:
       # handed to a generic runner. To run a workflow this image doesn't carry, add
       # its distribution to the image rather than mounting it.
 
-      # Optional: host directory containing a .code-workspace file, for
-      # multi-repo runs (or non-git sibling folders that can't be cloned — see
+      # Optional: host directory holding the home config whose [workspaces] table
+      # names the repos of a multi-repo run (see
       # workhorse_workflows.kit.workspace's checkout_workspace()). Uncomment and set
-      # WORKSPACE_DIR_HOST, then point AGENT_PARAM_WORKSPACE_FILE at this mount's
-      # target below, not at the host path.
+      # WORKSPACE_DIR_HOST, then point AGENT_CONFIG at this mount's target below,
+      # not at the host path.
       # - type: bind
       #   source: ${WORKSPACE_DIR_HOST:?Set WORKSPACE_DIR_HOST}
       #   target: /mnt/workspace-host

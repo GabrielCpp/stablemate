@@ -35,9 +35,8 @@ The Python entry is `Docs` in `workflows/src/workhorse_workflows/coder/docs/flow
 declares the labelled checkpoints and the owner, check, resolve and read-operator turns the flow
 orchestrates.
 
-`story`, `docs_path`, `workspace_file`, `epic`, `target_env`, `preexisting`, and `operator_mode`
-are checkpointed inputs. Empty docs and workspace paths use the repository's configured
-resolution; `target_env` defaults to `local`, and `operator_mode` defaults to `auto`.
+`story`, `epic`, `target_env`, `preexisting`, and `operator_mode`
+are checkpointed inputs. The `workspace` name is ambient and follows the run; `target_env` defaults to `local`, and `operator_mode` defaults to `auto`.
 
 The stages, in order: [setup](#setup), [context-classification](#context-classification), [own-the-book](#own-the-book), [grounding-gate](#grounding-gate), [operator-block](#operator-block).
 
@@ -81,7 +80,7 @@ available.
 - detail: [coder document-story prompt](../formats/coder-document-story-prompt.md)
 
 One high-power `document-story` turn runs in the story's documentation conversation with no
-timeout. It receives the story, epic, features root, implementation plan summary, context mode,
+timeout. It receives the story, epic, services root, implementation plan summary, context mode,
 the grounding worklist, the last gate report and the last operator answer. The turn writes the
 book and has its subagents review and repair it. It returns `documented`, `not_required`, or a
 blocked result. `not_required` still proceeds to the grounding gate. It means the story changes
@@ -116,7 +115,7 @@ story. It ends the flow with a blocked result carrying the answer as its notes.
 ## Private helpers
 
 The module's private helpers keep state transitions deterministic without becoming workflow
-states. `_brief` renders the story, epic, context, features root and plan summary shared by every
+states. `_brief` renders the story, epic, context, services root and plan summary shared by every
 owner turn. `_context_mode` treats a manifest-resolved external source repository as locally
 verifiable when the resolved story sources are present, and otherwise preserves the classifier's
 local or semantic mode. `_epic_path` derives the parent epic path through configured docs-root

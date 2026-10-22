@@ -112,6 +112,24 @@ def ambient() -> dict[str, str]:
 
 
 @pytest.fixture
+def name_workspace(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, ambient: dict[str, str]
+) -> Callable[[dict[str, Path]], None]:
+    """Write a home config whose `acme` workspace names these repos, and hand the run its name."""
+
+    def _name(repos: dict[str, Path]) -> None:
+        config = tmp_path / "home-config.toml"
+        entries = ", ".join(
+            f'{{ path = "{path}", name = "{name}" }}' for name, path in repos.items()
+        )
+        config.write_text(f"[workspaces]\nacme = [{entries}]\n", encoding="utf-8")
+        monkeypatch.setenv("STABLEMATE_CONFIG", str(config))
+        ambient["workspace"] = "acme"
+
+    return _name
+
+
+@pytest.fixture
 def drive_flow(ambient: dict[str, str]) -> Callable[..., Any]:
     """`drive`, with the scripted agent handed to the run rather than patched in."""
 

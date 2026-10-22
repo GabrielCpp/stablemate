@@ -164,7 +164,7 @@ def write_boundary_params(path: Path, params: Mapping[str, str]) -> Path:
 def checkout(env: Mapping[str, str], params: Mapping[str, str]) -> None:
     """Materialise the working trees the run needs, before the engine starts."""
     workspace.checkout_workspace(
-        params.get("workspace_file", ""),
+        params.get("workspace", ""),
         env.get("WORKSPACE_ROOT") or "/workspace",
         repo_url=env.get("REPO_URL", ""),
         repo_name=env.get("REPO_NAME") or "repo",

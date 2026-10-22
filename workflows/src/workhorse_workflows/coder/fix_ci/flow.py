@@ -37,8 +37,6 @@ class FixCi(Workflow):
     repo: str = ""
     branch: str = ""
     pr_number: str = ""
-    docs_path: str = ""
-    workspace_file: str = ""
     operator_mode: str = "auto"
     base: str = ""
 
@@ -46,7 +44,7 @@ class FixCi(Workflow):
 
     def setup(self) -> WorkspaceDirs:
         """Every directory the owner may read: the workspace repos, plus the docs root."""
-        return self.call(resolve_workspace_dirs, self.docs_path)
+        return self.call(resolve_workspace_dirs)
 
     def start(self, loop: CiLoop | None = None) -> Continue | Done:
         """Take the next repo whose CI has not been looked at, or finish."""
@@ -233,7 +231,7 @@ class FixCi(Workflow):
             timeout=UNBOUNDED,
             add_dirs=list(self.ctx.dirs),
             args=resolver_args(
-                self, block_kind="ci", notes=notes, docs_path=self.docs_path, story=self._gate()
+                self, block_kind="ci", notes=notes, story=self._gate()
             ),
         )
         if answered(self, result, "ci"):

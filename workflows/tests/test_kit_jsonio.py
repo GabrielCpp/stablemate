@@ -1,4 +1,4 @@
-"""Tests for kit.load_jsonc — the reader for VSCode `.code-workspace` files."""
+"""Tests for kit.load_jsonc — the reader for JSON with comments."""
 from __future__ import annotations
 
 import pytest

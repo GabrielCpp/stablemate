@@ -17,7 +17,7 @@ repository directory rather than the process working directory.
 
 ### select_ci_repo
 
-- sig: `select_ci_repo(logger: logging.Logger, repo: str = "", processed: list[str] | None = None, workspace_file: str = "", launch_dir: str = "") -> CiRepoPick`
+- sig: `select_ci_repo(logger: logging.Logger, repo: str = "", processed: list[str] | None = None, workspace: str = "", launch_dir: str = "") -> CiRepoPick`
 - does: resolves repositories from the workspace file and launch directory
 - verify: count(subject="workspace repositories resolved for the CI loop", equals=1)
 - does: selects the named repository when it is present and not already processed

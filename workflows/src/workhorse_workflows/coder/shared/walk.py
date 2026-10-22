@@ -47,13 +47,12 @@ def acceptance_walk(
     logger: logging.Logger,
     story_path: str = "",
     spec_dir: str = "",
-    docs_path: str = "",
     repo_dir: str = "",
 ) -> WalkCheck:
     """Which of the story's criteria the plan's acceptance walk leaves out."""
     story = Path(story_path)
     if not story.is_absolute():
-        story = find_docs_root(docs_path, repo_dir) / story
+        story = find_docs_root(repo_dir) / story
     spec = Path(spec_dir)
     if not spec.is_absolute():
         spec = find_repo_root(repo_dir) / spec

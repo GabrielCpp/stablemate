@@ -36,7 +36,7 @@ node identity so its recorded output cannot overwrite the parent story's prepara
 - code: `workflows/src/workhorse_workflows/coder/shared/story.py::guard_story_file` @153899b5f2f0
 
 ### prepare_story
-- sig: `prepare_story(logger, docs_path: str = "", story: str = "", epic: str = "", repo_dir: str = "") -> StoryPaths`
+- sig: `prepare_story(logger, story: str = "", epic: str = "", repo_dir: str = "") -> StoryPaths`
 - does: returns blank paths when no story slug is supplied
 - verify: json_path(path="$.story_slug", equals="")
 - does: discovers the epic by scanning the configured epics tree when no epic is supplied
@@ -57,7 +57,7 @@ node identity so its recorded output cannot overwrite the parent story's prepara
 - detail: [Story paths](../formats/story-paths.md)
 
 ### resolve_workspace_dirs
-- sig: `resolve_workspace_dirs(logger, docs_path: str = "", repo_dir: str = "", workspace_file: str = "") -> WorkspaceDirs`
+- sig: `resolve_workspace_dirs(logger, repo_dir: str = "", workspace: str = "") -> WorkspaceDirs`
 - does: resolves readable workspace repository directories from the workspace file and repository root
 - verify: count(subject="resolved workspace directory results", equals=1)
 - does: prepends the docs root when it is not already one of the resolved directories
@@ -77,7 +77,7 @@ node identity so its recorded output cannot overwrite the parent story's prepara
 - detail: [Workflow workspace directories](../formats/workspace-dirs.md)
 
 ### stamp_specs
-- sig: `stamp_specs(logger, docs_path: str = "", story_slug: str = "", repo_dir: str = "") -> SpecsStamped`
+- sig: `stamp_specs(logger, story_slug: str = "", repo_dir: str = "") -> SpecsStamped`
 - does: leaves the run successful without stamping when no story slug or spec directory exists
 - verify: count(subject="no-op spec stamping passes", equals=1)
 - does: gives each direct markdown spec document an OKF type without rewriting an already typed document
@@ -90,7 +90,7 @@ node identity so its recorded output cannot overwrite the parent story's prepara
 - detail: [Stamped specs result](../formats/specs-stamped.md)
 
 ### prepare_fix_story
-- sig: `prepare_fix_story(logger, docs_path: str = "", story: str = "", epic: str = "", repo_dir: str = "") -> StoryPaths`
+- sig: `prepare_fix_story(logger, story: str = "", epic: str = "", repo_dir: str = "") -> StoryPaths`
 - does: resolves a backlog fix story with the same paths, authored gate, and identity fields as ordinary story preparation
 - verify: count(subject="backlog fix story preparations", equals=1)
 - does: records the fix preparation under a distinct node identity so it cannot overwrite the parent story preparation output

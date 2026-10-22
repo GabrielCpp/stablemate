@@ -40,12 +40,12 @@ def select_ci_repo(
     logger: logging.Logger,
     repo: str = "",
     processed: list[str] | None = None,
-    workspace_file: str = "",
+    workspace: str = "",
     launch_dir: str = "",
 ) -> CiRepoPick:
     """The next repo whose CI has not been looked at yet, or "none left"."""
     seen = list(processed or [])
-    repos = resolve_workspace(workspace_file, launch_dir)
+    repos = resolve_workspace(workspace, launch_dir)
 
     if repo:
         if repo in seen:

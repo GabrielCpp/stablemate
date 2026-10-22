@@ -39,7 +39,7 @@ make check-no-env    # from the repo root, on its own
 ```
 
 The full rule, including `Workflow.injects` for the ambient paths
-(`repo_dir`/`docs_path`/`workspace_file`), is in [README.md](README.md).
+(`repo_dir`/`workspace`/`library_dirs`), is in [README.md](README.md).
 
 ## A workflow never gives up — it can only be blocked (load-bearing)
 

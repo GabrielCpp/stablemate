@@ -23,14 +23,13 @@ def resolve_review_context(
     logger: logging.Logger,
     spec_dir: str = "",
     repo: str = "",
-    docs_path: str = "",
     repo_dir: str = "",
-    workspace_file: str = "",
+    workspace: str = "",
 ) -> ReviewContext:
     """Where the review turns run, and which code repos they may read."""
-    root = find_docs_root(docs_path, repo_dir)
+    root = find_docs_root(repo_dir)
     plan_ctx = load_plan_context(root, spec_dir, logger)
-    repos = resolve_workspace(workspace_file, repo_dir)
+    repos = resolve_workspace(workspace, repo_dir)
     names = [repo] if (not plan_ctx and repo) else get_affected_repos(plan_ctx, repos)
     return ReviewContext(
         docs_repo_path=str(root),
@@ -94,7 +93,6 @@ def evidence_gap(answer: dict, repos: list[str], changed: dict[str, list[str]]) 
 @blueprint.node
 def settle_findings(
     logger: logging.Logger,
-    docs_path: str = "",
     story_slug: str = "",
     story_id: str = "",
     filed: list[str] | None = None,
@@ -102,7 +100,7 @@ def settle_findings(
     repo_dir: str = "",
 ) -> Settlement:
     """Settle the filed finding ids against the dev owner's answer list, checking each fix's evidence, and commit the ledger."""
-    root = find_docs_root(docs_path, repo_dir)
+    root = find_docs_root(repo_dir)
     ids = list(filed or [])
     code = [repo for repo in (repos or []) if Path(repo).is_dir()]
     okf = Ostler(root)

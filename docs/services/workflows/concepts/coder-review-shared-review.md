@@ -20,12 +20,12 @@ settled.
 
 ### resolve_review_context
 
-- sig: `resolve_review_context(logger, spec_dir="", repo="", docs_path="", repo_dir="", workspace_file="") -> ReviewContext`
-- does: resolves the documentation repository from `docs_path` and `repo_dir`
+- sig: `resolve_review_context(logger, spec_dir="", repo="", repo_dir="", workspace="") -> ReviewContext`
+- does: resolves the documentation repository from `repo_dir`, or the artifacts dir while a workspace is active
 - verify: json_path(path="$.docs_repo_path", equals="docs/stories/acme-story/story.md")
 - does: loads `plan-context.json` from the resolved story spec directory when `spec_dir` is non-empty
 - verify: count(subject="review plan-context reads", equals=1)
-- does: resolves workspace repository records from `workspace_file`, falling back to `repo_dir` as a single repository
+- does: resolves workspace repository records from the named `workspace`, falling back to `repo_dir` as a single repository
 - verify: count(subject="review workspace resolutions", equals=1)
 - does: selects the explicitly named `repo` as the affected set when no plan context exists
 - verify: json_path(path="$.affected_repo_paths", equals="example affected repo paths")
@@ -49,7 +49,7 @@ settled.
 
 ### settle_findings
 
-- sig: `settle_findings(logger, docs_path="", story_slug="", story_id="", filed=None, repos=None, repo_dir="") -> Settlement`
+- sig: `settle_findings(logger, story_slug="", story_id="", filed=None, repos=None, repo_dir="") -> Settlement`
 - does: settles the filed finding ids against the dev owner's answer list through Ostler and writes the settlement ledger
 - verify: persists(subject="the review settlement ledger")
 - does: commits the ledger as a `docs` commit when it lies inside the documentation repository

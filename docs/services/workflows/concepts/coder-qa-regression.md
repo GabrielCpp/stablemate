@@ -46,7 +46,7 @@ book's verification index for diagnosis only.
 ## Methods
 
 ### detect_regression_suites
-- sig: `detect_regression_suites(logger: logging.Logger, spec_dir: str = "", repo_dir: str = "", workspace_file: str = "") -> RegressionSuites`
+- sig: `detect_regression_suites(logger: logging.Logger, spec_dir: str = "", repo_dir: str = "", workspace: str = "") -> RegressionSuites`
 - does: loads `plan-context.json` from the spec dir through the shared `load_plan_context` when `spec_dir` is supplied and treats an unreadable or absent context as an empty service list
 - verify: count(subject="regression plan-context reads", equals=1)
 - does: resolves each planned service in the workspace and skips services whose repository has no resolved path

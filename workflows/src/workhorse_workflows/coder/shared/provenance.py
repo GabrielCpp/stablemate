@@ -59,11 +59,10 @@ def resolve_story_sources(
     dispatch: tuple[DispatchEntry, ...],
     story_slug: str = "",
     story_id: str = "",
-    docs_path: str = "",
     repo_dir: str = "",
 ) -> StorySources:
     """Resolve each implementation repository to the parent before this story began."""
-    docs_root = Path(find_docs_root(docs_path, repo_dir)).resolve()
+    docs_root = Path(find_docs_root(repo_dir)).resolve()
     dispatch_roots = {
         Path(entry.cwd).resolve() for entry in dispatch if entry.cwd
     }

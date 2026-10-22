@@ -5,7 +5,7 @@ import logging
 from pathlib import Path
 
 from ostler import registry
-from workhorse_workflows.kit import commit_paths, find_repo_root
+from workhorse_workflows.kit import commit_paths, find_docs_root
 from workhorse_workflows.author.shared.nodes.blueprint import blueprint
 from workhorse_workflows.author.shared.schemas.main import Committed
 
@@ -41,7 +41,7 @@ def commit_author(
     id_registry: str = ".agents/ids.json",
 ) -> Committed:
     """Commit the epic/story docs this run wrote, in the one repo it wrote them in."""
-    repo_root = find_repo_root(repo_dir)
+    repo_root = find_docs_root(repo_dir)
     if not (repo_root / ".git").exists():
         logger.info("no .git at %s — nothing to commit", repo_root)
         return Committed()

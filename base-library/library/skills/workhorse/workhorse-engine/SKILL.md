@@ -252,7 +252,7 @@ this package: `workhorse/cli/run.py` and `workhorse/supervisor.py` translate `$F
 `--params` once, on the way in. That is why `repo_dir` reaches every workflow without any
 of them reading `AGENT_REPO_DIR`.
 
-The ambient paths — `repo_dir`, `docs_path`, `workspace_file` — are the shape that used to
+The ambient paths — `repo_dir`, `workspace`, `library_dirs` — are the shape that used to
 be an environment read: wanted by every second node, chosen by no state. They are fields,
 and `Workflow.injects` (see `coder/shared/paths.AMBIENT`) fills them into any node or sub-flow
 declaring a parameter of the same name that was not passed one. A callsite value always
@@ -260,11 +260,11 @@ wins; an empty field injects nothing, so the target's own default stands.
 
 ```python
 # in the Workflow subclass
-injects: ClassVar[tuple[str, ...]] = ("repo_dir", "docs_path", "workspace_file")
+injects: ClassVar[tuple[str, ...]] = ("repo_dir", "workspace")
 
 # the node just declares what it wants — the callsite says nothing
-def collect(logger: Logger, docs_path: str = "", repo_dir: str = "") -> Docs:
-    root = kit.find_docs_root(docs_path, repo_dir)
+def collect(logger: Logger, repo_dir: str = "") -> Docs:
+    root = kit.find_docs_root(repo_dir)
 ```
 
 One exception, and it is a security property rather than an exemption: `kit/credentials.py`

@@ -15,7 +15,7 @@ recorded from `setup` and carried forward, one recomputed by `start` on every pa
 source assigns them no priority or preference between them.
 
 Both are exercised by the same `workspace` pytest fixture: two real Git repositories plus the
-`.code-workspace` manifest that names them, built once per test and read by both
+named workspace that lists them, built once per test and read by both
 `resolve_workspace_dirs` (behind `setup`) and `select_ci_repo` (behind `start`). Sharing that
 fixture is a test-setup convenience, not a relationship between the two result formats
 themselves — it grounds both format nodes in `workflows/tests/coder/fix_ci/test_flow.py` because

@@ -75,7 +75,9 @@ class Workflow(BaseModel):
 
     library_dirs: tuple[str, ...] = ()
 
-    injects: ClassVar[tuple[str, ...]] = ("repo_dir", "library_dirs")
+    workspace: str = ""
+
+    injects: ClassVar[tuple[str, ...]] = ("repo_dir", "workspace", "library_dirs")
 
     INFRA_NODES: ClassVar[frozenset[Any]] = frozenset()
 

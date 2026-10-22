@@ -33,16 +33,13 @@ contains `agents.yml` or `.git`.
 
 ### find_docs_root
 
-The documentation-root resolver gives an absolute `docs_path` precedence. A relative
-`docs_path` is interpreted beneath the repository resolved from `repo_dir`; an empty
-`docs_path` resolves to that repository root directly.
+The documentation-root resolver returns the artifacts dir while a workspace is active. Without
+one it resolves the repository root from `repo_dir`.
 
-- sig: `find_docs_root(docs_path: str = "", repo_dir: str | Path = "") -> Path`
-- does: when `docs_path` is absolute and non-empty, resolves and returns that path without joining it to the repository root
-- verify: count(subject="absolute documentation root resolution result", equals=1)
-- does: when `docs_path` is relative and non-empty, joins it to `find_repo_root(repo_dir)` before resolving the result
-- verify: count(subject="relative documentation root resolution result", equals=1)
-- does: when `docs_path` is empty, returns the repository root resolved from `repo_dir` or the current working directory discovery rules
+- sig: `find_docs_root(repo_dir: str | Path = "") -> Path`
+- does: when a workspace is active, returns the artifacts dir
+- verify: count(subject="workspace documentation root resolution result", equals=1)
+- does: otherwise returns the repository root resolved from `repo_dir` or the current working directory discovery rules
 - verify: count(subject="default documentation root resolution result", equals=1)
 - returns: the selected documentation root as an absolute `Path`
 - verify: count(subject="absolute documentation root result", equals=1)

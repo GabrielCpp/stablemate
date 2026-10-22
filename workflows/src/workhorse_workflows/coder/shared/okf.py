@@ -135,17 +135,16 @@ def build_okf_context(
     logger: logging.Logger,
     spec_dir: str = "",
     story_file: str = "",
-    features_root: str = "",
+    services_root: str = "",
     source_roots: tuple[str, ...] = (),
     base: str = "HEAD",
     head: str = "WORKTREE",
-    docs_path: str = "",
     repo_dir: str = "",
     preexisting: tuple[str, ...] = (),
     story_sources: tuple[StorySource, ...] = (),
 ) -> OkfContextResult:
     """Map a diff onto the OKF graph and write the obligation packet into the spec dir."""
-    docs_root = find_docs_root(docs_path, repo_dir)
+    docs_root = find_docs_root(repo_dir)
     held = Path(docs_root).resolve()
     checkouts = {Path(source.checkout).resolve() for source in story_sources if source.checkout}
     inherited = sorted(
@@ -188,7 +187,7 @@ def build_okf_context(
     arguments: dict[str, object] = {
         "spec": str(spec_path),
         "story_file": story_file,
-        "features_root": features_root,
+        "services_root": services_root,
         "source_roots": sorted(source_roots),
         "base": base,
         "head": head,
@@ -215,7 +214,7 @@ def build_okf_context(
             base=base,
             head=head,
             spec=spec_dir,
-            features_root=features_root,
+            services_root=services_root,
             story_file=story_file or None,
             exclude_paths=inherited,
             repositories=repositories,
@@ -226,7 +225,7 @@ def build_okf_context(
             head=head,
             spec=spec_dir,
             source_roots=parse_source_roots(list(source_roots)),
-            features_root=features_root,
+            services_root=services_root,
             story_file=story_file or None,
             exclude_paths=inherited,
         )
@@ -246,11 +245,10 @@ def validate_okf_context(
     logger: logging.Logger,
     spec_dir: str = "",
     build_status: str = "invalid",
-    docs_path: str = "",
     repo_dir: str = "",
 ) -> OkfContextResult:
     """Re-check the packet the builder wrote, and carry the builder's verdict forward."""
-    docs_root = find_docs_root(docs_path, repo_dir)
+    docs_root = find_docs_root(repo_dir)
     outcome = Ostler(docs_root).qa_context_validate(spec=spec_dir)
     status: Literal["passed", "invalid"] = (
         "passed" if outcome.ok and build_status == "passed" else "invalid"

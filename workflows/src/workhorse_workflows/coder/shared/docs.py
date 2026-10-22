@@ -26,7 +26,7 @@ CONTEXT_FILE = "qa-okf-context.json"
 
 CONFIG_FILES = ("ostler.yml", "ostler.yaml", "agents.yml", ".agents.yml")
 
-MANAGED_KINDS = ("epics", "features")
+MANAGED_KINDS = ("epics", "services")
 
 DIRECT_KINDS = {"changed-code", "file-owner", "surface-owner"}
 
@@ -241,15 +241,14 @@ def _clear_doctor_errors(spec_root: Path) -> None:
 @blueprint.node
 def detect_okf_docs(
     logger: logging.Logger,
-    docs_path: str = "",
-    features_subdir: str = "",
+    services_subdir: str = "",
     repo_dir: str = "",
 ) -> OkfDetection:
     """Are this run's docs managed by an OKF graph, so documenting the story means anything?"""
-    base = Path(find_docs_root(docs_path, repo_dir))
-    sub = Path(features_subdir) if features_subdir else None
+    base = Path(find_docs_root(repo_dir))
+    sub = Path(services_subdir) if services_subdir else None
     if sub is None:
-        requested = okf_path.features_root_in(base)
+        requested = okf_path.services_root_in(base)
     else:
         requested = sub if sub.is_absolute() else base / sub
 
@@ -274,8 +273,8 @@ def detect_okf_docs(
         for path in (requested, *(okf_path.doc_root_in(base, kind) for kind in MANAGED_KINDS))
     ) or (base / ".agents/templates.yml").is_file()
     if not configured and not managed_tree:
-        logger.info("no OKF configuration or features at %s", base)
-        return OkfDetection(has_okf="no", reason="no OKF configuration or features tree")
+        logger.info("no OKF configuration or services at %s", base)
+        return OkfDetection(has_okf="no", reason="no OKF configuration or services tree")
 
     okf = Ostler(base)
     try:
@@ -284,27 +283,26 @@ def detect_okf_docs(
         logger.error("OKF configuration exists but the graph did not load at %s", base)
         return OkfDetection(
             has_okf="invalid",
-            features_root=str(requested),
+            services_root=str(requested),
             reason="OKF configuration exists but the graph did not load",
         )
-    features = okf.graph.doc_roots.get("features") or requested
-    logger.info("ostler graph loaded and %s exists — has OKF docs", features)
+    services = okf.graph.doc_roots.get("services") or requested
+    logger.info("ostler graph loaded and %s exists — has OKF docs", services)
     return OkfDetection(
         has_okf="yes",
-        features_root=str(features),
-        reason=f"ostler graph loaded and {features} exists",
+        services_root=str(services),
+        reason=f"ostler graph loaded and {services} exists",
     )
 
 
 @blueprint.node
 def classify_documentation_context(
     logger: logging.Logger,
-    docs_path: str = "",
     source_roots: tuple[str, ...] = (),
     repo_dir: str = "",
 ) -> ContextClassification:
     """Deterministic local diff mapping, or semantic multi-repo review?"""
-    docs_root = Path(find_docs_root(docs_path, repo_dir)).resolve()
+    docs_root = Path(find_docs_root(repo_dir)).resolve()
     try:
         working_dir = open_repo(docs_root).working_tree_dir
         worktree = Path(working_dir).resolve() if working_dir else None
@@ -344,7 +342,6 @@ def classify_documentation_context(
 @blueprint.node
 def verify_story_documentation(
     logger: logging.Logger,
-    docs_path: str = "",
     spec_dir: str = "",
     author_status: Literal["documented", "not_required", "blocked"] = "blocked",
     build_status: Literal["", "passed", "invalid"] = "invalid",
@@ -355,7 +352,7 @@ def verify_story_documentation(
     preexisting: tuple[str, ...] = (),
 ) -> DocumentationGate:
     """Fail-closed conformance and direct-grounding gate over one story's OKF update."""
-    docs_root = Path(find_docs_root(docs_path, repo_dir))
+    docs_root = Path(find_docs_root(repo_dir))
     spec = Path(spec_dir)
     spec_root = spec if spec.is_absolute() else docs_root / spec
     nodes = [str(node) for node in author_nodes]
@@ -456,7 +453,6 @@ def verify_story_documentation(
 @blueprint.node
 def documentation_obligations(
     logger: logging.Logger,
-    docs_path: str = "",
     spec_dir: str = "",
     context_mode: str = "local",
     build_status: str = "",
@@ -468,7 +464,7 @@ def documentation_obligations(
         return DocumentationObligations(
             notes="semantic mode: no diff packet, so no deterministic worklist"
         )
-    docs_root = Path(find_docs_root(docs_path, repo_dir))
+    docs_root = Path(find_docs_root(repo_dir))
     spec = Path(spec_dir)
     packet_path = (spec if spec.is_absolute() else docs_root / spec) / CONTEXT_FILE
     packet = load_json(packet_path, CONTEXT_FILE, logger)
@@ -487,16 +483,16 @@ def documentation_obligations(
     )
 
 
-def features_root(flow: Workflow) -> str:
+def services_root(flow: Workflow) -> str:
     """Where the OKF feature docs live, as `detect_okf_docs` resolved it in `setup`."""
-    return flow.output(detect_okf_docs).features_root
+    return flow.output(detect_okf_docs).services_root
 
 
 __all__ = [
     "classify_documentation_context",
     "detect_okf_docs",
     "documentation_obligations",
-    "features_root",
+    "services_root",
     "ungrounded_refs",
     "verify_story_documentation",
 ]

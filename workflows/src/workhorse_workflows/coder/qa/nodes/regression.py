@@ -220,12 +220,12 @@ def _attribute_failures(result: RegressionRun, index: list) -> RegressionRun:
 
 @blueprint.node
 def detect_regression_suites(
-    logger: logging.Logger, spec_dir: str = "", repo_dir: str = "", workspace_file: str = ""
+    logger: logging.Logger, spec_dir: str = "", repo_dir: str = "", workspace: str = ""
 ) -> RegressionSuites:
     """Which committed journey suites did the approved plan put at risk?"""
     root = find_repo_root(repo_dir)
     plan_ctx = load_plan_context(root, spec_dir, logger)
-    repos = resolve_workspace(workspace_file, repo_dir)
+    repos = resolve_workspace(workspace, repo_dir)
 
     suites: list[RegressionSuite] = []
     for svc in plan_ctx.get("services") or []:

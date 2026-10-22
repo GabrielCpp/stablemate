@@ -51,13 +51,12 @@ def _dirty_entries(root: Path, owner: str = "") -> list[str]:
 @blueprint.node
 def snapshot_worktree_state(
     logger: logging.Logger,
-    docs_path: str = "",
     repo_dir: str = "",
     roots: list[str] | None = None,
 ) -> DirtyAtStart:
     """Record what was already dirty before this story's first dev turn, in the docs root or in each of *roots*."""
     if roots is None:
-        checkouts = [(Path(find_docs_root(docs_path, repo_dir)).resolve(), "")]
+        checkouts = [(Path(find_docs_root(repo_dir)).resolve(), "")]
     else:
         checkouts = [(resolved, str(resolved)) for resolved in (Path(r).resolve() for r in roots)]
     entries: list[str] = []
@@ -89,10 +88,10 @@ def snapshot_owner_baseline(
 GIT_TIMEOUT = 60
 
 
-def _code_repos(docs_path: str, repo_dir: str, workspace_file: str) -> list[Path]:
+def _code_repos(repo_dir: str, workspace: str) -> list[Path]:
     """The workspace repos the clean-tree gate covers: everything but the docs root."""
-    docs_root = find_docs_root(docs_path, repo_dir).resolve()
-    repos = resolve_workspace(workspace_file, repo_dir)
+    docs_root = find_docs_root(repo_dir).resolve()
+    repos = resolve_workspace(workspace, repo_dir)
     return [
         path
         for repo in repos.values()
@@ -115,9 +114,9 @@ def _git(repo: Path, *args: str) -> str | None:
     return result.stdout if result.returncode == 0 else None
 
 
-def _code_state(docs_path: str, repo_dir: str, workspace_file: str) -> dict[str, str]:
+def _code_state(repo_dir: str, workspace: str) -> dict[str, str]:
     state: dict[str, str] = {}
-    for repo in _code_repos(docs_path, repo_dir, workspace_file):
+    for repo in _code_repos(repo_dir, workspace):
         head = _git(repo, "rev-parse", "HEAD")
         status = _git(repo, "status", "--porcelain")
         if head is not None and status is not None:
@@ -127,22 +126,21 @@ def _code_state(docs_path: str, repo_dir: str, workspace_file: str) -> dict[str,
 
 @blueprint.node
 def snapshot_code_state(
-    logger: logging.Logger, docs_path: str = "", repo_dir: str = "", workspace_file: str = ""
+    logger: logging.Logger, repo_dir: str = "", workspace: str = ""
 ) -> PorcelainSnapshot:
     """Record each code repo's HEAD and porcelain status, so later edits and commits both show."""
-    return PorcelainSnapshot(status=_code_state(docs_path, repo_dir, workspace_file))
+    return PorcelainSnapshot(status=_code_state(repo_dir, workspace))
 
 
 @blueprint.node
 def code_changed(
     logger: logging.Logger,
     before: dict[str, str] | None = None,
-    docs_path: str = "",
     repo_dir: str = "",
-    workspace_file: str = "",
+    workspace: str = "",
 ) -> CodeChange:
     """Whether any code repo moved since `snapshot_code_state`, or there is no code repo to watch."""
-    now = _code_state(docs_path, repo_dir, workspace_file)
+    now = _code_state(repo_dir, workspace)
     return CodeChange(changed=not now or now != (before or {}))
 
 

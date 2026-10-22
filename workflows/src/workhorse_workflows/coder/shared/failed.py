@@ -50,7 +50,7 @@ def _last_session(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
 @blueprint.node
 def last_failed_scenarios(
-    logger: logging.Logger, spec_dir: str = "", docs_path: str = "", repo_dir: str = ""
+    logger: logging.Logger, spec_dir: str = "", repo_dir: str = ""
 ) -> FailedScenarios:
     """The scenarios whose asserts did not all pass in the last scored QA run of this spec dir."""
     spec = Path(spec_dir)

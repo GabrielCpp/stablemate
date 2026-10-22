@@ -12,7 +12,7 @@ read the result. Each command changes its own entity, so only the story rename d
 last.
 
 - binary: ostler
-- code: ostler/ostler/cli.py::main@03c9e301c36d
+- code: ostler/ostler/cli.py::main@d36715768389
 
 ## Commands
 
@@ -23,25 +23,25 @@ last.
   - --check (change nothing and exit 1 when any page is not canonical)
 - args: PATH ... (the pages to check; default is every page of the book)
 - exits: 1 when a listed page is not canonical, 0 when all are
-- run: invoke(argv=["-C", "edit-scratch", "fmt", "--check", "docs/features/demo/tidy.md"], env={"STABLEMATE_ARTIFACTS_DIR": "edit-scratch/art"})
+- run: invoke(argv=["-C", "edit-scratch", "fmt", "--check", "docs/services/demo/tidy.md"], env={"STABLEMATE_ARTIFACTS_DIR": "edit-scratch/art"})
 - verify: exit_status(code=1)
-- verify: stdout(matches="(?m)^would reformat: docs/features/demo/tidy\\.md$")
+- verify: stdout(matches="(?m)^would reformat: docs/services/demo/tidy\\.md$")
 - fixture: [edit scratch repo](fixtures/edit-scratch-repo.md) with an edit scratch repo whose book
   and story have not been edited yet
-- code: ostler/ostler/fmt.py::format_text@0b4173a8a0cb
+- code: ostler/ostler/fmt.py::format_text@aa3a632453a3
 
 ### ostler-fmt
 - usage: ostler fmt [PATH ...]: rewrites each page into canonical form: frontmatter keys in order,
   bullets spaced and ordered, headings cased and a wikilink turned into a markdown link
 - args: PATH ... (the pages to format; default is every page of the book)
 - exits: 0 when every page is rewritten or already canonical
-- run: invoke(argv=["-C", "edit-scratch", "fmt", "docs/features/demo/tidy.md"], env={"STABLEMATE_ARTIFACTS_DIR": "edit-scratch/art"})
+- run: invoke(argv=["-C", "edit-scratch", "fmt", "docs/services/demo/tidy.md"], env={"STABLEMATE_ARTIFACTS_DIR": "edit-scratch/art"})
 - verify: exit_status(code=0)
-- verify: stdout(matches="(?m)^reformatted: docs/features/demo/tidy\\.md$")
-- verify: contents(subject="edit-scratch/docs/features/demo/tidy.md", matches="See \\[rec\\]\\(rec\\) for the record")
+- verify: stdout(matches="(?m)^reformatted: docs/services/demo/tidy\\.md$")
+- verify: contents(subject="edit-scratch/docs/services/demo/tidy.md", matches="See \\[rec\\]\\(rec\\) for the record")
 - fixture: [edit scratch repo](fixtures/edit-scratch-repo.md) with an edit scratch repo whose book
   and story have not been edited yet
-- code: ostler/ostler/fmt.py::format_text@0b4173a8a0cb
+- code: ostler/ostler/fmt.py::format_text@aa3a632453a3
 
 ### ostler-autofix-check
 - usage: ostler autofix --check [PATH ...]: lists the pages that carry a drift autofix can repair
@@ -50,27 +50,27 @@ last.
   - --check (change nothing and exit 1 when any page carries fixable drift)
 - args: PATH ... (the pages to check; default is every page of the book)
 - exits: 1 when a listed page carries fixable drift, 0 when none does
-- run: invoke(argv=["-C", "edit-scratch", "autofix", "--check", "docs/features/demo/api.md"], env={"STABLEMATE_ARTIFACTS_DIR": "edit-scratch/art"})
+- run: invoke(argv=["-C", "edit-scratch", "autofix", "--check", "docs/services/demo/api.md"], env={"STABLEMATE_ARTIFACTS_DIR": "edit-scratch/art"})
 - verify: exit_status(code=1)
-- verify: stdout(matches="(?m)^would fix: docs/features/demo/api\\.md$")
+- verify: stdout(matches="(?m)^would fix: docs/services/demo/api\\.md$")
 - fixture: [edit scratch repo](fixtures/edit-scratch-repo.md) with an edit scratch repo whose book
   and story have not been edited yet
 - code: ostler/ostler/autofix.py::fix_text@821c6bbcfd2c
-- code: ostler/ostler/fmt.py::_target_files@0b4173a8a0cb
+- code: ostler/ostler/fmt.py::_target_files@aa3a632453a3
 
 ### ostler-autofix
 - usage: ostler autofix [PATH ...]: repairs the drift whose fix is certain, such as a verify bullet
   that holds a test reference instead of a check, which becomes a tests bullet
 - args: PATH ... (the pages to repair; default is every page of the book)
 - exits: 0 when every page is repaired or has nothing to repair
-- run: invoke(argv=["-C", "edit-scratch", "autofix", "docs/features/demo/api.md"], env={"STABLEMATE_ARTIFACTS_DIR": "edit-scratch/art"})
+- run: invoke(argv=["-C", "edit-scratch", "autofix", "docs/services/demo/api.md"], env={"STABLEMATE_ARTIFACTS_DIR": "edit-scratch/art"})
 - verify: exit_status(code=0)
-- verify: stdout(matches="(?m)^fixed: docs/features/demo/api\\.md$")
-- verify: contents(subject="edit-scratch/docs/features/demo/api.md", matches="- tests: .src/test_demo\\.py::test_submit")
+- verify: stdout(matches="(?m)^fixed: docs/services/demo/api\\.md$")
+- verify: contents(subject="edit-scratch/docs/services/demo/api.md", matches="- tests: .src/test_demo\\.py::test_submit")
 - fixture: [edit scratch repo](fixtures/edit-scratch-repo.md) with an edit scratch repo whose book
   and story have not been edited yet
 - code: ostler/ostler/autofix.py::fix_text@821c6bbcfd2c
-- code: ostler/ostler/fmt.py::_target_files@0b4173a8a0cb
+- code: ostler/ostler/fmt.py::_target_files@aa3a632453a3
 
 ### ostler-stamp
 - usage: ostler stamp (--node ID [--file PATH] ... | --path PAGE --whole-page): writes the content
@@ -82,13 +82,13 @@ last.
   - --whole-page (restamp every code bullet on the page)
   - --json (print the results as JSON)
 - exits: 0 when the stamps are written, 2 when the arguments are inconsistent
-- run: invoke(argv=["-C", "edit-scratch", "stamp", "--path", "docs/features/demo/cli.md", "--whole-page"], env={"STABLEMATE_ARTIFACTS_DIR": "edit-scratch/art"})
+- run: invoke(argv=["-C", "edit-scratch", "stamp", "--path", "docs/services/demo/cli.md", "--whole-page"], env={"STABLEMATE_ARTIFACTS_DIR": "edit-scratch/art"})
 - verify: exit_status(code=0)
-- verify: stdout(matches="(?m)^docs/features/demo/cli\\.md: 2 stamped$")
-- verify: contents(subject="edit-scratch/docs/features/demo/cli.md", matches="src/demo\\.py::greet@[0-9a-f]+")
+- verify: stdout(matches="(?m)^docs/services/demo/cli\\.md: 2 stamped$")
+- verify: contents(subject="edit-scratch/docs/services/demo/cli.md", matches="src/demo\\.py::greet@[0-9a-f]+")
 - fixture: [edit scratch repo](fixtures/edit-scratch-repo.md) with an edit scratch repo whose book
   and story have not been edited yet
-- code: ostler/ostler/stamp.py::digest_file@c37d94d94f67
+- code: ostler/ostler/stamp.py::digest_file@e499880946e6
 
 ### ostler-scaffold
 - usage: ostler scaffold TYPE NAME [--service SERVICE] [--in FILE] [--title TITLE] [--json]: creates
@@ -103,11 +103,11 @@ last.
 - run: invoke(argv=["-C", "edit-scratch", "scaffold", "concept", "widgets", "--service", "demo", "--json"], env={"STABLEMATE_ARTIFACTS_DIR": "edit-scratch/art"})
 - verify: exit_status(code=0)
 - verify: json_path(path="ok", equals=true)
-- verify: contents(subject="edit-scratch/docs/features/demo/concepts/widgets.md", matches="type: concept")
+- verify: contents(subject="edit-scratch/docs/services/demo/concepts/widgets.md", matches="type: concept")
 - fixture: [edit scratch repo](fixtures/edit-scratch-repo.md) with an edit scratch repo whose book
   and story have not been edited yet
 - code: ostler/ostler/result.py::Result@f4149eb63e51
-- code: ostler/ostler/scaffold.py::scaffold@815d22adf233
+- code: ostler/ostler/scaffold.py::scaffold@ecfd6a2ea722
 
 ### ostler-edit-relink
 - usage: ostler edit relink OLD NEW [--write]: replaces a path in every page and spec file that
@@ -116,29 +116,29 @@ last.
   - --write (apply the plan; the default is a dry run that prints the diff)
 - args: OLD (the path to replace), NEW (the path to put in its place)
 - exits: 0 when the plan is built, 1 when it holds an error
-- run: invoke(argv=["-C", "edit-scratch", "edit", "relink", "../../../../features/area/rec.md", "../../../../features/area/record.md", "--write"], env={"STABLEMATE_ARTIFACTS_DIR": "edit-scratch/art"})
+- run: invoke(argv=["-C", "edit-scratch", "edit", "relink", "../../../../services/area/rec.md", "../../../../services/area/record.md", "--write"], env={"STABLEMATE_ARTIFACTS_DIR": "edit-scratch/art"})
 - verify: exit_status(code=0)
 - verify: stdout(matches="(?m)^applied: 1 file\\(s\\) changed, 0 move\\(s\\)$")
-- verify: contents(subject="edit-scratch/docs/epics/0001-first/stories/sx/story.md", matches="features/area/record\\.md")
+- verify: contents(subject="edit-scratch/docs/epics/0001-first/stories/sx/story.md", matches="services/area/record\\.md")
 - fixture: [edit scratch repo](fixtures/edit-scratch-repo.md) with an edit scratch repo whose book
   and story have not been edited yet
-- code: ostler/ostler/edit.py::relink@7144473df397
+- code: ostler/ostler/edit.py::relink@08519cdd058d
 
 ### ostler-edit-migrate-context
 - usage: ostler edit migrate-context NODE_TYPE SERVICE [--write]: moves a service's pages of one
   node type into the folder the type belongs in and rewrites every link the move touches
 - flags:
   - --write (apply the plan; the default is a dry run that prints the diff)
-- args: NODE_TYPE (a node type of the book), SERVICE (the service under the features root)
+- args: NODE_TYPE (a node type of the book), SERVICE (the service under the services root)
 - exits: 0 when the plan is built, 1 when the type, the service or the pages are missing
 - run: invoke(argv=["-C", "edit-scratch", "edit", "migrate-context", "concept", "demo", "--write"], env={"STABLEMATE_ARTIFACTS_DIR": "edit-scratch/art"})
 - verify: exit_status(code=0)
 - verify: stdout(matches="(?m)^applied: 2 file\\(s\\) changed, 2 move\\(s\\)$")
-- verify: absent(subject="edit-scratch/docs/features/demo/idea.md")
-- verify: contents(subject="edit-scratch/docs/features/demo/entries.md", matches="\\(concepts/idea\\.md\\)")
+- verify: absent(subject="edit-scratch/docs/services/demo/idea.md")
+- verify: contents(subject="edit-scratch/docs/services/demo/entries.md", matches="\\(concepts/idea\\.md\\)")
 - fixture: [edit scratch repo](fixtures/edit-scratch-repo.md) with an edit scratch repo whose book
   and story have not been edited yet
-- code: ostler/ostler/edit.py::migrate_context@7144473df397
+- code: ostler/ostler/edit.py::migrate_context@08519cdd058d
 
 ### ostler-edit-settle-review
 - usage: ostler edit settle-review STORY [--write]: settles a story's review from the
@@ -155,7 +155,7 @@ last.
 - verify: contents(subject="edit-scratch/art/specs/TST-01M585PFWZZXH4Y6KNMH1VK58H/review-settlement.json", matches="\"all_settled\": true")
 - fixture: [edit scratch repo](fixtures/edit-scratch-repo.md) with an edit scratch repo whose book
   and story have not been edited yet
-- code: ostler/ostler/edit.py::settle_review@7144473df397
+- code: ostler/ostler/edit.py::settle_review@08519cdd058d
 
 ### ostler-edit-carve-endpoints
 - usage: ostler edit carve-endpoints SERVER [--write]: moves each endpoint of a server page onto a
@@ -163,16 +163,16 @@ last.
   touches
 - flags:
   - --write (apply the plan; the default is a dry run that prints the summary)
-- args: SERVER (the server page, relative to the repo or to the features root)
+- args: SERVER (the server page, relative to the repo or to the services root)
 - exits: 0 when the plan is built, 1 when it holds an error
-- run: invoke(argv=["-C", "edit-scratch", "edit", "carve-endpoints", "docs/features/demo/http/server.md", "--write"], env={"STABLEMATE_ARTIFACTS_DIR": "edit-scratch/art"})
+- run: invoke(argv=["-C", "edit-scratch", "edit", "carve-endpoints", "docs/services/demo/http/server.md", "--write"], env={"STABLEMATE_ARTIFACTS_DIR": "edit-scratch/art"})
 - verify: exit_status(code=0)
-- verify: stdout(matches="(?m)^carve docs/features/demo/http/server\\.md: 2 endpoint page\\(s\\), 1 invocation\\(s\\) moved with them$")
-- verify: contents(subject="edit-scratch/docs/features/demo/http/get-widget.md", matches="(?m)^type: endpoint$")
+- verify: stdout(matches="(?m)^carve docs/services/demo/http/server\\.md: 2 endpoint page\\(s\\), 1 invocation\\(s\\) moved with them$")
+- verify: contents(subject="edit-scratch/docs/services/demo/http/get-widget.md", matches="(?m)^type: endpoint$")
 - fixture: [edit scratch repo](fixtures/edit-scratch-repo.md) with an edit scratch repo whose book
   and story have not been edited yet
-- code: ostler/ostler/carve.py::carve_endpoints@5d186745b0e6
-- code: ostler/ostler/edit.py::_doc_files@7144473df397
+- code: ostler/ostler/carve.py::carve_endpoints@16296e22e532
+- code: ostler/ostler/edit.py::_doc_files@08519cdd058d
 
 ### ostler-edit-carve-fragments
 - usage: ostler edit carve-fragments PAGE [--write]: moves the subsections of a page's largest
@@ -180,17 +180,17 @@ last.
   the move touches
 - flags:
   - --write (apply the plan; the default is a dry run that prints the summary)
-- args: PAGE (the page, relative to the repo or to the features root)
+- args: PAGE (the page, relative to the repo or to the services root)
 - exits: 0 when the plan is built, 1 when it holds an error
-- run: invoke(argv=["-C", "edit-scratch", "edit", "carve-fragments", "docs/features/demo/concepts/ledger.md", "--write"], env={"STABLEMATE_ARTIFACTS_DIR": "edit-scratch/art"})
+- run: invoke(argv=["-C", "edit-scratch", "edit", "carve-fragments", "docs/services/demo/concepts/ledger.md", "--write"], env={"STABLEMATE_ARTIFACTS_DIR": "edit-scratch/art"})
 - verify: exit_status(code=0)
-- verify: stdout(matches="(?m)^carve docs/features/demo/concepts/ledger\\.md: 2 fragment page\\(s\\) from 1 section\\(s\\)$")
-- verify: contents(subject="edit-scratch/docs/features/demo/concepts/ledger-rules-rule-1.md", matches="(?m)^type: fragment$")
+- verify: stdout(matches="(?m)^carve docs/services/demo/concepts/ledger\\.md: 2 fragment page\\(s\\) from 1 section\\(s\\)$")
+- verify: contents(subject="edit-scratch/docs/services/demo/concepts/ledger-rules-rule-1.md", matches="(?m)^type: fragment$")
 - fixture: [edit scratch repo](fixtures/edit-scratch-repo.md) with an edit scratch repo whose book
   and story have not been edited yet
-- code: ostler/ostler/carve.py::references@5d186745b0e6
-- code: ostler/ostler/edit.py::_doc_files@7144473df397
-- code: ostler/ostler/fragment_carve.py::carve_fragments@5ebbbc0d0a5f
+- code: ostler/ostler/carve.py::references@16296e22e532
+- code: ostler/ostler/edit.py::_doc_files@08519cdd058d
+- code: ostler/ostler/fragment_carve.py::carve_fragments@7d965ac3d2df
 
 ### ostler-edit-rename
 - usage: ostler edit rename OLD NEW [--write]: renames a story slug in every page and spec file that
@@ -206,4 +206,4 @@ last.
 - verify: contents(subject="edit-scratch/docs/epics/0001-first/stories/sy/story.md", matches="slug: sy")
 - fixture: [edit scratch repo](fixtures/edit-scratch-repo.md) with an edit scratch repo whose book
   and story have not been edited yet
-- code: ostler/ostler/edit.py::rename@7144473df397
+- code: ostler/ostler/edit.py::rename@08519cdd058d

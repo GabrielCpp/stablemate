@@ -20,7 +20,7 @@ title: Coder standalone fix flow
 - The selected backlog bullet is not mutated during selection. It remains available for a resumed
   run to seed the same story, and is removed only after the gates are clean.
 - detail: [coder backlog contract](../concepts/coder-backlog-contract.md)
-- `docs_path` and `workspace_file` are optional checkpointed inputs. Empty values resolve from the
+- The `workspace` name is an optional checkpointed input. An empty value resolves from the
   repository context, and `target_env` defaults to `local` for the documentation handoff and QA.
   `operator_mode` defaults to `auto`.
 - The owner turn renders `fix-item.md` with the bullet text, story identity, QA directory,

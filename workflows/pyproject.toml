@@ -26,11 +26,11 @@ dependencies = [
   "workhorse-agent>=4,<5",
   # `kit` — all of what used to be `workhorse.scriptutil`. These are here rather than
   # on the engine because knowing how to open a pull request, or how to read the
-  # relaxed JSON a `.code-workspace` file is written in, is workflow domain: workhorse
+  # relaxed JSON a config file is written in, is workflow domain: workhorse
   # never called any of the three, and every install of it paid for them.
   "gitpython>=3.1",
   "PyGithub>=2.0",
-  # A *strict* JSONC/JSON5 parser for `load_jsonc` — VSCode `.code-workspace` files.
+  # A *strict* JSONC/JSON5 parser for `load_jsonc`.
   # Deliberately not the engine's `json-repair`: that one invents a parse for genuinely
   # broken input, which is the right answer for an agent reply and the wrong one for a
   # config file the operator wrote and expects to be told about.

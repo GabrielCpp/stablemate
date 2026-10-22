@@ -121,8 +121,8 @@ story that covers that id is re-authored only in empty sections and reused.
 
 ### file_backlog_items
 
-- sig: `file_backlog_items(logger: logging.Logger, spec_dir: str = "", docs_path: str = "", repo_dir: str = "") -> BacklogDrain`
-- does: resolves the docs root from `docs_path` and `repo_dir`
+- sig: `file_backlog_items(logger: logging.Logger, spec_dir: str = "", repo_dir: str = "") -> BacklogDrain`
+- does: resolves the docs root from `repo_dir`, or the artifacts dir while a workspace is active
 - verify: count(subject="resolved backlog docs roots", equals=1)
 - does: reads `<spec_dir>/backlog-items.json` from the resolved docs root
 - verify: count(subject="read backlog item files", equals=1)
@@ -152,7 +152,7 @@ story that covers that id is re-authored only in empty sections and reused.
 
 ### file_follow_up_backlog
 
-- sig: `file_follow_up_backlog(logger: logging.Logger, docs_path: str = "", parent: str = "", follow_ups: list[dict[str, str]] | None = None, repo_dir: str = "") -> BacklogDrain`
+- sig: `file_follow_up_backlog(logger: logging.Logger, parent: str = "", follow_ups: list[dict[str, str]] | None = None, repo_dir: str = "") -> BacklogDrain`
 - does: skips an entry with no title
 - verify: count(subject="skipped untitled follow-ups", equals=1)
 - does: skips an entry that cites a backlog id in brackets, whose id tokens differ from the title's by at most one word, or whose title matches a bullet heading
@@ -169,7 +169,7 @@ story that covers that id is re-authored only in empty sections and reused.
 
 ### select_fix_item
 
-- sig: `select_fix_item(logger: logging.Logger, docs_path: str = "", backlog_path: str = "", repo_dir: str = "") -> FixPick`
+- sig: `select_fix_item(logger: logging.Logger, backlog_path: str = "", repo_dir: str = "") -> FixPick`
 - does: resolves the configured backlog and searches only the parsed `## Filed by coder` section
 - verify: count(subject="coder backlog sections searched", equals=1)
 - does: skips blocked bullets and bullets with empty text, then returns the first remaining bullet without mutating the file
@@ -182,7 +182,7 @@ story that covers that id is re-authored only in empty sections and reused.
 
 ### seed_fix_story
 
-- sig: `seed_fix_story(logger: logging.Logger, bullet_id: str = "", bullet_text: str = "", epics_dir: str = "", epic: str = "", docs_path: str = "", repo_dir: str = "") -> FixStorySeed`
+- sig: `seed_fix_story(logger: logging.Logger, bullet_id: str = "", bullet_text: str = "", epics_dir: str = "", epic: str = "", repo_dir: str = "") -> FixStorySeed`
 - does: resolves or self-creates the selected epic bucket, defaulting to the perpetual `fixes` bucket without registering it in the epic queue
 - verify: created(subject="the selected epic bucket")
 - verify: count(subject="resolved fix story buckets", equals=1)
@@ -199,7 +199,7 @@ story that covers that id is re-authored only in empty sections and reused.
 
 ### prune_fix_item
 
-- sig: `prune_fix_item(logger: logging.Logger, bullet_id: str = "", docs_path: str = "", backlog_path: str = "", repo_dir: str = "") -> FixPruned`
+- sig: `prune_fix_item(logger: logging.Logger, bullet_id: str = "", backlog_path: str = "", repo_dir: str = "") -> FixPruned`
 - does: removes the matching parsed bullet through Ostler, falling back to the configured custom backlog path when Ostler cannot prune it
 - verify: removed(subject="the shipped coder backlog bullet")
 - does: commits only the rewritten backlog path after a successful prune

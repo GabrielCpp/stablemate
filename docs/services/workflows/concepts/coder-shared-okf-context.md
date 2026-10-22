@@ -84,8 +84,8 @@ the arguments that shaped the build. Validation independently checks the packet 
 - tests: `workflows/tests/coder/shared/test_okf_memo.py::test_a_failed_build_is_not_memoized`
 
 ### build_okf_context
-- sig: `build_okf_context(logger: logging.Logger, spec_dir: str = "", story_file: str = "", features_root: str = "", source_roots: tuple[str, ...] = (), base: str = "HEAD", head: str = "WORKTREE", docs_path: str = "", repo_dir: str = "", preexisting: tuple[str, ...] = (), story_sources: tuple[StorySource, ...] = ()) -> OkfContextResult`
-- does: resolves the documentation repository from `docs_path` and `repo_dir` before computing the packet inputs
+- sig: `build_okf_context(logger: logging.Logger, spec_dir: str = "", story_file: str = "", services_root: str = "", source_roots: tuple[str, ...] = (), base: str = "HEAD", head: str = "WORKTREE", repo_dir: str = "", preexisting: tuple[str, ...] = (), story_sources: tuple[StorySource, ...] = ()) -> OkfContextResult`
+- does: resolves the documentation repository from `repo_dir`, or the artifacts dir while a workspace is active before computing the packet inputs
 - verify: count(subject="resolved OKF documentation roots", equals=1)
 - does: replaces the `TRUNK` base with the branch's nearest merge base with trunk before computing the packet inputs
 - verify: count(subject="TRUNK bases resolved to a merge base", equals=1)
@@ -107,8 +107,8 @@ the arguments that shaped the build. Validation independently checks the packet 
 - tests: `workflows/tests/coder/shared/test_okf_memo.py::test_multi_repository_context_is_grouped_and_invalidated_by_source_edits`
 
 ### validate_okf_context
-- sig: `validate_okf_context(logger: logging.Logger, spec_dir: str = "", build_status: str = "invalid", docs_path: str = "", repo_dir: str = "") -> OkfContextResult`
-- does: resolves the documentation repository from `docs_path` and `repo_dir`
+- sig: `validate_okf_context(logger: logging.Logger, spec_dir: str = "", build_status: str = "invalid", repo_dir: str = "") -> OkfContextResult`
+- does: resolves the documentation repository from `repo_dir`, or the artifacts dir while a workspace is active
 - verify: count(subject="resolved OKF validation roots", equals=1)
 - does: validates the packet at `spec_dir` through Ostler
 - verify: count(subject="validated OKF context packets", equals=1)
