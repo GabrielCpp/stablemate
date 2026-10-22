@@ -29,6 +29,12 @@ agents:
   # copilot: generates .github/instructions/, .github/skills/, .github/prompts/
   copilot: false
 
+  # A harness may share another's skills instead of rendering its own copy:
+  #   codex:
+  #     skills_from: claude
+  # Farrier then symlinks .agents/skills/<name> to ../../.claude/skills/<name>
+  # for every skill folder there. The source must be enabled and not linked.
+
 # ─────────────────────────────────────────────────────────────────────────────
 # packs — Installable bundles to apply to this repository
 #

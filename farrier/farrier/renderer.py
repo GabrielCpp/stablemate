@@ -2,12 +2,13 @@
 from __future__ import annotations
 
 import json
+import os
+from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
 import yaml
-from jinja2 import Environment, StrictUndefined
-from jinja2 import UndefinedError
+from jinja2 import Environment, StrictUndefined, UndefinedError
 
 from farrier._vendor.stablemate_core.skill_refs import (
     RETIRED_HELPERS,
@@ -16,11 +17,14 @@ from farrier._vendor.stablemate_core.skill_refs import (
     SkillRefs,
     retired_hint,
 )
+from farrier.agents import REPO_SKILL_DIRS
 from farrier.frontmatter import (
     first_heading,
     front_matter_end,
     frontmatter_mapping,
+    frontmatter_metadata,
     frontmatter_tags,
+    normalize_tags,
     split_front_matter,
 )
 from farrier.launcher import (
@@ -31,20 +35,21 @@ from farrier.launcher import (
     render_agents_mk,
 )
 from farrier.layers import available_names, find_in_layers
-from farrier.naming import repo_prefix, yaml_quote
+from farrier.link_rebase import rebase_links
+from farrier.naming import compose_name, repo_prefix, yaml_quote
+from farrier.ownership import is_generated
 from farrier.selection_errors import unknown_selection_error
 from farrier.sources import (
     Asset,
     Source,
     build_lookup,
     build_policy_lookup,
+    library_name,
     library_path,
     library_source_path,
-    library_name,
     public_name,
     skill_assets,
 )
-
 
 LOCAL_TEXT_SOURCE = "agents.yml"
 
@@ -75,6 +80,17 @@ class Rendered(str):
         rendered.sources = sources
         rendered.parts = parts
         return rendered
+
+
+class Symlink(str):
+    """A symlink to install. Its text is the relative target it points at."""
+
+    @property
+    def target(self) -> str:
+        return str(self)
+
+
+Output = str
 
 
 def skill_metadata_block(
@@ -212,8 +228,10 @@ class Renderer:
         policies: list[Source] | None = None,
         scope: str = "repo",
         home_skills: dict[str, list[Source]] | None = None,
+        hand_written_dirs: Sequence[str] = (),
     ):
         self.repo = repo
+        self.hand_written_dirs = tuple(hand_written_dirs)
         self.scope = scope
         self.regenerate = "make agent-install" if scope == "repo" else "farrier install --user"
         self.overwritten_by = (
@@ -286,6 +304,28 @@ class Renderer:
             if self.scope == "repo" or target == "claude"
         ]
         if self.scope == "repo":
+            taken = {entry.name for entry in entries}
+            for folder in self.hand_written_folders():
+                aliases = [folder]
+                stripped = folder.removeprefix(f"{self.prefix}-")
+                if stripped != folder:
+                    aliases.append(stripped)
+                tags = self.hand_written_tags(folder)
+                for name in aliases:
+                    if name in taken:
+                        continue
+                    taken.add(name)
+                    entries.append(
+                        SkillEntry(
+                            name=name,
+                            installed=folder,
+                            path=self.repo
+                            / REPO_SKILL_DIRS[target]
+                            / folder
+                            / "SKILL.md",
+                            tags=tags if name == aliases[0] else (),
+                        )
+                    )
             home = Path.home() / user_harness_dir(target) / "skills"
             entries += [
                 self._entry(
@@ -385,12 +425,8 @@ class Renderer:
     def skill_dir_path(self, target: str) -> Path:
         if self.scope == "user":
             return self.repo / user_harness_dir(target) / "skills"
-        if target == "copilot":
-            return self.repo / ".github" / "skills"
-        if target == "codex":
-            return self.repo / ".agents" / "skills"
-        if target == "claude":
-            return self.repo / ".claude" / "skills"
+        if target in REPO_SKILL_DIRS:
+            return self.repo / REPO_SKILL_DIRS[target]
         raise SystemExit(f"Unknown skill dir target: {target}")
 
     def render_templates(self, content: str, target: str, from_file: Path) -> str:
@@ -563,15 +599,52 @@ class Renderer:
         lines.append("---")
         return "\n".join(lines) + "\n\n" + f"{body}\n"
 
+    def skill_folder_names(
+        self, source_dir: Path, outputs: Mapping[Path, str]
+    ) -> list[str]:
+        """The skill folders *source_dir* holds after this run: rendered ones and hand-written ones."""
+        names = {
+            path.relative_to(source_dir).parts[0]
+            for path in outputs
+            if source_dir in path.parents
+        }
+        if source_dir.is_dir():
+            names.update(
+                entry.name
+                for entry in source_dir.iterdir()
+                if entry.is_dir()
+                and not entry.is_symlink()
+                and (entry / "SKILL.md").is_file()
+                and not is_generated(entry / "SKILL.md")
+            )
+        return sorted(names)
+
+    def link_skills(
+        self, links: Mapping[str, str], outputs: Mapping[Path, str]
+    ) -> dict[Path, Symlink]:
+        """A relative symlink in each linked harness's skills dir to every folder of its source's."""
+        symlinks: dict[Path, Symlink] = {}
+        for linked, source in links.items():
+            source_dir = self.skill_dir_path(source)
+            linked_dir = self.skill_dir_path(linked)
+            for name in self.skill_folder_names(source_dir, outputs):
+                target = os.path.relpath(source_dir / name, linked_dir)
+                symlinks[linked_dir / name] = Symlink(target.replace(os.sep, "/"))
+        return symlinks
+
     def render(
         self,
-        agents: dict[str, bool],
+        agents: Mapping[str, bool],
         roots: set[str],
+        links: Mapping[str, str] | None = None,
     ) -> dict[Path, str]:
+        links = links or {}
         outputs: dict[Path, str] = {}
 
         def render_skills(target: str) -> None:
             """Every selected skill into *target*, each with its bundled assets."""
+            if target in links:
+                return
             for source in self.skills:
                 output_path = self.skill_output_path(library_name(source), target)
                 outputs[output_path] = self.generated_skill(source, target, output_path)
@@ -668,18 +741,81 @@ class Renderer:
 
         return outputs
 
+    def hand_written_tags(self, folder: str) -> tuple[str, ...]:
+        """The tags a hand-written skill folder declares in `metadata.tags`, else in `tags`."""
+        for rel_dir in self.hand_written_dirs:
+            path = self.repo / rel_dir / folder / "SKILL.md"
+            if path.is_file():
+                text = path.read_text(encoding="utf-8")
+                declared = frontmatter_metadata(text).get("tags")
+                return tuple(
+                    normalize_tags(declared)
+                    if declared is not None
+                    else frontmatter_tags(text)
+                )
+        return ()
+
+    def hand_written_folders(self) -> list[str]:
+        """Names of the hand-written skill folders in the repo's real skills directories."""
+        found: dict[str, None] = {}
+        for rel_dir in self.hand_written_dirs:
+            root = self.repo / rel_dir
+            if not root.is_dir():
+                continue
+            for child in sorted(root.iterdir()):
+                skill = child / "SKILL.md"
+                if skill.is_file() and not is_generated(skill):
+                    found[child.name] = None
+        return list(found)
+
+    def hand_written_skill(self, name: str) -> Source | None:
+        """The hand-written skill folder in the repo that *name* denotes, or None."""
+        folder = name.replace(".", "-")
+        for rel_dir in self.hand_written_dirs:
+            for candidate in dict.fromkeys((folder, compose_name(self.prefix, folder))):
+                rel = f"{rel_dir}/{candidate}/SKILL.md"
+                path = self.repo / rel
+                if path.is_file():
+                    return Source(
+                        kind="skill", path=path, rel=rel, id=candidate, local=True
+                    )
+        return None
+
+    def instruction_skill(self, name: str) -> Source:
+        """The skill a localInstructions entry names: a selected library skill, else a hand-written folder."""
+        source = self.skill_lookup.get(name.replace(".", "-"))
+        if source is not None:
+            return source
+        source = self.hand_written_skill(name)
+        if source is None:
+            raise SystemExit(
+                f"Unknown selected skill reference: {name} (no selected library "
+                "skill and no hand-written skill folder of that name)"
+            )
+        return source
+
     def instruction_sources(
         self,
         skill_names: list[str],
         prompt_names: list[str] | None = None,
         policy_names: list[str] | None = None,
     ) -> list[Source]:
-        """The library files one localInstructions mapping aggregates, in order."""
+        """The files one localInstructions mapping aggregates, in order."""
         return (
             [self.policy_source(name) for name in policy_names or []]
-            + [self.skill_source(name) for name in skill_names]
+            + [self.instruction_skill(name) for name in skill_names]
             + [self.prompt_source(name) for name in prompt_names or []]
         )
+
+    def instruction_part(self, source: Source, target: str, output_path: Path) -> str:
+        """One source's body as it lands in a generated AGENTS.md."""
+        _, body = split_front_matter(source.path.read_text(encoding="utf-8"))
+        if source.kind == "prompt":
+            body = strip_arguments_placeholder(body)
+        rendered = self.render_templates(body, target, output_path).strip()
+        if source.local:
+            rendered = rebase_links(rendered, source.path.parent, output_path.parent)
+        return rendered
 
     def render_local_instruction(
         self,
@@ -694,10 +830,7 @@ class Renderer:
         """The aggregated AGENTS.md for one localInstructions mapping."""
         parts: list[tuple[str, str]] = []
         for source in self.instruction_sources(skill_names, prompt_names, policy_names):
-            _, body = split_front_matter(source.path.read_text(encoding="utf-8"))
-            if source.kind == "prompt":
-                body = strip_arguments_placeholder(body)
-            part = self.render_templates(body, target, output_path).strip()
+            part = self.instruction_part(source, target, output_path)
             if part:
                 parts.append((library_source_path(source), part))
         local_text = self.render_templates(text, target, output_path).strip()

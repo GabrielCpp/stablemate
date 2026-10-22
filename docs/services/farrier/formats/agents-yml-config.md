@@ -73,6 +73,24 @@ Each enabled name turns on a distinct output set in `Renderer.render`:
   rendering every selected `roots` file into
   `.github/copilot-instructions.md` and `.github/agents/copilot-instructions.md`.
 
+A value may also be `{skills_from: <other harness>}`. The mapping means enabled. The source
+harness must exist, be enabled, not itself link and not be the harness itself, or `parse_agents`
+raises `SystemExit`. A linked harness renders no skill folders. For every skill folder in the
+source's repo skills dir after the run, rendered or hand-written, install writes a relative
+symlink `<linked dir>/<name>` to `../../<source dir>/<name>`. Prompts, commands, roots and hooks
+still render. A symlink in a linked dir whose target resolves into the source dir is
+farrier-owned, so install rewrites a wrong one and sweeps a stale one, and `--check` reports a
+missing, extra or wrong one as drift. A real folder or a foreign symlink is not owned and follows
+the conflict rules. Cross-skill links in a shared copy point at the source harness's home skills
+dir.
+
+```yaml
+agents:
+  claude: true
+  codex:
+    skills_from: claude
+```
+
 [`localInstructions`](#localinstructions) writes `AGENTS.md` for any enabled adapter, plus a
 `CLAUDE.md` pointer for an entry that sets `claudeMd: true`.
 

@@ -78,6 +78,12 @@ Body markdown — the actual instructions…
 else the repository directory's name, kebab-cased. A skill whose name already
 equals or starts with the prefix is not double-prefixed.
 
+A harness written `{skills_from: <other harness>}` in `agents.yml` renders no skill
+folders. Its skills dir holds a relative symlink to each folder of the source
+harness's dir (`../../.claude/skills/<name>`) instead. A cross-skill link inside the
+shared copy points at the source harness's home skills dir. `farrier eject <name>`
+turns a generated skill folder into a hand-written one.
+
 ## `library/prompts/` — prompts
 
 A **prompt** is an on-demand instruction (a slash-command / one-shot task) rather

@@ -90,6 +90,7 @@ farrier config show                        # every config key as key=value
 farrier config show --profile cheap        # one [profiles.<name>] table, flattened
 farrier config --config ./c.toml show      # …read from that file rather than the home one
 farrier source .claude/skills/x/SKILL.md   # the library file that generated an adapter
+farrier eject <name>                       # hand a generated skill or a policy over to the repo
 farrier scaffold --list                    # the scaffolds this repo may apply, and their params
 farrier scaffold <id> [--param KEY=VALUE]  # seed repo files from one
 farrier workflows                          # the workflows installed on this machine
@@ -99,6 +100,22 @@ farrier version
 `source` takes the path of a *generated* file and prints the library file behind it. It
 is the one to reach for before editing anything under `.claude/`, `.codex/` or
 `.github/`: those are outputs, and an edit there is discarded by the next install.
+
+`eject <name>` stops farrier managing one thing and keeps its content. Given the
+installed name of a generated skill folder (`myrepo-db`), it strips the farrier
+provenance from the folder (the `generated_by`, `source`, `resolve`, `do_not_edit` and
+`name` metadata keys, plus the banner and `farrier source` line of bundled files),
+then edits `agents.yml` so nothing selects the skill again. A literal `skills:` entry
+loses its line, a glob entry becomes the literal ids it still matches, and a skill
+that only a pack selects goes under `exclude.skills`. Comments and every other byte of
+`agents.yml` stay. It refuses when more than one harness holds a real copy: set
+`skills_from` on the others first. Given a policy listed in `localInstructions`, it
+writes the policy body into each mapping's `text:` (ahead of any text there) and
+removes the name from `policy`/`policies`. After either, it reinstalls, so
+`farrier --repo . --check` passes. A skill name wins over a policy of the same name.
+A `localInstructions` `skill:` name that no selected library skill carries resolves
+to the hand-written skill folder of that name, which is how an ejected skill stays
+embedded in `AGENTS.md`.
 
 `config show --profile <name>` prints one `[profiles.<name>]` table — the named model
 set a run selects with `workhorse-<name> run --profile <name>` — flattened to one dotted
@@ -118,6 +135,27 @@ starter one with the common keys as commented examples. Every option —
 `localInstructions`, `template`/`vars`, and `workflow` — is documented with
 inline comments in **[`agents.example.yml`](https://github.com/GabrielCpp/stablemate/blob/main/farrier/agents.example.yml)**. Copy it to
 your repo as `agents.yml` and prune to taste.
+
+Each `agents.<harness>` is `true`, `false` or `{skills_from: <other harness>}`. The
+mapping enables the harness and renders no skill folders for it. Instead farrier
+writes a relative symlink `<its skills dir>/<name>` to `../../<source skills
+dir>/<name>` for every skill folder of the source harness, hand-written ones
+included, so one set of skills serves several harnesses:
+
+```yaml
+agents:
+  claude: true
+  codex:
+    skills_from: claude
+```
+
+The source must be an enabled harness that does not itself link. Prompts, commands,
+root instructions and hooks still render per harness. A cross-skill link inside a
+shared copy points at the source harness's home skills dir. A symlink in a linked
+dir that targets the source dir is farrier-owned: install rewrites a wrong one and
+sweeps a stale one, and `--check` reports a missing, extra or wrong one as drift. A
+real folder or a foreign symlink there is not owned and follows the usual conflict
+rules.
 
 ## Library layout
 

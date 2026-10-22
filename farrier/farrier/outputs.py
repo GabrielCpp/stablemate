@@ -1,12 +1,14 @@
 """Full-render orchestration and the writes that install it."""
 from __future__ import annotations
 
-from collections.abc import Sequence
+import os
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, replace
 from fnmatch import fnmatch
 from pathlib import Path
 from typing import Any
 
+from farrier.agents import Agents, parse_agents
 from farrier.drift import Drifted, report
 from farrier.frontmatter import frontmatter_mapping
 from farrier.local_instructions import LocalInstruction
@@ -33,8 +35,14 @@ from farrier.managed_blocks import (
 from farrier._vendor.stablemate_core.config import config_path, read_config
 from farrier.layers import available_names
 from farrier.naming import repo_prefix
-from farrier.ownership import is_owned, owned_files, sweep
-from farrier.renderer import Rendered, Renderer, user_harness_dir
+from farrier.ownership import (
+    is_owned,
+    is_owned_link,
+    owned_files,
+    owned_links,
+    sweep,
+)
+from farrier.renderer import Output, Rendered, Renderer, Symlink, user_harness_dir
 from farrier.selection_errors import (
     suggestions,
     unknown_selection_error,
@@ -90,6 +98,7 @@ class Managed:
     files: tuple[str, ...] = ()
     assumed: tuple[str, ...] = ()
     repo_scaffolding: bool = True
+    links: tuple[tuple[str, str], ...] = ()
 
 
 REPO_MANAGED = Managed(tuple(MANAGED_DIRS), tuple(MANAGED_FILES), tuple(ASSUMED_OWNED))
@@ -106,14 +115,25 @@ USER_MANAGED = Managed(
 )
 
 
-def repo_managed_with_claude_pointers(instructions: Sequence[LocalInstruction]) -> Managed:
-    """REPO_MANAGED plus the CLAUDE.md in every localInstructions directory."""
+def repo_managed_with_claude_pointers(
+    instructions: Sequence[LocalInstruction], agents: Agents | None = None
+) -> Managed:
+    """REPO_MANAGED plus the CLAUDE.md in every localInstructions directory and the skill links."""
     pointers = tuple(
         (Path(rel) / "CLAUDE.md").as_posix()
         for instruction in instructions
         for rel in instruction.paths
     )
-    return replace(REPO_MANAGED, files=REPO_MANAGED.files + pointers)
+    return replace(
+        REPO_MANAGED,
+        files=REPO_MANAGED.files + pointers,
+        links=agents.link_dirs() if agents is not None else (),
+    )
+
+
+def link_map(repo: Path, managed: Managed) -> dict[Path, Path]:
+    """Each linked skills directory of *managed*, absolute, with the directory it links from."""
+    return {repo / linked: repo / source for linked, source in managed.links}
 
 
 def expected_text(content: str) -> str:
@@ -131,13 +151,24 @@ def write_text(path: Path, content: str) -> None:
         path.chmod(mode | ((mode & 0o444) >> 2))
 
 
-def normalize_agents(config: dict[str, Any]) -> dict[str, bool]:
-    agents = config.get("agents") or {}
-    if isinstance(agents, list):
-        return {name: name in agents for name in ["codex", "claude", "copilot"]}
-    return {
-        name: bool(agents.get(name, False)) for name in ["codex", "claude", "copilot"]
-    }
+def write_link(path: Path, link: Symlink) -> None:
+    """Point the symlink at *path* to *link*'s target, replacing a symlink already there."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if path.is_symlink():
+        path.unlink()
+    os.symlink(link.target, path, target_is_directory=True)
+
+
+def write_output(path: Path, content: Output) -> None:
+    """Install one output, whichever kind it is."""
+    if isinstance(content, Symlink):
+        write_link(path, content)
+    else:
+        write_text(path, content)
+
+
+def normalize_agents(config: dict[str, Any]) -> Agents:
+    return parse_agents(config)
 
 
 def is_assumed_owned(
@@ -148,22 +179,60 @@ def is_assumed_owned(
     return any(fnmatch(rel, pattern) for pattern in managed.assumed)
 
 
-def conflicts(
-    repo: Path, outputs: dict[Path, str], managed: Managed = REPO_MANAGED
-) -> list[str]:
-    """The paths farrier is about to write that are held by files it did not generate."""
-    return sorted(
-        path.relative_to(repo).as_posix()
-        for path, content in outputs.items()
-        if path.exists()
-        and not getattr(content, "assumed", False)
-        and not is_assumed_owned(repo, path, managed)
-        and not is_owned(path, repo)
+def sweeps_clean(path: Path, repo: Path) -> bool:
+    """True when every file under the real directory *path* is farrier's, so a sweep empties it."""
+    if path.is_symlink() or not path.is_dir():
+        return False
+    return all(
+        entry.is_dir() and not entry.is_symlink() or is_owned(entry, repo)
+        for entry in path.rglob("*")
     )
 
 
+def holds_link(path: Path, content: Symlink, repo: Path, managed: Managed) -> bool:
+    """True when something farrier may not replace stands where the symlink *content* goes."""
+    if not (path.is_symlink() or path.exists()):
+        return False
+    source_dir = link_map(repo, managed).get(path.parent)
+    if source_dir is not None and is_owned_link(path, source_dir):
+        return False
+    return not sweeps_clean(path, repo)
+
+
+def behind_foreign_link(path: Path, repo: Path, managed: Managed) -> bool:
+    """True when *path* sits inside a symlinked folder of a repo skills directory."""
+    if not managed.repo_scaffolding:
+        return False
+    skill_dirs = {repo / rel for rel in managed.dirs}
+    return any(
+        parent.is_symlink() and parent.parent in skill_dirs
+        for parent in path.parents
+        if repo in parent.parents
+    )
+
+
+def conflicts(
+    repo: Path, outputs: Mapping[Path, Output], managed: Managed = REPO_MANAGED
+) -> list[str]:
+    """The paths farrier is about to write that are held by files it did not generate."""
+    held: list[str] = []
+    for path, content in outputs.items():
+        if isinstance(content, Symlink):
+            is_held = holds_link(path, content, repo, managed)
+        else:
+            is_held = behind_foreign_link(path, repo, managed) or (
+                path.exists()
+                and not getattr(content, "assumed", False)
+                and not is_assumed_owned(repo, path, managed)
+                and not is_owned(path, repo)
+            )
+        if is_held:
+            held.append(path.relative_to(repo).as_posix())
+    return sorted(held)
+
+
 def refuse_conflicts(
-    repo: Path, outputs: dict[Path, str], managed: Managed = REPO_MANAGED
+    repo: Path, outputs: Mapping[Path, Output], managed: Managed = REPO_MANAGED
 ) -> None:
     """Abort the install when any output path holds a file farrier does not own."""
     held = conflicts(repo, outputs, managed)
@@ -182,8 +251,9 @@ def refuse_conflicts(
 
 def remove_targets(repo: Path, managed: Managed = REPO_MANAGED) -> None:
     """Delete farrier's previous output — and only farrier's."""
+    links = link_map(repo, managed)
     for rel in managed.dirs:
-        sweep(repo / rel)
+        sweep(repo / rel, links)
     for rel in managed.files:
         path = repo / rel
         if path.is_file() and is_owned(path, repo):
@@ -228,7 +298,7 @@ def check_selection(
 def home_duplicate_notices(
     skills: Sequence[Source],
     home_skills: dict[str, list[Source]],
-    agents: dict[str, Any],
+    agents: Agents,
 ) -> list[str]:
     """One info line per selected skill that the user library also installs for an enabled harness."""
     at_home = {
@@ -244,17 +314,15 @@ def home_duplicate_notices(
     ]
 
 
-def render_expected(
+def build_renderer(
     config: dict[str, Any],
     repo: Path,
-    instructions: Sequence[LocalInstruction],
+    agents: Agents,
     notices: list[str] | None = None,
-) -> dict[Path, str]:
+) -> tuple[Renderer, set[str], list[Source]]:
+    """The renderer for *config*'s selection, the roots it names and the skills it selects."""
     repo_config = config.get("repo") or {}
     prefix = repo_prefix(repo, repo_config)
-    agents = normalize_agents(config)
-    if not any(agents.values()):
-        raise SystemExit("No agents selected in config")
 
     (
         include_skills,
@@ -302,8 +370,33 @@ def render_expected(
         prompts,
         all_policies,
         home_skills=home_skills,
+        hand_written_dirs=agents.real_skill_dirs(),
     )
-    outputs = renderer.render(agents, roots)
+    return renderer, roots, skills
+
+
+def local_instruction_target(agents: Agents) -> str:
+    """The harness a localInstructions file renders its templates for."""
+    claude_only = agents.get("claude") and not (
+        agents.get("codex") or agents.get("copilot")
+    )
+    return "claude" if claude_only else "codex"
+
+
+def render_expected(
+    config: dict[str, Any],
+    repo: Path,
+    instructions: Sequence[LocalInstruction],
+    notices: list[str] | None = None,
+) -> dict[Path, Output]:
+    agents = normalize_agents(config)
+    if not agents.any_enabled():
+        raise SystemExit("No agents selected in config")
+
+    renderer, roots, skills = build_renderer(config, repo, agents, notices)
+    prefix = renderer.prefix
+    files = renderer.render(agents.enabled, roots, agents.links)
+    outputs: dict[Path, Output] = {**files, **renderer.link_skills(agents.links, files)}
 
     for instruction in instructions:
         skill_names = instruction.skills
@@ -311,11 +404,8 @@ def render_expected(
         policy_names = instruction.policies
         include_readme = instruction.include_readme
         writes_claude_md = instruction.writes_claude_md
-        claude_only = bool(agents.get("claude")) and not (
-            agents.get("codex") or agents.get("copilot")
-        )
-        readme_import = include_readme and claude_only and writes_claude_md
-        target = "claude" if claude_only else "codex"
+        target = local_instruction_target(agents)
+        readme_import = include_readme and target == "claude" and writes_claude_md
         for rel in instruction.paths:
             directory = repo / rel
             if not directory.exists():
@@ -448,9 +538,21 @@ def selected_hooks(prefix: str, skills) -> list[SkillHook]:
     return hooks
 
 
+def link_drift(path: Path, rel: str, link: Symlink) -> Drifted | None:
+    """How the symlink at *path* departs from *link*, or None when it is in place."""
+    expected = f"symlink to {link.target}"
+    if path.is_symlink():
+        actual_target = os.readlink(path)
+        if actual_target == link.target:
+            return None
+        return Drifted(rel, "", expected, f"symlink to {actual_target}", is_link=True)
+    kind = "a real folder" if path.is_dir() else "a real file"
+    return Drifted(rel, "", expected, kind, is_link=True)
+
+
 def check_outputs(
     repo: Path,
-    outputs: dict[Path, str],
+    outputs: Mapping[Path, Output],
     manager: str | None = None,
     managed: Managed = REPO_MANAGED,
 ) -> int:
@@ -458,8 +560,14 @@ def check_outputs(
     changed: list[Drifted] = []
     extra: list[str] = []
     for path, content in outputs.items():
-        expected = expected_text(content)
         rel = path.relative_to(repo).as_posix()
+        if isinstance(content, Symlink):
+            if not (path.is_symlink() or path.exists()):
+                missing.append(rel)
+            elif (drift := link_drift(path, rel, content)) is not None:
+                changed.append(drift)
+            continue
+        expected = expected_text(content)
         if not path.exists():
             missing.append(rel)
             continue
@@ -470,8 +578,10 @@ def check_outputs(
             changed.append(Drifted(rel, content, expected, actual))
 
     expected_paths = set(outputs)
+    links = link_map(repo, managed)
     for rel in managed.dirs:
-        for path in owned_files(repo / rel):
+        owned = owned_files(repo / rel) + owned_links(repo / rel, links)
+        for path in sorted(owned):
             if path not in expected_paths:
                 extra.append(path.relative_to(repo).as_posix())
     named = list(managed.files)
@@ -493,14 +603,14 @@ def check_outputs(
 
 def install_outputs(
     repo: Path,
-    outputs: dict[Path, str],
+    outputs: Mapping[Path, Output],
     manager: str | None = None,
     managed: Managed = REPO_MANAGED,
 ) -> None:
     refuse_conflicts(repo, outputs, managed)
     remove_targets(repo, managed)
     for path, content in sorted(outputs.items(), key=lambda item: item[0].as_posix()):
-        write_text(path, content)
+        write_output(path, content)
     if (repo / LAUNCHER_AGENTS_MK) in outputs and ensure_agents_gitignore(repo):
         print("Updated .agents .gitignore rules")
     if managed.repo_scaffolding and any(

@@ -61,6 +61,14 @@ packs:
   - <stack-pack>             # what this repo is built with — see Available Packs
 ```
 
+A harness can share another's skills instead of holding a copy. Write
+`codex: {skills_from: claude}` and farrier symlinks each of codex's skill folders
+to the matching claude one (`../../.claude/skills/<name>`), hand-written folders
+included. The source must be an enabled harness that does not itself link. Prompts,
+commands, roots and hooks still render per harness. A cross-skill link inside a
+shared copy points at the source harness's home skills dir, because the one file
+serves every harness.
+
 The repo's name is its **directory** name, kebab-cased. It is not configurable:
 it is the install prefix on every skill generated here and also the name the
 workflow tooling reads off the checkout, so the two agree by construction. To
@@ -207,6 +215,23 @@ front matter; local `CLAUDE.md` files resolve via the repo's live
 generation-time snapshot, used as fallback when no `agents.yml` is found).
 If `agents.yml` no longer maps the file, the command reports it as stale
 instead — regenerate to remove it rather than editing it.
+
+## Ejecting a Skill or Policy
+
+`farrier eject <name> --repo .` hands a generated thing over to the repo.
+
+- A farrier-generated skill folder (`myrepo-db`) loses its provenance and stays
+  as a hand-written folder. `agents.yml` stops selecting the library skill: a
+  literal `skills:` line is removed, a glob becomes the literal ids it still matches,
+  and a pack-only selection goes under `exclude.skills`. Comments stay.
+  It refuses while several harnesses hold a real copy, so link the extras with
+  `skills_from` first.
+- A policy listed in `localInstructions` is written into that mapping's `text:`
+  ahead of any text there, and its name leaves `policy`/`policies`.
+
+Eject reinstalls afterwards, so `--check` passes with no further edits. A
+`localInstructions` `skill:` name with no selected library skill resolves to the
+hand-written folder of that name.
 
 ## Available Packs
 

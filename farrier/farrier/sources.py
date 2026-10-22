@@ -24,6 +24,7 @@ class Source:
     rel: str
     id: str
     layer: Layer | None = None
+    local: bool = False
 
 
 def library_path(path: Path, fallback: str) -> str:
@@ -36,7 +37,9 @@ def library_path(path: Path, fallback: str) -> str:
 
 
 def library_source_path(source: Source) -> str:
-    """The source's path within the prompt library, for provenance banners."""
+    """The source's path within the prompt library, or within the repo for a hand-written one."""
+    if source.local:
+        return source.rel
     return library_path(source.path, source.rel)
 
 

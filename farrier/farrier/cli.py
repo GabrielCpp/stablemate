@@ -25,6 +25,7 @@ from farrier._vendor.stablemate_core.config import (
     write_worktree_dir,
 )
 from farrier._vendor.stablemate_core.profiles import UnknownProfileError, select_profile
+from farrier.eject import run_eject
 from farrier.frontmatter import (
     banner_sources,
     frontmatter_metadata,
@@ -60,6 +61,7 @@ from farrier.outputs import (
     check_outputs,
     check_selection,
     install_outputs,
+    normalize_agents,
     render_expected,
     render_user_expected,
     repo_managed_with_claude_pointers,
@@ -221,13 +223,14 @@ def _run_install(args: argparse.Namespace) -> int:
     notices: list[str] = []
     try:
         instructions = local_instructions(config)
+        agents = normalize_agents(config)
         outputs = render_expected(config, repo, instructions, notices)
     except SystemExit as exc:
         if not (args.check and getattr(args, "skip_unresolvable", False)):
             raise
         print(f"Skipped the generated-file check: {exc}")
         return 0
-    managed = repo_managed_with_claude_pointers(instructions)
+    managed = repo_managed_with_claude_pointers(instructions, agents)
     if args.check:
         return check_outputs(repo, outputs, manager, managed)
     for line in notices:
@@ -364,13 +367,31 @@ def mapped_instruction_sources(generated: Path) -> list[str] | None:
         set(exclude.get("prompts", []) or []),
     )
     policies = load_layered_sources("policy", "library", "policies")
-    renderer = Renderer(repo, prefix, repo_config, {}, skills, prompts, policies)
+    renderer = Renderer(
+        repo,
+        prefix,
+        repo_config,
+        {},
+        skills,
+        prompts,
+        policies,
+        hand_written_dirs=normalize_agents(config).real_skill_dirs(),
+    )
     return [
         library_source_path(source)
         for source in renderer.instruction_sources(
             skill_names, prompt_names, policy_names
         )
     ] + ([LOCAL_TEXT_SOURCE] if local_text else [])
+
+
+def _hand_written_source(generated: Path, rel: str) -> Path | None:
+    """The hand-written skill file *rel* names within the repo that owns *generated*, or None."""
+    config_path = find_agents_config(generated.parent)
+    if config_path is None:
+        return None
+    candidate = config_path.parent / rel
+    return candidate if candidate.is_file() else None
 
 
 def _run_source(args: argparse.Namespace) -> int:
@@ -403,6 +424,11 @@ def _run_source(args: argparse.Namespace) -> int:
             print(find_agents_config(generated.parent))
             continue
         hit = find_in_layers(rel)
+        if hit is None:
+            hand_written = _hand_written_source(generated, rel)
+            if hand_written is not None:
+                print(hand_written)
+                continue
         if hit is None or not hit[1].is_file():
             raise SystemExit(
                 f"error: source '{rel}' does not exist in any library layer.\n"
@@ -436,6 +462,24 @@ def _list_scaffolds(
             suffix = "(required)" if default is None else f"(default: {default})"
             print(f"    --param {name}=...  {suffix}")
     return 0
+
+
+def _run_eject(args: argparse.Namespace) -> int:
+    """`farrier eject` — hand a generated skill or a library policy over to the repo."""
+    set_layers(resolve_library_dir(args.library))
+    status = run_eject(args.repo.resolve(), args.name)
+    if status:
+        return status
+    return _run_install(
+        argparse.Namespace(
+            library=args.library,
+            check=False,
+            user=False,
+            repo=args.repo,
+            config=None,
+            home=args.home,
+        )
+    )
 
 
 def _run_scaffold(args: argparse.Namespace) -> int:
@@ -587,6 +631,32 @@ def _build_parser() -> argparse.ArgumentParser:
         "--library",
         type=Path,
         help="Library directory (agents/ tree). Overrides $FARRIER_LIBRARY_DIR and the home config.",
+    )
+
+    eject_p = sub.add_parser(
+        "eject",
+        help="Hand a generated skill or a library policy over to this repo",
+    )
+    eject_p.add_argument(
+        "name",
+        help="An installed skill's folder name, or a policy's library name",
+    )
+    eject_p.add_argument(
+        "--repo",
+        type=Path,
+        default=Path.cwd(),
+        help="Repository root whose agents.yml to edit (default: cwd)",
+    )
+    eject_p.add_argument(
+        "--library",
+        type=Path,
+        help="Library directory (agents/ tree). Overrides $FARRIER_LIBRARY_DIR and the home config.",
+    )
+    eject_p.add_argument(
+        "--home",
+        type=Path,
+        help="The home directory the user library installs into (default: ~). For "
+        "tests and for trying a selection out without touching the real one.",
     )
 
     scaffold_p = sub.add_parser(
@@ -943,6 +1013,7 @@ def main(argv: list[str] | None = None) -> int:
         "version",
         "source",
         "scaffold",
+        "eject",
         "workflows",
         "library",
         "doctor",
@@ -971,6 +1042,9 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "scaffold":
         return _run_scaffold(args)
+
+    if args.command == "eject":
+        return _run_eject(args)
 
     if args.command == "workflows":
         return _run_workflows(args)

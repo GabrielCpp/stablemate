@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import contextlib
+import os
+from collections.abc import Mapping
 from pathlib import Path
 
 from farrier.frontmatter import frontmatter_metadata
@@ -55,14 +57,43 @@ def owned_files(directory: Path) -> list[Path]:
     ]
 
 
-def sweep(directory: Path) -> None:
-    """Delete farrier's files under *directory*, leaving everything else in place."""
+def link_destination(path: Path) -> Path:
+    """Where the symlink *path* points, joined and normalized without touching the disk."""
+    return Path(os.path.normpath(path.parent / os.readlink(path)))
+
+
+def is_owned_link(path: Path, source_dir: Path) -> bool:
+    """True when *path* is a symlink whose target lies inside *source_dir*."""
+    return path.is_symlink() and source_dir in link_destination(path).parents
+
+
+def owned_links(directory: Path, links: Mapping[Path, Path]) -> list[Path]:
+    """The symlinks in a linked skills *directory* that farrier owns, in path order."""
+    source_dir = links.get(directory)
+    if source_dir is None or not directory.is_dir():
+        return []
+    return [
+        entry
+        for entry in sorted(directory.iterdir())
+        if is_owned_link(entry, source_dir)
+    ]
+
+
+def sweep(directory: Path, links: Mapping[Path, Path] | None = None) -> None:
+    """Delete farrier's files and owned symlinks under *directory*, leaving everything else in place."""
     if not directory.is_dir():
         return
     for path in owned_files(directory):
         path.unlink(missing_ok=True)
+    for path in owned_links(directory, links or {}):
+        path.unlink(missing_ok=True)
     for path in sorted(
-        (item for item in directory.rglob("*") if item.is_dir()), reverse=True
+        (
+            item
+            for item in directory.rglob("*")
+            if item.is_dir() and not item.is_symlink()
+        ),
+        reverse=True,
     ):
         with contextlib.suppress(OSError):
             path.rmdir()

@@ -53,6 +53,18 @@ agents:
   copilot: false
 # list form (equivalent to enabling just these):
 # agents: [claude]
+#
+# A harness may share another's skills instead of holding its own copy:
+#   agents:
+#     claude: true
+#     codex:
+#       skills_from: claude
+# The mapping enables codex and renders no skill folders for it. Farrier links
+# .agents/skills/<name> to ../../.claude/skills/<name> for every skill folder
+# there, hand-written ones included. The source must be enabled and must not
+# itself link. Prompts, commands, roots and hooks still render per harness.
+# Cross-skill links inside the shared copy point at the source harness's home
+# skills dir.
 
 
 # ---------------------------------------------------------------------------

@@ -392,6 +392,37 @@ editable source of truth in the library, using only the generated file's front m
 aggregation mapping or its banner. `frontmatter_metadata` is declared in the frontmatter parser;
 `install.py` only re-exports it as a compatibility facade.
 
+### eject
+- usage: `farrier eject <name> [--repo DIR] [--library DIR]`
+- flags:
+  - `--repo <dir>` — repository holding `agents.yml`; default is the current directory.
+  - `--library <dir>` — library directory; same resolution as `install`.
+- args:
+  - `<name>` — the installed name of a farrier-generated skill folder, or a policy listed in
+    `localInstructions`. A skill folder name wins. Anything else exits listing both kinds.
+- does:
+  - skill: refuse when more than one enabled harness holds a real copy
+  - skill: strip the provenance from `SKILL.md` (the `name`, `generated_by`, `source`, `resolve`
+    and `do_not_edit` metadata keys, and `metadata` itself when it empties) and from bundled
+    files (the `farrier source` line and the generated-by banner), leaving every other byte
+  - skill: edit `agents.yml` by line. A literal `skills:` entry loses its line, a glob entry is
+    replaced by the literal ids it still matches, and a skill only a pack selects is added to
+    `exclude.skills`. Comments and other bytes stay. The edit is reparsed and must select exactly
+    the old selection minus the ejected skill, or eject aborts before writing
+  - policy: render the body as `render_local_instruction` does for each mapping that lists it,
+    refuse when the render differs across the mapping's paths, prepend it to the mapping's
+    `text:` as a `text: |` block, and remove the name from `policy`/`policies` (dropping the
+    key when it empties). The edit is reparsed and checked before writing
+  - reinstall, so `farrier --repo . --check` passes with no further edit
+- code: `farrier/farrier/cli.py::_run_eject`
+- code: `farrier/farrier/eject.py::run_eject`
+- code: `farrier/farrier/yaml_edit.py::rewrite_skills_list`
+- tests: `farrier/tests/test_eject.py`
+
+Hands a generated thing over to the repo. A `localInstructions` `skill:` name with no selected
+library skill resolves to the hand-written skill folder of that name, so an ejected skill stays
+embedded in `AGENTS.md`.
+
 ### scaffold
 - usage: `farrier scaffold [<id>] [--param KEY=VALUE]... [--repo DIR] [--list] [--library DIR]`
 - flags:

@@ -15,6 +15,7 @@ class Drifted:
     content: str
     expected: str
     actual: str
+    is_link: bool = False
 
 REGENERATE = "make agent-install"
 
@@ -68,6 +69,17 @@ def changed_report(rel: str, sources: list[str], drifted: set[str]) -> str:
     )
 
 
+def changed_link_report(rel: str, expected: str, actual: str) -> str:
+    """The block printed under one ``changed:`` line for a skill symlink."""
+    return "\n".join(
+        [
+            f"  {rel} should be a {expected}, but it is {actual}.",
+            f"  Run `{REGENERATE}` to restore the link. A skill folder that a harness",
+            "  links from another harness is not edited under the linking harness.",
+        ]
+    )
+
+
 def missing_report(rel: str) -> str:
     return (
         f"  {rel} is generated but absent from the working tree.\n"
@@ -116,6 +128,12 @@ def report(
     for rel in missing:
         blocks.append(f"missing: {rel}\n{missing_report(rel)}")
     for record in changed:
+        if record.is_link:
+            blocks.append(
+                f"changed: {record.rel}\n"
+                f"{changed_link_report(record.rel, record.expected, record.actual)}"
+            )
+            continue
         sources = sources_for(record.content, record.expected)
         drifted = attribute(record.content, record.actual)
         blocks.append(
