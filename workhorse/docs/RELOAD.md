@@ -45,6 +45,9 @@ What the run then does:
 4. **The pushed code is re-imported from disk** and the run re-enters the checkpoint the
    state wrote on entry — same process, same run dir, same root span, same wall-clock
    budget. Not a new run.
+5. **A `--worktree` run keeps its worktree.** A reload is not an ending, so the run goes
+   on in the worktree it was dispatched into. Only the run's terminal state removes it
+   (see [Worktree dispatch](RUNS.md#worktree-dispatch)).
 
 ## Reaching a run that is asleep
 
@@ -193,6 +196,10 @@ workhorse-coder control --run <id> resume [CLI]                   # relaunch det
   when it outlives `--timeout`), so the next step is not a race.
 - **`status --params`** — reads `checkpoint.json` directly, so it answers the same for a
   live run, a stopped one, and one busy in a script node that is not reading its socket.
+  A run dispatched with `--worktree` also gets a `worktree` block: its `path`, `branch`
+  and `base`, and the `outcome` its ending recorded. The outcome is `null` while the run
+  has not ended. A stop, a failure or an uncommitted change keeps the worktree, and the
+  block's `reason` says which. A repaired run resumes in that same worktree.
 - **`rewind --to STATE`** — rewrites the checkpoint to enter `STATE`, validated exactly as
   a resume would validate it: the state resolves through `Workflow.resolve_state`, and the
   params bind through the state's own signature (`coerce_params`), so an unknown state, a
