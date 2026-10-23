@@ -16,6 +16,7 @@ from workhorse_workflows.coder.shared.plan import get_affected_repos, load_plan_
 from workhorse_workflows.kit import commit_paths, find_docs_root, poll_run_inbox, resolve_workspace
 
 ANSWERS_FILE = "review-answers.md"
+NOT_A_DEFECT = "not a defect"
 
 
 @blueprint.node
@@ -90,6 +91,26 @@ def evidence_gap(answer: dict, repos: list[str], changed: dict[str, list[str]]) 
     return ""
 
 
+def _not_a_defect(reason: str) -> bool:
+    return reason.lstrip(" *_`\"'").lower().startswith(NOT_A_DEFECT)
+
+
+def decline_gap(answer: dict, repos: list[str]) -> str:
+    """Why a "not a defect" decline does not hold up, or `""` when it does or the decline is of another kind."""
+    if not _not_a_defect(answer.get("reason", "")):
+        return ""
+    tests = answer.get("tests", [])
+    if not tests:
+        return (
+            'a "not a defect" decline cites no test: add a `- test:` naming a test that '
+            "drives this finding's own case and passes, or fix the finding"
+        )
+    for test in tests:
+        if not any(_git(repo, "grep", "-q", "-F", "-e", test) for repo in repos):
+            return f"test {test} appears in no tracked file of the story's code repos"
+    return ""
+
+
 @blueprint.node
 def settle_findings(
     logger: logging.Logger,
@@ -99,7 +120,7 @@ def settle_findings(
     repos: list[str] | None = None,
     repo_dir: str = "",
 ) -> Settlement:
-    """Settle the filed finding ids against the dev owner's answer list, checking each fix's evidence, and commit the ledger."""
+    """Settle the filed finding ids against the dev owner's answer list, checking each fix's evidence and each "not a defect" decline's test, and commit the ledger."""
     root = find_docs_root(repo_dir)
     ids = list(filed or [])
     code = [repo for repo in (repos or []) if Path(repo).is_dir()]
@@ -118,7 +139,14 @@ def settle_findings(
             rejected[fid] = gap
         else:
             settled.append(fid)
-    declined = [str(entry["id"]) for entry in ledger.get("declined", [])]
+    declined: list[str] = []
+    for entry in ledger.get("declined", []):
+        fid = str(entry["id"])
+        gap = decline_gap(ledger["answers"][fid], code)
+        if gap:
+            rejected[fid] = gap
+        else:
+            declined.append(fid)
     still = [*ledger.get("open", []), *rejected]
     logger.info(
         "settlement for %s: %d settled, %d declined, %d open",
@@ -148,6 +176,7 @@ def check_feedback(logger: logging.Logger, run_dir: str = "") -> Feedback:
 __all__ = [
     "ANSWERS_FILE",
     "check_feedback",
+    "decline_gap",
     "evidence_gap",
     "resolve_review_context",
     "settle_findings",

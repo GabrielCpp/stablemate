@@ -17,6 +17,9 @@ the plan files in the spec directory, the code committed under the story's foote
 green and a `DevResult`. The envelope adds a section when the workflow supplies a follow-up, a
 rescope note, a failed-check report, open findings or an operator answer.
 
+A "not a defect" decline opens its reason with those words and names, as a `- test:` bullet, the
+test that drives the finding's own case. The settlement rejects one that names no such test.
+
 ## Fields
 
 ### story_path

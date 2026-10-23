@@ -233,10 +233,22 @@ A declined finding gives its reason:
 Reason: the story's AC 4 asks for the redirect to keep the query string, so the change is intended.
 ```
 
+A "not a defect" decline opens its reason with those words, and names the test that drives
+the finding's own case and passes, above the reason:
+
+```markdown
+## acme-story/review-1.4: declined
+- test: test_keeps_trailing_slash_on_redirect
+
+Reason: not a defect. The redirect keeps the trailing slash, and the test drives the reported URL.
+```
+
 The workflow checks every fixed answer: the commit exists in one of the story's repos, the
 path is among the files the story changed, and the test name appears in a file the story
-changed. A finding with no section, or a fixed answer that fails a check, comes back to you
-in the next turn. A decline is final, so its reason must hold for a reviewer: the issue is
+changed. It checks every "not a defect" decline too: it names a test, and the test name
+appears in a tracked file of the story's code repos. A finding with no section, or an answer
+that fails a check, comes back to you in the next turn. A decline that passes is final, so its
+reason must hold for a reviewer: the issue is
 not a defect, the story asks for the behaviour, or the change is an improvement the working
 slice does not need. A failure is never declined. "Too much work" is not a reason.
 
