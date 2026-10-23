@@ -53,3 +53,41 @@ class TrendsWritten(BaseModel):
 
     path: str
     committed: bool
+
+
+class Candidate(BaseModel):
+    """One cluster whose unbound records may be enough for a decision."""
+
+    name: str
+    cause: str
+    ids: list[str]
+    lines: list[str]
+
+
+class Candidates(BaseModel):
+    """The clusters of a report that reach the decision threshold."""
+
+    clusters: list[Candidate] = []
+
+
+class DecisionDraft(BaseModel):
+    """The prose of one proposed decision."""
+
+    title: str
+    context: str
+    decision: str
+    consequences: str
+
+
+class Filed(BaseModel):
+    """What proposing one decision came to: its id, or the refusal."""
+
+    ok: bool
+    id: str = ""
+    message: str = ""
+
+
+class Proposed(BaseModel):
+    """The ids of the decisions a run proposed."""
+
+    decisions: list[str] = []
