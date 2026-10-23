@@ -32,7 +32,6 @@ def test_the_operator_dir_files_are_still_excused_from_the_dirty_check(tmp_path:
 def test_decisions_land_with_the_documents_not_beside_the_service_directories(
     tmp_path: Path,
 ) -> None:
-    """A decision record is a document a person reads, so it sits under `docs/` with the backlog and the epics rather than as a stray top-level folder."""
+    """A decision record is a document a person reads, so it sits under `docs/` with the epics rather than as a stray top-level folder."""
     assert paths.decisions_dir(tmp_path) == tmp_path / "docs" / "decisions"
     assert paths.decisions_dir(tmp_path).name == "decisions"
-    assert paths.backlog_file(tmp_path, "").startswith("docs/")
