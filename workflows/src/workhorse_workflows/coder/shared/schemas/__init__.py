@@ -3,8 +3,8 @@ from __future__ import annotations
 
 from workhorse_workflows.coder.shared.schemas._base import CoderResult
 from workhorse_workflows.coder.shared.schemas.backlog import (
+    FixClosed,
     FixPick,
-    FixPruned,
     FixStorySeed,
 )
 from workhorse_workflows.coder.shared.schemas.ci import (
@@ -107,8 +107,8 @@ __all__ = [
     "FarrierInstall",
     "Feedback",
     "FixCiResult",
+    "FixClosed",
     "FixPick",
-    "FixPruned",
     "FixStorySeed",
     "GenesisReport",
     "GitInit",

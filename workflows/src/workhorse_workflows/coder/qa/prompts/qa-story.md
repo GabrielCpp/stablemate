@@ -137,10 +137,15 @@ The story starts from a working main, so every failure you meet is this story's.
 failure in the repo's code is a finding wherever that code sits, and never a backlog item.
 `{{ workhorse_var('spec_dir') }}/backlog-items.json` holds only product work the working
 slice does not need and nobody has done yet, as a JSON array of `{"id", "description",
-"section"}` objects. The workflow files each one. A finding resolved during this run is
-never an item. A remark about the toolchain, such as commit trailers, ostler or packet
-attribution, is never an item either. Both are run findings for the operator, and they go
-in `notes`.
+"repo", "area", "pattern", "symbols"}` objects. Give each item a `description` a person
+can act on, the `repo` of the workspace it sits in by the name the workspace gives it, the
+`area` as one lowercase kebab word for the module or service it belongs to, the `pattern`
+as a short lowercase kebab phrase for the kind of fix, such as `extract-module` or
+`widen-api`, and the `symbols`, the files or symbols it touches. Leave `repo` empty only
+when the run has one repository. The workflow files each one as a record on the debt
+register. A finding resolved during this run is never an item. A remark about the
+toolchain, such as commit trailers, ostler or packet attribution, is never an item
+either. Both are run findings for the operator, and they go in `notes`.
 
 ## Subagents
 

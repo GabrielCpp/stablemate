@@ -12,7 +12,7 @@ from ostler import Ostler, doctor
 from ostler.model import load
 from workhorse._vendor.stablemate_core import config as core_config
 from workhorse.pyflow.blueprint import node_spec
-from workhorse_workflows.coder.shared.backlog import file_follow_up_backlog, prune_fix_item, seed_fix_story
+from workhorse_workflows.coder.shared.backlog import close_fix_item, file_follow_up_backlog, seed_fix_story
 from workhorse_workflows.coder.shared.schemas.dev_story import FollowUp
 from workhorse_workflows.coder.shared.story_commit import check_repos_clean
 
@@ -268,9 +268,7 @@ def test_a_bookkeeping_commit_is_not_refused_by_the_repository_hooks(
     git: Callable[..., subprocess.CompletedProcess],
 ) -> None:
     """A hook that judges the whole working tree, such as a rendered-skill drift check, has nothing to say about the records the workflow wrote, and a refusal would end the run."""
-    write(repo / "docs" / "backlog.md", "# Backlog\n\n## Filed by coder\n\n- [acme-cache] Clear the cache on sign-out\n")
-    git(repo, "add", "docs/backlog.md")
-    git(repo, "commit", "-qm", "seed the backlog")
+    _file_open(repo, "Clear the cache on sign-out", "acme-cache")
     for root in (repo, artifacts):
         hook = root / git(root, "rev-parse", "--git-path", "hooks/pre-commit").stdout.strip()
         hook.parent.mkdir(parents=True, exist_ok=True)
@@ -280,12 +278,15 @@ def test_a_bookkeeping_commit_is_not_refused_by_the_repository_hooks(
     drained = file_follow_up_backlog(
         logger, parent="acme-story", follow_ups=[_follow_up("Warm the cache", "")], repo_dir=str(repo)
     )
-    pruned = prune_fix_item(logger, bullet_id="acme-cache", repo_dir=str(repo))
+    closed = close_fix_item(logger, "acme-cache", {"acme": "0123456789abcdef"}, repo_dir=str(repo))
 
     assert drained.appended == 1, drained
-    assert pruned.pruned is True, pruned
-    assert _subjects(artifacts)[0] == "chore(acme): file the deferred follow-ups of acme-story"
-    assert git(repo, "log", "-1", "--format=%s").stdout.strip() == "chore(acme): drop shipped fix acme-cache"
+    assert closed.closed is True, closed
+    assert _subjects(artifacts)[:2] == [
+        "chore(acme): close acme-cache as done",
+        "chore(acme): file the deferred follow-ups of acme-story",
+    ]
+    assert git(repo, "log", "-1", "--format=%s").stdout.strip() == "ignore the agents dir"
     assert check_repos_clean(logger, story_slug="acme-story", repo_dir=str(repo)).clean is True
 
 
@@ -388,7 +389,12 @@ def test_the_fixes_bucket_the_coder_creates_needs_no_milestone(
     assert Ostler(repo).create_milestone("mvp", "MVP").ok
 
     seeded = seed_fix_story(
-        logger, bullet_id="acme-cache", bullet_text="Clear the cache on sign-out", repo_dir=str(repo)
+        logger,
+        record_id="acme-cache",
+        summary="Clear the cache on sign-out",
+        repo_dir=str(repo),
+        repo="acme",
+        area=AREA,
     )
 
     graph = load(repo)

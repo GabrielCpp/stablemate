@@ -10,7 +10,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from ostler import Ostler, markdown
+from ostler import Ostler, ids, markdown
+from ostler.register import Record
 from ostler.path import book_prefix_in
 from workhorse.pyflow import WorkflowFailed
 from workhorse_workflows.kit import commit_paths, find_docs_root
@@ -21,97 +22,35 @@ from workhorse_workflows.coder.shared.docs import CONTEXT_FILE
 from workhorse_workflows.coder.shared.judge import Judge
 from workhorse_workflows.coder.shared.schemas.backlog import (
     FiledBacklog,
+    FixClosed,
     FixPick,
-    FixPruned,
     FixStorySeed,
 )
 from workhorse_workflows.coder.shared.schemas.dev_story import FollowUp
 from workhorse_workflows.coder.shared.schemas.qa import BacklogDrain
 
-FILED_HEADING = "## Filed by coder"
-FILED_TITLE = FILED_HEADING.lstrip("#").strip()
-
-BLOCKED_SUFFIX_RE = re.compile(r"\s*\(blocked\b.*$", re.IGNORECASE)
-
-
 @dataclass(frozen=True)
 class BacklogBullet:
-    """One `- [id] text` backlog item, located in the file it came from."""
+    """One `[id] text` open item, as the follow-up filer compares a new one against it."""
 
     line: int
     id: str
     text: str
 
-    @property
-    def blocked(self) -> bool:
-        """Whether the item carries a `(blocked …)` annotation."""
-        return "(blocked" in self.text.lower()
-
-
-def backlog_bullets(text: str, *, section: str = "") -> list[BacklogBullet]:
-    """Every `- [id] …` item in a backlog, in file order; optionally one section's only."""
-    doc = markdown.split(text)
-    if section:
-        found = doc.find_section(section)
-        if found is None:
-            return []
-        bullets = [b for top in found.bullets for b in top.walk()]
-    else:
-        bullets = doc.walk_bullets()
-    out: list[BacklogBullet] = []
-    for bullet in sorted(bullets, key=lambda b: b.line_start):
-        ident, rest = bullet.bracketed
-        if ident:
-            out.append(BacklogBullet(bullet.line_start + doc.body_offset, ident, rest))
-    return out
-
 
 def kebab(raw: str) -> str:
-    """Sanitize an id to a stable kebab handle (the backlog's `[id]` grammar)."""
+    """Sanitize an id to a stable kebab handle."""
     return re.sub(r"[^A-Za-z0-9._-]+", "-", str(raw).strip().lower()).strip("-")
 
 
 def norm_desc(desc: str) -> str:
     """Normalize a description to an identity key; empty means "never matches"."""
-    text = BLOCKED_SUFFIX_RE.sub("", str(desc or ""))
-    return re.sub(r"[^a-z0-9]+", " ", text.lower()).strip()
+    return re.sub(r"[^a-z0-9]+", " ", str(desc or "").lower()).strip()
 
 
 def id_token_set(item_id: str) -> frozenset[str]:
     """The tokens of a kebab id, order-insensitive, so a word-permuted re-file collides."""
     return frozenset(t for t in re.split(r"[.\-_]+", str(item_id or "").lower()) if t)
-
-
-class Seen:
-    """The three high-precision de-dup signals, seeded from the backlog and grown per batch."""
-
-    def __init__(self, text: str) -> None:
-        self.ids: set[str] = set()
-        self.descs: set[str] = set()
-        self.idsets: set[frozenset[str]] = set()
-        for bullet in backlog_bullets(text):
-            self.add(bullet.id, bullet.text)
-
-    def add(self, item_id: str, desc: str) -> None:
-        """Record an item so the rest of the batch de-dups against it too."""
-        if item_id:
-            self.ids.add(item_id)
-            tokens = id_token_set(item_id)
-            if tokens:
-                self.idsets.add(tokens)
-        key = norm_desc(desc)
-        if key:
-            self.descs.add(key)
-
-    def duplicate(self, item_id: str, desc: str) -> bool:
-        """Same id, same id-token-set, or same normalized description."""
-        if item_id and item_id in self.ids:
-            return True
-        tokens = id_token_set(item_id)
-        if tokens and tokens in self.idsets:
-            return True
-        key = norm_desc(desc)
-        return bool(key and key in self.descs)
 
 
 def _load_items(logger: logging.Logger, items_path: Path) -> list[dict[str, Any]]:
@@ -128,45 +67,35 @@ def _load_items(logger: logging.Logger, items_path: Path) -> list[dict[str, Any]
     return [item for item in data if isinstance(item, dict)]
 
 
-def _insert_under_section(lines: list[str], section: str, bullet: str) -> list[str]:
-    """Append `bullet` to the named `## section`, or under `## Filed by coder` at the end."""
-    if section:
-        target = section.strip().lstrip("#").strip().lower()
-        for index, line in enumerate(lines):
-            if line.lstrip().startswith("#") and line.lstrip("#").strip().lower() == target:
-                end = index + 1
-                while end < len(lines) and not lines[end].lstrip().startswith("#"):
-                    end += 1
-                while end > index + 1 and not lines[end - 1].strip():
-                    end -= 1
-                lines.insert(end, bullet)
-                return lines
-
-    if not any(line.strip() == FILED_HEADING for line in lines):
-        if lines and lines[-1].strip():
-            lines.append("")
-        lines.append(FILED_HEADING)
-        lines.append("")
-    lines.append(bullet)
-    return lines
-
-
 def _item_entry(item: dict[str, Any]) -> tuple[str, str]:
     """An item's kebab id and its one-line description."""
     return kebab(item.get("id") or ""), str(item.get("description") or "").strip().replace("\n", " ")
 
 
+def _segment(raw: object) -> str:
+    """A register repo, area or pattern segment from free text: lowercase kebab, or `untriaged` when nothing is left."""
+    return re.sub(r"[^a-z0-9]+", "-", str(raw or "").lower()).strip("-") or "untriaged"
+
+
+def _items_file(root: Path, spec_dir: str) -> Path | None:
+    spec = spec_dir.strip()
+    return root / spec / "backlog-items.json" if spec else None
+
+
 @blueprint.node
 def filed_backlog(
-    logger: logging.Logger, spec_dir: str = "", repo_dir: str = ""
+    logger: logging.Logger, spec_dir: str = "", repo_dir: str = "", workspace: str = ""
 ) -> FiledBacklog:
-    """The open `Filed by coder` bullets, and the items the story's QA left to file, so a flow can judge them first."""
+    """The open `qa` records of the workspace's repos, and the items the story's QA left to file, so a flow can judge them first."""
     root = find_docs_root(repo_dir)
-    backlog = root / paths.backlog_file(root)
-    text = backlog.read_text(encoding="utf-8") if backlog.is_file() else ""
-    filed = {b.id: b.text for b in backlog_bullets(text, section=FILED_TITLE)}
-    spec = spec_dir.strip()
-    pending = _load_items(logger, root / spec / "backlog-items.json") if spec else []
+    repos = resolve_workspace(workspace, repo_dir)
+    filed = {
+        r.id: r.summary
+        for r in Ostler(root).records().records
+        if r.repo in repos and r.status == "open" and r.filed_by == "qa"
+    }
+    items_path = _items_file(root, spec_dir)
+    pending = _load_items(logger, items_path) if items_path else []
     items = {item_id: desc for item_id, desc in map(_item_entry, pending) if item_id and desc}
     return FiledBacklog(filed=filed, items=items)
 
@@ -174,7 +103,7 @@ def filed_backlog(
 def unfiled(
     judge: Judge, logger: logging.Logger, reports: Mapping[str, str], filed: Mapping[str, str]
 ) -> list[str]:
-    """The reports that restate no open `Filed by coder` bullet; each one that does is logged under the bullet it matched."""
+    """The reports that restate no open `qa` record; each one that does is logged under the record it matched."""
     same = causes.same_causes(judge, reports, filed)
     for rid, hit in same.items():
         if hit != causes.NEW:
@@ -182,60 +111,92 @@ def unfiled(
     return [rid for rid, hit in same.items() if hit == causes.NEW]
 
 
+def _story_of(root: Path, spec_dir: str) -> str:
+    """The story id the spec dir's QA context names, or empty when it names none."""
+    context_path = root / spec_dir.strip() / CONTEXT_FILE
+    try:
+        return _story_id(json.loads(context_path.read_text(encoding="utf-8")))
+    except (json.JSONDecodeError, OSError):
+        return ""
+
+
 @blueprint.node
 def file_backlog_items(
     logger: logging.Logger,
     spec_dir: str = "",
     repo_dir: str = "",
+    workspace: str = "",
     drop: list[str] | None = None,
 ) -> BacklogDrain:
-    """Append this story's filed items to the repo backlog, less the ones in `drop`, de-duplicated, then clear them."""
+    """File this story's leftover items as `qa` records on the register, less the ones in `drop`, de-duplicated, in one artifacts commit, then clear them."""
     root = find_docs_root(repo_dir)
-    spec = spec_dir.strip()
-    if not spec:
+    items_path = _items_file(root, spec_dir)
+    if items_path is None:
         logger.info("no spec_dir supplied — nothing to drain")
         return BacklogDrain(notes="no spec_dir supplied — nothing to drain")
 
-    items_path = root / spec / "backlog-items.json"
     items = _load_items(logger, items_path)
     if not items:
         logger.info("no backlog items to file at %s", items_path)
         return BacklogDrain(notes="no backlog items to file")
 
-    backlog_rel = paths.backlog_file(root)
-    backlog_path = root / backlog_rel
-    if not backlog_path.is_file():
-        try:
-            backlog_path.parent.mkdir(parents=True, exist_ok=True)
-            backlog_path.write_text("# Backlog\n", encoding="utf-8")
-        except OSError as exc:
-            logger.warning("could not create backlog at %s: %s", backlog_rel, exc)
-            return BacklogDrain(
-                skipped=len(items),
-                notes=(
-                    f"no backlog at {backlog_rel} and could not create it — "
-                    f"{len(items)} item(s) not filed (items file kept)"
-                ),
-            )
-
-    raw = backlog_path.read_text(encoding="utf-8")
-    lines = raw.splitlines()
-    seen = Seen(raw)
-
+    okf = Ostler(root)
+    repos = resolve_workspace(workspace, repo_dir)
+    story = _story_of(root, spec_dir)
+    held: dict[str, set[str]] = {}
+    filed_repos: list[str] = []
+    new_paths: list[Path] = []
     dropped = set(drop or [])
-    appended = 0
     skipped = 0
     for item in items:
         item_id, desc = _item_entry(item)
-        if not item_id or not desc or item_id in dropped or seen.duplicate(item_id, desc):
+        if not item_id or not desc or item_id in dropped:
             skipped += 1
             continue
-        lines = _insert_under_section(lines, str(item.get("section") or ""), f"- [{item_id}] {desc}")
-        seen.add(item_id, desc)
-        appended += 1
+        repo = _workspace_repo(str(item.get("repo") or "").strip(), repos)
+        if not repo:
+            logger.info(
+                "item %r names no repository of the workspace (%s), so it is not filed",
+                desc, ", ".join(repos),
+            )
+            skipped += 1
+            continue
+        if repo not in held:
+            held[repo] = {
+                norm_desc(r.summary) for r in okf.open_records(repo) if r.filed_by == "qa"
+            }
+        key = norm_desc(desc)
+        if key in held[repo]:
+            logger.info("item %r restates an open qa record of %s, so it is not filed again", desc, repo)
+            skipped += 1
+            continue
+        full = str(item.get("description") or "").strip()
+        filing = okf.file_record(
+            repo=repo,
+            area=_segment(item.get("area")),
+            pattern=_segment(item.get("pattern")),
+            summary=next((line.strip() for line in full.splitlines() if line.strip()), desc),
+            filed_by="qa",
+            symbols=[str(s) for s in item.get("symbols") or [] if isinstance(s, str)],
+            source_story=story,
+            body=full if "\n" in full else "",
+        )
+        if filing.record is None or filing.path is None:
+            logger.info("item %r was not filed: %s", desc, filing.message)
+            skipped += 1
+            continue
+        held[repo].add(key)
+        filed_repos.append(repo)
+        new_paths.append(filing.path)
 
+    appended = len(new_paths)
     if appended:
-        backlog_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+        artifacts = okf.register_root().parent
+        scope = commits.scope(filed_repos[0]) if len(set(filed_repos)) == 1 else ""
+        message = commits.message(
+            "chore", scope, f"file the qa leftovers of {story}" if story else "file the qa leftovers"
+        )
+        commit_paths(artifacts, message, *(str(p.relative_to(artifacts)) for p in new_paths), verify=False)
 
     try:
         items_path.unlink()
@@ -244,7 +205,7 @@ def file_backlog_items(
         logger.warning("could not remove items file: %s", exc)
         removed = False
 
-    note = f"filed {appended}, skipped {skipped} (duplicate/invalid)"
+    note = f"filed {appended} to the register, skipped {skipped} (duplicate/invalid)"
     note += "; removed backlog-items.json" if removed else "; backlog-items.json left in place"
     logger.info(note)
     return BacklogDrain(appended=appended, skipped=skipped, notes=note)
@@ -461,104 +422,104 @@ def file_deferred_obligations(
     return BacklogDrain(appended=appended, skipped=skipped, notes=note)
 
 
+def _age(record: Record) -> tuple[bool, str, str]:
+    """Oldest first: an id that carries no ULID (an imported one) before every minted id, minted ids by their ULID."""
+    ulid = ids.ulid_of(record.id)
+    return bool(ulid), ulid, record.id
+
+
 @blueprint.node
 def select_fix_item(
-    logger: logging.Logger, backlog_path: str = "", repo_dir: str = ""
+    logger: logging.Logger, repo_dir: str = "", workspace: str = ""
 ) -> FixPick:
-    """Draw the next drainable bullet from `## Filed by coder`, or report the pool dry."""
+    """Draw the oldest open `qa` record of the workspace's repos, or report the pool dry."""
     root = find_docs_root(repo_dir)
-    rel = paths.backlog_file(root, backlog_path)
-    path = root / rel
-
-    if not path.is_file():
-        logger.info("no backlog file at %s — nothing to drain", rel)
-        return FixPick(reason=f"no backlog file at {rel} — nothing to drain")
-
-    try:
-        raw = path.read_text(encoding="utf-8")
-    except OSError as exc:
-        logger.warning("could not read %s: %s", rel, exc)
-        return FixPick(reason=f"could not read {rel}: {exc}")
-
-    if markdown.split(raw).find_section(FILED_TITLE) is None:
-        logger.info("no '%s' section — nothing to drain", FILED_HEADING)
-        return FixPick(reason=f"no '{FILED_HEADING}' section — nothing to drain")
-
-    for bullet in backlog_bullets(raw, section=FILED_TITLE):
-        if bullet.blocked or not bullet.text:
-            continue
-        logger.info("drew '%s' from '%s'", bullet.id, FILED_HEADING)
-        return FixPick(
-            has_fix=True,
-            fix_bullet_id=bullet.id,
-            fix_bullet_text=bullet.text,
-            reason=f"drew '{bullet.id}' from '{FILED_HEADING}'",
-        )
-
-    logger.info("'%s' has no drainable bullet (empty or all blocked)", FILED_HEADING)
+    repos = resolve_workspace(workspace, repo_dir)
+    drainable = sorted(
+        (
+            r
+            for r in Ostler(root).records().records
+            if r.repo in repos and r.status == "open" and r.filed_by == "qa"
+        ),
+        key=_age,
+    )
+    if not drainable:
+        logger.info("no open qa record in %s — nothing to drain", ", ".join(repos))
+        return FixPick(reason=f"no open qa record in {', '.join(repos)} — nothing to drain")
+    record = drainable[0]
+    logger.info("drew '%s' from the register", record.id)
     return FixPick(
-        reason=f"'{FILED_HEADING}' has no drainable bullet (empty or all blocked)"
+        has_fix=True,
+        record_id=record.id,
+        repo=record.repo,
+        area=record.area,
+        summary=record.summary,
+        body=record.body,
+        reason=f"drew '{record.id}' from the register",
     )
 
 
 @blueprint.node
 def seed_fix_story(
     logger: logging.Logger,
-    bullet_id: str = "",
-    bullet_text: str = "",
+    record_id: str = "",
+    summary: str = "",
     epics_dir: str = "",
     epic: str = "",
     repo_dir: str = "",
+    repo: str = "",
+    area: str = "",
+    body: str = "",
 ) -> FixStorySeed:
-    """Register the drawn bullet as a single-AC story in the perpetual `fixes` bucket."""
+    """Register the drawn record as a single-AC story in the perpetual `fixes` bucket."""
     bucket = epic.strip() or "fixes"
-    bullet_id = bullet_id.strip()
-    bullet_text = bullet_text.strip()
+    record_id = record_id.strip()
+    summary = summary.strip()
 
-    if not bullet_id:
-        logger.warning("no bullet_id supplied — cannot seed a fix story")
+    if not record_id:
+        logger.warning("no record_id supplied — cannot seed a fix story")
         raise WorkflowFailed(
-            "no bullet_id supplied (expected select_fix_item's fix_bullet_id output)"
+            "no record_id supplied (expected select_fix_item's record_id output)"
         )
-    if not bullet_text:
-        logger.warning("no bullet_text supplied — cannot seed a fix story")
+    if not summary:
+        logger.warning("no summary supplied — cannot seed a fix story")
         raise WorkflowFailed(
-            "no bullet_text supplied (expected select_fix_item's fix_bullet_text output)"
+            "no summary supplied (expected select_fix_item's summary output)"
         )
 
     root = find_docs_root(repo_dir)
     okf = Ostler(root)
-    backlog_rel = paths.backlog_file(root)
+    where = (repo, area, body.strip())
     bucket = _ensure_fixes_epic(okf, bucket)
     epic_dir_rel = paths.epic_dir_rel(root, bucket, epics_dir)
 
     for story in okf.list("story", epic=bucket):
-        if bullet_id not in (story.get("covers") or []):
+        if record_id not in (story.get("covers") or []):
             continue
         slug = str(story.get("slug", ""))
         path = str(story.get("path", "")) or f"{epic_dir_rel}/stories/{slug}/story.md"
-        _author_story_body(root / path, bullet_id, bullet_text, logger, backlog_rel)
-        logger.info("story '%s' already covers '%s' — reusing", slug, bullet_id)
+        _author_story_body(root / path, record_id, summary, logger, *where)
+        logger.info("story '%s' already covers '%s' — reusing", slug, record_id)
         return FixStorySeed(
             epic=bucket,
             epic_dir=epic_dir_rel,
             story_slug=slug,
             story_dir=str(Path(path).parent),
             story_path=path,
-            bullet_id=bullet_id,
-            reason=f"story '{slug}' already covers '{bullet_id}' — reusing (idempotent)",
+            record_id=record_id,
+            reason=f"story '{slug}' already covers '{record_id}' — reusing (idempotent)",
         )
 
     okf.add_seed(
         bucket,
-        bullet_id,
+        record_id,
         status="researched",
-        summary=bullet_text,
-        meta={"sourceBullet": bullet_text},
+        summary=summary,
+        meta={"sourceRecord": summary},
     )
 
-    slug = _fix_slug(bullet_text)
-    result = okf.create_story(bucket, slug, bullet_text, covers=[bullet_id])
+    slug = _fix_slug(summary)
+    result = okf.create_story(bucket, slug, summary, covers=[record_id])
     if not result.ok:
         raise WorkflowFailed(
             f"could not create fix story '{slug}' in '{bucket}': {result.message}"
@@ -566,19 +527,19 @@ def seed_fix_story(
 
     story_dir_rel = f"{epic_dir_rel}/stories/{slug}"
     story_path_rel = f"{story_dir_rel}/story.md"
-    _author_story_body(root / story_path_rel, bullet_id, bullet_text, logger, backlog_rel)
+    _author_story_body(root / story_path_rel, record_id, summary, logger, *where)
 
-    logger.info("registered fix story '%s' covering '%s' in '%s'", slug, bullet_id, bucket)
+    logger.info("registered fix story '%s' covering '%s' in '%s'", slug, record_id, bucket)
     return FixStorySeed(
         epic=bucket,
         epic_dir=epic_dir_rel,
         story_slug=slug,
         story_dir=story_dir_rel,
         story_path=story_path_rel,
-        bullet_id=bullet_id,
+        record_id=record_id,
         reason=(
             f"registered fix story '{slug}' ({result.entity_id or '?'}) covering "
-            f"'{bullet_id}' in '{bucket}', authored with a single AC line and its "
+            f"'{record_id}' in '{bucket}', authored with a single AC line and its "
             f"filing context"
         ),
     )
@@ -626,20 +587,22 @@ def _fill_empty_section(story_path: Path, heading: str, lines: list[str]) -> boo
 
 
 def _author_story_body(
-    story_path: Path, bullet_id: str, bullet_text: str, logger: logging.Logger,
-    backlog_rel: str = "",
+    story_path: Path, record_id: str, summary: str, logger: logging.Logger,
+    repo: str = "", area: str = "", body: str = "",
 ) -> None:
-    """Write every current required section from the one known fix item."""
-    wrote = _fill_empty_section(story_path, "Acceptance Criteria", [f"- {bullet_text}"])
+    """Write every current required section from the one known fix record."""
+    wrote = _fill_empty_section(story_path, "Acceptance Criteria", [f"- {summary}"])
+    place = f" in `{repo}/{area}`" if repo and area else ""
     wrote |= _fill_empty_section(
         story_path,
         "Context",
         [
-            f"- Filed by the coder workflow as backlog item `{bullet_id}` in "
-            f"`{backlog_rel}` under `{FILED_HEADING}`: a defect or gap found while working "
-            f"on another story and deferred rather than fixed in place.",
-            "- Scope is that single item and nothing else — one fix, one acceptance "
+            f"- Filed by QA as debt record `{record_id}`{place} of the artifacts register: "
+            f"a defect or gap found while proving another story and left rather than fixed "
+            f"in place.",
+            "- Scope is that single record and nothing else — one fix, one acceptance "
             "criterion.",
+            *(["", *body.splitlines()] if body else []),
         ],
     )
     wrote |= _fill_empty_section(
@@ -654,76 +617,36 @@ def _author_story_body(
     )
     if wrote:
         logger.info(
-            "wrote the story body for '%s' from backlog item '%s'",
+            "wrote the story body for '%s' from record '%s'",
             story_path.parent.name,
-            bullet_id,
+            record_id,
         )
 
 
 @blueprint.node
-def prune_fix_item(
+def close_fix_item(
     logger: logging.Logger,
-    bullet_id: str = "",
-    backlog_path: str = "",
+    record_id: str = "",
+    landed: dict[str, str] | None = None,
     repo_dir: str = "",
-) -> FixPruned:
-    """Remove a shipped fix's bullet from the backlog."""
-    bullet_id = bullet_id.strip()
-
-    if not bullet_id:
-        logger.info("no bullet_id supplied — nothing to prune")
-        return FixPruned(reason="no bullet_id supplied — nothing to prune")
-
-    root = find_docs_root(repo_dir)
-    rel = paths.backlog_file(root, backlog_path)
-    if Ostler(root).backlog_prune(bullet_id).ok:
-        logger.info("pruned '%s' via ostler", bullet_id)
-        _commit_prune(logger, root, rel, bullet_id)
-        return FixPruned(
-            pruned=True, bullet_id=bullet_id, reason=f"pruned '{bullet_id}' via ostler"
-        )
-
-    if _prune_directly(root / rel, bullet_id):
-        logger.info("pruned '%s' via direct edit", bullet_id)
-        _commit_prune(logger, root, rel, bullet_id)
-        return FixPruned(
-            pruned=True,
-            bullet_id=bullet_id,
-            reason=f"pruned '{bullet_id}' via direct edit",
-        )
-
-    logger.warning("no backlog bullet '%s' found to prune", bullet_id)
-    return FixPruned(
-        bullet_id=bullet_id, reason=f"no backlog bullet '{bullet_id}' found to prune"
-    )
-
-
-def _commit_prune(logger: logging.Logger, root: Path, rel: str, bullet_id: str) -> None:
-    """Commit the backlog file alone, scoped to the one path the prune rewrote."""
-    message = commits.message("chore", commits.scope(root.name), f"drop shipped fix {bullet_id}")
-    if commit_paths(root, message, rel, verify=False):
-        logger.info("committed the backlog prune for '%s'", bullet_id)
-
-
-def _prune_directly(path: Path, bullet_id: str) -> bool:
-    """Drop every `- [bullet_id] …` line from the file."""
-    if not path.is_file():
-        return False
-    lines = path.read_text(encoding="utf-8").splitlines()
-    drop = {b.line for b in backlog_bullets("\n".join(lines)) if b.id == bullet_id}
-    if not drop:
-        return False
-    path.write_text(
-        "\n".join(line for i, line in enumerate(lines) if i not in drop) + "\n",
-        encoding="utf-8",
-    )
-    return True
+) -> FixClosed:
+    """Close a drained record as done, naming the commit that fixed it in each repository."""
+    record_id = record_id.strip()
+    if not record_id or not landed:
+        logger.info("no record or no landed commit — nothing to close")
+        return FixClosed(record_id=record_id, reason="no record or no landed commit — nothing to close")
+    reason = "fixed in " + ", ".join(f"{repo}@{sha[:7]}" for repo, sha in landed.items())
+    result = Ostler(find_docs_root(repo_dir)).close_record(record_id, "done", reason)
+    if result.ok:
+        logger.info("closed '%s' as done: %s", record_id, reason)
+    else:
+        logger.warning("could not close '%s': %s", record_id, result.message)
+    return FixClosed(closed=result.ok, record_id=record_id, reason=result.message)
 
 
 __all__ = [
     "BacklogBullet",
-    "Seen",
-    "backlog_bullets",
+    "close_fix_item",
     "file_backlog_items",
     "file_deferred_obligations",
     "file_follow_up_backlog",
@@ -731,7 +654,6 @@ __all__ = [
     "id_token_set",
     "kebab",
     "norm_desc",
-    "prune_fix_item",
     "seed_fix_story",
     "select_fix_item",
     "unfiled",

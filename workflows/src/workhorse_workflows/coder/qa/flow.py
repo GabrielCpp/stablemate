@@ -126,7 +126,7 @@ class Qa(Workflow):
         return list(self.output(resolve_impl_context).affected_repo_paths)
 
     def _file_backlog(self) -> None:
-        """File the items the owner left for the backlog, less the ones an open bullet already holds."""
+        """File the items the owner left for the backlog, less the ones an open `qa` record already holds."""
         pending = self.call(filed_backlog, self.ctx.spec_dir)
         keep = set(unfiled(causes.cause_judge(self, "low"), self.logger, pending.items, pending.filed))
         drop = [item_id for item_id in pending.items if item_id not in keep]
