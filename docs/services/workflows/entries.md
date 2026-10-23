@@ -258,6 +258,7 @@ title: workflows
 - [CI remediation loop state](formats/ci-loop.md)
 - [CI repository selection](formats/ci-repo-pick.md)
 - [Code change result](formats/code-change.md)
+- [Coder dev-rework prompt](formats/coder-dev-rework-prompt.md)
 - [Coder dev-story prompt](formats/coder-dev-story-prompt.md)
 - [Coder document-story prompt](formats/coder-document-story-prompt.md)
 - [Coder operator resolution result](formats/coder-operator-resolution.md)

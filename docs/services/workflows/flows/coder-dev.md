@@ -54,8 +54,10 @@ incomplete sections is rejected before any agent turn.
 
 - kind: run
 - detail: [coder dev-story prompt](../formats/coder-dev-story-prompt.md)
+- detail: [coder dev-rework prompt](../formats/coder-dev-rework-prompt.md)
 
-One high-power `dev-story` turn runs in the story's conversation with no timeout. It receives the
+One high-power dev turn runs in the story's conversation with no timeout. It renders `dev-story`
+until QA has filed a finding against the work item, and `dev-rework` from then on. It receives the
 story identity, the spec directory, the worklist and answers file paths, a resume note read from
 disk, the review prefix for this round, the open findings, the last gate report and the last
 operator answer. The turn plans, builds, reviews, fixes and commits through its own subagents.

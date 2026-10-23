@@ -9,6 +9,7 @@ The work item is a story or one of its follow-ups. The worklist holds both, and 
 - `flow.py`: the `Dev` state machine. It runs the dev turn, checks the result, and sends whatever failed back to the same session.
 - `report.py`: the text the dev owner's next turn reads: a gate's failure, its open findings, and the answers ostler rejected.
 - `prompts/dev-story.md`: the dev turn. It names the subagent seats, the reviewer's brief, the triage, the fixes and the answer file.
+- `prompts/dev-rework.md`: the dev turn once QA has sent the item back. It extends `dev-story.md` and replaces its opening, its findings and its steps, so the turn starts from QA's findings and fixes each at its cause instead of building from the plan.
 
 ## How a work item settles
 

@@ -170,7 +170,11 @@ class Dev(Workflow):
         """Run the dev turn: its subagents plan, build, review and fix the work item."""
         self.logger.info("developing %s", self._work_id, extra={"activity": True})
         w = self._worklist
-        turn = roles.turn(self, "dev-story", returns=DevResult)
+        turn = (
+            roles.turn(self, "dev-rework", returns=DevResult)
+            if self._sent_back(w)
+            else roles.turn(self, "dev-story", returns=DevResult)
+        )
         result: DevResult = self.agent(
             turn.prompt,
             returns=turn.returns,
@@ -215,6 +219,10 @@ class Dev(Workflow):
             blocks=blocks,
             rechecked=rechecked,
         )
+
+    def _sent_back(self, w: wl.WorkList) -> bool:
+        """Whether QA has filed a finding against this work item, so the turn is a rework."""
+        return any(it.payload.get("source") == "qa" for it in work.findings_of(w, self._work_id))
 
     def _file_follow_ups(self, result: DevResult) -> None:
         entries = self._product_work(

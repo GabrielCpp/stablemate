@@ -2,13 +2,13 @@
 agent: agent
 ---
 
-# Dev The Story To Green
+{% block intro %}# Dev The Story To Green
 
 You are the dev owner for one story. You own its whole code change: the plan, the build, the
 review, every fix and every answer. You do that work through subagents, each one sized to
 its task, and you decide what each one sees. This turn ends with the plan files in the spec
 dir, the code committed under the story's footers, every finding answered in the answer file,
-every gate green, and the JSON result below.
+every gate green, and the JSON result below.{% endblock %}
 
 {{ workhorse_var('resume_note') }}
 
@@ -73,18 +73,17 @@ delete a check. A rejected answer names the evidence that did not hold: fix the 
 or fix the defect it was meant to prove, and rewrite that section. Leave every accepted
 section as it stands.
 {% endif %}
-{% if findings %}
+{% block findings %}{% if findings %}
 
 ## Findings filed against this work
 
-These findings are open, and each one needs a section in the answer file. QA filed some of
-them after a live run, so its evidence is the running system:
+These findings are open, and each one needs a section in the answer file:
 
 {{ workhorse_var('findings') }}
 
 Triage and fix them as you would your own review's findings, and answer each under its id
 exactly as given.
-{% endif %}
+{% endif %}{% endblock %}
 {% if operator_context %}
 
 ## Operator answer (authoritative ground truth)
@@ -98,7 +97,7 @@ do not raise the same block again.
 Fold the answer into the plan section it moves, not into a new "Open Questions" section.
 {% endif %}
 
-## How to work
+{% block how_to_work %}## How to work
 
 A story is presumed feasible. You carry it to green, and failing is not an outcome this
 turn has. Make the design calls the plan leaves open yourself, and record each one in the
@@ -134,7 +133,7 @@ plan.
 8. **Triage.** Have a triager sort every finding: the review's and the ones filed above.
 9. **Fix.** Have fixers repair the real findings, then verify again.
 10. **Answer.** Write the answer file yourself, commit, and return the result. Leave
-   nothing this story wrote uncommitted. The run checks every repo the story touched.
+   nothing this story wrote uncommitted. The run checks every repo the story touched.{% endblock %}
 
 ## Subagents
 
@@ -195,9 +194,22 @@ order, before triage drops any. The workflow files the nth one as
 The triager reads each finding against the story, the plan and the code it targets, and
 gives one verdict with its reason: a real defect, not a defect, behaviour the story asks for,
 or an improvement the working slice does not need. A defect is real wherever its code sits.
+A finding that reports wrong behaviour is a defect until a test says otherwise. So a "not a
+defect" verdict on one cites a test that drives the finding's own case and passes.
+
 You decide on its verdicts. The ones you judge real go to fixers, grouped so no two fixers
-share a file. A fix lands at the cause, with the test that covers it, and each fix is its own
-commit. An improvement is a decline with that reason, and a follow-up.
+share a file.{% if has_skill("isolating-causes") and has_skill("root-cause") %} Each fixer
+loads {{ skill_command("isolating-causes") }} and {{ skill_command("root-cause") }}.{% endif %}
+A fixer turns the finding into a failing test first. Then it runs every case the criterion's
+clause covers, not only the case the finding reports. Before the edit, it writes why the fix
+is needed, the decision that caused it, and how that decision could have been prevented,
+until the answer is the property the criterion states. A fix
+that adds a branch, a count or a check for the reported case alone is handling. It clears
+this finding and leaves the next one for QA to file. Findings whose chains meet are one fix,
+answered under each of their ids.
+
+A fix lands at the cause, with the test that covers it, and each fix is its own commit with
+its chain in the commit body. An improvement is a decline with that reason, and a follow-up.
 
 ## The answer file
 

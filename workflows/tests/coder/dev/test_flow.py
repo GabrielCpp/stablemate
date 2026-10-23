@@ -258,6 +258,8 @@ class _Agent:
             "follow_ups": list(self.follow_ups) if first else [],
         }
 
+    _dev_rework = _dev_story
+
     def _judge(self, data: dict[str, Any], nth: int) -> dict[str, Any]:
         """The judge's ruling: every escape subject to `escapes_to`, every cause subject to `same_as`, each scope subject its title names in `outside`, the rest at its default."""
         if data["kind"] == "scope":
@@ -378,7 +380,7 @@ def test_a_finding_qa_filed_in_the_parent_run_reaches_the_dev_turn(
     env: Callable[..., RunEnv],
     drive_flow: Callable[..., Any],
 ) -> None:
-    """QA files its findings in the calling run's worklist, and the dev turn is shown them and settles them."""
+    """QA files its findings in the calling run's worklist, and the rework turn is shown them and settles them."""
     parent = tmp_path / "parent-run"
     qa = {
         "target": "web/app/routes/reports.tsx:516",
@@ -393,7 +395,8 @@ def test_a_finding_qa_filed_in_the_parent_run_reaches_the_dev_turn(
 
     result = drive_flow(dev, env(), agent)
 
-    (first,) = agent.args_for("dev-story")
+    assert agent.counts()["dev-story"] == 0, agent.counts()
+    (first,) = agent.args_for("dev-rework")
     assert f"{STORY}/qa-1.1" in str(first["findings"]), first
     assert "the empty state still shows the report tabs" in str(first["findings"]), first
     assert first["worklist_path"] == str(work.worklist_path(parent)), first
