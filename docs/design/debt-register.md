@@ -284,6 +284,12 @@ SOLID, one question each:
 
 Revision log:
 
+- Build, slice 4. Section 2, Complete read: the read holds every record of every status in
+  every repository. A dropped record whose cause comes back is a trend, so closed records
+  stay in. The Trend report lands at `<artifacts>/backlog/trends.md`, rendered by the lane
+  from the accounted report, and is committed in the artifacts repo. Its history is the
+  history of the reviews. A report that still fails accounting after two send-backs ends
+  the run red and writes nothing.
 - Build, slice 3. Section 2, Closure: the fix lane reads each repository's commit from
   the HEAD of the workspace repositories the item changed. The docs repository counts
   only when it is the one repository changed. When the gates pass and no repository holds
