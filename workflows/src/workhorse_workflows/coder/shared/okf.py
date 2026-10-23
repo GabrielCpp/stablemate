@@ -100,6 +100,37 @@ def remember(spec_path: Path, key: str | None, result: OkfContextResult) -> None
         return
 
 
+def _story_paths(root: Path, base: str, refs: tuple[str, ...]) -> set[str] | None:
+    """The paths this story's own commits in ``base..HEAD`` touched, or None when it has none yet."""
+    wanted = set(refs)
+    log = open_repo(root).git.log("--format=%x1e%B%x00", "--name-only", f"{base}..HEAD")
+    paths: set[str] | None = None
+    for record in log.split("\x1e")[1:]:
+        message, _, names = record.partition("\x00")
+        trailers = {
+            line.removeprefix("Story:").strip()
+            for line in message.splitlines()
+            if line.startswith("Story:")
+        }
+        if trailers & wanted:
+            paths = (paths or set()) | {name for name in names.splitlines() if name}
+    return paths
+
+
+def _story_scope(root: Path, base: str, refs: tuple[str, ...]) -> tuple[str, tuple[str, ...]]:
+    """The base a story's packet diffs from, and the paths changed since it that other stories own."""
+    try:
+        own = _story_paths(root, base, refs)
+        if own is None:
+            return "HEAD", ()
+        repo = open_repo(root)
+        dirty = set(repo.git.diff("--name-only", "HEAD").splitlines()) | set(repo.untracked_files)
+        changed = set(repo.git.diff("--name-only", base, "HEAD").splitlines())
+    except (GitError, ValueError):
+        return base, ()
+    return base, tuple(sorted(changed - own - dirty))
+
+
 def _source_repositories(sources: tuple[StorySource, ...]) -> tuple[SourceRepository, ...]:
     grouped: dict[str, tuple[str, str, str, list[SourceScope]]] = {}
     for source in sources:
@@ -142,6 +173,7 @@ def build_okf_context(
     repo_dir: str = "",
     preexisting: tuple[str, ...] = (),
     story_sources: tuple[StorySource, ...] = (),
+    story_refs: tuple[str, ...] = (),
 ) -> OkfContextResult:
     """Map a diff onto the OKF graph and write the obligation packet into the spec dir."""
     docs_root = find_docs_root(repo_dir)
@@ -161,6 +193,15 @@ def build_okf_context(
     root = Path(docs_root).resolve()
     if base == TRUNK:
         base = trunk_base(root)
+        if story_refs and not story_sources:
+            base, others = _story_scope(root, base, story_refs)
+            if others:
+                logger.info(
+                    "excluding %d path(s) only other stories on this branch changed: %s",
+                    len(others),
+                    ", ".join(others),
+                )
+            inherited = sorted(set(inherited).union(others))
     spec_path = Path(spec_dir)
     outputs = tuple(
         (spec_path / name).relative_to(root).as_posix()
