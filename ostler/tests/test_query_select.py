@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from ostler import backlog, crud, query, select, todo
+from ostler import crud, query, select, todo
 from ostler.model import load
 
 from conftest import present, write
@@ -166,15 +166,6 @@ def test_todo_add_does_not_warn_for_a_real_epic(tmp_path: Path):
     crud.create_epic(load(tmp_path), "real", "Real", prefix="x")
     res = todo.add(load(tmp_path), "real")
     assert res.ok and "WARNING" not in res.message
-
-
-def test_backlog(tmp_path: Path):
-    write(tmp_path / "docs/services/.keep", "")
-    g = load(tmp_path)
-    assert backlog.add(g, "b1", "do a thing").ok
-    assert backlog.add(load(tmp_path), "b2", "do another", section="Filed by coder").ok
-    items = dict(backlog.items(load(tmp_path)))
-    assert items == {"b1": "do a thing", "b2": "do another"}
 
 
 def test_next_story_skips_given_up_without_stranding_the_epic(tmp_path: Path):

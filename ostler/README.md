@@ -109,18 +109,13 @@ the directory itself, and read `--json`'s `name` back after `create epic` rather
 `spec.*` Concepts are process artifacts: typed and conformance-checked, but ostler does not own their
 internal schema. The subtype is the file's stem (`executive.md` → `spec.executive`); mint them with
 `ostler create spec <slug> <doc>`, which is idempotent and also retro-stamps free-form docs.
-**Not Concepts** (managed markdown, left in place): `docs/backlog.md` (an identified intake list)
-and `docs/epics/index.md` (the epics queue).
+**Not Concepts** (managed markdown, left in place): `docs/epics/index.md` (the epics queue).
 
 ### Planning intake identity
 
-Use `create backlog-item` for new work. It allocates a full id and writes
-`- [<full-id>] <text>` under the requested `##` section. If a person has already entered plain
-bullets, `backlog adopt` assigns ids to every unnamed bullet without changing its prose or nesting.
-The grammar is intentional: every bullet in the backlog is an item. Supporting context and detail
-that should not acquire identity must be written as prose rather than as a list. Repeated adoption is
-a no-op. Pruning a parent refuses while any nested item remains, so one item's completion cannot
-silently discard another.
+Use `create backlog-item` (or `backlog add`) for new work. It allocates a full id and files one
+record on the Register, in the artifacts repo. An old `- [id] text` list is turned into records once
+by `backlog adopt --repo R <file>`, which deletes the list. Ostler reads no bullet list after that.
 
 A milestone's generated `id` is independent of its readable filename and title. Its `sourceItems`
 contains the full ids of the backlog intake it owns. Use `milestone set-source-items` to update that

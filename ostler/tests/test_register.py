@@ -9,7 +9,7 @@ from pathlib import Path
 import pydantic
 import pytest
 
-from ostler import backlog, doctor, ids, path as path_mod, register
+from ostler import doctor, ids, path as path_mod, register
 from ostler.api import Ostler
 from ostler.cli import main
 from ostler.model import load
@@ -73,15 +73,6 @@ def test_write_refuses_an_id_that_is_already_taken(tmp_path: Path) -> None:
     assert not again.ok and "acme-1" in again.message
     assert (artifacts() / "backlog/api-service/billing/acme-1/record.md").read_text() == before
     assert not (artifacts() / "backlog/web-app").exists()
-
-
-def test_write_refuses_an_id_a_bullet_already_holds(tmp_path: Path) -> None:
-    assert backlog.add(load(tmp_path), "acme-1", "an old bullet").ok
-
-    refused = register.write(load(tmp_path), record())
-
-    assert not refused.ok
-    assert not (artifacts() / "backlog").exists()
 
 
 def test_the_listing_has_one_line_per_record_closed_ones_included(tmp_path: Path) -> None:

@@ -61,16 +61,6 @@ def specs_root_in(root: Path) -> Path:
     return doc_root_in(root, "specs")
 
 
-def backlog_path_in(root: Path) -> Path:
-    """The intake list, ``docs/backlog.md`` under *root*."""
-    return doc_root_in(root, "backlog")
-
-
-def backlog_path(graph: Graph) -> Path:
-    """The intake list for this graph."""
-    return graph.doc_roots["backlog"]
-
-
 def register_root_in(root: Path) -> Path:
     """Where the Register's records live for *root*: ``backlog/`` in the artifacts dir, never in a code repo."""
     return doc_root_in(root, "register")

@@ -529,7 +529,7 @@ def add_seed(graph: Graph, epic_name: str, seed_id: str, status: str = registry.
     if existed:
         _remove_subsection(doc, registry.SEEDS_HEADING, seed_id)
     block = [f"### {seed_id}", f"- status: {status}"]
-    for key in ("surface", "legacySurface", "backing", "prerequisites", "sourceBullet", "sourceRecord",
+    for key in ("surface", "legacySurface", "backing", "prerequisites", "sourceRecord",
                 "layers", "services", "design"):
         val = (meta or {}).get(key)
         if key == "design" and val:

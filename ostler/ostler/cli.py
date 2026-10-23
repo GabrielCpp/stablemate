@@ -441,7 +441,6 @@ def _build_parser() -> argparse.ArgumentParser:
     sda.add_argument("--legacy-surface", default="", dest="legacy_surface")
     sda.add_argument("--backing", default="")
     sda.add_argument("--prerequisites", default="")
-    sda.add_argument("--source-bullet", default="", dest="source_bullet")
     sda.add_argument("--layer", action="append", default=[], dest="layers",
                      help=f"repeatable; one of {', '.join(registry.SEED_LAYERS)}")
     sda.add_argument("--service", action="append", default=[], dest="services",
@@ -472,7 +471,7 @@ def _build_parser() -> argparse.ArgumentParser:
                     help=f"the status to restore (default: {registry.DEFAULT_STORY_STATUS!r})")
     ub.add_argument("--json", action="store_true")
 
-    bl = sub.add_parser("backlog", help="the Register of proposed improvements, and the old docs/backlog.md list")
+    bl = sub.add_parser("backlog", help="the Register of proposed improvements")
     bls = bl.add_subparsers(dest="op", required=True)
     bla = bls.add_parser("add", help="file a record on the Register")
     _record_flags(bla)
@@ -2124,7 +2123,6 @@ def _dispatch(graph, args, store: index_mod.IndexStore) -> int:  # noqa: C901 â€
                 "legacySurface": args.legacy_surface,
                 "backing": args.backing,
                 "prerequisites": args.prerequisites,
-                "sourceBullet": args.source_bullet,
                 "layers": args.layers,
                 "services": args.services,
             }

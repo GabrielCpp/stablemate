@@ -652,7 +652,6 @@ BUILTIN_DOC_ROOTS: dict[str, str] = {
     "epics": "docs/epics",
     "milestones": "docs/milestones",
     "specs": "docs/specs",
-    "backlog": "docs/backlog.md",
 }
 
 

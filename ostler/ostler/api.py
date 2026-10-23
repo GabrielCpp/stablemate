@@ -9,7 +9,6 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from ostler import adr as adr_mod
-from ostler import backlog as backlog_mod
 from ostler import book_reach
 from ostler import coverage as coverage_mod
 from ostler import crud, doctor
@@ -316,10 +315,6 @@ class Ostler:
         """The epics queue, front-first (``ostler todo list``)."""
         return todo_mod.list_epics(self.graph)
 
-    def backlog(self) -> builtins.list[dict]:
-        """Backlog items as ``{"id", "text"}`` dicts (``ostler backlog list``)."""
-        return [{"id": i, "text": t} for i, t in backlog_mod.items(self.graph)]
-
     def register_root(self) -> Path:
         """The shelf the Register's records live on: ``backlog/`` in the artifacts dir."""
         return self._doc_root("register")
@@ -441,10 +436,6 @@ class Ostler:
     def story_dir(self, epic: str, slug: str) -> Path:
         """The folder of story *slug* in *epic* — join a filename onto this, not a path."""
         return path_mod.story_dir(self.graph, epic, slug)
-
-    def backlog_file(self) -> Path:
-        """The intake list — the file :meth:`backlog` reads, ``docs/backlog.md``."""
-        return path_mod.backlog_path(self.graph)
 
     def services_dir(self, service: str = "") -> Path:
         """The feature book, scoped to one *service* in a multi-service workspace."""
@@ -622,10 +613,6 @@ class Ostler:
         outcome = register_import.import_list(self._fresh(), self._resolve(source), repo, prefix)
         self._graph = None
         return outcome
-
-    def backlog_adopt(self, *, prefix: str | None = None) -> Result:
-        """Assign ids in place to every unnamed bullet of ``docs/backlog.md``, for the story mode that still reads bullets."""
-        return self._apply(backlog_mod.adopt(self._fresh(), prefix))
 
     def close_record(self, token: str, status: register_mod.Status, reason: str) -> Result:
         """End a record as *status* with *reason* and commit it in the artifacts repo (``ostler backlog prune``); *token* may be a short handle."""

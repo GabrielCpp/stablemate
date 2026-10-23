@@ -19,7 +19,7 @@ def _read_json(path: Path) -> dict:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
-_SEED_META = ("status", "surface", "legacySurface", "backing", "prerequisites", "sourceBullet")
+_SEED_META = ("status", "surface", "legacySurface", "backing", "prerequisites")
 
 
 def _seed_block(item: dict) -> list[str]:

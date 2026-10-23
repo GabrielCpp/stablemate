@@ -12,7 +12,7 @@ from collections.abc import Iterable
 from pathlib import Path
 from typing import Any
 
-from ostler import backlog, path as path_mod
+from ostler import path as path_mod
 from ostler.model import Graph
 
 _CROCKFORD = "0123456789ABCDEFGHJKMNPQRSTVWXYZ"
@@ -179,7 +179,6 @@ def known(graph: Graph) -> list[str]:
     out = claimed(graph)
     for milestone in graph.milestones:
         out.update(milestone.source_items)
-    out.update(i for i, _ in backlog.items(graph))
     out.discard("")
     return sorted(out)
 

@@ -299,15 +299,6 @@ def test_json_emits_the_records(tmp_path: Path, capsys) -> None:
     assert "BL-9" in {r["id"] for r in rows}
 
 
-def test_the_import_leaves_the_old_in_place_adoption_to_the_facade(tmp_path: Path) -> None:
-    file = source(tmp_path, "# Backlog\n\n- Unnamed work.\n")
-
-    result = Ostler(tmp_path).backlog_adopt(prefix="acme")
-
-    assert result.ok
-    assert "[acme-" in file.read_text(encoding="utf-8")
-
-
 def test_the_import_needs_a_repo(tmp_path: Path) -> None:
     file = source(tmp_path, "- One.\n")
 

@@ -6,14 +6,14 @@ ostler is, how to install it, and the shortest path to a first epic; this file i
 exhaustive listing you come back to for a flag.
 
 Ostler operates relative to the **current working directory** — roots default to
-`<cwd>/docs/{milestones,epics,services,specs}` plus `docs/backlog.md`. Every read command accepts `--json`; every
+`<cwd>/docs/{milestones,epics,services,specs}`. Every read command accepts `--json`; every
 mutating command allocates ids as needed and writes canonical markdown in place.
 
 The commands fall into three surfaces that barely overlap:
 
 | Surface | Verbs | What it operates on |
 |---|---|---|
-| **The planning graph** | `doctor` `trace` `list` `search` `query` `next-*` `create` `delete` `seed` `set-status` `unblock` `backlog` `milestone` `todo` `edit` `freeze` `path` | `docs/backlog.md`, `docs/milestones/`, `docs/epics/`, `docs/specs/` |
+| **The planning graph** | `doctor` `trace` `list` `search` `query` `next-*` `create` `delete` `seed` `set-status` `unblock` `backlog` `milestone` `todo` `edit` `freeze` `path` | `docs/milestones/`, `docs/epics/`, `docs/specs/` |
 | **The feature graph** (UI profile) | `reach` `locators` `graph` `coverage` `scaffold` `fmt` `vet` | `docs/services/` — the node/edge book |
 | **Verification** | `qa` `artifact` | a story's spec dir, and what a QA run produces |
 
@@ -85,13 +85,13 @@ ostler update story   <slug> --title T --covers a,b --depends a,b
 ostler delete epic <name> | delete story <slug> | delete feature <slug>
 
 ostler seed add <epic> <id> [--status S] [--summary …] [--surface …] \
-                            [--legacy-surface …] [--backing …] [--prerequisites …] [--source-bullet …]
+                            [--legacy-surface …] [--backing …] [--prerequisites …]
 ostler seed remove <epic> <id>
 ostler set-status <slug> <status>
 ostler unblock <slug> | unblock --epic <name> | unblock --all   [--status S] [--json]
 
-ostler backlog adopt [--path P]
-ostler backlog add <id> <text> [--section S] | backlog prune <id> | backlog list [--json]
+ostler backlog adopt --repo R <file> [--prefix P] [--json]
+ostler backlog add <summary> --repo R --area A [--pattern P] | backlog prune <id> | backlog list [--json]
 ostler milestone set-source-items <name> <id> [id ...]
 ostler todo add <epic> [--front] | todo prune <epic> | todo reorder <e…> | todo list [--json]
 ```
@@ -124,11 +124,10 @@ It preserves the story id, `story.md` bytes, status, optional metadata and subse
 `delete epic` removes the numbered epic directory and its references from every milestone and the
 legacy todo queue; numbering gaps are preserved.
 
-`create backlog-item` is the normal entry point for new intake: it allocates and persists a full
-id. `backlog add` remains available when importing an externally assigned id. `backlog adopt`
-allocates ids for every unnamed bullet while preserving prose and nesting; it is idempotent. Every
-bullet in a backlog is therefore an item. Write supporting context or non-item details as prose, not
-as list items. `backlog prune` refuses a parent while it still contains nested items.
+`create backlog-item` is the normal entry point for new intake: it files one record on the
+Register and persists a full id. `backlog add` does the same. `backlog adopt` turns an old bullet
+list into records once and deletes the list. `backlog prune` closes a record as done, dropped or
+promoted.
 
 `create milestone` allocates an id independent of the readable `<name>` used for its filename and
 records full backlog ids in `sourceItems`. `milestone set-source-items` replaces that ownership set

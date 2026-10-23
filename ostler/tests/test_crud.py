@@ -383,6 +383,24 @@ def test_a_seed_keeps_the_record_it_came_from(repo: Path):
     assert rows[0]["sourceRecord"] == "rec-1"
 
 
+def test_a_seed_with_a_legacy_source_bullet_line_still_parses_and_raises_no_finding(repo: Path):
+    before = sorted((f.code, f.ref) for f in doctor.run(load(repo)).findings)
+    epic_md = repo / "docs/epics/epic-a/epic.md"
+    text = epic_md.read_text(encoding="utf-8")
+    assert "### seed-a1\n- status: researched\n" in text
+    epic_md.write_text(
+        text.replace("### seed-a1\n- status: researched\n",
+                     "### seed-a1\n- status: researched\n- sourceBullet: old-bullet\n"),
+        encoding="utf-8",
+    )
+
+    graph = load(repo)
+
+    seed = next(s for s in graph.epics[0].seeds if s.id == "seed-a1")
+    assert seed.status == "researched"
+    assert sorted((f.code, f.ref) for f in doctor.run(graph).findings) == before
+
+
 def test_create_story_existing_slug_is_a_noop(repo: Path):
     crud.add_seed(load(repo), "epic-a", "s1", status="researched")
     first = crud.create_story(load(repo), "epic-a", "01-dup", "Dup", covers=["s1"])
