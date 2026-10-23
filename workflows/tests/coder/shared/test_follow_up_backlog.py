@@ -402,3 +402,22 @@ def test_the_fixes_bucket_the_coder_creates_needs_no_milestone(
     assert bucket.followups is True
     unowned = [f.ref for f in doctor.run(graph).findings if f.code == "epic-without-milestone"]
     assert unowned == [], unowned
+
+
+def test_the_fix_story_seed_names_the_record_it_came_from(
+    repo: Path,
+    logger: logging.Logger,
+) -> None:
+    assert Ostler(repo).create_milestone("mvp", "MVP").ok
+
+    seeded = seed_fix_story(
+        logger,
+        record_id="acme-cache",
+        summary="Clear the cache on sign-out",
+        repo_dir=str(repo),
+        repo="acme",
+        area=AREA,
+    )
+
+    seeds = Ostler(repo).list("seed", epic=seeded.epic)
+    assert [s["sourceRecord"] for s in seeds if s["id"] == "acme-cache"] == ["acme-cache"]

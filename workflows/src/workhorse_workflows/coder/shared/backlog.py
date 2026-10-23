@@ -515,7 +515,7 @@ def seed_fix_story(
         record_id,
         status="researched",
         summary=summary,
-        meta={"sourceRecord": summary},
+        meta={"sourceRecord": record_id},
     )
 
     slug = _fix_slug(summary)
