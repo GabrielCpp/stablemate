@@ -80,6 +80,7 @@ class Epic:
     status: str = ""
     eid: str = ""
     epic_md: Path | None = None
+    followups: bool = False
     seeds: list[SeedItem] = field(default_factory=list)
     stories: list[Story] = field(default_factory=list)
 
@@ -1075,6 +1076,7 @@ def _load_epics(graph: Graph) -> None:
             status=str(fm.get("status") or ""),
             eid=str(fm.get("id") or ""),
             epic_md=epic_md,
+            followups=fm.get("followups") is True,
         )
         epic.seeds = _parse_seeds(doc)
         for story in _parse_stories(doc, epic.name, graph.root, d):

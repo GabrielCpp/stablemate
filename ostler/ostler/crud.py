@@ -181,7 +181,14 @@ def _set_milestone_epics(milestone: model.Milestone, epics: list[str]) -> None:
     milestone.path.write_text(doc.render(), encoding="utf-8")
 
 
-def create_epic(graph: Graph, name: str, title: str, prefix: str | None = None) -> Result:
+def create_epic(
+    graph: Graph,
+    name: str,
+    title: str,
+    prefix: str | None = None,
+    *,
+    followups: bool = False,
+) -> Result:
     """Create ``<epics>/NNNN-<slug>/epic.md`` — the epic's directory carries its order."""
     eroot = graph.doc_roots["epics"]
     existing = path_mod.epic_dir(graph, name)
@@ -193,7 +200,9 @@ def create_epic(graph: Graph, name: str, title: str, prefix: str | None = None) 
     edir = eroot / dir_name
     epic_md = edir / "epic.md"
     eid = ids.allocate(graph, prefix)
-    fm = {"type": "epic", "id": eid, "title": title, "status": "planned"}
+    fm: dict[str, object] = {"type": "epic", "id": eid, "title": title, "status": "planned"}
+    if followups:
+        fm["followups"] = True
     text = f"---\n{dump_frontmatter(fm)}---\n# Epic: {title}\n\n## Seeds\n\n## Stories\n"
     edir.mkdir(parents=True, exist_ok=True)
     epic_md.write_text(text, encoding="utf-8")

@@ -1308,15 +1308,22 @@ def _check_milestones(graph: Graph, f: list[Finding]) -> None:
                     f"milestone '{milestone.name}' depends on unknown milestone '{dep}'",
                     ref=dep, path=rel, line=1))
         for epic_name in milestone.epics:
-            if _epic_by_ref(graph, epic_name) is None:
+            listed = _epic_by_ref(graph, epic_name)
+            if listed is None:
                 f.append(Finding(
                     "error", "dangling-milestone-epic",
                     f"milestone '{milestone.name}' lists unknown epic '{epic_name}'",
                     ref=epic_name, path=rel, line=1))
+            elif listed.followups:
+                f.append(Finding(
+                    "error", "followups-epic-in-milestone",
+                    f"milestone '{milestone.name}' lists '{epic_name}', an epic of filed follow-ups "
+                    "that no milestone owns",
+                    epic=listed.name, ref=epic_name, path=rel, line=1))
 
     for epic in graph.epics:
         refs = owners.get(_epic_ref(epic.name), [])
-        if not refs:
+        if not refs and not epic.followups:
             f.append(Finding(
                 "error", "epic-without-milestone",
                 f"epic '{epic.name}' is not assigned to any milestone", epic=epic.name, ref=epic.name))

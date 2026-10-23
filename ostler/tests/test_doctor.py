@@ -546,6 +546,37 @@ epics:
     assert finding.ref == "epic-b"
 
 
+def _foundation_owning(*epics: str) -> str:
+    listed = "".join(f"  - {epic}\n" for epic in epics)
+    return (
+        "---\ntype: milestone\nid: m0\ntitle: Foundation\nstatus: proposed\n"
+        f"dependsOn: []\nepics:\n{listed}---\n\n# Foundation\n"
+    )
+
+
+def test_an_epic_of_filed_follow_ups_needs_no_milestone(repo: Path):
+    write(repo / "docs/milestones/foundation/milestone.md", _foundation_owning("epic-a", "epic-b"))
+    assert crud.create_epic(load(repo), "fixes", "Filed fixes", followups=True).ok
+    assert crud.create_epic(load(repo), "loose", "Loose").ok
+
+    report = doctor.run(load(repo))
+
+    unowned = [f.ref for f in report.findings if f.code == "epic-without-milestone"]
+    assert unowned == ["0002-loose"], unowned
+
+
+def test_a_milestone_listing_the_epic_of_filed_follow_ups_is_flagged(repo: Path):
+    assert crud.create_epic(load(repo), "fixes", "Filed fixes", followups=True).ok
+    write(repo / "docs/milestones/foundation/milestone.md",
+          _foundation_owning("epic-a", "epic-b", "0001-fixes"))
+
+    report = doctor.run(load(repo))
+
+    finding = next(f for f in report.findings if f.code == "followups-epic-in-milestone")
+    assert finding.severity == "error"
+    assert finding.ref == "0001-fixes"
+
+
 def test_a_milestone_depending_on_an_unknown_milestone_is_flagged(repo: Path):
     write(repo / "docs/milestones/foundation/milestone.md", """---
 type: milestone

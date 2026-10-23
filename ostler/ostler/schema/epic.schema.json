@@ -9,6 +9,7 @@
     "type": { "const": "epic" },
     "id": { "type": "string", "minLength": 1 },
     "title": { "type": "string", "minLength": 1 },
-    "status": { "type": "string", "enum": ["planned", "in-progress", "done"] }
+    "status": { "type": "string", "enum": ["planned", "in-progress", "done"] },
+    "followups": { "type": "boolean" }
   }
 }

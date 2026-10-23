@@ -139,6 +139,7 @@ type: epic
 id: ACME-01JBXR7K9QZ4M2T8VNF3HD6PWC
 title: Account Credits Billing Body
 status: in-progress        # optional: planned | in-progress | done
+followups: true            # optional: a backlog of filed follow-ups that no milestone owns
 ---
 
 Free narrative prose (any headings: ## Goal, ## Method, ## Acceptance, …).

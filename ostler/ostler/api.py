@@ -408,9 +408,11 @@ class Ostler:
         """*token* as a full id: a short handle is expanded, anything else returned untouched."""
         return ids_mod.resolve(self.graph, token)
 
-    def create_epic(self, name: str, title: str, *, prefix: str | None = None) -> Result:
+    def create_epic(
+        self, name: str, title: str, *, prefix: str | None = None, followups: bool = False,
+    ) -> Result:
         """Create an epic, allocating its id (``ostler create epic``)."""
-        return self._apply(crud.create_epic(self._fresh(), name, title, prefix))
+        return self._apply(crud.create_epic(self._fresh(), name, title, prefix, followups=followups))
 
     def create_milestone(
         self,
