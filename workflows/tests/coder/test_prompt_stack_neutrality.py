@@ -95,7 +95,7 @@ def test_each_prompt_is_neutral_for_the_stack_that_renders_it(
     monkeypatch.setenv("HOME", str(tmp_path / "home"))
     monkeypatch.setenv("AGENT_CLI", "claude")
     try:
-        rendered = render(prompt, _context(stack, tmp_path / "acme"), CODER)
+        rendered = render(prompt.relative_to(CODER), _context(stack, tmp_path / "acme"), CODER)
     except MissingSkill as exc:
         pytest.fail(
             f"{prompt.name} requires the {exc.name!r} skill of a {stack}-only repo, a skill "

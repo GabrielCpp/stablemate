@@ -6,7 +6,7 @@ title: Coder dev-story prompt
 # Coder dev-story prompt
 
 - file: `workflows/src/workhorse_workflows/coder/dev/prompts/dev-story.md`
-- code: `workflows/src/workhorse_workflows/coder/dev/flow.py::Dev.build` @1f14ab4796ae
+- code: `workflows/src/workhorse_workflows/coder/dev/flow.py::Dev.build` @a7c933fac1ee
 - detail: [coder development flow](../flows/coder-dev.md)
 - tests: `workflows/tests/coder/dev/test_flow.py::test_a_clean_pass_settles_the_fix_and_records_the_decline`
 
@@ -16,6 +16,10 @@ diff, triage and fix the findings, and answer every finding in the answer file. 
 the plan files in the spec directory, the code committed under the story's footers, every gate
 green and a `DevResult`. The envelope adds a section when the workflow supplies a follow-up, a
 rescope note, a failed-check report, open findings or an operator answer.
+
+Its fixers follow the root-cause rule the
+[coder fix-item prompt](coder-fix-item-prompt.md) lists, rendered from the same shared text. One
+fix for several findings is answered under each of their ids.
 
 A "not a defect" decline opens its reason with those words and names, as a `- test:` bullet, the
 test that drives the finding's own case. The settlement rejects one that names no such test.

@@ -51,11 +51,11 @@ any earlier assumption in the item, the story or the code. Do not raise the same
 
 1. **Read.** Read the story, its acceptance criterion and the repo's `AGENTS.md`. Look in the
    spec directory first. A turn that was interrupted may have left a plan or a `qa.md` there.
-2. **Fix.** Have a fixer write the repair, with a test that fails without it.
+2. **Fix.** Have a fixer repair the item at its cause. The item is the first finding, and
+   its fixer works as "Triage and fixes" below describes.
 3. **QA.** Once the gates below are green, have a fresh QA checker exercise the change.
-4. **Triage.** Have a triager sort what QA found: a defect of this fix, a failure the code
-   carries from elsewhere, or behaviour the story asks for. Both kinds of failure are real.
-5. **Repair.** Send the real defects back to a fixer, then QA again. Repeat until QA passes.
+4. **Triage.** Have a triager sort what QA found, as "Triage and fixes" below describes.
+5. **Repair.** Send the real defects back to fixers, then QA again. Repeat until QA passes.
 6. **Commit** and return the result.
 
 ## Subagents
@@ -95,6 +95,12 @@ It writes what it ran, what it observed and the criterion each observation cover
 the spec directory. That stamps the `type: spec.qa` frontmatter. It writes below the `---`
 frontmatter block and leaves that block in place.
 
+### Triage and fixes
+
+The triager reads each of QA's findings against the story, the diff and the code it targets,
+and gives one verdict with its reason: a defect of this fix, a failure the code carries from
+elsewhere, or behaviour the story asks for. Both kinds of failure are real.
+{% include "shared/prompts/_fix-at-the-cause.md" %}
 ## Scope
 
 The item is a repair, not a feature. Keep the change to the behaviour it names:

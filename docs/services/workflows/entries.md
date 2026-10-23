@@ -261,6 +261,7 @@ title: workflows
 - [Coder dev-rework prompt](formats/coder-dev-rework-prompt.md)
 - [Coder dev-story prompt](formats/coder-dev-story-prompt.md)
 - [Coder document-story prompt](formats/coder-document-story-prompt.md)
+- [Coder fix-item prompt](formats/coder-fix-item-prompt.md)
 - [Coder operator resolution result](formats/coder-operator-resolution.md)
 - [Coder queue epic pruned](formats/coder-queue-epic-pruned.md)
 - [Coder queue replan result](formats/coder-queue-replan-result.md)
