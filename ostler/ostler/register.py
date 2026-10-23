@@ -19,6 +19,7 @@ from ostler.result import Result
 RECORD_FILE = "record.md"
 _SEGMENT = re.compile(r"[a-z0-9][a-z0-9-]*")
 ID_PATTERN = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]*")
+_FRONTMATTER = re.compile(r"---\n.*?\n---\n", re.DOTALL)
 
 FiledBy = Literal["coder", "qa", "qa-deferred", "person", "survey", "parity"]
 Status = Literal["open", "done", "dropped", "promoted"]
@@ -202,6 +203,48 @@ def filing_result(filing: Filing) -> Result:
     """A filing as the Result every ostler writer returns."""
     paths = [filing.path] if filing.path else []
     return Result(filing.ok, filing.message, paths, entity_id=filing.record.id if filing.record else "")
+
+
+def close(graph: Graph, token: str, status: Status, reason: str) -> Result:
+    """End a record: rewrite only its ``status`` and ``reason``; closing at the status it already has is a no-op that writes nothing."""
+    if status == "open":
+        return Result(False, "a record is closed as done, dropped or promoted, never as open")
+    folder = locate(graph, token)
+    if folder is None:
+        return Result(False, f"no record '{token}'")
+    target = folder / RECORD_FILE
+    text = target.read_text(encoding="utf-8")
+    try:
+        current = Record.parse(text)
+    except ValueError as exc:
+        return Result(False, f"record '{folder.name}' cannot be read: {exc}")
+    if current.status != "open":
+        if current.status == status:
+            return Result(True, f"record '{current.id}' is already {status}", [], entity_id=current.id)
+        return Result(False, f"record '{current.id}' is already {current.status}, not {status}")
+    head = _FRONTMATTER.match(text)
+    front = markdown.split(text).frontmatter
+    if head is None or front is None:
+        return Result(False, f"record '{folder.name}' has no frontmatter")
+    front = {**front, "status": status, "reason": reason.strip()}
+    target.write_text(f"---\n{crud.dump_frontmatter(front)}---\n{text[head.end():]}", encoding="utf-8")
+    return Result(True, f"closed record '{current.id}' as {status}", [target], entity_id=current.id)
+
+
+def close_and_commit(graph: Graph, token: str, status: Status, reason: str) -> Result:
+    """:func:`close` a record and commit it in the artifacts repo; a close whose commit fails leaves the old text."""
+    folder = locate(graph, token)
+    before = (folder / RECORD_FILE).read_text(encoding="utf-8") if folder else ""
+    result = close(graph, token, status, reason)
+    if not result.ok or not result.paths:
+        return result
+    target = result.paths[0]
+    try:
+        commit(graph, [target], f"chore({Record.read(target).repo}): close {result.entity_id} as {status}")
+    except (subprocess.CalledProcessError, subprocess.TimeoutExpired, OSError) as exc:
+        target.write_text(before, encoding="utf-8")
+        return Result(False, f"record '{result.entity_id}' was not closed: the artifacts commit failed: {exc}")
+    return result
 
 
 def commit(graph: Graph, paths: Iterable[Path], message: str) -> bool:

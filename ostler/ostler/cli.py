@@ -12,7 +12,7 @@ from pathlib import Path
 
 import yaml
 
-from ostler import autofix as autofix_mod, backfill as backfill_mod, backlog as backlog_mod, coverage, crud, crud_generic, doctor, edit, fmt as fmt_mod, freeze as freeze_mod, graph as graph_mod, ids as ids_mod, locators, path as path_mod, query as query_mod, reach, register as register_mod, register_import, registry, scaffold as scaffold_mod, select, templates as templates_mod, todo as todo_mod, trace
+from ostler import autofix as autofix_mod, backfill as backfill_mod, coverage, crud, crud_generic, doctor, edit, fmt as fmt_mod, freeze as freeze_mod, graph as graph_mod, ids as ids_mod, locators, path as path_mod, query as query_mod, reach, register as register_mod, register_import, registry, scaffold as scaffold_mod, select, templates as templates_mod, todo as todo_mod, trace
 from ostler import checks as checks_mod
 from ostler import carve as carve_mod
 from ostler import fragment_carve
@@ -481,7 +481,11 @@ def _build_parser() -> argparse.ArgumentParser:
     blad.add_argument("--repo", required=True, help="the workspace repository the list belongs to")
     blad.add_argument("--prefix")
     blad.add_argument("--json", action="store_true")
-    bls.add_parser("prune").add_argument("id")
+    blp = bls.add_parser("prune", help="close a record as done, dropped or promoted")
+    blp.add_argument("id")
+    blp.add_argument("--as", dest="status", choices=["done", "dropped", "promoted"], default="done")
+    blp.add_argument("--reason", default="")
+    blp.add_argument("--json", action="store_true")
     bll = bls.add_parser("list")
     bll.add_argument("--repo", default="")
     bll.add_argument("--status", default="")
@@ -1108,6 +1112,13 @@ def _file_person(graph, args) -> register_mod.Filing:
         graph, summary=args.summary, repo=args.repo, area=args.area, pattern=args.pattern,
         symbols=args.symbols, body=args.body, record_id=args.record_id, prefix=args.prefix,
     )
+
+
+def _prune_record(graph, args) -> int:
+    """Close the record ``backlog prune`` names; ``dropped`` and ``promoted`` must say why."""
+    if args.status != "done" and not args.reason.strip():
+        return _result(crud.Result(False, f"--as {args.status} requires --reason"), args.json)
+    return _result(register_mod.close_and_commit(graph, args.id, args.status, args.reason), args.json)
 
 
 def _adopt_list(graph, args) -> int:
@@ -2147,7 +2158,7 @@ def _dispatch(graph, args, store: index_mod.IndexStore) -> int:  # noqa: C901 â€
         if args.op == "adopt":
             return _adopt_list(graph, args)
         if args.op == "prune":
-            return _result(backlog_mod.prune(graph, ids_mod.resolve(graph, args.id)))
+            return _prune_record(graph, args)
         shown = [
             r for r in register_mod.records(graph).records
             if (not args.repo or r.repo == args.repo) and (not args.status or r.status == args.status)

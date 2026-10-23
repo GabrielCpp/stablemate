@@ -100,6 +100,12 @@ def _split(identifier: str) -> tuple[str, str]:
     return (prefix, rest) if rest else ("", identifier)
 
 
+def ulid_of(identifier: str) -> str:
+    """The ULID part of a minted id, or '' for an id that carries none (an imported or legacy one)."""
+    ulid = _split(identifier)[1]
+    return ulid if len(ulid) == ULID_LEN else ""
+
+
 _FP_LEN = 16
 
 

@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from ostler import backlog, crud, ids
+from ostler import backlog, crud, ids, register
 from ostler.api import Ostler
 from ostler.cli import main
 from ostler.model import load
@@ -155,8 +155,12 @@ def test_a_handle_is_accepted_wherever_an_id_is(tmp_path: Path, capsys):
                table[minted["seed"]], "--json") == 0
     assert json.loads(capsys.readouterr().out), "the handle resolved to the seed"
 
-    assert run(tmp_path, "backlog", "prune", table[minted["backlog"]]) == 0
-    assert minted["backlog"] not in (tmp_path / "docs/backlog.md").read_text()
+    record = okf.file_record(repo="api-service", area="billing", pattern="p", summary="s",
+                             filed_by="qa", prefix="acme")
+    assert record.record and record.path
+    handle = ids.table(ids.known(okf.reload().graph))[record.record.id]
+    assert run(tmp_path, "backlog", "prune", handle) == 0
+    assert register.Record.read(record.path).status == "done"
 
 
 def test_seed_add_by_handle_updates_rather_than_filing_a_second_seed(tmp_path: Path):

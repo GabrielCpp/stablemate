@@ -48,22 +48,3 @@ def test_adopt_names_every_bullet_and_is_idempotent(tmp_path: Path) -> None:
                for item_id in generated)
     assert "  - [acme-" in adopted
     assert "1. [acme-" in adopted
-
-
-def test_prune_refuses_to_discard_an_independently_identified_nested_item(
-    tmp_path: Path,
-) -> None:
-    path = tmp_path / "docs/backlog.md"
-    path.parent.mkdir(parents=True)
-    original = (
-        "# Backlog\n\n"
-        "- [ACME-parent] Ship draft recovery\n"
-        "  - [ACME-child] Preserve ten snapshots\n"
-    )
-    path.write_text(original, encoding="utf-8")
-
-    result = backlog.prune(load(tmp_path), "ACME-parent")
-
-    assert not result.ok
-    assert "nested items" in result.message
-    assert path.read_text(encoding="utf-8") == original

@@ -95,22 +95,3 @@ def removal_lines(targets: list[markdown.Bullet]) -> set[int]:
         for bullet in removable
         for line in range(bullet.line_start, bullet.line_end)
     }
-
-
-def prune(graph: Graph, item_id: str) -> Result:
-    doc = _read(graph)
-    if doc is None:
-        return Result(False, "no backlog.md")
-    target = next((b for b in doc.walk_bullets() if b.bracketed[0] == item_id), None)
-    if target is None:
-        return Result(False, f"no backlog item '{item_id}'")
-    drop = removal_lines([target])
-    if not drop:
-        return Result(
-            False,
-            f"backlog item '{item_id}' has nested items; prune them first",
-        )
-    lines = [line for index, line in enumerate(doc.body.split("\n")) if index not in drop]
-    doc.replace_body(lines)
-    _write(_path(graph), doc)
-    return Result(True, f"pruned backlog item '{item_id}'", [_path(graph)])

@@ -175,8 +175,6 @@ def test_backlog(tmp_path: Path):
     assert backlog.add(load(tmp_path), "b2", "do another", section="Filed by coder").ok
     items = dict(backlog.items(load(tmp_path)))
     assert items == {"b1": "do a thing", "b2": "do another"}
-    assert backlog.prune(load(tmp_path), "b1").ok
-    assert dict(backlog.items(load(tmp_path))) == {"b2": "do another"}
 
 
 def test_next_story_skips_given_up_without_stranding_the_epic(tmp_path: Path):

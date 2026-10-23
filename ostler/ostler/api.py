@@ -610,10 +610,9 @@ class Ostler:
         """Assign ids in place to every unnamed bullet of ``docs/backlog.md``, for the story mode that still reads bullets."""
         return self._apply(backlog_mod.adopt(self._fresh(), prefix))
 
-    def backlog_prune(self, item_id: str) -> Result:
-        """Remove a backlog item (``ostler backlog prune``) — ``item_id`` may be a short handle."""
-        graph = self._fresh()
-        return self._apply(backlog_mod.prune(graph, ids_mod.resolve(graph, item_id)))
+    def close_record(self, token: str, status: register_mod.Status, reason: str) -> Result:
+        """End a record as *status* with *reason* and commit it in the artifacts repo (``ostler backlog prune``); *token* may be a short handle."""
+        return self._apply(register_mod.close_and_commit(self._fresh(), token, status, reason))
 
     def allocate_id(self) -> str:
         """Mint and persist the next repo-prefixed ostler id (``ACME-15``) — the same id space stories/epics/seeds draw from, so a backlog IOU is a first-class, numbered work item."""
