@@ -284,6 +284,26 @@ SOLID, one question each:
 
 Revision log:
 
+- Build, before slice 3. Section 2, Producer: QA leftovers: each item QA leaves in
+  `backlog-items.json` becomes a record with `filed_by: qa` and a minted id. QA's prompt
+  asks each item for the repository, area, pattern and symbols a follow-up carries. The
+  repository resolves as the coder's does (A6). An item with no area or pattern takes
+  `untriaged`, because a dropped defect costs more than an unclassified one. The item's
+  own id stays a key inside the file, for the judge's drop list, and names no record. The
+  Same-cause rule reads the open `qa` records of the run's repositories. One artifacts
+  commit per drain.
+- Build, before slice 3. Section 2, Pick: the fix lane draws the oldest open `qa` record
+  whose repository is one of the run's. Filing order is the order of the id's ULID. An id
+  with no ULID, an imported one, sorts before every minted id. A record whose status is
+  not `open` is never drawn, which is how a dropped record replaces the `(blocked …)`
+  suffix.
+- Build, before slice 3. Section 2, Closure: `close(id, status, reason)` rewrites the
+  record's status and reason and nothing else, and commits it in the artifacts repo.
+  Closing a record already at that status is a no-op, so a resumed run can close twice.
+  Closing a record at another closed status is refused. `ostler backlog prune <id>` takes
+  `--as done|dropped|promoted`, `done` by default, and `--reason`, which `dropped` and
+  `promoted` require. The fix lane closes its record as `done` after the fix commit lands,
+  not before, and the reason names each repository's commit.
 - Build, before slice 2. Section 2, Import: a top-level bullet of the old list becomes one
   record, with its wrapped and nested lines in the body. The area is the kebab form of the
   nearest heading above it, cut at ` | `, and `general` under no heading. The section
