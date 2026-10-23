@@ -41,7 +41,7 @@ seeds and its story dependency-DAG live entirely inside that epic's own `epic.md
 
 Spec folders live in the user's artifacts folder, outside git, and are named by the story id. `ostler path spec <story>` prints the folder.
 
-Not Concepts (managed markdown, left in place as-is): `docs/backlog.md` (intake list), `docs/epics/index.md`
+Not Concepts (managed markdown, left in place as-is): `docs/epics/index.md`
 (epics queue).
 
 ## `epic.md` — single source of truth for an epic

@@ -71,7 +71,7 @@ ostler create feature <slug>  --title T [--area A] [--route R] [--prefix P] [--j
 ostler delete epic|story|feature <name>
 
 ostler seed add    <epic> <id> [--status S] [--summary …] [--surface …] \
-                               [--legacy-surface …] [--backing …] [--prerequisites …] [--source-bullet …]
+                               [--legacy-surface …] [--backing …] [--prerequisites …]
 ostler seed remove <epic> <id>
 ostler set-status  <story> <status>
 ostler conflict    <story> <text> | ostler conflict <story> --clear

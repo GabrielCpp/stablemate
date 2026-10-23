@@ -22,7 +22,8 @@ okf = Ostler(root)          # root discovered upward, like `ostler -C DIR`; None
 | `list --type T [--epic E] [--status S] [--json]` | `okf.list("T", epic=…, status=…) -> list[dict]` |
 | `search Q …` / `query NAME ARG` | `okf.search("Q", …)` / `okf.query("NAME", "ARG")` |
 | `next-epic` / `next-story E` | `okf.next_epic()` / `okf.next_story("E") -> dict\|None` |
-| `todo list` / `backlog list` | `okf.todo() -> list[str]` / `okf.backlog() -> list[dict]` |
+| `todo list` | `okf.todo() -> list[str]` |
+| `backlog list` | `okf.record_listing(repo, status) -> list[str]` · `okf.records()` · `okf.open_records(repo)` |
 | `doctor [--epic E] --json` | `okf.doctor(epic=…) -> QaOutcome` (`.data` is the report `.as_dict()`) |
 | `coverage --inventory F [--surface S]` | `okf.coverage(inventory=…, surface=…, waivers=…) -> QaOutcome` (`.data` is the join) |
 | `path epic E` / `path spec S` / `path story E S` / `path branch S` | `okf.epic_path("E")` / `okf.spec_path("S")` / `okf.story_path("E","S")` / `okf.branch("S", epic=False)` |
@@ -72,7 +73,6 @@ from ostler import path as okf_path
 
 okf_path.epics_root_in(root)                     # <root>/docs/epics
 okf_path.epics_index_in(root)                    # the epic queue's index.md
-okf_path.backlog_path_in(root)                   # docs/backlog.md
 okf_path.services_root_in(root, service)         # the book, whole or per-service
 okf_path.epic_dir_in(root, "checkout-flow")      # → .../0001-checkout-flow, from the bare slug
 okf_path.story_dir_in(root, epic, slug)          # the story folder; join your own story.md
@@ -91,7 +91,7 @@ Every derivation comes in up to three spellings, chosen by what the caller alrea
 `_under` is what keeps an override from becoming a second, dumber derivation: ostler's rules
 still apply *inside* the directory you passed, so an epic is matched by number-or-slug there
 too. **This module is the only place a doc-tree path is derived** — no workflow, node or
-script writes `docs/epics`, `docs/backlog.md` or `docs/services` as a literal; see "A
+script writes `docs/epics` or `docs/services` as a literal; see "A
 workflow does not spell a doc path" in `workflows/README.md`.
 
 The loaded graph is a **snapshot**: reads reuse one cached load; a mutation applies
