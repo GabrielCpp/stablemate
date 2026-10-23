@@ -40,6 +40,11 @@ shipped and is now kept only for its reasoning.
   ostler checks the pages, and the book's own scenarios run against the app's stack. A
   book that fails stops at an operator gate. The launch is in
   [its README](src/workhorse_workflows/okf_book/README.md).
+- **`review-debt`** — reads every record on the debt register, has one agent turn group
+  them by shared cause, checks that the report accounts for every id exactly once, and
+  writes `trends.md` beside the shelf only from a report that passes. Its
+  [README](src/workhorse_workflows/review_debt/README.md) has the states and the
+  send-back cap.
 - **`research`** — runs experiment gates: a protocol is designed, made runnable,
   submitted as a detached measurement job, waited on across resumes, and its artifacts
   classified deterministically — for measurements an agent turn is the wrong container
