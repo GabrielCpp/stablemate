@@ -421,12 +421,12 @@ on an entity of its own, so the order the claims run in does not change an outco
 - code: ostler/ostler/registry.py::base_type@cd37e79abc8c
 
 ### ostler-backlog-prune
-- usage: ostler backlog prune ID: removes an intake item
-- exits: 0 when the item exists
+- usage: ostler backlog prune ID [--as done|dropped|promoted] [--reason TEXT] [--json]: closes a record on the register and commits the close in the artifacts repo
+- exits: 0 when the record is closed, or was already closed at that status; 1 with the reason when the id is unknown, the record is closed at another status, or --as dropped or promoted comes without --reason
 - run: invoke(argv=["-C", "plan-scratch", "backlog", "prune", "X-2"])
 - verify: exit_status(code=0)
-- verify: stdout(matches="^pruned backlog item 'X-2'$")
-- fixture: [plan scratch repo](fixtures/plan-scratch-repo.md) with a backlog of two named items
+- verify: stdout(matches="^closed record 'X-2' as done$")
+- fixture: [plan scratch repo](fixtures/plan-scratch-repo.md) with a record X-2 filed on its register
 - code: ostler/ostler/_vendor/stablemate_core/base_cache.py::cache_root@79e1cc13c672
 - code: ostler/ostler/_vendor/stablemate_core/config.py::config_path@45b4d92edb39
 - code: ostler/ostler/dynamic_registry.py::load_kinds@09b3f9268893

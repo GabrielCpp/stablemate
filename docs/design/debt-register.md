@@ -284,6 +284,11 @@ SOLID, one question each:
 
 Revision log:
 
+- Build, slice 3. Section 2, Closure: the fix lane reads each repository's commit from
+  the HEAD of the workspace repositories the item changed. The docs repository counts
+  only when it is the one repository changed. When the gates pass and no repository holds
+  a commit, the run ends and names the record, which stays open. Closing it as `done` would
+  claim a fix nobody can point to. Drawing the next record would draw the same one again.
 - Build, before slice 3. Section 2, Producer: QA leftovers: each item QA leaves in
   `backlog-items.json` becomes a record with `filed_by: qa` and a minted id. QA's prompt
   asks each item for the repository, area, pattern and symbols a follow-up carries. The
