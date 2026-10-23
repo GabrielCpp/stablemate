@@ -18,6 +18,7 @@ from ostler import ids as ids_mod
 from ostler import index as index_mod
 from ostler import path as path_mod
 from ostler import query as query_mod
+from ostler import register as register_mod
 from ostler import registry, select, todo as todo_mod
 from ostler.crud import Result
 from ostler.qa import (
@@ -316,6 +317,49 @@ class Ostler:
     def backlog(self) -> builtins.list[dict]:
         """Backlog items as ``{"id", "text"}`` dicts (``ostler backlog list``)."""
         return [{"id": i, "text": t} for i, t in backlog_mod.items(self.graph)]
+
+    def register_root(self) -> Path:
+        """The shelf the Register's records live on: ``backlog/`` in the artifacts dir."""
+        return self._doc_root("register")
+
+    def records(self) -> register_mod.RegisterRead:
+        """Every record on the shelf, sorted by repo, area and id, and the files that did not parse."""
+        return register_mod.records(self._fresh())
+
+    def open_records(self, repo: str) -> builtins.list[register_mod.Record]:
+        """The open records of *repo*."""
+        return register_mod.open_records(self._fresh(), repo)
+
+    def record_listing(self, repo: str = "", status: str = "") -> builtins.list[str]:
+        """The one-line-per-record listing (``ostler backlog list``), optionally for one repo or status."""
+        return register_mod.listing(
+            r for r in self.records().records
+            if (not repo or r.repo == repo) and (not status or r.status == status)
+        )
+
+    def file_record(
+        self,
+        *,
+        repo: str,
+        area: str,
+        pattern: str,
+        summary: str,
+        filed_by: register_mod.FiledBy,
+        symbols: Iterable[str] = (),
+        source_story: str = "",
+        body: str = "",
+        status: register_mod.Status = "open",
+        record_id: str = "",
+        prefix: str | None = None,
+    ) -> register_mod.Filing:
+        """Shelve one record, minting its id when *record_id* is empty."""
+        filing = register_mod.file_record(
+            self._fresh(), repo=repo, area=area, pattern=pattern, summary=summary,
+            filed_by=filed_by, symbols=symbols, source_story=source_story, body=body,
+            status=status, record_id=record_id, prefix=prefix,
+        )
+        self._graph = None
+        return filing
 
     def doctor(self, *, epic: str | None = None, check_schema: bool = True) -> QaOutcome:
         """The referential-integrity check (``ostler doctor``); ``data`` is the report dict."""

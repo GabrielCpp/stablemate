@@ -21,6 +21,7 @@ from ostler import selector_forms
 from ostler.vet import placement as placement_mod
 from ostler.pages import files_in_book, in_hidden_folder
 from ostler import refs as refs_mod
+from ostler import register as register_mod
 from ostler.finding import Finding
 from ostler.model import Graph, Epic, Story, UINode, load_config, read_doc, required_section_problems
 from ostler.path import services_root as services_root_of, specs_root_in
@@ -112,6 +113,7 @@ def run(graph: Graph, epic_filter: str | None = None, check_schema: bool = True,
 
     _check_legacy_books_root(graph, f)
     _check_removed_doc_roots(graph, f)
+    _check_register_records(graph, f)
     _check_ui(graph, f, resolver, checkouts)
     server_membership.check_server_membership(graph, f, resolver)
     fragment_hosts.check_fragment_hosts(graph, f, resolver)
@@ -196,6 +198,16 @@ def _check_removed_doc_roots(graph: Graph, findings: list[Finding]) -> None:
             "every kind lives at its built-in path under `docs/`, and specs live in the "
             "artifacts dir, so delete the key",
             suggestion="delete the `docRoots` key from the organization config"))
+
+
+def _check_register_records(graph: Graph, findings: list[Finding]) -> None:
+    """A `record.md` on the Register's shelf that does not parse is left out of the listing, so it is named here."""
+    for path in register_mod.records(graph).unreadable:
+        findings.append(Finding(
+            "error", "register-record-unreadable",
+            f"{path}: not a readable record, so the listing skips it — fix its frontmatter "
+            f"(id, repo, area, pattern, filed_by, summary) or delete the folder",
+            path=str(path), line=1))
 
 
 def _check_story_identity(graph: Graph, findings: list[Finding]) -> None:

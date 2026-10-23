@@ -12,7 +12,7 @@ from pathlib import Path
 
 import yaml
 
-from ostler import autofix as autofix_mod, backfill as backfill_mod, backlog as backlog_mod, coverage, crud, crud_generic, doctor, edit, fmt as fmt_mod, freeze as freeze_mod, graph as graph_mod, ids as ids_mod, locators, path as path_mod, query as query_mod, reach, registry, scaffold as scaffold_mod, select, templates as templates_mod, todo as todo_mod, trace
+from ostler import autofix as autofix_mod, backfill as backfill_mod, backlog as backlog_mod, coverage, crud, crud_generic, doctor, edit, fmt as fmt_mod, freeze as freeze_mod, graph as graph_mod, ids as ids_mod, locators, path as path_mod, query as query_mod, reach, register as register_mod, registry, scaffold as scaffold_mod, select, templates as templates_mod, todo as todo_mod, trace
 from ostler import checks as checks_mod
 from ostler import carve as carve_mod
 from ostler import fragment_carve
@@ -475,7 +475,7 @@ def _build_parser() -> argparse.ArgumentParser:
                     help=f"the status to restore (default: {registry.DEFAULT_STORY_STATUS!r})")
     ub.add_argument("--json", action="store_true")
 
-    bl = sub.add_parser("backlog", help="manage docs/backlog.md")
+    bl = sub.add_parser("backlog", help="the Register of proposed improvements, and the old docs/backlog.md list")
     bls = bl.add_subparsers(dest="op", required=True)
     bla = bls.add_parser("add")
     bla.add_argument("id")
@@ -484,7 +484,10 @@ def _build_parser() -> argparse.ArgumentParser:
     blad = bls.add_parser("adopt")
     blad.add_argument("--prefix")
     bls.add_parser("prune").add_argument("id")
-    bls.add_parser("list").add_argument("--json", action="store_true")
+    bll = bls.add_parser("list")
+    bll.add_argument("--repo", default="")
+    bll.add_argument("--status", default="")
+    bll.add_argument("--json", action="store_true")
 
     ml = sub.add_parser("milestone", help="manage milestone backlog ownership")
     mls = ml.add_subparsers(dest="op", required=True)
@@ -2114,9 +2117,13 @@ def _dispatch(graph, args, store: index_mod.IndexStore) -> int:  # noqa: C901 â€
             return _result(backlog_mod.adopt(graph, args.prefix))
         if args.op == "prune":
             return _result(backlog_mod.prune(graph, ids_mod.resolve(graph, args.id)))
-        return _emit(
-            [{"id": i, "text": t} for i, t in backlog_mod.items(graph)], args.json
-        )
+        shown = [
+            r for r in register_mod.records(graph).records
+            if (not args.repo or r.repo == args.repo) and (not args.status or r.status == args.status)
+        ]
+        if args.json:
+            return _emit([r.model_dump() for r in shown], True)
+        return _emit(register_mod.listing(shown), False)
     if c == "milestone":
         return _result(crud.set_milestone_source_items(
             graph,

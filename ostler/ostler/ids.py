@@ -12,7 +12,7 @@ from collections.abc import Iterable
 from pathlib import Path
 from typing import Any
 
-from ostler import backlog
+from ostler import backlog, path as path_mod
 from ostler.model import Graph
 
 _CROCKFORD = "0123456789ABCDEFGHJKMNPQRSTVWXYZ"
@@ -139,6 +139,14 @@ def expand(handle: str, existing: Iterable[str]) -> str | None:
     return matches[0] if len(matches) == 1 else None
 
 
+def shelf_ids(graph: Graph) -> list[str]:
+    """The id of every record folder on the Register's shelf, read from the folder name so a broken record still holds its id."""
+    shelf = path_mod.register_root(graph)
+    if not shelf.is_dir():
+        return []
+    return sorted(p.parent.name for p in shelf.glob("*/*/*/record.md"))
+
+
 def known(graph: Graph) -> list[str]:
     """Every minted id currently written down in the tree, sorted."""
     out: set[str] = set()
@@ -151,6 +159,7 @@ def known(graph: Graph) -> list[str]:
         out.update(milestone.source_items)
     out.update(str(f.data.get("id") or "") for f in graph.features)
     out.update(i for i, _ in backlog.items(graph))
+    out.update(shelf_ids(graph))
     out.discard("")
     return sorted(out)
 

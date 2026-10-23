@@ -71,6 +71,16 @@ def backlog_path(graph: Graph) -> Path:
     return graph.doc_roots["backlog"]
 
 
+def register_root_in(root: Path) -> Path:
+    """Where the Register's records live for *root*: ``backlog/`` in the artifacts dir, never in a code repo."""
+    return doc_root_in(root, "register")
+
+
+def register_root(graph: Graph) -> Path:
+    """Where the Register's records live for this graph."""
+    return graph.doc_roots["register"]
+
+
 def epics_index_in(root: Path) -> Path:
     """The epic queue, ``index.md`` in the epics root — its front entry is the current epic."""
     return epics_root_in(root) / "index.md"
