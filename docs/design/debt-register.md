@@ -293,6 +293,13 @@ Revision log:
   epic-edit planner reads the open listing of every repository inside its prompt, under a
   header line, and the text `no open records` when there is none. Ostler's seed grammar
   gains the `sourceRecord` key beside `sourceBullet`, which goes with the bullet grammar.
+  Section 2, Intake: a survey finding files with its cluster's remediation pattern, its
+  units as symbols, and the units' common directory as its area, or `general` when they
+  share none. A parity finding has no pattern yet and files as `untriaged`. A rerun files
+  nothing that an open record of the same filer, repository and summary already holds.
+  One filing pass makes one commit. Ostler drops the bullet grammar and the
+  `--source-bullet` flag. A seed that still carries a `sourceBullet` line parses, and
+  nothing writes one.
 - Build, slice 5. Section 2, Decision: a cluster's evidence is its records that no decision
   binds yet, and the Threshold counts those. So a second review of the same register
   proposes nothing twice. A Back-link rewrites only the record's `decision` field and does
