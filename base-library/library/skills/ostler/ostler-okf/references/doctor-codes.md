@@ -173,6 +173,8 @@ Three scoping rules explain findings that otherwise read as false positives or a
 | `legacy-books-root` | error | A `docs/features` directory exists. The books root is `docs/services` and ostler no longer reads the old name, so every page under it is absent from the graph. Run `git mv docs/features docs/services`. |
 | `removed-doc-roots` | error | The organization config in `ostler.yml` or `agents.yml` still carries a `docRoots` key. The key was removed and is not read: every kind lives at its built-in path under `docs/`, and specs live in the artifacts dir. Delete the key. |
 | `register-record-unreadable` | error | A `record.md` on the Register's shelf (`backlog/<repo>/<area>/<id>/` in the artifacts dir) does not parse as a record, so the listing skips it. Fix its frontmatter (`id`, `repo`, `area`, `pattern`, `filed_by`, `summary`) or delete the folder. |
+| `decision-evidence-unresolved` | error | A decision file in `adr/` (the artifacts dir) lists an `evidence` id that resolves to no record on the Register's shelf. Restore the record, or remove the id from the decision's `evidence`. |
+| `decision-back-link-missing` | error | A decision and its evidence disagree. Either a record's `decision` names an id that no file in `adr/` carries, or a decision lists a record whose `decision` names something else. Set `decision: <id>` on the record, clear it, or remove the record from the decision's `evidence`. |
 | `unknown-type` | error | The declared `type:` is not a recognized OKF type. |
 | `schema` | warn | A per-type frontmatter schema violation (also raised against `ids.json`). |
 | `bad-heading-type` | error | A case or spelling variant of a known UI heading, whose `### id` children would otherwise go unrecognized. `ostler fmt` canonicalizes it. |
