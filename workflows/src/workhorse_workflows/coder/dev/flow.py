@@ -50,7 +50,7 @@ from workhorse_workflows.coder.shared.schemas.dev import (
     GateOutcome,
     OperatorResolution,
 )
-from workhorse_workflows.coder.shared.schemas.dev_story import DevOutcome, DevResult
+from workhorse_workflows.coder.shared.schemas.dev_story import DevOutcome, DevResult, FollowUp
 from workhorse_workflows.coder.shared.schemas.story import StoryPaths
 from workhorse_workflows.coder.shared.service_gates import GATE_ORDER, declared_services, run_gate
 from workhorse_workflows.coder.shared.stack import (
@@ -76,10 +76,10 @@ from workhorse_workflows.kit.qa.runner import copy_lease
 from workhorse_workflows.kit.telemetry import counter_labels
 
 
-def _reports(entries: list[dict[str, str]]) -> dict[str, str]:
+def _reports(entries: list[FollowUp]) -> dict[str, str]:
     """Each follow-up entry by its index, as its title and the reason it gave."""
     return {
-        str(i): f"{e['title']}: {e['reason']}" if e["reason"] else e["title"]
+        str(i): f"{e.title}: {e.reason}" if e.reason else e.title
         for i, e in enumerate(entries)
     }
 
@@ -224,14 +224,12 @@ class Dev(Workflow):
         return any(it.payload.get("source") == "qa" for it in work.findings_of(w, self._work_id))
 
     def _file_follow_ups(self, result: DevResult) -> None:
-        entries = self._product_work(
-            [f.model_dump(include={"title", "reason"}) for f in result.follow_ups]
-        )
+        entries = self._product_work(list(result.follow_ups))
         if not entries:
             return
         self.call(file_follow_up_backlog, parent=self._work_id, follow_ups=entries)
 
-    def _product_work(self, entries: list[dict[str, str]]) -> list[dict[str, str]]:
+    def _product_work(self, entries: list[FollowUp]) -> list[FollowUp]:
         """The entries the judge reads as product work; each other one is logged for the operator with what it is instead."""
         reports = _reports(entries)
         outside = causes.not_product(self._judge("low"), reports)

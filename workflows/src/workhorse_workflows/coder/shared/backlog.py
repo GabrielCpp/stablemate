@@ -1,7 +1,6 @@
 """The backlog, both ends of it: what the coder files into it, and what it drains back out."""
 from __future__ import annotations
 
-import hashlib
 import json
 import logging
 import os
@@ -14,6 +13,7 @@ from typing import Any
 from ostler import Ostler, markdown
 from workhorse.pyflow import WorkflowFailed
 from workhorse_workflows.kit import commit_paths, find_docs_root
+from workhorse_workflows.kit.workspace import resolve_workspace
 from workhorse_workflows.coder.shared import causes, commits, paths
 from workhorse_workflows.coder.shared.blueprint import blueprint
 from workhorse_workflows.coder.shared.docs import CONTEXT_FILE
@@ -24,11 +24,11 @@ from workhorse_workflows.coder.shared.schemas.backlog import (
     FixPruned,
     FixStorySeed,
 )
+from workhorse_workflows.coder.shared.schemas.dev_story import FollowUp
 from workhorse_workflows.coder.shared.schemas.qa import BacklogDrain
 
 FILED_HEADING = "## Filed by coder"
 FILED_TITLE = FILED_HEADING.lstrip("#").strip()
-DEFERRED_TITLE = "Deferred by coder"
 BOOK_CHECKS_TITLE = "Book checks QA could not run"
 
 BLOCKED_SUFFIX_RE = re.compile(r"\s*\(blocked\b.*$", re.IGNORECASE)
@@ -266,44 +266,75 @@ def _filed_as(bullets: list[BacklogBullet], title: str, reason: str) -> str:
     return ""
 
 
+def _follow_up_repo(named: str, repos: Mapping[str, Any]) -> str:
+    """The workspace repository a follow-up belongs to: the one it names, else the only one, else empty."""
+    if named in repos:
+        return named
+    return next(iter(repos)) if len(repos) == 1 else ""
+
+
 @blueprint.node
 def file_follow_up_backlog(
     logger: logging.Logger,
     parent: str = "",
-    follow_ups: list[dict[str, str]] | None = None,
+    follow_ups: list[FollowUp] | None = None,
     repo_dir: str = "",
+    workspace: str = "",
 ) -> BacklogDrain:
-    """File a dev turn's follow-ups to the backlog's `Deferred by coder` section, which no lane drains, and commit them."""
-    root = find_docs_root(repo_dir)
-    okf = Ostler(root)
-    backlog = root / paths.backlog_file(root)
-    bullets = backlog_bullets(backlog.read_text(encoding="utf-8")) if backlog.is_file() else []
-    appended = 0
+    """File a dev turn's follow-ups as records on the debt register, and commit them in the artifacts repo."""
+    okf = Ostler(find_docs_root(repo_dir))
+    repos = resolve_workspace(workspace, repo_dir)
+    open_by_repo: dict[str, list[BacklogBullet]] = {}
+    filed_repos: list[str] = []
+    new_paths: list[Path] = []
     skipped = 0
     for entry in follow_ups or []:
-        title = str(entry.get("title") or "").strip()
-        reason = str(entry.get("reason") or "").strip()
+        title = " ".join(entry.title.split())
+        reason = entry.reason.strip()
         if not title:
             skipped += 1
             continue
-        filed = _filed_as(bullets, title, reason)
-        if filed:
-            logger.info("follow-up %r is already in the backlog as [%s]", title, filed)
+        repo = _follow_up_repo(entry.repo.strip(), repos)
+        if not repo:
+            logger.info(
+                "follow-up %r names no repository of the workspace (%s), so it is not filed",
+                title, ", ".join(repos),
+            )
             skipped += 1
             continue
-        key = hashlib.sha256(f"{title}\n{reason}".encode()).hexdigest()[:8]
-        item_id = kebab(f"{parent}-{key}")
-        text = " ".join(f"{title}: {reason}".split()) if reason else " ".join(title.split())
-        if okf.backlog_add(item_id, text, DEFERRED_TITLE).ok:
-            appended += 1
-            bullets.append(BacklogBullet(0, item_id, text))
-        else:
+        missing = [name for name in ("area", "pattern") if not getattr(entry, name).strip()]
+        if missing:
+            logger.info("follow-up %r has no %s, so it is not filed", title, " and no ".join(missing))
             skipped += 1
-    note = f"filed {appended} follow-up(s) of {parent} to the backlog, skipped {skipped}"
+            continue
+        if repo not in open_by_repo:
+            open_by_repo[repo] = [
+                BacklogBullet(0, record.id, record.summary) for record in okf.open_records(repo)
+            ]
+        filed = _filed_as(open_by_repo[repo], title, reason)
+        if filed:
+            logger.info("follow-up %r is already on the register as [%s]", title, filed)
+            skipped += 1
+            continue
+        filing = okf.file_record(
+            repo=repo, area=entry.area.strip(), pattern=entry.pattern.strip(), summary=title,
+            filed_by="coder", symbols=entry.symbols, source_story=parent, body=reason,
+        )
+        if filing.record is None or filing.path is None:
+            logger.info("follow-up %r was not filed: %s", title, filing.message)
+            skipped += 1
+            continue
+        open_by_repo[repo].append(BacklogBullet(0, filing.record.id, filing.record.summary))
+        filed_repos.append(repo)
+        new_paths.append(filing.path)
+    appended = len(new_paths)
+    note = f"filed {appended} follow-up(s) of {parent} to the register, skipped {skipped}"
     logger.info(note)
     if appended:
-        message = commits.message("chore", commits.scope(root.name), f"file the deferred follow-ups of {parent}")
-        commit_paths(root, message, paths.backlog_file(root), verify=False)
+        artifacts = okf.register_root().parent
+        scope = commits.scope(filed_repos[0]) if len(set(filed_repos)) == 1 else ""
+        message = commits.message("chore", scope, f"file the deferred follow-ups of {parent}")
+        commit_paths(artifacts, message, *(str(p.relative_to(artifacts)) for p in new_paths), verify=False)
     return BacklogDrain(appended=appended, skipped=skipped, notes=note)
 
 
@@ -650,7 +681,6 @@ def _prune_directly(path: Path, bullet_id: str) -> bool:
 
 __all__ = [
     "BOOK_CHECKS_TITLE",
-    "DEFERRED_TITLE",
     "BacklogBullet",
     "Seen",
     "backlog_bullets",

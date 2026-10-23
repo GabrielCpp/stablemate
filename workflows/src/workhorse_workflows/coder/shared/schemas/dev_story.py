@@ -12,11 +12,28 @@ from workhorse_workflows.coder.shared.schemas.review import ReviewFinding
 
 
 class FollowUp(CoderResult):
-    """Undone product work on this story's feature that the working slice does not need, filed to the backlog's `Deferred by coder` section rather than done on the side."""
+    """Undone product work on this story's feature that the working slice does not need, filed as a record on the debt register rather than done on the side."""
 
     title: str = Field(description="What the work is, in one line a person can act on.")
     reason: str = Field(
         description="Why the slice works without it, and what it would improve."
+    )
+    repo: str = Field(
+        default="",
+        description="The repository of the workspace the work sits in, by the name the "
+        "workspace gives it. Leave it empty only when the run has one repository.",
+    )
+    area: str = Field(
+        description="The module or service area the work sits in, as one lowercase kebab "
+        "word such as `billing` or `auth`.",
+    )
+    pattern: str = Field(
+        description="The kind of fix the work calls for, as a short lowercase kebab phrase "
+        "such as `extract-module` or `widen-api`.",
+    )
+    symbols: list[str] = Field(
+        default=[],
+        description="The files or symbols the work touches.",
     )
 
 
@@ -43,8 +60,8 @@ class DevResult(PlanFields):
         "defect or warning that predates this story and that its change did not cause, a "
         "remark about docs or a story or plan file's status, and a remark about the toolchain "
         "such as commit trailers, ostler or packet attribution. Each is a run finding for "
-        "the operator, so put it in `notes`. The run files each entry in the backlog under "
-        "`Deferred by coder`, where no lane works it. "
+        "the operator, so put it in `notes`. The run files each entry as a record on the debt "
+        "register, where no lane works it. Give each entry the repository, area and pattern it sits in. "
         "Leave it empty when you are working a follow-up yourself: a follow-up files none "
         "of its own.",
     )
