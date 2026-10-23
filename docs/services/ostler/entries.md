@@ -82,7 +82,7 @@ title: ostler
 - [Reorder the epic queue](flows/reorder-the-epic-queue.md)
 - [File a named backlog item](flows/file-a-named-backlog-item.md)
 - [List the backlog](flows/list-the-backlog.md)
-- [Name the unnamed backlog items](flows/name-the-unnamed-backlog-items.md)
+- [Import an old backlog list](flows/import-an-old-backlog-list.md)
 - [Drop a backlog item](flows/drop-a-backlog-item.md)
 - [Tie a milestone to backlog items](flows/tie-a-milestone-to-backlog-items.md)
 - [Add a seed to an epic](flows/add-a-seed-to-an-epic.md)
