@@ -19,7 +19,7 @@ SEEDS_HEADING = "Seeds"
 STORIES_HEADING = "Stories"
 
 SEED_META_KEYS = (
-    "status", "surface", "legacySurface", "backing", "prerequisites", "sourceBullet",
+    "status", "surface", "legacySurface", "backing", "prerequisites", "sourceBullet", "sourceRecord",
     "layers", "services", "design",
 )
 SEED_LIST_META_KEYS = ("layers", "services")

@@ -37,6 +37,7 @@ def _seed_row(epic, seed) -> dict:
             "legacySurface": raw.get("legacysurface", ""),
             "currentState": raw.get("currentstate", ""),
             "sourceBullet": raw.get("sourcebullet", ""),
+            "sourceRecord": raw.get("sourcerecord", ""),
             "backing": raw.get("backing", ""),
             "prerequisites": raw.get("prerequisites", ""),
             "design": raw.get("design", ""),
