@@ -7,8 +7,10 @@ import sys
 from collections.abc import Callable
 from pathlib import Path
 
+from ostler import Ostler, doctor
+from ostler.model import load
 from workhorse.pyflow.blueprint import node_spec
-from workhorse_workflows.coder.shared.backlog import file_follow_up_backlog, prune_fix_item
+from workhorse_workflows.coder.shared.backlog import file_follow_up_backlog, prune_fix_item, seed_fix_story
 from workhorse_workflows.coder.shared.story_commit import check_repos_clean
 
 
@@ -186,3 +188,20 @@ def test_a_bookkeeping_commit_is_not_refused_by_the_repository_hooks(
     subjects = git(repo, "log", "--format=%s").stdout.splitlines()
     assert subjects[:2] == ["chore(acme): drop shipped fix acme-cache", "chore(acme): file the follow-ups of acme-story"], subjects
     assert check_repos_clean(logger, story_slug="acme-story", repo_dir=str(repo)).clean is True
+
+
+def test_the_fixes_bucket_the_coder_creates_needs_no_milestone(
+    repo: Path,
+    logger: logging.Logger,
+) -> None:
+    assert Ostler(repo).create_milestone("mvp", "MVP").ok
+
+    seeded = seed_fix_story(
+        logger, bullet_id="acme-cache", bullet_text="Clear the cache on sign-out", repo_dir=str(repo)
+    )
+
+    graph = load(repo)
+    bucket = next(epic for epic in graph.epics if epic.name == seeded.epic)
+    assert bucket.followups is True
+    unowned = [f.ref for f in doctor.run(graph).findings if f.code == "epic-without-milestone"]
+    assert unowned == [], unowned

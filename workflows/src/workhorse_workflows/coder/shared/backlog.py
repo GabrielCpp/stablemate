@@ -524,7 +524,7 @@ def _ensure_fixes_epic(okf: Ostler, epic: str) -> str:
     name = Path(okf.epic_path(epic)).name
     if (okf.root / okf.epic_path(epic) / "epic.md").is_file():
         return name
-    result = okf.create_epic(epic, "Coder-filed fixes")
+    result = okf.create_epic(epic, "Coder-filed fixes", followups=True)
     if result.ok:
         return result.entity_name or name
     name = Path(okf.reload().epic_path(epic)).name
