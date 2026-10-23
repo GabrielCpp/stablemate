@@ -308,6 +308,11 @@ There is **no index table**. The set of archived runs is the set of directories
 under `archives/`, read by listing it — one authority, and it is the one that
 survives a database that was thrown away.
 
+`groom cost --run`, `groom loops --run` and `groom profile` answer for an archived run
+through `telemetry.db`, a derived index in the run's archive folder. Groom builds it from
+`telemetry.jsonl` on the first query and reuses it until the jsonl is newer. The jsonl stays
+the source, so the index is safe to delete and costs one rebuild.
+
 ```bash
 groom archive status         # root, frozen count, pending, held, last sweep
 groom archive ls [--long]    # what is frozen; --long reads each manifest

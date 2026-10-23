@@ -339,9 +339,10 @@ def cost(run: str = "", limit: int = 100, as_json: bool = False) -> None:
     """Print per-node agent spend for a run — where the money and the rework went."""
     import json as _json
 
-    from groom import store
+    from groom import archive, store
 
-    rows = store.node_costs(run=run, limit=limit)
+    with archive.run_source(run):
+        rows = store.node_costs(run=run, limit=limit)
     if as_json:
         print(_json.dumps(rows, indent=2))
         return
@@ -492,9 +493,12 @@ def loops(
     """Print per-node lap distributions — which review→rework loops converge."""
     import json as _json
 
-    from groom import store
+    from groom import archive, store
 
-    rows = store.loop_convergence(run=run, workflow=workflow, min_work_items=min_items)
+    with archive.run_source(run):
+        rows = store.loop_convergence(
+            run=run, workflow=workflow, min_work_items=min_items
+        )
     if as_json:
         print(_json.dumps(rows, indent=2))
         return
@@ -569,9 +573,10 @@ def profile(run: str, as_json: bool = False) -> None:
     """Show one run's wall time, workflow visits, backend retries, and verdicts."""
     import json as _json
 
-    from groom import store
+    from groom import archive, store
 
-    result = store.run_profile(run)
+    with archive.run_source(run):
+        result = store.run_profile(run)
     if as_json:
         print(_json.dumps(result, indent=2))
         return
@@ -782,16 +787,11 @@ def archive_show(run: str, limit: int = 0) -> None:
     """Stream one frozen run's ``telemetry.jsonl`` to stdout."""
     from groom import archive
 
-    root = archive.archives_root()
-    target = root / run / archive.TELEMETRY_FILE
-    if not target.exists():
-        matches = [
-            path for path in archive.archive_dirs() if path.name.startswith(f"{run}-")
-        ]
-        if not matches:
-            print(f"no archived run {run} under {root}.")
-            return
-        target = matches[0] / archive.TELEMETRY_FILE
+    folder = archive.archive_dir(run)
+    if folder is None:
+        print(f"no archived run {run} under {archive.archives_root()}.")
+        return
+    target = folder / archive.TELEMETRY_FILE
     with target.open(encoding="utf-8") as handle:
         for index, line in enumerate(handle):
             if limit and index > limit:

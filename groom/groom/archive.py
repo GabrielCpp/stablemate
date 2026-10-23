@@ -7,8 +7,10 @@ import heapq
 import json
 import logging
 import os
+import sqlite3
 import time
 from collections.abc import Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -23,6 +25,12 @@ ARCHIVE_EVERY_S = float(os.environ.get("GROOM_ARCHIVE_EVERY_S", str(6 * 3600)))
 RUNS_PER_PASS = int(os.environ.get("GROOM_ARCHIVE_RUNS_PER_PASS", "25"))
 
 TELEMETRY_FILE = "telemetry.jsonl"
+
+INDEX_FILE = "telemetry.db"
+
+_INDEX_BATCH = 5000
+
+_KIND_TABLES = {"span": "spans", "log": "logs", "metric": "metrics"}
 
 _TMP_SUFFIX = ".tmp"
 
@@ -51,6 +59,17 @@ def archived_run_ids() -> set[str]:
 def is_archived(run_id: str) -> bool:
     """Has ``run_id`` been frozen?"""
     return bool(run_id) and (archives_root() / run_id / TELEMETRY_FILE).exists()
+
+
+def archive_dir(run: str) -> Path | None:
+    """The folder holding ``run``'s archive: its own name first, else a derived ``<run>-<suffix>``."""
+    if not run:
+        return None
+    exact = archives_root() / run
+    if (exact / TELEMETRY_FILE).exists():
+        return exact
+    matches = [path for path in archive_dirs() if path.name.startswith(f"{run}-")]
+    return matches[0] if matches else None
 
 
 def manifest(path: Path) -> dict[str, Any]:
@@ -187,6 +206,97 @@ def write_telemetry(run: RunBounds, target: Path, now: float | None = None) -> i
     tmp.replace(target)
     _fsync_dir(target.parent)
     return target.stat().st_size
+
+
+def _table_columns(conn: sqlite3.Connection, table: str) -> set[str]:
+    return {row[1] for row in conn.execute(f"PRAGMA table_info({table})")}  # noqa: S608
+
+
+def _row(record: dict[str, Any], kind: str, columns: set[str]) -> dict[str, Any]:
+    """Reverse :func:`_record`: an archived line back into the columns of its table."""
+    row = dict(record)
+    row.pop("kind", None)
+    attrs = row.pop("attrs", None)
+    if kind == "span" and "generation" in row:
+        row["resume_generation"] = row.pop("generation")
+    if kind == "span":
+        row.setdefault("trace_id", "")
+    row["attrs_json"] = json.dumps(attrs if attrs is not None else {})
+    return {key: value for key, value in row.items() if key in columns}
+
+
+def _flush(
+    conn: sqlite3.Connection, table: str, batch: list[dict[str, Any]]
+) -> None:
+    by_keys: dict[tuple[str, ...], list[dict[str, Any]]] = {}
+    for row in batch:
+        by_keys.setdefault(tuple(sorted(row)), []).append(row)
+    for keys, rows in by_keys.items():
+        names = ", ".join(keys)
+        marks = ", ".join(f":{key}" for key in keys)
+        conn.executemany(
+            f"INSERT OR IGNORE INTO {table} ({names}) VALUES ({marks})",  # noqa: S608
+            rows,
+        )
+    batch.clear()
+
+
+def build_index(folder: Path) -> Path:
+    """Build ``folder``'s ``telemetry.db`` from its jsonl, unless it is already current."""
+    source = folder / TELEMETRY_FILE
+    index = folder / INDEX_FILE
+    try:
+        if index.stat().st_mtime >= source.stat().st_mtime:
+            return index
+    except OSError:
+        pass
+    tmp = folder / (INDEX_FILE + _TMP_SUFFIX)
+    tmp.unlink(missing_ok=True)
+    conn = sqlite3.connect(tmp, isolation_level=None)
+    conn.row_factory = sqlite3.Row
+    try:
+        conn.execute("PRAGMA journal_mode=OFF")
+        conn.execute("PRAGMA synchronous=OFF")
+        store.prepare(conn)
+        columns = {
+            kind: _table_columns(conn, table) for kind, table in _KIND_TABLES.items()
+        }
+        batches: dict[str, list[dict[str, Any]]] = {kind: [] for kind in _KIND_TABLES}
+        conn.execute("BEGIN")
+        with source.open(encoding="utf-8") as handle:
+            for line in handle:
+                try:
+                    record = json.loads(line)
+                except ValueError:
+                    continue
+                kind = record.get("kind") if isinstance(record, dict) else None
+                if kind not in _KIND_TABLES:
+                    continue
+                batch = batches[kind]
+                batch.append(_row(record, kind, columns[kind]))
+                if len(batch) >= _INDEX_BATCH:
+                    _flush(conn, _KIND_TABLES[kind], batch)
+        for kind, batch in batches.items():
+            _flush(conn, _KIND_TABLES[kind], batch)
+        conn.execute("COMMIT")
+    except BaseException:
+        conn.close()
+        tmp.unlink(missing_ok=True)
+        raise
+    conn.close()
+    os.replace(tmp, index)
+    return index
+
+
+@contextmanager
+def run_source(run: str) -> Iterator[None]:
+    """Read ``run`` from its archive's index when groom.db no longer holds it."""
+    folder = archive_dir(run)
+    if not run or folder is None or store.has_run_rows(run):
+        yield
+        return
+    with store.reading_from(build_index(folder)):
+        yield
 
 
 def _fsync_dir(path: Path) -> None:

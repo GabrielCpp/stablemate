@@ -187,6 +187,11 @@ The archive has **no retention of its own** and **no index table**: the set of
 archived runs is what is on disk under `archives/`, read by listing it. A sweep
 interrupted halfway resumes from the manifest rather than rewriting the file.
 
+`groom cost --run`, `groom loops --run` and `groom profile` answer for an archived run
+through `telemetry.db`, a derived index in the run's archive folder. Groom builds it from
+`telemetry.jsonl` on the first query and reuses it until the jsonl is newer. The jsonl stays
+the source, so the index is safe to delete and costs one rebuild.
+
 ```bash
 groom archive status         # root, frozen runs, pending, held, last sweep
 groom archive ls             # what is frozen (--long for the manifests)

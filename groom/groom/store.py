@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextvars
 import functools
 import json
 import logging
@@ -270,6 +271,14 @@ class _Table:
 _TABLES: dict[str, _Table] = {}
 
 
+def prepare(conn: sqlite3.Connection) -> None:
+    """Give ``conn`` groom's schema, its migrations and every registered table."""
+    conn.executescript(_SCHEMA)
+    _migrate(conn)
+    for table in _TABLES.values():
+        table.create(conn)
+
+
 _P = ParamSpec("_P")
 _T = TypeVar("_T")
 
@@ -331,10 +340,7 @@ class _Store:
         conn.execute("PRAGMA journal_mode=WAL")
         conn.execute("PRAGMA synchronous=NORMAL")
         conn.execute("PRAGMA busy_timeout=5000")
-        conn.executescript(_SCHEMA)
-        _migrate(conn)
-        for table in _TABLES.values():
-            table.create(conn)
+        prepare(conn)
         return conn
 
     def install(self, table: _Table) -> None:
@@ -544,8 +550,32 @@ def _connection() -> sqlite3.Connection:
     return STORE.connect()
 
 
+_READING_FROM: contextvars.ContextVar[sqlite3.Connection | None] = (
+    contextvars.ContextVar("groom_reading_from", default=None)
+)
+
+
 def read_connection() -> sqlite3.Connection:
+    redirected = _READING_FROM.get()
+    if redirected is not None:
+        return redirected
     return STORE.read_connection()
+
+
+@contextmanager
+def reading_from(path: Path) -> Iterator[None]:
+    """Point this context's reads at the SQLite file ``path`` until the block ends."""
+    conn = sqlite3.connect(
+        f"file:{path}?mode=ro", uri=True, check_same_thread=False, isolation_level=None
+    )
+    conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA query_only=1")
+    token = _READING_FROM.set(conn)
+    try:
+        yield
+    finally:
+        _READING_FROM.reset(token)
+        conn.close()
 
 
 def register_table(name: str, ddl: str, added: tuple[tuple[str, str], ...] = ()) -> None:
@@ -1796,6 +1826,18 @@ def archive_page(
         params,
     )
     return [dict(row) for row in rows]
+
+
+@reading
+def has_run_rows(run_id: str) -> bool:
+    """Does the store still hold a span, log or metric for ``run_id``?"""
+    if not run_id:
+        return False
+    conn = read_connection()
+    return any(
+        conn.execute(f"SELECT 1 FROM {table} WHERE run_id = ? LIMIT 1", (run_id,)).fetchone()  # noqa: S608
+        for table in ("spans", "logs", "metrics")
+    )
 
 
 def delete_run_telemetry(run_id: str) -> int:
