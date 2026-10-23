@@ -561,6 +561,7 @@ a state missing one of them draws as a bare file name or a parameter list:
 | a `# <workflow> — <what this turn does>` title on the prompt | the part after the dash under the prompt's bubble |
 | `self.agent("a.md" if x else "b.md", …)` | one bubble per arm; an argument it cannot read draws as `?` and fails preflight |
 | `turn = roles.turn(self, "review", …)` then `self.agent(turn.prompt, …)`, where `turn` is marked `@resolves_prompt(path_of)` | the bubble `path_of(cls, "review")` names, read off the local's binding |
+| `turn = roles.turn(self, "a", …) if x else roles.turn(self, "b", …)` | one bubble per arm, each read through `path_of` |
 | `self.agent(text, label="fix-findings", …)` | a bubble named for the label, captioned with the body's own `#` title |
 | `Continue(...).because("…")`, likewise on `Await` and `Done` | the sentence on the edge, in place of the parameter names |
 

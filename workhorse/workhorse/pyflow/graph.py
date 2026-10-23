@@ -385,7 +385,8 @@ def _prompt_literals(cls: type[Workflow], call: ast.Call, scope: ast.AST) -> lis
 
     A bare string is one, a ternary of strings is each of its arms, a module constant is its value,
     and a subscript of a module mapping of strings is the value its key names, or each value when the key is not a constant.
-    A local bound in `scope` to a call of a `PromptResolver` is the path that resolver declares for the call's literals.
+    A local bound in `scope` to a call of a `PromptResolver` is the path that resolver declares for the call's literals,
+    and a local bound to a ternary of such calls is each arm's path.
     """
     if not call.args:
         return []
@@ -399,8 +400,8 @@ def _prompt_literals(cls: type[Workflow], call: ast.Call, scope: ast.AST) -> lis
             stack[:0] = [expr.body, expr.orelse]
         elif isinstance(expr, ast.Name) and isinstance(value := _module_constant(cls, expr.id), str):
             found.append(value)
-        elif (resolved := _resolved_prompt(cls, expr, scope)) is not None:
-            found.append(resolved)
+        elif resolved := _resolved_prompts(cls, expr, scope):
+            found.extend(resolved)
         elif isinstance(expr, ast.Subscript) and isinstance(expr.value, ast.Name):
             named = _module_constant(cls, expr.value.id)
             if not isinstance(named, dict) or not named:
@@ -416,34 +417,42 @@ def _prompt_literals(cls: type[Workflow], call: ast.Call, scope: ast.AST) -> lis
     return found
 
 
-def _resolved_prompt(cls: type[Workflow], expr: ast.expr, scope: ast.AST) -> str | None:
-    """The path a `PromptResolver` declares for the local `expr` reads, when `scope` bound that local to its call."""
+def _resolved_prompts(cls: type[Workflow], expr: ast.expr, scope: ast.AST) -> list[str]:
+    """The paths a `PromptResolver` declares for the local `expr` reads, one per call `scope` bound that local to.
+
+    Empty unless every such call resolves.
+    """
     local = expr.value if isinstance(expr, ast.Attribute) else expr
     if not isinstance(local, ast.Name):
-        return None
-    call = _local_call(scope, local.id)
-    if call is None:
-        return None
-    resolver = _module_value(cls, call.func)
-    if not isinstance(resolver, PromptResolver):
-        return None
-    literals = [
-        arg.value for arg in call.args if isinstance(arg, ast.Constant) and isinstance(arg.value, str)
-    ]
-    try:
-        return resolver.prompt_path(cls, *literals)
-    except (TypeError, ValueError, PyflowError):
-        return None
+        return []
+    paths: list[str] = []
+    for call in _local_calls(scope, local.id):
+        resolver = _module_value(cls, call.func)
+        if not isinstance(resolver, PromptResolver):
+            return []
+        literals = [
+            arg.value for arg in call.args if isinstance(arg, ast.Constant) and isinstance(arg.value, str)
+        ]
+        try:
+            paths.append(resolver.prompt_path(cls, *literals))
+        except (TypeError, ValueError, PyflowError):
+            return []
+    return paths
 
 
-def _local_call(scope: ast.AST, name: str) -> ast.Call | None:
-    """The call `name = <call>(...)` binds in `scope`, else None."""
+def _local_calls(scope: ast.AST, name: str) -> list[ast.Call]:
+    """The calls `name = <call>(...)` binds in `scope`, each arm when it binds a ternary of calls, else none."""
     for node in ast.walk(scope):
-        if not isinstance(node, ast.Assign) or not isinstance(node.value, ast.Call):
+        if not isinstance(node, ast.Assign):
             continue
-        if len(node.targets) == 1 and isinstance(node.targets[0], ast.Name) and node.targets[0].id == name:
-            return node.value
-    return None
+        if len(node.targets) != 1 or not isinstance(node.targets[0], ast.Name) or node.targets[0].id != name:
+            continue
+        value = node.value
+        if isinstance(value, ast.Call):
+            return [value]
+        if isinstance(value, ast.IfExp) and isinstance(value.body, ast.Call) and isinstance(value.orelse, ast.Call):
+            return [value.body, value.orelse]
+    return []
 
 
 def _module_constant(cls: type[Workflow], name: str) -> object:

@@ -355,6 +355,15 @@ class Resolved(Workflow):
         return Done(None)
 
 
+class Chosen(Workflow):
+    """A state that binds its local to one of two resolver calls."""
+
+    def start(self) -> Transition:
+        turn = pick_turn(self, "repair") if self.run_id else pick_turn(self, "review")
+        self.agent(turn.prompt, returns=str)
+        return Done(None)
+
+
 class Unbound(Workflow):
     """A state that reads the helper's result without binding the call to a local."""
 
@@ -370,6 +379,10 @@ def test_a_prompt_bound_through_a_resolver_is_the_path_it_resolves():
         (Path(tmp) / "prompts").mkdir()
         (Path(tmp) / "prompts" / "review.md").write_text("hi")
         assert preflight([_graph(Resolved)], Path(tmp)) == []
+
+
+def test_a_local_bound_to_a_ternary_of_resolver_calls_is_each_arm_s_path():
+    assert _state(Chosen, "start").prompts == ("prompts/repair.md", "prompts/review.md")
 
 
 def test_a_resolver_result_read_without_a_binding_is_still_a_problem():

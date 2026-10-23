@@ -83,7 +83,7 @@ constant key names, or every value when the key is computed. That last form lets
 dispatch the same table entry it sized the turn from. A local bound to a call of a helper
 marked `@resolves_prompt(path_of)` is read through that helper: `path_of` gets the
 workflow class and the call's string literals, and names the path the helper would
-resolve at run time. Anything else (a bare local, an f-string) is reported, because a
+resolve at run time. A local bound to a ternary of two such calls is each arm's path. Anything else (a bare local, an f-string) is reported, because a
 path this pass cannot read is a path nothing checks. A turn written inline is checked further than a file one is:
 its labels must be unique within the flow, since two turns sharing one would share a run
 directory, and its text must parse as Jinja, which no dry run of a file prompt ever
