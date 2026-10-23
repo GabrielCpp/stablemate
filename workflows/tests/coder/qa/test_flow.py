@@ -732,7 +732,7 @@ def test_the_packet_maps_the_story_s_commits_and_not_only_what_is_uncommitted(
     trunk = git(docs, "rev-parse", "HEAD").stdout.strip()
     git(docs, "checkout", "-qb", "story")
     git(docs, "add", "-A")
-    git(docs, "commit", "-qm", "the story")
+    git(docs, "commit", "-qm", f"the story\n\nStory: {STORY}")
     okf = ostler()
 
     drive_flow(Qa(story=STORY), env(), _Agent(docs))

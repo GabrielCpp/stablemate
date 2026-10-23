@@ -173,8 +173,11 @@ class Qa(Workflow):
             "WORKTREE",
             preexisting=tuple(self.preexisting),
             story_sources=self.output(resolve_story_sources).sources if self._sourced else (),
+            story_refs=tuple(
+                dict.fromkeys(ref for ref in (self.ctx.story_id, self.ctx.story_slug) if ref)
+            ),
         )
-        context = self.call(validate_okf_context, self.ctx.spec_dir, build.status)
+        context =self.call(validate_okf_context, self.ctx.spec_dir, build.status)
         failures = []
         if context.status != "passed":
             failures.append(gate_text("the OKF context packet", context.notes))
