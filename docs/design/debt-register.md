@@ -284,6 +284,30 @@ SOLID, one question each:
 
 Revision log:
 
+- Build, before slice 2. Section 2, Import: a top-level bullet of the old list becomes one
+  record, with its wrapped and nested lines in the body. The area is the kebab form of the
+  nearest heading above it, cut at ` | `, and `general` under no heading. The section
+  titles the coder and the surveyors wrote set `filed_by` instead: `Filed by coder` is
+  `qa`, `Deferred by coder` is `coder`, `Book checks QA could not run` is `qa-deferred`
+  with area `book`, `Survey findings` is `survey`, `Legacy surfaces missing from the new
+  app` is `parity`, and each of those but the book checks takes area `untriaged`. Every
+  other bullet is `person`. Every imported record takes pattern `untriaged`, which Review
+  reads as "not yet classified". The summary is the bullet's first sentence on one line,
+  cut at a word boundary near 160 characters. The body keeps the whole bullet, then the
+  heading and any prose under it, so nothing of the old list is lost. A bullet's id is
+  kept, and a bullet with none gets a minted one. The Import checks every record before
+  it writes any, refuses the whole list when a kept id is already on the shelf, and
+  deletes the old file only after the artifacts commit.
+- Build, before slice 2. Section 5, Producer: QA deferred checks: the record's repository
+  is the workspace repository the book page sits in, found from the book's nesting
+  prefix, else the only repository, else the check is refused with a logged reason, as for
+  the coder (A6). The page path is the record's one symbol, and an open `qa-deferred`
+  record of the same repository holding that symbol is the same cause. The record id is
+  minted, because the old page-derived id would collide across repositories.
+- Build, before slice 2. Section 5, Producer: person: `ostler backlog add <summary> --repo
+  --area` and `ostler create backlog-item` take the same flags, with `--pattern`
+  defaulting to `untriaged`. Every Intake commits the record where it lives, so ostler's
+  own filings commit in the artifacts repo the way the coder's do.
 - Build, before slice 1. Section 6: the deletion of the bullet grammar moves from slice 2
   to slice 6. After slice 2 the fix lane, author story mode, story-edit, epic-edit and the
   two survey emitters still read or write bullets. Each producer now moves in the slice that
