@@ -284,6 +284,12 @@ SOLID, one question each:
 
 Revision log:
 
+- Build, slice 5. Section 2, Decision: a cluster's evidence is its records that no decision
+  binds yet, and the Threshold counts those. So a second review of the same register
+  proposes nothing twice. A Back-link rewrites only the record's `decision` field and does
+  not close it, because a proposed decision has not yet been worked. Decision ids are
+  claimed in the one id space. The doctor checks both directions of the link:
+  `decision-evidence-unresolved` and `decision-back-link-missing`.
 - Build, slice 4. Section 2, Complete read: the read holds every record of every status in
   every repository. A dropped record whose cause comes back is a trend, so closed records
   stay in. The Trend report lands at `<artifacts>/backlog/trends.md`, rendered by the lane
