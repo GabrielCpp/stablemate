@@ -53,23 +53,6 @@ def add(graph: Graph, item_id: str, text: str, section: str = "") -> Result:
     return Result(True, f"filed backlog item '{item_id}'", [p])
 
 
-def create(
-    graph: Graph,
-    text: str,
-    section: str = "",
-    prefix: str | None = None,
-) -> Result:
-    """File a backlog item with a generated full id."""
-    item_id = ids.allocate(graph, prefix)
-    result = add(graph, item_id, text, section)
-    return Result(
-        result.ok,
-        result.message,
-        result.paths,
-        entity_id=item_id if result.ok else "",
-    )
-
-
 def adopt(graph: Graph, prefix: str | None = None) -> Result:
     """Assign generated ids to every unnamed bullet in an existing backlog."""
     path = _path(graph)

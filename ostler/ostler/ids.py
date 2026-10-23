@@ -147,19 +147,26 @@ def shelf_ids(graph: Graph) -> list[str]:
     return sorted(p.parent.name for p in shelf.glob("*/*/*/record.md"))
 
 
-def known(graph: Graph) -> list[str]:
-    """Every minted id currently written down in the tree, sorted."""
+def claimed(graph: Graph) -> set[str]:
+    """The ids that things hold as their own: epics, seeds, stories, milestones, features and the Register's records."""
     out: set[str] = set()
     for epic in graph.epics:
         out.add(epic.eid)
         out.update(s.id for s in epic.seeds)
         out.update(s.eid for s in epic.stories)
-    for milestone in graph.milestones:
-        out.add(milestone.eid)
-        out.update(milestone.source_items)
+    out.update(m.eid for m in graph.milestones)
     out.update(str(f.data.get("id") or "") for f in graph.features)
-    out.update(i for i, _ in backlog.items(graph))
     out.update(shelf_ids(graph))
+    out.discard("")
+    return out
+
+
+def known(graph: Graph) -> list[str]:
+    """Every minted id currently written down in the tree, sorted."""
+    out = claimed(graph)
+    for milestone in graph.milestones:
+        out.update(milestone.source_items)
+    out.update(i for i, _ in backlog.items(graph))
     out.discard("")
     return sorted(out)
 

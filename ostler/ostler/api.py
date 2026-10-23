@@ -19,6 +19,7 @@ from ostler import index as index_mod
 from ostler import path as path_mod
 from ostler import query as query_mod
 from ostler import register as register_mod
+from ostler import register_import
 from ostler import registry, select, todo as todo_mod
 from ostler.crud import Result
 from ostler.qa import (
@@ -478,13 +479,21 @@ class Ostler:
 
     def create_backlog_item(
         self,
-        text: str,
+        summary: str,
         *,
-        section: str = "",
+        repo: str,
+        area: str,
+        pattern: str = "untriaged",
+        symbols: Iterable[str] = (),
+        body: str = "",
+        record_id: str = "",
         prefix: str | None = None,
     ) -> Result:
-        """File a backlog item with a generated full id."""
-        return self._apply(backlog_mod.create(self._fresh(), text, section, prefix))
+        """File a person's record on the Register and commit it in the artifacts repo (``ostler create backlog-item``)."""
+        return self.backlog_add(
+            summary, repo=repo, area=area, pattern=pattern, symbols=symbols, body=body,
+            record_id=record_id, prefix=prefix,
+        )
 
     def set_milestone_source_items(
         self,
@@ -570,12 +579,35 @@ class Ostler:
         """Clear give-up stamps off stories (``ostler unblock``)."""
         return self._apply(crud.unblock(self._fresh(), story=story, epic=epic, status=status))
 
-    def backlog_add(self, item_id: str, text: str, section: str = "") -> Result:
-        """Append a backlog item (``ostler backlog add``)."""
-        return self._apply(backlog_mod.add(self._fresh(), item_id, text, section))
+    def backlog_add(
+        self,
+        summary: str,
+        *,
+        repo: str,
+        area: str,
+        pattern: str = "untriaged",
+        symbols: Iterable[str] = (),
+        body: str = "",
+        record_id: str = "",
+        prefix: str | None = None,
+    ) -> Result:
+        """File a person's record on the Register and commit it in the artifacts repo (``ostler backlog add``)."""
+        filing = register_mod.file_person(
+            self._fresh(), summary=summary, repo=repo, area=area, pattern=pattern,
+            symbols=symbols, body=body, record_id=record_id, prefix=prefix,
+        )
+        return self._apply(register_mod.filing_result(filing))
+
+    def backlog_import(
+        self, source: str | Path, *, repo: str, prefix: str | None = None
+    ) -> register_import.Imported:
+        """Turn an old bullet list into records of *repo*, commit them in the artifacts repo, and delete the list (``ostler backlog adopt``)."""
+        outcome = register_import.import_list(self._fresh(), self._resolve(source), repo, prefix)
+        self._graph = None
+        return outcome
 
     def backlog_adopt(self, *, prefix: str | None = None) -> Result:
-        """Assign ids to every unnamed bullet in this repo's backlog."""
+        """Assign ids in place to every unnamed bullet of ``docs/backlog.md``, for the story mode that still reads bullets."""
         return self._apply(backlog_mod.adopt(self._fresh(), prefix))
 
     def backlog_prune(self, item_id: str) -> Result:

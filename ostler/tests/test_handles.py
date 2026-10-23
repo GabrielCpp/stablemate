@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from ostler import crud, ids
+from ostler import backlog, crud, ids
 from ostler.api import Ostler
 from ostler.cli import main
 from ostler.model import load
@@ -25,7 +25,7 @@ def _repo(tmp_path: Path) -> tuple[Ostler, dict[str, str]]:
     story = okf.create_story("checkout", "01-pay", "Pay", covers=[seed]).entity_id
     feature = okf._apply(crud.create_feature(okf._fresh(), "basket", "Basket")).entity_id
     item = okf.allocate_id()
-    okf.backlog_add(item, "wire the receipt email")
+    assert backlog.add(okf._fresh(), item, "wire the receipt email").ok
     return okf, {"epic": epic, "seed": seed, "story": story,
                  "feature": feature, "backlog": item}
 

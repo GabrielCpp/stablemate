@@ -6,17 +6,6 @@ from ostler import backlog
 from ostler.model import load
 
 
-def test_create_backlog_item_persists_full_generated_id(tmp_path: Path) -> None:
-    result = backlog.create(load(tmp_path), "Ship draft recovery", section="Scope", prefix="acme")
-
-    assert result.ok
-    assert result.entity_id.startswith("acme-")
-    assert len(result.entity_id.split("-", 1)[1]) == 26
-    text = (tmp_path / "docs/backlog.md").read_text(encoding="utf-8")
-    assert f"- [{result.entity_id}] Ship draft recovery" in text
-    assert backlog.items(load(tmp_path)) == [(result.entity_id, "Ship draft recovery")]
-
-
 def test_adopt_names_every_bullet_and_is_idempotent(tmp_path: Path) -> None:
     path = tmp_path / "docs/backlog.md"
     path.parent.mkdir(parents=True)

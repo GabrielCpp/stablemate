@@ -12,7 +12,7 @@ from pathlib import Path
 
 import yaml
 
-from ostler import autofix as autofix_mod, backfill as backfill_mod, backlog as backlog_mod, coverage, crud, crud_generic, doctor, edit, fmt as fmt_mod, freeze as freeze_mod, graph as graph_mod, ids as ids_mod, locators, path as path_mod, query as query_mod, reach, register as register_mod, registry, scaffold as scaffold_mod, select, templates as templates_mod, todo as todo_mod, trace
+from ostler import autofix as autofix_mod, backfill as backfill_mod, backlog as backlog_mod, coverage, crud, crud_generic, doctor, edit, fmt as fmt_mod, freeze as freeze_mod, graph as graph_mod, ids as ids_mod, locators, path as path_mod, query as query_mod, reach, register as register_mod, register_import, registry, scaffold as scaffold_mod, select, templates as templates_mod, todo as todo_mod, trace
 from ostler import checks as checks_mod
 from ostler import carve as carve_mod
 from ostler import fragment_carve
@@ -336,11 +336,8 @@ def _build_parser() -> argparse.ArgumentParser:
     crm.add_argument("--source-items", default="", dest="source_items")
     crm.add_argument("--prefix")
     crm.add_argument("--json", action="store_true")
-    crb = crs.add_parser("backlog-item")
-    crb.add_argument("text")
-    crb.add_argument("--section", default="")
-    crb.add_argument("--prefix")
-    crb.add_argument("--json", action="store_true")
+    crb = crs.add_parser("backlog-item", help="file a record on the Register, as `backlog add`")
+    _record_flags(crb)
     crt = crs.add_parser("story")
     crt.add_argument("epic")
     crt.add_argument("slug")
@@ -477,12 +474,13 @@ def _build_parser() -> argparse.ArgumentParser:
 
     bl = sub.add_parser("backlog", help="the Register of proposed improvements, and the old docs/backlog.md list")
     bls = bl.add_subparsers(dest="op", required=True)
-    bla = bls.add_parser("add")
-    bla.add_argument("id")
-    bla.add_argument("text")
-    bla.add_argument("--section", default="")
-    blad = bls.add_parser("adopt")
+    bla = bls.add_parser("add", help="file a record on the Register")
+    _record_flags(bla)
+    blad = bls.add_parser("adopt", help="import an old bullet list as records, once, then delete the list")
+    blad.add_argument("source", help="the markdown list to import")
+    blad.add_argument("--repo", required=True, help="the workspace repository the list belongs to")
     blad.add_argument("--prefix")
+    blad.add_argument("--json", action="store_true")
     bls.add_parser("prune").add_argument("id")
     bll = bls.add_parser("list")
     bll.add_argument("--repo", default="")
@@ -1088,6 +1086,39 @@ def _emit(rows, as_json: bool) -> int:
             _out("(none)")
     else:
         _out(json.dumps(rows, indent=2) if rows else "(none)")
+    return 0
+
+
+def _record_flags(parser: argparse.ArgumentParser) -> None:
+    """The flags a person files a record with, shared by ``backlog add`` and ``create backlog-item``."""
+    parser.add_argument("summary")
+    parser.add_argument("--repo", required=True)
+    parser.add_argument("--area", required=True)
+    parser.add_argument("--pattern", default="untriaged")
+    parser.add_argument("--symbol", action="append", default=[], dest="symbols")
+    parser.add_argument("--id", default="", dest="record_id")
+    parser.add_argument("--body", default="")
+    parser.add_argument("--prefix")
+    parser.add_argument("--json", action="store_true")
+
+
+def _file_person(graph, args) -> register_mod.Filing:
+    """File and commit the record the parsed ``_record_flags`` describe."""
+    return register_mod.file_person(
+        graph, summary=args.summary, repo=args.repo, area=args.area, pattern=args.pattern,
+        symbols=args.symbols, body=args.body, record_id=args.record_id, prefix=args.prefix,
+    )
+
+
+def _adopt_list(graph, args) -> int:
+    """Import an old bullet list: one listing line per record and a summary line, or the refusal."""
+    outcome = register_import.import_list(graph, Path(args.source).expanduser().resolve(), args.repo, args.prefix)
+    if not outcome.ok:
+        _out(outcome.message)
+        return 1
+    if args.json:
+        return _emit([r.model_dump() for r in outcome.records], True)
+    _out("\n".join([*register_mod.listing(outcome.records), outcome.message]))
     return 0
 
 
@@ -2035,7 +2066,7 @@ def _dispatch(graph, args, store: index_mod.IndexStore) -> int:  # noqa: C901 â€
                 args.prefix,
             )
         elif args.what == "backlog-item":
-            res = backlog_mod.create(graph, args.text, args.section, args.prefix)
+            res = register_mod.filing_result(_file_person(graph, args))
         elif args.what == "story":
             res = crud.create_story(
                 graph,
@@ -2112,9 +2143,9 @@ def _dispatch(graph, args, store: index_mod.IndexStore) -> int:  # noqa: C901 â€
         )
     if c == "backlog":
         if args.op == "add":
-            return _result(backlog_mod.add(graph, args.id, args.text, args.section))
+            return _result(register_mod.filing_result(_file_person(graph, args)), args.json)
         if args.op == "adopt":
-            return _result(backlog_mod.adopt(graph, args.prefix))
+            return _adopt_list(graph, args)
         if args.op == "prune":
             return _result(backlog_mod.prune(graph, ids_mod.resolve(graph, args.id)))
         shown = [

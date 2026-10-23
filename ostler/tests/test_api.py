@@ -135,10 +135,10 @@ def test_remove_seed_is_visible_to_the_next_read(repo: Path):
 
 def test_backlog_and_todo_round_trip(repo: Path):
     okf = Ostler(repo)
-    assert okf.backlog() == []
-    result = okf.create_backlog_item("fix the thing")
+    assert okf.record_listing() == []
+    result = okf.create_backlog_item("fix the thing", repo="web-app", area="checkout")
     assert result.entity_id
-    assert okf.backlog() == [{"id": result.entity_id, "text": "fix the thing"}]
+    assert [line.split("\t")[0] for line in okf.record_listing()] == [result.entity_id]
 
     okf.todo_add("epic-a")
     assert "epic-a" in okf.todo()
@@ -146,7 +146,7 @@ def test_backlog_and_todo_round_trip(repo: Path):
 
 def test_create_milestone_is_visible_to_the_next_read(repo: Path):
     okf = Ostler(repo)
-    source = okf.create_backlog_item("ship the MVP").entity_id
+    source = okf.create_backlog_item("ship the MVP", repo="web-app", area="checkout").entity_id
 
     result = okf.create_milestone("docs-app-mvp", "Docs App MVP", source_items=[source])
 

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+import subprocess
 from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
@@ -17,7 +18,7 @@ from ostler.result import Result
 
 RECORD_FILE = "record.md"
 _SEGMENT = re.compile(r"[a-z0-9][a-z0-9-]*")
-_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]*")
+ID_PATTERN = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]*")
 
 FiledBy = Literal["coder", "qa", "qa-deferred", "person", "survey", "parity"]
 Status = Literal["open", "done", "dropped", "promoted"]
@@ -45,7 +46,7 @@ class Record(pydantic.BaseModel):
     @classmethod
     def _id_is_one_path_segment(cls, value: str) -> str:
         """An id names a folder, so it is one non-empty path-safe segment."""
-        if not _ID.fullmatch(value):
+        if not ID_PATTERN.fullmatch(value):
             raise ValueError(f"id {value!r} must be one path-safe segment")
         return value
 
@@ -153,11 +154,11 @@ def open_records(graph: Graph, repo: str) -> list[Record]:
     return [r for r in records(graph).records if r.repo == repo and r.status == "open"]
 
 
-def write(graph: Graph, record: Record) -> Result:
-    """Shelve *record* in the artifacts repo; refuse an id the workspace already uses."""
+def write(graph: Graph, record: Record, *, own: frozenset[str] = frozenset()) -> Result:
+    """Shelve *record* in the artifacts repo; refuse an id the workspace already uses, except the ids in *own*."""
     shelf = path_mod.register_root(graph)
     folder = record.folder(shelf)
-    if record.id in ids.known(graph) or folder.exists():
+    if (record.id in ids.known(graph) and record.id not in own) or folder.exists():
         return Result(False, f"record id '{record.id}' is already taken")
     core_config.ensure_artifacts_repo()
     folder.mkdir(parents=True)
@@ -195,3 +196,67 @@ def file_record(
     if not result.ok:
         return Filing(False, result.message)
     return Filing(True, result.message, record, result.paths[0])
+
+
+def filing_result(filing: Filing) -> Result:
+    """A filing as the Result every ostler writer returns."""
+    paths = [filing.path] if filing.path else []
+    return Result(filing.ok, filing.message, paths, entity_id=filing.record.id if filing.record else "")
+
+
+def commit(graph: Graph, paths: Iterable[Path], message: str) -> bool:
+    """Commit exactly *paths* in the artifacts repo, hooks off; False when there was nothing new to commit."""
+    root = path_mod.register_root(graph).parent
+    rels = [str(Path(p).relative_to(root)) for p in paths]
+    if not rels or not (root / ".git").exists():
+        return False
+    git = ["git", "-C", str(root)]
+    subprocess.run([*git, "add", "--", *rels], check=True, capture_output=True, timeout=60)
+    if subprocess.run([*git, "diff", "--cached", "--quiet", "--", *rels], check=False, capture_output=True, timeout=60).returncode == 0:
+        return False
+    try:
+        subprocess.run(
+            [*git, "-c", "core.hooksPath=/dev/null", "commit", "--no-verify", "-m", message, "--only", "--", *rels],
+            check=True, capture_output=True, timeout=60,
+        )
+    except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
+        subprocess.run([*git, "reset", "--quiet", "--", *rels], check=False, capture_output=True, timeout=60)
+        raise
+    return True
+
+
+def file_person(
+    graph: Graph,
+    *,
+    summary: str,
+    repo: str,
+    area: str,
+    pattern: str = "untriaged",
+    symbols: Iterable[str] = (),
+    body: str = "",
+    record_id: str = "",
+    prefix: str | None = None,
+) -> Filing:
+    """File a record a person wrote and commit it in the artifacts repo; a record whose commit fails is taken off the shelf."""
+    filing = file_record(
+        graph, repo=repo, area=area, pattern=pattern, summary=summary, filed_by="person",
+        symbols=symbols, body=body, record_id=record_id, prefix=prefix,
+    )
+    if filing.record is None or filing.path is None:
+        return filing
+    try:
+        commit(graph, [filing.path], f"chore({filing.record.repo}): file {filing.record.id}")
+    except (subprocess.CalledProcessError, subprocess.TimeoutExpired, OSError) as exc:
+        discard(filing.path)
+        return Filing(False, f"record '{filing.record.id}' was not filed: the artifacts commit failed: {exc}")
+    return filing
+
+
+def discard(file: Path) -> None:
+    """Take a record this process just wrote off the shelf, with the folders it left empty."""
+    file.unlink(missing_ok=True)
+    for folder in (file.parent, file.parent.parent, file.parent.parent.parent):
+        try:
+            folder.rmdir()
+        except OSError:
+            return
