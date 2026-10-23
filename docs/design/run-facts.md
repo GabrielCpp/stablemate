@@ -263,8 +263,9 @@ hand, for every done story.
 1. **Output stamp.** The engine stamps visit spans. groom stores the keys in `attrs_json`
    with no schema change. Tests: an engine test with a recording telemetry for `agent`, `call`
    and `handoff`, and a groom ingest test.
-2. **Archive index.** Store queries take a connection, and an archived run opens its built
-   index. `cost`, `loops` and `profile` answer for an archived run.
+2. **Archive index.** The store's reads follow a context variable, and an archived run points
+   it at its built index for one query. `cost`, `loops` and `profile` answer for an archived
+   run.
 3. **Breakdown.** `profile --by <label>`, the liveness gauges carrying every label, and the
    view's group-by control.
 4. **Facts and refs.** `Workflow.fact()`, an `event_name` column on `logs` with an index on
@@ -277,8 +278,8 @@ Slices 1 and 2 are independent. Slice 5 needs 1, 3 and 4.
 ## 10. Assumptions to check
 
 1. Building the index for the largest archive today, 160 MB of jsonl, takes under a minute
-   once. Measure it in slice 2. If it takes longer, the sweep builds the index when it
-   archives.
+   once. Measured in slice 2: the build took 4 seconds and wrote a 191 MB index. A profile
+   query on it took 2 seconds. The index stays a first-query build.
 2. A replayed state on resume re-emits its fact with the same subject. Latest-wins covers that
    case. Confirm by resuming a test run mid-story.
 3. The log batch processor exports a fact within a few seconds. Check its schedule delay in
