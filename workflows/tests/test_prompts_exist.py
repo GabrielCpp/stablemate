@@ -51,28 +51,44 @@ def _agent_prompts(source: Path) -> list[tuple[int, ast.expr]]:
 
 
 def _roles_by_line(tree: ast.Module) -> dict[int, list[str]]:
-    """Every `<name> = roles.turn(self, "<role>")` in the module, by the line it is on."""
+    """Every `<name> = roles.turn(self, "<role>")` in the module, by the line it is on.
+
+    A ternary of two such calls is both of their roles.
+    """
     seen: dict[int, list[str]] = {}
     for node in ast.walk(tree):
-        if not isinstance(node, ast.Assign) or not isinstance(node.value, ast.Call):
-            continue
-        fn = node.value.func
-        named_roles_turn = (
-            isinstance(fn, ast.Attribute)
-            and fn.attr == "turn"
-            and isinstance(fn.value, ast.Name)
-            and fn.value.id == "roles"
-        )
-        if not named_roles_turn or len(node.value.args) < 2:
+        if not isinstance(node, ast.Assign):
             continue
         roles: list[str] = []
-        for arm in _branches(node.value.args[1]):
-            if not (isinstance(arm, ast.Constant) and isinstance(arm.value, str)):
+        for call in _branches(node.value):
+            named = _turn_roles(call)
+            if named is None:
                 break
-            roles.append(arm.value)
+            roles.extend(named)
         else:
             seen[node.lineno] = roles
     return seen
+
+
+def _turn_roles(call: ast.expr) -> list[str] | None:
+    """The literal roles one `roles.turn(self, "<role>")` call can name, else None."""
+    if not isinstance(call, ast.Call) or len(call.args) < 2:
+        return None
+    fn = call.func
+    named_roles_turn = (
+        isinstance(fn, ast.Attribute)
+        and fn.attr == "turn"
+        and isinstance(fn.value, ast.Name)
+        and fn.value.id == "roles"
+    )
+    if not named_roles_turn:
+        return None
+    roles: list[str] = []
+    for arm in _branches(call.args[1]):
+        if not (isinstance(arm, ast.Constant) and isinstance(arm.value, str)):
+            return None
+        roles.append(arm.value)
+    return roles
 
 
 def _literalize(arg: ast.expr, resolved: dict[int, list[str]], flow: str) -> list[ast.expr]:
