@@ -313,8 +313,12 @@ Revision log:
   `coder`, `qa` (the leftovers the fix lane drains), `qa-deferred` (book checks), `person`,
   `survey`, `parity`. `status` is one of `open`, `done`, `dropped`, `promoted`. The fix lane
   draws `filed_by: qa` only, so a book check is never drained, as today.
-- Build, before slice 1. Section 5, Proposal: `FollowUp` gains `area`, `pattern` and
-  `symbols`, which the dev turn's prompt asks for.
+- Build, before slice 1. Section 5, Proposal: `FollowUp` gains `repo`, `area`, `pattern`
+  and `symbols`, which the dev turn's prompt asks for. A workspace story spans several
+  repositories, so the run alone does not say which one a follow-up belongs to (A6). The
+  coder Producer takes the follow-up's `repo` when it names a repository of the run's
+  workspace, takes the only repository when there is one, and otherwise refuses the
+  follow-up with a logged reason.
 - Build, before slice 1. Section 6, slice 2: the Import cannot land the records and the
   deletion in one commit, because they live in two repositories. It commits the records in
   the artifacts repo and removes the old file from the code repository's working tree. The
