@@ -40,7 +40,6 @@ from workhorse_workflows.author.story_edit import StoryEdit
 from workhorse_workflows.author.story_edit.nodes import resolve_story_intent
 from workhorse_workflows.author.workflow import Author, workflow
 
-BACKLOG = "docs/backlog.md"
 MILESTONE = "docs/milestones/account-access/milestone.md"
 EPICS = "docs/epics"
 EPIC = "accounts"
@@ -57,7 +56,6 @@ SEEDS = {
 }
 B1_SLUG = "users-can-sign-in-with-an-email-and-a-password"
 B1_BODY = "Offer a magic link as well.\nKeep the password form."
-SURFACE = "**api** is the only surface and the only writer of stored data."
 STORIES = (
     ("01-sign-in", "Sign in", "b1"),
     ("02-reset-password", "Reset password", "b2"),
@@ -78,12 +76,7 @@ CLUSTER = "missing-accessible-name"
 
 @pytest.fixture
 def backlogged(repo: Path, write: Callable[[Path, str], Path]) -> Path:
-    """A repo with a two-bullet backlog and nothing else: no epics, no OKF book."""
-    write(
-        repo / BACKLOG,
-        f"# Backlog\n\nSurfaces this app ships:\n\n{SURFACE}\n\n## Scope items\n\n"
-        + "".join(f"- {v}\n" for v in SEEDS.values()),
-    )
+    """A repo with a milestone and one screen and nothing else: no epics, no OKF book."""
     write_milestone(repo)
     write(repo / "docs/services/account/gui/screens/sign-in.md", (
         "---\ntype: screen\nslug: sign-in\ntitle: Sign in\n---\n# Sign in\n\n"
@@ -666,7 +659,6 @@ def test_epic_mode_authors_the_approved_milestone_and_commits_it(
     backlogged: Path, tmp_path: Path
 ) -> None:
     """The straight-through run: one epic, two stories, both gates green, then the git tail."""
-    backlog_before = (backlogged / BACKLOG).read_bytes()
     commits_before = _commit_count(backlogged)
     branch_before = _current_branch(backlogged)
     agent = _Agent(backlogged)
@@ -694,7 +686,6 @@ def test_epic_mode_authors_the_approved_milestone_and_commits_it(
         f for f in Ostler(backlogged).doctor().data["findings"] if f["severity"] == "error"
     ]
 
-    assert (backlogged / BACKLOG).read_bytes() == backlog_before
     milestones = Ostler(backlogged).list("milestone")
     assert len(milestones) == 1
     assert milestones[0]["epics"] == [EPIC]
@@ -1519,7 +1510,7 @@ def test_epic_edit_semantic_review_reworks_are_bounded(
 
 
 def test_survey_mode_runs_the_surveyor_and_stops_at_discovery(
-    backlogged: Path, tmp_path: Path, write: Callable[[Path, str], Path]
+    backlogged: Path, tmp_path: Path, write: Callable[[Path, str], Path], artifacts: Path
 ) -> None:
     """`handoff`: the sub-flow runs on the parent's env and returns its discovery output."""
     write(backlogged / RUBRIC, "# Accessibility rubric\n\nEvery control needs a name.\n")
@@ -1537,7 +1528,10 @@ def test_survey_mode_runs_the_surveyor_and_stops_at_discovery(
     assert (backlogged / INVENTORY).is_file()
     assert (backlogged / FINDINGS / f"{record_slug(BUTTON)}.md").is_file()
     assert (backlogged / PARTITION).is_file()
-    assert any(CLUSTER in line for line in (backlogged / BACKLOG).read_text().splitlines())
+    surveyed = [r for r in Ostler(backlogged).records().records if r.filed_by == "survey"]
+    assert surveyed and all(r.repo == "acme" and r.pattern == "missing-accessible-name" for r in surveyed)
+    assert any(CLUSTER in r.summary or CLUSTER in r.body for r in surveyed), surveyed
+    assert not (backlogged / "docs/backlog.md").exists()
 
     assert _subject(backlogged) == "a rubric and one component"
     assert _stories(backlogged) == {}

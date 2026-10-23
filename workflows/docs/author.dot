@@ -138,7 +138,7 @@ digraph author {
       label="emit"; fontsize=12;
       style="rounded,filled"; fillcolor=lightblue; color=steelblue;
       node [style="filled", fontsize=10];
-      f1__emit__0 [label="emit_artifacts\nWrite the generated backlog bullets and the unit-level manifest.", shape=box, fillcolor=white];
+      f1__emit__0 [label="emit_artifacts\nFile one record per cluster and write the unit-level manifest.", shape=box, fillcolor=white];
     }
     subgraph cluster_f1__expand {
       label="expand"; fontsize=12;
@@ -252,13 +252,15 @@ digraph author {
       label="assess"; fontsize=12;
       style="rounded,filled"; fillcolor=lightblue; color=steelblue;
       node [style="filled", fontsize=10];
-      f2__assess__0 [label="assess-parity-unit.md\nCompare one baseline surface with the current OKF book", shape=note, fillcolor=lightyellow];
+      f2__assess__0 [label="read_parity_register\nThe open records of the surveyed repository, for the assessor to match a surface against.", shape=box, fillcolor=white];
+      f2__assess__1 [label="assess-parity-unit.md\nCompare one baseline surface with the current OKF book", shape=note, fillcolor=lightyellow];
+      f2__assess__0 -> f2__assess__1 [color=gray40, arrowsize=0.6];
     }
     subgraph cluster_f2__emit {
       label="emit"; fontsize=12;
       style="rounded,filled"; fillcolor=lightblue; color=steelblue;
       node [style="filled", fontsize=10];
-      f2__emit__0 [label="emit_parity_backlog\nOne backlog bullet per assessed surface that no new-app feature already owns.", shape=box, fillcolor=white];
+      f2__emit__0 [label="emit_parity_records\nOne register record per assessed surface that no new-app feature already owns.", shape=box, fillcolor=white];
     }
     subgraph cluster_f2__mark {
       label="mark"; fontsize=12;
@@ -289,7 +291,7 @@ digraph author {
     f2____end [label="END", shape=doublecircle, fillcolor=gold, width=0.4];
 
     f2____start -> f2__start__0 [lhead=cluster_f2__start];
-    f2__assess__0 -> f2__mark__0 [label="unit_id, record_path", ltail=cluster_f2__assess, lhead=cluster_f2__mark];
+    f2__assess__1 -> f2__mark__0 [label="unit_id, record_path", ltail=cluster_f2__assess, lhead=cluster_f2__mark];
     f2__emit__0 -> f2____end [color=darkgoldenrod, ltail=cluster_f2__emit];
     f2__mark__1 -> f2__pick__0 [ltail=cluster_f2__mark, lhead=cluster_f2__pick];
     f2__pick__0 -> f2__assess__0 [label="unit_id, unit_path, unit_kind, record_path, progress", ltail=cluster_f2__pick, lhead=cluster_f2__assess];

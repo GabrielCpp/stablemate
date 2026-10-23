@@ -58,7 +58,7 @@ Write `{{ workhorse_var('partition_path') }}` (YAML), exactly this shape:
 
 ```yaml
 clusters:
-  - id: icon-button-missing-accessible-name   # unique kebab slug → the backlog [id]
+  - id: icon-button-missing-accessible-name   # unique kebab slug, kept for traceability
     title: "Give every icon-only button an accessible name"
     remediation_pattern: icon-button-missing-accessible-name
     strategy: mechanical                       # or: dedicated

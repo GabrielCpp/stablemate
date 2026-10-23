@@ -75,7 +75,7 @@ Author refuses a milestone that fails `ostler doctor`, so a missing section, an 
 dangling link or a journey without its mockup stops the run before any agent turn. Author preserves
 the milestone, writes ordered epics and vertical stories, and changes `status: approved` to
 `status: authored` only after the complete planning graph validates. Survey modes stop after
-discovery; they do not bypass milestone approval by decomposing their generated backlog.
+discovery; they do not bypass milestone approval by decomposing the records they file.
 
 Author keeps a work list of epics, story splits and stories, and drains each kind in turn. A story it
 cannot fix stays blocked on the list while the others continue. Before it finalizes, Author stops
@@ -234,9 +234,9 @@ make check-no-env    # from the repo root, on its own
 ## A workflow does not spell a doc path (load-bearing)
 
 **Where a document lives is ostler's answer.** The epics root, the epic folder, the story
-folder, the epics index, the backlog file, the feature book and its waivers and screenshots
+folder, the epics index, the feature book and its waivers and screenshots
 all come from `ostler.path`; no module under `src/workhorse_workflows/` writes
-`docs/epics`, `docs/backlog.md` or `docs/services` as a literal.
+`docs/epics` or `docs/services` as a literal.
 
 The reason is that epic directories are **numbered**
 (`0001-checkout-flow`) while every queue entry, prompt and operator names them by bare
@@ -252,14 +252,14 @@ a directory ostler resolved. Run artifacts that are not documents at all (`.agen
 with the workflow, because ostler has no opinion about them.
 
 Each workflow's `shared/paths.py` is the one place that calls `ostler.path`, and it is also
-where an operator override is honoured: a `backlog` or `epics_dir` **parameter** wins when
+where an operator override is honoured: an `epics_dir` **parameter** wins when
 it is set, and empty — the normal case — means "as this repo configures it". An override
 still gets ostler's resolution rules applied inside it, via the `*_under` family.
 
 Two probes look like exceptions and are not: the repo-root resolvers test for a `docs/epics/`
 directory, and that is how a *root* is recognized before there is a root to ask ostler about.
 
-**And what is *in* the document is ostler's answer too.** A node that reads a backlog entry,
+**And what is *in* the document is ostler's answer too.** A node that reads
 an epic's stories, a gate's frontmatter or a table in the book goes through
 `ostler.markdown` — `find_section` / `Section.bullets` / `Bullet.bracketed` /
 `walk_tables` — not a `^\s*-\s*\[(\w+)\]` of its own. Same failure mode as a hand-built

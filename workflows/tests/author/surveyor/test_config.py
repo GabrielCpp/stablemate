@@ -28,7 +28,6 @@ def test_the_config_derives_every_path_from_survey_dir(
     assert cfg.partition == "docs/survey/partition.yaml"
     assert cfg.unit_manifest == "docs/survey/unit-manifest.json"
     assert cfg.context == "docs/survey/_survey-context.md"
-    assert cfg.backlog == "docs/backlog.md"
 
 
 def test_survey_dir_moves_the_whole_convention_with_it(
@@ -57,7 +56,6 @@ def test_blank_parameters_fall_back_to_the_defaults(
 
     assert cfg.rubric == "docs/survey/rubric.md"
     assert cfg.survey_dir == "docs/survey"
-    assert cfg.backlog == "docs/backlog.md"
 
 
 def test_a_missing_rubric_halts_the_run(repo: Path, logger: logging.Logger) -> None:

@@ -4,21 +4,17 @@ from __future__ import annotations
 import json
 import logging
 import re
+from pathlib import PurePosixPath
 
 import yaml
 from workhorse_workflows.author.shared.survey.blueprint import blueprint
 from workhorse_workflows.author.shared.survey import stubs
-from workhorse_workflows.author.shared.survey.backlog import write_section
-from workhorse_workflows.author.shared import paths
+from workhorse_workflows.author.shared.survey.filing import PATTERN, Proposal, file_proposals, segment
 from workhorse_workflows.author.shared.paths import survey_repo_root
 from workhorse_workflows.author.shared.schemas.survey import EmitResult, PartitionCheck
 
 _SLUG_RE = re.compile(r"^[a-z0-9]+(-[a-z0-9]+)*$")
 STRATEGIES = {"mechanical", "dedicated"}
-
-SECTION_BEGIN = "<!-- surveyor:begin — generated; do not edit inside this fence -->"
-SECTION_END = "<!-- surveyor:end -->"
-SECTION_HEADING = "## Survey findings"
 
 
 @blueprint.node(stub=stubs.partitioned)
@@ -72,7 +68,7 @@ def validate_partition(
         if not _SLUG_RE.match(cid):
             errors.append(
                 f"clusters[{i}] id '{cid or '?'}' must be a kebab-case slug "
-                f"(it becomes the backlog bullet's [id])"
+                f"(it names the cluster in the survey artifacts)"
             )
         elif cid in seen_ids:
             errors.append(f"clusters[{i}] duplicate id '{cid}'")
@@ -118,7 +114,7 @@ def validate_partition(
     for uid in orphans:
         errors.append(
             f"assessed unit '{uid}' appears in NO cluster — its findings would "
-            f"silently drop out of the generated backlog; add it to a cluster"
+            f"silently drop out of the filed records; add it to a cluster"
         )
 
     if errors:
@@ -128,26 +124,45 @@ def validate_partition(
     return PartitionCheck(partition_ok=True)
 
 
-def bullet_for(cluster: dict) -> str:
-    """One backlog bullet."""
+def common_area(paths: list[str]) -> str:
+    """The last directory segment shared by every path, or ``general`` when none is."""
+    parents = [PurePosixPath(p.strip("/")).parent.parts for p in paths if p.strip("/")]
+    if not parents:
+        return "general"
+    shared: list[str] = []
+    for level in zip(*parents, strict=False):
+        if len(set(level)) != 1:
+            break
+        shared.append(level[0])
+    return segment(shared[-1]) if shared else "general"
+
+
+def proposal_for(cluster: dict, paths: dict[str, str] | None = None) -> Proposal:
+    """One cluster as the record it files."""
     cid = str(cluster["id"])
-    title = str(cluster.get("title", "")).strip()
     strategy = str(cluster.get("strategy", ""))
-    pattern = str(cluster.get("remediation_pattern", ""))
-    n = len(cluster.get("units") or [])
-    hints = [f"pattern: {pattern}"]
-    hints.append(
-        f"{n} unit(s), {strategy}"
+    units = [str(u) for u in cluster.get("units") or []]
+    lines = [
+        f"Cluster `{cid}`, remediation pattern `{cluster.get('remediation_pattern', '')}`.",
+        f"{len(units)} unit(s), {strategy}"
         + (
-            " checklist — keep as ONE story with a per-unit checklist"
+            " checklist: keep as ONE story with a per-unit checklist."
             if strategy == "mechanical"
-            else ""
-        )
-    )
-    notes = str(cluster.get("notes") or "").strip().replace("\n", " ")
+            else "."
+        ),
+        "Units: " + ", ".join(f"`{u}`" for u in units),
+    ]
+    notes = " ".join(str(cluster.get("notes") or "").split())
     if notes:
-        hints.append(notes)
-    return f"- [survey-{cid}] {title} ({'; '.join(hints)})"
+        lines.append(notes)
+    return Proposal(
+        key=cid,
+        area=common_area([(paths or {}).get(u, u) for u in units]),
+        pattern=segment(str(cluster.get("remediation_pattern", "")), PATTERN),
+        symbols=tuple(units),
+        summary=" ".join(str(cluster.get("title", "")).split()),
+        body="\n\n".join(lines),
+    )
 
 
 @blueprint.node(stub=stubs.emitted)
@@ -158,13 +173,12 @@ def emit_artifacts(
     unit_manifest: str = "docs/survey/unit-manifest.json",
     repo_dir: str = "",
 ) -> EmitResult:
-    """Write the generated backlog bullets and the unit-level manifest."""
+    """File one record per cluster and write the unit-level manifest."""
     part_rel = partition.strip() or "docs/survey/partition.yaml"
     inv_rel = inventory.strip() or "docs/survey/inventory.json"
     manifest_rel = unit_manifest.strip() or "docs/survey/unit-manifest.json"
 
     root = survey_repo_root(repo_dir)
-    backlog_rel = paths.backlog_file(root)
     try:
         part = yaml.safe_load((root / part_rel).read_text(encoding="utf-8"))
         clusters = part.get("clusters") or []
@@ -185,24 +199,23 @@ def emit_artifacts(
         logger.warning("inventory at %s could not be read", inv_rel)
         return EmitResult(emit_errors=f"inventory at {inv_rel} could not be read")
 
+    paths = {
+        str(u.get("id", "")): str(u.get("path") or u.get("id", "")) for u in units if isinstance(u, dict)
+    }
     ordered = sorted(
         (c for c in clusters if isinstance(c, dict)),
         key=lambda c: (c.get("order", 10**6), str(c.get("id", ""))),
     )
-    write_section(
-        root / backlog_rel,
-        [bullet_for(c) for c in ordered],
-        begin=SECTION_BEGIN,
-        end=SECTION_END,
-        heading=SECTION_HEADING,
-    )
+    filed = file_proposals(logger, root, repo_dir, "survey", [proposal_for(c, paths) for c in ordered])
+    if filed.errors:
+        return EmitResult(emit_errors=filed.errors)
 
     bullets_by_unit: dict[str, list[str]] = {}
     clusters_by_unit: dict[str, list[str]] = {}
     for c in ordered:
         cid = str(c.get("id", ""))
         for uid in c.get("units") or []:
-            bullets_by_unit.setdefault(str(uid), []).append(f"survey-{cid}")
+            bullets_by_unit.setdefault(str(uid), []).append(filed.ids[cid])
             clusters_by_unit.setdefault(str(uid), []).append(cid)
 
     manifest_units = []
@@ -238,25 +251,16 @@ def emit_artifacts(
     )
 
     note = (
-        f"wrote {len(ordered)} bullet(s) into {backlog_rel} and "
-        f"{len(manifest_units)} unit(s) into {manifest_rel}"
+        f"filed {filed.new} of {len(ordered)} cluster record(s) and "
+        f"wrote {len(manifest_units)} unit(s) into {manifest_rel}"
     )
-    logger.info(
-        "wrote %d bullet(s) into %s and %d unit(s) into %s",
-        len(ordered),
-        backlog_rel,
-        len(manifest_units),
-        manifest_rel,
-    )
+    logger.info(note)
     return EmitResult(emit_ok=True, bullet_count=len(ordered), emit_note=note)
 
 
 __all__ = [
-    "SECTION_BEGIN",
-    "SECTION_END",
-    "SECTION_HEADING",
     "STRATEGIES",
-    "bullet_for",
     "emit_artifacts",
+    "proposal_for",
     "validate_partition",
 ]

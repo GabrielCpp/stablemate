@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from workhorse._vendor.stablemate_core import config as core_config
 
 
 @pytest.fixture
@@ -48,6 +49,14 @@ def repo(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
         "# Grill\n",
         encoding="utf-8",
     )
+    return root
+
+
+@pytest.fixture
+def artifacts() -> Path:
+    """The artifacts dir of this test, already a git repository with one commit."""
+    root = core_config.ensure_artifacts_repo()
+    subprocess.run(["git", "-C", str(root), "commit", "-q", "--allow-empty", "-m", "init"], check=True)
     return root
 
 

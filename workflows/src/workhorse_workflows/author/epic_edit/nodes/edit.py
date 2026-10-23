@@ -10,6 +10,7 @@ from ostler import Ostler, markdown, registry
 from workhorse.pyflow import WorkflowFailed
 from workhorse_workflows.author.epic_edit.nodes._blueprint import blueprint
 from workhorse_workflows.author.shared import paths
+from workhorse_workflows.author.shared.listing import open_listing
 from workhorse_workflows.author.shared.schemas import (
     AppliedEpicEdit,
     Defects,
@@ -61,19 +62,15 @@ def _hash(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest() if path.is_file() else ""
 
 
-LISTING_HEADER = "id\trepo\tarea\tstatus\tpattern\tsummary"
-NO_OPEN_RECORDS = "no open records"
-
-
 @blueprint.node
 def read_register_listing(
     logger: logging.Logger,
     repo_dir: str = "",
 ) -> RegisterListing:
     """The open records of every repository, one line each under a header, for the planner to read."""
-    lines = Ostler(repo_dir).record_listing(status="open")
-    logger.info("listed %d open record(s) for the planner", len(lines))
-    return RegisterListing(text="\n".join([LISTING_HEADER, *lines]) if lines else NO_OPEN_RECORDS)
+    text = open_listing(repo_dir)
+    logger.info("listed the open records for the planner")
+    return RegisterListing(text=text)
 
 
 @blueprint.node(stub=_snapshot_stub)

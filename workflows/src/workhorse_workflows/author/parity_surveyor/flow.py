@@ -9,9 +9,10 @@ from workhorse.pyflow import (
     WorkflowFailed,
 )
 from workhorse_workflows.author.parity_surveyor.nodes import (
-    emit_parity_backlog,
+    emit_parity_records,
     expand_parity_inventory,
     load_parity_config,
+    read_parity_register,
 )
 from workhorse_workflows.author.shared.survey.records import validate_record, verify_records
 from workhorse_workflows.author.shared.survey.units import mark_unit, select_next_unit
@@ -81,6 +82,7 @@ class ParitySurveyor(Workflow):
         self.logger.info(
             "%s%s", where, f" · {progress}" if progress else "", extra={"activity": True}
         )
+        register = self.call(read_parity_register)
         result = self.agent(
             "parity_surveyor/prompts/assess-parity-unit.md",
             returns=UnitAssessment,
@@ -93,7 +95,7 @@ class ParitySurveyor(Workflow):
                 "record_path": record_path,
                 "baseline_inventory": self.ctx.baseline_inventory,
                 "target_services": self.ctx.target_services,
-                "backlog": self.ctx.backlog,
+                "register_listing": register.text,
                 "epics_dir": self.ctx.epics_dir,
             },
         )
@@ -123,9 +125,9 @@ class ParitySurveyor(Workflow):
         return Continue(result, self.emit)
 
     def emit(self) -> Done:
-        """One backlog bullet per assessed surface no new-app feature already owns."""
+        """One register record per assessed surface no new-app feature already owns."""
         result = self.call(
-            emit_parity_backlog,
+            emit_parity_records,
             self.ctx.inventory,
             self.ctx.findings_dir,
             self.ctx.unit_manifest,

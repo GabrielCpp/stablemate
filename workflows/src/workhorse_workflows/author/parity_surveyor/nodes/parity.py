@@ -10,15 +10,13 @@ from ostler import markdown
 from workhorse.pyflow import WorkflowFailed
 from workhorse_workflows.author.shared.survey.blueprint import blueprint
 from workhorse_workflows.author.shared.survey import stubs
-from workhorse_workflows.author.shared.survey.backlog import write_section
+from workhorse_workflows.author.shared.listing import open_listing
+from workhorse_workflows.author.shared.survey.filing import Proposal, file_proposals, surveyed_repo
 from workhorse_workflows.author.shared import paths
 from workhorse_workflows.author.shared.paths import launch_repo_root
+from workhorse_workflows.author.shared.schemas import RegisterListing
 from workhorse_workflows.author.shared.schemas.parity import ParityConfig
 from workhorse_workflows.author.shared.schemas.survey import EmitResult, Expansion
-
-PARITY_BEGIN = "<!-- parity-surveyor:begin — generated; do not edit inside this fence -->"
-PARITY_END = "<!-- parity-surveyor:end -->"
-PARITY_HEADING = "## Legacy surfaces missing from the new app"
 
 
 def parity_slug(value: str) -> str:
@@ -39,7 +37,6 @@ def load_parity_config(
 
     root = launch_repo_root(repo_dir)
     target = paths.services_dir(root)
-    backlog = paths.backlog_file(root)
     epics = paths.epics_dir(root)
     if not baseline or not (root / baseline).is_file():
         logger.warning("baseline inventory not found: %s", baseline or "(empty)")
@@ -67,7 +64,6 @@ def load_parity_config(
         inventory=f"{survey_dir}/inventory.json",
         findings_dir=f"{survey_dir}/findings",
         unit_manifest=f"{survey_dir}/unit-manifest.json",
-        backlog=backlog,
         epics_dir=epics,
     )
 
@@ -154,25 +150,35 @@ def expand_parity_inventory(
     )
 
 
-@blueprint.node(stub=stubs.emitted)
-def emit_parity_backlog(
+@blueprint.node
+def read_parity_register(
+    logger: logging.Logger,
+    repo_dir: str = "",
+) -> RegisterListing:
+    """The open records of the surveyed repository, for the assessor to match a surface against."""
+    text = open_listing(launch_repo_root(repo_dir), surveyed_repo(repo_dir))
+    logger.info("listed the open records of the surveyed repository for the assessor")
+    return RegisterListing(text=text)
+
+
+@blueprint.node(stub=stubs.emitted, aliases=("emit_parity_backlog",))
+def emit_parity_records(
     logger: logging.Logger,
     inventory: str,
     findings_dir: str,
     unit_manifest: str,
     repo_dir: str = "",
 ) -> EmitResult:
-    """One backlog bullet per assessed surface that no new-app feature already owns."""
+    """One register record per assessed surface that no new-app feature already owns."""
     root = launch_repo_root(repo_dir)
-    backlog = paths.backlog_file(root)
     try:
         data = json.loads((root / inventory).read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
         logger.warning("inventory at %s could not be read: %s", inventory, exc)
         return EmitResult(emit_errors=str(exc))
 
-    bullets: list[str] = []
-    manifest_units: list[dict[str, object]] = []
+    proposals: list[Proposal] = []
+    manifest_rows: list[tuple[dict[str, object], str]] = []
     suppressed = 0
     for unit in data.get("units", []):
         uid = str(unit.get("id", ""))
@@ -180,32 +186,37 @@ def emit_parity_backlog(
         record = markdown.split(record_path.read_text(encoding="utf-8")).frontmatter or {}
         status = str(record.get("status", ""))
         owner = str(record.get("existing_owner", "")).strip()
-        bullet_id = f"legacy-parity-{unit.get('area')}-{unit.get('slug')}"
         emitted = status == "assessed" and not owner
         if emitted:
             finding = (record.get("findings") or [{}])[0]
             description = " ".join(str(finding.get("description", "")).split())
-            bullets.append(f"- [{bullet_id}] {description}")
+            proposals.append(
+                Proposal(
+                    key=uid,
+                    area=str(unit.get("area", "")),
+                    summary=description or f"legacy surface {uid} has no counterpart in the new app",
+                    body=_parity_body(uid, finding),
+                )
+            )
         elif status == "assessed" and owner:
             suppressed += 1
-        manifest_units.append(
-            {
-                "id": uid,
-                "path": unit.get("path", ""),
-                "status": status,
-                "existingOwner": owner,
-                "bullet": bullet_id if emitted else "",
-            }
+        manifest_rows.append(
+            (
+                {
+                    "id": uid,
+                    "path": unit.get("path", ""),
+                    "status": status,
+                    "existingOwner": owner,
+                },
+                uid if emitted else "",
+            )
         )
 
-    write_section(
-        root / backlog,
-        bullets,
-        begin=PARITY_BEGIN,
-        end=PARITY_END,
-        heading=PARITY_HEADING,
-    )
+    filed = file_proposals(logger, root, repo_dir, "parity", proposals)
+    if filed.errors:
+        return EmitResult(emit_errors=filed.errors)
 
+    manifest_units = [{**row, "bullet": filed.ids[key] if key else ""} for row, key in manifest_rows]
     manifest_path = root / unit_manifest
     manifest_path.parent.mkdir(parents=True, exist_ok=True)
     manifest_path.write_text(
@@ -223,23 +234,31 @@ def emit_parity_backlog(
     )
 
     note = (
-        f"wrote {len(bullets)} missing-surface bullet(s); suppressed {suppressed} "
+        f"filed {len(proposals)} missing-surface record(s); suppressed {suppressed} "
         f"already-owned surface(s)"
     )
-    logger.info(
-        "wrote %d missing-surface bullet(s); suppressed %d already-owned surface(s)",
-        len(bullets),
-        suppressed,
-    )
-    return EmitResult(emit_ok=True, bullet_count=len(bullets), emit_note=note)
+    logger.info(note)
+    return EmitResult(emit_ok=True, bullet_count=len(proposals), emit_note=note)
+
+
+def _parity_body(uid: str, finding: object) -> str:
+    """The surface, the effort and the evidence the assessor gave for the gap."""
+    detail = finding if isinstance(finding, dict) else {}
+    lines = [f"Legacy surface `{uid}` has no counterpart in the new app."]
+    effort = str(detail.get("effort", "")).strip()
+    if effort:
+        lines.append(f"Effort: {effort}.")
+    raw = detail.get("evidence")
+    evidence = [str(e).strip() for e in raw if str(e).strip()] if isinstance(raw, list) else []
+    if evidence:
+        lines.append("Evidence:\n" + "\n".join(f"- {e}" for e in evidence))
+    return "\n\n".join(lines)
 
 
 __all__ = [
-    "PARITY_BEGIN",
-    "PARITY_END",
-    "PARITY_HEADING",
-    "emit_parity_backlog",
+    "emit_parity_records",
     "expand_parity_inventory",
     "load_parity_config",
     "parity_slug",
+    "read_parity_register",
 ]

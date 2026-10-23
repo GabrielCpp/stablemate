@@ -10,7 +10,6 @@ class Config(AuthorResult):
     """`load_config` — the author's paths, decided once at the top of the run."""
 
     repo_root: str = ""
-    backlog_path: str = ""
     milestone_path: str = ""
     milestone_mockups_dir: str = ""
     milestone_dir: str = ""
