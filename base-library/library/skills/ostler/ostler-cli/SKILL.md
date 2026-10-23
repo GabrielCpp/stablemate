@@ -52,6 +52,7 @@ type: epic
 id: pred-15
 title: Account Credits "Aperçu" Billing Body at Legacy Parity
 status: in-progress        # optional: planned | in-progress | done
+followups: true            # optional: a backlog of filed follow-ups that no milestone owns
 ---
 
 Free narrative prose (any headings: ## Goal, ## Method, ## Acceptance, …).

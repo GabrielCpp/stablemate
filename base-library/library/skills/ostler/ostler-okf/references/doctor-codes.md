@@ -84,7 +84,8 @@ Three scoping rules explain findings that otherwise read as false positives or a
 | `milestone-cycle` | error | A cycle in milestone dependencies. |
 | `dangling-milestone-dependency` | error | A milestone depends on a milestone that does not exist. |
 | `dangling-milestone-epic` | error | A milestone lists an epic that does not exist. |
-| `epic-without-milestone` | error | An epic is assigned to no milestone. |
+| `epic-without-milestone` | error | An epic is assigned to no milestone. An epic marked `followups: true`, the coder's bucket of filed follow-ups, belongs to no milestone by design and is skipped. |
+| `followups-epic-in-milestone` | error | A milestone lists an epic marked `followups: true`. That epic keeps growing as follow-ups are filed, so no milestone can ship it. Remove it from the milestone's `epics`, or move the stories the milestone needs into an epic of its own. |
 | `epic-in-multiple-milestones` | error | An epic is assigned to more than one milestone. |
 | `backlog-item-in-multiple-milestones` | error | A backlog item is assigned to more than one milestone. |
 | `legacy-milestone-file` | error | A `*.md` page directly under `docs/milestones/` declares `type: milestone`. A milestone is a folder: move it to `docs/milestones/<slug>/milestone.md`. |
