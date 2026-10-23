@@ -6,7 +6,7 @@ from pathlib import Path
 
 from ostler import Ostler
 from workhorse.pyflow import Blueprint, WorkflowFailed
-from workhorse_workflows.author.shared.nodes.story_mode import resolve_bullet
+from workhorse_workflows.author.shared.nodes.story_mode import resolve_record
 from workhorse_workflows.author.shared.schemas import EditIntent
 
 blueprint = Blueprint("author-story-edit")
@@ -17,7 +17,7 @@ def _intent_stub(
     action: str,
     epic: str = "",
     story: str = "",
-    bullet: str = "",
+    record: str = "",
     reason: str = "",
     force: bool = False,
     repo_dir: str = "",
@@ -26,8 +26,8 @@ def _intent_stub(
         kind="remove-story" if action == "remove" else "add-story",
         epic=epic,
         story=story,
-        bullet_id="dry-run-item",
-        source_bullet=bullet,
+        record_id="dry-run-item",
+        summary=record,
         change=reason or "dry-run edit",
         force=force,
     )
@@ -39,24 +39,24 @@ def resolve_story_intent(
     action: str,
     epic: str = "",
     story: str = "",
-    bullet: str = "",
+    record: str = "",
     reason: str = "",
     force: bool = False,
     repo_dir: str = "",
 ) -> EditIntent:
     """Validate the requested story operation and name its parent epic and binding outcome."""
     if action == "add":
-        if not epic.strip() or not bullet.strip():
-            raise WorkflowFailed("story-edit add needs both 'epic' and 'bullet'")
-        resolved = resolve_bullet(Path(repo_dir), bullet)
+        if not epic.strip() or not record.strip():
+            raise WorkflowFailed("story-edit add needs both 'epic' and 'record'")
+        resolved = resolve_record(Path(repo_dir), record)
         logger.info("resolved add-story intent for %s from %s", epic, resolved.id)
         return EditIntent(
             kind="add-story",
             epic=epic.strip(),
-            bullet_id=resolved.id,
-            source_bullet=resolved.source_bullet,
-            from_backlog=resolved.from_backlog,
-            change=reason.strip() or f"Add a story for {resolved.source_bullet}",
+            record_id=resolved.id,
+            summary=resolved.summary,
+            body=resolved.body,
+            change=reason.strip() or f"Add a story for {resolved.summary}",
             force=force,
         )
     if action != "remove":

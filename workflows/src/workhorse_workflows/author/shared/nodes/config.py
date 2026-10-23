@@ -71,15 +71,6 @@ def load_config(
     epics_dir = paths.epics_dir(root)
     milestone = approved_milestone_path(root) if mode == "epic" else ""
 
-    backlog_path = (root / backlog).resolve()
-    if mode in {"story", "story-edit", "epic-edit"} and not backlog_path.is_file():
-        logger.warning("backlog file not found: %s", backlog_path)
-        raise WorkflowFailed(
-            f"backlog file not found: {backlog_path}\n"
-            f"Create {backlog} (a markdown bullet list of features) before running the author "
-            f"workflow."
-        )
-
     folder = approved_milestone_folder(root)
     data = _template(root)
     services_dir = paths.services_dir(root)

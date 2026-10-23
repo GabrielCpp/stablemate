@@ -10,5 +10,5 @@ The author nodes two or more machines call, registered on their own blueprint.
 - `coverage.py`: whether an epic's stories cover every seed in an acyclic graph.
 - `integrity.py`: `ostler doctor` over the planning graph, as a blocking gate.
 - `stories.py`: the per-story gates: the story contract, its grounding in the book, and its attempts ledger.
-- `story_mode.py`: story mode's backlog edits: adopt the backlog's ids, resolve a bullet, seed its story, prune it.
+- `story_mode.py`: story mode's register edits: resolve a record, seed its story, close it as promoted.
 - `stubs.py`: what the deterministic gates return under `--dry-run`.

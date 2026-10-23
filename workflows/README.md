@@ -83,12 +83,25 @@ at a gate that lists every unfinished item, and your answer requeues them with t
 context. Author stops at a second gate when the milestone body changes during the run. `auto`
 operator mode does not skip either gate.
 
+## Picking a record into an epic
+
+Story mode turns one open record of the debt register into a story of an existing epic. The
+`record` parameter is a record id or its short handle. A token that names no record, or a record
+that is not `open`, fails the run. A person who wants a story from new text files it first with
+`ostler backlog add`, then picks it. The story's `covers` names the record id, and the record
+closes as `promoted` with the story slug in its reason once the story is authored.
+
+```bash
+workhorse-author run --params '{"mode": "story", "epic": "docs-app-editor", "record": "raw-xml-editor"}'
+```
+
 ## Editing authored scope
 
 The author command exposes two standalone edit flows. `epic-edit` is the reconciliation
 machine; `story-edit` validates a story-level request and hands a typed binding intent to it.
 Adding or removing a story therefore cannot leave the parent epic's user journeys, seeds or
-coverage describing the product before the requested change.
+coverage describing the product before the requested change. An add takes a register `record`
+the way story mode does, and the planner reads the open register as one listing in its prompt.
 
 ```bash
 workhorse-author run epic-edit --params '{
@@ -100,7 +113,7 @@ workhorse-author run epic-edit --params '{
 workhorse-author run story-edit --params '{
   "action": "add",
   "epic": "docs-app-editor",
-  "bullet": "RAW-XML-EDITOR",
+  "record": "raw-xml-editor",
   "reason": "Add raw XML editing alongside the interactive editor"
 }'
 
@@ -119,7 +132,7 @@ replacement plan. Deterministic checks project that plan before any write, then 
 findings back to the plan refiner: every active seed remains covered, dependencies remain local
 and acyclic, the requested add/remove is satisfied, and every changed story needing new prose is
 in the affected worklist. Only then does Ostler apply structural mutations, the model revise epic
-prose and affected story bodies, and coverage/integrity gates permit backlog pruning and commit.
+prose and affected story bodies, and coverage/integrity gates permit closing the picked record as `promoted` and the commit.
 Design turns may write `mockup.html` only inside the current story directory. The feature book is
 read-only: author never creates an inventory or registers a mockup outside its story.
 

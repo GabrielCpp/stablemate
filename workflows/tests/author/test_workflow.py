@@ -15,7 +15,8 @@ import pytest
 from _fakes import StubRunner
 from _milestones import write_milestone
 from _pm import amendment, answer, verdict
-from ostler import Ostler
+from ostler import Ostler, ids
+from ostler.register import RECORD_FILE, Record
 from workhorse import inbox
 from workhorse.artifacts import ArtifactWriter
 from workhorse.cli.inbox import INBOX_FILE
@@ -24,15 +25,19 @@ from workhorse.pyflow import activity as pyflow_activity
 from workhorse.pyflow import park as pyflow_park
 from workhorse.pyflow.driver import drive, read_resume
 from workhorse.pyflow.engine import RunEnv
+from workhorse._vendor.stablemate_core import config as core_config
+from workhorse.pyflow import WorkflowFailed
 from workhorse.records import parse_checkpoint
 from workhorse.worklist import WORK_FILE, JsonBackend, WorkList
 
 from workhorse_workflows import author
 from workhorse_workflows.author.finalize.nodes.artifacts import validate_artifacts
-from workhorse_workflows.author.shared.nodes.story_mode import prune_bullet
+from workhorse_workflows.author.shared.nodes.story_mode import promote_record, seed_story
+from workhorse_workflows.author.shared.schemas import EditIntent
 from workhorse_workflows.author.epic_edit import EpicEdit
 from workhorse_workflows.author.shared.survey import record_slug
 from workhorse_workflows.author.story_edit import StoryEdit
+from workhorse_workflows.author.story_edit.nodes import resolve_story_intent
 from workhorse_workflows.author.workflow import Author, workflow
 
 BACKLOG = "docs/backlog.md"
@@ -47,9 +52,11 @@ SECOND_EPIC_DIR = f"{EPICS}/{SECOND_EPIC_NAME}"
 CONTEXT = f"{EPICS}/_author-context.md"
 
 SEEDS = {
-    "b1": "[b1] Users can sign in with an email and a password",
-    "b2": "[b2] Users can reset a forgotten password",
+    "b1": "Users can sign in with an email and a password",
+    "b2": "Users can reset a forgotten password",
 }
+B1_SLUG = "users-can-sign-in-with-an-email-and-a-password"
+B1_BODY = "Offer a magic link as well.\nKeep the password form."
 SURFACE = "**api** is the only surface and the only writer of stored data."
 STORIES = (
     ("01-sign-in", "Sign in", "b1"),
@@ -75,7 +82,7 @@ def backlogged(repo: Path, write: Callable[[Path, str], Path]) -> Path:
     write(
         repo / BACKLOG,
         f"# Backlog\n\nSurfaces this app ships:\n\n{SURFACE}\n\n## Scope items\n\n"
-        + "".join(f"- {b}\n" for b in SEEDS.values()),
+        + "".join(f"- {v}\n" for v in SEEDS.values()),
     )
     write_milestone(repo)
     write(repo / "docs/services/account/gui/screens/sign-in.md", (
@@ -103,6 +110,27 @@ def with_epic(backlogged: Path) -> Path:
     _milestone(backlogged, EPIC)
     _commit(backlogged, "epic scaffold")
     return backlogged
+
+
+@pytest.fixture
+def artifacts() -> Path:
+    """The artifacts dir of this test, already a git repository with one commit."""
+    root = core_config.ensure_artifacts_repo()
+    subprocess.run(["git", "-C", str(root), "commit", "-q", "--allow-empty", "-m", "init"], check=True)
+    return root
+
+
+@pytest.fixture
+def with_records(with_epic: Path, artifacts: Path) -> Path:
+    """`with_epic` plus two open records, `b1` with a body, filed and committed in the artifacts repo."""
+    okf = Ostler(with_epic)
+    for record_id, summary in SEEDS.items():
+        filed = okf.backlog_add(
+            summary, repo="acme", area="accounts", record_id=record_id,
+            body=B1_BODY if record_id == "b1" else "",
+        )
+        assert filed.ok, filed.message
+    return with_epic
 
 
 def _commit(repo: Path, message: str) -> None:
@@ -134,13 +162,16 @@ def _commit_count(repo: Path) -> int:
     return int(out.stdout.strip())
 
 
-def _bullets(repo: Path) -> list[str]:
-    """The backlog's bullet lines, to see what the coverage tail pruned."""
-    return [
-        line.strip()
-        for line in (repo / BACKLOG).read_text().splitlines()
-        if line.strip().startswith("- ")
-    ]
+def _filed(artifacts: Path, token: str) -> Record:
+    """The record the register holds for *token*, as it stands on the shelf."""
+    folder = next((artifacts / "backlog").glob(f"*/*/{token}"))
+    return Record.read(folder / RECORD_FILE)
+
+
+def _artifact_subjects(artifacts: Path) -> list[str]:
+    return subprocess.run(
+        ["git", "-C", str(artifacts), "log", "--format=%s"], capture_output=True, text=True, check=True
+    ).stdout.splitlines()
 
 
 def _stories(repo: Path) -> dict[str, bool]:
@@ -375,8 +406,8 @@ class _Agent:
                 "story_changes": [{"action": "remove", "slug": intent["story"]}],
                 "affected_stories": [],
             }
-        source = str(intent["source_bullet"])
-        slug = source.lower().replace("[", "").replace("]", "").replace(" ", "-")
+        source = str(intent["summary"])
+        slug = source.lower().replace(" ", "-")
         return {
             "status": "complete",
             "epic": snapshot["epic"],
@@ -385,17 +416,17 @@ class _Agent:
             "journey_changes": ["Add the requested actor journey"],
             "seed_changes": [{
                 "action": "add",
-                "id": intent["bullet_id"],
+                "id": intent["record_id"],
                 "status": "researched",
                 "summary": source,
                 "services": ["account"],
-                "source_bullet": source,
+                "source_record": intent["record_id"],
             }],
             "story_changes": [{
                 "action": "add",
                 "slug": slug,
                 "title": source,
-                "covers": [intent["bullet_id"]],
+                "covers": [intent["record_id"]],
                 "depends": [],
                 "rewrite": True,
             }],
@@ -719,34 +750,12 @@ def test_epic_mode_skips_mockups_for_seeds_tagged_without_a_frontend_layer(
     assert _stories(backlogged) == {slug: True for slug in SLUGS}
 
 
-def test_story_prune_preserves_a_parent_with_nested_work(backlogged: Path) -> None:
-    backlog = backlogged / BACKLOG
-    original = (
-        "# Backlog\n\n"
-        "## Scope items\n\n"
-        "- [parent] Ship draft recovery\n"
-        "  - [child] Preserve ten snapshots\n"
-    )
-    backlog.write_text(original, encoding="utf-8")
-
-    result = prune_bullet(
-        logging.getLogger("test"),
-        bullet_id="parent",
-        from_backlog=True,
-        repo_dir=str(backlogged),
-    )
-
-    assert result.removed == 0
-    assert result.remaining == 2
-    assert backlog.read_text(encoding="utf-8") == original
-
-
 def test_author_nodes_use_milestones_when_todo_is_absent(backlogged: Path) -> None:
     okf = Ostler(backlogged)
     okf.create_epic(EPIC, "Accounts")
     _milestone(backlogged, EPIC)
     okf.add_seed(EPIC, "b1", status="researched", summary=SEEDS["b1"],
-                 meta={"sourceBullet": SEEDS["b1"]})
+                 meta={"sourceRecord": "b1"})
     okf.create_story(EPIC, "01-sign-in", "Sign in", covers=["b1"])
 
     logger = logging.getLogger("test")
@@ -1143,14 +1152,14 @@ def test_a_question_only_the_operator_can_settle_waits_on_the_run_gate(
     assert _stories(backlogged) == {slug: True for slug in SLUGS}
 
 
-def test_story_mode_authors_one_bullet_and_does_not_commit(
-    with_epic: Path, tmp_path: Path
+def test_story_mode_promotes_an_open_record_and_does_not_commit_the_code_repo(
+    with_records: Path, artifacts: Path, tmp_path: Path
 ) -> None:
-    """One bullet into an existing epic, and it ends *without* committing."""
-    before = _commit_count(with_epic)
-    agent = _Agent(with_epic)
+    before = _commit_count(with_records)
+    filed_subjects = _artifact_subjects(artifacts)
+    agent = _Agent(with_records)
     result = _drive(
-        _env(tmp_path), agent, mode="story", epic=EPIC, bullet="b1", services="account"
+        _env(tmp_path), agent, mode="story", epic=EPIC, record="b1", services="account"
     )
 
     assert agent.counts() == {
@@ -1159,33 +1168,203 @@ def test_story_mode_authors_one_bullet_and_does_not_commit(
         "review-inline": 1,
     }, agent.counts()
 
-    stories = _stories(with_epic)
-    assert list(stories) == ["b1-users-can-sign-in-with-an-email-and-a-password"], stories
+    stories = _stories(with_records)
+    assert list(stories) == [B1_SLUG], stories
     assert all(stories.values()), stories
-    assert _bullets(with_epic) == [f"- {SEEDS['b2']}"]
-    assert result.removed == 1, result
-    assert result.remaining == 1, result
-    assert _commit_count(with_epic) == before, "story mode must not commit"
+    story = next(row for row in Ostler(with_records).list("story") if row["slug"] == B1_SLUG)
+    assert story["covers"] == ["b1"]
+    seed = next(row for row in Ostler(with_records).list("seed", epic=EPIC) if row["id"] == "b1")
+    assert seed["sourceRecord"] == "b1"
+    assert seed["summary"] == SEEDS["b1"]
+    assert f"{SEEDS['b1']}\n\n{B1_BODY}" in (with_records / EPIC_DIR / "epic.md").read_text(encoding="utf-8")
+    closed = _filed(artifacts, "b1")
+    assert closed.status == "promoted"
+    assert closed.reason == f"promoted to story {B1_SLUG} in epic {EPIC}"
+    assert _filed(artifacts, "b2").status == "open"
+    assert result.record_id == "b1", result
+    assert _artifact_subjects(artifacts) == ["chore(acme): close b1 as promoted", *filed_subjects]
+    assert _commit_count(with_records) == before, "story mode must not commit"
+
+
+def test_story_mode_picks_a_record_by_its_short_handle(
+    with_records: Path, artifacts: Path, tmp_path: Path
+) -> None:
+    long_id = "ACME-01JBXR7K9QZ4M2T8VNF3HD6PWC"
+    Ostler(with_records).backlog_add(
+        "Export the account data", repo="acme", area="accounts", record_id=long_id
+    )
+
+    handle = ids.table(ids.known(Ostler(with_records).graph))[long_id]
+    assert handle != long_id
+
+    _drive(_env(tmp_path), _Agent(with_records), mode="story", epic=EPIC, record=handle)
+
+    assert _filed(artifacts, long_id).status == "promoted"
+
+
+def test_story_mode_refuses_a_token_that_names_no_record(
+    with_records: Path, artifacts: Path, tmp_path: Path
+) -> None:
+    with pytest.raises(WorkflowFailed, match="no-such-record"):
+        _drive(_env(tmp_path), _Agent(with_records), mode="story", epic=EPIC, record="no-such-record")
+
+    assert _stories(with_records) == {}
+
+
+def test_story_mode_refuses_a_record_that_is_not_open(
+    with_records: Path, artifacts: Path, tmp_path: Path
+) -> None:
+    assert Ostler(with_records).close_record("b2", "done", "fixed in acme@abc1234").ok
+
+    with pytest.raises(WorkflowFailed, match="b2"):
+        _drive(_env(tmp_path), _Agent(with_records), mode="story", epic=EPIC, record="b2")
+
+    assert _stories(with_records) == {}
+    assert _filed(artifacts, "b2").status == "done"
+
+
+def test_story_mode_takes_no_literal_text(
+    with_records: Path, artifacts: Path, tmp_path: Path
+) -> None:
+    with pytest.raises(WorkflowFailed, match="Users can sign in"):
+        _drive(
+            _env(tmp_path), _Agent(with_records), mode="story", epic=EPIC,
+            record="Users can sign in with a passkey",
+        )
+
+    assert _stories(with_records) == {}
+
+
+def test_story_mode_resumed_after_the_close_fails_nothing_and_commits_nothing_more(
+    with_records: Path, artifacts: Path, tmp_path: Path, logger: logging.Logger
+) -> None:
+    _drive(_env(tmp_path), _Agent(with_records), mode="story", epic=EPIC, record="b1")
+    subjects = _artifact_subjects(artifacts)
+
+    again = seed_story(logger, epic=EPIC, record="b1", repo_dir=str(with_records))
+    closed = promote_record(
+        logger, record_id="b1", epic=EPIC, story=again.story_slug, repo_dir=str(with_records)
+    )
+
+    assert again.story_slug == B1_SLUG
+    assert closed.record_id == "b1"
+    assert _artifact_subjects(artifacts) == subjects
+    assert list(_stories(with_records)) == [B1_SLUG]
 
 
 def test_story_mode_refuses_an_epic_that_does_not_exist(backlogged: Path, tmp_path: Path) -> None:
     """`seed_story` never scaffolds an epic — a missing one is a hard, actionable failure."""
-    from workhorse.pyflow import WorkflowFailed
-
     with pytest.raises(WorkflowFailed, match="does not exist"):
-        _drive(_env(tmp_path), _Agent(backlogged), mode="story", epic="nope", bullet="b1")
+        _drive(_env(tmp_path), _Agent(backlogged), mode="story", epic="nope", record="b1")
 
 
-def test_story_edit_add_authors_one_story_and_commits(with_epic: Path, tmp_path: Path) -> None:
-    agent = _Agent(with_epic)
+def test_story_edit_add_resolves_a_record_into_its_edit_intent(
+    with_records: Path, logger: logging.Logger
+) -> None:
+    intent = resolve_story_intent(
+        logger, "add", epic=EPIC, record="b1", repo_dir=str(with_records)
+    )
 
-    _drive_story_edit(_env(tmp_path), agent, action="add", epic=EPIC, bullet="b1")
+    assert intent.kind == "add-story"
+    assert intent.record_id == "b1"
+    assert intent.summary == SEEDS["b1"]
+    assert intent.body == B1_BODY
 
-    stories = _stories(with_epic)
-    assert list(stories) == ["b1-users-can-sign-in-with-an-email-and-a-password"], stories
+
+def test_story_edit_add_refuses_a_token_that_names_no_record(
+    with_records: Path, logger: logging.Logger
+) -> None:
+    with pytest.raises(WorkflowFailed, match="no-such-record"):
+        resolve_story_intent(
+            logger, "add", epic=EPIC, record="no-such-record", repo_dir=str(with_records)
+        )
+
+
+def test_story_edit_add_authors_one_story_and_promotes_its_record(
+    with_records: Path, artifacts: Path, tmp_path: Path
+) -> None:
+    agent = _Agent(with_records)
+
+    _drive_story_edit(_env(tmp_path), agent, action="add", epic=EPIC, record="b1")
+
+    stories = _stories(with_records)
+    assert list(stories) == [B1_SLUG], stories
     assert all(stories.values()), stories
-    assert _bullets(with_epic) == [f"- {SEEDS['b2']}"]
-    assert _subject(with_epic).startswith("author: accounts"), _subject(with_epic)
+    closed = _filed(artifacts, "b1")
+    assert closed.status == "promoted"
+    assert closed.reason == f"promoted to story {B1_SLUG} in epic {EPIC}"
+    assert _filed(artifacts, "b2").status == "open"
+    assert _subject(with_records).startswith("author: accounts"), _subject(with_records)
+
+
+def test_epic_edit_add_story_from_a_record_closes_it_as_promoted(
+    with_records: Path, artifacts: Path, tmp_path: Path
+) -> None:
+    intent = EditIntent(
+        kind="add-story", epic=EPIC, record_id="b1", summary=SEEDS["b1"], body=B1_BODY,
+        change=f"Add a story for {SEEDS['b1']}",
+    )
+
+    _drive_epic_edit(_env(tmp_path), _Agent(with_records), intent=intent)
+
+    closed = _filed(artifacts, "b1")
+    assert closed.status == "promoted"
+    assert closed.reason == f"promoted to story {B1_SLUG} in epic {EPIC}"
+
+
+def test_the_epic_edit_planner_reads_the_register_listing_of_a_filed_record(
+    with_records: Path, tmp_path: Path
+) -> None:
+    agent = _Agent(with_records)
+    intent = EditIntent(
+        kind="add-story", epic=EPIC, record_id="b1", summary=SEEDS["b1"], body=B1_BODY,
+        change=f"Add a story for {SEEDS['b1']}",
+    )
+
+    _drive_epic_edit(_env(tmp_path), agent, intent=intent)
+
+    variables = agent.args_for("plan-epic-edit")[0]
+    lines = variables["register_listing"].splitlines()
+    assert "b1\tacme\taccounts\topen\tuntriaged\t" + SEEDS["b1"] in lines
+    assert "b2\tacme\taccounts\topen\tuntriaged\t" + SEEDS["b2"] in lines
+    assert "backlog" not in variables
+
+
+def test_the_epic_edit_planner_is_told_when_the_register_is_empty(
+    with_epic: Path, artifacts: Path, tmp_path: Path
+) -> None:
+    okf = Ostler(with_epic)
+    assert okf.add_seed(
+        EPIC, "interactive", status="researched", summary="Interactive",
+        meta={"services": ["api-service"]},
+    ).ok
+    assert okf.create_story(
+        EPIC, "interactive-editor", "Interactive editor", covers=["interactive"]
+    ).ok
+    _write_story_doc(
+        with_epic / EPIC_DIR / "stories/interactive-editor/story.md", "Interactive editor"
+    )
+    _commit(with_epic, "interactive editor")
+    plan = {
+        "status": "complete",
+        "epic": EPIC,
+        "summary": "add raw XML editing",
+        "journey_changes": ["Add raw XML mode"],
+        "seed_changes": [{
+            "action": "add", "id": "raw-xml", "status": "researched",
+            "summary": "Edit canonical XML", "services": ["api-service"],
+        }],
+        "story_changes": [{
+            "action": "add", "slug": "raw-xml-editor", "title": "Raw XML editor",
+            "covers": ["raw-xml"], "depends": ["interactive-editor"], "rewrite": True,
+        }],
+        "affected_stories": ["raw-xml-editor"],
+    }
+    agent = _Agent(with_epic, edit_plans=[plan])
+
+    _drive_epic_edit(_env(tmp_path), agent, epic=EPIC, change="Add raw XML editing")
+
+    assert agent.args_for("plan-epic-edit")[0]["register_listing"] == "no open records"
 
 
 def test_story_edit_remove_deletes_an_unstarted_story_and_commits(
@@ -1285,7 +1464,7 @@ def test_epic_edit_static_findings_drive_a_replacement_plan(
             "status": "researched",
             "summary": "Edit canonical XML",
             "services": ["api-service"],
-            "source_bullet": "[raw-xml] Add raw XML editing",
+            "source_record": "",
         }],
         "story_changes": [raw_change],
         "affected_stories": [],

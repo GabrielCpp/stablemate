@@ -70,14 +70,13 @@ class StoryChoice(AuthorResult):
 
 
 class SeededStory(AuthorResult):
-    """`seed_story` — story mode's single story, created from one backlog bullet."""
+    """`seed_story` — story mode's single story, created from one register record."""
 
     epic_dir: str = ""
     story_slug: str = ""
     story_dir: str = ""
     story_path: str = ""
-    bullet_id: str = ""
-    from_backlog: bool = False
+    record_id: str = ""
     reason: str = ""
 
 
@@ -113,11 +112,11 @@ class Feedback(AuthorResult):
     content: str = ""
 
 
-class Pruned(AuthorResult):
-    """`prune_bullet` — the one story-mode backlog bullet removed after authoring."""
+class Promoted(AuthorResult):
+    """`promote_record` — the register record a story now stands for, closed as promoted."""
 
-    removed: int = 0
-    remaining: int = 0
+    record_id: str = ""
+    reason: str = ""
 
 
 class Ledger(AuthorResult):
@@ -187,7 +186,7 @@ __all__ = [
     "MockupGate",
     "MilestoneStatus",
     "MockupResult",
-    "Pruned",
+    "Promoted",
     "RunContext",
     "SeededStory",
     "StoryChoice",

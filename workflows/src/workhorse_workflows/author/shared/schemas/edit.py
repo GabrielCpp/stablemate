@@ -13,17 +13,17 @@ class EditIntent(AuthorResult):
     kind: Literal["epic", "add-story", "remove-story"] = "epic"
     epic: str = ""
     story: str = ""
-    bullet_id: str = ""
-    source_bullet: str = ""
-    from_backlog: bool = False
+    record_id: str = ""
+    summary: str = ""
+    body: str = ""
     change: str = ""
     force: bool = False
 
 
-class ResolvedBullet(AuthorResult):
-    id: str = ""
-    source_bullet: str = ""
-    from_backlog: bool = False
+class RegisterListing(AuthorResult):
+    """`read_register_listing` — the open debt register as one block of text for the planner."""
+
+    text: str = ""
 
 
 class SeedSnapshot(AuthorResult):
@@ -34,7 +34,7 @@ class SeedSnapshot(AuthorResult):
     legacy_surface: str = ""
     backing: str = ""
     prerequisites: str = ""
-    source_bullet: str = ""
+    source_record: str = ""
     frozen: bool = False
 
 
@@ -76,7 +76,7 @@ class SeedChange(AuthorResult):
     backing: str = ""
     prerequisites: str = ""
     services: list[str] = []
-    source_bullet: str = ""
+    source_record: str = ""
     disposition: Literal["retain", "drop"] = "retain"
     reason: str = ""
 
@@ -127,7 +127,7 @@ __all__ = [
     "EpicRewriteResult",
     "EpicSnapshot",
     "MilestoneSnapshot",
-    "ResolvedBullet",
+    "RegisterListing",
     "SeedChange",
     "SeedSnapshot",
     "StoryChange",

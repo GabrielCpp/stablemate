@@ -1,31 +1,17 @@
-"""Story mode's backlog edits: adopt the backlog's ids, resolve a bullet, seed its story, prune it."""
+"""Story mode's register edits: resolve a record, seed its story, close it as promoted."""
 from __future__ import annotations
 
 import logging
 import re
 from pathlib import Path
 
-from ostler import Ostler, backlog as ostler_backlog, markdown
-from ostler.result import Result
+from ostler import Ostler, register
+from ostler.register import Record
 from workhorse.pyflow import WorkflowFailed
 from workhorse_workflows.author.shared.nodes.blueprint import blueprint
 from workhorse_workflows.author.shared import paths
 from workhorse_workflows.author.shared.paths import survey_repo_root
-from workhorse_workflows.author.shared.schemas.edit import ResolvedBullet
-from workhorse_workflows.author.shared.schemas.main import Pruned, SeededStory
-
-
-@blueprint.node
-def adopt_backlog(
-    logger: logging.Logger,
-    repo_dir: str = "",
-) -> Result:
-    """Mint ids for every unnamed backlog bullet before decomposition or story lookup."""
-    result = Ostler(survey_repo_root(repo_dir)).backlog_adopt()
-    if not result.ok:
-        raise WorkflowFailed(result.message)
-    logger.info(result.message)
-    return result
+from workhorse_workflows.author.shared.schemas.main import Promoted, SeededStory
 
 
 def _kebab(text: str, *, max_len: int = 60) -> str:
@@ -36,53 +22,50 @@ def _kebab(text: str, *, max_len: int = 60) -> str:
     return slug or "story"
 
 
-def resolve_bullet(root: Path, bullet: str) -> ResolvedBullet:
-    """Resolve one requested bullet against the repo's backlog."""
-    backlog_path = root / paths.backlog_file(root)
-    raw = bullet.strip()
-    bare = raw[1:-1].strip() if raw.startswith("[") and raw.endswith("]") else raw
+def find_record(root: Path, token: str) -> Record:
+    """The record a token names, whatever its status; a token naming none fails the run."""
+    token = token.strip()
+    folder = register.locate(Ostler(root).graph, token)
+    if folder is None:
+        raise WorkflowFailed(f"no record '{token}' on the register — file it with `ostler backlog add`, then pick it")
+    return Record.read(folder / register.RECORD_FILE)
 
-    if backlog_path.is_file():
-        try:
-            text = backlog_path.read_text(encoding="utf-8")
-        except OSError:
-            text = ""
-        for item in markdown.split(text).walk_bullets():
-            bid, btext = item.bracketed
-            if bid and (
-                bare == bid
-                or raw.lstrip("-").strip() == item.text.strip()
-                or (btext and btext == raw)
-            ):
-                return ResolvedBullet(id=bid, source_bullet=item.text.strip(), from_backlog=True)
 
-    if re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]*", bare):
-        return ResolvedBullet(id=bare, source_bullet=bare)
-    return ResolvedBullet(id=_kebab(raw), source_bullet=raw)
+def resolve_record(root: Path, token: str) -> Record:
+    """The open record a token names; a token naming none, or a closed record, fails the run."""
+    record = find_record(root, token)
+    if record.status != "open":
+        raise WorkflowFailed(f"record '{token}' is {record.status}, not open — only an open record can be picked")
+    return record
+
+
+def seed_text(record: Record) -> str:
+    """The text a story is seeded from: the record's summary, then its body."""
+    return f"{record.summary}\n\n{record.body}" if record.body else record.summary
 
 
 @blueprint.node
 def seed_story(
     logger: logging.Logger,
     epic: str = "",
-    bullet: str = "",
+    record: str = "",
     layers: str = "",
     services: str = "",
     repo_dir: str = "",
 ) -> SeededStory:
-    """Register ONE bullet as a new story inside an already-existing epic."""
+    """Register ONE register record as a new story inside an already-existing epic."""
     epic = epic.strip()
-    bullet = bullet.strip()
+    record = record.strip()
 
     if not epic:
         raise WorkflowFailed(
             "no epic supplied — story mode needs the target epic slug "
-            "(--params '{\"mode\":\"story\",\"epic\":\"<slug>\",\"bullet\":\"...\"}')"
+            "(--params '{\"mode\":\"story\",\"epic\":\"<slug>\",\"record\":\"<record id>\"}')"
         )
-    if not bullet:
+    if not record:
         raise WorkflowFailed(
-            "no bullet supplied — story mode needs a backlog [id] or literal bullet text "
-            "(--params '{\"mode\":\"story\",\"epic\":\"<slug>\",\"bullet\":\"...\"}')"
+            "no record supplied — story mode needs the id of an open register record "
+            "(--params '{\"mode\":\"story\",\"epic\":\"<slug>\",\"record\":\"<record id>\"}')"
         )
 
     root = survey_repo_root(repo_dir)
@@ -96,53 +79,51 @@ def seed_story(
             "EXISTING epic and never creates one; run epic mode first or fix the epic slug"
         )
 
-    resolved = resolve_bullet(root, bullet)
-    bullet_id = resolved.id
-    source_bullet = resolved.source_bullet
-    from_backlog = resolved.from_backlog
+    found = find_record(root, record)
+    record_id = found.id
 
     for s in okf.list("story", epic=epic):
-        if bullet_id in (s.get("covers") or []):
+        if record_id in (s.get("covers") or []):
             slug = str(s.get("slug", ""))
             path = str(s.get("path", "")) or f"{paths.story_dir(epic_dir_rel, slug)}/story.md"
             (root / path).parent.mkdir(parents=True, exist_ok=True)
-            reason = f"story '{slug}' already covers '{bullet_id}' — reusing (idempotent)"
-            logger.info("story '%s' already covers '%s' — reusing (idempotent)", slug, bullet_id)
+            reason = f"story '{slug}' already covers '{record_id}' — reusing (idempotent)"
+            logger.info("story '%s' already covers '%s' — reusing (idempotent)", slug, record_id)
             return SeededStory(
                 epic_dir=epic_dir_rel,
                 story_slug=slug,
                 story_dir=str(Path(path).parent),
                 story_path=path,
-                bullet_id=bullet_id,
-                from_backlog=from_backlog,
+                record_id=record_id,
                 reason=reason,
             )
 
-    seed_meta: dict[str, str] = {"sourceBullet": source_bullet}
+    found = resolve_record(root, record)
+    seed_meta: dict[str, str] = {"sourceRecord": record_id}
     if layers.strip():
         seed_meta["layers"] = layers.strip()
     if services.strip():
         seed_meta["services"] = services.strip()
-    seeded = okf.add_seed(epic, bullet_id, status="researched", summary=source_bullet,
+    seeded = okf.add_seed(epic, record_id, status="researched", summary=seed_text(found),
                           meta=seed_meta)
     if not seeded.ok and layers.strip():
-        raise WorkflowFailed(f"`seed add {epic} {bullet_id}` failed: {seeded.message}")
+        raise WorkflowFailed(f"`seed add {epic} {record_id}` failed: {seeded.message}")
 
-    slug = _kebab(source_bullet)
-    res = okf.create_story(epic, slug, source_bullet, covers=[bullet_id])
+    slug = _kebab(found.summary)
+    res = okf.create_story(epic, slug, found.summary, covers=[record_id])
     if not res.ok:
         raise WorkflowFailed(f"`create story {epic} {slug}` failed: {res.message}")
 
     story_dir_rel = paths.story_dir(epic_dir_rel, slug)
     reason = (
         f"registered story '{slug}' ({res.entity_id or '?'}) covering seed item "
-        f"'{bullet_id}' in epic '{epic}'"
+        f"'{record_id}' in epic '{epic}'"
     )
     logger.info(
         "registered story '%s' (%s) covering seed item '%s' in epic '%s'",
         slug,
         res.entity_id or "?",
-        bullet_id,
+        record_id,
         epic,
     )
     return SeededStory(
@@ -150,69 +131,42 @@ def seed_story(
         story_slug=slug,
         story_dir=story_dir_rel,
         story_path=f"{story_dir_rel}/story.md",
-        bullet_id=bullet_id,
-        from_backlog=from_backlog,
+        record_id=record_id,
         reason=reason,
     )
 
 
 @blueprint.node
-def prune_bullet(
+def promote_record(
     logger: logging.Logger,
-    bullet_id: str = "",
-    from_backlog: bool = False,
+    record_id: str = "",
+    epic: str = "",
+    story: str = "",
     repo_dir: str = "",
-) -> Pruned:
-    """Remove the one backlog bullet story mode consumed — story mode's tail."""
-    bullet_id = bullet_id.strip()
-
-    if not from_backlog or not bullet_id:
-        logger.info("bullet '%s' is not from the backlog (or missing) — no-op", bullet_id)
-        return Pruned()
-
-    root = survey_repo_root(repo_dir)
-    backlog_rel = paths.backlog_file(root)
-    backlog_path = root / backlog_rel
-    if not backlog_path.is_file():
-        logger.info("no backlog at %s — nothing to prune", backlog_path)
-        return Pruned()
-
-    try:
-        raw = backlog_path.read_text(encoding="utf-8")
-    except OSError:
-        logger.warning("could not read backlog %s — nothing to prune", backlog_path)
-        return Pruned()
-
-    doc = markdown.split(raw)
-    offset = doc.body_offset
-    bullets = doc.walk_bullets()
-    targets = [item for item in bullets if item.bracketed[0] == bullet_id]
-    body_drop = ostler_backlog.removal_lines(targets)
-    drop = {line + offset for line in body_drop}
-    removed = sum(1 for item in targets if item.line_start in body_drop)
-    remaining = sum(
-        1 for item in bullets if item.bracketed[0] and item.line_start + offset not in drop
-    )
-
-    lines = raw.splitlines(keepends=True)
-    kept = [line for i, line in enumerate(lines) if i not in drop]
-
-    if removed:
-        try:
-            backlog_path.write_text("".join(kept), encoding="utf-8")
-        except OSError:
-            logger.warning(
-                "could not write pruned backlog %s — best-effort, continuing", backlog_path
-            )
-
-    logger.info(
-        "pruned bullet '%s' from %s (removed=%d, remaining=%d)",
-        bullet_id,
-        backlog_rel,
-        removed,
-        remaining,
-    )
-    return Pruned(removed=removed, remaining=remaining)
+) -> Promoted:
+    """Close the record a story was authored from as promoted, naming the story and its epic."""
+    record_id = record_id.strip()
+    if not record_id:
+        raise WorkflowFailed("no record id supplied — nothing to close as promoted")
+    okf = Ostler(survey_repo_root(repo_dir))
+    slug = story.strip()
+    if not slug:
+        slug = next(
+            (
+                str(row.get("slug", ""))
+                for row in okf.list("story", epic=epic)
+                if record_id in (row.get("covers") or [])
+            ),
+            "",
+        )
+    if not slug:
+        raise WorkflowFailed(f"no story of epic '{epic}' covers record '{record_id}'")
+    reason = f"promoted to story {slug} in epic {epic}"
+    result = okf.close_record(record_id, "promoted", reason)
+    if not result.ok:
+        raise WorkflowFailed(f"record '{record_id}' was not closed as promoted: {result.message}")
+    logger.info("closed '%s' as promoted: %s", record_id, reason)
+    return Promoted(record_id=record_id, reason=reason)
 
 
-__all__ = ["adopt_backlog", "prune_bullet", "resolve_bullet", "seed_story"]
+__all__ = ["find_record", "promote_record", "resolve_record", "seed_story", "seed_text"]

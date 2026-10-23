@@ -12,21 +12,19 @@ from workhorse_workflows.author.shared.nodes.stories import (
     validate_story,
 )
 from workhorse_workflows.author.shared.nodes.story_mode import (
-    adopt_backlog,
-    prune_bullet,
-    resolve_bullet,
+    promote_record,
+    resolve_record,
     seed_story,
 )
 
 __all__ = [
     "blueprint",
-    "adopt_backlog",
     "check_story_grounding",
     "commit_author",
     "load_config",
-    "prune_bullet",
+    "promote_record",
     "record_attempt",
-    "resolve_bullet",
+    "resolve_record",
     "seed_story",
     "validate_coverage",
     "validate_story",

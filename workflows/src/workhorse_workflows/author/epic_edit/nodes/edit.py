@@ -17,6 +17,7 @@ from workhorse_workflows.author.shared.schemas import (
     EpicEditPlan,
     EpicSnapshot,
     MilestoneSnapshot,
+    RegisterListing,
     SeedSnapshot,
     StoryChoice,
     StorySnapshot,
@@ -60,6 +61,21 @@ def _hash(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest() if path.is_file() else ""
 
 
+LISTING_HEADER = "id\trepo\tarea\tstatus\tpattern\tsummary"
+NO_OPEN_RECORDS = "no open records"
+
+
+@blueprint.node
+def read_register_listing(
+    logger: logging.Logger,
+    repo_dir: str = "",
+) -> RegisterListing:
+    """The open records of every repository, one line each under a header, for the planner to read."""
+    lines = Ostler(repo_dir).record_listing(status="open")
+    logger.info("listed %d open record(s) for the planner", len(lines))
+    return RegisterListing(text="\n".join([LISTING_HEADER, *lines]) if lines else NO_OPEN_RECORDS)
+
+
 @blueprint.node(stub=_snapshot_stub)
 def snapshot_epic(
     logger: logging.Logger,
@@ -88,7 +104,7 @@ def snapshot_epic(
             legacy_surface=str(row["legacySurface"]),
             backing=str(row["backing"]),
             prerequisites=str(row["prerequisites"]),
-            source_bullet=str(row["sourceBullet"]),
+            source_record=str(row["sourceRecord"]),
             frozen=str(row["id"]) in frozen,
         )
         for row in okf.list("seed", epic=name)
@@ -143,7 +159,7 @@ def _project(plan: EpicEditPlan, snapshot: EpicSnapshot) -> tuple[dict[str, Seed
                 legacy_surface=change.legacy_surface,
                 backing=change.backing,
                 prerequisites=change.prerequisites,
-                source_bullet=change.source_bullet,
+                source_record=change.source_record,
             )
     for change in plan.story_changes:
         if change.action == "remove":
@@ -235,9 +251,9 @@ def validate_edit_plan(
     if cycle := _cycle(stories):
         errors.append(f"[E_DEPENDENCY_CYCLE] resulting story graph cycles at '{cycle}'")
 
-    if intent.kind == "add-story" and intent.bullet_id not in covered:
+    if intent.kind == "add-story" and intent.record_id not in covered:
         errors.append(
-            f"[E_ADD_NOT_SATISFIED] requested source item '{intent.bullet_id}' is not covered"
+            f"[E_ADD_NOT_SATISFIED] requested source item '{intent.record_id}' is not covered"
         )
     if intent.kind == "remove-story" and intent.story in stories:
         errors.append(f"[E_REMOVE_NOT_SATISFIED] requested story '{intent.story}' still exists")
@@ -301,13 +317,8 @@ def _seed_meta(change, kept: list[str]) -> dict[str, Any]:
         "legacySurface": change.legacy_surface,
         "backing": change.backing,
         "prerequisites": change.prerequisites,
-        "sourceBullet": change.source_bullet,
+        "sourceRecord": change.source_record,
     }
-
-
-def _source_id(text: str) -> str:
-    bullets = markdown.split(f"- {text}\n").walk_bullets()
-    return bullets[0].bracketed[0] if bullets else ""
 
 
 @blueprint.node(stub=_applied_stub)
@@ -376,14 +387,14 @@ def apply_edit_plan(
         source_id
         for change in plan.seed_changes
         if change.action == "remove" and change.disposition == "drop"
-        if (source_id := _source_id(
-            next((seed.source_bullet for seed in snapshot.seeds if seed.id == change.id), "")
+        if (source_id := next(
+            (seed.source_record for seed in snapshot.seeds if seed.id == change.id), ""
         ))
     }
     for milestone in snapshot.milestones:
         source_items = [item for item in milestone.source_items if item not in removed_source_ids]
-        if intent.kind == "add-story" and intent.bullet_id and intent.bullet_id not in source_items:
-            source_items.append(intent.bullet_id)
+        if intent.kind == "add-story" and intent.record_id and intent.record_id not in source_items:
+            source_items.append(intent.record_id)
         if source_items != milestone.source_items:
             result = okf.set_milestone_source_items(milestone.name, source_items)
             if not result.ok:
@@ -469,7 +480,7 @@ def validate_applied_edit(
             str(actual["legacySurface"]),
             str(actual["backing"]),
             str(actual["prerequisites"]),
-            str(actual["sourceBullet"]),
+            str(actual["sourceRecord"]),
         )
         expected_state = (
             expected.status,
@@ -478,7 +489,7 @@ def validate_applied_edit(
             expected.legacy_surface,
             expected.backing,
             expected.prerequisites,
-            expected.source_bullet,
+            expected.source_record,
         )
         if actual_state != expected_state:
             errors.append(f"[E_APPLY_DELTA] seed '{seed_id}' metadata differs from the plan")
