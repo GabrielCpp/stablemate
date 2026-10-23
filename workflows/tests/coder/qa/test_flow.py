@@ -225,7 +225,9 @@ class _Ostler:
         blocked_problems: list[str] | None = None,
         block_runs: int = 0,
         scenarios: tuple[dict[str, Any], ...] = (),
+        context: dict[str, Any] | None = None,
     ) -> None:
+        self.context = context or {}
         self.fail_runs = fail_runs
         self.block_runs = block_runs
         self.scenarios = scenarios
@@ -340,7 +342,9 @@ class _Session(Ostler):
         spec_dir = Path(spec)
         spec_dir.mkdir(parents=True, exist_ok=True)
         (spec_dir / "qa-okf-context.json").write_text(
-            json.dumps({"status": "passed", "obligations": [], "verificationIndex": []}),
+            json.dumps(
+                {"status": "passed", "obligations": [], "verificationIndex": [], **self.script.context}
+            ),
             encoding="utf-8",
         )
         return QaOutcome(ok=True, message=f"wrote {spec_dir}", data={"status": "passed"})
@@ -631,6 +635,40 @@ def test_one_clean_pass_spends_one_owner_turn(
     assert (okf.contexts, okf.runs, okf.vets) == (2, 1, 1)
     assert (docs / spec_dir() / "qa-evidence.json").is_file()
     assert (docs / spec_dir() / "qa" / "qa-run.ndjson").is_file()
+
+
+def test_a_passed_run_files_a_deferred_book_page_on_the_register_of_its_workspace_repo(
+    docs: Path,
+    web: Path,
+    ostler: Callable[..., _Ostler],
+    monkeypatch: pytest.MonkeyPatch,
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    """The workspace the run was started with reaches the filer, so the page is shelved under that workspace's repo."""
+    monkeypatch.setattr(regression_nodes, "_run", _Suite())
+    page = "docs/services/web/gui/screens/reports.md"
+    ostler(
+        context={
+            "servicesRoot": "docs/services",
+            "story": {"id": STORY, "externalKey": "", "slug": ""},
+            "obligations": [
+                {
+                    "node": f"{page}#export",
+                    "source": page,
+                    "required": True,
+                    "deferred": {"kind": "no-verify-declared", "detail": "the book declares no check"},
+                }
+            ],
+        }
+    )
+
+    result = drive_flow(Qa(story=STORY), env(), _Agent(docs))
+
+    assert result.status == "passed", result
+    [record] = Ostler(docs).records().records
+    assert (record.repo, record.area, record.filed_by) == ("web", "book", "qa-deferred")
+    assert record.symbols == ["web/gui/screens/reports.md"]
 
 
 FILED_BACKLOG = (

@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any
 
 from ostler import Ostler, markdown
+from ostler.path import book_prefix_in
 from workhorse.pyflow import WorkflowFailed
 from workhorse_workflows.kit import commit_paths, find_docs_root
 from workhorse_workflows.kit.workspace import resolve_workspace
@@ -29,7 +30,6 @@ from workhorse_workflows.coder.shared.schemas.qa import BacklogDrain
 
 FILED_HEADING = "## Filed by coder"
 FILED_TITLE = FILED_HEADING.lstrip("#").strip()
-BOOK_CHECKS_TITLE = "Book checks QA could not run"
 
 BLOCKED_SUFFIX_RE = re.compile(r"\s*\(blocked\b.*$", re.IGNORECASE)
 
@@ -266,8 +266,8 @@ def _filed_as(bullets: list[BacklogBullet], title: str, reason: str) -> str:
     return ""
 
 
-def _follow_up_repo(named: str, repos: Mapping[str, Any]) -> str:
-    """The workspace repository a follow-up belongs to: the one it names, else the only one, else empty."""
+def _workspace_repo(named: str, repos: Mapping[str, Any]) -> str:
+    """The workspace repository a filing belongs to: the one it names, else the only one, else empty."""
     if named in repos:
         return named
     return next(iter(repos)) if len(repos) == 1 else ""
@@ -294,7 +294,7 @@ def file_follow_up_backlog(
         if not title:
             skipped += 1
             continue
-        repo = _follow_up_repo(entry.repo.strip(), repos)
+        repo = _workspace_repo(entry.repo.strip(), repos)
         if not repo:
             logger.info(
                 "follow-up %r names no repository of the workspace (%s), so it is not filed",
@@ -382,11 +382,27 @@ def _feature_path(page: str, services: str, root: Path) -> Path:
     return path.relative_to(base) if services and path.is_relative_to(base) else path
 
 
+def _book_repo(page: str, services: str, root: Path) -> str:
+    """The repository name a book page points at: its book's prefix under *root*, else its own first path segment."""
+    base = Path(services)
+    relative = Path(os.path.relpath(base, root)) if base.is_absolute() else base
+    prefix = book_prefix_in(root, relative.as_posix()) if services else ""
+    path = Path(page)
+    placed = Path(os.path.relpath(path, root)) if path.is_absolute() else path
+    return (Path(prefix).parts or placed.parts or ("",))[0]
+
+
+def _story_id(context: object) -> str:
+    """The id of the story the QA context packet names, or empty when it names none."""
+    story = context.get("story") if isinstance(context, dict) else None
+    return str(story.get("id") or "") if isinstance(story, dict) else ""
+
+
 @blueprint.node
 def file_deferred_obligations(
-    logger: logging.Logger, spec_dir: str = "", repo_dir: str = ""
+    logger: logging.Logger, spec_dir: str = "", repo_dir: str = "", workspace: str = ""
 ) -> BacklogDrain:
-    """File each book page that owes QA a check it could not run to the backlog's own section, which the fix lane leaves alone, and commit it."""
+    """File each book page that owes QA a check it could not run as a record on the register, and commit it in the artifacts repo."""
     root = find_docs_root(repo_dir)
     spec = spec_dir.strip()
     context_path = root / spec / CONTEXT_FILE
@@ -399,24 +415,49 @@ def file_deferred_obligations(
         return BacklogDrain(notes=f"QA context unreadable: {exc}")
     pages = _deferred_pages(context) if isinstance(context, dict) else {}
     services = str(context.get("servicesRoot") or "") if isinstance(context, dict) else ""
-    backlog = root / paths.backlog_file(root)
-    filed = {b.id for b in backlog_bullets(backlog.read_text(encoding="utf-8"))} if backlog.is_file() else set()
+    source_story = _story_id(context)
     okf = Ostler(root)
-    appended = 0
+    repos = resolve_workspace(workspace, repo_dir)
+    open_by_repo: dict[str, list[Any]] = {}
+    filed_repos: list[str] = []
+    new_paths: list[Path] = []
     skipped = 0
     for page, obligations in pages.items():
-        rel = _feature_path(page, services, root)
-        item_id = kebab(f"book-checks-{rel.with_suffix('')}")
-        if item_id in filed or not okf.backlog_add(item_id, _deferred_text(page, obligations), BOOK_CHECKS_TITLE).ok:
+        rel = _feature_path(page, services, root).as_posix()
+        repo = _workspace_repo(_book_repo(page, services, root), repos)
+        if not repo:
+            logger.info(
+                "book page %r belongs to no repository of the workspace (%s), so it is not filed",
+                page, ", ".join(repos),
+            )
             skipped += 1
             continue
-        filed.add(item_id)
-        appended += 1
-    note = f"filed {appended} book page(s) with deferred checks to the backlog, skipped {skipped}"
+        if repo not in open_by_repo:
+            open_by_repo[repo] = okf.open_records(repo)
+        if any(r.filed_by == "qa-deferred" and rel in r.symbols for r in open_by_repo[repo]):
+            logger.info("book page %r already has an open record, so it is not filed again", page)
+            skipped += 1
+            continue
+        filing = okf.file_record(
+            repo=repo, area="book", pattern="add-runnable-check",
+            summary=f"Book page `{page}` gives QA no check it can run", filed_by="qa-deferred",
+            symbols=[rel], source_story=source_story, body=_deferred_text(page, obligations),
+        )
+        if filing.record is None or filing.path is None:
+            logger.info("book page %r was not filed: %s", page, filing.message)
+            skipped += 1
+            continue
+        open_by_repo[repo].append(filing.record)
+        filed_repos.append(repo)
+        new_paths.append(filing.path)
+    appended = len(new_paths)
+    note = f"filed {appended} book page(s) with deferred checks to the register, skipped {skipped}"
     logger.info(note)
     if appended:
-        message = commits.message("chore", commits.scope(root.name), "file the book checks qa could not run")
-        commit_paths(root, message, paths.backlog_file(root), verify=False)
+        artifacts = okf.register_root().parent
+        scope = commits.scope(filed_repos[0]) if len(set(filed_repos)) == 1 else ""
+        message = commits.message("chore", scope, "file the book checks qa could not run")
+        commit_paths(artifacts, message, *(str(p.relative_to(artifacts)) for p in new_paths), verify=False)
     return BacklogDrain(appended=appended, skipped=skipped, notes=note)
 
 
@@ -680,7 +721,6 @@ def _prune_directly(path: Path, bullet_id: str) -> bool:
 
 
 __all__ = [
-    "BOOK_CHECKS_TITLE",
     "BacklogBullet",
     "Seen",
     "backlog_bullets",
