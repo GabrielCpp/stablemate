@@ -16,12 +16,3 @@ class Ruling(CoderResult):
         description="Subject id to the one allowed answer that fits it. Leave a subject out "
         "when you are not sure, and the run treats it as the default answer.",
     )
-
-
-class StoryTexts(CoderResult):
-    """`done_story_texts`: each story's title and acceptance criteria, by slug."""
-
-    texts: dict[str, str] = Field(
-        default_factory=dict,
-        description="Story slug to its title and acceptance criteria lines.",
-    )

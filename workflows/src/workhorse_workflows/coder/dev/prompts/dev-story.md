@@ -279,8 +279,8 @@ stack's bring-up or its setup code, wherever that code sits. A failure is never 
 A follow-up is undone product work on this story's feature that the working slice does not
 need: a refactor, a wider surface, a polish the criteria do not ask for.{% if not follow_up_title %}
 File it in the result with a title a person can act on, and the reason the slice works without
-it. The run works each follow-up right after this story, in this same session, through a full
-dev, QA and docs cycle.{% endif %} A product call the story leaves open is neither. It is a
+it. The run files each one in the backlog under `Deferred by coder`, where a person or a later
+epic takes it up. This run does not work it.{% endif %} A product call the story leaves open is neither. It is a
 block, under Blocked.
 
 Some things read like follow-ups and are not. A defect or warning that predates this story

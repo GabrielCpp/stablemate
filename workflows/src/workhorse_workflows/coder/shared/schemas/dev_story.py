@@ -12,7 +12,7 @@ from workhorse_workflows.coder.shared.schemas.review import ReviewFinding
 
 
 class FollowUp(CoderResult):
-    """Undone product work on this story's feature that the working slice does not need, filed rather than done on the side."""
+    """Undone product work on this story's feature that the working slice does not need, filed to the backlog's `Deferred by coder` section rather than done on the side."""
 
     title: str = Field(description="What the work is, in one line a person can act on.")
     reason: str = Field(
@@ -43,8 +43,8 @@ class DevResult(PlanFields):
         "defect or warning that predates this story and that its change did not cause, a "
         "remark about docs or a story or plan file's status, and a remark about the toolchain "
         "such as commit trailers, ostler or packet attribution. Each is a run finding for "
-        "the operator, so put it in `notes`. The run files each entry right after this story "
-        "and works it through dev, QA and docs. "
+        "the operator, so put it in `notes`. The run files each entry in the backlog under "
+        "`Deferred by coder`, where no lane works it. "
         "Leave it empty when you are working a follow-up yourself: a follow-up files none "
         "of its own.",
     )

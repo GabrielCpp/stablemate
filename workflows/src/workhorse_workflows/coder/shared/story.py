@@ -9,7 +9,6 @@ from workhorse.pyflow import Workflow, WorkflowFailed
 from workhorse_workflows.kit import find_docs_root
 from workhorse_workflows.coder.shared import stubs
 from workhorse_workflows.coder.shared.blueprint import blueprint
-from workhorse_workflows.coder.shared.schemas.judge import StoryTexts
 from workhorse_workflows.coder.shared.schemas.story import SpecsStamped, StoryPaths, WorkspaceDirs
 from workhorse_workflows.kit import resolve_workspace
 
@@ -206,32 +205,7 @@ def prepare_fix_story(
     return prepare_story(logger, story=story, epic=epic, repo_dir=repo_dir)
 
 
-@blueprint.node(stub=stubs.story_texts)
-def done_story_texts(
-    logger: logging.Logger,
-    epic: str = "",
-    slugs: list[str] | None = None,
-    repo_dir: str = "",
-) -> StoryTexts:
-    """Each named story's title and acceptance criteria lines, read from its story file."""
-    docs_root = find_docs_root(repo_dir)
-    texts: dict[str, str] = {}
-    for slug in slugs or []:
-        path = okf_path.story_dir_in(docs_root, epic, slug) / "story.md"
-        try:
-            doc = markdown.split(path.read_text(encoding="utf-8"))
-        except OSError:
-            logger.info("no story file for '%s' at %s", slug, path)
-            continue
-        title = next((ln.lstrip("# ").strip() for ln in doc.body.splitlines() if ln.startswith("# ")), slug)
-        criteria = doc.find_section("Acceptance Criteria")
-        lines = [ln.strip() for ln in criteria.body.splitlines() if ln.strip()] if criteria else []
-        texts[slug] = "\n".join([title, *lines])
-    return StoryTexts(texts=texts)
-
-
 __all__ = [
-    "done_story_texts",
     "guard_story_file",
     "prepare_fix_story",
     "prepare_story",

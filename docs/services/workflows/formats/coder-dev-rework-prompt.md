@@ -6,7 +6,7 @@ title: Coder dev-rework prompt
 # Coder dev-rework prompt
 
 - file: `workflows/src/workhorse_workflows/coder/dev/prompts/dev-rework.md`
-- code: `workflows/src/workhorse_workflows/coder/dev/flow.py::Dev._sent_back` @a7c933fac1ee
+- code: `workflows/src/workhorse_workflows/coder/dev/flow.py::Dev._sent_back` @eb79b9ed3e8e
 - detail: [coder development flow](../flows/coder-dev.md)
 - detail: [coder dev-story prompt](coder-dev-story-prompt.md)
 - tests: `workflows/tests/coder/dev/test_flow.py::test_a_finding_qa_filed_in_the_parent_run_reaches_the_dev_turn`

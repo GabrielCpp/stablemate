@@ -156,19 +156,15 @@ class _Agent:
         stray: int = 0,
         also_fixed: tuple[str, ...] = (),
         follow_ups: tuple[dict[str, str], ...] = (),
-        escapes_to: str = "",
-        same_as: str = "",
         outside: dict[str, str] | None = None,
         walk: tuple[int, ...] = (1,),
         failed: tuple[str, ...] = (),
     ) -> None:
         self.workspace = workspace
-        self.same_as = same_as
         self.outside = dict(outside or {})
         self.failed = failed
         self.walk = walk
         self.follow_ups = follow_ups
-        self.escapes_to = escapes_to
         self.also_fixed = also_fixed
         self.blocked = blocked
         self.red = red
@@ -261,17 +257,13 @@ class _Agent:
     _dev_rework = _dev_story
 
     def _judge(self, data: dict[str, Any], nth: int) -> dict[str, Any]:
-        """The judge's ruling: every escape subject to `escapes_to`, every cause subject to `same_as`, each scope subject its title names in `outside`, the rest at its default."""
+        """The judge's ruling: each scope subject its title names in `outside`, the rest at its default."""
         if data["kind"] == "scope":
             subjects: dict[str, str] = json.loads(str(data["subjects"]))
             return {"answers": {
                 rid: kind for rid, text in subjects.items()
                 for title, kind in self.outside.items() if text.startswith(f"{title}:")
             }}
-        if data["kind"] == "escape" and self.escapes_to:
-            return {"answers": dict.fromkeys(json.loads(str(data["subjects"])), self.escapes_to)}
-        if data["kind"] == "cause" and self.same_as in json.loads(str(data["context"])):
-            return {"answers": dict.fromkeys(json.loads(str(data["subjects"])), self.same_as)}
         return {"answers": {}}
 
     def _resolve_operator(self, data: dict[str, Any], nth: int) -> dict[str, Any]:
@@ -404,83 +396,51 @@ def test_a_finding_qa_filed_in_the_parent_run_reaches_the_dev_turn(
     assert work.open_findings(work.worklist(parent), STORY) == [], work.worklist(parent).items()
 
 
-def _filed_run(tmp_path: Path, docs: Path, titles: tuple[str, ...]) -> Path:
-    """A run whose worklist holds the story, a finished sibling and the story's open follow-ups."""
+def _run_with_story(tmp_path: Path) -> Path:
+    """A run whose worklist holds the story alone."""
     run = tmp_path / "parent-run"
-    w = work.worklist(run)
-    entries = [{"slug": slug, "epic": EPIC, "id": slug} for slug in ("STORY-0", STORY)]
-    work.file(w, work.story_items(entries), by="launch")
-    w.settle(["STORY-0"], work.DONE, work.STORY)
-    story = work.find(w, STORY)
-    assert story is not None
-    for title in titles:
-        work.file(w, work.follow_up_items(w, story, [{"title": title, "reason": "first"}]), by="dev")
-    sibling = docs / "docs" / "epics" / EPIC / "stories" / "STORY-0"
-    sibling.mkdir(parents=True)
-    (sibling / "story.md").write_text(
-        STORY_MD.replace("STORY-1", "STORY-0"), encoding="utf-8"
-    )
+    work.file(work.worklist(run), work.story_items([{"slug": STORY, "epic": EPIC, "id": STORY}]), by="launch")
     return run
 
 
-def test_a_follow_up_the_story_already_holds_is_not_filed_again_and_a_new_one_names_its_escape(
+def _seed_backlog(
+    docs: Path,
+    write: Callable[[Path, str], Path],
+    git: Callable[..., subprocess.CompletedProcess],
+    text: str = "# Backlog\n",
+) -> Path:
+    backlog = write(docs / "docs" / "backlog.md", text)
+    git(docs, "add", "docs/backlog.md")
+    git(docs, "commit", "-qm", "seed the backlog")
+    return backlog
+
+
+def _deferred(text: str) -> str:
+    return text.partition("## Deferred by coder")[2]
+
+
+def test_a_story_turn_s_follow_up_goes_to_the_deferred_backlog_not_the_worklist(
     tmp_path: Path,
     docs: Path,
     workspace: dict[str, Path],
     env: Callable[..., RunEnv],
     drive_flow: Callable[..., Any],
+    write: Callable[[Path, str], Path],
+    git: Callable[..., subprocess.CompletedProcess],
 ) -> None:
-    """Known titles file nothing under a new reason, and a new one is filed once, tagged with the story it escaped."""
-    known = (
-        "Hide tabs/download when calculation yields zero stages",
-        "Guarantee unique report-panel names",
-    )
-    run = _filed_run(tmp_path, docs, known)
+    """A follow-up the story turn reports lands under `Deferred by coder` and adds no follow-up item to the run."""
+    run = _run_with_story(tmp_path)
+    backlog = _seed_backlog(docs, write, git)
     agent = _Agent(
-        workspace,
-        follow_ups=(
-            {"title": "Hide tabs and download when calculation yields zero stages", "reason": "again"},
-            {"title": "Guarantee unique report panel names", "reason": "reworded"},
-            {"title": "Paginate the audit log", "reason": "new"},
-        ),
-        escapes_to="STORY-0",
+        workspace, follow_ups=({"title": "Paginate the audit log", "reason": "it loads every row"},)
     )
-    dev = Dev(story=STORY, epic=EPIC, worklist_dir=str(run))
 
-    drive_flow(dev, env(), agent)
+    drive_flow(Dev(story=STORY, epic=EPIC, worklist_dir=str(run)), env(), agent)
 
-    filed = work.worklist(run).items(work.FOLLOW_UP)
-    assert len(filed) == 3, [it.payload["title"] for it in filed]
-    (fresh,) = [it for it in filed if it.payload["title"].startswith("Paginate")]
-    assert fresh.payload["escaped_from"] == "STORY-0", fresh
-    assert [it.id for it in work.escapes(work.worklist(run), "STORY-0")] == [fresh.id]
-
-
-def test_a_follow_up_the_story_already_did_is_dropped_and_logged_as_done(
-    tmp_path: Path,
-    docs: Path,
-    workspace: dict[str, Path],
-    env: Callable[..., RunEnv],
-    drive_flow: Callable[..., Any],
-    caplog: pytest.LogCaptureFixture,
-) -> None:
-    """A follow-up that restates one the story already finished is not filed a second time."""
-    run = _filed_run(tmp_path, docs, ("Guarantee unique report-panel names",))
-    (done,) = work.worklist(run).items(work.FOLLOW_UP)
-    work.worklist(run).settle([done.id], work.DONE, work.FOLLOW_UP)
-    agent = _Agent(
-        workspace,
-        follow_ups=({"title": "Guarantee unique report panel names", "reason": "reworded"},),
-    )
-    dev = Dev(story=STORY, epic=EPIC, worklist_dir=str(run))
-
-    with caplog.at_level("INFO"):
-        drive_flow(dev, env(), agent)
-
-    assert [it.id for it in work.worklist(run).items(work.FOLLOW_UP)] == [done.id]
-    assert any(f"already done as {done.id}" in r.getMessage() for r in caplog.records), [
-        r.getMessage() for r in caplog.records
-    ]
+    text = backlog.read_text(encoding="utf-8")
+    assert "Paginate the audit log: it loads every row" in _deferred(text), text
+    assert "## Filed by coder" not in text, text
+    assert work.worklist(run).items(work.FOLLOW_UP) == []
 
 
 @pytest.mark.parametrize(
@@ -505,12 +465,15 @@ def test_a_follow_up_that_is_no_product_work_is_not_filed(
     workspace: dict[str, Path],
     env: Callable[..., RunEnv],
     drive_flow: Callable[..., Any],
+    write: Callable[[Path, str], Path],
+    git: Callable[..., subprocess.CompletedProcess],
     caplog: pytest.LogCaptureFixture,
     entry: dict[str, str],
     kind: str,
 ) -> None:
-    """The judge reads the follow-up's own reason, and one it calls no product work never reaches the worklist."""
-    run = _filed_run(tmp_path, docs, ())
+    """The judge reads the follow-up's own reason, and one it calls no product work never reaches the backlog."""
+    run = _run_with_story(tmp_path)
+    backlog = _seed_backlog(docs, write, git)
     product = {"title": "Paginate the audit log", "reason": "it loads every row"}
     agent = _Agent(workspace, follow_ups=(entry, product), outside={entry["title"]: kind})
     dev = Dev(story=STORY, epic=EPIC, worklist_dir=str(run))
@@ -518,8 +481,10 @@ def test_a_follow_up_that_is_no_product_work_is_not_filed(
     with caplog.at_level("INFO"):
         drive_flow(dev, env(), agent)
 
-    filed = work.worklist(run).items(work.FOLLOW_UP)
-    assert [it.payload["title"] for it in filed] == [product["title"]]
+    text = backlog.read_text(encoding="utf-8")
+    assert product["title"] in _deferred(text), text
+    assert entry["title"] not in text, text
+    assert work.worklist(run).items(work.FOLLOW_UP) == []
     (scope,) = [a for a in agent.args_for("judge") if a["kind"] == "scope"]
     assert entry["reason"] in str(scope["subjects"])
     assert any(
@@ -534,7 +499,7 @@ FILED_BACKLOG = (
 )
 
 
-def test_a_follow_up_that_restates_an_open_backlog_bullet_files_no_line(
+def test_a_follow_up_that_cites_an_open_backlog_bullet_files_no_line(
     docs: Path,
     workspace: dict[str, Path],
     env: Callable[..., RunEnv],
@@ -542,24 +507,23 @@ def test_a_follow_up_that_restates_an_open_backlog_bullet_files_no_line(
     write: Callable[[Path, str], Path],
     git: Callable[..., subprocess.CompletedProcess],
 ) -> None:
-    """A follow-up the judge reads as an open bullet under a new title adds nothing to the backlog."""
-    backlog = write(docs / "docs" / "backlog.md", FILED_BACKLOG)
-    git(docs, "add", "docs/backlog.md")
-    git(docs, "commit", "-qm", "seed the backlog")
+    """A follow-up whose reason cites an open bullet by id adds nothing to the backlog."""
+    backlog = _seed_backlog(docs, write, git, FILED_BACKLOG)
     agent = _Agent(
         workspace,
-        follow_ups=({"title": "Drop cached snapshots when the user logs out", "reason": "privacy"},),
-        same_as="clear-report-snapshots",
+        follow_ups=(
+            {"title": "Drop cached snapshots when the user logs out", "reason": "see [clear-report-snapshots]"},
+        ),
     )
 
     result = drive_flow(_dev(docs), env(), agent)
 
     assert result.status == "ready", result
-    assert [a["kind"] for a in agent.args_for("judge")] == ["scope", "cause"], agent.counts()
+    assert [a["kind"] for a in agent.args_for("judge")] == ["scope"], agent.counts()
     assert backlog.read_text(encoding="utf-8") == FILED_BACKLOG
 
 
-def test_a_follow_up_no_open_bullet_holds_is_filed(
+def test_a_follow_up_no_open_bullet_holds_is_filed_apart_from_the_filed_section(
     docs: Path,
     workspace: dict[str, Path],
     env: Callable[..., RunEnv],
@@ -567,17 +531,17 @@ def test_a_follow_up_no_open_bullet_holds_is_filed(
     write: Callable[[Path, str], Path],
     git: Callable[..., subprocess.CompletedProcess],
 ) -> None:
-    """A follow-up the judge reads as new lands under `Filed by coder` beside the open bullet."""
-    backlog = write(docs / "docs" / "backlog.md", FILED_BACKLOG)
-    git(docs, "add", "docs/backlog.md")
-    git(docs, "commit", "-qm", "seed the backlog")
+    """A new follow-up lands under `Deferred by coder`, and the `Filed by coder` section keeps only its own bullet."""
+    backlog = _seed_backlog(docs, write, git, FILED_BACKLOG)
     agent = _Agent(
         workspace, follow_ups=({"title": "Paginate the audit log", "reason": "it loads every row"},)
     )
 
     drive_flow(_dev(docs), env(), agent)
 
-    assert "Paginate the audit log: it loads every row" in backlog.read_text(encoding="utf-8")
+    text = backlog.read_text(encoding="utf-8")
+    assert "Paginate the audit log: it loads every row" in _deferred(text), text
+    assert "Paginate" not in text.partition("## Deferred by coder")[0], text
 
 
 def test_a_blocked_turn_in_human_mode_parks_and_resumes_with_the_answer(

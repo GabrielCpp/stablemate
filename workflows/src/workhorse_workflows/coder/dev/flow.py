@@ -17,7 +17,7 @@ from workhorse_workflows.coder.dev.report import (
     walk_text,
 )
 from workhorse_workflows.coder.shared import causes, paths, roles, work
-from workhorse_workflows.coder.shared.backlog import file_follow_up_backlog, filed_backlog, unfiled
+from workhorse_workflows.coder.shared.backlog import file_follow_up_backlog
 from workhorse_workflows.coder.shared.branches import branch_code_repos
 from workhorse_workflows.coder.shared.conversation import story_chain
 from workhorse_workflows.coder.shared.dev import check_story_status, read_operator_context
@@ -60,7 +60,6 @@ from workhorse_workflows.coder.shared.stack import (
     stack_target,
 )
 from workhorse_workflows.coder.shared.story import (
-    done_story_texts,
     guard_story_file,
     prepare_story,
     resolve_workspace_dirs,
@@ -230,52 +229,7 @@ class Dev(Workflow):
         )
         if not entries:
             return
-        w = self._worklist
-        item = work.find(w, self._work_id)
-        if item is None or item.kind == work.FOLLOW_UP:
-            filed = self.call(filed_backlog).filed
-            keep = set(unfiled(self._judge("low"), self.logger, _reports(entries), filed))
-            fresh = [entry for i, entry in enumerate(entries) if str(i) in keep]
-            if fresh:
-                self.call(
-                    file_follow_up_backlog, parent=self._work_id, follow_ups=fresh
-                )
-            return
-        judge = self._judge()
-        done = causes.done_causes(w, item.id)
-        same = causes.same_causes(
-            judge,
-            {str(i): entry["title"] for i, entry in enumerate(entries)},
-            causes.open_causes(w, item.id) | done,
-        )
-        fresh = [entry for i, entry in enumerate(entries) if same[str(i)] == causes.NEW]
-        for i, entry in enumerate(entries):
-            hit = same[str(i)]
-            if hit != causes.NEW:
-                self.logger.info(
-                    "dropped follow-up %r: already %s as %s",
-                    entry["title"],
-                    "done" if hit in done else "filed",
-                    hit,
-                )
-        if not fresh:
-            return
-        escaped = causes.escaped_from(
-            judge,
-            {str(i): f"{e['title']}\n{e['reason']}" for i, e in enumerate(fresh)},
-            self._committed_stories(w, item),
-        )
-        tagged = [
-            {**entry, "escaped_from": escaped[str(i)]} for i, entry in enumerate(fresh)
-        ]
-        made = [it for it in work.follow_up_items(w, item, tagged) if work.find(w, it.id) is None]
-        filed = work.file(w, made, by="dev")
-        self.logger.info("filed %d follow-up(s) after %s", len(filed), item.id)
-        for it in filed:
-            if it.payload.get("escaped_from"):
-                self.logger.info(
-                    "escape: %s found after %s committed", it.id, it.payload["escaped_from"]
-                )
+        self.call(file_follow_up_backlog, parent=self._work_id, follow_ups=entries)
 
     def _product_work(self, entries: list[dict[str, str]]) -> list[dict[str, str]]:
         """The entries the judge reads as product work; each other one is logged for the operator with what it is instead."""
@@ -284,18 +238,6 @@ class Dev(Workflow):
         for rid, kind in outside.items():
             self.logger.info("[%s] %r is no product work, so it is not filed", kind, reports[rid])
         return [entry for i, entry in enumerate(entries) if str(i) not in outside]
-
-    def _committed_stories(self, w: wl.WorkList, item: wl.WorkItem) -> dict[str, str]:
-        """The title and acceptance criteria of the epic's other finished stories, by slug."""
-        slugs = [
-            it.id for it in w.items(work.STORY)
-            if it.status == work.DONE and it.id != item.id
-            and it.payload.get("epic") == item.payload.get("epic")
-        ]
-        if not slugs:
-            return {}
-        epic = str(item.payload.get("epic") or "")
-        return dict(self.call(done_story_texts, epic, slugs).texts)
 
     def _judge(self, power: str = "medium") -> Judge:
         """The one judge this flow asks: the word rule first, then one reading of what it left."""

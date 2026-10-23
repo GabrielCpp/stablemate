@@ -46,7 +46,7 @@ from workhorse_workflows.coder.shared.schemas.genesis import (
     Skeleton,
     TargetClassification,
 )
-from workhorse_workflows.coder.shared.schemas.judge import Ruling, StoryTexts
+from workhorse_workflows.coder.shared.schemas.judge import Ruling
 from workhorse_workflows.coder.shared.schemas.okf import OkfContextResult
 from workhorse_workflows.coder.shared.schemas.pr import (
     MergeFixResult,
@@ -152,7 +152,6 @@ __all__ = [
     "StoryCommitted",
     "StoryPaths",
     "StoryStamped",
-    "StoryTexts",
     "TargetClassification",
     "WorkspaceDirs",
     "WorktreeCleanliness",

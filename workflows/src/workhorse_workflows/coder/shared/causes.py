@@ -25,7 +25,6 @@ from workhorse_workflows.coder.shared.judge import (
 
 STOP_WORDS = frozenset({"a", "an", "and", "the", "of", "to", "for", "in", "on", "when", "with", "or"})
 NEW = "new"
-NONE = "none"
 PRODUCT = "product"
 PRE_EXISTING = "pre-existing"
 BOOKKEEPING = "bookkeeping"
@@ -90,28 +89,6 @@ def same_causes(judge: Judge, reports: Mapping[str, str], causes: Mapping[str, s
     return {rid: answer_of(question, ruling, rid) for rid in reports}
 
 
-def escape_question(reports: Mapping[str, str], stories: Mapping[str, str]) -> Question:
-    """Which committed story's acceptance criteria does each defect break, or none."""
-    return Question(
-        kind="escape",
-        ask="Which already committed story's acceptance criteria does each defect break?",
-        subjects=dict(reports),
-        context=dict(stories),
-        answers=(*stories, NONE),
-        default=NONE,
-    )
-
-
-def escaped_from(judge: Judge, reports: Mapping[str, str], stories: Mapping[str, str]) -> dict[str, str]:
-    """Each report id to the committed story it escaped from, or an empty string."""
-    if not reports or not stories:
-        return {rid: "" for rid in reports}
-    question = escape_question(reports, stories)
-    ruling = judge.rule(question)
-    found = {rid: answer_of(question, ruling, rid) for rid in reports}
-    return {rid: "" if slug == NONE else slug for rid, slug in found.items()}
-
-
 def scope_question(reports: Mapping[str, str]) -> Question:
     """Whether each proposed follow-up is product work for the story, or something that only reads like work."""
     return Question(
@@ -140,26 +117,6 @@ def not_product(judge: Judge, reports: Mapping[str, str]) -> dict[str, str]:
     ruling = judge.rule(question)
     found = {rid: answer_of(question, ruling, rid) for rid in reports}
     return {rid: kind for rid, kind in found.items() if kind != PRODUCT}
-
-
-def open_causes(w: wl.WorkList, story: str) -> dict[str, str]:
-    """The text of every cause still open under `story`: its pending or active follow-ups and its open findings."""
-    causes = {
-        it.id: str(it.payload.get("title") or "")
-        for it in w.items(work.FOLLOW_UP)
-        if it.payload.get("parent") == story and it.status in (work.PENDING, work.ACTIVE)
-    }
-    causes |= {it.id: str(it.payload.get("issue") or "") for it in work.open_findings(w, story)}
-    return causes
-
-
-def done_causes(w: wl.WorkList, story: str) -> dict[str, str]:
-    """The title of every follow-up `story` has already done."""
-    return {
-        it.id: str(it.payload.get("title") or "")
-        for it in w.items(work.FOLLOW_UP)
-        if it.payload.get("parent") == story and it.status == work.DONE
-    }
 
 
 def file_findings(
@@ -333,20 +290,15 @@ def own(
 __all__ = [
     "BOOKKEEPING",
     "NEW",
-    "NONE",
     "PRE_EXISTING",
     "PRODUCT",
     "cause_judge",
     "cause_question",
     "cause_rule",
     "consolidate",
-    "done_causes",
-    "escape_question",
-    "escaped_from",
     "file_findings",
     "first_sentence",
     "not_product",
-    "open_causes",
     "own",
     "same_causes",
     "scope_question",

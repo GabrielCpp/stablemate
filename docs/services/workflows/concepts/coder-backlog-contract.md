@@ -8,7 +8,7 @@ title: Coder backlog contract
 The coder backlog is a parsed worklist shared by the filing adapter and the standalone fix
 drain. Filing accepts item records from a story's `backlog-items.json`, normalizes their ids,
 deduplicates by exact id, id-token set, or normalized description, and appends new bullets to
-the configured backlog. The fix drain reads only `## Filed by coder`, selects the first
+the configured backlog. A dev turn's follow-ups are filed under `## Deferred by coder`, which no lane drains. The fix drain reads only `## Filed by coder`, selects the first
 unblocked bullet, turns it into one authored story in the `fixes` epic, and settles it by removing the shipped bullet. A bullet already annotated as blocked is skipped by later draws.
 
 The parser is the boundary for all backlog edits: selection and the direct prune
@@ -16,12 +16,12 @@ fallback use the same `ostler.markdown` bullet locations, so fenced examples and
 not mistaken for work items. Story creation is idempotent by the selected bullet id; an existing
 story that covers that id is re-authored only in empty sections and reused.
 
-- code: `workflows/src/workhorse_workflows/coder/shared/backlog.py::backlog_bullets` @ba875f0a3f84
-- code: `workflows/src/workhorse_workflows/coder/shared/backlog.py::file_backlog_items` @ba875f0a3f84
-- code: `workflows/src/workhorse_workflows/coder/shared/backlog.py::file_follow_up_backlog` @ba875f0a3f84
-- code: `workflows/src/workhorse_workflows/coder/shared/backlog.py::select_fix_item` @ba875f0a3f84
-- code: `workflows/src/workhorse_workflows/coder/shared/backlog.py::seed_fix_story` @ba875f0a3f84
-- code: `workflows/src/workhorse_workflows/coder/shared/backlog.py::prune_fix_item` @ba875f0a3f84
+- code: `workflows/src/workhorse_workflows/coder/shared/backlog.py::backlog_bullets` @1d2199bc80bd
+- code: `workflows/src/workhorse_workflows/coder/shared/backlog.py::file_backlog_items` @1d2199bc80bd
+- code: `workflows/src/workhorse_workflows/coder/shared/backlog.py::file_follow_up_backlog` @1d2199bc80bd
+- code: `workflows/src/workhorse_workflows/coder/shared/backlog.py::select_fix_item` @1d2199bc80bd
+- code: `workflows/src/workhorse_workflows/coder/shared/backlog.py::seed_fix_story` @1d2199bc80bd
+- code: `workflows/src/workhorse_workflows/coder/shared/backlog.py::prune_fix_item` @1d2199bc80bd
 - tests: `workflows/tests/coder/fix/test_flow.py::test_one_item_is_seeded_fixed_checked_pruned_and_committed`
 
 ## Fields
@@ -62,7 +62,7 @@ story that covers that id is re-authored only in empty sections and reused.
 - does: returns true when the bullet text contains the case-insensitive `(blocked` marker
 - returns: boolean indicating whether future fix selection must skip this bullet
 - verify: count(subject="blocked backlog detection", equals=1)
-- code: `workflows/src/workhorse_workflows/coder/shared/backlog.py::BacklogBullet.blocked` @ba875f0a3f84
+- code: `workflows/src/workhorse_workflows/coder/shared/backlog.py::BacklogBullet.blocked` @1d2199bc80bd
 
 ### backlog_bullets
 
@@ -75,7 +75,7 @@ story that covers that id is re-authored only in empty sections and reused.
 - verify: count(subject="filtered backlog bullets", equals=1)
 - returns: `BacklogBullet` records with file-absolute zero-based line locations
 - verify: count(subject="backlog bullet records", equals=1)
-- code: `workflows/src/workhorse_workflows/coder/shared/backlog.py::backlog_bullets` @ba875f0a3f84
+- code: `workflows/src/workhorse_workflows/coder/shared/backlog.py::backlog_bullets` @1d2199bc80bd
 
 ### Seen.add
 
@@ -83,7 +83,7 @@ story that covers that id is re-authored only in empty sections and reused.
 - does: records a non-empty id, its order-insensitive token set, and a non-empty normalized description for later duplicate checks
 - returns: no value
 - verify: count(subject="recorded backlog duplicate keys", equals=1)
-- code: `workflows/src/workhorse_workflows/coder/shared/backlog.py::Seen.add` @ba875f0a3f84
+- code: `workflows/src/workhorse_workflows/coder/shared/backlog.py::Seen.add` @1d2199bc80bd
 
 ### Seen.duplicate
 
@@ -92,7 +92,7 @@ story that covers that id is re-authored only in empty sections and reused.
 - verify: count(subject="backlog duplicate decisions", equals=1)
 - returns: false for an item with no matching identity signal
 - verify: count(subject="backlog duplicate misses", equals=1)
-- code: `workflows/src/workhorse_workflows/coder/shared/backlog.py::Seen.duplicate` @ba875f0a3f84
+- code: `workflows/src/workhorse_workflows/coder/shared/backlog.py::Seen.duplicate` @1d2199bc80bd
 
 ### kebab
 
@@ -100,7 +100,7 @@ story that covers that id is re-authored only in empty sections and reused.
 - does: lowercases the supplied value, replaces runs of non-alphanumeric/dot/underscore/hyphen characters with hyphens, and trims edge hyphens
 - returns: stable sanitized backlog id
 - verify: count(subject="sanitized backlog ids", equals=1)
-- code: `workflows/src/workhorse_workflows/coder/shared/backlog.py::kebab` @ba875f0a3f84
+- code: `workflows/src/workhorse_workflows/coder/shared/backlog.py::kebab` @1d2199bc80bd
 
 ### norm_desc
 
@@ -108,7 +108,7 @@ story that covers that id is re-authored only in empty sections and reused.
 - does: removes a trailing blocked annotation, lowercases the description, replaces non-alphanumeric runs with spaces, and trims whitespace
 - returns: normalized description key, or an empty string when no identity text remains
 - verify: count(subject="normalized backlog descriptions", equals=1)
-- code: `workflows/src/workhorse_workflows/coder/shared/backlog.py::norm_desc` @ba875f0a3f84
+- code: `workflows/src/workhorse_workflows/coder/shared/backlog.py::norm_desc` @1d2199bc80bd
 
 ### id_token_set
 
@@ -117,7 +117,7 @@ story that covers that id is re-authored only in empty sections and reused.
 - verify: count(subject="split backlog id token sets", equals=1)
 - returns: order-insensitive token set used by duplicate detection
 - verify: count(subject="returned backlog id token sets", equals=1)
-- code: `workflows/src/workhorse_workflows/coder/shared/backlog.py::id_token_set` @ba875f0a3f84
+- code: `workflows/src/workhorse_workflows/coder/shared/backlog.py::id_token_set` @1d2199bc80bd
 
 ### file_backlog_items
 
@@ -148,7 +148,7 @@ story that covers that id is re-authored only in empty sections and reused.
 - verify: json_path(path="$.skipped", equals=1)
 - returns: `BacklogDrain.notes` reporting the appended count, skipped count, and items-file removal outcome
 - verify: json_path(path="$.notes", matches="^filed [0-9]+, skipped [0-9]+ \\(duplicate/invalid\\); (removed backlog-items\\.json|backlog-items\\.json left in place)$")
-- code: `workflows/src/workhorse_workflows/coder/shared/backlog.py::file_backlog_items` @ba875f0a3f84
+- code: `workflows/src/workhorse_workflows/coder/shared/backlog.py::file_backlog_items` @1d2199bc80bd
 
 ### file_follow_up_backlog
 
@@ -157,13 +157,13 @@ story that covers that id is re-authored only in empty sections and reused.
 - verify: count(subject="skipped untitled follow-ups", equals=1)
 - does: skips an entry that cites a backlog id in brackets, whose id tokens differ from the title's by at most one word, or whose title matches a bullet heading
 - verify: count(subject="skipped follow-ups already in the backlog", equals=1)
-- does: appends every other entry under `## Filed by coder` with an id built from the parent and a short hash of the title and reason
+- does: appends every other entry under `## Deferred by coder`, which no lane drains, with an id built from the parent and a short hash of the title and reason
 - verify: count(subject="appended follow-up bullets", equals=1)
 - does: commits only the backlog path, bypassing the repository hooks, when at least one entry was appended
 - verify: count(subject="follow-up backlog commits", equals=1)
 - returns: a `BacklogDrain` counting appended and skipped entries
 - verify: json_path(path="$.appended", equals=1)
-- code: `workflows/src/workhorse_workflows/coder/shared/backlog.py::file_follow_up_backlog` @ba875f0a3f84
+- code: `workflows/src/workhorse_workflows/coder/shared/backlog.py::file_follow_up_backlog` @1d2199bc80bd
 - tests: `workflows/tests/coder/shared/test_follow_up_backlog.py::test_the_filed_follow_ups_are_committed_and_leave_the_tree_clean`
 - tests: `workflows/tests/coder/shared/test_follow_up_backlog.py::test_a_follow_up_that_cites_a_backlog_item_is_not_filed_again`
 
@@ -178,7 +178,7 @@ story that covers that id is re-authored only in empty sections and reused.
 - verify: count(subject="dry backlog selections", equals=1)
 - returns: `FixPick` containing the selected id and text, or a reason with no fix
 - verify: count(subject="fix selection results", equals=1)
-- code: `workflows/src/workhorse_workflows/coder/shared/backlog.py::select_fix_item` @ba875f0a3f84
+- code: `workflows/src/workhorse_workflows/coder/shared/backlog.py::select_fix_item` @1d2199bc80bd
 
 ### seed_fix_story
 
@@ -194,7 +194,7 @@ story that covers that id is re-authored only in empty sections and reused.
 - verify: count(subject="invalid fix story seed failures", equals=1)
 - returns: `FixStorySeed` with the epic, story paths, bullet identity, and reuse/creation reason
 - verify: count(subject="seeded fix stories", equals=1)
-- code: `workflows/src/workhorse_workflows/coder/shared/backlog.py::seed_fix_story` @ba875f0a3f84
+- code: `workflows/src/workhorse_workflows/coder/shared/backlog.py::seed_fix_story` @1d2199bc80bd
 - tests: `workflows/tests/coder/fix/test_flow.py::test_one_item_is_seeded_fixed_checked_pruned_and_committed`
 
 ### prune_fix_item
@@ -206,5 +206,5 @@ story that covers that id is re-authored only in empty sections and reused.
 - verify: count(subject="scoped backlog prune commits", equals=1)
 - returns: `FixPruned` marked true for a removed bullet and false when no id or matching bullet exists
 - verify: count(subject="backlog prune results", equals=1)
-- code: `workflows/src/workhorse_workflows/coder/shared/backlog.py::prune_fix_item` @ba875f0a3f84
+- code: `workflows/src/workhorse_workflows/coder/shared/backlog.py::prune_fix_item` @1d2199bc80bd
 - tests: `workflows/tests/coder/fix/test_flow.py::test_one_item_is_seeded_fixed_checked_pruned_and_committed`

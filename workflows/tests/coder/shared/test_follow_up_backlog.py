@@ -38,7 +38,7 @@ def test_the_filed_follow_ups_are_committed_and_leave_the_tree_clean(
     assert drained.appended == 1, drained
     assert "Clear the cache on sign-out" in (repo / "docs" / "backlog.md").read_text(encoding="utf-8")
     subject = git(repo, "log", "-1", "--format=%s").stdout.strip()
-    assert subject == "chore(acme): file the follow-ups of acme-story", subject
+    assert subject == "chore(acme): file the deferred follow-ups of acme-story", subject
     assert check_repos_clean(logger, story_slug="acme-story", repo_dir=str(repo)).clean is True
 
 
@@ -186,7 +186,7 @@ def test_a_bookkeeping_commit_is_not_refused_by_the_repository_hooks(
     assert drained.appended == 1, drained
     assert pruned.pruned is True, pruned
     subjects = git(repo, "log", "--format=%s").stdout.splitlines()
-    assert subjects[:2] == ["chore(acme): drop shipped fix acme-cache", "chore(acme): file the follow-ups of acme-story"], subjects
+    assert subjects[:2] == ["chore(acme): drop shipped fix acme-cache", "chore(acme): file the deferred follow-ups of acme-story"], subjects
     assert check_repos_clean(logger, story_slug="acme-story", repo_dir=str(repo)).clean is True
 
 

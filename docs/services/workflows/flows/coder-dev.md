@@ -61,8 +61,8 @@ until QA has filed a finding against the work item, and `dev-rework` from then o
 story identity, the spec directory, the worklist and answers file paths, a resume note read from
 disk, the review prefix for this round, the open findings, the last gate report and the last
 operator answer. The turn plans, builds, reviews, fixes and commits through its own subagents.
-The flow stamps the spec files the turn wrote. Follow-ups the turn reports are filed in the work
-list after the story, or in the backlog when the turn was itself a follow-up. Findings the review
+The flow stamps the spec files the turn wrote. Follow-ups the turn reports are filed in the backlog
+under `Deferred by coder`, which no lane drains. Findings the review
 reports are filed in the work list under the review prefix. A result of `blocked` goes to the
 operator-block step.
 

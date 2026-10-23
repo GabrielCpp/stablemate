@@ -28,6 +28,7 @@ from workhorse_workflows.coder.shared.schemas.qa import BacklogDrain
 
 FILED_HEADING = "## Filed by coder"
 FILED_TITLE = FILED_HEADING.lstrip("#").strip()
+DEFERRED_TITLE = "Deferred by coder"
 BOOK_CHECKS_TITLE = "Book checks QA could not run"
 
 BLOCKED_SUFFIX_RE = re.compile(r"\s*\(blocked\b.*$", re.IGNORECASE)
@@ -272,7 +273,7 @@ def file_follow_up_backlog(
     follow_ups: list[dict[str, str]] | None = None,
     repo_dir: str = "",
 ) -> BacklogDrain:
-    """File a follow-up's own follow-ups to the repo backlog, one level past the run's worklist, and commit them."""
+    """File a dev turn's follow-ups to the backlog's `Deferred by coder` section, which no lane drains, and commit them."""
     root = find_docs_root(repo_dir)
     okf = Ostler(root)
     backlog = root / paths.backlog_file(root)
@@ -293,7 +294,7 @@ def file_follow_up_backlog(
         key = hashlib.sha256(f"{title}\n{reason}".encode()).hexdigest()[:8]
         item_id = kebab(f"{parent}-{key}")
         text = " ".join(f"{title}: {reason}".split()) if reason else " ".join(title.split())
-        if okf.backlog_add(item_id, text, FILED_TITLE).ok:
+        if okf.backlog_add(item_id, text, DEFERRED_TITLE).ok:
             appended += 1
             bullets.append(BacklogBullet(0, item_id, text))
         else:
@@ -301,7 +302,7 @@ def file_follow_up_backlog(
     note = f"filed {appended} follow-up(s) of {parent} to the backlog, skipped {skipped}"
     logger.info(note)
     if appended:
-        message = commits.message("chore", commits.scope(root.name), f"file the follow-ups of {parent}")
+        message = commits.message("chore", commits.scope(root.name), f"file the deferred follow-ups of {parent}")
         commit_paths(root, message, paths.backlog_file(root), verify=False)
     return BacklogDrain(appended=appended, skipped=skipped, notes=note)
 
@@ -649,6 +650,7 @@ def _prune_directly(path: Path, bullet_id: str) -> bool:
 
 __all__ = [
     "BOOK_CHECKS_TITLE",
+    "DEFERRED_TITLE",
     "BacklogBullet",
     "Seen",
     "backlog_bullets",
