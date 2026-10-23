@@ -284,6 +284,15 @@ SOLID, one question each:
 
 Revision log:
 
+- Build, slice 6. Section 2, Pick: a story-lane pick names a record by id or short handle,
+  and only an open record can be picked. Free text is no longer a pick. A person files it
+  first, then picks the record. The seed is the record's summary then its body, its meta
+  key is `sourceRecord` holding the id, and the story slug comes from the summary alone.
+  Closure writes `promoted` with the reason `promoted to story <slug> in epic <epic>`. A
+  resume finds the story that already covers the record and closes nothing twice. The
+  epic-edit planner reads the open listing of every repository inside its prompt, under a
+  header line, and the text `no open records` when there is none. Ostler's seed grammar
+  gains the `sourceRecord` key beside `sourceBullet`, which goes with the bullet grammar.
 - Build, slice 5. Section 2, Decision: a cluster's evidence is its records that no decision
   binds yet, and the Threshold counts those. So a second review of the same register
   proposes nothing twice. A Back-link rewrites only the record's `decision` field and does
