@@ -8,6 +8,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from ostler import adr as adr_mod
 from ostler import backlog as backlog_mod
 from ostler import book_reach
 from ostler import coverage as coverage_mod
@@ -361,6 +362,22 @@ class Ostler:
         )
         self._graph = None
         return filing
+
+    def propose_decision(
+        self,
+        *,
+        title: str,
+        context: str,
+        decision: str,
+        consequences: str,
+        evidence: Iterable[str],
+        prefix: str | None = None,
+    ) -> Result:
+        """Propose a decision from *evidence* records, bind them to it and commit all of it in the artifacts repo."""
+        return self._apply(adr_mod.propose(
+            self._fresh(), title=title, context=context, decision=decision,
+            consequences=consequences, evidence=evidence, prefix=prefix,
+        ))
 
     def doctor(self, *, epic: str | None = None, check_schema: bool = True) -> QaOutcome:
         """The referential-integrity check (``ostler doctor``); ``data`` is the report dict."""

@@ -81,6 +81,16 @@ def register_root(graph: Graph) -> Path:
     return graph.doc_roots["register"]
 
 
+def adr_root_in(root: Path) -> Path:
+    """Where the decision records live for *root*: ``adr/`` in the artifacts dir, beside the Register's shelf."""
+    return doc_root_in(root, "adr")
+
+
+def adr_root(graph: Graph) -> Path:
+    """Where the decision records live for this graph."""
+    return graph.doc_roots.get("adr") or register_root(graph).parent / "adr"
+
+
 def epics_index_in(root: Path) -> Path:
     """The epic queue, ``index.md`` in the epics root — its front entry is the current epic."""
     return epics_root_in(root) / "index.md"

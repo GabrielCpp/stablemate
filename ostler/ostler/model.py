@@ -661,6 +661,7 @@ def doc_roots(root: Path, kinds: Sequence[dynamic_registry.TemplateKind] | None 
     roots = {key: root / default for key, default in BUILTIN_DOC_ROOTS.items()}
     roots["specs"] = core_config.resolve_artifacts_dir() / "specs"
     roots["register"] = core_config.resolve_artifacts_dir() / "backlog"
+    roots["adr"] = core_config.resolve_artifacts_dir() / "adr"
     for kind in (dynamic_registry.load_kinds(root) if kinds is None else kinds):
         roots.setdefault(kind.doc_root, root / kind.default_path)
     return roots

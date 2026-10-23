@@ -153,8 +153,14 @@ def shelf_ids(graph: Graph) -> list[str]:
     return sorted(p.parent.name for p in shelf.glob("*/*/*/record.md"))
 
 
+def decision_files(graph: Graph) -> list[Path]:
+    """Every decision file in the artifacts dir's ``adr/`` folder, in path order."""
+    folder = path_mod.adr_root(graph)
+    return sorted(folder.glob("*.md")) if folder.is_dir() else []
+
+
 def claimed(graph: Graph) -> set[str]:
-    """The ids that things hold as their own: epics, seeds, stories, milestones, features and the Register's records."""
+    """The ids that things hold as their own: epics, seeds, stories, milestones, features, the Register's records and decisions."""
     out: set[str] = set()
     for epic in graph.epics:
         out.add(epic.eid)
@@ -163,6 +169,7 @@ def claimed(graph: Graph) -> set[str]:
     out.update(m.eid for m in graph.milestones)
     out.update(str(f.data.get("id") or "") for f in graph.features)
     out.update(shelf_ids(graph))
+    out.update(p.stem for p in decision_files(graph))
     out.discard("")
     return out
 

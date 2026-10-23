@@ -231,6 +231,17 @@ def close(graph: Graph, token: str, status: Status, reason: str) -> Result:
     return Result(True, f"closed record '{current.id}' as {status}", [target], entity_id=current.id)
 
 
+def bind(target: Path, decision_id: str) -> None:
+    """Write *decision_id* into the record file at *target*, rewriting only its ``decision`` field; the record stays open."""
+    text = target.read_text(encoding="utf-8")
+    head = _FRONTMATTER.match(text)
+    front = markdown.split(text).frontmatter
+    if head is None or front is None:
+        raise ValueError(f"{target} has no frontmatter")
+    front = {**front, "decision": decision_id}
+    target.write_text(f"---\n{crud.dump_frontmatter(front)}---\n{text[head.end():]}", encoding="utf-8")
+
+
 def close_and_commit(graph: Graph, token: str, status: Status, reason: str) -> Result:
     """:func:`close` a record and commit it in the artifacts repo; a close whose commit fails leaves the old text."""
     folder = locate(graph, token)
