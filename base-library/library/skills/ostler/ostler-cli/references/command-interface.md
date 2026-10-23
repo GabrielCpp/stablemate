@@ -76,7 +76,9 @@ ostler seed remove <epic> <id>
 ostler set-status  <story> <status>
 ostler conflict    <story> <text> | ostler conflict <story> --clear
 
-ostler backlog add <id> <text> [--section S] | ostler backlog prune <id> | ostler backlog list [--json]
+ostler backlog add <summary> --repo R --area A [--pattern P] [--symbol S ...] [--id ID] [--body T] [--prefix X] [--json]
+ostler backlog adopt --repo R <file> [--prefix X] [--json]
+ostler backlog prune <id> | ostler backlog list [--repo R] [--status S] [--json]
 ostler todo add <epic> [--front] | ostler todo prune <epic> | ostler todo reorder <e…> | ostler todo list [--json]
 ```
 
