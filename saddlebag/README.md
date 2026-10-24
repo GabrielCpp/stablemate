@@ -200,12 +200,26 @@ other two sources and the required-name check.
 
 ## Where secrets live
 
-A command picks its route in this order: `SADDLEBAG_BACKEND`, then the `backend` key of the `[saddlebag]` table in the shared stablemate `config.toml`, then a daemon that answers on the socket, else the OS keyring in this process. A set `SADDLEBAG_SOCKET` always means the daemon, and nothing listening there is an error, never a silent fall-back to the keyring. Without a daemon, values live in the OS keyring and their metadata in a catalogue under the stablemate state dir.
-Saddlebag implements no encryption and keeps no local database. Values and metadata
-both live in Vault, under `secret/saddlebag/<name>`: the values as the secret's data,
-the metadata as its custom metadata. There is no plaintext path and no fallback store.
-If Vault is unreachable, the daemon does not start. The full account, including what
-the socket does and does not protect against, is in
+A command picks its route in this order: `SADDLEBAG_BACKEND`, then the `backend` key
+of the `[saddlebag]` table in the shared stablemate `config.toml`, then a daemon that
+answers on the socket, else the OS keyring in this process. A set `SADDLEBAG_SOCKET`
+always means the daemon, and nothing listening there is an error, never a silent
+fall-back to the keyring.
+
+Without a daemon, values live in the OS keyring, one item per secret and field under
+the service `stablemate-saddlebag`, and their metadata in `saddlebag/catalogue.json`
+under the stablemate state dir, owner-only. Behind the daemon, values and metadata both
+live in Vault under `secret/saddlebag/<name>`: the values as the secret's data, the
+metadata as its custom metadata. Saddlebag implements no encryption and keeps no
+plaintext fallback. A locked or absent keyring stops the command with a line that says
+what to do, and if Vault is unreachable, the daemon does not start.
+
+Over SSH the keyring is usually locked. Feed your login password to
+`gnome-keyring-daemon --unlock` to open it, or set `SADDLEBAG_BACKEND=daemon`. On
+macOS the Keychain trusts the interpreter that stored an item, so a reinstalled
+interpreter prompts once per item; `doctor` prints the interpreter path, which
+`security add-generic-password -T <path>` takes to pre-authorise it. The full account,
+including what the socket and the keyring do and do not protect against, is in
 [docs/SECURITY.md](https://github.com/GabrielCpp/stablemate/blob/main/saddlebag/docs/SECURITY.md).
 Driving saddlebag from a workflow node is in
 [docs/INTEGRATION.md](https://github.com/GabrielCpp/stablemate/blob/main/saddlebag/docs/INTEGRATION.md).
@@ -214,10 +228,12 @@ Driving saddlebag from a workflow node is in
 
 ## Upgrading from 1.x
 
-Version 2.0 removes the OS keyring backend, the SQLite pool, credential leases,
+Version 2.0 removed the 1.x OS keyring backend, the SQLite pool, credential leases,
 AI selection, the `env` command family and the YAML manifest. Nothing is migrated.
-Credentials in a 1.x pool and items in the OS keyring are left in place and orphaned.
-Create each secret you still need with `secret create` and `secret set`.
+Credentials in a 1.x pool and 1.x keyring items under the service `saddlebag` are left
+in place and orphaned; the keyring store of 2.x reads only items under
+`stablemate-saddlebag`, which it wrote itself. Create each secret you still need with
+`secret create` and `secret set`.
 
 ---
 
