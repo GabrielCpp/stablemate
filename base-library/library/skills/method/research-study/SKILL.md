@@ -95,19 +95,10 @@ word for word, each with where it came from. A suggestion the operator made in p
 a premise until the operator drops it. A study that reads the question and not its
 premises answers a narrower question than the one asked.
 
-Take the premises from the record, not from memory. When the conversation's transcript is
-on disk, extract every message the operator wrote and read each one. The operator also
-writes as the arguments of a command, such as a `/loop` prompt or a skill's arguments. The
-transcript wraps those in the command's own markup, so a filter on plain messages drops
-them, and they often carry the setting. Memory keeps the premises that fit the reading
-already formed and drops the ones that rule it out. Three kinds are the easiest to lose:
-
-- **the end goal** behind the question, such as "cut what we pay the vendor",
-  which fixes what the result is compared against,
-- **a ruling** on an approach, such as "a fixed rule table is too rigid", which removes a
-  whole reading before any agent proposes it,
-- **the setting**, such as "this runs on real customer data", which rules out a
-  testbed that only works because it is small.
+Take the premises from the record, not from memory, and read every message the operator
+wrote, including the arguments of a command such as a `/loop` prompt. The three kinds
+easiest to lose are under "Where the premises come from" in
+[references/framings.md](references/framings.md).
 
 Under the premises, write the **done-condition**: what a reader would have to see to agree
 the question is answered. Take it from the project's own completion criteria when they
@@ -147,12 +138,9 @@ Run the current system on it and record the baseline row. Pin what defines the y
 the input set, the commit, the seeds, and the judge or scorer. The judge scores on cases
 the system under test never saw: a judge that checks only the examples the prompt shows
 credits a copy of them. The judge, the bar and both controls stay frozen for the whole
-study. The cheapest way to look faster is to make the judge pass sooner, so a change to any
-of them is its own ledger row that quotes the old wording beside the new, and the change
-counts only once the operator or a checker has signed that row. A control that drifts one
-word per probe is how a study comes to grade itself. A script checks that the row exists
-and that no later row uses the new wording without it. A checker judges whether the new
-wording still measures the question.
+study. A change to any of them is its own ledger row that quotes the old wording beside the
+new, signed by the operator or a checker before it counts. The rule is under "A change
+to the yardstick" in [references/measurement.md](references/measurement.md).
 
 Four cases add a rule, and [references/measurement.md](references/measurement.md) holds
 each under its own heading. Read the section when its case applies: the benchmark is
@@ -354,20 +342,12 @@ framing, and a "no" found under one framing is a "no" for that framing. The ques
 answered in the negative only when every surviving framing has died, each for its own
 reason.
 
-Have the framings and the cards checked. A second agent that did not write them reads the
-question, the premises, the framings and the cards, and nothing of the study's reasoning.
-It answers both gates for each, names any assumption that makes the question unsolvable,
-and names any two framings that share their input, output and role. A card or a framing it
-fails goes back to repair. The rules for its counts, and for a rule that would return
-every row, are under "The checker" in
-[references/paper-gates.md](references/paper-gates.md).
-
-A checker finding against a gate stays open until a repair answers it in writing or the
-framing dies. A finding is a predicate the checker can run again, such as a line the code
-must hold or a score an arm must not reach. The author's argument closes none. No decisive
-run launches under a framing that carries an open gate finding, and none launches without
-the design check of step 7. A run that would read the same fact the finding states is
-apparatus for a known answer.
+Have the framings and the cards checked by a second agent that did not write them. A
+finding it raises is a predicate it can run again, and it stays open until a repair
+answers it in writing or the framing dies. No decisive run launches under a framing with
+an open finding, and none launches without the design check of step 7. How the checker
+is briefed and what it returns is under "Checking the cards and framings" in
+[references/second-agent.md](references/second-agent.md).
 
 Done when at least three framings survive in `FRAMINGS.md` or the rest died on paper,
 every candidate about to be probed has a card that passed both gates in writing, and a
@@ -394,27 +374,11 @@ difference favours the reference" and "that is what the question asks" are its u
 shapes. A script flags such a sentence and the registration fails until it becomes a gap
 line or a cited row.
 
-A second agent that never reads the author's reasoning then writes a `design-check` row.
-It reads `QUESTION.md`, the quoted clauses with their anchors, the code and the commands.
-For each clause it says whether the anchored line does what the clause says, whether the
-control is the strongest no-method one, and whether the method is the mechanism earlier
-items credited. It designs a **cheat arm** for this instrument: the cheapest route from the
-inputs to a passing score that uses none of the method, starting from the unchanged state
-and a copy of whatever answers the prompt shows. It runs the cheat on every seed and writes
-the scores into its row. A cheat that scores above the no-method control kills the
-instrument before the run costs anything. It lists every route by which the answer could
-reach the measured path without the method and tests each with a script over the generated
-inputs. "Leaks" in [references/measurement.md](references/measurement.md) holds the rule.
-Each finding is a predicate it can run again. A clause the run cannot meet, such as a
-budget nobody can define, goes to the operator with the operator's words it reads, never
-into an argument between author and checker.
-
-The decisive command refuses to start until the registration names a `design-check` row
-with no open finding. A script enforces that: the row exists, the clauses match
-`QUESTION.md` byte for byte, every anchor resolves to a line and a row, the cheat scores
-are recorded at or under the control, and the output directory keeps every reply for
-regrading. The checker's judgment covers what a script cannot read: whether an anchored
-line does what its clause says, which cheat to try, and whether a control is the strongest.
+A second agent then writes a `design-check` row and designs a cheat arm, the cheapest
+route to a passing score that uses none of the method. The decisive command refuses to
+start until that row exists with no open finding. What the checker reads, what the cheat
+must cover and what a script enforces instead is under "Checking a decisive
+registration" in [references/second-agent.md](references/second-agent.md).
 
 **Order by cost before launching anything.** List the next decisive checks with their
 estimates, and run the cheapest first. A long job in the background is not free: a
@@ -439,15 +403,8 @@ combination as its own probe.
 One ledger row per step, appended before the step starts and completed when it ends. The
 command that appends the row takes the start time from `date -Iseconds`, so the row exists
 before the work does. A row written after the step began says its start is reconstructed.
-Each row carries its `kind`:
-
-| kind | what it is |
-| --- | --- |
-| `decisive` | its result settles a claim about the purpose |
-| `exploration` | it informs the field without settling anything |
-| `apparatus` | it makes a decisive step runnable, and names that step |
-| `design-check` | a second agent's check of a decisive registration, written before its command runs |
-| `reflection` | a step back, written by the triggers in step 10 |
+Each row carries its `kind`: `decisive`, `exploration`, `apparatus`, `design-check` or
+`reflection`, defined in [references/ledger.md](references/ledger.md).
 
 A failed probe keeps its row with the reason it failed. The row is the report. The row
 format is in [references/ledger.md](references/ledger.md).
@@ -474,13 +431,10 @@ A result that means the instrument cannot resolve the target is the most valuabl
 a study produces. "Every arm scores zero" says the full run can only compare zero with
 zero. Stop that path before spending on it.
 
-**Have a decisive result checked before it counts.** A second agent that did not write the
-probe reads the row's `settles` sentence, the command and the bar, and nothing of the
-study's reasoning. It re-runs the scorer on the retained replies, holds its number against
-the bar, and repeats the leak check. A row whose replies were not retained is unchecked,
-and a recount of success flags is not a regrade. Its number goes into the row's `checked`
-field. When the two numbers differ, the row records both and the result stays open until
-explained.
+**Have a decisive result checked before it counts.** A second agent regrades the
+retained replies and its number goes into the row's `checked` field. The rule is under
+"Checking a decisive result" in [references/second-agent.md](references/second-
+agent.md).
 
 ## 10. Step back
 

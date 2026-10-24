@@ -47,6 +47,15 @@ cannot be compared until the source of the difference is pinned, such as a threa
 or an unseeded shuffle. A later apparatus change, such as batching or a faster runtime,
 must reproduce that output too. When it does not, it starts a new baseline.
 
+## A change to the yardstick
+
+The cheapest way to look faster is to make the judge pass sooner, so a change to any
+of them is its own ledger row that quotes the old wording beside the new, and the change
+counts only once the operator or a checker has signed that row. A control that drifts one
+word per probe is how a study comes to grade itself. A script checks that the row exists
+and that no later row uses the new wording without it. A checker judges whether the new
+wording still measures the question.
+
 ## Controls
 
 The field always holds the **no-method control**: the simplest mechanism that uses none of

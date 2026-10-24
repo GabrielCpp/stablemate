@@ -33,6 +33,16 @@ when the step ends. Never delete a row.
 | `commit` | the commit the step ran on, when it ran code |
 | `checked` | for `decisive` only: the number the second agent recomputed, or null until it has |
 
+The five values of `kind`:
+
+| kind | what it is |
+| --- | --- |
+| `decisive` | its result settles a claim about the purpose |
+| `exploration` | it informs the field without settling anything |
+| `apparatus` | it makes a decisive step runnable, and names that step |
+| `design-check` | a second agent's check of a decisive registration, written before its command runs |
+| `reflection` | a step back, written by the triggers in step 10 |
+
 A `reflection` row puts its three answers in `outcome`: where the time went, what is
 settled, and whether the current path is still the cheapest.
 

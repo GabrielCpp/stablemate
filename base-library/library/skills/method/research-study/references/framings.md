@@ -4,6 +4,22 @@ The full rules for the four moves of step 5 in [`research-study`](../SKILL.md), 
 the brief every framing agent receives. The skill carries each move in short. This file
 carries what each move must return and how a return is judged.
 
+## Where the premises come from
+
+Take the premises from the record, not from memory. When the conversation's transcript is
+on disk, extract every message the operator wrote and read each one. The operator also
+writes as the arguments of a command, such as a `/loop` prompt or a skill's arguments. The
+transcript wraps those in the command's own markup, so a filter on plain messages drops
+them, and they often carry the setting. Memory keeps the premises that fit the reading
+already formed and drops the ones that rule it out. Three kinds are the easiest to lose:
+
+- **the end goal** behind the question, such as "cut what we pay the vendor",
+  which fixes what the result is compared against,
+- **a ruling** on an approach, such as "a fixed rule table is too rigid", which removes a
+  whole reading before any agent proposes it,
+- **the setting**, such as "this runs on real customer data", which rules out a
+  testbed that only works because it is small.
+
 ## What makes framings differ
 
 A framing
