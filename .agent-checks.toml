@@ -5,3 +5,6 @@ exclude = [
     "groom/groom/assets/*.min.js",
     "groom/groom/assets/htm-preact.js",
 ]
+
+[check-skills]
+skills = "base-library/library/skills"
