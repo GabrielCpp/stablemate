@@ -1,77 +1,50 @@
 # paddock
 
-The enclosure where horses are worked and evaluated. **One benchmark harness**: seeds,
-tasks, results.
+The enclosure where horses are worked and evaluated. One benchmark harness. It copies a benchmark's repository, drives real CLI steps against the copy, scores the result when the task brought a ruler, and writes the run down as a folder.
 
 ```
-unpack a seed  ->  run the steps  ->  stage the result  ->  (score it)
+copy the data  ->  run the steps  ->  (score it)  ->  write the result
 ```
 
-[`data/`](data/README.md) is this tool's data — task modules and their tests, pointer
-files, config TOMLs and the frozen application material tasks reference. `paddock/` beside
-it is the code that runs them.
+[`paddock/`](paddock/README.md) is the code that does this. [`data/`](data/README.md) still holds the old in-tree fixtures until they move into benchmarks under the benchmark root.
 
-`data/` is not "the part with no code in it": the task modules under `data/tasks/` are
-Python, and so are the tests under `data/tests/` that hold them honest. The split is by
-*subject*, not by language — what a round measures lives in `data/`, and the machinery
-that unpacks, drives, stages and seals a round lives in the package. It is a sibling of
-the package rather than a subdirectory because `[tool.hatch.build]` names the inner
-`paddock` directory: a sibling `data/` ships in no wheel and no sdist, which is what keeps
-a hundred-odd fixture files out of every install of the tool.
+## The benchmark root
 
-## The four nouns
+The root is the `paddock_dir` key of the home config. It defaults to `~/.local/share/stablemate/paddock`. Three folders hold everything.
 
-**Seed** — a zip of a whole repository, `.git` included: the committed history as of
-capture, the working tree exactly as it was (uncommitted edits and all), and the
-farrier-installed layer already in place. "The repo can be in different states" is not a
-schema; it is *when you captured the zip*.
-
-**Task** — a Python module under `data/tasks/<name>.py` naming a seed, a stablemate
-config, an ordered list of steps and (optionally) a score function.
-
-**Result** — the staged after-state: the mutated repo, each step's artifacts, and a
-ledger. Zipped and pointed at exactly like a seed — a result is a seed pointed the other
-way.
-
-**Score** — a ruler the *task* brought. There is no harness-side judging; a task either
-measures itself or leaves its output for whoever is driving the session to read.
-
-## Zips are never tracked
-
-`scripts/check_public.py` scans a binary file **by path only** — a NUL byte in the first
-8 kB stops the content scan — so a tracked zip would ship its contents straight past the
-guard that exists to catch exactly that. What git carries is a small TOML pointer:
-
-```toml
-name = "policy-desk"
-repo_dir = "policy-desk"     # the directory name the zip unpacks back into
-sha256 = "…"
-bytes = 214_000_000
-head = "9e3536d…"
-dirty = false
-url = "https://…"            # optional; the first fetch backend is a plain HTTPS GET
-source = "apps/policy-desk"  # where the captured tree lives, when it lives in this repo
-tree_sha256 = "…"            # that directory's content hash at capture time
-excludes = [".venv"]         # the --exclude globs the capture (and so the hash) was taken with
+```
+<paddock_dir>/
+  gold/<benchmark>/
+    home-config.toml          the base stablemate config for every task
+    tasks.py                  the task and its steps
+    data/                     a git repo, the thing the steps work on
+  workspace/<benchmark>/<task>/<data commit>-<stablemate sha>/<n>/
+    stage/                    a copy of data/ at HEAD, mutated by the steps
+    scratch/                  the steps' own working space
+    config.toml               the merged config the run used
+    artifacts/<step>/         logs, one folder per step
+  results/<benchmark>/<task>/<data commit>-<stablemate sha>/<n>/
+    ledger.json               steps, durations, commands, exit codes, caveats
+    score.json                what the score function returned, or null
+    config.toml               the merged config the run used
+    stage/                    the after-state of the copy
 ```
 
-The sha256 makes the fixture reproducible and its integrity independent of transport, and
-it is verified on every unpack — not only after a download. A seed in the local store was
-put there by some earlier command, and a fixture that has quietly drifted is a benchmark
-number nobody can attribute.
+A run is named by its axes. The data commit is the HEAD of `data/` when the run started. The stablemate sha is the HEAD of the checkout paddock was imported from. The number counts the runs that share both.
 
-`source` and `tree_sha256` answer the other question, and it is the one a fixture author
-trips over. A round materializes from the unpacked zip, while the answer key is read from
-the tracked tree — so an edit to `data/apps/<app>/` that never reached a re-capture leaves
-every trial facing the previous content with the new key held against it, and nothing about
-the run looks wrong. `data/tests/test_seed_freshness.py` recomputes the hash and fails with
-the re-capture command in the message. A seed captured from outside the data directory
-records no `source` and is exempt by construction: there is no in-tree tree it could have
-drifted from.
+Anything the maintainer wants to keep for good is copied out of `results/` by hand.
 
-`repo_dir` looks cosmetic and is not: farrier derives the names of the files it generates
-from the repo directory's basename, so a tree unpacked under a different name gets a fresh
-set of generated skills while the ones the seed carries dangle.
+## The nouns
+
+**Benchmark**: a folder under `gold/` with a base config, a tasks module and a data repo.
+
+**Task**: what `tasks.py` declares. A name, an optional config override, an ordered list of steps and an optional score function.
+
+**Config**: the base `home-config.toml` with the task's override deep-merged over it. Task values win. A task with no override gets the base file byte for byte. The engine writes the result into the run and hands it to every stablemate command through `--config`. A step takes nothing from the command line.
+
+**Result**: the folder under `results/`. It holds the ledger, the score, the config and the stage.
+
+**Score**: a ruler the task brought. There is no harness-side judging. A task either measures itself or leaves its output for whoever drives the session to read.
 
 ## Writing a task
 
@@ -81,12 +54,11 @@ from paddock import Score, step, task
 
 task(
     name="policy-desk-qa",
-    seed="policy-desk",                # data/configs/seeds/policy-desk.toml
-    config="configs/opencode.toml",    # a full stablemate config, tracked, under data/
+    config={"profiles": {"claude": {"model": "opus"}}},
 )
 
 @step()
-def seed_defect(run):
+def plant_defect(run):
     """Setup that is not a workflow invocation: overwrite a variant, bring compose up."""
     ...
 
@@ -103,42 +75,39 @@ def score(run) -> Score:            # optional
     return Score(headline="caught 7/9  missed 2", data={...})
 ```
 
-- `task()` — exactly once per module, before the steps.
-- `@step()` — functions, run in declaration order. They are functions precisely so setup
-  that is *not* a workflow invocation needs no schema escape hatch.
-- A task swaps models by swapping its config file; the config carries the `[power.*]` /
-  `[profiles.*]` tables, which is why the harness has no model vocabulary of its own.
+- `task()` is called once per module, before the steps. `config` is optional.
+- `@step()` marks functions that run in declaration order. They are functions so that setup which is not a workflow invocation needs no schema escape hatch.
+- A task swaps models by overriding the config tables. The harness has no model vocabulary of its own.
+
+The helpers a tasks module reaches for live in the package as `paddock.tasks`. They drive stablemate across the process boundary, read the forensics a round left, and measure leverage.
 
 ### The `run` handle
 
 | | |
 |---|---|
-| `run.repo` | the unpacked seed, inside the staging area — the tree the steps mutate |
-| `run.artifacts` | this step's artifact directory, sealed into the result |
-| `run.workdir(name)` | a fresh directory under `scratch/`, **not** sealed into the result |
-| `run.config` | the absolute path to the task's stablemate config |
+| `run.repo`, `run.stage` | the copy of the data repo the steps mutate |
+| `run.data` | the benchmark's own `data/` repo, which a step reads and never writes |
+| `run.artifacts` | this step's artifact directory, kept in the workspace |
+| `run.workdir(name)` | a fresh directory under `scratch/`, never copied into the result |
+| `run.config` | the absolute path to the merged stablemate config |
 | `run.cli(*argv, check=False, timeout=None)` | a subprocess, logged into `run.artifacts` |
-| `run.project` | the tree the steps drive stablemate out of — pinned, see below |
-| `run.seed`, `run.data_dir`, `run.store`, `run.label` | where everything came from |
+| `run.project` | the tree the steps drive stablemate out of, pinned, see below |
+| `run.name` | the run's name: benchmark, task, data commit, stablemate sha, number |
 
-Steps invoke workflows by **subprocess of the real CLI**, never by importing workhorse
-in-process. That is not purity: the benchmark measures the surface an operator uses, and
-an in-process call would measure a different one. `run.cli` also aligns `PWD` to the
-working directory and drops `OLDPWD`, because an agent CLI that resolves its project root
-from the environment will otherwise treat the harness's own repo as the project and commit
-its work there.
+Steps invoke workflows by subprocess of the real CLI. They never import workhorse in-process. The benchmark measures the surface an operator uses, and an in-process call would measure a different one. `run.cli` also aligns `PWD` to the working directory and drops `OLDPWD`. An agent CLI that resolves its project root from the environment would otherwise treat the harness's own repo as the project and commit its work there.
+
+The stage is a clone of `data/` at HEAD with every remote removed. Uncommitted edits in `data/` are not in the copy, and the runner warns when it sees them. A step that wants a tree to outlive the run copies it into `run.artifacts`.
 
 ### The project a round drives is pinned
 
 A step runs stablemate's own CLIs out of a checkout (`uv run --project <checkout>
 workhorse-coder …`). paddock does not hand it the operator's working tree: before the
 first step it makes a **local clone with every remote removed**, checked out detached at
-that checkout's HEAD, gives the steps *that* as `run.project`, and deletes it after
-sealing. Three things fall out, and they are the whole reason:
+that checkout's HEAD, gives the steps *that* as `run.project`, and deletes it when the run ends. Three things fall out, and they are the whole reason:
 
 - the round measures one commit of the code, even if the operator keeps editing theirs
   during a forty-minute trial;
-- `steps.json` records the pinned sha, so the ledger says which code produced its numbers,
+- `ledger.json` records the pinned sha, so the ledger says which code produced its numbers,
   and whether the source was dirty (uncommitted edits are **excluded** by construction);
 - a task's leak check — "did an agent write into the harness instead of its sandbox" —
   becomes exact, because nobody but the round has a reason to write in that tree.
@@ -153,8 +122,8 @@ a gitfile naming a path that does not exist, so the pinned tree is not a reposit
 stops walking up, and a commit cannot quietly land in a parent repo either.
 
 None of that is a proof — an agent can `git init`, and the stash is one directory up from
-the sandbox — so what the fence is paired with is a detector. At seal, `escaped()` asks the
-stash what the round did to it and seals a `self-touched:` caveat for each answer: the tree
+the sandbox — so what the fence is paired with is a detector. When the steps end, `escaped()` asks the
+stash what the round did to it and writes a `self-touched:` caveat into the ledger for each answer: the tree
 was edited, the fence is gone, HEAD moved off the pinned sha, a ref appeared, objects exist
 that the pinned sha does not reach (the patch-run-and-`reset --hard` shape), or the stash
 itself is missing. A round whose numbers are not a measurement of the sha in its ledger
@@ -176,7 +145,7 @@ tests.
 
 ```bash
 paddock sandbox build
-paddock sandbox run --app DIR --runs-dir DIR --config paddock/data/configs/claude-opus.toml \
+paddock sandbox run --app WORKSPACE/stage --runs-dir DIR --config WORKSPACE/config.toml \
   -- workhorse-okf-book run --profile claude --runs-dir /runs --run-id ID --params '{...}'
 ```
 
@@ -187,15 +156,14 @@ machine runs, unless `--claude-code-version` or `--opencode-version` names anoth
 `run` mounts these paths and nothing else:
 
 - the app, at `/work/<its directory name>`, which is also the working directory;
-- `--runs-dir`, at `/runs`;
+- `--runs-dir`, at `/runs`, which should sit inside the run's workspace;
 - `--config`, read-only, as the stablemate config;
 - the login of each agent CLI the config runs, so the agents can call the model:
   `--credentials` for claude, `--opencode-auth` for opencode;
 - your home skill folders, read-only, at the same place under the container's home:
   `~/.claude/skills` and `~/.agents/skills`, each only when it exists.
 
-A MiniMax run passes `--config paddock/data/configs/minimax-direct.toml` and
-`--profile opencode`, and the sandbox mounts only the opencode login.
+A run whose config names only opencode profiles gets only the opencode login.
 
 The app's skills render from the published base library, which farrier fetches on first
 use exactly as it would on a client's machine. `--base-library base-library` mounts this
@@ -209,37 +177,20 @@ they would on your machine. The run sees them but cannot change them.
 It refuses a mount that would contain the checkout. The installed packages stay
 readable inside the container, as they would be on any machine that installs them.
 
-`workdir()` exists for tasks that fan out — one fresh tree per trial. A result zip
-carrying nine copies of a repo is a result nobody keeps, so what a step wants preserved it
-copies into `run.artifacts`, which makes that an explicit decision.
-
 ### Scoring is read-only
 
 A `score(run)` function is called after the steps and must not touch what it measures: a
 scored and an unscored run produce byte-identical results apart from `score.json`. This is
 enforced — the staged tree is stat-manifested before and after, and a mutation fails the
-run — because a score that edits the result makes the zip a record of the scoring rather
+run — because a score that edits the result makes the result a record of the scoring rather
 than of the run, and every later comparison is then comparing the wrong thing. A score
 function may write into its own `run.artifacts`, and may subprocess a judge CLI: a rubric
 judged by a pinned model is still a way to be scored, it just lives in the task.
 
-## The staging layout
+## The reaper
 
-```
-<store>/work/<task>/<label>/
-  stage/                     <- everything here, and only this, becomes the result zip
-    <repo_dir>/              <- the unpacked seed, mutated by the steps
-    artifacts/<step>/        <- run dirs, logs, exit codes
-    steps.json               <- order, outcome, duration, every command run
-    score.json               <- only when the task brought a score function
-  scratch/                   <- the steps' own working space, never sealed
-```
-
-The store defaults to `~/.local/share/stablemate/paddock` — off `/tmp`, which does not
-survive a reboot. A fixture that evaporates is not a fixture.
-
-`stage/` is also the reaper's warrant. When the steps end — finished, failed, or raised —
-every process whose working directory is inside `stage/` is terminated, because the stage
+The stage is the reaper's warrant. When the steps end — finished, failed, or raised —
+every process whose working directory is inside the stage is terminated, because the stage
 is a directory only this round has and anything standing in it was put there by this
 round. Agents leave servers running; a leftover one holds its port, and the *next* round on
 the same task then finds its port answering with a valid `201` from a sibling — the one
@@ -257,7 +208,7 @@ a round, list the survivors and finish the job:
 ```bash
 for d in /proc/[0-9]*; do
   cwd=$(readlink "$d/cwd" 2>/dev/null) || continue
-  case "$cwd" in */paddock/work/<task>/<label>/*) echo "${d#/proc/} $cwd";; esac
+  case "$cwd" in */workspace/<benchmark>/<task>/*) echo "${d#/proc/} $cwd";; esac
 done
 ```
 
@@ -267,33 +218,13 @@ forget and expensive to have forgotten.
 ## Commands
 
 ```bash
-paddock seed capture <repo> --name X   # repo state -> zip + tracked pointer
-paddock seed unpack <name> --to DIR    # pointer -> verified local tree
-paddock fetch <name>                   # url -> local store, sha256-verified
-paddock run <task> [--label L] [--param K=V]   # unpack, steps, stage, (score), seal
-paddock list                           # tasks and their seeds
-paddock sandbox build                  # the image a book run is isolated in
-paddock sandbox run ... -- CMD         # CMD in the app, with no stablemate checkout in sight
+paddock run <benchmark> <task>   # copy the data, run the steps, (score), write the result
+paddock list                     # the benchmarks and tasks under gold/
+paddock sandbox build            # the image a book run is isolated in
+paddock sandbox run ... -- CMD   # CMD in the app, with no stablemate checkout in sight
 ```
 
-`--param KEY=VALUE` (repeatable) is how a task is run *smaller* than its full self — one
-defect instead of eleven, a shorter budget — without editing the module or growing a
-second task. A step reads it with `run.param("name")` (plus `param_list` / `param_float` /
-`param_bool`), and the value is recorded in `steps.json` and in the result pointer's note,
-because a narrowed run is a different measurement and one that does not say so invites a
-comparison against a full run nobody would have made on purpose.
-
-Seeds are born by `capture`, not by hand: hand-zipping is what lets a `.venv` into a
-fixture, and the command is the contract's enforcement point — it refuses build output and
-local environments anywhere in the tree (`--exclude GLOB` permits one deliberately, and the
-pointer records the globs so the freshness check hashes the same tree the capture did — a
-bare `--force` re-capture inherits them, an explicit `--exclude` replaces them), warns
-when farrier was never run, and records HEAD.
-
-`unpack` re-runs `farrier install` against the extracted tree, because the machine-local
-layer a zip reproduces faithfully is a layer pointing at the capture machine's paths. Pass
-`--no-install` to skip it; when farrier is absent or fails, the unpack still succeeds and
-says so rather than leaving a silently stale tree.
+A run prints each step's outcome, the score and the result folder. It exits non-zero when a step failed.
 
 ## Tests
 
@@ -303,5 +234,5 @@ make -C paddock test
 
 ## Map
 
-- `data/`: what the rounds measure: tasks, rubrics, app fixtures and recorded results.
+- `data/`: the old in-tree fixtures: tasks, rubrics and app trees.
 - `paddock/`: the package behind the `paddock` command.

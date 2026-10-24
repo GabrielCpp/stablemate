@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
 
-from _stablemate import spec_dir
+from paddock.tasks.stablemate import spec_dir
 
 
 BLANK = "–"

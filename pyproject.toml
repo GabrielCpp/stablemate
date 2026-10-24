@@ -11,8 +11,7 @@
 #   - saddlebag/  -> stablemate-saddlebag (Vault-backed daemon that fills secrets
 #                                       into browsers and commands; the import
 #                                       package and the command stay `saddlebag`)
-#   - paddock/    -> paddock          (the benchmark harness: seeds, tasks, results —
-#                                       paddock/data/ is its data)
+#   - paddock/    -> paddock          (the benchmark harness: benchmarks, tasks, results)
 #   - stablemate/ -> stablemate       (the umbrella: no code, major ranges on
 #                                       every published tool, so one
 #                                       `uv tool install` brings them all)

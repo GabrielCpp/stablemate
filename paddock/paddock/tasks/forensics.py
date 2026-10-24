@@ -9,7 +9,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from _stablemate import TrialError
+from paddock.tasks.stablemate import TrialError
 
 
 

@@ -12,7 +12,7 @@ from workhorse.runner import caps as wh_caps
 from workhorse.runner import failure as wh_failure
 from workhorse.runner.backends import AgentBackend
 from workhorse.runner.backends.registry import get_backend
-from workhorse._vendor.stablemate_core.clock import SYSTEM_CLOCK, Clock
+from paddock._vendor.stablemate_core.clock import SYSTEM_CLOCK, Clock
 
 logger = logging.getLogger(__name__)
 

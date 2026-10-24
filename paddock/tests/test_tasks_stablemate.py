@@ -1,47 +1,17 @@
-"""Tests for `_stablemate` — the process boundary a paddock task drives stablemate across."""
+"""Tests for `paddock.tasks.stablemate`, the process boundary a paddock task drives stablemate across."""
 
 from __future__ import annotations
 
-import contextlib
-import importlib.util
 import subprocess
-import sys
-from collections.abc import Iterator
 from pathlib import Path
-from types import ModuleType, SimpleNamespace
+from types import SimpleNamespace
+from typing import cast
 
 import pytest
 
 from paddock import project as project_mod
-from paddock.registry import REGISTRY
-
-DATA = Path(__file__).parents[1]
-
-
-@contextlib.contextmanager
-def _tasks_dir_on_path() -> Iterator[None]:
-    """Stand in for the interpreter, exactly as `paddock.loader` does when it loads a task."""
-    saved = sys.path[:]
-    sys.path.insert(0, str(DATA / "tasks"))
-    try:
-        yield
-    finally:
-        sys.path[:] = saved
-
-
-def _load(name: str, path: Path) -> ModuleType:
-    spec = importlib.util.spec_from_file_location(name, path)
-    assert spec is not None and spec.loader is not None  # noqa: S101 - a real file on disk
-    module = importlib.util.module_from_spec(spec)
-    REGISTRY.reset()
-    with _tasks_dir_on_path():
-        sys.modules[name] = module
-        spec.loader.exec_module(module)
-    REGISTRY.reset()
-    return module
-
-
-sm = _load("_stablemate", DATA / "tasks" / "_stablemate.py")
+from paddock.runner import Run
+from paddock.tasks import stablemate as sm
 
 
 def test_uv_run_names_the_member_environment() -> None:
@@ -67,7 +37,7 @@ def test_pin_config_writes_the_pinned_checkout_as_stablemate_dir(
         "load_config",
         lambda: {"library_dir": "/lib", "stablemate_dir": "/live/tree"},
     )
-    run = SimpleNamespace(scratch=scratch, config=tracked, project=worktree)
+    run = cast(Run, SimpleNamespace(scratch=scratch, config=tracked, project=worktree))
 
     sm.pin_config(run)
 

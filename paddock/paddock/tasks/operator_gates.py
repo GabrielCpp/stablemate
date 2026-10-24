@@ -9,7 +9,7 @@ import time
 from pathlib import Path
 from typing import Any
 
-from paddock import Run
+from paddock.runner import Run
 from workhorse.pyflow.park import answered as gate_answered
 
 logger = logging.getLogger(__name__)

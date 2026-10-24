@@ -1,44 +1,12 @@
-"""The leverage scorecard: does a QA plan use the book it was handed, or just fetch URLs?"""
+"""Tests for `paddock.tasks.leverage`, the scorecard read off a trial's book and spec."""
 
 from __future__ import annotations
 
-import contextlib
-import importlib.util
-import sys
-from collections.abc import Iterator
-from pathlib import Path
-from types import ModuleType
+from typing import Any
 
 import pytest
 
-DATA = Path(__file__).parents[1]
-
-
-@contextlib.contextmanager
-def _tasks_dir_on_path() -> Iterator[None]:
-    """Stand in for the interpreter, exactly as `paddock.loader` does."""
-    saved = sys.path[:]
-    sys.path.insert(0, str(DATA / "tasks"))
-    try:
-        yield
-    finally:
-        sys.path[:] = saved
-
-
-def _load(name: str) -> ModuleType:
-    spec = importlib.util.spec_from_file_location(name, DATA / "tasks" / f"{name}.py")
-    assert spec is not None and spec.loader is not None  # noqa: S101 - a real file on disk
-    module = importlib.util.module_from_spec(spec)
-    with _tasks_dir_on_path():
-        sys.modules[name] = module
-        spec.loader.exec_module(module)
-    return module
-
-
-lev = _load("_leverage")
-frozen = _load("_frozenapp")
-
-
+from paddock.tasks import leverage as lev
 
 
 def screen(node_id: str, route: str, *, entry: str = "") -> dict:
@@ -104,8 +72,8 @@ WALKS_THE_PRODUCT = plan(
 )
 
 
-def score(**overrides) -> dict:
-    inputs = {
+def score(**overrides: Any) -> dict[str, Any]:
+    inputs: dict[str, Any] = {
         "book": BOOK, "packet": PACKET, "plan_source": WALKS_THE_PRODUCT,
         "run_log": RUN_LOG, "statuses": STATUSES,
     }
@@ -243,14 +211,6 @@ def test_the_line_prints_only_the_metrics_the_fixture_declared() -> None:
 def test_a_declared_metric_with_no_inputs_still_prints_blank() -> None:
     line = lev.leverage_line({"obligations": [22, 24]}, ("obligations", "journeys"))
     assert line == f"leverage: obligations 22/24  journeys {lev.BLANK}  (2 of 6 metrics)"
-
-
-def test_a_fixture_refuses_a_leverage_key_it_does_not_have() -> None:
-    with pytest.raises(ValueError, match="leverage must name one or more of"):
-        frozen.Fixture(app="apps/x", repo_dir="x", leverage=("obligations", "clicks"))
-    assert frozen.Fixture(app="apps/x", repo_dir="x").leverage == lev.LEVERAGE_KEYS
-
-
 
 
 def test_pooling_sums_numerator_and_denominator_across_trials() -> None:

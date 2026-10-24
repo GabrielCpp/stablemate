@@ -1,37 +1,16 @@
-"""The forensics every round is read through: timing, reliability, churn."""
+"""Tests for `paddock.tasks.forensics`, the reader of what a round left on disk."""
 
 from __future__ import annotations
 
-import contextlib
-import importlib.util
 import json
 import os
-import sys
-from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
 
-DATA = Path(__file__).parents[1]
+from paddock.tasks import forensics as fx
 
-
-@contextlib.contextmanager
-def _tasks_dir_on_path() -> Iterator[None]:
-    """Stand in for the interpreter, exactly as `paddock.loader` does."""
-    saved = sys.path[:]
-    sys.path.insert(0, str(DATA / "tasks"))
-    try:
-        yield
-    finally:
-        sys.path[:] = saved
-
-
-_spec = importlib.util.spec_from_file_location("_forensics", DATA / "tasks" / "_forensics.py")
-assert _spec is not None and _spec.loader is not None  # noqa: S101 - a real file on disk
-fx = importlib.util.module_from_spec(_spec)
-with _tasks_dir_on_path():
-    sys.modules["_forensics"] = fx
-    _spec.loader.exec_module(fx)
+ROOT = Path(__file__).parents[2]
 
 
 def write_events(base: Path, node: str, enter: str, done: str, *, flow: bool = False) -> Path:
@@ -142,7 +121,7 @@ def test_a_checkout_with_no_workflow_source_is_loud(tmp_path: Path) -> None:
 
 def test_the_real_workflow_source_dates_something() -> None:
     """And it is this tree's, so the guard cannot pass by pointing nowhere."""
-    assert fx.newest_source_mtime(DATA.parents[1]) > 0
+    assert fx.newest_source_mtime(ROOT) > 0
 
 
 

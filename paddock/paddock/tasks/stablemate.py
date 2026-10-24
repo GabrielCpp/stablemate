@@ -12,7 +12,7 @@ from pathlib import Path
 import yaml
 
 from paddock import Run, project
-from stablemate_core import config as core_config
+from paddock._vendor.stablemate_core import config as core_config
 
 
 class TrialError(RuntimeError):
