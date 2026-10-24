@@ -13,8 +13,9 @@ import pytest
 from saddlebag import browser, daemon, protocol, totp, verbs
 from saddlebag.models import Secret
 from saddlebag.protocol import Reply, Request
+from saddlebag.verbs import Verbs
 
-from conftest import RecordingSession, Running
+from conftest import FakeVault, RecordingSession, Running
 
 RFC_SEED = "GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ"
 PASSWORD = "hunter2-pw"
@@ -236,6 +237,7 @@ def test_doctor_reports_health_and_valueless_secrets(running: Running, monkeypat
     assert first["vault_authenticated"] is True
     assert first["secrets_without_value"] == ["empty"]
     assert first["vault_token_file"] is False
+    assert first["token_source"] is None
     (tmp_path / "token").write_text("x")
     running.vault.authenticated = False
     second = ok(running.ask("doctor"))
@@ -361,3 +363,7 @@ def test_the_socket_path_follows_xdg_runtime_dir(tmp_path: Path, monkeypatch: py
 def test_send_reports_a_missing_daemon(daemon_path: Path) -> None:
     with pytest.raises(protocol.DaemonNotRunning, match="saddlebag serve"):
         protocol.send(Request("ping"), timeout=1)
+
+
+def test_doctor_carries_the_token_source_the_daemon_was_given(vault: FakeVault) -> None:
+    assert Verbs(vault, "http://127.0.0.1:9222", "socket x", "stdin").verb_doctor({})["token_source"] == "stdin"

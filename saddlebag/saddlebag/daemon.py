@@ -67,10 +67,11 @@ def serve(
     browser_endpoint: str = browser.DEFAULT_ENDPOINT,
     ready: threading.Event | None = None,
     stop: threading.Event | None = None,
+    token_source: str | None = None,
 ) -> None:
     """Answer requests one at a time until ``stop`` is set."""
     listener = _bind(socket_path)
-    daemon = Verbs(store, browser_endpoint, f"socket {socket_path}")
+    daemon = Verbs(store, browser_endpoint, f"socket {socket_path}", token_source)
     logger.info("listening on %s", socket_path)
     if ready is not None:
         ready.set()

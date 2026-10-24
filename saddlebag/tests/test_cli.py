@@ -204,7 +204,7 @@ def test_serve_hands_the_stdin_token_to_vault(run: Run, monkeypatch: pytest.Monk
         seen.update(addr=addr, token=token)
         return Store()
 
-    def serve(store: object, *, socket_path: Path, browser_endpoint: str, stop: object) -> None:
+    def serve(store: object, *, socket_path: Path, browser_endpoint: str, stop: object, token_source: str | None = None) -> None:
         seen.update(path=socket_path, cdp=browser_endpoint)
 
     monkeypatch.setattr(cli, "VaultStore", connect)

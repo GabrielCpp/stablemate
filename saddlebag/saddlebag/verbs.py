@@ -60,10 +60,11 @@ def _checked[T](check: Callable[[str], T], value: str) -> T:
 class Verbs:
     """The verb handlers over one store, used in-process or behind the daemon."""
 
-    def __init__(self, store: SecretStore, browser_endpoint: str, route: str) -> None:
+    def __init__(self, store: SecretStore, browser_endpoint: str, route: str, token_source: str | None = None) -> None:
         self.store = store
         self.route = route
         self.browser_endpoint = browser_endpoint
+        self.token_source = token_source
 
     def handle(self, request: Request) -> Reply:
         handler = getattr(self, f"verb_{request.verb}", None)
@@ -226,5 +227,6 @@ class Verbs:
             "secrets_without_value": bare,
             "missing_items": list(health.missing_items),
             "orphan_items": None if health.orphan_items is None else list(health.orphan_items),
+            "token_source": self.token_source,
             "vault_token_file": VAULT_TOKEN_FILE.expanduser().exists(),
         }

@@ -90,9 +90,11 @@ host. That port is unauthenticated and grants total control of the browser.
 ## The daemon
 
 `saddlebag serve` is the one process that talks to Vault. It reads the token from
-stdin, refuses to start if `VAULT_TOKEN` is set in its environment, and listens on a
-unix socket created with owner-only permissions. Every other verb connects to that
-socket, sends one request and reads one reply.
+stdin when piped, else from the OS keyring where `saddlebag serve --keep-token` stored
+it, else from `saddlebag/vault-token` under the stablemate state dir when that file is
+mode 0600. It refuses to start if `VAULT_TOKEN` is set in its environment, and listens
+on a unix socket created with owner-only permissions. Every other verb connects to
+that socket, sends one request and reads one reply.
 
 | | |
 |---|---|
@@ -101,10 +103,12 @@ socket, sends one request and reads one reply.
 | Vault address | `$VAULT_ADDR` or `--vault-addr` |
 | Browser | `--cdp`, default `http://127.0.0.1:9222` |
 
-The token is never written to a file and never placed in an environment variable,
-because a process of the same user can read `/proc/<pid>/environ` and any file the
-user owns. For the same reason the operator's own Vault login must not leave
-`~/.vault-token` behind. `saddlebag doctor` warns when that file exists.
+saddlebag never puts the token in an environment variable, because a process of the
+same user can read `/proc/<pid>/environ`. The kept token lives in the OS keyring. The
+filed token is the operator's choice, and `doctor` warns about it because any file the
+user owns is readable by their other processes. For the same reason the operator's own
+Vault login must not leave `~/.vault-token` behind, and `doctor` warns when that file
+exists.
 
 ### A run in a container
 
@@ -149,12 +153,12 @@ carries `environment=<ostler environment node id>`.
 
 | | |
 |---|---|
-| `serve` | run the daemon; token on stdin |
+| `serve` | run the daemon; token from stdin, the OS keyring or a 0600 file; `--keep-token` stores one |
 | `list` `tags` | query by tag; neither can emit a value |
 | `secret create` `set` `unset` `remove` `tag` `untag` | manage a secret; `set` reads its value from stdin |
 | `fill` | type a secret's username, password or current TOTP code into a browser field |
 | `exec` | run a command with matching secrets in its environment |
-| `doctor` | backend and route in use, store reachable, secrets with no value, orphan keyring items, stray token file |
+| `doctor` | backend and route in use, store reachable, secrets with no value, orphan keyring items, stray token file, and on the daemon route where its token came from |
 
 ```bash
 saddlebag fill NAME --field username|password|totp --selector S [--url-contains X]
@@ -226,6 +230,7 @@ saddlebag/
 ├── route.py      # how a command reaches the counter: the daemon's socket, or in-process over the keyring
 ├── verbs.py      # the verb handlers over one store, used in-process or behind the daemon
 ├── store.py      # the SecretStore contract every verb talks to, and StoreUnavailable
+├── custody.py    # the Vault token's three sources and the refusal
 ├── daemon.py     # `serve`: the socket accept loop over the verbs
 ├── protocol.py   # the socket path, newline-JSON framing and the client's send()
 ├── vault.py      # Vault KV v2: values in the secret's data, metadata in its custom metadata

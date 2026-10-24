@@ -12,7 +12,9 @@ import threading
 from importlib.metadata import version as _pkg_version
 from pathlib import Path
 
-from saddlebag import browser, daemon, preference, protocol, route
+from saddlebag import browser, custody, daemon, preference, protocol, route
+from saddlebag.custody import CustodyError
+from saddlebag.keyring_store import open_door
 from saddlebag.models import FIELDS, VALUE_FIELDS, parse_tag
 from saddlebag.protocol import DaemonNotRunning, Reply, Request
 from saddlebag.route import RouteError
@@ -68,20 +70,20 @@ def _pairs(raw: list[list[str]]) -> str:
 
 
 def cmd_serve(args: argparse.Namespace) -> int:
-    if "VAULT_TOKEN" in os.environ:
-        return _error(
-            "refusing to start with VAULT_TOKEN in the environment: a same-user process reads it from "
-            "/proc/<pid>/environ. Pipe the token on stdin instead.",
-            2,
-        )
-    addr = args.vault_addr or os.environ.get("VAULT_ADDR")
-    if not addr:
-        return _error("no Vault address: set VAULT_ADDR or pass --vault-addr", 2)
-    token = sys.stdin.readline().strip()
-    if not token:
-        return _error("stdin gave an empty Vault token: pipe the token to `saddlebag serve`", 2)
     try:
-        store = VaultStore(addr, token)
+        custody.refuse_environment()
+        if args.keep_token:
+            custody.keep(sys.stdin, open_door)
+            print("kept the Vault token in the OS keyring", file=sys.stderr)
+            return 0
+        addr = args.vault_addr or os.environ.get("VAULT_ADDR")
+        if not addr:
+            return _error("no Vault address: set VAULT_ADDR or pass --vault-addr", 2)
+        token = custody.find(sys.stdin, open_door, custody.filed_path())
+    except (CustodyError, StoreUnavailable) as exc:
+        return _error(str(exc), 2)
+    try:
+        store = VaultStore(addr, token.value)
     except VaultError as exc:
         return _error(str(exc), 1)
     path = protocol.fit_socket_path(args.socket) if args.socket else protocol.socket_path()
@@ -89,7 +91,7 @@ def cmd_serve(args: argparse.Namespace) -> int:
     signal.signal(signal.SIGTERM, lambda *_: stop.set())
     signal.signal(signal.SIGINT, lambda *_: stop.set())
     try:
-        daemon.serve(store, socket_path=path, browser_endpoint=args.cdp, stop=stop)
+        daemon.serve(store, socket_path=path, browser_endpoint=args.cdp, stop=stop, token_source=token.source)
     except OSError as exc:
         return _error(str(exc), 1)
     return 0
@@ -245,8 +247,16 @@ def cmd_doctor(args: argparse.Namespace) -> int:
             print(f"orphan keyring items: {'not checked on this keyring' if orphans is None else ', '.join(orphans) or 'none'}")
         for item in result["missing_items"]:
             print(f"warning: the catalogue lists a value for {item} that the keyring no longer holds")
+        token_source = result.get("token_source")
+        if result["backend"] == "vault" and token_source is not None:
+            print(f"token source: {token_source}")
+            if token_source.startswith("file "):
+                print("warning: the Vault token is read from a file; any process of this user can read it. Prefer saddlebag serve --keep-token.")
         if result["vault_token_file"]:
-            print("warning: ~/.vault-token exists on the daemon's host; any process of this user can read it")
+            if result["backend"] == "vault":
+                print("warning: ~/.vault-token exists on the daemon's host; any process of this user can read it")
+            else:
+                print("warning: ~/.vault-token exists; any process of this user can read it")
     healthy = result["store_reachable"] and not result["secrets_without_value"] and not result["missing_items"]
     return 0 if healthy else 1
 
@@ -261,10 +271,15 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("-v", "--verbose", action="store_true", help="debug logging on stderr")
     sub = p.add_subparsers(dest="command", required=True)
 
-    s = sub.add_parser("serve", help="run the daemon; the Vault token is read from stdin")
+    s = sub.add_parser("serve", help="run the daemon; the Vault token comes from stdin, the OS keyring or a 0600 file")
     s.add_argument("--socket", type=Path, metavar="PATH", help="socket to listen on")
     s.add_argument("--vault-addr", metavar="URL", help="Vault address (default $VAULT_ADDR)")
     s.add_argument("--cdp", default=browser.DEFAULT_ENDPOINT, metavar="URL", help="DevTools endpoint, loopback only")
+    s.add_argument(
+        "--keep-token",
+        action="store_true",
+        help="read a Vault token from stdin, store it in the OS keyring for later `serve` runs, and exit",
+    )
     s.set_defaults(func=cmd_serve)
 
     ls = sub.add_parser("list", help="list secrets and what they are for")
