@@ -6,6 +6,7 @@ import json
 from typing import Any
 
 from saddlebag.models import VALUE_FIELDS, Secret, Tag
+from saddlebag.store import StoreHealth
 
 
 class VaultError(RuntimeError):
@@ -58,6 +59,9 @@ class VaultStore:
 
     def is_authenticated(self) -> bool:
         return bool(self._client.is_authenticated())
+
+    def health(self) -> StoreHealth:
+        return StoreHealth("vault", self.is_authenticated())
 
     def names(self) -> list[str]:
         try:

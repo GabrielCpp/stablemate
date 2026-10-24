@@ -70,7 +70,7 @@ def serve(
 ) -> None:
     """Answer requests one at a time until ``stop`` is set."""
     listener = _bind(socket_path)
-    daemon = Verbs(store, browser_endpoint)
+    daemon = Verbs(store, browser_endpoint, f"socket {socket_path}")
     logger.info("listening on %s", socket_path)
     if ready is not None:
         ready.set()

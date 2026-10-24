@@ -111,3 +111,23 @@ def test_the_distrust_message_names_the_account(catalogue: Catalogue) -> None:
     store = KeyringStore(catalogue, Failing(keyring.errors.KeyringError("refused")))
     with pytest.raises(StoreUnavailable, match=f"-s {keyring_store.SERVICE} -a login/password"):
         store.value("login", "password")
+
+
+def test_health_without_an_enumerator_cannot_name_orphans(store: KeyringStore) -> None:
+    store.set_value("login", "password", "pw")
+    health = store.health()
+    assert health.backend == "keyring"
+    assert health.reachable
+    assert health.missing_items == ()
+    assert health.orphan_items is None
+
+
+def test_health_names_drift_and_orphans(catalogue: Catalogue, backend: FakeBackend) -> None:
+    shelf = KeyringStore(catalogue, backend, lambda: sorted(a for s, a in backend.items if s == SERVICE))
+    shelf.create(Secret("login"))
+    shelf.set_value("login", "password", "pw")
+    backend.items[(SERVICE, "ghost/password")] = "x"
+    del backend.items[(SERVICE, "login/password")]
+    health = shelf.health()
+    assert health.missing_items == ("login/password",)
+    assert health.orphan_items == ("ghost/password",)

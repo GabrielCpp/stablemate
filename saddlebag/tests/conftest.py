@@ -16,8 +16,10 @@ from keyring.compat import properties
 
 from saddlebag import browser, cli, daemon, protocol
 from saddlebag.catalogue import Catalogue
+from saddlebag.keyring_store import SERVICE
 from saddlebag.models import Secret, Tag
 from saddlebag.protocol import Reply, Request
+from saddlebag.store import StoreHealth
 
 
 class FakeVault:
@@ -28,8 +30,8 @@ class FakeVault:
         self.data: dict[str, dict[str, str]] = {}
         self.authenticated = True
 
-    def is_authenticated(self) -> bool:
-        return self.authenticated
+    def health(self) -> StoreHealth:
+        return StoreHealth("vault", self.authenticated)
 
     def names(self) -> list[str]:
         return sorted(self.metadata)
@@ -101,6 +103,10 @@ def keyring_route(backend: FakeBackend, catalogue: Catalogue, monkeypatch: pytes
     monkeypatch.setenv("SADDLEBAG_BACKEND", "keyring")
     monkeypatch.setattr(Catalogue, "default", classmethod(lambda cls: catalogue))
     monkeypatch.setattr("saddlebag.route.open_door", lambda: backend)
+    monkeypatch.setattr(
+        "saddlebag.route.secret_service_accounts",
+        lambda: sorted(account for service, account in backend.items if service == SERVICE),
+    )
     return backend
 
 

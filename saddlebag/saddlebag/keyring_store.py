@@ -2,17 +2,19 @@
 
 from __future__ import annotations
 
+import contextlib
 import sys
 from collections.abc import Callable
 from dataclasses import replace
 
 import keyring
+import keyring.backends.SecretService
 import keyring.errors
 from keyring.backend import KeyringBackend
 
 from saddlebag.catalogue import Catalogue
 from saddlebag.models import VALUE_FIELDS, Secret, Tag
-from saddlebag.store import StoreUnavailable
+from saddlebag.store import StoreHealth, StoreUnavailable
 
 SERVICE = "stablemate-saddlebag"
 ALLOWED_BACKENDS = frozenset({"keyring.backends.SecretService.Keyring", "keyring.backends.macOS.Keyring"})
@@ -51,6 +53,22 @@ def _guarded[T](fn: Callable[[], T], name: str) -> T:
         raise StoreUnavailable(DISTRUSTED.format(interpreter=sys.executable, name=name, account=name)) from exc
 
 
+def secret_service_accounts() -> list[str] | None:
+    """Every account the Secret Service holds under SERVICE, or None when this keyring cannot list them."""
+    backend = keyring.get_keyring()
+    if not isinstance(backend, keyring.backends.SecretService.Keyring):
+        return None
+
+    def listing() -> list[str]:
+        collection = backend.get_preferred_collection()
+        with contextlib.closing(collection.connection):
+            items = collection.search_items({"service": SERVICE})
+            names = (item.get_attributes().get("username") for item in items)
+            return sorted(name for name in names if name is not None)
+
+    return _guarded(listing, "doctor")
+
+
 def _account(name: str, field: str) -> str:
     return f"{name}/{field}"
 
@@ -58,9 +76,15 @@ def _account(name: str, field: str) -> str:
 class KeyringStore:
     """A SecretStore with values in the OS keyring and records in a Catalogue."""
 
-    def __init__(self, catalogue: Catalogue, backend: KeyringBackend) -> None:
+    def __init__(
+        self,
+        catalogue: Catalogue,
+        backend: KeyringBackend,
+        accounts: Callable[[], list[str] | None] = lambda: None,
+    ) -> None:
         self._catalogue = catalogue
         self._backend = backend
+        self._accounts = accounts
 
     def _record(self, name: str) -> Secret:
         secret = self._catalogue.get(name)
@@ -79,8 +103,21 @@ class KeyringStore:
 
         _guarded(delete, account)
 
-    def is_authenticated(self) -> bool:
-        return True
+    def health(self) -> StoreHealth:
+        claimed: set[str] = set()
+        missing: list[str] = []
+        for name in self._catalogue.names():
+            record = self._catalogue.get(name)
+            if record is None:
+                continue
+            for field in sorted(record.fields):
+                account = _account(name, field)
+                claimed.add(account)
+                if _guarded(lambda account=account: self._backend.get_password(SERVICE, account), account) is None:
+                    missing.append(account)
+        held = self._accounts()
+        orphans = None if held is None else tuple(sorted(set(held) - claimed))
+        return StoreHealth("keyring", True, tuple(missing), orphans)
 
     def names(self) -> list[str]:
         return self._catalogue.names()

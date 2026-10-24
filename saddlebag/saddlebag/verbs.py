@@ -60,8 +60,9 @@ def _checked[T](check: Callable[[str], T], value: str) -> T:
 class Verbs:
     """The verb handlers over one store, used in-process or behind the daemon."""
 
-    def __init__(self, store: SecretStore, browser_endpoint: str) -> None:
+    def __init__(self, store: SecretStore, browser_endpoint: str, route: str) -> None:
         self.store = store
+        self.route = route
         self.browser_endpoint = browser_endpoint
 
     def handle(self, request: Request) -> Reply:
@@ -212,12 +213,18 @@ class Verbs:
         return {"values": values}
 
     def verb_doctor(self, args: dict[str, Any]) -> dict[str, Any]:
-        authenticated = self.store.is_authenticated()
+        health = self.store.health()
         bare: list[str] = []
-        if authenticated:
+        if health.reachable:
             bare = [secret.name for secret in map(self.store.get, self.store.names()) if secret and not secret.fields]
         return {
-            "vault_authenticated": authenticated,
+            "backend": health.backend,
+            "route": self.route,
+            "version": _pkg_version("stablemate-saddlebag"),
+            "store_reachable": health.reachable,
+            "vault_authenticated": health.reachable,
             "secrets_without_value": bare,
+            "missing_items": list(health.missing_items),
+            "orphan_items": None if health.orphan_items is None else list(health.orphan_items),
             "vault_token_file": VAULT_TOKEN_FILE.expanduser().exists(),
         }

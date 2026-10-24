@@ -214,7 +214,7 @@ def cmd_exec(args: argparse.Namespace) -> int:
         return reply
     values = reply.result.get("values")
     if not isinstance(values, dict):
-        return _error("the daemon sent no environment", 1)
+        return _error("the reply carried no environment", 1)
     try:
         os.execvpe(command[0], command, {**os.environ, **values})
     except OSError as exc:
@@ -230,11 +230,21 @@ def cmd_doctor(args: argparse.Namespace) -> int:
     if args.json:
         _emit(result)
     else:
-        print(f"vault authenticated: {'yes' if result['vault_authenticated'] else 'no'}")
+        route = result["route"]
+        if route.startswith("socket "):
+            route = f"{route} (daemon {result['version']})"
+        print(f"backend: {result['backend']}")
+        print(f"route: {route}")
+        print(f"store reachable: {'yes' if result['store_reachable'] else 'no'}")
         print(f"secrets without a stored value: {', '.join(result['secrets_without_value']) or 'none'}")
+        if result["backend"] != "vault":
+            orphans = result["orphan_items"]
+            print(f"orphan keyring items: {'not checked on this keyring' if orphans is None else ', '.join(orphans) or 'none'}")
+        for item in result["missing_items"]:
+            print(f"warning: the catalogue lists a value for {item} that the keyring no longer holds")
         if result["vault_token_file"]:
             print("warning: ~/.vault-token exists on the daemon's host; any process of this user can read it")
-    healthy = result["vault_authenticated"] and not result["secrets_without_value"]
+    healthy = result["store_reachable"] and not result["secrets_without_value"] and not result["missing_items"]
     return 0 if healthy else 1
 
 

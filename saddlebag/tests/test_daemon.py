@@ -227,18 +227,22 @@ def test_doctor_reports_health_and_valueless_secrets(running: Running, monkeypat
     seed(running)
     running.vault.create(Secret("empty"))
     monkeypatch.setattr(verbs, "VAULT_TOKEN_FILE", tmp_path / "token")
-    assert ok(running.ask("doctor")) == {
-        "vault_authenticated": True,
-        "secrets_without_value": ["empty"],
-        "vault_token_file": False,
-    }
+    first = ok(running.ask("doctor"))
+    assert first["route"].startswith("socket ")
+    assert first["backend"] == "vault"
+    assert first["orphan_items"] is None
+    assert first["missing_items"] == []
+    assert first["store_reachable"] is True
+    assert first["vault_authenticated"] is True
+    assert first["secrets_without_value"] == ["empty"]
+    assert first["vault_token_file"] is False
     (tmp_path / "token").write_text("x")
     running.vault.authenticated = False
-    assert ok(running.ask("doctor")) == {
-        "vault_authenticated": False,
-        "secrets_without_value": [],
-        "vault_token_file": True,
-    }
+    second = ok(running.ask("doctor"))
+    assert second["store_reachable"] is False
+    assert second["vault_authenticated"] is False
+    assert second["secrets_without_value"] == []
+    assert second["vault_token_file"] is True
 
 
 def test_no_reply_except_env_carries_a_stored_value(running: Running, fake_browser: tuple[browser.Target, ...], monkeypatch: pytest.MonkeyPatch) -> None:

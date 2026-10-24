@@ -7,6 +7,7 @@ import importlib.metadata
 import os
 from collections.abc import Callable
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -277,3 +278,119 @@ def test_a_locked_keyring_exits_one_with_the_unlock_hint(
     capsys.readouterr()
     assert run("fill", "login", "--selector", "#pw") == 1
     assert "the OS keyring is locked" in capsys.readouterr().err
+
+
+def make_login(run: Run, *extra: str) -> None:
+    assert run("secret", "create", "login", "--username", "gab", "--var", "LOGIN_PASSWORD", "--tag", "environment=local", *extra) == 0
+    assert run("secret", "set", "login", stdin=PASSWORD + "\n") == 0
+
+
+def test_the_keyring_route_exec_fills_the_tagged_var(
+    keyring_route: FakeBackend, run: Run, execvpe: ExecCapture, capsys: pytest.CaptureFixture[str]
+) -> None:
+    make_login(run)
+    capsys.readouterr()
+    assert run("exec", "--tag", "environment=local", "--", "true") == 0
+    [(_, _, env)] = execvpe.calls
+    assert env["LOGIN_PASSWORD"] == PASSWORD
+    captured = capsys.readouterr()
+    assert PASSWORD not in captured.out + captured.err
+
+
+def test_the_keyring_route_exec_binds_explicit_fields(keyring_route: FakeBackend, run: Run, execvpe: ExecCapture) -> None:
+    make_login(run)
+    assert run("exec", "--env", "WHO=login.username", "--env", "PW=login", "--", "true") == 0
+    [(_, _, env)] = execvpe.calls
+    assert env["WHO"] == "gab"
+    assert env["PW"] == PASSWORD
+
+
+def test_the_keyring_route_tags_lists_the_pairs_in_use(keyring_route: FakeBackend, run: Run, capsys: pytest.CaptureFixture[str]) -> None:
+    make_login(run)
+    capsys.readouterr()
+    assert run("tags") == 0
+    assert capsys.readouterr().out.splitlines() == ["environment=local"]
+
+
+def test_the_keyring_route_tag_untag_unset_and_remove(keyring_route: FakeBackend, run: Run, capsys: pytest.CaptureFixture[str]) -> None:
+    make_login(run)
+
+    def listed() -> list[dict[str, Any]]:
+        capsys.readouterr()
+        assert run("list", "--json") == 0
+        return json.loads(capsys.readouterr().out)["secrets"]
+
+    assert run("secret", "tag", "login", "roles=admin") == 0
+    assert ["roles", "admin"] in listed()[0]["tags"]
+    assert run("secret", "untag", "login", "roles=admin") == 0
+    assert ["roles", "admin"] not in listed()[0]["tags"]
+    assert run("secret", "unset", "login", "--field", "password") == 0
+    assert listed()[0]["fields"] == []
+    assert list(keyring_route.items) == []
+    assert run("secret", "set", "login", stdin=PASSWORD + "\n") == 0
+    assert list(keyring_route.items) == [("stablemate-saddlebag", "login/password")]
+    assert run("secret", "remove", "login") == 0
+    assert listed() == []
+    assert list(keyring_route.items) == []
+
+
+def test_doctor_in_keyring_mode_reports_a_healthy_store(
+    keyring_route: FakeBackend, run: Run, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setattr(verbs, "VAULT_TOKEN_FILE", tmp_path / "none")
+    make_login(run)
+    capsys.readouterr()
+    assert run("doctor") == 0
+    out = capsys.readouterr().out
+    assert "backend: keyring" in out
+    assert "route: in-process" in out
+    assert "store reachable: yes" in out
+    assert "orphan keyring items: none" in out
+    assert PASSWORD not in out
+
+
+def test_doctor_in_keyring_mode_exits_one_for_a_secret_without_a_value(
+    keyring_route: FakeBackend, run: Run, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setattr(verbs, "VAULT_TOKEN_FILE", tmp_path / "none")
+    assert run("secret", "create", "empty") == 0
+    capsys.readouterr()
+    assert run("doctor") == 1
+    assert "secrets without a stored value: empty" in capsys.readouterr().out
+
+
+def test_doctor_in_keyring_mode_lists_an_orphan_and_still_passes(
+    keyring_route: FakeBackend, run: Run, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setattr(verbs, "VAULT_TOKEN_FILE", tmp_path / "none")
+    make_login(run)
+    keyring_route.items[("stablemate-saddlebag", "ghost/password")] = "x"
+    capsys.readouterr()
+    assert run("doctor") == 0
+    assert "orphan keyring items: ghost/password" in capsys.readouterr().out
+
+
+def test_doctor_in_keyring_mode_reports_drift(
+    keyring_route: FakeBackend, run: Run, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setattr(verbs, "VAULT_TOKEN_FILE", tmp_path / "none")
+    make_login(run)
+    del keyring_route.items[("stablemate-saddlebag", "login/password")]
+    capsys.readouterr()
+    assert run("doctor") == 1
+    assert "warning: the catalogue lists a value for login/password that the keyring no longer holds" in capsys.readouterr().out
+    assert run("doctor", "--json") == 1
+    assert json.loads(capsys.readouterr().out)["missing_items"] == ["login/password"]
+
+
+def test_doctor_over_the_daemon_keeps_the_legacy_key(running: Running, run: Run, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    monkeypatch.setattr(verbs, "VAULT_TOKEN_FILE", tmp_path / "none")
+    running.vault.create(Secret("empty"))
+    assert run("doctor", "--json") == 1
+    result = json.loads(capsys.readouterr().out)
+    assert result["vault_authenticated"] is True
+    assert result["backend"] == "vault"
+    assert run("doctor") == 1
+    out = capsys.readouterr().out
+    assert "route: socket " in out and "(daemon " in out
+    assert "orphan keyring items" not in out

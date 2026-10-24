@@ -153,7 +153,7 @@ carries `environment=<ostler environment node id>`.
 | `secret create` `set` `unset` `remove` `tag` `untag` | manage a secret; `set` reads its value from stdin |
 | `fill` | type a secret's username, password or current TOTP code into a browser field |
 | `exec` | run a command with matching secrets in its environment |
-| `doctor` | daemon reachable, Vault authenticated, secrets with no value, stray token file |
+| `doctor` | backend and route in use, store reachable, secrets with no value, orphan keyring items, stray token file |
 
 ```bash
 saddlebag fill NAME --field username|password|totp --selector S [--url-contains X]
