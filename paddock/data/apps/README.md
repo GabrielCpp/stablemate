@@ -4,46 +4,47 @@ One directory per app, and the directory name *is* the name a task module points
 kinds of fixture live here, and they are never interchangeable — one is a starting line,
 the other a finished race with an answer key:
 
-- a **backlog** is input to *building* an app: `docs/backlog.md`, the `docs/decisions/`
-  records standing behind the product decisions it leaves open, and the `grill/` capture of
+- a **milestone** is input to *building* an app: an approved
+  `docs/milestones/<slug>/milestone.md` with its user journeys, the `docs/decisions/`
+  records standing behind the product decisions it rests on, and the `grills/` record of
   the one operator turn the author lane reserves for a human. `apps/link-shortener/` is
   what a task named `link-shortener` runs on.
 - a **frozen app** is input to *measuring QA*: finished code, a book, stories, and defects.
 
 They shared a namespace deliberately. Which kind a fixture is is a property of the *task*
-that names it — greenfield rounds read the backlog, QA rounds read the answer key — and
+that names it — greenfield rounds read the milestone, QA rounds read the answer key — and
 nothing in the harness ever switched on which directory it came out of, so the two-tree
 split encoded a distinction that only ever lived one level up. Every path here is an
 explicit string in a task module either way.
 
-The rest of this file is in two halves: the backlogs first, since they are the shorter
+The rest of this file is in two halves: the milestones first, since they are the shorter
 story, then the frozen apps and the rules their answer keys rest on.
 
-## The backlogs
+## The milestones
 
 They are not the same size, and that is the point. `todo-app` answers *how good are these
-workflows* — four surfaces, eighteen bullets, hours per run, one sample. That is the right
+workflows* — four surfaces, eighteen journeys, hours per run, one sample. That is the right
 instrument for a verdict and the wrong one for a fix cycle: a defect in the coder's fifth
 node costs most of a day to reach twice, so you get one or two observations a day and every
 one of them is confounded by the dozen things that happened before it.
 
 The other three answer *did the workflows get stuck, and where* — which is a question you
 need answered repeatedly, cheaply, and today. Their scores are deliberately not comparable
-to `todo-app`'s, or to each other's: a smaller backlog is an easier backlog, and the number
-they produce is only meaningful against the same backlog's own history.
+to `todo-app`'s, or to each other's: a smaller milestone is an easier milestone, and the number
+they produce is only meaningful against the same milestone's own history.
 
-| Backlog | Surfaces | Bullets | Budget | Task | What it is for |
+| Milestone | Surfaces | Journeys | Budget | Task | What it is for |
 |---|---|---|---|---|---|
-| [`link-shortener`](link-shortener/docs/backlog.md) | api (Go) | 3 | 30 min | `link-shortener` | The smoke run. Fast enough to re-run after every fix, small enough that a failure has one cause. |
-| [`expense-split`](expense-split/docs/backlog.md) | api (Go) | 5 | 60 min | `expense-split` | The workload run. Enough stories for the coder to loop over, which is where staleness and churn actually appear. |
-| [`bookmarks`](bookmarks/docs/backlog.md) | api (Go) + web (React Router) | 4 | 60 min | *not yet written* | The cross-surface run. Two surfaces is where story decomposition, plan-context and per-stack templating go wrong; one surface never exercises any of it. |
-| [`todo-app`](todo-app/docs/backlog.md) | api + web + app + infra | 18 | none | *not yet written* | The verdict run. The only score that means "how good are these workflows", and the only task that costs hours per cell. |
+| [`link-shortener`](link-shortener/docs/milestones/share-short-links/milestone.md) | api (Go) | 3 | 30 min | `link-shortener` | The smoke run. Fast enough to re-run after every fix, small enough that a failure has one cause. |
+| [`expense-split`](expense-split/docs/milestones/settle-shared-expenses/milestone.md) | api (Go) | 5 | 60 min | `expense-split` | The workload run. Enough stories for the coder to loop over, which is where staleness and churn actually appear. |
+| [`bookmarks`](bookmarks/docs/milestones/keep-saved-pages/milestone.md) | api (Go) + web (React Router) | 4 | 60 min | *not yet written* | The cross-surface run. Two surfaces is where story decomposition, plan-context and per-stack templating go wrong; one surface never exercises any of it. |
+| [`todo-app`](todo-app/docs/milestones/personal-todos-everywhere/milestone.md) | api + web + app + infra | 18 | none | *not yet written* | The verdict run. The only score that means "how good are these workflows", and the only task that costs hours per cell. |
 
 ```bash
 uv run paddock run link-shortener --label smoke
 ```
 
-A backlog with no task module beside it is a fixture nothing can run yet — the input is
+A milestone with no task module beside it is a fixture nothing can run yet — the input is
 written, the declaration (surfaces, scaffolds, repo gates, judge) is not. That is a real
 gap and is left visible rather than papered over.
 
@@ -51,7 +52,7 @@ gap and is left visible rather than papered over.
 
 Two things, both deliberately data rather than machine state. `todo-app` sets neither on
 purpose: the verdict is only meaningful at the tier you actually ship on, and a ceiling on
-a run that long stops it mid-backlog and scores a repo nobody finished.
+a run that long stops it mid-milestone and scores a repo nobody finished.
 
 **The pinned config.** Which model a node runs on is the largest single term in both the
 score and the wall-clock, so leaving it to whatever `~/.config/stablemate/config.toml`
@@ -118,19 +119,26 @@ any comparison that spans the change.
 
 Each isolates a class of failure the others cannot reach.
 
-One surface with three bullets produces one epic and a handful of stories: if that run
+One surface with three journeys produces one epic and a handful of stories: if that run
 churns, the cause is in the single-story path, with nothing else in the frame. Five
-bullets produce enough stories for the coder to *loop*, which is the only way to see the
-selector re-pick, a repair loop repeat, or a run go stale mid-queue — a three-bullet run
+journeys produce enough stories for the coder to *loop*, which is the only way to see the
+selector re-pick, a repair loop repeat, or a run go stale mid-queue — a three-journey run
 finishes before any of those has a chance to show. Two surfaces produce stories that
 span stacks, which is where the plan-context layer maps, the per-stack skill resolution
 and the prompt templating all get exercised for the first time; a Go-only run resolves
 one pack and proves nothing about the second.
 
-Backlogs are written to the same contract as `todo-app`'s: user-observable behavior,
-`- [kebab-id] A person …`, no implementation tasks. A bullet that names an
-implementation is a bullet the author workflow cannot be judged on, because it has
-already been decomposed for it.
+Milestones are written to the same contract as `todo-app`'s, the one the
+`workhorse-workflows-milestone` skill sets out: `status: approved`, the seven sections
+with prose, and one `###` journey per user-observable behaviour under `## User Journeys`,
+each opening with the `- services:` bullet that names the books it goes through. A
+journey that names an implementation is a journey the author workflow cannot be judged
+on, because it has already been decomposed for it. The round copies the folder into the
+produced repo and opens an empty book under `docs/services/` per surface, which is all
+the author's ready gate asks of a book. `bookmarks` and `todo-app` go through web and
+mobile books and so owe a `mockups/<journey-slug>.html` per journey once those books
+carry a UI runbook; neither has a task module yet, and the mockups are written when the
+task is.
 
 ## The frozen apps
 
@@ -292,7 +300,7 @@ two keys is one owner, never two) and no longer required; a new fixture should n
 **The benchmark owns `18080-18099` and nothing else**, and every fixture here draws from
 that one register, because a fixture that measures QA and a round that builds an app can
 easily be running at the same moment on one machine. A surface that listens names its port
-in its backlog's surface list, and no two fixtures share one: `expense-split` api 18080,
+in its milestone's constraints, and no two fixtures share one: `expense-split` api 18080,
 `link-shortener` api 18081, `bookmarks` api 18082 and web 18092, `seat-booking` 18083,
 `policy-desk` 18084, and `claims-api` 18085 with its auth emulator on 18086. A new fixture
 takes the next free number in the range and writes it down the same way.
@@ -309,7 +317,7 @@ second is a command: it runs, writes a JSON file and exits, and a QA scenario re
 process boundary rather than a socket. A fixture with no entry here is otherwise indistinguishable
 from one whose author forgot, so both absences are registered rather than left blank.
 
-This is not tidiness. A backlog that starts a server without naming a port gets the language's
+This is not tidiness. A milestone that starts a server without naming a port gets the language's
 idiomatic default — `8080` for Go, `3000` for React Router — and those are the two most
 contended ports on a developer machine. An `expense-split` run bound its QA daemon to `8080`
 while an unrelated project's stack already held it, so the readiness probe
@@ -318,9 +326,10 @@ the bind and the run failed loudly, which is the *good* outcome and the one we d
 choose: had our app come up first, QA would have graded a foreign API and reported a verdict
 about it, with nothing in the evidence to say so. Naming the port removes the coin flip.
 
-The backlog is the right home for it even though it is otherwise strictly
-behavior-not-implementation, because the port is neither — it is a fact about the machine
-the app is allowed to occupy, and the backlog is the one document every phase reads.
+The milestone's constraints are the right home for it even though the journeys are
+strictly behavior-not-implementation, because the port is neither — it is a fact about the
+machine the app is allowed to occupy, and the milestone is the one document every phase
+reads.
 
 ## The frozen apps, one by one
 

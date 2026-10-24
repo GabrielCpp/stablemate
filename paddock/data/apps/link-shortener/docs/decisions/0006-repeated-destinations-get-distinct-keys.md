@@ -1,7 +1,7 @@
 # A repeated destination gets a distinct new key
 
 **Status:** decided
-**Applies to:** [link-create] — the response to a `POST /links` for a destination seen before
+**Applies to:** the create journey — the response to a `POST /links` for a destination seen before
 
 ## The question
 
@@ -22,7 +22,7 @@ and how long they are — is not settled here and is the implementing lane's to 
 ## Why
 
 `201 Created` asserts a resource was created. Returning a pre-existing key would make that
-assertion false, or force a second success status onto a three-bullet fixture.
+assertion false, or force a second success status onto a three-journey fixture.
 
 Reuse would also drag in two rules nobody has written: canonicalisation (are
 `http://x.com/a` and `http://x.com/a/` the same destination?) and concurrency (two

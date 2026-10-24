@@ -1,7 +1,7 @@
 # A short link is durable and never expires
 
 **Status:** decided
-**Applies to:** [link-create], [link-follow], the storage design, and the QA plan's criteria
+**Applies to:** the create journey, the follow journey, the storage design, and the QA plan's criteria
 
 ## The question
 
@@ -13,7 +13,7 @@ process that wrote it?
 
 A created short link works indefinitely. There is **no expiry and no deletion** — neither
 is in scope, and because nothing expires there is no expired-key response to define: a key
-either was created and redirects, or was never created and is the [link-missing] 404.
+either was created and redirects, or was never created and is the missing-key journey's 404.
 
 The implementation is **durable**. The ledger is a JSON file on disk, not in-process state.
 
@@ -23,14 +23,14 @@ is the evidence QA is asked for — the file — and it is provable against the 
 
 ## Why
 
-[link-follow] promises a person *arrives at* the destination. A promise that lapses when a
-process ends is a smaller promise than the bullet makes, so durability is part of the
+The follow journey promises a person *arrives at* the destination. A promise that lapses when a
+process ends is a smaller promise than the journey makes, so durability is part of the
 product rather than an implementation preference.
 
 Expiry and deletion are excluded for the opposite reason: each drags in a response the
-three bullets never ask for (what an expired key answers, what a deleted key answers) and a
-lifecycle nobody has specified. Ruling them out here is what keeps the backlog at three
-bullets.
+three journeys never ask for (what an expired key answers, what a deleted key answers) and a
+lifecycle nobody has specified. Ruling them out here is what keeps the milestone at three
+journeys.
 
 What QA is asked to *prove* about durability is narrower than durability itself, and
 [[0001-restart-survival-is-code-reviews-obligation]] says why and who carries the rest.

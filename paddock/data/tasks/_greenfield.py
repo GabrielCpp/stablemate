@@ -1,14 +1,12 @@
-"""The greenfield round: build a repo out of a backlog, then ask what the backlog got."""
+"""The greenfield round: build a repo out of an approved milestone, then ask what the milestone got."""
 
 from __future__ import annotations
 
 import json
 import logging
 import os
-import re
 import shutil
 import subprocess
-import tomllib
 import time
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
@@ -20,9 +18,9 @@ import _forensics as fx
 import _operator_gates as og
 from _judge import Judge, call_agent, render
 from _stablemate import TrialError, effective, no_leaks, pin_held, stablemate_checkout, uv_run
-from ostler import markdown
+from ostler import markdown, registry
+from ostler.milestones import JOURNEY_LEVEL, SERVICES_LABEL, journey_slug
 from paddock import Run, Score
-from workhorse.cli.run import library_dirs as wh_library_dirs
 from workhorse.config_run import AgentResilience
 from workhorse.runner import extract as wh_extract
 from workhorse.runner.backends.registry import get_backend
@@ -32,17 +30,19 @@ logger = logging.getLogger(__name__)
 
 
 LEVELS = {
-    0: ("absent", "nothing in the repo claims this bullet"),
+    0: ("absent", "nothing in the repo claims this journey"),
     1: ("planned", "a story exists that would deliver it; no implementing code"),
-    2: ("built", "implementing code exists on every surface the bullet implies"),
+    2: ("built", "implementing code exists on every surface the journey implies"),
     3: ("verified", "built, and executable evidence exercises it"),
 }
 MAX_LEVEL = 3
 
 
-KEBAB_ID = re.compile(r"[a-z0-9][a-z0-9-]*\Z")
+MILESTONES_DIR = "docs/milestones"
 
-COVERED_HEADING = "Backlog bullets covered"
+SERVICES_DIR = "docs/services"
+
+MILESTONE_FILE = "milestone.md"
 
 BUILD = ("artifacts", "build")
 
@@ -74,10 +74,8 @@ class Check:
 class Fixture:
     """Everything that distinguishes one greenfield task from another."""
 
-    backlog: str
-    backlog_path: str = "docs/backlog.md"
+    milestone: str
     decision_records: str = ""
-    grill_capture: str = ""
     decision_records_path: str = "docs/decisions"
     surfaces: tuple[Surface, ...] = ()
     packs: str = ""
@@ -87,6 +85,10 @@ class Fixture:
     judge_model: str = ""
     judge_effort: str = ""
     budget_s: dict[str, float] = field(default_factory=dict)
+
+    @property
+    def slug(self) -> str:
+        return Path(self.milestone).name
 
     def params(self, repo: Path, surface: Surface) -> str:
         """The flow params for one `workhorse-coder run genesis` invocation."""
@@ -149,7 +151,7 @@ def phases_of(run: Run) -> list[dict[str, Any]]:
 
 
 def run_genesis(run: Run, fixture: Fixture) -> None:
-    """Scaffold every surface, then seed the backlog into the tree genesis just made."""
+    """Scaffold every surface, then seed the milestone into the tree genesis just made."""
     checkout = stablemate_checkout(run)
     for surface in fixture.surfaces:
         started = time.monotonic()
@@ -170,22 +172,27 @@ def run_genesis(run: Run, fixture: Fixture) -> None:
                 f"genesis failed for surface {surface.service!r} (exit {result.returncode}) "
                 f"— see {result.log}"
             )
-    seed_backlog(run, fixture)
+    seed_milestone(run, fixture)
     seed_decision_records(run, fixture)
     ignore_agent_runtime(run)
     commit_baseline(run)
-    seed_grill_capture(run, fixture)
 
 
-def seed_backlog(run: Run, fixture: Fixture) -> None:
-    """Copy the tracked backlog into the produced repo."""
-    source = run.data_dir / fixture.backlog
-    if not source.is_file():
-        raise TrialError(f"no backlog at {source} — is --data-dir the repo's paddock/data/?")
-    destination = run.repo / fixture.backlog_path
-    if not destination.parent.is_dir():
-        raise TrialError(f"no {destination.parent} — genesis did not scaffold the docs tree")
-    destination.write_text(source.read_text(encoding="utf-8"), encoding="utf-8")
+def seed_milestone(run: Run, fixture: Fixture) -> None:
+    """Copy the approved milestone into the produced repo, and open an empty book per surface.
+
+    The milestone's journeys name the books under `docs/services/`, the author's ready gate
+    requires each named book to exist, and genesis makes none, so the round opens an empty
+    book per surface for the author to fill.
+    """
+    source = run.data_dir / fixture.milestone
+    if not (source / MILESTONE_FILE).is_file():
+        raise TrialError(f"no milestone at {source} — is --data-dir the repo's paddock/data/?")
+    if not (run.repo / "docs").is_dir():
+        raise TrialError(f"no {run.repo / 'docs'} — genesis did not scaffold the docs tree")
+    shutil.copytree(source, run.repo / MILESTONES_DIR / fixture.slug, dirs_exist_ok=True)
+    for surface in fixture.surfaces:
+        (run.repo / SERVICES_DIR / surface.service).mkdir(parents=True, exist_ok=True)
 
 
 def seed_decision_records(run: Run, fixture: Fixture) -> None:
@@ -199,41 +206,6 @@ def seed_decision_records(run: Run, fixture: Fixture) -> None:
     destination.mkdir(parents=True, exist_ok=True)
     for record in sorted(source.glob("*.md")):
         (destination / record.name).write_text(record.read_text(encoding="utf-8"), encoding="utf-8")
-
-
-AUTHOR_RUN_ID = "grill"
-
-GRILL_GATE = "_author-context.md"
-
-
-def seed_grill_capture(run: Run, fixture: Fixture) -> None:
-    """Put the frozen operator turn — the answered grill gate — into the round."""
-    if not fixture.grill_capture:
-        return
-    source = run.data_dir / fixture.grill_capture
-    if not (source / "checkpoint.json").is_file():
-        raise TrialError(f"no frozen grill capture at {source} — is --data-dir the repo's paddock/data/?")
-
-    frozen = json.loads((source / "checkpoint.json").read_text(encoding="utf-8"))
-    branch = str(frozen["ctx"].get("author_branch") or "")
-    if branch:
-        git(run.repo, "checkout", "-B", branch)
-
-    gate = run.repo / str(frozen["waiting_on"])
-    if not gate.parent.is_dir():
-        raise TrialError(f"no {gate.parent} — genesis did not scaffold the docs tree")
-    gate.write_text((source / GRILL_GATE).read_text(encoding="utf-8"), encoding="utf-8")
-
-    cfg = tomllib.loads(effective(run).read_text(encoding="utf-8"))
-    frozen["run_id"] = AUTHOR_RUN_ID
-    frozen["waiting_on"] = str(gate)
-    frozen["inputs"] = {**frozen["inputs"], "repo_dir": str(run.repo),
-                        "library_dirs": wh_library_dirs(cfg)}
-    frozen["ctx"] = {**frozen["ctx"], "repo_root": str(run.repo)}
-
-    destination = runs_dir(run) / f"author-{AUTHOR_RUN_ID}"
-    destination.mkdir(parents=True, exist_ok=True)
-    run.write_json(destination / "checkpoint.json", frozen)
 
 
 def git(repo: Path, *argv: str) -> None:
@@ -290,18 +262,14 @@ def run_phase(run: Run, fixture: Fixture, phase: str, *argv: str) -> None:
 
 
 def run_author(run: Run, fixture: Fixture) -> None:
-    """Split the backlog into epics and stories, resuming past the grill gate."""
-    if not (run.repo / fixture.backlog_path).is_file():
-        raise TrialError(f"no backlog at {run.repo / fixture.backlog_path} — genesis first")
-    resume = ["--run-id", AUTHOR_RUN_ID] if fixture.grill_capture else []
+    """Split the approved milestone into epics and stories."""
+    milestone = run.repo / MILESTONES_DIR / fixture.slug / MILESTONE_FILE
+    if not milestone.is_file():
+        raise TrialError(f"no milestone at {milestone} — genesis first")
     stop, thread = og.gates_watched(run, "author")
     thread.start()
     try:
-        run_phase(
-            run, fixture, "author",
-            "workhorse-author", "run", *resume,
-            "--params", json.dumps({"backlog": fixture.backlog_path}),
-        )
+        run_phase(run, fixture, "author", "workhorse-author", "run")
     finally:
         stop.set()
         thread.join(timeout=og.GATE_POLL_S * 2)
@@ -344,7 +312,7 @@ def run_gates(run: Run, fixture: Fixture) -> None:
 
 
 def run_round(run: Run, fixture: Fixture) -> None:
-    """The whole build, as one step: genesis, backlog, author, coder, gates."""
+    """The whole build, as one step: genesis, milestone, author, coder, gates."""
     with no_leaks(stablemate_checkout(run), pinned=pin_held(run.pinned)):
         run_genesis(run, fixture)
         run_author(run, fixture)
@@ -354,16 +322,46 @@ def run_round(run: Run, fixture: Fixture) -> None:
 
 
 
-def parse_backlog(path: Path) -> list[dict[str, Any]]:
-    """The `- [kebab-id] text` bullets, in file order."""
+def books_of(value: str) -> list[str]:
+    return [b for b in (part.strip().strip("`").strip() for part in value.split(",")) if b]
+
+
+def milestone_journeys(path: Path) -> list[dict[str, Any]]:
+    """The `###` journeys under a milestone's `## User Journeys`, in file order."""
     if not path.is_file():
         return []
+    section = markdown.split(path.read_text(encoding="utf-8")).find_section(
+        registry.MILESTONE_JOURNEYS_HEADING)
+    if section is None:
+        return []
     out: list[dict[str, Any]] = []
-    for bullet in markdown.split(path.read_text(encoding="utf-8")).walk_bullets():
-        bid, text = bullet.bracketed
-        if KEBAB_ID.fullmatch(bid) and text.strip():
-            out.append({"id": bid, "text": " ".join(text.split())})
+    for child in section.children:
+        if child.level != JOURNEY_LEVEL:
+            continue
+        title = child.title.strip()
+        ident = journey_slug(title)
+        if not ident:
+            continue
+        bullet = child.labelled(SERVICES_LABEL)
+        prose = [line for line in child.body.splitlines()
+                 if not line.strip().lower().lstrip("-*").strip().startswith(f"{SERVICES_LABEL}:")]
+        out.append({
+            "id": ident,
+            "title": title,
+            "text": " ".join(" ".join(prose).split()),
+            "services": books_of(bullet.value) if bullet is not None else [],
+        })
     return out
+
+
+def milestone_epics(path: Path) -> list[str]:
+    """The `epics` frontmatter of a milestone, as stripped names."""
+    if not path.is_file():
+        return []
+    data = markdown.split(path.read_text(encoding="utf-8")).frontmatter
+    value = data.get("epics") if isinstance(data, dict) else None
+    items = [value] if isinstance(value, str) else value if isinstance(value, list) else []
+    return [str(i).strip() for i in items if str(i).strip()]
 
 
 def find_epics(repo: Path) -> list[Path]:
@@ -385,34 +383,52 @@ def is_done(status: str) -> bool:
     return status.strip().lower() in {"done", "qa passed", "complete", "completed", "merged"}
 
 
-def trace_bullets(run: Run, fixture: Fixture) -> list[dict[str, Any]]:
-    """Trace each backlog bullet to the epic that claims it and that epic's stories."""
-    bullets = parse_backlog(run.data_dir / fixture.backlog)
+def produced_milestone(run: Run, fixture: Fixture) -> Path:
+    return run.repo / MILESTONES_DIR / fixture.slug / MILESTONE_FILE
 
-    claims: dict[str, list[dict[str, Any]]] = defaultdict(list)
+
+def listed_epics(run: Run, fixture: Fixture) -> set[str]:
+    return {registry.epic_slug(e) for e in milestone_epics(produced_milestone(run, fixture))}
+
+
+def unlisted_epics(run: Run, fixture: Fixture) -> list[str]:
+    """The epic directories the milestone's `epics` list does not name."""
+    listed = listed_epics(run, fixture)
+    return [e.parent.name for e in find_epics(run.repo)
+            if registry.epic_slug(e.parent.name) not in listed]
+
+
+def trace_journeys(run: Run, fixture: Fixture) -> list[dict[str, Any]]:
+    """Trace each milestone journey to the listed epic that claims it and that epic's stories."""
+    journeys = milestone_journeys(run.data_dir / fixture.milestone / MILESTONE_FILE)
+    listed = listed_epics(run, fixture)
+
+    owned: dict[str, list[dict[str, Any]]] = defaultdict(list)
     for epic_md in find_epics(run.repo):
+        if registry.epic_slug(epic_md.parent.name) not in listed:
+            continue
         doc = markdown.split(epic_md.read_text(encoding="utf-8"))
+        section = doc.find_section(registry.MILESTONE_JOURNEYS_HEADING)
+        if section is None:
+            continue
         stories = [
             {"slug": s.parent.name, "status": frontmatter(s).get("status", "unknown")}
             for s in sorted(epic_md.parent.glob("stories/*/story.md"))
         ]
         info = {"epic": epic_md.parent.name, "stories": stories}
-        section = doc.find_section(COVERED_HEADING)
-        claimed = (
-            [b for top in section.bullets for b in top.walk()]
-            if section is not None
-            else doc.walk_bullets()
-        )
-        for bid in {b.bracketed[0] for b in claimed}:
-            if KEBAB_ID.fullmatch(bid):
-                claims[bid].append(info)
+        named = {journey_slug(s.title) for s in section.walk() if s.level > section.level}
+        haystack = " ".join(section.text.split()).lower()
+        for journey in journeys:
+            title = " ".join(str(journey["title"]).split()).lower()
+            if journey["id"] in named or title in haystack:
+                owned[str(journey["id"])].append(info)
 
-    for bullet in bullets:
-        owners = claims.get(str(bullet["id"]), [])
-        bullet["epics"] = [o["epic"] for o in owners]
-        bullet["stories"] = [s for o in owners for s in o["stories"]]
-        bullet["stories_done"] = [s for s in bullet["stories"] if is_done(s["status"])]
-    return bullets
+    for journey in journeys:
+        owners = owned.get(str(journey["id"]), [])
+        journey["epics"] = [o["epic"] for o in owners]
+        journey["stories"] = [s for o in owners for s in o["stories"]]
+        journey["stories_done"] = [s for s in journey["stories"] if is_done(s["status"])]
+    return journeys
 
 
 def git_commits(repo: Path) -> int:
@@ -426,19 +442,20 @@ def git_commits(repo: Path) -> int:
 
 
 
-def judge_one(judge: Judge, bullet: dict[str, Any], rubric: str, repo: Path) -> dict[str, Any]:
-    """Score one backlog bullet by having an agent read the produced repo."""
+def judge_one(judge: Judge, journey: dict[str, Any], rubric: str, repo: Path) -> dict[str, Any]:
+    """Score one milestone journey by having an agent read the produced repo."""
     prompt = render(
         rubric,
-        bullet_id=str(bullet["id"]),
-        bullet_text=str(bullet["text"]),
+        journey_id=str(journey["id"]),
+        journey_title=str(journey["title"]),
+        journey_text=str(journey["text"]),
         target=str(repo),
-        epics=", ".join(bullet["epics"]) or "(none — no epic claims this bullet)",
-        stories="\n".join(f"  - {s['slug']} — {s['status']}" for s in bullet["stories"])
+        epics=", ".join(journey["epics"]) or "(none — no epic claims this journey)",
+        stories="\n".join(f"  - {s['slug']} — {s['status']}" for s in journey["stories"])
                 or "  (none)",
         levels="\n".join(f"  {n} {name} — {desc}" for n, (name, desc) in LEVELS.items()),
     )
-    text = call_agent(judge, prompt, node_id=f"judge_{bullet['id']}", repo=repo)
+    text = call_agent(judge, prompt, node_id=f"judge_{journey['id']}", repo=repo)
     parsed = wh_extract.parse_json_from_text(text, ["level", "evidence", "reason"]) or {}
 
     try:
@@ -452,12 +469,12 @@ def judge_one(judge: Judge, bullet: dict[str, Any], rubric: str, repo: Path) -> 
     unverified = bool(bad) or (level >= 2 and not evidence)
     if unverified and level >= 2:
         level = 1
-    return {**bullet, "level": level, "evidence": evidence, "reason": reason,
+    return {**journey, "level": level, "evidence": evidence, "reason": reason,
             "unverified_citations": bad, "capped": unverified}
 
 
-def judge_backlog(run: Run, fixture: Fixture, bullets: list[dict[str, Any]],
-                  jobs: int) -> list[dict[str, Any]]:
+def judge_journeys(run: Run, fixture: Fixture, journeys: list[dict[str, Any]],
+                   jobs: int) -> list[dict[str, Any]]:
     rubric_path = run.data_dir / "rubric.md"
     if not rubric_path.is_file():
         raise TrialError(f"no rubric at {rubric_path}")
@@ -469,48 +486,48 @@ def judge_backlog(run: Run, fixture: Fixture, bullets: list[dict[str, Any]],
     arena = run.workdir("judge")
     repo = arena / run.repo.name
     shutil.copytree(run.repo, repo, symlinks=True)
-    logger.info("judging %d bullet(s) with %s, %d at a time", len(bullets), judge.backend.name, jobs)
+    logger.info("judging %d journey(s) with %s, %d at a time", len(journeys), judge.backend.name, jobs)
     with ThreadPoolExecutor(max_workers=max(1, jobs)) as pool:
-        return list(pool.map(lambda b: judge_one(judge, b, rubric, repo), bullets))
+        return list(pool.map(lambda j: judge_one(judge, j, rubric, repo), journeys))
 
 
-def structural_only(bullets: list[dict[str, Any]]) -> list[dict[str, Any]]:
+def structural_only(journeys: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """The levels a score with no judge is entitled to claim."""
     return [{**b, "level": 1 if b["epics"] else 0, "evidence": [], "capped": False,
              "unverified_citations": [],
              "reason": "claimed by an epic" if b["epics"] else "no epic claims it"}
-            for b in bullets]
+            for b in journeys]
 
 
 
 
-def bullet_table(bullets: list[dict[str, Any]]) -> list[str]:
+def journey_table(journeys: list[dict[str, Any]]) -> list[str]:
     lines = [
-        f"  {'bullet':<28}{'level':<12}{'epic ✓/n':>9}  why",
+        f"  {'journey':<28}{'level':<12}{'epic ✓/n':>9}  why",
         f"  {'-' * 86}",
     ]
-    for b in sorted(bullets, key=lambda x: -int(x["level"])):
+    for b in sorted(journeys, key=lambda x: -int(x["level"])):
         name = LEVELS[int(b["level"])][0]
         flag = " ⚠" if b.get("capped") else ""
         done = f"{len(b['stories_done'])}/{len(b['stories'])}"
         lines.append(f"  {b['id']:<28}{b['level']} {name:<10}{done:>9}  {str(b['reason'])[:44]}{flag}")
     lines.append(f"  {'-' * 86}")
-    lines.append("  epic ✓/n = done stories / all stories in the epic(s) claiming the bullet")
+    lines.append("  epic ✓/n = done stories / all stories in the epic(s) claiming the journey")
     return lines
 
 
-def satisfaction(bullets: list[dict[str, Any]]) -> float:
-    if not bullets:
+def satisfaction(journeys: list[dict[str, Any]]) -> float:
+    if not journeys:
         return 0.0
-    return 100.0 * sum(int(b["level"]) for b in bullets) / (MAX_LEVEL * len(bullets))
+    return 100.0 * sum(int(b["level"]) for b in journeys) / (MAX_LEVEL * len(journeys))
 
 
-def warnings(bullets: list[dict[str, Any]], checks: list[dict[str, Any]],
-             gates: list[dict[str, Any]]) -> list[str]:
+def warnings(journeys: list[dict[str, Any]], checks: list[dict[str, Any]],
+             gates: list[dict[str, Any]], unlisted: list[str] | None = None) -> list[str]:
     lines: list[str] = []
-    capped = [b for b in bullets if b.get("capped")]
+    capped = [b for b in journeys if b.get("capped")]
     if capped:
-        lines.append(f"  ⚠ {len(capped)} bullet(s) capped at `planned`: the judge claimed "
+        lines.append(f"  ⚠ {len(capped)} journey(s) capped at `planned`: the judge claimed "
                      "built/verified but cited repo paths that do not exist. Treat these as")
         lines.append("    unproven, not as near-misses:")
         for b in capped:
@@ -540,11 +557,15 @@ def warnings(bullets: list[dict[str, Any]], checks: list[dict[str, Any]],
                      "unrepeatable — record it as `hand` if you do.")
 
     red = [c for c in checks if c["exit"] != 0]
-    verified = [b for b in bullets if int(b["level"]) == MAX_LEVEL]
+    verified = [b for b in journeys if int(b["level"]) == MAX_LEVEL]
     if red and verified:
-        lines.append(f"  ⚠ {len(verified)} bullet(s) scored `verified` while {len(red)} repo "
+        lines.append(f"  ⚠ {len(verified)} journey(s) scored `verified` while {len(red)} repo "
                      f"gate(s) are red ({', '.join(str(c['name']) for c in red)}).")
         lines.append("    Executable evidence that does not execute is not evidence.")
+
+    if unlisted:
+        lines.append(f"  ⚠ {len(unlisted)} epic(s) the milestone does not list: "
+                     f"{', '.join(unlisted)}")
     return lines
 
 
@@ -589,44 +610,44 @@ def phase_lines(phases: list[dict[str, Any]]) -> list[str]:
     return lines
 
 
-def headline(bullets: list[dict[str, Any]], checks: list[dict[str, Any]]) -> str:
-    pct = satisfaction(bullets)
-    total = sum(int(b["level"]) for b in bullets)
+def headline(journeys: list[dict[str, Any]], checks: list[dict[str, Any]]) -> str:
+    pct = satisfaction(journeys)
+    total = sum(int(b["level"]) for b in journeys)
     green = sum(1 for c in checks if c["exit"] == 0)
     gates = f"{green}/{len(checks)} gates green" if checks else "no gates declared"
-    return (f"backlog satisfaction {pct:.0f}% ({total}/{MAX_LEVEL * max(1, len(bullets))} "
-            f"across {len(bullets)} bullets) — {gates}")
+    return (f"milestone satisfaction {pct:.0f}% ({total}/{MAX_LEVEL * max(1, len(journeys))} "
+            f"across {len(journeys)} journeys) — {gates}")
 
 
 def score_round(run: Run, fixture: Fixture) -> Score:
     """The rating beside what it cost and beside whether the machinery got there alone."""
-    bullets = trace_bullets(run, fixture)
+    journeys = trace_journeys(run, fixture)
     only = set(run.param_list("only"))
     if only:
-        bullets = [b for b in bullets if b["id"] in only]
-    if not bullets:
-        return Score(headline=f"no backlog bullets found in {fixture.backlog}")
+        journeys = [j for j in journeys if j["id"] in only]
+    if not journeys:
+        return Score(headline=f"no journeys found in {fixture.milestone}")
 
     gates = build_dir(run) / "gates.json"
     checks: list[dict[str, Any]] = (
         json.loads(gates.read_text(encoding="utf-8")) if gates.is_file() else []
     )
 
-    bullets = (
-        judge_backlog(run, fixture, bullets, int(run.param_float("jobs", 4.0)))
+    journeys = (
+        judge_journeys(run, fixture, journeys, int(run.param_float("jobs", 4.0)))
         if run.param_bool("judge", True)
-        else structural_only(bullets)
+        else structural_only(journeys)
     )
 
     tally: dict[int, int] = defaultdict(int)
-    for b in bullets:
+    for b in journeys:
         tally[int(b["level"])] += 1
     operator_gates = og.operator_gates_of(run)
-    flags = warnings(bullets, checks, operator_gates)
+    flags = warnings(journeys, checks, operator_gates, unlisted_epics(run, fixture))
     runs = fx.read_runs(runs_dir(run), stablemate_checkout(run))
     nodes = fx.hang_candidates(runs_dir(run), run.stage / "artifacts")
     detail = [
-        *bullet_table(bullets),
+        *journey_table(journeys),
         "  " + "   ".join(f"{LEVELS[n][0]}: {tally[n]}" for n in sorted(LEVELS, reverse=True)),
         *(["", *flags] if flags else []),
         *operator_gate_lines(operator_gates),
@@ -636,21 +657,21 @@ def score_round(run: Run, fixture: Fixture) -> Score:
         *fx.timing_lines(nodes),
     ]
     return Score(
-        headline=headline(bullets, checks),
+        headline=headline(journeys, checks),
         detail=tuple(detail),
         caveats=tuple(
             f"operator gate {g['action']}: {g['gate']}" for g in operator_gates
         ),
         data={
-            "satisfaction_pct": round(satisfaction(bullets), 1),
+            "satisfaction_pct": round(satisfaction(journeys), 1),
             "max_level": MAX_LEVEL,
             "levels": {n: name for n, (name, _) in LEVELS.items()},
             "judged": run.param_bool("judge", True),
             "judge": {"cli": fixture.judge_cli, "model": fixture.judge_model,
                       "effort": fixture.judge_effort},
-            "bullets": [{k: b[k] for k in
-                         ("id", "text", "level", "reason", "evidence", "epics",
-                          "capped", "unverified_citations")} for b in bullets],
+            "journeys": [{k: j[k] for k in
+                          ("id", "title", "text", "level", "reason", "evidence", "epics",
+                           "capped", "unverified_citations")} for j in journeys],
             "checks": checks,
             "operator_gates": operator_gates,
             "phases": phases_of(run),

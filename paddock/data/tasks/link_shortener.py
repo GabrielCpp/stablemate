@@ -1,4 +1,4 @@
-"""link-shortener — the smoke task: one Go surface, three bullets, half an hour."""
+"""link-shortener — the smoke task: one Go surface, three journeys, half an hour."""
 
 from __future__ import annotations
 
@@ -13,9 +13,8 @@ task(
 )
 
 FIXTURE = gf.Fixture(
-    backlog="apps/link-shortener/docs/backlog.md",
+    milestone="apps/link-shortener/docs/milestones/share-short-links",
     decision_records="apps/link-shortener/docs/decisions",
-    grill_capture="apps/link-shortener/grill",
     packs="product-planning,stablemate,infra",
     docs_scaffold="shared-docs:docs",
     surfaces=(

@@ -6,7 +6,7 @@ One module per benchmark round, loaded by `paddock` from `--data-dir`. A module 
 
 - `_forensics.py`: reading a staged round's run dirs back: repair loops, churn, node timing, cap-wait and the cost lines of the scorecard.
 - `_frozenapp.py`: the frozen-app QA round: materializing a story, seeding a defect from the answer key, and scoring whether QA caught it.
-- `_greenfield.py`: the greenfield round every backlog fixture shares: its phases, the frozen grill turn, its backlog trace and its score.
+- `_greenfield.py`: the greenfield round every milestone fixture shares: its phases, its journey trace through the epics and its score.
 - `_judge.py`: one agent turn that waits out usage caps, and the rubric fill every judged task uses.
 - `_leverage.py`: how far a trial's QA plan used what the book documents, read statically from the plan, the book and the run log.
 - `_linkshort.py`: the link-shortener acceptance gate: twelve black-box checks over a built product.
@@ -22,7 +22,7 @@ One module per benchmark round, loaded by `paddock` from `--data-dir`. A module 
 - `globex_book_line3.py`: the probe that asks what a node is for and which story asked for it, from the book alone.
 - `globex_book_operate.py`: the probe that asks whether an agent can bring globex up and drive it from the book and a browser.
 - `globex_qa.py`: the frozen-app QA round on globex, the only two-service fixture.
-- `link_shortener.py`: the smoke task: a greenfield round with one Go surface and three bullets.
+- `link_shortener.py`: the smoke task: a greenfield round with one Go surface and three journeys.
 - `link_shortener_dev.py`: a replay of the dev lane on link-shortener, graded by the same gate as a solo-agent baseline.
 - `link_shortener_replay.py`: a replay of the docs lane on link-shortener's smallest real story, to measure its cost.
 - `policy_desk_qa.py`: the frozen-app QA round on policy-desk: does QA notice a seeded defect and work the product.

@@ -11,7 +11,7 @@
 # every node at one tier and cannot say whether a tier choice was right.
 #
 # Here it is the measurement. The number this config exists to be compared against is a
-# single `claude -p --model claude-opus-5` invocation handed the same backlog and the same
+# single `claude -p --model claude-opus-5` invocation handed the same milestone and the same
 # decision records, which finished the whole link-shortener in ~158s. If the lane ran on a
 # mixed ladder, any difference would be attributable to the models as easily as to the
 # workflow, and the workflow is the thing under test. One model on both sides leaves
