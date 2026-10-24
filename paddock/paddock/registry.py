@@ -62,22 +62,27 @@ class Task:
 
 
 @dataclass
+class _Draft:
+    name: str
+    config: Mapping[str, object]
+    inputs: Mapping[str, Input]
+    steps: list[Step] = field(default_factory=list)
+    score: ScoreFn | None = None
+
+
+@dataclass
 class _Registry:
     """Module-scoped state, reset by the loader before each task module is imported."""
 
-    name: str = ""
-    config: Mapping[str, object] = field(default_factory=dict)
-    inputs: Mapping[str, Input] = field(default_factory=dict)
-    steps: list[Step] = field(default_factory=list)
+    drafts: list[_Draft] = field(default_factory=list)
 
     def reset(self) -> None:
-        self.name = ""
-        self.config = {}
-        self.inputs = {}
-        self.steps = []
+        self.drafts = []
 
-    def declared(self) -> bool:
-        return bool(self.name)
+    def current(self, what: str) -> _Draft:
+        if not self.drafts:
+            raise TaskError(f"{what} declared before task() — call task() first")
+        return self.drafts[-1]
 
 
 REGISTRY = _Registry()
@@ -86,50 +91,62 @@ REGISTRY = _Registry()
 def task(
     *, name: str, config: Mapping[str, object] | None = None, inputs: Mapping[str, Input] | None = None
 ) -> None:
-    """Declare the module's one task: its name, the config it lays over the benchmark's and the inputs its steps read."""
-    if REGISTRY.declared():
-        raise TaskError(f"task() was already called as {REGISTRY.name!r}; a module declares one task")
+    """Open a task: its name, the config it lays over the benchmark's and the inputs its steps read."""
     if not name:
         raise TaskError("task() needs a name")
-    if REGISTRY.steps:
-        raise TaskError("task() must be called before any @step — it names what the steps run in")
-    REGISTRY.name = name
-    REGISTRY.config = dict(config or {})
-    REGISTRY.inputs = dict(inputs or {})
+    if any(draft.name == name for draft in REGISTRY.drafts):
+        raise TaskError(f"task {name!r} is declared twice in this module")
+    REGISTRY.drafts.append(_Draft(name=name, config=dict(config or {}), inputs=dict(inputs or {})))
 
 
 def step(*, name: str = "") -> Callable[[StepFn], StepFn]:
-    """Register a step."""
+    """Register a step on the most recently opened task."""
 
     def decorate(fn: StepFn) -> StepFn:
         given = getattr(fn, "__name__", "")
-        if not REGISTRY.declared():
-            raise TaskError(f"@step {given or fn!r} declared before task() — call task() first")
+        draft = REGISTRY.current(f"@step {given or fn!r}")
         step_name = name or given
         if not step_name:
             raise TaskError(f"@step {fn!r} has no name — pass @step(name=...)")
-        if any(existing.name == step_name for existing in REGISTRY.steps):
-            raise TaskError(f"step {step_name!r} is declared twice in this module")
-        REGISTRY.steps.append(Step(name=step_name, fn=fn, doc=(fn.__doc__ or "").strip()))
+        if any(existing.name == step_name for existing in draft.steps):
+            raise TaskError(f"step {step_name!r} is declared twice in task {draft.name!r}")
+        draft.steps.append(Step(name=step_name, fn=fn, doc=(fn.__doc__ or "").strip()))
         return fn
 
     return decorate
 
 
-def collect(module_name: str, score: ScoreFn | None, doc: str = "") -> Task:
-    """Freeze what the module declared into a `Task`."""
-    if not REGISTRY.declared():
+def score() -> Callable[[ScoreFn], ScoreFn]:
+    """Bind a score function to the most recently opened task."""
+
+    def decorate(fn: ScoreFn) -> ScoreFn:
+        draft = REGISTRY.current(f"@score {getattr(fn, '__name__', '') or fn!r}")
+        if draft.score is not None:
+            raise TaskError(f"task {draft.name!r} already has a score")
+        draft.score = fn
+        return fn
+
+    return decorate
+
+
+def collect(module_name: str, doc: str = "") -> tuple[Task, ...]:
+    """Freeze what the module declared into its `Task`s."""
+    if not REGISTRY.drafts:
         raise TaskError(f"{module_name}: no task() call — the module declares no task")
-    if not REGISTRY.steps:
-        raise TaskError(f"{module_name}: task {REGISTRY.name!r} declares no steps")
-    return Task(
-        name=REGISTRY.name,
-        config=REGISTRY.config,
-        inputs=REGISTRY.inputs,
-        steps=tuple(REGISTRY.steps),
-        score=score,
-        module=module_name,
-        doc=doc,
+    for draft in REGISTRY.drafts:
+        if not draft.steps:
+            raise TaskError(f"{module_name}: task {draft.name!r} declares no steps")
+    return tuple(
+        Task(
+            name=draft.name,
+            config=draft.config,
+            inputs=draft.inputs,
+            steps=tuple(draft.steps),
+            score=draft.score,
+            module=module_name,
+            doc=doc,
+        )
+        for draft in REGISTRY.drafts
     )
 
 

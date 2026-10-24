@@ -13,6 +13,7 @@ import pytest
 
 from paddock import loader, names, paths
 from paddock.loader import Benchmark
+from paddock.registry import Task
 from paddock.runner import Run, RunError, RunResult, execute
 
 from smoke import BASE_CONFIG, SMOKE_TASKS, git
@@ -20,10 +21,15 @@ from smoke import BASE_CONFIG, SMOKE_TASKS, git
 MakeBenchmark = Callable[..., Benchmark]
 
 
+def smoke(benchmark: Benchmark) -> tuple[Benchmark, Task]:
+    return benchmark, benchmark.task("smoke")
+
+
 def run(
     make_benchmark: MakeBenchmark, root: Path, checkout: Path, body: str = SMOKE_TASKS, **kwargs: Any
 ) -> RunResult:
-    return execute(make_benchmark(body), root=root, checkout=checkout, **kwargs)
+    benchmark = make_benchmark(body)
+    return execute(benchmark, benchmark.task("smoke"), root=root, checkout=checkout, **kwargs)
 
 
 def test_a_run_is_named_by_its_axes(make_benchmark: MakeBenchmark, root: Path, repo: Path) -> None:
@@ -38,7 +44,7 @@ def test_a_run_is_named_by_its_axes(make_benchmark: MakeBenchmark, root: Path, r
 def test_the_stablemate_sha_is_the_checkout_paddock_is_imported_from(
     make_benchmark: MakeBenchmark, root: Path
 ) -> None:
-    result = execute(make_benchmark(), root=root, pin_project=False)
+    result = execute(*smoke(make_benchmark()), root=root, pin_project=False)
     assert result.name.stablemate == git(paths.checkout_root(), "rev-parse", "HEAD")
 
 
@@ -46,7 +52,7 @@ def test_a_repeat_of_the_same_name_takes_the_next_number(
     make_benchmark: MakeBenchmark, root: Path, repo: Path
 ) -> None:
     first = run(make_benchmark, root, repo)
-    second = execute(loader.load_benchmark(root, "smoke"), root=root, checkout=repo)
+    second = execute(*smoke(loader.load_benchmark(root, "smoke")), root=root, checkout=repo)
     assert (first.name.n, second.name.n) == (1, 2)
     assert first.name.key == second.name.key
 
@@ -59,7 +65,7 @@ def test_a_new_data_commit_is_a_new_name(
     (data / "more.txt").write_text("more\n", encoding="utf-8")
     git(data, "add", "-A")
     git(data, "commit", "-m", "more")
-    second = execute(loader.load_benchmark(root, "smoke"), root=root, checkout=repo)
+    second = execute(*smoke(loader.load_benchmark(root, "smoke")), root=root, checkout=repo)
     assert second.name.data_commit != first.name.data_commit
     assert second.name.n == 1
 
@@ -82,7 +88,7 @@ def test_the_stage_is_the_data_at_head_with_no_remote(
 ) -> None:
     benchmark = make_benchmark()
     (benchmark.data / "README.md").write_text("edited, not committed\n", encoding="utf-8")
-    result = execute(benchmark, root=root, checkout=repo)
+    result = execute(*smoke(benchmark), root=root, checkout=repo)
     assert (result.stage / "app.py").is_file()
     assert (result.stage / "README.md").read_text(encoding="utf-8") == "smoke\n"
     assert (result.stage / "made-by-the-step.txt").is_file()
@@ -112,7 +118,7 @@ def test_no_override_leaves_the_base_config_verbatim(
 ) -> None:
     base = BASE_CONFIG.replace('library_dir = "/nowhere"', "# kept as written\nlibrary_dir   =   '/nowhere'")
     benchmark = make_benchmark(base=base)
-    result = execute(benchmark, root=root, checkout=repo)
+    result = execute(*smoke(benchmark), root=root, checkout=repo)
     assert (result.workspace / "config.toml").read_text(encoding="utf-8") == base
 
 
@@ -160,8 +166,8 @@ def test_a_score_that_mutates_the_result_is_refused(
     make_benchmark: MakeBenchmark, root: Path, repo: Path
 ) -> None:
     body = SMOKE_TASKS.replace(
-        "def score(run):\n",
-        'def score(run):\n    (run.repo / "written-by-score.txt").write_text("no", encoding="utf-8")\n',
+        "def grade(run):\n",
+        'def grade(run):\n    (run.repo / "written-by-score.txt").write_text("no", encoding="utf-8")\n',
     )
     with pytest.raises(RunError, match="read-only"):
         run(make_benchmark, root, repo, body)
@@ -171,8 +177,8 @@ def test_a_score_may_still_log_into_its_own_artifact_directory(
     make_benchmark: MakeBenchmark, root: Path, repo: Path
 ) -> None:
     body = SMOKE_TASKS.replace(
-        "def score(run):\n",
-        'def score(run):\n    (run.artifacts / "judge.log").write_text("ok", encoding="utf-8")\n',
+        "def grade(run):\n",
+        'def grade(run):\n    (run.artifacts / "judge.log").write_text("ok", encoding="utf-8")\n',
     )
     result = run(make_benchmark, root, repo, body)
     assert (result.workspace / "artifacts" / "score" / "judge.log").is_file()
@@ -260,7 +266,7 @@ def test_a_data_directory_that_is_not_a_repository_is_refused(
     benchmark = make_benchmark()
     (benchmark.data / ".git").rename(benchmark.data / "git-moved")
     with pytest.raises(RunError, match="not a git repository"):
-        execute(benchmark, root=root, checkout=repo)
+        execute(*smoke(benchmark), root=root, checkout=repo)
 
 
 @pytest.mark.stress
@@ -270,7 +276,7 @@ def test_a_json_file_is_never_readable_half_written(
     """A reader polling one of these files sees the old bytes or the new ones, never none."""
     benchmark = make_benchmark()
     handle = Run(
-        task=benchmark.task,
+        task=benchmark.task("smoke"),
         name=names.RunName("smoke", "smoke", "a" * 12, "b" * 12, 1),
         stage=tmp_path / "stage",
         scratch=tmp_path / "scratch",

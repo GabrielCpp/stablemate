@@ -38,7 +38,7 @@ Anything the maintainer wants to keep for good is copied out of `results/` by ha
 
 **Benchmark**: a folder under `gold/` with a base config, a tasks module and a data repo.
 
-**Task**: what `tasks.py` declares. A name, an optional config override, an ordered list of steps and an optional score function.
+**Task**: what `tasks.py` declares, one or several per module. A name, an optional config override, an ordered list of steps and an optional score function.
 
 **Config**: the base `home-config.toml` with the task's override deep-merged over it. Task values win. A task with no override gets the base file byte for byte. The engine writes the result into the run and hands it to every stablemate command through `--config`, and sets `STABLEMATE_CONFIG` to it in the environment of every command the run starts. A step takes nothing from the command line.
 
@@ -50,7 +50,7 @@ Anything the maintainer wants to keep for good is copied out of `results/` by ha
 
 ```python
 """What this task measures, in one paragraph."""
-from paddock import Score, step, task
+from paddock import Score, score, step, task
 
 task(
     name="policy-desk-qa",
@@ -72,15 +72,17 @@ def run_qa(run):
         check=True,
     )
 
-def score(run) -> Score:            # optional
+@score()                            # optional
+def caught(run) -> Score:
     return Score(headline="caught 7/9  missed 2", data={...})
 ```
 
-- `task()` is called once per module, before the steps. `config` and `inputs` are optional. A benchmark that wants two budgets declares two tasks.
+- `task()` opens a task and may be called several times in one module. Each call opens a new task, and a repeated name is an error. `config` and `inputs` are optional. A benchmark that wants two budgets declares two tasks.
+- `@step()` and `@score()` bind to the most recently opened task. A task with no `@score()` is unscored. A module-level function called `score` is not picked up.
 - `@step()` marks functions that run in declaration order. They are functions so that setup which is not a workflow invocation needs no schema escape hatch.
 - A task swaps models by overriding the config tables. The harness has no model vocabulary of its own.
 
-The helpers a tasks module reaches for live in the package as `paddock.tasks`. They drive stablemate across the process boundary, read the forensics a round left, and run the frozen-app, mutant, replay and greenfield rounds. Fixtures and rubrics those helpers read sit beside the benchmark's `tasks.py`. A benchmark calls `paddock.tasks.stablemate.install_agents(run)` as a step when its stage needs the agents layer rendered.
+The helpers a tasks module reaches for live in the package as `paddock.tasks`. They drive stablemate across the process boundary, read the forensics a round left, and run the frozen-app, mutant, replay and greenfield rounds. Fixtures and rubrics those helpers read sit beside the benchmark's `tasks.py`. A private helper module may sit there too: the loader puts the benchmark folder on `sys.path` only while `tasks.py` is imported, so a top-level `import helper` works and nothing stays on the path afterwards. A benchmark calls `paddock.tasks.stablemate.install_agents(run)` as a step when its stage needs the agents layer rendered.
 
 ### The `run` handle
 
@@ -94,7 +96,7 @@ The helpers a tasks module reaches for live in the package as `paddock.tasks`. T
 | `run.cli(*argv, check=False, timeout=None)` | a subprocess, logged into `run.artifacts` |
 | `run.project` | the tree the steps drive stablemate out of, pinned, see below |
 | `run.inputs` | the task's declared inputs, read-only: str, number, bool or list of str |
-| `run.benchmark` | the loaded benchmark: its root folder, name, base config and data path |
+| `run.benchmark` | the loaded benchmark: its root folder, name, base config, data path and tasks |
 | `run.name` | the run's name: benchmark, task, data commit, stablemate sha, number |
 
 Steps invoke workflows by subprocess of the real CLI. They never import workhorse in-process. The benchmark measures the surface an operator uses, and an in-process call would measure a different one. `run.cli` also aligns `PWD` to the working directory and drops `OLDPWD`. An agent CLI that resolves its project root from the environment would otherwise treat the harness's own repo as the project and commit its work there.
@@ -222,7 +224,7 @@ forget and expensive to have forgotten.
 
 ```bash
 paddock run <benchmark> <task>   # copy the data, run the steps, (score), write the result
-paddock list                     # the benchmarks and tasks under gold/
+paddock list                     # one line per task under gold/: benchmark, task, steps, scored or not
 paddock sandbox build            # the image a book run is isolated in
 paddock sandbox run ... -- CMD   # CMD in the app, with no stablemate checkout in sight
 ```

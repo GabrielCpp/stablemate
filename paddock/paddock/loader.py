@@ -9,16 +9,23 @@ from pathlib import Path
 from types import ModuleType
 
 from paddock import paths
-from paddock.registry import REGISTRY, ScoreFn, Task, TaskError, collect
+from paddock.registry import REGISTRY, Task, TaskError, collect
 
 
 @dataclass(frozen=True, slots=True)
 class Benchmark:
-    """One folder under `gold/`: the repository under measurement, its base config and its task."""
+    """One folder under `gold/`: the repository under measurement, its base config and its tasks."""
 
     name: str
     directory: Path
-    task: Task
+    tasks: tuple[Task, ...]
+
+    def task(self, name: str) -> Task:
+        for item in self.tasks:
+            if item.name == name:
+                return item
+        known = ", ".join(item.name for item in self.tasks) or "(none)"
+        raise TaskError(f"benchmark {self.name!r} declares no task named {name!r}. Known: {known}")
 
     @property
     def root(self) -> Path:
@@ -33,8 +40,8 @@ class Benchmark:
         return self.directory / paths.DATA
 
 
-def load_path(path: Path) -> Task:
-    """Import one tasks module and return the `Task` it declared."""
+def load_path(path: Path) -> tuple[Task, ...]:
+    """Import one tasks module and return the `Task`s it declared."""
     module_name = f"paddock._benchmark_{path.parent.name}"
     spec = importlib.util.spec_from_file_location(module_name, path)
     if spec is None or spec.loader is None:
@@ -42,15 +49,26 @@ def load_path(path: Path) -> Task:
     module: ModuleType = importlib.util.module_from_spec(spec)
     REGISTRY.reset()
     sys.modules[module_name] = module
+    directory = str(path.parent)
+    sys.path.insert(0, directory)
     try:
-        spec.loader.exec_module(module)
-        score: ScoreFn | None = getattr(module, "score", None)
-        if score is not None and not callable(score):
-            raise TaskError(f"{path}: `score` is defined but is not callable")
-        return collect(str(path), score, (module.__doc__ or "").strip())
+        try:
+            spec.loader.exec_module(module)
+        finally:
+            sys.path.remove(directory)
+        return collect(str(path), (module.__doc__ or "").strip())
     finally:
         sys.modules.pop(module_name, None)
+        _forget_helpers(path.parent)
         REGISTRY.reset()
+
+
+def _forget_helpers(directory: Path) -> None:
+    """Drop the modules imported from *directory*, so a same-named helper in another benchmark is its own."""
+    for name, loaded in list(sys.modules.items()):
+        origin = getattr(loaded, "__file__", None)
+        if origin and Path(origin).parent == directory:
+            del sys.modules[name]
 
 
 def benchmark_names(root: Path) -> list[str]:
@@ -72,16 +90,14 @@ def load_benchmark(root: Path, name: str) -> Benchmark:
     ]
     if missing:
         raise TaskError(f"benchmark {name!r} lacks {', '.join(missing)} in {directory}")
-    return Benchmark(name=name, directory=directory, task=load_path(directory / paths.TASKS))
+    return Benchmark(name=name, directory=directory, tasks=load_path(directory / paths.TASKS))
 
 
 def load_all(root: Path) -> list[Benchmark]:
     return [load_benchmark(root, name) for name in benchmark_names(root)]
 
 
-def load_task(root: Path, benchmark: str, task: str) -> Benchmark:
-    """The benchmark *benchmark*, once it is confirmed to declare a task called *task*."""
+def load_task(root: Path, benchmark: str, task: str) -> tuple[Benchmark, Task]:
+    """The benchmark *benchmark* and its task called *task*."""
     loaded = load_benchmark(root, benchmark)
-    if loaded.task.name != task:
-        raise TaskError(f"benchmark {benchmark!r} declares no task named {task!r}. Known: {loaded.task.name}")
-    return loaded
+    return loaded, loaded.task(task)

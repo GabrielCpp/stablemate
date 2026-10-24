@@ -100,9 +100,10 @@ def _add_sandbox_commands(parser: argparse.ArgumentParser) -> None:
 
 def cmd_run(args: argparse.Namespace) -> int:
     root = paths.root()
-    benchmark = loader.load_task(root, args.benchmark, args.task)
+    benchmark, task = loader.load_task(root, args.benchmark, args.task)
     result = execute(
         benchmark,
+        task,
         root=root,
         pin_project=not args.no_pin_project,
         echo=not args.quiet,
@@ -125,7 +126,8 @@ def cmd_list(args: argparse.Namespace) -> int:
         print(f"no benchmarks in {paths.gold_dir(root)}")
         return 0
     for benchmark in benchmarks:
-        print(f"{benchmark.name}  {benchmark.task.describe()}")
+        for task in benchmark.tasks:
+            print(f"{benchmark.name}  {task.describe()}")
     return 0
 
 

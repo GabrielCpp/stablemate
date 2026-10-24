@@ -34,6 +34,68 @@ def test_list_sees_the_benchmark(
     assert capsys.readouterr().out.startswith("smoke  smoke  1 steps  scored")
 
 
+TWO_TASKS = '''
+from paddock import Score, score, step, task
+
+task(name="alpha")
+
+@step()
+def mark(run):
+    (run.repo / "alpha.txt").write_text("a", encoding="utf-8")
+
+@score()
+def grade_alpha(run):
+    return Score(headline="alpha scored")
+
+task(name="beta")
+
+@step()
+def mark_beta(run):
+    (run.repo / "beta.txt").write_text("b", encoding="utf-8")
+
+@step()
+def mark_more(run):
+    pass
+'''
+
+
+def test_list_prints_one_line_per_task(
+    make_benchmark: MakeBenchmark, capsys: pytest.CaptureFixture[str]
+) -> None:
+    make_benchmark(TWO_TASKS)
+    with pytest.raises(SystemExit):
+        main(["list"])
+    assert capsys.readouterr().out.splitlines() == [
+        "smoke  alpha  1 steps  scored",
+        "smoke  beta  2 steps  unscored",
+    ]
+
+
+def test_run_picks_the_task_by_name(
+    make_benchmark: MakeBenchmark, capsys: pytest.CaptureFixture[str]
+) -> None:
+    benchmark = make_benchmark(TWO_TASKS)
+    with pytest.raises(SystemExit) as stopped:
+        main(["run", "smoke", "beta", "--no-pin-project", "--quiet"])
+    assert stopped.value.code == 0
+    out = capsys.readouterr().out
+    assert "run     smoke/beta/" in out
+    assert "ok   mark_beta" in out
+    assert "ok   mark  " not in out
+    assert "alpha scored" not in out
+    assert benchmark.task("beta").name == "beta"
+
+
+def test_run_of_an_unknown_task_names_the_known_ones(
+    make_benchmark: MakeBenchmark, caplog: pytest.LogCaptureFixture
+) -> None:
+    make_benchmark(TWO_TASKS)
+    with pytest.raises(SystemExit) as stopped:
+        main(["run", "smoke", "gamma", "--no-pin-project", "--quiet"])
+    assert stopped.value.code == 1
+    assert "Known: alpha, beta" in caplog.text
+
+
 def test_list_on_an_empty_root_says_where_it_looked(
     root: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:

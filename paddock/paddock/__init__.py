@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from paddock.registry import Score, Step, Task, TaskError, step, task
+from paddock.registry import Score, Step, Task, TaskError, score, step, task
 from paddock.runner import CommandResult, Run, RunError
 
 __all__ = [
@@ -13,6 +13,7 @@ __all__ = [
     "Step",
     "Task",
     "TaskError",
+    "score",
     "step",
     "task",
 ]

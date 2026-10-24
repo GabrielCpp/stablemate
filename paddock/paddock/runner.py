@@ -234,13 +234,13 @@ def _copy_data(data: Path, stage: Path) -> None:
 
 def execute(
     benchmark: Benchmark,
+    task: Task,
     *,
     root: Path,
     checkout: Path | None = None,
     pin_project: bool = True,
     echo: bool = True,
 ) -> RunResult:
-    task = benchmark.task
     source = checkout or paths.checkout_root()
     data_commit = names.git_head(benchmark.data)
     if not data_commit:

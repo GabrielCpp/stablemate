@@ -14,7 +14,7 @@ model = "base-model"
 """
 
 SMOKE_TASKS = '''"""A task that writes a file, and scores it."""
-from paddock import Score, step, task
+from paddock import Score, score, step, task
 
 task(name="smoke")
 
@@ -23,7 +23,8 @@ def touch(run):
     (run.repo / "made-by-the-step.txt").write_text("yes", encoding="utf-8")
     run.cli("/bin/sh", "-c", "echo hello", check=True)
 
-def score(run):
+@score()
+def grade(run):
     return Score(headline="1/1 fine", detail=("one",), data={"caught": 1})
 '''
 
