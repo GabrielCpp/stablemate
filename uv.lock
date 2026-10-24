@@ -1060,9 +1060,12 @@ name = "paddock"
 version = "0.1.0"
 source = { editable = "paddock" }
 dependencies = [
+    { name = "ostler" },
     { name = "platformdirs" },
     { name = "pydantic" },
+    { name = "pyyaml" },
     { name = "tomli-w" },
+    { name = "workhorse-agent" },
 ]
 
 [package.optional-dependencies]
@@ -1073,11 +1076,14 @@ test = [
 
 [package.metadata]
 requires-dist = [
+    { name = "ostler", editable = "ostler" },
     { name = "platformdirs", specifier = ">=4.0" },
     { name = "pydantic", specifier = ">=2.0" },
     { name = "pytest", marker = "extra == 'test'", specifier = ">=8.0" },
     { name = "pytest-xdist", marker = "extra == 'test'", specifier = ">=3.6" },
+    { name = "pyyaml", specifier = ">=6.0" },
     { name = "tomli-w", specifier = ">=1.0" },
+    { name = "workhorse-agent", editable = "workhorse" },
 ]
 provides-extras = ["test"]
 
