@@ -215,16 +215,33 @@ def print_params(run_dir: Path) -> None:
         fail(f"cannot read checkpoint {path}: {exc}")
     if not isinstance(checkpoint, PyflowCheckpoint):
         fail(f"{path} is a checkpoint from the retired YAML engine")
-    print(json.dumps(
-        {
-            "state": checkpoint.state,
-            "flow": checkpoint.flow,
-            "waiting_on": checkpoint.waiting_on,
-            "params": checkpoint.params,
-        },
-        indent=2,
-        sort_keys=True,
-    ))
+    report: dict[str, Any] = {
+        "state": checkpoint.state,
+        "flow": checkpoint.flow,
+        "waiting_on": checkpoint.waiting_on,
+        "params": checkpoint.params,
+    }
+    worktree = _worktree(run_dir)
+    if worktree is not None:
+        report["worktree"] = worktree
+    print(json.dumps(report, indent=2, sort_keys=True))
+
+
+def _worktree(run_dir: Path) -> dict[str, Any] | None:
+    """The worktree `--worktree` cut for this run and what its ending did with it, or None for a run that was not dispatched into one."""
+    try:
+        record = parse_run_record((run_dir / "run.json").read_text())
+    except (OSError, ValidationError):
+        return None
+    if not record.worktree_path:
+        return None
+    outcome = record.worktree_outcome
+    return {
+        "path": record.worktree_path,
+        "branch": record.worktree_branch,
+        "base": record.worktree_base,
+        "outcome": outcome.model_dump() if outcome is not None else None,
+    }
 
 
 def wait_gone(run_dir: Path, timeout: float) -> None:

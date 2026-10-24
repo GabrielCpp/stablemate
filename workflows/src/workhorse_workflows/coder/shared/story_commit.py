@@ -51,12 +51,18 @@ def _stamp_status(
     prior = before.strip()
     superseded = bool(prior) and prior not in (registry.DEFAULT_STORY_STATUS, DONE_STATUS)
 
+    gate = paths.story_context_path(
+        str(story_status.resolve_story_path(root, epic, slug, story_path))
+    )
     specs: list[str] = []
-    for path in written:
+    for path in [*written, *([gate] if gate.is_file() else [])]:
         try:
-            specs.append(str(path.resolve().relative_to(root.resolve())))
+            rel = str(path.resolve().relative_to(root.resolve()))
         except ValueError:
             logger.info("status file %s is outside %s — not committing it here", path, root)
+            continue
+        if rel not in specs:
+            specs.append(rel)
     stamp = commits.message(
         "docs",
         commits.scope(root.name),

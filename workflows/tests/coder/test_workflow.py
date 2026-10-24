@@ -669,6 +669,29 @@ def test_re_verifying_given_up_stories_moves_each_status_to_passed(
         assert "QA passed" in story.read_text(encoding="utf-8"), story
 
 
+def test_the_storys_operator_context_lands_in_its_status_stamp(
+    epic: Callable[..., Path],
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A gate file left untracked would read as pre-existing dirt to the next story's snapshot."""
+    repo = epic(count=2)
+    context = "docs/epics/" + EPIC + "/stories/{story}/context.md"
+    sub = _Sub(repo, leftover=context).install(monkeypatch)
+
+    result = drive_flow(Coder(), env(), _Agent())
+
+    assert result.status == "skipped", result
+    assert len(sub.calls_to("Qa")) == 2, sub.calls
+    assert _dirty(repo) == "", _dirty(repo)
+    stamped = subprocess.run(
+        ["git", "log", "--format=", "--name-only", "--grep=QA passed"],
+        cwd=repo, check=True, capture_output=True, text=True,
+    ).stdout.split()
+    assert context.format(story="STORY-1") in stamped, stamped
+
+
 def test_an_uncited_leftover_reruns_the_whole_plan_without_another_dev_turn(
     epic: Callable[..., Path],
     env: Callable[..., RunEnv],

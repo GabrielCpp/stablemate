@@ -45,9 +45,26 @@ class _Registry(Registry):
         return Path(__file__).parent
 
 
+SEEN: dict[str, Any] = {}
+
+
+class Observe(Workflow):
+    """A one-state flow that notes the worktree it was dispatched into while the run still owns it."""
+
+    repo_dir: str = ""
+
+    def start(self) -> Transition:
+        SEEN["is_dir"] = Path(self.repo_dir).is_dir()
+        SEEN["branch"] = subprocess.run(
+            ["git", "-C", self.repo_dir, "rev-parse", "--abbrev-ref", "HEAD"],
+            capture_output=True, text=True, check=False,
+        ).stdout.strip()
+        return Done(None)
+
+
 def _registry() -> Registry:
     registry = _Registry("worktree-dispatch")
-    registry.add_flows(main=Immediate)
+    registry.add_flows(main=Immediate, observe=Observe)
     registry.entry = Immediate
     return registry
 
@@ -80,20 +97,19 @@ def test_worktree_cuts_default_named_branch_and_dir_under_worktree_dir():
         worktree_dir.mkdir()
         _repo(repo)
 
-        code = _run(
-            runs_dir, worktree_dir, run_id="t", params={"repo_dir": str(repo)}, worktree=True
-        )
+        SEEN.clear()
+        with patch.object(run_mod, "resolve_worktree_dir", lambda: worktree_dir):
+            code = run_pyflow(RunInvocation(
+                registry=REGISTRY, runs_dir=runs_dir, flow="observe", run_id="t",
+                params={"repo_dir": str(repo)}, worktree=True,
+            ))
 
         assert code == 0
         record = _run_record(runs_dir)
         assert record["worktree_branch"] == "run/worktree-dispatch-t"
         expected_dir = worktree_dir / "acme-run-worktree-dispatch-t"
         assert record["worktree_path"] == str(expected_dir)
-        assert expected_dir.is_dir()
-        assert subprocess.run(
-            ["git", "-C", str(expected_dir), "rev-parse", "--abbrev-ref", "HEAD"],
-            capture_output=True, text=True, check=True,
-        ).stdout.strip() == "run/worktree-dispatch-t"
+        assert SEEN == {"is_dir": True, "branch": "run/worktree-dispatch-t"}
 
 
 
@@ -111,17 +127,21 @@ def test_worktree_branch_and_base_overrides_are_honored():
             ["git", "-C", str(repo), "branch", "side"], check=True, capture_output=True
         )
 
-        code = _run(
-            runs_dir, worktree_dir, run_id="t", params={"repo_dir": str(repo)}, worktree=True,
-            worktree_branch="feature/thing", worktree_base="side",
-        )
+        SEEN.clear()
+        with patch.object(run_mod, "resolve_worktree_dir", lambda: worktree_dir):
+            code = run_pyflow(RunInvocation(
+                registry=REGISTRY, runs_dir=runs_dir, flow="observe", run_id="t",
+                params={"repo_dir": str(repo)}, worktree=True,
+                worktree_branch="feature/thing", worktree_base="side",
+            ))
 
         assert code == 0
         record = _run_record(runs_dir)
         assert record["worktree_branch"] == "feature/thing"
+        assert record["worktree_base"] == "side"
         expected_dir = worktree_dir / "acme-feature-thing"
         assert record["worktree_path"] == str(expected_dir)
-        assert expected_dir.is_dir()
+        assert SEEN == {"is_dir": True, "branch": "feature/thing"}
 
 
 

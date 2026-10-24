@@ -58,6 +58,14 @@ class RepoObservation(BaseModel):
     dirty: bool | None = None
 
 
+class WorktreeOutcome(BaseModel):
+    """What the end of a run did with the worktree `--worktree` cut for it."""
+
+    action: Literal["removed", "kept"]
+    reason: str = ""
+    branch_deleted: bool = False
+
+
 class RunRecord(BaseModel):
     """`run.json` — what a run directory says about itself between processes."""
 
@@ -77,6 +85,9 @@ class RunRecord(BaseModel):
     profile_config: dict[str, Any] = Field(default_factory=dict)
     worktree_path: str = ""
     worktree_branch: str = ""
+    worktree_repo: str = ""
+    worktree_base: str = ""
+    worktree_outcome: WorktreeOutcome | None = None
 
 
 class LaunchRecord(BaseModel):
@@ -129,6 +140,7 @@ __all__ = [
     "PyflowCheckpoint",
     "RunRecord",
     "TreeStart",
+    "WorktreeOutcome",
     "parse_checkpoint",
     "parse_run_record",
 ]

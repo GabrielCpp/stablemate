@@ -35,7 +35,7 @@ from workhorse.pyflow.registry import Registry
 from workhorse.pyflow.workflow import Workflow
 from workhorse.pyflow.worktree import WorktreeError
 from workhorse.pyflow import worktree as worktree_mod
-from workhorse.records import PyflowCheckpoint, parse_checkpoint
+from workhorse.records import PyflowCheckpoint, WorktreeOutcome, parse_checkpoint
 from workhorse.references import format_missing, missing_references
 from workhorse.rundir import (
     auto_resolve,
@@ -123,9 +123,54 @@ def _dispatch_worktree(
         print(f"[workhorse] ERROR: {exc}")
         return 1
 
-    writer.record_worktree(str(cut.path), cut.branch)
+    writer.record_worktree(
+        str(cut.path),
+        cut.branch,
+        repo=str(repo_dir),
+        base=worktree_mod.base_name(repo_dir, base_ref),
+    )
     params["repo_dir"] = str(cut.path)
     return None
+
+
+def _end_worktree(writer: ArtifactWriter, outcome: WorktreeOutcome) -> None:
+    """Record and announce what the run's ending did with its worktree."""
+    writer.record_worktree_outcome(outcome)
+    otel.run_attribute("workhorse.worktree", outcome.action)
+    otel.run_attribute("workhorse.worktree_reason", outcome.reason)
+    if outcome.action == "removed":
+        branch = f" and branch '{writer.worktree_branch}'" if outcome.branch_deleted else ""
+        print(f"[workhorse] worktree → removed {writer.worktree_path}{branch}: {outcome.reason}")
+    else:
+        print(f"[workhorse] worktree → kept {writer.worktree_path}: {outcome.reason}")
+
+
+def _retire_worktree(writer: ArtifactWriter) -> None:
+    """On a terminal success, remove the run's worktree once nothing in it would be lost."""
+    if not writer.worktree_path:
+        return
+    _end_worktree(
+        writer,
+        worktree_mod.retire(
+            path=Path(writer.worktree_path),
+            branch=writer.worktree_branch,
+            base=writer.worktree_base,
+            repo_dir=Path(writer.worktree_repo) if writer.worktree_repo else None,
+        ),
+    )
+
+
+def _keep_worktree(writer: ArtifactWriter, ending: str) -> None:
+    """On any ending but success, keep the run's worktree so a resume or a person can pick it up."""
+    if not writer.worktree_path:
+        return
+    try:
+        checkpoint = writer.read_checkpoint()
+    except (OSError, ValidationError):
+        checkpoint = None
+    gate = checkpoint.waiting_on if isinstance(checkpoint, PyflowCheckpoint) else None
+    where = f"while waiting on {gate}" if gate else f"in '{_state_of(writer)}'"
+    _end_worktree(writer, worktree_mod.kept(f"the run {ending} {where}"))
 
 
 def _resume_worktree(invocation: RunInvocation, writer: ArtifactWriter, params: dict[str, Any]) -> None:
@@ -282,6 +327,7 @@ def run_pyflow(invocation: RunInvocation) -> int:
         except KeyboardInterrupt:
             agent_process.terminate_active()
             _record_interrupt(writer)
+            _keep_worktree(writer, "was interrupted")
             print("\n[workhorse] interrupted — run paused.")
             print(f"[workhorse] resume with: workhorse-{name} run "
                   f"--resume-run {writer.run_dir}")
@@ -293,6 +339,7 @@ def run_pyflow(invocation: RunInvocation) -> int:
             if isinstance(exc, RunBudgetExceeded | AgentTurnFailed):
                 print(f"[workhorse] ERROR: {exc}")
                 writer.record_interrupt(_state_of(writer), str(exc))
+                _keep_worktree(writer, "stopped")
                 print(f"[workhorse] resume with: workhorse-{name} run "
                       f"--resume-run {writer.run_dir}")
                 otel.end_run("interrupted", error=str(exc), error_class=type(exc).__name__,
@@ -312,6 +359,7 @@ def run_pyflow(invocation: RunInvocation) -> int:
             print(f"[workhorse] ERROR: {exc}")
             _record_failure_handoff(writer, exc)
             writer.finish(terminal="fail")
+            _keep_worktree(writer, "failed")
             otel.end_run("fail", error=str(exc), error_class=type(exc).__name__,
                              error_kind="fatal")
             return 1
@@ -319,6 +367,7 @@ def run_pyflow(invocation: RunInvocation) -> int:
             agent_process.terminate_active()
             print(f"[workhorse] ERROR: {exc}")
             writer.record_interrupt(_state_of(writer), str(exc))
+            _keep_worktree(writer, "stopped")
             print(f"[workhorse] resume with: workhorse-{name} run "
                   f"--resume-run {writer.run_dir}")
             otel.end_run("interrupted", error=str(exc), error_class=type(exc).__name__,
@@ -332,6 +381,8 @@ def run_pyflow(invocation: RunInvocation) -> int:
             otel.end_run("fail", error=str(exc), error_class=type(exc).__name__,
                              error_kind="fatal")
             return 1
+        else:
+            _retire_worktree(writer)
         otel.end_run("terminal")
     finally:
         otel.end_run("aborted", error="run aborted before finalize")

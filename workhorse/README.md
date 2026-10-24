@@ -85,7 +85,7 @@ Key flags (run `workhorse-<name> --help` for the full list):
 | `--params '<json>'` / `--params-file <path>` | Set the workflow's declared inputs on a fresh start |
 | `--dry-run` | Check the workflow and exit without running a node (see [Checking and diagramming a workflow](#checking-and-diagramming-a-workflow)) |
 | `--resume-run <path-or-id>` / `--resume-latest` | Manually resume a checkpointed run |
-| `--worktree` | Cut a fresh branch and git worktree for this run and dispatch it there instead of the invoking repo (requires a configured `worktree_dir`; see `farrier config set-worktree`) |
+| `--worktree` | Cut a fresh branch and git worktree for this run and dispatch it there instead of the invoking repo (requires a configured `worktree_dir`; see `farrier config set-worktree`). A run that finishes with the worktree clean and its commits merged or pushed removes it, and deletes the branch once it is merged. Any other ending keeps both and records why (see [Worktree dispatch](docs/RUNS.md#worktree-dispatch)) |
 | `--worktree-branch <name>` / `--worktree-base <ref>` | Override `--worktree`'s default branch name (`run/<workflow>-<run-id>`) and base ref (the invoking repo's `HEAD`) |
 
 ### Running a workflow (`workhorse-<name> run`)

@@ -112,6 +112,22 @@ configured and fails fast, creating nothing, on a branch or directory collision;
 sets `PROTECT_WORKTREE = True` does not get the guard on a worktree-dispatched run,
 since that run already owns its tree exclusively.
 
+The run's ending decides what happens to that worktree, and nothing else removes it.
+A run that reaches its terminal state removes the worktree with `git worktree remove`
+when the tree is clean and every commit on it is merged into the recorded base
+(`worktree_base`, the base branch's name) or pushed to a remote. Ignored files do not
+count as changes. The branch goes too, but only when it is fully merged into the base.
+A pushed but unmerged branch stays for its pull request. Every other ending keeps the
+worktree and its branch: a failure, a stop, an interrupt, a parked gate, an uncommitted
+change or a commit that is neither merged nor pushed. A kept worktree is still the one
+`worktree_path` names, so `resume` and `rewind` find it where the run left it. A core
+reload re-execs the same run and is not an ending. The decision lands on `run.json` as
+`worktree_outcome` (`action` is `removed` or `kept`, plus `reason` and
+`branch_deleted`), on the run's root span as `workhorse.worktree` and
+`workhorse.worktree_reason`, and in the log as one `[workhorse] worktree →` line.
+`control status --params` prints it under `worktree`, and groom adds it to the run's
+ENDED page and its detail head.
+
 ## Run artifacts
 
 Each workflow execution writes a timestamped directory:

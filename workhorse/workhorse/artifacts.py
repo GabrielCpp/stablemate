@@ -18,6 +18,7 @@ from workhorse.records import (
     PyflowCheckpoint,
     RepoObservation,
     RunRecord,
+    WorktreeOutcome,
     parse_checkpoint,
     parse_launch_record,
     parse_run_record,
@@ -102,6 +103,9 @@ class ArtifactWriter:
         self._profile_config: dict[str, Any] = {}
         self._worktree_path = ""
         self._worktree_branch = ""
+        self._worktree_repo = ""
+        self._worktree_base = ""
+        self._worktree_outcome: WorktreeOutcome | None = None
         self._previous_process_died_at = None
         self._previous_process_pid = None
         self._write_run_json(terminal=None)
@@ -124,6 +128,21 @@ class ArtifactWriter:
     def worktree_branch(self) -> str:
         """The branch cut for this run's worktree, or "" if it was not dispatched."""
         return self._worktree_branch
+
+    @property
+    def worktree_repo(self) -> str:
+        """The repository the worktree was cut from, or "" when the run recorded none."""
+        return self._worktree_repo
+
+    @property
+    def worktree_base(self) -> str:
+        """The ref the worktree branch was cut from, by the name its merge is judged against."""
+        return self._worktree_base
+
+    @property
+    def worktree_outcome(self) -> WorktreeOutcome | None:
+        """What this run's ending did with its worktree, or None before it ended."""
+        return self._worktree_outcome
 
     @classmethod
     def resume(cls, run_dir: Path) -> "ArtifactWriter":
@@ -150,6 +169,9 @@ class ArtifactWriter:
         self._profile_config = dict(record.profile_config)
         self._worktree_path = record.worktree_path
         self._worktree_branch = record.worktree_branch
+        self._worktree_repo = record.worktree_repo
+        self._worktree_base = record.worktree_base
+        self._worktree_outcome = None
         self._previous_process_died_at = None
         self._previous_process_pid = None
         if (
@@ -179,6 +201,9 @@ class ArtifactWriter:
         self._profile_config = {}
         self._worktree_path = ""
         self._worktree_branch = ""
+        self._worktree_repo = ""
+        self._worktree_base = ""
+        self._worktree_outcome = None
         self._previous_process_died_at = None
         self._previous_process_pid = None
         self._write_run_json(terminal=None)
@@ -412,11 +437,25 @@ class ArtifactWriter:
         self._profile_config = dict(tables or {})
         self._write_run_json(terminal=None)
 
-    def record_worktree(self, path: str, branch: str) -> None:
+    def record_worktree(self, path: str, branch: str, *, repo: str = "", base: str = "") -> None:
         """Record the worktree and branch this run was dispatched into."""
         self._worktree_path = path
         self._worktree_branch = branch
+        self._worktree_repo = repo
+        self._worktree_base = base
         self._write_run_json(terminal=None)
+
+    def record_worktree_outcome(self, outcome: WorktreeOutcome) -> None:
+        """Stamp what the run's ending did with its worktree onto the `run.json` already on disk."""
+        self._worktree_outcome = outcome
+        path = self.run_dir / "run.json"
+        try:
+            record = parse_run_record(path.read_text())
+        except (OSError, ValidationError):
+            self._write_run_json(terminal=None)
+            return
+        record.worktree_outcome = outcome
+        path.write_text(record.model_dump_json(indent=2))
 
     def record_launch(self, argv: list[str], resume_argv: list[str], cwd: str) -> None:
         """Record how *this process* was launched, in ``launch.json`` beside ``run.json``."""
@@ -480,6 +519,9 @@ class ArtifactWriter:
             profile_config=self._profile_config,
             worktree_path=self._worktree_path,
             worktree_branch=self._worktree_branch,
+            worktree_repo=self._worktree_repo,
+            worktree_base=self._worktree_base,
+            worktree_outcome=self._worktree_outcome,
             previous_process_died_at=self._previous_process_died_at,
             previous_process_pid=self._previous_process_pid,
         )

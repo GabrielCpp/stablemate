@@ -418,6 +418,7 @@ def head(
         "exit_hint": exit_hint(wf),
         "exit_ok": wf.exit_code == 0,
         "activity": tel.activity if tel else wf.activity,
+        "worktree": tel.worktree if tel else "",
     }
 
 
