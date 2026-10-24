@@ -6,13 +6,13 @@ title: Coder fix-item prompt
 # Coder fix-item prompt
 
 - file: `workflows/src/workhorse_workflows/coder/fix/prompts/fix-item.md`
-- code: `workflows/src/workhorse_workflows/coder/fix/flow.py::Fix.work` @1f0da8e14b7d
+- code: `workflows/src/workhorse_workflows/coder/fix/flow.py::Fix.work` @047343956550
 - detail: [coder standalone fix flow](../flows/coder-fix.md)
 - detail: [coder dev-story prompt](coder-dev-story-prompt.md)
 - tests: `workflows/tests/coder/fix/test_flow.py::test_the_first_pass_is_handed_the_item_and_no_report_at_all`
 - tests: `workflows/tests/coder/shared/test_roles.py::test_every_prompt_renders_with_its_partials`
 
-The fix-item envelope makes the agent the owner of one drained backlog item, seeded as a
+The fix-item envelope makes the agent the owner of one drained register record, seeded as a
 one-criterion story. The owner has a fixer repair the item, has a fresh QA checker exercise the
 change and write `qa.md` in the spec directory, has a triager sort what QA found, and sends the
 real defects back to fixers until QA passes. The turn ends with the repair committed in every
@@ -39,16 +39,16 @@ the two lanes cannot drift apart:
 
 ## Fields
 
-### bullet_text
+### item_text
 - type: string
 - required: true
-- semantics: the drained backlog bullet that is the only item this turn repairs
-- verify: json_path(path="$.bullet_text", equals="Clear the cache on sign-out")
+- semantics: the summary of the drained `qa` record that is the only item this turn repairs
+- verify: json_path(path="$.item_text", equals="Clear the cache on sign-out")
 
 ### story_path
 - type: string path
 - required: true
-- semantics: the one-criterion story seeded from the bullet
+- semantics: the one-criterion story seeded from the record
 - verify: json_path(path="$.story_path", equals="docs/stories/acme-story/story.md")
 
 ### spec_dir

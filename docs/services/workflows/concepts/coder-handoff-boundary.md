@@ -23,7 +23,7 @@ A sub-flow entered by `handoff()` runs under three constraints that the call sit
 - **`Docs`** folds a finished story into the as-built OKF book and refuses to believe it was.
 - **`FixCi`** walks the workspace one repo at a time and gets the epic branch's CI green.
 - **`Qa`** plans QA for a story, runs it, and refuses to believe it passed.
-- **`Fix`** drains the coder's own backlog, one filed item at a time.
+- **`Fix`** drains the open `qa` records of the debt register, one record at a time.
 - **`Genesis`** turns a directory into something the author and coder can both stand on. It is entered directly, never handed off to.
 
 ## When the boundary matters most
@@ -31,11 +31,11 @@ A sub-flow entered by `handoff()` runs under three constraints that the call sit
 The separate prompt directories are why a role name such as `dev-story` can exist once under `dev/prompts/` and a repo or library body can replace it without touching any other flow's envelope.
 
 - code: `workflows/src/workhorse_workflows/coder/workflow.py::workflow` @a28e84f788c2
-- code: `workflows/src/workhorse_workflows/coder/main/flow.py::Coder.dev` @d70dfde3a1bd
-- code: `workflows/src/workhorse_workflows/coder/dev/flow.py::Dev` @1f14ab4796ae
-- code: `workflows/src/workhorse_workflows/coder/docs/flow.py::Docs` @7ec0db695dc8
-- code: `workflows/src/workhorse_workflows/coder/fix_ci/flow.py::FixCi` @a82754789574
-- code: `workflows/src/workhorse_workflows/coder/qa/flow.py::Qa` @0a4bcedfcbb5
-- code: `workflows/src/workhorse_workflows/coder/genesis/flow.py::Genesis` @94e8836d807e
-- code: `workflows/src/workhorse_workflows/coder/fix/flow.py::Fix` @3221c750e52d
+- code: `workflows/src/workhorse_workflows/coder/main/flow.py::Coder.dev` @9c07aca082e3
+- code: `workflows/src/workhorse_workflows/coder/dev/flow.py::Dev` @364c86a76a71
+- code: `workflows/src/workhorse_workflows/coder/docs/flow.py::Docs` @b81b0ecba9ab
+- code: `workflows/src/workhorse_workflows/coder/fix_ci/flow.py::FixCi` @5d3fc0a0fea7
+- code: `workflows/src/workhorse_workflows/coder/qa/flow.py::Qa` @6b611522b032
+- code: `workflows/src/workhorse_workflows/coder/genesis/flow.py::Genesis` @e3612bb0e317
+- code: `workflows/src/workhorse_workflows/coder/fix/flow.py::Fix` @047343956550
 - detail: [Coder prompt role resolution](coder-prompt-role-resolution.md)

@@ -5,206 +5,182 @@ title: Coder backlog contract
 ---
 # Coder backlog contract
 
-The coder backlog is a parsed worklist shared by the filing adapter and the standalone fix
-drain. Filing accepts item records from a story's `backlog-items.json`, normalizes their ids,
-deduplicates by exact id, id-token set, or normalized description, and appends new bullets to
-the configured backlog. A dev turn's follow-ups are filed under `## Deferred by coder`, which no lane drains. The fix drain reads only `## Filed by coder`, selects the first
-unblocked bullet, turns it into one authored story in the `fixes` epic, and settles it by removing the shipped bullet. A bullet already annotated as blocked is skipped by later draws.
+The coder files the work it leaves undone onto the
+[debt register](../../ostler/concepts/the-debt-register.md) and drains part of it back out. Three
+filers write records. QA's leftovers become `qa` records, the book pages QA could not check become
+`qa-deferred` records, and a dev turn's follow-ups become `coder` records. Each filer places a
+record under the workspace repository it names, skips a record the register already holds, and
+commits what it filed as one artifacts commit with hooks off. No filer writes to a code repository.
 
-The parser is the boundary for all backlog edits: selection and the direct prune
-fallback use the same `ostler.markdown` bullet locations, so fenced examples and headings are
-not mistaken for work items. Story creation is idempotent by the selected bullet id; an existing
-story that covers that id is re-authored only in empty sections and reused.
+The fix drain reads only the open `qa` records of the run's workspace repositories. It draws the
+oldest one, seeds it as a one-criterion story in the `fixes` epic, and closes the record as `done`
+once a commit of the fix lands. `coder` and `qa-deferred` records stay on the shelf for a person or
+the review-debt workflow: no coder lane drains them.
 
-- code: `workflows/src/workhorse_workflows/coder/shared/backlog.py::backlog_bullets` @1d2199bc80bd
-- code: `workflows/src/workhorse_workflows/coder/shared/backlog.py::file_backlog_items` @1d2199bc80bd
-- code: `workflows/src/workhorse_workflows/coder/shared/backlog.py::file_follow_up_backlog` @1d2199bc80bd
-- code: `workflows/src/workhorse_workflows/coder/shared/backlog.py::select_fix_item` @1d2199bc80bd
-- code: `workflows/src/workhorse_workflows/coder/shared/backlog.py::seed_fix_story` @1d2199bc80bd
-- code: `workflows/src/workhorse_workflows/coder/shared/backlog.py::prune_fix_item` @1d2199bc80bd
-- tests: `workflows/tests/coder/fix/test_flow.py::test_one_item_is_seeded_fixed_checked_pruned_and_committed`
+- code: `workflows/src/workhorse_workflows/coder/shared/backlog.py::filed_backlog` @a6c8b292e8eb
+- code: `workflows/src/workhorse_workflows/coder/shared/backlog.py::unfiled` @a6c8b292e8eb
+- code: `workflows/src/workhorse_workflows/coder/shared/backlog.py::file_backlog_items` @a6c8b292e8eb
+- code: `workflows/src/workhorse_workflows/coder/shared/backlog.py::file_follow_up_backlog` @a6c8b292e8eb
+- code: `workflows/src/workhorse_workflows/coder/shared/backlog.py::file_deferred_obligations` @a6c8b292e8eb
+- code: `workflows/src/workhorse_workflows/coder/shared/backlog.py::select_fix_item` @a6c8b292e8eb
+- code: `workflows/src/workhorse_workflows/coder/shared/backlog.py::seed_fix_story` @a6c8b292e8eb
+- code: `workflows/src/workhorse_workflows/coder/shared/backlog.py::close_fix_item` @a6c8b292e8eb
+- tests: `workflows/tests/coder/shared/test_qa_leftovers_backlog.py::test_each_item_becomes_a_qa_record_in_one_artifacts_commit`
+- tests: `workflows/tests/coder/shared/test_follow_up_backlog.py::test_the_filed_follow_ups_are_committed_to_the_artifacts_repo_and_leave_the_code_repo_clean`
+- tests: `workflows/tests/coder/shared/test_deferred_obligations_backlog.py::test_each_page_with_deferred_checks_becomes_one_record_in_one_artifacts_commit`
+- tests: `workflows/tests/coder/fix/test_flow.py::test_one_item_is_seeded_fixed_checked_committed_and_closed`
+- detail: [The debt register](../../ostler/concepts/the-debt-register.md)
+- detail: [Coder standalone fix flow](../flows/coder-fix.md)
 
-## Fields
+## Placing a record
 
-### line
+Every filer resolves the run's workspace to its repositories by name. A filing that names one of
+them goes there. A filing that names none goes to the only repository when the workspace has one.
+In a workspace of two or more, a filing that names none is skipped, and the log line lists the
+repository names the workspace knows. A filing the register refuses, such as one with an invalid
+summary, is logged with ostler's reason and counted as skipped.
 
-- type: integer
-- required: true
-- verify: count(subject="backlog bullet line requirements", equals=1)
-- semantics: zero-based absolute source-file line containing the parsed bullet, including front matter lines
-- verify: count(subject="backlog edit locations", equals=1)
-
-### id
-
-- type: string
-- required: true
-- verify: count(subject="backlog bullet id requirements", equals=1)
-- semantics: bracketed backlog handle used for selection, story coverage, pruning, and blocking
-- verify: count(subject="identified backlog bullets", equals=1)
-
-### text
-
-- type: string
-- required: true
-- verify: count(subject="backlog bullet text requirements", equals=1)
-- semantics: bullet description without its bracketed id
-- verify: count(subject="backlog bullet descriptions", equals=1)
-- semantics: retains a blocked suffix for visibility
-- verify: count(subject="visible blocked backlog suffixes", equals=1)
-- semantics: excludes a blocked suffix from normalized identity comparisons
-- verify: count(subject="normalized blocked backlog identities", equals=1)
+The artifacts commit takes the repository as its scope when every filed record belongs to one
+repository, and no scope otherwise. A batch that filed nothing commits nothing.
 
 ## Methods
 
-### BacklogBullet.blocked
+### filed_backlog
 
-- sig: `BacklogBullet.blocked -> bool`
-- does: returns true when the bullet text contains the case-insensitive `(blocked` marker
-- returns: boolean indicating whether future fix selection must skip this bullet
-- verify: count(subject="blocked backlog detection", equals=1)
-- code: `workflows/src/workhorse_workflows/coder/shared/backlog.py::BacklogBullet.blocked` @1d2199bc80bd
+- sig: `filed_backlog(logger, spec_dir: str = "", repo_dir: str = "", workspace: str = "") -> FiledBacklog`
+- does: returns the open `qa` records of the workspace repositories as `filed`, each id mapped to its summary
+- verify: count(subject="open qa records listed for judging", equals=1)
+- does: returns the items QA left in `<spec_dir>/backlog-items.json` as `items`, each kebab id mapped to its one-line description, less the items with no id or no description
+- verify: count(subject="pending qa items listed for judging", equals=1)
+- code: `workflows/src/workhorse_workflows/coder/shared/backlog.py::filed_backlog` @a6c8b292e8eb
+- tests: `workflows/tests/coder/shared/test_qa_leftovers_backlog.py::test_filed_lists_the_open_qa_records_of_the_workspace_repos_and_the_pending_items`
 
-### backlog_bullets
+### unfiled
 
-- sig: `backlog_bullets(text: str, *, section: str = "") -> list[BacklogBullet]`
-- does: parses markdown through `ostler.markdown` and returns bracketed backlog bullets in source order
-- verify: count(subject="parsed backlog bullet lists", equals=1)
-- does: when `section` is non-empty, limits results to that parsed section and returns an empty list when the section is absent
-- verify: count(subject="section-scoped backlog bullet lists", equals=1)
-- does: excludes bullets without an id and bullets inside fenced examples
-- verify: count(subject="filtered backlog bullets", equals=1)
-- returns: `BacklogBullet` records with file-absolute zero-based line locations
-- verify: count(subject="backlog bullet records", equals=1)
-- code: `workflows/src/workhorse_workflows/coder/shared/backlog.py::backlog_bullets` @1d2199bc80bd
-
-### Seen.add
-
-- sig: `Seen.add(item_id: str, desc: str) -> None`
-- does: records a non-empty id, its order-insensitive token set, and a non-empty normalized description for later duplicate checks
-- returns: no value
-- verify: count(subject="recorded backlog duplicate keys", equals=1)
-- code: `workflows/src/workhorse_workflows/coder/shared/backlog.py::Seen.add` @1d2199bc80bd
-
-### Seen.duplicate
-
-- sig: `Seen.duplicate(item_id: str, desc: str) -> bool`
-- does: reports true when the id, id-token set, or normalized description has already been recorded
-- verify: count(subject="backlog duplicate decisions", equals=1)
-- returns: false for an item with no matching identity signal
-- verify: count(subject="backlog duplicate misses", equals=1)
-- code: `workflows/src/workhorse_workflows/coder/shared/backlog.py::Seen.duplicate` @1d2199bc80bd
-
-### kebab
-
-- sig: `kebab(raw: str) -> str`
-- does: lowercases the supplied value, replaces runs of non-alphanumeric/dot/underscore/hyphen characters with hyphens, and trims edge hyphens
-- returns: stable sanitized backlog id
-- verify: count(subject="sanitized backlog ids", equals=1)
-- code: `workflows/src/workhorse_workflows/coder/shared/backlog.py::kebab` @1d2199bc80bd
-
-### norm_desc
-
-- sig: `norm_desc(desc: str) -> str`
-- does: removes a trailing blocked annotation, lowercases the description, replaces non-alphanumeric runs with spaces, and trims whitespace
-- returns: normalized description key, or an empty string when no identity text remains
-- verify: count(subject="normalized backlog descriptions", equals=1)
-- code: `workflows/src/workhorse_workflows/coder/shared/backlog.py::norm_desc` @1d2199bc80bd
-
-### id_token_set
-
-- sig: `id_token_set(item_id: str) -> frozenset[str]`
-- does: splits an id on dots, hyphens, or underscores and lowercases the non-empty tokens
-- verify: count(subject="split backlog id token sets", equals=1)
-- returns: order-insensitive token set used by duplicate detection
-- verify: count(subject="returned backlog id token sets", equals=1)
-- code: `workflows/src/workhorse_workflows/coder/shared/backlog.py::id_token_set` @1d2199bc80bd
+- sig: `unfiled(judge, logger, reports: Mapping[str, str], filed: Mapping[str, str]) -> list[str]`
+- does: asks a low-power judge which pending item restates the cause of an open `qa` record, and logs each match under the record it matched
+- verify: count(subject="pending items matched to an open record", equals=1)
+- returns: the ids of the items that restate no open record
+- verify: count(subject="pending items left to file", equals=1)
+- code: `workflows/src/workhorse_workflows/coder/shared/backlog.py::unfiled` @a6c8b292e8eb
 
 ### file_backlog_items
 
-- sig: `file_backlog_items(logger: logging.Logger, spec_dir: str = "", repo_dir: str = "") -> BacklogDrain`
-- does: resolves the docs root from `repo_dir`, or the artifacts dir while a workspace is active
-- verify: count(subject="resolved backlog docs roots", equals=1)
-- does: reads `<spec_dir>/backlog-items.json` from the resolved docs root
-- verify: count(subject="read backlog item files", equals=1)
-- does: leaves the configured backlog unchanged when `spec_dir` is empty
-- verify: unchanged(subject="configured backlog")
-- does: creates the configured backlog with `# Backlog` when it is absent and creation succeeds
-- verify: created(subject="configured backlog")
-- does: appends valid non-duplicate items under their requested section, or under `## Filed by coder` when no section is supplied
-- verify: count(subject="appended coder backlog bullets", equals=1)
-- does: skips invalid records
-- verify: count(subject="skipped invalid backlog records", equals=1)
-- does: skips duplicate records
-- verify: count(subject="skipped duplicate backlog records", equals=1)
-- does: removes the items file after reconciliation when the unlink succeeds
-- verify: removed(subject="reconciled backlog-items.json")
-- does: keeps the items file when the backlog cannot be created
-- verify: persists(subject="backlog-items.json after backlog creation failure")
-- does: keeps the items file when its unlink fails
-- verify: persists(subject="backlog-items.json after unlink failure")
-- returns: `BacklogDrain.appended` as the count of appended records
-- verify: json_path(path="$.appended", equals=1)
-- returns: `BacklogDrain.skipped` as the count of skipped records
-- verify: json_path(path="$.skipped", equals=1)
-- returns: `BacklogDrain.notes` reporting the appended count, skipped count, and items-file removal outcome
-- verify: json_path(path="$.notes", matches="^filed [0-9]+, skipped [0-9]+ \\(duplicate/invalid\\); (removed backlog-items\\.json|backlog-items\\.json left in place)$")
-- code: `workflows/src/workhorse_workflows/coder/shared/backlog.py::file_backlog_items` @1d2199bc80bd
+- sig: `file_backlog_items(logger, spec_dir: str = "", repo_dir: str = "", workspace: str = "", drop: list[str] | None = None) -> BacklogDrain`
+- does: files each item in `<spec_dir>/backlog-items.json` as a `qa` record whose area and pattern are the item's own, turned into lowercase kebab segments, or `untriaged` when the item gives none
+- verify: count(subject="qa leftovers filed as records", equals=1)
+- does: takes the summary from the first non-empty line of the item's description and keeps a multi-line description whole as the body
+- verify: count(subject="qa record summaries", equals=1)
+- does: sets `source_story` to the story id the spec dir's QA context names
+- verify: count(subject="qa records naming their story", equals=1)
+- does: skips an item with no id or no description, an item whose id is in `drop`, and an item whose normalized description matches an open `qa` record of the same repository
+- verify: count(subject="skipped qa leftovers", equals=1)
+- does: commits the filed records as `chore(<repo>): file the qa leftovers of <story>`
+- verify: count(subject="qa leftover commits", equals=1)
+- does: removes the items file afterwards, whether or not anything was filed
+- verify: removed(subject="backlog-items.json")
+- returns: `BacklogDrain` with the filed and skipped counts and a note `filed N to the register, skipped K (duplicate/invalid)`, followed by whether the items file was removed
+- verify: json_path(path="$.notes", matches="^filed [0-9]+ to the register, skipped [0-9]+ \\(duplicate/invalid\\); (removed backlog-items\\.json|backlog-items\\.json left in place)$")
+- code: `workflows/src/workhorse_workflows/coder/shared/backlog.py::file_backlog_items` @a6c8b292e8eb
+- tests: `workflows/tests/coder/shared/test_qa_leftovers_backlog.py::test_a_dropped_item_is_not_filed`
+- tests: `workflows/tests/coder/shared/test_qa_leftovers_backlog.py::test_an_item_that_restates_an_open_qa_record_is_skipped`
+- tests: `workflows/tests/coder/shared/test_qa_leftovers_backlog.py::test_a_two_repo_workspace_places_each_item_by_its_repo`
+- tests: `workflows/tests/coder/shared/test_qa_leftovers_backlog.py::test_nothing_filed_commits_nothing_and_still_clears_the_items`
 
 ### file_follow_up_backlog
 
-- sig: `file_follow_up_backlog(logger: logging.Logger, parent: str = "", follow_ups: list[dict[str, str]] | None = None, repo_dir: str = "") -> BacklogDrain`
-- does: skips an entry with no title
-- verify: count(subject="skipped untitled follow-ups", equals=1)
-- does: skips an entry that cites a backlog id in brackets, whose id tokens differ from the title's by at most one word, or whose title matches a bullet heading
-- verify: count(subject="skipped follow-ups already in the backlog", equals=1)
-- does: appends every other entry under `## Deferred by coder`, which no lane drains, with an id built from the parent and a short hash of the title and reason
-- verify: count(subject="appended follow-up bullets", equals=1)
-- does: commits only the backlog path, bypassing the repository hooks, when at least one entry was appended
-- verify: count(subject="follow-up backlog commits", equals=1)
-- returns: a `BacklogDrain` counting appended and skipped entries
+- sig: `file_follow_up_backlog(logger, parent: str = "", follow_ups: list[FollowUp] | None = None, repo_dir: str = "", workspace: str = "") -> BacklogDrain`
+- does: files each follow-up as a `coder` record whose summary is the follow-up's title
+- verify: count(subject="follow-ups filed as coder records", equals=1)
+- does: writes the follow-up's reason as the record body
+- verify: count(subject="coder records whose body is the reason", equals=1)
+- does: copies the follow-up's area, pattern and symbols onto the record
+- verify: count(subject="coder records with the follow-up's area", equals=1)
+- does: sets the record's `source_story` to `parent`
+- verify: count(subject="coder records citing the parent story", equals=1)
+- does: skips a follow-up with no title, a follow-up that names no workspace repository while the workspace has more than one, and a follow-up with no area or no pattern, logging which one it lacks
+- verify: count(subject="refused follow-ups", equals=1)
+- does: skips a follow-up an open record of the same repository already holds: its title or reason cites the record id in brackets, its title's id words differ from the record id's by at most one word when both have three or more, or its title matches the record summary's text before the first `: `
+- verify: count(subject="follow-ups already on the register", equals=1)
+- does: counts a record filed earlier in the same batch as open, so a repeated follow-up is filed once
+- verify: count(subject="repeated follow-ups in one batch", equals=1)
+- does: commits the filed records as `chore(<repo>): file the deferred follow-ups of <parent>`
+- verify: count(subject="follow-up commits", equals=1)
+- returns: `BacklogDrain` with the filed and skipped counts
 - verify: json_path(path="$.appended", equals=1)
-- code: `workflows/src/workhorse_workflows/coder/shared/backlog.py::file_follow_up_backlog` @1d2199bc80bd
-- tests: `workflows/tests/coder/shared/test_follow_up_backlog.py::test_the_filed_follow_ups_are_committed_and_leave_the_tree_clean`
-- tests: `workflows/tests/coder/shared/test_follow_up_backlog.py::test_a_follow_up_that_cites_a_backlog_item_is_not_filed_again`
+- code: `workflows/src/workhorse_workflows/coder/shared/backlog.py::file_follow_up_backlog` @a6c8b292e8eb
+- tests: `workflows/tests/coder/shared/test_follow_up_backlog.py::test_a_record_carries_what_the_proposal_said_and_an_id_ostler_minted`
+- tests: `workflows/tests/coder/shared/test_follow_up_backlog.py::test_a_follow_up_without_an_area_or_a_pattern_is_refused_with_a_reason`
+- tests: `workflows/tests/coder/shared/test_follow_up_backlog.py::test_a_follow_up_that_cites_an_open_record_is_not_filed_again`
+- tests: `workflows/tests/coder/shared/test_follow_up_backlog.py::test_a_batch_files_a_repeated_follow_up_once_and_a_distinct_one_still`
+- tests: `workflows/tests/coder/shared/test_follow_up_backlog.py::test_a_bookkeeping_commit_is_not_refused_by_the_repository_hooks`
+
+### file_deferred_obligations
+
+- sig: `file_deferred_obligations(logger, spec_dir: str = "", repo_dir: str = "", workspace: str = "") -> BacklogDrain`
+- does: reads the required obligations ostler marked deferred in the spec dir's QA context and groups them by the book page that owes their check
+- verify: count(subject="book pages with deferred checks", equals=1)
+- does: files one `qa-deferred` record per page in area `book` with pattern `add-runnable-check`
+- verify: count(subject="deferred book checks filed as records", equals=1)
+- does: gives the record the summary ``Book page `<page>` gives QA no check it can run``
+- verify: count(subject="deferred records naming their page", equals=1)
+- does: lists the page's path under the services root as the record's one symbol
+- verify: count(subject="deferred records with one symbol", equals=1)
+- does: writes a body naming each skipped claim with what the book has to add for it
+- verify: count(subject="skipped claims in the record body", equals=1)
+- does: places the record under the repository whose book prefix holds the page
+- verify: count(subject="deferred book checks placed by book prefix", equals=1)
+- does: skips a page that already has an open `qa-deferred` record citing the same path
+- verify: count(subject="book pages already on the register", equals=1)
+- does: commits the filed records as `chore(<repo>): file the book checks qa could not run`
+- verify: count(subject="deferred book check commits", equals=1)
+- returns: `BacklogDrain` with the filed and skipped counts, or a note that there was no QA context to read
+- verify: json_path(path="$.appended", equals=1)
+- code: `workflows/src/workhorse_workflows/coder/shared/backlog.py::file_deferred_obligations` @a6c8b292e8eb
+- tests: `workflows/tests/coder/shared/test_deferred_obligations_backlog.py::test_the_same_page_twice_files_once`
+- tests: `workflows/tests/coder/shared/test_deferred_obligations_backlog.py::test_a_two_repo_workspace_places_the_page_by_its_book_prefix`
+- tests: `workflows/tests/coder/shared/test_deferred_obligations_backlog.py::test_the_fix_lane_leaves_book_checks_for_the_book`
 
 ### select_fix_item
 
-- sig: `select_fix_item(logger: logging.Logger, backlog_path: str = "", repo_dir: str = "") -> FixPick`
-- does: resolves the configured backlog and searches only the parsed `## Filed by coder` section
-- verify: count(subject="coder backlog sections searched", equals=1)
-- does: skips blocked bullets and bullets with empty text, then returns the first remaining bullet without mutating the file
-- verify: count(subject="selected unblocked backlog bullets", equals=1)
-- does: reports a dry selection when the backlog file, section, or drainable bullet is absent
-- verify: count(subject="dry backlog selections", equals=1)
-- returns: `FixPick` containing the selected id and text, or a reason with no fix
-- verify: count(subject="fix selection results", equals=1)
-- code: `workflows/src/workhorse_workflows/coder/shared/backlog.py::select_fix_item` @1d2199bc80bd
+- sig: `select_fix_item(logger, repo_dir: str = "", workspace: str = "") -> FixPick`
+- does: reads the open `qa` records of the workspace repositories and draws the oldest without changing it
+- verify: count(subject="drawn qa records", equals=1)
+- does: orders an id with no ULID, such as an imported one, before every minted id, and minted ids by their ULID
+- verify: count(subject="qa records drawn oldest first", equals=1)
+- returns: `FixPick` with `has_fix` true and the record's id, repo, area, summary and body, or `has_fix` false with the reason `no open qa record in <repos> — nothing to drain`
+- verify: count(subject="fix draws", equals=1)
+- code: `workflows/src/workhorse_workflows/coder/shared/backlog.py::select_fix_item` @a6c8b292e8eb
+- tests: `workflows/tests/coder/fix/test_flow.py::test_the_drain_keeps_going_until_no_open_qa_record_is_left`
 
 ### seed_fix_story
 
-- sig: `seed_fix_story(logger: logging.Logger, bullet_id: str = "", bullet_text: str = "", epics_dir: str = "", epic: str = "", repo_dir: str = "") -> FixStorySeed`
-- does: resolves or self-creates the selected epic bucket, defaulting to the perpetual `fixes` bucket without registering it in the epic queue
-- verify: created(subject="the selected epic bucket")
-- verify: count(subject="resolved fix story buckets", equals=1)
-- does: reuses an existing story covering the bullet id and fills only empty required sections
-- verify: count(subject="idempotent fix story reuses", equals=1)
-- does: otherwise registers a researched seed and creates one story whose acceptance criteria contains exactly the selected bullet text
-- verify: created(subject="a fix story covering the selected bullet id")
-- raises: `WorkflowFailed` when the bullet id or text is missing
-- verify: count(subject="invalid fix story seed failures", equals=1)
-- returns: `FixStorySeed` with the epic, story paths, bullet identity, and reuse/creation reason
-- verify: count(subject="seeded fix stories", equals=1)
-- code: `workflows/src/workhorse_workflows/coder/shared/backlog.py::seed_fix_story` @1d2199bc80bd
-- tests: `workflows/tests/coder/fix/test_flow.py::test_one_item_is_seeded_fixed_checked_pruned_and_committed`
+- sig: `seed_fix_story(logger, record_id: str = "", summary: str = "", epics_dir: str = "", epic: str = "", repo_dir: str = "", repo: str = "", area: str = "", body: str = "") -> FixStorySeed`
+- does: creates the `fixes` epic, or the named one, as a follow-up bucket that needs no milestone when it does not exist yet
+- verify: created(subject="the fixes epic")
+- does: reuses a story of that epic whose `covers` holds the record id, and fills only its empty sections
+- verify: count(subject="reused fix stories", equals=1)
+- does: otherwise registers a researched seed with meta `sourceRecord: <record id>` and creates one story that covers the record id, slugged from the summary within 60 characters
+- verify: created(subject="a fix story covering the record id")
+- does: writes the record summary as the story's one acceptance criterion
+- verify: count(subject="fix story acceptance criteria", equals=1)
+- does: writes a Context section that names the record, its `<repo>/<area>`, the one-record scope and the record's body
+- verify: count(subject="fix story bodies", equals=1)
+- raises: `WorkflowFailed` when the record id or the summary is empty, or when the story cannot be created
+- verify: count(subject="refused fix story seeds", equals=1)
+- code: `workflows/src/workhorse_workflows/coder/shared/backlog.py::seed_fix_story` @a6c8b292e8eb
+- tests: `workflows/tests/coder/fix/test_flow.py::test_the_story_of_a_record_covers_the_record_id`
+- tests: `workflows/tests/coder/shared/test_follow_up_backlog.py::test_the_fixes_bucket_the_coder_creates_needs_no_milestone`
+- tests: `workflows/tests/coder/shared/test_follow_up_backlog.py::test_the_fix_story_seed_names_the_record_it_came_from`
 
-### prune_fix_item
+### close_fix_item
 
-- sig: `prune_fix_item(logger: logging.Logger, bullet_id: str = "", backlog_path: str = "", repo_dir: str = "") -> FixPruned`
-- does: removes the matching parsed bullet through Ostler, falling back to the configured custom backlog path when Ostler cannot prune it
-- verify: removed(subject="the shipped coder backlog bullet")
-- does: commits only the rewritten backlog path after a successful prune
-- verify: count(subject="scoped backlog prune commits", equals=1)
-- returns: `FixPruned` marked true for a removed bullet and false when no id or matching bullet exists
-- verify: count(subject="backlog prune results", equals=1)
-- code: `workflows/src/workhorse_workflows/coder/shared/backlog.py::prune_fix_item` @1d2199bc80bd
-- tests: `workflows/tests/coder/fix/test_flow.py::test_one_item_is_seeded_fixed_checked_pruned_and_committed`
+- sig: `close_fix_item(logger, record_id: str = "", landed: dict[str, str] | None = None, repo_dir: str = "") -> FixClosed`
+- does: closes the record as `done` with the reason `fixed in <repo>@<sha7>, ...`, one entry per repository that landed a commit
+- verify: count(subject="closed fix records", equals=1)
+- does: closes nothing when the record id or the landed map is empty
+- verify: unchanged(subject="the drawn record")
+- returns: `FixClosed` with `closed` true on success, or false with ostler's reason
+- verify: count(subject="fix close results", equals=1)
+- code: `workflows/src/workhorse_workflows/coder/shared/backlog.py::close_fix_item` @a6c8b292e8eb
+- tests: `workflows/tests/coder/fix/test_flow.py::test_one_item_is_seeded_fixed_checked_committed_and_closed`

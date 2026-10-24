@@ -7,50 +7,58 @@ title: Author main story processing
 
 The story-processing nodes the Author main flow reaches through its story subflows register a
 story, gate visual design, validate the story contract and grounding, retain failed approaches,
-consume operator feedback, and prune a consumed backlog item.
+consume operator feedback, and close a consumed register record as promoted. The record comes
+from the [debt register](../../ostler/concepts/the-debt-register.md), and
+[promoting a record](promote-a-record.md) describes the path as a whole.
 These nodes use Ostler as the source of truth for planning and document structure; they do not
 invent epic paths or duplicate the graph's story semantics.
 
-- code: `workflows/src/workhorse_workflows/author/shared/nodes/story_mode.py::seed_story` @d2ddecee90dd
+- code: `workflows/src/workhorse_workflows/author/shared/nodes/story_mode.py::seed_story` @ec2020d13cf3
 - code: `workflows/src/workhorse_workflows/author/story_author/nodes/mockup.py::check_mockup_needed` @cbcbbaf4e981
 - code: `workflows/src/workhorse_workflows/author/shared/nodes/stories.py::validate_story` @29a54157b737
 - code: `workflows/src/workhorse_workflows/author/shared/nodes/stories.py::check_story_grounding` @29a54157b737
 - code: `workflows/src/workhorse_workflows/author/shared/nodes/stories.py::record_attempt` @29a54157b737
 - code: `workflows/src/workhorse_workflows/author/story_author/nodes/feedback.py::check_story_feedback` @8125ecb8d1d2
-- code: `workflows/src/workhorse_workflows/author/shared/nodes/story_mode.py::prune_bullet` @d2ddecee90dd
+- code: `workflows/src/workhorse_workflows/author/shared/nodes/story_mode.py::promote_record` @ec2020d13cf3
 - detail: [Author main package](author-main-package.md)
 
 ## Methods
 
 ### seed_story
-- sig: `seed_story(logger, epic: str = "", bullet: str = "", layers: str = "", services: str = "", repo_dir: str = "") -> SeededStory`
-- does: resolves a backlog id, backlog text, or literal bullet into one story id
-- verify: json_path(path="$.bullet_id", matches="^[A-Za-z0-9][A-Za-z0-9._-]*$")
-- does: carries the resolved source bullet into the seed and story records
-- verify: persists(subject="the resolved source bullet in the seed and story records")
-- does: requires an existing epic and raises a workflow failure when the epic or bullet is missing
+- sig: `seed_story(logger, epic: str = "", record: str = "", layers: str = "", services: str = "", repo_dir: str = "") -> SeededStory`
+- does: resolves a record id or short handle to one register record of any status
+- verify: json_path(path="$.record_id", matches="^[A-Za-z0-9][A-Za-z0-9._-]*$")
+- does: raises a workflow failure naming the token when it matches no record, so literal text is rejected
+- verify: count(subject="workflow failures for a token naming no record", equals=1)
+- does: requires an existing epic and raises a workflow failure when the epic or record input is blank or the epic is missing
 - verify: count(subject="workflow failures for missing story inputs", equals=1)
-- does: reuses an existing story that already covers the resolved bullet id without adding a duplicate
-- verify: count(subject="stories covering the resolved bullet after reuse", equals=1)
-- does: adds a researched seed with source bullet metadata and optional layer/service metadata when the seed is new
-- verify: created(subject="the researched seed for the resolved bullet")
+- does: reuses an existing story of the epic that already covers the record id without adding a duplicate
+- verify: count(subject="stories covering the record after reuse", equals=1)
+- does: raises a workflow failure when a story must be created and the record is not open
+- verify: count(subject="workflow failures for a closed record", equals=1)
+- does: adds a researched seed whose id is the record id, whose summary is the record summary followed by its body, and whose `sourceRecord` metadata holds the record id
+- verify: created(subject="the researched seed for the record")
 - verify: persists(subject="the researched seed metadata")
-- does: creates one story covering the seed
-- verify: created(subject="the story covering the seeded bullet")
+- does: creates one story covering the seed, named by the kebab form of the record summary
+- verify: created(subject="the story covering the seeded record")
 - does: returns the story's epic directory
 - verify: json_path(path="$.epic_dir", equals="docs/stories/acme-story")
 - does: returns the story's directory
 - verify: json_path(path="$.story_dir", equals="docs/stories/acme-story")
 - does: returns the story's path
 - verify: json_path(path="$.story_path", equals="docs/stories/acme-story/story.md")
-- does: returns the resolved bullet id
-- verify: json_path(path="$.bullet_id", equals="acme-bullet")
-- does: returns whether the resolved bullet came from the backlog
-- verify: json_path(path="$.from_backlog", equals=true)
+- does: returns the record id
+- verify: json_path(path="$.record_id", equals="b1")
 - does: returns the creation or reuse reason
 - verify: json_path(path="$.reason", equals="The slice works without it.")
-- code: `workflows/src/workhorse_workflows/author/shared/nodes/story_mode.py::seed_story` @d2ddecee90dd
-- tests: `workflows/tests/author/test_workflow.py::test_story_mode_authors_one_bullet_and_does_not_commit`
+- code: `workflows/src/workhorse_workflows/author/shared/nodes/story_mode.py::seed_story` @ec2020d13cf3
+- code: `workflows/src/workhorse_workflows/author/shared/nodes/story_mode.py::find_record` @ec2020d13cf3
+- code: `workflows/src/workhorse_workflows/author/shared/nodes/story_mode.py::seed_text` @ec2020d13cf3
+- tests: `workflows/tests/author/test_workflow.py::test_story_mode_promotes_an_open_record_and_does_not_commit_the_code_repo`
+- tests: `workflows/tests/author/test_workflow.py::test_story_mode_refuses_a_token_that_names_no_record`
+- tests: `workflows/tests/author/test_workflow.py::test_story_mode_takes_no_literal_text`
+- tests: `workflows/tests/author/test_workflow.py::test_story_mode_refuses_a_record_that_is_not_open`
+- tests: `workflows/tests/author/test_workflow.py::test_story_mode_refuses_an_epic_that_does_not_exist`
 
 ### check_mockup_needed
 - sig: `check_mockup_needed(logger, story_slug: str = "", repo_dir: str = "") -> MockupGate`
@@ -128,14 +136,23 @@ invent epic paths or duplicate the graph's story semantics.
 - code: `workflows/src/workhorse_workflows/author/story_author/nodes/feedback.py::check_story_feedback` @8125ecb8d1d2
 - tests: `workflows/tests/author/test_workflow.py::test_an_operator_note_dropped_mid_run_reworks_the_story_once`
 
-### prune_bullet
-- sig: `prune_bullet(logger, bullet_id: str = "", from_backlog: bool = False, repo_dir: str = "") -> Pruned`
-- does: leaves the backlog unchanged when the bullet is literal, missing, absent from the file, or the backlog cannot be read
-- verify: unchanged(subject="the backlog")
-- does: removes only the matching parsed backlog scope item when it came from the backlog
-- verify: removed(subject="the consumed backlog scope item")
-- does: counts remaining items using the same bracketed-id predicate as removal and preserves nested children when the parent is not removable
-- verify: count(subject="remaining identified backlog items", equals=2)
-- does: returns removed and remaining counts and treats write failure as a best-effort continuation
-- code: `workflows/src/workhorse_workflows/author/shared/nodes/story_mode.py::prune_bullet` @d2ddecee90dd
-- tests: `workflows/tests/author/test_workflow.py::test_story_prune_preserves_a_parent_with_nested_work`
+### promote_record
+- sig: `promote_record(logger, record_id: str = "", epic: str = "", story: str = "", repo_dir: str = "") -> Promoted`
+- does: raises a workflow failure when the record id is blank
+- verify: count(subject="workflow failures for a blank record id", equals=1)
+- does: names the story by the `story` input, or by the story of the epic whose `covers` lists the record when the input is blank
+- verify: json_path(path="$.reason", equals="promoted to story users-can-sign-in in epic accounts")
+- does: raises a workflow failure when no story of the epic covers the record
+- verify: count(subject="workflow failures for an uncovered record", equals=1)
+- does: closes the record as promoted with the reason `promoted to story <story> in epic <epic>`
+- verify: persists(subject="the record's promoted status and reason")
+- does: raises a workflow failure carrying Ostler's message when the close is refused
+- verify: count(subject="workflow failures for a refused close", equals=1)
+- does: leaves the code repository uncommitted, because the close is one commit in the artifacts repo
+- verify: unchanged(subject="the code repository history")
+- returns: `Promoted` with the record id and the reason
+- verify: json_path(path="$.record_id", equals="b1")
+- code: `workflows/src/workhorse_workflows/author/shared/nodes/story_mode.py::promote_record` @ec2020d13cf3
+- tests: `workflows/tests/author/test_workflow.py::test_story_mode_promotes_an_open_record_and_does_not_commit_the_code_repo`
+- tests: `workflows/tests/author/test_workflow.py::test_story_mode_resumed_after_the_close_fails_nothing_and_commits_nothing_more`
+

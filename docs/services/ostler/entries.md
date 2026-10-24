@@ -5,6 +5,8 @@ title: ostler
 ---
 
 - [Planning identities](concepts/planning-identities.md)
+- [The debt register](concepts/the-debt-register.md)
+- [Decision records](concepts/decision-records.md)
 - [Sandbox port forwarding](concepts/sandbox-port-forwarding.md)
 - [Vendored stablemate-core](concepts/vendored-stablemate-core.md)
 - [Local stack bring-up](concepts/local-stack-bring-up.md)

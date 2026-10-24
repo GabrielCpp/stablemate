@@ -29,7 +29,7 @@ The shared node inventory, unit-walking, record-validation, and coverage-gate
 operations are described in the [author shared survey library](survey-shared-library.md).
 The surveyor's own non-shared nodes (its planning, splitting, partition, and
 artifact-emission nodes) and the parity surveyor's own non-shared nodes (its baseline
-freeze and backlog-emission nodes) are documented in their respective subflow concepts
+freeze and record-filing nodes) are documented in their respective subflow concepts
 and import this blueprint to register on it.
 
 - code: `workflows/src/workhorse_workflows/author/shared/survey/blueprint.py::blueprint` @00b76235bdb3

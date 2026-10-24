@@ -18,10 +18,10 @@ The flow ends in a `QaFlowResult` whose status is `passed`, `refix` or `replan`.
 [QA schema contracts](../concepts/coder-qa-schema-contracts.md) for those types.
 
 - fixture: none, because the walk dry-runs the registered flow, which stands in for every agent turn
-- steps:
-  - [run](../workhorse-coder.md#run)
 - start: the working directory holds no rendered graph
 - verify: absent(subject="workhorse-coder.dot")
+- steps:
+  - [run](../workhorse-coder.md#run)
 - end: the dry run leaves the command with a zero exit status
 - verify: exit_status(code=0)
 - detail: [coder handoff boundary contract](../concepts/coder-handoff-boundary.md)
@@ -92,7 +92,10 @@ claims it dry-ran.
 `check` rebuilds the preflight, then lints the plan, validates it against the packet, and
 verifies that every claimed scenario dry-ran green. Any failure spends a lap and returns to `work`
 with the failure as the report. A clean preflight runs the plan once through `run_qa_plan`, files
-the backlog items the run wrote, and stamps the specs.
+the backlog items the run wrote, and stamps the specs. Each item becomes a `qa` record on the
+[debt register](../../ostler/concepts/the-debt-register.md) unless a low-power judge reads it as
+the same work an open `qa` record already holds. The
+[coder backlog contract](../concepts/coder-backlog-contract.md) owns those rules.
 
 A failed run with findings, or any failed run under `stop_at_first_verdict`, ends the flow. A
 failed run with no finding goes back to the owner with its failing scenarios and a note that the
@@ -103,7 +106,8 @@ A passed run must also clear four gates before the story is believed. The eviden
 the runner's artifacts. The operator feedback inbox is read, and a note goes back to the owner.
 Declared regression suites run, and a suite that is neither passed nor skipped goes back. The
 sentinel ids are checked after the screenshots are flushed. Under `stop_at_first_verdict`, a
-passing run that fails a gate finishes as a `refix` with a fallback finding.
+passing run that fails a gate finishes as a `refix` with a fallback finding. A flow that finishes
+`passed` files each book check QA could not run as a `qa-deferred` record in area `book`.
 
 ### operator-block
 

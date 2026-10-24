@@ -8,8 +8,11 @@ title: plan scratch repo
 Seeds `plan-scratch/`, a small planning repo of its own under the checkout: an id prefix `TST`, two
 templates (`tpl` with a `note` kind, `tpl2` with a `memo` kind) and two `note` documents. It holds four
 epics: `0001-first` with nine stories, `0002-second` with one, and `0003-third` and `0004-junk` with
-none. It also holds two features, one milestone and a backlog of two named items and one unnamed
-bullet. Beside the repo sits `plan-scratch/old-list.md`, an old two-bullet list for the import. The first two epics are queued. One story carries a conflict, one is blocked and two are
+none. It also holds two features and one milestone. Its artifacts dir is `plan-scratch/art`, and the
+register there holds two open records of `api-service`, X-1 and X-2, both in the `billing` area.
+Every command that reads or writes the register runs with `STABLEMATE_ARTIFACTS_DIR` set to that
+dir, so no check touches the operator's own artifacts repo. Beside the repo sits
+`plan-scratch/old-list.md`, an old two-bullet list for the import. The first two epics are queued. One story carries a conflict, one is blocked and two are
 frozen. Commands run there with `-C plan-scratch`, and each command acts on an entity of its own, so
 the order they run in does not matter.
 
@@ -33,7 +36,7 @@ the order they run in does not matter.
 ### write-plan-backlog
 
 - kind: seed
-- run: mkdir -p plan-scratch/docs plan-scratch/docs/services plan-scratch/docs/milestones/m1 && printf -- '# Backlog\n\n- \133X-1] first item\n\n- \133X-2] second item\n\n- an unnamed idea\n' > plan-scratch/docs/backlog.md && printf -- '---\ntype: feature\nid: TST-01M585PGNT3613KNWF9FJ5TRPQ\nslug: alpha\ntitle: Alpha\n---\n# Alpha\n\n' > plan-scratch/docs/services/alpha.md && printf -- '---\ntype: feature\nid: TST-01M585PHCYXDYAN9M3JZTR5G7W\nslug: beta\ntitle: Beta\n---\n# Beta\n\n' > plan-scratch/docs/services/beta.md && printf -- '---\ntype: milestone\nid: TST-01M585PJ3RMM086AGTM32KGT2S\ntitle: M one\nstatus: proposed\ndependsOn: \133]\nsourceItems: \133]\nepics: \133]\n---\n# M one\n' > plan-scratch/docs/milestones/m1/milestone.md
+- run: mkdir -p plan-scratch/docs plan-scratch/docs/services plan-scratch/docs/milestones/m1 plan-scratch/art/backlog/api-service/billing/X-1 plan-scratch/art/backlog/api-service/billing/X-2 && printf -- '---\nid: X-1\nrepo: api-service\narea: billing\npattern: untriaged\nfiled_by: person\nsummary: first item\nstatus: open\n---\n' > plan-scratch/art/backlog/api-service/billing/X-1/record.md && printf -- '---\nid: X-2\nrepo: api-service\narea: billing\npattern: untriaged\nfiled_by: person\nsummary: second item\nstatus: open\n---\n' > plan-scratch/art/backlog/api-service/billing/X-2/record.md && printf -- '---\ntype: feature\nid: TST-01M585PGNT3613KNWF9FJ5TRPQ\nslug: alpha\ntitle: Alpha\n---\n# Alpha\n\n' > plan-scratch/docs/services/alpha.md && printf -- '---\ntype: feature\nid: TST-01M585PHCYXDYAN9M3JZTR5G7W\nslug: beta\ntitle: Beta\n---\n# Beta\n\n' > plan-scratch/docs/services/beta.md && printf -- '---\ntype: milestone\nid: TST-01M585PJ3RMM086AGTM32KGT2S\ntitle: M one\nstatus: proposed\ndependsOn: \133]\nsourceItems: \133]\nepics: \133]\n---\n# M one\n' > plan-scratch/docs/milestones/m1/milestone.md
 
 ### write-plan-old-list
 

@@ -61,8 +61,11 @@ until QA has filed a finding against the work item, and `dev-rework` from then o
 story identity, the spec directory, the worklist and answers file paths, a resume note read from
 disk, the review prefix for this round, the open findings, the last gate report and the last
 operator answer. The turn plans, builds, reviews, fixes and commits through its own subagents.
-The flow stamps the spec files the turn wrote. Follow-ups the turn reports are filed in the backlog
-under `Deferred by coder`, which no lane drains. Findings the review
+The flow stamps the spec files the turn wrote. A low-power judge reads each follow-up the turn
+reports, and the flow logs every one it reads as no product work. The rest are filed as `coder`
+records on the [debt register](../../ostler/concepts/the-debt-register.md), each with its area and
+pattern, through the [coder backlog contract](../concepts/coder-backlog-contract.md). No coder lane
+drains them. Findings the review
 reports are filed in the work list under the review prefix. A result of `blocked` goes to the
 operator-block step.
 

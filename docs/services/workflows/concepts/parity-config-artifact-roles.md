@@ -13,14 +13,14 @@ selects the field named for the artifact it needs.
 the pre-existing legacy surface list, while `target_services` identifies the feature book in
 which that surface may already have an owner. `survey_dir` groups the survey's derived
 artifacts: `inventory` is the frozen unit list, `findings_dir` holds one finding record per
-unit, and `unit_manifest` is the emitted audit manifest. `backlog` identifies the file whose
-parity marker section is replaced, and `epics_dir` identifies the existing epic directory to
-search for ownership.
+unit, and `unit_manifest` is the emitted audit manifest. `epics_dir` identifies the existing epic directory to
+search for ownership. The configuration holds no path for the findings the survey files, because
+those go to the [debt register](../../ostler/concepts/the-debt-register.md).
 
 All paths other than `repo_root` remain repository-relative because they are recorded exactly
 as emitted by the parity script. No field ranks over or replaces another; selecting a field for
 a different artifact is a configuration error rather than a supported fallback.
 
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/parity.py::ParityConfig` @dc5b0f21a8ae
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/parity.py::ParityConfig` @40a9cc4079c3
 - rule: select the field named for the parity-survey artifact being read or written; the fields are complementary and none substitutes for another
 - detail: [parity configuration documentation roles](parity-config-documentation-roles.md)

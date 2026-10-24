@@ -11,4 +11,4 @@ title: File a named backlog item
 - end: the caller sees the record filed
 - verify: exit_status(code=0)
 - verify: stdout(matches="^filed record 'X-3'$")
-- fixture: [plan scratch repo](../fixtures/plan-scratch-repo.md) with a backlog of two named items
+- fixture: [plan scratch repo](../fixtures/plan-scratch-repo.md) with records X-1 and X-2 on its register

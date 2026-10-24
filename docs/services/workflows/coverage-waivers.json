@@ -10,11 +10,7 @@
     },
     {
       "code": "workflows/src/workhorse_workflows/coder/shared/backlog.py::BacklogBullet",
-      "reason": "folded into concepts/coder-backlog-contract.md, which cites `BacklogBullet.blocked`; the bare class symbol carries no behaviour beyond its cited method."
-    },
-    {
-      "code": "workflows/src/workhorse_workflows/coder/shared/backlog.py::Seen",
-      "reason": "folded into concepts/coder-backlog-contract.md, which cites `Seen.add` and `Seen.duplicate`; the bare class symbol carries no behaviour beyond its cited methods."
+      "reason": "folded into concepts/coder-backlog-contract.md, whose `file_follow_up_backlog` section states the duplicate test this open-record view serves; the bare class carries no behaviour of its own."
     },
     {
       "code": "workflows/src/workhorse_workflows/research/nodes/program.py::parse_flat_yaml",
@@ -250,7 +246,7 @@
     },
     {
       "code": "workflows/src/workhorse_workflows/coder/shared/backlog.py",
-      "reason": "every public function and class in this module is already cited individually with `code:` bullets in concepts/coder-backlog-contract.md (`backlog_bullets`, `file_backlog_items`, `select_fix_item`, `seed_fix_story`, `prune_fix_item`, `kebab`, `norm_desc`, `id_token_set`, `Seen.add`, `Seen.duplicate`, `BacklogBullet.blocked`). The bare module path adds no behaviour beyond those citations."
+      "reason": "every public function in this module is already cited individually with `code:` bullets in concepts/coder-backlog-contract.md (`filed_backlog`, `unfiled`, `file_backlog_items`, `file_follow_up_backlog`, `file_deferred_obligations`, `select_fix_item`, `seed_fix_story`, `close_fix_item`). The bare module path adds no behaviour beyond those citations."
     },
     {
       "code": "workflows/src/workhorse_workflows/coder/shared/blueprint.py",

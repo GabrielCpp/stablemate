@@ -91,8 +91,8 @@ node identity so its recorded output cannot overwrite the parent story's prepara
 
 ### prepare_fix_story
 - sig: `prepare_fix_story(logger, story: str = "", epic: str = "", repo_dir: str = "") -> StoryPaths`
-- does: resolves a backlog fix story with the same paths, authored gate, and identity fields as ordinary story preparation
-- verify: count(subject="backlog fix story preparations", equals=1)
+- does: resolves the fix story of a drained register record with the same paths, authored gate, and identity fields as ordinary story preparation
+- verify: count(subject="fix story preparations", equals=1)
 - does: records the fix preparation under a distinct node identity so it cannot overwrite the parent story preparation output
 - verify: count(subject="distinct fix-story preparation outputs", equals=1)
 - code: `workflows/src/workhorse_workflows/coder/shared/story.py::prepare_fix_story` @3a248ab12525

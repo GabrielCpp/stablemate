@@ -10,7 +10,7 @@ nodes validate and apply graph changes between turns. Story authoring turns writ
 story's artifacts, while all turns return typed JSON consumed by the next state. The feature book is
 always read-only to these prompts.
 
-- code: `workflows/src/workhorse_workflows/author/epic_edit/prompts/plan-epic-edit.md` @c5a75c04e473
+- code: `workflows/src/workhorse_workflows/author/epic_edit/prompts/plan-epic-edit.md` @9bd6bedd06ce
 - code: `workflows/src/workhorse_workflows/author/epic_edit/prompts/refine-epic-edit-plan.md` @9c92addea733
 - code: `workflows/src/workhorse_workflows/author/epic_edit/prompts/rewrite-epic-edit.md` @031fe29f72ac
 - code: `workflows/src/workhorse_workflows/author/epic_edit/prompts/design-mockup.md` @f918719466f5
@@ -22,8 +22,8 @@ always read-only to these prompts.
 ## Prompt Contracts
 
 ### Plan turns
-`plan-epic-edit.md` receives the binding intent, current snapshot, epic directory, configured
-backlog, feature-book directory, and optional epic context. It must return one complete `EpicEditPlan`
+`plan-epic-edit.md` receives the binding intent, current snapshot, epic directory, the open
+records of the debt register as a listing, feature-book directory, and optional epic context. It must return one complete `EpicEditPlan`
 with journey, seed, story, deletion, affected-story, and notes data. It must not edit files.
 
 `refine-epic-edit-plan.md` receives the same baseline, the rejected plan, and coded validation

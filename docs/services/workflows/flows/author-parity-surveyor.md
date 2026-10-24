@@ -13,25 +13,25 @@ per baseline surface, one finding record each, and the empty pending set as the 
 The flow reuses the surveyor's per-unit mechanics (`select_next_unit`, `validate_record`,
 `mark_unit`, `verify_records`) but differs at the ends: the frozen list comes from a baseline
 inventory file rather than enumerated rules, and emission suppresses any surface already claimed
-by an existing backlog item or epic. No partition step exists — each missing surface is its own
-gap, and clustering would merge exactly what a parity backlog needs kept separate.
+by an open record on the [debt register](../../ostler/concepts/the-debt-register.md), an epic or a story. No partition step exists. Each missing surface
+is its own gap, and clustering would merge exactly what a parity survey needs kept separate.
 
 - fixture: none, because the walk dry-runs the registered flow, which stands in for every agent turn
-- steps:
-  - [run](../workhorse-author.md#run)
 - start: the working directory holds no rendered graph
 - verify: absent(subject="workhorse-author.dot")
+- steps:
+  - [run](../workhorse-author.md#run)
 - end: the dry run leaves the command with a zero exit status
 - verify: exit_status(code=0)
 - detail: [parity surveyor subflow](../concepts/parity-surveyor-subflow.md)
 - detail: [parity surveyor input roles](../concepts/parity-surveyor-input-roles.md)
 - tests: `workflows/tests/author/parity_surveyor/test_parity.py::test_expand_freezes_one_unit_per_baseline_surface`
-- tests: `workflows/tests/author/parity_surveyor/test_parity.py::test_emit_writes_one_bullet_per_uncovered_surface`
+- tests: `workflows/tests/author/parity_surveyor/test_parity.py::test_emit_files_one_parity_record_per_uncovered_surface`
 
-The stages, in order: [load configuration](#load-configuration), [freeze the baseline inventory](#freeze-the-baseline-inventory), [per-unit assessment loop](#per-unit-assessment-loop), [verify exhaustive coverage](#verify-exhaustive-coverage), [emit parity backlog](#emit-parity-backlog).
+The stages, in order: [load configuration](#load-configuration), [freeze the baseline inventory](#freeze-the-baseline-inventory), [per-unit assessment loop](#per-unit-assessment-loop), [verify exhaustive coverage](#verify-exhaustive-coverage), [file parity records](#file-parity-records).
 
 The flow starts when the author runs with `mode="parity-surveyor"` and provides a baseline inventory path; or when a readable baseline inventory file exists at the path provided in `baseline_inventory`; or when the current OKF feature book exists under the repo's `docs/services/` root; or when survey artifacts (inventory, findings records, manifest) are either absent (first run) or present and consistent (resumed run).
-It ends in one of these ways: the survey has produced a durable backlog of findings (`backlog.yml`) and unit manifest, representing an exhaustive assessment of all baseline surfaces against the current book, with every missing surface attributed to one backlog bullet.
+It ends in one of these ways: the survey has filed its findings as records on the debt register and written a unit manifest, representing an exhaustive assessment of all baseline surfaces against the current book, with every missing surface attributed to one record.
 
 ## Load configuration
 
@@ -62,13 +62,14 @@ Expansion is implemented by
 Once the unit inventory is frozen, the flow enters a loop that processes each unit until none
 remain. For each unit, it invokes an agent to assess whether the unit is covered by the current
 OKF book, writes a finding record, validates the record, and marks the unit as completed. A unit
-record can optionally name an existing owner (backlog bullet or epic) that already covers it,
+record can optionally name an existing owner (an open record, an epic or a story) that already covers it,
 which suppresses a duplicate emission.
 
 If a record fails validation, the flow fails outright rather than attempting repair, because the
-parity record *is* the finding and a malformed one would emit a bullet nobody can act on.
+parity record *is* the finding and a malformed one would file a record nobody can act on.
 
-Assessment is implemented by
+Before each assessment the flow lists the open records of the surveyed repository and hands the
+listing to the agent, which searches it for an owner of the surface. Assessment is implemented by
 `workflows/src/workhorse_workflows/author/parity_surveyor/flow.py::ParitySurveyor.assess`, which
 invokes an agent against `parity_surveyor/prompts/assess-parity-unit.md`. Validation is
 implemented by `workflows/src/workhorse_workflows/author/shared/survey/records.py::validate_record`.
@@ -86,17 +87,21 @@ fails with a diagnostic message and will not proceed.
 Verification is implemented by
 `workflows/src/workhorse_workflows/author/shared/survey/records.py::verify_records`.
 
-## Emit parity backlog
+## File parity records
 
-Once coverage is verified, the flow emits one backlog bullet per assessed surface that lacks
-coverage in the current OKF book. Surfaces the record marks as already owned by an existing
-backlog item or epic are suppressed — the finding record is retained for audit, but no duplicate
-bullet is emitted.
+Once coverage is verified, the flow files one record per assessed surface that lacks coverage in
+the current OKF book. Each record belongs to the surveyed repository on the [debt register](../../ostler/concepts/the-debt-register.md), filed by `parity`, with the finding
+description as its summary, the unit's area as its area and the pattern `untriaged`. The record body names the legacy surface, the effort and the evidence. Surfaces the record marks as
+already owned are suppressed. The finding record is retained for audit, and no duplicate record is
+filed. A rerun skips a surface whose summary an open `parity` record already states. The new
+records land in one artifacts commit.
 
 The manifest carries *every* unit, including the suppressed ones and their owners, so the
-coverage decision stays an auditable claim rather than an absence.
+coverage decision stays an auditable claim rather than an absence. Each emitted unit carries the
+id of its record.
 
 Emission is implemented by
-`workflows/src/workhorse_workflows/author/parity_surveyor/nodes/parity.py::emit_parity_backlog`.
-The result's `bullet_count` is handed back to the author workflow as its return value.
+`workflows/src/workhorse_workflows/author/parity_surveyor/nodes/parity.py::emit_parity_records`.
+The result's `bullet_count`, the number of surfaces that have a record, is handed back to the
+author workflow as its return value.
 
