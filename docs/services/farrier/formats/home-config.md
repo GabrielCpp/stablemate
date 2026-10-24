@@ -67,6 +67,13 @@ Where per-user story artifacts live, outside git. `$STABLEMATE_ARTIFACTS_DIR` wi
 an unset key falls back to an `artifacts` folder under the platform data directory for
 `stablemate`.
 
+### paddock_dir
+- type: `string` — required: no — default: unset
+- code: `farrier/farrier/_vendor/stablemate_core/config.py::write_paddock_dir` @7a84c0cc67a5
+
+The benchmark root paddock reads and writes: `gold/`, `workspace/` and `results/` live under it.
+An unset key falls back to a `paddock` folder under the platform data directory for `stablemate`.
+
 ### user_library
 - type: `table of tables` — required: no — default: absent (nothing is installed at user scope)
 - code: `farrier/farrier/user_library.py::user_library_tables` @957e574360f9
