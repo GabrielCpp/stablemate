@@ -10,13 +10,15 @@ title: 'farrier — render the agent prompt library into a repository: install'
 ## Commands
 
 ### install
-- usage: `farrier install [--repo DIR] [--config PATH] [--check] [--library DIR]` (also the
-  default command: `farrier [--repo DIR] [--config PATH] [--check] [--library DIR]` when the first
-  argument isn't a recognized subcommand)
+- usage: `farrier install [--repo DIR] [--config PATH] [--check] [--library DIR] [--user]` (also
+  the default command: `farrier [--repo DIR] [--config PATH] [--check] [--library DIR]` when the
+  first argument isn't a recognized subcommand)
 - run: invoke(argv=["install", "--repo", ".", "--library", "lib"])
 - flags:
   - `--repo <dir>` — repository root to render generated files into. Default: current working
-    directory.
+    directory. A repo install writes only under that root.
+  - `--user` — after the repo, also run the [user install](#install---user) into the harness
+    homes, so one command renders both scopes from the same library.
   - `--config <path>` — path to the repo's [`agents.yml`](formats/agents-yml-config.md) pack/skill
     selection file. Default: `<repo>/agents.yml`.
   - `--check` — verify the repo's generated files are current without writing anything; exits `1`
@@ -244,7 +246,7 @@ title: 'farrier — render the agent prompt library into a repository: install'
     - verify: exit_status(code=0)
     - fixture: current-install-repo dir=c124
 - code: `farrier/farrier/outputs.py::install_outputs` @0b63626747f4
-- code: `farrier/farrier/cli.py::_run_install` @0244d6a97e3b
+- code: `farrier/farrier/cli.py::_run_install` @2eeeeaa1740e
 - tests: `farrier/tests/test_tagged_deletion.py::test_an_untagged_file_at_an_output_path_aborts_the_whole_install`
 - tests: `farrier/tests/test_tagged_deletion.py::test_a_deselected_skill_is_still_removed`
 - tests: `farrier/tests/test_qa_evidence_ignore.py::test_the_install_follows_the_skill_that_ships_the_gate`
@@ -254,7 +256,7 @@ title: 'farrier — render the agent prompt library into a repository: install'
 
 A scratch-directory run cannot observe several parts of an install, so no check backs them. Before anything looks for the library, install calls `ensure_base_library_dir(ref=farrier-v<version> or main, refresh=not --check)`. That call fetches an absent [base library](concepts/library-directory.md#fetching-and-updating-the-base) into `~/.cache/stablemate`. It updates a cached one to this farrier's release tag, or to `main` when farrier was installed from a checkout or a URL. It does neither when `$STABLEMATE_BASE_DIR`, `base_dir` or a `stablemate_dir` checkout already names the base library. Under `--check` the call passes `refresh=False`: an absent base library is fetched and a present one stays at its current revision, because the check writes nothing and runs in CI. After a failed fetch install goes on to library resolution, which raises only when there is no overlay either.
 
-The conflict scan runs before any prior output is deleted. Expected outputs are written in repo-relative path order. Ordinary output ends in one trailing newline, and an executable file keeps its executable permission. When the generated staged-files gate is among the outputs and repo scaffolding is enabled, install refreshes the QA-evidence ignore rules. When `managed.repo_scaffolding` is false it skips them, because the user-home install scope supplies no repository launcher output or hook manager. When the supplied hook manager is `none`, install strips Farrier's fenced hook entry from each supported manager file instead of adding one. When a `[user_library.<harness>]` table exists in the shared config, a repo install runs the [user install](#install---user) after it.
+The conflict scan runs before any prior output is deleted. Expected outputs are written in repo-relative path order. Ordinary output ends in one trailing newline, and an executable file keeps its executable permission. When the generated staged-files gate is among the outputs and repo scaffolding is enabled, install refreshes the QA-evidence ignore rules. When `managed.repo_scaffolding` is false it skips them, because the user-home install scope supplies no repository launcher output or hook manager. When the supplied hook manager is `none`, install strips Farrier's fenced hook entry from each supported manager file instead of adding one. A repo install never writes outside the repo root. Only with `--user` does it run the [user install](#install---user) after the repo.
 
 #### ownership
 
@@ -280,9 +282,9 @@ it — are the operator's to choose, not farrier's.
 ### install---user
 - usage: `farrier install --user [--check] [--home DIR] [--library DIR]`
 - flags:
-  - `--user` — install into the harness home directories instead of a repo. Selection comes from
-    the [shared config file](../workhorse/concepts/profiles-and-config.md), not from an `agents.yml`; no repo
-    is read and none is written to.
+  - `--user` — install into the harness home directories. Selection comes from
+    the [shared config file](../workhorse/concepts/profiles-and-config.md), not from an `agents.yml`. Alone, no repo
+    is read and none is written to; with `--repo` the repo installs first and the home after it.
   - `--home <dir>` — the home directory to install into. Default: `~`. It exists for tests and
     for a container that keeps its agent config somewhere other than `$HOME`.
   - `--check` — as for a repo install: verify the installed files are current, write nothing,
@@ -384,12 +386,18 @@ it — are the operator's to choose, not farrier's.
     - run: invoke(argv=["install", "--user", "--check", "--home", "c144/home", "--library", "c144/lib"], env={"HOME": "c144/home", "STABLEMATE_CONFIG": "c144/config.toml", "STABLEMATE_FETCH_BASE": "0", "PATH": "c144/pipx-stub-bin:$PATH"})
     - verify: stdout(text="missing: .claude/skills/demo/SKILL.md")
     - fixture: user-library-home dir=c144
-  - refresh the user library after the repo install, on every repo install that is not `--check`,
-    once a `[user_library.<harness>]` table exists, so the personal copy follows the library as a
-    repo's does
-    - run: invoke(argv=["install", "--repo", "c145", "--library", "c145/lib"], env={"HOME": "c145/home", "STABLEMATE_CONFIG": "c145/config.toml", "STABLEMATE_FETCH_BASE": "0", "PATH": "c145/pipx-stub-bin:$PATH"})
+  - refresh the user library after the repo install when `--repo` and `--user` are given
+    together and the install is not `--check`, so one command renders both scopes from the same
+    library
+    - run: invoke(argv=["install", "--repo", "c145", "--user", "--library", "c145/lib"], env={"HOME": "c145/home", "STABLEMATE_CONFIG": "c145/config.toml", "STABLEMATE_FETCH_BASE": "0", "PATH": "c145/pipx-stub-bin:$PATH"})
     - verify: created(subject="c145/home/.claude/skills/demo/SKILL.md")
     - fixture: user-library-repo-home dir=c145
+  - leave the home directory alone on a repo install without `--user`, even when a
+    `[user_library.<harness>]` table exists, so a worktree on an older branch cannot overwrite the
+    skills the main checkout installed there
+    - run: invoke(argv=["install", "--repo", "c212", "--library", "c212/lib"], env={"HOME": "c212/home", "STABLEMATE_CONFIG": "c212/config.toml", "STABLEMATE_FETCH_BASE": "0", "PATH": "c212/pipx-stub-bin:$PATH"})
+    - verify: absent(subject="c212/home/.claude")
+    - fixture: user-library-repo-home dir=c212
   - leave the home directory alone on a repo install when no table exists
     - run: invoke(argv=["install", "--repo", "c146", "--library", "c146/lib"], env={"HOME": "c146/home", "STABLEMATE_CONFIG": "c146/config.toml", "STABLEMATE_FETCH_BASE": "0", "PATH": "c146/pipx-stub-bin:$PATH"})
     - verify: absent(subject="c146/home/.claude")
@@ -412,7 +420,7 @@ it — are the operator's to choose, not farrier's.
     - run: invoke(argv=["install", "--user", "--home", "c150/home", "--library", "c150/lib"], env={"HOME": "c150/home", "STABLEMATE_CONFIG": "c150/config.toml", "STABLEMATE_FETCH_BASE": "0", "PATH": "c150/pipx-stub-bin:$PATH"})
     - verify: exit_status(code=1)
     - fixture: empty-repo-with-library dir=c150
-- code: `farrier/farrier/cli.py::_run_user_install` @0244d6a97e3b
+- code: `farrier/farrier/cli.py::_run_user_install` @2eeeeaa1740e
 - code: `farrier/farrier/outputs.py::render_user_expected` @0b63626747f4
 - tests: `farrier/tests/test_user_install.py::test_skills_and_prompts_land_in_the_harness_home`
 - tests: `farrier/tests/test_user_install.py::test_the_repo_scaffolding_stays_out_of_the_home`
@@ -421,8 +429,9 @@ it — are the operator's to choose, not farrier's.
 - tests: `farrier/tests/test_user_install.py::test_a_pack_under_a_non_claude_harness_installs_its_skills_only`
 - tests: `farrier/tests/test_user_install.py::test_codex_and_copilot_install_the_union_of_their_tables_into_one_folder`
 - tests: `farrier/tests/test_user_install.py::test_a_skill_left_in_the_old_codex_and_copilot_folders_is_swept`
-- tests: `farrier/tests/test_user_install.py::test_a_repo_install_also_refreshes_the_user_library`
-- tests: `farrier/tests/test_user_install.py::test_a_repo_install_leaves_the_home_alone_without_a_user_library`
+- tests: `farrier/tests/test_user_install.py::test_a_repo_install_with_user_also_refreshes_the_user_library`
+- tests: `farrier/tests/test_user_install.py::test_a_repo_install_leaves_the_home_alone_without_user`
+- tests: `farrier/tests/test_user_install.py::test_a_repo_install_with_user_needs_a_user_library`
 - tests: `farrier/tests/test_user_install.py::test_a_repo_check_never_writes_the_user_library`
 - tests: `farrier/tests/test_user_install.py::test_a_repo_install_names_each_skill_the_home_also_installs`
 - tests: `farrier/tests/test_user_install.py::test_a_home_copy_for_a_harness_the_repo_does_not_enable_is_no_duplicate`

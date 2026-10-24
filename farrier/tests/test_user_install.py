@@ -327,7 +327,7 @@ def install_repo(repo: Path, home: Path, library: Path, *extra: str) -> int:
                  "--library", str(library), *extra])
 
 
-def test_a_repo_install_also_refreshes_the_user_library(
+def test_a_repo_install_with_user_also_refreshes_the_user_library(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     library = make_library(tmp_path)
@@ -335,13 +335,30 @@ def test_a_repo_install_also_refreshes_the_user_library(
     repo = tmp_path / "acme"
     home = tmp_path / "home"
 
-    assert install_repo(repo, home, library) == 0
+    assert install_repo(repo, home, library, "--user") == 0
 
     assert (repo / ".claude/skills/acme-cache/SKILL.md").is_file()
     assert (home / ".claude/skills/db/SKILL.md").is_file()
 
 
-def test_a_repo_install_leaves_the_home_alone_without_a_user_library(
+def test_a_repo_install_leaves_the_home_alone_without_user(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A worktree on a diverging branch must not rewrite the home skills on its own."""
+    library = make_library(tmp_path)
+    write_config(tmp_path, monkeypatch, CLAUDE_ONE)
+    repo = tmp_path / "acme"
+    home = tmp_path / "home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+
+    assert install_repo(repo, home, library) == 0
+
+    assert (repo / ".claude/skills/acme-cache/SKILL.md").is_file()
+    assert list(home.iterdir()) == []
+
+
+def test_a_repo_install_with_user_needs_a_user_library(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     library = make_library(tmp_path)
@@ -349,8 +366,11 @@ def test_a_repo_install_leaves_the_home_alone_without_a_user_library(
     repo = tmp_path / "acme"
     home = tmp_path / "home"
 
-    assert install_repo(repo, home, library) == 0
+    with pytest.raises(SystemExit) as exc:
+        install_repo(repo, home, library, "--user")
 
+    assert "no user library is configured" in str(exc.value)
+    assert (repo / ".claude/skills/acme-cache/SKILL.md").is_file()
     assert not home.exists()
 
 
@@ -363,7 +383,7 @@ def test_a_repo_check_never_writes_the_user_library(
     home = tmp_path / "home"
     assert install_repo(repo, tmp_path / "other-home", library) == 0
 
-    assert install_repo(repo, home, library, "--check") == 0
+    assert install_repo(repo, home, library, "--user", "--check") == 1
 
     assert not home.exists()
 

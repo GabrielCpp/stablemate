@@ -83,6 +83,14 @@ farrier --repo . --check    # verify generated files are up to date (no writes)
 Rendering is the default action; `farrier install --repo .` is an accepted alias
 of `farrier --repo .`. A bare `farrier` with no arguments prints the verb listing.
 
+Install has two scopes, and each one writes only where it is pointed. `--repo PATH`
+renders the repo's `agents.yml` selection under `PATH` and nothing else. `--user` renders
+the `[user_library.<harness>]` tables of the shared config into the harness homes
+(`~/.claude`, and `~/.agents` for Codex and Copilot), reads no repo and writes to none.
+Pass both, `farrier install --repo . --user`, to refresh the home right after the repo
+from the same library. A repo install never touches the home on its own, so a worktree
+on an older branch cannot overwrite the skills your main checkout installed there.
+
 The rest of the verbs:
 
 ```bash
