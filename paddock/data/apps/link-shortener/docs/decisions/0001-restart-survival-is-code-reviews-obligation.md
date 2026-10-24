@@ -5,7 +5,7 @@
 
 ## The question
 
-[link-follow] promises that a person who follows a short link *arrives at* the
+The follow journey promises that a person who follows a short link *arrives at* the
 destination. The ledger is therefore durable — a JSON file on disk, not state held in the
 memory of the process that wrote it. The question is what QA is asked to *prove* about
 that durability, and specifically whether a scenario may require that a link created

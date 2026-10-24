@@ -7,8 +7,8 @@ title: Parity surveyor concept selection
 
 `workflows/src/workhorse_workflows/author/parity_surveyor/flow.py::ParitySurveyor` is the only
 implementation of the parity-surveyor subflow: a single class that freezes the baseline into a
-unit list, walks each unit through pick-assess-mark, verifies coverage, and emits one backlog
-bullet per uncovered surface. Three concept nodes ground themselves in that symbol and document
+unit list, walks each unit through pick-assess-mark, verifies coverage, and files one record
+on the [debt register](../../ostler/concepts/the-debt-register.md) per uncovered surface. Three concept nodes ground themselves in that symbol and document
 it from different angles; no part of the source records a preference, so the selection rule lives
 here.
 

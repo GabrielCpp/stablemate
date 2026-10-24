@@ -14,6 +14,11 @@ that names a driver that does not exist. The seed also writes `doctor-ids-scratc
 own whose id registry holds a prefix of the wrong type. Commands run there with `-C`, so no scenario
 sees these defects in the book of the checkout.
 
+The seed also writes `doctor-register-scratch/`, a repo with an empty book whose artifacts dir
+`doctor-register-scratch/art` holds a broken register. Record X-2 has no frontmatter. Record X-1
+names decision D-9, which has no file. Decision D-1 cites X-1, which names another decision, and X-7,
+which is on no shelf. Its commands run with `STABLEMATE_ARTIFACTS_DIR` set to that dir.
+
 ## Steps
 
 ### write-doctor-shell
@@ -40,3 +45,8 @@ sees these defects in the book of the checkout.
 
 - kind: seed
 - run: mkdir -p doctor-ids-scratch/.agents doctor-ids-scratch/docs/epics doctor-ids-scratch/docs/services/demo && printf -- '{"prefix": 5}\n' > doctor-ids-scratch/.agents/ids.json && printf -- '---\ntype: entries\nslug: entries\ntitle: Demo\n---\n# Demo\n' > doctor-ids-scratch/docs/services/demo/entries.md
+
+### write-doctor-register
+
+- kind: seed
+- run: mkdir -p doctor-register-scratch/.agents doctor-register-scratch/docs/epics doctor-register-scratch/docs/services/demo doctor-register-scratch/art/backlog/api-service/billing/X-1 doctor-register-scratch/art/backlog/api-service/billing/X-2 doctor-register-scratch/art/adr && printf -- '{"prefix": "TST"}\n' > doctor-register-scratch/.agents/ids.json && printf -- '---\ntype: entries\nslug: entries\ntitle: Demo\n---\n# Demo\n' > doctor-register-scratch/docs/services/demo/entries.md && printf -- '---\nid: X-1\nrepo: api-service\narea: billing\npattern: untriaged\nfiled_by: person\nsummary: first item\ndecision: D-9\n---\n' > doctor-register-scratch/art/backlog/api-service/billing/X-1/record.md && printf -- 'no frontmatter here\n' > doctor-register-scratch/art/backlog/api-service/billing/X-2/record.md && printf -- '---\nid: D-1\ntitle: One retry policy\nstatus: proposed\nrepos:\n- api-service\nevidence:\n- X-1\n- X-7\n---\n\n## Context\n\n## Decision\n\n## Consequences\n' > doctor-register-scratch/art/adr/D-1.md

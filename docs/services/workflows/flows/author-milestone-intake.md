@@ -10,15 +10,15 @@ turns one approved milestone into ordered epics and vertical stories. The milest
 remains durable; Author reads it and never copies it into or prunes it as a mutable worklist. Its composition root is the [author workflow composition root](../concepts/author-workflow-composition-root.md),
 and its package boundary is the [Author main package](../concepts/author-main-package.md). The
 workflow fields select the dispatch mode and carry the mode-specific inputs: `mode` defaults to
-`epic`, `epic`, `bullet`, `layers`, and `services` support one story seed, `rubric` and `survey_dir`
+`epic`, `epic`, `record`, `layers`, and `services` support one story seed, `rubric` and `survey_dir`
 support a survey, `baseline_inventory` and `parity_survey_dir` support a parity survey, and
 `operator_mode` defaults to `auto`.
 
 - fixture: none, because the walk dry-runs the registered flow, which stands in for every agent turn
-- steps:
-  - [run](../workhorse-author.md#run)
 - start: the working directory holds no rendered graph
 - verify: absent(subject="workhorse-author.dot")
+- steps:
+  - [run](../workhorse-author.md#run)
 - end: the dry run leaves the command with a zero exit status
 - verify: exit_status(code=0)
 - detail: [author workflow composition root](../concepts/author-workflow-composition-root.md)
@@ -48,7 +48,7 @@ It ends in one of these ways: the approved milestone becomes `authored`, and its
 The machine resolves the repository root and configured document paths. In epic mode it selects
 the one approved milestone folder through Ostler and runs its readiness check. Any error finding
 fails the run before a turn, and the finding list is the failure message. It carries the
-milestone's resolved path in the run context and does not substitute the backlog or create a
+milestone's resolved path in the run context and does not substitute the debt register or create a
 feature inventory.
 
 Setup is implemented by `workflows/src/workhorse_workflows/author/main/flow.py::Author.setup`
@@ -107,22 +107,22 @@ The gate is implemented by
 The same dispatcher has two explicit non-epic branches. `mode=survey` hands off to `Surveyor` with
 the rubric and survey directory and stops after discovery. `mode=parity-survey` hands off to
 `ParitySurveyor` with its baseline inventory and survey directory and stops after that discovery.
-`mode=story` adopts the backlog through the shared `adopt_backlog` node before seeding one bullet
-in an existing epic, hands off to `StoryAuthor`, and prunes the consumed backlog bullet without
-running the epic stages or commit tail. Adoption resolves the consuming repository from
-`repo_dir`, assigns ids to unnamed backlog bullets through Ostler, logs the successful result,
-and raises `WorkflowFailed` with Ostler's message when adoption fails; the story seed is not
-attempted after that failure.
+`mode=story` seeds one open record of the [debt register](../../ostler/concepts/the-debt-register.md)
+as a story in an existing epic, hands off to `StoryAuthor`, and then closes the record as promoted,
+without running the epic stages or commit tail. The `record` input is a record id or short handle.
+A token that names no record, and a record that is not open, fail the run before a story exists.
+[Promoting a record](../concepts/promote-a-record.md) describes the path.
 
 These non-epic branches are implemented by
 `workflows/src/workhorse_workflows/author/main/flow.py::Author.start` and
-`workflows/src/workhorse_workflows/author/shared/nodes/story_mode.py::adopt_backlog`.
-- tests: workflows/tests/author/test_workflow.py::test_story_mode_authors_one_bullet_and_does_not_commit
+`workflows/src/workhorse_workflows/author/shared/nodes/story_mode.py::seed_story` and
+`workflows/src/workhorse_workflows/author/shared/nodes/story_mode.py::promote_record`.
+- tests: workflows/tests/author/test_workflow.py::test_story_mode_promotes_an_open_record_and_does_not_commit_the_code_repo
 - tests: workflows/tests/author/test_workflow.py::test_survey_mode_runs_the_surveyor_and_stops_at_discovery
 
-The story branch hands `epic`, `bullet`, `layers`, and `services` to `seed_story`, then hands the
-returned story slug and the current run directory to `StoryAuthor`. It prunes the source backlog
-bullet only after the handoff is prepared. The survey branches return `Done` immediately after
+The story branch hands `epic`, `record`, `layers`, and `services` to `seed_story`, then hands the
+returned story slug and the current run directory to `StoryAuthor`. It closes the source record as
+promoted after that handoff returns. The survey branches return `Done` immediately after
 their handoff, while epic mode returns `Continue` into `split_epics`.
 
 The story branch is implemented by

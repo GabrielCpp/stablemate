@@ -1,4 +1,4 @@
-"""The greenfield round's ruler: the backlog trace, the judge, and the phase environment."""
+"""The greenfield round's ruler: the milestone trace, the judge, and the phase environment."""
 
 from __future__ import annotations
 
@@ -7,6 +7,7 @@ import dataclasses
 import importlib.util
 import json
 import logging
+import shutil
 import subprocess
 import sys
 import time
@@ -45,17 +46,33 @@ jd = sys.modules["_judge"]
 og = sys.modules["_operator_gates"]
 
 
-BACKLOG = (
-    "# Backlog\n\n"
-    "- [todo-create] A person adds a todo and it appears immediately.\n"
-    "- [todo-delete] A person deletes a todo and is protected from doing so by accident.\n"
-)
+SECTIONS = ("Outcome", "Release Boundary", "Architecture Decisions", "Constraints",
+            "Acceptance", "Non-Goals")
+
+
+def milestone_text(status: str = "approved", epics: tuple[str, ...] = ()) -> str:
+    listed = "".join(f"  - {e}\n" for e in epics)
+    head = f"---\ntype: milestone\ntitle: Todos\nstatus: {status}\n"
+    head += f"epics:\n{listed}" if epics else ""
+    prose = "".join(f"## {name}\n\nA line of prose.\n\n" for name in SECTIONS[:2])
+    prose2 = "".join(f"## {name}\n\nA line of prose.\n\n" for name in SECTIONS[2:])
+    journeys = (
+        "## User Journeys\n\n"
+        "### Add a todo\n\n- services: api\n\n"
+        "A person adds a todo and it appears immediately.\n\n"
+        "### Delete a todo\n\n- services: api\n\n"
+        "A person deletes a todo and is protected from doing so by accident.\n\n"
+    )
+    return f"{head}---\n# Todos\n\n{prose}{journeys}{prose2}"
+
+
+MILESTONE = milestone_text()
 
 
 @pytest.fixture
 def fixture() -> Any:
     return gf.Fixture(
-        backlog="docs/backlog.md",
+        milestone="docs/milestones/todos",
         surfaces=(gf.Surface(service="api", service_root="api", marker="go.mod"),),
         budget_s={"author": 900.0, "coder": 2700.0},
     )
@@ -65,8 +82,9 @@ def fixture() -> Any:
 def run(tmp_path: Path) -> Run:
     """A `Run` over a temp data dir and a temp produced repo — the only two it reads here."""
     data_dir = tmp_path / "data"
-    (data_dir / "docs").mkdir(parents=True)
-    (data_dir / "docs" / "backlog.md").write_text(BACKLOG, encoding="utf-8")
+    (data_dir / "docs" / "milestones" / "todos").mkdir(parents=True)
+    (data_dir / "docs" / "milestones" / "todos" / "milestone.md").write_text(
+        MILESTONE, encoding="utf-8")
     (tmp_path / "repo").mkdir()
     return Run(
         task=loader.load_path(DATA / "tasks" / "link_shortener.py"),
@@ -81,12 +99,20 @@ def run(tmp_path: Path) -> Run:
     )
 
 
-def add_epic(repo: Path, name: str, bullets: list[str], stories: dict[str, str]) -> None:
+def list_epics(repo: Path, *names: str) -> None:
+    directory = repo / "docs" / "milestones" / "todos"
+    directory.mkdir(parents=True, exist_ok=True)
+    (directory / "milestone.md").write_text(
+        milestone_text("authored", names), encoding="utf-8")
+
+
+def add_epic(repo: Path, name: str, journeys: list[str], stories: dict[str, str]) -> None:
     directory = repo / "docs" / "epics" / name
     directory.mkdir(parents=True, exist_ok=True)
-    covered = "\n".join(f"- [{b}] whatever the bullet said" for b in bullets)
+    claimed = "".join(f"### {j}\n\nDelivers the journey.\n\n" for j in journeys)
     (directory / "epic.md").write_text(
-        f"---\ntype: epic\nid: T-1\n---\n# Epic\n\n## {gf.COVERED_HEADING}\n\n{covered}\n",
+        f"---\ntype: epic\nid: T-1\n---\n# {name}\n\n## User Journeys\n\n{claimed}"
+        "## Stories\n\nThe stories below.\n",
         encoding="utf-8")
     for slug, status in stories.items():
         story = directory / "stories" / slug
@@ -95,26 +121,91 @@ def add_epic(repo: Path, name: str, bullets: list[str], stories: dict[str, str])
             f"---\ntype: story\nslug: {slug}\nstatus: {status}\n---\n# Story\n", encoding="utf-8")
 
 
-
-
-def test_bullets_trace_to_the_epic_that_claims_them(run: Run, fixture: Any) -> None:
-    add_epic(run.repo, "core", ["todo-create"],
+def claimed_core(run: Run) -> None:
+    list_epics(run.repo, "core")
+    add_epic(run.repo, "core", ["Add a todo"],
              {"api-create": "QA passed", "web-create": "Not started"})
 
-    by_id = {b["id"]: b for b in gf.trace_bullets(run, fixture)}
-    assert by_id["todo-create"]["epics"] == ["core"]
-    assert len(by_id["todo-create"]["stories"]) == 2
-    assert [s["slug"] for s in by_id["todo-create"]["stories_done"]] == ["api-create"]
-    assert by_id["todo-delete"]["epics"] == []
+
+def test_journeys_trace_to_the_epic_that_claims_them(run: Run, fixture: Any) -> None:
+    claimed_core(run)
+
+    by_id = {j["id"]: j for j in gf.trace_journeys(run, fixture)}
+    assert by_id["add-a-todo"]["epics"] == ["core"]
+    assert len(by_id["add-a-todo"]["stories"]) == 2
+    assert [s["slug"] for s in by_id["add-a-todo"]["stories_done"]] == ["api-create"]
+    assert by_id["delete-a-todo"]["epics"] == []
+
+
+def test_an_unclaimed_journey_scores_absent(run: Run, fixture: Any) -> None:
+    claimed_core(run)
+    journeys = gf.structural_only(gf.trace_journeys(run, fixture))
+
+    assert {j["id"]: j["level"] for j in journeys} == {"add-a-todo": 1, "delete-a-todo": 0}
+    assert gf.satisfaction(journeys) == pytest.approx(100 * 1 / 6, abs=0.1)
+
+    list_epics(run.repo, "core", "removal")
+    add_epic(run.repo, "removal", ["Delete a todo"], {"api-delete": "Not started"})
+    journeys = gf.structural_only(gf.trace_journeys(run, fixture))
+    assert {j["id"]: j["level"] for j in journeys} == {"add-a-todo": 1, "delete-a-todo": 1}
+
+
+def test_an_epic_the_milestone_does_not_list_claims_nothing(run: Run, fixture: Any) -> None:
+    list_epics(run.repo, "core")
+    add_epic(run.repo, "core", ["Add a todo"], {"api-create": "Not started"})
+    add_epic(run.repo, "stray", ["Add a todo", "Delete a todo"], {"api-stray": "Not started"})
+
+    by_id = {j["id"]: j for j in gf.trace_journeys(run, fixture)}
+    assert by_id["delete-a-todo"]["epics"] == []
+    assert by_id["add-a-todo"]["epics"] == ["core"]
+    assert gf.unlisted_epics(run, fixture) == ["stray"]
+    assert any("stray" in line for line in gf.warnings([], [], [], ["stray"]))
+
+
+def test_a_journey_is_claimed_by_title_in_prose_too(run: Run, fixture: Any) -> None:
+    list_epics(run.repo, "core")
+    directory = run.repo / "docs" / "epics" / "core"
+    directory.mkdir(parents=True)
+    (directory / "epic.md").write_text(
+        "---\ntype: epic\nid: T-1\n---\n# core\n\n## User Journeys\n\n### Creation\n\n"
+        "Covers the milestone journey Add a todo end to end.\n",
+        encoding="utf-8")
+
+    by_id = {j["id"]: j for j in gf.trace_journeys(run, fixture)}
+    assert by_id["add-a-todo"]["epics"] == ["core"]
+    assert by_id["delete-a-todo"]["epics"] == []
+
+
+def test_the_journey_text_drops_its_services_bullet(run: Run) -> None:
+    journeys = gf.milestone_journeys(run.data_dir / "docs" / "milestones" / "todos" / "milestone.md")
+
+    assert [j["services"] for j in journeys] == [["api"], ["api"]]
+    assert journeys[0]["text"] == "A person adds a todo and it appears immediately."
+    assert journeys[1]["title"] == "Delete a todo"
 
 
 def test_structural_scoring_never_claims_built(run: Run, fixture: Any) -> None:
     """A score with no judge may say `planned`; `built` is what it cannot know."""
-    add_epic(run.repo, "core", ["todo-create"], {"api-create": "QA passed"})
-    bullets = gf.structural_only(gf.trace_bullets(run, fixture))
+    list_epics(run.repo, "core")
+    add_epic(run.repo, "core", ["Add a todo"], {"api-create": "QA passed"})
+    journeys = gf.structural_only(gf.trace_journeys(run, fixture))
 
-    assert {b["id"]: b["level"] for b in bullets} == {"todo-create": 1, "todo-delete": 0}
-    assert gf.satisfaction(bullets) == pytest.approx(100 * 1 / 6, abs=0.1)
+    assert {j["id"]: j["level"] for j in journeys} == {"add-a-todo": 1, "delete-a-todo": 0}
+    assert gf.satisfaction(journeys) == pytest.approx(100 * 1 / 6, abs=0.1)
+
+
+def test_seed_milestone_copies_the_folder_and_opens_a_book_per_surface(
+    run: Run, fixture: Any
+) -> None:
+    with pytest.raises(gf.TrialError, match="docs tree"):
+        gf.seed_milestone(run, fixture)
+
+    (run.repo / "docs").mkdir()
+    gf.seed_milestone(run, fixture)
+
+    seeded = run.repo / "docs" / "milestones" / "todos" / "milestone.md"
+    assert seeded.read_text(encoding="utf-8") == MILESTONE
+    assert (run.repo / "docs" / "services" / "api").is_dir()
 
 
 
@@ -138,17 +229,17 @@ def fake_judge(response: str) -> Any:
     return jd.Judge(FakeBackend(response), jd.AgentResilience(), jd.SYSTEM_CLOCK)
 
 
-def judge(run: Run, bullet: dict[str, Any], response: str) -> dict[str, Any]:
+def judge(run: Run, journey: dict[str, Any], response: str) -> dict[str, Any]:
     rubric = (DATA / "rubric.md").read_text(encoding="utf-8")
-    return gf.judge_one(fake_judge(response), bullet, rubric, run.repo)
+    return gf.judge_one(fake_judge(response), journey, rubric, run.repo)
 
 
 def test_a_real_citation_keeps_its_level(run: Run, fixture: Any) -> None:
     (run.repo / "api").mkdir()
     (run.repo / "api" / "service.go").write_text("package api\n", encoding="utf-8")
-    bullet = gf.trace_bullets(run, fixture)[0]
+    journey = gf.trace_journeys(run, fixture)[0]
 
-    got = judge(run, bullet, json.dumps(
+    got = judge(run, journey, json.dumps(
         {"level": 3, "evidence": ["api/service.go:CreateTodo"], "reason": "implemented + tested"}))
     assert got["level"] == 3
     assert not got["capped"]
@@ -156,9 +247,9 @@ def test_a_real_citation_keeps_its_level(run: Run, fixture: Any) -> None:
 
 def test_a_hallucinated_citation_is_capped_at_planned(run: Run, fixture: Any) -> None:
     """The judge's commonest failure: a confident claim citing a file that isn't there."""
-    bullet = gf.trace_bullets(run, fixture)[0]
+    journey = gf.trace_journeys(run, fixture)[0]
 
-    got = judge(run, bullet, json.dumps(
+    got = judge(run, journey, json.dumps(
         {"level": 3, "evidence": ["api/does_not_exist.go"], "reason": "looks done to me"}))
     assert got["level"] == 1, "an unverifiable behavioral claim must not score as built"
     assert got["capped"]
@@ -166,43 +257,44 @@ def test_a_hallucinated_citation_is_capped_at_planned(run: Run, fixture: Any) ->
 
 
 def test_an_uncited_claim_is_capped(run: Run, fixture: Any) -> None:
-    bullet = gf.trace_bullets(run, fixture)[0]
-    got = judge(run, bullet, json.dumps({"level": 2, "evidence": [], "reason": "trust me"}))
+    journey = gf.trace_journeys(run, fixture)[0]
+    got = judge(run, journey, json.dumps({"level": 2, "evidence": [], "reason": "trust me"}))
     assert got["level"] == 1
     assert got["capped"]
 
 
 def test_level_1_needs_no_citation(run: Run, fixture: Any) -> None:
     """Only *behavioral* claims need evidence — `planned` and `absent` are not capped."""
-    bullet = gf.trace_bullets(run, fixture)[0]
-    got = judge(run, bullet, json.dumps({"level": 1, "evidence": [], "reason": "story only"}))
+    journey = gf.trace_journeys(run, fixture)[0]
+    got = judge(run, journey, json.dumps({"level": 1, "evidence": [], "reason": "story only"}))
     assert got["level"] == 1
     assert not got["capped"]
 
 
 def test_an_unparseable_or_failed_judgement_scores_zero(run: Run, fixture: Any) -> None:
     """A judge that errors or rambles must not silently award credit."""
-    bullet = gf.trace_bullets(run, fixture)[0]
-    assert judge(run, bullet, "I could not determine this, sorry.")["level"] == 0
+    journey = gf.trace_journeys(run, fixture)[0]
+    assert judge(run, journey, "I could not determine this, sorry.")["level"] == 0
 
 
 def test_rubric_placeholders_are_all_filled(run: Run, fixture: Any) -> None:
     """A typo'd placeholder ships the judge a literal `{{stories}}`, and it then invents the context instead of being given it."""
-    add_epic(run.repo, "core", ["todo-create"], {"api-create": "QA passed"})
-    bullet = next(b for b in gf.trace_bullets(run, fixture) if b["id"] == "todo-create")
+    list_epics(run.repo, "core")
+    add_epic(run.repo, "core", ["Add a todo"], {"api-create": "QA passed"})
+    journey = next(j for j in gf.trace_journeys(run, fixture) if j["id"] == "add-a-todo")
     judging = fake_judge(json.dumps({"level": 0, "evidence": [], "reason": "x"}))
     rubric = (DATA / "rubric.md").read_text(encoding="utf-8")
 
-    gf.judge_one(judging, bullet, rubric, run.repo)
+    gf.judge_one(judging, journey, rubric, run.repo)
     prompt = judging.backend.prompts[0]
     assert "{{" not in prompt
-    assert "todo-create" in prompt and "api-create" in prompt and "QA passed" in prompt
+    assert "add-a-todo" in prompt and "Add a todo" in prompt and "api-create" in prompt and "QA passed" in prompt
 
 
 def test_render_leaves_json_braces_alone() -> None:
     """The rubric shows the judge a JSON shape; single braces must survive rendering."""
-    assert jd.render('{"level": 2} and {{bullet_id}}', bullet_id="todo-create") == \
-        '{"level": 2} and todo-create'
+    assert jd.render('{"level": 2} and {{journey_id}}', journey_id="add-a-todo") == \
+        '{"level": 2} and add-a-todo'
 
 
 
@@ -222,8 +314,10 @@ def test_a_param_overrides_the_fixtures_budget(run: Run, fixture: Any) -> None:
 
 
 
-def test_every_greenfield_task_carries_a_backlog_with_bullets() -> None:
-    """A backlog that moved or lost its `- [id] …` bullets scores every bullet absent, and it does so quietly: the round still runs and the report still prints."""
+def test_every_greenfield_task_carries_an_approved_ready_milestone(tmp_path: Path) -> None:
+    """A milestone that moved, lost its journeys or fails the ready gate stalls the author lane after genesis has been paid for."""
+    from ostler import Ostler
+
     found = 0
     for path in loader.task_paths(DATA):
         spec = importlib.util.spec_from_file_location(f"_probe_{path.stem}", path)
@@ -241,19 +335,33 @@ def test_every_greenfield_task_carries_a_backlog_with_bullets() -> None:
         if declared is None or not isinstance(declared, gf.Fixture):
             continue
         found += 1
-        backlog = DATA / declared.backlog
-        assert backlog.is_file(), f"{path.name}: no backlog at {backlog}"
-        assert gf.parse_backlog(backlog), f"{path.name}: backlog has no `- [id] …` bullets"
+        folder = DATA / declared.milestone
+        assert (folder / "milestone.md").is_file(), f"{path.name}: no milestone at {folder}"
+
+        repo = tmp_path / path.stem
+        shutil.copytree(folder, repo / "docs" / "milestones" / declared.slug)
+        for surface in declared.surfaces:
+            (repo / "docs" / "services" / surface.service).mkdir(parents=True)
+        (repo / "docs" / "epics").mkdir(parents=True, exist_ok=True)
         if declared.decision_records:
             records = DATA / declared.decision_records
             assert records.is_dir(), f"{path.name}: no decision records at {records}"
             assert sorted(records.glob("*.md")), f"{path.name}: {records} holds no records"
-        if declared.grill_capture:
-            capture = DATA / declared.grill_capture
-            for half in ("checkpoint.json", gf.GRILL_GATE):
-                assert (capture / half).is_file(), f"{path.name}: no {half} in {capture}"
-    assert found, "no greenfield task declares a Fixture — the backlog-driven half is gone"
+            shutil.copytree(records, repo / declared.decision_records_path)
 
+        okf = Ostler(repo)
+        assert okf.approved_milestone().name == declared.slug
+        errors = [f.message for f in okf.milestone_readiness(declared.slug)
+                  if f.severity == "error"]
+        assert not errors, f"{path.name}: the milestone is not ready: {errors}"
+
+        journeys = gf.milestone_journeys(folder / "milestone.md")
+        assert journeys, f"{path.name}: the milestone has no journeys"
+        known = {s.service for s in declared.surfaces}
+        for journey in journeys:
+            assert set(journey["services"]) <= known, (
+                f"{path.name}: {journey['id']} names books no surface scaffolds")
+    assert found, "no greenfield task declares a Fixture — the milestone-driven half is gone"
 
 
 GATE = (
@@ -367,87 +475,6 @@ def test_a_parked_gate_is_a_warning_on_the_score() -> None:
     assert any("stayed parked" in line for line in lines)
     assert not gf.warnings([], [], [])
 
-
-
-ANSWERED_GATE = GATE.replace("AWAITING_OPERATOR", "ANSWERED") + "\nA1 — `201 Created`.\n"
-
-
-def capture(run: Run, *, waiting_on: str = "docs/epics/_author-context.md") -> Any:
-    """Write a frozen capture into the data dir, as the tracked one is written."""
-    directory = run.data_dir / "grill"
-    directory.mkdir(parents=True, exist_ok=True)
-    (directory / gf.GRILL_GATE).write_text(ANSWERED_GATE, encoding="utf-8")
-    run.write_json(directory / "checkpoint.json", {
-        "run_id": "pd3eb1e81",
-        "state": "refactor_backlog",
-        "flow": "Author",
-        "waiting_on": waiting_on,
-        "inputs": {"repo_dir": "/elsewhere/stage/link-shortener", "library_dirs": [],
-                   "backlog": "docs/backlog.md"},
-        "ctx": {"repo_root": "/elsewhere/stage/link-shortener",
-                "author_branch": "author/author-grill", "base_branch": "main"},
-    })
-    (run.repo / "docs" / "epics").mkdir(parents=True, exist_ok=True)
-    run.scratch.mkdir(parents=True, exist_ok=True)
-    gf.effective(run).write_text("", encoding="utf-8")
-    return None
-
-
-def test_the_capture_is_seeded_as_a_checkpoint_the_round_resumes_from(
-    run: Run, fixture: Any
-) -> None:
-    """The mechanism, in one assertion: an `Await` checkpoint names the state it will resume *into*, so a round that starts from this one starts at `refactor_backlog` — past the one gate the product reserves for a human, with nothing about the loop frozen."""
-    capture(run)
-    git_init(run.repo)
-
-    gf.seed_grill_capture(run, dataclasses.replace(fixture, grill_capture="grill"))
-
-    seeded = json.loads(
-        (gf.runs_dir(run) / f"author-{gf.AUTHOR_RUN_ID}" / "checkpoint.json")
-        .read_text(encoding="utf-8"))
-    assert seeded["state"] == "refactor_backlog"
-    assert seeded["run_id"] == gf.AUTHOR_RUN_ID
-    assert seeded["inputs"]["repo_dir"] == str(run.repo)
-    assert seeded["ctx"]["repo_root"] == str(run.repo)
-    assert seeded["waiting_on"] == str(run.repo / "docs" / "epics" / gf.GRILL_GATE)
-    assert seeded["inputs"]["backlog"] == "docs/backlog.md"
-
-
-def test_the_answered_gate_lands_where_the_flow_will_read_it(run: Run, fixture: Any) -> None:
-    capture(run)
-    git_init(run.repo)
-
-    gf.seed_grill_capture(run, dataclasses.replace(fixture, grill_capture="grill"))
-
-    gate = run.repo / "docs" / "epics" / gf.GRILL_GATE
-    assert gate.read_text(encoding="utf-8") == ANSWERED_GATE
-    assert og.gate_answered(gate)
-    head = subprocess.run(["git", "-C", str(run.repo), "branch", "--show-current"],
-                          capture_output=True, text=True, check=True)
-    assert head.stdout.strip() == "author/author-grill"
-
-
-def test_a_declared_capture_that_is_missing_is_an_error_not_a_shrug(
-    run: Run, fixture: Any
-) -> None:
-    """Read from the tracked data dir, never from the tree the round mutates — so a capture that is not there is a broken `--data-dir`, and a round that silently ran without it would park on the grill after paying for a genesis."""
-    with pytest.raises(gf.TrialError, match="no frozen grill capture"):
-        gf.seed_grill_capture(run, dataclasses.replace(fixture, grill_capture="nope"))
-
-
-def test_a_task_with_no_capture_seeds_nothing(run: Run, fixture: Any) -> None:
-    """Not every greenfield task's author lane has a grill gate to have frozen."""
-    gf.seed_grill_capture(run, fixture)
-    assert not (gf.runs_dir(run) / f"author-{gf.AUTHOR_RUN_ID}").exists()
-
-
-def git_init(repo: Path) -> None:
-    for argv in (["init", "-q"], ["config", "user.email", "t@example.com"],
-                 ["config", "user.name", "t"]):
-        subprocess.run(["git", "-C", str(repo), *argv], check=True)
-    (repo / "seed.txt").write_text("x\n", encoding="utf-8")
-    subprocess.run(["git", "-C", str(repo), "add", "seed.txt"], check=True)
-    subprocess.run(["git", "-C", str(repo), "commit", "-qm", "baseline"], check=True)
 
 
 def test_the_scaffolding_is_committed_before_the_first_story(run: Run) -> None:

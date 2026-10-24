@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import shutil
+import subprocess
 from pathlib import Path
 from typing import Any
 
@@ -184,3 +185,39 @@ def test_verify_tree_ignores_the_source_directorys_own_git(
     (inside / ".git").mkdir(exist_ok=True)
     (inside / ".git" / "a-new-object").write_text("whatever\n", encoding="utf-8")
     pointer.verify_tree(inside)
+
+
+def git(repo: Path, *args: str) -> None:
+    subprocess.run(["git", *args], cwd=str(repo), check=True, capture_output=True, text=True)
+
+
+def _workspace_repo(repo: Path, data_dir: Path) -> Path:
+    """The data directory committed inside a larger repository, as in the real layout."""
+    root = data_dir.parent
+    inside = data_dir / "apps" / "acme-api"
+    shutil.copytree(repo, inside, symlinks=True, ignore=shutil.ignore_patterns(".git"))
+    (root / "notes.md").write_text("notes\n", encoding="utf-8")
+    git(root, "init", "--initial-branch", "main")
+    git(root, "add", "-A")
+    git(root, "commit", "-m", "initial")
+    return inside
+
+
+def test_dirty_ignores_an_edit_outside_the_captured_directory(
+    repo: Path, data_dir: Path, store: Path
+) -> None:
+    """Capturing four seeds in a row rewrites three pointers; none of that is the fixture's."""
+    inside = _workspace_repo(repo, data_dir)
+    (data_dir.parent / "notes.md").write_text("notes, edited\n", encoding="utf-8")
+    pointer = seeds.capture(inside, name="acme", data_dir=data_dir, store=store).pointer
+    assert pointer.dirty is False
+    assert len(pointer.head) == 40
+
+
+def test_dirty_reports_an_edit_inside_the_captured_directory(
+    repo: Path, data_dir: Path, store: Path
+) -> None:
+    inside = _workspace_repo(repo, data_dir)
+    (inside / "README.md").write_text("acme, edited again\n", encoding="utf-8")
+    pointer = seeds.capture(inside, name="acme", data_dir=data_dir, store=store).pointer
+    assert pointer.dirty is True

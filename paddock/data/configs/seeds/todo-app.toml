@@ -1,0 +1,11 @@
+name = "todo-app"
+repo_dir = "todo-app"
+sha256 = "5b458124c8716173db9bfa10746eb848fcdc352a00b0911bfc0075fb59d62942"
+bytes = 17749
+head = "fecfb59bf204b31da65e01781c54f3aa28c77279"
+dirty = false
+url = ""
+note = "an empty git repo: the greenfield round starts from nothing but a branch"
+source = ""
+tree_sha256 = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+excludes = []

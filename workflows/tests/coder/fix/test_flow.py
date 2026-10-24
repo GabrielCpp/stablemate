@@ -8,15 +8,16 @@ from typing import Any
 from unittest.mock import patch
 
 import pytest
+from ostler import Ostler
 from workhorse.artifacts import ArtifactWriter
+from workhorse.pyflow import WorkflowFailed
 from workhorse.pyflow import park as pyflow_park
 from workhorse.pyflow.driver import read_resume
 from workhorse.pyflow.engine import RunEnv
 from workhorse.records import parse_checkpoint
 
 from coder.fix.scripted import (
-    BACKLOG,
-    BULLET,
+    RECORD,
     RED_MAKEFILE,
     SCREENSHOT,
     STORY_REL,
@@ -24,17 +25,17 @@ from coder.fix.scripted import (
     ScriptedAgent,
     answers,
     assert_agent_story_commit,
-    backlog,
     branch_of,
     dirty_paths,
     log_of,
     output,
+    record_of,
 )
 from workhorse_workflows.coder.fix.flow import Fix
-from workhorse_workflows.coder.shared.backlog import prune_fix_item
+from workhorse_workflows.coder.shared.backlog import close_fix_item
 
 
-def test_one_item_is_seeded_fixed_checked_pruned_and_committed(
+def test_one_item_is_seeded_fixed_checked_committed_and_closed(
     docs: Path,
     workspace: dict[str, Path],
     env: Callable[..., RunEnv],
@@ -47,7 +48,7 @@ def test_one_item_is_seeded_fixed_checked_pruned_and_committed(
     result = drive_flow(Fix(), run_env, agent)
 
     assert result.has_fix is False, result
-    assert "no drainable bullet" in result.reason, result
+    assert "no open qa record" in result.reason, result
 
     assert agent.counts() == {
         "fix-item": 1,
@@ -56,14 +57,12 @@ def test_one_item_is_seeded_fixed_checked_pruned_and_committed(
 
     story = (docs / STORY_REL / "story.md").read_text(encoding="utf-8")
     assert f"- {TEXT}" in story, story
-    assert BULLET in story, story
+    assert RECORD in story, story
+    assert f"debt record `{RECORD}` in `api/widget` of the artifacts register" in story, story
     assert "## Non-Functional Acceptance Criteria\n\n(none)" in story, story
     assert (
         "## Technical Notes\n\nNo prior implementation reference exists." in story
     ), story
-
-    assert BULLET not in backlog(docs), backlog(docs)
-    assert "## Filed by coder" in backlog(docs)
 
     story_id = str(agent.args_for("fix-item")[0]["story_id"])
     subject = log_of(workspace["api"])[0]
@@ -78,7 +77,12 @@ def test_one_item_is_seeded_fixed_checked_pruned_and_committed(
     ).stdout
     assert f"Story: {story_id}" in body
     assert (workspace["api"] / "pagination.go").is_file()
-    assert output(run_env, prune_fix_item)["pruned"] is True
+    sha = subprocess.run(
+        ["git", "rev-parse", "--short=7", "HEAD"], cwd=workspace["api"], check=True, capture_output=True, text=True
+    ).stdout.strip()
+    closed = record_of(docs)
+    assert (closed.status, closed.reason) == ("done", f"fixed in api@{sha}")
+    assert output(run_env, close_fix_item)["closed"] is True
 
 
 def test_the_first_pass_is_handed_the_item_and_no_report_at_all(
@@ -93,34 +97,79 @@ def test_the_first_pass_is_handed_the_item_and_no_report_at_all(
     drive_flow(Fix(), env(), agent)
 
     first = agent.args_for("fix-item")[0]
-    assert first["bullet_text"] == TEXT, first
+    assert first["item_text"] == TEXT, first
     assert first["story_path"].endswith("story.md"), first
     assert first["report"] == "", first
     assert first["operator_context"] == "", first
     assert agent.counts()["fix-item"] == 1, agent.counts()
 
 
-def test_the_drain_keeps_going_until_the_section_is_empty(
+def test_the_drain_keeps_going_until_no_open_qa_record_is_left(
     docs: Path,
     workspace: dict[str, Path],
-    write: Callable[[Path, str], Path],
     env: Callable[..., RunEnv],
     drive_flow: Callable[..., Any],
 ) -> None:
-    """`commit`'s next is the draw, so two items are two full iterations in one run."""
-    write(
-        docs / "docs" / "backlog.md",
-        BACKLOG + "- [mobile-pagination] the mobile widget list does not paginate\n",
+    """`commit`'s next is the draw, so two records are two full iterations in one run."""
+    second = Ostler(docs).file_record(
+        repo="api", area="widget", pattern="paginate",
+        summary="the mobile widget list does not paginate", filed_by="qa", record_id="mobile-pagination",
     )
+    assert second.record is not None, second.message
     agent = ScriptedAgent(workspace)
 
     result = drive_flow(Fix(), env(), agent)
 
     assert result.has_fix is False, result
     assert agent.counts()["fix-item"] == 2, agent.counts()
-    assert "widget-pagination" not in backlog(docs), backlog(docs)
-    assert "mobile-pagination" not in backlog(docs), backlog(docs)
+    assert record_of(docs).status == "done", record_of(docs)
+    assert record_of(docs, "mobile-pagination").status == "done"
     assert len([line for line in log_of(workspace["api"]) if line.startswith("fix(api):")]) == 2
+
+
+def test_the_story_of_a_record_covers_the_record_id(
+    docs: Path,
+    workspace: dict[str, Path],
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    drive_flow(Fix(), env(), ScriptedAgent(workspace))
+
+    stories = Ostler(docs).list("story", epic="fixes")
+    assert [story.get("covers") for story in stories] == [[RECORD]], stories
+
+
+def test_a_fix_that_changed_nothing_fails_the_drain_and_leaves_the_record_open(
+    docs: Path,
+    workspace: dict[str, Path],
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    agent = ScriptedAgent(workspace, change=False)
+
+    with pytest.raises(WorkflowFailed, match="no commit carries an exact Story trailer"):
+        drive_flow(Fix(), env(), agent)
+
+    assert record_of(docs).status == "open", record_of(docs)
+    assert not any(line.startswith("fix(") for line in log_of(workspace["api"]))
+
+
+def test_a_run_where_no_repository_landed_a_commit_leaves_the_record_open_and_ends(
+    docs: Path,
+    workspace: dict[str, Path],
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(Fix, "_landed", lambda self: {})
+    agent = ScriptedAgent(workspace)
+
+    result = drive_flow(Fix(), env(), agent)
+
+    assert result.has_fix is False, result
+    assert "stays open" in result.reason, result
+    assert agent.counts()["fix-item"] == 1, agent.counts()
+    assert record_of(docs).status == "open", record_of(docs)
 
 
 def test_an_untouched_repo_is_neither_gated_nor_committed(
@@ -200,7 +249,7 @@ def test_documentation_that_blocks_parks_and_keeps_the_agent_commit(
     assert "cannot be described as built" in gate, gate
     assert agent.counts()["document-story"] == 2, agent.counts()
     assert_agent_story_commit(workspace["api"], agent)
-    assert BULLET not in backlog(docs), backlog(docs)
+    assert record_of(docs).status == "done", record_of(docs)
 
 
 def test_a_run_killed_after_the_owner_turn_does_not_run_it_again(
@@ -227,7 +276,7 @@ def test_a_run_killed_after_the_owner_turn_does_not_run_it_again(
     assert result.has_fix is False, result
     assert "fix-item" not in agent.counts(), agent.counts()
     assert agent.counts()["document-story"] == 1, agent.counts()
-    assert BULLET not in backlog(docs), backlog(docs)
+    assert record_of(docs).status == "done", record_of(docs)
 
 
 def test_a_turn_gets_its_tool_output_back_and_the_commit_leaves_what_was_dirty_before(

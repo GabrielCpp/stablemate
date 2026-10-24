@@ -121,3 +121,22 @@ defects in the book of the checkout. A caller reads the finding code, the page a
 - code: ostler/ostler/step_commands.py::check_fixture_launch_screen@c4832c0a1e20
 - code: ostler/ostler/values.py::dialog_answer@80d5d1af3445
 - code: ostler/ostler/vet/placement.py::parse_placement@7183d869fe0e
+
+### ostler-doctor-register-links
+- usage: ostler doctor --json: refuses a register record that does not parse, and a decision and its evidence records that do not name each other
+- exits: 1 when the register or a decision holds an error finding
+- run: invoke(argv=["-C", "doctor-register-scratch", "doctor", "--json"], env={"STABLEMATE_ARTIFACTS_DIR": "doctor-register-scratch/art"})
+- verify: exit_status(code=1)
+- verify: json_path(path="errors", equals=4)
+- verify: json_path(path="findings[0].code", equals="register-record-unreadable")
+- verify: json_path(path="findings[0].path", matches="^.*/backlog/api-service/billing/X-2/record\\.md$")
+- verify: json_path(path="findings[1].code", equals="decision-back-link-missing")
+- verify: json_path(path="findings[1].message", equals="decision 'D-1' lists record 'X-1', whose `decision` is 'D-9'")
+- verify: json_path(path="findings[2].code", equals="decision-evidence-unresolved")
+- verify: json_path(path="findings[2].message", equals="decision 'D-1' cites evidence 'X-7', which resolves to no record on the shelf")
+- verify: json_path(path="findings[3].code", equals="decision-back-link-missing")
+- verify: json_path(path="findings[3].message", equals="record 'X-1' names decision 'D-9', and no decision file has that id")
+- fixture: [doctor scratch repo](fixtures/doctor-scratch-repo.md) with a broken register beside an empty book
+- code: ostler/ostler/doctor.py::_check_register_records@29996aeb972c
+- code: ostler/ostler/doctor.py::_check_decisions@29996aeb972c
+- detail: [The debt register](concepts/the-debt-register.md)

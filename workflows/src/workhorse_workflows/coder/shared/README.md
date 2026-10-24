@@ -4,7 +4,7 @@ What more than one coder lane needs. Code that only one lane calls belongs in th
 
 ## Map
 
-- `backlog.py`: the repo backlog: what the coder files into it, and what the fix lane drains out of `Filed by coder`. A dev turn's follow-ups go to `Deferred by coder`, which no lane drains.
+- `backlog.py`: the repo backlog: what the coder files into it, and what the fix lane drains out of `Filed by coder`. A dev turn's follow-ups are filed as register records in the artifacts repo, which no lane drains.
 - `blueprint.py`: the one `Blueprint` every coder node registers against.
 - `branches.py`: the run branch: its name, its base, and putting the docs repo and the code repos on it.
 - `ci.py`: the CI loop's work: which repo is next, what its Actions runs said, and the push of a fix.

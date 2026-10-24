@@ -71,20 +71,18 @@ digraph author {
       style="rounded,filled"; fillcolor=lightblue; color=steelblue;
       node [style="filled", fontsize=10];
       f0__start__0 [label="contract_digest\nThe sha256 of the milestone body, which the run never writes, so a change is an operator's edit.", shape=box, fillcolor=white];
-      f0__start__1 [label="adopt_backlog\nMint ids for every unnamed backlog bullet before decomposition or story lookup.", shape=box, fillcolor=white];
-      f0__start__2 [label="seed_story\nRegister ONE bullet as a new story inside an already-existing epic.", shape=box, fillcolor=white];
-      f0__start__3 [label="derive_story_services\nEach story's services are the sorted union of the services of the seeds it covers.", shape=box, fillcolor=white];
-      f0__start__4 [label="handoff → story-author", shape=box, fillcolor=plum];
-      f0__start__5 [label="handoff → surveyor", shape=box, fillcolor=plum];
-      f0__start__6 [label="handoff → parity-surveyor", shape=box, fillcolor=plum];
-      f0__start__7 [label="prune_bullet\nRemove the one backlog bullet story mode consumed — story mode's tail.", shape=box, fillcolor=white];
+      f0__start__1 [label="seed_story\nRegister ONE register record as a new story inside an already-existing epic.", shape=box, fillcolor=white];
+      f0__start__2 [label="derive_story_services\nEach story's services are the sorted union of the services of the seeds it covers.", shape=box, fillcolor=white];
+      f0__start__3 [label="handoff → story-author", shape=box, fillcolor=plum];
+      f0__start__4 [label="handoff → surveyor", shape=box, fillcolor=plum];
+      f0__start__5 [label="handoff → parity-surveyor", shape=box, fillcolor=plum];
+      f0__start__6 [label="promote_record\nClose the record a story was authored from as promoted, naming the story and its epic.", shape=box, fillcolor=white];
       f0__start__0 -> f0__start__1 [color=gray40, arrowsize=0.6];
       f0__start__1 -> f0__start__2 [color=gray40, arrowsize=0.6];
       f0__start__2 -> f0__start__3 [color=gray40, arrowsize=0.6];
       f0__start__3 -> f0__start__4 [color=gray40, arrowsize=0.6];
       f0__start__4 -> f0__start__5 [color=gray40, arrowsize=0.6];
       f0__start__5 -> f0__start__6 [color=gray40, arrowsize=0.6];
-      f0__start__6 -> f0__start__7 [color=gray40, arrowsize=0.6];
     }
     f0__stories [label="stories"];
     f0__story_splits [label="story_splits"];
@@ -107,8 +105,8 @@ digraph author {
     f0__split_epic_stories__0 -> f0__story_splits [ltail=cluster_f0__split_epic_stories];
     f0__split_epics__1 -> f0__fill_epics__0 [ltail=cluster_f0__split_epics, lhead=cluster_f0__fill_epics];
     f0__split_epics__1 -> f0__answered_split [label="question", style=dashed, color=darkorange, ltail=cluster_f0__split_epics];
-    f0__start__7 -> f0__split_epics__0 [ltail=cluster_f0__start, lhead=cluster_f0__split_epics];
-    f0__start__7 -> f0____end [color=darkgoldenrod, ltail=cluster_f0__start];
+    f0__start__6 -> f0__split_epics__0 [ltail=cluster_f0__start, lhead=cluster_f0__split_epics];
+    f0__start__6 -> f0____end [color=darkgoldenrod, ltail=cluster_f0__start];
     f0__stories -> f0__stories [label="another chunk"];
     f0__stories -> f0__author_story__0 [label="drain target", lhead=cluster_f0__author_story];
     f0__stories -> f0__complete__0 [lhead=cluster_f0__complete];
@@ -140,7 +138,7 @@ digraph author {
       label="emit"; fontsize=12;
       style="rounded,filled"; fillcolor=lightblue; color=steelblue;
       node [style="filled", fontsize=10];
-      f1__emit__0 [label="emit_artifacts\nWrite the generated backlog bullets and the unit-level manifest.", shape=box, fillcolor=white];
+      f1__emit__0 [label="emit_artifacts\nFile one record per cluster and write the unit-level manifest.", shape=box, fillcolor=white];
     }
     subgraph cluster_f1__expand {
       label="expand"; fontsize=12;
@@ -254,13 +252,15 @@ digraph author {
       label="assess"; fontsize=12;
       style="rounded,filled"; fillcolor=lightblue; color=steelblue;
       node [style="filled", fontsize=10];
-      f2__assess__0 [label="assess-parity-unit.md\nCompare one baseline surface with the current OKF book", shape=note, fillcolor=lightyellow];
+      f2__assess__0 [label="read_parity_register\nThe open records of the surveyed repository, for the assessor to match a surface against.", shape=box, fillcolor=white];
+      f2__assess__1 [label="assess-parity-unit.md\nCompare one baseline surface with the current OKF book", shape=note, fillcolor=lightyellow];
+      f2__assess__0 -> f2__assess__1 [color=gray40, arrowsize=0.6];
     }
     subgraph cluster_f2__emit {
       label="emit"; fontsize=12;
       style="rounded,filled"; fillcolor=lightblue; color=steelblue;
       node [style="filled", fontsize=10];
-      f2__emit__0 [label="emit_parity_backlog\nOne backlog bullet per assessed surface that no new-app feature already owns.", shape=box, fillcolor=white];
+      f2__emit__0 [label="emit_parity_records\nOne register record per assessed surface that no new-app feature already owns.", shape=box, fillcolor=white];
     }
     subgraph cluster_f2__mark {
       label="mark"; fontsize=12;
@@ -291,7 +291,7 @@ digraph author {
     f2____end [label="END", shape=doublecircle, fillcolor=gold, width=0.4];
 
     f2____start -> f2__start__0 [lhead=cluster_f2__start];
-    f2__assess__0 -> f2__mark__0 [label="unit_id, record_path", ltail=cluster_f2__assess, lhead=cluster_f2__mark];
+    f2__assess__1 -> f2__mark__0 [label="unit_id, record_path", ltail=cluster_f2__assess, lhead=cluster_f2__mark];
     f2__emit__0 -> f2____end [color=darkgoldenrod, ltail=cluster_f2__emit];
     f2__mark__1 -> f2__pick__0 [ltail=cluster_f2__mark, lhead=cluster_f2__pick];
     f2__pick__0 -> f2__assess__0 [label="unit_id, unit_path, unit_kind, record_path, progress", ltail=cluster_f2__pick, lhead=cluster_f2__assess];
@@ -347,7 +347,7 @@ digraph author {
       node [style="filled", fontsize=10];
       f3__finish__0 [label="verify_integrity\n`ostler doctor` over the whole graph, as a blocking gate.", shape=box, fillcolor=white];
       f3__finish__1 [label="commit_author\nCommit the epic/story docs this run wrote, in the one repo it wrote them in.", shape=box, fillcolor=white];
-      f3__finish__2 [label="prune_bullet\nRemove the one backlog bullet story mode consumed — story mode's tail.", shape=box, fillcolor=white];
+      f3__finish__2 [label="promote_record\nClose the record a story was authored from as promoted, naming the story and its epic.", shape=box, fillcolor=white];
       f3__finish__0 -> f3__finish__1 [color=gray40, arrowsize=0.6];
       f3__finish__1 -> f3__finish__2 [color=gray40, arrowsize=0.6];
     }
@@ -364,12 +364,16 @@ digraph author {
       style="rounded,filled"; fillcolor=lightblue; color=steelblue;
       node [style="filled", fontsize=10];
       f3__plan_edit__0 [label="plan-epic-edit.md\nPlan an edit to epic `{{ workhorse_var('snapshot').epic }}`", shape=note, fillcolor=lightyellow];
+      f3__plan_edit__1 [label="read_register_listing\nThe open records of every repository, one line each under a header, for the planner to read.", shape=box, fillcolor=white];
+      f3__plan_edit__0 -> f3__plan_edit__1 [color=gray40, arrowsize=0.6];
     }
     subgraph cluster_f3__refine_plan {
       label="refine_plan"; fontsize=12;
       style="rounded,filled"; fillcolor=lightblue; color=steelblue;
       node [style="filled", fontsize=10];
       f3__refine_plan__0 [label="refine-epic-edit-plan.md\nRefine an invalid epic edit plan", shape=note, fillcolor=lightyellow];
+      f3__refine_plan__1 [label="read_register_listing\nThe open records of every repository, one line each under a header, for the planner to read.", shape=box, fillcolor=white];
+      f3__refine_plan__0 -> f3__refine_plan__1 [color=gray40, arrowsize=0.6];
     }
     subgraph cluster_f3__review_plan {
       label="review_plan"; fontsize=12;
@@ -433,8 +437,8 @@ digraph author {
     f3__finish__2 -> f3____end [color=darkgoldenrod, ltail=cluster_f3__finish];
     f3__next_affected_story__1 -> f3__design_mockup__0 [label="intent, applied, pick, index", ltail=cluster_f3__next_affected_story, lhead=cluster_f3__design_mockup];
     f3__next_affected_story__1 -> f3__check_coverage__0 [label="intent, applied", ltail=cluster_f3__next_affected_story, lhead=cluster_f3__check_coverage];
-    f3__plan_edit__0 -> f3__validate_plan__0 [label="intent, snapshot, plan", ltail=cluster_f3__plan_edit, lhead=cluster_f3__validate_plan];
-    f3__refine_plan__0 -> f3__validate_plan__0 [label="intent, snapshot, plan, reworks", ltail=cluster_f3__refine_plan, lhead=cluster_f3__validate_plan];
+    f3__plan_edit__1 -> f3__validate_plan__0 [label="intent, snapshot, plan", ltail=cluster_f3__plan_edit, lhead=cluster_f3__validate_plan];
+    f3__refine_plan__1 -> f3__validate_plan__0 [label="intent, snapshot, plan, reworks", ltail=cluster_f3__refine_plan, lhead=cluster_f3__validate_plan];
     f3__review_plan__0 -> f3__plan_edit__0 [label="intent, snapshot", style=dashed, color=darkorange, ltail=cluster_f3__review_plan, lhead=cluster_f3__plan_edit];
     f3__review_plan__0 -> f3__apply_plan__0 [label="intent, snapshot, plan", ltail=cluster_f3__review_plan, lhead=cluster_f3__apply_plan];
     f3__review_plan__0 -> f3__refine_plan__0 [label="intent, snapshot, plan, findings, reworks", ltail=cluster_f3__review_plan, lhead=cluster_f3__refine_plan];
@@ -464,14 +468,12 @@ digraph author {
       node [style="filled", fontsize=10];
       f4__start__0 [label="resolve_story_intent\nValidate the requested story operation and name its parent epic and binding outcome.", shape=box, fillcolor=white];
       f4__start__1 [label="handoff → epic-edit", shape=box, fillcolor=plum];
-      f4__start__2 [label="adopt_backlog\nMint ids for every unnamed backlog bullet before decomposition or story lookup.", shape=box, fillcolor=white];
       f4__start__0 -> f4__start__1 [color=gray40, arrowsize=0.6];
-      f4__start__1 -> f4__start__2 [color=gray40, arrowsize=0.6];
     }
     f4____end [label="END", shape=doublecircle, fillcolor=gold, width=0.4];
 
     f4____start -> f4__start__0 [lhead=cluster_f4__start];
-    f4__start__2 -> f4____end [color=darkgoldenrod, ltail=cluster_f4__start];
+    f4__start__1 -> f4____end [color=darkgoldenrod, ltail=cluster_f4__start];
   }
 
   subgraph cluster_epic_split_f5__ {

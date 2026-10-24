@@ -35,10 +35,10 @@ okf.query(
 res = okf.create_story("checkout-flow", "02-pay", "Payment", covers=["seed-1"])
 res.ok, res.entity_id                 # a Result, not parsed JSON   (ostler create story)
 okf.update_story("02-pay", title="Payment", covers=["seed-1"], depends=["01-cart"])
-item = okf.create_backlog_item("Ship checkout parity", section="Scope")
+item = okf.create_backlog_item("Ship checkout parity", repo="acme", area="checkout")
 milestone = okf.create_milestone("checkout-mvp", "Checkout MVP", [item.entity_id])
 okf.set_milestone_source_items("checkout-mvp", [item.entity_id])
-okf.backlog_adopt("docs/backlog.md")  # name direct unnamed work bullets in place
+okf.backlog_import("docs/backlog.md", repo="acme")  # turn an old bullet list into records, once
 okf.delete_story("02-pay")             # same mutation surface as `ostler delete story`
 okf.delete_epic("checkout-flow")        # also removes milestone and queue references
 okf.set_status("01-cart", "QA passed")

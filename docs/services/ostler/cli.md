@@ -16,25 +16,20 @@ managed markdown tree (backlog, milestones, epics, features) under a repo root.
 
 
 ### ostler-create-backlog-item
-- usage: ostler create backlog-item TEXT [--section NAME] [--prefix PREFIX] [--json] — allocates a
-  fresh full id and appends `- [<id>] <text>` to `docs/backlog.md` (creating the file with a bare
-  `# Backlog` heading first run); two calls with the same text each get their own id and both
-  bullets are kept
+- usage: ostler create backlog-item SUMMARY --repo REPO --area AREA [--pattern PATTERN] [--symbol SYMBOL ...] [--id ID] [--body TEXT] [--prefix PREFIX] [--json] — files a record a person wrote on the debt register in the artifacts repo and commits it there; with no `--id` it allocates a fresh full id, so two calls with the same summary each get their own record
 - flags:
-  - --section (file under this `##` heading instead of the end of the list), --prefix (override the derived id prefix), --json (print `{ok, id, name, message}` instead of a line of text)
-- args: text — the item's description, written verbatim after the allocated id
-- exits: 0 — creation of a freshly allocated id can't collide, so this command never fails
-- run: invoke(argv=["create", "backlog-item", "a sample backlog item", "--prefix", "TEST", "--json"])
+  - --repo and --area (the workspace repository and the area folder the record is shelved under, each one lowercase kebab segment), --pattern (the fix the record calls for, `untriaged` when omitted), --symbol (a code symbol the record names, repeatable), --id (file under this id instead of an allocated one), --body (the record's text below the summary), --prefix (override the derived id prefix), --json (print `{ok, id, name, message}` instead of a line of text)
+- args: summary — the record's one-line listing text
+- exits: 0 when the record is filed; 1 with the reason when it is refused, for a taken id, a repo or area that is not one lowercase kebab segment, or an empty or multi-line summary
+- run: invoke(argv=["-C", "plan-scratch", "create", "backlog-item", "a sample backlog item", "--repo", "api-service", "--area", "billing", "--json"], env={"STABLEMATE_ARTIFACTS_DIR": "plan-scratch/art"})
 - verify: exit_status(code=0)
 - verify: json_path(path="ok", equals=true)
-- verify: json_path(path="id", matches="^TEST-[0-9A-HJKMNP-TV-Z]{26}$")
-- verify: contents(subject="docs/backlog.md", matches="(?m)^- \\[TEST-[0-9A-HJKMNP-TV-Z]{26}\\] a sample backlog item$")
-- fixture: none, because a freshly allocated id needs no seeded state; docs/backlog.md is created
-  if absent and appended to if present
-- code: ostler/ostler/backlog.py::create@fbc174481294
+- verify: json_path(path="id", matches="^TST-[0-9A-HJKMNP-TV-Z]{26}$")
+- fixture: [plan scratch repo](fixtures/plan-scratch-repo.md) with records X-1 and X-2 on its register
+- code: ostler/ostler/register.py::file_person
 - code: ostler/ostler/ids.py::allocate@b37d33a102e8
 - detail: [Planning identities](concepts/planning-identities.md)
-- tests: ostler/tests/test_backlog.py::test_create_backlog_item_persists_full_generated_id
+- tests: ostler/tests/test_register_person.py::test_create_backlog_item_files_the_same_record
 
 ### ostler-artifact-list
 - usage: ostler artifact list [--json] — prints the built-in artifact kinds

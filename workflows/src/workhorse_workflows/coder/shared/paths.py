@@ -71,11 +71,6 @@ def epics_dir(root: Path, configured: str = "") -> str:
     return configured.strip().rstrip("/") or _rel(root, okf_path.epics_root_in(root))
 
 
-def backlog_file(root: Path, configured: str = "") -> str:
-    """The worklist the coder files defects onto, repo-relative."""
-    return configured.strip() or _rel(root, okf_path.backlog_path_in(root))
-
-
 def epic_dir_rel(root: Path, epic: str, configured: str = "") -> str:
     """:func:`epic_dir` as a repo-relative string, honouring an operator's epics root."""
     return _rel(root, okf_path.epic_dir_under(root / epics_dir(root, configured), epic))
@@ -110,7 +105,7 @@ def story_context_path(story_path: str, repo_dir: str | Path = "") -> Path:
 
 def decisions_dir(docs_root: Path) -> Path:
     """Where the operator's standing decisions live: `docs/decisions/` under *docs_root*."""
-    return okf_path.backlog_path_in(docs_root).parent / "decisions"
+    return docs_root / "docs" / "decisions"
 
 
 def is_gate_context(path: str | Path) -> bool:
@@ -131,7 +126,6 @@ __all__ = [
     "AMBIENT",
     "OPERATOR_DIR",
     "TOOL_OUTPUT_DIRS",
-    "backlog_file",
     "epic_dir",
     "epic_dir_rel",
     "epics_dir",

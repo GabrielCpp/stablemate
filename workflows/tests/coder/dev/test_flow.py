@@ -11,6 +11,8 @@ from typing import Any, Literal
 from unittest.mock import patch
 
 import pytest
+from ostler import Ostler
+from workhorse._vendor.stablemate_core import config as core_config
 from workhorse.pyflow import park as pyflow_park
 from workhorse.pyflow.engine import RunEnv
 
@@ -155,12 +157,14 @@ class _Agent:
         unanswered: int = 0,
         stray: int = 0,
         also_fixed: tuple[str, ...] = (),
-        follow_ups: tuple[dict[str, str], ...] = (),
+        follow_ups: tuple[dict[str, Any], ...] = (),
         outside: dict[str, str] | None = None,
         walk: tuple[int, ...] = (1,),
         failed: tuple[str, ...] = (),
+        repo: str = "api",
     ) -> None:
         self.workspace = workspace
+        self.repo = repo
         self.outside = dict(outside or {})
         self.failed = failed
         self.walk = walk
@@ -194,7 +198,7 @@ class _Agent:
             return {"status": "blocked", "notes": BLOCK_NOTE}
         spec = Path(str(data["spec_dir"]))
         spec.mkdir(parents=True, exist_ok=True)
-        entries = "".join(f"\n### AC {n}: criterion {n}\n\n- **Met by**: api/links.go:3\n" for n in self.walk)
+        entries = "".join(f"\n### AC {n}: criterion {n}\n\n- **Met by**: {self.repo}/links.go:3\n" for n in self.walk)
         (spec / "plan.md").write_text(
             f"# Plan\n\nReject relative links in the api.\n\n## Acceptance Walk\n{entries}",
             encoding="utf-8",
@@ -206,8 +210,10 @@ class _Agent:
             rows += [{"kind": "assert", "scenario": sid, "action": 1, "result": "FAIL"} for sid in self.failed]
             rows += [{"kind": "assert", "scenario": "scenario-ok", "action": 1, "result": "PASS"}]
             log.write_text("".join(json.dumps(r) + "\n" for r in rows), encoding="utf-8")
-        (spec / "plan-api.md").write_text("# Plan: api\n\nValidate in links.go.\n", encoding="utf-8")
-        repo = self.workspace["api"]
+        (spec / f"plan-{self.repo}.md").write_text(
+            f"# Plan: {self.repo}\n\nValidate in links.go.\n", encoding="utf-8"
+        )
+        repo = self.workspace[self.repo]
         (repo / "links.go").write_text(f"package links\n\n// pass {nth}\n", encoding="utf-8")
         (repo / "links_test.go").write_text(
             f"package links\n\nfunc {TEST_NAME}(t *testing.T) {{}}\n", encoding="utf-8"
@@ -235,12 +241,12 @@ class _Agent:
             Path(str(data["answers_file"])).write_text(
                 f"## {self.prefix}1: fixed\n"
                 f"- commit: {sha}\n"
-                "- path: api/links.go\n"
+                f"- path: {self.repo}/links.go\n"
                 f"- test: {TEST_NAME}\n\n"
                 f"## {self.prefix}2: declined\n"
                 "Reason: the story's technical notes keep the validator free of new imports.\n"
                 + "".join(
-                    f"\n## {item}: fixed\n- commit: {sha}\n- path: api/links.go\n- test: {TEST_NAME}\n"
+                    f"\n## {item}: fixed\n- commit: {sha}\n- path: {self.repo}/links.go\n- test: {TEST_NAME}\n"
                     for item in self.also_fixed
                 ),
                 encoding="utf-8",
@@ -249,8 +255,8 @@ class _Agent:
             "status": "ready",
             "summary": "reject relative link destinations in the api",
             "notes": f"built and reviewed on pass {nth}",
-            "services": [API_SERVICE],
-            "findings": FINDINGS if first else [],
+            "services": [{**API_SERVICE, "repo": self.repo, "plan_file": f"plan-{self.repo}.md"}],
+            "findings": [{**f, "target": f["target"].replace("api/", f"{self.repo}/", 1)} for f in FINDINGS] if first else [],
             "follow_ups": list(self.follow_ups) if first else [],
         }
 
@@ -403,43 +409,35 @@ def _run_with_story(tmp_path: Path) -> Path:
     return run
 
 
-def _seed_backlog(
-    docs: Path,
-    write: Callable[[Path, str], Path],
-    git: Callable[..., subprocess.CompletedProcess],
-    text: str = "# Backlog\n",
-) -> Path:
-    backlog = write(docs / "docs" / "backlog.md", text)
-    git(docs, "add", "docs/backlog.md")
-    git(docs, "commit", "-qm", "seed the backlog")
-    return backlog
+def _follow_up(title: str, reason: str, **over: Any) -> dict[str, Any]:
+    """A follow-up as the dev turn reports it, with the area and pattern the register keys on."""
+    return {"title": title, "reason": reason, "area": "audit", "pattern": "paginate-list", **over}
 
 
-def _deferred(text: str) -> str:
-    return text.partition("## Deferred by coder")[2]
+def _register(docs: Path) -> list[str]:
+    """The register's listing lines, read the way `ostler backlog list` prints them."""
+    return Ostler(docs).record_listing()
 
 
-def test_a_story_turn_s_follow_up_goes_to_the_deferred_backlog_not_the_worklist(
+def test_a_story_turn_s_follow_up_goes_to_the_register_not_the_worklist(
     tmp_path: Path,
     docs: Path,
     workspace: dict[str, Path],
     env: Callable[..., RunEnv],
     drive_flow: Callable[..., Any],
-    write: Callable[[Path, str], Path],
-    git: Callable[..., subprocess.CompletedProcess],
 ) -> None:
-    """A follow-up the story turn reports lands under `Deferred by coder` and adds no follow-up item to the run."""
+    """A follow-up the story turn reports lands as a record and adds no follow-up item to the run."""
     run = _run_with_story(tmp_path)
-    backlog = _seed_backlog(docs, write, git)
-    agent = _Agent(
-        workspace, follow_ups=({"title": "Paginate the audit log", "reason": "it loads every row"},)
-    )
+    agent = _Agent(workspace, follow_ups=(_follow_up("Paginate the audit log", "it loads every row"),))
 
     drive_flow(Dev(story=STORY, epic=EPIC, worklist_dir=str(run)), env(), agent)
 
-    text = backlog.read_text(encoding="utf-8")
-    assert "Paginate the audit log: it loads every row" in _deferred(text), text
-    assert "## Filed by coder" not in text, text
+    (record,) = Ostler(docs).records().records
+    assert (record.summary, record.body, record.repo, record.area) == (
+        "Paginate the audit log", "it loads every row", "api", "audit"
+    )
+    assert record.filed_by == "coder" and record.source_story == STORY
+    assert not (docs / "docs" / "backlog.md").exists()
     assert work.worklist(run).items(work.FOLLOW_UP) == []
 
 
@@ -447,14 +445,14 @@ def test_a_story_turn_s_follow_up_goes_to_the_deferred_backlog_not_the_worklist(
     ("entry", "kind"),
     [
         (
-            {
-                "title": "Declare verify: checks for #loaded and #banks-open states",
-                "reason": "the book warnings on this page are pre-existing and unrelated to this change",
-            },
+            _follow_up(
+                "Declare verify: checks for #loaded and #banks-open states",
+                "the book warnings on this page are pre-existing and unrelated to this change",
+            ),
             "pre-existing",
         ),
         (
-            {"title": "Reconcile story.md Implementation Status", "reason": "the status table lags"},
+            _follow_up("Reconcile story.md Implementation Status", "the status table lags"),
             "bookkeeping",
         ),
     ],
@@ -465,25 +463,20 @@ def test_a_follow_up_that_is_no_product_work_is_not_filed(
     workspace: dict[str, Path],
     env: Callable[..., RunEnv],
     drive_flow: Callable[..., Any],
-    write: Callable[[Path, str], Path],
-    git: Callable[..., subprocess.CompletedProcess],
     caplog: pytest.LogCaptureFixture,
-    entry: dict[str, str],
+    entry: dict[str, Any],
     kind: str,
 ) -> None:
-    """The judge reads the follow-up's own reason, and one it calls no product work never reaches the backlog."""
+    """The judge reads the follow-up's own reason, and one it calls no product work never reaches the register."""
     run = _run_with_story(tmp_path)
-    backlog = _seed_backlog(docs, write, git)
-    product = {"title": "Paginate the audit log", "reason": "it loads every row"}
+    product = _follow_up("Paginate the audit log", "it loads every row")
     agent = _Agent(workspace, follow_ups=(entry, product), outside={entry["title"]: kind})
     dev = Dev(story=STORY, epic=EPIC, worklist_dir=str(run))
 
     with caplog.at_level("INFO"):
         drive_flow(dev, env(), agent)
 
-    text = backlog.read_text(encoding="utf-8")
-    assert product["title"] in _deferred(text), text
-    assert entry["title"] not in text, text
+    assert [r.summary for r in Ostler(docs).records().records] == [product["title"]]
     assert work.worklist(run).items(work.FOLLOW_UP) == []
     (scope,) = [a for a in agent.args_for("judge") if a["kind"] == "scope"]
     assert entry["reason"] in str(scope["subjects"])
@@ -493,55 +486,120 @@ def test_a_follow_up_that_is_no_product_work_is_not_filed(
     ), [r.getMessage() for r in caplog.records]
 
 
-FILED_BACKLOG = (
-    "# Backlog\n\n## Filed by coder\n\n"
-    "- [clear-report-snapshots] Sign-out leaves the saved report snapshots in the browser.\n"
-)
+def _file_open(docs: Path, summary: str, record_id: str, filed_by: Literal["coder", "qa"] = "coder") -> None:
+    filing = Ostler(docs).file_record(
+        repo="api", area="audit", pattern="clear-cache", summary=summary, filed_by=filed_by,
+        record_id=record_id,
+    )
+    assert filing.ok, filing
 
 
-def test_a_follow_up_that_cites_an_open_backlog_bullet_files_no_line(
+SNAPSHOTS = "Sign-out leaves the saved report snapshots in the browser."
+
+
+def test_a_follow_up_that_cites_an_open_record_files_no_record(
     docs: Path,
     workspace: dict[str, Path],
     env: Callable[..., RunEnv],
     drive_flow: Callable[..., Any],
-    write: Callable[[Path, str], Path],
-    git: Callable[..., subprocess.CompletedProcess],
 ) -> None:
-    """A follow-up whose reason cites an open bullet by id adds nothing to the backlog."""
-    backlog = _seed_backlog(docs, write, git, FILED_BACKLOG)
+    """A follow-up whose reason cites an open record by id adds nothing to the register."""
+    _file_open(docs, SNAPSHOTS, "clear-report-snapshots")
+    before = _register(docs)
     agent = _Agent(
         workspace,
-        follow_ups=(
-            {"title": "Drop cached snapshots when the user logs out", "reason": "see [clear-report-snapshots]"},
-        ),
+        follow_ups=(_follow_up(
+            "Drop cached snapshots when the user logs out", "see [clear-report-snapshots]"
+        ),),
     )
 
     result = drive_flow(_dev(docs), env(), agent)
 
     assert result.status == "ready", result
     assert [a["kind"] for a in agent.args_for("judge")] == ["scope"], agent.counts()
-    assert backlog.read_text(encoding="utf-8") == FILED_BACKLOG
+    assert _register(docs) == before
 
 
-def test_a_follow_up_no_open_bullet_holds_is_filed_apart_from_the_filed_section(
+def test_a_follow_up_no_open_record_holds_is_filed_beside_the_qa_ones(
     docs: Path,
     workspace: dict[str, Path],
     env: Callable[..., RunEnv],
     drive_flow: Callable[..., Any],
-    write: Callable[[Path, str], Path],
-    git: Callable[..., subprocess.CompletedProcess],
 ) -> None:
-    """A new follow-up lands under `Deferred by coder`, and the `Filed by coder` section keeps only its own bullet."""
-    backlog = _seed_backlog(docs, write, git, FILED_BACKLOG)
-    agent = _Agent(
-        workspace, follow_ups=({"title": "Paginate the audit log", "reason": "it loads every row"},)
-    )
+    """A new follow-up adds one coder record, and the open record QA filed keeps its line."""
+    _file_open(docs, SNAPSHOTS, "clear-report-snapshots", filed_by="qa")
+    agent = _Agent(workspace, follow_ups=(_follow_up("Paginate the audit log", "it loads every row"),))
 
     drive_flow(_dev(docs), env(), agent)
 
-    text = backlog.read_text(encoding="utf-8")
-    assert "Paginate the audit log: it loads every row" in _deferred(text), text
-    assert "Paginate" not in text.partition("## Deferred by coder")[0], text
+    by_origin = {r.filed_by: r.summary for r in Ostler(docs).records().records}
+    assert by_origin == {"qa": SNAPSHOTS, "coder": "Paginate the audit log"}
+
+
+@pytest.fixture
+def two_repo_workspace(
+    tmp_path: Path,
+    docs: Path,
+    git: Callable[..., subprocess.CompletedProcess],
+    write: Callable[[Path, str], Path],
+    name_workspace: Callable[[dict[str, Path]], None],
+) -> dict[str, Path]:
+    """Two real code repos, `api-service` and `web-app`, named by the workspace."""
+    repos = {name: tmp_path / "ws" / name for name in ("api-service", "web-app")}
+    for name, path in repos.items():
+        path.mkdir(parents=True)
+        git(path, "init", "-q", "-b", "main")
+        write(path / "README.md", f"# {name}\n")
+        git(path, "add", "-A")
+        git(path, "commit", "-qm", "Initial commit")
+    name_workspace(repos)
+    return repos
+
+
+def _commit_count(root: Path) -> int:
+    done = subprocess.run(
+        ["git", "-C", str(root), "rev-list", "--count", "HEAD"], capture_output=True, text=True
+    )
+    return int(done.stdout) if done.returncode == 0 else 0
+
+
+def test_two_follow_ups_of_a_workspace_run_land_as_records_in_one_artifacts_commit(
+    docs: Path,
+    two_repo_workspace: dict[str, Path],
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    """The register keys each follow-up by repository and area, commits once, and files a repeated title never again."""
+    artifacts = core_config.ensure_artifacts_repo()
+    subprocess.run(["git", "-C", str(artifacts), "commit", "-q", "--allow-empty", "-m", "init"], check=True)
+    followed = (
+        _follow_up("Paginate the audit log", "it loads every row", repo="api-service", symbols=["audit/log.go"]),
+        _follow_up("Cache the rate card", "it is read on every call", repo="api-service", area="pricing", pattern="add-cache"),
+    )
+    code_heads = {name: _head(path) for name, path in two_repo_workspace.items()}
+
+    drive_flow(_dev(docs), env(), _Agent(two_repo_workspace, follow_ups=followed, repo="api-service"))
+
+    folders = sorted(p.parent.relative_to(artifacts / "backlog").parts[:2] for p in (artifacts / "backlog").glob("*/*/*/record.md"))
+    assert folders == [("api-service", "audit"), ("api-service", "pricing")]
+    assert _commit_count(artifacts) == 2
+    assert subprocess.run(
+        ["git", "-C", str(artifacts), "log", "-1", "--format=%s"], capture_output=True, text=True, check=True
+    ).stdout.strip() == f"chore(api-service): file the deferred follow-ups of {STORY}"
+    lines = _register(docs)
+    assert len(lines) == 2
+    assert all("api-service" in line for line in lines)
+    assert any("audit" in line and "paginate-list" in line and "Paginate the audit log" in line for line in lines)
+    assert any("pricing" in line and "add-cache" in line and "Cache the rate card" in line for line in lines)
+    assert not (two_repo_workspace["web-app"] / "backlog").exists()
+    assert _head(two_repo_workspace["web-app"]) == code_heads["web-app"]
+    assert not list(two_repo_workspace["api-service"].rglob("record.md"))
+
+    drive_flow(_dev(docs), env(name="coder-again"), _Agent(two_repo_workspace, follow_ups=followed, repo="api-service"))
+
+    assert _register(docs) == lines
+    assert len(list((artifacts / "backlog").glob("*/*/*/record.md"))) == 2
+    assert _commit_count(artifacts) == 2
 
 
 def test_a_blocked_turn_in_human_mode_parks_and_resumes_with_the_answer(

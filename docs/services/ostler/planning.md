@@ -5,7 +5,7 @@ title: ostler planning commands
 ---
 # ostler planning commands
 
-The commands that plan work in a repo: epics, stories, features, milestones, the backlog, the epic
+The commands that plan work in a repo: epics, stories, features, milestones, the debt register, the epic
 queue, frozen stories, templates and the documents a template declares. Every claim here runs
 against a small plan repo seeded under the checkout, with `-C plan-scratch`, and each command acts
 on an entity of its own, so the order the claims run in does not change an outcome.
@@ -372,12 +372,22 @@ on an entity of its own, so the order the claims run in does not change an outco
 - code: ostler/ostler/todo.py::list_epics@eb0ea0bc4039
 
 ### ostler-backlog-add
-- usage: ostler backlog add ID TEXT: files an intake item under a chosen id
-- exits: 0 when the id is not in use
-- run: invoke(argv=["-C", "plan-scratch", "backlog", "add", "X-3", "third item"])
+- usage: ostler backlog add SUMMARY --repo REPO --area AREA [--pattern PATTERN] [--symbol SYMBOL ...] [--id ID] [--body TEXT] [--prefix PREFIX] [--json]: files a record a person wrote on the [debt register](concepts/the-debt-register.md) and commits it in the artifacts repo as `chore(REPO): file ID`; `ostler create backlog-item` is the same command under another name
+- flags:
+  - --repo (the workspace repository the record is about, one lowercase kebab segment)
+  - --area (the area folder the record is shelved under, one lowercase kebab segment)
+  - --pattern (the kind of fix the record calls for; `untriaged` when omitted)
+  - --symbol (a code symbol or path the record names; repeatable)
+  - --id (file under this id instead of a minted one)
+  - --body (the record's text below the frontmatter)
+  - --prefix (the id prefix to pin when the repo has none yet)
+  - --json (print `{ok, id, name, message}` instead of the message line)
+- args: summary (the record's one-line listing text)
+- exits: 0 when the record is filed; 1 with the reason when it is refused (an id the workspace already holds, a repo or area that is not one lowercase kebab segment, an empty or multi-line summary, or a failed artifacts commit)
+- run: invoke(argv=["-C", "plan-scratch", "backlog", "add", "third item", "--repo", "api-service", "--area", "billing", "--id", "X-3"], env={"STABLEMATE_ARTIFACTS_DIR": "plan-scratch/art"})
 - verify: exit_status(code=0)
-- verify: stdout(matches="^filed backlog item 'X-3'$")
-- fixture: [plan scratch repo](fixtures/plan-scratch-repo.md) with a backlog of two named items
+- verify: stdout(matches="^filed record 'X-3'$")
+- fixture: [plan scratch repo](fixtures/plan-scratch-repo.md) with records X-1 and X-2 on its register
 - code: ostler/ostler/_vendor/stablemate_core/base_cache.py::cache_root@79e1cc13c672
 - code: ostler/ostler/_vendor/stablemate_core/config.py::config_path@45b4d92edb39
 - code: ostler/ostler/dynamic_registry.py::load_kinds@09b3f9268893
@@ -388,13 +398,16 @@ on an entity of its own, so the order the claims run in does not change an outco
 - code: ostler/ostler/registry.py::base_type@cd37e79abc8c
 
 ### ostler-backlog-list
-- usage: ostler backlog list: prints each named backlog item as one JSON object per line
-- exits: 0 always
-- run: invoke(argv=["-C", "plan-scratch", "backlog", "list"])
+- usage: ostler backlog list [--repo REPO] [--status STATUS] [--json]: prints every record on the register, closed ones included, as one tab-separated line of id, repo, area, status, pattern and summary, sorted by repo, area and id; a `record.md` that does not parse is left out of the listing and named by `ostler doctor` instead
+- flags:
+  - --repo (only the records of this workspace repository; every repository when omitted)
+  - --status (only the records at this status, one of open, done, dropped or promoted; every status when omitted)
+  - --json (print the matching records as one indented JSON array of their full fields, body included)
+- exits: 0 always (an empty match prints `(none)`)
+- run: invoke(argv=["-C", "plan-scratch", "backlog", "list", "--repo", "api-service"], env={"STABLEMATE_ARTIFACTS_DIR": "plan-scratch/art"})
 - verify: exit_status(code=0)
-- verify: stdout(matches="\"id\": \"X-1\"")
-- fixture: [plan scratch repo](fixtures/plan-scratch-repo.md) with a backlog of two named items and
-  one unnamed
+- verify: stdout(matches="(?m)^X-1\\tapi-service\\tbilling\\topen\\tuntriaged\\tfirst item$")
+- fixture: [plan scratch repo](fixtures/plan-scratch-repo.md) with records X-1 and X-2 on its register
 - code: ostler/ostler/_vendor/stablemate_core/base_cache.py::cache_root@79e1cc13c672
 - code: ostler/ostler/_vendor/stablemate_core/config.py::config_path@45b4d92edb39
 - code: ostler/ostler/dynamic_registry.py::load_kinds@09b3f9268893
@@ -405,13 +418,17 @@ on an entity of its own, so the order the claims run in does not change an outco
 - code: ostler/ostler/registry.py::base_type@cd37e79abc8c
 
 ### ostler-backlog-adopt
-- usage: ostler backlog adopt [--prefix PREFIX]: gives an allocated id to every backlog bullet that
-  has none
-- exits: 0 always
-- run: invoke(argv=["-C", "plan-scratch", "backlog", "adopt", "--prefix", "BL"])
+- usage: ostler backlog adopt --repo REPO FILE [--prefix PREFIX] [--json]: turns every top-level bullet of an old backlog list into a record of REPO by the import rules of [the debt register](concepts/the-debt-register.md#importing-an-old-list), commits them together in the artifacts repo as `chore(REPO): import the backlog list`, then deletes FILE; it prints one listing line per record, then `imported N records, kept K ids`
+- flags:
+  - --repo (the workspace repository every imported record belongs to; required)
+  - --prefix (the id prefix to pin when the repo has none yet)
+  - --json (print the imported records as one indented JSON array of their full fields instead of the listing)
+- args: file (the markdown list to import)
+- exits: 0 when the list is imported; 1 with the reason, leaving FILE and the shelf as they were, when FILE is missing, holds no bullets, uses one id twice, keeps an id the workspace already holds, or holds a bullet that makes an invalid record, or when the artifacts commit fails
+- run: invoke(argv=["-C", "plan-scratch", "backlog", "adopt", "--repo", "api-service", "plan-scratch/old-list.md", "--prefix", "BL"], env={"STABLEMATE_ARTIFACTS_DIR": "plan-scratch/art"})
 - verify: exit_status(code=0)
-- verify: stdout(matches="^adopted 1 unnamed backlog items$")
-- fixture: [plan scratch repo](fixtures/plan-scratch-repo.md) with one unnamed backlog bullet
+- verify: stdout(matches="(?m)^imported 2 records, kept 0 ids$")
+- fixture: [plan scratch repo](fixtures/plan-scratch-repo.md) with an old two-bullet list beside it
 - code: ostler/ostler/_vendor/stablemate_core/base_cache.py::cache_root@79e1cc13c672
 - code: ostler/ostler/_vendor/stablemate_core/config.py::config_path@45b4d92edb39
 - code: ostler/ostler/dynamic_registry.py::load_kinds@09b3f9268893
@@ -422,12 +439,17 @@ on an entity of its own, so the order the claims run in does not change an outco
 - code: ostler/ostler/registry.py::base_type@cd37e79abc8c
 
 ### ostler-backlog-prune
-- usage: ostler backlog prune ID: removes an intake item
-- exits: 0 when the item exists
-- run: invoke(argv=["-C", "plan-scratch", "backlog", "prune", "X-2"])
+- usage: ostler backlog prune ID [--as done|dropped|promoted] [--reason TEXT] [--json]: closes a record on the [debt register](concepts/the-debt-register.md#closing-a-record) and commits the close in the artifacts repo as `chore(REPO): close ID as STATUS`
+- flags:
+  - --as (the status the record ends at: `done` by default, or `dropped` or `promoted`)
+  - --reason (why the record ended, written to its `reason`; required with `dropped` and `promoted`)
+  - --json (print `{ok, id, name, message}` instead of the message line)
+- args: id (the record's full id or short handle)
+- exits: 0 when the record is closed, or was already closed at that status; 1 with the reason when the id is unknown, the record is closed at another status, or --as dropped or promoted comes without --reason
+- run: invoke(argv=["-C", "plan-scratch", "backlog", "prune", "X-2"], env={"STABLEMATE_ARTIFACTS_DIR": "plan-scratch/art"})
 - verify: exit_status(code=0)
-- verify: stdout(matches="^pruned backlog item 'X-2'$")
-- fixture: [plan scratch repo](fixtures/plan-scratch-repo.md) with a backlog of two named items
+- verify: stdout(matches="^closed record 'X-2' as done$")
+- fixture: [plan scratch repo](fixtures/plan-scratch-repo.md) with a record X-2 filed on its register
 - code: ostler/ostler/_vendor/stablemate_core/base_cache.py::cache_root@79e1cc13c672
 - code: ostler/ostler/_vendor/stablemate_core/config.py::config_path@45b4d92edb39
 - code: ostler/ostler/dynamic_registry.py::load_kinds@09b3f9268893
@@ -438,14 +460,13 @@ on an entity of its own, so the order the claims run in does not change an outco
 - code: ostler/ostler/registry.py::base_type@cd37e79abc8c
 
 ### ostler-milestone-set-source-items
-- usage: ostler milestone set-source-items MILESTONE ITEM [ITEM ...]: records which backlog items a
-  milestone delivers
+- usage: ostler milestone set-source-items MILESTONE ITEM [ITEM ...]: records which [debt register](concepts/the-debt-register.md)
+  records a milestone delivers, replacing its `sourceItems` list; a short handle is expanded to its full id first
 - exits: 0 when the milestone exists
-- run: invoke(argv=["-C", "plan-scratch", "milestone", "set-source-items", "m1", "X-1"])
+- run: invoke(argv=["-C", "plan-scratch", "milestone", "set-source-items", "m1", "X-1"], env={"STABLEMATE_ARTIFACTS_DIR": "plan-scratch/art"})
 - verify: exit_status(code=0)
 - verify: stdout(matches="^set 1 source item\\(s\\) on milestone 'm1'$")
-- fixture: [plan scratch repo](fixtures/plan-scratch-repo.md) with a milestone and a backlog item
-  X-1
+- fixture: [plan scratch repo](fixtures/plan-scratch-repo.md) with a milestone and a record X-1 on its register
 - code: ostler/ostler/_vendor/stablemate_core/base_cache.py::cache_root@79e1cc13c672
 - code: ostler/ostler/_vendor/stablemate_core/config.py::config_path@45b4d92edb39
 - code: ostler/ostler/crud.py::dump_frontmatter@b34e5b5a7cfb

@@ -1,7 +1,7 @@
 # Creating and following a short link
 
 **Status:** decided
-**Applies to:** [link-create], [link-follow] — the api's two public operations
+**Applies to:** the create journey, the follow journey — the api's two public operations
 
 ## The question
 
@@ -25,7 +25,7 @@ URL the link was created from.
 
 Both halves of the creation response are load-bearing: the key is what the service is
 about, and the absolute URL is what makes the thing shareable without the caller having to
-know where the service lives. A redirect rather than a rendered page because [link-follow]
+know where the service lives. A redirect rather than a rendered page because the follow journey
 says the person *arrives at* the destination rather than reads it — and the port in
-`short_url` is the backlog's operating constraint, which is a property of the benchmark's
+`short_url` is the milestone's operating constraint, which is a property of the benchmark's
 environment rather than of the product.

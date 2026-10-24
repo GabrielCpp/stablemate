@@ -511,13 +511,20 @@ def docs_home(start: Path) -> Path | None:
     return None
 
 
+ARTIFACTS_IGNORED = ("specs/", "scratch/", "researches/")
+
+
 def ensure_artifacts_repo() -> Path:
-    """Create the artifacts dir as a git repository that ignores ``specs/``; never adds a remote."""
+    """Create the artifacts dir as a git repository that ignores the session-owned folders; never adds a remote."""
     root = resolve_artifacts_dir()
     root.mkdir(parents=True, exist_ok=True)
     if not (root / ".git").exists():
         subprocess.run(["git", "-C", str(root), "init", "--quiet"], check=True, timeout=30)
     ignore = root / ".gitignore"
-    if not ignore.exists():
-        ignore.write_text("specs/\n", encoding="utf-8")
+    existing = ignore.read_text(encoding="utf-8") if ignore.exists() else ""
+    present = {line.strip() for line in existing.splitlines()}
+    missing = [line for line in ARTIFACTS_IGNORED if line not in present]
+    if missing:
+        head = existing if not existing or existing.endswith("\n") else existing + "\n"
+        ignore.write_text(head + "".join(f"{line}\n" for line in missing), encoding="utf-8")
     return root

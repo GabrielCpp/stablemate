@@ -9,4 +9,5 @@ The tests for the `workflows` package. Each subdirectory holds one workflow fami
 - `coder/`: the `coder` workflow's tests.
 - `new/`: the `workhorse-new` scaffold's tests, and drives of the workflow it writes.
 - `okf_book/`: the `okf-book` workflow's tests, and the fixtures they drive.
+- `review_debt/`: the `review-debt` workflow's tests and its scripted trend-report agent.
 - `research/`: the `research` workflow's tests, and the program folder fixture they read.

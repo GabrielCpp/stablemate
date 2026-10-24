@@ -25,7 +25,7 @@ report  = okf.doctor(epic="epic-a")        # dict, == doctor --json's report
 res = okf.create_story("epic-a", "02-baz", "Baz", covers=["seed-1"])  # Result(.ok, .entity_id, .message)
 okf.update_story("02-baz", title="Baz", covers=["seed-1"], depends=["01-foo"])
 okf.delete_epic("epic-a")
-okf.add_seed("epic-a", "seed-2", status="researched", meta={"sourceBullet": "…"})
+okf.add_seed("epic-a", "seed-2", status="researched", meta={"sourceRecord": "…"})
 okf.set_status("01-foo", "QA passed")
 ```
 

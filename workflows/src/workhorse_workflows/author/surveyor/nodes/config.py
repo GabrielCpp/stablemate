@@ -5,7 +5,6 @@ import logging
 
 from workhorse.pyflow import WorkflowFailed
 from workhorse_workflows.author.shared.survey.blueprint import blueprint
-from workhorse_workflows.author.shared import paths
 from workhorse_workflows.author.shared.paths import survey_repo_root
 from workhorse_workflows.author.shared.schemas.survey import InventoryCheck, SurveyConfig
 
@@ -22,7 +21,6 @@ def load_survey_config(
     survey_dir = survey_dir.strip() or "docs/survey"
 
     root = survey_repo_root(repo_dir)
-    backlog = paths.backlog_file(root)
     rubric_path = (root / rubric).resolve()
     if not rubric_path.is_file():
         logger.warning("rubric file not found: %s", rubric_path)
@@ -47,7 +45,6 @@ def load_survey_config(
         inventory=f"{survey_dir}/inventory.json",
         findings_dir=f"{survey_dir}/findings",
         partition=f"{survey_dir}/partition.yaml",
-        backlog=backlog,
         unit_manifest=f"{survey_dir}/unit-manifest.json",
         context=f"{survey_dir}/_survey-context.md",
     )

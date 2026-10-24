@@ -10,12 +10,11 @@ from workhorse.pyflow import park as pyflow_park
 from workhorse.pyflow.engine import RunEnv
 
 from coder.fix.scripted import (
-    BULLET,
     SLUG,
     ScriptedAgent,
     answers,
     assert_agent_story_commit,
-    backlog,
+    record_of,
 )
 from workhorse_workflows.coder.fix.flow import Fix
 from workhorse_workflows.coder.shared.owner import MAX_LAPS
@@ -41,7 +40,7 @@ def test_a_red_gate_sends_the_owner_its_output_as_one_report(
     assert "undefined: pageSize" in lap, lap
     assert str(workspace["api"]) in lap, lap
 
-    assert BULLET not in backlog(docs), backlog(docs)
+    assert record_of(docs).status == "done", record_of(docs)
 
 
 def test_a_gate_still_red_when_the_laps_run_out_parks_rather_than_giving_up(
@@ -68,7 +67,7 @@ def test_a_gate_still_red_when_the_laps_run_out_parks_rather_than_giving_up(
     assert counts["fix-item"] == MAX_LAPS + 2, counts
     assert counts["resolve-operator"] == 1, counts
     assert "Twenty per page" in agent.args_for("fix-item")[-1]["operator_context"]
-    assert BULLET not in backlog(docs), backlog(docs)
+    assert record_of(docs).status == "done", record_of(docs)
 
 
 def test_an_owner_turn_that_says_it_cannot_parks_and_resumes_with_the_answer(
@@ -96,5 +95,5 @@ def test_an_owner_turn_that_says_it_cannot_parks_and_resumes_with_the_answer(
     retried = agent.args_for("fix-item")[1]
     assert "Twenty per page" in retried["operator_context"], retried
 
-    assert BULLET not in backlog(docs), backlog(docs)
+    assert record_of(docs).status == "done", record_of(docs)
     assert_agent_story_commit(workspace["api"], agent)

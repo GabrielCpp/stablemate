@@ -6,14 +6,27 @@ from collections.abc import Callable
 from pathlib import Path
 
 import pytest
+from ostler import Ostler
+from workhorse._vendor.stablemate_core import config as core_config
 
-from coder.fix.scripted import BACKLOG
+from coder.fix.scripted import RECORD, TEXT
 
 
 @pytest.fixture
-def docs(repo: Path, write: Callable[[Path, str], Path]) -> Path:
-    """The docs repo, carrying a backlog with one drainable item and nothing else."""
-    write(repo / "docs" / "backlog.md", BACKLOG)
+def artifacts() -> Path:
+    """The artifacts repo the register lives in, with one commit so a close has a parent."""
+    root = core_config.ensure_artifacts_repo()
+    subprocess.run(["git", "-C", str(root), "commit", "-q", "--allow-empty", "-m", "init"], check=True)
+    return root
+
+
+@pytest.fixture
+def docs(repo: Path, artifacts: Path) -> Path:
+    """The docs repo, with one drainable `qa` record on the register and nothing else."""
+    filing = Ostler(repo).file_record(
+        repo="api", area="widget", pattern="paginate", summary=TEXT, filed_by="qa", record_id=RECORD
+    )
+    assert filing.record is not None, filing.message
     return repo
 
 

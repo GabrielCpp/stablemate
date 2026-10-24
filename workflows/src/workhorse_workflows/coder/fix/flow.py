@@ -1,14 +1,15 @@
-"""Drain the coder's own backlog, one filed item at a time, each through one owner turn."""
+"""Drain the register's open `qa` records, one at a time, each through one owner turn."""
 from __future__ import annotations
 
 from collections.abc import Callable
+from pathlib import Path
 from typing import Any, ClassVar
 
 from workhorse.pyflow import Await, Continue, Done, NodeNotRunError, Workflow, WorkflowFailed
 from workhorse_workflows.coder.shared import paths, roles
 from workhorse_workflows.coder.docs.flow import Docs
 from workhorse_workflows.coder.shared.backlog import (
-    prune_fix_item,
+    close_fix_item,
     seed_fix_story,
     select_fix_item,
 )
@@ -37,6 +38,7 @@ from workhorse_workflows.coder.shared.story import (
     prepare_fix_story,
     resolve_workspace_dirs,
 )
+from workhorse_workflows.coder.shared.schemas.backlog import FixPick
 from workhorse_workflows.coder.shared.schemas.dev import (
     FailureReport,
     ImplResult,
@@ -44,6 +46,7 @@ from workhorse_workflows.coder.shared.schemas.dev import (
 )
 from workhorse_workflows.coder.shared.schemas.story import StoryPaths, WorkspaceDirs
 from workhorse_workflows.coder.shared.schemas.worktree import DirtyAtStart
+from workhorse_workflows.kit import head_sha, resolve_workspace
 from workhorse_workflows.coder.shared.worktree import (
     snapshot_owner_baseline,
     snapshot_worktree_state,
@@ -60,7 +63,7 @@ def render_gate(report: FailureReport) -> str:
 
 
 class Fix(Workflow):
-    """Drain the backlog's `Filed by coder` items, each as a one-AC story, each committed."""
+    """Drain the register's open `qa` records, each as a one-AC story, each committed and then closed."""
 
     target_env: str = "local"
     operator_mode: str = "auto"
@@ -72,15 +75,22 @@ class Fix(Workflow):
         return self.call(resolve_workspace_dirs)
 
     def start(self) -> Continue | Done:
-        """Draw the next drainable bullet, record what was already dirty, seed it as a story, and resolve its paths."""
+        """Draw the next drainable record, record what was already dirty, seed it as a story, and resolve its paths."""
         pick = self.call(select_fix_item)
         if not pick.has_fix:
             self.logger.info("backlog drained: %s", pick.reason)
             return Done(pick)
-        self.logger.info("draining %s: %s", pick.fix_bullet_id, pick.fix_bullet_text)
+        self.logger.info("draining %s: %s", pick.record_id, pick.summary)
         self.call(snapshot_worktree_state, roots=self._dirs())
         seed = self.call(
-            seed_fix_story, pick.fix_bullet_id, pick.fix_bullet_text, "", ""
+            seed_fix_story,
+            pick.record_id,
+            pick.summary,
+            "",
+            "",
+            repo=pick.repo,
+            area=pick.area,
+            body=pick.body,
         )
         story = self.call(prepare_fix_story, seed.story_slug, seed.epic)
         self.call(guard_story_file, story)
@@ -111,7 +121,7 @@ class Fix(Workflow):
             args=turn.args
             | self._story_args()
             | {
-                "bullet_text": self.output(select_fix_item).fix_bullet_text,
+                "item_text": self.output(select_fix_item).summary,
                 "qa_dir": self._story.qa_dir,
                 "target_env": self.target_env,
                 "operator_context": operator_context,
@@ -137,9 +147,7 @@ class Fix(Workflow):
             reports.append(leftover_text(state.dirty))
         if not reports:
             self.logger.info("gates are clean for %s", self._story.story_slug)
-            bullet = self.output(select_fix_item).fix_bullet_id
-            pruned = self.call(prune_fix_item, bullet)
-            return Continue(pruned, self.document)
+            return Continue(state, self.document)
         text = "\n\n".join(reports)
         found = failures[0] if failures else state
         if laps >= MAX_LAPS:
@@ -164,10 +172,10 @@ class Fix(Workflow):
             )
         return Continue(result, self.commit)
 
-    def commit(self) -> Continue:
-        """Commit this one item onto the current branch, then draw the next."""
+    def commit(self) -> Continue | Done:
+        """Commit this one item onto the current branch, close its record, then draw the next."""
         seed = self.output(seed_fix_story)
-        result = self.call(
+        self.call(
             commit_story,
             seed.epic,
             self._story.story_slug,
@@ -177,7 +185,14 @@ class Fix(Workflow):
             story_id=self._story.story_id,
             preexisting=self._dirty_at(snapshot_worktree_state),
         )
-        return Continue(result, self.start)
+        record_id = self.output(select_fix_item).record_id
+        landed = self._landed()
+        if not landed:
+            reason = f"no commit landed for {record_id}, so its record stays open"
+            self.logger.warning(reason)
+            return Done(FixPick(reason=reason))
+        closed = self.call(close_fix_item, record_id, landed)
+        return Continue(closed, self.start)
 
     def resolve(self, notes: str, where: str, blocks: int = 0) -> Continue | Await:
         """Answer a block from what is already written down, or ask the operator."""
@@ -255,6 +270,15 @@ class Fix(Workflow):
             for d in self._dirs()
             if self.call(changed_files, d, self._story.story_slug, self._story.story_id).paths
         ]
+
+    def _landed(self) -> dict[str, str]:
+        """The workspace repositories that hold a commit of this item, each with its HEAD."""
+        changed = {Path(d).resolve() for d in self._changed_dirs()}
+        return {
+            name: head_sha(entry["path"])
+            for name, entry in resolve_workspace(self.workspace, self.repo_dir).items()
+            if Path(entry["path"]).resolve() in changed
+        }
 
     def _dirty_at(self, snapshot: Callable[..., DirtyAtStart]) -> list[str]:
         """What *snapshot* found already dirty, or nothing when it never ran."""

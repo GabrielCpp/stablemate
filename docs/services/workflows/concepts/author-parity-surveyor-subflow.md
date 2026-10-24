@@ -5,10 +5,10 @@ title: Author parity surveyor subflow
 ---
 # Author parity surveyor subflow
 
-The `parity_surveyor` flow asks one question of a rewrite — which legacy surfaces have no home in the new app. It operates as an exhaustiveness survey: one frozen unit per baseline surface, one finding record each, and the empty pending set as the proof. The flow transcribes the baseline inventory into a frozen list, then walks the list in a per-unit loop — pick, assess (asking an agent to judge coverage), mark, and loop — then verifies all units were accounted for and emits one backlog bullet per uncovered surface. Unlike the general surveyor, parity findings are not clustered: each missing surface is its own gap. The subflow is reachable only through the `run` command's `parity-surveyor` selection in the composition root.
+The `parity_surveyor` flow asks one question of a rewrite: which legacy surfaces have no home in the new app. It operates as an exhaustiveness survey: one frozen unit per baseline surface, one finding record each, and the empty pending set as the proof. The flow transcribes the baseline inventory into a frozen list, then walks the list in a per-unit loop of pick, assess (asking an agent to judge coverage) and mark, then verifies all units were accounted for and files one record per uncovered surface on the [debt register](../../ostler/concepts/the-debt-register.md). Unlike the general surveyor, parity findings are not clustered: each missing surface is its own gap. The subflow is reachable only through the `run` command's `parity-surveyor` selection in the composition root.
 
-- code: `workflows/src/workhorse_workflows/author/parity_surveyor/flow.py::ParitySurveyor` @b278b037ec14
-- code: `workflows/src/workhorse_workflows/author/parity_surveyor/nodes/__init__.py` @5d895144144d
+- code: `workflows/src/workhorse_workflows/author/parity_surveyor/flow.py::ParitySurveyor` @b0663bd1c3b9
+- code: `workflows/src/workhorse_workflows/author/parity_surveyor/nodes/__init__.py` @657ff2a226c4
 - detail: [parity assessment prompt](../formats/parity-assessment-prompt.md)
 - detail: [shared survey library](survey-shared-library.md)
 - detail: [author shared paths](author-shared-paths.md)
@@ -29,7 +29,7 @@ The `parity_surveyor` flow asks one question of a rewrite — which legacy surfa
 - verify: count(subject="missing parity target-services failures", equals=1)
 - returns: returns a `ParityConfig` containing the resolved repository root, baseline inventory path, target feature-book path, and derived artifact paths
 - verify: count(subject="parity configuration results", equals=1)
-- code: `workflows/src/workhorse_workflows/author/parity_surveyor/flow.py::ParitySurveyor.setup` @b278b037ec14
+- code: `workflows/src/workhorse_workflows/author/parity_surveyor/flow.py::ParitySurveyor.setup` @b0663bd1c3b9
 - detail: [parity surveyor concept selection](parity-surveyor-concept-selection.md)
 
 ### labels
@@ -39,7 +39,7 @@ The `parity_surveyor` flow asks one question of a rewrite — which legacy surfa
 - does: reports the selected unit id and progress percentage after a unit has been selected
 - returns: returns `work_id` (the unit id) and `progress` (human-readable progress text) from the latest pick
 - verify: count(subject="parity work-label snapshots", equals=1)
-- code: `workflows/src/workhorse_workflows/author/parity_surveyor/flow.py::ParitySurveyor.labels` @b278b037ec14
+- code: `workflows/src/workhorse_workflows/author/parity_surveyor/flow.py::ParitySurveyor.labels` @b0663bd1c3b9
 - detail: [parity surveyor concept selection](parity-surveyor-concept-selection.md)
 
 ### start
@@ -50,7 +50,7 @@ The `parity_surveyor` flow asks one question of a rewrite — which legacy surfa
 - verify: count(subject="parity freeze failures", equals=1)
 - returns: returns a continuation targeting `pick` with the expansion result
 - verify: count(subject="parity start transitions", equals=1)
-- code: `workflows/src/workhorse_workflows/author/parity_surveyor/flow.py::ParitySurveyor.start` @b278b037ec14
+- code: `workflows/src/workhorse_workflows/author/parity_surveyor/flow.py::ParitySurveyor.start` @b0663bd1c3b9
 - detail: [parity surveyor concept selection](parity-surveyor-concept-selection.md)
 
 ### pick
@@ -63,20 +63,20 @@ The `parity_surveyor` flow asks one question of a rewrite — which legacy surfa
 - verify: count(subject="parity pick-to-assess transitions", equals=1)
 - returns: returns a continuation targeting `assess` or `verify` with the unit id, path, kind, and record path
 - verify: count(subject="parity pick route outcomes", equals=1)
-- code: `workflows/src/workhorse_workflows/author/parity_surveyor/flow.py::ParitySurveyor.pick` @b278b037ec14
+- code: `workflows/src/workhorse_workflows/author/parity_surveyor/flow.py::ParitySurveyor.pick` @b0663bd1c3b9
 - detail: [parity surveyor concept selection](parity-surveyor-concept-selection.md)
 
 ### assess
 - sig: `assess(unit_id: str, unit_path: str, unit_kind: str, record_path: str, progress: str = "") -> Continue`
 - does: asks a medium-power agent to judge whether the legacy surface named by the unit is covered by the new app
 - verify: count(subject="parity unit assessments", equals=1)
-- does: passes the baseline inventory path, target services path, backlog path, and epics directory to the agent
+- does: passes the baseline inventory path, target services path, the listing of the open records of the surveyed repository, and the epics directory to the agent
 - verify: json_path(path="$.baseline_inventory", equals="example baseline inventory")
 - does: logs the unit kind, id, and progress percentage with the `activity` flag
 - verify: json_path(path="$.await", matches="assessing parity")
 - returns: returns the agent's `UnitAssessment` response containing the finding record and existing-owner claim
 - verify: count(subject="parity assessment results", equals=1)
-- code: `workflows/src/workhorse_workflows/author/parity_surveyor/flow.py::ParitySurveyor.assess` @b278b037ec14
+- code: `workflows/src/workhorse_workflows/author/parity_surveyor/flow.py::ParitySurveyor.assess` @b0663bd1c3b9
 - detail: [parity surveyor concept selection](parity-surveyor-concept-selection.md)
 
 ### mark
@@ -89,7 +89,7 @@ The `parity_surveyor` flow asks one question of a rewrite — which legacy surfa
 - verify: count(subject="parity unit markings", equals=1)
 - returns: returns a continuation targeting `pick` to process the next unit
 - verify: count(subject="parity mark-to-pick transitions", equals=1)
-- code: `workflows/src/workhorse_workflows/author/parity_surveyor/flow.py::ParitySurveyor.mark` @b278b037ec14
+- code: `workflows/src/workhorse_workflows/author/parity_surveyor/flow.py::ParitySurveyor.mark` @b0663bd1c3b9
 - detail: [parity surveyor concept selection](parity-surveyor-concept-selection.md)
 
 ### verify
@@ -100,18 +100,18 @@ The `parity_surveyor` flow asks one question of a rewrite — which legacy surfa
 - verify: count(subject="parity verify failures", equals=1)
 - returns: returns a continuation targeting `emit` when all units are accounted for
 - verify: count(subject="parity verify-to-emit transitions", equals=1)
-- code: `workflows/src/workhorse_workflows/author/parity_surveyor/flow.py::ParitySurveyor.verify` @b278b037ec14
+- code: `workflows/src/workhorse_workflows/author/parity_surveyor/flow.py::ParitySurveyor.verify` @b0663bd1c3b9
 - detail: [parity surveyor concept selection](parity-surveyor-concept-selection.md)
 
 ### emit
 - sig: `emit() -> Done`
-- does: calls `emit_parity_backlog` to write one backlog bullet per assessed surface not already owned by the new app
-- verify: count(subject="parity backlog emissions", equals=1)
+- does: calls `emit_parity_records` to file one record per assessed surface not already owned by the new app
+- verify: count(subject="parity record emissions", equals=1)
 - does: logs emission even if no surfaces were output or if the result reports `emit_ok=false`
 - verify: json_path(path="$.await", matches="missing-surface")
-- returns: returns `Done` with the `EmitResult` containing the bullet count and unit manifest
+- returns: returns `Done` with the `EmitResult` containing the count of surfaces that have a record and the unit manifest
 - verify: count(subject="completed parity surveys", equals=1)
-- code: `workflows/src/workhorse_workflows/author/parity_surveyor/flow.py::ParitySurveyor.emit` @b278b037ec14
+- code: `workflows/src/workhorse_workflows/author/parity_surveyor/flow.py::ParitySurveyor.emit` @b0663bd1c3b9
 - detail: [parity surveyor concept selection](parity-surveyor-concept-selection.md)
 
 ## Nodes
@@ -127,11 +127,11 @@ The `parity_surveyor` flow asks one question of a rewrite — which legacy surfa
 - verify: count(subject="missing parity target-services failures", equals=1)
 - does: normalizes empty `survey_dir` to the default path
 - verify: json_path(path="$.survey_dir", matches="docs/survey")
-- returns: returns a `ParityConfig` with the resolved repository root, baseline inventory path, target feature-book path, and derived paths for the inventory, findings directory, unit manifest, backlog, and epics directory
+- returns: returns a `ParityConfig` with the resolved repository root, baseline inventory path, target feature-book path, and derived paths for the inventory, findings directory, unit manifest, and epics directory
 - verify: json_path(path="$.repo_root", matches=".+")
 - verify: json_path(path="$.baseline_inventory", matches=".+")
 - verify: json_path(path="$.target_services", matches=".+")
-- code: `workflows/src/workhorse_workflows/author/parity_surveyor/nodes/parity.py::load_parity_config` @c5a22d931060
+- code: `workflows/src/workhorse_workflows/author/parity_surveyor/nodes/parity.py::load_parity_config` @ec5f8b71f521
 
 ### expand_parity_inventory
 - sig: `expand_parity_inventory(logger: logging.Logger, baseline: str, inventory: str, repo_dir: str = "") -> Expansion`
@@ -151,25 +151,43 @@ The `parity_surveyor` flow asks one question of a rewrite — which legacy surfa
 - verify: json_path(path="$.expand_ok", equals=false)
 - returns: returns `Expansion(expand_ok=true, unit_count=<N>)` with the count of frozen units and a note describing the freeze outcome
 - verify: json_path(path="$.expand_ok", equals=true)
-- code: `workflows/src/workhorse_workflows/author/parity_surveyor/nodes/parity.py::expand_parity_inventory` @c5a22d931060
+- code: `workflows/src/workhorse_workflows/author/parity_surveyor/nodes/parity.py::expand_parity_inventory` @ec5f8b71f521
 
-### emit_parity_backlog
-- sig: `emit_parity_backlog(logger: logging.Logger, inventory: str, findings_dir: str, unit_manifest: str, repo_dir: str = "") -> EmitResult`
-- does: reads the frozen inventory and the findings records for each unit
+### read_parity_register
+- sig: `read_parity_register(logger: logging.Logger, repo_dir: str = "") -> RegisterListing`
+- does: lists the open records of the surveyed repository on the [debt register](../../ostler/concepts/the-debt-register.md), one tab-separated line per record under a header
+- verify: count(subject="parity register listings", equals=1)
+- returns: returns a `RegisterListing` whose text is `no open records` when the repository has none
+- verify: json_path(path="$.text", equals="no open records")
+- code: `workflows/src/workhorse_workflows/author/parity_surveyor/nodes/parity.py::read_parity_register` @ec5f8b71f521
+- tests: `workflows/tests/author/parity_surveyor/test_flow.py::test_the_assessor_reads_the_open_register_of_the_surveyed_repository`
+- tests: `workflows/tests/author/parity_surveyor/test_flow.py::test_the_assessor_is_told_when_the_register_is_empty`
+
+### emit_parity_records
+- sig: `emit_parity_records(logger: logging.Logger, inventory: str, findings_dir: str, unit_manifest: str, repo_dir: str = "") -> EmitResult`
+- does: reads the frozen inventory and the finding record of each unit
 - verify: count(subject="parity inventory reads", equals=1)
-- does: renders one backlog bullet per unit marked `assessed` with an empty `existing_owner` field
-- verify: json_path(path="$.await", matches="legacy-parity-")
+- does: files one record per unit marked `assessed` with an empty `existing_owner` field, on the [debt register](../../ostler/concepts/the-debt-register.md), for the surveyed repository with the filer `parity`
+- verify: count(subject="filed parity records", equals=1)
+- does: takes the first finding's description, flattened to one line, as the record summary, the unit's area as the record area, and `untriaged` as the pattern
+- verify: count(subject="parity record fields", equals=1)
+- does: writes the legacy surface id, the effort and the evidence of the first finding into the record body
+- verify: count(subject="parity record bodies", equals=1)
 - does: suppresses units whose assessment identified an existing owner in the new app
 - verify: count(subject="parity-suppressed surfaces", equals=1)
-- persistence: parity-backlog-section — writes the parity-surveyor fenced section into the backlog file, replacing the previous section if present or creating the backlog file if it does not exist
-- verify: created(subject="the parity backlog section")
-- verify: unchanged(subject="backlog content outside parity markers")
-- does: writes the unit manifest containing every unit's id, path, status, existing owner, and bullet id
+- does: skips a surface whose summary an open `parity` record of the surveyed repository already states, and puts that record's id in the manifest
+- verify: unchanged(subject="the register after an unchanged rerun")
+- does: commits the new records in one artifacts commit
+- verify: count(subject="parity artifacts commits", equals=1)
+- does: writes the unit manifest containing every unit's id, path, status, existing owner, and the id of its record under the key `bullet`
 - verify: created(subject="the parity unit manifest")
 - verify: json_path(path="$.generatedBy", equals="parity-surveyor")
-- returns: returns `EmitResult(emit_ok=true, bullet_count=<N>)` with the count of emitted bullets and a summary note
+- returns: returns `EmitResult(emit_ok=true, bullet_count=<N>)` with the count of surfaces that have a record and a summary note
 - verify: json_path(path="$.emit_ok", equals=true)
-- returns: returns `EmitResult(emit_ok=false, emit_errors=...)` when the inventory or findings cannot be read
+- returns: returns `EmitResult(emit_ok=false, emit_errors=...)` when the inventory or findings cannot be read, or when the register refuses a record
 - verify: json_path(path="$.emit_ok", equals=false)
-- code: `workflows/src/workhorse_workflows/author/parity_surveyor/nodes/parity.py::emit_parity_backlog` @c5a22d931060
-
+- code: `workflows/src/workhorse_workflows/author/parity_surveyor/nodes/parity.py::emit_parity_records` @ec5f8b71f521
+- tests: `workflows/tests/author/parity_surveyor/test_parity.py::test_emit_files_one_parity_record_per_uncovered_surface`
+- tests: `workflows/tests/author/parity_surveyor/test_parity.py::test_emit_suppresses_a_surface_a_new_feature_already_owns`
+- tests: `workflows/tests/author/parity_surveyor/test_parity.py::test_a_rerun_files_only_the_surface_that_is_new`
+- tests: `workflows/tests/author/parity_surveyor/test_parity.py::test_emit_commits_every_record_of_one_emit_in_one_artifacts_commit`

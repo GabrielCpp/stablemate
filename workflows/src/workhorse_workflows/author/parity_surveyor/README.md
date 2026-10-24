@@ -5,4 +5,4 @@ The machine that surveys a legacy baseline against the current OKF book, one sur
 ## Map
 
 - `flow.py`: the parity-survey state machine.
-- `nodes/`: the parity survey's config, frozen unit list and backlog output.
+- `nodes/`: the parity survey's config, frozen unit list and the records it files.

@@ -5,27 +5,18 @@ title: Author main intake
 ---
 # Author main intake
 
-The intake nodes prepare and close the durable inputs used by the Author main flow. Story mode
-adopts unnamed backlog bullets before selecting one; epic mode checks that the approved milestone
-lists epics and then advances that milestone only after finalization. The nodes resolve the
-consuming repository from the explicit `repo_dir` input using the survey resolver.
+The intake nodes prepare and close the durable inputs used by the Author main flow. Epic mode
+checks that the approved milestone lists epics and then advances that milestone only after
+finalization. Story mode takes its input from the [debt register](../../ostler/concepts/the-debt-register.md)
+and needs no intake node. The [story promotion](promote-a-record.md) picks one open record and
+seeds its story. The nodes resolve the consuming repository from the explicit `repo_dir` input using
+the survey resolver.
 
-- code: `workflows/src/workhorse_workflows/author/shared/nodes/story_mode.py::adopt_backlog` @d2ddecee90dd
+- code: `workflows/src/workhorse_workflows/author/finalize/nodes/milestone.py::validate_milestone_epics` @cbdf7f3f88f8
+- code: `workflows/src/workhorse_workflows/author/finalize/nodes/milestone.py::mark_milestone_authored` @cbdf7f3f88f8
 - detail: [author milestone intake](../flows/author-milestone-intake.md)
 
 ## Methods
-
-### adopt_backlog
-- sig: `adopt_backlog(logger: logging.Logger, repo_dir: str = "") -> Result`
-- does: assigns Ostler ids to every unnamed backlog bullet before story selection or decomposition
-- verify: persists(subject="adopted backlog identities")
-- raises: `WorkflowFailed` with Ostler's failure message when backlog adoption is unsuccessful
-- verify: absent(subject="backlog adoption result after failure")
-- returns: the Ostler adoption result after logging its message
-- verify: count(subject="backlog adoption results", equals=1)
-- code: `workflows/src/workhorse_workflows/author/shared/nodes/story_mode.py::adopt_backlog` @d2ddecee90dd
-- detail: [Author backlogged fixture contexts](author-backlogged-fixture-context.md)
-- tests: `workflows/tests/author/test_workflow.py::test_story_mode_authors_one_bullet_and_does_not_commit`
 
 ### validate_milestone_epics
 - sig: `validate_milestone_epics(logger: logging.Logger, milestone: str, repo_dir: str = "") -> Defects`

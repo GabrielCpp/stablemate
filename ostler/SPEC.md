@@ -57,8 +57,7 @@ maintain. Nothing dispatches on it: only the `spec` base type is checked. Mint t
 `ostler create spec <slug> <doc>` rather than hand-writing frontmatter; it is idempotent, so it
 also retro-stamps a doc that was written free-form.
 
-**Not Concepts** (managed markdown, not part of the typed graph): `docs/backlog.md` (an
-ostler-managed intake list), and operational files written by the workflows
+**Not Concepts** (managed markdown, not part of the typed graph): operational files written by the workflows
 (`context.md`, `attempts.md`, `feedback.md`, `qa/`). These are named here for completeness and left
 in place.
 
@@ -102,7 +101,8 @@ Replace the `/dashboard` developer-stub body with the account-credits "Aperçu" 
 
 - The first paragraph after the metadata bullets is the seed `summary`.
 - Recognized metadata keys: `status` (one of `backlog|researched|covered|resolved|dropped|deferred`;
-  default `backlog`), `surface`, `legacySurface`, `backing`, `prerequisites`, `sourceBullet`.
+  default `backlog`), `surface`, `legacySurface`, `backing`, `prerequisites`, `sourceRecord`.
+  A `sourceBullet` line in an older `epic.md` still parses and is kept as a raw field.
   Unknown keys are preserved as raw fields.
 
 #### `## Stories`

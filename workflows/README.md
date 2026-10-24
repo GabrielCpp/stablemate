@@ -40,6 +40,11 @@ shipped and is now kept only for its reasoning.
   ostler checks the pages, and the book's own scenarios run against the app's stack. A
   book that fails stops at an operator gate. The launch is in
   [its README](src/workhorse_workflows/okf_book/README.md).
+- **`review-debt`** — reads every record on the debt register, has one agent turn group
+  them by shared cause, checks that the report accounts for every id exactly once, and
+  writes `trends.md` beside the shelf only from a report that passes. Its
+  [README](src/workhorse_workflows/review_debt/README.md) has the states and the
+  send-back cap.
 - **`research`** — runs experiment gates: a protocol is designed, made runnable,
   submitted as a detached measurement job, waited on across resumes, and its artifacts
   classified deterministically — for measurements an agent turn is the wrong container
@@ -70,7 +75,7 @@ Author refuses a milestone that fails `ostler doctor`, so a missing section, an 
 dangling link or a journey without its mockup stops the run before any agent turn. Author preserves
 the milestone, writes ordered epics and vertical stories, and changes `status: approved` to
 `status: authored` only after the complete planning graph validates. Survey modes stop after
-discovery; they do not bypass milestone approval by decomposing their generated backlog.
+discovery; they do not bypass milestone approval by decomposing the records they file.
 
 Author keeps a work list of epics, story splits and stories, and drains each kind in turn. A story it
 cannot fix stays blocked on the list while the others continue. Before it finalizes, Author stops
@@ -78,12 +83,25 @@ at a gate that lists every unfinished item, and your answer requeues them with t
 context. Author stops at a second gate when the milestone body changes during the run. `auto`
 operator mode does not skip either gate.
 
+## Picking a record into an epic
+
+Story mode turns one open record of the debt register into a story of an existing epic. The
+`record` parameter is a record id or its short handle. A token that names no record, or a record
+that is not `open`, fails the run. A person who wants a story from new text files it first with
+`ostler backlog add`, then picks it. The story's `covers` names the record id, and the record
+closes as `promoted` with the story slug in its reason once the story is authored.
+
+```bash
+workhorse-author run --params '{"mode": "story", "epic": "docs-app-editor", "record": "raw-xml-editor"}'
+```
+
 ## Editing authored scope
 
 The author command exposes two standalone edit flows. `epic-edit` is the reconciliation
 machine; `story-edit` validates a story-level request and hands a typed binding intent to it.
 Adding or removing a story therefore cannot leave the parent epic's user journeys, seeds or
-coverage describing the product before the requested change.
+coverage describing the product before the requested change. An add takes a register `record`
+the way story mode does, and the planner reads the open register as one listing in its prompt.
 
 ```bash
 workhorse-author run epic-edit --params '{
@@ -95,7 +113,7 @@ workhorse-author run epic-edit --params '{
 workhorse-author run story-edit --params '{
   "action": "add",
   "epic": "docs-app-editor",
-  "bullet": "RAW-XML-EDITOR",
+  "record": "raw-xml-editor",
   "reason": "Add raw XML editing alongside the interactive editor"
 }'
 
@@ -114,7 +132,7 @@ replacement plan. Deterministic checks project that plan before any write, then 
 findings back to the plan refiner: every active seed remains covered, dependencies remain local
 and acyclic, the requested add/remove is satisfied, and every changed story needing new prose is
 in the affected worklist. Only then does Ostler apply structural mutations, the model revise epic
-prose and affected story bodies, and coverage/integrity gates permit backlog pruning and commit.
+prose and affected story bodies, and coverage/integrity gates permit closing the picked record as `promoted` and the commit.
 Design turns may write `mockup.html` only inside the current story directory. The feature book is
 read-only: author never creates an inventory or registers a mockup outside its story.
 
@@ -216,9 +234,9 @@ make check-no-env    # from the repo root, on its own
 ## A workflow does not spell a doc path (load-bearing)
 
 **Where a document lives is ostler's answer.** The epics root, the epic folder, the story
-folder, the epics index, the backlog file, the feature book and its waivers and screenshots
+folder, the epics index, the feature book and its waivers and screenshots
 all come from `ostler.path`; no module under `src/workhorse_workflows/` writes
-`docs/epics`, `docs/backlog.md` or `docs/services` as a literal.
+`docs/epics` or `docs/services` as a literal.
 
 The reason is that epic directories are **numbered**
 (`0001-checkout-flow`) while every queue entry, prompt and operator names them by bare
@@ -234,14 +252,14 @@ a directory ostler resolved. Run artifacts that are not documents at all (`.agen
 with the workflow, because ostler has no opinion about them.
 
 Each workflow's `shared/paths.py` is the one place that calls `ostler.path`, and it is also
-where an operator override is honoured: a `backlog` or `epics_dir` **parameter** wins when
+where an operator override is honoured: an `epics_dir` **parameter** wins when
 it is set, and empty — the normal case — means "as this repo configures it". An override
 still gets ostler's resolution rules applied inside it, via the `*_under` family.
 
 Two probes look like exceptions and are not: the repo-root resolvers test for a `docs/epics/`
 directory, and that is how a *root* is recognized before there is a root to ask ostler about.
 
-**And what is *in* the document is ostler's answer too.** A node that reads a backlog entry,
+**And what is *in* the document is ostler's answer too.** A node that reads
 an epic's stories, a gate's frontmatter or a table in the book goes through
 `ostler.markdown` — `find_section` / `Section.bullets` / `Bullet.bracketed` /
 `walk_tables` — not a `^\s*-\s*\[(\w+)\]` of its own. Same failure mode as a hand-built

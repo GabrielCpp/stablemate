@@ -22,13 +22,15 @@ okf = Ostler(root)          # root discovered upward, like `ostler -C DIR`; None
 | `list --type T [--epic E] [--status S] [--json]` | `okf.list("T", epic=…, status=…) -> list[dict]` |
 | `search Q …` / `query NAME ARG` | `okf.search("Q", …)` / `okf.query("NAME", "ARG")` |
 | `next-epic` / `next-story E` | `okf.next_epic()` / `okf.next_story("E") -> dict\|None` |
-| `todo list` / `backlog list` | `okf.todo() -> list[str]` / `okf.backlog() -> list[dict]` |
+| `todo list` | `okf.todo() -> list[str]` |
+| `backlog list` | `okf.record_listing(repo, status) -> list[str]` · `okf.records()` · `okf.open_records(repo)` |
 | `doctor [--epic E] --json` | `okf.doctor(epic=…) -> QaOutcome` (`.data` is the report `.as_dict()`) |
 | `coverage --inventory F [--surface S]` | `okf.coverage(inventory=…, surface=…, waivers=…) -> QaOutcome` (`.data` is the join) |
 | `path epic E` / `path spec S` / `path story E S` / `path branch S` | `okf.epic_path("E")` / `okf.spec_path("S")` / `okf.story_path("E","S")` / `okf.branch("S", epic=False)` |
 | `--handles` rendering | `okf.handle(id) -> str` / `okf.handles() -> dict[str, str]` · `okf.expand(token) -> str` |
 | `create epic/story` · `update story` · `delete epic/story` · `seed add` · `set-status` · `conflict` | `okf.create_epic(…)` / `okf.create_story(…)` · `okf.update_story(slug, title=…, covers=…, depends=…)` · `okf.delete_epic(…)` / `okf.delete_story(…)` · `okf.add_seed(epic, id, status=…, meta={…})` · `okf.set_status(slug, status)` · `okf.set_conflict(slug, text)` (`""` clears) → `Result` |
-| `backlog add/prune` · `todo add/prune/reorder` | `okf.backlog_add/backlog_prune` · `okf.todo_add/todo_prune/todo_reorder` → `Result` |
+| `backlog add` · `backlog adopt` | `okf.backlog_add(summary, repo=, area=, …)` → `Result` (a committed record) · `okf.backlog_import(file, repo=)` → `Imported` |
+| `backlog prune` · `todo add/prune/reorder` | `okf.close_record(id, status, reason)` (commits the close in the artifacts repo) · `okf.todo_add/todo_prune/todo_reorder` → `Result` |
 | `qa context` · `qa context-validate` · `qa validate` · `qa run` | `okf.qa_context(base=…, spec=…, …)` · `okf.qa_context_validate(spec=…)` · `okf.qa_validate(plan, spec=…)` · `okf.qa_run(plan, spec=…)` |
 | `artifact vet KIND --spec DIR` | `okf.artifact_vet("KIND", spec) -> QaOutcome` |
 | `qa tools list` | `okf.qa_tools_catalog() -> QaOutcome` (`.data` = `{"tools": …, "errors": …}`) |
@@ -71,7 +73,6 @@ from ostler import path as okf_path
 
 okf_path.epics_root_in(root)                     # <root>/docs/epics
 okf_path.epics_index_in(root)                    # the epic queue's index.md
-okf_path.backlog_path_in(root)                   # docs/backlog.md
 okf_path.services_root_in(root, service)         # the book, whole or per-service
 okf_path.epic_dir_in(root, "checkout-flow")      # → .../0001-checkout-flow, from the bare slug
 okf_path.story_dir_in(root, epic, slug)          # the story folder; join your own story.md
@@ -90,7 +91,7 @@ Every derivation comes in up to three spellings, chosen by what the caller alrea
 `_under` is what keeps an override from becoming a second, dumber derivation: ostler's rules
 still apply *inside* the directory you passed, so an epic is matched by number-or-slug there
 too. **This module is the only place a doc-tree path is derived** — no workflow, node or
-script writes `docs/epics`, `docs/backlog.md` or `docs/services` as a literal; see "A
+script writes `docs/epics` or `docs/services` as a literal; see "A
 workflow does not spell a doc path" in `workflows/README.md`.
 
 The loaded graph is a **snapshot**: reads reuse one cached load; a mutation applies

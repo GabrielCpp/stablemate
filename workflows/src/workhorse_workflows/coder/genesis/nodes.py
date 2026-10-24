@@ -447,15 +447,10 @@ def validate_genesis(
         )
 
     epics_root = okf_path.epics_root_in(target)
-    backlog = okf_path.backlog_path_in(target)
     if not epics_root.is_dir():
         errors.append(f"no {epics_root.name}/ at {epics_root} — ostler infers the 'exploration' "
                       "profile without it, and epic-coverage validation then short-circuits "
                       "and asserts nothing")
-    if not backlog.is_file():
-        errors.append(
-            f"no backlog at {backlog} — coder fix queues and Author story/edit modes require it"
-        )
 
     if not _has_lint_target(target):
         warnings.append("no `lint` target in a Makefile — the coder workflow's lint gate will "

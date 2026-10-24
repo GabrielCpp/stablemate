@@ -92,8 +92,8 @@ def _add_install_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--repo",
         type=Path,
-        default=Path.cwd(),
-        help="Repository root to install into (default: cwd)",
+        help="Repository root to install into (default: cwd). Writes only under "
+             "that root unless --user is also given.",
     )
     parser.add_argument(
         "--config", type=Path, help="Path to agents.yml (default: <repo>/agents.yml)"
@@ -120,9 +120,9 @@ def _add_install_args(parser: argparse.ArgumentParser) -> None:
         action="store_true",
         help="Install into the harness home directories (~/.claude, and "
              "~/.agents for Codex and Copilot) from the [user_library.<harness>] "
-             "tables of the stablemate "
-             "config, instead of into a repo. Needs no repo and no agents.yml. A repo "
-             "install does this too, after the repo, whenever those tables exist.",
+             "tables of the stablemate config. Alone it needs no repo and no "
+             "agents.yml and touches no repo. With --repo it refreshes the home "
+             "after the repo, so one command renders both from the same library.",
     )
     parser.add_argument(
         "--home",
@@ -208,9 +208,10 @@ def _load_library(library: Path | None, check: bool) -> None:
 
 def _run_install(args: argparse.Namespace) -> int:
     _load_library(args.library, args.check)
-    if getattr(args, "user", False):
+    user = getattr(args, "user", False)
+    if user and args.repo is None:
         return _run_user_install(args.home, args.check)
-    repo = args.repo.resolve()
+    repo = (args.repo or Path.cwd()).resolve()
     config_path = args.config.resolve() if args.config else repo / "agents.yml"
     if not args.config and not config_path.exists():
         raise SystemExit(
@@ -232,13 +233,16 @@ def _run_install(args: argparse.Namespace) -> int:
         return 0
     managed = repo_managed_with_claude_pointers(instructions, agents)
     if args.check:
-        return check_outputs(repo, outputs, manager, managed)
+        status = check_outputs(repo, outputs, manager, managed)
+        if status or not user:
+            return status
+        return _run_user_install(args.home, check=True)
     for line in notices:
         print(line)
     install_outputs(repo, outputs, manager, managed)
     print(f"Installed {len(outputs)} generated files into {repo}")
-    if user_library_tables(read_config()):
-        return _run_user_install(args.home, args.check)
+    if user:
+        return _run_user_install(args.home, check=False)
     return 0
 
 
@@ -477,7 +481,7 @@ def _run_eject(args: argparse.Namespace) -> int:
             user=False,
             repo=args.repo,
             config=None,
-            home=args.home,
+            home=None,
         )
     )
 
@@ -652,13 +656,6 @@ def _build_parser() -> argparse.ArgumentParser:
         type=Path,
         help="Library directory (agents/ tree). Overrides $FARRIER_LIBRARY_DIR and the home config.",
     )
-    eject_p.add_argument(
-        "--home",
-        type=Path,
-        help="The home directory the user library installs into (default: ~). For "
-        "tests and for trying a selection out without touching the real one.",
-    )
-
     scaffold_p = sub.add_parser(
         "scaffold",
         help="Seed repository files from a library scaffold definition",

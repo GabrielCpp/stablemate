@@ -12,6 +12,8 @@ from unittest.mock import patch
 
 import pytest
 from _fakes import StubRunner
+from ostler import Ostler
+from ostler.register import Record
 from workhorse.artifacts import ArtifactWriter
 from workhorse.config_run import RunConfig
 from workhorse.pyflow import activity as pyflow_activity
@@ -33,7 +35,6 @@ FINDINGS = f"{SURVEY_DIR}/findings"
 PARTITION = f"{SURVEY_DIR}/partition.yaml"
 MANIFEST = f"{SURVEY_DIR}/unit-manifest.json"
 CONTEXT = f"{SURVEY_DIR}/_survey-context.md"
-BACKLOG = "docs/backlog.md"
 
 BUTTON = "src/components/button"
 MODAL = "src/components/modal"
@@ -234,6 +235,10 @@ def _drive(env: RunEnv, agent: _Agent, **inputs: Any) -> Any:
     return drive(Surveyor(**inputs), replace(env, agent_runner=StubRunner(agent)))
 
 
+def _filed(repo: Path) -> list[Record]:
+    return list(Ostler(repo).records().records)
+
+
 def _units(repo: Path) -> dict[str, str]:
     data = json.loads((repo / INVENTORY).read_text())
     return {u["id"]: u["status"] for u in data["units"]}
@@ -242,7 +247,7 @@ def _units(repo: Path) -> dict[str, str]:
 
 
 def test_two_components_are_planned_assessed_verified_and_emitted(
-    surveyed: Path, tmp_path: Path
+    surveyed: Path, tmp_path: Path, artifacts: Path
 ) -> None:
     """One full pass over a repo with nothing pinned: plan, freeze, assess each unit once, verify coverage, cluster, emit."""
     agent = _Agent(surveyed)
@@ -258,13 +263,15 @@ def test_two_components_are_planned_assessed_verified_and_emitted(
     }, agent.counts()
     assert _units(surveyed) == {BUTTON: "assessed", MODAL: "assessed"}
 
-    backlog = (surveyed / BACKLOG).read_text()
-    assert f"[survey-{CLUSTER}]" in backlog, backlog
-    assert "2 unit(s), mechanical" in backlog, backlog
+    (record,) = _filed(surveyed)
+    assert (record.repo, record.filed_by, record.pattern) == ("acme", "survey", "missing-accessible-name"), record
+    assert f"`{CLUSTER}`" in record.body, record
+    assert "2 unit(s), mechanical" in record.body, record
+    assert not (surveyed / "docs/backlog.md").exists()
 
     manifest = json.loads((surveyed / MANIFEST).read_text())
     assert {u["id"] for u in manifest["units"]} == {BUTTON, MODAL}, manifest
-    assert manifest["units"][0]["bullets"] == [f"survey-{CLUSTER}"], manifest
+    assert manifest["units"][0]["bullets"] == [record.id], manifest
 
 
 def test_operator_pinned_rules_skip_the_planner(
@@ -326,7 +333,7 @@ def test_an_invalid_record_is_repaired_once_and_the_unit_lands_assessed(
 
 
 def test_an_unfixable_record_blocks_its_unit_and_the_operator_accepts_it(
-    surveyed: Path, tmp_path: Path
+    surveyed: Path, tmp_path: Path, artifacts: Path
 ) -> None:
     """The give-up path, end to end, which is the one that must not wedge the survey."""
     agent = _Agent(surveyed, corrupt={BUTTON}, unfixable=True)
@@ -350,7 +357,8 @@ def test_an_unfixable_record_blocks_its_unit_and_the_operator_accepts_it(
 
     manifest = {u["id"]: u for u in json.loads((surveyed / MANIFEST).read_text())["units"]}
     assert manifest[BUTTON]["bullets"] == [], manifest
-    assert manifest[MODAL]["bullets"] == [f"survey-{CLUSTER}"], manifest
+    (record,) = _filed(surveyed)
+    assert manifest[MODAL]["bullets"] == [record.id], manifest
 
 
 def test_rules_that_expand_to_nothing_send_the_flow_back_to_the_planner(

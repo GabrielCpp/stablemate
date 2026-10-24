@@ -15,7 +15,6 @@ class ParityConfig(AuthorResult):
     inventory: str = ""
     findings_dir: str = ""
     unit_manifest: str = ""
-    backlog: str = ""
     epics_dir: str = ""
 
 

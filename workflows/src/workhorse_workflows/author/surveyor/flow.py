@@ -412,7 +412,7 @@ class Surveyor(Workflow):
         )
 
     def emit(self) -> Done:
-        """Write the generated backlog bullets and the unit-level manifest."""
+        """File one record per cluster and write the unit-level manifest."""
         result = self.call(
             emit_artifacts,
             self.ctx.partition,

@@ -6,39 +6,42 @@ from workhorse_workflows.coder.shared.schemas.qa import BacklogDrain
 
 
 class FiledBacklog(CoderResult):
-    """The open `Filed by coder` bullets, and the items a QA run left to file, each by id."""
+    """The open `qa` records of the run's workspace, and the items a QA run left to file, each by id."""
 
     filed: dict[str, str] = {}
     items: dict[str, str] = {}
 
 
 class FixPick(CoderResult):
-    """`select-next-fix-item.py` — the next drainable bullet, or "the pool is dry"."""
+    """`select_fix_item` — the next drainable `qa` record, or "the pool is dry"."""
 
     has_fix: bool = False
-    fix_bullet_id: str = ""
-    fix_bullet_text: str = ""
+    record_id: str = ""
+    repo: str = ""
+    area: str = ""
+    summary: str = ""
+    body: str = ""
     reason: str = ""
 
 
 class FixStorySeed(CoderResult):
-    """`seed-fix-story.py` — the single-AC story a drained bullet became."""
+    """`seed_fix_story` — the single-AC story a drained record became."""
 
     epic: str = ""
     epic_dir: str = ""
     story_slug: str = ""
     story_dir: str = ""
     story_path: str = ""
-    bullet_id: str = ""
+    record_id: str = ""
     reason: str = ""
 
 
-class FixPruned(CoderResult):
-    """`prune-fix-item.py` — the shipped fix's bullet is gone from the backlog."""
+class FixClosed(CoderResult):
+    """`close_fix_item` — the shipped fix's record is closed as done on the register."""
 
-    pruned: bool = False
-    bullet_id: str = ""
+    closed: bool = False
+    record_id: str = ""
     reason: str = ""
 
 
-__all__ = ["BacklogDrain", "FiledBacklog", "FixPick", "FixPruned", "FixStorySeed"]
+__all__ = ["BacklogDrain", "FiledBacklog", "FixClosed", "FixPick", "FixStorySeed"]

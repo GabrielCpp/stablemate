@@ -69,7 +69,6 @@ class _Farrier:
             (seeded / ".gitignore").write_text("/tmp\n")
             if scaffold_id == "shared-docs" and self.seed_docs:
                 (target / "docs" / "epics").mkdir(parents=True, exist_ok=True)
-                (target / "docs" / "backlog.md").write_text("# Backlog\n")
         return subprocess.CompletedProcess(args, 0, "", "")
 
 
@@ -141,7 +140,6 @@ def test_a_bare_directory_becomes_a_repo_the_main_loop_will_accept(
     assert (target / ".git").is_dir()
     assert (target / "api" / "go.mod").read_text() == "module example.com/api\n"
     assert (target / "docs" / "epics").is_dir()
-    assert (target / "docs" / "backlog.md").is_file()
     assert json.loads((target / ".agents" / "agents-context.json").read_text())["instructions"]
 
     head = subprocess.run(["git", "rev-parse", "HEAD"], cwd=target, capture_output=True,
@@ -231,7 +229,7 @@ def test_an_invalid_repo_fails_the_run_with_no_repair_turn(
         _run(drive_flow, env(), target)
 
     assert "genesis target is invalid" in str(exc.value), exc.value
-    assert "docs/backlog.md" in str(exc.value), exc.value
+    assert "epics" in str(exc.value), exc.value
 
 
 def test_a_failed_farrier_install_still_fails_at_verify(

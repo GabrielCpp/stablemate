@@ -22,4 +22,4 @@ The dev turn runs with no timeout. The silence bound and the command cap bound i
 
 An older open finding of the same cause as a newer one is merged into the newest.
 
-The follow-ups a dev turn reports go to the ostler backlog under `Deferred by coder`. The fix lane drains only `Filed by coder`, so no run works them.
+The follow-ups a dev turn reports become records in the debt register, one `record.md` folder each under the artifacts repo's `backlog/<repo>/<area>/<id>/`. The fix lane drains only `Filed by coder`, so no run works them.

@@ -2,6 +2,7 @@
 from workhorse_workflows.author.epic_edit.nodes._blueprint import blueprint
 from workhorse_workflows.author.epic_edit.nodes.edit import (
     apply_edit_plan,
+    read_register_listing,
     select_affected_story,
     snapshot_epic,
     validate_applied_edit,
@@ -12,6 +13,7 @@ from workhorse_workflows.author.epic_edit.nodes.edit import (
 __all__ = [
     "apply_edit_plan",
     "blueprint",
+    "read_register_listing",
     "select_affected_story",
     "snapshot_epic",
     "validate_applied_edit",

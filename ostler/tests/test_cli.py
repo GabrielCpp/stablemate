@@ -110,9 +110,15 @@ def test_template_apply_parses_name():
 
 
 def test_create_backlog_item_and_milestone_parse_generated_id_inputs():
-    backlog = parse(["create", "backlog-item", "Ship the MVP", "--section", "Scope"])
-    assert backlog.what == "backlog-item" and backlog.text == "Ship the MVP"
-    assert backlog.section == "Scope"
+    backlog = parse([
+        "create", "backlog-item", "Ship the MVP", "--repo", "web-app", "--area", "checkout",
+        "--symbol", "cart.py", "--symbol", "Cart.total",
+    ])
+    assert backlog.what == "backlog-item" and backlog.summary == "Ship the MVP"
+    assert (backlog.repo, backlog.area, backlog.pattern) == ("web-app", "checkout", "untriaged")
+    assert backlog.symbols == ["cart.py", "Cart.total"] and backlog.record_id == ""
+    with pytest.raises(SystemExit):
+        parse(["create", "backlog-item", "Ship the MVP", "--section", "Scope"])
 
     milestone = parse([
         "create", "milestone", "docs-app-mvp", "--title", "Docs App MVP",
@@ -122,12 +128,19 @@ def test_create_backlog_item_and_milestone_parse_generated_id_inputs():
     assert milestone.source_items == "ACME-01JBXR7K9QZ4M2T8VNF3HD6PWC"
 
 
-def test_backlog_adopt_takes_no_path():
-    """The list lives at `docs/backlog.md`, so the CLI has no way to name a second."""
-    args = parse(["backlog", "adopt", "--prefix", "acme"])
-    assert args.op == "adopt" and args.prefix == "acme"
+def test_backlog_adopt_names_the_list_and_its_repository():
+    args = parse(["backlog", "adopt", "--repo", "api-service", "docs/old.md", "--prefix", "acme"])
+    assert args.op == "adopt" and args.repo == "api-service" and args.source == "docs/old.md"
+    assert args.prefix == "acme"
     with pytest.raises(SystemExit):
-        parse(["backlog", "adopt", "--path", "docs/other.md"])
+        parse(["backlog", "adopt", "docs/old.md"])
+
+
+def test_backlog_add_takes_a_summary_and_the_record_flags():
+    args = parse(["backlog", "add", "Widen the API", "--repo", "web-app", "--area", "ui", "--id", "BL-1"])
+    assert args.op == "add" and args.summary == "Widen the API" and args.record_id == "BL-1"
+    with pytest.raises(SystemExit):
+        parse(["backlog", "add", "BL-1", "Widen the API", "--section", "Scope"])
 
 
 def test_milestone_source_items_parse():
