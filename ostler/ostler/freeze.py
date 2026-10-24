@@ -11,7 +11,7 @@ from ostler.model import Graph
 
 
 def resolve_content(graph: Graph, ident: str) -> tuple[str, str] | None:
-    """Return ``(kind, canonical_content)`` for a story slug or seed id, else None."""
+    """Return ``(kind, canonical_content)`` for a story id or seed id, else None."""
     found = graph.find_story(ident)
     if found is not None:
         _, story = found
@@ -74,7 +74,7 @@ def freeze(graph: Graph, ident: str, by: str = "", note: str = "") -> FreezePlan
     resolved = resolve_content(graph, ident)
     if resolved is None:
         return FreezePlan("freeze", ident,
-                          error=f"no story slug or seed id '{ident}' found to freeze")
+                          error=f"no story id or seed id '{ident}' found to freeze")
     ids = _load_ids(graph)
     if ids is None:
         return FreezePlan("freeze", ident,

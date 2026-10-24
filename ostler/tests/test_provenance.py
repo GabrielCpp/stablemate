@@ -32,7 +32,7 @@ def _fixture(tmp_path: Path) -> tuple[Path, Path, str, str]:
     assert created_epic.ok
     created_story = crud.create_story(load(docs), "billing", "create-invoice", "Create invoice")
     assert created_story.ok
-    story = load(docs).find_story("create-invoice")
+    story = load(docs).story_by_slug("create-invoice")
     assert story is not None
     story_id = story[1].eid
     feature = docs / "docs/services/billing/create.md"
@@ -100,7 +100,7 @@ def test_story_provenance_joins_exact_commits_to_the_context_packet(
 
     result = Ostler(docs).query(
         "story-provenance",
-        "create-invoice",
+        story_id,
         checkouts={"api-service": source},
     )[0]
 
@@ -150,7 +150,7 @@ def test_node_provenance_reads_reverse_story_roles_and_commits(tmp_path: Path) -
 
 def _link_story_to_node(docs: Path, slug: str, node_id: str) -> None:
     graph = load(docs)
-    found = graph.find_story(slug)
+    found = graph.story_by_slug(slug)
     assert found is not None
     story_md = found[1].story_md
     assert story_md is not None

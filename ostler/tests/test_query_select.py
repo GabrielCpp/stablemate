@@ -7,7 +7,11 @@ import pytest
 from ostler import crud, query, select, todo
 from ostler.model import load
 
-from conftest import present, write
+from conftest import FOO_ID, present, write
+
+
+def _sid(root: Path, slug: str) -> str:
+    return present(load(root).story_by_slug(slug))[1].eid
 
 
 def test_list_by_type(repo: Path):
@@ -36,7 +40,7 @@ def test_query_reverse_indexes(repo: Path):
     g = load(repo)
     covers = query.query(g, "stories-covering-seed", "seed-a1")
     assert {x["slug"] for x in covers} == {"01-foo"}
-    refs = query.query(g, "surfaces-referenced-by-story", "01-foo")
+    refs = query.query(g, "surfaces-referenced-by-story", FOO_ID)
     assert any("rec.md" in x["path"] for x in refs)
 
 
@@ -46,7 +50,7 @@ def test_next_epic_and_story(repo: Path):
     assert ne["name"] == "epic-a"
     ns = present(select.next_story(g, "epic-a"))
     assert ns["slug"] == "01-foo"
-    crud.set_status(load(repo), "01-foo", "QA passed")
+    crud.set_status(load(repo), FOO_ID, "QA passed")
     assert select.next_story(load(repo), "epic-a") is None
 
 
@@ -66,8 +70,9 @@ def test_story_id_survives_an_epic_block_that_never_recorded_it(tmp_path: Path):
         "---", "type: story", "id: X-LEGACY7", "slug: a", "status: Not started", "---",
         "# Story: A", "",
     ]) + "\n")
-    found = load(tmp_path).find_story("a")
+    found = load(tmp_path).find_story("X-LEGACY7")
     assert found is not None
+    assert found[1].slug == "a"
     assert found[1].eid == "X-LEGACY7"
 
 
@@ -107,12 +112,12 @@ def test_next_story_respects_dependencies(tmp_path: Path):
     crud.create_story(load(tmp_path), "e", "a", "A")
     crud.create_story(load(tmp_path), "e", "b", "B", depends=["a"])
     assert present(select.next_story(load(tmp_path), "e"))["slug"] == "a"
-    crud.set_status(load(tmp_path), "a", "done")
+    crud.set_status(load(tmp_path), _sid(tmp_path, "a"), "done")
     assert present(select.next_story(load(tmp_path), "e"))["slug"] == "b"
 
 
 def test_todo_queue(tmp_path: Path):
-    """The queue names the directories that exist; every operation still takes a bare slug."""
+    """The queue names the directories that exist; every operation still takes a bare epic slug."""
     g = load(tmp_path)
     crud.create_epic(g, "one", "One", prefix="x")
     crud.create_epic(load(tmp_path), "two", "Two", prefix="x")
@@ -193,8 +198,8 @@ def test_report_separates_done_from_blocked(tmp_path: Path):
     assert blocked["waiting_on"] == {"b": ["a"]}
     assert "given up this run: a" in blocked["detail"]
 
-    crud.set_status(load(tmp_path), "a", "QA passed")
-    crud.set_status(load(tmp_path), "b", "QA passed")
+    crud.set_status(load(tmp_path), _sid(tmp_path, "a"), "QA passed")
+    crud.set_status(load(tmp_path), _sid(tmp_path, "b"), "QA passed")
     finished = select.next_story_report(load(tmp_path), "e")
     assert finished["state"] == "done"
     assert finished["done"] == finished["total"] == 2
@@ -206,7 +211,7 @@ def test_a_ready_report_counts_the_work_left_like_every_other_state(tmp_path: Pa
     crud.create_epic(g, "e", "E", prefix="x")
     for slug in ("a", "b", "c"):
         crud.create_story(load(tmp_path), "e", slug, slug.upper())
-    crud.set_status(load(tmp_path), "a", "QA passed")
+    crud.set_status(load(tmp_path), _sid(tmp_path, "a"), "QA passed")
 
     ready = select.next_story_report(load(tmp_path), "e")
 
@@ -226,12 +231,12 @@ def test_declared_order_wins_over_the_slugs_numeric_prefix(tmp_path: Path):
 
     assert present(select.next_story(load(tmp_path), "e"))["slug"] == "01-first"
 
-    crud.set_status(load(tmp_path), "01-first", "QA passed")
+    crud.set_status(load(tmp_path), _sid(tmp_path, "01-first"), "QA passed")
     report = select.next_story_report(load(tmp_path), "e")
     assert report["state"] == "ready"
     assert report["story"]["slug"] == "03-independent"
 
-    crud.set_status(load(tmp_path), "03-independent", "QA passed")
+    crud.set_status(load(tmp_path), _sid(tmp_path, "03-independent"), "QA passed")
     assert present(select.next_story(load(tmp_path), "e"))["slug"] == "02-after-first"
 
 
@@ -252,7 +257,7 @@ def test_report_distinguishes_an_unwritten_epic_from_a_finished_one(tmp_path: Pa
 
 def _authored(root: Path, slug: str) -> None:
     """Fill a scaffold's required sections, the way a write_story node does."""
-    _, story = present(load(root).find_story(slug))
+    _, story = present(load(root).story_by_slug(slug))
     story_md = present(story.story_md)
     story_md.write_text(
         story_md.read_text(encoding="utf-8")
@@ -321,13 +326,13 @@ def test_author_and_build_are_separate_axes(tmp_path: Path):
     """A story can be unwritten and "not done", or written and done — the two never substitute."""
     _epic_of_scaffolds(tmp_path, [("a", [])])
     _authored(tmp_path, "a")
-    crud.set_status(load(tmp_path), "a", "QA passed")
+    crud.set_status(load(tmp_path), _sid(tmp_path, "a"), "QA passed")
 
     g = load(tmp_path)
     assert select.next_story_report(g, "e", need="author")["state"] == "done"
     assert select.next_story_report(g, "e", need="build")["state"] == "done"
 
-    crud.set_status(load(tmp_path), "a", "In progress")
+    crud.set_status(load(tmp_path), _sid(tmp_path, "a"), "In progress")
     g = load(tmp_path)
     assert select.next_story_report(g, "e", need="author")["state"] == "done"
     assert select.next_story_report(g, "e", need="build")["state"] == "ready"

@@ -37,12 +37,16 @@ def _crop_stem(name: str, i: int) -> str:
     return stem or f"component-{i}"
 
 
-def run_vet(graph: Graph, screenshot: Path, manifest: Path, slug: str, *,
+def run_vet(graph: Graph, screenshot: Path, manifest: Path, story: str, *,
             cdp_url: str | None = None, regions_file: Path | None = None,
             state: str = "default", iou_threshold: float = 0.5,
             ) -> tuple[VetOutcome, VetPlan]:
-    """Exactly one of *cdp_url*/*regions_file* is set (enforced by the CLI's mutually exclusive group)."""
-    spec_dir = Path(path_mod.resolve_spec(graph, slug))
+    """*story* is the story id; exactly one of *cdp_url*/*regions_file* is set (enforced by the CLI's mutually exclusive group)."""
+    found = graph.find_story(story)
+    if found is None:
+        raise ValueError(graph.no_story(story))
+    slug = found[1].slug
+    spec_dir = Path(path_mod.resolve_spec(graph, story))
     vet_dir = spec_dir / "vet"
     writes: list[VetFileWrite] = []
 

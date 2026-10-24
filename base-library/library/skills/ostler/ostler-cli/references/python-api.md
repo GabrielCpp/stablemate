@@ -26,15 +26,15 @@ okf = Ostler(root)          # root discovered upward, like `ostler -C DIR`; None
 | `backlog list` | `okf.record_listing(repo, status) -> list[str]` · `okf.records()` · `okf.open_records(repo)` |
 | `doctor [--epic E] --json` | `okf.doctor(epic=…) -> QaOutcome` (`.data` is the report `.as_dict()`) |
 | `coverage --inventory F [--surface S]` | `okf.coverage(inventory=…, surface=…, waivers=…) -> QaOutcome` (`.data` is the join) |
-| `path epic E` / `path spec S` / `path story E S` / `path branch S` | `okf.epic_path("E")` / `okf.spec_path("S")` / `okf.story_path("E","S")` / `okf.branch("S", epic=False)` |
+| `path epic E` / `path spec ID` / `path story ID` / `path branch ID` | `okf.epic_path("E")` / `okf.spec_path("ID")` / `okf.story_path("ID")` / `okf.branch("ID", epic=False)` |
 | `--handles` rendering | `okf.handle(id) -> str` / `okf.handles() -> dict[str, str]` · `okf.expand(token) -> str` |
-| `create epic/story` · `update story` · `delete epic/story` · `seed add` · `set-status` · `conflict` | `okf.create_epic(…)` / `okf.create_story(…)` · `okf.update_story(slug, title=…, covers=…, depends=…)` · `okf.delete_epic(…)` / `okf.delete_story(…)` · `okf.add_seed(epic, id, status=…, meta={…})` · `okf.set_status(slug, status)` · `okf.set_conflict(slug, text)` (`""` clears) → `Result` |
+| `create epic/story` · `update story` · `delete epic/story` · `seed add` · `set-status` · `conflict` | `okf.create_epic(…)` / `okf.create_story(…)` · `okf.update_story(story_id, title=…, covers=…, depends=…)` · `okf.delete_epic(…)` / `okf.delete_story(…)` · `okf.add_seed(epic, id, status=…, meta={…})` · `okf.set_status(story_id, status)` · `okf.set_conflict(story_id, text)` (`""` clears) → `Result` |
 | `backlog add` · `backlog adopt` | `okf.backlog_add(summary, repo=, area=, …)` → `Result` (a committed record) · `okf.backlog_import(file, repo=)` → `Imported` |
 | `backlog prune` · `todo add/prune/reorder` | `okf.close_record(id, status, reason)` (commits the close in the artifacts repo) · `okf.todo_add/todo_prune/todo_reorder` → `Result` |
 | `qa context` · `qa context-validate` · `qa validate` · `qa run` | `okf.qa_context(base=…, spec=…, …)` · `okf.qa_context_validate(spec=…)` · `okf.qa_validate(plan, spec=…)` · `okf.qa_run(plan, spec=…)` |
 | `artifact vet KIND --spec DIR` | `okf.artifact_vet("KIND", spec) -> QaOutcome` |
 | `qa tools list` | `okf.qa_tools_catalog() -> QaOutcome` (`.data` = `{"tools": …, "errors": …}`) |
-| `edit settle-review SLUG --write` | `okf.settle_review(slug, write=True) -> EditPlan` (`.error`, per-finding ledger) |
+| `edit settle-review ID --write` | `okf.settle_review(story_id, write=True) -> EditPlan` (`.error`, per-finding ledger) |
 
 ### `QaOutcome` — a check that answers instead of raising
 

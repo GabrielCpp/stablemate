@@ -8,7 +8,7 @@ import pytest
 from ostler import crud, doctor, markdown, query, registry, select, todo
 from ostler.model import load
 
-from conftest import present
+from conftest import FOO_ID, present
 
 
 def test_create_epic_allocates_id_and_parses(tmp_path: Path):
@@ -110,7 +110,7 @@ def test_create_story_writes_its_blockers_into_the_story(tmp_path: Path):
     assert "## Dependencies\n\n(none)\n" in first
     assert "Blocked by" not in first
 
-    story = present(load(tmp_path).find_story("02-second"))[1]
+    story = present(load(tmp_path).story_by_slug("02-second"))[1]
     assert story.dependencies == ["01-first"]
     assert "Dependencies" not in story.unwritten_sections
 
@@ -127,10 +127,10 @@ def test_none_passed_as_a_blocker_is_not_written_as_one(tmp_path: Path):
 
 
 def test_set_status_updates_frontmatter_and_line(repo: Path):
-    res = crud.set_status(load(repo), "01-foo", "QA passed")
+    res = crud.set_status(load(repo), FOO_ID, "QA passed")
     assert res.ok
     g = load(repo)
-    _, story = present(g.find_story("01-foo"))
+    _, story = present(g.find_story(FOO_ID))
     assert story.status == "QA passed"
 
 
@@ -138,7 +138,7 @@ def test_set_status_rewrites_only_the_field_not_the_prose(tmp_path: Path):
     """A story may legitimately write about status and about QA passing."""
     g = load(tmp_path)
     epic_dir = crud.create_epic(g, "billing", "Billing", prefix="acme").entity_name
-    crud.create_story(load(tmp_path), "billing", "01-apercu", "Aperçu")
+    story_id = crud.create_story(load(tmp_path), "billing", "01-apercu", "Aperçu").entity_id
     story_md = tmp_path / f"docs/epics/{epic_dir}/stories/01-apercu/story.md"
     prose = (
         "- The legacy screen's QA passed in 4.2; hold that behaviour.\n"
@@ -150,13 +150,13 @@ def test_set_status_rewrites_only_the_field_not_the_prose(tmp_path: Path):
     )
     before = story_md.read_text(encoding="utf-8")
 
-    assert crud.set_status(load(tmp_path), "01-apercu", "In progress").ok
+    assert crud.set_status(load(tmp_path), story_id, "In progress").ok
     after = story_md.read_text(encoding="utf-8")
 
     assert prose in after, "the prose lines must survive the status write untouched"
     assert after.count("Status") == before.count("Status"), "no line gained or lost the word"
     assert "- **Status**: In progress" in after
-    assert present(load(tmp_path).find_story("01-apercu"))[1].status == "In progress"
+    assert present(load(tmp_path).find_story(story_id))[1].status == "In progress"
 
 
 def test_status_is_read_as_the_field_even_when_the_prose_says_qa_passed(tmp_path: Path):
@@ -170,17 +170,18 @@ def test_status_is_read_as_the_field_even_when_the_prose_says_qa_passed(tmp_path
             "## Context\n", "## Context\n\nThe old report QA passed before the rewrite.\n"),
         encoding="utf-8",
     )
-    _, story = present(load(tmp_path).find_story("01-apercu"))
+    _, story = present(load(tmp_path).story_by_slug("01-apercu"))
     assert story.status == "Not started"
     assert not select.is_done(story.status)
 
 
 def test_delete_story_removes_block_and_dir(repo: Path):
-    res = crud.delete_story(load(repo), "01-foo")
+    res = crud.delete_story(load(repo), FOO_ID)
     assert res.ok
     assert not (repo / "docs/epics/epic-a/stories/01-foo").exists()
     g = load(repo)
-    assert g.find_story("01-foo") is None
+    assert g.find_story(FOO_ID) is None
+    assert g.story_by_slug("01-foo") is None
 
 
 def test_update_story_rewrites_only_the_dependencies_section(tmp_path: Path):
@@ -206,18 +207,18 @@ def test_update_story_rewrites_only_the_dependencies_section(tmp_path: Path):
         ),
         encoding="utf-8",
     )
-    original = present(load(tmp_path).find_story("editor"))[1]
+    original = present(load(tmp_path).story_by_slug("editor"))[1]
 
     result = crud.update_story(
         load(tmp_path),
-        "editor",
+        original.eid,
         title="Interactive and raw XML editor",
         covers=["raw-xml"],
         depends=["sign-in"],
     )
 
     assert result.ok
-    updated = present(load(tmp_path).find_story("editor"))[1]
+    updated = present(load(tmp_path).story_by_slug("editor"))[1]
     assert updated.title == "Interactive and raw XML editor"
     assert updated.seed_items == ["raw-xml"]
     assert updated.dependencies == ["sign-in"]
@@ -230,33 +231,33 @@ def test_update_story_rewrites_only_the_dependencies_section(tmp_path: Path):
     assert "- effort: small" in epic_text
     assert "Keep this note." in epic_text
 
-    assert crud.update_story(load(tmp_path), "editor", title="Interactive and raw XML editor",
+    assert crud.update_story(load(tmp_path), original.eid, title="Interactive and raw XML editor",
                              covers=["raw-xml"], depends=[]).ok
     story_text = story_path.read_text(encoding="utf-8")
     assert "## Dependencies\n\n(none)\n" in story_text
     assert "Blocked by" not in story_text
-    assert present(load(tmp_path).find_story("editor"))[1].dependencies == []
+    assert present(load(tmp_path).story_by_slug("editor"))[1].dependencies == []
 
 
 def test_update_story_states_its_fixtures_only_when_asked(tmp_path: Path):
     """`--fixtures` is optional where `--depends` is not, and that asymmetry is deliberate."""
     assert crud.create_epic(load(tmp_path), "accounts", "Accounts", prefix="t").ok
-    assert crud.create_story(load(tmp_path), "accounts", "editor", "Editor").ok
+    editor_id = crud.create_story(load(tmp_path), "accounts", "editor", "Editor").entity_id
     story_path = tmp_path / "docs/epics/0001-accounts/stories/editor/story.md"
     assert "## Fixtures\n\n(none)\n" in story_path.read_text(encoding="utf-8")
 
     def update(**kwargs):
-        return crud.update_story(load(tmp_path), "editor", title="Editor", covers=[],
+        return crud.update_story(load(tmp_path), editor_id, title="Editor", covers=[],
                                  depends=[], **kwargs)
 
     assert update(fixtures=["seeded-accounts", "identity"]).ok
     assert "## Fixtures\n\n- Fixture: seeded-accounts\n- Fixture: identity\n" in \
         story_path.read_text(encoding="utf-8")
-    assert present(load(tmp_path).find_story("editor"))[1].fixtures == [
+    assert present(load(tmp_path).story_by_slug("editor"))[1].fixtures == [
         "seeded-accounts", "identity"]
 
     assert update().ok
-    assert present(load(tmp_path).find_story("editor"))[1].fixtures == [
+    assert present(load(tmp_path).story_by_slug("editor"))[1].fixtures == [
         "seeded-accounts", "identity"]
 
     assert update(fixtures=[]).ok
@@ -425,7 +426,7 @@ def test_story_frontmatter_carries_the_allocated_id(repo: Path):
     text = (repo / "docs/epics/epic-a/stories/01-ided/story.md").read_text(encoding="utf-8")
     fm = _yaml.safe_load(text.split("---")[1])
     assert fm["id"] == res.entity_id, "the allocated id must be in the story's own frontmatter"
-    found = load(repo).find_story("01-ided")
+    found = load(repo).find_story(res.entity_id)
     assert found is not None and found[1].eid == res.entity_id
 
 
@@ -476,12 +477,12 @@ def test_an_untagged_seed_carries_no_layers(repo: Path):
 
 
 def test_set_conflict_records_and_clears_the_frontmatter_key(repo: Path):
-    res = crud.set_conflict(load(repo), "01-foo", "AC2 wants a modal,\n  AC4 forbids one")
+    res = crud.set_conflict(load(repo), FOO_ID, "AC2 wants a modal,\n  AC4 forbids one")
     assert res.ok
-    _, story = present(load(repo).find_story("01-foo"))
+    _, story = present(load(repo).find_story(FOO_ID))
     assert story.conflict == "AC2 wants a modal, AC4 forbids one"
-    assert crud.set_conflict(load(repo), "01-foo", "").ok
-    _, story = present(load(repo).find_story("01-foo"))
+    assert crud.set_conflict(load(repo), FOO_ID, "").ok
+    _, story = present(load(repo).find_story(FOO_ID))
     assert story.conflict == ""
     assert "conflict" not in (repo / "docs/epics/epic-a/stories/01-foo/story.md").read_text()
     assert not crud.set_conflict(load(repo), "no-such", "x").ok

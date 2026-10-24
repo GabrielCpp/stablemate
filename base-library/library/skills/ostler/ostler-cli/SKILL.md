@@ -39,7 +39,7 @@ seeds and its story dependency-DAG live entirely inside that epic's own `epic.md
 | `feature` | `docs/services/<area>/<slug>.md` (or flat `docs/services/<slug>.md`) | `<area>/<slug>` | `type`, `slug`, `title` |
 | `spec.plan` / `spec.review` / `spec.qa` | `<artifacts_dir>/specs/<story id>/*.md` | path | `type` |
 
-Spec folders live in the user's artifacts folder, outside git, and are named by the story id. `ostler path spec <story>` prints the folder.
+Spec folders live in the user's artifacts folder, outside git, and are named by the story id. `ostler path spec <story-id>` prints the folder.
 
 Not Concepts (managed markdown, left in place as-is): `docs/epics/index.md`
 (epics queue).
@@ -188,7 +188,7 @@ of it, and it is the authority wherever the two disagree.
 
 - Any workflow node that needs "what's the next thing to work on" → `next-epic`/`next-story`, not a
   hand-maintained queue file.
-- Any node that needs to resolve a slug to a filesystem path (spec dir, story.md, branch name) →
+- Any node that needs to resolve a story id to a filesystem path (spec dir, story.md, branch name) →
   `ostler path`, not string-concatenation in a script.
 - Any gate that checks graph health before letting a workflow proceed (e.g. author's
   `reconcile-artifacts.py`/`check-story-grounding.py`/an `ostler doctor` check) → shell out to

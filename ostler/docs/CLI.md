@@ -47,7 +47,7 @@ ostler doctor [--epic SLUG] [--json] [--no-schema]
 #   conformance + referential integrity; non-zero on an error-level finding.
 #   --no-schema skips JSON Schema validation.
 ostler trace <token>
-#   walk the graph from any node — a seed id, story slug, surface or doc path.
+#   walk the graph from any node — a seed id, story id, surface or doc path.
 ```
 
 ## Retrieve
@@ -60,12 +60,16 @@ ostler query story-provenance|commit-story|node-provenance <arg> \
   [--checkout REPOSITORY=PATH ...] [--json]
 ostler next-epic [--json]                     # next queued epic with unfinished work
 ostler next-story <epic> [--json]             # next runnable story (deps satisfied, not done)
-ostler path epic <epic> | path spec <slug> | path story <epic> <slug> | path branch <slug> [--epic]
+ostler path epic <epic> | path spec <story-id> | path story <story-id> | path branch <story-id> [--epic]
 ```
 
 Epic directories are numbered in creation order (`docs/epics/0001-checkout-flow/`), so ask
 `path epic` rather than joining `docs/epics/<slug>` yourself. Every command below still takes the
-bare slug — the number orders the listing, it is not the epic's identity.
+bare epic slug — the number orders the listing, it is not the epic's identity.
+
+A story is addressed by its id. The slug names the story's folder and its `### <slug>` heading in
+`epic.md`, and no command looks a story up by it. A slug passed where an id belongs is refused, and
+the error names the id to use.
 
 `--type` accepts the planning types (`epic`, `story`, `feature`, `spec`,
 `seed`), every UI-profile node type (`screen`, `cli`, `server`, `concept`, `format`, `flow`,
@@ -80,15 +84,15 @@ ostler create milestone <name> --title T [--source-items id,id] [--prefix P] [--
 ostler create backlog-item <text> [--section S] [--prefix P] [--json]
 ostler create story   <epic> <slug> --title T [--covers a,b] [--depends a,b] [--prefix P] [--json]
 ostler create feature <slug> --title T [--area A] [--route R] [--prefix P] [--json]
-ostler create spec    <slug> <doc> [--title T] [--json]   # idempotent; retro-stamps free-form docs
-ostler update story   <slug> --title T --covers a,b --depends a,b
-ostler delete epic <name> | delete story <slug> | delete feature <slug>
+ostler create spec    <story-id> <doc> [--title T] [--json]   # idempotent; retro-stamps free-form docs
+ostler update story   <story-id> --title T --covers a,b --depends a,b
+ostler delete epic <name> | delete story <story-id> | delete feature <slug>
 
 ostler seed add <epic> <id> [--status S] [--summary …] [--surface …] \
                             [--legacy-surface …] [--backing …] [--prerequisites …]
 ostler seed remove <epic> <id>
-ostler set-status <slug> <status>
-ostler unblock <slug> | unblock --epic <name> | unblock --all   [--status S] [--json]
+ostler set-status <story-id> <status>
+ostler unblock <story-id> | unblock --epic <name> | unblock --all   [--status S] [--json]
 
 ostler backlog adopt --repo R <file> [--prefix P] [--json]
 ostler backlog add <summary> --repo R --area A [--pattern P] | backlog prune <id> | backlog list [--json]
@@ -142,7 +146,7 @@ makes a rename across a whole graph reviewable before it happens.
 ```bash
 ostler edit relink        <old-path> <new-path> [--write]
 ostler edit rename        <old-slug> <new-slug> [--write]
-ostler edit settle-review <slug> [--write]
+ostler edit settle-review <story-id> [--write]
 #   flip a story's status from its review-resolution.json, gated on the artifacts
 #   and assertions the verdict cites.
 
@@ -208,7 +212,7 @@ ostler fmt [paths ...] [--check]
 #   canonicalize frontmatter, bullets and headings. --check writes nothing and
 #   exits 1 if any file is not already canonical — the CI form.
 
-ostler vet <screenshot> --manifest M (--cdp-url URL | --regions FILE) --slug S \
+ostler vet <screenshot> --manifest M (--cdp-url URL | --regions FILE) --story ID \
            [--state STATE] [--iou-threshold F] [--json] [--write]
 #   deterministic visual-fidelity check of a rendered screen against the book.
 ```

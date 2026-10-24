@@ -103,7 +103,7 @@ def search(graph: Graph, q: str, etype: str | None = None) -> list[dict]:
                 if t == "milestone":
                     path = next((m.path for m in graph.milestones if m.name == row["name"]), None)
                 elif t == "story":
-                    found = graph.find_story(row["slug"])
+                    found = graph.story_by_slug(row["slug"])
                     path = found[1].story_md if found else None
                 elif t == "feature":
                     path = next((f.path for f in graph.features if f.slug == row["slug"]), None)

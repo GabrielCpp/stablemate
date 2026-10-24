@@ -219,17 +219,34 @@ class Graph:
         return None
 
     def find_story(self, ref: str) -> tuple[Epic, Story] | None:
-        """The story named by an id, external key, or slug."""
+        """The story whose id is *ref*. A slug is not a story reference: see :meth:`no_story`."""
         matches = [
             (epic, story)
             for epic in self.epics
             for story in epic.stories
-            if ref in story.aliases
+            if ref and ref == story.eid
         ]
         if len(matches) > 1:
             paths = ", ".join(story.path for _, story in matches)
             raise ValueError(f"story reference {ref!r} is ambiguous: {paths}")
         return matches[0] if matches else None
+
+    def story_by_slug(self, slug: str) -> tuple[Epic, Story] | None:
+        """The story filed under *slug*, for code that walks the files themselves, never a command."""
+        return next(((epic, story) for epic in self.epics for story in epic.stories
+                     if story.slug == slug), None)
+
+    def no_story(self, ref: str) -> str:
+        """Why *ref* names no story: the id is unknown, or *ref* is a slug and the id is spelled out."""
+        found = self.story_by_slug(ref)
+        if found is None:
+            return f"no story with id '{ref}'"
+        story = found[1]
+        if story.eid:
+            return (f"'{ref}' is a story slug, not a story id; ostler commands take the id: "
+                    f"{story.eid}")
+        return (f"'{ref}' is a story slug and the story has no id yet; give it an `id:` first "
+                f"(`ostler create story` mints one)")
 
 
 def required_section_problems(

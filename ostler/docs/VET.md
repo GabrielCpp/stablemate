@@ -61,13 +61,13 @@ scan + region classification (merge-identical-rects + accessibility-role-label) 
 
 ```
 ostler vet <screenshot.png> --manifest <expected.json> (--cdp-url <url> | --regions <file>) \
-  --slug <story-slug> [--state <label>] [--iou-threshold 0.5] [--json] [--write]
+  --story <story-id> [--state <label>] [--iou-threshold 0.5] [--json] [--write]
 ```
 
 - `--cdp-url` and `--regions` are mutually exclusive, exactly one required (enforced by an
   argparse mutually-exclusive group).
 - `--cdp-url` drives a live connect-scan-classify pass and writes its result as part of the
-  returned plan to `docs/specs/<slug>/vet/<state>-regions.json`.
+  returned plan to `docs/specs/<story-id>/vet/<state>-regions.json`.
 - `--regions <file>` replays a previously-written classification of the same shape instead — no
   browser needed, no `playwright` import at all. This is the path every unit test but the one
   live-scan smoke test (`tests/test_vet_cdp.py`) exercises, and the path available for offline
@@ -104,7 +104,7 @@ live-CDP path.
 | `regions.py` | `RegionBox` + `merge()`: groups `ScannedElement`s sharing a (near-)identical rect, labels via role. `RegionList` (a `TypeAdapter`) is the single source of truth for `*-regions.json` (de)serialization. |
 | `register.py` | IoU greedy matching between manifest elements and regions: `matched` / `missing` (expected, no rendered region — broken/occluded render) / `unexpected` (rendered, not expected — stray overlay/z-index leak) / `unlabeled` (unexpected *and* `role is None` — held for optional VLM residual review). |
 | `crop.py` | Optional: lazily imports `Pillow` to crop `unlabeled` regions out of the screenshot into in-memory PNG bytes; no-ops cleanly if `Pillow` is absent. Never writes to disk itself — dry-run-by-default is enforced by the caller bundling the bytes into the plan. |
-| `report.py` | `VetReport`/`VetSummary` models and the `docs/specs/<slug>/vet.md` Concept read-modify-write. |
+| `report.py` | `VetReport`/`VetSummary` models and the `docs/specs/<story-id>/vet.md` Concept read-modify-write. |
 | `run.py` | Orchestrates one invocation end to end and returns `(VetOutcome, VetPlan)`. |
 | `writes.py` | `VetPlan`/`VetFileWrite`: the dry-run-by-default file-write plan, supporting both text and binary content. |
 
@@ -118,12 +118,12 @@ in, which matters because a live CDP scan has no guaranteed element order across
 ## Report shape and the `vet.md` Concept
 
 `VetReport` (`report.py`) is persisted via `model_dump_json(by_alias=True)` to
-`docs/specs/<slug>/vet/<state>-report.json`. It carries `slug`, `state`, `screenshot`,
+`docs/specs/<story-id>/vet/<state>-report.json`. It carries `slug`, `state`, `screenshot`,
 `manifest`, `regions` (paths, relative to the repo root when possible), `cdpUrl`,
 `manifestErrors`, `config` (`iouThreshold`), a `summary` (`status: clean|disagreements` +
 counts), and the four `register.match()` buckets.
 
-`docs/specs/<slug>/vet.md` is a new OKF Concept, `type: spec.vet`. It needs **zero registry
+`docs/specs/<story-id>/vet.md` is a new OKF Concept, `type: spec.vet`. It needs **zero registry
 changes** — `registry.py`'s `spec` `EntityType` already globs `*/*.md` under the `specs` doc_root
 with `required=("type",)` and `schema=None`, so `spec.vet` conforms exactly like `spec.plan`/
 `spec.review`/`spec.qa` do. Frontmatter accumulates one entry per `--state` (`states.<state>`),
@@ -145,7 +145,7 @@ through the same plan.
   cleanly without `Pillow` installed. Every other vet test runs regardless, dependency-free.
 - Manual, live path: start a real Chrome/Chromium with `--remote-debugging-port=9222` against a
   page with real landmarks, hand-build a matching `manifest.json` + a placeholder screenshot, run
-  `ostler vet page.png --manifest manifest.json --cdp-url http://localhost:9222 --slug X`
+  `ostler vet page.png --manifest manifest.json --cdp-url http://localhost:9222 --story X`
   dry-run then `--write`, confirm `docs/specs/X/vet/default-regions.json` +
   `vet/default-report.json` + `vet.md` all appear and `ostler doctor` on that repo stays clean.
 - Manual, replay path: re-run the same invocation with `--regions

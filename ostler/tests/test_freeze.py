@@ -4,7 +4,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from conftest import epic_md, write, write_json
+from conftest import FOO_ID, epic_md, write, write_json
 from ostler import doctor, freeze
 from ostler.model import load
 
@@ -19,20 +19,20 @@ def _codes(repo: Path) -> set[str]:
 
 def test_freeze_then_clean(repo):
     _ids(repo)
-    plan = freeze.freeze(load(repo), "01-foo", by="alice")
+    plan = freeze.freeze(load(repo), FOO_ID, by="alice")
     assert not plan.error
     plan.apply()
     ids = json.loads((repo / ".agents/ids.json").read_text())
-    assert ids["frozen"]["01-foo"]["kind"] == "story"
-    assert ids["frozen"]["01-foo"]["approvedBy"] == "alice"
-    assert "hash" in ids["frozen"]["01-foo"]
+    assert ids["frozen"][FOO_ID]["kind"] == "story"
+    assert ids["frozen"][FOO_ID]["approvedBy"] == "alice"
+    assert "hash" in ids["frozen"][FOO_ID]
     assert "frozen-mutated" not in _codes(repo)
     assert "frozen-removed" not in _codes(repo)
 
 
 def test_frozen_mutation_is_flagged(repo):
     _ids(repo)
-    freeze.freeze(load(repo), "01-foo").apply()
+    freeze.freeze(load(repo), FOO_ID).apply()
     story = repo / "docs/epics/epic-a/stories/01-foo/story.md"
     story.write_text(story.read_text() + "\n- A new, unapproved acceptance criterion.\n")
     codes = _codes(repo)
@@ -42,7 +42,7 @@ def test_frozen_mutation_is_flagged(repo):
 
 def test_frozen_removal_is_flagged(repo):
     _ids(repo)
-    freeze.freeze(load(repo), "01-foo").apply()
+    freeze.freeze(load(repo), FOO_ID).apply()
     write(repo / "docs/epics/epic-a/epic.md", epic_md(
         "t-1", "epic-a",
         seeds=[("seed-a1", "resolved", "first"), ("seed-a2", "resolved", "done")],
@@ -54,22 +54,22 @@ def test_frozen_removal_is_flagged(repo):
 
 def test_unfreeze_lifts_the_guard(repo):
     _ids(repo)
-    freeze.freeze(load(repo), "01-foo").apply()
+    freeze.freeze(load(repo), FOO_ID).apply()
     story = repo / "docs/epics/epic-a/stories/01-foo/story.md"
     story.write_text(story.read_text() + "\nchanged\n")
     assert "frozen-mutated" in _codes(repo)
-    freeze.unfreeze(load(repo), "01-foo").apply()
+    freeze.unfreeze(load(repo), FOO_ID).apply()
     assert "frozen-mutated" not in _codes(repo)
 
 
 def test_freeze_unknown_entity_errors(repo):
     _ids(repo)
     plan = freeze.freeze(load(repo), "no-such-thing")
-    assert plan.error and "no story slug or seed id" in plan.error
+    assert plan.error and "no story id or seed id" in plan.error
 
 
 def test_freeze_without_registry_errors(repo):
-    plan = freeze.freeze(load(repo), "01-foo")
+    plan = freeze.freeze(load(repo), FOO_ID)
     assert plan.error and "registry" in plan.error
 
 
@@ -81,6 +81,6 @@ def test_freeze_a_seed(repo):
     write(repo / "docs/epics/epic-a/epic.md", epic_md(
         "t-1", "epic-a",
         seeds=[("seed-a1", "researched", "rewritten"), ("seed-a2", "resolved", "done")],
-        stories=[("01-foo", "Foo", ["seed-a1"])],
+        stories=[(FOO_ID, "Foo", ["seed-a1"])],
     ))
     assert "frozen-mutated" in _codes(repo)

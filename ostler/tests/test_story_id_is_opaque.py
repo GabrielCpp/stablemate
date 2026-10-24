@@ -51,7 +51,7 @@ def test_shortening_text_leaves_a_tracker_key_id_unchanged(tmp_path: Path):
 
 
 def test_a_tracker_key_id_names_its_own_branch(tmp_path: Path):
-    assert path_mod.resolve_branch(KEY) == KEY
+    assert path_mod.resolve_branch(load(_tracker_repo(tmp_path)), KEY) == KEY
 
 
 def test_doctor_raises_no_finding_about_a_tracker_key_id_slug_or_epic(tmp_path: Path):

@@ -296,9 +296,9 @@ class Ostler:
         """The epic's stories that are not done, in dependency order, each with its spec dir and open deps."""
         return select.open_stories(self.graph, epic)
 
-    def story(self, slug: str) -> dict | None:
-        """One story in the :meth:`open_stories` entry shape, by slug or id, or ``None`` when unknown."""
-        return select.story_entry(self.graph, slug)
+    def story(self, story_id: str) -> dict | None:
+        """One story in the :meth:`open_stories` entry shape, by id, or ``None`` when unknown."""
+        return select.story_entry(self.graph, story_id)
 
     def next_story_report(self, epic: str,
                           skip: frozenset[str] | set[str] | None = None,
@@ -406,20 +406,20 @@ class Ostler:
                                          waivers=waivers)
 
     def spec_path(self, story: str) -> str:
-        """Absolute spec directory for a story, named by its id (``ostler path spec``)."""
+        """Absolute spec directory for a story id (``ostler path spec``); ``ValueError`` for an unknown id."""
         return path_mod.resolve_spec(self.graph, story)
 
     def epic_path(self, epic: str) -> str:
         """Directory of an epic, by number or bare slug (``ostler path epic``)."""
         return path_mod.resolve_epic(self.graph, epic)
 
-    def story_path(self, epic: str, slug: str) -> str:
-        """``story.md`` path for an epic + slug (``ostler path story``)."""
-        return path_mod.resolve_story(self.graph, epic, slug)
+    def story_path(self, story: str) -> str:
+        """``story.md`` path for a story id (``ostler path story``)."""
+        return path_mod.resolve_story(self.graph, story)
 
-    def branch(self, slug: str, *, epic: bool = False) -> str:
-        """Git branch name for a slug (``ostler path branch``); no graph needed."""
-        return path_mod.resolve_branch(slug, epic=epic)
+    def branch(self, ref: str, *, epic: bool = False) -> str:
+        """Git branch name for a story id, or an epic name with *epic* (``ostler path branch``)."""
+        return path_mod.resolve_branch(self.graph, ref, epic=epic)
 
     def epics_dir(self) -> Path:
         """Where epics live — ``docs/epics`` unless the repo configures otherwise."""
@@ -526,13 +526,13 @@ class Ostler:
             graph, epic, slug, title,
             [ids_mod.resolve(graph, c) for c in (covers or [])], depends or [], prefix))
 
-    def delete_story(self, slug: str) -> Result:
-        """Delete a story by slug (``ostler delete story``)."""
-        return self._apply(crud.delete_story(self._fresh(), slug))
+    def delete_story(self, story: str) -> Result:
+        """Delete a story by id (``ostler delete story``)."""
+        return self._apply(crud.delete_story(self._fresh(), story))
 
     def update_story(
         self,
-        slug: str,
+        story: str,
         *,
         title: str,
         covers: builtins.list[str],
@@ -543,24 +543,24 @@ class Ostler:
         return self._apply(
             crud.update_story(
                 graph,
-                slug,
+                story,
                 title=title,
                 covers=[ids_mod.resolve(graph, cover) for cover in covers],
                 depends=depends,
             )
         )
 
-    def scaffold_missing_sections(self, slug: str) -> Result:
+    def scaffold_missing_sections(self, story: str) -> Result:
         """Add every required story section this story lacks, in contract order (idempotent)."""
-        return self._apply(crud.scaffold_missing_sections(self._fresh(), slug))
+        return self._apply(crud.scaffold_missing_sections(self._fresh(), story))
 
     def delete_epic(self, name: str) -> Result:
         """Delete an epic and remove its milestone and legacy queue references."""
         return self._apply(crud.delete_epic(self._fresh(), name))
 
-    def create_spec(self, slug: str, doc: str, *, title: str = "") -> Result:
+    def create_spec(self, story: str, doc: str, *, title: str = "") -> Result:
         """Create or retro-stamp a spec doc (``ostler create spec``)."""
-        return self._apply(crud.create_spec(self._doc_root("specs"), slug, doc, title))
+        return self._apply(crud.create_spec(self._doc_root("specs"), story, doc, title))
 
     def add_seed(self, epic: str, seed_id: str, *, status: str, summary: str = "",
                   meta: dict | None = None) -> Result:
@@ -574,13 +574,13 @@ class Ostler:
         graph = self._fresh()
         return self._apply(crud.remove_seed(graph, epic, ids_mod.resolve(graph, seed_id)))
 
-    def set_status(self, slug: str, status: str) -> Result:
+    def set_status(self, story: str, status: str) -> Result:
         """Set a story's status (``ostler set-status``)."""
-        return self._apply(crud.set_status(self._fresh(), slug, status))
+        return self._apply(crud.set_status(self._fresh(), story, status))
 
-    def set_conflict(self, slug: str, conflict: str) -> Result:
+    def set_conflict(self, story: str, conflict: str) -> Result:
         """Record or clear a story's acceptance-criteria conflict (``ostler conflict``)."""
-        return self._apply(crud.set_conflict(self._fresh(), slug, conflict))
+        return self._apply(crud.set_conflict(self._fresh(), story, conflict))
 
     def unblock(self, *, story: str = "", epic: str = "",
                 status: str = registry.DEFAULT_STORY_STATUS) -> Result:
@@ -707,23 +707,23 @@ class Ostler:
 
         return cmd_vet(kind, self._resolve(spec), self.root)
 
-    def settle_review(self, slug: str, *, write: bool = False,
+    def settle_review(self, story: str, *, write: bool = False,
                       status_write: bool = True) -> EditPlan:
         """Settle a story's status from its ``review-resolution.json``, gated on the artifacts/assertions the verdict cites (``ostler edit settle-review``); ``status_write=False`` writes the ledger alone."""
         from ostler import edit as edit_mod
 
-        plan = edit_mod.settle_review(self._fresh(), slug, status_write=status_write)
+        plan = edit_mod.settle_review(self._fresh(), story, status_write=status_write)
         if write and not plan.error:
             plan.apply()
             self._graph = None
         return plan
 
-    def settle_answers(self, slug: str, filed: Sequence[str], *,
+    def settle_answers(self, story: str, filed: Sequence[str], *,
                        filename: str = "review-answers.md", write: bool = False) -> dict:
         """Settle a story's markdown Answer list against the filed finding ids into its ``review-settlement.json`` ledger; never touches ``story.md``."""
         from ostler import edit as edit_mod
 
-        ledger = edit_mod.settle_answers(self._fresh(), slug, filed, filename=filename, write=write)
+        ledger = edit_mod.settle_answers(self._fresh(), story, filed, filename=filename, write=write)
         if write:
             self._graph = None
         return ledger

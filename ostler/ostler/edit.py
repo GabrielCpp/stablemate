@@ -257,15 +257,17 @@ def _verify_finding(spec_dir: Path, finding: dict) -> str:
     return ""
 
 
-def _story_status_change(graph: Graph, slug: str, status: str) -> FileChange | EditPlan:
+def _story_status_change(graph: Graph, story: str, status: str) -> FileChange | EditPlan:
     """Compute (do not write) the story.md status FileChange — same transform as crud.set_status, but as a dry-runnable plan entry."""
-    found = graph.find_story(slug)
-    if found is None or found[1].story_md is None:
-        return EditPlan([], [], error=f"no story '{slug}' with a story.md")
+    found = graph.find_story(story)
+    if found is None:
+        return EditPlan([], [], error=graph.no_story(story))
+    if found[1].story_md is None:
+        return EditPlan([], [], error=f"story '{found[1].slug}' has no story.md")
     path = found[1].story_md
     raw = path.read_text(encoding="utf-8")
     doc = markdown.split(raw)
-    fm = doc.frontmatter or {"type": "story", "slug": slug}
+    fm = doc.frontmatter or {"type": "story", "slug": found[1].slug}
     fm["status"] = status
     doc.raw_frontmatter = yaml.safe_dump(fm, sort_keys=False, allow_unicode=True)
     _set_status_bullet(doc, status)
@@ -294,7 +296,10 @@ def _ledger_change(spec_dir: Path, ledger: dict) -> FileChange:
 
 def settle_review(graph: Graph, slug: str, *, status_write: bool = True) -> EditPlan:
     """Settle a story's review **per finding** from its `review-resolution.json`; ``status_write=False`` plans the ledger alone."""
-    spec_dir = Path(path_mod.resolve_spec(graph, slug))
+    try:
+        spec_dir = Path(path_mod.resolve_spec(graph, slug))
+    except ValueError as exc:
+        return EditPlan([], [], error=str(exc))
     resolution = spec_dir / RESOLUTION_FILE
     if not resolution.is_file():
         return EditPlan([], [], error=f"no {RESOLUTION_FILE} in {spec_dir.as_posix()}")
@@ -366,12 +371,17 @@ ANSWERS_FILE = "review-answers.md"
 def settle_answers(graph: Graph, slug: str, filed: Sequence[str], *,
                    filename: str = ANSWERS_FILE, write: bool = False) -> dict:
     """Settle a story's markdown Answer list against the *filed* finding ids into ``review-settlement.json``; never touches ``story.md``."""
-    spec_dir = Path(path_mod.resolve_spec(graph, slug))
     wanted = list(dict.fromkeys(filed))
     errors: list[str] = []
+    spec_dir: Path | None
+    try:
+        spec_dir = Path(path_mod.resolve_spec(graph, slug))
+    except ValueError as exc:
+        errors.append(str(exc))
+        spec_dir = None
     by_id: dict[str, Answer] = {}
-    source = spec_dir / filename
-    if source.is_file():
+    source = spec_dir / filename if spec_dir is not None else None
+    if source is not None and source.is_file():
         try:
             parsed = parse_answers(source.read_text(encoding="utf-8"))
         except OSError as exc:
@@ -392,7 +402,7 @@ def settle_answers(graph: Graph, slug: str, filed: Sequence[str], *,
         "answers": {fid: by_id[fid].as_dict() for fid in answered},
         "all_answered": not open_,
     }
-    if write:
+    if write and spec_dir is not None:
         spec_dir.mkdir(parents=True, exist_ok=True)
         EditPlan([_ledger_change(spec_dir, ledger)], []).apply()
     return ledger

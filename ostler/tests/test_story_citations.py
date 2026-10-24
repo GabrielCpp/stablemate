@@ -34,7 +34,7 @@ STORY_DIR = "docs/epics/e/stories/01-s"
 
 def story(context: str) -> str:
     return (
-        "---\ntype: story\nslug: 01-s\nstatus: Not started\n---\n"
+        "---\ntype: story\nslug: 01-s\nid: t-01s\nstatus: Not started\n---\n"
         "# Story: S\n\n"
         f"## Context\n\n{context}\n\n"
         "## Acceptance Criteria\n\n- It works.\n\n"
@@ -52,7 +52,7 @@ def book_repo(root: Path, context: str) -> Path:
 
 
 def refs(root: Path) -> list[dict]:
-    return query.query(load(root), "surfaces-referenced-by-story", "01-s")
+    return query.query(load(root), "surfaces-referenced-by-story", "t-01s")
 
 
 

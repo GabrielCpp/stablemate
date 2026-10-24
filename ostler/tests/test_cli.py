@@ -150,11 +150,11 @@ def test_milestone_source_items_parse():
 
 def test_update_story_metadata_parse():
     args = parse([
-        "update", "story", "raw-editor", "--title", "Raw editor",
+        "update", "story", "t-01raw", "--title", "Raw editor",
         "--covers", "raw-xml,validation", "--depends", "document-tree",
     ])
 
     assert args.command == "update" and args.what == "story"
-    assert args.slug == "raw-editor" and args.title == "Raw editor"
+    assert args.story == "t-01raw" and args.title == "Raw editor"
     assert args.covers == "raw-xml,validation"
     assert args.depends == "document-tree"

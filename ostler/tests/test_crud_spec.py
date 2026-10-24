@@ -8,7 +8,7 @@ from ostler import api, crud, doctor, markdown, registry
 from ostler.model import Graph, load
 from ostler.path import specs_root_in
 
-from conftest import specs_root, write
+from conftest import FOO_ID, ostler_process, specs_root, write
 
 
 def _fm(path: Path) -> dict:
@@ -119,3 +119,27 @@ def test_stamped_specs_clear_the_doctor_error(repo: Path):
     after = doctor.run(load(repo))
     assert "okf-missing-type" not in {f.code for f in after.findings if f.severity == "error"}
     assert after.errors == 0, [f.message for f in after.findings if f.severity == "error"]
+
+
+def test_cli_create_spec_for_an_unknown_id_creates_no_folder(repo: Path):
+    done = ostler_process(repo, "create", "spec", "t-nope", "qa.md")
+
+    assert done.returncode != 0
+    assert "no story with id 't-nope'" in done.stdout + done.stderr
+    assert not (specs_root() / "t-nope").exists()
+
+
+def test_cli_create_spec_for_a_slug_names_the_id_and_creates_no_folder(repo: Path):
+    done = ostler_process(repo, "create", "spec", "01-foo", "qa.md")
+
+    assert done.returncode != 0
+    assert FOO_ID in done.stdout + done.stderr
+    assert not (specs_root() / "01-foo").exists()
+    assert not (specs_root() / FOO_ID).exists()
+
+
+def test_cli_create_spec_for_a_known_id_creates_the_doc(repo: Path):
+    done = ostler_process(repo, "create", "spec", FOO_ID, "qa.md")
+
+    assert done.returncode == 0, done.stdout + done.stderr
+    assert _fm(specs_root() / FOO_ID / "qa.md")["type"] == "spec.qa"

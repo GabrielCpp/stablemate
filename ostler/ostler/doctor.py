@@ -482,7 +482,7 @@ def _check_epic(graph: Graph, epic: Epic, all_slugs: set[str], f: list[Finding])
                     f"{story.conflict}",
                     epic.name, story.slug, path=rel, line=1,
                     suggestion="rewrite the criteria so one intent holds, then "
-                               f"`ostler conflict {story.slug} --clear`"))
+                               f"`ostler conflict {story.eid or story.slug} --clear`"))
             if story.unwritten_sections:
                 rel = _rel_posix(story.story_md, graph.root)
                 f.append(Finding("error", "unwritten-story",

@@ -11,7 +11,7 @@ from test_milestones import add_mobile_book
 
 
 def _services(repo: Path, line: str) -> None:
-    story_md = present(present(load(repo).find_story("01-foo"))[1].story_md)
+    story_md = present(present(load(repo).story_by_slug("01-foo"))[1].story_md)
     text = story_md.read_text(encoding="utf-8")
     story_md.write_text(text.replace(f"id: {FOO_ID}\n", f"id: {FOO_ID}\n{line}\n", 1), encoding="utf-8")
 
@@ -21,7 +21,7 @@ def _schema_findings(repo: Path) -> list:
 
 
 def test_a_story_without_services_has_an_empty_tuple(repo: Path):
-    _, story = present(load(repo).find_story("01-foo"))
+    _, story = present(load(repo).story_by_slug("01-foo"))
 
     assert story.services == ()
 
@@ -29,7 +29,7 @@ def test_a_story_without_services_has_an_empty_tuple(repo: Path):
 def test_story_services_are_read_from_the_frontmatter_list(repo: Path):
     _services(repo, "services: [web, api, web]")
 
-    _, story = present(load(repo).find_story("01-foo"))
+    _, story = present(load(repo).story_by_slug("01-foo"))
 
     assert story.services == ("web", "api")
     assert story.raw["services"] == ["web", "api"]

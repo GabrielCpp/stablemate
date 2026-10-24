@@ -676,13 +676,13 @@ def test_a_recorded_conflict_is_an_error_on_the_story_until_cleared(repo: Path):
         return [f for f in doctor.run(load(repo)).findings if f.code == "story-conflict"]
 
     assert conflicts() == []
-    crud.set_conflict(load(repo), "01-foo", "AC2 wants a modal, AC4 forbids one")
+    crud.set_conflict(load(repo), FOO_ID, "AC2 wants a modal, AC4 forbids one")
     found = conflicts()
     assert len(found) == 1 and found[0].severity == "error"
     assert found[0].epic == "epic-a" and found[0].ref == "01-foo"
     assert "AC2 wants a modal" in found[0].message
-    assert "ostler conflict 01-foo --clear" in found[0].suggestion
-    crud.set_conflict(load(repo), "01-foo", "")
+    assert f"ostler conflict {FOO_ID} --clear" in found[0].suggestion
+    crud.set_conflict(load(repo), FOO_ID, "")
     assert conflicts() == []
 
 

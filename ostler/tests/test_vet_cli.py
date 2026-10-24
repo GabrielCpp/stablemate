@@ -53,12 +53,12 @@ NAV_REGION = {"bbox": {"x": 0, "y": 0, "width": 10, "height": 10},
 def test_cdp_url_and_regions_together_errors_at_argparse_level():
     with pytest.raises(SystemExit):
         parse(["vet", "shot.png", "--manifest", "m.json", "--cdp-url", "http://x",
-              "--regions", "r.json", "--slug", "01-foo"])
+              "--regions", "r.json", "--story", FOO_ID])
 
 
 def test_neither_cdp_url_nor_regions_errors_at_argparse_level():
     with pytest.raises(SystemExit):
-        parse(["vet", "shot.png", "--manifest", "m.json", "--slug", "01-foo"])
+        parse(["vet", "shot.png", "--manifest", "m.json", "--story", FOO_ID])
 
 
 def test_dry_run_writes_nothing(repo: Path):
@@ -67,7 +67,7 @@ def test_dry_run_writes_nothing(repo: Path):
     screenshot = _screenshot(repo)
     vet_md = specs_root() / f"{FOO_ID}/vet.md"
 
-    outcome, plan = run_vet(load(repo), screenshot, manifest, "01-foo", regions_file=regions)
+    outcome, plan = run_vet(load(repo), screenshot, manifest, FOO_ID, regions_file=regions)
     assert not outcome.error
     assert report_of(outcome).summary.status == "clean"
     assert plan.render()
@@ -79,7 +79,7 @@ def test_write_creates_report_and_concept_and_stays_doctor_clean(repo: Path):
     regions = _write_regions(repo, [NAV_REGION])
     screenshot = _screenshot(repo)
 
-    outcome, plan = run_vet(load(repo), screenshot, manifest, "01-foo", regions_file=regions)
+    outcome, plan = run_vet(load(repo), screenshot, manifest, FOO_ID, regions_file=regions)
     plan.apply()
 
     report_path = specs_root() / f"{FOO_ID}/vet/default-report.json"
@@ -99,7 +99,7 @@ def test_disagreement_drives_status_and_exit_code(repo: Path):
     regions = _write_regions(repo, [NAV_REGION])
     screenshot = _screenshot(repo)
 
-    outcome, _plan = run_vet(load(repo), screenshot, manifest, "01-foo", regions_file=regions)
+    outcome, _plan = run_vet(load(repo), screenshot, manifest, FOO_ID, regions_file=regions)
     assert report_of(outcome).summary.status == "disagreements"
     assert report_of(outcome).summary.missingCount == 1
     assert report_of(outcome).summary.unexpectedCount == 1
@@ -110,7 +110,7 @@ def test_fully_matching_manifest_is_clean(repo: Path):
     regions = _write_regions(repo, [NAV_REGION])
     screenshot = _screenshot(repo)
 
-    outcome, _plan = run_vet(load(repo), screenshot, manifest, "01-foo", regions_file=regions)
+    outcome, _plan = run_vet(load(repo), screenshot, manifest, FOO_ID, regions_file=regions)
     assert report_of(outcome).summary.status == "clean"
 
 
@@ -118,7 +118,7 @@ def test_missing_regions_file_is_a_run_error(repo: Path):
     manifest = _write_manifest(repo, [NAV_ELEMENT])
     screenshot = _screenshot(repo)
 
-    outcome, plan = run_vet(load(repo), screenshot, manifest, "01-foo",
+    outcome, plan = run_vet(load(repo), screenshot, manifest, FOO_ID,
                             regions_file=repo / "nope.json")
     assert outcome.error and "nope.json" in outcome.error
     assert plan.writes == []
@@ -138,7 +138,7 @@ def test_matched_components_get_named_crops(repo: Path):
          "selectors": ["#anon"]},
     ])
 
-    outcome, plan = run_vet(load(repo), screenshot, manifest, "01-foo", regions_file=regions)
+    outcome, plan = run_vet(load(repo), screenshot, manifest, FOO_ID, regions_file=regions)
     plan.apply()
 
     vet_dir = specs_root() / f"{FOO_ID}/vet"
@@ -157,7 +157,7 @@ def test_unreadable_screenshot_leaves_matched_crops_unset(repo: Path):
     regions = _write_regions(repo, [NAV_REGION])
     screenshot = _screenshot(repo)
 
-    outcome, _plan = run_vet(load(repo), screenshot, manifest, "01-foo", regions_file=regions)
+    outcome, _plan = run_vet(load(repo), screenshot, manifest, FOO_ID, regions_file=regions)
     assert report_of(outcome).matched[0].crop is None
 
 
@@ -167,7 +167,7 @@ def test_cli_exit_code_is_zero_when_clean(repo: Path, capsys):
     screenshot = _screenshot(repo)
 
     code = cli.main(["--chdir", str(repo), "vet", str(screenshot),
-                     "--manifest", str(manifest), "--regions", str(regions), "--slug", "01-foo"])
+                     "--manifest", str(manifest), "--regions", str(regions), "--story", FOO_ID])
     assert code == 0
     capsys.readouterr()
 
@@ -180,7 +180,7 @@ def test_cli_exit_code_is_one_on_disagreements(repo: Path, capsys):
     screenshot = _screenshot(repo)
 
     code = cli.main(["--chdir", str(repo), "vet", str(screenshot),
-                     "--manifest", str(manifest), "--regions", str(regions), "--slug", "01-foo"])
+                     "--manifest", str(manifest), "--regions", str(regions), "--story", FOO_ID])
     assert code == 1
     capsys.readouterr()
 
@@ -191,7 +191,7 @@ def test_cli_json_emits_the_report_verbatim(repo: Path, capsys):
     screenshot = _screenshot(repo)
 
     code = cli.main(["--chdir", str(repo), "vet", str(screenshot), "--manifest", str(manifest),
-                     "--regions", str(regions), "--slug", "01-foo", "--json"])
+                     "--regions", str(regions), "--story", FOO_ID, "--json"])
     assert code == 0
     out = json.loads(capsys.readouterr().out)
     assert out["slug"] == "01-foo"
@@ -204,7 +204,7 @@ def test_cli_write_flag_applies_the_plan(repo: Path, capsys):
     screenshot = _screenshot(repo)
 
     code = cli.main(["--chdir", str(repo), "vet", str(screenshot), "--manifest", str(manifest),
-                     "--regions", str(regions), "--slug", "01-foo", "--write"])
+                     "--regions", str(regions), "--story", FOO_ID, "--write"])
     assert code == 0
     capsys.readouterr()
     assert (specs_root() / f"{FOO_ID}/vet.md").exists()

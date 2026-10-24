@@ -75,7 +75,10 @@ def _story_row(epic_name: str, story: Story) -> dict[str, Any]:
 
 
 def _context(graph: Graph, story_ref: str) -> tuple[dict[str, Any] | None, str]:
-    context_path = Path(path_mod.resolve_spec(graph, story_ref)) / CONTEXT_FILE
+    try:
+        context_path = Path(path_mod.resolve_spec(graph, story_ref)) / CONTEXT_FILE
+    except ValueError:
+        return None, ""
     shown = context_path.as_posix()
     try:
         payload = json.loads(context_path.read_text(encoding="utf-8"))

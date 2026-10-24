@@ -5,7 +5,7 @@ from pathlib import Path
 from ostler import doctor, markdown, model, trace
 from ostler.model import load
 
-from conftest import write
+from conftest import FOO_ID, write
 
 
 BULLET_CODE_SPAN_DOC = """# Section
@@ -87,7 +87,7 @@ def test_org_name_override_from_config(tmp_path: Path):
 
 def test_trace_story_and_seed(repo: Path):
     graph = load(repo)
-    lines, found = trace.run(graph, "01-foo")
+    lines, found = trace.run(graph, FOO_ID)
     assert found and any("seed-a1" in ln for ln in lines)
 
     lines, found = trace.run(graph, "seed-a1")

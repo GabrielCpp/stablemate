@@ -22,7 +22,7 @@ into a document: it lengthens as soon as a colliding id is minted. From Python, 
 **Inspect**
 ```bash
 ostler doctor [--epic SLUG] [--json] [--no-schema]   # conformance + referential integrity; non-zero on a break
-ostler trace  <id|slug|surface|path>                 # walk the graph from any node
+ostler trace  <id|surface|path>                      # walk the graph from any node
 ```
 
 **Retrieve**
@@ -54,27 +54,29 @@ ostler graph --orphans                           # nodes no edge points to (unre
 ```bash
 ostler next-epic [--json]                            # next queued epic with unfinished work
 ostler next-story <epic> [--json]                    # next runnable story (deps satisfied, not done)
-ostler path epic <epic> | spec <slug> | story <epic> <slug> | branch <slug> [--epic] [--is_epic emits feat/<slug>]
+ostler path epic <epic> | spec <story-id> | story <story-id> | branch <story-id> [--epic] [--is_epic emits feat/<slug>]
 ```
 
 Epic directories are numbered in creation order — `create epic checkout-flow` writes
 `docs/epics/0001-checkout-flow/` — so ask `path epic` instead of joining `docs/epics/<slug>`.
 The number orders the listing and is **not** the identity (that is the minted `id`), so every
-command still takes the bare slug, and `path branch` drops it (`feat/checkout-flow`).
+epic command still takes the bare slug, and `path branch` drops it (`feat/checkout-flow`).
+A story is addressed by its id. The slug names the story's folder and its `### <slug>` heading in
+`epic.md`. A slug passed where a story id belongs is refused, and the error names the id to use.
 
 **Mutate** (allocates ids, writes markdown)
 ```bash
 ostler create epic    <name>  --title T [--prefix P] [--json]
 ostler create story   <epic> <slug> --title T [--covers a,b] [--depends a,b] [--prefix P] [--json]
-ostler update story   <slug> --title T --covers a,b --depends a,b
+ostler update story   <story-id> --title T --covers a,b --depends a,b
 ostler create feature <slug>  --title T [--area A] [--route R] [--prefix P] [--json]
-ostler delete epic|story|feature <name>
+ostler delete epic <name> | story <story-id> | feature <slug>
 
 ostler seed add    <epic> <id> [--status S] [--summary …] [--surface …] \
                                [--legacy-surface …] [--backing …] [--prerequisites …]
 ostler seed remove <epic> <id>
-ostler set-status  <story> <status>
-ostler conflict    <story> <text> | ostler conflict <story> --clear
+ostler set-status  <story-id> <status>
+ostler conflict    <story-id> <text> | ostler conflict <story-id> --clear
 
 ostler backlog add <summary> --repo R --area A [--pattern P] [--symbol S ...] [--id ID] [--body T] [--prefix X] [--json]
 ostler backlog adopt --repo R <file> [--prefix X] [--json]
@@ -94,7 +96,7 @@ rewrites that section wholesale, so pass every blocker each time, or `(none)` to
 ```bash
 ostler edit relink    <old-path> <new-path> [--write]
 ostler edit rename    <old-slug> <new-slug> [--write]
-ostler edit settle-review <slug> [--write]
+ostler edit settle-review <story-id> [--write]
 ostler freeze   <ident> [--by WHO] [--note …]   # pin an approved story/seed as immutable ground truth
 ostler unfreeze <ident>
 ```
@@ -107,7 +109,7 @@ ostler fmt [PATH…] [--check]              # canonicalize frontmatter/bullets/h
 
 **Visual-fidelity check** (used by `coder`'s QA gates — see [[coder-workflow]])
 ```bash
-ostler vet <screenshot> --manifest M (--cdp-url U | --regions FILE) --slug S [--state s] [--iou-threshold 0.5] [--json]
+ostler vet <screenshot> --manifest M (--cdp-url U | --regions FILE) --story ID [--state s] [--iou-threshold 0.5] [--json]
 ```
 
 **QA context and execution control plane**

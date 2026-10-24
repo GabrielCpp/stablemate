@@ -29,9 +29,9 @@ def test_query_and_search(repo: Path):
 
 def test_path_resolution(repo: Path):
     okf = Ostler(repo)
-    assert FOO_ID in okf.spec_path("01-foo")
-    assert "01-foo" in okf.story_path("epic-a", "01-foo")
-    assert okf.branch("01-foo") == "01-foo"
+    assert FOO_ID in okf.spec_path(FOO_ID)
+    assert "01-foo" in okf.story_path(FOO_ID)
+    assert okf.branch(FOO_ID) == "01-foo"
     assert okf.branch("epic-a", epic=True) == "feat/epic-a"
 
 
@@ -67,7 +67,7 @@ def test_graph_is_loaded_once_then_reused(repo: Path):
 def test_mutation_invalidates_the_snapshot(repo: Path):
     okf = Ostler(repo)
     snapshot = okf.graph
-    res = okf.set_status("01-foo", "QA passed")
+    res = okf.set_status(FOO_ID, "QA passed")
     assert res.ok
     assert okf.graph is not snapshot
     assert okf.next_story("epic-a") is None
@@ -96,7 +96,7 @@ def test_delete_story_is_visible_to_the_next_read(repo: Path):
     okf = Ostler(repo)
     assert "01-foo" in {r["slug"] for r in okf.list("story")}
 
-    res = okf.delete_story("01-foo")
+    res = okf.delete_story(FOO_ID)
 
     assert res.ok
     assert "01-foo" not in {r["slug"] for r in okf.list("story")}
@@ -108,7 +108,7 @@ def test_update_story_and_delete_epic_are_visible_to_the_next_read(repo: Path):
     before = body.read_bytes()
 
     updated = okf.update_story(
-        "01-foo", title="Updated", covers=["seed-a2"], depends=[]
+        FOO_ID, title="Updated", covers=["seed-a2"], depends=[]
     )
 
     assert updated.ok
@@ -192,7 +192,7 @@ def test_qa_context_validate_flags_a_bad_packet(repo: Path):
 
 
 def test_settle_review_errors_without_a_verdict(repo: Path):
-    plan = Ostler(repo).settle_review("01-foo")
+    plan = Ostler(repo).settle_review(FOO_ID)
     assert plan.error
 
 
@@ -200,13 +200,13 @@ def test_settle_answers_and_ledger_only_settle_review_through_the_facade(repo: P
     spec = specs_root() / FOO_ID
     write(spec / "review-answers.md", "## F-1: fixed\n\n- commit: abc\n")
     okf = Ostler(repo)
-    led = okf.settle_answers("01-foo", ["F-1", "F-2"], write=True)
+    led = okf.settle_answers(FOO_ID, ["F-1", "F-2"], write=True)
     assert led["fixed"] == ["F-1"] and led["open"] == ["F-2"]
     assert json.loads((spec / "review-settlement.json").read_text()) == led
 
     write(spec / "review-resolution.json", json.dumps(
         {"findings": [{"id": "F-1", "disposition": "declined", "reason": "won't fix"}]}))
-    plan = okf.settle_review("01-foo", write=True, status_write=False)
+    plan = okf.settle_review(FOO_ID, write=True, status_write=False)
     assert not plan.error, plan.error
-    assert okf.story("01-foo") is not None
+    assert okf.story(FOO_ID) is not None
     assert "Not started" in (repo / "docs/epics/epic-a/stories/01-foo/story.md").read_text()

@@ -237,10 +237,7 @@ def epic_cycle(epic: Epic) -> list[str]:
 
 
 def _dep_done(graph: Graph, dep: str) -> bool:
-    try:
-        found = graph.find_story(dep)
-    except ValueError:
-        return False
+    found = graph.story_by_slug(dep) or graph.find_story(dep)
     return found is not None and is_done(found[1].status)
 
 
@@ -264,7 +261,7 @@ def open_stories(graph: Graph, epic_name: str) -> list[dict]:
 
 
 def story_entry(graph: Graph, ref: str) -> dict | None:
-    """One story in the shape :func:`open_stories` reports, by slug or id, or ``None`` when unknown."""
+    """One story in the shape :func:`open_stories` reports, by id, or ``None`` when unknown."""
     found = graph.find_story(ref)
     if found is None:
         return None

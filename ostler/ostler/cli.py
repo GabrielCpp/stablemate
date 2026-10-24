@@ -130,7 +130,7 @@ def _build_parser() -> argparse.ArgumentParser:
     audit.add_argument("--json", action="store_true")
 
     t = sub.add_parser("trace", help="walk the graph from a node")
-    t.add_argument("token", help="seed id, story slug, surface or doc path")
+    t.add_argument("token", help="seed id, story id, surface or doc path")
 
     st = sub.add_parser(
         "stamp", help="write a content-hash @digest onto each cited file's `code:` bullets"
@@ -356,7 +356,7 @@ def _build_parser() -> argparse.ArgumentParser:
     crf.add_argument("--prefix")
     crf.add_argument("--json", action="store_true")
     crp = crs.add_parser("spec", help="create/stamp a spec doc (idempotent; safe after the write)")
-    crp.add_argument("slug", help="the story id (its spec folder is `ostler path spec <story>`)")
+    crp.add_argument("story", help="the story id (its spec folder is `ostler path spec <id>`)")
     crp.add_argument("doc", help="file name, e.g. plan.md, qa.md, review.md, executive.md")
     crp.add_argument("--title", default="", help="H1 for a newly created doc")
     crp.add_argument("--json", action="store_true")
@@ -364,13 +364,13 @@ def _build_parser() -> argparse.ArgumentParser:
     dl = sub.add_parser("delete", help="delete an epic/story/feature")
     dls = dl.add_subparsers(dest="what", required=True)
     dls.add_parser("epic").add_argument("name")
-    dls.add_parser("story").add_argument("slug")
+    dls.add_parser("story").add_argument("story", help="the story id")
     dls.add_parser("feature").add_argument("slug")
 
     up = sub.add_parser("update", help="update built-in planning entity metadata")
     ups = up.add_subparsers(dest="what", required=True)
     upst = ups.add_parser("story", help="replace story title, coverage, and dependencies")
-    upst.add_argument("slug")
+    upst.add_argument("story", help="the story id")
     upst.add_argument("--title", required=True)
     upst.add_argument("--covers", required=True)
     upst.add_argument("--depends", required=True,
@@ -450,20 +450,20 @@ def _build_parser() -> argparse.ArgumentParser:
     sdr.add_argument("id")
 
     ss = sub.add_parser("set-status", help="set a story's status")
-    ss.add_argument("slug")
+    ss.add_argument("story", help="the story id")
     ss.add_argument("status")
 
     cf = sub.add_parser("conflict",
                         help="record a story's acceptance-criteria conflict, or clear it")
-    cf.add_argument("slug")
+    cf.add_argument("story", help="the story id")
     cf.add_argument("text", nargs="?", default="",
                     help="the conflict and the chain that found it; omit with --clear")
     cf.add_argument("--clear", action="store_true", help="remove the recorded conflict")
     cf.add_argument("--json", action="store_true")
 
     ub = sub.add_parser("unblock", help="clear give-up stamps off stories")
-    ub.add_argument("slug", nargs="?", default="",
-                    help="one story; omit it and pass --epic or --all for the wider scope")
+    ub.add_argument("story", nargs="?", default="",
+                    help="one story id; omit it and pass --epic or --all for the wider scope")
     ub.add_argument("--epic", default="", help="every blocked story in this epic")
     ub.add_argument("--all", action="store_true", dest="all_stories",
                     help="every blocked story in the graph")
@@ -536,7 +536,7 @@ def _build_parser() -> argparse.ArgumentParser:
         help="flip a story's status from its review-resolution.json, "
         "gated on the artifacts/assertions the verdict cites",
     )
-    sr.add_argument("slug")
+    sr.add_argument("story", help="the story id")
     ce = esub.add_parser(
         "carve-endpoints",
         parents=[write_parent],
@@ -600,17 +600,16 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     gc.add_argument("--json", action="store_true")
 
-    pa = sub.add_parser("path", help="resolve a slug to its canonical path")
+    pa = sub.add_parser("path", help="resolve a story id or epic name to its canonical path")
     pas = pa.add_subparsers(dest="what", required=True)
-    pa_spec = pas.add_parser("spec", help="spec dir for a story (its id)")
-    pa_spec.add_argument("slug")
+    pa_spec = pas.add_parser("spec", help="spec dir for a story id")
+    pa_spec.add_argument("story", help="the story id")
     pa_epic = pas.add_parser("epic", help="directory for an epic (number or bare slug)")
     pa_epic.add_argument("epic")
-    pa_story = pas.add_parser("story", help="story.md path for an epic + slug")
-    pa_story.add_argument("epic")
-    pa_story.add_argument("slug")
-    pa_branch = pas.add_parser("branch", help="git branch name for a slug")
-    pa_branch.add_argument("slug")
+    pa_story = pas.add_parser("story", help="story.md path for a story id")
+    pa_story.add_argument("story", help="the story id")
+    pa_branch = pas.add_parser("branch", help="git branch name for a story id (or an epic)")
+    pa_branch.add_argument("ref", help="the story id, or the epic name with --epic")
     pa_branch.add_argument(
         "--epic",
         action="store_true",
@@ -635,7 +634,7 @@ def _build_parser() -> argparse.ArgumentParser:
     vt_group = vt.add_mutually_exclusive_group(required=True)
     vt_group.add_argument("--cdp-url", dest="cdp_url")
     vt_group.add_argument("--regions", dest="regions_file", type=Path)
-    vt.add_argument("--slug", required=True)
+    vt.add_argument("--story", required=True, help="the story id")
     vt.add_argument("--state", default="default")
     vt.add_argument("--iou-threshold", type=float, default=0.5, dest="iou_threshold")
     vt.add_argument("--json", action="store_true")
@@ -1507,7 +1506,7 @@ def _cmd_edit(graph, args) -> int:
     if args.op == "relink":
         plan = edit.relink(graph, args.old_path, args.new_path)
     elif args.op == "settle-review":
-        plan = edit.settle_review(graph, args.slug)
+        plan = edit.settle_review(graph, args.story)
     elif args.op == "migrate-context":
         plan = edit.migrate_context(graph, args.node_type, args.service)
     elif args.op == "carve-endpoints":
@@ -1530,16 +1529,20 @@ def _cmd_edit(graph, args) -> int:
 
 
 def _cmd_vet(graph, args) -> int:
-    outcome, plan = vet_mod.run_vet(
-        graph,
-        args.screenshot,
-        args.manifest,
-        args.slug,
-        cdp_url=args.cdp_url,
-        regions_file=args.regions_file,
-        state=args.state,
-        iou_threshold=args.iou_threshold,
-    )
+    try:
+        outcome, plan = vet_mod.run_vet(
+            graph,
+            args.screenshot,
+            args.manifest,
+            args.story,
+            cdp_url=args.cdp_url,
+            regions_file=args.regions_file,
+            state=args.state,
+            iou_threshold=args.iou_threshold,
+        )
+    except ValueError as exc:
+        _out(f"error: {exc}")
+        return 1
     report = outcome.report
     if outcome.error or report is None:
         message = outcome.error or "vet produced no report"
@@ -2089,10 +2092,9 @@ def _dispatch(graph, args, store: index_mod.IndexStore) -> int:  # noqa: C901 â€
             )
         elif args.what == "spec":
             try:
-                key = Path(path_mod.resolve_spec(graph, args.slug)).name
+                key = Path(path_mod.resolve_spec(graph, args.story)).name
             except ValueError as exc:
-                _out(f"error: {exc}")
-                return 1
+                return _result(crud.Result(False, str(exc)), getattr(args, "json", False))
             res = crud.create_spec(graph.doc_roots["specs"], key, args.doc, args.title)
         else:
             res = crud.create_feature(
@@ -2103,13 +2105,13 @@ def _dispatch(graph, args, store: index_mod.IndexStore) -> int:  # noqa: C901 â€
         if args.what == "epic":
             return _result(crud.delete_epic(graph, args.name))
         if args.what == "story":
-            return _result(crud.delete_story(graph, args.slug))
+            return _result(crud.delete_story(graph, args.story))
         return _result(crud.delete_feature(graph, args.slug))
     if c == "update":
         return _result(
             crud.update_story(
                 graph,
-                args.slug,
+                args.story,
                 title=args.title,
                 covers=[ids_mod.resolve(graph, seed) for seed in _split(args.covers)],
                 depends=_split(args.depends),
@@ -2134,20 +2136,20 @@ def _dispatch(graph, args, store: index_mod.IndexStore) -> int:  # noqa: C901 â€
             )
         return _result(crud.remove_seed(graph, args.epic, ids_mod.resolve(graph, args.id)))
     if c == "set-status":
-        return _result(crud.set_status(graph, args.slug, args.status))
+        return _result(crud.set_status(graph, args.story, args.status))
     if c == "conflict":
         if bool(args.text) == bool(args.clear):
             return _result(crud.Result(
                 False, "pass the conflict text, or --clear â€” one of the two"), args.json)
-        return _result(crud.set_conflict(graph, args.slug, "" if args.clear else args.text),
+        return _result(crud.set_conflict(graph, args.story, "" if args.clear else args.text),
                        args.json)
     if c == "unblock":
-        if not (args.slug or args.epic or args.all_stories):
+        if not (args.story or args.epic or args.all_stories):
             return _result(crud.Result(False, "name a story, pass --epic, or pass --all"), args.json)
-        if args.all_stories and (args.slug or args.epic):
+        if args.all_stories and (args.story or args.epic):
             return _result(crud.Result(False, "--all takes no story or --epic"), args.json)
         return _result(
-            crud.unblock(graph, story=args.slug, epic=args.epic, status=args.status),
+            crud.unblock(graph, story=args.story, epic=args.epic, status=args.status),
             args.json,
         )
     if c == "backlog":
@@ -2179,18 +2181,18 @@ def _dispatch(graph, args, store: index_mod.IndexStore) -> int:  # noqa: C901 â€
             return _result(todo_mod.reorder(graph, args.names))
         return _emit(todo_mod.list_epics(graph), args.json)
     if c == "path":
-        if args.what == "spec":
-            try:
-                _out(path_mod.resolve_spec(graph, args.slug))
-            except ValueError as exc:
-                _out(f"error: {exc}")
-                return 1
-        elif args.what == "epic":
-            _out(path_mod.resolve_epic(graph, args.epic))
-        elif args.what == "story":
-            _out(path_mod.resolve_story(graph, args.epic, args.slug))
-        else:
-            _out(path_mod.resolve_branch(args.slug, epic=args.is_epic))
+        try:
+            if args.what == "spec":
+                _out(path_mod.resolve_spec(graph, args.story))
+            elif args.what == "epic":
+                _out(path_mod.resolve_epic(graph, args.epic))
+            elif args.what == "story":
+                _out(path_mod.resolve_story(graph, args.story))
+            else:
+                _out(path_mod.resolve_branch(graph, args.ref, epic=args.is_epic))
+        except ValueError as exc:
+            _out(f"error: {exc}")
+            return 1
         return 0
     if c == "scaffold":
         return _result(

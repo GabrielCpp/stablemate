@@ -37,7 +37,7 @@ Every Concept declares `type`. Ostler knows these types (the machine registry is
 | `epic` | `docs/epics/<NNNN-slug>/epic.md` | `<NNNN-slug>` (dir name) | `type`, `id`, `title` |
 | `story` | `docs/epics/<NNNN-slug>/stories/<slug>/story.md` | `<slug>` | `type`, `slug`, `status` |
 | `feature` | `docs/services/<area>/<slug>.md` *(or flat `docs/services/<slug>.md`)* | `<area>/<slug>` | `type`, `slug`, `title` |
-| `spec.<stem>` (`spec.plan`, `spec.review`, `spec.qa`, `spec.executive`, `spec.vet`, …) | `docs/specs/<slug>/*.md` | path | `type` |
+| `spec.<stem>` (`spec.plan`, `spec.review`, `spec.qa`, `spec.executive`, `spec.vet`, …) | `docs/specs/<story-id>/*.md` | path | `type` |
 
 An epic's directory is minted `NNNN-<slug>` (four digits minimum, one past the highest number
 currently under `docs/epics/`), so the bundle listing is the order the epics were decomposed in.
@@ -54,7 +54,7 @@ to close a missing number.
 The subtype is the file's stem — `plan.md` → `spec.plan`, `executive.md` → `spec.executive`,
 `plan-go.md` → `spec.plan-go` — so a doc's kind stays queryable without a fixed vocabulary to
 maintain. Nothing dispatches on it: only the `spec` base type is checked. Mint these with
-`ostler create spec <slug> <doc>` rather than hand-writing frontmatter; it is idempotent, so it
+`ostler create spec <story-id> <doc>` rather than hand-writing frontmatter; it is idempotent, so it
 also retro-stamps a doc that was written free-form.
 
 **Not Concepts** (managed markdown, not part of the typed graph): operational files written by the workflows
@@ -174,9 +174,10 @@ epic's `## Stories` section (§3). Prose may link to `docs/services/…` OKF nod
 markdown links.
 
 The `id` is an opaque string, canonical and immutable. Ostler mints a ULID on `create story`, and a
-tracker key such as `CASE-574` may be written as the id by hand. A slug or id that identifies more
-than one story is a `story-key-collision` error, and the id
-recorded here must agree with the copy in the parent epic's `## Stories` block.
+tracker key such as `CASE-574` may be written as the id by hand. The slug names the story's folder and its `### <slug>` heading in the epic. Every command takes
+the id, and a slug passed to a command is refused with the id spelled out. A slug or id that
+identifies more than one story is a `story-key-collision` error, and the id recorded here must
+agree with the copy in the parent epic's `## Stories` block.
 
 ## 5. The feature Concept and the epics index
 

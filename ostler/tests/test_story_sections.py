@@ -9,11 +9,15 @@ from ostler.model import load, section_order_problems
 from conftest import present
 
 
+def _id(root: Path) -> str:
+    return present(load(root).story_by_slug("a"))[1].eid
+
+
 def _story(root: Path) -> Path:
     """A story whose prose is written but whose last two prose sections were never added."""
     crud.create_epic(load(root), "e", "E", prefix="x")
     crud.create_story(load(root), "e", "a", "A")
-    story_md = present(present(load(root).find_story("a"))[1].story_md)
+    story_md = present(present(load(root).story_by_slug("a"))[1].story_md)
     text = story_md.read_text(encoding="utf-8")
     text = text.replace("## Context\n", "## Context\n\nExisting context.\n")
     text = text.replace(
@@ -48,10 +52,10 @@ def _stamp(story_md: Path, line: str) -> None:
 def test_a_stamped_story_and_an_unstamped_one_are_judged_identically(tmp_path: Path) -> None:
     """Byte-identical prose, one carrying the old shape key: one verdict."""
     story_md = _story(tmp_path)
-    _, plain = present(load(tmp_path).find_story("a"))
+    _, plain = present(load(tmp_path).story_by_slug("a"))
 
     _stamp(story_md, "storyShape: 1")
-    _, stamped = present(load(tmp_path).find_story("a"))
+    _, stamped = present(load(tmp_path).story_by_slug("a"))
 
     assert stamped.unwritten_sections == plain.unwritten_sections
     assert stamped.misordered_sections == plain.misordered_sections
@@ -61,12 +65,12 @@ def test_a_stamped_story_and_an_unstamped_one_are_judged_identically(tmp_path: P
 def test_removing_a_stale_shape_line_changes_nothing(tmp_path: Path) -> None:
     story_md = _story(tmp_path)
     _stamp(story_md, "storyShape: 2")
-    Ostler(tmp_path).scaffold_missing_sections("a")
+    Ostler(tmp_path).scaffold_missing_sections(_id(tmp_path))
     stamped = story_md.read_text(encoding="utf-8")
-    _, before = present(load(tmp_path).find_story("a"))
+    _, before = present(load(tmp_path).story_by_slug("a"))
 
     story_md.write_text(stamped.replace("storyShape: 2\n", ""), encoding="utf-8")
-    _, after = present(load(tmp_path).find_story("a"))
+    _, after = present(load(tmp_path).story_by_slug("a"))
 
     assert after.unwritten_sections == before.unwritten_sections
     assert after.misordered_sections == before.misordered_sections
@@ -78,7 +82,7 @@ def test_scaffold_converges_from_any_state_to_one_document(tmp_path: Path) -> No
     story_md = _story(tmp_path)
     before = markdown.split(story_md.read_text(encoding="utf-8"))
 
-    result = Ostler(tmp_path).scaffold_missing_sections("a")
+    result = Ostler(tmp_path).scaffold_missing_sections(_id(tmp_path))
 
     assert result.ok
     scaffolded = story_md.read_text(encoding="utf-8")
@@ -91,7 +95,7 @@ def test_scaffold_converges_from_any_state_to_one_document(tmp_path: Path) -> No
         spec.heading for spec in registry.STORY_SECTIONS
     ]
 
-    assert Ostler(tmp_path).scaffold_missing_sections("a").ok
+    assert Ostler(tmp_path).scaffold_missing_sections(_id(tmp_path)).ok
     assert story_md.read_text(encoding="utf-8") == scaffolded
 
     emptied = scaffolded
@@ -99,7 +103,7 @@ def test_scaffold_converges_from_any_state_to_one_document(tmp_path: Path) -> No
         emptied = _drop_section(emptied, heading)
     story_md.write_text(emptied, encoding="utf-8")
 
-    assert Ostler(tmp_path).scaffold_missing_sections("a").ok
+    assert Ostler(tmp_path).scaffold_missing_sections(_id(tmp_path)).ok
     assert story_md.read_text(encoding="utf-8") == scaffolded
 
 
@@ -107,9 +111,9 @@ def test_a_story_is_unauthored_until_every_required_section_carries_prose(
     tmp_path: Path,
 ) -> None:
     story_md = _story(tmp_path)
-    Ostler(tmp_path).scaffold_missing_sections("a")
+    Ostler(tmp_path).scaffold_missing_sections(_id(tmp_path))
 
-    _, story = present(load(tmp_path).find_story("a"))
+    _, story = present(load(tmp_path).story_by_slug("a"))
     assert story.unwritten_sections == ["Non-Functional Acceptance Criteria", "Technical Notes"]
     assert story.authored is False
 
@@ -120,7 +124,7 @@ def test_a_story_is_unauthored_until_every_required_section_carries_prose(
     text = text.replace("## Technical Notes\n", "## Technical Notes\n\n`a.py::b` is the seam.\n")
     story_md.write_text(text, encoding="utf-8")
 
-    _, written = present(load(tmp_path).find_story("a"))
+    _, written = present(load(tmp_path).story_by_slug("a"))
     assert written.unwritten_sections == []
     assert written.authored is True
 
@@ -128,7 +132,7 @@ def test_a_story_is_unauthored_until_every_required_section_carries_prose(
 def test_section_order_is_part_of_the_contract(tmp_path: Path) -> None:
     """Presence alone would let a hand-written story and a scaffolded one read differently."""
     story_md = _story(tmp_path)
-    Ostler(tmp_path).scaffold_missing_sections("a")
+    Ostler(tmp_path).scaffold_missing_sections(_id(tmp_path))
     doc = markdown.split(story_md.read_text(encoding="utf-8"))
     assert section_order_problems(doc, registry.STORY_SECTIONS) == []
 
@@ -140,7 +144,7 @@ def test_section_order_is_part_of_the_contract(tmp_path: Path) -> None:
     doc.replace_body(rest[:at] + block + rest[at:])
     story_md.write_text(doc.render(), encoding="utf-8")
 
-    _, story = present(load(tmp_path).find_story("a"))
+    _, story = present(load(tmp_path).story_by_slug("a"))
     assert story.misordered_sections == [
         "`## Technical Notes` must come after `## Non-Functional Acceptance Criteria`"
     ]

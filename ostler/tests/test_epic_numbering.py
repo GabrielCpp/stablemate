@@ -51,11 +51,10 @@ def test_every_entry_point_takes_the_bare_slug(tmp_path: Path):
     g = load(tmp_path)
     assert path_mod.epic_dir(g, "checkout").name == dir_name
     assert path_mod.resolve_epic(g, "checkout") == f"docs/epics/{dir_name}"
-    assert path_mod.resolve_story(g, "checkout", "01-a") == \
-        f"docs/epics/{dir_name}/stories/01-a/story.md"
-
     assert crud.add_seed(load(tmp_path), "checkout", "s1", summary="a seed").ok
-    assert crud.create_story(load(tmp_path), "checkout", "01-a", "A", covers=["s1"]).ok
+    story_id = crud.create_story(load(tmp_path), "checkout", "01-a", "A", covers=["s1"]).entity_id
+    assert path_mod.resolve_story(load(tmp_path), story_id) == \
+        f"docs/epics/{dir_name}/stories/01-a/story.md"
 
     g = load(tmp_path)
     found = select.epic_by_name(g, "checkout")

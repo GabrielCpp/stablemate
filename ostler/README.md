@@ -76,8 +76,10 @@ prose — ostler keeps the seeds, edges, ids and queue coherent around it.
 
 A story's `id` is an opaque string. `create story` mints a ULID, and nothing else assumes the id's
 shape. A tracker key such as `CASE-574` may be written as the `id` by hand. The `id` is the immutable
-identity used by commit trailers and spec directories. IDs and slugs must be unique across stories;
-`doctor` rejects ambiguity rather than letting graph order choose one.
+identity used by commit trailers and spec directories. The slug names the story's folder and its
+heading in `epic.md`. Every command takes the id. A slug passed to a command is refused, and the
+error spells out the id to use. IDs and slugs must be unique across stories; `doctor` rejects
+ambiguity rather than letting graph order choose one.
 
 ## The hierarchy
 
@@ -95,9 +97,9 @@ filenames `index.md` (an ordered listing of a bundle) and `log.md` (history) are
 |---|---|---|---|
 | `milestone` | `docs/milestones/<slug>/milestone.md` | folder name `<slug>`; optional `id` defaults to it | `type`, `title`, `status` |
 | `epic` | `docs/epics/<NNNN-slug>/epic.md` | `<NNNN-slug>` (dir name) | `type`, `id`, `title` |
-| `story` | `docs/epics/<NNNN-slug>/stories/<slug>/story.md` | opaque `id` (a ULID when ostler mints it); readable `<slug>` is an alias | `type`, `slug`, `status` |
+| `story` | `docs/epics/<NNNN-slug>/stories/<slug>/story.md` | opaque `id` (a ULID when ostler mints it); the `<slug>` names the folder and the `epic.md` heading | `type`, `slug`, `status` |
 | `feature` | `docs/services/<area>/<slug>.md` *(or flat `docs/services/<slug>.md`)* | `<area>/<slug>` | `type`, `slug`, `title` |
-| `spec.<stem>` (`spec.plan`, `spec.review`, `spec.qa`, `spec.executive`, `spec.vet`, …) | `<artifacts dir>/specs/<slug>/*.md` (`ostler path spec <slug>`) | path | `type` |
+| `spec.<stem>` (`spec.plan`, `spec.review`, `spec.qa`, `spec.executive`, `spec.vet`, …) | `<artifacts dir>/specs/<story-id>/*.md` (`ostler path spec <story-id>`) | path | `type` |
 
 **Epic directories carry their creation order** — `create epic checkout-flow` writes
 `docs/epics/0001-checkout-flow/`, so a listing of `docs/epics` reads as the work order rather than
@@ -108,7 +110,7 @@ the directory itself, and read `--json`'s `name` back after `create epic` rather
 
 `spec.*` Concepts are process artifacts: typed and conformance-checked, but ostler does not own their
 internal schema. The subtype is the file's stem (`executive.md` → `spec.executive`); mint them with
-`ostler create spec <slug> <doc>`, which is idempotent and also retro-stamps free-form docs.
+`ostler create spec <story-id> <doc>`, which is idempotent and also retro-stamps free-form docs.
 **Not Concepts** (managed markdown, left in place): `docs/epics/index.md` (the epics queue).
 
 ### Planning intake identity

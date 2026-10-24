@@ -311,8 +311,9 @@ def update_story(
     """Replace a story's graph metadata without touching its id, body, status, or extra fields."""
     found = graph.find_story(slug)
     if found is None:
-        return Result(False, f"no story '{slug}'")
+        return Result(False, graph.no_story(slug))
     epic, story = found
+    slug = story.slug
     epic_md = epic.epic_md
     if epic_md is None:
         return Result(False, f"epic '{epic.name}' has no epic.md to update the story in")
@@ -363,7 +364,7 @@ def scaffold_missing_sections(graph: Graph, slug: str) -> Result:
     """Give one story every ``registry.STORY_SECTIONS`` heading it lacks, in the table's order."""
     found = graph.find_story(slug)
     if found is None:
-        return Result(False, f"no story '{slug}' with a story.md")
+        return Result(False, graph.no_story(slug))
     path = found[1].story_md
     if path is None:
         return Result(False, f"no story '{slug}' with a story.md")
@@ -400,8 +401,9 @@ def _insert_at(doc: markdown.MarkdownDoc, position: int) -> int:
 def delete_story(graph: Graph, slug: str) -> Result:
     found = graph.find_story(slug)
     if found is None:
-        return Result(False, f"no story '{slug}'")
+        return Result(False, graph.no_story(slug))
     epic, story = found
+    slug = story.slug
     epic_md = epic.epic_md
     if epic_md is None:
         return Result(False, f"epic '{epic.name}' has no epic.md to remove the story from")
@@ -415,8 +417,10 @@ def delete_story(graph: Graph, slug: str) -> Result:
 
 def set_status(graph: Graph, slug: str, status: str) -> Result:
     found = graph.find_story(slug)
-    if found is None or found[1].story_md is None:
-        return Result(False, f"no story '{slug}' with a story.md")
+    if found is None:
+        return Result(False, graph.no_story(slug))
+    if found[1].story_md is None:
+        return Result(False, f"story '{found[1].slug}' has no story.md")
     path = found[1].story_md
     doc = markdown.split(path.read_text(encoding="utf-8"))
     fm = doc.frontmatter or {"type": "story", "slug": slug}
@@ -436,8 +440,10 @@ def set_status(graph: Graph, slug: str, status: str) -> Result:
 def set_conflict(graph: Graph, slug: str, conflict: str) -> Result:
     """Record, or clear, a story's acceptance-criteria conflict (frontmatter ``conflict:``)."""
     found = graph.find_story(slug)
-    if found is None or found[1].story_md is None:
-        return Result(False, f"no story '{slug}' with a story.md")
+    if found is None:
+        return Result(False, graph.no_story(slug))
+    if found[1].story_md is None:
+        return Result(False, f"story '{found[1].slug}' has no story.md")
     path = found[1].story_md
     doc = markdown.split(path.read_text(encoding="utf-8"))
     fm = doc.frontmatter or {"type": "story", "slug": slug}
@@ -462,7 +468,7 @@ def unblock(graph: Graph, *, story: str = "", epic: str = "",
     if story:
         found = graph.find_story(story)
         if found is None:
-            return Result(False, f"no story '{story}'")
+            return Result(False, graph.no_story(story))
         candidates = [found[1]]
     elif epic:
         found_epic = select.epic_by_name(graph, epic)
@@ -481,7 +487,10 @@ def unblock(graph: Graph, *, story: str = "", epic: str = "",
     cleared: list[str] = []
     failures: list[str] = []
     for candidate in blocked:
-        res = set_status(graph, candidate.slug, status)
+        if not candidate.eid:
+            failures.append(f"{candidate.slug} (has no story id)")
+            continue
+        res = set_status(graph, candidate.eid, status)
         if res.ok:
             cleared.append(candidate.slug)
             paths.extend(res.paths)
@@ -576,29 +585,29 @@ def create_feature(graph: Graph, slug: str, title: str, area: str = "",
     return Result(True, f"created feature '{slug}' ({fid})", [path], entity_id=fid)
 
 
-def create_spec(specs_root: Path, slug: str, doc: str, title: str = "") -> Result:
-    """Create — or retro-stamp — a coder process artifact in the story's spec folder, ``<slug>/<doc>``."""
+def create_spec(specs_root: Path, story: str, doc: str, title: str = "") -> Result:
+    """Create — or retro-stamp — a coder process artifact in the story's spec folder, ``<story id>/<doc>``."""
     name = doc if doc.endswith(".md") else f"{doc}.md"
-    if "/" in slug or "/" in doc:
-        return Result(False, f"spec slug/doc must be single path segments, got '{slug}/{doc}'")
+    if "/" in story or "/" in doc:
+        return Result(False, f"spec story/doc must be single path segments, got '{story}/{doc}'")
     if name in registry.RESERVED_FILES:
         return Result(False, f"'{name}' is a reserved file, not a spec Concept")
-    path = specs_root / slug / name
+    path = specs_root / story / name
     type_value = registry.spec_type_for(name)
     if path.exists():
         mdoc = markdown.split(path.read_text(encoding="utf-8"))
         fm = (mdoc.frontmatter or {}) if mdoc.has_frontmatter else {}
         declared = registry.type_of(fm)
         if declared:
-            return Result(True, f"spec '{slug}/{name}' already typed ({declared})", [path])
+            return Result(True, f"spec '{story}/{name}' already typed ({declared})", [path])
         fm.pop("type", None)
         path.write_text(f"---\n{dump_frontmatter({'type': type_value, **fm})}---\n{mdoc.body}",
                         encoding="utf-8")
-        return Result(True, f"stamped spec '{slug}/{name}' ({type_value})", [path])
+        return Result(True, f"stamped spec '{story}/{name}' ({type_value})", [path])
     body = f"# {title}\n\n" if title else ""
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(f"---\n{dump_frontmatter({'type': type_value})}---\n{body}", encoding="utf-8")
-    return Result(True, f"created spec '{slug}/{name}' ({type_value})", [path])
+    return Result(True, f"created spec '{story}/{name}' ({type_value})", [path])
 
 
 def delete_feature(graph: Graph, slug: str) -> Result:

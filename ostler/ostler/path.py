@@ -1,4 +1,4 @@
-"""``ostler path`` — resolve slugs to canonical filesystem paths."""
+"""``ostler path`` — resolve ids and epic names to canonical filesystem paths."""
 
 from __future__ import annotations
 
@@ -111,16 +111,11 @@ def display_path(root: Path, path: Path) -> str:
 
 
 def resolve_spec(graph: Graph, story: str) -> str:
-    """Resolve a story to its spec directory path (absolute), named by the story's id."""
+    """Resolve a story id to its spec directory path (absolute); an unknown id is an error, never a folder."""
     found = graph.find_story(story)
     if found is None:
-        return str(graph.doc_roots["specs"] / story)
-    _, s = found
-    if not s.eid:
-        raise ValueError(
-            f"story '{s.slug}' has no id, so it has no spec folder: give it an `id:` first "
-            f"(`ostler create story` mints one)")
-    return str(graph.doc_roots["specs"] / s.eid)
+        raise ValueError(graph.no_story(story))
+    return str(graph.doc_roots["specs"] / found[1].eid)
 
 
 def epic_dirs_under(epics_root: Path) -> list[Path]:
@@ -211,13 +206,21 @@ def resolve_epic(graph: Graph, name: str) -> str:
     return str(epic_dir(graph, name).relative_to(graph.root))
 
 
-def resolve_story(graph: Graph, epic: str, slug: str) -> str:
-    """Resolve an epic + story slug to the story.md path (relative to root)."""
-    return str(epic_dir(graph, epic).relative_to(graph.root) / "stories" / slug / "story.md")
+def resolve_story(graph: Graph, story: str) -> str:
+    """Resolve a story id to its story.md path (relative to root)."""
+    found = graph.find_story(story)
+    if found is None:
+        raise ValueError(graph.no_story(story))
+    epic, s = found
+    return str(epic_dir(graph, epic.name).relative_to(graph.root) / "stories" / s.slug
+               / "story.md")
 
 
-def resolve_branch(slug: str, *, epic: bool = False) -> str:
-    """Resolve a slug to its git branch name."""
+def resolve_branch(graph: Graph, ref: str, *, epic: bool = False) -> str:
+    """The git branch for a story id (its slug) or, with *epic*, for an epic name (``feat/<slug>``)."""
     if epic:
-        return f"feat/{registry.epic_slug(slug)}"
-    return slug
+        return f"feat/{registry.epic_slug(ref)}"
+    found = graph.find_story(ref)
+    if found is None:
+        raise ValueError(graph.no_story(ref))
+    return found[1].slug

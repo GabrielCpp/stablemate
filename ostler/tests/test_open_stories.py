@@ -43,7 +43,7 @@ def test_open_story_entry_carries_paths_and_every_dep(book: Path):
     mid = next(e for e in okf.open_stories("epic-a") if e["slug"] == "02-mid")
     assert mid["epic"] == "epic-a"
     assert mid["path"] == "docs/epics/epic-a/stories/02-mid/story.md"
-    assert mid["spec_dir"] == okf.spec_path("02-mid")
+    assert mid["spec_dir"] == okf.spec_path("id-02-mid")
     assert mid["deps"] == ["01-base", "01-bar"]
     assert mid["open_deps"] == ["01-bar"]
     assert set(mid) == {"slug", "id", "path", "spec_dir", "epic", "deps", "open_deps"}
@@ -78,15 +78,15 @@ def test_a_cycle_inside_the_epic_raises_naming_its_stories(book: Path):
 
 def test_story_returns_one_entry_in_the_same_shape(book: Path):
     okf = Ostler(book)
-    entry = present(okf.story("02-mid"))
+    entry = present(okf.story("id-02-mid"))
     listed = next(e for e in okf.open_stories("epic-a") if e["slug"] == "02-mid")
     assert entry == listed
 
 
 def test_story_reports_a_done_story_too(book: Path):
-    entry = present(Ostler(book).story("01-base"))
+    entry = present(Ostler(book).story("id-01-base"))
     assert entry["epic"] == "epic-a" and entry["open_deps"] == []
 
 
-def test_story_of_an_unknown_slug_is_none(book: Path):
-    assert Ostler(book).story("99-missing") is None
+def test_story_of_an_unknown_id_is_none(book: Path):
+    assert Ostler(book).story("id-99-missing") is None
