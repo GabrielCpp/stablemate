@@ -18,8 +18,16 @@ plan only after it passes static validation and an independent semantic review.
 ## Required reading
 
 - `{{ workhorse_var('epic_dir') }}/epic.md` and its current stories.
-- The configured backlog at `{{ workhorse_var('backlog') }}`.
 - Existing feature documentation under `{{ workhorse_var('services_dir') }}`; read only, never write.
+
+## Open debt register
+
+This is the open debt register, one line per record. Read it here and open no file for it. You may
+name a record id from it to add a story from that record.
+
+```
+{{ workhorse_var('register_listing') }}
+```
 
 ## Plan contract
 
@@ -58,7 +66,7 @@ Return exactly one JSON object matching this shape:
     "backing": "",
     "prerequisites": "none",
     "services": ["book names under docs/services/ this seed changes"],
-    "source_bullet": "verbatim source bullet",
+    "source_record": "id of the register record this seed comes from, or empty",
     "disposition": "retain" | "drop",
     "reason": ""
   }],

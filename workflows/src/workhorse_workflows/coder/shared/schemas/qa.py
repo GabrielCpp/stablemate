@@ -89,7 +89,7 @@ class StackTarget(CoderResult):
 
 
 class BacklogDrain(CoderResult):
-    """`append-backlog-item.py` — the coder→author edge, drained into `docs/backlog.md`."""
+    """`append-backlog-item.py` — the coder→author edge, drained onto the register."""
 
     appended: int = 0
     skipped: int = 0

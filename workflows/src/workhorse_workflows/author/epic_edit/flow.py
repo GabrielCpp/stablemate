@@ -7,6 +7,7 @@ from typing import Any, ClassVar
 from workhorse.pyflow import Await, Continue, Done, Workflow, WorkflowFailed
 from workhorse_workflows.author.epic_edit.nodes import (
     apply_edit_plan,
+    read_register_listing,
     select_affected_story,
     snapshot_epic,
     validate_applied_edit,
@@ -18,7 +19,7 @@ from workhorse_workflows.author.shared.nodes import (
     check_story_grounding,
     commit_author,
     load_config,
-    prune_bullet,
+    promote_record,
     record_attempt,
     validate_coverage,
     validate_story,
@@ -90,7 +91,7 @@ class EpicEdit(Workflow):
             "prior_plan": prior_plan or EpicEditPlan(),
             "validation_findings": findings,
             "epic_dir": snapshot.epic_dir,
-            "backlog": self.ctx.backlog_path,
+            "register_listing": self.call(read_register_listing).text,
             "services_dir": self.ctx.services_dir,
         }
 
@@ -635,8 +636,8 @@ class EpicEdit(Workflow):
                 failure_class="epic-edit-graph-integrity-broken",
                 artifacts={"epic_dir": str(applied.epic_dir)},
             )
-        if intent.kind == "add-story" and intent.from_backlog:
-            self.call(prune_bullet, intent.bullet_id, True)
+        if intent.kind == "add-story" and intent.record_id:
+            self.call(promote_record, intent.record_id, intent.epic)
         self.call(commit_author, "epic-edit", applied.epic, intent.change)
         return Done(applied)
 

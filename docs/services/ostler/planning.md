@@ -372,11 +372,11 @@ on an entity of its own, so the order the claims run in does not change an outco
 - code: ostler/ostler/todo.py::list_epics@eb0ea0bc4039
 
 ### ostler-backlog-add
-- usage: ostler backlog add ID TEXT: files an intake item under a chosen id
-- exits: 0 when the id is not in use
-- run: invoke(argv=["-C", "plan-scratch", "backlog", "add", "X-3", "third item"])
+- usage: ostler backlog add SUMMARY --repo REPO --area AREA [--pattern PATTERN] [--symbol SYMBOL ...] [--id ID] [--body TEXT] [--prefix PREFIX] [--json]: files a record under a chosen id and commits it in the artifacts repo
+- exits: 0 when the id is not in use; 1 with the reason when the record is refused
+- run: invoke(argv=["-C", "plan-scratch", "backlog", "add", "third item", "--repo", "api-service", "--area", "billing", "--id", "X-3"])
 - verify: exit_status(code=0)
-- verify: stdout(matches="^filed backlog item 'X-3'$")
+- verify: stdout(matches="^filed record 'X-3'$")
 - fixture: [plan scratch repo](fixtures/plan-scratch-repo.md) with a backlog of two named items
 - code: ostler/ostler/_vendor/stablemate_core/base_cache.py::cache_root@79e1cc13c672
 - code: ostler/ostler/_vendor/stablemate_core/config.py::config_path@45b4d92edb39
@@ -405,13 +405,12 @@ on an entity of its own, so the order the claims run in does not change an outco
 - code: ostler/ostler/registry.py::base_type@cd37e79abc8c
 
 ### ostler-backlog-adopt
-- usage: ostler backlog adopt [--prefix PREFIX]: gives an allocated id to every backlog bullet that
-  has none
-- exits: 0 always
-- run: invoke(argv=["-C", "plan-scratch", "backlog", "adopt", "--prefix", "BL"])
+- usage: ostler backlog adopt --repo REPO FILE [--prefix PREFIX] [--json]: turns every top-level bullet of an old backlog list into a record of REPO, commits them together in the artifacts repo, then deletes FILE
+- exits: 0 when the list is imported; 1 with the reason, leaving FILE and the shelf as they were, when a kept id is already taken or a record is invalid
+- run: invoke(argv=["-C", "plan-scratch", "backlog", "adopt", "--repo", "api-service", "plan-scratch/old-list.md", "--prefix", "BL"])
 - verify: exit_status(code=0)
-- verify: stdout(matches="^adopted 1 unnamed backlog items$")
-- fixture: [plan scratch repo](fixtures/plan-scratch-repo.md) with one unnamed backlog bullet
+- verify: stdout(matches="(?m)^imported 2 records, kept 0 ids$")
+- fixture: [plan scratch repo](fixtures/plan-scratch-repo.md) with an old two-bullet list beside it
 - code: ostler/ostler/_vendor/stablemate_core/base_cache.py::cache_root@79e1cc13c672
 - code: ostler/ostler/_vendor/stablemate_core/config.py::config_path@45b4d92edb39
 - code: ostler/ostler/dynamic_registry.py::load_kinds@09b3f9268893
@@ -422,12 +421,12 @@ on an entity of its own, so the order the claims run in does not change an outco
 - code: ostler/ostler/registry.py::base_type@cd37e79abc8c
 
 ### ostler-backlog-prune
-- usage: ostler backlog prune ID: removes an intake item
-- exits: 0 when the item exists
+- usage: ostler backlog prune ID [--as done|dropped|promoted] [--reason TEXT] [--json]: closes a record on the register and commits the close in the artifacts repo
+- exits: 0 when the record is closed, or was already closed at that status; 1 with the reason when the id is unknown, the record is closed at another status, or --as dropped or promoted comes without --reason
 - run: invoke(argv=["-C", "plan-scratch", "backlog", "prune", "X-2"])
 - verify: exit_status(code=0)
-- verify: stdout(matches="^pruned backlog item 'X-2'$")
-- fixture: [plan scratch repo](fixtures/plan-scratch-repo.md) with a backlog of two named items
+- verify: stdout(matches="^closed record 'X-2' as done$")
+- fixture: [plan scratch repo](fixtures/plan-scratch-repo.md) with a record X-2 filed on its register
 - code: ostler/ostler/_vendor/stablemate_core/base_cache.py::cache_root@79e1cc13c672
 - code: ostler/ostler/_vendor/stablemate_core/config.py::config_path@45b4d92edb39
 - code: ostler/ostler/dynamic_registry.py::load_kinds@09b3f9268893

@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from workhorse.pyflow import Done, Workflow
 from workhorse_workflows.author.epic_edit import EpicEdit
-from workhorse_workflows.author.shared.nodes import adopt_backlog, load_config
+from workhorse_workflows.author.shared.nodes import load_config
 from workhorse_workflows.author.shared.schemas import Config
 from workhorse_workflows.author.story_edit.nodes import resolve_story_intent
 
@@ -13,7 +13,7 @@ class StoryEdit(Workflow):
 
     action: str = "add"
     epic: str = ""
-    bullet: str = ""
+    record: str = ""
     story: str = ""
     reason: str = ""
     force: bool = False
@@ -27,14 +27,12 @@ class StoryEdit(Workflow):
         return {"work_id": work_id, "epic": self.epic, "progress": "reconciling epic scope"}
 
     def start(self) -> Done:
-        if self.action == "add":
-            self.call(adopt_backlog, self.ctx.backlog_path)
         intent = self.call(
             resolve_story_intent,
             self.action,
             self.epic,
             self.story,
-            self.bullet,
+            self.record,
             self.reason,
             self.force,
         )

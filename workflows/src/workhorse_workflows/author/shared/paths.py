@@ -40,11 +40,6 @@ def epics_dir(root: str | Path) -> str:
     return _rel(root, okf_path.epics_root_in(Path(root)))
 
 
-def backlog_file(root: str | Path) -> str:
-    """The worklist, repo-relative — where ostler keeps it."""
-    return _rel(root, okf_path.backlog_path_in(Path(root)))
-
-
 def services_dir(root: str | Path) -> str:
     """The OKF feature book, repo-relative — the same directory `ostler coverage` reads."""
     return _rel(root, okf_path.services_root_in(Path(root)))
@@ -68,7 +63,6 @@ def author_context(root: str | Path) -> str:
 
 __all__ = [
     "author_context",
-    "backlog_file",
     "epic_dir",
     "epics_dir",
     "services_dir",

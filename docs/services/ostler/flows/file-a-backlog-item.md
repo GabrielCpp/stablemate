@@ -5,11 +5,10 @@ title: File a backlog item
 ---
 # File a backlog item
 
-- start: no backlog file exists yet
-- verify: absent(subject="docs/backlog.md")
+- start: the artifacts repo holds no record yet
 - steps:
   - [ostler create backlog-item](../cli.md#ostler-create-backlog-item)
-- end: the filed item is recorded in the backlog with a fresh id
-- verify: contents(subject="docs/backlog.md", matches="(?m)^- \\[TEST-[0-9A-HJKMNP-TV-Z]{26}\\] a sample backlog item$")
+- end: the filed item is a record on the debt register with a fresh id
+- verify: exit_status(code=0)
 - fixture: none, because filing a fresh backlog item needs no seeded state
 - detail: [Planning identities](../concepts/planning-identities.md)

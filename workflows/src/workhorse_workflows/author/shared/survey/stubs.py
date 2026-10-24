@@ -37,7 +37,7 @@ def partitioned(*_args: object, **_kwargs: object) -> PartitionCheck:
 
 
 def emitted(*_args: object, **_kwargs: object) -> EmitResult:
-    """`emit_artifacts`, `emit_parity_backlog` — the backlog and manifest were written."""
+    """`emit_artifacts`, `emit_parity_records` — the records and manifest were filed."""
     return EmitResult(emit_ok=True)
 
 

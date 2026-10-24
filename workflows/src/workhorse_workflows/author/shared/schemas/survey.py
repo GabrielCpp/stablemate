@@ -16,7 +16,6 @@ class SurveyConfig(AuthorResult):
     inventory: str = ""
     findings_dir: str = ""
     partition: str = ""
-    backlog: str = ""
     unit_manifest: str = ""
     context: str = ""
 
@@ -90,7 +89,7 @@ class PartitionCheck(AuthorResult):
 
 
 class EmitResult(AuthorResult):
-    """`emit_artifacts` — author backlog bullets plus survey-owned traceability."""
+    """`emit_artifacts` — the records filed plus survey-owned traceability."""
 
     emit_ok: bool = False
     emit_errors: str = ""

@@ -21,6 +21,10 @@ from ostler import selector_forms
 from ostler.vet import placement as placement_mod
 from ostler.pages import files_in_book, in_hidden_folder
 from ostler import refs as refs_mod
+from ostler import adr as adr_mod
+from ostler import ids as ids_mod
+from ostler import path as path_mod
+from ostler import register as register_mod
 from ostler.finding import Finding
 from ostler.model import Graph, Epic, Story, UINode, load_config, read_doc, required_section_problems
 from ostler.path import services_root as services_root_of, specs_root_in
@@ -112,6 +116,8 @@ def run(graph: Graph, epic_filter: str | None = None, check_schema: bool = True,
 
     _check_legacy_books_root(graph, f)
     _check_removed_doc_roots(graph, f)
+    _check_register_records(graph, f)
+    _check_decisions(graph, f)
     _check_ui(graph, f, resolver, checkouts)
     server_membership.check_server_membership(graph, f, resolver)
     fragment_hosts.check_fragment_hosts(graph, f, resolver)
@@ -196,6 +202,48 @@ def _check_removed_doc_roots(graph: Graph, findings: list[Finding]) -> None:
             "every kind lives at its built-in path under `docs/`, and specs live in the "
             "artifacts dir, so delete the key",
             suggestion="delete the `docRoots` key from the organization config"))
+
+
+def _check_register_records(graph: Graph, findings: list[Finding]) -> None:
+    """A `record.md` on the Register's shelf that does not parse is left out of the listing, so it is named here."""
+    for path in register_mod.records(graph).unreadable:
+        findings.append(Finding(
+            "error", "register-record-unreadable",
+            f"{path}: not a readable record, so the listing skips it — fix its frontmatter "
+            f"(id, repo, area, pattern, filed_by, summary) or delete the folder",
+            path=str(path), line=1))
+
+
+def _check_decisions(graph: Graph, findings: list[Finding]) -> None:
+    """A decision and its evidence name each other: every evidence id resolves to a record, and that record's `decision` names the decision."""
+    shelved = set(ids_mod.shelf_ids(graph))
+    read = adr_mod.decisions(graph)
+    bound = {r.id: r.decision for r in register_mod.records(graph).records}
+    decided = {d.id for d in read.decisions}
+    for decision in read.decisions:
+        where = str(path_mod.adr_root(graph) / f"{decision.id}.md")
+        for record_id in decision.evidence:
+            if record_id not in shelved:
+                findings.append(Finding(
+                    "error", "decision-evidence-unresolved",
+                    f"decision '{decision.id}' cites evidence '{record_id}', which resolves to no record "
+                    f"on the shelf",
+                    suggestion="restore the record, or remove the id from the decision's `evidence`",
+                    path=where, line=1))
+            elif record_id in bound and bound[record_id] != decision.id:
+                findings.append(Finding(
+                    "error", "decision-back-link-missing",
+                    f"decision '{decision.id}' lists record '{record_id}', whose `decision` is "
+                    f"'{bound[record_id] or 'empty'}'",
+                    suggestion=f"set `decision: {decision.id}` on the record, or remove it from the evidence",
+                    path=where, line=1))
+    for record_id, named in sorted(bound.items()):
+        if named and named not in decided:
+            findings.append(Finding(
+                "error", "decision-back-link-missing",
+                f"record '{record_id}' names decision '{named}', and no decision file has that id",
+                suggestion="restore the decision file, or clear the record's `decision`",
+                ref=record_id))
 
 
 def _check_story_identity(graph: Graph, findings: list[Finding]) -> None:

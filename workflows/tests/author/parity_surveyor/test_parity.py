@@ -3,16 +3,17 @@ from __future__ import annotations
 
 import json
 import logging
+import subprocess
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
 import pytest
+from ostler import Ostler
+from ostler.register import Record
 from workhorse.pyflow import WorkflowFailed
 from workhorse_workflows.author.parity_surveyor.nodes.parity import (
-    PARITY_BEGIN,
-    PARITY_HEADING,
-    emit_parity_backlog,
+    emit_parity_records,
     expand_parity_inventory,
     load_parity_config,
     parity_slug,
@@ -47,7 +48,6 @@ def test_config_derives_every_path_under_the_survey_dir(
     assert cfg.inventory == "docs/survey/legacy-vs-new/inventory.json"
     assert cfg.findings_dir == "docs/survey/legacy-vs-new/findings"
     assert cfg.unit_manifest == "docs/survey/legacy-vs-new/unit-manifest.json"
-    assert cfg.backlog == "docs/backlog.md"
     assert cfg.epics_dir == "docs/epics"
 
 
@@ -63,11 +63,7 @@ def test_config_honours_an_overridden_survey_dir(
         survey_dir="docs/parity",
     )
 
-    assert (cfg.target_services, cfg.backlog, cfg.epics_dir) == (
-        "docs/services",
-        "docs/backlog.md",
-        "docs/epics",
-    )
+    assert (cfg.target_services, cfg.epics_dir) == ("docs/services", "docs/epics")
     assert cfg.inventory == "docs/parity/inventory.json"
     assert cfg.findings_dir == "docs/parity/findings"
 
@@ -315,7 +311,7 @@ def _unit(area: str = "billing", slug: str = "invoices") -> dict[str, Any]:
 
 
 def _emit(repo: Path, logger: logging.Logger) -> Any:
-    return emit_parity_backlog(
+    return emit_parity_records(
         logger,
         inventory="inv.json",
         findings_dir="findings",
@@ -323,14 +319,28 @@ def _emit(repo: Path, logger: logging.Logger) -> Any:
     )
 
 
-def test_emit_writes_one_bullet_per_uncovered_surface(
-    logger: logging.Logger, repo: Path, parity_survey: Callable[..., None]
+def _filed(repo: Path) -> list[Record]:
+    return list(Ostler(repo).records().records)
+
+
+def _subjects(artifacts: Path) -> list[str]:
+    return subprocess.run(
+        ["git", "-C", str(artifacts), "log", "--format=%s"], capture_output=True, text=True, check=True
+    ).stdout.splitlines()
+
+
+def test_emit_files_one_parity_record_per_uncovered_surface(
+    logger: logging.Logger, repo: Path, parity_survey: Callable[..., None], artifacts: Path
 ) -> None:
     parity_survey(
         [_unit(), _unit(area="admin", slug="users")],
         {
             "legacy/billing/invoices": _record(
-                findings=[{"description": "no invoice list in the new app"}]
+                findings=[{
+                    "description": "no invoice list in the new app",
+                    "effort": "small",
+                    "evidence": ["invoices.php:12", "graph search found no invoice screen"],
+                }]
             ),
             "legacy/admin/users": _record(findings=[{"description": "no user admin screen"}]),
         },
@@ -340,9 +350,32 @@ def test_emit_writes_one_bullet_per_uncovered_surface(
 
     assert result.emit_ok
     assert result.bullet_count == 2
-    body = (repo / "docs/backlog.md").read_text(encoding="utf-8")
-    assert "- [legacy-parity-billing-invoices] no invoice list in the new app" in body
-    assert "- [legacy-parity-admin-users] no user admin screen" in body
+    filed = {r.summary: r for r in _filed(repo)}
+    assert set(filed) == {"no invoice list in the new app", "no user admin screen"}
+    invoices = filed["no invoice list in the new app"]
+    assert (invoices.repo, invoices.area, invoices.pattern) == ("acme", "billing", "untriaged")
+    assert (invoices.filed_by, invoices.status) == ("parity", "open")
+    assert invoices.id != "legacy-parity-billing-invoices"
+    assert "`legacy/billing/invoices`" in invoices.body
+    assert "invoices.php:12" in invoices.body and "graph search found no invoice screen" in invoices.body
+    assert filed["no user admin screen"].area == "admin"
+    assert not (repo / "docs/backlog.md").exists()
+
+
+def test_emit_commits_every_record_of_one_emit_in_one_artifacts_commit(
+    logger: logging.Logger, repo: Path, parity_survey: Callable[..., None], artifacts: Path
+) -> None:
+    parity_survey(
+        [_unit(), _unit(slug="refunds")],
+        {
+            "legacy/billing/invoices": _record(findings=[{"description": "no invoice list"}]),
+            "legacy/billing/refunds": _record(findings=[{"description": "no refund flow"}]),
+        },
+    )
+
+    _emit(repo, logger)
+
+    assert _subjects(artifacts)[:2] == ["chore(acme): file 2 parity records", "init"]
 
 
 def test_emit_suppresses_a_surface_a_new_feature_already_owns(
@@ -350,6 +383,7 @@ def test_emit_suppresses_a_surface_a_new_feature_already_owns(
     repo: Path,
     parity_survey: Callable[..., None],
     read_json: Callable[[Path], Any],
+    artifacts: Path,
 ) -> None:
     """The suppression is the assessor's one judgment, and it stays auditable: the unit is still in the manifest, with the owner that suppressed it."""
     parity_survey(
@@ -367,10 +401,10 @@ def test_emit_suppresses_a_surface_a_new_feature_already_owns(
 
     assert result.bullet_count == 1
     assert result.emit_note == (
-        "wrote 1 missing-surface bullet(s); suppressed 1 already-owned surface(s)"
+        "filed 1 missing-surface record(s); suppressed 1 already-owned surface(s)"
     )
-    body = (repo / "docs/backlog.md").read_text(encoding="utf-8")
-    assert "would have been a gap" not in body
+    (refunds,) = _filed(repo)
+    assert refunds.summary == "no refund flow"
     by_id = {u["id"]: u for u in read_json(repo / "manifest.json")["units"]}
     assert by_id["legacy/billing/invoices"] == {
         "id": "legacy/billing/invoices",
@@ -379,7 +413,26 @@ def test_emit_suppresses_a_surface_a_new_feature_already_owns(
         "existingOwner": "FEAT-12 invoices",
         "bullet": "",
     }
-    assert by_id["legacy/billing/refunds"]["bullet"] == "legacy-parity-billing-refunds"
+    assert by_id["legacy/billing/refunds"]["bullet"] == refunds.id
+
+
+def test_a_surface_with_an_existing_owner_files_nothing_and_commits_nothing(
+    logger: logging.Logger, repo: Path, parity_survey: Callable[..., None], artifacts: Path
+) -> None:
+    parity_survey(
+        [_unit()],
+        {
+            "legacy/billing/invoices": _record(
+                existing_owner="FEAT-12", findings=[{"description": "would have been a gap"}]
+            )
+        },
+    )
+
+    result = _emit(repo, logger)
+
+    assert result.emit_ok and result.bullet_count == 0
+    assert _filed(repo) == []
+    assert _subjects(artifacts) == ["init"]
 
 
 def test_emit_skips_a_unit_that_is_not_assessed(
@@ -387,6 +440,7 @@ def test_emit_skips_a_unit_that_is_not_assessed(
     repo: Path,
     parity_survey: Callable[..., None],
     read_json: Callable[[Path], Any],
+    artifacts: Path,
 ) -> None:
     """`clean` means the new app covers it; `blocked` means nobody could tell yet."""
     parity_survey(
@@ -401,14 +455,15 @@ def test_emit_skips_a_unit_that_is_not_assessed(
 
     assert result.bullet_count == 0
     assert result.emit_note == (
-        "wrote 0 missing-surface bullet(s); suppressed 0 already-owned surface(s)"
+        "filed 0 missing-surface record(s); suppressed 0 already-owned surface(s)"
     )
+    assert _filed(repo) == []
     statuses = {u["id"]: u["status"] for u in read_json(repo / "manifest.json")["units"]}
     assert statuses == {"legacy/billing/invoices": "clean", "legacy/billing/statements": "blocked"}
 
 
-def test_emit_flattens_a_multiline_description_to_one_bullet(
-    logger: logging.Logger, repo: Path, parity_survey: Callable[..., None]
+def test_emit_flattens_a_multiline_description_to_a_one_line_summary(
+    logger: logging.Logger, repo: Path, parity_survey: Callable[..., None], artifacts: Path
 ) -> None:
     parity_survey(
         [_unit()],
@@ -421,14 +476,14 @@ def test_emit_flattens_a_multiline_description_to_one_bullet(
 
     _emit(repo, logger)
 
-    body = (repo / "docs/backlog.md").read_text(encoding="utf-8")
-    assert "- [legacy-parity-billing-invoices] no invoice list and no export\n" in body
+    (record,) = _filed(repo)
+    assert record.summary == "no invoice list and no export"
 
 
 def test_emit_uses_only_the_first_finding(
-    logger: logging.Logger, repo: Path, parity_survey: Callable[..., None]
+    logger: logging.Logger, repo: Path, parity_survey: Callable[..., None], artifacts: Path
 ) -> None:
-    """One surface, one gap: the bullet is the surface being missing, not each detail."""
+    """One surface, one gap: the record is the surface being missing, not each detail."""
     parity_survey(
         [_unit()],
         {
@@ -441,11 +496,13 @@ def test_emit_uses_only_the_first_finding(
     result = _emit(repo, logger)
 
     assert result.bullet_count == 1
-    assert "second" not in (repo / "docs/backlog.md").read_text(encoding="utf-8")
+    (record,) = _filed(repo)
+    assert record.summary == "first"
+    assert "second" not in record.body
 
 
 def test_emit_tolerates_an_assessed_record_with_no_findings(
-    logger: logging.Logger, repo: Path, parity_survey: Callable[..., None]
+    logger: logging.Logger, repo: Path, parity_survey: Callable[..., None], artifacts: Path
 ) -> None:
     """`validate_record` already rejects this; the emitter still must not crash on it."""
     parity_survey([_unit()], {"legacy/billing/invoices": _record()})
@@ -453,79 +510,85 @@ def test_emit_tolerates_an_assessed_record_with_no_findings(
     result = _emit(repo, logger)
 
     assert result.bullet_count == 1
-    assert "- [legacy-parity-billing-invoices] \n" in (
-        repo / "docs/backlog.md"
-    ).read_text(encoding="utf-8")
+    (record,) = _filed(repo)
+    assert "legacy/billing/invoices" in record.summary
 
 
-def test_emit_creates_a_backlog_when_none_exists(
-    logger: logging.Logger, repo: Path, parity_survey: Callable[..., None]
+def test_emit_takes_the_area_as_one_lowercase_kebab_segment(
+    logger: logging.Logger, repo: Path, parity_survey: Callable[..., None], artifacts: Path
 ) -> None:
     parity_survey(
-        [_unit()], {"legacy/billing/invoices": _record(findings=[{"description": "gap"}])}
+        [_unit(area="Billing & Co")],
+        {"legacy/Billing & Co/invoices": _record(findings=[{"description": "gap"}])},
     )
 
     _emit(repo, logger)
 
-    body = (repo / "docs/backlog.md").read_text(encoding="utf-8")
-    assert body.startswith(f"# Backlog\n\n{PARITY_HEADING}\n\n{PARITY_BEGIN}\n")
+    (record,) = _filed(repo)
+    assert record.area == "billing-co"
 
 
-def test_emit_appends_its_own_heading_to_an_existing_backlog(
-    logger: logging.Logger,
-    repo: Path,
-    write: Callable[[Path, str], Path],
-    parity_survey: Callable[..., None],
+def test_a_rerun_with_unchanged_findings_files_nothing_and_adds_no_commit(
+    logger: logging.Logger, repo: Path, parity_survey: Callable[..., None], artifacts: Path
 ) -> None:
-    """A repo can carry both surveys' sections: the parity fence is its own marker pair, so an existing surveyor section is neither replaced nor read."""
     parity_survey(
-        [_unit()], {"legacy/billing/invoices": _record(findings=[{"description": "gap"}])}
+        [_unit(), _unit(slug="refunds")],
+        {
+            "legacy/billing/invoices": _record(findings=[{"description": "no invoice list"}]),
+            "legacy/billing/refunds": _record(findings=[{"description": "no refund flow"}]),
+        },
     )
-    write(
-        repo / "docs/backlog.md",
-        "# Backlog\n\n## Survey findings\n\n"
-        "<!-- surveyor:begin — generated; do not edit inside this fence -->\n"
-        "- [survey-a11y-labels] label the icon buttons\n"
-        "<!-- surveyor:end -->\n",
-    )
-
     _emit(repo, logger)
+    before = (sorted(r.id for r in _filed(repo)), _subjects(artifacts))
 
-    body = (repo / "docs/backlog.md").read_text(encoding="utf-8")
-    assert "- [survey-a11y-labels] label the icon buttons" in body
-    assert "<!-- surveyor:end -->" in body
-    assert body.index("## Survey findings") < body.index(PARITY_HEADING)
+    result = _emit(repo, logger)
+
+    assert result.emit_ok
+    assert (sorted(r.id for r in _filed(repo)), _subjects(artifacts)) == before
 
 
-def test_re_emitting_replaces_only_the_parity_fence(
+def test_a_rerun_files_only_the_surface_that_is_new(
     logger: logging.Logger,
     repo: Path,
     write: Callable[[Path, str], Path],
     write_json: Callable[[Path, Any], Path],
-    parity_survey: Callable[..., None],
+    read_json: Callable[[Path], Any],
+    artifacts: Path,
 ) -> None:
-    parity_survey(
-        [_unit()], {"legacy/billing/invoices": _record(findings=[{"description": "first pass"}])}
-    )
+    write_json(repo / "inv.json", {"version": 1, "baseline": "base.json", "units": [_unit()]})
+    write(repo / "findings/legacy-billing-invoices.md", _record(findings=[{"description": "no invoice list"}]))
     _emit(repo, logger)
-    write(
-        repo / "docs/backlog.md",
-        (repo / "docs/backlog.md").read_text(encoding="utf-8")
-        + "\n## Filed by hand\n\n- [manual-1] something an operator wrote\n",
+    (first,) = _filed(repo)
+
+    write_json(
+        repo / "inv.json", {"version": 1, "baseline": "base.json", "units": [_unit(), _unit(slug="refunds")]}
     )
-    write(
-        repo / "findings/legacy-billing-invoices.md",
-        _record(findings=[{"description": "second pass"}]),
+    write(repo / "findings/legacy-billing-refunds.md", _record(findings=[{"description": "no refund flow"}]))
+    _emit(repo, logger)
+
+    filed = {r.summary: r.id for r in _filed(repo)}
+    assert set(filed) == {"no invoice list", "no refund flow"}
+    assert filed["no invoice list"] == first.id
+    by_id = {u["id"]: u["bullet"] for u in read_json(repo / "manifest.json")["units"]}
+    assert by_id == {
+        "legacy/billing/invoices": first.id,
+        "legacy/billing/refunds": filed["no refund flow"],
+    }
+    assert _subjects(artifacts)[:3] == ["chore(acme): file 1 parity records"] * 2 + ["init"]
+
+
+def test_a_survey_record_with_the_same_summary_does_not_hold_back_a_parity_record(
+    logger: logging.Logger, repo: Path, parity_survey: Callable[..., None], artifacts: Path
+) -> None:
+    held = Ostler(repo).file_record(
+        repo="acme", area="billing", pattern="untriaged", summary="no invoice list", filed_by="survey",
     )
+    assert held.ok, held
+    parity_survey([_unit()], {"legacy/billing/invoices": _record(findings=[{"description": "no invoice list"}])})
 
     _emit(repo, logger)
 
-    body = (repo / "docs/backlog.md").read_text(encoding="utf-8")
-    assert body.count(PARITY_BEGIN) == 1
-    assert body.count(PARITY_HEADING) == 1
-    assert "second pass" in body
-    assert "first pass" not in body
-    assert "- [manual-1] something an operator wrote" in body
+    assert sorted(r.filed_by for r in _filed(repo)) == ["parity", "survey"]
 
 
 def test_emit_manifest_carries_the_baseline_and_every_unit(
@@ -533,6 +596,7 @@ def test_emit_manifest_carries_the_baseline_and_every_unit(
     repo: Path,
     parity_survey: Callable[..., None],
     read_json: Callable[[Path], Any],
+    artifacts: Path,
 ) -> None:
     parity_survey(
         [_unit(), _unit(slug="refunds")],
@@ -555,7 +619,7 @@ def test_emit_manifest_carries_the_baseline_and_every_unit(
 
 
 def test_emit_reports_an_unreadable_inventory_without_writing_anything(
-    logger: logging.Logger, repo: Path, write: Callable[[Path, str], Path]
+    logger: logging.Logger, repo: Path, write: Callable[[Path, str], Path], artifacts: Path
 ) -> None:
     write(repo / "inv.json", "{ not json")
 
@@ -563,7 +627,7 @@ def test_emit_reports_an_unreadable_inventory_without_writing_anything(
 
     assert not result.emit_ok
     assert result.emit_errors
-    assert not (repo / "docs/backlog.md").exists()
+    assert _filed(repo) == []
     assert not (repo / "manifest.json").exists()
 
 
@@ -582,6 +646,7 @@ def test_emit_treats_a_record_with_no_front_matter_as_no_status(
     repo: Path,
     parity_survey: Callable[..., None],
     read_json: Callable[[Path], Any],
+    artifacts: Path,
 ) -> None:
     parity_survey([_unit()], {"legacy/billing/invoices": "# Just a heading\n"})
 
@@ -596,6 +661,7 @@ def test_emit_paths_all_travel_with_parameters(
     repo: Path,
     write: Callable[[Path, str], Path],
     write_json: Callable[[Path, Any], Path],
+    artifacts: Path,
 ) -> None:
     """Nothing is hardcoded: the config node derives these, and the node just uses them."""
     write_json(repo / "elsewhere/inv.json", {"version": 1, "units": [_unit()]})
@@ -604,7 +670,7 @@ def test_emit_paths_all_travel_with_parameters(
         _record(findings=[{"description": "gap"}]),
     )
 
-    result = emit_parity_backlog(
+    result = emit_parity_records(
         logger,
         inventory="elsewhere/inv.json",
         findings_dir="elsewhere/f",
@@ -612,7 +678,5 @@ def test_emit_paths_all_travel_with_parameters(
     )
 
     assert result.emit_ok
-    assert "- [legacy-parity-billing-invoices] gap" in (repo / "docs/backlog.md").read_text(
-        encoding="utf-8"
-    )
+    assert [r.summary for r in _filed(repo)] == ["gap"]
     assert (repo / "elsewhere/manifest.json").is_file()

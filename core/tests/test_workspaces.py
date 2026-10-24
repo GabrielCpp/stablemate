@@ -78,7 +78,7 @@ def test_docs_home_is_the_artifacts_dir_only_in_a_workspace(tmp_path, monkeypatc
     assert cfgmod.docs_home(tmp_path) == (tmp_path / "artifacts").resolve()
 
 
-def test_ensure_artifacts_repo_inits_ignores_specs_and_adds_no_remote(tmp_path, monkeypatch):
+def test_ensure_artifacts_repo_inits_ignores_session_folders_and_adds_no_remote(tmp_path, monkeypatch):
     target = tmp_path / "artifacts"
     monkeypatch.setenv(cfgmod.ARTIFACTS_DIR_ENV, str(target))
 
@@ -86,17 +86,22 @@ def test_ensure_artifacts_repo_inits_ignores_specs_and_adds_no_remote(tmp_path, 
 
     assert root == target.resolve()
     assert (root / ".git").exists()
-    assert (root / ".gitignore").read_text().splitlines() == ["specs/"]
+    assert (root / ".gitignore").read_text().splitlines() == ["specs/", "scratch/", "researches/"]
     remotes = subprocess.run(
         ["git", "-C", str(root), "remote"], capture_output=True, text=True, check=True
     )
     assert remotes.stdout.strip() == ""
 
 
-def test_ensure_artifacts_repo_is_idempotent_and_keeps_an_existing_gitignore(tmp_path, monkeypatch):
+def test_ensure_artifacts_repo_appends_missing_ignores_and_keeps_custom_lines(tmp_path, monkeypatch):
     monkeypatch.setenv(cfgmod.ARTIFACTS_DIR_ENV, str(tmp_path / "artifacts"))
     root = cfgmod.ensure_artifacts_repo()
-    (root / ".gitignore").write_text("mine\n")
+    (root / ".gitignore").write_text("mine\nspecs/\n")
 
     assert cfgmod.ensure_artifacts_repo() == root
-    assert (root / ".gitignore").read_text() == "mine\n"
+    assert (root / ".gitignore").read_text().splitlines() == [
+        "mine", "specs/", "scratch/", "researches/",
+    ]
+    before = (root / ".gitignore").read_text()
+    cfgmod.ensure_artifacts_repo()
+    assert (root / ".gitignore").read_text() == before

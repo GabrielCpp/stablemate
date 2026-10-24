@@ -17,9 +17,8 @@ from workhorse_workflows.author.main.nodes import (
 from workhorse_workflows.author.shared import paths
 from workhorse_workflows.author.shared.answer import answer_below
 from workhorse_workflows.author.shared.nodes import (
-    adopt_backlog,
     load_config,
-    prune_bullet,
+    promote_record,
     seed_story,
 )
 from workhorse_workflows.author.parity_surveyor import ParitySurveyor
@@ -35,7 +34,7 @@ class Author(Workflow):
 
     mode: str = "epic"
     epic: str = ""
-    bullet: str = ""
+    record: str = ""
     layers: str = ""
     services: str = ""
     rubric: str = "docs/survey/rubric.md"
@@ -50,7 +49,7 @@ class Author(Workflow):
         return RunContext(**cfg.model_dump())
 
     def start(self) -> Continue | Done:
-        """Dispatch discovery modes, one backlog story, or the stage chain."""
+        """Dispatch discovery modes, one register story, or the stage chain."""
         if self.mode == "survey":
             return Done(self.handoff(
                 Surveyor,
@@ -65,11 +64,10 @@ class Author(Workflow):
                 survey_dir=self.parity_survey_dir,
             ))
         if self.mode == "story":
-            self.call(adopt_backlog)
             seeded = self.call(
                 seed_story,
                 self.epic,
-                self.bullet,
+                self.record,
                 layers=self.layers,
                 services=self.services,
             )
@@ -81,9 +79,10 @@ class Author(Workflow):
                 feedback_dir=str(self.run_dir),
             )
             return Done(self.call(
-                prune_bullet,
-                seeded.bullet_id,
-                seeded.from_backlog,
+                promote_record,
+                seeded.record_id,
+                self.epic,
+                seeded.story_slug,
             ))
         self.call(contract_digest, self.ctx.milestone_path)
         return Continue(None, self.split_epics)

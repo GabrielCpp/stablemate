@@ -651,7 +651,6 @@ BUILTIN_DOC_ROOTS: dict[str, str] = {
     "epics": "docs/epics",
     "milestones": "docs/milestones",
     "specs": "docs/specs",
-    "backlog": "docs/backlog.md",
 }
 
 
@@ -659,6 +658,8 @@ def doc_roots(root: Path, kinds: Sequence[dynamic_registry.TemplateKind] | None 
     """Where each kind of document lives under *root*: its built-in path, and specs in the artifacts dir."""
     roots = {key: root / default for key, default in BUILTIN_DOC_ROOTS.items()}
     roots["specs"] = core_config.resolve_artifacts_dir() / "specs"
+    roots["register"] = core_config.resolve_artifacts_dir() / "backlog"
+    roots["adr"] = core_config.resolve_artifacts_dir() / "adr"
     for kind in (dynamic_registry.load_kinds(root) if kinds is None else kinds):
         roots.setdefault(kind.doc_root, root / kind.default_path)
     return roots

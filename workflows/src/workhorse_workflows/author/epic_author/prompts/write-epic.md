@@ -39,7 +39,7 @@ Record each distinct in-scope behavior as a researched `### <stable-seed-id>` bl
 `## Seeds`, following the installed artifact grammar. Write or refine the complete seed set in one
 edit; do not launch a separate `ostler seed add` process per seed, because each process reloads the
 whole book. Seeds derive from this epic's milestone journey segment, not independently pruneable
-milestone headings, so omit `sourceBullet`. Populate documented surfaces, backing services,
+milestone headings, so omit `sourceRecord`. Populate documented surfaces, backing services,
 prerequisites, and services from evidence. A seed's `services:` lists book names, each a directory under
 `docs/services/`, and nothing else. The story split derives each story's services from the seeds
 it covers, so a seed with no `services:` leaves its story without any. Every epic

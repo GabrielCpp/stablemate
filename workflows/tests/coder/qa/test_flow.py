@@ -225,7 +225,9 @@ class _Ostler:
         blocked_problems: list[str] | None = None,
         block_runs: int = 0,
         scenarios: tuple[dict[str, Any], ...] = (),
+        context: dict[str, Any] | None = None,
     ) -> None:
+        self.context = context or {}
         self.fail_runs = fail_runs
         self.block_runs = block_runs
         self.scenarios = scenarios
@@ -340,7 +342,9 @@ class _Session(Ostler):
         spec_dir = Path(spec)
         spec_dir.mkdir(parents=True, exist_ok=True)
         (spec_dir / "qa-okf-context.json").write_text(
-            json.dumps({"status": "passed", "obligations": [], "verificationIndex": []}),
+            json.dumps(
+                {"status": "passed", "obligations": [], "verificationIndex": [], **self.script.context}
+            ),
             encoding="utf-8",
         )
         return QaOutcome(ok=True, message=f"wrote {spec_dir}", data={"status": "passed"})
@@ -455,7 +459,7 @@ class _Agent:
         scope: str = "story",
         explode_at: int = 0,
         touch: Path | None = None,
-        items: tuple[dict[str, str], ...] = (),
+        items: tuple[dict[str, Any], ...] = (),
         same: dict[str, str] | None = None,
     ) -> None:
         self.docs = docs
@@ -633,38 +637,84 @@ def test_one_clean_pass_spends_one_owner_turn(
     assert (docs / spec_dir() / "qa" / "qa-run.ndjson").is_file()
 
 
-FILED_BACKLOG = (
-    "# Backlog\n\n## Filed by coder\n\n"
-    "- [clear-report-snapshots] Sign-out leaves the saved report snapshots in the browser.\n"
-)
-
-
-def test_a_backlog_item_an_open_bullet_holds_is_dropped_and_a_new_one_is_filed(
+def test_a_passed_run_files_a_deferred_book_page_on_the_register_of_its_workspace_repo(
     docs: Path,
+    web: Path,
     ostler: Callable[..., _Ostler],
+    monkeypatch: pytest.MonkeyPatch,
     env: Callable[..., RunEnv],
     drive_flow: Callable[..., Any],
-    write: Callable[[Path, str], Path],
 ) -> None:
-    """The judge reads one item as the open bullet and the other as new, so only the new one lands."""
-    ostler()
-    backlog = write(docs / "docs" / "backlog.md", FILED_BACKLOG)
+    """The workspace the run was started with reaches the filer, so the page is shelved under that workspace's repo."""
+    monkeypatch.setattr(regression_nodes, "_run", _Suite())
+    page = "docs/services/web/gui/screens/reports.md"
+    ostler(
+        context={
+            "servicesRoot": "docs/services",
+            "story": {"id": STORY, "externalKey": "", "slug": ""},
+            "obligations": [
+                {
+                    "node": f"{page}#export",
+                    "source": page,
+                    "required": True,
+                    "deferred": {"kind": "no-verify-declared", "detail": "the book declares no check"},
+                }
+            ],
+        }
+    )
+
+    result = drive_flow(Qa(story=STORY), env(), _Agent(docs))
+
+    assert result.status == "passed", result
+    [record] = Ostler(docs).records().records
+    assert (record.repo, record.area, record.filed_by) == ("web", "book", "qa-deferred")
+    assert record.symbols == ["web/gui/screens/reports.md"]
+
+
+def test_a_backlog_item_an_open_qa_record_holds_is_dropped_and_a_new_one_is_filed(
+    docs: Path,
+    web: Path,
+    ostler: Callable[..., _Ostler],
+    monkeypatch: pytest.MonkeyPatch,
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    """The judge reads one item as the open `qa` record and the other as new, so only the new one lands, shelved under the workspace repo the item names."""
+    monkeypatch.setattr(regression_nodes, "_run", _Suite())
+    ostler(context={"story": {"id": STORY, "externalKey": "", "slug": ""}})
+    held = Ostler(docs).file_record(
+        repo="web", area="reports", pattern="clear-state", filed_by="qa",
+        summary="Sign-out leaves the saved report snapshots in the browser.",
+    )
+    assert held.record is not None, held.message
     agent = _Agent(
         docs,
         items=(
             {"id": "drop-snapshots-on-logout", "description": "Logging out keeps cached report snapshots."},
-            {"id": "paginate-audit-log", "description": "The audit log loads every row at once."},
+            {
+                "id": "paginate-audit-log",
+                "description": "The audit log loads every row at once.",
+                "repo": "web",
+                "area": "audit",
+                "pattern": "paginate",
+            },
         ),
-        same={"drop-snapshots-on-logout": "clear-report-snapshots"},
+        same={"drop-snapshots-on-logout": held.record.id},
     )
 
     result = drive_flow(Qa(story=STORY), env(), agent)
 
     assert result.status == "passed", result
-    text = backlog.read_text(encoding="utf-8")
-    assert "[paginate-audit-log] The audit log loads every row at once." in text, text
-    assert "drop-snapshots-on-logout" not in text, text
+    filed = {r.summary: r for r in Ostler(docs).records().records}
+    assert sorted(filed) == [
+        "Sign-out leaves the saved report snapshots in the browser.",
+        "The audit log loads every row at once.",
+    ], sorted(filed)
+    new = filed["The audit log loads every row at once."]
+    assert (new.repo, new.area, new.pattern, new.filed_by, new.source_story) == (
+        "web", "audit", "paginate", "qa", STORY)
     assert agent.powers[agent.calls.index("judge")] == "low", agent.powers
+    assert not (docs / spec_dir() / "backlog-items.json").exists()
 
 
 def test_a_story_that_cannot_be_resolved_fails_the_run_without_spending_a_turn(

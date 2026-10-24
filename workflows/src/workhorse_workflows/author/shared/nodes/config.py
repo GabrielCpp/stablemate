@@ -67,18 +67,8 @@ def load_config(
 ) -> Config:
     """Resolve the author's paths and prove the selected intake exists."""
     root = survey_repo_root(repo_dir)
-    backlog = paths.backlog_file(root)
     epics_dir = paths.epics_dir(root)
     milestone = approved_milestone_path(root) if mode == "epic" else ""
-
-    backlog_path = (root / backlog).resolve()
-    if mode in {"story", "story-edit", "epic-edit"} and not backlog_path.is_file():
-        logger.warning("backlog file not found: %s", backlog_path)
-        raise WorkflowFailed(
-            f"backlog file not found: {backlog_path}\n"
-            f"Create {backlog} (a markdown bullet list of features) before running the author "
-            f"workflow."
-        )
 
     folder = approved_milestone_folder(root)
     data = _template(root)
@@ -95,7 +85,6 @@ def load_config(
     )
     return Config(
         repo_root=str(root),
-        backlog_path=backlog,
         milestone_path=milestone,
         milestone_mockups_dir=str(folder / MOCKUPS_DIR) if folder is not None else "",
         milestone_dir=str(folder) if folder is not None else "",

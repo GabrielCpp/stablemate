@@ -8,7 +8,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from ostler import backlog as backlog_mod
+from ostler import adr as adr_mod
 from ostler import book_reach
 from ostler import coverage as coverage_mod
 from ostler import crud, doctor
@@ -18,6 +18,8 @@ from ostler import ids as ids_mod
 from ostler import index as index_mod
 from ostler import path as path_mod
 from ostler import query as query_mod
+from ostler import register as register_mod
+from ostler import register_import
 from ostler import registry, select, todo as todo_mod
 from ostler.crud import Result
 from ostler.qa import (
@@ -313,9 +315,64 @@ class Ostler:
         """The epics queue, front-first (``ostler todo list``)."""
         return todo_mod.list_epics(self.graph)
 
-    def backlog(self) -> builtins.list[dict]:
-        """Backlog items as ``{"id", "text"}`` dicts (``ostler backlog list``)."""
-        return [{"id": i, "text": t} for i, t in backlog_mod.items(self.graph)]
+    def register_root(self) -> Path:
+        """The shelf the Register's records live on: ``backlog/`` in the artifacts dir."""
+        return self._doc_root("register")
+
+    def records(self) -> register_mod.RegisterRead:
+        """Every record on the shelf, sorted by repo, area and id, and the files that did not parse."""
+        return register_mod.records(self._fresh())
+
+    def open_records(self, repo: str) -> builtins.list[register_mod.Record]:
+        """The open records of *repo*."""
+        return register_mod.open_records(self._fresh(), repo)
+
+    def record_listing(self, repo: str = "", status: str = "") -> builtins.list[str]:
+        """The one-line-per-record listing (``ostler backlog list``), optionally for one repo or status."""
+        return register_mod.listing(
+            r for r in self.records().records
+            if (not repo or r.repo == repo) and (not status or r.status == status)
+        )
+
+    def file_record(
+        self,
+        *,
+        repo: str,
+        area: str,
+        pattern: str,
+        summary: str,
+        filed_by: register_mod.FiledBy,
+        symbols: Iterable[str] = (),
+        source_story: str = "",
+        body: str = "",
+        status: register_mod.Status = "open",
+        record_id: str = "",
+        prefix: str | None = None,
+    ) -> register_mod.Filing:
+        """Shelve one record, minting its id when *record_id* is empty."""
+        filing = register_mod.file_record(
+            self._fresh(), repo=repo, area=area, pattern=pattern, summary=summary,
+            filed_by=filed_by, symbols=symbols, source_story=source_story, body=body,
+            status=status, record_id=record_id, prefix=prefix,
+        )
+        self._graph = None
+        return filing
+
+    def propose_decision(
+        self,
+        *,
+        title: str,
+        context: str,
+        decision: str,
+        consequences: str,
+        evidence: Iterable[str],
+        prefix: str | None = None,
+    ) -> Result:
+        """Propose a decision from *evidence* records, bind them to it and commit all of it in the artifacts repo."""
+        return self._apply(adr_mod.propose(
+            self._fresh(), title=title, context=context, decision=decision,
+            consequences=consequences, evidence=evidence, prefix=prefix,
+        ))
 
     def doctor(self, *, epic: str | None = None, check_schema: bool = True) -> QaOutcome:
         """The referential-integrity check (``ostler doctor``); ``data`` is the report dict."""
@@ -380,10 +437,6 @@ class Ostler:
         """The folder of story *slug* in *epic* — join a filename onto this, not a path."""
         return path_mod.story_dir(self.graph, epic, slug)
 
-    def backlog_file(self) -> Path:
-        """The intake list — the file :meth:`backlog` reads, ``docs/backlog.md``."""
-        return path_mod.backlog_path(self.graph)
-
     def services_dir(self, service: str = "") -> Path:
         """The feature book, scoped to one *service* in a multi-service workspace."""
         return path_mod.services_root(self.graph, service)
@@ -434,13 +487,21 @@ class Ostler:
 
     def create_backlog_item(
         self,
-        text: str,
+        summary: str,
         *,
-        section: str = "",
+        repo: str,
+        area: str,
+        pattern: str = "untriaged",
+        symbols: Iterable[str] = (),
+        body: str = "",
+        record_id: str = "",
         prefix: str | None = None,
     ) -> Result:
-        """File a backlog item with a generated full id."""
-        return self._apply(backlog_mod.create(self._fresh(), text, section, prefix))
+        """File a person's record on the Register and commit it in the artifacts repo (``ostler create backlog-item``)."""
+        return self.backlog_add(
+            summary, repo=repo, area=area, pattern=pattern, symbols=symbols, body=body,
+            record_id=record_id, prefix=prefix,
+        )
 
     def set_milestone_source_items(
         self,
@@ -526,18 +587,36 @@ class Ostler:
         """Clear give-up stamps off stories (``ostler unblock``)."""
         return self._apply(crud.unblock(self._fresh(), story=story, epic=epic, status=status))
 
-    def backlog_add(self, item_id: str, text: str, section: str = "") -> Result:
-        """Append a backlog item (``ostler backlog add``)."""
-        return self._apply(backlog_mod.add(self._fresh(), item_id, text, section))
+    def backlog_add(
+        self,
+        summary: str,
+        *,
+        repo: str,
+        area: str,
+        pattern: str = "untriaged",
+        symbols: Iterable[str] = (),
+        body: str = "",
+        record_id: str = "",
+        prefix: str | None = None,
+    ) -> Result:
+        """File a person's record on the Register and commit it in the artifacts repo (``ostler backlog add``)."""
+        filing = register_mod.file_person(
+            self._fresh(), summary=summary, repo=repo, area=area, pattern=pattern,
+            symbols=symbols, body=body, record_id=record_id, prefix=prefix,
+        )
+        return self._apply(register_mod.filing_result(filing))
 
-    def backlog_adopt(self, *, prefix: str | None = None) -> Result:
-        """Assign ids to every unnamed bullet in this repo's backlog."""
-        return self._apply(backlog_mod.adopt(self._fresh(), prefix))
+    def backlog_import(
+        self, source: str | Path, *, repo: str, prefix: str | None = None
+    ) -> register_import.Imported:
+        """Turn an old bullet list into records of *repo*, commit them in the artifacts repo, and delete the list (``ostler backlog adopt``)."""
+        outcome = register_import.import_list(self._fresh(), self._resolve(source), repo, prefix)
+        self._graph = None
+        return outcome
 
-    def backlog_prune(self, item_id: str) -> Result:
-        """Remove a backlog item (``ostler backlog prune``) — ``item_id`` may be a short handle."""
-        graph = self._fresh()
-        return self._apply(backlog_mod.prune(graph, ids_mod.resolve(graph, item_id)))
+    def close_record(self, token: str, status: register_mod.Status, reason: str) -> Result:
+        """End a record as *status* with *reason* and commit it in the artifacts repo (``ostler backlog prune``); *token* may be a short handle."""
+        return self._apply(register_mod.close_and_commit(self._fresh(), token, status, reason))
 
     def allocate_id(self) -> str:
         """Mint and persist the next repo-prefixed ostler id (``ACME-15``) — the same id space stories/epics/seeds draw from, so a backlog IOU is a first-class, numbered work item."""

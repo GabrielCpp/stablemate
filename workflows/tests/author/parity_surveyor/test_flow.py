@@ -12,6 +12,7 @@ from unittest.mock import patch
 
 import pytest
 from _fakes import StubRunner
+from ostler import Ostler
 from workhorse.artifacts import ArtifactWriter
 from workhorse.config_run import RunConfig
 from workhorse.pyflow import WorkflowFailed
@@ -29,7 +30,6 @@ SURVEY_DIR = "docs/survey/legacy-vs-new"
 INVENTORY = f"{SURVEY_DIR}/inventory.json"
 FINDINGS = f"{SURVEY_DIR}/findings"
 MANIFEST = f"{SURVEY_DIR}/unit-manifest.json"
-BACKLOG = "docs/backlog.md"
 
 INVOICES = "legacy/billing/invoices"
 STATEMENTS = "legacy/billing/statements"
@@ -146,7 +146,7 @@ def _units(repo: Path) -> dict[str, str]:
 
 
 def test_a_two_surface_baseline_surveys_both_and_emits_only_the_unowned_one(
-    surveyed: Path, tmp_path: Path
+    surveyed: Path, tmp_path: Path, artifacts: Path
 ) -> None:
     """One full pass: freeze, assess each unit once, verify coverage, emit."""
     agent = _Assessor(surveyed, owners={STATEMENTS: "services/billing/statements.md"})
@@ -158,12 +158,15 @@ def test_a_two_surface_baseline_surveys_both_and_emits_only_the_unowned_one(
     assert agent.counts() == {INVOICES: 1, STATEMENTS: 1}, agent.counts()
     assert _units(surveyed) == {INVOICES: "assessed", STATEMENTS: "assessed"}
 
-    backlog = (surveyed / BACKLOG).read_text()
-    assert "legacy-parity-billing-invoices" in backlog, backlog
-    assert "legacy-parity-billing-statements" not in backlog, backlog
+    (record,) = Ostler(surveyed).records().records
+    assert (record.filed_by, record.repo, record.area, record.pattern) == (
+        "parity", "acme", "billing", "untriaged",
+    )
+    assert record.summary == f"{INVOICES} has no home in the new app"
+    assert not (surveyed / "docs/backlog.md").exists()
 
     manifest = {u["id"]: u for u in json.loads((surveyed / MANIFEST).read_text())["units"]}
-    assert manifest[INVOICES]["bullet"] == "legacy-parity-billing-invoices", manifest
+    assert manifest[INVOICES]["bullet"] == record.id, manifest
     assert manifest[STATEMENTS]["bullet"] == "", manifest
     assert manifest[STATEMENTS]["existingOwner"] == "services/billing/statements.md"
 
@@ -182,6 +185,33 @@ def test_the_assessor_is_handed_the_unit_and_both_sides_of_the_compare(
     assert first["baseline_inventory"] == BASELINE, first
     assert first["target_services"] == "docs/services", first
     assert first["epics_dir"] == "docs/epics", first
+
+
+def test_the_assessor_reads_the_open_register_of_the_surveyed_repository(
+    surveyed: Path, tmp_path: Path, artifacts: Path
+) -> None:
+    filed = Ostler(surveyed).file_record(
+        repo="acme", area="billing", pattern="untriaged", summary="invoice export is slow",
+        filed_by="person",
+    )
+    assert filed.ok, filed
+    (held,) = Ostler(surveyed).records().records
+    agent = _Assessor(surveyed)
+    _drive(_env(tmp_path), agent)
+
+    first = agent.args[0]
+    assert "backlog" not in first, first
+    assert held.id in first["register_listing"], first
+    assert "id\trepo\tarea\tstatus\tpattern\tsummary" in first["register_listing"], first
+
+
+def test_the_assessor_is_told_when_the_register_is_empty(
+    surveyed: Path, tmp_path: Path, artifacts: Path
+) -> None:
+    agent = _Assessor(surveyed)
+    _drive(_env(tmp_path), agent)
+
+    assert agent.args[0]["register_listing"] == "no open records", agent.args[0]
 
 
 def test_the_turn_runs_in_the_surveyed_repo(surveyed: Path, tmp_path: Path) -> None:

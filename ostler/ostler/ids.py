@@ -12,7 +12,7 @@ from collections.abc import Iterable
 from pathlib import Path
 from typing import Any
 
-from ostler import backlog
+from ostler import path as path_mod
 from ostler.model import Graph
 
 _CROCKFORD = "0123456789ABCDEFGHJKMNPQRSTVWXYZ"
@@ -100,6 +100,12 @@ def _split(identifier: str) -> tuple[str, str]:
     return (prefix, rest) if rest else ("", identifier)
 
 
+def ulid_of(identifier: str) -> str:
+    """The ULID part of a minted id, or '' for an id that carries none (an imported or legacy one)."""
+    ulid = _split(identifier)[1]
+    return ulid if len(ulid) == ULID_LEN else ""
+
+
 _FP_LEN = 16
 
 
@@ -139,18 +145,40 @@ def expand(handle: str, existing: Iterable[str]) -> str | None:
     return matches[0] if len(matches) == 1 else None
 
 
-def known(graph: Graph) -> list[str]:
-    """Every minted id currently written down in the tree, sorted."""
+def shelf_ids(graph: Graph) -> list[str]:
+    """The id of every record folder on the Register's shelf, read from the folder name so a broken record still holds its id."""
+    shelf = path_mod.register_root(graph)
+    if not shelf.is_dir():
+        return []
+    return sorted(p.parent.name for p in shelf.glob("*/*/*/record.md"))
+
+
+def decision_files(graph: Graph) -> list[Path]:
+    """Every decision file in the artifacts dir's ``adr/`` folder, in path order."""
+    folder = path_mod.adr_root(graph)
+    return sorted(folder.glob("*.md")) if folder.is_dir() else []
+
+
+def claimed(graph: Graph) -> set[str]:
+    """The ids that things hold as their own: epics, seeds, stories, milestones, features, the Register's records and decisions."""
     out: set[str] = set()
     for epic in graph.epics:
         out.add(epic.eid)
         out.update(s.id for s in epic.seeds)
         out.update(s.eid for s in epic.stories)
-    for milestone in graph.milestones:
-        out.add(milestone.eid)
-        out.update(milestone.source_items)
+    out.update(m.eid for m in graph.milestones)
     out.update(str(f.data.get("id") or "") for f in graph.features)
-    out.update(i for i, _ in backlog.items(graph))
+    out.update(shelf_ids(graph))
+    out.update(p.stem for p in decision_files(graph))
+    out.discard("")
+    return out
+
+
+def known(graph: Graph) -> list[str]:
+    """Every minted id currently written down in the tree, sorted."""
+    out = claimed(graph)
+    for milestone in graph.milestones:
+        out.update(milestone.source_items)
     out.discard("")
     return sorted(out)
 

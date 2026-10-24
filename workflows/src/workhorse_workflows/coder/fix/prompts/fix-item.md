@@ -17,7 +17,7 @@ stored records are read there, after that code applied.
 
 ## Inputs (authoritative, do not rediscover)
 
-- Backlog item: {{ workhorse_var('bullet_text') }}
+- Backlog item: {{ workhorse_var('item_text') }}
 - Story: `{{ workhorse_var('story_path') }}`
 - Spec directory: `{{ workhorse_var('spec_dir') }}`
 - QA directory: `{{ workhorse_var('qa_dir') }}`

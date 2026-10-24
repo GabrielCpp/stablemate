@@ -9,7 +9,7 @@ Seeds `plan-scratch/`, a small planning repo of its own under the checkout: an i
 templates (`tpl` with a `note` kind, `tpl2` with a `memo` kind) and two `note` documents. It holds four
 epics: `0001-first` with nine stories, `0002-second` with one, and `0003-third` and `0004-junk` with
 none. It also holds two features, one milestone and a backlog of two named items and one unnamed
-bullet. The first two epics are queued. One story carries a conflict, one is blocked and two are
+bullet. Beside the repo sits `plan-scratch/old-list.md`, an old two-bullet list for the import. The first two epics are queued. One story carries a conflict, one is blocked and two are
 frozen. Commands run there with `-C plan-scratch`, and each command acts on an entity of its own, so
 the order they run in does not matter.
 
@@ -34,6 +34,11 @@ the order they run in does not matter.
 
 - kind: seed
 - run: mkdir -p plan-scratch/docs plan-scratch/docs/services plan-scratch/docs/milestones/m1 && printf -- '# Backlog\n\n- \133X-1] first item\n\n- \133X-2] second item\n\n- an unnamed idea\n' > plan-scratch/docs/backlog.md && printf -- '---\ntype: feature\nid: TST-01M585PGNT3613KNWF9FJ5TRPQ\nslug: alpha\ntitle: Alpha\n---\n# Alpha\n\n' > plan-scratch/docs/services/alpha.md && printf -- '---\ntype: feature\nid: TST-01M585PHCYXDYAN9M3JZTR5G7W\nslug: beta\ntitle: Beta\n---\n# Beta\n\n' > plan-scratch/docs/services/beta.md && printf -- '---\ntype: milestone\nid: TST-01M585PJ3RMM086AGTM32KGT2S\ntitle: M one\nstatus: proposed\ndependsOn: \133]\nsourceItems: \133]\nepics: \133]\n---\n# M one\n' > plan-scratch/docs/milestones/m1/milestone.md
+
+### write-plan-old-list
+
+- kind: seed
+- run: printf -- '# Old list\n\n## Ideas\n\n- first idea\n- second idea\n' > plan-scratch/old-list.md
 
 ### write-plan-notes
 

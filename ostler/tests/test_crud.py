@@ -5,7 +5,7 @@ import shutil
 from pathlib import Path
 
 import pytest
-from ostler import crud, doctor, markdown, registry, select, todo
+from ostler import crud, doctor, markdown, query, registry, select, todo
 from ostler.model import load
 
 from conftest import present
@@ -374,6 +374,31 @@ def test_add_seed_is_update_or_create(repo: Path):
     seeds = [s for s in load(repo).epics[0].seeds if s.id == "dup-seed"]
     assert len(seeds) == 1, "re-running must update in place, never duplicate the block"
     assert seeds[0].status == "covered"
+
+
+def test_a_seed_keeps_the_record_it_came_from(repo: Path):
+    assert crud.add_seed(load(repo), "epic-a", "rec-1", status="researched",
+                         summary="Paginate the list", meta={"sourceRecord": "rec-1"}).ok
+    rows = [r for r in query.list_entities(load(repo), "seed") if r["id"] == "rec-1"]
+    assert rows[0]["sourceRecord"] == "rec-1"
+
+
+def test_a_seed_with_a_legacy_source_bullet_line_still_parses_and_raises_no_finding(repo: Path):
+    before = sorted((f.code, f.ref) for f in doctor.run(load(repo)).findings)
+    epic_md = repo / "docs/epics/epic-a/epic.md"
+    text = epic_md.read_text(encoding="utf-8")
+    assert "### seed-a1\n- status: researched\n" in text
+    epic_md.write_text(
+        text.replace("### seed-a1\n- status: researched\n",
+                     "### seed-a1\n- status: researched\n- sourceBullet: old-bullet\n"),
+        encoding="utf-8",
+    )
+
+    graph = load(repo)
+
+    seed = next(s for s in graph.epics[0].seeds if s.id == "seed-a1")
+    assert seed.status == "researched"
+    assert sorted((f.code, f.ref) for f in doctor.run(graph).findings) == before
 
 
 def test_create_story_existing_slug_is_a_noop(repo: Path):

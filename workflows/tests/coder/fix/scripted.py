@@ -8,22 +8,17 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
+from ostler import Ostler
+from ostler.register import Record
 from workhorse.pyflow.engine import RunEnv
 
 from workhorse_workflows.coder.shared import commits
 from workhorse_workflows.kit.git import commit_paths
 
-BULLET = "widget-pagination"
+RECORD = "widget-pagination"
 TEXT = "the widget list does not paginate"
 SLUG = "the-widget-list-does-not-paginate"
 STORY_REL = f"docs/epics/0001-fixes/stories/{SLUG}"
-
-BACKLOG = f"""# Backlog
-
-## Filed by coder
-
-- [{BULLET}] {TEXT}
-"""
 
 RED_MAKEFILE = "lint:\n\t@echo 'pagination.go:1: undefined: pageSize'; exit 1\n"
 
@@ -41,6 +36,7 @@ class ScriptedAgent:
         gate_red: int = 0,
         docs_blocks: int = 0,
         screenshots: int = 0,
+        change: bool = True,
         explode: set[str] | None = None,
     ) -> None:
         self.workspace = workspace
@@ -48,6 +44,7 @@ class ScriptedAgent:
         self.gate_red = gate_red
         self.docs_blocks = docs_blocks
         self.screenshots = screenshots
+        self.change = change
         self.explode = explode or set()
         self.calls: list[str] = []
         self.args: list[dict[str, Any]] = []
@@ -77,6 +74,8 @@ class ScriptedAgent:
                 "status": "blocked",
                 "notes": "the page size is a product decision nobody has made",
             }
+        if not self.change:
+            return {"status": "done", "notes": "found nothing to change"}
         repo = self.workspace["api"]
         before = dirty_paths(repo)
         screenshot = repo / SCREENSHOT
@@ -149,8 +148,10 @@ def dirty_paths(repo: Path) -> set[str]:
     return {line[3:] for line in status.splitlines() if line}
 
 
-def backlog(docs: Path) -> str:
-    return (docs / "docs" / "backlog.md").read_text(encoding="utf-8")
+def record_of(docs: Path, record_id: str = RECORD) -> Record:
+    """The register's copy of a record, read fresh."""
+    [found] = [r for r in Ostler(docs).records().records if r.id == record_id]
+    return found
 
 
 def output(run_env: RunEnv, node: Any) -> dict[str, Any]:

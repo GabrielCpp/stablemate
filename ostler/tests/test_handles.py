@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from ostler import crud, ids
+from ostler import crud, ids, register
 from ostler.api import Ostler
 from ostler.cli import main
 from ostler.model import load
@@ -24,8 +24,9 @@ def _repo(tmp_path: Path) -> tuple[Ostler, dict[str, str]]:
     okf.add_seed("checkout", seed, status="researched", summary="take a payment")
     story = okf.create_story("checkout", "01-pay", "Pay", covers=[seed]).entity_id
     feature = okf._apply(crud.create_feature(okf._fresh(), "basket", "Basket")).entity_id
-    item = okf.allocate_id()
-    okf.backlog_add(item, "wire the receipt email")
+    filed = okf.backlog_add("wire the receipt email", repo="acme", area="mail")
+    assert filed.ok, filed.message
+    item = filed.entity_id
     return okf, {"epic": epic, "seed": seed, "story": story,
                  "feature": feature, "backlog": item}
 
@@ -155,8 +156,12 @@ def test_a_handle_is_accepted_wherever_an_id_is(tmp_path: Path, capsys):
                table[minted["seed"]], "--json") == 0
     assert json.loads(capsys.readouterr().out), "the handle resolved to the seed"
 
-    assert run(tmp_path, "backlog", "prune", table[minted["backlog"]]) == 0
-    assert minted["backlog"] not in (tmp_path / "docs/backlog.md").read_text()
+    record = okf.file_record(repo="api-service", area="billing", pattern="p", summary="s",
+                             filed_by="qa", prefix="acme")
+    assert record.record and record.path
+    handle = ids.table(ids.known(okf.reload().graph))[record.record.id]
+    assert run(tmp_path, "backlog", "prune", handle) == 0
+    assert register.Record.read(record.path).status == "done"
 
 
 def test_seed_add_by_handle_updates_rather_than_filing_a_second_seed(tmp_path: Path):
