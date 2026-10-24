@@ -58,7 +58,7 @@ def test_a_reference_resolves_to_the_user_library_copy(
     library = make_library(tmp_path, 'See {{ skill_path("review") }}.')
     write_config(tmp_path, monkeypatch, HOME_REVIEW)
 
-    assert install(tmp_path, library) == 0
+    assert install(tmp_path, library, "--user") == 0
 
     assert "See ~/.claude/skills/review/SKILL.md." in installed_api(tmp_path)
     assert (tmp_path / "home/.claude/skills/review/SKILL.md").is_file()

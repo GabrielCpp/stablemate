@@ -526,28 +526,6 @@ def test_a_skill_folder_name_beats_a_policy_of_the_same_name(tmp_path: Path) -> 
     assert "policy: acme-db" in (repo / "agents.yml").read_text(encoding="utf-8")
 
 
-def test_eject_reinstalls_the_user_library_into_the_given_home(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    library = make_library(tmp_path)
-    config = tmp_path / "stablemate.toml"
-    config.write_text(
-        'config_version = 1\n\n[user_library.claude]\nskills = ["stablemate/cache"]\n',
-        encoding="utf-8",
-    )
-    monkeypatch.setenv("STABLEMATE_CONFIG", str(config))
-    repo = tmp_path / "acme"
-    home = tmp_path / "home"
-    install(repo, library, "agents:\n  claude: true\nskills:\n  - stablemate/db\n")
-
-    assert main(
-        ["eject", "acme-db", "--repo", str(repo), "--library", str(library),
-         "--home", str(home)]
-    ) == 0
-
-    assert (home / ".claude/skills/cache/SKILL.md").is_file()
-
-
 def test_a_reference_to_an_ejected_skill_by_its_installed_name_still_resolves(
     tmp_path: Path,
 ) -> None:
