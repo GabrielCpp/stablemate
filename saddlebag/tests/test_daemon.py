@@ -10,7 +10,7 @@ from typing import Any
 
 import pytest
 
-from saddlebag import browser, daemon, protocol, totp
+from saddlebag import browser, daemon, protocol, totp, verbs
 from saddlebag.models import Secret
 from saddlebag.protocol import Reply, Request
 
@@ -196,7 +196,7 @@ def test_fill_waits_out_a_code_that_is_about_to_expire(
 ) -> None:
     seed(running)
     slept: list[float] = []
-    monkeypatch.setattr(daemon.time, "sleep", slept.append)
+    monkeypatch.setattr(verbs.time, "sleep", slept.append)
     monkeypatch.setattr(totp, "seconds_remaining", lambda **_: 2)
     ok(running.ask("fill", name="login", field="totp", selector="#otp", min_seconds=5))
     assert slept == [2]
@@ -226,7 +226,7 @@ def test_fill_without_a_stored_totp_names_the_command_to_store_one(running: Runn
 def test_doctor_reports_health_and_valueless_secrets(running: Running, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     seed(running)
     running.vault.create(Secret("empty"))
-    monkeypatch.setattr(daemon, "VAULT_TOKEN_FILE", tmp_path / "token")
+    monkeypatch.setattr(verbs, "VAULT_TOKEN_FILE", tmp_path / "token")
     assert ok(running.ask("doctor")) == {
         "vault_authenticated": True,
         "secrets_without_value": ["empty"],
@@ -242,7 +242,7 @@ def test_doctor_reports_health_and_valueless_secrets(running: Running, monkeypat
 
 
 def test_no_reply_except_env_carries_a_stored_value(running: Running, fake_browser: tuple[browser.Target, ...], monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(daemon, "VAULT_TOKEN_FILE", Path("/nonexistent/token"))
+    monkeypatch.setattr(verbs, "VAULT_TOKEN_FILE", Path("/nonexistent/token"))
     secret_value = "zz-distinctive-secret-zz"
     replies = [
         running.ask("create", name="login", username="gab", var="LOGIN_PASSWORD", tags=["environment=local"]),

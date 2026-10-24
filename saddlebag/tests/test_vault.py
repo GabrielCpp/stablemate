@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
+import hvac
 import pytest
 
-from saddlebag import vault as vault_mod
 from saddlebag.models import Secret, matches, parse_tag, validate_name
 from saddlebag.vault import VaultError, VaultStore
 
@@ -77,7 +77,7 @@ def test_the_vault_store_connects_with_the_token_it_is_given(monkeypatch: pytest
         def is_authenticated(self) -> bool:
             return True
 
-    monkeypatch.setattr(vault_mod.hvac, "Client", FakeClient)
+    monkeypatch.setattr(hvac, "Client", FakeClient)
     store = VaultStore("http://127.0.0.1:8200", "root")
     assert seen == {"url": "http://127.0.0.1:8200", "token": "root"}
     assert store.is_authenticated()
@@ -91,6 +91,6 @@ def test_the_vault_store_refuses_a_rejected_token(monkeypatch: pytest.MonkeyPatc
         def is_authenticated(self) -> bool:
             return False
 
-    monkeypatch.setattr(vault_mod.hvac, "Client", FakeClient)
+    monkeypatch.setattr(hvac, "Client", FakeClient)
     with pytest.raises(VaultError, match="rejected the token"):
         VaultStore("http://127.0.0.1:8200", "bad")

@@ -9,15 +9,19 @@ from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
 
+import keyring.errors
 import pytest
+from keyring.backend import KeyringBackend
+from keyring.compat import properties
 
 from saddlebag import browser, cli, daemon, protocol
+from saddlebag.catalogue import Catalogue
 from saddlebag.models import Secret, Tag
 from saddlebag.protocol import Reply, Request
 
 
 class FakeVault:
-    """An in-memory :class:`~saddlebag.vault.SecretStore`."""
+    """An in-memory :class:`~saddlebag.store.SecretStore`."""
 
     def __init__(self) -> None:
         self.metadata: dict[str, Secret] = {}
@@ -57,6 +61,47 @@ class FakeVault:
 
     def retag(self, name: str, tags: frozenset[Tag]) -> None:
         self.metadata[name] = replace(self.metadata[name], tags=tags)
+
+
+class FakeBackend(KeyringBackend):
+    """A dict-backed keyring backend."""
+
+    @properties.classproperty
+    def priority(cls) -> float:
+        return 1.0
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.items: dict[tuple[str, str], str] = {}
+
+    def set_password(self, service: str, username: str, password: str) -> None:
+        self.items[(service, username)] = password
+
+    def get_password(self, service: str, username: str) -> str | None:
+        return self.items.get((service, username))
+
+    def delete_password(self, service: str, username: str) -> None:
+        if (service, username) not in self.items:
+            raise keyring.errors.PasswordDeleteError("Password not found")
+        del self.items[(service, username)]
+
+
+@pytest.fixture
+def backend() -> FakeBackend:
+    return FakeBackend()
+
+
+@pytest.fixture
+def catalogue(tmp_path: Path) -> Catalogue:
+    return Catalogue(tmp_path / "state" / "catalogue.json")
+
+
+@pytest.fixture
+def keyring_route(backend: FakeBackend, catalogue: Catalogue, monkeypatch: pytest.MonkeyPatch) -> FakeBackend:
+    monkeypatch.setenv("SADDLEBAG_BACKEND", "keyring")
+    monkeypatch.setattr(Catalogue, "default", classmethod(lambda cls: catalogue))
+    monkeypatch.setattr("saddlebag.route.open_door", lambda: backend)
+    return backend
 
 
 @pytest.fixture

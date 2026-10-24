@@ -20,6 +20,7 @@ classifiers = [
 ]
 dependencies = [
   "hvac>=2.0",
+  "keyring>=25",
   "platformdirs>=4.0",
   "websockets>=13.0",
 ]

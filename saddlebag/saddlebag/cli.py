@@ -1,4 +1,4 @@
-"""saddlebag command-line entry point: a thin client over the daemon's socket."""
+"""saddlebag command-line entry point: argparse front end that builds a request, routes it and prints the reply; `exec`."""
 
 from __future__ import annotations
 
@@ -12,9 +12,11 @@ import threading
 from importlib.metadata import version as _pkg_version
 from pathlib import Path
 
-from saddlebag import browser, daemon, protocol
+from saddlebag import browser, daemon, protocol, route
 from saddlebag.models import FIELDS, VALUE_FIELDS, parse_tag
 from saddlebag.protocol import DaemonNotRunning, Reply, Request
+from saddlebag.route import RouteError
+from saddlebag.store import StoreUnavailable
 from saddlebag.vault import VaultError, VaultStore
 
 logger = logging.getLogger(__name__)
@@ -32,8 +34,8 @@ def _error(message: str, code: int) -> int:
 
 def _ask(verb: str, args: dict[str, object] | None = None) -> Reply | int:
     try:
-        reply = protocol.send(Request(verb, args or {}))
-    except DaemonNotRunning as exc:
+        reply = route.choose().ask(Request(verb, args or {}))
+    except (DaemonNotRunning, StoreUnavailable, RouteError) as exc:
         return _error(str(exc), 1)
     except protocol.ProtocolError as exc:
         return _error(f"the daemon sent an unreadable reply: {exc}", 1)

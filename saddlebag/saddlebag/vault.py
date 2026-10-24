@@ -3,10 +3,7 @@
 from __future__ import annotations
 
 import json
-from typing import Any, Protocol
-
-import hvac
-from hvac.exceptions import InvalidPath
+from typing import Any
 
 from saddlebag.models import VALUE_FIELDS, Secret, Tag
 
@@ -15,26 +12,18 @@ class VaultError(RuntimeError):
     """Vault could not be reached or refused the token."""
 
 
-class SecretStore(Protocol):
-    """Where the secrets live."""
-
-    def is_authenticated(self) -> bool: ...
-    def names(self) -> list[str]: ...
-    def get(self, name: str) -> Secret | None: ...
-    def create(self, secret: Secret) -> None: ...
-    def set_value(self, name: str, field: str, value: str) -> None: ...
-    def unset_value(self, name: str, field: str) -> None: ...
-    def remove(self, name: str) -> None: ...
-    def value(self, name: str, field: str) -> str | None: ...
-    def retag(self, name: str, tags: frozenset[Tag]) -> None: ...
-
-
 class VaultStore:
-    """A :class:`SecretStore` over one KV v2 mount."""
+    """A :class:`~saddlebag.store.SecretStore` over one KV v2 mount."""
 
     def __init__(self, addr: str, token: str, mount: str = "secret", prefix: str = "saddlebag") -> None:
         self.mount = mount
         self.prefix = prefix
+        try:
+            import hvac
+            import hvac.exceptions
+        except ImportError as exc:
+            raise VaultError("hvac is not installed: reinstall saddlebag so hvac is present") from exc
+        self._invalid_path: type[Exception] = hvac.exceptions.InvalidPath
         self._client: Any = hvac.Client(url=addr, token=token)
         if not self._client.is_authenticated():
             raise VaultError(f"Vault at {addr} rejected the token")
@@ -50,7 +39,7 @@ class VaultStore:
             response = self._kv().read_secret_version(
                 path=self._path(name), mount_point=self.mount, raise_on_deleted_version=True
             )
-        except InvalidPath:
+        except self._invalid_path:
             return {}
         return dict(response["data"]["data"])
 
@@ -73,14 +62,14 @@ class VaultStore:
     def names(self) -> list[str]:
         try:
             response = self._kv().list_secrets(path=self.prefix, mount_point=self.mount)
-        except InvalidPath:
+        except self._invalid_path:
             return []
         return sorted(key for key in response["data"]["keys"] if not key.endswith("/"))
 
     def get(self, name: str) -> Secret | None:
         try:
             response = self._kv().read_secret_metadata(path=self._path(name), mount_point=self.mount)
-        except InvalidPath:
+        except self._invalid_path:
             return None
         custom = response["data"].get("custom_metadata") or {}
         data = self._data(name)

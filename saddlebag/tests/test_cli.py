@@ -10,10 +10,10 @@ from pathlib import Path
 
 import pytest
 
-from saddlebag import browser, cli, daemon
+from saddlebag import browser, cli, daemon, verbs
 from saddlebag.models import Secret
 
-from conftest import RecordingSession, Running
+from conftest import FakeBackend, RecordingSession, Running
 
 PASSWORD = "hunter2-pw"
 Run = Callable[..., int]
@@ -98,7 +98,7 @@ def test_fill_json_reports_the_character_count(running: Running, run: Run, fake_
 
 
 def test_doctor_exits_one_when_a_secret_has_no_value(running: Running, run: Run, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    monkeypatch.setattr(daemon, "VAULT_TOKEN_FILE", tmp_path / "none")
+    monkeypatch.setattr(verbs, "VAULT_TOKEN_FILE", tmp_path / "none")
     running.vault.create(Secret("empty"))
     assert run("doctor") == 1
     assert "empty" in capsys.readouterr().out
@@ -217,3 +217,63 @@ def test_version_reports_the_installed_distribution(capsys: pytest.CaptureFixtur
         cli.main(["--version"])
     assert exc.value.code == 0
     assert importlib.metadata.version("stablemate-saddlebag") in capsys.readouterr().out
+
+
+def test_the_keyring_route_creates_sets_and_lists_without_the_value(
+    keyring_route: FakeBackend, run: Run, capsys: pytest.CaptureFixture[str]
+) -> None:
+    assert run("secret", "create", "login", "--username", "gab", "--var", "LOGIN_PASSWORD", "--tag", "environment=local") == 0
+    assert run("secret", "set", "login", stdin=PASSWORD + "\n") == 0
+    assert PASSWORD not in capsys.readouterr().out
+    assert run("list", "--json") == 0
+    out = capsys.readouterr().out
+    assert PASSWORD not in out
+    [entry] = json.loads(out)["secrets"]
+    assert entry["fields"] == ["password"]
+    assert entry["tags"] == [["environment", "local"]]
+    assert keyring_route.items == {("stablemate-saddlebag", "login/password"): PASSWORD}
+
+
+def test_the_keyring_route_filters_by_tag(keyring_route: FakeBackend, run: Run, capsys: pytest.CaptureFixture[str]) -> None:
+    assert run("secret", "create", "local-login", "--tag", "environment=local") == 0
+    assert run("secret", "create", "staging-login", "--tag", "environment=staging") == 0
+    capsys.readouterr()
+    assert run("list", "--tag", "environment=local", "--json") == 0
+    assert [s["name"] for s in json.loads(capsys.readouterr().out)["secrets"]] == ["local-login"]
+
+
+def test_the_keyring_route_fills_a_browser_field(
+    keyring_route: FakeBackend, run: Run, fake_browser: tuple[browser.Target, ...], capsys: pytest.CaptureFixture[str]
+) -> None:
+    assert run("secret", "create", "login") == 0
+    assert run("secret", "set", "login", stdin=PASSWORD + "\n") == 0
+    capsys.readouterr()
+    assert run("fill", "login", "--selector", "#pw") == 0
+    captured = capsys.readouterr()
+    assert "filled 10 characters into #pw on https://github.com/login" in captured.out
+    assert PASSWORD not in captured.out + captured.err
+    assert RecordingSession.last is not None and RecordingSession.last.typed == PASSWORD
+
+
+def test_the_keyring_route_refuses_a_value_for_a_missing_secret(keyring_route: FakeBackend, run: Run, capsys: pytest.CaptureFixture[str]) -> None:
+    assert run("secret", "set", "ghost", stdin=PASSWORD + "\n") == 1
+    captured = capsys.readouterr()
+    assert "no such secret: ghost" in captured.err
+    assert PASSWORD not in captured.out + captured.err
+    assert keyring_route.items == {}
+
+
+def test_a_locked_keyring_exits_one_with_the_unlock_hint(
+    keyring_route: FakeBackend, run: Run, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    import keyring.errors
+
+    def locked(service: str, username: str) -> str | None:
+        raise keyring.errors.KeyringLocked("locked")
+
+    assert run("secret", "create", "login") == 0
+    assert run("secret", "set", "login", stdin=PASSWORD + "\n") == 0
+    monkeypatch.setattr(keyring_route, "get_password", locked)
+    capsys.readouterr()
+    assert run("fill", "login", "--selector", "#pw") == 1
+    assert "the OS keyring is locked" in capsys.readouterr().err

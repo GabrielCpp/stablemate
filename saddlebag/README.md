@@ -195,6 +195,7 @@ other two sources and the required-name check.
 
 ## Where secrets live
 
+Without a daemon, saddlebag keeps values in the OS keyring and their metadata in a catalogue under the stablemate state dir, and a running daemon is used when one answers.
 Saddlebag implements no encryption and keeps no local database. Values and metadata
 both live in Vault, under `secret/saddlebag/<name>`: the values as the secret's data,
 the metadata as its custom metadata. There is no plaintext path and no fallback store.
@@ -220,10 +221,15 @@ Create each secret you still need with `secret create` and `secret set`.
 ```
 saddlebag/
 ├── __init__.py
-├── cli.py        # argparse thin client: build a request, send it, print the reply; `exec`
-├── daemon.py     # `serve`: the accept loop and every verb, over the store and the browser
+├── cli.py        # argparse front end: build a request, route it, print the reply; `exec`
+├── route.py      # how a command reaches the counter: the daemon's socket, or in-process over the keyring
+├── verbs.py      # the verb handlers over one store, used in-process or behind the daemon
+├── store.py      # the SecretStore contract every verb talks to, and StoreUnavailable
+├── daemon.py     # `serve`: the socket accept loop over the verbs
 ├── protocol.py   # the socket path, newline-JSON framing and the client's send()
 ├── vault.py      # Vault KV v2: values in the secret's data, metadata in its custom metadata
+├── keyring_store.py  # the OS keyring door and the shelf: values in the keyring, records in the catalogue
+├── catalogue.py  # the keyring shelf's records, in one owner-only JSON file
 ├── models.py     # Secret and tag parsing; no field of it carries a value
 ├── browser.py    # CDP target discovery and Input.insertText; only a length comes back
 └── totp.py       # RFC 6238, computed in-process so the seed never leaves
