@@ -433,8 +433,8 @@ zero. Stop that path before spending on it.
 
 **Have a decisive result checked before it counts.** A second agent regrades the
 retained replies and its number goes into the row's `checked` field. The rule is under
-"Checking a decisive result" in [references/second-agent.md](references/second-
-agent.md).
+"Checking a decisive result" in
+[references/second-agent.md](references/second-agent.md).
 
 ## 10. Step back
 
