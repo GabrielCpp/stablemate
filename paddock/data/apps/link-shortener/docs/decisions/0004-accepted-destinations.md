@@ -1,7 +1,7 @@
 # A destination must be an absolute http or https URL
 
 **Status:** decided
-**Applies to:** [link-create] — validation of the submitted destination
+**Applies to:** the create journey — validation of the submitted destination
 
 ## The question
 
@@ -20,6 +20,6 @@ Everything else — a relative path, a missing or empty `url` field, a `javascri
 ## Why
 
 The scheme restriction is part of the decision rather than an implementation detail. A
-public redirector that will emit any scheme is a redirect gadget, and [link-create] says
+public redirector that will emit any scheme is a redirect gadget, and the create journey says
 the short link is meant to be shared — so what it may point at is a product question, not
 a hardening afterthought.

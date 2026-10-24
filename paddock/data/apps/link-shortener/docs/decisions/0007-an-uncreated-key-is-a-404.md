@@ -1,7 +1,7 @@
 # An uncreated key answers 404 Not Found
 
 **Status:** decided
-**Applies to:** [link-missing] — `GET /<key>` for a key that was never created
+**Applies to:** the missing-key journey — `GET /<key>` for a key that was never created
 
 ## The question
 
@@ -16,9 +16,9 @@ Not a redirect, and not a 500.
 
 ## Why
 
-[link-missing] exists to rule out exactly those two outcomes: an unknown key that redirects
-somewhere is worse than useless, and one that crashes the process is the failure the bullet
-was written to catch. Naming the status and the body shape here is what makes the bullet
+The missing-key journey exists to rule out exactly those two outcomes: an unknown key that redirects
+somewhere is worse than useless, and one that crashes the process is the failure the journey
+was written to catch. Naming the status and the body shape here is what makes the journey
 checkable — "reports an unknown short link" is otherwise satisfied by anything that is not a
 redirect.
 
