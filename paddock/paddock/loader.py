@@ -21,6 +21,10 @@ class Benchmark:
     task: Task
 
     @property
+    def root(self) -> Path:
+        return self.directory
+
+    @property
     def home_config(self) -> Path:
         return self.directory / paths.HOME_CONFIG
 

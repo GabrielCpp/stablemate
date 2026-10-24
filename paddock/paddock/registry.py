@@ -9,6 +9,8 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:  # pragma: no cover - the runner imports the registry, not the reverse
     from paddock.runner import Run
 
+Input = str | float | int | bool | list[str]
+
 StepFn = Callable[["Run"], None]
 ScoreFn = Callable[["Run"], "Score"]
 
@@ -48,6 +50,7 @@ class Task:
 
     name: str
     config: Mapping[str, object]
+    inputs: Mapping[str, Input]
     steps: tuple[Step, ...]
     score: ScoreFn | None
     module: str = ""
@@ -64,11 +67,13 @@ class _Registry:
 
     name: str = ""
     config: Mapping[str, object] = field(default_factory=dict)
+    inputs: Mapping[str, Input] = field(default_factory=dict)
     steps: list[Step] = field(default_factory=list)
 
     def reset(self) -> None:
         self.name = ""
         self.config = {}
+        self.inputs = {}
         self.steps = []
 
     def declared(self) -> bool:
@@ -78,8 +83,10 @@ class _Registry:
 REGISTRY = _Registry()
 
 
-def task(*, name: str, config: Mapping[str, object] | None = None) -> None:
-    """Declare the module's one task: what it is called, and the config it lays over the benchmark's."""
+def task(
+    *, name: str, config: Mapping[str, object] | None = None, inputs: Mapping[str, Input] | None = None
+) -> None:
+    """Declare the module's one task: its name, the config it lays over the benchmark's and the inputs its steps read."""
     if REGISTRY.declared():
         raise TaskError(f"task() was already called as {REGISTRY.name!r}; a module declares one task")
     if not name:
@@ -88,6 +95,7 @@ def task(*, name: str, config: Mapping[str, object] | None = None) -> None:
         raise TaskError("task() must be called before any @step — it names what the steps run in")
     REGISTRY.name = name
     REGISTRY.config = dict(config or {})
+    REGISTRY.inputs = dict(inputs or {})
 
 
 def step(*, name: str = "") -> Callable[[StepFn], StepFn]:
@@ -117,6 +125,7 @@ def collect(module_name: str, score: ScoreFn | None, doc: str = "") -> Task:
     return Task(
         name=REGISTRY.name,
         config=REGISTRY.config,
+        inputs=REGISTRY.inputs,
         steps=tuple(REGISTRY.steps),
         score=score,
         module=module_name,

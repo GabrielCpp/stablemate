@@ -11,6 +11,7 @@ import sys
 import threading
 import time
 from collections.abc import Mapping, Sequence
+from types import MappingProxyType
 from contextlib import AbstractContextManager, nullcontext
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -18,7 +19,8 @@ from pathlib import Path
 from paddock import homeconfig, manifest, names, paths, project as project_mod, reap
 from paddock.loader import Benchmark
 from paddock.names import RunName
-from paddock.registry import Score, Step, Task
+from paddock._vendor.stablemate_core.config import CONFIG_PATH_ENV
+from paddock.registry import Input, Score, Step, Task
 
 logger = logging.getLogger(__name__)
 
@@ -107,6 +109,7 @@ class Run:
     workspace: Path
     config: Path
     data: Path
+    benchmark: Benchmark
     project: Path | None = None
     pinned: project_mod.Project | None = None
     echo: bool = True
@@ -114,6 +117,11 @@ class Run:
     commands: list[tuple[str, ...]] = field(default_factory=list)
     exit_codes: list[int] = field(default_factory=list)
     outcomes: list[StepOutcome] = field(default_factory=list)
+
+    @property
+    def inputs(self) -> Mapping[str, Input]:
+        """What the task declared for its steps to read."""
+        return MappingProxyType(dict(self.task.inputs))
 
     @property
     def repo(self) -> Path:
@@ -147,6 +155,7 @@ class Run:
         """Run a command, tee its output to a log under `artifacts/` and to stderr."""
         target = cwd or self.repo
         merged = dict(os.environ if env is None else env)
+        merged[CONFIG_PATH_ENV] = str(self.config)
         merged["PWD"] = str(target)
         merged.pop("OLDPWD", None)
         name = log_name or f"{len(self.commands):02d}-{Path(argv[0]).name}"
@@ -261,6 +270,7 @@ def execute(
         workspace=workspace,
         config=config.resolve(),
         data=benchmark.data,
+        benchmark=benchmark,
         project=driven,
         pinned=pinned,
         echo=echo,

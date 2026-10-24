@@ -277,6 +277,7 @@ def test_a_json_file_is_never_readable_half_written(
         workspace=tmp_path,
         config=tmp_path / "config.toml",
         data=benchmark.data,
+        benchmark=benchmark,
     )
     path = tmp_path / "ledger.json"
     handle.write_json(path, {"steps": []})
@@ -333,3 +334,31 @@ def test_the_ledger_records_each_commands_exit_code(
     result = run(make_benchmark, root, repo)
     ledger = json.loads((result.result / "ledger.json").read_text(encoding="utf-8"))
     assert ledger["steps"][0]["exit_codes"] == [0]
+
+
+def test_a_commands_environment_names_the_merged_config(
+    make_benchmark: MakeBenchmark, root: Path, repo: Path
+) -> None:
+    body = SMOKE_TASKS.replace(
+        '    run.cli("/bin/sh", "-c", "echo hello", check=True)\n',
+        '    run.cli("/bin/sh", "-c", "echo $STABLEMATE_CONFIG > seen.txt", check=True)\n',
+    )
+    result = run(make_benchmark, root, repo, body)
+    seen = (result.stage / "seen.txt").read_text(encoding="utf-8").strip()
+    assert Path(seen) == result.workspace / "config.toml"
+
+
+def test_a_step_reads_the_tasks_inputs_and_the_benchmark(
+    make_benchmark: MakeBenchmark, root: Path, repo: Path
+) -> None:
+    body = SMOKE_TASKS.replace(
+        'task(name="smoke")', 'task(name="smoke", inputs={"budget": 2.5, "only": ["a", "b"]})'
+    ).replace(
+        '    run.cli("/bin/sh", "-c", "echo hello", check=True)\n',
+        '    assert run.inputs["budget"] == 2.5\n'
+        '    assert run.inputs["only"] == ["a", "b"]\n'
+        '    assert run.benchmark.name == "smoke"\n'
+        '    assert run.benchmark.root == run.benchmark.data.parent\n'
+        '    assert run.benchmark.root.joinpath("tasks.py").is_file()\n',
+    )
+    assert run(make_benchmark, root, repo, body).ok
