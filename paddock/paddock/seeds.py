@@ -31,7 +31,11 @@ class Captured:
 
 
 def git_head(repo: Path) -> tuple[str, bool]:
-    """`(HEAD sha, working tree is dirty)`, or `("", False)` outside a git repo."""
+    """`(HEAD sha, *repo* has uncommitted changes)`, or `("", False)` outside a git repo.
+
+    The sha is the enclosing repository's HEAD; the flag reads only the captured directory,
+    so an edit elsewhere in that repository leaves it false.
+    """
     def git(*args: str) -> subprocess.CompletedProcess[str]:
         return subprocess.run(
             ["git", *args], cwd=str(repo), capture_output=True, text=True, check=False
@@ -40,7 +44,7 @@ def git_head(repo: Path) -> tuple[str, bool]:
     head = git("rev-parse", "HEAD")
     if head.returncode != 0:
         return "", False
-    status = git("status", "--porcelain")
+    status = git("status", "--porcelain", "--", ".")
     return head.stdout.strip(), bool(status.stdout.strip())
 
 
