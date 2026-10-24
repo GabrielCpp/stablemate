@@ -13,7 +13,7 @@ knowledge: packs, scaffolds, initialization commands, assistants, workflows, and
 are input values.
 
 - code: `workflows/src/workhorse_workflows/coder/genesis/flow.py::Genesis` @e3612bb0e317
-- code: `workflows/src/workhorse_workflows/coder/genesis/nodes.py::resolve_genesis_target` @fd7de0834d9b
+- code: `workflows/src/workhorse_workflows/coder/genesis/nodes.py::resolve_genesis_target` @b510923e05f0
 - tests: `workflows/tests/coder/genesis/test_flow.py`
 - tests: `workflows/tests/coder/genesis/test_flow.py::test_a_bare_directory_becomes_a_repo_the_main_loop_will_accept`
 - tests: `workflows/tests/coder/genesis/test_flow.py::test_an_existing_repo_skips_git_init_but_still_builds_the_new_service`
@@ -182,7 +182,7 @@ are input values.
 ### verify
 
 - sig: `Genesis.verify() -> Done`
-- does: checks repository binding, committed Git state, the service path, agent instructions, epics root, and backlog
+- does: checks repository binding, committed Git state, the service path, agent instructions and the epics root
 - does: logs warnings without failing for a missing lint target
 - raises: `WorkflowFailed` when any required genesis precondition is absent
 - returns: the validation report when all required checks pass
@@ -201,7 +201,7 @@ are input values.
 - does: classifies the declared service as `existing` only when its marker file exists under `service_root`
 - returns: one classification carrying the resolved target, service, repository state, service state, and operator note
 - verify: count(subject="target classification", equals=1)
-- code: `workflows/src/workhorse_workflows/coder/genesis/nodes.py::resolve_genesis_target` @fd7de0834d9b
+- code: `workflows/src/workhorse_workflows/coder/genesis/nodes.py::resolve_genesis_target` @b510923e05f0
 - tests: `workflows/tests/coder/genesis/test_flow.py::test_a_blank_target_fails_before_anything_mutates`
 
 ### genesis_git_init
@@ -215,7 +215,7 @@ are input values.
 - does: leaves an already committed repository unchanged and configures no remote
 - returns: readiness, the current or created initial commit, and an operator note
 - verify: persists(subject="the target repository initial commit")
-- code: `workflows/src/workhorse_workflows/coder/genesis/nodes.py::genesis_git_init` @fd7de0834d9b
+- code: `workflows/src/workhorse_workflows/coder/genesis/nodes.py::genesis_git_init` @b510923e05f0
 - tests: `workflows/tests/coder/genesis/test_flow.py::test_a_bare_directory_becomes_a_repo_the_main_loop_will_accept`
 - tests: `workflows/tests/coder/genesis/test_flow.py::test_an_existing_repo_skips_git_init_but_still_builds_the_new_service`
 
@@ -233,7 +233,7 @@ are input values.
 - does: reports gates as dropped when no service name is supplied
 - returns: whether the file changed, its relative path, and an operator note describing retained or dropped configuration
 - verify: persists(subject="the target agents.yml configuration")
-- code: `workflows/src/workhorse_workflows/coder/genesis/nodes.py::write_agents_yml` @fd7de0834d9b
+- code: `workflows/src/workhorse_workflows/coder/genesis/nodes.py::write_agents_yml` @b510923e05f0
 - tests: `workflows/tests/coder/genesis/test_flow.py::test_agents_yml_carries_the_services_block_the_planner_reads`
 
 ### init_skeleton
@@ -249,7 +249,7 @@ are input values.
 - does: marks the skeleton ready only when the declared marker exists after initialization
 - returns: marker readiness, the repository-relative marker path, and an operator note
 - verify: persists(subject="the declared service marker")
-- code: `workflows/src/workhorse_workflows/coder/genesis/nodes.py::init_skeleton` @fd7de0834d9b
+- code: `workflows/src/workhorse_workflows/coder/genesis/nodes.py::init_skeleton` @b510923e05f0
 - tests: `workflows/tests/coder/genesis/test_flow.py::test_an_existing_service_skips_the_skeleton_and_never_re_runs_the_init_command`
 
 ### install_farrier
@@ -262,7 +262,7 @@ are input values.
 - does: reports the identifiers rendered before a scaffold failure
 - returns: installation status, rendered scaffold identifiers, and an operator note containing tool failures
 - verify: persists(subject="the farrier agent context")
-- code: `workflows/src/workhorse_workflows/coder/genesis/nodes.py::install_farrier` @fd7de0834d9b
+- code: `workflows/src/workhorse_workflows/coder/genesis/nodes.py::install_farrier` @b510923e05f0
 - tests: `workflows/tests/coder/genesis/test_flow.py::test_agents_yml_carries_the_services_block_the_planner_reads`
 - tests: `workflows/tests/coder/genesis/test_flow.py::test_a_failed_farrier_install_still_fails_at_verify`
 
@@ -275,10 +275,9 @@ are input values.
 - does: reports the shared service-contract errors for a service path that is missing or that `agents.yml` does not declare under `services:`
 - does: reports an error when `.agents/agents-context.json` is absent or has an empty `instructions` map
 - does: reports an error when the Ostler-resolved epics root is absent
-- does: reports an error when the Ostler-resolved backlog is absent
 - does: reports a missing `lint` Make target as a warning rather than an error
 - returns: validity plus newline-separated complete error and warning reports
 - verify: count(subject="genesis validation report", equals=1)
-- code: `workflows/src/workhorse_workflows/coder/genesis/nodes.py::validate_genesis` @fd7de0834d9b
+- code: `workflows/src/workhorse_workflows/coder/genesis/nodes.py::validate_genesis` @b510923e05f0
 - tests: `workflows/tests/coder/genesis/test_flow.py::test_a_bare_directory_becomes_a_repo_the_main_loop_will_accept`
 - tests: `workflows/tests/coder/genesis/test_flow.py::test_an_invalid_repo_fails_the_run_with_no_repair_turn`

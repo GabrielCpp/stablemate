@@ -32,7 +32,7 @@ title: Coder genesis flow
 The stages, in order: [classify](#classify), [git-init](#git-init), [config](#config), [skeleton](#skeleton), [farrier](#farrier), [verify](#verify).
 
 The flow starts when the run has a non-empty target path and checkpointed genesis parameters for the target service.
-It ends in one of these ways: the target passes all repository, service, tooling-context, documentation-root, and backlog precondition checks.
+It ends in one of these ways: the target passes all repository, service, tooling-context and documentation-root precondition checks.
 
 ## Steps
 
@@ -89,7 +89,7 @@ missing precondition; the flow does not call an agent to repair deterministic to
 
 `validate_genesis` checks that the target is a committed Git repository bound as the current Ostler
 root, that the service path exists, that the agent context has a non-empty instructions map, and
-that Ostler resolves both the epics root and backlog. It reuses the shared service contract for
+that Ostler resolves the epics root. It reuses the shared service contract for
 the service path, which `agents.yml` must declare. A missing lint target is advisory only. Warnings are logged; any error raises
 `WorkflowFailed` with the complete validation report, otherwise the report is returned as the
 terminal result.

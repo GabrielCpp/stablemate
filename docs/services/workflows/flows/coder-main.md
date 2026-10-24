@@ -80,9 +80,10 @@ conversations. Its one own turn is `replan`, which uses the authoritative operat
 
 - kind: run
 
-A passing QA result hands the backlog to the `fix` flow. That flow documents and commits each
-drained item before this machine resumes, while the current story's documentation-recheck flag is
-carried forward unchanged.
+A passing QA result hands off to the [`fix` flow](coder-fix.md). That flow drains the open `qa`
+records of the workspace on the [debt register](../../ostler/concepts/the-debt-register.md). It
+documents and commits each drained item and closes its record before this machine resumes. The
+current story's documentation-recheck flag is carried forward unchanged.
 
 ### story-commit
 
