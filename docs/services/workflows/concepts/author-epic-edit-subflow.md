@@ -15,8 +15,8 @@ the deterministic nodes owned by this subflow.
 For the direct-versus-handoff entry context, see [epic edit invocation
 selection](epic-edit-invocation-selection.md).
 
-- code: `workflows/src/workhorse_workflows/author/epic_edit/flow.py::EpicEdit` @3aacff8bdeb8
-- code: `workflows/src/workhorse_workflows/author/epic_edit/nodes/__init__.py` @d1193fd0ea72
+- code: `workflows/src/workhorse_workflows/author/epic_edit/flow.py::EpicEdit` @0bde66475816
+- code: `workflows/src/workhorse_workflows/author/epic_edit/nodes/__init__.py` @3974010406ba
 - code: `workflows/src/workhorse_workflows/author/epic_edit/nodes/_blueprint.py::blueprint` @2f9e682267f2
 - tests: `workflows/tests/author/epic_edit/test_edit.py::test_plan_requires_force_for_removals_beyond_requested_story`
 - detail: [epic edit concept selection](epic-edit-concept-selection.md)
@@ -30,7 +30,7 @@ selection](epic-edit-invocation-selection.md).
 - semantics: direct invocation's epic identifier
 - verify: json_path(path="$.epic", equals="acme-epic")
 - semantics: ignored when `intent.epic` is already set
-- code: `workflows/src/workhorse_workflows/author/epic_edit/flow.py::EpicEdit` @3aacff8bdeb8
+- code: `workflows/src/workhorse_workflows/author/epic_edit/flow.py::EpicEdit` @0bde66475816
 - detail: [epic edit input selection](epic-edit-input-selection.md)
 
 ### change
@@ -39,7 +39,7 @@ selection](epic-edit-invocation-selection.md).
 - required: false
 - semantics: direct invocation's requested scope change
 - verify: json_path(path="$.change", equals="example change")
-- code: `workflows/src/workhorse_workflows/author/epic_edit/flow.py::EpicEdit` @3aacff8bdeb8
+- code: `workflows/src/workhorse_workflows/author/epic_edit/flow.py::EpicEdit` @0bde66475816
 - detail: [epic edit input selection](epic-edit-input-selection.md)
 
 ### intent
@@ -48,7 +48,7 @@ selection](epic-edit-invocation-selection.md).
 - required: false
 - semantics: validated edit binding supplied by a story-edit handoff or constructed from direct parameters
 - verify: json_path(path="$.intent", equals="example intent")
-- code: `workflows/src/workhorse_workflows/author/epic_edit/flow.py::EpicEdit` @3aacff8bdeb8
+- code: `workflows/src/workhorse_workflows/author/epic_edit/flow.py::EpicEdit` @0bde66475816
 - detail: [epic edit input selection](epic-edit-input-selection.md)
 
 ### force
@@ -57,7 +57,7 @@ selection](epic-edit-invocation-selection.md).
 - required: false
 - semantics: permits explicitly requested collateral or frozen-scope removal according to plan validation
 - verify: json_path(path="$.force", equals=false)
-- code: `workflows/src/workhorse_workflows/author/epic_edit/flow.py::EpicEdit` @3aacff8bdeb8
+- code: `workflows/src/workhorse_workflows/author/epic_edit/flow.py::EpicEdit` @0bde66475816
 - detail: [epic edit input selection](epic-edit-input-selection.md)
 
 ### operator_mode
@@ -66,7 +66,7 @@ selection](epic-edit-invocation-selection.md).
 - required: false
 - semantics: operator-routing mode carried by the workflow runtime
 - verify: json_path(path="$.operator_mode", equals="auto")
-- code: `workflows/src/workhorse_workflows/author/epic_edit/flow.py::EpicEdit` @3aacff8bdeb8
+- code: `workflows/src/workhorse_workflows/author/epic_edit/flow.py::EpicEdit` @0bde66475816
 - detail: [epic edit input selection](epic-edit-input-selection.md)
 
 ## Methods
@@ -76,14 +76,14 @@ selection](epic-edit-invocation-selection.md).
 - does: loads author configuration in `epic-edit` mode
 - returns: returns a `RunContext` populated from the loaded configuration
 - verify: json_path(path="$.mode", equals="epic-edit")
-- code: `workflows/src/workhorse_workflows/author/epic_edit/flow.py::EpicEdit.setup` @3aacff8bdeb8
+- code: `workflows/src/workhorse_workflows/author/epic_edit/flow.py::EpicEdit.setup` @0bde66475816
 
 ### labels
 - sig: `labels() -> dict[str, str]`
 - does: labels the run with the explicit epic or the handoff intent's epic
 - returns: returns matching `work_id` and `epic` labels
 - verify: count(subject="epic-edit labeled runs", equals=1)
-- code: `workflows/src/workhorse_workflows/author/epic_edit/flow.py::EpicEdit.labels` @3aacff8bdeb8
+- code: `workflows/src/workhorse_workflows/author/epic_edit/flow.py::EpicEdit.labels` @0bde66475816
 
 ### state_labels
 - sig: `state_labels(params: dict[str, Any]) -> dict[str, str]`
@@ -92,7 +92,7 @@ selection](epic-edit-invocation-selection.md).
 - does: omits `reworks` (and every other budget counter) when the state carries it at the default of zero, so a span cannot be silently bucketed as a first attempt for a budget the flow has not spent
 - returns: returns labels used for state telemetry
 - verify: count(subject="epic-edit state label sets", equals=1)
-- code: `workflows/src/workhorse_workflows/author/epic_edit/flow.py::EpicEdit.state_labels` @3aacff8bdeb8
+- code: `workflows/src/workhorse_workflows/author/epic_edit/flow.py::EpicEdit.state_labels` @0bde66475816
 - tests: `workflows/tests/coder/test_telemetry.py::test_epic_edit_reports_reworks_and_omits_defaulted_absent_counters`
 
 ### blueprint
@@ -109,14 +109,15 @@ selection](epic-edit-invocation-selection.md).
 - does: snapshots the selected epic before planning
 - returns: returns a continuation targeting `plan_edit` with the intent and snapshot
 - verify: count(subject="epic-edit starts", equals=1)
-- code: `workflows/src/workhorse_workflows/author/epic_edit/flow.py::EpicEdit.start` @3aacff8bdeb8
+- code: `workflows/src/workhorse_workflows/author/epic_edit/flow.py::EpicEdit.start` @0bde66475816
 
 ### plan_edit
 - sig: `plan_edit(intent: EditIntent, snapshot: EpicSnapshot) -> Continue`
+- does: reads the open records of the debt register through `read_register_listing` and passes the listing to the planning agent
 - does: asks the planning agent for a complete typed replacement plan without mutating repository files
 - returns: returns a continuation targeting `validate_plan`
 - verify: count(subject="epic-edit replacement plans", equals=1)
-- code: `workflows/src/workhorse_workflows/author/epic_edit/flow.py::EpicEdit.plan_edit` @3aacff8bdeb8
+- code: `workflows/src/workhorse_workflows/author/epic_edit/flow.py::EpicEdit.plan_edit` @0bde66475816
 
 ### validate_plan
 - sig: `validate_plan(intent: EditIntent, snapshot: EpicSnapshot, plan: EpicEditPlan, reworks: int = 0) -> Continue | Await`
@@ -126,14 +127,14 @@ selection](epic-edit-invocation-selection.md).
 - does: forwards a valid plan to semantic review
 - returns: returns a continuation for refinement or review, or `Await`
 - verify: count(subject="epic-edit plan validation outcomes", equals=1)
-- code: `workflows/src/workhorse_workflows/author/epic_edit/flow.py::EpicEdit.validate_plan` @3aacff8bdeb8
+- code: `workflows/src/workhorse_workflows/author/epic_edit/flow.py::EpicEdit.validate_plan` @0bde66475816
 
 ### refine_plan
 - sig: `refine_plan(intent: EditIntent, snapshot: EpicSnapshot, plan: EpicEditPlan, findings: str, reworks: int = 0) -> Continue`
 - does: sends validation findings and the prior plan to a replacement planning turn
 - returns: returns a continuation targeting `validate_plan` with an incremented rework count
 - verify: count(subject="epic-edit plan refinements", equals=1)
-- code: `workflows/src/workhorse_workflows/author/epic_edit/flow.py::EpicEdit.refine_plan` @3aacff8bdeb8
+- code: `workflows/src/workhorse_workflows/author/epic_edit/flow.py::EpicEdit.refine_plan` @0bde66475816
 
 ### review_plan
 - sig: `review_plan(intent: EditIntent, snapshot: EpicSnapshot, plan: EpicEditPlan, reworks: int = 0) -> Continue | Await`
@@ -143,7 +144,7 @@ selection](epic-edit-invocation-selection.md).
 - does: parks an unresolved review at the operator gate on the run's context file
 - returns: returns a continuation for application or refinement, or `Await`
 - verify: count(subject="epic-edit plan reviews", equals=1)
-- code: `workflows/src/workhorse_workflows/author/epic_edit/flow.py::EpicEdit.review_plan` @3aacff8bdeb8
+- code: `workflows/src/workhorse_workflows/author/epic_edit/flow.py::EpicEdit.review_plan` @0bde66475816
 
 ### apply_plan
 - sig: `apply_plan(intent: EditIntent, snapshot: EpicSnapshot, plan: EpicEditPlan) -> Continue`
@@ -157,7 +158,7 @@ selection](epic-edit-invocation-selection.md).
 - verify: count(subject="epic-edit rewrites after a kept epic", equals=1)
 - returns: returns a continuation targeting `finish` (deleted epic) or `rewrite_epic` (surviving epic)
 - verify: json_path(path="$.next_state", matches="^(finish|rewrite_epic)$")
-- code: `workflows/src/workhorse_workflows/author/epic_edit/flow.py::EpicEdit.apply_plan` @3aacff8bdeb8
+- code: `workflows/src/workhorse_workflows/author/epic_edit/flow.py::EpicEdit.apply_plan` @0bde66475816
 
 ### rewrite_epic
 - sig: `rewrite_epic(intent: EditIntent, snapshot: EpicSnapshot, plan: EpicEditPlan, applied: AppliedEpicEdit, findings: str = "", reworks: int = 0) -> Continue | Await`
@@ -167,7 +168,7 @@ selection](epic-edit-invocation-selection.md).
 - does: retries invalid prose up to three times and then parks at the operator gate
 - returns: returns a continuation targeting affected-story selection, or `Await`
 - verify: count(subject="epic-edit epic rewrites", equals=1)
-- code: `workflows/src/workhorse_workflows/author/epic_edit/flow.py::EpicEdit.rewrite_epic` @3aacff8bdeb8
+- code: `workflows/src/workhorse_workflows/author/epic_edit/flow.py::EpicEdit.rewrite_epic` @0bde66475816
 
 ### next_affected_story
 - sig: `next_affected_story(intent: EditIntent, applied: AppliedEpicEdit, index: int = 0) -> Continue`
@@ -176,7 +177,7 @@ selection](epic-edit-invocation-selection.md).
 - does: continues to `design_mockup` with `intent`, `applied`, `pick`, and `index` when an affected story is selected
 - returns: returns a continuation targeting `check_coverage` (exhausted) or `design_mockup` (selected)
 - verify: count(subject="epic-edit affected-story selections", equals=1)
-- code: `workflows/src/workhorse_workflows/author/epic_edit/flow.py::EpicEdit.next_affected_story` @3aacff8bdeb8
+- code: `workflows/src/workhorse_workflows/author/epic_edit/flow.py::EpicEdit.next_affected_story` @0bde66475816
 
 ### design_mockup
 - sig: `design_mockup(intent: EditIntent, applied: AppliedEpicEdit, pick: StoryChoice, index: int) -> Continue`
@@ -184,7 +185,7 @@ selection](epic-edit-invocation-selection.md).
 - does: continues to `write_story` with `intent`, `applied`, `pick`, `index`, and the produced `mockup`
 - returns: returns a continuation targeting `write_story` with the mockup result
 - verify: count(subject="epic-edit mockup designs", equals=1)
-- code: `workflows/src/workhorse_workflows/author/epic_edit/flow.py::EpicEdit.design_mockup` @3aacff8bdeb8
+- code: `workflows/src/workhorse_workflows/author/epic_edit/flow.py::EpicEdit.design_mockup` @0bde66475816
 
 ### write_story
 - sig: `write_story(intent: EditIntent, applied: AppliedEpicEdit, pick: StoryChoice, index: int, mockup: str = "", reworks: int = 0) -> Continue | Await`
@@ -192,7 +193,7 @@ selection](epic-edit-invocation-selection.md).
 - does: parks a blocked story at the operator gate on the run's context file
 - returns: returns a continuation targeting story validation or `Await`
 - verify: count(subject="epic-edit story writes", equals=1)
-- code: `workflows/src/workhorse_workflows/author/epic_edit/flow.py::EpicEdit.write_story` @3aacff8bdeb8
+- code: `workflows/src/workhorse_workflows/author/epic_edit/flow.py::EpicEdit.write_story` @0bde66475816
 
 ### check_story
 - sig: `check_story(intent: EditIntent, applied: AppliedEpicEdit, pick: StoryChoice, index: int, mockup: str = "", reworks: int = 0) -> Continue | Await`
@@ -201,7 +202,7 @@ selection](epic-edit-invocation-selection.md).
 - does: parks an unresolved story at the operator gate on the run's context file
 - returns: returns a continuation targeting review or rework, or `Await`
 - verify: count(subject="epic-edit story validation outcomes", equals=1)
-- code: `workflows/src/workhorse_workflows/author/epic_edit/flow.py::EpicEdit.check_story` @3aacff8bdeb8
+- code: `workflows/src/workhorse_workflows/author/epic_edit/flow.py::EpicEdit.check_story` @0bde66475816
 
 ### review_story
 - sig: `review_story(intent: EditIntent, applied: AppliedEpicEdit, pick: StoryChoice, index: int, mockup: str = "", reworks: int = 0, prior: str = "") -> Continue | Await`
@@ -210,14 +211,14 @@ selection](epic-edit-invocation-selection.md).
 - does: reworks failed reviews within the bounded budget and parks exhausted failures at the operator gate
 - does: advances to the next affected story after a passing review
 - returns: returns a continuation targeting rework or selection, or `Await`
-- code: `workflows/src/workhorse_workflows/author/epic_edit/flow.py::EpicEdit.review_story` @3aacff8bdeb8
+- code: `workflows/src/workhorse_workflows/author/epic_edit/flow.py::EpicEdit.review_story` @0bde66475816
 
 ### rework_story
 - sig: `rework_story(intent: EditIntent, applied: AppliedEpicEdit, pick: StoryChoice, index: int, findings: str, mockup: str = "", reworks: int = 0) -> Continue`
 - does: records the review findings and asks the story agent for a corrected body
 - returns: returns a continuation targeting `check_story` with an incremented rework count
 - verify: count(subject="epic-edit story reworks", equals=1)
-- code: `workflows/src/workhorse_workflows/author/epic_edit/flow.py::EpicEdit.rework_story` @3aacff8bdeb8
+- code: `workflows/src/workhorse_workflows/author/epic_edit/flow.py::EpicEdit.rework_story` @0bde66475816
 
 ### check_coverage
 - sig: `check_coverage(intent: EditIntent, applied: AppliedEpicEdit) -> Continue`
@@ -225,20 +226,33 @@ selection](epic-edit-invocation-selection.md).
 - does: rejects the resulting epic when the PM review of the story split does not pass
 - returns: returns a continuation targeting `finish` after both coverage gates pass
 - verify: count(subject="epic-edit coverage gates", equals=1)
-- code: `workflows/src/workhorse_workflows/author/epic_edit/flow.py::EpicEdit.check_coverage` @3aacff8bdeb8
+- code: `workflows/src/workhorse_workflows/author/epic_edit/flow.py::EpicEdit.check_coverage` @0bde66475816
 
 ### finish
 - sig: `finish(intent: EditIntent, applied: AppliedEpicEdit) -> Done`
 - does: verifies whole-graph integrity before publishing the edit
-- does: prunes an add-story backlog bullet only after integrity succeeds
+- does: closes the record of an add-story intent as promoted only after integrity succeeds, naming the new story and its epic
 - does: commits the `epic-edit` change after all required checks pass
 - returns: returns `Done` with the applied edit
 - verify: count(subject="completed epic edits", equals=1)
-- code: `workflows/src/workhorse_workflows/author/epic_edit/flow.py::EpicEdit.finish` @3aacff8bdeb8
+- code: `workflows/src/workhorse_workflows/author/epic_edit/flow.py::EpicEdit.finish` @0bde66475816
+- tests: `workflows/tests/author/test_workflow.py::test_epic_edit_add_story_from_a_record_closes_it_as_promoted`
 
 ## Nodes
 
 The deterministic nodes owned by the epic-edit package are registered with the `blueprint` instance. These nodes handle snapshot capture, plan validation, application, and result verification in the edit workflow.
+
+### method: read_register_listing
+- sig: `read_register_listing(logger: logging.Logger, repo_dir: str = "") -> RegisterListing`
+- does: lists the open records of every repository on the [debt register](../../ostler/concepts/the-debt-register.md), one tab-separated line each under the header `id`, `repo`, `area`, `status`, `pattern`, `summary`
+- verify: json_path(path="$.text", matches="^id\\trepo\\tarea\\tstatus\\tpattern\\tsummary")
+- does: returns the text `no open records` when the register holds none
+- verify: json_path(path="$.text", equals="no open records")
+- returns: returns a `RegisterListing` holding the listing text
+- code: `workflows/src/workhorse_workflows/author/epic_edit/nodes/edit.py::read_register_listing` @960ae1cec269
+- code: `workflows/src/workhorse_workflows/author/shared/listing.py::open_listing` @85958b15a6c1
+- tests: `workflows/tests/author/test_workflow.py::test_the_epic_edit_planner_reads_the_register_listing_of_a_filed_record`
+- tests: `workflows/tests/author/test_workflow.py::test_the_epic_edit_planner_is_told_when_the_register_is_empty`
 
 ### method: snapshot_epic
 - sig: `snapshot_epic(logger: logging.Logger, epic: str = "", repo_dir: str = "") -> EpicSnapshot`
@@ -259,24 +273,24 @@ The deterministic nodes owned by the epic-edit package are registered with the `
 - raises: raises `WorkflowFailed` when the epic does not exist
 - returns: returns the baseline used to validate planning and application
 - verify: created(subject="an epic edit snapshot")
-- code: `workflows/src/workhorse_workflows/author/epic_edit/nodes/edit.py::snapshot_epic` @7d1d71c46ee0
+- code: `workflows/src/workhorse_workflows/author/epic_edit/nodes/edit.py::snapshot_epic` @960ae1cec269
 
 ### method: validate_edit_plan
 - sig: `validate_edit_plan(logger: logging.Logger, intent: EditIntent, snapshot: EpicSnapshot, plan: EpicEditPlan, repo_dir: str = "") -> Defects`
 - does: rejects incomplete, wrong-epic, duplicate, missing-id, dangling-cover, dangling-dependency, orphan-seed, cyclic, unsatisfied, frozen, unforced, deletion, and omitted-rewrite plans
 - returns: returns `Defects(ok=True)` only when the projected graph satisfies all edit constraints
 - verify: json_path(path="$.ok", equals=True)
-- code: `workflows/src/workhorse_workflows/author/epic_edit/nodes/edit.py::validate_edit_plan` @7d1d71c46ee0
+- code: `workflows/src/workhorse_workflows/author/epic_edit/nodes/edit.py::validate_edit_plan` @960ae1cec269
 
 ### method: apply_edit_plan
 - sig: `apply_edit_plan(logger: logging.Logger, intent: EditIntent, snapshot: EpicSnapshot, plan: EpicEditPlan, repo_dir: str = "") -> AppliedEpicEdit`
 - does: removes, adds, or updates stories and seeds through Ostler
-- does: updates milestone source-item ownership for removed or added source bullets
+- does: updates milestone source-item ownership for removed or added source records, naming a record by its id
 - does: deletes an epic when the approved resulting seed and story sets are empty
 - does: safely skips already-removed entities when the same approved plan is reapplied
 - returns: returns the applied epic identity and affected and removed story lists
 - verify: persists(subject="the approved epic graph delta")
-- code: `workflows/src/workhorse_workflows/author/epic_edit/nodes/edit.py::apply_edit_plan` @7d1d71c46ee0
+- code: `workflows/src/workhorse_workflows/author/epic_edit/nodes/edit.py::apply_edit_plan` @960ae1cec269
 
 ### validate_applied_edit
 This validation returns `Defects(ok=True)` when the on-disk graph matches the approved delta.
@@ -285,7 +299,7 @@ This validation returns `Defects(ok=True)` when the on-disk graph matches the ap
 - does: compares resulting seed and story identities and metadata with the approved projection
 - does: requires every unaffected story body to remain byte-stable
 - verify: unchanged(subject="unaffected story bodies")
-- code: `workflows/src/workhorse_workflows/author/epic_edit/nodes/edit.py::validate_applied_edit` @7d1d71c46ee0
+- code: `workflows/src/workhorse_workflows/author/epic_edit/nodes/edit.py::validate_applied_edit` @960ae1cec269
 - detail: [applied edit validation](applied-edit-validation.md)
 
 ### method: validate_epic_document
@@ -294,7 +308,7 @@ This validation returns `Defects(ok=True)` when the on-disk graph matches the ap
 - does: requires at least one child journey under `User Journeys`
 - returns: returns `Defects(ok=True)` only when the human-owned epic prose is structurally valid
 - verify: json_path(path="$.ok", equals=True)
-- code: `workflows/src/workhorse_workflows/author/epic_edit/nodes/edit.py::validate_epic_document` @7d1d71c46ee0
+- code: `workflows/src/workhorse_workflows/author/epic_edit/nodes/edit.py::validate_epic_document` @960ae1cec269
 
 ### select_affected_story
 - sig: `select_affected_story(logger: logging.Logger, epic: str, affected_stories: list[str], index: int, repo_dir: str = "") -> StoryChoice`
@@ -304,5 +318,5 @@ This validation returns `Defects(ok=True)` when the on-disk graph matches the ap
 - raises: raises `WorkflowFailed` when an approved affected story no longer exists
 - returns: returns the story path, slug, directory, progress, and remaining count
 - verify: count(subject="selected affected stories", equals=1)
-- code: `workflows/src/workhorse_workflows/author/epic_edit/nodes/edit.py::select_affected_story` @7d1d71c46ee0
+- code: `workflows/src/workhorse_workflows/author/epic_edit/nodes/edit.py::select_affected_story` @960ae1cec269
 - detail: [affected story selection](affected-story-selection.md)

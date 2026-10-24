@@ -42,8 +42,6 @@ completion gate.
 - verify: count(subject="prepared explicit epic-author contexts", equals=1)
 - returns: returns context containing the configured repository root
 - verify: json_path(path="$.repo_root", equals="docs/stories")
-- returns: returns context containing the configured backlog path
-- verify: json_path(path="$.backlog_path", equals="docs/stories/acme-story/story.md")
 - returns: returns context containing the configured milestone path
 - verify: json_path(path="$.milestone_path", equals="docs/milestones/acme-launch/milestone.md")
 - returns: returns context containing the configured epics directory
