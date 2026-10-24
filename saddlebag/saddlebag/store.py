@@ -18,12 +18,13 @@ class RouteError(RuntimeError):
 
 @dataclass(frozen=True)
 class StoreHealth:
-    """What a store reports about itself: reachability, catalogue drift and unclaimed items."""
+    """What a store reports about itself: reachability, catalogue drift, unclaimed items and, on macOS, the interpreter the Keychain trusts."""
 
     backend: str
     reachable: bool
     missing_items: tuple[str, ...] = ()
     orphan_items: tuple[str, ...] | None = None
+    interpreter: str | None = None
 
 
 class SecretStore(Protocol):

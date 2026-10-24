@@ -232,6 +232,7 @@ def test_doctor_reports_health_and_valueless_secrets(running: Running, monkeypat
     assert first["route"].startswith("socket ")
     assert first["backend"] == "vault"
     assert first["orphan_items"] is None
+    assert first["interpreter"] is None
     assert first["missing_items"] == []
     assert first["store_reachable"] is True
     assert first["vault_authenticated"] is True

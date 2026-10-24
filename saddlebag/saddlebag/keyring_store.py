@@ -17,7 +17,9 @@ from saddlebag.models import VALUE_FIELDS, Secret, Tag
 from saddlebag.store import StoreHealth, StoreUnavailable
 
 SERVICE = "stablemate-saddlebag"
-ALLOWED_BACKENDS = frozenset({"keyring.backends.SecretService.Keyring", "keyring.backends.macOS.Keyring"})
+SECRET_SERVICE_BACKEND = "keyring.backends.SecretService.Keyring"
+MACOS_BACKEND = "keyring.backends.macOS.Keyring"
+ALLOWED_BACKENDS = frozenset({SECRET_SERVICE_BACKEND, MACOS_BACKEND})
 
 LOCKED = (
     "the OS keyring is locked. Unlock it (desktop: answer the prompt; SSH: pipe your login password to "
@@ -32,13 +34,20 @@ DISTRUSTED = (
     "prompt, or pre-authorise it with security add-generic-password -T {interpreter} -U -s stablemate-saddlebag "
     "-a {account}."
 )
+REFUSED = "the OS keyring refused {name}: {error}"
+
+
+def _kind(backend: KeyringBackend) -> str:
+    return f"{type(backend).__module__}.{type(backend).__name__}"
 
 
 def open_door() -> KeyringBackend:
     """The OS keyring, or StoreUnavailable saying whether it is absent, locked or distrustful."""
     backend = keyring.get_keyring()
-    if f"{type(backend).__module__}.{type(backend).__name__}" not in ALLOWED_BACKENDS:
+    if _kind(backend) not in ALLOWED_BACKENDS:
         raise StoreUnavailable(ABSENT)
+    if isinstance(backend, keyring.backends.SecretService.Keyring):
+        _guarded(backend.get_preferred_collection, "the keyring")
     return backend
 
 
@@ -50,6 +59,8 @@ def _guarded[T](fn: Callable[[], T], name: str) -> T:
     except (keyring.errors.NoKeyringError, keyring.errors.InitError) as exc:
         raise StoreUnavailable(ABSENT) from exc
     except keyring.errors.KeyringError as exc:
+        if sys.platform != "darwin":
+            raise StoreUnavailable(REFUSED.format(name=name, error=exc)) from exc
         raise StoreUnavailable(DISTRUSTED.format(interpreter=sys.executable, name=name, account=name)) from exc
 
 
@@ -117,7 +128,8 @@ class KeyringStore:
                     missing.append(account)
         held = self._accounts()
         orphans = None if held is None else tuple(sorted(set(held) - claimed))
-        return StoreHealth("keyring", True, tuple(missing), orphans)
+        interpreter = sys.executable if _kind(self._backend) == MACOS_BACKEND else None
+        return StoreHealth("keyring", True, tuple(missing), orphans, interpreter)
 
     def names(self) -> list[str]:
         return self._catalogue.names()

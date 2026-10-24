@@ -245,6 +245,8 @@ def cmd_doctor(args: argparse.Namespace) -> int:
         if result["backend"] != "vault":
             orphans = result["orphan_items"]
             print(f"orphan keyring items: {'not checked on this keyring' if orphans is None else ', '.join(orphans) or 'none'}")
+            if result.get("interpreter"):
+                print(f"interpreter: {result['interpreter']}")
         for item in result["missing_items"]:
             print(f"warning: the catalogue lists a value for {item} that the keyring no longer holds")
         token_source = result.get("token_source")

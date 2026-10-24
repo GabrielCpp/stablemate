@@ -2,8 +2,12 @@
 
 from __future__ import annotations
 
+import sys
+from typing import Any
+
 import keyring
 import keyring.backend
+import keyring.backends.SecretService
 import keyring.backends.fail
 import keyring.backends.null
 import keyring.errors
@@ -83,6 +87,40 @@ def test_a_backend_outside_the_allow_list_is_absent(monkeypatch: pytest.MonkeyPa
         open_door()
 
 
+class ProbedSecretService(keyring.backends.SecretService.Keyring):
+    __module__ = keyring_store.SECRET_SERVICE_BACKEND.rpartition(".")[0]
+
+    def __init__(self, outcome: Exception | None) -> None:
+        self.outcome = outcome
+
+    def get_preferred_collection(self) -> Any:
+        if self.outcome is not None:
+            raise self.outcome
+        return object()
+
+
+ProbedSecretService.__name__ = "Keyring"
+
+
+@pytest.mark.parametrize(
+    ("error", "text"),
+    [
+        (keyring.errors.KeyringLocked("locked"), "the OS keyring is locked"),
+        (keyring.errors.InitError("init"), "no OS keyring on this session"),
+    ],
+)
+def test_the_door_probes_the_secret_service_collection(monkeypatch: pytest.MonkeyPatch, error: Exception, text: str) -> None:
+    monkeypatch.setattr(keyring, "get_keyring", lambda: ProbedSecretService(error))
+    with pytest.raises(StoreUnavailable, match=text):
+        open_door()
+
+
+def test_an_open_collection_opens_the_door(monkeypatch: pytest.MonkeyPatch) -> None:
+    opened = ProbedSecretService(None)
+    monkeypatch.setattr(keyring, "get_keyring", lambda: opened)
+    assert open_door() is opened
+
+
 class Failing(FakeBackend):
     def __init__(self, error: Exception) -> None:
         super().__init__()
@@ -98,7 +136,7 @@ class Failing(FakeBackend):
         (keyring.errors.KeyringLocked("locked"), "the OS keyring is locked"),
         (keyring.errors.NoKeyringError("none"), "no OS keyring on this session"),
         (keyring.errors.InitError("init"), "no OS keyring on this session"),
-        (keyring.errors.KeyringError("refused"), "the Keychain refused this interpreter"),
+        (keyring.errors.KeyringError("refused"), "the OS keyring refused login/password: refused"),
     ],
 )
 def test_a_backend_error_says_what_the_operator_does_next(catalogue: Catalogue, error: Exception, text: str) -> None:
@@ -107,7 +145,15 @@ def test_a_backend_error_says_what_the_operator_does_next(catalogue: Catalogue, 
         store.value("login", "password")
 
 
-def test_the_distrust_message_names_the_account(catalogue: Catalogue) -> None:
+def test_a_keychain_refusal_names_the_interpreter(catalogue: Catalogue, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(sys, "platform", "darwin")
+    store = KeyringStore(catalogue, Failing(keyring.errors.KeyringError("refused")))
+    with pytest.raises(StoreUnavailable, match="the Keychain refused this interpreter"):
+        store.value("login", "password")
+
+
+def test_the_distrust_message_names_the_account(catalogue: Catalogue, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(sys, "platform", "darwin")
     store = KeyringStore(catalogue, Failing(keyring.errors.KeyringError("refused")))
     with pytest.raises(StoreUnavailable, match=f"-s {keyring_store.SERVICE} -a login/password"):
         store.value("login", "password")
@@ -131,3 +177,12 @@ def test_health_names_drift_and_orphans(catalogue: Catalogue, backend: FakeBacke
     health = shelf.health()
     assert health.missing_items == ("login/password",)
     assert health.orphan_items == ("ghost/password",)
+
+
+def test_health_names_no_interpreter_off_macos(store: KeyringStore) -> None:
+    assert store.health().interpreter is None
+
+
+def test_health_names_the_interpreter_on_macos(catalogue: Catalogue) -> None:
+    mac = type("Keyring", (FakeBackend,), {"__module__": "keyring.backends.macOS"})()
+    assert KeyringStore(catalogue, mac).health().interpreter == sys.executable

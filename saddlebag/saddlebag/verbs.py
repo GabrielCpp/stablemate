@@ -227,6 +227,7 @@ class Verbs:
             "secrets_without_value": bare,
             "missing_items": list(health.missing_items),
             "orphan_items": None if health.orphan_items is None else list(health.orphan_items),
+            "interpreter": health.interpreter,
             "token_source": self.token_source,
             "vault_token_file": VAULT_TOKEN_FILE.expanduser().exists(),
         }
