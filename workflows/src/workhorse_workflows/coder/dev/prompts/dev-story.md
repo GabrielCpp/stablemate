@@ -295,8 +295,8 @@ finding for the operator, and it goes in `notes`.
 
 Save every plan file in the spec dir. `plan.md` is the root, and every other plan file hangs
 off it. Create each markdown file through ostler before you write its body:
-`timeout 30 ostler create spec <story-name> <file>`, where `<story-name>` is the spec dir's
-folder name. That stamps the `type:` frontmatter. Write the body below the `---` block, and
+`timeout 30 ostler create spec {{ workhorse_var('story_id') }} <file>`, where the story id is
+also the spec dir's folder name. That stamps the `type:` frontmatter. Write the body below the `---` block, and
 leave the block in place.
 
 A single-service story has one `plan.md`. A multi-service story has a root `plan.md` with

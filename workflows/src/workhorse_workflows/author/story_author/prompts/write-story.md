@@ -222,7 +222,7 @@ sections and preserve the machine-owned sections. The result should read:
 
 Do not add Description, Evidence, Verification setup, QA, or Required skills sections — the coder
 discovers all of that. Leave `## Implementation Status` as scaffolded; do not hand-edit the
-`- **Status**:` line — status transitions go through `ostler set-status <slug> "<status>"`
+`- **Status**:` line — status transitions go through `ostler set-status {{ workhorse_var('story_id') }} "<status>"`
 (the coder owns them).
 
 `## Fixtures` is not yours to write either. It names the QA arrangements this story's plan
@@ -235,7 +235,7 @@ holds each name to the repo's own declaration.
 **Reproduce it exactly as you found it**: never invent, reorder, reword or drop a line, and never
 replace it with prose. Dropping a blocker does not simplify the story; it lets the coder start work
 whose prerequisite does not exist yet. Edges change only through
-`ostler update story <slug> --depends <a,b>`.
+`ostler update story {{ workhorse_var('story_id') }} --depends <a,b>`.
 
 ## No open questions
 

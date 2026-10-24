@@ -30,6 +30,7 @@ class FixStorySeed(CoderResult):
     epic: str = ""
     epic_dir: str = ""
     story_slug: str = ""
+    story_id: str = ""
     story_dir: str = ""
     story_path: str = ""
     record_id: str = ""

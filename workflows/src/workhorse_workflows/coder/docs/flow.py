@@ -75,10 +75,11 @@ class Docs(Workflow):
     BUDGET_LABELS: ClassVar[tuple[str, ...]] = ("laps", "blocks", "number")
 
     def setup(self) -> StoryPaths:
-        """Resolve the slug to paths and the workspace to directories."""
+        """Resolve the workspace to directories and, when there is a book, the story to its id and paths."""
         self.call(resolve_workspace_dirs)
-        ctx = self.call(prepare_story, self.story, self.epic)
-        return ctx
+        if self.call(detect_okf_docs).has_okf == "no":
+            return StoryPaths()
+        return self.call(prepare_story, self.story, self.epic)
 
     def labels(self) -> dict[str, str]:
         """Which story this run is on: what the run's activity line shows."""
@@ -101,18 +102,18 @@ class Docs(Workflow):
     def start(self) -> Continue | Done:
         """Decide whether there is a book to document into, and how the diff can be read."""
         self.reset_session(self._chain)
+        okf = self.output(detect_okf_docs)
+        if okf.has_okf == "no":
+            self.logger.info("no OKF docs here, so there is nothing to document")
+            return self._ends(DocsResult(status="not_applicable", notes=okf.reason))
+        if okf.has_okf != "yes":
+            raise WorkflowFailed(f"OKF documentation is unusable here: {okf.reason}")
         if not self.ctx.story_path:
             raise WorkflowFailed(
                 f"no story path for {self.story!r}. The story could not be resolved, so "
                 "there is nothing to document."
             )
         impl = self.call(resolve_impl_context, self.ctx.spec_dir)
-        okf = self.call(detect_okf_docs)
-        if okf.has_okf == "no":
-            self.logger.info("no OKF docs here, so there is nothing to document")
-            return self._ends(DocsResult(status="not_applicable", notes=okf.reason))
-        if okf.has_okf != "yes":
-            raise WorkflowFailed(f"OKF documentation is unusable here: {okf.reason}")
         classification = self.call(
             classify_documentation_context, tuple(impl.qa_source_roots)
         )
@@ -184,7 +185,7 @@ class Docs(Workflow):
             "story_path": self.ctx.story_path,
             "spec_dir": self.ctx.spec_dir,
             "story_slug": self.ctx.story_slug,
-            "story_id": self.ctx.story_id or self.ctx.story_slug,
+            "story_id": self.ctx.story_id,
             "epic": self.epic,
             "docs_root": str(find_docs_root(self.repo_dir)),
             "services_root": services_root(self),

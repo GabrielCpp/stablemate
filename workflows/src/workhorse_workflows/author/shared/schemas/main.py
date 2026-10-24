@@ -62,6 +62,7 @@ class StoryChoice(AuthorResult):
     has_story: bool = False
     story_path: str = ""
     story_slug: str = ""
+    story_id: str = ""
     story_dir: str = ""
     reason: str = ""
     progress: str = ""

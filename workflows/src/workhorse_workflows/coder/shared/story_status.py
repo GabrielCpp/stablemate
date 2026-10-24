@@ -22,20 +22,19 @@ def resolve_story_path(root: Path, epic: str, slug: str, story_path_arg: str = "
 
 
 def mark_via_ostler(
-    root: Path, slug: str, new_status: str, logger: logging.Logger | None = None
+    root: Path, story_id: str, new_status: str, logger: logging.Logger | None = None
 ) -> list[Path]:
-    """Set the status through the doc graph."""
+    """Set the status through the doc graph; a refused id raises instead of falling back."""
     log = logger or _logger
-    if not slug:
+    if not story_id:
         return []
     try:
-        res = Ostler(root).set_status(slug, new_status)
-    except (OSError, ValueError, RuntimeError) as exc:
-        log.info("ostler set-status unavailable for %s (%s) — falling back to story.md", slug, exc)
+        res = Ostler(root).set_status(story_id, new_status)
+    except (OSError, RuntimeError) as exc:
+        log.info("ostler set-status unavailable for %s (%s) — falling back to story.md", story_id, exc)
         return []
     if not res.ok:
-        log.info("ostler set-status failed for %s: %s — falling back to story.md", slug, res.message)
-        return []
+        raise RuntimeError(res.message)
     return list(res.paths)
 
 
@@ -93,16 +92,17 @@ def current(
 
 def mark(
     root: Path,
-    slug: str,
+    story_id: str,
     new_status: str,
     *,
     epic: str = "",
+    slug: str = "",
     story_path: str = "",
     logger: logging.Logger | None = None,
 ) -> list[Path]:
-    """Stamp `slug`'s status, graph-first."""
+    """Stamp the story's status, graph-first; `slug` only locates story.md when the graph cannot."""
     log = logger or _logger
-    written = mark_via_ostler(root, slug, new_status, log)
+    written = mark_via_ostler(root, story_id, new_status, log)
     if written:
         return written
 

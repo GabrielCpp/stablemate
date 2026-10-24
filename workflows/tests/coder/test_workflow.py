@@ -993,6 +993,7 @@ def test_a_green_story_hands_the_backlog_to_the_fix_flow(
     assert sub.calls.count("Fix") == 1, sub.calls
     assert agent.calls == [], agent.calls
     assert _output(run_env, prepare_story)["story_slug"] == "STORY-1"
+    assert _output(run_env, prepare_story)["story_id"] == "STORY-1"
     assert _output(run_env, check_repos_clean)["clean"] is True
     assert _dirty(repo) == "", _dirty(repo)
 

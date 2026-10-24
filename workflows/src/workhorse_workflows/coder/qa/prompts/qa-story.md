@@ -208,8 +208,9 @@ inventory and the ledger category by category. One representative does not prove
 
 ### `qa.md`
 
-Create it once with `timeout 30 ostler create spec <story-name> qa.md`, where
-`<story-name>` is the spec dir's folder name, and write below its frontmatter. Rewrite it on
+Create it once with
+`timeout 30 ostler create spec {{ workhorse_var('story_id') }} qa.md`, where the story id is
+also the spec dir's folder name, and write below its frontmatter. Rewrite it on
 every pass. Never append.
 
 ```markdown

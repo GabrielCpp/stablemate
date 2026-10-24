@@ -18,7 +18,8 @@ from workhorse_workflows.coder.qa import flow as qa_flow
 from workhorse_workflows.coder.qa.flow import Qa
 from workhorse_workflows.coder.qa.nodes import stack_target
 from workhorse_workflows.coder.shared.owner import UNBOUNDED, owner_profile
-from workhorse_workflows.coder.shared.schemas.docs import DocsResult
+from workhorse_workflows.coder.shared.docs import detect_okf_docs
+from workhorse_workflows.coder.shared.schemas.docs import DocsResult, OkfDetection
 from workhorse_workflows.coder.shared.schemas.qa import QaFlowResult, QaPlanRun, StackTarget, StackTornDown
 from workhorse_workflows.coder.shared.worktree import snapshot_code_state
 
@@ -38,9 +39,11 @@ class _Spy:
         self.open_chains: set[str] | None = None
 
     def output(self, node: Any) -> Any:
-        """What `Workflow.output` resolves to here: the QA entry snapshot, and a stack target holding no copy."""
+        """What `Workflow.output` resolves to here: the QA entry snapshot, a book that is there, and a stack target holding no copy."""
         if node is stack_target:
             return StackTarget()
+        if node is detect_okf_docs:
+            return OkfDetection(has_okf="yes")
         if node is not snapshot_code_state:
             raise NodeNotRunError(f"{node} has not run")
         return SimpleNamespace(status="")
@@ -158,7 +161,13 @@ def test_every_lane_names_the_same_conversation_without_being_handed_anything(
             "seed_session",
             lambda _self, key, sid: seeded.append((key, sid)),
         )
-        monkeypatch.setattr(flow_cls, "call", lambda _self, _node, *a, **k: ctx)
+        monkeypatch.setattr(
+            flow_cls,
+            "call",
+            lambda _self, node, *a, **k: (
+                OkfDetection(has_okf="yes") if node is detect_okf_docs else ctx
+            ),
+        )
 
     for flow, chain in (
         (_docs(), backbone),

@@ -6,6 +6,7 @@ import subprocess
 from pathlib import Path
 
 from ostler import Ostler
+from workhorse.pyflow import WorkflowFailed
 from ostler.edit import SETTLEMENT_FILE
 from workhorse_workflows.coder.shared import commits
 from workhorse_workflows.coder.shared.blueprint import blueprint
@@ -121,13 +122,15 @@ def settle_findings(
     repo_dir: str = "",
 ) -> Settlement:
     """Settle the filed finding ids against the dev owner's answer list, checking each fix's evidence and each "not a defect" decline's test, and commit the ledger."""
+    if not story_id:
+        raise WorkflowFailed("settle_findings needs the story id")
     root = find_docs_root(repo_dir)
     ids = list(filed or [])
     code = [repo for repo in (repos or []) if Path(repo).is_dir()]
     okf = Ostler(root)
-    ledger = okf.settle_answers(story_slug, ids, write=True)
+    ledger = okf.settle_answers(story_id, ids, write=True)
     message = commits.message("docs", commits.scope(root.name), f"record the review settlement of {story_slug}")
-    settlement = Path(okf.spec_path(story_slug)) / SETTLEMENT_FILE
+    settlement = Path(okf.spec_path(story_id)) / SETTLEMENT_FILE
     if settlement.resolve().is_relative_to(root.resolve()):
         commit_paths(root, message, str(settlement.resolve().relative_to(root.resolve())), verify=False)
     changed = _changed(logger, code, story_slug, story_id)

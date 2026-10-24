@@ -1,10 +1,11 @@
-"""The story spine: resolve a slug to paths, resolve the workspace, stamp the specs."""
+"""The story spine: resolve a story handle to its id and paths, resolve the workspace, stamp the specs."""
 from __future__ import annotations
 
 import logging
 from pathlib import Path
 
 from ostler import Ostler, markdown, path as okf_path, registry
+from ostler.model import Epic, Story
 from workhorse.pyflow import Workflow, WorkflowFailed
 from workhorse_workflows.kit import find_docs_root
 from workhorse_workflows.coder.shared import stubs
@@ -13,43 +14,30 @@ from workhorse_workflows.coder.shared.schemas.story import SpecsStamped, StoryPa
 from workhorse_workflows.kit import resolve_workspace
 
 
-def _spec_dir(okf: Ostler, slug: str) -> Path:
+def _resolve(okf: Ostler, ref: str) -> tuple[Epic, Story]:
+    """The story a launch handle names: its id, or the slug a worklist or fix seed carries."""
+    try:
+        found = okf.graph.find_story(ref) or okf.graph.story_by_slug(ref)
+        if found is None:
+            raise WorkflowFailed(okf.graph.no_story(ref))
+        if not found[1].eid:
+            raise WorkflowFailed(okf.graph.no_story(found[1].slug))
+    except (OSError, ValueError, RuntimeError) as exc:
+        raise WorkflowFailed(str(exc)) from exc
+    return found
+
+
+def _spec_dir(okf: Ostler, story_id: str) -> Path:
     """Where this story's specs live (absolute, outside the repo by default), through ostler."""
     try:
-        return Path(okf.spec_path(slug))
+        return Path(okf.spec_path(story_id))
     except ValueError as exc:
         raise WorkflowFailed(str(exc)) from exc
 
 
-def _story_id(okf: Ostler, slug: str) -> str:
-    """The story's minted id (`ACME-01H…`), or empty on a book that predates them."""
-    try:
-        found = okf.graph.find_story(slug)
-    except (OSError, ValueError, RuntimeError):
-        return ""
-    return found[1].eid if found is not None else ""
-
-
-def _story_services(okf: Ostler, slug: str) -> list[str]:
-    """The books the story changes, from its `services:` frontmatter, or none."""
-    try:
-        found = okf.graph.find_story(slug)
-    except (OSError, ValueError, RuntimeError):
-        return []
-    return list(found[1].services) if found is not None else []
-
-
-def _guard_authored(okf: Ostler, slug: str, logger: logging.Logger) -> None:
-    """Fail the run if the graph knows this story and reports it unauthored."""
-    try:
-        found = okf.graph.find_story(slug)
-    except (OSError, ValueError, RuntimeError) as exc:
-        logger.info("could not load the doc graph to check '%s' is authored (%s)", slug, exc)
-        return
-    if found is None:
-        logger.info("story '%s' is not in the doc graph — cannot check it is authored", slug)
-        return
-    epic, story = found
+def _guard_authored(epic: Epic, story: Story, logger: logging.Logger) -> None:
+    """Fail the run if the resolved story is unauthored."""
+    del logger
     if story.authored:
         return
     detail = (
@@ -58,7 +46,7 @@ def _guard_authored(okf: Ostler, slug: str, logger: logging.Logger) -> None:
         else "story.md is still a bare scaffold — " + ", ".join(story.unwritten_detail)
     )
     raise WorkflowFailed(
-        f"story '{slug}' is not authored ({detail}); refusing to plan against it. "
+        f"story '{story.slug}' is not authored ({detail}); refusing to plan against it. "
         f"Run the author workflow for epic '{epic.name}' first."
     )
 
@@ -69,12 +57,12 @@ def guard_story_file(logger: logging.Logger, story: StoryPaths) -> None:
     del logger
     if not story.story_path:
         raise WorkflowFailed(
-            f"no story path for {story.story_slug or '(no slug)'!r} — the slug did not "
+            f"no story path for {story.story_slug or '(no slug)'!r} — the story handle did not "
             "resolve to a story file, so there is nothing to work against."
         )
     if not story.spec_dir:
         raise WorkflowFailed(
-            f"no spec dir for {story.story_slug or '(no slug)'!r} — the slug resolved to a "
+            f"no spec dir for {story.story_slug or '(no slug)'!r} — the story handle resolved to a "
             "story but to no place to keep its plan, evidence and QA report."
         )
     try:
@@ -93,45 +81,38 @@ def prepare_story(
     epic: str = "",
     repo_dir: str = "",
 ) -> StoryPaths:
-    """Resolve a story slug and epic to the canonical absolute paths every flow uses."""
+    """Resolve a story handle (id or slug) and epic to the canonical absolute paths every flow uses."""
     if not story:
-        logger.info("no story slug — nothing to resolve")
+        logger.info("no story handle — nothing to resolve")
         return StoryPaths()
 
     docs_root = find_docs_root(repo_dir)
-
-    if not epic:
-        epics_root = okf_path.epics_root_in(docs_root)
-        matches = list(epics_root.glob(f"*/stories/{story}/story.md"))
-        if matches:
-            epic = matches[0].parent.parent.parent.name
-        else:
-            logger.warning("no epic given and no matching story folder found for '%s'", story)
-
     okf = Ostler(docs_root)
-    _guard_authored(okf, story, logger)
+    found_epic, found = _resolve(okf, story)
+    slug = found.slug
+    story_id = found.eid
+    epic = epic or found_epic.name
+    _guard_authored(found_epic, found, logger)
 
-    spec_dir = str(_spec_dir(okf, story).resolve())
+    spec_dir = str(_spec_dir(okf, story_id).resolve())
 
-    story_path = ""
-    if epic:
-        try:
-            story_path_rel = okf.story_path(epic, story)
-        except (OSError, ValueError, RuntimeError):
-            story_path_rel = ""
-        story_path = str(
-            (docs_root / story_path_rel).resolve() if story_path_rel
-            else okf_path.story_dir_in(docs_root, epic, story) / "story.md"
-        )
+    try:
+        story_path_rel = okf.story_path(story_id)
+    except (OSError, ValueError, RuntimeError):
+        story_path_rel = ""
+    story_path = str(
+        (docs_root / story_path_rel).resolve() if story_path_rel
+        else okf_path.story_dir_in(docs_root, epic, slug) / "story.md"
+    )
 
     return StoryPaths(
         story_path=story_path,
         spec_dir=spec_dir,
         qa_dir=spec_dir + "/qa",
-        story_slug=story,
+        story_slug=slug,
         story_epic=epic,
-        story_id=_story_id(okf, story),
-        story_services=_story_services(okf, story),
+        story_id=story_id,
+        story_services=list(found.services),
     )
 
 
@@ -156,24 +137,23 @@ def workspace_dirs(flow: Workflow) -> list[str]:
 
 @blueprint.node
 def stamp_specs(
-    logger: logging.Logger, story_slug: str = "", repo_dir: str = ""
+    logger: logging.Logger, story_id: str = "", repo_dir: str = ""
 ) -> SpecsStamped:
     """Give every spec doc in the story's spec dir an OKF `type`, or fail the run."""
-    if not story_slug:
-        logger.info("no story slug — nothing to stamp")
+    if not story_id:
+        logger.info("no story id — nothing to stamp")
         return SpecsStamped()
 
     docs_root = find_docs_root(repo_dir)
     okf = Ostler(docs_root)
-    spec_dir = _spec_dir(okf, story_slug)
+    spec_dir = _spec_dir(okf, story_id)
     if not spec_dir.is_dir():
         logger.info("no spec dir at %s — nothing to stamp", spec_dir)
         return SpecsStamped()
 
-    spec_key = spec_dir.name
     stamped = 0
     for path in sorted(spec_dir.glob("*.md")):
-        res = okf.create_spec(spec_key, path.name)
+        res = okf.create_spec(story_id, path.name)
         if not res.ok:
             logger.info("skipped %s: %s", path.name, res.message)
             continue
@@ -190,7 +170,7 @@ def stamp_specs(
     if untyped:
         raise WorkflowFailed("still untyped after stamping: " + ", ".join(untyped))
 
-    logger.info("stamped %d doc(s) in %s", stamped, story_slug)
+    logger.info("stamped %d doc(s) in %s", stamped, story_id)
     return SpecsStamped(stamped=stamped)
 
 

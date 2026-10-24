@@ -92,7 +92,7 @@ class Fix(Workflow):
             area=pick.area,
             body=pick.body,
         )
-        story = self.call(prepare_fix_story, seed.story_slug, seed.epic)
+        story = self.call(prepare_fix_story, seed.story_id, seed.epic)
         self.call(guard_story_file, story)
         self.call(snapshot_owner_baseline, roots=self._dirs())
         return Continue(story, self.work)
@@ -160,7 +160,7 @@ class Fix(Workflow):
         seed = self.output(seed_fix_story)
         result = self.handoff(
             Docs,
-            story=self._story.story_slug,
+            story=self._story.story_id,
             epic=seed.epic,
             target_env=self.target_env,
             preexisting=tuple(self._dirty_at(snapshot_worktree_state)),
@@ -257,7 +257,7 @@ class Fix(Workflow):
     def _story_args(self) -> dict[str, Any]:
         return {
             "story_slug": self._story.story_slug,
-            "story_id": self._story.story_id or self._story.story_slug,
+            "story_id": self._story.story_id,
             "epic": self._story.story_epic,
             "story_path": self._story.story_path,
             "spec_dir": self._story.spec_dir,

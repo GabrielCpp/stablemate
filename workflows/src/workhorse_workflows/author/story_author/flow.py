@@ -52,6 +52,7 @@ class StoryAuthor(Workflow):
             "epic": target.epic,
             "story_path": target.story_path,
             "story_slug": target.story,
+            "story_id": target.story_id,
             "story_dir": target.story_dir,
             "services_dir": self.ctx.services_dir,
             "mockup_path": mockup,
@@ -78,7 +79,7 @@ class StoryAuthor(Workflow):
 
     def start(self) -> Continue:
         target = self.call(prepare_story, self.epic, self.story)
-        gate = self.call(check_mockup_needed, target.story)
+        gate = self.call(check_mockup_needed, target.story_id)
         if gate.required:
             return Continue(gate, self.design_mockup, target=target)
         return Continue(gate, self.write_story, target=target)

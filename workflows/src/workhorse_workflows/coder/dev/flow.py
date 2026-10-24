@@ -144,7 +144,7 @@ class Dev(Workflow):
     def _story_args(self) -> dict[str, Any]:
         return {
             "story_slug": self.ctx.story_slug,
-            "story_id": self.ctx.story_id or self.ctx.story_slug,
+            "story_id": self.ctx.story_id,
             "epic": self.epic,
             "story_path": self.ctx.story_path,
             "story_services": self.ctx.story_services,
@@ -200,7 +200,7 @@ class Dev(Workflow):
                 "services": self.call(declared_services).text,
             },
         )
-        self.call(stamp_specs, self.ctx.story_slug)
+        self.call(stamp_specs, self.ctx.story_id)
         self._file_follow_ups(result)
         found = [f.model_dump() for f in result.findings]
         filed = causes.file_findings(
@@ -254,7 +254,11 @@ class Dev(Workflow):
             failures = [f"The plan's service paths did not validate: {recorded.errors}"]
         else:
             self.call(
-                commit_plan_record, self.epic, self.ctx.story_slug, self.ctx.spec_dir
+                commit_plan_record,
+                self.epic,
+                self.ctx.story_slug,
+                self.ctx.spec_dir,
+                story_id=self.ctx.story_id,
             )
             failures = self._gate_failures(laps) + self._settle() + self._leftovers()
             failures += self._walk_failures()
@@ -340,7 +344,7 @@ class Dev(Workflow):
         verdict = self.call(
             settle_findings,
             self.ctx.story_slug,
-            self.ctx.story_id or self.ctx.story_slug,
+            self.ctx.story_id,
             filed=ids,
             repos=context.affected_repo_paths,
         )

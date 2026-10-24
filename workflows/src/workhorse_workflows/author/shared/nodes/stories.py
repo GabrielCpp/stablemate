@@ -181,8 +181,14 @@ def check_story_grounding(
                 f"story claims seed item '{sid}' that is not in the epic's seeds (phantom scope)"
             )
 
-    if okf.graph.ui_nodes:
-        refs = okf.query("surfaces-referenced-by-story", slug)
+    story_id = str((story_row or {}).get("id", "") or "")
+    if okf.graph.ui_nodes and not story_id:
+        errors.append(
+            f"story '{slug}' is not in the epic's story list (or has no id), so its surface "
+            "citations cannot be checked"
+        )
+    elif okf.graph.ui_nodes:
+        refs = okf.query("surfaces-referenced-by-story", story_id)
         cited = [r for r in refs if r.get("kind") == "ui"]
         for path in [str(r.get("path", "")) for r in refs if r.get("kind") == "missing"]:
             errors.append(

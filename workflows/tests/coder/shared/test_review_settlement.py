@@ -29,9 +29,18 @@ def code_repo(
 
 
 def _settle(repo: Path, code_repo: Path, logger: logging.Logger, write: Callable[[Path, str], Path], answer: str):
-    write(Path(Ostler(repo).spec_path("acme-story")) / ANSWERS_FILE, answer)
+    okf = Ostler(repo)
+    assert okf.create_epic("acme-epic", "Acme epic", prefix="acme").ok
+    created = okf.create_story("acme-epic", "acme-story", "Acme story")
+    assert created.ok
+    write(Path(okf.spec_path(created.entity_id)) / ANSWERS_FILE, answer)
     return settle_findings(
-        logger, story_slug="acme-story", filed=[FINDING], repos=[str(code_repo)], repo_dir=str(repo)
+        logger,
+        story_slug="acme-story",
+        story_id=created.entity_id,
+        filed=[FINDING],
+        repos=[str(code_repo)],
+        repo_dir=str(repo),
     )
 
 

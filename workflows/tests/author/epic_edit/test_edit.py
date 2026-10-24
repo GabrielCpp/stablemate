@@ -65,13 +65,12 @@ def test_plan_refuses_frozen_removal_even_with_force(tmp_path: Path) -> None:
     okf = Ostler(tmp_path)
     assert okf.create_epic("accounts", "Accounts").ok
     assert okf.add_seed("accounts", "seed-sign-in", status="researched").ok
-    assert okf.create_story(
-        "accounts", "sign-in", "Sign in", covers=["seed-sign-in"]
-    ).ok
+    created = okf.create_story("accounts", "sign-in", "Sign in", covers=["seed-sign-in"])
+    assert created.ok
     seed_freeze = freeze.freeze(load(tmp_path), "seed-sign-in")
     assert not seed_freeze.error
     seed_freeze.apply()
-    story_freeze = freeze.freeze(load(tmp_path), "sign-in")
+    story_freeze = freeze.freeze(load(tmp_path), created.entity_id)
     assert not story_freeze.error
     story_freeze.apply()
     snapshot = _snapshot(tmp_path)

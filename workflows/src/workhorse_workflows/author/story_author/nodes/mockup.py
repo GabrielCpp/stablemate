@@ -12,27 +12,29 @@ from workhorse_workflows.author.shared.schemas.main import MockupGate
 
 @blueprint.node
 def check_mockup_needed(
-    logger: logging.Logger, story_slug: str = "", repo_dir: str = ""
+    logger: logging.Logger, story_id: str = "", repo_dir: str = ""
 ) -> MockupGate:
     """A story needs a mockup exactly when one of its services is a UI book."""
-    slug = story_slug.strip()
+    story_ref = story_id.strip()
     try:
         okf = Ostler(survey_repo_root(repo_dir))
-        found = okf.graph.find_story(slug)
+        found = okf.graph.find_story(story_ref)
         if found is None:
-            raise WorkflowFailed(f"story '{slug}' is absent from the knowledge graph")
+            raise WorkflowFailed(f"story id '{story_ref}' is absent from the knowledge graph")
         _, story = found
         ui = sorted(okf.ui_services(story.services))
     except (OSError, ValueError, RuntimeError) as exc:
-        raise WorkflowFailed(f"cannot decide whether story '{slug}' needs a mockup: {exc}") from exc
+        raise WorkflowFailed(
+            f"cannot decide whether story id '{story_ref}' needs a mockup: {exc}"
+        ) from exc
     services = list(story.services)
     if ui:
-        logger.info("story '%s' changes the UI service(s) %s", slug, ", ".join(ui))
+        logger.info("story id '%s' changes the UI service(s) %s", story_ref, ", ".join(ui))
         return MockupGate(
             services=services,
             evidence="the story changes the UI service(s): " + ", ".join(ui),
         )
-    logger.info("story '%s' changes no UI service (%s)", slug, ", ".join(services))
+    logger.info("story id '%s' changes no UI service (%s)", story_ref, ", ".join(services))
     return MockupGate(
         required=False,
         services=services,

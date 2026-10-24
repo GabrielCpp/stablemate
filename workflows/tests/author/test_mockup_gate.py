@@ -50,6 +50,10 @@ def _epic(
     derive_story_services(logger, epic, repo_dir=str(root))
 
 
+def _story_id(root: Path) -> str:
+    return str(Ostler(root).list("story", epic=EPIC)[0]["id"])
+
+
 @pytest.mark.parametrize(
     ("seeds", "required", "services"),
     [
@@ -66,7 +70,7 @@ def test_the_gate_is_the_union_of_the_covered_seeds_services(
 ) -> None:
     _epic(logger, repo, seeds, covers=list(seeds))
 
-    gate = check_mockup_needed(logger, story_slug="01-sign-in", repo_dir=str(repo))
+    gate = check_mockup_needed(logger, story_id=_story_id(repo), repo_dir=str(repo))
 
     assert gate.required is required, gate.evidence
     assert gate.services == services
@@ -79,7 +83,7 @@ def test_a_story_the_graph_cannot_resolve_fails_the_run(
     _epic(logger, repo, {"s1": ["api-service"]}, covers=["s1"])
 
     with pytest.raises(WorkflowFailed, match="absent from the knowledge graph"):
-        check_mockup_needed(logger, story_slug="99-ghost", repo_dir=str(repo))
+        check_mockup_needed(logger, story_id="acme-99GHOST", repo_dir=str(repo))
 
 
 def test_an_api_only_story_needs_no_mockup_whatever_the_seed_says(
@@ -91,6 +95,6 @@ def test_an_api_only_story_needs_no_mockup_whatever_the_seed_says(
         meta={"services": ["api-service"], "design": "required", "layers": ["frontend"]},
     )
 
-    gate = check_mockup_needed(logger, story_slug="01-sign-in", repo_dir=str(repo))
+    gate = check_mockup_needed(logger, story_id=_story_id(repo), repo_dir=str(repo))
 
     assert gate.required is False, gate.evidence

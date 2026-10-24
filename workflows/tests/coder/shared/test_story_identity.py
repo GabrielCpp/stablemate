@@ -1,4 +1,4 @@
-"""The minted story id as the trailer identity — `_story_id` and `changed_files`."""
+"""The minted story id as the trailer identity — `prepare_story` and `changed_files`."""
 from __future__ import annotations
 
 import logging
@@ -6,13 +6,15 @@ import subprocess
 from collections.abc import Callable
 from pathlib import Path
 
+import pytest
 from ostler import Ostler, crud
 from ostler.model import load
+from workhorse.pyflow import WorkflowFailed
 
 from workhorse_workflows import coder
 from workhorse_workflows.coder.shared.provenance import changed_files, resolve_story_sources
 from workhorse_workflows.coder.shared.schemas.dev import DispatchEntry
-from workhorse_workflows.coder.shared.story import _story_id
+from workhorse_workflows.coder.shared.story import prepare_story
 
 LOGGER = logging.getLogger("test")
 
@@ -22,20 +24,39 @@ def _minted_book(tmp_path: Path) -> tuple[Ostler, str]:
     crud.create_epic(load(tmp_path), "e", "E", prefix="x")
     crud.create_story(load(tmp_path), "e", "01-foo", "Foo")
     graph = load(tmp_path)
-    found = graph.find_story("01-foo")
+    found = graph.story_by_slug("01-foo")
     assert found is not None
+    story_md = tmp_path / found[1].path
+    body = story_md.read_text(encoding="utf-8")
+    for heading, text in (
+        ("Context", "Users need a thing."),
+        ("Acceptance Criteria", "- the thing exists"),
+        ("Non-Functional Acceptance Criteria", "- the thing is fast"),
+        ("Technical Notes", "- the thing is a function"),
+    ):
+        body = body.replace(f"## {heading}\n\n", f"## {heading}\n\n{text}\n\n", 1)
+    story_md.write_text(body, encoding="utf-8")
     return Ostler(tmp_path), found[1].eid
 
 
-def test_story_id_resolves_the_minted_id(tmp_path: Path) -> None:
-    okf, eid = _minted_book(tmp_path)
-    assert eid
-    assert _story_id(okf, "01-foo") == eid
+def test_prepare_story_resolves_a_slug_to_the_minted_id(tmp_path: Path) -> None:
+    _, eid = _minted_book(tmp_path)
+    paths = prepare_story(LOGGER, "01-foo", repo_dir=str(tmp_path))
+    assert paths.story_id == eid
+    assert paths.story_slug == "01-foo"
 
 
-def test_story_id_is_empty_for_a_story_the_graph_does_not_know(tmp_path: Path) -> None:
-    okf, _ = _minted_book(tmp_path)
-    assert _story_id(okf, "no-such-story") == ""
+def test_prepare_story_takes_the_id_itself(tmp_path: Path) -> None:
+    _, eid = _minted_book(tmp_path)
+    paths = prepare_story(LOGGER, eid, repo_dir=str(tmp_path))
+    assert paths.story_id == eid
+    assert paths.story_slug == "01-foo"
+
+
+def test_prepare_story_refuses_a_handle_the_graph_does_not_know(tmp_path: Path) -> None:
+    _minted_book(tmp_path)
+    with pytest.raises(WorkflowFailed):
+        prepare_story(LOGGER, "no-such-story", repo_dir=str(tmp_path))
 
 
 def test_changed_files_reads_commits_under_either_spelling(

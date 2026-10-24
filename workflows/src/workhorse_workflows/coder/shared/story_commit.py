@@ -36,11 +36,13 @@ _COVERED_PAGE = re.compile(r"^okf:(.+?\.md)(?::|$)")
 
 
 def _stamp_status(
-    logger: logging.Logger, root: Path, epic: str, slug: str, story_path: str
+    logger: logging.Logger, root: Path, epic: str, slug: str, story_id: str, story_path: str
 ) -> tuple[bool, bool]:
     """Record `QA passed` on the story and commit just that change."""
     before = story_status.current(root, slug, epic=epic, story_path=story_path)
-    written = story_status.mark(root, slug, DONE_STATUS, epic=epic, story_path=story_path, logger=logger)
+    written = story_status.mark(
+        root, story_id, DONE_STATUS, epic=epic, slug=slug, story_path=story_path, logger=logger
+    )
     if not written:
         logger.warning(
             "status '%s' NOT recorded for %s — it will be re-selected on the next loop",
@@ -68,7 +70,7 @@ def _stamp_status(
         commits.scope(root.name),
         f"mark {slug} {DONE_STATUS}",
         epic=epic,
-        story=slug,
+        story=story_id or slug,
     )
     if specs and commit_paths(root, stamp, *specs, verify=False):
         logger.info("recorded %s for %s", DONE_STATUS, slug)
@@ -262,6 +264,7 @@ def commit_leftovers(
     dirty: list[str] | None = None,
     repo_dir: str = "",
     workspace: str = "",
+    story_id: str = "",
 ) -> StoryCommitted:
     """Commit exactly the paths a passed story left uncommitted, and nothing else in the tree."""
     slug = story_slug or "story"
@@ -286,7 +289,7 @@ def commit_leftovers(
             commits.scope(name),
             f"commit what {slug} left uncommitted",
             epic=epic_name,
-            story=slug,
+            story=story_id or slug,
         )
         try:
             landed = commit_paths(repo_path, message, *rels, verify=False)
@@ -307,11 +310,12 @@ def stamp_story_passed(
     story_slug: str = "",
     story_path: str = "",
     repo_dir: str = "",
+    story_id: str = "",
 ) -> StoryStamped:
     """Record the story's passing outcome, and commit that one line."""
     slug = story_slug or "story"
     root = find_repo_root(repo_dir)
-    stamped, superseded = _stamp_status(logger, root, epic, slug, story_path)
+    stamped, superseded = _stamp_status(logger, root, epic, slug, story_id, story_path)
     return StoryStamped(stamped=stamped, superseded_outcome=superseded)
 
 
@@ -322,6 +326,7 @@ def commit_plan_record(
     story_slug: str = "",
     spec_dir: str = "",
     repo_dir: str = "",
+    story_id: str = "",
 ) -> StoryCommitted:
     """Commit what the run itself wrote into the spec dir: the plan projection and the spec stamps."""
     slug = story_slug or "story"
@@ -337,7 +342,7 @@ def commit_plan_record(
         commits.scope(root.name),
         f"record the plan of {slug}",
         epic=registry.epic_slug(epic) or epic,
-        story=slug,
+        story=story_id or slug,
     )
     committed = bool(spec_dir) and commit_paths(root, message, rel, verify=False)
     if committed:
@@ -399,7 +404,7 @@ def commit_story(
             logger.info("committed in %s", repo_path.name)
             any_committed = True
 
-    _, superseded = _stamp_status(logger, root, epic, slug, story_path)
+    _, superseded = _stamp_status(logger, root, epic, slug, story_id, story_path)
     return StoryCommitted(committed=any_committed, superseded_outcome=superseded)
 
 

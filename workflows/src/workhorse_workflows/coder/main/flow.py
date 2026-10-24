@@ -129,7 +129,7 @@ class Coder(Workflow):
         self.logger.info("developing %s%s", item.id, self._progress(), extra={"activity": True})
         result = self.handoff(
             Dev,
-            story=self._story.story_slug,
+            story=self._story.story_id,
             epic=self._story_epic(),
             operator_mode=self.operator_mode,
             target_env=self.target_env,
@@ -156,7 +156,7 @@ class Coder(Workflow):
         """The gate the item turns on: pass it, or send what QA found back to the dev owner."""
         result = self.handoff(
             Qa,
-            story=self._story.story_slug,
+            story=self._story.story_id,
             epic=self._story_epic(),
             operator_mode=self.operator_mode,
             target_env=self.target_env,
@@ -205,7 +205,7 @@ class Coder(Workflow):
             args=turn.args | {
                 "epic": epic,
                 "story_slug": self._story.story_slug,
-                "story_id": self._story.story_id or self._story.story_slug,
+                "story_id": self._story.story_id,
                 "story_path": self._story.story_path,
                 "spec_dir": self._story.spec_dir,
                 "operator_context": notes,
@@ -256,10 +256,21 @@ class Coder(Workflow):
             if scope.kind != "inert":
                 return Continue(scope, self.reprove, dirty=state.dirty, scenarios=scope.scenarios)
             self.call(
-                commit_leftovers, self._epic, story.story_slug, story.spec_dir, state.dirty
+                commit_leftovers,
+                self._epic,
+                story.story_slug,
+                story.spec_dir,
+                state.dirty,
+                story_id=story.story_id,
             )
         if self._item.kind == work.STORY:
-            self.call(stamp_story_passed, self._epic, story.story_slug, story.story_path)
+            self.call(
+                stamp_story_passed,
+                self._epic,
+                story.story_slug,
+                story.story_path,
+                story_id=story.story_id,
+            )
         return Continue(state, self.standing)
 
     def reprove(
@@ -269,7 +280,7 @@ class Coder(Workflow):
         story = self._story
         result = self.handoff(
             Qa,
-            story=story.story_slug,
+            story=story.story_id,
             epic=self._story_epic(),
             operator_mode=self.operator_mode,
             target_env=self.target_env,
@@ -280,7 +291,14 @@ class Coder(Workflow):
         sent_back = self._sent_back(result)
         if sent_back is not None:
             return sent_back
-        self.call(commit_leftovers, self._epic, story.story_slug, story.spec_dir, dirty or [])
+        self.call(
+            commit_leftovers,
+            self._epic,
+            story.story_slug,
+            story.spec_dir,
+            dirty or [],
+            story_id=story.story_id,
+        )
         return Continue(result, self.commit)
 
     def standing(self) -> Continue:
@@ -329,7 +347,7 @@ class Coder(Workflow):
         """The `Docs` handoff, identical at all three points the story reaches it."""
         return self.handoff(
             Docs,
-            story=self._story.story_slug,
+            story=self._story.story_id,
             epic=self._story_epic(),
             target_env=self.target_env,
             preexisting=self._preexisting(),

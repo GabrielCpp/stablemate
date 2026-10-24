@@ -28,7 +28,8 @@ reference point at the *real* entity. Use **only** `ostler edit`:
 ostler trace <id|slug|path>          # localize: walk the graph from the broken node first
 ostler edit relink <old-path> <new>  # fix a moved reference everywhere it appears
 ostler edit rename <old-slug> <new>  # rename a story/epic slug and cascade all references
-ostler edit settle-review <slug>     # settle a story's review artifacts when that is the block
+ostler edit settle-review <story-id> # settle a story's review artifacts when that is the block
+# <story-id> is the `id:` line of the story's `story.md` frontmatter
 # edits are dry-run by default — inspect the diff, then re-run with --write to apply
 ```
 

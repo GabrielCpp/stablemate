@@ -44,7 +44,11 @@ def prepare_story(
     if row is None:
         raise WorkflowFailed(f"story '{story}' was not found in epic '{epic}'")
 
-    result = okf.scaffold_missing_sections(story)
+    story_id = str(row.get("id", "") or "")
+    if not story_id:
+        raise WorkflowFailed(f"story '{story}' in epic '{epic}' has no id; give it an `id:` first")
+
+    result = okf.scaffold_missing_sections(story_id)
     if not result.ok:
         raise WorkflowFailed(
             result.message or f"could not complete the scaffold for story '{story}'"
@@ -63,6 +67,7 @@ def prepare_story(
     return StoryTarget(
         epic=epic,
         story=story,
+        story_id=story_id,
         epic_dir=epic_dir,
         story_dir=story_dir,
         story_path=story_path,

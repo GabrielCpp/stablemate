@@ -43,6 +43,7 @@ def story_paths(*_args: object, **_kwargs: object) -> StoryPaths:
         qa_dir=f"{_DIR}/qa",
         story_slug=_SLUG,
         story_epic=_EPIC,
+        story_id=_SLUG,
     )
 
 

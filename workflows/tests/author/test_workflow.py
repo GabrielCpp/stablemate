@@ -1379,8 +1379,9 @@ def test_story_edit_remove_refuses_a_started_story_without_force(
     from workhorse.pyflow import WorkflowFailed
 
     okf = Ostler(with_epic)
-    assert okf.create_story(EPIC, "01-started", "Started").ok
-    assert okf.set_status("01-started", "Reviewed").ok
+    created = okf.create_story(EPIC, "01-started", "Started")
+    assert created.ok
+    assert okf.set_status(created.entity_id, "Reviewed").ok
     _commit(with_epic, "started story")
 
     with pytest.raises(WorkflowFailed, match="refusing to delete"):

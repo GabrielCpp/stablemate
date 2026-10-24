@@ -43,8 +43,9 @@ Write both directly under the spec dir:
 
 1. `qa_plan.py`, mandatory for every surface and every run.
 2. `qa-plan.md`, the rationale and the AC/obligation-to-scenario map. Create it with
-   `timeout 30 ostler create spec <story-name> qa-plan.md`, where `<story-name>` is the spec
-   dir's folder name. That stamps the `type: spec.qa-plan` frontmatter. Write below the `---`
+   `timeout 30 ostler create spec <story-id> qa-plan.md`, where `<story-id>` is the story's id
+   (the spec dir's folder name is that id; it is also the `id:` line of the story's `story.md`
+   frontmatter and is passed in as `story_id`). That stamps the `type: spec.qa-plan` frontmatter. Write below the `---`
    block and leave it in place.
 
 There is no UI or mobile escape from the plan module. Playwright and Maestro are drivers a
@@ -239,7 +240,8 @@ locator that exists only when a check above passed, that check is a `require`.
   back is not.
 - **Name the fixtures in the story.** Every fixture the plan uses belongs under `## Fixtures`
   in `story.md`, one `- Fixture: <name>` bullet each, or `(none)`:
-  `ostler update story <slug> --title ... --covers ... --depends ... --fixtures '<a>, <b>'`.
+  `ostler update story <story-id> --title ... --covers ... --depends ... --fixtures '<a>, <b>'`, with
+  the story id described above.
 
 ### Locators and routes come from the book
 

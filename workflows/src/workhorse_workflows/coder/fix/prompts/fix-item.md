@@ -91,8 +91,8 @@ so the fix repairs it too.
 
 It writes what it ran, what it observed and the criterion each observation covers to
 `<spec_dir>/qa.md`. It creates that file through `ostler` first:
-`timeout 30 ostler create spec <story-name> qa.md`, where `<story-name>` is the folder name of
-the spec directory. That stamps the `type: spec.qa` frontmatter. It writes below the `---`
+`timeout 30 ostler create spec {{ workhorse_var('story_id') }} qa.md`. The story id is also the
+folder name of the spec directory. That stamps the `type: spec.qa` frontmatter. It writes below the `---`
 frontmatter block and leaves that block in place.
 
 ### Triage and fixes

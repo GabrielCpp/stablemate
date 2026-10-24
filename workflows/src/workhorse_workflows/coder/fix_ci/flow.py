@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from typing import ClassVar
 
+from ostler import Ostler
 from workhorse.pyflow import Await, Continue, Done, NodeNotRunError, Workflow
 from workhorse_workflows.coder.shared import paths, roles
 from workhorse_workflows.coder.shared.branches import epic_of_branch
@@ -29,6 +30,7 @@ from workhorse_workflows.coder.shared.schemas.dev import OperatorResolution
 from workhorse_workflows.coder.shared.schemas.pr import MergeFixResult
 from workhorse_workflows.coder.shared.schemas.render import schema_block
 from workhorse_workflows.coder.shared.schemas.story import StoryPaths, WorkspaceDirs
+from workhorse_workflows.kit import find_docs_root
 
 
 class FixCi(Workflow):
@@ -266,8 +268,19 @@ class FixCi(Workflow):
         folder = paths.launch_repo_root(self.repo_dir) / paths.OPERATOR_DIR / "ci-fix"
         name = epic.replace("/", "-") or "unnamed-branch"
         return StoryPaths(
-            story_path=str(folder / name / "gate.md"), story_slug=self.branch, story_epic=epic
+            story_path=str(folder / name / "gate.md"),
+            story_slug=self.branch,
+            story_epic=epic,
+            story_id=self._branch_story_id(),
         )
+
+    def _branch_story_id(self) -> str:
+        """The id of the story filed under this branch's name, or empty when the gate is synthetic."""
+        try:
+            found = Ostler(find_docs_root(self.repo_dir)).graph.story_by_slug(self.branch)
+        except (OSError, ValueError, RuntimeError):
+            return ""
+        return found[1].eid if found else ""
 
     def _session(self, repo: str) -> str:
         """The owner's conversation for one repo's CI on this branch."""

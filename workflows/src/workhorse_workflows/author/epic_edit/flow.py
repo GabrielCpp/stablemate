@@ -340,7 +340,7 @@ class EpicEdit(Workflow):
         pick: StoryChoice,
         index: int,
     ) -> Continue:
-        if not self.call(check_mockup_needed, pick.story_slug).required:
+        if not self.call(check_mockup_needed, pick.story_id).required:
             return Continue(
                 None,
                 self.write_story,
@@ -357,6 +357,7 @@ class EpicEdit(Workflow):
             args={
                 "epic": applied.epic,
                 "story_slug": pick.story_slug,
+                "story_id": pick.story_id,
                 "story_dir": pick.story_dir,
                 "services_dir": self.ctx.services_dir,
                 "epics_dir": self.ctx.epics_dir,
@@ -398,6 +399,7 @@ class EpicEdit(Workflow):
                 "epic": applied.epic,
                 "story_path": pick.story_path,
                 "story_slug": pick.story_slug,
+                "story_id": pick.story_id,
                 "story_dir": pick.story_dir,
                 "services_dir": self.ctx.services_dir,
                 "mockup_path": mockup,
@@ -478,6 +480,7 @@ class EpicEdit(Workflow):
                     "epic": applied.epic,
                     "story_path": pick.story_path,
                     "story_slug": pick.story_slug,
+                    "story_id": pick.story_id,
                     "story_dir": pick.story_dir,
                     "services_dir": self.ctx.services_dir,
                     "mockup_path": mockup,
@@ -584,6 +587,7 @@ class EpicEdit(Workflow):
                 "epic": applied.epic,
                 "story_path": pick.story_path,
                 "story_slug": pick.story_slug,
+                "story_id": pick.story_id,
                 "story_dir": pick.story_dir,
                 "services_dir": self.ctx.services_dir,
                 "mockup_path": mockup,

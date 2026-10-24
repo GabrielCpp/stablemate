@@ -9,6 +9,7 @@ class StoryTarget(AuthorResult):
 
     epic: str = ""
     story: str = ""
+    story_id: str = ""
     epic_dir: str = ""
     story_dir: str = ""
     story_path: str = ""

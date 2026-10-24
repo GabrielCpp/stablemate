@@ -98,6 +98,10 @@ def resolve_launch(
     if story:
         entry = okf.story(story)
         if entry is None:
+            slugged = okf.graph.story_by_slug(story)
+            if slugged is not None and slugged[1].eid:
+                entry = okf.story(slugged[1].eid)
+        if entry is None:
             raise WorkflowFailed(f"no story {story!r} in the book at {root}")
         logger.info("launch: story %s of epic %s", entry["slug"], entry["epic"])
         return LaunchSet(

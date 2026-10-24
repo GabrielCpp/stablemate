@@ -193,7 +193,7 @@ class Qa(Workflow):
             "story_path": self.ctx.story_path,
             "spec_dir": spec_dir,
             "story_slug": self.ctx.story_slug,
-            "story_id": self.ctx.story_id or self.ctx.story_slug,
+            "story_id": self.ctx.story_id,
             "epic": self.epic,
             "qa_dir": self.ctx.qa_dir,
             "qa_scratch_dir": QA_SCRATCH_DIRNAME,
@@ -248,7 +248,7 @@ class Qa(Workflow):
                     "failed_scenarios": failed_scenarios or [],
                 },
             )
-        self.call(stamp_specs, self.ctx.story_slug)
+        self.call(stamp_specs, self.ctx.story_id)
         if result.status == "blocked":
             return self._block(result, result.notes, "the QA turn", blocks)
         return Continue(
@@ -275,7 +275,7 @@ class Qa(Workflow):
             only=list(self.scope) or None,
         )
         self._file_backlog()
-        self.call(stamp_specs, self.ctx.story_slug)
+        self.call(stamp_specs, self.ctx.story_id)
         if run.status == "failed":
             return self._red(run, [], 0, 0, owner_classifies=False)
         if run.status != "passed":
@@ -305,7 +305,7 @@ class Qa(Workflow):
             run_qa_plan, self.ctx.spec_dir, near=target.near, lease=target.lease
         )
         self._file_backlog()
-        self.call(stamp_specs, self.ctx.story_slug)
+        self.call(stamp_specs, self.ctx.story_id)
         if run.status == "failed":
             classify = not self.stop_at_first_verdict
             return self._red(run, found, laps, blocks, owner_classifies=classify)

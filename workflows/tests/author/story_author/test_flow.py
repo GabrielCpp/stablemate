@@ -83,6 +83,7 @@ def _drive_story(
     target = StoryTarget(
         epic="accounts",
         story="sign-in",
+        story_id="ACME-01TEST",
         epic_dir="docs/epics/0001-accounts",
         story_dir="docs/epics/0001-accounts/stories/sign-in",
         story_path="docs/epics/0001-accounts/stories/sign-in/story.md",
@@ -103,10 +104,10 @@ def _drive_story(
         return target
 
     def mockup(
-        logger: logging.Logger, story_slug: str = "", repo_dir: str = ""
+        logger: logging.Logger, story_id: str = "", repo_dir: str = ""
     ) -> MockupGate:
         events.append("mockup-gate")
-        assert story_slug == "sign-in"
+        assert story_id == "ACME-01TEST"
         return MockupGate(required=True)
 
     def valid(logger: logging.Logger, *args: Any, **kwargs: Any) -> Defects:
@@ -231,10 +232,16 @@ def test_prepare_story_scaffolds_the_named_story_through_ostler(
 
         def list(self, kind: str, *, epic: str) -> builtins.list[dict[str, object]]:
             calls.append(f"list:{epic}")
-            return [{"slug": "sign-in", "path": "docs/epics/0001-accounts/stories/sign-in/story.md"}]
+            return [
+                {
+                    "slug": "sign-in",
+                    "id": "ACME-01TEST",
+                    "path": "docs/epics/0001-accounts/stories/sign-in/story.md",
+                }
+            ]
 
-        def scaffold_missing_sections(self, slug: str) -> _Result:
-            calls.append(f"scaffold:{slug}")
+        def scaffold_missing_sections(self, story_id: str) -> _Result:
+            calls.append(f"scaffold:{story_id}")
             return _Result()
 
         def epic_dir(self, epic: str) -> Path:
@@ -247,6 +254,7 @@ def test_prepare_story_scaffolds_the_named_story_through_ostler(
 
     target = prepare_story(logger, "accounts", "sign-in", repo_dir=str(tmp_path))
 
-    assert calls == ["list:accounts", "scaffold:sign-in", "epic-dir:accounts"]
+    assert calls == ["list:accounts", "scaffold:ACME-01TEST", "epic-dir:accounts"]
     assert target.scaffolded is True
+    assert target.story_id == "ACME-01TEST"
     assert target.story_path == "docs/epics/0001-accounts/stories/sign-in/story.md"

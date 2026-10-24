@@ -115,7 +115,7 @@ def snapshot_epic(
             depends=[str(value) for value in row["dependsOn"]],
             story_path=str(row["path"]),
             body_hash=_hash(Path(repo_dir) / str(row["path"])),
-            frozen=str(row["slug"]) in frozen,
+            frozen=str(row["id"]) in frozen,
         )
         for row in okf.list("story", epic=name)
     ]
@@ -329,11 +329,10 @@ def apply_edit_plan(
     """Apply one validated plan idempotently through Ostler's structural APIs."""
     okf = Ostler(repo_dir)
     epic = snapshot.epic
+    rows = {str(row["slug"]): row for row in okf.list("story", epic=epic)}
     for change in plan.story_changes:
-        if change.action == "remove" and any(
-            str(row["slug"]) == change.slug for row in okf.list("story", epic=epic)
-        ):
-            result = okf.delete_story(change.slug)
+        if change.action == "remove" and change.slug in rows:
+            result = okf.delete_story(str(rows[change.slug]["id"]))
             if not result.ok:
                 raise WorkflowFailed(result.message)
     for change in plan.seed_changes:
@@ -361,10 +360,10 @@ def apply_edit_plan(
     for change in plan.story_changes:
         if change.action == "remove":
             continue
-        existing = {str(row["slug"]) for row in okf.list("story", epic=epic)}
-        if change.slug in existing:
+        rows = {str(row["slug"]): row for row in okf.list("story", epic=epic)}
+        if change.slug in rows:
             result = okf.update_story(
-                change.slug,
+                str(rows[change.slug]["id"]),
                 title=change.title,
                 covers=change.covers,
                 depends=change.depends,
@@ -567,6 +566,7 @@ def select_affected_story(
         has_story=True,
         story_path=path,
         story_slug=slug,
+        story_id=str(row.get("id", "") or ""),
         story_dir=str(Path(path).parent),
         progress=f"{index + 1}/{len(affected_stories)}",
         remaining_count=len(affected_stories) - index - 1,
