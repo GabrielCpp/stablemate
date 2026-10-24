@@ -19,6 +19,7 @@ BASE_SKILL_FAMILIES = {
     "ostler",
     "groom",
     "workhorse",
+    "saddlebag",
     "architecture",
     "testing",
     "ui",
