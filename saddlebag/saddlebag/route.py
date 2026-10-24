@@ -4,18 +4,18 @@ from __future__ import annotations
 
 import os
 from collections.abc import Mapping
+from pathlib import Path
 from typing import Protocol
 
 from saddlebag import browser, protocol
 from saddlebag.catalogue import Catalogue
 from saddlebag.keyring_store import KeyringStore, open_door, secret_service_accounts
-from saddlebag.protocol import Reply, Request
-from saddlebag.store import SecretStore
+from saddlebag.preference import read as read_preference
+from saddlebag.protocol import DaemonNotRunning, ProtocolError, Reply, Request
+from saddlebag.store import RouteError, SecretStore
 from saddlebag.verbs import Verbs
 
-
-class RouteError(RuntimeError):
-    """The route cannot be chosen. The message says why."""
+__all__ = ["InProcessRoute", "Route", "RouteError", "SocketRoute", "choose"]
 
 
 class Route(Protocol):
@@ -45,17 +45,31 @@ def _keyring_route() -> Route:
     return InProcessRoute(KeyringStore(Catalogue.default(), open_door(), secret_service_accounts))
 
 
+def _daemon_answers(path: Path) -> bool:
+    """Whether a saddlebag daemon answers a ping on ``path``; a stale socket file is not an answer."""
+    if not path.exists():
+        return False
+    stranger = RouteError(f"something listens on {path} but does not answer saddlebag ping: stop it or point SADDLEBAG_SOCKET elsewhere")
+    try:
+        reply = protocol.send(Request("ping"), timeout=2.0)
+    except DaemonNotRunning as exc:
+        if protocol.is_live(path):
+            raise stranger from exc
+        return False
+    except ProtocolError as exc:
+        raise stranger from exc
+    if not reply.ok or "version" not in reply.result:
+        raise stranger
+    return True
+
+
 def choose(environ: Mapping[str, str] = os.environ) -> Route:
-    """The route for this session: an explicit choice, a named socket, a live daemon, else the keyring."""
-    backend = environ.get("SADDLEBAG_BACKEND")
-    if backend is not None:
-        if backend == "daemon":
-            return SocketRoute()
-        if backend == "keyring":
-            return _keyring_route()
-        raise RouteError(f"unknown SADDLEBAG_BACKEND {backend!r}: expected keyring or daemon")
+    """The route for this session: the operator's preference, a named socket, a daemon that answers, else the keyring."""
+    preference = read_preference(environ)
+    if preference is not None:
+        return SocketRoute() if preference.backend == "daemon" else _keyring_route()
     if environ.get("SADDLEBAG_SOCKET"):
         return SocketRoute()
-    if protocol.is_live(protocol.socket_path()):
+    if _daemon_answers(protocol.socket_path()):
         return SocketRoute()
     return _keyring_route()

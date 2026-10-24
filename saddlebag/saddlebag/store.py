@@ -12,6 +12,10 @@ class StoreUnavailable(RuntimeError):
     """The store cannot be reached. The message says what the operator does next."""
 
 
+class RouteError(RuntimeError):
+    """The route cannot be chosen. The message says why."""
+
+
 @dataclass(frozen=True)
 class StoreHealth:
     """What a store reports about itself: reachability, catalogue drift and unclaimed items."""

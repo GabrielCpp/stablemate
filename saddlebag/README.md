@@ -96,6 +96,7 @@ socket, sends one request and reads one reply.
 
 | | |
 |---|---|
+| Backend | `$SADDLEBAG_BACKEND` (`keyring` or `daemon`), else `backend` under `[saddlebag]` in the shared stablemate `config.toml`, else a daemon that answers on the socket, else the OS keyring |
 | Socket path | `$SADDLEBAG_SOCKET`, else `$XDG_RUNTIME_DIR/saddlebag.sock`, else the OS runtime dir |
 | Vault address | `$VAULT_ADDR` or `--vault-addr` |
 | Browser | `--cdp`, default `http://127.0.0.1:9222` |
@@ -195,7 +196,7 @@ other two sources and the required-name check.
 
 ## Where secrets live
 
-Without a daemon, saddlebag keeps values in the OS keyring and their metadata in a catalogue under the stablemate state dir, and a running daemon is used when one answers.
+A command picks its route in this order: `SADDLEBAG_BACKEND`, then the `backend` key of the `[saddlebag]` table in the shared stablemate `config.toml`, then a daemon that answers on the socket, else the OS keyring in this process. A set `SADDLEBAG_SOCKET` always means the daemon, and nothing listening there is an error, never a silent fall-back to the keyring. Without a daemon, values live in the OS keyring and their metadata in a catalogue under the stablemate state dir.
 Saddlebag implements no encryption and keeps no local database. Values and metadata
 both live in Vault, under `secret/saddlebag/<name>`: the values as the secret's data,
 the metadata as its custom metadata. There is no plaintext path and no fallback store.

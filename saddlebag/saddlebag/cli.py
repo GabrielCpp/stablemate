@@ -12,7 +12,7 @@ import threading
 from importlib.metadata import version as _pkg_version
 from pathlib import Path
 
-from saddlebag import browser, daemon, protocol, route
+from saddlebag import browser, daemon, preference, protocol, route
 from saddlebag.models import FIELDS, VALUE_FIELDS, parse_tag
 from saddlebag.protocol import DaemonNotRunning, Reply, Request
 from saddlebag.route import RouteError
@@ -227,6 +227,8 @@ def cmd_doctor(args: argparse.Namespace) -> int:
     if isinstance(reply, int):
         return reply
     result = reply.result
+    chosen = preference.read()
+    result["preference"] = None if chosen is None else {"backend": chosen.backend, "source": chosen.source}
     if args.json:
         _emit(result)
     else:
@@ -235,6 +237,7 @@ def cmd_doctor(args: argparse.Namespace) -> int:
             route = f"{route} (daemon {result['version']})"
         print(f"backend: {result['backend']}")
         print(f"route: {route}")
+        print(f"preference: {'none (auto)' if chosen is None else f'{chosen.backend} ({chosen.source})'}")
         print(f"store reachable: {'yes' if result['store_reachable'] else 'no'}")
         print(f"secrets without a stored value: {', '.join(result['secrets_without_value']) or 'none'}")
         if result["backend"] != "vault":

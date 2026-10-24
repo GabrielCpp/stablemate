@@ -88,6 +88,13 @@ class FakeBackend(KeyringBackend):
         del self.items[(service, username)]
 
 
+@pytest.fixture(autouse=True)
+def isolated_config(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    path = tmp_path / "stablemate-config" / "config.toml"
+    monkeypatch.setenv("STABLEMATE_CONFIG", str(path))
+    return path
+
+
 @pytest.fixture
 def backend() -> FakeBackend:
     return FakeBackend()
