@@ -13,6 +13,8 @@ from unittest.mock import patch
 
 import pytest
 from workhorse import inbox
+from ostler.environments import commands as env_commands
+from ostler.environments.render import SHARED as SHARED_COPY
 from ostler.qa import stack as qa_stack
 from workhorse._vendor.stablemate_core import config as core_config
 from workhorse.artifacts import ArtifactWriter
@@ -1174,6 +1176,33 @@ def test_a_per_run_copy_is_torn_down_under_its_lease(
 
     assert released.torn_down == "yes", released
     assert leases == ["story-1-run"]
+
+
+def test_the_run_end_tears_down_the_stack_yml_copy_beside_a_runbook(
+    docs: Path,
+    write: Callable[[Path, str], Path],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Bring-up starts the shared `stack.yml` copy even where a stack runbook stands, so the run's end takes that copy down and never runs the runbook's `stop:`."""
+    log = logging.getLogger("test")
+    write(docs / "docs" / "services" / "app" / "ops" / "stack.yml",
+          "services:\n  web:\n    about: the web app\n    define: web.yml.j2\n    address: web\n    port: 80\n")
+    copies: list[str] = []
+
+    def _copy_down(_root: Path, *, copy_name: str, **_kw: Any) -> env_commands.EnvOutcome:
+        copies.append(copy_name)
+        return env_commands.EnvOutcome(True, f"tore {copy_name} down", {"ok": True})
+
+    def _boom(*_a: Any, **_k: Any) -> dict[str, str]:
+        raise AssertionError("the runbook's stop recipe serves a stack this run never started")
+
+    monkeypatch.setattr(env_commands, "cmd_down", _copy_down)
+    monkeypatch.setattr(qa_stack, "teardown_stack", _boom)
+
+    torn = qa_nodes.teardown_stack(log, str(docs))
+
+    assert torn.torn_down == "yes", torn
+    assert copies == [SHARED_COPY]
 
 
 def test_a_per_run_stack_is_not_brought_up_without_a_lease(

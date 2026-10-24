@@ -6,8 +6,8 @@ import shutil
 from pathlib import Path
 
 from ostler import Ostler
-from ostler.qa import runbook
 from workhorse_workflows.kit import find_docs_root
+from workhorse_workflows.kit.qa import runner as _qa_runner
 from workhorse_workflows.coder.shared.blueprint import blueprint
 from workhorse_workflows.coder.shared.stack import (
     TEARDOWN_STATES,
@@ -176,9 +176,8 @@ def teardown_stack(
     logger: logging.Logger,
     repo_dir: str = "",
 ) -> StackTornDown:
-    """Run the runbook's `stop:` recipe now that the run is finished."""
-    root = find_docs_root(repo_dir)
-    outcome = runbook.cmd_stack_down(root, logger=logger)
+    """Tear down the shared stack now that the run is finished: the `stack.yml` copy bring-up started, or else the runbook's `stop:` recipe."""
+    outcome = _qa_runner.teardown_stack(logger, repo_dir=repo_dir)
     torn = TEARDOWN_STATES.get(
         str(outcome.data.get("torn_down") or outcome.status or "no"), "no"
     )

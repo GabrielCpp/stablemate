@@ -114,6 +114,15 @@ def release_copy(
     return runbook.cmd_stack_down(root, near=near_path, lease=lease, logger=logger)
 
 
+def teardown_stack(logger: logging.Logger, repo_dir: str = "") -> QaOutcome:
+    """Tear down the shared stack the run brought up: its `stack.yml` copy, or else its runbook's `stop:` recipe."""
+    root = find_docs_root(repo_dir)
+    copied = leases.down(root)
+    if copied is not None:
+        return copied
+    return runbook.cmd_stack_down(root, logger=logger)
+
+
 def ensure_stack(
     logger: logging.Logger,
     repo_dir: str = "",
@@ -339,4 +348,4 @@ def run_qa_plan(
     return QaPlanRun(status=status, notes=notes, ostler=outcome.data)
 
 
-__all__ = ["copy_lease", "ensure_stack", "release_copy", "run_qa_plan", "stack_env", "stack_stopped", "story_near"]
+__all__ = ["copy_lease", "ensure_stack", "release_copy", "run_qa_plan", "stack_env", "stack_stopped", "story_near", "teardown_stack"]
