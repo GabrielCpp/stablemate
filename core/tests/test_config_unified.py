@@ -566,3 +566,24 @@ def test_a_malformed_artifacts_dir_falls_back_to_the_default(cfg_file, monkeypat
     cfg_file.write_text("artifacts_dir = 42\n")
 
     assert cfgmod.resolve_artifacts_dir().name == "artifacts"
+
+
+def test_paddock_dir_defaults_under_the_user_data_dir(cfg_file):
+    cfg_file.write_text(_POWER)
+
+    resolved = cfgmod.resolve_paddock_dir()
+
+    assert resolved.name == "paddock"
+    assert resolved.parent.name == "stablemate"
+
+
+def test_paddock_dir_reads_the_home_config(cfg_file, tmp_path):
+    cfgmod.write_paddock_dir(tmp_path / "bench")
+
+    assert cfgmod.resolve_paddock_dir() == (tmp_path / "bench").resolve()
+
+
+def test_a_malformed_paddock_dir_falls_back_to_the_default(cfg_file):
+    cfg_file.write_text("paddock_dir = 42\n")
+
+    assert cfgmod.resolve_paddock_dir().name == "paddock"

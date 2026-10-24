@@ -419,6 +419,11 @@ def write_artifacts_dir(path: Path) -> None:
     write_config_key("artifacts_dir", str(path))
 
 
+def write_paddock_dir(path: Path) -> None:
+    """Persist ``paddock_dir`` (the benchmark root: gold, workspace and results)."""
+    write_config_key("paddock_dir", str(path))
+
+
 def resolve_stablemate_dir() -> Path | None:
     """The configured stablemate checkout path, or None if unset."""
     configured = get_config_value("stablemate_dir")
@@ -444,6 +449,14 @@ def resolve_artifacts_dir() -> Path:
     if isinstance(configured, str) and configured:
         return Path(configured).expanduser().resolve()
     return (Path(user_data_dir("stablemate")) / "artifacts").expanduser().resolve()
+
+
+def resolve_paddock_dir() -> Path:
+    """The benchmark root: ``paddock_dir``, then the data dir."""
+    configured = get_config_value("paddock_dir")
+    if isinstance(configured, str) and configured:
+        return Path(configured).expanduser().resolve()
+    return (Path(user_data_dir("stablemate")) / "paddock").expanduser().resolve()
 
 
 @dataclass(frozen=True)
