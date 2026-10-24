@@ -17,7 +17,7 @@
   /* --finished is a dot *and* the "done" liveness chip's ink; at #6b7280 the text
      side was 2.8:1 on a selected row. Neutral grey rather than --text-2's slate, so
      the two dim chips stay tellable apart. */
-  --blocked:#f0483e; --running:#38b26b; --idle:#c8873a; --finished:#9ca3af;
+  --blocked:#f0483e; --blocked-ink:#f87171; --running:#38b26b; --idle:#c8873a; --finished:#9ca3af;
   /* diff2html colours its hunk headers from this variable — #6e7681 on its own
      info background is 3.7:1. Overriding the variable catches every diff2html
      surface at once, wherever the markup happens to be mounted. */
@@ -219,7 +219,7 @@ details.at-msg summary { cursor:pointer; }
 .attend-status.running { color:var(--running); border-color:var(--running); }
 .attend-reason { font-size:11.5px; color:var(--text-1); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .attend-meta { font-family:var(--mono); font-size:10.5px; color:var(--text-2); }
-.attend-stop { flex:none; align-self:center; margin-right:8px; background:transparent; color:var(--blocked);
+.attend-stop { flex:none; align-self:center; margin-right:8px; background:transparent; color:var(--blocked-ink);
   border:1px solid var(--blocked); border-radius:4px; padding:3px 10px; font-size:11px;
   font-family:var(--sans); cursor:pointer; }
 .attend-stop:hover { background:var(--blocked); color:var(--on-accent); }
@@ -277,8 +277,10 @@ details.at-msg summary { cursor:pointer; }
   border-left:2px solid transparent; }
 .dispatch-queue-open:hover { background:var(--bg-2); }
 .dispatch-queue-open.active { background:var(--bg-3); border-left-color:var(--accent); }
-.dispatch-item-row { display:flex; align-items:center; gap:10px; padding:6px 10px;
-  border-bottom:1px solid var(--border); border-left:2px solid transparent; cursor:pointer; }
+.dispatch-item-row { display:flex; align-items:stretch; border-bottom:1px solid var(--border);
+  border-left:2px solid transparent; }
+.dispatch-item-open { flex:1; min-width:0; display:flex; align-items:center; gap:10px; padding:6px 10px;
+  cursor:pointer; background:none; font:inherit; color:inherit; text-align:left; border:0; }
 .dispatch-item-row:hover { background:var(--bg-2); }
 .dispatch-item-row.active { background:var(--bg-3); border-left-color:var(--accent); }
 .dispatch-detail-row { display:flex; gap:8px; font-size:12px; }

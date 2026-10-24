@@ -1340,14 +1340,15 @@ function DispatchQueues() {
 // input values, so `wireDispatchEnqueueForm`'s delegated submit handler reads them
 // straight off the DOM via `FormData` at submit time.
 function DispatchEnqueueField({ param }) {
-  const label = html`<label class="dispatch-field-label">${param.label}${param.required ? " *" : ""}</label>`;
+  const id = "dispatch-field-" + param.name;
+  const label = html`<label class="dispatch-field-label" for=${id}>${param.label}${param.required ? " *" : ""}</label>`;
   const control =
     param.type === "select"
-      ? html`<select name=${param.name} required=${param.required} defaultValue=${param.default || ""}>
+      ? html`<select id=${id} name=${param.name} required=${param.required} defaultValue=${param.default || ""}>
           ${param.default ? null : html`<option value="">select…</option>`}
           ${(param.options || []).map((opt) => html`<option value=${opt}>${opt}</option>`)}
         </select>`
-      : html`<input type="text" name=${param.name} required=${param.required} defaultValue=${param.default} />`;
+      : html`<input type="text" id=${id} name=${param.name} required=${param.required} defaultValue=${param.default} />`;
   return html`<div class="dispatch-field">${label}${control}</div>`;
 }
 
@@ -1409,34 +1410,24 @@ function wireDispatchEnqueueForm() {
 function DispatchItemRow({ item, queue, active }) {
   const pending = item.status === "pending";
   const running = item.status === "running";
-  return html`<div
-    class=${"dispatch-item-row" + (active ? " active" : "")}
-    onClick=${() => selectDispatchItem(item.item_id)}
-  >
-    <span class=${"attend-status " + item.status}>${item.status}</span>
-    <span class="wid">${item.item_id}</span>
-    <span class="attend-meta">${item.exit_code === null || item.exit_code === undefined ? "" : "exit " + item.exit_code}</span>
+  return html`<div class=${"dispatch-item-row" + (active ? " active" : "")}>
+    <button
+      type="button"
+      class="dispatch-item-open"
+      aria-current=${active ? "true" : null}
+      onClick=${() => selectDispatchItem(item.item_id)}
+    >
+      <span class=${"attend-status " + item.status}>${item.status}</span>
+      <span class="wid">${item.item_id}</span>
+      <span class="attend-meta">${item.exit_code === null || item.exit_code === undefined ? "" : "exit " + item.exit_code}</span>
+    </button>
     ${pending
-      ? html`<button
-          type="button"
-          class="attend-stop"
-          onClick=${(e) => {
-            e.stopPropagation();
-            cancelDispatchItem(queue, item.item_id);
-          }}
-        >
+      ? html`<button type="button" class="attend-stop" onClick=${() => cancelDispatchItem(queue, item.item_id)}>
           Cancel
         </button>`
       : null}
     ${running
-      ? html`<button
-          type="button"
-          class="attend-stop"
-          onClick=${(e) => {
-            e.stopPropagation();
-            stopDispatchItem(queue, item.item_id);
-          }}
-        >
+      ? html`<button type="button" class="attend-stop" onClick=${() => stopDispatchItem(queue, item.item_id)}>
           Stop
         </button>`
       : null}
@@ -1658,18 +1649,40 @@ function closePalette() {
 const dispatchModal = document.getElementById("dispatch-enqueue-modal");
 let dispatchModalInvoker = null; // focus goes back here on close — never dropped to <body>
 
+function dispatchModalFocusables() {
+  return [].slice.call(
+    dispatchModal.querySelectorAll("button:not([disabled]), input:not([type=hidden]):not([disabled]), select:not([disabled])")
+  );
+}
+
 function openDispatchEnqueue(invoker) {
   dispatchModalInvoker = invoker || document.activeElement;
   dispatchModal.classList.add("open");
-  const firstField = dispatchModal.querySelector("input, select");
+  const focusables = dispatchModalFocusables();
+  const firstField = focusables.find((el) => el.tagName !== "BUTTON") || focusables[0];
   if (firstField) firstField.focus();
 }
 
 function closeDispatchEnqueue() {
   if (!dispatchModal.classList.contains("open")) return;
   dispatchModal.classList.remove("open");
-  if (dispatchModalInvoker && dispatchModalInvoker.focus && dispatchModal.contains(document.activeElement)) {
-    dispatchModalInvoker.focus();
+  const focus = document.activeElement;
+  const dropped = !focus || focus === document.body || dispatchModal.contains(focus);
+  if (dispatchModalInvoker && dispatchModalInvoker.focus && dropped) dispatchModalInvoker.focus();
+}
+
+function trapDispatchModalTab(e) {
+  const focusables = dispatchModalFocusables();
+  if (!focusables.length) return;
+  const first = focusables[0];
+  const last = focusables[focusables.length - 1];
+  const inside = dispatchModal.contains(document.activeElement);
+  if (e.shiftKey && (!inside || document.activeElement === first)) {
+    e.preventDefault();
+    last.focus();
+  } else if (!e.shiftKey && (!inside || document.activeElement === last)) {
+    e.preventDefault();
+    first.focus();
   }
 }
 
@@ -1838,6 +1851,10 @@ function wireEvents() {
     if (pal.classList.contains("open") && e.key === "Tab") {
       e.preventDefault();
       palIn.focus();
+      return;
+    }
+    if (dispatchModal.classList.contains("open") && e.key === "Tab") {
+      trapDispatchModalTab(e);
       return;
     }
     if (pal.classList.contains("open") && e.key === "Enter") {

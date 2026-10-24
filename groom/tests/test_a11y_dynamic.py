@@ -496,6 +496,81 @@ def test_a_rejected_answer_puts_the_typed_text_back_in_its_box():
         page.close()
 
 
+_DISPATCH_CONFIG = """[groom.dispatch.plans]
+command = "workhorse-loop-runner"
+[[groom.dispatch.plans.params]]
+name = "plan"
+label = "Plan path"
+required = true
+[[groom.dispatch.plans.params]]
+name = "cli"
+label = "Agent CLI"
+type = "select"
+options = ["claude", "codex"]
+"""
+
+
+def _focus_in_dialog(page) -> bool:
+    return page.evaluate(
+        "() => document.getElementById('dispatch-enqueue-modal').contains(document.activeElement)"
+    )
+
+
+def test_the_dispatch_pane_is_operable_by_keyboard_and_its_dialog_holds_focus():
+    from playwright.sync_api import expect
+
+    from groom import dispatch_ledger
+
+    live = _live()
+    assert live is not None, _UNAVAILABLE
+    config = Path(live.tmp.name) / "dispatch.toml"
+    config.write_text(_DISPATCH_CONFIG)
+    with patch.dict(os.environ, {"STABLEMATE_CONFIG": str(config)}):
+        dispatch_ledger.dispatch_enqueue(
+            "item-pending", queue="plans", command="workhorse-loop-runner", params={"plan": "p.md"}
+        )
+        page = _open(live)
+        try:
+            page.click('.act-btn[data-mode="dispatch"]')
+            page.get_by_role("button", name=re.compile("plans")).click()
+            item = page.get_by_role("button", name=re.compile("item-pending"))
+            item.focus()
+            page.keyboard.press("Enter")
+            expect(item).to_have_attribute("aria-current", "true")
+            expect(page.locator("#dispatch-detail")).to_contain_text("p.md")
+            assert not _scan(page)
+
+            new_run = page.get_by_role("button", name="New run", exact=True)
+            new_run.focus()
+            page.keyboard.press("Enter")
+            dialog = page.get_by_role("dialog", name="New dispatch run")
+            expect(dialog).to_be_visible()
+            plan = dialog.get_by_role("textbox", name="Plan path")
+            expect(plan).to_be_focused()
+            expect(dialog.get_by_role("combobox", name="Agent CLI")).to_be_visible()
+            assert not _scan(page)
+
+            for _ in range(6):
+                page.keyboard.press("Tab")
+                assert _focus_in_dialog(page), "Tab left the open dispatch dialog"
+            plan.focus()
+            page.keyboard.press("Shift+Tab")
+            assert _focus_in_dialog(page), "Shift+Tab left the open dispatch dialog"
+
+            page.keyboard.press("Escape")
+            expect(dialog).to_be_hidden()
+            expect(new_run).to_be_focused()
+
+            new_run.click()
+            expect(plan).to_be_focused()
+            page.mouse.click(5, 5)
+            expect(dialog).to_be_hidden()
+            expect(new_run).to_be_focused()
+        finally:
+            page.close()
+            dispatch_ledger.dispatch_cancel_pending("item-pending")
+
+
 if __name__ == "__main__":
     failed = 0
     try:
