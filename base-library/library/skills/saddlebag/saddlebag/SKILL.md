@@ -1,6 +1,6 @@
 ---
 name: saddlebag
-description: "saddlebag: the Vault-backed daemon that hands a secret to its consumer (a browser field over CDP, or a command's environment) so the agent never holds the value. Covers finding a secret by tag, signing in with `fill` (username, password, TOTP), running a command or a compose stack under `exec`, the `secrets: saddlebag:` source in an ostler stack.yml, a workflow node that wraps a command, a run in a container, registering a secret, and reading its errors. Load when a QA run or an agent turn must sign in to a page, when a command needs a password or token in its environment, when a stack.yml names saddlebag, or when a saddlebag command fails."
+description: "saddlebag: the secret store (the OS keyring on this machine, or a Vault behind a daemon) that hands a secret to its consumer (a browser field over CDP, or a command's environment) so the agent never holds the value. Covers which store a command uses, finding a secret by tag, signing in with `fill` (username, password, TOTP), running a command or a compose stack under `exec`, the `secrets: saddlebag:` source in an ostler stack.yml, a workflow node that wraps a command, a run in a container, registering a secret, and reading its errors. Load when a QA run or an agent turn must sign in to a page, when a command needs a password or token in its environment, when a stack.yml names saddlebag, or when a saddlebag command fails."
 tags: [cli, tests, qa]
 ---
 
@@ -16,25 +16,43 @@ descriptions.**
 covers what `--help` cannot tell you: which verb fits the job, the conventions the tags
 follow, and what each error asks of you.
 
-## The daemon is the operator's
+## Where the secrets are
 
-One process, `saddlebag serve`, holds the Vault token and talks to Vault. Every other
-verb is a client of it over a unix socket. The operator starts it in their own terminal
-and pipes the token in on stdin:
+A secret lives in one of two stores, and every verb works the same over either:
+
+- **The OS keyring** of the machine you run on. This is the default when nothing else
+  is set up: no server, no token, one process per command. Values sit in the keyring
+  (Secret Service on Linux, Keychain on macOS) and the metadata `list` reads sits in a
+  catalogue file under the stablemate state dir.
+- **A Vault behind `saddlebag serve`**, for a store shared by a team, a container or
+  several machines. One daemon process holds the Vault token and talks to Vault. Every
+  other verb is a client of it over a unix socket.
+
+A command takes the daemon when `SADDLEBAG_BACKEND=daemon` or `SADDLEBAG_SOCKET` is
+set, when `backend = "daemon"` sits under `[saddlebag]` in the shared stablemate
+`config.toml`, or when a daemon answers on the default socket. Otherwise it takes the
+keyring. `saddlebag doctor` prints `backend:` and `route:`, so never guess.
+
+The daemon and its token are the operator's. They start it in their own terminal:
 
 ```bash
 export VAULT_ADDR=http://127.0.0.1:8200
-printf '%s' "$TOKEN" | saddlebag serve
+printf '%s' "$TOKEN" | saddlebag serve                # token for this run
+printf '%s' "$TOKEN" | saddlebag serve --keep-token   # store it in the OS keyring, once
+saddlebag serve                                       # later runs read the kept token
 ```
 
-The token is the operator's to type. When a verb reports `no saddlebag daemon on
-<path>: start one with saddlebag serve`, ask the operator to start it, then run
-`saddlebag doctor`. Keep your hands off the token and anything that holds it:
-`VAULT_TOKEN`, `~/.vault-token`, the socket protocol. `serve` refuses to start with
-`VAULT_TOKEN` set, and `doctor` warns when `~/.vault-token` exists, because any process
-of this user can read either one.
+Keep your hands off the token and anything that holds it: `VAULT_TOKEN`,
+`~/.vault-token`, the kept keyring item, the socket protocol. `serve` refuses to start
+with `VAULT_TOKEN` set, and `doctor` warns when `~/.vault-token` exists or the token
+comes from a file, because any process of this user can read either one.
 
-`saddlebag doctor` is the health check. It exits 0 when Vault is authenticated and
+The keyring is the operator's session too. A verb that says the keyring is locked or
+absent is running headless or over SSH, and its line says what the operator does:
+unlock it, or start a daemon. Unlocking takes their login password, which is theirs to
+type, so hand them the line and wait.
+
+`saddlebag doctor` is the health check. It exits 0 when the store is reachable and
 every secret has a stored value. Otherwise it exits 1 and names what is missing.
 
 ## Find the secret by its tags
@@ -179,14 +197,21 @@ A value that belongs to a real account comes from the
 operator, typed into their own terminal.
 
 `secret tag` / `untag NAME K=V...` adjust tags. `secret unset NAME --field F` forgets
-one value. `secret remove NAME` deletes the secret and every version of it. Removal is
+one value. `secret remove NAME` deletes the secret and every value it holds. Removal is
 permanent, so ask the operator before you run it.
 
 ## Errors and what they ask
 
 | Message | Do this |
 | --- | --- |
-| `no saddlebag daemon on <path>` | Ask the operator to start `saddlebag serve`. In a container, check the socket mount and `SADDLEBAG_SOCKET`. |
+| `no saddlebag daemon on <path>` | The route is the daemon by setting or by `SADDLEBAG_SOCKET`, and nothing answers. Ask the operator to start `saddlebag serve`, or to drop the setting so the keyring is used. In a container, check the socket mount and `SADDLEBAG_SOCKET`. |
+| `the OS keyring is locked. ...` | Headless or over SSH. The operator unlocks it (the desktop prompt, or `gnome-keyring-daemon --unlock` fed their login password) or starts a daemon and sets `SADDLEBAG_BACKEND=daemon`. Not yours to do. |
+| `no OS keyring on this session: ...` | No Secret Service and no Keychain here. Ask the operator for a desktop session, or a daemon with `SADDLEBAG_BACKEND=daemon`. |
+| `the Keychain refused this interpreter (<path>) for <name>` | macOS. The operator answers Always Allow in the Keychain prompt, or runs the quoted `security add-generic-password -T` line. `doctor` prints the interpreter path. |
+| `something listens on <path> but does not answer saddlebag ping` | Another process owns the socket path. Ask the operator to stop it or to point `SADDLEBAG_SOCKET` elsewhere. |
+| `unknown SADDLEBAG_BACKEND '<x>'` / `unknown backend '<x>' in [saddlebag] of <path>` | The value is `keyring` or `daemon`. Fix the variable or the config key. |
+| `no Vault token: pipe one to saddlebag serve, ...` | `serve` found no token. Operator-only: hand them the line as printed. |
+| `warning: the catalogue lists a value for <name>/<field> that the keyring no longer holds` | The item was deleted in the keyring UI. Hand the operator the `secret set` line for that field. |
 | `<name> has no <field>. Store one with: ...` | Hand the operator the quoted `secret set` line. |
 | `no such secret: <name>` | `saddlebag list` with the environment's tags, and pick by description. |
 | `no secret carries all of those tags` | `saddlebag tags` shows the pairs in use. Drop or correct a tag. |
@@ -203,5 +228,6 @@ permanent, so ask the operator before you run it.
 The distribution is `stablemate-saddlebag`. The command and the import package are
 `saddlebag`. `uv tool install stablemate` installs it with the rest of the stablemate
 tools, and `uv tool install stablemate-saddlebag` installs it alone. It needs Python
-3.12 or newer and a Vault with a KV v2 mount named `secret`. For a developer machine,
-`vault server -dev` is enough.
+3.12 or newer. The keyring store needs a Secret Service (gnome-keyring, KDE Wallet) on
+Linux or the Keychain on macOS. The daemon needs a Vault with a KV v2 mount named
+`secret`; for a developer machine, `vault server -dev` is enough.
