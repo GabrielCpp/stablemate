@@ -103,7 +103,7 @@ def test_a_run_drives_the_pinned_tree_and_records_it(
     result = run(make_benchmark, root, repo, body)
     driven = Path((result.workspace / "artifacts" / "touch" / "driven.txt").read_text(encoding="utf-8"))
     assert driven != repo
-    ledger = json.loads((result.workspace / "ledger.json").read_text(encoding="utf-8"))
+    ledger = json.loads((result.result / "ledger.json").read_text(encoding="utf-8"))
     assert ledger["project"]["pinned"] is True
     assert ledger["project"]["head"] == head_of(repo)
     assert ledger["project"]["source"] == str(repo)

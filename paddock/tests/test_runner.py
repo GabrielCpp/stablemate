@@ -68,7 +68,7 @@ def test_the_data_commit_is_recorded_in_the_ledger(
     make_benchmark: MakeBenchmark, root: Path, repo: Path
 ) -> None:
     result = run(make_benchmark, root, repo)
-    ledger = json.loads((result.workspace / "ledger.json").read_text(encoding="utf-8"))
+    ledger = json.loads((result.result / "ledger.json").read_text(encoding="utf-8"))
     data = root / "gold" / "smoke" / "data"
     assert ledger["data_commit"] == git(data, "rev-parse", "HEAD")
     assert ledger["stablemate"] == git(repo, "rev-parse", "HEAD")
@@ -152,7 +152,7 @@ def test_the_score_is_written_next_to_the_stage(
     result = run(make_benchmark, root, repo)
     assert result.score is not None
     assert result.score.headline == "1/1 fine"
-    written = json.loads((result.workspace / "score.json").read_text(encoding="utf-8"))
+    written = json.loads((result.result / "score.json").read_text(encoding="utf-8"))
     assert written["data"] == {"caught": 1}
 
 
@@ -201,7 +201,7 @@ def test_a_failed_step_is_a_caveat_in_the_ledger(
     make_benchmark: MakeBenchmark, root: Path, repo: Path
 ) -> None:
     result = run(make_benchmark, root, repo, FAILING)
-    ledger = json.loads((result.workspace / "ledger.json").read_text(encoding="utf-8"))
+    ledger = json.loads((result.result / "ledger.json").read_text(encoding="utf-8"))
     assert ledger["caveats"] == ["step 'touch' failed", "step 'after' skipped"]
 
 
@@ -222,7 +222,7 @@ def test_a_scores_caveats_reach_the_ledger(
         'data={"caught": 1}, caveats=("operator gate parked: context.md",))',
     )
     result = run(make_benchmark, root, repo, body)
-    ledger = json.loads((result.workspace / "ledger.json").read_text(encoding="utf-8"))
+    ledger = json.loads((result.result / "ledger.json").read_text(encoding="utf-8"))
     assert ledger["caveats"] == ["operator gate parked: context.md"]
 
 
@@ -234,7 +234,7 @@ def test_a_self_touch_reaches_the_ledger(
         '    (run.project / "README.md").write_text("patched mid-round", encoding="utf-8")',
     )
     result = run(make_benchmark, root, repo, body)
-    ledger = json.loads((result.workspace / "ledger.json").read_text(encoding="utf-8"))
+    ledger = json.loads((result.result / "ledger.json").read_text(encoding="utf-8"))
     assert [c for c in ledger["caveats"] if c.startswith("self-touched: ")]
 
 
@@ -302,3 +302,34 @@ def test_a_json_file_is_never_readable_half_written(
         reader.join(timeout=10)
 
     assert not torn, f"a reader saw a half-written file: {torn[0]!r}"
+
+
+def test_a_result_is_a_folder_of_four_entries(
+    make_benchmark: MakeBenchmark, root: Path, repo: Path
+) -> None:
+    result = run(make_benchmark, root, repo)
+    assert result.result == root / "results" / str(result.name)
+    assert sorted(entry.name for entry in result.result.iterdir()) == [
+        "config.toml", "ledger.json", "score.json", "stage",
+    ]
+    assert (result.result / "config.toml").read_bytes() == (result.workspace / "config.toml").read_bytes()
+    assert git(result.result / "stage", "rev-parse", "HEAD") == result.name.data_commit
+
+
+def test_the_result_stage_matches_the_after_state(
+    make_benchmark: MakeBenchmark, root: Path, repo: Path
+) -> None:
+    result = run(make_benchmark, root, repo)
+    kept = result.result / "stage"
+    assert (kept / "made-by-the-step.txt").is_file()
+    here = sorted(p.relative_to(result.stage).as_posix() for p in result.stage.rglob("*") if ".git/" not in p.as_posix())
+    there = sorted(p.relative_to(kept).as_posix() for p in kept.rglob("*") if ".git/" not in p.as_posix())
+    assert here == there
+
+
+def test_the_ledger_records_each_commands_exit_code(
+    make_benchmark: MakeBenchmark, root: Path, repo: Path
+) -> None:
+    result = run(make_benchmark, root, repo)
+    ledger = json.loads((result.result / "ledger.json").read_text(encoding="utf-8"))
+    assert ledger["steps"][0]["exit_codes"] == [0]

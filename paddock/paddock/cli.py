@@ -113,7 +113,7 @@ def cmd_run(args: argparse.Namespace) -> int:
     if result.score is not None:
         print(result.score.render())
     print(f"run     {result.name}")
-    print(f"stage   {result.stage}")
+    print(f"result  {result.result}")
     return 0 if result.ok else 1
 
 

@@ -15,7 +15,7 @@ from contextlib import AbstractContextManager, nullcontext
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from paddock import archive, homeconfig, names, paths, project as project_mod, reap
+from paddock import homeconfig, manifest, names, paths, project as project_mod, reap
 from paddock.loader import Benchmark
 from paddock.names import RunName
 from paddock.registry import Score, Step, Task
@@ -50,6 +50,7 @@ class StepOutcome:
     seconds: float
     error: str = ""
     commands: tuple[tuple[str, ...], ...] = ()
+    exit_codes: tuple[int, ...] = ()
 
 
 class _Echo:
@@ -111,6 +112,7 @@ class Run:
     echo: bool = True
     step_name: str = ""
     commands: list[tuple[str, ...]] = field(default_factory=list)
+    exit_codes: list[int] = field(default_factory=list)
     outcomes: list[StepOutcome] = field(default_factory=list)
 
     @property
@@ -170,6 +172,7 @@ class Run:
                 raise RunError(f"{argv[0]} timed out after {timeout}s; log: {log}") from None
             except FileNotFoundError as exc:
                 raise RunError(f"{argv[0]}: not on PATH") from exc
+        self.exit_codes.append(completed.returncode)
         result = CommandResult(tuple(argv), completed.returncode, log)
         return result.check() if check else result
 
@@ -194,6 +197,7 @@ class RunResult:
     name: RunName
     workspace: Path
     stage: Path
+    result: Path
     outcomes: tuple[StepOutcome, ...]
     score: Score | None
     caveats: tuple[str, ...]
@@ -268,15 +272,17 @@ def execute(
             reap.reap(stage)
 
         score = _score(run, task) if task.score else None
-        if score is not None:
-            run.write_json(workspace / "score.json", score.as_json())
 
         escaped = project_mod.degraded(pinned, requested=pin_project) + project_mod.escaped(pinned)
         for caveat in escaped:
             logger.warning("%s", caveat)
         failed = [f"step {o.name!r} {o.status}" for o in outcomes if o.status != "ok"]
         caveats = (*failed, *escaped, *(score.caveats if score else ()))
-        _write_ledger(run, outcomes, caveats, data_commit, stablemate)
+        result = names.result_dir(root, name)
+        _write_ledger(run, result / "ledger.json", outcomes, caveats, data_commit, stablemate)
+        run.write_json(result / "score.json", score.as_json() if score else None)
+        shutil.copyfile(config, result / "config.toml")
+        shutil.copytree(stage, result / "stage", symlinks=True)
     finally:
         project_mod.release(pinned)
 
@@ -284,6 +290,7 @@ def execute(
         name=name,
         workspace=workspace,
         stage=stage,
+        result=result,
         outcomes=tuple(outcomes),
         score=score,
         caveats=caveats,
@@ -307,6 +314,7 @@ def _run_steps(run: Run) -> list[StepOutcome]:
 def _run_step(run: Run, item: Step) -> StepOutcome:
     run.step_name = item.name
     run.commands = []
+    run.exit_codes = []
     logger.info("step %s", item.name)
     started = time.monotonic()
     try:
@@ -319,24 +327,27 @@ def _run_step(run: Run, item: Step) -> StepOutcome:
             seconds=time.monotonic() - started,
             error=f"{type(exc).__name__}: {exc}",
             commands=tuple(run.commands),
+            exit_codes=tuple(run.exit_codes),
         )
     return StepOutcome(
         name=item.name,
         status="ok",
         seconds=time.monotonic() - started,
         commands=tuple(run.commands),
+        exit_codes=tuple(run.exit_codes),
     )
 
 
 def _write_ledger(
     run: Run,
+    path: Path,
     outcomes: Sequence[StepOutcome],
     caveats: Sequence[str],
     data_commit: str,
     stablemate: str,
 ) -> None:
     run.write_json(
-        run.workspace / "ledger.json",
+        path,
         {
             "name": str(run.name),
             "benchmark": run.name.benchmark,
@@ -353,6 +364,7 @@ def _write_ledger(
                     "seconds": round(outcome.seconds, 3),
                     "error": outcome.error,
                     "commands": [list(argv) for argv in outcome.commands],
+                    "exit_codes": list(outcome.exit_codes),
                 }
                 for outcome in outcomes
             ],
@@ -366,9 +378,10 @@ def _score(run: Run, task: Task) -> Score | None:
         return None
     run.step_name = "score"
     run.commands = []
-    before = archive.manifest(run.stage)
+    run.exit_codes = []
+    before = manifest.manifest(run.stage)
     score = task.score(run)
-    changes = archive.diff_manifests(before, archive.manifest(run.stage))
+    changes = manifest.diff_manifests(before, manifest.manifest(run.stage))
     if changes:
         listed = "\n  ".join(changes[:20])
         raise RunError(
