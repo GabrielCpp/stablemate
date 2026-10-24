@@ -127,3 +127,25 @@ def test_only_a_pin_that_was_actually_made_counts_as_held(tmp_path: Path) -> Non
     assert sm.pin_held(pin(pinned=True))  # noqa: S101 - the point of the test
     assert not sm.pin_held(pin(pinned=False))  # noqa: S101 - the degraded pin this exists for
     assert not sm.pin_held(None)  # noqa: S101 - a task driving no project at all
+
+
+def test_install_agents_runs_farrier_install_on_the_stage(tmp_path: Path) -> None:
+    seen: list[tuple[str, ...]] = []
+
+    def cli(*argv: str, **kwargs: object) -> object:
+        seen.append(argv)
+        assert kwargs["check"] is True
+        return object()
+
+    checkout = tmp_path / "checkout"
+    checkout.mkdir()
+    (checkout / "pyproject.toml").write_text("[project]\n", encoding="utf-8")
+    stage = tmp_path / "stage"
+    run = cast(Run, SimpleNamespace(cli=cli, project=checkout, stage=stage))
+
+    sm.install_agents(run)
+
+    assert seen == [(
+        "uv", "run", "--project", str(checkout), "--package", "farrier",
+        "farrier", "install", "--repo", str(stage),
+    )]

@@ -11,7 +11,7 @@ from pathlib import Path
 
 import yaml
 
-from paddock import Run, project
+from paddock import CommandResult, Run, project
 from paddock._vendor.stablemate_core import config as core_config
 
 
@@ -114,6 +114,12 @@ def pin_config(run: Run) -> None:
     effective(run).write_text(
         f"{header}{rendered}\n\n{run.config.read_text(encoding='utf-8')}", encoding="utf-8"
     )
+
+
+def install_agents(run: Run) -> CommandResult:
+    """Render the agents layer into the stage, so its machine-local paths point at this run."""
+    argv = [*uv_run(stablemate_checkout(run), "farrier"), "farrier", "install", "--repo", str(run.stage)]
+    return run.cli(*argv, log_name="farrier-install", check=True)
 
 
 def trial_artifacts(repo: Path) -> Path:
