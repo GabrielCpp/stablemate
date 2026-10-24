@@ -41,7 +41,6 @@ class Story:
     seed_items: list[str]
     dependencies: list[str]
     eid: str = ""
-    external_key: str = ""
     file_eid: str = ""
     raw: dict = field(default_factory=dict)
     story_md: Path | None = None
@@ -67,7 +66,7 @@ class Story:
         """Every stable spelling accepted as this story, de-duplicated in precedence order."""
         return tuple(
             dict.fromkeys(
-                value for value in (self.eid, self.external_key, self.slug) if value
+                value for value in (self.eid, self.slug) if value
             )
         )
 
@@ -1103,8 +1102,6 @@ def _attach_story_md(graph: Graph, epic: Epic, story: Story) -> None:
             doc = read_doc(c)
             if doc.frontmatter:
                 story.file_eid = str(doc.frontmatter.get("id") or "")
-                story.external_key = str(doc.frontmatter.get("externalKey") or "")
-                story.raw["externalKey"] = story.external_key
                 story.conflict = str(doc.frontmatter.get("conflict") or "").strip()
                 story.services = _frontmatter_services(doc.frontmatter)
                 story.raw["services"] = list(story.services)

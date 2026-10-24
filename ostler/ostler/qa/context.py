@@ -2572,7 +2572,6 @@ def _story_identity(story_file: Path | None) -> dict[str, str]:
     frontmatter = markdown.split(story_file.read_text(encoding="utf-8")).frontmatter or {}
     values = {
         "id": str(frontmatter.get("id") or ""),
-        "externalKey": str(frontmatter.get("externalKey") or ""),
         "slug": str(frontmatter.get("slug") or story_file.parent.name),
     }
     return {key: value for key, value in values.items() if value}

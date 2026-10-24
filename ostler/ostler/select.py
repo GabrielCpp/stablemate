@@ -105,7 +105,7 @@ def _runnable(epic: Epic, story: Story, done: set[str], skip: frozenset[str]) ->
 
 
 def _story_dict(epic: Epic, story: Story) -> dict:
-    return {"slug": story.slug, "id": story.eid, "externalKey": story.external_key,
+    return {"slug": story.slug, "id": story.eid,
             "aliases": list(story.aliases), "epic": epic.name, "title": story.title,
             "status": story.status, "path": story.path,
             "covers": story.seed_items, "dependsOn": story.dependencies,

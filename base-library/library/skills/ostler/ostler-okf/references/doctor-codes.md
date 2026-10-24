@@ -73,7 +73,7 @@ Three scoping rules explain findings that otherwise read as false positives or a
 | `malformed-dependency-bullet` | error | A bullet under `## Dependencies` states no blocker. Write it as `- Blocked by: <slug>`. |
 | `missing-story-file` | error | A story has no `story.md`. |
 | `story-id-mismatch` | error | The immutable id in a story's parent epic block differs from the id in `story.md`. Make the two copies agree; do not mint a replacement. |
-| `story-key-collision` | error | One id, slug, or provider-neutral `externalKey` names multiple stories. Keep every accepted story spelling graph-global and unambiguous. |
+| `story-key-collision` | error | One id or slug names multiple stories. Keep every accepted story spelling graph-global and unambiguous. |
 | `story-status-mismatch` | error | Frontmatter `status` differs from the `## Implementation Status` value. |
 | `unwritten-story` | error | A story is still a bare `ostler create story` scaffold. |
 | `story-section-order` | error | A story carries its required sections out of contract order. |

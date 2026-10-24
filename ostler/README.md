@@ -74,10 +74,10 @@ ostler list --type story --epic checkout-flow --json
 Then open the scaffolded `epic.md` / `story.md` and write the narrative, acceptance criteria, and
 prose — ostler keeps the seeds, edges, ids and queue coherent around it.
 
-A story may carry a provider-neutral `externalKey` in its own frontmatter when a tracker already
-names the work. It is a lookup alias only: Ostler's generated `id` remains the immutable identity
-used by new commit trailers and spec directories. IDs, slugs and external keys must be unique across
-stories; `doctor` rejects ambiguity rather than letting graph order choose one.
+A story's `id` is an opaque string. `create story` mints a ULID, and nothing else assumes the id's
+shape. A tracker key such as `CASE-574` may be written as the `id` by hand. The `id` is the immutable
+identity used by commit trailers and spec directories. IDs and slugs must be unique across stories;
+`doctor` rejects ambiguity rather than letting graph order choose one.
 
 ## The hierarchy
 
@@ -95,7 +95,7 @@ filenames `index.md` (an ordered listing of a bundle) and `log.md` (history) are
 |---|---|---|---|
 | `milestone` | `docs/milestones/<slug>/milestone.md` | folder name `<slug>`; optional `id` defaults to it | `type`, `title`, `status` |
 | `epic` | `docs/epics/<NNNN-slug>/epic.md` | `<NNNN-slug>` (dir name) | `type`, `id`, `title` |
-| `story` | `docs/epics/<NNNN-slug>/stories/<slug>/story.md` | generated `id`; readable `<slug>` and optional `externalKey` are aliases | `type`, `slug`, `status` |
+| `story` | `docs/epics/<NNNN-slug>/stories/<slug>/story.md` | opaque `id` (a ULID when ostler mints it); readable `<slug>` is an alias | `type`, `slug`, `status` |
 | `feature` | `docs/services/<area>/<slug>.md` *(or flat `docs/services/<slug>.md`)* | `<area>/<slug>` | `type`, `slug`, `title` |
 | `spec.<stem>` (`spec.plan`, `spec.review`, `spec.qa`, `spec.executive`, `spec.vet`, …) | `<artifacts dir>/specs/<slug>/*.md` (`ostler path spec <slug>`) | path | `type` |
 

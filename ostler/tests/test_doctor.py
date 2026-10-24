@@ -23,7 +23,7 @@ from ostler.qa import compile_support
 from ostler.qa import plan_source
 from ostler.qa.context import build_context
 
-from conftest import epic_md, screen_md, story_md, write
+from conftest import BAR_ID, FOO_ID, epic_md, screen_md, story_md, write
 
 FOO_STORY = "docs/epics/epic-a/stories/01-foo/story.md"
 
@@ -161,26 +161,21 @@ def test_blocker_in_another_epic_is_flagged(repo: Path):
 
 
 def test_story_key_collision_is_flagged_and_lookup_is_ambiguous(repo: Path):
-    first = repo / FOO_STORY
     second = repo / "docs/epics/epic-b/stories/01-bar/story.md"
-    for path in (first, second):
-        path.write_text(
-            path.read_text(encoding="utf-8").replace(
-                "slug:", "externalKey: TEAM-123\nslug:"
-            ),
-            encoding="utf-8",
-        )
-
+    second.write_text(
+        second.read_text(encoding="utf-8").replace(f"id: {BAR_ID}", f"id: {FOO_ID}"),
+        encoding="utf-8",
+    )
     graph = load(repo)
     findings = [
         f for f in doctor.run(graph).findings if f.code == "story-key-collision"
     ]
 
-    assert [finding.ref for finding in findings] == ["TEAM-123"]
+    assert [finding.ref for finding in findings] == [FOO_ID]
     assert "01-foo/story.md" in findings[0].message
     assert "01-bar/story.md" in findings[0].message
     with pytest.raises(ValueError, match="ambiguous"):
-        graph.find_story("TEAM-123")
+        graph.find_story(FOO_ID)
 
 
 def test_story_id_mismatch_between_epic_and_story_is_flagged(tmp_path: Path):

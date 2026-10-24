@@ -67,7 +67,6 @@ def story_commits(checkout: Path, aliases: tuple[str, ...]) -> list[dict[str, An
 def _story_row(epic_name: str, story: Story) -> dict[str, Any]:
     return {
         "id": story.eid,
-        "externalKey": story.external_key,
         "slug": story.slug,
         "aliases": list(story.aliases),
         "epic": epic_name,

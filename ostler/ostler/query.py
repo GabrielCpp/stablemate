@@ -10,7 +10,7 @@ from ostler.model import Graph, UINode
 
 def _story_row(graph: Graph, epic, story) -> dict:
     return {
-        "type": "story", "id": story.eid, "externalKey": story.external_key,
+        "type": "story", "id": story.eid,
         "aliases": list(story.aliases), "slug": story.slug, "epic": epic.name,
         "title": story.title, "status": story.status, "covers": story.seed_items,
         "dependsOn": story.dependencies, "services": list(story.services),

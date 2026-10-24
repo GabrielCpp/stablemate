@@ -33,7 +33,7 @@ def test_external_source_repository_maps_qualified_code_ref(tmp_path: Path) -> N
     story = docs / "docs/epics/billing/stories/create-invoice/story.md"
     story.parent.mkdir(parents=True)
     story.write_text(
-        "---\nid: BILL-01ABCDEF\nexternalKey: TEAM-123\nslug: create-invoice\n"
+        "---\nid: BILL-01ABCDEF\nslug: create-invoice\n"
         "type: story\n---\n# Create invoice\n",
         encoding="utf-8",
     )
@@ -78,7 +78,6 @@ title: Create invoice
     assert packet["version"] == 2
     assert packet["story"] == {
         "id": "BILL-01ABCDEF",
-        "externalKey": "TEAM-123",
         "slug": "create-invoice",
     }
     stored_repository = packet["repositories"][0]
