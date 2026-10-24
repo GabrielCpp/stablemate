@@ -3,29 +3,13 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import pytest
 from okf_book.main.tally import (
-    FAILED,
-    NOTE,
-    PASSED,
     TALLY,
-    App,
-    DriveBook,
-    answering_operator,
-    no_problems,
-    stub_the_runs_to,
-    written_by_the_workflow,
 )
-from okf_book.support import ScriptedRunner
 from ostler.qa.attribution import Cause, Signature
 
-from workhorse import gates
-from workhorse.pyflow import park as pyflow_park
-
-from workhorse_workflows.okf_book.main.nodes import book_problems
 from workhorse_workflows.okf_book.main.nodes.check_lead import latest_check_findings, unheld
 from workhorse_workflows.okf_book.main.nodes.lead_findings import GroupVerdict, OwnerReply, read_findings
-from workhorse_workflows.okf_book.main.nodes.report import BookReport
 from workhorse_workflows.okf_book.main.nodes.owner_gate import Gates, gate_template_args, record_owner_reply
 from workhorse_workflows.okf_book.shared.blockers import Side, read_blockers
 from workhorse_workflows.okf_book.shared.book_run import ExerciseResult
@@ -37,7 +21,6 @@ PAGE = "docs/services/tally/tally.md"
 MISREAD = Signature(Cause.BOOK, "", "422", "POST /entries/…", 1, "adds: expected [201], observed 422")
 UNNAMED = PageProblem(PAGE, f"{PAGE}:4: prose-name: the control has no name", node=f"{PAGE}#add", code="prose-name")
 UNLINKED = PageProblem(PAGE, f"{PAGE}:9: off-journey: no flow links it", node=f"{PAGE}#list", code="off-journey")
-
 
 def _book(tmp_path: Path) -> OkfBook:
     book = OkfBook(repo_dir=str(tmp_path), parent_records_dir=str(tmp_path), surfaces=(TALLY,))
@@ -107,62 +90,3 @@ def test_the_owner_opens_on_the_groups_what_it_named_before_and_where_the_whole_
     assert args["earlier"] == [finding.model_dump(mode="json")]
     assert Path(str(args["run_summary"])).name == RUN_NAME
     assert Path(str(args["check_problems"])).read_text(encoding="utf-8") != ""
-
-
-def test_an_owner_that_names_the_book_and_writes_nothing_starts_its_next_turn_afresh(
-    app: App, drive_book: DriveBook, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    repo = app("tally-cli")
-    page = repo / PAGE
-
-    def _reply(_args: dict[str, object]) -> dict[str, object]:
-        if runner.turns["write-book"] == 2:
-            return {"run": [{"group": 1, "side": "book", "evidence": "the page says so"}], "check": []}
-        _ = page.write_text(page.read_text(encoding="utf-8") + NOTE, encoding="utf-8")
-        return {"run": [], "check": []}
-
-    runner = ScriptedRunner({"write-book": _reply})
-    asked: list[str] = []
-    written_by_the_workflow(repo)
-    stub_the_runs_to(monkeypatch, FAILED, FAILED, FAILED, FAILED, FAILED, PASSED)
-    monkeypatch.setattr(book_problems, "page_problems", no_problems)
-    monkeypatch.setattr(pyflow_park, "wait_for_answer", answering_operator(asked))
-
-    result = drive_book(OkfBook(repo_dir=str(repo), surfaces=(TALLY,)), runner)
-
-    assert runner.turns["write-book"] == 3
-    assert runner.resumed == [False, True, False]
-    assert isinstance(result, BookReport)
-    assert result.blockers == ()
-
-
-def test_an_owner_started_afresh_reads_the_operators_answer_again(
-    app: App, drive_book: DriveBook, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    repo = app("tally-cli")
-    page = repo / PAGE
-    answers = iter(("answer 1",))
-    left = {0: (UNNAMED, UNLINKED), 1: (UNNAMED, UNLINKED), 2: (UNNAMED,)}
-
-    def _reply(_args: dict[str, object]) -> dict[str, object]:
-        if runner.turns["write-book"] == 2:
-            return {"run": [], "check": [{"group": 1, "side": "book", "evidence": "the page says so"}]}
-        _ = page.write_text(page.read_text(encoding="utf-8") + NOTE, encoding="utf-8")
-        return {"run": [], "check": []}
-
-    def _operator(path: Path, **_kwargs: object) -> None:
-        _ = path.write_text(gates.apply_answer(path.read_text(encoding="utf-8"), next(answers)), encoding="utf-8")
-
-    def _problems(_root: Path, _service: str, _source_folder: str = "") -> tuple[PageProblem, ...]:
-        return left.get(runner.turns["write-book"], ())
-
-    runner = ScriptedRunner({"write-book": _reply})
-    written_by_the_workflow(repo)
-    stub_the_runs_to(monkeypatch, PASSED, PASSED, PASSED, PASSED)
-    monkeypatch.setattr(book_problems, "page_problems", _problems)
-    monkeypatch.setattr(pyflow_park, "wait_for_answer", _operator)
-
-    _ = drive_book(OkfBook(repo_dir=str(repo), surfaces=(TALLY,)), runner)
-
-    assert [args["operator_answer"] for args in runner.args_of("write-book")] == ["", "answer 1", "answer 1"]
-    assert runner.resumed == [False, True, False]

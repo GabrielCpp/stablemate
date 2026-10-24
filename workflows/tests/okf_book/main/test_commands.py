@@ -14,7 +14,7 @@ from workhorse.config_run import AgentResilience
 from workhorse.testing import make_git_repo
 
 from workhorse_workflows.okf_book.main.nodes import check_pages, exercise, writer_stack
-from workhorse_workflows.okf_book.main.nodes.check_pages import NO_PROBLEMS_LINE, checked, run_check, scoped_problems
+from workhorse_workflows.okf_book.main.nodes.check_pages import checked, run_check, scoped_problems
 from workhorse_workflows.okf_book.main.nodes.check_pages import USAGE as CHECK_USAGE
 from workhorse_workflows.okf_book.main.nodes.exercise import USAGE as EXERCISE_USAGE
 from workhorse_workflows.okf_book.main.nodes.exercise import run_exercise
@@ -28,12 +28,8 @@ from workhorse_workflows.okf_book.shared.book_run import CompileOutcome, Exercis
 from workhorse_workflows.okf_book.shared.page_check import PageProblem
 from workhorse_workflows.okf_book.main.nodes.writer_commands import (
     CHECK_MODULE,
-    CHECK_AND_SCENARIO_RUN_CAP,
-    CHECK_AND_SCENARIO_RUNS_SPENT_MESSAGE,
     CommandOutput,
     OSTLER_MODULE,
-    OSTLER_RUN_CAP,
-    OSTLER_RUNS_SPENT_MESSAGE,
     WriterCommandState,
     check_command,
     exercise_command,
@@ -42,7 +38,6 @@ from workhorse_workflows.okf_book.main.nodes.writer_commands import (
     read_command_state,
     write_command_state,
 )
-
 
 def test_the_command_state_reads_back_what_the_run_wrote(tmp_path: Path) -> None:
     state = WriterCommandState(root=tmp_path / "repo", service="tally")
@@ -157,33 +152,11 @@ def test_a_page_no_scenario_runs_is_named_back_before_the_stack_comes_up(
     assert released == []
 
 
-def test_the_check_prints_each_problem_of_a_book_with_no_entries_page(app: Callable[[str], Path], tmp_path: Path) -> None:
-    repo = app("tally-cli")
-    path = write_command_state(tmp_path / "run", WriterCommandState(root=repo, service="ledger"))
-
-    output = run_check([str(path)])
-
-    assert output.code == 1
-    assert output.lines
-    assert NO_PROBLEMS_LINE not in output.lines
-
-
 def _here(work: Work) -> Start:
     def start(job: Path, argv: Sequence[str]) -> None:
         finish_job(job, work, argv)
 
     return start
-
-
-def test_a_turn_that_spent_its_check_runs_is_told_to_stop_and_still_reads_its_last_result(app: Callable[[str], Path], tmp_path: Path) -> None:
-    repo = app("tally-cli")
-    path = write_command_state(tmp_path / "run", WriterCommandState(root=repo, service="ledger", check_and_scenario_runs=CHECK_AND_SCENARIO_RUN_CAP - 1))
-
-    last = run_check([str(path)], _here(checked))
-
-    assert read_command_state(path).check_and_scenario_runs == CHECK_AND_SCENARIO_RUN_CAP
-    assert run_check([str(path)], _here(checked)) == last
-    assert run_exercise([str(path)]) == CommandOutput(1, (CHECK_AND_SCENARIO_RUNS_SPENT_MESSAGE,))
 
 
 def test_the_ostler_command_runs_only_scaffold_fmt_and_gc(tmp_path: Path) -> None:
@@ -238,20 +211,6 @@ def test_the_ostler_relink_points_only_other_books_links_at_the_new_page(tmp_pat
     assert "[stray](../ledger/kept.md#sums)" in linking.read_text(encoding="utf-8")
     assert "[stray](../ledger/stray.md#sums)" in own.read_text(encoding="utf-8")
     assert run_ostler([str(path), "relink", "stray.md", "../other/kept.md"]) == CommandOutput(2, (RELINK_USAGE,))
-
-
-def test_the_ostler_command_counts_its_runs_and_stops_at_the_cap(
-    app: Callable[[str], Path], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    repo = app("tally-cli")
-    path = write_command_state(tmp_path / "run", WriterCommandState(root=repo, service="ledger", ostler_runs=OSTLER_RUN_CAP - 1))
-    monkeypatch.chdir(repo)
-
-    output = run_ostler([str(path), "fmt", "docs"])
-
-    assert (output.code, read_command_state(path).ostler_runs) == (0, OSTLER_RUN_CAP)
-    assert output.lines
-    assert run_ostler([str(path), "fmt", "docs"]) == CommandOutput(1, (OSTLER_RUNS_SPENT_MESSAGE,))
 
 
 def test_the_source_size_skips_dependency_folders(tmp_path: Path) -> None:

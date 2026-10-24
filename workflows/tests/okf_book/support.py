@@ -1,4 +1,4 @@
-"""Paddock fixture apps, git helpers and a scripted agent keyed by prompt."""
+"""Git helpers and a scripted agent keyed by prompt."""
 from __future__ import annotations
 
 import subprocess
@@ -8,56 +8,17 @@ from pathlib import Path
 from typing import override
 
 from workhorse.context import WorkflowContext
-from workhorse.pyflow.driver import drive
-from workhorse.pyflow.engine import RunEnv
 from workhorse.runner.backends.null import NullBackend
 from workhorse.runner.ladder import AgentRunner
 from workhorse.runner.spec import AgentNode
 
-from workhorse_workflows.okf_book.workflow import OkfBook
-
-_drive: Callable[[OkfBook, RunEnv], object] = drive
 FIX_COMMIT_NODE = "fix-refused-commit"
 
-
-class StoppedAtTheGate(Exception):
-    """The operator stopped the run at its gate, as `control stop` does, with the report the gate showed."""
-
-    def __init__(self, report: object) -> None:
-        super().__init__("the operator stopped the run at its gate")
-        self.report = report
-
-
-def driver(flow: OkfBook, env: RunEnv) -> object:
-    """Drive the run to its end, or to the gate its operator stopped it at, and return what it ended on."""
-    try:
-        return _drive(flow, env)
-    except StoppedAtTheGate as stopped:
-        return stopped.report
-
-
-APPS = Path(__file__).resolve().parents[3] / "paddock" / "data" / "apps"
-
 Reply = Callable[[dict[str, object]], dict[str, object]]
-
 
 def git(repo: Path, *args: str) -> str:
     done = subprocess.run(["git", *args], cwd=repo, check=True, capture_output=True, text=True)
     return done.stdout
-
-
-def commits(repo: Path) -> list[str]:
-    """Every commit subject, newest first."""
-    return git(repo, "log", "--format=%s").splitlines()
-
-
-def always(payload: dict[str, object]) -> Reply:
-    """A reply that ignores the turn's arguments."""
-
-    def _reply(_args: dict[str, object]) -> dict[str, object]:
-        return payload
-
-    return _reply
 
 
 class ScriptedRunner(AgentRunner):
