@@ -6,16 +6,18 @@ title: Parity assessment prompt contract
 # Parity assessment prompt contract
 
 - file: `workflows/src/workhorse_workflows/author/parity_surveyor/prompts/assess-parity-unit.md`
-- code: `workflows/src/workhorse_workflows/author/parity_surveyor/flow.py::ParitySurveyor.assess` @b278b037ec14
+- code: `workflows/src/workhorse_workflows/author/parity_surveyor/flow.py::ParitySurveyor.assess` @b0663bd1c3b9
 - detail: [author parity surveyor subflow](../concepts/parity-surveyor-subflow.md)
 - tests: `workflows/tests/author/parity_surveyor/test_flow.py::test_the_assessor_is_handed_the_unit_and_both_sides_of_the_compare`
+- tests: `workflows/tests/author/parity_surveyor/test_flow.py::test_the_assessor_reads_the_open_register_of_the_surveyed_repository`
+- tests: `workflows/tests/author/parity_surveyor/test_flow.py::test_the_assessor_is_told_when_the_register_is_empty`
 
 The prompt assesses exactly one frozen legacy surface against the current OKF book. It reads the
 baseline surface in full, searches the current graph and author planning artifacts for behavioral
 coverage or existing ownership, and writes only the finding record. A covered surface is `clean`
 with no findings; an uncovered or materially incomplete surface is `assessed` with one finding,
 the `legacy-surface-parity` remediation pattern, an effort enum, and concrete evidence. An
-existing owner is recorded without suppressing the assessment; emission performs that suppression.
+existing owner is recorded without suppressing the assessment. Emission performs that suppression, so the owner may be an open record, an epic or a story.
 
 ## Fields
 
@@ -55,11 +57,11 @@ existing owner is recorded without suppressing the assessment; emission performs
 - semantics: current OKF feature-book root searched for behavioral correspondence
 - verify: json_path(path="$.target_services", equals="example target services")
 
-### backlog
-- type: string path
+### register_listing
+- type: string
 - required: true
-- semantics: existing author backlog searched for ownership of the exact surface
-- verify: json_path(path="$.backlog", equals="example backlog")
+- semantics: the open records of the surveyed repository on the [debt register](../../ostler/concepts/the-debt-register.md), one tab-separated line per record under a header, or `no open records`, searched for ownership of the exact surface
+- verify: json_path(path="$.register_listing", equals="no open records")
 
 ### epics_dir
 - type: string path

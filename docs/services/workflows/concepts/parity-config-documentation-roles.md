@@ -7,7 +7,7 @@ title: Parity configuration documentation roles
 
 `ParityConfig` has two complementary documentation views. Read [parity configuration artifact
 roles](parity-config-artifact-roles.md) when selecting the repository-relative field for a
-baseline, feature book, survey artifact, backlog, or epic directory. Read the [author parity
+baseline, feature book, survey artifact, or epic directory. Read the [author parity
 surveyor subflow](parity-surveyor-subflow.md) when determining how the workflow resolves and
 uses that configuration while it surveys, validates, and emits parity artifacts.
 

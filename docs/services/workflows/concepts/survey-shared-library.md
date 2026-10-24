@@ -21,9 +21,11 @@ shared inventory, unit-walking, and record-validation operations.
 - detail: [survey record check](../formats/record-check.md)
 - detail: [survey verification result](../formats/verify-result.md)
 
-The package exports inventory, unit-walking, and record-validation operations. It does not own
-the survey-specific planning, partitioning, parity expansion, or artifact emission nodes; those
-remain in their respective flow packages and consume these results.
+The package exports inventory, unit-walking, and record-validation operations. It also holds the
+filing helper both surveys use to file their findings as records on the
+[debt register](../../ostler/concepts/the-debt-register.md). It does not own the survey-specific
+planning, partitioning, parity expansion, or artifact emission nodes; those remain in their
+respective flow packages and consume these results.
 
 ## Fields
 
@@ -364,20 +366,55 @@ remain in their respective flow packages and consume these results.
 - code: `workflows/src/workhorse_workflows/author/shared/survey/records.py::verify_records` @12d4f1a5ebe3
 - tests: `workflows/tests/author/shared/survey/test_records.py::test_a_fully_covered_survey_holds`
 
-### write_section
-- sig: `write_section(path: Path, bullets: list[str], *, begin: str, end: str, heading: str) -> None`
-- does: fences the supplied bullets between the caller's begin and end markers
-- verify: count(subject="fenced survey sections", equals=1)
-- does: replaces the content from the first begin marker through the following end marker
-- verify: unchanged(subject="backlog content outside survey markers")
-- persistence: survey-backlog-section — appends the caller's heading and the fenced section beneath an existing document
-- verify: created(subject="the appended survey section")
-- persistence: survey-backlog-section — creates the backlog and its `# Backlog` heading when the document is absent or blank
-- verify: created(subject="the survey backlog")
-- code: `workflows/src/workhorse_workflows/author/shared/survey/backlog.py::write_section` @37f8aac21123
-- tests: `workflows/tests/author/surveyor/test_partition.py::test_re_emitting_replaces_the_section_and_nothing_else`
-- tests: `workflows/tests/author/parity_surveyor/test_parity.py::test_re_emitting_replaces_only_the_parity_fence`
-- tests: `workflows/tests/author/parity_surveyor/test_parity.py::test_emit_creates_a_backlog_when_none_exists`
+### Proposal
+- sig: `Proposal(key: str, area: str, summary: str, body: str = "", pattern: str = "untriaged", symbols: tuple[str, ...] = ())`
+- does: carries one finding to file, where `key` names it to the caller and the other fields become the record's area, listing summary, body, pattern and symbols
+- verify: count(subject="survey filing proposals", equals=1)
+- code: `workflows/src/workhorse_workflows/author/shared/survey/filing.py::Proposal` @3dd2d67b639a
+- tests: `workflows/tests/author/surveyor/test_partition.py::test_one_survey_record_per_cluster_is_filed_for_the_surveyed_repository`
+
+### Filed
+- sig: `Filed(ids: dict[str, str], new: int, errors: str)`
+- does: maps each proposal key to the id of the record that holds it, counts the records this call created, and carries a refusal message
+- verify: count(subject="survey filing outcomes", equals=1)
+- code: `workflows/src/workhorse_workflows/author/shared/survey/filing.py::Filed` @3dd2d67b639a
+- tests: `workflows/tests/author/surveyor/test_partition.py::test_a_rerun_names_the_record_it_already_holds_in_the_manifest`
+
+### segment
+- sig: `segment(value: str, fallback: str = "general") -> str`
+- returns: the value as one lowercase kebab segment, or the fallback when nothing is left
+- verify: count(subject="survey record segments", equals=1)
+- code: `workflows/src/workhorse_workflows/author/shared/survey/filing.py::segment` @3dd2d67b639a
+- tests: `workflows/tests/author/parity_surveyor/test_parity.py::test_emit_takes_the_area_as_one_lowercase_kebab_segment`
+
+### surveyed_repo
+- sig: `surveyed_repo(repo_dir: str) -> str`
+- returns: the name the surveyed repository goes by on the [debt register](../../ostler/concepts/the-debt-register.md)
+- verify: count(subject="surveyed repository names", equals=1)
+- code: `workflows/src/workhorse_workflows/author/shared/survey/filing.py::surveyed_repo` @3dd2d67b639a
+- tests: `workflows/tests/author/surveyor/test_partition.py::test_one_survey_record_per_cluster_is_filed_for_the_surveyed_repository`
+
+### file_proposals
+- sig: `file_proposals(logger: logging.Logger, root: Path, repo_dir: str, filed_by: FiledBy, proposals: Sequence[Proposal]) -> Filed`
+- does: files each proposal as a record of the surveyed repository on the [debt register](../../ostler/concepts/the-debt-register.md), with the given filer
+- verify: count(subject="filed survey records", equals=1)
+- does: skips a proposal when an open record of the same filer already has the same summary, and reports that record's id for the proposal's key
+- verify: unchanged(subject="records an unchanged rerun already holds")
+- does: files a proposal again when the record that stated it is closed
+- verify: count(subject="records filed again after a close", equals=1)
+- does: ignores an open record another filer holds with the same summary
+- verify: count(subject="records another filer holds", equals=1)
+- does: commits every record one call created in one artifacts commit, and commits nothing when it created none
+- verify: count(subject="survey artifacts commits", equals=1)
+- does: stops at the first record the register refuses and returns that proposal's key and the refusal in `errors`
+- verify: count(subject="refused survey filings", equals=1)
+- returns: a `Filed` with the id behind each key, the count of new records and any refusal
+- verify: count(subject="survey filing results", equals=1)
+- code: `workflows/src/workhorse_workflows/author/shared/survey/filing.py::file_proposals` @3dd2d67b639a
+- tests: `workflows/tests/author/surveyor/test_partition.py::test_every_record_of_one_emit_lands_in_one_artifacts_commit`
+- tests: `workflows/tests/author/surveyor/test_partition.py::test_a_rerun_with_unchanged_clusters_files_nothing_and_adds_no_commit`
+- tests: `workflows/tests/author/surveyor/test_partition.py::test_a_rerun_leaves_alone_a_record_another_filer_holds`
+- tests: `workflows/tests/author/surveyor/test_partition.py::test_a_closed_record_does_not_hold_back_a_cluster_that_comes_back`
 
 The package also provides dry-run callback implementations for the registered gate nodes. They
 return successful blank models so a dry-run exercises the success branches without creating
@@ -387,34 +424,34 @@ survey artifacts.
 - sig: `expanded(*_args: object, **_kwargs: object) -> Expansion`
 - returns: an `Expansion` marked successful for dry-run inventory expansion
 - verify: count(subject="dry-run inventory expansion results", equals=1)
-- code: `workflows/src/workhorse_workflows/author/shared/survey/stubs.py::expanded` @9ec2e74323c1
+- code: `workflows/src/workhorse_workflows/author/shared/survey/stubs.py::expanded` @ba95544c1ce0
 
 ### split
 - sig: `split(*_args: object, **_kwargs: object) -> SplitResult`
 - returns: a `SplitResult` marked successful for dry-run unit splitting
 - verify: count(subject="dry-run unit split results", equals=1)
-- code: `workflows/src/workhorse_workflows/author/shared/survey/stubs.py::split` @9ec2e74323c1
+- code: `workflows/src/workhorse_workflows/author/shared/survey/stubs.py::split` @ba95544c1ce0
 
 ### recorded
 - sig: `recorded(*_args: object, **_kwargs: object) -> RecordCheck`
 - returns: a `RecordCheck` marked successful for dry-run record validation
 - verify: count(subject="dry-run record validation results", equals=1)
-- code: `workflows/src/workhorse_workflows/author/shared/survey/stubs.py::recorded` @9ec2e74323c1
+- code: `workflows/src/workhorse_workflows/author/shared/survey/stubs.py::recorded` @ba95544c1ce0
 
 ### verified
 - sig: `verified(*_args: object, **_kwargs: object) -> VerifyResult`
 - returns: a `VerifyResult` marked successful for dry-run coverage verification
 - verify: count(subject="dry-run coverage results", equals=1)
-- code: `workflows/src/workhorse_workflows/author/shared/survey/stubs.py::verified` @9ec2e74323c1
+- code: `workflows/src/workhorse_workflows/author/shared/survey/stubs.py::verified` @ba95544c1ce0
 
 ### partitioned
 - sig: `partitioned(*_args: object, **_kwargs: object) -> PartitionCheck`
 - returns: a `PartitionCheck` marked successful for dry-run partition validation
 - verify: count(subject="dry-run partition results", equals=1)
-- code: `workflows/src/workhorse_workflows/author/shared/survey/stubs.py::partitioned` @9ec2e74323c1
+- code: `workflows/src/workhorse_workflows/author/shared/survey/stubs.py::partitioned` @ba95544c1ce0
 
 ### emitted
 - sig: `emitted(*_args: object, **_kwargs: object) -> EmitResult`
 - returns: an `EmitResult` marked successful for dry-run artifact emission
 - verify: count(subject="dry-run artifact emission results", equals=1)
-- code: `workflows/src/workhorse_workflows/author/shared/survey/stubs.py::emitted` @9ec2e74323c1
+- code: `workflows/src/workhorse_workflows/author/shared/survey/stubs.py::emitted` @ba95544c1ce0

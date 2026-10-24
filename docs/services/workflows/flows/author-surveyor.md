@@ -8,26 +8,26 @@ title: Author surveyor
 The surveyor is a subflow of the author workflow, invoked when the author runs in `surveyor` mode.
 It answers one cross-cutting concern exhaustively: across a frozen rubric, it enumerates every
 unit (screen, CLI, endpoint, or custom division) and checks whether each adheres to the stated
-rules, producing an ordered backlog of findings grouped into work items. The flow is bounded by
+rules, producing findings grouped into work items, each filed as a record on the [debt register](../../ostler/concepts/the-debt-register.md). The flow is bounded by
 operator gates at three critical junctures — when granularity planning fails, when coverage
 verification fails, and when clustering the findings fails — but it never gives up autonomously:
 every block escalates to the operator context for human decision or resolution, checkpointed and
 resumable.
 
 - fixture: none, because the walk dry-runs the registered flow, which stands in for every agent turn
-- steps:
-  - [run](../workhorse-author.md#run)
 - start: the working directory holds no rendered graph
 - verify: absent(subject="workhorse-author.dot")
+- steps:
+  - [run](../workhorse-author.md#run)
 - end: the dry run leaves the command with a zero exit status
 - verify: exit_status(code=0)
 - detail: [surveyor operator resolution field roles](../concepts/surveyor-operator-resolution-field-roles.md)
 - detail: [author-surveyor subflow](../concepts/author-surveyor-subflow.md)
 
-The stages, in order: [plan granularity](#plan-granularity), [expand and freeze inventory](#expand-and-freeze-inventory), [per-unit assessment loop](#per-unit-assessment-loop), [verify exhaustive coverage](#verify-exhaustive-coverage), [cluster findings into work items](#cluster-findings-into-work-items), [emit backlog and manifest](#emit-backlog-and-manifest).
+The stages, in order: [plan granularity](#plan-granularity), [expand and freeze inventory](#expand-and-freeze-inventory), [per-unit assessment loop](#per-unit-assessment-loop), [verify exhaustive coverage](#verify-exhaustive-coverage), [cluster findings into work items](#cluster-findings-into-work-items), [file records and write the manifest](#file-records-and-write-the-manifest).
 
 The flow starts when the author runs with `mode="surveyor"`; or when a readable `rubric` path exists under `survey_dir`; or when survey artifacts (inventory, rules, findings records, partition, manifest) are either absent (first run) or present and consistent (resumed run).
-It ends in one of these ways: the survey has produced a durable backlog (`backlog.yml`) and unit manifest, representing an exhaustive assessment of the rubric against the repo, with every finding attributed to a work item and every work item traceable to at least one non-clean unit.
+It ends in one of these ways: the survey has filed one record per work item on the debt register and written a unit manifest, representing an exhaustive assessment of the rubric against the repo, with every finding attributed to a work item and every work item traceable to at least one non-clean unit.
 
 ## Plan granularity
 
@@ -102,11 +102,15 @@ escalates to the operator.
 Partitioning is implemented by `workflows/src/workhorse_workflows/author/surveyor/flow.py::Surveyor.partition`,
 which invokes an agent against `surveyor/prompts/partition-findings.md`.
 
-## Emit backlog and manifest
+## File records and write the manifest
 
-Once the partition is validated, the surveyor emits two durable artifacts: a backlog of work items
-derived from the partition, and a unit manifest recording the disposition of every unit. Emission
-is not bounded — a failure here is fatal to the survey and escalates as a workflow error.
+Once the partition is validated, the surveyor files each work item as a record and writes a unit
+manifest. Each cluster becomes one record of the surveyed repository on the [debt register](../../ostler/concepts/the-debt-register.md), filed by
+`survey`, with the cluster title as its summary, the remediation pattern as its pattern, the
+cluster's units as its symbols and the common directory of those units as its area. The manifest
+records the disposition of every unit and the ids of the records that cover it. A rerun files only
+the clusters whose title no open `survey` record already states, and names the existing record in
+the manifest for the others. The new records land in one artifacts commit. Emission is not bounded. A failure here is fatal to the survey and escalates as a workflow error.
 
 Emission is implemented by `workflows/src/workhorse_workflows/author/surveyor/nodes/partition.py::emit_artifacts`.
 
