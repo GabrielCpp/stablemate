@@ -1,3 +1,0 @@
-name: depot-infra
-runtime: go
-description: The artifact depot's infrastructure — one bucket, one deploy identity, one nightly sweep.

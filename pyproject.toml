@@ -155,19 +155,6 @@ exclude = [
     # would report 28 findings whose only available fix is to edit the historical
     # record. Nothing imports it; it is prose that happens to be syntactically Python.
     "docs/plans/author-workflow-python/workflow.py",
-    # Frozen QA-plan fixtures inside the benchmark apps. A plan imports `ostler_qa`,
-    # which is not an installed module: the qa runner injects it into the materialized
-    # trial tree at run time (see ostler/ostler/qa/harness/). ty can never resolve that
-    # import from the repo venv, and "fixing" it would mean changing how every user
-    # repo's plans import the harness. The plans are still linted by ruff and executed
-    # live by the benchmark itself, which is the check that actually binds.
-    "paddock/data/apps/*/docs/specs/*/qa_plan.py",
-    # The same, for the fixture modules those plans share. `_fixtures/<name>.py` is
-    # reached only through the runner, imports the same injected `ostler_qa`, and is
-    # linted by the same AST allowlist `ostler qa lint` holds a plan to.
-    "paddock/data/apps/*/docs/specs/_fixtures/*.py",
-    "paddock/data/tasks",
-    "paddock/data/tests",
 ]
 
 # basedpyright — pyright's inference and its bundled third-party stubs, run from this
@@ -203,22 +190,12 @@ exclude = [
     "**/__pycache__",
     "**/.*",
     "docs/plans/author-workflow-python/workflow.py",
-    # The benchmark's fixture applications: ~24 near-identical materialized trees
-    # (one per defect variant and per story checkpoint), each a standalone project
-    # rooted at its own directory rather than a package in this workspace. Resolving
-    # their imports would mean one executionEnvironment per variant, and they are
-    # already covered where it counts — ruff lints them, and the benchmark executes
-    # them for real, which is the check that binds on a fixture.
-    "paddock/data/apps",
-    "paddock/data/tasks",
-    "paddock/data/tests",
 ]
 
 # A test module imports its own conftest and its `_fakes` siblings by bare name, the
 # way pytest runs it — pytest puts the test directory on sys.path, and nothing else
-# does. Same for the two directories that are copied somewhere else to run: the QA
-# harness lands on a project's PYTHONPATH as a flat directory of stdlib-only modules,
-# and a paddock task module imports the `_`-prefixed helpers beside it.
+# does. Same for the directory that is copied somewhere else to run: the QA harness
+# lands on a project's PYTHONPATH as a flat directory of stdlib-only modules.
 [[tool.basedpyright.executionEnvironments]]
 root = "workflows/src/workhorse_workflows/okf_book"
 extraPaths = ["workflows/src", "ostler", "workhorse"]
@@ -233,12 +210,6 @@ reportAny = "error"
 
 [[tool.basedpyright.executionEnvironments]]
 root = "ostler/ostler/qa/harness"
-
-[[tool.basedpyright.executionEnvironments]]
-root = "paddock/data/tasks"
-
-[[tool.basedpyright.executionEnvironments]]
-root = "paddock/data/tests"
 
 [[tool.basedpyright.executionEnvironments]]
 root = "core/tests"

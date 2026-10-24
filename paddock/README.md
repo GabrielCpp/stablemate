@@ -6,7 +6,7 @@ The enclosure where horses are worked and evaluated. One benchmark harness. It c
 copy the data  ->  run the steps  ->  (score it)  ->  write the result
 ```
 
-[`paddock/`](paddock/README.md) is the code that does this. [`data/`](data/README.md) still holds the old in-tree fixtures until they move into benchmarks under the benchmark root.
+[`paddock/`](paddock/README.md) is the code that does this.
 
 ## The benchmark root
 
@@ -40,7 +40,7 @@ Anything the maintainer wants to keep for good is copied out of `results/` by ha
 
 **Task**: what `tasks.py` declares. A name, an optional config override, an ordered list of steps and an optional score function.
 
-**Config**: the base `home-config.toml` with the task's override deep-merged over it. Task values win. A task with no override gets the base file byte for byte. The engine writes the result into the run and hands it to every stablemate command through `--config`. A step takes nothing from the command line.
+**Config**: the base `home-config.toml` with the task's override deep-merged over it. Task values win. A task with no override gets the base file byte for byte. The engine writes the result into the run and hands it to every stablemate command through `--config`, and sets `STABLEMATE_CONFIG` to it in the environment of every command the run starts. A step takes nothing from the command line.
 
 **Result**: the folder under `results/`. It holds the ledger, the score, the config and the stage.
 
@@ -55,6 +55,7 @@ from paddock import Score, step, task
 task(
     name="policy-desk-qa",
     config={"profiles": {"claude": {"model": "opus"}}},
+    inputs={"budget": 1200.0, "only": ["PDSK-1"]},
 )
 
 @step()
@@ -75,11 +76,11 @@ def score(run) -> Score:            # optional
     return Score(headline="caught 7/9  missed 2", data={...})
 ```
 
-- `task()` is called once per module, before the steps. `config` is optional.
+- `task()` is called once per module, before the steps. `config` and `inputs` are optional. A benchmark that wants two budgets declares two tasks.
 - `@step()` marks functions that run in declaration order. They are functions so that setup which is not a workflow invocation needs no schema escape hatch.
 - A task swaps models by overriding the config tables. The harness has no model vocabulary of its own.
 
-The helpers a tasks module reaches for live in the package as `paddock.tasks`. They drive stablemate across the process boundary, read the forensics a round left, and measure leverage.
+The helpers a tasks module reaches for live in the package as `paddock.tasks`. They drive stablemate across the process boundary, read the forensics a round left, and run the frozen-app, mutant, replay and greenfield rounds. Fixtures and rubrics those helpers read sit beside the benchmark's `tasks.py`. A benchmark calls `paddock.tasks.stablemate.install_agents(run)` as a step when its stage needs the agents layer rendered.
 
 ### The `run` handle
 
@@ -92,6 +93,8 @@ The helpers a tasks module reaches for live in the package as `paddock.tasks`. T
 | `run.config` | the absolute path to the merged stablemate config |
 | `run.cli(*argv, check=False, timeout=None)` | a subprocess, logged into `run.artifacts` |
 | `run.project` | the tree the steps drive stablemate out of, pinned, see below |
+| `run.inputs` | the task's declared inputs, read-only: str, number, bool or list of str |
+| `run.benchmark` | the loaded benchmark: its root folder, name, base config and data path |
 | `run.name` | the run's name: benchmark, task, data commit, stablemate sha, number |
 
 Steps invoke workflows by subprocess of the real CLI. They never import workhorse in-process. The benchmark measures the surface an operator uses, and an in-process call would measure a different one. `run.cli` also aligns `PWD` to the working directory and drops `OLDPWD`. An agent CLI that resolves its project root from the environment would otherwise treat the harness's own repo as the project and commit its work there.
@@ -234,5 +237,4 @@ make -C paddock test
 
 ## Map
 
-- `data/`: the old in-tree fixtures: tasks, rubrics and app trees.
 - `paddock/`: the package behind the `paddock` command.
