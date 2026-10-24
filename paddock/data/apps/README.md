@@ -37,16 +37,16 @@ they produce is only meaningful against the same milestone's own history.
 |---|---|---|---|---|---|
 | [`link-shortener`](link-shortener/docs/milestones/share-short-links/milestone.md) | api (Go) | 3 | 30 min | `link-shortener` | The smoke run. Fast enough to re-run after every fix, small enough that a failure has one cause. |
 | [`expense-split`](expense-split/docs/milestones/settle-shared-expenses/milestone.md) | api (Go) | 5 | 60 min | `expense-split` | The workload run. Enough stories for the coder to loop over, which is where staleness and churn actually appear. |
-| [`bookmarks`](bookmarks/docs/milestones/keep-saved-pages/milestone.md) | api (Go) + web (React Router) | 4 | 60 min | *not yet written* | The cross-surface run. Two surfaces is where story decomposition, plan-context and per-stack templating go wrong; one surface never exercises any of it. |
-| [`todo-app`](todo-app/docs/milestones/personal-todos-everywhere/milestone.md) | api + web + app + infra | 18 | none | *not yet written* | The verdict run. The only score that means "how good are these workflows", and the only task that costs hours per cell. |
+| [`bookmarks`](bookmarks/docs/milestones/keep-saved-pages/milestone.md) | api (Go) + web (React Router) | 4 | 60 min | `bookmarks` | The cross-surface run. Two surfaces is where story decomposition, plan-context and per-stack templating go wrong; one surface never exercises any of it. |
+| [`todo-app`](todo-app/docs/milestones/personal-todos-everywhere/milestone.md) | api + web + app + infra | 18 | none | `todo-app` | The verdict run. The only score that means "how good are these workflows", and the only task that costs hours per cell. |
 
 ```bash
 uv run paddock run link-shortener --label smoke
 ```
 
-A milestone with no task module beside it is a fixture nothing can run yet — the input is
-written, the declaration (surfaces, scaffolds, repo gates, judge) is not. That is a real
-gap and is left visible rather than papered over.
+A milestone is only half a fixture: the task module beside it holds the declaration
+(surfaces, scaffolds, repo gates, judge). A milestone without one is an input nothing can
+run yet, and that gap is left visible in the table rather than papered over.
 
 ### What makes the hour-sized ones finish in an hour
 
@@ -79,7 +79,8 @@ something; read the reliability half of its scorecard before you raise it.
 ### The packs are derived, not chosen
 
 Every task installs the same repo-level packs — `product-planning`, `stablemate`,
-`infra` — plus its surfaces' stack packs, and `ui` alongside `react-router`/`flutter`.
+`infra` — plus its surfaces' stack packs, and `general` alongside `react-router`/`flutter`,
+because the `ui` skills those two stacks build on ship in `base-library/`'s `general` pack.
 That list is not taste. It is what you get by walking the author's and coder's prompts
 for every `instruction_ref` / `skill_load_ref` / `find_by_tags(...)` call site and asking
 which pack supplies an answer.
@@ -137,8 +138,9 @@ on, because it has already been decomposed for it. The round copies the folder i
 produced repo and opens an empty book under `docs/services/` per surface, which is all
 the author's ready gate asks of a book. `bookmarks` and `todo-app` go through web and
 mobile books and so owe a `mockups/<journey-slug>.html` per journey once those books
-carry a UI runbook; neither has a task module yet, and the mockups are written when the
-task is.
+carry a UI runbook. Neither fixture has mockups yet: the books the round opens are empty,
+so the ready gate does not ask for them, and they are owed the first time an author lane
+fills a web or mobile book.
 
 ## The frozen apps
 
