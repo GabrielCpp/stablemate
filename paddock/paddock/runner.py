@@ -1,4 +1,4 @@
-"""Run a task: unpack the seed, execute the steps, stage the result, score it, seal it."""
+"""Run a benchmark's task: copy its data, execute the steps, score the result."""
 
 from __future__ import annotations
 
@@ -15,15 +15,16 @@ from contextlib import AbstractContextManager, nullcontext
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from paddock import archive, paths, project as project_mod, reap, seeds
-from paddock.pointer import DIAGNOSTIC_MARKER, Pointer, ResultPointer
+from paddock import archive, homeconfig, names, paths, project as project_mod, reap
+from paddock.loader import Benchmark
+from paddock.names import RunName
 from paddock.registry import Score, Step, Task
 
 logger = logging.getLogger(__name__)
 
 
 class RunError(RuntimeError):
-    """A task that could not be run, or a result that must not be sealed."""
+    """A task that could not be run, or a result that must not be recorded."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -99,15 +100,12 @@ class Run:
     """The handle a step and a score function are given."""
 
     task: Task
-    label: str
+    name: RunName
     stage: Path
-    repo: Path
     scratch: Path
+    workspace: Path
     config: Path
-    data_dir: Path
-    store: Path
-    seed: Pointer
-    params: Mapping[str, str] = field(default_factory=dict)
+    data: Path
     project: Path | None = None
     pinned: project_mod.Project | None = None
     echo: bool = True
@@ -115,37 +113,15 @@ class Run:
     commands: list[tuple[str, ...]] = field(default_factory=list)
     outcomes: list[StepOutcome] = field(default_factory=list)
 
-    def param(self, name: str, default: str = "") -> str:
-        """A `--param name=value` given on the command line, or *default*."""
-        return str(self.params.get(name, default))
-
-    def param_list(self, name: str) -> tuple[str, ...]:
-        """A comma-separated param as a tuple; `()` when it was not given."""
-        return tuple(part.strip() for part in self.param(name).split(",") if part.strip())
-
-    def param_float(self, name: str, default: float = 0.0) -> float:
-        raw = self.param(name)
-        if not raw:
-            return default
-        try:
-            return float(raw)
-        except ValueError as exc:
-            raise RunError(f"--param {name}={raw!r} is not a number") from exc
-
-    def param_bool(self, name: str, default: bool = False) -> bool:
-        raw = self.param(name).strip().lower()
-        if not raw:
-            return default
-        if raw in ("1", "true", "yes", "on"):
-            return True
-        if raw in ("0", "false", "no", "off"):
-            return False
-        raise RunError(f"--param {name}={raw!r} is not a boolean")
+    @property
+    def repo(self) -> Path:
+        """The copy of the benchmark's data the steps mutate."""
+        return self.stage
 
     @property
     def artifacts(self) -> Path:
         """This step's artifact directory, created on first use."""
-        directory = self.stage / "artifacts" / (self.step_name or "run")
+        directory = self.workspace / "artifacts" / (self.step_name or "run")
         directory.mkdir(parents=True, exist_ok=True)
         return directory
 
@@ -215,63 +191,72 @@ class Run:
 
 @dataclass(frozen=True, slots=True)
 class RunResult:
-    task: str
-    label: str
+    name: RunName
+    workspace: Path
     stage: Path
     outcomes: tuple[StepOutcome, ...]
     score: Score | None
-    zip_path: Path | None
-    pointer_path: Path | None
+    caveats: tuple[str, ...]
 
     @property
     def ok(self) -> bool:
         return all(outcome.status == "ok" for outcome in self.outcomes)
 
 
+def _git(*args: str, cwd: Path) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(["git", *args], cwd=str(cwd), capture_output=True, text=True, check=False)
+
+
+def _copy_data(data: Path, stage: Path) -> None:
+    """Clone *data* into *stage* at its HEAD, with no remote to push the round's work to."""
+    if _git("status", "--porcelain", cwd=data).stdout.strip():
+        logger.warning("%s has uncommitted changes; the run copies its HEAD and will not see them", data)
+    cloned = _git("clone", "--quiet", "--no-hardlinks", str(data), str(stage), cwd=data.parent)
+    if cloned.returncode != 0:
+        raise RunError(f"could not copy {data} to {stage}: {cloned.stderr.strip()}")
+    for remote in _git("remote", cwd=stage).stdout.split():
+        if _git("remote", "remove", remote, cwd=stage).returncode != 0:
+            raise RunError(f"could not strip remote {remote!r} from the copy of {data}")
+
+
 def execute(
-    task: Task,
+    benchmark: Benchmark,
     *,
-    label: str,
-    data_dir: Path,
-    store: Path,
-    params: Mapping[str, str] | None = None,
-    project: Path | None = None,
+    root: Path,
+    checkout: Path | None = None,
     pin_project: bool = True,
-    seal: bool = True,
-    keep: bool = False,
     echo: bool = True,
 ) -> RunResult:
-    work = paths.work_dir(store, task.name, label)
-    if work.exists() and not keep:
-        shutil.rmtree(work)
-    stage = work / "stage"
-    scratch = work / "scratch"
-    stage.mkdir(parents=True, exist_ok=True)
+    task = benchmark.task
+    source = checkout or paths.checkout_root()
+    data_commit = names.git_head(benchmark.data)
+    if not data_commit:
+        raise RunError(f"benchmark {benchmark.name!r}: {benchmark.data} is not a git repository with a commit")
+    stablemate = names.git_head(source)
+    if not stablemate:
+        raise RunError(f"{source} is not a git checkout, so the run cannot name the stablemate commit it measures")
+
+    name = names.reserve(root, RunName(benchmark.name, task.name, data_commit, stablemate, 0))
+    workspace = names.workspace_dir(root, name)
+    stage = workspace / "stage"
+    scratch = workspace / "scratch"
     scratch.mkdir(parents=True, exist_ok=True)
+    logger.info("run %s", name)
 
-    pinned = project_mod.pin(project, work=work, enabled=pin_project)
-    driven = pinned.path if pinned else project
+    config = homeconfig.materialize(benchmark.home_config, task.config, workspace / "config.toml")
+    _copy_data(benchmark.data, stage)
 
-    pointer = Pointer.load(paths.seed_pointer(data_dir, task.seed))
-    repo = seeds.unpack(pointer, store=store, dest=stage, project=driven)
-
-    config = Path(task.config)
-    config = config if config.is_absolute() else data_dir / config
-    config = config.resolve()
-    if not config.is_file():
-        raise RunError(f"task {task.name!r}: config {config} does not exist")
+    pinned = project_mod.pin(source, work=workspace, enabled=pin_project)
+    driven = pinned.path if pinned else source
 
     run = Run(
         task=task,
-        label=label,
+        name=name,
         stage=stage,
-        repo=repo,
         scratch=scratch,
-        config=config,
-        data_dir=data_dir,
-        store=store,
-        seed=pointer,
-        params=dict(params or {}),
+        workspace=workspace,
+        config=config.resolve(),
+        data=benchmark.data,
         project=driven,
         pinned=pinned,
         echo=echo,
@@ -281,35 +266,27 @@ def execute(
             outcomes = _run_steps(run)
         finally:
             reap.reap(stage)
-        _write_ledger(run, outcomes)
 
         score = _score(run, task) if task.score else None
         if score is not None:
-            run.write_json(stage / "score.json", score.as_json())
+            run.write_json(workspace / "score.json", score.as_json())
 
-        zip_path: Path | None = None
-        pointer_path: Path | None = None
-        if seal:
-            escaped = project_mod.degraded(
-                pinned, requested=pin_project
-            ) + project_mod.escaped(pinned)
-            for caveat in escaped:
-                logger.warning("%s", caveat)
-            zip_path, pointer_path = _seal(
-                task, label, stage, data_dir, store, pointer, outcomes, score,
-                run.params, escaped,
-            )
+        escaped = project_mod.degraded(pinned, requested=pin_project) + project_mod.escaped(pinned)
+        for caveat in escaped:
+            logger.warning("%s", caveat)
+        failed = [f"step {o.name!r} {o.status}" for o in outcomes if o.status != "ok"]
+        caveats = (*failed, *escaped, *(score.caveats if score else ()))
+        _write_ledger(run, outcomes, caveats, data_commit, stablemate)
     finally:
         project_mod.release(pinned)
 
     return RunResult(
-        task=task.name,
-        label=label,
+        name=name,
+        workspace=workspace,
         stage=stage,
         outcomes=tuple(outcomes),
         score=score,
-        zip_path=zip_path,
-        pointer_path=pointer_path,
+        caveats=caveats,
     )
 
 
@@ -351,16 +328,24 @@ def _run_step(run: Run, item: Step) -> StepOutcome:
     )
 
 
-def _write_ledger(run: Run, outcomes: Sequence[StepOutcome]) -> None:
+def _write_ledger(
+    run: Run,
+    outcomes: Sequence[StepOutcome],
+    caveats: Sequence[str],
+    data_commit: str,
+    stablemate: str,
+) -> None:
     run.write_json(
-        run.stage / "steps.json",
+        run.workspace / "ledger.json",
         {
-            "task": run.task.name,
-            "label": run.label,
-            "seed": {"name": run.seed.name, "sha256": run.seed.sha256, "head": run.seed.head},
+            "name": str(run.name),
+            "benchmark": run.name.benchmark,
+            "task": run.name.task,
+            "data_commit": data_commit,
+            "stablemate": stablemate,
             "config": str(run.config),
             "project": run.pinned.as_json() if run.pinned else None,
-            "params": dict(run.params),
+            "caveats": list(caveats),
             "steps": [
                 {
                     "name": outcome.name,
@@ -375,10 +360,6 @@ def _write_ledger(run: Run, outcomes: Sequence[StepOutcome]) -> None:
     )
 
 
-def _score_owned(path: str) -> bool:
-    return path == "artifacts" or path == "artifacts/score" or path.startswith("artifacts/score/")
-
-
 def _score(run: Run, task: Task) -> Score | None:
     """Call the task's score function with the staged tree guarded as read-only."""
     if task.score is None:
@@ -387,11 +368,7 @@ def _score(run: Run, task: Task) -> Score | None:
     run.commands = []
     before = archive.manifest(run.stage)
     score = task.score(run)
-    changes = [
-        line
-        for line in archive.diff_manifests(before, archive.manifest(run.stage))
-        if not _score_owned(line.split(" ", 1)[1])
-    ]
+    changes = archive.diff_manifests(before, archive.manifest(run.stage))
     if changes:
         listed = "\n  ".join(changes[:20])
         raise RunError(
@@ -400,42 +377,3 @@ def _score(run: Run, task: Task) -> Score | None:
     if not isinstance(score, Score):
         raise RunError(f"task {task.name!r}: score() returned {type(score).__name__}, expected Score")
     return score
-
-
-def _seal(
-    task: Task,
-    label: str,
-    stage: Path,
-    data_dir: Path,
-    store: Path,
-    seed: Pointer,
-    outcomes: Sequence[StepOutcome],
-    score: Score | None,
-    params: Mapping[str, str],
-    escaped: Sequence[str] = (),
-) -> tuple[Path, Path]:
-    zip_path = paths.result_zip(store, task.name, label)
-    archive.create(stage, zip_path, prefix=label)
-    given = ", ".join(f"{key}={value}" for key, value in sorted(params.items()))
-    failed = [f"step {o.name!r} {o.status}" for o in outcomes if o.status != "ok"]
-    caveats = [*failed, *escaped, *(score.caveats if score else ())]
-    headline = score.headline if score else ""
-    if caveats:
-        headline = DIAGNOSTIC_MARKER + (headline or "unscored round")
-    note = " ".join(part for part in (headline, f"[{given}]" if given else "") if part)
-    pointer = ResultPointer(
-        name=f"{task.name}/{label}",
-        repo_dir=label,
-        sha256=archive.digest(zip_path),
-        bytes=zip_path.stat().st_size,
-        head=seed.head,
-        note=note,
-        caveats=caveats,
-        task=task.name,
-        label=label,
-        steps=sum(1 for outcome in outcomes if outcome.status == "ok"),
-        scored=score is not None,
-    )
-    pointer_path = paths.result_pointer(data_dir, task.name, label)
-    pointer.write(pointer_path)
-    return zip_path, pointer_path

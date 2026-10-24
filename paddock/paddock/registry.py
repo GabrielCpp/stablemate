@@ -47,8 +47,7 @@ class Task:
     """A fully declared task, as the loader hands it to the runner."""
 
     name: str
-    seed: str
-    config: str
+    config: Mapping[str, object]
     steps: tuple[Step, ...]
     score: ScoreFn | None
     module: str = ""
@@ -56,7 +55,7 @@ class Task:
 
     def describe(self) -> str:
         scored = "scored" if self.score else "unscored"
-        return f"{self.name}  seed={self.seed}  {len(self.steps)} steps  {scored}"
+        return f"{self.name}  {len(self.steps)} steps  {scored}"
 
 
 @dataclass
@@ -64,14 +63,12 @@ class _Registry:
     """Module-scoped state, reset by the loader before each task module is imported."""
 
     name: str = ""
-    seed: str = ""
-    config: str = ""
+    config: Mapping[str, object] = field(default_factory=dict)
     steps: list[Step] = field(default_factory=list)
 
     def reset(self) -> None:
         self.name = ""
-        self.seed = ""
-        self.config = ""
+        self.config = {}
         self.steps = []
 
     def declared(self) -> bool:
@@ -81,17 +78,16 @@ class _Registry:
 REGISTRY = _Registry()
 
 
-def task(*, name: str, seed: str, config: str) -> None:
-    """Declare the module's one task: what it is called, what it starts from, how it runs."""
+def task(*, name: str, config: Mapping[str, object] | None = None) -> None:
+    """Declare the module's one task: what it is called, and the config it lays over the benchmark's."""
     if REGISTRY.declared():
         raise TaskError(f"task() was already called as {REGISTRY.name!r}; a module declares one task")
-    if not name or not seed or not config:
-        raise TaskError("task() needs a name, a seed and a config")
+    if not name:
+        raise TaskError("task() needs a name")
     if REGISTRY.steps:
         raise TaskError("task() must be called before any @step — it names what the steps run in")
     REGISTRY.name = name
-    REGISTRY.seed = seed
-    REGISTRY.config = config
+    REGISTRY.config = dict(config or {})
 
 
 def step(*, name: str = "") -> Callable[[StepFn], StepFn]:
@@ -120,7 +116,6 @@ def collect(module_name: str, score: ScoreFn | None, doc: str = "") -> Task:
         raise TaskError(f"{module_name}: task {REGISTRY.name!r} declares no steps")
     return Task(
         name=REGISTRY.name,
-        seed=REGISTRY.seed,
         config=REGISTRY.config,
         steps=tuple(REGISTRY.steps),
         score=score,

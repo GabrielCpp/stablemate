@@ -167,6 +167,8 @@ exclude = [
     # reached only through the runner, imports the same injected `ostler_qa`, and is
     # linted by the same AST allowlist `ostler qa lint` holds a plan to.
     "paddock/data/apps/*/docs/specs/_fixtures/*.py",
+    "paddock/data/tasks",
+    "paddock/data/tests",
 ]
 
 # basedpyright — pyright's inference and its bundled third-party stubs, run from this
@@ -209,6 +211,8 @@ exclude = [
     # already covered where it counts — ruff lints them, and the benchmark executes
     # them for real, which is the check that binds on a fixture.
     "paddock/data/apps",
+    "paddock/data/tasks",
+    "paddock/data/tests",
 ]
 
 # A test module imports its own conftest and its `_fakes` siblings by bare name, the

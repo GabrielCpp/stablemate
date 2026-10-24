@@ -1,7 +1,7 @@
 [project]
 name = "paddock"
 version = "0.1.0"
-description = "The benchmark harness: unpack a captured repo state, run real CLI steps against it, stage the result, and score it when the task brought its own ruler."
+description = "The benchmark harness: copy a benchmark's repository, run real CLI steps against it, and score the result when the task brought its own ruler."
 readme = "README.md"
 requires-python = ">=3.12"
 license = "MIT"
@@ -18,12 +18,14 @@ classifiers = [
   "Topic :: Utilities",
 ]
 dependencies = [
-  # Pointers are outside data — hand-edited, fetched over the network, read back a
-  # release later — so they are parsed and validated rather than `.get()`-ed.
+  # The sandbox parses a stablemate config it did not write, so it is validated rather
+  # than `.get()`-ed.
   "pydantic>=2.0",
-  # `tomllib` reads and does not write; a pointer is written by `seed capture` and by
-  # every sealed result.
+  # `tomllib` reads and does not write; a run writes its merged home config.
   "tomli-w>=1.0",
+  # platformdirs and tomli-w are paddock._vendor.stablemate_core's, not paddock's own:
+  # `make check-vendor` compares files and cannot notice a missing requirement.
+  "platformdirs>=4.0",
 ]
 
 [project.optional-dependencies]

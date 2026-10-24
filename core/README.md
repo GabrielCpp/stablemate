@@ -60,6 +60,7 @@ distribution. `make vendor` copies this directory into each tool that needs it:
 core/stablemate_core  →  farrier/farrier/_vendor/stablemate_core
                       →  workhorse/workhorse/_vendor/stablemate_core
                       →  ostler/ostler/_vendor/stablemate_core
+                      →  paddock/paddock/_vendor/stablemate_core
 ```
 
 The copies are committed rather than synthesized during the wheel build, for a release

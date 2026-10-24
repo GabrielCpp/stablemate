@@ -1,17 +1,16 @@
-"""Fixtures for paddock's own tests: a small repo, and a data directory around it."""
+"""Fixtures for paddock's own tests: a small repo, and a benchmark root with the smoke benchmark."""
 
 from __future__ import annotations
 
-import subprocess
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from pathlib import Path
 
 import pytest
 
-
-def git(repo: Path, *args: str) -> None:
-    subprocess.run(["git", *args], cwd=str(repo), check=True, capture_output=True, text=True)
-
+from paddock import loader
+from paddock._vendor.stablemate_core.config import CONFIG_PATH_ENV, write_paddock_dir
+from paddock.loader import Benchmark
+from smoke import BASE_CONFIG, SMOKE_TASKS, git
 
 @pytest.fixture(autouse=True)
 def _artifacts_dir_is_per_test(tmp_path_factory, monkeypatch):
@@ -52,14 +51,32 @@ def repo(tmp_path: Path) -> Path:
 
 
 @pytest.fixture
-def data_dir(tmp_path: Path) -> Path:
-    directory = tmp_path / "workspace" / "benchmarks"
-    (directory / "tasks").mkdir(parents=True)
-    (directory / "configs").mkdir(parents=True)
-    (directory / "configs" / "test.toml").write_text('library_dir = "/nowhere"\n', encoding="utf-8")
+def root(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    """A benchmark root named by a throwaway home config, which every command in the test reads."""
+    directory = tmp_path / "paddock-root"
+    directory.mkdir()
+    monkeypatch.setenv(CONFIG_PATH_ENV, str(tmp_path / "home.toml"))
+    write_paddock_dir(directory)
     return directory
 
 
 @pytest.fixture
-def store(tmp_path: Path) -> Path:
-    return tmp_path / "store"
+def make_benchmark(root: Path) -> Callable[..., Benchmark]:
+    """Build a benchmark under `gold/`: a two-file git repository as `data/`, a base config and a tasks module."""
+
+    def build(
+        tasks: str = SMOKE_TASKS, *, name: str = "smoke", base: str = BASE_CONFIG
+    ) -> Benchmark:
+        directory = root / "gold" / name
+        data = directory / "data"
+        data.mkdir(parents=True, exist_ok=True)
+        (data / "README.md").write_text("smoke\n", encoding="utf-8")
+        (data / "app.py").write_text("print('smoke')\n", encoding="utf-8")
+        git(data, "init", "--initial-branch", "main")
+        git(data, "add", "-A")
+        git(data, "commit", "-m", "initial")
+        (directory / "home-config.toml").write_text(base, encoding="utf-8")
+        (directory / "tasks.py").write_text(tasks, encoding="utf-8")
+        return loader.load_benchmark(root, name)
+
+    return build

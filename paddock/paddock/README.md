@@ -1,17 +1,18 @@
 # paddock
 
-The package behind the `paddock` command. It unpacks a seed, drives a task's steps, stages the result, scores it and seals it. What a round measures lives in `../data/`, not here.
+The package behind the `paddock` command. It loads a benchmark from the paddock root, copies its data into a workspace, drives a task's steps, scores the result and writes the run down. What a round measures lives in the benchmark under `gold/`, not here.
 
 ## Map
 
-- `archive.py`: zipping a repository tree and restoring it exactly, with its digests and manifests.
+- `_vendor/`: the vendored copy of `core`, written by `make vendor`. Do not edit it.
+- `archive.py`: restoring a tree exactly, with its digests and manifests.
 - `cli.py`: the `paddock` command line and its subcommands.
-- `loader.py`: importing a task module from the data directory and freezing the task it declared.
-- `paths.py`: where paddock reads its data and where it keeps seed zips, result zips, pointers and work dirs.
-- `pointer.py`: the tracked pointer TOML that stands in for a zip git cannot carry.
-- `project.py`: pinning the project a run drives to one git state, and noticing when a round escapes the pin.
+- `homeconfig.py`: reading a benchmark's base home config and merging a task's override over it.
+- `loader.py`: importing a benchmark's `tasks.py` from the paddock root and freezing the tasks it declared.
+- `names.py`: naming a run by its axes and picking the next unused run number.
+- `paths.py`: where the paddock root, its `gold/` benchmarks and the stablemate checkout live.
+- `project.py`: pinning the stablemate checkout a run drives to one git state, and noticing when a round escapes the pin.
 - `reap.py`: finding and killing the processes a round left running in its stage.
-- `registry.py`: the declarations a task module makes, `task` and `step`, and the records they freeze into.
-- `runner.py`: executing one round from seed to sealed, scored result.
+- `registry.py`: the declarations a tasks module makes, `task` and `step`, and the records they freeze into.
+- `runner.py`: executing one round from the copied data to a scored run.
 - `sandbox.py`: the container image that holds the stablemate tools as installed packages, and running a command in it.
-- `seeds.py`: capturing a repo into a seed and putting a seed back on disk.

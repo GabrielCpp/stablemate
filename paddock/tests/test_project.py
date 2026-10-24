@@ -9,7 +9,8 @@ from pathlib import Path
 
 from paddock import project as project_mod
 
-from tests.test_runner import run
+from smoke import SMOKE_TASKS
+from test_runner import MakeBenchmark, run
 
 
 def head_of(repo: Path) -> str:
@@ -93,21 +94,16 @@ def test_no_project_is_no_pin(tmp_path: Path) -> None:
 
 
 def test_a_run_drives_the_pinned_tree_and_records_it(
-    repo: Path, data_dir: Path, store: Path
+    make_benchmark: MakeBenchmark, root: Path, repo: Path
 ) -> None:
-    body = '''
-from paddock import step, task
-
-task(name="demo", seed="acme", config="configs/test.toml")
-
-@step()
-def where(run):
-    (run.artifacts / "driven.txt").write_text(str(run.project), encoding="utf-8")
-'''
-    result = run(repo, data_dir, store, body, project=repo)
-    driven = Path((result.stage / "artifacts" / "where" / "driven.txt").read_text(encoding="utf-8"))
+    body = SMOKE_TASKS.replace(
+        '    run.cli("/bin/sh", "-c", "echo hello", check=True)\n',
+        '    (run.artifacts / "driven.txt").write_text(str(run.project), encoding="utf-8")\n',
+    )
+    result = run(make_benchmark, root, repo, body)
+    driven = Path((result.workspace / "artifacts" / "touch" / "driven.txt").read_text(encoding="utf-8"))
     assert driven != repo
-    ledger = json.loads((result.stage / "steps.json").read_text(encoding="utf-8"))
+    ledger = json.loads((result.workspace / "ledger.json").read_text(encoding="utf-8"))
     assert ledger["project"]["pinned"] is True
     assert ledger["project"]["head"] == head_of(repo)
     assert ledger["project"]["source"] == str(repo)

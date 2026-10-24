@@ -1,296 +1,282 @@
-"""Running a task: staging, the ledger, failure handling, and the read-only score rule."""
+"""Running a task: the run name, the copied data, the merged config, the ledger and the read-only score rule."""
 
 from __future__ import annotations
 
 import json
 import threading
+import tomllib
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
 import pytest
-from pydantic import ValidationError
 
-from paddock import loader, seeds
-from paddock.registry import Task
-from paddock.pointer import DIAGNOSTIC_MARKER, Pointer, ResultPointer
-from paddock.runner import Run, RunError, execute
+from paddock import loader, names, paths
+from paddock.loader import Benchmark
+from paddock.runner import Run, RunError, RunResult, execute
 
-TASK = '''
-from paddock import Score, step, task
+from smoke import BASE_CONFIG, SMOKE_TASKS, git
 
-task(name="demo", seed="acme", config="configs/test.toml")
-
-@step()
-def touch(run):
-    (run.repo / "made-by-the-step.txt").write_text("yes", encoding="utf-8")
-    run.cli("/bin/sh", "-c", "echo hello", check=True)
-
-@step()
-def fan_out(run):
-    tree = run.workdir("trial-1")
-    (tree / "scratch-only.txt").write_text("not in the result", encoding="utf-8")
-    (run.artifacts / "kept.txt").write_text("kept on purpose", encoding="utf-8")
-
-def score(run):
-    return Score(headline="2/2 fine", detail=("one", "two"), data={"caught": 2})
-'''
+MakeBenchmark = Callable[..., Benchmark]
 
 
-def prepare(repo: Path, data_dir: Path, store: Path, body: str = TASK) -> Task:
-    seeds.capture(repo, name="acme", data_dir=data_dir, store=store)
-    (data_dir / "tasks" / "demo.py").write_text(body, encoding="utf-8")
-    return loader.load_named(data_dir, "demo")
+def run(
+    make_benchmark: MakeBenchmark, root: Path, checkout: Path, body: str = SMOKE_TASKS, **kwargs: Any
+) -> RunResult:
+    return execute(make_benchmark(body), root=root, checkout=checkout, **kwargs)
 
 
-def run(repo: Path, data_dir: Path, store: Path, body: str = TASK, **kwargs: Any):
-    task = prepare(repo, data_dir, store, body)
-    return execute(task, label="t1", data_dir=data_dir, store=store, **kwargs)
+def test_a_run_is_named_by_its_axes(make_benchmark: MakeBenchmark, root: Path, repo: Path) -> None:
+    result = run(make_benchmark, root, repo)
+    data = root / "gold" / "smoke" / "data"
+    expected = f"smoke/smoke/{git(data, 'rev-parse', 'HEAD')[:12]}-{git(repo, 'rev-parse', 'HEAD')[:12]}/1"
+    assert str(result.name) == expected
+    assert result.workspace == root / "workspace" / expected
+    assert result.stage == result.workspace / "stage"
 
 
-def test_a_run_stages_the_repo_the_artifacts_and_the_ledger(
-    repo: Path, data_dir: Path, store: Path
+def test_the_stablemate_sha_is_the_checkout_paddock_is_imported_from(
+    make_benchmark: MakeBenchmark, root: Path
 ) -> None:
-    result = run(repo, data_dir, store)
-    assert result.ok
-    assert (result.stage / "acme-api" / "made-by-the-step.txt").is_file()
-    assert (result.stage / "artifacts" / "fan_out" / "kept.txt").is_file()
-    ledger = json.loads((result.stage / "steps.json").read_text(encoding="utf-8"))
-    assert [step["name"] for step in ledger["steps"]] == ["touch", "fan_out"]
+    result = execute(make_benchmark(), root=root, pin_project=False)
+    assert result.name.stablemate == git(paths.checkout_root(), "rev-parse", "HEAD")
+
+
+def test_a_repeat_of_the_same_name_takes_the_next_number(
+    make_benchmark: MakeBenchmark, root: Path, repo: Path
+) -> None:
+    first = run(make_benchmark, root, repo)
+    second = execute(loader.load_benchmark(root, "smoke"), root=root, checkout=repo)
+    assert (first.name.n, second.name.n) == (1, 2)
+    assert first.name.key == second.name.key
+
+
+def test_a_new_data_commit_is_a_new_name(
+    make_benchmark: MakeBenchmark, root: Path, repo: Path
+) -> None:
+    first = run(make_benchmark, root, repo)
+    data = root / "gold" / "smoke" / "data"
+    (data / "more.txt").write_text("more\n", encoding="utf-8")
+    git(data, "add", "-A")
+    git(data, "commit", "-m", "more")
+    second = execute(loader.load_benchmark(root, "smoke"), root=root, checkout=repo)
+    assert second.name.data_commit != first.name.data_commit
+    assert second.name.n == 1
+
+
+def test_the_data_commit_is_recorded_in_the_ledger(
+    make_benchmark: MakeBenchmark, root: Path, repo: Path
+) -> None:
+    result = run(make_benchmark, root, repo)
+    ledger = json.loads((result.workspace / "ledger.json").read_text(encoding="utf-8"))
+    data = root / "gold" / "smoke" / "data"
+    assert ledger["data_commit"] == git(data, "rev-parse", "HEAD")
+    assert ledger["stablemate"] == git(repo, "rev-parse", "HEAD")
+    assert ledger["name"] == str(result.name)
+    assert [step["name"] for step in ledger["steps"]] == ["touch"]
     assert ledger["steps"][0]["commands"] == [["/bin/sh", "-c", "echo hello"]]
-    assert ledger["seed"]["name"] == "acme"
 
 
-def test_scratch_stays_out_of_the_result(repo: Path, data_dir: Path, store: Path) -> None:
-    result = run(repo, data_dir, store)
-    assert not list(result.stage.rglob("scratch-only.txt"))
-    assert (result.stage.parent / "scratch" / "trial-1" / "scratch-only.txt").is_file()
-
-
-def test_the_score_is_written_and_the_result_is_sealed(
-    repo: Path, data_dir: Path, store: Path
+def test_the_stage_is_the_data_at_head_with_no_remote(
+    make_benchmark: MakeBenchmark, root: Path, repo: Path
 ) -> None:
-    result = run(repo, data_dir, store)
-    assert result.score is not None
-    assert result.score.headline == "2/2 fine"
-    assert json.loads((result.stage / "score.json").read_text(encoding="utf-8"))["data"] == {
-        "caught": 2
+    benchmark = make_benchmark()
+    (benchmark.data / "README.md").write_text("edited, not committed\n", encoding="utf-8")
+    result = execute(benchmark, root=root, checkout=repo)
+    assert (result.stage / "app.py").is_file()
+    assert (result.stage / "README.md").read_text(encoding="utf-8") == "smoke\n"
+    assert (result.stage / "made-by-the-step.txt").is_file()
+    assert git(result.stage, "remote") == ""
+    assert git(result.stage, "rev-parse", "HEAD") == result.name.data_commit
+
+
+def test_the_task_override_is_laid_over_the_base_config(
+    make_benchmark: MakeBenchmark, root: Path, repo: Path
+) -> None:
+    body = SMOKE_TASKS.replace(
+        'task(name="smoke")',
+        'task(name="smoke", config={"profiles": {"claude": {"model": "task-model"}}, "extra": 1})',
+    )
+    result = run(make_benchmark, root, repo, body)
+    merged = tomllib.loads((result.workspace / "config.toml").read_text(encoding="utf-8"))
+    assert merged == {
+        "library_dir": "/nowhere",
+        "default_cli": "claude",
+        "profiles": {"claude": {"cli": "claude", "model": "task-model"}},
+        "extra": 1,
     }
-    assert result.zip_path is not None and result.zip_path.exists()
-    assert result.pointer_path is not None
-    pointer = ResultPointer.load(result.pointer_path)
-    assert pointer.task == "demo"
-    assert pointer.scored is True
-    pointer.verify(result.zip_path)
+
+
+def test_no_override_leaves_the_base_config_verbatim(
+    make_benchmark: MakeBenchmark, root: Path, repo: Path
+) -> None:
+    base = BASE_CONFIG.replace('library_dir = "/nowhere"', "# kept as written\nlibrary_dir   =   '/nowhere'")
+    benchmark = make_benchmark(base=base)
+    result = execute(benchmark, root=root, checkout=repo)
+    assert (result.workspace / "config.toml").read_text(encoding="utf-8") == base
+
+
+def test_a_step_gets_the_merged_config_and_nothing_from_the_command_line(
+    make_benchmark: MakeBenchmark, root: Path, repo: Path
+) -> None:
+    body = SMOKE_TASKS.replace(
+        '    run.cli("/bin/sh", "-c", "echo hello", check=True)\n',
+        '    assert not hasattr(run, "params")\n'
+        '    assert not hasattr(run, "param")\n'
+        '    (run.artifacts / "config-path.txt").write_text(str(run.config), encoding="utf-8")\n',
+    )
+    result = run(make_benchmark, root, repo, body)
+    assert result.ok
+    recorded = (result.workspace / "artifacts" / "touch" / "config-path.txt").read_text(encoding="utf-8")
+    assert Path(recorded) == result.workspace / "config.toml"
+
+
+def test_scratch_and_artifacts_stay_out_of_the_stage(
+    make_benchmark: MakeBenchmark, root: Path, repo: Path
+) -> None:
+    body = SMOKE_TASKS.replace(
+        '    run.cli("/bin/sh", "-c", "echo hello", check=True)\n',
+        '    (run.workdir("trial-1") / "scratch-only.txt").write_text("no", encoding="utf-8")\n'
+        '    (run.artifacts / "kept.txt").write_text("yes", encoding="utf-8")\n',
+    )
+    result = run(make_benchmark, root, repo, body)
+    assert not list(result.stage.rglob("scratch-only.txt"))
+    assert not list(result.stage.rglob("kept.txt"))
+    assert (result.workspace / "scratch" / "trial-1" / "scratch-only.txt").is_file()
+    assert (result.workspace / "artifacts" / "touch" / "kept.txt").is_file()
+
+
+def test_the_score_is_written_next_to_the_stage(
+    make_benchmark: MakeBenchmark, root: Path, repo: Path
+) -> None:
+    result = run(make_benchmark, root, repo)
+    assert result.score is not None
+    assert result.score.headline == "1/1 fine"
+    written = json.loads((result.workspace / "score.json").read_text(encoding="utf-8"))
+    assert written["data"] == {"caught": 1}
 
 
 def test_a_score_that_mutates_the_result_is_refused(
-    repo: Path, data_dir: Path, store: Path
+    make_benchmark: MakeBenchmark, root: Path, repo: Path
 ) -> None:
-    body = TASK.replace(
+    body = SMOKE_TASKS.replace(
         "def score(run):\n",
         'def score(run):\n    (run.repo / "written-by-score.txt").write_text("no", encoding="utf-8")\n',
     )
     with pytest.raises(RunError, match="read-only"):
-        run(repo, data_dir, store, body)
+        run(make_benchmark, root, repo, body)
 
 
 def test_a_score_may_still_log_into_its_own_artifact_directory(
-    repo: Path, data_dir: Path, store: Path
+    make_benchmark: MakeBenchmark, root: Path, repo: Path
 ) -> None:
-    body = TASK.replace(
+    body = SMOKE_TASKS.replace(
         "def score(run):\n",
         'def score(run):\n    (run.artifacts / "judge.log").write_text("ok", encoding="utf-8")\n',
     )
-    result = run(repo, data_dir, store, body)
-    assert (result.stage / "artifacts" / "score" / "judge.log").is_file()
+    result = run(make_benchmark, root, repo, body)
+    assert (result.workspace / "artifacts" / "score" / "judge.log").is_file()
+
+
+FAILING = SMOKE_TASKS.replace(
+    '    (run.repo / "made-by-the-step.txt").write_text("yes", encoding="utf-8")',
+    '    raise RuntimeError("boom")',
+) + '''
+@step()
+def after(run):
+    pass
+'''
 
 
 def test_a_failing_step_stops_the_run_and_the_rest_are_skipped(
-    repo: Path, data_dir: Path, store: Path
+    make_benchmark: MakeBenchmark, root: Path, repo: Path
 ) -> None:
-    body = TASK.replace(
-        '    (run.repo / "made-by-the-step.txt").write_text("yes", encoding="utf-8")',
-        '    raise RuntimeError("boom")',
-    )
-    result = run(repo, data_dir, store, body)
+    result = run(make_benchmark, root, repo, FAILING)
     assert not result.ok
-    assert [(o.name, o.status) for o in result.outcomes] == [("touch", "failed"), ("fan_out", "skipped")]
+    assert [(o.name, o.status) for o in result.outcomes] == [("touch", "failed"), ("after", "skipped")]
     assert "boom" in result.outcomes[0].error
 
 
-def test_a_nonzero_command_with_check_fails_its_step(
-    repo: Path, data_dir: Path, store: Path
+def test_a_failed_step_is_a_caveat_in_the_ledger(
+    make_benchmark: MakeBenchmark, root: Path, repo: Path
 ) -> None:
-    body = TASK.replace('"echo hello"', '"exit 3"')
-    result = run(repo, data_dir, store, body)
+    result = run(make_benchmark, root, repo, FAILING)
+    ledger = json.loads((result.workspace / "ledger.json").read_text(encoding="utf-8"))
+    assert ledger["caveats"] == ["step 'touch' failed", "step 'after' skipped"]
+
+
+def test_a_nonzero_command_with_check_fails_its_step(
+    make_benchmark: MakeBenchmark, root: Path, repo: Path
+) -> None:
+    body = SMOKE_TASKS.replace('"echo hello"', '"exit 3"')
+    result = run(make_benchmark, root, repo, body)
     assert result.outcomes[0].status == "failed"
     assert "exited 3" in result.outcomes[0].error
 
 
-def test_no_seal_leaves_the_stage_and_writes_no_pointer(
-    repo: Path, data_dir: Path, store: Path
+def test_a_scores_caveats_reach_the_ledger(
+    make_benchmark: MakeBenchmark, root: Path, repo: Path
 ) -> None:
-    result = run(repo, data_dir, store, seal=False)
-    assert result.zip_path is None
-    assert result.pointer_path is None
-    assert (result.stage / "acme-api").is_dir()
-
-
-def test_a_missing_config_is_named_before_anything_runs(
-    repo: Path, data_dir: Path, store: Path
-) -> None:
-    body = TASK.replace("configs/test.toml", "configs/absent.toml")
-    with pytest.raises(RunError, match="does not exist"):
-        run(repo, data_dir, store, body)
-
-
-PARAMS_TASK = '''
-from paddock import Score, step, task
-
-task(name="demo", seed="acme", config="configs/test.toml")
-
-@step()
-def record(run):
-    run.write_json(run.artifacts / "seen.json", {
-        "defects": list(run.param_list("defects")),
-        "budget": run.param_float("budget", 2400.0),
-        "control": run.param_bool("control", True),
-        "missing": run.param("nobody", "fallback"),
-    })
-
-def score(run):
-    return Score(headline="read the knobs", detail=(), data={})
-'''
-
-
-def test_params_reach_the_steps_and_are_recorded(repo: Path, data_dir: Path, store: Path) -> None:
-    result = run(
-        repo,
-        data_dir,
-        store,
-        PARAMS_TASK,
-        params={"defects": "PD-1, PD-2", "budget": "600", "control": "no"},
+    body = SMOKE_TASKS.replace(
+        'data={"caught": 1})',
+        'data={"caught": 1}, caveats=("operator gate parked: context.md",))',
     )
-    seen = json.loads((result.stage / "artifacts" / "record" / "seen.json").read_text(encoding="utf-8"))
-    assert seen == {
-        "defects": ["PD-1", "PD-2"],
-        "budget": 600.0,
-        "control": False,
-        "missing": "fallback",
-    }
-    ledger = json.loads((result.stage / "steps.json").read_text(encoding="utf-8"))
-    assert ledger["params"] == {"defects": "PD-1, PD-2", "budget": "600", "control": "no"}
-    assert result.pointer_path is not None
-    assert "budget=600" in ResultPointer.load(result.pointer_path).note
+    result = run(make_benchmark, root, repo, body)
+    ledger = json.loads((result.workspace / "ledger.json").read_text(encoding="utf-8"))
+    assert ledger["caveats"] == ["operator gate parked: context.md"]
 
 
-@pytest.mark.parametrize(
-    ("body", "message"),
-    [("budget", "not a number"), ("control", "not a boolean")],
-)
-def test_a_malformed_param_is_named(
-    repo: Path, data_dir: Path, store: Path, body: str, message: str
+def test_a_self_touch_reaches_the_ledger(
+    make_benchmark: MakeBenchmark, root: Path, repo: Path
 ) -> None:
-    result = run(repo, data_dir, store, PARAMS_TASK, params={body: "sideways"})
-    assert not result.ok
-    assert message in (result.outcomes[0].error or "")
+    body = SMOKE_TASKS.replace(
+        '    (run.repo / "made-by-the-step.txt").write_text("yes", encoding="utf-8")',
+        '    (run.project / "README.md").write_text("patched mid-round", encoding="utf-8")',
+    )
+    result = run(make_benchmark, root, repo, body)
+    ledger = json.loads((result.workspace / "ledger.json").read_text(encoding="utf-8"))
+    assert [c for c in ledger["caveats"] if c.startswith("self-touched: ")]
 
 
 def test_a_command_is_teed_to_stderr_while_it_runs(
-    repo: Path, data_dir: Path, store: Path, capsys: pytest.CaptureFixture[str]
+    make_benchmark: MakeBenchmark, root: Path, repo: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    run(repo, data_dir, store)
+    run(make_benchmark, root, repo)
     assert "00-sh| hello" in capsys.readouterr().err
 
 
 def test_quiet_suppresses_the_tee_without_touching_the_log(
-    repo: Path, data_dir: Path, store: Path, capsys: pytest.CaptureFixture[str]
+    make_benchmark: MakeBenchmark, root: Path, repo: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    result = run(repo, data_dir, store, echo=False)
+    result = run(make_benchmark, root, repo, echo=False)
     assert "hello" not in capsys.readouterr().err
-    log = result.stage / "artifacts" / "touch" / "00-sh.log"
+    log = result.workspace / "artifacts" / "touch" / "00-sh.log"
     assert "hello" in log.read_text(encoding="utf-8")
 
 
-def test_a_scores_caveats_mark_the_pointer_note(
-    repo: Path, data_dir: Path, store: Path
+def test_a_data_directory_that_is_not_a_repository_is_refused(
+    make_benchmark: MakeBenchmark, root: Path, repo: Path
 ) -> None:
-    body = TASK.replace(
-        'data={"caught": 2})',
-        'data={"caught": 2}, caveats=("operator gate parked: context.md",))',
-    )
-    result = run(repo, data_dir, store, body)
-    assert result.pointer_path is not None
-    pointer = ResultPointer.load(result.pointer_path)
-    assert pointer.caveats == ["operator gate parked: context.md"]
-    assert pointer.note.startswith(DIAGNOSTIC_MARKER)
-
-
-def test_a_failed_step_is_a_caveat_the_runner_derives_itself(
-    repo: Path, data_dir: Path, store: Path
-) -> None:
-    body = TASK.replace(
-        '    (run.repo / "made-by-the-step.txt").write_text("yes", encoding="utf-8")',
-        '    raise RuntimeError("boom")',
-    )
-    result = run(repo, data_dir, store, body)
-    assert result.pointer_path is not None
-    pointer = ResultPointer.load(result.pointer_path)
-    assert pointer.caveats == ["step 'touch' failed", "step 'fan_out' skipped"]
-    assert pointer.note.startswith(DIAGNOSTIC_MARKER)
-
-
-def stub(note: str, caveats: list[str]) -> ResultPointer:
-    """A pointer with the archive fields filled in, so a test can vary only the note."""
-    return ResultPointer(
-        name="demo/x", repo_dir="x", sha256="0" * 64, bytes=1, note=note, caveats=caveats
-    )
-
-
-def test_a_caveated_result_cannot_be_written_with_a_clean_note() -> None:
-    with pytest.raises(ValidationError, match="does not say so"):
-        stub(note="87% clean", caveats=["operator gate parked"])
-
-
-def test_the_marker_cannot_be_left_behind_on_a_clean_note() -> None:
-    with pytest.raises(ValidationError, match="records no"):
-        stub(note=f"{DIAGNOSTIC_MARKER}87%", caveats=[])
-
-
-def test_a_self_touch_reaches_the_pointer_not_just_the_log(
-    repo: Path, data_dir: Path, store: Path
-) -> None:
-    body = '''
-from paddock import step, task
-
-task(name="demo", seed="acme", config="configs/test.toml")
-
-@step()
-def sneak(run):
-    (run.project / "README.md").write_text("patched mid-round", encoding="utf-8")
-'''
-    result = run(repo, data_dir, store, body, project=repo)
-    assert result.pointer_path is not None
-    pointer = ResultPointer.load(result.pointer_path)
-    assert [c for c in pointer.caveats if c.startswith("self-touched: ")]
-    assert pointer.note.startswith(DIAGNOSTIC_MARKER)
+    benchmark = make_benchmark()
+    (benchmark.data / ".git").rename(benchmark.data / "git-moved")
+    with pytest.raises(RunError, match="not a git repository"):
+        execute(benchmark, root=root, checkout=repo)
 
 
 @pytest.mark.stress
 def test_a_json_file_is_never_readable_half_written(
-    repo: Path, data_dir: Path, store: Path, tmp_path: Path
+    make_benchmark: MakeBenchmark, root: Path, tmp_path: Path
 ) -> None:
     """A reader polling one of these files sees the old bytes or the new ones, never none."""
+    benchmark = make_benchmark()
     handle = Run(
-        task=prepare(repo, data_dir, store),
-        label="t1",
+        task=benchmark.task,
+        name=names.RunName("smoke", "smoke", "a" * 12, "b" * 12, 1),
         stage=tmp_path / "stage",
-        repo=repo,
         scratch=tmp_path / "scratch",
-        config=data_dir / "configs" / "test.toml",
-        data_dir=data_dir,
-        store=store,
-        seed=Pointer(name="acme", repo_dir="acme-api", sha256="0" * 64, bytes=1),
+        workspace=tmp_path,
+        config=tmp_path / "config.toml",
+        data=benchmark.data,
     )
     path = tmp_path / "ledger.json"
     handle.write_json(path, {"steps": []})
