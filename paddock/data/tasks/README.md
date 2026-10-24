@@ -14,6 +14,7 @@ One module per benchmark round, loaded by `paddock` from `--data-dir`. A module 
 - `_operator_gates.py`: the operator-gate ledger, and the watcher that parks a round on a gate nothing answered.
 - `_replay.py`: replaying one lane of the coder workflow cold, on a tree that already ran it, and scoring its convergence.
 - `_stablemate.py`: the process boundary a task drives stablemate across: the pinned checkout, the pinned config and the leak check.
+- `bookmarks.py`: the cross-surface task: a greenfield round with a Go api and a React Router web app over four journeys.
 - `claims_api_qa.py`: the frozen-app QA round on claims-api, an app with no screen.
 - `depot_infra_audit.py`: the depot-infra QA round with the auditor on, scored on defect D7 alone.
 - `depot_infra_qa.py`: the frozen-app QA round on depot-infra, where nothing runs.
@@ -32,3 +33,4 @@ One module per benchmark round, loaded by `paddock` from `--data-dir`. A module 
 - `seat_booking_qa_minimax_direct.py`: the seat-booking QA round run on MiniMax through minimax.io's own API.
 - `tally_cli_mutants.py`: the mutant round on tally-cli: is the book what kills a defect.
 - `tally_cli_qa.py`: the frozen-app QA round on tally-cli: does QA separate obligations that share a file.
+- `todo_app.py`: the verdict task: a greenfield round with a Go api, a React Router web app and a Flutter app over eighteen journeys.
