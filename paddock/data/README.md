@@ -7,8 +7,8 @@ uv run paddock run link-shortener --label smoke
 ```
 
 This is the **tracked, versioned half of the harness** — the half `--data-dir` points at.
-It holds task modules, backlogs, decision sheets, frozen apps, config TOMLs, pointer files
-and the tests that keep all of it honest.
+It holds task modules, milestones, decision records, frozen apps, config TOMLs, pointer
+files and the tests that keep all of it honest.
 
 It is deliberately *not* described as "the part with no code in it". The task modules under
 [`tasks/`](tasks/) are Python — they declare surfaces, scaffolds, repo gates and the pinned
@@ -28,40 +28,45 @@ What follows is what the tasks *measure*.
 
 ## The idea
 
-A benchmark app is defined by a **backlog of user-observable bullets** — no implementation
-tasks, no file lists, just things a person can do:
+A benchmark app is defined by an **approved milestone of user journeys** — no
+implementation tasks, no file lists, just things a person can do:
 
 ```markdown
-- [todo-create] A person adds a todo by typing a title, and it appears in their list immediately.
+### Add a todo by title
+
+- services: web, app, api
+
+A person adds a todo by typing a title, and it appears in their list immediately.
 ```
 
-The workflows under test are given that backlog and a greenfield repo, in three phases:
+The workflows under test are given that milestone and a greenfield repo, in three phases:
 `genesis` (the `coder` workflow's greenfield flow — `workhorse-coder run genesis`), then
-`author`, then `coder`. Afterwards, every bullet is scored 0–3 against what was actually built:
+`author` (`workhorse-author run`, which reads the one approved milestone from the repo),
+then `coder`. Afterwards, every journey is scored 0–3 against what was actually built:
 
 | level | name       | means                                                       |
 | ----- | ---------- | ----------------------------------------------------------- |
-| 0     | `absent`   | nothing in the repo claims this bullet                       |
+| 0     | `absent`   | no epic the milestone lists claims this journey              |
 | 1     | `planned`  | a story exists that would deliver it; no implementing code   |
-| 2     | `built`    | implementing code exists on every surface the bullet implies |
+| 2     | `built`    | implementing code exists on every surface the journey implies |
 | 3     | `verified` | built, and executable evidence exercises it                  |
 
-The headline is the mean as a percentage of 3 — **backlog satisfaction**. That is the whole
+The headline is the mean as a percentage of 3 — **milestone satisfaction**. That is the whole
 score: one rubric, one number, comparable across runs and across benchmark apps.
 
 ## Why a judge
 
 Levels 2 and 3 are behavioral claims, and no static check can make them: a working sign-up
 flow and a plausible-looking stub have the same shape on disk. So an agent reads the repo
-and assigns the level (one turn per bullet, ~20s each, run concurrently).
+and assigns the level (one turn per journey, ~20s each, run concurrently).
 
 Two things keep it honest, and they matter more than the rubric wording:
 
 - **Citations are verified.** Every level ≥2 must cite repo-relative paths, and the task
-  checks those paths exist. A bullet whose citations don't resolve is capped at `planned`
+  checks those paths exist. A journey whose citations don't resolve is capped at `planned`
   and reported as unproven. This catches the judge's most common failure mode
   deterministically, for free.
-- **Planning documents are treated as claims, not evidence.** An epic listing a bullet and
+- **Planning documents are treated as claims, not evidence.** An epic naming a journey and
   a story stamped `QA passed` both mean the workflow *believed* it finished. The gap
   between that belief and the code is precisely what this benchmark exists to measure, so
   neither can lift a score on its own.
@@ -92,58 +97,55 @@ Three details worth knowing:
   verb for "the harness answered it": the harness never answers a gate, and
   `watch_operator_gates` in `tasks/_operator_gates.py` says why at length.
 
-## The author lane's grill gate, and the frozen operator turn
+## How the milestone reaches the author, and how a journey is traced back
 
-A backlog written at the level of observable behaviour deliberately leaves product
-decisions open, and the author lane's grill gate parks and waits for an operator to settle
-them. That gate is human by construction — it is the one gate of the author lane's twelve
-with no auto-resolver — so an unattended round can never pass it, and an attended one is
-answered differently each time, which means two rounds of the same task are not measuring
-the same product.
+The author reads no parameter and no file the round names: `workhorse-author run` finds
+the one `status: approved` milestone under `docs/milestones/` of the repo it runs in, and
+refuses to start until `ostler doctor` has no error against it. So the round makes that
+true after genesis: it copies the fixture's milestone folder to
+`docs/milestones/<slug>/`, copies the decision records to `docs/decisions/`, and opens an
+empty book directory under `docs/services/` for every surface, because each journey's
+`- services:` bullet must name a book that exists and genesis creates none. `seed_milestone`
+in `tasks/_greenfield.py` is the mechanism, and
+`test_every_greenfield_task_carries_an_approved_ready_milestone` proves each fixture gets
+past that gate before any round spends an hour finding out.
 
-The rule that settles this, and the one to reuse the next time a gate raises it: **freeze
-what the design assigns to the operator; never freeze what the design assigns to the loop.**
-A human turn the product reserves for humans is not part of the measured loop — it is the
-fixture's environment, and every benchmark with a human in the loop must freeze that human
-at a constant or it measures the human.
+The author's epic split writes the epics it created into the milestone's `epics`
+frontmatter, and each epic restates the journeys it delivers under its own
+`## User Journeys`. The trace reads both: a journey is claimed by a listed epic whose
+`## User Journeys` carries a heading with the journey's slug or names its title in prose,
+and an epic the milestone does not list claims nothing and is warned about. Matching is
+by title because the author's prompts ask an epic to carry its milestone journeys, not to
+cite them by id, so a split that paraphrases every journey scores every one of them
+`absent`. That is a defect of the split worth seeing, not one the trace papers over.
 
-So the grill conversation was held **once**, for real, at fixture-authoring time, and both
-halves of it are frozen under `apps/<name>/grill/`: the answered gate file, and the
-checkpoint of the run that was parked on it. A round seeds them before the author phase and
-resumes from there, which puts `refactor_backlog` — the state after the gate — first, with
-nothing about the loop itself pre-supplied. `seed_grill_capture` in `tasks/_greenfield.py`
-is the mechanism.
-
-**A grounded score covers the loop given a completed operator turn; it says nothing about
-the grill's question quality.** The question-generation turn no longer runs per round, so
-its variance is excised rather than solved — which is honest only if it is said out loud,
-here and anywhere the number is quoted.
-
-The product decisions themselves live separately, as standing records under
-`apps/<name>/docs/decisions/`, copied into the produced repo's `<docs-root>/decisions/`
-where every lane's auto-resolver reads them. A record stands on its own — it says what *is*
-decided, not "A2:" — so it answers whatever phrasing a later gate reaches it in. What used
-to sit there instead, a sheet of replies applied positionally to one gate and stamped
-`ANSWERED` unconditionally, is gone: the questions a gate asks are generated per round and
-are not stable across rounds, so the sheet was routinely stamped over questions it had
-never been written against.
+The grill gate the author holds before splitting is human by construction, and a human
+turn the product reserves for humans is not part of the measured loop. The rule is
+**freeze what the design assigns to the operator; never freeze what the design assigns to
+the loop.** So the operator's answers are frozen as a grill record under the milestone's
+`grills/` folder, where the split reads them, and the product decisions behind each answer
+stand on their own under `apps/<name>/docs/decisions/`, copied into the produced repo where
+every lane's auto-resolver reads them. A record says what *is* decided, so it answers
+whatever phrasing a later gate reaches it in. A grounded score therefore covers the loop
+given a completed operator turn, and says nothing about the grill's question quality,
+which is honest only if it is said anywhere the number is quoted.
 
 ## The benchmark fixtures (`apps/`)
 
 Every benchmark names one directory under `apps/<name>/`, and two kinds of fixture live
-there under one namespace: a **backlog** — the bullets, the decision records and the frozen
-grill capture a greenfield task points at — and a **frozen app** with an answer key, input
+there under one namespace: a **milestone** — the journeys, the decision records and the
+grill record a greenfield task points at — and a **frozen app** with an answer key, input
 to measuring QA. Which kind a fixture is is a property of the task that names it, not of the
 directory it sits in, which is why they are not split into two trees.
 
-`apps/todo-app` is the verdict benchmark: four surfaces, eighteen bullets, hours per run.
+`apps/todo-app` is the verdict benchmark: four surfaces, eighteen journeys, hours per run.
 That is the right size for *is the workflow good* and the wrong size for *why did it break*
 — a fix-and-rerun cycle measured in hours is a cycle nobody runs twice. The others are sized
 so `author + coder` finishes inside an hour. Each isolates a failure class the others cannot
 reach — see [apps/README.md](apps/README.md).
 
-The backlog is **copied, never generated**, so every run starts from the same bullets and
-the outcome is attributable to the workflows rather than to input that drifted.
+The milestone is **copied, never generated**, so every run starts from the same journeys
+and the outcome is attributable to the workflows rather than to input that drifted.
 
 ## Iterating on a workflow (`evals`) — designed, not built
 
@@ -164,7 +166,7 @@ result, and when a node qualifies — is in [EVALS.md](../docs/EVALS.md).
 
 ```
 tasks/                what a round does, one module per benchmark  (paddock loads these)
-  _greenfield.py      the backlog→genesis→author→coder round, shared by every backlog
+  _greenfield.py      the milestone→genesis→author→coder round, shared by every milestone
   _frozenapp.py       the frozen-app QA round: seed a defect, run QA, score detection
   _judge.py           one agent turn that waits out usage caps, and the rubric fill
   _leverage.py        how far a QA plan used the book it was handed
@@ -176,9 +178,11 @@ configs/              full stablemate configs a task pins, tracked
 apps/                 every benchmark fixture, one directory each
   README.md           which fixture catches what, and the port register
   <name>/             the directory name IS the name a task points at
-    docs/backlog.md   greenfield: the pristine input, copied in on every run
+    docs/milestones/<slug>/
+                      greenfield: the approved milestone, copied in on every run
+      milestone.md    the journeys the round traces and scores
+      grills/         the frozen operator turn the split reads
     docs/decisions/   greenfield: standing records, copied to <docs-root>/decisions/
-    grill/            greenfield: the frozen operator turn — answered gate + checkpoint
     defects.yml       frozen app: the answer key, beside the code and the book
 rubric.md             the judge's prompt — the file to tune when scores feel wrong
 ../docs/EVALS.md      the node-eval design                                    (PLANNED)

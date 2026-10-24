@@ -60,7 +60,7 @@ Three pieces, all data:
 
 - **Graders check well-formedness, not quality.** A prompt can be tuned to satisfy
   `section_gaps` while writing worse stories. That is what the greenfield round's judged
-  backlog satisfaction is for — iterate here, gate there.
+  milestone satisfaction is for — iterate here, gate there.
 - **Only a node's last visit is harvestable.** `context_after.json` is overwritten per
   visit, so a node that looped eleven times yields one fixture. Breadth comes from more
   runs, not deeper mining of one.
