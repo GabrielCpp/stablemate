@@ -103,7 +103,7 @@ def resolve_delegates_for(backend_name: str, profile: str = "") -> tuple[Delegat
 
 
 def implied_profile(cfg: dict[str, Any], cli: str) -> str:
-    """The profile a bare ``--cli`` runs under: the one named after that CLI and declaring it, else none."""
+    """The profile a run on ``cli`` takes when none is named: the one named after that CLI and declaring it, else none."""
     name = cli.strip().lower()
     try:
         return name if profile_has_backend(select_profile(cfg, name), name) else ""

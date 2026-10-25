@@ -29,6 +29,7 @@ from workhorse.records import PyflowCheckpoint, parse_checkpoint
 from workhorse.rundir import find_latest_resumable as _find_latest_resumable
 from workhorse.rundir import resolve_run_dir
 from workhorse.runner.backends import AgentBackend
+from workhorse.runner.backends.registry import active_cli
 
 NAME = "run"
 HELP = "Execute a workflow (default)"
@@ -210,8 +211,8 @@ def invocation(args: argparse.Namespace) -> RunInvocation:
     if not profile_name and not args.cli and resume_run_dir is not None:
         profile_name = recorded_profile(resume_run_dir)
     cfg = load_config()
-    if not profile_name and args.cli:
-        profile_name = implied_profile(cfg, args.cli)
+    if not profile_name and (args.cli or resume_run_dir is None):
+        profile_name = implied_profile(cfg, active_cli(args.cli, cfg))
     backend = _select_backend(cfg, profile_name, args.cli)
 
     params = load_params(args.params, args.params_file)

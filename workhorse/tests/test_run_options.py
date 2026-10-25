@@ -205,10 +205,20 @@ def test_profile_cli_overrides_the_default_cli(tmp_path):
     assert (captured["profile"], captured["backend"]) == ("local", "opencode")
 
 
-def test_no_profile_leaves_the_top_level_default_cli_in_charge(tmp_path):
+def test_a_flagless_run_takes_the_profile_named_after_the_default_cli(tmp_path):
+    """Without it, `[profiles.claude]`'s models never apply, and the CLI runs on its own default model."""
     captured = _run_profiled([], _profiles_config(tmp_path))
 
-    assert (captured["profile"], captured["backend"]) == ("", "claude")
+    assert (captured["profile"], captured["backend"]) == ("claude", "claude")
+
+
+def test_a_flagless_run_with_no_profile_named_after_the_default_cli_carries_none(tmp_path):
+    config = tmp_path / "config.toml"
+    config.write_text('config_version = 2\ndefault_cli = "codex"\n\n[profiles.cli-only]\ncli = "codex"\n')
+
+    captured = _run_profiled([], config)
+
+    assert (captured["profile"], captured["backend"]) == ("", "codex")
 
 
 def test_an_unknown_profile_is_refused_before_the_first_state(tmp_path, capsys):
