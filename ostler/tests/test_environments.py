@@ -28,6 +28,7 @@ def _env_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     monkeypatch.setenv(runtime.HOME_ENV, str(home))
     monkeypatch.delenv(addresses.LEASE_ENV, raising=False)
     monkeypatch.delenv(runtime.HOLDER_ENV, raising=False)
+    monkeypatch.setattr(runtime, "port_free", lambda port: True)
     return home
 
 
@@ -344,8 +345,9 @@ def test_the_book_you_stand_in_is_the_default_target(tmp_path: Path) -> None:
 
 
 class FakeDocker:
-    def __init__(self) -> None:
+    def __init__(self, ps: str = "") -> None:
         self.calls: list[list[str]] = []
+        self.ps = ps
 
     def __call__(self, argv: Sequence[str], *, capture: bool) -> subprocess.CompletedProcess[str]:
         args = list(argv)
@@ -355,7 +357,62 @@ class FakeDocker:
             stdout = {"80": "127.0.0.1:49200\n", "8080": "127.0.0.1:49201\n"}[args[-1]]
         if args[:3] == ["docker", "compose", "ls"]:
             stdout = '[{"Name": "acme-story-1", "Status": "running(5)"}]'
+        if args[:2] == ["docker", "ps"]:
+            stdout = self.ps
         return subprocess.CompletedProcess(args, 0, stdout, "")
+
+
+def _compose_calls(docker: FakeDocker) -> list[list[str]]:
+    return [call for call in docker.calls if call[:2] == ["docker", "compose"]]
+
+
+def test_a_shared_up_names_the_container_holding_its_fixed_port(tmp_path: Path) -> None:
+    root = _repo(tmp_path)
+    docker = FakeDocker(ps="api-mysql-test-1\tapi\t\t0.0.0.0:8443->3306/tcp, [::]:8443->3306/tcp\n")
+    outcome = commands.cmd_up(root, ["web"], runner=docker)
+    assert not outcome.ok
+    assert "web:gateway needs host port 8443, which container api-mysql-test-1 of compose " \
+           "project api holds" in outcome.message
+    assert "`ostler env up web --copy NAME`" in outcome.message
+    assert _compose_calls(docker) == []
+
+
+def test_a_shared_up_says_another_checkout_already_runs_the_service(tmp_path: Path) -> None:
+    root = _repo(tmp_path)
+    other = runtime.Copy(name="shared", project="beta-shared",
+                         directory=runtime.home() / "beta-shared")
+    runtime.write_manifest(other, {"repo": "/work/beta", "copy": "shared"})
+    docker = FakeDocker(ps="beta-shared-web-gateway-1\tbeta-shared\tweb:gateway\t"
+                           "127.0.0.1:8443->80/tcp\n")
+    outcome = commands.cmd_up(root, ["web"], runner=docker)
+    assert not outcome.ok
+    assert "web:gateway is already running on host port 8443 in the shared copy of /work/beta" \
+        in outcome.message
+
+
+def test_a_shared_up_names_a_port_held_outside_docker(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root = _repo(tmp_path)
+    monkeypatch.setattr(runtime, "port_free", lambda port: port != 8443)
+    outcome = commands.cmd_up(root, ["web"], runner=FakeDocker())
+    assert not outcome.ok
+    assert "which a process outside docker holds" in outcome.message
+
+
+def test_a_shared_up_over_its_own_running_containers_goes_ahead(tmp_path: Path) -> None:
+    root = _repo(tmp_path)
+    docker = FakeDocker(ps="acme-shared-web-gateway-1\tacme-shared\tweb:gateway\t"
+                           "127.0.0.1:8443->80/tcp\n")
+    outcome = commands.cmd_up(root, ["web"], runner=docker)
+    assert outcome.ok, outcome.message
+
+
+def test_a_named_copy_never_checks_the_fixed_ports(tmp_path: Path) -> None:
+    root = _repo(tmp_path)
+    docker = FakeDocker(ps="other\t\t\t0.0.0.0:8443->80/tcp\n")
+    assert commands.cmd_up(root, ["web"], copy_name="story-1", runner=docker).ok
+    assert not any(call[:2] == ["docker", "ps"] for call in docker.calls)
 
 
 def test_up_writes_the_address_book_from_the_published_ports(tmp_path: Path) -> None:

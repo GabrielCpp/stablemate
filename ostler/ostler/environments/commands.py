@@ -137,6 +137,10 @@ def cmd_up(
     if isinstance(prepared, EnvOutcome):
         return prepared
     copy = prepared.copy
+    if copy.shared:
+        taken = _taken_ports(prepared, targets, runner)
+        if taken:
+            return _fail(taken, copy=copy.name)
     reclaimed = reclaim(keep=copy, runner=runner) if copy.name != SHARED else []
     holder = holder if holder is not None else runtime.holder_from_env()
     compose = Compose(copy, runner)
@@ -185,6 +189,44 @@ def cmd_up(
     return EnvOutcome(True, "\n".join([f"{copy.name} is up", *lines]),
                       _summary(prepared, addresses=book, address_book=str(book_file),
                                entry_url=entry, reclaimed=reclaimed))
+
+
+def _taken_ports(prepared: Prepared, targets: Sequence[str], runner: Runner) -> str:
+    """Why the shared copy cannot publish its fixed host ports, or empty when every one is free."""
+    fixed = [service for service in prepared.services if service.address and service.host_port]
+    if not fixed:
+        return ""
+    occupants = runtime.port_occupants(runner)
+    owners = {copy.project: (copy.name, str(manifest.get("repo", "")))
+              for copy, manifest in runtime.held_copies()}
+    lines: list[str] = []
+    for service in fixed:
+        occupant = occupants.get(service.host_port)
+        if occupant is not None and occupant.project == prepared.copy.project:
+            continue
+        if occupant is None and runtime.port_free(service.host_port):
+            continue
+        lines.append(_taken_line(service, occupant, owners))
+    if not lines:
+        return ""
+    again = " ".join(["ostler env up", *targets, "--copy NAME"])
+    return "\n".join([f"the {prepared.copy.name} copy cannot take its fixed host ports:", *lines,
+                      f"stop what holds them, or bring up a named copy, which takes free ports: "
+                      f"`{again}`"])
+
+
+def _taken_line(service: spec.Service, occupant: runtime.Occupant | None,
+                owners: dict[str, tuple[str, str]]) -> str:
+    port = service.host_port
+    if occupant is None:
+        return f"- {service.ref} needs host port {port}, which a process outside docker holds"
+    if occupant.service and occupant.project in owners:
+        name, repo = owners[occupant.project]
+        return (f"- {occupant.service} is already running on host port {port} in the {name} "
+                f"copy of {repo or occupant.project}")
+    project = f" of compose project {occupant.project}" if occupant.project else ""
+    return (f"- {service.ref} needs host port {port}, which container {occupant.container}"
+            f"{project} holds")
 
 
 def cmd_down(root: Path, *, copy_name: str = SHARED, keep_data: bool = False,

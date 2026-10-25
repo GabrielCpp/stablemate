@@ -6,6 +6,7 @@ import json
 import os
 import re
 import shutil
+import socket
 import subprocess
 from collections.abc import Sequence
 from dataclasses import dataclass
@@ -22,6 +23,10 @@ MANIFEST = "copy.json"
 ADDRESSES = "addresses.json"
 SECRETS_DIR = "secrets"
 _PROJECT_CHARS = re.compile(r"[^a-z0-9_-]+")
+_PUBLISHED = re.compile(r":(\d+)->")
+_OCCUPANT_FORMAT = "\t".join([
+    "{{.Names}}", '{{.Label "com.docker.compose.project"}}',
+    '{{.Label "stablemate.ostler.service"}}', "{{.Ports}}"])
 
 
 class Runner(Protocol):
@@ -200,3 +205,35 @@ def running_projects(runner: Runner = run_command) -> dict[str, str]:
         return {}
     return {str(row.get("Name", "")): str(row.get("Status", "")) for row in rows
             if isinstance(row, dict)}
+
+
+@dataclass(frozen=True)
+class Occupant:
+    """A running container that publishes a host port: its name, its compose project and its service."""
+
+    container: str
+    project: str
+    service: str
+
+
+def port_occupants(runner: Runner = run_command) -> dict[int, Occupant]:
+    """Each host port a running container publishes, with that container."""
+    outcome = runner(["docker", "ps", "--format", _OCCUPANT_FORMAT], capture=True)
+    if outcome.returncode != 0:
+        return {}
+    found: dict[int, Occupant] = {}
+    for line in outcome.stdout.splitlines():
+        name, project, service, ports = (line.split("\t") + ["", "", "", ""])[:4]
+        for port in _PUBLISHED.findall(ports):
+            found[int(port)] = Occupant(name, project, service)
+    return found
+
+
+def port_free(port: int) -> bool:
+    """Whether a process on this machine could bind *port* on the loopback address."""
+    with socket.socket() as probe:
+        try:
+            probe.bind(("127.0.0.1", port))
+        except OSError:
+            return False
+    return True
