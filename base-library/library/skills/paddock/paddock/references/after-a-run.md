@@ -4,7 +4,7 @@
 
 ```
 results/<benchmark>/<task>/<data commit>-<code commit>/<n>/
-  ledger.json   steps, durations, commands, exit codes, pinned sha, dirty flag, caveats
+  ledger.json   steps, durations, commands, exit codes, pinned sha, dirty flag, the HEAD of each staged repo under `repos`, caveats
   score.json    the Score the task returned, or null
   config.toml   the merged config the run used
   stage/        the after-state of the copy
@@ -34,7 +34,9 @@ paddock sandbox run --app WORKSPACE/stage --runs-dir DIR --config WORKSPACE/conf
   -- workhorse-okf-book run --profile claude --runs-dir /runs --run-id ID --params '{...}'
 ```
 
-- The container mounts the app as its working directory, `--runs-dir` at `/runs`, the
+- Repeat `--app` for each repo of a workspace and name the one the command starts in with
+  `--workdir`. The flag is needed with several `--app` and optional with one.
+- The container mounts each app at `/work/<its directory name>`, the `--workdir` one as its working directory, `--runs-dir` at `/runs`, the
   config read-only, the login of each agent CLI the config names, and the home skill
   folders read-only. Nothing else.
 - Put `--runs-dir` inside the run's workspace so the result keeps it.

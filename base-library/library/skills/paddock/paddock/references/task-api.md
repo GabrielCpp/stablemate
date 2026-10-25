@@ -22,7 +22,8 @@ needs. The helpers under `paddock.tasks` are the rest of it.
 
 | Attribute | What it is |
 |---|---|
-| `run.repo`, `run.stage` | the copy of `data/` the steps mutate |
+| `run.repo`, `run.stage` | the copy of `data/` the steps mutate. `run.repo` refuses a folder of repos |
+| `run.repos` | each staged repo by name, read-only. Pass one as `cwd=` to `run.cli` |
 | `run.data` | the benchmark's own `data/`, read and never written |
 | `run.artifacts` | this step's log directory, kept in the workspace |
 | `run.workdir(name)` | a fresh directory under `scratch/`, left out of the result |
@@ -68,4 +69,4 @@ The round modules expose a `Fixture` plus `run_round(run, fixture)` and
 one-line functions. Read the module's docstrings for the fixture fields.
 
 A benchmark whose stage needs the agents layer calls `install_agents(run)` as its own
-step, before any step that runs a workflow.
+step, before any step that runs a workflow. It installs into each staged repo that has an `agents.yml`.

@@ -25,7 +25,7 @@ hiding it.
 - **Benchmark**: a folder under `gold/` that you write. `data/` is a git repo, the thing
   the steps work on: your app, a fixture repo, a seeded defect. When a task works across
   several repositories, `data/` is instead a folder whose children are each a git repo, and
-  the stage holds each one under its own name (`run.stage / "<name>"`). `home-config.toml` is the
+  the stage holds each one under its own name (`run.repos["<name>"]`). `home-config.toml` is the
   base home config for every task of the benchmark, in the same format as
   `~/.config/stablemate/config.toml`.
 - **Task**: what `tasks.py` declares. A name, an optional config override, inputs,
@@ -89,7 +89,10 @@ def caught(run) -> Score:
 - Steps drive workflows through `run.cli`, a subprocess of the real CLI. The benchmark
   measures the surface an operator uses, which an in-process import would bypass.
 - The config override deep-merges over `home-config.toml`, and task values win. The run
-  hands the merged file to commands through `--config` and `STABLEMATE_CONFIG`.
+  hands the merged file to commands through `--config` and `STABLEMATE_CONFIG`. A relative
+  `artifacts_dir`, and a relative path in a `[workspaces]` entry, name a folder inside the
+  stage. The run drops `STABLEMATE_WORKSPACE` and `STABLEMATE_ARTIFACTS_DIR` from what it
+  inherits.
 - The score is read-only. paddock stat-manifests the stage before and after it, and a
   mutation fails the run.
 
