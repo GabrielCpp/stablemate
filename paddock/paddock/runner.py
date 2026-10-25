@@ -124,9 +124,24 @@ class Run:
         return MappingProxyType(dict(self.task.inputs))
 
     @property
+    def repos(self) -> Mapping[str, Path]:
+        """Each staged repository by name: the benchmark's own name for a single repo, else one per child of `data/`."""
+        if (self.data / ".git").exists():
+            return MappingProxyType({self.benchmark.name: self.stage})
+        return MappingProxyType(
+            {child.name: self.stage / child.name for child in names.repo_children(self.data)}
+        )
+
+    @property
     def repo(self) -> Path:
-        """The copy of the benchmark's data the steps mutate."""
-        return self.stage
+        """The copy of a single-repo benchmark's data the steps mutate."""
+        if (self.data / ".git").exists():
+            return self.stage
+        listed = ", ".join(self.repos)
+        raise RunError(
+            f"benchmark {self.benchmark.name!r} stages several repos ({listed}); "
+            'reach one as run.repos["<name>"] and pass cwd= to run.cli'
+        )
 
     @property
     def artifacts(self) -> Path:

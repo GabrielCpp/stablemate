@@ -15,6 +15,7 @@ import pytest
 
 from paddock import loader, names, paths
 from paddock.loader import Benchmark
+from paddock.names import RunName
 from paddock.registry import Task
 from paddock.runner import Run, RunError, RunResult, execute
 
@@ -329,6 +330,69 @@ def test_a_child_without_a_repository_is_refused_by_name(
     (benchmark.data / "notes").mkdir()
     with pytest.raises(RunError, match="notes"):
         execute(*smoke(benchmark), root=root, checkout=repo)
+
+
+def bare_run(benchmark: Benchmark, workspace: Path) -> Run:
+    return Run(
+        task=benchmark.task("smoke"),
+        name=RunName(benchmark.name, "smoke", "d", "s", 0),
+        stage=workspace / "stage",
+        scratch=workspace / "scratch",
+        workspace=workspace,
+        config=workspace / "config.toml",
+        data=benchmark.data,
+        benchmark=benchmark,
+        echo=False,
+    )
+
+
+def test_a_single_repo_runs_repos_is_the_benchmark_name_and_the_stage(
+    make_benchmark: MakeBenchmark, tmp_path: Path
+) -> None:
+    benchmark = make_benchmark()
+    handle = bare_run(benchmark, tmp_path / "ws")
+    assert dict(handle.repos) == {"smoke": handle.stage}
+    assert handle.repo == handle.stage
+
+
+def test_a_folder_of_repos_run_maps_each_child_to_its_place_in_the_stage(
+    make_benchmark: MakeBenchmark, tmp_path: Path
+) -> None:
+    benchmark = make_benchmark()
+    make_folder_of_repos(benchmark)
+    handle = bare_run(benchmark, tmp_path / "ws")
+    assert dict(handle.repos) == {"api": handle.stage / "api", "web": handle.stage / "web"}
+
+
+def test_repo_on_a_folder_of_repos_names_the_repos_and_the_way_to_reach_one(
+    make_benchmark: MakeBenchmark, tmp_path: Path
+) -> None:
+    benchmark = make_benchmark()
+    make_folder_of_repos(benchmark)
+    handle = bare_run(benchmark, tmp_path / "ws")
+    with pytest.raises(RunError, match=r"api, web.*run\.repos"):
+        handle.repo
+
+
+def test_cli_without_a_cwd_on_a_folder_of_repos_raises(
+    make_benchmark: MakeBenchmark, tmp_path: Path
+) -> None:
+    benchmark = make_benchmark()
+    make_folder_of_repos(benchmark)
+    handle = bare_run(benchmark, tmp_path / "ws")
+    with pytest.raises(RunError, match="several repos"):
+        handle.cli("true")
+
+
+def test_cli_in_one_repo_of_a_folder_of_repos_works(
+    make_benchmark: MakeBenchmark, tmp_path: Path
+) -> None:
+    benchmark = make_benchmark()
+    make_folder_of_repos(benchmark)
+    handle = bare_run(benchmark, tmp_path / "ws")
+    handle.stage.mkdir(parents=True)
+    (handle.stage / "api").mkdir()
+    assert handle.cli("true", cwd=handle.repos["api"]).ok
 
 
 def test_data_commit_reads_a_repository_and_a_folder_of_repositories(tmp_path: Path) -> None:

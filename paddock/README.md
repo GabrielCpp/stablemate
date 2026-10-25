@@ -88,7 +88,8 @@ The helpers a tasks module reaches for live in the package as `paddock.tasks`. T
 
 | | |
 |---|---|
-| `run.repo`, `run.stage` | the copy of the data repo the steps mutate |
+| `run.repo`, `run.stage` | the copy of the data repo the steps mutate. `run.repo` is the single-repo shorthand and refuses a folder of repos |
+| `run.repos` | each staged repo by name, read-only: `{benchmark name: stage}` for a single repo, one entry per child of `data/` otherwise |
 | `run.data` | the benchmark's own `data/` repo, which a step reads and never writes |
 | `run.artifacts` | this step's artifact directory, kept in the workspace |
 | `run.workdir(name)` | a fresh directory under `scratch/`, never copied into the result |
@@ -101,7 +102,7 @@ The helpers a tasks module reaches for live in the package as `paddock.tasks`. T
 
 Steps invoke workflows by subprocess of the real CLI. They never import workhorse in-process. The benchmark measures the surface an operator uses, and an in-process call would measure a different one. `run.cli` also aligns `PWD` to the working directory and drops `OLDPWD`. An agent CLI that resolves its project root from the environment would otherwise treat the harness's own repo as the project and commit its work there.
 
-The stage is a clone of `data/` at HEAD with every remote removed. Uncommitted edits in `data/` are not in the copy, and the runner warns when it sees them. When `data/` is a folder of repos, each one is cloned under its own name in the stage, and the steps reach them as `run.stage / "<name>"`. A step that wants a tree to outlive the run copies it into `run.artifacts`.
+The stage is a clone of `data/` at HEAD with every remote removed. Uncommitted edits in `data/` are not in the copy, and the runner warns when it sees them. When `data/` is a folder of repos, each one is cloned under its own name in the stage, and the steps reach them as `run.repos["<name>"]`. A step that wants a tree to outlive the run copies it into `run.artifacts`.
 
 ### The project a round drives is pinned
 
