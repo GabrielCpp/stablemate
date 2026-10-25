@@ -1,6 +1,6 @@
 # The ticket-desk benchmark: a work-shaped multi-repo fixture
 
-Date: 2026-10-24, revised 2026-10-25. Status: fixture being rebuilt to the work shape.
+Date: 2026-10-24, revised 2026-10-25. Status: fixture frozen in its second edition (2026-10-25); stories next.
 
 ## 1. What it answers
 
