@@ -338,6 +338,23 @@ arrived — its heading, its record summary — and declare that component if th
 - verify: visible(locator="policy-detail.md#policy-heading", text="Policy PN-1001")
 ```
 
+## Intercept effects
+
+A flow's `intercept:` bullet uses the same call grammar as `verify:`, with a vocabulary of its own.
+An effect alters the world the screen reads. It observes nothing, so it adds no coverage.
+
+`rewrite(event*=<str>, find*=<str>, replace*=<str>)`
+Replaces `find` with `replace` in the body of every response to the request `event` names. `event`
+is spelled as in `emitted`: `"METHOD /path"`, with each `{name}` standing for one path segment.
+`find` and `replace` are non-empty text. The rule holds from before the first step to the end of
+the scenario and applies to page-sent and worker-sent requests alike. A rule whose `find` text
+never appeared in a body fails the scenario.
+
+```markdown
+- intercept: rewrite(event="POST /api/report/data", find="1300", replace="4200")
+- verify: visible(locator="report.md#total", text="1300")
+```
+
 ## Why the vocabulary is small
 
 Every entry has to name a defect class that a plausible *weaker* assertion lets through, and

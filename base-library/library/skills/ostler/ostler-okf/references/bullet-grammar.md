@@ -22,6 +22,7 @@ Each recognized bullet is a `BulletKey` (`registry.py:230-258`). A key can carry
 | `properties` | The property vocabulary an `entries` or `record` key admits. Empty means *undeclared, so unchecked* — not "no property allowed". A property outside a declared vocabulary is `unknown-entry-property` (`entries`) or `unknown-record-property` (`record`). |
 | `link` | The value is a reference `ostler` resolves — a doc link or a code ref. Unresolvable → `dangling-link` / `unresolved-relation` / `missing-anchor`. |
 | `check` | The value is a named check from `ostler.checks` — an **observation**. Parsed and grounded against the vocabulary. |
+| `effect` | The value is an intercept effect from `ostler.checks.INTERCEPTS`: a change the walk makes to the world the screen reads, not an observation. Parsed against its own vocabulary, so a malformed value is `bad-intercept`. It mints no obligation and counts as no coverage. |
 | `arrange` | The value names a fixture this repo declares — the **arrangement** that reaches the state the claim above it is about. |
 | `normative` | The value is a **claim**. QA mints one obligation per value, which one scenario then has to prove. |
 | `alias` | A second accepted spelling of the key declared just above it (`error` for `errors`). Ordered like the primary; never stubbed by `scaffold`. |

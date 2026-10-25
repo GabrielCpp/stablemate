@@ -23,7 +23,16 @@ File type under `docs/services/<service>/flows/`, `type: flow` in frontmatter.
 | `detail` | no | link — an explanatory [`concept`](concept.md) |
 | `verify` | no | a check |
 | `fixture` | no | arranges the world the walk starts in — or `none, because ...` |
+| `intercept` | no | an effect on the server's answer to one request, installed before the first step and kept for the whole walk |
 | `tests` | no | resolves as a link — the test files covering this flow |
+
+`intercept:` proves the screen did not take a value from one server answer. The walk alters
+that answer on its way to the browser, so a `verify:` that still sees the original figure shows
+the screen computed it. `- intercept: rewrite(event="POST /api/report/data", find="1300",
+replace="4200")` replaces the text in every matching response, page-sent or worker-sent.
+A rule that rewrites nothing fails the run, because a proof whose altered answer never
+reached the page proves nothing. `doctor` reports a bullet that is not a well-formed effect
+as `bad-intercept`. An effect is not a check, so it adds no obligation and no coverage.
 
 `start:` and `end:` are the flow's claims, and the pair is what makes a flow provable: the
 walk is only worth recording if there is a state it begins in and a state it ends in that a
