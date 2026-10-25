@@ -323,6 +323,24 @@ def test_a_folders_data_commit_is_a_digest_that_follows_each_repo(
     assert second.name.data_commit != first.name.data_commit
 
 
+def test_the_ledger_lists_each_staged_repos_head(
+    make_benchmark: MakeBenchmark, root: Path, repo: Path
+) -> None:
+    benchmark = make_benchmark()
+    api, web = make_folder_of_repos(benchmark)
+    result = execute(*smoke(benchmark), root=root, checkout=repo)
+    ledger = json.loads((result.result / "ledger.json").read_text(encoding="utf-8"))
+    assert ledger["repos"] == {"api": git(api, "rev-parse", "HEAD"), "web": git(web, "rev-parse", "HEAD")}
+
+
+def test_a_single_repo_ledger_lists_the_benchmark_name_and_the_data_head(
+    make_benchmark: MakeBenchmark, root: Path, repo: Path
+) -> None:
+    result = run(make_benchmark, root, repo)
+    ledger = json.loads((result.result / "ledger.json").read_text(encoding="utf-8"))
+    assert ledger["repos"] == {"smoke": ledger["data_commit"]}
+
+
 def test_a_child_without_a_repository_is_refused_by_name(
     make_benchmark: MakeBenchmark, root: Path, repo: Path
 ) -> None:

@@ -322,6 +322,7 @@ def execute(
         pinned=pinned,
         echo=echo,
     )
+    heads = {name: names.git_head(path) for name, path in run.repos.items()}
     try:
         with _without_operator_env():
             try:
@@ -337,7 +338,7 @@ def execute(
         failed = [f"step {o.name!r} {o.status}" for o in outcomes if o.status != "ok"]
         caveats = (*failed, *escaped, *(score.caveats if score else ()))
         result = names.result_dir(root, name)
-        _write_ledger(run, result / "ledger.json", outcomes, caveats, data_commit, stablemate)
+        _write_ledger(run, result / "ledger.json", outcomes, caveats, data_commit, heads, stablemate)
         run.write_json(result / "score.json", score.as_json() if score else None)
         shutil.copyfile(config, result / "config.toml")
         shutil.copytree(stage, result / "stage", symlinks=True)
@@ -402,6 +403,7 @@ def _write_ledger(
     outcomes: Sequence[StepOutcome],
     caveats: Sequence[str],
     data_commit: str,
+    heads: Mapping[str, str],
     stablemate: str,
 ) -> None:
     run.write_json(
@@ -411,6 +413,7 @@ def _write_ledger(
             "benchmark": run.name.benchmark,
             "task": run.name.task,
             "data_commit": data_commit,
+            "repos": dict(heads),
             "stablemate": stablemate,
             "config": str(run.config),
             "project": run.pinned.as_json() if run.pinned else None,

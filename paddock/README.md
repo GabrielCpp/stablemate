@@ -24,7 +24,7 @@ The root is the `paddock_dir` key of the home config. It defaults to `~/.local/s
     config.toml               the merged config the run used
     artifacts/<step>/         logs, one folder per step
   results/<benchmark>/<task>/<data commit>-<stablemate sha>/<n>/
-    ledger.json               steps, durations, commands, exit codes, caveats
+    ledger.json               steps, durations, commands, exit codes, caveats, the HEAD of each staged repo under `repos`
     score.json                what the score function returned, or null
     config.toml               the merged config the run used
     stage/                    the after-state of the copy
