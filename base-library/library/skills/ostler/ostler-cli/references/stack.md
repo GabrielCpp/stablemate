@@ -42,7 +42,7 @@ services:
 | `once` | service | `true` for a job that runs to completion, such as a migration. What needs it waits for it to exit 0 |
 | `outputs` | service | for a `once` job, the environment names it writes to `$STABLEMATE_OUTPUTS`. The services that need the job read them as `${NAME}` |
 | `files` | service | files placed in the service's folder of the copy, target to source. A `.j2` source is rendered, any other file is copied byte for byte, a folder is walked |
-| `fixtures` | service | fixture sets by name, each a list of files the service loads |
+| `fixtures` | service | fixture sets by name, each a list of files the service loads. A fixture file must exist only when its set is loaded, so a set no bring-up names may point at a file this checkout lacks, such as a database dump kept out of git. In a git worktree, a fixture file absent there is read from the main checkout |
 | `address` | service | the name a run reads this service's URL by, the same name a runbook writes as `{gateway}` |
 | `port` | service | the container port the address publishes. An address needs one |
 | `host-port` | service | the host port the shared copy keeps. Every other copy takes a free one |
