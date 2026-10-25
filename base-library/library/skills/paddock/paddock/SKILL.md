@@ -23,7 +23,9 @@ hiding it.
 ```
 
 - **Benchmark**: a folder under `gold/` that you write. `data/` is a git repo, the thing
-  the steps work on: your app, a fixture repo, a seeded defect. `home-config.toml` is the
+  the steps work on: your app, a fixture repo, a seeded defect. When a task works across
+  several repositories, `data/` is instead a folder whose children are each a git repo, and
+  the stage holds each one under its own name (`run.stage / "<name>"`). `home-config.toml` is the
   base home config for every task of the benchmark, in the same format as
   `~/.config/stablemate/config.toml`.
 - **Task**: what `tasks.py` declares. A name, an optional config override, inputs,
@@ -45,8 +47,9 @@ in, because each run holds full copies of its data.
 1. **Know what is there.** `paddock list` prints one line per task under `gold/`:
    benchmark, task, steps, scored or unscored. Read the task's module docstring to learn
    what it measures before running it.
-2. **Commit first.** The stage is a clone of `data/` at HEAD, and the code under test is
-   a **pin** of its checkout at HEAD. Uncommitted edits in either are not in the run.
+2. **Commit first.** The stage is a clone of `data/` at HEAD (of every child repo, when
+   `data/` is a folder of them), and the code under test is a **pin** of its checkout at
+   HEAD. Uncommitted edits in either are not in the run.
    Commit the change you mean to measure, then run.
 3. **Run it.** `paddock run <benchmark> <task>`. It prints each step's outcome, the score
    and the result folder, and exits non-zero when a step failed. A real round lasts tens
