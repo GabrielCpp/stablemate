@@ -278,7 +278,7 @@ def execute(
     scratch.mkdir(parents=True, exist_ok=True)
     logger.info("run %s", name)
 
-    config = homeconfig.materialize(benchmark.home_config, task.config, workspace / "config.toml")
+    config = homeconfig.materialize(benchmark.home_config, task.config, workspace / "config.toml", stage=stage)
     _copy_data(benchmark.data, stage)
 
     pinned = project_mod.pin(source, work=workspace, enabled=pin_project)
