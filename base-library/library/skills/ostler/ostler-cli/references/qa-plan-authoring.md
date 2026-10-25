@@ -365,11 +365,14 @@ what a person does is also the step a reviewer can find in the footage.
   prints the same words a real run does, and its cache key does not track the environment
   variables that decide which service was actually tested.
 - **A browser scenario asserts on `qa.diagnostics`.** The diagnostics *file*
-  (`qa/traces/<scenario>-diagnostics.json`, `schema: browser-diagnostics/2`) is written after
+  (`qa/traces/<scenario>-diagnostics.json`, `schema: browser-diagnostics/3`) is written after
   the scenario has returned its verdict, so only the post-run audit reads it. For the scenario
   to fail *itself* on a 5xx or an uncaught exception, it asserts on the live accessors.
   `failed_requests()` already excludes `net::ERR_ABORTED` — exclude by *reason* like that, never
   by count, since "allow one failure" tolerates a refused connection too.
+  Capture is at the browser context, so a service worker's own requests are recorded too, each
+  with `initiator` (`page` or `worker`). The readers default to page-initiated exchanges and
+  take `initiator=None` for all.
 - **Assert on what the app actually sent and received, not on a re-issued request.** The
   records carry `requestHeaders`, `requestBody`, `responseHeaders` and — for a text body —
   `responseBody`, so a claim about the payload the *page* got is written against that payload

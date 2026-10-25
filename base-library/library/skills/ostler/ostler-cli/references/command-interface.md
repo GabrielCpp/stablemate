@@ -136,7 +136,7 @@ fidelity the DevTools panels show, every record stamped with `atMs`, the run-rel
 
 | Key | Holds | Why it exists separately |
 | --- | --- | --- |
-| `schema` | `"browser-diagnostics/2"` | a trace left by an older driver has a different shape (`/1` carried no headers or bodies); without this the mismatch is only a jq crash, and the plan gets repaired toward the stale shape |
+| `schema` | `"browser-diagnostics/3"` | a trace left by an older driver has a different shape (`/1` carried no headers or bodies, `/2` no `initiator`); without this the mismatch is only a jq crash, and the plan gets repaired toward the stale shape |
 | `console` / `consoleCount` | every message, with `type`, `text`, `url:line:col` and `args` | the `warn`-level hydration or key warning that explains a failure is not an error; `args` holds the arguments as values, where `text` holds only DevTools' `{…}` rendering of them |
 | `consoleErrors` | error-level text only | legacy, predates `console`; kept because plans assert on it — prefer `console` |
 | `pageErrors` | uncaught exceptions (`name`, `message`, `stack`) | `pageerror` is a *different event* from the console; a throw during hydration is in no other key |

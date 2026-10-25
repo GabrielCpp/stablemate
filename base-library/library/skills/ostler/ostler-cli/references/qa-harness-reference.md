@@ -131,8 +131,8 @@ qa.verify("http_status", response, code=200, covers=[CALCULATES])
 
 | call | returns |
 | --- | --- |
-| `response_for(path, method=)` | the one response on exactly that path, as a `RecordedResponse` with `.status`, `.url`, `.text` and `.json()`. It raises `LookupError` naming the paths the page did request when none match, and raises when several match |
-| `requests_to(path, method=)` | every request on that path, once the page has gone quiet. `{name}` in the path matches one whole segment |
+| `response_for(path, method=, initiator=)` | the one response on exactly that path, as a `RecordedResponse` with `.status`, `.url`, `.text` and `.json()`. It raises `LookupError` naming the paths the page did request when none match, and raises when several match |
+| `requests_to(path, method=, initiator=)` | every request on that path, once the page has gone quiet. `{name}` in the path matches one whole segment. `initiator` defaults to `"page"`, so a service worker's own requests are skipped. `initiator=None` returns all and `"worker"` only the worker's |
 | `console()` | every console message in the window, once the page has gone quiet |
 | `downloads()` | every file the page handed the user in the window, as dicts with `name`, `text` and `failure` |
 
