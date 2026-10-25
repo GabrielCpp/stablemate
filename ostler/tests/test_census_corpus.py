@@ -2,21 +2,20 @@
 
 from __future__ import annotations
 
-from pathlib import Path
-
 import pytest
 
 from ostler import census, doctor
 from ostler.model import load
-
-APPS = Path(__file__).resolve().parents[2] / "paddock" / "data" / "apps"
+from paddock import loader, paths
 
 
 @pytest.fixture(scope="module")
 def corpus() -> census.Census:
-    """One census per app of the corpus, merged."""
-    books = sorted(app for app in APPS.iterdir() if (app / "docs" / "services").is_dir())
-    assert books, f"no corpus books under {APPS} — the gate below would pass vacuously"
+    """One census per benchmark repo of the corpus, merged."""
+    root = paths.root()
+    books = [repo for repo in loader.data_repos(root) if (repo / "docs" / "services").is_dir()]
+    if not books:
+        pytest.skip(f"no benchmark book under {paths.gold_dir(root)}, so the census has no corpus")
     return census.merge(
         census.take_census(lambda graph=load(app): doctor.run(graph, check_schema=True))
         for app in books

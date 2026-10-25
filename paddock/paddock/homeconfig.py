@@ -38,26 +38,15 @@ def load(path: Path) -> TomlTable:
         raise HomeConfigError(f"{path} is not TOML ({exc})") from exc
 
 
-def _anchor_artifacts_dir(config: TomlTable, stage: Path) -> bool:
-    value = config.get("artifacts_dir")
-    if not isinstance(value, str) or value.startswith("~") or Path(value).is_absolute():
-        return False
-    config["artifacts_dir"] = str((stage / value).resolve())
-    return True
-
-
-def materialize(base: Path, override: Mapping[str, object], dest: Path, *, stage: Path) -> Path:
+def materialize(base: Path, override: Mapping[str, object], dest: Path) -> Path:
     """Write the config a run uses to *dest*: the benchmark's base, with the task's override laid over it.
 
-    A relative `artifacts_dir` names a folder inside *stage* and is written as that absolute path.
-    With no override and nothing to rewrite the base file is copied byte for byte.
+    With no override the base file is copied byte for byte.
     """
     parsed = load(base)
     dest.parent.mkdir(parents=True, exist_ok=True)
-    merged = deep_merge(parsed, override) if override else parsed
-    rewritten = _anchor_artifacts_dir(merged, stage)
-    if not override and not rewritten:
+    if not override:
         _ = shutil.copyfile(base, dest)
         return dest
-    _ = dest.write_text(tomli_w.dumps(merged), encoding="utf-8")
+    _ = dest.write_text(tomli_w.dumps(deep_merge(parsed, override)), encoding="utf-8")
     return dest

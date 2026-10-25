@@ -70,7 +70,7 @@ def test_typed_pages_under_the_doc_roots_are_not_misplaced(repo: Path):
 
 
 def test_typed_pages_inside_a_nested_book_are_not_misplaced(repo: Path):
-    """A subtree with its own `docs/` (a paddock app under `paddock/data/apps/<app>/` is exactly this shape) is a book of its own -- `model.find_root` resolves it as its own root, with its own `doc_roots`, the moment ostler is pointed at it directly."""
+    """A subtree with its own `docs/` (a paddock benchmark's `<paddock_dir>/gold/<benchmark>/data/` is exactly this shape) is a book of its own -- `model.find_root` resolves it as its own root, with its own `doc_roots`, the moment ostler is pointed at it directly."""
     write(repo / "vendor/widgets-app/docs/epics/epic-x/epic.md",
           "---\ntype: epic\ntitle: Widgets\n---\n# Widgets\n\nBody.\n")
     _git_track(repo)

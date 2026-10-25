@@ -3599,7 +3599,7 @@ def test_a_filename_git_would_quote_is_not_dropped(tmp_path: Path):
 
 
 def test_a_nested_book_graphs_its_own_tree_not_the_hosts(tmp_path: Path):
-    """`root` is the *subject's* root — `paddock/data/apps/globex`, say — not the repo top level; `_git`/`_git_bytes` run with `cwd=root`, so every path this module hands git is CWD-relative, but `<rev>:<path>` is repo-root-relative unless prefixed `./`."""
+    """`root` is the *subject's* root — `<paddock_dir>/gold/globex/data`, say — not the repo top level; `_git`/`_git_bytes` run with `cwd=root`, so every path this module hands git is CWD-relative, but `<rev>:<path>` is repo-root-relative unless prefixed `./`."""
     outer = tmp_path
     service = outer / "service"
     (outer / "docs/services/demo").mkdir(parents=True)

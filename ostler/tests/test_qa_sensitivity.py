@@ -11,6 +11,7 @@ import pytest
 from ostler import checks, model
 from ostler.qa import sensitivity
 from ostler.qa.harness_host import load_harness_module
+from paddock import loader, paths
 
 
 def _trial(text: str) -> sensitivity.Trial:
@@ -345,12 +346,13 @@ def test_a_matches_check_with_an_alternation_is_now_witnessed() -> None:
 
 def test_the_benchmark_corpus_declares_no_check_that_cannot_go_red() -> None:
     """The calibration set: every catch the seeded-defect books earned survives the mutations."""
-    apps = Path(__file__).resolve().parents[2] / "paddock" / "data" / "apps"
-    for app in sorted(apps.iterdir()):
-        if not (app / "docs").is_dir():
-            continue
-        outcome = sensitivity.cmd_sensitivity(app)
-        assert outcome.ok, f"{app.name}: {outcome.message}"
+    root = paths.root()
+    books = [repo for repo in loader.data_repos(root) if (repo / "docs").is_dir()]
+    if not books:
+        pytest.skip(f"no benchmark book under {paths.gold_dir(root)}")
+    for book in books:
+        outcome = sensitivity.cmd_sensitivity(book)
+        assert outcome.ok, f"{book}: {outcome.message}"
 
 
 def _book(tmp_path: Path, endpoint: str) -> Path:

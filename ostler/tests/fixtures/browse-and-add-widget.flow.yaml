@@ -1,0 +1,23 @@
+# Walks both screens against a freshly started api-service: the list starts empty, so the
+# flow adds one widget and checks it lands back in the list — the same round trip
+# web-app's index.html -> new.html -> index.html makes, driven from the device instead.
+appId: com.globex.mobile
+---
+- launchApp
+- assertVisible:
+    id: "empty-notice"
+- tapOn:
+    id: "new-widget-link"
+- assertVisible:
+    id: "new-widget-screen"
+- tapOn:
+    id: "name-input"
+- inputText: "Bracket"
+- tapOn:
+    id: "quantity-input"
+- inputText: "12"
+- tapOn:
+    id: "submit-widget"
+- assertVisible:
+    id: "widget-table"
+- assertVisible: "Bracket"
