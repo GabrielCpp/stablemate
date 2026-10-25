@@ -80,6 +80,7 @@ A `define` template renders to one compose service block. It sees these values:
 | `dir` | this service's folder in the copy, where its `files` land |
 | `env_dir` | the copy's folder |
 | `fixtures` | the files of the chosen fixture sets this service declares, each with `path` and `name` |
+| `fixture_sets` | the names of the fixture sets the bring-up loads, in order, whether or not this service declares them |
 | `service('book:name')` | another service's host name inside the copy |
 
 ```yaml
