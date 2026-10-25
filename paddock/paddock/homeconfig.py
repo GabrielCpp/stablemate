@@ -38,24 +38,59 @@ def load(path: Path) -> TomlTable:
         raise HomeConfigError(f"{path} is not TOML ({exc})") from exc
 
 
+def _anchored(value: object, stage: Path) -> str | None:
+    """The absolute path inside *stage* that a relative path names, or None when *value* is not one."""
+    if not isinstance(value, str) or not value or value.startswith("~") or Path(value).is_absolute():
+        return None
+    return str((stage / value).resolve())
+
+
 def _anchor_artifacts_dir(config: TomlTable, stage: Path) -> bool:
-    value = config.get("artifacts_dir")
-    if not isinstance(value, str) or value.startswith("~") or Path(value).is_absolute():
+    anchored = _anchored(config.get("artifacts_dir"), stage)
+    if anchored is None:
         return False
-    config["artifacts_dir"] = str((stage / value).resolve())
+    config["artifacts_dir"] = anchored
     return True
+
+
+def _anchor_workspaces(config: TomlTable, stage: Path) -> bool:
+    """Rewrite each relative `[workspaces]` member to its path inside *stage*; malformed shapes are left for core to report."""
+    workspaces = config.get("workspaces")
+    if not isinstance(workspaces, dict):
+        return False
+    changed = False
+    for members in cast(dict[str, object], workspaces).values():
+        if not isinstance(members, list):
+            continue
+        entries = cast(list[object], members)
+        for index, entry in enumerate(entries):
+            if isinstance(entry, dict):
+                table = cast(TomlTable, entry)
+                anchored = _anchored(table.get("path"), stage)
+                if anchored is not None:
+                    table["path"] = anchored
+                    changed = True
+                continue
+            anchored = _anchored(entry, stage)
+            if anchored is not None:
+                entries[index] = anchored
+                changed = True
+    return changed
 
 
 def materialize(base: Path, override: Mapping[str, object], dest: Path, *, stage: Path) -> Path:
     """Write the config a run uses to *dest*: the benchmark's base, with the task's override laid over it.
 
-    A relative `artifacts_dir` names a folder inside *stage* and is written as that absolute path.
+    A relative `artifacts_dir`, and a relative path in a `[workspaces]` entry, name a folder inside *stage*
+    and are written as that absolute path.
     With no override and nothing to rewrite the base file is copied byte for byte.
     """
     parsed = load(base)
     dest.parent.mkdir(parents=True, exist_ok=True)
     merged = deep_merge(parsed, override) if override else parsed
-    rewritten = _anchor_artifacts_dir(merged, stage)
+    artifacts = _anchor_artifacts_dir(merged, stage)
+    members = _anchor_workspaces(merged, stage)
+    rewritten = artifacts or members
     if not override and not rewritten:
         _ = shutil.copyfile(base, dest)
         return dest

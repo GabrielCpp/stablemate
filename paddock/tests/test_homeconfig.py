@@ -45,3 +45,46 @@ def test_a_base_with_no_override_and_an_absolute_path_is_copied_byte_for_byte(tm
     dest = homeconfig.materialize(base, {}, tmp_path / "config.toml", stage=tmp_path / "stage")
 
     assert dest.read_bytes() == base.read_bytes()
+
+
+def test_a_relative_workspace_member_becomes_the_path_inside_the_stage(tmp_path: Path) -> None:
+    base = write_base(tmp_path, '[workspaces]\nweb = ["web-app", "api-service"]\n')
+    stage = tmp_path / "stage"
+
+    dest = homeconfig.materialize(base, {}, tmp_path / "config.toml", stage=stage)
+
+    workspaces = homeconfig.load(dest)["workspaces"]
+    assert workspaces == {"web": [str((stage / "web-app").resolve()), str((stage / "api-service").resolve())]}
+
+
+def test_a_relative_workspace_table_member_is_anchored_and_keeps_its_other_keys(tmp_path: Path) -> None:
+    base = write_base(
+        tmp_path,
+        '[[workspaces.web]]\npath = "web-app"\nname = "front"\nbranch = "main"\n',
+    )
+    stage = tmp_path / "stage"
+
+    dest = homeconfig.materialize(base, {}, tmp_path / "config.toml", stage=stage)
+
+    assert homeconfig.load(dest)["workspaces"] == {
+        "web": [{"path": str((stage / "web-app").resolve()), "name": "front", "branch": "main"}]
+    }
+
+
+def test_absolute_and_home_workspace_members_are_kept(tmp_path: Path) -> None:
+    base = write_base(tmp_path, '[workspaces]\nweb = ["/abs/web-app", "~/api-service"]\n')
+
+    dest = homeconfig.materialize(base, {"other": 1}, tmp_path / "config.toml", stage=tmp_path / "stage")
+
+    assert homeconfig.load(dest)["workspaces"] == {"web": ["/abs/web-app", "~/api-service"]}
+
+
+def test_a_base_with_a_relative_member_and_no_override_is_rewritten_not_copied(tmp_path: Path) -> None:
+    body = '# kept\n[workspaces]\nweb = ["web-app"]\n'
+    base = write_base(tmp_path, body)
+    stage = tmp_path / "stage"
+
+    dest = homeconfig.materialize(base, {}, tmp_path / "config.toml", stage=stage)
+
+    assert dest.read_bytes() != base.read_bytes()
+    assert homeconfig.load(dest)["workspaces"] == {"web": [str((stage / "web-app").resolve())]}
