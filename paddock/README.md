@@ -84,6 +84,8 @@ def caught(run) -> Score:
 
 The helpers a tasks module reaches for live in the package as `paddock.tasks`. They drive stablemate across the process boundary, read the forensics a round left, and run the frozen-app, mutant, replay and greenfield rounds. Fixtures and rubrics those helpers read sit beside the benchmark's `tasks.py`. A private helper module may sit there too: the loader puts the benchmark folder on `sys.path` only while `tasks.py` is imported, so a top-level `import helper` works and nothing stays on the path afterwards. A benchmark calls `paddock.tasks.stablemate.install_agents(run)` as a step when its stage needs the agents layer rendered. It runs `farrier install` in each staged repo that has an `agents.yml`, and refuses a stage where none does.
 
+The frozen-app, mutant, replay and greenfield helpers take a stage that is one repo or a folder of repos. In a folder, every path in a trial carries its member name first, as in `api-service/app.py`. A folder benchmark keeps its stories in the answer-key dir beside `defects.yml`, because `data/` can hold only repos. A replay `Pin` names a commit per member as `{"api-service": "<sha>"}`, and a member left out is cloned at its staged HEAD. A greenfield `Surface` names its member with `repo=`. The docs home is the member that `artifacts_dir` names.
+
 ### The `run` handle
 
 | | |
