@@ -63,12 +63,38 @@ def prepare(
     if not catalog.books:
         return _fail(f"no book under {root} has an {spec.OPS_DIR}/{spec.STACK_FILE}")
     chosen = list(targets) or _default_targets(catalog, cwd or Path.cwd())
+    copy = runtime.copy_for(root, copy_name)
+    previous = runtime.read_manifest(copy.directory)
     try:
-        services = spec.closure(catalog, chosen)
-        sets = render_mod.fixture_sets(catalog, services, fixtures)
+        named = {catalog.services[ref].book
+                 for target in chosen for ref in spec.resolve_target(catalog, target)}
+        kept = [ref for ref in _listed(previous, "targets")
+                if ref in catalog.services and catalog.services[ref].book not in named]
+        services = spec.closure(catalog, [*kept, *chosen])
+        carried = [service for service in services if service.ref in kept]
+        sets = _fixture_sets(catalog, services, carried, fixtures, _listed(previous, "fixtures"))
     except (KeyError, RenderError) as exc:
         return _fail(str(exc.args[0]) if exc.args else str(exc))
-    return Prepared(catalog, services, runtime.copy_for(root, copy_name), sets)
+    return Prepared(catalog, services, copy, sets)
+
+
+def _listed(manifest: dict[str, object], key: str) -> list[str]:
+    listed = manifest.get(key)
+    return [str(item) for item in listed] if isinstance(listed, list) else []
+
+
+def _fixture_sets(
+    catalog: spec.Catalog, services: list[spec.Service], carried: list[spec.Service],
+    chosen: Sequence[str], loaded: Sequence[str],
+) -> list[str]:
+    if chosen or not carried:
+        return render_mod.fixture_sets(catalog, services, chosen)
+    held = {name for service in carried for name in service.fixtures}
+    retained = [name for name in loaded if name in held]
+    fresh = [service for service in services if service not in carried]
+    added = [name for name in render_mod.fixture_sets(catalog, fresh, ())
+             if name not in held]
+    return list(dict.fromkeys([*retained, *added]))
 
 
 def cmd_check(root: Path, *, runner: Runner = run_command) -> EnvOutcome:
@@ -206,8 +232,7 @@ def cmd_ls(root: Path, *, runner: Runner = run_command) -> EnvOutcome:
     states: dict[str, str] = {}
     for copy in runtime.copies(root):
         manifest = runtime.read_manifest(copy.directory)
-        listed = manifest.get("targets")
-        targets = [str(item) for item in listed] if isinstance(listed, list) else []
+        targets = _listed(manifest, "targets")
         state = status.get(copy.project, "not running")
         states[copy.name] = state
         for ref in targets:

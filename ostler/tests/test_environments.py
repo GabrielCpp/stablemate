@@ -224,6 +224,40 @@ def test_a_service_that_loads_no_fixture_sees_the_sets_the_bring_up_loads(
     assert sets(("users", "schema")) == "users,schema"
 
 
+def _docs_book(root: Path) -> None:
+    _file(root, f"{SERVICES}/docs/ops/services/docs.yml.j2", "build: {{ repo }}/docs-app\n")
+    _file(root, f"{SERVICES}/docs/ops/stack.yml", yaml.safe_dump({
+        "services": {"docs": {"about": "the docs app", "define": "services/docs.yml.j2",
+                              "needs": ["api:api"], "address": "docs", "port": 5173}},
+    }))
+
+
+def test_an_up_that_names_one_book_keeps_the_services_of_the_others(tmp_path: Path) -> None:
+    root = _repo(tmp_path)
+    _docs_book(root)
+    commands.cmd_render(root, ["web"], copy_name="c1", fixtures=["users", "schema"])
+    outcome = commands.cmd_render(root, ["docs"], copy_name="c1")
+    assert outcome.data["services"] == [
+        "api:db", "api:provision", "api:api", "web:web", "web:gateway", "docs:docs"]
+    assert outcome.data["fixtures"] == ["users", "schema"]
+
+
+def test_an_up_replaces_the_services_of_the_books_it_names(tmp_path: Path) -> None:
+    root = _repo(tmp_path)
+    _docs_book(root)
+    commands.cmd_render(root, ["web"], copy_name="c1")
+    commands.cmd_render(root, ["docs"], copy_name="c1")
+    narrowed = commands.cmd_render(root, ["web:web"], copy_name="c1")
+    assert "web:gateway" not in narrowed.data["services"]
+    assert "docs:docs" in narrowed.data["services"]
+
+    commands.cmd_render(root, ["docs"], copy_name="c1", fixtures=["users"])
+    every = commands.cmd_render(root, copy_name="c1", cwd=root)
+    assert every.data["services"] == [
+        "api:db", "api:provision", "api:api", "docs:docs", "web:web", "web:gateway"]
+    assert every.data["fixtures"] == ["schema"]
+
+
 def _db_with_dump(root: Path) -> None:
     _rewrite_stack(root, "api", {"db": {
         "about": "the database", "define": "services/db.yml.j2",
