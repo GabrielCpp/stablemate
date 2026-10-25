@@ -94,7 +94,6 @@ Three scoping rules explain findings that otherwise read as false positives or a
 | `milestone-open-decisions` | error | A milestone still has a `## Open Decisions` section. Settle each decision into its section and delete the heading. Readiness code. |
 | `milestone-dangling-link` | error | A relative link in `milestone.md` resolves to no file, which is how a link to a `docs/design/` note breaks. Readiness code. |
 | `milestone-journey-services` | error | A `###` journey under `## User Journeys` has no `- services: <book>, <book>` bullet, or names a book that does not exist under `docs/services/`. Readiness code. |
-| `milestone-missing-mockup` | error | A journey lists a book whose driver is `web` or `mobile` and `mockups/<journey-slug>.html` is missing. The slug is the heading lowercased with each run of non-alphanumerics as `-`. Readiness code. |
 
 ## Fixtures
 

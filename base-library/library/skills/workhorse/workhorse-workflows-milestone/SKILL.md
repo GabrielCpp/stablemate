@@ -41,7 +41,7 @@ is a doctor error.
 docs/milestones/<slug>/
   milestone.md          required
   grills/<topic>.md     optional, one recorded grill tree per topic
-  mockups/<journey-slug>.html   one per journey through a web or mobile book
+  mockups/<journey-slug>.html   optional, one per journey that changes a screen
   artifacts/            optional, anything
 ```
 
@@ -136,10 +136,10 @@ Each journey also names:
 The journey stays readable without source paths. Put implementation evidence in the
 decision or compatibility sections instead.
 
-A journey that goes through a book whose runbook driver is `web` or `mobile` needs a
-mockup at `mockups/<journey-slug>.html`. The journey slug is the heading lowercased, with
-every run of non-alphanumeric characters replaced by `-` and the edges trimmed, so
-`Sign in with a code` becomes `sign-in-with-a-code`.
+A journey that changes a screen may carry a mockup at `mockups/<journey-slug>.html`.
+The story author reads it when present, and doctor does not require it. The journey slug
+is the heading lowercased, with every run of non-alphanumeric characters replaced by `-`
+and the edges trimmed, so `Sign in with a code` becomes `sign-in-with-a-code`.
 
 Author also requires a story-local mockup for each story that lists such a book in its
 `services`. A story whose mockup fails is blocked, and the completion gate lists it with the reason.
@@ -225,7 +225,7 @@ resolves to a file, and the epic split reads the notes it links.
    sections they belong to.
 3. Run decompose where a design is needed. Keep the notes in `docs/design/` and link them
    from `milestone.md`.
-4. Write a mockup for each journey through a web or mobile book, at
+4. Write a mockup for each journey that changes a screen, at
    `mockups/<journey-slug>.html`.
 5. Run `ostler doctor` and fix every milestone finding.
 6. Present the milestone to the owner. Explicit approval sets `status: approved`. Silence
@@ -239,7 +239,6 @@ A milestone is ready when `ostler doctor` reports no milestone finding for it:
 - no `## Open Decisions` section remains;
 - every relative link resolves;
 - every journey has a services bullet that names existing books;
-- every journey through a web or mobile book has its mockup;
 - `status` is `approved` by the human owner, and no other milestone is `approved`.
 
 Doctor reports these as warnings while the milestone is `proposed` and as errors once it is
