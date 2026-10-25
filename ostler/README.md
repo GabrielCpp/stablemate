@@ -328,7 +328,9 @@ A `define` template renders to one compose service. It sees `copy`, `repo`, `ops
 service's host name. ostler writes `depends_on`, `ports` and `container_name` itself, from
 `needs:`, `once:` and `address:`, so a template that sets one is refused. Each copy gets one
 compose file, its own project, its own named volumes and its own host ports. The shared copy is
-the one exception, and keeps each `host-port`.
+the one exception, and keeps each `host-port`. A fixture file must exist only when its set is
+loaded, so a set no bring-up names may point at a file this checkout lacks, such as a database dump
+kept out of git. In a git worktree, a fixture file absent there is read from the main checkout.
 
 ```bash
 ostler env check                     # every ops/stack.yml fits together: needs, cycles, one define each

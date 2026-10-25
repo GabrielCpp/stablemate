@@ -10,7 +10,7 @@ from collections.abc import Iterable
 from pathlib import Path
 from typing import Protocol
 
-from ostler.environments import runtime
+from ostler.environments import checkout, runtime
 from ostler.environments.render import Copy, Rendered
 from ostler.environments.runtime import Runner
 from ostler.environments.spec import Catalog, Service, closure
@@ -56,11 +56,7 @@ class DotenvFile:
         self._file = file
 
     def _path(self) -> Path:
-        path = self._repo / self._file
-        main = runtime.main_checkout(self._repo)
-        if not path.is_file() and main != self._repo and (main / self._file).is_file():
-            return main / self._file
-        return path
+        return checkout.locate(self._repo, self._repo / self._file)
 
     def names(self) -> frozenset[str]:
         path = self._path()

@@ -48,20 +48,6 @@ def copy_for(repo: Path, name: str = SHARED) -> Copy:
     return Copy(name=name, project=project, directory=home() / project)
 
 
-def main_checkout(repo: Path) -> Path:
-    """The main checkout *repo* belongs to, the same from any of its worktrees."""
-    marker = repo / ".git"
-    if not marker.is_file():
-        return repo
-    gitdir = Path(marker.read_text().removeprefix("gitdir:").strip())
-    if not gitdir.is_absolute():
-        gitdir = repo / gitdir
-    common = gitdir / "commondir"
-    if common.is_file():
-        gitdir = gitdir / common.read_text().strip()
-    return gitdir.resolve().parent
-
-
 def copies(repo: Path) -> list[Copy]:
     """Every copy of *repo*'s stack this machine holds a directory for."""
     return [copy for copy, manifest in held_copies() if manifest.get("repo") == str(repo)]

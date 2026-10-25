@@ -14,7 +14,7 @@ import pytest
 import yaml
 
 from ostler import doctor
-from ostler.environments import cli, commands, leases, runtime, secrets, spec
+from ostler.environments import checkout, cli, commands, leases, runtime, secrets, spec
 from ostler.environments import render as render_mod
 from ostler.model import load
 from ostler.qa import addresses, runbook
@@ -205,6 +205,61 @@ def test_a_chosen_fixture_set_replaces_the_defaults(tmp_path: Path) -> None:
     unknown = commands.cmd_render(root, ["api"], copy_name="c1", fixtures=["seed"])
     assert not unknown.ok
     assert "`seed`" in unknown.message
+
+
+def _db_with_dump(root: Path) -> None:
+    _rewrite_stack(root, "api", {"db": {
+        "about": "the database", "define": "services/db.yml.j2",
+        "fixtures": {"schema": ["fixtures/schema.sql"], "users": ["fixtures/users.sql"],
+                     "dump": ["fixtures/dump.sql"]}}})
+
+
+def test_a_set_no_bring_up_names_may_point_at_an_absent_file(tmp_path: Path) -> None:
+    root = _repo(tmp_path)
+    _db_with_dump(root)
+    assert spec.load(root).errors == []
+    assert commands.cmd_render(root, ["api"], copy_name="c1").ok
+
+
+def test_choosing_a_set_with_an_absent_file_fails_before_any_docker_call(tmp_path: Path) -> None:
+    root = _repo(tmp_path)
+    _db_with_dump(root)
+    rendered = commands.cmd_render(root, ["api"], copy_name="c1", fixtures=["dump"])
+    assert not rendered.ok
+    assert "`dump`" in rendered.message
+    assert "fixtures/dump.sql" in rendered.message
+    docker = FakeDocker()
+    upped = commands.cmd_up(root, ["api"], copy_name="c1", fixtures=["dump"], runner=docker)
+    assert not upped.ok
+    assert "`dump`" in upped.message
+    assert "fixtures/dump.sql" in upped.message
+    assert docker.calls == []
+
+
+def test_a_default_set_with_an_absent_file_is_a_load_error(tmp_path: Path) -> None:
+    root = _repo(tmp_path)
+    (root / SERVICES / "api" / "ops" / "fixtures" / "schema.sql").unlink()
+    errors = spec.load(root).errors
+    assert len(errors) == 1
+    assert "service `db`" in errors[0]
+    assert "fixture set `schema`" in errors[0]
+    assert "`fixtures/schema.sql` does not exist" in errors[0]
+
+
+def test_a_worktree_mounts_a_fixture_file_of_the_main_checkout(tmp_path: Path) -> None:
+    root = _repo(tmp_path)
+    _db_with_dump(root)
+    tree = _worktree(root)
+    dump = _file(root, f"{SERVICES}/api/ops/fixtures/dump.sql", "insert into t values (9);\n")
+    (tree / SERVICES / "api" / "ops" / "fixtures" / "schema.sql").unlink()
+    assert spec.load(tree).errors == []
+    outcome = commands.cmd_render(tree, ["api"], copy_name="c1", fixtures=["schema", "dump"])
+    assert outcome.ok, outcome.message
+    compose = yaml.safe_load(
+        (Path(outcome.data["directory"]) / render_mod.COMPOSE_FILE).read_text(encoding="utf-8"))
+    mounts = compose["services"]["api-db"]["volumes"]
+    assert f"{dump}:/docker-entrypoint-initdb.d/2-dump.sql:ro" in mounts
+    assert f"{root}/{SERVICES}/api/ops/fixtures/schema.sql:/docker-entrypoint-initdb.d/1-schema.sql:ro" in mounts
 
 
 def test_a_template_that_sets_its_own_ports_is_refused(tmp_path: Path) -> None:
@@ -658,7 +713,7 @@ def test_a_worktree_reads_the_dotenv_file_of_the_main_checkout(tmp_path: Path) -
     _root_stack(root, {"file": ".env"})
     _file(root, ".env", "TOKEN=abc\n")
     tree = _worktree(root)
-    assert runtime.main_checkout(tree) == root
+    assert checkout.main_checkout(tree) == root
     docker = FakeDocker()
     assert commands.cmd_up(tree, ["api"], copy_name="story-1", runner=docker).ok
     up = _up_calls(docker)[0]

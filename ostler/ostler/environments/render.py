@@ -12,6 +12,7 @@ from typing import Any
 import jinja2
 import yaml
 
+from ostler.environments.checkout import locate
 from ostler.environments.spec import Catalog, Service
 
 COMPOSE_FILE = "compose.yml"
@@ -181,7 +182,14 @@ def _context(
             raise RenderError(f"{service.ref} names `{ref}`, which no book defines")
         return catalog.services[qualified].compose_name
 
-    files = [path for name in fixtures for path in service.fixtures.get(name, ())]
+    files: list[Path] = []
+    for name in fixtures:
+        for path in service.fixtures.get(name, ()):
+            found = locate(repo, path)
+            if not found.is_file():
+                raise RenderError(f"{service.ref} fixture set `{name}` names {path}, "
+                                  "which does not exist")
+            files.append(found)
     return {
         "copy": copy.name,
         "project": copy.project,

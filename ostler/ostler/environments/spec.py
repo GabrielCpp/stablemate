@@ -13,6 +13,7 @@ from yaml.constructor import ConstructorError
 from yaml.resolver import BaseResolver
 
 from ostler import path as path_mod
+from ostler.environments.checkout import locate
 from ostler.qa import addresses
 
 STACK_FILE = "stack.yml"
@@ -279,6 +280,8 @@ def _read_book(catalog: Catalog, root: Path, name: str, stack_file: Path) -> Non
         if fixture not in declared:
             catalog.errors.append(
                 f"{where}: default fixture set `{fixture}` is declared by none of its services")
+    for ref in refs:
+        _check_default_fixtures(catalog, root, ref, defaults)
     catalog.books[name] = Book(
         name=name,
         directory=book_dir(stack_file),
@@ -287,6 +290,19 @@ def _read_book(catalog: Catalog, root: Path, name: str, stack_file: Path) -> Non
         default_fixtures=defaults,
         services=tuple(refs),
     )
+
+
+def _check_default_fixtures(
+    catalog: Catalog, root: Path, ref: str, defaults: tuple[str, ...]
+) -> None:
+    service = catalog.services[ref]
+    for set_name in defaults:
+        for file in service.fixtures.get(set_name, ()):
+            if not locate(root, file).is_file():
+                relative = file.relative_to(service.ops_dir).as_posix()
+                catalog.errors.append(
+                    f"{shown(root, service.ops_dir / STACK_FILE)}: service `{service.name}`: "
+                    f"fixture set `{set_name}` file `{relative}` does not exist")
 
 
 def _read_service(
@@ -322,7 +338,6 @@ def _read_service(
         raw_fixtures = {}
     for set_name, items in raw_fixtures.items():
         fixtures[str(set_name)] = tuple(directory / str(item) for item in _as_list(items))
-        files += fixtures[str(set_name)]
     for file in files:
         if not file.is_file():
             catalog.errors.append(f"{where}: `{file.relative_to(directory).as_posix()}` "
