@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
+import pytest
 from ostler import Ostler
 
 from workhorse_workflows.author.shared.nodes.stories import validate_story
@@ -169,3 +170,33 @@ def test_a_story_with_a_ui_service_needs_a_mockup_beside_it(
     assert missing.ok is False
     assert "mockup.html" in missing.errors
     assert drawn.ok is True, drawn.errors
+
+
+def test_a_todo_written_as_the_products_noun_is_not_an_open_question(
+    logger: logging.Logger, repo: Path
+) -> None:
+    """This fails when a todo app's stories trip the marker check on the word for what they build."""
+    _with_pointer(repo)
+    notes = f"{_NOTES}\n\nA person adds a Todo, the todo list shows it, and nothing is left to do."
+    story_dir = _authored_story(repo, notes)
+
+    result = validate_story(logger, story_dir=story_dir, repo_dir=str(repo))
+
+    assert result.ok is True, result.errors
+
+
+@pytest.mark.parametrize(
+    "line",
+    ["TODO pick the retry limit.", "todo: pick the retry limit.", "The retry limit is TBD."],
+)
+def test_a_marker_in_capitals_or_before_a_colon_is_an_open_question(
+    logger: logging.Logger, repo: Path, line: str
+) -> None:
+    """This fails when narrowing the check to markers lets a real placeholder through."""
+    _with_pointer(repo)
+    story_dir = _authored_story(repo, f"{_NOTES}\n\n{line}")
+
+    result = validate_story(logger, story_dir=story_dir, repo_dir=str(repo))
+
+    assert result.ok is False
+    assert "unresolved decision" in result.errors

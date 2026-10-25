@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+import re
 from pathlib import Path
 
 from ostler import Ostler, markdown, refs, registry
@@ -34,25 +35,18 @@ _OPEN_QUESTION_PHRASES = [
     "needs a decision",
     "to be discussed",
 ]
-_OPEN_QUESTION_WORDS = {"tbd", "todo", "fixme"}
-_WORD_CHARS = "_-"
+_MARKER = re.compile(r"(?<![\w-])(tbd|todo|fixme)(?![\w-])(:)?", re.IGNORECASE)
 MOCKUP_FILE = "mockup.html"
 _NO_PRIOR_IMPLEMENTATION = "No prior implementation reference exists."
 
 
-def _words(line: str) -> list[str]:
-    """The line's words, a word running over alphanumerics plus `_` and `-`."""
-    out: list[str] = []
-    current: list[str] = []
-    for ch in line:
-        if ch.isalnum() or ch in _WORD_CHARS:
-            current.append(ch)
-        elif current:
-            out.append("".join(current))
-            current = []
-    if current:
-        out.append("".join(current))
-    return out
+def _markers(line: str) -> set[str]:
+    """The TBD, TODO and FIXME the line writes as markers: in capitals, or followed by a colon."""
+    return {
+        match.group(1).upper()
+        for match in _MARKER.finditer(line)
+        if match.group(1).isupper() or match.group(2)
+    }
 
 
 def _open_questions(doc: markdown.MarkdownDoc) -> list[str]:
@@ -64,7 +58,7 @@ def _open_questions(doc: markdown.MarkdownDoc) -> list[str]:
             continue
         low = raw.lower()
         matched = [p for p in _OPEN_QUESTION_PHRASES if p in low]
-        matched += sorted({w.upper() for w in _words(low) if w in _OPEN_QUESTION_WORDS})
+        matched += sorted(_markers(raw))
         if matched:
             snippet = raw.strip()
             if len(snippet) > 100:
