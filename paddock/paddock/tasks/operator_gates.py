@@ -60,8 +60,8 @@ def watch_operator_gates(run: Run, stop: threading.Event) -> None:
 
     while not stop.wait(GATE_POLL_S):
         awaiting = set()
-        for path in parked_gates(run.repo):
-            gate = str(path.relative_to(run.repo))
+        for path in (p for repo in run.repos.values() for p in parked_gates(repo)):
+            gate = str(path.relative_to(run.stage))
             awaiting.add(gate)
             if gate in parked:
                 continue
