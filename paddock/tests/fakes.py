@@ -49,7 +49,7 @@ DOCS = "artifacts"
 
 STORY = "S-1"
 
-EPIC_MD = """---
+EPIC_MD = f"""---
 type: epic
 id: e-1
 title: e1
@@ -58,14 +58,14 @@ title: e1
 
 ## Stories
 
-### first
+### {STORY}
 - title: First
 - covers: (none)
 """
 
 STORY_MD = f"""---
 type: story
-slug: first
+slug: {STORY}
 id: {STORY}
 status: Not started
 ---
@@ -101,7 +101,7 @@ def folder_run(tmp_path: Path) -> Run:
         data / DOCS,
         {
             "docs/epics/e1/epic.md": EPIC_MD,
-            "docs/epics/e1/stories/first/story.md": STORY_MD,
+            f"docs/epics/e1/stories/{STORY}/story.md": STORY_MD,
             "docs/services/book.md": "# book\n",
             f"specs/{STORY}/qa-plan.yml": "stale\n",
         },
