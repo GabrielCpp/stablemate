@@ -20,6 +20,7 @@ BASE_SKILL_FAMILIES = {
     "groom",
     "workhorse",
     "saddlebag",
+    "paddock",
     "architecture",
     "testing",
     "ui",
