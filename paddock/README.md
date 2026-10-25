@@ -82,7 +82,7 @@ def caught(run) -> Score:
 - `@step()` marks functions that run in declaration order. They are functions so that setup which is not a workflow invocation needs no schema escape hatch.
 - A task swaps models by overriding the config tables. The harness has no model vocabulary of its own.
 
-The helpers a tasks module reaches for live in the package as `paddock.tasks`. They drive stablemate across the process boundary, read the forensics a round left, and run the frozen-app, mutant, replay and greenfield rounds. Fixtures and rubrics those helpers read sit beside the benchmark's `tasks.py`. A private helper module may sit there too: the loader puts the benchmark folder on `sys.path` only while `tasks.py` is imported, so a top-level `import helper` works and nothing stays on the path afterwards. A benchmark calls `paddock.tasks.stablemate.install_agents(run)` as a step when its stage needs the agents layer rendered.
+The helpers a tasks module reaches for live in the package as `paddock.tasks`. They drive stablemate across the process boundary, read the forensics a round left, and run the frozen-app, mutant, replay and greenfield rounds. Fixtures and rubrics those helpers read sit beside the benchmark's `tasks.py`. A private helper module may sit there too: the loader puts the benchmark folder on `sys.path` only while `tasks.py` is imported, so a top-level `import helper` works and nothing stays on the path afterwards. A benchmark calls `paddock.tasks.stablemate.install_agents(run)` as a step when its stage needs the agents layer rendered. It runs `farrier install` in each staged repo that has an `agents.yml`, and refuses a stage where none does.
 
 ### The `run` handle
 

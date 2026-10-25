@@ -116,10 +116,20 @@ def pin_config(run: Run) -> None:
     effective(run).write_text(header + tomli_w.dumps(merged), encoding="utf-8")
 
 
-def install_agents(run: Run) -> CommandResult:
-    """Render the agents layer into the stage, so its machine-local paths point at this run."""
-    argv = [*uv_run(stablemate_checkout(run), "farrier"), "farrier", "install", "--repo", str(run.stage)]
-    return run.cli(*argv, log_name="farrier-install", check=True)
+def install_agents(run: Run) -> list[CommandResult]:
+    """Render the agents layer into each staged repo that carries an `agents.yml`, so its machine-local paths point at this run."""
+    farrier = uv_run(stablemate_checkout(run), "farrier")
+    results = [
+        run.cli(
+            *farrier, "farrier", "install", "--repo", str(repo),
+            cwd=repo, log_name=f"farrier-install-{name}", check=True,
+        )
+        for name, repo in run.repos.items()
+        if (repo / "agents.yml").is_file()
+    ]
+    if not results:
+        raise TrialError(f"no staged repo has an agents.yml to install: {', '.join(run.repos)}")
+    return results
 
 
 def trial_artifacts(repo: Path) -> Path:

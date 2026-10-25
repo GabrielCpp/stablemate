@@ -155,23 +155,45 @@ def test_only_a_pin_that_was_actually_made_counts_as_held(tmp_path: Path) -> Non
     assert not sm.pin_held(None)  # noqa: S101 - a task driving no project at all
 
 
-def test_install_agents_runs_farrier_install_on_the_stage(tmp_path: Path) -> None:
-    seen: list[tuple[str, ...]] = []
-
+def install_run(tmp_path: Path, repos: dict[str, bool], seen: list[tuple[tuple[str, ...], dict[str, object]]]) -> Run:
     def cli(*argv: str, **kwargs: object) -> object:
-        seen.append(argv)
-        assert kwargs["check"] is True
+        seen.append((argv, kwargs))
         return object()
 
     checkout = tmp_path / "checkout"
     checkout.mkdir()
     (checkout / "pyproject.toml").write_text("[project]\n", encoding="utf-8")
-    stage = tmp_path / "stage"
-    run = cast(Run, SimpleNamespace(cli=cli, project=checkout, stage=stage))
+    staged: dict[str, Path] = {}
+    for name, has_agents in repos.items():
+        staged[name] = tmp_path / "stage" / name
+        staged[name].mkdir(parents=True)
+        if has_agents:
+            (staged[name] / "agents.yml").write_text("{}\n", encoding="utf-8")
+    return cast(Run, SimpleNamespace(cli=cli, project=checkout, repos=staged))
 
-    sm.install_agents(run)
 
+def test_install_agents_runs_farrier_install_in_each_repo_with_an_agents_file(tmp_path: Path) -> None:
+    seen: list[tuple[tuple[str, ...], dict[str, object]]] = []
+    run = install_run(tmp_path, {"web-app": True, "api-service": False}, seen)
+
+    results = sm.install_agents(run)
+
+    repo = run.repos["web-app"]
+    assert len(results) == 1
     assert seen == [(
-        "uv", "run", "--project", str(checkout), "--package", "farrier",
-        "farrier", "install", "--repo", str(stage),
+        (
+            "uv", "run", "--project", str(tmp_path / "checkout"), "--package", "farrier",
+            "farrier", "install", "--repo", str(repo),
+        ),
+        {"cwd": repo, "log_name": "farrier-install-web-app", "check": True},
     )]
+
+
+def test_install_agents_refuses_a_stage_with_no_agents_file(tmp_path: Path) -> None:
+    seen: list[tuple[tuple[str, ...], dict[str, object]]] = []
+    run = install_run(tmp_path, {"web-app": False, "api-service": False}, seen)
+
+    with pytest.raises(sm.TrialError, match="agents.yml"):
+        sm.install_agents(run)
+
+    assert seen == []
