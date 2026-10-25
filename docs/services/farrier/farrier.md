@@ -20,7 +20,7 @@ staged-files gate.
 - binary: `farrier` (the console script is declared as `farrier.install:main`, which re-exports
   `main` from `farrier.cli` — `install.py` is a compatibility facade that declares nothing of its
   own)
-- code: `farrier/farrier/cli.py::main` @0244d6a97e3b
+- code: `farrier/farrier/cli.py::main` @2eeeeaa1740e
 - detail: [hook manager wiring](concepts/hook-manager-wiring.md)
 - detail: [QA-evidence ignore rules](concepts/qa-evidence-ignore-rules.md)
 - detail: [selection error reporting](concepts/selection-errors.md)

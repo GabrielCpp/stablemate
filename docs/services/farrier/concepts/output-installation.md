@@ -21,13 +21,13 @@ maintains repository integration files.
 - sig: `expected_text(content: str) -> str`
 - does: normalize ordinary generated content to one trailing newline while preserving verbatim output
 - verify: count(subject="ordinary output trailing newlines", equals=1)
-- code: `farrier/farrier/outputs.py::expected_text` @0b63626747f4
+- code: `farrier/farrier/outputs.py::expected_text` @a2464a92144d
 
 ### method: write_text
 - sig: `write_text(path: Path, content: str) -> None`
 - does: create parent directories, write normalized UTF-8 text, and preserve executable intent
 - verify: created(subject="written generated output")
-- code: `farrier/farrier/outputs.py::write_text` @0b63626747f4
+- code: `farrier/farrier/outputs.py::write_text` @a2464a92144d
 
 ### method: normalize_agents
 - sig: `normalize_agents(config: dict[str, Any]) -> dict[str, bool]`
@@ -39,7 +39,7 @@ maintains repository integration files.
 - sig: `is_assumed_owned(repo: Path, path: Path, managed: Managed = REPO_MANAGED) -> bool`
 - does: identify convention-owned paths exempt from marker-based ownership checks
 - verify: count(subject="assumed-owned output path matches", equals=1)
-- code: `farrier/farrier/outputs.py::is_assumed_owned` @0b63626747f4
+- code: `farrier/farrier/outputs.py::is_assumed_owned` @a2464a92144d
 
 ### method: conflicts
 - sig: `conflicts(repo: Path, outputs: dict[Path, str], managed: Managed = REPO_MANAGED) -> list[str]`
@@ -65,7 +65,7 @@ maintains repository integration files.
 - sig: `check_selection(groups: list[tuple[str, list, set[str]]]) -> None`
 - does: reject unmatched literal selections and warn for unmatched globs
 - verify: exit_status(code=1)
-- code: `farrier/farrier/outputs.py::check_selection` @0b63626747f4
+- code: `farrier/farrier/outputs.py::check_selection` @a2464a92144d
 
 ### method: render_expected
 - sig: `render_expected(config: dict[str, Any], repo: Path, instructions: Sequence[LocalInstruction], notices: list[str] | None = None) -> dict[Path, str]`
@@ -101,25 +101,25 @@ maintains repository integration files.
 - verify: count(subject="user-library harness selections", equals=1)
 - raises: `SystemExit` when a non-Claude harness names prompts
 - verify: exit_status(code=1)
-- code: `farrier/farrier/outputs.py::user_selections` @0b63626747f4
+- code: `farrier/farrier/outputs.py::user_selections` @a2464a92144d
 
 ### method: share_home_folders
 - sig: `share_home_folders(selections: dict[str, tuple[list[Source], list[Source]]]) -> dict[str, tuple[list[Source], list[Source]]]`
 - does: widen each harness's selection to the union of every harness that installs into the same home folder
 - verify: count(subject="shared home folder selections", equals=1)
-- code: `farrier/farrier/outputs.py::share_home_folders` @0b63626747f4
+- code: `farrier/farrier/outputs.py::share_home_folders` @a2464a92144d
 
 ### method: render_user_expected
 - sig: `render_user_expected(config: dict[str, Any], home: Path) -> dict[Path, str]`
 - does: render configured user-scope harness selections without repository scaffolding, once per home folder that several harnesses share
 - verify: absent(subject="repository scaffolding in user-scope output map")
-- code: `farrier/farrier/outputs.py::render_user_expected` @0b63626747f4
+- code: `farrier/farrier/outputs.py::render_user_expected` @a2464a92144d
 
 ### method: selected_hooks
 - sig: `selected_hooks(prefix: str, skills) -> list[SkillHook]`
 - does: collect hooks declared by selected library skills in selection order
 - verify: count(subject="selected skill hooks", equals=1)
-- code: `farrier/farrier/outputs.py::selected_hooks` @0b63626747f4
+- code: `farrier/farrier/outputs.py::selected_hooks` @a2464a92144d
 
 ### method: check_outputs
 - sig: `check_outputs(repo: Path, outputs: dict[Path, str], manager: str | None = None, managed: Managed = REPO_MANAGED) -> int`

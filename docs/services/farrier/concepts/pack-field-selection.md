@@ -16,5 +16,5 @@ Choose `includes` to compose selections from another pack. Choose `skills`,
 use `description` only for human-readable metadata. A pack can use any
 combination of those roles.
 
-- code: `farrier/farrier/sources.py::load_pack` @38fd583de0b8
+- code: `farrier/farrier/sources.py::load_pack` @3121386a99df
 - rule: select the field by its distinct role; no ranking exists among pack fields

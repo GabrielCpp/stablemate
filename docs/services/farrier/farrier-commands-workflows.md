@@ -88,7 +88,7 @@ title: 'farrier — render the agent prompt library into a repository: Commands'
     - run: invoke(argv=["workflows"], env={"HOME": "c167/home", "STABLEMATE_CONFIG": "c167/config.toml", "STABLEMATE_FETCH_BASE": "0", "PATH": "c167/pipx-stub-bin:$PATH"})
     - verify: exit_status(code=1)
     - fixture: pipx-missing-source dir=c167
-- code: `farrier/farrier/cli.py::_run_workflows` @0244d6a97e3b
+- code: `farrier/farrier/cli.py::_run_workflows` @2eeeeaa1740e
 - detail: [generated agent launcher](concepts/generated-agent-launcher.md)
 - detail: [installed workflow discovery](concepts/installed-workflow-discovery.md)
 - tests: `farrier/tests/test_pipx.py::test_discover_reads_the_json_pipx_actually_emits`
@@ -257,8 +257,8 @@ actions of the `hooks` command group.
     - run: invoke(argv=["hooks", "install", "--repo", "c199"], env={"HOME": "c199/home", "STABLEMATE_CONFIG": "c199/config.toml", "STABLEMATE_FETCH_BASE": "0", "PATH": "c199/pipx-stub-bin:$PATH"})
     - verify: stderr(text="svn")
     - fixture: bad-manager-repo dir=c199
-- code: `farrier/farrier/cli.py::_run_hooks_install` @0244d6a97e3b
-- code: `farrier/farrier/cli.py::_run_hooks_list` @0244d6a97e3b
+- code: `farrier/farrier/cli.py::_run_hooks_install` @2eeeeaa1740e
+- code: `farrier/farrier/cli.py::_run_hooks_list` @2eeeeaa1740e
 - detail: [hook manager wiring](concepts/hook-manager-wiring.md)
 - tests: `farrier/tests/test_hook_managers.py::test_the_hooks_command_wires_a_repo_whose_packs_do_not_resolve`
 - tests: `farrier/tests/test_hook_managers.py::test_the_hooks_command_falls_back_to_detection_with_no_agents_yml`

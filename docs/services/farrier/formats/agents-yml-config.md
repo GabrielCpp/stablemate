@@ -25,8 +25,8 @@ included packs. A missing pack, a non-mapping file, or an inclusion cycle stops 
 rendering; otherwise every pack contribution is unioned with this configuration's direct selections.
 
 - file: `agents.yml` at the repo root (or `--config PATH`)
-- code: `farrier/farrier/outputs.py::render_expected` @0b63626747f4
-- code: `farrier/farrier/sources.py::selected_sources` @38fd583de0b8
+- code: `farrier/farrier/outputs.py::render_expected` @a2464a92144d
+- code: `farrier/farrier/sources.py::selected_sources` @3121386a99df
 - detail: [library source record](../concepts/source-record.md)
 - detail: [layered source resolution](../concepts/layered-source-resolution.md)
 - detail: [source naming and selection](../concepts/source-naming-selection.md)
@@ -96,7 +96,7 @@ agents:
 
 ### packs
 - type: `list` of `string` (pack ids, `.yml` omitted) — required: no — default: `[]`
-- code: `farrier/farrier/sources.py::collect_selection` @38fd583de0b8
+- code: `farrier/farrier/sources.py::collect_selection` @3121386a99df
 - detail: [selection aggregation](../concepts/selection-aggregation.md)
 
 ### skills / prompts / roots
@@ -122,7 +122,7 @@ patterns also receive dot/underscore-to-dash normalization without changing glob
 result is sorted by source id before rendering, so selection order is deterministic and exclusion
 always wins over inclusion.
 
-- code: `farrier/farrier/sources.py::selected_sources` @38fd583de0b8
+- code: `farrier/farrier/sources.py::selected_sources` @3121386a99df
 - tests: `farrier/tests/test_selection_misses.py::test_valid_selection_still_installs`
 - tests: `farrier/tests/test_selection_misses.py::test_glob_selecting_nothing_warns_but_proceeds`
 

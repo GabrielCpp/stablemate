@@ -21,44 +21,44 @@ trusting provenance copied into the worktree. It attributes changes from the exp
 - does: return recorded aggregate sources when present, otherwise front-matter source metadata, otherwise banner sources
 - returns: an empty list when no provenance carrier is present
 - verify: count(subject="provenance sources selected from expected output", equals=1)
-- code: `farrier/farrier/drift.py::sources_for` @44705e5212d4
+- code: `farrier/farrier/drift.py::sources_for` @17c0ef085eef
 
 ### method: attribute
 - sig: `attribute(content: str, actual: str) -> set[str]`
 - does: identify aggregate source parts missing from the actual text
 - returns: an empty set when every recorded part was altered or no parts were recorded
 - verify: count(subject="aggregate source parts attributed to drift", equals=1)
-- code: `farrier/farrier/drift.py::attribute` @44705e5212d4
+- code: `farrier/farrier/drift.py::attribute` @17c0ef085eef
 
 ### method: changed_report
 - sig: `changed_report(rel: str, sources: list[str], drifted: set[str]) -> str`
 - does: describe the changed output, its editable source files, and the regeneration command
 - verify: json_path(path="return value", matches="re-render")
-- code: `farrier/farrier/drift.py::changed_report` @44705e5212d4
+- code: `farrier/farrier/drift.py::changed_report` @17c0ef085eef
 
 ### method: missing_report
 - sig: `missing_report(rel: str) -> str`
 - does: identify a missing generated file and tell the operator to regenerate it
 - verify: json_path(path="return value", matches="Run")
-- code: `farrier/farrier/drift.py::missing_report` @44705e5212d4
+- code: `farrier/farrier/drift.py::missing_report` @17c0ef085eef
 
 ### method: extra_report
 - sig: `extra_report(rel: str) -> str`
 - does: explain that an output is no longer generated and must be deleted or selected again
 - verify: json_path(path="return value", matches="Delete")
-- code: `farrier/farrier/drift.py::extra_report` @44705e5212d4
+- code: `farrier/farrier/drift.py::extra_report` @17c0ef085eef
 
 ### method: fence_report
 - sig: `fence_report(rel: str) -> str`
 - does: explain restoration or disabling of a Farrier hook fence while preserving surrounding user content
 - verify: json_path(path="return value", matches="Everything outside the fence")
-- code: `farrier/farrier/drift.py::fence_report` @44705e5212d4
+- code: `farrier/farrier/drift.py::fence_report` @17c0ef085eef
 
 ### method: footer
 - sig: `footer() -> str`
 - does: explain that comparison uses the working tree and identify `farrier source` as the reverse lookup
 - verify: json_path(path="return value", matches="working tree")
-- code: `farrier/farrier/drift.py::footer` @44705e5212d4
+- code: `farrier/farrier/drift.py::footer` @17c0ef085eef
 
 ### method: report
 - sig: `report(missing: list[str], changed: list[Drifted], extra: list[str], fences: list[str] | None = None) -> str`

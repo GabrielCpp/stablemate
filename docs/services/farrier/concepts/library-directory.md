@@ -205,7 +205,7 @@ then calls `write_library_dir`, which persists the `library_dir` field of the
 [home config file](../formats/home-config.md) alongside any other keys already there (e.g.
 `stablemate_dir`, `base_dir`).
 
-- code: `farrier/farrier/_vendor/stablemate_core/config.py::write_library_dir` @45b4d92edb39
+- code: `farrier/farrier/_vendor/stablemate_core/config.py::write_library_dir` @7a84c0cc67a5
 - detail: [config write documentation contexts](config-write-context.md)
 
 ### base_library_dir

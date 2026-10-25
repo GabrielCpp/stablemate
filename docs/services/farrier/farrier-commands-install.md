@@ -421,7 +421,7 @@ it — are the operator's to choose, not farrier's.
     - verify: exit_status(code=1)
     - fixture: empty-repo-with-library dir=c150
 - code: `farrier/farrier/cli.py::_run_user_install` @2eeeeaa1740e
-- code: `farrier/farrier/outputs.py::render_user_expected` @0b63626747f4
+- code: `farrier/farrier/outputs.py::render_user_expected` @a2464a92144d
 - tests: `farrier/tests/test_user_install.py::test_skills_and_prompts_land_in_the_harness_home`
 - tests: `farrier/tests/test_user_install.py::test_the_repo_scaffolding_stays_out_of_the_home`
 - tests: `farrier/tests/test_user_install.py::test_a_deselected_skill_is_swept_and_a_hand_written_one_is_not`

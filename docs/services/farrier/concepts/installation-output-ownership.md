@@ -23,7 +23,7 @@ outside this detection mechanism and are owned by the install scope's explicit c
 - semantics: the exact `metadata.generated_by` value that identifies a generated skill, prompt,
   or command
 - verify: count(subject="metadata.generated_by values equal to farrier", equals=1)
-- code: `farrier/farrier/ownership.py::TAG` @6f3edcd219f5
+- code: `farrier/farrier/ownership.py::TAG` @0dc817b9a522
 
 ### COMMENT_MARKER
 - type: `str`
@@ -31,7 +31,7 @@ outside this detection mechanism and are owned by the install scope's explicit c
 - required: true
 - semantics: the case-insensitive phrase that identifies generated text files without front matter
 - verify: count(subject="case-insensitive generated-file comment markers", equals=1)
-- code: `farrier/farrier/ownership.py::COMMENT_MARKER` @6f3edcd219f5
+- code: `farrier/farrier/ownership.py::COMMENT_MARKER` @0dc817b9a522
 
 ### COMMENT_SCAN_LINES
 - type: `int`
@@ -39,7 +39,7 @@ outside this detection mechanism and are owned by the install scope's explicit c
 - required: true
 - semantics: the number of leading lines in which a generated-file comment can establish ownership
 - verify: count(subject="leading lines inspected for a generated-file comment", equals=12)
-- code: `farrier/farrier/ownership.py::COMMENT_SCAN_LINES` @6f3edcd219f5
+- code: `farrier/farrier/ownership.py::COMMENT_SCAN_LINES` @0dc817b9a522
 
 ## Methods
 
@@ -51,7 +51,7 @@ outside this detection mechanism and are owned by the install scope's explicit c
 - verify: count(subject="supported ownership marks in a tagged file", equals=1)
 - returns: `false` when neither supported ownership mark is present
 - verify: count(subject="supported ownership marks in an untagged file", equals=0)
-- code: `farrier/farrier/ownership.py::is_tagged` @6f3edcd219f5
+- code: `farrier/farrier/ownership.py::is_tagged` @0dc817b9a522
 - tests: `farrier/tests/test_tagged_deletion.py::test_a_root_instruction_file_is_marked_and_reinstallable`
 
 ### is_generated
@@ -62,7 +62,7 @@ outside this detection mechanism and are owned by the install scope's explicit c
 - verify: count(subject="readable tagged files classified as generated", equals=1)
 - returns: `false` for every path that cannot establish its own generated mark
 - verify: count(subject="unreadable or untagged paths classified as generated", equals=0)
-- code: `farrier/farrier/ownership.py::is_generated` @6f3edcd219f5
+- code: `farrier/farrier/ownership.py::is_generated` @0dc817b9a522
 - tests: `farrier/tests/test_tagged_deletion.py::test_a_hand_written_skill_is_not_reported_as_drift`
 
 ### is_owned
@@ -74,7 +74,7 @@ outside this detection mechanism and are owned by the install scope's explicit c
 - verify: count(subject="untagged bundled skill assets classified as owned", equals=1)
 - returns: `false` when neither ownership rule applies
 - verify: count(subject="untagged neighboring files classified as owned", equals=0)
-- code: `farrier/farrier/ownership.py::is_owned` @6f3edcd219f5
+- code: `farrier/farrier/ownership.py::is_owned` @0dc817b9a522
 - tests: `farrier/tests/test_tagged_deletion.py::test_a_generated_skills_untagged_script_goes_with_it`
 
 ### owned_files
@@ -84,7 +84,7 @@ outside this detection mechanism and are owned by the install scope's explicit c
 - does: orders the returned paths lexically
 - returns: an empty list when `directory` does not exist or is not a directory
 - verify: count(subject="owned files returned from a missing managed directory", equals=0)
-- code: `farrier/farrier/ownership.py::owned_files` @6f3edcd219f5
+- code: `farrier/farrier/ownership.py::owned_files` @0dc817b9a522
 - tests: `farrier/tests/test_tagged_deletion.py::test_a_hand_written_skill_survives_an_install`
 
 ### sweep

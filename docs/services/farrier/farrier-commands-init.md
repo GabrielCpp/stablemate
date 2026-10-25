@@ -80,7 +80,7 @@ title: 'farrier — render the agent prompt library into a repository: Commands'
     - run: invoke(argv=["init", "--repo", "c014"], env={"HOME": "c014/home", "STABLEMATE_CONFIG": "c014/config.toml", "STABLEMATE_FETCH_BASE": "0", "PATH": "c014/pipx-stub-bin:$PATH"})
     - verify: exit_status(code=1)
     - fixture: configured-repo dir=c014
-- code: `farrier/farrier/cli.py::_run_init` @0244d6a97e3b
+- code: `farrier/farrier/cli.py::_run_init` @2eeeeaa1740e
 - code: `farrier/farrier/init.py::default_config` @989c722f5be4
 - tests: `farrier/tests/test_init_command.py::test_init_writes_a_config_the_installer_can_read`
 - tests: `farrier/tests/test_init_command.py::test_init_refuses_to_overwrite_an_existing_config`
@@ -204,7 +204,7 @@ the pruned starting point, and the two are kept consistent by hand.
     - run: invoke(argv=["config", "--config", "c027/c.toml", "show", "--profile", "nonesuch"], env={"HOME": "c027/home", "STABLEMATE_CONFIG": "c027/config.toml", "STABLEMATE_FETCH_BASE": "0", "PATH": "c027/pipx-stub-bin:$PATH"})
     - verify: stderr(text="cheap")
     - fixture: profiles-config dir=c027
-- code: `farrier/farrier/cli.py::_run_config` @0244d6a97e3b
+- code: `farrier/farrier/cli.py::_run_config` @2eeeeaa1740e
 - tests: `farrier/tests/test_config_profiles_cli.py::test_the_config_flag_reads_the_file_it_names`,
    `farrier/tests/test_config_profiles_cli.py::test_a_profile_is_shown_flattened_to_dotted_keys`,
    `farrier/tests/test_config_profiles_cli.py::test_the_profile_replaces_the_top_level_rather_than_layering_over_it`,
@@ -305,7 +305,7 @@ through farrier for every shared setting. The nested `[power.<tier>.<backend>]` 
     - run: invoke(argv=["library", "list"], env={"HOME": "c044/home", "STABLEMATE_CONFIG": "c044/config.toml", "STABLEMATE_FETCH_BASE": "0", "PATH": "c044/pipx-stub-bin:$PATH"})
     - verify: exit_status(code=0)
     - fixture: overlay-over-base dir=c044
-- code: `farrier/farrier/cli.py::_run_library` @0244d6a97e3b
+- code: `farrier/farrier/cli.py::_run_library` @2eeeeaa1740e
 - code: `farrier/farrier/library_view.py::format_list` @8ec27bce6b5d
 - code: `farrier/farrier/library_view.py::find` @8ec27bce6b5d
 - code: `farrier/farrier/library_view.py::stack` @8ec27bce6b5d
@@ -532,7 +532,7 @@ embedded in `AGENTS.md`.
     - run: invoke(argv=["scaffold", "nonesuch", "--library", "c078/scaffold-library", "--repo", "c078"], env={"HOME": "c078/home", "STABLEMATE_CONFIG": "c078/config.toml", "STABLEMATE_FETCH_BASE": "0", "PATH": "c078/pipx-stub-bin:$PATH"})
     - verify: exit_status(code=1)
     - fixture: scaffold-library dir=c078
-- code: `farrier/farrier/cli.py::_run_scaffold` @0244d6a97e3b
+- code: `farrier/farrier/cli.py::_run_scaffold` @2eeeeaa1740e
 - tests: `farrier/tests/test_scaffold_command.py::test_scaffold_writes_tree_with_defaults`
 
 Lets an agent stand up a new repo or service folder from the library's parameterized scaffold
@@ -547,4 +547,4 @@ A `{url: ...}` scaffold file value is downloaded at write time with a 30-second 
 - run: invoke(argv=["version"])
 - verify: stdout(matches="^[0-9]+\\.[0-9]+\\.[0-9]+")
 - fixture: none, because the version comes from the installed package metadata
-- code: `farrier/farrier/cli.py::main` @0244d6a97e3b
+- code: `farrier/farrier/cli.py::main` @2eeeeaa1740e
