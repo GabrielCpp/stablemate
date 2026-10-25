@@ -10,16 +10,16 @@ import subprocess
 import sys
 import threading
 import time
-from collections.abc import Mapping, Sequence
+from collections.abc import Iterator, Mapping, Sequence
 from types import MappingProxyType
-from contextlib import AbstractContextManager, nullcontext
+from contextlib import AbstractContextManager, contextmanager, nullcontext
 from dataclasses import dataclass, field
 from pathlib import Path
 
 from paddock import homeconfig, manifest, names, paths, project as project_mod, reap
 from paddock.loader import Benchmark
 from paddock.names import RunName
-from paddock._vendor.stablemate_core.config import CONFIG_PATH_ENV
+from paddock._vendor.stablemate_core.config import ARTIFACTS_DIR_ENV, CONFIG_PATH_ENV, WORKSPACE_ENV
 from paddock.registry import Input, Score, Step, Task
 
 logger = logging.getLogger(__name__)
@@ -268,6 +268,16 @@ def _check_data(benchmark: Benchmark) -> None:
             raise RunError(f"benchmark {benchmark.name!r}: {child} is not a git repository")
 
 
+@contextmanager
+def _without_operator_env() -> Iterator[None]:
+    """Drop the operator's workspace and artifacts dir from the environment for the run, then restore them."""
+    saved = {name: os.environ.pop(name) for name in (WORKSPACE_ENV, ARTIFACTS_DIR_ENV) if name in os.environ}
+    try:
+        yield
+    finally:
+        os.environ.update(saved)
+
+
 def execute(
     benchmark: Benchmark,
     task: Task,
@@ -313,12 +323,13 @@ def execute(
         echo=echo,
     )
     try:
-        try:
-            outcomes = _run_steps(run)
-        finally:
-            reap.reap(stage)
+        with _without_operator_env():
+            try:
+                outcomes = _run_steps(run)
+            finally:
+                reap.reap(stage)
 
-        score = _score(run, task) if task.score else None
+            score = _score(run, task) if task.score else None
 
         escaped = project_mod.degraded(pinned, requested=pin_project) + project_mod.escaped(pinned)
         for caveat in escaped:
