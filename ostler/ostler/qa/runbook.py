@@ -21,7 +21,7 @@ from ostler.model import Graph, UINode
 from ostler.qa import addresses
 from ostler.qa import stack as stack_mod
 from ostler.qa.outcome import QaOutcome
-from ostler.registry import SCENARIO_FRAME_TOKEN, STEP_KIND_VALUES
+from ostler.registry import LAUNCHABLE_TYPES, SCENARIO_FRAME_TOKEN, STEP_KIND_VALUES
 
 STEP_PHASES: dict[str, str] = {
     "prepare": "prepare",
@@ -373,8 +373,8 @@ def select_runbook(graph: Graph, name: str = "") -> UINode | None:
 
 
 def select_server(graph: Graph) -> UINode | None:
-    """The `server` node whose launch contract this book's QA falls back to, or None."""
-    servers = sorted((n for n in graph.ui_nodes_of_type("server")
+    """The launchable server node whose launch contract this book's QA falls back to, or None."""
+    servers = sorted((n for kind in sorted(LAUNCHABLE_TYPES) for n in graph.ui_nodes_of_type(kind)
                       if bullet_value(n.meta, "launch")), key=lambda n: n.id)
     return servers[0] if servers else None
 
@@ -411,7 +411,8 @@ def has_served_surface(graph: Graph, near: Path | None = None) -> bool:
     With *near*, the question is asked of the one surface that path belongs to: a
     command-line book serves nothing even when a book beside it serves a screen.
     """
-    served = [*graph.ui_nodes_of_type("screen"), *graph.ui_nodes_of_type("server")]
+    served = [*graph.ui_nodes_of_type("screen"),
+              *(n for kind in sorted(LAUNCHABLE_TYPES) for n in graph.ui_nodes_of_type(kind))]
     if near is not None and _surface_near(graph, near):
         return bool(_on_surface_of(graph, served, near))
     return bool(served)

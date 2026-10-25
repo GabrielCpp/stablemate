@@ -10,6 +10,7 @@ from urllib.parse import urlparse
 from ostler import drivers as drivers_mod, graph as graph_mod, markdown, routes as routes_mod
 from ostler.model import Graph
 from ostler.qa.runbook import bullet_value
+from ostler.registry import LAUNCHABLE_TYPES
 
 NAV_BULLET = "leads-to"
 STEP_BULLET = "steps"
@@ -18,7 +19,6 @@ PARAM_BULLET = "params"
 ENTRY_BULLET = "entry"
 ROUTE_BULLET = "route"
 ROOT_PATH = "/"
-SERVER_TYPE = "server"
 ENTRY_URL_BULLET = "entry-url"
 NONE = "none"
 NONE_TOKENS = frozenset({NONE, "n/a", "n.a.", "na", "-", "—", "–", ""})
@@ -179,7 +179,7 @@ def root_path(data: dict, driver: str | None = None, *,
         if url:
             return _norm_path(url_path(url)), runbook["id"]
     servers = sorted((n for n in data["nodes"]
-                      if n["type"] == SERVER_TYPE and n["kind"] == "file"),
+                      if n["type"] in LAUNCHABLE_TYPES and n["kind"] == "file"),
                      key=lambda n: n["id"])
     chosen = servers[0] if servers else None
     if chosen is None:

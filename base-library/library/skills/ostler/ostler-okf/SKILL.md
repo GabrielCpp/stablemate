@@ -91,8 +91,8 @@ reference — the authority wherever this page and it disagree.
 | Role | GUI | CLI | HTTP/WS | context-free |
 |---|---|---|---|---|
 | **root** — where a service's book starts | | | | [`entries`](references/node-types/entries.md) |
-| **surface** — you interact with it | [`screen`](references/node-types/screen.md) | [`cli`](references/node-types/cli.md) | [`server`](references/node-types/server.md) | |
-| **element** — part of a surface | [`component`](references/node-types/component.md) | [`command`](references/node-types/command.md) | [`endpoint`](references/node-types/endpoint.md) | |
+| **surface** — you interact with it | [`screen`](references/node-types/screen.md) | [`cli`](references/node-types/cli.md) | [`server`](references/node-types/server.md), [`grpc-server`](references/node-types/grpc-server.md) | |
+| **element** — part of a surface | [`component`](references/node-types/component.md) | [`command`](references/node-types/command.md) | [`endpoint`](references/node-types/endpoint.md), [`rpc`](references/node-types/rpc.md) | |
 | **look** — a screen settled, and the passage between two | [`state`](references/node-types/state.md), [`passage`](references/node-types/passage.md) | | [`passage`](references/node-types/passage.md) | |
 | **situation** — a record the system keeps, as a walk reads it back | | [`data-state`](references/node-types/data-state.md) | [`data-state`](references/node-types/data-state.md) | |
 | **behaviour** — one event or call | [`interaction`](references/node-types/interaction.md) | [`invocation`](references/node-types/invocation.md) | [`invocation`](references/node-types/invocation.md) | |

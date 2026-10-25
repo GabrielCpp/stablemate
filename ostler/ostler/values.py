@@ -50,9 +50,42 @@ def _dialog_answer(value: str) -> str:
     return "it answers with neither " + " nor ".join(f"`{answer}`" for answer in DIALOG_ANSWERS)
 
 
+GRPC_CODES = (
+    "OK", "CANCELLED", "UNKNOWN", "INVALID_ARGUMENT", "DEADLINE_EXCEEDED", "NOT_FOUND",
+    "ALREADY_EXISTS", "PERMISSION_DENIED", "RESOURCE_EXHAUSTED", "FAILED_PRECONDITION",
+    "ABORTED", "OUT_OF_RANGE", "UNIMPLEMENTED", "INTERNAL", "UNAVAILABLE", "DATA_LOSS",
+    "UNAUTHENTICATED",
+)
+
+_RPC_NAME = re.compile(r"^([a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)*\.)?[A-Z][A-Za-z0-9]*/[A-Z][A-Za-z0-9]*$")
+
+
+def _grpc_url(value: str) -> str:
+    parts = urlsplit(bullet_text(value))
+    if parts.scheme == "grpc" and parts.hostname and parts.port is not None:
+        return ""
+    return "it is not an absolute `grpc://host:port` address"
+
+
+def _grpc_code(value: str) -> str:
+    words = bullet_text(value).split()
+    if words and words[0] in GRPC_CODES:
+        return ""
+    return "it does not open with one of the 17 canonical gRPC code names, such as `NOT_FOUND`"
+
+
+def _rpc_name(value: str) -> str:
+    if _RPC_NAME.match(bullet_text(value)):
+        return ""
+    return "it is not `package.Service/Method`, a lower snake package and PascalCase Service and Method"
+
+
 VALUE_KINDS: dict[str, Callable[[str], str]] = {
     "url": _url,
     "http-method": _http_method,
     "checkout-path": _checkout_path,
     "dialog-answer": _dialog_answer,
+    "grpc-url": _grpc_url,
+    "grpc-code": _grpc_code,
+    "rpc-name": _rpc_name,
 }

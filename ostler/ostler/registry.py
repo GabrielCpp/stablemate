@@ -490,6 +490,21 @@ def _attributed_indexed(
     return contract, per_bullet
 
 
+def launch_bullets(entry_url_kind: str) -> tuple[BulletKey, ...]:
+    """The launch contract every launchable type declares, differing only in the grammar of its address."""
+    return (
+        BulletKey("launch"),
+        BulletKey("entry-url", value_kind=entry_url_kind),
+        BulletKey("health-path"),
+        BulletKey("working-directory"),
+        BulletKey("identity"),
+        BulletKey("stop"),
+        BulletKey("boot-timeout"),
+    )
+
+
+LAUNCHABLE_TYPES = frozenset({"server", "grpc-server"})
+
 UI_TYPES: tuple[UINodeType, ...] = (
     UINodeType(name="entries", kind="file", context=""),
     UINodeType(
@@ -522,13 +537,19 @@ UI_TYPES: tuple[UINodeType, ...] = (
             BulletKey("openapi", link=True, owns=True),
             BulletKey("detail", link=True),
             BulletKey("verify", check=True),
-            BulletKey("launch"),
-            BulletKey("entry-url", value_kind="url"),
-            BulletKey("health-path"),
-            BulletKey("working-directory"),
-            BulletKey("identity"),
-            BulletKey("stop"),
-            BulletKey("boot-timeout"),
+            *launch_bullets("url"),
+        ),
+    ),
+    UINodeType(
+        name="grpc-server", kind="file", context="grpc",
+        required_sections=(SectionSpec("RPCs", filled=True),),
+        bullet_keys=(
+            BulletKey("code", link=True, owns=True),
+            BulletKey("contract", link=True, owns=True),
+            BulletKey("detail", link=True),
+            BulletKey("verify", check=True),
+            BulletKey("serves", required=True),
+            *launch_bullets("grpc-url"),
         ),
     ),
     UINodeType(
@@ -680,6 +701,36 @@ UI_TYPES: tuple[UINodeType, ...] = (
             BulletKey("arrange", performs=True),
             BulletKey("capture", capture=True),
             BulletKey("moves", link=True),
+            BulletKey("tests", link=True),
+        ),
+    ),
+    UINodeType(
+        name="rpc", kind="file", context="grpc", heading="RPCs",
+        host_page_types=("grpc-server",),
+        bullet_keys=(
+            BulletKey("server", link=True),
+            BulletKey("name", required=True, locator=True, address=True, value_kind="rpc-name"),
+            BulletKey("streaming", required=True, locator=True, address=True,
+                      values=("unary", "server")),
+            BulletKey("does", nested=True, normative=True, locator=True),
+            BulletKey("emits"),
+            BulletKey("consumes"),
+            BulletKey("request", nested=True, record=True,
+                      properties=("media", "body", "notes", "field")),
+            BulletKey("response", nested=True, record=True,
+                      properties=("media", "body", "notes", "field")),
+            BulletKey("status", normative=True, value_kind="grpc-code"),
+            BulletKey("errors", normative=True, refusal=True),
+            BulletKey("error", normative=True, alias=True, refusal=True),
+            BulletKey("auth", normative=True),
+            BulletKey("authorization", normative=True, alias=True),
+            BulletKey("code", link=True, owns=True),
+            BulletKey("contract", link=True, owns=True),
+            BulletKey("detail", link=True),
+            BulletKey("verify", check=True),
+            BulletKey("fixture", arrange=True),
+            BulletKey("arrange", performs=True),
+            BulletKey("capture", capture=True),
             BulletKey("tests", link=True),
         ),
     ),

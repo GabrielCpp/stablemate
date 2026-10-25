@@ -1492,7 +1492,7 @@ def _server_origins(book: Mapping[str, BookNode]) -> dict[str, str]:
     """The origin a page's HTTP claims are sent to, keyed by file `path`: a `server` file's own `entry-url:`, and the same for every page whose `server:` links that file."""
     origins: dict[str, str] = {}
     for node in book.values():
-        if node.type != "server" or node.kind != "file":
+        if node.type not in registry.LAUNCHABLE_TYPES or node.kind != "file":
             continue
         values = node.bullets.get(reach.ENTRY_URL_BULLET, ())
         origin = reach.url_origin(bullet_text(values[0])) if values else ""

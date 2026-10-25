@@ -93,7 +93,7 @@ The pane the selected file's diff is rendered into.
 
 def test_ui_types_registered():
     assert set(registry.UI_TYPES_BY_NAME) == {
-        "entries", "screen", "component", "interaction", "cli", "command", "server", "endpoint",
+        "entries", "screen", "component", "interaction", "cli", "command", "server", "endpoint", "grpc-server", "rpc",
         "invocation", "flow", "concept", "format",
         "method", "field",
         "runbook", "environment", "step",
@@ -105,7 +105,7 @@ def test_ui_types_registered():
 
 def test_heading_to_type_map():
     assert registry.UI_HEADING_TO_TYPE == {
-        "Components": "component", "Commands": "command", "Endpoints": "endpoint",
+        "Components": "component", "Commands": "command", "Endpoints": "endpoint", "RPCs": "rpc",
         "Interactions": "interaction", "Invocations": "invocation",
         "Methods": "method", "Fields": "field",
         "Steps": "step", "Screen states": "state", "Data states": "data-state", "Passages": "passage",
