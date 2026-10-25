@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
@@ -38,6 +39,29 @@ def git_head(repo: Path) -> str:
         ["git", "rev-parse", "HEAD"], cwd=str(repo), capture_output=True, text=True, check=False
     )
     return done.stdout.strip() if done.returncode == 0 else ""
+
+
+def repo_children(data: Path) -> list[Path]:
+    """The visible child directories of *data*, sorted by name."""
+    if not data.is_dir():
+        return []
+    return sorted(child for child in data.iterdir() if child.is_dir() and not child.name.startswith("."))
+
+
+def data_commit(data: Path) -> str:
+    """HEAD of *data*, or a digest of each child repository's HEAD, or `""` when any has no commit."""
+    if (data / ".git").exists():
+        return git_head(data)
+    children = repo_children(data)
+    if not children:
+        return ""
+    lines = []
+    for child in children:
+        head = git_head(child)
+        if not head:
+            return ""
+        lines.append(f"{child.name} {head}\n")
+    return hashlib.sha1("".join(lines).encode("utf-8")).hexdigest()
 
 
 def workspace_dir(root: Path, name: RunName) -> Path:

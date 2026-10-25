@@ -17,7 +17,7 @@ The root is the `paddock_dir` key of the home config. It defaults to `~/.local/s
   gold/<benchmark>/
     home-config.toml          the base stablemate config for every task
     tasks.py                  the task and its steps
-    data/                     a git repo, the thing the steps work on
+    data/                     a git repo, the thing the steps work on, or a folder of git repos when a task works across several
   workspace/<benchmark>/<task>/<data commit>-<stablemate sha>/<n>/
     stage/                    a copy of data/ at HEAD, mutated by the steps
     scratch/                  the steps' own working space
@@ -30,7 +30,7 @@ The root is the `paddock_dir` key of the home config. It defaults to `~/.local/s
     stage/                    the after-state of the copy
 ```
 
-A run is named by its axes. The data commit is the HEAD of `data/` when the run started. The stablemate sha is the HEAD of the checkout paddock was imported from. The number counts the runs that share both.
+A run is named by its axes. The data commit is the HEAD of `data/` when the run started, or a digest of each repo's HEAD when `data/` is a folder of repos. The stablemate sha is the HEAD of the checkout paddock was imported from. The number counts the runs that share both.
 
 Anything the maintainer wants to keep for good is copied out of `results/` by hand.
 
@@ -101,7 +101,7 @@ The helpers a tasks module reaches for live in the package as `paddock.tasks`. T
 
 Steps invoke workflows by subprocess of the real CLI. They never import workhorse in-process. The benchmark measures the surface an operator uses, and an in-process call would measure a different one. `run.cli` also aligns `PWD` to the working directory and drops `OLDPWD`. An agent CLI that resolves its project root from the environment would otherwise treat the harness's own repo as the project and commit its work there.
 
-The stage is a clone of `data/` at HEAD with every remote removed. Uncommitted edits in `data/` are not in the copy, and the runner warns when it sees them. A step that wants a tree to outlive the run copies it into `run.artifacts`.
+The stage is a clone of `data/` at HEAD with every remote removed. Uncommitted edits in `data/` are not in the copy, and the runner warns when it sees them. When `data/` is a folder of repos, each one is cloned under its own name in the stage, and the steps reach them as `run.stage / "<name>"`. A step that wants a tree to outlive the run copies it into `run.artifacts`.
 
 ### The project a round drives is pinned
 

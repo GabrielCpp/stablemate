@@ -220,8 +220,8 @@ def _git(*args: str, cwd: Path) -> subprocess.CompletedProcess[str]:
     return subprocess.run(["git", *args], cwd=str(cwd), capture_output=True, text=True, check=False)
 
 
-def _copy_data(data: Path, stage: Path) -> None:
-    """Clone *data* into *stage* at its HEAD, with no remote to push the round's work to."""
+def _clone_repo(data: Path, stage: Path) -> None:
+    """Clone the repository *data* into *stage* at its HEAD, with no remote to push the round's work to."""
     if _git("status", "--porcelain", cwd=data).stdout.strip():
         logger.warning("%s has uncommitted changes; the run copies its HEAD and will not see them", data)
     cloned = _git("clone", "--quiet", "--no-hardlinks", str(data), str(stage), cwd=data.parent)
@@ -230,6 +230,27 @@ def _copy_data(data: Path, stage: Path) -> None:
     for remote in _git("remote", cwd=stage).stdout.split():
         if _git("remote", "remove", remote, cwd=stage).returncode != 0:
             raise RunError(f"could not strip remote {remote!r} from the copy of {data}")
+
+
+def _copy_data(data: Path, stage: Path) -> None:
+    """Clone *data* into *stage*: one repository as is, a folder of repositories one per name."""
+    if (data / ".git").exists():
+        _clone_repo(data, stage)
+        return
+    children = names.repo_children(data)
+    stage.mkdir(parents=True)
+    for child in children:
+        _clone_repo(child, stage / child.name)
+
+
+def _check_data(benchmark: Benchmark) -> None:
+    """Refuse a `data/` that is neither a repository nor a folder of them."""
+    data = benchmark.data
+    if (data / ".git").exists():
+        return
+    for child in names.repo_children(data):
+        if not (child / ".git").exists():
+            raise RunError(f"benchmark {benchmark.name!r}: {child} is not a git repository")
 
 
 def execute(
@@ -242,7 +263,8 @@ def execute(
     echo: bool = True,
 ) -> RunResult:
     source = checkout or paths.checkout_root()
-    data_commit = names.git_head(benchmark.data)
+    _check_data(benchmark)
+    data_commit = names.data_commit(benchmark.data)
     if not data_commit:
         raise RunError(f"benchmark {benchmark.name!r}: {benchmark.data} is not a git repository with a commit")
     stablemate = names.git_head(source)
