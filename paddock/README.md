@@ -155,13 +155,20 @@ paddock sandbox run --app WORKSPACE/stage --runs-dir DIR --config WORKSPACE/conf
   -- workhorse-okf-book run --profile claude --runs-dir /runs --run-id ID --params '{...}'
 ```
 
+A command that works across a workspace takes one `--app` per repo and a `--workdir` naming the directory it starts in:
+
+```bash
+paddock sandbox run --app WORKSPACE/stage/web-app --app WORKSPACE/stage/api-service --workdir web-app \
+  --runs-dir DIR --config WORKSPACE/config.toml -- CMD
+```
+
 `build` makes a wheel of every workspace member and installs those wheels in the image.
 No source tree is copied in. It installs the Claude Code and opencode releases this
 machine runs, unless `--claude-code-version` or `--opencode-version` names another.
 
 `run` mounts these paths and nothing else:
 
-- the app, at `/work/<its directory name>`, which is also the working directory;
+- each app, at `/work/<its directory name>`, and the one `--workdir` names, or the only one, is the working directory;
 - `--runs-dir`, at `/runs`, which should sit inside the run's workspace;
 - `--config`, read-only, as the stablemate config;
 - the login of each agent CLI the config runs, so the agents can call the model:

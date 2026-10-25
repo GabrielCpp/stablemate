@@ -121,23 +121,33 @@ class Mount:
 class Sandbox:
     """The paths a run sees: the app it works on, where its runs go, its model config, the login of each agent CLI it runs, the user's home skills and, when named, the base library its skills render from."""
 
-    app: Path
+    apps: tuple[Path, ...]
     runs_dir: Path
     config: Path
     logins: Mapping[str, Path]
     image: str = IMAGE
     base_library: Path | None = None
     home_skills: Mapping[str, Path] = field(default_factory=dict)
+    workdir: str = ""
 
     def app_dir(self) -> str:
-        """Where the app sits inside the container. The name is kept, because a repo's name is read from its directory."""
-        return f"{WORK}/{self.app.name}"
+        """Where the command starts inside the container. Each app keeps its directory name, because a repo's name is read from its directory."""
+        names = [app.name for app in self.apps]
+        if not self.workdir:
+            if len(names) != 1:
+                raise SandboxError(
+                    f"the sandbox mounts {len(names)} apps ({', '.join(names)}) and needs --workdir to say which one the command starts in"
+                )
+            return f"{WORK}/{names[0]}"
+        if self.workdir not in names:
+            raise SandboxError(f"--workdir {self.workdir!r} names no --app. The apps are {', '.join(names) or 'none'}")
+        return f"{WORK}/{self.workdir}"
 
     def mounts(self) -> tuple[Mount, ...]:
         """Every path the container sees."""
         library = () if self.base_library is None else (Mount(self.base_library, BASE_LIBRARY, read_only=True),)
         return (
-            Mount(self.app, self.app_dir(), read_only=False),
+            *(Mount(app, f"{WORK}/{app.name}", read_only=False) for app in self.apps),
             Mount(self.runs_dir, RUNS, read_only=False),
             Mount(self.config, CONFIG, read_only=True),
             *(Mount(path, LOGINS[cli], read_only=False) for cli, path in sorted(self.logins.items())),
@@ -148,6 +158,11 @@ class Sandbox:
     def refusals(self, checkout: Path) -> tuple[str, ...]:
         """Each mount that is missing, or that would show the container the stablemate checkout at *checkout*."""
         found: list[str] = []
+        seen: set[str] = set()
+        for app in self.apps:
+            if app.name in seen:
+                found.append(f"two --app directories are named {app.name}, so they would share {WORK}/{app.name}. Rename one")
+            seen.add(app.name)
         for mount in self.mounts():
             if not mount.source.exists():
                 found.append(f"{mount.source} does not exist. Create it, or name another path for {mount.target}")

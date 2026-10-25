@@ -64,12 +64,23 @@ def _add_sandbox_commands(parser: argparse.ArgumentParser) -> None:
         "run",
         help="run a command in the app, inside the sandbox",
         description=(
-            f"The app is mounted at {sandbox.WORK}/<its directory name> and is the working directory, "
+            f"Each --app is mounted at {sandbox.WORK}/<its directory name>, and --workdir names the one that is the working directory, "
             + f"--runs-dir at {sandbox.RUNS}, and --config at {sandbox.CONFIG}. "
             + f"The home skill folders that exist are mounted read-only under {sandbox.HOME}. Nothing else of this machine is visible."
         ),
     )
-    sandbox_run.add_argument("--app", type=Path, required=True, help="the repo the command works on")
+    sandbox_run.add_argument(
+        "--app",
+        type=Path,
+        action="append",
+        required=True,
+        help="a repo the command works on; repeat it for each repo of a workspace",
+    )
+    sandbox_run.add_argument(
+        "--workdir",
+        default="",
+        help="the --app directory name the command starts in; needed with several --app",
+    )
     sandbox_run.add_argument("--runs-dir", type=Path, required=True, help="where the command writes its runs")
     sandbox_run.add_argument("--config", type=Path, required=True, help="the stablemate config the command reads")
     sandbox_run.add_argument(
@@ -162,7 +173,8 @@ def cmd_sandbox_run(args: argparse.Namespace) -> int:
     command = _command_after_separator(args.command)
     args.runs_dir.mkdir(parents=True, exist_ok=True)
     box = Sandbox(
-        app=args.app,
+        apps=tuple(args.app),
+        workdir=args.workdir,
         runs_dir=args.runs_dir,
         config=args.config,
         logins=_logins(args),

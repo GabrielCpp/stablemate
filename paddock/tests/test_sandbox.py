@@ -19,7 +19,7 @@ def _box(tmp_path: Path) -> Sandbox:
     runs.mkdir()
     config.write_text("config_version = 2\n")
     credentials.write_text("{}")
-    return Sandbox(app=app, runs_dir=runs, config=config, logins={"claude": credentials})
+    return Sandbox(apps=(app,), runs_dir=runs, config=config, logins={"claude": credentials})
 
 
 def test_the_run_sees_the_four_mounts_and_nothing_else(tmp_path: Path) -> None:
@@ -28,7 +28,7 @@ def test_the_run_sees_the_four_mounts_and_nothing_else(tmp_path: Path) -> None:
 
     volumes = [arg.removeprefix("--volume=") for arg in argv if arg.startswith("--volume=")]
     assert volumes == [
-        f"{box.app}:/work/tally-cli",
+        f"{box.apps[0]}:/work/tally-cli",
         f"{box.runs_dir}:{sandbox.RUNS}",
         f"{box.config}:{sandbox.CONFIG}:ro",
         f"{box.logins['claude']}:{sandbox.LOGINS['claude']}",
@@ -40,6 +40,62 @@ def test_the_run_sees_the_four_mounts_and_nothing_else(tmp_path: Path) -> None:
 
 def test_the_app_keeps_its_directory_name_because_a_repo_is_named_by_it(tmp_path: Path) -> None:
     assert _box(tmp_path).app_dir() == "/work/tally-cli"
+
+
+def _two_apps(tmp_path: Path, **kwargs: str) -> Sandbox:
+    web = tmp_path / "workspace" / "web-app"
+    api = tmp_path / "workspace" / "api-service"
+    web.mkdir(parents=True)
+    api.mkdir()
+    return replace(_box(tmp_path), apps=(web, api), **kwargs)
+
+
+def test_two_apps_are_mounted_under_their_own_names(tmp_path: Path) -> None:
+    box = _two_apps(tmp_path, workdir="web-app")
+    argv = box.docker_run_argv(["true"], uid=1000, gid=1000)
+
+    volumes = [arg.removeprefix("--volume=") for arg in argv if arg.startswith("--volume=")]
+    assert volumes[:2] == [f"{box.apps[0]}:/work/web-app", f"{box.apps[1]}:/work/api-service"]
+
+
+def test_the_chosen_workdir_is_the_workdir_flag(tmp_path: Path) -> None:
+    box = _two_apps(tmp_path, workdir="api-service")
+
+    assert box.app_dir() == "/work/api-service"
+    assert "--workdir=/work/api-service" in box.docker_run_argv(["true"], uid=1000, gid=1000)
+
+
+def test_several_apps_without_a_workdir_are_refused(tmp_path: Path) -> None:
+    with pytest.raises(SandboxError, match="--workdir"):
+        _ = _two_apps(tmp_path).app_dir()
+
+
+def test_a_workdir_that_names_no_app_is_refused(tmp_path: Path) -> None:
+    with pytest.raises(SandboxError, match="mobile-app"):
+        _ = _two_apps(tmp_path, workdir="mobile-app").app_dir()
+
+
+def test_two_apps_with_the_same_directory_name_are_refused(tmp_path: Path) -> None:
+    first = tmp_path / "one" / "web-app"
+    second = tmp_path / "two" / "web-app"
+    first.mkdir(parents=True)
+    second.mkdir(parents=True)
+    box = replace(_box(tmp_path), apps=(first, second), workdir="web-app")
+
+    refused = box.refusals(tmp_path / "elsewhere")
+
+    assert len(refused) == 1
+    assert "two --app directories are named web-app" in refused[0]
+
+
+def test_the_command_line_takes_a_repeated_app_and_a_workdir(tmp_path: Path) -> None:
+    args = build_parser().parse_args(
+        ["sandbox", "run", "--app", "a/web-app", "--app", "a/api-service", "--workdir", "web-app",
+         "--runs-dir", "r", "--config", "c", "--", "true"]
+    )
+
+    assert args.app == [Path("a/web-app"), Path("a/api-service")]
+    assert args.workdir == "web-app"
 
 
 def test_a_mount_that_holds_the_checkout_is_refused(tmp_path: Path) -> None:
@@ -103,7 +159,7 @@ def test_a_config_running_a_cli_with_no_login_is_refused(tmp_path: Path) -> None
     box = _box(tmp_path)
     box.config.write_text('default_cli = "codex"\n')
     args = build_parser().parse_args(
-        ["sandbox", "run", "--app", str(box.app), "--runs-dir", str(box.runs_dir), "--config", str(box.config), "--", "true"]
+        ["sandbox", "run", "--app", str(box.apps[0]), "--runs-dir", str(box.runs_dir), "--config", str(box.config), "--", "true"]
     )
 
     with pytest.raises(SandboxError, match="runs codex, which the sandbox has no login for"):
