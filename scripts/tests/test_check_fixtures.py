@@ -101,6 +101,23 @@ def test_a_story_naming_a_fixture_nobody_declared_is_reported(guard: Any, tmp_pa
     assert "declares fixture 'seeded_accounts'" in problems[0]
 
 
+def test_a_fixture_declared_by_a_book_page_is_clean(guard: Any, tmp_path: Path) -> None:
+    """`qa.fixture()` reads the book's `fixture` pages first, so a name only a page declares is declared."""
+    app = _app(
+        tmp_path / "acme",
+        "qa:\n  tools:\n    - python3\n",
+        plan=PLAN + '\nqa.fixture("seeded_accounts")\n',
+    )
+    page = app / "docs" / "services" / "claims" / "fixtures" / "seeded_accounts.md"
+    page.parent.mkdir(parents=True)
+    page.write_text("---\ntype: fixture\ntitle: Seeded accounts\n---\n# Seeded accounts\n", encoding="utf-8")
+    (app / "docs" / "specs" / "story" / "plan-context.json").write_text(
+        json.dumps({"qa_stack": {"fixtures": ["seeded_accounts"]}}), encoding="utf-8"
+    )
+
+    assert guard._check_app(app) == []
+
+
 def test_prose_in_a_story_fixture_list_is_not_held_to_a_declaration(
     guard: Any, tmp_path: Path
 ) -> None:

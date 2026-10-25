@@ -7,6 +7,7 @@ import json
 import sys
 from pathlib import Path
 
+from ostler.model import load
 from ostler.qa.fixtures import declared, preflight_errors, referenced
 from paddock import loader, paths
 from workhorse_workflows.coder.shared.schemas.dev import lift_fixture
@@ -26,15 +27,16 @@ def _check_app(root: Path) -> list[str]:
     problems = [f"{_label(root)}: {message}" for message in preflight_errors(root)]
 
     specs, _errors = declared(root)
-    problems.extend(_story_declaration_problems(root, spec_root, specs))
+    names = set(specs) | {Path(node.id).stem for node in load(root).ui_nodes_of_type("fixture")}
+    problems.extend(_story_declaration_problems(root, spec_root, names))
     for plan in sorted(spec_root.glob("*/qa_plan.py")):
         story = plan.parent.name
-        known = ", ".join(sorted(specs)) or "(none declared)"
+        known = ", ".join(sorted(names)) or "(none declared)"
         problems.extend(
             f"{_label(root)}/{story}: `qa.fixture({name!r})` names a fixture this repo has "
             f"not declared. Declared here: {known}"
             for name in sorted(referenced(plan))
-            if name not in specs
+            if name not in names
         )
     return problems
 
@@ -57,7 +59,7 @@ def _story_fixture_names(document: dict) -> list[str]:
     return names
 
 
-def _story_declaration_problems(root: Path, spec_root: Path, specs: dict) -> list[str]:
+def _story_declaration_problems(root: Path, spec_root: Path, names: set[str]) -> list[str]:
     """Every story that names a fixture the repo never declared."""
     problems = []
     for document_path in sorted(spec_root.glob("*/plan-context.json")):
@@ -68,12 +70,12 @@ def _story_declaration_problems(root: Path, spec_root: Path, specs: dict) -> lis
             continue
         if not isinstance(document, dict):
             continue
-        known = ", ".join(sorted(specs)) or "(none declared)"
+        known = ", ".join(sorted(names)) or "(none declared)"
         problems.extend(
             f"{_label(root)}/{document_path.parent.name}: the story declares fixture "
             f"{name!r}, which this repo has not declared. Declared here: {known}"
             for name in _story_fixture_names(document)
-            if name not in specs
+            if name not in names
         )
     return problems
 
