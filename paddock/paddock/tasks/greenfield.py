@@ -16,6 +16,7 @@ from typing import Any
 
 from paddock.tasks import forensics as fx
 from paddock.tasks import operator_gates as og
+from paddock.tasks import tree
 from paddock.tasks.judge import Judge, call_agent, render
 from paddock.tasks.stablemate import TrialError, effective, no_leaks, pin_held, stablemate_checkout, uv_run
 from ostler import markdown, registry
@@ -53,7 +54,10 @@ BUILD = ("artifacts", "build")
 
 @dataclass(frozen=True, slots=True)
 class Surface:
-    """One service genesis scaffolds: a stack, a root inside the repo, an init command."""
+    """One service genesis scaffolds: a stack, a root inside the repo, an init command.
+
+    `repo` names the member of a folder of repos the service is built in. It stays empty for one repo.
+    """
 
     service: str
     service_root: str
@@ -61,6 +65,7 @@ class Surface:
     scaffolds: str = ""
     init_cmd: str = ""
     marker: str = ""
+    repo: str = ""
 
 
 @dataclass(frozen=True, slots=True)
@@ -109,6 +114,38 @@ class Fixture:
 
 
 
+def home_of(run: Run) -> Path:
+    """Where the docs, milestones and epics live: the one repo, or a folder's docs home."""
+    return tree.witness_docs(run, run.stage)
+
+
+def repos_of(run: Run) -> list[Path]:
+    """Every repo the round builds in."""
+    return list(tree.repos_at(run.stage, tree.stage_members(run)).values())
+
+
+def surface_root(run: Run, surface: Surface) -> Path:
+    """The repo a surface is scaffolded in."""
+    member_names = tree.stage_members(run)
+    if not member_names:
+        if surface.repo:
+            raise TrialError(
+                f"surface {surface.service!r} names repo {surface.repo!r}, but this benchmark stages one repo"
+            )
+        return run.stage
+    if surface.repo not in member_names:
+        raise TrialError(
+            f"surface {surface.service!r} names repo {surface.repo!r}; "
+            f"name one of {', '.join(member_names)}"
+        )
+    return run.stage / surface.repo
+
+
+def workspace_flags(run: Run) -> list[str]:
+    workspace = tree.staged_workspace(run)
+    return ["--workspace", workspace] if workspace else []
+
+
 def build_dir(run: Run) -> Path:
     directory = run.stage.joinpath(*BUILD)
     directory.mkdir(parents=True, exist_ok=True)
@@ -128,7 +165,7 @@ def budget_of(run: Run, fixture: Fixture, phase: str) -> float:
 
 def phase_env(run: Run, fixture: Fixture, phase: str) -> dict[str, str]:
     """The environment one phase is launched with: which repo, and how long it may take."""
-    env = {**os.environ, "AGENT_REPO_DIR": str(run.repo)}
+    env = {**os.environ, "AGENT_REPO_DIR": str(home_of(run))}
     budget = budget_of(run, fixture, phase)
     if budget > 0:
         env["WORKHORSE_MAX_RUNTIME_S"] = str(budget)
@@ -162,8 +199,8 @@ def run_genesis(run: Run, fixture: Fixture) -> None:
             "workhorse-coder", "run", "genesis",
             "--runs-dir", str(runs_dir(run)),
             "--config", str(effective(run)),
-            "--params", fixture.params(run.repo, surface),
-            cwd=run.repo,
+            "--params", fixture.params(surface_root(run, surface), surface),
+            cwd=surface_root(run, surface),
             env=phase_env(run, fixture, "genesis"),
             log_name=f"genesis-{surface.service}",
         )
@@ -190,11 +227,12 @@ def seed_milestone(run: Run, fixture: Fixture) -> None:
     source = run.benchmark.root / fixture.milestone
     if not (source / MILESTONE_FILE).is_file():
         raise TrialError(f"no milestone at {source} — is the benchmark folder the one that holds the milestone?")
-    if not (run.repo / "docs").is_dir():
-        raise TrialError(f"no {run.repo / 'docs'} — genesis did not scaffold the docs tree")
-    shutil.copytree(source, run.repo / MILESTONES_DIR / fixture.slug, dirs_exist_ok=True)
+    home = home_of(run)
+    if not (home / "docs").is_dir():
+        raise TrialError(f"no {home / 'docs'} — genesis did not scaffold the docs tree")
+    shutil.copytree(source, home / MILESTONES_DIR / fixture.slug, dirs_exist_ok=True)
     for surface in fixture.surfaces:
-        (run.repo / SERVICES_DIR / surface.service).mkdir(parents=True, exist_ok=True)
+        (home / SERVICES_DIR / surface.service).mkdir(parents=True, exist_ok=True)
 
 
 def seed_decision_records(run: Run, fixture: Fixture) -> None:
@@ -204,7 +242,7 @@ def seed_decision_records(run: Run, fixture: Fixture) -> None:
     source = run.benchmark.root / fixture.decision_records
     if not source.is_dir():
         raise TrialError(f"no decision records at {source} — is the benchmark folder the one that holds the milestone?")
-    destination = run.repo / fixture.decision_records_path
+    destination = home_of(run) / fixture.decision_records_path
     destination.mkdir(parents=True, exist_ok=True)
     for record in sorted(source.glob("*.md")):
         (destination / record.name).write_text(record.read_text(encoding="utf-8"), encoding="utf-8")
@@ -219,14 +257,15 @@ def git(repo: Path, *argv: str) -> None:
 
 
 def commit_baseline(run: Run) -> None:
-    """Commit everything genesis scaffolded, before the first story runs."""
-    for argv in (["add", "-A"],
-                 ["commit", "-m", "chore: scaffold the project", "--no-verify"]):
-        result = subprocess.run(["git", "-C", str(run.repo), *argv],
-                                capture_output=True, text=True, timeout=120, check=False)
-        if result.returncode != 0 and "nothing to commit" not in result.stdout:
-            raise TrialError(f"baseline `git {argv[0]}` failed in {run.repo}: "
-                             f"{result.stderr.strip() or result.stdout.strip()}")
+    """Commit everything genesis scaffolded, in every repo, before the first story runs."""
+    for repo in repos_of(run):
+        for argv in (["add", "-A"],
+                     ["commit", "-m", "chore: scaffold the project", "--no-verify"]):
+            result = subprocess.run(["git", "-C", str(repo), *argv],
+                                    capture_output=True, text=True, timeout=120, check=False)
+            if result.returncode != 0 and "nothing to commit" not in result.stdout:
+                raise TrialError(f"baseline `git {argv[0]}` failed in {repo}: "
+                                 f"{result.stderr.strip() or result.stdout.strip()}")
 
 
 RUNTIME_IGNORES = (".opencode/", "**/qa/**/*.log")
@@ -235,16 +274,17 @@ IGNORE_HEADER = "# benchmark harness: agent runtime state, not deliverables"
 
 
 def ignore_agent_runtime(run: Run) -> None:
-    """Teach the produced repo to ignore the runtime of the agent building it."""
-    path = run.repo / ".gitignore"
-    text = path.read_text(encoding="utf-8") if path.is_file() else ""
-    if IGNORE_HEADER in text:
-        return
-    prefix = text if text.endswith("\n") or not text else text + "\n"
-    path.write_text(
-        prefix + f"\n{IGNORE_HEADER}\n" + "".join(f"{line}\n" for line in RUNTIME_IGNORES),
-        encoding="utf-8",
-    )
+    """Teach every produced repo to ignore the runtime of the agent building it."""
+    for repo in repos_of(run):
+        path = repo / ".gitignore"
+        text = path.read_text(encoding="utf-8") if path.is_file() else ""
+        if IGNORE_HEADER in text:
+            continue
+        prefix = text if text.endswith("\n") or not text else text + "\n"
+        path.write_text(
+            prefix + f"\n{IGNORE_HEADER}\n" + "".join(f"{line}\n" for line in RUNTIME_IGNORES),
+            encoding="utf-8",
+        )
 
 
 def run_phase(run: Run, fixture: Fixture, phase: str, *argv: str) -> None:
@@ -256,7 +296,8 @@ def run_phase(run: Run, fixture: Fixture, phase: str, *argv: str) -> None:
         *argv,
         "--runs-dir", str(runs_dir(run)),
         "--config", str(effective(run)),
-        cwd=run.repo,
+        *workspace_flags(run),
+        cwd=home_of(run),
         env=phase_env(run, fixture, phase),
         log_name=phase,
     )
@@ -265,7 +306,7 @@ def run_phase(run: Run, fixture: Fixture, phase: str, *argv: str) -> None:
 
 def run_author(run: Run, fixture: Fixture) -> None:
     """Split the approved milestone into epics and stories."""
-    milestone = run.repo / MILESTONES_DIR / fixture.slug / MILESTONE_FILE
+    milestone = produced_milestone(run, fixture)
     if not milestone.is_file():
         raise TrialError(f"no milestone at {milestone} — genesis first")
     stop, thread = og.gates_watched(run, "author")
@@ -279,7 +320,7 @@ def run_author(run: Run, fixture: Fixture) -> None:
 
 def run_coder(run: Run, fixture: Fixture) -> None:
     """Implement the epic queue, watching for gates without answering them."""
-    if not find_epics(run.repo):
+    if not find_epics(home_of(run)):
         raise TrialError("no epic queue — author produced no epics to implement")
     stop, thread = og.gates_watched(run, "coder")
     thread.start()
@@ -287,7 +328,7 @@ def run_coder(run: Run, fixture: Fixture) -> None:
         run_phase(
             run, fixture, "coder",
             "workhorse-coder", "run",
-            "--params", json.dumps({"repo_dir": str(run.repo)}),
+            "--params", json.dumps({"repo_dir": str(home_of(run))}),
         )
     finally:
         stop.set()
@@ -300,7 +341,7 @@ def run_gates(run: Run, fixture: Fixture) -> None:
     for check in fixture.checks:
         try:
             proc = subprocess.run(
-                check.cmd, shell=True, cwd=str(run.repo), capture_output=True,
+                check.cmd, shell=True, cwd=str(run.stage), capture_output=True,
                 text=True, timeout=check.timeout_s, check=False,
             )
             rc: int | None = proc.returncode
@@ -386,7 +427,7 @@ def is_done(status: str) -> bool:
 
 
 def produced_milestone(run: Run, fixture: Fixture) -> Path:
-    return run.repo / MILESTONES_DIR / fixture.slug / MILESTONE_FILE
+    return home_of(run) / MILESTONES_DIR / fixture.slug / MILESTONE_FILE
 
 
 def listed_epics(run: Run, fixture: Fixture) -> set[str]:
@@ -396,7 +437,7 @@ def listed_epics(run: Run, fixture: Fixture) -> set[str]:
 def unlisted_epics(run: Run, fixture: Fixture) -> list[str]:
     """The epic directories the milestone's `epics` list does not name."""
     listed = listed_epics(run, fixture)
-    return [e.parent.name for e in find_epics(run.repo)
+    return [e.parent.name for e in find_epics(home_of(run))
             if registry.epic_slug(e.parent.name) not in listed]
 
 
@@ -406,7 +447,7 @@ def trace_journeys(run: Run, fixture: Fixture) -> list[dict[str, Any]]:
     listed = listed_epics(run, fixture)
 
     owned: dict[str, list[dict[str, Any]]] = defaultdict(list)
-    for epic_md in find_epics(run.repo):
+    for epic_md in find_epics(home_of(run)):
         if registry.epic_slug(epic_md.parent.name) not in listed:
             continue
         doc = markdown.split(epic_md.read_text(encoding="utf-8"))
@@ -486,8 +527,8 @@ def judge_journeys(run: Run, fixture: Fixture, journeys: list[dict[str, Any]],
     )
     rubric = rubric_path.read_text(encoding="utf-8")
     arena = run.workdir("judge")
-    repo = arena / run.repo.name
-    shutil.copytree(run.repo, repo, symlinks=True)
+    repo = arena / run.stage.name
+    shutil.copytree(run.stage, repo, symlinks=True)
     logger.info("judging %d journey(s) with %s, %d at a time", len(journeys), judge.backend.name, jobs)
     with ThreadPoolExecutor(max_workers=max(1, jobs)) as pool:
         return list(pool.map(lambda j: judge_one(judge, j, rubric, repo), journeys))
@@ -680,6 +721,6 @@ def score_round(run: Run, fixture: Fixture) -> Score:
             "runs": runs,
             "churn": fx.churn_candidates(runs_dir(run)),
             "nodes": nodes,
-            "commits": git_commits(run.repo),
+            "commits": sum(git_commits(repo) for repo in repos_of(run)),
         },
     )
