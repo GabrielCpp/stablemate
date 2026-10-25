@@ -80,10 +80,11 @@ page names it as the piece an emulator does not stand in for.
 
 ### The artifacts repository
 
-`docs/epics/CASE-<n>/stories/CASE-<m>/story.md`, with `id: CASE-<m>`, written by hand before the
-fixture is frozen. Twelve stories across the three repos, each with its spec folder empty. Plus
-`defects.yml` and the defect variants the catch task plants, in the shape frozenapp already
-reads.
+One proposed milestone under `docs/milestones/`, the goal the stories reach, and the id registry
+pinned to the `CASE` prefix. The author workflow mints the epics and stories from the milestone
+against a book a prior `book` trial wrote, and they are committed here with their spec folders
+empty. Plus `defects.yml` and the defect variants the catch task plants, in the shape frozenapp
+already reads.
 
 ## 3. The tasks
 
@@ -153,12 +154,13 @@ the operator does not fix is part of the fixture, as long as the stack still run
 
 ### Then the stories
 
-After the freeze, the maintainer writes the twelve `CASE-<m>` stories by hand into the artifacts
-repo, against the frozen apps. They are brownfield stories: a new ticket priority that crosses
-all three repos, a reminder notification, an agent-reassignment rule, a customer-visible SLA
-clock. None asks for a book, and none presumes one exists. The `story` task runs them with a
-book already written by a prior `book` trial, which is the order work will follow: book first,
-story second.
+After the freeze, the author workflow writes the stories into the artifacts repo from one
+milestone, "Customers know where their ticket stands": a customer-visible SLA clock on web and
+phone through a mobile-gateway proto change, breach-ordered agent queue, a reminder before
+auto-close, and reopen from the reminder. The stories come out of the same pipe work will use,
+with ostler-minted ids, and the product calls are made once in the milestone so no story invents
+a message per technicality. The milestone's journeys name books, so the order is: book first,
+author second, story third.
 
 `defects.yml` is written last, each variant a diff against the frozen commit, so the `catch`
 task plants it with frozenapp as today.
