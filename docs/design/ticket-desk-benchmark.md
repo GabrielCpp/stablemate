@@ -37,8 +37,9 @@ all neutral names.
 ### kappa, the mobile app (Flutter, Android and iOS)
 
 The customer side of `customer-ui` on a phone: open a ticket, follow it, reply, get the push the
-notification handler sends. One app, one repo, its own generated gRPC stubs from zeta's
-`mobilegateway/v1` definition, which is the only service the phone speaks to. The book's journeys compile to Maestro, as the mobile reference app's do, and run on the Android
+notification handler sends. One app, one repo, calling the REST routes zeta's
+`mobilegateway/v1` definition annotates, with message classes generated from that definition.
+`mobile-gateway` is the only service the phone speaks to. The book's journeys compile to Maestro, as the mobile reference app's do, and run on the Android
 emulator. iOS is in the repo and out of every task, since no Linux runner drives it.
 
 ### zeta, the backend monorepo (Go, one cobra CLI per service)
@@ -50,7 +51,7 @@ emulator. iOS is in the repo and out of every task, since no Linux runner drives
 | `notifications` | gRPC API plus the `dispatch` handler that reads its queue, applies preferences and calls the messaging and push providers |
 | `asset`, `knowledge`, `attachment`, `audit`, `reporting`, `sla` | one gRPC server each: inventory, articles, S3 uploads, the audit trail, reports, SLA policies and timers with `clock` and `escalate` handlers |
 | `dynamostream` | handler on the table streams: a record change emits a `*.changed` event on the bus |
-| `mobile-gateway` | gRPC server for the phone: composes each screen from the domain services and forwards the token, the way the SvelteKit server does for the browser |
+| `mobile-gateway` | REST gateway for the phone through grpc-gateway, gRPC inside the cluster: composes each screen from the domain services and forwards the token, the way the SvelteKit server does for the browser |
 | `tf`, `charts` | Terraform and one Helm chart per deployable: each API, each handler |
 
 Each service binary is `svc serve` or `svc handle <name>`, one container per server and per
@@ -58,8 +59,8 @@ handler, as at work. The same binary carries the fixture commands a QA step need
 `svc get`, `svc events tail`, so the book's fixtures and read-backs run the repo's own CLI and
 never a vendor SDK from the agent's hand.
 
-There is no REST gateway. The browser talks to its app's SvelteKit server, which holds the gRPC
-clients; the phone talks to `mobile-gateway`. Every service verifies the identity provider's
+The browser talks to its app's SvelteKit server, which holds the gRPC clients. The phone talks
+REST to `mobile-gateway`, the one REST face in the system. gRPC stays inside the cluster. Every service verifies the identity provider's
 token itself. Every client in every repo is generated from `zeta/proto`, as at work. The full
 API is `ecosystem.md` beside the benchmark's `tasks.py`.
 
@@ -194,9 +195,11 @@ tree.
 
 ## 6. Assumptions and decisions parked
 
-- No REST gateway: SvelteKit server-side gRPC for the web, a gRPC `mobile-gateway` for the
-  phone. The first build used grpc-gateway REST and SPAs and was set aside on 2026-10-25 as not
-  work-shaped; its freeze record stays in `shape.md`.
+- SvelteKit server-side gRPC for the web, and REST through grpc-gateway on `mobile-gateway` for
+  the phone, as at work. The first build put the SPAs on grpc-gateway REST too and was set aside
+  on 2026-10-25 as not work-shaped. The second edition had the phone on gRPC, which work does
+  not, and the third edition moved it to REST the same day. Both freeze records stay in
+  `shape.md`.
 - Local runs Compose from stack.yml, not a kind cluster. If a later round shows the k8s gap
   hides defects, kind becomes a stack service.
 - The identity provider is one local OIDC issuer. Firebase at work is the mobile book's case and
