@@ -284,17 +284,25 @@ def load_book(repo: Path) -> dict[str, Any] | None:
         return None
 
 
-def leverage(witness: Path, story: str, statuses: dict[str, str] | None) -> dict[str, Any]:
-    """Score one trial's artifacts."""
-    spec = spec_dir(witness, story)
+def leverage(
+    witness: Path,
+    story: str,
+    statuses: dict[str, str] | None,
+    *,
+    spec: Path | None = None,
+    book: Path | None = None,
+) -> dict[str, Any]:
+    """Score one trial's artifacts; *spec* and *book* name where a folder of repos keeps them."""
+    spec = spec or spec_dir(witness, story)
+    book = book or witness
     plan_file = spec / "qa_plan.py"
     return leverage_from(
-        load_book(witness),
+        load_book(book),
         read_json(spec / "qa-okf-context.json"),
         plan_file.read_text(encoding="utf-8") if plan_file.is_file() else None,
         read_ndjson(spec / "qa" / "qa-run.ndjson"),
         statuses,
-        book_sensitivity(witness),
+        book_sensitivity(book),
     )
 
 

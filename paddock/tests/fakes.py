@@ -103,6 +103,7 @@ def folder_run(tmp_path: Path) -> Run:
             "docs/epics/e1/epic.md": EPIC_MD,
             "docs/epics/e1/stories/first/story.md": STORY_MD,
             "docs/services/book.md": "# book\n",
+            f"specs/{STORY}/qa-plan.yml": "stale\n",
         },
     )
     stage = tmp_path / "stage"

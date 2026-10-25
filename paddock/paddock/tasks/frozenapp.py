@@ -15,20 +15,19 @@ from typing import Any
 import yaml
 from paddock.tasks import forensics as fx
 from paddock.tasks.leverage import LEVERAGE_KEYS, leverage, leverage_line, pool_leverage
+from paddock.tasks import tree
 from paddock.tasks.stablemate import (
     TrialError,
-    effective,
     git,
     no_leaks,
     pin_held,
     spec_dir,
     stablemate_checkout,
     trial_artifacts,
-    trial_env,
     upgrade_spec_layout,
     uv_run,
 )
-from paddock.runner import Run
+from paddock.runner import CommandResult, Run
 from paddock.registry import Score
 from paddock.tasks import inputs
 
@@ -67,8 +66,8 @@ def story_diff(app: Path, story: str) -> dict[str, list[str]]:
     return diff
 
 
-def story_image(app: Path, story: str, rel: str, *, phase: str) -> Path:
-    """Where the `pre`/`post` content of one path for one story lives."""
+def story_image(app: Path, story: str, rel: str, *, phase: str, source: Path | None = None) -> Path:
+    """Where the `pre`/`post` content of one path for one story lives; a missing post image is the file in *source* (default *app*)."""
     image = app / "stories" / story / phase / rel
     if image.is_file():
         return image
@@ -76,7 +75,7 @@ def story_image(app: Path, story: str, rel: str, *, phase: str) -> Path:
         raise TrialError(f"story {story!r} lists {rel} as changed but has no pre/ image at {image}")
     if phase == "pinned":
         raise TrialError(f"story {story!r} pins {rel} but has no pinned/ image at {image}")
-    return app / rel
+    return (source or app) / rel
 
 
 def tracked_paths(app: Path) -> list[str]:
@@ -99,44 +98,63 @@ def copy_tracked(app: Path, dest: Path) -> None:
 
 
 def materialize(
-    app: Path, story: str, dest: Path, install: Callable[[Path], None] | None = None
+    source: Path,
+    story: str,
+    dest: Path,
+    install: Callable[[Path], None] | None = None,
+    *,
+    stories: Path | None = None,
+    run: Run | None = None,
 ) -> Path:
-    """Build, at `dest`, the git state a QA run for `story` is supposed to face."""
-    diff = story_diff(app, story)
+    """Build, at `dest`, the git state a QA run for `story` is supposed to face.
+
+    *source* is the stage root: one repo, or a folder of repos, each of which becomes a repo at `dest/<member>`.
+    The story's manifest and images are read from *stories*, which defaults to *source*.
+    """
+    stories = stories or source
+    member_names = tree.members(source)
+    if member_names and run is None:
+        raise TrialError(f"{source} is a folder of repos; materialize needs the run to find its docs home")
+    diff = story_diff(stories, story)
     if dest.exists():
         shutil.rmtree(dest)
     dest.parent.mkdir(parents=True, exist_ok=True)
 
-    copy_tracked(app, dest)
-    upgrade_spec_layout(dest)
+    sources = tree.repos_at(source, member_names)
+    targets = tree.repos_at(dest, member_names)
+    for key, target in targets.items():
+        copy_tracked(sources[key], target)
+    if not member_names:
+        upgrade_spec_layout(dest)
 
     after = {
-        rel: story_image(app, story, rel, phase="post").read_bytes()
+        rel: story_image(stories, story, rel, phase="post", source=source).read_bytes()
         for rel in [*diff["changed"], *diff["added"]]
     }
     for rel in diff["added"]:
         (dest / rel).unlink(missing_ok=True)
     for rel in diff["changed"]:
-        (dest / rel).write_bytes(story_image(app, story, rel, phase="pre").read_bytes())
+        (dest / rel).write_bytes(story_image(stories, story, rel, phase="pre").read_bytes())
     for rel in diff["pinned"]:
         target = dest / rel
         target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_bytes(story_image(app, story, rel, phase="pinned").read_bytes())
+        target.write_bytes(story_image(stories, story, rel, phase="pinned").read_bytes())
 
-    git("init", "--quiet", "--initial-branch", "main", cwd=dest)
-    git("config", "user.email", "benchmark@example.com", cwd=dest)
-    git("config", "user.name", "stablemate benchmark", cwd=dest)
-    if install is not None:
-        install(dest)
-    git("add", "--all", cwd=dest)
-    git("commit", "--quiet", "-m", f"before {story}", cwd=dest)
+    for repo in targets.values():
+        git("init", "--quiet", "--initial-branch", "main", cwd=repo)
+        git("config", "user.email", "benchmark@example.com", cwd=repo)
+        git("config", "user.name", "stablemate benchmark", cwd=repo)
+        if install is not None and (not member_names or (repo / "agents.yml").is_file()):
+            install(repo)
+        git("add", "--all", cwd=repo)
+        git("commit", "--quiet", "-m", f"before {story}", cwd=repo)
 
     for rel, body in after.items():
         target = dest / rel
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_bytes(body)
 
-    spec = spec_dir(dest, story)
+    spec = tree.spec_dir(run, dest, story) if run is not None else spec_dir(dest, story)
     if not spec.is_dir():
         raise TrialError(f"no spec dir {spec} — is the seed the app tree it should be?")
     for name in QA_OUTPUTS:
@@ -148,14 +166,15 @@ def materialize(
     return dest
 
 
-def reset_stack_state(dest: Path) -> None:
+def reset_stack_state(dest: Path, member_names: tuple[str, ...] = ()) -> None:
     """Drop the trial's compose volumes, once, before the run starts."""
-    if not (dest / "compose.yml").is_file():
-        return
-    subprocess.run(
-        ["docker", "compose", "-f", "compose.yml", "down", "-v", "--remove-orphans"],
-        cwd=str(dest), capture_output=True, text=True, check=False,
-    )
+    for repo in tree.repos_at(dest, member_names).values():
+        if not (repo / "compose.yml").is_file():
+            continue
+        subprocess.run(
+            ["docker", "compose", "-f", "compose.yml", "down", "-v", "--remove-orphans"],
+            cwd=str(repo), capture_output=True, text=True, check=False,
+        )
 
 
 
@@ -252,18 +271,39 @@ def defect_survived(app: Path, row: dict[str, str], witness: Path) -> bool:
 
 
 
-def capture_witness(repo: Path, dest: Path, extra: tuple[str, ...] = ()) -> Path:
-    """Copy the part of a finished trial tree the score reads, into the staged result."""
+WITNESS_CONFIGS = ("agents.yml", ".agents.yml", "ostler.yml", "ostler.yaml")
+
+
+def capture_witness(
+    repo: Path, dest: Path, extra: tuple[str, ...] = (), *, run: Run | None = None
+) -> Path:
+    """Copy the part of a finished trial tree the score reads, into the staged result.
+
+    A folder of repos keeps each member's configs under its name, and the docs home's `docs/` and `specs/` where they sit in the tree.
+    """
     dest.mkdir(parents=True, exist_ok=True)
-    if (repo / "docs").is_dir():
-        shutil.copytree(repo / "docs", dest / "docs", dirs_exist_ok=True)
-    if (trial_artifacts(repo) / "specs").is_dir():
-        shutil.copytree(
-            trial_artifacts(repo) / "specs", trial_artifacts(dest) / "specs", dirs_exist_ok=True
-        )
-    for name in ("agents.yml", ".agents.yml", "ostler.yml", "ostler.yaml"):
-        if (repo / name).is_file():
-            shutil.copyfile(repo / name, dest / name)
+    member_names = tree.stage_members(run) if run is not None else ()
+    if run is not None and member_names:
+        home = tree.docs_home(run, repo)
+        shelf = tree.docs_home(run, dest)
+        for name in ("docs", "specs"):
+            if (home / name).is_dir():
+                shutil.copytree(home / name, shelf / name, dirs_exist_ok=True)
+        for member, source in tree.repos_at(repo, member_names).items():
+            for name in WITNESS_CONFIGS:
+                if (source / name).is_file():
+                    (dest / member).mkdir(parents=True, exist_ok=True)
+                    shutil.copyfile(source / name, dest / member / name)
+    else:
+        if (repo / "docs").is_dir():
+            shutil.copytree(repo / "docs", dest / "docs", dirs_exist_ok=True)
+        if (trial_artifacts(repo) / "specs").is_dir():
+            shutil.copytree(
+                trial_artifacts(repo) / "specs", trial_artifacts(dest) / "specs", dirs_exist_ok=True
+            )
+        for name in WITNESS_CONFIGS:
+            if (repo / name).is_file():
+                shutil.copyfile(repo / name, dest / name)
     for rel in extra:
         source = repo / rel
         if source.is_dir():
@@ -281,12 +321,15 @@ def capture_witness(repo: Path, dest: Path, extra: tuple[str, ...] = ()) -> Path
 
 
 
-def evidence_statuses(witness: Path, story: str) -> dict[str, str] | None:
+def evidence_statuses(
+    witness: Path, story: str, *, run: Run | None = None
+) -> dict[str, str] | None:
     """`{obligation id: status}` for the run's owed obligations, or None if unbuildable."""
     from ostler import qa as qa_mod
 
+    spec = tree.spec_dir(run, witness, story) if run is not None else spec_dir(witness, story)
     try:
-        data = qa_mod.build_evidence_map(spec_dir(witness, story))
+        data = qa_mod.build_evidence_map(spec)
     except qa_mod.EvidenceMapError:
         return None
     return {str(row["id"]): str(row["status"]) for row in data["obligations"]}
@@ -429,13 +472,35 @@ def plan_round(
     return [*control, *[(str(row["story"]), row) for row in rows]]
 
 
+def launch_qa(
+    run: Run, fixture: Fixture, repo: Path, *, run_id: str, story: str, budget: float, runs_dir: Path
+) -> CommandResult:
+    """Drive `workhorse-coder run qa` over the trial tree at *repo*, under the workspace a folder of repos carries."""
+    launch = tree.launch(run, repo)
+    return run.cli(
+        *uv_run(stablemate_checkout(run), "workhorse-workflows"),
+        "workhorse-coder", "run", "qa",
+        "--runs-dir", str(runs_dir), "--run-id", run_id,
+        *launch.flags(),
+        "--params", json.dumps(
+            {
+                "story": story, "repo_dir": str(launch.repo_dir),
+                "stop_at_first_verdict": fixture.first_verdict,
+            }
+        ),
+        cwd=launch.repo_dir,
+        env={**launch.env, "WORKHORSE_MAX_RUNTIME_S": str(budget), "AGENT_REPO_DIR": str(launch.repo_dir)},
+        log_name=f"{run_id}-qa",
+    )
+
+
 def run_round(run: Run, fixture: Fixture) -> None:
     """Run the round: materialize, seed, drive `workhorse-coder run qa`, keep the witness."""
     app = key_dir(run, fixture)
     checkout = stablemate_checkout(run)
     budget = inputs.number(run, "budget", fixture.budget_s)
-    config = effective(run)
     runs_dir = trials_dir(run) / "runs"
+    member_names = tree.stage_members(run)
 
     with no_leaks(checkout, pinned=pin_held(run.pinned)):
         ledger: list[dict[str, Any]] = []
@@ -449,26 +514,17 @@ def run_round(run: Run, fixture: Fixture) -> None:
                     cwd=checkout, log_name=f"{run_id}-farrier", check=True,
                 )
 
-            repo = materialize(run.repo, story, run.workdir(run_id) / fixture.repo_dir, install)
+            repo = materialize(
+                run.stage, story, run.workdir(run_id) / fixture.repo_dir, install,
+                stories=app if member_names else None, run=run,
+            )
             if row:
                 seed_defect(app, row, repo)
-            reset_stack_state(repo)
+            reset_stack_state(repo, member_names)
 
             started, since = time.monotonic(), time.time()
-            result = run.cli(
-                *uv_run(checkout, "workhorse-workflows"),
-                "workhorse-coder", "run", "qa",
-                "--runs-dir", str(runs_dir), "--run-id", run_id,
-                "--config", str(config),
-                "--params", json.dumps(
-                    {
-                        "story": story, "repo_dir": str(repo),
-                        "stop_at_first_verdict": fixture.first_verdict,
-                    }
-                ),
-                cwd=repo,
-                env={**trial_env(repo), "WORKHORSE_MAX_RUNTIME_S": str(budget), "AGENT_REPO_DIR": str(repo)},
-                log_name=f"{run_id}-qa",
+            result = launch_qa(
+                run, fixture, repo, run_id=run_id, story=story, budget=budget, runs_dir=runs_dir
             )
             wall = time.monotonic() - started
 
@@ -476,6 +532,7 @@ def run_round(run: Run, fixture: Fixture) -> None:
                 repo,
                 trials_dir(run) / run_id / "witness",
                 extra=(str(row["path"]),) if row else (),
+                run=run,
             )
             ledger.append({
                 "run_id": run_id, "story": story, "defect": variant,
@@ -502,7 +559,7 @@ def score_round(run: Run, fixture: Fixture) -> Score:
     for entry in json.loads(ledger.read_text(encoding="utf-8")):
         row = by_id.get(str(entry["defect"]))
         witness = run.stage / str(entry["witness"])
-        statuses = evidence_statuses(witness, str(entry["story"]))
+        statuses = evidence_statuses(witness, str(entry["story"]), run=run)
         audit = audit_result(run.stage.joinpath(*TRIALS) / "runs", str(entry["run_id"]))
         verdict, because = classify(
             row,
@@ -515,7 +572,11 @@ def score_round(run: Run, fixture: Fixture) -> Score:
             **entry,
             "verdict": verdict,
             "because": because,
-            "leverage": leverage(witness, str(entry["story"]), statuses),
+            "leverage": leverage(
+                witness, str(entry["story"]), statuses,
+                spec=tree.spec_dir(run, witness, str(entry["story"])),
+                book=tree.witness_docs(run, witness),
+            ),
         })
 
     return Score(

@@ -11,7 +11,8 @@ import yaml
 from paddock.tasks import forensics as fx
 from paddock.tasks import frozenapp as fz
 from paddock.tasks import leverage as lv
-from paddock.tasks.stablemate import TrialError, effective, no_leaks, pin_held, stablemate_checkout, uv_run
+from paddock.tasks import tree
+from paddock.tasks.stablemate import TrialError, no_leaks, pin_held, stablemate_checkout, uv_run
 from paddock.runner import Run
 from paddock.registry import Score
 from paddock.tasks import inputs
@@ -246,8 +247,8 @@ def run_round(run: Run, fixture: fz.Fixture) -> None:
     rows = select_mutants(app, inputs.names(run, "mutants") or fixture.defects)
     checkout = stablemate_checkout(run)
     budget = inputs.number(run, "budget", fixture.budget_s)
-    config = effective(run)
     runs_dir = fz.trials_dir(run) / "runs"
+    member_names = tree.stage_members(run)
 
     with no_leaks(checkout, pinned=pin_held(run.pinned)):
         ledger: list[dict[str, Any]] = []
@@ -262,30 +263,21 @@ def run_round(run: Run, fixture: fz.Fixture) -> None:
                     cwd=checkout, log_name=f"{run_id}-farrier", check=True,
                 )
 
-            repo = fz.materialize(run.repo, story, run.workdir(run_id) / fixture.repo_dir, install)
+            repo = fz.materialize(
+                run.stage, story, run.workdir(run_id) / fixture.repo_dir, install,
+                stories=app if member_names else None, run=run,
+            )
             seed_mutant(app, row, repo)
-            fz.reset_stack_state(repo)
+            fz.reset_stack_state(repo, member_names)
 
             started, since = time.monotonic(), time.time()
-            result = run.cli(
-                *uv_run(checkout, "workhorse-workflows"),
-                "workhorse-coder", "run", "qa",
-                "--runs-dir", str(runs_dir), "--run-id", run_id,
-                "--config", str(config),
-                "--params", json.dumps(
-                    {
-                        "story": story, "repo_dir": str(repo),
-                        "stop_at_first_verdict": fixture.first_verdict,
-                    }
-                ),
-                cwd=repo,
-                env={**fz.trial_env(repo), "WORKHORSE_MAX_RUNTIME_S": str(budget), "AGENT_REPO_DIR": str(repo)},
-                log_name=f"{run_id}-qa",
+            result = fz.launch_qa(
+                run, fixture, repo, run_id=run_id, story=story, budget=budget, runs_dir=runs_dir
             )
             wall = time.monotonic() - started
 
             witness = fz.capture_witness(
-                repo, fz.trials_dir(run) / run_id / "witness", extra=(str(row["path"]),)
+                repo, fz.trials_dir(run) / run_id / "witness", extra=(str(row["path"]),), run=run
             )
             ledger.append({
                 "run_id": run_id, "story": story, "mutant": mutant,
@@ -313,14 +305,14 @@ def score_round(run: Run, fixture: fz.Fixture) -> Score:
     for entry in json.loads(ledger.read_text(encoding="utf-8")):
         row = by_id[str(entry["mutant"])]
         witness = run.stage / str(entry["witness"])
-        statuses = fz.evidence_statuses(witness, str(entry["story"]))
+        statuses = fz.evidence_statuses(witness, str(entry["story"]), run=run)
         audit = fz.audit_result(run.stage.joinpath(*fz.TRIALS) / "runs", str(entry["run_id"]))
         verdict, because = classify_mutant(
             row,
             statuses,
             audit,
             survived=mutant_survived(app, row, witness),
-            cares=dont_cares(witness),
+            cares=dont_cares(tree.witness_docs(run, witness)),
         )
         trials.append({
             **entry,
@@ -328,7 +320,11 @@ def score_round(run: Run, fixture: fz.Fixture) -> Score:
             "because": because,
             "defect": f"{entry['mutant']}:{entry['pool']}",
             "obligation": str(row.get("bullet", "") or "") or f"pool B · {entry['path']}",
-            "leverage": lv.leverage(witness, str(entry["story"]), statuses),
+            "leverage": lv.leverage(
+                witness, str(entry["story"]), statuses,
+                spec=tree.spec_dir(run, witness, str(entry["story"])),
+                book=tree.witness_docs(run, witness),
+            ),
         })
 
     return Score(
