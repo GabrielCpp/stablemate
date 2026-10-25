@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from types import ModuleType
 
-from paddock import paths
+from paddock import names, paths
 from paddock.registry import REGISTRY, Task, TaskError, collect
 
 
@@ -76,6 +76,15 @@ def benchmark_names(root: Path) -> list[str]:
     if not gold.is_dir():
         return []
     return sorted(entry.name for entry in gold.iterdir() if entry.is_dir() and not entry.name.startswith("."))
+
+
+def data_repos(root: Path) -> list[Path]:
+    """Every repository the benchmarks under *root* work on: each `data/`, or each repo in a folder of them."""
+    found: list[Path] = []
+    for name in benchmark_names(root):
+        data = paths.benchmark_dir(root, name) / paths.DATA
+        found.extend([data] if (data / ".git").exists() else names.repo_children(data))
+    return found
 
 
 def load_benchmark(root: Path, name: str) -> Benchmark:

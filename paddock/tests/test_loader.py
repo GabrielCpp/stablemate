@@ -119,6 +119,18 @@ def test_an_unknown_task_names_the_one_the_benchmark_declares(make_benchmark: Ma
         loader.load_task(root, "smoke", "missing")
 
 
+def test_the_data_repos_are_each_data_repo_or_each_repo_in_a_folder_of_them(
+    make_benchmark: MakeBenchmark, root: Path
+) -> None:
+    make_benchmark()
+    folder = root / "gold" / "multi" / "data"
+    for repo in ("web-app", "api-service"):
+        (folder / repo / ".git").mkdir(parents=True)
+    (folder / ".hidden").mkdir()
+    assert loader.data_repos(root) == [
+        folder / "api-service", folder / "web-app", root / "gold" / "smoke" / "data"]
+
+
 def test_a_benchmark_missing_a_part_names_it(make_benchmark: MakeBenchmark, root: Path) -> None:
     make_benchmark()
     (root / "gold" / "smoke" / "home-config.toml").unlink()
