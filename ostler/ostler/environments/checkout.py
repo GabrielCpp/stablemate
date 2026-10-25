@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 
@@ -24,5 +25,5 @@ def locate(repo: Path, path: Path) -> Path:
     if path.is_file() or not path.is_relative_to(repo):
         return path
     main = main_checkout(repo)
-    fallback = main / path.relative_to(repo)
+    fallback = main / os.path.normpath(path.relative_to(repo))
     return fallback if main != repo and fallback.is_file() else path

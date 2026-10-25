@@ -279,6 +279,22 @@ def test_a_worktree_mounts_a_fixture_file_of_the_main_checkout(tmp_path: Path) -
     assert f"{root}/{SERVICES}/api/ops/fixtures/schema.sql:/docker-entrypoint-initdb.d/1-schema.sql:ro" in mounts
 
 
+def test_a_book_only_the_worktree_has_mounts_a_dump_of_the_main_checkout(tmp_path: Path) -> None:
+    root = _repo(tmp_path)
+    tree = _worktree(root)
+    shutil.rmtree(root / SERVICES / "api")
+    _rewrite_stack(tree, "api", {"db": {
+        "about": "the database", "define": "services/db.yml.j2",
+        "fixtures": {"schema": ["fixtures/schema.sql"], "dump": ["../../../../dumps/dump.sql"]}}})
+    _file(root, "dumps/dump.sql", "insert into t values (9);\n")
+    outcome = commands.cmd_render(tree, ["api"], copy_name="c1", fixtures=["dump"])
+    assert outcome.ok, outcome.message
+    compose = yaml.safe_load(
+        (Path(outcome.data["directory"]) / render_mod.COMPOSE_FILE).read_text(encoding="utf-8"))
+    assert (f"{root}/dumps/dump.sql:/docker-entrypoint-initdb.d/1-dump.sql:ro"
+            in compose["services"]["api-db"]["volumes"])
+
+
 def test_a_template_that_sets_its_own_ports_is_refused(tmp_path: Path) -> None:
     root = _repo(tmp_path)
     _file(root, f"{SERVICES}/web/ops/services/web.yml.j2", "image: web\nports: ['3000:3000']\n")
