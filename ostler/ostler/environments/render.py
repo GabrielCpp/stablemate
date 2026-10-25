@@ -199,6 +199,7 @@ def _context(
         "env_dir": str(copy.directory),
         "dir": str(copy.directory / service.compose_name),
         "fixtures": [{"path": str(path), "name": path.name} for path in files],
+        "fixture_sets": list(fixtures),
         "service": service_name,
     }
 

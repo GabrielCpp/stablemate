@@ -324,7 +324,8 @@ services:
 ```
 
 A `define` template renders to one compose service. It sees `copy`, `repo`, `ops_dir`, `env_dir`, `dir`
-(its folder in the copy, where its `files` land), `fixtures`, and `service('book:name')` for another
+(its folder in the copy, where its `files` land), `fixtures`, `fixture_sets` (the names of the sets
+the bring-up loads), and `service('book:name')` for another
 service's host name. ostler writes `depends_on`, `ports` and `container_name` itself, from
 `needs:`, `once:` and `address:`, so a template that sets one is refused. Each copy gets one
 compose file, its own project, its own named volumes and its own host ports. The shared copy is

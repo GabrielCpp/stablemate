@@ -207,6 +207,23 @@ def test_a_chosen_fixture_set_replaces_the_defaults(tmp_path: Path) -> None:
     assert "`seed`" in unknown.message
 
 
+def test_a_service_that_loads_no_fixture_sees_the_sets_the_bring_up_loads(
+    tmp_path: Path,
+) -> None:
+    root = _repo(tmp_path)
+    _file(root, f"{SERVICES}/web/ops/services/web.yml.j2",
+          "build: {{ repo }}/web-app\nenvironment:\n  SETS: \"{{ fixture_sets | join(',') }}\"\n")
+
+    def sets(fixtures: tuple[str, ...]) -> str:
+        outcome = commands.cmd_render(root, ["web"], copy_name="c1", fixtures=fixtures)
+        compose = yaml.safe_load(
+            (Path(outcome.data["directory"]) / render_mod.COMPOSE_FILE).read_text(encoding="utf-8"))
+        return compose["services"]["web-web"]["environment"]["SETS"]
+
+    assert sets(()) == "schema"
+    assert sets(("users", "schema")) == "users,schema"
+
+
 def _db_with_dump(root: Path) -> None:
     _rewrite_stack(root, "api", {"db": {
         "about": "the database", "define": "services/db.yml.j2",
