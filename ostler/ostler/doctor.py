@@ -144,7 +144,7 @@ def run(graph: Graph, epic_filter: str | None = None, check_schema: bool = True,
         data_states.check_data_states(ui_data, f)
         data_state_ledger.check_conditions(ui_data, f)
         outcome_rules.check_outcomes(ui_data, f)
-    milestones_mod.check_milestones(graph, f, ui_data)
+    milestones_mod.check_milestones(graph, f)
     if check_schema:
         _check_conformance(graph, f)
         _check_misplaced_book_pages(graph, f)

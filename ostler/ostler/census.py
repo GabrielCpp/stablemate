@@ -33,7 +33,6 @@ DORMANT_UNREACHABLE: dict[str, str] = {
     "milestone-cycle": _NO_MILESTONES,
     "milestone-dangling-link": _NO_MILESTONE_FOLDERS,
     "milestone-journey-services": _NO_MILESTONE_FOLDERS,
-    "milestone-missing-mockup": _NO_MILESTONE_FOLDERS,
     "milestone-missing-section": _NO_MILESTONE_FOLDERS,
     "milestone-open-decisions": _NO_MILESTONE_FOLDERS,
     "moves-shape": _NO_DATA_STATES,

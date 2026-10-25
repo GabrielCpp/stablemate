@@ -14,7 +14,7 @@ SECTIONS = ("Outcome", "Release Boundary", "User Journeys", "Architecture Decisi
             "Constraints", "Acceptance", "Non-Goals")
 READINESS = {
     "milestone-missing-section", "milestone-open-decisions", "milestone-dangling-link",
-    "milestone-journey-services", "milestone-missing-mockup",
+    "milestone-journey-services",
 }
 JOURNEY = "### Sign in with a code\n\n- services: area\n\nThe user signs in.\n"
 UI_JOURNEY = "### Sign in with a code\n\n- services: mobile-app\n\nThe user signs in.\n"
@@ -207,29 +207,11 @@ def test_a_journey_through_known_books_does_not_fire_the_services_check(repo: Pa
     assert findings(repo, "milestone-journey-services") == []
 
 
-def test_a_ui_journey_without_its_mockup_fires(repo: Path):
+def test_a_ui_journey_without_a_mockup_produces_no_finding(repo: Path):
     add_mobile_book(repo)
     put(repo, journeys=UI_JOURNEY)
-
-    [finding] = findings(repo, "milestone-missing-mockup")
-
-    assert "mockups/sign-in-with-a-code.html" in finding.message
-    assert finding.ref == "sign-in-with-a-code"
-
-
-def test_a_ui_journey_with_its_mockup_does_not_fire(repo: Path):
-    add_mobile_book(repo)
-    put(repo, journeys=UI_JOURNEY)
-    write(repo / "docs/milestones/sign-in/mockups/sign-in-with-a-code.html", "<html></html>")
 
     assert findings(repo) == []
-
-
-def test_a_journey_through_a_non_ui_book_needs_no_mockup(repo: Path):
-    add_mobile_book(repo)
-    put(repo)
-
-    assert findings(repo, "milestone-missing-mockup") == []
 
 
 @pytest.mark.parametrize(("title", "slug"), [

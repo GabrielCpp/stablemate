@@ -102,7 +102,7 @@ def check_layout(graph: Graph, f: list[Finding]) -> None:
             related=[_rel(graph, m.path) for m in approved[1:]]))
 
 
-def check_milestone(graph: Graph, milestone: Milestone, dump: dict | None = None) -> list[Finding]:
+def check_milestone(graph: Graph, milestone: Milestone) -> list[Finding]:
     """The readiness findings of one milestone, error or warn by its status, none once superseded."""
     if milestone.status in SKIPPED_STATUSES:
         return []
@@ -115,18 +115,18 @@ def check_milestone(graph: Graph, milestone: Milestone, dump: dict | None = None
         *_missing_sections(milestone, doc, rel),
         *_open_decisions(milestone, doc, rel),
         *_dangling_links(milestone, doc, rel),
-        *_journey_findings(graph, milestone, doc, rel, dump),
+        *_journey_findings(graph, milestone, doc, rel),
     ]
     if milestone.status in BLOCKING_STATUSES:
         return found
     return [replace(fd, severity="warn") for fd in found]
 
 
-def check_milestones(graph: Graph, f: list[Finding], dump: dict | None = None) -> None:
+def check_milestones(graph: Graph, f: list[Finding]) -> None:
     """Layout, then the readiness check of every milestone."""
     check_layout(graph, f)
     for milestone in graph.milestones:
-        f.extend(check_milestone(graph, milestone, dump))
+        f.extend(check_milestone(graph, milestone))
 
 
 def _missing_sections(milestone: Milestone, doc: markdown.MarkdownDoc, rel: str) -> list[Finding]:
@@ -166,14 +166,12 @@ def _dangling_links(milestone: Milestone, doc: markdown.MarkdownDoc, rel: str) -
     return found
 
 
-def _journey_findings(graph: Graph, milestone: Milestone, doc: markdown.MarkdownDoc, rel: str,
-                      dump: dict | None) -> list[Finding]:
+def _journey_findings(graph: Graph, milestone: Milestone, doc: markdown.MarkdownDoc, rel: str) -> list[Finding]:
     journeys = doc.find_section(registry.MILESTONE_JOURNEYS_HEADING)
     if journeys is None:
         return []
     found: list[Finding] = []
     known_books = service_books(graph)
-    ui_books: set[str] | None = None
     for journey in journeys.children:
         if journey.level != JOURNEY_LEVEL:
             continue
@@ -195,18 +193,6 @@ def _journey_findings(graph: Graph, milestone: Milestone, doc: markdown.Markdown
                 f"{rel}: the journey `{title}` names the book `{book}`, which does not exist "
                 f"under docs/services",
                 path=rel, line=line, ref=slug))
-        known = [b for b in books if b not in unknown]
-        if not known or (milestone.path.parent / MOCKUPS_DIR / f"{slug}.html").is_file():
-            continue
-        if ui_books is None:
-            ui_books = _ui_books(graph, dump)
-        screen_books = [b for b in known if b in ui_books]
-        if screen_books:
-            found.append(Finding(
-                "error", "milestone-missing-mockup",
-                f"{rel}: the journey `{title}` goes through the {', '.join(screen_books)} UI "
-                f"book but {MOCKUPS_DIR}/{slug}.html is missing",
-                path=rel, line=line, ref=slug, suggestion=f"{MOCKUPS_DIR}/{slug}.html"))
     return found
 
 
