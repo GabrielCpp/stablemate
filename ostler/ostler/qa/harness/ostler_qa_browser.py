@@ -17,7 +17,7 @@ from ostler_qa_transfer import upload
 from playwright.sync_api import TimeoutError as PlaywrightTimeout
 from playwright.sync_api import sync_playwright
 
-DIAGNOSTICS_SCHEMA = "browser-diagnostics/2"
+DIAGNOSTICS_SCHEMA = "browser-diagnostics/3"
 
 LAYOUT_SCHEMA = "browser-layout/1"
 
@@ -123,6 +123,10 @@ class RecordedResponse:
 
 
 
+def _sent_by(entry: Mapping[str, Any], initiator: str | None) -> bool:
+    return initiator is None or entry.get("initiator", "page") == initiator
+
+
 def path_pattern(path: str) -> re.Pattern[str]:
     """A request path as a pattern, with each `{name}` standing for one whole segment."""
     parts = re.split(r"(\{[^{}/]+\})", path)
@@ -141,17 +145,22 @@ class ResponseWindow:
         self._console = console
         self._downloads = downloads
 
-    def response_for(self, path: str, *, method: str | None = None) -> RecordedResponse:
+    def response_for(
+        self, path: str, *, method: str | None = None, initiator: str | None = "page"
+    ) -> RecordedResponse:
         """The one response on *path* (and *method*, if given) inside this window."""
-        return self._browser.response_for(path, method=method, since=self._since)
+        return self._browser.response_for(path, method=method, since=self._since, initiator=initiator)
 
-    def requests_to(self, path: str, *, method: str | None = None) -> list[dict[str, Any]]:
+    def requests_to(
+        self, path: str, *, method: str | None = None, initiator: str | None = "page"
+    ) -> list[dict[str, Any]]:
         """Every request on *path* (and *method*, if given) inside this window, once the page has gone quiet."""
         self._browser.quiet()
         pattern = path_pattern(path)
         return [
-            entry for entry in self._browser.requests()[self._requests:]
-            if pattern.fullmatch(urlsplit(str(entry.get("url", ""))).path)
+            entry for entry in self._browser.requests(initiator=None)[self._requests:]
+            if _sent_by(entry, initiator)
+            and pattern.fullmatch(urlsplit(str(entry.get("url", ""))).path)
             and (method is None or str(entry.get("method", "")).upper() == method.upper())
         ]
 
@@ -228,6 +237,7 @@ class Browser:
             options["record_video_size"] = dict(self.viewport)
         self._context = self._browser.new_context(**options)
         self._context.add_init_script(CLIPBOARD_JS)
+        self._listen_context(self._context)
         self.start_offset_ms = self.clock()
         self.page = self._context.new_page()
         if name == "chromium":
@@ -405,28 +415,37 @@ class Browser:
             return {"name": name, "text": "", "failure": str(failure)}
         return {"name": name, "text": Path(download.path()).read_text(encoding="utf-8", errors="replace")}
 
-    def requests(self, *, url_contains: str | None = None) -> list[dict[str, Any]]:
+    def requests(
+        self, *, url_contains: str | None = None, initiator: str | None = "page"
+    ) -> list[dict[str, Any]]:
         """Every request issued, with its headers and payload."""
-        if url_contains is None:
-            return list(self._requests)
-        return [entry for entry in self._requests if url_contains in str(entry.get("url", ""))]
+        return [
+            entry for entry in self._requests
+            if _sent_by(entry, initiator) and (url_contains is None or url_contains in str(entry.get("url", "")))
+        ]
 
     def page_errors(self) -> list[dict[str, Any]]:
         """Uncaught exceptions — a different event from the console, invisible in it."""
         return list(self._page_errors)
 
     def failed_requests(
-        self, *, ignore: Sequence[str] = ("net::ERR_ABORTED",)
+        self, *, ignore: Sequence[str] = ("net::ERR_ABORTED",), initiator: str | None = "page"
     ) -> list[dict[str, Any]]:
         """Requests that never completed, minus the ones an app aborts by design."""
         ignored = set(ignore)
-        return [entry for entry in self._failed_requests if entry.get("errorText") not in ignored]
+        return [
+            entry for entry in self._failed_requests
+            if entry.get("errorText") not in ignored and _sent_by(entry, initiator)
+        ]
 
     def responses(
-        self, *, status_at_least: int = 0, url_contains: str | None = None
+        self, *, status_at_least: int = 0, url_contains: str | None = None, initiator: str | None = "page"
     ) -> list[dict[str, Any]]:
         """Every response seen, with its headers and — for a text body — its content."""
-        found = [entry for entry in self._responses if entry.get("status", 0) >= status_at_least]
+        found = [
+            entry for entry in self._responses
+            if entry.get("status", 0) >= status_at_least and _sent_by(entry, initiator)
+        ]
         if url_contains is not None:
             found = [entry for entry in found if url_contains in str(entry.get("url", ""))]
         return found
@@ -439,12 +458,12 @@ class Browser:
         """The number the next request will carry: requests are numbered from zero in the order the page sends them."""
         return len(self._requests)
 
-    def exchange_state(self, method: str, path: str, *, since: int) -> str:
+    def exchange_state(self, method: str, path: str, *, since: int, initiator: str | None = "page") -> str:
         """Whether a request on *path* numbered *since* or later was `answered`, `failed` without a response, was `sent` and has no response yet, or is `unsent`."""
         pattern = path_pattern(path)
         state = "unsent"
         for entry in self._requests[since:]:
-            if str(entry.get("method", "")).upper() != method.upper():
+            if not _sent_by(entry, initiator) or str(entry.get("method", "")).upper() != method.upper():
                 continue
             if not pattern.fullmatch(urlsplit(str(entry.get("url", ""))).path):
                 continue
@@ -454,14 +473,14 @@ class Browser:
         return state
 
     def undeclared_since(
-        self, declared: Sequence[tuple[str, str]], *, origins: Sequence[str], since: int,
+        self, declared: Sequence[tuple[str, str]], *, origins: Sequence[str], since: int, initiator: str | None = "page",
     ) -> list[tuple[str, str]]:
         """The distinct `(method, path)` pairs, in the order sent, of `fetch` and `xhr` requests numbered *since* or later to one of *origins* that match none of *declared*."""
         allowed = {urlsplit(origin).netloc for origin in origins}
         patterns = [(method.upper(), path_pattern(path)) for method, path in declared]
         found: list[tuple[str, str]] = []
         for entry in self._requests[since:]:
-            if entry.get("resourceType") not in ("fetch", "xhr"):
+            if entry.get("resourceType") not in ("fetch", "xhr") or not _sent_by(entry, initiator):
                 continue
             parts = urlsplit(str(entry.get("url", "")))
             method = str(entry.get("method", "")).upper()
@@ -494,10 +513,10 @@ class Browser:
             waited += QUIET_STEP_MS
 
     def response_for(
-        self, path: str, *, method: str | None = None, since: int = 0
+        self, path: str, *, method: str | None = None, since: int = 0, initiator: str | None = "page"
     ) -> RecordedResponse:
         """The one response on *path* (and *method*, if given) since *since*."""
-        window = self._responses[since:]
+        window = [entry for entry in self._responses[since:] if _sent_by(entry, initiator)]
         found = [
             entry for entry in window
             if urlsplit(str(entry.get("url", ""))).path == path
@@ -553,10 +572,12 @@ class Browser:
         page.on("dialog", self._on_dialog)
         page.on("download", self._on_download)
         page.on("pageerror", self._on_page_error)
-        page.on("request", self._on_request)
-        page.on("requestfailed", self._on_failed_request)
-        page.on("response", self._on_response)
-        page.on("requestfinished", self._on_request_finished)
+
+    def _listen_context(self, context: Any) -> None:
+        context.on("request", self._on_request)
+        context.on("requestfailed", self._on_failed_request)
+        context.on("response", self._on_response)
+        context.on("requestfinished", self._on_request_finished)
 
     def _on_download(self, download: Any) -> None:
         """Every file the page hands the user, kept for downloads() to read back."""
@@ -637,6 +658,7 @@ class Browser:
             "url": request.url,
             "method": request.method,
             "resourceType": request.resource_type,
+            "initiator": self._initiator(request),
             "requestHeaders": self._headers(getattr(request, "headers", None)),
             "requestBody": self._payload(getattr(request, "post_data", None)),
         }
@@ -717,11 +739,16 @@ class Browser:
                 "url": request.url,
                 "method": request.method,
                 "resourceType": getattr(request, "resource_type", ""),
+                "initiator": self._initiator(request),
                 "requestHeaders": self._headers(getattr(request, "headers", None)),
                 "requestBody": self._payload(getattr(request, "post_data", None)),
             }
             self._remember(request, record)
         return record
+
+    @staticmethod
+    def _initiator(request: Any) -> str:
+        return "worker" if getattr(request, "service_worker", None) else "page"
 
     def _remember(self, request: Any, record: dict[str, Any]) -> None:
         self._requests.append(record)

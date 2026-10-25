@@ -470,7 +470,7 @@ executing:
 
 ```json
 {
-  "schema": "browser-diagnostics/2",
+  "schema": "browser-diagnostics/3",
   "consoleErrors": ["<console message text>"],
   "console": [
     {
@@ -483,7 +483,7 @@ executing:
   "pageErrors": [{ "atMs": 900, "name": "TypeError", "message": "<message>", "stack": "<frames>" }],
   "requests": [
     {
-      "atMs": 200, "url": "<url>", "method": "POST", "resourceType": "fetch",
+      "atMs": 200, "url": "<url>", "method": "POST", "resourceType": "fetch", "initiator": "page",
       "requestHeaders": { "content-type": "application/json", "authorization": "[REDACTED 41 chars]" },
       "requestBody": "{\"title\":\"draft\"}",
       "status": 201, "statusText": "Created",
@@ -512,8 +512,16 @@ plan repaired later is often verified against one an older driver produced — a
 differ (`failedRequests` was once a list of bare url strings; `/1` carried no headers or
 bodies at all). Without the key that mismatch surfaces only as a `TypeError` deep in
 whatever read it, which reads as "the assertion is wrong" and gets repaired toward the stale
-shape. Check `data["schema"] == "browser-diagnostics/2"` before trusting a trace on disk to
+shape. Check `data["schema"] == "browser-diagnostics/3"` before trusting a trace on disk to
 prove anything about the plan.
+
+Capture is at the browser context, so the network includes the requests a service worker
+sends itself, which `networkidle` and the page's own events never show. Each record has an
+`initiator`, `page` or `worker`. The live readers (`requests`, `responses`, `failed_requests`,
+`response_for`, `requests_to`, `exchange_state`, `undeclared_since`) default to page-initiated
+exchanges and take `initiator=None` for all of them or `initiator="worker"` for a worker's
+alone. The harness waits for a worker's requests in flight before it reads. Schema `/3` adds
+`initiator` and drops no `/2` field.
 
 `console` is every message, `consoleErrors` only the `error` ones and by **text** alone —
 it predates `console` and is kept because plans assert on it. Prefer `console`: the warning

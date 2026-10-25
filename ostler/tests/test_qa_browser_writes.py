@@ -48,21 +48,17 @@ def origin() -> Iterator[str]:
 
 
 def test_leaving_the_page_waits_for_a_removal_in_flight(origin: str, tmp_path: Path) -> None:
-    with sync_api.sync_playwright() as pw:
-        browser = pw.chromium.launch()
-        try:
-            page = browser.new_page()
-            listening = browser_module.Browser(
-                SimpleNamespace(recording=None, viewport=None),
-                qa_dir=tmp_path, scenario_id="remove", clock=lambda: 0, emit=lambda *_: None,
-            )
-            listening._listen(page)
-            listening.page = page
-            page.goto(f"{origin}/")
-            page.get_by_role("button", name="Remove").click()
-            listening.writes_done()
-            page.goto(f"{origin}/")
-            removals = [entry for entry in listening.responses() if entry.get("method") == "DELETE"]
-            assert [entry["status"] for entry in removals] == [204]
-        finally:
-            browser.close()
+    listening = browser_module.Browser(
+        SimpleNamespace(browser=None, permissions=None, recording={"required": False}, viewport=None),
+        qa_dir=tmp_path, scenario_id="remove", clock=lambda: 0, emit=lambda *_: None,
+    )
+    page = listening.open()
+    try:
+        page.goto(f"{origin}/")
+        page.get_by_role("button", name="Remove").click()
+        listening.writes_done()
+        page.goto(f"{origin}/")
+        removals = [entry for entry in listening.responses() if entry.get("method") == "DELETE"]
+        assert [entry["status"] for entry in removals] == [204]
+    finally:
+        listening.close(failed=False)

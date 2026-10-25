@@ -83,6 +83,7 @@ def _visit(chromium: Any, handler: Any) -> Iterator[_Scenario]:
         emit=lambda *args, **kwargs: None,
     )
     watcher._listen(page)
+    watcher._listen_context(page.context)
     page.route("http://fixture.test/results", lambda route: route.fulfill(content_type="text/html", body=_PAGE))
     page.route("http://fixture.test/api/results", handler)
     scenario = _Scenario(page, watcher, CEILING_S)
@@ -172,6 +173,7 @@ def _settle_with_extras(chromium: Any, fetches: str, requests: list[tuple[str, s
         emit=lambda *args, **kwargs: None,
     )
     watcher._listen(page)
+    watcher._listen_context(page.context)
     page.route("http://fixture.test/results", lambda route: route.fulfill(content_type="text/html", body=_extra_page(fetches)))
     page.route("http://fixture.test/api/**", lambda route: route.fulfill(status=200, body="[]", headers={"access-control-allow-origin": "*"}))
     page.route("http://fixture.test/app.js", lambda route: route.fulfill(content_type="text/javascript", body=""))

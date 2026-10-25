@@ -52,6 +52,7 @@ def _request(
     failure: str | None = None,
     timing: dict[str, float] | None = None,
     response: Any = None,
+    worker: bool = False,
 ) -> Any:
     """A Playwright ``Request`` as the handlers use it."""
     return SimpleNamespace(
@@ -63,6 +64,7 @@ def _request(
         failure=failure,
         timing=timing if timing is not None else {"responseEnd": -1},
         response=lambda: response,
+        **({"service_worker": object()} if worker else {}),
     )
 
 
@@ -168,6 +170,7 @@ def test_a_request_is_recorded_even_when_nothing_ever_comes_back(tmp_path: Path)
             "url": "http://127.0.0.1:8099/v1/pages",
             "method": "GET",
             "resourceType": "fetch",
+            "initiator": "page",
             "requestHeaders": {},
             "requestBody": None,
         }
@@ -191,6 +194,7 @@ def test_a_response_record_carries_the_status_a_5xx_assertion_needs(tmp_path: Pa
             "statusText": "Service Unavailable",
             "method": "POST",
             "resourceType": "fetch",
+            "initiator": "page",
             "requestHeaders": {},
             "requestBody": None,
             "responseHeaders": {"content-type": "application/json"},
@@ -303,6 +307,7 @@ def test_a_failed_request_record_says_why_it_failed(tmp_path: Path) -> None:
             "url": url,
             "method": "GET",
             "resourceType": "fetch",
+            "initiator": "page",
             "requestHeaders": {},
             "requestBody": None,
             "errorText": "net::ERR_ABORTED",
@@ -592,7 +597,8 @@ def test_the_diagnostics_file_is_the_whole_record_and_names_what_it_dropped(
     written = json.loads(
         (tmp_path / "traces/scenario-diagnostics.json").read_text(encoding="utf-8")
     )
-    assert written["schema"] == "browser-diagnostics/2"
+    assert written["schema"] == "browser-diagnostics/3"
+    assert written["requests"][0]["initiator"] == "page"
     assert written["requests"][0]["requestBody"] == '{"a":1}'
     assert written["responses"][0]["responseBody"] == '{"ok":true}'
     assert written["consoleCount"] == 1 and written["requestCount"] == 1
@@ -648,6 +654,7 @@ def _fake_playwright(contexts: list[dict[str, Any]]) -> Any:
             new_page=lambda: SimpleNamespace(on=lambda *_: None),
             tracing=SimpleNamespace(start=lambda **_: None),
             add_init_script=lambda _script: None,
+            on=lambda *_: None,
             new_cdp_session=lambda _page: SimpleNamespace(send=lambda *_a, **_k: None),
         )
 
@@ -715,9 +722,11 @@ def test_the_harness_and_ostler_agree_on_the_viewport_a_plan_does_not_declare() 
 
 
 
-def _record(browser: Any, url: str, *, status: int = 200, body: bytes = b"{}") -> None:
+def _record(
+    browser: Any, url: str, *, status: int = 200, body: bytes = b"{}", worker: bool = False
+) -> None:
     """One complete exchange, through both handlers the real page drives: the status arrives on `response`, the body on `requestfinished`, and they land in the one shared record."""
-    request = _request(url)
+    request = _request(url, worker=worker)
     response = _response(request, status=status, body=body)
     request.response = lambda: response
     browser._on_response(response)
@@ -1031,3 +1040,65 @@ def test_a_request_the_browser_gave_up_on_is_no_longer_awaited(tmp_path: Path) -
     assert browser.exchange_state("GET", "/api/widgets", since=0) == "sent", (
         "a retry the page sent after the failure is still awaited"
     )
+
+
+def test_a_request_records_who_sent_it(tmp_path: Path) -> None:
+    browser = _browser(tmp_path)
+    browser._on_request(_request("http://127.0.0.1:8099/api/from-page"))
+    browser._on_request(_request("http://127.0.0.1:8099/api/from-sw", worker=True))
+    browser._on_failed_request(_request("http://127.0.0.1:8099/api/missed", worker=True))
+    assert [entry["initiator"] for entry in browser.requests(initiator=None)] == ["page", "worker", "worker"]
+
+
+def test_the_readers_skip_a_service_workers_exchanges_unless_asked(tmp_path: Path) -> None:
+    browser = _browser(tmp_path)
+    window = browser.window()
+    _record(browser, "http://127.0.0.1:8099/api/widgets")
+    _record(browser, "http://127.0.0.1:8099/api/widgets", status=202, worker=True)
+    assert [entry["initiator"] for entry in browser.requests()] == ["page"]
+    assert [entry["initiator"] for entry in browser.requests(initiator=None)] == ["page", "worker"]
+    assert [entry["status"] for entry in browser.responses()] == [200]
+    assert [entry["status"] for entry in browser.responses(initiator="worker")] == [202]
+    assert len(browser.responses(initiator=None)) == 2
+    assert browser.response_for("/api/widgets").status == 200
+    assert browser.response_for("/api/widgets", initiator="worker").status == 202
+    with pytest.raises(LookupError):
+        browser.response_for("/api/widgets", initiator=None)
+    assert window.response_for("/api/widgets").status == 200
+    assert window.response_for("/api/widgets", initiator="worker").status == 202
+    browser.page = SimpleNamespace(wait_for_timeout=lambda ms: None)
+    assert len(window.requests_to("/api/widgets")) == 1
+    assert len(window.requests_to("/api/widgets", initiator=None)) == 2
+    assert [entry["initiator"] for entry in window.requests_to("/api/widgets", initiator="worker")] == ["worker"]
+
+
+def test_the_other_readers_default_to_the_page_s_exchanges(tmp_path: Path) -> None:
+    browser = _browser(tmp_path)
+    browser._on_request(_request("http://127.0.0.1:8099/api/sw", worker=True))
+    assert browser.exchange_state("GET", "/api/sw", since=0) == "unsent"
+    assert browser.exchange_state("GET", "/api/sw", since=0, initiator=None) == "sent"
+    origins = ["http://127.0.0.1:8099"]
+    assert browser.undeclared_since([], origins=origins, since=0) == []
+    assert browser.undeclared_since([], origins=origins, since=0, initiator=None) == [("GET", "/api/sw")]
+    failing = _request("http://127.0.0.1:8099/api/gone", failure="net::ERR_FAILED", worker=True)
+    browser._on_request(failing)
+    browser._on_failed_request(failing)
+    assert browser.failed_requests() == []
+    assert [entry["initiator"] for entry in browser.failed_requests(initiator="worker")] == ["worker"]
+
+
+def test_a_service_workers_request_in_flight_holds_the_page_busy(tmp_path: Path) -> None:
+    browser = _browser(tmp_path)
+    pending = _request("http://127.0.0.1:8099/api/slow", worker=True)
+    browser._on_request(pending)
+    ticks: list[int] = []
+
+    def wait_for_timeout(ms: int) -> None:
+        ticks.append(ms)
+        if len(ticks) == 5:
+            browser._on_request_finished(pending)
+
+    browser.page = SimpleNamespace(wait_for_timeout=wait_for_timeout)
+    browser.quiet()
+    quiet_steps = ostler_qa_browser.QUIET_MS // ostler_qa_browser.QUIET_STEP_MS
+    assert len(ticks) == 4 + quiet_steps

@@ -101,6 +101,7 @@ def test_a_download_the_page_hands_over_reaches_the_browser_listening_on_it(page
         qa_dir=tmp_path, scenario_id="export", clock=lambda: 0, emit=lambda *_: None,
     )
     listening._listen(page)
+    listening._listen_context(page.context)
     with page.expect_download():
         page.locator("#export").click()
     assert listening.downloads() == [{"name": "rules.xml", "text": "<rule/>"}]
