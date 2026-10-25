@@ -55,6 +55,7 @@ nothing leaks into the next benchmark.
 | `paddock.tasks.mutants` | seed a curated behavior change and score the pin rate |
 | `paddock.tasks.replay` | replay one lane of the coder workflow cold, on a tree that already ran it |
 | `paddock.tasks.greenfield` | build a repo from an approved milestone, then judge each journey |
+| `paddock.tasks.tree` | the shared shape of a trial tree that is one repo or a folder of repos: its members, workspace, config and docs home |
 | `paddock.tasks.forensics` | read nodes entered, repair loops, churn, hangs, cap waits and cost back off a run dir |
 | `paddock.tasks.leverage` | measure how far a QA plan used what the book documents |
 | `paddock.tasks.judge` | run one agent turn that waits out usage caps, and fill a rubric |
@@ -70,3 +71,5 @@ one-line functions. Read the module's docstrings for the fixture fields.
 
 A benchmark whose stage needs the agents layer calls `install_agents(run)` as its own
 step, before any step that runs a workflow. It installs into each staged repo that has an `agents.yml`.
+
+The frozen-app, mutant, replay and greenfield helpers accept a folder of repos as well as one repo. In a folder every trial path starts with the member name. A folder benchmark keeps its stories in the answer-key dir beside `defects.yml`. A replay `Pin` names commits per member as `{member: sha}`, and a member left out is cloned at its staged HEAD. A greenfield `Surface` names its member with `repo=`.
