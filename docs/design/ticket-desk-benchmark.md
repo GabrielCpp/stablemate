@@ -65,7 +65,7 @@ API is `ecosystem.md` beside the benchmark's `tasks.py`.
 
 ### The local stack
 
-`docs/services/ops/stack.yml` in zeta brings up: LocalStack (DynamoDB, its stream, EventBridge,
+`docs/services/ops/stack.yml` in zeta brings up: Floci (DynamoDB, its stream, EventBridge, S3,
 SQS), a fake messaging provider that records every call it receives on an HTTP endpoint, a local
 OIDC issuer standing in for the identity provider, every zeta server and handler, and both gamma
 apps. kappa runs on the emulator outside Compose and reaches the gateway through the host, as
