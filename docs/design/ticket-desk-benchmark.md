@@ -1,6 +1,6 @@
 # The ticket-desk benchmark: a work-shaped multi-repo fixture
 
-Date: 2026-10-24. Status: proposed, not built.
+Date: 2026-10-24, revised 2026-10-25. Status: fixture being rebuilt to the work shape.
 
 ## 1. What it answers
 
@@ -28,8 +28,8 @@ all neutral names.
 
 | Package | What it is |
 | --- | --- |
-| `customer-ui` | Svelte 5 app where a customer opens a ticket, follows it, and replies |
-| `it-portal` | Svelte 5 app where an agent triages, assigns, resolves and closes tickets |
+| `customer-ui` | SvelteKit app where a customer opens a ticket, follows it, and replies; its server side calls zeta over gRPC |
+| `it-portal` | SvelteKit app where an agent triages, assigns, resolves and closes tickets, plus assets, knowledge, reports and admin |
 | `common` | shared UI pieces, the typed API client, auth helpers |
 | `protobuf` | the generated client stubs, kept in sync with zeta's definitions, as kappa keeps its own |
 | `tf` | Terraform plus a Helm chart that deploys both apps to Kubernetes |
@@ -38,18 +38,19 @@ all neutral names.
 
 The customer side of `customer-ui` on a phone: open a ticket, follow it, reply, get the push the
 notification handler sends. One app, one repo, its own generated gRPC stubs from zeta's
-definitions. The book's journeys compile to Maestro, as the mobile reference app's do, and run on the Android
+`mobilegateway/v1` definition, which is the only service the phone speaks to. The book's journeys compile to Maestro, as the mobile reference app's do, and run on the Android
 emulator. iOS is in the repo and out of every task, since no Linux runner drives it.
 
 ### zeta, the backend monorepo (Go, one cobra CLI per service)
 
 | Package | What it is |
 | --- | --- |
-| `ticket` | gRPC server: create, list, assign, transition, comment; DynamoDB table `tickets` |
-| `user` | gRPC server: customers and agents, roles, lookup by identity-provider subject |
-| `notifications` | gRPC API that enqueues a notification on the event bus, and a handler that reads the queue and calls the messaging provider |
-| `dynamostream` | handler on the `tickets` stream: a status change emits a `ticket.changed` event on the bus |
-| `gateway` | gRPC-web or grpc-gateway front for the browsers, validates the identity provider's token |
+| `ticket` | gRPC server: tickets, comments, history, watchers, links; DynamoDB table `tickets` with a stream |
+| `user` | gRPC server: users, roles, teams, preferences |
+| `notifications` | gRPC API plus the `dispatch` handler that reads its queue, applies preferences and calls the messaging and push providers |
+| `asset`, `knowledge`, `attachment`, `audit`, `reporting`, `sla` | one gRPC server each: inventory, articles, S3 uploads, the audit trail, reports, SLA policies and timers with `clock` and `escalate` handlers |
+| `dynamostream` | handler on the table streams: a record change emits a `*.changed` event on the bus |
+| `mobile-gateway` | gRPC server for the phone: composes each screen from the domain services and forwards the token, the way the SvelteKit server does for the browser |
 | `tf`, `charts` | Terraform and one Helm chart per deployable: each API, each handler |
 
 Each service binary is `svc serve` or `svc handle <name>`, one container per server and per
@@ -57,8 +58,10 @@ handler, as at work. The same binary carries the fixture commands a QA step need
 `svc get`, `svc events tail`, so the book's fixtures and read-backs run the repo's own CLI and
 never a vendor SDK from the agent's hand.
 
-The gateway is not in the maintainer's list. Two Svelte apps cannot call a gRPC server from the
-browser without one, and work has one. It stays.
+There is no REST gateway. The browser talks to its app's SvelteKit server, which holds the gRPC
+clients; the phone talks to `mobile-gateway`. Every service verifies the identity provider's
+token itself. Every client in every repo is generated from `zeta/proto`, as at work. The full
+API is `ecosystem.md` beside the benchmark's `tasks.py`.
 
 ### The local stack
 
@@ -130,9 +133,9 @@ naming conventions, three env vars that no document names.
    actors, the ticket lifecycle, the two web apps, the phone app, the notification rule, and the
    deploy shape. It is a brief, not a milestone: no release boundary, no journeys, no acceptance
    bullets. It is what a founding engineer was told.
-2. **zeta first.** One plain agent session, Opus through a plain `claude` run with no stablemate
-   skills installed, builds the proto definitions, the five services, the compose file, the tf
-   and the charts from the brief. The operator checks that `docker compose up` brings the stack
+2. **zeta first.** One plain builder session with no stablemate skills installed builds the
+   proto definitions, the services, the compose file, the tf and the charts from the brief and
+   the ecosystem document. The operator checks that `docker compose up` brings the stack
    up and that one ticket can be opened and resolved over grpcurl.
 3. **gamma, then kappa.** Each in its own plain session, from the brief plus zeta's proto folder
    and its README. The operator opens a ticket in `customer-ui`, resolves it in `it-portal`, and
@@ -189,8 +192,9 @@ tree.
 
 ## 6. Assumptions and decisions parked
 
-- The gateway is grpc-gateway over REST for the browsers. gRPC-web through Envoy is the other
-  road, and the choice changes nothing in stablemate.
+- No REST gateway: SvelteKit server-side gRPC for the web, a gRPC `mobile-gateway` for the
+  phone. The first build used grpc-gateway REST and SPAs and was set aside on 2026-10-25 as not
+  work-shaped; its freeze record stays in `shape.md`.
 - Local runs Compose from stack.yml, not a kind cluster. If a later round shows the k8s gap
   hides defects, kind becomes a stack service.
 - The identity provider is one local OIDC issuer. Firebase at work is the mobile book's case and
