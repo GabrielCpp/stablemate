@@ -19,7 +19,7 @@ VENDOR_SCRIPT = REPO_ROOT / "scripts" / "vendor_core.py"
 CORE = REPO_ROOT / "core" / "stablemate_core"
 OSTLER_VENDOR = REPO_ROOT / "ostler" / "ostler" / "_vendor" / "stablemate_core"
 
-VENDORING_TOOLS = ("farrier", "workhorse", "ostler")
+VENDORING_TOOLS = ("farrier", "workhorse", "ostler", "paddock")
 
 
 def _vendor_script() -> ModuleType:
@@ -83,8 +83,8 @@ def test_the_committed_copy_is_byte_identical_to_core():
     assert not differing, f"vendored copy has drifted from core/stablemate_core: {differing}"
 
 
-def test_check_vendor_passes_and_covers_all_three_copies():
-    """`make check-vendor` is green over three copies."""
+def test_check_vendor_passes_and_covers_every_copy():
+    """`make check-vendor` is green over one copy per vendoring tool."""
     destinations = _vendor_script().DESTINATIONS
     assert len(destinations) == len(VENDORING_TOOLS), (
         f"expected one vendored copy per shipping tool {VENDORING_TOOLS}: {destinations}"
