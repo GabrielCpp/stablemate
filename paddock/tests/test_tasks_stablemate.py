@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import subprocess
+import tomllib
 from pathlib import Path
 from types import SimpleNamespace
 from typing import cast
@@ -45,6 +46,31 @@ def test_pin_config_writes_the_pinned_checkout_as_stablemate_dir(
     assert f'stablemate_dir = "{worktree}"' in text
     assert "/live/tree" not in text
     assert 'library_dir = "/lib"' in text
+
+
+def test_pin_config_overrides_paths_the_benchmark_config_already_names(
+    tmp_path: Path, monkeypatch  # noqa: ANN001 - pytest fixture
+) -> None:
+    """A repeated key makes the file unreadable, and a farrier that cannot read it sees only the base library."""
+    worktree = tmp_path / "project"
+    worktree.mkdir()
+    (worktree / "pyproject.toml").write_text("[project]\n", encoding="utf-8")
+    scratch = tmp_path / "scratch"
+    scratch.mkdir()
+    tracked = tmp_path / "config.toml"
+    tracked.write_text(
+        'library_dir = "/old/lib"\nstablemate_dir = "/live/tree"\n\n[profiles.opencode]\nmodel = "m"\n',
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(sm.core_config, "load_config", lambda: {"library_dir": "/lib"})
+    run = cast(Run, SimpleNamespace(scratch=scratch, config=tracked, project=worktree))
+
+    sm.pin_config(run)
+
+    loaded = tomllib.loads(sm.effective(run).read_text(encoding="utf-8"))
+    assert loaded["library_dir"] == "/lib"
+    assert loaded["stablemate_dir"] == str(worktree)
+    assert loaded["profiles"] == {"opencode": {"model": "m"}}
 
 
 @pytest.fixture
