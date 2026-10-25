@@ -218,6 +218,7 @@ class Browser:
         self._arranging: Any = None
         self._dialog_answer = ""
         self._dialogs: list[dict[str, Any]] = []
+        self._intercepts: list[dict[str, Any]] = []
 
 
     def open(self) -> Any:
@@ -293,7 +294,53 @@ class Browser:
             problems.append(
                 f"the scenario answers a browser dialog with {self._dialog_answer!r}, and none opened"
             )
+        for rule in self._intercepts:
+            if rule["rewritten"]:
+                continue
+            seen = rule["matched"]
+            why = (
+                f"find text {rule['find']!r} was not in the body"
+                if seen
+                else "no exchange reached the rule"
+            )
+            problems.append(
+                f"intercept {rule['effect']} {rule['event']} matched {seen} "
+                f"{'exchange' if seen == 1 else 'exchanges'} and rewrote 0: {why}"
+            )
         return problems
+
+    def intercept(self, effect: str, *, event: str, find: str, replace: str) -> None:
+        """Alter the answer to every request *event* names, for the rest of the scenario: `rewrite` replaces *find* with *replace* in the body."""
+        if effect != "rewrite":
+            raise ValueError(f"unknown intercept effect {effect!r}; the effects are: rewrite")
+        method, _, path = event.partition(" ")
+        method, path = method.upper(), path.strip()
+        pattern = path_pattern(path)
+        rule: dict[str, Any] = {
+            "effect": effect,
+            "event": event,
+            "find": find,
+            "replace": replace,
+            "matched": 0,
+            "rewritten": 0,
+        }
+        self._intercepts.append(rule)
+
+        def handler(route: Any) -> None:
+            request = route.request
+            if request.method.upper() != method:
+                route.fallback()
+                return
+            rule["matched"] += 1
+            response = route.fetch()
+            text = response.text()
+            replacements = text.count(find)
+            if replacements:
+                rule["rewritten"] += 1
+            self._record(request)["intercepted"] = {"effect": effect, "replacements": replacements}
+            route.fulfill(response=response, body=text.replace(find, replace))
+
+        self._context.route(lambda url: pattern.fullmatch(urlsplit(url).path) is not None, handler)
 
     def answer_dialogs(self, answer: str) -> None:
         """Answer every browser dialog the page opens from here on with *answer*, `accept` or `dismiss`."""
@@ -804,6 +851,7 @@ class Browser:
             "consoleCount": len(self._console),
             "pageErrors": self._page_errors,
             "dialogs": self._dialogs,
+            "intercepts": self._intercepts,
             "requests": self._requests[:DIAGNOSTICS_LIMIT],
             "requestCount": len(self._requests),
             "failedRequests": self._failed_requests,

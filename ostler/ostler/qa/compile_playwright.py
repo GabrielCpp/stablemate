@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
-import re
 from collections.abc import Sequence
 from dataclasses import dataclass
 
 from ostler import accessible_names
 from ostler import acts as acts_mod
 from ostler.checks import Call
+from ostler.checks import REQUEST_EVENT
 from ostler.passages import Passage
 from ostler.checks import parse_call
 from ostler.qa.book_index import BookIndex
@@ -291,9 +291,6 @@ def _exchange_operand(
     args = f"{python_literal(path)}, method={python_literal(method)}" if method else python_literal(path)
     selection = f"{WINDOW_VAR}.response_for({args})"
     return f"{selection}.json()" if channel == "body" else selection
-
-
-REQUEST_EVENT = re.compile(r"(GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS) +(/[^\s?#]*)", re.IGNORECASE)
 
 
 def _request_operand(row: CallRow, obligation: Obligation, gaps: list[Gap]) -> str | None:

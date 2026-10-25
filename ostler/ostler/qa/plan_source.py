@@ -8,8 +8,10 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field
 
 from ostler.checks import CHECK_BY_NAME
+from ostler.checks import INTERCEPT_BY_NAME
 from ostler.qa import references
 from ostler.qa.obligation import FixtureRow
+from ostler.qa.obligation import InterceptRow
 from ostler.qa.obligation import Obligation
 
 
@@ -177,6 +179,13 @@ def fixture_call(row: FixtureRow) -> str:
     """The `qa.fixture(...)` line that arranges *row* inside a scenario body."""
     return (f"    qa.fixture({python_literal(row.name)}"
             + "".join(f", {python_literal(arg)}" for arg in row.args) + ")")
+
+
+def intercept_call(row: InterceptRow) -> str:
+    """The `qa.intercept(...)` line that installs *row* before a scenario's first step, arguments in the effect's own order."""
+    ordered = [p.name for p in INTERCEPT_BY_NAME[row.effect].params if p.name in row.args]
+    return (f"    qa.intercept({python_literal(row.effect)}"
+            + "".join(f", {name}={python_literal(row.args[name])}" for name in ordered) + ")")
 
 
 def contained_fixture_call(row: FixtureRow, covers: list[str]) -> list[str]:

@@ -415,6 +415,7 @@ explicit attribute here, and the two that used to cost the most are the first tw
 | `qa.secret(name)`                  | the runtime value of a declared secret — redacted everywhere it is written |
 | `qa.eventually(label, callable, …)` / `qa.require_eventually` | the retrying forms of `check`/`require`: a lambda, a bound method or a nested function is re-evaluated until it holds or the timeout passes — the replacement for a bare `wait_for*` settle statement, which plan lint refuses |
 | `qa.page`, `qa.diagnostics`, `qa.by_role(…)`, `qa.goto(…)`, `qa.screenshot()` | the browser, for a `playwright` target |
+| `qa.intercept("rewrite", event=…, find=…, replace=…)` | alter the server's answer to every request `event` (`"METHOD /path"`) names, for the rest of the scenario: a plain text replace of `find` with `replace` in the response body, whoever sent the request. A rule that rewrote no body fails the scenario. A compiled flow calls it for each `intercept:` bullet, before its first step |
 | `qa.maestro.run(flow)`             | a Maestro flow, for a `maestro` target                                  |
 | `qa.tesseract.ocr(image)`          | OCR text from an image, via the `tesseract` CLI                         |
 | `qa.convert.resize(image, w, h)`   | resize an image via ImageMagick's `convert`; returns the output path    |
@@ -502,6 +503,12 @@ executing:
   ],
   "responses": [{ "atMs": 4200, "url": "<url>", "status": 200, "method": "GET" }],
   "responseCount": 1,
+  "intercepts": [
+    {
+      "effect": "rewrite", "event": "POST /api/report/data", "find": "1300", "replace": "4200",
+      "matched": 1, "rewritten": 1
+    }
+  ],
   "bodyBudgetBytes": 8388608,
   "bodyBudgetRemainingBytes": 8380000
 }
@@ -521,7 +528,12 @@ sends itself, which `networkidle` and the page's own events never show. Each rec
 `response_for`, `requests_to`, `exchange_state`, `undeclared_since`) default to page-initiated
 exchanges and take `initiator=None` for all of them or `initiator="worker"` for a worker's
 alone. The harness waits for a worker's requests in flight before it reads. Schema `/3` adds
-`initiator` and drops no `/2` field.
+`initiator` and `intercepts` and drops no `/2` field.
+
+`intercepts` lists the rules `qa.intercept` installed, in order. `matched` counts the exchanges
+the rule's method and path met. `rewritten` counts those whose body held `find`. A request the
+rule met carries `"intercepted": {"effect": "rewrite", "replacements": N}`. A rule with
+`rewritten` of 0 fails the scenario, because the page never saw the altered answer.
 
 `console` is every message, `consoleErrors` only the `error` ones and by **text** alone —
 it predates `console` and is kept because plans assert on it. Prefer `console`: the warning

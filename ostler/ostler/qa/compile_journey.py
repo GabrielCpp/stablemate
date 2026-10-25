@@ -19,6 +19,7 @@ from ostler.qa.navigation import maestro_launch
 from ostler.qa.navigation import surface_row
 from ostler.qa.obligation import FixtureRow
 from ostler.qa.obligation import FlowStep
+from ostler.qa.obligation import InterceptRow
 from ostler.qa.obligation import Obligation
 from ostler.qa.plan_source import EmittedScenarios
 from ostler.qa.plan_source import Gap
@@ -27,6 +28,7 @@ from ostler.qa.plan_source import ScenarioRefusal
 from ostler.qa.plan_source import arrangement_of
 from ostler.qa.plan_source import by_source
 from ostler.qa.plan_source import fixture_call
+from ostler.qa.plan_source import intercept_call
 from ostler.qa.plan_source import journey_function_name
 from ostler.qa.plan_source import python_identifier
 from ostler.qa.plan_source import python_literal
@@ -208,7 +210,7 @@ def journey_target(
 
 def journey_scenario(
     source: str, target_var: str, ids: list[str], walked: WalkedJourney,
-    arranged: list[FixtureRow],
+    arranged: list[FixtureRow], intercepts: tuple[InterceptRow, ...] = (),
 ) -> list[str]:
     """The `@scenario` that walks *source*'s steps, arranged and asserted."""
     return [
@@ -231,6 +233,7 @@ def journey_scenario(
         f'    """Walk {source}\'s steps in order, then observe what the walk left."""',
         "",
         *(fixture_call(row) for row in arranged),
+        *(intercept_call(row) for row in intercepts),
         *walked.lines,
     ]
 
@@ -286,7 +289,7 @@ def journey_scenarios(
             continue
         emitted.covered.update(walked.covered)
         lines.extend(target_lines(bound.target_var, backend.driver, bound.target_kwargs, emitted))
-        lines.extend(journey_scenario(source, bound.target_var, ids, walked, arrangement.rows))
+        lines.extend(journey_scenario(source, bound.target_var, ids, walked, arrangement.rows, obligations[0].intercepts))
     return lines
 
 

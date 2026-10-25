@@ -1865,6 +1865,17 @@ class Qa:
             )
         return recorder.window()
 
+    def intercept(self, effect: str, **params: Any) -> None:
+        """Alter the server's answer to one request for the whole scenario, so a `verify:` can prove the screen did not take its figures from it."""
+        recorder = self.diagnostics
+        if recorder is None or not hasattr(recorder, "intercept"):
+            raise RuntimeError(
+                f"scenario {self.scenario_id!r} intercepts a request the browser makes, but "
+                f"its target '{self.target.name}' declares driver '{self.target.driver}' — "
+                "only driver='playwright' can alter what the page receives"
+            )
+        recorder.intercept(effect, **params)
+
     def mark(self) -> int:
         """The number of the next request the page makes, to hand `settle` as the point after which its requests count."""
         recorder = self.diagnostics
@@ -2604,7 +2615,7 @@ def _open_browser(qa: Qa) -> Any:
 
 
 BROWSER_CLEAN_EXPECTED = ("no uncaught page error, no response of status 500 or higher, and every "
-                          "browser dialog answered as the scenario declared")
+                          "browser dialog answered as the scenario declared, and every intercept rule rewrote a body")
 
 
 def _bind_browser_unclean(qa: Qa, problems: Sequence[str]) -> list[str]:

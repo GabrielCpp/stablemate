@@ -158,6 +158,7 @@ class BulletKey:
     link: bool = False
     check: bool = False
     arrange: bool = False
+    effect: bool = False
     performs: bool = False
     normative: bool = False
     alias: bool = False
@@ -248,6 +249,12 @@ def check_keys(node_type: str) -> tuple[str, ...]:
     """Every bullet key on `node_type` whose value is a named check (`ostler.checks`)."""
     uitype = UI_TYPES_BY_NAME.get(node_type)
     return () if uitype is None else tuple(b.key for b in uitype.bullet_keys if b.check)
+
+
+def effect_keys(node_type: str) -> tuple[str, ...]:
+    """Every bullet key on `node_type` whose value is an intercept effect (`ostler.checks.INTERCEPTS`)."""
+    uitype = UI_TYPES_BY_NAME.get(node_type)
+    return () if uitype is None else tuple(b.key for b in uitype.bullet_keys if b.effect)
 
 
 def fixture_keys(node_type: str) -> tuple[str, ...]:
@@ -557,6 +564,7 @@ UI_TYPES: tuple[UINodeType, ...] = (
             BulletKey("detail", link=True),
             BulletKey("verify", check=True),
             BulletKey("fixture", arrange=True),
+            BulletKey("intercept", effect=True),
             BulletKey("tests", link=True),
         ),
     ),
@@ -846,7 +854,7 @@ ADDRESS_KEYS: frozenset[str] = frozenset(
     b.key for t in UI_TYPES for b in t.bullet_keys if b.address)
 LOAD_BEARING_KEYS: frozenset[str] = frozenset(
     b.key for t in UI_TYPES for b in t.bullet_keys
-    if b.normative or b.check or b.link or b.arrange or b.performs or b.locator
+    if b.normative or b.check or b.link or b.arrange or b.effect or b.performs or b.locator
 ) - (frozenset(RELATION_KEYS) - LOCATOR_KEYS)
 UI_HEADING_TO_TYPE: dict[str, str] = {t.heading: t.name for t in UI_TYPES if t.heading}
 UI_SECTION_HEADINGS: frozenset[str] = frozenset(UI_HEADING_TO_TYPE)

@@ -5,6 +5,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
+
 from ostler import doctor, fmt, links, registry, scaffold
 from ostler.model import load
 
@@ -554,6 +556,49 @@ def test_a_declared_check_grounds(repo: Path):
     write(repo / "docs/services/groom/concepts/publisher.md",
           _method('http_status(409, title="Manifest Conflict")'))
     assert "unparsed-check" not in all_codes(_run(repo))
+
+
+_REWRITE = 'rewrite(event="POST /api/report/data", find="1300", replace="4200")'
+
+
+def _intercept_findings(repo: Path, intercept: str):
+    write(repo / "docs/services/groom/flows/read-the-report.md",
+          "---\ntype: flow\nslug: read-the-report\ntitle: Read the report\n---\n# Read the report\n\n"
+          f"- start: the editor is open\n- end: the report shows the total\n- intercept: {intercept}\n")
+    return [f for f in _run(repo).findings if f.code == "bad-intercept"]
+
+
+def test_a_well_formed_intercept_is_not_a_finding(repo: Path):
+    assert _intercept_findings(repo, _REWRITE) == []
+
+
+def test_an_intercept_naming_an_unknown_effect_is_an_error(repo: Path):
+    (finding,) = _intercept_findings(repo, 'delay(event="POST /api/report/data", find="a", replace="b")')
+    assert finding.severity == "error"
+    assert "is not a known intercept effect" in finding.message
+    assert "rewrite" in finding.message
+
+
+def test_an_intercept_missing_find_is_an_error(repo: Path):
+    (finding,) = _intercept_findings(repo, 'rewrite(event="POST /api/report/data", replace="4200")')
+    assert "requires `find: str`" in finding.message
+    assert finding.suggestion.startswith("- intercept: rewrite(")
+
+
+@pytest.mark.parametrize("event", ["/api/report/data", "FETCH /api/report/data", "POST report"])
+def test_an_intercept_with_a_malformed_event_is_an_error(repo: Path, event: str):
+    (finding,) = _intercept_findings(repo, f'rewrite(event="{event}", find="1300", replace="4200")')
+    assert "request event" in finding.message
+
+
+def test_an_intercept_with_an_empty_find_is_an_error(repo: Path):
+    (finding,) = _intercept_findings(repo, 'rewrite(event="POST /api/report/data", find="", replace="4200")')
+    assert "must not be empty" in finding.message
+
+
+def test_an_intercept_that_is_not_a_call_is_an_error(repo: Path):
+    (finding,) = _intercept_findings(repo, "make the total wrong")
+    assert "is not a call" in finding.message
 
 
 def _screen_with_locator(locator: str, *, declare_table: bool = True) -> str:

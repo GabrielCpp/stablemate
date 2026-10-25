@@ -15,6 +15,8 @@ from ostler import keys, markdown, refs
 
 CheckValue = str | int | float | bool | list[str] | dict[str, str]
 
+REQUEST_EVENT = re.compile(r"(GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS) +(/[^\s?#]*)", re.IGNORECASE)
+
 _TYPES: dict[str, tuple[type, ...]] = {
     "str": (str,),
     "int": (int,),
@@ -37,6 +39,8 @@ class CheckParam:
     identifies: bool = False
     pattern: bool = False
     key: bool = False
+    event: bool = False
+    nonempty: bool = False
 
 
 Observation = str
@@ -467,6 +471,23 @@ CHECKS: tuple[CheckSpec, ...] = (
 
 CHECK_BY_NAME: dict[str, CheckSpec] = {c.name: c for c in CHECKS}
 
+INTERCEPTS: tuple[CheckSpec, ...] = (
+    CheckSpec(
+        name="rewrite",
+        params=(
+            CheckParam("event", "str", required=True, event=True),
+            CheckParam("find", "str", required=True, nonempty=True),
+            CheckParam("replace", "str", required=True, nonempty=True),
+        ),
+        excludes="a screen that takes its figures from the server's answer to one request "
+                 "instead of computing them itself",
+        observes="response",
+        plan_reads="nothing, because an intercept effect observes no claim",
+    ),
+)
+
+INTERCEPT_BY_NAME: dict[str, CheckSpec] = {c.name: c for c in INTERCEPTS}
+
 
 def describe(specs: tuple[CheckSpec, ...] = CHECKS) -> str:
     """Each check's signature, the defect it excludes, what a plan hands it and what it reads on a cli, as text."""
@@ -595,26 +616,41 @@ class Refusal:
         return f"- {self.relocates_to or key}: {self.form}"
 
 
-def _unknown_check(name: str) -> Refusal:
-    """The refusal for a name no `CHECKS` entry declares — one spelling for both callers."""
-    known = ", ".join(sorted(CHECK_BY_NAME))
+def _unknown_check(name: str, table: Mapping[str, CheckSpec] = CHECK_BY_NAME) -> Refusal:
+    """The refusal for a name no entry of *table* declares — one spelling for every caller."""
+    known = ", ".join(sorted(table))
+    noun = "check" if table is CHECK_BY_NAME else "intercept effect"
     return Refusal("unknown-check",
-                   f"`{name}` is not a known check — the vocabulary is: {known}",
-                   _vocabulary())
+                   f"`{name}` is not a known {noun} — the vocabulary is: {known}",
+                   _vocabulary(tuple(table.values())))
 
 
 @functools.lru_cache(maxsize=65536)
 def parse_check(value: str) -> CheckCall | Refusal:
     """Parse one `verify:` value, or return the `Refusal` saying what was written instead."""
+    return _parse(value, CHECK_BY_NAME)
+
+
+@functools.lru_cache(maxsize=1024)
+def parse_intercept(value: str) -> CheckCall | Refusal:
+    """Parse one `intercept:` value against `INTERCEPTS`, or return the `Refusal` saying what was written instead."""
+    return _parse(value, INTERCEPT_BY_NAME)
+
+
+def _parse(value: str, table: Mapping[str, CheckSpec]) -> CheckCall | Refusal:
+    """*value* as a call of one spec in *table*, with its arguments bound and typed."""
     text = _unwrap(value)
+    vocabulary = _vocabulary(tuple(table.values()))
     if not text:
-        return Refusal("empty", "empty", _vocabulary())
+        return Refusal("empty", "empty", vocabulary)
     parsed = parse_call(text)
     if parsed is None:
-        return _not_a_call(text)
-    spec = CHECK_BY_NAME.get(parsed.name)
+        if table is CHECK_BY_NAME:
+            return _not_a_call(text)
+        return Refusal("not-a-call", f"`{text}` is not a call — expected `name(arg=…)`", vocabulary)
+    spec = table.get(parsed.name)
     if spec is None:
-        return _unknown_check(parsed.name)
+        return _unknown_check(parsed.name, table)
 
     def wrong(message: str) -> Refusal:
         return Refusal("bad-arguments", message, spec.signature())
@@ -641,7 +677,7 @@ def parse_check(value: str) -> CheckCall | Refusal:
             return wrong(f"`{name}`: `{param.name}` given twice")
         args[param.name] = bound
 
-    return bind(name, args)
+    return bind(name, args, table)
 
 
 def is_check_expression(value: str) -> bool:
@@ -716,16 +752,18 @@ _CALL_HEAD = re.compile(r"^([A-Za-z_]\w*)\s*\(")
 _TEST_REF_SUFFIXES = {"py", "ts", "tsx", "js", "jsx", "go", "rs", "php", "dart", "java", "kt"}
 
 
-def _vocabulary() -> str:
-    """Every check's signature — the form to suggest when the author has not yet chosen one."""
-    return " | ".join(spec.signature() for spec in CHECKS)
+def _vocabulary(specs: tuple[CheckSpec, ...] = CHECKS) -> str:
+    """Every spec's signature — the form to suggest when the author has not yet chosen one."""
+    return " | ".join(spec.signature() for spec in specs)
 
 
-def bind(name: str, args: Mapping[str, Any]) -> CheckCall | Refusal:
+def bind(
+    name: str, args: Mapping[str, Any], table: Mapping[str, CheckSpec] = CHECK_BY_NAME,
+) -> CheckCall | Refusal:
     """A call assembled from an already-separated name and arguments, or why it is not one."""
-    spec = CHECK_BY_NAME.get(name)
+    spec = table.get(name)
     if spec is None:
-        return _unknown_check(name)
+        return _unknown_check(name, table)
 
     def wrong(message: str) -> Refusal:
         return Refusal("bad-arguments", message, spec.signature())
@@ -743,6 +781,11 @@ def bind(name: str, args: Mapping[str, Any]) -> CheckCall | Refusal:
                 re.compile(value)
             except re.error as exc:
                 return wrong(f"`{name}`: `{key}` is not a valid regular expression — {exc}")
+        if param.nonempty and not value:
+            return wrong(f"`{name}`: `{key}` must not be empty")
+        if param.event and not REQUEST_EVENT.fullmatch(str(value).strip()):
+            return wrong(f"`{name}`: `{key}` is `{value}`, and a request event is spelled "
+                         '`"METHOD /path"`, with each `{name}` standing for one path segment')
         if param.key and not keys.pressable(str(value)):
             return wrong(f"`{name}`: `{key}` names `{value}`, and no browser can press that key. "
                          "Name one key or chord such as `Enter`, `Shift+Tab` or `ControlOrMeta+z`")

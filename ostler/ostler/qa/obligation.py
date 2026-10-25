@@ -103,6 +103,13 @@ class UnparsedRow:
 
 
 @dataclass(frozen=True)
+class InterceptRow:
+    """One flow `intercept:` declaration: the effect's name and its arguments."""
+    effect: str
+    args: dict[str, CheckValue]
+
+
+@dataclass(frozen=True)
 class FlowStep:
     """One entry of a flow's `steps:`: the node it resolved to, the link the book wrote, and where that node lives."""
     ref: str
@@ -139,6 +146,7 @@ class Obligation:
     fixtures_unparsed: tuple[UnparsedRow, ...]
     captures_unparsed: tuple[UnparsedRow, ...]
     conditions: tuple[str, ...] = ()
+    intercepts: tuple[InterceptRow, ...] = ()
 
 
 def _mapping(value: object, what: str) -> Mapping[str, object]:
@@ -245,6 +253,15 @@ def _flow_step(step: Mapping[str, object]) -> FlowStep:
     )
 
 
+def _intercept_row(row: Mapping[str, object]) -> InterceptRow:
+    """One `intercepts` entry."""
+    args = _mapping(row.get("args") or {}, "intercept `args`")
+    return InterceptRow(
+        effect=_text(row, "effect"),
+        args={key: _check_value(value, f"argument {key!r}") for key, value in args.items()},
+    )
+
+
 def _unparsed(value: object, what: str) -> tuple[UnparsedRow, ...]:
     """A packet list of refused bullets."""
     return tuple(UnparsedRow(value=_text(row, "value"), problem=_text(row, "problem"))
@@ -296,6 +313,7 @@ def obligation_of(raw: Mapping[str, Any]) -> Obligation:
         fixtures_unparsed=_unparsed(row.get("fixturesUnparsed"), "`fixturesUnparsed`"),
         captures_unparsed=_unparsed(row.get("capturesUnparsed"), "`capturesUnparsed`"),
         conditions=_texts(row.get("conditionsDeclared"), "`conditionsDeclared`"),
+        intercepts=tuple(_intercept_row(item) for item in _rows(row.get("intercepts"), "`intercepts`")),
     )
 
 

@@ -2694,6 +2694,20 @@ def _check_arranged_acts(graph: Graph, node: UINode, rel: str, f: list[Finding])
 IDENTITY_KEYS = ("role", "name", "keyboard")
 
 
+def _check_intercepts(node: UINode, rel: str, f: list[Finding]) -> None:
+    """`bad-intercept` — an `intercept:` value that is not a well-formed call of a known effect."""
+    for key in registry.effect_keys(node.type):
+        for index, value in enumerate(_bullet_values(node.meta.get(key, "")), 1):
+            parsed = checks.parse_intercept(value)
+            if isinstance(parsed, checks.Refusal):
+                f.append(Finding(
+                    "error", "bad-intercept",
+                    f"{node.id}: `{key}:{index}` ({value}) {parsed.message}",
+                    path=rel, line=node.line,
+                    ref=refs_mod.bullet_ref(node.id, key, index),
+                    suggestion=f"- {key}: {parsed.form}"))
+
+
 def _check_identity_arrangement(node: UINode, rel: str, f: list[Finding]) -> None:
     """`identity-arranged-alone` — a `fixture:` or `arrange:` bound to the element's `role:`, `name:` or `keyboard:`, which every other claim about the element needs as much."""
     claims = registry.normative_claims(node.type, node.bullet_order)
@@ -2935,6 +2949,7 @@ def _check_ui(graph: Graph, f: list[Finding],
 
         _check_arranged_acts(graph, node, rel, f)
         _check_identity_arrangement(node, rel, f)
+        _check_intercepts(node, rel, f)
 
         verify_key = check_keys[0] if check_keys else "verify"
         contract_checks, claim_checks = registry.attributed_checks(

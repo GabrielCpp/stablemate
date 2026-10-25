@@ -844,6 +844,17 @@ def test_a_browser_scenario_addressed_by_role_validates(tmp_path: Path) -> None:
     assert validate_v2(document) == []
 
 
+def test_a_browser_scenario_installing_an_intercept_validates(tmp_path: Path) -> None:
+    spec = _browser_spec(
+        tmp_path,
+        'qa.intercept("rewrite", event="POST /api/report/data", find="1300", replace="4200")\n'
+        '    qa.by_role("listitem", name="Widget")',
+    )
+    document, problems = load_plan(spec / "qa_plan.py", spec, tmp_path)
+    assert not problems and document is not None
+    assert validate_v2(document) == []
+
+
 def test_a_browser_scenario_may_not_navigate_off_the_documented_route(tmp_path: Path) -> None:
     spec = _browser_spec(tmp_path, 'qa.by_role("listitem")')
     module = spec / "qa_plan.py"

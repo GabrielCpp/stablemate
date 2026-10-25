@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from ostler import markdown, registry
+from ostler.checks import CheckCall, parse_intercept
 from ostler.qa.journey_steps import JourneyStep, journey_steps
 from ostler.untyped import JsonValue
 
@@ -138,6 +139,7 @@ class ObligationFrame:
     locators: dict[str, list[str]]
     extends_unresolved: bool
     repeat: RepeatContract | None
+    intercepts: tuple[CheckCall, ...] = ()
 
     def row(self) -> dict[str, JsonValue]:
         """The frame as the obligation row carries it, leaving out what the node does not state."""
@@ -154,6 +156,12 @@ class ObligationFrame:
             fields["locators"] = {key: [*values] for key, values in self.locators.items()}
         if self.repeat is not None:
             fields["repeat"] = self.repeat.row()
+        if self.intercepts:
+            rows: list[JsonValue] = []
+            for call in self.intercepts:
+                args: dict[str, JsonValue] = {key: str(value) for key, value in call.args.items()}
+                rows.append({"effect": call.name, "args": args})
+            fields["intercepts"] = rows
         return fields
 
 
@@ -352,10 +360,12 @@ def obligation_frame(
     node: BookNode, repeat: RepeatContract | None, book: Mapping[str, BookNode]
 ) -> ObligationFrame:
     """The frame every obligation of *node* shares."""
-    surface, steps = "", ()
+    surface, steps, intercepts = "", (), ()
     if node.type == "flow":
         surface = linked_surface(node, node.bullets.get("end", ()), book)
         steps = journey_steps(node, book)
+        parsed = (parse_intercept(value) for value in node.bullets.get("intercept", ()))
+        intercepts = tuple(call for call in parsed if isinstance(call, CheckCall))
     locators = declared_locators(node)
     extends_unresolved = False
     if node.type in ("interaction", "invocation"):
@@ -372,4 +382,5 @@ def obligation_frame(
         locators=locators,
         extends_unresolved=extends_unresolved,
         repeat=repeat,
+        intercepts=intercepts,
     )

@@ -3114,7 +3114,7 @@ def test_a_journey_step_performs_its_own_acts_before_it_triggers_it() -> None:
 
 
 def _opening_journey(fixture_screens: dict[str, str], route: list[dict[str, str]] | None = None,
-                     doors: dict[str, str] | None = None) -> str:
+                     doors: dict[str, str] | None = None, intercepts: list[dict] | None = None) -> str:
     open_thing = f"{_SCREEN}#open-thing"
     navigation = _arrival_navigation()
     navigation["policy"]["routes"] = {_SCREEN: route or []}
@@ -3124,7 +3124,7 @@ def _opening_journey(fixture_screens: dict[str, str], route: list[dict[str, str]
             f"okf:{_FLOW}:end-state", source=_FLOW, surface="policy",
             steps=[_step(open_thing, "interaction", "policy")],
             checks=[_located_visible(f"{_SCREEN}#things-table", {"selector": ["#things-table"]})],
-        ),
+        ) | ({"intercepts": intercepts} if intercepts else {}),
         _page_obligation(f"{open_thing}:carrier", open_thing,
                          locators={"on": ["[open-link](#open-link)"], "trigger": ["click"]},
                          checks=[]) | {"required": False},
@@ -3136,6 +3136,27 @@ def _opening_journey(fixture_screens: dict[str, str], route: list[dict[str, str]
     assert isinstance(result, Plan)
     ast.parse(result.source)
     return result.source.split("@scenario(")[-1]
+
+
+_REWRITE = {"effect": "rewrite", "args": {"event": "POST /api/report/data", "find": "1300", "replace": "4200"}}
+
+
+def test_a_flow_intercept_is_installed_after_its_fixtures_and_before_its_first_step() -> None:
+    journey = _opening_journey({"seeded-ledger": _SCREEN}, intercepts=[_REWRITE])
+
+    line = '    qa.intercept("rewrite", event="POST /api/report/data", find="1300", replace="4200")\n'
+    assert line in journey
+    assert journey.index('qa.fixture("seeded-ledger")') < journey.index(line) < journey.index('"#open-link"')
+
+
+def test_a_flow_intercept_is_installed_before_the_scenario_first_opens_a_screen() -> None:
+    journey = _opening_journey({"seeded-ledger": "docs/services/policy/gui/screens/landing.md"}, intercepts=[_REWRITE])
+
+    assert journey.index('qa.fixture("seeded-ledger")') < journey.index("qa.intercept(") < journey.index("qa.goto(")
+
+
+def test_a_flow_without_an_intercept_compiles_no_intercept_line() -> None:
+    assert "intercept" not in _opening_journey({"seeded-ledger": _SCREEN})
 
 
 def test_a_journey_whose_fixture_left_the_browser_on_its_first_screen_starts_there() -> None:
