@@ -15,13 +15,13 @@ File type under `docs/services/<service>/ops/`, `type: runbook` in frontmatter.
 
 | key | required | what it does |
 | --- | --- | --- |
-| `driver` | **yes** | `web` \| `mobile` \| `http` \| `cli` \| `artifact` \| `iac` \| `none` — held to this vocabulary; an unrecognized spelling is `unknown-driver`, an error, not a permissive default |
+| `driver` | **yes** | `web` \| `mobile` \| `http` \| `grpc` \| `cli` \| `artifact` \| `iac` \| `none` — held to this vocabulary; an unrecognized spelling is `unknown-driver`, an error, not a permissive default |
 | `environment` | no | link — the environment this boots (default local) |
 | `cli` | no | link — the dev-CLI node it drives with |
 | `surfaces` | no | link — the screen/server/cli/format nodes it exposes |
 | `code` | no | link, **owns** its file — the launch entry point |
 | `verify` | no | a check — what observing this runbook's claims looks like |
-| `entry-url` | no | base of the HTTP readiness probe; its path names the surface's root [`screen`](screen.md) — falls back for `surfaces:`' `base_url` in a compiled QA plan when that surface's own `server` states none |
+| `entry-url` | no | base of the readiness probe, either `http(s)://` or `grpc://host:port`; a `grpc://` address is probed with grpcurl until `grpc.health.v1.Health/Check` answers `SERVING` and reflection lists every service its `grpc-server` surfaces `serves:`. For an HTTP address, its path names the surface's root [`screen`](screen.md) — falls back for `surfaces:`' `base_url` in a compiled QA plan when that surface's own `server` states none |
 | `health-path` | no | joined onto `entry-url` (default `/`). It names a route the app serves that answers 2xx or 3xx once it is ready. A 404 or 405 there fails bring-up at once: the app serves no such route, and the app must implement one |
 | `identity` | no | substring of the health **body** proving the stack is ours |
 | `bundle-id` | no | the mobile package/bundle id a Maestro flow addresses — resolved across the runbooks naming the surface the same ranked way `driver` is |
@@ -38,9 +38,12 @@ These scalars are read by `ostler.qa.runbook`, which folds them plus the `## Ste
 into the manifest `ensure_stack` takes. They are scalars because the steps carry everything
 ordered.
 
-`secrets:` are minted per QA **run**, not per bring-up: a short-lived token issued while the
-stack booted is already stale by the lap that spends it, and a secret may never be
-checkpointed — so the value is a command that prints it, never the secret.
+`secrets:` are minted at bring-up, once the stack answers its readiness gate, on every
+`ensure_stack` call, whether it boots the stack or finds it already up. The value is a command
+that prints the secret, never the secret, because a secret may never be checkpointed. The command
+runs once, without a shell, and its stripped output becomes the environment variable `NAME` of the
+process that called `ensure_stack`. `ostler qa stack up` is such a process and exits afterwards, so
+a later `ostler qa run` does not inherit the value.
 
 Plus the [shared normative keys](../bullet-grammar.md#keys-that-are-normative-on-every-type).
 
@@ -74,7 +77,7 @@ shape, not a defect — a lint runbook stating `driver: cli`, a browser runbook 
 once. A runbook's `driver:` states what *that runbook* drives; which of them stands for the
 surface is a separate question, and the engine answers it with nothing for an author to write
 down. It ranks the runbooks naming the surface by their declared `driver:`, in the vocabulary's
-own order — `web`, `mobile`, `http`, `cli`, `artifact`, `iac`, `none`, with a runbook that
+own order — `web`, `mobile`, `http`, `grpc`, `cli`, `artifact`, `iac`, `none`, with a runbook that
 states no driver or an unrecognized one ranking last — and breaks a tie on node id.
 `reach.surface_driver` then answers with the first non-empty `driver:` down that ranking, so
 the browser runbook outranks the lint runbook for the same surface. That is the right reading
@@ -116,7 +119,7 @@ navigates by definition.
 
 `driver:` and `surfaces:` must agree: the driver has to be able to perform against at least
 one of the node types `surfaces:` resolves to — `web` and `mobile` against a `screen`, `http`
-against a `server`, `cli` against a `cli`. A `driver: web` runbook whose `surfaces:` names only
+against a `server`, `grpc` against a `grpc-server`, `cli` against a `cli`. A `driver: web` runbook whose `surfaces:` names only
 a `server` node is a browser pointed at something with no screen in it — `no-drivable-surface`
 catches exactly that drift, which is easy to leave behind when a book is scaffolded from a
 template and only `surfaces:` gets updated for the app at hand. It fires the same way on a

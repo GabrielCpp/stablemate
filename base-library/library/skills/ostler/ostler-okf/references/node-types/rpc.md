@@ -50,8 +50,8 @@ A claim proves its status with `grpc_status(code="NOT_FOUND")` and its reply wit
 
 ```markdown
 - status: NOT_FOUND when the ticket is unknown
-- arrange: body(field="id", value="no-such-ticket")
 - verify: grpc_status(code="NOT_FOUND")
+- arrange: body(field="id", value="no-such-ticket")
 ```
 
 ## `request` and `response`
@@ -86,8 +86,8 @@ title: get-ticket
 - streaming: unary
 - fixture: none, because the call reads a seeded ticket
 - status: NOT_FOUND when the ticket is unknown
-- arrange: body(field="id", value="no-such-ticket")
 - verify: grpc_status(code="NOT_FOUND")
+- arrange: body(field="id", value="no-such-ticket")
 ```
 
 ## Doctor codes it can trip
