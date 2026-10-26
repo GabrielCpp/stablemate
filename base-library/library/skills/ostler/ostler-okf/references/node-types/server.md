@@ -18,6 +18,7 @@ File type under `docs/services/<service>/http/`, `type: server` in frontmatter.
 | `code` | no | link, **owns** its file |
 | `detail` | no | link — an explanatory [`concept`](concept.md) |
 | `openapi` | no | link, **owns** its file |
+| `contract` | no | link, **owns** its file — the folder holding the `.proto` files whose `google.api.http` options annotate this server's routes |
 | `verify` | no | a check — what observing this server's claims looks like |
 | `launch` | no | the bring-up command |
 | `entry-url` | no | base URL the app serves on — also what a compiled QA plan's `target(...)` reads for its `base_url`. An absolute `http(s)://` URL with a host: it is a base other paths are joined onto, and a bare `localhost:8080` has no scheme to join under (`unparsable-bullet-value`) |
@@ -30,6 +31,8 @@ File type under `docs/services/<service>/http/`, `type: server` in frontmatter.
 The seven keys from `launch:` down are the **fallback launch contract**. They are
 documentation, not configuration — that is what lets a walk run standalone from the book. A
 [`runbook`](runbook.md) node supersedes them; this is the fallback for a service that has none.
+
+When `contract:` names a folder holding a `.proto`, doctor checks the book's [`endpoint`](endpoint.md) pages against the routes its rpcs annotate: an annotated route with no page is `route-missing`, and a page whose method and path the contract lacks is `route-phantom`. Routes match on the upper-cased method and the path, a `{...}` variable of any name standing for any other, and a custom-verb suffix such as `:reopen` is part of the path. Without `contract:` the endpoints are not checked against a proto.
 
 Plus the [shared normative keys](../bullet-grammar.md#keys-that-are-normative-on-every-type).
 
@@ -84,7 +87,7 @@ different addresses is two services under one directory, which is the thing to s
 ## Doctor codes it can trip
 
 `missing-required-section`, `empty-required-section`, `dangling-code-ref`,
-`missing-code-symbol`, plus whatever its `endpoint` children trip. See
+`missing-code-symbol`, `route-missing`, plus whatever its `endpoint` children trip. See
 [../doctor-codes.md](../doctor-codes.md).
 
 ## When bullets are not enough
