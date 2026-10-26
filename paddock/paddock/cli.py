@@ -12,7 +12,7 @@ from pathlib import Path
 from paddock import loader, paths, sandbox
 from paddock.homeconfig import HomeConfigError
 from paddock.registry import TaskError
-from paddock.runner import RunError, execute
+from paddock.runner import RoundInterrupted, RunError, RunResult, execute, resume
 from paddock.sandbox import Sandbox, SandboxError
 
 logger = logging.getLogger("paddock")
@@ -37,6 +37,17 @@ def build_parser() -> argparse.ArgumentParser:
         help="do not tee each command's output to stderr as it is written",
     )
     run.set_defaults(handler=cmd_run)
+
+    resumed = sub.add_parser("resume", help="continue an interrupted round on the stablemate sha it started on")
+    resumed.add_argument("benchmark")
+    resumed.add_argument("task")
+    resumed.add_argument("n", nargs="?", type=int, help="the round number; default: the highest unfinished one")
+    resumed.add_argument(
+        "--quiet",
+        action="store_true",
+        help="do not tee each command's output to stderr as it is written",
+    )
+    resumed.set_defaults(handler=cmd_resume)
 
     listing = sub.add_parser("list", help="the benchmarks under the benchmark root and their tasks")
     listing.set_defaults(handler=cmd_list)
@@ -119,6 +130,17 @@ def cmd_run(args: argparse.Namespace) -> int:
         pin_project=not args.no_pin_project,
         echo=not args.quiet,
     )
+    return _report(result)
+
+
+def cmd_resume(args: argparse.Namespace) -> int:
+    root = paths.root()
+    benchmark, task = loader.load_task(root, args.benchmark, args.task)
+    result = resume(benchmark, task, root=root, n=args.n, echo=not args.quiet)
+    return _report(result)
+
+
+def _report(result: RunResult) -> int:
     for outcome in result.outcomes:
         mark = {"ok": "ok  ", "failed": "FAIL", "skipped": "skip"}[outcome.status]
         print(f"{mark} {outcome.name}  {outcome.seconds:.1f}s{'  ' + outcome.error if outcome.error else ''}")
@@ -198,6 +220,9 @@ def main(argv: list[str] | None = None) -> None:
     )
     try:
         raise SystemExit(args.handler(args))
+    except RoundInterrupted as exc:
+        print(exc, file=sys.stderr)
+        raise SystemExit(130) from exc
     except (HomeConfigError, TaskError, RunError, SandboxError) as exc:
         logger.error("%s", exc)
         raise SystemExit(1) from exc

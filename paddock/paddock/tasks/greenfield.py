@@ -9,6 +9,7 @@ import shutil
 import subprocess
 import time
 from collections import defaultdict
+from collections.abc import Sequence
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -21,7 +22,7 @@ from paddock.tasks.judge import Judge, call_agent, render
 from paddock.tasks.stablemate import TrialError, effective, no_leaks, pin_held, stablemate_checkout, uv_run
 from ostler import markdown, registry
 from ostler.milestones import JOURNEY_LEVEL, SERVICES_LABEL, journey_slug
-from paddock.runner import Run
+from paddock.runner import CommandResult, RoundInterrupted, Run
 from paddock.registry import Score
 from paddock.tasks import inputs
 from workhorse.config_run import AgentResilience
@@ -48,6 +49,10 @@ SERVICES_DIR = "docs/services"
 MILESTONE_FILE = "milestone.md"
 
 BUILD = ("artifacts", "build")
+
+SEED_PHASE = "seed"
+
+INTERRUPTED_RC = 130
 
 
 
@@ -189,32 +194,99 @@ def phases_of(run: Run) -> list[dict[str, Any]]:
     return json.loads(path.read_text(encoding="utf-8")) if path.is_file() else []
 
 
+def interrupted(rc: int | None) -> bool:
+    """Whether a phase's exit code says it was stopped, not that it finished."""
+    return rc is None or rc == INTERRUPTED_RC or rc < 0
+
+
+def latest_phase(run: Run, phase: str) -> dict[str, Any] | None:
+    """The most recent ledger entry for *phase*, or None before it was launched."""
+    entries = [entry for entry in phases_of(run) if entry["phase"] == phase]
+    return entries[-1] if entries else None
+
+
+def _resume_argv(run: Run, entry: dict[str, Any] | None) -> list[str] | None:
+    """The argv workhorse recorded to resume the interrupted run dir *entry* names, or None when there is none."""
+    if entry is None or not interrupted(entry["rc"]) or not entry.get("run_dir"):
+        return None
+    launch = runs_dir(run) / str(entry["run_dir"]) / "launch.json"
+    if not launch.is_file():
+        return None
+    argv = json.loads(launch.read_text(encoding="utf-8")).get("resume_argv") or []
+    return [str(part) for part in argv] or None
+
+
+def _begin_phase(run: Run, phase: str, run_dir: str) -> None:
+    phases = phases_of(run)
+    phases.append({"phase": phase, "run_dir": run_dir, "rc": None, "wall_s": 0.0})
+    run.write_json(ledger_path(run), phases)
+
+
+def _end_phase(run: Run, phase: str, *, rc: int | None, wall_s: float) -> None:
+    """Close the latest entry of *phase*, adding this segment's wall time to what earlier segments spent."""
+    phases = phases_of(run)
+    entry = next(e for e in reversed(phases) if e["phase"] == phase)
+    entry["rc"] = rc
+    entry["wall_s"] = round(float(entry["wall_s"]) + wall_s, 1)
+    run.write_json(ledger_path(run), phases)
+
+
+def launch_phase(
+    run: Run, phase: str, argv: Sequence[str], *, cwd: Path, env: dict[str, str]
+) -> CommandResult | None:
+    """Launch one workflow phase fresh, resume its interrupted run dir, or skip it when it already finished.
+
+    Returns None for a skipped phase. Raises `RoundInterrupted` when the phase was stopped.
+    """
+    entry = latest_phase(run, phase)
+    if entry is not None and entry["rc"] == 0:
+        return None
+    prefix = uv_run(stablemate_checkout(run), "workhorse-workflows")
+    resume_argv = _resume_argv(run, entry)
+    if resume_argv is not None:
+        command = [*prefix, Path(resume_argv[0]).name, *resume_argv[1:]]
+    else:
+        workflow = Path(argv[0]).name.removeprefix("workhorse-")
+        command = [*prefix, *argv, "--run-id", phase]
+        _begin_phase(run, phase, f"{workflow}-{phase}")
+    started = time.monotonic()
+    rc: int | None = None
+    try:
+        result = run.cli(*command, cwd=cwd, env=env, log_name=phase)
+        rc = result.returncode
+    finally:
+        _end_phase(run, phase, rc=rc, wall_s=time.monotonic() - started)
+    if interrupted(rc):
+        raise RoundInterrupted(f"phase {phase!r} was stopped (exit {rc})")
+    return result
+
+
 def run_genesis(run: Run, fixture: Fixture) -> None:
     """Scaffold every surface, then seed the milestone into the tree genesis just made."""
-    checkout = stablemate_checkout(run)
     for surface in fixture.surfaces:
-        started = time.monotonic()
-        result = run.cli(
-            *uv_run(checkout, "workhorse-workflows"),
-            "workhorse-coder", "run", "genesis",
-            "--runs-dir", str(runs_dir(run)),
-            "--config", str(effective(run)),
-            "--params", fixture.params(surface_root(run, surface), surface),
+        phase = f"genesis-{surface.service}"
+        result = launch_phase(
+            run, phase,
+            ["workhorse-coder", "run", "genesis",
+             "--runs-dir", str(runs_dir(run)),
+             "--config", str(effective(run)),
+             "--params", fixture.params(surface_root(run, surface), surface)],
             cwd=surface_root(run, surface),
             env=phase_env(run, fixture, "genesis"),
-            log_name=f"genesis-{surface.service}",
         )
-        record(run, f"genesis-{surface.service}", rc=result.returncode,
-               wall_s=time.monotonic() - started)
-        if result.returncode != 0:
+        if result is not None and result.returncode != 0:
             raise TrialError(
                 f"genesis failed for surface {surface.service!r} (exit {result.returncode}) "
                 f"— see {result.log}"
             )
+    latest = latest_phase(run, SEED_PHASE)
+    if latest is not None and latest["rc"] == 0:
+        return
     seed_milestone(run, fixture)
     seed_decision_records(run, fixture)
     ignore_agent_runtime(run)
     commit_baseline(run)
+    record(run, SEED_PHASE, rc=0, wall_s=0.0)
 
 
 def seed_milestone(run: Run, fixture: Fixture) -> None:
@@ -289,19 +361,12 @@ def ignore_agent_runtime(run: Run) -> None:
 
 def run_phase(run: Run, fixture: Fixture, phase: str, *argv: str) -> None:
     """Drive one workflow phase and record what it cost."""
-    checkout = stablemate_checkout(run)
-    started = time.monotonic()
-    result = run.cli(
-        *uv_run(checkout, "workhorse-workflows"),
-        *argv,
-        "--runs-dir", str(runs_dir(run)),
-        "--config", str(effective(run)),
-        *workspace_flags(run),
+    launch_phase(
+        run, phase,
+        [*argv, "--runs-dir", str(runs_dir(run)), "--config", str(effective(run)), *workspace_flags(run)],
         cwd=home_of(run),
         env=phase_env(run, fixture, phase),
-        log_name=phase,
     )
-    record(run, phase, rc=result.returncode, wall_s=time.monotonic() - started)
 
 
 def run_author(run: Run, fixture: Fixture) -> None:
@@ -646,8 +711,8 @@ def phase_lines(phases: list[dict[str, Any]]) -> list[str]:
     if not phases:
         return [*lines, "  (nothing recorded — the round did not reach a workflow)"]
     for p in phases:
-        mark = "✓" if p["rc"] == 0 else "✗"
-        lines.append(f"  {mark} {str(p['phase']):<20}{fx.minutes(float(p['wall_s'])):>8}  exit={p['rc']}")
+        mark = "✓" if p["rc"] == 0 else "…" if p["rc"] is None else "✗"
+        lines.append(f"  {mark} {str(p['phase']):<20}{fx.minutes(float(p['wall_s'])):>8}  exit={p['rc'] if p['rc'] is not None else 'unfinished'}")
     total = sum(float(p["wall_s"]) for p in phases)
     lines.append(f"    {'total':<20}{fx.minutes(total):>8}")
     return lines

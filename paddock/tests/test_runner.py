@@ -18,9 +18,9 @@ from paddock import loader, names, paths
 from paddock.loader import Benchmark
 from paddock.names import RunName
 from paddock.registry import Task
-from paddock.runner import Run, RunError, RunResult, execute
+from paddock.runner import RoundInterrupted, Run, RunError, RunResult, execute, resume
 
-from smoke import BASE_CONFIG, SMOKE_TASKS, git
+from smoke import BASE_CONFIG, INTERRUPTIBLE_TASKS, SMOKE_TASKS, git
 
 MakeBenchmark = Callable[..., Benchmark]
 
@@ -554,3 +554,124 @@ def test_the_operators_workspace_and_artifacts_dir_stay_out_of_a_run(
     assert (result.stage / "child.txt").read_text(encoding="utf-8").strip() == "absent absent"
     assert os.environ["STABLEMATE_WORKSPACE"] == "/operator/workspace"
     assert os.environ["STABLEMATE_ARTIFACTS_DIR"] == "/operator/artifacts"
+
+
+def stop_flag(benchmark: Benchmark) -> Path:
+    return benchmark.root / "stop"
+
+
+def interrupted_round(make_benchmark: MakeBenchmark, root: Path, repo: Path, body: str = INTERRUPTIBLE_TASKS) -> Benchmark:
+    benchmark = make_benchmark(body)
+    stop_flag(benchmark).write_text("", encoding="utf-8")
+    with pytest.raises(RoundInterrupted):
+        execute(benchmark, benchmark.task("smoke"), root=root, checkout=repo)
+    stop_flag(benchmark).unlink()
+    return benchmark
+
+
+def test_an_interrupted_round_leaves_its_workspace_and_no_result(
+    make_benchmark: MakeBenchmark, root: Path, repo: Path
+) -> None:
+    benchmark = make_benchmark(INTERRUPTIBLE_TASKS)
+    stop_flag(benchmark).write_text("", encoding="utf-8")
+    with pytest.raises(RoundInterrupted, match="paddock resume smoke smoke 1"):
+        execute(benchmark, benchmark.task("smoke"), root=root, checkout=repo)
+    workspace = next((root / "workspace" / "smoke" / "smoke").glob("*/1"))
+    state = json.loads((workspace / "round.json").read_text(encoding="utf-8"))
+    assert state["pin_requested"] is True
+    assert state["stablemate"] == git(repo, "rev-parse", "HEAD")
+    assert [segment["outcome"] for segment in state["segments"]] == ["interrupted"]
+    steps = json.loads((workspace / "steps.json").read_text(encoding="utf-8"))
+    assert [step["name"] for step in steps] == ["first"]
+    assert not (root / "results").exists()
+    assert not (workspace / "project").exists()
+
+
+def test_a_keyboard_interrupt_is_an_interrupted_round(
+    make_benchmark: MakeBenchmark, root: Path, repo: Path
+) -> None:
+    body = INTERRUPTIBLE_TASKS.replace('raise RoundInterrupted("operator stopped the phase")', "raise KeyboardInterrupt()")
+    benchmark = make_benchmark(body)
+    stop_flag(benchmark).write_text("", encoding="utf-8")
+    with pytest.raises(RoundInterrupted, match="paddock resume smoke smoke 1"):
+        execute(benchmark, benchmark.task("smoke"), root=root, checkout=repo)
+
+
+def test_resume_runs_only_the_steps_that_did_not_finish(
+    make_benchmark: MakeBenchmark, root: Path, repo: Path
+) -> None:
+    benchmark = interrupted_round(make_benchmark, root, repo)
+    result = resume(benchmark, benchmark.task("smoke"), root=root, checkout=repo)
+    assert result.ok
+    assert [(o.name, o.status) for o in result.outcomes] == [("first", "ok"), ("second", "ok")]
+    assert (result.workspace / "calls.txt").read_text(encoding="utf-8") == "first\n"
+    assert (result.result / "stage" / "first.txt").is_file()
+    assert (result.result / "stage" / "second.txt").is_file()
+    ledger = json.loads((result.result / "ledger.json").read_text(encoding="utf-8"))
+    assert [segment["outcome"] for segment in ledger["segments"]] == ["interrupted", "finished"]
+    assert [step["name"] for step in ledger["steps"]] == ["first", "second"]
+    assert ledger["name"] == str(result.name)
+
+
+def test_a_straight_round_has_one_finished_segment(
+    make_benchmark: MakeBenchmark, root: Path, repo: Path
+) -> None:
+    result = run(make_benchmark, root, repo)
+    ledger = json.loads((result.result / "ledger.json").read_text(encoding="utf-8"))
+    assert [segment["outcome"] for segment in ledger["segments"]] == ["finished"]
+    assert ledger["caveats"] == []
+
+
+def test_resume_pins_the_sha_the_round_started_on_after_the_source_moved(
+    make_benchmark: MakeBenchmark, root: Path, repo: Path
+) -> None:
+    original = git(repo, "rev-parse", "HEAD")
+    benchmark = interrupted_round(make_benchmark, root, repo)
+    (repo / "later.txt").write_text("later\n", encoding="utf-8")
+    git(repo, "add", "later.txt")
+    git(repo, "commit", "-m", "later")
+    assert git(repo, "rev-parse", "HEAD") != original
+    result = resume(benchmark, benchmark.task("smoke"), root=root, checkout=repo)
+    ledger = json.loads((result.result / "ledger.json").read_text(encoding="utf-8"))
+    assert result.name.stablemate == original
+    assert ledger["project"]["head"] == original
+    assert (result.result / "stage" / "pin-head.txt").read_text(encoding="utf-8") == original
+    assert not [c for c in ledger["caveats"] if c.startswith("self-touched: ")]
+
+
+def test_resume_refuses_when_the_recorded_sha_is_gone_from_the_source(
+    make_benchmark: MakeBenchmark, root: Path, repo: Path
+) -> None:
+    benchmark = interrupted_round(make_benchmark, root, repo)
+    path = next((root / "workspace" / "smoke" / "smoke").glob("*/1")) / "round.json"
+    state = json.loads(path.read_text(encoding="utf-8"))
+    state["stablemate"] = "f" * 40
+    path.write_text(json.dumps(state), encoding="utf-8")
+    with pytest.raises(RunError, match="does not have commit " + "f" * 40):
+        resume(benchmark, benchmark.task("smoke"), root=root, checkout=repo)
+
+
+def test_resume_of_an_unpinned_round_needs_the_same_head(
+    make_benchmark: MakeBenchmark, root: Path, repo: Path
+) -> None:
+    benchmark = make_benchmark(INTERRUPTIBLE_TASKS)
+    stop_flag(benchmark).write_text("", encoding="utf-8")
+    with pytest.raises(RoundInterrupted):
+        execute(benchmark, benchmark.task("smoke"), root=root, checkout=repo, pin_project=False)
+    stop_flag(benchmark).unlink()
+    git(repo, "commit", "--allow-empty", "-m", "moved")
+    with pytest.raises(RunError, match="was not pinned"):
+        resume(benchmark, benchmark.task("smoke"), root=root, checkout=repo)
+
+
+def test_resume_without_an_unfinished_workspace_says_so(
+    make_benchmark: MakeBenchmark, root: Path, repo: Path
+) -> None:
+    benchmark = make_benchmark()
+    with pytest.raises(RunError, match="no workspace holds"):
+        resume(benchmark, benchmark.task("smoke"), root=root, checkout=repo)
+    finished = execute(benchmark, benchmark.task("smoke"), root=root, checkout=repo)
+    with pytest.raises(RunError, match="already finished"):
+        resume(benchmark, benchmark.task("smoke"), root=root, n=finished.name.n, checkout=repo)
+    with pytest.raises(RunError, match="already finished"):
+        resume(benchmark, benchmark.task("smoke"), root=root, checkout=repo)

@@ -62,8 +62,10 @@ def read(project: Project, *args: str) -> subprocess.CompletedProcess[str]:
     return _git(*args, cwd=project.path, git_dir=project.git_dir)
 
 
-def pin(source: Path | None, *, work: Path, enabled: bool = True) -> Project | None:
-    """A remoteless clone of *source*, detached at its HEAD, under *work*."""
+def pin(
+    source: Path | None, *, work: Path, enabled: bool = True, at: str | None = None
+) -> Project | None:
+    """A remoteless clone of *source*, detached at its HEAD or at *at*, under *work*."""
     if source is None:
         return None
     source = source.resolve()
@@ -71,7 +73,7 @@ def pin(source: Path | None, *, work: Path, enabled: bool = True) -> Project | N
     if head.returncode != 0:
         logger.warning("project %s is not a git checkout — running unpinned", source)
         return Project(path=source, source=source, head="", pinned=False, dirty=False)
-    sha = head.stdout.strip()
+    sha = at or head.stdout.strip()
     dirty = bool(_git("status", "--porcelain", cwd=source).stdout.strip())
     refs = _remote_refs(source)
     if not enabled:
@@ -108,6 +110,8 @@ def pin(source: Path | None, *, work: Path, enabled: bool = True) -> Project | N
         )
         shutil.rmtree(dest, ignore_errors=True)
         return unpinned
+    if at is not None:
+        _drop_history_past(dest, sha)
     pin_refs = _pairs(_git(*_REF_FORMAT, cwd=dest))
     stash = stashed_git_dir(dest)
     shutil.rmtree(stash, ignore_errors=True)
@@ -123,6 +127,14 @@ def pin(source: Path | None, *, work: Path, enabled: bool = True) -> Project | N
         path=dest, source=source, head=sha, pinned=True, dirty=dirty,
         git_dir=stash, remote_refs=refs, pin_refs=pin_refs,
     )
+
+
+def _drop_history_past(dest: Path, sha: str) -> None:
+    """Delete the refs and reflog entries of a clone that point past *sha*, so only the pin's own past is left."""
+    for ref, _ in _pairs(_git(*_REF_FORMAT, cwd=dest)):
+        if _git("merge-base", "--is-ancestor", ref, sha, cwd=dest).returncode == 1:
+            _git("update-ref", "-d", ref, cwd=dest)
+    _git("reflog", "expire", "--expire=now", "--all", cwd=dest)
 
 
 _REF_FORMAT = ("for-each-ref", "--format=%(refname) %(objectname)")

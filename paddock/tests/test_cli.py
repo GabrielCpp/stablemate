@@ -11,7 +11,7 @@ from paddock import paths
 from paddock.cli import main
 from paddock.loader import Benchmark
 
-from smoke import git
+from smoke import INTERRUPTIBLE_TASKS, git
 
 MakeBenchmark = Callable[..., Benchmark]
 
@@ -131,3 +131,32 @@ def test_the_seed_commands_are_gone(command: str) -> None:
     with pytest.raises(SystemExit) as stopped:
         main([command])
     assert stopped.value.code == 2
+
+
+def test_an_interrupted_run_exits_130_naming_the_resume_command_and_resume_finishes_it(
+    make_benchmark: MakeBenchmark, capsys: pytest.CaptureFixture[str]
+) -> None:
+    benchmark = make_benchmark(INTERRUPTIBLE_TASKS)
+    stop = benchmark.root / "stop"
+    stop.write_text("", encoding="utf-8")
+    with pytest.raises(SystemExit) as stopped:
+        main(["run", "smoke", "smoke", "--no-pin-project", "--quiet"])
+    assert stopped.value.code == 130
+    assert "paddock resume smoke smoke 1" in capsys.readouterr().err
+    stop.unlink()
+    with pytest.raises(SystemExit) as resumed:
+        main(["resume", "smoke", "smoke", "1", "--quiet"])
+    assert resumed.value.code == 0
+    out = capsys.readouterr().out
+    assert "run     smoke/smoke/" in out
+    assert "ok   second" in out
+
+
+def test_resume_with_nothing_to_resume_exits_1(
+    make_benchmark: MakeBenchmark, caplog: pytest.LogCaptureFixture
+) -> None:
+    make_benchmark(TWO_TASKS)
+    with pytest.raises(SystemExit) as stopped:
+        main(["resume", "smoke", "alpha", "--quiet"])
+    assert stopped.value.code == 1
+    assert "no workspace holds" in caplog.text

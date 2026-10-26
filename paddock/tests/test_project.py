@@ -305,3 +305,28 @@ def test_a_stash_that_is_gone_is_reported_rather_than_read_as_clean(
     assert caveats[0].startswith(project_mod.SELF_TOUCHED)
     assert "nothing here can say what the round did" in caveats[0]
     project_mod.release(pinned)
+
+
+def test_a_pin_at_an_older_sha_checks_that_sha_out_behind_the_fence(repo: Path, tmp_path: Path) -> None:
+    older = head_of(repo)
+    (repo / "later.txt").write_text("later\n", encoding="utf-8")
+    subprocess.run(["git", "add", "later.txt"], cwd=str(repo), check=True)
+    subprocess.run(["git", "commit", "-m", "later"], cwd=str(repo), check=True, capture_output=True)
+    assert head_of(repo) != older
+
+    pinned = project_mod.pin(repo, work=tmp_path / "work", at=older)
+
+    assert pinned is not None and pinned.pinned
+    assert pinned.head == older
+    assert project_mod.read(pinned, "rev-parse", "HEAD").stdout.strip() == older
+    assert not (pinned.path / "later.txt").exists()
+    assert (pinned.path / ".git").read_text(encoding="utf-8") == project_mod.FENCE_GITFILE
+    assert pinned.git_dir is not None and pinned.git_dir.is_dir()
+    assert project_mod.escaped(pinned) == ()
+    project_mod.release(pinned)
+
+
+def test_a_pin_at_a_sha_the_source_lacks_runs_unpinned(repo: Path, tmp_path: Path) -> None:
+    pinned = project_mod.pin(repo, work=tmp_path / "work", at="f" * 40)
+    assert pinned is not None and not pinned.pinned
+    assert not (tmp_path / "work" / "project").exists()

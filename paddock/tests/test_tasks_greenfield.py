@@ -8,9 +8,9 @@ from pathlib import Path
 import pytest
 from fakes import DOCS, PRODUCTS, fake_run, folder_run
 
-from paddock.runner import CommandResult, Run
+from paddock.runner import CommandResult, RoundInterrupted, Run
 from paddock.tasks import greenfield
-from paddock.tasks.stablemate import TrialError
+from paddock.tasks.stablemate import TrialError, uv_run
 
 FIXTURE = greenfield.Fixture(
     milestone="milestones/m1",
@@ -150,3 +150,112 @@ def test_commits_are_summed_across_members(tmp_path: Path) -> None:
     total = sum(greenfield.git_commits(repo) for repo in greenfield.repos_of(run))
     assert total == 3
     assert greenfield.home_of(run) == run.stage / DOCS
+
+
+def _recording_cli(run: Run, monkeypatch: pytest.MonkeyPatch, tmp_path: Path, rc: int = 0) -> list[list[str]]:
+    calls: list[list[str]] = []
+
+    def cli(*argv: str, **_: object) -> CommandResult:
+        calls.append(list(argv))
+        return CommandResult(argv=argv, returncode=rc, log=tmp_path / "log")
+
+    monkeypatch.setattr(run, "cli", cli, raising=False)
+    monkeypatch.setattr(greenfield, "stablemate_checkout", lambda _run: tmp_path)
+    return calls
+
+
+@pytest.mark.parametrize("rc", [130, -9])
+def test_a_stopped_phase_interrupts_the_round(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, rc: int) -> None:
+    run = folder_run(tmp_path)
+    _recording_cli(run, monkeypatch, tmp_path, rc=rc)
+
+    with pytest.raises(RoundInterrupted, match="author"):
+        greenfield.run_phase(run, FOLDER_FIXTURE, "author", "workhorse-author", "run")
+
+    (entry,) = greenfield.phases_of(run)
+    assert (entry["phase"], entry["rc"], entry["run_dir"]) == ("author", rc, "author-author")
+
+
+def test_a_fresh_phase_names_its_run_dir_and_records_it(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    run = folder_run(tmp_path)
+    calls = _recording_cli(run, monkeypatch, tmp_path)
+
+    greenfield.run_phase(run, FOLDER_FIXTURE, "coder", "workhorse-coder", "run")
+
+    argv = calls[0]
+    assert argv[argv.index("--run-id") + 1] == "coder"
+    (entry,) = greenfield.phases_of(run)
+    assert (entry["phase"], entry["rc"], entry["run_dir"]) == ("coder", 0, "coder-coder")
+
+
+def test_a_phase_that_finished_is_skipped(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    run = folder_run(tmp_path)
+    calls = _recording_cli(run, monkeypatch, tmp_path)
+    greenfield.record(run, "author", rc=0, wall_s=3.0)
+
+    greenfield.run_phase(run, FOLDER_FIXTURE, "author", "workhorse-author", "run")
+
+    assert calls == []
+
+
+def test_an_interrupted_phase_resumes_its_run_dir_through_uv(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    run = folder_run(tmp_path)
+    calls = _recording_cli(run, monkeypatch, tmp_path)
+    run.write_json(
+        greenfield.ledger_path(run),
+        [{"phase": "author", "run_dir": "author-author", "rc": 130, "wall_s": 5.0}],
+    )
+    launch = greenfield.runs_dir(run) / "author-author" / "launch.json"
+    launch.parent.mkdir(parents=True)
+    resume_argv = ["/old/ws/project/.venv/bin/workhorse-author", "run", "--resume-run", "/runs/author-author"]
+    launch.write_text(json.dumps({"resume_argv": resume_argv}), encoding="utf-8")
+
+    greenfield.run_phase(run, FOLDER_FIXTURE, "author", "workhorse-author", "run")
+
+    assert calls == [[*uv_run(tmp_path, "workhorse-workflows"), "workhorse-author", "run", "--resume-run", "/runs/author-author"]]
+    (entry,) = greenfield.phases_of(run)
+    assert entry["rc"] == 0
+    assert entry["wall_s"] >= 5.0
+
+
+def test_an_interrupted_phase_without_a_launch_record_starts_fresh(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    run = folder_run(tmp_path)
+    calls = _recording_cli(run, monkeypatch, tmp_path)
+    run.write_json(
+        greenfield.ledger_path(run),
+        [{"phase": "author", "run_dir": "author-author", "rc": None, "wall_s": 0.0}],
+    )
+
+    greenfield.run_phase(run, FOLDER_FIXTURE, "author", "workhorse-author", "run")
+
+    assert "--resume-run" not in calls[0]
+    assert "--run-id" in calls[0]
+
+
+def test_the_seed_is_recorded_and_never_rerun(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    run = folder_run(tmp_path)
+    _seed_milestone_source(run)
+    (run.benchmark.root / "records").mkdir()
+    (run.benchmark.root / "records" / "0001.md").write_text("# one\n", encoding="utf-8")
+    calls = _recording_cli(run, monkeypatch, tmp_path)
+
+    greenfield.run_genesis(run, FOLDER_FIXTURE)
+
+    assert [e["phase"] for e in greenfield.phases_of(run)] == ["genesis-api", "genesis-web", "seed"]
+    assert len(calls) == 2
+
+    def seeded_again(*_: object) -> None:
+        raise AssertionError("the author edits what the seed wrote, so it must not be written twice")
+
+    for name in ("seed_milestone", "seed_decision_records", "ignore_agent_runtime", "commit_baseline"):
+        monkeypatch.setattr(greenfield, name, seeded_again)
+
+    greenfield.run_genesis(run, FOLDER_FIXTURE)
+
+    assert len(calls) == 2
+    assert [e["phase"] for e in greenfield.phases_of(run)] == ["genesis-api", "genesis-web", "seed"]
+
+
+def test_an_unfinished_phase_shows_in_the_report() -> None:
+    lines = greenfield.phase_lines([{"phase": "coder", "run_dir": "coder-coder", "rc": None, "wall_s": 60.0}])
+    assert any("unfinished" in line for line in lines)

@@ -14,7 +14,9 @@ from collections.abc import Iterator, Mapping, Sequence
 from types import MappingProxyType
 from contextlib import AbstractContextManager, contextmanager, nullcontext
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 
 from paddock import homeconfig, manifest, names, paths, project as project_mod, reap
 from paddock.loader import Benchmark
@@ -27,6 +29,15 @@ logger = logging.getLogger(__name__)
 
 class RunError(RuntimeError):
     """A task that could not be run, or a result that must not be recorded."""
+
+
+class RoundInterrupted(RunError):
+    """A round that stopped before it finished and left its workspace to be resumed."""
+
+
+ROUND_FILE = "round.json"
+
+STEPS_FILE = "steps.json"
 
 
 @dataclass(frozen=True, slots=True)
@@ -307,48 +318,167 @@ def execute(
     _copy_data(benchmark.data, stage)
 
     pinned = project_mod.pin(source, work=workspace, enabled=pin_project)
-    driven = pinned.path if pinned else source
+    run = _new_run(benchmark, task, name, config, pinned, source, echo)
+    state: dict[str, Any] = {
+        "benchmark": name.benchmark,
+        "task": name.task,
+        "data_commit": name.data_commit,
+        "stablemate": name.stablemate,
+        "n": name.n,
+        "pin_requested": pin_project,
+        "project": pinned.as_json() if pinned else None,
+        "repos": {repo: names.git_head(path) for repo, path in run.repos.items()},
+        "caveats": [],
+        "segments": [_open_segment()],
+    }
+    return _drive(run, state, root=root, pin_requested=pin_project, done=())
 
-    run = Run(
+
+def resume(
+    benchmark: Benchmark,
+    task: Task,
+    *,
+    root: Path,
+    n: int | None = None,
+    checkout: Path | None = None,
+    echo: bool = True,
+) -> RunResult:
+    """Continue an interrupted round on the stablemate sha it started on."""
+    workspace = _unfinished_workspace(root, benchmark.name, task.name, n)
+    state: dict[str, Any] = json.loads((workspace / ROUND_FILE).read_text(encoding="utf-8"))
+    name = RunName(state["benchmark"], state["task"], state["data_commit"], state["stablemate"], int(state["n"]))
+    pin_requested = bool(state["pin_requested"])
+    source = (checkout or paths.checkout_root()).resolve()
+    if pin_requested:
+        if _git("cat-file", "-e", f"{name.stablemate}^{{commit}}", cwd=source).returncode != 0:
+            raise RunError(
+                f"{source} does not have commit {name.stablemate}, so round {name} cannot resume on the code it started on"
+            )
+    elif names.git_head(source) != name.stablemate:
+        raise RunError(
+            f"round {name} was not pinned and drove {source} at {name.stablemate[:12]}; "
+            f"it is at {names.git_head(source)[:12]} now, so the round cannot resume on the same code"
+        )
+    logger.info("resume %s", name)
+
+    pinned = project_mod.pin(
+        source, work=workspace, enabled=pin_requested, at=name.stablemate if pin_requested else None
+    )
+    if pin_requested and (pinned is None or not pinned.pinned):
+        raise RunError(f"could not pin {source} at {name.stablemate}, so round {name} cannot resume")
+    run = _new_run(benchmark, task, name, workspace / "config.toml", pinned, source, echo)
+    steps_path = workspace / STEPS_FILE
+    done = (
+        tuple(_outcome_of(item) for item in json.loads(steps_path.read_text(encoding="utf-8")))
+        if steps_path.is_file()
+        else ()
+    )
+    state["segments"] = [*state["segments"], _open_segment()]
+    return _drive(run, state, root=root, pin_requested=pin_requested, done=done)
+
+
+def _unfinished_workspace(root: Path, benchmark: str, task: str, n: int | None) -> Path:
+    """The workspace of the round `resume` continues: the given number, else the highest one without a result."""
+    base = root / paths.WORKSPACE / benchmark / task
+    found = sorted(
+        (int(path.name), path)
+        for path in base.glob("*/*")
+        if path.name.isdigit() and (path / ROUND_FILE).is_file()
+    )
+    if n is not None:
+        found = [(number, path) for number, path in found if number == n]
+    if not found:
+        which = f"round {n} of " if n is not None else "an interrupted round of "
+        raise RunError(f"no workspace holds {which}{benchmark}/{task} to resume")
+    open_ones = [(number, path) for number, path in found if not (root / paths.RESULTS / path.relative_to(root / paths.WORKSPACE)).exists()]
+    if not open_ones:
+        raise RunError(f"round {found[-1][0]} of {benchmark}/{task} already finished: its result exists")
+    highest = max(number for number, _ in open_ones)
+    tied = [path for number, path in open_ones if number == highest]
+    if len(tied) > 1:
+        listed = ", ".join(path.parent.name for path in tied)
+        raise RunError(f"round {highest} of {benchmark}/{task} is open under several names ({listed}); remove the ones to leave")
+    return tied[0]
+
+
+def _new_run(
+    benchmark: Benchmark,
+    task: Task,
+    name: RunName,
+    config: Path,
+    pinned: project_mod.Project | None,
+    source: Path,
+    echo: bool,
+) -> Run:
+    workspace = config.parent
+    return Run(
         task=task,
         name=name,
-        stage=stage,
-        scratch=scratch,
+        stage=workspace / "stage",
+        scratch=workspace / "scratch",
         workspace=workspace,
         config=config.resolve(),
         data=benchmark.data,
         benchmark=benchmark,
-        project=driven,
+        project=pinned.path if pinned else source,
         pinned=pinned,
         echo=echo,
     )
-    heads = {name: names.git_head(path) for name, path in run.repos.items()}
+
+
+def _open_segment() -> dict[str, Any]:
+    return {"started": _now(), "ended": None, "outcome": None}
+
+
+def _now() -> str:
+    return datetime.now(UTC).isoformat(timespec="seconds")
+
+
+def _drive(
+    run: Run,
+    state: dict[str, Any],
+    *,
+    root: Path,
+    pin_requested: bool,
+    done: Sequence[StepOutcome],
+) -> RunResult:
+    """Run the steps and the score of one segment, then either write the result or leave the workspace resumable."""
+    name = run.name
+    task = run.task
+    pinned = run.pinned
     try:
-        with _without_operator_env():
-            try:
-                outcomes = _run_steps(run)
-            finally:
-                reap.reap(stage)
+        run.write_json(run.workspace / ROUND_FILE, state)
+        try:
+            with _without_operator_env():
+                try:
+                    outcomes = _run_steps(run, done)
+                finally:
+                    reap.reap(run.stage)
 
-            score = _score(run, task) if task.score else None
+                score = _score(run, task) if task.score else None
+        except (RoundInterrupted, KeyboardInterrupt) as stopped:
+            _interrupt(run, state, pin_requested)
+            command = f"paddock resume {name.benchmark} {name.task} {name.n}"
+            raise RoundInterrupted(f"round {name} was interrupted; resume it with `{command}`") from stopped
 
-        escaped = project_mod.degraded(pinned, requested=pin_project) + project_mod.escaped(pinned)
+        escaped = project_mod.degraded(pinned, requested=pin_requested) + project_mod.escaped(pinned)
         for caveat in escaped:
             logger.warning("%s", caveat)
         failed = [f"step {o.name!r} {o.status}" for o in outcomes if o.status != "ok"]
-        caveats = (*failed, *escaped, *(score.caveats if score else ()))
+        caveats = (*state["caveats"], *failed, *escaped, *(score.caveats if score else ()))
+        _end_segment(state, "finished")
         result = names.result_dir(root, name)
-        _write_ledger(run, result / "ledger.json", outcomes, caveats, data_commit, heads, stablemate)
+        _write_ledger(run, result / "ledger.json", outcomes, caveats, state)
         run.write_json(result / "score.json", score.as_json() if score else None)
-        shutil.copyfile(config, result / "config.toml")
-        shutil.copytree(stage, result / "stage", symlinks=True)
+        shutil.copyfile(run.config, result / "config.toml")
+        shutil.copytree(run.stage, result / "stage", symlinks=True)
     finally:
         project_mod.release(pinned)
 
     return RunResult(
         name=name,
-        workspace=workspace,
-        stage=stage,
+        workspace=run.workspace,
+        stage=run.stage,
         result=result,
         outcomes=tuple(outcomes),
         score=score,
@@ -356,11 +486,33 @@ def execute(
     )
 
 
-def _run_steps(run: Run) -> list[StepOutcome]:
-    """Run the steps in order, stopping at the first failure."""
+def _interrupt(run: Run, state: dict[str, Any], pin_requested: bool) -> None:
+    """Record an interrupted segment, and what it did to its pin, before the pin is released."""
+    pinned = run.pinned
+    state["caveats"] = [
+        *state["caveats"],
+        *project_mod.degraded(pinned, requested=pin_requested),
+        *project_mod.escaped(pinned),
+    ]
+    _end_segment(state, "interrupted")
+    run.write_json(run.workspace / ROUND_FILE, state)
+
+
+def _end_segment(state: dict[str, Any], outcome: str) -> None:
+    segments = state["segments"]
+    segments[-1] = {**segments[-1], "ended": _now(), "outcome": outcome}
+
+
+def _run_steps(run: Run, done: Sequence[StepOutcome] = ()) -> list[StepOutcome]:
+    """Run the steps in order, stopping at the first failure, and keep the ones already finished."""
+    finished = {outcome.name: outcome for outcome in done if outcome.status == "ok"}
     outcomes: list[StepOutcome] = []
     for item in run.task.steps:
+        if item.name in finished:
+            outcomes.append(finished[item.name])
+            continue
         outcomes.append(_run_step(run, item))
+        run.write_json(run.workspace / STEPS_FILE, [_step_json(outcome) for outcome in outcomes])
         if outcomes[-1].status != "ok":
             skipped = [
                 StepOutcome(name=later.name, status="skipped", seconds=0.0)
@@ -378,6 +530,8 @@ def _run_step(run: Run, item: Step) -> StepOutcome:
     started = time.monotonic()
     try:
         item.fn(run)
+    except RoundInterrupted:
+        raise
     except Exception as exc:  # noqa: BLE001 - a step is task-supplied code; the ledger is the report
         logger.error("step %s failed: %s", item.name, exc)
         return StepOutcome(
@@ -397,14 +551,34 @@ def _run_step(run: Run, item: Step) -> StepOutcome:
     )
 
 
+def _step_json(outcome: StepOutcome) -> dict[str, Any]:
+    return {
+        "name": outcome.name,
+        "status": outcome.status,
+        "seconds": round(outcome.seconds, 3),
+        "error": outcome.error,
+        "commands": [list(argv) for argv in outcome.commands],
+        "exit_codes": list(outcome.exit_codes),
+    }
+
+
+def _outcome_of(item: Mapping[str, Any]) -> StepOutcome:
+    return StepOutcome(
+        name=item["name"],
+        status=item["status"],
+        seconds=float(item["seconds"]),
+        error=item.get("error", ""),
+        commands=tuple(tuple(argv) for argv in item.get("commands", ())),
+        exit_codes=tuple(item.get("exit_codes", ())),
+    )
+
+
 def _write_ledger(
     run: Run,
     path: Path,
     outcomes: Sequence[StepOutcome],
     caveats: Sequence[str],
-    data_commit: str,
-    heads: Mapping[str, str],
-    stablemate: str,
+    state: Mapping[str, Any],
 ) -> None:
     run.write_json(
         path,
@@ -412,23 +586,14 @@ def _write_ledger(
             "name": str(run.name),
             "benchmark": run.name.benchmark,
             "task": run.name.task,
-            "data_commit": data_commit,
-            "repos": dict(heads),
-            "stablemate": stablemate,
+            "data_commit": run.name.data_commit,
+            "repos": dict(state["repos"]),
+            "stablemate": run.name.stablemate,
             "config": str(run.config),
-            "project": run.pinned.as_json() if run.pinned else None,
+            "project": state["project"],
             "caveats": list(caveats),
-            "steps": [
-                {
-                    "name": outcome.name,
-                    "status": outcome.status,
-                    "seconds": round(outcome.seconds, 3),
-                    "error": outcome.error,
-                    "commands": [list(argv) for argv in outcome.commands],
-                    "exit_codes": list(outcome.exit_codes),
-                }
-                for outcome in outcomes
-            ],
+            "segments": list(state["segments"]),
+            "steps": [_step_json(outcome) for outcome in outcomes],
         },
     )
 
