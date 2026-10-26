@@ -160,7 +160,9 @@ gives relative to the repository starts there.
 {%- if kind == "grpc" %}
 - An rpc that changes a record changes one that a claim above it on the same page created
   through the service, never a seeded one. Claims on one page run in order, so a later claim
-  sees what an earlier one created.
+  sees what an earlier one created. A claim on a server-streaming rpc follows the streaming
+  part of the rpc node reference: `while_open` makes the call whose effect the stream should
+  deliver, and `message_count` counts what arrived.
 {%- else %}
 - Every {% if kind == "cli" %}command{% elif kind == "http" %}endpoint{% else %}screen{% endif %} sits on a journey a user takes. Write each journey as a `flow` page under
   `flows/`, as the skill's flow reference says, with its `start:`, its `steps:`, its `end:` and
