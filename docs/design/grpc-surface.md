@@ -272,7 +272,7 @@ Revision log:
 | Describing the service | Reshape | `ostler/registry.py` `UI_TYPES`. Gains two node types and a value kind. |
 | Reading the contract | New | `ostler/proto_contract.py`. |
 | Checking coverage | New | `ostler/rpc_coverage.py`, wired into doctor beside `check_server_membership` (`ostler/doctor.py:122`). |
-| Writing the book | Reshape | `okf_book/main/prompts/write-book.md` and `main/nodes/source_view.py`. |
+| Writing the book | Reshape | `okf_book/main/prompts/write-book.md` and `main/nodes/writer_request.py`. |
 | Proving claims | Reshape | `ostler/qa/compile_grpc.py` (new), the harness `ostler/qa/harness/ostler_qa.py`, `ostler/qa/stack.py`. |
 
 ### Concepts
@@ -333,9 +333,10 @@ Revision log:
 
 - gRPC writing branch: **Reshape**. A `grpc` arm in `write-book.md` beside the
   cli/http/mobile/web arms (`:42-66`, `:148-196`). Without it, grpc falls to the web arm.
-- Reading scope: **Reshape**. `build_source_view` copies the entry folder
-  (`main/nodes/source_view.py:25-37`). It copies the contract folder as a second view, for
-  any surface that declares one, HTTP included (R9). Source coverage stays on the entry folder
+- Reading scope: **Reshape**. The writer reads the entry folder in place, as an added
+  directory (`main/nodes/writer_request.py` `source_dir`, `main/write_book_flow.py` `add_dirs`).
+  The contract folder becomes a second added directory, for any surface that declares one,
+  HTTP included (R9). Source coverage stays on the entry folder
   (`shared/source_coverage.py:41-45`). The contract is covered by `rpc-missing` and
   `route-missing`.
 
@@ -377,7 +378,7 @@ Revision log:
 
 | Claim | Existing system | Design |
 |---|---|---|
-| 1. Writer reads only entry | Follows (`source_view.py`) | Reshaped: entry plus contract, both in the home repo |
+| 1. Writer reads only entry | Follows (`writer_request.py`) | Reshaped: entry plus contract, both in the home repo |
 | 2. Kind picks branch and driver | Branch yes, driver no (R2) | Reshaped to match the code |
 | 3. server is HTTP under `http/` | Follows (`registry.py:518`) | Kept for HTTP, rejected for gRPC |
 | 4. method is never live | Follows (`dispatch.py:53`) | Kept |
