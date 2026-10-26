@@ -85,7 +85,7 @@ without re-walking the full diff on every run.
 - code: ostler/ostler/todo.py::reorder@eb0ea0bc4039
 - code: ostler/ostler/todo.py::_milestone_ordered_epics@eb0ea0bc4039
 - code: ostler/ostler/trace.py::run@627ab268dee3
-- code: ostler/ostler/server_membership.py::check_server_membership@badd1c75c0f9
+- code: ostler/ostler/server_membership.py::check_server_membership@692e1d58d870
 - code: ostler/ostler/source_snapshots.py::SourceCatalog@40694806c2b5
 - code: ostler/ostler/source_snapshots.py::RepositorySnapshot@40694806c2b5
 - code: ostler/ostler/source_snapshots.py::SourceFile@40694806c2b5

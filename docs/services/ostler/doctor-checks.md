@@ -115,7 +115,7 @@ defects in the book of the checkout. A caller reads the finding code, the page a
 - fixture: [doctor scratch repo](fixtures/doctor-scratch-repo.md) with a doctor scratch repo of four
   books that each carry one kind of defect
 - code: ostler/ostler/accessible_names.py::literal_name@e34b952636fb
-- code: ostler/ostler/census.py::code_sites@f5897dc81658
+- code: ostler/ostler/census.py::code_sites@9c71f5a187f2
 - code: ostler/ostler/qa/fixture_browser.py::is_browser_step@d769665467aa
 - code: ostler/ostler/qa/stack.py::shell_syntax_error@49f8647f79af
 - code: ostler/ostler/step_commands.py::check_fixture_launch_screen@c4832c0a1e20
@@ -137,6 +137,6 @@ defects in the book of the checkout. A caller reads the finding code, the page a
 - verify: json_path(path="findings[3].code", equals="decision-back-link-missing")
 - verify: json_path(path="findings[3].message", equals="record 'X-1' names decision 'D-9', and no decision file has that id")
 - fixture: [doctor scratch repo](fixtures/doctor-scratch-repo.md) with a broken register beside an empty book
-- code: ostler/ostler/doctor.py::_check_register_records@deed3045a8c9
-- code: ostler/ostler/doctor.py::_check_decisions@deed3045a8c9
+- code: ostler/ostler/doctor.py::_check_register_records@99b46802793c
+- code: ostler/ostler/doctor.py::_check_decisions@99b46802793c
 - detail: [The debt register](concepts/the-debt-register.md)

@@ -94,11 +94,11 @@ flags a step command that duplicates what a scenario's own frame already provide
 - code: ostler/ostler/backfill.py::render@e3c3cac49def
 - code: ostler/ostler/backfill.py::StaleUnit@e3c3cac49def
 - code: ostler/ostler/backfill.py::BackfillPlan@e3c3cac49def
-- code: ostler/ostler/census.py::take_census@f5897dc81658
-- code: ostler/ostler/census.py::Census@f5897dc81658
-- code: ostler/ostler/census.py::merge@f5897dc81658
-- code: ostler/ostler/census.py::code_sites@f5897dc81658
-- code: ostler/ostler/census.py::render@f5897dc81658
+- code: ostler/ostler/census.py::take_census@9c71f5a187f2
+- code: ostler/ostler/census.py::Census@9c71f5a187f2
+- code: ostler/ostler/census.py::merge@9c71f5a187f2
+- code: ostler/ostler/census.py::code_sites@9c71f5a187f2
+- code: ostler/ostler/census.py::render@9c71f5a187f2
 - code: ostler/ostler/reach.py::reachability@a7af9ddc3e32
 - code: ostler/ostler/reach.py::unreachable_screens@a7af9ddc3e32
 - code: ostler/ostler/reach.py::route@a7af9ddc3e32
