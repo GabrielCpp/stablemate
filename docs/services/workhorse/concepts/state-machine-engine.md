@@ -45,12 +45,12 @@ any other computed path is reported, because a path preflight cannot read is a p
 checks. The same graph renders to Graphviz DOT through [`dot`](../workhorse.md#dot), and the
 [check a workflow](../flows/check-workflow.md) journey renders one.
 
-- code: `workhorse/workhorse/pyflow/workflow.py::Workflow` @1cc9c62be317
-- code: `workhorse/workhorse/pyflow/workflow.py::state` @1cc9c62be317
+- code: `workhorse/workhorse/pyflow/workflow.py::Workflow` @9704358a90e7
+- code: `workhorse/workhorse/pyflow/workflow.py::state` @9704358a90e7
 - code: `workhorse/workhorse/pyflow/transitions.py::Continue` @05edc5a834cc
 - code: `workhorse/workhorse/pyflow/transitions.py::Done` @05edc5a834cc
 - code: `workhorse/workhorse/pyflow/transitions.py::Await` @05edc5a834cc
-- code: `workhorse/workhorse/pyflow/engine.py::Engine` @7fad27ee4d40
+- code: `workhorse/workhorse/pyflow/engine.py::Engine` @922a7b361e6e
 - code: `workhorse/workhorse/pyflow/driver.py::drive` @6ee79b75b0f1
 - code: `workhorse/workhorse/pyflow/driver.py::coerce_params` @6ee79b75b0f1
 - code: `workhorse/workhorse/pyflow/graph.py::FlowGraph` @2e2ffac17246
@@ -65,4 +65,4 @@ checks. The same graph renders to Graphviz DOT through [`dot`](../workhorse.md#d
 - code: `workhorse/workhorse/worklist.py::WorkList` @5527e3514bc3
 - code: `workhorse/workhorse/context.py::WorkflowContext` @313726f99d8a
 - code: `workhorse/docs/WORKFLOW.md` @7ac0edfa642f
-- code: `workhorse/docs/AUTHORING.md` @c4845228e953
+- code: `workhorse/docs/AUTHORING.md` @83e8becee436

@@ -10,7 +10,7 @@ a live run reports the [liveness](../concepts/run-control.md) of the directory i
 [run directory](../concepts/run-directory.md) page describes each file seeded here.
 
 - lifetime: lap
-- code: `workhorse/workhorse/records.py::RunRecord` @ce33d3ae4195
+- code: `workhorse/workhorse/records.py::RunRecord` @0b6fbdc685b9
 
 ## Steps
 

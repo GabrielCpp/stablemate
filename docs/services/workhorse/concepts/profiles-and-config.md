@@ -27,13 +27,13 @@ An operator can switch the CLI or the profile of a live run with
 resumed run comes back on the profile it switched to. The agent CLIs themselves are described in
 [agent backends](agent-backends.md).
 
-- code: `workhorse/workhorse/profile.py::select_backend` @9dcb7351ca5e
-- code: `workhorse/workhorse/profile.py::implied_profile` @9dcb7351ca5e
-- code: `workhorse/workhorse/profile.py::ProfileError` @9dcb7351ca5e
-- code: `workhorse/workhorse/profile.py::switch_profile` @9dcb7351ca5e
-- code: `workhorse/workhorse/profile.py::recorded_profile` @9dcb7351ca5e
-- code: `workhorse/workhorse/profile.py::record_switch` @9dcb7351ca5e
+- code: `workhorse/workhorse/profile.py::select_backend` @5940a4ebe776
+- code: `workhorse/workhorse/profile.py::implied_profile` @5940a4ebe776
+- code: `workhorse/workhorse/profile.py::ProfileError` @5940a4ebe776
+- code: `workhorse/workhorse/profile.py::switch_profile` @5940a4ebe776
+- code: `workhorse/workhorse/profile.py::recorded_profile` @5940a4ebe776
+- code: `workhorse/workhorse/profile.py::record_switch` @5940a4ebe776
 - code: `workhorse/workhorse/_vendor/stablemate_core/profiles.py::select_profile` @0f757c16382b
 - code: `workhorse/workhorse/_vendor/stablemate_core/profiles.py::resolve_default_cli` @0f757c16382b
-- code: `workhorse/workhorse/_vendor/stablemate_core/config.py::load_config` @45b4d92edb39
-- code: `workhorse/workhorse/_vendor/stablemate_core/config.py::check_config_version` @45b4d92edb39
+- code: `workhorse/workhorse/_vendor/stablemate_core/config.py::load_config` @7a84c0cc67a5
+- code: `workhorse/workhorse/_vendor/stablemate_core/config.py::check_config_version` @7a84c0cc67a5

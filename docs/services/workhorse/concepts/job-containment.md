@@ -35,11 +35,11 @@ that container locally. The [run control](run-control.md) reload is how an opera
 - code: `workhorse/workhorse/job.py::supervise` @6189501d995a
 - code: `workhorse/workhorse/job.py::submit` @6189501d995a
 - code: `workhorse/workhorse/job.py::containment_tier` @6189501d995a
-- code: `workhorse/supervisor.py::main` @49c50106d5ad
-- code: `workhorse/supervisor.py::require_writable` @49c50106d5ad
+- code: `workhorse/supervisor.py::main` @6e803abf6409
+- code: `workhorse/supervisor.py::require_writable` @6e803abf6409
 - code: `workhorse/livesource.py::LiveSource` @b1e9c59daeb3
 - code: `workhorse/livesource.py::refresh` @b1e9c59daeb3
 - code: `workhorse/Dockerfile` @4b2d6e515bf7
-- code: `workhorse/compose.yaml` @e971d0375f44
-- code: `workhorse/docs/DOCKER.md` @24e76866a6f4
+- code: `workhorse/compose.yaml` @35e3d1511b23
+- code: `workhorse/docs/DOCKER.md` @5eba57fe3d9c
 - code: `workhorse/docs/JOBS.md` @1ac7e3348d78

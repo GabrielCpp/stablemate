@@ -43,8 +43,8 @@ each sub-flow the rewound visit left unfinished, and logs a `rewind` event. The
 - code: `workhorse/workhorse/control.py::listening` @52683677757e
 - code: `workhorse/workhorse/control.py::send` @52683677757e
 - code: `workhorse/workhorse/cli/target.py::groom_live_run` @8b8132797882
-- code: `workhorse/workhorse/cli/offline.py::refuse_if_running` @5ec56edba53b
-- code: `workhorse/workhorse/cli/offline.py::wait_gone` @5ec56edba53b
+- code: `workhorse/workhorse/cli/offline.py::refuse_if_running` @cd7d6c6c8f77
+- code: `workhorse/workhorse/cli/offline.py::wait_gone` @cd7d6c6c8f77
 - code: `workhorse/workhorse/rewind.py::rewind` @1ed4d1905220
 - code: `workhorse/workhorse/rewind.py::RewindError` @1ed4d1905220
 - code: `workhorse/workhorse/reload.py::ReloadRequested` @c7be7ac9ef2a

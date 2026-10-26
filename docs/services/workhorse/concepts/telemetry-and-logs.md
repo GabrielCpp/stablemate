@@ -33,7 +33,7 @@ Logs go to stderr as `[<logger>] <message>`, at the level `WORKHORSE_LOG_LEVEL` 
 `INFO`. While telemetry is on, the same records also go to the collector, stamped with the node
 the run is in. A workflow can add its own span dimensions by overriding `labels()`.
 
-- code: `workhorse/workhorse/otel.py::Telemetry` @237a3c33f413
-- code: `workhorse/workhorse/otel.py::OtelSettings` @237a3c33f413
+- code: `workhorse/workhorse/otel.py::Telemetry` @c3d8848371ee
+- code: `workhorse/workhorse/otel.py::OtelSettings` @c3d8848371ee
 - code: `workhorse/workhorse/logsetup.py::setup` @dbe8304930de
 - code: `workhorse/docs/TELEMETRY.md` @1a5a741770e1

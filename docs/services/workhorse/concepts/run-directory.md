@@ -30,12 +30,12 @@ The files an operator reads:
 Agent CLI session ids are kept per chain of turns, so a later turn of the same chain resumes the
 same session. Before each turn the run snapshots the git trees the turn may touch.
 
-- code: `workhorse/workhorse/records.py::RunRecord` @ce33d3ae4195
-- code: `workhorse/workhorse/records.py::LaunchRecord` @ce33d3ae4195
-- code: `workhorse/workhorse/records.py::PyflowCheckpoint` @ce33d3ae4195
+- code: `workhorse/workhorse/records.py::RunRecord` @0b6fbdc685b9
+- code: `workhorse/workhorse/records.py::LaunchRecord` @0b6fbdc685b9
+- code: `workhorse/workhorse/records.py::PyflowCheckpoint` @0b6fbdc685b9
 - code: `workhorse/workhorse/rundir.py::derive_run_id` @aa85ef04e897
 - code: `workhorse/workhorse/rundir.py::find_latest_resumable` @aa85ef04e897
-- code: `workhorse/workhorse/artifacts.py::ArtifactWriter` @ea09ba99b938
+- code: `workhorse/workhorse/artifacts.py::ArtifactWriter` @41646e08117a
 - code: `workhorse/workhorse/sessions.py::read_chain` @f6e3de822358
 - code: `workhorse/workhorse/turnkey.py::VisitKey` @0dffcaf7cfde
 - code: `workhorse/workhorse/scratch.py::scratch_dir` @32d503d3e5ca

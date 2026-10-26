@@ -61,11 +61,11 @@ An operator can [answer the inbox](flows/answer-inbox.md), [inspect a stopped ru
 - exits: 0 when a dry run finds nothing wrong.
 - run: invoke(argv=["run", "--dry-run", "--no-cache", "--cli", "claude", "--config", "/tmp/workhorse-book/seeded/config.toml"])
 - verify: exit_status(code=0)
-- code: `workhorse/workhorse/cli/run.py::add_arguments` @fb229bac321d
-- code: `workhorse/workhorse/cli/run.py::run` @fb229bac321d
-- code: `workhorse/workhorse/cli/run.py::invocation` @fb229bac321d
-- code: `workhorse/workhorse/cli/run.py::apply_config_path` @fb229bac321d
-- code: `workhorse/workhorse/cli/run.py::library_dirs` @fb229bac321d
+- code: `workhorse/workhorse/cli/run.py::add_arguments` @6bb7cf530876
+- code: `workhorse/workhorse/cli/run.py::run` @6bb7cf530876
+- code: `workhorse/workhorse/cli/run.py::invocation` @6bb7cf530876
+- code: `workhorse/workhorse/cli/run.py::apply_config_path` @6bb7cf530876
+- code: `workhorse/workhorse/cli/run.py::library_dirs` @6bb7cf530876
 - code: `workhorse/workhorse/cli/params.py::load_params` @43dababb9ed6
 - code: `workhorse/workhorse/manifest.py::load_context_manifest` @e896594bc36c
 - detail: [run launch](concepts/run-launch.md)
@@ -121,9 +121,9 @@ An operator can [answer the inbox](flows/answer-inbox.md), [inspect a stopped ru
 - verify: exit_status(code=0)
 - code: `workhorse/workhorse/cli/control.py::add_arguments` @d578cf93b87e
 - code: `workhorse/workhorse/cli/control.py::run` @d578cf93b87e
-- code: `workhorse/workhorse/cli/offline.py::run_rewind` @5ec56edba53b
-- code: `workhorse/workhorse/cli/offline.py::run_resume` @5ec56edba53b
-- code: `workhorse/workhorse/cli/offline.py::print_params` @5ec56edba53b
+- code: `workhorse/workhorse/cli/offline.py::run_rewind` @cd7d6c6c8f77
+- code: `workhorse/workhorse/cli/offline.py::run_resume` @cd7d6c6c8f77
+- code: `workhorse/workhorse/cli/offline.py::print_params` @cd7d6c6c8f77
 - code: `workhorse/workhorse/cli/target.py::resolve_target` @8b8132797882
 - detail: [run control](concepts/run-control.md)
 
@@ -226,7 +226,7 @@ An operator can [answer the inbox](flows/answer-inbox.md), [inspect a stopped ru
 - status: 2 on `--cli` with `--profile`.
 - run: invoke(argv=["run", "--cli", "claude", "--profile", "cheap"])
 - verify: exit_status(code=2)
-- code: `workhorse/workhorse/cli/run.py::run` @fb229bac321d
+- code: `workhorse/workhorse/cli/run.py::run` @6bb7cf530876
 
 ### refuse-missing-config
 
@@ -239,7 +239,7 @@ An operator can [answer the inbox](flows/answer-inbox.md), [inspect a stopped ru
 - status: 1 on a refused config, profile, params file or context manifest.
 - run: invoke(argv=["run", "--config", "nowhere.toml"])
 - verify: exit_status(code=1)
-- code: `workhorse/workhorse/cli/run.py::apply_config_path` @fb229bac321d
+- code: `workhorse/workhorse/cli/run.py::apply_config_path` @6bb7cf530876
 
 ### refuse-unknown-resume-run
 
@@ -269,7 +269,7 @@ An operator can [answer the inbox](flows/answer-inbox.md), [inspect a stopped ru
   - The argument parser refuses the second flag and names the first one it clashes with.
 - run: invoke(argv=["run", "--resume-latest", "--resume-run", "nope"])
 - verify: stderr(text="error: argument --resume-run: not allowed with argument --resume-latest")
-- code: `workhorse/workhorse/cli/run.py::add_arguments` @fb229bac321d
+- code: `workhorse/workhorse/cli/run.py::add_arguments` @6bb7cf530876
 
 ### refuse-unknown-profile
 
@@ -279,7 +279,7 @@ An operator can [answer the inbox](flows/answer-inbox.md), [inspect a stopped ru
   - Refuses the launch and lists the known profiles in sorted order.
 - run: invoke(argv=["run", "--profile", "ghost", "--config", "/tmp/workhorse-book/seeded/config.toml"])
 - verify: stderr(text="error: unknown profile 'ghost' in /tmp/workhorse-book/seeded/config.toml (known: bare, cheap, odd)")
-- code: `workhorse/workhorse/cli/run.py::run` @fb229bac321d
+- code: `workhorse/workhorse/cli/run.py::run` @6bb7cf530876
 
 ### refuse-profile-without-cli
 
@@ -289,7 +289,7 @@ An operator can [answer the inbox](flows/answer-inbox.md), [inspect a stopped ru
   - Refuses the launch and says every profile must declare its CLI.
 - run: invoke(argv=["run", "--profile", "bare", "--config", "/tmp/workhorse-book/seeded/config.toml"])
 - verify: stderr(text="error: [profiles.bare] has no cli field — every profile must declare the CLI it runs under.")
-- code: `workhorse/workhorse/cli/run.py::run` @fb229bac321d
+- code: `workhorse/workhorse/cli/run.py::run` @6bb7cf530876
 
 ### refuse-undrivable-profile
 
@@ -299,7 +299,7 @@ An operator can [answer the inbox](flows/answer-inbox.md), [inspect a stopped ru
   - Refuses the launch and lists the CLIs the run can drive.
 - run: invoke(argv=["run", "--profile", "odd", "--config", "/tmp/workhorse-book/seeded/config.toml"])
 - verify: stderr(text="error: profile 'odd' declares cli = 'nope' (in /tmp/workhorse-book/seeded/config.toml), and this run can drive only claude, cline, codex, copilot, opencode")
-- code: `workhorse/workhorse/cli/run.py::run` @fb229bac321d
+- code: `workhorse/workhorse/cli/run.py::run` @6bb7cf530876
 
 ### refuse-unreadable-params-file
 
@@ -383,7 +383,7 @@ An operator can [answer the inbox](flows/answer-inbox.md), [inspect a stopped ru
   - Stubs every node and names the run directory it wrote.
 - run: invoke(argv=["run", "--dry-run", "--cli", "claude", "--config", "/tmp/workhorse-book/seeded/config.toml", "--run-id", "walk"])
 - verify: stdout(matches="artifacts in /.*/[.]agents/runs/")
-- code: `workhorse/workhorse/pyflow/run.py::run_pyflow` @328378c45684
+- code: `workhorse/workhorse/pyflow/run.py::run_pyflow` @c14993f8e31a
 
 ### name-the-graph
 
@@ -447,7 +447,7 @@ An operator can [answer the inbox](flows/answer-inbox.md), [inspect a stopped ru
   - Refuses to print and names the checkpoint path it tried.
 - run: invoke(argv=["control", "status", "--params", "--run", "/tmp/workhorse-book/seeded/bare"])
 - verify: stderr(text="error: cannot read checkpoint /tmp/workhorse-book/seeded/bare/checkpoint.json")
-- code: `workhorse/workhorse/cli/offline.py::print_params` @5ec56edba53b
+- code: `workhorse/workhorse/cli/offline.py::print_params` @cd7d6c6c8f77
 
 ### refuse-params-yaml-checkpoint
 
@@ -457,7 +457,7 @@ An operator can [answer the inbox](flows/answer-inbox.md), [inspect a stopped ru
   - Refuses to print and names the retired engine.
 - run: invoke(argv=["control", "status", "--params", "--run", "/tmp/workhorse-book/seeded/yaml-era"])
 - verify: stderr(text="error: /tmp/workhorse-book/seeded/yaml-era/checkpoint.json is a checkpoint from the retired YAML engine")
-- code: `workhorse/workhorse/cli/offline.py::print_params` @5ec56edba53b
+- code: `workhorse/workhorse/cli/offline.py::print_params` @cd7d6c6c8f77
 
 ### refuse-unserved-socket
 
@@ -670,7 +670,7 @@ An operator can [answer the inbox](flows/answer-inbox.md), [inspect a stopped ru
   - Refuses the rewind and names the run and its terminal.
 - run: invoke(argv=["control", "rewind", "--to", "write", "--run", "/tmp/workhorse-book/seeded/finished"])
 - verify: stderr(text="error: rewind: /tmp/workhorse-book/seeded/finished already finished (done)")
-- code: `workhorse/workhorse/cli/offline.py::run_rewind` @5ec56edba53b
+- code: `workhorse/workhorse/cli/offline.py::run_rewind` @cd7d6c6c8f77
 
 ### refuse-rewind-without-record
 
@@ -680,7 +680,7 @@ An operator can [answer the inbox](flows/answer-inbox.md), [inspect a stopped ru
   - Refuses the rewind and says nothing records a run starting there.
 - run: invoke(argv=["control", "rewind", "--to", "write", "--run", "/tmp/workhorse-book/seeded/bare"])
 - verify: stderr(text="error: rewind: /tmp/workhorse-book/seeded/bare has no readable run.json — nothing says a run started here")
-- code: `workhorse/workhorse/cli/offline.py::run_rewind` @5ec56edba53b
+- code: `workhorse/workhorse/cli/offline.py::run_rewind` @cd7d6c6c8f77
 
 ### refuse-param-without-equals
 
@@ -690,7 +690,7 @@ An operator can [answer the inbox](flows/answer-inbox.md), [inspect a stopped ru
   - Refuses the rewind and quotes the value and the form it wants.
 - run: invoke(argv=["control", "rewind", "--to", "draft", "--param", "x", "--run", "/tmp/workhorse-book/seeded/failed-ghost"])
 - verify: stderr(text="error: --param wants NAME=VALUE, got 'x'")
-- code: `workhorse/workhorse/cli/offline.py::run_rewind` @5ec56edba53b
+- code: `workhorse/workhorse/cli/offline.py::run_rewind` @cd7d6c6c8f77
 
 ### refuse-rewind-unknown-flow
 
@@ -700,7 +700,7 @@ An operator can [answer the inbox](flows/answer-inbox.md), [inspect a stopped ru
   - Refuses the rewind, leaves the checkpoint unchanged and names its flow.
 - run: invoke(argv=["control", "rewind", "--to", "draft", "--run", "/tmp/workhorse-book/seeded/failed-ghost"])
 - verify: stderr(text="error: rewind refused, checkpoint unchanged: /tmp/workhorse-book/seeded/failed-ghost/checkpoint.json names flow 'Ghost', which ")
-- code: `workhorse/workhorse/cli/offline.py::run_rewind` @5ec56edba53b
+- code: `workhorse/workhorse/cli/offline.py::run_rewind` @cd7d6c6c8f77
 
 ### refuse-rewind-without-checkpoint
 
@@ -710,7 +710,7 @@ An operator can [answer the inbox](flows/answer-inbox.md), [inspect a stopped ru
   - Refuses the rewind and names the checkpoint path it tried.
 - run: invoke(argv=["control", "rewind", "--to", "draft", "--run", "/tmp/workhorse-book/seeded/no-line"])
 - verify: stderr(text="error: rewind refused, checkpoint unchanged: cannot read checkpoint /tmp/workhorse-book/seeded/no-line/checkpoint.json")
-- code: `workhorse/workhorse/cli/offline.py::run_rewind` @5ec56edba53b
+- code: `workhorse/workhorse/cli/offline.py::run_rewind` @cd7d6c6c8f77
 
 ### refuse-rewind-yaml-checkpoint
 
@@ -720,7 +720,7 @@ An operator can [answer the inbox](flows/answer-inbox.md), [inspect a stopped ru
   - Refuses the rewind and names the retired engine.
 - run: invoke(argv=["control", "rewind", "--to", "draft", "--run", "/tmp/workhorse-book/seeded/yaml-era"])
 - verify: stderr(text="error: rewind refused, checkpoint unchanged: /tmp/workhorse-book/seeded/yaml-era/checkpoint.json is a checkpoint from the retired YAML engine")
-- code: `workhorse/workhorse/cli/offline.py::run_rewind` @5ec56edba53b
+- code: `workhorse/workhorse/cli/offline.py::run_rewind` @cd7d6c6c8f77
 
 ### refuse-resume-finished
 
@@ -730,7 +730,7 @@ An operator can [answer the inbox](flows/answer-inbox.md), [inspect a stopped ru
   - Refuses the resume and names the run and its terminal.
 - run: invoke(argv=["control", "resume", "--run", "/tmp/workhorse-book/seeded/finished"])
 - verify: stderr(text="error: resume: /tmp/workhorse-book/seeded/finished already finished (done)")
-- code: `workhorse/workhorse/cli/offline.py::run_resume` @5ec56edba53b
+- code: `workhorse/workhorse/cli/offline.py::run_resume` @cd7d6c6c8f77
 
 ### refuse-resume-without-record
 
@@ -743,7 +743,7 @@ An operator can [answer the inbox](flows/answer-inbox.md), [inspect a stopped ru
 - status: 1 on every refusal after the arguments parse.
 - run: invoke(argv=["control", "resume", "--run", "/tmp/workhorse-book/seeded/bare"])
 - verify: exit_status(code=1)
-- code: `workhorse/workhorse/cli/offline.py::run_resume` @5ec56edba53b
+- code: `workhorse/workhorse/cli/offline.py::run_resume` @cd7d6c6c8f77
 
 ### refuse-resume-without-launch
 
@@ -753,7 +753,7 @@ An operator can [answer the inbox](flows/answer-inbox.md), [inspect a stopped ru
   - Accepts the failed run, then refuses because it holds no usable launch.json.
 - run: invoke(argv=["control", "resume", "--run", "/tmp/workhorse-book/seeded/failed-ghost"])
 - verify: stderr(text="error: resume: no usable launch.json in /tmp/workhorse-book/seeded/failed-ghost (")
-- code: `workhorse/workhorse/cli/offline.py::run_resume` @5ec56edba53b
+- code: `workhorse/workhorse/cli/offline.py::run_resume` @cd7d6c6c8f77
 
 ### refuse-resume-gone-pid
 
@@ -763,7 +763,7 @@ An operator can [answer the inbox](flows/answer-inbox.md), [inspect a stopped ru
   - Accepts the run, then refuses and names the command to resume it by hand.
 - run: invoke(argv=["control", "resume", "--run", "/tmp/workhorse-book/seeded/stale-pid"])
 - verify: stderr(matches="run .<workflow> run --resume-run /tmp/workhorse-book/seeded/stale-pid. by hand")
-- code: `workhorse/workhorse/cli/offline.py::run_resume` @5ec56edba53b
+- code: `workhorse/workhorse/cli/offline.py::run_resume` @cd7d6c6c8f77
 
 ### refuse-resume-contained
 
@@ -773,7 +773,7 @@ An operator can [answer the inbox](flows/answer-inbox.md), [inspect a stopped ru
   - Refuses the resume and says to resume it inside its container.
 - run: invoke(argv=["control", "resume", "--run", "/tmp/workhorse-book/seeded/contained"])
 - verify: stderr(text="error: resume: launch.json holds container coordinates; resume it inside the container it ran in")
-- code: `workhorse/workhorse/cli/offline.py::run_resume` @5ec56edba53b
+- code: `workhorse/workhorse/cli/offline.py::run_resume` @cd7d6c6c8f77
 
 ### refuse-resume-without-line
 
@@ -783,7 +783,7 @@ An operator can [answer the inbox](flows/answer-inbox.md), [inspect a stopped ru
   - Refuses the resume and names the run's launch.json.
 - run: invoke(argv=["control", "resume", "--run", "/tmp/workhorse-book/seeded/no-line"])
 - verify: stderr(text="error: resume: launch.json in /tmp/workhorse-book/seeded/no-line records no resume line")
-- code: `workhorse/workhorse/cli/offline.py::run_resume` @5ec56edba53b
+- code: `workhorse/workhorse/cli/offline.py::run_resume` @cd7d6c6c8f77
 
 ### read-empty-inbox
 
