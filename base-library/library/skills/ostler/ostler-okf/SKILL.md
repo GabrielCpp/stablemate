@@ -352,6 +352,13 @@ no `verify:` is `undeclared-obligation` — a QA plan claiming it can assert any
 pass. It is a warning rather than an error only because books written before the rule are full of
 them; treat it as queued work, not noise.
 
+**QA never builds the app.** The harness rebuilds the stack from the worktree each time it brings
+it up, and that is the one thing QA needs from a build: the environment runs the worktree's code.
+A `run:` that copies the app, installs its packages or builds it again pays a full install per
+scenario in time and disk. A claim about how the build treats its inputs (an env file, an unset
+key, a build argument) is a property of the code that decides it, so the unit test that varies
+those inputs goes under `tests:` and no scenario repeats it.
+
 A declared check is not automatically an observation. The bar — name the state of the world in
 which the check goes red, assert the before-state rather than assuming it, discriminate the claim
 from its nearest plausible defect — and the two shapes a linter can see (`weak-check`,
