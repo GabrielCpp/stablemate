@@ -62,7 +62,7 @@ def test_a_dry_run_in_a_workspace_exports_it_and_initialises_the_artifacts_repo(
     assert env_value == "acme"
     artifacts = home / "artifacts"
     assert (artifacts / ".git").exists()
-    assert (artifacts / ".gitignore").read_text().splitlines() == ["specs/"]
+    assert (artifacts / ".gitignore").read_text().splitlines() == list(core_config.ARTIFACTS_IGNORED)
     remotes = subprocess.run(
         ["git", "-C", str(artifacts), "remote"], capture_output=True, text=True, check=True
     )
