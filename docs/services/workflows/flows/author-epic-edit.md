@@ -49,7 +49,7 @@ identities, and milestones that reference the epic.
 - code: `workflows/src/workhorse_workflows/author/epic_edit/flow.py::EpicEdit.setup` @2882a05baa0b
 - code: `workflows/src/workhorse_workflows/author/epic_edit/flow.py::EpicEdit.labels` @2882a05baa0b
 - code: `workflows/src/workhorse_workflows/author/epic_edit/flow.py::EpicEdit.state_labels` @2882a05baa0b
-- code: `workflows/src/workhorse_workflows/author/epic_edit/nodes/edit.py::snapshot_epic` @85ab2cf6cdff
+- code: `workflows/src/workhorse_workflows/author/epic_edit/nodes/edit.py::snapshot_epic` @960ae1cec269
 - code: `workflows/src/workhorse_workflows/author/epic_edit/nodes/_blueprint.py::blueprint` @2f9e682267f2
 
 ### Plan the replacement
@@ -127,7 +127,7 @@ selected story artifact; validation findings and review findings use the same re
 blocked writing result awaits the operator on the run's context file. The PM review passes only when
 every angle passes.
 
-- code: `workflows/src/workhorse_workflows/author/epic_edit/nodes/edit.py::select_affected_story` @85ab2cf6cdff
+- code: `workflows/src/workhorse_workflows/author/epic_edit/nodes/edit.py::select_affected_story` @960ae1cec269
 - code: `workflows/src/workhorse_workflows/author/epic_edit/flow.py::EpicEdit.design_mockup` @2882a05baa0b
 - code: `workflows/src/workhorse_workflows/author/epic_edit/flow.py::EpicEdit.write_story` @2882a05baa0b
 - code: `workflows/src/workhorse_workflows/author/epic_edit/flow.py::EpicEdit.check_story` @2882a05baa0b

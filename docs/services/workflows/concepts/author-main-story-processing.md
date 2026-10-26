@@ -15,9 +15,9 @@ invent epic paths or duplicate the graph's story semantics.
 
 - code: `workflows/src/workhorse_workflows/author/shared/nodes/story_mode.py::seed_story` @ec2020d13cf3
 - code: `workflows/src/workhorse_workflows/author/story_author/nodes/mockup.py::check_mockup_needed` @16f77856eb81
-- code: `workflows/src/workhorse_workflows/author/shared/nodes/stories.py::validate_story` @87bbe358d335
-- code: `workflows/src/workhorse_workflows/author/shared/nodes/stories.py::check_story_grounding` @87bbe358d335
-- code: `workflows/src/workhorse_workflows/author/shared/nodes/stories.py::record_attempt` @87bbe358d335
+- code: `workflows/src/workhorse_workflows/author/shared/nodes/stories.py::validate_story` @61ad4510b612
+- code: `workflows/src/workhorse_workflows/author/shared/nodes/stories.py::check_story_grounding` @61ad4510b612
+- code: `workflows/src/workhorse_workflows/author/shared/nodes/stories.py::record_attempt` @61ad4510b612
 - code: `workflows/src/workhorse_workflows/author/story_author/nodes/feedback.py::check_story_feedback` @8125ecb8d1d2
 - code: `workflows/src/workhorse_workflows/author/shared/nodes/story_mode.py::promote_record` @ec2020d13cf3
 - detail: [Author main package](author-main-package.md)
@@ -67,7 +67,7 @@ invent epic paths or duplicate the graph's story semantics.
 - verify: json_path(path="$.required", equals=true)
 - does: skips the mockup when no service of the story is a web or mobile book
 - verify: json_path(path="$.required", equals=false)
-- code: `workflows/src/workhorse_workflows/author/story_author/nodes/mockup.py::check_mockup_needed` @16f77856eb81
+- code: `workflows/src/workhorse_workflows/author/story_author/nodes/mockup.py::check_mockup_needed` @cbcbbaf4e981
 - tests: `workflows/tests/author/test_mockup_gate.py::test_the_gate_is_the_union_of_the_covered_seeds_services`
 - tests: `workflows/tests/author/test_mockup_gate.py::test_a_story_the_graph_cannot_resolve_fails_the_run`
 - tests: `workflows/tests/author/test_mockup_gate.py::test_an_api_only_story_needs_no_mockup_whatever_the_seed_says`
@@ -85,14 +85,14 @@ invent epic paths or duplicate the graph's story semantics.
 - verify: count(subject="empty required story sections", equals=0)
 - does: requires the Ostler-declared story sections to follow their declared order
 - verify: count(subject="misordered required story sections", equals=0)
-- does: requires Technical Notes to contain an existing repository-grounded `path::symbol` pointer, or the exact greenfield statement alone as the section's whole body, and its error tells the writer to move any other note to Context
+- does: requires Technical Notes to contain an existing repository-grounded `path::symbol` pointer or the exact greenfield statement
 - verify: count(subject="grounded Technical Notes contracts", equals=1)
 - does: rejects Technical Notes pointers outside the repository and rejects prose containing unresolved decision phrases or standalone TODO markers
 - verify: count(subject="rejected ungrounded or unresolved story notes", equals=1)
 - does: returns `ok` only when all deterministic checks pass
 - does: returns one newline-separated error per finding
 - verify: json_path(path="$.errors", matches=".+\\n.+")
-- code: `workflows/src/workhorse_workflows/author/shared/nodes/stories.py::validate_story` @87bbe358d335
+- code: `workflows/src/workhorse_workflows/author/shared/nodes/stories.py::validate_story` @29a54157b737
 - tests: `workflows/tests/author/test_story_contract.py::test_technical_notes_require_a_grounded_code_pointer`
 
 ### check_story_grounding
@@ -108,7 +108,7 @@ invent epic paths or duplicate the graph's story semantics.
 - does: does not require UI citations while the Ostler graph has no UI nodes
 - verify: absent(subject="UI citation requirement on an empty UI graph")
 - does: returns `ok` with newline-separated findings only when seed scope and the armed UI citation contract hold
-- code: `workflows/src/workhorse_workflows/author/shared/nodes/stories.py::check_story_grounding` @87bbe358d335
+- code: `workflows/src/workhorse_workflows/author/shared/nodes/stories.py::check_story_grounding` @29a54157b737
 - tests: `workflows/tests/author/test_workflow.py::test_a_story_that_is_not_a_contract_is_reworked_against_the_gate`
 
 ### record_attempt
@@ -122,7 +122,7 @@ invent epic paths or duplicate the graph's story semantics.
 - does: treats an existing matching attempt heading as an idempotent no-op
 - verify: count(subject="duplicate attempt headings", equals=1)
 - does: preserves readable prior content when the ledger cannot be written
-- code: `workflows/src/workhorse_workflows/author/shared/nodes/stories.py::record_attempt` @87bbe358d335
+- code: `workflows/src/workhorse_workflows/author/shared/nodes/stories.py::record_attempt` @61ad4510b612
 - tests: `workflows/tests/author/test_workflow.py::test_a_story_that_is_not_a_contract_is_reworked_against_the_gate`
 
 ### check_story_feedback

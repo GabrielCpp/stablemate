@@ -18,18 +18,12 @@ When a story write or rework cannot proceed, the writer returns `status: "blocke
 product question. The subflow hands that question to the [PM gap answer](author-pm-gap-answer.md),
 which answers from the milestone and the ledger. The writer retries with the answer as its `note`.
 
-The write and rework turns ground Technical Notes in `path::symbol` pointers. A story with no prior
-implementation gets the exact sentence `No prior implementation reference exists.` as the whole
-section, and any other note it would have carried goes in Context. Every loading, busy or failure
-state a story introduces gets one criterion for when it appears and one for when it clears, whether
-or not the book documents that state.
-
 - code: `workflows/src/workhorse_workflows/author/story_author/flow.py::StoryAuthor.design_mockup` @2336f43d893e
 - code: `workflows/src/workhorse_workflows/author/story_author/flow.py::StoryAuthor.write_story` @2336f43d893e
 - code: `workflows/src/workhorse_workflows/author/story_author/flow.py::StoryAuthor.rework_story` @2336f43d893e
 - code: `workflows/src/workhorse_workflows/author/story_author/prompts/design-mockup.md` @f918719466f5
-- code: `workflows/src/workhorse_workflows/author/story_author/prompts/write-story.md` @ef22dd0b17aa
-- code: `workflows/src/workhorse_workflows/author/story_author/prompts/rework-story.md` @a1c4ec3559cc
+- code: `workflows/src/workhorse_workflows/author/story_author/prompts/write-story.md` @5f480169138e
+- code: `workflows/src/workhorse_workflows/author/story_author/prompts/rework-story.md` @82b7f0e83713
 - tests: `workflows/tests/test_prompts_exist.py::test_the_prompt_file_is_there`
 - tests: `workflows/tests/test_prompt_variables.py::test_the_prompt_reads_only_names_the_workflow_can_supply`
 - tests: `workflows/tests/test_prompt_output_shape.py::test_the_prompt_documents_the_keys_the_turn_is_asked_for`
@@ -44,7 +38,6 @@ or not the book documents that state.
 - tests: `workflows/tests/author/test_write_story_prompt.py::test_the_backend_only_story_is_given_something_to_ground_in`
 - tests: `workflows/tests/author/test_write_story_prompt.py::test_the_absent_mockup_is_not_a_block`
 - tests: `workflows/tests/author/test_write_story_prompt.py::test_the_mockup_arm_survives_for_the_story_that_has_one`
-- tests: `workflows/tests/author/test_write_story_prompt.py::test_a_new_transient_state_is_specified_to_clear_without_a_book`
 - detail: [author story-author subflow](author-story-author-subflow.md)
 
 The eight `test_prompt_authority.py` symbols above each pin a specific prompt-authority contract
@@ -83,7 +76,7 @@ prompt copy. The contracts the tests enforce are themselves the behaviour each s
   evidence, or rendered exports", and that the "story-local `mockup.html` is this turn's only
   output".
 
-The first three `test_write_story_prompt.py` symbols above each pin a prose-drift contract that every
+The three `test_write_story_prompt.py` symbols above each pin a prose-drift contract that every
 `write-story.md` copy must hold in lockstep with the parameterization the deterministic author
 gates actually produce. The grounding gate in `author/shared/nodes/stories.py` and the mockup
 gate in `author/story_author/nodes/mockup.py` both stand down on a backend-only story:
@@ -112,12 +105,6 @@ the author reads:
   still renders the mockup link arm for a story whose `mockup_path` is supplied: the literal
   `./mockup.html` path and the phrase "link it from Context as the source of truth". The fix
   widens the disjunction; this symbol proves the original arm was not replaced.
-
-The fourth symbol, `test_a_new_transient_state_is_specified_to_clear_without_a_book`, renders every
-`write-story.md` copy with no `services_dir` and asserts the appear-and-clear rule for introduced
-loading, busy and failure states survives. The story `transient-feedback` angle fails a story that
-leaves either half out, so a writer that only sees the book-scoped rule writes a draft the first
-review rejects.
 
 ## Prompt contracts
 
