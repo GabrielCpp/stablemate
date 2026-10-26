@@ -111,6 +111,16 @@ Each invocation below is one command line that a [flow](entries.md) step perform
 - run: invoke(argv=["config", "--config", "c208/c.toml", "set-library", "c208/lib"], env={"HOME": "c208/home", "STABLEMATE_CONFIG": "c208/config.toml", "STABLEMATE_FETCH_BASE": "0", "PATH": "c208/pipx-stub-bin:$PATH"})
 - verify: contents(subject="c208/c.toml", text="library_dir")
 
+### eject-a-skill
+
+- on: [eject](farrier-commands-init.md#eject)
+- trigger: an operator runs `farrier eject` on a generated skill folder
+- fixture: own-skill-repo dir=c905
+- does:
+  - Strips farrier's provenance from the skill folder and unselects it in `agents.yml`.
+- run: invoke(argv=["eject", "acme-demo", "--repo", "c905", "--library", "c905/lib"], env={"HOME": "c905/home", "STABLEMATE_CONFIG": "c905/config.toml", "STABLEMATE_FETCH_BASE": "0", "PATH": "c905/pipx-stub-bin:$PATH"})
+- verify: omits(subject="c905/.claude/skills/acme-demo/SKILL.md", text="generated_by")
+
 ### diagnose-the-repository
 
 - on: [doctor](farrier-commands-workflows.md#doctor)

@@ -91,7 +91,7 @@ agents:
     skills_from: claude
 ```
 
-- does: parse a `{skills_from: <harness>}` mapping into a link only when the named harness exists, is enabled, does not name itself, and does not itself link
+- semantics: a `{skills_from: <harness>}` mapping becomes a link only when the named harness exists, is enabled, does not name itself, and does not itself link
 - verify: exit_status(code=1)
 - code: `farrier/farrier/agents.py::parse_agents` @8ab37499be42
 
