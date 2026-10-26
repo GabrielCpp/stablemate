@@ -1,9 +1,11 @@
 """The judge of one shell call a confined codex or claude turn makes.
 
-A call runs one of the profile's commands or a read-only command, joined by pipes at
-most, and names no path outside the directories the turn reads. The hook sees the
-command but not the directory it runs in, so a relative path is judged by its spelling:
-it may not climb with `..` or start at `~`.
+A call runs one of the profile's commands or a read-only command, joined by pipes, and
+names no path outside the directories the turn reads. A call may join whole commands with
+`;`, `&&` and `||`. A `cd` may move only into a directory the turn reads, and `xargs` runs
+only what the turn could run itself. The hook sees the command but not the directory it
+runs in, so a relative path is judged by its spelling: it may not climb with `..` or start
+at `~`.
 """
 from __future__ import annotations
 
@@ -17,11 +19,21 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from workhorse.runner.backends.guard import Policy
 
-READ_ONLY_PROGRAMS = ("cat", "cut", "diff", "find", "grep", "head", "ls", "nl", "pwd", "rg", "sed", "tail", "wc")
+READ_ONLY_PROGRAMS = (
+    *("cat", "cut", "diff", "find", "grep", "head", "ls", "nl", "pwd", "rg", "sed", "sort", "tail", "true", "uniq", "wc"),
+)
 FORBIDDEN_OPTIONS = {
     "find": ("-exec", "-execdir", "-ok", "-okdir", "-delete", "-fprint", "-fprint0", "-fprintf", "-fls"),
     "rg": ("--pre", "--pre-glob"),
+    "sort": ("-o", "--output", "--compress-program"),
 }
+SORT_FORBIDDEN_LONG_OPTIONS = ("output", "compress-program")
+UNIQ_VALUE_OPTIONS = ("-f", "-s", "-w", "--skip-fields", "--skip-chars", "--check-chars")
+XARGS_PROGRAM = "xargs"
+XARGS_FLAGS = ("-0", "--null", "-r", "--no-run-if-empty", "-t", "--verbose")
+XARGS_SHORT_VALUE_OPTIONS = ("-n", "-L", "-P", "-d", "-I")
+XARGS_LONG_VALUE_OPTIONS = ("--max-args", "--max-lines", "--max-procs", "--delimiter", "--replace")
+CD_PROGRAM = "cd"
 SEARCH_PATTERN_OPTIONS = ("-e", "--regexp")
 SEARCH_VALUE_OPTIONS = (
     *SEARCH_PATTERN_OPTIONS,
@@ -34,6 +46,7 @@ HARMLESS_REDIRECT = re.compile(r"(?<=\s)2>(?:&1|/dev/null)(?=\s|\||$)")
 TIMEOUT_PROGRAM = "timeout"
 DURATION = re.compile(r"\d+(?:\.\d+)?[smhd]?")
 PIPE = "|"
+LIST_OPERATORS = (";", "&&", "||")
 SHELL_OPERATOR_CHARS = frozenset("();<>|&")
 
 
@@ -63,6 +76,18 @@ def _tokens(command: str) -> list[str]:
     lexer = shlex.shlex(command, posix=True, punctuation_chars=True)
     lexer.whitespace_split = True
     return list(lexer)
+
+
+def _commands(tokens: list[str]) -> list[list[str]]:
+    commands: list[list[str]] = [[]]
+    for token in tokens:
+        if token in LIST_OPERATORS:
+            commands.append([])
+        else:
+            commands[-1].append(token)
+    if tokens[-1:] == [";"]:
+        commands.pop()
+    return commands
 
 
 def _stages(tokens: list[str]) -> list[list[str]]:
@@ -133,6 +158,61 @@ def _arguments_without_patterns(arguments: Sequence[str]) -> list[str]:
     return kept
 
 
+def _abbreviates_forbidden_sort_option(name: str) -> bool:
+    return bool(name) and any(option.startswith(name) for option in SORT_FORBIDDEN_LONG_OPTIONS)
+
+
+def _sort_denial(arguments: Sequence[str]) -> str | None:
+    for argument in arguments:
+        if argument.startswith("--") and _abbreviates_forbidden_sort_option(argument[2:].partition("=")[0]):
+            return f"`sort {argument.partition('=')[0]}` does more than read"
+        if argument.startswith("-") and not argument.startswith("--") and "o" in argument:
+            return "`sort -o` does more than read"
+    return None
+
+
+def _uniq_denial(arguments: Sequence[str]) -> str | None:
+    positionals = 0
+    option_awaiting_value = False
+    for argument in arguments:
+        if option_awaiting_value:
+            option_awaiting_value = False
+        elif argument in UNIQ_VALUE_OPTIONS:
+            option_awaiting_value = True
+        elif not argument.startswith("-"):
+            positionals += 1
+    if positionals > 1:
+        return "`uniq` writes its output to a second file argument"
+    return None
+
+
+def _xargs_denial(arguments: Sequence[str], policy: Policy) -> str | None:
+    """Why `xargs` would run more than the turn could run itself, or None."""
+    index = 0
+    while index < len(arguments) and arguments[index].startswith("-"):
+        option = arguments[index]
+        index += 1
+        if option in XARGS_FLAGS:
+            continue
+        if option in XARGS_SHORT_VALUE_OPTIONS:
+            index += 1
+        elif option[:2] in XARGS_SHORT_VALUE_OPTIONS and not option.startswith("--"):
+            continue
+        elif option.partition("=")[0] in XARGS_LONG_VALUE_OPTIONS and "=" in option:
+            continue
+        else:
+            return f"`xargs {option}` is not allowed here"
+    if index >= len(arguments):
+        return "`xargs` needs a program to run, and a bare one runs `echo`, which is not allowed"
+    return _stage_denial(arguments[index:], policy)
+
+
+def _cd_denial(arguments: Sequence[str], policy: Policy) -> str | None:
+    if len(arguments) != 1 or arguments[0].startswith("-"):
+        return "`cd` runs here with exactly one directory"
+    return _path_denial(arguments, policy)
+
+
 def _without_timeout(stage: Sequence[str]) -> Sequence[str]:
     """The stage without a leading `timeout DURATION`, which only bounds the command it runs."""
     if len(stage) > 2 and stage[0] == TIMEOUT_PROGRAM and DURATION.fullmatch(stage[1]):
@@ -149,16 +229,34 @@ def _stage_denial(stage: Sequence[str], policy: Policy) -> str | None:
         if list(stage[: len(command_tokens)]) == command_tokens:
             return _path_denial(stage[len(command_tokens) :], policy)
     program, arguments = stage[0], stage[1:]
+    if program == CD_PROGRAM:
+        return "`cd` runs only as a whole command, not in a pipeline"
+    if program == XARGS_PROGRAM:
+        return _xargs_denial(arguments, policy)
     if program not in READ_ONLY_PROGRAMS:
         return f"`{program}` is neither one of this turn's commands nor a read-only command"
     for option in FORBIDDEN_OPTIONS.get(program, ()):
         if any(argument == option or argument.startswith(f"{option}=") for argument in arguments):
             return f"`{program} {option}` does more than read"
-    if program == "sed":
-        denial = _sed_denial(arguments)
+    for check, checked_program in ((_sed_denial, "sed"), (_sort_denial, "sort"), (_uniq_denial, "uniq")):
+        if program == checked_program:
+            denial = check(arguments)
+            if denial is not None:
+                return denial
+    return _path_denial(_arguments_without_patterns(arguments) if program in ("rg", "grep") else arguments, policy)
+
+
+def _command_denial(command: list[str], policy: Policy) -> str | None:
+    if not command:
+        return "a command list has an empty command"
+    stages = _stages(command)
+    if len(stages) == 1 and stages[0][0] == CD_PROGRAM:
+        return _cd_denial(stages[0][1:], policy)
+    for stage in stages:
+        denial = _stage_denial(stage, policy)
         if denial is not None:
             return denial
-    return _path_denial(_arguments_without_patterns(arguments) if program in ("rg", "grep") else arguments, policy)
+    return None
 
 
 def shell_denial(command: str, policy: Policy) -> str | None:
@@ -171,11 +269,13 @@ def shell_denial(command: str, policy: Policy) -> str | None:
         tokens = _tokens(command)
     except ValueError as error:
         return f"the command does not parse: {error}"
-    chaining_tokens = [token for token in tokens if token != PIPE and set(token) <= SHELL_OPERATOR_CHARS]
+    chaining_tokens = [
+        token for token in tokens if token not in (PIPE, *LIST_OPERATORS) and set(token) <= SHELL_OPERATOR_CHARS
+    ]
     if chaining_tokens:
         return f"the command joins or redirects with `{chaining_tokens[0]}`"
-    for stage in _stages(tokens):
-        denial = _stage_denial(stage, policy)
+    for part in _commands(tokens):
+        denial = _command_denial(part, policy)
         if denial is not None:
             return denial
     return None

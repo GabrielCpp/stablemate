@@ -9,6 +9,7 @@ from contextlib import redirect_stdout
 from pathlib import Path
 from unittest.mock import patch
 
+import pytest
 
 from workhorse.runner.backends.guard import Policy, ToolCall, call_refusal, main, patch_denial, policy_file
 from workhorse.runner.backends.guard_shell import shell_denial
@@ -89,6 +90,74 @@ def test_sed_only_prints_lines():
 
 def test_a_profile_command_spelled_differently_is_not_that_command():
     assert not _allowed("/venv/bin/python -m check /runs/r1/other.json")
+
+
+ALLOWED_COMMANDS = (
+    "sort file.txt",
+    "grep -rl foo . | sort | uniq -c",
+    "sort -u a.txt",
+    "sort --unique a.txt",
+    "uniq a.txt",
+    "uniq -f 1 a.txt",
+    "true",
+    "ls || true",
+    "ls; pwd",
+    "ls;",
+    "cd sub && ls",
+    f"cd {BOOK} ; cat x",
+    "find . -name '*.md' | xargs grep -l foo",
+    "find . -print0 | xargs -0 -n1 wc -l",
+    "ls | xargs -I{} cat {}",
+    f"ls && {CHECK}",
+    "ls && ostler check-page overview.md",
+)
+
+
+@pytest.mark.parametrize("command", ALLOWED_COMMANDS)
+def test_a_widened_shell_call_is_allowed(command: str):
+    assert shell_denial(command, POLICY) is None
+
+
+REFUSED_COMMANDS = (
+    ("sort -o out.txt a.txt", "`sort -o`"),
+    ("sort -uo out a", "`sort -o`"),
+    ("sort --output=out a", "`sort --output`"),
+    ("sort --compress-program=sh a", "`sort --compress-program`"),
+    ("sort --out=x a", "`sort --out`"),
+    ("sort --o x a", "`sort --o`"),
+    ("sort --compress=sh a", "`sort --compress`"),
+    ("sort --co=sh a", "`sort --co`"),
+    ("uniq a.txt out.txt", "`uniq`"),
+    ("ls | xargs rm", "`rm`"),
+    ("ls | xargs", "`xargs`"),
+    ("ls | xargs -a list cat", "`xargs -a`"),
+    ("ls | xargs sh -c 'x'", "`sh`"),
+    ("ls | xargs xargs rm", "`rm`"),
+    ("cd", "`cd`"),
+    ("cd -", "`cd`"),
+    ("cd ~", "`~`"),
+    ("cd ..", "`..`"),
+    ("cd /etc", "`/etc`"),
+    ("ls | cd sub", "`cd`"),
+    ("cd a b", "`cd`"),
+    ("; ls", "empty"),
+    ("ls ;; pwd", "`;;`"),
+    ("ls && && pwd", "empty"),
+    ("ls &&", "empty"),
+    ("ls & pwd", "`&`"),
+    ("ls > out", "`>`"),
+    ("(ls)", "`(`"),
+    ("ls |& cat", "`|&`"),
+    ("ls; rm x", "`rm`"),
+    ("true; cat /etc/passwd", "`/etc/passwd`"),
+)
+
+
+@pytest.mark.parametrize(("command", "cause"), REFUSED_COMMANDS)
+def test_a_widened_shell_call_is_refused_for_its_cause(command: str, cause: str):
+    denial = shell_denial(command, POLICY)
+    assert denial is not None
+    assert cause in denial
 
 
 def test_a_patch_writes_only_under_the_cwd():

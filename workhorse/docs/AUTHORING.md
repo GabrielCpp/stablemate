@@ -370,7 +370,8 @@ worktree. The codex backend runs outside its sandbox,
 because the profile's commands need docker and the network. The same `PreToolUse` hook
 checks every call instead. A patch writes only under `cwd`. A shell call runs a profile
 command or a read-only command (`cat`, `head`, `sed -n`, `rg`, `grep`, `ls`, `find` and a
-few more), joined by `|` at most, with no path outside the turn's directories. The hook
+few more), joined by `|`, with no path outside the turn's directories. A call may join whole
+commands with `;`, `&&` and `||`. The hook
 cannot see the directory a shell call runs in, so it refuses a relative path that climbs
 with `..` or starts at `~`.
 

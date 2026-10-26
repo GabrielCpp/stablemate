@@ -43,7 +43,9 @@ still loads. A write tool, which is a patch for codex and `Write`, `Edit`, `Mult
 `Grep` may read only under the working directory, the added directories, the project skill
 directory and the operator's config directories. A `Glob` or `Grep` with no path searches the
 working directory. A shell call may run one of the profile's commands or a read-only program such
-as `cat`, `grep`, `rg`, `ls` or `sed -n`, joined by pipes at most. It may name no path outside the directories the turn reads, and a
+as `cat`, `grep`, `rg`, `ls`, `sort` or `sed -n`, joined by pipes. It may join whole commands with
+`;`, `&&` and `||`. A `cd` may move only into a directory the turn reads, and `xargs` runs only what
+the turn could run itself. It may name no path outside the directories the turn reads, and a
 relative path may not climb with `..` or start at `~`.
 
 A confined opencode turn reads and writes in its working directory and in every added directory,

@@ -110,7 +110,8 @@ def _refusal_message(denial: str, policy: Policy) -> str:
     roots = ", ".join(str(root) for root in policy.read_roots)
     return (
         f"Refused: {denial}. This turn runs its own commands and the read-only commands "
-        + f"{', '.join(READ_ONLY_PROGRAMS)}, joined by `|` at most, on paths under {roots}. "
+        + f"{', '.join(READ_ONLY_PROGRAMS)}, joined by `|`, on paths under {roots}. "
+        + "Whole commands may be joined with `;`, `&&` or `||`, and `cd` and `xargs` work within the same limits. "
         + f"It writes only through the harness's write tools (a patch, Edit or Write), under {policy.cwd}."
     )
 
