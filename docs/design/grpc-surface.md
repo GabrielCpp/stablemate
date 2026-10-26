@@ -140,6 +140,7 @@ Status vocabulary is a read-only catalog every part consults.
 | Call | one invocation: target address, full method name, request as JSON, metadata, deadline | how it is sent |
 | Reply | what came back: status code, status message, and the reply messages as JSON | the claim it will be judged against |
 | Caller | sending a Call and returning a Reply (a role) | the claim |
+| Open stream | holding a server-streaming Call open for its listening window while one trigger Call is sent (revised, R10) | which messages the claim counts |
 | Reply check | judging one Reply against one claim: a status, a field value, a field's presence, a message count | how the Call was sent |
 | Readiness probe | saying a launched server is up and is ours (a role) | what the server serves |
 | Credential mint | turning a declared credential name into a value at bring-up, by running its recipe (revised, R7) | which call uses it |
@@ -174,6 +175,10 @@ Status vocabulary is a read-only catalog every part consults.
    gRPC writing branch. (added, 5b row 3)
 10. A book run writes nothing in a workspace's product repos. Its writes land in the docs home.
     Owner: Home repo. (added, 5b row 6)
+11. A trigger Call is sent only after its stream is open, and a stream that its listening
+    window closes replies OK with every message it received before the close. A stream that
+    fails before the window closes replies with that failure's status and the messages that
+    came before it. Owner: Open stream. (added, R10)
 
 ## 4. Forces and patterns
 
@@ -263,6 +268,13 @@ Revision log:
   scope, §2 Contract location, Contract and Coverage finding, the Reading scope mapping, §5b
   row 6 and §6. The REST gateway is an HTTP book, which exists today. What is new is that its
   endpoints are checked against the routes its proto annotates.
+- R10. §2 Proving claims gains **Open stream**, and §3 gains invariant 11. zeta's
+  `StreamNotifications` never closes, and it sends only what is created after it opens
+  (`zeta/notifications/service/service.go:169-175`, `notifications/server/server.go:123-158`).
+  A claim about what a stream delivers therefore needs a second call made while it is open,
+  and a reply that ends when the client stops listening. The act vocabulary had no way to say
+  either (`ostler/acts.py:110-145`), and the caller dropped every message on a non-zero
+  grpcurl exit (`ostler/qa/harness/ostler_qa_grpc.py:127-137`).
 
 ### Parts
 
