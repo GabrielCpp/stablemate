@@ -24,6 +24,7 @@ from workhorse_workflows.okf_book.shared.book_run import (
     with_app_logs,
 )
 from workhorse_workflows.okf_book.shared.book_flow import BookFlow
+from workhorse_workflows.okf_book.shared.source_repo import SourceRepo
 
 SPEC_DIR = "spec"
 _THIS_PROCESS = uuid.uuid4().hex
@@ -43,10 +44,10 @@ def _exercised_in_dry_run(_logger: logging.Logger, *_args: object) -> ExerciseRe
 
 
 @blueprint.node(stub=_compiled_in_dry_run)
-def compile_book_scenarios(logger: logging.Logger, root: Path, service: str, spec: Path) -> CompileOutcome:
+def compile_book_scenarios(logger: logging.Logger, root: Path, service: str, spec: Path, source: SourceRepo) -> CompileOutcome:
     """Compile the service's book into `spec`. A dry run compiles nothing and holds a plan."""
     del logger
-    return compile_scenarios(root, service, spec)
+    return compile_scenarios(root, service, spec, (), source)
 
 
 @blueprint.node(stub=_stack_in_dry_run)
@@ -66,10 +67,15 @@ class ExerciseBook(BookFlow):
     """Runs one service's book against the real app, and ends on what the run did for the caller to settle."""
 
     service: str = ""
+    source: SourceRepo | None = None
+
+    @property
+    def source_repo(self) -> SourceRepo:
+        return self.source or SourceRepo(path=self.root)
 
     def start(self) -> Continue[...] | Done:
         """Compile the book into scenarios. A book that compiles to no plan has failed its run, with the reason it has none."""
-        outcome = self.call(compile_book_scenarios, self.root, self.service, self.records_dir / SPEC_DIR / self.service)
+        outcome = self.call(compile_book_scenarios, self.root, self.service, self.records_dir / SPEC_DIR / self.service, self.source_repo)
         if not outcome.planned:
             problem = unplanned_problem(self.root, self.service)
             return Done(failed_run(outcome.gaps, problem)).because("the book compiles to no plan")
@@ -94,7 +100,7 @@ class ExerciseBook(BookFlow):
             return Continue(owned, self.bring_up_stack, gaps=gaps, retried_in=_THIS_PROCESS).because("the stack's server is gone: bring it up again")
         try:
             stack = StackReadiness(up=True, serving=serving, notes="", owned=owned, app_logs=app_logs, runbooks=book_runbooks(self.root, self.service),
-                                  env=copy_env(self.root, self.service))
+                                  env=copy_env(self.root, self.service), source=self.source_repo)
             exercised = with_app_logs(self.call(run_book_scenarios, self.root, self.records_dir / SPEC_DIR / self.service, gaps, stack), app_logs)
         finally:
             release_stack(self.logger, owned)

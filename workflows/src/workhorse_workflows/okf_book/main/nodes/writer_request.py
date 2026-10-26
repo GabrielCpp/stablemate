@@ -61,6 +61,7 @@ class WriterRequest:
             "entry": self.surface.entry,
             "source_view": self.source_view.as_posix(),
             "source_folder": self.source.cite(self.source_folder),
+            "member": self.source.name,
             "book_folder": self.book_folder,
             "ostler": self.ostler_command_line,
             "ostler_run_cap": OSTLER_RUN_CAP,

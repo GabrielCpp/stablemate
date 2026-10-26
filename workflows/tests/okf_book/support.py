@@ -104,3 +104,62 @@ def head_of(repo: Path) -> str:
 
 def status_of(repo: Path) -> str:
     return subprocess.run(["git", "status", "--porcelain"], cwd=repo, check=True, capture_output=True, text=True).stdout
+
+
+SERVICE = "ledger"
+BOOK = f"docs/services/{SERVICE}"
+CITED = f"repo://{MEMBER}/{MEMBER_FILE}::list_entries"
+
+BRING_UP_MARKER = ".bring-up-cwd"
+SERVER = """import json
+import sys
+from http.server import BaseHTTPRequestHandler, HTTPServer
+
+from api.handlers import list_entries
+
+
+class Handler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        body = json.dumps({"count": len(list_entries())}).encode() if self.path == "/entries" else b"ok"
+        self.send_response(200)
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def log_message(self, *args):
+        return None
+
+
+HTTPServer(("127.0.0.1", int(sys.argv[1])), Handler).serve_forever()
+"""
+
+
+def ledger_pages(port: int) -> dict[str, str]:
+    return {
+        "index.md": "---\n---\n# Ledger\n",
+        "entries.md": (
+            "---\ntype: entries\ntitle: Ledger\n---\n# Ledger\n\n- [Ledger API](ledger-api.md)\n"
+            "- [Read entries](flows/read-entries.md)\n- [QA stack](ops/qa-stack.md)\n"
+        ),
+        "ledger-api.md": (
+            f"---\ntype: server\nslug: ledger-api\ntitle: Ledger API\n---\n# Ledger API\n\n- code: `{CITED}`\n\n"
+            "## Endpoints\n\n- [list-entries](list-entries.md)\n"
+        ),
+        "list-entries.md": (
+            "---\ntype: endpoint\nslug: list-entries\ntitle: list-entries\n---\n# list-entries\n\n"
+            f"- server: [Ledger API](ledger-api.md)\n- method: GET\n- path: /entries\n- does: lists the entries\n"
+            f"- fixture: none, because the route lists whatever is there\n- verify: http_status(code=200)\n- verify: json_path(path=\"$.count\", equals=0)\n- code: {CITED}\n"
+        ),
+        "flows/read-entries.md": (
+            "---\ntype: flow\nslug: read-entries\ntitle: Read entries\n---\n# Read entries\n\n"
+            "- fixture: none, because the route lists whatever is there\n- steps:\n  - [list-entries](../list-entries.md)\n"
+        ),
+        "ops/qa-stack.md": (
+            "---\ntype: runbook\nslug: qa-stack\ntitle: QA stack\n---\n# QA stack\n\n"
+            f"- driver: http\n- surfaces: [Ledger API](../ledger-api.md)\n- entry-url: http://127.0.0.1:{port}\n- health-path: /healthz\n\n"
+            "## Steps\n\n### prepare\n\n- kind: prepare\n"
+            f"- run: pwd > {BRING_UP_MARKER}\n- working-directory: repo://{MEMBER}/.\n\n"
+            f"### serve\n\n- kind: service\n- run: python3 -B serve.py {port}\n- working-directory: repo://{MEMBER}/.\n"
+            f"- health: curl -fsS http://127.0.0.1:{port}/healthz\n"
+        ),
+    }

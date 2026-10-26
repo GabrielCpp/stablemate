@@ -133,12 +133,12 @@ def keep_old_version(root: Path, stale: StaleFile, old: str) -> Path:
     return kept
 
 
-def reground_template_args(tree: Path, stale: StaleFile, old: str, kept: Path) -> dict[str, object]:
-    """What the reading turn is shown: the file as `tree` holds it, the head of its diff from the stamped version, where that version is kept, and each citing node with its number."""
+def reground_template_args(tree: Path, stale: StaleFile, old: str, kept: Path, shown: str) -> dict[str, object]:
+    """What the reading turn is shown: the file as `tree` holds it, where the turn reads it, the head of its diff from the stamped version, where that version is kept, and each citing node with its number."""
     current = (tree / stale.path).read_text(encoding="utf-8", errors="replace")
     diff = list(difflib.unified_diff(old.splitlines(), current.splitlines(), "stamped", "now", lineterm=""))
     return {
-        "path": str(tree / stale.path) if stale.repository else stale.path,
+        "path": shown,
         "diff": "\n".join(diff[:DIFF_LINES_SHOWN]),
         "diff_left": max(0, len(diff) - DIFF_LINES_SHOWN),
         "old_version": str(kept),

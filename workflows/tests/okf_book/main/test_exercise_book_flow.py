@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Sequence
 from pathlib import Path
 
 import pytest
@@ -15,10 +16,11 @@ from workhorse_workflows import okf_book
 from workhorse_workflows.okf_book.main import exercise_book_flow
 from workhorse_workflows.okf_book.main.exercise_book_flow import ExerciseBook
 from workhorse_workflows.okf_book.shared.book_run import CompileOutcome, ExerciseResult, StackReadiness
+from workhorse_workflows.okf_book.shared.source_repo import SourceRepo
 from workhorse_workflows.okf_book.workflow import workflow
 
 
-def _drive(tmp_path: Path) -> ExerciseResult:
+def _drive(tmp_path: Path, source: SourceRepo | None = None) -> ExerciseResult:
     writer = ArtifactWriter("okf-book", tmp_path / "runs", run_id="t0")
     env = RunEnv(
         writer=writer,
@@ -28,7 +30,7 @@ def _drive(tmp_path: Path) -> ExerciseResult:
         nodes=workflow.nodes,
         agent_runner=ScriptedRunner({}),
     )
-    return ExerciseResult.model_validate(drive(ExerciseBook(repo_dir=str(tmp_path), service="ledger"), env))
+    return ExerciseResult.model_validate(drive(ExerciseBook(repo_dir=str(tmp_path), service="ledger", source=source), env))
 
 
 def _stub_run(monkeypatch: pytest.MonkeyPatch, stack: StackReadiness) -> list[tuple[str, ...]]:
@@ -157,3 +159,27 @@ def test_a_run_resumed_after_its_retry_brings_the_server_up_once_more(
     assert result.passed
     assert brought == ["4242", "4343", "4444"]
     assert released == [("4242",), ("4343",), ("4444",)]
+
+
+def test_the_compile_and_the_run_are_given_the_repository_the_flow_reads_its_source_from(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _ = _stub_run(monkeypatch, StackReadiness(up=True, serving=False, notes=""))
+    member = SourceRepo(name="api-service", path=tmp_path / "member")
+    given: list[object] = []
+
+    def _compile(*args: object) -> CompileOutcome:
+        given.append(args[-1])
+        return CompileOutcome(gaps=(), planned=True)
+
+    def _run_plan(_root: Path, _spec: Path, _gaps: tuple[str, ...], stack: StackReadiness, _only: Sequence[str] = ()) -> ExerciseResult:
+        given.append(stack.source)
+        return ExerciseResult(lines=("All 1 scenarios pass",), passed=True)
+
+    monkeypatch.setattr(exercise_book_flow, "compile_scenarios", _compile)
+    monkeypatch.setattr(exercise_book_flow, "run_plan", _run_plan)
+
+    result = _drive(tmp_path, member)
+
+    assert result.passed
+    assert given == [member, member]

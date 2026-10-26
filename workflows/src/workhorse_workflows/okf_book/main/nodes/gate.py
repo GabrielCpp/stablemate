@@ -29,6 +29,7 @@ from workhorse_workflows.okf_book.shared.book_run import ExerciseResult
 from workhorse_workflows.okf_book.shared.entries import SERVICES_DIR
 from workhorse_workflows.okf_book.shared.page_check import PageProblem, page_problems, tool_blockers
 from workhorse_workflows.okf_book.shared.scenarios import PLAN_NAME, plan_scenarios
+from workhorse_workflows.okf_book.shared.source_repo import SourceRepo
 
 GATE_DIR = "gate"
 FAILURES_FILE = "failures.json"
@@ -85,12 +86,13 @@ def escalation_reason(signature: Signature) -> str:
     return f"{signature.count} checks failed this way; for example {signature.sample}"
 
 
-def open_gate(root: Path, records_dir: Path, services: Sequence[str]) -> None:
-    """Write the state each blocked service's reruns read, and each claim's expected outcome as the books state it now."""
+def open_gate(root: Path, records_dir: Path, services: Sequence[str], sources: Mapping[str, SourceRepo] | None = None) -> None:
+    """Write the state each blocked service's reruns read, with the repository in `sources` that holds its product files, and each claim's expected outcome as the books state it now."""
     blocked = {blocker.service for blocker in read_blockers(records_dir)}
     for service in services:
         if service in blocked or "" in blocked:
-            state = WriterCommandState(root=root, service=service, problems_at_turn_start=page_problems(root, service))
+            source = (sources or {}).get(service)
+            state = WriterCommandState(root=root, service=service, source=source, problems_at_turn_start=page_problems(root, service, source=source))
             _ = write_command_state(gate_folder(records_dir, service), state)
     write_snapshot(records_dir / GATE_DIR / SNAPSHOT_FOLDER, book_claims(root, services))
 
@@ -127,7 +129,7 @@ def _writer_failures(root: Path, spec: Path, result: ExerciseResult) -> RunFailu
     return result.summary.failures_by_page(scenarios, plan.read_text(encoding="utf-8") if plan.is_file() else "")
 
 
-def rerun_pages(root: Path, records_dir: Path, service: str, pages: Sequence[str]) -> GateRerun:
+def rerun_pages(root: Path, records_dir: Path, service: str, pages: Sequence[str], source: SourceRepo | None = None) -> GateRerun:
     """Run only the scenarios *pages* name, after any rerun an attendant left running, on a stack released once it ends."""
     folder = gate_folder(records_dir, service)
     settle_jobs(folder)
@@ -135,7 +137,7 @@ def rerun_pages(root: Path, records_dir: Path, service: str, pages: Sequence[str
     with (folder / STACK_LOCK).open("w", encoding="utf-8") as lock:
         fcntl.flock(lock, fcntl.LOCK_EX)
         with tempfile.TemporaryDirectory(prefix="okf-gate-") as spec:
-            result = exercise_book(KeptStack(folder, _LOGGER), root, service, Path(spec), pages)
+            result = exercise_book(KeptStack(folder, _LOGGER, source), root, service, Path(spec), pages)
             failures = _writer_failures(root, Path(spec), result)
     settle_jobs(folder)
     return GateRerun(result=result, failures=failures)
@@ -163,13 +165,13 @@ def _still_failing(rerun: GateRerun, blocker: Blocker) -> str:
     return "the gate's rerun still fails: " + ("; ".join(reasons) or "; ".join(rerun.result.lines[:5]))
 
 
-def _settle_runs(root: Path, records_dir: Path, service: str, runs: Sequence[Blocker]) -> RunFailures:
+def _settle_runs(root: Path, records_dir: Path, service: str, runs: Sequence[Blocker], source: SourceRepo | None = None) -> RunFailures:
     """Rerun the blocked pages once, close each blocker whose checks now hold, and keep each escalation that still fails with the rerun's result. Return what the writer gets.
 
     An escalation that still fails goes to the writer instead when the operator answered in words: the answer
     may say the book can supply what the blocker named, and only the writer's next turn reads it.
     """
-    rerun = rerun_pages(root, records_dir, service, tuple(dict.fromkeys(page for blocker in runs for page in blocker.pages)))
+    rerun = rerun_pages(root, records_dir, service, tuple(dict.fromkeys(page for blocker in runs for page in blocker.pages)), source)
     answered = bool(read_answer(records_dir, service))
     writers: list[Blocker] = []
     for blocker in runs:
@@ -185,10 +187,10 @@ def _settle_runs(root: Path, records_dir: Path, service: str, runs: Sequence[Blo
     return {blocker.pages[0]: (PageProblem(blocker.pages[0], text),) for blocker in writers}
 
 
-def _settle_writes(root: Path, records_dir: Path, service: str, writes: Sequence[Blocker], tools_root: Path | None = None) -> None:
+def _settle_writes(root: Path, records_dir: Path, service: str, writes: Sequence[Blocker], source: SourceRepo | None = None) -> None:
     """Close each page check blocker whose pages the check no longer finds a problem on, and each tool blocker whose tool is now opted in. The other page blockers go to the writer with the book's problems."""
-    failing = {problem.page for problem in page_problems(root, service)}
-    unopted = {blocker.key for blocker in tool_blockers(root, service, tools_root)}
+    failing = {problem.page for problem in page_problems(root, service, source=source)}
+    unopted = {blocker.key for blocker in tool_blockers(root, service, source.path if source else None)}
     for blocker in writes:
         cleared = blocker.key not in unopted if blocker.side is Side.ENVIRONMENT else not set(blocker.pages) & failing
         if cleared:
@@ -211,10 +213,10 @@ def _service_of(page: str, services: Iterable[str]) -> str:
     return next((service for service in services if page.startswith(f"{(SERVICES_DIR / service).as_posix()}/")), "")
 
 
-def settle_gate(root: Path, records_dir: Path, services: Sequence[str], tools_roots: Mapping[str, Path] | None = None) -> tuple[str, ...]:
+def settle_gate(root: Path, records_dir: Path, services: Sequence[str], sources: Mapping[str, SourceRepo] | None = None) -> tuple[str, ...]:
     """Rerun each blocker's checks, close those that pass, keep each escalation that still fails, and leave each writer its failures and every claim an answer changed. Return the services to route again.
 
-    A tool blocker closes once the repository in `tools_roots` for its service, the product repository, opts the tool in.
+    A tool blocker closes once the repository in `sources` for its service, the product repository, opts the tool in. A page check and a rerun map the service's claims through that repository.
 
     A service is routed when it has work left: a blocker it still has recorded, failures for its writer, or
     a page check blocker the settlement closed, since the book has not had its run since. A service whose
@@ -236,9 +238,9 @@ def settle_gate(root: Path, records_dir: Path, services: Sequence[str], tools_ro
                 and (present := _on_present_pages(root, records_dir, blocker)) is not None]
         writes = [blocker for blocker in mine if blocker.phase is Phase.WRITE]
         if writes:
-            _settle_writes(root, records_dir, service, writes, (tools_roots or {}).get(service))
+            _settle_writes(root, records_dir, service, writes, (sources or {}).get(service))
         runs = [blocker for blocker in mine if blocker.phase is Phase.EXERCISE]
-        for page, problems in (_settle_runs(root, records_dir, service, runs) if runs else {}).items():
+        for page, problems in (_settle_runs(root, records_dir, service, runs, (sources or {}).get(service)) if runs else {}).items():
             failures.setdefault(service, {}).setdefault(page, []).extend(problems)
     for service, found in failures.items():
         if service:

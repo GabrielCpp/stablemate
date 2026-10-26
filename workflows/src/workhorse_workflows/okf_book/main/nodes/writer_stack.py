@@ -9,6 +9,7 @@ from pathlib import Path
 
 from pydantic import BaseModel, ConfigDict
 
+from workhorse_workflows.okf_book.shared.source_repo import SourceRepo
 from workhorse_workflows.okf_book.shared.book_run import StackReadiness, book_runbooks, bring_up, copy_env, release, stack_pages
 
 KEPT_NAME = "writer-stack.json"
@@ -44,10 +45,11 @@ def _group_alive(pgid: str) -> bool:
 
 @dataclass(frozen=True, slots=True)
 class KeptStack:
-    """The stack kept up in `folder` across a turn's checks, which `logger` reports bringing up and releasing."""
+    """The stack kept up in `folder` across a turn's checks, which `logger` reports bringing up and releasing, with the repository `source` whose app a check runs on a copy of when the stack serves nothing."""
 
     folder: Path
     logger: logging.Logger
+    source: SourceRepo | None = None
 
     @property
     def path(self) -> Path:

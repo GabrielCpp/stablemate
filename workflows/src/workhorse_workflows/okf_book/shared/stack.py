@@ -6,6 +6,7 @@ from collections.abc import Iterable
 from pathlib import Path
 
 from workhorse_workflows.okf_book.shared.citations import book_pages
+from workhorse_workflows.okf_book.shared.source_repo import SourceRepo
 
 _COMPOSE = frozenset({"compose.yml", "compose.yaml", "docker-compose.yml", "docker-compose.yaml"})
 _MAKEFILE = "Makefile"
@@ -47,14 +48,14 @@ def _defines_any(makefile: Path, targets: frozenset[str]) -> bool:
     return any(re.search(_MAKE_RULE.format(target=re.escape(t)), text, re.MULTILINE) for t in targets)
 
 
-def stack_files(root: Path, service: str, files: Iterable[str]) -> frozenset[str]:
-    """The compose files and Dockerfiles beside `files` or above them, and a Makefile a runbook calls into."""
-    targets = _made_targets(root, service)
+def stack_files(book: Path, service: str, files: Iterable[str], source: SourceRepo) -> frozenset[str]:
+    """The compose files and Dockerfiles beside `files` or above them in `source`, and a Makefile a runbook of the service's book calls into."""
+    targets = _made_targets(book, service)
     found: set[str] = set()
-    for folder in ancestor_folders(root, files):
+    for folder in ancestor_folders(source.path, files):
         for path in folder.iterdir():
             if not path.is_file():
                 continue
             if _is_build_file(path) or (path.name == _MAKEFILE and targets and _defines_any(path, targets)):
-                found.add(path.relative_to(root).as_posix())
+                found.add(path.relative_to(source.path).as_posix())
     return frozenset(found)

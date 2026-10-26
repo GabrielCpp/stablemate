@@ -30,6 +30,11 @@ gives relative to the repository starts there.
 
 - The surface: service `{{ service }}`, kind `{{ kind }}`, entry point `{{ entry }}`, a path
   relative to the repository root.
+{%- if member %}
+- The product's files live in workspace member `{{ member }}`. Every path a page names in the product is
+  written `repo://{{ member }}/<path>`. That covers a `code:` bullet, a `working-directory:` and a
+  `contract:`.
+{%- endif %}
 - The book is the folder you run from. Some pages may already be there. Keep what is right,
   fix what is wrong, and add what is missing.
 - The format is the `ostler-okf` skill. Load it first and hold the book to its bar:

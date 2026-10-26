@@ -7,6 +7,7 @@ from ostler.refs import is_test_source
 from workhorse_workflows.okf_book.shared.citations import page_citations
 from workhorse_workflows.okf_book.shared.entries import book_dir, read_entries
 from workhorse_workflows.okf_book.shared.imports import reached_files
+from workhorse_workflows.okf_book.shared.source_repo import SourceRepo
 from workhorse_workflows.okf_book.shared.stack import stack_files
 
 
@@ -17,17 +18,17 @@ def entry_pages(root: Path, service: str) -> tuple[Path, ...]:
     return tuple(page for page in pages if page.is_file())
 
 
-def walk_roots(root: Path, service: str) -> frozenset[str]:
-    """The existing production files the entry pages cite: where the import walk starts."""
+def walk_roots(root: Path, service: str, source: SourceRepo) -> frozenset[str]:
+    """The existing production files of `source` the entry pages cite: where the import walk starts, repo-relative to `source`."""
     return frozenset(
         citation.path
         for page in entry_pages(root, service)
         for citation in page_citations(page)
-        if not citation.repository and (root / citation.path).is_file() and not is_test_source(citation.path)
+        if citation.repository == source.name and (source.path / citation.path).is_file() and not is_test_source(citation.path)
     )
 
 
-def production_files(root: Path, service: str) -> frozenset[str]:
-    """Every file reached from the service's entry points, with the files that build and start its stack."""
-    reached = frozenset(reached_files(root, sorted(walk_roots(root, service))))
-    return reached | stack_files(root, service, reached)
+def production_files(root: Path, service: str, source: SourceRepo) -> frozenset[str]:
+    """Every file of `source` reached from the service's entry points, with the files that build and start its stack."""
+    reached = frozenset(reached_files(source.path, sorted(walk_roots(root, service, source))))
+    return reached | stack_files(root, service, reached, source)

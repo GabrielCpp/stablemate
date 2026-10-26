@@ -51,3 +51,20 @@ def test_a_workspace_render_names_the_source_folder_by_its_member(tmp_path: Path
     rendered = _render(tmp_path, SourceRepo(name=MEMBER, path=tmp_path))
 
     assert f"repo://{MEMBER}/tally" in rendered
+
+
+@pytest.mark.usefixtures("ostler_okf_skill")
+def test_a_workspace_render_tells_the_writer_to_spell_product_paths_through_the_member(tmp_path: Path) -> None:
+    rendered = _render(tmp_path, SourceRepo(name=MEMBER, path=tmp_path))
+
+    assert f"workspace member `{MEMBER}`" in rendered
+    assert f"`repo://{MEMBER}/<path>`" in rendered
+    for field in ("code:", "working-directory:", "contract:"):
+        assert f"`{field}`" in rendered.split(f"`repo://{MEMBER}/<path>`", 1)[1].split("\n- ", 1)[0]
+
+
+@pytest.mark.usefixtures("ostler_okf_skill")
+def test_a_single_repo_render_carries_no_member_rule(tmp_path: Path) -> None:
+    rendered = _render(tmp_path, SourceRepo(path=tmp_path))
+
+    assert "workspace member" not in rendered

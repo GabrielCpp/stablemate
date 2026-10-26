@@ -24,6 +24,7 @@ from workhorse_workflows.okf_book.shared.entries import book_dir
 from workhorse_workflows.okf_book.shared.local_calls import CallWatch, Runbook, read_runbook
 from workhorse_workflows.okf_book.shared.book_compilation import declares_unexercised, gap_page
 from workhorse_workflows.okf_book.shared.page_check import PageProblem
+from workhorse_workflows.okf_book.shared.source_repo import SourceRepo
 from workhorse_workflows.okf_book.shared.scenarios import RunSummary, compile_book, plan_scenarios, run_scenarios, select_scenarios
 
 _IGNORED_NAMES = shutil.ignore_patterns(".git", "__pycache__", ".venv", "node_modules", "*.pyc")
@@ -103,10 +104,10 @@ def copy_ignored(root: Path) -> Callable[[str, list[str]], set[str]]:
     return ignore
 
 
-def _run_in_copy(root: Path, spec: Path, only: Sequence[str], lap: Path, stack_check: Callable[[], str] | None = None) -> RunSummary:
+def _run_in_copy(source: Path, spec: Path, only: Sequence[str], lap: Path, stack_check: Callable[[], str] | None = None) -> RunSummary:
     with tempfile.TemporaryDirectory(prefix="okf-exercise-") as tmp:
         app = Path(tmp) / "app"
-        _ = shutil.copytree(root, app, ignore=copy_ignored(root), ignore_dangling_symlinks=True)
+        _ = shutil.copytree(source, app, ignore=copy_ignored(source), ignore_dangling_symlinks=True)
         return run_scenarios(app, spec, only, lap, stack_check)
 
 
@@ -122,7 +123,7 @@ class CompileOutcome:
 
 @dataclass(frozen=True, slots=True)
 class StackReadiness:
-    """Whether the app's stack is up, whether it serves, why it is not up, the process groups its bring-up started, the logs of the apps it launched, the runbooks it came up from, and the environment its scenarios run in."""
+    """Whether the app's stack is up, whether it serves, why it is not up, the process groups its bring-up started, the logs of the apps it launched, the runbooks it came up from, the environment its scenarios run in, and the repository whose app a stack that serves nothing runs on a copy of."""
 
     up: bool
     serving: bool
@@ -131,6 +132,7 @@ class StackReadiness:
     app_logs: tuple[str, ...] = ()
     runbooks: tuple[Runbook, ...] = ()
     env: Mapping[str, str] = field(default_factory=dict[str, str])
+    source: SourceRepo | None = None
 
 
 def failed_run(gaps: tuple[str, ...], problem: str) -> ExerciseResult:
@@ -158,9 +160,9 @@ def unplanned_problem(root: Path, service: str) -> str:
     return "the book compiles to no plan"
 
 
-def compile_scenarios(root: Path, service: str, spec: Path, targets: Sequence[str] = ()) -> CompileOutcome:
-    """Compile the service's whole book into `spec`, and pick the scenarios the target pages name, with only their gaps."""
-    compiled = compile_book(root, (service,), spec)
+def compile_scenarios(root: Path, service: str, spec: Path, targets: Sequence[str] = (), source: SourceRepo | None = None) -> CompileOutcome:
+    """Compile the service's whole book into `spec`, its claims mapped through the product files of `source`, and pick the scenarios the target pages name, with only their gaps."""
+    compiled = compile_book(root, (service,), source or SourceRepo(path=root), spec)
     kept = [gap for gap in compiled.gaps if not targets or gap_page(gap) in targets]
     gaps = tuple(f"gap: {gap.obligation_id}: {gap.kind}: {gap.detail}" for gap in kept)
     if not targets or not compiled.planned:
@@ -252,7 +254,7 @@ class _BetweenScenarios:
 
 
 def run_plan(root: Path, spec: Path, gaps: tuple[str, ...], stack: StackReadiness, only: Sequence[str] = ()) -> ExerciseResult:
-    """Run the named compiled scenarios, every one when none is named, on a copy of the app when it serves nothing.
+    """Run the named compiled scenarios, every one when none is named, on a copy of the app, which is the stack's `source` and by default the run's own repository, when it serves nothing.
 
     While they run, a watch records each loopback port the app's servers call that none of the stack's
     runbooks names. The run fails on each, since what answered there was already running on this machine.
@@ -270,9 +272,10 @@ def run_plan(root: Path, spec: Path, gaps: tuple[str, ...], stack: StackReadines
     last, and reaches the engine once the runner has stopped its drivers.
     """
     runner = run_scenarios if stack.serving else _run_in_copy
+    app = root if stack.serving else (stack.source or SourceRepo(path=root)).path
     between = _BetweenScenarios(stack.owned)
     with scoped_envs(stack.env), CallWatch(stack.runbooks) as calls, tempfile.TemporaryDirectory(prefix="okf-lap-") as lap:
-        result = _run_lap(root, spec, gaps, only, lambda names: runner(root, spec, names, Path(lap), between))
+        result = _run_lap(root, spec, gaps, only, lambda names: runner(app, spec, names, Path(lap), between))
     if between.halt is not None:
         raise between.halt
     stopped = stack_stopped(stack.owned)

@@ -361,6 +361,7 @@ def _uncovered_problems(root: Path, pages: list[str]) -> list[PageProblem]:
 
 def page_problems(root: Path, service: str, source_folder: str = "", source: SourceRepo | None = None) -> tuple[PageProblem, ...]:
     """Every problem on the service's book, each with its page: a missing entries page, a page nothing reaches, a doctor error, a command, endpoint or screen no flow walks, a command page that names no binary, a claim that does not compile, a book no claim of which declares a check, given the surface's source folder in its source repository, which is the run's own unless `source` names a workspace member, each folder of it holding a product file no page cites, each section a page heads as not covered, and each link from another book that lands on a page or anchor the book lacks."""
+    source = source or SourceRepo(path=root)
     with index.session(root):
         pages = _book_page_paths(root, service)
         book = load(root)
@@ -376,11 +377,10 @@ def page_problems(root: Path, service: str, source_folder: str = "", source: Sou
             if page.service == service
         ]
         wanted = frozenset(pages)
-        compilation = compile_services(root, (service,))
+        compilation = compile_services(root, (service,), source)
         gaps = [gap for gap in compilation.gaps if gap_page(gap) in wanted and gap_side(gap) is Side.BOOK]
         entries = entries_path(root, service)
         unchecked = not compilation.planned and not gaps and entries.is_file() and not declares_unexercised(book, service)
-        source = source or SourceRepo(path=root)
         uncited = uncited_by_folder(source, source_folder, book, service) if entries.is_file() else {}
         return (
             *_entries_problems(root, service),

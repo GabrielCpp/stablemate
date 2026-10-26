@@ -110,6 +110,9 @@ class OkfBook(BookFlow):
         """The repository each surface reads its source from, resolved once, in the order of `surfaces`."""
         return tuple(source_repo(self.root, surface.service, surface.repo) for surface in self.surfaces)
 
+    def _sources_by_service(self) -> dict[str, SourceRepo]:
+        return {surface.service: source for surface, source in zip(self.surfaces, self.sources, strict=True)}
+
     def start(self) -> Continue[...]:
         """A run with no surface has no book to write, and a surface that names the wrong repository for the run's workspace stops it before any turn."""
         if not self.surfaces:
@@ -233,7 +236,7 @@ class OkfBook(BookFlow):
     def run_book(self, index: int, run_failures_repaired: bool) -> Continue[...]:
         """Run the book against the app, by handing off to the run flow."""
         service = self.surfaces[index].service
-        exercised = ExerciseResult.model_validate(self.handoff(ExerciseBook, parent_records_dir=str(self.records_dir), service=service))
+        exercised = ExerciseResult.model_validate(self.handoff(ExerciseBook, parent_records_dir=str(self.records_dir), service=service, source=self.sources[index]))
         return Continue(
             exercised,
             self.settle_run,
@@ -336,7 +339,7 @@ class OkfBook(BookFlow):
         blockers = read_blockers(self.records_dir)
         if not blockers:
             return Done(report).because("no blocker: the books are done")
-        gate.open_gate(self.root, self.records_dir, self.services)
+        gate.open_gate(self.root, self.records_dir, self.services, self._sources_by_service())
         question = (
             f"The run stopped on {len(blockers)} blockers ({blockers_by_side(blockers)}), each listed in {page} with its cause, its pages "
             + "and the command that reruns only its checks. "
@@ -356,7 +359,7 @@ class OkfBook(BookFlow):
 
     def settle_gate(self) -> Continue[...]:
         """Rerun each blocker's checks, close those that pass, and leave each writer what still fails and every claim the answer changed."""
-        routed = gate.settle_gate(self.root, self.records_dir, self.services, {surface.service: source.path for surface, source in zip(self.surfaces, self.sources, strict=True)})
+        routed = gate.settle_gate(self.root, self.records_dir, self.services, self._sources_by_service())
         return Continue(routed, self.route_blocked, routed=routed).because("the gate's blockers are settled")
 
     def route_blocked(self, routed: tuple[str, ...] | None = None) -> Continue[...]:

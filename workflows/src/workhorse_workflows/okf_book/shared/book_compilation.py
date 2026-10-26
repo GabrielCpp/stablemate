@@ -18,10 +18,12 @@ from pydantic import BaseModel, ConfigDict, JsonValue, TypeAdapter, model_valida
 from ostler import index
 from ostler.model import Graph
 from ostler.qa.compile import Plan, compile_plan_gaps
-from ostler.qa.context import book_context, validate_context, write_context
+from ostler.qa.context import EMPTY_TREE_SHA, book_context, validate_context, write_context
 from ostler.qa.plan_source import Gap
+from ostler.qa.source_context import SourceRepository, SourceScope
 from workhorse_workflows.okf_book.shared.entries import SERVICES_DIR
 from workhorse_workflows.okf_book.shared.production import production_files
+from workhorse_workflows.okf_book.shared.source_repo import SourceRepo
 
 BOOK_STORY = "book"
 DISCHARGED_GAPS = frozenset({"precondition-discharged-by-arrangement"})
@@ -125,17 +127,32 @@ def declares_unexercised(book: Graph, service: str) -> bool:
     return f"{(SERVICES_DIR / service).as_posix()}/" in book.unexercised_books()
 
 
-def compile_services(root: Path, services: Iterable[str], spec: Path | None = None) -> BookCompilation:
-    """Compile the named services' books, each with its production files as its source.
+def _repositories(source: SourceRepo, sources: dict[str, list[str]]) -> tuple[SourceRepository, ...]:
+    """The workspace member as one source repository whose scopes are the production files of each service, or none outside a workspace and for a member no service reaches."""
+    scopes = tuple(SourceScope(surface=service, root=path) for service, paths in sources.items() for path in paths)
+    if not source.name or not scopes:
+        return ()
+    return (SourceRepository(id=source.name, checkout=str(source.path), base=EMPTY_TREE_SHA, scopes=scopes),)
+
+
+def compile_services(root: Path, services: Iterable[str], source: SourceRepo, spec: Path | None = None) -> BookCompilation:
+    """Compile the named services' books, each with its production files in `source` as its source.
 
     Only the obligations those books' pages state are compiled. Another book's pages still inform
     the context, but its scenarios are not this run's. The QA context is written into `spec` first,
     when one is given. The pages parse through ostler's index, so a compile after an earlier one
-    reparses only the pages written since.
+    reparses only the pages written since. Under a workspace the files belong to a member, so the
+    context maps its claims through that member's repository and not through the book's own.
     """
-    sources = {service: sorted(production_files(root, service)) for service in services}
+    sources = {service: sorted(production_files(root, service, source)) for service in services}
+    repositories = _repositories(source, sources)
     with index.session(root):
-        packet = book_context(root, source_roots=sources, books=[(SERVICES_DIR / service).as_posix() for service in sources])
+        packet = book_context(
+            root,
+            source_roots=None if repositories else sources,
+            repositories=repositories,
+            books=[(SERVICES_DIR / service).as_posix() for service in sources],
+        )
     problems = validate_context(packet)
     if problems:
         raise ValueError(f"the books' QA context is malformed: {'; '.join(problems)}")

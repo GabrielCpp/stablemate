@@ -19,6 +19,7 @@ from ostler.qa.v2 import run_plan
 from ostler.qa.verdict import Verdict
 from workhorse_workflows.okf_book.shared.book_compilation import BookCompilation, compile_services, obligation_node, obligation_page
 from workhorse_workflows.okf_book.shared.page_check import PageProblem
+from workhorse_workflows.okf_book.shared.source_repo import SourceRepo
 
 SPEC_DIR = "spec"
 PLAN_NAME = "qa_plan.py"
@@ -279,9 +280,9 @@ def spec_dir(run_dir: Path) -> Path:
     return run_dir / SPEC_DIR
 
 
-def compile_book(root: Path, services: Iterable[str], spec: Path) -> BookCompilation:
-    """Compile every obligation the services' books state, and write the plan when one compiled."""
-    compiled = compile_services(root, services, spec)
+def compile_book(root: Path, services: Iterable[str], source: SourceRepo, spec: Path) -> BookCompilation:
+    """Compile every obligation the services' books state, with `source` holding their product files, and write the plan when one compiled."""
+    compiled = compile_services(root, services, source, spec)
     if compiled.plan is None:
         return compiled
     _ = (spec / PLAN_NAME).write_text(compiled.plan.source, encoding="utf-8")

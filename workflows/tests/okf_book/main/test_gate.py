@@ -17,6 +17,7 @@ from workhorse_workflows.okf_book.shared.blockers import Blocker, Phase, Side, r
 from workhorse_workflows.okf_book.shared.book_run import ExerciseResult
 from workhorse_workflows.okf_book.shared.page_check import PageProblem
 from workhorse_workflows.okf_book.shared.scenarios import FailedCheck, RunSummary, ScenarioOutcome
+from workhorse_workflows.okf_book.shared.source_repo import SourceRepo
 from workhorse_workflows.okf_book.workflow import OkfBook
 
 ADD = "docs/services/tally/add.md"
@@ -44,11 +45,13 @@ def _blocker(side: Side = Side.BOOK, cause: str = "book") -> Blocker:
                    reason="2 checks failed this way", cause=cause, pages=(ADD,))
 
 
-def _rerun_with(monkeypatch: pytest.MonkeyPatch, rerun: GateRerun) -> list[tuple[str, ...]]:
+def _rerun_with(monkeypatch: pytest.MonkeyPatch, rerun: GateRerun, sources: list[SourceRepo | None] | None = None) -> list[tuple[str, ...]]:
     asked: list[tuple[str, ...]] = []
 
-    def _rerun(root: Path, records_dir: Path, service: str, pages: Sequence[str]) -> GateRerun:
+    def _rerun(root: Path, records_dir: Path, service: str, pages: Sequence[str], source: SourceRepo | None = None) -> GateRerun:
         asked.append(tuple(pages))
+        if sources is not None:
+            sources.append(source)
         return rerun
 
     monkeypatch.setattr(gate, "rerun_pages", _rerun)
@@ -103,7 +106,18 @@ def test_a_blocker_whose_rerun_passes_is_closed(tmp_path: Path, monkeypatch: pyt
     assert take_failures(tmp_path, "tally") == {}
 
 
-def _no_problems(root: Path, service: str) -> list[PageProblem]:
+def test_a_rerun_reads_the_product_files_from_the_repository_the_service_s_surface_names(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    _ = record_blocker(_book(tmp_path), _blocker())
+    member = SourceRepo(name="api-service", path=tmp_path / "member")
+    given: list[SourceRepo | None] = []
+    _ = _rerun_with(monkeypatch, GateRerun(result=ExerciseResult(lines=("every scenario passed",), passed=True)), given)
+
+    _ = settle_gate(tmp_path, tmp_path, SERVICES, {"tally": member})
+
+    assert given == [member]
+
+
+def _no_problems(root: Path, service: str, source: SourceRepo | None = None) -> list[PageProblem]:
     return []
 
 

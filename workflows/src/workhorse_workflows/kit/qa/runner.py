@@ -155,8 +155,11 @@ def ensure_stack(
                     last.get("failed_step", "unknown"), (last.get("error") or "").strip(),
                     last.get("source", "")))
         return _copy_status(copied)
-    manifests, selection = runbook.load_stacks(graph, near=near_path, leased=bool(lease),
-                                               logger=logger)
+    try:
+        manifests, selection = runbook.load_stacks(graph, near=near_path, leased=bool(lease),
+                                                   logger=logger)
+    except runbook.WorkingDirectoryError as refused:
+        return StackStatus(ready="no", notes=f"Stack bring-up refused: {refused}.")
     if not manifests:
         if selection.reason == "ambiguous":
             return StackStatus(

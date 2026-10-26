@@ -11,6 +11,7 @@ from workhorse_workflows.okf_book.shared import book_run
 from workhorse_workflows.okf_book.shared.book_run import StackReadiness, run_plan
 from workhorse_workflows.okf_book.shared.local_calls import Runbook
 from workhorse_workflows.okf_book.shared.scenarios import FailedCheck, RunSummary, Scenario, ScenarioOutcome
+from workhorse_workflows.okf_book.shared.source_repo import SourceRepo
 
 SERVING = StackReadiness(up=True, serving=True, notes="")
 
@@ -46,6 +47,28 @@ def test_a_precondition_whose_probe_is_refused_stops_the_run_before_the_book(mon
     assert result.lines[0] == "problem: a precondition probe failed, so the book did not run"
     assert result.summary is not None
     assert list(result.summary.failures_by_page(())) == ["docs/fixtures/signed-in-editor.md"]
+
+
+def test_an_app_that_serves_nothing_runs_on_a_copy_of_its_source_and_not_of_the_book(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    _ = _probed(monkeypatch, None)
+    docs, member = tmp_path / "docs", tmp_path / "member"
+    for folder, marker in ((docs, "book.txt"), (member, "product.txt")):
+        folder.mkdir()
+        _ = (folder / marker).write_text(marker, encoding="utf-8")
+    copied: list[tuple[bool, bool]] = []
+    run = book_run.run_scenarios
+
+    def _run_scenarios(app: Path, spec: Path, only: tuple[str, ...], lap: Path, check: object = None) -> RunSummary:
+        copied.append(((app / "product.txt").is_file(), (app / "book.txt").is_file()))
+        return run(app, spec, only, lap, None)
+
+    monkeypatch.setattr(book_run, "run_scenarios", _run_scenarios)
+
+    result = run_plan(docs, tmp_path / "spec", (), StackReadiness(up=True, serving=False, notes="", source=SourceRepo(name="api-service", path=member)))
+
+    assert result.passed
+    assert copied == [(True, False), (True, False)]
+    assert not (member / ".git").exists()
 
 
 def test_the_probes_and_the_book_run_in_one_lap_that_ends_with_the_run(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:

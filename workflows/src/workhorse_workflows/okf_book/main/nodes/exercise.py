@@ -5,6 +5,7 @@ import fcntl
 import logging
 import sys
 import tempfile
+from dataclasses import replace
 from collections.abc import Sequence
 from pathlib import Path
 
@@ -47,13 +48,13 @@ def exercise_book(kept: KeptStack, root: Path, service: str, spec: Path, targets
 
     A stack that serves stays up for the turn's next check. One that does not is stopped here.
     """
-    outcome = compile_scenarios(root, service, spec, targets)
+    outcome = compile_scenarios(root, service, spec, targets, kept.source)
     if outcome.unmatched:
         named = ", ".join(outcome.unmatched)
         return failed_run(outcome.gaps, f"no scenario runs {named}: name a page of the book a scenario covers, or a fixture page a claim arranges")
     if not outcome.planned:
         return failed_run(outcome.gaps, unplanned_problem(root, service))
-    stack = kept.up(root, service)
+    stack = replace(kept.up(root, service), source=kept.source)
     try:
         if not stack.up:
             return stack_down_result(outcome.gaps, stack.notes)
@@ -71,7 +72,7 @@ def exercised(argv: Sequence[str]) -> CommandOutput:
     with (state_path.parent / STACK_LOCK).open("w", encoding="utf-8") as lock:
         fcntl.flock(lock, fcntl.LOCK_EX)
         with tempfile.TemporaryDirectory(prefix="okf-spec-") as spec:
-            kept = KeptStack(state_path.parent, logging.getLogger(EXERCISE_MODULE))
+            kept = KeptStack(state_path.parent, logging.getLogger(EXERCISE_MODULE), state.source)
             result, _ = run_quietly(lambda: exercise_book(kept, root, state.service, Path(spec), targets))
     return CommandOutput(0 if result.passed else 1, printed_lines(result.lines))
 
