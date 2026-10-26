@@ -38,18 +38,19 @@ An operator can [answer the inbox](flows/answer-inbox.md), [inspect a stopped ru
 
 ### run
 
-- usage: workhorse-loop-runner [run] [FLOW] [--cli NAME | --profile NAME] [--config PATH] [--params JSON] [--params-file PATH] [--context-file PATH] [--runs-dir DIR] [--run-id ID] [--dry-run] [--worktree [--worktree-branch NAME] [--worktree-base REF]] [--resume-run PATH_OR_RUN_ID | --resume-latest | --no-cache]
+- usage: workhorse-loop-runner [run] [FLOW] [--cli NAME | --profile NAME] [--config PATH] [--workspace NAME] [--params JSON] [--params-file PATH] [--context-file PATH] [--runs-dir DIR] [--run-id ID] [--dry-run] [--worktree [--worktree-branch NAME] [--worktree-base REF]] [--resume-run PATH_OR_RUN_ID | --resume-latest | --no-cache]
 - flags:
   - `--cli NAME` picks the agent CLI backend for the whole run. It overrides `AGENT_CLI`, which overrides the config's `default_cli`. The default is claude.
-  - `--profile NAME` resolves models from `[profiles.NAME]` in the config, and the profile names its own CLI.
+  - `--profile NAME` resolves models from `[profiles.NAME]` in the config, and the profile names its own CLI. A profile whose key matches its own `cli` is auto-selected on a fresh run — whether or not `--cli` names that same CLI — when neither `--profile` nor a resumed run's recorded profile already picked one.
   - `--config PATH` reads this config file and nothing else. It overrides `$STABLEMATE_CONFIG`, which overrides `$WORKHORSE_CONFIG`.
+  - `--workspace NAME` runs across the named `[workspaces]` entry of the home config: it sets `$STABLEMATE_WORKSPACE` for every agent turn and for ostler, initialises the artifacts repo, and adds `workspace` to the params the workflow receives. A bad name refuses before the run opens its run directory. A resume with no `--workspace` restores the workspace the run recorded.
   - `--params JSON` is an inline JSON object of workflow params. It wins over `--params-file` on a shared key.
   - `--params-file PATH` reads the same JSON object from a file.
   - `--context-file PATH` names the farrier context manifest. The default is `$AGENT_REPO_DIR/.agents/agents-context.<cli>.json`, then `agents-context.json`, and a run with neither renders without one.
   - `--runs-dir DIR` is where run directories go. The default is `./.agents/runs`.
   - `--run-id ID` names the stable run directory `<workflow>-<id>`. The default is a digest of the params, or `default` with no params.
   - `--dry-run` stubs every node and agent turn and checks that the workflow binds.
-  - `--worktree` cuts a fresh branch and git worktree for the run. `--worktree-branch` and `--worktree-base` override its branch name and base ref.
+  - `--worktree` cuts a fresh branch and git worktree for the run. `--worktree-branch` and `--worktree-base` override its branch name and base ref. The run's terminal state decides whether the worktree is removed or kept, as [run launch](concepts/run-launch.md) describes.
   - `--resume-run`, `--resume-latest` and `--no-cache` exclude each other. The first resumes a named run, the second the newest unfinished one, the third deletes the stable run directory first.
 - args:
   - `FLOW` runs one flow sub-graph on its own. Omitted, the run starts at the workflow's entry flow.
@@ -435,9 +436,11 @@ An operator can [answer the inbox](flows/answer-inbox.md), [inspect a stopped ru
 - trigger: an operator reads where a stopped run would resume
 - does:
   - Prints the checkpoint as JSON with no gate it waits on.
+  - Adds a `worktree` key (`path`, `branch`, `base`, `outcome`) when the run's `run.json` records
+    a worktree it was dispatched into; omits the key otherwise.
 - run: invoke(argv=["control", "status", "--params", "--run", "/tmp/workhorse-book/seeded/finished"])
 - verify: stdout(matches="waiting_on.: null")
-- code: `workhorse/workhorse/cli/offline.py::print_params` @5ec56edba53b
+- code: `workhorse/workhorse/cli/offline.py::print_params` @cd7d6c6c8f77
 
 ### refuse-params-without-checkpoint
 

@@ -20,8 +20,10 @@ A run emits one root span, one span per node visit, and one span per agent turn 
 duration, tokens and cost. The turn span also names the node visit it belongs to, under the
 same slug its live transcript file carries. The [agent turns](agent-turns.md) ladder adds span events for retry,
 reframe, compact and watchdog kills. A backend that reports no cost leaves the cost attribute
-absent rather than zero. Exports are best effort, and `events.jsonl` in the
-[run directory](run-directory.md) stays the durable record.
+absent rather than zero. A node's output adds to its own node-visit span too: each top-level
+scalar becomes a `workhorse.out.<key>` attribute, a list becomes `workhorse.out.<key>.len`, and a
+string over 128 characters or an output past the 32nd key is left off. Exports are best effort,
+and `events.jsonl` in the [run directory](run-directory.md) stays the durable record.
 
 Live gauges show where a run is while it is still going. A run heartbeat ticks every
 `WORKHORSE_OTEL_HEARTBEAT_S` seconds, default 10, from a thread that keeps beating through a long

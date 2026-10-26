@@ -17,13 +17,21 @@ The refusals come in a fixed order, so the first problem is the one reported:
 4. The profile and the CLI resolve, as [profiles and config](profiles-and-config.md) describes.
 5. The params parse. Inline `--params` wins over `--params-file` on a shared key, and both must
    hold one JSON object.
-6. The farrier context manifest loads, when one is named or found.
+6. `--workspace NAME` must name a workspace the home config declares. A bad name refuses with
+   `error: --workspace <name>: <reason>` and exits 1 before the run opens its run directory.
+7. The farrier context manifest loads, when one is named or found.
 
 A resumed run named with neither `--cli` nor `--profile` comes back on the profile its `run.json`
 recorded. The params always carry `repo_dir` and `library_dirs`. `repo_dir` defaults to
 `$AGENT_REPO_DIR`, else the working directory. `library_dirs` lists the overlay library from
 `$FARRIER_LIBRARY_DIR` or the config's `library_dir`, then the base library, keeping only those
 that exist.
+
+`--workspace NAME` runs across the named `[workspaces]` entry of the home config: it exports
+`$STABLEMATE_WORKSPACE` for every agent turn and for ostler, initialises the artifacts repo where
+the run's epics and stories live, and adds `workspace` to the params the workflow receives. A
+resume with no `--workspace` restores the workspace the run started with, read back off its
+checkpoint, rather than leaving the run with none.
 
 A `--dry-run` swaps every agent turn and every script node for a stand-in. A node whose output
 schema declares a reply gets that reply, so the happy path runs end to end without spending a
@@ -35,7 +43,14 @@ A `--worktree` run cuts a fresh branch and git worktree first and runs inside it
 records land in its [run directory](run-directory.md). The per-run settings, such as recovery
 budgets and timeouts, are fixed when the run starts and do not change under it.
 
-- code: `workhorse/workhorse/cli/run.py::backend_for_profile` @fb229bac321d
+The run's ending decides what happens to that worktree. A run that reaches its terminal state on
+success retires the worktree: it is removed, along with its branch, unless something left in it
+would be lost. Every other ending — a failure, a stop, an interrupt, a parked gate — keeps the
+worktree and its branch, so a resume or an operator can pick it up where the run left it. See
+[run control](run-control.md) for how `status --params` and a reload or rewind see a run's
+worktree while it is still going.
+
+- code: `workhorse/workhorse/cli/run.py::backend_for_profile` @6bb7cf530876
 - code: `workhorse/workhorse/cli/params.py::load_params` @43dababb9ed6
 - code: `workhorse/workhorse/pyflow/run.py::RunInvocation` @c14993f8e31a
 - code: `workhorse/workhorse/pyflow/run.py::run_pyflow` @c14993f8e31a
@@ -44,4 +59,4 @@ budgets and timeouts, are fixed when the run starts and do not change under it.
 - code: `workhorse/workhorse/manifest.py::ContextManifest` @e896594bc36c
 - code: `workhorse/workhorse/config_run.py::RunConfig` @d96de3e447d1
 - code: `workhorse/workhorse/config_run.py::AgentResilience` @d96de3e447d1
-- code: `workhorse/docs/RUNS.md` @3ef5ce7dac21
+- code: `workhorse/docs/RUNS.md` @a576bc9d9fb9

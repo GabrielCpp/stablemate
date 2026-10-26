@@ -26,7 +26,10 @@ The verbs split by whether the run must be live:
 - **Offline verbs** read the run directory. `rewind` moves a stopped run's checkpoint to the state
   `--to` names. `resume` relaunches a stopped run detached from its recorded command line and
   waits until it serves. `status --params` prints the checkpoint from disk, so it answers for a
-  live run and a stopped one alike.
+  live run and a stopped one alike. A run [dispatched into a worktree](run-launch.md) also gets a
+  `worktree` block: its `path`, `branch` and `base`, and the `outcome` its ending recorded, `null`
+  while the run has not ended. A reload or a rewind on such a run does not end it, so the run stays
+  in that worktree until it reaches a terminal state.
 
 A reload or a switch cuts the streaming turn by default. `--at-boundary` lets the turn finish and
 acts at the next state entry. When a live verb finds no listener, the command says whether the
@@ -49,4 +52,4 @@ each sub-flow the rewound visit left unfinished, and logs a `rewind` event. The
 - code: `workhorse/workhorse/rewind.py::RewindError` @1ed4d1905220
 - code: `workhorse/workhorse/reload.py::ReloadRequested` @c7be7ac9ef2a
 - code: `workhorse/workhorse/reload.py::cut_requested` @c7be7ac9ef2a
-- code: `workhorse/docs/RELOAD.md` @93eeb65f0f39
+- code: `workhorse/docs/RELOAD.md` @3204f97e0a12

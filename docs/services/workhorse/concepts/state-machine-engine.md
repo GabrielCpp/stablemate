@@ -30,8 +30,10 @@ Inside a state, a workflow does its work through four calls:
 
 A work list gives a run one shared backlog of items to claim, settle and count. `pipeline` drains a
 kind of the run's work list into a flow or a state, a chunk per state visit, so every chunk is a
-resume point. A row settles when the drain state is entered again, and a row claimed more than
-three times is blocked.
+resume point. Draining into a state settles each row to `done` right after its `handoff`, inside
+the same `pipeline` call. Draining into a flow defers settlement: the chunk it dispatched settles
+only at the start of the next fresh (non-resuming) visit, just before that visit claims its own
+chunk. A row claimed more than three times is blocked.
 
 States and nodes share one name index. A renamed state keeps its old name as an alias, so a run
 checkpointed under the old name still resumes. A name that resolves to nothing fails with the list
@@ -41,7 +43,8 @@ Before a run starts, preflight reads the flow's graph off its source and refuses
 start state does not exist, when no state returns `Done`, when a transition names something that
 is not a state, when a state is unreachable from the start, or when a prompt file is missing. A
 prompt path that comes from a helper marked `@resolves_prompt` is read through that helper, and
-any other computed path is reported, because a path preflight cannot read is a path nothing
+a local bound to a ternary of two such calls is read arm by arm, each arm resolved the same way.
+Any other computed path is reported, because a path preflight cannot read is a path nothing
 checks. The same graph renders to Graphviz DOT through [`dot`](../workhorse.md#dot), and the
 [check a workflow](../flows/check-workflow.md) journey renders one.
 
@@ -53,7 +56,7 @@ checks. The same graph renders to Graphviz DOT through [`dot`](../workhorse.md#d
 - code: `workhorse/workhorse/pyflow/engine.py::Engine` @922a7b361e6e
 - code: `workhorse/workhorse/pyflow/driver.py::drive` @6ee79b75b0f1
 - code: `workhorse/workhorse/pyflow/driver.py::coerce_params` @6ee79b75b0f1
-- code: `workhorse/workhorse/pyflow/graph.py::FlowGraph` @2e2ffac17246
+- code: `workhorse/workhorse/pyflow/graph.py::FlowGraph` @103855581ca1
 - code: `workhorse/workhorse/pyflow/names.py::NameIndex` @ec28548d30de
 - code: `workhorse/workhorse/pyflow/blueprint.py::Blueprint` @4911263291b8
 - code: `workhorse/workhorse/pyflow/preflight.py::preflight` @3460fa12f550
