@@ -297,3 +297,31 @@ def test_a_failed_state_check_the_app_owns_carries_no_hint_to_change_the_book() 
                           actual='{"visible": true, "text": "Derived from the title"}', covers=(state,),
                           cause=Cause.APP)
     assert "name the fixture that arranges it" not in product.failure_line()
+
+
+STOP_LINE = "line 78: qa.by_role('button').click()  # add; TimeoutError: waiting for locator"
+
+
+def test_a_stopped_scenario_whose_failed_check_quotes_the_stop_line_prints_it_once() -> None:
+    stopped = FailedCheck(label="scenario ran to its end", expected="no stop", actual=STOP_LINE)
+    outcome = ScenarioOutcome(status="failed", message=f"Traceback\n{STOP_LINE}", failed_checks=(stopped,))
+    assert outcome.failure_lines() == (stopped.failure_line(),)
+    assert sum(STOP_LINE in line for line in outcome.failure_lines()) == 1
+
+
+def test_a_message_line_no_failed_check_quotes_still_ends_the_failure_lines() -> None:
+    other = FailedCheck(label="slug field shown", expected='{"visible": true}', actual='{"visible": false}')
+    outcome = ScenarioOutcome(status="failed", message=f"Traceback\n{STOP_LINE}", failed_checks=(other,))
+    assert outcome.failure_lines() == (other.failure_line(), STOP_LINE)
+
+
+def test_unclaimed_failure_lines_print_a_stop_line_a_failed_check_quotes_once() -> None:
+    stopped = FailedCheck(label="scenario ran to its end", expected="no stop", actual=STOP_LINE)
+    outcome = ScenarioOutcome(status="failed", message=f"Traceback\n{STOP_LINE}", failed_checks=(stopped,))
+    assert outcome.unclaimed_failure_lines() == (stopped.failure_line(),)
+
+
+def test_unclaimed_failure_lines_end_with_a_message_line_no_failed_check_quotes() -> None:
+    other = FailedCheck(label="slug field shown", expected='{"visible": true}', actual='{"visible": false}')
+    outcome = ScenarioOutcome(status="failed", message=f"Traceback\n{STOP_LINE}", failed_checks=(other,))
+    assert outcome.unclaimed_failure_lines() == (other.failure_line(), STOP_LINE)

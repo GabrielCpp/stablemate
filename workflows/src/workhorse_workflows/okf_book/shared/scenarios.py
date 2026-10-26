@@ -98,9 +98,14 @@ class ScenarioOutcome(BaseModel):
     unreached: tuple[str, ...] = ()
 
     def failure_lines(self) -> tuple[str, ...]:
-        """Every failed check, then the last line of the run's own message."""
+        """Every failed check, then the last line of the run's own message unless a check already quotes it."""
+        return self._with_message_line(tuple(check.failure_line() for check in self.failed_checks))
+
+    def _with_message_line(self, check_lines: tuple[str, ...]) -> tuple[str, ...]:
         message_last_line = self.message.strip().splitlines()[-1:]
-        return (*(check.failure_line() for check in self.failed_checks), *message_last_line)
+        if any(message_last_line[0] in line for line in check_lines if message_last_line):
+            return check_lines
+        return (*check_lines, *message_last_line)
 
     @property
     def book_checks(self) -> tuple[FailedCheck, ...]:
@@ -113,9 +118,8 @@ class ScenarioOutcome(BaseModel):
         return bool(self.book_checks) or not self.failed_checks
 
     def unclaimed_failure_lines(self) -> tuple[str, ...]:
-        """Every failed check of the book's made for no one claim, then the last line of the run's own message."""
-        message_last_line = self.message.strip().splitlines()[-1:]
-        return (*(check.failure_line() for check in self.book_checks if not check.claim), *message_last_line)
+        """Every failed check of the book's made for no one claim, then the last line of the run's own message unless a check already quotes it."""
+        return self._with_message_line(tuple(check.failure_line() for check in self.book_checks if not check.claim))
 
     def failed_claim(self, plan_source: str) -> str:
         """The obligation whose compiled lines in *plan_source* the run's traceback stopped in, or nothing when it stopped in none.
