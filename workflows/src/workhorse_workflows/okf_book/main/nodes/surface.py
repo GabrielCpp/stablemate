@@ -3,7 +3,9 @@ from __future__ import annotations
 
 from enum import StrEnum
 
-from pydantic import BaseModel, ConfigDict, Field
+from typing import Self
+
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 SLUG_PATTERN = r"^[a-z0-9]+(?:-[a-z0-9]+)*$"
 
@@ -15,6 +17,7 @@ class SurfaceKind(StrEnum):
     HTTP = "http"
     WEB = "web"
     MOBILE = "mobile"
+    GRPC = "grpc"
 
 
 class Surface(BaseModel):
@@ -26,3 +29,12 @@ class Surface(BaseModel):
     kind: SurfaceKind
     entry: str = Field(min_length=1)
     repo: str = ""
+    contract: str = ""
+
+    @model_validator(mode="after")
+    def _contract_matches_kind(self) -> Self:
+        if self.kind is SurfaceKind.GRPC and not self.contract:
+            raise ValueError("`contract` is required for kind `grpc`: name the folder of the repository that holds its `.proto` files")
+        if self.contract and self.kind not in (SurfaceKind.GRPC, SurfaceKind.HTTP):
+            raise ValueError(f"`contract` is refused for kind `{self.kind.value}`: only `grpc` and `http` surfaces carry a contract folder")
+        return self

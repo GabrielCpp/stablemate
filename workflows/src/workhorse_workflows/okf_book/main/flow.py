@@ -70,6 +70,17 @@ def _no_source_folder(source: SourceRepo, surface: Surface) -> str:
     )
 
 
+def _no_contract_folder(source: SourceRepo, surface: Surface) -> str:
+    """Why the surface's contract names no folder of its repository, and the nearest folder that exists."""
+    nearest = next((parent for parent in Path(surface.contract).parents if (source.path / parent).is_dir()), Path())
+    where = "the repository root" if nearest == Path() else f"`{nearest.as_posix()}/`"
+    return (
+        f"the contract `{surface.contract}` is no folder of the repository{f' `{source.name}`' if source.name else ''}. "
+        f"A contract is the folder of the repository that holds the service's `.proto` files, relative to the repository root. "
+        f"The nearest folder that exists is {where}"
+    )
+
+
 def _escalated_signatures(exercised: ExerciseResult) -> tuple[Signature, ...]:
     """The signatures of the run that a party other than the book's writer must fix."""
     signatures = exercised.summary.signatures if exercised.summary is not None else ()
@@ -179,6 +190,8 @@ class OkfBook(BookFlow):
         folder = _source_folder(source, surface)
         if not (source.path / folder).is_dir():
             return self._block_surface_and_move_on(index, _no_source_folder(source, surface))
+        if surface.contract and not (source.path / surface.contract).is_dir():
+            return self._block_surface_and_move_on(index, _no_contract_folder(source, surface))
         return Continue((source.path / folder).as_posix(), self.write_book, index=index, run_failures=run_failures, problems=problems, exercised=exercised).because(
             "send the book's owner"
         )

@@ -32,6 +32,11 @@ gives relative to the repository starts there.
 
 - The surface: service `{{ service }}`, kind `{{ kind }}`, entry point `{{ entry }}`, a path
   relative to the repository root.
+{%- if contract_dir %}
+- The service's contract, its `.proto` files, is under `{{ contract_dir }}/`, which is the
+  repository's `{{ contract_folder }}/`. Read it in place. A `contract:` bullet cites that
+  repository path.
+{%- endif %}
 {%- if member %}
 - The product's files live in workspace member `{{ member }}`. Every path a page names in the product is
   written `repo://{{ member }}/<path>`. That covers a `code:` bullet, a `working-directory:` and a
@@ -46,13 +51,13 @@ gives relative to the repository starts there.
   other page must be reachable by links from an entry page.
 - Read the product's source first, then size the book to the app. A reader starts at the
   entries page and finds what the app does in a few links. Expect a page for each
-  {% if kind == "cli" %}command{% elif kind == "http" %}endpoint{% else %}screen{% endif %}, each journey, each fixture and each concept several of them share: tens of
+  {% if kind == "cli" %}command{% elif kind == "http" %}endpoint{% elif kind == "grpc" %}rpc{% else %}screen{% endif %}{% if kind != "grpc" %}, each journey{% endif %}, each fixture and each concept several of them share: tens of
   pages for a small app, not hundreds. A claim earns its place when a user or a caller can
   observe it and it would break if the app changed. The book covers the whole app: each product
   file of the source is cited in the `code:` of the page that documents what it does, and the
   check names each file no page cites. Only a node whose claims a run can prove counts as
-  citing: a concept page explains a file, it does not cover it, so a command, an endpoint or a
-  screen page must cite it too. Merge and shrink pages freely, but a page you delete takes its
+  citing: a concept page explains a file, it does not cover it, so {% if kind == "grpc" %}an rpc page{% else %}a command, an endpoint or a
+  screen page{% endif %} must cite it too. Merge and shrink pages freely, but a page you delete takes its
   citations with it, and what it documented must move to another page.
 - State what a user or a caller meets:
 {% if kind == "cli" %}
@@ -67,13 +72,21 @@ gives relative to the repository starts there.
 {% elif kind == "mobile" %}
   the screens and routes, the controls a user works with by test id or visible name, what
   each interaction changes, the messages the app shows and the values it keeps,
+{% elif kind == "grpc" %}
+  each rpc with its full name and streaming shape, the request fields and metadata it reads,
+  the reply fields it answers with, the gRPC status each outcome ends with, the stored records
+  it reads or writes. Each rpc is a page of its own beside its grpc-server page, with a
+  `server:` link to that page, and the server lists it under `## RPCs` as a `- [id](page.md)`
+  line. The contract decides which rpcs exist: the book has one page per rpc of each service
+  the server `serves:`, its `name:` spelt as the contract spells it, and none the contract
+  lacks,
 {% else %}
   the screens and routes, the controls a user works with by role and accessible name, what
   each interaction changes, the messages the app shows and the values it keeps,
 {% endif %}
   and the rules the app applies. Each is a claim with a `verify:` that would fail if the app
   stopped doing it. One check pinned under several claims of a node proves none of them.
-{% if kind not in ("cli", "http") %}
+{% if kind not in ("cli", "http", "grpc") %}
 - An element that appears only after an act, such as a dialog, a badge or a banner, is checked
   under the `does:` of the interaction that performs the act, by a state the flow stops at after
   the act, or a fixture arranges the state first. A check on such an element at the screen level
@@ -105,7 +118,7 @@ gives relative to the repository starts there.
   fixture that edits a seeded account, record or setting breaks whoever uses it next, and
   makes your own scenarios pass or fail by the order they ran in. When a scenario needs a role,
   sign in as a seeded account that already holds it, or create a new account that does.
-{% if kind not in ("cli", "http") %}
+{% if kind not in ("cli", "http", "grpc") %}
 {%- if kind == "mobile" %}
 - A journey does what the user came to do, and proves it took. A flow walks the act that
   changes something, such as a save, a send or a delete, and its `end:` checks the changed
@@ -144,10 +157,16 @@ gives relative to the repository starts there.
   to a real inbox, stays unchecked, and its page names that party.
 {%- endif %}
 {% endif %}
+{%- if kind == "grpc" %}
+- An rpc that changes a record changes one that a claim above it on the same page created
+  through the service, never a seeded one. Claims on one page run in order, so a later claim
+  sees what an earlier one created.
+{%- else %}
 - Every {% if kind == "cli" %}command{% elif kind == "http" %}endpoint{% else %}screen{% endif %} sits on a journey a user takes. Write each journey as a `flow` page under
   `flows/`, as the skill's flow reference says, with its `start:`, its `steps:`, its `end:` and
   its `fixture:`, and link it from a page the entries page reaches. The check names every
   {% if kind == "cli" %}command{% elif kind == "http" %}endpoint{% else %}screen{% endif %} no flow's steps link.
+{%- endif %}
 {% if kind == "cli" %}
   A step performs one command line, so the node it links states exactly one `run:`, and
   `start:` checks with `absent(subject="<file>")` that a file the walk creates is not there yet.
@@ -178,6 +197,20 @@ gives relative to the repository starts there.
   `selector: testID=<id>` when the source sets a test id, or by its visible `name:`. A control
   with neither is reported in your reply as one the app must label. Never select a control by
   its position.
+{%- elif kind == "grpc" %}
+- The run brings the service up from the book alone. Write the stack `runbook` under `ops/`
+  with `driver: grpc`, an `entry-url:` written `grpc://host:port`, and `surfaces:` linking the
+  grpc-server page, as the skill's runbook reference shows. Assume the machine it runs on has
+  a shell, git, curl, python3 and docker with compose, and nothing else: no other language
+  toolchain, no cloud CLI, no database. Its one `kind: service` step starts the service and
+  every service it calls, the way the repository's own compose file or Makefile starts them.
+  Readiness asks the standard health service for SERVING and reflection for each name the
+  server `serves:`, so it needs no route. A service already answering on this machine belongs
+  to someone else, and a claim that passes against it passes only here. A credential the calls
+  carry is a runbook secret minted at bring-up, as the skill's rpc reference shows, and no page
+  writes its value.
+  The command below reports the step where bring-up failed, and it is the only way to probe
+  that machine.
 {%- else %}
 - The run brings the app up from the book alone. Write the stack `runbook` that starts it
   from a clean checkout, with the port, the health check and every service it needs, as the
@@ -209,6 +242,12 @@ gives relative to the repository starts there.
   - none. Say so in your reply, because no scenario can run the app.
 {% endfor %}
 {% endif %}
+{%- if kind == "grpc" %}
+- A run calls each rpc through grpcurl, a QA tool this repo must offer.
+{%- if "grpcurl" not in qa_tools | map(attribute="name") %} This repo offers none, so no
+  scenario can run the app. Say so in your reply.
+{%- endif %}
+{%- endif %}
 - Every claim runs against the real app. This command compiles the book into scenarios and
   runs them, and prints each check that failed with what it expected and what it got. Name
   pages after it, each path relative to the repository root, and it runs only the scenarios on

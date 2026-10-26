@@ -1,4 +1,4 @@
-"""What one writer turn is sent: its prompt arguments, the source copy it reads, and the profile that confines it."""
+"""What one writer turn is sent: its prompt arguments, the source it reads in place, and the profile that confines it."""
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -50,6 +50,7 @@ class WriterRequest:
     check_command_line: str
     exercise_command_line: str
     qa_tools: tuple[QaTool, ...]
+    contract_dir: Path | None = None
 
     def template_args(self) -> dict[str, object]:
         """The write-book prompt's arguments."""
@@ -60,6 +61,8 @@ class WriterRequest:
             "entry": self.surface.entry,
             "source_dir": self.source_dir.as_posix(),
             "source_folder": self.source.cite(self.source_folder),
+            "contract_dir": self.contract_dir.as_posix() if self.contract_dir is not None else "",
+            "contract_folder": self.source.cite(self.surface.contract) if self.surface.contract else "",
             "member": self.source.name,
             "book_folder": self.book_folder,
             "ostler": self.ostler_command_line,
@@ -92,6 +95,7 @@ def writer_request(run_dir: Path, root: Path, surface: Surface, source_folder: s
         source_folder=source_folder,
         source=source,
         source_dir=source.path / source_folder,
+        contract_dir=source.path / surface.contract if surface.contract else None,
         ostler_command_line=ostler_command(run_dir),
         check_command_line=check_command(run_dir),
         exercise_command_line=exercise_command(run_dir),
