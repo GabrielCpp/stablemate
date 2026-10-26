@@ -1,6 +1,6 @@
 [project]
 name = "stablemate-groom"
-version = "1.3.0"
+version = "2.0.0"
 description = "Local push-driven dashboard for workhorse agent-workflow operator gates — tends the horses while they run."
 readme = "README.md"
 requires-python = ">=3.12"

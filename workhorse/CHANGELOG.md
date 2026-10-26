@@ -1,5 +1,37 @@
 # Changelog
 
+## [5.0.0](https://github.com/GabrielCpp/stablemate/compare/workhorse-agent-v4.0.0...workhorse-agent-v5.0.0) (2026-10-26)
+
+
+### ⚠ BREAKING CHANGES
+
+* **workhorse:** pipeline() no longer takes a work list and a handler positionally. Call pipeline(kind, to=<state or flow>, n=...).
+* .code-workspace files and AGENT_PARAM_WORKSPACE_FILE are no longer read. The docs_path input is gone too.
+
+### Features
+
+* **core:** add a per-user artifacts folder to the home config ([16b7924](https://github.com/GabrielCpp/stablemate/commit/16b79242f1168941efce7548da756021a7fe4e1d))
+* **core:** add the paddock_dir home config key ([b00ab00](https://github.com/GabrielCpp/stablemate/commit/b00ab00b98d8cd841219b5c05f1b246f41ffd45c))
+* **core:** ignore every session-owned folder in the artifacts repo ([ba13779](https://github.com/GabrielCpp/stablemate/commit/ba137791e26418211a72d07201e72e7161fc2960))
+* name multi-repo workspaces in the home config ([bf14ddd](https://github.com/GabrielCpp/stablemate/commit/bf14dddaa308cae4c697e4ba7418e36eced12e62))
+* **workhorse:** drain a work list kind into a state or a flow ([7d51d21](https://github.com/GabrielCpp/stablemate/commit/7d51d219a14adfc4ce6bbd62513fd07da63596de))
+* **workhorse:** let a work list mark carry a note ([8fb43fe](https://github.com/GabrielCpp/stablemate/commit/8fb43febbf79741483541e913927006ff6bfc35e))
+* **workhorse:** name the prompt a resolver-bound local renders ([6128b3c](https://github.com/GabrielCpp/stablemate/commit/6128b3c716afb9799bf919d1e0a79e713b805028))
+* **workhorse:** reach added dirs outside the worktree in opencode ([724e452](https://github.com/GabrielCpp/stablemate/commit/724e4526f5e8ecd8cde01db666f8ca37f42cb195))
+* **workhorse:** read a local bound to a ternary of prompt resolvers ([a5ddba4](https://github.com/GabrielCpp/stablemate/commit/a5ddba4bb745ae03ab64d04ff02315d0d98b77f4))
+* **workhorse:** remove a run's worktree once it lands ([0e4188a](https://github.com/GabrielCpp/stablemate/commit/0e4188acd27ffe499451fca11fc24e2be2853338))
+* **workhorse:** stamp a visit's output on its node span ([a50118a](https://github.com/GabrielCpp/stablemate/commit/a50118ad620ececee7634101f0554610671d65ee))
+* **workhorse:** tell a workflow whether its agent CLI has subagents ([3effba3](https://github.com/GabrielCpp/stablemate/commit/3effba3d28018d1b1a123d05dec206977a020ebd))
+
+
+### Bug Fixes
+
+* **workhorse:** fail a dry run at a gate, honour declared node replies ([9894d16](https://github.com/GabrielCpp/stablemate/commit/9894d16657bfe7bb73df6c4d8fb2637a8941cba7))
+* **workhorse:** give each gate opening its own wait id ([1abd090](https://github.com/GabrielCpp/stablemate/commit/1abd090a18a72ee6898af51153ac531c88613d2f))
+* **workhorse:** keep a node's own type through blueprint.node ([2c6cf64](https://github.com/GabrielCpp/stablemate/commit/2c6cf64469bbba5f25aba5f9488513eaee77f256))
+* **workhorse:** render a confined turn's prompt from the skills it loads ([4c08080](https://github.com/GabrielCpp/stablemate/commit/4c0808024b561f009360ca51c076f42e833f41fc))
+* **workhorse:** run a flagless start under its default CLI's profile ([1ce283f](https://github.com/GabrielCpp/stablemate/commit/1ce283f45eb107fffbfd00a790c8bec3e85e46d8))
+
 ## [4.0.0](https://github.com/GabrielCpp/stablemate/compare/workhorse-agent-v3.0.0...workhorse-agent-v4.0.0) (2026-10-15)
 
 

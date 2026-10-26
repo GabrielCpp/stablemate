@@ -1,5 +1,27 @@
 # Changelog
 
+## [2.0.0](https://github.com/GabrielCpp/stablemate/compare/saddlebag-v1.1.0...saddlebag-v2.0.0) (2026-10-26)
+
+
+### ⚠ BREAKING CHANGES
+
+* books are read from docs/services only. A repository that still has docs/features must run `ostler okf migrate` or rename the folder.
+* **saddlebag:** the OS keyring backend, the SQLite pool, credential leases, AI selection, the `env` command family, `link`/`unlink` and the YAML manifest are removed. Nothing is migrated. Items in a 1.x pool or in the OS keyring are left in place and orphaned.
+
+### Features
+
+* **saddlebag:** choose the route from the config key and a ping ([a1f8d70](https://github.com/GabrielCpp/stablemate/commit/a1f8d70e2fab0b19cd101111176a723cd9c8acd5))
+* **saddlebag:** hold the vault token in a daemon and fill by tag ([a4b0f84](https://github.com/GabrielCpp/stablemate/commit/a4b0f843aabfaf21978dfc1b838a02af6d431d48))
+* **saddlebag:** probe the keyring door and name the mac interpreter ([a3bc4bf](https://github.com/GabrielCpp/stablemate/commit/a3bc4bf5bfa6ceecf9b69a26f4586ad9125c7bba))
+* **saddlebag:** read the vault token from the keyring or a 0600 file ([3305462](https://github.com/GabrielCpp/stablemate/commit/33054627c0bf614462dea1f6c8ddc8988642fa4f))
+* **saddlebag:** report the store behind doctor and check the keyring ([6ab8aaf](https://github.com/GabrielCpp/stablemate/commit/6ab8aafb4fed0818fc16fd900b3390a45fc65403))
+* **saddlebag:** serve ad hoc commands from the OS keyring ([27deeff](https://github.com/GabrielCpp/stablemate/commit/27deeff577caecc1d8954fa2bfc6d1cf30f570b1))
+
+
+### Code Refactoring
+
+* move the book root from docs/features to docs/services ([9c14166](https://github.com/GabrielCpp/stablemate/commit/9c141662047ead9a9ed398a21477b62223db9ef0))
+
 ## [1.1.0](https://github.com/GabrielCpp/stablemate/compare/saddlebag-v1.0.0...saddlebag-v1.1.0) (2026-09-11)
 
 

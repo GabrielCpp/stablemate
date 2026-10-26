@@ -1,5 +1,114 @@
 # Changelog
 
+## [4.0.0](https://github.com/GabrielCpp/stablemate/compare/workhorse-workflows-v3.0.0...workhorse-workflows-v4.0.0) (2026-10-26)
+
+
+### ⚠ BREAKING CHANGES
+
+* **workflows:** the epic-split review, the coverage review, the story audit and the resolve-operator loops are gone, with audit-receipt.json, story-split-receipt.json and the per-epic and per-story context gates. Stories authored before this change carry no PM receipt and are re-reviewed on the next run.
+* **workflows:** seed services must name books under docs/services, and the design: preserve exemption is gone. An epic whose seeds carry no services, or a UI story with no mockup, now fails Author's lint.
+* **workflows:** Author runs started before this change cannot resume, because the planner state they checkpointed is gone.
+* **workflows:** docs/roadmaps is not read and the milestone stage is gone. Author fails before any turn when no milestone folder is approved, when several are, or when the approved one is not ready.
+* agents.yml workspace is not read and farrier doctor reports it. base_branch moves under repo.
+* docRoots is not read. Ostler doctor reports removed-doc-roots for a config that still carries the key.
+* .code-workspace files and AGENT_PARAM_WORKSPACE_FILE are no longer read. The docs_path input is gone too.
+* books are read from docs/services only. A repository that still has docs/features must run `ostler okf migrate` or rename the folder.
+
+### Features
+
+* name multi-repo workspaces in the home config ([bf14ddd](https://github.com/GabrielCpp/stablemate/commit/bf14dddaa308cae4c697e4ba7418e36eced12e62))
+* **workflows:** author a milestone through drains with a final gate ([ce3447e](https://github.com/GabrielCpp/stablemate/commit/ce3447e1ce92ab467e8f55330e7a51b39c33bc11))
+* **workflows:** author from the approved milestone folder ([3b2bd5e](https://github.com/GabrielCpp/stablemate/commit/3b2bd5eca82fe7a0ae947e1fad7c96d2f13c76e6))
+* **workflows:** check each criterion and rerun failed proof in dev ([28d4729](https://github.com/GabrielCpp/stablemate/commit/28d4729571f70fac87d882a1e15b3ddb5c3ea6fc))
+* **workflows:** derive story services and block a story on its mockup ([0d1292a](https://github.com/GabrielCpp/stablemate/commit/0d1292a7e2b9ecfd0cef5c6bf0a131368cd63807))
+* **workflows:** file dev-turn follow-ups as debt records ([524fac9](https://github.com/GabrielCpp/stablemate/commit/524fac97990c41076cde593eabf8b1baf107536b))
+* **workflows:** file dev-turn follow-ups to a deferred backlog section ([c56de70](https://github.com/GabrielCpp/stablemate/commit/c56de7047f695668cae7e97d9f92c52ec1f64cba))
+* **workflows:** file qa leftovers as records and drain them in fixes ([13bd533](https://github.com/GabrielCpp/stablemate/commit/13bd5332fdb8151f0d3c84a13e6d49edff093ed0))
+* **workflows:** file survey and parity findings as register records ([934d783](https://github.com/GabrielCpp/stablemate/commit/934d78393535ac4932c180d1eff5b46b6d30ca56))
+* **workflows:** file the book checks qa could not run as records ([ce5ac39](https://github.com/GabrielCpp/stablemate/commit/ce5ac39011cd4375120a25050f130894395015cc))
+* **workflows:** give a story QA sent back its own rework prompt ([3df7d7e](https://github.com/GabrielCpp/stablemate/commit/3df7d7e8ec57bdae875ede1d51c0394f02e06f3b))
+* **workflows:** give every defect one owner and one worklist entry ([0ecf44e](https://github.com/GabrielCpp/stablemate/commit/0ecf44e516d7a0afcd9a204eb8a8941dba92a79c))
+* **workflows:** give the writer a mobile branch of the book prompt ([b674ebf](https://github.com/GabrielCpp/stablemate/commit/b674ebf63322d8716cefb07fe4151718fd03abe9))
+* **workflows:** hold fix-item fixers to the dev lane's root-cause rule ([e3ce9cd](https://github.com/GabrielCpp/stablemate/commit/e3ce9cdcfb291cb4c91f1351c29e98958514cf91))
+* **workflows:** make the PM Author's only reviewer ([6811501](https://github.com/GabrielCpp/stablemate/commit/6811501334c78e5bb96203946be1e7e26dbbc1c0))
+* **workflows:** merge the story locally when a repo has no remote ([601adbd](https://github.com/GabrielCpp/stablemate/commit/601adbd49aa0329586d349d2bdc82632f5fda406))
+* **workflows:** point the grpc writer at stream claims ([93ba1c0](https://github.com/GabrielCpp/stablemate/commit/93ba1c0d02bf5dd964547747506806e0c74e8f44))
+* **workflows:** promote a register record into an epic story ([836f1bf](https://github.com/GabrielCpp/stablemate/commit/836f1bf35efc141722187cbcd4bc01576b7d70d4))
+* **workflows:** propose a decision for each large debt cluster ([113720e](https://github.com/GabrielCpp/stablemate/commit/113720e989f109e521867dae6526d7dfd39fb274))
+* **workflows:** read story specs from the artifacts folder ([b141b68](https://github.com/GabrielCpp/stablemate/commit/b141b6815a0e11c3db233b683e648227a8f3dd4a))
+* **workflows:** reject a "not a defect" decline that names no test ([c7d24ed](https://github.com/GabrielCpp/stablemate/commit/c7d24ed41b1a290d9694f915899c674d0bc67d72))
+* **workflows:** rerun only the proof a passed story's leftovers reopen ([b2f5082](https://github.com/GabrielCpp/stablemate/commit/b2f508240e4eed2de0a2bc42909e236b0318971e))
+* **workflows:** review the debt register into an accounted report ([4395f56](https://github.com/GabrielCpp/stablemate/commit/4395f56bc80320d731cee3e19bf0b3cfde2fbaa0))
+* **workflows:** route a failed qa scenario by the side ostler gives it ([ef093b5](https://github.com/GabrielCpp/stablemate/commit/ef093b52e0411777f22cbfd32891522eddd854ad))
+* **workflows:** run a workspace book's scenarios against its member ([8d512a2](https://github.com/GabrielCpp/stablemate/commit/8d512a2a825dcc2a55ee4f02809ac7b4e24eac12))
+* **workflows:** tell an http writer its routes come from the proto ([c7d66b0](https://github.com/GabrielCpp/stablemate/commit/c7d66b0e9a4da39424e952b73cbe1341d3757a9f))
+* **workflows:** write a grpc surface's book from its contract ([32e7ea8](https://github.com/GabrielCpp/stablemate/commit/32e7ea82a5e45b015ada0b266a6dce3fcd8b0925))
+* **workflows:** write a workspace book from its member repo's source ([724343d](https://github.com/GabrielCpp/stablemate/commit/724343df84ec1876d794e0ec25502f6fe2861b61))
+
+
+### Bug Fixes
+
+* **ostler:** name the shared copy to commands run against it ([e6d45e7](https://github.com/GabrielCpp/stablemate/commit/e6d45e7121237cc1775f0345759c50fbe26136a8))
+* **workflows:** allow workhorse-agent 5.x ([085b5df](https://github.com/GabrielCpp/stablemate/commit/085b5df823735ed7a6c18c4cc5d07ef413beb2f1))
+* **workflows:** allow workhorse-agent 5.x, ostler 4.x ([b3f79e2](https://github.com/GabrielCpp/stablemate/commit/b3f79e269d9897a4a2efe402de29fc585b62abcb))
+* **workflows:** ask no page for a file that declares no name ([6dd8646](https://github.com/GabrielCpp/stablemate/commit/6dd864621dbfb6932db317f679b5412aa5d73eb9))
+* **workflows:** ask the story writer when each new transient state ends ([1ad7a90](https://github.com/GabrielCpp/stablemate/commit/1ad7a903a6f36e0c3a0af7041b939efbdd4514aa))
+* **workflows:** boot the device when a stack copy serves a mobile book ([bbd4226](https://github.com/GabrielCpp/stablemate/commit/bbd422636f2b1ac43c70662289785a6427fe15a3))
+* **workflows:** commit only what the fix item's own turn wrote ([6f90c17](https://github.com/GabrielCpp/stablemate/commit/6f90c1711bdebb376a765af4b626dc56c8e77b2d))
+* **workflows:** commit the story's operator context with its stamp ([59cdd1f](https://github.com/GabrielCpp/stablemate/commit/59cdd1f3ba820f17b8c9631009d4c7cb5c585aa1))
+* **workflows:** count only claim-bearing citations as coverage ([bf77dc9](https://github.com/GabrielCpp/stablemate/commit/bf77dc981fc7088b40f518e4c094f647e2540a0c))
+* **workflows:** count todo as an open question only as a marker ([c871f8a](https://github.com/GabrielCpp/stablemate/commit/c871f8ab2927f3d7791474f0b92954ecd46bdfd5))
+* **workflows:** drop the book hint from a state red the app owns ([e8183e3](https://github.com/GabrielCpp/stablemate/commit/e8183e352b7c45c4f6f635f49e15eaaaedef749f))
+* **workflows:** file deferred qa obligations to the backlog, not a gate ([94cec2a](https://github.com/GabrielCpp/stablemate/commit/94cec2a919e99fdf54219a88bb40476879cd7026))
+* **workflows:** file only open, new product work under filed by coder ([71a467d](https://github.com/GabrielCpp/stablemate/commit/71a467d28a0dee593febf42ce3fb554dfe83f71a))
+* **workflows:** file only undone product work as a dev-turn follow-up ([af8b091](https://github.com/GabrielCpp/stablemate/commit/af8b091da3440088e3fa8127ced043d4cbacd996))
+* **workflows:** give an owner started afresh the operator's answer ([c1ef0d6](https://github.com/GabrielCpp/stablemate/commit/c1ef0d635b8c8286e7370c0e2314025e35319ea0))
+* **workflows:** give the coder judge no tools so its one turn answers ([f88dea4](https://github.com/GabrielCpp/stablemate/commit/f88dea4b08cca75c2cec0db4f8318dcc3dc83d07))
+* **workflows:** keep book checks out of the backlog the fix lane drains ([6ed8daa](https://github.com/GabrielCpp/stablemate/commit/6ed8daacf2efcc9a5630131ce3484a915ffd1b4c))
+* **workflows:** keep the coder bookkeeping commits out of the repo hooks ([1688ced](https://github.com/GabrielCpp/stablemate/commit/1688cedbbd68dd88f7fe710c8a80c1b32628f6f1))
+* **workflows:** leave the run dirs out of the exercise copy of the app ([4ab8f86](https://github.com/GabrielCpp/stablemate/commit/4ab8f86b575d0076d257832f2bace59193208070))
+* **workflows:** leave the whole .agents dir out of the exercise copy ([2594e1d](https://github.com/GabrielCpp/stablemate/commit/2594e1d78344be2d870eb95e76ea0b42ccc878a6))
+* **workflows:** let a story keep services narrower than its seeds ([16900e6](https://github.com/GabrielCpp/stablemate/commit/16900e61f7bed42386ee6616a38a2d1b7d8b8b3b))
+* **workflows:** let a workspace writer read its product repo and skills ([506bb46](https://github.com/GabrielCpp/stablemate/commit/506bb4671603da73a499b99cda47a9c11b463ab7))
+* **workflows:** let the author dry run walk to its commit ([5565fa3](https://github.com/GabrielCpp/stablemate/commit/5565fa3122558662d1f42bd36f773ea3989d6a41))
+* **workflows:** let the scored run prove a scenario its dry run lost ([507c042](https://github.com/GabrielCpp/stablemate/commit/507c042c85155063da2a4d727750a9e07a3277cc))
+* **workflows:** mark the coder's fixes epic as a backlog of follow-ups ([f6a21f6](https://github.com/GabrielCpp/stablemate/commit/f6a21f6cf3c33e63a5f845d5781fd5bbe0d3ed99))
+* **workflows:** match dry-run records to a scenario's function name ([b24af90](https://github.com/GabrielCpp/stablemate/commit/b24af90f34178a4ad30ce2bab4b897112ac546d2))
+* **workflows:** match one defect across stories by what the user sees ([df4be34](https://github.com/GabrielCpp/stablemate/commit/df4be34064926d2db31549ba988029ecfcfcbd25))
+* **workflows:** name the source record by id in a fix-story seed ([9138782](https://github.com/GabrielCpp/stablemate/commit/9138782676b6dff049ccdee211791656588e616e))
+* **workflows:** render the agent files before a story commit ([21b5e9c](https://github.com/GabrielCpp/stablemate/commit/21b5e9cd8cd037ba6d55c80984ce0c2e10d71f0a))
+* **workflows:** repair the call sites the node typing exposed ([ede4040](https://github.com/GabrielCpp/stablemate/commit/ede40405b02f1d163431c58462fa67ef805c6fc1))
+* **workflows:** reset an owner that names the book and writes nothing ([46c49f3](https://github.com/GabrielCpp/stablemate/commit/46c49f3b067a7400cfea620233f37589b98bd0ed))
+* **workflows:** review research builds without the code-review skill ([cf3fd86](https://github.com/GabrielCpp/stablemate/commit/cf3fd86344ed65b7f3fe065507a84573bf6c7c24))
+* **workflows:** say the greenfield technical-notes sentence stands alone ([a14120f](https://github.com/GabrielCpp/stablemate/commit/a14120f163f10a910e7bbea1aa9881ea7bc8b69c))
+* **workflows:** say what an okf-book entry is when it names no folder ([88e6751](https://github.com/GabrielCpp/stablemate/commit/88e6751a86ce1a6a047fe67ab69f051969137ba2))
+* **workflows:** scope the qa packet to the story's own changes ([789d48e](https://github.com/GabrielCpp/stablemate/commit/789d48e389842ea6b91877f66c41fde4b4169ca7))
+* **workflows:** scope the qa packet to the story's own changes ([0e37d45](https://github.com/GabrielCpp/stablemate/commit/0e37d454990367c5f6408018ce9e0fb6f8c9f592))
+* **workflows:** score story qa against the copy its bring-up started ([7bb4a9c](https://github.com/GabrielCpp/stablemate/commit/7bb4a9cf97def4324f13f57a96890f49d86d14d2))
+* **workflows:** show the coder's dev turn the findings qa filed ([bbabcc8](https://github.com/GabrielCpp/stablemate/commit/bbabcc8f7109e621a315df31597802c1089d248b))
+* **workflows:** skip the full lap when the gate closed every blocker ([3262bf4](https://github.com/GabrielCpp/stablemate/commit/3262bf4910b3b6e366613c72a272a22aabbd487c))
+* **workflows:** tear down the stack.yml copy at the run's end ([6249002](https://github.com/GabrielCpp/stablemate/commit/6249002b5b80888e73fbb63adb8d17aec6f93e18))
+* **workflows:** walk the coder's dry run to its terminal ([f4cbf73](https://github.com/GabrielCpp/stablemate/commit/f4cbf731536d6609960d3d25631ee0756c7d2c60))
+* **workflows:** walk the okf-book dry run past the app's stack ([14385ef](https://github.com/GabrielCpp/stablemate/commit/14385ef119d5650ad3fd9643f372f5e75f0cb563))
+
+
+### Performance Improvements
+
+* **workflows:** keep the dry run off the book's graph ([890d800](https://github.com/GabrielCpp/stablemate/commit/890d8007c5e1694800496923bc939319c2ff410f))
+* **workflows:** read a member's changed file in place when regrounding ([06b07df](https://github.com/GabrielCpp/stablemate/commit/06b07dfc089f666b6f833c12c9be392875d9da99))
+* **workflows:** read the writer's source in place instead of a copy ([c22e6ac](https://github.com/GabrielCpp/stablemate/commit/c22e6acd1e30109f939ba037b7a9f949e388e35d))
+
+
+### Code Refactoring
+
+* declare each service's path under services ([508d927](https://github.com/GabrielCpp/stablemate/commit/508d927e40691d1fcfbc0e3cca385ed681a5dc9e))
+* fix document locations and drop docRoots ([66fc17c](https://github.com/GabrielCpp/stablemate/commit/66fc17c7e3ea82ba72e0d052e5b06a072558ec11))
+* move the book root from docs/features to docs/services ([9c14166](https://github.com/GabrielCpp/stablemate/commit/9c141662047ead9a9ed398a21477b62223db9ef0))
+* **ostler:** keep the shared test plumbing in a testing package ([ca90ee3](https://github.com/GabrielCpp/stablemate/commit/ca90ee3f079117faa771a94218e1b4d8701b6db4))
+* **workflows:** drop the coder's docs/backlog.md requirement ([fc8e464](https://github.com/GabrielCpp/stablemate/commit/fc8e464a94d637f745b384eb5fbae8ac837010f4))
+* **workflows:** hand ostler the story id, never the slug ([f67a14c](https://github.com/GabrielCpp/stablemate/commit/f67a14c2b7269aa60233f0786c1505f6ed53df55))
+* **workflows:** move the agent-file render helper into kit ([b87e05c](https://github.com/GabrielCpp/stablemate/commit/b87e05c03e04926f9e35b67962319d24896d9721))
+
 ## [3.0.0](https://github.com/GabrielCpp/stablemate/compare/workhorse-workflows-v2.0.0...workhorse-workflows-v3.0.0) (2026-10-15)
 
 
