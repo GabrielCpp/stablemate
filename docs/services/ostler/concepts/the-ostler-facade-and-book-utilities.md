@@ -61,24 +61,24 @@ every repository's `RepositorySnapshot`. `catalog_path`/`load_catalog` locate an
 byte under a repository's declared scopes so a catalog entry can detect its source has moved
 without re-walking the full diff on every run.
 
-- code: ostler/ostler/api.py::Ostler@dc53cd236858
-- code: ostler/ostler/api.py::Snapshot@dc53cd236858
-- code: ostler/ostler/api.py::_snapshot_of@dc53cd236858
-- code: ostler/ostler/api.py::_listing@dc53cd236858
-- code: ostler/ostler/api.py::_file_sha@dc53cd236858
-- code: ostler/ostler/api.py::_story_candidates@dc53cd236858
-- code: ostler/ostler/api.py::_unreadable@dc53cd236858
-- code: ostler/ostler/select.py::is_done@95d1a37a3be0
-- code: ostler/ostler/select.py::epic_by_name@95d1a37a3be0
-- code: ostler/ostler/select.py::epic_done@95d1a37a3be0
-- code: ostler/ostler/select.py::epic_authored@95d1a37a3be0
-- code: ostler/ostler/select.py::dag_order@95d1a37a3be0
-- code: ostler/ostler/select.py::epic_cycle@95d1a37a3be0
-- code: ostler/ostler/select.py::next_epic@95d1a37a3be0
-- code: ostler/ostler/select.py::next_story_report@95d1a37a3be0
-- code: ostler/ostler/select.py::next_story@95d1a37a3be0
-- code: ostler/ostler/select.py::open_stories@95d1a37a3be0
-- code: ostler/ostler/select.py::story_entry@95d1a37a3be0
+- code: ostler/ostler/api.py::Ostler@89569a465feb
+- code: ostler/ostler/api.py::Snapshot@89569a465feb
+- code: ostler/ostler/api.py::_snapshot_of@89569a465feb
+- code: ostler/ostler/api.py::_listing@89569a465feb
+- code: ostler/ostler/api.py::_file_sha@89569a465feb
+- code: ostler/ostler/api.py::_story_candidates@89569a465feb
+- code: ostler/ostler/api.py::_unreadable@89569a465feb
+- code: ostler/ostler/select.py::is_done@077129549b9f
+- code: ostler/ostler/select.py::epic_by_name@077129549b9f
+- code: ostler/ostler/select.py::epic_done@077129549b9f
+- code: ostler/ostler/select.py::epic_authored@077129549b9f
+- code: ostler/ostler/select.py::dag_order@077129549b9f
+- code: ostler/ostler/select.py::epic_cycle@077129549b9f
+- code: ostler/ostler/select.py::next_epic@077129549b9f
+- code: ostler/ostler/select.py::next_story_report@077129549b9f
+- code: ostler/ostler/select.py::next_story@077129549b9f
+- code: ostler/ostler/select.py::open_stories@077129549b9f
+- code: ostler/ostler/select.py::story_entry@077129549b9f
 - code: ostler/ostler/todo.py::list_epics@eb0ea0bc4039
 - code: ostler/ostler/todo.py::add@eb0ea0bc4039
 - code: ostler/ostler/todo.py::prune@eb0ea0bc4039

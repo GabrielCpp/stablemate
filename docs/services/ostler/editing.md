@@ -12,7 +12,7 @@ read the result. Each command changes its own entity, so only the story rename d
 last.
 
 - binary: ostler
-- code: ostler/ostler/cli.py::main@d36715768389
+- code: ostler/ostler/cli.py::main@97fced506443
 
 ## Commands
 
@@ -122,7 +122,7 @@ last.
 - verify: contents(subject="edit-scratch/docs/epics/0001-first/stories/sx/story.md", matches="services/area/record\\.md")
 - fixture: [edit scratch repo](fixtures/edit-scratch-repo.md) with an edit scratch repo whose book
   and story have not been edited yet
-- code: ostler/ostler/edit.py::relink@08519cdd058d
+- code: ostler/ostler/edit.py::relink@63e4a8c64c39
 
 ### ostler-edit-migrate-context
 - usage: ostler edit migrate-context NODE_TYPE SERVICE [--write]: moves a service's pages of one
@@ -138,7 +138,7 @@ last.
 - verify: contents(subject="edit-scratch/docs/services/demo/entries.md", matches="\\(concepts/idea\\.md\\)")
 - fixture: [edit scratch repo](fixtures/edit-scratch-repo.md) with an edit scratch repo whose book
   and story have not been edited yet
-- code: ostler/ostler/edit.py::migrate_context@08519cdd058d
+- code: ostler/ostler/edit.py::migrate_context@63e4a8c64c39
 
 ### ostler-edit-settle-review
 - usage: ostler edit settle-review STORY [--write]: settles a story's review from the
@@ -172,7 +172,7 @@ last.
 - fixture: [edit scratch repo](fixtures/edit-scratch-repo.md) with an edit scratch repo whose book
   and story have not been edited yet
 - code: ostler/ostler/carve.py::carve_endpoints@16296e22e532
-- code: ostler/ostler/edit.py::_doc_files@08519cdd058d
+- code: ostler/ostler/edit.py::_doc_files@63e4a8c64c39
 
 ### ostler-edit-carve-fragments
 - usage: ostler edit carve-fragments PAGE [--write]: moves the subsections of a page's largest
@@ -189,7 +189,7 @@ last.
 - fixture: [edit scratch repo](fixtures/edit-scratch-repo.md) with an edit scratch repo whose book
   and story have not been edited yet
 - code: ostler/ostler/carve.py::references@16296e22e532
-- code: ostler/ostler/edit.py::_doc_files@08519cdd058d
+- code: ostler/ostler/edit.py::_doc_files@63e4a8c64c39
 - code: ostler/ostler/fragment_carve.py::carve_fragments@7d965ac3d2df
 
 ### ostler-edit-rename
@@ -206,4 +206,4 @@ last.
 - verify: contents(subject="edit-scratch/docs/epics/0001-first/stories/sy/story.md", matches="slug: sy")
 - fixture: [edit scratch repo](fixtures/edit-scratch-repo.md) with an edit scratch repo whose book
   and story have not been edited yet
-- code: ostler/ostler/edit.py::rename@08519cdd058d
+- code: ostler/ostler/edit.py::rename@63e4a8c64c39

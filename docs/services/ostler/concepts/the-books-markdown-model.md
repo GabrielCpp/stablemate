@@ -95,24 +95,24 @@ group (and most of the scaffolding and editing group) returns. `keys.py`'s `pres
 parse a `press:` bullet's key name against the small grammar of pressable key names a book can
 declare. `__init__.py` is empty.
 
-- code: ostler/ostler/model.py::Graph@7651c0781a8f
-- code: ostler/ostler/model.py::UINode@7651c0781a8f
-- code: ostler/ostler/model.py::Story@7651c0781a8f
-- code: ostler/ostler/model.py::Epic@7651c0781a8f
-- code: ostler/ostler/model.py::Milestone@7651c0781a8f
-- code: ostler/ostler/model.py::FeatureRecord@7651c0781a8f
-- code: ostler/ostler/model.py::SeedItem@7651c0781a8f
-- code: ostler/ostler/model.py::Entry@7651c0781a8f
-- code: ostler/ostler/model.py::load@7651c0781a8f
-- code: ostler/ostler/model.py::find_root@7651c0781a8f
-- code: ostler/ostler/model.py::doc_roots@7651c0781a8f
-- code: ostler/ostler/model.py::read_doc@7651c0781a8f
-- code: ostler/ostler/model.py::read_links@7651c0781a8f
-- code: ostler/ostler/model.py::required_section_problems@7651c0781a8f
-- code: ostler/ostler/model.py::section_order_problems@7651c0781a8f
-- code: ostler/ostler/model.py::story_status@7651c0781a8f
-- code: ostler/ostler/model.py::story_dependencies@7651c0781a8f
-- code: ostler/ostler/model.py::story_fixtures@7651c0781a8f
+- code: ostler/ostler/model.py::Graph@b0f81cc8ce8a
+- code: ostler/ostler/model.py::UINode@b0f81cc8ce8a
+- code: ostler/ostler/model.py::Story@b0f81cc8ce8a
+- code: ostler/ostler/model.py::Epic@b0f81cc8ce8a
+- code: ostler/ostler/model.py::Milestone@b0f81cc8ce8a
+- code: ostler/ostler/model.py::FeatureRecord@b0f81cc8ce8a
+- code: ostler/ostler/model.py::SeedItem@b0f81cc8ce8a
+- code: ostler/ostler/model.py::Entry@b0f81cc8ce8a
+- code: ostler/ostler/model.py::load@b0f81cc8ce8a
+- code: ostler/ostler/model.py::find_root@b0f81cc8ce8a
+- code: ostler/ostler/model.py::doc_roots@b0f81cc8ce8a
+- code: ostler/ostler/model.py::read_doc@b0f81cc8ce8a
+- code: ostler/ostler/model.py::read_links@b0f81cc8ce8a
+- code: ostler/ostler/model.py::required_section_problems@b0f81cc8ce8a
+- code: ostler/ostler/model.py::section_order_problems@b0f81cc8ce8a
+- code: ostler/ostler/model.py::story_status@b0f81cc8ce8a
+- code: ostler/ostler/model.py::story_dependencies@b0f81cc8ce8a
+- code: ostler/ostler/model.py::story_fixtures@b0f81cc8ce8a
 - code: ostler/ostler/markdown.py::MarkdownDoc@115245786c4b
 - code: ostler/ostler/markdown.py::Section@115245786c4b
 - code: ostler/ostler/markdown.py::Bullet@115245786c4b
@@ -158,9 +158,9 @@ declare. `__init__.py` is empty.
 - code: ostler/ostler/index.py::active@cfb08df1cba1
 - code: ostler/ostler/index.py::use@cfb08df1cba1
 - code: ostler/ostler/index.py::session@cfb08df1cba1
-- code: ostler/ostler/query.py::search@764fe4f95773
-- code: ostler/ostler/query.py::query@764fe4f95773
-- code: ostler/ostler/query.py::list_entities@764fe4f95773
+- code: ostler/ostler/query.py::search@9c9d233e28a0
+- code: ostler/ostler/query.py::query@9c9d233e28a0
+- code: ostler/ostler/query.py::list_entities@9c9d233e28a0
 - code: ostler/ostler/provenance.py::story_commits@61d8f7f21af4
 - code: ostler/ostler/provenance.py::source_freshness@61d8f7f21af4
 - code: ostler/ostler/provenance.py::story_provenance@61d8f7f21af4

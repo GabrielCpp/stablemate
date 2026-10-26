@@ -36,8 +36,8 @@ instead of appending a duplicate. `run.py` orchestrates one `ostler vet` invocat
 end to end, and `__init__.py` re-exports the two names (`VetOutcome`, `run_vet`) the CLI calls.
 
 - code: ostler/ostler/vet/__init__.py@2e20aecf0259
-- code: ostler/ostler/vet/run.py::run_vet@deb0121ace50
-- code: ostler/ostler/vet/run.py::VetOutcome@deb0121ace50
+- code: ostler/ostler/vet/run.py::run_vet@43917e56aea7
+- code: ostler/ostler/vet/run.py::VetOutcome@43917e56aea7
 - code: ostler/ostler/vet/geometry.py::BBox@a6d2ef1e40b6
 - code: ostler/ostler/vet/geometry.py::iou@a6d2ef1e40b6
 - code: ostler/ostler/vet/cdp.py::connect_and_scan@77027b587d70
@@ -49,9 +49,9 @@ end to end, and `__init__.py` re-exports the two names (`VetOutcome`, `run_vet`)
 - code: ostler/ostler/vet/register.py::match@4813a8dbde2b
 - code: ostler/ostler/vet/writes.py::VetFileWrite@d000fa666d75
 - code: ostler/ostler/vet/writes.py::VetPlan@d000fa666d75
-- code: ostler/ostler/vet/placement.py::parse_placement@7183d869fe0e
-- code: ostler/ostler/vet/placement.py::check@7183d869fe0e
-- code: ostler/ostler/vet/placement.py::screen_components@7183d869fe0e
+- code: ostler/ostler/vet/placement.py::parse_placement@fa7b7986f813
+- code: ostler/ostler/vet/placement.py::check@fa7b7986f813
+- code: ostler/ostler/vet/placement.py::screen_components@fa7b7986f813
 - code: ostler/ostler/vet/report.py::build_report@30d577ca0ec9
 - code: ostler/ostler/vet/report.py::build_vet_concept@30d577ca0ec9
 - detail: [ostler](../cli.md)

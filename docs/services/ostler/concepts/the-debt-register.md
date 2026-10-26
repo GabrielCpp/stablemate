@@ -21,7 +21,7 @@ the whole shelf and groups it into trends. A cluster of records can become a
 - code: ostler/ostler/register.py::commit@e9e56b8ac9a0
 - code: ostler/ostler/register.py::file_person@e9e56b8ac9a0
 - code: ostler/ostler/register_import.py::import_list@9a46ac7a7aac
-- code: ostler/ostler/path.py::register_root@1bcbaa1e640a
+- code: ostler/ostler/path.py::register_root@4524aa5cb018
 - tests: ostler/tests/test_register.py::test_write_lays_the_record_under_repo_area_id_in_the_artifacts_dir
 - tests: ostler/tests/test_register.py::test_the_listing_has_one_line_per_record_closed_ones_included
 - tests: ostler/tests/test_register_close.py::test_close_marks_a_record_done_and_keeps_every_other_field_and_the_body

@@ -37,10 +37,10 @@ a secret no source supplies, without ever starting docker.
 - verify: json_path(path="files[0]", matches="(?s)^.*compose\\.yml$")
 - fixture: [environments render and secrets](fixtures/environments-render-and-secrets.md) — seeds
   env-render-fixture, one service whose template references no secret
-- code: ostler/ostler/environments/render.py::render@468c61e21fca
-- code: ostler/ostler/environments/render.py::write@468c61e21fca
-- code: ostler/ostler/environments/runtime.py::copy_for@9c6cee57be4b
-- code: ostler/ostler/environments/runtime.py::write_manifest@9c6cee57be4b
+- code: ostler/ostler/environments/render.py::render@c93ab3c3f7b3
+- code: ostler/ostler/environments/render.py::write@c93ab3c3f7b3
+- code: ostler/ostler/environments/runtime.py::copy_for@c45517030b87
+- code: ostler/ostler/environments/runtime.py::write_manifest@c45517030b87
 - code: ostler/ostler/environments/commands.py::cmd_render@36bbc1003620
 - code: ostler/ostler/environments/cli.py::run@f1b74cc1cc17
 - detail: [Local stack bring-up](concepts/local-stack-bring-up.md)
@@ -58,12 +58,12 @@ a secret no source supplies, without ever starting docker.
 - fixture: [environments render and secrets](fixtures/environments-render-and-secrets.md) — seeds
   env-secrets-fixture, whose `worker` service's template references `${OKF_BOOK_PROBE_SECRET}`,
   and no stack root declares a `secrets:` source to supply it
-- code: ostler/ostler/environments/secrets.py::source_for@0b9d51f963bf
-- code: ostler/ostler/environments/secrets.py::missing_names@0b9d51f963bf
-- code: ostler/ostler/environments/secrets.py::required_names@0b9d51f963bf
-- code: ostler/ostler/environments/secrets.py::allowed_names@0b9d51f963bf
-- code: ostler/ostler/environments/commands.py::cmd_check@36bbc1003620
-- code: ostler/ostler/environments/spec.py::load@d5300931ce33
+- code: ostler/ostler/environments/secrets.py::source_for@761a72c7a6dd
+- code: ostler/ostler/environments/secrets.py::missing_names@761a72c7a6dd
+- code: ostler/ostler/environments/secrets.py::required_names@761a72c7a6dd
+- code: ostler/ostler/environments/secrets.py::allowed_names@761a72c7a6dd
+- code: ostler/ostler/environments/commands.py::cmd_check@05411233ab32
+- code: ostler/ostler/environments/spec.py::load@ece1017c2482
 - detail: [Local stack bring-up](concepts/local-stack-bring-up.md)
 
 ### ostler-env-address-not-up
@@ -82,7 +82,7 @@ a secret no source supplies, without ever starting docker.
 - verify: json_path(path="error", matches="^okf-book-env-address-never-up publishes no `demo` \\(it publishes none, since it is not up\\)$")
 - fixture: none, because nothing is seeded
 - code: ostler/ostler/qa/addresses.py::read_book@910467430420
-- code: ostler/ostler/environments/commands.py::cmd_address@36bbc1003620
-- code: ostler/ostler/environments/runtime.py::copy_for@9c6cee57be4b
+- code: ostler/ostler/environments/commands.py::cmd_address@05411233ab32
+- code: ostler/ostler/environments/runtime.py::copy_for@c45517030b87
 - code: ostler/ostler/environments/cli.py::run@f1b74cc1cc17
 - detail: [Local stack bring-up](concepts/local-stack-bring-up.md)
