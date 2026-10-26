@@ -489,5 +489,7 @@ Revision log:
 10. **Assumption:** a grpc-gateway path template and a book's endpoint path name the same route
     when they agree on method and on every segment except the variable names. **Decided:**
     route coverage ignores variable names. **Basis:** grpc-gateway writes `{field}` and the
-    book's route grammar its own variable syntax. Not checked against `ostler/routes.py`. **If
-    wrong:** §5 Coverage finding normalises the two grammars before comparing.
+    book writes braces too, as in `/api/run/{run_id}` and `/assets/{path...}`. Route coverage
+    turns every `{...}` into `{}` on both sides (`ostler/route_coverage.py`), and a custom verb
+    such as `:reopen` stays literal. Checked against the 22 bindings of zeta's mobile gateway.
+    **If wrong:** §5 Coverage finding normalises the two grammars before comparing.
