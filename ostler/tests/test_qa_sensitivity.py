@@ -81,6 +81,7 @@ _WITNESSED_CALLS = [
     'stored(key="theme", count=0)',
     'stored(key="theme", matches="^dark$")',
     'clipboard(text="/fr/guide?tab=2")',
+    'grpc_status(code="NOT_FOUND")',
     'clipboard(matches="^/fr/")',
     'downloaded(name="policies.xml")',
     'downloaded(name=".xml", text="<policy", count=1)',

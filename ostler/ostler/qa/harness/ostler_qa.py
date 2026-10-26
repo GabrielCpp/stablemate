@@ -32,6 +32,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import ostler_qa_transfer
 from ostler_qa_checkout import copy_checkout
 from ostler_qa_elements import name_pattern, template_pattern
+from ostler_qa_grpc import Caller, Grpc, GrpcError, GrpcurlCaller
 from ostler_qa_lap import Arranged, LapRecord
 from ostler_qa_paths import is_projection, path_steps, resolve_path
 from ostler_qa_responses import reply_excerpt
@@ -828,6 +829,7 @@ class Qa:
         tool_env: Sequence[str] = (),
         lap_dir: Path | None = None,
         ceiling_s: float = CEILING_S,
+        grpc_caller: Caller | None = None,
     ) -> None:
         self.ceiling_s = ceiling_s
         self.scenario_id = scenario_id
@@ -856,6 +858,8 @@ class Qa:
         self._held: list[str] = []
         self._node: str | None = None
         self.http = Http(target.base_url, on_unexpected_status=self._status_mismatch, on_exchange=self._saw_exchange)
+        self._grpc_caller = grpc_caller
+        self.grpc = Grpc(target.base_url, self._grpc_caller_for, on_unexpected_status=self._grpc_status_mismatch)
         self._index = 0
         self.assertions = 0
         self.failures = 0
@@ -866,6 +870,31 @@ class Qa:
         self.maestro = Maestro(self)
         self.tesseract = Tesseract(self)
         self.convert = Convert(self)
+
+    def _grpc_caller_for(self) -> Caller:
+        """The caller `qa.grpc` makes its calls with: the one a test handed over, else grpcurl as the qa tools resolve it."""
+        if self._grpc_caller is None:
+            command = self._tool_commands.get("grpcurl")
+            if command is None:
+                self._claim_fault = ClaimFault("capability", "qa-tool-grpcurl", "")
+                raise RuntimeError(
+                    "qa tool 'grpcurl' is not available — opt into it via this repo's "
+                    "agents.yml `qa: {tools: ['grpcurl']}`"
+                )
+            self._grpc_caller = GrpcurlCaller(command)
+        return self._grpc_caller
+
+    def _grpc_status_mismatch(
+        self, method: str, address: str, status: str, allowed: Sequence[str], message: str
+    ) -> None:
+        """Write down an `expect_status` the product did not meet, with what it replied, before it raises."""
+        self._record(
+            f"{method} on {address} answers {list(allowed)}",
+            False,
+            {"status": status, "message": reply_excerpt(message)} if message.strip() else {"status": status},
+            list(allowed),
+            self.covers,
+        )
 
     def tool(self, name: str) -> "Tool":
         """A user- or machine-declared external command, opted into via `agents.yml`."""
@@ -948,6 +977,10 @@ class Qa:
             spans.append((match.start(), match.end(), facts[key]))
         for match in _CAPTURE_REF.finditer(value):
             captured = match.group(1)
+            declared = REGISTRY.secrets.get(captured)
+            if captured not in self._captures and declared is not None:
+                spans.append((match.start(), match.end(), declared.get()))
+                continue
             if captured not in self._captures:
                 detail = f"reference ${captured} has no resolved value — nothing has captured it"
                 self._fault(owner, -1, "reference", "defect", detail)
@@ -1674,7 +1707,7 @@ class Qa:
             evidence["fault"] = asdict(self._claim_fault)
         if self._held:
             evidence["held"] = list(self._held)
-        if not isinstance(exc, HttpError):
+        if not isinstance(exc, HttpError | GrpcError):
             evidence["raised"] = type(exc).__name__
         return evidence
 
@@ -1701,7 +1734,7 @@ class Qa:
             yield
         except CheckFailed:
             pass
-        except HttpError as exc:
+        except (HttpError, GrpcError) as exc:
             if not exc.recorded:
                 _ = self._record(str(exc), False, str(exc), "a response", covers)
         except Exception as exc:

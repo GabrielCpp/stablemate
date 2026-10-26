@@ -710,7 +710,7 @@ UI_TYPES: tuple[UINodeType, ...] = (
         bullet_keys=(
             BulletKey("server", link=True),
             BulletKey("name", required=True, locator=True, address=True, value_kind="rpc-name"),
-            BulletKey("streaming", required=True, locator=True, address=True,
+            BulletKey("streaming", required=True, address=True,
                       values=("unary", "server")),
             BulletKey("does", nested=True, normative=True, locator=True),
             BulletKey("emits"),

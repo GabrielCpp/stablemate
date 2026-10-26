@@ -14,6 +14,7 @@ from ostler.qa import book_index as book_index_mod
 from ostler.qa.book_index import BookIndex
 from ostler.qa.compile_cli import cli_scenario_body
 from ostler.qa.compile_cli import invoke_env_names
+from ostler.qa.compile_grpc import grpc_scenarios
 from ostler.qa.compile_http import api_scenarios
 from ostler.qa.compile_http import probe_scenarios
 from ostler.qa.compile_http import http_walk
@@ -267,6 +268,7 @@ class ObligationLanes:
     """The owed obligations sorted by the builder that compiles each one."""
     page: list[Obligation] = field(default_factory=list[Obligation])
     http: list[Obligation] = field(default_factory=list[Obligation])
+    grpc: list[Obligation] = field(default_factory=list[Obligation])
     cli: list[Obligation] = field(default_factory=list[Obligation])
     mobile: list[Obligation] = field(default_factory=list[Obligation])
     flow: list[Obligation] = field(default_factory=list[Obligation])
@@ -311,7 +313,7 @@ def _dispatch(
 ) -> ObligationLanes:
     """Route each owed obligation to the builder D1's table names for its node and surface."""
     lanes = ObligationLanes()
-    by_target = {"playwright": lanes.page, "http": lanes.http, "cli": lanes.cli, "maestro": lanes.mobile}
+    by_target = {"playwright": lanes.page, "http": lanes.http, "grpc": lanes.grpc, "cli": lanes.cli, "maestro": lanes.mobile}
     for obligation in owed:
         if not _is_owed_for_dispatch(obligation):
             lanes.no_verify.append(obligation)
@@ -405,9 +407,11 @@ def _book_debt(no_verify: list[Obligation], gaps: list[Gap]) -> list[Obligation]
     return debt
 
 
-def _plan_header(digest: str, story: str, run_id: str | None, env_names: list[str]) -> list[str]:
+def _plan_header(
+    digest: str, story: str, run_id: str | None, env_names: list[str], secrets: list[str] | None = None,
+) -> list[str]:
     """The plan module's banner, imports, `plan(...)` call and the environment names its commands set."""
-    imports = "Qa, plan, scenario, target" + (", tool_env" if env_names else "")
+    imports = "Qa, plan, scenario, target" + (", tool_env" if env_names else "") + (", secret" if secrets else "")
     return [
         "# Compiled from the book by `ostler qa compile-plan`. Every `covers=` below is the",
         "# obligation the book itself attributed the check to. Fill the TODO markers from the",
@@ -420,6 +424,7 @@ def _plan_header(digest: str, story: str, run_id: str | None, env_names: list[st
         f"plan(run_id={python_literal(run_id or f'qa-{story}')}, story={python_literal(story)}, "
         f"book={python_literal(digest)})",
         *([f"tool_env({', '.join(map(python_literal, env_names))})"] if env_names else []),
+        *(f"secret({python_literal(name)}, from_env={python_literal(name)})" for name in secrets or ()),
     ]
 
 
@@ -529,6 +534,7 @@ def _compile_packet(
     lanes = _dispatch(owed, navigation, sinks.gaps, packet.browser_fixtures)
     debt = _book_debt(lanes.no_verify, sinks.gaps)
     http_owed, api_urls = _split_by_entry_url(lanes.http, navigation, base_url, sinks.gaps)
+    grpc_owed, grpc_urls = _split_by_entry_url(lanes.grpc, navigation, None, sinks.gaps)
     page_owed, web_urls = _split_by_entry_url(lanes.page, navigation, base_url, sinks.gaps)
     state_urls = _surface_urls(
         [o for o in lanes.state if _state_target(o, navigation) == PLAYWRIGHT.name], navigation, base_url)
@@ -541,7 +547,7 @@ def _compile_packet(
         acts_by_node=acts.by_node, acts_refused=acts.refused,
         captures_by_node=book_index_mod.captures_by_node(carried),
         cli_binaries=packet.cli_binaries,
-        resolved_web_base_urls=web_urls, resolved_api_base_urls=api_urls,
+        resolved_web_base_urls=web_urls, resolved_api_base_urls={**api_urls, **grpc_urls},
         queries_by_node=book_index_mod.queries_by_node(carried),
         checked_paths_by_node=book_index_mod.checked_paths_by_node(carried),
         claims_by_node=acts.claims_by_node,
@@ -565,10 +571,12 @@ def _compile_packet(
     env_names = invoke_env_names(
         [*(row for o in carried for row in o.acts), *(row for rows in acts.by_node.values() for row in rows)])
     journeys = JourneyPlan(book=book, sinks=sinks, navigation=navigation, walkers=_JOURNEY_WALKERS)
+    grpc = grpc_scenarios(grpc_owed, book, sinks, emitted)
     lines = [
-        *_plan_header(packet.digest, story, run_id, env_names),
+        *_plan_header(packet.digest, story, run_id, env_names, grpc.secrets),
         *probe_scenarios(http_owed, book, emitted),
         *api_scenarios(http_owed, book, sinks, emitted),
+        *grpc.lines,
         *_cli_scenarios(lanes.cli, book, sinks, emitted),
         *mobile_scenarios(lanes.mobile, book, navigation, sinks, emitted),
         *page_scenarios(navigation, page_owed, book, sinks, emitted),

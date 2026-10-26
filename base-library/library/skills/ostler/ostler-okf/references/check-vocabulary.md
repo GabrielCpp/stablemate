@@ -49,6 +49,18 @@ neither argument to disambiguate anything. Declare `method=` wherever the same r
 more than once in one scenario; `compile_plan` gaps rather than guessing when it is missing
 and needed.
 
+### `grpc_status(code*=<str>)`
+Excludes an rpc that answers with the right message under the wrong gRPC status, and a refusal
+told apart from its siblings only by a message nobody read.
+
+`code` is the canonical status name in capitals, such as `"NOT_FOUND"` or `"UNAUTHENTICATED"`.
+The check observes the reply `qa.grpc.call` returned. A claim that expects a refusal passes
+`expect_status=` to the call, so the refusal is the answer the scenario wanted, not an error.
+
+```
+verify: grpc_status(code="NOT_FOUND")
+```
+
 ### `response_header(name*=<str>, equals=<str>, matches=<str>) — one of equals, matches`
 Excludes a route that answers the right status with the wrong content type or disposition,
 which a client then misreads or saves under the wrong name.

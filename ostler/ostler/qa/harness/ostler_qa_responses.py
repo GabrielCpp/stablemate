@@ -160,3 +160,31 @@ def verify_printed(reading: StreamReading, args: Args) -> Verdict:
     if "matches" in args and re.search(str_arg(args, "matches"), reading.printed) is not None:
         missing.pop("matches")
     return verdict(not missing, reading.printed, missing)
+
+
+@dataclass(frozen=True)
+class GrpcReading:
+    """The status a gRPC reply carried and the message that came with it."""
+
+    status: str
+    message: str
+
+
+def read_reply(observed: object, args: Args) -> GrpcReading:
+    status = getattr(observed, "status", None)
+    if not isinstance(status, str):
+        raise TypeError(
+            "grpc_status observes a reply — pass the object qa.grpc.call returned, "
+            f"not {type(observed).__name__}"
+        )
+    message = getattr(observed, "message", "")
+    return GrpcReading(status=status, message=message if isinstance(message, str) else "")
+
+
+def verify_grpc_status(reading: GrpcReading, args: Args) -> Verdict:
+    expected = str_arg(args, "code").upper()
+    actual: dict[str, object] = {"code": reading.status}
+    passed = reading.status == expected
+    if not passed and reading.message.strip():
+        actual["reply"] = reply_excerpt(reading.message)
+    return verdict(passed, actual, {"code": expected})

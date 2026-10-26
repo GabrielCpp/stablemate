@@ -5871,9 +5871,27 @@ def _built_target_probe_maestro() -> tuple[dict, str]:
     return context, oid
 
 
+def _built_target_probe_grpc() -> tuple[dict, str]:
+    """The smallest obligation D1 dispatches to `grpc`: an `rpc` on a `grpc://` surface, with a status check, an arranged body and a fixture, so only a builder is missing."""
+    oid = "okf:built-target-probe:grpc:does:1"
+    context = _context(
+        _obligation(
+            oid,
+            nodeType="rpc",
+            locators={"name": ["ticket.v1.TicketService/GetTicket"]},
+            checksDeclared=[{"call": "missing", "name": "grpc_status", "args": {"code": "NOT_FOUND"}}],
+            fixturesDeclared=[{"name": "seeded-ledger", "args": [], "provides": "a ledger"}],
+            actsDeclared=[_body_act("id", "t-0")],
+        )
+    )
+    context["navigation"][""]["entryUrl"] = "grpc://localhost:50051"
+    return context, oid
+
+
 _BUILT_TARGET_PROBES = {
     "playwright": _built_target_probe_playwright,
     "http": _built_target_probe_http,
+    "grpc": _built_target_probe_grpc,
     "cli": _built_target_probe_cli,
     "maestro": _built_target_probe_maestro,
 }

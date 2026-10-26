@@ -7,13 +7,14 @@ DISPATCH_TABLE: dict[str, dict[str, str] | str] = {
     "interaction": {"web": "playwright", "mobile": "maestro"},
     "passage": {"web": "playwright", "mobile": "maestro", "http": "http", "cli": "cli"},
     "endpoint": {"web": "http", "mobile": "http", "http": "http"},
+    "rpc": "grpc",
     "command": "cli",
 }
 OBSERVED_TYPES = frozenset({"flow", "component", "screen", "field", "invocation", "state"})
 OBSERVE_ROW: dict[str, str] = {
     "web": "playwright", "mobile": "maestro", "http": "http", "cli": "cli",
 }
-BUILT_TARGETS = frozenset({"playwright", "http", "cli", "maestro"})
+BUILT_TARGETS = frozenset({"playwright", "http", "grpc", "cli", "maestro"})
 NO_LIVE_EVIDENCE_TYPES = frozenset({"concept", "method"})
 NO_LIVE_EVIDENCE_PAGES = frozenset({"concept", "format"})
 

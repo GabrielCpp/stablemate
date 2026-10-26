@@ -184,7 +184,7 @@ class _Probe:
         refused = python_literal(list(_REFUSED))
         check = (f"    qa.check({python_literal(label)}, observed.status not in {refused}, "
                  f"actual=observed.status, expected={python_literal(f'not {refused}')}, covers=[{python_literal(oid)}])")
-        return ["", *_within_claim(oid, [self.request.call, check])]
+        return ["", *within_claim(oid, [self.request.call, check])]
 
 
 def _probe(obligation: Obligation, credentials: tuple[CallRow, ...], caller: frozenset[tuple[str, str]]) -> _Probe | None:
@@ -198,7 +198,7 @@ def _probe(obligation: Obligation, credentials: tuple[CallRow, ...], caller: fro
     fixture = next((row.name for row in obligation.fixtures if row.name in sent), None)
     if fixture is None:
         return None
-    produced = _Produced()
+    produced = Produced()
     produced.record_fixtures(obligation)
     gaps: list[Gap] = []
     request = _claim_request(obligation, "observed", produced, gaps, credentials, caller)
@@ -231,7 +231,7 @@ class _HttpArrangement:
 
     def kwargs_source(self, *, with_body: bool) -> str:
         """The `json_body=`/`headers=` keywords of the call that sends this arrangement."""
-        body = f", json_body={_nested_body_literal(self.body)}" if with_body and not self.bodiless else ""
+        body = f", json_body={nested_body_literal(self.body)}" if with_body and not self.bodiless else ""
         headers = f", headers={_resolved_dict_literal(self.headers)}" if self.headers else ""
         return body + headers
 
@@ -267,7 +267,7 @@ def _resolved_dict_literal(fields: dict[str, CheckValue]) -> str:
     return "{" + ", ".join(f"{json.dumps(k)}: {resolved_literal(v)}" for k, v in fields.items()) + "}"
 
 
-def _nested_body_literal(fields: dict[str, CheckValue]) -> str:
+def nested_body_literal(fields: dict[str, CheckValue]) -> str:
     """A `json_body=` literal: a dotted field such as `locales.fr` is a member of a nested object, and the lone field `$` is the whole body."""
     if list(fields) == [_WHOLE_BODY]:
         return resolved_literal(fields[_WHOLE_BODY], "resolve_body")
@@ -289,7 +289,7 @@ def _tree_literal(tree: dict[str, Any]) -> str:
 
 
 @dataclass(frozen=True)
-class _Produced:
+class Produced:
     """What earlier claims in one endpoint scenario left for a later one to reference: fixture facts and captured names."""
     facts: set[tuple[str, str]] = field(default_factory=set[tuple[str, str]])
     captures: set[str] = field(default_factory=set[str])
@@ -422,7 +422,7 @@ def _claim_acts(
 
 
 def _claim_request(
-    obligation: Obligation, observed: str, produced: _Produced, gaps: list[Gap],
+    obligation: Obligation, observed: str, produced: Produced, gaps: list[Gap],
     credentials: tuple[CallRow, ...] = (), caller: frozenset[tuple[str, str]] = frozenset(),
     stated: int | None = None,
 ) -> _ClaimRequest | _UnbuiltClaimRequest:
@@ -496,8 +496,8 @@ def _request_lines(
     return [request.call, "    # TODO(arrange): the path above still carries a template variable"]
 
 
-def _claim_captures(
-    obligation: Obligation, observed: str | None, produced: _Produced, gaps: list[Gap],
+def claim_captures(
+    obligation: Obligation, observed: str | None, produced: Produced, gaps: list[Gap],
     captured: set[tuple[str, str]],
 ) -> list[str]:
     """Bind each capture *obligation* declares out of the *observed* response, declining one no response here holds."""
@@ -530,15 +530,15 @@ def _verify_line(oid: str, row: CallRow, observed: str) -> str | ScenarioRefusal
 
 
 @dataclass(frozen=True)
-class _ClaimAssertions:
+class ClaimAssertions:
     """One claim's checks on its response: the `qa.verify` lines, and a TODO per check no operand here observes."""
     assertions: list[str]
     todos: list[str]
 
 
-def _claim_assertions(
-    obligation: Obligation, observed: str, produced: _Produced, gaps: list[Gap],
-) -> _ClaimAssertions:
+def claim_assertions(
+    obligation: Obligation, observed: str, produced: Produced, gaps: list[Gap],
+) -> ClaimAssertions:
     """Every check *obligation* declares, asserted on the *observed* response where an operand observes it."""
     oid = obligation.id
     assertions: list[str] = []
@@ -554,14 +554,14 @@ def _claim_assertions(
             gaps.append(Gap(oid, line.kind, line.detail))
             continue
         assertions.append(line)
-    return _ClaimAssertions(assertions, todos)
+    return ClaimAssertions(assertions, todos)
 
 
 def _scenario_body(obligations: list[Obligation], arranging: list[Obligation], fixture_pages: dict[str, frozenset[str]],
                    gaps: list[Gap], covered: set[str], captured: set[tuple[str, str]]) -> list[str]:
     """Compile every claim's request, captures and assertions, in book order, sending each node's credentials from every claim that arranges one, checked or not."""
     lines: list[str] = []
-    produced = _Produced()
+    produced = Produced()
     ordered = sorted(obligations, key=lambda o: o.doc_position)
     credentials = _node_credentials(arranging)
     callers = _node_caller_headers(arranging)
@@ -580,19 +580,19 @@ def _scenario_body(obligations: list[Obligation], arranging: list[Obligation], f
                                        statuses.get(_request_key(obligation))))
         claim_lines = _request_lines(oid, request, observed, gaps)
         responded = observed if isinstance(request, _ClaimRequest) else None
-        claim_lines.extend(_claim_captures(obligation, responded, produced, gaps, captured))
+        claim_lines.extend(claim_captures(obligation, responded, produced, gaps, captured))
         if responded is None:
             lines.extend(claim_lines)
             continue
-        asserted = _claim_assertions(obligation, observed, produced, gaps)
+        asserted = claim_assertions(obligation, observed, produced, gaps)
         claim_lines.extend(asserted.todos or asserted.assertions)
-        lines.extend(_within_claim(oid, claim_lines))
+        lines.extend(within_claim(oid, claim_lines))
         if not asserted.todos:
             covered.add(oid)
     return lines
 
 
-def _within_claim(oid: str, lines: list[str]) -> list[str]:
+def within_claim(oid: str, lines: list[str]) -> list[str]:
     """*lines* inside the claim's `qa.claim` block, so a claim that fails is recorded against it and the scenario goes on to the next."""
     indented = [f"    {line}" if line else line for text in lines for line in text.split("\n")]
     return [f"    with qa.claim([{python_literal(oid)}]):", *indented]
@@ -735,7 +735,7 @@ def _book_spelling(ref: references.Reference) -> str:
     return f"@{ref.node}.{ref.key}" if isinstance(ref, references.NodeRef) else f"${ref.name}"
 
 
-def _unprovided_references(request: _HttpRequest, known: _Produced) -> list[references.Reference]:
+def _unprovided_references(request: _HttpRequest, known: Produced) -> list[references.Reference]:
     """Every reference *request* sends that no journey fixture or earlier step provides."""
     return [ref for ref in request.sent_references if not known.resolves(ref)]
 
@@ -841,7 +841,7 @@ def _route_pattern(path: str) -> re.Pattern[str]:
 
 
 def _step_success_checks(
-    index: int, step: FlowStep, request: _HttpRequest, observed: str, walk: JourneyWalk, known: _Produced,
+    index: int, step: FlowStep, request: _HttpRequest, observed: str, walk: JourneyWalk, known: Produced,
     gaps: list[Gap], claims: tuple[Obligation, ...] | list[Obligation],
 ) -> list[str]:
     """Every check of the *claims* the step expects, asserted on *observed* straight after the request that earned it."""
@@ -896,7 +896,7 @@ class _PlannedRead:
     held: str
 
 
-def _rewired(value: CheckValue, known: _Produced, owners: frozenset[str] = frozenset()) -> CheckValue:
+def _rewired(value: CheckValue, known: Produced, owners: frozenset[str] = frozenset()) -> CheckValue:
     """*value* with each `@fixture.fact` sent from the one fixture of *owners* that provides that fact when there is exactly one, else from the one fixture the walk arranges that provides it when the named fixture is not arranged."""
     if not isinstance(value, str):
         return value
@@ -917,7 +917,7 @@ def _rewired(value: CheckValue, known: _Produced, owners: frozenset[str] = froze
 
 
 def _planned_read(
-    where: str, observed: str, target: DataState, book: BookIndex, known: _Produced, produced: set[str],
+    where: str, observed: str, target: DataState, book: BookIndex, known: Produced, produced: set[str],
     owners: dict[str, set[str]], step_headers: dict[str, CheckValue] | None = None, rewire: bool = False,
     record_fixtures: frozenset[str] = frozenset(),
 ) -> _PlannedRead | str:
@@ -957,7 +957,7 @@ def _planned_read(
 
 
 def read_back(
-    where: str, observed: str, target: DataState, book: BookIndex, known: _Produced, produced: set[str],
+    where: str, observed: str, target: DataState, book: BookIndex, known: Produced, produced: set[str],
     owners: dict[str, set[str]], step_headers: dict[str, CheckValue] | None = None, rewire: bool = False,
     record_fixtures: frozenset[str] = frozenset(),
 ) -> list[str] | str:
@@ -973,7 +973,7 @@ def read_back(
 
 
 def condition_read(
-    where: str, observed: str, target: DataState, book: BookIndex, known: _Produced, owners: dict[str, set[str]],
+    where: str, observed: str, target: DataState, book: BookIndex, known: Produced, owners: dict[str, set[str]],
     origin: str, page: str,
 ) -> list[str] | str:
     """The lines a browser scenario sends to *origin* to read *target*'s state before its claim's checks, or why it cannot be read."""
@@ -992,7 +992,7 @@ def condition_read(
 
 def condition_lines(obligations: list[Obligation], book: BookIndex, gaps: list[Gap]) -> list[str] | None:
     """The reads that hold each data state the *obligations* declare with `when:`, in order and once each, or `None` once a gap says why a condition cannot be read."""
-    known = _Produced()
+    known = Produced()
     for obligation in obligations:
         known.record_fixtures(obligation)
     owners = _fixture_owners(obligations)
@@ -1038,7 +1038,7 @@ def _own_record(ref: str, book: BookIndex) -> bool:
 
 
 def _move_lines(
-    index: int, step: FlowStep, walk: JourneyWalk, known: _Produced, produced: set[str],
+    index: int, step: FlowStep, walk: JourneyWalk, known: Produced, produced: set[str],
     owners: dict[str, set[str]], gaps: list[Gap], reached: set[str], sent_headers: dict[str, CheckValue],
 ) -> list[str]:
     """The read-back after a step that moves a record: the target state's endpoint requested as a step would be, then the target's checks on its answer, naming the sibling state that holds when they fail."""
@@ -1094,7 +1094,7 @@ def _http_steps(
     lines: list[str] = []
     produced: set[str] = set()
     reached: set[str] = set()
-    known = _Produced(captures=produced)
+    known = Produced(captures=produced)
     for obligation in walk.obligations:
         known.record_fixtures(obligation)
     owners = _fixture_owners(walk.obligations)
@@ -1240,7 +1240,7 @@ def move_walk(
 ) -> WalkedJourney | None:
     """Read the record in *start*, send the one step of *walk*, and hold the state its `moves:` row lands on, or `None` once a gap says why the walk cannot be built."""
     book = walk.book
-    known = _Produced()
+    known = Produced()
     for obligation in walk.obligations:
         known.record_fixtures(obligation)
     steps = _http_steps(walk, sinks, record_fixtures)
@@ -1262,7 +1262,7 @@ def observe_walk(
     record_fixtures: frozenset[str] = frozenset(),
 ) -> WalkedJourney | None:
     """Read the record the fixtures of *walk_obligations* arrange in *state*, or `None` once a gap says why the walk cannot read it."""
-    known = _Produced()
+    known = Produced()
     for obligation in walk_obligations:
         known.record_fixtures(obligation)
     read = read_back("the read of the state", "observed", state, book, known, set(), _fixture_owners(walk_obligations),

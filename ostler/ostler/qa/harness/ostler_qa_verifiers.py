@@ -43,10 +43,12 @@ from ostler_qa_paths import JsonValue
 from ostler_qa_responses import (
     read_exit,
     read_headers,
+    read_reply,
     read_response,
     read_stream,
     verify_conflict_on_stale,
     verify_exit_status,
+    verify_grpc_status,
     verify_http_status,
     verify_printed,
     verify_response_header,
@@ -67,6 +69,7 @@ def _verifier[R](read: Callable[[object, Args], R], judge: Callable[[R, Args], V
 
 VERIFIERS: dict[str, Verifier] = {
     "http_status": _verifier(read_response, verify_http_status),
+    "grpc_status": _verifier(read_reply, verify_grpc_status),
     "response_header": _verifier(read_headers, verify_response_header),
     "json_path": _verifier(read_document, verify_json_path),
     "unchanged": _verifier(read_pair("unchanged"), verify_unchanged),

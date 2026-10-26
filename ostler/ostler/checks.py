@@ -91,6 +91,14 @@ CHECKS: tuple[CheckSpec, ...] = (
         plan_reads="the response `qa.http` or `qa.window().response_for(path)` returned, or its integer status. `path=` needs the response itself",
     ),
     CheckSpec(
+        name="grpc_status",
+        params=(CheckParam("code", "str", required=True),),
+        excludes="an rpc that answers with the right message under the wrong gRPC status, and a "
+                 "refusal told apart from its siblings only by a message nobody read",
+        observes="response",
+        plan_reads="the reply `qa.grpc.call` returned. `code` is the canonical status name, such as \"NOT_FOUND\"",
+    ),
+    CheckSpec(
         name="response_header",
         params=(
             CheckParam("name", "str", required=True, identifies=True),

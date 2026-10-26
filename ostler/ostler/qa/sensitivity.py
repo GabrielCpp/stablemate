@@ -522,6 +522,14 @@ def _plan_http_status(args: Mapping[str, checks.CheckValue]) -> _WitnessPlan:
     return _WitnessPlan.of(witness, mutations)
 
 
+def _plan_grpc_status(args: Mapping[str, checks.CheckValue]) -> _WitnessPlan:
+    code = str(args["code"]).upper()
+    other = "INTERNAL" if code != "INTERNAL" else "UNKNOWN"
+    return _WitnessPlan.of(SimpleNamespace(status=code, message=""), [
+        ("the rpc answered a different status", SimpleNamespace(status=other, message="")),
+    ])
+
+
 def _plan_response_header(args: Mapping[str, checks.CheckValue]) -> _WitnessPlan | _NoWitness:
     header = str(args["name"])
     if "equals" in args:
@@ -842,6 +850,7 @@ def _plan_conflict_on_stale(_args: Mapping[str, checks.CheckValue]) -> _WitnessP
 
 _PLANNERS: dict[str, Callable[[Mapping[str, checks.CheckValue]], _WitnessPlan | _NoWitness]] = {
     "http_status": _plan_http_status,
+    "grpc_status": _plan_grpc_status,
     "response_header": _plan_response_header,
     "json_path": _plan_json_path,
     "unchanged": _plan_unchanged,

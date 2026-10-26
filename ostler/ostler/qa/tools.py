@@ -15,6 +15,7 @@ from ostler.qa.outcome import QaOutcome
 BUILTIN_TOOLS: dict[str, str] = {
     "tesseract": "tesseract",
     "convert": "convert",
+    "grpcurl": "grpcurl",
 }
 
 _QA_CONFIG_FILES = ("ostler.yml", "ostler.yaml", "agents.yml", ".agents.yml")
