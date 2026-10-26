@@ -58,3 +58,14 @@ def test_the_mockup_arm_survives_for_the_story_that_has_one(prompt: Path) -> Non
 
     assert "./mockup.html" in rendered
     assert "link it from Context as the source of truth" in rendered
+
+
+@pytest.mark.parametrize("prompt", WRITE_STORY, ids=_id)
+def test_a_new_transient_state_is_specified_to_clear_without_a_book(prompt: Path) -> None:
+    """This fails when the appear-and-clear rule hides behind a book the greenfield app lacks."""
+    context = _backend_only_story() | {"services_dir": ""}
+
+    rendered = render(prompt.relative_to(WORKFLOW_DIR), context, WORKFLOW_DIR)
+
+    assert "Every loading, busy or failure state this story introduces" in rendered
+    assert "one for when it clears" in rendered

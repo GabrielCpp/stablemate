@@ -121,6 +121,9 @@ selectors, file presence, framework setup, or implementation details:
   codes").
 - Changed states the goal introduces: happy path plus empty / loading / error / reachability only
   where this story builds or changes them.
+- Every loading, busy or failure state this story introduces gets a criterion for when it appears
+  and one for when it clears. For example: "when the request fails, the spinner stops and the submit
+  button works again", and "the failure message goes away when the person submits again".
 
 {%- if workhorse_var('services_dir') %}
 The criteria MUST cover the parts of cited nodes this story changes — read from the book, never invented:

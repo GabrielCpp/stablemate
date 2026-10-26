@@ -21,7 +21,7 @@ The angles carry the criteria that the per-stage reviewers used to hold. Every o
 | story-split | services | each story names the books it changes |
 | story | journey | observable, verifiable criteria and a complete journey segment |
 | story | chrome | presence and absence criteria for conditional components the story changes |
-| story | transient-feedback | appear-then-disappear criteria for documented transient outcomes |
+| story | transient-feedback | appear-then-disappear criteria for documented transient outcomes and for the loading, busy and failure states the story introduces |
 | story | grounding | grounded and in scope, no hidden decision, correct classification, honest technical notes |
 | story | mockup | the story mockup agrees with the milestone journey mockups |
 | epic-edit-plan | plan | the edit satisfies the operator intent and stays buildable |
