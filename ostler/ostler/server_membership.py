@@ -38,6 +38,12 @@ def _type_of(path: Path) -> str:
         return ""
 
 
+def host_servers(node: UINode, uitype: registry.UINodeType, resolver: LinkResolver) -> list[Path]:
+    """The host pages of the type *uitype* that the page *node* links from its first bullet."""
+    return [p for p in _servers(node, uitype.bullet_keys[0].key, resolver)
+            if _type_of(p) in uitype.host_page_types]
+
+
 def _inline(graph: Graph, node: UINode, name: str, f: list[Finding]) -> None:
     rel = node.path.resolve().relative_to(graph.root.resolve()).as_posix()
     f.append(Finding(
@@ -59,7 +65,7 @@ def check_server_membership(graph: Graph, f: list[Finding], resolver: LinkResolv
             if node.kind != "file":
                 _inline(graph, node, uitype.name, f)
                 continue
-            servers = [p for p in _servers(node, key, resolver) if _type_of(p) in uitype.host_page_types]
+            servers = host_servers(node, uitype, resolver)
             if len(servers) != 1:
                 named = "names none" if not servers else f"names {len(servers)}"
                 f.append(Finding(

@@ -51,10 +51,12 @@ says how to use it. This page says where each concern lives.
 - `provenance.py`: the joins between git story trailers and story-scoped context packets.
 - `query.py`: `ostler list`, `search` and `query`, retrieval over the knowledge graph.
 - `reach.py`: `ostler reach`, how to navigate to a screen, derived from the book alone.
+- `proto_contract.py`: the services and RPCs a folder of `.proto` files declares, read without a protobuf dependency.
 - `refs.py`: the ref grammars this package mints and reads.
 - `registry.py`: the machine-readable type registry, the source of truth for the knowledge format.
 - `result.py`: the value every ostler writer returns.
 - `routes.py`: what a screen's `route:` bullet says about the address a browser would show.
+- `rpc_coverage.py`: doctor's check that a grpc-server's rpc pages book exactly the RPCs its proto contract declares.
 - `scaffold.py`: `ostler scaffold`, hierarchy-respecting creation of UI-profile nodes.
 - `schemas.py`: loading the bundled JSON Schemas and validating documents against them.
 - `section_hosts.py`: doctor's check that a section which lives on one page type appears on no other.

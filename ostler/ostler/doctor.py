@@ -28,13 +28,13 @@ from ostler import register as register_mod
 from ostler.finding import Finding
 from ostler.model import Graph, Epic, Story, UINode, load_config, read_doc, required_section_problems
 from ostler.path import services_root as services_root_of, specs_root_in
-from ostler.provenance import checkout_for, effective_checkouts
+from ostler.provenance import code_ref_root, effective_checkouts
 from ostler.qa import (addresses as qa_addresses, captures as captures_mod, fixture_browser,
                        fixtures as fixtures_mod, references, runbook as runbook_mod, sensitivity)
 from ostler.qa.compile import Gap
 from ostler.qa.context import RELATION_KEYS, relation_subject
 from ostler.qa.outcome import QaOutcome
-from ostler import data_state_ledger, data_states, fragment_hosts, hidden_claims, milestones as milestones_mod, outcome_rules, page_size, passages, section_hosts, server_membership, shared_checks, stack_checks, stamp as stamp_mod, step_commands
+from ostler import data_state_ledger, data_states, fragment_hosts, hidden_claims, milestones as milestones_mod, outcome_rules, page_size, passages, rpc_coverage, section_hosts, server_membership, shared_checks, stack_checks, stamp as stamp_mod, step_commands
 from ostler import values as values_mod
 from ostler.source_snapshots import book_repository
 
@@ -120,6 +120,7 @@ def run(graph: Graph, epic_filter: str | None = None, check_schema: bool = True,
     _check_decisions(graph, f)
     _check_ui(graph, f, resolver, checkouts)
     server_membership.check_server_membership(graph, f, resolver)
+    rpc_coverage.check_rpc_coverage(graph, f, resolver, checkouts)
     fragment_hosts.check_fragment_hosts(graph, f, resolver)
     page_size.check_page_size(graph, f)
     hidden_claims.check_hidden_claims(graph, f)
@@ -1630,19 +1631,16 @@ def _check_code_grounding(graph: Graph, f: list[Finding],
             except ValueError:
                 parsed = refs_mod.CodeRef("", ref)
             target_path, symbol = parsed.path, parsed.symbol
-            source_root = graph.root
-            if parsed.repository and parsed.repository != own_repository:
-                checkout = checkout_for(parsed.repository, checkout_map, default=own_repository)
-                if checkout is None:
-                    f.append(Finding(
-                        "warn", "unreachable-citation",
-                        f"{node.id}: `code:` target '{ref}' names a repository "
-                        f"('{parsed.repository}') this run has no checkout for",
-                        path=rel, line=node.line, ref=ref,
-                        suggestion=f"pass --checkout {parsed.repository}=<path> to check this "
-                                   "citation"))
-                    continue
-                source_root = checkout
+            source_root = code_ref_root(graph, parsed, checkout_map, own_repository)
+            if source_root is None:
+                f.append(Finding(
+                    "warn", "unreachable-citation",
+                    f"{node.id}: `code:` target '{ref}' names a repository "
+                    f"('{parsed.repository}') this run has no checkout for",
+                    path=rel, line=node.line, ref=ref,
+                    suggestion=f"pass --checkout {parsed.repository}=<path> to check this "
+                               "citation"))
+                continue
             separator = "::" if symbol else ""
             target = source_root / target_path
             if target.is_dir():

@@ -355,6 +355,14 @@ def checkout_for(repository: str, checkouts: dict[str, Path],
     return None
 
 
+def code_ref_root(graph: Graph, ref: refs.CodeRef, checkouts: dict[str, Path],
+                  own_repository: str) -> Path | None:
+    """The tree a parsed ``code:`` target is read from: the book's root, or its repository's checkout, or `None` when this run has none."""
+    if ref.repository and ref.repository != own_repository:
+        return checkout_for(ref.repository, checkouts, default=own_repository)
+    return graph.root
+
+
 def default_repository(graph: Graph) -> str:
     """The repository a book's unqualified ``code:`` refs resolve to, if it declared one."""
     from ostler import source_snapshots
