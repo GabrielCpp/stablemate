@@ -104,7 +104,7 @@ Called by the thread that owned the process; in headless mode this is the owners
 - does: return the attendant currently on this run, if there is one, narrowed to `status = running`
 - verify: json_path(path="status", equals="running")
 - returns: the converted row or `None` if no running attendance exists
-- verify: json_path(path="session_ids", matches=".+")
+- verify: count(subject="session_ids in the attend_running_for_run result", equals=1)
 - code: `groom/groom/attend_ledger.py::attend_running_for_run`
 - detail: [Attendant session persistence](attendant-session-persistence.md)
 
@@ -131,7 +131,7 @@ the fleet projection, which links each blocked run to its attendant.
 ### method: attend_recent
 - sig: `(limit: int = 200) -> list[dict[str, Any]]`
 - does: return the latest attendances, newest first, without pagination or deletion
-- verify: json_path(path="[0].job_id", matches=".+")
+- verify: json_path(path="[0].job_id", equals="the job_id of whichever row has the latest started_at")
 - returns: ordered list of converted rows, newest first, capped at `limit`
 - verify: json_path(path="[0].session_ids", matches="^\\[.*\\]$")
 - code: `groom/groom/attend_ledger.py::attend_recent`
@@ -144,7 +144,7 @@ The corpus is the point. Reading back a season of attendances is how a recurring
 - does: return the attendance with the given job id
 - verify: json_path(path="job_id", equals="the job_id parameter passed to the method")
 - returns: the converted row or `None` if it does not exist
-- verify: json_path(path="session_ids", matches=".+")
+- verify: count(subject="session_ids in the attend_get result", equals=1)
 - code: `groom/groom/attend_ledger.py::attend_get`
 
 Used by the control CLI to look up the job context.

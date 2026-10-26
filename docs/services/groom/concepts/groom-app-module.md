@@ -70,11 +70,11 @@ The factory assembles application configuration only: it does not run discovery,
 - code: groom/groom/app.py::create_app
 - does: Constructs the Litestar application for the [groom server](../http/groom.md).
 - verify: created(subject="Litestar application")
-- does: Registers 30 route handlers — 29 first-party handlers plus the package-static `/assets` router.
+- does: Registers 29 route handlers — 28 first-party handlers plus the package-static `/assets` router.
 - verify: created(subject="Litestar application's route handlers")
-- does: Registers `_spawn_scan`, `_spawn_rules`, `_spawn_live`, `_spawn_archive`, and `_recover_attend` as startup callbacks.
+- does: Registers `_spawn_scan`, `_spawn_rules`, `_spawn_live`, `_spawn_archive`, and `_recover_attend` as startup callbacks. `_spawn_rules` starts the alert-rule ticker that fires [alert](alert.md)s and runs the [groom turns module](groom-turns-module.md)'s harvest and [groom store](groom-store.md) prune housekeeping; `_spawn_live` starts the clock that re-renders the run list, projecting each native run's cached terminal and gate state from [run telemetry](run-telemetry.md) onto its dashboard row; `_spawn_archive` starts the [run telemetry archive loop](run-telemetry-archive-loop.md); `_recover_attend` restarts orphaned [attendant dispatch](groom-attend.md) jobs through [recover_orphans](groom-attend.md#recover_orphans).
 - verify: created(subject="Litestar application's startup callbacks")
-- does: Registers `_stop_rules`, `_stop_live`, `_stop_archive`, and `pools.shutdown_all` as shutdown callbacks.
+- does: Registers `_stop_rules`, `_stop_live`, `_stop_archive`, and `pools.shutdown_all` as shutdown callbacks. `pools.shutdown_all` tears down the dedicated executors documented by [thread pool isolation](thread-pool-isolation.md).
 - verify: created(subject="Litestar application's shutdown callbacks")
 - tests: groom/tests/test_app.py::test_spawn_scan_returns_before_discovery_completes
 
@@ -123,6 +123,8 @@ The dashboard entry response leaves fleet, gate, file, diff, and websocket state
 - sig: `async files(container_id: str, repo: str = "") -> dict`
 - abstract: false
 - raises: propagates unexpected sidecar-registry, Docker, or response-construction failures.
+- verify: json_path(path="exception.type", equals="FileNotFoundError")
+- verify: json_path(path="exception.type", equals="TimeoutExpired")
 - code: groom/groom/app.py::files
 - endpoint: [get workspace file list](../http/groom.md#get-workspace-file-list)
 - invocation: [serve workspace file list](../http/groom.md#serve-workspace-file-list)
@@ -141,15 +143,18 @@ For a connected sidecar, the method reads the selected repository through `getTr
 - sig: `async file_content(container_id: str, repo: str = "", path: str = "") -> dict`
 - abstract: false
 - raises: propagates unexpected sidecar-registry, Docker, or response-construction failures.
+- verify: json_path(path="exception.type", equals="FileNotFoundError")
+- verify: json_path(path="exception.type", equals="TimeoutExpired")
 - code: groom/groom/app.py::file_content
 - detail: [file content documentation scopes](file-content-documentation-scopes.md)
 - endpoint: [get workspace file content](../http/groom.md#get-workspace-file-content)
 - invocation: [serve workspace file content](../http/groom.md#serve-workspace-file-content)
-- does:
+- does: branches
   - Requests `getFile` over the [sidecar RPC helper](sidecar-rpc-helper.md) for the selected repository and path.
   - Falls back to the [workspace volume file-content reader](workspace-volume-file-content-reader.md) with a combined repository-relative path when the sidecar path is unavailable.
   - Skips the fallback and returns empty text when the workflow, volume, or relative path is missing.
   - Converts unsafe fallback paths to an empty text response instead of raising.
+    - verify: json_path(path="$.content", equals="")
 - returns: the requested file's content or empty text without raising.
 - verify: http_status(code=200, path="/repos/{container_id}/file", title="Workspace File Content")
 - verify: json_path(path="$.content", absent=false)
@@ -178,10 +183,10 @@ For a connected sidecar, the method reads the selected repository through `getTr
 - raises: propagates unexpected sidecar-registry, Docker, or response-construction failures.
 - code: groom/groom/app.py::diff
 - detail: [diff documentation scopes](diff-documentation-scopes.md)
-- does:
+- does: branches
   - Requests `getDiff` over the [sidecar RPC helper](sidecar-rpc-helper.md) for the selected repository.
   - Falls back to the [workspace volume diff reader](workspace-volume-diff-reader.md) when the sidecar cannot serve the diff and the workflow has a known workspace volume.
-  - Returns [workspace diff data](../formats/workspace-diff-data.md) as plain text for client-side diff rendering.
+- does: returns [workspace diff data](../formats/workspace-diff-data.md) as plain text for client-side diff rendering, regardless of which branch served it.
 - verify: json_path(path="$.diff", matches=".+")
 - tests: groom/tests/test_app.py::test_diff_endpoint_passes_repo_through,
   groom/tests/test_app.py::test_diff_prefers_sidecar_socket

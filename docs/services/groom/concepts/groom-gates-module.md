@@ -31,7 +31,7 @@ pure text helpers use the fallback outputs specified by their individual method 
 - import behavior: importing the module binds the status constants, compiles the status and question parsers, and exposes the public helper functions; import does not read Docker, inspect containers, read or write gate files, acquire gate locks, mutate process state, render HTML, or broadcast websocket fragments.
 - public data members: the public status-token fields are exactly `AWAITING`, `ANSWERED`, and `CONSUMED`.
 - public function members: the public helpers are exactly `status_of`, `is_awaiting`, `extract_question`, `apply_answer`, and `answer_gate`.
-- private parser members: `_STATUS_RE`, `_QUESTIONS_RE`, and `_QUESTION_PREVIEW_LIMIT` are private module implementation details folded into the [operator gate context file](../formats/operator-gate-context-file.md) format contract rather than separate public concepts.
+- private parser members: `_MARKDOWN` (a shared CommonMark parser instance) and `_QUESTION_HEADINGS` (the recognized question-heading text set) are private module implementation details folded into the [operator gate context file](../formats/operator-gate-context-file.md) format contract rather than separate public concepts; the `STATUS:` line pattern itself lives in the `workhorse.gates` module that `status_of` delegates to, not in this file.
 - file contract: every parser and writer in this module operates on the [operator gate context file](../formats/operator-gate-context-file.md) text format rather than on rendered dashboard HTML, database rows, or Docker inspect metadata.
 - status contract: the only public open-gate token is [field-awaiting](#field-awaiting), the only token this module writes is [field-answered](#field-answered), and [field-consumed](#field-consumed) is recognized as a non-awaiting lifecycle value for compatibility with wait scripts.
 - purity boundary: [status-of](#status-of), [is-awaiting](#is-awaiting), [extract-question](#extract-question), and [apply-answer](#apply-answer) are deterministic string helpers with no Docker, state, network, filesystem, or dashboard side effects.
@@ -120,21 +120,21 @@ Classifies whether one supplied gate-file text string is currently answerable by
 - sig: `extract_question(text: str) -> str`
 - abstract: false
 - raises: none intentionally raised for any string input.
-- returns: the recognized agent question section body, or the stripped whole text fallback, truncated to the operator preview limit.
-- verify: count(subject="recognized question text in returned preview", equals=1)
-- verify: count(subject="unrelated context section text in returned question preview", equals=0)
-- verify: count(subject="stripped whole gate text in returned question preview", equals=1)
+- returns: the recognized agent question section body, or the stripped whole text fallback, with no length limit of its own.
+- verify: count(subject="recognized question text in returned question", equals=1)
+- verify: count(subject="unrelated context section text in returned question", equals=0)
+- verify: count(subject="stripped whole gate text in returned question", equals=1)
 - code: groom/groom/gates.py::extract_question
 - detail: [gate question extraction contexts](gate-question-extraction-contexts.md)
 - tests: groom/tests/test_gates.py::test_extract_question_pulls_the_named_section
 - tests: groom/tests/test_gates.py::test_extract_question_falls_back_to_whole_text_when_no_header
 
-Extracts the operator-facing question preview from one gate file for gate records and dashboard displays. In `groom/groom/gates.py::extract_question`, the selected text is truncated to its first 4000 characters.
+Extracts the operator-facing question text from one gate file for gate records and dashboard displays. In `groom/groom/gates.py::extract_question`, the recognized heading is matched against an in-memory CommonMark parse of the text rather than a regular expression.
 
 #### Effects
 
 - reads: only the supplied text string.
-- matches: every recognized singular or plural question heading described by [field-question-section](../formats/operator-gate-context-file.md#field-question-section).
+- matches: every top-level `h2` question heading described by [field-question-section](../formats/operator-gate-context-file.md#field-question-section); a heading nested inside a list item or blockquote is skipped.
 - selects: the stripped body of the latest recognized section when present, otherwise the stripped whole text string.
 - calls: no other Groom source symbol.
 - does not mutate: gate file text, workspace volumes, Docker containers, in-memory workflow state, gate locks, answer logs, dashboard clients, or rendered fragments.
@@ -197,7 +197,7 @@ Applies one submitted operator answer to one awaiting gate file in a workspace v
 ### algorithm-module-initialization
 
 - step: Bind the public status token constants [field-awaiting](#field-awaiting), [field-answered](#field-answered), and [field-consumed](#field-consumed).
-- step: Bind private parser state for the [operator gate context file](../formats/operator-gate-context-file.md): one status-line pattern, one question-section pattern, and the 4000-character question preview limit.
+- step: Bind private parser state for the [operator gate context file](../formats/operator-gate-context-file.md): one shared CommonMark parser instance and the set of recognized question-heading texts.
 - step: Expose four pure text helpers and one asynchronous gate-answering operation.
 - step: Complete import without inspecting Docker, opening a workspace volume, reading a gate file, writing a gate file, mutating state, acquiring a gate lock, or emitting dashboard output.
 

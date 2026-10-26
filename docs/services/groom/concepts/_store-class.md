@@ -76,16 +76,16 @@ The instance attributes set in [`__init__`](#init) and read/mutated by the metho
 - default: `0`
 - required: false — observation counter, never set by callers
 - semantics: count of writer connection recyclings completed, incremented once per [`recycle()`](#recycle) call that closes `_conn`
+- verify: count(subject="_reopens", equals=1)
 - semantics: a recycle() call suppressed by the cooldown gate raises instead of closing, and leaves `_reopens` where it was
+- verify: count(subject="_reopens", equals=1)
 - semantics: consulted by the cooldown gate at the top of [`recycle()`](#recycle), so a non-zero value means another reopen has happened recently
 - semantics: cleared only by [`reset()`](#reset), which the test harness calls between cases to switch `$GROOM_DB`
+- verify: count(subject="_reopens", equals=0)
 - tests: `groom/tests/test_telemetry.py::test_a_closed_connection_heals_on_the_next_write`
 - tests: `groom/tests/test_telemetry.py::test_reopen_is_rate_limited`
 - persistence: instance-only — held in `_Store` memory only, never persisted to disk, lost on process restart
 - concurrency: lock-protected — written inside `_Store.lock` from `recycle()`, so concurrent callers serialize through the RLock before incrementing
-- verify: count(subject="_reopens", equals=1)
-- verify: count(subject="_reopens", equals=1)
-- verify: count(subject="_reopens", equals=0)
 
 ### _failures
 
@@ -94,15 +94,15 @@ The instance attributes set in [`__init__`](#init) and read/mutated by the metho
 - required: false — observation counter, never set by callers
 - semantics: count of connection errors observed, incremented once per `recycle()` call and once per `recycle_reader()` call
 - semantics: the increment from `recycle()` happens before the cooldown gate, so a recycle that raises inside the cooldown still bumps `_failures`
+- verify: count(subject="_failures", equals=2)
 - semantics: stamped in the same call sites as `_last_error`, so a viewer reads the count and the most recent message together
 - semantics: stamped in `recycle_reader()` without taking `_Store.lock`, deliberately trading accuracy under a race for the wait the lock would cost
 - semantics: cleared only by [`reset()`](#reset)
+- verify: count(subject="_failures", equals=0)
 - tests: `groom/tests/test_telemetry.py::test_reopen_is_rate_limited`
 - persistence: instance-only — held in `_Store` memory only, never persisted to disk, lost on process restart
 - concurrency: writer-path-locked — incremented inside `_Store.lock` from `recycle()`, so concurrent writers serialize on the increment
 - concurrency: reader-path-unlocked — incremented without `_Store.lock` from `recycle_reader()`
-- verify: count(subject="_failures", equals=2)
-- verify: count(subject="_failures", equals=0)
 
 ### _last_error, _last_error_ts
 
@@ -155,18 +155,18 @@ The paired writer state with [`_reopens`](#_reopens) — read on every call into
 - default: `0.0` — held by a fresh `_Store` or one that has just called [`reset()`](#reset), until the first successful [`recycle()`](#recycle) stamps it
 - required: true — `recycle()` reads this on every call after the first successful reopen to decide whether to re-raise (the cooldown is the contract this field carries)
 - semantics: stamped using `self.monotonic()` (the same injectable clock [`monotonic`](#monotonic) declares) rather than `time.time()`, so the cooldown comparison `now - self._last_reopen_at < REOPEN_COOLDOWN_S` runs on a single monotonic timeline that does not jump when wall-clock does — and that the test suite can advance by injection, the reason the cooldown is testable in the first place
+- verify: json_path(path="$._last_reopen_at", matches="^[0-9]+(\\.[0-9]+)?$")
 - semantics: stamped only after the cooldown gate has passed — the assignment sits after the `raise exc` branch inside the cooldown, so a `recycle()` that raises inside the cooldown leaves `_last_reopen_at` unchanged (the timer is for successful reopens, not attempts; a raise counts as an attempt but not a reopen)
 - semantics: read only by the cooldown gate — the sole reader is the `if self._reopens and now - self._last_reopen_at < REOPEN_COOLDOWN_S` line in [`recycle()`](#recycle)
 - semantics: not consulted until the first reopen — the `_reopens and …` short-circuit in that line means `_last_reopen_at` is never read while `_reopens == 0`
 - semantics: cleared by [`reset()`](#reset) alongside the other failure-tracking state, so a test that switches `$GROOM_DB` between cases cannot let one case's reopen time leak into the next — and the same set of counters being reset together is what makes `reset()` a single seam rather than per-field handlers
+- verify: json_path(path="$._last_reopen_at", equals=0)
 - semantics: not surfaced through [`health()`](#health) — there is no `last_reopen_at` on [`StoreHealth`](#field-storehealth)
 - semantics: private bookkeeping for the cooldown gate, not an operator metric — deliberately kept off [`StoreHealth`](#field-storehealth) so the cooldown contract stays internal to the class
 - semantics: a viewer can derive its currency from `reopens == 1 and last_error_ts > 0` instead — the same implication holds without surfacing the field itself
 - tests: `groom/tests/test_telemetry.py::test_reopen_is_rate_limited` — the only test that injects a controlled `monotonic` clock (`iter([0.0, 1.0, 2.0, 3.0])`) and exercises the gate; does not observe `_last_reopen_at` directly, but proves the cooldown behavior that depends on it by re-raising the second `recycle()` inside the 5 s window
 - persistence: instance-only — held in `_Store` memory only, never persisted to disk, lost on process restart
 - concurrency: lock-protected — read at the gate and written at the assignment, both inside `_Store.lock` inside [`recycle()`](#recycle), so the cooldown comparison and the timestamp write serialize on the same RLock as the rest of the writer state
-- verify: json_path(path="$._last_reopen_at", matches="^[0-9]+(\\.[0-9]+)?$")
-- verify: json_path(path="$._last_reopen_at", equals=0)
 
 ### _last_ok_ts, _last_write_ts, _last_prune_ts
 
@@ -183,9 +183,12 @@ The trio of wall-clock timestamps [`health()`](#health) reads into the matching 
 - semantics: surfaced through `StoreHealth.last_ok_ts` so the operator dashboard can show how long ago the store last answered
 - semantics: cleared to `0.0` by [`reset()`](#reset) along with the other failure timestamps, so a test that switches `$GROOM_DB` between cases cannot let a previous case's success time leak into the next
 - persistence: instance-only — held in `_Store` memory only, never persisted to disk, lost on process restart
-- code: `groom/groom/store.py::_Store._last_ok_ts`
-- verify: json_path(path="$.last_ok_ts", matches="^[0-9]+(\\.[0-9]+)?$") — a non-zero wall-clock float after [`note_ok()`](#note_ok) has run
-- verify: json_path(path="$.last_ok_ts", equals=0) — the boot-state sentinel on a fresh `_Store`
+- code: `groom/groom/store.py::_Store.__init__`
+- code: `groom/groom/store.py::_Store.note_ok`
+- code: `groom/groom/store.py::_Store.reset`
+- code: `groom/groom/store.py::_Store.health`
+- verify: json_path(path="$.last_ok_ts", matches="^[0-9]+(\\.[0-9]+)?$")
+- verify: json_path(path="$.last_ok_ts", equals=0)
 
 #### _last_write_ts
 
@@ -197,9 +200,12 @@ The trio of wall-clock timestamps [`health()`](#health) reads into the matching 
 - semantics: read by [`health()`](#health) as `StoreHealth.last_write_ts` for the operator dashboard so a viewer can see how stale the last successful commit is
 - semantics: cleared to `0.0` by [`reset()`](#reset) along with the other failure timestamps
 - persistence: instance-only — held in `_Store` memory only, never persisted to disk, lost on process restart
-- code: `groom/groom/store.py::_Store._last_write_ts`
-- verify: json_path(path="$.last_write_ts", matches="^[0-9]+(\\.[0-9]+)?$") — a non-zero wall-clock float after a successful [`writing()`](#writing) call
-- verify: json_path(path="$.last_write_ts", equals=0) — the boot-state sentinel before any [`writing()`](#writing) has committed
+- code: `groom/groom/store.py::_Store.__init__`
+- code: `groom/groom/store.py::_Store.writing`
+- code: `groom/groom/store.py::_Store.reset`
+- code: `groom/groom/store.py::_Store.health`
+- verify: json_path(path="$.last_write_ts", matches="^[0-9]+(\\.[0-9]+)?$")
+- verify: json_path(path="$.last_write_ts", equals=0)
 
 #### _last_prune_ts
 
@@ -211,9 +217,12 @@ The trio of wall-clock timestamps [`health()`](#health) reads into the matching 
 - semantics: read by [`health()`](#health) as `StoreHealth.last_prune_ts` for the operator dashboard so a viewer can see how stale the last prune cycle is
 - semantics: cleared to `0.0` by [`reset()`](#reset) along with the other failure timestamps
 - persistence: instance-only — held in `_Store` memory only, never persisted to disk, lost on process restart
-- code: `groom/groom/store.py::_Store._last_prune_ts`
-- verify: json_path(path="$.last_prune_ts", matches="^[0-9]+(\\.[0-9]+)?$") — a non-zero wall-clock float after [`note_prune()`](#note_prune) has run
-- verify: json_path(path="$.last_prune_ts", equals=0) — the boot-state sentinel before any [`note_prune()`](#note_prune) has run
+- code: `groom/groom/store.py::_Store.__init__`
+- code: `groom/groom/store.py::_Store.note_prune`
+- code: `groom/groom/store.py::_Store.reset`
+- code: `groom/groom/store.py::_Store.health`
+- verify: json_path(path="$.last_prune_ts", matches="^[0-9]+(\\.[0-9]+)?$")
+- verify: json_path(path="$.last_prune_ts", equals=0)
 
 ### _last_checkpoint_busy
 
@@ -222,8 +231,8 @@ The single bit the WAL-checkpoint tick records so a dashboard reader can see whe
 `_last_checkpoint_busy` is an instance attribute rather than a declared class symbol: [`__init__()`](#init) initializes it, [`note_checkpoint()`](#note_checkpoint) records the latest result, [`reset()`](#reset) clears it, and [`health()`](#health) exposes it.
 
 - type: `int` — the `busy` column from the `PRAGMA wal_checkpoint(TRUNCATE)` result row (0 or 1)
-- default: `0` — the "no checkpoint yet" sentinel
-- default: `0` — a fresh `_Store` or one that has just called [`reset()`](#reset) reports this until the first [`note_checkpoint()`](#note_checkpoint) call
+- default: `0` — the "no checkpoint yet" sentinel; a fresh `_Store` or one that has just called [`reset()`](#reset) reports this until the first [`note_checkpoint()`](#note_checkpoint) call
+- verify: json_path(path="$.last_checkpoint_busy", equals=0)
 - required: false — surfaced as `StoreHealth.last_checkpoint_busy` for operator visibility, not asserted on by any caller
 - semantics: stamped by [`note_checkpoint()`](#note_checkpoint) to the `busy` value SQLite returned from the most recent `PRAGMA wal_checkpoint(TRUNCATE)` — `1` when a reader was holding a snapshot and the WAL was left alone, `0` when the checkpoint actually truncated the file
 - semantics: surfaced through `StoreHealth.last_checkpoint_busy` so the operator dashboard can see whether the recurring checkpoint is keeping up — a steady `1` across many checkpoints means a reader is pinning the WAL indefinitely, which is the failure mode the field exists to make visible
@@ -235,7 +244,6 @@ The single bit the WAL-checkpoint tick records so a dashboard reader can see whe
 - tests: `groom/tests/test_telemetry.py::test_a_blocked_checkpoint_is_reported_and_never_poisons`
 - persistence: instance-only — held in `_Store` memory only, never persisted to disk, lost on process restart
 - verify: json_path(path="$.last_checkpoint_busy", equals=1)
-- verify: json_path(path="$.last_checkpoint_busy", equals=0)
 
 ## Methods
 
@@ -653,7 +661,7 @@ The module-level wrappers that wrap store calls in retry-and-heal semantics. The
 
 ### method: resilient
 
-The decorator used by every write-side store call (`insert_spans`, `_write_metrics`, `insert_logs`, `apply_estimates`, `_delete_chunk`, `purge_test_runs`, `insert_turns`, `attend_*`, `_write_metrics`, `checkpoint`, `recycle`-backed writers). Decorate leaf functions only: a decorated function that calls another decorated one multiplies attempts.
+The decorator used by every write-side store call (`insert_spans`, `_write_metrics`, `insert_logs`, `apply_estimates`, `_delete_chunk`, `purge_test_runs`, `insert_turns`, `attend_*`, `_write_metrics`, `checkpoint`, `recycle`-backed writers). Decorate leaf functions only: a decorated function that calls another decorated one multiplies attempts. The retry calls the *undecorated* body so depth is bounded at two by construction, and the wrapper's return value is whatever the wrapped function returned.
 
 - sig: `resilient(fn: Callable[_P, _T]) -> Callable[_P, _T]`
 - abstract: serialize a store call under the lock, and heal the connection under it exactly once
@@ -670,7 +678,6 @@ The decorator used by every write-side store call (`insert_spans`, `_write_metri
 - code: `groom/groom/store.py::resilient`
 - tests: `groom/tests/test_telemetry.py::test_a_closed_connection_heals_on_the_next_write` — closes the writer handle mid-test, drives `insert_spans` (decorated with `resilient`) through `STORE.connect()`, and asserts both the row lands and `reopens == 1`, which only holds if the wrapper retried the undecorated body once after `recycle()` reopened
 - tests: `groom/tests/test_telemetry.py::test_store_health_rides_the_state_payload` — drives an `insert_spans` through the `resilient` wrapper, breaks the handle, drives a second call that fails and is recycled, then drives a third call that succeeds; asserts `health["ok"] is True`, which only holds when the final successful call left `_last_ok_ts` newer than `_last_error_ts` via `STORE.note_ok()`
-- semantics: retry calls the *undecorated* body so depth is bounded at two by construction; the wrapper's return value is whatever the wrapped function returned
 
 ### method: reading
 
@@ -691,7 +698,6 @@ The decorator used by every read-side store call (`query_logs`, `unpriced_models
 - verify: json_path(path="$.exception_type", absent=true)
 - tests: `groom/tests/test_store_reads.py::test_the_dashboard_queries_answer_while_the_write_lock_is_held` — warms each thread's read handle outside the measurement, holds `STORE.lock` from another thread for two seconds, then asserts every dashboard read (`query_spans`, `run_summaries`, `query_logs`, `query_turns`, `run_profile`) returned inside a 250 ms budget; the reads answer because the wrapper does not acquire the writer's lock
 - tests: `groom/tests/test_store_reads.py::test_a_broken_read_handle_is_retired_without_disturbing_the_writer` — closes the cached read handle so the next query raises, exercises the `reading` wrapper's catch path that calls `recycle_reader()`, and asserts the writer handle is the same object afterwards, which only holds if `recycle_reader()` retired the read handle without recycling the writer
-- semantics: same one-retry contract as `resilient` because a read hits the same disposable handle; decorate leaf functions only
 
 ## concept: Design rationale
 

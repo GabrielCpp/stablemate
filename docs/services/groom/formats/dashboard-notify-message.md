@@ -11,6 +11,8 @@ It replaced an inline `<script>` fragment. The htmx-era dashboard delivered this
 
 The frame is deliberately kept **off** the [dashboard state payload](dashboard-state-payload.md). State is a snapshot, re-pushed by the 5-second clock and by every reconciliation, so an alert carried inside it would re-fire on every tick for as long as the run stayed blocked. This frame is an edge: it is sent once, by the code path that observed the transition, and a tab that missed it does not learn about it from a later resync. That asymmetry is the point — the row stays blocked in every snapshot, but the operator is only interrupted the once.
 
+`_dispatch_alerts` sends this frame to every open browser tab and, in the same call, delivers the same alert through [outbound notification push](../concepts/outbound-notification-push.md) to any configured ntfy/webhook channel — the browser toast and the external push are two independent deliveries of one alert, not a fallback chain.
+
 - file: not an on-disk artifact; this is one transient server-to-browser websocket JSON message.
 - code: groom/groom/app.py::_broadcast_notify
 - code: groom/groom/app.py::push_blocked

@@ -42,10 +42,9 @@ then rereads and reclassifies each candidate before creating gate info.
 - awaiting rule: only the normalized status token `AWAITING_OPERATOR` is answerable and discoverable as an open gate.
 - answered rule: accepting an answer replaces at most the first matched `STATUS:` line with `STATUS: ANSWERED`; when no status line matches, the file body is preserved and only a non-blank answer append can change the returned text.
 - consumed rule: the normalized status token `CONSUMED` is recognized as a non-awaiting state; groom does not write it when answering.
-- question rule: the operator-facing question is the stripped body of the latest `## Question from the agent` or `## Questions from the agent` section, matched case-insensitively with flexible whitespace and ending before the next heading marker that begins with at least two `#` characters or end of file.
-- question heading rule: the recognized question marker is searched anywhere in the text and is not required to be the first heading; a same-line body after the heading marker is not a recognized section body because the parser requires at least one newline before captured question content.
+- question rule: the operator-facing question is the stripped body of the latest top-level `## Question from the agent` or `## Questions from the agent` heading's section, matched case-insensitively with flexible whitespace and ending before the next top-level `h1` or `h2` heading or end of file.
+- question heading rule: the recognized heading can appear anywhere in the document and need not be the first heading; a heading nested inside a list item or blockquote is not recognized; a same-line body after the heading marker is not a recognized section body because the parser excludes the heading's own line from the captured body.
 - fallback question rule: when no recognized question section exists, the stripped whole file is used as the question text.
-- preview limit: extracted question text is truncated to 4000 characters before it enters gate records or snapshot data.
 - scan rule: the sidecar reads only the first 512 characters to decide whether a file is awaiting, then reads the full file only for retained awaiting files.
 - scan path rule: first-party scans inspect regular files under the workspace volume while pruning `.git`, `node_modules`, `__pycache__`, and `.venv` directories; the sidecar uses a local workspace walk, while host discovery uses a read-only Docker volume sweep and then rereads retained candidates.
 - host discovery rule: the host-side workspace-volume sweep first asks the volume reader for files with a line that starts with `STATUS:`, allows POSIX whitespace after the colon, and then contains `AWAITING_OPERATOR`; it then rereads each candidate through the shared parser and keeps it only if the current full content still normalizes to `AWAITING_OPERATOR`.
@@ -82,14 +81,14 @@ then rereads and reclassifies each candidate before creating gate info.
 - type: Markdown section body
 - default: stripped whole file text when the section is absent
 - required: false
-- code: groom/groom/gates.py::_QUESTIONS_RE
+- code: groom/groom/gates.py::extract_question
 - meaning: human-facing question presented in the operator inbox, worker detail panel, and sidecar snapshot gate entries.
-- heading rule: accepted heading text is `Question from the agent` or `Questions from the agent`, case-insensitive, preceded by at least two `#` characters in the matched text and followed by optional trailing whitespace before the body newline.
-- match rule: the parser searches for the first matching marker anywhere in the text rather than requiring the marker to begin at the start of a line.
-- boundary rule: extraction starts after one or more newlines following the heading and ends immediately before the next newline followed by a heading marker that begins with at least two `#` characters or at end of file.
-- same-line rule: text on the same line as the recognized heading is not captured as a question section body; when no later recognized section body exists, extraction falls back to the stripped whole file.
+- heading rule: accepted heading text is `Question from the agent` or `Questions from the agent`, case-insensitive, with flexible internal whitespace, and recognized only as a top-level `h2` heading; the same heading nested inside a list item or blockquote is not recognized.
+- match rule: the parser walks every top-level heading in document order and is not limited to the first one; when more than one recognized marker exists, the latest one wins.
+- boundary rule: extraction starts on the line after the recognized heading and ends immediately before the next top-level `h1` or `h2` heading, or at end of file; a top-level `h3`–`h6` heading inside the section does not end it.
+- same-line rule: text on the same line as the recognized heading is not captured as a question section body.
+- fallback rule: when no recognized question heading exists anywhere in the text, extraction falls back to the stripped whole file.
 - trim rule: leading and trailing whitespace around the extracted body is removed.
-- limit: the retained question text is at most 4000 characters, as defined by `groom/groom/gates.py::_QUESTION_PREVIEW_LIMIT`.
 
 ### field-context-sections
 
@@ -166,8 +165,7 @@ Classifies whether one operator gate context file is currently answerable by com
 - sig: `extract_question(text: str) -> str`
 - abstract: false
 - raises: none intentionally raised for any string input.
-- returns: at most the first 4000 characters of the stripped selected body.
-- verify: json_path(path="return value", matches="^.{4000}$")
+- returns: the stripped selected body, with no length limit of its own.
 - verify: json_path(path="return value", equals="Should the fallback default to \"unknown\" or raise?")
 - verify: json_path(path="return value", equals="STATUS: AWAITING_OPERATOR\n\njust a blob, no section header")
 - code: groom/groom/gates.py::extract_question
@@ -180,14 +178,14 @@ Extracts the operator-facing prompt text from one gate file for [gate info](../c
 #### Effects
 
 - Reads: the supplied text only.
-- Matches: every occurrence of a two-hash marker followed by `Question from the agent` or `Questions from the agent`, case-insensitively, with flexible whitespace before `Question`, between the words, and after `agent`.
-- Marker scope: the marker does not have to begin at the start of a line; if multiple recognized markers exist, only the latest section is used.
-- Requires after heading: at least one newline after the recognized heading before
-  the body starts; a same-line question after the heading is not a recognized
-  section body and therefore falls back to whole-file extraction.
-- Extracts: all text after the recognized heading's newline run and before the next newline followed by `##` or the end of the file.
-- Fallback: uses the stripped whole file text when no recognized question heading exists.
-- Normalizes: strips leading and trailing whitespace from the selected body before applying the preview limit.
+- Matches: every top-level `h2` heading (not nested inside a list item or blockquote) whose text, with internal whitespace collapsed and casefolded, equals `question from the agent` or `questions from the agent`.
+- Marker scope: the recognized heading need not be the first heading in the document — any heading before it is skipped; if multiple recognized headings exist, only the latest one's section is used.
+- Requires after heading: the recognized heading's own line is excluded from the
+  captured body; text on the same line as the heading marker is not part of the
+  question section.
+- Extracts: all text from the line after the recognized heading up to, but not including, the next top-level `h1` or `h2` heading, or the end of the file; a top-level `h3`–`h6` heading inside the section does not end it.
+- Fallback: uses the stripped whole file text when no recognized question heading exists anywhere in the text.
+- Normalizes: strips leading and trailing whitespace from the selected body.
 - Used by: [method-scan_gates](../concepts/sidecar-snapshot.md#method-scan_gates)
   after a file is known to be awaiting, so the snapshot stores only the
   operator-facing prompt rather than the full gate context whenever the

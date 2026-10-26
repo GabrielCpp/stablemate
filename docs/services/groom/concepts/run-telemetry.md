@@ -46,16 +46,6 @@ The [alert](alert.md) value is returned when an ingest or periodic rule newly pa
 - code: `groom/groom/alerts.py::stale_run_ids` @ce23672ba8a4
 - tests: `groom/tests/test_store_memory.py::test_terminated_run_evicted_after_grace`
 
-### note_native_ending
-
-- sig: `note_native_ending(run: RunTelemetry, ending: str) -> list[Alert]`
-- does: fires `DIED` when a native process disappears without a terminal record.
-- does: fires `ENDED` for another native ending reported by the run record.
-- returns: newly-fired alerts after per-run rule deduplication.
-- verify: count(subject="native ending alerts", equals=1)
-- code: `groom/groom/alerts.py::note_native_ending` @ce23672ba8a4
-- tests: `groom/tests/test_native_row.py::test_a_vanished_pid_retires_a_run_that_never_recorded_an_ending`
-
 ### ingest_spans
 
 - sig: `ingest_spans(spans: list[dict[str, Any]], now: float | None = None) -> list[Alert]`

@@ -76,6 +76,8 @@ parsed into container ids.
 - sig: `list_container_ids() -> set[str] | None`
 - abstract: false
 - raises: subprocess launch and timeout exceptions from the shared runner are intentionally surfaced rather than mapped to `None`.
+- verify: json_path(path="exception.type", equals="FileNotFoundError")
+- verify: json_path(path="exception.type", equals="TimeoutExpired")
 - returns: a set of twelve-character-or-shorter container id strings when Docker exits successfully.
 - verify: count(subject="returned container ids", equals=2)
 - verify: count(subject="returned container ids", equals=0)

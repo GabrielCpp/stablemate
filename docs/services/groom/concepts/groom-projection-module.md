@@ -41,7 +41,7 @@ questions travel as data rather than markup.
 - websocket handshake: the [run dashboard websocket session](../http/groom.md#run-dashboard-websocket-session) sends `state_message` as its first frame, so a newly opened tab starts from the same snapshot a resync would have given it.
 - consistency rule: run-detail-payload — `detail_message` embeds the complete `run_detail` body in its `detail` frame, so the [run watch registry](run-watch-registry.md) push and [get run detail](../http/groom.md#get-run-detail) fetch cannot project different detail payloads (`groom/groom/projection.py::detail_message`).
 - verify: json_path(path="$.detail.id", equals="blk")
-- panels: the repository picker, file viewer, and telemetry endpoints call `repo_entries`, `file_lang`, and `traces_view`.
+- panels: the repository picker and file viewer endpoints call `repo_entries` and `file_lang`.
 
 ## Fields
 
@@ -162,29 +162,6 @@ questions travel as data rather than markup.
 - detail: [repository menu projection contexts](repository-menu-projection-contexts.md)
 - step: Emit one group per container carrying the checkouts found on its volume — grouped rather than flat because that is the shape the server actually has, and because a picker row's label is derived from both halves.
 - step: Give a workflow with no discoverable repository a single volume-root entry so it can still be browsed.
-
-### method-traces-view
-
-- sig: `traces_view(summaries: list[dict], spans: list[dict], runs: dict[str, RunTelemetry], live_ids: set[str] = frozenset(), now: float | None = None, connected_only: bool = True) -> dict`
-- abstract: false
-- raises: none intentionally raised.
-- verify: json_path(path="exception.type", absent=true)
-- code: groom/groom/projection.py::traces_view
-- step: Project a per-run summary strip (with any fired alert rules) above the filtered span table.
-- step: Pass `live_ids` — the runs the durable store sees beating now — through to every card, so a run absent from the hot cache (a groom that just restarted) is still reported as running.
-- step: Drop every card that is not `live` unless `connected_only` is false, so the pane shows what is running rather than two weeks of retained history, and reuse the same `live` value the card already carries rather than a second notion of connectedness.
-- step: Drop the spans of the runs that were hidden, so the table never lists nodes of a run absent from the strip above it.
-- step: Stay a pull view: telemetry is fetched on demand, and only the alerts are pushed.
-
-### method-run-card
-
-- sig: `run_card(summary: dict, tel: RunTelemetry | None, live_ids: set[str] = frozenset(), now: float | None = None) -> dict`
-- abstract: false
-- raises: none intentionally raised.
-- verify: json_path(path="exception.type", absent=true)
-- code: groom/groom/projection.py::run_card
-- step: Derive `live` from the hot cache when this run is in it, and from `live_ids` otherwise — never from the span history in `summary`, which can only say what a run has already done.
-- step: Report `doing` as the activity the run stamped, else its live node, so the pane reads as work in progress rather than a list of opaque run ids.
 
 ### method-is-live
 
@@ -404,22 +381,6 @@ questions travel as data rather than markup.
 - verify: json_path(path="exception.type", absent=true)
 - code: groom/groom/projection.py::run_live
 - tests: groom/tests/test_projection.py::test_run_detail_carries_gates_head_metrics_and_logs
-
-### method-span-row
-
-- sig: `span_row(span: dict[str, Any]) -> dict[str, Any]`
-- abstract: false
-- does: Projects a telemetry span into its formatted start time, run identity, node, name, elapsed duration, and defaulted status.
-- verify: json_path(path="$.started", matches=".*")
-- verify: json_path(path="$.run_id", matches=".*")
-- verify: json_path(path="$.node", matches=".*")
-- verify: json_path(path="$.name", matches=".*")
-- verify: json_path(path="$.duration", matches=".*")
-- verify: json_path(path="$.status", matches=".+")
-- raises: none intentionally raised.
-- verify: json_path(path="exception.type", absent=true)
-- code: groom/groom/projection.py::span_row
-- tests: groom/tests/test_projection.py::test_traces_view_shows_only_connected_runs_by_default
 
 ## Algorithms
 

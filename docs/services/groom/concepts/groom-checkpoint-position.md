@@ -9,9 +9,10 @@ Groom checkpoint position is the normalized representation of a workflow's
 current checkpoint state, extracted from the [checkpoint data](../formats/sidecar-run-checkpoint-data.md)
 written by workhorse. It bridges two checkpoint formats — the current `pyflow`
 engine format and a retired format — into a unified `CheckpointPosition` type,
-so consumers like the [sidecar snapshot](sidecar-snapshot.md), 
-[workflow discovery scan](workflow-discovery-scan.md), and the dashboard can
-read checkpoint state without handling format variations. The transformer tolerates
+so its two callers, the [sidecar snapshot](sidecar-snapshot.md) current-node
+reader and the [workflow discovery scan](workflow-discovery-scan.md) volume
+fallback reader, can read checkpoint state without handling format variations
+themselves. The transformer tolerates
 malformed or incomplete checkpoint JSON and returns safe empty defaults rather
 than raising.
 
@@ -23,8 +24,8 @@ than raising.
 - purpose: tolerant deserialization of checkpoint JSON from both active (pyflow)
   and retired engine formats into a normalized `CheckpointPosition` type.
 - input: raw checkpoint JSON text read from `/runs/<run-dir>/checkpoint.json` by
-  callers like the sidecar snapshot reader, discovery volume fallback, and
-  dashboard progress-frame handler.
+  its two callers: the sidecar snapshot reader and the discovery volume
+  fallback reader.
 - output: a `CheckpointPosition` object with a `current_node` string (the graph
   node id) and an optional `waiting_on` string (the gate context file path for
   pyflow format only).
@@ -103,7 +104,7 @@ raises.
 - input: raw JSON-formatted text from checkpoint files; accepts any string,
   including empty, malformed, or non-JSON values.
 - output: always returns a `CheckpointPosition` object; never raises.
-- callers: [sidecar snapshot](sidecar-snapshot.md) `_current_node()` method,
-  [workflow discovery scan](workflow-discovery-scan.md) volume fallback reader,
-  dashboard app progress-frame handler for live state updates.
+- callers: [sidecar snapshot](sidecar-snapshot.md) `_current_node()` method and
+  [workflow discovery scan](workflow-discovery-scan.md) volume fallback reader.
+  No other first-party caller invokes `parse_position`.
 

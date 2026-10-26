@@ -100,8 +100,6 @@ push has been enqueued.
 
 - sig: `async _broadcast_shell(changed: str = "") -> None`
 - abstract: false
-- raises: propagates exceptions from workflow snapshot creation, projection, dashboard client queue snapshotting, or queue `put` calls.
-- verify: json_path(path="exception.type", matches=".+")
 - returns: `None` — the method completes synchronously with respect to the caller: the enqueue operations are awaited, so completion confirms all queues have been offered the payload.
 - verify: count(subject="dashboard client queues that received the broadcast payload", equals=2)
 - code: groom/groom/app.py::_broadcast_shell
@@ -122,8 +120,8 @@ Project and enqueue the current dashboard state for browser dashboard websocket 
 
 - sig: `async _push_detail(container_id: str) -> None`
 - abstract: false
-- raises: propagates exceptions from telemetry reads, projection, or queue `put` calls.
-- verify: json_path(path="exception.type", matches=".+")
+- does: returns without reading telemetry or enqueuing anything when no queue is watching the run.
+- verify: count(subject="queue puts during a push-detail call for a run with no watchers", equals=0)
 - code: groom/groom/app.py::_push_detail
 - step: Look up the queues watching `container_id` through [watchers of](run-watch-registry.md#method-watchers-of-run).
 - step: Return immediately when the list is empty, before any telemetry or log read.
@@ -131,15 +129,19 @@ Project and enqueue the current dashboard state for browser dashboard websocket 
 - step: Project the run's detail payload through [detail message](groom-projection-module.md#method-detail-message).
 - step: Enqueue that one payload for each watching queue.
 
+An exception from the telemetry read, the projection call, or a queue `put` propagates unmodified — none of those calls is wrapped in a `try`/`except`.
+
 ### method-push-watched
 
 - sig: `async _push_watched() -> None`
 - abstract: false
-- raises: propagates exceptions from the per-run detail push.
-- verify: json_path(path="exception.type", equals="RuntimeError")
+- does: calls push-detail once per currently watched run id, and not at all when no run is watched.
+- verify: count(subject="push-detail calls made by a push-watched invocation with no watched run ids", equals=0)
 - code: groom/groom/app.py::_push_watched
 - step: Read the set of run ids some tab currently has open through [watched ids](run-watch-registry.md#method-watched-run-ids).
 - step: Push each one's detail to its watchers, so clock-derived text in an open pane stays true for a run that emitted no state change.
+
+An exception from the per-run detail push propagates unmodified — the loop wraps no call in a `try`/`except`.
 
 ## Algorithms
 

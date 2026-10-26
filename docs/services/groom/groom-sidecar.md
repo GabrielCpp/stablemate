@@ -72,9 +72,10 @@ exit through argparse's standard usage/error path.
 - errors: a non-integer `--exit-code` value makes argparse exit before sidecar
   module work starts.
 - verify: exit_status(code=2)
-- errors: a runtime error from the selected sidecar mode propagates through the
-  command dispatcher.
-- verify: json_path(path="exception.type", equals="RuntimeError")
+- errors: an error from the selected sidecar mode propagates through the
+  command dispatcher unmodified — `sidecar_main` wraps none of the three mode
+  calls in a `try`/`except`.
+- verify: json_path(path="exception.type", matches=".+")
 - exits: query mode returns after writing one JSON snapshot to stdout.
 - verify: exit_status(code=0)
 - exits: exit-notice mode returns after attempting one exited push.

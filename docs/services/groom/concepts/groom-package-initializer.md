@@ -32,7 +32,7 @@ The groom package initializer is the import-time contract for the top-level [`gr
 ### field-__version__
 
 - type: `str`
-- default: `"0.1.0"`
+- default: `"1.2.0"`
 - required: true
 - code: groom/groom/__init__.py::__version__
 - meaning: package-level version string exposed to callers that import `groom.__version__` or use the initializer's star-import surface.

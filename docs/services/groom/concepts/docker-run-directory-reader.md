@@ -136,13 +136,15 @@ The `list_run_dirs` implementation in `groom/groom/docker_io.py` treats a non-ze
 - sig: `list_run_dirs(volume: str) -> list[str]`
 - abstract: false
 - raises: subprocess launch and timeout exceptions from the shared runner are intentionally surfaced rather than mapped to an empty listing.
+- verify: json_path(path="exception.type", equals="FileNotFoundError")
+- verify: json_path(path="exception.type", equals="TimeoutExpired")
 - returns: sorted list of direct-child run directory names relative to the mounted runs volume root.
 - verify: count(subject="returned run directory names", equals=2)
+- returns: zero or more [field-returned-run-directory-name](#field-returned-run-directory-name) values sorted lexicographically.
 - verify: json_path(path="$.returned_run_directory_names[0]", equals="author-20260704-120000")
 - verify: json_path(path="$.returned_run_directory_names[1]", equals="author-20260705-090000")
 - returns: an empty list when the Docker process exited non-zero, the volume has no retained direct child directories, or stdout produced no retained `/vol/` paths.
 - verify: count(subject="run directories returned after a non-zero Docker listing result", equals=0)
-- returns: zero or more [field-returned-run-directory-name](#field-returned-run-directory-name) values sorted lexicographically.
 - code: groom/groom/docker_io.py::list_run_dirs
 - detail: [Docker run-directory listing documentation views](docker-run-directory-listing-documentation-views.md)
 - args:

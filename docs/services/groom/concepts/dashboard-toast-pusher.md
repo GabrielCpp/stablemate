@@ -48,9 +48,9 @@ It is a client-side unit. The server no longer renders script fragments that dis
 - default: none at helper level
 - verify: absent(subject="an implicit variant default on pushToast")
 - default: first-party blocked-toast callers pass `blocked`
-- verify: visible(locator=".toast.blocked", text="⛔ worker blocked")
+- verify: visible(locator="toast region", text="⛔ worker blocked")
 - default: first-party answer-success callers pass `ok`
-- verify: visible(locator=".toast.ok", text="✓ answer sent")
+- verify: visible(locator="toast region", text="✓ answer sent")
 - required: true
 - meaning: controls the toast's variant class and therefore its left-accent styling; the helper performs no whitelist validation.
 

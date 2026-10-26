@@ -86,12 +86,11 @@ runs when `groom.state` is first imported.
 
 - sig: `record_log(event: dict) -> None`
 - abstract: false
-- raises: no domain-specific errors.
-- raises: ordinary container append errors would propagate to the caller.
-- returns: `None` — the method appends the supplied dictionary to the bounded `LOG` deque exactly once
-- returns: `None` — the method returns no payload; the append's success or failure is observed through ordinary container behaviour, not through a returned value.
+- raises: no domain-specific errors; the append is unconditional.
+- verify: count(subject="LOG entries after a record_log call with an empty dict event", equals=1)
+- returns: `None` — the method appends the supplied dictionary to the bounded `LOG` deque exactly once and returns no payload.
 - verify: count(subject="LOG entries after one record_log call", equals=1)
-- verify: json_path(path="exception.type", equals="RuntimeError")
+- verify: count(subject="LOG entries after 201 record_log calls", equals=200)
 - code: groom/groom/state.py::record_log
 
 Appends one already-built event dictionary to the process-local answer event log without validating, normalizing, cloning, broadcasting, or persisting it. The parameter is documented in `sig:`; the layer does not enforce keys or value types, so the dictionary is accepted as supplied (for dashboard answer commands it matches [answer log entry](../formats/answer-log-entry.md)).

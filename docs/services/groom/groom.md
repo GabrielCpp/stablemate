@@ -278,8 +278,8 @@ python` — covers STATUS parsing/`answer_gate` orchestration (`test_gates.py`, 
 mount/env parsing against a fixture `docker inspect` blob (`test_discovery.py`), changed-path-triggered
 event construction and fire-and-forget behavior (`test_sidecar.py`), the JSON payload shapes
 both transports send (`test_projection.py`), the shipped client module (`test_dashboard_client.py`),
-accessibility against a live browser (`test_a11y_dynamic.py`), and the throwaway-container helper
-argument shapes (`test_docker_io.py`).
+accessibility against a live browser, described by the [dynamic accessibility audit](flows/dynamic-a11y-audit.md)
+flow (`test_a11y_dynamic.py`), and the throwaway-container helper argument shapes (`test_docker_io.py`).
 
 Manual: run `uv run groom serve` from `stablemate/groom` with no workflow containers running
 (empty table, no crash). Start a workflow and confirm a `progress` push from `groom-sidecar`

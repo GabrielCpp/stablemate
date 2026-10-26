@@ -6,25 +6,34 @@ title: Sidecar run checkpoint data
 # Sidecar run checkpoint data
 
 Sidecar run checkpoint data is the latest workflow run's `checkpoint.json` object
-stored under a workflow container's `/runs` mount. Groom consumes it as
+stored under a workflow container's `/runs` mount. Both readers normalize the raw
+object through [groom checkpoint position](../concepts/groom-checkpoint-position.md)'s
+`parse_position`, which discriminates the current `pyflow` engine format (node id
+in `state`, with an optional gate-context path in `waiting_on`) from a retired
+format (node id in `current_id` only) before Groom consumes the result as
 current-node evidence in three host-visible paths: the [sidecar snapshot](../concepts/sidecar-snapshot.md)
-current-node reader maps its `current_id` field into [sidecar snapshot data](sidecar-snapshot-data.md)
-for query and `hello` frames, the live runs-event classifier maps the same field
+current-node reader maps the normalized node id into [sidecar snapshot data](sidecar-snapshot-data.md)
+for query and `hello` frames, the live runs-event classifier maps the same value
 into `progress` [sidecar websocket frames](sidecar-websocket-frame.md#field-current-node),
 and the [workflow discovery scan](../concepts/workflow-discovery-scan.md#method-current-run-state)
 volume fallback maps it into the
 [volume reconstruction workflow-state transition](../concepts/workflow-state.md#transition-volume-reconstruction).
 The file is current-node evidence only; missing runs, missing files, unreadable
-or malformed JSON, and absent `current_id` values all mean no current node is
-available from this source.
+or malformed JSON, and a payload with no recognized node-id field for its format
+all mean no current node is available from this source.
 
 Reader coverage is exercised by `groom/tests/test_sidecar.py::test_snapshot_reports_node_terminal_and_gates`,
-`groom/tests/test_sidecar_session.py::test_classify_event_runs_write_is_progress`, and
-`groom/tests/test_discovery.py::test_scan_marks_blocked_workflow_and_finished_run`.
+`groom/tests/test_sidecar_session.py::test_classify_event_runs_write_is_progress`,
+`groom/tests/test_discovery.py::test_scan_marks_blocked_workflow_and_finished_run`,
+`groom/tests/test_checkpoints.py::test_pyflow_position_uses_state_and_waiting_on`,
+`groom/tests/test_checkpoints.py::test_retired_position_uses_current_id`, and
+`groom/tests/test_checkpoints.py::test_malformed_or_wrongly_typed_position_is_empty`.
 
 - file: `/runs/<latest-run-directory>/checkpoint.json`
 - code: groom/groom/sidecar.py::_current_node
 - code: groom/groom/discovery.py::_current_run_state
+- code: groom/groom/checkpoints.py::parse_position
+- detail: [groom checkpoint position](../concepts/groom-checkpoint-position.md)
 - detail: [volume run-state evidence](../concepts/volume-run-state-evidence.md)
 
 ## Contract
@@ -59,29 +68,34 @@ Reader coverage is exercised by `groom/tests/test_sidecar.py::test_snapshot_repo
   selected `<latest>/checkpoint.json` text; a failed `cat` is represented as no
   file text for this format consumer, while a path-safety rejection follows the
   discovery scan's helper-failure contract.
-- member naming: the current-node member is the exact, case-sensitive JSON key
-  `current_id`; alternate spellings such as `currentId`, `current-id`, or `node`
-  are ignored by Groom's documented readers.
+- format discrimination: `parse_position` reads the `engine` key first; when its
+  value is exactly `"pyflow"`, the node id is read from `state` and an optional
+  gate-context path from `waiting_on`; for any other value, including a missing
+  `engine` key, the node id is read from `current_id` and `waiting_on` is always
+  `""`. Alternate spellings such as `currentId`, `current-id`, or `node` are
+  ignored in both formats.
 - required keys: no object key is required for the file to be accepted as
-  parseable checkpoint data; an object without `current_id` is treated as no
+  parseable checkpoint data; an object without a recognized node-id field for its
+  format (`state` for pyflow, `current_id` for retired) is treated as no
   current-node evidence.
-- ignored keys: fields other than `current_id` may be present and are preserved
-  on disk but ignored by Groom's documented readers for this format.
-- read result: a present `current_id` value is returned unchanged by the sidecar
-  current-node reader and returned unchanged as the discovery current-node tuple
-  element by the volume fallback reader; only an absent key is normalized to
-  `""` at this format boundary.
+- ignored keys: fields other than `engine`, `current_id`, `state`, and
+  `waiting_on` may be present and are preserved on disk but ignored by Groom's
+  documented readers for this format.
+- read result: a present, string-typed node-id value is returned unchanged by
+  both the sidecar current-node reader and the discovery current-node tuple
+  element; a missing field or a non-string value is normalized to `""` by
+  `parse_position`.
 - empty-state rule: absent `/runs`, no selected run directory, absent
   `checkpoint.json`, unreadable local file content, failed Docker volume reads,
-  empty file content in the discovery fallback, malformed JSON, and absent
-  `current_id` all produce `""` as Groom's current-node value for that read path.
-- error handling: sidecar current-node reads absorb `OSError` and JSON decode
-  errors; discovery volume reconstruction absorbs JSON decode errors for this
-  file and treats volume file-read failure as no text for this file, but lets
-  Docker volume listing and path-safety helper failures follow the discovery scan
-  contract. Parseable non-object JSON is outside the accepted source shape and can
-  escape as the reader's ordinary key-lookup failure rather than being
-  normalized.
+  empty file content in the discovery fallback, malformed JSON, and a payload
+  with no recognized node-id field for its format all produce `""` as Groom's
+  current-node value for that read path.
+- error handling: `parse_position` absorbs JSON decode errors, type errors, and
+  non-object payloads internally and never raises; the sidecar current-node
+  reader additionally absorbs `OSError` from the file read itself, and
+  discovery's volume fallback treats a failed volume read as no text for this
+  file while letting Docker volume listing and path-safety helper failures
+  follow the discovery scan contract.
 - state effect: this format can update a workflow container's current node but
   does not by itself mark a workflow running, blocked, idle, or finished; those
   lifecycle decisions come from sidecar snapshot, live progress-frame handling,
@@ -93,19 +107,54 @@ Reader coverage is exercised by `groom/tests/test_sidecar.py::test_snapshot_repo
 
 ## Fields
 
+### field-engine
+
+- type: `str`
+- default: `""` (absent key)
+- required: false
+- meaning: format discriminator; the exact value `"pyflow"` selects the pyflow
+  format fields below, and any other value or an absent key selects the retired
+  format.
+- wire key: `engine`
+- code: groom/groom/checkpoints.py::parse_position
+
+### field-state
+
+- type: `Any`
+- default: `""`
+- required: false
+- meaning: workhorse graph-node id in pyflow format, read only when `engine` is
+  exactly `"pyflow"`.
+- wire key: `state`
+- emitted value: a string value is returned unchanged as `CheckpointPosition.current_node`;
+  a non-string value or a payload that is not pyflow format normalizes to `""`.
+
+### field-waiting-on
+
+- type: `Any`
+- default: `""`
+- required: false
+- meaning: workspace-relative path to an operator gate context file, read only
+  when `engine` is exactly `"pyflow"`; retired-format payloads always normalize
+  this to `""`.
+- wire key: `waiting_on`
+- emitted value: a string value is returned unchanged as `CheckpointPosition.waiting_on`;
+  a non-string value, a missing key, or a non-pyflow payload normalizes to `""`.
+
 ### field-current-id
 
 - type: `Any`
 - default: `""`
 - required: false
 - meaning: workhorse graph-node id that represents the latest checkpointed node
-  for the selected run.
+  for the selected run, in the retired format only (read whenever `engine` is
+  not exactly `"pyflow"`).
 - wire key: `current_id`
 - accepted producer values: any JSON value may appear, but Groom's documented
   callers expect the useful value to be a non-empty string node id.
-- emitted value: present values are returned unchanged by the current Groom
-  readers, including falsey present values; an absent value is normalized to
-  `""`.
+- emitted value: present string values are returned unchanged by
+  `parse_position`, including falsey present strings; an absent key or a
+  non-string value is normalized to `""`.
 - lookup rule: readers perform an exact object-member lookup for `current_id`
   after parsing the root value; they do not coerce alternate key names, inspect
   nested objects, or derive the node id from sibling metadata.

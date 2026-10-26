@@ -124,10 +124,8 @@ Removes one websocket outbound queue from the process-local client set. Removing
 
 - sig: `async broadcast(message: dict) -> None`
 - abstract: false
-- raises: propagates exceptions from a queued client's put operation.
-- verify: json_path(path="exception.type", matches=".+")
-- raises: no domain-specific error value is returned.
-- verify: json_path(path="exception.type", equals="RuntimeError")
+- raises: nothing under normal operation — every registered client queue is created with `asyncio.Queue()` and no `maxsize`, so `put` never blocks or raises.
+- verify: count(subject="items on a registered client's queue after one broadcast call", equals=1)
 - code: groom/groom/state.py::broadcast
 
 Enqueues one already-projected JSON message object for every dashboard websocket queue that is registered at the start of the broadcast pass.

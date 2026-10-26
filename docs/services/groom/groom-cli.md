@@ -7,6 +7,7 @@ title: groom
 
 - binary: groom
 - code: groom/groom/cli.py::main
+- detail: [groom package initializer](concepts/groom-package-initializer.md)
 
 The `groom` CLI is the manually launched host-side surface for the
 [groom dashboard service](groom.md). It has no default action: invoking
@@ -202,7 +203,7 @@ The client removes terminal control characters and escape sequences from every s
 - exits: Parser failures exit with status 2 before the command handler runs.
 - verify: exit_status(code=2)
 - code: groom/groom/cli.py::status
-- detail: [retained-run live status](../../../groom/docs/STORE.md)
+- detail: [run telemetry](concepts/run-telemetry.md)
 
 ### logs
 - usage: `groom logs [--run RUN] [--node NODE] [--level LEVEL] [--contains CONTAINS] [--limit N] [--json]`
@@ -263,7 +264,7 @@ The client removes terminal control characters and escape sequences from every s
 - exits: Parser failures exit with status 2 before the command handler runs.
 - verify: exit_status(code=2)
 - code: groom/groom/cli.py::logs
-- detail: [retained-run logs](../../../groom/docs/STORE.md)
+- detail: [groom store](concepts/groom-store.md)
 
 ### cost
 - usage: `groom cost [--run RUN] [--limit N] [--json]`
@@ -310,7 +311,8 @@ The client removes terminal control characters and escape sequences from every s
 - exits: Parser failures exit with status 2 before the command handler runs.
 - verify: exit_status(code=2)
 - code: groom/groom/cli.py::cost
-- detail: [per-node agent spend](../../../groom/docs/STORE.md)
+- detail: [groom store](concepts/groom-store.md)
+- detail: [groom archive module](concepts/groom-archive-module.md)
 
 ### prices
 - usage: `groom prices [--reprice] [--run RUN] [--all] [--resolve] [--json]`
@@ -373,7 +375,9 @@ The client removes terminal control characters and escape sequences from every s
 - exits: Parser failures exit with status 2 before the command handler runs.
 - verify: exit_status(code=2)
 - code: groom/groom/cli.py::prices_cmd
-- detail: [rate card pricing](../../../groom/docs/STORE.md)
+- detail: [groom pricing module](concepts/groom-prices-module.md)
+- detail: [prices override entry fields](concepts/prices-override-entry-fields.md)
+- detail: [groom store](concepts/groom-store.md)
 
 ### loops
 - usage: `groom loops [--run RUN] [--workflow WORKFLOW] [--min-items N] [--json]`
@@ -425,7 +429,9 @@ The client removes terminal control characters and escape sequences from every s
 - exits: Parser failures exit with status 2 before the command handler runs.
 - verify: exit_status(code=2)
 - code: groom/groom/cli.py::loops
-- detail: [loop convergence analysis](../../../groom/docs/STORE.md)
+- detail: [loop analysis lap](concepts/loop-analysis-lap.md)
+- detail: [groom store](concepts/groom-store.md)
+- detail: [groom archive module](concepts/groom-archive-module.md)
 
 ### purge-tests
 - usage: `groom purge-tests [--dry-run] [--no-vacuum]`
@@ -587,7 +593,7 @@ The client removes terminal control characters and escape sequences from every s
 - exits: Parser failures exit with status 2 before the command handler runs.
 - verify: exit_status(code=2)
 - code: groom/groom/cli.py::profile
-- detail: [retained-run profiler](../../../groom/docs/STORE.md#what-occupied-the-wall-clock-groom-profile)
+- detail: [groom store](concepts/groom-store.md)
 
 ### transcript
 - usage: `groom transcript {ls|show|harvest|export|backfill} [...]`
@@ -671,7 +677,8 @@ The client removes terminal control characters and escape sequences from every s
 - exits: `show` without `--session` exits with status 2.
 - verify: exit_status(code=2)
 - code: groom/groom/cli.py::transcript_ls
-- detail: [the turn record](../../../groom/docs/STORE.md#what-the-node-actually-said-groom-transcript)
+- detail: [groom turns module](concepts/groom-turns-module.md)
+- detail: [groom export module](concepts/groom-export-module.md)
 
 ### archive
 - usage: `groom archive {ls|show|now|status} [...]`
@@ -737,7 +744,7 @@ The client removes terminal control characters and escape sequences from every s
 - exits: Successful commands exit with status 0.
 - verify: exit_status(code=0)
 - code: groom/groom/cli.py::archive_ls
-- detail: [run archival and retention](../../../groom/docs/STORE.md)
+- detail: [groom archive module](concepts/groom-archive-module.md)
 
 ## Invocations
 

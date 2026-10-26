@@ -8,7 +8,7 @@ title: groom server
 - code: groom/groom/app.py::create_app
 - openapi: none; every first-party handler is registered with `include_in_schema=False`.
 
-The `groom` server is the Litestar surface used by browser dashboard tabs, workflow-container sidecars, and the `groom-sidecar` development loop. It serves one HTML document — the shell for the [groom dashboard service](../groom.md) — and then speaks JSON for everything else: the [dashboard state payload](../formats/dashboard-state-payload.md) behind the [runs fleet view](../runs-fleet-view.md), the [run detail payload](#get-run-detail), and the repository/file/diff panel data. It also receives the residual best-effort pushes described by [sidecar protocol](../sidecar-protocol.md) and owns the persistent sidecar socket described by [sidecar live sessions](../sidecar-live-sessions.md). The route table is fixed by the [Groom app module](../concepts/groom-app-module.md) `create_app` member, which registers 30 route handlers: one dashboard HTML entry point, six JSON read endpoints, four mutation/push endpoints, four run outbox/inbox endpoints, six attendant endpoints (four reads, two writes), three OTLP ingest routes and two telemetry query routes, one reload endpoint, two websocket channels, and the vendored static asset mount. Application startup is also fixed by `create_app`, which registers five startup hooks — [schedule startup discovery scan](#schedule-startup-discovery-scan), the alert-rule ticker, the [live clock](#schedule-live-clock), the run-telemetry archive routine, and the attend-recovery routine — and cancels the three loop-driven ones (alert-rule, live clock, archive), plus shuts down the process worker pools, on shutdown.
+The `groom` server is the Litestar surface used by browser dashboard tabs, workflow-container sidecars, and the `groom-sidecar` development loop. It serves one HTML document — the shell for the [groom dashboard service](../groom.md) — and then speaks JSON for everything else: the [dashboard state payload](../formats/dashboard-state-payload.md) behind the [runs fleet view](../runs-fleet-view.md), the [run detail payload](#get-run-detail), and the repository/file/diff panel data. It also receives the residual best-effort pushes described by [sidecar protocol](../sidecar-protocol.md) and owns the persistent sidecar socket described by [sidecar live sessions](../sidecar-live-sessions.md). The route table is fixed by the [Groom app module](../concepts/groom-app-module.md) `create_app` member, which registers 29 route handlers: one dashboard HTML entry point, six JSON read endpoints, four mutation/push endpoints, four run outbox/inbox endpoints, six attendant endpoints (four reads, two writes), three OTLP ingest routes and one telemetry query route, one reload endpoint, two websocket channels, and the vendored static asset mount. Application startup is also fixed by `create_app`, which registers five startup hooks — [schedule startup discovery scan](#schedule-startup-discovery-scan), the alert-rule ticker, the [live clock](#schedule-live-clock), the run-telemetry archive routine, and the attend-recovery routine — and cancels the three loop-driven ones (alert-rule, live clock, archive), plus shuts down the process worker pools, on shutdown.
 
 The server is single-process and stateful in memory. Startup schedules a background discovery scan without blocking the server bind; live updates are pushed as JSON messages over the browser websocket and as RPC/messages over sidecar websockets. No route on this surface provides authentication, and the app-level OpenAPI schema intentionally excludes these routes.
 
@@ -779,7 +779,7 @@ Nothing on this surface renders HTML on the browser's behalf. The single shape a
 ### post-otlp-traces
 
 - does:
-  - Standard OTLP/HTTP trace receiver — parses protobuf payload, stores spans, evaluates alert rules, broadcasts updates.
+  - Standard OTLP/HTTP trace receiver — decodes the protobuf payload through [parse_traces](../concepts/groom-otlp-module.md#parse_traces), stores spans, evaluates alert rules, broadcasts updates.
   - A pushed span carries its own identity, so native non-Docker runs appear here without passing the discovery gate.
   - Rejects undecodable payloads with `400` and no storage.
   - Runs store operations on a dedicated thread pool to avoid blocking the event loop.
@@ -806,7 +806,7 @@ Nothing on this surface renders HTML on the browser's behalf. The single shape a
 ### post-otlp-metrics
 
 - does:
-  - Standard OTLP/HTTP metric receiver — parses protobuf payload, stores metrics, evaluates alert rules, broadcasts updates.
+  - Standard OTLP/HTTP metric receiver — decodes the protobuf payload through [parse_metrics](../concepts/groom-otlp-module.md#parse_metrics), stores metrics, evaluates alert rules, broadcasts updates.
   - The cap-wait heartbeat lands here — the liveness signal that suppresses false stalls during legitimate multi-hour/day spending-cap sleeps.
   - Rejects undecodable payloads with `400` and no storage.
   - Returns `503 Service Unavailable` with a `Retry-After` header when the store is unavailable.
@@ -832,7 +832,7 @@ Nothing on this surface renders HTML on the browser's behalf. The single shape a
 ### post-otlp-logs
 
 - does:
-  - Standard OTLP/HTTP log receiver — parses protobuf payload, stores log records.
+  - Standard OTLP/HTTP log receiver — decodes the protobuf payload through [parse_logs](../concepts/groom-otlp-module.md#parse_logs), stores log records.
   - Script node diagnostics land here now that workhorse imports and runs scripts in-process: their log records ride the engine's own logger and arrive with the same run_id/run_dir resource as spans.
   - Rejects undecodable payloads with `400` and no storage.
   - Returns `503 Service Unavailable` with a `Retry-After` header when the store is unavailable.
@@ -857,40 +857,6 @@ Nothing on this surface renders HTML on the browser's behalf. The single shape a
 - path: `/v1/logs`
 - status: `200` on success; `400` on parse failure; `503` when store is unavailable.
 - errors: malformed payload returns `400`; sqlite errors return `503` with `Retry-After: 5`; the exporter retries all 5xx.
-
-### get-telemetry-spans
-
-- does:
-  - Telemetry search over the SQLite spans table — a per-run summary strip and matching spans.
-  - Only runs connected right now are returned unless `show_ended` is truthy or the caller named a `run` by id.
-  - Applies query filters on run id, node id, status, and span duration.
-  - Converts `slower_than` from string to float threshold.
-  - Absent or non-numeric `slower_than` values ignore the threshold.
-  - Runs store reads on a dedicated thread pool to avoid blocking the event loop.
-  - Queries are ad-hoc SQL.
-  - Use raw SQL on groom.db for this tier of introspection.
-  - Does not validate query values beyond type conversion.
-- verify: json_path(path="$.runs", matches=".*")
-- verify: json_path(path="$.spans", matches=".*")
-- code: groom/groom/app.py::traces
-- route: `GET /traces`
-- parent: [groom server](#groom-server)
-- request:
-  - path variables: none
-  - query: `run` string, optional, default `""`; filter by run id.
-  - query: `node` string, optional, default `""`; filter by workflow node id.
-  - query: `status` string, optional, default `""`; filter by span status.
-  - query: `slower_than` string, optional, default `""`; filter spans by minimum duration in seconds; non-numeric values are ignored.
-  - query: `show_ended` string, optional, default `""`; when truthy, include finished runs; otherwise only live runs are returned.
-  - headers: none required by the handler.
-  - body: none
-- response:
-  - media: `application/json`
-  - body: `{"runs": [run summary, …], "spans": [span object, …]}` filtered by query parameters.
-- method: `GET`
-- path: `/traces`
-- status: `200`
-- errors: none intentionally emitted by this handler; non-numeric `slower_than` silently ignores the threshold; request parsing failures are framework-level failures.
 
 ### get-live-status
 

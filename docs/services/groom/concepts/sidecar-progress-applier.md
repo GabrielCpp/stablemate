@@ -105,8 +105,8 @@ remaining step. That propagation is the obligation captured by the `raises:` cla
 - verify: json_path(path="workflow.current_node", equals=0)
 - does: ignores frame fields other than `current_node` without changing unrelated workflow fields.
 - verify: unchanged(subject="workflow fields unrelated to current_node", except_fields=["state", "current_node"])
-- raises: propagates workflow-upsert, renderer, or broadcast exceptions.
-- verify: json_path(path="exception.type", equals="RuntimeError")
+- raises: propagates workflow-upsert, renderer, or broadcast exceptions — neither call is wrapped in a `try`/`except`.
+- verify: json_path(path="exception.type", matches=".+")
 - code: groom/groom/app.py::_apply_socket_progress
 
 Fold one connected sidecar `progress` frame for one already accepted sidecar websocket into the visible workflow fleet.

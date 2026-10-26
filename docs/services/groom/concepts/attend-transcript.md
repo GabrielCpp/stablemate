@@ -107,7 +107,7 @@ prose, and thinking tokens are dropped.
 - sig: `(session_id: str) -> dict[str, Any]`
 - abstract: false
 - does: resolve the session directory via [session_dir](#method-session_dir) and read `<session_dir>/<session_id>.jsonl` through [_entries](#method-_entries) when that file exists on disk
-- verify: json_path(path="result.entries", matches=".+")
+- verify: json_path(path="result.entries[0].kind", matches="^(tool|message)$")
 - does: leave the main entries list empty when the main JSONL is missing or unreadable, rather than raising
 - verify: json_path(path="result.entries", matches="^\\[\\]$")
 - does: walk `<session_dir>/<session_id>/` recursively for every `.jsonl` when that subdirectory exists, in sorted path order
@@ -198,9 +198,9 @@ Called by the `GET /api/attend/sessions/{session_id}` handler in [`groom/groom/a
 ### method: _result_text
 - sig: `(content: Any) -> str`
 - does: when `content` is a string, return it truncated to `MAX_DETAIL_CHARS`
-- verify: json_path(path="result", matches="^.{0,4000}$")
+- verify: json_path(path="result", matches="^.{4000}$")
 - does: when `content` is a list, extract text from each block with `type == "text"` (joined with `\n`), drop non-text blocks, then truncate the join to `MAX_DETAIL_CHARS`
-- verify: json_path(path="result", matches="^.{0,4000}$")
+- verify: json_path(path="result", matches="^.{4000}$")
 - does: when `content` is anything else, return the empty string
 - verify: json_path(path="result", equals="")
 - code: `groom/groom/attend_transcript.py::_result_text`
@@ -305,7 +305,7 @@ The shape of one rendered transcript entry — a tagged union over the `kind` fi
 - semantics: text content blocks joined with blank lines via [_text_of](#method-_text_of)
 - semantics: thinking and other non-text block types are dropped
 - semantics: an empty body yields no message entry
-- verify: json_path(path="result.entries[?(@.kind=='message')].text", matches=".*")
+- verify: json_path(path="result.entries[?(@.kind=='message')].text", equals="First paragraph.\n\nSecond paragraph.")
 - code: `groom/groom/attend_transcript.py::_text_of`
 
 ### field: name
@@ -326,7 +326,7 @@ The shape of one rendered transcript entry — a tagged union over the `kind` fi
 - semantics: computed by [_tool_summary](#method-_tool_summary) as the tool name followed by the first non-empty argument value
 - semantics: argument precedence — `file_path`, `path`, `command`, `pattern`, `query`, `url`, `prompt` (first non-empty wins)
 - semantics: truncated to 160 characters
-- verify: json_path(path="result.entries[?(@.kind=='tool')].summary", matches="^.{0,200}$")
+- verify: json_path(path="result.entries[?(@.kind=='tool')].summary", equals="Read: /workspace/app.py")
 - code: `groom/groom/attend_transcript.py::_tool_summary`
 
 ### field: detail
@@ -337,7 +337,7 @@ The shape of one rendered transcript entry — a tagged union over the `kind` fi
 - semantics: one `key: value` per line, with non-string values JSON-encoded
 - semantics: truncated to `MAX_DETAIL_CHARS` (4000)
 - semantics: empty string when arguments are absent or not a dict
-- verify: json_path(path="result.entries[?(@.kind=='tool')].detail", matches="^.{0,4000}$")
+- verify: json_path(path="result.entries[?(@.kind=='tool')].detail", matches="^.{4000}$")
 - code: `groom/groom/attend_transcript.py::_detail_of`
 
 ### field: result
@@ -348,7 +348,7 @@ The shape of one rendered transcript entry — a tagged union over the `kind` fi
 - semantics: computed by [_result_text](#method-_result_text) — text content joined with newlines
 - semantics: truncated to `MAX_DETAIL_CHARS` (4000)
 - semantics: empty string until the matching tool-result block arrives
-- verify: json_path(path="result.entries[?(@.kind=='tool')].result", matches="^.{0,4000}$")
+- verify: json_path(path="result.entries[?(@.kind=='tool')].result", matches="^.{4000}$")
 - code: `groom/groom/attend_transcript.py::_result_text`
 
 ### field: failed

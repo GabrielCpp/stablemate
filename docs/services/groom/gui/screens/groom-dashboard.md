@@ -12,32 +12,31 @@ title: groom dashboard
   - none — the screen takes no path or query parameter. Everything it shows is chosen after load and held in the browser, never in the URL.
 - entry: opened directly at the groom server's root URL. It is the only screen groom serves, so it is entered from outside in-app navigation and never linked to from another screen.
 
-The `groom` dashboard is the browser screen served by the [root dashboard endpoint](../../http/groom.md#get-root-dashboard-html), whose handler is `groom/groom/app.py::index`. It is the operator console for the [runs fleet view](../../runs-fleet-view.md), the repository file browser, the working-tree diff view described by [changes view](../../changes-view.md), fleet telemetry, and the manual reconciliation controls for the discovered [workflow containers](../../concepts/workflow-container.md).
+The `groom` dashboard is the browser screen served by the [root dashboard endpoint](../../http/groom.md#get-root-dashboard-html), whose handler is `groom/groom/app.py::index`. It is the operator console for the [runs fleet view](../../runs-fleet-view.md), the repository file browser, the working-tree diff view described by [changes view](../../changes-view.md), and the manual reconciliation controls for the discovered [workflow containers](../../concepts/workflow-container.md).
 
 The dashboard's automated coverage includes the open-gate accessibility path (`groom/tests/test_a11y_dynamic.py::test_runs_pane_with_an_open_gate_is_accessible`), client-module parsing (`groom/tests/test_dashboard_client.py::test_the_client_module_parses`), and JSON serialization of state messages (`groom/tests/test_projection.py::test_state_message_is_json_serializable`). Its visual review evidence is recorded in `docs/specs/groom-dashboard/vet.md`.
 
-Nothing on either side of the wire is HTML. The endpoint ships a static shell — landmarks, live regions, overlays, and the ids the client mounts into — and every visible region is a Preact island rendered from JSON by `groom/groom/assets/dashboard.js`. The screen opens a browser websocket to `/ws` and receives fleet-wide [dashboard state payloads](../../formats/dashboard-state-payload.md) on the server's clock; it subscribes that tab to the one run it has open and receives that run's detail pushed back to it alone; and it fetches per-selection panel data — repositories, files, diffs, traces — over HTTP, because those are one tab's choices and not fleet-wide facts. A socket `state` frame and the body of [GET /api/state](../../http/groom.md#get-dashboard-state) are the same JSON and go through the same apply function, so recovering from a dead socket is not a second rendering path that can rot unobserved.
+Nothing on either side of the wire is HTML. The endpoint ships a static shell — landmarks, live regions, overlays, and the ids the client mounts into — and every visible region is a Preact island rendered from JSON by `groom/groom/assets/dashboard.js`. The screen opens a browser websocket to `/ws` and receives fleet-wide [dashboard state payloads](../../formats/dashboard-state-payload.md) on the server's clock; it subscribes that tab to the one run it has open and receives that run's detail pushed back to it alone; and it fetches per-selection panel data — repositories, files, diffs — over HTTP, because those are one tab's choices and not fleet-wide facts. A socket `state` frame and the body of [GET /api/state](../../http/groom.md#get-dashboard-state) are the same JSON and go through the same apply function, so recovering from a dead socket is not a second rendering path that can rot unobserved.
 
-The visible shell has five activity modes selected by the left activity rail: runs, files, diff, telemetry, and settings. The app starts in **runs** mode. It holds the selected run id, the selected `(container, repo)` pair, per-pane loading state, and transient overlay state for the repository picker and command palette in the [dashboard client store](../../concepts/dashboard-client-store.md), and keeps the source of truth for run rows and counts on the server. Selecting a row follows [select run row](#select-run-row), which marks one [run row](#run-row) current and fills `#detail` from [get run detail](../../http/groom.md#get-run-detail) and the tab's own watch subscription — without changing the active mode.
+The visible shell has four activity modes selected by the left activity rail: runs, files, diff, and settings. The app starts in **runs** mode. It holds the selected run id, the selected `(container, repo)` pair, per-pane loading state, and transient overlay state for the repository picker and command palette in the [dashboard client store](../../concepts/dashboard-client-store.md), and keeps the source of truth for run rows and counts on the server. Selecting a row follows [select run row](#select-run-row), which marks one [run row](#run-row) current and fills `#detail` from [get run detail](../../http/groom.md#get-run-detail) and the tab's own watch subscription — without changing the active mode.
 
 Connection state is its own visible fact. The [connection chip](#connection-chip) reports `live`, `stale`, `reconnecting`, or `offline`, derived by the [dashboard connection state machine](../../concepts/dashboard-connection-state-machine.md) from **message recency, not `readyState`** — a half-open socket reads OPEN forever and would otherwise show a green dot over a frozen fleet. Anything but `live` starts the [dashboard resync poller](../../concepts/dashboard-resync-poller.md) against `GET /api/state`.
 
 ## Layout
 
 - app root: `.app[data-mode]`, connected to `WS /ws`; `data-mode` selects which pane is displayed. Inactive panes are `display:none`, so they are removed from the accessibility tree rather than merely hidden visually.
-- activity rail: a left `<nav aria-label="Panels">` landmark with runs, files, diff, telemetry, and settings mode controls; selecting the gear follows [select activity settings mode](#select-activity-settings-mode).
-- main region: a `<main id="main">` landmark holding all five panes, opened by the page's single `<h1>`, which is visually hidden but present because a screen reader has no title bar to read.
+- activity rail: a left `<nav aria-label="Panels">` landmark with runs, files, diff, and settings mode controls; selecting the gear follows [select activity settings mode](#select-activity-settings-mode).
+- main region: a `<main id="main">` landmark holding all four panes, opened by the page's single `<h1>`, which is visually hidden but present because a screen reader has no title bar to read.
 - runs pane: filter input, the live run list in `#runs-list`, and the open run's detail in `#detail`.
 - files pane: repository picker, lazily loaded file tree, and selected-file viewer.
 - diff pane: repository picker, lazily loaded changed-file tree, and selected-file diff viewer.
-- telemetry pane: a four-field span filter and the fleet trace table with a per-run card strip above it.
 - settings pane: manual container rescan and browser notification permission controls.
 - status bar: fleet counts, repo/worker totals, the connection chip, the refresh control, and the command-palette open button.
 - overlays: shared repository picker in `#repo-menu-wrap`, command palette in `#palette`, and the toast stack in `#toasts`.
 
 ## States
 
-- mode: `runs` by default; `files`, `diff`, `telemetry`, and `settings` are mutually exclusive alternatives written to `.app[data-mode]` and to the store together.
+- mode: `runs` by default; `files`, `diff`, and `settings` are mutually exclusive alternatives written to `.app[data-mode]` and to the store together.
 - selected run: absent until a run row, palette result, or `j`/`k` row movement writes [dashboard selected worker state](../../formats/dashboard-selected-worker-state.md). Selecting one clears the detail pane, sends this tab's watch subscription, and fetches `GET /worker/{container_id}` once.
 - selected repository: absent until a repository menu item is chosen; choosing one writes [dashboard selected repository state](../../formats/dashboard-selected-repository-state.md), updates both picker labels, and loads whichever of the files or diff panes is active.
 - repository menu: closed by default with `#repo-menu-wrap` lacking `open`.
@@ -70,7 +69,7 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - placement: width 0-20%, x 0-20%
 - keyboard: not focusable itself.
 - verify: visible(locator="#activitybar", text="Panels")
-- keyboard: Tab moves through the five mode buttons it contains, in DOM order.
+- keyboard: Tab moves through the four mode buttons it contains, in DOM order.
 - verify: visible(locator="#activitybar .act-btn", text="Runs")
 - parent: [groom dashboard](#groom-dashboard)
 - states: static.
@@ -100,7 +99,7 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - states: its visible child is whichever pane `.app[data-mode]` selects.
 - verify: json_path(path="states.visible_child", equals="pane selected by .app[data-mode]")
 - code: groom/groom/templates/dashboard.html
-- dom: holds all five panes as siblings. The four inactive ones are `display:none`, so exactly one pane's controls are in the accessibility tree at a time. `groom/groom/assets/dashboard.css` gives `.app` a fixed 48px activity column and assigns `#main` the remaining `main` grid area.
+- dom: holds all four panes as siblings. The three inactive ones are `display:none`, so exactly one pane's controls are in the accessibility tree at a time. `groom/groom/assets/dashboard.css` gives `.app` a fixed 48px activity column and assigns `#main` the remaining `main` grid area.
 - screenshot: docs/specs/groom-dashboard/vet/post-discovery-main-region.png
 
 ### page-heading
@@ -156,7 +155,7 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - keyboard: Enter or Space activates the mode switch.
 - verify: visible(locator=".app[data-mode='files']")
 - parent: [activity-rail](#activity-rail)
-- states: inactive with `aria-pressed="false"` in runs, diff, telemetry, or settings mode.
+- states: inactive with `aria-pressed="false"` in runs, diff, or settings mode.
 - verify: visible(locator=".act-btn[data-mode='files'][aria-pressed='false']")
 - states: active with the `active` class and `aria-pressed="true"` when `.app` has `data-mode="files"`.
 - verify: visible(locator=".act-btn[data-mode='files'].active[aria-pressed='true']")
@@ -181,7 +180,7 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - keyboard: Enter or Space activates the mode switch.
 - verify: visible(locator=".app[data-mode='diff']", text="Diff")
 - parent: [activity-rail](#activity-rail)
-- states: inactive with `aria-pressed="false"` in runs, files, telemetry, or settings mode.
+- states: inactive with `aria-pressed="false"` in runs, files, or settings mode.
 - verify: visible(locator=".act-btn[data-mode='diff'][aria-pressed='false']", text="Diff")
 - states: active with the `active` class and `aria-pressed="true"` when `.app` has `data-mode="diff"`.
 - verify: visible(locator=".act-btn[data-mode='diff'].active[aria-pressed='true']", text="Diff")
@@ -192,27 +191,7 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - dom: icon-only native `<button type="button">`, third in the rail; an inline `aria-hidden` bidirectional-arrows SVG and no text node. The activity rail sits outside `#main` and is never `display:none`, so this button stays in the accessibility tree in every mode — unlike the panes' own controls, which vanish when their pane is inactive.
 - leads-to: [select activity diff mode](#select-activity-diff-mode), which shows the diff pane containing the [diff repository picker button](#diff-repository-picker-button), `#diff-tree`, and `#diff-view`.
 - screenshot: docs/specs/groom-dashboard/vet/post-discovery-activity-diff-mode.png
-- known-defect: stablemate-01M20WYV4PDZDZQMW55XEA47X4 ambiguous-locator — TreeDir/FilesTree/DiffTree tree-row buttons expose only the raw file/directory name as their accessible name (no distinguishing prefix or aria-label), so a directory or file named 'Diff' (or 'Runs'/'Files'/'Telemetry'/'Settings'/etc.) collides with the identical role=button name of a fixed rail or status-bar control, and getByRole cannot tell them apart.
-
-### activity-telemetry-mode
-
-- selector: `.act-btn[data-mode="telemetry"]`
-- role: button
-- name: `Telemetry`
-- keyboard: natively focusable with Tab and Shift+Tab.
-- verify: visible(locator=".act-btn[data-mode='telemetry']:focus", text="Telemetry")
-- keyboard: Enter or Space activates the mode switch.
-- verify: visible(locator=".app[data-mode='telemetry']", text="Telemetry")
-- parent: [activity-rail](#activity-rail)
-- states: inactive with `aria-pressed="false"` in runs, files, diff, or settings mode.
-- verify: visible(locator=".act-btn[data-mode='telemetry'][aria-pressed='false']", text="Telemetry")
-- states: active with the `active` class and `aria-pressed="true"` when `.app` has `data-mode="telemetry"`.
-- verify: visible(locator=".act-btn[data-mode='telemetry'].active[aria-pressed='true']", text="Telemetry")
-- states: this is a real, data-dependent accessibility ambiguity, not a mislabeling: any tree row in the files or diff pane whose name happens to be the literal text `Telemetry` — a directory ([files-directory-toggle](#files-directory-toggle), [diff-directory-toggle](#diff-directory-toggle)) or a file ([files-file-row](#files-file-row)) named `Telemetry` — renders with the identical `role=button name="Telemetry"` pair as this always-present rail button, so `getByRole('button', {name: 'Telemetry'})` cannot distinguish them. The rail button's name cannot be changed without changing the product's navigation label. A repository's file and directory names are arbitrary user data this doc cannot constrain. The collision is therefore left standing rather than papered over with an invented distinguishing label.
-- code: groom/groom/assets/dashboard.js::setMode
-- dom: icon-only native `<button type="button">`, fourth in the rail and the last before the spacer; an inline `aria-hidden` sparkline SVG and no text node.
-- leads-to: [select activity telemetry mode](#select-activity-telemetry-mode), which shows the telemetry pane containing the span filter and [telemetry traces table](#telemetry-traces-table).
-- screenshot: docs/specs/groom-dashboard/vet/post-discovery-activity-telemetry-mode.png
+- known-defect: stablemate-01M20WYV4PDZDZQMW55XEA47X4 ambiguous-locator — TreeDir/FilesTree/DiffTree tree-row buttons expose only the raw file/directory name as their accessible name (no distinguishing prefix or aria-label), so a directory or file named 'Diff' (or 'Runs'/'Files'/'Settings'/etc.) collides with the identical role=button name of a fixed rail or status-bar control, and getByRole cannot tell them apart.
 
 ### activity-settings-mode
 
@@ -224,7 +203,7 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - keyboard: Enter or Space activates the mode switch.
 - verify: visible(locator=".app[data-mode='settings']", text="Settings")
 - parent: [activity-rail](#activity-rail)
-- states: inactive with `aria-pressed="false"` in runs, files, diff, or telemetry mode.
+- states: inactive with `aria-pressed="false"` in runs, files, or diff mode.
 - verify: visible(locator=".act-btn[data-mode='settings'][aria-pressed='false']", text="Settings")
 - states: active with the `active` class and `aria-pressed="true"` when `.app` has `data-mode="settings"`.
 - verify: visible(locator=".act-btn[data-mode='settings'].active[aria-pressed='true']", text="Settings")
@@ -423,7 +402,7 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - exclusive-with: [files-directory-toggle](#files-directory-toggle), [files-file-row](#files-file-row), [diff-directory-toggle](#diff-directory-toggle)
 - states: always enabled. The result is reported by a toast, not by a disabled state.
 - verify: json_path(path="answer_button.disabled", equals=false)
-- states: this button lives in the runs pane, one of the five `data-mode` panes described in [Layout](#layout).
+- states: this button lives in the runs pane, one of the four `data-mode` panes described in [Layout](#layout).
 - verify: visible(locator=".app[data-mode='runs'] #runs-pane #detail form[data-answer] button[type='submit']", text="Send answer")
 - states: `data-mode` selects a single active pane, and inactive panes are `display:none`, removed from the accessibility tree entirely — so this button disappears whenever `data-mode` is not `runs`.
 - verify: absent(subject="#detail form[data-answer] button[type='submit'] in the accessibility tree when `data-mode` is not `runs`")
@@ -444,7 +423,7 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - verify: json_path(path="keyboard.enter_or_space_toggles", equals=true)
 - parent: [detail-pane](#detail-pane)
 - exclusive-with: [files-directory-toggle](#files-directory-toggle), [files-file-row](#files-file-row), [diff-directory-toggle](#diff-directory-toggle)
-- states: this control lives in `#detail`, itself part of the runs pane, one of the five `data-mode` panes described in [Layout](#layout).
+- states: this control lives in `#detail`, itself part of the runs pane, one of the four `data-mode` panes described in [Layout](#layout).
 - verify: visible(locator=".app[data-mode='runs'] #runs-pane #detail details.disclosure > summary", text="Working-tree diff")
 - states: `data-mode` selects a single active pane, and inactive panes are `display:none`, removed from the accessibility tree entirely — so this control disappears whenever `data-mode` is not `runs`.
 - verify: absent(subject="#detail details.disclosure > summary in the accessibility tree when `data-mode` is not `runs`")
@@ -509,7 +488,7 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - parent: [groom dashboard](#groom-dashboard)
 - exclusive-with: [diff-repository-picker-button](#diff-repository-picker-button), [diff-directory-toggle](#diff-directory-toggle)
 - states: label text is replaced on both pickers whenever a repository is chosen, so the two never disagree.
-- states: this control lives in `#files-pane`, itself one of the five `data-mode` panes described in [Layout](#layout).
+- states: this control lives in `#files-pane`, itself one of the four `data-mode` panes described in [Layout](#layout).
 - states: `data-mode` selects a single active pane and inactive panes are `display:none`, removed from the accessibility tree entirely. So it can never co-render with the diff pane's [diff-repository-picker-button](#diff-repository-picker-button) or [diff-directory-toggle](#diff-directory-toggle) — the mode exclusivity, not a coincidence of naming, is what `getByRole('button', {name: 'Select container / repo…'})` can rely on against those two.
 - states: this is a real, data-dependent accessibility ambiguity, not a mislabeling: a directory or file in `#files-tree` literally named `Select container / repo…` renders with the same `role=button name="Select container / repo…"` pair as this control.
 - states: this control and any colliding `#files-tree` entry both live in the files pane, so — unlike the cross-pane exclusivity above — they co-render.
@@ -536,7 +515,7 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - verify: json_path(path="states.after_selection.label_replaced", equals=true)
 - states: the files and diff picker labels are written together and never disagree.
 - verify: json_path(path="states.after_selection.labels_agree", equals=true)
-- states: this control lives in `#diff-pane`, itself one of the five `data-mode` panes described in [Layout](#layout).
+- states: this control lives in `#diff-pane`, itself one of the four `data-mode` panes described in [Layout](#layout).
 - states: `data-mode` selects a single active pane and inactive panes are `display:none`, removed from the accessibility tree entirely. So it can never co-render with the files pane's [files-repository-picker-button](#files-repository-picker-button), [files-directory-toggle](#files-directory-toggle), or [files-file-row](#files-file-row) — the mode exclusivity, not a coincidence of naming, is what `getByRole('button', {name: 'Select container / repo…'})` can rely on against those three.
 - states: this is a real, data-dependent accessibility ambiguity, not a mislabeling: a directory in `#diff-tree` literally named `Select container / repo…` renders with the same `role=button name="Select container / repo…"` pair as this control, and both live in the diff pane so they co-render — see [diff-directory-toggle](#diff-directory-toggle) for the same collision documented from the other side. Neither name can be changed to avoid it, so the collision is left standing rather than papered over with an invented distinguishing label.
 - code: groom/groom/assets/dashboard.js::openRepoMenu
@@ -663,14 +642,13 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - states: the collapse state is deliberately not in the store, since nothing else reads it.
 - verify: json_path(path="states.store", equals="absent")
 - states: a directory literally named `Diff` renders with the same `role=button name="Diff"` pair as the always-present [activity-diff-mode](#activity-diff-mode) rail button — see that node for why this is a genuine, data-dependent ambiguity rather than a mislabeling.
-- states: a directory literally named `Telemetry` renders with the same `role=button name="Telemetry"` pair as the always-present [activity-telemetry-mode](#activity-telemetry-mode) rail button — see that node for why this is a genuine, data-dependent ambiguity rather than a mislabeling.
 - states: a directory literally named `Runs` renders with the same `role=button name="Runs"` pair as the always-present [activity-runs-mode](#activity-runs-mode) rail button — see that node for why this is a genuine, data-dependent ambiguity rather than a mislabeling.
 - states: a directory literally named `Files` renders with the same `role=button name="Files"` pair as the always-present [activity-files-mode](#activity-files-mode) rail button — see that node for why this is a genuine, data-dependent ambiguity rather than a mislabeling.
 - states: a directory literally named `Settings` renders with the same `role=button name="Settings"` pair as the always-present [activity-settings-mode](#activity-settings-mode) rail button — see that node for why this is a genuine, data-dependent ambiguity rather than a mislabeling.
 - states: a directory literally named `Open command palette` renders with the same `role=button name="Open command palette"` pair as the always-present [command-palette-open-button](#command-palette-open-button) status-bar button — see that node for why this is a genuine, data-dependent ambiguity rather than a mislabeling.
 - states: a directory literally named `Rescan containers (reconcile + prune)` renders with the same `role=button name="Rescan containers (reconcile + prune)"` pair as the always-present [statusbar-refresh-button](#statusbar-refresh-button) status-bar button — see that node for why this is a genuine, data-dependent ambiguity rather than a mislabeling.
 - states: a directory literally named `Select container / repo…` renders with the same `role=button name="Select container / repo…"` pair as the [files-repository-picker-button](#files-repository-picker-button) in this same pane — a genuine, data-dependent ambiguity rather than a mislabeling, since neither name can be changed to avoid it.
-- states: this control lives in `#files-tree`, itself part of the files pane, one of the five `data-mode` panes described in [Layout](#layout).
+- states: this control lives in `#files-tree`, itself part of the files pane, one of the four `data-mode` panes described in [Layout](#layout).
 - verify: absent(subject="#files-tree .tree-dir-head in the accessibility tree when `data-mode` is not `files`")
 - states: `data-mode` selects a single active pane and inactive panes are `display:none`, removed from the accessibility tree entirely. So it can never co-render with the settings pane's [settings-rescan-button](#settings-rescan-button) or [settings-enable-notifications-button](#settings-enable-notifications-button), the diff pane's [diff-repository-picker-button](#diff-repository-picker-button), or the runs pane's [detail-send-answer-button](#detail-send-answer-button) and [detail-working-tree-diff-toggle](#detail-working-tree-diff-toggle) — the mode exclusivity, not a coincidence of naming, is what `getByRole` can rely on for each of those name pairs.
 - verify: count(subject="elements matching role=button name={directory} in the rendered DOM", equals=1)
@@ -679,7 +657,7 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - dom: a native `<button type="button">` with an `aria-hidden` chevron; the nesting is a pure function of the flat path list the server sends, computed by the [dashboard tree builder](../../concepts/dashboard-tree-builder.md).
 - leads-to: [toggle files directory](#toggle-files-directory).
 - screenshot: docs/specs/groom-dashboard/vet/files-files-directory-toggle.png
-- known-defect: stablemate-01M20XEK4NRDMH05TG8GBHWSJ0 ambiguous-locator — TreeDir's directory-header button (groom/groom/assets/dashboard.js:311-324) uses the raw directory name as its sole accessible name with no distinguishing prefix, so a checked-out repo with a directory named like 'files'/'runs'/'settings'/'telemetry'/'diff' collides via getByRole substring match with the fixed-label nav/top-bar buttons that always co-render on the same dashboard screen.
+- known-defect: stablemate-01M20XEK4NRDMH05TG8GBHWSJ0 ambiguous-locator — TreeDir's directory-header button (groom/groom/assets/dashboard.js:311-324) uses the raw directory name as its sole accessible name with no distinguishing prefix, so a checked-out repo with a directory named like 'files'/'runs'/'settings'/'diff' collides via getByRole substring match with the fixed-label nav/top-bar buttons that always co-render on the same dashboard screen.
 
 ### files-file-row
 
@@ -699,14 +677,13 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - states: every other row omits `aria-current`.
 - verify: json_path(path="states.other_rows.omit_current", equals=true)
 - states: a file literally named `Diff` renders with the same `role=button name="Diff"` pair as the always-present [activity-diff-mode](#activity-diff-mode) rail button — see that node for why this is a genuine, data-dependent ambiguity rather than a mislabeling.
-- states: a file literally named `Telemetry` renders with the same `role=button name="Telemetry"` pair as the always-present [activity-telemetry-mode](#activity-telemetry-mode) rail button — see that node for why this is a genuine, data-dependent ambiguity rather than a mislabeling.
 - states: a file literally named `Runs` renders with the same `role=button name="Runs"` pair as the always-present [activity-runs-mode](#activity-runs-mode) rail button — see that node for why this is a genuine, data-dependent ambiguity rather than a mislabeling.
 - states: a file literally named `Files` renders with the same `role=button name="Files"` pair as the always-present [activity-files-mode](#activity-files-mode) rail button — see that node for why this is a genuine, data-dependent ambiguity rather than a mislabeling.
 - states: a file literally named `Settings` renders with the same `role=button name="Settings"` pair as the always-present [activity-settings-mode](#activity-settings-mode) rail button — see that node for why this is a genuine, data-dependent ambiguity rather than a mislabeling.
 - states: a file literally named `Open command palette` renders with the same `role=button name="Open command palette"` pair as the always-present [command-palette-open-button](#command-palette-open-button) status-bar button — see that node for why this is a genuine, data-dependent ambiguity rather than a mislabeling.
 - states: a file literally named `Rescan containers (reconcile + prune)` renders with the same `role=button name="Rescan containers (reconcile + prune)"` pair as the always-present [statusbar-refresh-button](#statusbar-refresh-button) status-bar button — see that node for why this is a genuine, data-dependent ambiguity rather than a mislabeling.
 - states: a file literally named `Select container / repo…` renders with the same `role=button name="Select container / repo…"` pair as the [files-repository-picker-button](#files-repository-picker-button) in this same pane — a genuine, data-dependent ambiguity rather than a mislabeling, since neither name can be changed to avoid it.
-- states: this control lives in `#files-tree`, itself part of the files pane, one of the five `data-mode` panes described in [Layout](#layout).
+- states: this control lives in `#files-tree`, itself part of the files pane, one of the four `data-mode` panes described in [Layout](#layout).
 - verify: absent(subject="#files-tree button.tree-file in the accessibility tree when `data-mode` is not `files`")
 - states: `data-mode` selects a single active pane and inactive panes are `display:none`, removed from the accessibility tree entirely. So it can never co-render with the settings pane's [settings-rescan-button](#settings-rescan-button) or [settings-enable-notifications-button](#settings-enable-notifications-button), the diff pane's [diff-repository-picker-button](#diff-repository-picker-button), or the runs pane's [detail-send-answer-button](#detail-send-answer-button) and [detail-working-tree-diff-toggle](#detail-working-tree-diff-toggle) — the mode exclusivity, not a coincidence of naming, is what `getByRole` can rely on for each of those name pairs.
 - verify: count(subject="elements matching role=button name={node.name} in the rendered DOM", equals=1)
@@ -714,7 +691,7 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - dom: a native `<button type="button">` keyed by full path, holding only the base name. The full path is closed over by the click handler rather than written to a data attribute.
 - leads-to: [select files file row](#select-files-file-row), which fetches that file's [workspace file content data](../../formats/workspace-file-content-data.md).
 - screenshot: docs/specs/groom-dashboard/vet/files-files-file-row.png
-- known-defect: stablemate-01M20XH81XHKWMJNZF15C0S43R ambiguous-locator — FilesTree leaf buttons (dashboard.js:795-808) name each tree row solely by the bare file/directory name with no distinguishing aria-label, so a file named Diff/Files/Runs/Telemetry/Settings/'Open command palette'/'Rescan containers (reconcile + prune)'/'Select container / repo…' collides role=button name with the corresponding fixed rail or status-bar control — same defect already seeded as stablemate-01M20X2HWR7MDGSZG3XJSKRYQ0 / stablemate-01M20X0XEEFYDZQRAKKYET9H4Z / stablemate-01M20WYV4PDZDZQMW55XEA47X4 / stablemate-01M20X67QXFMXFWTHH9P1HXGNR / stablemate-01M20X4DPRXNNG3RDZEDGSSQHD / stablemate-01M20X81BGCYQRWEAS1BX191P3; files-file-row just needs the matching known-defect bullets.
+- known-defect: stablemate-01M20XH81XHKWMJNZF15C0S43R ambiguous-locator — FilesTree leaf buttons (dashboard.js:795-808) name each tree row solely by the bare file/directory name with no distinguishing aria-label, so a file named Diff/Files/Runs/Settings/'Open command palette'/'Rescan containers (reconcile + prune)'/'Select container / repo…' collides role=button name with the corresponding fixed rail or status-bar control — same defect already seeded as stablemate-01M20X2HWR7MDGSZG3XJSKRYQ0 / stablemate-01M20X0XEEFYDZQRAKKYET9H4Z / stablemate-01M20WYV4PDZDZQMW55XEA47X4 / stablemate-01M20X67QXFMXFWTHH9P1HXGNR / stablemate-01M20X4DPRXNNG3RDZEDGSSQHD / stablemate-01M20X81BGCYQRWEAS1BX191P3; files-file-row just needs the matching known-defect bullets.
 
 ### file-view-region
 
@@ -742,6 +719,7 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - code: groom/groom/assets/dashboard.js::highlight
 - dom: highlighting is applied by highlight.js, whose output is escaped HTML; when the library is absent or throws, the content is rendered as a plain text node instead. The language comes from the server so the extension table lives next to the rest of the presentation policy.
 - screenshot: docs/specs/groom-dashboard/vet/files-file-view-region.png
+- detail: [operator browses workspace file](../../flows/operator-browses-workspace-file.md)
 
 ### diff-directory-toggle
 
@@ -761,21 +739,20 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - states: collapsed with `aria-expanded="false"`. Same component as the files tree uses, over the changed-file list put through the same [dashboard tree builder](../../concepts/dashboard-tree-builder.md).
 - verify: json_path(path="states.after_collapse", equals="collapsed")
 - states: a directory literally named `Diff` renders with the same `role=button name="Diff"` pair as the always-present [activity-diff-mode](#activity-diff-mode) rail button — see that node for why this is a genuine, data-dependent ambiguity rather than a mislabeling.
-- states: a directory literally named `Telemetry` renders with the same `role=button name="Telemetry"` pair as the always-present [activity-telemetry-mode](#activity-telemetry-mode) rail button — see that node for why this is a genuine, data-dependent ambiguity rather than a mislabeling.
 - states: a directory literally named `Runs` renders with the same `role=button name="Runs"` pair as the always-present [activity-runs-mode](#activity-runs-mode) rail button — see that node for why this is a genuine, data-dependent ambiguity rather than a mislabeling.
 - states: a directory literally named `Files` renders with the same `role=button name="Files"` pair as the always-present [activity-files-mode](#activity-files-mode) rail button — see that node for why this is a genuine, data-dependent ambiguity rather than a mislabeling.
 - states: a directory literally named `Settings` renders with the same `role=button name="Settings"` pair as the always-present [activity-settings-mode](#activity-settings-mode) rail button — see that node for why this is a genuine, data-dependent ambiguity rather than a mislabeling.
 - states: a directory literally named `Open command palette` renders with the same `role=button name="Open command palette"` pair as the always-present [command-palette-open-button](#command-palette-open-button) status-bar button — see that node for why this is a genuine, data-dependent ambiguity rather than a mislabeling.
 - states: a directory literally named `Rescan containers (reconcile + prune)` renders with the same `role=button name="Rescan containers (reconcile + prune)"` pair as the always-present [statusbar-refresh-button](#statusbar-refresh-button) status-bar button — see that node for why this is a genuine, data-dependent ambiguity rather than a mislabeling.
 - states: a directory literally named `Select container / repo…` renders with the same `role=button name="Select container / repo…"` pair as the [diff-repository-picker-button](#diff-repository-picker-button) in this same pane — a genuine, data-dependent ambiguity rather than a mislabeling, since neither name can be changed to avoid it.
-- states: this control lives in `#diff-tree`, itself part of the diff pane, one of the five `data-mode` panes described in [Layout](#layout).
+- states: this control lives in `#diff-tree`, itself part of the diff pane, one of the four `data-mode` panes described in [Layout](#layout).
 - verify: json_path(path="states.pane", equals="diff")
 - states: `data-mode` selects a single active pane and inactive panes are `display:none`, removed from the accessibility tree entirely — so this control can never co-render with the settings pane's [settings-rescan-button](#settings-rescan-button) or [settings-enable-notifications-button](#settings-enable-notifications-button), the files pane's [files-repository-picker-button](#files-repository-picker-button), or the runs pane's [detail-send-answer-button](#detail-send-answer-button) and [detail-working-tree-diff-toggle](#detail-working-tree-diff-toggle) — the mode exclusivity, not a coincidence of naming, is what `getByRole` can rely on for each of those name pairs.
 - verify: json_path(path="states.hidden_outside_diff_mode", equals=true)
 - code: groom/groom/assets/dashboard.js::TreeDir
 - leads-to: [toggle diff directory](#toggle-diff-directory).
 - screenshot: docs/specs/groom-dashboard/vet/diff-diff-directory-toggle.png
-- known-defect: stablemate-01M20X9YXMRN3JAK90CP7CKKC2 ambiguous-locator — TreeDir (dashboard.js:311-323) names its button with the bare directory name only, via no aria-label; any directory named 'Diff'/'Files'/'Runs'/'Telemetry'/'Settings'/'Open command palette'/'Rescan containers (reconcile + prune)'/'Select container / repo…' collides role=button+name with a fixed same-screen control, and this is fixable by giving the button a distinguishing aria-label independent of the directory's literal name.
+- known-defect: stablemate-01M20X9YXMRN3JAK90CP7CKKC2 ambiguous-locator — TreeDir (dashboard.js:311-323) names its button with the bare directory name only, via no aria-label; any directory named 'Diff'/'Files'/'Runs'/'Settings'/'Open command palette'/'Rescan containers (reconcile + prune)'/'Select container / repo…' collides role=button+name with a fixed same-screen control, and this is fixable by giving the button a distinguishing aria-label independent of the directory's literal name.
 
 ### diff-file-row
 
@@ -818,115 +795,6 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - dom: diff2html both parses the unified text and renders it, and escapes what it emits — which is why the raw diff rides the wire unsplit rather than having half a parser reimplemented server-side.
 - screenshot: docs/specs/groom-dashboard/vet/diff-diff-view-region.png
 
-### telemetry-run-filter-input
-
-- selector: `#traces-filter input[name="run"]`
-- role: searchbox
-- name: `Filter by run id`
-- keyboard: natively focusable with Tab; typing re-queries.
-- parent: [groom dashboard](#groom-dashboard)
-- states: empty by default.
-- verify: json_path(path="states.value_on_load", equals="")
-- states: any value narrows the query to matching run ids.
-- verify: json_path(path="states.query_narrows_to_matching_run_ids", equals=true)
-- code: groom/groom/assets/dashboard.js::loadTraces
-- screenshot: docs/specs/groom-dashboard/vet/telemetry-telemetry-run-filter-input.png
-
-### telemetry-node-filter-input
-
-- selector: `#traces-filter input[name="node"]`
-- role: searchbox
-- name: `Filter by node`
-- keyboard: natively focusable with Tab; typing re-queries.
-- parent: [groom dashboard](#groom-dashboard)
-- states: empty by default.
-- verify: json_path(path="states.empty_by_default", equals=true)
-- states: any value narrows the query to matching workflow nodes.
-- verify: json_path(path="states.value_narrows_query", equals=true)
-- code: groom/groom/assets/dashboard.js::loadTraces
-- screenshot: docs/specs/groom-dashboard/vet/telemetry-telemetry-node-filter-input.png
-
-### telemetry-status-filter-select
-
-- selector: `#traces-filter select[name="status"]`
-- role: combobox
-- name: `Filter by span status`
-- keyboard: natively focusable with Tab.
-- verify: json_path(path="keyboard.focusable_with_tab", equals=true)
-- keyboard: ArrowUp and ArrowDown choose an option.
-- verify: json_path(path="keyboard.arrow_keys_choose_option", equals=true)
-- keyboard: typing chooses an option.
-- verify: json_path(path="keyboard.typing_chooses_option", equals=true)
-- keyboard: changing the value re-queries.
-- verify: json_path(path="keyboard.value_change_requeries", equals=true)
-- parent: [groom dashboard](#groom-dashboard)
-- states: `any status` by default, with an empty value.
-- verify: json_path(path="states.default", equals="any status")
-- verify: json_path(path="states.value", equals="")
-- states: `ERROR`, `OK`, and `UNSET` are the alternatives.
-- verify: json_path(path="states.alternatives", matches="ERROR.*OK.*UNSET")
-- code: groom/groom/assets/dashboard.js::loadTraces
-- dom: a native single-select `<select>`, which computes to `combobox` — not `listbox` — because it is closed and shows one value at a time.
-- screenshot: docs/specs/groom-dashboard/vet/telemetry-telemetry-status-filter-select.png
-
-### telemetry-slower-than-input
-
-- selector: `#traces-filter input[name="slower_than"]`
-- role: searchbox
-- name: `Minimum duration in seconds`
-- keyboard: natively focusable with Tab; typing re-queries.
-- parent: [groom dashboard](#groom-dashboard)
-- states: empty by default.
-- verify: json_path(path="states.value_on_load", equals="")
-- states: a numeric value drops spans faster than that many seconds.
-- verify: json_path(path="states.numeric_value_filters_faster_spans", equals=true)
-- code: groom/groom/assets/dashboard.js::loadTraces
-- screenshot: docs/specs/groom-dashboard/vet/telemetry-telemetry-slower-than-input.png
-
-### telemetry-show-ended-checkbox
-
-- selector: `#traces-filter input[name="show_ended"]`
-- role: checkbox
-- name: `show ended`
-- keyboard: natively focusable with Tab.
-- verify: json_path(path="keyboard.tab_reachable", equals=true)
-- keyboard: Space toggles it, which re-queries.
-- verify: json_path(path="keyboard.space_toggles_and_requeries", equals=true)
-- parent: [groom dashboard](#groom-dashboard)
-- states: unchecked by default, which is the connected-runs-only view.
-- verify: json_path(path="states.default_checked", equals=false)
-- states: checked sends `show_ended=1`.
-- verify: json_path(path="states.checked_query", equals="show_ended=1")
-- states: the checked view also shows runs that have finished or gone silent.
-- verify: json_path(path="states.checked_view", equals="finished or silent runs included")
-- code: groom/groom/assets/dashboard.js::loadTraces
-- dom: a native `<input type="checkbox">` inside its own `<label>`, so the visible text is the accessible name and clicking the text toggles it. Unchecked, the field is simply absent from the serialized form — which is the same thing an omitted query parameter means to the server, so the default view needs no client-side special case.
-
-### telemetry-traces-table
-
-- selector: `#traces-list table.traces`
-- role: table
-- name: none
-- keyboard: not focusable.
-- verify: json_path(path="keyboard.focusable", equals=false)
-- keyboard: the cells are selectable text.
-- verify: json_path(path="keyboard.cells_selectable", equals=true)
-- parent: [groom dashboard](#groom-dashboard)
-- states: `No telemetry yet.` before the first query.
-- verify: visible(locator="#traces-list", text="No telemetry yet.")
-- states: `failed to load` on rejection.
-- verify: visible(locator="#traces-list", text="failed to load")
-- states: `No run is connected right now. Tick show ended to read the runs that already finished.` when the connected-only view is empty.
-- verify: visible(locator="#traces-list", text="No run is connected right now. Tick show ended to read the runs that already finished.")
-- states: a run-card strip with `No spans match — …` when runs are known but no span matches.
-- verify: visible(locator="#traces-list", text="No spans match")
-- states: otherwise the strip plus a six-column table of started, run, node, span, duration, and status.
-- verify: visible(locator="#traces-list table.traces", text="started run node span duration status")
-- code: groom/groom/assets/dashboard.js::Traces
-- code: groom/groom/assets/dashboard.js::RunCard
-- dom: a real `<table>` with a `<thead>` row of `<th>` cells, so the columns are announced as headers rather than as a grid of unlabelled text. Rows with an `ERROR` status carry an extra class on the status cell only.
-- screenshot: docs/specs/groom-dashboard/vet/telemetry-telemetry-traces-table.png
-
 ### settings-rescan-button
 
 - selector: `#btn-refresh`
@@ -946,7 +814,7 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - verify: json_path(path="states.in_flight.spinning", equals=true)
 - states: further activations are ignored until the request settles.
 - verify: json_path(path="states.in_flight.activations_ignored", equals=true)
-- states: this control lives in the settings pane, one of the five `data-mode` panes described in [Layout](#layout).
+- states: this control lives in the settings pane, one of the four `data-mode` panes described in [Layout](#layout).
 - verify: absent(subject="#btn-refresh in the accessibility tree when `data-mode` is not `settings`")
 - states: `data-mode` selects a single active pane and inactive panes are `display:none`, removed from the accessibility tree entirely. So it can never co-render with the files pane's [files-directory-toggle](#files-directory-toggle) or [files-file-row](#files-file-row), or the diff pane's [diff-directory-toggle](#diff-directory-toggle) — the mode exclusivity, not a coincidence of naming, is what `getByRole('button', {name: 'Rescan containers'})` can rely on.
 - verify: count(subject="elements matching role=button name='Rescan containers' in the rendered DOM", equals=1)
@@ -971,7 +839,7 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - verify: json_path(path="states.label", equals="static across permission states")
 - states: the browser owns the permission prompt and the answer.
 - verify: json_path(path="states.permission_prompt_owner", equals="browser")
-- states: this control lives in the settings pane, one of the five `data-mode` panes described in [Layout](#layout).
+- states: this control lives in the settings pane, one of the four `data-mode` panes described in [Layout](#layout).
 - verify: visible(locator=".app[data-mode='settings'] #btn-notify", text="Enable notifications")
 - states: `data-mode` selects a single active pane and inactive panes are `display:none`, removed from the accessibility tree entirely — so this control disappears whenever `data-mode` is not `settings`.
 - verify: absent(subject="#btn-notify in the accessibility tree when `data-mode` is not `settings`")
@@ -1228,7 +1096,7 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - when:
   - The shell is loaded and the rail contains the runs control.
   - The click target or an ancestor matches `.act-btn`, and that control's `data-mode` is `runs`.
-  - The prior mode may be any of the five.
+  - The prior mode may be any of the four.
 - does:
   - Writes `runs` to the root `.app` element's `data-mode`.
 - verify: visible(locator=".app[data-mode='runs']", text="Runs")
@@ -1236,8 +1104,8 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
   - Shows the runs pane.
 - verify: visible(locator="#runs-pane")
 - does:
-  - Removes the files, diff, telemetry, and settings panes from the accessibility tree.
-- verify: removed(subject="the files, diff, telemetry, and settings panes in the accessibility tree")
+  - Removes the files, diff, and settings panes from the accessibility tree.
+- verify: removed(subject="the files, diff, and settings panes in the accessibility tree")
 - does:
   - Adds the `active` class to the runs rail button.
 - verify: created(subject="the `active` class on the runs rail button")
@@ -1270,7 +1138,7 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - verify: unchanged(subject="selected repository")
 - does:
   - Skips every panel loader when mode is `runs`.
-- verify: count(subject="files, diff, and telemetry loader calls", equals=0)
+- verify: count(subject="files and diff loader calls", equals=0)
 - does:
   - Issues no HTTP request.
 - verify: count(subject="HTTP requests", equals=0)
@@ -1280,9 +1148,6 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - does:
   - Leaves cached diff state unchanged.
 - verify: unchanged(subject="cached diff state")
-- does:
-  - Leaves cached traces state unchanged.
-- verify: unchanged(subject="cached traces state")
 - does:
   - Leaves the selected run unchanged.
 - verify: unchanged(subject="selected run")
@@ -1487,104 +1352,6 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - code: groom/groom/assets/dashboard.js::DiffTree
 - detail: [dashboard mode selection](../../concepts/dashboard-mode-selection.md)
 - detail: [dashboard Diff pane selection contexts](../../concepts/dashboard-diff-pane-selection-contexts.md)
-
-### select-activity-telemetry-mode
-
-- on: [activity-telemetry-mode](#activity-telemetry-mode)
-- trigger: pointer click, tap, Enter, or Space on the telemetry rail button or its SVG, captured by the delegated `#activitybar` click handler.
-- role: button
-- name: `Telemetry`
-- keyboard: Tab reaches the button.
-- verify: visible(locator=".act-btn[data-mode='telemetry']:focus", text="Telemetry")
-- keyboard: Shift+Tab reaches the button.
-- verify: visible(locator=".act-btn[data-mode='telemetry']:focus", text="Telemetry")
-- keyboard: Enter activates the button.
-- verify: visible(locator=".app[data-mode='telemetry']", text="Telemetry")
-- keyboard: Space activates the button.
-- verify: visible(locator=".app[data-mode='telemetry']", text="Telemetry")
-- when:
-  - The click target or an ancestor matches `.act-btn` with `data-mode="telemetry"`.
-- verify: visible(locator=".app[data-mode='telemetry']", text="Telemetry")
-- when:
-  - The span-filter fields retain whatever the operator last typed or ticked.
-- verify: unchanged(subject="telemetry filter fields")
-- when:
-  - A mode switch does not clear the shell-markup span-filter fields.
-- verify: unchanged(subject="telemetry filter fields")
-- does:
-  - Writes `telemetry` to `.app[data-mode]`.
-- verify: visible(locator=".app[data-mode='telemetry']", text="Telemetry")
-- does:
-  - Recomputes `active` across the rail.
-- verify: visible(locator=".act-btn[data-mode='telemetry'].active", text="Telemetry")
-- does:
-  - Recomputes `aria-pressed` across the rail.
-- verify: visible(locator=".act-btn[data-mode='telemetry'][aria-pressed='true']", text="Telemetry")
-- does:
-  - Writes `telemetry` to the mode in the store.
-- verify: json_path(path="store.mode", equals="telemetry")
-- does:
-  - Closes the repository menu.
-- verify: absent(subject="repository menu")
-- does:
-  - Enters the traces loader unconditionally, so reselecting the control re-queries.
-- verify: visible(locator="#traces-filter")
-- does:
-  - Serializes the filter fields into a query string.
-- verify: json_path(path="request.url", matches="^/traces\\?")
-- does:
-  - Sends `GET /traces` with the serialized query string.
-- verify: json_path(path="request.url", matches="^/traces\\?")
-- does:
-  - Stores the response's run cards.
-- verify: visible(locator=".run-cards")
-- does:
-  - Stores the response's span rows.
-- verify: visible(locator=".traces")
-- does:
-  - Renders the card strip for response run cards.
-- verify: visible(locator=".run-cards")
-- does:
-  - Renders the traces table for response span rows.
-- verify: visible(locator=".traces")
-- does:
-  - Renders the no-match note beneath the card strip for an empty span list.
-- verify: visible(locator=".empty", text="No spans match")
-- does:
-  - Renders the not-connected note when `show ended` is unticked and no run came back.
-- verify: visible(locator=".empty", text="No run is connected right now.")
-- does:
-  - Stores an error status on a rejected fetch.
-- verify: json_path(path="traces.status", equals="error")
-- does:
-  - Renders `failed to load` for a rejected fetch.
-- verify: visible(locator=".empty", text="failed to load")
-- does:
-  - Leaves the selected run untouched.
-- verify: unchanged(subject="selected run")
-- does:
-  - Leaves the fleet untouched.
-- verify: unchanged(subject="fleet")
-- does:
-  - Leaves the detail pane untouched.
-- verify: unchanged(subject="detail pane")
-- does:
-  - Leaves the files cache untouched.
-- verify: unchanged(subject="files cache")
-- does:
-  - Leaves the diff cache untouched.
-- verify: unchanged(subject="diff cache")
-- does:
-  - Leaves the palette untouched.
-- verify: unchanged(subject="palette")
-- does:
-  - Leaves the socket untouched.
-- verify: unchanged(subject="socket")
-- code: groom/groom/assets/dashboard.js::setMode
-- code: groom/groom/assets/dashboard.js::loadTraces
-- code: groom/groom/assets/dashboard.js::Traces
-- detail: [dashboard mode selection](../../concepts/dashboard-mode-selection.md)
-- detail: [telemetry trace query contexts](../../concepts/telemetry-trace-query-contexts.md)
 
 ### select-activity-settings-mode
 
@@ -2581,7 +2348,7 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - when:
   - The palette is open and at least one result matches.
 - does:
-  - Switches to runs mode first, so the row the operator just chose is on screen — the palette is reachable from files, diff, telemetry, and settings alike.
+  - Switches to runs mode first, so the row the operator just chose is on screen — the palette is reachable from files, diff, and settings alike.
   - Selects that run through the same selector the row click and the `j`/`k` keys use: store write, watch subscription, one detail fetch.
   - Closes the palette and returns focus to whatever opened it.
   - Chooses by run id rather than by rendered position, so the result list re-rendering under a concurrent push cannot open the wrong run.
@@ -2590,59 +2357,3 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - code: groom/groom/assets/dashboard.js::setMode
 - detail: [dashboard mode selection](../../concepts/dashboard-mode-selection.md)
 - detail: [dashboard run selector](../../concepts/dashboard-run-selector.md)
-
-### filter-telemetry-spans
-
-- on: [telemetry-status-filter-select](#telemetry-status-filter-select)
-- trigger: an `input`, `change`, or `submit` event anywhere in the telemetry filter form — typing in any of the three text fields, changing the status select, ticking the `show ended` checkbox, or pressing Enter.
-- role: combobox
-- name: `Filter by span status`
-- keyboard: Tab reaches each field of the telemetry filter form in turn.
-- verify: json_path(path="document.activeElement.name", equals="node")
-- keyboard: ArrowUp and ArrowDown change the status select.
-- verify: visible(locator="#traces-filter select[name='status']", text="any status")
-- keyboard: Enter submits the form, which is intercepted rather than navigating.
-- verify: unchanged(subject="browser URL")
-- when:
-  - Telemetry mode is active.
-- verify: visible(locator="#telemetry-pane", text="Telemetry")
-- does:
-  - Prevents the form's default submission, so the page never navigates.
-- verify: unchanged(subject="browser URL")
-- does:
-  - Serializes the run id, node, span status, and minimum duration in seconds into the query string.
-- verify: json_path(path="request.url", matches="[?&]run=.*&node=.*&status=.*&slower_than=.*")
-- does:
-  - Includes `show_ended=1` in the query string when the `show ended` checkbox is ticked.
-- verify: json_path(path="request.url", matches="[?&]show_ended=1")
-- does:
-  - Sends the serialized query string as `GET /traces`.
-- verify: json_path(path="request.url", matches="^/traces\\?")
-- does:
-  - Sends an empty field as an empty value, which the server ignores.
-- verify: json_path(path="request.url", matches="[?&]node=(&|$)")
-- does:
-  - Omits the `show ended` checkbox from the query entirely when it is unticked, which the server reads as the connected-runs-only default.
-- verify: omits(subject="request.url", matches="show_ended")
-- does:
-  - Stores the returned run cards and span rows, replacing the previous result wholesale.
-- verify: json_path(path="traces.runs[0].run_id", equals="run-1")
-- does:
-  - Renders the run-card strip above the table, and beneath it the no-match note when runs are known but no span survives the filter, or the not-connected note when the connected-only view came back empty.
-- verify: visible(locator=".run-cards", text="run-1")
-- does:
-  - Stores an error status on rejection, rendered as `failed to load`.
-- verify: visible(locator="#telemetry", text="failed to load")
-- does:
-  - Re-queries on every keystroke, without debounce.
-- verify: count(subject="trace requests", equals=1)
-- does:
-  - Serves the query from groom's local span store rather than from a remote backend.
-- verify: count(subject="requests to a remote backend", equals=0)
-- does:
-  - Leaves the selected run, the fleet, and the detail pane untouched.
-- verify: unchanged(subject="selected run")
-- code: groom/groom/assets/dashboard.js::loadTraces
-- code: groom/groom/assets/dashboard.js::Traces
-- code: groom/groom/assets/dashboard.js::RunCard
-- detail: [telemetry trace query contexts](../../concepts/telemetry-trace-query-contexts.md)

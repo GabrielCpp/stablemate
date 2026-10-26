@@ -65,6 +65,7 @@ renderer answers. Flat paths are the narrow contract between them.
 
 - sig: `buildTree(entries: Array<{path: any}>) -> PathTreeNode`
 - raises: ordinary JavaScript runtime errors when `entries` is not iterable with `forEach`.
+- verify: json_path(path="exception.type", equals="TypeError")
 - returns: the root [dashboard path tree](../formats/dashboard-path-tree.md) node.
 - verify: count(subject="empty root directories", equals=0)
 - verify: count(subject="empty root files", equals=0)

@@ -17,7 +17,7 @@ reusing the helper outside a particular file-format discussion; read the format
 node when preparing or interpreting operator gate context text. The shared
 implementation collects every recognized question section and returns the
 stripped body from the latest one; when none is recognized, it returns stripped
-whole-file text. Both results are limited to the first 4000 characters.
+whole-file text. Neither result is truncated by the helper itself.
 
 - code: groom/groom/gates.py::extract_question
 - rule: use the module node for the helper contract and the format node for the operator-gate text rules; neither is a replacement for the other.
