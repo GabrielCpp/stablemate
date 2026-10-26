@@ -355,3 +355,22 @@ def test_a_dialog_answer_with_its_reason_is_clean(repo: Path) -> None:
     write(repo / INTERACTION_PATH, _interaction_book("dismiss — the user keeps the policy"))
     found = [f for f in _findings(repo, "unparsable-bullet-value") if "#dialog:" in f.ref]
     assert found == []
+
+
+def _grpc_runbook(url: str) -> str:
+    return (
+        "---\ntype: runbook\ntitle: QA stack\n---\n\n# QA stack\n\n"
+        f"- driver: grpc\n- entry-url: {url}\n"
+    )
+
+
+def test_a_grpc_entry_url_on_a_runbook_is_clean(repo: Path) -> None:
+    write(repo / "docs/services/app/ops/qa-stack.md", _grpc_runbook("grpc://localhost:50051"))
+    found = [f for f in _findings(repo, "unparsable-bullet-value") if "#entry-url:" in f.ref]
+    assert found == []
+
+
+def test_a_runbook_entry_url_with_another_scheme_is_reported(repo: Path) -> None:
+    write(repo / "docs/services/app/ops/qa-stack.md", _grpc_runbook("ftp://localhost:50051"))
+    found = [f for f in _findings(repo, "unparsable-bullet-value") if "#entry-url:" in f.ref]
+    assert len(found) == 1

@@ -82,6 +82,7 @@ SELECTOR_GRAMMAR: dict[str, tuple[Callable[[str], bool], str]] = {
     "web": (is_web_representable, NOT_WEB_REPRESENTABLE_REASON),
     "mobile": (is_mobile_representable, NOT_MOBILE_REPRESENTABLE_REASON),
     "http": (is_web_representable, NOT_WEB_REPRESENTABLE_REASON),
+    "grpc": (is_never_selected, NEVER_SELECTED_REASON),
     "cli": (is_never_selected, NEVER_SELECTED_REASON),
     "iac": (is_never_selected, NEVER_SELECTED_REASON),
     "artifact": (is_never_selected, NEVER_SELECTED_REASON),

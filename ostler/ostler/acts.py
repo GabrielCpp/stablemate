@@ -13,6 +13,7 @@ WEB = "web"
 MOBILE = "mobile"
 HTTP = "http"
 CLI = "cli"
+GRPC = "grpc"
 
 _ENV_NAME = re.compile(r"[A-Z_][A-Z0-9_]*")
 
@@ -114,7 +115,7 @@ ACTS: tuple[ActSpec, ...] = (
                     "only state an HTTP performer can establish on the surface it performs "
                     "on, and the only way a claim about a created resource can name what "
                     "created it",
-        drivers=(HTTP,),
+        drivers=(HTTP, GRPC),
     ),
     ActSpec(
         name="no_body",
@@ -122,7 +123,7 @@ ACTS: tuple[ActSpec, ...] = (
         establishes="the request this step sends carries no body at all — what a route that "
                     "reads nothing from its request is called with, stated so the book is not "
                     "left looking as if it forgot one",
-        drivers=(HTTP,),
+        drivers=(HTTP, GRPC),
     ),
     ActSpec(
         name="header",
@@ -131,7 +132,7 @@ ACTS: tuple[ActSpec, ...] = (
         establishes="the request this step sends carries a stated header — the only way a "
                     "credential a fixture minted, named by `@fixture.key`, reaches a route "
                     "that refuses an anonymous caller",
-        drivers=(HTTP,),
+        drivers=(HTTP, GRPC),
     ),
     ActSpec(
         name="invoke",

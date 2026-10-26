@@ -2,4 +2,4 @@
 
 from __future__ import annotations
 
-DRIVERS: tuple[str, ...] = ("web", "mobile", "http", "cli", "artifact", "iac", "none")
+DRIVERS: tuple[str, ...] = ("web", "mobile", "http", "grpc", "cli", "artifact", "iac", "none")

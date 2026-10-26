@@ -73,7 +73,7 @@ def test_bind_and_parse_agree_so_a_plan_compares_to_the_bullet_it_came_from() ->
 
 def test_every_act_declares_at_least_one_driver_that_can_perform_it() -> None:
     """Performability is a relation between what the act needs and what a driver supplies — an act no driver can perform is a name the book can write and no target can honour."""
-    vocabulary = {"web", "mobile", "http", "cli", "artifact", "iac", "none"}
+    vocabulary = {"web", "mobile", "http", "grpc", "cli", "artifact", "iac", "none"}
     for spec in acts.ACTS:
         assert spec.drivers, spec.name
         assert set(spec.drivers) <= vocabulary, spec.name
@@ -130,7 +130,7 @@ def test_header_names_a_request_header_its_http_performer_sends() -> None:
     assert isinstance(call, acts.ActCall)
     assert call.args == {"name": "Authorization", "value": "Bearer @signed-in-editor.token"}
     spec = acts.ACT_BY_NAME["header"]
-    assert spec.drivers == (acts.HTTP,)
+    assert spec.drivers == (acts.HTTP, acts.GRPC)
     assert not any(p.locator for p in spec.params)
 
 

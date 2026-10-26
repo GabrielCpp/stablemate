@@ -109,6 +109,11 @@ def test_route_grammar_and_path_addressedness_per_driver() -> None:
     assert cli_reason == routes.NOT_ROUTED_REASON
     assert not routes.is_path_addressed("cli")
 
+    grpc_predicate, grpc_reason = routes.route_grammar("grpc")
+    assert grpc_predicate is routes.is_never_routed
+    assert grpc_reason == routes.NOT_ROUTED_REASON
+    assert not routes.is_path_addressed("grpc")
+
     artifact_predicate, artifact_reason = routes.route_grammar("artifact")
     assert artifact_predicate is routes.is_never_routed
     assert artifact_reason == routes.NOT_ROUTED_REASON

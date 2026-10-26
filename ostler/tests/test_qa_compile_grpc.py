@@ -100,3 +100,41 @@ def test_a_lower_case_reference_nothing_captured_is_a_gap() -> None:
         oid, checksDeclared=[{"call": "gone", "name": "grpc_status", "args": {"code": "NOT_FOUND"}}],
         actsDeclared=[_body("id", "$ticket_id")]))
     assert "unresolved-precondition" in _kinds(gaps, oid)
+
+
+def _on_node(oid: str, **extra: object) -> dict:
+    return _obligation(oid, node="okf:tickets-rpc:get-ticket", **extra)
+
+
+def _refused(code: str) -> list:
+    return [{"call": "refused", "name": "grpc_status", "args": {"code": code}}]
+
+
+def test_a_header_one_claim_arranges_reaches_every_claim_of_the_rpc() -> None:
+    first, second = "okf:tickets-rpc:one:1", "okf:tickets-rpc:two:2"
+    source, gaps = _compile(
+        _on_node(first, checksDeclared=[{"call": "x", "name": "json_path", "args": {"path": "$.title", "equals": "A"}}],
+                 actsDeclared=[_body("id", "t-1"), _header("authorization", "Bearer $TICKET_TOKEN")]),
+        _on_node(second, checksDeclared=_refused("NOT_FOUND"), actsDeclared=[_body("id", "t-0")]))
+    assert _kinds(gaps, first) == [] and _kinds(gaps, second) == []
+    assert source.count('metadata={"authorization": qa.resolve("Bearer $TICKET_TOKEN")}') == 2
+
+
+def test_a_claim_expecting_unauthenticated_sends_none_of_the_shared_headers() -> None:
+    first, second = "okf:tickets-rpc:one:1", "okf:tickets-rpc:two:2"
+    source, _ = _compile(
+        _on_node(first, checksDeclared=_refused("NOT_FOUND"),
+                 actsDeclared=[_body("id", "t-0"), _header("authorization", "Bearer $TICKET_TOKEN")]),
+        _on_node(second, checksDeclared=_refused("UNAUTHENTICATED"), actsDeclared=[_body("id", "t-1")]))
+    assert source.count("metadata=") == 1
+
+
+def test_a_header_two_claims_set_apart_is_not_shared() -> None:
+    first, second, third = "okf:tickets-rpc:one:1", "okf:tickets-rpc:two:2", "okf:tickets-rpc:three:3"
+    source, _ = _compile(
+        _on_node(first, checksDeclared=_refused("NOT_FOUND"),
+                 actsDeclared=[_body("id", "t-0"), _header("authorization", "Bearer $A_TOKEN")]),
+        _on_node(second, checksDeclared=_refused("NOT_FOUND"),
+                 actsDeclared=[_body("id", "t-1"), _header("authorization", "Bearer $B_TOKEN")]),
+        _on_node(third, checksDeclared=_refused("NOT_FOUND"), actsDeclared=[_body("id", "t-2")]))
+    assert source.count("metadata=") == 2

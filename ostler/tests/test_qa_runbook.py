@@ -1052,3 +1052,48 @@ def test_a_copy_served_backend_without_a_mobile_runbook_brings_no_device_up(tmp_
     (tmp_path / ".git").mkdir()
     make_runbook(tmp_path, BACKENDLESS_MOBILE.replace("driver: mobile", "driver: web"))
     assert rb.bring_up_devices(model.load(tmp_path)) == []
+
+
+GRPC_SERVER_PAGE = """---
+type: grpc-server
+title: Ticket service
+---
+
+# Ticket service
+
+- launch: ./svc
+- entry-url: grpc://localhost:50051
+- serves: ticket.v1.TicketService
+"""
+
+GRPC_RUNBOOK = """---
+type: runbook
+title: Ticket stack
+---
+
+# Ticket stack
+
+- driver: grpc
+- entry-url: grpc://localhost:50051
+- surfaces: [Ticket service](../grpc/ticket-service.md)
+
+## Steps
+
+### prepare
+
+- kind: prepare
+- run: ./build.sh
+"""
+
+
+def test_a_runbook_serves_what_its_grpc_server_surfaces_serve(tmp_path: Path) -> None:
+    (tmp_path / ".git").mkdir()
+    write(tmp_path / "docs/services/app/grpc/ticket-service.md", GRPC_SERVER_PAGE)
+    make_runbook(tmp_path, GRPC_RUNBOOK)
+    manifest = rb.load_stack(tmp_path)
+    assert manifest["entry_url"] == "grpc://localhost:50051"
+    assert manifest["serves"] == ["ticket.v1.TicketService"]
+
+
+def test_a_runbook_with_no_grpc_surface_serves_nothing(repo: Path) -> None:
+    assert "serves" not in rb.load_stack(repo)

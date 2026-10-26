@@ -701,6 +701,35 @@ def test_web_driver_over_screen_surface_is_clean(repo: Path):
     assert "no-drivable-surface" not in warns
 
 
+GRPC_SERVER = """\
+---
+type: grpc-server
+slug: svc
+title: Svc
+---
+# Svc
+
+- launch: ./svc
+- entry-url: grpc://localhost:50051
+- serves: a.v1.Svc
+"""
+
+
+def test_grpc_driver_over_grpc_server_surface_is_clean(repo: Path):
+    _write_driver_surface_book(repo, "grpc", GRPC_SERVER, "../grpc/svc.md")
+    report = doctor.run(load(repo))
+    found = {f.code for f in report.findings}
+    assert "no-drivable-surface" not in found
+    assert "unknown-driver" not in found
+
+
+def test_grpc_driver_over_server_surface_warns(repo: Path):
+    _write_driver_surface_book(repo, "grpc", API_SERVER, "../http/api.md")
+    report = doctor.run(load(repo))
+    warns = {f.code for f in report.findings if f.severity == "warn"}
+    assert "no-drivable-surface" in warns
+
+
 def test_iac_driver_with_no_surfaces_is_clean(repo: Path):
     _write_driver_surface_book(repo, "iac", None, None)
     report = doctor.run(load(repo))

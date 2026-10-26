@@ -599,7 +599,7 @@ UI_TYPES: tuple[UINodeType, ...] = (
             BulletKey("surfaces", link=True),
             BulletKey("code", link=True, owns=True),
             BulletKey("verify", check=True),
-            BulletKey("entry-url", value_kind="url"),
+            BulletKey("entry-url", value_kind="entry-url"),
             BulletKey("health-path"),
             BulletKey("identity"),
             BulletKey("bundle-id"),

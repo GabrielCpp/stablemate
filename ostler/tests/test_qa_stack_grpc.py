@@ -154,3 +154,33 @@ def test_ensure_stack_mints_after_the_stack_is_ready(monkeypatch: pytest.MonkeyP
     assert os.environ["TICKET_TOKEN"] == SECRET_VALUE
     assert SECRET_VALUE not in repr(out)
     monkeypatch.delenv("TICKET_TOKEN")
+
+
+def test_a_runbook_manifest_holds_readiness_to_its_surfaces_services(
+    fake: tuple[str, Path], monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+) -> None:
+    from ostler.qa import runbook as rb
+
+    root = tmp_path / "book"
+    (root / ".git").mkdir(parents=True)
+    page = root / "docs/services/app/grpc/ticket-service.md"
+    page.parent.mkdir(parents=True)
+    page.write_text(
+        "---\ntype: grpc-server\ntitle: Ticket service\n---\n\n# Ticket service\n\n"
+        "- launch: ./svc\n- entry-url: grpc://localhost:50051\n- serves: ticket.v1.TicketService\n"
+    )
+    runbook = root / "docs/services/app/ops/stack.md"
+    runbook.parent.mkdir(parents=True)
+    runbook.write_text(
+        "---\ntype: runbook\ntitle: Stack\n---\n\n# Stack\n\n- driver: grpc\n"
+        "- entry-url: grpc://localhost:50051\n"
+        "- surfaces: [Ticket service](../grpc/ticket-service.md)\n\n## Steps\n\n"
+        "### prepare\n\n- kind: prepare\n- run: ./build.sh\n"
+    )
+    command, _ = fake
+    manifest = rb.load_stack(root)
+    monkeypatch.setenv("FAKE_GRPCURL_MODE", "other")
+    why = stack.health_probe(manifest["entry_url"], serves=tuple(manifest["serves"]), grpcurl=command)
+    assert "does not list" in why
+    monkeypatch.setenv("FAKE_GRPCURL_MODE", "ok")
+    assert stack.health_probe(manifest["entry_url"], serves=tuple(manifest["serves"]), grpcurl=command) == ""

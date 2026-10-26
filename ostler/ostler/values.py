@@ -80,12 +80,19 @@ def _rpc_name(value: str) -> str:
     return "it is not `package.Service/Method`, a lower snake package and PascalCase Service and Method"
 
 
+def _entry_url(value: str) -> str:
+    if not _url(value) or not _grpc_url(value):
+        return ""
+    return "it is neither an absolute `http(s)://` URL nor a `grpc://host:port` address"
+
+
 VALUE_KINDS: dict[str, Callable[[str], str]] = {
     "url": _url,
     "http-method": _http_method,
     "checkout-path": _checkout_path,
     "dialog-answer": _dialog_answer,
     "grpc-url": _grpc_url,
+    "entry-url": _entry_url,
     "grpc-code": _grpc_code,
     "rpc-name": _rpc_name,
 }

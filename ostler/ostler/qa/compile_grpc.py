@@ -34,6 +34,7 @@ from ostler.qa.plan_source import target_lines
 
 _SECRET_NAME = re.compile(r"^[A-Z][A-Z0-9_]*$")
 _WHOLE_BODY = "$"
+_REFUSED = ("UNAUTHENTICATED", "PERMISSION_DENIED")
 
 
 @dataclass(frozen=True)
@@ -56,6 +57,31 @@ class _Arrangement:
     def named_references(self) -> list[references.Reference]:
         values = [*self.body.values(), *self.metadata.values()]
         return [ref for value in values if isinstance(value, str) for ref in references.find_references(value)]
+
+
+def _node_credentials(obligations: list[Obligation], book: BookIndex) -> dict[str, tuple[CallRow, ...]]:
+    nodes = dict.fromkeys(obligation.node for obligation in obligations)
+    values: dict[str, dict[str, set[str]]] = {}
+    rows: dict[str, dict[str, CallRow]] = {}
+    for node in nodes:
+        for claim in book.claims_by_node.get(node, []):
+            if not node or expect_code(claim.checks) in _REFUSED:
+                continue
+            for row in claim.acts:
+                if row.name != "header":
+                    continue
+                name = row.text_arg("name")
+                values.setdefault(node, {}).setdefault(name, set()).add(row.text_arg("value"))
+                rows.setdefault(node, {}).setdefault(name, row)
+    return {node: tuple(row for name, row in by_name.items() if len(values[node][name]) == 1)
+            for node, by_name in rows.items()}
+
+
+def _claim_acts(obligation: Obligation, credentials: tuple[CallRow, ...]) -> tuple[CallRow, ...]:
+    if expect_code(obligation.checks) == "UNAUTHENTICATED":
+        return obligation.acts
+    own = {row.text_arg("name") for row in obligation.acts if row.name == "header"}
+    return (*obligation.acts, *(row for row in credentials if row.text_arg("name") not in own))
 
 
 def _arrangement(rows: tuple[CallRow, ...]) -> _Arrangement | None:
@@ -102,12 +128,15 @@ class _Call:
     secrets: list[str]
 
 
-def _call(obligation: Obligation, observed: str, produced: Produced, gaps: list[Gap]) -> _Call | Gap:
+def _call(
+    obligation: Obligation, observed: str, produced: Produced, gaps: list[Gap],
+    credentials: tuple[CallRow, ...] = (),
+) -> _Call | Gap:
     method = bullet_value(next(iter(obligation.locators.name), None))
     if method is None:
         return Gap(obligation.id, "uncompilable-claim", "the book gives this rpc no `name:` to call")
     status = expect_code(obligation.checks)
-    rows = obligation.acts
+    rows = _claim_acts(obligation, credentials)
     arranged = None if (not rows or obligation.acts_unparsed) else _arrangement(rows)
     if arranged is None or not arranged.states_body():
         return Gap(obligation.id, "unarranged-request-body", "the book carries no request body")
@@ -127,7 +156,7 @@ def _call(obligation: Obligation, observed: str, produced: Produced, gaps: list[
 
 def _scenario_body(
     obligations: list[Obligation], gaps: list[Gap], covered: set[str], captured: set[tuple[str, str]],
-    secrets: list[str],
+    secrets: list[str], credentials: dict[str, tuple[CallRow, ...]],
 ) -> list[str]:
     lines: list[str] = []
     produced = Produced()
@@ -136,7 +165,7 @@ def _scenario_body(
         observed = f"observed_{index}"
         lines.extend(["", f"    # {oid}", f"    # {' '.join(obligation.requirement.split())}"])
         produced.record_fixtures(obligation)
-        built = _call(obligation, observed, produced, gaps)
+        built = _call(obligation, observed, produced, gaps, credentials.get(obligation.node, ()))
         if isinstance(built, Gap):
             gaps.append(built)
             lines.extend([f"    # TODO(arrange): {built.detail}"])
@@ -158,6 +187,7 @@ def grpc_scenarios(
     """One scenario per book page whose rpcs owe live evidence, each called through grpcurl."""
     lines: list[str] = []
     secrets: list[str] = []
+    credentials = _node_credentials(owed, book)
     for source, obligations in by_source(owed).items():
         sinks.gaps.extend(unarranged_state_gap(o) for o in obligations if not o.checks)
         declared = [o for o in obligations if o.checks]
@@ -168,7 +198,7 @@ def grpc_scenarios(
             sinks.gaps.extend(unarranged_scenario_gap(o) for o in declared)
             continue
         covered: set[str] = set()
-        body = _scenario_body(declared, sinks.gaps, covered, sinks.captured, secrets)
+        body = _scenario_body(declared, sinks.gaps, covered, sinks.captured, secrets, credentials)
         if not covered:
             continue
         emitted.covered.update(covered)

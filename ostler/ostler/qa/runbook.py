@@ -160,6 +160,24 @@ def system_root(graph: Graph) -> Path:
     return graph.root / prefix if prefix else graph.root
 
 
+def _surface_serves(graph: Graph, runbook: UINode) -> list[str]:
+    value = runbook.meta.get("surfaces", "")
+    items = value if isinstance(value, list) else [value]
+    resolver = links_mod.LinkResolver(graph)
+    served: list[str] = []
+    for item in items:
+        for _label, href in markdown.extract_refs(str(item)).links:
+            target = resolver.resolve(runbook.path, href)
+            node = graph.find_ui_node(target.node_id) if target is not None else None
+            if node is not None and node.type == "grpc-server":
+                served.extend(_split_names(bullet_value(node.meta, "serves")))
+    return list(dict.fromkeys(served))
+
+
+def _split_names(text: str) -> list[str]:
+    return [name for name in re.split(r"[\s,]+", text) if name]
+
+
 def _from_runbook(graph: Graph, runbook: UINode, *, service: bool = True) -> dict[str, Any]:
     root = system_root(graph)
     meta = runbook.meta
@@ -200,6 +218,9 @@ def _from_runbook(graph: Graph, runbook: UINode, *, service: bool = True) -> dic
         if steps:
             manifest[phase] = steps
 
+    serves = _surface_serves(graph, runbook)
+    if serves:
+        manifest["serves"] = serves
     secrets = _secrets_of(meta)
     if secrets:
         manifest["secrets"] = secrets
@@ -225,8 +246,7 @@ def _from_server(graph: Graph, server: UINode) -> dict[str, Any]:
         value = bullet_value(meta, bullet)
         if value:
             manifest[key] = value
-    serves = re.split(r"[\s,]+", bullet_value(meta, "serves"))
-    serves = [name for name in serves if name]
+    serves = _split_names(bullet_value(meta, "serves"))
     if serves:
         manifest["serves"] = serves
     return manifest

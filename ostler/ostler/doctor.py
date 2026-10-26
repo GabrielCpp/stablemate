@@ -2196,7 +2196,7 @@ def _check_reachability(data: dict, f: list[Finding]) -> None:
 
 
 def _check_unknown_driver(data: dict, f: list[Finding]) -> None:
-    """A runbook's `driver:` must be one of the seven values `drivers.DRIVERS` declares."""
+    """A runbook's `driver:` must be one of the eight values `drivers.DRIVERS` declares."""
     for node in data["nodes"]:
         if node["type"] != reach.RUNBOOK_TYPE or node["kind"] != "file":
             continue
