@@ -70,6 +70,39 @@ A call that refuses an anonymous caller answers `UNAUTHENTICATED`. The caller's 
 
 The run substitutes `$TICKET_TOKEN` from the secret the [`runbook`](runbook.md) mints at bring-up. The value never reaches the plan, the evidence or the report.
 
+## Claims on a server stream
+
+A `streaming: server` rpc never answers in one message. It sends the messages that happen
+after the client opens it, and a run cannot wait for it to end. A claim on one therefore has
+three parts:
+
+- The claim opens the stream and listens to it for a 10 s window, after a 2 s settle. The
+  settle gives the server time to subscribe, because a stream gives the client no signal that
+  it has.
+- `while_open(method*, request)` makes the call whose effect the stream should deliver. `method`
+  is the full name of that call, sent to the same address. `request` is its request message as
+  JSON object text, `{}` when omitted, and its string values may hold `@fixture.key` references.
+  A claim states at most one.
+- `message_count` judges how many real messages arrived. Pass `path` to count only the messages
+  that carry that field, so keepalives do not count. `json_path` with an index, such as
+  `[0].notification.title`, judges one of the messages.
+
+A refusal, such as `UNAUTHENTICATED`, needs no `while_open`. The stream ends at once with the
+status, and `grpc_status` judges it.
+
+```markdown
+- does: delivers a notification sent while the stream is open
+- verify: message_count(path="notification", equals=1)
+- verify: json_path(path="[0].notification.title", equals="Printer on fire")
+- arrange: no_body()
+- arrange: while_open(method="notifications.v1.NotificationsService/SendNotification", request='{"recipient_ids": ["@seeded-users.admin-id"], "kind": "ticket", "title": "Printer on fire"}')
+- arrange: header(name="authorization", value="Bearer $NOTIFICATIONS_TOKEN")
+```
+
+The rpc page names `notifications.v1.NotificationsService/StreamNotifications` with
+`streaming: server`. A stream that takes no request states `no_body()`, as a unary call that
+reads nothing does.
+
 ## Minimal example
 
 ```bash
