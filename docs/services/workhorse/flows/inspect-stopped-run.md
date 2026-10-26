@@ -14,6 +14,7 @@ one the retired YAML engine wrote, is refused. The decision itself belongs to
   - [control](../workhorse.md#control)
   - [refuse-params-without-checkpoint](../workhorse.md#refuse-params-without-checkpoint)
   - [refuse-params-yaml-checkpoint](../workhorse.md#refuse-params-yaml-checkpoint)
+  - [print-worktree-params](../workhorse.md#print-worktree-params)
   - [print-checkpoint-params](../workhorse.md#print-checkpoint-params)
 - fixture: seeded-runs
 - end: the printed checkpoint names the flow the run was in

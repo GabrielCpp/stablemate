@@ -11,6 +11,15 @@ a live run reports the [liveness](../concepts/run-control.md) of the directory i
 
 - lifetime: lap
 - code: `workhorse/workhorse/records.py::RunRecord` @0b6fbdc685b9
+- code: `workhorse/workhorse/job.py::containment_tier` @6189501d995a
+- code: `workhorse/workhorse/gates.py::format_operator_gate` @5c0460a1fc89
+- code: `workhorse/workhorse/scratch.py::scratch_dir` @32d503d3e5ca
+- code: `workhorse/workhorse/_vendor/stablemate_core/base_cache.py::cache_root` @79e1cc13c672
+- code: `workhorse/workhorse/_vendor/stablemate_core/layout.py::is_library_dir` @d69e52175abc
+- code: `workhorse/workhorse/testing.py::make_git_repo` @b3e94faa9b91
+- code: `workhorse/workhorse/testing.py::assert_file` @b3e94faa9b91
+- code: `workhorse/livesource.py::generations` @b1e9c59daeb3
+- code: `workhorse/supervisor.py::run_params` @6e803abf6409
 
 ## Steps
 
@@ -22,7 +31,7 @@ a live run reports the [liveness](../concepts/run-control.md) of the directory i
 ### make-dirs
 
 - kind: seed
-- run: mkdir -p /tmp/workhorse-book/seeded/finished /tmp/workhorse-book/seeded/failed-ghost /tmp/workhorse-book/seeded/contained /tmp/workhorse-book/seeded/no-line /tmp/workhorse-book/seeded/bare /tmp/workhorse-book/seeded/in-flight /tmp/workhorse-book/seeded/stale-pid /tmp/workhorse-book/seeded/yaml-era /tmp/workhorse-book/seeded/replay-run/turns/000-00001-x /tmp/workhorse-book/seeded/replay-run/turns/000-00002-noprompt /tmp/workhorse-book/seeded/replay-run/turns/000-00003-bad /tmp/workhorse-book/seeded/replay-run/turns/000-00004-moved
+- run: mkdir -p /tmp/workhorse-book/seeded/finished /tmp/workhorse-book/seeded/failed-ghost /tmp/workhorse-book/seeded/contained /tmp/workhorse-book/seeded/no-line /tmp/workhorse-book/seeded/bare /tmp/workhorse-book/seeded/in-flight /tmp/workhorse-book/seeded/stale-pid /tmp/workhorse-book/seeded/yaml-era /tmp/workhorse-book/seeded/worktree-run /tmp/workhorse-book/seeded/replay-run/turns/000-00001-x /tmp/workhorse-book/seeded/replay-run/turns/000-00002-noprompt /tmp/workhorse-book/seeded/replay-run/turns/000-00003-bad /tmp/workhorse-book/seeded/replay-run/turns/000-00004-moved
 
 ### finished
 
@@ -54,6 +63,11 @@ a live run reports the [liveness](../concepts/run-control.md) of the directory i
 - kind: seed
 - run: printf '%s' '{"terminal":"fail"}' > /tmp/workhorse-book/seeded/yaml-era/run.json && printf '%s' '{"current_id":"n1"}' > /tmp/workhorse-book/seeded/yaml-era/checkpoint.json
 
+### worktree
+
+- kind: seed
+- run: printf '%s' '{"terminal":"fail","worktree_path":"/tmp/workhorse-book/seeded/worktree-run/wt","worktree_branch":"feature-x","worktree_base":"main"}' > /tmp/workhorse-book/seeded/worktree-run/run.json && printf '%s' '{"engine":"pyflow","flow":"Main","state":"write","params":{"topic":"cats"}}' > /tmp/workhorse-book/seeded/worktree-run/checkpoint.json
+
 ### replay-turns
 
 - kind: seed
@@ -83,3 +97,38 @@ a live run reports the [liveness](../concepts/run-control.md) of the directory i
 
 - kind: verify
 - run: test -s /tmp/workhorse-book/seeded/config.toml && test -s /tmp/workhorse-book/seeded/replay-run/turns/000-00004-moved/prompt.md
+
+### library-tier
+
+- kind: verify
+- run: python3 -c "from workhorse.job import containment_tier; assert containment_tier() in ('advisory', 'best_effort', 'premium')"
+
+### operator-gate-format
+
+- kind: verify
+- run: python3 -c "from workhorse.gates import format_operator_gate; assert format_operator_gate('what next?') == 'STATUS: AWAITING_OPERATOR\n\n## Questions from the agent\n\nwhat next?\n'"
+
+### machine-scratch
+
+- kind: verify
+- run: python3 -c "from workhorse.scratch import scratch_dir; d = scratch_dir('okf-book-check', '/tmp/workhorse-book/seeded'); assert d.is_dir()"
+
+### library-dir-shape
+
+- kind: verify
+- run: python3 -c "from workhorse._vendor.stablemate_core.layout import is_library_dir; from pathlib import Path; assert is_library_dir(Path('/tmp/workhorse-book/seeded')) is False"
+
+### test-helper-repo
+
+- kind: verify
+- run: python3 -c "from workhorse.testing import make_git_repo, assert_file; from pathlib import Path; make_git_repo(Path('/tmp/workhorse-book/seeded/test-repo'), name='okf-book'); assert_file(Path('/tmp/workhorse-book/seeded/test-repo'), 'README.md')"
+
+### observer-generations
+
+- kind: verify
+- run: python3 -c "import sys; sys.path.insert(0, 'workhorse'); from livesource import generations; from pathlib import Path; assert generations(Path('/tmp/workhorse-book/seeded/no-such-generations')) == []"
+
+### supervisor-run-params
+
+- kind: verify
+- run: python3 -c "import sys; sys.path.insert(0, 'workhorse'); import supervisor; assert supervisor.run_params({'AGENT_PARAM_TOPIC': 'cats', 'OTHER': 'x'}) == {'topic': 'cats'}"

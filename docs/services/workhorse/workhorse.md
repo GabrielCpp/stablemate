@@ -201,6 +201,8 @@ An operator can [answer the inbox](flows/answer-inbox.md), [inspect a stopped ru
 - run: invoke(argv=["--help"])
 - verify: stdout(text="{run,dot,control,inbox,replay,version}")
 - code: `workhorse/workhorse/cli/__init__.py::main` @408aa8a4f987
+- code: `workhorse/workhorse/cli/parser.py::build_parser` @6b7ae77922ce
+- code: `workhorse/workhorse/__init__.py::__all__` @331cdb028c18
 
 ### fall-through-to-run
 
@@ -281,6 +283,23 @@ An operator can [answer the inbox](flows/answer-inbox.md), [inspect a stopped ru
 - run: invoke(argv=["run", "--profile", "ghost", "--config", "/tmp/workhorse-book/seeded/config.toml"])
 - verify: stderr(text="error: unknown profile 'ghost' in /tmp/workhorse-book/seeded/config.toml (known: bare, cheap, odd)")
 - code: `workhorse/workhorse/cli/run.py::run` @6bb7cf530876
+- code: `workhorse/workhorse/profile.py::select_backend` @5940a4ebe776
+- code: `workhorse/workhorse/_vendor/stablemate_core/profiles.py::select_profile` @0f757c16382b
+- code: `workhorse/workhorse/_vendor/stablemate_core/config.py::load_config` @7a84c0cc67a5
+- code: `workhorse/workhorse/_vendor/stablemate_core/discovery.py::base_library_dir` @42eebfdfea77
+- code: `workhorse/workhorse/packaged.py::PackagedWorkflowError` @7eeb988b4091
+- code: `workhorse/workhorse/runner/backends/__init__.py::AgentBackend` @04abd4b8f62b
+- code: `workhorse/workhorse/runner/backends/registry.py::get_backend` @da60c2e93d28
+- code: `workhorse/workhorse/runner/backends/claude.py::ClaudeBackend` @c8219f44b0ac
+- code: `workhorse/workhorse/runner/backends/codex.py::CodexBackend` @2e04457e239e
+- code: `workhorse/workhorse/runner/backends/cline.py::ClineBackend` @6e58fb02886c
+- code: `workhorse/workhorse/runner/backends/copilot.py::CopilotBackend` @6ee4a19c5aa9
+- code: `workhorse/workhorse/runner/backends/opencode.py::OpenCodeBackend` @7bd44f4d3832
+- code: `workhorse/workhorse/runner/backends/delegates.py::Delegate` @543f51f3d262
+- code: `workhorse/workhorse/runner/backends/jsonl.py::JsonlBackend` @f6c5136add76
+- code: `workhorse/workhorse/runner/backends/turn.py::TurnState` @53dc2823fd84
+- code: `workhorse/workhorse/runner/backends/codex_guard.py::Policy` @736e50949720
+- code: `workhorse/workhorse/runner/backends/codex_shell.py::shell_denial` @3366bb96722b
 
 ### refuse-profile-without-cli
 
@@ -385,6 +404,51 @@ An operator can [answer the inbox](flows/answer-inbox.md), [inspect a stopped ru
 - run: invoke(argv=["run", "--dry-run", "--cli", "claude", "--config", "/tmp/workhorse-book/seeded/config.toml", "--run-id", "walk"])
 - verify: stdout(matches="artifacts in /.*/[.]agents/runs/")
 - code: `workhorse/workhorse/pyflow/run.py::run_pyflow` @c14993f8e31a
+- code: `workhorse/workhorse/artifacts.py::ArtifactWriter` @41646e08117a
+- code: `workhorse/workhorse/logsetup.py::setup` @dbe8304930de
+- code: `workhorse/workhorse/otel.py::install` @c3d8848371ee
+- code: `workhorse/workhorse/gitstate.py::bind` @88deaba0786e
+- code: `workhorse/workhorse/reload.py::boundary_requested` @c7be7ac9ef2a
+- code: `workhorse/workhorse/references.py::missing_references` @c6ff9b16296e
+- code: `workhorse/workhorse/templates.py::turn_catalog` @921bcf52f398
+- code: `workhorse/workhorse/turnkey.py::VisitKey` @0dffcaf7cfde
+- code: `workhorse/workhorse/pyflow/driver.py::drive` @6ee79b75b0f1
+- code: `workhorse/workhorse/pyflow/transitions.py::Continue` @05edc5a834cc
+- code: `workhorse/workhorse/pyflow/activity.py::ActivityLog` @fc149a498518
+- code: `workhorse/workhorse/pyflow/engine.py::Engine` @922a7b361e6e
+- code: `workhorse/workhorse/pyflow/registry.py::Registry` @a2d3d9fd50b3
+- code: `workhorse/workhorse/pyflow/names.py::NameIndex` @ec28548d30de
+- code: `workhorse/workhorse/pyflow/blueprint.py::Blueprint` @4911263291b8
+- code: `workhorse/workhorse/pyflow/preflight.py::preflight` @3460fa12f550
+- code: `workhorse/workhorse/pyflow/graph.py::registry_graphs` @103855581ca1
+- code: `workhorse/workhorse/pyflow/workflow.py::Workflow` @9704358a90e7
+- code: `workhorse/workhorse/control.py::NULL_CHANNEL` @52683677757e
+- code: `workhorse/workhorse/config_run.py::RunConfig` @d96de3e447d1
+- code: `workhorse/workhorse/runner/backends/null.py::NullBackend` @4464f8371e1f
+- code: `workhorse/workhorse/runner/ladder.py::AgentRunner` @d22216e866b4
+- code: `workhorse/workhorse/runner/spec.py::AgentNode` @ea80f1fc2fed
+- code: `workhorse/workhorse/context.py::WorkflowContext` @313726f99d8a
+- code: `workhorse/workhorse/runner/caps.py::cap_delay_seconds` @57869724201e
+- code: `workhorse/workhorse/runner/extract.py::extract_outputs` @92cafcbdca28
+- code: `workhorse/workhorse/runner/reframe.py::retry_prompt` @d40203f18c9b
+- code: `workhorse/workhorse/runner/turn_record.py::RenderedTurn` @50530978b759
+- code: `workhorse/workhorse/runner/waits.py::RecoveryWaitBudget` @d0c5459fe618
+- code: `workhorse/workhorse/runner/redact.py::SecretRedactor` @40448a232adc
+- code: `workhorse/workhorse/runner/transcript.py::bind` @761e9ee51dc0
+- code: `workhorse/workhorse/runner/worktree_guard.py::install` @0762312c18d4
+- code: `workhorse/workhorse/runner/process.py::ProcessSupervisor` @82335d356999
+- code: `workhorse/workhorse/runner/acp.py::TranscriptMapper` @c239ef982808
+- code: `workhorse/workhorse/runner/usage.py::TurnUsage` @ebb8fd7db412
+- code: `workhorse/workhorse/runner/failure.py::BackendInvocationError` @67f43d6fb9ef
+- code: `workhorse/workhorse/sessions.py::slug` @f6e3de822358
+- code: `workhorse/workhorse/_vendor/stablemate_core/clock.py::Clock` @99322cfda640
+- code: `workhorse/workhorse/pyflow/errors.py::PyflowError` @6daae074220e
+- code: `workhorse/workhorse/pyflow/park.py::ask` @3bf2ebf15981
+- code: `workhorse/workhorse/pyflow/prompts.py::PromptResolver` @7fe9cd1ee20c
+- code: `workhorse/workhorse/pyflow/replies.py::declared_reply` @0ccecab8791a
+- code: `workhorse/workhorse/pyflow/worktree.py::WorktreeError` @2da3d23c967a
+- code: `workhorse/workhorse/worklist.py::WorkList` @5527e3514bc3
+- code: `workhorse/workhorse/_vendor/stablemate_core/skill_refs.py::SkillCatalog` @ebf1b69c7565
 
 ### name-the-graph
 
@@ -435,12 +499,22 @@ An operator can [answer the inbox](flows/answer-inbox.md), [inspect a stopped ru
 - on: [control](#control)
 - trigger: an operator reads where a stopped run would resume
 - does:
-  - Prints the checkpoint as JSON with no gate it waits on.
-  - Adds a `worktree` key (`path`, `branch`, `base`, `outcome`) when the run's `run.json` records
-    a worktree it was dispatched into; omits the key otherwise.
+  - prints the checkpoint as JSON with no gate it waits on
 - run: invoke(argv=["control", "status", "--params", "--run", "/tmp/workhorse-book/seeded/finished"])
 - verify: stdout(matches="waiting_on.: null")
+- verify: stdout(matches="(?s)^(?!.*worktree).*$")
 - code: `workhorse/workhorse/cli/offline.py::print_params` @cd7d6c6c8f77
+
+### print-worktree-params
+
+- on: [control](#control)
+- trigger: an operator reads the checkpoint of a run dispatched into a worktree
+- does:
+  - adds a `worktree` key (`path`, `branch`, `base`, `outcome`) when the run's `run.json` records a worktree it was dispatched into; omits the key for a run with no worktree
+- run: invoke(argv=["control", "status", "--params", "--run", "/tmp/workhorse-book/seeded/worktree-run"])
+- verify: stdout(text="\"worktree\": {\n    \"base\": \"main\",\n    \"branch\": \"feature-x\",\n    \"outcome\": null,\n    \"path\": \"/tmp/workhorse-book/seeded/worktree-run/wt\"\n  }")
+- code: `workhorse/workhorse/cli/offline.py::print_params` @cd7d6c6c8f77
+- code: `workhorse/workhorse/cli/offline.py::_worktree` @cd7d6c6c8f77
 
 ### refuse-params-without-checkpoint
 
@@ -704,6 +778,7 @@ An operator can [answer the inbox](flows/answer-inbox.md), [inspect a stopped ru
 - run: invoke(argv=["control", "rewind", "--to", "draft", "--run", "/tmp/workhorse-book/seeded/failed-ghost"])
 - verify: stderr(text="error: rewind refused, checkpoint unchanged: /tmp/workhorse-book/seeded/failed-ghost/checkpoint.json names flow 'Ghost', which ")
 - code: `workhorse/workhorse/cli/offline.py::run_rewind` @cd7d6c6c8f77
+- code: `workhorse/workhorse/rewind.py::rewind` @1ed4d1905220
 
 ### refuse-rewind-without-checkpoint
 
