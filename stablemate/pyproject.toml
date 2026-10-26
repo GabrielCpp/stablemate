@@ -1,6 +1,6 @@
 [project]
 name = "stablemate"
-version = "0.2.0"
+version = "0.2.1"
 description = "One install for the stablemate agent tools: the workhorse workflows, farrier, groom, ostler and saddlebag, at versions that work together."
 readme = "README.md"
 requires-python = ">=3.12"

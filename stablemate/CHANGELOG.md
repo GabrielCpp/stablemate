@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.2.1](https://github.com/GabrielCpp/stablemate/compare/stablemate-v0.2.0...stablemate-v0.2.1) (2026-10-26)
+
+
+### Bug Fixes
+
+* **stablemate:** allow ostler 5.x ([f4b2ca8](https://github.com/GabrielCpp/stablemate/commit/f4b2ca8f4a8bf907df792c125d6ab41ed365e416))
+
+
+### Reverts
+
+* **stablemate:** pin ostler 4.x again ([c4c9a53](https://github.com/GabrielCpp/stablemate/commit/c4c9a53a56d8a9e5c9b937f38a303c042c162c43))
+
 ## [0.2.0](https://github.com/GabrielCpp/stablemate/compare/stablemate-v0.1.1...stablemate-v0.2.0) (2026-10-26)
 
 
