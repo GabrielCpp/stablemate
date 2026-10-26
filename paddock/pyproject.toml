@@ -29,7 +29,7 @@ dependencies = [
   # The task API drives workhorse, reads the planning graph through ostler and parses
   # the front matter and answer keys the apps carry.
   "workhorse-agent>=5,<6",
-  "ostler>=4,<5",
+  "ostler>=5,<6",
   "pyyaml>=6.0",
 ]
 
