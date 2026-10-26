@@ -130,6 +130,23 @@ class CheckFailed(AssertionError):
 
 
 
+STOP_REASON_LINES = 3
+STOP_REASON_CHARS = 600
+
+
+def stop_reason(exc: BaseException, plan_file: str) -> str:
+    """The plan line a crash stopped at and the exception it raised, short enough to share a failure list."""
+    frames = [frame for frame in traceback.extract_tb(exc.__traceback__) if frame.filename == plan_file]
+    parts = [f"line {frames[-1].lineno}: {(frames[-1].line or '').strip()}"] if frames else []
+    lines = [line.strip() for line in str(exc).splitlines() if line.strip()][:STOP_REASON_LINES]
+    name = type(exc).__name__
+    parts.append(f"{name}: {' '.join(lines)}" if lines else name)
+    reason = "; ".join(parts)
+    if len(reason) > STOP_REASON_CHARS:
+        return reason[: STOP_REASON_CHARS - 1] + "…"
+    return reason
+
+
 ADDRESS_BOOK_ENV = "STABLEMATE_ADDRESS_BOOK"
 _ADDRESS = re.compile(r"(?<![$\w])\{([a-z][a-z0-9-]*)\}")
 
@@ -2700,10 +2717,10 @@ def _run(module_path: Path, scenario_id: str, context: dict[str, Any]) -> int:
         declared.func(qa)
     except CheckFailed:
         status = "failed"
-    except BaseException as exc:  # noqa: BLE001 - the traceback is the scenario's verdict
-        status, error = "errored", traceback.format_exc()
+    except BaseException as exc:  # noqa: BLE001 - the crash is the scenario's verdict
+        status, error = "errored", stop_reason(exc, getattr(getattr(declared.func, "__code__", None), "co_filename", ""))
         stop = qa.stop_evidence(exc)
-        print(error, file=sys.stdout)
+        print(traceback.format_exc(), file=sys.stdout)
     if browser is not None:
         unclean = _bind_browser_unclean(qa, browser.unclean())
         problems = [*unclean, *browser.close(failed=status != "passed" or bool(unclean))]
