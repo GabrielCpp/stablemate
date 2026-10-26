@@ -34,15 +34,22 @@ profile's commands or a read-only program such as `cat`, `grep`, `rg`, `ls` or `
 by pipes at most. It may name no path outside the directories the turn reads, and a relative path
 may not climb with `..` or start at `~`.
 
-- code: `workhorse/workhorse/runner/backends/__init__.py::AgentBackend` @0cb3ab1a7936
+A confined opencode turn reads and writes in its working directory and in every added directory,
+an added repo beside its own worktree included. Its permission config alone holds it there, with
+no opencode plugin. A path in no allowed directory is refused, and so is one that climbs out of an
+added directory with `..`. The turn has no grep, glob or list, because opencode answers those
+outside its path rules. A confined turn whose working directory lies in no git worktree fails
+before it starts with `a confined opencode turn needs a git worktree`.
+
+- code: `workhorse/workhorse/runner/backends/__init__.py::AgentBackend` @9d6d2060cd7c
 - code: `workhorse/workhorse/runner/backends/registry.py::get_backend` @da60c2e93d28
-- code: `workhorse/workhorse/runner/backends/null.py::NullBackend` @c9e7cd53f690
-- code: `workhorse/workhorse/runner/backends/claude.py::ClaudeBackend` @c7e767f9f0c4
+- code: `workhorse/workhorse/runner/backends/null.py::NullBackend` @4464f8371e1f
+- code: `workhorse/workhorse/runner/backends/claude.py::ClaudeBackend` @c8219f44b0ac
 - code: `workhorse/workhorse/runner/backends/jsonl.py::JsonlBackend` @f6c5136add76
-- code: `workhorse/workhorse/runner/backends/codex.py::CodexBackend` @f614c07420da
-- code: `workhorse/workhorse/runner/backends/copilot.py::CopilotBackend` @9fc651d4051b
-- code: `workhorse/workhorse/runner/backends/cline.py::ClineBackend` @26aae80e73ab
-- code: `workhorse/workhorse/runner/backends/opencode.py::OpenCodeBackend` @418bf37a3893
+- code: `workhorse/workhorse/runner/backends/codex.py::CodexBackend` @2e04457e239e
+- code: `workhorse/workhorse/runner/backends/copilot.py::CopilotBackend` @6ee4a19c5aa9
+- code: `workhorse/workhorse/runner/backends/cline.py::ClineBackend` @6e58fb02886c
+- code: `workhorse/workhorse/runner/backends/opencode.py::OpenCodeBackend` @7675e4eba2c7
 - code: `workhorse/workhorse/runner/backends/turn.py::TurnState` @53dc2823fd84
 - code: `workhorse/workhorse/runner/backends/turn.py::OnEvent.__call__` @53dc2823fd84
 - code: `workhorse/workhorse/runner/backends/delegates.py::Delegate` @543f51f3d262
@@ -50,3 +57,4 @@ may not climb with `..` or start at `~`.
 - code: `workhorse/workhorse/runner/backends/codex_shell.py::shell_denial` @3366bb96722b
 - code: `workhorse/workhorse/runner/backends/README.md` @ab7920b1b4ff
 - code: `workhorse/docs/BACKENDS.md` @595130c671ae
+- rule: a confined opencode turn gets read and write on its added directories through permission config, never through a plugin or shared state file
