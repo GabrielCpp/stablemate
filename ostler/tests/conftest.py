@@ -212,6 +212,14 @@ def _artifacts_dir_is_per_test(tmp_path_factory, monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def _git_identity(monkeypatch):
+    """Tests commit to the artifacts repo, and a CI runner has no git identity of its own."""
+    for role in ("AUTHOR", "COMMITTER"):
+        monkeypatch.setenv(f"GIT_{role}_NAME", "ostler tests")
+        monkeypatch.setenv(f"GIT_{role}_EMAIL", "tests@example.com")
+
+
+@pytest.fixture(autouse=True)
 def _inline_books_are_legal_okf(request: pytest.FixtureRequest):
     """Every `UINode` a test constructs must be one `doctor`'s `unknown-bullet` would not flag — unless the test is in `UNKNOWN_BULLET_ALLOWED_TESTS`, because it exists to prove that check fires."""
     start = len(testing.CONSTRUCTED_UI_NODES)
