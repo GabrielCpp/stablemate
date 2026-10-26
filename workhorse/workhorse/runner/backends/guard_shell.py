@@ -1,4 +1,4 @@
-"""The judge of one shell call a confined codex turn makes.
+"""The judge of one shell call a confined codex or claude turn makes.
 
 A call runs one of the profile's commands or a read-only command, joined by pipes at
 most, and names no path outside the directories the turn reads. The hook sees the
@@ -15,7 +15,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from workhorse.runner.backends.codex_guard import Policy
+    from workhorse.runner.backends.guard import Policy
 
 READ_ONLY_PROGRAMS = ("cat", "cut", "diff", "find", "grep", "head", "ls", "nl", "pwd", "rg", "sed", "tail", "wc")
 FORBIDDEN_OPTIONS = {

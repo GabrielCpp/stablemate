@@ -18,6 +18,7 @@ from workhorse.runner.backends import (
     AgentProfile,
     ensure_prompt_is_not_in_argv,
     git_worktree,
+    operator_config_dirs,
     prepare_argv_prompt,
 )
 from workhorse.runner.backends.delegates import Delegate
@@ -212,12 +213,14 @@ def _confinement(agent: AgentProfile, cwd: str | None, add_dirs: list[str] | Non
     cannot climb out of an added directory. The last matching rule wins, so each map
     opens with its deny. Its grep, glob and list tools answer outside
     those rules, so a confined turn does without them. The directories opencode loads
-    project skills from stay readable.
+    project skills from and the operator's own config, skills and instructions from stay
+    readable, and never writable.
     """
     here = Path(cwd or os.getcwd()).resolve()
     worktree = _worktree(here)
     added = [Path(directory).resolve() for directory in add_dirs or []]
     reachable = [here, *added]
+    operator = list(operator_config_dirs("opencode"))
     tools = {
         **{name: on for name, on in agent.tools.items() if on},
         "*": False,
@@ -234,13 +237,13 @@ def _confinement(agent: AgentProfile, cwd: str | None, add_dirs: list[str] | Non
             "*": "deny",
             **{
                 f"{directory.as_posix()}/**": "allow"
-                for directory in added
+                for directory in [*added, *operator]
                 if not directory.is_relative_to(worktree)
             },
         },
         "read": {
             "*": "deny",
-            **{_under(worktree, directory): "allow" for directory in reachable},
+            **{_under(worktree, directory): "allow" for directory in [*reachable, *operator]},
             **{f"{skills}/**": "allow" for skills in _SKILL_DIRS},
         },
         "edit": {"*": "deny", **{_under(worktree, directory): "allow" for directory in reachable}},

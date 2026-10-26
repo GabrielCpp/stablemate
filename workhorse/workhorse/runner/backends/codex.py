@@ -13,8 +13,8 @@ from typing import Any
 from workhorse.config_run import AgentResilience
 from workhorse.runner import acp
 from workhorse.runner import usage as _usage
-from workhorse.runner.backends import AgentProfile, git_worktree
-from workhorse.runner.backends.codex_guard import Policy, hook_command
+from workhorse.runner.backends import AgentProfile, git_worktree, operator_config_dirs
+from workhorse.runner.backends.guard import Policy, hook_command, policy_file
 from workhorse.runner.backends.delegates import Delegate
 from workhorse.runner.backends.jsonl import JsonlBackend
 from workhorse.runner.backends.turn import (
@@ -46,7 +46,7 @@ def guard_policy(agent: AgentProfile | None, cwd: str | None, add_dirs: list[str
     turn_cwd = Path(cwd or os.getcwd()).resolve()
     worktree = git_worktree(turn_cwd)
     skills = [worktree / name for name in SKILL_DIRS if (worktree / name).is_dir()] if worktree else []
-    roots = (turn_cwd, *(Path(directory).resolve() for directory in add_dirs or []), *skills)
+    roots = (turn_cwd, *(Path(directory).resolve() for directory in add_dirs or []), *skills, *operator_config_dirs("codex"))
     return Policy(cwd=turn_cwd, read_roots=tuple(dict.fromkeys(roots)), commands=tuple(agent.commands))
 
 
@@ -63,13 +63,8 @@ def flags_with_policy_file(policy: Policy | None) -> Iterator[list[str]]:
     if policy is None:
         yield []
         return
-    with tempfile.NamedTemporaryFile("w", suffix=".json", prefix="codex-guard-", delete=False, encoding="utf-8") as file:
-        _ = file.write(policy.to_json())
-    policy_path = Path(file.name)
-    try:
-        yield guard_flags(policy_path)
-    finally:
-        policy_path.unlink(missing_ok=True)
+    with policy_file(policy) as path:
+        yield guard_flags(path)
 
 
 def _codex_effort(effort: str) -> str:

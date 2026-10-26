@@ -5,6 +5,8 @@ from __future__ import annotations
 import json
 import os
 import re
+from collections.abc import Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -15,8 +17,9 @@ from workhorse.runner import acp
 from workhorse.runner import failure as _failure
 from workhorse.runner import process as _process
 from workhorse.runner import usage as _usage
-from workhorse.runner.backends import AgentBackend, AgentProfile, git_worktree
+from workhorse.runner.backends import AgentBackend, AgentProfile, git_worktree, operator_config_dirs
 from workhorse.runner.backends.delegates import Delegate
+from workhorse.runner.backends.guard import Policy, hook_command, policy_file
 
 
 _OUTLIVING_TOOLS = ("Workflow", "Monitor", "ScheduleWakeup", "CronCreate", "RemoteTrigger")
@@ -58,7 +61,7 @@ class ClaudeBackend(AgentBackend):
             "--output-format", "stream-json",
             "--verbose",
             "--disallowedTools", *_OUTLIVING_TOOLS,
-            *_tool_flags(agent, cwd),
+            *_tool_flags(agent),
         ]
         if model:
             cmd.extend(["--model", model])
@@ -66,7 +69,7 @@ class ClaudeBackend(AgentBackend):
             cmd.extend(["--effort", effort])
         if agent is not None and agent.steps is not None:
             cmd.extend(["--max-turns", str(agent.steps)])
-        for directory in [*(add_dirs or []), *_skill_dirs(agent, cwd)]:
+        for directory in add_dirs or []:
             cmd.extend(["--add-dir", directory])
         if delegates:
             cmd.extend(["--agents", _agents_json(delegates)])
@@ -78,16 +81,17 @@ class ClaudeBackend(AgentBackend):
                 cmd.extend(["--resume", sid])
                 print(f"[{node_id}] 🔄 Resuming session: {sid[:8]}...", flush=True)
 
-        stream = _stream_events(
-            cmd,
-            node_id,
-            timeout,
-            resilience=resilience,
-            stdin_data=prompt,
-            cwd=cwd or None,
-            env_extra={**_FOREGROUND_ENV, **self.harness_env(), **_command_timeout_env(agent)},
-            session_id_path=session_id_path,
-        )
+        with _guard_flags(_guard_policy(agent, cwd, add_dirs)) as guard_flags:
+            stream = _stream_events(
+                [*cmd, *guard_flags],
+                node_id,
+                timeout,
+                resilience=resilience,
+                stdin_data=prompt,
+                cwd=cwd or None,
+                env_extra={**_FOREGROUND_ENV, **self.harness_env(), **_command_timeout_env(agent)},
+                session_id_path=session_id_path,
+            )
 
         return _failure.classify_turn(
             "claude",
@@ -204,15 +208,41 @@ def _agents_json(delegates: tuple[Delegate, ...]) -> str:
 
 
 def _permission_flags(agent: AgentProfile | None) -> list[str]:
-    """Skip every permission prompt, or for a confined profile refuse whatever its rules do not allow.
+    """Skip every permission prompt and load the operator's whole environment, whatever the profile.
 
-    Under `dontAsk` the CLI allows reads inside the cwd and the added directories and
-    denies every other call no rule allows. Only the project's settings are loaded, so
-    an operator's own allow rules cannot widen the turn.
+    A turn never loads less of the operator's environment than an interactive session:
+    user settings, permission rules, hooks, model settings, skills, instruction files and
+    plugins all load, and no `--setting-sources` narrows them. A confined profile is held
+    by the workhorse guard hook layered on top (`_guard_flags`), never by dropping a
+    setting source.
     """
+    return ["--dangerously-skip-permissions"]
+
+
+def _guard_policy(agent: AgentProfile | None, cwd: str | None, add_dirs: list[str] | None) -> Policy | None:
+    """What the guard holds a confined turn to: its cwd, the dirs it reads and its commands. None for a turn that is not confined."""
     if agent is None or not agent.confined:
-        return ["--dangerously-skip-permissions"]
-    return ["--permission-mode", "dontAsk", "--setting-sources", "project"]
+        return None
+    turn_cwd = Path(cwd or os.getcwd()).resolve()
+    roots = (
+        turn_cwd,
+        *(Path(directory).resolve() for directory in add_dirs or []),
+        *_skill_dirs(turn_cwd),
+        *operator_config_dirs("claude"),
+    )
+    return Policy(cwd=turn_cwd, read_roots=tuple(dict.fromkeys(roots)), commands=tuple(agent.commands))
+
+
+@contextmanager
+def _guard_flags(policy: Policy | None) -> Iterator[list[str]]:
+    """The `--settings` flag that runs the guard before every tool call of the turn, with the policy file lasting as long as the turn. No flags without a policy."""
+    if policy is None:
+        yield []
+        return
+    with policy_file(policy) as path:
+        hook = {"type": "command", "command": hook_command(path)}
+        settings = {"hooks": {"PreToolUse": [{"matcher": ".*", "hooks": [hook]}]}}
+        yield ["--settings", json.dumps(settings)]
 
 
 def _command_timeout_env(agent: AgentProfile | None) -> dict[str, str]:
@@ -223,27 +253,23 @@ def _command_timeout_env(agent: AgentProfile | None) -> dict[str, str]:
     return {"BASH_DEFAULT_TIMEOUT_MS": limit, "BASH_MAX_TIMEOUT_MS": limit}
 
 
-def _skill_dirs(agent: AgentProfile | None, cwd: str | None) -> list[str]:
-    """The project skill directory a confined turn may read, since the skills it loads are files it opens."""
-    if agent is None or not agent.confined:
-        return []
-    worktree = git_worktree(Path(cwd or os.getcwd()).resolve())
+def _skill_dirs(cwd: Path) -> list[Path]:
+    """The project skill directory of the turn's worktree, which a confined turn reads since the skills it loads are files it opens."""
+    worktree = git_worktree(cwd)
     if worktree is None:
         return []
     skills = worktree / _SKILL_DIR
-    return [str(skills)] if skills.is_dir() else []
+    return [skills] if skills.is_dir() else []
 
 
-def _tool_flags(agent: AgentProfile | None, cwd: str | None) -> list[str]:
+def _tool_flags(agent: AgentProfile | None) -> list[str]:
     """The flags that narrow a turn to its profile's tools: `--tools` and no MCP server when `*` is off, else a deny list."""
     tools = agent.tools if agent else {}
     named = {name: on for name, on in tools.items() if name != "*"}
     if agent is not None and agent.confined:
         shell = ["Bash"] if agent.commands else []
         enabled = dict.fromkeys([*_CONFINED_TOOLS, *shell, *(name for name, on in named.items() if on)])
-        here = Path(cwd or os.getcwd()).resolve()
-        allowed = [f"Edit(/{here}/**)", *(rule for command in agent.commands for rule in (f"Bash({command})", f"Bash({command} *)"))]
-        return ["--tools", ",".join(enabled), "--strict-mcp-config", "--allowedTools", *allowed]
+        return ["--tools", ",".join(enabled), "--strict-mcp-config"]
     if tools.get("*") is False:
         return ["--tools", ",".join(name for name, on in named.items() if on), "--strict-mcp-config"]
     denied = [name for name, on in named.items() if not on]

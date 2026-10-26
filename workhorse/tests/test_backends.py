@@ -5,6 +5,7 @@ from __future__ import annotations
 import io
 import json
 import os
+import shlex
 import tempfile
 from contextlib import contextmanager, redirect_stdout
 from pathlib import Path
@@ -32,6 +33,7 @@ from workhorse.runner.backends.cline import ClineBackend
 from workhorse.runner.backends.claude import ClaudeBackend
 from workhorse.runner.backends.codex import CodexBackend
 from workhorse.runner.backends.copilot import CopilotBackend
+from workhorse.runner.backends.guard import Policy
 from workhorse.runner.backends.null import NullBackend
 from workhorse.runner.backends.opencode import OpenCodeBackend
 from workhorse.runner.backends.registry import get_backend
@@ -198,6 +200,28 @@ def test_non_claude_backends_registered():
         assert b.supports_compaction is False
 
 
+CONFINED_WARNING = "does not enforce a confined profile; the turn runs with the operator's full permissions"
+
+
+def _confined_cmd_and_output(backend_class, agent):
+    fake, captured = _fake_stream(turn.TurnState(result_text="OK", session_id="s"))
+    out = io.StringIO()
+    with redirect_stdout(out):
+        _run_turn(backend_class(fake), "P", "n", None, cwd="/repo", agent=agent)
+    return captured["cmd"], out.getvalue()
+
+
+def test_copilot_and_cline_warn_that_a_confined_profile_runs_unboxed():
+    """Neither CLI has a box to apply, so the turn runs as the unconfined one and says so."""
+    for backend_class, cli in ((CopilotBackend, "copilot"), (ClineBackend, "cline")):
+        confined = AgentProfile(name="docs", tools={"*": False}, confined=True, commands=("ostler",))
+        cmd, output = _confined_cmd_and_output(backend_class, confined)
+        free_cmd, free_output = _confined_cmd_and_output(backend_class, AgentProfile(name="docs"))
+        assert output.count(f"[n] ⚠ {cli} {CONFINED_WARNING}") == 1
+        assert CONFINED_WARNING not in free_output
+        assert cmd == free_cmd
+
+
 def test_cline_points_a_large_prompt_at_its_artifact_instead_of_putting_it_in_argv():
     """Cline has no attachment flag, so its bounded message names the complete artifact."""
     prompt = "large prompt\n" * 12_000
@@ -349,53 +373,84 @@ def test_claude_denies_the_tools_a_profile_switches_off():
     assert cmd[cmd.index("--disallowedTools", cmd.index("--disallowedTools") + 1) + 1] == "Bash"
 
 
-def test_claude_runs_a_confined_profile_under_its_rules_instead_of_skipping_them():
-    """Skipping permissions lets every call through, so a confined turn refuses whatever its rules do not allow."""
+def _capture_claude_policy(**run_turn_kwargs) -> Policy:
+    """The guard policy a claude turn hands its hook, read from the file the hook command names while the turn runs."""
+    captured = {}
+
+    def fake_popen(cmd, *a, **k):
+        settings = json.loads(cmd[cmd.index("--settings") + 1])
+        hook = settings["hooks"]["PreToolUse"][0]["hooks"][0]["command"]
+        captured["policy"] = Policy.from_json(Path(shlex.split(hook)[-1]).read_text(encoding="utf-8"))
+        raise RuntimeError("stop")
+
+    with patch("subprocess.Popen", fake_popen):
+        try:
+            _run_turn(ClaudeBackend(), "P", "n", None, **run_turn_kwargs)
+        except Exception:
+            pass
+    return captured["policy"]
+
+
+def test_claude_runs_a_confined_profile_behind_the_guard_hook_with_the_whole_environment():
+    """Every setting source still loads, so a confined turn is held by a hook layered on top instead of by dropping the operator's settings."""
     cmd = _capture_claude_cmd(
         model="opus", agent=AgentProfile(name="docs", tools={"*": False}, confined=True), cwd="/work/app/docs"
     )
-    assert "--dangerously-skip-permissions" not in cmd
-    assert cmd[cmd.index("--permission-mode") + 1] == "dontAsk"
-    assert cmd[cmd.index("--setting-sources") + 1] == "project"
+    assert "--dangerously-skip-permissions" in cmd
+    assert "--setting-sources" not in cmd
+    assert "--permission-mode" not in cmd
+    assert "--allowedTools" not in cmd
+    hook = json.loads(cmd[cmd.index("--settings") + 1])["hooks"]["PreToolUse"][0]
+    assert hook["matcher"] == ".*"
+    assert "workhorse.runner.backends.guard" in hook["hooks"][0]["command"]
     assert cmd[cmd.index("--tools") + 1] == "Skill,Read,Edit,Write,Glob,Grep"
-    assert cmd[cmd.index("--allowedTools") + 1] == "Edit(//work/app/docs/**)"
     assert "--strict-mcp-config" in cmd
 
 
-def test_claude_anchors_a_confined_turn_writes_to_its_cwd_not_to_where_its_shell_moves():
-    """A relative rule follows the shell, so a turn that ran `cd` elsewhere is refused its own folder and granted the new one."""
-    agent = AgentProfile(name="docs", tools={"*": False}, confined=True)
-    cmd = _capture_claude_cmd(agent=agent, cwd="/work/app/docs/../docs")
-    rule = cmd[cmd.index("--allowedTools") + 1]
-    assert rule == "Edit(//work/app/docs/**)"
+def test_claude_runs_an_unconfined_profile_without_the_guard():
+    cmd = _capture_claude_cmd(model="opus", agent=AgentProfile(name="docs"), cwd="/work/app/docs")
+    assert "--settings" not in cmd
+    assert "--setting-sources" not in cmd
 
 
-def test_claude_allows_a_confined_profile_only_its_named_commands():
+def test_claude_adds_bash_to_the_tools_of_a_confined_profile_that_names_commands():
     agent = AgentProfile(name="docs", tools={"*": False}, confined=True, commands=("ostler", "python -m check job.json"))
     cmd = _capture_claude_cmd(model="opus", agent=agent, cwd="/work/app/docs")
     assert cmd[cmd.index("--tools") + 1].endswith(",Bash")
-    start = cmd.index("--allowedTools") + 1
-    assert cmd[start:start + 5] == [
-        "Edit(//work/app/docs/**)",
-        "Bash(ostler)",
-        "Bash(ostler *)",
-        "Bash(python -m check job.json)",
-        "Bash(python -m check job.json *)",
-    ]
+    assert "--allowedTools" not in cmd
 
 
-def test_claude_lets_a_confined_turn_read_the_project_skills_above_its_cwd():
-    """A turn run from docs/ loads a project skill but is refused its reference files, unless the skill directory is added."""
+def test_claude_hands_its_guard_the_cwd_the_commands_and_the_operator_config_dir():
+    """The guard reads the project skills and the operator's own ~/.claude, so a skill and its reference files open."""
+    with tempfile.TemporaryDirectory() as tmp:
+        base = Path(tmp).resolve()
+        home = base / "home"
+        (home / ".claude" / "skills" / "x").mkdir(parents=True)
+        (home / ".claude" / "skills" / "x" / "SKILL.md").write_text("---\nname: x\n---\n", encoding="utf-8")
+        root = base / "repo"
+        (root / ".git").mkdir(parents=True)
+        (root / "docs").mkdir()
+        (root / ".claude" / "skills").mkdir(parents=True)
+        extra = base / "extra"
+        extra.mkdir()
+        agent = AgentProfile(name="docs", tools={"*": False}, confined=True, commands=("ostler",))
+        env = {key: value for key, value in os.environ.items() if key != "CLAUDE_CONFIG_DIR"}
+        with patch.dict(os.environ, {**env, "HOME": str(home)}, clear=True):
+            policy = _capture_claude_policy(agent=agent, cwd=str(root / "docs"), add_dirs=[str(extra)])
+    assert policy.cwd == root / "docs"
+    assert policy.commands == ("ostler",)
+    assert set(policy.read_roots) == {root / "docs", extra, root / ".claude" / "skills", home / ".claude"}
+    assert policy.may_read(home / ".claude" / "skills" / "x" / "SKILL.md")
+
+
+def test_claude_adds_only_the_real_added_dirs_to_the_cli():
     with tempfile.TemporaryDirectory() as tmp:
         root = Path(tmp).resolve()
         (root / ".git").mkdir()
-        (root / "docs").mkdir()
         (root / ".claude" / "skills").mkdir(parents=True)
         agent = AgentProfile(name="docs", tools={"*": False}, confined=True)
-        confined = _capture_claude_cmd(agent=agent, cwd=str(root / "docs"))
-        free = _capture_claude_cmd(cwd=str(root / "docs"))
-    assert confined[confined.index("--add-dir") + 1] == str(root / ".claude" / "skills")
-    assert "--add-dir" not in free
+        cmd = _capture_claude_cmd(agent=agent, cwd=str(root), add_dirs=["/elsewhere"])
+    assert [cmd[i + 1] for i, arg in enumerate(cmd) if arg == "--add-dir"] == ["/elsewhere"]
 
 
 def test_claude_keeps_a_large_prompt_on_stdin():

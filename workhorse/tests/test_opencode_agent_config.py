@@ -7,6 +7,7 @@ import os
 import tempfile
 from contextlib import contextmanager
 from pathlib import Path
+from unittest.mock import patch
 
 from workhorse._vendor.stablemate_core import config
 from workhorse.config_run import AgentResilience
@@ -168,6 +169,26 @@ def test_a_confined_turn_reads_and_writes_its_cwd_and_added_dirs():
     }
     assert permission["edit"] == {"*": "deny", "docs/**": "allow", "skills/**": "allow"}
     assert permission["external_directory"] == {"*": "deny"}
+
+
+def test_a_confined_turn_reads_the_operators_opencode_and_skill_dirs_but_never_writes_them():
+    """opencode loads the operator's config and skills from home, and a path outside the worktree must also pass external_directory."""
+    with tempfile.TemporaryDirectory() as tmp:
+        base = Path(tmp).resolve()
+        home = base / "home"
+        for directory in (".config/opencode", ".claude/skills", ".agents/skills"):
+            (home / directory).mkdir(parents=True)
+        root = base / "repo"
+        (root / ".git").mkdir(parents=True)
+        (root / "docs").mkdir()
+        env = {key: value for key, value in os.environ.items() if key not in ("XDG_CONFIG_HOME",)}
+        with patch.dict(os.environ, {**env, "HOME": str(home)}, clear=True):
+            _, cfg = _turn(CONFINED, cwd=str(root / "docs"))
+    permission = cfg["agent"]["docs-writer"]["permission"]
+    for directory in (home / ".config" / "opencode", home / ".claude" / "skills", home / ".agents" / "skills"):
+        assert permission["external_directory"][f"{directory}/**"] == "allow"
+        assert permission["read"][f"{directory.relative_to(root, walk_up=True).as_posix()}/**"] == "allow"
+    assert permission["edit"] == {"*": "deny", "docs/**": "allow"}
 
 
 def test_a_confined_turn_reaches_an_added_repo_beside_its_worktree():

@@ -36,3 +36,5 @@ TOOL_CACHE = os.environ.get("XDG_CACHE_HOME") or str(Path.home() / ".cache")
 def _no_real_home(tmp_path_factory, monkeypatch):
     monkeypatch.setenv("XDG_CACHE_HOME", TOOL_CACHE)
     monkeypatch.setenv("HOME", str(tmp_path_factory.mktemp("home")))
+    for name in ("CLAUDE_CONFIG_DIR", "CODEX_HOME", "XDG_CONFIG_HOME"):
+        monkeypatch.delenv(name, raising=False)

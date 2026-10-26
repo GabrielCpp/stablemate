@@ -5,13 +5,13 @@ holds a piece several adapters share. A new CLI gets its own module and a line h
 
 ## Map
 
-- `claude.py`: the Claude Code CLI's stream-json, resume and compact protocol, its adapter and its ACP transcript mapper.
+- `claude.py`: the Claude Code CLI's stream-json, resume and compact protocol, its adapter, how a confined turn runs behind its guard hook, and its ACP transcript mapper.
 - `cline.py`: the Cline CLI's event vocabulary, adapter and ACP transcript mapper.
 - `codex.py`: the Codex CLI's event vocabulary, adapter and ACP transcript mapper, including how a confined turn runs behind its guard hook.
-- `codex_guard.py`: the hook that holds a confined codex turn to its policy. It owns the policy, the patch check and the hook entry.
-- `codex_shell.py`: the judge of one shell call a confined codex turn makes.
 - `copilot.py`: the GitHub Copilot CLI's event vocabulary, adapter and ACP transcript mapper.
 - `delegates.py`: the subagent roles a turn may hand narrow work to, and the models the operator's profile gives them.
+- `guard.py`: the hook that holds a confined codex or claude turn to its policy. It owns the policy, the file and patch checks and the hook entry.
+- `guard_shell.py`: the judge of one shell call a confined codex or claude turn makes.
 - `jsonl.py`: the newline-delimited JSON event loop the CLIs that speak one share.
 - `null.py`: the absence of an agent CLI, as an adapter.
 - `opencode.py`: the OpenCode CLI's event vocabulary, adapter and ACP transcript mapper, and the probe for its provider's usage-window reset.

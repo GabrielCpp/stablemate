@@ -1,4 +1,4 @@
-"""Tests for the hook that holds a confined codex turn to its profile (``runner/backends/codex_guard.py``)."""
+"""Tests for the hook that holds a confined codex or claude turn to its profile (``runner/backends/guard.py``)."""
 
 from __future__ import annotations
 
@@ -9,8 +9,9 @@ from contextlib import redirect_stdout
 from pathlib import Path
 from unittest.mock import patch
 
-from workhorse.runner.backends.codex_guard import Policy, ToolCall, call_refusal, main, patch_denial
-from workhorse.runner.backends.codex_shell import shell_denial
+
+from workhorse.runner.backends.guard import Policy, ToolCall, call_refusal, main, patch_denial, policy_file
+from workhorse.runner.backends.guard_shell import shell_denial
 
 BOOK = Path("/work/app/docs/book")
 SOURCE = Path("/runs/r1/source")
@@ -105,13 +106,65 @@ def _call(payload: object) -> ToolCall:
     return ToolCall.from_json(json.dumps(payload))
 
 
-def test_the_call_refusal_checks_only_shell_calls_and_patches():
+def test_the_call_refusal_lets_a_tool_it_does_not_judge_through():
     assert call_refusal(_call({"tool_name": "update_plan", "tool_input": {"plan": []}}), POLICY) is None
     assert call_refusal(_call({"tool_name": "Bash", "tool_input": {"command": "cat overview.md"}}), POLICY) is None
     refusal = call_refusal(_call({"tool_name": "Bash", "tool_input": {"command": "rm overview.md"}}), POLICY)
     assert refusal is not None and refusal.startswith("Refused: `rm`")
     assert call_refusal(_call({"tool_name": "Bash", "tool_input": {}}), POLICY) is not None
     assert call_refusal(_call({"tool_name": "Bash", "tool_input": {"command": ["rm", "x"]}}), POLICY) is not None
+
+
+HOME_SKILLS = Path("/home/op/.claude")
+CLAUDE_POLICY = Policy(cwd=BOOK, read_roots=(BOOK, SOURCE, HOME_SKILLS), commands=())
+
+
+def _claude_refusal(tool: str, **tool_input: object) -> str | None:
+    return call_refusal(_call({"tool_name": tool, "tool_input": tool_input}), CLAUDE_POLICY)
+
+
+def test_a_claude_write_lands_only_under_the_cwd():
+    assert _claude_refusal("Write", file_path=f"{BOOK}/new.md", content="x") is None
+    assert _claude_refusal("Edit", file_path=f"{BOOK}/concepts/a.md") is None
+    assert _claude_refusal("MultiEdit", file_path="concepts/a.md") is None
+    assert _claude_refusal("Write", file_path="/work/app/src/app.py", content="x") is not None
+    assert _claude_refusal("Edit", file_path=f"{BOOK}/../../app.py") is not None
+    assert _claude_refusal("Write", file_path=f"{HOME_SKILLS}/skills/x/SKILL.md") is not None
+    assert _claude_refusal("Write", content="x") is not None
+    assert _claude_refusal("Write", file_path=7) is not None
+
+
+def test_a_claude_notebook_edit_is_judged_by_its_notebook_path():
+    assert _claude_refusal("NotebookEdit", notebook_path=f"{BOOK}/a.ipynb") is None
+    assert _claude_refusal("NotebookEdit", notebook_path="/work/app/a.ipynb") is not None
+    assert _claude_refusal("NotebookEdit") is not None
+
+
+def test_a_claude_read_stays_under_the_read_roots():
+    assert _claude_refusal("Read", file_path=f"{HOME_SKILLS}/skills/x/SKILL.md") is None
+    assert _claude_refusal("Read", file_path=f"{SOURCE}/cli.py") is None
+    assert _claude_refusal("Read", file_path="/etc/passwd") is not None
+    assert _claude_refusal("Read", file_path=f"{HOME_SKILLS}/../.ssh/id_rsa") is not None
+    assert _claude_refusal("Read") is not None
+
+
+def test_a_claude_search_without_a_path_runs_in_the_cwd():
+    assert _claude_refusal("Grep", pattern="needle") is None
+    assert _claude_refusal("Glob", pattern="*.md") is None
+    assert _claude_refusal("Grep", pattern="needle", path=str(SOURCE)) is None
+    assert _claude_refusal("Grep", pattern="needle", path="/etc") is not None
+    assert _claude_refusal("Glob", pattern="*", path="/work/app") is not None
+
+
+def test_a_claude_shell_call_passes_the_same_judge_as_a_codex_one():
+    assert _claude_refusal("Bash", command=f"cat {SOURCE}/cli.py") is None
+    assert _claude_refusal("Bash", command="rm -rf /") is not None
+
+
+def test_the_policy_file_holds_the_policy_until_the_turn_ends():
+    with policy_file(CLAUDE_POLICY) as path:
+        assert Policy.from_json(path.read_text(encoding="utf-8")) == CLAUDE_POLICY
+    assert not path.exists()
 
 
 def _hook_output(argv: list[str], payload: str) -> str:

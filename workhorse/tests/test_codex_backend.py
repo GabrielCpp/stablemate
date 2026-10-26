@@ -13,7 +13,7 @@ from workhorse.config_run import AgentResilience
 from workhorse.runner import process
 from workhorse.runner.backends import AgentProfile, codex, jsonl, turn
 from workhorse.runner.backends.codex import CodexBackend
-from workhorse.runner.backends.codex_guard import Policy
+from workhorse.runner.backends.guard import Policy
 
 RESILIENCE = AgentResilience()
 
@@ -54,13 +54,27 @@ def test_codex_runs_a_confined_turn_behind_the_guard_hook_and_removes_its_policy
     _run_turn(CodexBackend(_run_codex_recording_the_guard), root, cwd=str(root / "docs"), add_dirs=[str(root / "src")], agent=agent)
 
     (call,) = calls
-    assert "codex_guard" in call.hooks
+    assert "backends.guard" in call.hooks
     assert call.policy == Policy(
         cwd=root / "docs",
         read_roots=(root / "docs", root / "src", root / ".claude" / "skills"),
         commands=("ostler",),
     )
     assert not call.policy_path.exists()
+
+
+def test_codex_guard_reads_the_operators_codex_and_agents_dirs(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A confined codex turn opens the skills, instructions and plugins its CLI loads from the operator's home."""
+    home = tmp_path / "home"
+    (home / ".codex").mkdir(parents=True)
+    (home / ".agents" / "skills").mkdir(parents=True)
+    monkeypatch.setenv("HOME", str(home))
+    root = tmp_path / "repo"
+    (root / ".git").mkdir(parents=True)
+    policy = codex.guard_policy(AgentProfile(name="docs", confined=True), str(root), None)
+    assert policy is not None
+    assert policy.read_roots == (root.resolve(), home / ".codex", home / ".agents")
+    assert policy.may_read(home / ".agents" / "skills" / "x" / "SKILL.md")
 
 
 def test_codex_runs_an_unconfined_turn_without_the_guard(tmp_path: Path) -> None:

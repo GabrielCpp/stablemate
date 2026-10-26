@@ -13,6 +13,7 @@ from workhorse.runner.backends import (
     AgentProfile,
     ensure_prompt_is_not_in_argv,
     prepare_argv_prompt,
+    warn_unenforced_confinement,
 )
 from workhorse.runner.backends.delegates import Delegate, warn_unsupported
 from workhorse.runner.backends.jsonl import JsonlBackend
@@ -201,6 +202,7 @@ class ClineBackend(JsonlBackend):
         delegates: tuple[Delegate, ...] = (),
     ) -> str:
         warn_unsupported(self.name, delegates)
+        warn_unenforced_confinement(self.name, node_id, agent)
         sid = read_session_id(session_id_path)
         argv_prompt, _attachment = prepare_argv_prompt(prompt, prompt_path)
         cmd = [

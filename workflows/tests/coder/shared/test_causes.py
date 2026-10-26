@@ -121,7 +121,7 @@ def test_tiered_does_not_ask_the_second_judge_when_nothing_is_left() -> None:
 def test_the_judge_turn_has_no_tool_to_spend_its_one_step_on() -> None:
     """A judge with file tools wrote its answer to a scratch file, and the turn ended on max turns with no ruling."""
     assert JUDGE_PROFILE.steps == 1
-    assert claude_backend._tool_flags(JUDGE_PROFILE, "/work/app") == ["--tools", "", "--strict-mcp-config"]
+    assert claude_backend._tool_flags(JUDGE_PROFILE) == ["--tools", "", "--strict-mcp-config"]
 
 
 def test_an_unanswered_subject_takes_the_default() -> None:

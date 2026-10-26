@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -19,6 +20,20 @@ if TYPE_CHECKING:
 ARGV_PROMPT_LIMIT_BYTES = 96 * 1024
 
 
+def operator_config_dirs(harness: str) -> tuple[Path, ...]:
+    """The existing directories ``harness`` loads the operator's own config, skills, instructions and plugins from."""
+    home = Path.home()
+    candidates: list[Path] = []
+    if harness == "claude":
+        candidates = [Path(os.environ.get("CLAUDE_CONFIG_DIR") or home / ".claude")]
+    elif harness == "codex":
+        candidates = [Path(os.environ.get("CODEX_HOME") or home / ".codex"), home / ".agents"]
+    elif harness == "opencode":
+        config_home = Path(os.environ.get("XDG_CONFIG_HOME") or home / ".config")
+        candidates = [config_home / "opencode", home / ".claude" / "skills", home / ".agents" / "skills"]
+    return tuple(directory for directory in candidates if directory.is_dir())
+
+
 @dataclass(frozen=True, slots=True)
 class AgentProfile:
     """A named, narrowed persona for one node's turns, as the CLI behind the port understands it.
@@ -32,13 +47,18 @@ class AgentProfile:
     a profile. A workflow knows which tools its own prompt needs, and hands one down on
     its node.
 
-    ``confined`` holds the turn to its working directory and its added directories. It
-    reads only there. The claude and codex backends write only in the working
-    directory, and the opencode backend writes in the added directories too. The backend enables the
-    file tools it can hold to those paths and drops the ones it cannot. ``commands``
-    names the only shell commands a confined turn may run, each with any arguments.
-    With none named, the turn has no shell. A confined turn can also read the project
-    skills its CLI loads, since a skill is files the turn opens.
+    A turn never loads less of the operator's environment than an interactive session of
+    the same CLI: user settings, permission rules, hooks, model settings, skills,
+    instruction files and plugins. ``confined`` narrows what the turn may write, read and
+    run with a guard layered on top of that environment, and removes none of it. The
+    directories the CLI loads the operator's config from stay readable
+    (``operator_config_dirs``). A confined turn reads only its working directory, its
+    added directories and those. The claude and codex backends write only in the working
+    directory, and the opencode backend writes in the added directories too. ``tools``
+    still turns tools off. ``commands`` names the only shell commands a confined turn may
+    run, each with any arguments. With none named, the turn has no shell. The copilot and
+    cline backends apply no box, so they warn that a confined turn runs with the
+    operator's full permissions.
 
     ``command_timeout_s`` is the longest one shell command may run before the CLI stops
     waiting on it. A CLI that moves a slow command to the background hands the turn an
@@ -61,6 +81,15 @@ class AgentProfile:
             raise ValueError(
                 f"agent '{self.name}' names commands but is not confined, so nothing would hold it to them"
             )
+
+
+def warn_unenforced_confinement(cli: str, node_id: str, agent: AgentProfile | None) -> None:
+    """Say that ``cli`` applies no box, so a confined profile's turn runs with the operator's full permissions."""
+    if agent is not None and agent.confined:
+        print(
+            f"[{node_id}] ⚠ {cli} does not enforce a confined profile; the turn runs with the operator's full permissions",
+            flush=True,
+        )
 
 
 def git_worktree(directory: Path) -> Path | None:

@@ -1,8 +1,10 @@
-"""The PreToolUse hook that holds a confined codex turn to its profile.
+"""The PreToolUse hook that holds a confined turn of the codex or claude CLI to its profile.
 
-Codex runs outside its sandbox here, because a profile's commands bring up the app the
-turn documents. So every shell call and every patch passes this hook first. A patch
-writes only under the turn's cwd. A shell call passes the judge in `codex_shell`.
+Both CLIs run with their own permission prompts and sandbox off, because a profile's
+commands bring up the app the turn documents. The hook is a box layered on top of the
+operator's full environment, which the CLI still loads. Every shell call, patch, file
+write and file read passes this hook first. A write lands only under the turn's cwd, and
+a read only under the policy's read roots. A shell call passes the judge in `guard_shell`.
 """
 from __future__ import annotations
 
@@ -11,14 +13,19 @@ import os
 import re
 import shlex
 import sys
-from collections.abc import Sequence
+import tempfile
+from collections.abc import Iterator, Sequence
+from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 
-from workhorse.runner.backends.codex_shell import READ_ONLY_PROGRAMS, shell_denial
+from workhorse.runner.backends.guard_shell import READ_ONLY_PROGRAMS, shell_denial
 
-HOOK_MODULE = "workhorse.runner.backends.codex_guard"
+HOOK_MODULE = "workhorse.runner.backends.guard"
 PATCH_PATH = re.compile(r"^\*\*\* (?:Add File|Update File|Delete File|Move to): (.+)$", re.MULTILINE)
+WRITE_TOOLS = {"Edit": "file_path", "Write": "file_path", "MultiEdit": "file_path", "NotebookEdit": "notebook_path"}
+READ_TOOLS = {"Read": "file_path", "Glob": "path", "Grep": "path"}
+SEARCH_TOOLS = ("Glob", "Grep")
 
 
 @dataclass(frozen=True, slots=True)
@@ -64,21 +71,26 @@ def _strings_or_none(value: object) -> tuple[str, ...] | None:
 
 @dataclass(frozen=True, slots=True)
 class ToolCall:
-    """The part of one hook payload the guard judges: the tool codex calls, and the text it passes, a shell command or a patch."""
+    """The part of one hook payload the guard judges: the tool the CLI calls, and the input it passes."""
 
     tool: str
-    input_text: str | None
+    tool_input: dict[str, object]
 
     @classmethod
     def from_json(cls, text: str) -> ToolCall:
-        """The call codex sends the hook, refusing a payload that is not an object."""
+        """The call the CLI sends the hook, refusing a payload that is not an object."""
         data: object = json.loads(text)
         if not isinstance(data, dict):
             raise ValueError("the call is not an object")
         tool = data.get("tool_name")
         tool_input = data.get("tool_input")
-        command_text = tool_input.get("command") if isinstance(tool_input, dict) else None
-        return cls(tool=tool if isinstance(tool, str) else "", input_text=command_text if isinstance(command_text, str) else None)
+        fields: dict[str, object] = {str(key): value for key, value in tool_input.items()} if isinstance(tool_input, dict) else {}
+        return cls(tool=tool if isinstance(tool, str) else "", tool_input=fields)
+
+    def text(self, field_name: str) -> str | None:
+        """The string input field, or None when the call lacks it or carries another type."""
+        value = self.tool_input.get(field_name)
+        return value if isinstance(value, str) else None
 
 
 def _within(path: Path, roots: Sequence[Path]) -> bool:
@@ -99,18 +111,37 @@ def _refusal_message(denial: str, policy: Policy) -> str:
     return (
         f"Refused: {denial}. This turn runs its own commands and the read-only commands "
         + f"{', '.join(READ_ONLY_PROGRAMS)}, joined by `|` at most, on paths under {roots}. "
-        + f"It writes only with a patch, under {policy.cwd}."
+        + f"It writes only through the harness's write tools (a patch, Edit or Write), under {policy.cwd}."
     )
+
+
+def _path_refusal(call: ToolCall, field_name: str, roots: Sequence[Path], policy: Policy) -> str | None:
+    """The reason to refuse a file tool whose path leaves `roots`, or None when it stays inside."""
+    raw = call.text(field_name)
+    if raw is None:
+        if call.tool in SEARCH_TOOLS:
+            return None
+        return _refusal_message(f"the call carries no {field_name}", policy)
+    target = Path(os.path.normpath(policy.cwd / raw))
+    if _within(target, roots):
+        return None
+    verb = "writes" if call.tool in WRITE_TOOLS else "reads"
+    return _refusal_message(f"the {call.tool} call {verb} {raw}, outside {', '.join(str(root) for root in roots)}", policy)
 
 
 def call_refusal(call: ToolCall, policy: Policy) -> str | None:
     """The reason to refuse the tool call, or None to let it run."""
-    if call.tool not in ("Bash", "apply_patch"):
-        return None
-    if call.input_text is None:
-        return _refusal_message("the call carries no command", policy)
-    denial = shell_denial(call.input_text, policy) if call.tool == "Bash" else patch_denial(call.input_text, policy)
-    return None if denial is None else _refusal_message(denial, policy)
+    if call.tool in ("Bash", "apply_patch"):
+        text = call.text("command")
+        if text is None:
+            return _refusal_message("the call carries no command", policy)
+        denial = shell_denial(text, policy) if call.tool == "Bash" else patch_denial(text, policy)
+        return None if denial is None else _refusal_message(denial, policy)
+    if call.tool in WRITE_TOOLS:
+        return _path_refusal(call, WRITE_TOOLS[call.tool], (policy.cwd,), policy)
+    if call.tool in READ_TOOLS:
+        return _path_refusal(call, READ_TOOLS[call.tool], policy.read_roots, policy)
+    return None
 
 
 def denial_output(reason: str) -> str:
@@ -120,8 +151,20 @@ def denial_output(reason: str) -> str:
 
 
 def hook_command(policy_path: Path) -> str:
-    """The command codex runs as the hook, reading the policy at `policy_path`."""
+    """The command the CLI runs as the hook, reading the policy at `policy_path`."""
     return shlex.join([sys.executable, "-m", HOOK_MODULE, str(policy_path)])
+
+
+@contextmanager
+def policy_file(policy: Policy) -> Iterator[Path]:
+    """The path of a file holding `policy`, which lasts as long as the turn."""
+    with tempfile.NamedTemporaryFile("w", suffix=".json", prefix="guard-", delete=False, encoding="utf-8") as file:
+        _ = file.write(policy.to_json())
+    path = Path(file.name)
+    try:
+        yield path
+    finally:
+        path.unlink(missing_ok=True)
 
 
 def main(argv: Sequence[str] | None = None) -> int:

@@ -39,6 +39,14 @@ docs go, conventions — is [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md). Read tha
 - **The engine's `.py` is COPY'd into the image, not bind-mounted** — changes take effect
   only after an image rebuild (add `--build` to the `docker compose up`). The build
   context is the repo root, not this directory.
+- **A turn never loads less of the operator's environment than an interactive session of
+  its CLI.** That covers user settings, permission rules, hooks, model settings, skills,
+  instruction files and plugins. A profile's `confined` box is a guard layered on top of
+  that environment. It never removes a setting source, a skill directory, an instruction
+  file, a plugin or a hook, and the directories the CLI loads the operator's config from
+  stay readable (`operator_config_dirs` in `runner/backends/__init__.py`). A new backend
+  joins `tests/test_operator_environment.py` with its own environment test, and that file's
+  gate fails until it does.
 - **Stay repository-agnostic.** Never add repo-specific bind mounts to `compose.yaml`; the
   container's checkout step clones the repos each run needs.
 - **Stay workflow-agnostic (separation of concerns).** Workhorse is a generic driver

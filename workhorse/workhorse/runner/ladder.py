@@ -38,7 +38,7 @@ from workhorse.runner.waits import (
     active_recovery_wait_budget,
     recovery_wait_scope,
 )
-from workhorse.templates import NODE_ADD_DIRS, NODE_CONFINED, render, render_string, render_text
+from workhorse.templates import NODE_ADD_DIRS, render, render_string, render_text
 
 if TYPE_CHECKING:
     from workhorse.runner.backends import AgentBackend
@@ -166,7 +166,6 @@ class AgentRunner:
             "node_timeout_min": "unbounded" if unbounded else int(round(effective_timeout / 60)),
             "_node_cwd": rendered_cwd or "",
             NODE_ADD_DIRS: list(rendered_add_dirs),
-            NODE_CONFINED: node.agent is not None and node.agent.confined,
         }
         rendered_prompt = (
             render_text(node.id, node.prompt_text, prompt_ctx, workflow_dir)

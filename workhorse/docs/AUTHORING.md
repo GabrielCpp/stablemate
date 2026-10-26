@@ -341,22 +341,43 @@ WRITER = AgentProfile(
 self.agent("prompts/write.md", profile=WRITER, cwd=root / "docs")
 ```
 
-A confined turn can also read the project skill directories its CLI loads skills from,
-since a skill is files the turn opens. Each backend enables the file tools it can hold to those paths, so the profile names no
-CLI's tools. The claude backend runs the turn under `--permission-mode dontAsk` with
-project settings only, where a call no rule allows is refused. The opencode backend writes
+A turn never loads less of the operator's environment than an interactive session of the
+same CLI. That covers user settings, permission rules, hooks, model settings, skills,
+instruction files (`CLAUDE.md`, `AGENTS.md`) and plugins. Confinement is a guard layered on
+top of that environment. It never removes a setting source, a skill directory, an
+instruction file, a plugin or a hook. A profile's `tools` map still turns tools off.
+
+Every directory the CLI loads the operator's config from stays readable inside the box:
+`~/.claude` (or `$CLAUDE_CONFIG_DIR`) for claude, `~/.codex` (or `$CODEX_HOME`) and
+`~/.agents` for codex, and `~/.config/opencode` (or `$XDG_CONFIG_HOME/opencode`),
+`~/.claude/skills` and `~/.agents/skills` for opencode. The project skill directories its
+CLI loads stay readable too, since a skill is files the turn opens. Each backend enables
+the file tools it can hold to those paths, so the profile names no CLI's tools.
+
+The claude backend skips the CLI's permission prompts and loads every setting source. It
+passes a `--settings` value that adds a `PreToolUse` hook, and the hook holds the turn. A
+`Write`, `Edit`, `MultiEdit` or `NotebookEdit` call writes only under `cwd`. A `Read`,
+`Glob` or `Grep` call reads only under `cwd`, the `add_dirs`, the project skill directory
+and the operator's config directory, and a `Glob` or `Grep` with no `path` searches `cwd`.
+A shell call follows the codex rules below. The opencode backend writes
 read and edit rules relative to the git worktree, so an added repo beside it reads as
 `../<repo>/**`. It opens `external_directory` for each added directory outside the
-worktree. opencode checks that rule against the normalised absolute path, so a `..` cannot
-climb out of an added directory. It drops grep, glob and list, because opencode answers
-them outside its path rules. It refuses a confined turn whose `cwd` lies in no git
+worktree, and for the operator's config directories. opencode checks that rule against the
+normalised absolute path, so a `..` cannot climb out of an added directory. It drops grep,
+glob and list, because opencode answers them outside its path rules. It never opens the
+operator's directories for editing. It refuses a confined turn whose `cwd` lies in no git
 worktree. The codex backend runs outside its sandbox,
-because the profile's commands need docker and the network. A `PreToolUse` hook checks
-every call instead. A patch writes only under `cwd`. A shell call runs a profile command
-or a read-only command (`cat`, `head`, `sed -n`, `rg`, `grep`, `ls`, `find` and a few
-more), joined by `|` at most, with no path outside the turn's directories. The hook cannot
-see the directory a shell call runs in, so it refuses a relative path that climbs with
-`..` or starts at `~`.
+because the profile's commands need docker and the network. The same `PreToolUse` hook
+checks every call instead. A patch writes only under `cwd`. A shell call runs a profile
+command or a read-only command (`cat`, `head`, `sed -n`, `rg`, `grep`, `ls`, `find` and a
+few more), joined by `|` at most, with no path outside the turn's directories. The hook
+cannot see the directory a shell call runs in, so it refuses a relative path that climbs
+with `..` or starts at `~`.
+
+The copilot and cline backends apply no box. A confined profile still runs the turn with
+the operator's full environment and full permissions. The backend prints one warning per
+turn: `[<node>] ⚠ <cli> does not enforce a confined profile; the turn runs with the
+operator's full permissions`. It does not refuse the turn.
 
 `command_timeout_s` is how long one shell command may run before the CLI stops waiting
 on it. The claude CLI moves a command past two minutes to the background, and the turn
