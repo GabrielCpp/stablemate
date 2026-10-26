@@ -56,6 +56,7 @@ says how to use it. This page says where each concern lives.
 - `registry.py`: the machine-readable type registry, the source of truth for the knowledge format.
 - `result.py`: the value every ostler writer returns.
 - `routes.py`: what a screen's `route:` bullet says about the address a browser would show.
+- `route_coverage.py`: doctor's check that a server's endpoint pages book exactly the routes its proto contract annotates.
 - `rpc_coverage.py`: doctor's check that a grpc-server's rpc pages book exactly the RPCs its proto contract declares.
 - `scaffold.py`: `ostler scaffold`, hierarchy-respecting creation of UI-profile nodes.
 - `schemas.py`: loading the bundled JSON Schemas and validating documents against them.

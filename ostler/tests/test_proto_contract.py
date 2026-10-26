@@ -112,3 +112,74 @@ BENCHMARK = Path("/home/gabriel/Documents/ai-artifacts/benchmarks/gold/ticket-de
 def test_the_benchmark_ticket_service_declares_twenty_rpcs() -> None:
     service = present(proto_contract.read_contract(BENCHMARK).service("ticket.v1.TicketService"))
     assert len(service.rpcs) == 20
+
+
+GATEWAY = '''
+package acme.v1;
+
+service AcmeService {
+  rpc GetWidget(GetWidgetRequest) returns (Widget) {
+    option (google.api.http) = {
+      get: "/v1/widgets/{widget_id}"
+    };
+  }
+  rpc CreateWidget(CreateWidgetRequest) returns (Widget) {
+    option (google.api.http) = {
+      post: "/v1/widgets"
+      body: "*"
+    };
+  }
+  rpc UpdateWidget(UpdateWidgetRequest) returns (Widget) {
+    option (google.api.http) = {
+      put: "/v1/widgets/{widget.id}"
+      body: "widget"
+    };
+  }
+  rpc ReopenWidget(ReopenWidgetRequest) returns (Widget) {
+    option (google.api.http) = {
+      post: "/v1/widgets/{widget_id}:reopen"
+      body: "*"
+    };
+  }
+  rpc Ping(PingRequest) returns (PingReply);
+  rpc Audit(AuditRequest) returns (AuditReply) {
+    option deprecated = true;
+  }
+  rpc Many(ManyRequest) returns (ManyReply) {
+    option (google.api.http) = {
+      delete: "/v1/many/{id}"
+      additional_bindings { get: "/v1/other/{id}" }
+      additional_bindings { custom { kind: "HEAD" path: "/v1/head" } }
+    };
+  }
+}
+'''
+
+
+def _gateway(tmp_path: Path) -> dict[str, proto_contract.Rpc]:
+    write(tmp_path / "gateway.proto", GATEWAY)
+    service = present(proto_contract.read_contract(tmp_path).service("acme.v1.AcmeService"))
+    return {r.name: r for r in service.rpcs}
+
+
+def test_an_http_option_becomes_a_binding_with_method_path_and_body(tmp_path: Path) -> None:
+    rpcs = _gateway(tmp_path)
+    assert rpcs["GetWidget"].http == proto_contract.HttpBinding("GET", "/v1/widgets/{widget_id}", "")
+    assert rpcs["CreateWidget"].http == proto_contract.HttpBinding("POST", "/v1/widgets", "*")
+    assert rpcs["UpdateWidget"].http == proto_contract.HttpBinding("PUT", "/v1/widgets/{widget.id}", "widget")
+
+
+def test_a_custom_verb_stays_in_the_path(tmp_path: Path) -> None:
+    binding = present(_gateway(tmp_path)["ReopenWidget"].http)
+    assert binding.path == "/v1/widgets/{widget_id}:reopen"
+
+
+def test_an_rpc_without_the_option_has_no_binding(tmp_path: Path) -> None:
+    rpcs = _gateway(tmp_path)
+    assert rpcs["Ping"].http is None
+    assert rpcs["Audit"].http is None
+
+
+def test_additional_bindings_and_custom_are_ignored(tmp_path: Path) -> None:
+    assert _gateway(tmp_path)["Many"].http == proto_contract.HttpBinding("DELETE", "/v1/many/{id}", "")
+    assert len(_gateway(tmp_path)) == 7

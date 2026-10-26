@@ -10,9 +10,9 @@ from dataclasses import dataclass, field
 from types import ModuleType
 from typing import Any
 
-from ostler import data_state_ledger, data_states, doctor, fragment_hosts, hidden_claims, milestones, outcome_rules, page_size, passages, rpc_coverage, section_hosts, server_membership, shared_checks, stack_checks, step_commands
+from ostler import data_state_ledger, data_states, doctor, fragment_hosts, hidden_claims, milestones, outcome_rules, page_size, passages, route_coverage, rpc_coverage, section_hosts, server_membership, shared_checks, stack_checks, step_commands
 
-DOCTOR_MODULES: tuple[ModuleType, ...] = (data_state_ledger, data_states, doctor, fragment_hosts, hidden_claims, milestones, outcome_rules, page_size, passages, rpc_coverage, section_hosts, server_membership, shared_checks, stack_checks, step_commands)
+DOCTOR_MODULES: tuple[ModuleType, ...] = (data_state_ledger, data_states, doctor, fragment_hosts, hidden_claims, milestones, outcome_rules, page_size, passages, route_coverage, rpc_coverage, section_hosts, server_membership, shared_checks, stack_checks, step_commands)
 
 _BRIDGE = "gap_findings has no product caller; gaps surface via qa compile-plan only"
 

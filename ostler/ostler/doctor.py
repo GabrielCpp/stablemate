@@ -34,7 +34,7 @@ from ostler.qa import (addresses as qa_addresses, captures as captures_mod, fixt
 from ostler.qa.compile import Gap
 from ostler.qa.context import RELATION_KEYS, relation_subject
 from ostler.qa.outcome import QaOutcome
-from ostler import data_state_ledger, data_states, fragment_hosts, hidden_claims, milestones as milestones_mod, outcome_rules, page_size, passages, rpc_coverage, section_hosts, server_membership, shared_checks, stack_checks, stamp as stamp_mod, step_commands
+from ostler import data_state_ledger, data_states, fragment_hosts, hidden_claims, milestones as milestones_mod, outcome_rules, page_size, passages, route_coverage, rpc_coverage, section_hosts, server_membership, shared_checks, stack_checks, stamp as stamp_mod, step_commands
 from ostler import values as values_mod
 from ostler.source_snapshots import book_repository
 
@@ -121,6 +121,7 @@ def run(graph: Graph, epic_filter: str | None = None, check_schema: bool = True,
     _check_ui(graph, f, resolver, checkouts)
     server_membership.check_server_membership(graph, f, resolver)
     rpc_coverage.check_rpc_coverage(graph, f, resolver, checkouts)
+    route_coverage.check_route_coverage(graph, f, resolver, checkouts)
     fragment_hosts.check_fragment_hosts(graph, f, resolver)
     page_size.check_page_size(graph, f)
     hidden_claims.check_hidden_claims(graph, f)

@@ -535,6 +535,7 @@ UI_TYPES: tuple[UINodeType, ...] = (
         bullet_keys=(
             BulletKey("code", link=True, owns=True),
             BulletKey("openapi", link=True, owns=True),
+            BulletKey("contract", link=True, owns=True),
             BulletKey("detail", link=True),
             BulletKey("verify", check=True),
             *launch_bullets("url"),

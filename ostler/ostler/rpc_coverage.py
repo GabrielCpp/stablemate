@@ -23,7 +23,7 @@ def _values(node: UINode, key: str) -> list[str]:
             for name in _NAME.findall(value)]
 
 
-def _contract(graph: Graph, node: UINode, checkouts: dict[str, Path], own_repository: str) -> Contract | None:
+def resolve_contract(graph: Graph, node: UINode, checkouts: dict[str, Path], own_repository: str) -> Contract | None:
     """The contract the page's `contract:` bullet names, or `None` when it names no folder holding a `.proto`."""
     services: list[Service] = []
     found = False
@@ -70,7 +70,7 @@ def check_rpc_coverage(graph: Graph, f: list[Finding], resolver: LinkResolver,
     for server in servers:
         if server.kind != "file":
             continue
-        contract = _contract(graph, server, checkout_map, own_repository)
+        contract = resolve_contract(graph, server, checkout_map, own_repository)
         if contract is None:
             continue
         served = [s for name in _values(server, "serves") if (s := contract.service(name)) is not None]

@@ -10,6 +10,18 @@ _PACKAGE = re.compile(r"\bpackage\s+([\w.]+)\s*;")
 _SERVICE = re.compile(r"\bservice\s+(\w+)\s*\{")
 _RPC = re.compile(
     r"\brpc\s+(\w+)\s*\(\s*(stream\s+)?([\w.]+)\s*\)\s*returns\s*\(\s*(stream\s+)?([\w.]+)\s*\)\s*([;{])")
+_HTTP_OPTION = re.compile(r"\boption\s*\(\s*google\.api\.http\s*\)\s*=\s*\{")
+_HTTP_VERB = re.compile(r"\b(get|put|post|delete|patch)\s*:\s*\"([^\"]*)\"")
+_HTTP_BODY = re.compile(r"\bbody\s*:\s*\"([^\"]*)\"")
+
+
+@dataclass(frozen=True)
+class HttpBinding:
+    """The route a `google.api.http` option annotates: upper-case method, path as written, body field."""
+
+    method: str
+    path: str
+    body: str = ""
 
 
 @dataclass(frozen=True)
@@ -22,6 +34,7 @@ class Rpc:
     client_streaming: bool
     server_streaming: bool
     service: str = ""
+    http: HttpBinding | None = None
 
     @property
     def full_name(self) -> str:
@@ -93,13 +106,53 @@ def _block_end(text: str, open_at: int) -> int:
     return n
 
 
+def _top_level(text: str) -> str:
+    """*text* without its nested `{ }` blocks, string literals outside them left whole."""
+    out: list[str] = []
+    depth, i, n = 0, 0, len(text)
+    while i < n:
+        ch = text[i]
+        if ch in "\"'":
+            j = i + 1
+            while j < n and text[j] != ch and text[j] != "\n":
+                j += 2 if text[j] == "\\" else 1
+            if depth == 0:
+                out.append(text[i:j + 1])
+            i = j + 1
+            continue
+        if ch == "{":
+            depth += 1
+        elif ch == "}":
+            depth -= 1
+        elif depth == 0:
+            out.append(ch)
+        i += 1
+    return "".join(out)
+
+
+def _http_binding(block: str) -> HttpBinding | None:
+    """The binding of the `google.api.http` option in an rpc's `{ }` body, or `None` when it has none."""
+    option = _HTTP_OPTION.search(block)
+    if option is None:
+        return None
+    end = _block_end(block, option.end() - 1)
+    inner = _top_level(block[option.end():max(option.end(), end - 1)])
+    verb = _HTTP_VERB.search(inner)
+    if verb is None:
+        return None
+    body = _HTTP_BODY.search(inner)
+    return HttpBinding(verb.group(1).upper(), verb.group(2), body.group(1) if body else "")
+
+
 def _rpcs(body: str, service: str) -> list[Rpc]:
     out: list[Rpc] = []
     i = 0
     while (m := _RPC.search(body, i)) is not None:
+        end = _block_end(body, m.end() - 1) if m.group(6) == "{" else m.end()
+        binding = _http_binding(body[m.end() - 1:end]) if m.group(6) == "{" else None
         out.append(Rpc(m.group(1), m.group(3), m.group(5), m.group(2) is not None,
-                       m.group(4) is not None, service))
-        i = _block_end(body, m.end() - 1) if m.group(6) == "{" else m.end()
+                       m.group(4) is not None, service, binding))
+        i = end
     return out
 
 
