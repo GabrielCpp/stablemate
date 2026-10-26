@@ -32,8 +32,9 @@ class AgentProfile:
     a profile. A workflow knows which tools its own prompt needs, and hands one down on
     its node.
 
-    ``confined`` holds the turn to its working directory. It reads only there and in
-    the turn's added directories, and it writes only there. The backend enables the
+    ``confined`` holds the turn to its working directory and its added directories. It
+    reads only there. The claude and codex backends write only in the working
+    directory, and the opencode backend writes in the added directories too. The backend enables the
     file tools it can hold to those paths and drops the ones it cannot. ``commands``
     names the only shell commands a confined turn may run, each with any arguments.
     With none named, the turn has no shell. A confined turn can also read the project

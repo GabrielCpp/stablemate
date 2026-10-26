@@ -192,26 +192,32 @@ def _worktree(cwd: Path) -> Path:
 
 
 def _under(worktree: Path, directory: Path) -> str:
-    """The path rule matching everything under ``directory``, relative to ``worktree`` as opencode reads it."""
-    if not directory.is_relative_to(worktree):
-        raise ValueError(
-            f"a confined opencode turn reaches only inside its worktree {worktree}, and {directory} is outside it"
-        )
-    relative = directory.relative_to(worktree).as_posix()
-    return "**" if relative == "." else f"{relative}/**"
+    """The path rule matching everything under ``directory``, relative to ``worktree`` as opencode reads it.
+
+    A directory holding the worktree gets the whole worktree, and ``external_directory``
+    bounds the part of it above the worktree.
+    """
+    if worktree.is_relative_to(directory):
+        return "**"
+    return f"{directory.relative_to(worktree, walk_up=True).as_posix()}/**"
 
 
 def _confinement(agent: AgentProfile, cwd: str | None, add_dirs: list[str] | None) -> dict[str, Any]:
-    """The tools and permission rules that hold a confined turn to its cwd and its named commands.
+    """The tools and permission rules that hold a confined turn to its cwd, its added directories and its named commands.
 
     opencode matches a read or edit rule against the path relative to the git worktree,
-    so an absolute pattern matches nothing. Its grep, glob and list tools answer outside
+    so an absolute pattern matches nothing and an added repo beside the worktree is
+    ``../<repo>/**``. A path outside the worktree must also pass ``external_directory``,
+    which opencode matches against the normalised absolute parent directory, so a ``..``
+    cannot climb out of an added directory. The last matching rule wins, so each map
+    opens with its deny. Its grep, glob and list tools answer outside
     those rules, so a confined turn does without them. The directories opencode loads
     project skills from stay readable.
     """
     here = Path(cwd or os.getcwd()).resolve()
     worktree = _worktree(here)
-    readable = [here, *(Path(directory).resolve() for directory in add_dirs or [])]
+    added = [Path(directory).resolve() for directory in add_dirs or []]
+    reachable = [here, *added]
     tools = {
         **{name: on for name, on in agent.tools.items() if on},
         "*": False,
@@ -224,13 +230,20 @@ def _confinement(agent: AgentProfile, cwd: str | None, add_dirs: list[str] | Non
         "list": False,
     }
     permission = {
-        "external_directory": "deny",
+        "external_directory": {
+            "*": "deny",
+            **{
+                f"{directory.as_posix()}/**": "allow"
+                for directory in added
+                if not directory.is_relative_to(worktree)
+            },
+        },
         "read": {
             "*": "deny",
-            **{_under(worktree, directory): "allow" for directory in readable},
+            **{_under(worktree, directory): "allow" for directory in reachable},
             **{f"{skills}/**": "allow" for skills in _SKILL_DIRS},
         },
-        "edit": {"*": "deny", _under(worktree, here): "allow"},
+        "edit": {"*": "deny", **{_under(worktree, directory): "allow" for directory in reachable}},
         "bash": {
             "*": "deny",
             **{rule: "allow" for command in agent.commands for rule in (command, f"{command} *")},

@@ -155,7 +155,7 @@ def _confined_turn(**kwargs):
     return cfg["agent"]["docs-writer"]
 
 
-def test_a_confined_turn_reads_its_cwd_and_added_dirs_and_writes_only_its_cwd():
+def test_a_confined_turn_reads_and_writes_its_cwd_and_added_dirs():
     """opencode matches these rules relative to the worktree, and an absolute pattern matches nothing."""
     permission = _confined_turn()["permission"]
     assert permission["read"] == {
@@ -166,8 +166,44 @@ def test_a_confined_turn_reads_its_cwd_and_added_dirs_and_writes_only_its_cwd():
         ".claude/skills/**": "allow",
         ".agents/skills/**": "allow",
     }
-    assert permission["edit"] == {"*": "deny", "docs/**": "allow"}
-    assert permission["external_directory"] == "deny"
+    assert permission["edit"] == {"*": "deny", "docs/**": "allow", "skills/**": "allow"}
+    assert permission["external_directory"] == {"*": "deny"}
+
+
+def test_a_confined_turn_reaches_an_added_repo_beside_its_worktree():
+    """A frontend turn that also edits its backend repo needs both checks opened: the absolute ``external_directory`` one and the worktree-relative path rules."""
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp).resolve()
+        (root / "web-app" / ".git").mkdir(parents=True)
+        (root / "api-service").mkdir()
+        _, cfg = _turn(CONFINED, cwd=str(root / "web-app"), add_dirs=[str(root / "api-service")])
+    permission = cfg["agent"]["docs-writer"]["permission"]
+    assert permission["read"]["../api-service/**"] == "allow"
+    assert permission["edit"] == {"*": "deny", "**": "allow", "../api-service/**": "allow"}
+    assert permission["external_directory"] == {"*": "deny", f"{root / 'api-service'}/**": "allow"}
+
+
+def test_an_added_directory_holding_the_worktree_opens_all_of_it():
+    """Its worktree-relative rule would be ``../**``, which misses the worktree it holds, so the rule is the whole worktree and ``external_directory`` bounds the rest."""
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp).resolve()
+        (root / "web-app" / "docs").mkdir(parents=True)
+        (root / "web-app" / ".git").mkdir()
+        _, cfg = _turn(CONFINED, cwd=str(root / "web-app" / "docs"), add_dirs=[str(root)])
+    permission = cfg["agent"]["docs-writer"]["permission"]
+    assert permission["edit"] == {"*": "deny", "docs/**": "allow", "**": "allow"}
+    assert permission["external_directory"] == {"*": "deny", f"{root}/**": "allow"}
+
+
+def test_a_confined_turn_outside_any_worktree_is_refused():
+    """opencode resolves its path rules against the git worktree, so without one no rule would match."""
+    with tempfile.TemporaryDirectory() as tmp:
+        try:
+            _turn(CONFINED, cwd=tmp)
+        except ValueError as exc:
+            assert "worktree" in str(exc)
+        else:
+            raise AssertionError("a cwd in no worktree should have been refused")
 
 
 def test_a_confined_turn_runs_only_its_named_commands():
@@ -196,18 +232,6 @@ def test_a_confined_turn_with_no_commands_has_no_shell():
     assert entry["tools"]["bash"] is False
     assert entry["permission"]["bash"] == {"*": "deny"}
     assert entry["permission"]["edit"] == {"*": "deny", "**": "allow"}
-
-
-def test_a_confined_turn_refuses_a_directory_outside_its_worktree():
-    """A path outside the worktree falls under ``external_directory``, which the turn denies, so the added directory would be silently unreadable."""
-    with tempfile.TemporaryDirectory() as tmp, tempfile.TemporaryDirectory() as elsewhere:
-        (Path(tmp) / ".git").mkdir()
-        try:
-            _turn(CONFINED, cwd=tmp, add_dirs=[elsewhere])
-        except ValueError as exc:
-            assert "outside" in str(exc)
-        else:
-            raise AssertionError("a directory outside the worktree should have been refused")
 
 
 def test_naming_commands_without_confinement_is_refused():
