@@ -53,7 +53,9 @@ in, because each run holds full copies of its data.
    Commit the change you mean to measure, then run.
 3. **Run it.** `paddock run <benchmark> <task>`. It prints each step's outcome, the score
    and the result folder, and exits non-zero when a step failed. A real round lasts tens
-   of minutes, so launch it in the background and wait on its exit.
+   of minutes, so launch it in the background and wait on its exit. A round that was
+   interrupted exits 130 and writes no result. `paddock resume <benchmark> <task> [n]`
+   continues it on the sha it started on, skipping the steps and phases that finished.
 4. **Read the ledger before the score.** `ledger.json` names the pinned sha, whether the
    source was dirty, each step's duration, command and exit code, and the **caveats**.
    Done means every caveat is accounted for. A `self-touched:` caveat says the round

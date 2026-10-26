@@ -65,3 +65,7 @@ done
 
 Containers are out of the reaper's reach in every case. Whatever brought a compose stack
 up takes it down.
+
+Then `paddock resume <benchmark> <task>` continues the killed round on its pinned sha.
+Its ledger shows the killed segment with no end, and that segment's self-touched check is
+lost with its pin.
