@@ -41,8 +41,26 @@ a secret no source supplies, without ever starting docker.
 - code: ostler/ostler/environments/render.py::write@c93ab3c3f7b3
 - code: ostler/ostler/environments/runtime.py::copy_for@c45517030b87
 - code: ostler/ostler/environments/runtime.py::write_manifest@c45517030b87
-- code: ostler/ostler/environments/commands.py::cmd_render@36bbc1003620
+- code: ostler/ostler/environments/commands.py::cmd_render@05411233ab32
 - code: ostler/ostler/environments/cli.py::run@f1b74cc1cc17
+- detail: [Local stack bring-up](concepts/local-stack-bring-up.md)
+
+### ostler-env-render-fixture-missing
+- usage: ostler env render [TARGET...] [--copy NAME] --fixtures SET[,SET] [--json] — a named
+  fixture set naming a file that nothing ever creates is reported by the service and the set
+  that need it, before docker ever runs
+- exits: 1 — a `--fixtures` set naming a file that nothing ever creates is reported by the
+  service and the set that need it, before docker ever runs
+- run: invoke(argv=["env", "render", "env-render-fixture", "--copy", "okf-book-env-render-probe", "--fixtures", "okf-book-probe-missing", "--json"])
+- verify: exit_status(code=1)
+- verify: json_path(path="ok", equals=false)
+- verify: json_path(path="error", matches="^env-render-fixture:demo fixture set `okf-book-probe-missing` names .*/docs/services/env-render-fixture/ops/absent\\.env, which does not exist$")
+- fixture: [environments render and secrets](fixtures/environments-render-and-secrets.md) — seeds
+  env-render-fixture's demo service with a `okf-book-probe-missing` fixture set naming a file
+  no step ever creates
+- code: ostler/ostler/environments/checkout.py::locate@abb56c78967b
+- code: ostler/ostler/environments/render.py::render@c93ab3c3f7b3
+- code: ostler/ostler/environments/commands.py::cmd_render@05411233ab32
 - detail: [Local stack bring-up](concepts/local-stack-bring-up.md)
 
 ### ostler-env-check-required-name

@@ -13,4 +13,5 @@ title: Catch a CDP URL nothing answers
   report is ever built
 - verify: exit_status(code=1)
 - fixture: [vet manifest and regions](../fixtures/vet-manifest-and-regions.md)
+- fixture: [edit scratch repo](../fixtures/edit-scratch-repo.md)
 - detail: [Vetting a rendered screen](../concepts/vetting-a-rendered-screen.md)

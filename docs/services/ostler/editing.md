@@ -88,7 +88,7 @@ last.
 - verify: contents(subject="edit-scratch/docs/services/demo/cli.md", matches="src/demo\\.py::greet@[0-9a-f]+")
 - fixture: [edit scratch repo](fixtures/edit-scratch-repo.md) with an edit scratch repo whose book
   and story have not been edited yet
-- code: ostler/ostler/stamp.py::digest_file@e499880946e6
+- code: ostler/ostler/stamp.py::digest_file@b578fea528ce
 
 ### ostler-scaffold
 - usage: ostler scaffold TYPE NAME [--service SERVICE] [--in FILE] [--title TITLE] [--json]: creates
@@ -146,16 +146,16 @@ last.
   settled
 - flags:
   - --write (apply the plan; the default is a dry run that prints the diff)
-- args: STORY (the story's slug)
+- args: STORY (the story's id)
 - exits: 0 when the plan is built, 1 when the resolution is missing or malformed
-- run: invoke(argv=["-C", "edit-scratch", "edit", "settle-review", "sx", "--write"], env={"STABLEMATE_ARTIFACTS_DIR": "edit-scratch/art"})
+- run: invoke(argv=["-C", "edit-scratch", "edit", "settle-review", "TST-01M585PFWZZXH4Y6KNMH1VK58H", "--write"], env={"STABLEMATE_ARTIFACTS_DIR": "edit-scratch/art"})
 - verify: exit_status(code=0)
 - verify: stdout(matches="(?m)^applied: 2 file\\(s\\) changed, 0 move\\(s\\)$")
 - verify: contents(subject="edit-scratch/docs/epics/0001-first/stories/sx/story.md", matches="Review fixes applied")
 - verify: contents(subject="edit-scratch/art/specs/TST-01M585PFWZZXH4Y6KNMH1VK58H/review-settlement.json", matches="\"all_settled\": true")
 - fixture: [edit scratch repo](fixtures/edit-scratch-repo.md) with an edit scratch repo whose book
   and story have not been edited yet
-- code: ostler/ostler/edit.py::settle_review@08519cdd058d
+- code: ostler/ostler/edit.py::settle_review@63e4a8c64c39
 
 ### ostler-edit-carve-endpoints
 - usage: ostler edit carve-endpoints SERVER [--write]: moves each endpoint of a server page onto a

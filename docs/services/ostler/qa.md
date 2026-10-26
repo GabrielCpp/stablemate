@@ -124,6 +124,7 @@ are written, because each later command reads what an earlier one wrote.
 - code: ostler/ostler/qa/book_index.py::captures_by_node@6b7b3c34f0cf
 - code: ostler/ostler/qa/compile.py::cmd_compile_plan@d1944cb46aa9
 - code: ostler/ostler/qa/compile_cli.py::cli_scenario_body@003bdbe757de
+- code: ostler/ostler/qa/compile_grpc.py::grpc_scenarios@69d207a99252
 - code: ostler/ostler/qa/compile_http.py::api_scenarios@f77bef4e51e6
 - code: ostler/ostler/qa/compile_journey.py::journey_scenarios@421ed1147b57
 - code: ostler/ostler/qa/compile_maestro.py::device_state_walks@ebdc61232dae
@@ -283,6 +284,35 @@ are written, because each later command reads what an earlier one wrote.
 - code: ostler/ostler/qa/harness/ostler_qa.py::settle@3923d5821589
 - code: ostler/ostler/qa/harness/ostler_qa_hierarchy.py::DeviceScreen@287cae03d12b
 - code: ostler/ostler/qa/harness/ostler_qa_hierarchy.py::_maestro_hierarchy@287cae03d12b
+- detail: [Running and reporting a QA run](concepts/running-and-reporting-a-qa-run.md)
+
+### ostler-qa-run-grpc-target
+- usage: ostler qa run PLAN --json, PLAN naming a scenario that calls `qa.grpc` on a target with
+  no `base_url` — the client needs an address before it can make the call, so the call that needs
+  it is the whole claim
+- args: none
+- exits: 1 when the gRPC client has no address to call
+- run: invoke(argv=["-C", "qa-scratch", "qa", "run", "art/specs/s1/qa_plan_grpc.py", "--json"], env={"STABLEMATE_ARTIFACTS_DIR": "qa-scratch/art", "STABLEMATE_CONFIG": "qa-scratch/qa.toml", "GIT_DIR": "repo.git"})
+- verify: exit_status(code=1)
+- fixture: [qa scratch repo](fixtures/qa-scratch-repo.md) with a QA scratch repo with one changed
+  source file and a plan under spec s1
+- fixture: [qa grpc scratch plan](fixtures/qa-grpc-scratch-plan.md)
+- code: ostler/ostler/qa/harness/ostler_qa_grpc.py::Grpc@44086ba0f6f1
+- detail: [Running and reporting a QA run](concepts/running-and-reporting-a-qa-run.md)
+
+### ostler-qa-run-scenario-timeout
+- usage: ostler qa run PLAN --json, PLAN naming a scenario whose body goes silent past its own
+  `timeout=` — the runner kills it and retires any session record the kill leaves mid-start,
+  before the run ever reports it failed
+- args: none
+- exits: 1 when a scenario goes silent past its timeout
+- run: invoke(argv=["-C", "qa-scratch", "qa", "run", "art/specs/s1/qa_plan_timeout.py", "--json"], env={"STABLEMATE_ARTIFACTS_DIR": "qa-scratch/art", "STABLEMATE_CONFIG": "qa-scratch/qa.toml", "GIT_DIR": "repo.git"})
+- verify: exit_status(code=1)
+- fixture: [qa scratch repo](fixtures/qa-scratch-repo.md) with a QA scratch repo with one changed
+  source file and a plan under spec s1
+- fixture: [qa timeout scratch plan](fixtures/qa-timeout-scratch-plan.md)
+- code: ostler/ostler/qa/drivers.py::LocalLauncher.execute@65008956ada6
+- code: ostler/ostler/qa/maestro_sessions.py::retire_dead_sessions@7f45b672bb4e
 - detail: [Running and reporting a QA run](concepts/running-and-reporting-a-qa-run.md)
 
 ### ostler-qa-report

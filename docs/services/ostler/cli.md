@@ -26,8 +26,8 @@ managed markdown tree (backlog, milestones, epics, features) under a repo root.
 - verify: json_path(path="ok", equals=true)
 - verify: json_path(path="id", matches="^TST-[0-9A-HJKMNP-TV-Z]{26}$")
 - fixture: [plan scratch repo](fixtures/plan-scratch-repo.md) with records X-1 and X-2 on its register
-- code: ostler/ostler/register.py::file_person
-- code: ostler/ostler/ids.py::allocate@b37d33a102e8
+- code: ostler/ostler/register.py::file_person@e9e56b8ac9a0
+- code: ostler/ostler/ids.py::allocate@0d0049c06fca
 - detail: [Planning identities](concepts/planning-identities.md)
 - tests: ostler/tests/test_register_person.py::test_create_backlog_item_files_the_same_record
 
@@ -68,7 +68,7 @@ managed markdown tree (backlog, milestones, epics, features) under a repo root.
   root, and the directory does not yet hold the kind's file
 - code: ostler/ostler/artifact/run.py::scaffold@72b226ff9de4
 - code: ostler/ostler/artifact/kinds.py::ArtifactKind@ec25eeaddd5f
-- code: ostler/ostler/path.py::resolve_spec_arg@be3f9e1439fb
+- code: ostler/ostler/path.py::resolve_spec_arg@4524aa5cb018
 - code: ostler/ostler/cli.py::_cmd_artifact@97fced506443
 
 ### ostler-artifact-scaffold-unknown-kind
@@ -112,7 +112,7 @@ managed markdown tree (backlog, milestones, epics, features) under a repo root.
 - code: ostler/ostler/environments/cli.py::run@f1b74cc1cc17
 
 ### ostler-vet
-- usage: ostler vet SCREENSHOT --manifest PATH (--cdp-url URL | --regions PATH) --slug SLUG
+- usage: ostler vet SCREENSHOT --manifest PATH (--cdp-url URL | --regions PATH) --story STORY
   [--state STATE] [--iou-threshold FLOAT] [--write] [--json] — registers a manifest's documented
   elements against a scanned-regions file by rectangle overlap, and prints the match as one
   `VetReport` JSON object with --json, or a dry-run file diff otherwise; writes nothing to disk
@@ -121,16 +121,17 @@ managed markdown tree (backlog, milestones, epics, features) under a repo root.
   - --manifest (the JSON list of documented elements to register), --cdp-url (a live Chrome
     DevTools Protocol URL to scan instead of replaying a regions file; mutually exclusive with
     --regions), --regions (a previously scanned regions JSON file to replay instead of a live
-    scan), --slug (the story the vet report is filed under), --state (the label this render is
-    recorded under; default "default"), --iou-threshold (the minimum intersection-over-union for
-    a documented element and a region to count as the same thing; default 0.5), --write (apply
-    the planned file writes instead of only printing their diff), --json (print the whole
-    `VetReport` as one indented JSON object instead of the dry-run diff text)
+    scan), --story (the id of the story the vet report is filed under), --state (the label this
+    render is recorded under; default "default"), --iou-threshold (the minimum
+    intersection-over-union for a documented element and a region to count as the same thing;
+    default 0.5), --write (apply the planned file writes instead of only printing their diff),
+    --json (print the whole `VetReport` as one indented JSON object instead of the dry-run diff
+    text)
 - args: screenshot — the rendered page's screenshot path; read only to crop matched/unlabeled
   regions out of, so a path that does not exist still produces a report
 - exits: 1 — at least one documented element is missing, or at least one scanned region is
   unexpected or unlabeled; exits 0 only when every documented, visible element matches a region
-- run: invoke(argv=["vet", "nonexistent.png", "--manifest", "vet-manifest.json", "--regions", "vet-regions.json", "--slug", "vet-demo", "--json"])
+- run: invoke(argv=["-C", "edit-scratch", "vet", "nonexistent.png", "--manifest", "vet-manifest.json", "--regions", "vet-regions.json", "--story", "TST-01M585PFWZZXH4Y6KNMH1VK58H", "--json"])
 - verify: exit_status(code=1)
 - verify: json_path(path="summary.status", equals="disagreements")
 - verify: json_path(path="summary.matchedCount", equals=2)
@@ -147,8 +148,10 @@ managed markdown tree (backlog, milestones, epics, features) under a repo root.
   far enough apart that each pair's overlap is independent of the others, one pair at exactly the
   default 0.5 threshold, one just above it, one just below it, plus a fourth region with no
   accessible role and no matching element
+- fixture: [edit scratch repo](fixtures/edit-scratch-repo.md) — gives `--story` a real id to
+  resolve against, by way of its story `sx`
 - code: ostler/ostler/vet/__init__.py::__all__@2e20aecf0259
-- code: ostler/ostler/vet/run.py::run_vet@deb0121ace50
+- code: ostler/ostler/vet/run.py::run_vet@43917e56aea7
 - code: ostler/ostler/vet/geometry.py::BBox@a6d2ef1e40b6
 - code: ostler/ostler/vet/geometry.py::iou@a6d2ef1e40b6
 - code: ostler/ostler/vet/manifest.py::load_manifest@4b54d3b4e9ea
@@ -160,11 +163,11 @@ managed markdown tree (backlog, milestones, epics, features) under a repo root.
 - code: ostler/ostler/vet/report.py::build_report@30d577ca0ec9
 - code: ostler/ostler/vet/writes.py::VetFileWrite@d000fa666d75
 - code: ostler/ostler/vet/writes.py::VetPlan@d000fa666d75
-- code: ostler/ostler/cli.py::_cmd_vet@d36715768389
+- code: ostler/ostler/cli.py::_cmd_vet@97fced506443
 - detail: [Vetting a rendered screen](concepts/vetting-a-rendered-screen.md)
 
 ### ostler-vet-cdp
-- usage: ostler vet SCREENSHOT --manifest PATH --cdp-url URL --slug SLUG [--json] — scans a live
+- usage: ostler vet SCREENSHOT --manifest PATH --cdp-url URL --story STORY [--json] — scans a live
   page over Chrome DevTools Protocol instead of replaying a `--regions` file, and reports the scan
   itself failing as a `VetOutcome` error rather than a report
 - flags:
@@ -172,11 +175,13 @@ managed markdown tree (backlog, milestones, epics, features) under a repo root.
 - args: none beyond the screenshot already covered by [ostler-vet](#ostler-vet)
 - exits: 1 — a CDP URL nothing answers fails the scan before any manifest is even read, so the
   run's error names the URL, not a missing manifest
-- run: invoke(argv=["vet", "nonexistent.png", "--manifest", "vet-manifest.json", "--cdp-url", "http://127.0.0.1:1/", "--slug", "vet-demo", "--json"])
+- run: invoke(argv=["-C", "edit-scratch", "vet", "nonexistent.png", "--manifest", "vet-manifest.json", "--cdp-url", "http://127.0.0.1:1/", "--story", "TST-01M585PFWZZXH4Y6KNMH1VK58H", "--json"])
 - verify: exit_status(code=1)
 - verify: json_path(path="error", matches="^CDP scan of 'http://127\\.0\\.0\\.1:1/' failed: ")
 - fixture: [vet manifest and regions](fixtures/vet-manifest-and-regions.md) — seeds the
   `--manifest` file this run reads; its `--regions` file goes unread on this path
+- fixture: [edit scratch repo](fixtures/edit-scratch-repo.md) — gives `--story` a real id to
+  resolve against, by way of its story `sx`
 - code: ostler/ostler/vet/cdp.py::connect_and_scan@77027b587d70
 - code: ostler/ostler/qa/harness/ostler_qa_scan.py::SCAN_JS@71decdf2a5c3
 - detail: [Vetting a rendered screen](concepts/vetting-a-rendered-screen.md)

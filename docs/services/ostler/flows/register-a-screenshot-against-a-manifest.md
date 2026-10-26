@@ -13,4 +13,5 @@ title: Register a screenshot against a manifest
   which rendered region the book never documented
 - verify: json_path(path="summary.status", equals="disagreements")
 - fixture: [vet manifest and regions](../fixtures/vet-manifest-and-regions.md)
+- fixture: [edit scratch repo](../fixtures/edit-scratch-repo.md)
 - detail: [Vetting a rendered screen](../concepts/vetting-a-rendered-screen.md)

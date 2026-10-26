@@ -11,7 +11,7 @@ against a small plan repo seeded under the checkout, with `-C plan-scratch`, and
 on an entity of its own, so the order the claims run in does not change an outcome.
 
 - binary: ostler
-- code: ostler/ostler/cli.py::main@d36715768389
+- code: ostler/ostler/cli.py::main@97fced506443
 
 ## Commands
 
@@ -142,11 +142,11 @@ on an entity of its own, so the order the claims run in does not change an outco
 ### ostler-set-status
 - usage: ostler set-status STORY STATUS: rewrites a story's status in its page front matter and its
   Implementation Status section
-- args: story, status: the story's slug and the new status text
+- args: story, status: the story's id and the new status text
 - exits: 0 when the story exists
-- run: invoke(argv=["-C", "plan-scratch", "set-status", "bravo", "in-progress"])
+- run: invoke(argv=["-C", "plan-scratch", "--full-ids", "set-status", "TST-01M585P8MYP5WJAMJ89Z981GEG", "in-progress"])
 - verify: exit_status(code=0)
-- verify: stdout(matches="^status of 'bravo'")
+- verify: stdout(matches="^status of 'TST-01M585P8MYP5WJAMJ89Z981GEG' → in-progress$")
 - fixture: [plan scratch repo](fixtures/plan-scratch-repo.md) with a story whose status is Not
   started
 - code: ostler/ostler/_vendor/stablemate_core/base_cache.py::cache_root@79e1cc13c672
@@ -162,9 +162,9 @@ on an entity of its own, so the order the claims run in does not change an outco
 ### ostler-conflict
 - usage: ostler conflict STORY TEXT: records a conflict note on a story that a human must settle
 - exits: 0 when the story exists
-- run: invoke(argv=["-C", "plan-scratch", "conflict", "golf", "the criteria disagree"])
+- run: invoke(argv=["-C", "plan-scratch", "--full-ids", "conflict", "TST-01M585PCD35RNCP4A5GFKC2B4C", "the criteria disagree"])
 - verify: exit_status(code=0)
-- verify: stdout(matches="^conflict recorded on 'golf'$")
+- verify: stdout(matches="^conflict recorded on 'TST-01M585PCD35RNCP4A5GFKC2B4C'$")
 - fixture: [plan scratch repo](fixtures/plan-scratch-repo.md) with a story with no conflict
 - code: ostler/ostler/_vendor/stablemate_core/base_cache.py::cache_root@79e1cc13c672
 - code: ostler/ostler/_vendor/stablemate_core/config.py::config_path@7a84c0cc67a5
@@ -181,9 +181,9 @@ on an entity of its own, so the order the claims run in does not change an outco
 - flags:
   - --clear (remove the note instead of recording one)
 - exits: 0 when the story exists
-- run: invoke(argv=["-C", "plan-scratch", "conflict", "charlie", "--clear"])
+- run: invoke(argv=["-C", "plan-scratch", "--full-ids", "conflict", "TST-01M585P9FE369J59J2MCASSD5G", "--clear"])
 - verify: exit_status(code=0)
-- verify: stdout(matches="^conflict cleared off 'charlie'$")
+- verify: stdout(matches="^conflict cleared off 'TST-01M585P9FE369J59J2MCASSD5G'$")
 - fixture: [plan scratch repo](fixtures/plan-scratch-repo.md) with a story that carries a conflict
 - code: ostler/ostler/_vendor/stablemate_core/base_cache.py::cache_root@79e1cc13c672
 - code: ostler/ostler/_vendor/stablemate_core/config.py::config_path@7a84c0cc67a5
@@ -199,7 +199,7 @@ on an entity of its own, so the order the claims run in does not change an outco
 - usage: ostler unblock [--story STORY | --epic EPIC] [--json]: clears the give-up stamp off a
   blocked story and returns it to Not started
 - exits: 0 whether or not the story was blocked
-- run: invoke(argv=["-C", "plan-scratch", "unblock", "delta", "--json"])
+- run: invoke(argv=["-C", "plan-scratch", "unblock", "TST-01M585PA7RWXZ1A524BJB1HPFQ", "--json"])
 - verify: exit_status(code=0)
 - verify: json_path(path="ok", equals=true)
 - verify: json_path(path="message", matches="^unblocked 1")
@@ -207,7 +207,7 @@ on an entity of its own, so the order the claims run in does not change an outco
   Blocked
 - code: ostler/ostler/_vendor/stablemate_core/base_cache.py::cache_root@79e1cc13c672
 - code: ostler/ostler/_vendor/stablemate_core/config.py::config_path@7a84c0cc67a5
-- code: ostler/ostler/crud.py::dump_frontmatter@b34e5b5a7cfb
+- code: ostler/ostler/crud.py::dump_frontmatter@ad0a12b44593
 - code: ostler/ostler/dynamic_registry.py::load_kinds@09b3f9268893
 - code: ostler/ostler/index.py::active@cfb08df1cba1
 - code: ostler/ostler/markdown.py::extract_refs@115245786c4b
@@ -223,9 +223,9 @@ on an entity of its own, so the order the claims run in does not change an outco
   - --by (who approves the story)
   - --note (a free-text note kept with the record)
 - exits: 0 when the story exists
-- run: invoke(argv=["-C", "plan-scratch", "freeze", "hotel", "--by", "me", "--note", "ok"])
+- run: invoke(argv=["-C", "plan-scratch", "--full-ids", "freeze", "TST-01M585PD385GTJPSFXM5M5WV5N", "--by", "me", "--note", "ok"])
 - verify: exit_status(code=0)
-- verify: stdout(matches="freeze story 'hotel'")
+- verify: stdout(matches="freeze story 'TST-01M585PD385GTJPSFXM5M5WV5N'")
 - verify: stdout(matches="recorded in .*ids\\.json")
 - fixture: [plan scratch repo](fixtures/plan-scratch-repo.md) with an unfrozen story
 - code: ostler/ostler/_vendor/stablemate_core/base_cache.py::cache_root@79e1cc13c672
@@ -241,9 +241,9 @@ on an entity of its own, so the order the claims run in does not change an outco
 ### ostler-unfreeze
 - usage: ostler unfreeze STORY: removes the story's frozen record from `.agents/ids.json`
 - exits: 0 when the story is frozen
-- run: invoke(argv=["-C", "plan-scratch", "unfreeze", "echo"])
+- run: invoke(argv=["-C", "plan-scratch", "--full-ids", "unfreeze", "TST-01M585PAZRC83P9AZVSSQB33SZ"])
 - verify: exit_status(code=0)
-- verify: stdout(matches="^unfreeze 'echo'$")
+- verify: stdout(matches="^unfreeze 'TST-01M585PAZRC83P9AZVSSQB33SZ'$")
 - fixture: [plan scratch repo](fixtures/plan-scratch-repo.md) with a story that is frozen
 - code: ostler/ostler/_vendor/stablemate_core/base_cache.py::cache_root@79e1cc13c672
 - code: ostler/ostler/_vendor/stablemate_core/config.py::config_path@7a84c0cc67a5
@@ -272,9 +272,9 @@ on an entity of its own, so the order the claims run in does not change an outco
 - code: ostler/ostler/registry.py::base_type@bfa3450ef60d
 
 ### ostler-path-story
-- usage: ostler path story EPIC STORY: prints the path of a story's page
+- usage: ostler path story STORY: prints the path of a story's page, STORY being the story id
 - exits: 0 when the story exists
-- run: invoke(argv=["-C", "plan-scratch", "path", "story", "0001-first", "alpha"])
+- run: invoke(argv=["-C", "plan-scratch", "path", "story", "TST-01M585P7WKBH9YJ8E6NA73W4S9"])
 - verify: exit_status(code=0)
 - verify: stdout(matches="^docs/epics/0001-first/stories/alpha/story\\.md$")
 - fixture: [plan scratch repo](fixtures/plan-scratch-repo.md) with a story named alpha
@@ -290,7 +290,7 @@ on an entity of its own, so the order the claims run in does not change an outco
 ### ostler-path-branch
 - usage: ostler path branch STORY: prints the git branch name a story's work goes on
 - exits: 0 when the story exists
-- run: invoke(argv=["-C", "plan-scratch", "path", "branch", "alpha"])
+- run: invoke(argv=["-C", "plan-scratch", "path", "branch", "TST-01M585P7WKBH9YJ8E6NA73W4S9"])
 - verify: exit_status(code=0)
 - verify: stdout(matches="^alpha$")
 - fixture: [plan scratch repo](fixtures/plan-scratch-repo.md) with a story named alpha
@@ -429,6 +429,7 @@ on an entity of its own, so the order the claims run in does not change an outco
 - verify: exit_status(code=0)
 - verify: stdout(matches="(?m)^imported 2 records, kept 0 ids$")
 - fixture: [plan scratch repo](fixtures/plan-scratch-repo.md) with an old two-bullet list beside it
+- code: ostler/ostler/register_import.py::import_list@9a46ac7a7aac
 - code: ostler/ostler/_vendor/stablemate_core/base_cache.py::cache_root@79e1cc13c672
 - code: ostler/ostler/_vendor/stablemate_core/config.py::config_path@7a84c0cc67a5
 - code: ostler/ostler/dynamic_registry.py::load_kinds@09b3f9268893
@@ -517,19 +518,19 @@ on an entity of its own, so the order the claims run in does not change an outco
 - code: ostler/ostler/registry.py::base_type@bfa3450ef60d
 
 ### ostler-update-story
-- usage: ostler update story SLUG --title TITLE --covers COVERS --depends DEPENDS: replaces a
-  story's title, coverage list and blocker list
+- usage: ostler update story STORY --title TITLE --covers COVERS --depends DEPENDS: replaces a
+  story's title, coverage list and blocker list, STORY being the story id
 - flags:
   - --covers (the seed ids the story covers, or `(none)`)
   - --depends (the complete blocker list, or `(none)` to clear it)
 - exits: 0 when the story exists
-- run: invoke(argv=["-C", "plan-scratch", "update", "story", "india", "--title", "Story india b", "--covers", "(none)", "--depends", "(none)"])
+- run: invoke(argv=["-C", "plan-scratch", "update", "story", "TST-01M585PDS2NEB3RYTGWV8G3TWQ", "--title", "Story india b", "--covers", "(none)", "--depends", "(none)"])
 - verify: exit_status(code=0)
 - verify: stdout(matches="^updated story 'india' in epic '0001-first'$")
 - fixture: [plan scratch repo](fixtures/plan-scratch-repo.md) with a story named india
 - code: ostler/ostler/_vendor/stablemate_core/base_cache.py::cache_root@79e1cc13c672
 - code: ostler/ostler/_vendor/stablemate_core/config.py::config_path@7a84c0cc67a5
-- code: ostler/ostler/crud.py::update_story@b34e5b5a7cfb
+- code: ostler/ostler/crud.py::update_story@ad0a12b44593
 - code: ostler/ostler/dynamic_registry.py::load_kinds@09b3f9268893
 - code: ostler/ostler/index.py::active@cfb08df1cba1
 - code: ostler/ostler/markdown.py::extract_refs@115245786c4b
@@ -557,15 +558,15 @@ on an entity of its own, so the order the claims run in does not change an outco
 - code: ostler/ostler/todo.py::list_epics@eb0ea0bc4039
 
 ### ostler-delete-story
-- usage: ostler delete story SLUG: removes a story from its epic
+- usage: ostler delete story STORY: removes a story from its epic, STORY being the story id
 - exits: 0 when the story exists
-- run: invoke(argv=["-C", "plan-scratch", "delete", "story", "sx"])
+- run: invoke(argv=["-C", "plan-scratch", "delete", "story", "TST-01M585PFWZZXH4Y6KNMH1VK58H"])
 - verify: exit_status(code=0)
 - verify: stdout(matches="^deleted story 'sx' from epic '0002-second'$")
 - fixture: [plan scratch repo](fixtures/plan-scratch-repo.md) with an epic holding one story
 - code: ostler/ostler/_vendor/stablemate_core/base_cache.py::cache_root@79e1cc13c672
 - code: ostler/ostler/_vendor/stablemate_core/config.py::config_path@7a84c0cc67a5
-- code: ostler/ostler/crud.py::delete_story@b34e5b5a7cfb
+- code: ostler/ostler/crud.py::delete_story@ad0a12b44593
 - code: ostler/ostler/dynamic_registry.py::load_kinds@09b3f9268893
 - code: ostler/ostler/index.py::active@cfb08df1cba1
 - code: ostler/ostler/markdown.py::extract_refs@115245786c4b
