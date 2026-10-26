@@ -15,7 +15,7 @@ Writes, repairs and runs one OKF book per surface of an app. It registers the wr
 ### run
 - usage: `workhorse-okf-book run [--params JSON] [--dry-run]`
 - flags:
-  - `--params JSON` supplies the `surfaces` list, each entry naming a `service`, its `kind` and its `entry` folder.
+  - `--params JSON` supplies the `surfaces` list, each entry naming a `service`, its `kind` and its `entry` folder. A `repo` field names the workspace member that holds the product: it is required under a workspace and refused outside one. See [okf-book workspace surface](concepts/okf-book-workspace-surface.md).
   - `--params-file PATH` supplies workflow parameters from a JSON object.
   - `--cli NAME`, `--profile NAME`, and `--config PATH` select the agent harness and configuration.
   - `--runs-dir DIR` and `--run-id ID` select the run-artifact location and stable identity.

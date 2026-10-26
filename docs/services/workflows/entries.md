@@ -242,6 +242,7 @@ title: workflows
 - [Workflow kit telemetry](concepts/workflow-kit-telemetry.md)
 - [Workflow kit external tools](concepts/workflow-kit-tools.md)
 - [Workflow kit workspace](concepts/workflow-kit-workspace.md)
+- [okf-book workspace surface](concepts/okf-book-workspace-surface.md)
 - [Workflow unit-test tiers](concepts/workflow-unit-test-tiers.md)
 - [Workflows orphan classification rule](concepts/workflows-orphan-classification.md)
 - [workhorse-author command selection](concepts/workhorse-author-command-selection.md)

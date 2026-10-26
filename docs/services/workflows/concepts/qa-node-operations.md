@@ -27,7 +27,7 @@ credential boundary.
 - verify: count(subject="accepted QA runner statuses", equals=4)
 - semantics: any other runner status text becomes `invalid`
 - verify: json_path(path="$.status", equals="invalid")
-- code: `workflows/src/workhorse_workflows/kit/qa/runner.py::RUN_STATUSES` @3f145f33a1c9
+- code: `workflows/src/workhorse_workflows/kit/qa/runner.py::RUN_STATUSES` @0279aa05112f
 
 ### TEARDOWN_STATES
 - type: `dict[str, Literal["yes", "no", "skipped"]]`
@@ -43,7 +43,7 @@ credential boundary.
 - required: true
 - semantics: maximum time allowed for one runbook secret-mint recipe before the QA run is blocked
 - verify: json_path(path="$.SECRET_MINT_TIMEOUT_S", equals=60.0)
-- code: `workflows/src/workhorse_workflows/kit/qa/runner.py::SECRET_MINT_TIMEOUT_S` @3f145f33a1c9
+- code: `workflows/src/workhorse_workflows/kit/qa/runner.py::SECRET_MINT_TIMEOUT_S` @0279aa05112f
 
 ### QA_SCRATCH_DIRNAME
 - type: `str`
@@ -183,7 +183,7 @@ credential boundary.
 - verify: omits(subject="QA secret mint logs", matches="token value")
 - returns: token values are not returned by a node schema
 - verify: omits(subject="QA node return payload", matches="token value")
-- code: `workflows/src/workhorse_workflows/kit/qa/runner.py::_mint_qa_secrets` @3f145f33a1c9
+- code: `workflows/src/workhorse_workflows/kit/qa/runner.py::_mint_qa_secrets` @0279aa05112f
 
 ### run_qa_plan
 - sig: `run_qa_plan(logger: logging.Logger, spec_dir: str = "", repo_dir: str = "", near: str = "", lease: str = "") -> QaPlanRun`
