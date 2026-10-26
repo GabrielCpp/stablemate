@@ -7,7 +7,7 @@ title: legacy book layout
 
 Seeds a `docs/` tree in the legacy pre-OKF layout under `okf-migrate-fixture/`: one epic with a
 `seed.json` and a `dependencies.json` sibling instead of frontmatter, an `epics-todo.json` queue
-naming that epic, and a feature page with no `type:` frontmatter at all.
+naming that epic, and a `docs/features/` page with no `type:` frontmatter at all.
 
 ## Steps
 
@@ -34,4 +34,4 @@ naming that epic, and a feature page with no `type:` frontmatter at all.
 ### seed-legacy-feature
 
 - kind: seed
-- run: mkdir -p okf-migrate-fixture/docs/services && printf '# Legacy Page\n\nSome text.\n' > okf-migrate-fixture/docs/services/legacy-page.md
+- run: mkdir -p okf-migrate-fixture/docs/features && printf '# Legacy Page\n\nSome text.\n' > okf-migrate-fixture/docs/features/legacy-page.md

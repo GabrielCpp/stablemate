@@ -10,9 +10,10 @@ one kind of defect for `ostler doctor` to report. The `shell` book has a fixture
 shell command. The `launch` book has a fixture that names a launch screen the screen's own page does
 not support. The `ui` book has a screen that names its component with a description, checks a key no
 browser can press, and answers a dialog with neither accept nor dismiss. The `ops` book has a runbook
-that names a driver that does not exist. The seed also writes `doctor-ids-scratch/`, a repo of its
-own whose id registry holds a prefix of the wrong type. Commands run there with `-C`, so no scenario
-sees these defects in the book of the checkout.
+that names a driver that does not exist. The same repo also gets a flat `docs/milestones/sample.md`,
+a milestone filed as a single file instead of its own `<slug>/milestone.md` folder. The seed also
+writes `doctor-ids-scratch/`, a repo of its own whose id registry holds a prefix of the wrong type.
+Commands run there with `-C`, so no scenario sees these defects in the book of the checkout.
 
 The seed also writes `doctor-register-scratch/`, a repo with an empty book whose artifacts dir
 `doctor-register-scratch/art` holds a broken register. Record X-2 has no frontmatter. Record X-1
@@ -29,12 +30,17 @@ which is on no shelf. Its commands run with `STABLEMATE_ARTIFACTS_DIR` set to th
 ### write-doctor-launch
 
 - kind: seed
-- run: mkdir -p doctor-scratch/docs/services/launch doctor-scratch/docs/services/launch/fixtures doctor-scratch/docs/services/launch/screens && printf -- '---\ntype: entries\nslug: entries\ntitle: launch\n---\n\n- \133Prepare](fixtures/prepare.md)\n- \133Home](screens/home.md)\n' > doctor-scratch/docs/services/launch/entries.md && printf -- '---\ntype: fixture\nslug: prepare-launch\ntitle: Prepare launch\n---\n# Prepare launch\n\nSeeds a file.\n\n- launch-screen: \133Home](../screens/home.md)\n\n## Steps\n\n### write-file\n\n- kind: seed\n- run: echo ok\n' > doctor-scratch/docs/services/launch/fixtures/prepare.md && printf -- '---\ntype: screen\nslug: home\ntitle: Home\n---\n# Home\n\n- route: /\n' > doctor-scratch/docs/services/launch/screens/home.md
+- run: mkdir -p doctor-scratch/docs/services/launch doctor-scratch/docs/services/launch/fixtures doctor-scratch/docs/services/launch/screens && printf -- '---\ntype: entries\nslug: entries\ntitle: launch\n---\n\n- \133Prepare](fixtures/prepare-launch.md)\n- \133Home](screens/home.md)\n' > doctor-scratch/docs/services/launch/entries.md && printf -- '---\ntype: fixture\nslug: prepare-launch\ntitle: Prepare launch\n---\n# Prepare launch\n\nSeeds a file.\n\n- launch-screen: \133Home](../screens/home.md)\n\n## Steps\n\n### write-file\n\n- kind: seed\n- run: echo ok\n' > doctor-scratch/docs/services/launch/fixtures/prepare-launch.md && printf -- '---\ntype: screen\nslug: home\ntitle: Home\n---\n# Home\n\n- route: /\n' > doctor-scratch/docs/services/launch/screens/home.md
 
 ### write-doctor-ui
 
 - kind: seed
 - run: mkdir -p doctor-scratch/docs/services/ui doctor-scratch/docs/services/ui/screens && printf -- '---\ntype: entries\nslug: entries\ntitle: ui\n---\n\n- \133Home](screens/home.md)\n' > doctor-scratch/docs/services/ui/entries.md && printf -- '---\ntype: screen\nslug: home\ntitle: Home\n---\n# Home\n\n- route: /\n- requires:\n  - none\n- params:\n  - none\n- entry: opened directly at the root URL.\n\n## Screen states\n\n### loaded\n\n- shows: the heading\n\n## Components\n\n### rail\n\n- selector: `#rail`\n- role: navigation\n- name: the `Panels` label\n- placement: width 0-20%%, x 0-20%%\n- keyboard: Tab moves through the buttons.\n- parent: \133Home](#home)\n- verify: focusable(locator="#rail", activates="Press it")\n\n## Interactions\n\n### open-panel\n\n- on: \133Home](#home)\n- trigger: click\n- role: button\n- name: Open\n- keyboard: Enter opens the panel.\n- dialog: maybe\n' > doctor-scratch/docs/services/ui/screens/home.md
+
+### write-doctor-milestone
+
+- kind: seed
+- run: mkdir -p doctor-scratch/docs/milestones && printf -- '---\ntype: milestone\ntitle: Sample\nstatus: proposed\n---\n# Sample\n' > doctor-scratch/docs/milestones/sample.md
 
 ### write-doctor-ops
 

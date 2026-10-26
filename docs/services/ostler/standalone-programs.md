@@ -15,11 +15,11 @@ starts as a background process. Both run through `python3`, not through `ostler`
 ## Commands
 
 ### okf-migrate
-- usage: python3 -m ostler.scripts.okf_migrate [ROOT] — walks ROOT's `docs/epics`, `docs/services`
+- usage: python3 -m ostler.scripts.okf_migrate [ROOT] — walks ROOT's `docs/epics`, `docs/features`
   and `docs/specs` trees, rewrites whatever legacy JSON-sibling or frontmatter-less markdown it
-  finds into the current OKF markdown format, and prints `migrated <root>: <report>`, a dict
-  counting how many epics, stories, features and specs it touched and whether it rewrote the
-  epics backlog queue
+  finds into the current OKF markdown format, renames `docs/features` to `docs/services` once
+  migrated, and prints `migrated <root>: <report>`, a dict counting how many epics, stories,
+  features and specs it touched and whether it rewrote the epics backlog queue
 - args: root — the repo root to migrate; defaults to the current directory when omitted
 - exits: 0 — `migrate` only ever counts and rewrites what it finds; a tree with nothing legacy
   left prints a report of all zero counts and `'todo': False`, not an error
@@ -30,15 +30,16 @@ starts as a background process. Both run through `python3`, not through `ostler`
 - verify: absent(subject="okf-migrate-fixture/docs/epics/sample-epic/seed.json")
 - verify: absent(subject="okf-migrate-fixture/docs/epics/sample-epic/dependencies.json")
 - verify: contents(subject="okf-migrate-fixture/docs/epics/index.md", matches="(?m)^- \\[sample-epic\\]\\(sample-epic/epic\\.md\\)$")
+- verify: absent(subject="okf-migrate-fixture/docs/features")
 - verify: contents(subject="okf-migrate-fixture/docs/services/legacy-page.md", matches="(?s)^---\\ntype: feature\\n")
 - fixture: [legacy book layout](fixtures/legacy-book-layout.md) — seeds the pre-OKF epic, its
   `seed.json`/`dependencies.json` siblings, the `epics-todo.json` queue naming it, and a
-  frontmatter-less feature page, all under `okf-migrate-fixture/`
+  frontmatter-less `docs/features/` page, all under `okf-migrate-fixture/`
 - code: ostler/ostler/scripts/okf_migrate.py::migrate@06a9c9dae6dd
 - code: ostler/ostler/scripts/okf_migrate.py::main@06a9c9dae6dd
 - code: ostler/ostler/scripts/okf_migrate.py::_migrate_epic@06a9c9dae6dd
 - code: ostler/ostler/scripts/okf_migrate.py::_migrate_todo@06a9c9dae6dd
-- code: ostler/ostler/scripts/okf_migrate.py::_migrate_services@06a9c9dae6dd
+- code: ostler/ostler/scripts/okf_migrate.py::_migrate_features@06a9c9dae6dd
 - detail: [Migrating the legacy book layout](concepts/migrating-the-legacy-book-layout.md)
 
 ### sandbox-forwarder
@@ -65,10 +66,10 @@ starts as a background process. Both run through `python3`, not through `ostler`
   filed review finding ids against the markdown Answer list in its spec directory, splitting
   them into fixed (with evidence), declined (with a reason) and still-open, collecting one error
   per malformed or unknown-disposition heading, and never touching `story.md`
-- args: story, filed — the story's slug, and the finding ids a run filed against it
+- args: story, filed — the story's id, and the finding ids a run filed against it
 - exits: 0 — a malformed heading or an unanswered finding is reported as data in the ledger, not
   raised
-- run: invoke(argv=["-c", "import json\nfrom ostler.api import Ostler\nprint(json.dumps(Ostler(root='answer-scratch').settle_answers('sx', ['F1', 'F2', 'F3'])))\n"], env={"STABLEMATE_ARTIFACTS_DIR": "answer-scratch/art"})
+- run: invoke(argv=["-c", "import json\nfrom ostler.api import Ostler\nprint(json.dumps(Ostler(root='answer-scratch').settle_answers('TST-01M585PFWZZXH4Y6KNMH1VK58H', ['F1', 'F2', 'F3'])))\n"], env={"STABLEMATE_ARTIFACTS_DIR": "answer-scratch/art"})
 - verify: exit_status(code=0)
 - verify: json_path(path="fixed[0]", equals="F1")
 - verify: json_path(path="declined[0].id", equals="F2")
