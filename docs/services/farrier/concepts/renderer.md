@@ -15,7 +15,7 @@ install time — see the [`scaffold` command](../farrier-commands-init.md#scaffo
 come from the [source loader](source-loader.md), which excludes a skill's bundled asset Markdown
 from the top-level source set.
 
-- code: `farrier/farrier/renderer.py::Renderer` @e8988703cc7e
+- code: `farrier/farrier/renderer.py::Renderer` @3c56f2f75d1f
 - detail: [renderer naming and relative output paths](naming.md)
 - detail: [generated context manifest](../formats/generated-context-manifest.md)
 
@@ -203,7 +203,7 @@ enabled assistant (`"claude"` if none is enabled). When the repository has no ro
 set additionally contains a thin one (`-include .agents/agents.mk`); an existing root `Makefile` is
 left intact and `ensure_makefile_include` wires it at install time instead.
 
-- code: `farrier/farrier/renderer.py::Renderer.render` @e8988703cc7e
+- code: `farrier/farrier/renderer.py::Renderer.render` @3c56f2f75d1f
 
 ### `context_manifest` — the per-repo run-time manifest
 
@@ -252,7 +252,7 @@ and the body through `render_templates`, then re-emit front matter carrying the
   heading. The separate `render_claude_pointer` method controls whether Claude imports the sibling
   README by `@README.md` instead of receiving it through `AGENTS.md`.
 
-- code: `farrier/farrier/renderer.py::Renderer.render_local_instruction` @e8988703cc7e
+- code: `farrier/farrier/renderer.py::Renderer.render_local_instruction` @3c56f2f75d1f
 
 ## Methods
 
@@ -291,6 +291,16 @@ template values, policies, and repo/user scope.
 - does: record each reference that misses the catalog and render the soft placeholder text
 - verify: count(subject="unresolved skill references recorded", equals=1)
 - code: `farrier/farrier/renderer.py::Renderer.skill_refs` @3c56f2f75d1f
+- code: `farrier/farrier/_vendor/stablemate_core/skill_refs.py::SkillRefs` @ebf1b69c7565
+
+### method: instruction_part
+- sig: `instruction_part(source: Source, target: str, output_path: Path) -> str`
+- does: render one aggregated source's body, stripping a prompt's standalone `$ARGUMENTS` line first
+- verify: omits(subject="aggregated prompt body", text="$ARGUMENTS")
+- does: rewrite a hand-written local source's relative links from beside the source to beside the output file
+- verify: count(subject="rebased relative links in an aggregated hand-written source", equals=1)
+- code: `farrier/farrier/renderer.py::Renderer.instruction_part` @3c56f2f75d1f
+- code: `farrier/farrier/link_rebase.py::rebase_links` @64a032c83549
 
 ### method: check_resolved
 - sig: `check_resolved() -> None`
@@ -456,7 +466,7 @@ template values, policies, and repo/user scope.
 - verify: absent(subject="user-scope launcher and context manifest outputs")
 - raises: `SystemExit` listing unknown roots and searched layers
 - verify: count(subject="unknown-root SystemExit messages listing roots and searched layers", equals=1)
-- code: `farrier/farrier/renderer.py::Renderer.render` @e8988703cc7e
+- code: `farrier/farrier/renderer.py::Renderer.render` @3c56f2f75d1f
 - tests: `farrier/tests/test_selection_misses.py::test_unknown_root_fails_even_with_copilot_disabled`
 
 ### method: instruction_sources
@@ -465,7 +475,7 @@ template values, policies, and repo/user scope.
 - verify: json_path(path="$[0].kind", equals="policy")
 - raises: `SystemExit` when a named policy, skill, or prompt cannot be resolved
 - verify: count(subject="SystemExit exceptions from unresolved policy, skill, and prompt source lookups", equals=3)
-- code: `farrier/farrier/renderer.py::Renderer.instruction_sources` @e8988703cc7e
+- code: `farrier/farrier/renderer.py::Renderer.instruction_sources` @3c56f2f75d1f
 - tests: `farrier/tests/test_policies.py::test_policy_body_is_aggregated_before_skills_and_prompts`
 
 ### method: render_local_instruction
@@ -480,7 +490,7 @@ template values, policies, and repo/user scope.
 - verify: count(subject="rendered sibling README under the Local README heading", equals=1)
 - does: return rendered text carrying source and per-part provenance without an in-file banner
 - verify: count(subject="source and per-part provenance records in returned rendered text", equals=1)
-- code: `farrier/farrier/renderer.py::Renderer.render_local_instruction` @e8988703cc7e
+- code: `farrier/farrier/renderer.py::Renderer.render_local_instruction` @3c56f2f75d1f
 - tests: `farrier/tests/test_provenance_banner.py::test_aggregated_agents_file_carries_no_banner_at_all`
 
 ### method: render_claude_pointer
@@ -489,5 +499,5 @@ template values, policies, and repo/user scope.
 - verify: count(subject="Claude provenance banners followed by an AGENTS.md pointer", equals=1)
 - does: add `@README.md` only when the caller requests README import
 - verify: count(subject="requested README imports in Claude pointers", equals=1)
-- code: `farrier/farrier/renderer.py::Renderer.render_claude_pointer` @e8988703cc7e
+- code: `farrier/farrier/renderer.py::Renderer.render_claude_pointer` @3c56f2f75d1f
 - tests: `farrier/tests/test_provenance_banner.py::test_claude_pointer_gets_the_html_comment_banner`

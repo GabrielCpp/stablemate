@@ -379,8 +379,8 @@ from a generated file back to the library.
     - run: invoke(argv=["source", "c055/.claude/skills/acme-demo/SKILL.md", "--library", "c055/library-dir"], env={"HOME": "c055/home", "STABLEMATE_CONFIG": "c055/config.toml", "STABLEMATE_FETCH_BASE": "0", "PATH": "c055/pipx-stub-bin:$PATH"})
     - verify: exit_status(code=0)
     - fixture: generated-demo-skill dir=c055
-- code: `farrier/farrier/cli.py::_run_source` @0244d6a97e3b
-- code: `farrier/farrier/cli.py::mapped_instruction_sources` @0244d6a97e3b
+- code: `farrier/farrier/cli.py::_run_source` @2eeeeaa1740e
+- code: `farrier/farrier/cli.py::mapped_instruction_sources` @2eeeeaa1740e
 - code: `farrier/farrier/frontmatter.py::frontmatter_metadata` @9cdb7d1662b8
 - code: `farrier/farrier/frontmatter.py::banner_sources` @9cdb7d1662b8
 - tests: `farrier/tests/test_source_command.py::test_source_resolves_to_library_file`
@@ -402,21 +402,36 @@ aggregation mapping or its banner. `frontmatter_metadata` is declared in the fro
     `localInstructions`. A skill folder name wins. Anything else exits listing both kinds.
 - does:
   - skill: refuse when more than one enabled harness holds a real copy
+    - run: invoke(argv=["eject", "acme-demo", "--repo", "c900", "--library", "c900/lib"], env={"HOME": "c900/home", "STABLEMATE_CONFIG": "c900/config.toml", "STABLEMATE_FETCH_BASE": "0", "PATH": "c900/pipx-stub-bin:$PATH"})
+    - verify: stderr(text="has real copies in")
+    - fixture: doubled-skill-repo dir=c900
   - skill: strip the provenance from `SKILL.md` (the `name`, `generated_by`, `source`, `resolve`
     and `do_not_edit` metadata keys, and `metadata` itself when it empties) and from bundled
     files (the `farrier source` line and the generated-by banner), leaving every other byte
+    - run: invoke(argv=["eject", "acme-demo", "--repo", "c901", "--library", "c901/lib"], env={"HOME": "c901/home", "STABLEMATE_CONFIG": "c901/config.toml", "STABLEMATE_FETCH_BASE": "0", "PATH": "c901/pipx-stub-bin:$PATH"})
+    - verify: omits(subject="c901/.claude/skills/acme-demo/SKILL.md", text="generated_by")
+    - fixture: own-skill-repo dir=c901
   - skill: edit `agents.yml` by line. A literal `skills:` entry loses its line, a glob entry is
     replaced by the literal ids it still matches, and a skill only a pack selects is added to
     `exclude.skills`. Comments and other bytes stay. The edit is reparsed and must select exactly
     the old selection minus the ejected skill, or eject aborts before writing
+    - run: invoke(argv=["eject", "acme-demo", "--repo", "c902", "--library", "c902/lib"], env={"HOME": "c902/home", "STABLEMATE_CONFIG": "c902/config.toml", "STABLEMATE_FETCH_BASE": "0", "PATH": "c902/pipx-stub-bin:$PATH"})
+    - verify: omits(subject="c902/agents.yml", text="- demo")
+    - fixture: own-skill-repo dir=c902
   - policy: render the body as `render_local_instruction` does for each mapping that lists it,
     refuse when the render differs across the mapping's paths, prepend it to the mapping's
     `text:` as a `text: |` block, and remove the name from `policy`/`policies` (dropping the
     key when it empties). The edit is reparsed and checked before writing
+    - run: invoke(argv=["eject", "house-style", "--repo", "c903", "--library", "c903/lib"], env={"HOME": "c903/home", "STABLEMATE_CONFIG": "c903/config.toml", "STABLEMATE_FETCH_BASE": "0", "PATH": "c903/pipx-stub-bin:$PATH"})
+    - verify: contents(subject="c903/agents.yml", text="Keep it consistent.")
+    - fixture: policy-skill-repo dir=c903
   - reinstall, so `farrier --repo . --check` passes with no further edit
-- code: `farrier/farrier/cli.py::_run_eject`
-- code: `farrier/farrier/eject.py::run_eject`
-- code: `farrier/farrier/yaml_edit.py::rewrite_skills_list`
+    - run: invoke(argv=["install", "--check", "--repo", "c904", "--library", "c904/lib"], env={"HOME": "c904/home", "STABLEMATE_CONFIG": "c904/config.toml", "STABLEMATE_FETCH_BASE": "0", "PATH": "c904/pipx-stub-bin:$PATH"})
+    - verify: exit_status(code=0)
+    - fixture: ejected-skill-repo dir=c904
+- code: `farrier/farrier/cli.py::_run_eject` @2eeeeaa1740e
+- code: `farrier/farrier/eject.py::run_eject` @c1eefba58cc3
+- code: `farrier/farrier/yaml_edit.py::rewrite_skills_list` @7281ef763407
 - tests: `farrier/tests/test_eject.py`
 
 Hands a generated thing over to the repo. A `localInstructions` `skill:` name with no selected

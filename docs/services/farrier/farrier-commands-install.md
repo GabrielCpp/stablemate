@@ -245,8 +245,9 @@ title: 'farrier — render the agent prompt library into a repository: install'
     - run: invoke(argv=["install", "--check", "--repo", "c124", "--library", "c124/lib"], env={"HOME": "c124/home", "STABLEMATE_CONFIG": "c124/config.toml", "STABLEMATE_FETCH_BASE": "0", "PATH": "c124/pipx-stub-bin:$PATH"})
     - verify: exit_status(code=0)
     - fixture: current-install-repo dir=c124
-- code: `farrier/farrier/outputs.py::install_outputs` @0b63626747f4
+- code: `farrier/farrier/outputs.py::install_outputs` @a2464a92144d
 - code: `farrier/farrier/cli.py::_run_install` @2eeeeaa1740e
+- code: `farrier/farrier/launcher.py::render_agents_mk` @f719f4c89bcb
 - tests: `farrier/tests/test_tagged_deletion.py::test_an_untagged_file_at_an_output_path_aborts_the_whole_install`
 - tests: `farrier/tests/test_tagged_deletion.py::test_a_deselected_skill_is_still_removed`
 - tests: `farrier/tests/test_qa_evidence_ignore.py::test_the_install_follows_the_skill_that_ships_the_gate`
