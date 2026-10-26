@@ -2216,10 +2216,10 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - does:
   - Continues to handle answer-form submissions after a detail push re-renders the form.
 - verify: count(subject="answer frames sent after a detail-push re-render", equals=1)
-- code: groom/groom/assets/dashboard.js::wireAnswerForm@64895070048f
-- code: groom/groom/assets/dashboard.js::sendCommand@64895070048f
-- code: groom/groom/assets/dashboard.js::onAnswered@64895070048f
-- code: groom/groom/assets/dashboard.js::onAnswerRejected@64895070048f
+- code: groom/groom/assets/dashboard.js::wireAnswerForm@9b3683b0ffb1
+- code: groom/groom/assets/dashboard.js::sendCommand@9b3683b0ffb1
+- code: groom/groom/assets/dashboard.js::onAnswered@9b3683b0ffb1
+- code: groom/groom/assets/dashboard.js::onAnswerRejected@9b3683b0ffb1
 - tests: groom/tests/test_app.py::test_handle_answer_flips_state_and_broadcasts_an_answered_event
 - tests: groom/tests/test_app.py::test_handle_answer_failure_does_not_flip_or_dispatch
 - tests: groom/tests/test_a11y_dynamic.py::test_the_answer_form_is_reachable_and_submittable_by_keyboard

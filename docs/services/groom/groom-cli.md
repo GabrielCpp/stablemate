@@ -163,7 +163,7 @@ The client removes terminal control characters and escape sequences from every s
     - verify: stderr(matches="'ftp://127\\.0\\.0\\.1:1' must be an http:// or https:// URL")
     - verify: exit_status(code=2)
     - fixture: none, because the rejected command line stops before the client starts
-- code: groom/groom/cli.py::main@41ed09bdfa75
+- code: groom/groom/cli.py::main@873d680b416f
 - detail: [groom server](http/groom.md)
 
 ### status

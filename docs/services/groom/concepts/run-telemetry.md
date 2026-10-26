@@ -43,7 +43,7 @@ The [alert](alert.md) value is returned when an ingest or periodic rule newly pa
 - verify: unchanged(subject="RUNS")
 - returns: a list of run ids eligible for removal from the hot cache.
 - verify: count(subject="stale run ids", equals=1)
-- code: `groom/groom/alerts.py::stale_run_ids` @777d4be85477
+- code: `groom/groom/alerts.py::stale_run_ids` @ce23672ba8a4
 - tests: `groom/tests/test_store_memory.py::test_terminated_run_evicted_after_grace`
 
 ### note_native_ending
@@ -53,7 +53,7 @@ The [alert](alert.md) value is returned when an ingest or periodic rule newly pa
 - does: fires `ENDED` for another native ending reported by the run record.
 - returns: newly-fired alerts after per-run rule deduplication.
 - verify: count(subject="native ending alerts", equals=1)
-- code: `groom/groom/alerts.py::note_native_ending` @777d4be85477
+- code: `groom/groom/alerts.py::note_native_ending` @ce23672ba8a4
 - tests: `groom/tests/test_native_row.py::test_a_vanished_pid_retires_a_run_that_never_recorded_an_ending`
 
 ### ingest_spans
@@ -98,7 +98,7 @@ The [alert](alert.md) value is returned when an ingest or periodic rule newly pa
 - verify: count(subject="live status rows", equals=1)
 - returns: no rows when the cache entry lacks a heartbeat
 - verify: count(subject="live status rows", equals=0)
-- code: `groom/groom/alerts.py::live_status` @da5d687bd2f0
+- code: `groom/groom/alerts.py::live_status` @ce23672ba8a4
 - tests: `groom/tests/test_telemetry.py::test_live_status_row_shape_is_the_cli_json_contract`, `groom/tests/test_telemetry.py::test_live_status_marks_an_ended_run_dead_while_its_heartbeat_is_fresh`
 
 ### live_run_ids
@@ -107,7 +107,7 @@ The [alert](alert.md) value is returned when an ingest or periodic rule newly pa
 - does: returns exactly the run ids whose live-status rows are currently alive.
 - returns: a set containing no id for a run that has ended or whose newest signal is outside the live window.
 - verify: count(subject="currently live run ids", equals=1)
-- code: `groom/groom/alerts.py::live_run_ids` @da5d687bd2f0
+- code: `groom/groom/alerts.py::live_run_ids` @ce23672ba8a4
 - tests: `groom/tests/test_telemetry.py::test_live_status_row_shape_is_the_cli_json_contract`
 
 ### check_time_rules
@@ -121,7 +121,7 @@ The [alert](alert.md) value is returned when an ingest or periodic rule newly pa
 - does: fires `WAITING` when an unanswered operator wait exceeds the wait threshold while leaving cap and machine waits exempt.
 - returns: newly-fired time-based alerts after per-run rule deduplication.
 - verify: count(subject="time-rule alerts", equals=1)
-- code: `groom/groom/alerts.py::check_time_rules` @777d4be85477
+- code: `groom/groom/alerts.py::check_time_rules` @ce23672ba8a4
 - tests: `groom/tests/test_telemetry.py::test_stall_fires_on_silence_but_heartbeat_suppresses_it`
 
 ## Fields

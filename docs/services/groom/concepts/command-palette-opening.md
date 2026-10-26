@@ -15,5 +15,5 @@ the keyboard shortcut invokes it, then opens the dialog, resets its query state,
 and focuses its input. Neither surface supersedes the other: both are current
 parts of opening the palette.
 
-- code: `groom/groom/assets/dashboard.js::openPalette` @8ab4513909c0
+- code: `groom/groom/assets/dashboard.js::openPalette` @9b3683b0ffb1
 - rule: use the open button for the invocation control and the dialog for the modal surface opened and focused by the same operation
