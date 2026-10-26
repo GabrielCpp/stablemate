@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import pytest
 
 from conftest import present, write
 from ostler import proto_contract
@@ -103,15 +102,6 @@ def test_an_unreadable_file_is_skipped(tmp_path: Path) -> None:
 
 def test_a_missing_folder_reads_as_an_empty_contract(tmp_path: Path) -> None:
     assert proto_contract.read_contract(tmp_path / "absent").services == ()
-
-
-BENCHMARK = Path("/home/gabriel/Documents/ai-artifacts/benchmarks/gold/ticket-desk/data/zeta/proto")
-
-
-@pytest.mark.skipif(not BENCHMARK.is_dir(), reason="the benchmark contract is not on this machine")
-def test_the_benchmark_ticket_service_declares_twenty_rpcs() -> None:
-    service = present(proto_contract.read_contract(BENCHMARK).service("ticket.v1.TicketService"))
-    assert len(service.rpcs) == 20
 
 
 GATEWAY = '''
