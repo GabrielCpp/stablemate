@@ -36,6 +36,11 @@ gives relative to the repository starts there.
 - The service's contract, its `.proto` files, is under `{{ contract_dir }}/`, which is the
   repository's `{{ contract_folder }}/`. Read it in place. A `contract:` bullet cites that
   repository path.
+{%- if kind == "http" %}
+  The routes are the `google.api.http` options on its rpcs. The book has one `endpoint` page per
+  annotated route, its `method:` and `path:` as the option spells them, and none the contract
+  lacks. The server page's `contract:` bullet cites that folder.
+{%- endif %}
 {%- endif %}
 {%- if member %}
 - The product's files live in workspace member `{{ member }}`. Every path a page names in the product is

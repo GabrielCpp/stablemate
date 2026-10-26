@@ -113,6 +113,28 @@ def test_an_http_render_names_a_contract_folder_when_it_carries_one(tmp_path: Pa
     assert "`openapi/`. Read it in place." in _render(tmp_path, surface)
 
 
+@pytest.mark.usefixtures("ostler_okf_skill")
+def test_an_http_render_with_a_contract_says_the_routes_are_its_annotations(tmp_path: Path) -> None:
+    surface = Surface(service="ledger", kind=SurfaceKind.HTTP, entry="ledger", contract="proto")
+
+    rendered = _render(tmp_path, surface)
+
+    assert "The routes are the `google.api.http` options on its rpcs." in rendered
+    assert "The server page's `contract:` bullet cites that folder." in rendered
+
+
+@pytest.mark.usefixtures("ostler_okf_skill")
+def test_an_http_render_without_a_contract_says_nothing_of_annotated_routes(tmp_path: Path) -> None:
+    surface = Surface(service="ledger", kind=SurfaceKind.HTTP, entry="ledger")
+
+    assert "google.api.http" not in _render(tmp_path, surface)
+
+
+@pytest.mark.usefixtures("ostler_okf_skill")
+def test_a_grpc_render_does_not_carry_the_http_route_sentence(tmp_path: Path) -> None:
+    assert "google.api.http" not in _render(tmp_path, GRPC)
+
+
 def _add_dirs(repo: Path, tmp_path: Path, surface: Surface, source_folder: str) -> list[str]:
     runner = ScriptedRunner({"write-book": lambda _args: {}})
     writer = ArtifactWriter("okf-book", tmp_path / "runs", run_id="t0")
