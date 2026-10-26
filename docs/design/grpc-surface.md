@@ -131,7 +131,7 @@ Status vocabulary is a read-only catalog every part consults.
 | Concept | Owns | Never knows |
 |---|---|---|
 | gRPC writing branch | what the writer is told about booking a gRPC service | how scenarios run |
-| Reading scope | which folders the writer may read: the entry and the contract location | the writer's turn mechanics |
+| Reading scope | which folders the writer may read: in a workspace the whole repo that holds the entry, else the entry and the contract location (revised, R11) | the writer's turn mechanics |
 
 **Proving claims**
 
@@ -165,7 +165,8 @@ Status vocabulary is a read-only catalog every part consults.
    unary RPC and zero or more for a server-streaming one. Owner: Caller.
 5. The scenario that proves a claim on an RPC calls that RPC. Owner: Reply check, which
    refuses to judge a claim against a Reply from a different method.
-6. The writer reads only the entry folder and the contract location. Owner: Reading scope.
+6. The writer reads no folder outside the repo that holds its entry, and outside a workspace no
+   folder beyond the entry and the contract location (revised, R11). Owner: Reading scope.
 7. A launched gRPC server counts as ready only when the gRPC health service answers SERVING on
    the declared address and the server lists the proto service its book names. Owner:
    Readiness probe. (revised, R5)
@@ -275,6 +276,13 @@ Revision log:
   and a reply that ends when the client stops listening. The act vocabulary had no way to say
   either (`ostler/acts.py:110-145`), and the caller dropped every message on a non-zero
   grpcurl exit (`ostler/qa/harness/ostler_qa_grpc.py:127-137`).
+- R11. §2 Reading scope and §3 invariant 6 are widened in a workspace, and A5 is settled
+  false. The first ticket book ran with the entry and the contract as its only added
+  folders, and its writer could not load the book format skill: a confined turn loads skills
+  only from its project and its added folders, and the docs home it starts in carries none.
+  The same writer reported that its runbook needed zeta's compose file, config, auth package
+  and seed data, all outside `ticket/`. In a workspace the writer now reads the whole member
+  repo (`main/nodes/writer_request.py` `add_dirs`). Source coverage stays on the entry.
 
 ### Parts
 
@@ -350,7 +358,8 @@ Revision log:
   The contract folder becomes a second added directory, for any surface that declares one,
   HTTP included (R9). Source coverage stays on the entry folder
   (`shared/source_coverage.py:41-45`). The contract is covered by `rpc-missing` and
-  `route-missing`.
+  `route-missing`. In a workspace the added directory is the member repo root, which holds
+  both and the repo's rendered skills (revised, R11).
 
 **Proving claims**
 
@@ -459,9 +468,9 @@ Revision log:
    clean, so they follow standard style. Not tested on another repo. **If wrong:** the reader
    shells out to `buf build`, and doctor needs buf.
 5. **Assumption:** the writer can state the UNAUTHENTICATED claims from the entry and contract
-   alone, though the auth interceptor sits in `zeta/internal/auth`. **Decided:** Reading scope
-   stays entry plus contract. **Basis:** none. **If wrong:** QA disproves those claims on the
-   first exercise, and Reading scope gains the shared folders a service imports.
+   alone, though the auth interceptor sits in `zeta/internal/auth`. **Settled false** (R11):
+   the first ticket book's writer asked for the compose file, config, auth package and seed
+   data. Reading scope in a workspace is the whole member repo.
 6. **Assumption:** zeta's whole stack boots on this machine within the boot timeout.
    **Decided:** one runbook brings up the compose stack for every zeta book. **Basis:** the
    builder's smoke passed at the freeze. Boot time not measured. **If wrong:** the runbook
