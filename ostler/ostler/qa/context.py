@@ -502,7 +502,8 @@ def _repository_row(repository: SourceRepository) -> dict[str, Any]:
     return {
         "id": repository.id,
         "base": repository.base,
-        "baseSha": _git(checkout, "rev-parse", "--verify", f"{repository.base}^{{commit}}").strip(),
+        "baseSha": ("" if repository.base == EMPTY_TREE_SHA else
+                    _git(checkout, "rev-parse", "--verify", f"{repository.base}^{{commit}}").strip()),
         "head": repository.head,
         "headSha": (None if repository.head == "WORKTREE" else
                     _git(checkout, "rev-parse", "--verify", f"{repository.head}^{{commit}}").strip()),

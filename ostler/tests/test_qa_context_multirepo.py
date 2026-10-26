@@ -5,7 +5,7 @@ from pathlib import Path
 
 from ostler import doctor
 from ostler.model import load
-from ostler.qa.context import build_context, cmd_context, validate_context
+from ostler.qa.context import EMPTY_TREE_SHA, book_context, build_context, cmd_context, validate_context
 from ostler.qa.source_context import SourceRepository, SourceScope
 from ostler.provenance import source_freshness
 
@@ -207,3 +207,32 @@ title: Create invoice
     ]
 
 
+
+
+def test_a_whole_book_context_maps_a_source_repository_from_the_empty_tree(tmp_path: Path) -> None:
+    docs = tmp_path / "product-docs"
+    source = tmp_path / "api-service"
+    (docs / "docs/services/billing").mkdir(parents=True)
+    (source / "src").mkdir(parents=True)
+    (docs / "docs/services/billing/create.md").write_text(
+        "---\ntype: concept\ntitle: Create invoice\n---\n# Create invoice\n\n"
+        "- code: `repo://api-service/src/service.py::create_invoice`\n",
+        encoding="utf-8",
+    )
+    (source / "src/service.py").write_text("def create_invoice():\n    return 1\n", encoding="utf-8")
+    _init(docs)
+    _init(source)
+    repository = SourceRepository(
+        id="api-service",
+        checkout=str(source),
+        base=EMPTY_TREE_SHA,
+        scopes=(SourceScope(surface="billing", root="src/service.py"),),
+    )
+
+    packet = book_context(docs, repositories=(repository,), books=["docs/services/billing"])
+
+    assert validate_context(packet) == []
+    assert packet["repositories"][0]["base"] == EMPTY_TREE_SHA
+    assert packet["repositories"][0]["baseSha"] == ""
+    assert [unit["id"] for unit in packet["changedUnits"]] == ["repo://api-service/src/service.py"]
+    assert source_freshness(packet, {"api-service": source})[0]["status"] == "fresh"
