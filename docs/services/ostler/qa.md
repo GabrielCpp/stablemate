@@ -447,9 +447,9 @@ are written, because each later command reads what an earlier one wrote.
 - fixture: [qa stack no-probe repo](fixtures/qa-stack-no-probe-repo.md) — a runbook whose one
   service step launches `true` and declares no `entry-url:`
 - code: ostler/ostler/qa/runbook.py::cmd_stack_up@66911fe4abd5
-- code: ostler/ostler/qa/stack.py::ensure_stack@49f8647f79af
-- code: ostler/ostler/qa/stack.py::boot_app@49f8647f79af
-- code: ostler/ostler/qa/stack.py::_boot_without_probe@49f8647f79af
+- code: ostler/ostler/qa/stack.py::ensure_stack@ba847d04a4fd
+- code: ostler/ostler/qa/stack.py::boot_app@ba847d04a4fd
+- code: ostler/ostler/qa/stack.py::_boot_without_probe@ba847d04a4fd
 - code: ostler/ostler/_vendor/stablemate_core/clock.py::SYSTEM_CLOCK@99322cfda640
 
 ### ostler-qa-start

@@ -28,10 +28,10 @@ defects in the book of the checkout. A caller reads the finding code, the page a
 - code: ostler/ostler/accessible_names.py::literal_name@e34b952636fb
 - code: ostler/ostler/keys.py::pressable@a22c2b93f53b
 - code: ostler/ostler/qa/fixture_browser.py::is_browser_step@d769665467aa
-- code: ostler/ostler/qa/stack.py::shell_syntax_error@49f8647f79af
+- code: ostler/ostler/qa/stack.py::shell_syntax_error@ba847d04a4fd
 - code: ostler/ostler/step_commands.py::check_fixture_launch_screen@a44a1ff496dd
 - code: ostler/ostler/values.py::dialog_answer@5fe41ca9c074
-- code: ostler/ostler/vet/placement.py::parse_placement@7183d869fe0e
+- code: ostler/ostler/vet/placement.py::parse_placement@fa7b7986f813
 
 ### ostler-doctor-launch-screen
 - usage: ostler doctor --path PATH --json: refuses a fixture that names a launch screen the screen's
@@ -44,10 +44,10 @@ defects in the book of the checkout. A caller reads the finding code, the page a
   books that each carry one kind of defect
 - code: ostler/ostler/accessible_names.py::literal_name@e34b952636fb
 - code: ostler/ostler/qa/fixture_browser.py::is_browser_step@d769665467aa
-- code: ostler/ostler/qa/stack.py::shell_syntax_error@49f8647f79af
+- code: ostler/ostler/qa/stack.py::shell_syntax_error@ba847d04a4fd
 - code: ostler/ostler/step_commands.py::check_fixture_launch_screen@a44a1ff496dd
 - code: ostler/ostler/values.py::dialog_answer@5fe41ca9c074
-- code: ostler/ostler/vet/placement.py::parse_placement@7183d869fe0e
+- code: ostler/ostler/vet/placement.py::parse_placement@fa7b7986f813
 
 ### ostler-doctor-ui-defects
 - usage: ostler doctor --path PATH --json: refuses a component whose name describes the label, a
@@ -64,10 +64,10 @@ defects in the book of the checkout. A caller reads the finding code, the page a
 - code: ostler/ostler/accessible_names.py::literal_name@e34b952636fb
 - code: ostler/ostler/locator_findings.py::ProseName@7318d29e242e
 - code: ostler/ostler/qa/fixture_browser.py::is_browser_step@d769665467aa
-- code: ostler/ostler/qa/stack.py::shell_syntax_error@49f8647f79af
+- code: ostler/ostler/qa/stack.py::shell_syntax_error@ba847d04a4fd
 - code: ostler/ostler/step_commands.py::check_fixture_launch_screen@a44a1ff496dd
 - code: ostler/ostler/values.py::dialog_answer@5fe41ca9c074
-- code: ostler/ostler/vet/placement.py::parse_placement@7183d869fe0e
+- code: ostler/ostler/vet/placement.py::parse_placement@fa7b7986f813
 
 ### ostler-doctor-unknown-driver
 - usage: ostler doctor --path PATH --json: refuses a runbook whose driver is not one of the drivers
@@ -81,10 +81,10 @@ defects in the book of the checkout. A caller reads the finding code, the page a
 - code: ostler/ostler/accessible_names.py::literal_name@e34b952636fb
 - code: ostler/ostler/drivers.py::DRIVERS@cc0927c9bd8e
 - code: ostler/ostler/qa/fixture_browser.py::is_browser_step@d769665467aa
-- code: ostler/ostler/qa/stack.py::shell_syntax_error@49f8647f79af
+- code: ostler/ostler/qa/stack.py::shell_syntax_error@ba847d04a4fd
 - code: ostler/ostler/step_commands.py::check_fixture_launch_screen@a44a1ff496dd
 - code: ostler/ostler/values.py::dialog_answer@5fe41ca9c074
-- code: ostler/ostler/vet/placement.py::parse_placement@7183d869fe0e
+- code: ostler/ostler/vet/placement.py::parse_placement@fa7b7986f813
 
 ### ostler-doctor-malformed-ids
 - usage: ostler doctor --json: warns when the id registry does not match its schema, and still exits
@@ -98,11 +98,11 @@ defects in the book of the checkout. A caller reads the finding code, the page a
   books that each carry one kind of defect
 - code: ostler/ostler/accessible_names.py::literal_name@e34b952636fb
 - code: ostler/ostler/qa/fixture_browser.py::is_browser_step@d769665467aa
-- code: ostler/ostler/qa/stack.py::shell_syntax_error@49f8647f79af
+- code: ostler/ostler/qa/stack.py::shell_syntax_error@ba847d04a4fd
 - code: ostler/ostler/schemas.py::validate@17d011398cb2
 - code: ostler/ostler/step_commands.py::check_fixture_launch_screen@a44a1ff496dd
 - code: ostler/ostler/values.py::dialog_answer@5fe41ca9c074
-- code: ostler/ostler/vet/placement.py::parse_placement@7183d869fe0e
+- code: ostler/ostler/vet/placement.py::parse_placement@fa7b7986f813
 
 ### ostler-doctor-census
 - usage: ostler doctor --census: prints how many finding codes the checker defines, how many fired
@@ -117,10 +117,10 @@ defects in the book of the checkout. A caller reads the finding code, the page a
 - code: ostler/ostler/accessible_names.py::literal_name@e34b952636fb
 - code: ostler/ostler/census.py::code_sites@bde18842fcce
 - code: ostler/ostler/qa/fixture_browser.py::is_browser_step@d769665467aa
-- code: ostler/ostler/qa/stack.py::shell_syntax_error@49f8647f79af
+- code: ostler/ostler/qa/stack.py::shell_syntax_error@ba847d04a4fd
 - code: ostler/ostler/step_commands.py::check_fixture_launch_screen@a44a1ff496dd
 - code: ostler/ostler/values.py::dialog_answer@5fe41ca9c074
-- code: ostler/ostler/vet/placement.py::parse_placement@7183d869fe0e
+- code: ostler/ostler/vet/placement.py::parse_placement@fa7b7986f813
 
 ### ostler-doctor-register-links
 - usage: ostler doctor --json: refuses a register record that does not parse, and a decision and its evidence records that do not name each other

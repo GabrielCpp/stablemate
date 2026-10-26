@@ -197,10 +197,10 @@ re-exports the public surface of all of the above (`cmd_run`, `cmd_compile_plan`
 - code: ostler/ostler/qa/addresses.py::resolve_now@910467430420
 - code: ostler/ostler/qa/addresses.py::read_book@910467430420
 - code: ostler/ostler/qa/addresses.py::leased@910467430420
-- code: ostler/ostler/qa/stack.py::ensure_stack@cce0c9d81a01
-- code: ostler/ostler/qa/stack.py::teardown_stack@cce0c9d81a01
-- code: ostler/ostler/qa/stack.py::boot_app@cce0c9d81a01
-- code: ostler/ostler/qa/stack.py::health_probe@cce0c9d81a01
+- code: ostler/ostler/qa/stack.py::ensure_stack@ba847d04a4fd
+- code: ostler/ostler/qa/stack.py::teardown_stack@ba847d04a4fd
+- code: ostler/ostler/qa/stack.py::boot_app@ba847d04a4fd
+- code: ostler/ostler/qa/stack.py::health_probe@ba847d04a4fd
 - code: ostler/ostler/qa/runbook.py::select_runbook@66911fe4abd5
 - code: ostler/ostler/qa/runbook.py::select_stack@66911fe4abd5
 - code: ostler/ostler/qa/runbook.py::select_server@66911fe4abd5
@@ -209,6 +209,7 @@ re-exports the public surface of all of the above (`cmd_run`, `cmd_compile_plan`
 - code: ostler/ostler/qa/__init__.py@16c3e096e515
 - rule: in a workspace, a tool is opted in when the docs home or any workspace member lists it under `qa: {tools: [...]}`
 - rule: a gRPC stack bring-up with no `grpcurl` opted in fails at once at the `tools` step and never waits out its boot timeout
+- rule: when the entry address already answers before the launch, readiness waits for the launch to finish instead of trusting the probe: a launch that exits 0 handed its stack off and the serving stack is the run's, one that exits nonzero fails as a dead launch, and one still running at the boot timeout is a foreground server shadowed by the holder, so its process group is reaped and the run fails naming the holder
 - detail: [ostler](../cli.md)
 - detail: [Compiling a book into a QA plan](compiling-a-book-into-a-qa-plan.md)
 
