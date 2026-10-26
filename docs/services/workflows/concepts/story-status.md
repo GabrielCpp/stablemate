@@ -10,7 +10,7 @@ status in the story document. Graph-backed writes are preferred; the file rewrit
 story the graph cannot resolve. The caller owns committing the returned paths, so a successful
 stamp is not complete until those paths are committed.
 
-- code: `workflows/src/workhorse_workflows/coder/shared/story_status.py` @ba7e3ef72ac7
+- code: `workflows/src/workhorse_workflows/coder/shared/story_status.py` @43edc4a82319
 
 ## Fields
 
@@ -21,7 +21,7 @@ stamp is not complete until those paths are committed.
 - required: true
 - semantics: literal prefix used when appending a missing body Status field
 - verify: json_path(path="$.status_prefix", equals="- **Status**:")
-- code: `workflows/src/workhorse_workflows/coder/shared/story_status.py::STATUS_PREFIX` @ba7e3ef72ac7
+- code: `workflows/src/workhorse_workflows/coder/shared/story_status.py::STATUS_PREFIX` @43edc4a82319
 
 ## Methods
 
@@ -32,7 +32,7 @@ stamp is not complete until those paths are committed.
 - does: otherwise derives the story.md path from the documentation root, epic, and slug
 - returns: a Path naming the fallback story.md location
 - verify: json_path(path="$.story_path", matches="story\\.md$")
-- code: `workflows/src/workhorse_workflows/coder/shared/story_status.py::resolve_story_path` @ba7e3ef72ac7
+- code: `workflows/src/workhorse_workflows/coder/shared/story_status.py::resolve_story_path` @43edc4a82319
 
 ### mark_via_ostler
 
@@ -43,7 +43,7 @@ stamp is not complete until those paths are committed.
 - does: returns an empty list and logs an informational fallback message when the graph call fails or reports failure
 - returns: written status paths on success, otherwise an empty list
 - verify: persists(subject="the story status written through the document graph")
-- code: `workflows/src/workhorse_workflows/coder/shared/story_status.py::mark_via_ostler` @ba7e3ef72ac7
+- code: `workflows/src/workhorse_workflows/coder/shared/story_status.py::mark_via_ostler` @43edc4a82319
 
 ### status_line_index
 
@@ -51,7 +51,7 @@ stamp is not complete until those paths are committed.
 - does: parses the document body to locate its machine-recognized Status bullet
 - returns: the absolute line index of the Status bullet, or None when no such field exists
 - verify: count(subject="parsed story Status fields", equals=1)
-- code: `workflows/src/workhorse_workflows/coder/shared/story_status.py::status_line_index` @ba7e3ef72ac7
+- code: `workflows/src/workhorse_workflows/coder/shared/story_status.py::status_line_index` @43edc4a82319
 
 ### rewrite_status
 
@@ -62,7 +62,7 @@ stamp is not complete until those paths are committed.
 - does: returns no paths and logs a warning when the replacement write fails
 - returns: the story.md path after a successful rewrite or append, otherwise an empty list
 - verify: persists(subject="the story body Status field after fallback rewrite")
-- code: `workflows/src/workhorse_workflows/coder/shared/story_status.py::rewrite_status` @ba7e3ef72ac7
+- code: `workflows/src/workhorse_workflows/coder/shared/story_status.py::rewrite_status` @43edc4a82319
 
 ### current
 
@@ -72,7 +72,7 @@ stamp is not complete until those paths are committed.
 - does: reads the frontmatter status first and the parsed body Status bullet second
 - returns: the status value selected by the same precedence as the graph status writer, or an empty string
 - verify: json_path(path="$.status", equals="example status")
-- code: `workflows/src/workhorse_workflows/coder/shared/story_status.py::current` @ba7e3ef72ac7
+- code: `workflows/src/workhorse_workflows/coder/shared/story_status.py::current` @43edc4a82319
 
 ### mark
 
@@ -82,4 +82,4 @@ stamp is not complete until those paths are committed.
 - does: logs a warning and returns no paths when no story.md can be resolved
 - returns: every path written by the graph or fallback adapter, or an empty list when stamping fails
 - verify: persists(subject="the story outcome after graph-first stamping")
-- code: `workflows/src/workhorse_workflows/coder/shared/story_status.py::mark` @ba7e3ef72ac7
+- code: `workflows/src/workhorse_workflows/coder/shared/story_status.py::mark` @43edc4a82319

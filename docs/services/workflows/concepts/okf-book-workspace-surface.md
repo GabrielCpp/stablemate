@@ -13,7 +13,7 @@ A surface of kind `grpc` also names a `contract`, the folder of its repository t
 - code: `workflows/src/workhorse_workflows/okf_book/shared/source_repo.py::SourceRepo` @8f4e2afc037e
 - code: `workflows/src/workhorse_workflows/okf_book/shared/book_compilation.py::compile_services` @c55b3025b98a
 - code: `workflows/src/workhorse_workflows/okf_book/main/nodes/surface.py::Surface` @082af3baf3dd
-- code: `workflows/src/workhorse_workflows/okf_book/main/nodes/writer_request.py::writer_request` @ddc7df3e2e91
+- code: `workflows/src/workhorse_workflows/okf_book/main/nodes/writer_request.py::writer_request` @fe46090a0ed8
 - code: `workflows/src/workhorse_workflows/okf_book/main/flow.py::OkfBook.check_source` @cfc3b77ff93e
 - code: `workflows/src/workhorse_workflows/okf_book/main/reground_book_flow.py::RegroundBook` @b82da8d89134
 - rule: `repo` is required when a workspace is active and refused when none is, and it must name a member of that workspace

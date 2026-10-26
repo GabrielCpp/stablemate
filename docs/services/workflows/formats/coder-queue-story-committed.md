@@ -5,7 +5,7 @@ title: Coder queue story committed
 ---
 # Coder queue story committed
 
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/queue.py::StoryCommitted` @d94ba7a3bcb5
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/queue.py::StoryCommitted` @5263a86ab920
 - detail: [coder shared library](../concepts/coder-shared-library.md)
 
 Two operations return this result. Committing a completed story commits its changes in each
@@ -22,7 +22,7 @@ records whether the passing stamp replaced a previous attempt outcome.
 - required: false
 - semantics: whether a commit landed in any affected repository, or in the docs repository for a plan record
 - verify: json_path(path="$.committed", equals=false)
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/queue.py::StoryCommitted` @d94ba7a3bcb5
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/queue.py::StoryCommitted` @5263a86ab920
 - detail: [coder queue story committed field roles](../concepts/coder-queue-story-committed-field-roles.md)
 
 ### superseded_outcome
@@ -31,5 +31,5 @@ records whether the passing stamp replaced a previous attempt outcome.
 - required: false
 - semantics: whether the passing status replaced a prior non-default story outcome
 - verify: json_path(path="$.superseded_outcome", equals=false)
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/queue.py::StoryCommitted` @d94ba7a3bcb5
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/queue.py::StoryCommitted` @5263a86ab920
 - detail: [coder queue story committed field roles](../concepts/coder-queue-story-committed-field-roles.md)

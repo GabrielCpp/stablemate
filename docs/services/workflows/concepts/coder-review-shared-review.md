@@ -11,7 +11,7 @@ its test, the settlement of filed findings, and the non-blocking operator feedba
 polls. It treats the settlement ledger and the evidence the owner cites, not the owner's claimed
 status, as the authority for whether a finding is settled.
 
-- code: `workflows/src/workhorse_workflows/coder/shared/review.py::__all__` @bf599a151749
+- code: `workflows/src/workhorse_workflows/coder/shared/review.py::__all__` @5100e5c6ede7
 - detail: [coder review context](../formats/review-context.md)
 - detail: [coder review feedback](../formats/review-feedback.md)
 - detail: [settlement](../formats/settlement.md)
@@ -32,7 +32,7 @@ status, as the authority for whether a finding is settled.
 - does: otherwise selects the deduplicated repositories named by plan services
 - returns: a `ReviewContext` whose `docs_repo_path` is the judging working directory
 - returns: a `ReviewContext` whose `affected_repo_paths` contains the selected code repository paths
-- code: `workflows/src/workhorse_workflows/coder/shared/review.py::resolve_review_context` @bf599a151749
+- code: `workflows/src/workhorse_workflows/coder/shared/review.py::resolve_review_context` @5100e5c6ede7
 
 ### evidence_gap
 
@@ -45,7 +45,7 @@ status, as the authority for whether a finding is settled.
 - verify: json_path(path="$", matches="^test .+ appears in no file this story changed$")
 - returns: an empty string when every citation holds
 - verify: json_path(path="$", equals="")
-- code: `workflows/src/workhorse_workflows/coder/shared/review.py::evidence_gap` @bf599a151749
+- code: `workflows/src/workhorse_workflows/coder/shared/review.py::evidence_gap` @5100e5c6ede7
 
 ### decline_gap
 
@@ -57,7 +57,7 @@ status, as the authority for whether a finding is settled.
 - verify: json_path(path="$", matches="^test .+ appears in no tracked file of the story's code repos$")
 - returns: an empty string for a decline of any other kind, or a "not a defect" decline whose tests all exist
 - verify: json_path(path="$", equals="")
-- code: `workflows/src/workhorse_workflows/coder/shared/review.py::decline_gap` @bf599a151749
+- code: `workflows/src/workhorse_workflows/coder/shared/review.py::decline_gap` @5100e5c6ede7
 - tests: `workflows/tests/coder/shared/test_review_settlement.py::test_a_not_a_defect_decline_with_no_test_comes_back_open`
 - tests: `workflows/tests/coder/shared/test_review_settlement.py::test_a_not_a_defect_decline_naming_a_test_no_repo_holds_comes_back_open`
 - tests: `workflows/tests/coder/shared/test_review_settlement.py::test_a_decline_of_another_kind_settles_without_a_test`
@@ -79,7 +79,7 @@ status, as the authority for whether a finding is settled.
 - verify: json_path(path="$.open", equals="[]")
 - returns: a `Settlement` of the settled, declined, open and rejected findings with the ledger's errors
 - verify: json_path(path="$.settled", equals="[]")
-- code: `workflows/src/workhorse_workflows/coder/shared/review.py::settle_findings` @bf599a151749
+- code: `workflows/src/workhorse_workflows/coder/shared/review.py::settle_findings` @5100e5c6ede7
 
 ### check_feedback
 
@@ -94,5 +94,5 @@ status, as the authority for whether a finding is settled.
 - verify: json_path(path="$.present", equals=true)
 - returns: a `Feedback` with only `present` and `content` fields, without the inbox message scope
 - verify: json_path(path="$.scope", absent=true)
-- code: `workflows/src/workhorse_workflows/coder/shared/review.py::check_feedback` @bf599a151749
+- code: `workflows/src/workhorse_workflows/coder/shared/review.py::check_feedback` @5100e5c6ede7
 - tests: `workflows/tests/coder/qa/test_flow.py::test_a_dropped_operator_note_buys_exactly_one_re_qa`

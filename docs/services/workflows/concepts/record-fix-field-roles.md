@@ -10,5 +10,5 @@ is `fixed` or `blocked`; `notes` explains the repair. The fields are complementa
 alternatives: the surveyor revalidates the record after either outcome, so neither field decides
 whether the record is valid.
 
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/survey.py::RecordFix` @7db58efbfd66
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/survey.py::RecordFix` @59f51b5b79f1
 - rule: use `status` for the `fixed` or `blocked` repair outcome and `notes` for its explanation; no ranking exists because the fields serve different purposes

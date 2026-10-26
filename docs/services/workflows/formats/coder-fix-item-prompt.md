@@ -6,7 +6,7 @@ title: Coder fix-item prompt
 # Coder fix-item prompt
 
 - file: `workflows/src/workhorse_workflows/coder/fix/prompts/fix-item.md`
-- code: `workflows/src/workhorse_workflows/coder/fix/flow.py::Fix.work` @047343956550
+- code: `workflows/src/workhorse_workflows/coder/fix/flow.py::Fix.work` @670e5cb59adb
 - detail: [coder standalone fix flow](../flows/coder-fix.md)
 - detail: [coder dev-story prompt](coder-dev-story-prompt.md)
 - tests: `workflows/tests/coder/fix/test_flow.py::test_the_first_pass_is_handed_the_item_and_no_report_at_all`

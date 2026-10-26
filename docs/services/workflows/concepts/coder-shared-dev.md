@@ -5,8 +5,8 @@ title: Coder shared development helpers
 ---
 # Coder shared development helpers
 
-- code: `workflows/src/workhorse_workflows/coder/shared/dev.py::__all__` @9b78ee9ed6fb
-- code: `workflows/src/workhorse_workflows/coder/shared/provenance.py::__all__` @85eef7ecc7cf
+- code: `workflows/src/workhorse_workflows/coder/shared/dev.py::__all__` @a64830524b23
+- code: `workflows/src/workhorse_workflows/coder/shared/provenance.py::__all__` @dcf09c476f74
 - code: `workflows/src/workhorse_workflows/coder/shared/service_gates.py::__all__` @230a77ce3a3a
 - code: `workflows/src/workhorse_workflows/coder/shared/plan.py::__all__` @9e8d38cfead5
 - detail: [coder development flow](../flows/coder-dev.md)
@@ -51,7 +51,7 @@ that the flow routes.
 - required: true
 - semantics: marks an operator context that is waiting for an answer
 - verify: count(subject="awaiting operator status", equals=1)
-- code: `workflows/src/workhorse_workflows/coder/shared/dev.py::AWAITING` @9b78ee9ed6fb
+- code: `workflows/src/workhorse_workflows/coder/shared/dev.py::AWAITING` @a64830524b23
 
 ### ANSWERED
 - type: `str`
@@ -59,7 +59,7 @@ that the flow routes.
 - required: true
 - semantics: marks an operator context containing an answer ready for consumption
 - verify: count(subject="answered operator status", equals=1)
-- code: `workflows/src/workhorse_workflows/coder/shared/dev.py::ANSWERED` @9b78ee9ed6fb
+- code: `workflows/src/workhorse_workflows/coder/shared/dev.py::ANSWERED` @a64830524b23
 
 ### CONSUMED
 - type: `str`
@@ -67,7 +67,7 @@ that the flow routes.
 - required: true
 - semantics: marks an operator answer already consumed so a later block can re-arm the context
 - verify: count(subject="consumed operator status", equals=1)
-- code: `workflows/src/workhorse_workflows/coder/shared/dev.py::CONSUMED` @9b78ee9ed6fb
+- code: `workflows/src/workhorse_workflows/coder/shared/dev.py::CONSUMED` @a64830524b23
 
 ## Methods
 
@@ -219,7 +219,7 @@ that the flow routes.
 - does: reports `dirty` when the status marks the story finished before QA
 - returns: `clean` with the written status when it is not finished, otherwise `dirty` with that status
 - verify: count(subject="pre-QA story status checks", equals=1)
-- code: `workflows/src/workhorse_workflows/coder/shared/dev.py::check_story_status` @9b78ee9ed6fb
+- code: `workflows/src/workhorse_workflows/coder/shared/dev.py::check_story_status` @a64830524b23
 
 ### changed_files
 - sig: `changed_files(logger: logging.Logger, cwd: str = "", story_slug: str = "", story_id: str = "") -> ChangedFiles`
@@ -228,7 +228,7 @@ that the flow routes.
 - does: includes paths from commits matching the exact story id or slug trailer
 - returns: sorted unique changed paths and an empty result for an unusable checkout or failed git query
 - verify: count(subject="story changed-file reports", equals=1)
-- code: `workflows/src/workhorse_workflows/coder/shared/provenance.py::changed_files` @85eef7ecc7cf
+- code: `workflows/src/workhorse_workflows/coder/shared/provenance.py::changed_files` @dcf09c476f74
 - tests: `workflows/tests/coder/shared/test_gates.py::test_a_new_file_is_in_the_diff_the_gates_read`
 
 ### resolve_story_sources
@@ -237,7 +237,7 @@ that the flow routes.
 - does: deduplicates repeated repository, surface, and service-root entries
 - returns: valid story source provenance, or invalid errors for missing story identity, missing source repositories, conflicting checkouts, or absent story commits
 - verify: count(subject="story source provenance", equals=1)
-- code: `workflows/src/workhorse_workflows/coder/shared/provenance.py::resolve_story_sources` @85eef7ecc7cf
+- code: `workflows/src/workhorse_workflows/coder/shared/provenance.py::resolve_story_sources` @dcf09c476f74
 
 ### read_operator_context
 - sig: `read_operator_context(logger: logging.Logger, story_path: str = "") -> OperatorAnswer`
@@ -246,4 +246,4 @@ that the flow routes.
 - does: treats only `SCOPE: epic` as epic scope and narrows every other value to story scope
 - returns: unanswered when the context file is absent, otherwise answered with scope and original content
 - verify: persists(subject="consumed operator answer status")
-- code: `workflows/src/workhorse_workflows/coder/shared/dev.py::read_operator_context` @9b78ee9ed6fb
+- code: `workflows/src/workhorse_workflows/coder/shared/dev.py::read_operator_context` @a64830524b23

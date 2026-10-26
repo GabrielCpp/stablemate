@@ -10,5 +10,5 @@ title: Record check field roles
 diagnostic text that explains a failed decision. Neither field replaces the other and source
 does not establish a ranking between them.
 
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/survey.py::RecordCheck` @7db58efbfd66
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/survey.py::RecordCheck` @59f51b5b79f1
 - rule: use `record_ok` to branch on validation success; use `record_errors` to report why validation failed

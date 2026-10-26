@@ -174,7 +174,7 @@ The flow delegates configuration loading and epic-scoped coverage validation to 
 nodes, and the review and the answer to the PM package. Those modules are separate source-layer
 contracts and are documented independently.
 
-- code: `workflows/src/workhorse_workflows/author/shared/nodes/config.py::load_config` @46e166a3c16e
+- code: `workflows/src/workhorse_workflows/author/shared/nodes/config.py::load_config` @1e565a154642
 - code: `workflows/src/workhorse_workflows/author/shared/nodes/coverage.py::validate_coverage` @2c46e3beb9ac
 - detail: [author coverage validator](coverage-validator.md)
 - detail: [author load_config documentation roles](author-load-config-documentation-roles.md)

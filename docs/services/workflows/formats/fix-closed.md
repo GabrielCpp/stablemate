@@ -6,7 +6,7 @@ title: Coder closed fix result
 # Coder closed fix result
 
 - file: none, because it is an in-memory fix-drain result
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/backlog.py::FixClosed` @46f582904d54
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/backlog.py::FixClosed` @80910fc81473
 - detail: [coder backlog contract](../concepts/coder-backlog-contract.md)
 - detail: [debt register](../../ostler/concepts/the-debt-register.md)
 
@@ -22,7 +22,7 @@ hash.
 - required: false
 - semantics: whether the register closed the record as `done`
 - verify: json_path(path="$.closed", equals=true)
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/backlog.py::FixClosed.closed` @46f582904d54
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/backlog.py::FixClosed.closed` @80910fc81473
 
 ### record_id
 - type: string
@@ -30,7 +30,7 @@ hash.
 - required: false
 - semantics: full id of the record the drain tried to close
 - verify: json_path(path="$.record_id", equals="X-1")
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/backlog.py::FixClosed.record_id` @46f582904d54
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/backlog.py::FixClosed.record_id` @80910fc81473
 
 ### reason
 - type: string
@@ -38,4 +38,4 @@ hash.
 - required: false
 - semantics: the register's message for the close, or the reason nothing was closed when no record id or no landed commit was given
 - verify: json_path(path="$.reason", equals="no record or no landed commit — nothing to close")
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/backlog.py::FixClosed.reason` @46f582904d54
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/backlog.py::FixClosed.reason` @80910fc81473

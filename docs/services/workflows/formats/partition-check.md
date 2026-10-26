@@ -5,7 +5,7 @@ title: Survey partition check
 ---
 # Survey partition check
 
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/survey.py::PartitionCheck` @7db58efbfd66
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/survey.py::PartitionCheck` @59f51b5b79f1
 - detail: [author surveyor subflow](../concepts/author-surveyor-subflow.md)
 
 The deterministic validation outcome for the finding partition.
@@ -18,7 +18,7 @@ The deterministic validation outcome for the finding partition.
 - required: false
 - semantics: whether the partition covers every assessed unit without invented work
 - verify: json_path(path="$.partition_ok", equals=false)
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/survey.py::PartitionCheck` @7db58efbfd66
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/survey.py::PartitionCheck` @59f51b5b79f1
 - detail: [partition check field roles](../concepts/partition-check-field-roles.md)
 
 ### partition_errors
@@ -27,5 +27,5 @@ The deterministic validation outcome for the finding partition.
 - required: false
 - semantics: diagnostic partition validation errors
 - verify: json_path(path="$.partition_errors", equals="example partition errors")
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/survey.py::PartitionCheck` @7db58efbfd66
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/survey.py::PartitionCheck` @59f51b5b79f1
 - detail: [partition check field roles](../concepts/partition-check-field-roles.md)

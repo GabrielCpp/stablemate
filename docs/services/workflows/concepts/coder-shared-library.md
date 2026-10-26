@@ -11,8 +11,8 @@ initializer; the individual modules below own the behavior and models they provi
 
 - code: `workflows/src/workhorse_workflows/coder/shared/__init__.py::__all__` @e517b81d10c2
 - code: `workflows/src/workhorse_workflows/coder/shared/branches.py::__all__` @b083ae1394dd
-- code: `workflows/src/workhorse_workflows/coder/shared/queue.py::__all__` @6fccac9d61ba
-- code: `workflows/src/workhorse_workflows/coder/shared/story_commit.py::__all__` @8cb89cf32928
+- code: `workflows/src/workhorse_workflows/coder/shared/queue.py::__all__` @570307d71312
+- code: `workflows/src/workhorse_workflows/coder/shared/story_commit.py::__all__` @7b0c7e9434b5
 - code: `workflows/src/workhorse_workflows/kit/qa/support.py::QA_PLAN_FILE` @df9c5dcbeacb
 - code: `workflows/src/workhorse_workflows/kit/qa/support.py::QA_RUN_LOG` @df9c5dcbeacb
 - detail: [coder queue run scope](../formats/coder-queue-run-scope.md)
@@ -146,7 +146,7 @@ permissive result models that ignore unknown keys and drop null values before ap
 - does: when `run_dir` is supplied, removes the prior run's `worklist.json` worklist and `answers.md` answer log
 - returns: the names of removed files, or an empty list when no run directory or stale files exist
 - verify: absent(subject="stale per-run files after a fresh run begins")
-- code: `workflows/src/workhorse_workflows/coder/shared/queue.py::begin_run` @6fccac9d61ba
+- code: `workflows/src/workhorse_workflows/coder/shared/queue.py::begin_run` @570307d71312
 - tests: `workflows/tests/coder/test_workflow.py::test_a_fresh_run_drops_the_worklist_and_answers_a_previous_run_left_in_the_run_dir`
 
 ### legacy_queue
@@ -155,7 +155,7 @@ permissive result models that ignore unknown keys and drop null values before ap
 - does: returns the path to the legacy JSON queue sidecar for backward compatibility with repos and sandboxes that have no doc graph
 - returns: the `epics-todo.json` file path beside the ostler-managed `index.md` in the documentation root
 - verify: json_path(path="$.path", matches=".*epics-todo\\.json")
-- code: `workflows/src/workhorse_workflows/coder/shared/queue.py::legacy_queue` @6fccac9d61ba
+- code: `workflows/src/workhorse_workflows/coder/shared/queue.py::legacy_queue` @570307d71312
 
 The legacy queue is used as a fallback by `resolve_launch` and `prune_epic` when Ostler is unavailable or cannot return an epic list from the documentation graph. It is not read or maintained by the workflow when Ostler is working — Ostler's queue is authoritative when present.
 
@@ -208,7 +208,7 @@ The legacy queue is used as a fallback by `resolve_launch` and `prune_epic` when
 - does: treats a missing epic name, missing queue, absent epic, malformed sidecar, or write failure as a non-fatal no-op
 - returns: whether an epic entry was removed
 - verify: absent(subject="the merged epic in the queue after pruning")
-- code: `workflows/src/workhorse_workflows/coder/shared/queue.py::prune_epic` @6fccac9d61ba
+- code: `workflows/src/workhorse_workflows/coder/shared/queue.py::prune_epic` @570307d71312
 - tests: `workflows/tests/coder/test_workflow.py::test_one_epic_of_one_story_builds_it_prunes_the_queue_and_ends_on_an_empty_queue`
 
 ### resolve_launch
@@ -226,7 +226,7 @@ The legacy queue is used as a fallback by `resolve_launch` and `prune_epic` when
 - raises: `WorkflowFailed` when the epics queue cannot be read
 - returns: the launch mode and every story the run works, in the order it works them
 - verify: json_path(path="$.entries[0].slug", equals="login-form")
-- code: `workflows/src/workhorse_workflows/coder/shared/queue.py::resolve_launch` @6fccac9d61ba
+- code: `workflows/src/workhorse_workflows/coder/shared/queue.py::resolve_launch` @570307d71312
 
 ### check_repos_clean
 
@@ -238,7 +238,7 @@ The legacy queue is used as a fallback by `resolve_launch` and `prune_epic` when
 - verify: count(subject="story-owned paths after pre-existing and gate context exclusions", equals=1)
 - returns: `clean=true` only when no story-owned uncommitted paths remain, with repository names and dirty paths
 - verify: json_path(path="$.clean", equals=true)
-- code: `workflows/src/workhorse_workflows/coder/shared/story_commit.py::check_repos_clean` @8cb89cf32928
+- code: `workflows/src/workhorse_workflows/coder/shared/story_commit.py::check_repos_clean` @7b0c7e9434b5
 - tests: `workflows/tests/coder/test_workflow.py::test_one_epic_of_one_story_builds_it_prunes_the_queue_and_ends_on_an_empty_queue`
 
 ### stamp_story_passed
@@ -248,7 +248,7 @@ The legacy queue is used as a fallback by `resolve_launch` and `prune_epic` when
 - does: commits only the status files written by the stamp as a `docs` commit
 - returns: whether the status was written and whether it replaced a prior non-default outcome
 - verify: persists(subject="the story's QA passed status")
-- code: `workflows/src/workhorse_workflows/coder/shared/story_commit.py::stamp_story_passed` @8cb89cf32928
+- code: `workflows/src/workhorse_workflows/coder/shared/story_commit.py::stamp_story_passed` @7b0c7e9434b5
 - tests: `workflows/tests/coder/test_workflow.py::test_the_story_is_stamped_and_the_next_selection_reads_it_as_done`
 
 ### commit_plan_record
@@ -262,7 +262,7 @@ The legacy queue is used as a fallback by `resolve_launch` and `prune_epic` when
 - verify: count(subject="plan record commits", equals=1)
 - returns: whether the plan record was committed
 - verify: json_path(path="$.committed", equals=true)
-- code: `workflows/src/workhorse_workflows/coder/shared/story_commit.py::commit_plan_record` @8cb89cf32928
+- code: `workflows/src/workhorse_workflows/coder/shared/story_commit.py::commit_plan_record` @7b0c7e9434b5
 
 ### commit_story
 
@@ -275,7 +275,7 @@ The legacy queue is used as a fallback by `resolve_launch` and `prune_epic` when
 - raises: `WorkflowFailed` when git refuses an implementation commit
 - returns: whether implementation work committed anywhere and whether the status stamp superseded a prior outcome
 - verify: persists(subject="the story implementation commit and separate QA status stamp")
-- code: `workflows/src/workhorse_workflows/coder/shared/story_commit.py::commit_story` @8cb89cf32928
+- code: `workflows/src/workhorse_workflows/coder/shared/story_commit.py::commit_story` @7b0c7e9434b5
 - tests: `workflows/tests/coder/test_workflow.py::test_the_story_and_its_status_stamp_commit_as_conventional_commits`
 
 Implementation commits use the requested Conventional Commit kind and the affected checkout's

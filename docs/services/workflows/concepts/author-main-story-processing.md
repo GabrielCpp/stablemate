@@ -14,7 +14,7 @@ These nodes use Ostler as the source of truth for planning and document structur
 invent epic paths or duplicate the graph's story semantics.
 
 - code: `workflows/src/workhorse_workflows/author/shared/nodes/story_mode.py::seed_story` @ec2020d13cf3
-- code: `workflows/src/workhorse_workflows/author/story_author/nodes/mockup.py::check_mockup_needed` @cbcbbaf4e981
+- code: `workflows/src/workhorse_workflows/author/story_author/nodes/mockup.py::check_mockup_needed` @16f77856eb81
 - code: `workflows/src/workhorse_workflows/author/shared/nodes/stories.py::validate_story` @87bbe358d335
 - code: `workflows/src/workhorse_workflows/author/shared/nodes/stories.py::check_story_grounding` @87bbe358d335
 - code: `workflows/src/workhorse_workflows/author/shared/nodes/stories.py::record_attempt` @87bbe358d335
@@ -67,7 +67,7 @@ invent epic paths or duplicate the graph's story semantics.
 - verify: json_path(path="$.required", equals=true)
 - does: skips the mockup when no service of the story is a web or mobile book
 - verify: json_path(path="$.required", equals=false)
-- code: `workflows/src/workhorse_workflows/author/story_author/nodes/mockup.py::check_mockup_needed` @cbcbbaf4e981
+- code: `workflows/src/workhorse_workflows/author/story_author/nodes/mockup.py::check_mockup_needed` @16f77856eb81
 - tests: `workflows/tests/author/test_mockup_gate.py::test_the_gate_is_the_union_of_the_covered_seeds_services`
 - tests: `workflows/tests/author/test_mockup_gate.py::test_a_story_the_graph_cannot_resolve_fails_the_run`
 - tests: `workflows/tests/author/test_mockup_gate.py::test_an_api_only_story_needs_no_mockup_whatever_the_seed_says`

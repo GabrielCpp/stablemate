@@ -9,7 +9,7 @@ The verdict the QA owner turn reports on its story, rendered by `qa-story.md`. T
 
 - file: none — agent reply and checkpoint value
 - config: `QaOwnerResult` agent-turn output contract
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/qa.py::QaOwnerResult` @ae2e8b0c6330
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/qa.py::QaOwnerResult` @01bc525fb1ec
 - detail: [coder QA schema contracts](../concepts/coder-qa-schema-contracts.md)
 - detail: [coder QA flow](../flows/coder-qa.md)
 
@@ -25,7 +25,7 @@ The verdict the QA owner turn reports on its story, rendered by `qa-story.md`. T
 - verify: json_path(path="$.status", equals="findings")
 - semantics: `blocked` only when something an operator alone can decide stops the turn, since a plan, stack or setup problem is the owner's to repair
 - verify: json_path(path="$.status", equals="blocked")
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/qa.py::QaOwnerResult.status` @ae2e8b0c6330
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/qa.py::QaOwnerResult.status` @01bc525fb1ec
 
 ### notes
 
@@ -34,7 +34,7 @@ The verdict the QA owner turn reports on its story, rendered by `qa-story.md`. T
 - required: false
 - semantics: what the turn planned, repaired and ran, plus on `blocked` the one question that would unblock it
 - verify: json_path(path="$.notes", equals="Planned two scenarios and ran the scored plan.")
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/qa.py::QaOwnerResult.notes` @ae2e8b0c6330
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/qa.py::QaOwnerResult.notes` @01bc525fb1ec
 
 ### findings
 
@@ -45,7 +45,7 @@ The verdict the QA owner turn reports on its story, rendered by `qa-story.md`. T
 - verify: json_path(path="$.findings[0].target", equals="src/app.py")
 - semantics: empty on `passed` and on `blocked`
 - verify: json_path(path="$.findings", equals="[]")
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/qa.py::QaOwnerResult.findings` @ae2e8b0c6330
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/qa.py::QaOwnerResult.findings` @01bc525fb1ec
 
 ### proved_scenarios
 
@@ -56,4 +56,4 @@ The verdict the QA owner turn reports on its story, rendered by `qa-story.md`. T
 - verify: json_path(path="$.proved_scenarios[0]", equals="login-happy-path")
 - semantics: the dry-run gate reads the scratch log for each id, so naming a scenario that did not dry-run fails the check
 - verify: json_path(path="$.proved_scenarios[1]", equals="logout-clears-session")
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/qa.py::QaOwnerResult.proved_scenarios` @ae2e8b0c6330
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/qa.py::QaOwnerResult.proved_scenarios` @01bc525fb1ec

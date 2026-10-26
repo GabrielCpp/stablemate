@@ -12,7 +12,7 @@ the defining module at access time, so a test that patches that module continues
 that imports a helper from this facade. The facade itself owns no Git, network, filesystem, or
 subprocess behavior.
 
-- code: `workflows/src/workhorse_workflows/kit/__init__.py::__getattr__` @ba3b45534868
+- code: `workflows/src/workhorse_workflows/kit/__init__.py::__getattr__` @93325f481054
 
 ## Methods
 
@@ -23,7 +23,7 @@ subprocess behavior.
 - raises: raises `AttributeError` when the requested name is not in the facade's declared export map
 - returns: the current attribute value declared by the selected submodule
 - verify: absent(subject="unknown workflow kit facade attribute")
-- code: `workflows/src/workhorse_workflows/kit/__init__.py::__getattr__` @ba3b45534868
+- code: `workflows/src/workhorse_workflows/kit/__init__.py::__getattr__` @93325f481054
 
 ### __dir__
 
@@ -31,7 +31,7 @@ subprocess behavior.
 - does: exposes exactly the facade's declared export names for introspection
 - returns: the sorted facade export names
 - verify: count(subject="workflow kit facade export names", equals=51)
-- code: `workflows/src/workhorse_workflows/kit/__init__.py::__dir__` @ba3b45534868
+- code: `workflows/src/workhorse_workflows/kit/__init__.py::__dir__` @93325f481054
 
 ## Git operations
 

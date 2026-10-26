@@ -13,5 +13,5 @@ that decision. The default of `required` is deliberately conservative when the
 decision is unknown, whereas the other fields explain the result at the checkpoint and in
 telemetry.
 
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::MockupGate` @0c2f7d227faf
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::MockupGate` @c0c7fb10e846
 - rule: use each field for its distinct decision or explanatory role; none substitutes for another

@@ -15,8 +15,8 @@ runs the declared service gates, settles the findings against the answers, and c
 story left nothing uncommitted. A failed check goes back to the owner as a report for another
 repair lap. A spent lap budget escalates to an operator gate.
 
-- code: `workflows/src/workhorse_workflows/coder/dev/flow.py` @1f14ab4796ae
-- code: `workflows/src/workhorse_workflows/coder/dev/flow.py::Dev` @1f14ab4796ae
+- code: `workflows/src/workhorse_workflows/coder/dev/flow.py` @6b4e303557ef
+- code: `workflows/src/workhorse_workflows/coder/dev/flow.py::Dev` @6b4e303557ef
 - tests: `workflows/tests/coder/dev/test_flow.py`
 - detail: [coder dev flow](../flows/coder-dev.md)
 
@@ -35,7 +35,7 @@ flow runs therefore see the same artifacts the production flow does.
 - verify: count(subject="plan structure fields", equals=5)
 - returns: the services, implementation order, shared packages, verification setup and fixtures
 - verify: json_path(path="$.services", equals="example services")
-- code: `workflows/src/workhorse_workflows/coder/dev/report.py::plan_arg` @7612f350c91a
+- code: `workflows/src/workhorse_workflows/coder/dev/report.py::plan_arg` @792c537f8552
 
 ### report_text
 - sig: `report_text(report: FailureReport) -> str`
@@ -47,7 +47,7 @@ flow runs therefore see the same artifacts the production flow does.
 - verify: count(subject="fenced report outputs", equals=1)
 - returns: a markdown string starting with `Gate: <source>`
 - verify: json_path(path="$.report", matches="^Gate: ")
-- code: `workflows/src/workhorse_workflows/coder/dev/report.py::report_text` @7612f350c91a
+- code: `workflows/src/workhorse_workflows/coder/dev/report.py::report_text` @792c537f8552
 
 ### findings_text
 - sig: `findings_text(items: Sequence[wl.WorkItem]) -> str`
@@ -57,7 +57,7 @@ flow runs therefore see the same artifacts the production flow does.
 - verify: count(subject="targetless finding sections", equals=1)
 - returns: the sections joined by blank lines
 - verify: json_path(path="$.findings", equals="example findings")
-- code: `workflows/src/workhorse_workflows/coder/dev/report.py::findings_text` @7612f350c91a
+- code: `workflows/src/workhorse_workflows/coder/dev/report.py::findings_text` @792c537f8552
 
 ### rejected_text
 - sig: `rejected_text(rejected: dict[str, str], errors: Sequence[str]) -> str`
@@ -67,4 +67,4 @@ flow runs therefore see the same artifacts the production flow does.
 - verify: count(subject="settlement error lines", equals=1)
 - returns: one bullet per line
 - verify: json_path(path="$.rejected", equals="example rejected")
-- code: `workflows/src/workhorse_workflows/coder/dev/report.py::rejected_text` @7612f350c91a
+- code: `workflows/src/workhorse_workflows/coder/dev/report.py::rejected_text` @792c537f8552

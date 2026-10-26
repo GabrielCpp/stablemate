@@ -5,7 +5,7 @@ title: Coder resolver decision handling
 ---
 # Coder resolver decision handling
 
-- code: `workflows/src/workhorse_workflows/coder/shared/resolution.py` @a3434213f4d9
+- code: `workflows/src/workhorse_workflows/coder/shared/resolution.py` @1a1dc35f49c9
 - detail: [coder operator resolution result](../formats/coder-operator-resolution.md)
 - detail: [coder path resolution](coder-path-resolution.md)
 
@@ -24,7 +24,7 @@ grounding settles the block.
 - required: true
 - semantics: model-power tier requested for the resolver turn
 - verify: count(subject="resolver power setting", equals=1)
-- code: `workflows/src/workhorse_workflows/coder/shared/resolution.py::RESOLVER_POWER` @a3434213f4d9
+- code: `workflows/src/workhorse_workflows/coder/shared/resolution.py::RESOLVER_POWER` @1a1dc35f49c9
 
 ## Methods
 
@@ -38,7 +38,7 @@ grounding settles the block.
 - verify: json_path(path="$.result", matches="result_schema")
 - returns: a string-valued argument mapping for the shared resolver prompt
 - verify: count(subject="resolver prompt argument mappings", equals=1)
-- code: `workflows/src/workhorse_workflows/coder/shared/resolution.py::resolver_args` @a3434213f4d9
+- code: `workflows/src/workhorse_workflows/coder/shared/resolution.py::resolver_args` @1a1dc35f49c9
 
 ### decisions_dir
 - sig: `decisions_dir(repo_dir: str) -> Path`
@@ -48,7 +48,7 @@ grounding settles the block.
 - verify: json_path(path="$.result", matches="decisions")
 - returns: an absolute `Path` passed to the resolver prompt
 - verify: json_path(path="$.result", matches="/decisions")
-- code: `workflows/src/workhorse_workflows/coder/shared/resolution.py::decisions_dir` @a3434213f4d9
+- code: `workflows/src/workhorse_workflows/coder/shared/resolution.py::decisions_dir` @1a1dc35f49c9
 
 ### answered
 - sig: `answered(flow: Workflow, result: OperatorResolution, block_kind: str) -> bool`
@@ -60,4 +60,4 @@ grounding settles the block.
 - verify: emitted(event="resolver ungrounded-answer warning", count=1)
 - returns: true only when the resolver decision is the literal `answered`
 - verify: json_path(path="$.result", equals=true)
-- code: `workflows/src/workhorse_workflows/coder/shared/resolution.py::answered` @a3434213f4d9
+- code: `workflows/src/workhorse_workflows/coder/shared/resolution.py::answered` @1a1dc35f49c9

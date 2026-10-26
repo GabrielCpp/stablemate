@@ -17,8 +17,8 @@ register, because the drain draws only `qa` records. A gate still red after the 
 or an owner turn that reports a block, goes to an operator gate. An item no repository landed a
 commit for leaves its record open.
 
-- code: `workflows/src/workhorse_workflows/coder/fix/flow.py` @047343956550
-- code: `workflows/src/workhorse_workflows/coder/fix/flow.py::Fix` @047343956550
+- code: `workflows/src/workhorse_workflows/coder/fix/flow.py` @670e5cb59adb
+- code: `workflows/src/workhorse_workflows/coder/fix/flow.py::Fix` @670e5cb59adb
 - detail: [coder backlog contract](coder-backlog-contract.md)
 
 ## Methods
@@ -28,6 +28,6 @@ commit for leaves its record open.
 - sig: `render_gate(report: FailureReport) -> str`
 - does: format a FailureReport as markdown with source gate name, working directory, command, and output
 - verify: json_path(path="$.rendered", matches="(?s)^The `[^`]+` gate failed in `[^`]+`\\.\\n\\nCommand: `[^`]+`\\n\\n```\\n.*\\n```$")
-- code: `workflows/src/workhorse_workflows/coder/fix/flow.py::render_gate` @047343956550
+- code: `workflows/src/workhorse_workflows/coder/fix/flow.py::render_gate` @670e5cb59adb
 - tests: `workflows/tests/coder/fix/test_flow.py`
 

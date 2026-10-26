@@ -15,5 +15,5 @@ outcome.
 No field ranks above or replaces another. Callers use the fields required for their
 part of the result instead of choosing a preferred field.
 
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/survey.py::VerifyResult` @7db58efbfd66
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/survey.py::VerifyResult` @59f51b5b79f1
 - rule: use each field for its named coverage-result aspect; no field replaces another

@@ -12,7 +12,7 @@ and [Stamped specs result](../formats/specs-stamped.md). It resolves
 a story through Ostler's configured document roots, rejects an unauthored or unreadable story
 before an agent turn, records the directories an agent may read, and stamps first-party spec artifacts with their OKF type.
 
-- code: `workflows/src/workhorse_workflows/coder/shared/story.py::__all__` @3a248ab12525
+- code: `workflows/src/workhorse_workflows/coder/shared/story.py::__all__` @7308a4f16d6e
 - detail: [Coder shared library](coder-shared-library.md)
 - detail: [Coder documentation schemas](coder-docs-schemas.md)
 - detail: [Story worktree boundary](story-worktree-boundary.md)
@@ -33,7 +33,7 @@ node identity so its recorded output cannot overwrite the parent story's prepara
 - verify: count(subject="story-path failures for empty spec directories", equals=1)
 - does: rejects a story path that cannot be read
 - verify: count(subject="unreadable story-path failures", equals=1)
-- code: `workflows/src/workhorse_workflows/coder/shared/story.py::guard_story_file` @3a248ab12525
+- code: `workflows/src/workhorse_workflows/coder/shared/story.py::guard_story_file` @7308a4f16d6e
 
 ### prepare_story
 - sig: `prepare_story(logger, story: str = "", epic: str = "", repo_dir: str = "") -> StoryPaths`
@@ -53,7 +53,7 @@ node identity so its recorded output cannot overwrite the parent story's prepara
 - verify: count(subject="resolved story epic results", equals=1)
 - does: returns the minted story id alongside the resolved paths
 - verify: count(subject="resolved story id results", equals=1)
-- code: `workflows/src/workhorse_workflows/coder/shared/story.py::prepare_story` @3a248ab12525
+- code: `workflows/src/workhorse_workflows/coder/shared/story.py::prepare_story` @7308a4f16d6e
 - detail: [Story paths](../formats/story-paths.md)
 
 ### resolve_workspace_dirs
@@ -64,7 +64,7 @@ node identity so its recorded output cannot overwrite the parent story's prepara
 - verify: count(subject="agent read sets containing the docs root", equals=1)
 - returns: the ordered directory list for agent turns
 - verify: json_path(path="$.dirs", matches="^\[.*\]$")
-- code: `workflows/src/workhorse_workflows/coder/shared/story.py::resolve_workspace_dirs` @3a248ab12525
+- code: `workflows/src/workhorse_workflows/coder/shared/story.py::resolve_workspace_dirs` @7308a4f16d6e
 - detail: [Workflow workspace directories](../formats/workspace-dirs.md)
 
 ### workspace_dirs
@@ -73,7 +73,7 @@ node identity so its recorded output cannot overwrite the parent story's prepara
 - verify: count(subject="workspace read sets read from setup output", equals=1)
 - returns: a copy of the recorded agent-readable directory list
 - verify: json_path(path="$.dirs", matches="^\[.*\]$")
-- code: `workflows/src/workhorse_workflows/coder/shared/story.py::workspace_dirs` @3a248ab12525
+- code: `workflows/src/workhorse_workflows/coder/shared/story.py::workspace_dirs` @7308a4f16d6e
 - detail: [Workflow workspace directories](../formats/workspace-dirs.md)
 
 ### stamp_specs
@@ -86,7 +86,7 @@ node identity so its recorded output cannot overwrite the parent story's prepara
 - verify: count(subject="untyped spec stamping failures", equals=1)
 - returns: the number of documents newly stamped in this pass
 - verify: json_path(path="$.stamped", matches="^[0-9]+$")
-- code: `workflows/src/workhorse_workflows/coder/shared/story.py::stamp_specs` @3a248ab12525
+- code: `workflows/src/workhorse_workflows/coder/shared/story.py::stamp_specs` @7308a4f16d6e
 - detail: [Stamped specs result](../formats/specs-stamped.md)
 
 ### prepare_fix_story
@@ -95,5 +95,5 @@ node identity so its recorded output cannot overwrite the parent story's prepara
 - verify: count(subject="fix story preparations", equals=1)
 - does: records the fix preparation under a distinct node identity so it cannot overwrite the parent story preparation output
 - verify: count(subject="distinct fix-story preparation outputs", equals=1)
-- code: `workflows/src/workhorse_workflows/coder/shared/story.py::prepare_fix_story` @3a248ab12525
+- code: `workflows/src/workhorse_workflows/coder/shared/story.py::prepare_fix_story` @7308a4f16d6e
 - detail: [Story paths](../formats/story-paths.md)

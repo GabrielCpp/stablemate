@@ -13,9 +13,9 @@ title: Local Python workspace
   - uv-lock-resolution: `uv.lock` supplies the pinned dependency graph for the workspace members
   - package-index: PyPI is consulted by `uv sync --all-packages` when a dependency is not already cached
 - local-only: true
-- code: `pyproject.toml` @1aa5a98de9a6
-- code: `uv.lock` @cd3033167f7b
-- code: `workflows/pyproject.toml` @bb2bae459ece
+- code: `pyproject.toml` @c6134826cf5f
+- code: `uv.lock` @0050e01b5233
+- code: `workflows/pyproject.toml` @0e3de6776085
 
 This environment is the local execution context for the `workflows` distribution. The root
 `pyproject.toml` declares the uv workspace and its shared development tools; `uv.lock` fixes the

@@ -5,7 +5,7 @@ title: Survey unit pick
 ---
 # Survey unit pick
 
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/survey.py::UnitPick` @7db58efbfd66
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/survey.py::UnitPick` @59f51b5b79f1
 - detail: [shared survey library](../concepts/survey-shared-library.md)
 
 The next inventory unit and the snapshot needed to assess it or hand off to coverage.
@@ -18,7 +18,7 @@ The next inventory unit and the snapshot needed to assess it or hand off to cove
 - required: false
 - semantics: whether a pending unit was selected
 - verify: json_path(path="$.has_unit", equals=false)
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/survey.py::UnitPick` @7db58efbfd66
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/survey.py::UnitPick` @59f51b5b79f1
 - detail: [unit pick fields](../concepts/unit-pick-fields.md)
 
 ### unit_id
@@ -27,7 +27,7 @@ The next inventory unit and the snapshot needed to assess it or hand off to cove
 - required: false
 - semantics: selected inventory unit identifier
 - verify: json_path(path="$.unit_id", equals="CASE-1234")
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/survey.py::UnitPick` @7db58efbfd66
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/survey.py::UnitPick` @59f51b5b79f1
 - detail: [unit pick fields](../concepts/unit-pick-fields.md)
 
 ### unit_path
@@ -36,7 +36,7 @@ The next inventory unit and the snapshot needed to assess it or hand off to cove
 - required: false
 - semantics: source path represented by the selected unit
 - verify: json_path(path="$.unit_path", equals="docs/stories/acme-story/story.md")
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/survey.py::UnitPick` @7db58efbfd66
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/survey.py::UnitPick` @59f51b5b79f1
 - detail: [unit pick fields](../concepts/unit-pick-fields.md)
 
 ### unit_kind
@@ -45,7 +45,7 @@ The next inventory unit and the snapshot needed to assess it or hand off to cove
 - required: false
 - semantics: inventory rule kind of the selected unit
 - verify: json_path(path="$.unit_kind", equals="example unit kind")
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/survey.py::UnitPick` @7db58efbfd66
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/survey.py::UnitPick` @59f51b5b79f1
 - detail: [unit pick fields](../concepts/unit-pick-fields.md)
 
 ### record_path
@@ -54,7 +54,7 @@ The next inventory unit and the snapshot needed to assess it or hand off to cove
 - required: false
 - semantics: finding-record path derived from the unit identifier
 - verify: json_path(path="$.record_path", equals="docs/stories/acme-story/story.md")
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/survey.py::UnitPick` @7db58efbfd66
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/survey.py::UnitPick` @59f51b5b79f1
 - detail: [unit pick fields](../concepts/unit-pick-fields.md)
 
 ### reason
@@ -63,7 +63,7 @@ The next inventory unit and the snapshot needed to assess it or hand off to cove
 - required: false
 - semantics: explanation when no selectable unit exists
 - verify: json_path(path="$.reason", equals="The slice works without it.")
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/survey.py::UnitPick` @7db58efbfd66
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/survey.py::UnitPick` @59f51b5b79f1
 - detail: [unit pick fields](../concepts/unit-pick-fields.md)
 
 ### progress
@@ -72,7 +72,7 @@ The next inventory unit and the snapshot needed to assess it or hand off to cove
 - required: false
 - semantics: completed and total unit counts from the selection snapshot
 - verify: json_path(path="$.progress", equals="example progress")
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/survey.py::UnitPick` @7db58efbfd66
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/survey.py::UnitPick` @59f51b5b79f1
 - detail: [unit pick fields](../concepts/unit-pick-fields.md)
 
 ### kinds
@@ -81,5 +81,5 @@ The next inventory unit and the snapshot needed to assess it or hand off to cove
 - required: false
 - semantics: unit-kind counts from the selection snapshot
 - verify: json_path(path="$.kinds", equals="example kinds")
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/survey.py::UnitPick` @7db58efbfd66
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/survey.py::UnitPick` @59f51b5b79f1
 - detail: [unit pick fields](../concepts/unit-pick-fields.md)

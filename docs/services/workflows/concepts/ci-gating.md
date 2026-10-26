@@ -5,7 +5,7 @@ title: Coder CI gating helpers
 ---
 # Coder CI gating helpers
 
-- code: `workflows/src/workhorse_workflows/coder/shared/ci.py` @277f211778fc
+- code: `workflows/src/workhorse_workflows/coder/shared/ci.py` @6c1f710af8b0
 - tests: `workflows/tests/coder/fix_ci/test_flow.py`
 
 This module supplies the repository selection, GitHub Actions polling and verified push operations used by the coder CI remediation flow. It treats an absent CI
@@ -32,7 +32,7 @@ repository directory rather than the process working directory.
 - verify: count(subject="selected repository processing list", equals=1)
 - returns: a `CiRepoPick` containing the selected repository name, checkout path, and updated processed list
 - verify: count(subject="repository picks returned", equals=1)
-- code: `workflows/src/workhorse_workflows/coder/shared/ci.py::select_ci_repo` @277f211778fc
+- code: `workflows/src/workhorse_workflows/coder/shared/ci.py::select_ci_repo` @6c1f710af8b0
 - tests: `workflows/tests/coder/fix_ci/test_flow.py::test_every_workspace_repo_is_checked_once_and_the_loop_ends`
 - tests: `workflows/tests/coder/fix_ci/test_flow.py::test_a_named_repo_pins_the_loop_to_that_one`
 - tests: `workflows/tests/coder/fix_ci/test_flow.py::test_a_repo_absent_from_the_workspace_is_a_warning_not_a_failure`
@@ -75,7 +75,7 @@ repository directory rather than the process working directory.
 - verify: count(subject="watch timeouts reported as failed", equals=1)
 - returns: a `CiChecks` status and summary describing the observed CI state
 - verify: count(subject="CI check results returned", equals=1)
-- code: `workflows/src/workhorse_workflows/coder/shared/ci.py::poll_pr_checks` @277f211778fc
+- code: `workflows/src/workhorse_workflows/coder/shared/ci.py::poll_pr_checks` @6c1f710af8b0
 - tests: `workflows/tests/coder/fix_ci/test_flow.py::test_no_branch_is_nothing_to_gate_on`
 - tests: `workflows/tests/coder/fix_ci/test_flow.py::test_a_red_branch_is_fixed_pushed_and_re_polled_until_it_is_green`
 - emits: [ci-checks](../formats/ci-checks.md)
@@ -90,7 +90,7 @@ repository directory rather than the process working directory.
 - does: returns `pushed` only after the remote head is verified equal to the local branch head
 - returns: one of `pushed`, `unavailable`, or `failed` distinguishing whether the remote branch was verified
 - verify: json_path(path="$", equals="pushed")
-- code: `workflows/src/workhorse_workflows/coder/shared/ci.py::push_epic_branch` @277f211778fc
+- code: `workflows/src/workhorse_workflows/coder/shared/ci.py::push_epic_branch` @6c1f710af8b0
 
 ### push_ci_fix
 
@@ -99,6 +99,6 @@ repository directory rather than the process working directory.
 - does: falls back to the discovered repository root only when `repo_dir` is empty
 - does: returns the push status and branch/root note in a `PushOutcome`
 - returns: a `PushOutcome` with status `pushed`, `unavailable`, or `failed`
-- code: `workflows/src/workhorse_workflows/coder/shared/ci.py::push_ci_fix` @277f211778fc
+- code: `workflows/src/workhorse_workflows/coder/shared/ci.py::push_ci_fix` @6c1f710af8b0
 - emits: [push-outcome](../formats/push-outcome.md)
 - verify: json_path(path="$.status", equals="failed")

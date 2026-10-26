@@ -13,5 +13,5 @@ the outcome, `epic` and `story` identify the authored work, `story_path` locates
 No field supersedes another. Consumers read the field that answers the result dimension they
 need and may combine fields when they need both identity, location, outcome, or context.
 
-- code: `workflows/src/workhorse_workflows/author/story_author/schemas.py::StoryAuthorDone` @4ad771264fd0
+- code: `workflows/src/workhorse_workflows/author/story_author/schemas.py::StoryAuthorDone` @67ca79f63e5f
 - rule: select the field by the result dimension required; no `StoryAuthorDone` field is a replacement for another

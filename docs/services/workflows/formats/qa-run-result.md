@@ -9,7 +9,7 @@ The verdict one QA grading turn reports — exported from the coder schemas — 
 
 - file: none — agent reply and checkpoint value
 - config: `QaRunResult` agent-turn output contract
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/qa.py::QaRunResult` @ae2e8b0c6330
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/qa.py::QaRunResult` @01bc525fb1ec
 - detail: [coder QA schema contracts](../concepts/coder-qa-schema-contracts.md)
 
 ## Fields
@@ -24,7 +24,7 @@ The verdict one QA grading turn reports — exported from the coder schemas — 
 - verify: json_path(path="$.status", equals="failed")
 - semantics: `blocked` only when no further attempt in this repository could succeed because what is missing is external
 - verify: json_path(path="$.status", equals="blocked")
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/qa.py::QaRunResult.status` @ae2e8b0c6330
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/qa.py::QaRunResult.status` @01bc525fb1ec
 
 ### notes
 
@@ -33,5 +33,5 @@ The verdict one QA grading turn reports — exported from the coder schemas — 
 - required: false
 - semantics: what was run, what was observed and what remains
 - verify: json_path(path="$.notes", equals="Applied the change and ran the gates.")
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/qa.py::QaRunResult.notes` @ae2e8b0c6330
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/qa.py::QaRunResult.notes` @01bc525fb1ec
 

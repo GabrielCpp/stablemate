@@ -16,8 +16,8 @@ fails before documentation when the book is unusable. For a usable book, a faile
 back to the owner as a report for another repair lap, and a spent lap budget escalates to the
 resolver and then to an operator gate.
 
-- code: `workflows/src/workhorse_workflows/coder/docs/flow.py` @b81b0ecba9ab
-- code: `workflows/src/workhorse_workflows/coder/docs/flow.py::Docs` @b81b0ecba9ab
+- code: `workflows/src/workhorse_workflows/coder/docs/flow.py` @e596e919bdee
+- code: `workflows/src/workhorse_workflows/coder/docs/flow.py::Docs` @e596e919bdee
 - tests: `workflows/tests/coder/docs/test_flow.py`
 - detail: [coder docs subflow](coder-docs-subflow.md)
 
@@ -39,6 +39,6 @@ shapes `Docs` is asked to handle in production.
 - verify: count(subject="docs counter labels", equals=1)
 - returns: returns labels used for state telemetry
 - verify: count(subject="docs state label sets", equals=1)
-- code: `workflows/src/workhorse_workflows/coder/docs/flow.py::Docs.state_labels` @b81b0ecba9ab
+- code: `workflows/src/workhorse_workflows/coder/docs/flow.py::Docs.state_labels` @e596e919bdee
 - tests: `workflows/tests/coder/test_telemetry.py::test_docs_reports_its_repair_laps_and_its_blocks`
 

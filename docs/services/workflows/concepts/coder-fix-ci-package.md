@@ -13,7 +13,7 @@ and merges the epic's pull request once every repository is read when it is give
 Repositories are processed in manifest order, and a block that the resolver cannot answer is
 persisted as an operator gate. The flow returns the last CI verdict with a summary of the run.
 
-- code: `workflows/src/workhorse_workflows/coder/fix_ci/flow.py` @a82754789574
-- code: `workflows/src/workhorse_workflows/coder/fix_ci/flow.py::FixCi` @a82754789574
+- code: `workflows/src/workhorse_workflows/coder/fix_ci/flow.py` @a7b37f93a2e9
+- code: `workflows/src/workhorse_workflows/coder/fix_ci/flow.py::FixCi` @a7b37f93a2e9
 - detail: [CI gating helpers](ci-gating.md)
 

@@ -5,7 +5,7 @@ title: Survey inventory check
 ---
 # Survey inventory check
 
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/survey.py::InventoryCheck` @7db58efbfd66
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/survey.py::InventoryCheck` @59f51b5b79f1
 - detail: [author surveyor subflow](../concepts/author-surveyor-subflow.md)
 
 The decision returned before expansion: whether the planner must define unit rules.
@@ -18,7 +18,7 @@ The decision returned before expansion: whether the planner must define unit rul
 - required: false
 - semantics: true only when neither a frozen inventory nor pinned rules exist
 - verify: json_path(path="$.needs_plan", equals=false)
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/survey.py::InventoryCheck` @7db58efbfd66
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/survey.py::InventoryCheck` @59f51b5b79f1
 - detail: [inventory check decision](../concepts/inventory-check-decision.md)
 
 ### check_note
@@ -27,5 +27,5 @@ The decision returned before expansion: whether the planner must define unit rul
 - required: false
 - semantics: human-readable explanation of the selected inventory precedence branch
 - verify: json_path(path="$.check_note", equals="example check note")
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/survey.py::InventoryCheck` @7db58efbfd66
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/survey.py::InventoryCheck` @59f51b5b79f1
 - detail: [inventory check decision](../concepts/inventory-check-decision.md)

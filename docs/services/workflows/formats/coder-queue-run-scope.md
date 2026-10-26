@@ -5,7 +5,7 @@ title: Coder queue run scope
 ---
 # Coder queue run scope
 
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/queue.py::RunScope` @d94ba7a3bcb5
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/queue.py::RunScope` @5263a86ab920
 - detail: [coder shared library](../concepts/coder-shared-library.md)
 
 The fresh-run result records which stale run-scoped files a previous run left in the run
@@ -20,4 +20,4 @@ filed. An empty run directory name removes nothing.
 - required: false
 - semantics: the names of the worklist and answer log files removed from the run directory
 - verify: count(subject="cleared run files", equals=0)
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/queue.py::RunScope` @d94ba7a3bcb5
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/queue.py::RunScope` @5263a86ab920

@@ -15,5 +15,5 @@ delegation, wrapper, or preference between fields, so no field supersedes anothe
 field that represents the story attribute a projected change carries; combine fields when one
 change needs multiple attributes.
 
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/edit.py::StoryChange` @7b95d62cfa2c
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/edit.py::StoryChange` @f582abc9a049
 - rule: select fields by the story attribute a projected change carries; the fields are complementary and no ranking exists

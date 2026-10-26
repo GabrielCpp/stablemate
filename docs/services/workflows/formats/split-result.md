@@ -5,7 +5,7 @@ title: Survey split result
 ---
 # Survey split result
 
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/survey.py::SplitResult` @7db58efbfd66
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/survey.py::SplitResult` @59f51b5b79f1
 - detail: [shared survey library](../concepts/survey-shared-library.md)
 
 The result of replacing an oversized folder unit with eligible immediate children.
@@ -18,7 +18,7 @@ The result of replacing an oversized folder unit with eligible immediate childre
 - required: false
 - semantics: whether the folder was replaced successfully
 - verify: json_path(path="$.split_ok", equals=false)
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/survey.py::SplitResult` @7db58efbfd66
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/survey.py::SplitResult` @59f51b5b79f1
 - detail: [survey split result field roles](../concepts/survey-split-result-field-roles.md)
 
 ### children_count
@@ -27,7 +27,7 @@ The result of replacing an oversized folder unit with eligible immediate childre
 - required: false
 - semantics: number of child units inserted by the split
 - verify: json_path(path="$.children_count", equals=0)
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/survey.py::SplitResult` @7db58efbfd66
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/survey.py::SplitResult` @59f51b5b79f1
 - detail: [survey split result field roles](../concepts/survey-split-result-field-roles.md)
 
 ### split_errors
@@ -36,5 +36,5 @@ The result of replacing an oversized folder unit with eligible immediate childre
 - required: false
 - semantics: diagnostic reason the split could not be performed
 - verify: json_path(path="$.split_errors", equals="example split errors")
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/survey.py::SplitResult` @7db58efbfd66
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/survey.py::SplitResult` @59f51b5b79f1
 - detail: [survey split result field roles](../concepts/survey-split-result-field-roles.md)

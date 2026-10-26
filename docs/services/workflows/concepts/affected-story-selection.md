@@ -14,5 +14,5 @@ Use the method node for the callable's return, exhaustion, and missing-story con
 flow phase for its place in the ordered authoring journey and the work that follows selection.
 Neither view supersedes the other; they document the same selection at different scopes.
 
-- code: `workflows/src/workhorse_workflows/author/epic_edit/nodes/edit.py::select_affected_story` @7d1d71c46ee0
+- code: `workflows/src/workhorse_workflows/author/epic_edit/nodes/edit.py::select_affected_story` @85ab2cf6cdff
 - rule: use the method contract for one indexed selection and the flow phase for orchestration of the approved affected-story list

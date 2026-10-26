@@ -24,9 +24,9 @@ section, and any other note it would have carried goes in Context. Every loading
 state a story introduces gets one criterion for when it appears and one for when it clears, whether
 or not the book documents that state.
 
-- code: `workflows/src/workhorse_workflows/author/story_author/flow.py::StoryAuthor.design_mockup` @9b3445987054
-- code: `workflows/src/workhorse_workflows/author/story_author/flow.py::StoryAuthor.write_story` @9b3445987054
-- code: `workflows/src/workhorse_workflows/author/story_author/flow.py::StoryAuthor.rework_story` @9b3445987054
+- code: `workflows/src/workhorse_workflows/author/story_author/flow.py::StoryAuthor.design_mockup` @2336f43d893e
+- code: `workflows/src/workhorse_workflows/author/story_author/flow.py::StoryAuthor.write_story` @2336f43d893e
+- code: `workflows/src/workhorse_workflows/author/story_author/flow.py::StoryAuthor.rework_story` @2336f43d893e
 - code: `workflows/src/workhorse_workflows/author/story_author/prompts/design-mockup.md` @f918719466f5
 - code: `workflows/src/workhorse_workflows/author/story_author/prompts/write-story.md` @ef22dd0b17aa
 - code: `workflows/src/workhorse_workflows/author/story_author/prompts/rework-story.md` @a1c4ec3559cc

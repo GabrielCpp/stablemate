@@ -11,7 +11,7 @@ own. Three kinds sit on the run's work list: `epic`, `story-split`, and `story`.
 fills one kind, and the drain after it hands each pending item to its stage in turn.
 
 - code: `workflows/src/workhorse_workflows/author/main/nodes/fill.py::fill_work` @0a6247ab8773
-- code: `workflows/src/workhorse_workflows/author/main/flow.py::Author` @ea812f1c2654
+- code: `workflows/src/workhorse_workflows/author/main/flow.py::Author` @006e755d5a80
 - rule: fill a kind completely before the drain that empties it; file an item the artifacts already satisfy as `done`, so the list shows the whole milestone; never refile an id already on the list
 - tests: `workflows/tests/author/test_fill.py::test_epics_are_filed_in_milestone_order_and_written_ones_are_done`
 - tests: `workflows/tests/author/test_fill.py::test_stories_follow_dag_order_inside_milestone_epic_order`

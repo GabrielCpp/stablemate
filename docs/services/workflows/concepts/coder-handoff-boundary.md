@@ -31,11 +31,11 @@ A sub-flow entered by `handoff()` runs under three constraints that the call sit
 The separate prompt directories are why a role name such as `dev-story` can exist once under `dev/prompts/` and a repo or library body can replace it without touching any other flow's envelope.
 
 - code: `workflows/src/workhorse_workflows/coder/workflow.py::workflow` @a28e84f788c2
-- code: `workflows/src/workhorse_workflows/coder/main/flow.py::Coder.dev` @9c07aca082e3
-- code: `workflows/src/workhorse_workflows/coder/dev/flow.py::Dev` @364c86a76a71
-- code: `workflows/src/workhorse_workflows/coder/docs/flow.py::Docs` @b81b0ecba9ab
-- code: `workflows/src/workhorse_workflows/coder/fix_ci/flow.py::FixCi` @5d3fc0a0fea7
-- code: `workflows/src/workhorse_workflows/coder/qa/flow.py::Qa` @6b611522b032
+- code: `workflows/src/workhorse_workflows/coder/main/flow.py::Coder.dev` @b2f1b57d20a5
+- code: `workflows/src/workhorse_workflows/coder/dev/flow.py::Dev` @6b4e303557ef
+- code: `workflows/src/workhorse_workflows/coder/docs/flow.py::Docs` @e596e919bdee
+- code: `workflows/src/workhorse_workflows/coder/fix_ci/flow.py::FixCi` @a7b37f93a2e9
+- code: `workflows/src/workhorse_workflows/coder/qa/flow.py::Qa` @5c125dd4ad41
 - code: `workflows/src/workhorse_workflows/coder/genesis/flow.py::Genesis` @e3612bb0e317
-- code: `workflows/src/workhorse_workflows/coder/fix/flow.py::Fix` @047343956550
+- code: `workflows/src/workhorse_workflows/coder/fix/flow.py::Fix` @670e5cb59adb
 - detail: [Coder prompt role resolution](coder-prompt-role-resolution.md)

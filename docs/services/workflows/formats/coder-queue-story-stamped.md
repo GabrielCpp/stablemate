@@ -5,7 +5,7 @@ title: Coder queue story stamped
 ---
 # Coder queue story stamped
 
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/queue.py::StoryStamped` @d94ba7a3bcb5
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/queue.py::StoryStamped` @5263a86ab920
 - detail: [coder shared library](../concepts/coder-shared-library.md)
 
 The story-stamped result records the status write that marks a passing story and commits that
@@ -19,7 +19,7 @@ one line, and whether that write replaced a previous attempt outcome.
 - required: false
 - semantics: whether the story's `QA passed` status was written
 - verify: json_path(path="$.stamped", equals=false)
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/queue.py::StoryStamped` @d94ba7a3bcb5
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/queue.py::StoryStamped` @5263a86ab920
 - detail: [coder queue story stamped field roles](../concepts/coder-queue-story-stamped-field-roles.md)
 
 ### superseded_outcome
@@ -28,5 +28,5 @@ one line, and whether that write replaced a previous attempt outcome.
 - required: false
 - semantics: whether the passing status replaced a prior non-default story outcome
 - verify: json_path(path="$.superseded_outcome", equals=false)
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/queue.py::StoryStamped` @d94ba7a3bcb5
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/queue.py::StoryStamped` @5263a86ab920
 - detail: [coder queue story stamped field roles](../concepts/coder-queue-story-stamped-field-roles.md)
