@@ -243,6 +243,7 @@ def boot_app(
     timeout_s: float,
     *,
     adopt: bool = True,
+    held: bool = False,
     serves: tuple[str, ...] = (),
     grpcurl: str = "",
     logger: logging.Logger,
@@ -271,6 +272,13 @@ def boot_app(
     asserts how many polls a 30-second window buys states the window instead of racing
     the machine it runs on. Defaulted rather than required — a workflow node calls this
     with a manifest and a logger, and the real clock is what it means.
+
+    *held*: the entry address answered before this launch ran. A passing probe then proves
+    nothing while the launch is still running, because it may be reading the holder, so
+    readiness waits for the launch's own shape. A launch that exits 0 handed its stack off
+    and is probed like any bring-up command. A nonzero exit is a death. A launch still
+    running at the deadline is a foreground server shadowed by the holder: its group is
+    reaped and the failure is :func:`_held_reason`.
     """
     health_path = health_path or "/"
     app_cwd = app_cwd or "."
@@ -336,6 +344,18 @@ def boot_app(
 
     deadline = clock.monotonic() + timeout_s
     while clock.monotonic() < deadline:
+        if held and not detached:
+            if proc.poll() is None:
+                clock.sleep(POLL_INTERVAL_S)
+                continue
+            if proc.returncode != 0:
+                logger.warning("app exited with code %s during startup", proc.returncode)
+                return {"boot_ok": "no", "entry_url": entry_url, "app_pid": "",
+                        "app_pgid": "",
+                        "reason": _launch_died(proc.returncode, output) + _port_hint(health_url)}
+            logger.info("launch command exited cleanly onto a held address — treating it "
+                        "as a bring-up command and waiting for %s", health_url)
+            detached = True
         # Health first: a bring-up command can exit the instant the stack is serving, so
         # checking liveness first would race a successful boot into a spurious failure.
         why = health_probe(health_url, app_identity, serves=serves, grpcurl=grpcurl)
@@ -363,6 +383,13 @@ def boot_app(
                         "as a bring-up command and waiting for %s", health_url)
             detached = True
         clock.sleep(POLL_INTERVAL_S)
+
+    if held and not detached:
+        logger.warning("launch was still running after %.0fs onto a held address — reaping "
+                       "pgid %d and failing soft", timeout_s, pgid)
+        _reap_pgid(pgid, clock=clock)
+        return {"boot_ok": "no", "entry_url": entry_url, "app_pid": "", "app_pgid": "",
+                "reason": _held_reason(health_url)}
 
     if detached:
         logger.warning("app was not healthy within %.0fs after the bring-up command "
@@ -631,8 +658,8 @@ def ensure_stack(
         # adopt=False: ensure_stack owns the reuse decision above; the launch itself must
         # always run (and be self-freshening) once we have decided not to adopt.
         res = boot_app(launch_cmd, entry_url, health_path, launch_cwd, root,
-                       identity, timeout_s, adopt=False, serves=serves, grpcurl=grpcurl,
-                       logger=logger, clock=clock)
+                       identity, timeout_s, adopt=False, held=held, serves=serves,
+                       grpcurl=grpcurl, logger=logger, clock=clock)
         if res["boot_ok"] != "yes":
             # Report boot's *own* reason, not the step name. "the launch command did not
             # serve <url>" was this branch's message for every way bring-up can fail, and it
@@ -646,9 +673,6 @@ def ensure_stack(
                                               f"{health_url or entry_url}",
                          res["app_pid"], res["app_pgid"])
         app_pid, app_pgid = res["app_pid"], res["app_pgid"]
-        if held and app_pgid:
-            _reap_pgid(int(app_pgid), clock=clock)
-            return _fail("launch", _held_reason(health_url))
         app_log = str(app_log_path(launch_cwd)) if app_log_path(launch_cwd).is_file() else ""
         # An owned foreground server outlives this process, and its handles must too:
         # record it so a teardown running in a different process — or the next run's
@@ -759,12 +783,12 @@ def _still_served(
 
 
 def _held_reason(health_url: str) -> str:
-    """Why a foreground launch onto an address already answering proves nothing, and what to repair."""
+    """Why a launch still running onto an address already answering proves nothing, and what to repair."""
     return (f"{health_url} was already answering before the launch ran, from a server this run "
-            f"did not start and cannot stop. The launch started a second server that cannot "
-            f"take that address, so the readiness check read the old server and not this one. "
-            f"Stop the leftover server. Then make the launch stop its own predecessor before it "
-            f"starts: a container launch gets a fixed `--name` and removes that name first."
+            f"did not start and cannot stop. The launch kept running as a foreground server that "
+            f"cannot take that address, so the readiness check read the old server and not this "
+            f"one. Stop the leftover server. Then make the launch stop its own predecessor before "
+            f"it starts: a container launch gets a fixed `--name` and removes that name first."
             + _port_hint(health_url))
 
 

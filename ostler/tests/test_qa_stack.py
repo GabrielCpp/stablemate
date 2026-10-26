@@ -416,10 +416,8 @@ def test_ensure_stack_refuses_a_foreground_server_launched_onto_an_address_a_lef
     monkeypatch.setattr(stack, "health_probe", lambda *_a, **_kw: "")
     reaped: list[int] = []
     monkeypatch.setattr(stack, "_reap_pgid", lambda pgid, **_kw: reaped.append(pgid))
-    monkeypatch.setattr(
-        stack, "boot_app",
-        lambda *_a, **_kw: {"boot_ok": "yes", "entry_url": "u", "app_pid": "4242", "app_pgid": "4242"},
-    )
+    monkeypatch.setattr(stack.subprocess, "Popen", lambda *_a, **_kw: _Launch())
+    monkeypatch.setattr(stack.os, "getpgid", lambda _pid: 4242)
     out = stack.ensure_stack(
         {"entry_url": "http://localhost:5173", "identity": "acme", "launch": "npm run dev"},
         logger=LOG, clock=FakeClock(),
@@ -428,6 +426,95 @@ def test_ensure_stack_refuses_a_foreground_server_launched_onto_an_address_a_lef
     assert out["failed_step"] == "launch"
     assert "already answering before the launch ran" in out["error"]
     assert reaped == [4242]
+
+
+class _Launch:
+    """A launch process that runs for *polls* polls, then exits with *code*; ``None`` runs forever."""
+
+    pid = 4242
+
+    def __init__(self, code: int | None = None, polls: int = 0) -> None:
+        self.returncode: int | None = None
+        self._code = code
+        self._polls = polls
+
+    def poll(self) -> int | None:
+        if self._code is None:
+            return None
+        if self._polls <= 0:
+            self.returncode = self._code
+            return self._code
+        self._polls -= 1
+        return None
+
+
+def _boot_held(monkeypatch, launch: _Launch, health) -> tuple[dict[str, str], list[int], FakeClock]:
+    reaped: list[int] = []
+    clock = FakeClock()
+    monkeypatch.setattr(stack, "health_probe", health)
+    monkeypatch.setattr(stack.subprocess, "Popen", lambda *_a, **_kw: launch)
+    monkeypatch.setattr(stack.os, "getpgid", lambda _pid: 4242)
+    monkeypatch.setattr(stack, "_reap_pgid", lambda pgid, **_kw: reaped.append(pgid))
+    out = stack.boot_app(
+        "docker compose up -d --build --wait api", "grpc://localhost:50051", "/", ".", ".", "", 60,
+        adopt=False, held=True, logger=LOG, clock=clock,
+    )
+    return out, reaped, clock
+
+
+def test_boot_onto_a_held_address_hands_off_when_the_launch_exits_cleanly(monkeypatch) -> None:
+    """A compose bring-up that leaves its stack serving is the run's stack, not a shadowed server."""
+    out, reaped, _clock = _boot_held(monkeypatch, _Launch(code=0, polls=3), lambda *_a, **_kw: "")
+    assert out == {"boot_ok": "yes", "entry_url": "grpc://localhost:50051",
+                   "app_pid": "", "app_pgid": "", "reason": ""}
+    assert reaped == []
+
+
+def test_boot_onto_a_held_address_does_not_trust_a_probe_while_the_launch_runs(monkeypatch) -> None:
+    """The probe passes at once against the holder, so only the launch's exit may end the wait."""
+    out, _reaped, clock = _boot_held(monkeypatch, _Launch(code=0, polls=3), lambda *_a, **_kw: "")
+    assert out["boot_ok"] == "yes"
+    assert clock.monotonic() >= 3 * stack.POLL_INTERVAL_S
+
+
+def test_boot_onto_a_held_address_keeps_polling_after_a_clean_exit_until_healthy(monkeypatch) -> None:
+    answers = iter(["not answering yet", "not answering yet", ""])
+    out, _reaped, _clock = _boot_held(
+        monkeypatch, _Launch(code=0), lambda *_a, **_kw: next(answers, ""),
+    )
+    assert out["boot_ok"] == "yes"
+    assert out["app_pgid"] == ""
+
+
+def test_boot_onto_a_held_address_fails_and_reaps_a_launch_that_keeps_running(monkeypatch) -> None:
+    out, reaped, clock = _boot_held(monkeypatch, _Launch(), lambda *_a, **_kw: "")
+    assert out["boot_ok"] == "no"
+    assert out["app_pgid"] == ""
+    assert "already answering before the launch ran" in out["reason"]
+    assert reaped == [4242]
+    assert clock.monotonic() >= 60
+
+
+def test_boot_onto_a_held_address_reports_a_launch_that_dies(monkeypatch) -> None:
+    out, reaped, _clock = _boot_held(monkeypatch, _Launch(code=1, polls=1), lambda *_a, **_kw: "")
+    assert out["boot_ok"] == "no"
+    assert "already answering" not in out["reason"]
+    assert stack._launch_died(1, None) in out["reason"]
+    assert reaped == []
+
+
+def test_ensure_stack_hands_a_held_address_to_boot_and_keeps_a_clean_launch(monkeypatch) -> None:
+    """A detached bring-up onto a stack it manages is ready with nothing to reap."""
+    monkeypatch.setattr(stack, "health_probe", lambda *_a, **_kw: "")
+    monkeypatch.setattr(stack.subprocess, "Popen", lambda *_a, **_kw: _Launch(code=0, polls=2))
+    monkeypatch.setattr(stack.os, "getpgid", lambda _pid: 4242)
+    out = stack.ensure_stack(
+        {"entry_url": "http://localhost:5173", "launch": "docker compose up -d --wait api"},
+        logger=LOG, clock=FakeClock(),
+    )
+    assert out.get("error") is None
+    assert out["ready"] == "yes"
+    assert out["app_pgid"] == ""
 
 
 def test_ensure_stack_launches_once_a_reaped_predecessor_lets_go_of_the_address(monkeypatch) -> None:
