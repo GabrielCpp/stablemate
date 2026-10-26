@@ -18,10 +18,10 @@ classifiers = [
   "Topic :: Utilities",
 ]
 dependencies = [
-  "workhorse-workflows>=3,<4",
-  "farrier>=3,<4",
-  "stablemate-groom>=1,<2",
-  "ostler>=3,<4",
+  "workhorse-workflows>=4,<5",
+  "farrier>=4,<5",
+  "stablemate-groom>=2,<3",
+  "ostler>=4,<5",
   "stablemate-saddlebag>=2,<3",
 ]
 
