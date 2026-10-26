@@ -9,7 +9,7 @@ The sidecar hello applier is the groom server layer that folds a connected sidec
 
 The [method contract](groom-app-module.md#method-apply-hello) and [sidecar hello state transition](workflow-state.md#transition-sidecar-hello) document the same implementation from different contexts; neither supersedes the other. Use the method contract for its callable interface and propagated failures. Use the transition for lifecycle-state inputs and outcomes. `_apply_hello` clears the existing gate map before inspecting the snapshot, then selects `finished` for a terminal marker or `blocked`/`running` from the rebuilt gates, so the two views must remain aligned.
 
-- code: groom/groom/app.py::_apply_hello
+- code: groom/groom/app.py::_apply_hello@2d7aba1619b0
 - rule: use [method-apply-hello](groom-app-module.md#method-apply-hello) for the callable contract and [transition-sidecar-hello](workflow-state.md#transition-sidecar-hello) for lifecycle-state semantics; neither is a replacement for the other.
 - tests: groom/tests/test_app.py::test_apply_hello_marks_blocked_with_gate
 - tests: groom/tests/test_app.py::test_apply_hello_running_when_no_gates
@@ -49,12 +49,13 @@ The [method contract](groom-app-module.md#method-apply-hello) and [sidecar hello
 - sig: `async _apply_hello(container_id: str, data: dict) -> None`
 - abstract: false
 - raises: propagates metadata-resolution, workflow-upsert, gate-record construction, renderer, broadcast, truthy non-mapping identity/snapshot, malformed non-iterable gate-list, or malformed iterated gate-entry exceptions.
+- verify: json_path(path="exception.type", equals="AttributeError")
 - raises: handles missing identity, missing snapshot, empty gate paths, and falsey snapshot fields as ordinary inputs.
 - verify: json_path(path="$.state", equals="BLOCKED")
 - verify: json_path(path="$.state", equals="RUNNING")
 - verify: json_path(path="$.state", equals="FINISHED")
 - verify: removed(subject="stale workflow gate")
-- code: groom/groom/app.py::_apply_hello
+- code: groom/groom/app.py::_apply_hello@2d7aba1619b0
 - tests: groom/tests/test_app.py::test_apply_hello_marks_blocked_with_gate
 - tests: groom/tests/test_app.py::test_apply_hello_running_when_no_gates
 - tests: groom/tests/test_app.py::test_apply_hello_finished_when_terminal

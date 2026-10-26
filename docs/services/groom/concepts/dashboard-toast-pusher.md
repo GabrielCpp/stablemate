@@ -9,11 +9,11 @@ Dashboard toast pusher is the groom dashboard's in-page notification helper. It 
 
 It is a client-side unit. The server no longer renders script fragments that dispatch DOM CustomEvents; it pushes JSON, and the frame dispatcher in the client module calls this helper directly.
 
-- code: groom/groom/assets/dashboard.js::pushToast
-- code: groom/groom/assets/dashboard.js::onNotify
-- code: groom/groom/assets/dashboard.js::onAnswered
-- code: groom/groom/assets/dashboard.css::#toasts
-- code: groom/groom/assets/dashboard.css::.toast
+- code: groom/groom/assets/dashboard.js::pushToast@9b3683b0ffb1
+- code: groom/groom/assets/dashboard.js::onNotify@9b3683b0ffb1
+- code: groom/groom/assets/dashboard.js::onAnswered@9b3683b0ffb1
+- code: groom/groom/assets/dashboard.css::#toasts@9c3e3078564c
+- code: groom/groom/assets/dashboard.css::.toast@9c3e3078564c
 - detail: [blocked notification delivery](blocked-notification-delivery.md)
 
 ## Contract
@@ -47,10 +47,8 @@ It is a client-side unit. The server no longer renders script fragments that dis
 - type: string passed by the caller and appended to the base `toast` class
 - default: none at helper level
 - verify: absent(subject="an implicit variant default on pushToast")
-- default: first-party blocked-toast callers pass `blocked`
-- verify: visible(locator="toast region", text="⛔ worker blocked")
-- default: first-party answer-success callers pass `ok`
-- verify: visible(locator="toast region", text="✓ answer sent")
+- default: first-party blocked-toast callers pass `blocked`, verified on the screen that renders it: [groom dashboard](../gui/screens/groom-dashboard.md#toast-region)
+- default: first-party answer-success callers pass `ok`, verified on the screen that renders it: [groom dashboard](../gui/screens/groom-dashboard.md#toast-region)
 - required: true
 - meaning: controls the toast's variant class and therefore its left-accent styling; the helper performs no whitelist validation.
 
@@ -90,7 +88,7 @@ It is a client-side unit. The server no longer renders script fragments that dis
 - abstract: false
 - raises: none intentionally caught or transformed by groom.
 - verify: absent(subject="a groom-transformed exception from pushToast")
-- code: groom/groom/assets/dashboard.js::pushToast
+- code: groom/groom/assets/dashboard.js::pushToast@9b3683b0ffb1
 - step: Create one `div` element for the toast root.
 - step: Set the root class string to `toast ` followed by the caller-supplied variant.
 - step: Create one title `div`, set its class to `t-title`, assign `titleText` through `textContent`, and append it to the toast root.
@@ -105,7 +103,7 @@ It is a client-side unit. The server no longer renders script fragments that dis
 - abstract: false
 - raises: none intentionally caught or transformed by groom.
 - verify: absent(subject="a groom-transformed exception")
-- code: groom/groom/assets/dashboard.js::onNotify
+- code: groom/groom/assets/dashboard.js::onNotify@9b3683b0ffb1
 - detail: [blocked notification delivery](blocked-notification-delivery.md)
 - step: Receive the `message` string carried by a `{"type": "notify"}` frame, dispatched by the socket frame handler.
 - step: Compute the visible body as `message || "A workflow needs your input."`.
@@ -119,7 +117,7 @@ It is a client-side unit. The server no longer renders script fragments that dis
 - abstract: false
 - raises: none intentionally caught or transformed by groom.
 - verify: absent(subject="a groom-transformed exception from onAnswered")
-- code: groom/groom/assets/dashboard.js::onAnswered
+- code: groom/groom/assets/dashboard.js::onAnswered@9b3683b0ffb1
 - step: Receive a `{"type": "answered", "id": …, "file_path": …}` frame, dispatched by the socket frame handler to every connected tab.
 - step: Call `pushToast("ok", "✓ answer sent", "", 3500)` to append a success toast with no body node.
 - step: Do not read the frame's `id` or `file_path`, do not compare them to this tab's selection, and do not re-fetch run detail — the accompanying `detail` push has already refreshed the pane for the tabs that have that run open.

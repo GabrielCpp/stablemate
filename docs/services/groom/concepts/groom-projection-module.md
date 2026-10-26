@@ -13,7 +13,7 @@ Nothing here emits markup, reads a request, opens a socket, or touches Docker. I
 
 Labels that encode a *judgement* — `alive` versus `silent 4m`, the fleet's sort rank, an exit hint — are computed here rather than in the browser. They are policy, they are thresholded against server-side constants, and two implementations of them would disagree. Raw numbers ride along beside every label so the client can re-format without re-deciding.
 
-- code: groom/groom/projection.py
+- code: groom/groom/projection.py@1cd2150887fa
 - refs: [workflow container](workflow-container.md), [gate info](gate-info.md), [dashboard state payload](../formats/dashboard-state-payload.md), [runs fleet view](../runs-fleet-view.md), [dashboard client store](dashboard-client-store.md), [dashboard shell broadcaster](dashboard-shell-broadcaster.md), [run watch registry](run-watch-registry.md)
 
 The projection tests cover JSON serializability, consistency between a run message and its
@@ -50,7 +50,7 @@ questions travel as data rather than markup.
 - type: `dict[WorkflowState, int]`
 - default: blocked 0, running 1, idle 2, finished 3
 - required: true
-- code: groom/groom/projection.py::STATE_ORDER
+- code: groom/groom/projection.py::STATE_ORDER@1cd2150887fa
 - meaning: the primary sort key behind fleet order — work that needs an operator sorts above work that does not.
 
 ### field-log-trail-limit
@@ -58,7 +58,7 @@ questions travel as data rather than markup.
 - type: `int`
 - default: 60
 - required: true
-- code: groom/groom/projection.py::LOG_TRAIL_LIMIT
+- code: groom/groom/projection.py::LOG_TRAIL_LIMIT@1cd2150887fa
 - meaning: how many log lines a detail pane's trail carries, newest first. The same constant bounds the durable query, so the payload size is decided once.
 
 ### field-severity-class
@@ -66,7 +66,7 @@ questions travel as data rather than markup.
 - type: `dict[str, str]`
 - default: `FATAL`/`ERROR` → `bad`, `WARNING` → `warn`
 - required: true
-- code: groom/groom/projection.py::SEVERITY_CLASS
+- code: groom/groom/projection.py::SEVERITY_CLASS@1cd2150887fa
 - meaning: which log severities earn a color class in the trail; everything else reads plain.
 
 ### field-ext-lang
@@ -74,7 +74,7 @@ questions travel as data rather than markup.
 - type: `dict[str, str]`
 - default: a fixed extension → highlight.js language table
 - required: true
-- code: groom/groom/projection.py::EXT_LANG
+- code: groom/groom/projection.py::EXT_LANG@1cd2150887fa
 - meaning: the language hint the file viewer passes to highlight.js. An unmapped extension projects `""`, which the viewer reads as "auto-detect".
 
 ## Methods
@@ -85,7 +85,7 @@ questions travel as data rather than markup.
 - abstract: false
 - raises: none intentionally raised.
 - verify: json_path(path="exception.type", absent=true)
-- code: groom/groom/projection.py::state_message
+- code: groom/groom/projection.py::state_message@1cd2150887fa
 - step: Resolve the clock, defaulting to wall time.
 - step: Project the filtered fleet through `fleet_rows` in display order.
 - step: Project the unfiltered fleet through `status_bar` so counts stay fleet-wide.
@@ -97,7 +97,7 @@ questions travel as data rather than markup.
 - abstract: false
 - raises: none intentionally raised.
 - verify: json_path(path="exception.type", absent=true)
-- code: groom/groom/projection.py::run_message
+- code: groom/groom/projection.py::run_message@1cd2150887fa
 - step: Project one run through the same `run_row` used for an entry in `state.runs`.
 - step: Return `{"type": "run", "ts", "run"}`, which the client merges into its existing list in place rather than replacing the whole fleet — so the other rows keep their DOM nodes, and their focus.
 
@@ -107,7 +107,7 @@ questions travel as data rather than markup.
 - abstract: false
 - raises: none intentionally raised.
 - verify: json_path(path="exception.type", absent=true)
-- code: groom/groom/projection.py::detail_message
+- code: groom/groom/projection.py::detail_message@1cd2150887fa
 - step: Project the full `run_detail` body — gates, head, metrics, log trail — not a reduced slice.
 - step: Return `{"type": "detail", "ts", "id", "detail"}`, addressed to the tabs in the [run watch registry](run-watch-registry.md).
 - step: Carry the whole body deliberately: the client reconciles it against a keyed component tree, so a gate that opened or closed appears without a round trip while the answer textarea keeps its DOM node and therefore a half-typed answer. Under the old fragment swap that was impossible, which is why the pushed refresh used to stop short of the form.
@@ -118,7 +118,7 @@ questions travel as data rather than markup.
 - abstract: false
 - raises: none intentionally raised.
 - verify: json_path(path="exception.type", absent=true)
-- code: groom/groom/projection.py::run_detail
+- code: groom/groom/projection.py::run_detail@1cd2150887fa
 - step: Project identity (`id`, `run_id`, `state`, `node`), every open gate through `gate_dict`, and the live slice (`head`, `metrics`, `logs`).
 - step: Return the same body both the pushed `detail` message and the detail fetch carry, so a subscription and a fetch cannot disagree.
 
@@ -128,7 +128,7 @@ questions travel as data rather than markup.
 - abstract: false
 - raises: none intentionally raised.
 - verify: json_path(path="exception.type", absent=true)
-- code: groom/groom/projection.py::fleet_rows
+- code: groom/groom/projection.py::fleet_rows@1cd2150887fa
 - detail: [fleet rows documentation contexts](fleet-rows-documentation-contexts.md)
 - step: Project each matching container through `run_row`, attaching its telemetry from the hot cache.
 - step: Sort by `(rank, name)` so the order is stable across ticks.
@@ -144,7 +144,7 @@ questions travel as data rather than markup.
 - verify: json_path(path="$.counts.finished", equals=0)
 - verify: json_path(path="$.repos", equals=3)
 - verify: json_path(path="$.workers", equals=4)
-- code: groom/groom/projection.py::status_bar
+- code: groom/groom/projection.py::status_bar@1cd2150887fa
 - step: Count blocked containers in the fleet-wide state totals.
 - step: Count running containers in the fleet-wide state totals.
 - step: Count idle containers in the fleet-wide state totals.
@@ -158,7 +158,7 @@ questions travel as data rather than markup.
 - abstract: false
 - raises: none intentionally raised.
 - verify: json_path(path="exception.type", absent=true)
-- code: groom/groom/projection.py::repo_entries
+- code: groom/groom/projection.py::repo_entries@1cd2150887fa
 - detail: [repository menu projection contexts](repository-menu-projection-contexts.md)
 - step: Emit one group per container carrying the checkouts found on its volume — grouped rather than flat because that is the shape the server actually has, and because a picker row's label is derived from both halves.
 - step: Give a workflow with no discoverable repository a single volume-root entry so it can still be browsed.
@@ -169,7 +169,7 @@ questions travel as data rather than markup.
 - abstract: false
 - raises: none.
 - verify: json_path(path="exception.type", absent=true)
-- code: groom/groom/projection.py::is_live
+- code: groom/groom/projection.py::is_live@1cd2150887fa
 - step: Answer the one liveness question — is this run emitting right now — from telemetry recency alone.
 - step: Report not-running when this session's terminal has landed, or when nothing has been heard inside the liveness window, which is `within` seconds when the caller passes it and `LIVE_AFTER_S` otherwise; an earlier session's terminal does not count, because it is cleared as soon as a newer signal arrives.
 
@@ -179,7 +179,7 @@ questions travel as data rather than markup.
 - abstract: false
 - raises: none intentionally raised.
 - verify: json_path(path="$.lang", equals="dockerfile")
-- code: groom/groom/projection.py::file_lang
+- code: groom/groom/projection.py::file_lang@1cd2150887fa
 - step: Match the whole filename first for the extensionless files that still have a grammar (`Dockerfile`, `Makefile`), then the extension against `EXT_LANG`, else return `""`.
 
 ### method-format-timestamp
@@ -192,7 +192,7 @@ questions travel as data rather than markup.
 - verify: json_path(path="$.result", equals="—")
 - raises: none intentionally raised.
 - verify: json_path(path="exception.type", absent=true)
-- code: groom/groom/projection.py::fmt_ts
+- code: groom/groom/projection.py::fmt_ts@1cd2150887fa
 - tests: groom/tests/test_projection.py::test_run_card_live_comes_from_the_hot_cache_not_the_span_history
 
 ### method-format-clock
@@ -205,7 +205,7 @@ questions travel as data rather than markup.
 - verify: json_path(path="$.result", equals="—")
 - raises: none intentionally raised.
 - verify: json_path(path="exception.type", absent=true)
-- code: groom/groom/projection.py::fmt_clock
+- code: groom/groom/projection.py::fmt_clock@1cd2150887fa
 - tests: groom/tests/test_projection.py::test_log_trail_newest_first_with_severity_classes
 
 ### method-format-duration
@@ -218,7 +218,7 @@ questions travel as data rather than markup.
 - verify: json_path(path="$.result", matches="^(\\d+\\.\\d s|\\d+m \\d{2}s|\\d+\\.\\d h)$")
 - raises: none intentionally raised.
 - verify: json_path(path="exception.type", absent=true)
-- code: groom/groom/projection.py::fmt_duration
+- code: groom/groom/projection.py::fmt_duration@1cd2150887fa
 - tests: groom/tests/test_projection.py::test_run_metrics_merges_hot_cache_and_durable_facts
 
 ### method-run-id-of
@@ -231,7 +231,7 @@ questions travel as data rather than markup.
 - verify: json_path(path="$.result", equals="blk")
 - raises: none intentionally raised.
 - verify: json_path(path="exception.type", absent=true)
-- code: groom/groom/projection.py::run_id_of
+- code: groom/groom/projection.py::run_id_of@1cd2150887fa
 - tests: groom/tests/test_projection.py::test_detail_message_matches_the_fetched_detail
 
 ### method-telemetry-for
@@ -239,10 +239,10 @@ questions travel as data rather than markup.
 - sig: `telemetry_for(wf: WorkflowContainer) -> RunTelemetry | None`
 - abstract: false
 - does: Reads the telemetry hot-cache entry addressed by the workflow's telemetry key.
-- verify: json_path(path="$.result.run_id", matches=".+")
+- verify: json_path(path="$.result.run_id", equals="run-1")
 - raises: none intentionally raised.
 - verify: json_path(path="exception.type", absent=true)
-- code: groom/groom/projection.py::telemetry_for
+- code: groom/groom/projection.py::telemetry_for@1cd2150887fa
 - tests: groom/tests/test_projection.py::test_fleet_rows_order_blocked_then_live_then_dead_then_finished
 
 ### method-silence-of
@@ -252,26 +252,26 @@ questions travel as data rather than markup.
 - does: Returns zero when telemetry is missing.
 - verify: json_path(path="$.result", equals=0.0)
 - does: Returns the nonnegative age of the newest heartbeat, span, or first-seen timestamp when telemetry is present.
-- verify: json_path(path="$.result", matches="^\\d+(\\.\\d+)?$")
+- verify: json_path(path="$.result", equals=180.0)
 - raises: none intentionally raised.
 - verify: json_path(path="exception.type", absent=true)
-- code: groom/groom/projection.py::silence_of
+- code: groom/groom/projection.py::silence_of@1cd2150887fa
 - tests: groom/tests/test_projection.py::test_fleet_rows_order_blocked_then_live_then_dead_then_finished
 
 ### method-gate-dict
 
 - sig: `gate_dict(gate: GateInfo) -> dict[str, Any]`
 - abstract: false
-- does: Projects the gate's file path, question, derived preview, and status as dict fields.
-- verify: json_path(path="$.file_path", matches=".+")
-- verify: json_path(path="$.question", matches=".*")
-- verify: json_path(path="$.preview", matches=".*")
-- verify: json_path(path="$.status", matches=".+")
+- does: Projects the gate's file path, question, derived preview, and status as dict fields; the preview strips markdown lead-in from the question's first content line rather than repeating the raw text.
+- verify: json_path(path="$.file_path", equals="docs/a.md")
+- verify: json_path(path="$.question", equals="> Is this correct?\nfollow-up detail line")
+- verify: json_path(path="$.preview", equals="Is this correct?")
+- verify: json_path(path="$.status", equals="AWAITING_OPERATOR")
 - does: Carries the question as raw untranslated text without HTML-entity encoding or markup processing.
 - verify: json_path(path="$.question", matches="[^&]*<")
 - raises: none intentionally raised.
 - verify: json_path(path="exception.type", absent=true)
-- code: groom/groom/projection.py::gate_dict
+- code: groom/groom/projection.py::gate_dict@1cd2150887fa
 - tests: groom/tests/test_projection.py::test_gate_question_travels_as_data_not_markup
 
 ### method-gates-of
@@ -283,7 +283,7 @@ questions travel as data rather than markup.
 - verify: json_path(path="$[1].file_path", equals="docs/b.md")
 - raises: none intentionally raised.
 - verify: json_path(path="exception.type", absent=true)
-- code: groom/groom/projection.py::gates_of
+- code: groom/groom/projection.py::gates_of@1cd2150887fa
 - tests: groom/tests/test_projection.py::test_run_detail_lists_every_open_gate
 
 ### method-detail-handle
@@ -295,7 +295,7 @@ questions travel as data rather than markup.
 - verify: json_path(path="$.result", matches="^[0-9a-f]{12}$")
 - raises: none intentionally raised.
 - verify: json_path(path="exception.type", absent=true)
-- code: groom/groom/projection.py::handle
+- code: groom/groom/projection.py::handle@1cd2150887fa
 - tests: groom/tests/test_projection.py::test_the_head_carries_the_whole_run_id_not_a_fragment
 
 ### method-cli-label
@@ -307,40 +307,40 @@ questions travel as data rather than markup.
 - verify: json_path(path="$.cli", equals="")
 - raises: none intentionally raised.
 - verify: json_path(path="exception.type", absent=true)
-- code: groom/groom/projection.py::cli_label
+- code: groom/groom/projection.py::cli_label@1cd2150887fa
 - tests: groom/tests/test_projection.py::test_the_head_names_the_cli_that_ran_the_last_turn
 
 ### method-head
 
 - sig: `head(wf: WorkflowContainer, tel: RunTelemetry | None = None, now: float | None = None) -> dict[str, Any]`
 - abstract: false
-- does: Projects the detail pane's identity and handle.
-- verify: json_path(path="$.id", matches=".+")
-- verify: json_path(path="$.handle", matches=".+")
+- does: Projects the detail pane's identity and handle — the whole run id for a native run, distinct from the container id.
+- verify: json_path(path="$.id", equals="blk")
+- verify: json_path(path="$.handle", equals="run-1")
 - does: Projects the workflow's state.
-- verify: json_path(path="$.state", matches=".+")
+- verify: json_path(path="$.state", equals="running")
 - does: Projects the workflow type and its stable hue.
-- verify: json_path(path="$.type", matches=".+")
-- verify: json_path(path="$.type_hue", matches="\\d+")
+- verify: json_path(path="$.type", equals="coder")
+- verify: json_path(path="$.type_hue", equals=285)
 - does: Projects the repository label.
-- verify: json_path(path="$.repo", matches=".+")
-- does: Projects the liveness verdict and its label.
-- verify: json_path(path="$.live", matches=".+")
-- verify: json_path(path="$.live_label", matches=".*")
+- verify: json_path(path="$.repo", equals="acme/api")
+- does: Projects the liveness verdict and its label for a finished run with no telemetry.
+- verify: json_path(path="$.live", equals="done")
+- verify: json_path(path="$.live_label", equals="ended")
 - does: Projects the active node.
-- verify: json_path(path="$.node", matches=".*")
+- verify: json_path(path="$.node", equals="write_epic")
 - does: Projects the process id.
-- verify: json_path(path="$.pid", matches=".*")
+- verify: json_path(path="$.pid", equals=4242)
 - does: Projects the agent label.
-- verify: json_path(path="$.cli", matches=".*")
-- does: Projects the exit verdict and exit-ok flag.
-- verify: json_path(path="$.exit_hint", matches=".+")
-- verify: json_path(path="$.exit_ok", matches="(true|false)")
+- verify: json_path(path="$.cli", equals="claude claude-sonnet-5")
+- does: Projects the exit verdict and exit-ok flag for a finished run whose exit code is nonzero.
+- verify: json_path(path="$.exit_hint", equals="exited 1")
+- verify: json_path(path="$.exit_ok", equals=false)
 - does: Projects the activity.
-- verify: json_path(path="$.activity", matches=".*")
+- verify: json_path(path="$.activity", equals="writing tests")
 - raises: none intentionally raised.
 - verify: json_path(path="exception.type", absent=true)
-- code: groom/groom/projection.py::head
+- code: groom/groom/projection.py::head@1cd2150887fa
 - tests: groom/tests/test_projection.py::test_the_head_names_the_cli_that_ran_the_last_turn
 
 ### method-metrics
@@ -353,7 +353,7 @@ questions travel as data rather than markup.
 - verify: json_path(path="$.empty", equals=false)
 - raises: none intentionally raised.
 - verify: json_path(path="exception.type", absent=true)
-- code: groom/groom/projection.py::metrics
+- code: groom/groom/projection.py::metrics@1cd2150887fa
 - tests: groom/tests/test_projection.py::test_run_metrics_merges_hot_cache_and_durable_facts
 
 ### method-log-lines
@@ -366,7 +366,7 @@ questions travel as data rather than markup.
 - verify: json_path(path="$.result[0].ts", matches="^\\d{2}:\\d{2}:\\d{2}$")
 - raises: none intentionally raised.
 - verify: json_path(path="exception.type", absent=true)
-- code: groom/groom/projection.py::log_lines
+- code: groom/groom/projection.py::log_lines@1cd2150887fa
 - tests: groom/tests/test_projection.py::test_log_trail_newest_first_with_severity_classes
 
 ### method-run-live
@@ -374,12 +374,12 @@ questions travel as data rather than markup.
 - sig: `run_live(wf: WorkflowContainer, tel: RunTelemetry | None = None, facts: dict[str, Any] | None = None, logs: list[dict[str, Any]] | None = None, now: float | None = None) -> dict[str, Any]`
 - abstract: false
 - does: Combines the clock-refreshable detail head, metrics, and log trail without including editable gate state.
-- verify: json_path(path="$.result.head", matches=".*")
-- verify: json_path(path="$.result.metrics", matches=".*")
-- verify: json_path(path="$.result.logs", matches=".*")
+- verify: json_path(path="$.result.head.id", equals="blk")
+- verify: json_path(path="$.result.metrics.cells[0].value", equals="—")
+- verify: json_path(path="$.result.logs[0].body", equals="hello")
 - raises: none intentionally raised.
 - verify: json_path(path="exception.type", absent=true)
-- code: groom/groom/projection.py::run_live
+- code: groom/groom/projection.py::run_live@1cd2150887fa
 - tests: groom/tests/test_projection.py::test_run_detail_carries_gates_head_metrics_and_logs
 
 ## Algorithms

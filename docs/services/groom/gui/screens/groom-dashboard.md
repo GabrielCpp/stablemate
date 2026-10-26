@@ -78,7 +78,7 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - verify: visible(locator="#activitybar", text="Panels")
 - states: Only the `active` class and `aria-pressed` on its buttons change, as the mode switch toggles them per button.
 - verify: json_path(path="activity_rail.buttons.active.aria_pressed", equals="true")
-- code: groom/groom/templates/dashboard.html
+- code: groom/groom/templates/dashboard.html@0bf87029caea
 - tests: groom/tests/test_a11y_dynamic.py::test_the_activity_rail_is_reachable_and_operable_by_keyboard
 - dom: a `<nav>` rather than a `role="toolbar"` div — switching panes *is* this page's navigation, and a toolbar is not a landmark, so its contents would otherwise sit outside every region. `groom/groom/assets/dashboard.css` assigns it to the left `act` grid area, whose first column is fixed at 48px.
 - screenshot: docs/specs/groom-dashboard/vet/post-discovery-activity-rail.png
@@ -98,7 +98,7 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - verify: json_path(path="states.present", equals=true)
 - states: its visible child is whichever pane `.app[data-mode]` selects.
 - verify: json_path(path="states.visible_child", equals="pane selected by .app[data-mode]")
-- code: groom/groom/templates/dashboard.html
+- code: groom/groom/templates/dashboard.html@0bf87029caea
 - dom: holds all four panes as siblings. The three inactive ones are `display:none`, so exactly one pane's controls are in the accessibility tree at a time. `groom/groom/assets/dashboard.css` gives `.app` a fixed 48px activity column and assigns `#main` the remaining `main` grid area.
 - screenshot: docs/specs/groom-dashboard/vet/post-discovery-main-region.png
 
@@ -134,7 +134,7 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - states: this is a real, data-dependent accessibility ambiguity, not a mislabeling: any tree row in the files or diff pane whose name happens to be the literal text `Runs` — a directory ([files-directory-toggle](#files-directory-toggle), [diff-directory-toggle](#diff-directory-toggle)) or a file ([files-file-row](#files-file-row)) named `Runs` — renders with the identical `role=button name="Runs"` pair as this always-present rail button, so `getByRole('button', {name: 'Runs'})` cannot distinguish them.
 - states: the collision is left standing rather than papered over with an invented distinguishing label, because the rail button's name cannot be changed without changing the product's navigation label.
 - states: the collision is left standing rather than papered over with an invented distinguishing label, because a repository's file and directory names are arbitrary user data this doc cannot constrain.
-- code: groom/groom/assets/dashboard.js::setMode
+- code: groom/groom/assets/dashboard.js::setMode@9b3683b0ffb1
 - props:
   - `data-mode`: literal `runs`; required; the mode value the delegated rail handler passes to the mode switch.
   - `title`: literal `Runs`; required; tooltip text only.
@@ -162,7 +162,7 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - states: this is a real, data-dependent accessibility ambiguity, not a mislabeling: any tree row in the files or diff pane whose name happens to be the literal text `Files` — a directory ([files-directory-toggle](#files-directory-toggle), [diff-directory-toggle](#diff-directory-toggle)) or a file ([files-file-row](#files-file-row)) named `Files` — renders with the identical `role=button name="Files"` pair as this always-present rail button, so `getByRole('button', {name: 'Files'})` cannot distinguish them.
 - states: the collision is left standing rather than papered over with an invented distinguishing label, because the rail button's name cannot be changed without changing the product's navigation label.
 - states: the collision is left standing rather than papered over with an invented distinguishing label, because a repository's file and directory names are arbitrary user data this doc cannot constrain.
-- code: groom/groom/assets/dashboard.js::setMode
+- code: groom/groom/assets/dashboard.js::setMode@9b3683b0ffb1
 - dom: icon-only native `<button type="button">`, second in the rail; an inline `aria-hidden` folder SVG and no text node. The activity rail sits outside `#main` and is never `display:none`, so this button stays in the accessibility tree in every mode — unlike the panes' own controls, which vanish when their pane is inactive.
 - leads-to: [select activity files mode](#select-activity-files-mode), which shows the files pane containing the [files repository picker button](#files-repository-picker-button), `#files-tree`, and `#file-view`.
 - screenshot: docs/specs/groom-dashboard/vet/post-discovery-activity-files-mode.png
@@ -187,7 +187,7 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - states: this is a real, data-dependent accessibility ambiguity, not a mislabeling: any tree row in the files or diff pane whose name happens to be the literal text `Diff` — a directory ([files-directory-toggle](#files-directory-toggle), [diff-directory-toggle](#diff-directory-toggle)) or a file ([files-file-row](#files-file-row)) named `Diff` — renders with the identical `role=button name="Diff"` pair as this always-present rail button, so `getByRole('button', {name: 'Diff'})` cannot distinguish them.
 - states: the collision is left standing rather than papered over with an invented distinguishing label, because the rail button's name cannot be changed without changing the product's navigation label.
 - states: the collision is left standing rather than papered over with an invented distinguishing label, because a repository's file and directory names are arbitrary user data this doc cannot constrain.
-- code: groom/groom/assets/dashboard.js::setMode
+- code: groom/groom/assets/dashboard.js::setMode@9b3683b0ffb1
 - dom: icon-only native `<button type="button">`, third in the rail; an inline `aria-hidden` bidirectional-arrows SVG and no text node. The activity rail sits outside `#main` and is never `display:none`, so this button stays in the accessibility tree in every mode — unlike the panes' own controls, which vanish when their pane is inactive.
 - leads-to: [select activity diff mode](#select-activity-diff-mode), which shows the diff pane containing the [diff repository picker button](#diff-repository-picker-button), `#diff-tree`, and `#diff-view`.
 - screenshot: docs/specs/groom-dashboard/vet/post-discovery-activity-diff-mode.png
@@ -208,7 +208,7 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - states: active with the `active` class and `aria-pressed="true"` when `.app` has `data-mode="settings"`.
 - verify: visible(locator=".act-btn[data-mode='settings'].active[aria-pressed='true']", text="Settings")
 - states: this is a real, data-dependent accessibility ambiguity, not a mislabeling: any tree row in the files or diff pane whose name happens to be the literal text `Settings` — a directory ([files-directory-toggle](#files-directory-toggle), [diff-directory-toggle](#diff-directory-toggle)) or a file ([files-file-row](#files-file-row)) named `Settings` — renders with the identical `role=button name="Settings"` pair as this always-present rail button, so `getByRole('button', {name: 'Settings'})` cannot distinguish them. The rail button's name cannot be changed without changing the product's navigation label. A repository's file and directory names are arbitrary user data this doc cannot constrain. The collision is therefore left standing rather than papered over with an invented distinguishing label.
-- code: groom/groom/assets/dashboard.js::setMode
+- code: groom/groom/assets/dashboard.js::setMode@9b3683b0ffb1
 - dom: icon-only native `<button type="button">` after the rail spacer, at the bottom of the rail; an inline `aria-hidden` gear SVG and no text node.
 - leads-to: [select activity settings mode](#select-activity-settings-mode), which shows the settings pane containing the [settings rescan button](#settings-rescan-button) and [settings enable notifications button](#settings-enable-notifications-button).
 - screenshot: docs/specs/groom-dashboard/vet/post-discovery-activity-settings-mode.png
@@ -234,8 +234,8 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - verify: visible(locator="#runs-list", text="author-002")
 - states: haystack matching is case-insensitive.
 - verify: visible(locator="#runs-list", text="author-002")
-- code: groom/groom/assets/dashboard.js::wireEvents
-- code: groom/groom/assets/dashboard.js::rowHaystack
+- code: groom/groom/assets/dashboard.js::wireEvents@9b3683b0ffb1
+- code: groom/groom/assets/dashboard.js::rowHaystack@9b3683b0ffb1
 - props:
   - `type`: literal `search`; required; supplies the searchbox role.
   - `name`: literal `q`; required; the field name, retained for form semantics though nothing submits it.
@@ -262,7 +262,7 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - verify: visible(locator="#runs-list .empty", text="No workhorse runs — nothing is running.")
 - states: one [run row](#run-row) per matching run.
 - verify: count(subject="#runs-list .row[data-worker-id]", equals=3)
-- code: groom/groom/assets/dashboard.js::Fleet
+- code: groom/groom/assets/dashboard.js::Fleet@9b3683b0ffb1
 - tests: groom/tests/test_projection.py::test_fleet_rows_include_every_instance
 - tests: groom/tests/test_projection.py::test_query_filters_the_fleet
 - dom: a shell `<div>` carrying `role="log"`, `aria-live="polite"`, and its label. The Preact island renders *into* it, so the region node itself is never replaced and assistive tech keeps tracking one region across every push.
@@ -288,7 +288,7 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - verify: visible(locator="#runs-list .row[data-worker-id].selected[aria-current='true']", text="{run.repo} #{run.row_id} {run.live_label} {run.doing}")
 - states: every other row omits `aria-current` entirely rather than setting it to `"false"`.
 - verify: omits(subject="#runs-list .row[data-worker-id]:not(.selected)", matches="aria-current")
-- code: groom/groom/assets/dashboard.js::RunRow
+- code: groom/groom/assets/dashboard.js::RunRow@9b3683b0ffb1
 - detail: [workflow type badge style rules](../../concepts/workflow-type-badge-style-rules.md)
 - tests: `groom/tests/test_projection.py::test_fleet_rows_order_blocked_then_live_then_dead_then_finished`
 - tests: `groom/tests/test_projection.py::test_run_message_row_matches_the_same_row_in_the_state_message`
@@ -300,6 +300,22 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - dom: a native `<button type="button">`, keyed by run id so a push preserves focus and scroll. Two lines plus an optional question preview: line one is a state dot, a type badge, the repository label, the short handle, and an optional pulse label; line two is the activity text and an optional mini note; the third line, when present, is the [run question preview](../../concepts/run-question-preview.md).
 - leads-to: [select run row](#select-run-row), which opens that run in the detail pane without leaving this screen.
 - screenshot: docs/specs/groom-dashboard/vet/post-discovery-run-row.png
+
+### run-row-type-badge
+
+- selector: `#runs-list .row[data-worker-id] .badge[data-type='coder']`
+- role: none
+- parent: [run-row](#run-row)
+- detail: [workflow type badge style rules](../../concepts/workflow-type-badge-style-rules.md)
+- code: groom/groom/assets/dashboard.js::TypeBadge@9b3683b0ffb1
+
+### run-row-type-badge-hue
+
+- selector: `#runs-list .row[data-worker-id] .badge[data-type='coder'][style*='--type-hue']`
+- role: none
+- parent: [run-row-type-badge](#run-row-type-badge)
+- detail: [workflow type badge style rules](../../concepts/workflow-type-badge-style-rules.md)
+- code: groom/groom/assets/dashboard.js::TypeBadge@9b3683b0ffb1
 
 ### detail-pane
 
@@ -327,7 +343,7 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - verify: visible(locator="#detail", text="Logs")
 - states: otherwise the diff disclosure renders.
 - verify: visible(locator="#detail details.disclosure > summary", text="Working-tree diff")
-- code: groom/groom/assets/dashboard.js::Detail
+- code: groom/groom/assets/dashboard.js::Detail@9b3683b0ffb1
 - tests: groom/tests/test_projection.py::test_run_detail_carries_gates_head_metrics_and_logs
 - dom: a shell `<div>` the detail island renders into. It is refreshed by pushed `detail` frames for the watched run, not by re-fetching.
 - screenshot: docs/specs/groom-dashboard/vet/post-discovery-detail-pane.png
@@ -341,7 +357,7 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - parent: [detail-pane](#detail-pane)
 - states: shows a state dot, type badge, repository label, an optional pulse label, the meta line (`#handle · state · node · pid`), an optional exit hint for a finished run, and an optional current-activity line.
 - verify: visible(locator="#detail .detail-head", text="exited")
-- code: groom/groom/assets/dashboard.js::RunHead
+- code: groom/groom/assets/dashboard.js::RunHead@9b3683b0ffb1
 - detail: [workflow type badge style rules](../../concepts/workflow-type-badge-style-rules.md)
 - tests: groom/tests/test_projection.py::test_exit_hint_only_on_finished_with_a_code
 - dom: one of three `role="status"` regions on this page. Each carries its own `aria-label` — this one, the [status bar region](#statusbar-region), and the [connection chip](#connection-chip) — so a screen reader and `getByRole` can tell them apart.
@@ -359,8 +375,8 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - states: absent for a run with no open gate.
 - states: a no-gate note naming the run's state and node renders when no gate is open.
 - verify: visible(locator="#detail .no-gate", text="Nothing to answer")
-- code: groom/groom/assets/dashboard.js::GateBlock
-- code: groom/groom/assets/dashboard.js::Markdown
+- code: groom/groom/assets/dashboard.js::GateBlock@9b3683b0ffb1
+- code: groom/groom/assets/dashboard.js::Markdown@9b3683b0ffb1
 - tests: groom/tests/test_projection.py::test_gate_question_travels_as_data_not_markup
 - dom: the gate's question travels as data, never as markup. The client renders it with `marked` and sanitizes the result with DOMPurify before it reaches `innerHTML`; the gate's file path is shown above it as a plain text node.
 - screenshot: docs/specs/groom-dashboard/vet/run-detail-detail-gate-question.png
@@ -383,7 +399,7 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - verify: json_path(path="states.after_success.value", equals="")
 - states: a rejected send leaves the text in the box.
 - verify: json_path(path="states.after_rejected.value", equals="draft answer")
-- code: groom/groom/assets/dashboard.js::AnswerForm
+- code: groom/groom/assets/dashboard.js::AnswerForm@9b3683b0ffb1
 - tests: groom/tests/test_a11y_dynamic.py::test_the_answer_form_is_reachable_and_submittable_by_keyboard
 - dom: four rows, inside a form carrying hidden `cmd`, `workflow_id`, and `file_path` fields. The form is re-rendered on every 5s push, but the gate block is keyed by file path, so Preact reuses the same `<textarea>` DOM node and a half-typed answer survives.
 - screenshot: docs/specs/groom-dashboard/vet/run-detail-detail-answer-textarea.png
@@ -408,7 +424,7 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - verify: absent(subject="#detail form[data-answer] button[type='submit'] in the accessibility tree when `data-mode` is not `runs`")
 - states: it can never co-render with the files pane's [files-directory-toggle](#files-directory-toggle) or [files-file-row](#files-file-row), or the diff pane's [diff-directory-toggle](#diff-directory-toggle) — the mode exclusivity, not a coincidence of naming, is what `getByRole('button', {name: 'Send answer'})` can rely on.
 - verify: count(subject="elements matching role=button name='Send answer' in the rendered DOM", equals=1)
-- code: groom/groom/assets/dashboard.js::AnswerForm
+- code: groom/groom/assets/dashboard.js::AnswerForm@9b3683b0ffb1
 - leads-to: [send detail answer](#send-detail-answer), which serializes the form and sends it over the dashboard websocket.
 - screenshot: docs/specs/groom-dashboard/vet/run-detail-detail-send-answer-button.png
 
@@ -439,7 +455,7 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - verify: json_path(path="states.after_load", matches="rendered diff|\\(no changes\\)|failed to load diff")
 - states: re-collapsing and re-expanding does not re-fetch.
 - verify: json_path(path="states.re_expansion.fetch_count", equals=1)
-- code: groom/groom/assets/dashboard.js::DiffDisclosure
+- code: groom/groom/assets/dashboard.js::DiffDisclosure@9b3683b0ffb1
 - dom: a native `<details>`/`<summary>` pair, keyed by run id so switching runs resets the disclosure rather than showing the previous run's diff.
 - leads-to: [toggle detail working tree diff](#toggle-detail-working-tree-diff), which lazily loads that run's [workspace diff data](../../formats/workspace-diff-data.md).
 - screenshot: docs/specs/groom-dashboard/vet/run-detail-detail-working-tree-diff-toggle.png
@@ -456,7 +472,7 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - states: a grid of key/value cells in the projection's order, followed by an optional footer of fired alert-rule chips and the run directory when telemetry is present.
 - verify: visible(locator="#detail .live-sec .metrics-grid .metric:first-child .m-k", text="node")
 - verify: visible(locator="#detail .live-sec .metrics-grid", text="review")
-- code: groom/groom/assets/dashboard.js::Metrics
+- code: groom/groom/assets/dashboard.js::Metrics@9b3683b0ffb1
 - tests: groom/tests/test_projection.py::test_run_metrics_cell_order_is_the_layout
 - tests: groom/tests/test_projection.py::test_run_metrics_merges_hot_cache_and_durable_facts
 
@@ -472,7 +488,7 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - states: capped, newest-first lines, each a timestamp, severity, node, and body when logs are present.
 - verify: visible(locator="#detail .live-sec .log-line:first-child .lt-body", text="boom")
 - verify: count(subject="#detail .live-sec .log-line", equals=60)
-- code: groom/groom/assets/dashboard.js::LogTrail
+- code: groom/groom/assets/dashboard.js::LogTrail@9b3683b0ffb1
 - tests: groom/tests/test_projection.py::test_log_trail_newest_first_with_severity_classes
 - tests: groom/tests/test_projection.py::test_log_trail_is_capped
 
@@ -493,8 +509,8 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - states: this is a real, data-dependent accessibility ambiguity, not a mislabeling: a directory or file in `#files-tree` literally named `Select container / repo…` renders with the same `role=button name="Select container / repo…"` pair as this control.
 - states: this control and any colliding `#files-tree` entry both live in the files pane, so — unlike the cross-pane exclusivity above — they co-render.
 - states: neither name can be changed to avoid the collision, so it is left standing rather than papered over with an invented distinguishing label.
-- code: groom/groom/assets/dashboard.js::openRepoMenu
-- code: groom/groom/assets/dashboard.js::wireEvents
+- code: groom/groom/assets/dashboard.js::openRepoMenu@9b3683b0ffb1
+- code: groom/groom/assets/dashboard.js::wireEvents@9b3683b0ffb1
 - dom: the two pickers are identical controls in two panes. Only one pane is in the DOM's accessibility tree at a time — the inactive pane is `display:none` — which is why they can share a computed name without being ambiguous.
 - leads-to: [open files repository picker](#open-files-repository-picker), which opens the shared menu below this button.
 - screenshot: docs/specs/groom-dashboard/vet/files-files-repository-picker-button.png
@@ -518,8 +534,8 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - states: this control lives in `#diff-pane`, itself one of the four `data-mode` panes described in [Layout](#layout).
 - states: `data-mode` selects a single active pane and inactive panes are `display:none`, removed from the accessibility tree entirely. So it can never co-render with the files pane's [files-repository-picker-button](#files-repository-picker-button), [files-directory-toggle](#files-directory-toggle), or [files-file-row](#files-file-row) — the mode exclusivity, not a coincidence of naming, is what `getByRole('button', {name: 'Select container / repo…'})` can rely on against those three.
 - states: this is a real, data-dependent accessibility ambiguity, not a mislabeling: a directory in `#diff-tree` literally named `Select container / repo…` renders with the same `role=button name="Select container / repo…"` pair as this control, and both live in the diff pane so they co-render — see [diff-directory-toggle](#diff-directory-toggle) for the same collision documented from the other side. Neither name can be changed to avoid it, so the collision is left standing rather than papered over with an invented distinguishing label.
-- code: groom/groom/assets/dashboard.js::openRepoMenu
-- code: groom/groom/assets/dashboard.js::wireEvents
+- code: groom/groom/assets/dashboard.js::openRepoMenu@9b3683b0ffb1
+- code: groom/groom/assets/dashboard.js::wireEvents@9b3683b0ffb1
 - leads-to: [open diff repository picker](#open-diff-repository-picker), which opens the shared menu below this button.
 - screenshot: docs/specs/groom-dashboard/vet/diff-diff-repository-picker-button.png
 - known-defect: stablemate-01M20XBE01AW90EEXHSYVP8J1J ambiguous-locator — TreeDir (dashboard.js:311-323) names directory-header buttons with the bare directory key and no aria-label, so a directory literally named 'Select container / repo…' collides role=button+name with diff-repository-picker-button — the same defect already seeded as stablemate-01M20X9YXMRN3JAK90CP7CKKC2 on diff-directory-toggle.
@@ -552,9 +568,9 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - verify: json_path(path="states.aria_activedescendant", absent=true)
 - states: The value is cleared on every open.
 - verify: json_path(path="states.value_on_open", equals="")
-- code: groom/groom/assets/dashboard.js::openRepoMenu
-- code: groom/groom/assets/dashboard.js::closeRepoMenu
-- code: groom/groom/assets/dashboard.js::RepoMenu
+- code: groom/groom/assets/dashboard.js::openRepoMenu@9b3683b0ffb1
+- code: groom/groom/assets/dashboard.js::closeRepoMenu@9b3683b0ffb1
+- code: groom/groom/assets/dashboard.js::RepoMenu@9b3683b0ffb1
 - detail: [repository menu composition](../../concepts/repository-menu-composition.md)
 - props:
   - `role`: literal `combobox`; required.
@@ -580,7 +596,7 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - verify: visible(locator="#repo-menu", text="No repositories available.")
 - states: otherwise one option per repository, grouped per container by the server and flattened for the keyboard.
 - verify: json_path(path="states.options", equals="one option per repository, grouped per container by the server and flattened for the keyboard")
-- code: groom/groom/assets/dashboard.js::RepoMenu
+- code: groom/groom/assets/dashboard.js::RepoMenu@9b3683b0ffb1
 - detail: [repository menu composition](../../concepts/repository-menu-composition.md)
 - dom: a shell `<div>` the menu island renders into, positioned under whichever picker invoked it.
 - screenshot: docs/specs/groom-dashboard/vet/repository-menu-repository-menu-listbox.png
@@ -603,8 +619,8 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - verify: json_path(path="states.aria_selected", equals="true on the active option and false on the rest")
 - states: the active option is scrolled into view on each render.
 - verify: json_path(path="states.active_option_scrolled", equals=true)
-- code: groom/groom/assets/dashboard.js::RepoMenu
-- code: groom/groom/assets/dashboard.js::repoItems
+- code: groom/groom/assets/dashboard.js::RepoMenu@9b3683b0ffb1
+- code: groom/groom/assets/dashboard.js::repoItems@9b3683b0ffb1
 - detail: [repository menu composition](../../concepts/repository-menu-composition.md)
 - detail: [workflow type badge style rules](../../concepts/workflow-type-badge-style-rules.md)
 - props:
@@ -652,8 +668,8 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - verify: absent(subject="#files-tree .tree-dir-head in the accessibility tree when `data-mode` is not `files`")
 - states: `data-mode` selects a single active pane and inactive panes are `display:none`, removed from the accessibility tree entirely. So it can never co-render with the settings pane's [settings-rescan-button](#settings-rescan-button) or [settings-enable-notifications-button](#settings-enable-notifications-button), the diff pane's [diff-repository-picker-button](#diff-repository-picker-button), or the runs pane's [detail-send-answer-button](#detail-send-answer-button) and [detail-working-tree-diff-toggle](#detail-working-tree-diff-toggle) — the mode exclusivity, not a coincidence of naming, is what `getByRole` can rely on for each of those name pairs.
 - verify: count(subject="elements matching role=button name={directory} in the rendered DOM", equals=1)
-- code: groom/groom/assets/dashboard.js::TreeDir
-- code: groom/groom/assets/dashboard.js::buildTree
+- code: groom/groom/assets/dashboard.js::TreeDir@9b3683b0ffb1
+- code: groom/groom/assets/dashboard.js::buildTree@9b3683b0ffb1
 - dom: a native `<button type="button">` with an `aria-hidden` chevron; the nesting is a pure function of the flat path list the server sends, computed by the [dashboard tree builder](../../concepts/dashboard-tree-builder.md).
 - leads-to: [toggle files directory](#toggle-files-directory).
 - screenshot: docs/specs/groom-dashboard/vet/files-files-directory-toggle.png
@@ -687,7 +703,7 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - verify: absent(subject="#files-tree button.tree-file in the accessibility tree when `data-mode` is not `files`")
 - states: `data-mode` selects a single active pane and inactive panes are `display:none`, removed from the accessibility tree entirely. So it can never co-render with the settings pane's [settings-rescan-button](#settings-rescan-button) or [settings-enable-notifications-button](#settings-enable-notifications-button), the diff pane's [diff-repository-picker-button](#diff-repository-picker-button), or the runs pane's [detail-send-answer-button](#detail-send-answer-button) and [detail-working-tree-diff-toggle](#detail-working-tree-diff-toggle) — the mode exclusivity, not a coincidence of naming, is what `getByRole` can rely on for each of those name pairs.
 - verify: count(subject="elements matching role=button name={node.name} in the rendered DOM", equals=1)
-- code: groom/groom/assets/dashboard.js::FilesTree
+- code: groom/groom/assets/dashboard.js::FilesTree@9b3683b0ffb1
 - dom: a native `<button type="button">` keyed by full path, holding only the base name. The full path is closed over by the click handler rather than written to a data attribute.
 - leads-to: [select files file row](#select-files-file-row), which fetches that file's [workspace file content data](../../formats/workspace-file-content-data.md).
 - screenshot: docs/specs/groom-dashboard/vet/files-files-file-row.png
@@ -715,8 +731,8 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - verify: visible(locator="#file-view .file-body", text="(empty or binary file)")
 - states: otherwise the path header and the highlighted source render.
 - verify: visible(locator="#file-view .file-pre")
-- code: groom/groom/assets/dashboard.js::FileView
-- code: groom/groom/assets/dashboard.js::highlight
+- code: groom/groom/assets/dashboard.js::FileView@9b3683b0ffb1
+- code: groom/groom/assets/dashboard.js::highlight@9b3683b0ffb1
 - dom: highlighting is applied by highlight.js, whose output is escaped HTML; when the library is absent or throws, the content is rendered as a plain text node instead. The language comes from the server so the extension table lives next to the rest of the presentation policy.
 - screenshot: docs/specs/groom-dashboard/vet/files-file-view-region.png
 - detail: [operator browses workspace file](../../flows/operator-browses-workspace-file.md)
@@ -749,7 +765,7 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - verify: json_path(path="states.pane", equals="diff")
 - states: `data-mode` selects a single active pane and inactive panes are `display:none`, removed from the accessibility tree entirely — so this control can never co-render with the settings pane's [settings-rescan-button](#settings-rescan-button) or [settings-enable-notifications-button](#settings-enable-notifications-button), the files pane's [files-repository-picker-button](#files-repository-picker-button), or the runs pane's [detail-send-answer-button](#detail-send-answer-button) and [detail-working-tree-diff-toggle](#detail-working-tree-diff-toggle) — the mode exclusivity, not a coincidence of naming, is what `getByRole` can rely on for each of those name pairs.
 - verify: json_path(path="states.hidden_outside_diff_mode", equals=true)
-- code: groom/groom/assets/dashboard.js::TreeDir
+- code: groom/groom/assets/dashboard.js::TreeDir@9b3683b0ffb1
 - leads-to: [toggle diff directory](#toggle-diff-directory).
 - screenshot: docs/specs/groom-dashboard/vet/diff-diff-directory-toggle.png
 - known-defect: stablemate-01M20X9YXMRN3JAK90CP7CKKC2 ambiguous-locator — TreeDir (dashboard.js:311-323) names its button with the bare directory name only, via no aria-label; any directory named 'Diff'/'Files'/'Runs'/'Settings'/'Open command palette'/'Rescan containers (reconcile + prune)'/'Select container / repo…' collides role=button+name with a fixed same-screen control, and this is fixable by giving the button a distinguishing aria-label independent of the directory's literal name.
@@ -771,7 +787,7 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - verify: json_path(path="states.shown_row", equals="active with aria-current=true")
 - states: every other row omits `aria-current`.
 - verify: json_path(path="states.other_rows", equals="aria-current absent")
-- code: groom/groom/assets/dashboard.js::DiffTree
+- code: groom/groom/assets/dashboard.js::DiffTree@9b3683b0ffb1
 - dom: keyed by its index into the [dashboard parsed diff file cache](../../formats/dashboard-parsed-diff-file-cache.md); the index is closed over by the click handler rather than written to a data attribute. A file added or deleted in the diff is addressed by its non-`/dev/null` name.
 - leads-to: [select diff file row](#select-diff-file-row).
 - screenshot: docs/specs/groom-dashboard/vet/diff-diff-file-row.png
@@ -790,8 +806,8 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - verify: visible(locator="#diff-view", text="Select a changed file to see its diff.")
 - states: after a changed file is chosen, the region shows that file's rendered diff.
 - verify: visible(locator="#diff-view")
-- code: groom/groom/assets/dashboard.js::DiffView
-- code: groom/groom/assets/dashboard.js::diffMarkup
+- code: groom/groom/assets/dashboard.js::DiffView@9b3683b0ffb1
+- code: groom/groom/assets/dashboard.js::diffMarkup@9b3683b0ffb1
 - dom: diff2html both parses the unified text and renders it, and escapes what it emits — which is why the raw diff rides the wire unsplit rather than having half a parser reimplemented server-side.
 - screenshot: docs/specs/groom-dashboard/vet/diff-diff-view-region.png
 
@@ -818,7 +834,7 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - verify: absent(subject="#btn-refresh in the accessibility tree when `data-mode` is not `settings`")
 - states: `data-mode` selects a single active pane and inactive panes are `display:none`, removed from the accessibility tree entirely. So it can never co-render with the files pane's [files-directory-toggle](#files-directory-toggle) or [files-file-row](#files-file-row), or the diff pane's [diff-directory-toggle](#diff-directory-toggle) — the mode exclusivity, not a coincidence of naming, is what `getByRole('button', {name: 'Rescan containers'})` can rely on.
 - verify: count(subject="elements matching role=button name='Rescan containers' in the rendered DOM", equals=1)
-- code: groom/groom/assets/dashboard.js::doRefresh
+- code: groom/groom/assets/dashboard.js::doRefresh@9b3683b0ffb1
 - detail: [dashboard rescan control selection](../../concepts/dashboard-rescan-control-selection.md)
 - dom: a text button in the settings pane, beside the explanatory line `Re-run the docker discovery pass.`
 - leads-to: [rescan containers from settings](#rescan-containers-from-settings).
@@ -845,7 +861,7 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - verify: absent(subject="#btn-notify in the accessibility tree when `data-mode` is not `settings`")
 - states: it can never co-render with the files pane's [files-directory-toggle](#files-directory-toggle) or [files-file-row](#files-file-row), or the diff pane's [diff-directory-toggle](#diff-directory-toggle) — the mode exclusivity, not a coincidence of naming, is what `getByRole('button', {name: 'Enable notifications'})` can rely on.
 - verify: count(subject="elements matching role=button name='Enable notifications' in the rendered DOM", equals=1)
-- code: groom/groom/assets/dashboard.js::wireEvents
+- code: groom/groom/assets/dashboard.js::wireEvents@9b3683b0ffb1
 - dom: a ghost button in the settings pane, beside `Browser alerts when a worker blocks.`
 - leads-to: [enable browser notifications from settings](#enable-browser-notifications-from-settings), which asks for [browser notification permission](../../concepts/browser-notification-permission.md).
 - screenshot: docs/specs/groom-dashboard/vet/settings-settings-enable-notifications-button.png
@@ -870,7 +886,7 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - verify: visible(locator="#btn-refresh-bar", text="Rescan containers")
 - states: the palette button.
 - verify: visible(locator="#btn-palette", text="Open command palette")
-- code: groom/groom/assets/dashboard.js::StatusBar
+- code: groom/groom/assets/dashboard.js::StatusBar@9b3683b0ffb1
 - tests: `groom/tests/test_projection.py::test_status_bar_counts_states`
 - dom: a shell `<div>` with `role="status"`, `aria-live="polite"`, and its own `aria-label`. It is one of three `role="status"` regions on this page; each is named so they are distinguishable.
 - screenshot: docs/specs/groom-dashboard/vet/post-discovery-statusbar-region.png
@@ -895,8 +911,8 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - verify: visible(locator="#statusbar .stat.conn", text="offline")
 - states: `connecting` is the value the store starts with, before the first evaluation.
 - verify: visible(locator="#statusbar .stat.conn", text="connecting")
-- code: groom/groom/assets/dashboard.js::ConnectionChip
-- code: groom/groom/assets/dashboard.js::deriveConnection
+- code: groom/groom/assets/dashboard.js::ConnectionChip@9b3683b0ffb1
+- code: groom/groom/assets/dashboard.js::deriveConnection@9b3683b0ffb1
 - tests: groom/tests/test_connection_state.py::test_the_full_live_to_stale_to_offline_progression
 - tests: groom/tests/test_connection_state.py::test_open_but_silent_socket_goes_stale_and_starts_resyncing
 - props:
@@ -925,7 +941,7 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - verify: count(subject="elements matching role=button name='Rescan containers (reconcile + prune)'", equals=2)
 - states: the button's name cannot be changed without changing the product's rescan-control label.
 - states: a repository's file and directory names are arbitrary user data this doc cannot constrain, so the collision is left standing rather than papered over with an invented distinguishing label.
-- code: groom/groom/assets/dashboard.js::doRefresh
+- code: groom/groom/assets/dashboard.js::doRefresh@9b3683b0ffb1
 - detail: [dashboard rescan control selection](../../concepts/dashboard-rescan-control-selection.md)
 - dom: an icon-only button holding an `aria-hidden` glyph, named longer than the settings-pane control it duplicates so the two are distinguishable when settings mode puts both on screen at once.
 - leads-to: [rescan containers from statusbar](#rescan-containers-from-statusbar).
@@ -948,7 +964,7 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - states: this is a real, data-dependent accessibility ambiguity, not a mislabeling: any tree row in the files or diff pane whose name happens to be the literal text `Open command palette` — a directory ([files-directory-toggle](#files-directory-toggle), [diff-directory-toggle](#diff-directory-toggle)) or a file ([files-file-row](#files-file-row)) named `Open command palette` — renders with the identical `role=button name="Open command palette"` pair as this always-present statusbar button, and `getByRole('button', {name: 'Open command palette'})` cannot distinguish them.
 - verify: count(subject="elements matching role=button name='Open command palette'", equals=2)
 - states: the button's name cannot be changed without changing the product's shortcut-hint label, and a repository's file or directory name is arbitrary data outside this doc's control, so the collision is left standing rather than papered over with an invented distinguishing label.
-- code: groom/groom/assets/dashboard.js::openPalette
+- code: groom/groom/assets/dashboard.js::openPalette@9b3683b0ffb1
 - detail: [command palette opening](../../concepts/command-palette-opening.md)
 - dom: shows the `⌘K` hint as an `aria-hidden` glyph beside the word `palette`; the accessible name comes from `aria-label` so the shortcut glyph is never read out as text.
 - leads-to: [toggle command palette shortcut](#toggle-command-palette-shortcut).
@@ -972,8 +988,8 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - verify: visible(locator="#palette", text="Command palette")
 - states: closing returns focus to whatever opened it rather than dropping it to `<body>`.
 - verify: json_path(path="$.activeElement", equals="#btn-palette")
-- code: groom/groom/assets/dashboard.js::openPalette
-- code: groom/groom/assets/dashboard.js::closePalette
+- code: groom/groom/assets/dashboard.js::openPalette@9b3683b0ffb1
+- code: groom/groom/assets/dashboard.js::closePalette@9b3683b0ffb1
 - detail: [command palette opening](../../concepts/command-palette-opening.md)
 - dom: `aria-modal="true"`. The trap is one element wide on purpose — there is nothing else in the dialog to reach. `groom/groom/assets/dashboard.css` fixes the dialog wrapper to all viewport edges, so it spans the viewport rather than only the centered palette box inside it.
 - screenshot: docs/specs/groom-dashboard/vet/command-palette-command-palette-dialog.png
@@ -1002,8 +1018,8 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - verify: json_path(path="$.aria-activedescendant", matches="^presult-[0-9]+$")
 - states: `aria-activedescendant` is removed when nothing matches.
 - verify: json_path(path="$.aria-activedescendant", absent=true)
-- code: groom/groom/assets/dashboard.js::PaletteResults
-- code: groom/groom/assets/dashboard.js::movePaletteActive
+- code: groom/groom/assets/dashboard.js::PaletteResults@9b3683b0ffb1
+- code: groom/groom/assets/dashboard.js::movePaletteActive@9b3683b0ffb1
 - detail: [command palette result presentation](../../concepts/command-palette-result-presentation.md)
 - screenshot: docs/specs/groom-dashboard/vet/command-palette-command-palette-input.png
 
@@ -1023,7 +1039,7 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - verify: visible(locator="#palette-results", text="{repo} #{short_handle}")
 - states: empty when nothing matches.
 - verify: count(subject="command palette results", equals=0)
-- code: groom/groom/assets/dashboard.js::PaletteResults
+- code: groom/groom/assets/dashboard.js::PaletteResults@9b3683b0ffb1
 - detail: [command palette result presentation](../../concepts/command-palette-result-presentation.md)
 - screenshot: docs/specs/groom-dashboard/vet/command-palette-command-palette-results-listbox.png
 
@@ -1051,8 +1067,8 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - verify: json_path(path="$.aria-selected", equals="false")
 - states: the active result is scrolled into view on each render.
 - verify: visible(locator="#palette-results .presult[aria-selected='true']", text="{repo} #{short_handle}")
-- code: groom/groom/assets/dashboard.js::PaletteResults
-- code: groom/groom/assets/dashboard.js::paletteHits
+- code: groom/groom/assets/dashboard.js::PaletteResults@9b3683b0ffb1
+- code: groom/groom/assets/dashboard.js::paletteHits@9b3683b0ffb1
 - detail: [command palette result presentation](../../concepts/command-palette-result-presentation.md)
 - props:
   - `id`: `presult-{index}`; required; the target of the palette input's `aria-activedescendant`.
@@ -1078,7 +1094,7 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - verify: json_path(path="states.expiration.blocked_seconds", equals=7)
 - states: removed on its own timer — three and a half seconds for a confirmation.
 - verify: json_path(path="states.expiration.confirmation_seconds", equals=3.5)
-- code: groom/groom/assets/dashboard.js::pushToast
+- code: groom/groom/assets/dashboard.js::pushToast@9b3683b0ffb1
 - dom: `aria-live="assertive"`, because a worker blocking is the one thing on this page worth interrupting for. Titles and bodies are set as text nodes, never as markup.
 
 ## Interactions
@@ -1184,8 +1200,8 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - does:
   - Performs no permission prompt.
 - verify: count(subject="permission prompts", equals=0)
-- code: groom/groom/assets/dashboard.js::setMode
-- code: groom/groom/assets/dashboard.js::closeRepoMenu
+- code: groom/groom/assets/dashboard.js::setMode@9b3683b0ffb1
+- code: groom/groom/assets/dashboard.js::closeRepoMenu@9b3683b0ffb1
 - detail: [dashboard mode selection](../../concepts/dashboard-mode-selection.md)
 - detail: [repository menu closing contexts](../../concepts/repository-menu-closing-contexts.md)
 
@@ -1292,10 +1308,10 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - does:
   - Leaves the socket untouched.
 - verify: unchanged(subject="socket")
-- code: groom/groom/assets/dashboard.js::setMode
-- code: groom/groom/assets/dashboard.js::loadFiles
-- code: groom/groom/assets/dashboard.js::FilesTree
-- code: groom/groom/assets/dashboard.js::buildTree
+- code: groom/groom/assets/dashboard.js::setMode@9b3683b0ffb1
+- code: groom/groom/assets/dashboard.js::loadFiles@9b3683b0ffb1
+- code: groom/groom/assets/dashboard.js::FilesTree@9b3683b0ffb1
+- code: groom/groom/assets/dashboard.js::buildTree@9b3683b0ffb1
 - detail: [dashboard mode selection](../../concepts/dashboard-mode-selection.md)
 
 ### select-activity-diff-mode
@@ -1347,9 +1363,9 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - does:
   - Leaves the selected run, the fleet, the detail pane, the palette, the status bar, and the socket untouched.
 - verify: unchanged(subject="dashboard state outside diff mode")
-- code: groom/groom/assets/dashboard.js::setMode
-- code: groom/groom/assets/dashboard.js::loadDiff
-- code: groom/groom/assets/dashboard.js::DiffTree
+- code: groom/groom/assets/dashboard.js::setMode@9b3683b0ffb1
+- code: groom/groom/assets/dashboard.js::loadDiff@9b3683b0ffb1
+- code: groom/groom/assets/dashboard.js::DiffTree@9b3683b0ffb1
 - detail: [dashboard mode selection](../../concepts/dashboard-mode-selection.md)
 - detail: [dashboard Diff pane selection contexts](../../concepts/dashboard-diff-pane-selection-contexts.md)
 
@@ -1387,7 +1403,7 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - verify: absent(subject="loader")
 - verify: absent(subject="permission dialog")
 - verify: unchanged(subject="application state", except_fields=["mode", "active", "aria-pressed", "repository menu"])
-- code: groom/groom/assets/dashboard.js::setMode
+- code: groom/groom/assets/dashboard.js::setMode@9b3683b0ffb1
 - detail: [dashboard mode selection](../../concepts/dashboard-mode-selection.md)
 - screenshot: docs/services/groom/gui/screenshots/operator-refreshes-workflow-fleet-settings-idle.png
 
@@ -1441,9 +1457,9 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - does:
   - Performs no websocket send.
 - verify: count(subject="outbound websocket sends after filter input", equals=0)
-- code: groom/groom/assets/dashboard.js::wireEvents
-- code: groom/groom/assets/dashboard.js::Fleet
-- code: groom/groom/assets/dashboard.js::rowHaystack
+- code: groom/groom/assets/dashboard.js::wireEvents@9b3683b0ffb1
+- code: groom/groom/assets/dashboard.js::Fleet@9b3683b0ffb1
+- code: groom/groom/assets/dashboard.js::rowHaystack@9b3683b0ffb1
 - detail: [dashboard event wiring interaction contexts](../../concepts/dashboard-event-wiring-interaction-contexts.md)
 - tests: groom/tests/test_projection.py::test_query_filters_the_fleet
 
@@ -1491,9 +1507,9 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
   - verify: unchanged(subject="active dashboard mode after selecting a run")
   - Does not mutate server state beyond the watch subscription.
   - verify: unchanged(subject="server state except the selecting tab's watch subscription")
-- code: groom/groom/assets/dashboard.js::select
-- code: groom/groom/assets/dashboard.js::onDetail
-- code: groom/groom/assets/dashboard.js::RunRow
+- code: groom/groom/assets/dashboard.js::select@9b3683b0ffb1
+- code: groom/groom/assets/dashboard.js::onDetail@9b3683b0ffb1
+- code: groom/groom/assets/dashboard.js::RunRow@9b3683b0ffb1
 - detail: [dashboard run selector](../../concepts/dashboard-run-selector.md)
 - tests: groom/tests/test_app.py::test_watch_registers_the_tab_and_pushes_that_run_immediately
 - tests: groom/tests/test_app.py::test_a_detail_push_reaches_only_the_tabs_watching_that_run
@@ -1535,9 +1551,9 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - does:
   - Does nothing when the list is empty.
 - verify: json_path(path="selection.empty_list_does_nothing", equals=true)
-- code: groom/groom/assets/dashboard.js::wireEvents
-- code: groom/groom/assets/dashboard.js::select
-- code: groom/groom/assets/dashboard.js::setMode
+- code: groom/groom/assets/dashboard.js::wireEvents@9b3683b0ffb1
+- code: groom/groom/assets/dashboard.js::select@9b3683b0ffb1
+- code: groom/groom/assets/dashboard.js::setMode@9b3683b0ffb1
 - detail: [dashboard mode selection](../../concepts/dashboard-mode-selection.md)
 - detail: [dashboard run selector](../../concepts/dashboard-run-selector.md)
 - detail: [dashboard event wiring interaction contexts](../../concepts/dashboard-event-wiring-interaction-contexts.md)
@@ -1607,9 +1623,9 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - does:
   - Leaves the previously selected repository, both picker labels, and the loaded files pane untouched until an option is chosen.
 - verify: unchanged(subject="the selected repository, both picker labels, and the loaded files pane")
-- code: groom/groom/assets/dashboard.js::openRepoMenu
-- code: groom/groom/assets/dashboard.js::closeRepoMenu
-- code: groom/groom/assets/dashboard.js::wireEvents
+- code: groom/groom/assets/dashboard.js::openRepoMenu@9b3683b0ffb1
+- code: groom/groom/assets/dashboard.js::closeRepoMenu@9b3683b0ffb1
+- code: groom/groom/assets/dashboard.js::wireEvents@9b3683b0ffb1
 - detail: [shared repository picker flow contexts](../../concepts/shared-repository-picker-flow-contexts.md)
 - detail: [repository menu closing contexts](../../concepts/repository-menu-closing-contexts.md)
 - detail: [dashboard event wiring interaction contexts](../../concepts/dashboard-event-wiring-interaction-contexts.md)
@@ -1646,8 +1662,8 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - does:
   - Fetches `GET /repos` fresh on every open, so a container that appeared or vanished since the last open is reflected.
 - verify: count(subject="GET /repos requests after opening the diff picker twice", equals=2)
-- code: groom/groom/assets/dashboard.js::openRepoMenu
-- code: groom/groom/assets/dashboard.js::wireEvents
+- code: groom/groom/assets/dashboard.js::openRepoMenu@9b3683b0ffb1
+- code: groom/groom/assets/dashboard.js::wireEvents@9b3683b0ffb1
 - detail: [shared repository picker flow contexts](../../concepts/shared-repository-picker-flow-contexts.md)
 - detail: [dashboard event wiring interaction contexts](../../concepts/dashboard-event-wiring-interaction-contexts.md)
 
@@ -1686,10 +1702,10 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - verify: visible(locator="#repo-menu-wrap .repo-item.active", text="acme / web-app")
 - verify: count(subject="repository fetches", equals=0)
 - verify: count(subject="repository fetches while the menu is open", equals=1)
-- code: groom/groom/assets/dashboard.js::wireEvents
-- code: groom/groom/assets/dashboard.js::repoItems
-- code: groom/groom/assets/dashboard.js::RepoMenu
-- code: groom/groom/assets/dashboard.js::moveRepoActive
+- code: groom/groom/assets/dashboard.js::wireEvents@9b3683b0ffb1
+- code: groom/groom/assets/dashboard.js::repoItems@9b3683b0ffb1
+- code: groom/groom/assets/dashboard.js::RepoMenu@9b3683b0ffb1
+- code: groom/groom/assets/dashboard.js::moveRepoActive@9b3683b0ffb1
 - detail: [dashboard event wiring interaction contexts](../../concepts/dashboard-event-wiring-interaction-contexts.md)
 
 ### select-repository-menu-option
@@ -1749,9 +1765,9 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - does:
   - Retains the search text, deferring the clear to the next [open-diff-repository-picker](#open-diff-repository-picker), which resets the query itself.
 - verify: json_path(path="repo.search.value", equals="web")
-- code: groom/groom/assets/dashboard.js::selectRepo
-- code: groom/groom/assets/dashboard.js::loadActivePane
-- code: groom/groom/assets/dashboard.js::closeRepoMenu
+- code: groom/groom/assets/dashboard.js::selectRepo@9b3683b0ffb1
+- code: groom/groom/assets/dashboard.js::loadActivePane@9b3683b0ffb1
+- code: groom/groom/assets/dashboard.js::closeRepoMenu@9b3683b0ffb1
 - detail: [repository menu closing contexts](../../concepts/repository-menu-closing-contexts.md)
 
 ### toggle-files-directory
@@ -1795,7 +1811,7 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - does:
   - Issues no request.
 - verify: count(subject="HTTP requests", equals=0)
-- code: groom/groom/assets/dashboard.js::TreeDir
+- code: groom/groom/assets/dashboard.js::TreeDir@9b3683b0ffb1
 - detail: [dashboard tree flow selection](../../concepts/dashboard-tree-flow-selection.md)
 
 ### select-files-file-row
@@ -1821,9 +1837,9 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
   - Highlights the content with highlight.js when it is available, falling back to a plain text node when the library is absent or throws — the highlighted output is escaped HTML, which is why it may be set as markup at all.
   - Marks this row `active` with `aria-current="true"` and clears the marking from the previously open row.
   - Stores an error status on rejection, rendered as `failed to load`.
-- code: groom/groom/assets/dashboard.js::openFile
-- code: groom/groom/assets/dashboard.js::FileView
-- code: groom/groom/assets/dashboard.js::highlight
+- code: groom/groom/assets/dashboard.js::openFile@9b3683b0ffb1
+- code: groom/groom/assets/dashboard.js::FileView@9b3683b0ffb1
+- code: groom/groom/assets/dashboard.js::highlight@9b3683b0ffb1
 - screenshot: docs/services/groom/gui/screenshots/operator-browses-workspace-file-file-loaded.png
 
 ### toggle-diff-directory
@@ -1858,7 +1874,7 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - does:
   - Issues no request.
 - verify: count(subject="HTTP requests", equals=0)
-- code: groom/groom/assets/dashboard.js::TreeDir
+- code: groom/groom/assets/dashboard.js::TreeDir@9b3683b0ffb1
 - detail: [dashboard tree flow selection](../../concepts/dashboard-tree-flow-selection.md)
 
 ### select-diff-file-row
@@ -1887,8 +1903,8 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
   - Marks this row `active` with `aria-current="true"` and clears the previous row's marking.
 - does:
   - Renders nothing but the selection prompt when the index points at no file.
-- code: groom/groom/assets/dashboard.js::DiffTree
-- code: groom/groom/assets/dashboard.js::DiffView
+- code: groom/groom/assets/dashboard.js::DiffTree@9b3683b0ffb1
+- code: groom/groom/assets/dashboard.js::DiffView@9b3683b0ffb1
 - detail: [dashboard Diff pane selection contexts](../../concepts/dashboard-diff-pane-selection-contexts.md)
 - screenshot: docs/services/groom/gui/screenshots/operator-inspects-working-tree-diff-file-selected.png
 
@@ -1910,8 +1926,8 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
   - Changes nothing but the field's own value — there is no input handler, no draft written to the store, and no request.
   - Survives the fleet's 5-second push: the gate block is keyed by gate file path, so Preact reuses the same `<textarea>` DOM node across re-renders and neither the text nor the caret is lost.
   - Survives a pushed `detail` frame for the same run for the same reason, including one carrying a newly opened gate for a different file.
-- code: groom/groom/assets/dashboard.js::AnswerForm
-- code: groom/groom/assets/dashboard.js::GateBlock
+- code: groom/groom/assets/dashboard.js::AnswerForm@9b3683b0ffb1
+- code: groom/groom/assets/dashboard.js::GateBlock@9b3683b0ffb1
 - screenshot: docs/services/groom/gui/screenshots/operator-answers-blocked-gate-answer-typed.png
 
 ### send-detail-answer
@@ -2057,8 +2073,8 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - does:
   - Shows no diff from the previous run in a newly opened run.
 - verify: omits(subject="new run's working-tree diff", text="previous run's diff")
-- code: groom/groom/assets/dashboard.js::DiffDisclosure
-- code: groom/groom/assets/dashboard.js::diffMarkup
+- code: groom/groom/assets/dashboard.js::DiffDisclosure@9b3683b0ffb1
+- code: groom/groom/assets/dashboard.js::diffMarkup@9b3683b0ffb1
 - screenshot: docs/services/groom/gui/screenshots/operator-inspects-working-tree-diff-detail-disclosure-expanded.png
 
 ### rescan-containers-from-settings
@@ -2127,7 +2143,7 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - does:
   - Retains the existing fleet when Docker availability cannot be determined, so a transient outage does not empty the dashboard.
 - verify: unchanged(subject="state.WORKFLOWS['keep']")
-- code: groom/groom/assets/dashboard.js::doRefresh
+- code: groom/groom/assets/dashboard.js::doRefresh@9b3683b0ffb1
 - detail: [dashboard rescan control selection](../../concepts/dashboard-rescan-control-selection.md)
 - tests: groom/tests/test_app.py::test_refresh_prunes_vanished_containers
 - tests: groom/tests/test_app.py::test_refresh_skips_prune_when_docker_unavailable
@@ -2162,8 +2178,8 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - does:
   - Uses a longer accessible name than the settings control because both controls are visible in settings mode and matching role and names would make them indistinguishable to a screen reader and `getByRole`.
 - verify: json_path(path="accessibility.statusbar_refresh_button.name", equals="Rescan containers (reconcile + prune)")
-- code: groom/groom/assets/dashboard.js::doRefresh
-- code: groom/groom/assets/dashboard.js::StatusBar
+- code: groom/groom/assets/dashboard.js::doRefresh@9b3683b0ffb1
+- code: groom/groom/assets/dashboard.js::StatusBar@9b3683b0ffb1
 - detail: [dashboard rescan control selection](../../concepts/dashboard-rescan-control-selection.md)
 - screenshot: docs/services/groom/gui/screenshots/operator-refreshes-workflow-fleet-post-scan.png
 
@@ -2205,8 +2221,8 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - does:
   - The first-click path requires a user gesture because browsers ignore an unprompted permission dialog.
 - verify: emitted(event="browser notification permission request", count=0)
-- code: groom/groom/assets/dashboard.js::wireEvents
-- code: groom/groom/assets/dashboard.js::onNotify
+- code: groom/groom/assets/dashboard.js::wireEvents@9b3683b0ffb1
+- code: groom/groom/assets/dashboard.js::onNotify@9b3683b0ffb1
 - detail: [dashboard event wiring interaction contexts](../../concepts/dashboard-event-wiring-interaction-contexts.md)
 
 ### toggle-command-palette-shortcut
@@ -2293,9 +2309,9 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - does:
   - Leaves server state unchanged.
 - verify: unchanged(subject="server state")
-- code: groom/groom/assets/dashboard.js::openPalette
-- code: groom/groom/assets/dashboard.js::closePalette
-- code: groom/groom/assets/dashboard.js::wireEvents
+- code: groom/groom/assets/dashboard.js::openPalette@9b3683b0ffb1
+- code: groom/groom/assets/dashboard.js::closePalette@9b3683b0ffb1
+- code: groom/groom/assets/dashboard.js::wireEvents@9b3683b0ffb1
 - detail: [dashboard event wiring interaction contexts](../../concepts/dashboard-event-wiring-interaction-contexts.md)
 
 ### filter-command-palette-results
@@ -2327,9 +2343,9 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - does:
   - Sends no request (the fleet is already in the browser).
 - verify: count(subject="HTTP requests", equals=0)
-- code: groom/groom/assets/dashboard.js::paletteHits
-- code: groom/groom/assets/dashboard.js::PaletteResults
-- code: groom/groom/assets/dashboard.js::movePaletteActive
+- code: groom/groom/assets/dashboard.js::paletteHits@9b3683b0ffb1
+- code: groom/groom/assets/dashboard.js::PaletteResults@9b3683b0ffb1
+- code: groom/groom/assets/dashboard.js::movePaletteActive@9b3683b0ffb1
 
 ### select-command-palette-result
 
@@ -2352,8 +2368,8 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
   - Selects that run through the same selector the row click and the `j`/`k` keys use: store write, watch subscription, one detail fetch.
   - Closes the palette and returns focus to whatever opened it.
   - Chooses by run id rather than by rendered position, so the result list re-rendering under a concurrent push cannot open the wrong run.
-- code: groom/groom/assets/dashboard.js::choosePaletteHit
-- code: groom/groom/assets/dashboard.js::select
-- code: groom/groom/assets/dashboard.js::setMode
+- code: groom/groom/assets/dashboard.js::choosePaletteHit@9b3683b0ffb1
+- code: groom/groom/assets/dashboard.js::select@9b3683b0ffb1
+- code: groom/groom/assets/dashboard.js::setMode@9b3683b0ffb1
 - detail: [dashboard mode selection](../../concepts/dashboard-mode-selection.md)
 - detail: [dashboard run selector](../../concepts/dashboard-run-selector.md)

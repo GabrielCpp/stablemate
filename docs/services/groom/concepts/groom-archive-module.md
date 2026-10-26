@@ -13,7 +13,7 @@ Order matters and is the fail-closed half of the contract. The file is written t
 
 Nothing here may raise into groom's tick. The sweep catches per run, records the failure in its result, and continues; a run that fails today is simply eligible again on the next pass.
 
-- code: groom/groom/archive.py
+- code: groom/groom/archive.py@994ef893ef67
 - refs: [groom state module](groom-state-module.md), [groom projection module](groom-projection-module.md)
 
 The archival contract is covered by `groom/tests/test_archive.py`.
@@ -37,7 +37,7 @@ The archival contract is covered by `groom/tests/test_archive.py`.
 - type: `float`
 - default: `21600.0` (six hours), from `GROOM_ARCHIVE_EVERY_S`
 - required: true
-- code: groom/groom/archive.py::ARCHIVE_EVERY_S
+- code: groom/groom/archive.py::ARCHIVE_EVERY_S@994ef893ef67
 - meaning: how often the background task sweeps. The task is seeded already-expired, so a `groom serve` launch runs one pass immediately rather than six hours later.
 
 ### field-runs-per-pass
@@ -45,7 +45,7 @@ The archival contract is covered by `groom/tests/test_archive.py`.
 - type: `int`
 - default: `25`, from `GROOM_ARCHIVE_RUNS_PER_PASS`
 - required: true
-- code: groom/groom/archive.py::RUNS_PER_PASS
+- code: groom/groom/archive.py::RUNS_PER_PASS@994ef893ef67
 - meaning: how many runs one pass may archive, oldest first. The bound is what keeps a first sweep over a year of backlog from holding the writer for an hour; the remainder is reported as pending and taken next pass.
 
 ### field-telemetry-file
@@ -53,7 +53,7 @@ The archival contract is covered by `groom/tests/test_archive.py`.
 - type: `str`
 - default: `telemetry.jsonl`
 - required: true
-- code: groom/groom/archive.py::TELEMETRY_FILE
+- code: groom/groom/archive.py::TELEMETRY_FILE@994ef893ef67
 - meaning: the file's name inside an archived run directory. One name, so a reader needs no glob.
 
 ## Structures
@@ -62,7 +62,7 @@ The archival contract is covered by `groom/tests/test_archive.py`.
 
 Dataclass that records the outcome of one archival pass for reporting to operators and for `groom archive status` to compute current state.
 
-- code: groom/groom/archive.py::SweepResult
+- code: groom/groom/archive.py::SweepResult@994ef893ef67
 
 #### field: archived
 
@@ -70,7 +70,7 @@ Dataclass that records the outcome of one archival pass for reporting to operato
 - default: `[]`
 - required: false
 - semantics: the run ids successfully moved to the archives in this pass
-- code: groom/groom/archive.py::SweepResult.archived
+- code: groom/groom/archive.py::SweepResult.archived@994ef893ef67
 
 #### field-resumed
 
@@ -78,7 +78,7 @@ Dataclass that records the outcome of one archival pass for reporting to operato
 - default: `[]`
 - required: false
 - semantics: the run ids whose archive already existed from a prior pass, requiring no file rewrite — an interrupted sweep's signal
-- code: groom/groom/archive.py::SweepResult.resumed
+- code: groom/groom/archive.py::SweepResult.resumed@994ef893ef67
 
 #### field-failed
 
@@ -86,7 +86,7 @@ Dataclass that records the outcome of one archival pass for reporting to operato
 - default: `{}`
 - required: false
 - semantics: mapping of run id to error message for runs that could not be archived; the run remains in SQL and is eligible for retry
-- code: groom/groom/archive.py::SweepResult.failed
+- code: groom/groom/archive.py::SweepResult.failed@994ef893ef67
 
 #### field-held
 
@@ -94,7 +94,7 @@ Dataclass that records the outcome of one archival pass for reporting to operato
 - default: `[]`
 - required: false
 - semantics: the run ids whose newest record predates the retention cutoff but which are still emitting telemetry, so neither archived nor pruned
-- code: groom/groom/archive.py::SweepResult.held
+- code: groom/groom/archive.py::SweepResult.held@994ef893ef67
 
 #### field-pending
 
@@ -102,7 +102,7 @@ Dataclass that records the outcome of one archival pass for reporting to operato
 - default: `0`
 - required: false
 - semantics: the count of runs eligible for archival but not yet archived in this pass, because the pass was bounded by `limit`
-- code: groom/groom/archive.py::SweepResult.pending
+- code: groom/groom/archive.py::SweepResult.pending@994ef893ef67
 
 #### field-rows
 
@@ -110,7 +110,7 @@ Dataclass that records the outcome of one archival pass for reporting to operato
 - default: `0`
 - required: false
 - semantics: the total number of telemetry rows deleted from SQL in this pass
-- code: groom/groom/archive.py::SweepResult.rows
+- code: groom/groom/archive.py::SweepResult.rows@994ef893ef67
 
 #### field-bytes
 
@@ -118,7 +118,7 @@ Dataclass that records the outcome of one archival pass for reporting to operato
 - default: `0`
 - required: false
 - semantics: the total size in bytes of all telemetry files written in this pass
-- code: groom/groom/archive.py::SweepResult.bytes
+- code: groom/groom/archive.py::SweepResult.bytes@994ef893ef67
 
 #### field-started
 
@@ -126,7 +126,7 @@ Dataclass that records the outcome of one archival pass for reporting to operato
 - default: `0.0`
 - required: false
 - semantics: Unix timestamp when this pass began
-- code: groom/groom/archive.py::SweepResult.started
+- code: groom/groom/archive.py::SweepResult.started@994ef893ef67
 
 #### field-finished
 
@@ -134,7 +134,7 @@ Dataclass that records the outcome of one archival pass for reporting to operato
 - default: `0.0`
 - required: false
 - semantics: Unix timestamp when this pass completed
-- code: groom/groom/archive.py::SweepResult.finished
+- code: groom/groom/archive.py::SweepResult.finished@994ef893ef67
 
 #### method-as_dict
 
@@ -144,7 +144,7 @@ Dataclass that records the outcome of one archival pass for reporting to operato
 - verify: json_path(path="archived", matches="^\\[.*\\]$")
 - returns: a dictionary with all fields listed above as top-level keys
 - raises: none intentionally raised
-- code: groom/groom/archive.py::SweepResult.as_dict
+- code: groom/groom/archive.py::SweepResult.as_dict@994ef893ef67
 
 ## Methods
 
@@ -156,7 +156,7 @@ Dataclass that records the outcome of one archival pass for reporting to operato
 - verify: created(subject="archives root path")
 - raises: none intentionally raised.
 - verify: json_path(path="exception.type", absent=True)
-- code: groom/groom/archive.py::archives_root
+- code: groom/groom/archive.py::archives_root@994ef893ef67
 
 ### method-archive-dirs
 
@@ -167,7 +167,7 @@ Dataclass that records the outcome of one archival pass for reporting to operato
 - does: Catches and recovers from OSError by returning an empty list, so the caller need not handle filesystem unavailability
 - verify: json_path(path="exception.type", absent=True)
 - raises: none intentionally raised into the caller
-- code: groom/groom/archive.py::archive_dirs
+- code: groom/groom/archive.py::archive_dirs@994ef893ef67
 
 ### method-is-archived
 
@@ -178,7 +178,7 @@ Dataclass that records the outcome of one archival pass for reporting to operato
 - raises: none intentionally raised.
 - verify: json_path(path="exception.type", absent=True)
 - returns: `True` if the run has been archived with a complete telemetry file; `False` otherwise
-- code: groom/groom/archive.py::is_archived
+- code: groom/groom/archive.py::is_archived@994ef893ef67
 
 ### method-archived-run-ids
 
@@ -188,7 +188,7 @@ Dataclass that records the outcome of one archival pass for reporting to operato
 - verify: created(subject="set of archived run ids")
 - raises: none intentionally raised.
 - verify: json_path(path="exception.type", absent=True)
-- code: groom/groom/archive.py::archived_run_ids
+- code: groom/groom/archive.py::archived_run_ids@994ef893ef67
 
 ### method-manifest
 
@@ -200,7 +200,7 @@ Dataclass that records the outcome of one archival pass for reporting to operato
 - verify: json_path(path="$", matches="^\\{\\}$")
 - raises: none intentionally raised.
 - verify: json_path(path="exception.type", absent=True)
-- code: groom/groom/archive.py::manifest
+- code: groom/groom/archive.py::manifest@994ef893ef67
 
 ### method-eligible
 
@@ -210,7 +210,7 @@ Dataclass that records the outcome of one archival pass for reporting to operato
 - verify: created(subject="archivable and held run lists")
 - raises: none intentionally raised.
 - verify: json_path(path="exception.type", absent=True)
-- code: groom/groom/archive.py::eligible
+- code: groom/groom/archive.py::eligible@994ef893ef67
 - step: Skip scratch test runs, which prune deletes without an archive.
 - step: Treat a run as archivable only when its newest record predates the cutoff and it has rows — a run still emitting is held whole rather than half-archived.
 - step: Sort both lists by newest record, so a bounded pass drains the oldest backlog first.
@@ -223,7 +223,7 @@ Dataclass that records the outcome of one archival pass for reporting to operato
 - verify: emitted(event="record")
 - raises: none intentionally raised.
 - verify: json_path(path="exception.type", absent=True)
-- code: groom/groom/archive.py::records
+- code: groom/groom/archive.py::records@994ef893ef67
 
 ### method-write-telemetry
 
@@ -238,7 +238,7 @@ Dataclass that records the outcome of one archival pass for reporting to operato
 - raises: `RuntimeError` when the written counts do not match the store's, so a short file is never renamed into place.
 - raises: `OSError` from the file system, which leaves the run in SQL.
 - returns: The file's size in bytes
-- code: groom/groom/archive.py::write_telemetry
+- code: groom/groom/archive.py::write_telemetry@994ef893ef67
 
 ### method-derived-name
 
@@ -248,7 +248,7 @@ Dataclass that records the outcome of one archival pass for reporting to operato
 - verify: created(subject="derived name string")
 - raises: none intentionally raised.
 - verify: json_path(path="exception.type", absent=True)
-- code: groom/groom/archive.py::derived_name
+- code: groom/groom/archive.py::derived_name@994ef893ef67
 
 ### method-archive-run
 
@@ -257,10 +257,10 @@ Dataclass that records the outcome of one archival pass for reporting to operato
 - does: Writes one run's telemetry into its live directory, moves that directory into the frozen root, and deletes the run's rows from SQL — in that order.
 - verify: created(subject="run archive")
 - raises: `RuntimeError` when both the run's own name and its derived name are taken by archives that describe a different run.
-- verify: created(subject="a RuntimeError because archive names are unavailable")
 - verify: json_path(path="exception.type", equals="RuntimeError")
 - returns: `(destination, rows_deleted)` where `destination` is the frozen archive path or `None` if the archive already existed, and `rows_deleted` is the count of telemetry rows removed from SQL
-- code: groom/groom/archive.py::archive_run
+- verify: created(subject="frozen archive destination path")
+- code: groom/groom/archive.py::archive_run@994ef893ef67
 - step: Return `(None, 0)` when a matching archive already exists, which is how an interrupted sweep is told apart from a name collision: the manifest either describes this run or it does not.
 
 ### method-sweep
@@ -271,31 +271,31 @@ Dataclass that records the outcome of one archival pass for reporting to operato
 - verify: created(subject="archived runs")
 - raises: none intentionally raised.
 - verify: json_path(path="exception.type", absent=True)
-- code: groom/groom/archive.py::sweep
+- code: groom/groom/archive.py::sweep@994ef893ef67
 
 ### method-status
 
 - sig: `status(now: float | None = None) -> dict`
 - abstract: false
 - does: Reads the frozen root and pending run information to compute the current archive status.
-- verify: json_path(path="root", matches=".+")
+- verify: unchanged(subject="SQL run rows")
 - raises: none intentionally raised.
 - verify: json_path(path="exception.type", absent=true)
 - returns: `root`, the frozen archive root path
-- verify: json_path(path="root", matches=".+")
+- verify: json_path(path="root", matches="^.*/archives$")
 - returns: `archived_runs`, the count of archived runs
-- verify: json_path(path="archived_runs", matches="[0-9]+")
+- verify: json_path(path="archived_runs", equals=0)
 - returns: `pending`, the count of runs eligible for archival but not yet archived
-- verify: json_path(path="pending", matches="[0-9]+")
+- verify: json_path(path="pending", equals=0)
 - returns: `held_by_activity`, the ids of runs whose newest record predates the cutoff but which are still emitting, held whole rather than archived
-- verify: json_path(path="held_by_activity", matches="^\\[.*\\]$")
+- verify: count(subject="run ids held by activity in a fresh archive status", equals=0)
 - returns: `every_s`, the archive task's sweep cadence in seconds
-- verify: json_path(path="every_s", matches="[0-9.]+")
+- verify: json_path(path="every_s", equals=21600)
 - returns: `runs_per_pass`, the archive task's per-pass batch size
-- verify: json_path(path="runs_per_pass", matches="[0-9]+")
+- verify: json_path(path="runs_per_pass", equals=25)
 - returns: `last_sweep`, the previous sweep's statistics, or `None` when no sweep has run yet
-- verify: json_path(path="last_sweep", matches=".*")
-- code: groom/groom/archive.py::status
+- verify: json_path(path="last_sweep", matches="^null$")
+- code: groom/groom/archive.py::status@994ef893ef67
 
 ## Algorithms
 

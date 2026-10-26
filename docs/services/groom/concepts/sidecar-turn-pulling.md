@@ -9,7 +9,7 @@ Sidecar turn pulling is the transport that retrieves a container's turn-record s
 
 The puller stays non-authoritative by design: if it never connects, or a pull fails halfway, that container's records are simply absent from the archive. Nothing in the pulling path may raise into the socket loop, because the loop is also responsible for the live frames the human is watching.
 
-- code: groom/groom/sidecar_turns.py
+- code: groom/groom/sidecar_turns.py@2c105333701f
 - tests: groom/tests/test_sidecar_turns.py
 
 ## Contract
@@ -30,8 +30,8 @@ The puller does not raise into the socket loop on any failure; a missing sidecar
 - abstract: false
 - does: return the archive-relative path where fetched run dirs are mirrored during pulling.
 - returns: `Path` pointing to `<transcripts_root>/.incoming`, the cache directory under the archive root.
-- verify: visible(locator="<transcripts_root>/.incoming")
-- code: groom/groom/sidecar_turns.py::staging_root
+- verify: json_path(path="$", equals="e1/transcripts/.incoming")
+- code: groom/groom/sidecar_turns.py::staging_root@2c105333701f
 - tests: groom/tests/test_sidecar_turns.py::test_staging_root_returns_archive_incoming_dir
 
 ### method-pull
@@ -41,7 +41,7 @@ The puller does not raise into the socket loop on any failure; a missing sidecar
 - does: mirror one container's run-record surface from the sidecar into the staging tree and archive it.
 - raises: all exceptions are caught and logged at debug level and do not propagate.
 - returns: count of records archived by `harvest_run` on the staged tree.
-- code: groom/groom/sidecar_turns.py::pull
+- code: groom/groom/sidecar_turns.py::pull@2c105333701f
 - tests: groom/tests/test_sidecar_turns.py::test_pull_lists_files_from_sidecar
 - persistence: run-records — fetched turn records are written to the staging tree at `<staging>/<container_id>/<run>/<path>`.
 - verify: persists(subject="fetched turn records in staging tree")
@@ -58,7 +58,7 @@ The method fetches the file listing via `conn.rpc("listTurns")`, then fetches ea
 - abstract: false
 - does: enqueue a pull without waiting for it.
 - does: return immediately while the pull completes asynchronously.
-- code: groom/groom/sidecar_turns.py::schedule
+- code: groom/groom/sidecar_turns.py::schedule@2c105333701f
 - tests: groom/tests/test_sidecar_turns.py::test_schedule_enqueues_async_without_blocking
 - emits: one async task is enqueued in the event loop for the container if no pull is already in flight.
 - verify: emitted(event="pull_task_enqueued", count=1)

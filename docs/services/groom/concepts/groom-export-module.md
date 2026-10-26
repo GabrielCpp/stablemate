@@ -11,7 +11,7 @@ The export reads the store's turn index to classify sessions by their node, stre
 
 The output format is stable for interchange: every session is one JSON object in a side-by-side tree where a node's sessions are grouped by source classifier, and a downstream tool never needs to know about the run id, only about which node, which source, and which session — the coordinates written into each filename.
 
-- code: groom/groom/export.py
+- code: groom/groom/export.py@2cdfb86b0ac0
 - extends: [groom archive module](groom-archive-module.md)
 - tests: groom/tests/test_export.py
 
@@ -22,14 +22,17 @@ The output format is stable for interchange: every session is one JSON object in
 - sig: `export_by_node(target_dir: Path, *, workflow: str = "", run: str = "", node: str = "", limit: int = 1_000_000) -> dict[str, Any]`
 - abstract: false
 - does: Materializes the archive under `target_dir` into the layout `<workflow>/<node>/<source>__<session_id>.json`, one JSON object per session with its streamed transcript
+- verify: created(subject="target_dir/<workflow>/<node>/<source>__<session_id>.json")
 - does: Filters turns by workflow, run, node, and limits the total to `limit` rows from the store query, so a re-export of a subset is bounded
+- verify: count(subject="session JSON files written when limit=1", equals=1)
 - does: Records sessions with no transcript as entries with an empty message list, rather than dropping them, so the export agrees with `transcript ls` about node run counts
+- verify: count(subject="session JSON files written for a session with no transcript", equals=1)
 - does: Creates `INDEX.json` at the root with one entry per written session, including metadata (task, source, session_id, run_id, workflow, generation, seq, time_created, n_messages, cwd, model, bytes, has_prompt) and the relative path to the session file
-- raises: `OSError` if a session's transcript cannot be read, caught and logged before the next session
-- verify: created(subject="session JSON files under target_dir")
 - verify: created(subject="INDEX.json")
+- raises: `OSError` if a session's transcript cannot be read, caught and logged before the next session
+- verify: json_path(path="exception.type", absent=true)
 - returns: a dict with `sessions` (count of exported sessions) and `dir` (the target directory as a string)
-- code: groom/groom/export.py::export_by_node
+- code: groom/groom/export.py::export_by_node@2cdfb86b0ac0
 
 ## Data format
 
@@ -70,7 +73,7 @@ A JSON object written to `INDEX.json` with structure:
 - sig: `_safe(value: str, fallback: str) -> str`
 - abstract: false
 - does: Sanitizes a string for use in a path component by replacing anything not alphanumeric, `.`, `_`, `-` with `_`, stripping leading/trailing unsafe chars, and falling back to `fallback` if the result is empty
-- code: groom/groom/export.py::_safe
+- code: groom/groom/export.py::_safe@2cdfb86b0ac0
 - verify: matches(subject="sanitized output", pattern="^[A-Za-z0-9._-]*$|^fallback$")
 
 ### method-_iso
@@ -78,19 +81,19 @@ A JSON object written to `INDEX.json` with structure:
 - sig: `_iso(ts: Any) -> str`
 - abstract: false
 - does: Converts a Unix timestamp (float or string-float) to ISO 8601 format, returning an empty string on any parse or range error
-- code: groom/groom/export.py::_iso
+- code: groom/groom/export.py::_iso@2cdfb86b0ac0
 
 ### method: _message_of
 
 - sig: `_message_of(entry: dict[str, Any]) -> dict[str, Any] | None`
 - abstract: false
 - does: Extracts the message from a transcript entry, handling both nested and flat structures
-- verify: json_path(path="$.role", matches=".+")
+- verify: json_path(path="$.role", equals="assistant")
 - does: Returns `None` if the entry has no role or content
 - verify: absent(subject="message dict")
 - does: Includes model in the result if present
-- verify: json_path(path="$.model", matches=".+")
-- code: groom/groom/export.py::_message_of
+- verify: json_path(path="$.model", equals="claude-sonnet-5")
+- code: groom/groom/export.py::_message_of@2cdfb86b0ac0
 
 ### method-_transcript_lines
 
@@ -99,7 +102,7 @@ A JSON object written to `INDEX.json` with structure:
 - does: Parses records from either `transcript.jsonl` (line-by-line) or `transcript.json` (array in payload)
 - does: Skips empty lines and invalid JSON silently, recovering from truncated lines by continuing to the next record
 - does: Handles both flat and nested message formats, extracting model and cwd when present
-- code: groom/groom/export.py::_transcript_lines
+- code: groom/groom/export.py::_transcript_lines@2cdfb86b0ac0
 
 ### method: _write_session
 
@@ -116,12 +119,8 @@ A JSON object written to `INDEX.json` with structure:
 - does: Creates parent directories if needed for the target file
 - verify: created(subject="parent directory structure for target")
 - returns: a dict with session metadata including task, source, session_id, run_id, workflow, generation, seq, time_created, head, n_messages, cwd, model, bytes, and has_prompt
-- verify: json_path(path="$.session_id", matches=".*")
+- verify: json_path(path="$.session_id", equals="test-123")
 - raises: `OSError` if the file cannot be written
 - verify: json_path(path="exception.type", equals="OSError")
-- code: groom/groom/export.py::_write_session
-- doc_status: |
-  Extracted three normative bullets that form one claim ("Extracts cwd and model from messages") — `cwd` and `model` are optional fields that either come from messages or default to empty string. A QA scenario must provide specific message inputs to discriminate extraction from default values. The extracts are observable only with knowledge of the input transcript; two separate test scenarios (one with cwd in messages, one without) would verify the behavior, but a single observation cannot cover both. These bullets remain unbound pending QA scenarios that provide concrete test inputs.
-  
-  The `session_id` check uses a generic `matches` rather than a specific value because the session_id comes from the input row and depends on the QA scenario's setup. A scenario providing `session_id="test-123"` would verify `equals="test-123"` in practice.
+- code: groom/groom/export.py::_write_session@2cdfb86b0ac0
 

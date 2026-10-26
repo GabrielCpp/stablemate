@@ -37,9 +37,9 @@ documents why an empty kind renders no badge at all.
 - does: returns no element when `type` is empty or otherwise falsey
 - verify: absent(subject="workflow type badge for an empty type")
 - does: renders a `span` with class `badge` when `type` is non-empty
-- verify: visible(locator=".badge[data-type='coder']", text="coder")
+- verify: visible(locator="#runs-list .row[data-worker-id] .badge[data-type='coder']", text="coder")
 - does: uses the type value as both the badge text and its `data-type` value
-- verify: visible(locator=".badge[data-type='coder']", text="coder")
+- verify: visible(locator="#runs-list .row[data-worker-id] .badge[data-type='coder']", text="coder")
 - does: passes the projected hue through as the `--type-hue` inline custom property
-- verify: visible(locator=".badge[data-type='coder'][style*='--type-hue']", text="coder")
+- verify: visible(locator="#runs-list .row[data-worker-id] .badge[data-type='coder'][style*='--type-hue']", text="coder")
 - code: `groom/groom/assets/dashboard.js::TypeBadge` @9b3683b0ffb1

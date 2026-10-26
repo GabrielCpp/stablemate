@@ -7,7 +7,7 @@ title: Workspace volume file-list reader
 
 Workspace volume file-list reader is the fallback implementation used by the [serve workspace file list](../http/groom.md#serve-workspace-file-list) invocation when the connected sidecar cannot provide [workspace file list data](../formats/workspace-file-list-data.md). It is the [Groom Docker I/O module](groom-docker-io-module.md) detail for [list-files](groom-docker-io-module.md#list-files): it delegates process execution to the [Docker subprocess runner](docker-subprocess-runner.md), reads one selected checkout inside a known workspace Docker volume through a shell-free, read-only Docker command, and returns repo-relative file paths without mutating the workflow container or broadcasting dashboard updates.
 
-- code: groom/groom/docker_io.py::list_files
+- code: groom/groom/docker_io.py::list_files@9dc5eb2e112e
 - tests: groom/tests/test_docker_io.py::test_list_files_returns_repo_relative_paths_and_prunes_vendor_dirs,
   groom/tests/test_docker_io.py::test_list_files_volume_root_when_repo_dir_empty,
   groom/tests/test_docker_io.py::test_list_files_empty_on_docker_failure
@@ -60,7 +60,7 @@ Workspace volume file-list reader is the fallback implementation used by the [se
 - type: `tuple[str, ...]`
 - default: `(".git", "node_modules", "__pycache__", ".venv")`
 - required: true
-- code: groom/groom/docker_io.py::_SKIP_DIRS
+- code: groom/groom/docker_io.py::_SKIP_DIRS@9dc5eb2e112e
 - detail: [workspace volume skip directory names](workspace-volume-skip-directory-names.md)
 - meaning: directory basenames pruned from traversal before file output is collected.
 - constraints: this is the same skip set exposed by the [Groom Docker I/O module skip dirs field](groom-docker-io-module.md#field-skip-dirs) and keeps fallback file-list data aligned with the sidecar tree reader's vendor and VCS exclusions.
@@ -70,7 +70,7 @@ Workspace volume file-list reader is the fallback implementation used by the [se
 - type: Docker image reference string
 - default: `alpine:3.20`
 - required: true
-- code: groom/groom/docker_io.py::ALPINE_IMAGE
+- code: groom/groom/docker_io.py::ALPINE_IMAGE@9dc5eb2e112e
 - detail: [Docker volume helper image](docker-volume-helper-image.md)
 - meaning: minimal image used for the throwaway read-only `find` process.
 - constraints: the image must provide BusyBox-compatible `find` with `-prune` and `-print` behavior.
@@ -80,7 +80,7 @@ Workspace volume file-list reader is the fallback implementation used by the [se
 - type: `int`
 - default: `20`
 - required: true
-- code: groom/groom/docker_io.py::DOCKER_TIMEOUT
+- code: groom/groom/docker_io.py::DOCKER_TIMEOUT@9dc5eb2e112e
 - detail: [Docker command timeout](docker-command-timeout.md)
 - meaning: maximum seconds allowed for the Docker command through the shared runner.
 - constraints: a timeout exception from the subprocess layer is not converted by this reader.
@@ -131,26 +131,27 @@ prefix filtering — are stated as normative claims in [Contract](#contract) and
 
 - sig: `list_files(volume: str, repo_dir: str = "") -> list[str]`
 - abstract: false
-- does:
+- does: all
   - Builds the selected base path from `/vol` plus `repo_dir`, preserving the root case as exactly `/vol`.
   - Builds the prune expression from the shared skip directory names `.git`, `node_modules`, `__pycache__`, and `.venv`.
   - Delegates process execution to the [Docker subprocess runner](docker-subprocess-runner.md).
   - Runs one read-only `alpine:3.20` container with `find` to print non-pruned regular files.
   - Converts only matching absolute mount paths into paths relative to the selected base.
   - Sorts the resulting list before returning it.
+- verify: count(subject="returned volume-root-relative file paths", equals=2)
 - raises: propagates process launch exceptions from the [Docker subprocess runner](docker-subprocess-runner.md).
+- verify: json_path(path="exception.type", matches="^(FileNotFoundError|PermissionError)$")
 - raises: propagates timeout exceptions from the [Docker subprocess runner](docker-subprocess-runner.md).
-- raises: converts Docker process return-code failures to an empty list.
+- verify: json_path(path="exception.type", equals="TimeoutExpired")
 - returns: sorted list of selected-root-relative file paths.
 - verify: count(subject="returned repo-relative file paths", equals=2)
-- verify: count(subject="returned volume-root-relative file paths", equals=2)
 - returns: an empty list when the selected tree is empty.
 - verify: count(subject="returned file paths for an empty selected tree", equals=0)
 - returns: an empty list when the Docker process exits non-zero.
 - verify: count(subject="returned file paths after Docker failure", equals=0)
 - returns: an empty list when no stdout paths match the selected base prefix.
 - verify: count(subject="returned file paths with no matching base prefix", equals=0)
-- code: groom/groom/docker_io.py::list_files
+- code: groom/groom/docker_io.py::list_files@9dc5eb2e112e
 - detail: [List-files documentation views](list-files-documentation-views.md)
 - tests: groom/tests/test_docker_io.py::test_list_files_returns_repo_relative_paths_and_prunes_vendor_dirs,
   groom/tests/test_docker_io.py::test_list_files_volume_root_when_repo_dir_empty,

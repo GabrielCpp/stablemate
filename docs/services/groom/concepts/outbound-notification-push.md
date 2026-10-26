@@ -7,7 +7,7 @@ title: Outbound notification push
 
 Outbound notification delivery to external systems — the backend piece that reaches a phone or home-automation hub. Two independent channels, both opt-in via environment variables and both best-effort (short timeout, silent on failure — an unreachable notifier must never wedge the collector). The implementation is a thin stdlib `urllib` wrapper modeling the sidecar's fire-and-forget `_push` pattern.
 
-- code: `groom/groom/notify.py`
+- code: `groom/groom/notify.py` @9489ef757f70
 - detail: [blocked notification delivery](blocked-notification-delivery.md)
 
 ## Methods
@@ -24,7 +24,7 @@ Outbound notification delivery to external systems — the backend piece that re
 - raises: does not raise
 - raises: any failure (network unreachable, timeout, malformed URL) is silent
 - verify: absent(subject="exception")
-- code: `groom/groom/notify.py::push`
+- code: `groom/groom/notify.py::push` @9489ef757f70
 - tests: `groom/tests/test_notify.py::test_push_sends_to_ntfy_when_topic_is_configured`
 - tests: `groom/tests/test_notify.py::test_push_sends_to_webhook_when_url_is_configured`
 - tests: `groom/tests/test_notify.py::test_push_silent_on_network_error`
@@ -40,7 +40,7 @@ Outbound notification delivery to external systems — the backend piece that re
 - verify: http_status(200, path="<url>")
 - raises: for network errors, timeouts, or invalid URLs, catches all exceptions without propagating to caller
 - verify: absent(subject="exception")
-- code: `groom/groom/notify.py::_post`
+- code: `groom/groom/notify.py::_post` @9489ef757f70
 - emits: request reaches the URL immediately (best-effort, no retry)
 
 ## Configuration
@@ -69,11 +69,12 @@ Outbound notification delivery to external systems — the backend piece that re
 
 - type: string, optional
 - default: empty string (unconfigured)
+- verify: count(subject="webhook HTTP calls made when GROOM_WEBHOOK_URL is empty", equals=0)
 - semantics: when non-empty, webhook channel is active
 - verify: http_status(code=200, path="<webhook_url>")
 - semantics: webhook receives notification as JSON with title and message fields
-- verify: json_path(path="$.title", matches=".*")
-- verify: json_path(path="$.message", matches=".*")
+- verify: json_path(path="$.title", equals="groom: STUCK")
+- verify: json_path(path="$.message", equals="coder write_epic: stuck for 12m")
 - meaning: allows Slack receivers, home automation, or any JSON-consuming webhook
 
 ### field: GROOM_NOTIFY_TIMEOUT

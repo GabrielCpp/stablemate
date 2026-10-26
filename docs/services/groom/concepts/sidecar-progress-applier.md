@@ -7,7 +7,7 @@ title: Sidecar progress applier
 
 The sidecar progress applier is the groom server layer that folds a connected sidecar's live `progress` [sidecar websocket frame](../formats/sidecar-websocket-frame.md) into the process-local [workflow registry](workflow-registry.md) during the [run sidecar websocket session](../http/groom.md#run-sidecar-websocket-session) invocation. It marks the connected [workflow container](workflow-container.md) as [workflow state](workflow-state.md) `running`, optionally updates its current-node field through [upsert workflow](workflow-registry.md#method-upsert-workflow), and finishes by calling the [dashboard shell broadcaster](dashboard-shell-broadcaster.md) so browser dashboard tabs converge on the latest running-state snapshot. The websocket session derives the non-empty, truncated container id from a useful `hello` frame before this layer receives it; the applier uses that supplied registry key without further identity handling.
 
-- code: groom/groom/app.py::_apply_socket_progress
+- code: groom/groom/app.py::_apply_socket_progress@2d7aba1619b0
 - detail: [sidecar progress documentation contexts](sidecar-progress-documentation-contexts.md)
 
 ## Contract
@@ -106,8 +106,8 @@ remaining step. That propagation is the obligation captured by the `raises:` cla
 - does: ignores frame fields other than `current_node` without changing unrelated workflow fields.
 - verify: unchanged(subject="workflow fields unrelated to current_node", except_fields=["state", "current_node"])
 - raises: propagates workflow-upsert, renderer, or broadcast exceptions — neither call is wrapped in a `try`/`except`.
-- verify: json_path(path="exception.type", matches=".+")
-- code: groom/groom/app.py::_apply_socket_progress
+- verify: json_path(path="exception.type", equals="TypeError")
+- code: groom/groom/app.py::_apply_socket_progress@2d7aba1619b0
 
 Fold one connected sidecar `progress` frame for one already accepted sidecar websocket into the visible workflow fleet.
 

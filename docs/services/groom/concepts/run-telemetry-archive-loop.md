@@ -38,11 +38,14 @@ The loop is seeded on startup to run immediately rather than waiting `ARCHIVE_EV
 - sig: `_archive_loop() -> None`
 - abstract: false
 - does: Runs forever, waking on every `RULES_TICK_S` tick and executing `archive.sweep()` when `ARCHIVE_EVERY_S` seconds have elapsed since the last sweep
+- verify: count(subject="sweep() calls across two ticks when ARCHIVE_EVERY_S is 3x RULES_TICK_S", equals=1)
 - does: Seeds the first sweep to run immediately by initializing `last` to `time.monotonic() - ARCHIVE_EVERY_S`
+- verify: count(subject="sweep() calls before one RULES_TICK_S tick has elapsed from startup", equals=1)
 - does: Catches all exceptions from `sweep()` and logs them without propagation, so that archival failures do not impact server operation
+- verify: emitted(event="archival sweep failed")
 - does: Logs the result of each sweep, including the count of archived runs, rows deleted, bytes written, and failed runs
-- raises: none into the caller — all exceptions are logged and the loop continues
 - verify: emitted(event="groom: archived")
+- raises: none into the caller — all exceptions are logged and the loop continues
 - verify: persists(subject="run telemetry file on disk")
 - code: `groom/groom/app.py::_archive_loop` @2d7aba1619b0
 

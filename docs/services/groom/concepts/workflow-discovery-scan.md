@@ -18,7 +18,7 @@ visible, but answering neither invokes nor repeats the scan. Live state after di
 from sidecar pushes rather than periodic scans, so neither flow is a general steady-state
 reconciliation path.
 
-- code: groom/groom/discovery.py
+- code: groom/groom/discovery.py@c58114307172
 - rule: use the refresh flow to request a one-shot fleet reconciliation; use the blocked-gate answer flow only after a gate is visible, regardless of whether discovery, a push, or a sidecar delta made it visible
 - tests: groom/tests/test_discovery.py::test_scan_marks_blocked_workflow_and_finished_run
 - tests: groom/tests/test_discovery.py::test_scan_uses_sidecar_query_for_running_container
@@ -54,7 +54,7 @@ reconciliation path.
 - type: `int`
 - default: `8`
 - required: true
-- code: groom/groom/discovery.py::_SCAN_WORKERS
+- code: groom/groom/discovery.py::_SCAN_WORKERS@c58114307172
 - meaning: upper bound on concurrent per-container resolver calls during one scan.
 - constraints: the actual worker count is the smaller of this cap and the number of candidate Docker container ids, so an empty candidate list creates no worker pool and a fleet smaller than eight creates no unused resolver workers.
 
@@ -63,7 +63,7 @@ reconciliation path.
 - type: `str`
 - default: `/workflow`
 - required: true
-- code: groom/groom/discovery.py::WORKFLOW_MOUNT
+- code: groom/groom/discovery.py::WORKFLOW_MOUNT@c58114307172
 - meaning: Docker inspect mount destination that identifies the mounted workhorse workflow definition and supplies the primary workflow-type source path.
 - constraints: the destination must be present in the mount destination index for a candidate to be workhorse-backed; its source basename may still be generic, in which case workflow-type derivation falls back to the compose service label.
 
@@ -72,7 +72,7 @@ reconciliation path.
 - type: `str`
 - default: `/runs`
 - required: true
-- code: groom/groom/discovery.py::RUNS_MOUNT
+- code: groom/groom/discovery.py::RUNS_MOUNT@c58114307172
 - meaning: Docker inspect mount destination for the named volume containing run directories, checkpoint data, and terminal run metadata.
 - constraints: the destination must be present in the mount destination index for a candidate to be workhorse-backed; its mount `Name` becomes the workflow container's runs-volume field for fallback reconstruction.
 
@@ -81,7 +81,7 @@ reconciliation path.
 - type: `str`
 - default: `/workspace`
 - required: true
-- code: groom/groom/discovery.py::WORKSPACE_MOUNT
+- code: groom/groom/discovery.py::WORKSPACE_MOUNT@c58114307172
 - meaning: Docker inspect mount destination for the named workspace volume containing repository files and operator gate context files.
 - constraints: the destination must be present in the mount destination index for a candidate to be workhorse-backed; its mount `Name` becomes the workflow container's workspace-volume field for fallback gate discovery.
 
@@ -141,7 +141,7 @@ reconciliation path.
 - verify: json_path(path="$.state", equals="FINISHED")
 - verify: count(subject="sidecar queries for a stopped container", equals=0)
 - verify: absent(subject="workflow record for a non-workhorse container")
-- code: groom/groom/discovery.py::scan
+- code: groom/groom/discovery.py::scan@c58114307172
 - tests: groom/tests/test_discovery.py::test_scan_marks_blocked_workflow_and_finished_run
 - tests: groom/tests/test_discovery.py::test_scan_uses_sidecar_query_for_running_container
 - tests: groom/tests/test_discovery.py::test_scan_query_terminal_wins_over_gates
@@ -204,7 +204,7 @@ Converts one Docker inspect container object into a baseline workflow-container 
 - verify: json_path(path="$.state", equals="FINISHED")
 - verify: count(subject="sidecar queries for a stopped container", equals=0)
 - verify: absent(subject="workflow record for a non-workhorse container")
-- code: groom/groom/discovery.py::_resolve_container
+- code: groom/groom/discovery.py::_resolve_container@c58114307172
 - tests: groom/tests/test_discovery.py::test_scan_marks_blocked_workflow_and_finished_run
 - tests: groom/tests/test_discovery.py::test_scan_uses_sidecar_query_for_running_container
 - tests: groom/tests/test_discovery.py::test_scan_query_terminal_wins_over_gates
@@ -262,7 +262,7 @@ Resolves one Docker candidate id into either one [workflow container](workflow-c
 - verify: absent(subject="exception")
 - raises: malformed truthy mount rows may propagate the mount-index helper's ordinary attribute error.
 - verify: json_path(path="exception.type", equals="AttributeError")
-- code: groom/groom/discovery.py::is_workhorse_container
+- code: groom/groom/discovery.py::is_workhorse_container@c58114307172
 - tests: groom/tests/test_discovery.py::test_is_workhorse_container_requires_all_three_mounts
 - tests: groom/tests/test_discovery.py::test_is_workhorse_container_ignores_unrelated_containers
 
@@ -308,7 +308,7 @@ Classifies whether one [Docker inspect container object](../formats/docker-inspe
 - raises: absent or falsey `Mounts` returns an empty mapping.
 - verify: count(subject="mount destination index for an inspect payload without Mounts", equals=0)
 - raises: malformed non-mapping mount entries may propagate their normal attribute error.
-- code: groom/groom/discovery.py::_mounts_by_dest
+- code: groom/groom/discovery.py::_mounts_by_dest@c58114307172
 
 Produces the normalized mount lookup shared by workhorse-container eligibility, baseline workflow-container creation, workflow-type derivation, and volume-name extraction.
 
@@ -355,7 +355,7 @@ Produces the normalized mount lookup shared by workhorse-container eligibility, 
 - verify: json_path(path="$.workflow_type", equals="coder")
 - returns: when neither `WORKFLOW` nor the `/workflow` mount produces a non-generic type, the non-empty `Config.Labels["com.docker.compose.service"]` value unchanged as the workflow type.
 - verify: json_path(path="$.workflow_type", equals="author")
-- code: groom/groom/discovery.py::_workflow_type
+- code: groom/groom/discovery.py::_workflow_type@c58114307172
 - tests: groom/tests/test_discovery.py::test_the_workflow_type_is_what_the_container_was_told_to_run
 - tests: groom/tests/test_discovery.py::test_a_container_from_an_older_harness_still_types_from_its_mount
 - tests: groom/tests/test_discovery.py::test_the_environment_wins_over_a_leftover_workflow_mount
@@ -414,7 +414,7 @@ Chooses the workflow type used by the [initial workflow-state transition](workfl
 - verify: json_path(path="exception.type", equals="AttributeError")
 - returns: an empty mapping when `Config`/`Env` are absent or falsey.
 - verify: count(subject="environment mapping for an inspect payload without Config.Env", equals=0)
-- code: groom/groom/discovery.py::_env_map
+- code: groom/groom/discovery.py::_env_map@c58114307172
 - tests: groom/tests/test_discovery.py::test_container_from_inspect_reads_env_name_and_volumes
 
 Builds the transient environment lookup used by the [initial workflow-state transition](workflow-state.md#transition-discovery-initial) and baseline [workflow container](workflow-container.md) creation. The method treats the [Docker inspect container object](../formats/docker-inspect-container-object.md) as the source of truth, returns only parsed environment key/value pairs, and leaves the caller responsible for choosing which keys are safe to copy onto the workflow record.
@@ -458,10 +458,11 @@ Builds the transient environment lookup used by the [initial workflow-state tran
 - sig: `_current_run_state(runs_volume: str) -> tuple[str, str]`
 - abstract: false
 - raises: propagates Docker volume listing and file-read launch or timeout exceptions from the underlying Docker I/O helpers.
+- verify: json_path(path="exception.type", equals="TimeoutExpired")
 - raises: converts JSON parse errors to empty values.
 - verify: json_path(path="$[0]", equals="")
 - verify: json_path(path="$[1]", equals="")
-- code: groom/groom/discovery.py::_current_run_state
+- code: groom/groom/discovery.py::_current_run_state@c58114307172
 - tests: groom/tests/test_discovery.py::test_scan_marks_blocked_workflow_and_finished_run
 - tests: groom/tests/test_discovery.py::test_scan_stopped_container_skips_query_and_reads_volumes
 
@@ -507,7 +508,7 @@ Reads the latest run directory in a workflow's `/runs` volume and returns the tw
 - verify: count(subject="retained gate records after a candidate is reread as non-awaiting", equals=1)
 - raises: Docker grep failures are represented by the awaiting-file reader as an empty path list.
 - verify: count(subject="discovered gate records after the awaiting-file reader returns no paths", equals=0)
-- code: groom/groom/discovery.py::_find_gates
+- code: groom/groom/discovery.py::_find_gates@c58114307172
 - tests: groom/tests/test_discovery.py::test_find_gates_only_keeps_files_still_awaiting
 - tests: groom/tests/test_discovery.py::test_scan_marks_blocked_workflow_and_finished_run
 
@@ -551,7 +552,7 @@ Reconstructs open operator gates from a workflow's `/workspace` volume during di
 - raises: propagates launch and timeout exceptions from the underlying Docker container-id listing helper.
 - raises: represents Docker command failure as `None`.
 - verify: absent(subject="container-id set after a Docker command failure")
-- code: groom/groom/discovery.py::present_container_ids
+- code: groom/groom/discovery.py::present_container_ids@c58114307172
 - tests: groom/tests/test_discovery.py::test_present_container_ids_passes_through_docker_layer
 
 Returns the local Docker daemon's current container-id set for stale-registry pruning. The lookup is intentionally broader than workhorse discovery: it reports every present container id, not only containers that have `/workflow`, `/runs`, and `/workspace` mounts, because reconciliation only needs to know whether an already-registered workflow container still exists.

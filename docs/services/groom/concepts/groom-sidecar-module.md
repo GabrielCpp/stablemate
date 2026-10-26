@@ -20,7 +20,7 @@ data](../formats/workspace-file-content-data.md), and [workspace diff data](../f
 without owning host workflow registry state or deciding the workflow process'
 exit result.
 
-- code: groom/groom/sidecar.py
+- code: groom/groom/sidecar.py@6473ed7cc706
 - tests: groom/tests/test_sidecar.py::test_snapshot_reports_node_terminal_and_gates,
   groom/tests/test_sidecar.py::test_push_progress_posts_expected_shape,
   groom/tests/test_sidecar.py::test_push_blocked_posts_expected_shape,
@@ -77,7 +77,7 @@ exit result.
 - type: `pathlib.Path`
 - default: `/workspace`
 - required: true
-- code: groom/groom/sidecar.py::WORKSPACE_DIR
+- code: groom/groom/sidecar.py::WORKSPACE_DIR@6473ed7cc706
 - meaning: local mount root for repository/workspace reads, gate scanning,
   workspace watches, and sidecar RPC file-tree/file-content service.
 - source: `GROOM_WORKSPACE_DIR` environment variable when present.
@@ -87,7 +87,7 @@ exit result.
 - type: `pathlib.Path`
 - default: `/runs`
 - required: true
-- code: groom/groom/sidecar.py::RUNS_DIR
+- code: groom/groom/sidecar.py::RUNS_DIR@6473ed7cc706
 - meaning: local mount root for workhorse run metadata, latest checkpoint reads,
   terminal-state reads, and run-progress watches.
 - source: `GROOM_RUNS_DIR` environment variable when present.
@@ -97,7 +97,7 @@ exit result.
 - type: `str`
 - default: `host.docker.internal`
 - required: true
-- code: groom/groom/sidecar.py::GROOM_HOST
+- code: groom/groom/sidecar.py::GROOM_HOST@6473ed7cc706
 - meaning: host name used for both residual HTTP pushes and the persistent
   websocket client connection back to groom.
 - source: `GROOM_HOST` environment variable when present.
@@ -107,7 +107,7 @@ exit result.
 - type: `str`
 - default: `8787`
 - required: true
-- code: groom/groom/sidecar.py::GROOM_PORT
+- code: groom/groom/sidecar.py::GROOM_PORT@6473ed7cc706
 - meaning: TCP port text used in the residual HTTP URL and websocket URL.
 - source: `GROOM_PORT` environment variable when present.
 
@@ -116,7 +116,7 @@ exit result.
 - type: `float` seconds
 - default: `1.0`
 - required: true
-- code: groom/groom/sidecar.py::PUSH_TIMEOUT
+- code: groom/groom/sidecar.py::PUSH_TIMEOUT@6473ed7cc706
 - meaning: maximum duration passed to one residual HTTP push attempt before the
   HTTP helper raises into the module's fire-and-forget suppression boundary.
 - source: `GROOM_PUSH_TIMEOUT` environment variable parsed as a float at import.
@@ -126,7 +126,7 @@ exit result.
 - type: `int`
 - default: `3`
 - required: true
-- code: groom/groom/sidecar.py::RELOAD_EXIT_CODE
+- code: groom/groom/sidecar.py::RELOAD_EXIT_CODE@6473ed7cc706
 - meaning: reserved sidecar process status used to ask the container entrypoint to
   recopy edited sidecar source and relaunch the sidecar after a host reload frame.
 - used-by: [sidecar serving loop](sidecar-serving-loop.md) and [sidecar live
@@ -137,7 +137,7 @@ exit result.
 - type: `watchfiles.DefaultFilter`
 - default: constructed from [field-skip-dir-names](#field-skip-dir-names)
 - required: true
-- code: groom/groom/sidecar.py::_WATCH_FILTER
+- code: groom/groom/sidecar.py::_WATCH_FILTER@6473ed7cc706
 - meaning: the directory exclusions applied to the recursive watch. Spelled from
   the same skip set the pull-side gate scan uses rather than left at the
   backend's own larger default, so a gate the scan reports is a gate the watch
@@ -150,7 +150,7 @@ exit result.
 - type: `set[str]`
 - default: `{ ".git", "node_modules", "__pycache__", ".venv" }`
 - required: true
-- code: groom/groom/sidecar.py::_SKIP_DIR_NAMES
+- code: groom/groom/sidecar.py::_SKIP_DIR_NAMES@6473ed7cc706
 - meaning: heavy or irrelevant directory names pruned by snapshot gate scans,
   recursive watch installation, and workspace file-tree RPC listing.
 
@@ -159,7 +159,7 @@ exit result.
 - type: `int` characters
 - default: `512`
 - required: true
-- code: groom/groom/sidecar.py::_GATE_SCAN_HEAD
+- code: groom/groom/sidecar.py::_GATE_SCAN_HEAD@6473ed7cc706
 - meaning: prefix length read from each candidate workspace file before deciding
   whether the full file must be read as an awaiting operator gate.
 
@@ -168,7 +168,7 @@ exit result.
 - type: `dict[str, callable]`
 - default: `{ "getTree": _rpc_get_tree, "getFile": _rpc_get_file, "getDiff": _rpc_get_diff }`
 - required: true
-- code: groom/groom/sidecar.py::_RPC_METHODS
+- code: groom/groom/sidecar.py::_RPC_METHODS@6473ed7cc706
 - meaning: first-party sidecar data-plane dispatch table for host-issued RPC
   method names.
 
@@ -179,7 +179,7 @@ exit result.
 - sig: `push_progress(current_node: str = "") -> None`
 - abstract: false
 - raises: same producer-side propagation boundary as [method-_push](sidecar-residual-http-push-helper.md#method-_push); residual HTTP open and close failures are swallowed by the helper.
-- code: groom/groom/sidecar.py::push_progress
+- code: groom/groom/sidecar.py::push_progress@6473ed7cc706
 - verify: groom/tests/test_sidecar.py::test_push_progress_posts_expected_shape
 - refs: [sidecar residual HTTP push helper](sidecar-residual-http-push-helper.md#method-push-progress), [progress push payload](../formats/progress-push-payload.md)
 - input: current workhorse graph-node id or `""` when no current node is known.
@@ -198,7 +198,7 @@ its caller.
 - sig: `push_blocked(file_path: str, question: str) -> None`
 - abstract: false
 - raises: same producer-side propagation boundary as [method-_push](sidecar-residual-http-push-helper.md#method-_push); residual HTTP open and close failures are swallowed by the helper.
-- code: groom/groom/sidecar.py::push_blocked
+- code: groom/groom/sidecar.py::push_blocked@6473ed7cc706
 - verify: groom/tests/test_sidecar.py::test_push_blocked_posts_expected_shape
 - refs: [sidecar residual HTTP push helper](sidecar-residual-http-push-helper.md#method-push-blocked), [blocked push payload](../formats/blocked-push-payload.md)
 - input-file-path: workspace-relative awaiting gate file path or the observed path
@@ -219,7 +219,7 @@ its caller.
 - sig: `push_exited(exit_code: int) -> None`
 - abstract: false
 - raises: same producer-side propagation boundary as [method-_push](sidecar-residual-http-push-helper.md#method-_push); residual HTTP open and close failures are swallowed by the helper.
-- code: groom/groom/sidecar.py::push_exited
+- code: groom/groom/sidecar.py::push_exited@6473ed7cc706
 - verify: groom/tests/test_sidecar.py::test_push_exited_posts_expected_shape
 - verify: groom/tests/test_sidecar.py::test_push_exited_is_silent_when_groom_is_unreachable
 - refs: [sidecar residual HTTP push helper](sidecar-residual-http-push-helper.md#method-push-exited), [exited push payload](../formats/exited-push-payload.md)
@@ -246,7 +246,7 @@ its caller.
 - refs: [operator gate context file](../formats/operator-gate-context-file.md), [sidecar snapshot data](../formats/sidecar-snapshot-data.md)
 - input: no call arguments; uses [field-workspace-dir](#field-workspace-dir).
 - output: list of gate entries with `file_path` and `question` keys.
-- does:
+- does: all
   - Walks the configured workspace tree while pruning [field-skip-dir-names](#field-skip-dir-names).
   - Reads only the [field-gate-scan-head](#field-gate-scan-head) prefix of each
     candidate file before deciding whether it is awaiting operator input.
@@ -256,6 +256,7 @@ its caller.
     gate list.
   - Returns workspace-relative file paths when possible and observed path strings
     when relativization fails.
+- verify: count(subject="gates reported from a workspace with 2 non-awaiting candidate files and 1 awaiting file", equals=1)
 
 ### method-snapshot
 
@@ -264,7 +265,7 @@ its caller.
 - raises: delegated reader exceptions outside their normalization contracts can
   propagate; expected missing/unreadable run and gate files become empty fields or
   skipped gate entries.
-- code: groom/groom/sidecar.py::snapshot
+- code: groom/groom/sidecar.py::snapshot@6473ed7cc706
 - verify: groom/tests/test_sidecar.py::test_snapshot_reports_node_terminal_and_gates
 - verify: groom/tests/test_sidecar.py::test_cli_query_prints_snapshot_json_and_does_not_watch
 - detail: [sidecar snapshot](sidecar-snapshot.md#method-snapshot)
@@ -302,12 +303,10 @@ serialized on the websocket or exposed through the CLI or HTTP API.
 
 - sig: `class ReloadRequested(Exception)`
 - abstract: false
-- code: groom/groom/sidecar.py::ReloadRequested
+- code: groom/groom/sidecar.py::ReloadRequested@6473ed7cc706
 - tests: groom/tests/test_sidecar_session.py::test_run_session_advertises_hello_then_reload_raises,
   groom/tests/test_sidecar_session.py::test_serve_returns_reload_code_when_session_requests_reload
 - refs: [sidecar connected session](sidecar-connected-session.md), [sidecar serving loop](sidecar-serving-loop.md), [sidecar websocket frame](../formats/sidecar-websocket-frame.md)
-- trigger: raised only by a connected sidecar session after decoding an inbound
-  websocket message whose `type` field is `reload`.
 - base: standard-library `Exception`; no Groom-specific base concept is created
   for the external standard-library class.
 - fields: none; instances carry no structured attributes, status object, retry
@@ -329,7 +328,7 @@ the caller.
 - consistency: reload-exit-code — the only non-zero value the serving loop
   returns is [field-reload-exit-code](#field-reload-exit-code), and `run()`
   raises `SystemExit` with that same numeric code rather than swallowing it.
-- code: groom/groom/sidecar.py::run
+- code: groom/groom/sidecar.py::run@6473ed7cc706
 - verify: groom/tests/test_sidecar_session.py::test_run_maps_reload_code_to_systemexit
 - detail: [sidecar live session runner](sidecar-live-session-runner.md)
 - refs: [sidecar serving loop](sidecar-serving-loop.md), [`groom-sidecar`](../groom-sidecar.md#groom-sidecar-root)

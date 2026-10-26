@@ -15,7 +15,7 @@ open gates from the container's mounted `/workspace` tree by sweeping for
 awaiting gate context files; it does not open network connections, install
 filesystem watches, mutate files, or decide the workflow's state on the host.
 
-- code: groom/groom/sidecar.py::snapshot
+- code: groom/groom/sidecar.py::snapshot@6473ed7cc706
 - tests: groom/tests/test_sidecar.py::test_snapshot_reports_node_terminal_and_gates
 
 ## Contract
@@ -89,12 +89,13 @@ over the three delegated reads and adds no exception handling of its own.
 - sig: `snapshot() -> dict`
 - abstract: false
 - raises: none intentionally raised by the aggregator itself.
+- verify: json_path(path="exception.type", absent=true)
 - raises: exceptions from delegated readers that are outside their normalization
   contracts can propagate.
 - verify: json_path(path="$.current_node", equals="write_story")
 - verify: json_path(path="$.terminal", equals="")
 - verify: count(subject="snapshot gate entries", equals=1)
-- code: groom/groom/sidecar.py::snapshot
+- code: groom/groom/sidecar.py::snapshot@6473ed7cc706
 - tests: groom/tests/test_sidecar.py::test_snapshot_reports_node_terminal_and_gates
 - tests: groom/tests/test_sidecar.py::test_cli_query_prints_snapshot_json_and_does_not_watch
 - input: no call arguments; uses the sidecar's configured runs mount and
@@ -124,7 +125,7 @@ over the three delegated reads and adds no exception handling of its own.
 - verify: count(subject="latest run directories returned", equals=1)
 - returns: `None` when the configured runs mount is missing.
 - verify: json_path(path="result_is_none", equals=true)
-- code: groom/groom/sidecar.py::_latest_run_dir
+- code: groom/groom/sidecar.py::_latest_run_dir@6473ed7cc706
 - tests: groom/tests/test_sidecar.py::test_terminal_reads_latest_run_json
 - input: no call arguments; uses the sidecar's configured runs mount path.
 - output: the latest run directory path, or `None` when the configured runs mount
@@ -158,7 +159,7 @@ over the three delegated reads and adds no exception handling of its own.
 - verify: json_path(path="$", equals="")
 - raises: `UnicodeDecodeError` propagates when checkpoint bytes cannot be decoded
   as UTF-8, so no `""` fallback is returned for this failure.
-- code: groom/groom/sidecar.py::_current_node
+- code: groom/groom/sidecar.py::_current_node@6473ed7cc706
 - tests: groom/tests/test_sidecar.py::test_snapshot_reports_node_terminal_and_gates
 - tests: groom/tests/test_checkpoints.py::test_malformed_or_wrongly_typed_position_is_empty
 - tests: paddock/data/tests/test_behavior_eval.py::test_current_node_normalizes_checkpoint_read_oserror
@@ -193,7 +194,7 @@ over the three delegated reads and adds no exception handling of its own.
 - verify: json_path(path="$.terminal", equals="")
 - raises: a parseable non-object JSON value is outside the accepted metadata shape
   and can raise instead of normalizing.
-- code: groom/groom/sidecar.py::_terminal
+- code: groom/groom/sidecar.py::_terminal@6473ed7cc706
 - tests: groom/tests/test_sidecar.py::test_terminal_reads_latest_run_json
 - input: no call arguments; uses `method-_latest_run_dir` to find the latest run
   directory from the sidecar's configured runs mount.
@@ -224,7 +225,7 @@ over the three delegated reads and adds no exception handling of its own.
 - returns: entries that exclude any file whose read failed, without aborting the
   scan.
 - verify: count(subject="awaiting gate entries returned", equals=1)
-- code: groom/groom/sidecar.py::scan_gates
+- code: groom/groom/sidecar.py::scan_gates@6473ed7cc706
 - tests: groom/tests/test_sidecar.py::test_scan_gates_finds_awaiting_and_skips_git_and_non_awaiting
 - input: no call arguments; uses the sidecar's configured workspace mount as the
   scan root.

@@ -7,7 +7,7 @@ title: Groom gates module
 
 Groom gates module is the code boundary that owns Groom's shared operator-gate status tokens, [operator gate context file](../formats/operator-gate-context-file.md) text parsing and answer text mutation helpers, and the asynchronous [gate-answering layer](gate-answering-layer.md). It is consumed by host-side discovery, the sidecar snapshot path, and dashboard answer handling so all gate readers and writers agree on the same `STATUS:` lifecycle semantics. Its answer operation composes the [per-gate answer lock](per-gate-answer-lock.md), [workspace volume file-content reader](workspace-volume-file-content-reader.md), [workspace volume file writer](workspace-volume-file-writer.md), [workflow gate clearer](workflow-gate-clearer.md), [container running-state check](container-running-state-check.md), and [stopped container start fallback](stopped-container-start-fallback.md) and reports its terminal domain outcome as an [answer result](../formats/answer-result.md).
 
-- code: groom/groom/gates.py
+- code: groom/groom/gates.py@48bec40a1474
 - tests: groom/tests/test_gates.py::test_apply_answer_flips_status_and_appends_text
 - tests: groom/tests/test_gates.py::test_apply_answer_with_blank_answer_still_flips_status
 - refs: [operator gate context file](../formats/operator-gate-context-file.md), [gate-answering layer](gate-answering-layer.md), [per-gate answer lock](per-gate-answer-lock.md), [workspace volume file-content reader](workspace-volume-file-content-reader.md), [workspace volume file writer](workspace-volume-file-writer.md), [workflow gate clearer](workflow-gate-clearer.md), [container running-state check](container-running-state-check.md), [stopped container start fallback](stopped-container-start-fallback.md), [answer result](../formats/answer-result.md)
@@ -47,7 +47,7 @@ pure text helpers use the fallback outputs specified by their individual method 
 - type: status token string
 - default: `"AWAITING_OPERATOR"`
 - required: true
-- code: groom/groom/gates.py::AWAITING
+- code: groom/groom/gates.py::AWAITING@48bec40a1474
 - meaning: marks an operator gate context file as open and answerable by Groom.
 - used-by: [is-awaiting](#is-awaiting) and [answer-gate](#answer-gate) accept only this normalized token as the current file state for a submitted answer.
 
@@ -56,7 +56,7 @@ pure text helpers use the fallback outputs specified by their individual method 
 - type: status token string
 - default: `"ANSWERED"`
 - required: true
-- code: groom/groom/gates.py::ANSWERED
+- code: groom/groom/gates.py::ANSWERED@48bec40a1474
 - meaning: marks an operator gate context file as answered after a submitted operator response has been accepted.
 - used-by: [apply-answer](#apply-answer) writes exactly this token into the first matched status line.
 
@@ -65,7 +65,7 @@ pure text helpers use the fallback outputs specified by their individual method 
 - type: status token string
 - default: `"CONSUMED"`
 - required: true
-- code: groom/groom/gates.py::CONSUMED
+- code: groom/groom/gates.py::CONSUMED@48bec40a1474
 - meaning: names the wait-script consumed lifecycle state that Groom treats as non-awaiting.
 - used-by: [status-of](#status-of) can return this normalized token, and [is-awaiting](#is-awaiting) rejects it.
 
@@ -78,7 +78,7 @@ pure text helpers use the fallback outputs specified by their individual method 
 - raises: none intentionally raised for any string input.
 - returns: the uppercased first status token, or `""` when the text has no matching status line.
 - verify: json_path(path="return value", equals="AWAITING_OPERATOR")
-- code: groom/groom/gates.py::status_of
+- code: groom/groom/gates.py::status_of@48bec40a1474
 - detail: [gate status parser documentation contexts](gate-status-parser-documentation-contexts.md)
 - detail: [operator gate context file status parser](../formats/operator-gate-context-file.md#method-status-of)
 - tests: groom/tests/test_gates.py::test_status_of_reads_the_status_line
@@ -100,7 +100,7 @@ Parses one supplied gate-file text string into the normalized lifecycle token us
 - raises: none intentionally raised for any string input.
 - returns: `true` only when [status-of](#status-of) returns [field-awaiting](#field-awaiting).
 - verify: json_path(path="return value", equals=true)
-- code: groom/groom/gates.py::is_awaiting
+- code: groom/groom/gates.py::is_awaiting@48bec40a1474
 - detail: [operator gate context file awaiting classifier](../formats/operator-gate-context-file.md#method-is-awaiting)
 - detail: [is awaiting documentation contexts](is-awaiting-documentation-contexts.md)
 - tests: groom/tests/test_gates.py::test_is_awaiting
@@ -120,11 +120,12 @@ Classifies whether one supplied gate-file text string is currently answerable by
 - sig: `extract_question(text: str) -> str`
 - abstract: false
 - raises: none intentionally raised for any string input.
+- verify: json_path(path="exception.type", absent=true)
 - returns: the recognized agent question section body, or the stripped whole text fallback, with no length limit of its own.
 - verify: count(subject="recognized question text in returned question", equals=1)
 - verify: count(subject="unrelated context section text in returned question", equals=0)
 - verify: count(subject="stripped whole gate text in returned question", equals=1)
-- code: groom/groom/gates.py::extract_question
+- code: groom/groom/gates.py::extract_question@48bec40a1474
 - detail: [gate question extraction contexts](gate-question-extraction-contexts.md)
 - tests: groom/tests/test_gates.py::test_extract_question_pulls_the_named_section
 - tests: groom/tests/test_gates.py::test_extract_question_falls_back_to_whole_text_when_no_header
@@ -144,11 +145,13 @@ Extracts the operator-facing question text from one gate file for gate records a
 - sig: `apply_answer(text: str, answer: str) -> str`
 - abstract: false
 - raises: none intentionally raised for any string input.
+- verify: json_path(path="exception.type", absent=true)
 - raises: invalid or missing status content is preserved except that no status can be flipped when no status line matches.
+- verify: count(subject="STATUS: ANSWERED lines in returned gate text with no recognized status line", equals=0)
 - returns: file text with the first matched status line changed to [field-answered](#field-answered) and the stripped non-blank answer appended as the final paragraph.
 - verify: count(subject="STATUS: ANSWERED lines in returned gate text", equals=1)
 - verify: count(subject="submitted non-blank answer occurrences in returned gate text", equals=1)
-- code: groom/groom/gates.py::apply_answer
+- code: groom/groom/gates.py::apply_answer@48bec40a1474
 - detail: [operator gate context file answer applier](../formats/operator-gate-context-file.md#method-apply-answer)
 - detail: [gate answer text mutation](gate-answer-text-mutation.md)
 - tests: groom/tests/test_gates.py::test_apply_answer_flips_status_and_appends_text
@@ -173,7 +176,7 @@ Builds the answered form of one gate file text string without performing the fil
 - raises: represents expected domain failures as `AnswerResult(ok=False, message=...)`.
 - returns: an [answer result](../formats/answer-result.md) indicating whether the answer file write was rejected, applied, applied with no restart needed, or applied with a stopped-container restart fallback.
 - verify: conflict_on_stale(subject="gate file")
-- code: groom/groom/gates.py::answer_gate
+- code: groom/groom/gates.py::answer_gate@48bec40a1474
 - detail: [gate-answering layer operation](gate-answering-layer.md#answer-gate)
 - tests: groom/tests/test_gates.py::test_answer_gate_rejects_when_already_answered
 - tests: groom/tests/test_gates.py::test_answer_gate_writes_answer_no_restart_when_still_running

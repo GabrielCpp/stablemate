@@ -7,7 +7,7 @@ title: Workspace volume file-content reader
 
 Workspace volume file-content reader is the shared volume text-read operation used by the [serve workspace file content](../http/groom.md#serve-workspace-file-content) invocation when the connected sidecar cannot provide the selected file's text, by the [workflow discovery scan](workflow-discovery-scan.md) when it reads [sidecar run checkpoint data](../formats/sidecar-run-checkpoint-data.md), [sidecar run metadata](../formats/sidecar-run-metadata.md), and awaiting gate files from Docker volumes, and by the [gate-answering layer](gate-answering-layer.md) before it checks whether a submitted answer is stale. It reads one validated path inside a known Docker volume through a throwaway read-only container, delegates path safety to the [workspace volume relative path guard](workspace-volume-relative-path-guard.md), delegates process execution to the [Docker subprocess runner](docker-subprocess-runner.md), and returns [workspace file content data](../formats/workspace-file-content-data.md) text or absence without mutating the volume, workflow container, in-memory workflow state, sidecar registry, or dashboard clients.
 
-- code: groom/groom/docker_io.py::read_file
+- code: groom/groom/docker_io.py::read_file@9dc5eb2e112e
 - tests: groom/tests/test_app.py::test_file_endpoint_joins_repo_and_path_and_returns_content, groom/tests/test_app.py::test_file_endpoint_swallows_unsafe_path, groom/tests/test_app.py::test_file_content_prefers_sidecar_socket, groom/tests/test_discovery.py::test_find_gates_only_keeps_files_still_awaiting, groom/tests/test_discovery.py::test_scan_stopped_container_skips_query_and_reads_volumes, groom/tests/test_gates.py::test_answer_gate_rejects_when_already_answered, groom/tests/test_gates.py::test_answer_gate_writes_answer_no_restart_when_still_running
 - refs: [workspace volume relative path guard](workspace-volume-relative-path-guard.md), [Docker subprocess runner](docker-subprocess-runner.md), [workspace file content data](../formats/workspace-file-content-data.md), [sidecar run checkpoint data](../formats/sidecar-run-checkpoint-data.md), [sidecar run metadata](../formats/sidecar-run-metadata.md), [workflow discovery scan](workflow-discovery-scan.md), [gate-answering layer](gate-answering-layer.md), [Groom Docker I/O module](groom-docker-io-module.md#read-file)
 
@@ -59,7 +59,7 @@ Workspace volume file-content reader is the shared volume text-read operation us
 - type: Docker image reference string
 - default: `alpine:3.20`
 - required: true
-- code: groom/groom/docker_io.py::ALPINE_IMAGE
+- code: groom/groom/docker_io.py::ALPINE_IMAGE@9dc5eb2e112e
 - detail: [Docker volume helper image](docker-volume-helper-image.md)
 - meaning: supplies the image used for the throwaway read-only container that executes `cat` against the mounted volume path.
 
@@ -68,7 +68,7 @@ Workspace volume file-content reader is the shared volume text-read operation us
 - type: seconds as `int`
 - default: `20`
 - required: true
-- code: groom/groom/docker_io.py::DOCKER_TIMEOUT
+- code: groom/groom/docker_io.py::DOCKER_TIMEOUT@9dc5eb2e112e
 - detail: [Docker command timeout](docker-command-timeout.md)
 - meaning: bounds the subprocess that starts the reader container and captures its output.
 
@@ -79,13 +79,14 @@ Workspace volume file-content reader is the shared volume text-read operation us
 - sig: `read_file(volume: str, rel_path: str) -> str | None`
 - abstract: false
 - raises: `ValueError` for unsafe relative paths before any reader process is started.
+- verify: json_path(path="exception.type", equals="ValueError")
 - raises: process launch and timeout exceptions from the [Docker subprocess runner](docker-subprocess-runner.md) can propagate unchanged.
-- verify: http_status(code=200, path="/file/abc123")
-- returns: the [field-return-value](#field-return-value) contract: raw stdout text on reader exit `0`, otherwise `None`.
+- verify: json_path(path="exception.type", equals="TimeoutExpired")
+- returns: raw stdout text unchanged on reader exit `0`, including the empty string for an empty file.
 - verify: json_path(path="$.content", equals="print(1)\n")
-- verify: count(subject="discovered awaiting gate files", equals=1)
-- verify: absent(subject="gate answer write")
-- code: groom/groom/docker_io.py::read_file
+- returns: `None` for the [field-return-value](#field-return-value) contract on any non-zero reader exit.
+- verify: json_path(path="$.content", matches="^null$")
+- code: groom/groom/docker_io.py::read_file@9dc5eb2e112e
 - detail: [read-file documentation scope](read-file-documentation-scope.md)
 - tests: groom/tests/test_app.py::test_file_endpoint_joins_repo_and_path_and_returns_content
 - tests: groom/tests/test_app.py::test_file_endpoint_swallows_unsafe_path

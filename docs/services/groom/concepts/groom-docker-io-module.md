@@ -9,7 +9,7 @@ Its public helpers present Docker and workspace-volume operations through small 
 
 Groom Docker I/O module is the bounded Docker CLI adapter for the [groom server](../http/groom.md) and [groom sidecar](../groom-sidecar.md) control plane: it centralizes shell-free local Docker subprocess execution, container fleet reads, live container commands, workspace-volume file and diff reads, gate-file writes, and repository discovery. Its public helpers are documented as sibling concepts, including the [Docker subprocess runner](docker-subprocess-runner.md), [Docker all-container listing reader](docker-all-container-listing-reader.md), [Docker container-id listing reader](docker-container-id-listing-reader.md), [Docker exec runner](docker-exec-runner.md), [host-to-container sidecar query](host-to-container-sidecar-query.md), [Docker inspection reader](docker-inspection-reader.md), [stopped container start fallback](stopped-container-start-fallback.md), [container running-state check](container-running-state-check.md), [workspace volume relative-path guard](workspace-volume-relative-path-guard.md), [workspace-volume awaiting-file reader](workspace-volume-awaiting-file-reader.md), [workspace volume file-list reader](workspace-volume-file-list-reader.md), [Docker run-directory reader](docker-run-directory-reader.md), [workspace volume repository-directory reader](workspace-volume-repository-directory-reader.md), [workspace volume diff reader](workspace-volume-diff-reader.md), [workspace volume file-content reader](workspace-volume-file-content-reader.md), and [workspace volume file writer](workspace-volume-file-writer.md). It exchanges [Docker ps container row](../formats/docker-ps-container-row.md), [Docker inspect container object](../formats/docker-inspect-container-object.md), [sidecar snapshot data](../formats/sidecar-snapshot-data.md), [workspace file list data](../formats/workspace-file-list-data.md), [workspace file content data](../formats/workspace-file-content-data.md), and [workspace diff data](../formats/workspace-diff-data.md) without owning workflow registry state, dashboard rendering, sidecar websocket state, or gate-answer orchestration.
 
-- code: groom/groom/docker_io.py
+- code: groom/groom/docker_io.py@9dc5eb2e112e
 - tests: groom/tests/test_docker_io.py::test_list_container_ids_returns_short_id_set
 - tests: groom/tests/test_docker_io.py::test_list_container_ids_returns_none_on_docker_failure
 - tests: groom/tests/test_docker_io.py::test_list_container_ids_empty_when_no_containers
@@ -89,7 +89,7 @@ Workspace-volume reads are grouped under [grep-awaiting-files](#grep-awaiting-fi
 - type: `int`
 - default: `20`
 - required: true
-- code: groom/groom/docker_io.py::DOCKER_TIMEOUT
+- code: groom/groom/docker_io.py::DOCKER_TIMEOUT@9dc5eb2e112e
 - detail: [Docker command timeout](docker-command-timeout.md)
 - meaning: default maximum seconds a Docker subprocess may run before the subprocess runtime raises a timeout exception.
 - used-by: every helper that calls the [Docker subprocess runner](docker-subprocess-runner.md) without an explicit timeout override.
@@ -99,7 +99,7 @@ Workspace-volume reads are grouped under [grep-awaiting-files](#grep-awaiting-fi
 - type: Docker image reference string
 - default: `alpine:3.20`
 - required: true
-- code: groom/groom/docker_io.py::ALPINE_IMAGE
+- code: groom/groom/docker_io.py::ALPINE_IMAGE@9dc5eb2e112e
 - detail: [Docker volume helper image](docker-volume-helper-image.md)
 - meaning: image used for read-only volume scans, file reads, and file writes that need BusyBox `find`, `grep`, `cat`, or `cp` behavior.
 - used-by: [workspace-volume awaiting-file reader](workspace-volume-awaiting-file-reader.md), [workspace volume file-list reader](workspace-volume-file-list-reader.md), [Docker run-directory reader](docker-run-directory-reader.md), [workspace volume repository-directory reader](workspace-volume-repository-directory-reader.md), [workspace volume file-content reader](workspace-volume-file-content-reader.md), and [workspace volume file writer](workspace-volume-file-writer.md).
@@ -109,7 +109,7 @@ Workspace-volume reads are grouped under [grep-awaiting-files](#grep-awaiting-fi
 - type: Docker image reference string
 - default: `alpine/git:2.43.0`
 - required: true
-- code: groom/groom/docker_io.py::GIT_IMAGE
+- code: groom/groom/docker_io.py::GIT_IMAGE@9dc5eb2e112e
 - meaning: image used for read-only workspace diff extraction.
 - used-by: [workspace volume diff reader](workspace-volume-diff-reader.md).
 
@@ -125,7 +125,7 @@ Workspace-volume reads are grouped under [grep-awaiting-files](#grep-awaiting-fi
 - verify: count(subject="parseable rows from a successful Docker all-container JSON-line listing", equals=2)
 - returns: a listing line that fails JSON parsing is skipped individually rather than aborting or dropping the whole listing.
 - verify: count(subject="parseable rows from a Docker all-container listing where one of three lines is malformed JSON", equals=2)
-- code: groom/groom/docker_io.py::docker_ps_all
+- code: groom/groom/docker_io.py::docker_ps_all@9dc5eb2e112e
 - detail: [Docker all-container listing reader](docker-all-container-listing-reader.md)
 - detail: [Docker ps-all documentation scope](docker-ps-all-documentation-scope.md)
 
@@ -134,11 +134,12 @@ Workspace-volume reads are grouped under [grep-awaiting-files](#grep-awaiting-fi
 - sig: `list_container_ids() -> set[str] | None`
 - abstract: false
 - raises: subprocess launch and timeout exceptions from the [Docker subprocess runner](docker-subprocess-runner.md) can propagate.
+- verify: json_path(path="exception.type", matches="FileNotFoundError|TimeoutExpired")
 - returns: a set of twelve-character container id prefixes, an empty set when Docker reports no containers, or `None` when Docker cannot supply the listing.
 - verify: count(subject="twelve-character container ID prefixes from a successful listing", equals=2)
 - verify: absent(subject="container ID set when Docker listing fails")
 - verify: count(subject="container ID prefixes from a successful empty listing", equals=0)
-- code: groom/groom/docker_io.py::list_container_ids
+- code: groom/groom/docker_io.py::list_container_ids@9dc5eb2e112e
 - detail: [Docker container-id listing reader](docker-container-id-listing-reader.md)
 - detail: [Docker container-id listing documentation scope](docker-container-id-listing-documentation-scope.md)
 - tests: groom/tests/test_docker_io.py::test_list_container_ids_returns_short_id_set
@@ -152,7 +153,7 @@ Workspace-volume reads are grouped under [grep-awaiting-files](#grep-awaiting-fi
 - raises: subprocess launch and timeout exceptions from the [Docker subprocess runner](docker-subprocess-runner.md) can propagate.
 - returns: the completed `docker exec` process result for caller-specific interpretation.
 - verify: exit_status(code=0)
-- code: groom/groom/docker_io.py::docker_exec
+- code: groom/groom/docker_io.py::docker_exec@9dc5eb2e112e
 - detail: [Docker exec runner](docker-exec-runner.md)
 - detail: [Docker exec documentation scope](docker-exec-documentation-scope.md)
 - tests: groom/tests/test_docker_io.py::test_docker_exec_builds_user_and_env_flags
@@ -162,14 +163,15 @@ Workspace-volume reads are grouped under [grep-awaiting-files](#grep-awaiting-fi
 - sig: `sidecar_query(container_id: str) -> dict[str, Any] | None`
 - abstract: false
 - raises: no intentional exception for expected Docker missing, timeout, non-zero exit, non-JSON output, or non-dictionary JSON output.
-- raises: unexpected non-subprocess failures can propagate.
-- returns: parsed [sidecar snapshot data](../formats/sidecar-snapshot-data.md) dictionary from `groom-sidecar --query`, or `None` when the live sidecar query path is unavailable.
-- verify: json_path(path="$.current_node", equals="n1")
 - verify: absent(subject="sidecar snapshot data after a non-zero sidecar query exit")
 - verify: absent(subject="sidecar snapshot data after non-JSON sidecar query output")
 - verify: absent(subject="sidecar snapshot data when Docker is unavailable")
 - verify: absent(subject="sidecar snapshot data after a sidecar query timeout")
-- code: groom/groom/docker_io.py::sidecar_query
+- raises: unexpected non-subprocess failures can propagate.
+- verify: json_path(path="exception.type", equals="UnicodeDecodeError")
+- returns: parsed [sidecar snapshot data](../formats/sidecar-snapshot-data.md) dictionary from `groom-sidecar --query`, or `None` when the live sidecar query path is unavailable.
+- verify: json_path(path="$.current_node", equals="n1")
+- code: groom/groom/docker_io.py::sidecar_query@9dc5eb2e112e
 - detail: [host-to-container sidecar query](host-to-container-sidecar-query.md)
 - detail: [sidecar query source selection](sidecar-query-source-selection.md)
 - tests: groom/tests/test_docker_io.py::test_sidecar_query_parses_snapshot_json
@@ -192,7 +194,7 @@ Workspace-volume reads are grouped under [grep-awaiting-files](#grep-awaiting-fi
 - verify: absent(subject="Docker inspect object after invalid JSON")
 - returns: `None` for an empty inspect array.
 - verify: absent(subject="Docker inspect object after an empty inspect array")
-- code: groom/groom/docker_io.py::docker_inspect
+- code: groom/groom/docker_io.py::docker_inspect@9dc5eb2e112e
 - detail: [Docker inspection reader](docker-inspection-reader.md)
 - detail: [Docker inspect documentation scope](docker-inspect-documentation-scope.md)
 
@@ -204,7 +206,7 @@ Workspace-volume reads are grouped under [grep-awaiting-files](#grep-awaiting-fi
 - verify: json_path(path="exception.type", matches="FileNotFoundError|TimeoutExpired")
 - returns: `true` only when `docker start <container_id>` completes with return code `0`.
 - verify: json_path(path="return value", equals=true)
-- code: groom/groom/docker_io.py::docker_start
+- code: groom/groom/docker_io.py::docker_start@9dc5eb2e112e
 - detail: [Docker start documentation scope](docker-start-documentation-scope.md)
 - detail: [stopped container start fallback](stopped-container-start-fallback.md)
 
@@ -216,7 +218,7 @@ Workspace-volume reads are grouped under [grep-awaiting-files](#grep-awaiting-fi
 - verify: json_path(path="exception.type", matches="^(OSError|TimeoutExpired)$")
 - returns: `true` only when inspect data exists and `State.Running` is truthy.
 - verify: json_path(path="result", equals=true)
-- code: groom/groom/docker_io.py::is_running
+- code: groom/groom/docker_io.py::is_running@9dc5eb2e112e
 - detail: [container running-state check](container-running-state-check.md)
 - detail: [Is-running documentation scope](is-running-documentation-scope.md)
 
@@ -228,7 +230,7 @@ Workspace-volume reads are grouped under [grep-awaiting-files](#grep-awaiting-fi
 - verify: json_path(path="exception.type", equals="ValueError")
 - returns: the path normalized to forward-slash separators without changing segment names.
 - verify: json_path(path="result", equals="a/b/c")
-- code: groom/groom/docker_io.py::safe_relpath
+- code: groom/groom/docker_io.py::safe_relpath@9dc5eb2e112e
 - detail: [workspace volume relative-path guard](workspace-volume-relative-path-guard.md)
 - detail: [safe relpath documentation views](safe-relpath-documentation-views.md)
 
@@ -237,10 +239,11 @@ Workspace-volume reads are grouped under [grep-awaiting-files](#grep-awaiting-fi
 - sig: `grep_awaiting_files(volume: str, mount_subdir: str = "") -> list[str]`
 - abstract: false
 - raises: subprocess launch and timeout exceptions from the [Docker subprocess runner](docker-subprocess-runner.md) can propagate.
+- verify: json_path(path="exception.type", matches="^(FileNotFoundError|TimeoutExpired)$")
 - returns: workspace-volume-relative paths for files that contain an awaiting [operator gate context file](../formats/operator-gate-context-file.md) status line, or `[]` for Docker failure or no matches.
 - verify: count(subject="awaiting file paths after a successful sweep", equals=2)
 - verify: count(subject="awaiting file paths after Docker failure", equals=0)
-- code: groom/groom/docker_io.py::grep_awaiting_files
+- code: groom/groom/docker_io.py::grep_awaiting_files@9dc5eb2e112e
 - detail: [Grep awaiting-files documentation views](grep-awaiting-files-documentation-views.md)
 - detail: [workspace-volume awaiting-file reader](workspace-volume-awaiting-file-reader.md)
 - tests: groom/tests/test_docker_io.py::test_grep_awaiting_files_prunes_heavy_dirs_and_parses_paths
@@ -255,7 +258,7 @@ Workspace-volume reads are grouped under [grep-awaiting-files](#grep-awaiting-fi
 - returns: sorted repo-relative [workspace file list data](../formats/workspace-file-list-data.md), or `[]` for Docker failure or an empty tree.
 - verify: count(subject="repo-relative file paths from successful listing", equals=1)
 - verify: count(subject="file paths after Docker failure or empty tree", equals=0)
-- code: groom/groom/docker_io.py::list_files
+- code: groom/groom/docker_io.py::list_files@9dc5eb2e112e
 - detail: [List-files documentation views](list-files-documentation-views.md)
 - detail: [workspace volume file-list reader](workspace-volume-file-list-reader.md)
 - tests: groom/tests/test_docker_io.py::test_list_files_returns_repo_relative_paths_and_prunes_vendor_dirs
@@ -273,7 +276,7 @@ Workspace-volume reads are grouped under [grep-awaiting-files](#grep-awaiting-fi
 - verify: json_path(path="result[0]", equals="older-run")
 - returns: `[]` for Docker failure.
 - verify: count(subject="run directories after Docker failure", equals=0)
-- code: groom/groom/docker_io.py::list_run_dirs
+- code: groom/groom/docker_io.py::list_run_dirs@9dc5eb2e112e
 - detail: [Docker run-directory reader](docker-run-directory-reader.md)
 - detail: [Docker run-directory listing documentation views](docker-run-directory-listing-documentation-views.md)
 
@@ -282,11 +285,12 @@ Workspace-volume reads are grouped under [grep-awaiting-files](#grep-awaiting-fi
 - sig: `list_repo_dirs(volume: str) -> list[str]`
 - abstract: false
 - raises: subprocess launch and timeout exceptions from the [Docker subprocess runner](docker-subprocess-runner.md) can propagate.
+- verify: json_path(path="exception.type", matches="^(FileNotFoundError|TimeoutExpired)$")
 - returns: sorted volume-relative paths to git checkout roots discovered within two levels of the volume root, or `[]` for Docker failure or no repositories.
 - verify: count(subject="repository directories discovered from /vol/Acme/.git", equals=1)
 - verify: count(subject="repository directories discovered from a volume with no .git directory", equals=0)
 - verify: count(subject="repository directories after Docker failure", equals=0)
-- code: groom/groom/docker_io.py::list_repo_dirs
+- code: groom/groom/docker_io.py::list_repo_dirs@9dc5eb2e112e
 - detail: [workspace volume repository-directory reader](workspace-volume-repository-directory-reader.md)
 - detail: [Repository-directory listing documentation scope](repository-directory-listing-documentation-scope.md)
 - tests: groom/tests/test_docker_io.py::test_find_repo_dir_extracts_parent_of_dot_git
@@ -300,10 +304,10 @@ Workspace-volume reads are grouped under [grep-awaiting-files](#grep-awaiting-fi
 - raises: subprocess launch and timeout exceptions from [list-repo-dirs](#list-repo-dirs) can propagate.
 - verify: json_path(path="exception.type", matches="^(FileNotFoundError|TimeoutExpired)$")
 - returns: the first sorted repository directory from [list-repo-dirs](#list-repo-dirs).
-- verify: json_path(path="result", matches="^.+$")
+- verify: json_path(path="result", equals="Acme")
 - returns: `""` when no repository is found.
 - verify: json_path(path="result", equals="")
-- code: groom/groom/docker_io.py::find_repo_dir
+- code: groom/groom/docker_io.py::find_repo_dir@9dc5eb2e112e
 - detail: [first-repository lookup](workspace-volume-repository-directory-reader.md#find-repo-dir)
 - detail: [Repository-directory lookup documentation scope](repository-directory-lookup-documentation-scope.md)
 - tests: groom/tests/test_docker_io.py::test_find_repo_dir_extracts_parent_of_dot_git
@@ -315,11 +319,12 @@ Workspace-volume reads are grouped under [grep-awaiting-files](#grep-awaiting-fi
 - sig: `git_diff(volume: str, repo_dir: str = "") -> str`
 - abstract: false
 - raises: subprocess launch and timeout exceptions from the [Docker subprocess runner](docker-subprocess-runner.md) can propagate.
+- verify: json_path(path="exception.type", matches="^(FileNotFoundError|TimeoutExpired)$")
 - returns: raw [workspace diff data](../formats/workspace-diff-data.md) from `git diff HEAD`, or `""` when no repository is available or the git process fails.
 - verify: count(subject="diff output bytes when no repository is found", equals=0)
 - verify: count(subject="diff output bytes for a successful git diff", equals=31)
 - verify: count(subject="diff output bytes when git exits non-zero", equals=0)
-- code: groom/groom/docker_io.py::git_diff
+- code: groom/groom/docker_io.py::git_diff@9dc5eb2e112e
 - detail: [workspace volume diff reader](workspace-volume-diff-reader.md)
 - detail: [Docker git diff documentation scope](docker-git-diff-documentation-scope.md)
 - tests: groom/tests/test_docker_io.py::test_git_diff_returns_empty_when_no_repo_found
@@ -337,7 +342,7 @@ Workspace-volume reads are grouped under [grep-awaiting-files](#grep-awaiting-fi
 - returns: text [workspace file content data](../formats/workspace-file-content-data.md), or `None` when Docker cannot read the selected safe path.
 - verify: json_path(path="result", equals="print(1)\n")
 - verify: absent(subject="file content when Docker cannot read the selected safe path")
-- code: groom/groom/docker_io.py::read_file
+- code: groom/groom/docker_io.py::read_file@9dc5eb2e112e
 - detail: [workspace volume file-content reader](workspace-volume-file-content-reader.md)
 - detail: [read-file documentation scope](read-file-documentation-scope.md)
 
@@ -351,7 +356,7 @@ Workspace-volume reads are grouped under [grep-awaiting-files](#grep-awaiting-fi
 - verify: json_path(path="exception.type", matches="FileNotFoundError|TimeoutExpired")
 - returns: `true` only when the temporary container copies the supplied content to the selected safe path with return code `0`.
 - verify: json_path(path="result", equals=true)
-- code: groom/groom/docker_io.py::write_file
+- code: groom/groom/docker_io.py::write_file@9dc5eb2e112e
 - detail: [workspace volume file writer](workspace-volume-file-writer.md)
 - detail: [Write-file documentation views](write-file-documentation-views.md)
 
@@ -363,7 +368,7 @@ Workspace-volume reads are grouped under [grep-awaiting-files](#grep-awaiting-fi
 - abstract: false
 - raises: process launch and timeout exceptions from the subprocess runtime.
 - verify: json_path(path="exception.type", matches="^(FileNotFoundError|TimeoutExpired)$")
-- code: groom/groom/docker_io.py::_run
+- code: groom/groom/docker_io.py::_run@9dc5eb2e112e
 - detail: [Docker subprocess runner documentation](docker-subprocess-runner-documentation.md)
 
 ### field: skip dirs
@@ -371,7 +376,7 @@ Workspace-volume reads are grouped under [grep-awaiting-files](#grep-awaiting-fi
 - type: `tuple[str, ...]`
 - default: `(".git", "node_modules", "__pycache__", ".venv")`
 - required: true
-- code: groom/groom/docker_io.py::_SKIP_DIRS
+- code: groom/groom/docker_io.py::_SKIP_DIRS@9dc5eb2e112e
 - detail: [workspace volume skip directory names](workspace-volume-skip-directory-names.md)
 
 ## Algorithms

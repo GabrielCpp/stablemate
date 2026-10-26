@@ -7,7 +7,7 @@ title: Sidecar RPC helper
 
 Sidecar RPC helper is the app-level adapter that lets HTTP data-plane handlers ask a connected [sidecar connection](sidecar-connection.md) for workspace data without knowing registry or socket failure details. The [groom server](../http/groom.md) file-list, file-content, and diff invocations call it before falling back to local-filesystem or Docker-volume readers, and it uses the [sidecar connection registry](sidecar-connection-registry.md#method-get) plus the [sidecar connection RPC method](sidecar-connection.md#method-rpc) to exchange [sidecar websocket frame](../formats/sidecar-websocket-frame.md) messages. Successful helper results bridge sidecar `rpc_result.data` objects into [workspace file list data](../formats/workspace-file-list-data.md), [workspace file content data](../formats/workspace-file-content-data.md), and [workspace diff data](../formats/workspace-diff-data.md) endpoint responses; unavailable or failed sockets preserve those endpoints' fallback paths.
 
-- code: groom/groom/app.py::_sidecar_rpc
+- code: groom/groom/app.py::_sidecar_rpc@2d7aba1619b0
 - detail: [Sidecar RPC documentation scope](sidecar-rpc-documentation-scope.md)
 
 ## Contract
@@ -35,9 +35,9 @@ Sidecar RPC helper is the app-level adapter that lets HTTP data-plane handlers a
 - sig: `async _sidecar_rpc(container_id: str, method: str, params: dict) -> dict | None`
 - abstract: false
 - does: reads the current [sidecar connection registry](sidecar-connection-registry.md) once for `container_id` through [method-get](sidecar-connection-registry.md#method-get)
-- verify: json_path(path="file-list response.paths", matches=".+")
+- verify: json_path(path="file-list response.paths[0]", equals="README.md")
 - does: sends at most one `rpc` [sidecar websocket frame](../formats/sidecar-websocket-frame.md) through the returned [sidecar connection](sidecar-connection.md), carrying the method and params unchanged and relying on the connection's default RPC timeout
-- verify: json_path(path="file-content response.content", matches=".+")
+- verify: json_path(path="file-content response.content", equals="# hello")
 - does: converts only expected sidecar socket failures reported as [sidecar error](sidecar-error.md) into `None` so callers can use their fallback readers
 - verify: omits(subject="HTTP response", text="sidecar transport error")
 - raises: no intentional exception for an absent sidecar connection
@@ -45,10 +45,10 @@ Sidecar RPC helper is the app-level adapter that lets HTTP data-plane handlers a
 - raises: no intentional exception for a sidecar RPC failure
 - verify: omits(subject="HTTP response", text="sidecar transport error")
 - returns: `None` when no sidecar connection is registered for `container_id`
-- verify: json_path(path="fallback response", matches=".+")
+- verify: json_path(path="result", matches="^null$")
 - returns: the connection RPC result unchanged when the sidecar call succeeds
-- verify: json_path(path="sidecar response", matches=".+")
-- code: groom/groom/app.py::_sidecar_rpc
+- verify: json_path(path="sidecar response.content", equals="# hello")
+- code: groom/groom/app.py::_sidecar_rpc@2d7aba1619b0
 - tests: groom/tests/test_app.py::test_files_prefers_sidecar_socket_when_connected
 - tests: groom/tests/test_app.py::test_files_falls_back_to_volume_when_socket_errors
 - tests: groom/tests/test_app.py::test_file_content_prefers_sidecar_socket

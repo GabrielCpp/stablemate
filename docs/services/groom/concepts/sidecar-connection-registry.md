@@ -7,7 +7,7 @@ title: Sidecar connection registry
 
 Sidecar connection registry is the process-local map of normalized workflow container ids to the current [sidecar connection](sidecar-connection.md) in the [Groom sidecar hub module](groom-sidecar-hub-module.md). The [websocket-sidecar](../http/groom.md#websocket-sidecar) endpoint registers on useful `hello` [sidecar websocket frame](../formats/sidecar-websocket-frame.md) messages and unregisters on socket cleanup; the [sidecar RPC helper](sidecar-rpc-helper.md) and [post-reload endpoint](../http/groom.md#post-reload) look up this registry to use the sidecar websocket data plane while keeping Docker-volume fallbacks available. Displacement and cleanup fail pending RPCs through the [sidecar error](sidecar-error.md) path, but the registry itself never removes workflow records or decides endpoint fallback responses.
 
-- code: groom/groom/sidecar_hub.py::CONNECTIONS
+- code: groom/groom/sidecar_hub.py::CONNECTIONS@903bc3563189
 - tests: groom/tests/test_sidecar_hub.py::test_register_displaces_and_fails_prior_connection,
   groom/tests/test_sidecar_hub.py::test_unregister_only_removes_current_connection
 
@@ -71,7 +71,7 @@ Sidecar connection registry is the process-local map of normalized workflow cont
 - does: Leaves sending a websocket frame to the endpoint after registration succeeds.
 - verify: unchanged(subject="websocket frames")
 - raises: none intentionally.
-- code: groom/groom/sidecar_hub.py::register
+- code: groom/groom/sidecar_hub.py::register@903bc3563189
 - detail: [sidecar register documentation scope](sidecar-register-documentation-scope.md).
 - tests: groom/tests/test_sidecar_hub.py::test_register_displaces_and_fails_prior_connection
 - input-conn: [sidecar connection](sidecar-connection.md) object whose `container_id` is already normalized for use as the registry key; the registry stores the same object and does not clone, wrap, validate, or close it.
@@ -95,7 +95,7 @@ Sidecar connection registry is the process-local map of normalized workflow cont
   - Does not close the websocket transport, clear workflow gates, mutate workflow state, broadcast dashboard updates, or remove any registry entry for another container id.
 - raises: none intentionally.
 - verify: unchanged(subject="sidecar connection registry")
-- code: groom/groom/sidecar_hub.py::unregister
+- code: groom/groom/sidecar_hub.py::unregister@903bc3563189
 - detail: [sidecar unregister documentation scope](sidecar-unregister-documentation-scope.md).
 - tests: groom/tests/test_sidecar_hub.py::test_unregister_only_removes_current_connection
 - input-conn: [sidecar connection](sidecar-connection.md) object whose socket lifecycle is ending or whose caller wants all of that connection's pending RPCs failed.
@@ -127,7 +127,7 @@ Sidecar connection registry is the process-local map of normalized workflow cont
 - does: Leaves the decision of what absence means for their endpoint to the caller.
 - verify: unchanged(subject="sidecar connection registry")
 - raises: none intentionally.
-- code: groom/groom/sidecar_hub.py::get
+- code: groom/groom/sidecar_hub.py::get@903bc3563189
 - detail: [sidecar get documentation scope](sidecar-get-documentation-scope.md)
 - tests: groom/tests/test_sidecar_hub.py::test_register_displaces_and_fails_prior_connection,
   groom/tests/test_sidecar_hub.py::test_unregister_only_removes_current_connection,
@@ -164,7 +164,8 @@ Sidecar connection registry is the process-local map of normalized workflow cont
 - does: The reload endpoint performs a fresh [method-get](#method-get) for each target before sending, rather than trusting the snapshot's liveness.
 - verify: count(subject="fresh method-get calls per reload target", equals=1)
 - raises: none intentionally.
-- code: groom/groom/sidecar_hub.py::connected_ids
+- verify: json_path(path="exception.type", absent=true)
+- code: groom/groom/sidecar_hub.py::connected_ids@903bc3563189
 - detail: [sidecar connected ids documentation scope](sidecar-connected-ids-documentation-scope.md).
 - tests: groom/tests/test_app.py::test_reload_broadcasts_to_all_connected_sidecars
 - tests: groom/tests/test_app.py::test_reload_targets_one_container_when_id_given

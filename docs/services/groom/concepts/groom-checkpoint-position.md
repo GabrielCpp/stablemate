@@ -16,7 +16,7 @@ themselves. The transformer tolerates
 malformed or incomplete checkpoint JSON and returns safe empty defaults rather
 than raising.
 
-- code: groom/groom/checkpoints.py
+- code: groom/groom/checkpoints.py@0505eab6baba
 - tests: groom/tests/test_checkpoints.py
 
 ## Contract
@@ -45,7 +45,7 @@ than raising.
 The `CheckpointPosition` dataclass is the normalized output type for parsing
 checkpoint JSON. It is a frozen, slotted dataclass with two fields:
 
-- code: groom/groom/checkpoints.py::CheckpointPosition
+- code: groom/groom/checkpoints.py::CheckpointPosition@0505eab6baba
 - tests: groom/tests/test_checkpoints.py
 
 ### field: current_node
@@ -57,7 +57,7 @@ checkpoint JSON. It is a frozen, slotted dataclass with two fields:
   the latest node reached or being executed in the workflow run. Empty when the
   checkpoint cannot be read, parsed, or contains no usable position value. Callers
   treat empty values as unknown position.
-- code: groom/groom/checkpoints.py::CheckpointPosition.current_node
+- code: groom/groom/checkpoints.py::CheckpointPosition.current_node@0505eab6baba
 
 ### field: waiting_on
 
@@ -68,7 +68,7 @@ checkpoint JSON. It is a frozen, slotted dataclass with two fields:
   workflow is waiting for operator input in pyflow format.
 - semantics: empty string when the checkpoint is retired format, contains no gate
   in progress, or the field is missing.
-- code: groom/groom/checkpoints.py::CheckpointPosition.waiting_on
+- code: groom/groom/checkpoints.py::CheckpointPosition.waiting_on@0505eab6baba
 
 ## Methods
 
@@ -77,15 +77,15 @@ checkpoint JSON. It is a frozen, slotted dataclass with two fields:
 - sig: `parse_position(text: str) -> CheckpointPosition`
 - abstract: false
 - does: read JSON text and extract checkpoint position into a normalized type
+- verify: json_path(path="$.current_node", equals="awaiting_approval")
 - does: absorb malformed JSON, type errors, and missing fields without raising
 - raises: none — all error cases (parse failures, type mismatches, missing keys)
   return an empty `CheckpointPosition()` instead of raising
-- verify: json_path(path="$.current_node", matches="\\w+")
 - verify: json_path(path="$.current_node", equals="")
 - returns: always returns a `CheckpointPosition` object with `current_node` and
   `waiting_on` fields populated from recognized checkpoint formats, or both fields
   set to `""` when input cannot be parsed or does not match expected schemas.
-- code: groom/groom/checkpoints.py::parse_position
+- code: groom/groom/checkpoints.py::parse_position@0505eab6baba
 - tests: groom/tests/test_checkpoints.py::test_pyflow_position_uses_state_and_waiting_on
 - tests: groom/tests/test_checkpoints.py::test_retired_position_uses_current_id
 - tests: groom/tests/test_checkpoints.py::test_malformed_or_wrongly_typed_position_is_empty
