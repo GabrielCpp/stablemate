@@ -7,7 +7,7 @@ title: Author story-split subflow
 
 The `story_split` package is the standalone Author subflow for decomposing one explicitly named
 epic into stories. It loads the configured repository paths, asks a high-power agent to split the
-epic's seeds into stories, derives each story's services, lints the coverage, and hands the result
+epic's seeds into stories, bounds each story's services, lints the coverage, and hands the result
 to the [PM review](author-pm-review.md). A review that finds gaps sends the findings back to the
 splitter, up to three reworks. A splitter that blocks on a product decision is answered by the
 [PM](author-pm-gap-answer.md) up to twice, and the answer reaches it as a note. Past either budget
@@ -15,11 +15,19 @@ the flow returns a blocked result, and the Author flow keeps the epic's row bloc
 completion gate. A passing review writes a [PM receipt](../formats/pm-receipt.md) in the epic
 directory. The flow does not author epic prose, select another epic, or create a commit.
 
+A story's services are bounded by the union of the services of the seeds it covers. A seed that
+names a web app, a mobile app and their API is often split into one story per platform, and each
+of those stories changes only its own platform's books. The splitter or a rework narrows such a
+story's `services:` list, and the derivation keeps a non-empty list that stays inside the union.
+An empty list, or one naming a book no covered seed names, is replaced by the union. A book a story
+needs that no seed lists is a defect of the seed, so the derivation never widens past the union.
+
 The [author workflow composition root](author-workflow-composition-root.md) registers this flow
 alongside the other author stages.
 
 - code: `workflows/src/workhorse_workflows/author/story_split/flow.py::StorySplitFlow` @9e26ab4671cb
 - code: `workflows/src/workhorse_workflows/author/story_split/nodes/_blueprint.py::blueprint` @c780d75bd248
+- rule: a story's `services:` stays a subset of its covered seeds' union; a narrower non-empty list is kept, anything else becomes the union
 - tests: `workflows/tests/author/story_split/test_flow.py::test_accepts_one_epic_graph_without_selecting_authoring_or_git`
 - tests: `workflows/tests/author/story_split/test_flow.py::test_a_blocked_writer_is_answered_by_the_pm_then_retries`
 - tests: `workflows/tests/author/story_split/test_flow.py::test_the_split_blocks_when_the_pm_never_passes`
@@ -108,7 +116,7 @@ alongside the other author stages.
 
 ### check_coverage
 - sig: `check_coverage(reworks: int = 0, answers: int = 0, prior: str = "") -> Continue | Done`
-- does: derives each story's services from its covered seeds
+- does: keeps each story's non-empty services that stay inside its covered seeds' union, and writes the union otherwise
 - verify: count(subject="story-split service derivations", equals=1)
 - does: validates the selected epic's seed and story coverage without requiring authored story prose
 - verify: json_path(path="$.ok", equals=True)
@@ -117,6 +125,9 @@ alongside the other author stages.
 - does: sends a clean lint to `review`
 - verify: count(subject="story-split PM reviews", equals=1)
 - code: `workflows/src/workhorse_workflows/author/story_split/flow.py::StorySplitFlow.check_coverage` @9e26ab4671cb
+- code: `workflows/src/workhorse_workflows/author/story_split/nodes/services.py::derive_story_services` @bfeae9e6d0dc
+- tests: `workflows/tests/author/story_split/test_services.py::test_a_story_keeps_a_narrower_list_inside_its_seeds_union`
+- tests: `workflows/tests/author/story_split/test_services.py::test_a_story_naming_a_book_outside_its_seeds_takes_the_union`
 
 ### review
 - sig: `review(reworks: int = 0, answers: int = 0, prior: str = "") -> Continue | Done`

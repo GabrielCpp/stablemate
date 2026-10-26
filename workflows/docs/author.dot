@@ -72,7 +72,7 @@ digraph author {
       node [style="filled", fontsize=10];
       f0__start__0 [label="contract_digest\nThe sha256 of the milestone body, which the run never writes, so a change is an operator's edit.", shape=box, fillcolor=white];
       f0__start__1 [label="seed_story\nRegister ONE register record as a new story inside an already-existing epic.", shape=box, fillcolor=white];
-      f0__start__2 [label="derive_story_services\nEach story's services are the sorted union of the services of the seeds it covers.", shape=box, fillcolor=white];
+      f0__start__2 [label="derive_story_services\nA story's services stay inside the sorted union of the services of the seeds it covers.", shape=box, fillcolor=white];
       f0__start__3 [label="handoff → story-author", shape=box, fillcolor=plum];
       f0__start__4 [label="handoff → surveyor", shape=box, fillcolor=plum];
       f0__start__5 [label="handoff → parity-surveyor", shape=box, fillcolor=plum];
@@ -356,7 +356,7 @@ digraph author {
       style="rounded,filled"; fillcolor=lightblue; color=steelblue;
       node [style="filled", fontsize=10];
       f3__next_affected_story__0 [label="select_affected_story\nResolve the next approved affected story without widening the edit worklist.", shape=box, fillcolor=white];
-      f3__next_affected_story__1 [label="derive_story_services\nEach story's services are the sorted union of the services of the seeds it covers.", shape=box, fillcolor=white];
+      f3__next_affected_story__1 [label="derive_story_services\nA story's services stay inside the sorted union of the services of the seeds it covers.", shape=box, fillcolor=white];
       f3__next_affected_story__0 -> f3__next_affected_story__1 [color=gray40, arrowsize=0.6];
     }
     subgraph cluster_f3__plan_edit {
@@ -576,7 +576,7 @@ digraph author {
       label="check_coverage"; fontsize=12;
       style="rounded,filled"; fillcolor=lightblue; color=steelblue;
       node [style="filled", fontsize=10];
-      f7__check_coverage__0 [label="derive_story_services\nEach story's services are the sorted union of the services of the seeds it covers.", shape=box, fillcolor=white];
+      f7__check_coverage__0 [label="derive_story_services\nA story's services stay inside the sorted union of the services of the seeds it covers.", shape=box, fillcolor=white];
       f7__check_coverage__1 [label="validate_coverage\nEvery seed covered by a story, the story graph acyclic, every story file present.", shape=box, fillcolor=white];
       f7__check_coverage__0 -> f7__check_coverage__1 [color=gray40, arrowsize=0.6];
     }

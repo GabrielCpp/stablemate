@@ -1,4 +1,4 @@
-"""Write each story's `services:` from the seeds it covers."""
+"""Bound each story's `services:` by the seeds it covers."""
 from __future__ import annotations
 
 import logging
@@ -45,7 +45,12 @@ def derive_story_services(
     epic: str,
     repo_dir: str = "",
 ) -> StoryServices:
-    """Each story's services are the sorted union of the services of the seeds it covers."""
+    """A story's services stay inside the sorted union of the services of the seeds it covers.
+
+    A story keeps a non-empty list that stays inside that union, so a seed split into one story
+    per platform keeps each story's narrower list. An empty list, or one naming a book outside
+    the union, is replaced by the union.
+    """
     root = survey_repo_root(repo_dir)
     found = epic_by_name(Ostler(root).graph, epic)
     if found is None:
@@ -60,9 +65,11 @@ def derive_story_services(
             for seed_id in story.seed_items
             for service in seed_services.get(seed_id, ())
         })
-        derived[story.slug] = union
-        if tuple(union) != story.services:
-            _write_services(story.story_md, union)
+        kept = bool(story.services) and set(story.services) <= set(union)
+        services = sorted(story.services) if kept else union
+        derived[story.slug] = services
+        if tuple(services) != story.services:
+            _write_services(story.story_md, services)
     logger.info("derived services for %d story(ies) of epic %s", len(derived), epic)
     return StoryServices(epic=epic, services=derived)
 

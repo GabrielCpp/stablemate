@@ -13,7 +13,9 @@ for the epic's journey. Each later story must widen a runnable path and have a c
 layer-only work is folded into the earliest journey story that needs it.
 
 The turn records stories with `ostler create story`, including kebab-case slugs, titles, covered
-seeds, and only genuine blockers from the same epic. It does not write story bodies. On re-entry it
+seeds, and only genuine blockers from the same epic. It does not write story bodies. A story that
+changes fewer books than its seeds name, such as one story per platform, gets a narrower
+`services:` list in its `story.md` frontmatter. On re-entry it
 extends or refines the existing set without replacing stories that already have bodies, and a
 rework pass must act on the supplied coverage findings or explicitly return a standoff. A first
 split or addressed rework returns `complete`; an unresolved product or scope choice returns

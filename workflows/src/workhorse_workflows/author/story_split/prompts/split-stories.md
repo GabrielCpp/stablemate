@@ -91,6 +91,11 @@ stage does that next.
      --depends <sibling-slug>,<sibling-slug>
    ```
    Omit `--covers` for a seedless story; omit `--depends` for an independent one.
+6. **Name the books a narrower story changes.** Author gives each story the union of the
+   `services:` of the seeds it covers. When a story changes fewer of those books, such as one
+   story per platform, set `services: [<book>, <book>]` in its `story.md` frontmatter to the books
+   it changes. Author keeps a list that stays inside that union and replaces any other with the
+   union.
 
 ## Output — the epic's `## Stories` section
 

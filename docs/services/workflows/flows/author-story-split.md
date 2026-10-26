@@ -16,10 +16,10 @@ The [workhorse-author run command](../workhorse-author.md#run) selects this flow
 [author workflow composition root](../concepts/author-workflow-composition-root.md).
 
 - fixture: none, because the walk dry-runs the registered flow, which stands in for every agent turn
-- steps:
-  - [run](../workhorse-author.md#run)
 - start: the working directory holds no rendered graph
 - verify: absent(subject="workhorse-author.dot")
+- steps:
+  - [run](../workhorse-author.md#run)
 - end: the dry run leaves the command with a zero exit status
 - verify: exit_status(code=0)
 - detail: [author story-split subflow](../concepts/story-split-subflow.md)
@@ -52,12 +52,13 @@ The split result can be `complete`, `standoff`, or `blocked`:
 
 ## Check coverage
 
-Derives each story's services from its covered seeds, then validates seed coverage, story services
-and graph integrity mechanically. Errors go back to the splitter as rework notes, up to three
+Bounds each story's services by the union of its covered seeds' services, then validates seed
+coverage, story services and graph integrity mechanically. A story keeps a narrower list inside
+that union, and any other list becomes the union. Errors go back to the splitter as rework notes, up to three
 times.
 
 - kind: verify
-- run: derive each story's `services` from its covered seeds, then validate seed coverage, story services and graph integrity
+- run: bound each story's `services` by its covered seeds' union, then validate seed coverage, story services and graph integrity
 - verify: [check_coverage](../concepts/story-split-subflow.md#check_coverage)
 - code: `workflows/src/workhorse_workflows/author/story_split/flow.py::StorySplitFlow.check_coverage` @9e26ab4671cb
 
