@@ -178,3 +178,15 @@ def test_an_environment_name_must_be_one_the_plan_can_declare() -> None:
     refused = acts.parse_act('invoke(argv=["show"], env={"home": "x"})')
     assert isinstance(refused, checks.Refusal)
     assert "'home'" in refused.message
+
+
+def test_while_open_is_a_grpc_act_that_names_the_second_call() -> None:
+    spec = acts.ACT_BY_NAME["while_open"]
+    assert spec.drivers == (acts.GRPC,)
+    assert [(p.name, p.type, p.required) for p in spec.params] == [("method", "str", True), ("request", "str", False)]
+    parsed = acts.parse_act('while_open(method="notes.v1.NoteService/Send", request=\'{"title": "hi"}\')')
+    assert isinstance(parsed, acts.ActCall)
+    assert parsed.args["method"] == "notes.v1.NoteService/Send"
+    refused = acts.parse_act('while_open(request="{}")')
+    assert isinstance(refused, checks.Refusal)
+    assert refused.kind == "bad-arguments"

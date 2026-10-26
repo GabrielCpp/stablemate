@@ -21,6 +21,7 @@ class Locators:
     params: tuple[str, ...] = ()
     role: tuple[str, ...] = ()
     name: tuple[str, ...] = ()
+    streaming: tuple[str, ...] = ()
     selector: tuple[str, ...] = ()
     keyboard: tuple[str, ...] = ()
     states: tuple[str, ...] = ()

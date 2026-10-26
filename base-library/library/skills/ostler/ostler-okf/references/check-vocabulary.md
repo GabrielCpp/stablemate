@@ -61,6 +61,22 @@ The check observes the reply `qa.grpc.call` returned. A claim that expects a ref
 verify: grpc_status(code="NOT_FOUND")
 ```
 
+### `message_count(equals=<int>, at_least=<int>, path=<str> (path)) — one of equals, at_least`
+Excludes a stream that delivers the expected message and also extras or duplicates nobody
+counted, and a stream that delivered nothing judged only by its status.
+
+The check counts the messages of a server stream. It observes the reply `qa.grpc.stream`
+returned, and it refuses a unary reply. With `path`, it counts only the messages in which that
+path resolves to a present, non-null value, so a keepalive message does not count when
+`path="notification"`. `equals` states the exact count and `at_least` a floor.
+
+```
+verify: message_count(path="notification", equals=1)
+```
+
+A `json_path` on the same stream reads the list of messages, so `[0].notification.title` is the
+title of the first message.
+
 ### `response_header(name*=<str>, equals=<str>, matches=<str>) — one of equals, matches`
 Excludes a route that answers the right status with the wrong content type or disposition,
 which a client then misreads or saves under the wrong name.
@@ -420,6 +436,7 @@ call grammar as a check and refused against its own names:
 | `body(field*, value*)` | a member of the request this step sends carries a stated value. A dotted `field` such as `locales.fr` is a member of a nested object. `field="$"` is the whole body. A `value` that is one `@node.key` naming an object or a list is sent whole | http |
 | `no_body()` | the request this step sends carries no body, for a route that reads nothing from its request | http |
 | `header(name*, value*)` | the request this step sends carries a stated header, such as the token a sign-in fixture minted | http |
+| `while_open(method*, request)` | a second call is made while this server stream is open: `method` is the full `package.Service/Method` name, sent to the same address, and `request` is its request message as JSON object text, `{}` when omitted. A string in it may be an `@node.key` reference | grpc |
 | `invoke(argv*, env)` | a command ran with the stated arguments, under the stated environment | cli |
 
 **An act's argument type is a property of that act's parameter, not of acts in general.**

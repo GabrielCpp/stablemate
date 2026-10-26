@@ -7,7 +7,7 @@ import urllib.parse
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 
-from ostler_qa_paths import JsonValue
+from ostler_qa_paths import JsonValue, resolve_path
 from ostler_qa_verdicts import Args, Verdict, json_value, str_arg, verdict
 
 REPLY_EXCERPT_CHARS = 300
@@ -188,3 +188,44 @@ def verify_grpc_status(reading: GrpcReading, args: Args) -> Verdict:
     if not passed and reading.message.strip():
         actual["reply"] = reply_excerpt(reading.message)
     return verdict(passed, actual, {"code": expected})
+
+
+@dataclass(frozen=True)
+class StreamedReading:
+    """The messages a server stream delivered, or why the observation is not a stream."""
+
+    streamed: bool
+    messages: tuple[object, ...]
+
+
+def read_messages(observed: object, args: Args) -> StreamedReading:
+    messages = getattr(observed, "messages", None)
+    if not isinstance(getattr(observed, "status", None), str) or not isinstance(messages, tuple):
+        raise TypeError(
+            "message_count observes a reply — pass the object qa.grpc.stream returned, "
+            f"not {type(observed).__name__}"
+        )
+    return StreamedReading(streamed=getattr(observed, "streamed", False) is True, messages=messages)
+
+
+def _carries(message: object, path: str) -> bool:
+    try:
+        hit = resolve_path(json_value(message), path)
+    except ValueError:
+        return False
+    return hit.found and hit.value is not None
+
+
+def verify_message_count(reading: StreamedReading, args: Args) -> Verdict:
+    """How many messages the stream delivered, counting only those that carry `path` when it names one."""
+    expected: object = args["equals"] if "equals" in args else {"at_least": args["at_least"]}
+    if not reading.streamed:
+        return verdict(False, "a unary reply, not a server stream", expected)
+    counted = reading.messages
+    if "path" in args:
+        counted = tuple(message for message in counted if _carries(message, str_arg(args, "path")))
+    found = len(counted)
+    if "equals" in args:
+        return verdict(found == args["equals"], found, expected)
+    at_least = args["at_least"]
+    return verdict(isinstance(at_least, int) and found >= at_least, found, expected)

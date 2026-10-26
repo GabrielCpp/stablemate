@@ -530,6 +530,26 @@ def _plan_grpc_status(args: Mapping[str, checks.CheckValue]) -> _WitnessPlan:
     ])
 
 
+def _plan_message_count(args: Mapping[str, checks.CheckValue]) -> _WitnessPlan:
+    wanted = _int(args["equals"]) if "equals" in args else _int(args["at_least"])
+    path = str(args["path"]) if "path" in args else None
+    held = _set_path({}, path, "x") if path else {}
+
+    def reply(count: int) -> SimpleNamespace:
+        return SimpleNamespace(status="OK", message="", messages=(held,) * count, streamed=True)
+
+    short = reply(wanted - 1) if wanted > 0 else None
+    mutations: list[tuple[str, object]] = []
+    if short is not None:
+        mutations.append(("the stream delivered fewer messages", short))
+    if "equals" in args:
+        mutations.append(("the stream delivered an extra message", reply(wanted + 1)))
+    if path:
+        keepalive = SimpleNamespace(status="OK", message="", messages=({},) * wanted, streamed=True)
+        mutations.append(("the stream delivered only messages without the field", keepalive))
+    return _WitnessPlan.of(reply(wanted), mutations)
+
+
 def _plan_response_header(args: Mapping[str, checks.CheckValue]) -> _WitnessPlan | _NoWitness:
     header = str(args["name"])
     if "equals" in args:
@@ -851,6 +871,7 @@ def _plan_conflict_on_stale(_args: Mapping[str, checks.CheckValue]) -> _WitnessP
 _PLANNERS: dict[str, Callable[[Mapping[str, checks.CheckValue]], _WitnessPlan | _NoWitness]] = {
     "http_status": _plan_http_status,
     "grpc_status": _plan_grpc_status,
+    "message_count": _plan_message_count,
     "response_header": _plan_response_header,
     "json_path": _plan_json_path,
     "unchanged": _plan_unchanged,

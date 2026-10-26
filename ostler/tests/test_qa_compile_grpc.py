@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import ast
 
+import pytest
+
 from ostler.qa.compile import Plan
 from ostler.qa.compile import compile_plan_gaps
 from ostler.qa.dispatch import BUILT_TARGETS
@@ -138,3 +140,112 @@ def test_a_header_two_claims_set_apart_is_not_shared() -> None:
                  actsDeclared=[_body("id", "t-1"), _header("authorization", "Bearer $B_TOKEN")]),
         _on_node(third, checksDeclared=_refused("NOT_FOUND"), actsDeclared=[_body("id", "t-2")]))
     assert source.count("metadata=") == 2
+
+
+STREAM = "notes.v1.NoteService/Stream"
+SEND = "notes.v1.NoteService/Send"
+
+
+def _while_open(method: str = SEND, request: str | None = '{"title": "hi", "to": "@seed.user"}') -> dict:
+    args = {"method": method} if request is None else {"method": method, "request": request}
+    return {"call": f"while_open(method={method!r})", "name": "while_open", "args": args}
+
+
+def _no_body() -> dict:
+    return {"call": "no_body()", "name": "no_body", "args": {}}
+
+
+def _stream_obligation(oid: str, *, streaming: str = "server", **extra: object) -> dict:
+    return _obligation(
+        oid, locators={"name": [STREAM], "streaming": [streaming]},
+        fixturesDeclared=[{"name": "seeded", "args": [], "provides": "a user", "providesKeys": ["seed.user"]}], **extra)
+
+
+def _gaps(*obligations: dict) -> list:
+    return compile_plan_gaps(_context(*obligations), story="demo").gaps
+
+
+def _delivered(count: int = 1) -> list[dict]:
+    return [{"call": "n", "name": "message_count", "args": {"path": "note", "equals": count}}]
+
+
+def test_a_server_stream_claim_with_a_trigger_compiles_to_a_stream_during_a_call() -> None:
+    oid = "okf:notes-rpc:delivers:1"
+    source, gaps = _compile(_stream_obligation(
+        oid, checksDeclared=_delivered(), actsDeclared=[_no_body(), _while_open()]))
+    assert _kinds(gaps, oid) == []
+    assert (f'qa.grpc.stream("{STREAM}", None, during=("{SEND}", '
+            '{"title": "hi", "to": qa.resolve_body("@seed.user")}))') in source
+    assert f'qa.verify("message_count", observed_1, path="note", equals=1, covers=["{oid}"])' in source
+
+
+def test_a_server_stream_claim_without_a_trigger_compiles_to_a_plain_stream() -> None:
+    oid = "okf:notes-rpc:refused:1"
+    source, gaps = _compile(_stream_obligation(
+        oid, checksDeclared=[{"call": "gone", "name": "grpc_status", "args": {"code": "UNAUTHENTICATED"}}],
+        actsDeclared=[_no_body()]))
+    assert _kinds(gaps, oid) == []
+    assert f'qa.grpc.stream("{STREAM}", None, expect_status="UNAUTHENTICATED")' in source
+    assert "during=" not in source
+
+
+def test_a_stream_trigger_carries_the_metadata_of_the_claim() -> None:
+    oid = "okf:notes-rpc:auth:1"
+    source, _ = _compile(_stream_obligation(
+        oid, checksDeclared=_delivered(),
+        actsDeclared=[_no_body(), _while_open(request=None), _header("authorization", "Bearer $NOTE_TOKEN")]))
+    assert (f'qa.grpc.stream("{STREAM}", None, during=("{SEND}", {{}}), '
+            'metadata={"authorization": qa.resolve("Bearer $NOTE_TOKEN")})') in source
+    assert 'secret("NOTE_TOKEN", from_env="NOTE_TOKEN")' in source
+
+
+def test_a_unary_rpc_still_compiles_to_a_call_whatever_its_streaming_bullet_says() -> None:
+    oid = "okf:tickets-rpc:unary:1"
+    source, _ = _compile(_obligation(
+        oid, locators={"name": [METHOD], "streaming": ["unary"]},
+        checksDeclared=[{"call": "gone", "name": "grpc_status", "args": {"code": "NOT_FOUND"}}],
+        actsDeclared=[_body("id", "t-404")]))
+    assert f'qa.grpc.call("{METHOD}", {{"id": "t-404"}}, expect_status="NOT_FOUND")' in source
+    assert "qa.grpc.stream" not in source
+
+
+def test_two_while_open_rows_are_an_uncompilable_claim() -> None:
+    oid = "okf:notes-rpc:two:1"
+    gaps = _gaps(_stream_obligation(
+        oid, checksDeclared=_delivered(), actsDeclared=[_no_body(), _while_open(), _while_open()]))
+    assert "uncompilable-claim" in _kinds(gaps, oid)
+
+
+@pytest.mark.parametrize("request_text", ["{not json", "[1, 2]", '"text"'])
+def test_a_trigger_request_that_is_not_a_json_object_is_an_uncompilable_claim(request_text: str) -> None:
+    oid = "okf:notes-rpc:badjson:1"
+    gaps = _gaps(_stream_obligation(
+        oid, checksDeclared=_delivered(), actsDeclared=[_no_body(), _while_open(request=request_text)]))
+    assert "uncompilable-claim" in _kinds(gaps, oid)
+
+
+def test_while_open_on_a_unary_rpc_is_an_uncompilable_claim_that_names_the_stream() -> None:
+    oid = "okf:tickets-rpc:wrong:1"
+    result = compile_plan_gaps(_context(_obligation(
+        oid, locators={"name": [METHOD], "streaming": ["unary"]},
+        checksDeclared=[{"call": "gone", "name": "grpc_status", "args": {"code": "NOT_FOUND"}}],
+        actsDeclared=[_body("id", "t-1"), _while_open()])), story="demo")
+    gap = next(g for g in result.gaps if g.obligation_id == oid and g.kind == "uncompilable-claim")
+    assert "server-streaming" in gap.detail
+
+
+def test_an_unresolvable_reference_in_a_trigger_request_is_a_gap() -> None:
+    oid = "okf:notes-rpc:unbound:1"
+    _, gaps = _compile(_stream_obligation(
+        oid, checksDeclared=_delivered(),
+        actsDeclared=[_no_body(), _while_open(request='{"to": "$user_id"}')]))
+    assert "unresolved-precondition" in _kinds(gaps, oid)
+
+
+def test_a_secret_in_a_trigger_request_is_declared() -> None:
+    oid = "okf:notes-rpc:secret:1"
+    source, gaps = _compile(_stream_obligation(
+        oid, checksDeclared=_delivered(),
+        actsDeclared=[_no_body(), _while_open(request='{"key": "$NOTE_KEY"}')]))
+    assert _kinds(gaps, oid) == []
+    assert 'secret("NOTE_KEY", from_env="NOTE_KEY")' in source

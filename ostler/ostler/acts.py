@@ -135,6 +135,17 @@ ACTS: tuple[ActSpec, ...] = (
         drivers=(HTTP, GRPC),
     ),
     ActSpec(
+        name="while_open",
+        params=(ActParam("method", "str", required=True),
+                ActParam("request", "str")),
+        establishes="a second call is made while this server stream is open, which is the only "
+                    "way a claim about what a stream delivers can be made true, because a "
+                    "stream sends only what happens after it opens. `method` is the full name "
+                    "`package.Service/Method` of the call, sent to the same address, and "
+                    "`request` is its request message as JSON object text",
+        drivers=(GRPC,),
+    ),
+    ActSpec(
         name="invoke",
         params=(ActParam("argv", "str[]", required=True),
                 ActParam("env", "str{}", env_names=True)),

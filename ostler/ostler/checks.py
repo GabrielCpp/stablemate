@@ -99,6 +99,20 @@ CHECKS: tuple[CheckSpec, ...] = (
         plan_reads="the reply `qa.grpc.call` returned. `code` is the canonical status name, such as \"NOT_FOUND\"",
     ),
     CheckSpec(
+        name="message_count",
+        params=(
+            CheckParam("equals", "int"),
+            CheckParam("at_least", "int"),
+            CheckParam("path", "str", path=True, identifies=True),
+        ),
+        one_of=("equals", "at_least"),
+        excludes="a stream that delivers the expected message and also extras or duplicates nobody "
+                 "counted, and a stream that delivered nothing judged only by its status",
+        observes="response",
+        plan_reads="the reply `qa.grpc.stream` returned. With `path=`, only the messages in which that "
+                   "path resolves to a present, non-null value are counted, so a keepalive is not",
+    ),
+    CheckSpec(
         name="response_header",
         params=(
             CheckParam("name", "str", required=True, identifies=True),

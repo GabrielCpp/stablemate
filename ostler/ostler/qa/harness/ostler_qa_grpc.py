@@ -4,8 +4,9 @@ from __future__ import annotations
 
 import json
 import subprocess
+import time
 from collections.abc import Callable, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Protocol
 
 CODE_NAMES = (
@@ -15,6 +16,8 @@ CODE_NAMES = (
 )
 SCHEME = "grpc://"
 DEFAULT_DEADLINE = 30.0
+STREAM_SETTLE_S = 2.0
+DEFAULT_WINDOW_S = 10.0
 _GRACE_S = 5.0
 _EXCERPT_CHARS = 300
 _REDACTED = "[redacted]"
@@ -46,20 +49,29 @@ class Reply:
     status: str
     message: str = ""
     messages: tuple[object, ...] = ()
+    streamed: bool = False
 
     @property
     def text(self) -> str:
         return json.dumps(list(self.messages)) if self.messages else self.message
 
     def json(self) -> object:
-        """The one reply message, or the list of them when a stream sent several."""
+        """The one reply message, or the list of them when a stream sent several. A server stream always answers the list."""
+        if self.streamed:
+            return list(self.messages)
         if not self.messages:
             raise ValueError(f"the call replied {self.status} with no message: {self.message[:200]!r}")
         return self.messages[0] if len(self.messages) == 1 else list(self.messages)
 
 
+class OpenStream(Protocol):
+    def close(self) -> Reply: ...
+
+
 class Caller(Protocol):
     def call(self, call: Call) -> Reply: ...
+
+    def open(self, call: Call, window: float) -> OpenStream: ...
 
 
 def _body(request: object) -> str:
@@ -84,6 +96,16 @@ def _messages(stdout: str) -> tuple[object, ...]:
         message, at = decoder.raw_decode(stdout, at)
         found.append(message)
     return tuple(found)
+
+
+def _scrubbed_json(value: object, call: Call) -> object:
+    if isinstance(value, str):
+        return _scrubbed(value, call)
+    if isinstance(value, list):
+        return [_scrubbed_json(item, call) for item in value]
+    if isinstance(value, dict):
+        return {_scrubbed(str(key), call): _scrubbed_json(item, call) for key, item in value.items()}
+    return value
 
 
 def _status_of(stderr: str) -> tuple[str, str] | None:
@@ -136,6 +158,61 @@ class GrpcurlCaller:
             raise GrpcError(f"{where} could not be called, grpcurl exited {done.returncode}: {seen}")
         return Reply(status[0], _scrubbed(status[1], call))
 
+    def open(self, call: Call, window: float) -> OpenStream:
+        where = f"{call.method} on {call.address}"
+        try:
+            process = subprocess.Popen(  # noqa: S603 - argv built from a config-declared command
+                self.argv(replace(call, deadline=window)), stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE, text=True,
+            )
+        except FileNotFoundError as exc:
+            raise GrpcError(f"{where} could not run: grpcurl command {self._command!r} is not on PATH") from exc
+        try:
+            sent = process.stdin
+            if sent is None:
+                raise GrpcError(f"{where} has no stdin to send its request on")
+            sent.write(_body(call.request))
+            sent.close()
+            process.stdin = None
+        except BaseException:
+            process.kill()
+            process.wait()
+            raise
+        return _GrpcurlStream(process, call, window, where)
+
+
+class _GrpcurlStream:
+    """A grpcurl process listening to a server stream until its window closes."""
+
+    def __init__(self, process: subprocess.Popen[str], call: Call, window: float, where: str) -> None:
+        self._process = process
+        self._call = call
+        self._window = window
+        self._where = where
+
+    def close(self) -> Reply:
+        try:
+            stdout, stderr = self._process.communicate(timeout=self._window + _GRACE_S)
+        except subprocess.TimeoutExpired as exc:
+            raise GrpcError(f"{self._where} did not stop within {self._window}s") from exc
+        finally:
+            if self._process.poll() is None:
+                self._process.kill()
+                self._process.wait()
+        try:
+            messages = tuple(_scrubbed_json(message, self._call) for message in _messages(stdout))
+        except json.JSONDecodeError as exc:
+            raise GrpcError(f"{self._where} printed a reply that is not JSON") from exc
+        if self._process.returncode == 0:
+            return Reply("OK", "", messages, streamed=True)
+        status = _status_of(stderr)
+        if status is None:
+            seen = _scrubbed(stderr.strip(), self._call)[:_EXCERPT_CHARS]
+            raise GrpcError(f"{self._where} could not be called, grpcurl exited {self._process.returncode}: {seen}")
+        if status[0] == "DEADLINE_EXCEEDED":
+            return Reply("OK", "", messages, streamed=True)
+        return Reply(status[0], _scrubbed(status[1], self._call), messages, streamed=True)
+
 
 class RecordedCaller:
     """Answers from a table keyed by method and request, and remembers every call it was handed."""
@@ -143,6 +220,7 @@ class RecordedCaller:
     def __init__(self, replies: Mapping[tuple[str, str], Reply]) -> None:
         self._replies = dict(replies)
         self.calls: list[Call] = []
+        self.events: list[tuple[str, str]] = []
 
     @staticmethod
     def key(method: str, request: object) -> tuple[str, str]:
@@ -150,10 +228,30 @@ class RecordedCaller:
 
     def call(self, call: Call) -> Reply:
         self.calls.append(call)
+        self.events.append(("call", call.method))
+        return self._answer(call)
+
+    def open(self, call: Call, window: float) -> OpenStream:
+        self.calls.append(call)
+        self.events.append(("open", call.method))
+        return _RecordedStream(self, call, self._answer(call))
+
+    def _answer(self, call: Call) -> Reply:
         reply = self._replies.get(self.key(call.method, call.request))
         if reply is None:
             raise GrpcError(f"no recorded reply for {call.method} with {_body(call.request)}")
         return reply
+
+
+class _RecordedStream:
+    def __init__(self, caller: RecordedCaller, call: Call, reply: Reply) -> None:
+        self._caller = caller
+        self._call = call
+        self._reply = reply
+
+    def close(self) -> Reply:
+        self._caller.events.append(("close", self._call.method))
+        return replace(self._reply, streamed=True)
 
 
 def _allowed(expect_status: str | Sequence[str] | None) -> set[str] | None:
@@ -174,12 +272,14 @@ class Grpc:
         *,
         deadline: float = DEFAULT_DEADLINE,
         on_unexpected_status: Callable[[str, str, str, Sequence[str], str], None] | None = None,
+        sleep: Callable[[float], None] = time.sleep,
     ) -> None:
         text = (address or "").strip()
         self.address = text.removeprefix(SCHEME).rstrip("/")
         self.deadline = deadline
         self._caller_for = caller_for
         self._on_unexpected_status = on_unexpected_status
+        self._sleep = sleep
         self.metadata: dict[str, str] = {}
 
     def call(
@@ -191,15 +291,45 @@ class Grpc:
         expect_status: str | Sequence[str] | None = None,
         deadline: float | None = None,
     ) -> Reply:
+        merged = self._merged(method, metadata)
+        reply = self._caller_for().call(
+            Call(self.address, method, request, tuple(merged.items()), deadline or self.deadline)
+        )
+        return self._judged(method, reply, expect_status)
+
+    def stream(
+        self,
+        method: str,
+        request: object = None,
+        *,
+        during: tuple[str, object] | None = None,
+        metadata: Mapping[str, str] | None = None,
+        expect_status: str | Sequence[str] | None = None,
+        window: float | None = None,
+        settle: float | None = None,
+    ) -> Reply:
+        merged = self._merged(method, metadata)
+        listened = DEFAULT_WINDOW_S if window is None else window
+        opened = self._caller_for().open(
+            Call(self.address, method, request, tuple(merged.items()), listened), listened
+        )
+        try:
+            if during is not None:
+                self._sleep(STREAM_SETTLE_S if settle is None else settle)
+                self.call(during[0], during[1], metadata=merged)
+        finally:
+            reply = opened.close()
+        return self._judged(method, reply, expect_status)
+
+    def _merged(self, method: str, metadata: Mapping[str, str] | None) -> dict[str, str]:
         if not self.address:
             raise ValueError(
                 f"{method!r} needs an address but the target declares no base_url; "
                 "set base_url=\"grpc://host:port\" on the target"
             )
-        merged = {**self.metadata, **(metadata or {})}
-        reply = self._caller_for().call(
-            Call(self.address, method, request, tuple(merged.items()), deadline or self.deadline)
-        )
+        return {**self.metadata, **(metadata or {})}
+
+    def _judged(self, method: str, reply: Reply, expect_status: str | Sequence[str] | None) -> Reply:
         allowed = _allowed(expect_status)
         if allowed is None:
             if reply.status != "OK":
@@ -215,4 +345,7 @@ class Grpc:
         return reply
 
 
-__all__ = ["CODE_NAMES", "Call", "Caller", "Grpc", "GrpcError", "GrpcurlCaller", "RecordedCaller", "Reply"]
+__all__ = [
+    "CODE_NAMES", "DEFAULT_WINDOW_S", "STREAM_SETTLE_S", "Call", "Caller", "Grpc", "GrpcError", "GrpcurlCaller",
+    "OpenStream", "RecordedCaller", "Reply",
+]

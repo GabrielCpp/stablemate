@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import re
 from dataclasses import dataclass
 
@@ -45,18 +46,49 @@ class GrpcScenarios:
 
 
 @dataclass(frozen=True)
+class _Trigger:
+    """The second call a claim makes while its stream is open."""
+    method: str
+    request: dict[str, object]
+
+
+@dataclass(frozen=True)
 class _Arrangement:
-    """What a claim's acts put on the wire: the request members, whether it carries none, and its metadata."""
+    """What a claim's acts put on the wire: the request members, whether it carries none, its metadata and the call made while its stream is open."""
     body: dict[str, CheckValue]
     metadata: dict[str, CheckValue]
     bodiless: bool
+    trigger: _Trigger | None = None
 
     def states_body(self) -> bool:
         return bool(self.body) or self.bodiless
 
     def named_references(self) -> list[references.Reference]:
         values = [*self.body.values(), *self.metadata.values()]
+        if self.trigger is not None:
+            values.extend(_string_leaves(self.trigger.request))
         return [ref for value in values if isinstance(value, str) for ref in references.find_references(value)]
+
+
+def _string_leaves(value: object) -> list[str]:
+    if isinstance(value, str):
+        return [value]
+    if isinstance(value, dict):
+        return [leaf for item in value.values() for leaf in _string_leaves(item)]
+    if isinstance(value, list):
+        return [leaf for item in value for leaf in _string_leaves(item)]
+    return []
+
+
+def _json_literal(value: object) -> str:
+    """A trigger request member as Python source, each string leaf resolved through `qa.resolve_body` when it names a reference."""
+    if isinstance(value, dict):
+        return "{" + ", ".join(f"{json.dumps(key)}: {_json_literal(item)}" for key, item in value.items()) + "}"
+    if isinstance(value, list):
+        return "[" + ", ".join(_json_literal(item) for item in value) + "]"
+    if isinstance(value, str):
+        return resolved_literal(value, "resolve_body")
+    return python_literal(value)
 
 
 def _node_credentials(obligations: list[Obligation], book: BookIndex) -> dict[str, tuple[CallRow, ...]]:
@@ -84,12 +116,34 @@ def _claim_acts(obligation: Obligation, credentials: tuple[CallRow, ...]) -> tup
     return (*obligation.acts, *(row for row in credentials if row.text_arg("name") not in own))
 
 
-def _arrangement(rows: tuple[CallRow, ...]) -> _Arrangement | None:
+def _trigger(rows: list[CallRow]) -> _Trigger | str | None:
+    """The call a claim's `while_open` row names, or why the claim cannot compile."""
+    if not rows:
+        return None
+    if len(rows) > 1:
+        return "the claim states more than one while_open, and a stream is opened with a single trigger"
+    row = rows[0]
+    method = bullet_value(row.text_arg("method"))
+    if method is None:
+        return "the while_open act names no method"
+    try:
+        request = json.loads(row.text_arg("request") or "{}")
+    except json.JSONDecodeError as exc:
+        return f"the while_open request is not valid JSON: {exc.msg}"
+    if not isinstance(request, dict):
+        return "the while_open request is not a JSON object"
+    return _Trigger(method, request)
+
+
+def _arrangement(rows: tuple[CallRow, ...]) -> _Arrangement | str | None:
     body: dict[str, CheckValue] = {}
     metadata: dict[str, CheckValue] = {}
     bodiless = False
+    opened: list[CallRow] = []
     for row in rows:
-        if row.name == "no_body":
+        if row.name == "while_open":
+            opened.append(row)
+        elif row.name == "no_body":
             bodiless = True
         elif row.name == "header":
             metadata[row.text_arg("name")] = row.text_arg("value")
@@ -103,7 +157,10 @@ def _arrangement(rows: tuple[CallRow, ...]) -> _Arrangement | None:
         return None
     if bodiless and body:
         return None
-    return _Arrangement(body, metadata, bodiless)
+    trigger = _trigger(opened)
+    if isinstance(trigger, str):
+        return trigger
+    return _Arrangement(body, metadata, bodiless, trigger)
 
 
 def expect_code(rows: tuple[CallRow, ...]) -> str | None:
@@ -138,8 +195,13 @@ def _call(
     status = expect_code(obligation.checks)
     rows = _claim_acts(obligation, credentials)
     arranged = None if (not rows or obligation.acts_unparsed) else _arrangement(rows)
+    if isinstance(arranged, str):
+        return Gap(obligation.id, "uncompilable-claim", arranged)
     if arranged is None or not arranged.states_body():
         return Gap(obligation.id, "unarranged-request-body", "the book carries no request body")
+    streams = bullet_value(next(iter(obligation.locators.streaming), None)) == "server"
+    if arranged.trigger is not None and not streams:
+        return Gap(obligation.id, "uncompilable-claim", "the while_open act needs a server-streaming rpc")
     secrets = _secret_names(arranged, produced)
     gaps.extend(Gap(obligation.id, "unresolved-precondition",
                     f"the request references {ref!r}, not resolvable without running the plan")
@@ -151,7 +213,13 @@ def _call(
     if arranged.metadata:
         members = ", ".join(f"{python_literal(k)}: {resolved_literal(v)}" for k, v in arranged.metadata.items())
         meta = f", metadata={{{members}}}"
-    return _Call(f"    {observed} = qa.grpc.call({python_literal(method)}, {request}{expect}{meta})", secrets)
+    if not streams:
+        return _Call(f"    {observed} = qa.grpc.call({python_literal(method)}, {request}{expect}{meta})", secrets)
+    during = ""
+    if arranged.trigger is not None:
+        during = (f", during=({python_literal(arranged.trigger.method)}, "
+                  f"{_json_literal(arranged.trigger.request)})")
+    return _Call(f"    {observed} = qa.grpc.stream({python_literal(method)}, {request}{during}{expect}{meta})", secrets)
 
 
 def _scenario_body(

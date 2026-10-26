@@ -133,6 +133,7 @@ def test_every_spec_declares_what_it_observes() -> None:
         "omits": "response",
         "exit_status": "subject",
         "grpc_status": "response",
+        "message_count": "response",
         "stdout": "subject",
         "stderr": "subject",
     }

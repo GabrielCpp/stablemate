@@ -32,6 +32,24 @@ if mode == "ok":
 elif mode == "stream":
     print(json.dumps({"n": 1}, indent=2))
     print(json.dumps({"n": 2}, indent=2))
+elif mode == "window":
+    print(json.dumps({"n": 1}, indent=2), flush=True)
+    print(json.dumps({"n": 2}, indent=2), flush=True)
+    print(json.dumps({"code": 4, "message": "context deadline exceeded"}), file=sys.stderr)
+    sys.exit(68)
+elif mode == "window-echo":
+    print(json.dumps({"note": "token " + os.environ["FAKE_ECHO"]}), flush=True)
+    print(json.dumps({"code": 4, "message": "context deadline exceeded " + os.environ["FAKE_ECHO"]}), file=sys.stderr)
+    sys.exit(68)
+elif mode == "stream-done":
+    print(json.dumps({"n": 1}))
+elif mode == "refused":
+    print(json.dumps({"code": 16, "message": "no credential"}), file=sys.stderr)
+    sys.exit(80)
+elif mode == "broken":
+    print(json.dumps({"n": 1}), flush=True)
+    print(json.dumps({"code": 14, "message": "server went away"}), file=sys.stderr)
+    sys.exit(78)
 elif mode == "not-found":
     print(json.dumps({"code": 5, "message": "no such ticket"}, indent=2), file=sys.stderr)
     sys.exit(69)
@@ -211,3 +229,185 @@ def test_the_grpc_check_is_in_the_vocabulary() -> None:
 
     assert "grpc_status" in checks.CHECK_BY_NAME
     assert checks.CHECK_BY_NAME["grpc_status"].observes == "response"
+
+
+def test_a_stream_the_window_closes_replies_ok_with_the_messages_it_received(
+    fake: Path, monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+) -> None:
+    monkeypatch.setenv("FAKE_GRPCURL_MODE", "window")
+    opened = grpc.GrpcurlCaller(str(fake)).open(_call(request=None), 3.0)
+    reply = opened.close()
+    assert (reply.status, reply.streamed) == ("OK", True)
+    assert reply.messages == ({"n": 1}, {"n": 2})
+    assert reply.json() == [{"n": 1}, {"n": 2}]
+    logged = _logged(tmp_path)
+    assert logged["argv"][-4:-2] == ["-max-time", "3.0"]
+    assert json.loads(logged["stdin"]) == {}
+
+
+def test_a_stream_that_ends_by_itself_replies_ok(fake: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("FAKE_GRPCURL_MODE", "stream-done")
+    reply = grpc.GrpcurlCaller(str(fake)).open(_call(), 3.0).close()
+    assert (reply.status, reply.messages, reply.streamed) == ("OK", ({"n": 1},), True)
+
+
+def test_a_refused_stream_replies_the_refusal_with_no_message(
+    fake: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("FAKE_GRPCURL_MODE", "refused")
+    reply = grpc.GrpcurlCaller(str(fake)).open(_call(), 3.0).close()
+    assert (reply.status, reply.message, reply.messages, reply.streamed) == (
+        "UNAUTHENTICATED", "no credential", (), True,
+    )
+    assert reply.json() == []
+
+
+def test_a_stream_that_fails_midway_keeps_the_messages_before_the_failure(
+    fake: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("FAKE_GRPCURL_MODE", "broken")
+    reply = grpc.GrpcurlCaller(str(fake)).open(_call(), 3.0).close()
+    assert (reply.status, reply.messages) == ("UNAVAILABLE", ({"n": 1},))
+
+
+def test_a_stream_that_could_not_be_opened_raises(fake: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("FAKE_GRPCURL_MODE", "dial")
+    with pytest.raises(grpc.GrpcError, match="dial"):
+        grpc.GrpcurlCaller(str(fake)).open(_call(), 3.0).close()
+    with pytest.raises(grpc.GrpcError, match="no-such-grpcurl"):
+        grpc.GrpcurlCaller("no-such-grpcurl").open(_call(), 3.0)
+
+
+def test_a_credential_the_server_echoes_never_reaches_a_streamed_reply(
+    fake: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("FAKE_GRPCURL_MODE", "window-echo")
+    monkeypatch.setenv("FAKE_ECHO", "s3cret-token")
+    reply = grpc.GrpcurlCaller(str(fake)).open(_call(metadata=(("authorization", "s3cret-token"),)), 3.0).close()
+    assert reply.messages == ({"note": "token [redacted]"},)
+    assert "s3cret-token" not in json.dumps(reply.messages) + reply.message
+
+
+def test_a_streamed_reply_with_no_message_is_an_empty_list() -> None:
+    reply = grpc.Reply("OK", "", (), streamed=True)
+    assert reply.json() == []
+    assert grpc.Reply("OK", "", ({"n": 1},), streamed=True).json() == [{"n": 1}]
+    assert grpc.Reply("OK", "", ({"n": 1},)).json() == {"n": 1}
+
+
+STREAM = "notes.v1.NoteService/Stream"
+SEND = "notes.v1.NoteService/Send"
+
+
+def _stream_table(streamed: Any = None) -> Any:
+    reply = streamed or grpc.Reply("OK", "", ({"note": {"title": "hi"}}, {}), streamed=True)
+    return grpc.RecordedCaller({
+        grpc.RecordedCaller.key(STREAM, None): reply,
+        grpc.RecordedCaller.key(SEND, {"title": "hi"}): grpc.Reply("OK", "", ({},)),
+        grpc.RecordedCaller.key(SEND, {"title": "bad"}): grpc.Reply("INVALID_ARGUMENT", "no"),
+    })
+
+
+def _stream_client(caller: Any, slept: list[float]) -> Any:
+    return grpc.Grpc(ADDRESS, lambda: caller, sleep=slept.append)
+
+
+def test_the_trigger_is_sent_after_the_stream_opens_and_before_it_closes() -> None:
+    caller = _stream_table()
+    slept: list[float] = []
+    reply = _stream_client(caller, slept).stream(STREAM, during=(SEND, {"title": "hi"}))
+    assert caller.events == [("open", STREAM), ("call", SEND), ("close", STREAM)]
+    assert [c.method for c in caller.calls] == [STREAM, SEND]
+    assert slept == [grpc.STREAM_SETTLE_S]
+    assert reply.streamed is True
+    assert len(reply.messages) == 2
+
+
+def test_a_stream_without_a_trigger_only_opens_and_closes() -> None:
+    caller = _stream_table()
+    _stream_client(caller, []).stream(STREAM)
+    assert caller.events == [("open", STREAM), ("close", STREAM)]
+
+
+def test_the_settle_and_the_window_can_be_chosen() -> None:
+    caller = _stream_table()
+    slept: list[float] = []
+    _stream_client(caller, slept).stream(STREAM, during=(SEND, {"title": "hi"}), settle=0.5, window=4.0)
+    assert slept == [0.5]
+    assert caller.calls[0].deadline == 4.0
+
+
+def test_a_failed_trigger_still_closes_the_stream() -> None:
+    caller = _stream_table()
+    with pytest.raises(grpc.GrpcError, match="INVALID_ARGUMENT"):
+        _stream_client(caller, []).stream(STREAM, during=(SEND, {"title": "bad"}))
+    assert caller.events == [("open", STREAM), ("call", SEND), ("close", STREAM)]
+
+
+def test_the_trigger_and_the_stream_carry_the_same_metadata() -> None:
+    caller = grpc.RecordedCaller({
+        grpc.RecordedCaller.key(STREAM, None): grpc.Reply("OK", "", (), streamed=True),
+        grpc.RecordedCaller.key(SEND, {}): grpc.Reply("OK", "", ({},)),
+    })
+    client = _stream_client(caller, [])
+    client.metadata["x-tenant"] = "a"
+    client.stream(STREAM, during=(SEND, {}), metadata={"authorization": "Bearer t"})
+    assert [c.metadata for c in caller.calls] == [(("x-tenant", "a"), ("authorization", "Bearer t"))] * 2
+
+
+def test_a_stream_status_the_scenario_did_not_expect_raises_and_one_it_did_passes() -> None:
+    refused = grpc.Reply("UNAUTHENTICATED", "no credential", (), streamed=True)
+    with pytest.raises(grpc.GrpcError, match="UNAUTHENTICATED"):
+        _stream_client(_stream_table(refused), []).stream(STREAM)
+    reply = _stream_client(_stream_table(refused), []).stream(STREAM, expect_status="UNAUTHENTICATED")
+    assert reply.status == "UNAUTHENTICATED"
+    seen: list[tuple[Any, ...]] = []
+    client = grpc.Grpc(
+        ADDRESS, lambda: _stream_table(refused), sleep=lambda _s: None,
+        on_unexpected_status=lambda *args: seen.append(args),
+    )
+    with pytest.raises(grpc.GrpcError) as caught:
+        client.stream(STREAM, expect_status="OK")
+    assert caught.value.recorded is True
+    assert seen[0][2] == "UNAUTHENTICATED"
+
+
+def test_the_message_count_verifier_counts_the_messages_a_stream_delivered() -> None:
+    verify = harness.VERIFIERS["message_count"]
+    reply = grpc.Reply("OK", "", ({"notification": {"title": "hi"}}, {}, {"notification": None}), streamed=True)
+    assert verify(reply, {"equals": 3}).passed is True
+    assert verify(reply, {"equals": 2}).passed is False
+    assert verify(reply, {"at_least": 3}).passed is True
+    assert verify(reply, {"at_least": 4}).passed is False
+    assert verify(reply, {"path": "notification", "equals": 1}).passed is True
+    assert verify(reply, {"path": "notification", "at_least": 2}).passed is False
+    missing = verify(reply, {"path": "notification.title", "equals": 0})
+    assert missing.passed is False
+    assert missing.actual == 1
+
+
+def test_the_message_count_verifier_counts_a_silent_stream_as_zero() -> None:
+    verify = harness.VERIFIERS["message_count"]
+    silent = grpc.Reply("OK", "", (), streamed=True)
+    assert verify(silent, {"equals": 0}).passed is True
+    assert verify(silent, {"path": "notification", "at_least": 1}).passed is False
+
+
+def test_the_message_count_verifier_refuses_a_unary_reply() -> None:
+    verify = harness.VERIFIERS["message_count"]
+    unary = grpc.Reply("OK", "", ({"ticket": {}},))
+    verdict = verify(unary, {"equals": 1})
+    assert verdict.passed is False
+    assert "stream" in str(verdict.actual)
+    with pytest.raises(TypeError, match="message_count observes a reply"):
+        verify(404, {"equals": 1})
+
+
+def test_a_recorded_run_counts_the_notification_a_trigger_delivered(tmp_path: Path) -> None:
+    emitted: list[dict[str, Any]] = []
+    qa = _qa(tmp_path, _stream_table(), emitted)
+    with qa.claim(["delivered"]):
+        seen = qa.grpc.stream(STREAM, during=(SEND, {"title": "hi"}), settle=0)
+        qa.verify("message_count", seen, path="note", equals=1, covers=["delivered"])
+        qa.verify("json_path", seen.json(), path="[0].note.title", equals="hi", covers=["delivered"])
+    assert [a["passed"] for a in _asserts(emitted)] == [True, True]
