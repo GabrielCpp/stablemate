@@ -68,7 +68,7 @@ bullet actually proves. `step_commands.py` validates a flow step's shell-command
 than its prose: `check_step_command_bullets`/`check_step_command_syntax` validate a step's
 command is well-formed, `check_step_command_checkout_path` validates a path argument stays inside
 the step's own checkout, `check_fixture_step_directory`/`check_fixture_step_serves` validate a
-fixture step's working directory and what it claims to serve, `check_step_not_scenario_frame`
+fixture step's working directory, a `repo://<member>/<path>` one in that member's checkout, and what it claims to serve, `check_step_not_scenario_frame`
 flags a step command that duplicates what a scenario's own frame already provides, and
 `check_fixture_probe_remote` validates a fixture's health-check probe target.
 
@@ -110,12 +110,12 @@ flags a step command that duplicates what a scenario's own frame already provide
 - code: ostler/ostler/book_reach.py::DeadPage@76220c84992e
 - code: ostler/ostler/book_reach.py::fixture_edges@76220c84992e
 - code: ostler/ostler/hidden_claims.py::check_hidden_claims@fbb124432063
-- code: ostler/ostler/step_commands.py::check_step_command_bullets@c4832c0a1e20
-- code: ostler/ostler/step_commands.py::check_step_command_syntax@c4832c0a1e20
-- code: ostler/ostler/step_commands.py::check_fixture_step_directory@c4832c0a1e20
-- code: ostler/ostler/step_commands.py::check_fixture_step_serves@c4832c0a1e20
-- code: ostler/ostler/step_commands.py::check_step_not_scenario_frame@c4832c0a1e20
-- code: ostler/ostler/step_commands.py::check_fixture_probe_remote@c4832c0a1e20
+- code: ostler/ostler/step_commands.py::check_step_command_bullets@a44a1ff496dd
+- code: ostler/ostler/step_commands.py::check_step_command_syntax@a44a1ff496dd
+- code: ostler/ostler/step_commands.py::check_fixture_step_directory@a44a1ff496dd
+- code: ostler/ostler/step_commands.py::check_fixture_step_serves@a44a1ff496dd
+- code: ostler/ostler/step_commands.py::check_step_not_scenario_frame@a44a1ff496dd
+- code: ostler/ostler/step_commands.py::check_fixture_probe_remote@a44a1ff496dd
 - detail: [The book's markdown model](the-books-markdown-model.md)
 - detail: [ostler](../cli.md)
 

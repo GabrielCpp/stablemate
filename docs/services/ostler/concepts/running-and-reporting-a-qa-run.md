@@ -103,12 +103,12 @@ re-exports the public surface of all of the above (`cmd_run`, `cmd_compile_plan`
 `cmd_sensitivity`, `cmd_clean`, `build_report`, `build_evidence_map`, `build_context`, …) as
 `ostler.qa`'s flat namespace.
 
-- code: ostler/ostler/qa/context.py::build_context@894b29154d22
-- code: ostler/ostler/qa/context.py::write_context@894b29154d22
-- code: ostler/ostler/qa/context.py::cmd_context@894b29154d22
-- code: ostler/ostler/qa/context.py::cmd_context_validate@894b29154d22
-- code: ostler/ostler/qa/context.py::validate_context@894b29154d22
-- code: ostler/ostler/qa/context.py::node_obligations@894b29154d22
+- code: ostler/ostler/qa/context.py::build_context@ee242a66ae7c
+- code: ostler/ostler/qa/context.py::write_context@ee242a66ae7c
+- code: ostler/ostler/qa/context.py::cmd_context@ee242a66ae7c
+- code: ostler/ostler/qa/context.py::cmd_context_validate@ee242a66ae7c
+- code: ostler/ostler/qa/context.py::validate_context@ee242a66ae7c
+- code: ostler/ostler/qa/context.py::node_obligations@ee242a66ae7c
 - code: ostler/ostler/qa/packet.py::ContextPacket@b67a80c9a6e3
 - code: ostler/ostler/qa/packet.py::packet_of@b67a80c9a6e3
 - code: ostler/ostler/qa/grounding_health.py::resolve_groundings@da8a0b8f6c0f
@@ -201,11 +201,11 @@ re-exports the public surface of all of the above (`cmd_run`, `cmd_compile_plan`
 - code: ostler/ostler/qa/stack.py::teardown_stack@49f8647f79af
 - code: ostler/ostler/qa/stack.py::boot_app@49f8647f79af
 - code: ostler/ostler/qa/stack.py::health_probe@49f8647f79af
-- code: ostler/ostler/qa/runbook.py::select_runbook@5ea12d383323
-- code: ostler/ostler/qa/runbook.py::select_stack@5ea12d383323
-- code: ostler/ostler/qa/runbook.py::select_server@5ea12d383323
-- code: ostler/ostler/qa/runbook.py::step_command@5ea12d383323
-- code: ostler/ostler/qa/runbook.py::stack_runbooks@5ea12d383323
+- code: ostler/ostler/qa/runbook.py::select_runbook@66911fe4abd5
+- code: ostler/ostler/qa/runbook.py::select_stack@66911fe4abd5
+- code: ostler/ostler/qa/runbook.py::select_server@66911fe4abd5
+- code: ostler/ostler/qa/runbook.py::step_command@66911fe4abd5
+- code: ostler/ostler/qa/runbook.py::stack_runbooks@66911fe4abd5
 - code: ostler/ostler/qa/__init__.py@16c3e096e515
 - detail: [ostler](../cli.md)
 - detail: [Compiling a book into a QA plan](compiling-a-book-into-a-qa-plan.md)

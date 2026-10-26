@@ -29,7 +29,7 @@ defects in the book of the checkout. A caller reads the finding code, the page a
 - code: ostler/ostler/keys.py::pressable@a22c2b93f53b
 - code: ostler/ostler/qa/fixture_browser.py::is_browser_step@d769665467aa
 - code: ostler/ostler/qa/stack.py::shell_syntax_error@49f8647f79af
-- code: ostler/ostler/step_commands.py::check_fixture_launch_screen@c4832c0a1e20
+- code: ostler/ostler/step_commands.py::check_fixture_launch_screen@a44a1ff496dd
 - code: ostler/ostler/values.py::dialog_answer@5fe41ca9c074
 - code: ostler/ostler/vet/placement.py::parse_placement@7183d869fe0e
 
@@ -45,7 +45,7 @@ defects in the book of the checkout. A caller reads the finding code, the page a
 - code: ostler/ostler/accessible_names.py::literal_name@e34b952636fb
 - code: ostler/ostler/qa/fixture_browser.py::is_browser_step@d769665467aa
 - code: ostler/ostler/qa/stack.py::shell_syntax_error@49f8647f79af
-- code: ostler/ostler/step_commands.py::check_fixture_launch_screen@c4832c0a1e20
+- code: ostler/ostler/step_commands.py::check_fixture_launch_screen@a44a1ff496dd
 - code: ostler/ostler/values.py::dialog_answer@5fe41ca9c074
 - code: ostler/ostler/vet/placement.py::parse_placement@7183d869fe0e
 
@@ -65,7 +65,7 @@ defects in the book of the checkout. A caller reads the finding code, the page a
 - code: ostler/ostler/locator_findings.py::ProseName@7318d29e242e
 - code: ostler/ostler/qa/fixture_browser.py::is_browser_step@d769665467aa
 - code: ostler/ostler/qa/stack.py::shell_syntax_error@49f8647f79af
-- code: ostler/ostler/step_commands.py::check_fixture_launch_screen@c4832c0a1e20
+- code: ostler/ostler/step_commands.py::check_fixture_launch_screen@a44a1ff496dd
 - code: ostler/ostler/values.py::dialog_answer@5fe41ca9c074
 - code: ostler/ostler/vet/placement.py::parse_placement@7183d869fe0e
 
@@ -82,7 +82,7 @@ defects in the book of the checkout. A caller reads the finding code, the page a
 - code: ostler/ostler/drivers.py::DRIVERS@cc0927c9bd8e
 - code: ostler/ostler/qa/fixture_browser.py::is_browser_step@d769665467aa
 - code: ostler/ostler/qa/stack.py::shell_syntax_error@49f8647f79af
-- code: ostler/ostler/step_commands.py::check_fixture_launch_screen@c4832c0a1e20
+- code: ostler/ostler/step_commands.py::check_fixture_launch_screen@a44a1ff496dd
 - code: ostler/ostler/values.py::dialog_answer@5fe41ca9c074
 - code: ostler/ostler/vet/placement.py::parse_placement@7183d869fe0e
 
@@ -100,7 +100,7 @@ defects in the book of the checkout. A caller reads the finding code, the page a
 - code: ostler/ostler/qa/fixture_browser.py::is_browser_step@d769665467aa
 - code: ostler/ostler/qa/stack.py::shell_syntax_error@49f8647f79af
 - code: ostler/ostler/schemas.py::validate@17d011398cb2
-- code: ostler/ostler/step_commands.py::check_fixture_launch_screen@c4832c0a1e20
+- code: ostler/ostler/step_commands.py::check_fixture_launch_screen@a44a1ff496dd
 - code: ostler/ostler/values.py::dialog_answer@5fe41ca9c074
 - code: ostler/ostler/vet/placement.py::parse_placement@7183d869fe0e
 
@@ -118,7 +118,7 @@ defects in the book of the checkout. A caller reads the finding code, the page a
 - code: ostler/ostler/census.py::code_sites@9c71f5a187f2
 - code: ostler/ostler/qa/fixture_browser.py::is_browser_step@d769665467aa
 - code: ostler/ostler/qa/stack.py::shell_syntax_error@49f8647f79af
-- code: ostler/ostler/step_commands.py::check_fixture_launch_screen@c4832c0a1e20
+- code: ostler/ostler/step_commands.py::check_fixture_launch_screen@a44a1ff496dd
 - code: ostler/ostler/values.py::dialog_answer@5fe41ca9c074
 - code: ostler/ostler/vet/placement.py::parse_placement@7183d869fe0e
 

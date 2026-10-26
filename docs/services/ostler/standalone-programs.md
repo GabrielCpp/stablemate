@@ -132,7 +132,8 @@ starts as a background process. Both run through `python3`, not through `ostler`
 - usage: python3 -c "...Ostler(root=...).qa_context(..., repositories=[SourceRepository(...)])..." —
   maps a change across one or more independently-versioned checkouts, each scoped to the surfaces
   it owns, instead of the single checkout `qa context --source-root` addresses in the one repo it
-  runs from
+  runs from. A repository whose `base` is the empty tree reports an empty `baseSha`, so every file
+  it holds reads as new
 - args: none
 - exits: 0 when every repository resolves and no health finding is an error
 - run: invoke(argv=["-c", "import json\nfrom ostler.api import Ostler\nfrom ostler.qa.source_context import SourceRepository, SourceScope\nrepo = SourceRepository(id='demo-repo', checkout='qa-scratch', base='HEAD', scopes=(SourceScope(surface='demo', root='src'),))\noutcome = Ostler(root='qa-scratch').qa_context(base='HEAD', spec='s2', repositories=(repo,))\nprint(json.dumps(outcome.data))\n"], env={"STABLEMATE_ARTIFACTS_DIR": "qa-scratch/art", "STABLEMATE_CONFIG": "qa-scratch/qa.toml", "GIT_DIR": "repo.git"})
@@ -146,7 +147,7 @@ starts as a background process. Both run through `python3`, not through `ostler`
   source file and a plan under spec s1
 - code: ostler/ostler/qa/source_context.py::SourceRepository@c8ac0146f0b0
 - code: ostler/ostler/qa/source_context.py::SourceScope@c8ac0146f0b0
-- code: ostler/ostler/qa/context.py::_repository_changes@894b29154d22
-- code: ostler/ostler/qa/context.py::_repository_row@894b29154d22
+- code: ostler/ostler/qa/context.py::_repository_changes@ee242a66ae7c
+- code: ostler/ostler/qa/context.py::_repository_row@ee242a66ae7c
 - code: ostler/ostler/api.py::Ostler.qa_context@dc53cd236858
 - detail: [Compiling a book into a QA plan](concepts/compiling-a-book-into-a-qa-plan.md)
