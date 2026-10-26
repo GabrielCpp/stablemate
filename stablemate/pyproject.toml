@@ -36,6 +36,7 @@ workhorse-research = "workhorse_workflows.research.workflow:main"
 workhorse-author = "workhorse_workflows.author.workflow:main"
 workhorse-coder = "workhorse_workflows.coder.workflow:main"
 workhorse-okf-book = "workhorse_workflows.okf_book.workflow:main"
+workhorse-review-debt = "workhorse_workflows.review_debt.workflow:main"
 workhorse-new = "workhorse_workflows.new.scaffold:main"
 
 [project.optional-dependencies]
