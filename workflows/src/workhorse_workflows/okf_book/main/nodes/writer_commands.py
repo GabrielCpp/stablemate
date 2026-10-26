@@ -14,6 +14,7 @@ from typing import cast
 from pydantic import AliasChoices, BaseModel, ConfigDict, Field, field_validator
 
 from workhorse_workflows.okf_book.shared.page_check import PageProblem
+from workhorse_workflows.okf_book.shared.source_repo import SourceRepo
 
 CHECK_MODULE = f"{__package__}.check_pages"
 EXERCISE_MODULE = f"{__package__}.exercise"
@@ -52,7 +53,7 @@ class WriterCommandState(BaseModel):
     reads its earlier key, `sections`, and `problems_at_turn_start` also reads its earlier form, the
     problems' texts. With `records_dir` naming the run's records, the check leaves out every problem
     the last lead of the book's page check held for another side than the book. With `source_folder`
-    naming the surface's source, the check also names each product file there no page cites.
+    naming the surface's source folder in the repository `source` names, the check also names each product file there no page cites.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
@@ -60,6 +61,7 @@ class WriterCommandState(BaseModel):
     root: Path
     service: str
     source_folder: str = ""
+    source: SourceRepo | None = None
     pages: tuple[str, ...] = ()
     sections_by_page: dict[str, tuple[str, ...]] = Field(default={}, validation_alias=AliasChoices("sections_by_page", "sections"))
     problems_at_turn_start: tuple[PageProblem, ...] = ()

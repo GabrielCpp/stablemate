@@ -25,6 +25,7 @@ from workhorse_workflows.okf_book.shared.confine import Snapshot, book_changes, 
 from workhorse_workflows.okf_book.shared.entries import SERVICES_DIR
 from workhorse_workflows.okf_book.shared.metrics import TurnMetric, record_turn, turn_metric
 from workhorse_workflows.okf_book.shared.page_check import PageProblem
+from workhorse_workflows.okf_book.shared.source_repo import SourceRepo
 
 WRITE_PROMPT = "main/prompts/write-book.md"
 
@@ -48,6 +49,7 @@ class WriteBook(BookFlow):
 
     surface: Surface | None = None
     book_folder: str = ""
+    source: SourceRepo | None = None
     source_folder: str = ""
     exercised: ExerciseResult | None = None
     problems: tuple[PageProblem, ...] = ()
@@ -58,6 +60,10 @@ class WriteBook(BookFlow):
         if self.surface is None:
             raise WorkflowFailed("the write flow names no surface")
         return self.surface
+
+    @property
+    def source_repo(self) -> SourceRepo:
+        return self.source or SourceRepo(path=self.root)
 
     def _gates(self) -> Gates:
         return Gates(exercised=self.exercised, problems=self.problems, failures=self.run_failures)
@@ -72,7 +78,8 @@ class WriteBook(BookFlow):
         """Write the command state the writer's three commands read, with none of their runs spent."""
         settle_jobs(self.run_dir)
         state = WriterCommandState(
-            root=self.root, service=self.surface_to_write.service, source_folder=self.source_folder, records_dir=self.records_dir
+            root=self.root, service=self.surface_to_write.service, source_folder=self.source_folder, source=self.source_repo,
+            records_dir=self.records_dir,
         )
         command_state_file = write_command_state(self.run_dir, state)
         return Continue(command_state_file.as_posix(), self.write_book, before=before).because("send the writer")
@@ -80,7 +87,7 @@ class WriteBook(BookFlow):
     def write_book(self, before: Snapshot) -> Continue[...]:
         """One turn, confined to its book folder and to ostler and the two checks, opens on the gates the book last failed and writes the whole book until both pass. The turn resumes the owner's conversation, and a turn that ends without a reply starts the next one fresh. A reply that names no side leaves the gates as they were."""
         surface = self.surface_to_write
-        request = writer_request(self.run_dir, self.root, surface, self.book_folder, self.source_folder)
+        request = writer_request(self.run_dir, self.root, surface, self.source_folder, self.source_repo)
         gate = gate_template_args(self.root, self.records_dir, surface.service, self._gates())
         started = time.monotonic()
         reply = OwnerReply()

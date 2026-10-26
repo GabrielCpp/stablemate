@@ -23,7 +23,7 @@ def walk_roots(root: Path, service: str) -> frozenset[str]:
         citation.path
         for page in entry_pages(root, service)
         for citation in page_citations(page)
-        if (root / citation.path).is_file() and not is_test_source(citation.path)
+        if not citation.repository and (root / citation.path).is_file() and not is_test_source(citation.path)
     )
 
 

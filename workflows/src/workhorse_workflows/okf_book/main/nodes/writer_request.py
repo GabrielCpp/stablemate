@@ -16,6 +16,8 @@ from workhorse_workflows.okf_book.main.nodes.writer_commands import (
     exercise_command,
     ostler_command,
 )
+from workhorse_workflows.okf_book.shared.entries import SERVICES_DIR
+from workhorse_workflows.okf_book.shared.source_repo import SourceRepo
 
 WRITER_PROFILE_NAME = "okf-book-writer"
 WRITER_COMMAND_TIMEOUT_S = 600
@@ -43,6 +45,7 @@ class WriterRequest:
     repo_root: Path
     book_folder: str
     source_folder: str
+    source: SourceRepo
     source_view: Path
     ostler_command_line: str
     check_command_line: str
@@ -57,7 +60,7 @@ class WriterRequest:
             "repo_root": self.repo_root.as_posix(),
             "entry": self.surface.entry,
             "source_view": self.source_view.as_posix(),
-            "source_folder": self.source_folder,
+            "source_folder": self.source.cite(self.source_folder),
             "book_folder": self.book_folder,
             "ostler": self.ostler_command_line,
             "ostler_run_cap": OSTLER_RUN_CAP,
@@ -80,16 +83,17 @@ class WriterRequest:
         )
 
 
-def writer_request(run_dir: Path, root: Path, surface: Surface, book_folder: str, source_folder: str) -> WriterRequest:
-    """The turn that writes the surface's book with the QA tools its scenarios may run, and may run only the three commands on the run's command state."""
+def writer_request(run_dir: Path, root: Path, surface: Surface, source_folder: str, source: SourceRepo) -> WriterRequest:
+    """The turn that writes the surface's book, from the source repository's files, with the QA tools that repository opts in for its scenarios, and may run only the three commands on the run's command state."""
     return WriterRequest(
         surface=surface,
         repo_root=root,
-        book_folder=book_folder,
+        book_folder=(SERVICES_DIR / surface.service).as_posix(),
         source_folder=source_folder,
-        source_view=source_view_folder(root, source_folder),
+        source=source,
+        source_view=source_view_folder(root, source, source_folder),
         ostler_command_line=ostler_command(run_dir),
         check_command_line=check_command(run_dir),
         exercise_command_line=exercise_command(run_dir),
-        qa_tools=offered_qa_tools(root),
+        qa_tools=offered_qa_tools(source.path),
     )

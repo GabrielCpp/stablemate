@@ -18,6 +18,7 @@ from ostler.inventory import SOURCE_SUFFIXES, declared_names
 from ostler.model import Graph
 from ostler.refs import code_refs, is_test_source, parse_code_ref, strip_digest
 from workhorse_workflows.kit import list_tracked_files
+from workhorse_workflows.okf_book.shared.source_repo import SourceRepo
 
 UNCITED_CODE = "uncited-source"
 UNPROVING_TYPES = frozenset({"concept"})
@@ -71,26 +72,26 @@ def proving_citations(book: Graph, service: str) -> tuple[str, ...]:
     )
 
 
-def cited_paths(book: Graph, service: str) -> frozenset[str]:
-    """The repo-relative files the service's claim-bearing pages cite, without their symbols."""
+def cited_paths(book: Graph, service: str, repo: str = "") -> frozenset[str]:
+    """The files of repository `repo` the service's claim-bearing pages cite, without their symbols. An empty `repo` is the book's own repository, whose citations carry no `repo://` qualifier."""
     paths: set[str] = set()
     for ref in proving_citations(book, service):
         try:
             code = parse_code_ref(ref)
         except ValueError:
             continue
-        if not code.repository:
+        if code.repository == repo:
             paths.add(code.path)
     return frozenset(paths)
 
 
-def uncited_by_folder(root: Path, source_folder: str, book: Graph, service: str) -> dict[str, tuple[str, ...]]:
-    """Each folder holding product files no page of the service cites, and those files."""
+def uncited_by_folder(source: SourceRepo, source_folder: str, book: Graph, service: str) -> dict[str, tuple[str, ...]]:
+    """Each folder of the source repository holding product files no page of the service cites, and those files."""
     if not source_folder:
         return {}
-    cited = cited_paths(book, service)
+    cited = cited_paths(book, service, source.name)
     by_folder: dict[str, list[str]] = {}
-    for path in product_files(root, source_folder):
+    for path in product_files(source.path, source_folder):
         if path not in cited:
             by_folder.setdefault(PurePosixPath(path).parent.as_posix(), []).append(path)
     return {folder: tuple(paths) for folder, paths in sorted(by_folder.items())}

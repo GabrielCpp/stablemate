@@ -3,11 +3,12 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from okf_book.support import git
+from okf_book.support import MEMBER, MEMBER_FILE, MEMBER_FOLDER, Workspace, git
 from ostler import index
 from ostler.model import load
 from workhorse_workflows.okf_book.shared.page_check import page_problems
 from workhorse_workflows.okf_book.shared.source_coverage import UNCITED_CODE, product_files, uncited_by_folder
+from workhorse_workflows.okf_book.shared.source_repo import SourceRepo
 
 SOURCES = (
     "web/app/routes/editor.tsx",
@@ -42,7 +43,7 @@ def _repo(tmp_path: Path, *cited: str) -> Path:
 
 def _uncited(repo: Path, source_folder: str = "web") -> dict[str, tuple[str, ...]]:
     with index.session(repo):
-        return uncited_by_folder(repo, source_folder, load(repo), "web")
+        return uncited_by_folder(SourceRepo(path=repo), source_folder, load(repo), "web")
 
 
 def test_product_files_leave_out_tests_declarations_and_tool_configs(tmp_path: Path) -> None:
@@ -86,7 +87,7 @@ def test_the_check_puts_each_uncited_folder_on_the_entries_page(tmp_path: Path) 
     entries = "---\ntype: entries\nslug: entries\ntitle: web\n---\n# web\n\n- [Login](login.md)\n"
     _ = (repo / "docs/services/web/entries.md").write_text(entries, encoding="utf-8")
 
-    uncited = [problem for problem in page_problems(repo, "web", "web") if problem.code == UNCITED_CODE]
+    uncited = [problem for problem in page_problems(repo, "web", "web", SourceRepo(path=repo)) if problem.code == UNCITED_CODE]
 
     assert [(problem.page, problem.node) for problem in uncited] == [
         ("docs/services/web/entries.md", "web/app/lib"),
@@ -107,3 +108,31 @@ def test_a_file_that_declares_no_name_needs_no_citation(tmp_path: Path) -> None:
     _ = git(repo, "add", "-A")
 
     assert _uncited(repo) == {"web/app/lib": ("web/app/lib/flags.py",)}
+
+
+def _workspace_book(workspace: Workspace, *cited: str) -> None:
+    _ = (workspace.member / "api/extra.py").write_text("def extra():\n    return 1\n", encoding="utf-8")
+    _ = git(workspace.member, "add", "-A")
+    page = workspace.docs / "docs/services/ledger/handlers.md"
+    page.parent.mkdir(parents=True)
+    _ = page.write_text(_page(*cited), encoding="utf-8")
+
+
+def test_a_workspace_book_covers_the_member_s_files_through_qualified_refs(workspace: Workspace) -> None:
+    source = SourceRepo(name=MEMBER, path=workspace.member)
+    _workspace_book(workspace, f"repo://{MEMBER}/{MEMBER_FILE}::list_entries")
+
+    with index.session(workspace.docs):
+        uncited = uncited_by_folder(source, MEMBER_FOLDER, load(workspace.docs), "ledger")
+
+    assert uncited == {MEMBER_FOLDER: ("api/extra.py",)}
+
+
+def test_a_workspace_book_s_unqualified_ref_covers_no_member_file(workspace: Workspace) -> None:
+    source = SourceRepo(name=MEMBER, path=workspace.member)
+    _workspace_book(workspace, MEMBER_FILE)
+
+    with index.session(workspace.docs):
+        uncited = uncited_by_folder(source, MEMBER_FOLDER, load(workspace.docs), "ledger")
+
+    assert uncited == {MEMBER_FOLDER: ("api/extra.py", MEMBER_FILE)}

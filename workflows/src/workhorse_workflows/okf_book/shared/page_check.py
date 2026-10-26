@@ -38,6 +38,7 @@ from workhorse_workflows.okf_book.shared.blockers import Blocker, Phase, Side
 from workhorse_workflows.okf_book.shared.book_compilation import compile_services, declares_unexercised, gap_page, obligation_node
 from workhorse_workflows.okf_book.shared.entries import book_dir, entries_path
 from workhorse_workflows.okf_book.shared.source_coverage import SAMPLE_FILES, UNCITED_CODE, uncited_by_folder
+from workhorse_workflows.okf_book.shared.source_repo import SourceRepo
 
 OSTLER_GAPS = HARNESS_LIMIT_GAPS | frozenset({"needs-snapshot"})
 RESTAMPED_CODES = frozenset({"stale-citation"})
@@ -245,8 +246,8 @@ def _uninvokable_problems(nodes: list[_Node]) -> list[PageProblem]:
     ]
 
 
-def _unopted_tools(root: Path, nodes: list[_Node]) -> dict[str, tuple[str, ...]]:
-    tools = opted_in_tools(root)
+def _unopted_tools(tools_root: Path, nodes: list[_Node]) -> dict[str, tuple[str, ...]]:
+    tools = opted_in_tools(tools_root)
     pages: dict[str, list[str]] = {}
     for node in nodes:
         if node.type == "cli" and node.binary and node.binary not in tools:
@@ -254,8 +255,8 @@ def _unopted_tools(root: Path, nodes: list[_Node]) -> dict[str, tuple[str, ...]]
     return {binary: tuple(dict.fromkeys(named)) for binary, named in sorted(pages.items())}
 
 
-def tool_blockers(root: Path, service: str) -> tuple[Blocker, ...]:
-    """One blocker per program the service's command pages name that this repository opts in as no QA tool. A page states that a user runs the program, and only the operator can let a run invoke it, so no writer is sent to the page."""
+def tool_blockers(root: Path, service: str, tools_root: Path | None = None) -> tuple[Blocker, ...]:
+    """One blocker per program the service's command pages name that the repository at `tools_root`, the product repository and by default `root`, opts in as no QA tool. A page states that a user runs the program, and only the operator can let a run invoke it, so no writer is sent to the page."""
     return tuple(
         Blocker(
             subject=f"{service}: QA tool {binary}",
@@ -271,7 +272,7 @@ def tool_blockers(root: Path, service: str) -> tuple[Blocker, ...]:
             ),
             pages=pages,
         )
-        for binary, pages in _unopted_tools(root, _service_nodes(load(root), service)).items()
+        for binary, pages in _unopted_tools(tools_root or root, _service_nodes(load(root), service)).items()
     )
 
 
@@ -299,12 +300,12 @@ def _unchecked_problems(entries: str, nodes: list[_Node], pages: list[str]) -> l
     ]
 
 
-def _uncited_problems(entries: str, uncited: dict[str, tuple[str, ...]]) -> list[PageProblem]:
+def _uncited_problems(entries: str, uncited: dict[str, tuple[str, ...]], source: SourceRepo) -> list[PageProblem]:
     return [
         PageProblem(
             entries,
             f"{folder}/: no page cites {len(paths)} of its product files, "
-            + ", ".join(f"`{path}`" for path in paths[:SAMPLE_FILES])
+            + ", ".join(f"`{source.cite(path)}`" for path in paths[:SAMPLE_FILES])
             + (f" and {len(paths) - SAMPLE_FILES} more" if len(paths) > SAMPLE_FILES else "")
             + ". Find what each file does for a user or a caller, state it on the page that covers it, with claims "
             + "that prove it, and cite the file in that node's `code:`. A file that serves several pages is cited by "
@@ -358,8 +359,8 @@ def _uncovered_problems(root: Path, pages: list[str]) -> list[PageProblem]:
     ]
 
 
-def page_problems(root: Path, service: str, source_folder: str = "") -> tuple[PageProblem, ...]:
-    """Every problem on the service's book, each with its page: a missing entries page, a page nothing reaches, a doctor error, a command, endpoint or screen no flow walks, a command page that names no binary, a claim that does not compile, a book no claim of which declares a check, given the surface's source folder, each folder of it holding a product file no page cites, each section a page heads as not covered, and each link from another book that lands on a page or anchor the book lacks."""
+def page_problems(root: Path, service: str, source_folder: str = "", source: SourceRepo | None = None) -> tuple[PageProblem, ...]:
+    """Every problem on the service's book, each with its page: a missing entries page, a page nothing reaches, a doctor error, a command, endpoint or screen no flow walks, a command page that names no binary, a claim that does not compile, a book no claim of which declares a check, given the surface's source folder in its source repository, which is the run's own unless `source` names a workspace member, each folder of it holding a product file no page cites, each section a page heads as not covered, and each link from another book that lands on a page or anchor the book lacks."""
     with index.session(root):
         pages = _book_page_paths(root, service)
         book = load(root)
@@ -379,7 +380,8 @@ def page_problems(root: Path, service: str, source_folder: str = "") -> tuple[Pa
         gaps = [gap for gap in compilation.gaps if gap_page(gap) in wanted and gap_side(gap) is Side.BOOK]
         entries = entries_path(root, service)
         unchecked = not compilation.planned and not gaps and entries.is_file() and not declares_unexercised(book, service)
-        uncited = uncited_by_folder(root, source_folder, book, service) if entries.is_file() else {}
+        source = source or SourceRepo(path=root)
+        uncited = uncited_by_folder(source, source_folder, book, service) if entries.is_file() else {}
         return (
             *_entries_problems(root, service),
             *dead,
@@ -388,7 +390,7 @@ def page_problems(root: Path, service: str, source_folder: str = "") -> tuple[Pa
             *_uninvokable_problems(nodes),
             *gap_problems(gaps),
             *(_unchecked_problems(entries.relative_to(root).as_posix(), nodes, pages) if unchecked else []),
-            *_uncited_problems(entries.relative_to(root).as_posix(), uncited),
+            *_uncited_problems(entries.relative_to(root).as_posix(), uncited, source),
             *_uncovered_problems(root, pages),
         )
 

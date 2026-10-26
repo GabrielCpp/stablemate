@@ -5,7 +5,7 @@ import fcntl
 import logging
 import shlex
 import tempfile
-from collections.abc import Iterable, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from pathlib import Path
 
 from ostler.qa.attribution import Cause, Signature
@@ -185,10 +185,10 @@ def _settle_runs(root: Path, records_dir: Path, service: str, runs: Sequence[Blo
     return {blocker.pages[0]: (PageProblem(blocker.pages[0], text),) for blocker in writers}
 
 
-def _settle_writes(root: Path, records_dir: Path, service: str, writes: Sequence[Blocker]) -> None:
+def _settle_writes(root: Path, records_dir: Path, service: str, writes: Sequence[Blocker], tools_root: Path | None = None) -> None:
     """Close each page check blocker whose pages the check no longer finds a problem on, and each tool blocker whose tool is now opted in. The other page blockers go to the writer with the book's problems."""
     failing = {problem.page for problem in page_problems(root, service)}
-    unopted = {blocker.key for blocker in tool_blockers(root, service)}
+    unopted = {blocker.key for blocker in tool_blockers(root, service, tools_root)}
     for blocker in writes:
         cleared = blocker.key not in unopted if blocker.side is Side.ENVIRONMENT else not set(blocker.pages) & failing
         if cleared:
@@ -211,8 +211,10 @@ def _service_of(page: str, services: Iterable[str]) -> str:
     return next((service for service in services if page.startswith(f"{(SERVICES_DIR / service).as_posix()}/")), "")
 
 
-def settle_gate(root: Path, records_dir: Path, services: Sequence[str]) -> tuple[str, ...]:
+def settle_gate(root: Path, records_dir: Path, services: Sequence[str], tools_roots: Mapping[str, Path] | None = None) -> tuple[str, ...]:
     """Rerun each blocker's checks, close those that pass, keep each escalation that still fails, and leave each writer its failures and every claim an answer changed. Return the services to route again.
+
+    A tool blocker closes once the repository in `tools_roots` for its service, the product repository, opts the tool in.
 
     A service is routed when it has work left: a blocker it still has recorded, failures for its writer, or
     a page check blocker the settlement closed, since the book has not had its run since. A service whose
@@ -234,7 +236,7 @@ def settle_gate(root: Path, records_dir: Path, services: Sequence[str]) -> tuple
                 and (present := _on_present_pages(root, records_dir, blocker)) is not None]
         writes = [blocker for blocker in mine if blocker.phase is Phase.WRITE]
         if writes:
-            _settle_writes(root, records_dir, service, writes)
+            _settle_writes(root, records_dir, service, writes, (tools_roots or {}).get(service))
         runs = [blocker for blocker in mine if blocker.phase is Phase.EXERCISE]
         for page, problems in (_settle_runs(root, records_dir, service, runs) if runs else {}).items():
             failures.setdefault(service, {}).setdefault(page, []).extend(problems)

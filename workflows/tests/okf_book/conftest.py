@@ -4,6 +4,8 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
+from okf_book.support import MEMBER, MEMBER_FILE, MEMBER_FOLDER, MEMBER_SOURCE, Workspace
+from workhorse.testing import make_git_repo
 
 from workhorse_workflows.okf_book.shared import book_flow
 
@@ -41,3 +43,19 @@ def ostler_okf_skill(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     monkeypatch.setenv("AGENT_CLI", "claude")
     monkeypatch.chdir(tmp_path)
     return skill
+
+
+@pytest.fixture
+def workspace(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Workspace:
+    member = tmp_path / "code" / MEMBER
+    (member / MEMBER_FOLDER).mkdir(parents=True)
+    _ = (member / MEMBER_FILE).write_text(MEMBER_SOURCE, encoding="utf-8")
+    _ = (member / "agents.yml").write_text("qa:\n  tools:\n    - curl\n", encoding="utf-8")
+    _ = make_git_repo(member, name=MEMBER)
+    docs = make_git_repo(tmp_path / "artifacts-home", name="docs")
+    config = tmp_path / "home.toml"
+    _ = config.write_text(f'[workspaces]\nacme = ["{member}"]\n', encoding="utf-8")
+    monkeypatch.setenv("STABLEMATE_CONFIG", str(config))
+    monkeypatch.setenv("STABLEMATE_ARTIFACTS_DIR", str(docs))
+    monkeypatch.setenv("STABLEMATE_WORKSPACE", "acme")
+    return Workspace(docs=docs.resolve(), member=member.resolve())

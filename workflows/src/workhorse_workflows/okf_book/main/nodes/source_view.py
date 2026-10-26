@@ -13,19 +13,20 @@ from pathlib import Path
 
 from ostler.refs import is_test_source
 from workhorse_workflows.okf_book.main.nodes.turn_budget import countable_files
+from workhorse_workflows.okf_book.shared.source_repo import SourceRepo
 
 VIEW_DIR = ".okf-book-source"
 
 
-def source_view_folder(root: Path, source_folder: str) -> Path:
-    """Where the copy of the repository's `source_folder` sits."""
-    return root / VIEW_DIR / source_folder
+def source_view_folder(root: Path, source: SourceRepo, source_folder: str) -> Path:
+    """Where the copy of the source repository's `source_folder` sits in the working tree of `root`, under the member's name when the source is a workspace member."""
+    return root / VIEW_DIR / source.name / source_folder
 
 
-def build_source_view(root: Path, source_folder: str) -> Path:
-    """Copy the product files under `source_folder` afresh, and return the copy's folder."""
-    folder = root / source_folder
-    view = source_view_folder(root, source_folder)
+def build_source_view(root: Path, source: SourceRepo, source_folder: str) -> Path:
+    """Copy the product files under the source repository's `source_folder` afresh into the working tree of `root`, and return the copy's folder."""
+    folder = source.path / source_folder
+    view = source_view_folder(root, source, source_folder)
     shutil.rmtree(view, ignore_errors=True)
     view.mkdir(parents=True)
     _ = (root / VIEW_DIR / ".gitignore").write_text("*\n", encoding="utf-8")

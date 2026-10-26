@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import subprocess
 from collections import Counter
+from dataclasses import dataclass
 from collections.abc import Callable, Mapping
 from pathlib import Path
 from typing import override
@@ -81,3 +82,25 @@ class ScriptedRunner(AgentRunner):
             reply = self.replies[node.id]({**args, "refused": str(refusal)})
             _ = validate(reply)
         return "scripted", reply
+
+
+MEMBER = "api-service"
+MEMBER_FOLDER = "api"
+MEMBER_FILE = "api/handlers.py"
+MEMBER_SOURCE = "def list_entries():\n    return []\n"
+
+
+@dataclass(frozen=True, slots=True)
+class Workspace:
+    """A two-repo workspace: the docs home that holds the books, and a product member that holds the source."""
+
+    docs: Path
+    member: Path
+
+
+def head_of(repo: Path) -> str:
+    return subprocess.run(["git", "rev-parse", "HEAD"], cwd=repo, check=True, capture_output=True, text=True).stdout.strip()
+
+
+def status_of(repo: Path) -> str:
+    return subprocess.run(["git", "status", "--porcelain"], cwd=repo, check=True, capture_output=True, text=True).stdout

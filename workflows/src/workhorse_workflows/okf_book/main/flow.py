@@ -1,6 +1,7 @@
 """The okf-book run: one confined owner per surface writes its whole book, code checks it and runs it between the owner's turns, and the run reports."""
 from __future__ import annotations
 
+from functools import cached_property
 from pathlib import Path
 
 from ostler.qa.attribution import Cause, Signature
@@ -43,6 +44,7 @@ from workhorse_workflows.okf_book.shared.citations import cites_changed_file
 from workhorse_workflows.okf_book.shared.entries import SERVICES_DIR
 from workhorse_workflows.okf_book.shared.page_check import PageProblem
 from workhorse_workflows.okf_book.shared.scenarios import PLAN_NAME, plan_scenarios, spec_dir, write_run
+from workhorse_workflows.okf_book.shared.source_repo import SourceRepo, source_repo
 
 OPERATOR_NAME = "operator.md"
 
@@ -53,17 +55,17 @@ def _book_folder(service: str) -> str:
     return (SERVICES_DIR / service).as_posix()
 
 
-def _source_folder(root: Path, surface: Surface) -> str:
+def _source_folder(source: SourceRepo, surface: Surface) -> str:
     entry = Path(surface.entry)
-    return (entry if (root / entry).is_dir() else entry.parent).as_posix()
+    return (entry if (source.path / entry).is_dir() else entry.parent).as_posix()
 
 
-def _no_source_folder(root: Path, surface: Surface) -> str:
+def _no_source_folder(source: SourceRepo, surface: Surface) -> str:
     """Why the surface's entry names no source folder, and the nearest folder of the repository it is under."""
-    nearest = next((parent for parent in Path(surface.entry).parents if (root / parent).is_dir()), Path())
+    nearest = next((parent for parent in Path(surface.entry).parents if (source.path / parent).is_dir()), Path())
     where = "the repository root" if nearest == Path() else f"`{nearest.as_posix()}/`"
     return (
-        f"the entry `{surface.entry}` is no folder of the repository, and the folder it names is missing too. "
+        f"the entry `{surface.entry}` is no folder of the repository{f' `{source.name}`' if source.name else ''}, and the folder it names is missing too. "
         f"An entry is the service's source folder, relative to the repository root, or a file in it. "
         f"The nearest folder that exists is {where}"
     )
@@ -103,10 +105,16 @@ class OkfBook(BookFlow):
     def services(self) -> tuple[str, ...]:
         return tuple(dict.fromkeys(surface.service for surface in self.surfaces))
 
+    @cached_property
+    def sources(self) -> tuple[SourceRepo, ...]:
+        """The repository each surface reads its source from, resolved once, in the order of `surfaces`."""
+        return tuple(source_repo(self.root, surface.service, surface.repo) for surface in self.surfaces)
+
     def start(self) -> Continue[...]:
-        """A run with no surface has no book to write."""
+        """A run with no surface has no book to write, and a surface that names the wrong repository for the run's workspace stops it before any turn."""
         if not self.surfaces:
             raise WorkflowFailed("the run names no surface: pass each one under `surfaces`")
+        _ = self.sources
         write_pass(self.records_dir, self.services)
         return Continue(None, self.route_book, index=0).because("route the first surface's book")
 
@@ -141,10 +149,11 @@ class OkfBook(BookFlow):
             return Continue(pending, self.copy_source, index=index, run_failures=pending).because(
                 "the gate left this book's owner failures to fix"
             )
-        found = self.call(book_problems, self.root, service, _source_folder(self.root, surface))
+        source = self.sources[index]
+        found = self.call(book_problems, self.root, service, _source_folder(source, surface), source)
         if found:
             return Continue(len(found), self.check_book, index=index).because("the existing book has problems: check it")
-        _ = record_check(self.records_dir, service, found, self.call(unopted_tools, self.root, service))
+        _ = record_check(self.records_dir, service, found, self.call(unopted_tools, self.root, service, source))
         ours = last_commit_subject(self.root, book) in (book_commit_subject(service), repaired_book_commit_subject(service))
         if ours or last_commit_trailer(self.root, BOOK_TRAILER, book) == REPAIRED:
             return Continue(book, self.check_book, index=index).because("this workflow wrote the book: check it")
@@ -164,10 +173,11 @@ class OkfBook(BookFlow):
     ) -> Continue[...]:
         """Copy the surface's product source for its owner. A surface whose source is no folder is a blocker."""
         surface = self.surfaces[index]
-        source = _source_folder(self.root, surface)
-        if not (self.root / source).is_dir():
-            return self._block_surface_and_move_on(index, _no_source_folder(self.root, surface))
-        view = build_source_view(self.root, source)
+        source = self.sources[index]
+        folder = _source_folder(source, surface)
+        if not (source.path / folder).is_dir():
+            return self._block_surface_and_move_on(index, _no_source_folder(source, surface))
+        view = build_source_view(self.root, source, folder)
         return Continue(view.as_posix(), self.write_book, index=index, run_failures=run_failures, problems=problems, exercised=exercised).because(
             "send the book's owner"
         )
@@ -177,13 +187,15 @@ class OkfBook(BookFlow):
     ) -> Continue[...]:
         """Hand the book to one turn of its owner, with the gates it last failed. A turn sent the failures of a run is a repair, and the run after it must lower them."""
         surface = self.surfaces[index]
+        source = self.sources[index]
         written = WriteOutcome.model_validate(
             self.handoff(
                 WriteBook,
                 parent_records_dir=str(self.records_dir),
                 surface=surface,
                 book_folder=_book_folder(surface.service),
-                source_folder=_source_folder(self.root, surface),
+                source=source,
+                source_folder=_source_folder(source, surface),
                 exercised=exercised,
                 problems=problems,
                 run_failures=run_failures or {},
@@ -207,10 +219,11 @@ class OkfBook(BookFlow):
         """Repeat the owner's own page check. A problem in a group the owner named another side's is held: it is a blocker on that side. Each problem left is a blocker on its page, and goes back to the owner. After its turn the problems left go back only when they are fewer than the last check left, so a person is asked only about what a turn did not lower."""
         surface = self.surfaces[index]
         service = surface.service
-        problems = self.call(book_problems, self.root, service, _source_folder(self.root, surface))
+        source = self.sources[index]
+        problems = self.call(book_problems, self.root, service, _source_folder(source, surface), source)
         findings = latest_check_findings(read_findings(self.records_dir), service)
         left = unheld(problems, findings)
-        before = record_check(self.records_dir, service, problems, self.call(unopted_tools, self.root, service), findings)
+        before = record_check(self.records_dir, service, problems, self.call(unopted_tools, self.root, service, source), findings)
         if left and (not repaired or not before or len(left) < before):
             return Continue(len(left), self.copy_source, index=index, problems=problems, run_failures={} if run_failures_repaired else None).because(
                 "the check finds problems the book holds: back to its owner"
@@ -343,7 +356,7 @@ class OkfBook(BookFlow):
 
     def settle_gate(self) -> Continue[...]:
         """Rerun each blocker's checks, close those that pass, and leave each writer what still fails and every claim the answer changed."""
-        routed = gate.settle_gate(self.root, self.records_dir, self.services)
+        routed = gate.settle_gate(self.root, self.records_dir, self.services, {surface.service: source.path for surface, source in zip(self.surfaces, self.sources, strict=True)})
         return Continue(routed, self.route_blocked, routed=routed).because("the gate's blockers are settled")
 
     def route_blocked(self, routed: tuple[str, ...] | None = None) -> Continue[...]:

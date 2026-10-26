@@ -26,6 +26,7 @@ from workhorse_workflows.okf_book.main.nodes.surface import Surface, SurfaceKind
 from workhorse_workflows.okf_book.main.nodes.writer_request import WriterRequest
 from workhorse_workflows.okf_book.shared.book_run import CompileOutcome, ExerciseResult, StackReadiness
 from workhorse_workflows.okf_book.shared.page_check import PageProblem
+from workhorse_workflows.okf_book.shared.source_repo import SourceRepo
 from workhorse_workflows.okf_book.main.nodes.writer_commands import (
     CHECK_MODULE,
     CommandOutput,
@@ -62,6 +63,7 @@ def test_the_writer_waits_on_an_exercise_past_the_cli_default_and_inside_the_sil
         repo_root=tmp_path,
         book_folder="docs",
         source_folder="src",
+        source=SourceRepo(path=tmp_path),
         source_view=tmp_path,
         ostler_command_line=ostler_command(tmp_path),
         check_command_line=check_command(tmp_path),
@@ -221,7 +223,7 @@ def test_the_source_size_skips_dependency_folders(tmp_path: Path) -> None:
     assert folder_tokens(tmp_path) == 10
 
 
-def _noisy_problems(root: Path, service: str, _source_folder: str = "") -> tuple[PageProblem, ...]:
+def _noisy_problems(root: Path, service: str, _source_folder: str = "", _source: SourceRepo | None = None) -> tuple[PageProblem, ...]:
     print(f"stdout from {root.name}")
     logging.getLogger("noisy").warning("a warning")
     _ = os.write(2, b"a raw write\n")
@@ -241,8 +243,8 @@ def test_a_check_prints_only_its_own_lines(
     assert capfd.readouterr() == ("", "")
 
 
-def _problems_on(*pages: str) -> Callable[[Path, str, str], tuple[PageProblem, ...]]:
-    def _problems(_root: Path, _service: str, _source_folder: str = "") -> tuple[PageProblem, ...]:
+def _problems_on(*pages: str) -> Callable[[Path, str, str, SourceRepo | None], tuple[PageProblem, ...]]:
+    def _problems(_root: Path, _service: str, _source_folder: str = "", _source: SourceRepo | None = None) -> tuple[PageProblem, ...]:
         return tuple(PageProblem(page, f"{page} is broken") for page in pages)
 
     return _problems
@@ -270,8 +272,8 @@ def test_a_check_scoped_to_pages_prints_their_problems_and_those_the_turn_made_b
     assert printed == (f"{pages[0]} is broken", f"{pages[3]} is broken")
 
 
-def _page_problems_returning(problems: tuple[PageProblem, ...]) -> Callable[[Path, str, str], tuple[PageProblem, ...]]:
-    def _problems(_root: Path, _service: str, _source_folder: str = "") -> tuple[PageProblem, ...]:
+def _page_problems_returning(problems: tuple[PageProblem, ...]) -> Callable[[Path, str, str, SourceRepo | None], tuple[PageProblem, ...]]:
+    def _problems(_root: Path, _service: str, _source_folder: str = "", _source: SourceRepo | None = None) -> tuple[PageProblem, ...]:
         return problems
 
     return _problems

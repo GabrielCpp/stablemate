@@ -25,4 +25,4 @@ class Surface(BaseModel):
     service: str = Field(pattern=SLUG_PATTERN)
     kind: SurfaceKind
     entry: str = Field(min_length=1)
-
+    repo: str = ""

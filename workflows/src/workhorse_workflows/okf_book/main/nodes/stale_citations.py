@@ -47,12 +47,13 @@ class StaleNode(BaseModel):
 
 
 class StaleFile(BaseModel):
-    """One cited file that changed, the digest its citations carry, and every node that cites it on that digest."""
+    """One cited file that changed, the digest its citations carry, and every node that cites it on that digest. A file of a workspace member names the member in `repository`."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     path: str
     digest: str
+    repository: str = ""
     nodes: tuple[StaleNode, ...] = ()
 
 
@@ -90,7 +91,7 @@ def stale_files(root: Path, service: str) -> tuple[StaleFile, ...]:
         return ()
     with index.session(root):
         report = doctor.scope_to_paths(doctor.run(load(root)), pages)
-    grouped: dict[tuple[str, str], list[StaleNode]] = {}
+    grouped: dict[tuple[str, str, str], list[StaleNode]] = {}
     for finding in report.findings:
         if finding.code != STALE_CODE or not finding.node:
             continue
@@ -98,13 +99,16 @@ def stale_files(root: Path, service: str) -> tuple[StaleFile, ...]:
             ref = parse_code_ref(finding.ref)
         except ValueError:
             continue
-        if ref.digest is None or ref.repository:
+        if ref.digest is None:
             continue
         cited = StaleNode(node=finding.node, page=finding.path, symbol=ref.symbol)
-        nodes = grouped.setdefault((ref.path, ref.digest), [])
+        nodes = grouped.setdefault((ref.repository, ref.path, ref.digest), [])
         if cited not in nodes:
             nodes.append(cited)
-    return tuple(StaleFile(path=path, digest=digest, nodes=tuple(nodes)) for (path, digest), nodes in sorted(grouped.items()))
+    return tuple(
+        StaleFile(path=path, digest=digest, repository=repository, nodes=tuple(nodes))
+        for (repository, path, digest), nodes in sorted(grouped.items())
+    )
 
 
 def _git_bytes(root: Path, *args: str) -> bytes | None:
@@ -129,12 +133,12 @@ def keep_old_version(root: Path, stale: StaleFile, old: str) -> Path:
     return kept
 
 
-def reground_template_args(root: Path, stale: StaleFile, old: str, kept: Path) -> dict[str, object]:
-    """What the reading turn is shown: the file, the head of its diff from the stamped version, where that version is kept, and each citing node with its number."""
-    current = (root / stale.path).read_text(encoding="utf-8", errors="replace")
+def reground_template_args(tree: Path, stale: StaleFile, old: str, kept: Path) -> dict[str, object]:
+    """What the reading turn is shown: the file as `tree` holds it, the head of its diff from the stamped version, where that version is kept, and each citing node with its number."""
+    current = (tree / stale.path).read_text(encoding="utf-8", errors="replace")
     diff = list(difflib.unified_diff(old.splitlines(), current.splitlines(), "stamped", "now", lineterm=""))
     return {
-        "path": stale.path,
+        "path": str(tree / stale.path) if stale.repository else stale.path,
         "diff": "\n".join(diff[:DIFF_LINES_SHOWN]),
         "diff_left": max(0, len(diff) - DIFF_LINES_SHOWN),
         "old_version": str(kept),

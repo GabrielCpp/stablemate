@@ -34,6 +34,7 @@ from workhorse_workflows.okf_book.shared.book_commits import repaired_book_commi
 from workhorse_workflows.okf_book.shared.book_flow import BookFlow
 from workhorse_workflows.okf_book.shared.confine import changed_since, restore, snapshot
 from workhorse_workflows.okf_book.shared.metrics import record_turn, turn_metric
+from workhorse_workflows.okf_book.shared.source_repo import repository_root
 
 REGROUND_PROMPT = "main/prompts/reground-file.md"
 REGROUND_PROFILE = AgentProfile(name="okf-book-reground", confined=True)
@@ -61,17 +62,18 @@ class RegroundBook(BookFlow):
         if position >= len(files):
             return Continue(len(spared), self.stamp_spared_citations, failures=kept, spared=spared).because("every changed file is read: stamp what the changes spare")
         stale = files[position]
-        if not (self.root / stale.path).is_file():
+        tree = repository_root(self.root, stale.repository)
+        if tree is None or not (tree / stale.path).is_file():
             return Continue(stale.path, self.read_change, files=files, position=position + 1, failures=kept, spared=spared).because(
                 "the cited file is gone, which the page check reports"
             )
-        old = stamped_text(self.root, stale.path, stale.digest)
+        old = stamped_text(tree, stale.path, stale.digest)
         if old is None:
             kept = with_problems(kept, unread_problems(stale))
             return Continue(stale.path, self.read_change, files=files, position=position + 1, failures=kept, spared=spared).because(
                 "no commit holds the stamped version: every citing node is read again"
             )
-        verdict = self._verdict(stale, old)
+        verdict = self._verdict(stale, old, tree)
         if verdict is not None:
             kept = with_problems(kept, affected_problems(stale, verdict))
             spared = (*spared, *spared_pairs(stale, verdict))
@@ -79,7 +81,7 @@ class RegroundBook(BookFlow):
             "the next changed file"
         )
 
-    def _verdict(self, stale: StaleFile, old: str) -> RegroundVerdict | None:
+    def _verdict(self, stale: StaleFile, old: str, tree: Path) -> RegroundVerdict | None:
         before = snapshot(self.root)
         started = time.monotonic()
         verdict: RegroundVerdict | None = None
@@ -88,7 +90,7 @@ class RegroundBook(BookFlow):
                 REGROUND_PROMPT,
                 returns=RegroundVerdict,
                 timeout=REGROUND_TIMEOUT,
-                args=reground_template_args(self.root, stale, old, keep_old_version(self.root, stale, old)),
+                args=reground_template_args(tree, stale, old, keep_old_version(self.root, stale, old)),
                 cwd=self.root,
                 profile=REGROUND_PROFILE,
             )

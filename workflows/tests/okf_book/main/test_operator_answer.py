@@ -21,6 +21,7 @@ from workhorse_workflows.okf_book.main.write_book_flow import WRITE_PROMPT, Writ
 from workhorse_workflows.okf_book.shared.blockers import Blocker, Phase, Side, record_blocker
 from workhorse_workflows.okf_book.shared.confine import Snapshot
 from workhorse_workflows.okf_book.shared.metrics import turn_metric
+from workhorse_workflows.okf_book.shared.source_repo import SourceRepo
 from workhorse_workflows.okf_book.workflow import OkfBook
 
 ANSWER = "The admin checks revoke the supplier's tokens. Give them their own user."
@@ -73,6 +74,7 @@ def test_the_owner_prompt_carries_the_answer(tmp_path: Path) -> None:
         repo_root=tmp_path,
         book_folder="docs",
         source_folder="src",
+        source=SourceRepo(path=tmp_path),
         source_view=tmp_path,
         ostler_command_line=ostler_command(tmp_path),
         check_command_line=check_command(tmp_path),

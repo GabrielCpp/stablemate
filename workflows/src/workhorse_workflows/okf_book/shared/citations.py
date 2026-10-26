@@ -9,6 +9,7 @@ from ostler.pages import files_in_book
 from ostler.refs import code_refs, parse_code_ref
 from ostler.stamp import digest_file
 from workhorse_workflows.okf_book.shared.entries import book_dir
+from workhorse_workflows.okf_book.shared.source_repo import repository_root
 
 _CODE_BULLET = re.compile(r"^\s*[-*]\s+code:\s*(?P<value>.*)$")
 _FENCE = "```"
@@ -16,11 +17,12 @@ _FENCE = "```"
 
 @dataclass(frozen=True, slots=True)
 class Citation:
-    """One cited file, repo-relative, the digest stamped beside it, if any, and the symbol it names, if any."""
+    """One cited file, repo-relative, the digest stamped beside it, if any, the symbol it names, if any, and the workspace member it lives in, empty for the book's own repository."""
 
     path: str
     digest: str | None
     symbol: str = ""
+    repository: str = ""
 
 
 def _bullet_citations(value: str) -> list[Citation]:
@@ -30,8 +32,7 @@ def _bullet_citations(value: str) -> list[Citation]:
             ref = parse_code_ref(rendered)
         except ValueError:
             continue
-        if not ref.repository:
-            found.append(Citation(ref.path, ref.digest, ref.symbol))
+        found.append(Citation(ref.path, ref.digest, ref.symbol, ref.repository))
     return found
 
 
@@ -63,15 +64,17 @@ def book_pages(root: Path, service: str) -> tuple[Path, ...]:
 
 def cites_changed_file(root: Path, service: str) -> bool:
     """Whether any page of the service's book cites a file that no longer has the digest stamped beside it."""
-    digests: dict[str, str | None] = {}
+    digests: dict[tuple[str, str], str | None] = {}
     for page in book_pages(root, service):
         for citation in page_citations(page):
             if citation.digest is None:
                 continue
-            if citation.path not in digests:
-                cited = root / citation.path
-                digests[citation.path] = digest_file(cited.read_bytes()) if cited.is_file() else None
-            current = digests[citation.path]
+            key = (citation.repository, citation.path)
+            if key not in digests:
+                tree = repository_root(root, citation.repository)
+                cited = tree / citation.path if tree else None
+                digests[key] = digest_file(cited.read_bytes()) if cited and cited.is_file() else None
+            current = digests[key]
             if current is not None and current != citation.digest:
                 return True
     return False
