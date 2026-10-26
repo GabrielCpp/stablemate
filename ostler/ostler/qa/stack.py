@@ -49,6 +49,7 @@ import json
 import logging
 import os
 import re
+import shlex
 import shutil
 import signal
 import subprocess
@@ -62,6 +63,7 @@ from typing import Any
 from ostler._vendor.stablemate_core import base_cache
 from ostler._vendor.stablemate_core.clock import SYSTEM_CLOCK, Clock
 from ostler.qa import addresses
+from ostler.qa import tools as tools_mod
 
 #: Manifest commands are **shell** recipes, not argv lists. The contract already asks for
 #: something only a shell can express — an *idempotent* bring-up command is written
@@ -133,7 +135,45 @@ def boot_timeout(raw: str, default: float = BOOT_TIMEOUT_S) -> float:
     return value if value > 0 else default
 
 
-def health_probe(url: str, identity: str = "") -> str:
+GRPC_SCHEME = "grpc://"
+_GRPC_HEALTH = "grpc.health.v1.Health/Check"
+_GRPC_PROBE_TIMEOUT_S = 5.0
+
+
+def _grpc_probe(url: str, serves: tuple[str, ...], grpcurl: str) -> str:
+    """``""`` when the gRPC server at *url* answers SERVING and lists every service in *serves*."""
+    address = urllib.parse.urlsplit(url).netloc
+    if not grpcurl:
+        return (f"{url} is a gRPC entry url and grpcurl is not opted in: list it under "
+                f"`qa: {{tools: [grpcurl]}}` in agents.yml")
+    try:
+        health = subprocess.run(
+            [grpcurl, "-plaintext", "-max-time", str(int(_GRPC_PROBE_TIMEOUT_S)), address, _GRPC_HEALTH],
+            capture_output=True, text=True, timeout=_GRPC_PROBE_TIMEOUT_S + 2, check=False)
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        return f"{url} is not answering ({type(exc).__name__}: {exc})"
+    if health.returncode != 0:
+        return f"{url} is not answering the gRPC health check (grpcurl exit {health.returncode})"
+    if "SERVING" not in health.stdout or "NOT_SERVING" in health.stdout:
+        return f"{url} answered the gRPC health check, but its status is not SERVING"
+    if not serves:
+        return ""
+    try:
+        listed = subprocess.run(
+            [grpcurl, "-plaintext", "-max-time", str(int(_GRPC_PROBE_TIMEOUT_S)), address, "list"],
+            capture_output=True, text=True, timeout=_GRPC_PROBE_TIMEOUT_S + 2, check=False)
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        return f"{url} is not answering ({type(exc).__name__}: {exc})"
+    if listed.returncode != 0:
+        return f"{url} would not list its services (grpcurl exit {listed.returncode})"
+    names = set(listed.stdout.split())
+    missing = [name for name in serves if name not in names]
+    if missing:
+        return f"{url} is serving, but does not list {', '.join(missing)}"
+    return ""
+
+
+def health_probe(url: str, identity: str = "", *, serves: tuple[str, ...] = (), grpcurl: str = "") -> str:
     """``""`` when *url* is healthy; otherwise one clause saying why it is not.
 
     The two ways this fails need opposite repairs, and reporting them as one sends the
@@ -154,7 +194,12 @@ def health_probe(url: str, identity: str = "") -> str:
     check are two seams, and a caller (or a test) that reaches for the boolean one silently
     misses whichever paths went through the other. ``if not health_probe(...)`` reads the
     same and there is only one thing to patch.
+
+    The entry-url scheme picks the role. ``grpc://`` runs the gRPC health check through
+    *grpcurl* and then lists the services the server must expose, *serves*.
     """
+    if url.startswith(GRPC_SCHEME):
+        return _grpc_probe(url, serves, grpcurl)
     try:
         with urllib.request.urlopen(url, timeout=3) as r:  # noqa: S310 (loopback)
             if not 200 <= r.status < 400:
@@ -194,6 +239,8 @@ def boot_app(
     timeout_s: float,
     *,
     adopt: bool = True,
+    serves: tuple[str, ...] = (),
+    grpcurl: str = "",
     logger: logging.Logger,
     clock: Clock = SYSTEM_CLOCK,
 ) -> dict[str, str]:
@@ -241,7 +288,7 @@ def boot_app(
     # Idempotent reuse: something already serving here → adopt it, own nothing. Safe
     # only with an identity marker; without one, start the documented command and prove
     # that owned process became healthy instead of adopting an arbitrary listener.
-    if adopt and app_identity and health_url and not health_probe(health_url, app_identity):
+    if adopt and app_identity and health_url and not health_probe(health_url, app_identity, serves=serves, grpcurl=grpcurl):
         logger.info("adopting the app already serving %s (identity %r matched); "
                     "teardown will not reap it", health_url, app_identity)
         return {"boot_ok": "yes", "entry_url": entry_url, "app_pid": "", "app_pgid": "",
@@ -287,7 +334,7 @@ def boot_app(
     while clock.monotonic() < deadline:
         # Health first: a bring-up command can exit the instant the stack is serving, so
         # checking liveness first would race a successful boot into a spurious failure.
-        why = health_probe(health_url, app_identity)
+        why = health_probe(health_url, app_identity, serves=serves, grpcurl=grpcurl)
         if not why:
             if detached:
                 logger.info("app is healthy at %s (brought up by a command that has "
@@ -402,6 +449,36 @@ def teardown_app(
     return {"torn_down": "yes"}
 
 
+MINT_TIMEOUT_S = 60.0
+
+
+def mint_secrets(manifest: dict[str, Any], logger: logging.Logger) -> str:
+    """Run each ``secrets:`` recipe once and put its stripped stdout in this process's environment under the secret's name.
+
+    Returns ``""`` on success, else one clause naming the secret and the exit status that
+    failed. The recipe's output is a credential and appears in no message or log line.
+    """
+    secrets = manifest.get("secrets") or {}
+    if not isinstance(secrets, dict):
+        return ""
+    minted: dict[str, str] = {}
+    for name, recipe in secrets.items():
+        try:
+            argv = shlex.split(addresses.resolve_now(str(recipe)))
+            done = subprocess.run(argv, capture_output=True, text=True, timeout=MINT_TIMEOUT_S, check=False)
+        except (OSError, ValueError, subprocess.TimeoutExpired, addresses.AddressError) as exc:
+            return f"secret {name} could not be minted ({type(exc).__name__})"
+        if done.returncode != 0:
+            return f"secret {name} could not be minted: its recipe exited {done.returncode}"
+        value = done.stdout.strip()
+        if not value:
+            return f"secret {name} could not be minted: its recipe printed nothing"
+        minted[str(name)] = value
+    os.environ.update(minted)
+    logger.info("minted %d secret(s): %s", len(minted), ", ".join(minted))
+    return ""
+
+
 def ensure_stack(
     manifest: dict[str, Any], *, repo_root: str | None = None,
     logger: logging.Logger, clock: Clock = SYSTEM_CLOCK,
@@ -471,6 +548,8 @@ def ensure_stack(
     launch_cmd = manifest.get("launch", "")
     launch_cwd = manifest.get("launch_cwd") or app_cwd
     health_url = entry_url.rstrip("/") + "/" + health_path.lstrip("/") if entry_url else ""
+    serves = tuple(manifest.get("serves") or ())
+    grpcurl = tools_mod.resolved_commands(Path(root)).get("grpcurl", "") if entry_url.startswith(GRPC_SCHEME) else ""
 
     def _fail(step: str, error: str = "", pid: str = "", pgid: str = "") -> dict[str, str]:
         # `error` carries the step's own message out with the verdict: the caller's job is
@@ -494,13 +573,16 @@ def ensure_stack(
     # stack still cannot pass its gates, adoption was the wrong call however the policy
     # argued it — fall through to the full bring-up rather than failing a run that a
     # re-launch would have saved.
-    if identity and health_url and not health_probe(health_url, identity):
+    if identity and health_url and not health_probe(health_url, identity, serves=serves, grpcurl=grpcurl):
         if _may_adopt(reuse, manifest, app_cwd, timeout_s, logger):
             step, err = _seed_then_gate(manifest, app_cwd, timeout_s, logger, clock,
                                         proven=True)
             if not step:
                 logger.info("adopting the stack already serving %s (reuse=%s; seed and "
                             "health gates re-proven)", health_url, reuse)
+                minted = mint_secrets(manifest, logger)
+                if minted:
+                    return _fail("secrets", minted)
                 return {"ready": "yes", "adopted": "yes", "entry_url": entry_url,
                         "app_pid": "", "app_pgid": ""}
             logger.warning("stack serving %s failed %s while adopting (%s) — falling "
@@ -526,6 +608,7 @@ def ensure_stack(
         _clear_record(app_cwd)
     held = bool(health_url) and _still_served(
         health_url, identity, grace=TERM_GRACE_S if recorded else 0.0, clock=clock,
+        serves=serves, grpcurl=grpcurl,
     )
 
     for i, step in enumerate(manifest.get("prepare") or []):
@@ -541,7 +624,8 @@ def ensure_stack(
         # adopt=False: ensure_stack owns the reuse decision above; the launch itself must
         # always run (and be self-freshening) once we have decided not to adopt.
         res = boot_app(launch_cmd, entry_url, health_path, launch_cwd, root,
-                       identity, timeout_s, adopt=False, logger=logger, clock=clock)
+                       identity, timeout_s, adopt=False, serves=serves, grpcurl=grpcurl,
+                       logger=logger, clock=clock)
         if res["boot_ok"] != "yes":
             # Report boot's *own* reason, not the step name. "the launch command did not
             # serve <url>" was this branch's message for every way bring-up can fail, and it
@@ -572,6 +656,9 @@ def ensure_stack(
     if step_label:
         return _fail(step_label, err, app_pid, app_pgid)
     entry_url = _url_now(manifest.get("entry_url", ""))
+    minted = mint_secrets(manifest, logger)
+    if minted:
+        return _fail("secrets", minted, app_pid, app_pgid)
 
     logger.info("stack is ready at %s", health_url or entry_url or "(no entry url)")
     return {"ready": "yes", "adopted": "no", "entry_url": entry_url,
@@ -646,7 +733,10 @@ def _seed_then_gate(
     return "", ""
 
 
-def _still_served(health_url: str, identity: str, *, grace: float, clock: Clock) -> bool:
+def _still_served(
+    health_url: str, identity: str, *, grace: float, clock: Clock,
+    serves: tuple[str, ...] = (), grpcurl: str = "",
+) -> bool:
     """Whether *health_url* still answers once *grace* has passed for a reaped predecessor to let go.
 
     A foreground server this bring-up starts cannot bind an address something else holds,
@@ -654,7 +744,7 @@ def _still_served(health_url: str, identity: str, *, grace: float, clock: Clock)
     was held before the launch is what tells the two apart.
     """
     deadline = clock.monotonic() + grace
-    while not health_probe(health_url, identity):
+    while not health_probe(health_url, identity, serves=serves, grpcurl=grpcurl):
         if clock.monotonic() >= deadline:
             return True
         clock.sleep(POLL_INTERVAL_S)

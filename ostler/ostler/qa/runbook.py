@@ -225,6 +225,10 @@ def _from_server(graph: Graph, server: UINode) -> dict[str, Any]:
         value = bullet_value(meta, bullet)
         if value:
             manifest[key] = value
+    serves = re.split(r"[\s,]+", bullet_value(meta, "serves"))
+    serves = [name for name in serves if name]
+    if serves:
+        manifest["serves"] = serves
     return manifest
 
 
