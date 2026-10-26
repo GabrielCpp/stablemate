@@ -18,6 +18,7 @@ from ostler import model
 from ostler import path as path_mod
 from ostler.environments import leases
 from ostler.model import Graph, UINode
+from ostler.provenance import checkout_for, effective_checkouts
 from ostler.qa import addresses
 from ostler.qa import stack as stack_mod
 from ostler.qa.outcome import QaOutcome
@@ -95,6 +96,25 @@ def is_scenario_frame(value: str, root: Path) -> bool:
     return text == SCENARIO_FRAME_TOKEN or (text == bare and not (root / bare).is_dir())
 
 
+class WorkingDirectoryError(ValueError):
+    """A `working-directory:` names a workspace member this run does not have."""
+
+
+def resolve_directory(root: Path, value: str) -> Path:
+    """Where a `working-directory:` value points: `repo://<member>/<path>` in that member's checkout, anything else under *root*."""
+    if not value.startswith("repo://"):
+        return (root / value).resolve()
+    member, _slash, rest = value.removeprefix("repo://").partition("/")
+    checkouts = effective_checkouts(None)
+    checkout = checkout_for(member, checkouts)
+    if checkout is None:
+        known = ", ".join(sorted(checkouts)) or "none"
+        msg = (f"`working-directory: {value}` names workspace member {member!r}, "
+               f"and this run's members are: {known}")
+        raise WorkingDirectoryError(msg)
+    return (checkout / (rest or ".")).resolve()
+
+
 def _step_command(node: UINode, root: Path, default_cwd: str) -> dict[str, str] | None:
     """One `step` node as the mapping `stack._run_step`/`book_fixtures` reads, or None when it has no command."""
     command = bullet_value(node.meta, "run")
@@ -110,7 +130,7 @@ def _step_command(node: UINode, root: Path, default_cwd: str) -> dict[str, str] 
     if is_scenario_frame(cwd, root):
         step["cwd-frame"] = "scenario"
     else:
-        step["working-directory"] = str((root / (cwd or default_cwd or ".")).resolve())
+        step["working-directory"] = str(resolve_directory(root, cwd or default_cwd or "."))
     timeout = bullet_value(node.meta, "timeout")
     if timeout:
         step["timeout"] = timeout
@@ -187,7 +207,7 @@ def _from_runbook(graph: Graph, runbook: UINode, *, service: bool = True) -> dic
         if value:
             manifest[key] = value
     app_cwd = bullet_value(meta, "working-directory") or "."
-    manifest["app_cwd"] = str((root / app_cwd).resolve())
+    manifest["app_cwd"] = str(resolve_directory(root, app_cwd))
     manifest["repo_root"] = str(root.resolve())
 
     phases: dict[str, list[dict[str, str]]] = {"prepare": [], "seed": [], "health": []}
@@ -237,7 +257,7 @@ def _from_server(graph: Graph, server: UINode) -> dict[str, Any]:
         "launch": bullet_value(meta, "launch"),
         "entry_url": bullet_value(meta, "entry-url").rstrip("/"),
         "health_path": bullet_value(meta, "health-path") or "/",
-        "app_cwd": str((root / working).resolve()),
+        "app_cwd": str(resolve_directory(root, working)),
         "repo_root": str(root.resolve()),
         "source": server.id,
     }

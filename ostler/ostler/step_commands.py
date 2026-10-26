@@ -68,10 +68,17 @@ def check_step_command_checkout_path(graph: Graph, step: UINode, rel: str, f: li
             suggestion="- working-directory: <folder from the checkout root>"))
 
 
+def _directory_held(graph: Graph, value: str) -> bool:
+    try:
+        return runbook_mod.resolve_directory(graph.root, value).is_dir()
+    except runbook_mod.WorkingDirectoryError:
+        return True
+
+
 def check_fixture_step_directory(graph: Graph, step: UINode, rel: str, f: list[Finding]) -> None:
     """A fixture step's `working-directory:` path names a directory the checkout holds."""
     value = runbook_mod.bullet_value(step.meta, "working-directory")
-    if not value or runbook_mod.is_scenario_frame(value, graph.root) or (graph.root / value).is_dir():
+    if not value or runbook_mod.is_scenario_frame(value, graph.root) or _directory_held(graph, value):
         return
     f.append(Finding(
         "error", "fixture-step-directory",
