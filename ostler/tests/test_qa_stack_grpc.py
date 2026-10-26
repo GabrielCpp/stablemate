@@ -8,6 +8,7 @@ from pathlib import Path
 
 import pytest
 
+from _fakes import FakeClock
 from ostler.qa import stack
 
 LOG = logging.getLogger("test-stack-grpc")
@@ -184,3 +185,34 @@ def test_a_runbook_manifest_holds_readiness_to_its_surfaces_services(
     assert "does not list" in why
     monkeypatch.setenv("FAKE_GRPCURL_MODE", "ok")
     assert stack.health_probe(manifest["entry_url"], serves=tuple(manifest["serves"]), grpcurl=command) == ""
+
+
+def test_a_grpc_stack_with_no_grpcurl_opted_in_fails_at_once_without_launching(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    ran: list[str] = []
+
+    def record(*_a: object, **_kw: object) -> tuple[bool, str]:
+        ran.append("step")
+        return True, ""
+
+    def boot(*_a: object, **_kw: object) -> dict[str, str]:
+        ran.append("launch")
+        return {"boot_ok": "yes", "app_pid": "", "app_pgid": ""}
+
+    monkeypatch.setenv("STABLEMATE_CACHE_DIR", str(tmp_path / "cache"))
+    monkeypatch.setattr(stack, "_run_step", record)
+    monkeypatch.setattr(stack, "boot_app", boot)
+    clock = FakeClock()
+
+    out = stack.ensure_stack(
+        {"entry_url": "grpc://localhost:50051/", "launch": "make serve", "prepare": ["make deps"],
+         "identity": SERVICE, "serves": [SERVICE]},
+        repo_root=str(tmp_path), logger=LOG, clock=clock,
+    )
+
+    assert out["ready"] == "no"
+    assert out["failed_step"] == "tools"
+    assert "grpcurl is not opted in" in out["error"]
+    assert ran == []
+    assert clock.monotonic() == 0

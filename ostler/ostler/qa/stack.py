@@ -140,12 +140,16 @@ _GRPC_HEALTH = "grpc.health.v1.Health/Check"
 _GRPC_PROBE_TIMEOUT_S = 5.0
 
 
+def _grpcurl_not_opted_in(url: str) -> str:
+    return (f"{url} is a gRPC entry url and grpcurl is not opted in: list it under "
+            f"`qa: {{tools: [grpcurl]}}` in agents.yml")
+
+
 def _grpc_probe(url: str, serves: tuple[str, ...], grpcurl: str) -> str:
     """``""`` when the gRPC server at *url* answers SERVING and lists every service in *serves*."""
     address = urllib.parse.urlsplit(url).netloc
     if not grpcurl:
-        return (f"{url} is a gRPC entry url and grpcurl is not opted in: list it under "
-                f"`qa: {{tools: [grpcurl]}}` in agents.yml")
+        return _grpcurl_not_opted_in(url)
     try:
         health = subprocess.run(
             [grpcurl, "-plaintext", "-max-time", str(int(_GRPC_PROBE_TIMEOUT_S)), address, _GRPC_HEALTH],
@@ -558,6 +562,9 @@ def ensure_stack(
         # not what crosses the node boundary.
         return {"ready": "no", "adopted": "no", "entry_url": entry_url,
                 "app_pid": pid, "app_pgid": pgid, "failed_step": step, "error": error}
+
+    if entry_url.startswith(GRPC_SCHEME) and not grpcurl:
+        return _fail("tools", _grpcurl_not_opted_in(entry_url))
 
     # Adopt-if-serving — but only when the reuse policy proves the running stack is not
     # stale (built from older code). Otherwise fall through and re-run the (idempotent,

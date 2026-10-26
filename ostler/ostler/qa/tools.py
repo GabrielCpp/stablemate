@@ -10,6 +10,7 @@ from typing import Any
 import yaml
 
 from ostler._vendor.stablemate_core.config import config_path, load_config
+from ostler.provenance import effective_checkouts
 from ostler.qa.outcome import QaOutcome
 
 BUILTIN_TOOLS: dict[str, str] = {
@@ -43,9 +44,13 @@ def config_files(root: Path) -> tuple[Path, ...]:
 
 
 def opted_in_tools(root: Path) -> set[str]:
-    """The tool names this repo's `qa:` block lists under `tools:`."""
-    values = qa_block(root).get("tools", [])
-    return {str(value) for value in values} if isinstance(values, list) else set()
+    """The tool names *root*'s `qa:` block lists under `tools:`, plus each active workspace member's."""
+    names: set[str] = set()
+    for repo in (root, *effective_checkouts(None).values()):
+        values = qa_block(repo).get("tools", [])
+        if isinstance(values, list):
+            names.update(str(value) for value in values)
+    return names
 
 
 @dataclass(frozen=True)

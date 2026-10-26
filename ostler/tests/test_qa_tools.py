@@ -6,6 +6,7 @@ from pathlib import Path
 
 import pytest
 
+from ostler._vendor.stablemate_core import config as core_config
 from ostler.qa import tools
 
 
@@ -104,3 +105,37 @@ def test_resolved_commands_maps_name_to_command(tmp_path: Path) -> None:
         "tesseract": "tesseract",
         "ocr-diff": "ocr-diff-cli",
     }
+
+
+@pytest.fixture
+def workspace(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, Path]:
+    docs_home = tmp_path / "artifacts"
+    api = tmp_path / "code" / "api-service"
+    web = tmp_path / "code" / "web-app"
+    for directory in (docs_home, api, web):
+        directory.mkdir(parents=True)
+    config = tmp_path / "home.toml"
+    config.write_text(f'[workspaces]\nacme = ["{api}", "{web}"]\n')
+    monkeypatch.setenv(core_config.CONFIG_PATH_ENV, str(config))
+    monkeypatch.setenv(core_config.WORKSPACE_ENV, "acme")
+    return {"docs_home": docs_home, "api": api, "web": web}
+
+
+def test_a_member_opt_in_reaches_a_run_rooted_at_the_docs_home(workspace: dict[str, Path]) -> None:
+    _write_agents_yml(workspace["api"], ["grpcurl"])
+    assert tools.resolved_commands(workspace["docs_home"], cfg={}) == {"grpcurl": "grpcurl"}
+
+
+def test_a_workspace_unions_the_root_and_every_member(workspace: dict[str, Path]) -> None:
+    _write_agents_yml(workspace["docs_home"], ["tesseract"])
+    _write_agents_yml(workspace["api"], ["grpcurl"])
+    _write_agents_yml(workspace["web"], ["convert"])
+    assert tools.opted_in_tools(workspace["docs_home"]) == {"tesseract", "grpcurl", "convert"}
+
+
+def test_without_a_workspace_a_sibling_repo_opt_in_stays_invisible(
+    workspace: dict[str, Path], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _write_agents_yml(workspace["api"], ["grpcurl"])
+    monkeypatch.delenv(core_config.WORKSPACE_ENV)
+    assert tools.opted_in_tools(workspace["docs_home"]) == set()
