@@ -23,7 +23,7 @@ dependencies = [
   # the Workhorse 3.x backend contract — that release carries the `Registry(..., package=)`
   # kwarg every workflow below passes in `workflow.py`, and the engine bump is what
   # made that kwarg exist.
-  "workhorse-agent>=4,<5",
+  "workhorse-agent>=5,<6",
   # `kit` — all of what used to be `workhorse.scriptutil`. These are here rather than
   # on the engine because knowing how to open a pull request, or how to read the
   # relaxed JSON a config file is written in, is workflow domain: workhorse
@@ -57,7 +57,7 @@ dependencies = [
   # reaches for (`uv tool install --force 'ostler[qa]'`) fixes the PATH tool and changes
   # nothing here: a real run spent three laps installing it, proving it worked, and getting
   # the identical blocked bundle back.
-  "ostler[qa]>=3,<4",
+  "ostler[qa]>=4,<5",
   # A unified diff is a format with a grammar, and the coder's hygiene gate reads one to
   # find the lines a branch added. Hand-scanning it means every `startswith("+++ b/")`
   # test is a guess that the line is a header rather than a hunk body that looks like one.
