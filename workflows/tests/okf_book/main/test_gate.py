@@ -233,5 +233,5 @@ def test_a_book_the_gate_left_failures_for_goes_to_its_writer_with_them(tmp_path
 
     step = book.route_book(index=0)
 
-    assert step.state == "copy_source"
+    assert step.state == "check_source"
     assert step.params["run_failures"] == {ADD: (failure,)}

@@ -58,7 +58,7 @@ def test_a_run_group_the_owner_names_the_book_s_goes_back_to_the_owner(tmp_path:
 
     _ = book.settle_run(index=0, run_failures_repaired=False, exercised=exercised)
 
-    assert book.map_run_failures(index=0, exercised=exercised).state == "copy_source"
+    assert book.map_run_failures(index=0, exercised=exercised).state == "check_source"
 
 
 def test_a_check_group_the_owner_names_another_side_s_is_held_back_from_the_book(tmp_path: Path) -> None:

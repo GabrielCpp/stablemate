@@ -75,7 +75,7 @@ def test_the_owner_prompt_carries_the_answer(tmp_path: Path) -> None:
         book_folder="docs",
         source_folder="src",
         source=SourceRepo(path=tmp_path),
-        source_view=tmp_path,
+        source_dir=tmp_path,
         ostler_command_line=ostler_command(tmp_path),
         check_command_line=check_command(tmp_path),
         exercise_command_line=exercise_command(tmp_path),

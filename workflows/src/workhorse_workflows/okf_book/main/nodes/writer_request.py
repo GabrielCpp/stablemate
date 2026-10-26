@@ -6,7 +6,6 @@ from pathlib import Path
 
 from ostler.qa.tools import catalog
 from workhorse.runner.backends import AgentProfile
-from workhorse_workflows.okf_book.main.nodes.source_view import source_view_folder
 from workhorse_workflows.okf_book.main.nodes.surface import Surface
 from workhorse_workflows.okf_book.main.nodes.turn_budget import WRITER_STEPS
 from workhorse_workflows.okf_book.main.nodes.writer_commands import (
@@ -46,7 +45,7 @@ class WriterRequest:
     book_folder: str
     source_folder: str
     source: SourceRepo
-    source_view: Path
+    source_dir: Path
     ostler_command_line: str
     check_command_line: str
     exercise_command_line: str
@@ -59,7 +58,7 @@ class WriterRequest:
             "kind": self.surface.kind.value,
             "repo_root": self.repo_root.as_posix(),
             "entry": self.surface.entry,
-            "source_view": self.source_view.as_posix(),
+            "source_dir": self.source_dir.as_posix(),
             "source_folder": self.source.cite(self.source_folder),
             "member": self.source.name,
             "book_folder": self.book_folder,
@@ -92,7 +91,7 @@ def writer_request(run_dir: Path, root: Path, surface: Surface, source_folder: s
         book_folder=(SERVICES_DIR / surface.service).as_posix(),
         source_folder=source_folder,
         source=source,
-        source_view=source_view_folder(root, source, source_folder),
+        source_dir=source.path / source_folder,
         ostler_command_line=ostler_command(run_dir),
         check_command_line=check_command(run_dir),
         exercise_command_line=exercise_command(run_dir),

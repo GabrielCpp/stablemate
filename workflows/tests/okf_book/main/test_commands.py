@@ -21,7 +21,6 @@ from workhorse_workflows.okf_book.main.nodes.exercise import run_exercise
 from workhorse_workflows.okf_book.main.nodes.writer_jobs import Start, Work, finish_job
 from workhorse_workflows.okf_book.main.nodes.writer_stack import KeptStack
 from workhorse_workflows.okf_book.main.nodes.writer_ostler import GC_USAGE, INDEX_DIR_REFUSED, NO_DEAD_PAGE, RELINK_USAGE, USAGE as OSTLER_USAGE, run_ostler
-from workhorse_workflows.okf_book.main.nodes.turn_budget import folder_tokens
 from workhorse_workflows.okf_book.main.nodes.surface import Surface, SurfaceKind
 from workhorse_workflows.okf_book.main.nodes.writer_request import WriterRequest
 from workhorse_workflows.okf_book.shared.book_run import CompileOutcome, ExerciseResult, StackReadiness
@@ -64,7 +63,7 @@ def test_the_writer_waits_on_an_exercise_past_the_cli_default_and_inside_the_sil
         book_folder="docs",
         source_folder="src",
         source=SourceRepo(path=tmp_path),
-        source_view=tmp_path,
+        source_dir=tmp_path,
         ostler_command_line=ostler_command(tmp_path),
         check_command_line=check_command(tmp_path),
         exercise_command_line=exercise_command(tmp_path),
@@ -213,14 +212,6 @@ def test_the_ostler_relink_points_only_other_books_links_at_the_new_page(tmp_pat
     assert "[stray](../ledger/kept.md#sums)" in linking.read_text(encoding="utf-8")
     assert "[stray](../ledger/stray.md#sums)" in own.read_text(encoding="utf-8")
     assert run_ostler([str(path), "relink", "stray.md", "../other/kept.md"]) == CommandOutput(2, (RELINK_USAGE,))
-
-
-def test_the_source_size_skips_dependency_folders(tmp_path: Path) -> None:
-    _ = (tmp_path / "main.go").write_text("a" * 40, encoding="utf-8")
-    (tmp_path / "node_modules").mkdir()
-    _ = (tmp_path / "node_modules" / "lib.js").write_text("b" * 4000, encoding="utf-8")
-
-    assert folder_tokens(tmp_path) == 10
 
 
 def _noisy_problems(root: Path, service: str, _source_folder: str = "", _source: SourceRepo | None = None) -> tuple[PageProblem, ...]:

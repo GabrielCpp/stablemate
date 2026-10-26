@@ -1,9 +1,6 @@
-"""The copy of a surface's product source the writer reads, so it reads exactly what the run measured.
+"""The folders of the working tree a confined turn reads beside its book: the files kept for a turn, under a folder that ignores itself.
 
-The copy leaves out the tests, test doubles and fixtures no page may cite, and keeps each file at its
-repository path. It lives in the working tree, where a confined writer in a linked worktree can still
-read it, and its folder ignores itself, so git reports no change for it and the writer's turn cannot
-commit it. A copy of the repository root leaves out the copy itself.
+Git reports no change for that folder, so a turn cannot commit what it holds.
 """
 from __future__ import annotations
 
@@ -11,35 +8,11 @@ import shutil
 from collections.abc import Sequence
 from pathlib import Path
 
-from ostler.refs import is_test_source
-from workhorse_workflows.okf_book.main.nodes.turn_budget import countable_files
-from workhorse_workflows.okf_book.shared.source_repo import SourceRepo
-
 VIEW_DIR = ".okf-book-source"
 
 
-def source_view_folder(root: Path, source: SourceRepo, source_folder: str) -> Path:
-    """Where the copy of the source repository's `source_folder` sits in the working tree of `root`, under the member's name when the source is a workspace member."""
-    return root / VIEW_DIR / source.name / source_folder
-
-
-def build_source_view(root: Path, source: SourceRepo, source_folder: str) -> Path:
-    """Copy the product files under the source repository's `source_folder` afresh into the working tree of `root`, and return the copy's folder."""
-    folder = source.path / source_folder
-    view = source_view_folder(root, source, source_folder)
-    shutil.rmtree(view, ignore_errors=True)
-    view.mkdir(parents=True)
-    _ = (root / VIEW_DIR / ".gitignore").write_text("*\n", encoding="utf-8")
-    for path in countable_files(folder):
-        relative = path.relative_to(folder)
-        if VIEW_DIR not in relative.parts and not is_test_source(relative.as_posix()):
-            (view / relative).parent.mkdir(parents=True, exist_ok=True)
-            _ = shutil.copy2(path, view / relative)
-    return view
-
-
 def turn_folder(root: Path, name: str) -> Path:
-    """A folder of the working tree a confined turn can read, which git reports no change for. Its name starts with a dot, so no copied source folder shares it."""
+    """A folder of the working tree a confined turn can read, which git reports no change for."""
     folder = root / VIEW_DIR / f".{name}"
     folder.mkdir(parents=True, exist_ok=True)
     _ = (root / VIEW_DIR / ".gitignore").write_text("*\n", encoding="utf-8")

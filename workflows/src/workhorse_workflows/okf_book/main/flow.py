@@ -27,7 +27,6 @@ from workhorse_workflows.okf_book.main.nodes.progress_ledger import LapCounts, l
 from workhorse_workflows.okf_book.main.nodes.report import build_report, write_report
 from workhorse_workflows.okf_book.main.nodes.stale_citations import Regrounded
 from workhorse_workflows.okf_book.main.reground_book_flow import RegroundBook
-from workhorse_workflows.okf_book.main.nodes.source_view import build_source_view
 from workhorse_workflows.okf_book.main.nodes.surface import Surface
 from workhorse_workflows.okf_book.main.nodes.surface_pass import read_pass, write_pass
 from workhorse_workflows.okf_book.main.write_book_flow import WriteBook, WriteOutcome
@@ -144,12 +143,12 @@ class OkfBook(BookFlow):
         service = surface.service
         book = _book_folder(service)
         if not (self.root / book).is_dir():
-            return Continue(None, self.copy_source, index=index).because("no book yet: write it")
+            return Continue(None, self.check_source, index=index).because("no book yet: write it")
         if not regrounded and cites_changed_file(self.root, service):
             return Continue(service, self.reground_book, index=index).because("the code the book cites has changed: read the changes first")
         pending = take_failures(self.records_dir, service)
         if pending:
-            return Continue(pending, self.copy_source, index=index, run_failures=pending).because(
+            return Continue(pending, self.check_source, index=index, run_failures=pending).because(
                 "the gate left this book's owner failures to fix"
             )
         source = self.sources[index]
@@ -171,17 +170,16 @@ class OkfBook(BookFlow):
         keep_failures(self.records_dir, service, regrounded.failures)
         return Continue(regrounded, self.route_book, index=index, regrounded=True).because("the changed files are read: route the book")
 
-    def copy_source(
+    def check_source(
         self, index: int, run_failures: RunFailures | None = None, problems: tuple[PageProblem, ...] = (), exercised: ExerciseResult | None = None,
     ) -> Continue[...]:
-        """Copy the surface's product source for its owner. A surface whose source is no folder is a blocker."""
+        """Check the surface's source folder exists, for its owner to read in place. A surface whose source is no folder is a blocker."""
         surface = self.surfaces[index]
         source = self.sources[index]
         folder = _source_folder(source, surface)
         if not (source.path / folder).is_dir():
             return self._block_surface_and_move_on(index, _no_source_folder(source, surface))
-        view = build_source_view(self.root, source, folder)
-        return Continue(view.as_posix(), self.write_book, index=index, run_failures=run_failures, problems=problems, exercised=exercised).because(
+        return Continue((source.path / folder).as_posix(), self.write_book, index=index, run_failures=run_failures, problems=problems, exercised=exercised).because(
             "send the book's owner"
         )
 
@@ -228,7 +226,7 @@ class OkfBook(BookFlow):
         left = unheld(problems, findings)
         before = record_check(self.records_dir, service, problems, self.call(unopted_tools, self.root, service, source), findings)
         if left and (not repaired or not before or len(left) < before):
-            return Continue(len(left), self.copy_source, index=index, problems=problems, run_failures={} if run_failures_repaired else None).because(
+            return Continue(len(left), self.check_source, index=index, problems=problems, run_failures={} if run_failures_repaired else None).because(
                 "the check finds problems the book holds: back to its owner"
             )
         return Continue(problems, self.run_book, index=index, run_failures_repaired=run_failures_repaired).because("run the book against the app")
@@ -266,7 +264,7 @@ class OkfBook(BookFlow):
             return self._next_surface(exercised.passed, index)
         runbooks = {} if run_failures_repaired else stack_down_failures(self.root, service, exercised)
         if runbooks:
-            return Continue(runbooks, self.copy_source, index=index, run_failures=runbooks, exercised=exercised).because(
+            return Continue(runbooks, self.check_source, index=index, run_failures=runbooks, exercised=exercised).because(
                 "the stack cannot come up: repair its runbook"
             )
         if exercised.stack_down:
@@ -307,14 +305,14 @@ class OkfBook(BookFlow):
         if not failures and _escalated_signatures(led) and (run_failures_repaired or not _unplaced(exercised, findings)):
             return self._next_surface(exercised.passed, index)
         if not run_failures_repaired:
-            return Continue(failures, self.copy_source, index=index, run_failures=failures, exercised=exercised).because(
+            return Continue(failures, self.check_source, index=index, run_failures=failures, exercised=exercised).because(
                 "the book's owner repairs what the run failed on"
             )
         stall = _stall(exercised, service_laps(read_laps(self.records_dir), service))
         if stall:
             self._block_stall(service, led, stall, failures)
             return self._next_surface(exercised.passed, index)
-        return Continue(failures, self.copy_source, index=index, run_failures=failures, exercised=exercised).because(
+        return Continue(failures, self.check_source, index=index, run_failures=failures, exercised=exercised).because(
             "the owner's turn lowered the book's failed checks: send it again"
         )
 

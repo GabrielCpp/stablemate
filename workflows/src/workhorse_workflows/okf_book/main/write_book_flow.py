@@ -100,7 +100,7 @@ class WriteBook(BookFlow):
                 timeout=float("inf"),
                 args={**request.template_args(), **gate},
                 cwd=self.root / self.book_folder,
-                add_dirs=[request.source_view, turn_folder(self.root, OWNER_FOLDER)],
+                add_dirs=[request.source_dir, turn_folder(self.root, OWNER_FOLDER)],
                 profile=request.profile,
                 session=owner_chain(surface.service),
             )

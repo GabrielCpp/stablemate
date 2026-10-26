@@ -49,7 +49,7 @@ pytestmark = pytest.mark.filterwarnings(
 
 
 def _write_book(args: dict[str, object], seen: dict[str, str], docs: Path, pages: dict[str, str]) -> dict[str, object]:
-    view = Path(str(args["source_view"]))
+    view = Path(str(args["source_dir"]))
     seen.update({path.relative_to(view).as_posix(): path.read_text(encoding="utf-8") for path in view.rglob("*") if path.is_file()})
     seen["source_folder"] = str(args["source_folder"])
     for name, text in pages.items():
@@ -97,6 +97,8 @@ class Ran:
     member_head_after: str
     run_dir: Path
     exercised_from: list[SourceRepo | None]
+    writer_add_dirs: list[list[str]]
+    writer_prompt_dirs: list[str]
 
 
 @pytest.fixture
@@ -123,12 +125,28 @@ def written(served: Workspace, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) 
 
     run_dir = _drive(served, runner, tmp_path)
 
-    return Ran(seen, member_head, head_of(served.member), run_dir, exercised_from)
+    writer_add_dirs = [[str(folder) for folder in node.add_dirs] for node in runner.nodes if node.id == "write-book"]
+    writer_prompt_dirs = [str(args.get("source_dir")) for args in runner.args_of("write-book")]
+    return Ran(seen, member_head, head_of(served.member), run_dir, exercised_from, writer_add_dirs, writer_prompt_dirs)
 
 
 def test_the_writer_is_given_the_member_s_files_and_names_the_folder_by_its_member(written: Ran) -> None:
     assert written.seen["handlers.py"] == MEMBER_SOURCE
     assert written.seen["source_folder"] == f"repo://{MEMBER}/{MEMBER_FOLDER}"
+
+
+def test_the_writer_reads_the_member_folder_in_place_as_an_added_directory(served: Workspace, written: Ran) -> None:
+    folder = (served.member / MEMBER_FOLDER).as_posix()
+
+    assert [dirs[0] for dirs in written.writer_add_dirs] == [folder]
+    assert written.writer_prompt_dirs == [folder]
+
+
+def test_no_copy_of_the_member_source_is_made_for_the_writer(served: Workspace, written: Ran) -> None:
+    del written
+
+    assert not (served.docs / ".okf-book-source" / MEMBER).exists()
+    assert not (served.member / ".okf-book-source" / MEMBER).exists()
 
 
 def test_the_book_is_committed_to_the_docs_home(workspace: Workspace, written: Ran) -> None:

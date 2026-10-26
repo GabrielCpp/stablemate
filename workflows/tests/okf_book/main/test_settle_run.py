@@ -101,7 +101,7 @@ def test_a_run_whose_only_failures_no_side_was_found_for_goes_to_the_owner_to_na
 
     step = book.map_run_failures(index=0, exercised=exercised)
 
-    assert (step.state, step.params["run_failures"], step.params["exercised"]) == ("copy_source", {}, exercised)
+    assert (step.state, step.params["run_failures"], step.params["exercised"]) == ("check_source", {}, exercised)
 
 
 def test_a_group_no_side_was_found_for_goes_to_report_once_the_owner_named_it(tmp_path: Path) -> None:
@@ -149,7 +149,7 @@ def test_a_repair_that_lowers_the_book_s_failed_checks_goes_back_to_its_writer(t
     _ = book.settle_run(index=0, run_failures_repaired=True, exercised=exercised)
     step = book.map_run_failures(index=0, exercised=exercised, run_failures_repaired=True)
 
-    assert step.state == "copy_source"
+    assert step.state == "check_source"
     assert [blocker.side for blocker in read_blockers(tmp_path)] == [Side.APP]
 
 
@@ -203,7 +203,7 @@ def test_a_stack_that_cannot_come_up_goes_to_its_runbook_s_writer_once_then_is_t
     down = stack_down_result(("gap: okf:docs/services/tally/tally.md#adds:does:1: no-verify-declared: declare a check",), "port 8080 is taken")
 
     sent = book.settle_run(index=0, run_failures_repaired=False, exercised=down)
-    assert (sent.state, sent.params["run_failures"], read_blockers(tmp_path)) == ("copy_source", failures, ())
+    assert (sent.state, sent.params["run_failures"], read_blockers(tmp_path)) == ("check_source", failures, ())
 
     _ = book.settle_run(index=0, run_failures_repaired=True, exercised=down)
     [blocker] = read_blockers(tmp_path)
@@ -220,7 +220,7 @@ def test_a_run_a_probe_stopped_goes_back_to_its_writer_whatever_the_lap_before_c
     book = _book(tmp_path)
     _ = book.settle_run(index=0, run_failures_repaired=False, exercised=_book_run(MISREAD))
 
-    assert _settle_and_map(book, _probe_run()) == "copy_source"
+    assert _settle_and_map(book, _probe_run()) == "check_source"
     assert [lap.probes_only for lap in read_laps(tmp_path)] == [False, True]
 
 
@@ -229,7 +229,7 @@ def test_a_book_run_after_a_probe_stopped_one_is_measured_against_the_last_book_
     _ = book.settle_run(index=0, run_failures_repaired=False, exercised=_book_run(replace(MISREAD, count=9)))
     _ = _settle_and_map(book, _probe_run())
 
-    assert _settle_and_map(book, _book_run(replace(MISREAD, count=5))) == "copy_source"
+    assert _settle_and_map(book, _book_run(replace(MISREAD, count=5))) == "check_source"
     assert not [blocker for blocker in read_blockers(tmp_path) if blocker.side is Side.WORKFLOW]
 
 
@@ -244,7 +244,7 @@ def test_a_whole_book_run_after_one_that_stopped_early_is_measured_against_nothi
     book = _book(tmp_path)
     _ = book.settle_run(index=0, run_failures_repaired=False, exercised=_stopped_on("landed on /login", 3))
 
-    assert _settle_and_map(book, _book_run(replace(MISREAD, count=9))) == "copy_source"
+    assert _settle_and_map(book, _book_run(replace(MISREAD, count=9))) == "check_source"
     assert [lap.stopped_early for lap in read_laps(tmp_path)] == [True, False]
 
 
@@ -254,7 +254,7 @@ def test_a_run_that_stopped_early_on_another_observation_than_the_last_got_furth
     book = _book(tmp_path)
     _ = book.settle_run(index=0, run_failures_repaired=False, exercised=_stopped_on("landed on /login", 3))
 
-    assert _settle_and_map(book, _stopped_on("no Save button", 9)) == "copy_source"
+    assert _settle_and_map(book, _stopped_on("no Save button", 9)) == "check_source"
     assert [lap.stopped_on for lap in read_laps(tmp_path)] == ["landed on /login", "no Save button"]
 
 
@@ -326,4 +326,4 @@ def test_a_run_whose_checks_pass_on_a_service_no_runbook_starts_goes_to_its_runb
     mapped = book.settle_run(index=0, run_failures_repaired=False, exercised=called)
     sent = book.map_run_failures(index=0, exercised=called)
 
-    assert (mapped.state, sent.state, sent.params["run_failures"], read_blockers(tmp_path)) == ("map_run_failures", "copy_source", failures, ())
+    assert (mapped.state, sent.state, sent.params["run_failures"], read_blockers(tmp_path)) == ("map_run_failures", "check_source", failures, ())

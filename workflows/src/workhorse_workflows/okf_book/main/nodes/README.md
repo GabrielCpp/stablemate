@@ -15,11 +15,11 @@ The steps the main book flow calls. Each module owns one job a state hands off.
 - `page_sections.py`: the `###` sections of a page and the section each problem sits in.
 - `progress_ledger.py`: each lap's failed checks by cause, and the rule that says a lap did not help.
 - `report.py`: the run's account for the operator.
-- `source_view.py`: the copy of the product source the owner reads.
+- `source_view.py`: the folders a confined owner turn reads beside its book, and the files kept for it.
 - `stale_citations.py`: the citations whose file changed since their stamp, grouped by file, and what one reading of the change settles for them.
 - `surface.py`: the declaration of one surface of a service.
 - `surface_pass.py`: the services one pass of the run routes.
-- `turn_budget.py`: the steps an owner turn takes, and what a folder costs to read.
+- `turn_budget.py`: the steps an owner turn takes, and the operator answer's allowance.
 - `writer_commands.py`: the owner's three commands and the state they share.
 - `writer_jobs.py`: a check or scenario run kept apart from the call that starts it, whose result the same command reads on a later call.
 - `writer_stack.py`: the stack a turn's checks share, brought up by the first and released when the turn ends.

@@ -1,15 +1,17 @@
 Write the OKF book for this repository's `{{ service }}` {{ kind }} surface.
 
 You run from the book's folder, `{{ book_folder }}/` in this repository, and you can write only
-under it. You can read the app's source, without its tests, test doubles and fixtures, in a
-copy under `{{ source_view }}/`. Each file there is the repository's file at the same path under
-`{{ source_folder }}/`, and a `code:` bullet cites that repository path. Your shell runs the
+under it. The app's source is under `{{ source_dir }}/`, which is the repository's
+`{{ source_folder }}/`, and a `code:` bullet cites that repository path. Its tests, test doubles
+and fixtures are no part of the book. Read none of them, and never cite one in a `code:` bullet.
+Files git ignores, such as build output and installed dependencies, are no part of the source
+either. Your shell runs the
 three commands below, and nothing else. Start each shell call with one of them, spelled in
 full exactly as written here, never through a variable, an alias or a `cd`. The shell refuses
 any other spelling, and a refused call means only that its spelling was wrong: the three
 commands keep working. Read files with your file tools. Where you have none, read them in
 the shell with `cat`, `head`, `tail`, `sed -n`, `rg`, `grep`, `ls` or `find`, joined by `|` at most,
-with no redirection, `;` or `&&`. Give such a read an absolute path, in the book, the source copy
+with no redirection, `;` or `&&`. Give such a read an absolute path, in the book, the source
 or the skill. The repository's root is `{{ repo_root }}`, and a path the skill or this prompt
 gives relative to the repository starts there.
 
