@@ -13,7 +13,11 @@ The diff from the version the book was written on to the file as it is now{% if 
 ```
 
 - The version the book was written on is kept whole at `{{ old_version }}`.
+{%- if member %}
+- The file as it is now is `{{ path }}`, in the `{{ member }}` repository, which this turn can read but which is not the repository you run from.
+{%- else %}
 - The file as it is now is `{{ path }}` in this repository, which you run from.
+{%- endif %}
 
 ## The nodes that cite it
 

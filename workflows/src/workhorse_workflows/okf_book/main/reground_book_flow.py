@@ -14,7 +14,6 @@ from pathlib import Path
 from workhorse.pyflow import AgentTimeout, AgentTurnFailed, Await, Continue, Done
 from workhorse.runner.backends import AgentProfile
 from workhorse.runner.failure import OutputParseError
-from workhorse_workflows.okf_book.main.nodes.source_view import build_source_view
 from workhorse_workflows.okf_book.main.nodes.stale_citations import (
     Failures,
     Regrounded,
@@ -35,7 +34,7 @@ from workhorse_workflows.okf_book.shared.book_commits import repaired_book_commi
 from workhorse_workflows.okf_book.shared.book_flow import BookFlow
 from workhorse_workflows.okf_book.shared.confine import changed_since, restore, snapshot
 from workhorse_workflows.okf_book.shared.metrics import record_turn, turn_metric
-from workhorse_workflows.okf_book.shared.source_repo import SourceRepo, repository_root
+from workhorse_workflows.okf_book.shared.source_repo import repository_root
 
 REGROUND_PROMPT = "main/prompts/reground-file.md"
 REGROUND_PROFILE = AgentProfile(name="okf-book-reground", confined=True)
@@ -83,12 +82,10 @@ class RegroundBook(BookFlow):
         )
 
     def _shown(self, stale: StaleFile, tree: Path) -> str:
-        """Where the reading finds the file, relative to the book's root: its own path, or for a member's file the source view of the file's folder."""
+        """Where the reading finds the file: its own path relative to the book's root, or for a member's file its absolute path in the member checkout, which the turn is given as an added directory."""
         if not stale.repository:
             return stale.path
-        folder = Path(stale.path).parent.as_posix()
-        view = build_source_view(self.root, SourceRepo(name=stale.repository, path=tree), folder)
-        return (view / Path(stale.path).name).relative_to(self.root).as_posix()
+        return (tree / stale.path).as_posix()
 
     def _verdict(self, stale: StaleFile, old: str, tree: Path) -> RegroundVerdict | None:
         before = snapshot(self.root)
@@ -101,6 +98,7 @@ class RegroundBook(BookFlow):
                 timeout=REGROUND_TIMEOUT,
                 args=reground_template_args(tree, stale, old, keep_old_version(self.root, stale, old), self._shown(stale, tree)),
                 cwd=self.root,
+                add_dirs=[tree] if stale.repository else None,
                 profile=REGROUND_PROFILE,
             )
         except (AgentTurnFailed, AgentTimeout, OutputParseError) as ended:
