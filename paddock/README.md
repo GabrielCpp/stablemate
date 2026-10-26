@@ -141,6 +141,32 @@ cannot be recorded without saying so.
 that is not a repository, or one with no commit yet — degrades to the same thing, with
 `pinned: false` in the ledger rather than a failed round.
 
+### An interrupted round resumes on its own sha
+
+A round can stop before it ends: an operator stops a workhorse phase, Ctrl-C reaches the
+runner, or the machine goes down. `paddock run` then exits 130, writes no result, and
+names the command that continues it. `paddock resume <benchmark> <task> [n]` picks the
+round's workspace, the given number or else the highest one without a result, and goes on
+from where it stopped.
+
+The workspace remembers the round. `round.json` holds its name, whether a pin was asked
+for, the project and repo heads it started from, the caveats of its earlier segments and
+one segment per invocation. `steps.json` holds each finished step's outcome. A resume runs
+only the steps that have no ok outcome, on the stage and config the round left.
+
+The resumed round runs on the sha it started on, never on another one. paddock re-pins the
+recorded sha even when the checkout's HEAD has moved since, and refuses when the checkout
+no longer holds that commit. An unpinned round resumes only while the checkout still sits
+on its sha. The ledger lists every segment, so a resumed result says it was resumed.
+
+A greenfield task goes further than whole steps. Its `build.json` records each phase as it
+starts, with its workhorse run dir. A resume skips a phase that exited 0, resumes an
+interrupted phase's run dir through workhorse's own resume line, and never seeds the stage
+twice.
+
+A round killed with `SIGKILL` or `SIGTERM` resumes the same way, but its last segment has
+no end, and the self-touched check of that segment is lost with its pin.
+
 ### A book run sees only its app
 
 The pin keeps a round from writing into the toolchain. It does not keep an agent from
@@ -217,8 +243,8 @@ down.
 
 It fires from inside the round, which means a round **killed from outside** never fires it:
 a `SIGTERM` to `paddock run` takes the runner down and leaves whatever it started standing
-in the stage. Until there is a second invocation path, that case is manual — after killing
-a round, list the survivors and finish the job:
+in the stage. That case is manual. After killing a round, and before `paddock resume`
+brings it back, list the survivors and finish the job:
 
 ```bash
 for d in /proc/[0-9]*; do
@@ -234,12 +260,13 @@ forget and expensive to have forgotten.
 
 ```bash
 paddock run <benchmark> <task>   # copy the data, run the steps, (score), write the result
+paddock resume <benchmark> <task> [n]   # continue an interrupted round on its pinned sha
 paddock list                     # one line per task under gold/: benchmark, task, steps, scored or not
 paddock sandbox build            # the image a book run is isolated in
 paddock sandbox run ... -- CMD   # CMD in the app, with no stablemate checkout in sight
 ```
 
-A run prints each step's outcome, the score and the result folder. It exits non-zero when a step failed.
+A run prints each step's outcome, the score and the result folder. It exits non-zero when a step failed, and 130 when the round was interrupted and can be resumed.
 
 ## Tests
 
