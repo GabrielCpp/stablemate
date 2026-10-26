@@ -54,7 +54,7 @@ def workspace(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Workspace:
     _ = make_git_repo(member, name=MEMBER)
     docs = make_git_repo(tmp_path / "artifacts-home", name="docs")
     config = tmp_path / "home.toml"
-    _ = config.write_text(f'[workspaces]\nacme = ["{member}"]\n', encoding="utf-8")
+    _ = config.write_text(f'[workspaces]\nacme = ["{member}"]\n\n[qa_tools.curl]\ncommand = "curl"\n', encoding="utf-8")
     monkeypatch.setenv("STABLEMATE_CONFIG", str(config))
     monkeypatch.setenv("STABLEMATE_ARTIFACTS_DIR", str(docs))
     monkeypatch.setenv("STABLEMATE_WORKSPACE", "acme")
