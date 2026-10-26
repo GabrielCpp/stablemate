@@ -141,6 +141,7 @@ localInstructions:
       - no-shell-scripts
       - python-lint-clean
       - commit-and-push
+      - okf-book
     paths:
       - "."
     includeReadme: false
