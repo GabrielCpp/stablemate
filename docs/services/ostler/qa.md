@@ -12,7 +12,7 @@ writes to the artifacts directory of the person who runs the book. The claims ru
 are written, because each later command reads what an earlier one wrote.
 
 - binary: ostler
-- code: ostler/ostler/cli.py::main@d36715768389
+- code: ostler/ostler/cli.py::main@97fced506443
 
 ## Commands
 
