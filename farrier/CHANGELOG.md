@@ -1,5 +1,32 @@
 # Changelog
 
+## [4.0.0](https://github.com/GabrielCpp/stablemate/compare/farrier-v3.1.0...farrier-v4.0.0) (2026-10-26)
+
+
+### ⚠ BREAKING CHANGES
+
+* agents.yml workspace is not read and farrier doctor reports it. base_branch moves under repo.
+* .code-workspace files and AGENT_PARAM_WORKSPACE_FILE are no longer read. The docs_path input is gone too.
+
+### Features
+
+* **core:** add a per-user artifacts folder to the home config ([16b7924](https://github.com/GabrielCpp/stablemate/commit/16b79242f1168941efce7548da756021a7fe4e1d))
+* **core:** add the paddock_dir home config key ([b00ab00](https://github.com/GabrielCpp/stablemate/commit/b00ab00b98d8cd841219b5c05f1b246f41ffd45c))
+* **core:** ignore every session-owned folder in the artifacts repo ([ba13779](https://github.com/GabrielCpp/stablemate/commit/ba137791e26418211a72d07201e72e7161fc2960))
+* **farrier:** add eject and let one harness link another's skills ([9d4b14f](https://github.com/GabrielCpp/stablemate/commit/9d4b14f4050231e46c01ce64f60602baa1d69991))
+* name multi-repo workspaces in the home config ([bf14ddd](https://github.com/GabrielCpp/stablemate/commit/bf14dddaa308cae4c697e4ba7418e36eced12e62))
+
+
+### Bug Fixes
+
+* **farrier:** keep a repo install out of the harness homes ([e5644c8](https://github.com/GabrielCpp/stablemate/commit/e5644c88e611031f585145cc3472973df2b393be))
+* **workhorse:** render a confined turn's prompt from the skills it loads ([4c08080](https://github.com/GabrielCpp/stablemate/commit/4c0808024b561f009360ca51c076f42e833f41fc))
+
+
+### Code Refactoring
+
+* declare each service's path under services ([508d927](https://github.com/GabrielCpp/stablemate/commit/508d927e40691d1fcfbc0e3cca385ed681a5dc9e))
+
 ## [3.1.0](https://github.com/GabrielCpp/stablemate/compare/farrier-v3.0.0...farrier-v3.1.0) (2026-10-15)
 
 

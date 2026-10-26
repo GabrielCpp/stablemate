@@ -1,5 +1,38 @@
 # Changelog
 
+## [2.0.0](https://github.com/GabrielCpp/stablemate/compare/groom-v1.3.0...groom-v2.0.0) (2026-10-26)
+
+
+### ⚠ BREAKING CHANGES
+
+* books are read from docs/services only. A repository that still has docs/features must run `ostler okf migrate` or rename the folder.
+
+### Features
+
+* **groom:** answer cost, loops and profile for an archived run ([c8f1741](https://github.com/GabrielCpp/stablemate/commit/c8f174130f009c63e3067190ab1b73cfb861aa38))
+* **groom:** answer operator gates from a terminal with groom tui ([147b46b](https://github.com/GabrielCpp/stablemate/commit/147b46b16daaf5b286f2772f062a2e3ec7dfa5ed))
+* **groom:** attend runs and change the attend setting in groom tui ([5fc7241](https://github.com/GabrielCpp/stablemate/commit/5fc72419975e9a898a2c58166a00d34f70db80fd))
+* **groom:** drive the dispatch queues from groom tui ([dfbd732](https://github.com/GabrielCpp/stablemate/commit/dfbd7325bbfe14bc89fcd2b1e637443106648dad))
+* **groom:** find a run by filter or command palette in groom tui ([8ebda72](https://github.com/GabrielCpp/stablemate/commit/8ebda726c8f6c28b607e27217d2b974746a00cbe))
+* **groom:** push a run's events and a periodic digest over /feed ([70b93d5](https://github.com/GabrielCpp/stablemate/commit/70b93d5d7bfa6d9bc3a2b3e681903dc6f1b2c800))
+* **groom:** read a run's trail, transcript and telemetry in groom tui ([faec708](https://github.com/GabrielCpp/stablemate/commit/faec7087610273bf119b52a5c5fb044c9d84d9e7))
+* **groom:** show a run's diff and files in groom tui ([41671e4](https://github.com/GabrielCpp/stablemate/commit/41671e423ebb2f9d71d8fe66b23fd6b47864fb42))
+* **groom:** show what a run's ending did with its worktree ([a126081](https://github.com/GabrielCpp/stablemate/commit/a126081ed1e928a37ea7033d7de611ad47580d2b))
+* **workhorse:** stamp a visit's output on its node span ([a50118a](https://github.com/GabrielCpp/stablemate/commit/a50118ad620ececee7634101f0554610671d65ee))
+
+
+### Bug Fixes
+
+* **groom:** make the dispatch pane operable by keyboard ([1728512](https://github.com/GabrielCpp/stablemate/commit/17285122a511ca862ec5e7d6de2768fbb41a700c))
+* **groom:** put a rejected answer back in its box ([5b84358](https://github.com/GabrielCpp/stablemate/commit/5b8435859d7e1ea47d15505e99e263b9f5ce1efb))
+* **groom:** tell the sender why an answer was rejected ([9a09630](https://github.com/GabrielCpp/stablemate/commit/9a0963054fc5e22f10f45960612caa7613fd4534))
+
+
+### Code Refactoring
+
+* **groom:** share the websocket URL check ([4d90a4f](https://github.com/GabrielCpp/stablemate/commit/4d90a4fe5076d51c27f910b55a17f650d80b4959))
+* move the book root from docs/features to docs/services ([9c14166](https://github.com/GabrielCpp/stablemate/commit/9c141662047ead9a9ed398a21477b62223db9ef0))
+
 ## [1.3.0](https://github.com/GabrielCpp/stablemate/compare/groom-v1.2.0...groom-v1.3.0) (2026-10-15)
 
 
