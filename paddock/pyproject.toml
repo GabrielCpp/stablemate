@@ -28,8 +28,8 @@ dependencies = [
   "platformdirs>=4.0",
   # The task API drives workhorse, reads the planning graph through ostler and parses
   # the front matter and answer keys the apps carry.
-  "workhorse-agent>=4,<5",
-  "ostler>=3,<4",
+  "workhorse-agent>=5,<6",
+  "ostler>=4,<5",
   "pyyaml>=6.0",
 ]
 
