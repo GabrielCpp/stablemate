@@ -42,6 +42,8 @@ The outcome keys are declared in this order so `fmt` can place them between the 
 
 The method a run calls, written the way grpcurl and the proto spell it. The package is dotted lower snake, and the service and the method are PascalCase: `ticket.v1.TicketService/GetTicket`. Any other spelling is `unparsable-bullet-value`.
 
+When the hosting grpc-server states `contract:`, doctor checks the book's rpc pages against the proto: a declared method with no page is `rpc-missing`, and a page whose name the contract lacks is `rpc-phantom`.
+
 ## `status`
 
 The gRPC code the call ends with. It declares the `grpc-code` value kind, so `- status: NOT_FOUND when the ticket is unknown` parses and `- status: 404` is `unparsable-bullet-value`. The 17 names are `OK`, `CANCELLED`, `UNKNOWN`, `INVALID_ARGUMENT`, `DEADLINE_EXCEEDED`, `NOT_FOUND`, `ALREADY_EXISTS`, `PERMISSION_DENIED`, `RESOURCE_EXHAUSTED`, `FAILED_PRECONDITION`, `ABORTED`, `OUT_OF_RANGE`, `UNIMPLEMENTED`, `INTERNAL`, `UNAVAILABLE`, `DATA_LOSS` and `UNAUTHENTICATED`.
@@ -92,4 +94,4 @@ title: get-ticket
 
 ## Doctor codes it can trip
 
-`compound-normative-bullet`, `overlong-normative-bullet`, `undeclared-obligation`, `weak-check`, `unparsed-check`, `unarranged-scenario`, `misnested-bullet`, `missing-required-bullet`, `unparsable-bullet-value`, `endpoint-without-server`, `unlisted-endpoint`, `inline-endpoint`. See [../doctor-codes.md](../doctor-codes.md).
+`compound-normative-bullet`, `overlong-normative-bullet`, `undeclared-obligation`, `weak-check`, `unparsed-check`, `unarranged-scenario`, `misnested-bullet`, `missing-required-bullet`, `unparsable-bullet-value`, `endpoint-without-server`, `unlisted-endpoint`, `inline-endpoint`, `rpc-phantom`. See [../doctor-codes.md](../doctor-codes.md).

@@ -33,6 +33,10 @@ Plus the [shared normative keys](../bullet-grammar.md#keys-that-are-normative-on
 
 `## RPCs` — required and required to be non-empty. It links each [`rpc`](rpc.md) page.
 
+## Contract coverage
+
+When `contract:` names a folder holding a `.proto`, doctor checks the book's [`rpc`](rpc.md) pages against it: a method of a served service with no page is `rpc-missing`, and a page the contract lacks is `rpc-phantom`.
+
 ## Relationships
 
 A runbook exposes this node through `surfaces:`. RPCs inside it point at explanatory nodes with `detail:`.
@@ -61,7 +65,7 @@ type: grpc-server
 
 ## Doctor codes it can trip
 
-`missing-required-section`, `empty-required-section`, `missing-required-bullet`, `unparsable-bullet-value`, `dangling-code-ref`, `missing-code-symbol`, plus whatever its `rpc` children trip. See [../doctor-codes.md](../doctor-codes.md).
+`missing-required-section`, `empty-required-section`, `missing-required-bullet`, `unparsable-bullet-value`, `dangling-code-ref`, `missing-code-symbol`, `rpc-missing`, plus whatever its `rpc` children trip. See [../doctor-codes.md](../doctor-codes.md).
 
 ## When bullets are not enough
 
