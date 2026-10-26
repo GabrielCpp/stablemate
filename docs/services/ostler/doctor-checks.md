@@ -115,7 +115,7 @@ defects in the book of the checkout. A caller reads the finding code, the page a
 - fixture: [doctor scratch repo](fixtures/doctor-scratch-repo.md) with a doctor scratch repo of four
   books that each carry one kind of defect
 - code: ostler/ostler/accessible_names.py::literal_name@e34b952636fb
-- code: ostler/ostler/census.py::code_sites@bde18842fcce
+- code: ostler/ostler/census.py::code_sites@4b47c6a925d6
 - code: ostler/ostler/qa/fixture_browser.py::is_browser_step@d769665467aa
 - code: ostler/ostler/qa/stack.py::shell_syntax_error@ba847d04a4fd
 - code: ostler/ostler/step_commands.py::check_fixture_launch_screen@a44a1ff496dd

@@ -16,10 +16,6 @@ DOCTOR_MODULES: tuple[ModuleType, ...] = (data_state_ledger, data_states, doctor
 
 _BRIDGE = "gap_findings has no product caller; gaps surface via qa compile-plan only"
 
-_NO_MILESTONES = "no book in the corpus declares a milestone, so the dependency walk has nothing to walk"
-
-_NO_MILESTONE_FOLDERS = "no book in the corpus holds a milestone folder, so the readiness check has no milestone to read"
-
 _NO_PASSAGES = "no book in the corpus declares a passage, so no passage is there to be malformed"
 
 _NO_DATA_STATES = "no book in the corpus declares a data state, so none is there to be malformed"
@@ -30,11 +26,6 @@ DORMANT_UNREACHABLE: dict[str, str] = {
     "fixture-launch-screen-conflict": _BRIDGE,
     "data-state-shape": _NO_DATA_STATES,
     "invalid-http-method": _BRIDGE,
-    "milestone-cycle": _NO_MILESTONES,
-    "milestone-dangling-link": _NO_MILESTONE_FOLDERS,
-    "milestone-journey-services": _NO_MILESTONE_FOLDERS,
-    "milestone-missing-section": _NO_MILESTONE_FOLDERS,
-    "milestone-open-decisions": _NO_MILESTONE_FOLDERS,
     "moves-shape": _NO_DATA_STATES,
     "needs-multi-target-runtime": _BRIDGE,
     "needs-out-of-band-observation": _BRIDGE,
