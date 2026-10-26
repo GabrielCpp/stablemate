@@ -51,7 +51,7 @@ discarding completed work, and return the typed replan result as the final JSON 
 ### story_id
 - type: string
 - required: true
-- semantics: triggering story identity used for the commit trailer
+- semantics: triggering story identity used for the commit trailer; empty when the story has none, with no fallback to the story slug
 - verify: json_path(path="$.story_id", equals="CASE-1234")
 
 ### result_schema

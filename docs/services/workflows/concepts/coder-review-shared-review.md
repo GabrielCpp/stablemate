@@ -65,7 +65,8 @@ status, as the authority for whether a finding is settled.
 ### settle_findings
 
 - sig: `settle_findings(logger, story_slug="", story_id="", filed=None, repos=None, repo_dir="") -> Settlement`
-- does: settles the filed finding ids against the dev owner's answer list through Ostler and writes the settlement ledger
+- raises: `WorkflowFailed` when `story_id` is empty
+- does: settles the filed finding ids against the dev owner's answer list through Ostler, keyed on `story_id` rather than `story_slug`, and writes the settlement ledger
 - verify: persists(subject="the review settlement ledger")
 - does: commits the ledger as a `docs` commit when it lies inside the documentation repository
 - verify: count(subject="review settlement commits", equals=1)

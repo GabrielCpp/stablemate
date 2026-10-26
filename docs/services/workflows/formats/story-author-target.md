@@ -31,6 +31,15 @@ title: Story author target
 - code: `workflows/src/workhorse_workflows/author/story_author/schemas.py::StoryTarget` @67ca79f63e5f
 - detail: [story author target field roles](../concepts/story-author-target-field-roles.md)
 
+### story_id
+- type: string
+- default: empty string
+- required: true
+- semantics: the resolved story's graph id
+- verify: json_path(path="$.story_id", equals="S-1")
+- code: `workflows/src/workhorse_workflows/author/story_author/schemas.py::StoryTarget` @67ca79f63e5f
+- detail: [story author target field roles](../concepts/story-author-target-field-roles.md)
+
 ### epic_dir
 - type: repository-relative string path
 - default: empty string

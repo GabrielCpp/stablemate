@@ -17,6 +17,7 @@ When the agent CLI can spawn subagents, the review runs from the delegated promp
 - code: `workflows/src/workhorse_workflows/author/pm/flow.py::complete` @71c759122da8
 - code: `workflows/src/workhorse_workflows/author/pm/flow.py::format_findings` @71c759122da8
 - code: `workflows/src/workhorse_workflows/author/pm/nodes/receipt.py::record_pm_receipt` @5c73dfc30d46
+- code: `workflows/src/workhorse_workflows/author/pm/nodes/_blueprint.py::blueprint` @6147fef19ca9
 - tests: `workflows/tests/author/pm/test_pm.py::test_a_passing_review_writes_a_receipt_and_a_failing_one_does_not`
 - tests: `workflows/tests/author/pm/test_pm.py::test_the_review_variant_follows_the_backend`
 - tests: `workflows/tests/author/pm/test_pm.py::test_a_review_must_judge_every_angle_exactly_once`

@@ -25,9 +25,9 @@ The boundary is conservative: unreadable, deleted, malformed, or changed paths a
 
 ### untouched_since
 - sig: `untouched_since(root: Path, snapshot: tuple[str, ...]) -> set[str]`
-- does: parses snapshot entries as a relative path, NUL separator, and recorded digest
+- does: parses snapshot entries as a relative path, NUL separator, recorded digest, and an optional NUL-separated owner checkout path
 - verify: count(subject="valid snapshot entries considered", equals=1)
-- does: ignores entries without all three required parts
+- does: ignores entries missing a path or a recorded digest, or whose owner is neither empty nor this root's own resolved path
 - verify: count(subject="malformed snapshot entries included", equals=0)
 - does: includes a path only when its current digest equals the recorded digest
 - verify: count(subject="byte-identical pre-existing paths retained", equals=1)
@@ -38,17 +38,21 @@ The boundary is conservative: unreadable, deleted, malformed, or changed paths a
 - code: `workflows/src/workhorse_workflows/coder/shared/worktree.py::untouched_since` @7a230e488348
 
 ### snapshot_worktree_state
-- sig: `snapshot_worktree_state(logger: logging.Logger, repo_dir: str = "") -> DirtyAtStart`
-- does: resolves the repository root from the documentation and repository path inputs
+- sig: `snapshot_worktree_state(logger: logging.Logger, repo_dir: str = "", roots: list[str] | None = None) -> DirtyAtStart`
+- does: resolves the single repository root from the documentation and repository path inputs when `roots` is not given
 - verify: json_path(path="$.root", equals="docs/stories")
+- does: snapshots every checkout in `roots` instead when it is given, tagging each entry with that checkout's resolved path as its owner
+- verify: count(subject="multi-root worktree snapshots", equals=1)
 - does: records modified tracked paths and untracked paths reported by the repository
 - verify: count(subject="pre-existing dirty paths recorded", equals=2)
-- does: stores each readable path as its repository-relative name, a NUL separator, and its SHA-256 digest
+- does: stores each readable path as its repository-relative name, a NUL separator, its SHA-256 digest, and the owner suffix when one applies
 - verify: json_path(path="$.entries", equals="example entries")
 - does: sorts and de-duplicates the recorded path entries
 - verify: count(subject="duplicate snapshot entries", equals=0)
-- does: returns an empty entry list when repository state cannot be read
+- does: returns an empty entry list when repository state cannot be read and `roots` is not given
 - verify: count(subject="snapshot entries after repository state read failure", equals=0)
+- does: skips and logs a checkout whose state cannot be read without failing the rest, when `roots` is given
+- verify: count(subject="skipped unreadable root checkouts", equals=0)
 - returns: a `DirtyAtStart` containing entries and a human-readable note
 - verify: json_path(path="$.notes", equals="Applied the change and ran the gates.")
 - code: `workflows/src/workhorse_workflows/coder/shared/worktree.py::snapshot_worktree_state` @7a230e488348

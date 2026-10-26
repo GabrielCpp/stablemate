@@ -153,6 +153,14 @@
       "reason": "declares only the module-level `blueprint = Blueprint(...)` registry instance, already cited (as `_blueprint.py::blueprint`) in concepts/author-main-package.md; the bare module path carries no behaviour beyond that citation."
     },
     {
+      "code": "workflows/src/workhorse_workflows/author/finalize/nodes/_blueprint.py",
+      "reason": "declares only the module-level `blueprint = Blueprint(...)` registry instance, already cited (as `_blueprint.py::blueprint`) in concepts/author-finalize-subflow.md; the bare module path carries no behaviour beyond that citation."
+    },
+    {
+      "code": "workflows/src/workhorse_workflows/author/pm/nodes/_blueprint.py",
+      "reason": "declares only the module-level `blueprint = Blueprint(...)` registry instance, already cited (as `_blueprint.py::blueprint`) in concepts/author-pm-review.md; the bare module path carries no behaviour beyond that citation."
+    },
+    {
       "code": "workflows/src/workhorse_workflows/author/shared/survey/blueprint.py",
       "reason": "declares only the module-level `blueprint = Blueprint(...)` registry instance, already cited (as `blueprint.py::blueprint`) in concepts/author-shared-survey-blueprint.md; the bare module path carries no behaviour beyond that citation."
     },

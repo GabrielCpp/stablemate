@@ -73,7 +73,10 @@ the survey to wedge.
 
 Assessment is implemented by `workflows/src/workhorse_workflows/author/surveyor/flow.py::Surveyor.assess`,
 which invokes an agent against `surveyor/prompts/assess-unit.md`. Validation is implemented by
-`workflows/src/workhorse_workflows/author/shared/survey/records.py::validate_record`.
+`workflows/src/workhorse_workflows/author/shared/survey/records.py::validate_record`, a node
+registered against the shared survey blueprint.
+
+- code: `workflows/src/workhorse_workflows/author/shared/survey/blueprint.py::blueprint` @00b76235bdb3
 
 ## Verify exhaustive coverage
 

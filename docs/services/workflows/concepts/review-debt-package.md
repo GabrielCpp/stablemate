@@ -15,7 +15,12 @@ ostler from the ambient `repo_dir` and spells no register path of its own.
 
 - code: `workflows/src/workhorse_workflows/review_debt/flow.py::ReviewDebt` @1be6aeba806f
 - code: `workflows/src/workhorse_workflows/review_debt/workflow.py` @69cce66c2aa2
+- code: `workflows/src/workhorse_workflows/review_debt/nodes/_blueprint.py::blueprint` @3dd2a71a2417
 - detail: [workhorse-review-debt command](../workhorse-review-debt.md)
+
+Every node module under `review_debt/nodes/` registers against the one `blueprint` the package's
+`_blueprint` module defines, so `read_register`, `account`, `write_trends`, `select_candidates`,
+`narrow_candidate` and `file_decision` all share one registration namespace.
 
 ## Methods
 

@@ -19,7 +19,10 @@ title: Coder main flow
 - end: the dry run leaves the command with a zero exit status
 - verify: exit_status(code=0)
 
-The implementation is `workflows/src/workhorse_workflows/coder/main/flow.py::Coder`.
+The implementation is `workflows/src/workhorse_workflows/coder/main/flow.py::Coder`, whose nodes
+register against the one blueprint every Coder flow shares.
+
+- code: `workflows/src/workhorse_workflows/coder/shared/blueprint.py::blueprint` @0cbd22929b3f
 - detail: [coder handoff boundary contract](../concepts/coder-handoff-boundary.md)
 - detail: [coder main package](../concepts/coder-main-package.md)
 - detail: [coder workflow composition root](../concepts/coder-workflow-composition-root.md)
@@ -52,9 +55,28 @@ cuts nothing and stays on the current branch.
 
 - kind: run
 
-`route` claims the next story or follow-up off the worklist. The worklist decides how many items
-the run works before it stops: one run is not one story, and not one pull request per story. An
-empty worklist ends a commit run after tearing down the QA stack, and sends a pr run to delivery.
+`route` first consolidates follow-ups that share a cause and hands finished work's open findings to
+the follow-up that owns their cause, filing one when none does. It then claims the next story or
+follow-up off the worklist. The worklist decides how many items the run works before it stops: one
+run is not one story, and not one pull request per story. An empty worklist ends a commit run
+after tearing down the QA stack, and sends a pr run to delivery.
+
+- code: `workflows/src/workhorse_workflows/coder/shared/causes.py::consolidate` @93617ea77353
+- code: `workflows/src/workhorse_workflows/coder/shared/causes.py::own` @93617ea77353
+- code: `workflows/src/workhorse_workflows/coder/shared/judge.py::Judge` @eb6949952f8c
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/judge.py::Ruling` @6d06f2f4b655
+
+`consolidate` and `own` read and rewrite the worklist's follow-up and finding items through the
+shared `work` module: the kinds, statuses and payload fields a follow-up or finding carries, and
+the helpers that file, find, replace and merge them.
+
+- code: `workflows/src/workhorse_workflows/coder/shared/work.py::FOLLOW_UP` @d1b341a8165d
+- code: `workflows/src/workhorse_workflows/coder/shared/work.py::open_findings` @d1b341a8165d
+- code: `workflows/src/workhorse_workflows/coder/shared/work.py::follow_up_items` @d1b341a8165d
+- code: `workflows/src/workhorse_workflows/coder/shared/work.py::findings_of` @d1b341a8165d
+- code: `workflows/src/workhorse_workflows/coder/shared/work.py::find` @d1b341a8165d
+- code: `workflows/src/workhorse_workflows/coder/shared/work.py::file` @d1b341a8165d
+- code: `workflows/src/workhorse_workflows/coder/shared/work.py::replace` @d1b341a8165d
 
 ### story-pipeline
 

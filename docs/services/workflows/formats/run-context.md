@@ -58,3 +58,12 @@ state value carried by the run rather than the loader result.
 - verify: count(subject="$.layers", equals=0)
 - code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::RunContext` @c0c7fb10e846
 - detail: [run context field roles](../concepts/run-context-field-roles.md)
+
+## Methods
+
+### setup
+- sig: `setup() -> RunContext`
+- does: resolves the author configuration and wraps it as the run's checkpointed context
+- returns: a `RunContext` carrying the resolved path set every stage works against
+- verify: json_path(path="$.repo_root", equals="docs/stories")
+- code: `workflows/src/workhorse_workflows/author/main/flow.py::Author.setup` @006e755d5a80

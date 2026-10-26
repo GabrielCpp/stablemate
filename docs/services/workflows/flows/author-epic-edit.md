@@ -43,13 +43,13 @@ It ends in one of these ways: the requested epic edit is represented by consiste
 ### Snapshot current epic
 The start state is resolved through the configured document roots. The snapshot captures the epic
 name, title, epic document hash, seeds and their metadata, stories and their body hashes, frozen
-identities, and milestones that reference the epic.
+identities matched by seed and story id, and milestones that reference the epic.
 
 - code: `workflows/src/workhorse_workflows/author/epic_edit/flow.py::EpicEdit.start` @2882a05baa0b
 - code: `workflows/src/workhorse_workflows/author/epic_edit/flow.py::EpicEdit.setup` @2882a05baa0b
 - code: `workflows/src/workhorse_workflows/author/epic_edit/flow.py::EpicEdit.labels` @2882a05baa0b
 - code: `workflows/src/workhorse_workflows/author/epic_edit/flow.py::EpicEdit.state_labels` @2882a05baa0b
-- code: `workflows/src/workhorse_workflows/author/epic_edit/nodes/edit.py::snapshot_epic` @960ae1cec269
+- code: `workflows/src/workhorse_workflows/author/epic_edit/nodes/edit.py::snapshot_epic` @85ab2cf6cdff
 - code: `workflows/src/workhorse_workflows/author/epic_edit/nodes/_blueprint.py::blueprint` @2f9e682267f2
 
 ### Plan the replacement
@@ -69,7 +69,8 @@ Validation compares the snapshot hashes to the working tree, checks plan complet
 identity, rejects duplicate or missing change ids, projects seed and story sets, and rejects
 dangling covers, dangling dependencies, orphaned active seeds, dependency cycles, unsatisfied
 add/remove intent, frozen removals, unforced collateral removals, incorrect empty-epic deletion,
-and omitted rewrites.
+and omitted rewrites. The frozen-removal rejection applies to stories as well as seeds, since the
+snapshot now flags a story frozen by matching its id against the frozen set, not its slug.
 
 - code: `workflows/src/workhorse_workflows/author/epic_edit/nodes/edit.py::validate_edit_plan` @85ab2cf6cdff
 - code: `workflows/src/workhorse_workflows/author/epic_edit/nodes/edit.py::_project` @85ab2cf6cdff
@@ -95,7 +96,9 @@ The review is read-only and does not alter the plan or repository.
 
 ### Apply and verify graph mutations
 Ostler removes requested stories and seeds, adds or updates seed metadata and story metadata, updates
-milestone source items, and deletes the epic when both projected collections are empty. Applying the
+milestone source items, and deletes the epic when both projected collections are empty. Story removal
+and update resolve each story's id from the current listing first, because Ostler's `find_story`
+matches only by id, not slug. Applying the
 same approved plan is safe for already-removed entities. Post-application validation compares actual
 seed/story sets and metadata with the plan and hashes every unaffected story body for byte stability.
 
@@ -117,17 +120,18 @@ The rewrite turn preserves the `Seeds` and `Stories` sections and returns either
 - detail: [rewrite-epic-edit prompt](../concepts/author-epic-edit-prompt-contracts.md#review-and-rewrite-turns)
 
 ### Author affected stories
-The approved affected list is consumed in order. Each existing or newly added story may receive a
+The approved affected list is consumed in order; each selected story carries its path, slug, id,
+directory, progress, and remaining count. Each existing or newly added story may receive a
 story-local mockup, is authored, structurally and contextually validated, and reviewed by the PM at the `story` stage.
 Validation or review findings are recorded in the story attempt ledger and reworked up to three times;
 an unresolved story awaits the operator on the run's context file. Unaffected stories are never rewritten.
 
-A story whose services include a web or mobile book receives the design turn first. A failed or missing mockup fails the edit. The writing turn creates only the
+A story whose services include a web or mobile book receives the design turn first: the gate resolves the picked story by its `story_id`, so the UI-service decision reaches the design agent instead of failing to find the story. A failed or missing mockup fails the edit. The writing turn creates only the
 selected story artifact; validation findings and review findings use the same rework turn, while a
 blocked writing result awaits the operator on the run's context file. The PM review passes only when
 every angle passes.
 
-- code: `workflows/src/workhorse_workflows/author/epic_edit/nodes/edit.py::select_affected_story` @960ae1cec269
+- code: `workflows/src/workhorse_workflows/author/epic_edit/nodes/edit.py::select_affected_story` @85ab2cf6cdff
 - code: `workflows/src/workhorse_workflows/author/epic_edit/flow.py::EpicEdit.design_mockup` @2882a05baa0b
 - code: `workflows/src/workhorse_workflows/author/epic_edit/flow.py::EpicEdit.write_story` @2882a05baa0b
 - code: `workflows/src/workhorse_workflows/author/epic_edit/flow.py::EpicEdit.check_story` @2882a05baa0b

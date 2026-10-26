@@ -181,7 +181,8 @@ selection](epic-edit-invocation-selection.md).
 
 ### design_mockup
 - sig: `design_mockup(intent: EditIntent, applied: AppliedEpicEdit, pick: StoryChoice, index: int) -> Continue`
-- does: asks the design agent for a story-local mockup before story authoring
+- does: decides whether a mockup is required by calling `check_mockup_needed` with the picked story's `story_id`, so the UI-service gate resolves the real story instead of failing to find it by slug
+- does: asks the design agent for a story-local mockup before story authoring when a mockup is required
 - does: continues to `write_story` with `intent`, `applied`, `pick`, `index`, and the produced `mockup`
 - returns: returns a continuation targeting `write_story` with the mockup result
 - verify: count(subject="epic-edit mockup designs", equals=1)
@@ -264,9 +265,9 @@ The deterministic nodes owned by the epic-edit package are registered with the `
 - verify: json_path(path="$.stories", equals="example stories")
 - does: captures story body hashes
 - verify: json_path(path="$.stories[*].body_hash", matches="^[0-9a-f]{64}$")
-- does: captures frozen seed identities
+- does: captures frozen seed identities by matching each seed's id against the frozen id set
 - verify: json_path(path="$.seeds[*].frozen", matches="^(true|false)$")
-- does: captures frozen story identities
+- does: captures frozen story identities by matching each story's id, not its slug, against the frozen id set
 - verify: json_path(path="$.stories[*].frozen", matches="^(true|false)$")
 - does: captures referencing milestones
 - verify: json_path(path="$.milestones", equals="example milestones")
@@ -278,12 +279,14 @@ The deterministic nodes owned by the epic-edit package are registered with the `
 ### method: validate_edit_plan
 - sig: `validate_edit_plan(logger: logging.Logger, intent: EditIntent, snapshot: EpicSnapshot, plan: EpicEditPlan, repo_dir: str = "") -> Defects`
 - does: rejects incomplete, wrong-epic, duplicate, missing-id, dangling-cover, dangling-dependency, orphan-seed, cyclic, unsatisfied, frozen, unforced, deletion, and omitted-rewrite plans
+- does: rejects a frozen story removal exactly when `snapshot_epic` marked that story frozen by story id, which matches the actually-frozen stories instead of always reading false
 - returns: returns `Defects(ok=True)` only when the projected graph satisfies all edit constraints
 - verify: json_path(path="$.ok", equals=True)
 - code: `workflows/src/workhorse_workflows/author/epic_edit/nodes/edit.py::validate_edit_plan` @85ab2cf6cdff
 
 ### method: apply_edit_plan
 - sig: `apply_edit_plan(logger: logging.Logger, intent: EditIntent, snapshot: EpicSnapshot, plan: EpicEditPlan, repo_dir: str = "") -> AppliedEpicEdit`
+- does: resolves each affected story's id from the current listing before calling Ostler's `delete_story`/`update_story`, because Ostler's `find_story` matches only by id, not slug
 - does: removes, adds, or updates stories and seeds through Ostler
 - does: updates milestone source-item ownership for removed or added source records, naming a record by its id
 - does: deletes an epic when the approved resulting seed and story sets are empty
@@ -316,7 +319,7 @@ This validation returns `Defects(ok=True)` when the on-disk graph matches the ap
 - consistency: affected-story-list — when the index reaches the approved affected-story list length, returns `StoryChoice(has_story=False, reason="every affected story is authored")`
 - verify: json_path(path="$.has_story", equals=False)
 - raises: raises `WorkflowFailed` when an approved affected story no longer exists
-- returns: returns the story path, slug, directory, progress, and remaining count
+- returns: returns the story path, slug, id, directory, progress, and remaining count
 - verify: count(subject="selected affected stories", equals=1)
 - code: `workflows/src/workhorse_workflows/author/epic_edit/nodes/edit.py::select_affected_story` @85ab2cf6cdff
 - detail: [affected story selection](affected-story-selection.md)

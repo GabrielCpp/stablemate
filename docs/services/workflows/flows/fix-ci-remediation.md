@@ -127,6 +127,8 @@ other push status takes the block path without polling an unmoved pull-request h
 the run. A refused merge below `MAX_LAPS` attempts goes to `fix-merge`. At the cap, the flow takes
 the block path with a note that the epic still does not merge into the base.
 
+- code: `workflows/src/workhorse_workflows/coder/fix_ci/merge.py::merge_pr` @30ca171920c1
+
 ### fix-merge
 
 - kind: drive
@@ -146,3 +148,5 @@ and, when it answers, resumes through `read_operator`. In a human operator mode,
 `Await`. When the block came from a merge, it also flags the pull request through
 `flag_merge_failure`. `read_operator` reads the answer back and resumes `merge` with a zero merge
 count, or `work` with a zero lap count and the block's notes as the report.
+
+- code: `workflows/src/workhorse_workflows/coder/fix_ci/merge.py::flag_merge_failure` @30ca171920c1

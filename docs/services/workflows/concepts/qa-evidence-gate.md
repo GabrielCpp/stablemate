@@ -91,7 +91,7 @@ The gate is part of the [Coder QA subflow](coder-qa-subflow.md) and is reached b
 - sig: `_obligation_problems(context: dict, data: dict) -> list[str]`
 - does: requires every context obligation whose `required` flag is absent or true to have a matching evidence verdict
 - verify: count(subject="required OKF obligations with verdicts", equals=1)
-- does: ignores context-only obligations explicitly marked `required=false`
+- does: ignores context-only obligations explicitly marked `required=false`, and any obligation whose `deferred` field is a dict, exempting both from the verdict and `log_refs` requirement
 - verify: count(subject="context-only obligations excluded", equals=1)
 - does: requires each required passing obligation to include executed `log_refs`
 - verify: count(subject="required obligation execution references", equals=1)

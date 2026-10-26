@@ -41,6 +41,15 @@ story and expose dependency-order progress.
 - code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::StoryChoice` @c0c7fb10e846
 - detail: [story choice field roles](../concepts/story-choice-field-roles.md)
 
+### story_id
+- type: string
+- default: empty string
+- required: false
+- semantics: selected story's graph id
+- verify: json_path(path="$.story_id", equals="S-1")
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::StoryChoice` @c0c7fb10e846
+- detail: [story choice field roles](../concepts/story-choice-field-roles.md)
+
 ### story_dir
 - type: string path
 - default: empty string

@@ -41,7 +41,7 @@ before running the grounding gate.
 ### story_id
 - type: string
 - required: true
-- semantics: story identifier used in the required commit footer, falling back to the story slug
+- semantics: story identifier used in the required commit footer; empty when the story has none, with no fallback to the story slug
 - verify: json_path(path="$.story_id", equals="CASE-1234")
 
 ### epic

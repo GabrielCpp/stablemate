@@ -168,6 +168,8 @@ repository, and no scope otherwise. A batch that filed nothing commits nothing.
 - verify: count(subject="fix story bodies", equals=1)
 - raises: `WorkflowFailed` when the record id or the summary is empty, or when the story cannot be created
 - verify: count(subject="refused fix story seeds", equals=1)
+- returns: a `FixStorySeed` carrying `story_id`: the reused story's own id, or `create_story`'s `entity_id` for a newly created one
+- verify: json_path(path="$.story_id", equals="S-1")
 - code: `workflows/src/workhorse_workflows/coder/shared/backlog.py::seed_fix_story` @a57d509225b0
 - tests: `workflows/tests/coder/fix/test_flow.py::test_the_story_of_a_record_covers_the_record_id`
 - tests: `workflows/tests/coder/shared/test_follow_up_backlog.py::test_the_fixes_bucket_the_coder_creates_needs_no_milestone`

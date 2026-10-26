@@ -17,6 +17,7 @@ success. A passing or explicitly skipped gate is the only path to the next gate.
 the integrity resolution limit and an unbounded timeout used only for resolver turns.
 
 - code: `workflows/src/workhorse_workflows/author/finalize/flow.py::Finalize` @dc589cfbd2c4
+- code: `workflows/src/workhorse_workflows/author/finalize/nodes/_blueprint.py::blueprint` @840c4e312d81
 - tests: `workflows/tests/author/finalize/test_flow.py::test_finalizes_with_one_commit_on_the_current_branch`
 - tests: `workflows/tests/author/finalize/test_flow.py::test_terminal_validation_commits_incomplete_then_fails`
 - detail: [author milestone intake](../flows/author-milestone-intake.md)
@@ -298,3 +299,10 @@ The node advances one validated milestone from `approved` to `authored` (idempot
 - returns: a `Committed` carrying the success flag — `committed=True` when `commit_paths` produced a commit, `committed=False` when the repository has no git root, the configured scope is empty, or `commit_paths` did not produce a commit
 - verify: persists(subject="authored planning documents")
 - code: `workflows/src/workhorse_workflows/author/shared/nodes/commit.py::commit_author` @d5269aa9b09f
+
+### blueprint
+- sig: `Blueprint("author-finalize") -> Blueprint`
+- does: provides the one node-registration target owned by the finalize package
+- returns: returns a blueprint named `author-finalize`
+- verify: json_path(path="$.name", equals="author-finalize")
+- code: `workflows/src/workhorse_workflows/author/finalize/nodes/_blueprint.py::blueprint` @840c4e312d81

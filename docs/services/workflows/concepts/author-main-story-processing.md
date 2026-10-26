@@ -61,13 +61,13 @@ invent epic paths or duplicate the graph's story semantics.
 - tests: `workflows/tests/author/test_workflow.py::test_story_mode_refuses_an_epic_that_does_not_exist`
 
 ### check_mockup_needed
-- sig: `check_mockup_needed(logger, story_slug: str = "", repo_dir: str = "") -> MockupGate`
+- sig: `check_mockup_needed(logger, story_id: str = "", repo_dir: str = "") -> MockupGate`
 - does: fails the workflow when the story is absent
 - does: requires a mockup when any of the story's `services` names a web or mobile book
 - verify: json_path(path="$.required", equals=true)
 - does: skips the mockup when no service of the story is a web or mobile book
 - verify: json_path(path="$.required", equals=false)
-- code: `workflows/src/workhorse_workflows/author/story_author/nodes/mockup.py::check_mockup_needed` @cbcbbaf4e981
+- code: `workflows/src/workhorse_workflows/author/story_author/nodes/mockup.py::check_mockup_needed` @16f77856eb81
 - tests: `workflows/tests/author/test_mockup_gate.py::test_the_gate_is_the_union_of_the_covered_seeds_services`
 - tests: `workflows/tests/author/test_mockup_gate.py::test_a_story_the_graph_cannot_resolve_fails_the_run`
 - tests: `workflows/tests/author/test_mockup_gate.py::test_an_api_only_story_needs_no_mockup_whatever_the_seed_says`
@@ -87,12 +87,12 @@ invent epic paths or duplicate the graph's story semantics.
 - verify: count(subject="misordered required story sections", equals=0)
 - does: requires Technical Notes to contain an existing repository-grounded `path::symbol` pointer or the exact greenfield statement
 - verify: count(subject="grounded Technical Notes contracts", equals=1)
-- does: rejects Technical Notes pointers outside the repository and rejects prose containing unresolved decision phrases or standalone TODO markers
+- does: rejects Technical Notes pointers outside the repository and rejects prose containing unresolved decision phrases or a TBD/TODO/FIXME marker written in capitals or followed by a colon; a plain lowercase word with neither trips nothing
 - verify: count(subject="rejected ungrounded or unresolved story notes", equals=1)
 - does: returns `ok` only when all deterministic checks pass
 - does: returns one newline-separated error per finding
 - verify: json_path(path="$.errors", matches=".+\\n.+")
-- code: `workflows/src/workhorse_workflows/author/shared/nodes/stories.py::validate_story` @29a54157b737
+- code: `workflows/src/workhorse_workflows/author/shared/nodes/stories.py::validate_story` @61ad4510b612
 - tests: `workflows/tests/author/test_story_contract.py::test_technical_notes_require_a_grounded_code_pointer`
 
 ### check_story_grounding
@@ -103,12 +103,14 @@ invent epic paths or duplicate the graph's story semantics.
 - verify: count(subject="story grounding epic seed reads", equals=1)
 - does: rejects every story coverage id that is absent from the epic's seed set
 - verify: count(subject="phantom story seed references", equals=0)
-- does: when the graph has UI nodes, requires the story to cite at least one resolvable UI surface node and rejects missing citations
+- does: when the graph has UI nodes, resolves the story's id from the epic's story list and rejects a story that is not in that list or has no id, since its surface citations cannot be checked without one
+- verify: count(subject="ungrounded stories missing from the epic's story list", equals=0)
+- does: when the graph has UI nodes and the story resolves to an id, requires the story to cite at least one resolvable UI surface node and rejects missing citations
 - verify: count(subject="resolvable UI nodes cited by the story", equals=1)
 - does: does not require UI citations while the Ostler graph has no UI nodes
 - verify: absent(subject="UI citation requirement on an empty UI graph")
 - does: returns `ok` with newline-separated findings only when seed scope and the armed UI citation contract hold
-- code: `workflows/src/workhorse_workflows/author/shared/nodes/stories.py::check_story_grounding` @29a54157b737
+- code: `workflows/src/workhorse_workflows/author/shared/nodes/stories.py::check_story_grounding` @61ad4510b612
 - tests: `workflows/tests/author/test_workflow.py::test_a_story_that_is_not_a_contract_is_reworked_against_the_gate`
 
 ### record_attempt

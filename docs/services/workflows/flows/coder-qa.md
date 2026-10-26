@@ -102,8 +102,22 @@ failed run with no finding goes back to the owner with its failing scenarios and
 failure is unclassified. A run that did not finish goes back as unfinished. Findings beside a
 passing run go back as unproved.
 
+Each failed scenario is sorted onto its side (environment, book, or product) before the owner's
+next turn reads it back as a gate report.
+
+- code: `workflows/src/workhorse_workflows/coder/qa/sides.py::run_sides` @0209bed23b75
+- code: `workflows/src/workhorse_workflows/coder/qa/report.py::unclassified_failure` @dea9057a2b52
+- code: `workflows/src/workhorse_workflows/coder/qa/report.py::book_failure` @dea9057a2b52
+- code: `workflows/src/workhorse_workflows/coder/qa/report.py::environment_failure` @dea9057a2b52
+- code: `workflows/src/workhorse_workflows/coder/qa/report.py::product_findings` @dea9057a2b52
+- code: `workflows/src/workhorse_workflows/coder/qa/report.py::unproved_findings` @dea9057a2b52
+
 A passed run must also clear four gates before the story is believed. The evidence gate checks
-the runner's artifacts. The operator feedback inbox is read, and a note goes back to the owner.
+the runner's artifacts.
+
+- code: `workflows/src/workhorse_workflows/coder/qa/nodes/evidence.py::verify_qa_evidence` @8e2f419e331c
+
+The operator feedback inbox is read, and a note goes back to the owner.
 Declared regression suites run, and a suite that is neither passed nor skipped goes back. The
 sentinel ids are checked after the screenshots are flushed. Under `stop_at_first_verdict`, a
 passing run that fails a gate finishes as a `refix` with a fallback finding. A flow that finishes

@@ -6,9 +6,11 @@ title: Story status persistence
 # Story status persistence
 
 The coder records a story outcome through this shared adapter so later selection sees the same
-status in the story document. Graph-backed writes are preferred; the file rewrite is only for a
-story the graph cannot resolve. The caller owns committing the returned paths, so a successful
-stamp is not complete until those paths are committed.
+status in the story document. Graph-backed writes are preferred; the file rewrite only runs when
+there is no story id to resolve through the graph. A story id the graph refuses to write now
+raises instead of falling back to the rewrite, so the caller must handle that failure itself.
+The caller owns committing the returned paths, so a successful stamp is not complete until those
+paths are committed.
 
 - code: `workflows/src/workhorse_workflows/coder/shared/story_status.py` @43edc4a82319
 
@@ -36,11 +38,12 @@ stamp is not complete until those paths are committed.
 
 ### mark_via_ostler
 
-- sig: `mark_via_ostler(root: Path, slug: str, new_status: str, logger: logging.Logger | None = None) -> list[Path]`
-- does: returns no paths without attempting a graph write when the slug is empty
-- does: asks Ostler to set the story status when the slug is non-empty
+- sig: `mark_via_ostler(root: Path, story_id: str, new_status: str, logger: logging.Logger | None = None) -> list[Path]`
+- does: returns no paths without attempting a graph write when the story id is empty
+- does: asks Ostler to set the story status when the story id is non-empty
 - does: returns the paths reported by a successful Ostler status update
-- does: returns an empty list and logs an informational fallback message when the graph call fails or reports failure
+- does: returns an empty list and logs an informational fallback message only when constructing or calling `Ostler(...)` itself raises `OSError` or `RuntimeError`
+- raises: `RuntimeError` with Ostler's message when Ostler reports the status write failed, instead of falling back
 - returns: written status paths on success, otherwise an empty list
 - verify: persists(subject="the story status written through the document graph")
 - code: `workflows/src/workhorse_workflows/coder/shared/story_status.py::mark_via_ostler` @43edc4a82319
@@ -76,10 +79,11 @@ stamp is not complete until those paths are committed.
 
 ### mark
 
-- sig: `mark(root: Path, slug: str, new_status: str, *, epic: str = "", story_path: str = "", logger: logging.Logger | None = None) -> list[Path]`
-- does: tries the Ostler graph adapter before using the story.md fallback
+- sig: `mark(root: Path, story_id: str, new_status: str, *, epic: str = "", slug: str = "", story_path: str = "", logger: logging.Logger | None = None) -> list[Path]`
+- does: tries the Ostler graph adapter against `story_id` before using the story.md fallback, which `slug` locates instead
 - does: rewrites the resolved story.md when graph stamping returns no written paths
 - does: logs a warning and returns no paths when no story.md can be resolved
+- does: propagates `RuntimeError` instead of falling back when the graph refuses the status write
 - returns: every path written by the graph or fallback adapter, or an empty list when stamping fails
 - verify: persists(subject="the story outcome after graph-first stamping")
 - code: `workflows/src/workhorse_workflows/coder/shared/story_status.py::mark` @43edc4a82319

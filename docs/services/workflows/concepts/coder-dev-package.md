@@ -10,7 +10,9 @@ entered by the Coder main flow when a story is ready for implementation, and can
 directly with `workhorse-coder run dev`.
 
 The owner turn plans, builds, reviews and fixes through its own subagents, and answers every
-finding in the story's answer file. The flow around it is deterministic. It records the plan,
+finding in the story's answer file. `Dev.build` picks the `dev-rework` prompt instead of
+`dev-story` once QA has filed an open finding against the work item, so a rework lap reads the
+work differently than the first attempt at it. The flow around it is deterministic. It records the plan,
 runs the declared service gates, settles the findings against the answers, and checks that the
 story left nothing uncommitted. A failed check goes back to the owner as a report for another
 repair lap. A spent lap budget escalates to an operator gate.

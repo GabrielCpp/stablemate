@@ -17,9 +17,9 @@ before an agent turn, records the directories an agent may read, and stamps firs
 - detail: [Coder documentation schemas](coder-docs-schemas.md)
 - detail: [Story worktree boundary](story-worktree-boundary.md)
 
-The pipeline treats an empty story slug as a no-work input, but a non-empty slug that resolves to
-no readable story file as a workflow failure. The documentation root is included in agent read
-directories.
+The pipeline treats an empty story handle as a no-work input, but a non-empty handle (an id or a
+slug) that resolves to no readable story file as a workflow failure. The documentation root is
+included in agent read directories.
 The fix-story preparation node intentionally shares the preparation behavior under a separate
 node identity so its recorded output cannot overwrite the parent story's preparation output.
 
@@ -37,13 +37,15 @@ node identity so its recorded output cannot overwrite the parent story's prepara
 
 ### prepare_story
 - sig: `prepare_story(logger, story: str = "", epic: str = "", repo_dir: str = "") -> StoryPaths`
-- does: returns blank paths when no story slug is supplied
+- does: returns blank paths when no story handle is supplied
 - verify: json_path(path="$.story_slug", equals="")
-- does: discovers the epic by scanning the configured epics tree when no epic is supplied
+- does: resolves the given handle, a minted story id or a slug, through the graph's `find_story` then `story_by_slug`, and takes the epic from the resolved entry rather than scanning the epics tree
 - verify: json_path(path="$.story_epic", equals="acme-epic")
+- raises: `WorkflowFailed` when the handle resolves to no story, or to a story with no minted id
+- verify: count(subject="unresolvable story handle failures", equals=1)
 - does: refuses a graph-known story whose authored contract is incomplete
 - verify: count(subject="unauthored story preparation failures", equals=1)
-- does: resolves the story spec directory through Ostler and fails the workflow when Ostler rejects the slug
+- does: resolves the story spec directory through Ostler from the resolved story's minted id
 - verify: json_path(path="$.spec_dir", equals="docs/stories/acme-story")
 - does: returns canonical absolute story, spec, and QA paths
 - verify: count(subject="resolved story path results", equals=1)
@@ -51,7 +53,7 @@ node identity so its recorded output cannot overwrite the parent story's prepara
 - verify: count(subject="resolved story slug results", equals=1)
 - does: returns the story epic alongside the resolved paths
 - verify: count(subject="resolved story epic results", equals=1)
-- does: returns the minted story id alongside the resolved paths
+- does: returns the resolved story's minted id alongside the resolved paths, which resolution guarantees is never empty for a non-blank handle
 - verify: count(subject="resolved story id results", equals=1)
 - code: `workflows/src/workhorse_workflows/coder/shared/story.py::prepare_story` @7308a4f16d6e
 - detail: [Story paths](../formats/story-paths.md)
@@ -77,10 +79,10 @@ node identity so its recorded output cannot overwrite the parent story's prepara
 - detail: [Workflow workspace directories](../formats/workspace-dirs.md)
 
 ### stamp_specs
-- sig: `stamp_specs(logger, story_slug: str = "", repo_dir: str = "") -> SpecsStamped`
-- does: leaves the run successful without stamping when no story slug or spec directory exists
+- sig: `stamp_specs(logger, story_id: str = "", repo_dir: str = "") -> SpecsStamped`
+- does: leaves the run successful without stamping when no story id or spec directory exists
 - verify: count(subject="no-op spec stamping passes", equals=1)
-- does: gives each direct markdown spec document an OKF type without rewriting an already typed document
+- does: creates each direct markdown spec document's OKF type through Ostler, keyed on the story id, without rewriting an already typed document
 - verify: count(subject="typed spec documents after stamping", equals=2)
 - raises: `WorkflowFailed` when a direct markdown spec remains untyped after the stamping pass
 - verify: count(subject="untyped spec stamping failures", equals=1)

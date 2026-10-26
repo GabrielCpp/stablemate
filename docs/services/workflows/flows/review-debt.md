@@ -53,6 +53,10 @@ It ends in one of these ways: an empty register returns `Done` with the reason "
 `start` calls `read_register`, which reads every parseable record on the register with its id and
 one listing line. The listing line carries the id, repository, area, status, pattern and summary,
 separated by tabs. A read with no ids ends the run as `Done` with the reason "register is empty".
+Every node module under `review_debt/nodes/`, including `read_register`, registers against the one
+`blueprint` the package's `_blueprint` module defines.
+
+- code: `workflows/src/workhorse_workflows/review_debt/nodes/_blueprint.py::blueprint` @3dd2a71a2417
 
 ### group-and-account
 

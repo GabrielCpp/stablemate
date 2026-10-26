@@ -30,7 +30,7 @@ subprocess behavior.
 - sig: `__dir__() -> list[str]`
 - does: exposes exactly the facade's declared export names for introspection
 - returns: the sorted facade export names
-- verify: count(subject="workflow kit facade export names", equals=51)
+- verify: count(subject="workflow kit facade export names", equals=52)
 - code: `workflows/src/workhorse_workflows/kit/__init__.py::__dir__` @93325f481054
 
 ## Git operations
@@ -61,6 +61,7 @@ Imported from `kit.git`:
 - `list_tracked_files` — list all tracked files in the repository
 - `local_branch_exists` — check if a branch exists locally
 - `merge_base` — find the merge base between two commits
+- `merge_into` — merge a branch into a base locally, fast-forward when possible, else a merge commit
 - `merge_ref` — merge a reference into the current branch
 - `open_repo` — open a git repository
 - `origin_url` — get the origin remote URL

@@ -32,7 +32,7 @@ grounding settles the block.
 - sig: `resolver_args(flow: Workflow, *, block_kind: str, notes: str, story: StoryPaths | None = None) -> dict[str, str]`
 - does: supplies the story path and specification directory of the given `story`, or of the flow context when none is given, with the block kind and block notes to the shared resolver prompt
 - verify: json_path(path="$.result", matches="story_path")
-- does: supplies the absolute decisions directory derived from the documentation path and repository directory
+- does: supplies the absolute decisions directory derived from the repository directory alone
 - verify: json_path(path="$.result", matches="decisions_dir")
 - does: supplies the structured `OperatorResolution` result schema to the prompt
 - verify: json_path(path="$.result", matches="result_schema")
@@ -42,7 +42,7 @@ grounding settles the block.
 
 ### decisions_dir
 - sig: `decisions_dir(repo_dir: str) -> Path`
-- does: resolves the documentation root from the supplied documentation and repository paths
+- does: resolves the documentation root from the supplied repository directory alone
 - verify: json_path(path="$.result", equals="example result")
 - does: returns the decisions directory resolved beneath that documentation root
 - verify: json_path(path="$.result", matches="decisions")

@@ -5,16 +5,17 @@ title: Coder docs package
 ---
 # Coder docs package
 
-The `docs` machine folds one completed story into the current OKF book. It resolves the story and
-documentation context, distinguishes an unmanaged book from an unusable one, optionally grounds
-the code diff locally, asks one owner turn to write, review and repair the graph, and gates the result against direct
-grounding. It is a sub-flow entered by the Coder
-main flow after implementation is complete, and can also be run directly with `workhorse-coder run docs`.
+The `docs` machine folds one completed story into the current OKF book. It first distinguishes an
+unmanaged book from an unusable one, then, only for a usable book, resolves the story and
+documentation context, optionally grounds the code diff locally, asks one owner turn to write,
+review and repair the graph, and gates the result against direct grounding. It is a sub-flow
+entered by the Coder main flow after implementation is complete, and can also be run directly with
+`workhorse-coder run docs`.
 
-The machine returns not-applicable without an agent turn when the repository has no OKF book, and
-fails before documentation when the book is unusable. For a usable book, a failed grounding gate goes
-back to the owner as a report for another repair lap, and a spent lap budget escalates to the
-resolver and then to an operator gate.
+The machine returns not-applicable without an agent turn and without resolving the story when the
+repository has no OKF book, and fails before documentation when the book is unusable. For a usable
+book, a failed grounding gate goes back to the owner as a report for another repair lap, and a
+spent lap budget escalates to the resolver and then to an operator gate.
 
 - code: `workflows/src/workhorse_workflows/coder/docs/flow.py` @e596e919bdee
 - code: `workflows/src/workhorse_workflows/coder/docs/flow.py::Docs` @e596e919bdee

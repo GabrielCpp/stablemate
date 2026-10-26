@@ -220,7 +220,8 @@ The legacy queue is used as a fallback by `resolve_launch` and `prune_epic` when
 - verify: json_path(path="$.mode", equals="epic")
 - does: lists the open stories of each launched epic in queue order
 - verify: count(subject="launched open stories", equals=2)
-- raises: `WorkflowFailed` when the book holds no story of that name
+- does: falls back to a slug lookup when the direct id or eid lookup misses, before raising
+- raises: `WorkflowFailed` when both the direct and slug lookups find no story of that name
 - raises: `WorkflowFailed` when the launch names both a story and an epic
 - raises: `WorkflowFailed` when a launched story depends on a story the launch does not include
 - raises: `WorkflowFailed` when the epics queue cannot be read
@@ -243,9 +244,10 @@ The legacy queue is used as a fallback by `resolve_launch` and `prune_epic` when
 
 ### stamp_story_passed
 
-- sig: `stamp_story_passed(logger: logging.Logger, epic: str = "", story_slug: str = "", story_path: str = "", repo_dir: str = "") -> StoryStamped`
+- sig: `stamp_story_passed(logger: logging.Logger, epic: str = "", story_slug: str = "", story_path: str = "", repo_dir: str = "", story_id: str = "") -> StoryStamped`
 - does: writes `QA passed` to the story status through the shared status adapter
-- does: commits only the status files written by the stamp as a `docs` commit
+- does: commits the status files written by the stamp plus the story's gate context file when one exists, as a `docs` commit
+- does: names the commit's `story=` field with `story_id` when given, falling back to `story_slug`
 - returns: whether the status was written and whether it replaced a prior non-default outcome
 - verify: persists(subject="the story's QA passed status")
 - code: `workflows/src/workhorse_workflows/coder/shared/story_commit.py::stamp_story_passed` @7b0c7e9434b5
@@ -253,9 +255,10 @@ The legacy queue is used as a fallback by `resolve_launch` and `prune_epic` when
 
 ### commit_plan_record
 
-- sig: `commit_plan_record(logger: logging.Logger, epic: str = "", story_slug: str = "", spec_dir: str = "", repo_dir: str = "") -> StoryCommitted`
+- sig: `commit_plan_record(logger: logging.Logger, epic: str = "", story_slug: str = "", spec_dir: str = "", repo_dir: str = "", story_id: str = "") -> StoryCommitted`
 - does: commits the story's spec directory in the docs repository as a `docs` commit named `record the plan of <slug>`
 - verify: persists(subject="the committed plan record")
+- does: names the commit's `story=` field with `story_id` when given, falling back to `story_slug`
 - does: skips the commit and reports nothing committed when the spec directory is empty or lies outside the repository
 - verify: json_path(path="$.committed", equals=false)
 - does: commits without running the repository's hooks
@@ -276,7 +279,19 @@ The legacy queue is used as a fallback by `resolve_launch` and `prune_epic` when
 - returns: whether implementation work committed anywhere and whether the status stamp superseded a prior outcome
 - verify: persists(subject="the story implementation commit and separate QA status stamp")
 - code: `workflows/src/workhorse_workflows/coder/shared/story_commit.py::commit_story` @7b0c7e9434b5
+- code: `workflows/src/workhorse_workflows/kit/agent_files.py::render_agent_files_returning_failure` @e0542392b075
 - tests: `workflows/tests/coder/test_workflow.py::test_the_story_and_its_status_stamp_commit_as_conventional_commits`
+
+### proof_scope
+
+- sig: `proof_scope(logger: logging.Logger, story_slug: str = "", spec_dir: str = "", story_path: str = "", dirty: list[str] | None = None, repo_dir: str = "", workspace: str = "") -> ProofScope`
+- does: treats the story's own markdown beside its spec as inert, carrying forward the rest of what was left uncommitted
+- does: reads the book's citations and the plan's scenario coverage only when something not inert changed
+- returns: `inert` when nothing but the story's own markdown changed, `claims` with the scenarios that cover every changed file's citing pages when each has one, or `whole` with the reasons a file had none
+- verify: json_path(path="$.kind", equals="inert")
+- code: `workflows/src/workhorse_workflows/coder/shared/story_commit.py::proof_scope` @7b0c7e9434b5
+- code: `workflows/src/workhorse_workflows/coder/shared/proof_scope.py::inert_paths` @c1f961bd878b
+- code: `workflows/src/workhorse_workflows/coder/shared/proof_scope.py::scope` @c1f961bd878b
 
 Implementation commits use the requested Conventional Commit kind and the affected checkout's
 package scope. The status stamp is a separate `docs` commit, and its `superseded_outcome` flag

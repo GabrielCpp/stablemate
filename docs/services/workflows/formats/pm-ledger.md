@@ -13,6 +13,7 @@ The operator may edit the file. An entry the operator changes or adds overrules 
 - code: `workflows/src/workhorse_workflows/author/pm/ledger.py::append_entry` @84430f7ef63f
 - code: `workflows/src/workhorse_workflows/author/pm/ledger.py::ledger_entry` @84430f7ef63f
 - code: `workflows/src/workhorse_workflows/author/pm/ledger.py::HEADING` @84430f7ef63f
+- code: `workflows/src/workhorse_workflows/author/pm/nodes/ledger.py::append_ledger` @b6b6f49ef343
 - detail: [Author PM gap answer](../concepts/author-pm-gap-answer.md)
 
 ## Fields

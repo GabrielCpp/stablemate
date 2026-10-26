@@ -84,13 +84,15 @@ the arguments that shaped the build. Validation independently checks the packet 
 - tests: `workflows/tests/coder/shared/test_okf_memo.py::test_a_failed_build_is_not_memoized`
 
 ### build_okf_context
-- sig: `build_okf_context(logger: logging.Logger, spec_dir: str = "", story_file: str = "", services_root: str = "", source_roots: tuple[str, ...] = (), base: str = "HEAD", head: str = "WORKTREE", repo_dir: str = "", preexisting: tuple[str, ...] = (), story_sources: tuple[StorySource, ...] = ()) -> OkfContextResult`
+- sig: `build_okf_context(logger: logging.Logger, spec_dir: str = "", story_file: str = "", services_root: str = "", source_roots: tuple[str, ...] = (), base: str = "HEAD", head: str = "WORKTREE", repo_dir: str = "", preexisting: tuple[str, ...] = (), story_sources: tuple[StorySource, ...] = (), story_refs: tuple[str, ...] = ()) -> OkfContextResult`
 - does: resolves the documentation repository from `repo_dir`, or the artifacts dir while a workspace is active before computing the packet inputs
 - verify: count(subject="resolved OKF documentation roots", equals=1)
 - does: replaces the `TRUNK` base with the branch's nearest merge base with trunk before computing the packet inputs
 - verify: count(subject="TRUNK bases resolved to a merge base", equals=1)
-- does: excludes pre-existing unchanged worktree paths from the mapped story diff
+- does: excludes pre-existing unchanged worktree paths from the mapped story diff, unioning `untouched_since` across the docs root and every `story_sources` checkout rather than the docs root alone
 - verify: count(subject="pre-existing story paths excluded", equals=0)
+- does: when the base is `TRUNK` and no `story_sources` are given, narrows the merge-base diff to the paths this story's own commits touched, excluding paths only other stories on the same branch changed
+- verify: count(subject="story-scoped TRUNK bases narrowed by story_refs", equals=1)
 - does: groups source scopes sharing repository checkout, base, and head into one source repository
 - verify: count(subject="grouped OKF source repositories", equals=1)
 - does: reuses the on-disk packet when its complete file set and fingerprint match the current inputs

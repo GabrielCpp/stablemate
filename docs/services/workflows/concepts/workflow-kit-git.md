@@ -267,6 +267,15 @@ exclusive checkout. `merge_ref` aborts a conflicted merge before reporting failu
 - verify: json_path(path="$.result", equals=false)
 - code: `workflows/src/workhorse_workflows/kit/git.py::merge_ref` @8b771b137200
 
+### merge_into
+
+- sig: `merge_into(path: str | Path, branch: str, base: str) -> bool`
+- does: checks out `base`, then tries a fast-forward-only merge of `branch` into it, falling back to `merge_ref`'s real merge commit when that fails
+- verify: json_path(path="$.result", equals=true)
+- returns: `false` without merging when checking out `base` fails
+- verify: json_path(path="$.result", equals=false)
+- code: `workflows/src/workhorse_workflows/kit/git.py::merge_into` @8b771b137200
+
 ### is_ancestor
 
 - sig: `is_ancestor(path: str | Path, ancestor: str, descendant: str) -> bool`

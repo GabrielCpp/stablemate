@@ -74,8 +74,9 @@ The three agent-facing templates are specified in [author story-author prompt co
 
 ### _args
 - sig: `_args(target: StoryTarget, mockup: str, **extra: str) -> dict[str, str]`
-- does: builds the prompt arguments every writer turn shares, including the PM ledger path
+- does: builds the prompt arguments every writer turn shares, including the PM ledger path and the target's `story_id`
 - verify: json_path(path="$.ledger", matches="grills/pm\\.md$")
+- verify: json_path(path="$.story_id", equals="S-1")
 - code: `workflows/src/workhorse_workflows/author/story_author/flow.py::StoryAuthor._args` @2336f43d893e
 
 ### _blocked
@@ -201,9 +202,12 @@ The three agent-facing templates are specified in [author story-author prompt co
 - does: resolves the named story only within the requested epic through Ostler
 - raises: raises `WorkflowFailed` naming the missing story and epic
 - verify: count(subject="cross-epic story-author target failures", equals=1)
-- does: completes missing story sections through Ostler's idempotent scaffold operation
+- does: requires the resolved story row to carry an id, and raises `WorkflowFailed` naming the story and epic when it has none
+- verify: count(subject="story-author target failures for a story with no id", equals=1)
+- does: completes missing story sections through Ostler's idempotent scaffold operation, keyed by the resolved story id rather than its slug
 - verify: count(subject="story-author missing-section scaffolds", equals=1)
-- returns: returns normalized epic, story, epic directory, story directory, and story document paths
+- returns: returns normalized epic, story, story id, epic directory, story directory, and story document paths
 - verify: json_path(path="$.story_path", matches="/story\\.md$")
+- verify: json_path(path="$.story_id", equals="S-1")
 - emits: [story-author-target](../formats/story-author-target.md)
 - code: `workflows/src/workhorse_workflows/author/story_author/nodes/story.py::prepare_story` @4864c255c805

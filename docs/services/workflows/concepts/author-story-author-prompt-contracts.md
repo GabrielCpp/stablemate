@@ -121,7 +121,7 @@ repository.
 
 ### write-story.md
 
-The writing turn receives `epic`, `story_slug`, `story_path`, `story_dir`, `services_dir`, and the
+The writing turn receives `epic`, `story_slug`, `story_id`, `story_path`, `story_dir`, `services_dir`, and the
 optional `mockup_path`. It reads the parent epic, the story's covered seeds, the planning artifact
 grammar, and any operator context. It writes only the named story planning artifact with Context,
 Acceptance Criteria, Non-Functional Acceptance Criteria, Technical Notes, and the machine-owned
@@ -139,7 +139,7 @@ with a `target`, an `issue` and a `repair`, and the findings go to bounded rewor
 
 ### rework-story.md
 
-The rework turn receives `epic`, `story_slug`, `story_path`, `story_dir`, `services_dir`, optional
+The rework turn receives `epic`, `story_slug`, `story_id`, `story_path`, `story_dir`, `services_dir`, optional
 `mockup_path`, `validation_errors`, `operator_feedback`, `note`, `ledger` and earlier `prior_attempts` when the
 caller supplies them. It changes only the story-local planning artifacts named by the task and
 addresses every supplied validation or review finding without rewriting correct material. It leaves

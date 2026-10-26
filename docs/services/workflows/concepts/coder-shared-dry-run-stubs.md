@@ -78,6 +78,8 @@ Provides the synthetic story identity and paths needed to traverse the per-story
 - verify: json_path(path="$.story_slug", equals="dry-run-story")
 - returns: the epic identity `dry-run-epic`
 - verify: json_path(path="$.story_epic", equals="dry-run-epic")
+- returns: the story id `dry-run-story`, the same value as the story slug
+- verify: json_path(path="$.story_id", equals="dry-run-story")
 - returns: a story document path under `/dry-run/docs/epics/dry-run-epic/stories/dry-run-story`
 - verify: json_path(path="$.story_path", matches="/dry-run/docs/epics/dry-run-epic/stories/dry-run-story/story\\.md")
 - returns: a `spec_dir` beneath the synthetic story directory

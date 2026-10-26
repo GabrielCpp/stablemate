@@ -15,12 +15,12 @@ title: Local Python workspace
 - local-only: true
 - code: `pyproject.toml` @c6134826cf5f
 - code: `uv.lock` @0050e01b5233
-- code: `workflows/pyproject.toml` @bb2bae459ece
+- code: `workflows/pyproject.toml` @0e3de6776085
 
 This environment is the local execution context for the `workflows` distribution. The root
 `pyproject.toml` declares the uv workspace and its shared development tools; `uv.lock` fixes the
 resolved package versions; and `workflows/pyproject.toml` declares the workflow dependencies and
-the six `workhorse-*` console scripts: `workhorse-loop-runner`, `workhorse-research`, `workhorse-author`, `workhorse-coder`, `workhorse-okf-book` and `workhorse-new`. It does not boot an HTTP service or require a host/port.
+the seven `workhorse-*` console scripts: `workhorse-loop-runner`, `workhorse-research`, `workhorse-author`, `workhorse-coder`, `workhorse-okf-book`, `workhorse-review-debt` and `workhorse-new`. It does not boot an HTTP service or require a host/port.
 
 `make sync` must be run from the repository root with `uv sync --all-packages`, so every workspace
 member is installed into the shared environment. `make -C workflows test` runs the workflow package

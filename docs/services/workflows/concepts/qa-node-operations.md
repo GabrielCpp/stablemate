@@ -35,7 +35,7 @@ credential boundary.
 - required: true
 - semantics: closed mapping used to preserve whether stack teardown succeeded, failed, or was not declared
 - verify: count(subject="accepted QA teardown states", equals=3)
-- code: `workflows/src/workhorse_workflows/coder/qa/nodes/qa.py::TEARDOWN_STATES` @ed24680b5d25
+- code: `workflows/src/workhorse_workflows/coder/shared/stack.py::TEARDOWN_STATES` @deff3c42f55a
 
 ### SECRET_MINT_TIMEOUT_S
 - type: `float`
@@ -79,7 +79,7 @@ credential boundary.
 - verify: json_path(path="$.env", equals="{}")
 - returns: a `StackTarget` holding the book, the lease and the environment variables the stack selects
 - verify: json_path(path="$.lease", equals="story-user-login-run-1")
-- code: `workflows/src/workhorse_workflows/coder/qa/nodes/qa.py::stack_target` @ed24680b5d25
+- code: `workflows/src/workhorse_workflows/coder/shared/stack.py::stack_target` @deff3c42f55a
 
 ### ensure_stack
 - sig: `ensure_stack(logger: logging.Logger, repo_dir: str = "", near: str = "", lease: str = "") -> StackStatus`
@@ -101,7 +101,7 @@ credential boundary.
 - verify: count(subject="QA stack address book problems", equals=1)
 - returns: a `StackStatus` containing readiness, process identifiers, entry URL, failed step, the process groups it owns, application logs and repair notes
 - verify: json_path(path="$.notes", equals="Applied the change and ran the gates.")
-- code: `workflows/src/workhorse_workflows/coder/qa/nodes/qa.py::ensure_stack` @ed24680b5d25
+- code: `workflows/src/workhorse_workflows/coder/shared/stack.py::ensure_stack` @deff3c42f55a
 - tests: `workflows/tests/coder/qa/test_flow.py::test_an_empty_manifest_splits_on_whether_the_book_serves_anything`
 
 ### release_copy
@@ -112,7 +112,7 @@ credential boundary.
 - verify: json_path(path="$.torn_down", equals="skipped")
 - returns: a `StackTornDown` recording the teardown state and the lifecycle message
 - verify: json_path(path="$.notes", equals="The stack is shared, so it stays serving.")
-- code: `workflows/src/workhorse_workflows/coder/qa/nodes/qa.py::release_copy` @ed24680b5d25
+- code: `workflows/src/workhorse_workflows/coder/shared/stack.py::release_copy` @deff3c42f55a
 
 ### lint_qa_plan
 - sig: `lint_qa_plan(logger: logging.Logger, spec_dir: str = "", repo_dir: str = "") -> QaPlanValidation`
@@ -161,7 +161,7 @@ credential boundary.
 
 ### teardown_stack
 - sig: `teardown_stack(logger: logging.Logger, repo_dir: str = "") -> StackTornDown`
-- does: resolves the docs root and invokes the runbook stop recipe after the QA run reaches a terminal path
+- does: tears down this run's `stack.yml` copy bring-up when one was started, and falls back to the runbook's `stop:` recipe only when there was none
 - verify: count(subject="QA stack teardown attempts", equals=1)
 - does: maps the lifecycle outcome to `yes`, `no`, or `skipped` and never turns cleanup failure into a failed QA verdict
 - verify: json_path(path="$.torn_down", matches="^(yes|no|skipped)$")
@@ -186,7 +186,9 @@ credential boundary.
 - code: `workflows/src/workhorse_workflows/kit/qa/runner.py::_mint_qa_secrets` @0279aa05112f
 
 ### run_qa_plan
-- sig: `run_qa_plan(logger: logging.Logger, spec_dir: str = "", repo_dir: str = "", near: str = "", lease: str = "") -> QaPlanRun`
+- sig: `run_qa_plan(logger: logging.Logger, spec_dir: str = "", repo_dir: str = "", near: str = "", lease: str = "", only: list[str] | None = None) -> QaPlanRun`
+- does: scopes plan execution to the named checks in `only` when supplied, forwarding it through to Ostler's QA run, and runs the whole plan when `only` is `None`
+- verify: count(subject="scoped QA plan runs", equals=1)
 - does: resolves the docs root from the supplied documentation or repository path
 - verify: count(subject="resolved QA docs roots", equals=1)
 - does: resolves the QA plan path from the supplied specification directory
@@ -213,4 +215,4 @@ credential boundary.
 - verify: json_path(path="$.ostler.runId", equals="example runId")
 - returns: a blocked `QaPlanRun` with secret-refresh notes when minting fails before runner execution
 - verify: json_path(path="$.status", equals="blocked")
-- code: `workflows/src/workhorse_workflows/coder/qa/nodes/qa.py::run_qa_plan` @ed24680b5d25
+- code: `workflows/src/workhorse_workflows/coder/shared/stack.py::run_qa_plan` @deff3c42f55a

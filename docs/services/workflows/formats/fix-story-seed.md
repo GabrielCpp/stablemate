@@ -40,6 +40,14 @@ reused, so a resumed run seeds no second story.
 - verify: json_path(path="$.story_slug", equals="acme-story")
 - code: `workflows/src/workhorse_workflows/coder/shared/schemas/backlog.py::FixStorySeed.story_slug` @80910fc81473
 
+### story_id
+- type: string
+- default: empty string
+- required: false
+- semantics: graph id of the story created or reused for the item
+- verify: json_path(path="$.story_id", equals="S-1")
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/backlog.py::FixStorySeed.story_id` @80910fc81473
+
 ### story_dir
 - type: string
 - default: empty string

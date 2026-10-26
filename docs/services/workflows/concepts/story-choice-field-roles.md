@@ -11,6 +11,6 @@ property once with its own name and default, and declares no deprecation or pref
 them.
 
 - code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::StoryChoice` @c0c7fb10e846
-- rule: Read `has_story` to determine whether selection succeeded; use the path and slug fields
+- rule: Read `has_story` to determine whether selection succeeded; use the path, slug, and id fields
   to identify a selected story, and use `reason`, `progress`, and `remaining_count` to explain
   the selection state. No field supersedes another or has a source-defined ranking.

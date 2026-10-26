@@ -83,6 +83,22 @@ rejected. They last list the paths the story changed and did not commit, minus t
 dirty before the story began. With no failure the flow finishes. Otherwise the joined report goes
 back to the owner turn as another repair lap. After `MAX_LAPS` laps the flow raises a block.
 
+- code: `workflows/src/workhorse_workflows/coder/shared/owner.py::MAX_LAPS` @46bbdfd84d88
+
+Before the checks run again on a later lap, a self-check reruns the scenarios the last scored QA
+run did not pass against a leased stack copy, so a regression the owner turn introduced surfaces
+before QA spends a turn on it.
+
+- code: `workflows/src/workhorse_workflows/coder/shared/failed.py::last_failed_scenarios` @0c28ea7dc660
+
+The checks also walk the story's acceptance criteria against the plan's own `## Acceptance Walk`
+section, naming any criterion the plan's walk does not cover; a follow-up, which carries no
+acceptance criteria of its own, skips this check.
+
+- code: `workflows/src/workhorse_workflows/coder/shared/walk.py::acceptance_walk` @dfa24ea633f6
+- code: `workflows/src/workhorse_workflows/coder/shared/walk.py::criteria_count` @dfa24ea633f6
+- code: `workflows/src/workhorse_workflows/coder/shared/walk.py::walked` @dfa24ea633f6
+
 ### operator-block
 
 - kind: run

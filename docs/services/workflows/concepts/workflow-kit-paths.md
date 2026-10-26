@@ -7,8 +7,10 @@ title: Workflow kit paths
 
 This module resolves the consuming repository and the documentation repository from explicit
 workflow inputs. An explicit `repo_dir` is authoritative; when it is empty, repository discovery
-starts at the resolved current working directory and walks toward the filesystem root. No
-environment variable is consulted, so the result is visible to and checkpointable by callers.
+starts at the resolved current working directory and walks toward the filesystem root. Repository
+discovery itself consults no environment variable, so that result is visible to and checkpointable
+by callers. The documentation root is the exception: it defers to the `STABLEMATE_WORKSPACE`
+environment variable through the active workspace's configured docs home.
 
 - code: `workflows/src/workhorse_workflows/kit/paths.py` @34f070621a86
 
@@ -33,11 +35,12 @@ contains `agents.yml` or `.git`.
 
 ### find_docs_root
 
-The documentation-root resolver returns the artifacts dir while a workspace is active. Without
-one it resolves the repository root from `repo_dir`.
+The documentation-root resolver returns the artifacts dir while a workspace is active, which it
+detects by reading the `STABLEMATE_WORKSPACE` environment variable. Without one it resolves the
+repository root from `repo_dir`.
 
 - sig: `find_docs_root(repo_dir: str | Path = "") -> Path`
-- does: when a workspace is active, returns the artifacts dir
+- does: when the `STABLEMATE_WORKSPACE` environment variable names an active workspace, returns that workspace's configured docs home
 - verify: count(subject="workspace documentation root resolution result", equals=1)
 - does: otherwise returns the repository root resolved from `repo_dir` or the current working directory discovery rules
 - verify: count(subject="default documentation root resolution result", equals=1)
