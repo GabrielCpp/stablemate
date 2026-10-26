@@ -31,6 +31,7 @@ from workhorse._vendor.stablemate_core.skill_refs import (
 from workhorse.manifest import ManifestContext
 
 NODE_ADD_DIRS = "_node_add_dirs"
+NODE_CONFINED = "_node_confined"
 
 _undefined_logger = logging.getLogger("workhorse.templates")
 if not _undefined_logger.handlers:
@@ -56,10 +57,18 @@ def agent_cli() -> str:
     return (os.environ.get("AGENT_CLI") or resolve_default_cli()).strip().lower()
 
 
-def turn_catalog(cwd: Path, add_dirs: Iterable[Path] = ()) -> SkillCatalog:
-    """The skills the default harness loads for a turn started in `cwd` with `add_dirs`."""
+def turn_catalog(
+    cwd: Path, add_dirs: Iterable[Path] = (), *, confined: bool = False
+) -> SkillCatalog:
+    """The skills the default harness loads for a turn started in `cwd` with `add_dirs`, none from home for a confined claude turn."""
+    harness = agent_cli()
     return scan_catalog(
-        agent_cli(), cwd, home=Path.home(), added_dirs=add_dirs, root=repo_root(cwd)
+        harness,
+        cwd,
+        home=Path.home(),
+        added_dirs=add_dirs,
+        root=repo_root(cwd),
+        include_home=not (confined and harness == "claude"),
     )
 
 
@@ -67,7 +76,9 @@ def skill_refs(context: dict[str, Any], *, quiet: bool = False) -> SkillRefs:
     """The skill reference helpers for one turn, bound to what its harness loads from where it starts."""
     start = context.get("_node_cwd") or ManifestContext.from_context(context).repo_root
     cwd = Path(start or os.getcwd()).resolve()
-    catalog = turn_catalog(cwd, _node_add_dirs(context, cwd))
+    catalog = turn_catalog(
+        cwd, _node_add_dirs(context, cwd), confined=bool(context.get(NODE_CONFINED))
+    )
 
     def placeholder(name: str) -> str:
         return f"generated {name} skill when installed"

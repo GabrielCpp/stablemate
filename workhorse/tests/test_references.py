@@ -254,6 +254,27 @@ def test_a_turn_sees_the_skills_of_its_added_dirs(workspace: Path, tmp_path: Pat
     assert render_string("{{ has_skill('style') }}", {"_node_cwd": str(workspace)}) == "False"
 
 
+def test_a_confined_claude_turn_does_not_find_a_skill_only_home_holds(workspace: Path) -> None:
+    ctx = {"_node_cwd": str(workspace), "_node_confined": True}
+    assert render_string("{{ has_skill('deploy') }}", ctx) == "False"
+    assert render_string("{{ has_skill('review') }}", ctx) == "True"
+    with pytest.raises(MissingSkill):
+        render_string("{{ skill_command('deploy') }}", ctx)
+    assert render_string("{{ skill_command('deploy') }}", ctx, quiet=True) == "generated deploy skill when installed"
+
+
+def test_a_turn_that_is_not_confined_finds_a_home_skill(workspace: Path) -> None:
+    assert render_string("{{ has_skill('deploy') }}", {"_node_cwd": str(workspace), "_node_confined": False}) == "True"
+
+
+def test_a_confined_turn_finds_a_skill_of_its_added_dir(workspace: Path, tmp_path: Path) -> None:
+    added = tmp_path / "product"
+    (added / ".claude/skills/style").mkdir(parents=True)
+    (added / ".claude/skills/style/SKILL.md").write_text("---\nname: style\n---\n", encoding="utf-8")
+    ctx = {"_node_cwd": str(workspace), "_node_add_dirs": [str(added)], "_node_confined": True}
+    assert render_string("{{ skill_command('style') }}", ctx) == "/style"
+
+
 def test_a_named_miss_stops_the_render(workspace: Path) -> None:
     with pytest.raises(MissingSkill):
         render_string("{{ skill_command('absent') }}", {"_node_cwd": str(workspace)})

@@ -135,6 +135,15 @@ def test_a_hand_written_skill_answers_to_its_own_name_and_tags(tmp_path: Path) -
     assert catalog.get("notes") == SkillEntry("notes", "notes", path, ("docs", "planning"))
 
 
+def test_home_folders_are_left_out_on_request(tmp_path: Path) -> None:
+    home = tmp_path / "home"
+    _skill(home / ".claude/skills", "notes", "name: notes")
+    work = tmp_path / "work"
+
+    assert scan_catalog("claude", work, home=home).get("notes") is not None
+    assert scan_catalog("claude", work, home=home, include_home=False).get("notes") is None
+
+
 def test_the_cwd_wins_over_the_repo_root_and_the_root_over_home(tmp_path: Path) -> None:
     repo = tmp_path / "acme"
     (repo / ".git").mkdir(parents=True)

@@ -335,8 +335,9 @@ def scan_catalog(
     home: Path,
     added_dirs: Iterable[Path] = (),
     root: Path | None = None,
+    include_home: bool = True,
 ) -> SkillCatalog:
-    """What *harness* loads when started in *cwd*: the cwd up to the repo root, the added dirs, then home."""
+    """What *harness* loads when started in *cwd*: the cwd up to the repo root, the added dirs, then home unless *include_home* is false."""
     folders = harness_folders(harness)
     top = root if root is not None else repo_root(cwd)
     walk = [cwd, *(parent for parent in cwd.parents if parent.is_relative_to(top))]
@@ -352,8 +353,9 @@ def scan_catalog(
         for added in added_dirs:
             for rel in folders.skills:
                 entries += _skills_in(added / rel)
-    for rel in folders.home_skills:
-        entries += _skills_in(home / rel)
-    for rel in folders.home_prompts:
-        entries += _prompts_in(home / rel)
+    if include_home:
+        for rel in folders.home_skills:
+            entries += _skills_in(home / rel)
+        for rel in folders.home_prompts:
+            entries += _prompts_in(home / rel)
     return SkillCatalog.of(entries)
