@@ -7,10 +7,9 @@ from pathlib import Path
 import pytest
 
 from ostler.environments import runtime
-from ostler.environments.render import SHARED
 from ostler.qa import addresses
 from workhorse_workflows.okf_book.shared import book_run
-from workhorse_workflows.okf_book.shared.book_run import StackReadiness, copy_env, run_plan
+from workhorse_workflows.okf_book.shared.book_run import StackReadiness, book_lease, copy_env, run_plan
 from workhorse_workflows.okf_book.shared.scenarios import RunSummary, Scenario, ScenarioOutcome
 
 
@@ -22,20 +21,22 @@ def env_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     return home
 
 
-def test_a_book_with_a_stack_file_runs_against_the_shared_copys_address_book(tmp_path: Path) -> None:
+def test_a_book_with_a_stack_file_runs_against_its_own_copys_address_book(tmp_path: Path) -> None:
     root = tmp_path / "acme"
     stack = root / "docs" / "services" / "web" / "ops" / "stack.yml"
     stack.parent.mkdir(parents=True)
     _ = stack.write_text("services: {}\n", encoding="utf-8")
 
-    book = runtime.copy_for(root).directory / runtime.ADDRESSES
+    book = runtime.copy_for(root, "okf-web").directory / runtime.ADDRESSES
 
-    assert copy_env(root, "web") == {addresses.LEASE_ENV: SHARED, addresses.BOOK_ENV: str(book)}
+    assert book_lease(root, "web") == "okf-web"
+    assert copy_env(root, "web") == {addresses.LEASE_ENV: "okf-web", runtime.HOLDER_ENV: str(os.getpid()), addresses.BOOK_ENV: str(book)}
 
 
 def test_a_book_no_stack_file_covers_adds_nothing_to_the_environment(tmp_path: Path) -> None:
     (tmp_path / "docs" / "services" / "web").mkdir(parents=True)
 
+    assert book_lease(tmp_path, "web") == ""
     assert copy_env(tmp_path, "web") == {}
 
 

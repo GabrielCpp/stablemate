@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import re
 import shutil
 import tempfile
@@ -19,7 +20,7 @@ from workhorse.reload import ReloadRequested, cut_requested
 from workhorse.runner.redact import REDACTED, SecretRedactor
 from workhorse_workflows.kit import find_docs_root
 from workhorse_workflows.kit.credentials import scoped_envs
-from workhorse_workflows.kit.qa.runner import ensure_stack, release_stack, stack_stopped
+from workhorse_workflows.kit.qa.runner import copy_lease, ensure_stack, release_stack, stack_stopped
 from workhorse_workflows.okf_book.shared.entries import book_dir
 from workhorse_workflows.okf_book.shared.local_calls import CallWatch, Runbook, read_runbook
 from workhorse_workflows.okf_book.shared.book_compilation import declares_unexercised, gap_page
@@ -214,14 +215,19 @@ def with_unstarted(result: ExerciseResult, unstarted: Sequence[str]) -> Exercise
                                      "passed": False, "unstarted": tuple(unstarted)})
 
 
+def book_lease(root: Path, service: str) -> str:
+    """The copy of the stack the service's book brings up: its own, so its ports never collide with a stack already serving on this machine, or none when no `stack.yml` covers its book."""
+    return copy_lease("okf", service) if leases.books_near(root, book_dir(root, service)) else ""
+
+
 def copy_env(root: Path, service: str) -> dict[str, str]:
-    """The environment the service's scenarios need to find the shared stack copy's addresses, or none when no `stack.yml` covers its book."""
-    return leases.run_env(root, near=book_dir(root, service)) or {}
+    """The environment the service's scenarios need to find the book's stack copy's addresses, or none when no `stack.yml` covers its book."""
+    return leases.run_env(root, book_lease(root, service), near=book_dir(root, service), holder=os.getpid()) or {}
 
 
 def bring_up(logger: logging.Logger, root: Path, service: str) -> StackReadiness:
     """Bring up the stack the service's book declares, or adopt one serving."""
-    stack = ensure_stack(logger, repo_dir=str(root), near=str(book_dir(root, service)))
+    stack = ensure_stack(logger, repo_dir=str(root), near=str(book_dir(root, service)), lease=book_lease(root, service))
     return StackReadiness(
         up=stack.ready not in ("no", "none"), serving=stack.ready == "yes", notes=stack.notes,
         owned=stack.owned_pgids, app_logs=stack.app_logs, runbooks=book_runbooks(root, service), env=copy_env(root, service))
