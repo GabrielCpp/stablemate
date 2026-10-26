@@ -1,5 +1,17 @@
 # Changelog
 
+## [4.0.1](https://github.com/GabrielCpp/stablemate/compare/workhorse-workflows-v4.0.0...workhorse-workflows-v4.0.1) (2026-10-26)
+
+
+### Bug Fixes
+
+* **workflows:** allow ostler 5.x ([358a83c](https://github.com/GabrielCpp/stablemate/commit/358a83c65d311fdd0d2ca8554af1095f4f367940))
+
+
+### Reverts
+
+* **workflows:** pin ostler 4.x again ([56d7e18](https://github.com/GabrielCpp/stablemate/commit/56d7e186a7bf3816e970138a5de3df3b39929ad2))
+
 ## [4.0.0](https://github.com/GabrielCpp/stablemate/compare/workhorse-workflows-v3.0.0...workhorse-workflows-v4.0.0) (2026-10-26)
 
 
