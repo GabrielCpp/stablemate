@@ -83,17 +83,17 @@ and compile backend is checked against.
 - code: ostler/ostler/behavior_memo.py::claim_digest@e8aa0356d04e
 - code: ostler/ostler/behavior_memo.py::salvage_verdicts@e8aa0356d04e
 - code: ostler/ostler/behavior_memo.py::merge_verdicts@e8aa0356d04e
-- code: ostler/ostler/checks.py::CheckSpec@d5883c9e9bfd
-- code: ostler/ostler/checks.py::CheckParam@d5883c9e9bfd
-- code: ostler/ostler/checks.py::parse_check@d5883c9e9bfd
-- code: ostler/ostler/checks.py::bind@d5883c9e9bfd
-- code: ostler/ostler/checks.py::describe@d5883c9e9bfd
-- code: ostler/ostler/checks.py::Refusal@d5883c9e9bfd
-- code: ostler/ostler/checks.py::is_check_expression@d5883c9e9bfd
+- code: ostler/ostler/checks.py::CheckSpec@ee2bf66bf573
+- code: ostler/ostler/checks.py::CheckParam@ee2bf66bf573
+- code: ostler/ostler/checks.py::parse_check@ee2bf66bf573
+- code: ostler/ostler/checks.py::bind@ee2bf66bf573
+- code: ostler/ostler/checks.py::describe@ee2bf66bf573
+- code: ostler/ostler/checks.py::Refusal@ee2bf66bf573
+- code: ostler/ostler/checks.py::is_check_expression@ee2bf66bf573
 - code: ostler/ostler/shared_checks.py::check_shared_checks@c96e41ffd13b
 - code: ostler/ostler/stack_checks.py::check_stack@2f4549d63d1b
 - code: ostler/ostler/outcome_rules.py::check_outcomes@408c771787b5
-- code: ostler/ostler/drivers.py::DRIVERS@ae00aa05879c
+- code: ostler/ostler/drivers.py::DRIVERS@cc0927c9bd8e
 - detail: [ostler](../cli.md)
 
 ## Contract

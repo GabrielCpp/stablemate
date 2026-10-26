@@ -38,7 +38,7 @@ on an entity of its own, so the order the claims run in does not change an outco
 - code: ostler/ostler/markdown.py::extract_refs@115245786c4b
 - code: ostler/ostler/model.py::doc_roots@7651c0781a8f
 - code: ostler/ostler/pages.py::files_in_book@e9f96e7b3156
-- code: ostler/ostler/registry.py::base_type@cd37e79abc8c
+- code: ostler/ostler/registry.py::base_type@bfa3450ef60d
 - detail: [Planning identities](concepts/planning-identities.md)
 
 ### ostler-create-story
@@ -59,7 +59,7 @@ on an entity of its own, so the order the claims run in does not change an outco
 - code: ostler/ostler/markdown.py::extract_refs@115245786c4b
 - code: ostler/ostler/model.py::doc_roots@7651c0781a8f
 - code: ostler/ostler/pages.py::files_in_book@e9f96e7b3156
-- code: ostler/ostler/registry.py::base_type@cd37e79abc8c
+- code: ostler/ostler/registry.py::base_type@bfa3450ef60d
 
 ### ostler-create-feature
 - usage: ostler create feature SLUG --title TITLE [--json]: writes a feature page with an allocated
@@ -78,7 +78,7 @@ on an entity of its own, so the order the claims run in does not change an outco
 - code: ostler/ostler/markdown.py::extract_refs@115245786c4b
 - code: ostler/ostler/model.py::doc_roots@7651c0781a8f
 - code: ostler/ostler/pages.py::files_in_book@e9f96e7b3156
-- code: ostler/ostler/registry.py::base_type@cd37e79abc8c
+- code: ostler/ostler/registry.py::base_type@bfa3450ef60d
 
 ### ostler-create-milestone
 - usage: ostler create milestone NAME --title TITLE [--json]: writes a milestone folder holding a `milestone.md`
@@ -97,7 +97,7 @@ on an entity of its own, so the order the claims run in does not change an outco
 - code: ostler/ostler/markdown.py::extract_refs@115245786c4b
 - code: ostler/ostler/model.py::doc_roots@7651c0781a8f
 - code: ostler/ostler/pages.py::files_in_book@e9f96e7b3156
-- code: ostler/ostler/registry.py::base_type@cd37e79abc8c
+- code: ostler/ostler/registry.py::base_type@bfa3450ef60d
 
 ### ostler-next-epic
 - usage: ostler next-epic [--json]: names the first epic in the queue that still has unfinished work
@@ -115,7 +115,7 @@ on an entity of its own, so the order the claims run in does not change an outco
 - code: ostler/ostler/markdown.py::extract_refs@115245786c4b
 - code: ostler/ostler/model.py::doc_roots@7651c0781a8f
 - code: ostler/ostler/pages.py::files_in_book@e9f96e7b3156
-- code: ostler/ostler/registry.py::base_type@cd37e79abc8c
+- code: ostler/ostler/registry.py::base_type@bfa3450ef60d
 - code: ostler/ostler/select.py::epic_by_name@95d1a37a3be0
 
 ### ostler-next-story
@@ -136,7 +136,7 @@ on an entity of its own, so the order the claims run in does not change an outco
 - code: ostler/ostler/markdown.py::extract_refs@115245786c4b
 - code: ostler/ostler/model.py::doc_roots@7651c0781a8f
 - code: ostler/ostler/pages.py::files_in_book@e9f96e7b3156
-- code: ostler/ostler/registry.py::base_type@cd37e79abc8c
+- code: ostler/ostler/registry.py::base_type@bfa3450ef60d
 - code: ostler/ostler/select.py::epic_by_name@95d1a37a3be0
 
 ### ostler-set-status
@@ -157,7 +157,7 @@ on an entity of its own, so the order the claims run in does not change an outco
 - code: ostler/ostler/markdown.py::extract_refs@115245786c4b
 - code: ostler/ostler/model.py::doc_roots@7651c0781a8f
 - code: ostler/ostler/pages.py::files_in_book@e9f96e7b3156
-- code: ostler/ostler/registry.py::base_type@cd37e79abc8c
+- code: ostler/ostler/registry.py::base_type@bfa3450ef60d
 
 ### ostler-conflict
 - usage: ostler conflict STORY TEXT: records a conflict note on a story that a human must settle
@@ -174,7 +174,7 @@ on an entity of its own, so the order the claims run in does not change an outco
 - code: ostler/ostler/markdown.py::extract_refs@115245786c4b
 - code: ostler/ostler/model.py::doc_roots@7651c0781a8f
 - code: ostler/ostler/pages.py::files_in_book@e9f96e7b3156
-- code: ostler/ostler/registry.py::base_type@cd37e79abc8c
+- code: ostler/ostler/registry.py::base_type@bfa3450ef60d
 
 ### ostler-conflict-clear
 - usage: ostler conflict STORY --clear: removes the conflict note from a story
@@ -193,7 +193,7 @@ on an entity of its own, so the order the claims run in does not change an outco
 - code: ostler/ostler/markdown.py::extract_refs@115245786c4b
 - code: ostler/ostler/model.py::doc_roots@7651c0781a8f
 - code: ostler/ostler/pages.py::files_in_book@e9f96e7b3156
-- code: ostler/ostler/registry.py::base_type@cd37e79abc8c
+- code: ostler/ostler/registry.py::base_type@bfa3450ef60d
 
 ### ostler-unblock
 - usage: ostler unblock [--story STORY | --epic EPIC] [--json]: clears the give-up stamp off a
@@ -213,7 +213,7 @@ on an entity of its own, so the order the claims run in does not change an outco
 - code: ostler/ostler/markdown.py::extract_refs@115245786c4b
 - code: ostler/ostler/model.py::doc_roots@7651c0781a8f
 - code: ostler/ostler/pages.py::files_in_book@e9f96e7b3156
-- code: ostler/ostler/registry.py::base_type@cd37e79abc8c
+- code: ostler/ostler/registry.py::base_type@bfa3450ef60d
 - code: ostler/ostler/select.py::is_blocked@95d1a37a3be0
 
 ### ostler-freeze
@@ -236,7 +236,7 @@ on an entity of its own, so the order the claims run in does not change an outco
 - code: ostler/ostler/markdown.py::extract_refs@115245786c4b
 - code: ostler/ostler/model.py::doc_roots@7651c0781a8f
 - code: ostler/ostler/pages.py::files_in_book@e9f96e7b3156
-- code: ostler/ostler/registry.py::base_type@cd37e79abc8c
+- code: ostler/ostler/registry.py::base_type@bfa3450ef60d
 
 ### ostler-unfreeze
 - usage: ostler unfreeze STORY: removes the story's frozen record from `.agents/ids.json`
@@ -253,7 +253,7 @@ on an entity of its own, so the order the claims run in does not change an outco
 - code: ostler/ostler/markdown.py::extract_refs@115245786c4b
 - code: ostler/ostler/model.py::doc_roots@7651c0781a8f
 - code: ostler/ostler/pages.py::files_in_book@e9f96e7b3156
-- code: ostler/ostler/registry.py::base_type@cd37e79abc8c
+- code: ostler/ostler/registry.py::base_type@bfa3450ef60d
 
 ### ostler-path-epic
 - usage: ostler path epic EPIC: prints the epic directory, relative to the repo root
@@ -269,7 +269,7 @@ on an entity of its own, so the order the claims run in does not change an outco
 - code: ostler/ostler/markdown.py::extract_refs@115245786c4b
 - code: ostler/ostler/model.py::doc_roots@7651c0781a8f
 - code: ostler/ostler/pages.py::files_in_book@e9f96e7b3156
-- code: ostler/ostler/registry.py::base_type@cd37e79abc8c
+- code: ostler/ostler/registry.py::base_type@bfa3450ef60d
 
 ### ostler-path-story
 - usage: ostler path story EPIC STORY: prints the path of a story's page
@@ -285,7 +285,7 @@ on an entity of its own, so the order the claims run in does not change an outco
 - code: ostler/ostler/markdown.py::extract_refs@115245786c4b
 - code: ostler/ostler/model.py::doc_roots@7651c0781a8f
 - code: ostler/ostler/pages.py::files_in_book@e9f96e7b3156
-- code: ostler/ostler/registry.py::base_type@cd37e79abc8c
+- code: ostler/ostler/registry.py::base_type@bfa3450ef60d
 
 ### ostler-path-branch
 - usage: ostler path branch STORY: prints the git branch name a story's work goes on
@@ -301,7 +301,7 @@ on an entity of its own, so the order the claims run in does not change an outco
 - code: ostler/ostler/markdown.py::extract_refs@115245786c4b
 - code: ostler/ostler/model.py::doc_roots@7651c0781a8f
 - code: ostler/ostler/pages.py::files_in_book@e9f96e7b3156
-- code: ostler/ostler/registry.py::base_type@cd37e79abc8c
+- code: ostler/ostler/registry.py::base_type@bfa3450ef60d
 
 ### ostler-todo-add
 - usage: ostler todo add EPIC: appends an epic to the ordered work queue in `docs/epics/index.md`
@@ -317,7 +317,7 @@ on an entity of its own, so the order the claims run in does not change an outco
 - code: ostler/ostler/markdown.py::extract_refs@115245786c4b
 - code: ostler/ostler/model.py::doc_roots@7651c0781a8f
 - code: ostler/ostler/pages.py::files_in_book@e9f96e7b3156
-- code: ostler/ostler/registry.py::base_type@cd37e79abc8c
+- code: ostler/ostler/registry.py::base_type@bfa3450ef60d
 - code: ostler/ostler/todo.py::add@eb0ea0bc4039
 
 ### ostler-todo-list
@@ -334,7 +334,7 @@ on an entity of its own, so the order the claims run in does not change an outco
 - code: ostler/ostler/markdown.py::extract_refs@115245786c4b
 - code: ostler/ostler/model.py::doc_roots@7651c0781a8f
 - code: ostler/ostler/pages.py::files_in_book@e9f96e7b3156
-- code: ostler/ostler/registry.py::base_type@cd37e79abc8c
+- code: ostler/ostler/registry.py::base_type@bfa3450ef60d
 - code: ostler/ostler/todo.py::list_epics@eb0ea0bc4039
 
 ### ostler-todo-prune
@@ -351,7 +351,7 @@ on an entity of its own, so the order the claims run in does not change an outco
 - code: ostler/ostler/markdown.py::extract_refs@115245786c4b
 - code: ostler/ostler/model.py::doc_roots@7651c0781a8f
 - code: ostler/ostler/pages.py::files_in_book@e9f96e7b3156
-- code: ostler/ostler/registry.py::base_type@cd37e79abc8c
+- code: ostler/ostler/registry.py::base_type@bfa3450ef60d
 - code: ostler/ostler/todo.py::list_epics@eb0ea0bc4039
 
 ### ostler-todo-reorder
@@ -368,7 +368,7 @@ on an entity of its own, so the order the claims run in does not change an outco
 - code: ostler/ostler/markdown.py::extract_refs@115245786c4b
 - code: ostler/ostler/model.py::doc_roots@7651c0781a8f
 - code: ostler/ostler/pages.py::files_in_book@e9f96e7b3156
-- code: ostler/ostler/registry.py::base_type@cd37e79abc8c
+- code: ostler/ostler/registry.py::base_type@bfa3450ef60d
 - code: ostler/ostler/todo.py::list_epics@eb0ea0bc4039
 
 ### ostler-backlog-add
@@ -395,7 +395,7 @@ on an entity of its own, so the order the claims run in does not change an outco
 - code: ostler/ostler/markdown.py::extract_refs@115245786c4b
 - code: ostler/ostler/model.py::doc_roots@7651c0781a8f
 - code: ostler/ostler/pages.py::files_in_book@e9f96e7b3156
-- code: ostler/ostler/registry.py::base_type@cd37e79abc8c
+- code: ostler/ostler/registry.py::base_type@bfa3450ef60d
 
 ### ostler-backlog-list
 - usage: ostler backlog list [--repo REPO] [--status STATUS] [--json]: prints every record on the register, closed ones included, as one tab-separated line of id, repo, area, status, pattern and summary, sorted by repo, area and id; a `record.md` that does not parse is left out of the listing and named by `ostler doctor` instead
@@ -415,7 +415,7 @@ on an entity of its own, so the order the claims run in does not change an outco
 - code: ostler/ostler/markdown.py::extract_refs@115245786c4b
 - code: ostler/ostler/model.py::doc_roots@7651c0781a8f
 - code: ostler/ostler/pages.py::files_in_book@e9f96e7b3156
-- code: ostler/ostler/registry.py::base_type@cd37e79abc8c
+- code: ostler/ostler/registry.py::base_type@bfa3450ef60d
 
 ### ostler-backlog-adopt
 - usage: ostler backlog adopt --repo REPO FILE [--prefix PREFIX] [--json]: turns every top-level bullet of an old backlog list into a record of REPO by the import rules of [the debt register](concepts/the-debt-register.md#importing-an-old-list), commits them together in the artifacts repo as `chore(REPO): import the backlog list`, then deletes FILE; it prints one listing line per record, then `imported N records, kept K ids`
@@ -436,7 +436,7 @@ on an entity of its own, so the order the claims run in does not change an outco
 - code: ostler/ostler/markdown.py::extract_refs@115245786c4b
 - code: ostler/ostler/model.py::doc_roots@7651c0781a8f
 - code: ostler/ostler/pages.py::files_in_book@e9f96e7b3156
-- code: ostler/ostler/registry.py::base_type@cd37e79abc8c
+- code: ostler/ostler/registry.py::base_type@bfa3450ef60d
 
 ### ostler-backlog-prune
 - usage: ostler backlog prune ID [--as done|dropped|promoted] [--reason TEXT] [--json]: closes a record on the [debt register](concepts/the-debt-register.md#closing-a-record) and commits the close in the artifacts repo as `chore(REPO): close ID as STATUS`
@@ -457,7 +457,7 @@ on an entity of its own, so the order the claims run in does not change an outco
 - code: ostler/ostler/markdown.py::extract_refs@115245786c4b
 - code: ostler/ostler/model.py::doc_roots@7651c0781a8f
 - code: ostler/ostler/pages.py::files_in_book@e9f96e7b3156
-- code: ostler/ostler/registry.py::base_type@cd37e79abc8c
+- code: ostler/ostler/registry.py::base_type@bfa3450ef60d
 
 ### ostler-milestone-set-source-items
 - usage: ostler milestone set-source-items MILESTONE ITEM [ITEM ...]: records which [debt register](concepts/the-debt-register.md)
@@ -475,7 +475,7 @@ on an entity of its own, so the order the claims run in does not change an outco
 - code: ostler/ostler/markdown.py::extract_refs@115245786c4b
 - code: ostler/ostler/model.py::doc_roots@7651c0781a8f
 - code: ostler/ostler/pages.py::files_in_book@e9f96e7b3156
-- code: ostler/ostler/registry.py::base_type@cd37e79abc8c
+- code: ostler/ostler/registry.py::base_type@bfa3450ef60d
 
 ### ostler-seed-add
 - usage: ostler seed add EPIC ID [--summary TEXT] [--status STATUS] [--layer LAYER] [--service
@@ -497,7 +497,7 @@ on an entity of its own, so the order the claims run in does not change an outco
 - code: ostler/ostler/markdown.py::extract_refs@115245786c4b
 - code: ostler/ostler/model.py::doc_roots@7651c0781a8f
 - code: ostler/ostler/pages.py::files_in_book@e9f96e7b3156
-- code: ostler/ostler/registry.py::base_type@cd37e79abc8c
+- code: ostler/ostler/registry.py::base_type@bfa3450ef60d
 
 ### ostler-seed-remove
 - usage: ostler seed remove EPIC ID: removes a seed section from an epic page
@@ -514,7 +514,7 @@ on an entity of its own, so the order the claims run in does not change an outco
 - code: ostler/ostler/markdown.py::extract_refs@115245786c4b
 - code: ostler/ostler/model.py::doc_roots@7651c0781a8f
 - code: ostler/ostler/pages.py::files_in_book@e9f96e7b3156
-- code: ostler/ostler/registry.py::base_type@cd37e79abc8c
+- code: ostler/ostler/registry.py::base_type@bfa3450ef60d
 
 ### ostler-update-story
 - usage: ostler update story SLUG --title TITLE --covers COVERS --depends DEPENDS: replaces a
@@ -535,7 +535,7 @@ on an entity of its own, so the order the claims run in does not change an outco
 - code: ostler/ostler/markdown.py::extract_refs@115245786c4b
 - code: ostler/ostler/model.py::doc_roots@7651c0781a8f
 - code: ostler/ostler/pages.py::files_in_book@e9f96e7b3156
-- code: ostler/ostler/registry.py::base_type@cd37e79abc8c
+- code: ostler/ostler/registry.py::base_type@bfa3450ef60d
 
 ### ostler-delete-epic
 - usage: ostler delete epic EPIC: removes an epic directory and its entry in the epics index
@@ -553,7 +553,7 @@ on an entity of its own, so the order the claims run in does not change an outco
 - code: ostler/ostler/markdown.py::extract_refs@115245786c4b
 - code: ostler/ostler/model.py::doc_roots@7651c0781a8f
 - code: ostler/ostler/pages.py::files_in_book@e9f96e7b3156
-- code: ostler/ostler/registry.py::base_type@cd37e79abc8c
+- code: ostler/ostler/registry.py::base_type@bfa3450ef60d
 - code: ostler/ostler/todo.py::list_epics@eb0ea0bc4039
 
 ### ostler-delete-story
@@ -571,7 +571,7 @@ on an entity of its own, so the order the claims run in does not change an outco
 - code: ostler/ostler/markdown.py::extract_refs@115245786c4b
 - code: ostler/ostler/model.py::doc_roots@7651c0781a8f
 - code: ostler/ostler/pages.py::files_in_book@e9f96e7b3156
-- code: ostler/ostler/registry.py::base_type@cd37e79abc8c
+- code: ostler/ostler/registry.py::base_type@bfa3450ef60d
 
 ### ostler-delete-feature
 - usage: ostler delete feature SLUG: removes a feature page
@@ -588,7 +588,7 @@ on an entity of its own, so the order the claims run in does not change an outco
 - code: ostler/ostler/markdown.py::extract_refs@115245786c4b
 - code: ostler/ostler/model.py::doc_roots@7651c0781a8f
 - code: ostler/ostler/pages.py::files_in_book@e9f96e7b3156
-- code: ostler/ostler/registry.py::base_type@cd37e79abc8c
+- code: ostler/ostler/registry.py::base_type@bfa3450ef60d
 
 ### ostler-template-new
 - usage: ostler template new NAME [KIND ...]: declares a template in `.agents/templates.yml`, with a
@@ -605,7 +605,7 @@ on an entity of its own, so the order the claims run in does not change an outco
 - code: ostler/ostler/markdown.py::extract_refs@115245786c4b
 - code: ostler/ostler/model.py::doc_roots@7651c0781a8f
 - code: ostler/ostler/pages.py::files_in_book@e9f96e7b3156
-- code: ostler/ostler/registry.py::base_type@cd37e79abc8c
+- code: ostler/ostler/registry.py::base_type@bfa3450ef60d
 - code: ostler/ostler/templates.py::new@401b5b3edc08
 
 ### ostler-template-edit
@@ -624,7 +624,7 @@ on an entity of its own, so the order the claims run in does not change an outco
 - code: ostler/ostler/markdown.py::extract_refs@115245786c4b
 - code: ostler/ostler/model.py::doc_roots@7651c0781a8f
 - code: ostler/ostler/pages.py::files_in_book@e9f96e7b3156
-- code: ostler/ostler/registry.py::base_type@cd37e79abc8c
+- code: ostler/ostler/registry.py::base_type@bfa3450ef60d
 - code: ostler/ostler/templates.py::edit@401b5b3edc08
 
 ### ostler-template-find
@@ -642,7 +642,7 @@ on an entity of its own, so the order the claims run in does not change an outco
 - code: ostler/ostler/markdown.py::extract_refs@115245786c4b
 - code: ostler/ostler/model.py::doc_roots@7651c0781a8f
 - code: ostler/ostler/pages.py::files_in_book@e9f96e7b3156
-- code: ostler/ostler/registry.py::base_type@cd37e79abc8c
+- code: ostler/ostler/registry.py::base_type@bfa3450ef60d
 - code: ostler/ostler/templates.py::find@401b5b3edc08
 
 ### ostler-template-find-one
@@ -661,7 +661,7 @@ on an entity of its own, so the order the claims run in does not change an outco
 - code: ostler/ostler/markdown.py::extract_refs@115245786c4b
 - code: ostler/ostler/model.py::doc_roots@7651c0781a8f
 - code: ostler/ostler/pages.py::files_in_book@e9f96e7b3156
-- code: ostler/ostler/registry.py::base_type@cd37e79abc8c
+- code: ostler/ostler/registry.py::base_type@bfa3450ef60d
 - code: ostler/ostler/templates.py::find@401b5b3edc08
 
 ### ostler-template-delete
@@ -678,7 +678,7 @@ on an entity of its own, so the order the claims run in does not change an outco
 - code: ostler/ostler/markdown.py::extract_refs@115245786c4b
 - code: ostler/ostler/model.py::doc_roots@7651c0781a8f
 - code: ostler/ostler/pages.py::files_in_book@e9f96e7b3156
-- code: ostler/ostler/registry.py::base_type@cd37e79abc8c
+- code: ostler/ostler/registry.py::base_type@bfa3450ef60d
 - code: ostler/ostler/templates.py::delete@401b5b3edc08
 
 ### ostler-template-apply
@@ -697,7 +697,7 @@ on an entity of its own, so the order the claims run in does not change an outco
 - code: ostler/ostler/markdown.py::extract_refs@115245786c4b
 - code: ostler/ostler/model.py::doc_roots@7651c0781a8f
 - code: ostler/ostler/pages.py::files_in_book@e9f96e7b3156
-- code: ostler/ostler/registry.py::base_type@cd37e79abc8c
+- code: ostler/ostler/registry.py::base_type@bfa3450ef60d
 - code: ostler/ostler/templates.py::apply@401b5b3edc08
 
 ### ostler-new-instance
@@ -718,7 +718,7 @@ on an entity of its own, so the order the claims run in does not change an outco
 - code: ostler/ostler/markdown.py::extract_refs@115245786c4b
 - code: ostler/ostler/model.py::doc_roots@7651c0781a8f
 - code: ostler/ostler/pages.py::files_in_book@e9f96e7b3156
-- code: ostler/ostler/registry.py::base_type@cd37e79abc8c
+- code: ostler/ostler/registry.py::base_type@bfa3450ef60d
 
 ### ostler-find-instances
 - usage: ostler find KIND [NAME] [--json]: lists the documents of a template-declared kind
@@ -737,7 +737,7 @@ on an entity of its own, so the order the claims run in does not change an outco
 - code: ostler/ostler/markdown.py::extract_refs@115245786c4b
 - code: ostler/ostler/model.py::doc_roots@7651c0781a8f
 - code: ostler/ostler/pages.py::files_in_book@e9f96e7b3156
-- code: ostler/ostler/registry.py::base_type@cd37e79abc8c
+- code: ostler/ostler/registry.py::base_type@bfa3450ef60d
 
 ### ostler-set-instance
 - usage: ostler set KIND NAME KEY=VALUE [KEY=VALUE ...] [--json]: edits front-matter fields of a
@@ -757,7 +757,7 @@ on an entity of its own, so the order the claims run in does not change an outco
 - code: ostler/ostler/markdown.py::extract_refs@115245786c4b
 - code: ostler/ostler/model.py::doc_roots@7651c0781a8f
 - code: ostler/ostler/pages.py::files_in_book@e9f96e7b3156
-- code: ostler/ostler/registry.py::base_type@cd37e79abc8c
+- code: ostler/ostler/registry.py::base_type@bfa3450ef60d
 
 ### ostler-remove-instance
 - usage: ostler remove KIND NAME [--json]: deletes a document of a template-declared kind
@@ -775,7 +775,7 @@ on an entity of its own, so the order the claims run in does not change an outco
 - code: ostler/ostler/markdown.py::extract_refs@115245786c4b
 - code: ostler/ostler/model.py::doc_roots@7651c0781a8f
 - code: ostler/ostler/pages.py::files_in_book@e9f96e7b3156
-- code: ostler/ostler/registry.py::base_type@cd37e79abc8c
+- code: ostler/ostler/registry.py::base_type@bfa3450ef60d
 
 ### ostler-cache-clean
 - usage: ostler cache clean [--all] [--max-age-days N] [--json]: deletes parse-index entries that

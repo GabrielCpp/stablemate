@@ -66,10 +66,10 @@ title: QA stack
 
 | bullet | meaning |
 | --- | --- |
-| `driver` | `web` \| `mobile` \| `http` \| `cli` \| `artifact` \| `iac` \| `none` — how this surface is exercised once it is up |
+| `driver` | `web` \| `mobile` \| `http` \| `grpc` \| `cli` \| `artifact` \| `iac` \| `none` — how this surface is exercised once it is up |
 | `environment` | link to the `environment` node this boots (default: the local one) |
 | `cli` / `surfaces` / `code` | links: the dev CLI it drives with, the nodes it exposes, its launch entry point |
-| `entry-url` | base of the HTTP readiness probe, and the URL QA opens |
+| `entry-url` | base of the readiness probe, and the URL QA opens. An `http(s)://` URL is probed over HTTP. A `grpc://host:port` address is probed with grpcurl: `grpc.health.v1.Health/Check` must answer `SERVING` and reflection must list every service the runbook's `surfaces:` serve |
 | `health-path` | joined onto `entry-url` (default `/`). It names a route the app serves that answers 2xx or 3xx once it is ready. A 404 or 405 there fails bring-up at once rather than at `boot-timeout`: the app serves no such route, and the app must implement one |
 | `identity` | a substring of the health *body* proving the thing answering is ours, not a stale server on the same port |
 | `reuse` | `if-fresh` (default) \| `always` \| `never` — whether an already-serving stack may be adopted |
@@ -182,13 +182,16 @@ timeout}`) and never as a bare string, because the runner gives a bare string th
 timeout and a mapping the much larger step timeout — an asymmetry an author should never have
 to meet.
 
-## 5. `secrets:` — freshened per run, not per bring-up
+## 5. `secrets:` — minted at bring-up, every time the stack is reached
 
 A short-lived credential minted while the stack booted is already stale by the lap that spends
 it, and the bring-up phases run once per stack while a QA plan may run many times against it.
-So `secrets:` is read separately and minted immediately before each run. The recipe is
-repo-owned shell that prints the secret and nothing else; nothing interprets it here, and the
-value never enters a checkpoint, a `--param`, or telemetry.
+So `secrets:` is read separately and minted each time `ensure_stack` is reached, once the
+stack is ready, whether it was just started or was already up. The recipe is repo-owned shell
+that prints the secret and nothing else; nothing interprets it here, and the value never enters
+a checkpoint, a `--param`, or telemetry. The value is set in the calling process's environment.
+`ostler qa stack up` exits afterwards, so `ostler qa run`, which never calls `ensure_stack`,
+does not inherit it. A caller that runs the plan mints the secrets itself.
 
 Wiring that is *not* a secret — a port, a profile, a fixture path — is a step's `env:` instead.
 
