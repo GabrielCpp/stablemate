@@ -147,6 +147,21 @@ def test_a_writer_without_a_contract_is_given_no_contract_folder(tmp_path: Path)
     assert len(dirs) == 2
 
 
+def test_a_workspace_writer_is_given_the_member_root_and_the_owner_folder(tmp_path: Path) -> None:
+    source = SourceRepo(name="api-service", path=tmp_path / "member")
+    request = writer_request(tmp_path / "run", tmp_path, GRPC, "ledger", source)
+    owner = tmp_path / "owner"
+
+    assert request.add_dirs(owner) == [source.path, owner]
+
+
+def test_a_single_repo_writer_is_given_its_entry_contract_and_owner_folders(tmp_path: Path) -> None:
+    request = writer_request(tmp_path / "run", tmp_path, GRPC, "ledger", SourceRepo(path=tmp_path))
+    owner = tmp_path / "owner"
+
+    assert request.add_dirs(owner) == [tmp_path / "ledger", tmp_path / CONTRACT, owner]
+
+
 def test_a_grpc_surface_whose_contract_is_no_folder_is_a_blocker(tmp_path: Path) -> None:
     (tmp_path / "ledger").mkdir()
     (tmp_path / "proto").mkdir()

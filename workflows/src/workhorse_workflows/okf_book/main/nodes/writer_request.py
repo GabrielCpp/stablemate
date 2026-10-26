@@ -52,6 +52,12 @@ class WriterRequest:
     qa_tools: tuple[QaTool, ...]
     contract_dir: Path | None = None
 
+    def add_dirs(self, owner_folder: Path) -> list[Path]:
+        """The folders the writer may read: the whole member repo in a workspace, else the entry and contract folders, then the owner's turn folder."""
+        if self.source.name:
+            return [self.source.path, owner_folder]
+        return [self.source_dir, *([self.contract_dir] if self.contract_dir is not None else []), owner_folder]
+
     def template_args(self) -> dict[str, object]:
         """The write-book prompt's arguments."""
         return {

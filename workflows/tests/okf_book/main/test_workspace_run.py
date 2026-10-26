@@ -135,10 +135,10 @@ def test_the_writer_is_given_the_member_s_files_and_names_the_folder_by_its_memb
     assert written.seen["source_folder"] == f"repo://{MEMBER}/{MEMBER_FOLDER}"
 
 
-def test_the_writer_reads_the_member_folder_in_place_as_an_added_directory(served: Workspace, written: Ran) -> None:
+def test_the_writer_reads_the_member_repo_in_place_as_an_added_directory(served: Workspace, written: Ran) -> None:
     folder = (served.member / MEMBER_FOLDER).as_posix()
 
-    assert [dirs[0] for dirs in written.writer_add_dirs] == [folder]
+    assert [dirs[0] for dirs in written.writer_add_dirs] == [served.member.as_posix()]
     assert written.writer_prompt_dirs == [folder]
 
 
