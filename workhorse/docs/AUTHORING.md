@@ -325,8 +325,9 @@ shipping a turn that cannot write.
 
 A tool list says what a turn may call, not where it may reach. A turn that writes pages
 under `docs/` can still read the whole checkout with the same tool. `confined=True` holds
-the turn to its `cwd`: it reads only there and in its `add_dirs`, and it writes only
-there. `commands` names the only shell commands it may run, each with any arguments, and
+the turn to its `cwd` and its `add_dirs`: it reads only there. The claude and codex
+backends write only under `cwd`, and the opencode backend writes in the `add_dirs` too.
+`commands` names the only shell commands it may run, each with any arguments, and
 with none named the turn has no shell.
 
 ```python
@@ -344,9 +345,12 @@ A confined turn can also read the project skill directories its CLI loads skills
 since a skill is files the turn opens. Each backend enables the file tools it can hold to those paths, so the profile names no
 CLI's tools. The claude backend runs the turn under `--permission-mode dontAsk` with
 project settings only, where a call no rule allows is refused. The opencode backend writes
-permission rules relative to the git worktree, and it drops grep, glob and list, because
-opencode answers them outside its path rules. It refuses a confined turn outside a git
-worktree, or one whose `add_dirs` leave it. The codex backend runs outside its sandbox,
+read and edit rules relative to the git worktree, so an added repo beside it reads as
+`../<repo>/**`. It opens `external_directory` for each added directory outside the
+worktree. opencode checks that rule against the normalised absolute path, so a `..` cannot
+climb out of an added directory. It drops grep, glob and list, because opencode answers
+them outside its path rules. It refuses a confined turn whose `cwd` lies in no git
+worktree. The codex backend runs outside its sandbox,
 because the profile's commands need docker and the network. A `PreToolUse` hook checks
 every call instead. A patch writes only under `cwd`. A shell call runs a profile command
 or a read-only command (`cat`, `head`, `sed -n`, `rg`, `grep`, `ls`, `find` and a few
