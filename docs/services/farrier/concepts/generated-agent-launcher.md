@@ -15,7 +15,8 @@ The launcher module's public path constants identify the generated repository ar
 generic context manifest is `.agents/agents-context.json`, assistant-specific manifests use
 `.agents/agents-context.<assistant>.json`, and the optional thin root entrypoint is `Makefile`.
 `.agents/local.compose.yaml` remains a convention-owned cleanup path for installations from the
-retired Compose-override design; current rendering does not produce it.
+retired Compose-override design; current rendering does not produce it. Cleanup of this launcher's
+managed directories also removes farrier-owned skill symlinks, not just owned files.
 
 `agents.yml` does not select workflows for this launcher. A workflow is an installed Python
 distribution with its own `workhorse-<name>` command; `agents.mk` asks `farrier workflows --names`
@@ -56,7 +57,7 @@ boundary between the retired YAML-era launcher and the current installed-workflo
 - code: `farrier/farrier/launcher.py::LAUNCHER_CONTEXT_MANIFEST_FMT` @f719f4c89bcb
 - code: `farrier/farrier/launcher.py::LAUNCHER_ROOT_MAKEFILE` @f719f4c89bcb
 - code: `farrier/farrier/launcher.py::LAUNCHER_COMPOSE` @f719f4c89bcb
-- code: `farrier/farrier/outputs.py::remove_targets` @0b63626747f4
+- code: `farrier/farrier/outputs.py::remove_targets` @a2464a92144d
 - tests: `farrier/tests/test_launcher_make.py::test_a_discovered_workflow_becomes_a_real_target`
 - tests: `farrier/tests/test_launcher_make.py::test_a_workflow_nobody_installed_fails_instead_of_launching_nothing`
 - tests: `farrier/tests/test_launcher_make.py::test_an_unrelated_target_never_pays_for_discovery`
@@ -71,7 +72,7 @@ boundary between the retired YAML-era launcher and the current installed-workflo
 
 ### remove_targets
 - sig: `remove_targets(repo: Path, managed: Managed = REPO_MANAGED) -> None`
-- does: sweep each configured managed directory and delete only files classified as Farrier-owned
+- does: sweep each configured managed directory and delete only files and symlinks classified as Farrier-owned, the symlinks via `owned_links` using the `link_map` built from `managed.links`
 - verify: unchanged(subject="untagged file during output cleanup")
 - does: delete each existing Farrier-owned file named by the managed-file list
 - does: delete each regular file matching the scope's assumed-owned path pattern without requiring
@@ -79,6 +80,6 @@ boundary between the retired YAML-era launcher and the current installed-workflo
 - does: leave non-file matches for assumed-owned patterns unchanged
 - verify: removed(subject="assumed-owned output")
 - returns: `None` after the configured cleanup passes complete
-- code: `farrier/farrier/outputs.py::remove_targets` @0b63626747f4
+- code: `farrier/farrier/outputs.py::remove_targets` @a2464a92144d
 - detail: [output cleanup selection](output-cleanup-selection.md)
 - detail: [output cleanup documentation](output-cleanup-documentation.md)

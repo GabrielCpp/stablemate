@@ -9,9 +9,10 @@ The `--check` report explains missing, changed, extra, and edited hook-manager o
 trusting provenance copied into the worktree. It attributes changes from the expected render.
 
 ### method: Drifted
-- sig: `Drifted(rel: str, content: str, expected: str, actual: str)`
+- sig: `Drifted(rel: str, content: str, expected: str, actual: str, is_link: bool = False)`
 - does: carry the relative output path, rendered record, expected text, and worktree text for one drift finding
-- code: `farrier/farrier/drift.py::Drifted` @44705e5212d4
+- does: flag a record as a skill-symlink drift with `is_link`, defaulting to false
+- code: `farrier/farrier/drift.py::Drifted` @17c0ef085eef
 - verify: count(subject="drifted output records", equals=1)
 
 ## Methods
@@ -63,5 +64,6 @@ trusting provenance copied into the worktree. It attributes changes from the exp
 ### method: report
 - sig: `report(missing: list[str], changed: list[Drifted], extra: list[str], fences: list[str] | None = None) -> str`
 - does: emit missing, changed, extra, and hook-fence blocks in category order followed by the footer
+- does: describe a changed skill-symlink record by telling the operator to run `make agent-install` and not edit a linked skill folder under the linking harness, instead of the changed-source blame it gives a changed text record
 - verify: count(subject="drift report category blocks", equals=4)
-- code: `farrier/farrier/drift.py::report` @44705e5212d4
+- code: `farrier/farrier/drift.py::report` @17c0ef085eef

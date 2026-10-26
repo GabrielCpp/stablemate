@@ -34,10 +34,10 @@ load, because a name must be unique across its library.
 
 ### method: library_source_path
 - sig: `library_source_path(source: Source) -> str`
-- does: reports the source path beginning at its last `library/` segment
-- returns: a POSIX library-relative path, falling back to `source.rel` outside a library tree
+- does: returns `source.rel` directly when `source.local` is set, without anchoring at `library/`
+- does: otherwise reports the source path beginning at its last `library/` segment, falling back to `source.rel` outside a library tree
 - verify: count(subject="library provenance path", equals=1)
-- code: `farrier/farrier/sources.py::library_source_path` @38fd583de0b8
+- code: `farrier/farrier/sources.py::library_source_path` @3121386a99df
 - tests: `farrier/tests/test_provenance_banner.py::test_library_source_path_anchors_at_library`
 
 ### method: override_notices

@@ -12,7 +12,7 @@ filesystem path used to read content. A record may carry the layer that supplied
 resolution can explain shadowing and provenance. The compatibility facade continues to expose this
 same record as `farrier.install.Source`; its declaration remains in `sources.py`.
 
-- code: `farrier/farrier/sources.py::Source` @38fd583de0b8
+- code: `farrier/farrier/sources.py::Source` @3121386a99df
 - detail: [library layer](library-layer.md)
 - detail: [source record documentation roles](source-record-documentation-roles.md)
 
@@ -58,5 +58,14 @@ same record as `farrier.install.Source`; its declaration remains in `sources.py`
 - semantics: identifies the library layer that supplied the record
 - verify: json_path(path="$.layer.name", equals="base-library (base)")
 - semantics: direct test-created records may omit the layer
+- code: `farrier/farrier/sources.py::Source` @3121386a99df
+- detail: [source record field roles](source-record-field-roles.md)
+
+### field: local
+- type: `bool`
+- default: `false`
+- required: false
+- verify: json_path(path="$.local", equals=false)
+- semantics: marks a hand-written source outside the library tree, so `library_source_path` returns `rel` directly instead of anchoring it at a `library/` segment
 - code: `farrier/farrier/sources.py::Source` @3121386a99df
 - detail: [source record field roles](source-record-field-roles.md)

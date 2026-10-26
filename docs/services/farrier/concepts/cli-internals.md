@@ -12,9 +12,10 @@ These helpers form the command parser and dispatch seams behind the public `farr
 ### method: _add_install_args
 - sig: `_add_install_args(parser: argparse.ArgumentParser) -> None`
 - does: add repository, config, check, library, user, home, and unresolved-library options to an install parser
-- does: describe `--home` as the directory the user library installs into, and `--user` as the home-only install
+- does: describe `--home` as the directory the user library installs into, and `--user` as installing the harness home from the `[user_library.<harness>]` tables; combined with `--repo` it installs the repo first, then refreshes the home afterward
+- does: describe `--repo` as the repository root to install into, resolved to cwd when omitted, that writes only under that root unless `--user` is also given
 - verify: count(subject="install parser options", equals=1)
-- code: `farrier/farrier/cli.py::_add_install_args` @0244d6a97e3b
+- code: `farrier/farrier/cli.py::_add_install_args` @2eeeeaa1740e
 
 ### method: _flatten
 - sig: `_flatten(table: dict[str, Any], prefix: str = '') -> list[tuple[str, Any]]`
@@ -38,10 +39,11 @@ These helpers form the command parser and dispatch seams behind the public `farr
 ### method: mapped_instruction_sources
 - sig: `mapped_instruction_sources(generated: Path) -> list[str] | None`
 - does: resolve a local-instruction output through the live localInstructions mapping and current library selection
+- does: resolve hand-written skill directories declared in `agents.yml` into the sources it returns, alongside the live library selection
 - does: list `agents.yml` as the source of an entry whose content is its own `text`
 - raises: `SystemExit` when an existing agents.yml no longer maps the generated file
 - verify: count(subject="live localInstructions source mappings", equals=1)
-- code: `farrier/farrier/cli.py::mapped_instruction_sources` @0244d6a97e3b
+- code: `farrier/farrier/cli.py::mapped_instruction_sources` @2eeeeaa1740e
 
 ### method: _list_scaffolds
 - sig: `_list_scaffolds(defs: dict[str, dict[str, Any]], available: set[str], repo: Path) -> int`
@@ -52,8 +54,8 @@ These helpers form the command parser and dispatch seams behind the public `farr
 ### method: _build_parser
 - sig: `_build_parser() -> argparse.ArgumentParser`
 - does: construct the complete farrier command and subcommand parser
-- verify: count(subject="registered farrier subcommands", equals=10)
-- code: `farrier/farrier/cli.py::_build_parser` @0244d6a97e3b
+- verify: count(subject="registered farrier subcommands", equals=11)
+- code: `farrier/farrier/cli.py::_build_parser` @2eeeeaa1740e
 
 ### method: _run_hooks_install
 - sig: `_run_hooks_install(args: argparse.Namespace) -> int`

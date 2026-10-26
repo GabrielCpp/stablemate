@@ -88,14 +88,15 @@ outside this detection mechanism and are owned by the install scope's explicit c
 - tests: `farrier/tests/test_tagged_deletion.py::test_a_hand_written_skill_survives_an_install`
 
 ### sweep
-- sig: `sweep(directory: Path) -> None`
+- sig: `sweep(directory: Path, links: Mapping[Path, Path] | None = None) -> None`
 - does: deletes every Farrier-owned file below an existing directory
 - verify: removed(subject="deselected Farrier-owned skill directory")
+- does: also deletes every Farrier-owned symlink directly under `directory` when *links* maps it to a source directory — a symlink is owned when its resolved target lies inside that source directory
 - does: preserves unowned files below the directory
 - verify: unchanged(subject="untagged neighboring file during ownership sweep")
-- does: removes directories emptied by the owned-file deletion from deepest to shallowest
+- does: removes directories emptied by the owned-file deletion from deepest to shallowest, skipping a symlinked directory so it is never rmdir'd
 - does: skips a file that is already gone and a directory that cannot be removed
 - returns: without changing anything when `directory` does not exist or is not a directory
-- code: `farrier/farrier/ownership.py::sweep` @6f3edcd219f5
+- code: `farrier/farrier/ownership.py::sweep` @0dc817b9a522
 - tests: `farrier/tests/test_tagged_deletion.py::test_a_deselected_skill_is_still_removed`
 - tests: `farrier/tests/test_tagged_deletion.py::test_a_hand_written_skill_survives_an_install`
