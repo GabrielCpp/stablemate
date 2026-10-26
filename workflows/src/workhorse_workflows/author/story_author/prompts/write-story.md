@@ -178,7 +178,8 @@ parser, injector, resolver, serializer, or compatibility algorithm. For example:
 ```
 
 Point to evidence; do not prescribe new files, types, libraries, or architecture. If there is truly no
-prior implementation to study, write exactly `No prior implementation reference exists.`
+prior implementation to study, the section's whole body is exactly
+`No prior implementation reference exists.` and nothing else. Any other note goes in `## Context`.
 
 ## Write `{{ workhorse_var('story_path') }}`
 

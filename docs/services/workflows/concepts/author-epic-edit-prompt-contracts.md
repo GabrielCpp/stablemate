@@ -8,14 +8,16 @@ title: Author epic edit prompt contracts
 The `epic_edit` flow renders six agent turns of its own and hands the plan, the stories and the coverage to the [PM review](author-pm-review.md). Planning and review turns are read-only; deterministic
 nodes validate and apply graph changes between turns. Story authoring turns write only the selected
 story's artifacts, while all turns return typed JSON consumed by the next state. The feature book is
-always read-only to these prompts.
+always read-only to these prompts. A story with no prior implementation gets the exact sentence
+`No prior implementation reference exists.` as its whole Technical Notes section, and any other note
+goes in Context.
 
 - code: `workflows/src/workhorse_workflows/author/epic_edit/prompts/plan-epic-edit.md` @9bd6bedd06ce
 - code: `workflows/src/workhorse_workflows/author/epic_edit/prompts/refine-epic-edit-plan.md` @9c92addea733
 - code: `workflows/src/workhorse_workflows/author/epic_edit/prompts/rewrite-epic-edit.md` @031fe29f72ac
 - code: `workflows/src/workhorse_workflows/author/epic_edit/prompts/design-mockup.md` @f918719466f5
-- code: `workflows/src/workhorse_workflows/author/epic_edit/prompts/write-story.md` @78b80c91b824
-- code: `workflows/src/workhorse_workflows/author/epic_edit/prompts/rework-story.md` @d16914d79c20
+- code: `workflows/src/workhorse_workflows/author/epic_edit/prompts/write-story.md` @abdb3a62af1c
+- code: `workflows/src/workhorse_workflows/author/epic_edit/prompts/rework-story.md` @6a8d6da4c2e1
 - detail: [author epic edit subflow](author-epic-edit-subflow.md)
 - detail: [author PM review angles](author-pm-angles.md)
 

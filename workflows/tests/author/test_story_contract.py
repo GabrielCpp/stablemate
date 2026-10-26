@@ -105,6 +105,7 @@ def test_technical_notes_require_the_exact_greenfield_statement(
 
     assert result.ok is False
     assert "exact statement" in result.errors
+    assert "alone as its whole body" in result.errors
 
 
 _NOTES = "- `legacy/parser.py::parse_ast` recursively maps the supported expression nodes."

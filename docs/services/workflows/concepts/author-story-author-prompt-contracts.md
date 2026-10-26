@@ -18,12 +18,16 @@ When a story write or rework cannot proceed, the writer returns `status: "blocke
 product question. The subflow hands that question to the [PM gap answer](author-pm-gap-answer.md),
 which answers from the milestone and the ledger. The writer retries with the answer as its `note`.
 
+The write and rework turns ground Technical Notes in `path::symbol` pointers. A story with no prior
+implementation gets the exact sentence `No prior implementation reference exists.` as the whole
+section, and any other note it would have carried goes in Context.
+
 - code: `workflows/src/workhorse_workflows/author/story_author/flow.py::StoryAuthor.design_mockup` @9b3445987054
 - code: `workflows/src/workhorse_workflows/author/story_author/flow.py::StoryAuthor.write_story` @9b3445987054
 - code: `workflows/src/workhorse_workflows/author/story_author/flow.py::StoryAuthor.rework_story` @9b3445987054
 - code: `workflows/src/workhorse_workflows/author/story_author/prompts/design-mockup.md` @f918719466f5
-- code: `workflows/src/workhorse_workflows/author/story_author/prompts/write-story.md` @738413196ebc
-- code: `workflows/src/workhorse_workflows/author/story_author/prompts/rework-story.md` @82b7f0e83713
+- code: `workflows/src/workhorse_workflows/author/story_author/prompts/write-story.md` @215cd7ab9d63
+- code: `workflows/src/workhorse_workflows/author/story_author/prompts/rework-story.md` @a1c4ec3559cc
 - tests: `workflows/tests/test_prompts_exist.py::test_the_prompt_file_is_there`
 - tests: `workflows/tests/test_prompt_variables.py::test_the_prompt_reads_only_names_the_workflow_can_supply`
 - tests: `workflows/tests/test_prompt_output_shape.py::test_the_prompt_documents_the_keys_the_turn_is_asked_for`

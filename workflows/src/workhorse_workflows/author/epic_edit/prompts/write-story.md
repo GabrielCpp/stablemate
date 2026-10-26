@@ -161,7 +161,8 @@ materially reduce rediscovery. Cite each useful location as an exact backticked 
 one short clause explaining the mechanism, especially the **original or prior implementation** of a
 parser, injector, resolver, serializer, or compatibility algorithm. Point to evidence; do not
 prescribe new files, types, libraries, or architecture. If there is truly no prior implementation to
-study, write exactly `No prior implementation reference exists.`
+study, the section's whole body is exactly `No prior implementation reference exists.` and nothing
+else. Any other note goes in `## Context`.
 
 ## Write `{{ workhorse_var('story_path') }}`
 

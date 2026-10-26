@@ -122,7 +122,8 @@ def validate_story(logger: logging.Logger, story_dir: str = "", repo_dir: str = 
         if not pointers and technical.body.strip() != _NO_PRIOR_IMPLEMENTATION:
             errors.append(
                 "required section `## Technical Notes` needs an existing `path::symbol` code "
-                f"pointer or the exact statement `{_NO_PRIOR_IMPLEMENTATION}`"
+                f"pointer or the exact statement `{_NO_PRIOR_IMPLEMENTATION}` alone as its "
+                "whole body; move any other note to `## Context`"
             )
         root = survey_repo_root(repo_dir)
         for pointer in pointers:

@@ -53,8 +53,9 @@ Address every error or finding above. Common fixes:
   Acceptance Criteria. They remain QA obligations but do not add implementation scope. Move any
   disguised feature request in the other direction.
 - Repair Technical Notes with a concise existing backticked `path::symbol` pointer and mechanism
-  note. Do not turn it into a proposed implementation plan. For genuinely greenfield work, use the
-  exact statement `No prior implementation reference exists.`
+  note. Do not turn it into a proposed implementation plan. For genuinely greenfield work, the
+  section's whole body is the exact statement `No prior implementation reference exists.` and
+  nothing else. Move any other note to `## Context`.
 - **Resolve an open question** the validator flagged (`open question / unresolved decision`):
   replace the hedge (`Decision to surface`, `accept, or tune`, `TBD`, `TODO`, `decide whether…`)
   with a made call — `**Decision:** <the choice> — <why>` — and make any interrogative acceptance
