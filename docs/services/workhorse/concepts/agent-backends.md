@@ -25,7 +25,9 @@ A profile can name subagent delegates for a turn to hand narrow work to on cheap
 are two roles. `lookup` answers one narrow read-only question about the code or a log. `worker`
 does one bounded task the caller specifies in full. A delegate name outside these two is ignored
 with a warning. Claude, codex and opencode define the delegates when the turn launches. Copilot
-and cline take no subagents, so they warn once that the profile's delegates go unused.
+and cline take no subagents, so they warn once that the profile's delegates go unused. Each
+backend also declares `supports_subagents`, so a workflow can check `Engine.subagents()` before
+it asks for a delegate rather than finding out only from the runtime warning.
 
 A turn never loads less of the operator's environment than an interactive session of its CLI.
 User settings, permission rules, hooks, model settings, skills, instruction files and plugins all
