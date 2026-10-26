@@ -22,7 +22,13 @@ checkout, with `-C book-scratch`, so the real books never decide the outcome.
   names a folder holding a `.proto` file is held to that contract: each RPC of a service its
   `serves:` bullet names with no `rpc` page is an `rpc-missing` error, and each `rpc` page whose
   `name:` is no RPC of those services is an `rpc-phantom` error. The comparison is exact and
-  case-sensitive, and a server without a readable contract gets neither
+  case-sensitive, and a server without a readable contract gets neither. A `server` page
+  whose `contract:` names such a folder is held to the routes its rpcs annotate with a
+  `google.api.http` option: each annotated route that no hosted `endpoint` page books by `method:`
+  and `path:` is a `route-missing` error, and each `endpoint` page whose method and path the
+  contract lacks is a `route-phantom` error. The method compares upper-cased, a `{...}` variable
+  matches any other whatever its name, and a custom-verb suffix such as `:read` is part of the
+  path
 - flags:
   - --json (print `{org, profile, epics, errors, warnings, findings}` as one indented JSON object), --path (check only the book at this path), --census (print the census of the book's nodes instead of the findings)
 - exits: 0 — a book whose findings are all warnings, or none, is sound
@@ -32,7 +38,7 @@ checkout, with `-C book-scratch`, so the real books never decide the outcome.
 - verify: json_path(path="findings[0].severity", equals="warn")
 - fixture: [book scratch repo](fixtures/book-scratch-repo.md) — seeds a sound `demo` book whose
   citations carry no digest stamp, so it reports warnings and no error
-- code: ostler/ostler/doctor.py::run@99b46802793c
+- code: ostler/ostler/doctor.py::run@52668a3449b3
 - code: ostler/ostler/book_reach.py::dead_pages@76220c84992e
 - code: ostler/ostler/checks.py::bind@ee2bf66bf573
 - code: ostler/ostler/acts.py::bind@e5348dac9f61
@@ -52,10 +58,11 @@ checkout, with `-C book-scratch`, so the real books never decide the outcome.
 - code: ostler/ostler/page_size.py::check_page_size@380a05d10fdd
 - code: ostler/ostler/pages.py::files_in_book@e9f96e7b3156
 - code: ostler/ostler/passages.py::check_passages@7b055a542ea9
-- code: ostler/ostler/proto_contract.py::read_contract@e2c197b4012c
+- code: ostler/ostler/proto_contract.py::read_contract@02d8e9c078ee
 - code: ostler/ostler/refs.py::bare_targets@5de8b2ec8022
-- code: ostler/ostler/rpc_coverage.py::check_rpc_coverage@04fd94dff93a
-- code: ostler/ostler/registry.py::address_keys@bfa3450ef60d
+- code: ostler/ostler/route_coverage.py::check_route_coverage@e2e853338324
+- code: ostler/ostler/rpc_coverage.py::check_rpc_coverage@83faed400135
+- code: ostler/ostler/registry.py::address_keys@5da47ef8ddca
 - code: ostler/ostler/section_hosts.py::check_section_hosts@f8458f69db47
 - code: ostler/ostler/server_membership.py::check_server_membership@692e1d58d870
 - code: ostler/ostler/shared_checks.py::check_shared_checks@c96e41ffd13b
@@ -86,7 +93,7 @@ checkout, with `-C book-scratch`, so the real books never decide the outcome.
 - verify: json_path(path="findings[0].path", equals="docs/services/demo/entries.md")
 - fixture: [book scratch repo](fixtures/book-scratch-repo.md) — seeds `book-scratch-broken/`, whose
   entries page links to a page that does not exist
-- code: ostler/ostler/doctor.py::run@99b46802793c
+- code: ostler/ostler/doctor.py::run@52668a3449b3
 - code: ostler/ostler/finding.py::Finding@9ff7be48f3bd
 - code: ostler/ostler/markdown.py::comment_blocks@115245786c4b
 - code: ostler/ostler/model.py::doc_roots@7651c0781a8f
@@ -137,7 +144,7 @@ checkout, with `-C book-scratch`, so the real books never decide the outcome.
 - code: ostler/ostler/behavior_python.py::PythonEvidence@56f54c99d10e
 - code: ostler/ostler/dynamic_registry.py::load_kinds@09b3f9268893
 - code: ostler/ostler/markdown.py::leading_code_spans@115245786c4b
-- code: ostler/ostler/registry.py::normative_keys@bfa3450ef60d
+- code: ostler/ostler/registry.py::normative_keys@5da47ef8ddca
 - code: ostler/ostler/syntax.py::language_for@0850b2c61451
 - detail: [Auditing a book's claims against source](concepts/auditing-a-books-claims-against-source.md)
 
@@ -184,7 +191,7 @@ checkout, with `-C book-scratch`, so the real books never decide the outcome.
   cli page and the flow
 - code: ostler/ostler/trace.py::run@627ab268dee3
 - code: ostler/ostler/markdown.py::MarkdownDoc@115245786c4b
-- code: ostler/ostler/registry.py::type_of@bfa3450ef60d
+- code: ostler/ostler/registry.py::type_of@5da47ef8ddca
 
 ### ostler-trace-unknown
 - usage: ostler trace TOKEN — a token that names no node prints `no node found for '<token>'` and
@@ -273,7 +280,7 @@ checkout, with `-C book-scratch`, so the real books never decide the outcome.
 - code: ostler/ostler/reach.py::literal_entries@a7af9ddc3e32
 - code: ostler/ostler/routes.py::entry_address@eb9c6cc89302
 - code: ostler/ostler/qa/runbook.py::bullet_text@66911fe4abd5
-- code: ostler/ostler/registry.py::base_type@bfa3450ef60d
+- code: ostler/ostler/registry.py::base_type@5da47ef8ddca
 
 ### ostler-locators
 - usage: ostler locators [--surface S] [--json] — builds the Playwright locator of every documented
@@ -333,4 +340,4 @@ checkout, with `-C book-scratch`, so the real books never decide the outcome.
 - verify: stdout(matches="^every page is reachable$")
 - fixture: [book scratch repo](fixtures/book-scratch-repo.md) — seeds a book whose entries page
   links every other page
-- code: ostler/ostler/registry.py::fixture_keys@bfa3450ef60d
+- code: ostler/ostler/registry.py::fixture_keys@5da47ef8ddca
