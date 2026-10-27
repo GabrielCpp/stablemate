@@ -6,12 +6,14 @@ title: Coder dev-build prompt
 # Coder dev-build prompt
 
 - file: `workflows/src/workhorse_workflows/coder/dev/prompts/dev-build.md`
-- code: `workflows/src/workhorse_workflows/coder/dev/flow.py::Dev.build` @9cb81c5987ec
+- code: `workflows/src/workhorse_workflows/coder/dev/flow.py::Dev.build` @fe195e40d574
 - detail: [coder development flow](../flows/coder-dev.md)
 - detail: [coder dev phase turns](../concepts/coder-dev-phase-turns.md)
 - detail: [coder development build result](dev-build-result.md)
 - tests: `workflows/tests/coder/dev/test_flow.py::test_a_fresh_story_runs_plan_build_and_review_in_that_order`
 - tests: `workflows/tests/coder/dev/test_flow.py::test_an_operator_answer_on_a_build_block_returns_to_build`
+- tests: `workflows/tests/coder/dev/test_flow.py::test_the_build_turn_on_the_plans_conversation_points_at_the_opening_brief`
+- tests: `workflows/tests/coder/dev/test_flow.py::test_a_rebrief_renders_the_full_rules_and_rewrites_the_brief_on_disk`
 
 The dev-build envelope is the build phase of the dev owner's story, on the conversation the plan
 ran on. It tells the agent to read the plan, build each change with its test, and run every gate
@@ -25,6 +27,12 @@ the plan as written would fail a criterion or a gate. It asks for each departure
 in the result. When the turn is offered an `advisor` delegate, the envelope asks the agent to
 consult it before each departure and to copy its answer into the departure's `advice`. The flow
 sends a departure with no advice back to the build.
+
+When the envelope opens the story's conversation, it carries the story's standing rules: the
+coding standards and the run branch, the scope and when to block, the status line the turn leaves
+alone, the commit footers, the services the story changes and the follow-up the run works. When an
+earlier phase opened the conversation, the envelope names that phase's brief instead and repeats
+none of them. A conversation the engine starts again opens with the full rules.
 
 ## Fields
 
@@ -61,6 +69,13 @@ sends a departure with no advice back to the build.
 - required: true
 - semantics: the file the rendered brief is kept at, so a later turn can read it again
 - verify: json_path(path="$.brief_path", matches=".+/briefs/.+/build\\.md$")
+
+### opening_brief
+- type: string path
+- default: empty string
+- required: false
+- semantics: the brief of the phase that opened the story's conversation, which carries the story's standing rules, or empty when this build turn opens the conversation and carries them itself
+- verify: json_path(path="$.opening_brief", matches="^(.+/briefs/.+/[a-z]+\\.md)?$")
 
 ### operator_context
 - type: string

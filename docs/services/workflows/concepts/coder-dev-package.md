@@ -18,8 +18,8 @@ settles the findings against the answers, and checks that the story left nothing
 failed check goes back to the review phase as a report for another repair lap. A spent lap budget
 escalates to an operator gate.
 
-- code: `workflows/src/workhorse_workflows/coder/dev/flow.py` @9cb81c5987ec
-- code: `workflows/src/workhorse_workflows/coder/dev/flow.py::Dev` @9cb81c5987ec
+- code: `workflows/src/workhorse_workflows/coder/dev/flow.py` @fe195e40d574
+- code: `workflows/src/workhorse_workflows/coder/dev/flow.py::Dev` @fe195e40d574
 - tests: `workflows/tests/coder/dev/test_flow.py`
 - detail: [coder dev flow](../flows/coder-dev.md)
 

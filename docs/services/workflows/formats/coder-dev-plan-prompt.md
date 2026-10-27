@@ -6,11 +6,12 @@ title: Coder dev-plan prompt
 # Coder dev-plan prompt
 
 - file: `workflows/src/workhorse_workflows/coder/dev/prompts/dev-plan.md`
-- code: `workflows/src/workhorse_workflows/coder/dev/flow.py::Dev.plan` @9cb81c5987ec
+- code: `workflows/src/workhorse_workflows/coder/dev/flow.py::Dev.plan` @fe195e40d574
 - detail: [coder development flow](../flows/coder-dev.md)
 - detail: [coder dev phase turns](../concepts/coder-dev-phase-turns.md)
 - detail: [coder development plan result](dev-plan-result.md)
 - tests: `workflows/tests/coder/dev/test_flow.py::test_a_fresh_story_runs_plan_build_and_review_in_that_order`
+- tests: `workflows/tests/coder/dev/test_flow.py::test_the_plan_turn_on_a_fresh_conversation_carries_the_full_rules`
 
 The dev-plan envelope is the plan phase of the dev owner's story, on the strongest model. It tells
 the agent to read the story, its epic, the repo's instructions and the docs nodes the story cites,
@@ -33,6 +34,12 @@ story's footers, writes no product code, and ends with a `PlanResult`.
 A multi-service story adds one plan file per service, named in that service's `plan_file`. The
 envelope lists the services each repo declares. When no repo declares any, it tells the agent to
 derive them from the layout.
+
+When the envelope opens the story's conversation, it carries the story's standing rules: the
+coding standards and the run branch, the scope and when to block, the status line the turn leaves
+alone, the commit footers, the services the story changes and the follow-up the run works. When an
+earlier phase opened the conversation, the envelope names that phase's brief instead and repeats
+none of them. A conversation the engine starts again opens with the full rules.
 
 ## Fields
 
@@ -60,6 +67,13 @@ derive them from the layout.
 - required: true
 - semantics: the file the rendered brief is kept at, so a later turn can read it again
 - verify: json_path(path="$.brief_path", matches=".+/briefs/.+/plan\\.md$")
+
+### opening_brief
+- type: string path
+- default: empty string
+- required: false
+- semantics: the brief of the phase that opened the story's conversation, which carries the story's standing rules, or empty when this plan turn opens the conversation and carries them itself
+- verify: json_path(path="$.opening_brief", matches="^(.+/briefs/.+/[a-z]+\\.md)?$")
 
 ### operator_context
 - type: string

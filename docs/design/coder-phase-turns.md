@@ -32,8 +32,8 @@ procedure in full, though it only hands those procedures on.
 
 **Out of scope.**
 
-- Splitting the QA, docs or fix-item owners into phases. Their procedures move to skills,
-  and their repair laps get short follow-up notes. Their turn structure stays.
+- Splitting the QA, docs or fix-item owners into phases. Their procedures move to their own
+  files, and their repair laps get short follow-up notes. Their turn structure stays.
 - Migrating body overrides or flavor files that target repos wrote for `dev-story` or
   `dev-rework`. The retired roles fail loudly at render. The repo that owns the override
   rewrites it (A5).
@@ -139,8 +139,8 @@ helpers keep their own instructions, so the owner never carries them.
 | Procedure | One helper's full instructions | The owner that sends the helper |
 | Procedure pointer | The line an owner forwards so a helper can find its procedure | The procedure's content |
 
-The procedure catalog is a read-only reference every part consults. It is the skill
-catalog the run already renders with. It is not a concept of this design.
+The procedure files are a read-only reference every part consults. They ship with the
+workflow that sends them (R8). They are not a concept of this design.
 
 ## 3. Invariants
 
@@ -151,8 +151,9 @@ catalog the run already renders with. It is not a concept of this design.
    Owner: consult audit. Upheld by the consult trigger in the review and build briefs.
 3. **A replacement conversation opens with its current phase's full brief and the result
    contract.** Owner: restart brief.
-4. **Every procedure pointer resolves in the catalog when the brief renders.** A missing
-   one fails the render, not the helper. Owner: procedure pointer.
+4. **Every procedure pointer names a file that exists when the turn starts.** The flow
+   writes each procedure file before the brief that points at it. Owner: procedure
+   pointer. (revised, R8)
 5. **No phase brief contains a procedure's body.** Owner: phase brief, held by a prompt
    test that renders each brief and searches it for each procedure's headings.
 6. **A story is ready only when its gates pass and its findings settle.** Owner: the
@@ -233,8 +234,8 @@ catalog the run already renders with. It is not a concept of this design.
 3. **Re-derived in part.** The engine-visible replacement is kept. The silent compaction
    is answered by the pointer in every follow-up note (F4). The rebrief hook must send the
    phase brief, not only the resume note (section 5, finding R3).
-4. **Re-derived** from F5, with `skill_path` only (F6). `skill_command` renders a slash
-   command a helper without the skill tool cannot run.
+4. **Re-derived** from F5 as a file path (F6), not a skill (revised, R8). The procedures
+   ship with the workflow, because one package dispatches them.
 5. **Re-derived** from F6 and F7 as the counsel role, with the audit added. The role is
    tier-named: `advisor` at `max`, not "Opus".
 6. **Re-derived** from F1 and F2. The build phase is the builder, so a builder handoff
@@ -294,6 +295,19 @@ catalog the run already renders with. It is not a concept of this design.
   decline consulted on an earlier lap stays consulted. The departure audit runs in the build
   state and sends the build back. Only the decline audit runs at settlement, because a
   departure has no finding id for the settlement to check against.
+- R8. Section 2, procedure and procedure pointer: the review procedures ship as prompt
+  files in the workflows package, not as base-library skills. `base-library/AGENTS.md`
+  keeps a prompt one package dispatches out of the library: it ships in that package's
+  wheel, so the program never runs with content it did not ship. The flow renders each
+  procedure file beside the review brief, and the brief names its path. The pointer is
+  still a path (F5, F6). Section 3 invariant 4, section 6 slice 5 and section 7
+  assumption 7 changed with it.
+- R9. Section 2, phase brief: the rules that hold for the whole story (standards, branch,
+  scope, story status, commit footers, the follow-up being worked) go only into the brief
+  that opens a conversation. A later phase on the same conversation names that opening
+  brief's path instead. A replacement conversation opens with the full rules again
+  (invariant 3). Measurement after slice 4 showed these sections repeated in every phase
+  brief.
 
 ### Parts
 
@@ -303,7 +317,7 @@ catalog the run already renders with. It is not a concept of this design.
 | Briefing | **Reshape** | `coder/dev/prompts/dev-story.md` (417 lines) and `dev-rework.md`. One prompt, rendered in full on every lap. |
 | Conversation keeping | **Exists** | `story_chain` in `coder/shared/conversation.py`. The engine's chain files in `workhorse/workhorse/sessions.py`. Replacement happens in the ladder (`runner/ladder.py:276`, `:322`). |
 | Counsel | **New** | A delegate role in the engine catalog. Audit in the dev flow's check. |
-| Helper procedures | **Reshape** | Inline today, inside the owner prompts. They move to `base-library/library/skills/workhorse/`. |
+| Helper procedures | **Reshape** (revised, R8) | Inline today, inside the owner prompts. They move to their own prompt files in the workflows package. |
 
 ### Concepts
 
@@ -375,18 +389,18 @@ catalog the run already renders with. It is not a concept of this design.
 
 **Helper procedures**
 
-- Procedure: **Reshape**. New skills in the `stablemate` pack under
-  `base-library/library/skills/workhorse/`:
-  - `workhorse-coder-review`: the reviewer's brief, now in `dev-story.md`.
-  - `workhorse-coder-triage`: the triage and answer-file rules, now in `dev-story.md` and
-    `_fix-at-the-cause.md`.
-  - `workhorse-coder-docs-writer`, `-docs-reviewer`, `-docs-fixer`: now in
-    `document-story.md`.
-  - `workhorse-coder-qa-plan`: `_qa-plan-contract.md`, about 5,400 tokens.
-- Procedure pointer: **Exists**. `skill_path` with `has_skill` guards
-  (`core/stablemate_core/skill_refs.py:159`, `:179`). A missing skill raises
-  `MissingSkill` unless the render passes a fallback. The briefs call `skill_path` with
-  no fallback, which upholds invariant 4.
+- Procedure: **Reshape** (revised, R8). New prompt files beside the phase briefs in
+  `coder/dev/prompts/`:
+  - `dev-reviewer.md`: the reviewer's brief, the lenses and what counts as a finding.
+  - `dev-answer-file.md`: the answer file's format, an example of each answer, and the
+    checks the workflow runs on it. Triage itself stays in the review brief, because the
+    owner applies it on every lap.
+  - The docs writer, reviewer and fixer, and the QA plan contract, follow in slice 6 the
+    same way.
+- Procedure pointer: **New** (revised, R8). The flow renders each procedure file with the
+  turn's own arguments and writes it into the story's brief folder before the turn. The
+  review brief names each path. `skill_path` stays unused here, because it resolves into
+  the optional library install.
 
 ### What the existing system has that the design lacks
 
@@ -422,7 +436,7 @@ catalog the run already renders with. It is not a concept of this design.
 | The ready verdict | Repair laps until green, capped at 3 | `MAX_LAPS` in `coder/shared/owner.py` | 3 | 3, counted across review re-entries |
 | The operator desk | Blocks per story, capped at 3 | `MAX_BLOCKS` | 3 | 3, counted across all phases |
 | A replaced conversation | Picks up the work | nothing | resume note only (R3) | Opens with the phase brief and the resume note (invariant 3) |
-| Stack neutrality | No stack names in prompts | `workflows/tests/coder/test_prompt_stack_neutrality.py` | passes | passes, with the new skills in its scope |
+| Stack neutrality | No stack names in prompts | `workflows/tests/coder/test_prompt_stack_neutrality.py` | passes | passes, with the new procedure files in its scope |
 | Repo prompt overrides | A body override for `dev-story` replaces its body | `coder/shared/roles.py:80` | 0 in this repo | Each repo rewrites against the new roles (out of scope) |
 
 The first four rows are enforced by nothing. The design lets none of them go. Each
@@ -467,13 +481,16 @@ advisor's turn shows the strong model. A result with a decline and no consult se
 story back to review with a report naming the finding. On a CLI with no delegates, every
 phase runs at `max`. Every 5b row holds.
 
-**Slice 5. Dev procedures become skills.**
-Parts: helper procedures (review, triage), briefing (pointers in the review brief).
-Done when: the rendered review brief contains no reviewer or triage heading (invariant
-5). Each phase brief is under 2,500 tokens. A reviewer subagent's transcript shows it
-read the skill file. Every 5b row holds.
+**Slice 5. Dev procedures move out of the review brief, and the story's rules are sent
+once per conversation.** (revised, R8, R9)
+Parts: helper procedures (reviewer, answer file), briefing (pointers in the review brief,
+the opening brief's path in later phase briefs).
+Done when: the rendered review brief contains no reviewer lens or answer-file example
+(invariant 5). Each phase brief is under 2,500 tokens. A reviewer subagent's transcript
+shows it read the reviewer file. A build or review brief on the plan's conversation
+carries no standards, scope, status or commit section. Every 5b row holds.
 
-**Slice 6. QA and docs procedures become skills, and their laps get follow-up notes.**
+**Slice 6. QA and docs procedures move to their own files, and their laps get follow-up notes.**
 Parts: helper procedures (docs writer, reviewer, fixer, QA plan), briefing (follow-up
 notes for the QA and docs owners).
 Done when: `qa-story` and `document-story` render without their procedure bodies. A
@@ -515,12 +532,13 @@ story that runs QA and docs.
    **Basis:** the plan files are a few pages. The build and the laps read and write code.
    **If wrong:** section 4, phase strength. The plan would drop to `high` with the advisor
    consulted on the plan's approach.
-7. **Assumption:** the stablemate skill pack is installed in every target repo a coder run
-   works on.
-   **Decided:** procedure pointers have no inline fallback.
-   **Basis:** the pack ships with farrier's setup for every repo stablemate drives.
-   **If wrong:** section 3, invariant 4 would fail renders on a bare repo. A fallback
-   pointing into the stablemate checkout would be needed.
+7. **Assumption:** the owner and its subagents can read files in the story's brief folder
+   under the run's state directory. (revised, R8)
+   **Decided:** procedure files are written there and named by path.
+   **Basis:** the follow-up note already points the owner at its phase brief in the same
+   folder.
+   **If wrong:** section 2, procedure pointer. The files would move into the spec dir the
+   story already shares with its subagents.
 8. **Assumption:** two cache misses per story, one per tier switch, cost less than the
    prompts the change stops resending.
    **Decided:** three turns on one conversation.

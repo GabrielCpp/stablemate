@@ -11,10 +11,13 @@ plan turn makes every design call on the strongest model. The build and review t
 that plan on a cheaper model, and they put each design call they still meet to an `advisor`
 delegate on the strongest model. A turn that continues a phase on the same conversation reads a
 short note instead of the brief again. The brief stays on disk, so a turn that lost it to a
-compaction reads it back.
+compaction reads it back. The rules that hold for the whole story travel once per conversation,
+in the brief that opened it. A later phase on the same conversation names that brief's path
+instead of repeating them. The review's own procedures, the reviewer's brief and the answer
+file's format, sit in files beside the review brief, and the brief names their paths.
 
-- code: `workflows/src/workhorse_workflows/coder/dev/flow.py::Dev._turn` @9cb81c5987ec
-- code: `workflows/src/workhorse_workflows/coder/dev/flow.py::Dev._power` @9cb81c5987ec
+- code: `workflows/src/workhorse_workflows/coder/dev/flow.py::Dev._turn` @fe195e40d574
+- code: `workflows/src/workhorse_workflows/coder/dev/flow.py::Dev._power` @fe195e40d574
 - code: `workflows/src/workhorse_workflows/coder/shared/counsel.py::__all__` @b3beecb6b7d6
 - rule: the plan, build and review phases run in that order, each as its own turn, on the story's one conversation
 - rule: the plan turn runs on the `max` power tier, because every design call the story needs is made there
@@ -24,10 +27,16 @@ compaction reads it back.
 - rule: an operator answer to a block returns to the phase that raised it
 - rule: a phase opens with its full brief when the story's conversation is new or is not the one that phase last ran on, and with the short follow-up note otherwise
 - rule: the full brief of each phase is written to disk before its turn, and the follow-up note names that file, so a turn that no longer holds the brief reads it again
+- rule: the story's standing rules (its standards and branch, its scope and when to block, its status line, its commit footers, the services it changes and the follow-up it works) go only into the brief that opened the conversation, and every later phase brief on that conversation names the opening brief's path instead
+- rule: the opening brief is the earliest phase briefed on the story's current conversation, so the brief it names always carries the full rules
+- rule: a conversation the engine starts again opens with its phase's full brief and the full rules, and that full brief replaces the phase's brief on disk, so a later phase on the new conversation names a brief that carries them
+- rule: the review turn's reviewer brief and answer-file format are rendered with the turn's own values and written beside the review brief before the turn, and the review brief names both paths instead of carrying their text
+- rule: those procedure files ship in the workflows package, not in the base library, because one package dispatches them and its behaviour must not depend on an optional install
 - rule: when an advisor is offered, a build departure from the plan with no advice is sent back to the build as a repair lap
 - rule: when an advisor is offered, a declined review finding with no consult on file is reopened and sent back to the review as a repair lap
 - rule: the advisor reads the paths it is handed and answers one question, and it never edits a file
 - prefers: the follow-up note over a full brief on a continued phase, because the conversation already holds the brief and resending it costs a full prompt per lap
+- prefers: a pointer to the opening brief over repeating the story's rules in each phase brief, because the conversation already holds them and the pointer keeps each brief near one screen of reading
 - tests: `workflows/tests/coder/dev/test_flow.py::test_a_fresh_story_runs_plan_build_and_review_in_that_order`
 - tests: `workflows/tests/coder/dev/test_flow.py::test_a_failed_check_reenters_review_and_not_build`
 - tests: `workflows/tests/coder/dev/test_flow.py::test_an_operator_answer_on_a_build_block_returns_to_build`
@@ -37,6 +46,11 @@ compaction reads it back.
 - tests: `workflows/tests/coder/dev/test_flow.py::test_a_decline_with_a_consult_on_file_stays_declined`
 - tests: `workflows/tests/coder/dev/test_flow.py::test_a_later_turn_of_a_phase_on_the_same_conversation_sends_only_the_follow_up_note`
 - tests: `workflows/tests/coder/dev/test_flow.py::test_a_conversation_other_than_the_briefed_one_opens_with_the_full_brief_again`
+- tests: `workflows/tests/coder/dev/test_flow.py::test_the_plan_turn_on_a_fresh_conversation_carries_the_full_rules`
+- tests: `workflows/tests/coder/dev/test_flow.py::test_the_build_turn_on_the_plans_conversation_points_at_the_opening_brief`
+- tests: `workflows/tests/coder/dev/test_flow.py::test_a_rebrief_renders_the_full_rules_and_rewrites_the_brief_on_disk`
+- tests: `workflows/tests/coder/dev/test_flow.py::test_the_first_review_turn_writes_the_reviewer_files_beside_its_brief`
+- tests: `workflows/tests/coder/test_status_line_ownership.py::test_a_primed_brief_points_at_the_opening_brief_instead`
 - detail: [coder development flow](../flows/coder-dev.md)
 - detail: [coder dev package](coder-dev-package.md)
 - detail: [coder conversation lifecycle](coder-conversation.md)

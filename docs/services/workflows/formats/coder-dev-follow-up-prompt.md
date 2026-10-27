@@ -6,7 +6,7 @@ title: Coder dev follow-up prompt
 # Coder dev follow-up prompt
 
 - file: `workflows/src/workhorse_workflows/coder/dev/prompts/dev-follow-up.md`
-- code: `workflows/src/workhorse_workflows/coder/dev/flow.py::Dev._turn` @9cb81c5987ec
+- code: `workflows/src/workhorse_workflows/coder/dev/flow.py::Dev._turn` @fe195e40d574
 - detail: [coder development flow](../flows/coder-dev.md)
 - detail: [coder dev phase turns](../concepts/coder-dev-phase-turns.md)
 - tests: `workflows/tests/coder/dev/test_flow.py::test_a_later_turn_of_a_phase_on_the_same_conversation_sends_only_the_follow_up_note`

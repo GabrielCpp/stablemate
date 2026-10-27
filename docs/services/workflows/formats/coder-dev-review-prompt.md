@@ -6,10 +6,12 @@ title: Coder dev-review prompt
 # Coder dev-review prompt
 
 - file: `workflows/src/workhorse_workflows/coder/dev/prompts/dev-review.md`
-- code: `workflows/src/workhorse_workflows/coder/dev/flow.py::Dev.review` @9cb81c5987ec
+- code: `workflows/src/workhorse_workflows/coder/dev/flow.py::Dev.review` @fe195e40d574
 - detail: [coder development flow](../flows/coder-dev.md)
 - detail: [coder dev phase turns](../concepts/coder-dev-phase-turns.md)
 - tests: `workflows/tests/coder/dev/test_flow.py::test_a_clean_pass_settles_the_fix_and_records_the_decline`
+- tests: `workflows/tests/coder/dev/test_flow.py::test_the_first_review_turn_writes_the_reviewer_files_beside_its_brief`
+- tests: `workflows/tests/coder/test_status_line_ownership.py::test_a_primed_brief_points_at_the_opening_brief_instead`
 
 The dev-review envelope is the review phase of the dev owner's story, on the conversation the
 plan and the build ran on. It tells the agent to have a fresh reviewer judge the diff, triage
@@ -24,6 +26,18 @@ that the owner reopens its own earlier declines and tests on the same code.
 When the turn is offered an `advisor` delegate, the envelope asks the owner to consult it before
 each decline and to report each consult under the finding's id. The settlement reopens a decline
 with no consult on file.
+
+When the envelope opens the story's conversation, it carries the story's standing rules: the
+coding standards and the run branch, the scope and when to block, the status line the turn leaves
+alone, the commit footers, the services the story changes and the follow-up the run works. When an
+earlier phase opened the conversation, the envelope names that phase's brief instead and repeats
+none of them. A conversation the engine starts again opens with the full rules.
+
+The envelope carries neither the reviewer's brief nor the answer file's format. The flow renders
+each into its own file beside the review brief before the turn, and the envelope names both paths.
+The owner tells each reviewer to read the reviewer's brief first, and reads the answer file's
+format before it writes its answers. Each file is written once per conversation, with the review
+brief itself.
 
 Its fixers follow the root-cause rule the
 [coder fix-item prompt](coder-fix-item-prompt.md) lists, rendered from the same shared text. One
@@ -93,6 +107,25 @@ test that drives the finding's own case. The settlement rejects one that names n
 - required: true
 - semantics: the file the rendered brief is kept at, so a later turn can read it again
 - verify: json_path(path="$.brief_path", matches=".+/briefs/.+/review\\.md$")
+
+### opening_brief
+- type: string path
+- default: empty string
+- required: false
+- semantics: the brief of the phase that opened the story's conversation, which carries the story's standing rules, or empty when this review turn opens the conversation and carries them itself
+- verify: json_path(path="$.opening_brief", matches="^(.+/briefs/.+/[a-z]+\\.md)?$")
+
+### reviewer_brief
+- type: string path
+- required: true
+- semantics: the file beside the review brief that holds the reviewer's brief, rendered from `dev-reviewer.md` for this story: what to read, the six lenses, the score bar and the fields of a finding
+- verify: json_path(path="$.reviewer_brief", matches=".+/briefs/.+/dev-reviewer\\.md$")
+
+### answer_format
+- type: string path
+- required: true
+- semantics: the file beside the review brief that holds the answer file's format, rendered from `dev-answer-file.md`: one section per finding, an example of each answer, and the checks the settlement runs
+- verify: json_path(path="$.answer_format", matches=".+/briefs/.+/dev-answer-file\\.md$")
 - tests: `workflows/tests/coder/dev/test_flow.py::test_a_later_turn_of_a_phase_on_the_same_conversation_sends_only_the_follow_up_note`
 
 ### operator_context

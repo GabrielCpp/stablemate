@@ -13,7 +13,7 @@ each phase brief on disk with a ledger of the conversation each phase last ran o
 continues on the same conversation reads a short note instead of its brief. Turn counts and recycling belong to
 the owning flow.
 
-- code: `workflows/src/workhorse_workflows/coder/shared/conversation.py::__all__` @ee9075d1870c
+- code: `workflows/src/workhorse_workflows/coder/shared/conversation.py::__all__` @490f1e593089
 - detail: [coder shared library](coder-shared-library.md)
 
 ## Methods
@@ -26,7 +26,7 @@ the owning flow.
 - verify: count(subject="lanes sharing one story conversation key", equals=1)
 - returns: `story:<slug>`
 - verify: json_path(path="$.chain", matches="^story:[^:]+$")
-- code: `workflows/src/workhorse_workflows/coder/shared/conversation.py::story_chain` @ee9075d1870c
+- code: `workflows/src/workhorse_workflows/coder/shared/conversation.py::story_chain` @490f1e593089
 - tests: `workflows/tests/coder/test_session_chains.py::test_every_lane_names_the_same_conversation_without_being_handed_anything`
 
 ### backbone
@@ -37,7 +37,7 @@ the owning flow.
 - verify: count(subject="flow backbone conversation keys", equals=1)
 - returns: the `story:<ctx.story_slug>` key
 - verify: json_path(path="$.chain", matches="^story:[^:]+$")
-- code: `workflows/src/workhorse_workflows/coder/shared/conversation.py::backbone` @ee9075d1870c
+- code: `workflows/src/workhorse_workflows/coder/shared/conversation.py::backbone` @490f1e593089
 - tests: `workflows/tests/coder/test_session_chains.py::test_every_lane_names_the_same_conversation_without_being_handed_anything`
 
 ### brief_dir
@@ -46,7 +46,7 @@ the owning flow.
 - verify: json_path(path="$.path", matches=".+/briefs/[^/]+$")
 - returns: `<state_dir>/briefs/<work_id>`, with each `/` in the id written as `__`
 - verify: json_path(path="$.path", matches="__")
-- code: `workflows/src/workhorse_workflows/coder/shared/conversation.py::brief_dir` @ee9075d1870c
+- code: `workflows/src/workhorse_workflows/coder/shared/conversation.py::brief_dir` @490f1e593089
 - tests: `workflows/tests/coder/dev/test_flow.py::test_a_later_turn_of_a_phase_on_the_same_conversation_sends_only_the_follow_up_note`
 
 ### brief_ledger
@@ -55,7 +55,7 @@ the owning flow.
 - verify: json_path(path="$.ledger.review", equals="session-1")
 - returns: the phase-to-conversation map, or an empty map when the ledger is missing, unreadable or not a map
 - verify: json_path(path="$.ledger", equals="{}")
-- code: `workflows/src/workhorse_workflows/coder/shared/conversation.py::brief_ledger` @ee9075d1870c
+- code: `workflows/src/workhorse_workflows/coder/shared/conversation.py::brief_ledger` @490f1e593089
 - tests: `workflows/tests/coder/dev/test_flow.py::test_a_later_turn_of_a_phase_on_the_same_conversation_sends_only_the_follow_up_note`
 - tests: `workflows/tests/coder/dev/test_flow.py::test_a_conversation_other_than_the_briefed_one_opens_with_the_full_brief_again`
 
@@ -63,7 +63,7 @@ the owning flow.
 - sig: `record_brief(state_dir: Path, work_id: str, phase: str, session: str) -> None`
 - does: records that the phase's last turn ran on the given conversation, keeping every other phase's entry
 - verify: json_path(path="$.ledger.build", equals="session-1")
-- code: `workflows/src/workhorse_workflows/coder/shared/conversation.py::record_brief` @ee9075d1870c
+- code: `workflows/src/workhorse_workflows/coder/shared/conversation.py::record_brief` @490f1e593089
 - tests: `workflows/tests/coder/dev/test_flow.py::test_a_later_turn_of_a_phase_on_the_same_conversation_sends_only_the_follow_up_note`
 - tests: `workflows/tests/coder/dev/test_flow.py::test_a_conversation_other_than_the_briefed_one_opens_with_the_full_brief_again`
 
@@ -71,7 +71,7 @@ the owning flow.
 - sig: `reset_briefs(state_dir: Path, work_id: str) -> None`
 - does: removes the work item's briefs and ledger, so each phase opens with its full brief again
 - verify: removed(subject="the work item's brief directory")
-- code: `workflows/src/workhorse_workflows/coder/shared/conversation.py::reset_briefs` @ee9075d1870c
+- code: `workflows/src/workhorse_workflows/coder/shared/conversation.py::reset_briefs` @490f1e593089
 
 ### needs_brief
 - sig: `needs_brief(ledger: dict[str, str], phase: str, session: str) -> bool`
@@ -79,6 +79,18 @@ the owning flow.
 - verify: json_path(path="$.needs_brief", equals=true)
 - returns: true when the story has no conversation yet or the phase last ran on a different one, false otherwise
 - verify: json_path(path="$.needs_brief", equals=false)
-- code: `workflows/src/workhorse_workflows/coder/shared/conversation.py::needs_brief` @ee9075d1870c
+- code: `workflows/src/workhorse_workflows/coder/shared/conversation.py::needs_brief` @490f1e593089
 - tests: `workflows/tests/coder/dev/test_flow.py::test_a_later_turn_of_a_phase_on_the_same_conversation_sends_only_the_follow_up_note`
 - tests: `workflows/tests/coder/dev/test_flow.py::test_a_conversation_other_than_the_briefed_one_opens_with_the_full_brief_again`
+
+### opening_phase
+- sig: `opening_phase(ledger: dict[str, str], session: str) -> str`
+- does: names the phase whose brief opened the conversation `session`, the brief that carries the story's standing rules
+- verify: json_path(path="$.opening_phase", equals="plan")
+- returns: the first phase in the ledger's order whose conversation is `session`, or an empty string when `session` is empty or no phase ran on it
+- verify: json_path(path="$.opening_phase", equals="")
+- code: `workflows/src/workhorse_workflows/coder/shared/conversation.py::opening_phase` @490f1e593089
+- tests: `workflows/tests/coder/test_session_chains.py::test_an_empty_session_has_no_opening_phase`
+- tests: `workflows/tests/coder/test_session_chains.py::test_a_session_no_phase_ran_on_has_no_opening_phase`
+- tests: `workflows/tests/coder/test_session_chains.py::test_the_first_phase_on_a_session_opens_it`
+- tests: `workflows/tests/coder/test_session_chains.py::test_a_phase_moved_to_a_new_session_opens_that_session`
