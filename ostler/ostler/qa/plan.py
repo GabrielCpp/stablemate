@@ -28,6 +28,10 @@ from ostler.untyped import is_mapping
 from ostler.vet import placement
 
 _BOOK_DRIFT_NAME_LIMIT = 20
+_REGENERATE = (
+    "regenerate the packet from the inputs that built it: its base, its story scope and its "
+    "excluded paths. A packet a workflow built is rebuilt by that workflow, never by hand"
+)
 
 _plan_harness = load_harness_module("ostler_qa")
 COMPUTED: str = _plan_harness.COMPUTED
@@ -175,7 +179,7 @@ def _book_drift_problems(context: dict[str, Any], root: Path) -> list[str]:
     if recorded is None:
         return [
             "stale-context: qa-okf-context.json predates the book-drift guard "
-            "(no bookFiles) — run `ostler qa context` to regenerate the packet"
+            f"(no bookFiles) — {_REGENERATE}"
         ]
     if not isinstance(recorded, list):
         return ["stale-context: qa-okf-context.json 'bookFiles' must be a list"]
@@ -212,7 +216,7 @@ def _book_drift_problems(context: dict[str, Any], root: Path) -> list[str]:
     return [
         "stale-context: the book has changed since this packet was generated — "
         + "; ".join(parts)
-        + " — run `ostler qa context` to regenerate the packet"
+        + f" — {_REGENERATE}"
     ]
 
 
@@ -221,7 +225,7 @@ def _story_drift_problems(context: dict[str, Any], root: Path) -> list[str]:
     if "storyFile" not in context:
         return [
             "stale-context: qa-okf-context.json predates the story-drift guard "
-            "(no storyFile) — run `ostler qa context` to regenerate the packet"
+            f"(no storyFile) — {_REGENERATE}"
         ]
     recorded = context["storyFile"]
     if recorded is None:
@@ -239,12 +243,12 @@ def _story_drift_problems(context: dict[str, Any], root: Path) -> list[str]:
     if current is None:
         return [
             f"stale-context: the story file this packet was generated from is gone "
-            f"({recorded_path}) — run `ostler qa context` to regenerate the packet"
+            f"({recorded_path}) — {_REGENERATE}"
         ]
     if current["sha256"] != recorded_sha256:
         return [
             f"stale-context: the story file has changed since this packet was generated "
-            f"({recorded_path}) — run `ostler qa context` to regenerate the packet"
+            f"({recorded_path}) — {_REGENERATE}"
         ]
     return []
 

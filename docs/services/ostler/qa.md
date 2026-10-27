@@ -191,7 +191,7 @@ are written, because each later command reads what an earlier one wrote.
 - code: ostler/ostler/qa/harness_host.py::default_interpreter@9aece567e098
 - code: ostler/ostler/qa/lint.py::cmd_lint@7072719988f2
 - code: ostler/ostler/qa/outcome.py::QaOutcome@a11c201f424c
-- code: ostler/ostler/qa/plan.py::load_plan@d7dc5c303e74
+- code: ostler/ostler/qa/plan.py::load_plan@5fa508976cef
 - code: ostler/ostler/qa/run.py::cmd_validate@166d32882457
 - code: ostler/ostler/qa/tools.py::catalog@f4b08a6e06da
 - code: ostler/ostler/untyped.py::is_mapping@c964a61d4a94
@@ -239,7 +239,7 @@ are written, because each later command reads what an earlier one wrote.
 - code: ostler/ostler/qa/lint.py::cmd_lint@7072719988f2
 - code: ostler/ostler/qa/manifest.py::RunManifest@2d00c95675d5
 - code: ostler/ostler/qa/outcome.py::QaOutcome@a11c201f424c
-- code: ostler/ostler/qa/plan.py::check_runtime_requirements@d7dc5c303e74
+- code: ostler/ostler/qa/plan.py::check_runtime_requirements@5fa508976cef
 - code: ostler/ostler/qa/repeats.py::pages@1074839ca608
 - code: ostler/ostler/qa/report.py::build_report@0d73d5c319d1
 - code: ostler/ostler/qa/run.py::cmd_run@166d32882457

@@ -150,10 +150,10 @@ re-exports the public surface of all of the above (`cmd_run`, `cmd_compile_plan`
 - code: ostler/ostler/qa/run_log.py::run_log_tally@b2d1c68eaf42
 - code: ostler/ostler/qa/run_log.py::passing_log_ref@b2d1c68eaf42
 - code: ostler/ostler/qa/run_log.py::failing_log_refs@b2d1c68eaf42
-- code: ostler/ostler/qa/plan.py::PlanDocument@d7dc5c303e74
-- code: ostler/ostler/qa/plan.py::load_plan@d7dc5c303e74
-- code: ostler/ostler/qa/plan.py::validate_v2@d7dc5c303e74
-- code: ostler/ostler/qa/plan.py::check_runtime_requirements@d7dc5c303e74
+- code: ostler/ostler/qa/plan.py::PlanDocument@5fa508976cef
+- code: ostler/ostler/qa/plan.py::load_plan@5fa508976cef
+- code: ostler/ostler/qa/plan.py::validate_v2@5fa508976cef
+- code: ostler/ostler/qa/plan.py::check_runtime_requirements@5fa508976cef
 - code: ostler/ostler/qa/v2.py::run_plan@fd118c311bc5
 - code: ostler/ostler/qa/captures.py::CaptureDecl@248120ebb77f
 - code: ostler/ostler/qa/captures.py::parse_bullet@248120ebb77f
@@ -228,6 +228,10 @@ re-exports the public surface of all of the above (`cmd_run`, `cmd_compile_plan`
 - a stale plan follows the packet: `validate_v2` reports `stale-plan` when a plan's `book=`
   differs from the packet's owed-obligation digest, and names the full current digest, so the
   author reconciles `covers=` and rewrites `book=` instead of rebuilding the packet.
+- a stale packet names its own repair: `validate_v2` reports `stale-context` when the story file
+  or the book moved after the packet was built, and tells the reader to rebuild the packet from
+  the inputs that built it. A packet a workflow built is rebuilt by that workflow, because the
+  `ostler qa context` command line cannot reproduce a workflow's excluded paths.
 - outcome is uniform: every `ostler qa` subcommand in `run.py`, `lint.py`, `clean.py` and
   `sensitivity.py` returns a `QaOutcome`, never raises for an expected failure mode, so the CLI
   layer has one shape to render regardless of which subcommand ran.
