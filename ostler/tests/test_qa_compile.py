@@ -7054,3 +7054,177 @@ def test_a_server_passage_the_packet_does_not_carry_refuses_the_walk() -> None:
     assert isinstance(result, Refusal)
     [gap, *_] = [g for g in result.gaps if g.kind == "uncompilable-claim"]
     assert "passage" in gap.detail
+
+
+class _StrictFlowLoader(yaml.SafeLoader):
+    """A loader that refuses a mapping holding one key twice, as Maestro's own YAML reading does not."""
+
+    def construct_mapping(self, node, deep=False):
+        keys = [self.construct_object(key, deep=True) for key, _value in node.value]
+        assert len(keys) == len(set(keys)), f"duplicate keys {keys}"
+        return super().construct_mapping(node, deep=deep)
+
+
+def _strict_flow(text: str) -> tuple[dict, list]:
+    header, commands = yaml.load_all(text, Loader=_StrictFlowLoader)
+    return header, commands
+
+
+def _maestro_value_probe(
+    locators: dict[str, list[str]], checks: list[dict] | None = None,
+    acts: list[dict] | None = None,
+) -> tuple[dict, str]:
+    """`_built_target_probe_maestro`'s obligation with *locators* and *checks* of its own, on a fixture that provides a `stamp`."""
+    oid = "okf:built-target-probe:maestro:values:1"
+    navigation = _arrival_navigation()
+    navigation["policy"]["driver"] = "mobile"
+    navigation["policy"]["bundleId"] = "com.example.mobile-app"
+    navigation["policy"]["launchScreen"] = _SCREEN
+    context = _navigation_context(
+        _page_obligation(oid, f"{_SCREEN}#probe", locators=locators, checks=checks, acts=acts,
+                          fixtures=[{"name": "seeded-ledger", "args": [], "provides": "a ledger",
+                                     "providesKeys": ["seeded-ledger.stamp"]}]),
+        navigation=navigation,
+        screen_routes={_SCREEN: "Probe"},
+    )
+    return context, oid
+
+
+def _visible_text(text: str, **extra: object) -> dict:
+    return {"call": "it", "name": "visible", "args": {"locator": "irrelevant", "text": text, **extra}}
+
+
+_TICKET_NAME = "{ticket.title}, {ticket.status_label}"
+
+
+def test_a_templated_name_and_a_referenced_text_reach_maestro_as_one_variable() -> None:
+    """The flow never holds the book's braces or its `@fx.key`: the one `text:` is `${OKF_REF_1}`, and the scenario hands Maestro the pattern the harness builds at run time from the resolved text."""
+    text = "Printer jams @seeded-ledger.stamp, Received"
+    context, oid = _maestro_value_probe({"name": [_TICKET_NAME]}, [_visible_text(text)])
+    result = _compile_plan_gaps(context, story="demo-story")
+    assert isinstance(result, Plan)
+    assert _gap_kinds(result.gaps, oid) == []
+    (flow_text,) = result.files.values()
+    assert "{ticket" not in flow_text
+    assert "@seeded-ledger" not in flow_text
+    _header, commands = _strict_flow(flow_text)
+    assert commands[-1] == {"assertVisible": {"text": "${OKF_REF_1}"}}
+    assert commands[1] == {"scrollUntilVisible": {"element": {"text": "${OKF_REF_1}"}, "direction": "DOWN"}}
+    assert (f'env={{"OKF_REF_1": qa.maestro.pattern({json.dumps(_TICKET_NAME)}, '
+            f'text=qa.resolve({json.dumps(text)}))}}') in result.source
+
+
+def test_a_fill_value_holding_a_reference_is_typed_from_a_variable() -> None:
+    """The app must not be typed the book's `@fx.key`: `inputText` is a variable and the scenario resolves the reference when it runs."""
+    value = "Printer jams @seeded-ledger.stamp"
+    act = _act("fill", f"{_SCREEN}#probe-field", {"selector": ["testID=probe-field"]},
+               locator="#probe-field", value=value)
+    context, oid = _maestro_value_probe({"selector": ["testID=probe-widget"]}, acts=[act])
+    result = _compile_plan_gaps(context, story="demo-story")
+    assert isinstance(result, Plan)
+    assert _gap_kinds(result.gaps, oid) == []
+    (flow_text,) = result.files.values()
+    assert "@seeded-ledger" not in flow_text
+    _header, commands = _strict_flow(flow_text)
+    assert {"inputText": "${OKF_REF_1}"} in commands
+    assert f'env={{"OKF_REF_1": qa.resolve({json.dumps(value)})}}' in result.source
+
+
+def test_a_fill_value_that_cannot_be_typed_literally_is_an_uncompilable_claim() -> None:
+    """A template hole or a `${` in a typed value would be read by Maestro or the app as something other than the text the book states."""
+    for value in ("{ticket.title}", "cost ${total}", "a ${ b"):
+        act = _act("fill", f"{_SCREEN}#probe-field", {"selector": ["testID=probe-field"]},
+                   locator="#probe-field", value=value)
+        context, oid = _maestro_value_probe({"selector": ["testID=probe-widget"]}, acts=[act])
+        result = _compile_plan_gaps(context, story="demo-story")
+        assert _gap_kinds(result.gaps, oid) == ["uncompilable-claim"], value
+        assert isinstance(result, Refusal)
+
+
+@pytest.mark.parametrize("locators", [
+    {"selector": ["testID=probe-widget"]},
+    {"name": ["Open tickets"]},
+])
+def test_a_visible_text_is_one_text_key_in_a_flow_a_strict_loader_reads(locators: dict) -> None:
+    """Two `text:` keys in one mapping make the second replace the first, so the control is no longer the one looked for."""
+    context, oid = _maestro_value_probe(locators, [_visible_text("Received")])
+    result = _compile_plan_gaps(context, story="demo-story")
+    assert isinstance(result, Plan)
+    assert _gap_kinds(result.gaps, oid) == []
+    (flow_text,) = result.files.values()
+    _header, commands = _strict_flow(flow_text)
+    (check,) = [c["assertVisible"] for c in commands if "assertVisible" in c]
+    assert "text" in check
+    assert flow_text.count("text:") == flow_text.count("text: ")
+    expected = "(?sU)(?-i:.*\\QReceived\\E.*)" if "id" in check else None
+    if expected:
+        assert check == {"id": "probe-widget", "text": expected}
+    else:
+        assert check["text"].startswith("(?sU)(?=(?i:")
+        assert "\\QReceived\\E" in check["text"]
+
+
+def test_a_visible_text_with_literal_braces_compiles_as_the_characters() -> None:
+    """`text` is a literal on every driver, so braces in it are characters to find and not a hole the compiler forgot to render."""
+    context, oid = _maestro_value_probe({"name": ["Open tickets"]}, [_visible_text("Total {n}")])
+    result = _compile_plan_gaps(context, story="demo-story")
+    assert isinstance(result, Plan)
+    assert _gap_kinds(result.gaps, oid) == []
+    (flow_text,) = result.files.values()
+    _header, commands = _strict_flow(flow_text)
+    (check,) = [c["assertVisible"] for c in commands if "assertVisible" in c]
+    assert "\\QTotal {n}\\E" in check["text"]
+
+
+@pytest.mark.parametrize("probe", [_built_target_probe_maestro, _maestro_press_probe])
+def test_every_flow_of_the_standing_probes_parses_without_a_duplicate_key(probe) -> None:
+    context, _oid = probe() if probe is _built_target_probe_maestro else probe("Enter")
+    result = _compile_plan_gaps(context, story="demo-story")
+    assert isinstance(result, Plan)
+    assert result.files
+    for flow_text in result.files.values():
+        _strict_flow(flow_text)
+
+
+def test_a_count_on_a_phone_screen_is_an_uncompilable_claim() -> None:
+    """Maestro cannot count the elements a selector matches, so the claim is filed and no check is compiled for it."""
+    context, oid = _maestro_value_probe({"name": ["Open tickets"]}, [_visible_text("Received", count=2)])
+    result = _compile_plan_gaps(context, story="demo-story")
+    assert _gap_kinds(result.gaps, oid) == ["uncompilable-claim"]
+    (gap,) = [g for g in result.gaps if g.obligation_id == oid]
+    assert "count" in gap.detail
+    assert isinstance(result, Refusal)
+
+
+def test_a_plain_name_with_a_regex_metacharacter_is_quoted() -> None:
+    """Maestro reads `text:` as a regex, so `(3)` must match the characters and not open a group."""
+    context, oid = _maestro_value_probe({"name": ["Open tickets (3)"]}, [_visible("table:Things on file")])
+    result = _compile_plan_gaps(context, story="demo-story")
+    assert isinstance(result, Plan)
+    assert _gap_kinds(result.gaps, oid) == []
+    (flow_text,) = result.files.values()
+    _header, commands = _strict_flow(flow_text)
+    (check,) = [c["assertVisible"] for c in commands if "assertVisible" in c]
+    assert check == {"text": "(?sU)(?i:\\W*\\QOpen\\E\\s+\\Qtickets\\E\\s+\\Q(3)\\E\\W*)"}
+
+
+def test_a_name_that_describes_a_name_is_not_addressable_on_a_phone() -> None:
+    """A prose `name:` states no string the screen draws, so the claim files the gap and carries the reason."""
+    context, oid = _maestro_value_probe({"name": ["`the ticket's title` followed by its status"]})
+    result = _compile_plan_gaps(context, story="demo-story")
+    assert _gap_kinds(result.gaps, oid) == ["uncompilable-claim"]
+    (gap,) = [g for g in result.gaps if g.obligation_id == oid]
+    assert "so it describes the accessible name" in gap.detail
+    assert isinstance(result, Refusal)
+
+
+def test_a_value_with_a_quote_or_a_backslash_leaves_the_flow_valid_yaml() -> None:
+    """Each scalar is written as a JSON string, so a `"` or `\\` in a book value cannot end it early."""
+    act = _act("fill", f"{_SCREEN}#probe-field", {"selector": ["testID=probe-field"]},
+               locator="#probe-field", value='say "hi" \\ now')
+    context, oid = _maestro_value_probe({"selector": ["testID=probe-widget"]}, acts=[act])
+    result = _compile_plan_gaps(context, story="demo-story")
+    assert isinstance(result, Plan)
+    (flow_text,) = result.files.values()
+    _header, commands = _strict_flow(flow_text)
+    assert {"inputText": 'say "hi" \\ now'} in commands

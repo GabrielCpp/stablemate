@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import ast
+import json
 
 from ostler.qa.compile import Gap, Plan, Refusal, compile_plan_gaps
+from ostler.qa.harness_host import load_harness_module
 from ostler.qa.packet import packet_of
 
 from test_qa_compile import _page_obligation, _step
@@ -19,6 +21,8 @@ from test_screen_state_stops import (
     _context,
     _state,
 )
+
+elements = load_harness_module("ostler_qa_elements")
 
 DETAILS = "docs/services/policy/gui/screens/details.md"
 SHOWN = f"{DETAILS}#shown"
@@ -148,7 +152,8 @@ def test_a_device_walk_over_a_passage_cuts_at_its_stop_with_no_requests_and_no_o
     assert 'expect="shown"' in second
     assert "requests=" not in first + second and "origins=" not in first + second and "since=" not in second
     assert f"{FLOW_STEM}-1.yaml" in files and f"{FLOW_STEM}-2.yaml" in files
-    assert 'text: "Open details"' in files[f"{FLOW_STEM}-2.yaml"] or 'text: "Open details"' in files[f"{FLOW_STEM}-1.yaml"]
+    opens = f"text: {json.dumps(elements.maestro_pattern('Open details'))}"
+    assert opens in files[f"{FLOW_STEM}-2.yaml"] or opens in files[f"{FLOW_STEM}-1.yaml"]
 
 
 def test_the_packet_carries_the_passages_and_a_passage_owes_nothing() -> None:

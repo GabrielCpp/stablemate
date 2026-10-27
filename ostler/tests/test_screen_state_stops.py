@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import ast
+import json
 import re
 
 from ostler.qa.compile import Gap, Plan, Refusal, compile_plan_gaps
+from ostler.qa.harness_host import load_harness_module
 
 from test_qa_compile import (
     _covers,
@@ -18,6 +20,13 @@ from test_qa_compile import (
     _page_obligation,
     _step,
 )
+
+elements = load_harness_module("ostler_qa_elements")
+
+
+def _pattern(name: str) -> str:
+    return json.dumps(elements.maestro_pattern(name))
+
 
 LOADED = f"{_SCREEN}#loaded"
 ERROR = f"{_SCREEN}#error"
@@ -177,7 +186,7 @@ def test_a_stop_on_a_device_settles_between_two_flow_files_and_goes_on_tapping()
     assert first < settle < second < journey.index("qa.verify(")
     assert files[f"{FLOW_STEM}-1.yaml"] == 'appId: "com.example.mobile-app"\n---\n- launchApp:\n    clearState: true\n'
     assert "- launchApp" not in files[f"{FLOW_STEM}-2.yaml"]
-    assert 'text: "Open details"' in files[f"{FLOW_STEM}-2.yaml"]
+    assert f"text: {_pattern('Open details')}" in files[f"{FLOW_STEM}-2.yaml"]
     assert f"{FLOW_STEM}.yaml" not in files
 
 
@@ -223,10 +232,10 @@ def test_a_device_flow_with_no_stop_is_one_flow_file_that_launches_first() -> No
 
     assert files[f"{FLOW_STEM}.yaml"] == (
         'appId: "com.example.mobile-app"\n---\n- launchApp:\n    clearState: true\n'
-        '- scrollUntilVisible:\n    element:\n      text: "Open details"\n    direction: DOWN\n'
-        '- tapOn:\n    text: "Open details"\n'
-        '- scrollUntilVisible:\n    element:\n      text: "Results"\n    direction: DOWN\n'
-        '- assertVisible:\n    text: "Results"\n')
+        f'- scrollUntilVisible:\n    element:\n      text: {_pattern("Open details")}\n    direction: DOWN\n'
+        f'- tapOn:\n    text: {_pattern("Open details")}\n'
+        f'- scrollUntilVisible:\n    element:\n      text: {_pattern("Results")}\n    direction: DOWN\n'
+        f'- assertVisible:\n    text: {_pattern("Results")}\n')
     assert f'    journey_result = qa.maestro.run(qa.spec_dir / "{FLOW_STEM}.yaml")' in journey
     assert "require=True" not in journey
     assert "qa.settle(" not in journey

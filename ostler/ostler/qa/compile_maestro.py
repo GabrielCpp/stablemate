@@ -2,11 +2,18 @@
 
 from __future__ import annotations
 
+import json
+import re
+from collections.abc import Iterator
 from collections.abc import Mapping
 from dataclasses import dataclass
 
+import yaml
+
+from ostler import accessible_names
 from ostler import acts as acts_mod
 from ostler.checks import CheckValue
+from ostler.qa import references
 from ostler.qa.book_index import BookIndex
 from ostler.qa.compile_journey import JourneyWalk
 from ostler.qa.compile_journey import WalkedJourney
@@ -15,6 +22,7 @@ from ostler.qa.compile_stops import expand_steps
 from ostler.qa.compile_stops import resolve_state
 from ostler.qa.compile_stops import resolve_stop
 from ostler.qa.compile_support import MAESTRO
+from ostler.qa.compile_support import name_refusal
 from ostler.qa.compile_support import bullet_value
 from ostler.qa.compile_support import check_document
 from ostler.qa.compile_support import on_node
@@ -54,10 +62,40 @@ from ostler.qa.plan_source import scenario_lines
 from ostler.qa.plan_source import state_walk_function_name
 from ostler.qa.plan_source import target_lines
 from ostler.qa.plan_source import target_variable
+from ostler.qa.plan_source import typed_literal
 from ostler import selector_forms
+from ostler.qa.harness_host import load_harness_module
 
 
 MaestroLocator = tuple[str, str]
+
+_ELEMENTS = load_harness_module("ostler_qa_elements")
+_HOLE = re.compile(r"\$?\{[^{}]*\}")
+_VARIABLE = re.compile(r"\$\{OKF_REF_(\d+)\}")
+_QUOTED = re.compile(r"\\Q.*?\\E", re.DOTALL)
+
+
+class _Refs:
+    """The values a flow hands Maestro as variables, each kept as the Python expression the scenario evaluates for it."""
+
+    def __init__(self) -> None:
+        self._expressions: list[str] = []
+
+    def bind(self, expression: str) -> str:
+        """The variable that stands for *expression* in a flow's text."""
+        if expression not in self._expressions:
+            self._expressions.append(expression)
+        return "${OKF_REF_%d}" % len(self._expressions)
+
+    def numbered(self, text: str) -> tuple[str, list[tuple[str, str]]]:
+        """*text* with its variables numbered from 1 in order of appearance, and the `(name, expression)` of each."""
+        order: list[str] = []
+        for found in _VARIABLE.finditer(text):
+            if found.group(1) not in order:
+                order.append(found.group(1))
+        names = {each: f"OKF_REF_{at}" for at, each in enumerate(order, start=1)}
+        renamed = _VARIABLE.sub(lambda found: "${" + names[found.group(1)] + "}", text)
+        return renamed, [(names[each], self._expressions[int(each) - 1]) for each in order]
 
 
 def maestro_locator(locators: Locators) -> MaestroLocator | None:
@@ -68,15 +106,37 @@ def maestro_locator(locators: Locators) -> MaestroLocator | None:
         if parsed is not None and parsed[0] == "testID":
             return "id", parsed[1]
     name = bullet_value(next(iter(locators.name), None))
-    if name:
-        return "text", name
+    if name and not name_refusal(locators):
+        literal = accessible_names.literal_name(name)
+        if literal:
+            return "text", literal
     return None
 
 
-def _flow_yaml(commands: list[str], launch: MaestroLaunch, *, first: bool = True) -> str:
-    """One Maestro flow file: the app, then, in the first file of a scenario, a cold launch that clears the device unless a fixture signed it in, then *commands* in order."""
+def _flow_yaml(
+    commands: list[str], launch: MaestroLaunch, refs: _Refs, *, first: bool = True,
+) -> tuple[str, str]:
+    """One Maestro flow file and the `env=` argument that runs it: the app, then, in the first file of a scenario, a cold launch that clears the device unless a fixture signed it in, then *commands* in order."""
     opening = [] if not first else ["- launchApp"] if launch.signed_in else ["- launchApp:", "    clearState: true"]
-    return "\n".join([f'appId: "{launch.bundle_id}"', "---", *opening, *commands]) + "\n"
+    text = "\n".join([f"appId: {json.dumps(launch.bundle_id)}", "---", *opening, *commands]) + "\n"
+    text, variables = refs.numbered(text)
+    if any(references.find_references(each) or _HOLE.search(each) for each in _unquoted(text)):
+        raise ValueError(f"a Maestro flow still holds an unrendered book value:\n{text}")
+    env = ", ".join(f"{json.dumps(name)}: {expression}" for name, expression in variables)
+    return text, f", env={{{env}}}" if env else ""
+
+
+def _unquoted(flow: str) -> Iterator[str]:
+    """Each string of *flow* with its variables and its regex-quoted literals cut out: what is left reached the flow without being rendered."""
+    pending: list[object] = list(yaml.safe_load_all(flow))
+    while pending:
+        node = pending.pop()
+        if isinstance(node, dict):
+            pending.extend([*node.keys(), *node.values()])
+        elif isinstance(node, list):
+            pending.extend(node)
+        elif isinstance(node, str):
+            yield _QUOTED.sub("", _VARIABLE.sub("", node))
 
 
 _PRESS_KEYS: frozenset[str] = frozenset({
@@ -99,40 +159,65 @@ def maestro_press_key(key: str) -> str | None:
     return _PRESS_KEYS_BY_NORMAL.get(normal)
 
 
-def _into_view(locator: MaestroLocator) -> list[str]:
-    """The scroll that brings the control at *locator* onto the screen: Maestro sees only what is drawn, where a browser driver scrolls to a control by itself."""
+def _scalar(value: str, refs: _Refs) -> str:
+    """*value* as a YAML scalar, or as the variable the scenario fills with it once it holds a reference."""
+    if references.find_references(value):
+        return json.dumps(refs.bind(typed_literal(value)))
+    return json.dumps(value)
+
+
+def _selector(
+    locator: MaestroLocator, text: str | None, refs: _Refs, indent: str,
+) -> list[str]:
+    """The mapping lines that address the control at *locator*, holding *text* when given: one `text:` key, a regex that reads the book's value the way the browser driver does."""
     key, value = locator
-    return ["- scrollUntilVisible:", "    element:", f'      {key}: "{value}"', "    direction: DOWN"]
+    name = "" if key == "id" else value
+    lines = [f"{indent}id: {json.dumps(value)}"] if key == "id" else []
+    if key == "id" and text is None:
+        return lines
+    if any(references.find_references(each) for each in (name, text or "")):
+        arguments = [typed_literal(name)] if name else []
+        if text is not None:
+            arguments.append(f"text={typed_literal(text)}")
+        pattern = json.dumps(refs.bind(f"qa.maestro.pattern({', '.join(arguments)})"))
+    else:
+        pattern = json.dumps(_ELEMENTS.maestro_pattern(name, text=text))
+    return [*lines, f"{indent}text: {pattern}"]
+
+
+def _into_view(locator: MaestroLocator, text: str | None, refs: _Refs) -> list[str]:
+    """The scroll that brings the control at *locator* onto the screen: Maestro sees only what is drawn, where a browser driver scrolls to a control by itself."""
+    return [
+        "- scrollUntilVisible:", "    element:", *_selector(locator, text, refs, "      "),
+        "    direction: DOWN",
+    ]
 
 
 def _act_commands(
-    act_name: str, locator: MaestroLocator, args: Mapping[str, CheckValue],
+    act_name: str, locator: MaestroLocator, args: Mapping[str, CheckValue], refs: _Refs,
 ) -> list[str]:
     """The Maestro commands that perform act *act_name* on the control at *locator*."""
-    key, value = locator
-    tap = [*_into_view(locator), "- tapOn:", f'    {key}: "{value}"']
+    tap = [*_into_view(locator, None, refs), "- tapOn:", *_selector(locator, None, refs, "    ")]
     if act_name == "fill":
-        return [*tap, f'- inputText: "{args.get("value", "")}"']
+        return [*tap, f"- inputText: {_scalar(str(args.get('value', '')), refs)}"]
     if act_name == "press":
-        return [*tap, f'- pressKey: "{args.get("key", "")}"']
+        return [*tap, f"- pressKey: {json.dumps(str(args.get('key', '')))}"]
     return tap
 
 
 def _check_commands(
-    check_name: str, locator: MaestroLocator, args: Mapping[str, CheckValue],
+    check_name: str, locator: MaestroLocator, args: Mapping[str, CheckValue], refs: _Refs,
 ) -> list[str]:
     """The Maestro assertion that observes check *check_name* on the control at *locator*."""
-    key, value = locator
     if check_name == "hidden":
-        return ["- assertNotVisible:", f'    {key}: "{value}"']
-    block = [*_into_view(locator), "- assertVisible:", f'    {key}: "{value}"']
+        return ["- assertNotVisible:", *_selector(locator, None, refs, "    ")]
+    text = args.get("text")
+    held = text if check_name == "visible" and isinstance(text, str) else None
+    block = [*_into_view(locator, held, refs), "- assertVisible:", *_selector(locator, held, refs, "    ")]
     if check_name == "actionable":
         block.append("    enabled: true")
     elif check_name == "inert":
         block.append("    enabled: false")
-    text = args.get("text")
-    if check_name == "visible" and isinstance(text, str):
-        block.append(f'    text: "{text}"')
     return block
 
 
@@ -151,7 +236,7 @@ def _check_locator(row: CallRow, obligation: Obligation, gaps: list[Gap]) -> Mae
             gaps.append(Gap(oid, "uncompilable-claim",
                              f"`{row.name}` declares no `locator=` and this obligation's "
                              "own node states no `testID=` selector and no `name:` to fall back "
-                             "on"))
+                             f"on{name_refusal(obligation.locators)}"))
         return locator
     param = sorted(row.locates)[0]
     target = row.locates[param]
@@ -167,7 +252,8 @@ def _check_locator(row: CallRow, obligation: Obligation, gaps: list[Gap]) -> Mae
         gaps.append(Gap(
             oid, "uncompilable-claim",
             f"`{target.node}` is what `{param}=` names, and it declares no `testID=` selector and "
-            "no `name:` — so the book says what to look at and not how to address it"))
+            "no `name:` — so the book says what to look at and not how to address it"
+            f"{name_refusal(target.locators)}"))
     return locator
 
 
@@ -182,10 +268,11 @@ def _on_locator(
 class UnaddressedHop:
     """The first hop on a route that no locator lets the mobile driver tap."""
     label: str
+    refusal: str = ""
 
 
 def _hop_commands(
-    hops: tuple[NavHop, ...], locators_by_node: dict[str, Locators],
+    hops: tuple[NavHop, ...], locators_by_node: dict[str, Locators], refs: _Refs,
 ) -> list[str] | UnaddressedHop:
     """One `tapOn` per navigation hop from the launch screen, or the first hop no locator addresses."""
     commands: list[str] = []
@@ -193,17 +280,19 @@ def _hop_commands(
         locators = locators_by_node.get(hop.node, NO_LOCATORS)
         on_value = next(iter(locators.on), None)
         locator = None
+        refusal = ""
         if on_value is not None:
             locator = _on_locator(hop.from_page, on_value, locators_by_node)
+            refusal = name_refusal(locators_by_node.get(on_node(hop.from_page, on_value), NO_LOCATORS))
         locator = locator or maestro_locator(locators)
         if locator is None:
-            return UnaddressedHop(hop.label or hop.node)
-        commands.extend(_act_commands("click", locator, {}))
+            return UnaddressedHop(hop.label or hop.node, refusal or name_refusal(locators))
+        commands.extend(_act_commands("click", locator, {}, refs))
     return commands
 
 
 def _reach_commands(
-    page: str, launch: MaestroLaunch, locators_by_node: dict[str, Locators],
+    page: str, launch: MaestroLaunch, locators_by_node: dict[str, Locators], refs: _Refs,
 ) -> list[str] | ScenarioRefusal:
     """The taps that reach *page* from a cold launch, or why the book gives no way there."""
     hops = () if page == launch.launch_screen else launch.routes.get(page)
@@ -213,17 +302,17 @@ def _reach_commands(
             f"a cold `launchApp` opens on {launch.launch_screen!r}, not {page!r}, and no "
             "navigation path in the book gets from the one to the other",
         )
-    hop_commands = _hop_commands(hops, locators_by_node)
+    hop_commands = _hop_commands(hops, locators_by_node, refs)
     if isinstance(hop_commands, UnaddressedHop):
         return ScenarioRefusal(
             "unresolved-precondition",
             f"navigation hop {hop_commands.label!r} from {launch.launch_screen!r} declares no "
-            "`testID=` selector and no `name:` for the mobile driver to tap",
+            f"`testID=` selector and no `name:` for the mobile driver to tap{hop_commands.refusal}",
         )
     return hop_commands
 
 
-def _act_command_lines(obligation: Obligation, gaps: list[Gap]) -> list[str] | None:
+def _act_command_lines(obligation: Obligation, gaps: list[Gap], refs: _Refs) -> list[str] | None:
     """The Maestro commands that perform *obligation*'s declared acts, or `None` after a gap."""
     commands: list[str] = []
     for row in obligation.acts:
@@ -235,10 +324,19 @@ def _act_command_lines(obligation: Obligation, gaps: list[Gap]) -> list[str] | N
             return None
         locator = _act_locator(row)
         if locator is None:
+            located = row.locates.get("locator")
             gaps.append(Gap(obligation.id, "uncompilable-claim",
                              f"`{row.name}` points at a subject with no `testID=` "
-                             "selector and no `name:` for the mobile driver to address"))
+                             "selector and no `name:` for the mobile driver to address"
+                             f"{name_refusal(located.locators if located else NO_LOCATORS)}"))
             return None
+        if spec.name == "fill":
+            typed = str(row.args.get("value", ""))
+            if _HOLE.search(typed) or "${" in typed:
+                gaps.append(Gap(obligation.id, "uncompilable-claim",
+                                 f"`fill` types {typed!r}, which holds a template hole or a "
+                                 "`${`, so there is no one text the mobile driver can type for it"))
+                return None
         act_args: Mapping[str, CheckValue] = row.args
         if spec.name == "press":
             book_key = row.text_arg("key")
@@ -249,12 +347,12 @@ def _act_command_lines(obligation: Obligation, gaps: list[Gap]) -> list[str] | N
                                  "Maestro's `pressKey` keys"))
                 return None
             act_args = {**row.args, "key": canonical_key}
-        commands.extend(_act_commands(spec.name, locator, act_args))
+        commands.extend(_act_commands(spec.name, locator, act_args, refs))
     return commands
 
 
 def _trigger_tap_commands(
-    obligation: Obligation, locators_by_node: dict[str, Locators], gaps: list[Gap],
+    obligation: Obligation, locators_by_node: dict[str, Locators], gaps: list[Gap], refs: _Refs,
 ) -> list[str] | None:
     """The tap on *obligation*'s `on:` control, when it names one, or `None` after a gap."""
     on_value = next(iter(obligation.locators.on), None)
@@ -264,9 +362,10 @@ def _trigger_tap_commands(
     if on_locator is None:
         gaps.append(Gap(obligation.id, "uncompilable-claim",
                          f"`on:` names {on_label(on_value)!r}, which declares no `testID=` "
-                         "selector and no `name:` for the mobile driver to address"))
+                         "selector and no `name:` for the mobile driver to address"
+                         f"{name_refusal(locators_by_node.get(on_node(obligation.source, on_value), NO_LOCATORS))}"))
         return None
-    return _act_commands("click", on_locator, {})
+    return _act_commands("click", on_locator, {}, refs)
 
 
 @dataclass(frozen=True)
@@ -293,7 +392,7 @@ class _FlowChecks:
 
 
 def _compiled_check(
-    row: CallRow, obligation: Obligation, result_name: str, gaps: list[Gap],
+    row: CallRow, obligation: Obligation, result_name: str, gaps: list[Gap], refs: _Refs,
 ) -> _CompiledCheck | None:
     """Compile one of *obligation*'s checks against a flow's result, or `None` after a gap."""
     oid = obligation.id
@@ -308,23 +407,31 @@ def _compiled_check(
     if channel != "page":
         gaps.append(unobservable_gap(oid, row.name, MAESTRO))
         return None
+    if row.name == "visible" and "count" in row.args:
+        gaps.append(Gap(oid, "uncompilable-claim",
+                        f"`{row.name}(count=...)` counts the elements a locator matches, and "
+                        "Maestro cannot count them: it asserts that one is shown, so no check is "
+                        "compiled for the row"))
+        return None
     locator = _check_locator(row, obligation, gaps)
     if locator is None:
         return None
     return _CompiledCheck(
-        _check_commands(row.name, locator, row.args),
+        _check_commands(row.name, locator, row.args, refs),
         f"    qa.verify({python_literal(row.name)}, {result_name}"
         f"{call_kwargs(row.args)}, covers=[{python_literal(oid)}])",
         check_document(row, obligation) or None,
     )
 
 
-def _flow_checks(obligation: Obligation, result_name: str, gaps: list[Gap]) -> _FlowChecks | None:
+def _flow_checks(
+    obligation: Obligation, result_name: str, gaps: list[Gap], refs: _Refs,
+) -> _FlowChecks | None:
     """Compile *obligation*'s checks against one flow's result, or `None` when any check gapped."""
     compiled = _FlowChecks([], [], [])
     whole = True
     for row in obligation.checks:
-        check = _compiled_check(row, obligation, result_name, gaps)
+        check = _compiled_check(row, obligation, result_name, gaps, refs)
         if check is None:
             whole = False
             continue
@@ -341,7 +448,8 @@ def _scenario_body(
     index = 0
     for obligation in sorted(obligations, key=lambda o: o.doc_position):
         oid = obligation.id
-        reach = _reach_commands(obligation.source, launch, book.locators_by_node)
+        refs = _Refs()
+        reach = _reach_commands(obligation.source, launch, book.locators_by_node, refs)
         if isinstance(reach, ScenarioRefusal):
             sinks.gaps.append(Gap(oid, reach.kind, reach.detail))
             continue
@@ -351,19 +459,19 @@ def _scenario_body(
         lines.append(f"    # {requirement}")
         index += 1
         name = f"observed_{index}"
-        acted = (_act_command_lines(obligation, sinks.gaps) if obligation.acts
-                 else _trigger_tap_commands(obligation, book.locators_by_node, sinks.gaps))
+        acted = (_act_command_lines(obligation, sinks.gaps, refs) if obligation.acts
+                 else _trigger_tap_commands(obligation, book.locators_by_node, sinks.gaps, refs))
         if acted is None:
             continue
-        compiled = _flow_checks(obligation, name, sinks.gaps)
+        compiled = _flow_checks(obligation, name, sinks.gaps, refs)
         if compiled is None:
             continue
         commands = [*reach, *acted]
         if not (commands or compiled.assertions or compiled.python_lines):
             continue
         flow_path = f"maestro/{python_identifier(oid)}.yaml"
-        sinks.files[flow_path] = _flow_yaml([*commands, *compiled.assertions], launch)
-        lines.append(f"    {name} = qa.maestro.run(qa.spec_dir / {python_literal(flow_path)})")
+        sinks.files[flow_path], env = _flow_yaml([*commands, *compiled.assertions], launch, refs)
+        lines.append(f"    {name} = qa.maestro.run(qa.spec_dir / {python_literal(flow_path)}{env})")
         lines.extend(compiled.python_lines)
         if compiled.assertions:
             lines.extend(
@@ -421,7 +529,7 @@ class _JourneyTaps:
     stops: list[tuple[int, ScreenStop]]
 
 
-def _journey_taps(walk: JourneyWalk, gaps: list[Gap]) -> _JourneyTaps | None:
+def _journey_taps(walk: JourneyWalk, gaps: list[Gap], refs: _Refs) -> _JourneyTaps | None:
     """One tap per `interaction` step of a journey, cut at each stop, or `None` after gapping the first step it cannot make."""
     ids, locators_by_node = walk.ids, walk.book.locators_by_node
     taps = _JourneyTaps([[]], [])
@@ -446,13 +554,16 @@ def _journey_taps(walk: JourneyWalk, gaps: list[Gap]) -> _JourneyTaps | None:
         on_value = next(iter(locators_by_node.get(step.ref, NO_LOCATORS).on), None)
         locator = _on_locator(step.ref.split("#")[0], on_value, locators_by_node) if on_value else None
         if locator is None:
+            refusal = name_refusal(locators_by_node.get(
+                on_node(step.ref.split("#")[0], on_value), NO_LOCATORS)) if on_value else ""
             gaps.extend(Gap(oid, "uncompilable-claim",
                             f"step {index} acts on {on_label(on_value) if on_value else on_value!r}, which "
                             "declares no `testID=` selector and no `name:` to address it by; every "
-                            "step after it would run in a world this journey never reached")
+                            "step after it would run in a world this journey never reached"
+                            f"{refusal}")
                         for oid in ids)
             return None
-        taps.segments[-1].extend(_act_commands("click", locator, {}))
+        taps.segments[-1].extend(_act_commands("click", locator, {}, refs))
     return taps
 
 
@@ -481,7 +592,8 @@ def maestro_walk(walk: JourneyWalk, launch: MaestroLaunch, sinks: PlanSinks) -> 
                         "gets from the one to the other")
                     for oid in ids)
         return empty_walk
-    taps = _journey_taps(walk, gaps)
+    refs = _Refs()
+    taps = _journey_taps(walk, gaps, refs)
     if taps is None:
         return empty_walk
     result_name = "journey_result"
@@ -490,7 +602,7 @@ def maestro_walk(walk: JourneyWalk, launch: MaestroLaunch, sinks: PlanSinks) -> 
     page_oids: list[str] = []
     for obligation in walk.obligations:
         for row in obligation.checks:
-            check = _compiled_check(row, obligation, result_name, gaps)
+            check = _compiled_check(row, obligation, result_name, gaps, refs)
             if check is None:
                 continue
             compiled.add(check)
@@ -506,12 +618,12 @@ def maestro_walk(walk: JourneyWalk, launch: MaestroLaunch, sinks: PlanSinks) -> 
     for at, commands in enumerate(segments):
         if at in written:
             flow_path = f"{flow_stem}.yaml" if len(segments) == 1 else f"{flow_stem}-{at + 1}.yaml"
-            sinks.files[flow_path] = _flow_yaml(commands, launch, first=at == 0)
+            sinks.files[flow_path], env = _flow_yaml(commands, launch, refs, first=at == 0)
             flow = f"qa.spec_dir / {python_literal(flow_path)}"
             if at == written[-1]:
-                lines.append(f"    {result_name} = qa.maestro.run({flow})")
+                lines.append(f"    {result_name} = qa.maestro.run({flow}{env})")
             else:
-                lines.append(f"    qa.maestro.run({flow}, require=True)")
+                lines.append(f"    qa.maestro.run({flow}, require=True{env})")
         if at < len(taps.stops):
             index, stop = taps.stops[at]
             lines.extend(_settle_lines(stop, f"step {index}: stop at {trailing_comment(stop.title)}"))
@@ -546,7 +658,8 @@ def device_state_walks(
             gaps.append(Gap(state.id, launch.kind, launch.detail))
             continue
         page = state.node.split("#")[0]
-        reach = _reach_commands(book.fragment_hosts.get(page, page), launch, book.locators_by_node)
+        refs = _Refs()
+        reach = _reach_commands(book.fragment_hosts.get(page, page), launch, book.locators_by_node, refs)
         if isinstance(reach, ScenarioRefusal):
             gaps.append(Gap(state.id, reach.kind, reach.detail))
             continue
@@ -556,10 +669,10 @@ def device_state_walks(
             continue
         name = state_walk_function_name(state, emitted)
         flow_path = f"maestro/{name}.yaml"
-        sinks.files[flow_path] = _flow_yaml(reach, launch)
+        sinks.files[flow_path], env = _flow_yaml(reach, launch, refs)
         title = " ".join(stop.title.split()).replace("\\", "").replace('"', "'")
         body = [
-            f"    qa.maestro.run(qa.spec_dir / {python_literal(flow_path)}, require=True)",
+            f"    qa.maestro.run(qa.spec_dir / {python_literal(flow_path)}, require=True{env})",
             *_settle_lines(stop, f"settles in {trailing_comment(stop.title)}"),
             *(f"    qa.vet({python_literal(document)})"
               for document in vettable([page], book.screen_routes, [state.id], gaps,

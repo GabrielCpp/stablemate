@@ -32,7 +32,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import ostler_qa_transfer
 from ostler_qa_checkout import copy_checkout
-from ostler_qa_elements import name_pattern, template_pattern
+from ostler_qa_elements import maestro_pattern, name_pattern, template_pattern
 from ostler_qa_grpc import Caller, Grpc, GrpcError, GrpcurlCaller
 from ostler_qa_lap import Arranged, LapRecord
 from ostler_qa_paths import is_projection, path_steps, resolve_path
@@ -2089,6 +2089,10 @@ class Maestro:
             raise ValueError(f"target '{self._qa.target.name}' declares no app_id")
         return json.dumps({"appId": app_id}) + "\n---\n" + json.dumps(list(commands), indent=2)
 
+    def pattern(self, name: str = "", *, text: str | None = None) -> str:
+        """The Maestro `text:` regex for the element the book calls *name*, holding *text* when given."""
+        return maestro_pattern(name, text=text)
+
     def run(
         self,
         flow: str | Path,
@@ -2096,6 +2100,7 @@ class Maestro:
         name: str = "",
         timeout: float = 600.0,
         require: bool = False,
+        env: Mapping[str, str] | None = None,
     ) -> MaestroResult:
         if shutil.which("maestro") is None:
             raise RuntimeError("the maestro CLI is not installed on this machine")
@@ -2114,6 +2119,7 @@ class Maestro:
         test_output.mkdir(parents=True, exist_ok=True)
         command = [
             "maestro", "test",
+            *(part for key, value in sorted((env or {}).items()) for part in ("-e", f"{key}={value}")),
             "--format", "junit",
             "--output", str(junit),
             "--test-output-dir", str(test_output),

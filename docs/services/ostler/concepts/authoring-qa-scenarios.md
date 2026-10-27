@@ -28,7 +28,10 @@ report quotes; `Maestro`, `Tesseract` and `Convert` wrap the external mobile-aut
 image-conversion binaries a scenario may shell out to, through the generic `Tool`/`ToolResult`
 process runner. A `Maestro` flow that exits non-zero hands back a result whose `seen` names the
 step the flow stopped at and what the device screen showed afterwards, and `verify` records that
-text with a failed phone check. A second, unrelated half of the module is static analysis: `count_checks`,
+text with a failed phone check. `Maestro.pattern` renders a book name, and an optional
+held text, into the Java regex a flow's `text:` selector full-matches, and `Maestro.run` passes
+a flow's run-time values as `-e` variables, so a reference the plan resolves reaches the flow as
+`${OKF_REF_n}`. A second, unrelated half of the module is static analysis: `count_checks`,
 `extract_check_covers`, `extract_check_calls`, `extract_locators`, `extract_vets` and
 `extract_instances` parse a `qa_plan.py` file's AST without running it, so a book-writing tool
 can ask what a plan covers before any sandbox exists; `_run` and `main` are the actual
@@ -51,7 +54,9 @@ JSON-reading verifier walks to pick a value out of a document.
 The rest of the reader/judge pairs are browser-only. `ostler_qa_dom.py` reads one element's
 attribute, form value, or focus state; `ostler_qa_elements.py` reads a page or element's
 visibility, actionable/inert state, focus order, emitted-event count, title, console output, or
-a triggered download; `ostler_qa_browser_state.py` reads the current URL, a storage location
+a triggered download. The same module holds the one rendering of a book name for both drivers:
+`name_pattern` and `template_pattern` for the browser, and `maestro_pattern` with `java_quote`
+for the phone. `ostler_qa_browser_state.py` reads the current URL, a storage location
 (cookie, local or session storage), or the clipboard. `ostler_qa_browser.py` is what drives the
 browser underneath all three: `Browser` wraps a Playwright page, `RecordedResponse` and
 `ResponseWindow` capture network responses as they arrive so a later check can inspect one that
@@ -75,31 +80,31 @@ checkout in the first place, copying a working tree into the sandbox while shari
 history and skipping the checkout's own `qa/` directory so a scenario cannot read its own
 harness as book content.
 
-- code: ostler/ostler/qa/harness/ostler_qa.py::plan@27f385c8e768
-- code: ostler/ostler/qa/harness/ostler_qa.py::target@27f385c8e768
-- code: ostler/ostler/qa/harness/ostler_qa.py::secret@27f385c8e768
-- code: ostler/ostler/qa/harness/ostler_qa.py::background@27f385c8e768
-- code: ostler/ostler/qa/harness/ostler_qa.py::scenario@27f385c8e768
-- code: ostler/ostler/qa/harness/ostler_qa.py::Qa@27f385c8e768
-- code: ostler/ostler/qa/harness/ostler_qa.py::Http@27f385c8e768
-- code: ostler/ostler/qa/harness/ostler_qa.py::scenario_env@27f385c8e768
-- code: ostler/ostler/qa/harness/ostler_qa.py::CheckFailed@27f385c8e768
-- code: ostler/ostler/qa/harness/ostler_qa.py::ClaimFault@27f385c8e768
-- code: ostler/ostler/qa/harness/ostler_qa.py::FixtureFault@27f385c8e768
-- code: ostler/ostler/qa/harness/ostler_qa.py::Response@27f385c8e768
-- code: ostler/ostler/qa/harness/ostler_qa.py::Exchange@27f385c8e768
-- code: ostler/ostler/qa/harness/ostler_qa.py::Maestro@27f385c8e768
-- code: ostler/ostler/qa/harness/ostler_qa.py::Tesseract@27f385c8e768
-- code: ostler/ostler/qa/harness/ostler_qa.py::Convert@27f385c8e768
-- code: ostler/ostler/qa/harness/ostler_qa.py::Tool@27f385c8e768
-- code: ostler/ostler/qa/harness/ostler_qa.py::count_checks@27f385c8e768
-- code: ostler/ostler/qa/harness/ostler_qa.py::extract_check_covers@27f385c8e768
-- code: ostler/ostler/qa/harness/ostler_qa.py::extract_check_calls@27f385c8e768
-- code: ostler/ostler/qa/harness/ostler_qa.py::extract_locators@27f385c8e768
-- code: ostler/ostler/qa/harness/ostler_qa.py::extract_vets@27f385c8e768
-- code: ostler/ostler/qa/harness/ostler_qa.py::extract_instances@27f385c8e768
-- code: ostler/ostler/qa/harness/ostler_qa.py::_run@27f385c8e768
-- code: ostler/ostler/qa/harness/ostler_qa.py::main@27f385c8e768
+- code: ostler/ostler/qa/harness/ostler_qa.py::plan@9c2c885402aa
+- code: ostler/ostler/qa/harness/ostler_qa.py::target@9c2c885402aa
+- code: ostler/ostler/qa/harness/ostler_qa.py::secret@9c2c885402aa
+- code: ostler/ostler/qa/harness/ostler_qa.py::background@9c2c885402aa
+- code: ostler/ostler/qa/harness/ostler_qa.py::scenario@9c2c885402aa
+- code: ostler/ostler/qa/harness/ostler_qa.py::Qa@9c2c885402aa
+- code: ostler/ostler/qa/harness/ostler_qa.py::Http@9c2c885402aa
+- code: ostler/ostler/qa/harness/ostler_qa.py::scenario_env@9c2c885402aa
+- code: ostler/ostler/qa/harness/ostler_qa.py::CheckFailed@9c2c885402aa
+- code: ostler/ostler/qa/harness/ostler_qa.py::ClaimFault@9c2c885402aa
+- code: ostler/ostler/qa/harness/ostler_qa.py::FixtureFault@9c2c885402aa
+- code: ostler/ostler/qa/harness/ostler_qa.py::Response@9c2c885402aa
+- code: ostler/ostler/qa/harness/ostler_qa.py::Exchange@9c2c885402aa
+- code: ostler/ostler/qa/harness/ostler_qa.py::Maestro@9c2c885402aa
+- code: ostler/ostler/qa/harness/ostler_qa.py::Tesseract@9c2c885402aa
+- code: ostler/ostler/qa/harness/ostler_qa.py::Convert@9c2c885402aa
+- code: ostler/ostler/qa/harness/ostler_qa.py::Tool@9c2c885402aa
+- code: ostler/ostler/qa/harness/ostler_qa.py::count_checks@9c2c885402aa
+- code: ostler/ostler/qa/harness/ostler_qa.py::extract_check_covers@9c2c885402aa
+- code: ostler/ostler/qa/harness/ostler_qa.py::extract_check_calls@9c2c885402aa
+- code: ostler/ostler/qa/harness/ostler_qa.py::extract_locators@9c2c885402aa
+- code: ostler/ostler/qa/harness/ostler_qa.py::extract_vets@9c2c885402aa
+- code: ostler/ostler/qa/harness/ostler_qa.py::extract_instances@9c2c885402aa
+- code: ostler/ostler/qa/harness/ostler_qa.py::_run@9c2c885402aa
+- code: ostler/ostler/qa/harness/ostler_qa.py::main@9c2c885402aa
 - code: ostler/ostler/qa/harness/ostler_qa_verdicts.py::Verdict@6473ea39a89f
 - code: ostler/ostler/qa/harness/ostler_qa_verdicts.py::str_arg@6473ea39a89f
 - code: ostler/ostler/qa/harness/ostler_qa_verifiers.py::_verifier@461a0e676c5a
@@ -117,11 +122,11 @@ harness as book content.
 - code: ostler/ostler/qa/harness/ostler_qa_dom.py::verify_attribute@4618eb430b45
 - code: ostler/ostler/qa/harness/ostler_qa_dom.py::verify_value@4618eb430b45
 - code: ostler/ostler/qa/harness/ostler_qa_dom.py::verify_focused@4618eb430b45
-- code: ostler/ostler/qa/harness/ostler_qa_elements.py::verify_visible@d2e668a3efcd
-- code: ostler/ostler/qa/harness/ostler_qa_elements.py::verify_actionable@d2e668a3efcd
-- code: ostler/ostler/qa/harness/ostler_qa_elements.py::verify_focusable@d2e668a3efcd
-- code: ostler/ostler/qa/harness/ostler_qa_elements.py::verify_console@d2e668a3efcd
-- code: ostler/ostler/qa/harness/ostler_qa_elements.py::verify_download@d2e668a3efcd
+- code: ostler/ostler/qa/harness/ostler_qa_elements.py::verify_visible@6dcb4afc8e13
+- code: ostler/ostler/qa/harness/ostler_qa_elements.py::verify_actionable@6dcb4afc8e13
+- code: ostler/ostler/qa/harness/ostler_qa_elements.py::verify_focusable@6dcb4afc8e13
+- code: ostler/ostler/qa/harness/ostler_qa_elements.py::verify_console@6dcb4afc8e13
+- code: ostler/ostler/qa/harness/ostler_qa_elements.py::verify_download@6dcb4afc8e13
 - code: ostler/ostler/qa/harness/ostler_qa_browser_state.py::verify_url@753b30ac1b84
 - code: ostler/ostler/qa/harness/ostler_qa_browser_state.py::verify_stored@753b30ac1b84
 - code: ostler/ostler/qa/harness/ostler_qa_browser_state.py::verify_clipboard@753b30ac1b84

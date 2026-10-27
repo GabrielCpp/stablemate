@@ -30,6 +30,33 @@ def name_pattern(name: str) -> re.Pattern[str]:
     return re.compile(r"^\W*" + r"\s+".join(_escape(word) for word in name.split()) + r"\W*$", re.IGNORECASE)
 
 
+def java_quote(text: str) -> str:
+    """*text* as a literal inside a Java regex."""
+    return r"\Q" + text.replace(r"\E", r"\E\\E\Q") + r"\E"
+
+
+def _located_by(name: str) -> str:
+    """The Java regex for the names an element the book calls *name* can carry, whole-string."""
+    if _TEMPLATE_HOLE.search(name):
+        pieces: list[str] = []
+        for at, part in enumerate(_TEMPLATE_HOLE.split(name)):
+            if at:
+                pieces.append(".+?")
+            if part:
+                pieces.append(java_quote(part))
+        return "(?-i:" + "".join(pieces) + ")"
+    return r"(?i:\W*" + r"\s+".join(java_quote(word) for word in name.split()) + r"\W*)"
+
+
+def maestro_pattern(name: str = "", *, text: str | None = None) -> str:
+    """The Maestro `text:` regex for an element the book calls *name*, holding *text* when given: the same names `name_pattern`/`template_pattern` accept and the same case-sensitive substring `verify_visible` reads."""
+    located = _located_by(name) if name.strip() else None
+    held = None if text is None else "(?-i:.*" + java_quote(text) + ".*)"
+    if located is not None and held is not None:
+        return "(?sU)(?=" + located + r"\z)" + held
+    return "(?sU)" + (located or held or "")
+
+
 def _readings(observed: object) -> tuple[str, ...]:
     """Every spelling of an element's text the page can offer, rendered first."""
     readings: list[str] = []

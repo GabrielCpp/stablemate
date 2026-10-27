@@ -97,8 +97,10 @@ its first hop.
 - code: ostler/ostler/qa/compile_playwright.py::perform_acts@23cf5e92ef9e
 - code: ostler/ostler/qa/compile_playwright.py::page_observations@23cf5e92ef9e
 - code: ostler/ostler/qa/compile_playwright.py::web_walk@23cf5e92ef9e
-- code: ostler/ostler/qa/compile_maestro.py::mobile_scenarios@e21910eff35f
-- code: ostler/ostler/qa/compile_maestro.py::maestro_walk@e21910eff35f
+- code: ostler/ostler/qa/compile_maestro.py::mobile_scenarios@2aab48233be8
+- code: ostler/ostler/qa/compile_maestro.py::maestro_walk@2aab48233be8
+- code: ostler/ostler/qa/harness/ostler_qa_elements.py::maestro_pattern@6dcb4afc8e13
+- code: ostler/ostler/qa/harness/ostler_qa.py::Maestro@9c2c885402aa
 - code: ostler/ostler/qa/compile_moves.py::move_walks@357b72ed93c7
 - code: ostler/ostler/qa/compile_moves.py::state_walks@357b72ed93c7
 - code: ostler/ostler/qa/compile_journey.py::journey_target@421ed1147b57
@@ -144,6 +146,16 @@ its first hop.
 - captures resolve forward only: `read_back` and the `{node-id.capture}` reference syntax
   resolve a value an earlier step in the same scenario produced; a reference to a step later in
   the same scenario is a gap, not a forward declaration.
+- a book value means one thing on every driver: a `name:` is the words the element announces,
+  in any case and with surrounding punctuation, a `name:` with a `{hole}` is a template whose
+  holes stand for any text, and a check's `text=` is a literal piece of what the element shows,
+  matched case for case. The harness renders that meaning once per driver: Python patterns for
+  the browser, and `maestro_pattern` for a Maestro flow, whose `text:` is a full-match Java
+  regex. A value holding a reference such as `@fixture.key` or `$capture` exists only at run
+  time, so the compiler writes `${OKF_REF_n}` into the flow and the scenario hands the resolved,
+  rendered value to `qa.maestro.run(..., env=...)`. A flow that still holds an unrendered hole or
+  reference is a compiler defect, and the compile raises. A claim Maestro cannot observe, such as
+  `visible(count=)` or a `fill` value with a hole in it, is a gap.
 - generated names are unique: every `*_function_name` helper in `plan_source.py` is given the
   full set of already-emitted names (`EmittedScenarios`) and never returns one already used in
   the same plan.
