@@ -20,11 +20,3 @@ The merge runs when the launch passed a base branch. A refused merge goes to a m
 in its own session. The turn makes the branch merge cleanly and commits, code pushes, and
 the lane walks CI again before it retries the merge. A merge still refused after the lap
 budget asks upward like any other block, and flags the PR. The answer resumes at the merge.
-
-## Map
-
-- `flow.py`: the `FixCi` state machine. It polls, runs the owner turn, pushes and polls
-  again, merges, and routes a block to the resolver and the gate.
-- `merge.py`: the merge itself, and the note it leaves on a PR a person must merge.
-- `prompts/fix-ci.md`: the owner's prompt, with its subagent seats.
-- `prompts/fix-merge.md`: the merge turn, which resolves what keeps the branch from merging.

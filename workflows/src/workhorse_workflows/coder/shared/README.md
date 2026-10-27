@@ -1,38 +1,3 @@
 # shared
 
 What more than one coder lane needs. Code that only one lane calls belongs in that lane's directory.
-
-## Map
-
-- `backlog.py`: the repo backlog: what the coder files into it, and what the fix lane drains out of `Filed by coder`. A dev turn's follow-ups are filed as register records in the artifacts repo, which no lane drains.
-- `blueprint.py`: the one `Blueprint` every coder node registers against.
-- `branches.py`: the run branch: its name, its base, and putting the docs repo and the code repos on it.
-- `ci.py`: the CI loop's work: which repo is next, what its Actions runs said, and the push of a fix.
-- `commits.py`: the Conventional Commit subject and trailers of every commit the coder writes.
-- `contract.py`: the one rule for what counts as a service the planner can target.
-- `conversation.py`: the story's backbone session chain, recycled when it is full.
-- `dev.py`: a story's status and the operator's answer file.
-- `docs.py`: the docs lane's work: whether a book exists, which doc nodes a diff touches, and the fail-closed grounding gate.
-- `escalation.py`: the body a coder lane writes when it stops and asks a human.
-- `failure.py`: the one failure shape the repair role reads, whatever gate produced it.
-- `okf.py`: the diff-to-OKF obligation packet, its check, and the memo that skips a rebuild when its inputs have not changed.
-- `owner.py`: the budgets, the silence bound and the command cap every lane's owner turn runs under.
-- `paths.py`: where every coder artifact lives: repo roots, epics, the backlog, the feature book and operator context files.
-- `plan.py`: a story's plan context: loading `plan-context.json`, projecting it, and the dispatch order.
-- `provenance.py`: which commits and files belong to a story.
-- `qa_support.py`: a re-export of `kit/qa/support.py` for older coder call sites. New code imports the kit module.
-- `queue.py`: the launch: which stories a run packs into its worklist, the fresh-run reset, and pruning a finished epic.
-- `causes.py`: which reports describe one defect, merging them on filing, handing a finished story's open findings to the follow-up that owns their cause, and recording where a defect escaped from.
-- `judge.py`: a closed question put to a word rule, to one tool-less model call, or to the rule first. Its prompt is `prompts/judge.md`.
-- `resolution.py`: the resolver half of an operator gate, which tries to answer a block before the run parks on it.
-- `review.py`: the review's deterministic work: where it reads, ostler's settlement of the dev owner's answers and their evidence, and the operator inbox poll.
-- `roles.py`: which prompt body and model a role resolves to, with the repo's own prompts ahead of the base library.
-- `scenarios.py`: the plan's Test Scenarios list, and which of its scenarios fall to the QA lane.
-- `schemas/`: the reply and return models every coder lane validates against.
-- `service_gates.py`: each service's declared gate commands, in order, and running them.
-- `story.py`: which story a run is on, its workspace dirs and its spec stamps.
-- `story_commit.py`: the clean-tree check, the commit that records a passed story, and its stamp.
-- `story_status.py`: the story's Status line. It is the single place the coder records an outcome.
-- `stubs.py`: what the coder's gates return under `--dry-run`.
-- `work.py`: the run's worklist: filing stories, follow-ups and findings, moving them, and the resume note a compacted dev session reads.
-- `worktree.py`: what the worktrees held before a turn, and what changed since.

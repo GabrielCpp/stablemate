@@ -1,13 +1,3 @@
 # workhorse_workflows
 
 The stablemate workflows as code. Each subpackage is one workflow that workhorse drives, except `kit/`, which they all share, and `new/`, which writes new ones.
-
-## Map
-
-- `author/`: the `author` workflow, which turns one approved milestone into epics and stories.
-- `coder/`: the `coder` workflow, which implements, documents, reviews and QAs stories from the plan.
-- `kit/`: the helpers every workflow's nodes reuse: git, GitHub, workspaces, paths, JSON, external CLIs and QA stacks.
-- `loop_runner/`: the `loop-runner` workflow, which hands a plan to one agent turn.
-- `new/`: the `workhorse-new` command and the template it scaffolds a standalone workflow from. It is not a workflow.
-- `okf_book/`: the okf book builder, which enumerates, repairs and exercises a service's book.
-- `research/`: the `research` workflow, which drives a program's gate ladder with measurements run outside any agent turn.

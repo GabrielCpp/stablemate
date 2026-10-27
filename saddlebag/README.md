@@ -263,9 +263,3 @@ A **saddlebag** is the kit a horse carries on a ride: the right tools, ready whe
 needed, returned to the stable when the ride is done. It fits the stablemate
 vocabulary. Ostler tends the stable, farrier fits the gear, workhorse does the
 riding, and saddlebag carries what the journey needs.
-
-## Map
-
-- `saddlebag/`: the package behind the `saddlebag` command. [Package layout](#package-layout) says what each module owns.
-- `docs/`: the security model and the workflow integration.
-- `tests/`: the suite, run from the repo root with `uv run --package stablemate-saddlebag pytest saddlebag/tests`.

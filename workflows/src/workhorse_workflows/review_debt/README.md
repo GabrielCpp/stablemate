@@ -9,17 +9,6 @@ workhorse-review-debt run
 workhorse-review-debt run --dry-run   # ends at "register is empty", no agent CLI needed
 ```
 
-## Map
-
-- `workflow.py`: the `review-debt` command and its registry.
-- `flow.py`: the `ReviewDebt` state machine.
-- `nodes/`: `read_register`, `account`, `write_trends`, `select_candidates`,
-  `narrow_candidate` and `file_decision`.
-- `schemas.py`: `CompleteRead`, `TrendReport` (`Cluster`, `Singleton`), `Accounting`,
-  `Candidate`, `DecisionDraft`, `Filed`, `Proposed`.
-- `prompts/review-register.md`: the grouping turn.
-- `prompts/draft-decision.md`: the turn that drafts one decision from one cluster.
-
 ## States
 
 1. `start` calls `read_register`. A read with no ids ends the run as `Done` with the reason

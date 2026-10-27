@@ -273,7 +273,3 @@ A run prints each step's outcome, the score and the result folder. It exits non-
 ```bash
 make -C paddock test
 ```
-
-## Map
-
-- `paddock/`: the package behind the `paddock` command.

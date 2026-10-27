@@ -4,14 +4,6 @@ The QA lane of the coder workflow. One QA owner session owns a story's QA end to
 
 QA never fixes the product. A defect the owner proves goes back to the main loop as a finding, and the dev owner fixes it.
 
-## Map
-
-- `flow.py`: the `Qa` state machine. It prepares the story, runs the owner turn, checks the result, and sends whatever failed back to the same session.
-- `report.py`: the text the owner's next turn reads: a gate's failure, the failed scenarios, its own findings and the regression suites.
-- `sides.py`: the side each failed scenario sits on, read from the cause ostler gave its failed checks.
-- `prompts/qa-story.md`: the owner turn. Its partials carry the plan contract, the setup brief, the auditor's brief and the dev report.
-- `nodes/`: the non-agent steps only the QA lane calls.
-
 ## How a story's QA settles
 
 1. `start` clears the last pass's evidence, resolves the story and its repos, builds and validates the OKF context packet, and brings the stack up. A packet or stack that fails becomes the owner's first report. A `qa_plan.py` that lints and validates is handed over as the standing plan.

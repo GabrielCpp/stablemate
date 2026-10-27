@@ -22,8 +22,3 @@ Pass these with `--params '{"max_rounds": 8}'`.
 - `check`: the shell command that decides when the work is done. Default: `__CHECK__`.
 - `task`: extra instructions for the agent. Empty means "make the check pass".
 - `max_rounds`: how many agent turns to allow before the run fails. Default: 5.
-
-## Map
-
-- `src/__PACKAGE__/workflow.py`: the `CheckLoop` states, the `run_check` node and the `workhorse-__WORKFLOW_NAME__` command.
-- `src/__PACKAGE__/prompts/fix.md`: the prompt each agent turn gets.
