@@ -1,10 +1,2 @@
-[codebase-map]
-exclude = [
-    "*/_vendor/*",
-    "base-library/library/*",
-    "groom/groom/assets/*.min.js",
-    "groom/groom/assets/htm-preact.js",
-]
-
 [check-skills]
 skills = "base-library/library/skills"
