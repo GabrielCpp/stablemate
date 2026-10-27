@@ -11,14 +11,14 @@ A lap is a single pass through a review gate — one `agent_turn` span within a 
 
 These three fields stay separate rather than resolving to one number because their distinction is load-bearing: what a harness billed (from the LLM provider) and what the tokens are worth (at groom's rate card) are different claims, and the caller needs to be able to label which one a report is quoting. `suspect_zero` additionally names the turns that cost nothing on the harness side while emitting output — a gap that only matters under subscription auth, where the harness never reports cost.
 
-- code: `groom/groom/store.py::Lap`
+- code: `groom/groom/store.py::Lap` @e77ed9fa8196
 
 ## Fields
 
 ### field: cost
 
 - type: `float | None`
-- semantics: USD billed by the LLM provider for this lap's turn, or NULL when the provider did not report cost
+- semantics: USD billed by the LLM provider for this lap's turn, or NULL when the provider did not report cost. A turn on a resumed `claude` session is charged the rise over the session's previous report, because that harness reports the session's running total.
 
 ### field: est
 

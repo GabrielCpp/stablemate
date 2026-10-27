@@ -554,6 +554,48 @@ def test_loop_convergence_keys_work_items_by_run_so_slugs_may_repeat():
         assert len(store.loop_convergence(run="run-a", min_work_items=1)) == 1
 
 
+def _session_turn(
+    node: str, reported: float, start: float, session: str, backend: str = "claude"
+) -> dict:
+    return {
+        "name": "agent_turn", "node": node, "start": start, "end": start + 1.0,
+        "labels": {"work_id": "story-a", "backend": backend, "session.id": session},
+        "numbers": {"total_cost_usd": reported},
+    }
+
+
+def test_a_resumed_claude_session_charges_each_turn_its_own_share():
+    with _TelemetryEnv():
+        store.insert_spans(
+            otlp.parse_traces(
+                _trace_request(
+                    [
+                        _session_turn("dev-follow-up", 13.0, 1040.0, "s-1"),
+                        _session_turn("dev-plan", 2.0, 1000.0, "s-1"),
+                        _session_turn("dev-build", 5.0, 1010.0, "s-1"),
+                        _session_turn("dev-review", 10.0, 1020.0, "s-1"),
+                        _session_turn("dev-follow-up", 12.0, 1030.0, "s-1"),
+                        _session_turn("dev-plan", 3.0, 1050.0, "s-2"),
+                        _session_turn("dev-build", 1.0, 1060.0, "s-2"),
+                        _session_turn("dev-build", 1.5, 1070.0, "s-3", backend="opencode"),
+                    ]
+                )
+            )
+        )
+        rows = {row["node"]: row["cost_usd"] for row in store.node_costs(run="run-1")}
+        assert rows == {
+            "dev-plan": 5.0, "dev-build": 5.5, "dev-review": 5.0, "dev-follow-up": 3.0,
+        }
+
+        laps = {row["node"]: row for row in store.loop_convergence(min_work_items=1)}
+        assert laps["dev-follow-up"]["cost_usd"] == 3.0
+        assert laps["dev-follow-up"]["excess_cost_usd"] == 1.0
+
+        profile = store.run_profile("run-1")
+        assert profile is not None
+        assert profile["work"]["cost_usd"] == 18.5
+
+
 def test_node_costs_reports_how_many_turns_actually_priced_themselves():
     """codex reports no money under subscription auth, so a mixed run's `share` is a fraction of only the turns that priced themselves."""
     with _TelemetryEnv():

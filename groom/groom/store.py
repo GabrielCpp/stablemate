@@ -770,11 +770,40 @@ _cache_write = _promoted_or_attr(
     "cache_creation_tokens", "usage.cache_creation_input_tokens"
 )
 
+SESSION_TOTAL_BACKENDS = ("claude",)
+
+
+def _charges(scope: str) -> str:
+    backends = ", ".join(f"'{backend}'" for backend in SESSION_TOTAL_BACKENDS)
+    return (
+        "WITH charges AS (SELECT span_id,"  # noqa: S608 — scope is a literal clause
+        " CASE WHEN prior IS NULL OR reported < prior THEN reported"
+        " ELSE reported - prior END AS charge_usd FROM ("
+        " SELECT span_id, reported, LAG(reported) OVER ("
+        " PARTITION BY run_id, session ORDER BY start_ts, end_ts, span_id) AS prior FROM ("
+        f" SELECT span_id, run_id, start_ts, end_ts, {_cost} AS reported,"
+        " json_extract(attrs_json, '$.\"session.id\"') AS session FROM spans"
+        " WHERE name = 'agent_turn'"
+        f" AND json_extract(attrs_json, '$.backend') IN ({backends}) AND {scope})"
+        " WHERE session IS NOT NULL AND reported IS NOT NULL)) "
+    )
+
+
+_charge = f"COALESCE(charges.charge_usd, {_cost})"
+
 _ESTIMABLE = (
     "name = 'agent_turn' AND ("
     f"{_input} IS NOT NULL OR {_output} IS NOT NULL"
     f" OR {_cache_read} IS NOT NULL OR {_cache_write} IS NOT NULL)"
 )
+
+
+@reading
+def turn_charges(run: str) -> dict[str, float]:
+    rows = read_connection().execute(
+        f"{_charges('run_id = ?')}SELECT span_id, charge_usd FROM charges", (run,)
+    ).fetchall()
+    return {row["span_id"]: row["charge_usd"] for row in rows}
 
 
 @reading
@@ -879,22 +908,23 @@ def node_costs(run: str = "", limit: int = 100) -> list[dict[str, Any]]:
     if run:
         clauses.append("run_id = ?")
         params.append(run)
+    scope = clauses[1] if run else "1=1"
     conn = read_connection()
     rows = conn.execute(
-        "SELECT node,"  # noqa: S608 — clauses are literals; every value is bound
+        f"{_charges(scope)}SELECT node,"  # noqa: S608 — clauses are literals; every value is bound
         " COUNT(*) AS turns,"
         " COUNT(DISTINCT json_extract(attrs_json, '$.work_id')) AS work_items,"
         f" SUM({_cost} IS NOT NULL) AS cost_turns,"
         f" SUM({_cost} = 0 AND COALESCE({_output}, 0) > 0) AS zero_cost_turns,"
         " GROUP_CONCAT(DISTINCT json_extract(attrs_json, '$.backend')) AS backends,"
-        f" SUM({_cost}) AS cost_usd,"
+        f" SUM({_charge}) AS cost_usd,"
         " SUM(est_cost_usd) AS est_cost_usd,"
         " SUM(est_cost_usd IS NOT NULL) AS est_turns,"
         f" SUM({_duration}) / 60000.0 AS minutes,"
         f" SUM({_output}) AS output_tokens"
-        f" FROM spans WHERE {' AND '.join(clauses)}"
+        f" FROM spans LEFT JOIN charges USING (span_id) WHERE {' AND '.join(clauses)}"
         " GROUP BY node ORDER BY cost_usd DESC NULLS LAST, minutes DESC LIMIT ?",
-        (*params, max(1, min(int(limit), 1000))),
+        (*params, *params, max(1, min(int(limit), 1000))),
     ).fetchall()
     total = sum(row["cost_usd"] or 0.0 for row in rows)
     return [
@@ -947,18 +977,21 @@ def loop_convergence(
     if workflow:
         clauses.append("workflow = ?")
         params.append(workflow)
+    scope = " AND ".join(clauses[2:]) or "1=1"
+    scope_params = list(params)
     if since_ts is not None:
         clauses.append("start_ts >= ?")
         params.append(float(since_ts))
     rows = (
         read_connection()
         .execute(
-            "SELECT node, run_id,"  # noqa: S608 — clauses are literals; every value is bound
+            f"{_charges(scope)}SELECT node, run_id,"  # noqa: S608 — clauses are literals; every value is bound
             " json_extract(attrs_json, '$.work_id') AS work_id,"
-            f" {_cost} AS cost_usd, {_cost} = 0 AND COALESCE({_output}, 0) > 0 AS suspect_zero,"
+            f" {_charge} AS cost_usd, {_cost} = 0 AND COALESCE({_output}, 0) > 0 AS suspect_zero,"
             " est_cost_usd, start_ts"
-            f" FROM spans WHERE {' AND '.join(clauses)} ORDER BY start_ts, end_ts, rowid",
-            params,
+            f" FROM spans LEFT JOIN charges USING (span_id) WHERE {' AND '.join(clauses)}"
+            " ORDER BY start_ts, end_ts, spans.rowid",
+            [*scope_params, *params],
         )
         .fetchall()
     )
@@ -1229,10 +1262,11 @@ def run_profile(run: str) -> dict[str, Any] | None:
     rows = (
         read_connection()
         .execute(
-            f"SELECT {_SPAN_COLUMNS}, duration_ms AS profile_duration_ms,"  # noqa: S608
-            f" {_cost} AS profile_cost_usd, {_output} AS profile_output_tokens,"
-            " resume_generation FROM spans WHERE run_id = ? ORDER BY start_ts",
-            (run,),
+            f"{_charges('run_id = ?')}SELECT {_SPAN_COLUMNS}, duration_ms AS profile_duration_ms,"  # noqa: S608
+            f" {_charge} AS profile_cost_usd, {_output} AS profile_output_tokens,"
+            " resume_generation FROM spans LEFT JOIN charges USING (span_id)"
+            " WHERE run_id = ? ORDER BY start_ts",
+            (run, run),
         )
         .fetchall()
     )

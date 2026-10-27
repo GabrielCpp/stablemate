@@ -50,6 +50,7 @@ def _window(
     spans = store.query_spans(
         run=run_id, since_ts=since, before_ts=until, limit=SPAN_LIMIT
     )
+    charges = store.turn_charges(run_id)
     visits: dict[str, NodeVisit] = {}
     items: Counter[tuple[str, str]] = Counter()
     gates: list[Gate] = []
@@ -72,7 +73,7 @@ def _window(
             continue
         visit = visits.setdefault(node, NodeVisit(node=node))
         if span["name"] == "agent_turn":
-            turn_cost = float(attrs.get("total_cost_usd") or 0.0)
+            turn_cost = float(charges.get(span["span_id"], attrs.get("total_cost_usd")) or 0.0)
             turn_tokens = int(attrs.get("usage.output_tokens") or 0)
             visit.turns += 1
             visit.cost_usd += turn_cost

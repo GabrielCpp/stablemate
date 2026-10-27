@@ -9,8 +9,9 @@ The persistent, queryable half of groom's telemetry collection: a SQLite databas
 
 Connection discipline is load-bearing: one process-wide writer with an `RLock`, many readers with per-thread read-only connections, both autocommit and explicit `BEGIN IMMEDIATE`, and resilience that retries once on failure. The design separates read and write contention so a cold dashboard query does not stall OTLP ingest, which used to cause collector 500s under load. Query methods use keyset pagination (cursor-based) rather than OFFSET, which remains stable when new rows are inserted by concurrent writers — essential for live telemetry queries where OFFSET would drift across page boundaries.
 
-- code: `groom/groom/store.py` @ddf504515620
+- code: `groom/groom/store.py` @e77ed9fa8196
 - extends: [run-telemetry](run-telemetry.md)
+- rule: a turn on a backend that reports the session's running total (`claude`, whose `--resume` result carries the conversation's cumulative `total_cost_usd`) is charged its reported cost minus the previous report on the same run and session, ordered by start, end and span id. A report below the previous one starts a new count and is charged whole. A turn with no session id, no reported cost, or another backend is charged its reported cost. The stored attribute keeps the raw report, so the charge is computed when a cost is read and corrects rows already ingested.
 - tests: `groom/tests/test_store.py`
 - tests: `groom/tests/test_store_resilience.py`
 - detail: [_Store class connection lifecycle](_store-class.md) — the process-wide singleton managing connection discipline, resilience, and thread-safety
@@ -53,9 +54,9 @@ Schema is versioned via `_ADDED_*_COLUMNS`, and a ledger table by the columns it
 - verify: persists(subject="promoted span attribute columns like input_tokens")
 - does: compute estimated cost at ingest using `groom.prices` rate card and the reported token counts
 - verify: persists(subject="estimated cost populated in span record")
-- code: `groom/groom/store.py::insert_spans` @ddf504515620
-- code: `groom/groom/store.py::insert_metrics` @ddf504515620
-- code: `groom/groom/store.py::insert_logs` @ddf504515620
+- code: `groom/groom/store.py::insert_spans` @e77ed9fa8196
+- code: `groom/groom/store.py::insert_metrics` @e77ed9fa8196
+- code: `groom/groom/store.py::insert_logs` @e77ed9fa8196
 - tests: `groom/tests/test_store.py::test_span_upsert_deduplicates_retries`
 - tests: `groom/tests/test_store.py::test_metrics_are_appended_not_replaced`
 
@@ -68,7 +69,7 @@ Schema is versioned via `_ADDED_*_COLUMNS`, and a ledger table by the columns it
 - verify: json_path(path="$[0].start_ts", matches="^[0-9.]+$")
 - returns: newest spans first, each with raw attributes and promoted columns like cost and token counts
 - verify: json_path(path="$[0].attrs_json", matches="^\\{")
-- code: `groom/groom/store.py::query_spans` @ddf504515620
+- code: `groom/groom/store.py::query_spans` @e77ed9fa8196
 - tests: `groom/tests/test_store.py::test_query_spans_pages_with_keyset_cursor`
 - limit: clamped to max 1000 rows
 
@@ -83,7 +84,7 @@ Schema is versioned via `_ADDED_*_COLUMNS`, and a ledger table by the columns it
 - verify: json_path(path="$[*].ts", matches="^\\d+(\\.\\d+)?$")
 - returns: newest logs first, each with attributes parsed from JSON and snapshot fields (head commit, workspace path, git branch)
 - verify: json_path(path="$[0].attrs", matches="^\\{")
-- code: `groom/groom/store.py::query_logs` @ddf504515620
+- code: `groom/groom/store.py::query_logs` @e77ed9fa8196
 - tests: `groom/tests/test_store.py::test_log_severity_is_a_floor_not_equality`
 
 ### query_turns
@@ -94,7 +95,7 @@ Schema is versioned via `_ADDED_*_COLUMNS`, and a ledger table by the columns it
 - does: order by visit key (generation, seq) to preserve run sequence across generations — this survives checkpoint rewinds where wall-clock order would not
 - verify: json_path(path="$[0].generation", equals=1)
 - returns: newest visit last (so `[1:]` is "every pass after the first" for loop analysis)
-- code: `groom/groom/store.py::query_turns` @ddf504515620
+- code: `groom/groom/store.py::query_turns` @e77ed9fa8196
 - tests: `groom/tests/test_store.py::test_turns_ordered_by_visit_across_generations`
 
 ### run_summaries
@@ -106,7 +107,7 @@ Schema is versioned via `_ADDED_*_COLUMNS`, and a ledger table by the columns it
 - verify: json_path(path="$[0].first_ts", matches="^\\d+(\\.\\d+)?$")
 - does: explicitly does not report whether a run is currently running (that is liveness, not durable history)
 - verify: absent(subject="is_running field in result")
-- code: `groom/groom/store.py::run_summaries` @ddf504515620
+- code: `groom/groom/store.py::run_summaries` @e77ed9fa8196
 - tests: `groom/tests/test_store.py::test_fleet_view_respects_active_window`
 - limit: clamped to max 500 rows
 
@@ -119,9 +120,11 @@ Schema is versioned via `_ADDED_*_COLUMNS`, and a ledger table by the columns it
 - verify: json_path(path="$.attempt_groups", matches="^\\[.*\\]$")
 - does: sum metrics and spans to bound the wall clock (gauges only for metrics, since heartbeat ticks are not stored)
 - verify: json_path(path="$.observed_start_ts", matches="^\\d+(\\.\\d+)?$")
+- does: charge each turn its own share of a resumed session's running total, per the store's charge rule, when summing the work's cost
+- verify: json_path(path="$.work.cost_usd", matches="^(null|-?\\d+(\\.\\d+)?([eE][+-]?\\d+)?)$")
 - returns: time partitions, work summary (turns per work item, zero-cost-output turns), verdict and attempt groupings (how many times each gate reached each verdict, how many times each attempt number was reached)
 - verify: json_path(path="$.work.turns", matches="^\\d+$")
-- code: `groom/groom/store.py::run_profile` @ddf504515620
+- code: `groom/groom/store.py::run_profile` @e77ed9fa8196
 - tests: `groom/tests/test_store.py::test_run_profile_partitions_wall_time_by_activity`
 
 ### node_costs
@@ -131,7 +134,7 @@ Schema is versioned via `_ADDED_*_COLUMNS`, and a ledger table by the columns it
 - verify: json_path(path="$[0].turns", matches="^\\d+$")
 - does: compute rework ratio as turns per work item (story slug or work_id label)
 - verify: json_path(path="$[0].turns_per_work_id", matches="^(\\d+(\\.\\d+)?|null)$")
-- does: report both billed cost (`cost_usd` from harness) and estimated cost (`est_cost_usd` from `groom.prices`) separately, never summed
+- does: report both billed cost (`cost_usd` from harness, each turn charged per the store's charge rule) and estimated cost (`est_cost_usd` from `groom.prices`) separately, never summed
 - verify: json_path(path="$[0].cost_usd", matches="^(null|-?\\d+(\\.\\d+)?([eE][+-]?\\d+)?)$")
 - verify: json_path(path="$[0].est_cost_usd", matches="^(null|-?\\d+(\\.\\d+)?([eE][+-]?\\d+)?)$")
 - does: flag cost reporting gaps: turns with no cost when output tokens exist (subscription auth), and zero-cost turns (also suspicious under subscription)
@@ -141,9 +144,10 @@ Schema is versioned via `_ADDED_*_COLUMNS`, and a ledger table by the columns it
 - verify: json_path(path="$[0].minutes", matches="^(null|\\d+(\\.\\d+)?)$")
 - returns: per-node row with share of total, turns per work item, and coverage metrics
 - verify: json_path(path="$[0].share", matches="^(0(\\.\\d+)?|1(\\.0*)?)$")
-- code: `groom/groom/store.py::node_costs` @ddf504515620
+- code: `groom/groom/store.py::node_costs` @e77ed9fa8196
 - tests: `groom/tests/test_telemetry.py::test_node_costs_totals_agent_spend_and_exposes_the_rework_ratio`
 - tests: `groom/tests/test_telemetry.py::test_node_costs_counts_turns_that_priced_themselves_at_exactly_zero`
+- tests: `groom/tests/test_telemetry.py::test_a_resumed_claude_session_charges_each_turn_its_own_share`
 
 ### loop_convergence
 
@@ -158,12 +162,22 @@ Schema is versioned via `_ADDED_*_COLUMNS`, and a ledger table by the columns it
 - verify: json_path(path="$[0].excess_turns", matches="^\\d+$")
 - does: handle capped loops: report max_laps and at_max but mark them as "suggestive, not a verdict" since censored distributions hide whether a gate actually converged
 - verify: json_path(path="$[0].max_laps", matches="^\\d+$")
-- does: report both billed and estimated cost separately with coverage counts (turns with any cost, zero-cost-output turns, est_turns priced at the rate card)
+- does: report both billed cost (each lap charged per the store's charge rule) and estimated cost separately with coverage counts (turns with any cost, zero-cost-output turns, est_turns priced at the rate card)
 - verify: json_path(path="$[0].est_turns", matches="^\\d+$")
 - returns: rows sorted by excess cost descending, then excess turns descending
 - verify: json_path(path="$[0].excess_cost_usd", matches="^(null|-?\\d+(\\.\\d+)?([eE][+-]?\\d+)?)$")
-- code: `groom/groom/store.py::loop_convergence` @ddf504515620
+- code: `groom/groom/store.py::loop_convergence` @e77ed9fa8196
 - tests: `groom/tests/test_store.py::test_loop_convergence_identifies_churning_nodes`
+- tests: `groom/tests/test_telemetry.py::test_a_resumed_claude_session_charges_each_turn_its_own_share`
+
+### turn_charges
+
+- sig: `turn_charges(run: str) -> dict[str, float]`
+- does: map each `agent_turn` span id of the run on a session-total backend to the cost the store's charge rule assigns it, so a reader that walks spans in a time window charges a resumed turn against a report made before the window
+- verify: json_path(path="$.*", matches="^-?\\d+(\\.\\d+)?([eE][+-]?\\d+)?$")
+- returns: span id to charged USD, omitting turns with no session id, no reported cost, or a backend that reports per-turn cost
+- code: `groom/groom/store.py::turn_charges` @e77ed9fa8196
+- tests: `groom/tests/test_feed.py::test_digest_charges_a_resumed_turn_from_a_report_before_its_window`
 
 ### reprice and apply_estimates
 
@@ -179,8 +193,8 @@ Schema is versioned via `_ADDED_*_COLUMNS`, and a ledger table by the columns it
 - verify: json_path(path="$.priced", matches="^\\d+$")
 - verify: json_path(path="$.unpriced", matches="^\\{")
 - verify: json_path(path="$.est_cost_usd", matches="^\\d+(\\.\\d+)?$")
-- code: `groom/groom/store.py::reprice` @ddf504515620
-- code: `groom/groom/store.py::apply_estimates` @ddf504515620
+- code: `groom/groom/store.py::reprice` @e77ed9fa8196
+- code: `groom/groom/store.py::apply_estimates` @e77ed9fa8196
 - tests: `groom/tests/test_store.py::test_reprice_identifies_unpriced_models`
 
 ### prune
@@ -202,7 +216,7 @@ Schema is versioned via `_ADDED_*_COLUMNS`, and a ledger table by the columns it
 - verify: persists(subject="last_prune_ts in health")
 - returns: total rows removed
 - verify: json_path(path="$.result", equals=4)
-- code: `groom/groom/store.py::prune` @ddf504515620
+- code: `groom/groom/store.py::prune` @e77ed9fa8196
 - tests: `groom/tests/test_store.py::test_prune_deletes_aged_runs_only_when_archived`
 
 ### purge_test_runs
@@ -220,7 +234,7 @@ Schema is versioned via `_ADDED_*_COLUMNS`, and a ledger table by the columns it
 - returns: counts by table and run count, same whether dry or live
 - verify: json_path(path="$.runs", equals=1)
 - verify: json_path(path="$.spans", equals=1)
-- code: `groom/groom/store.py::purge_test_runs` @ddf504515620
+- code: `groom/groom/store.py::purge_test_runs` @e77ed9fa8196
 - tests: `groom/tests/test_store.py::test_purge_test_runs_reclaims_space`
 
 ### checkpoint
@@ -233,8 +247,8 @@ Schema is versioned via `_ADDED_*_COLUMNS`, and a ledger table by the columns it
 - verify: persists(subject="checkpoint busy count in health")
 - raises: logs warning but does not raise on failure — checkpoint is an optimization, not critical
 - verify: exit_status(code=0)
-- code: `groom/groom/store.py::checkpoint` @ddf504515620
-- code: `groom/groom/store.py::_checkpoint` @ddf504515620
+- code: `groom/groom/store.py::checkpoint` @e77ed9fa8196
+- code: `groom/groom/store.py::_checkpoint` @e77ed9fa8196
 - tests: `groom/tests/test_store_resilience.py::test_checkpoint_reports_busy_when_reader_blocks`
 
 ### health and health_dict
@@ -248,8 +262,8 @@ Schema is versioned via `_ADDED_*_COLUMNS`, and a ledger table by the columns it
 - verify: json_path(path="$.ok", equals=true)
 - returns: StoreHealth dataclass or its asdict() for JSON
 - verify: json_path(path="$.ok", matches="^(true|false)$")
-- code: `groom/groom/store.py::StoreHealth` @ddf504515620
-- code: `groom/groom/store.py::health` @ddf504515620
+- code: `groom/groom/store.py::StoreHealth` @e77ed9fa8196
+- code: `groom/groom/store.py::health` @e77ed9fa8196
 - tests: `groom/tests/test_store_resilience.py::test_health_ok_flag_requires_newer_success_than_failure`
 
 ### reset
@@ -259,7 +273,7 @@ Schema is versioned via `_ADDED_*_COLUMNS`, and a ledger table by the columns it
 - verify: json_path(path="$.failure_count", equals=0)
 - does: retire every thread's read connection (they are thread-local and must not outlive the DB file they point to)
 - verify: json_path(path="$.ok", equals=true)
-- code: `groom/groom/store.py::reset` @ddf504515620
+- code: `groom/groom/store.py::reset` @e77ed9fa8196
 - tests: `groom/tests/test_store.py::test_reset_clears_connection_state`
 
 ### RunBounds and run_bounds
@@ -274,8 +288,8 @@ Schema is versioned via `_ADDED_*_COLUMNS`, and a ledger table by the columns it
 - verify: persists(subject="newest span identity per run")
 - returns: dict mapping run_id to RunBounds, covering all runs with spans or logs or (archivable) metrics
 - verify: json_path(path="$.run-1.workflow", equals="coder")
-- code: `groom/groom/store.py::RunBounds` @ddf504515620
-- code: `groom/groom/store.py::run_bounds` @ddf504515620
+- code: `groom/groom/store.py::RunBounds` @e77ed9fa8196
+- code: `groom/groom/store.py::run_bounds` @e77ed9fa8196
 - tests: `groom/tests/test_store.py::test_run_bounds_counts_archivable_rows`
 
 ### archive_page
@@ -285,7 +299,7 @@ Schema is versioned via `_ADDED_*_COLUMNS`, and a ledger table by the columns it
 - does: filter metrics to ARCHIVED_METRICS (subset of the full metrics table)
 - verify: omits(subject="non-archivable metrics", text="excluded")
 - returns: rows with `_ts` and `_rowid` for cursor positioning in the next call
-- code: `groom/groom/store.py::archive_page` @ddf504515620
+- code: `groom/groom/store.py::archive_page` @e77ed9fa8196
 - tests: `groom/tests/test_store.py::test_archive_page_uses_keyset_pagination`
 
 ### Lap
@@ -298,7 +312,7 @@ One turn of a loop, held as three independent readings rather than one resolved 
 - verify: persists(subject="cost and est fields as separate independent readings")
 - does: flag `suspect_zero`: turns reporting exactly $0 while emitting output tokens, which sum into a bill and hide the actual spend
 - verify: persists(subject="suspect_zero flag for zero-cost output turns")
-- code: `groom/groom/store.py::Lap` @ddf504515620
+- code: `groom/groom/store.py::Lap` @e77ed9fa8196
 
 ### insert_turns
 
@@ -309,7 +323,7 @@ One turn of a loop, held as three independent readings rather than one resolved 
 - verify: persists(subject="turn metadata columns (path, bytes, sha256)")
 - returns: rows added or updated
 - verify: count(subject="turn rows indexed by insert_turns", equals=1)
-- code: `groom/groom/store.py::insert_turns` @ddf504515620
+- code: `groom/groom/store.py::insert_turns` @e77ed9fa8196
 - tests: `groom/tests/test_store.py::test_insert_turns_upserts_on_visit_key`
 
 ### run_directories
@@ -319,7 +333,7 @@ One turn of a loop, held as three independent readings rather than one resolved 
 - verify: persists(subject="run telemetry directory inventory")
 - does: feed the archive harvester inventory: a run that moved between directories is two rows and both may hold records
 - returns: rows ordered by uniqueness, not chronologically
-- code: `groom/groom/store.py::run_directories` @ddf504515620
+- code: `groom/groom/store.py::run_directories` @e77ed9fa8196
 - tests: `groom/tests/test_store.py::test_run_directories_lists_inventory_for_archive`
 
 ### is_test_run_dir
@@ -332,7 +346,7 @@ One turn of a loop, held as three independent readings rather than one resolved 
 - returns: true only for certain test markers
 - verify: absent(subject="/tmp alone does not match")
 - returns: `/tmp` alone does not count — producer may be container, collector may be host
-- code: `groom/groom/store.py::is_test_run_dir` @ddf504515620
+- code: `groom/groom/store.py::is_test_run_dir` @e77ed9fa8196
 - tests: `groom/tests/test_store.py::test_is_test_run_dir_matches_pytest_marker`
 
 ### is_scratch_run_dir
@@ -343,7 +357,7 @@ One turn of a loop, held as three independent readings rather than one resolved 
 - does: match `tempfile.mkdtemp()` naming (`tmp` + 6+ random chars) under temp roots (`/tmp` or `tempfile.gettempdir()`) — a real run launched from a `mkdtemp` directory matches too, so the matcher is a heuristic, not a test marker
 - verify: created(subject="true for mkdtemp-named dirs under temp roots")
 - returns: true for test markers or temp dirs — used only in deliberately-preview-able commands (`groom purge --dry-run`), not ingest
-- code: `groom/groom/store.py::is_scratch_run_dir` @ddf504515620
+- code: `groom/groom/store.py::is_scratch_run_dir` @e77ed9fa8196
 - tests: `groom/tests/test_store.py::test_is_scratch_run_dir_catches_mkdtemp`
 
 ### test_run_ids
@@ -355,8 +369,8 @@ One turn of a loop, held as three independent readings rather than one resolved 
 - verify: json_path(path="$[0]", equals="run-1")
 - returns: empty set if none found
 - verify: count(subject="run_ids when no test runs exist", equals=0)
-- code: `groom/groom/store.py::test_run_ids` @ddf504515620
-- code: `groom/groom/store.py::_test_run_ids` @ddf504515620
+- code: `groom/groom/store.py::test_run_ids` @e77ed9fa8196
+- code: `groom/groom/store.py::_test_run_ids` @e77ed9fa8196
 - tests: `groom/tests/test_store.py::test_test_run_ids_discovers_scratch_runs`
 
 ### unarchived_row_counts
@@ -370,7 +384,7 @@ One turn of a loop, held as three independent readings rather than one resolved 
 - does: count legacy empty-run_id rows (ingest refuses them now)
 - verify: persists(subject="no_run_id counts for each table")
 - returns: dict with keys `never_archived_metrics`, `scratch_runs`, `no_run_id_spans`, `no_run_id_logs`, `no_run_id_metrics
-- code: `groom/groom/store.py::unarchived_row_counts` @ddf504515620
+- code: `groom/groom/store.py::unarchived_row_counts` @e77ed9fa8196
 - tests: `groom/tests/test_store.py::test_unarchived_row_counts_reports_what_prune_deletes_unconditionally`
 
 ### delete_run_telemetry
@@ -380,11 +394,11 @@ One turn of a loop, held as three independent readings rather than one resolved 
 - verify: removed(subject="all spans for run_id")
 - verify: removed(subject="all logs for run_id")
 - verify: removed(subject="all metrics for run_id")
-- meaning: called by the archiver once the run's file is written to disk — rows younger than the retention window must leave with the archive or the archive stops being the single copy
 - returns: total rows removed
 - verify: json_path(path="$.result", equals=3)
-- code: `groom/groom/store.py::delete_run_telemetry` @ddf504515620
+- code: `groom/groom/store.py::delete_run_telemetry` @e77ed9fa8196
 - tests: `groom/tests/test_store.py::test_delete_run_telemetry_removes_all_three_tables`
+- meaning: called by the archiver once the run's file is written to disk — rows younger than the retention window must leave with the archive or the archive stops being the single copy
 
 ### unpriced_models
 
@@ -395,7 +409,7 @@ One turn of a loop, held as three independent readings rather than one resolved 
 - verify: unchanged(subject="spans table", except_fields=[])
 - returns: dict mapping model name to turn count, ordered most-common first
 - verify: json_path(path="$", matches="^\\{.*\\}")
-- code: `groom/groom/store.py::unpriced_models` @ddf504515620
+- code: `groom/groom/store.py::unpriced_models` @e77ed9fa8196
 - tests: `groom/tests/test_prices.py::test_a_known_model_is_priced_at_ingest`
 
 ### unpriceable_turns
@@ -407,7 +421,7 @@ Input to any recovery that goes looking outside the span for what the model real
 - verify: json_path(path="$[0].est_cost_usd", absent=true)
 - returns: list of turn records with span_id, model, session_id, and token counts for recovery attempts
 - verify: json_path(path="$[0].span_id", equals="span-1")
-- code: `groom/groom/store.py::unpriceable_turns` @ddf504515620
+- code: `groom/groom/store.py::unpriceable_turns` @e77ed9fa8196
 - tests: `groom/tests/test_store.py::test_unpriceable_turns_lists_turn_details_for_recovery`
 
 ## Implementation

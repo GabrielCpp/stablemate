@@ -86,6 +86,16 @@ def test_digest_groups_nodes_and_sums_cost() -> None:
     assert not frame.quiet
 
 
+def test_digest_charges_a_resumed_turn_from_a_report_before_its_window() -> None:
+    session = {"backend": "claude", "session.id": "s-1"}
+    store.insert_spans([
+        _span("agent_turn", 8_000, "dev-plan", attrs={**session, "total_cost_usd": 4.0}),
+        _span("agent_turn", 9_100, "dev-build", attrs={**session, "total_cost_usd": 6.5}),
+    ])
+    frame = digest.build_digest("acme", 9_000, NOW, now=NOW)
+    assert frame.window.cost_usd == pytest.approx(2.5)
+
+
 def test_digest_laps_count_turns_per_work_item() -> None:
     store.insert_spans([
         _turn(9_101, "audit", 1.0, 1, "a"),
