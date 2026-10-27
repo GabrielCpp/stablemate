@@ -112,6 +112,14 @@ def remember(spec_path: Path, key: str | None, result: OkfContextResult) -> None
         return
 
 
+def _story_trailers(message: str) -> set[str]:
+    return {
+        line.removeprefix("Story:").strip()
+        for line in message.splitlines()
+        if line.startswith("Story:")
+    }
+
+
 def _story_paths(root: Path, base: str, refs: tuple[str, ...]) -> set[str] | None:
     """The paths this story's own commits in ``base..HEAD`` touched, or None when it has none yet."""
     wanted = set(refs)
@@ -119,19 +127,30 @@ def _story_paths(root: Path, base: str, refs: tuple[str, ...]) -> set[str] | Non
     paths: set[str] | None = None
     for record in log.split("\x1e")[1:]:
         message, _, names = record.partition("\x00")
-        trailers = {
-            line.removeprefix("Story:").strip()
-            for line in message.splitlines()
-            if line.startswith("Story:")
-        }
-        if trailers & wanted:
+        if _story_trailers(message) & wanted:
             paths = (paths or set()) | {name for name in names.splitlines() if name}
     return paths
+
+
+def _trunk_story_base(root: Path, base: str, refs: tuple[str, ...]) -> str:
+    """On trunk itself, the parent of this story's earliest commit; elsewhere ``base`` unchanged."""
+    repo = open_repo(root)
+    if repo.git.rev_parse(base) != repo.git.rev_parse("HEAD"):
+        return base
+    grep = [f"--grep={ref}" for ref in refs]
+    log = repo.git.log("--reverse", "--fixed-strings", *grep, "--format=%x1e%P%x00%B", "HEAD")
+    wanted = set(refs)
+    for record in log.split("\x1e")[1:]:
+        parents, _, message = record.partition("\x00")
+        if _story_trailers(message) & wanted and parents.split():
+            return parents.split()[0]
+    return base
 
 
 def _story_scope(root: Path, base: str, refs: tuple[str, ...]) -> tuple[str, tuple[str, ...]]:
     """The base a story's packet diffs from, and the paths changed since it that other stories own."""
     try:
+        base = _trunk_story_base(root, base, refs)
         own = _story_paths(root, base, refs)
         if own is None:
             return "HEAD", ()
