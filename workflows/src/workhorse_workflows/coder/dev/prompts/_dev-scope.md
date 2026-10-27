@@ -24,6 +24,15 @@ and that its change did not cause is not one. A remark about docs, or about the 
 `story.md` or a plan file, is not one. A note about the toolchain is not one. Each is a run
 finding for the operator, and it goes in `notes`.
 
+## The book
+
+The run's docs phase merges this story into the repo's book under `docs/services/` after
+review, and QA reads its obligations from that merge. A rule in the repo's instruction files
+that the book changes with the code is met there. So the plan lists no book edits, and the
+build and review phases write, stamp and doctor nothing under `docs/services/`. Read the book
+to learn what the product does. A page this change will make wrong is a note for the docs
+phase, and it goes in `notes`.
+
 ## Blocked
 
 Return `blocked` only for a decision an operator alone can make: a product call the story

@@ -18,9 +18,18 @@ settles the findings against the answers, and checks that the story left nothing
 failed check goes back to the review phase as a report for another repair lap. A spent lap budget
 escalates to an operator gate.
 
+The dev phases leave the book alone. The docs phase merges the story into the book after review,
+and QA reads its obligations from that merge. The story's opening brief says so, so a repo
+instruction that the book changes with the code does not send the plan, build and review turns
+into the same merge the docs phase then does again.
+
 - code: `workflows/src/workhorse_workflows/coder/dev/flow.py` @fe195e40d574
 - code: `workflows/src/workhorse_workflows/coder/dev/flow.py::Dev` @fe195e40d574
+- code: `workflows/src/workhorse_workflows/coder/dev/prompts/_dev-scope.md` @add4b38130d2
+- rule: the plan, build and review turns write, stamp and doctor nothing under the book's services root, because the docs phase owns the story's book merge
+- prefers: one book merge per story, in the docs phase, over a merge in the build that the docs phase repeats, because the duplicate cost a quarter to a third of each build turn
 - tests: `workflows/tests/coder/dev/test_flow.py`
+- tests: `workflows/tests/coder/dev/test_flow.py::test_the_opening_brief_leaves_the_book_merge_to_the_docs_phase`
 - detail: [coder dev flow](../flows/coder-dev.md)
 
 The dev package operates against a docs repository carrying one epic with its `## Stories`

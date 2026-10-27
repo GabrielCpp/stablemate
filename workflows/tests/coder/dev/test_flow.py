@@ -1222,6 +1222,22 @@ def test_the_plan_turn_on_a_fresh_conversation_carries_the_full_rules(
     assert "## Commit Identity" in text, text
 
 
+def test_the_opening_brief_leaves_the_book_merge_to_the_docs_phase(
+    docs: Path,
+    workspace: dict[str, Path],
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    agent = _Agent(workspace, session=lambda n: "sess-1")
+
+    drive_flow(_dev(docs), env(), agent)
+
+    (plan,) = agent.args_for("dev-plan")
+    text = Path(str(plan["brief_path"])).read_text(encoding="utf-8")
+    assert "## The book" in text, text
+    assert "write, stamp and doctor nothing under `docs/services/`" in " ".join(text.split()), text
+
+
 def test_the_build_turn_on_the_plans_conversation_points_at_the_opening_brief(
     docs: Path,
     workspace: dict[str, Path],
