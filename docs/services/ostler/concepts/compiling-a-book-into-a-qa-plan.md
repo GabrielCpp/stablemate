@@ -97,8 +97,8 @@ its first hop.
 - code: ostler/ostler/qa/compile_playwright.py::perform_acts@23cf5e92ef9e
 - code: ostler/ostler/qa/compile_playwright.py::page_observations@23cf5e92ef9e
 - code: ostler/ostler/qa/compile_playwright.py::web_walk@23cf5e92ef9e
-- code: ostler/ostler/qa/compile_maestro.py::mobile_scenarios@2aab48233be8
-- code: ostler/ostler/qa/compile_maestro.py::maestro_walk@2aab48233be8
+- code: ostler/ostler/qa/compile_maestro.py::mobile_scenarios@61c12bc546a0
+- code: ostler/ostler/qa/compile_maestro.py::maestro_walk@61c12bc546a0
 - code: ostler/ostler/qa/harness/ostler_qa_elements.py::maestro_pattern@6dcb4afc8e13
 - code: ostler/ostler/qa/harness/ostler_qa.py::Maestro@9c2c885402aa
 - code: ostler/ostler/qa/compile_moves.py::move_walks@357b72ed93c7
@@ -156,6 +156,11 @@ its first hop.
   rendered value to `qa.maestro.run(..., env=...)`. A flow that still holds an unrendered hole or
   reference is a compiler defect, and the compile raises. A claim Maestro cannot observe, such as
   `visible(count=)` or a `fill` value with a hole in it, is a gap.
+- an absence on the phone means "below the fold" only once the screen has drawn: Maestro's
+  `launchApp` returns before the app's first frame, so the first look of a launching flow waits
+  up to 15 seconds for its control with an optional `extendedWaitUntil`, and only then scrolls
+  for it. A look after a tap scrolls at once, because the tap already waited for the screen to
+  settle.
 - generated names are unique: every `*_function_name` helper in `plan_source.py` is given the
   full set of already-emitted names (`EmittedScenarios`) and never returns one already used in
   the same plan.

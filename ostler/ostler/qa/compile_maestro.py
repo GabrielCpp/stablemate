@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import itertools
 import json
 import re
 from collections.abc import Iterator
@@ -118,6 +119,8 @@ def _flow_yaml(
 ) -> tuple[str, str]:
     """One Maestro flow file and the `env=` argument that runs it: the app, then, in the first file of a scenario, a cold launch that clears the device unless a fixture signed it in, then *commands* in order."""
     opening = [] if not first else ["- launchApp"] if launch.signed_in else ["- launchApp:", "    clearState: true"]
+    if first:
+        commands = _drawn_first(commands)
     text = "\n".join([f"appId: {json.dumps(launch.bundle_id)}", "---", *opening, *commands]) + "\n"
     text, variables = refs.numbered(text)
     if any(references.find_references(each) or _HOLE.search(each) for each in _unquoted(text)):
@@ -191,6 +194,18 @@ def _into_view(locator: MaestroLocator, text: str | None, refs: _Refs) -> list[s
         "- scrollUntilVisible:", "    element:", *_selector(locator, text, refs, "      "),
         "    direction: DOWN",
     ]
+
+
+_DRAW_TIMEOUT_MS = 15000
+
+
+def _drawn_first(commands: list[str]) -> list[str]:
+    """*commands*, their first scroll after launch waiting for its control to be drawn: Maestro's launch returns before the app's first frame, and an absence reads as below the fold only once the screen has drawn."""
+    if commands[:2] != ["- scrollUntilVisible:", "    element:"]:
+        return commands
+    selector = list(itertools.takewhile(lambda line: line.startswith("      "), commands[2:]))
+    wait = ["- extendedWaitUntil:", "    visible:", *selector, f"    timeout: {_DRAW_TIMEOUT_MS}", "    optional: true"]
+    return [*wait, *commands]
 
 
 def _act_commands(

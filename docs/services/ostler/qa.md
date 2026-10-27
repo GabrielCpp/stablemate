@@ -61,7 +61,7 @@ are written, because each later command reads what an earlier one wrote.
 - code: ostler/ostler/qa/compile_cli.py::cli_scenario_body@003bdbe757de
 - code: ostler/ostler/qa/compile_http.py::api_scenarios@f77bef4e51e6
 - code: ostler/ostler/qa/compile_journey.py::journey_scenarios@421ed1147b57
-- code: ostler/ostler/qa/compile_maestro.py::device_state_walks@2aab48233be8
+- code: ostler/ostler/qa/compile_maestro.py::device_state_walks@61c12bc546a0
 - code: ostler/ostler/qa/compile_moves.py::move_walks@357b72ed93c7
 - code: ostler/ostler/qa/compile_page.py::page_scenarios@0595c6bd06f4
 - code: ostler/ostler/qa/compile_support.py::on_href@d73966f66e36
@@ -129,7 +129,7 @@ are written, because each later command reads what an earlier one wrote.
 - code: ostler/ostler/qa/compile_grpc.py::grpc_scenarios@69d207a99252
 - code: ostler/ostler/qa/compile_http.py::api_scenarios@f77bef4e51e6
 - code: ostler/ostler/qa/compile_journey.py::journey_scenarios@421ed1147b57
-- code: ostler/ostler/qa/compile_maestro.py::device_state_walks@2aab48233be8
+- code: ostler/ostler/qa/compile_maestro.py::device_state_walks@61c12bc546a0
 - code: ostler/ostler/qa/compile_moves.py::move_walks@357b72ed93c7
 - code: ostler/ostler/qa/compile_page.py::page_scenarios@0595c6bd06f4
 - code: ostler/ostler/qa/compile_support.py::on_href@d73966f66e36

@@ -6033,8 +6033,27 @@ def test_an_obligation_off_the_launch_screen_taps_its_way_there_first() -> None:
     (flow_text,) = [text for text in result.files.values() if "probe-widget" in text]
     _header, commands = yaml.safe_load_all(flow_text)
     assert commands[0] == {"launchApp": {"clearState": True}}
-    assert commands[1] == {"scrollUntilVisible": {"element": {"id": "probe-link"}, "direction": "DOWN"}}
-    assert commands[2] == {"tapOn": {"id": "probe-link"}}
+    assert commands[1] == _DRAWN_PROBE_LINK
+    assert commands[2] == {"scrollUntilVisible": {"element": {"id": "probe-link"}, "direction": "DOWN"}}
+    assert commands[3] == {"tapOn": {"id": "probe-link"}}
+
+
+_DRAWN_PROBE_LINK = {"extendedWaitUntil": {"visible": {"id": "probe-link"}, "timeout": 15000, "optional": True}}
+
+
+def test_the_first_look_after_launch_waits_for_the_app_to_draw_before_scrolling() -> None:
+    """Maestro's launch returns before the app's first frame, so a scroll that starts then reads an empty screen as a control below the fold and swipes."""
+    context, oid, _launch = _maestro_hop_probe({"on": ["[probe-link](#probe-link)"]})
+
+    result = _compile_plan_gaps(context, story="demo-story")
+    assert isinstance(result, Plan)
+    assert _gap_kinds(result.gaps, oid) == []
+    (flow_text,) = [text for text in result.files.values() if "probe-widget" in text]
+    _header, commands = yaml.safe_load_all(flow_text)
+    waits = [c for c in commands if isinstance(c, dict) and "extendedWaitUntil" in c]
+    assert waits == [_DRAWN_PROBE_LINK]
+    assert commands.index(_DRAWN_PROBE_LINK) == 1
+    assert sum(1 for c in commands if isinstance(c, dict) and "scrollUntilVisible" in c) > 1
 
 
 def test_a_launch_hop_with_no_addressable_control_gaps_unresolved_precondition() -> None:
@@ -6116,8 +6135,9 @@ def test_a_claim_with_no_device_fixture_starts_on_a_cleared_device() -> None:
     assert _gap_kinds(result.gaps, oid) == []
     commands = _probe_flow(result)
     assert commands[0] == {"launchApp": {"clearState": True}}
-    assert commands[1] == {"scrollUntilVisible": {"element": {"id": "probe-link"}, "direction": "DOWN"}}
-    assert commands[2] == {"tapOn": {"id": "probe-link"}}
+    assert commands[1] == _DRAWN_PROBE_LINK
+    assert commands[2] == {"scrollUntilVisible": {"element": {"id": "probe-link"}, "direction": "DOWN"}}
+    assert commands[3] == {"tapOn": {"id": "probe-link"}}
 
 
 def test_two_fixtures_that_open_the_app_on_different_screens_gap_the_claim() -> None:
@@ -7109,7 +7129,8 @@ def test_a_templated_name_and_a_referenced_text_reach_maestro_as_one_variable() 
     assert "@seeded-ledger" not in flow_text
     _header, commands = _strict_flow(flow_text)
     assert commands[-1] == {"assertVisible": {"text": "${OKF_REF_1}"}}
-    assert commands[1] == {"scrollUntilVisible": {"element": {"text": "${OKF_REF_1}"}, "direction": "DOWN"}}
+    assert commands[1] == {"extendedWaitUntil": {"visible": {"text": "${OKF_REF_1}"}, "timeout": 15000, "optional": True}}
+    assert commands[2] == {"scrollUntilVisible": {"element": {"text": "${OKF_REF_1}"}, "direction": "DOWN"}}
     assert (f'env={{"OKF_REF_1": qa.maestro.pattern({json.dumps(_TICKET_NAME)}, '
             f'text=qa.resolve({json.dumps(text)}))}}') in result.source
 
