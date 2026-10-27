@@ -150,10 +150,10 @@ re-exports the public surface of all of the above (`cmd_run`, `cmd_compile_plan`
 - code: ostler/ostler/qa/run_log.py::run_log_tally@b2d1c68eaf42
 - code: ostler/ostler/qa/run_log.py::passing_log_ref@b2d1c68eaf42
 - code: ostler/ostler/qa/run_log.py::failing_log_refs@b2d1c68eaf42
-- code: ostler/ostler/qa/plan.py::PlanDocument@170e39e23eaf
-- code: ostler/ostler/qa/plan.py::load_plan@170e39e23eaf
-- code: ostler/ostler/qa/plan.py::validate_v2@170e39e23eaf
-- code: ostler/ostler/qa/plan.py::check_runtime_requirements@170e39e23eaf
+- code: ostler/ostler/qa/plan.py::PlanDocument@d7dc5c303e74
+- code: ostler/ostler/qa/plan.py::load_plan@d7dc5c303e74
+- code: ostler/ostler/qa/plan.py::validate_v2@d7dc5c303e74
+- code: ostler/ostler/qa/plan.py::check_runtime_requirements@d7dc5c303e74
 - code: ostler/ostler/qa/v2.py::run_plan@fd118c311bc5
 - code: ostler/ostler/qa/captures.py::CaptureDecl@248120ebb77f
 - code: ostler/ostler/qa/captures.py::parse_bullet@248120ebb77f
@@ -225,6 +225,9 @@ re-exports the public surface of all of the above (`cmd_run`, `cmd_compile_plan`
   data (a `Verdict`, an `Attribution`), not an exception; only a harness fault
   (`ClaimFault`/`FixtureFault`, see
   [Authoring QA scenarios](authoring-qa-scenarios.md)) propagates as one.
+- a stale plan follows the packet: `validate_v2` reports `stale-plan` when a plan's `book=`
+  differs from the packet's owed-obligation digest, and names the full current digest, so the
+  author reconciles `covers=` and rewrites `book=` instead of rebuilding the packet.
 - outcome is uniform: every `ostler qa` subcommand in `run.py`, `lint.py`, `clean.py` and
   `sensitivity.py` returns a `QaOutcome`, never raises for an expected failure mode, so the CLI
   layer has one shape to render regardless of which subcommand ran.

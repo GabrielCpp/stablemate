@@ -227,7 +227,9 @@ def test_a_plan_compiled_from_a_different_book_is_stale(tmp_path: Path) -> None:
     document, problems = load_plan(_plan(spec, source), spec, tmp_path)
     assert not problems and document is not None
     reported = validate_v2(document)
-    assert any(item.startswith("stale-plan:") for item in reported)
+    stale = [item for item in reported if item.startswith("stale-plan:")]
+    assert stale
+    assert f'book="{book_digest(document.context)}"' in stale[0]
 
 
 def _spec_with_book_file(tmp_path: Path, content: str = "content-1") -> Path:

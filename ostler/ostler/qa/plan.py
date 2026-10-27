@@ -272,8 +272,11 @@ def validate_v2(document: PlanDocument) -> list[str]:  # noqa: C901
         current = book_digest(document.context)
         if book != current:
             problems.append(
-                "stale-plan: this plan was compiled from a different book "
-                f"(book={book[:12]}, current book={current[:12]}) — recompile it"
+                "stale-plan: this plan's book= names a different set of owed obligations "
+                f"than qa-okf-context.json (book={book[:12]}, current={current}). The packet "
+                "is current: reconcile the plan's covers= with "
+                "`ostler qa context-show --spec <spec> --required`, then set "
+                f'book="{current}"'
             )
     if document.context:
         problems.extend(_book_drift_problems(document.context, document.root))
