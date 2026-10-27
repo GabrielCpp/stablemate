@@ -58,6 +58,14 @@ def fingerprint(signature: str | None, arguments: dict[str, object]) -> str | No
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
+def packet_digests(spec_path: Path) -> dict[str, str]:
+    """The sha256 of each packet file, so a stamp names the bytes it vouches for."""
+    return {
+        name: hashlib.sha256((spec_path / name).read_bytes()).hexdigest()
+        for name in PACKET_FILES
+    }
+
+
 def recall(spec_path: Path, key: str | None) -> OkfContextResult | None:
     """The recorded result when the packet on disk was built from exactly these inputs."""
     if key is None:
@@ -66,9 +74,12 @@ def recall(spec_path: Path, key: str | None) -> OkfContextResult | None:
         return None
     try:
         stamp = json.loads((spec_path / STAMP_FILE).read_text(encoding="utf-8"))
+        on_disk = packet_digests(spec_path)
     except (OSError, ValueError):
         return None
     if not isinstance(stamp, dict) or stamp.get("fingerprint") != key:
+        return None
+    if stamp.get("packet") != on_disk:
         return None
     recorded = stamp.get("ostler")
     return OkfContextResult(
@@ -87,6 +98,7 @@ def remember(spec_path: Path, key: str | None, result: OkfContextResult) -> None
             json.dumps(
                 {
                     "fingerprint": key,
+                    "packet": packet_digests(spec_path),
                     "status": result.status,
                     "notes": result.notes,
                     "ostler": result.ostler,

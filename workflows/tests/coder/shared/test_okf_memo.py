@@ -110,6 +110,18 @@ def test_a_missing_packet_file_rebuilds_even_with_a_matching_stamp(repo: Path) -
     assert len(FakeOstler.calls) == 2
 
 
+def test_a_packet_rewritten_after_the_build_rebuilds_even_with_a_matching_stamp(
+    repo: Path,
+) -> None:
+    """A turn that regenerates the packet from another base leaves the stamp vouching for bytes it never saw."""
+    build(repo)
+    (repo / "docs" / "spec" / "qa-okf-context.json").write_text(
+        '{"base": "elsewhere"}\n', encoding="utf-8"
+    )
+    build(repo)
+    assert len(FakeOstler.calls) == 2
+
+
 def test_a_failed_build_is_not_memoized(repo: Path) -> None:
     FakeOstler.ok = False
     first = build(repo)
