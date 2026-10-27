@@ -7,7 +7,7 @@ from typing import Any
 from workhorse import worklist as wl
 
 from workhorse_workflows.coder.shared.schemas.dev import FailureReport
-from workhorse_workflows.coder.shared.schemas.dev_story import DevResult
+from workhorse_workflows.coder.shared.schemas.dev_story import Departure, DevResult
 
 
 def plan_arg(result: DevResult) -> dict[str, Any]:
@@ -90,4 +90,25 @@ def self_check_text(failed: Sequence[dict[str, Any]]) -> str:
     return "\n".join(lines)
 
 
-__all__ = ["findings_text", "plan_arg", "rejected_text", "report_text", "self_check_text", "walk_text"]
+def unadvised_text(departures: Sequence[Departure]) -> str:
+    """The plan departures that carry no advisor answer, as the build's next turn reads them."""
+    lines = [
+        "Departures: the brief asks for the advisor's answer on every departure from the plan, "
+        "and these carry none. Ask it now, and record its answer in `advice`.",
+        "",
+    ]
+    lines += [f"- {d.change}" for d in departures]
+    return "\n".join(lines)
+
+
+def unconsulted_text(ids: Sequence[str]) -> str:
+    """The declined findings that no advisor consult backs, as the review's next turn reads them."""
+    named = ", ".join(f"`{fid}`" for fid in ids)
+    return (
+        f"Consults: the answer file declines {named}, and no advisor answer is on file for "
+        "them. The review brief asks for the advisor's answer before any decline. Ask it now, "
+        "record it in `consults`, then keep or change the answer."
+    )
+
+
+__all__ = ["findings_text", "plan_arg", "rejected_text", "report_text", "self_check_text", "unadvised_text", "unconsulted_text", "walk_text"]

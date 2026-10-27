@@ -10,7 +10,7 @@ from workhorse_workflows.coder.shared.schemas.dev import StoryStatusCheck
 
 CODER = Path(workhorse_workflows.__file__).parent / "coder"
 
-NO_STATUS_AUTHORITY = ("dev-story.md",)
+NO_STATUS_AUTHORITY = ("dev-plan.md", "dev-build.md", "dev-review.md")
 
 UNAUTHORIZED = sorted(
     p for p in CODER.glob("*/prompts/*.md") if p.name in NO_STATUS_AUTHORITY

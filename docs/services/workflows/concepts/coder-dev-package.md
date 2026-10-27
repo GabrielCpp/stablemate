@@ -5,20 +5,21 @@ title: Coder dev package
 ---
 # Coder dev package
 
-The `dev` machine builds one story with one owner turn and checks the result. It is a sub-flow
+The `dev` machine builds one story with one owner and checks the result. It is a sub-flow
 entered by the Coder main flow when a story is ready for implementation, and can also be run
 directly with `workhorse-coder run dev`.
 
-The owner turn plans, builds, reviews and fixes through its own subagents, and answers every
-finding in the story's answer file. `Dev.build` picks the `dev-rework` prompt instead of
-`dev-story` once QA has filed an open finding against the work item, so a rework lap reads the
-work differently than the first attempt at it. The flow around it is deterministic. It records the plan,
-runs the declared service gates, settles the findings against the answers, and checks that the
-story left nothing uncommitted. A failed check goes back to the owner as a report for another
-repair lap. A spent lap budget escalates to an operator gate.
+The owner works the story in three phase turns on one conversation, as
+[coder dev phase turns](coder-dev-phase-turns.md) describes. `Dev.plan` writes the plan,
+`Dev.build` builds it, and `Dev.review` reviews the diff and answers every finding in the story's
+answer file. A story QA sent back starts at `Dev.review`, with QA's findings in their own section.
+The flow around the turns is deterministic. It records the plan, runs the declared service gates,
+settles the findings against the answers, and checks that the story left nothing uncommitted. A
+failed check goes back to the review phase as a report for another repair lap. A spent lap budget
+escalates to an operator gate.
 
-- code: `workflows/src/workhorse_workflows/coder/dev/flow.py` @6b4e303557ef
-- code: `workflows/src/workhorse_workflows/coder/dev/flow.py::Dev` @6b4e303557ef
+- code: `workflows/src/workhorse_workflows/coder/dev/flow.py` @9cb81c5987ec
+- code: `workflows/src/workhorse_workflows/coder/dev/flow.py::Dev` @9cb81c5987ec
 - tests: `workflows/tests/coder/dev/test_flow.py`
 - detail: [coder dev flow](../flows/coder-dev.md)
 
@@ -37,7 +38,7 @@ flow runs therefore see the same artifacts the production flow does.
 - verify: count(subject="plan structure fields", equals=5)
 - returns: the services, implementation order, shared packages, verification setup and fixtures
 - verify: json_path(path="$.services", equals="example services")
-- code: `workflows/src/workhorse_workflows/coder/dev/report.py::plan_arg` @792c537f8552
+- code: `workflows/src/workhorse_workflows/coder/dev/report.py::plan_arg` @e53511844b8a
 
 ### report_text
 - sig: `report_text(report: FailureReport) -> str`
@@ -49,7 +50,7 @@ flow runs therefore see the same artifacts the production flow does.
 - verify: count(subject="fenced report outputs", equals=1)
 - returns: a markdown string starting with `Gate: <source>`
 - verify: json_path(path="$.report", matches="^Gate: ")
-- code: `workflows/src/workhorse_workflows/coder/dev/report.py::report_text` @792c537f8552
+- code: `workflows/src/workhorse_workflows/coder/dev/report.py::report_text` @e53511844b8a
 
 ### findings_text
 - sig: `findings_text(items: Sequence[wl.WorkItem]) -> str`
@@ -59,7 +60,7 @@ flow runs therefore see the same artifacts the production flow does.
 - verify: count(subject="targetless finding sections", equals=1)
 - returns: the sections joined by blank lines
 - verify: json_path(path="$.findings", equals="example findings")
-- code: `workflows/src/workhorse_workflows/coder/dev/report.py::findings_text` @792c537f8552
+- code: `workflows/src/workhorse_workflows/coder/dev/report.py::findings_text` @e53511844b8a
 
 ### rejected_text
 - sig: `rejected_text(rejected: dict[str, str], errors: Sequence[str]) -> str`
@@ -69,4 +70,20 @@ flow runs therefore see the same artifacts the production flow does.
 - verify: count(subject="settlement error lines", equals=1)
 - returns: one bullet per line
 - verify: json_path(path="$.rejected", equals="example rejected")
-- code: `workflows/src/workhorse_workflows/coder/dev/report.py::rejected_text` @792c537f8552
+- code: `workflows/src/workhorse_workflows/coder/dev/report.py::rejected_text` @e53511844b8a
+
+### unadvised_text
+- sig: `unadvised_text(departures: Sequence[Departure]) -> str`
+- does: renders the build departures that carry no advisor answer as the report the build's next turn reads
+- verify: json_path(path="$.report", matches="^Departures: ")
+- returns: a `Departures:` line asking for the advisor's answer, then one bullet per departure's change
+- verify: count(subject="unadvised departure lines", equals=1)
+- code: `workflows/src/workhorse_workflows/coder/dev/report.py::unadvised_text` @e53511844b8a
+
+### unconsulted_text
+- sig: `unconsulted_text(ids: Sequence[str]) -> str`
+- does: renders the declined findings with no consult on file as the report the review's next turn reads
+- verify: json_path(path="$.report", matches="^Consults: ")
+- returns: a `Consults:` sentence naming each finding id and asking for the advisor's answer before the decline stands
+- verify: count(subject="unconsulted decline reports", equals=1)
+- code: `workflows/src/workhorse_workflows/coder/dev/report.py::unconsulted_text` @e53511844b8a

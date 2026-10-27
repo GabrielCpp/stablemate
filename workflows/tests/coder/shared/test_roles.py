@@ -15,7 +15,7 @@ CODER = Path(roles.__file__).resolve().parent.parent
 
 PROMPT_DIRS = sorted(CODER.glob("*/prompts"))
 
-MECHANICS = {"fix-merge", "judge", "resolve-operator"}
+MECHANICS = {"dev-follow-up", "fix-merge", "judge", "resolve-operator"}
 
 
 def _stems(directory: Path) -> set[str]:
@@ -109,9 +109,9 @@ def _library(root: Path, role: str, text: str) -> Path:
 
 
 def test_with_no_layers_the_envelope_renders_alone(tmp_path):
-    turn = roles.turn(_flow("dev", tmp_path), "dev-story", returns=DevResult)
+    turn = roles.turn(_flow("dev", tmp_path), "dev-review", returns=DevResult)
 
-    assert turn.prompt == "dev/prompts/dev-story.md"
+    assert turn.prompt == "dev/prompts/dev-review.md"
     assert "body_template" not in turn.args
 
 
@@ -130,27 +130,27 @@ def test_a_flow_defined_outside_the_package_is_caught_rather_than_mispathed(tmp_
     stray.__module__ = "somewhere.else"
 
     with pytest.raises(WorkflowFailed, match="outside"):
-        roles.turn(stray(), "dev-story", returns=DevResult)
+        roles.turn(stray(), "dev-review", returns=DevResult)
 
 
 def test_the_overlay_layer_wins_over_the_base(tmp_path):
-    overlay = _library(tmp_path / "overlay", "dev-story", "overlay")
-    base = _library(tmp_path / "base", "dev-story", "base")
+    overlay = _library(tmp_path / "overlay", "dev-review", "overlay")
+    base = _library(tmp_path / "base", "dev-review", "base")
 
-    turn = roles.turn(_flow("dev", tmp_path, (str(overlay), str(base))), "dev-story", returns=DevResult)
+    turn = roles.turn(_flow("dev", tmp_path, (str(overlay), str(base))), "dev-review", returns=DevResult)
 
-    assert turn.args["body_template"] == "body/dev-story.md"
-    assert (Path(turn.args["_body_dir"]) / "dev-story.md").read_text() == "overlay"
+    assert turn.args["body_template"] == "body/dev-review.md"
+    assert (Path(turn.args["_body_dir"]) / "dev-review.md").read_text() == "overlay"
 
 
 def test_a_layer_without_the_role_is_skipped_rather_than_resolved(tmp_path):
     empty = tmp_path / "empty"
     empty.mkdir()
-    base = _library(tmp_path / "base", "dev-story", "base")
+    base = _library(tmp_path / "base", "dev-review", "base")
 
-    turn = roles.turn(_flow("dev", tmp_path, (str(empty), str(base))), "dev-story", returns=DevResult)
+    turn = roles.turn(_flow("dev", tmp_path, (str(empty), str(base))), "dev-review", returns=DevResult)
 
-    assert (Path(turn.args["_body_dir"]) / "dev-story.md").read_text() == "base"
+    assert (Path(turn.args["_body_dir"]) / "dev-review.md").read_text() == "base"
 
 
 def test_one_repo_override_serves_every_flows_copy(tmp_path):
@@ -175,10 +175,10 @@ def test_the_repo_outranks_every_library_layer(tmp_path):
     (repo / ".git").mkdir(parents=True)
     (repo / "go").mkdir()
     (repo / "go" / "fix.md").write_text("the repo's own")
-    (repo / "agents.yml").write_text(yaml.safe_dump({"prompts": {"dev-story": "go/fix.md"}}))
-    base = _library(tmp_path / "base", "dev-story", "base")
+    (repo / "agents.yml").write_text(yaml.safe_dump({"prompts": {"dev-review": "go/fix.md"}}))
+    base = _library(tmp_path / "base", "dev-review", "base")
 
-    turn = roles.turn(_flow("dev", repo, (str(base),)), "dev-story", returns=DevResult)
+    turn = roles.turn(_flow("dev", repo, (str(base),)), "dev-review", returns=DevResult)
 
     assert (Path(turn.args["_body_dir"]) / Path(turn.args["body_template"]).name).read_text() == (
         "the repo's own"
@@ -189,12 +189,12 @@ def test_a_repo_override_pointing_nowhere_falls_through_to_the_library(tmp_path)
     """A typo in a hand-edited `agents.yml` leaves the story implemented, not parked."""
     repo = tmp_path / "repo"
     (repo / ".git").mkdir(parents=True)
-    (repo / "agents.yml").write_text(yaml.safe_dump({"prompts": {"dev-story": "go/gone.md"}}))
-    base = _library(tmp_path / "base", "dev-story", "base")
+    (repo / "agents.yml").write_text(yaml.safe_dump({"prompts": {"dev-review": "go/gone.md"}}))
+    base = _library(tmp_path / "base", "dev-review", "base")
 
-    turn = roles.turn(_flow("dev", repo, (str(base),)), "dev-story", returns=DevResult)
+    turn = roles.turn(_flow("dev", repo, (str(base),)), "dev-review", returns=DevResult)
 
-    assert (Path(turn.args["_body_dir"]) / "dev-story.md").read_text() == "base"
+    assert (Path(turn.args["_body_dir"]) / "dev-review.md").read_text() == "base"
 
 
 def test_a_malformed_agents_yml_means_no_override_not_a_dead_run(tmp_path):
@@ -202,9 +202,9 @@ def test_a_malformed_agents_yml_means_no_override_not_a_dead_run(tmp_path):
     (repo / ".git").mkdir(parents=True)
     (repo / "agents.yml").write_text("prompts: [not, a, mapping\n  - :")
 
-    turn = roles.turn(_flow("dev", repo), "dev-story", returns=DevResult)
+    turn = roles.turn(_flow("dev", repo), "dev-review", returns=DevResult)
 
-    assert turn.prompt == "dev/prompts/dev-story.md"
+    assert turn.prompt == "dev/prompts/dev-review.md"
     assert "body_template" not in turn.args
 
 
@@ -213,10 +213,10 @@ def test_the_nested_workflow_block_is_read_too(tmp_path):
     (repo / ".git").mkdir(parents=True)
     (repo / "own.md").write_text("nested")
     (repo / "agents.yml").write_text(
-        yaml.safe_dump({"workflow": {"prompts": {"dev-story": "own.md"}}})
+        yaml.safe_dump({"workflow": {"prompts": {"dev-review": "own.md"}}})
     )
 
-    turn = roles.turn(_flow("dev", repo), "dev-story", returns=DevResult)
+    turn = roles.turn(_flow("dev", repo), "dev-review", returns=DevResult)
 
     assert (Path(turn.args["_body_dir"]) / "own.md").read_text() == "nested"
 
@@ -228,7 +228,7 @@ def test_an_unregistered_role_is_caught_on_the_transition(tmp_path):
 
 def test_no_library_anywhere_is_not_an_error(tmp_path):
     """The workflow is installed standalone and must run with nothing else on the machine."""
-    turn = roles.turn(_flow("dev", tmp_path, ()), "dev-story", returns=DevResult)
+    turn = roles.turn(_flow("dev", tmp_path, ()), "dev-review", returns=DevResult)
 
-    assert turn.prompt == "dev/prompts/dev-story.md"
+    assert turn.prompt == "dev/prompts/dev-review.md"
     assert "body_template" not in turn.args

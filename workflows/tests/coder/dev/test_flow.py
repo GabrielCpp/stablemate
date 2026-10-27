@@ -1,11 +1,13 @@
-"""End-to-end tests for the `dev` flow: one dev turn, then the plan, gate and answer checks."""
+"""End-to-end tests for the `dev` flow: its plan, build and review turns, then the plan, gate and answer checks."""
 from __future__ import annotations
 
 import hashlib
 import json
 import subprocess
 from collections import Counter
+import itertools
 from collections.abc import Callable
+from dataclasses import replace
 from pathlib import Path
 from typing import Any, Literal
 from unittest.mock import patch
@@ -13,12 +15,17 @@ from unittest.mock import patch
 import pytest
 from ostler import Ostler
 from workhorse._vendor.stablemate_core import config as core_config
+from _fakes import StubRunner
 from workhorse.pyflow import park as pyflow_park
+from workhorse.pyflow.driver import drive
 from workhorse.pyflow.engine import RunEnv
+from workhorse.runner.backends.delegates import Delegate
+from workhorse.runner.backends.null import NullBackend
 
 from workhorse_workflows.coder.dev.flow import Dev
 from workhorse_workflows.coder.shared.owner import MAX_LAPS
 from workhorse_workflows.coder.shared import commits, work
+from workhorse_workflows.coder.shared.review import ANSWERS_FILE
 from workhorse_workflows.coder.shared.schemas.dev_story import DevOutcome
 from workhorse_workflows.coder.shared.schemas.qa import StackStatus
 from workhorse_workflows.kit.qa import runner as qa_runner
@@ -162,7 +169,17 @@ class _Agent:
         walk: tuple[int, ...] = (1,),
         failed: tuple[str, ...] = (),
         repo: str = "api",
+        blocked_in: str = "review",
+        departures: tuple[str, ...] = (),
+        advise_from: int = 1,
+        consult_from: int = 1,
+        session: Callable[[int], str] | None = None,
     ) -> None:
+        self.blocked_in = blocked_in
+        self.departures = departures
+        self.advise_from = advise_from
+        self.consult_from = consult_from
+        self.session = session
         self.workspace = workspace
         self.repo = repo
         self.outside = dict(outside or {})
@@ -177,12 +194,18 @@ class _Agent:
         self.prefix = ""
         self.calls: list[str] = []
         self.args: list[dict[str, Any]] = []
+        self.powers: list[tuple[str, str | None]] = []
 
     def __call__(self, node: Any, ctx: Any, *args: Any, **kwargs: Any) -> Any:
         stem = Path(node.prompt).stem
         data = ctx.as_dict()
         self.calls.append(stem)
         self.args.append(data)
+        self.powers.append((stem, node.power))
+        if self.session is not None and len(args) > 1:
+            chain = Path(args[1])
+            chain.parent.mkdir(parents=True, exist_ok=True)
+            chain.write_text(self.session(len(self.calls)), encoding="utf-8")
         handler = getattr(self, f"_{stem.replace('-', '_')}")
         return f"(scripted) {node.prompt}", handler(data, self.counts()[stem])
 
@@ -192,9 +215,37 @@ class _Agent:
     def args_for(self, stem: str) -> list[dict[str, Any]]:
         return [a for s, a in zip(self.calls, self.args, strict=True) if s == stem]
 
-    def _dev_story(self, data: dict[str, Any], nth: int) -> dict[str, Any]:
+    def _dev_plan(self, data: dict[str, Any], nth: int) -> dict[str, Any]:
+        """The plan phase: ready, or blocked while `blocked` counts it down."""
+        if self.blocked_in == "plan" and nth <= self.blocked:
+            return {"status": "blocked", "notes": BLOCK_NOTE}
+        return {"status": "ready", "notes": "planned"}
+
+    def _dev_build(self, data: dict[str, Any], nth: int) -> dict[str, Any]:
+        """The build phase: ready with its departures, advised from the `advise_from`th turn on."""
+        if self.blocked_in == "build" and nth <= self.blocked:
+            return {"status": "blocked", "notes": BLOCK_NOTE}
+        advice = "keep it" if nth >= self.advise_from else ""
+        return {
+            "status": "ready",
+            "notes": "built",
+            "departures": [
+                {"change": change, "reason": "the plan fails a gate", "advice": advice}
+                for change in self.departures
+            ],
+        }
+
+    def _dev_follow_up(self, data: dict[str, Any], nth: int) -> dict[str, Any]:
+        """A later turn of a phase: what the phase's own turn would answer."""
+        phase = str(data["phase"])
+        handler = getattr(self, f"_dev_{phase}")
+        spec = Path(str(data["spec_dir"]))
+        carried = {**data, "answers_file": str(spec / ANSWERS_FILE), "review_prefix": self.prefix}
+        return handler(carried, self.counts()[f"dev-{phase}"] + nth)
+
+    def _dev_review(self, data: dict[str, Any], nth: int) -> dict[str, Any]:
         """Build, commit, write the plan and the answers, and report the review's findings once."""
-        if nth <= self.blocked:
+        if self.blocked_in == "review" and nth <= self.blocked:
             return {"status": "blocked", "notes": BLOCK_NOTE}
         spec = Path(str(data["spec_dir"]))
         spec.mkdir(parents=True, exist_ok=True)
@@ -258,9 +309,12 @@ class _Agent:
             "services": [{**API_SERVICE, "repo": self.repo, "plan_file": f"plan-{self.repo}.md"}],
             "findings": [{**f, "target": f["target"].replace("api/", f"{self.repo}/", 1)} for f in FINDINGS] if first else [],
             "follow_ups": list(self.follow_ups) if first else [],
+            "consults": [
+                {"finding": f"{self.prefix}2", "question": "is the decline right?", "advice": "yes"}
+            ]
+            if nth >= self.consult_from
+            else [],
         }
-
-    _dev_rework = _dev_story
 
     def _judge(self, data: dict[str, Any], nth: int) -> dict[str, Any]:
         """The judge's ruling: each scope subject its title names in `outside`, the rest at its default."""
@@ -313,10 +367,10 @@ def test_a_clean_pass_settles_the_fix_and_records_the_decline(
     assert result.status == "ready", result
     assert result.settled == [f"{STORY}/review-1.1"], result
     assert result.declined == [f"{STORY}/review-1.2"], result
-    assert agent.counts() == {"dev-story": 1}, agent.counts()
+    assert agent.counts() == {"dev-plan": 1, "dev-build": 1, "dev-review": 1}, agent.counts()
     assert git(docs, "status", "--porcelain").stdout == "", git(docs, "status", "--porcelain").stdout
 
-    (first,) = agent.args_for("dev-story")
+    (first,) = agent.args_for("dev-review")
     assert str(first["review_prefix"]).endswith("/review-1."), first
     assert first["review_prefix"] == f"{STORY}/review-1.", first
     assert first["report"] == "", first
@@ -338,9 +392,9 @@ def test_a_red_gate_sends_its_output_back_and_a_green_turn_finishes(
     assert result.status == "ready", result
     assert result.settled == [f"{STORY}/review-1.1"], result
     assert result.declined == [f"{STORY}/review-1.2"], result
-    assert agent.counts() == {"dev-story": 2}, agent.counts()
+    assert agent.counts() == {"dev-plan": 1, "dev-build": 1, "dev-review": 2}, agent.counts()
 
-    first, second = agent.args_for("dev-story")
+    first, second = agent.args_for("dev-review")
     assert first["report"] == "", first
     report = str(second["report"])
     assert report.startswith("Gate: "), report
@@ -361,9 +415,9 @@ def test_an_unanswered_finding_comes_back_named_in_the_report(
 
     assert result.settled == [f"{STORY}/review-1.1"], result
     assert result.declined == [f"{STORY}/review-1.2"], result
-    assert agent.counts() == {"dev-story": 2}, agent.counts()
+    assert agent.counts() == {"dev-plan": 1, "dev-build": 1, "dev-review": 2}, agent.counts()
 
-    second = agent.args_for("dev-story")[1]
+    second = agent.args_for("dev-review")[1]
     report = str(second["report"])
     assert "Answers: 2 finding(s) are still open." in report, report
     assert f"`{STORY}/review-1.1`" in report, report
@@ -393,10 +447,12 @@ def test_a_finding_qa_filed_in_the_parent_run_reaches_the_dev_turn(
 
     result = drive_flow(dev, env(), agent)
 
-    assert agent.counts()["dev-story"] == 0, agent.counts()
-    (first,) = agent.args_for("dev-rework")
-    assert f"{STORY}/qa-1.1" in str(first["findings"]), first
-    assert "the empty state still shows the report tabs" in str(first["findings"]), first
+    counts = agent.counts()
+    assert (counts["dev-plan"], counts["dev-build"], counts["dev-review"]) == (0, 0, 1), counts
+    (first,) = agent.args_for("dev-review")
+    assert f"{STORY}/qa-1.1" in str(first["qa_findings"]), first
+    assert "the empty state still shows the report tabs" in str(first["qa_findings"]), first
+    assert first["findings"] == "", first
     assert first["worklist_path"] == str(work.worklist_path(parent)), first
     assert f"{STORY}/qa-1.1" in result.settled, result
     assert work.open_findings(work.worklist(parent), STORY) == [], work.worklist(parent).items()
@@ -618,9 +674,9 @@ def test_a_blocked_turn_in_human_mode_parks_and_resumes_with_the_answer(
     assert result.status == "ready", result
     (gate,) = seen
     assert BLOCK_NOTE in gate, gate
-    assert agent.counts() == {"dev-story": 2}, agent.counts()
+    assert agent.counts() == {"dev-plan": 1, "dev-build": 1, "dev-review": 2}, agent.counts()
 
-    first, second = agent.args_for("dev-story")
+    first, second = agent.args_for("dev-review")
     assert first["operator_context"] == "", first
     assert OPERATOR_ANSWER in str(second["operator_context"]), second
 
@@ -639,13 +695,13 @@ def test_checks_that_stay_red_past_the_lap_budget_park_instead_of_failing(
         result = drive_flow(_dev(docs), env(), agent)
 
     assert result.status == "ready", result
-    assert agent.counts() == {"dev-story": MAX_LAPS + 2, "resolve-operator": 1}, agent.counts()
+    assert agent.counts() == {"dev-plan": 1, "dev-build": 1, "dev-review": MAX_LAPS + 2, "resolve-operator": 1}, agent.counts()
 
     (gate,) = seen
     assert f"The checks still fail after {MAX_LAPS} repair turn(s)." in gate, gate
     assert "undefined: allowList" in gate, gate
 
-    turns = agent.args_for("dev-story")
+    turns = agent.args_for("dev-review")
     assert all(t["report"] for t in turns[1 : MAX_LAPS + 1]), turns
     assert OPERATOR_ANSWER in str(turns[-1]["operator_context"]), turns[-1]
 
@@ -662,8 +718,8 @@ def test_work_the_turn_left_uncommitted_comes_back_named_in_the_report(
     result = drive_flow(_dev(docs), env(), agent)
 
     assert result.status == "ready", result
-    assert agent.counts() == {"dev-story": 2}, agent.counts()
-    report = str(agent.args_for("dev-story")[1]["report"])
+    assert agent.counts() == {"dev-plan": 1, "dev-build": 1, "dev-review": 2}, agent.counts()
+    report = str(agent.args_for("dev-review")[1]["report"])
     assert "Uncommitted work" in report, report
     assert "scratch.go" in report, report
     assert subprocess.run(
@@ -688,7 +744,7 @@ def test_a_path_dirty_before_the_story_began_is_not_the_story_s_to_commit(
     result = drive_flow(dev, env(), agent)
 
     assert result.status == "ready", result
-    assert agent.counts() == {"dev-story": 1}, agent.counts()
+    assert agent.counts() == {"dev-plan": 1, "dev-build": 1, "dev-review": 1}, agent.counts()
     assert mine.exists()
 
 
@@ -717,17 +773,17 @@ def test_a_plan_that_skips_a_criterion_goes_back_naming_it(
     _three_criteria(docs, git)
 
     class Walks(_Agent):
-        def _dev_story(self, data: dict[str, Any], nth: int) -> dict[str, Any]:
+        def _dev_review(self, data: dict[str, Any], nth: int) -> dict[str, Any]:
             self.walk = (1, 3) if nth == 1 else (1, 2, 3)
-            return super()._dev_story(data, nth)
+            return super()._dev_review(data, nth)
 
     agent = Walks(workspace)
 
     result = drive_flow(_dev(docs), env(), agent)
 
     assert result.status == "ready", result
-    assert agent.counts() == {"dev-story": 2}, agent.counts()
-    report = str(agent.args_for("dev-story")[1]["report"])
+    assert agent.counts() == {"dev-plan": 1, "dev-build": 1, "dev-review": 2}, agent.counts()
+    report = str(agent.args_for("dev-review")[1]["report"])
     assert "AC 2" in report, report
     assert "AC 1" not in report and "AC 3" not in report, report
     assert "Acceptance Walk" in report, report
@@ -747,7 +803,7 @@ def test_a_full_walk_proceeds(
     result = drive_flow(_dev(docs), env(), agent)
 
     assert result.status == "ready", result
-    assert agent.counts() == {"dev-story": 1}, agent.counts()
+    assert agent.counts() == {"dev-plan": 1, "dev-build": 1, "dev-review": 1}, agent.counts()
 
 
 def test_a_follow_up_turn_needs_no_walk(
@@ -765,7 +821,7 @@ def test_a_follow_up_turn_needs_no_walk(
     result = drive_flow(dev, env(), agent)
 
     assert result.status == "ready", result
-    assert agent.counts() == {"dev-story": 1}, agent.counts()
+    assert agent.counts() == {"dev-plan": 1, "dev-build": 1, "dev-review": 1}, agent.counts()
 
 
 class _Stack:
@@ -847,12 +903,12 @@ def test_failed_scenarios_that_now_pass_finish(
     result = drive_flow(_dev(docs), env(), agent)
 
     assert result.status == "ready", result
-    assert agent.counts() == {"dev-story": 1}, agent.counts()
+    assert agent.counts() == {"dev-plan": 1, "dev-build": 1, "dev-review": 1}, agent.counts()
     assert stack.only == ["scenario-a", "scenario-b"], stack.only
     assert stack.calls == ["stack_target", "ensure_stack", "run_qa_plan", "release_copy"], stack.calls
 
 
-def test_a_scenario_that_still_fails_goes_back_to_build(
+def test_a_scenario_that_still_fails_goes_back_to_review(
     docs: Path,
     workspace: dict[str, Path],
     env: Callable[..., RunEnv],
@@ -867,8 +923,8 @@ def test_a_scenario_that_still_fails_goes_back_to_build(
     result = drive_flow(_dev(docs), env(), agent)
 
     assert result.status == "ready", result
-    assert agent.counts() == {"dev-story": 2}, agent.counts()
-    first, second = agent.args_for("dev-story")
+    assert agent.counts() == {"dev-plan": 1, "dev-build": 1, "dev-review": 2}, agent.counts()
+    first, second = agent.args_for("dev-review")
     assert first["report"] == "", first
     assert "scenario-a" in str(second["report"]), second
     assert stack.calls.count("release_copy") == stack.calls.count("run_qa_plan") == 2, stack.calls
@@ -889,7 +945,7 @@ def test_a_scoped_run_that_does_not_finish_lets_the_item_leave(
     result = drive_flow(_dev(docs), env(), agent)
 
     assert result.status == "ready", result
-    assert agent.counts() == {"dev-story": 1}, agent.counts()
+    assert agent.counts() == {"dev-plan": 1, "dev-build": 1, "dev-review": 1}, agent.counts()
     assert stack.calls[-1] == "release_copy", stack.calls
 
 
@@ -947,12 +1003,198 @@ def test_a_second_failing_self_check_hands_the_item_to_qa(
         result = drive_flow(_dev(docs), env(), agent)
 
     assert result.status == "ready", result
-    assert agent.counts() == {"dev-story": 2}, agent.counts()
+    assert agent.counts() == {"dev-plan": 1, "dev-build": 1, "dev-review": 2}, agent.counts()
     assert stack.calls.count("run_qa_plan") == 2, stack.calls
     assert stack.calls.count("release_copy") == 2, stack.calls
-    assert "scenario-a" in str(agent.args_for("dev-story")[1]["report"])
+    assert "scenario-a" in str(agent.args_for("dev-review")[1]["report"])
     assert any(
         "self-check: 1 scenario(s) still fail after one bounce, QA owns them now: scenario-a"
         in r.getMessage()
         for r in caplog.records
     ), [r.getMessage() for r in caplog.records]
+
+
+PHASE_TURNS = ("dev-plan", "dev-build", "dev-review")
+
+
+class _SubagentBackend(NullBackend):
+    supports_subagents = True
+
+
+@pytest.fixture
+def drive_advised(
+    ambient: dict[str, str], monkeypatch: pytest.MonkeyPatch
+) -> Callable[..., Any]:
+    """`drive_flow` on a CLI that takes subagents and a profile that names an advisor."""
+    advisor = Delegate("advisor", "big", None, "second opinion", "answer one question", True)
+    monkeypatch.setattr(
+        "workhorse.pyflow.engine.resolve_delegates_for", lambda *a, **k: (advisor,)
+    )
+
+    def _drive(flow: Dev, run_env: RunEnv, agent: Any) -> Any:
+        for field, value in ambient.items():
+            if field in type(flow).model_fields and not getattr(flow, field):
+                setattr(flow, field, value)
+        runner = StubRunner(agent, backend=_SubagentBackend())
+        return drive(flow, replace(run_env, agent_runner=runner), None)
+
+    return _drive
+
+
+def test_a_fresh_story_runs_plan_build_and_review_in_that_order(
+    docs: Path,
+    workspace: dict[str, Path],
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    agent = _Agent(workspace)
+
+    drive_flow(_dev(docs), env(), agent)
+
+    assert [c for c in agent.calls if c in PHASE_TURNS] == list(PHASE_TURNS), agent.calls
+
+
+def test_a_failed_check_reenters_review_and_not_build(
+    docs: Path,
+    workspace: dict[str, Path],
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    agent = _Agent(workspace, red=1)
+
+    drive_flow(_dev(docs), env(), agent)
+
+    turns = [c for c in agent.calls if c in PHASE_TURNS]
+    assert turns == ["dev-plan", "dev-build", "dev-review", "dev-review"], agent.calls
+
+
+def test_an_operator_answer_on_a_build_block_returns_to_build(
+    docs: Path,
+    workspace: dict[str, Path],
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    agent = _Agent(workspace, blocked=1, blocked_in="build")
+    seen: list[str] = []
+
+    with patch.object(pyflow_park, "wait_for_answer", _answers(seen)):
+        result = drive_flow(_dev(docs, operator_mode="human"), env(), agent)
+
+    assert result.status == "ready", result
+    turns = [c for c in agent.calls if c in PHASE_TURNS]
+    assert turns == ["dev-plan", "dev-build", "dev-build", "dev-review"], agent.calls
+    first, second = agent.args_for("dev-build")
+    assert first["operator_context"] == "", first
+    assert OPERATOR_ANSWER in str(second["operator_context"]), second
+
+
+def test_a_departure_without_advice_sends_the_build_back_when_an_advisor_is_offered(
+    docs: Path,
+    workspace: dict[str, Path],
+    env: Callable[..., RunEnv],
+    drive_advised: Callable[..., Any],
+) -> None:
+    agent = _Agent(workspace, departures=("swap the parser",), advise_from=2)
+
+    result = drive_advised(_dev(docs), env(), agent)
+
+    assert result.status == "ready", result
+    turns = [c for c in agent.calls if c in PHASE_TURNS]
+    assert turns == ["dev-plan", "dev-build", "dev-build", "dev-review"], agent.calls
+    first, second = agent.args_for("dev-build")
+    assert first["advisor"] is True, first
+    assert first["report"] == "", first
+    assert "swap the parser" in str(second["report"]), second
+    assert [p for p in agent.powers if p[0] in PHASE_TURNS] == [
+        ("dev-plan", "max"),
+        ("dev-build", "high"),
+        ("dev-build", "high"),
+        ("dev-review", "high"),
+    ], agent.powers
+
+
+def test_without_an_advisor_a_departure_passes_and_every_phase_runs_at_max(
+    docs: Path,
+    workspace: dict[str, Path],
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    agent = _Agent(workspace, departures=("swap the parser",), advise_from=9)
+
+    drive_flow(_dev(docs), env(), agent)
+
+    assert agent.counts()["dev-build"] == 1, agent.counts()
+    assert [p for p in agent.powers if p[0] in PHASE_TURNS] == [
+        ("dev-plan", "max"),
+        ("dev-build", "max"),
+        ("dev-review", "max"),
+    ], agent.powers
+
+
+def test_a_decline_with_no_consult_is_reopened_and_named_when_an_advisor_is_offered(
+    docs: Path,
+    workspace: dict[str, Path],
+    env: Callable[..., RunEnv],
+    drive_advised: Callable[..., Any],
+) -> None:
+    agent = _Agent(workspace, consult_from=2)
+
+    result = drive_advised(_dev(docs), env(), agent)
+
+    assert agent.counts()["dev-review"] == 2, agent.counts()
+    report = str(agent.args_for("dev-review")[1]["report"])
+    assert f"`{STORY}/review-1.2`" in report, report
+    assert "advisor" in report, report
+    assert result.declined == [f"{STORY}/review-1.2"], result
+
+
+def test_a_decline_with_a_consult_on_file_stays_declined(
+    docs: Path,
+    workspace: dict[str, Path],
+    env: Callable[..., RunEnv],
+    drive_advised: Callable[..., Any],
+) -> None:
+    agent = _Agent(workspace, consult_from=1)
+
+    result = drive_advised(_dev(docs), env(), agent)
+
+    assert agent.counts()["dev-review"] == 1, agent.counts()
+    assert result.declined == [f"{STORY}/review-1.2"], result
+
+
+def test_a_later_turn_of_a_phase_on_the_same_conversation_sends_only_the_follow_up_note(
+    docs: Path,
+    workspace: dict[str, Path],
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    agent = _Agent(workspace, red=1, session=lambda n: "sess-1")
+    run_env = env()
+
+    drive_flow(_dev(docs), run_env, agent)
+
+    turns = [c for c in agent.calls if c in (*PHASE_TURNS, "dev-follow-up")]
+    assert turns == ["dev-plan", "dev-build", "dev-review", "dev-follow-up"], agent.calls
+    (note,) = agent.args_for("dev-follow-up")
+    assert note["phase"] == "review", note
+    assert str(note["report"]).startswith("Gate: "), note
+    assert Path(str(note["brief_path"])).is_file(), note
+    review_brief = agent.args_for("dev-review")[0]["brief_path"]
+    assert note["brief_path"] == review_brief, note
+
+
+def test_a_conversation_other_than_the_briefed_one_opens_with_the_full_brief_again(
+    docs: Path,
+    workspace: dict[str, Path],
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    reads = itertools.count()
+    monkeypatch.setattr(Dev, "chain_session", lambda self, key: f"conversation-{next(reads)}")
+    agent = _Agent(workspace, red=1, session=lambda n: "sess-1")
+
+    drive_flow(_dev(docs), env(), agent)
+
+    turns = [c for c in agent.calls if c in (*PHASE_TURNS, "dev-follow-up")]
+    assert turns == ["dev-plan", "dev-build", "dev-review", "dev-review"], agent.calls

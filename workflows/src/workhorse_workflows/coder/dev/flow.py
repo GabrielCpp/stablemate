@@ -1,10 +1,11 @@
-"""One strong dev agent builds, reviews and fixes a story through its subagents, and the run checks it."""
+"""One dev owner plans, builds and reviews a story in three phases on one conversation, and the run checks it."""
 from __future__ import annotations
 
 import time
 from pathlib import Path
-from typing import Any, ClassVar
+from typing import Any, ClassVar, TypeVar
 
+from pydantic import BaseModel
 from workhorse import worklist as wl
 from workhorse.pyflow import Await, Continue, Done, Workflow
 
@@ -14,12 +15,23 @@ from workhorse_workflows.coder.dev.report import (
     rejected_text,
     report_text,
     self_check_text,
+    unadvised_text,
+    unconsulted_text,
     walk_text,
 )
 from workhorse_workflows.coder.shared import causes, paths, roles, work
 from workhorse_workflows.coder.shared.backlog import file_follow_up_backlog
 from workhorse_workflows.coder.shared.branches import branch_code_repos
-from workhorse_workflows.coder.shared.conversation import story_chain
+from workhorse_workflows.coder.shared.conversation import (
+    brief_dir,
+    brief_ledger,
+    needs_brief,
+    opening_phase,
+    record_brief,
+    reset_briefs,
+    story_chain,
+)
+from workhorse_workflows.coder.shared.counsel import consulted, record_consults
 from workhorse_workflows.coder.shared.dev import check_story_status, read_operator_context
 from workhorse_workflows.coder.shared.escalation import context_path, escalation
 from workhorse_workflows.coder.shared.judge import Judge
@@ -50,7 +62,13 @@ from workhorse_workflows.coder.shared.schemas.dev import (
     GateOutcome,
     OperatorResolution,
 )
-from workhorse_workflows.coder.shared.schemas.dev_story import DevOutcome, DevResult, FollowUp
+from workhorse_workflows.coder.shared.schemas.dev_story import (
+    BuildResult,
+    DevOutcome,
+    DevResult,
+    FollowUp,
+    PlanResult,
+)
 from workhorse_workflows.coder.shared.schemas.story import StoryPaths
 from workhorse_workflows.coder.shared.service_gates import GATE_ORDER, declared_services, run_gate
 from workhorse_workflows.coder.shared.stack import (
@@ -76,6 +94,13 @@ from workhorse_workflows.kit.qa.runner import copy_lease
 from workhorse_workflows.kit.telemetry import counter_labels
 
 
+T = TypeVar("T", bound=BaseModel)
+REVIEW_REFERENCES = {
+    "reviewer_brief": "dev/prompts/dev-reviewer.md",
+    "answer_format": "dev/prompts/dev-answer-file.md",
+}
+
+
 def _reports(entries: list[FollowUp]) -> dict[str, str]:
     """Each follow-up entry by its index, as its title and the reason it gave."""
     return {
@@ -85,7 +110,7 @@ def _reports(entries: list[FollowUp]) -> dict[str, str]:
 
 
 class Dev(Workflow):
-    """Dev one work item through one session, then check its plan, gates and answers."""
+    """Dev one work item through its plan, build and review phases on one conversation, then check its plan, gates and answers."""
 
     story: str = ""
     epic: str = ""
@@ -153,10 +178,144 @@ class Dev(Workflow):
         }
 
     def start(self) -> Continue:
-        """Hand the work item to the dev owner, with any findings already filed against it."""
-        return Continue(None, self.build, note=self.note, number=self._next_round())
+        """Open the plan phase, or the review phase when QA has already filed findings against the work item."""
+        reset_briefs(self._state_dir, self._work_id)
+        if self._sent_back(self._worklist):
+            return Continue(None, self.review, note=self.note, number=self._next_round())
+        return Continue(None, self.plan, note=self.note)
+
+    def _power(self, phase: str) -> str:
+        """The plan runs on the strongest tier; build and review run cheaper only when an advisor can answer their design calls."""
+        if phase == "plan" or not self.has_delegate("advisor"):
+            return "max"
+        return "high"
+
+    def _turn(
+        self,
+        phase: str,
+        returns: type[T],
+        said: dict[str, Any],
+        references: dict[str, str] | None = None,
+    ) -> T:
+        turn = (
+            roles.turn(self, "dev-plan", returns=PlanResult)
+            if phase == "plan"
+            else roles.turn(self, "dev-build", returns=BuildResult)
+            if phase == "build"
+            else roles.turn(self, "dev-review", returns=DevResult)
+        )
+        chain = story_chain(self.ctx.story_slug)
+        session = self.chain_session(chain)
+        ledger = brief_ledger(self._state_dir, self._work_id)
+        folder = brief_dir(self._state_dir, self._work_id)
+        brief = folder / f"{phase}.md"
+        opener = opening_phase(ledger, session)
+        refs = {name: folder / Path(template).name for name, template in (references or {}).items()}
+        args = (
+            turn.args
+            | self._story_args()
+            | {
+                "brief_path": str(brief),
+                "resume_note": self._rebrief(),
+                "worklist_path": str(work.worklist_path(self._state_dir)),
+                "follow_up_title": self.follow_up_title,
+                "follow_up_reason": self.follow_up_reason,
+                "advisor": self.has_delegate("advisor"),
+                "services": self.call(declared_services).text,
+                "opening_brief": str(folder / f"{opener}.md") if opener else "",
+            }
+            | {name: str(path) for name, path in refs.items()}
+            | said
+        )
+
+        def rebrief() -> str:
+            text = self.render_prompt(
+                turn.prompt, args | {"resume_note": self._rebrief(), "opening_brief": ""}
+            )
+            brief.write_text(text, encoding="utf-8")
+            return text
+
+        if needs_brief(ledger, phase, session):
+            folder.mkdir(parents=True, exist_ok=True)
+            for name, template in (references or {}).items():
+                refs[name].write_text(self.render_prompt(template, args), encoding="utf-8")
+            brief.write_text(self.render_prompt(turn.prompt, args), encoding="utf-8")
+            result = self.agent(
+                turn.prompt,
+                returns=returns,
+                power=self._power(phase),
+                timeout=UNBOUNDED,
+                silence=SILENCE_S,
+                profile=owner_profile("dev"),
+                session=chain,
+                rebrief=rebrief,
+                add_dirs=workspace_dirs(self),
+                args=args,
+            )
+        else:
+            result = self.agent(
+                "dev/prompts/dev-follow-up.md",
+                returns=returns,
+                power=self._power(phase),
+                timeout=UNBOUNDED,
+                silence=SILENCE_S,
+                profile=owner_profile("dev"),
+                session=chain,
+                rebrief=rebrief,
+                add_dirs=workspace_dirs(self),
+                args={
+                    **self._story_args(),
+                    "phase": phase,
+                    "brief_path": str(brief),
+                    "report": said.get("report", ""),
+                    "findings": said.get("findings", ""),
+                    "qa_findings": said.get("qa_findings", ""),
+                    "operator_context": said.get("operator_context", ""),
+                    "note": said.get("note", ""),
+                    "review_prefix": said.get("review_prefix", ""),
+                },
+            )
+        record_brief(self._state_dir, self._work_id, phase, self.chain_session(chain))
+        return result
+
+    def plan(
+        self, note: str = "", operator_context: str = "", blocks: int = 0
+    ) -> Continue | Await:
+        """Run the plan turn on the strongest tier: the plan files, before any product code."""
+        self.logger.info("planning %s", self._work_id, extra={"activity": True})
+        said = {"note": note, "operator_context": operator_context}
+        result = self._turn("plan", PlanResult, said)
+        if result.status == "blocked":
+            return self._block(result, result.notes, "the plan turn", blocks, phase="plan")
+        return Continue(result, self.build, blocks=blocks)
 
     def build(
+        self,
+        note: str = "",
+        operator_context: str = "",
+        report: str = "",
+        laps: int = 0,
+        blocks: int = 0,
+    ) -> Continue | Await:
+        """Run the build turn on the plan's conversation, and hold every departure to the advisor's word."""
+        self.logger.info("building %s", self._work_id, extra={"activity": True})
+        said = {"note": note, "operator_context": operator_context, "report": report}
+        result = self._turn("build", BuildResult, said)
+        self._file_follow_ups(result.follow_ups)
+        if result.status == "blocked":
+            return self._block(result, result.notes, "the build turn", blocks, phase="build")
+        if self.has_delegate("advisor"):
+            unadvised = [d for d in result.departures if not d.advice.strip()]
+            if unadvised:
+                text = unadvised_text(unadvised)
+                if laps >= MAX_LAPS:
+                    return self._block(result, text, "the build turn", blocks, phase="build")
+                return Continue(
+                    result, self.build, report=text, laps=laps + 1, blocks=blocks
+                )
+        return Continue(result, self.review, blocks=blocks, number=self._next_round())
+
+    def review(
         self,
         note: str = "",
         operator_context: str = "",
@@ -166,50 +325,33 @@ class Dev(Workflow):
         number: int = 1,
         rechecked: bool = False,
     ) -> Continue | Await:
-        """Run the dev turn: its subagents plan, build, review and fix the work item."""
-        self.logger.info("developing %s", self._work_id, extra={"activity": True})
+        """Run the review turn: review, triage, fix and answer, and every repair lap the checks send back."""
+        self.logger.info("reviewing %s", self._work_id, extra={"activity": True})
         w = self._worklist
-        turn = (
-            roles.turn(self, "dev-rework", returns=DevResult)
-            if self._sent_back(w)
-            else roles.turn(self, "dev-story", returns=DevResult)
-        )
-        result: DevResult = self.agent(
-            turn.prompt,
-            returns=turn.returns,
-            power="high",
-            timeout=UNBOUNDED,
-            silence=SILENCE_S,
-            profile=owner_profile("dev"),
-            session=story_chain(self.ctx.story_slug),
-            rebrief=self._rebrief,
-            add_dirs=workspace_dirs(self),
-            args=turn.args
-            | self._story_args()
-            | {
-                "resume_note": self._rebrief(),
-                "worklist_path": str(work.worklist_path(self._state_dir)),
-                "answers_file": str(Path(self.ctx.spec_dir) / ANSWERS_FILE),
-                "review_prefix": f"{self._work_id}/review-{number}.",
-                "follow_up_title": self.follow_up_title,
-                "follow_up_reason": self.follow_up_reason,
-                "note": note,
-                "report": report,
-                "findings": findings_text(work.open_findings(w, self._work_id)),
-                "operator_context": operator_context,
-                "services": self.call(declared_services).text,
-            },
-        )
+        open_items = work.open_findings(w, self._work_id)
+        qa = [it for it in open_items if it.payload.get("source") == "qa"]
+        rest = [it for it in open_items if it.payload.get("source") != "qa"]
+        said = {
+            "note": note,
+            "operator_context": operator_context,
+            "report": report,
+            "answers_file": str(Path(self.ctx.spec_dir) / ANSWERS_FILE),
+            "review_prefix": f"{self._work_id}/review-{number}.",
+            "findings": findings_text(rest),
+            "qa_findings": findings_text(qa),
+        }
+        result = self._turn("review", DevResult, said, REVIEW_REFERENCES)
         self.call(stamp_specs, self.ctx.story_id)
-        self._file_follow_ups(result)
+        self._file_follow_ups(result.follow_ups)
         found = [f.model_dump() for f in result.findings]
         filed = causes.file_findings(
             self._judge(), w, self._work_id, "review", number, found, by="review"
         )
         if filed:
             self.logger.info("the review filed %d finding(s) against %s", len(filed), self._work_id)
+        record_consults(self._state_dir, self._work_id, result.consults)
         if result.status == "blocked":
-            return self._block(result, result.notes, "the dev turn", blocks)
+            return self._block(result, result.notes, "the review turn", blocks, phase="review")
         return Continue(
             result,
             self.check,
@@ -223,8 +365,8 @@ class Dev(Workflow):
         """Whether QA has filed a finding against this work item, so the turn is a rework."""
         return any(it.payload.get("source") == "qa" for it in work.findings_of(w, self._work_id))
 
-    def _file_follow_ups(self, result: DevResult) -> None:
-        entries = self._product_work(list(result.follow_ups))
+    def _file_follow_ups(self, follow_ups: list[FollowUp]) -> None:
+        entries = self._product_work(list(follow_ups))
         if not entries:
             return
         self.call(file_follow_up_backlog, parent=self._work_id, follow_ups=entries)
@@ -270,10 +412,10 @@ class Dev(Workflow):
         text = "\n\n".join(failures)
         if laps >= MAX_LAPS:
             notes = f"{text}\n\nThe checks still fail after {laps} repair turn(s)."
-            return self._block(recorded, notes, "the checks", blocks)
+            return self._block(recorded, notes, "the checks", blocks, phase="review")
         return Continue(
             recorded,
-            self.build,
+            self.review,
             report=text,
             laps=laps + 1,
             blocks=blocks,
@@ -351,16 +493,23 @@ class Dev(Workflow):
         work.move(w, verdict.settled, work.SETTLED, kind=work.FINDING, by="settlement")
         work.move(w, verdict.declined, work.DECLINED, kind=work.FINDING, by="settlement")
         work.move(w, verdict.open, work.OPEN, kind=work.FINDING, by="settlement")
-        if not verdict.open and not verdict.errors:
-            return []
-        reasons = rejected_text(verdict.rejected, verdict.errors)
-        unanswered = [fid for fid in verdict.open if fid not in verdict.rejected]
-        lines = [f"Answers: {len(verdict.open)} finding(s) are still open."]
-        if unanswered:
-            lines.append("No answer settles " + ", ".join(f"`{fid}`" for fid in unanswered) + ".")
-        if reasons:
-            lines.append(reasons)
-        return ["\n".join(lines)]
+        failures: list[str] = []
+        if verdict.open or verdict.errors:
+            reasons = rejected_text(verdict.rejected, verdict.errors)
+            unanswered = [fid for fid in verdict.open if fid not in verdict.rejected]
+            lines = [f"Answers: {len(verdict.open)} finding(s) are still open."]
+            if unanswered:
+                lines.append("No answer settles " + ", ".join(f"`{fid}`" for fid in unanswered) + ".")
+            if reasons:
+                lines.append(reasons)
+            failures.append("\n".join(lines))
+        if self.has_delegate("advisor"):
+            heard = consulted(self._state_dir, self._work_id)
+            unconsulted = [fid for fid in verdict.declined if fid not in heard]
+            if unconsulted:
+                work.move(w, unconsulted, work.OPEN, kind=work.FINDING, by="settlement")
+                failures.append(unconsulted_text(unconsulted))
+        return failures
 
     def _leftovers(self) -> list[str]:
         state = self.call(
@@ -423,13 +572,22 @@ class Dev(Workflow):
             )
         )
 
-    def _block(self, result: object, notes: str, where: str, blocks: int) -> Continue | Await:
+    def _block(
+        self, result: object, notes: str, where: str, blocks: int, phase: str
+    ) -> Continue | Await:
         if self.operator_mode in HUMAN_MODES or blocks >= MAX_BLOCKS:
-            return self._ask(notes, where, blocks)
-        return Continue(result, self.resolve, notes=notes, where=where, blocks=blocks)
+            return self._ask(notes, where, blocks, phase)
+        return Continue(
+            result, self.resolve, notes=notes, where=where, blocks=blocks, phase=phase
+        )
 
     def _ask(
-        self, notes: str, where: str, blocks: int, result: OperatorResolution | None = None
+        self,
+        notes: str,
+        where: str,
+        blocks: int,
+        phase: str,
+        result: OperatorResolution | None = None,
     ) -> Await:
         gate = escalation(
             self,
@@ -439,9 +597,13 @@ class Dev(Workflow):
             number=blocks + 1,
             result=result,
         )
-        return Await(context_path(self), gate.body, self.read_operator, blocks=blocks + 1)
+        return Await(
+            context_path(self), gate.body, self.read_operator, blocks=blocks + 1, phase=phase
+        )
 
-    def resolve(self, notes: str, where: str, blocks: int = 0) -> Continue | Await:
+    def resolve(
+        self, notes: str, where: str, blocks: int = 0, phase: str = "review"
+    ) -> Continue | Await:
         """Answer a block from what is already written down, or ask the operator."""
         self.logger.info("resolving a block at %s", where, extra={"activity": True})
         result = self.agent(
@@ -453,19 +615,23 @@ class Dev(Workflow):
             args=resolver_args(self, block_kind="dev", notes=notes),
         )
         if answered(self, result, "dev"):
-            return Continue(result, self.read_operator, blocks=blocks + 1)
-        return self._ask(notes, where, blocks, result)
+            return Continue(result, self.read_operator, blocks=blocks + 1, phase=phase)
+        return self._ask(notes, where, blocks, phase, result)
 
-    def read_operator(self, blocks: int = 0) -> Continue | Done:
-        """Log the answer, then resume the dev owner's session with it in hand."""
+    def read_operator(self, blocks: int = 0, phase: str = "review") -> Continue | Done:
+        """Log the answer, then resume the phase that blocked, on its conversation, with the answer in hand."""
         answer = self.call(read_operator_context, self.ctx.story_path)
         work.log_answer(self.run_dir, f"{self._work_id}: {answer.scope}", answer.content)
         if answer.scope == "epic":
             self.logger.info("the operator scoped the answer to the epic, so the run replans")
             return Done(DevOutcome(status="replan", operator_notes=answer.content))
+        if phase == "plan":
+            return Continue(answer, self.plan, operator_context=answer.content, blocks=blocks)
+        if phase == "build":
+            return Continue(answer, self.build, operator_context=answer.content, blocks=blocks)
         return Continue(
             answer,
-            self.build,
+            self.review,
             operator_context=answer.content,
             blocks=blocks,
             number=self._next_round(),

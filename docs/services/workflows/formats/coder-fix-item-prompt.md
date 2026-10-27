@@ -8,7 +8,7 @@ title: Coder fix-item prompt
 - file: `workflows/src/workhorse_workflows/coder/fix/prompts/fix-item.md`
 - code: `workflows/src/workhorse_workflows/coder/fix/flow.py::Fix.work` @670e5cb59adb
 - detail: [coder standalone fix flow](../flows/coder-fix.md)
-- detail: [coder dev-story prompt](coder-dev-story-prompt.md)
+- detail: [coder dev-review prompt](coder-dev-review-prompt.md)
 - tests: `workflows/tests/coder/fix/test_flow.py::test_the_first_pass_is_handed_the_item_and_no_report_at_all`
 - tests: `workflows/tests/coder/shared/test_roles.py::test_every_prompt_renders_with_its_partials`
 
@@ -20,7 +20,7 @@ repository it changed, the gates green and an `ImplResult`. The envelope adds a 
 workflow supplies a failed-check report or an operator answer.
 
 The item itself is the first finding, and its fixer follows the same rule as the fixers of QA's
-findings. The dev-story envelope gives its fixers this rule too, from the same shared text, so
+findings. The dev-review envelope gives its fixers this rule too, from the same shared text, so
 the two lanes cannot drift apart:
 
 - A finding that reports wrong behaviour stays a defect until a test says otherwise. A "not a

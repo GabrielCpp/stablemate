@@ -32,7 +32,7 @@ that the repo has that stack.
 A tag that the test does not also add to `STACKS` in its fixtures would make every neutrality
 assertion trivially pass, so the test's own skill set is exhaustive over the stacks it checks.
 
-- code: `workflows/src/workhorse_workflows/coder/dev/prompts/dev-story.md` @afeacd17f065
+- code: `workflows/src/workhorse_workflows/coder/dev/prompts/dev-review.md` @f222f9aadc50
 - tests: `workflows/tests/coder/test_prompt_stack_neutrality.py::test_each_prompt_is_neutral_for_the_stack_that_renders_it`
 - detail: [Coder prompt role resolution](coder-prompt-role-resolution.md)
 - detail: [`find_by_tags`](../../workhorse/concepts/prompt-rendering.md#prompt-rendering)

@@ -171,7 +171,7 @@ def test_story_sources_reject_a_similar_but_nonexact_trailer(
 
 def test_the_dev_prompt_commits_with_the_minted_story_identity() -> None:
     prompt = (
-        Path(coder.__file__).parent / "dev/prompts/dev-story.md"
+        Path(coder.__file__).parent / "dev/prompts/dev-review.md"
     ).read_text(encoding="utf-8")
 
     assert "`Story: {{ workhorse_var('story_id') }}`" in prompt

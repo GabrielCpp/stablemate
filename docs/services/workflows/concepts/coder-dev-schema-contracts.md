@@ -33,6 +33,8 @@ provenance without requiring later nodes to re-parse agent-authored files.
 - detail: [coder changed files](../formats/changed-files.md)
 - detail: [coder development outcome](../formats/dev-result.md)
 - detail: [coder development story result](../formats/dev-story-result.md)
+- detail: [coder development plan result](../formats/dev-plan-result.md)
+- detail: [coder development build result](../formats/dev-build-result.md)
 - detail: [coder finding settlement](../formats/settlement.md)
 
 `lift_fixture` converts a bare fixture key to a named declaration and treats non-key prose as a

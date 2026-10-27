@@ -134,11 +134,11 @@ def test_the_review_shape_the_dev_prompt_emits_is_actionable() -> None:
     assert [f.score for f in result.findings] == [92, 84]
 
 
-def test_the_dev_owner_prompt_asks_for_the_finding_keys_the_model_reads() -> None:
+def test_the_dev_result_partial_asks_for_the_finding_keys_the_model_reads() -> None:
     """The other half of the pairing: read the prompt, not a copy of it."""
     prompt = (
         pathlib.Path(__file__).resolve().parents[3]
-        / "src/workhorse_workflows/coder/dev/prompts/dev-story.md"
+        / "src/workhorse_workflows/coder/dev/prompts/_dev-result.md"
     ).read_text()
     assert "{{ result_schema }}" in prompt
     body = schema_block(DevResult)

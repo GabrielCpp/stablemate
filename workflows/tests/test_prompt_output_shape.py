@@ -85,11 +85,17 @@ SITES = _sites()
 
 
 def _model_fields(source: Path, returns: ast.expr) -> set[str]:
-    """The declared output keys, resolved through the module the turn is written in."""
+    """The declared output keys, resolved through the module the turn is written in.
+
+    A bare name the module does not define is a parameter the call site forwards, and its keys
+    are checked where the schema class is named.
+    """
     module = importlib.import_module(
         ".".join(source.relative_to(PACKAGE.parent).with_suffix("").parts)
     )
     name = ast.unparse(returns)
+    if isinstance(returns, ast.Name) and not hasattr(module, name):
+        return set()
     obj = module
     for part in name.split("."):
         obj = getattr(obj, part)

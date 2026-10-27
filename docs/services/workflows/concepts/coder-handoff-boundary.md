@@ -28,11 +28,11 @@ A sub-flow entered by `handoff()` runs under three constraints that the call sit
 
 ## When the boundary matters most
 
-The separate prompt directories are why a role name such as `dev-story` can exist once under `dev/prompts/` and a repo or library body can replace it without touching any other flow's envelope.
+The separate prompt directories are why a role name such as `dev-review` can exist once under `dev/prompts/` and a repo or library body can replace it without touching any other flow's envelope.
 
 - code: `workflows/src/workhorse_workflows/coder/workflow.py::workflow` @a28e84f788c2
 - code: `workflows/src/workhorse_workflows/coder/main/flow.py::Coder.dev` @b2f1b57d20a5
-- code: `workflows/src/workhorse_workflows/coder/dev/flow.py::Dev` @6b4e303557ef
+- code: `workflows/src/workhorse_workflows/coder/dev/flow.py::Dev` @9cb81c5987ec
 - code: `workflows/src/workhorse_workflows/coder/docs/flow.py::Docs` @e596e919bdee
 - code: `workflows/src/workhorse_workflows/coder/fix_ci/flow.py::FixCi` @a7b37f93a2e9
 - code: `workflows/src/workhorse_workflows/coder/qa/flow.py::Qa` @5c125dd4ad41
