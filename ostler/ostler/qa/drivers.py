@@ -110,11 +110,12 @@ class FailedCheck:
     status: str = ""
     shape: str = ""
     gap: str = ""
+    seen: str = ""
 
     @classmethod
     def of(
         cls, label: str, expected: JsonValue, actual: JsonValue, command_ending: CommandEnding | None = None,
-        covers: Sequence[str] = (), attribution: Attribution = NO_ATTRIBUTION,
+        covers: Sequence[str] = (), attribution: Attribution = NO_ATTRIBUTION, seen: str = "",
     ) -> FailedCheck:
         """A failed check whose expected and observed values are rendered as JSON text, with how the command it observed ended."""
         return cls(
@@ -128,6 +129,7 @@ class FailedCheck:
             attribution.status,
             attribution.shape,
             attribution.gap,
+            seen,
         )
 
     def attribution(self) -> Attribution:
@@ -574,7 +576,7 @@ class PythonDriver(QaDriver):
         tally.judge(covers, False, attribution)
         tally.count_failure(FailedCheck.of(
             str(record.get("label", "")), record.get("expected"), record.get("actual"),
-            evidence.command_ending, covers, attribution))
+            evidence.command_ending, covers, attribution, seen=evidence.seen))
 
     def _grade_vet_and_list_problems(
         self,

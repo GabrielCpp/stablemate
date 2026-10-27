@@ -91,3 +91,19 @@ def test_failure_evidence_the_harness_did_not_shape_as_it_writes_it_is_refused(r
 
     with pytest.raises(DriverBlocked, match="failure evidence is malformed"):
         _ = _driver(repo)._grade("s-1", ["ac:1"], records, "", 0, timed_out=False)
+
+
+def test_a_failed_check_carries_what_the_screen_showed_without_changing_its_cause(repo: Path) -> None:
+    failing = _assert("greeting shown", passed=False, expected=True, actual=False)
+    scenario = {"type": "scenario", "id": "s-1", "status": "failed", "assertions": 1, "failures": 1}
+
+    driver = _driver(repo)
+    bare = driver._grade("s-1", ["ac:1"], [failing, scenario], "", 0, timed_out=False)
+    seen = driver._grade(
+        "s-1", ["ac:1"], [{**failing, "seen": "maestro stopped at: x. The screen showed: button 'Save'"}, scenario],
+        "", 0, timed_out=False,
+    )
+
+    assert seen.failed_checks[0].seen == "maestro stopped at: x. The screen showed: button 'Save'"
+    assert bare.failed_checks[0].seen == ""
+    assert seen.failed_checks[0].cause == bare.failed_checks[0].cause

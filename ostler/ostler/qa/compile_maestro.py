@@ -313,7 +313,7 @@ def _compiled_check(
         return None
     return _CompiledCheck(
         _check_commands(row.name, locator, row.args),
-        f"    qa.verify({python_literal(row.name)}, {result_name}.exit_code == 0"
+        f"    qa.verify({python_literal(row.name)}, {result_name}"
         f"{call_kwargs(row.args)}, covers=[{python_literal(oid)}])",
         check_document(row, obligation) or None,
     )

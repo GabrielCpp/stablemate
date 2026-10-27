@@ -89,6 +89,7 @@ class CheckEvidence(BaseModel):
     raised: str = ""
     command_ending: CommandEnding | None = None
     held: tuple[str, ...] = ()
+    seen: str = ""
 
 
 def attribute(evidence: CheckEvidence) -> Attribution:

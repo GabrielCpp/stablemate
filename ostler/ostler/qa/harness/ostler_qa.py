@@ -19,6 +19,7 @@ import traceback
 import urllib.error
 import urllib.parse
 import urllib.request
+import xml.etree.ElementTree as ET
 from collections.abc import Callable, Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from dataclasses import asdict, dataclass, field
@@ -1599,12 +1600,17 @@ class Qa:
                 f"'{check}' is not a declared check — the vocabulary is: "
                 f"{', '.join(sorted(VERIFIERS))}"
             )
+        ran = observed if isinstance(observed, MaestroResult) else None
+        if ran is not None:
+            observed = ran.exit_code == 0
         verdict = verifier(observed, args)
         rendered = ", ".join(f"{key}={value!r}" for key, value in args.items())
         ending_fields = (
             {"command_ending": {"exit_code": observed.exit_code, "stderr": observed.stderr.strip()[-500:]}}
             if not verdict.passed and isinstance(observed, ToolResult) else {}
         )
+        if not verdict.passed and ran is not None and ran.seen:
+            ending_fields = {**ending_fields, "seen": ran.seen}
         return self._record(
             label or f"{check}({rendered})",
             verdict.passed,
@@ -2134,10 +2140,35 @@ class Maestro:
                     else "maestro-diagnostic"
                 )
                 qa.artifact(produced, kind=kind)
+        seen = _maestro_seen(junit, output) if code != 0 else ""
         if require and code != 0:
             tail = "\n".join(output.strip().splitlines()[-10:])
-            raise RuntimeError(f"maestro flow {path.name} exited {code}:\n{tail}")
-        return MaestroResult(exit_code=code, output=output, flow=path)
+            raise RuntimeError(f"maestro flow {path.name} exited {code}:\n{tail}\n{seen}")
+        return MaestroResult(exit_code=code, output=output, flow=path, seen=seen)
+
+
+def _failing_step(junit: Path, output: str) -> str:
+    if junit.is_file():
+        try:
+            failure = ET.parse(junit).getroot().find(".//failure")  # noqa: S314 - maestro's own report
+        except (ET.ParseError, OSError):
+            failure = None
+        if failure is not None:
+            text = (failure.get("message") or failure.text or "").strip()
+            if text:
+                return text
+    lines = [line.strip() for line in output.splitlines() if line.strip()]
+    return lines[-1] if lines else ""
+
+
+def _maestro_seen(junit: Path, output: str) -> str:
+    seen = f"maestro stopped at: {_failing_step(junit, output)}"
+    try:
+        reading = _harness_module("ostler_qa_hierarchy").DeviceScreen().read(30)
+        inventory = reading.inventory() if reading is not None else ""
+    except Exception as exc:
+        return f"{seen}. The screen could not be read: {type(exc).__name__}"
+    return f"{seen}. The screen showed: {inventory}" if inventory else seen
 
 
 @dataclass
@@ -2145,6 +2176,7 @@ class MaestroResult:
     exit_code: int
     output: str
     flow: Path
+    seen: str = ""
 
     @property
     def ok(self) -> bool:

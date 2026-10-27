@@ -13,6 +13,8 @@ ANNOUNCED_ROLES = frozenset({"alert", "status"})
 
 TICK_MS = 50
 
+INVENTORY_CHARS = 1500
+
 ROLE_STATES = ("disabled", "checked", "expanded", "selected")
 
 
@@ -29,6 +31,10 @@ class Reading(Protocol):
     """One look at a screen, which can tell whether a perceivable is shown."""
 
     def shown(self, perceivable: Mapping[str, Any]) -> bool: ...
+
+    def inventory(self) -> str:
+        """A short text listing what this look saw."""
+        ...
 
 
 class Screen(Protocol):
@@ -66,6 +72,13 @@ class PageReading:
 
     def shown(self, perceivable: Mapping[str, Any]) -> bool:
         return shown(self._page, perceivable)
+
+    def inventory(self) -> str:
+        try:
+            snapshot = self._page.locator("body").aria_snapshot()
+        except Exception:
+            return ""
+        return " ".join(str(snapshot).split())[:INVENTORY_CHARS]
 
 
 class PageScreen:
@@ -119,6 +132,12 @@ def settle_screen(
 
     seen: Reading | None = None
 
+    def with_screen(message: Settled) -> Settled:
+        inventory = seen.inventory() if seen is not None else ""
+        if not inventory:
+            return message
+        return Settled(False, f"{message.message}; the screen shows: {inventory}", None)
+
     def look() -> Reading | None:
         nonlocal seen
         reading = screen.read(max(0.001, deadline - clock()))
@@ -149,7 +168,7 @@ def settle_screen(
         if not tick():
             if seen is None:
                 return timed_out("the screen could not be read while the busy sign was awaited")
-            return timed_out(f"busy sign still shown: {_label(busy)}")
+            return with_screen(timed_out(f"busy sign still shown: {_label(busy)}"))
     while True:
         reading = look()
         held = [] if reading is None else [
@@ -160,7 +179,7 @@ def settle_screen(
         if not tick():
             if seen is None:
                 return timed_out("the screen could not be read while a declared state was awaited")
-            return timed_out("no declared state holds: " + ", ".join(states))
+            return with_screen(timed_out("no declared state holds: " + ", ".join(states)))
     if origins:
         extra = exchanges.undeclared_since(requests, origins=origins, since=since)
         if extra:

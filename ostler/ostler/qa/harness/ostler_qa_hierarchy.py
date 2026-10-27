@@ -56,6 +56,8 @@ CLASS_ROLES = {
 
 SETTLE_NAME_ATTRIBUTES = ("accessibilityText", "content-desc", "text", "hintText")
 
+INVENTORY_ENTRIES = 40
+
 NAME_ATTRIBUTES = ("resource-id", "accessibilityText", "content-desc", "text", "hintText")
 
 
@@ -215,6 +217,17 @@ class DeviceReading:
             and (not perceivable.get("selected") or node.selected is True)
             for node in self._nodes
         )
+
+    def inventory(self) -> str:
+        entries: list[str] = []
+        for node in self._nodes:
+            if not node.names:
+                continue
+            entry = f"{node.role or 'element'} {node.names[0][:80]!r}"
+            if entry not in entries:
+                entries.append(entry)
+        text = ", ".join(entries[:INVENTORY_ENTRIES])
+        return text + ", …" if len(entries) > INVENTORY_ENTRIES else text
 
 
 def _maestro_hierarchy(timeout: float) -> str:

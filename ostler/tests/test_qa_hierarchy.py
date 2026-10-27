@@ -226,3 +226,41 @@ def test_a_node_with_no_area_is_not_drawn() -> None:
     raw = _hierarchy(_drawn(**{"class": "android.widget.Button", "text": "Save", "bounds": "[0,0][0,0]"}))
 
     assert not _shown(raw, role="button", name="Save")
+
+
+def _inventory(*nodes: dict) -> str:
+    return hierarchy.DeviceReading(hierarchy.parse_device_nodes(_hierarchy(*nodes))).inventory()
+
+
+def test_a_device_inventory_lists_each_named_node_by_role_and_first_name() -> None:
+    inventory = _inventory(
+        _drawn(**{"class": "android.widget.Button", "text": "Open details"}),
+        _drawn(**{"class": "android.widget.TextView", "text": "Welcome"}),
+        _drawn(**{"class": "android.widget.Button"}),
+    )
+
+    assert inventory == "button 'Open details', element 'Welcome'"
+
+
+def test_a_device_inventory_drops_duplicates_and_keeps_draw_order() -> None:
+    inventory = _inventory(
+        _drawn(**{"class": "android.widget.Button", "text": "Save"}),
+        _drawn(**{"class": "android.widget.TextView", "text": "Title"}),
+        _drawn(**{"class": "android.widget.Button", "text": "Save"}),
+    )
+
+    assert inventory == "button 'Save', element 'Title'"
+
+
+def test_a_device_inventory_stops_at_forty_entries_and_says_so() -> None:
+    nodes = [_drawn(**{"class": "android.widget.Button", "text": f"Item {index}"}) for index in range(41)]
+
+    entries = _inventory(*nodes).split(", ")
+
+    assert entries[:2] == ["button 'Item 0'", "button 'Item 1'"]
+    assert entries[-2:] == ["button 'Item 39'", "…"]
+    assert len(entries) == 41
+
+
+def test_a_device_with_no_named_node_has_an_empty_inventory() -> None:
+    assert _inventory(_drawn(**{"class": "android.widget.FrameLayout"})) == ""

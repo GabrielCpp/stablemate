@@ -97,8 +97,8 @@ its first hop.
 - code: ostler/ostler/qa/compile_playwright.py::perform_acts@23cf5e92ef9e
 - code: ostler/ostler/qa/compile_playwright.py::page_observations@23cf5e92ef9e
 - code: ostler/ostler/qa/compile_playwright.py::web_walk@23cf5e92ef9e
-- code: ostler/ostler/qa/compile_maestro.py::mobile_scenarios@ebdc61232dae
-- code: ostler/ostler/qa/compile_maestro.py::maestro_walk@ebdc61232dae
+- code: ostler/ostler/qa/compile_maestro.py::mobile_scenarios@e21910eff35f
+- code: ostler/ostler/qa/compile_maestro.py::maestro_walk@e21910eff35f
 - code: ostler/ostler/qa/compile_moves.py::move_walks@357b72ed93c7
 - code: ostler/ostler/qa/compile_moves.py::state_walks@357b72ed93c7
 - code: ostler/ostler/qa/compile_journey.py::journey_target@421ed1147b57

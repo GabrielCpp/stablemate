@@ -6260,6 +6260,8 @@ def test_a_mobile_book_compiles_a_flow_at_its_bundle_id_and_keeps_its_prepare_st
     assert _gap_kinds(result.gaps, oid) == []
     assert "maestro" in result.source
     assert 'app_id="com.example.acme"' in result.source
+    assert 'qa.verify("visible", observed_1, ' in result.source
+    assert ".exit_code == 0" not in result.source
     (flow_text,) = result.files.values()
     flow_header, _flow_commands = yaml.safe_load_all(flow_text)
     assert flow_header["appId"] == "com.example.acme"
