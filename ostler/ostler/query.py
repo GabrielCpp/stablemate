@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from ostler import crud_generic, provenance, registry
+from ostler import crud_generic, provenance, registry, textindex
 from ostler.model import Graph, UINode
 
 
@@ -83,38 +83,8 @@ def list_entities(graph: Graph, etype: str, epic: str | None = None,
     return rows
 
 
-def _body_text(path) -> str:
-    try:
-        return path.read_text(encoding="utf-8")
-    except OSError:
-        return ""
-
-
-def search(graph: Graph, q: str, etype: str | None = None) -> list[dict]:
-    ql = q.lower()
-    hits: list[dict] = []
-    types = [etype] if etype else (
-        ["epic", "milestone", "story", "seed", "feature", *registry.UI_TYPES_BY_NAME])
-    for t in types:
-        for row in list_entities(graph, t):
-            hay = " ".join(str(v) for v in row.values()).lower()
-            if t in ("milestone", "story", "feature") or t in registry.UI_TYPES_BY_NAME:
-                path = None
-                if t == "milestone":
-                    path = next((m.path for m in graph.milestones if m.name == row["name"]), None)
-                elif t == "story":
-                    found = graph.story_by_slug(row["slug"])
-                    path = found[1].story_md if found else None
-                elif t == "feature":
-                    path = next((f.path for f in graph.features if f.slug == row["slug"]), None)
-                else:
-                    node = graph.find_ui_node(row["id"])
-                    path = node.path if node else None
-                if path:
-                    hay += " " + _body_text(path).lower()
-            if ql in hay:
-                hits.append(row)
-    return hits
+def search(graph: Graph, q: str, etype: str | None = None, **kw) -> list[dict]:
+    return textindex.search(graph, q, etype=etype, **kw)
 
 
 def query(

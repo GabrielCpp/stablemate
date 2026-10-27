@@ -22,6 +22,7 @@ title: ostler
 - [Surfaces, screens and locators](concepts/surfaces-screens-and-locators.md)
 - [Book health: coverage, reach and census](concepts/book-health-coverage-reach-and-census.md)
 - [The Ostler facade and book utilities](concepts/the-ostler-facade-and-book-utilities.md)
+- [The text index](concepts/the-text-index.md)
 - [ostler](cli.md)
 - [ostler env](environments.md)
 - [ostler book checks](book-checks.md)

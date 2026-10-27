@@ -10,7 +10,7 @@ they find without changing a file. Every claim here runs against a small repo se
 checkout, with `-C book-scratch`, so the real books never decide the outcome.
 
 - binary: ostler
-- code: ostler/ostler/cli.py::main@0cc25342ffe6
+- code: ostler/ostler/cli.py::main@6f9e6ca5fc20
 - detail: [The book's markdown model](concepts/the-books-markdown-model.md)
 
 ## Commands
@@ -206,18 +206,36 @@ checkout, with `-C book-scratch`, so the real books never decide the outcome.
 - code: ostler/ostler/trace.py::run@627ab268dee3
 
 ### ostler-search
-- usage: ostler search QUERY [--json] — full-text search over the book's pages and nodes, printing
-  one JSON object per match per line (or the matches as one indented array with --json)
+- usage: ostler search QUERY [--type TYPE] [--root ROOT] [--limit N] [--match] [--json] — ranked
+  full-text search over every section of every document root, printing one hit per two lines (or
+  the hits as one indented array with --json)
 - flags:
-  - --json (print the matches as one indented JSON array)
-- args: query — the text to look for
-- exits: 0 — a query prints its matches, possibly none
+  - --type (keep the sections of pages with this frontmatter type), --root (keep one document root:
+    services, epics, milestones, specs, register or adr), --limit (the most hits to return, 10 by
+    default), --match (pass QUERY through as raw FTS5 syntax, and exit 2 when FTS5 cannot parse it), --json (print the hits as one indented
+    JSON array)
+- args: query — the words to look for, joined with OR and matched as stemmed prefixes
+- exits: 0 — a query prints its hits, possibly none
 - run: invoke(argv=["-C", "book-scratch", "search", "Say hello", "--json"])
 - verify: exit_status(code=0)
-- verify: json_path(path="[1].slug", equals="say-hello")
-- verify: json_path(path="[1].path", equals="docs/services/demo/flows/say-hello.md")
+- verify: json_path(path="[0].type", equals="flow")
+- verify: json_path(path="[0].path", equals="docs/services/demo/flows/say-hello.md")
 - fixture: [book scratch repo](fixtures/book-scratch-repo.md) — seeds a flow titled "Say hello"
-- code: ostler/ostler/query.py::list_entities@9c9d233e28a0
+- code: ostler/ostler/textindex.py::TextIndex.search@9e0954edd179
+- detail: [The text index](concepts/the-text-index.md)
+
+### ostler-index-build
+- usage: ostler index build [--json] — builds or refreshes the full-text index over every document
+  root and prints how many sections and files it holds
+- flags:
+  - --json (print the counts as one JSON object)
+- exits: 0 — the index is current
+- run: invoke(argv=["-C", "book-scratch", "index", "build", "--json"])
+- verify: exit_status(code=0)
+- verify: json_path(path="files", matches="^[1-9][0-9]*$")
+- fixture: [book scratch repo](fixtures/book-scratch-repo.md) — seeds a flow titled "Say hello"
+- code: ostler/ostler/textindex.py::TextIndex.refresh@9e0954edd179
+- detail: [The text index](concepts/the-text-index.md)
 
 ### ostler-list
 - usage: ostler list --type TYPE [--json] — lists the nodes of one type, one JSON object per line
@@ -230,7 +248,7 @@ checkout, with `-C book-scratch`, so the real books never decide the outcome.
 - verify: json_path(path="[0].type", equals="flow")
 - verify: json_path(path="[0].path", equals="docs/services/demo/flows/say-hello.md")
 - fixture: [book scratch repo](fixtures/book-scratch-repo.md) — seeds one flow
-- code: ostler/ostler/query.py::list_entities@9c9d233e28a0
+- code: ostler/ostler/query.py::list_entities@96bd7ea5ee8a
 
 ### ostler-query
 - usage: ostler query KIND ARG [--checkout REPOSITORY=PATH] [--json] — answers a reverse-index
@@ -247,7 +265,7 @@ checkout, with `-C book-scratch`, so the real books never decide the outcome.
 - verify: json_path(path="[0].node.codeRefs[0]", equals="src/demo.py::greet")
 - fixture: [book scratch repo](fixtures/book-scratch-repo.md) — seeds a cli page that cites
   `src/demo.py::greet`
-- code: ostler/ostler/query.py::query@9c9d233e28a0
+- code: ostler/ostler/query.py::query@96bd7ea5ee8a
 - code: ostler/ostler/provenance.py::checkout_for@61d8f7f21af4
 
 ### ostler-graph

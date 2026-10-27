@@ -180,7 +180,7 @@ accepted as input either way).
 | Verbs | What they do |
 |---|---|
 | `doctor` `trace` | check conformance and referential integrity; walk the graph from any node |
-| `list` `search` `query` `next-epic` `next-story` `path` | read the graph — what exists, what covers what, what to work on next |
+| `list` `search` `index` `query` `next-epic` `next-story` `path` | read the graph — what exists, what covers what, what to work on next |
 | `create` `update` `delete` `seed` `set-status` `unblock` `backlog` `milestone` `todo` | mutate it — scaffold identified intake/plans/specs, revise story graph metadata, record a seed, move the queue |
 | `edit` `freeze` `unfreeze` | repair a rename across the whole graph, or pin an approved story as ground truth |
 | `gc` | delete the book pages no link path from their service's `entries` page reaches |

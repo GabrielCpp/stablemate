@@ -9,7 +9,7 @@ Ostler is the planning CLI: one `ostler` binary dispatching to subcommands that 
 managed markdown tree (backlog, milestones, epics, features) under a repo root.
 
 - binary: ostler
-- code: ostler/ostler/cli.py::main@0cc25342ffe6
+- code: ostler/ostler/cli.py::main@6f9e6ca5fc20
 - detail: [Planning identities](concepts/planning-identities.md)
 
 ## Commands
@@ -47,7 +47,7 @@ managed markdown tree (backlog, milestones, epics, features) under a repo root.
 - code: ostler/ostler/artifact/run.py::list_kinds@72b226ff9de4
 - code: ostler/ostler/artifact/kinds.py::KINDS@ec25eeaddd5f
 - code: ostler/ostler/artifact/__init__.py::__all__@d177bd2861a0
-- code: ostler/ostler/cli.py::_cmd_artifact@0cc25342ffe6
+- code: ostler/ostler/cli.py::_cmd_artifact@6f9e6ca5fc20
 
 ### ostler-artifact-scaffold
 - usage: ostler artifact scaffold KIND --spec PATH [--force] — writes KIND's JSON skeleton to
@@ -69,7 +69,7 @@ managed markdown tree (backlog, milestones, epics, features) under a repo root.
 - code: ostler/ostler/artifact/run.py::scaffold@72b226ff9de4
 - code: ostler/ostler/artifact/kinds.py::ArtifactKind@ec25eeaddd5f
 - code: ostler/ostler/path.py::resolve_spec_arg@4524aa5cb018
-- code: ostler/ostler/cli.py::_cmd_artifact@0cc25342ffe6
+- code: ostler/ostler/cli.py::_cmd_artifact@6f9e6ca5fc20
 
 ### ostler-artifact-scaffold-unknown-kind
 - usage: ostler artifact scaffold KIND --spec PATH — rejects a KIND outside the registry before
@@ -81,7 +81,7 @@ managed markdown tree (backlog, milestones, epics, features) under a repo root.
 - fixture: none, because an unknown kind name fails before the spec directory is read or written
 - code: ostler/ostler/artifact/run.py::scaffold@72b226ff9de4
 - code: ostler/ostler/artifact/kinds.py::ArtifactKind@ec25eeaddd5f
-- code: ostler/ostler/cli.py::_cmd_artifact@0cc25342ffe6
+- code: ostler/ostler/cli.py::_cmd_artifact@6f9e6ca5fc20
 
 ### ostler-artifact-vet
 - usage: ostler artifact vet KIND --spec PATH [--json] — validates `<spec-dir>/<kind>.json` against
@@ -97,7 +97,7 @@ managed markdown tree (backlog, milestones, epics, features) under a repo root.
 - fixture: none, because the claim is that a never-scaffolded spec dir is rejected
 - code: ostler/ostler/artifact/run.py::vet@72b226ff9de4
 - code: ostler/ostler/artifact/kinds.py::_backlog_items_vet@ec25eeaddd5f
-- code: ostler/ostler/cli.py::_cmd_artifact@0cc25342ffe6
+- code: ostler/ostler/cli.py::_cmd_artifact@6f9e6ca5fc20
 
 ### ostler-env-schema
 - usage: ostler env schema — prints the JSON Schema of a book's `ops/stack.yml`
@@ -163,7 +163,7 @@ managed markdown tree (backlog, milestones, epics, features) under a repo root.
 - code: ostler/ostler/vet/report.py::build_report@30d577ca0ec9
 - code: ostler/ostler/vet/writes.py::VetFileWrite@d000fa666d75
 - code: ostler/ostler/vet/writes.py::VetPlan@d000fa666d75
-- code: ostler/ostler/cli.py::_cmd_vet@0cc25342ffe6
+- code: ostler/ostler/cli.py::_cmd_vet@6f9e6ca5fc20
 - detail: [Vetting a rendered screen](concepts/vetting-a-rendered-screen.md)
 
 ### ostler-vet-cdp

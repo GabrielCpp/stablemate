@@ -54,7 +54,8 @@ ostler trace <token>
 
 ```bash
 ostler list  --type ETYPE [--epic E] [--status S] [--json]
-ostler search <query> [--type ETYPE] [--json]
+ostler search <query> [--type TYPE] [--root ROOT] [--limit N] [--match] [--json]
+ostler index build [--json]
 ostler query stories-covering-seed|surfaces-referenced-by-story <arg> [--json]
 ostler query story-provenance|commit-story|node-provenance <arg> \
   [--checkout REPOSITORY=PATH ...] [--json]
@@ -62,6 +63,10 @@ ostler next-epic [--json]                     # next queued epic with unfinished
 ostler next-story <epic> [--json]             # next runnable story (deps satisfied, not done)
 ostler path epic <epic> | path spec <story-id> | path story <story-id> | path branch <story-id> [--epic]
 ```
+
+`search` ranks sections with BM25 across every document root (the book, epics, milestones, specs,
+register and adr), OR-ing the query's terms with prefix and stemming matches. `index build` builds
+or refreshes the store that backs it and reports the counts.
 
 Epic directories are numbered in creation order (`docs/epics/0001-checkout-flow/`), so ask
 `path epic` rather than joining `docs/epics/<slug>` yourself. Every command below still takes the

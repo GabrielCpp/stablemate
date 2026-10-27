@@ -24,7 +24,7 @@ def test_reads_match_the_underlying_core(repo: Path):
 def test_query_and_search(repo: Path):
     okf = Ostler(repo)
     assert {x["slug"] for x in okf.query("stories-covering-seed", "seed-a1")} == {"01-foo"}
-    assert any(h["slug"] == "01-foo" for h in okf.search("thing works", etype="story"))
+    assert any("/01-foo/" in h["node"] for h in okf.search("thing works", etype="story"))
 
 
 def test_path_resolution(repo: Path):

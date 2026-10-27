@@ -10,7 +10,7 @@ defect. Every claim runs in a repository of its own under the checkout, so no sc
 defects in the book of the checkout. A caller reads the finding code, the page and the exit status.
 
 - binary: ostler
-- code: ostler/ostler/cli.py::main@0cc25342ffe6
+- code: ostler/ostler/cli.py::main@6f9e6ca5fc20
 
 ## Commands
 

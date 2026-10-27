@@ -22,6 +22,7 @@ from ostler import vet as vet_mod
 from ostler import artifact as artifact_mod
 from ostler import qa as qa_mod
 from ostler import index as index_mod
+from ostler import textindex as textindex_mod
 from ostler import source_snapshots
 from ostler import stamp as stamp_mod
 from ostler import behavior_cli
@@ -193,14 +194,21 @@ def _build_parser() -> argparse.ArgumentParser:
     ls.add_argument("--status")
     ls.add_argument("--json", action="store_true")
 
-    se = sub.add_parser("search", help="full-text search over Concepts")
+    se = sub.add_parser("search", help="ranked full-text search over every document root")
     se.add_argument("q")
+    se.add_argument("--type", dest="etype", help="a frontmatter type, such as concept or flow")
+    se.add_argument("--root", help="a document root: services, epics, milestones, specs, register, adr")
+    se.add_argument("--limit", type=int, default=10, help="most hits to return")
     se.add_argument(
-        "--type",
-        dest="etype",
-        help=f"one of {', '.join(_TYPES)}, or a template-declared kind",
+        "--match", action="store_true",
+        help="pass the query through as raw FTS5 syntax",
     )
     se.add_argument("--json", action="store_true")
+
+    ix = sub.add_parser("index", help="the full-text index over every document root")
+    ixs = ix.add_subparsers(dest="op", required=True)
+    ixb = ixs.add_parser("build", help="build or refresh the index and report its counts")
+    ixb.add_argument("--json", action="store_true")
 
     qy = sub.add_parser("query", help="reverse-index queries")
     qy.add_argument("name", choices=query_mod.QUERIES)
@@ -1451,6 +1459,39 @@ def _cmd_cache(args) -> int:
     return 0
 
 
+def _cmd_search(graph, args) -> int:
+    try:
+        hits = query_mod.search(
+            graph, args.q, args.etype, root=args.root, limit=args.limit, raw=args.match
+        )
+    except ValueError as exc:
+        _out(f"error: {exc}")
+        return 2
+    if args.json:
+        _out(json.dumps(hits, indent=2))
+        return 0
+    for hit in hits:
+        where = f"{hit['node']}#{hit['anchor']}" if hit["anchor"] else hit["node"]
+        heading = f" â€” {hit['heading']}" if hit["heading"] else ""
+        _out(f"{hit['score']:.3f}  {hit['root']}/{hit['type']}  {where}{heading}")
+        _out(f"        {hit['snippet']}")
+    if not hits:
+        _out("(none)")
+    return 0
+
+
+def _cmd_index(graph, args) -> int:
+    report = textindex_mod.build(graph)
+    if args.json:
+        _out(json.dumps(report.as_dict(), indent=2))
+    else:
+        _out(
+            f"indexed {report.sections} sections from {report.files} files "
+            f"({report.indexed} refreshed, {report.removed} removed) in {report.dir}"
+        )
+    return 0
+
+
 def _cmd_fmt(graph, args) -> int:
     result = fmt_mod.run_fmt(graph, args.paths, check=args.check)
     for path in result.changed:
@@ -2042,7 +2083,7 @@ def _dispatch(graph, args, store: index_mod.IndexStore) -> int:  # noqa: C901 â€
         return 0 if result.ok else 1
     if c == "backfill":
         return _cmd_backfill(graph, args)
-    if c in ("list", "search"):
+    if c == "list":
         valid_types = _TYPES + tuple(k.name for k in graph.template_kinds)
         if args.etype is not None and args.etype not in valid_types:
             _out(
@@ -2056,9 +2097,9 @@ def _dispatch(graph, args, store: index_mod.IndexStore) -> int:  # noqa: C901 â€
             args.json,
         )
     if c == "search":
-        return _emit(
-            query_mod.search(graph, args.q, args.etype), args.json
-        )
+        return _cmd_search(graph, args)
+    if c == "index":
+        return _cmd_index(graph, args)
     if c == "query":
         checkouts: dict[str, Path] = {}
         for raw in args.checkout:

@@ -158,9 +158,9 @@ declare. `__init__.py` is empty.
 - code: ostler/ostler/index.py::active@cfb08df1cba1
 - code: ostler/ostler/index.py::use@cfb08df1cba1
 - code: ostler/ostler/index.py::session@cfb08df1cba1
-- code: ostler/ostler/query.py::search@9c9d233e28a0
-- code: ostler/ostler/query.py::query@9c9d233e28a0
-- code: ostler/ostler/query.py::list_entities@9c9d233e28a0
+- code: ostler/ostler/query.py::search@96bd7ea5ee8a
+- code: ostler/ostler/query.py::query@96bd7ea5ee8a
+- code: ostler/ostler/query.py::list_entities@96bd7ea5ee8a
 - code: ostler/ostler/provenance.py::story_commits@61d8f7f21af4
 - code: ostler/ostler/provenance.py::source_freshness@61d8f7f21af4
 - code: ostler/ostler/provenance.py::story_provenance@61d8f7f21af4

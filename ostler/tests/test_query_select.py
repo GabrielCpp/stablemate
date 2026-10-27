@@ -33,7 +33,7 @@ def test_list_filters(repo: Path):
 def test_search_hits_body(repo: Path):
     g = load(repo)
     hits = query.search(g, "thing works", etype="story")
-    assert any(h["slug"] == "01-foo" for h in hits)
+    assert any(h["path"].endswith("01-foo/story.md") for h in hits)
 
 
 def test_query_reverse_indexes(repo: Path):
