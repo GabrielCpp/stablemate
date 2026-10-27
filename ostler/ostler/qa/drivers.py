@@ -1192,7 +1192,7 @@ class DeviceRecorder:
 
     def stop(self) -> None:
         self._stop_event.set()
-        if self.process is not None and self.process.poll() is None:
+        if self._thread is None and self.process is not None and self.process.poll() is None:
             self.process.send_signal(signal.SIGINT)
         if self._thread is not None:
             self._thread.join(timeout=45 * max(1, len(self._remote_segments) + 1))
@@ -1249,6 +1249,16 @@ class DeviceRecorder:
             }
         )
 
+    def _await_device_release(self, remote: str) -> None:
+        deadline = time.monotonic() + 10
+        while time.monotonic() < deadline:
+            held = subprocess.run(
+                ["adb", "shell", "pgrep", "-f", remote], capture_output=True, timeout=10
+            )
+            if held.returncode:
+                return
+            time.sleep(0.2)
+
     def _android_loop(self) -> None:
         index = 0
         try:
@@ -1273,12 +1283,17 @@ class DeviceRecorder:
                 while self.process.poll() is None and not self._stop_event.wait(0.2):
                     pass
                 if self.process.poll() is None:
-                    self.process.send_signal(signal.SIGINT)
+                    subprocess.run(
+                        ["adb", "shell", "pkill", "-INT", "-f", remote],
+                        capture_output=True,
+                        timeout=10,
+                    )
                 try:
                     self.process.wait(timeout=15)
                 except subprocess.TimeoutExpired:
                     self.process.kill()
                     self.process.wait()
+                self._await_device_release(remote)
                 self._remote_segments.append(
                     (remote, path, start, self.session.offset_ms())
                 )

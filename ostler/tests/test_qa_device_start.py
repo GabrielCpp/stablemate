@@ -1,11 +1,14 @@
 from __future__ import annotations
 
 import json
+import subprocess
+import threading
 from pathlib import Path
 
 import pytest
 
-from ostler.qa.drivers import DriverBlocked, PythonDriver
+from ostler.qa import drivers
+from ostler.qa.drivers import DeviceRecorder, DriverBlocked, PythonDriver
 from ostler.qa.session import QaSession
 
 APP_ID = "com.example.acme"
@@ -75,3 +78,76 @@ def test_a_device_start_passes_when_the_device_holds_the_app(
     driver._start_device({"required": False})
 
     assert driver._device_recorder is None
+
+
+class _FakeScreenrecord:
+    def __init__(self, device: "_FakeDevice") -> None:
+        self.device = device
+
+    def poll(self) -> int | None:
+        return self.device.client_exit
+
+    def send_signal(self, _signal: int) -> None:
+        self.device.client_exit = 0
+
+    def wait(self, timeout: float | None = None) -> int:
+        if self.device.client_exit is None:
+            raise subprocess.TimeoutExpired("adb", timeout or 0)
+        return self.device.client_exit
+
+    def kill(self) -> None:
+        self.device.client_exit = -9
+
+
+class _FakeDevice:
+    def __init__(self) -> None:
+        self.client_exit: int | None = None
+        self.finalized = False
+        self.finalize_polls_left = 2
+        self.events: list[str] = []
+
+    def popen(self, argv: list[str], **_kwargs: object) -> _FakeScreenrecord:
+        self.events.append("record")
+        return _FakeScreenrecord(self)
+
+    def run(self, argv: list[str], **_kwargs: object) -> subprocess.CompletedProcess[bytes]:
+        if argv[:5] == ["adb", "shell", "pkill", "-INT", "-f"]:
+            self.events.append("pkill")
+            self.client_exit = 0
+            return subprocess.CompletedProcess(argv, 0)
+        if argv[:4] == ["adb", "shell", "pgrep", "-f"]:
+            self.events.append("pgrep")
+            if "pkill" not in self.events:
+                return subprocess.CompletedProcess(argv, 0)
+            self.finalize_polls_left -= 1
+            self.finalized = self.finalize_polls_left < 0
+            return subprocess.CompletedProcess(argv, 1 if self.finalized else 0)
+        if argv[:2] == ["adb", "pull"]:
+            self.events.append("pull-finalized" if self.finalized else "pull-truncated")
+            Path(argv[3]).write_bytes(b"mp4")
+            return subprocess.CompletedProcess(argv, 0)
+        return subprocess.CompletedProcess(argv, 0)
+
+
+def test_stopping_an_android_recording_pulls_the_video_only_after_the_phone_finalized_it(
+    repo: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    device = _FakeDevice()
+    monkeypatch.setattr(drivers.subprocess, "Popen", device.popen)
+    monkeypatch.setattr(drivers.subprocess, "run", device.run)
+    monkeypatch.setattr(drivers.time, "sleep", lambda _seconds: None)
+    session = _device_driver(repo).session
+    recorder = DeviceRecorder(session, "acme", {"device": "android"})
+    recorder.path.parent.mkdir(parents=True, exist_ok=True)
+    thread = threading.Thread(target=recorder._android_loop)
+
+    thread.start()
+    recorder._started_event.wait(timeout=5)
+    recorder._stop_event.set()
+    thread.join(timeout=10)
+
+    assert not thread.is_alive()
+    assert recorder._thread_error == ""
+    assert "pkill" in device.events
+    assert device.events.index("pkill") < device.events.index("pull-finalized")
+    assert "pull-truncated" not in device.events
