@@ -148,7 +148,7 @@ starts as a background process. Both run through `python3`, not through `ostler`
   source file and a plan under spec s1
 - code: ostler/ostler/qa/source_context.py::SourceRepository@c8ac0146f0b0
 - code: ostler/ostler/qa/source_context.py::SourceScope@c8ac0146f0b0
-- code: ostler/ostler/qa/context.py::_repository_changes@ee242a66ae7c
-- code: ostler/ostler/qa/context.py::_repository_row@ee242a66ae7c
+- code: ostler/ostler/qa/context.py::_repository_changes@1722899c30ab
+- code: ostler/ostler/qa/context.py::_repository_row@1722899c30ab
 - code: ostler/ostler/api.py::Ostler.qa_context@89569a465feb
 - detail: [Compiling a book into a QA plan](concepts/compiling-a-book-into-a-qa-plan.md)

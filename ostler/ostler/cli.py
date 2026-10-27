@@ -900,7 +900,13 @@ def _build_parser() -> argparse.ArgumentParser:
     qa_context = qas.add_parser(
         "context", help="build the base/head changed-code to OKF obligation packet"
     )
-    qa_context.add_argument("--base", required=True)
+    qa_context.add_argument("--base")
+    qa_context.add_argument(
+        "--refresh",
+        action="store_true",
+        help="rebuild the packet in --spec from the inputs it recorded: its base, story "
+        "file, source roots and excluded paths",
+    )
     qa_context.add_argument("--head", default="WORKTREE")
     qa_context.add_argument("--spec", required=True, type=Path)
     qa_context.add_argument("--services-root", default="",
@@ -1780,6 +1786,16 @@ def _cmd_qa(graph, args) -> int:  # noqa: C901 — flat QA subcommand dispatch
 
     if op == "context":
         spec_dir = _resolve_spec(args.spec)
+        if args.refresh:
+            result = qa_mod.cmd_context_refresh(root, spec_dir)
+            if result.status == "invalid":
+                _out(json.dumps(result.data, indent=2) if args.json else f"error: {result.message}")
+                return 1
+            _out(json.dumps(result.data, indent=2) if args.json else result.message)
+            return 0 if result.ok else 1
+        if not args.base:
+            _out("error: ostler qa context needs --base, or --refresh to reuse a packet's inputs")
+            return 2
         source_roots: dict[str, list[str]] = {}
         for raw in args.source_root:
             if "=" not in raw:

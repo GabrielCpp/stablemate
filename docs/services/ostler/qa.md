@@ -12,7 +12,7 @@ writes to the artifacts directory of the person who runs the book. The claims ru
 are written, because each later command reads what an earlier one wrote.
 
 - binary: ostler
-- code: ostler/ostler/cli.py::main@97fced506443
+- code: ostler/ostler/cli.py::main@0cc25342ffe6
 
 ## Commands
 
@@ -29,11 +29,13 @@ are written, because each later command reads what an earlier one wrote.
 - code: ostler/ostler/qa/tools.py::catalog@f4b08a6e06da
 
 ### ostler-qa-context
-- usage: ostler qa context --base BASE --spec SPEC [--head HEAD] [--services-root DIR]
+- usage: ostler qa context (--base BASE | --refresh) --spec SPEC [--head HEAD] [--services-root DIR]
   [--source-root SURFACE=PATH] [--story-file FILE] [--json]: maps the code that changed since BASE to
-  the book nodes that own it and writes the context packet into the spec directory
+  the book nodes that own it and writes the context packet into the spec directory. The packet
+  records the inputs that built it, and `--refresh` rebuilds it from them
 - flags:
   - --base (the revision to compare from)
+  - --refresh (rebuild from the inputs the packet on disk recorded; refused when it records none)
   - --head (the revision to compare to; default is the working tree)
   - --spec (the spec directory or story id the packet is written into)
   - --services-root (the book directory, when the config does not name it)
@@ -63,7 +65,7 @@ are written, because each later command reads what an earlier one wrote.
 - code: ostler/ostler/qa/compile_moves.py::move_walks@357b72ed93c7
 - code: ostler/ostler/qa/compile_page.py::page_scenarios@0595c6bd06f4
 - code: ostler/ostler/qa/compile_support.py::on_href@d73966f66e36
-- code: ostler/ostler/qa/context.py::book_files@ee242a66ae7c
+- code: ostler/ostler/qa/context.py::book_files@1722899c30ab
 - code: ostler/ostler/qa/dispatch.py::claim_driver@d42406bead4b
 - code: ostler/ostler/qa/fixture_provides.py::closure@9053b42918c0
 - code: ostler/ostler/qa/fixtures.py::parse_bullet@a4b91574f193
@@ -88,7 +90,7 @@ are written, because each later command reads what an earlier one wrote.
 - verify: stdout(matches="^Context is valid\\.$")
 - fixture: [qa scratch repo](fixtures/qa-scratch-repo.md) with a QA scratch repo with one changed
   source file and a plan under spec s1
-- code: ostler/ostler/qa/context.py::cmd_context_validate@ee242a66ae7c
+- code: ostler/ostler/qa/context.py::cmd_context_validate@1722899c30ab
 - code: ostler/ostler/qa/outcome.py::QaOutcome@a11c201f424c
 
 ### ostler-qa-context-show
@@ -101,7 +103,7 @@ are written, because each later command reads what an earlier one wrote.
 - verify: stdout(matches="demo-greet:exits:1")
 - fixture: [qa scratch repo](fixtures/qa-scratch-repo.md) with a QA scratch repo with one changed
   source file and a plan under spec s1
-- code: ostler/ostler/qa/context.py::select_obligations@ee242a66ae7c
+- code: ostler/ostler/qa/context.py::select_obligations@1722899c30ab
 
 ### ostler-qa-compile-plan
 - usage: ostler qa compile-plan --spec SPEC [--out PATH] [--story STORY] [--run-id ID] [--base-url
@@ -148,7 +150,7 @@ are written, because each later command reads what an earlier one wrote.
 - verify: json_path(path="status", equals="passed")
 - verify: json_path(path="changedCode[0].path", equals="src/frontend.py")
 - fixture: [qa web journey repo](fixtures/qa-web-journey-repo.md)
-- code: ostler/ostler/qa/context.py::book_files@ee242a66ae7c
+- code: ostler/ostler/qa/context.py::book_files@1722899c30ab
 - code: ostler/ostler/qa/dispatch.py::claim_driver@d42406bead4b
 
 ### ostler-qa-compile-plan-web-journey
@@ -187,11 +189,11 @@ are written, because each later command reads what an earlier one wrote.
 - verify: json_path(path="status", equals="passed")
 - fixture: [qa scratch repo](fixtures/qa-scratch-repo.md) with a QA scratch repo with one changed
   source file and a plan under spec s1
-- code: ostler/ostler/qa/context.py::book_files@ee242a66ae7c
+- code: ostler/ostler/qa/context.py::book_files@1722899c30ab
 - code: ostler/ostler/qa/harness_host.py::default_interpreter@9aece567e098
 - code: ostler/ostler/qa/lint.py::cmd_lint@7072719988f2
 - code: ostler/ostler/qa/outcome.py::QaOutcome@a11c201f424c
-- code: ostler/ostler/qa/plan.py::load_plan@5fa508976cef
+- code: ostler/ostler/qa/plan.py::load_plan@dcbff5ecd985
 - code: ostler/ostler/qa/run.py::cmd_validate@166d32882457
 - code: ostler/ostler/qa/tools.py::catalog@f4b08a6e06da
 - code: ostler/ostler/untyped.py::is_mapping@c964a61d4a94
@@ -217,7 +219,7 @@ are written, because each later command reads what an earlier one wrote.
   source file and a plan under spec s1
 - code: ostler/ostler/qa/attribution.py::signatures@55f97c39da12
 - code: ostler/ostler/qa/book_fixtures.py::resolved@360f74516536
-- code: ostler/ostler/qa/context.py::book_files@ee242a66ae7c
+- code: ostler/ostler/qa/context.py::book_files@1722899c30ab
 - code: ostler/ostler/qa/drivers.py::create_driver@65008956ada6
 - code: ostler/ostler/qa/evidence_map.py::build_evidence_map@b2b27057b604
 - code: ostler/ostler/qa/fixtures.py::declared@a4b91574f193
@@ -239,7 +241,7 @@ are written, because each later command reads what an earlier one wrote.
 - code: ostler/ostler/qa/lint.py::cmd_lint@7072719988f2
 - code: ostler/ostler/qa/manifest.py::RunManifest@2d00c95675d5
 - code: ostler/ostler/qa/outcome.py::QaOutcome@a11c201f424c
-- code: ostler/ostler/qa/plan.py::check_runtime_requirements@5fa508976cef
+- code: ostler/ostler/qa/plan.py::check_runtime_requirements@dcbff5ecd985
 - code: ostler/ostler/qa/repeats.py::pages@1074839ca608
 - code: ostler/ostler/qa/report.py::build_report@0d73d5c319d1
 - code: ostler/ostler/qa/run.py::cmd_run@166d32882457

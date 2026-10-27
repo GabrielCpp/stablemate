@@ -5,7 +5,14 @@ from pathlib import Path
 
 from ostler import doctor
 from ostler.model import load
-from ostler.qa.context import EMPTY_TREE_SHA, book_context, build_context, cmd_context, validate_context
+from ostler.qa.context import (
+    EMPTY_TREE_SHA,
+    book_context,
+    build_context,
+    cmd_context,
+    cmd_context_refresh,
+    validate_context,
+)
 from ostler.qa.source_context import SourceRepository, SourceScope
 from ostler.provenance import source_freshness
 
@@ -236,3 +243,54 @@ def test_a_whole_book_context_maps_a_source_repository_from_the_empty_tree(tmp_p
     assert packet["repositories"][0]["baseSha"] == ""
     assert [unit["id"] for unit in packet["changedUnits"]] == ["repo://api-service/src/service.py"]
     assert source_freshness(packet, {"api-service": source})[0]["status"] == "fresh"
+
+
+def test_a_refresh_rebuilds_from_the_recorded_scope_after_the_story_moves(tmp_path: Path) -> None:
+    docs = tmp_path / "product-docs"
+    (docs / "docs/services/billing").mkdir(parents=True)
+    story = docs / "docs/epics/billing/stories/create-invoice/story.md"
+    story.parent.mkdir(parents=True)
+    story.write_text("---\nid: BILL-01ABCDEF\nslug: create-invoice\ntype: story\n---\n# Create\n",
+                     encoding="utf-8")
+    (docs / "docs/services/billing/create.md").write_text(
+        "---\ntype: concept\ntitle: Create invoice\n---\n# Create invoice\n\n"
+        "- code: `src/service.py::create_invoice`\n",
+        encoding="utf-8",
+    )
+    (docs / "src").mkdir()
+    (docs / "src/service.py").write_text("def create_invoice():\n    return 'old'\n",
+                                         encoding="utf-8")
+    (docs / "src/other.py").write_text("value = 0\n", encoding="utf-8")
+    base = _init(docs)
+    (docs / "src/service.py").write_text("def create_invoice():\n    return 'new'\n",
+                                         encoding="utf-8")
+    (docs / "src/other.py").write_text("value = 1\n", encoding="utf-8")
+    spec = docs / "docs/specs/create-invoice"
+    built = cmd_context(
+        docs,
+        spec,
+        base=base,
+        source_roots={"billing": ["src"]},
+        story_file=story,
+        exclude_paths=["src/other.py"],
+    )
+    story.write_text(story.read_text(encoding="utf-8") + "\nRevised.\n", encoding="utf-8")
+
+    refreshed = cmd_context_refresh(docs, spec)
+
+    assert refreshed.status != "invalid", refreshed.message
+    assert refreshed.data["inputs"] == built.data["inputs"]
+    assert refreshed.data["inputs"]["excludePaths"] == ["src/other.py"]
+    assert refreshed.data["changedCode"] == built.data["changedCode"]
+    assert refreshed.data["storyFile"]["sha256"] != built.data["storyFile"]["sha256"]
+
+
+def test_a_refresh_of_a_packet_without_recorded_inputs_is_refused(tmp_path: Path) -> None:
+    spec = tmp_path / "spec"
+    spec.mkdir()
+    (spec / "qa-okf-context.json").write_text('{"version": 1}', encoding="utf-8")
+
+    outcome = cmd_context_refresh(tmp_path, spec)
+
+    assert outcome.status == "invalid"
+    assert "ostler qa context --base" in outcome.message

@@ -349,8 +349,7 @@ def test_editing_the_story_file_after_the_packet_is_written_is_caught_and_named(
     reported = validate_v2(document)
     stale = [item for item in reported if item.startswith("stale-context:")]
     assert any("changed" in item and "story.md" in item for item in stale), reported
-    assert all("run `ostler qa context`" not in item for item in stale), stale
-    assert all("never by hand" in item for item in stale), stale
+    assert all("ostler qa context --refresh --spec" in item for item in stale), stale
 
 
 def test_deleting_the_story_file_after_the_packet_is_written_is_caught(tmp_path: Path) -> None:
@@ -405,9 +404,9 @@ def test_a_packet_with_bookfiles_but_no_story_file_key_is_refused_on_story_alone
     reported = validate_v2(document)
     assert reported == [
         "stale-context: qa-okf-context.json predates the story-drift guard "
-        "(no storyFile) — regenerate the packet from the inputs that built it: its base, "
-        "its story scope and its excluded paths. A packet a workflow built is rebuilt by "
-        "that workflow, never by hand"
+        "(no storyFile) — run `ostler qa context --refresh --spec <spec>` to rebuild it from "
+        "the base, story file, source roots and excluded paths it recorded. A rebuild from a "
+        "new `--base` drops that scope"
     ], reported
 
 

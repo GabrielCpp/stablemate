@@ -29,8 +29,8 @@ from ostler.vet import placement
 
 _BOOK_DRIFT_NAME_LIMIT = 20
 _REGENERATE = (
-    "regenerate the packet from the inputs that built it: its base, its story scope and its "
-    "excluded paths. A packet a workflow built is rebuilt by that workflow, never by hand"
+    "run `ostler qa context --refresh --spec <spec>` to rebuild it from the base, story file, "
+    "source roots and excluded paths it recorded. A rebuild from a new `--base` drops that scope"
 )
 
 _plan_harness = load_harness_module("ostler_qa")

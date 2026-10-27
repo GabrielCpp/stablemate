@@ -103,12 +103,12 @@ re-exports the public surface of all of the above (`cmd_run`, `cmd_compile_plan`
 `cmd_sensitivity`, `cmd_clean`, `build_report`, `build_evidence_map`, `build_context`, …) as
 `ostler.qa`'s flat namespace.
 
-- code: ostler/ostler/qa/context.py::build_context@ee242a66ae7c
-- code: ostler/ostler/qa/context.py::write_context@ee242a66ae7c
-- code: ostler/ostler/qa/context.py::cmd_context@ee242a66ae7c
-- code: ostler/ostler/qa/context.py::cmd_context_validate@ee242a66ae7c
-- code: ostler/ostler/qa/context.py::validate_context@ee242a66ae7c
-- code: ostler/ostler/qa/context.py::node_obligations@ee242a66ae7c
+- code: ostler/ostler/qa/context.py::build_context@1722899c30ab
+- code: ostler/ostler/qa/context.py::write_context@1722899c30ab
+- code: ostler/ostler/qa/context.py::cmd_context@1722899c30ab
+- code: ostler/ostler/qa/context.py::cmd_context_validate@1722899c30ab
+- code: ostler/ostler/qa/context.py::validate_context@1722899c30ab
+- code: ostler/ostler/qa/context.py::node_obligations@1722899c30ab
 - code: ostler/ostler/qa/packet.py::ContextPacket@44c9a86552b7
 - code: ostler/ostler/qa/packet.py::packet_of@44c9a86552b7
 - code: ostler/ostler/qa/grounding_health.py::resolve_groundings@da8a0b8f6c0f
@@ -150,10 +150,10 @@ re-exports the public surface of all of the above (`cmd_run`, `cmd_compile_plan`
 - code: ostler/ostler/qa/run_log.py::run_log_tally@b2d1c68eaf42
 - code: ostler/ostler/qa/run_log.py::passing_log_ref@b2d1c68eaf42
 - code: ostler/ostler/qa/run_log.py::failing_log_refs@b2d1c68eaf42
-- code: ostler/ostler/qa/plan.py::PlanDocument@5fa508976cef
-- code: ostler/ostler/qa/plan.py::load_plan@5fa508976cef
-- code: ostler/ostler/qa/plan.py::validate_v2@5fa508976cef
-- code: ostler/ostler/qa/plan.py::check_runtime_requirements@5fa508976cef
+- code: ostler/ostler/qa/plan.py::PlanDocument@dcbff5ecd985
+- code: ostler/ostler/qa/plan.py::load_plan@dcbff5ecd985
+- code: ostler/ostler/qa/plan.py::validate_v2@dcbff5ecd985
+- code: ostler/ostler/qa/plan.py::check_runtime_requirements@dcbff5ecd985
 - code: ostler/ostler/qa/v2.py::run_plan@fd118c311bc5
 - code: ostler/ostler/qa/captures.py::CaptureDecl@248120ebb77f
 - code: ostler/ostler/qa/captures.py::parse_bullet@248120ebb77f
@@ -206,7 +206,7 @@ re-exports the public surface of all of the above (`cmd_run`, `cmd_compile_plan`
 - code: ostler/ostler/qa/runbook.py::select_server@66911fe4abd5
 - code: ostler/ostler/qa/runbook.py::step_command@66911fe4abd5
 - code: ostler/ostler/qa/runbook.py::stack_runbooks@66911fe4abd5
-- code: ostler/ostler/qa/__init__.py@16c3e096e515
+- code: ostler/ostler/qa/__init__.py@8ab478d8d2f2
 - rule: in a workspace, a tool is opted in when the docs home or any workspace member lists it under `qa: {tools: [...]}`
 - rule: a gRPC stack bring-up with no `grpcurl` opted in fails at once at the `tools` step and never waits out its boot timeout
 - rule: when the entry address already answers before the launch, readiness waits for the launch to finish instead of trusting the probe: a launch that exits 0 handed its stack off and the serving stack is the run's, one that exits nonzero fails as a dead launch, and one still running at the boot timeout is a foreground server shadowed by the holder, so its process group is reaped and the run fails naming the holder
@@ -229,9 +229,11 @@ re-exports the public surface of all of the above (`cmd_run`, `cmd_compile_plan`
   differs from the packet's owed-obligation digest, and names the full current digest, so the
   author reconciles `covers=` and rewrites `book=` instead of rebuilding the packet.
 - a stale packet names its own repair: `validate_v2` reports `stale-context` when the story file
-  or the book moved after the packet was built, and tells the reader to rebuild the packet from
-  the inputs that built it. A packet a workflow built is rebuilt by that workflow, because the
-  `ostler qa context` command line cannot reproduce a workflow's excluded paths.
+  or the book moved after the packet was built, and names `ostler qa context --refresh`. The
+  packet records the inputs that built it under `inputs`: base, head, services root, source
+  roots, story file, excluded paths and source repositories. A refresh rebuilds from those
+  inputs, so it keeps a scope the command line cannot express, such as a workflow's excluded
+  paths. A rebuild from a new `--base` drops that scope.
 - outcome is uniform: every `ostler qa` subcommand in `run.py`, `lint.py`, `clean.py` and
   `sensitivity.py` returns a `QaOutcome`, never raises for an expected failure mode, so the CLI
   layer has one shape to render regardless of which subcommand ran.

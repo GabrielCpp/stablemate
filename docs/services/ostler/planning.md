@@ -11,7 +11,7 @@ against a small plan repo seeded under the checkout, with `-C plan-scratch`, and
 on an entity of its own, so the order the claims run in does not change an outcome.
 
 - binary: ostler
-- code: ostler/ostler/cli.py::main@97fced506443
+- code: ostler/ostler/cli.py::main@0cc25342ffe6
 
 ## Commands
 
