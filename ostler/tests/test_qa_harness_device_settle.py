@@ -339,8 +339,12 @@ class _Phone:
     AREA = (0, 275, 1080, 1517)
     ROW = 200
 
-    def __init__(self, time: _Time, *, rows: int = 12, slop: int = 20, scrollable: bool = True) -> None:
+    def __init__(
+        self, time: _Time, *, rows: int = 12, slop: int = 20, scrollable: bool = True,
+        label: Callable[[int], str] = lambda index: f"Row {index}",
+    ) -> None:
         self.time = time
+        self.label = label
         self.rows = rows
         self.slop = slop
         self.scrollable = scrollable
@@ -367,7 +371,7 @@ class _Phone:
             y = top + index * self.ROW - self.offset
             if y >= top and y + self.ROW - 20 <= bottom:
                 bounds = f"[40,{y}][1040,{y + self.ROW - 20}]"
-                drawn.append({"attributes": {"bounds": bounds, "class": "android.widget.TextView", "text": f"Row {index}"}, "children": []})
+                drawn.append({"attributes": {"bounds": bounds, "class": "android.widget.TextView", "text": self.label(index)}, "children": []})
         return json.dumps({"attributes": {}, "children": drawn})
 
     def swipe(self, x: int, y0: int, y1: int) -> None:
@@ -482,3 +486,33 @@ def test_a_list_shorter_than_one_drag_stops_after_one_forward_drag_and_restores_
     assert len(forward) == 1
     assert phone.offset <= phone.slop
     assert phone.refreshes == 0
+
+
+def test_rows_sharing_one_name_are_measured_by_vote_and_the_screen_is_restored_without_a_refresh() -> None:
+    phone = _Phone(_Time(), rows=13, label=lambda index: f"Row {index}" if index == 12 else "Open")
+
+    settled = _settle_phone(phone, _row(12))
+
+    assert settled.passed
+    assert phone.offset <= phone.slop
+    assert phone.refreshes == 0
+
+
+def test_rows_with_no_names_are_measured_and_the_screen_is_restored_without_a_refresh() -> None:
+    phone = _Phone(_Time(), label=lambda index: "")
+
+    settled = _settle_phone(phone, _row(99))
+
+    assert not settled.passed
+    assert phone.swipes
+    assert phone.offset <= phone.slop
+    assert phone.refreshes == 0
+
+
+def test_an_area_that_does_not_scroll_is_dragged_once_and_never_restored() -> None:
+    phone = _Phone(_Time(), rows=5)
+
+    settled = _settle_phone(phone, _row(99))
+
+    assert not settled.passed
+    assert len(phone.swipes) == 1

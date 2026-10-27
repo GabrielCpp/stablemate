@@ -531,10 +531,6 @@ def _inside(node: DeviceNode, area: Bounds) -> bool:
     return x1 >= area[0] and y1 >= area[1] and x2 <= area[2] and y2 <= area[3]
 
 
-def _inner(nodes: Sequence[DeviceNode], area: Bounds) -> list[DeviceNode]:
-    return [node for node in nodes if node.names and _inside(node, area)]
-
-
 def viewport_signature(nodes: Sequence[DeviceNode]) -> tuple[tuple[str, tuple[str, ...], Bounds], ...]:
     """Every named node of a reading with where it sits: equal signatures mean the screen has not moved."""
     return tuple((node.role, node.names, node.bounds) for node in nodes if node.names)
@@ -551,19 +547,34 @@ def _scroll_area(nodes: Sequence[DeviceNode]) -> Bounds | None:
     return best
 
 
-def _tops(nodes: Sequence[DeviceNode], area: Bounds) -> dict[tuple[str, tuple[str, ...]], int]:
-    """Where each node that is the only one of its name inside *area* starts."""
-    counts: dict[tuple[str, tuple[str, ...]], int] = {}
-    for node in _inner(nodes, area):
-        counts[_key(node)] = counts.get(_key(node), 0) + 1
-    return {_key(node): node.bounds[1] for node in _inner(nodes, area) if counts[_key(node)] == 1}
+def _members(nodes: Sequence[DeviceNode], area: Bounds) -> list[DeviceNode]:
+    """Every node inside *area*, named or not, except the area's own node."""
+    return [node for node in nodes if node.bounds != area and _inside(node, area)]
 
 
-def _shift(before: Sequence[DeviceNode], after: Sequence[DeviceNode], area: Bounds, fallback: float) -> float:
-    """How far the content moved up between two readings: the median over the nodes both show, else *fallback*."""
-    first, second = _tops(before, area), _tops(after, area)
-    moved = [first[key] - second[key] for key in first.keys() & second.keys()]
-    return float(statistics.median(moved)) if moved else fallback
+def _layout(nodes: Sequence[DeviceNode], area: Bounds) -> tuple[tuple[str, tuple[str, ...], Bounds], ...]:
+    return tuple((node.role, node.names, node.bounds) for node in _members(nodes, area))
+
+
+def _shift(before: Sequence[DeviceNode], after: Sequence[DeviceNode], area: Bounds, expected: float) -> float:
+    """How far the content moved up between two readings.
+
+    Every pair of same-keyed nodes votes for the distance between their tops. Identical rows make that ambiguous by multiples of the row spacing, so of the distances with at least a quarter of the top vote, the one nearest *expected* wins. With no pair at all the content is taken as still when every node sits where it did, else as moved by *expected*.
+    """
+    first, second = _members(before, area), _members(after, area)
+    votes: dict[int, list[int]] = {}
+    for a in first:
+        for b in second:
+            if _key(a) == _key(b):
+                distance = a.bounds[1] - b.bounds[1]
+                votes.setdefault(round(distance / 2), []).append(distance)
+    if not votes:
+        still = sorted(node.bounds for node in first) == sorted(node.bounds for node in second)
+        return 0.0 if still else expected
+    top = max(len(found) for found in votes.values())
+    contenders = [found for found in votes.values() if len(found) * 4 >= top]
+    chosen = min(contenders, key=lambda found: (abs(statistics.median(found) - expected), abs(statistics.median(found))))
+    return float(statistics.median(chosen))
 
 
 def scan_beyond(
@@ -608,7 +619,7 @@ def scan_beyond(
             for node in current:
                 if node.names:
                     seen.setdefault(_key(node), node)
-            moved = _shift(previous, current, area, float(length))
+            moved = _shift(previous, current, area, length - (slop if measured else FIRST_DRAG_SLOP_PX / 2))
             previous = current
             if moved <= STILL_PX:
                 break
@@ -645,18 +656,18 @@ def _restore(
     height = area[3] - area[1]
     x = (area[0] + area[2]) // 2
     top = area[1] + height // 4
-    home = viewport_signature(_inner(viewport, area))
+    home = _layout(viewport, area)
     drags = 0
     while total > RESTORED_PX and drags <= forward + 1:
         reach = int(min(total + slop, height // 2))
         swiper(x, top, top + reach)
         drags += 1
         current = look(max(deadline - clock(), RESTORE_READ_S))
-        moved = abs(_shift(previous, current, area, float(-reach)))
+        moved = abs(_shift(previous, current, area, -max(0.0, reach - slop)))
         total -= moved
         slop = max(slop, reach - moved)
         previous = current
-        if viewport_signature(_inner(current, area)) == home:
+        if _layout(current, area) == home:
             return
 
 
