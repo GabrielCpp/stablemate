@@ -109,3 +109,29 @@ def test_a_story_with_no_commit_yet_maps_only_the_worktree(run_branch: Path) -> 
 
     assert context["base"] == "HEAD"
     assert owned(context) == {"app/g.ts"}
+
+
+@pytest.fixture
+def on_trunk(run_branch: Path) -> Path:
+    """Commit delivery: the stories land on main itself, so the merge base with trunk is HEAD."""
+    git(run_branch, "checkout", "-q", "main")
+    git(run_branch, "merge", "-q", "--ff-only", "run")
+    return run_branch
+
+
+def test_on_trunk_a_story_owes_obligations_for_its_own_landed_commits(on_trunk: Path) -> None:
+    story_commit(on_trunk, "g", "acme-2")
+
+    context = packet(on_trunk, "acme-1")
+
+    assert owned(context) == {"app/f.ts"}
+    assert "app/g.ts" not in changed(context)
+
+
+def test_on_trunk_a_story_with_no_commit_yet_maps_only_the_worktree(on_trunk: Path) -> None:
+    (on_trunk / "app/g.ts").write_text("export const g = 'wip'\n", encoding="utf-8")
+
+    context = packet(on_trunk, "acme-2")
+
+    assert context["base"] == "HEAD"
+    assert owned(context) == {"app/g.ts"}

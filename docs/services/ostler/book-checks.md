@@ -10,7 +10,7 @@ they find without changing a file. Every claim here runs against a small repo se
 checkout, with `-C book-scratch`, so the real books never decide the outcome.
 
 - binary: ostler
-- code: ostler/ostler/cli.py::main@97fced506443
+- code: ostler/ostler/cli.py::main@0cc25342ffe6
 - detail: [The book's markdown model](concepts/the-books-markdown-model.md)
 
 ## Commands

@@ -37,6 +37,7 @@ from ostler.qa.evidence_map import (
 from ostler.qa.context import (
     build_context,
     cmd_context,
+    cmd_context_refresh,
     cmd_context_validate,
     render_context,
     render_obligations,
@@ -68,6 +69,7 @@ __all__ = [
     "ScratchLabelError",
     "scratch_dirname",
     "cmd_context",
+    "cmd_context_refresh",
     "cmd_context_validate",
     "build_context",
     "write_context",

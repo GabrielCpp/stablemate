@@ -20,6 +20,14 @@ your turn enforce it.
   `--offset`/`--limit` page a long section. `--json` emits the same slice as records.
   `<spec_dir>/qa-okf-context.json` is the impact authority, and `qa-okf-context.md` renders
   it.
+- The workflow builds that packet before your turn, scoped to this story's own commits. You
+  never run `ostler qa context --base`. A packet built from a new base drops that scope and
+  charges the story with every other story's obligations. A `stale-plan` finding means the
+  plan is behind the packet: reconcile the plan's `covers=` with the packet and set `book=` to
+  the value the finding names. A `stale-context` finding means the story file or the book moved
+  after the packet was built, usually through your own edit. Run
+  `ostler qa context --refresh --spec <spec_dir>` to rebuild it from the scope it recorded,
+  then validate again. A packet that looks wrong is a blocker you name in your result.
 - The implementation plans, the review results and the QA skills this repo installs.
 - `docs/qa/lessons.md` and `<spec_dir>/qa-inputs/`, when present.
 

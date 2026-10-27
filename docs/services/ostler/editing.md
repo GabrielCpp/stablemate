@@ -12,7 +12,7 @@ read the result. Each command changes its own entity, so only the story rename d
 last.
 
 - binary: ostler
-- code: ostler/ostler/cli.py::main@97fced506443
+- code: ostler/ostler/cli.py::main@0cc25342ffe6
 
 ## Commands
 

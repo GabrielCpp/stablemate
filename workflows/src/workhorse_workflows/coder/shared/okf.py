@@ -58,6 +58,14 @@ def fingerprint(signature: str | None, arguments: dict[str, object]) -> str | No
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
+def packet_digests(spec_path: Path) -> dict[str, str]:
+    """The sha256 of each packet file, so a stamp names the bytes it vouches for."""
+    return {
+        name: hashlib.sha256((spec_path / name).read_bytes()).hexdigest()
+        for name in PACKET_FILES
+    }
+
+
 def recall(spec_path: Path, key: str | None) -> OkfContextResult | None:
     """The recorded result when the packet on disk was built from exactly these inputs."""
     if key is None:
@@ -66,9 +74,12 @@ def recall(spec_path: Path, key: str | None) -> OkfContextResult | None:
         return None
     try:
         stamp = json.loads((spec_path / STAMP_FILE).read_text(encoding="utf-8"))
+        on_disk = packet_digests(spec_path)
     except (OSError, ValueError):
         return None
     if not isinstance(stamp, dict) or stamp.get("fingerprint") != key:
+        return None
+    if stamp.get("packet") != on_disk:
         return None
     recorded = stamp.get("ostler")
     return OkfContextResult(
@@ -87,6 +98,7 @@ def remember(spec_path: Path, key: str | None, result: OkfContextResult) -> None
             json.dumps(
                 {
                     "fingerprint": key,
+                    "packet": packet_digests(spec_path),
                     "status": result.status,
                     "notes": result.notes,
                     "ostler": result.ostler,
@@ -100,6 +112,14 @@ def remember(spec_path: Path, key: str | None, result: OkfContextResult) -> None
         return
 
 
+def _story_trailers(message: str) -> set[str]:
+    return {
+        line.removeprefix("Story:").strip()
+        for line in message.splitlines()
+        if line.startswith("Story:")
+    }
+
+
 def _story_paths(root: Path, base: str, refs: tuple[str, ...]) -> set[str] | None:
     """The paths this story's own commits in ``base..HEAD`` touched, or None when it has none yet."""
     wanted = set(refs)
@@ -107,19 +127,30 @@ def _story_paths(root: Path, base: str, refs: tuple[str, ...]) -> set[str] | Non
     paths: set[str] | None = None
     for record in log.split("\x1e")[1:]:
         message, _, names = record.partition("\x00")
-        trailers = {
-            line.removeprefix("Story:").strip()
-            for line in message.splitlines()
-            if line.startswith("Story:")
-        }
-        if trailers & wanted:
+        if _story_trailers(message) & wanted:
             paths = (paths or set()) | {name for name in names.splitlines() if name}
     return paths
+
+
+def _trunk_story_base(root: Path, base: str, refs: tuple[str, ...]) -> str:
+    """On trunk itself, the parent of this story's earliest commit; elsewhere ``base`` unchanged."""
+    repo = open_repo(root)
+    if repo.git.rev_parse(base) != repo.git.rev_parse("HEAD"):
+        return base
+    grep = [f"--grep={ref}" for ref in refs]
+    log = repo.git.log("--reverse", "--fixed-strings", *grep, "--format=%x1e%P%x00%B", "HEAD")
+    wanted = set(refs)
+    for record in log.split("\x1e")[1:]:
+        parents, _, message = record.partition("\x00")
+        if _story_trailers(message) & wanted and parents.split():
+            return parents.split()[0]
+    return base
 
 
 def _story_scope(root: Path, base: str, refs: tuple[str, ...]) -> tuple[str, tuple[str, ...]]:
     """The base a story's packet diffs from, and the paths changed since it that other stories own."""
     try:
+        base = _trunk_story_base(root, base, refs)
         own = _story_paths(root, base, refs)
         if own is None:
             return "HEAD", ()

@@ -227,7 +227,9 @@ def test_a_plan_compiled_from_a_different_book_is_stale(tmp_path: Path) -> None:
     document, problems = load_plan(_plan(spec, source), spec, tmp_path)
     assert not problems and document is not None
     reported = validate_v2(document)
-    assert any(item.startswith("stale-plan:") for item in reported)
+    stale = [item for item in reported if item.startswith("stale-plan:")]
+    assert stale
+    assert f'book="{book_digest(document.context)}"' in stale[0]
 
 
 def _spec_with_book_file(tmp_path: Path, content: str = "content-1") -> Path:
@@ -345,10 +347,9 @@ def test_editing_the_story_file_after_the_packet_is_written_is_caught_and_named(
     assert not problems and document is not None
     story_file.write_text("# Story 1 (revised)\n", encoding="utf-8")
     reported = validate_v2(document)
-    assert any(
-        item.startswith("stale-context:") and "changed" in item and "story.md" in item
-        for item in reported
-    ), reported
+    stale = [item for item in reported if item.startswith("stale-context:")]
+    assert any("changed" in item and "story.md" in item for item in stale), reported
+    assert all("ostler qa context --refresh --spec" in item for item in stale), stale
 
 
 def test_deleting_the_story_file_after_the_packet_is_written_is_caught(tmp_path: Path) -> None:
@@ -403,7 +404,9 @@ def test_a_packet_with_bookfiles_but_no_story_file_key_is_refused_on_story_alone
     reported = validate_v2(document)
     assert reported == [
         "stale-context: qa-okf-context.json predates the story-drift guard "
-        "(no storyFile) — run `ostler qa context` to regenerate the packet"
+        "(no storyFile) — run `ostler qa context --refresh --spec <spec>` to rebuild it from "
+        "the base, story file, source roots and excluded paths it recorded. A rebuild from a "
+        "new `--base` drops that scope"
     ], reported
 
 

@@ -134,12 +134,8 @@ def story_file_record(root: Path, story_file: Path | None) -> dict[str, str] | N
     """The packet's record of the story file its `story` and `acceptanceCriteria` keys were derived from — `None` when there was no story file to derive them from."""
     if story_file is None or not story_file.is_file():
         return None
-    try:
-        rel = story_file.resolve().relative_to(root).as_posix()
-    except ValueError:
-        rel = story_file.resolve().as_posix()
     digest = hashlib.sha256(story_file.read_bytes()).hexdigest()
-    return {"path": rel, "sha256": digest}
+    return {"path": _recorded_path(root, story_file), "sha256": digest}
 
 
 EMPTY_TREE_SHA = "4b825dc642cb6eb9a060e54bf8d69288fbee4904"
@@ -363,7 +359,8 @@ def build_context(
     book_root = _book_root(root, services_root)
     snapshot = _book_snapshot(root, base, head, services_root)
     change_set = _change_set(root, base, head, source_roots, repositories)
-    changes = _production_changes(root, change_set.changes, snapshot, {str(path) for path in exclude_paths})
+    excluded = {str(path) for path in exclude_paths}
+    changes = _production_changes(root, change_set.changes, snapshot, excluded)
     mapping = _direct_mapping(changes, snapshot, book_root, source_roots, whole_book=whole_book)
     selection = _selection(snapshot, mapping.reasons)
     verification_index = _verification_index(snapshot.book, selection.contracts | selection.journeys)
@@ -384,6 +381,15 @@ def build_context(
         "servicesRoot": services_root,
         "bookFiles": book_files(root, services_root),
         "storyFile": story_file_record(root, story_file),
+        "inputs": {
+            "base": base,
+            "head": head,
+            "servicesRoot": services_root,
+            "sourceRoots": {surface: list(paths) for surface, paths in source_roots.items()},
+            "storyFile": None if story_file is None else _recorded_path(root, story_file),
+            "excludePaths": sorted(excluded),
+            "repositories": [repository.model_dump(mode="json") for repository in repositories],
+        },
         "changedCode": changed_code,
         **({"changedUnits": changed_code, "repositories": change_set.repository_rows} if repositories else {}),
         "directNodes": [
@@ -1111,6 +1117,46 @@ def cmd_context(
                          data={"status": "invalid", "message": str(exc)})
     ok = not any(f.get("severity") == "error" for f in packet.get("healthFindings", []))
     return QaOutcome(ok=ok, message=f"wrote {json_path} and {md_path}", data=packet)
+
+
+def _recorded_path(root: Path, path: Path) -> str:
+    try:
+        return path.resolve().relative_to(root).as_posix()
+    except ValueError:
+        return path.resolve().as_posix()
+
+
+def cmd_context_refresh(root: Path, spec_dir: Path) -> QaOutcome:
+    """Rebuild the packet in *spec_dir* from the inputs it recorded, so the refresh keeps its scope."""
+    try:
+        packet = json.loads((spec_dir / "qa-okf-context.json").read_text(encoding="utf-8"))
+        inputs = packet["inputs"]
+        story = inputs["storyFile"]
+        story_path = None if story is None else Path(story)
+        return cmd_context(
+            root,
+            spec_dir,
+            base=str(inputs["base"]),
+            head=str(inputs["head"]),
+            source_roots={
+                str(surface): [str(path) for path in paths]
+                for surface, paths in inputs["sourceRoots"].items()
+            },
+            services_root=str(inputs["servicesRoot"]),
+            story_file=None if story_path is None
+            else story_path if story_path.is_absolute() else root / story_path,
+            exclude_paths=[str(path) for path in inputs["excludePaths"]],
+            repositories=tuple(
+                SourceRepository.model_validate(row) for row in inputs["repositories"]
+            ),
+        )
+    except (OSError, ValueError, KeyError, TypeError, AttributeError) as exc:
+        message = (
+            f"cannot refresh {spec_dir / 'qa-okf-context.json'}: it records no usable build "
+            f"inputs ({exc!r}). Rebuild it with `ostler qa context --base`"
+        )
+        return QaOutcome(ok=False, message=message, status="invalid",
+                         data={"status": "invalid", "message": message})
 
 
 def cmd_context_validate(spec_dir: Path) -> QaOutcome:
