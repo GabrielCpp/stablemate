@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import shlex
 import subprocess
 from pathlib import Path
 from typing import Any
 
+from farrier._vendor.stablemate_core.base_cache import cache_root
 from farrier.skill_hooks import SkillHook
 
 HOOK_COMMAND = "make farrier-run-hook"
@@ -161,6 +163,13 @@ def runner_text(hooks: list[SkillHook]) -> str:
     if not hooks:
         lines += ["# No installed skill declares a pre-commit hook.", "exit 0", ""]
         return "\n".join(lines)
+    lines += [
+        'if [ -z "${STABLEMATE_CACHE_DIR:-}" ]; then',
+        f"  STABLEMATE_CACHE_DIR={shlex.quote(str(cache_root()))}",
+        "fi",
+        "export STABLEMATE_CACHE_DIR",
+        "",
+    ]
     for hook in hooks:
         lines += [f"# {hook.skill}"]
         candidates = " ".join(

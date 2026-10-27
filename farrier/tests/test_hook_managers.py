@@ -222,6 +222,22 @@ def test_the_runner_tries_every_adapter_path_for_a_declared_hook():
         assert f"{root}/acme-ostler/scripts/g.py" in text
 
 
+def test_the_runner_exports_the_cache_dir_before_the_first_gate(monkeypatch, tmp_path: Path):
+    """A gate that fetches a tool needs the shared cache location, and the system python3 the runner uses has no way to resolve it."""
+    monkeypatch.setenv("STABLEMATE_CACHE_DIR", str(tmp_path / "my cache"))
+
+    text = runner_text([SkillHook(skill="acme-ostler", stage="pre-commit", run="scripts/g.py")])
+
+    assert f"STABLEMATE_CACHE_DIR='{tmp_path / 'my cache'}'" in text
+    assert text.index("export STABLEMATE_CACHE_DIR") < text.index("for gate in")
+
+
+def test_the_empty_runner_exports_nothing(monkeypatch, tmp_path: Path):
+    monkeypatch.setenv("STABLEMATE_CACHE_DIR", str(tmp_path))
+
+    assert "STABLEMATE_CACHE_DIR" not in runner_text([])
+
+
 def test_a_repo_whose_skills_declare_nothing_still_gets_a_runner():
     """The drift check lives in the make target, not here, so an empty runner is not an empty hook — and a repo that later selects a hook-declaring skill needs no rewiring."""
     text = runner_text([])
