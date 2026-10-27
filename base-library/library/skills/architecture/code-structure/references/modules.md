@@ -173,12 +173,12 @@ Code of another kind lives in a directory named for its kind.
 
 **Trigger.** A directory whose entries are mostly one kind, such as one subpackage per pipeline
 stage or one file per command, holding a file or subpackage that is not that kind. Shared helpers
-beside the stages are the common form. The codebase map shows it: one line does not fit the
-sentence the other lines share.
+beside the stages are the common form. A listing of the directory shows it: one entry does not fit
+the sentence the other entries share.
 
 **Fix.** Move the odd entry to the directory of its kind, creating the directory when none exists.
-Write the kind as the first line of the directory's map, so the next misplaced entry contradicts a
-written sentence.
+Write the kind as the first line of the directory's README, so the next misplaced entry contradicts
+a written sentence.
 
 The first shared helper lands beside the stages because the stages were its first callers. The
 second helper follows the first. After that the directory no longer tells a reader what it holds,
