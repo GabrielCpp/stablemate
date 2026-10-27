@@ -147,10 +147,16 @@ it.
 Excludes an element present in the tree but not on the screen, the right widget showing the
 wrong content, and one panel drawn where the book promises three.
 
+`text` is a literal piece of what the element shows, matched case for case. It is not a
+pattern, on any driver: `text="Open tickets: "` holds on "Open tickets: 4", and a `.*` in it
+looks for a dot and a star. A value the scenario only knows at run time is a reference, such as
+`text="Printer jams @signed-in-customer.stamp"`.
+
 With `count`, the check counts the elements the locator matches that are on the screen, and that
 say `text` when it is given. It passes on exactly that many. A claim that a screen "renders one
 tab panel per tab" is `visible(locator="[role=tabpanel]", count=3)` on a screen with three tabs.
-`count=0` claims none is shown, which is `hidden` for a whole set.
+`count=0` claims none is shown, which is `hidden` for a whole set. The mobile driver cannot count
+what it matches, so `count` on a phone screen gaps instead of compiling.
 
 ### `actionable(locator*=<str> (locator))`
 Excludes a control the book says the user can use and the product has disabled — which
