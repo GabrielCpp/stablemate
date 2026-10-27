@@ -325,3 +325,160 @@ def test_a_failed_phone_check_records_what_the_screen_showed(tmp_path: Path) -> 
     qa.verify("visible", passed)
 
     assert [record.get("seen") for record in emitted] == ["maestro stopped at: x", None]
+
+
+class _Time:
+    def __init__(self) -> None:
+        self.now = 0.0
+
+    def __call__(self) -> float:
+        return self.now
+
+
+class _Phone:
+    AREA = (0, 275, 1080, 1517)
+    ROW = 200
+
+    def __init__(self, time: _Time, *, rows: int = 12, slop: int = 20, scrollable: bool = True) -> None:
+        self.time = time
+        self.rows = rows
+        self.slop = slop
+        self.scrollable = scrollable
+        self.offset = 0
+        self.swipes: list[tuple[int, int, int]] = []
+        self.refreshes = 0
+        self.reads = 0
+
+    def read(self, timeout: float) -> str:
+        self.reads += 1
+        self.time.now += 0.2
+        left, top, right, bottom = self.AREA
+        drawn: list[dict[str, Any]] = [
+            {"attributes": {"bounds": "[0,0][1080,275]", "class": "android.widget.TextView", "text": "Header"}, "children": []},
+            {
+                "attributes": {
+                    "bounds": f"[{left},{top}][{right},{bottom}]", "class": "android.widget.ScrollView",
+                    "scrollable": "true" if self.scrollable else "false",
+                },
+                "children": [],
+            },
+        ]
+        for index in range(self.rows):
+            y = top + index * self.ROW - self.offset
+            if y >= top and y + self.ROW - 20 <= bottom:
+                bounds = f"[40,{y}][1040,{y + self.ROW - 20}]"
+                drawn.append({"attributes": {"bounds": bounds, "class": "android.widget.TextView", "text": f"Row {index}"}, "children": []})
+        return json.dumps({"attributes": {}, "children": drawn})
+
+    def swipe(self, x: int, y0: int, y1: int) -> None:
+        self.time.now += 0.5
+        self.swipes.append((x, y0, y1))
+        if y1 > y0 and self.offset == 0:
+            self.refreshes += 1
+        reach = y0 - y1
+        moved = reach - self.slop if reach > 0 else reach + self.slop
+        longest = self.rows * self.ROW - (self.AREA[3] - self.AREA[1])
+        self.offset = max(0, min(longest, self.offset + moved))
+
+
+class _PhoneScreen(hierarchy.DeviceScreen):
+    def __init__(self, phone: _Phone) -> None:
+        super().__init__(phone.read, phone.swipe, phone.time)
+        self._time = phone.time
+
+    def pause(self, seconds: float) -> None:
+        self._time.now += seconds
+
+
+def _settle_phone(phone: _Phone, *perceivables: dict[str, Any]) -> Any:
+    return settle.settle_screen(
+        _PhoneScreen(phone), None, NODE, since=0, requests=[], busy=None,
+        states={"loaded": list(perceivables)}, expect="loaded", ceiling_s=30, clock=phone.time,
+    )
+
+
+def _row(index: int, **fields: Any) -> dict[str, Any]:
+    return {"role": "button", "name": f"Row {index}", **fields}
+
+
+def test_a_state_naming_a_row_below_the_fold_settles_on_that_state() -> None:
+    phone = _Phone(_Time())
+
+    settled = _settle_phone(phone, _row(9))
+
+    assert settled.passed
+    assert settled.held == "loaded"
+
+
+def test_an_absent_perceivable_below_the_fold_keeps_its_state_from_holding() -> None:
+    phone = _Phone(_Time())
+
+    settled = _settle_phone(phone, _row(2), _row(11, absent=True))
+
+    assert not settled.passed
+
+
+def test_the_screen_is_back_where_it_started_and_never_pulled_to_refresh() -> None:
+    phone = _Phone(_Time())
+
+    _settle_phone(phone, _row(11))
+
+    assert phone.swipes
+    assert phone.offset <= phone.slop
+    assert phone.refreshes == 0
+
+
+def test_a_screen_with_nothing_scrollable_never_swipes() -> None:
+    phone = _Phone(_Time(), scrollable=False)
+
+    settled = _settle_phone(phone, _row(11))
+
+    assert not settled.passed
+    assert phone.swipes == []
+
+
+def test_a_row_in_the_viewport_never_swipes() -> None:
+    phone = _Phone(_Time())
+
+    settled = _settle_phone(phone, _row(3))
+
+    assert settled.passed
+    assert phone.swipes == []
+
+
+def test_two_reads_of_an_unchanged_viewport_scan_once() -> None:
+    phone = _Phone(_Time())
+    screen = _PhoneScreen(phone)
+
+    first = screen.read(30)
+    assert first is not None
+    first.shown(_row(99))
+    swipes = len(phone.swipes)
+    second = screen.read(30)
+    assert second is not None
+    second.shown(_row(98))
+
+    assert swipes > 0
+    assert len(phone.swipes) == swipes
+
+
+def test_a_settle_that_times_out_lists_the_rows_found_below_the_fold() -> None:
+    phone = _Phone(_Time())
+
+    settled = _settle_phone(phone, _row(99))
+
+    assert not settled.passed
+    assert "button 'Row 11'" not in settled.message
+    assert "element 'Row 11'" in settled.message
+
+
+def test_a_list_shorter_than_one_drag_stops_after_one_forward_drag_and_restores_without_a_refresh() -> None:
+    phone = _Phone(_Time(), rows=7)
+
+    settled = _settle_phone(phone, _row(99))
+
+    forward = [swipe for swipe in phone.swipes if swipe[2] < swipe[1]]
+    assert not settled.passed
+    assert len(forward) == 1
+    assert phone.offset <= phone.slop
+    assert phone.refreshes == 0

@@ -392,3 +392,42 @@ def test_a_missing_maestro_raises_the_install_message(monkeypatch: pytest.Monkey
 
     with pytest.raises(RuntimeError, match="the maestro CLI is not installed on this machine"):
         hierarchy.ResidentReader()(5)
+
+
+def _device_node(text: str) -> object:
+    raw = _hierarchy(_drawn(**{"class": "android.widget.TextView", "text": text}))
+    return hierarchy.parse_device_nodes(raw)[0]
+
+
+def test_a_device_node_carries_its_bounds_and_whether_it_scrolls() -> None:
+    raw = _hierarchy(_drawn(**{"class": "android.widget.ScrollView", "scrollable": "true", "bounds": "[0,275][1080,1517]"}))
+
+    node = hierarchy.parse_device_nodes(raw)[0]
+
+    assert (node.bounds, node.scrollable) == ((0, 275, 1080, 1517), True)
+
+
+def test_a_reading_asks_its_scan_only_on_a_miss_and_only_once() -> None:
+    calls: list[int] = []
+
+    def scan() -> list[object]:
+        calls.append(1)
+        return [_device_node("Below the fold")]
+
+    nodes = hierarchy.parse_device_nodes(_hierarchy(_drawn(**{"class": "android.widget.TextView", "text": "Here"})))
+    reading = hierarchy.DeviceReading(nodes, scan)
+
+    assert reading.shown({"role": "button", "name": "Here"})
+    assert calls == []
+    assert reading.shown({"role": "button", "name": "Below the fold"})
+    assert not reading.shown({"role": "button", "name": "Nowhere"})
+    assert calls == [1]
+
+
+def test_an_inventory_lists_the_scanned_nodes_after_the_viewport_ones() -> None:
+    nodes = hierarchy.parse_device_nodes(_hierarchy(_drawn(**{"class": "android.widget.TextView", "text": "Here"})))
+    reading = hierarchy.DeviceReading(nodes, lambda: [_device_node("There")])
+
+    assert reading.inventory() == "element 'Here'"
+    reading.shown({"role": "button", "name": "There"})
+    assert reading.inventory() == "element 'Here', element 'There'"

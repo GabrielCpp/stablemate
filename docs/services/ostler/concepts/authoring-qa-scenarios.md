@@ -68,7 +68,9 @@ a browser, the named nodes of the view hierarchy on a device.
 `ostler_qa_transfer.py` simulates OS-level file handling a browser cannot do through its own
 API: pasting text or HTML onto a locator, or dragging/choosing a file onto an upload control.
 `ostler_qa_hierarchy.py` is the mobile equivalent of the DOM readers, scanning a device's
-accessibility tree through `maestro` or `uiautomator` instead of a browser. `ostler_qa_scan.py`
+accessibility tree through `maestro` or `uiautomator` instead of a browser. A phone settle reads
+through one resident `maestro mcp` session per run, and `DeviceReading` and `DeviceScreen` judge
+a perceivable over the screen's whole scrollable content. `ostler_qa_scan.py`
 is the browser-side counterpart: it merges overlapping element rectangles into the regions
 `summarize` turns into a vet manifest, the same shape `ostler vet` registers against a book's
 documented components.
@@ -137,10 +139,12 @@ harness as book content.
 - code: ostler/ostler/qa/harness/ostler_qa_transfer.py::paste@02ae85efa7b7
 - code: ostler/ostler/qa/harness/ostler_qa_transfer.py::drop@02ae85efa7b7
 - code: ostler/ostler/qa/harness/ostler_qa_transfer.py::upload@02ae85efa7b7
-- code: ostler/ostler/qa/harness/ostler_qa_hierarchy.py::scan@afdd9406b9cd
-- code: ostler/ostler/qa/harness/ostler_qa_hierarchy.py::parse_maestro@afdd9406b9cd
-- code: ostler/ostler/qa/harness/ostler_qa_hierarchy.py::parse_device_nodes@afdd9406b9cd
-- code: ostler/ostler/qa/harness/ostler_qa_hierarchy.py::parse_uiautomator@afdd9406b9cd
+- code: ostler/ostler/qa/harness/ostler_qa_hierarchy.py::scan@e89664bd85f0
+- code: ostler/ostler/qa/harness/ostler_qa_hierarchy.py::parse_maestro@e89664bd85f0
+- code: ostler/ostler/qa/harness/ostler_qa_hierarchy.py::parse_device_nodes@e89664bd85f0
+- code: ostler/ostler/qa/harness/ostler_qa_hierarchy.py::DeviceReading@e89664bd85f0
+- code: ostler/ostler/qa/harness/ostler_qa_hierarchy.py::DeviceScreen@e89664bd85f0
+- code: ostler/ostler/qa/harness/ostler_qa_hierarchy.py::parse_uiautomator@e89664bd85f0
 - code: ostler/ostler/qa/harness/ostler_qa_lap.py::Arranged@908f9ce8d348
 - code: ostler/ostler/qa/harness/ostler_qa_lap.py::LapRecord@908f9ce8d348
 - code: ostler/ostler/qa/harness/ostler_qa_checkout.py::copy_checkout@d2d64738e2dc
@@ -166,3 +170,7 @@ harness as book content.
 - checkout isolation: `copy_checkout` always excludes the checkout's own `qa/` directory from the
   copy it makes, so a scenario reading the book's working tree can never read the harness that is
   running it.
+- whole-screen settle: a phone settle judges a perceivable over the screen's whole scrollable
+  content, as a browser counts an element below the fold as visible. On a miss in the viewport the
+  reading drags the largest scrollable area forward, reads after each drag, and drags back by the
+  distance it measured, never past the starting position, so a pull-to-refresh never fires.

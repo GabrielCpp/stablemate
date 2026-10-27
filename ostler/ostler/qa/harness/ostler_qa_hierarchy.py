@@ -11,11 +11,12 @@ import os
 import queue
 import re
 import shutil
+import statistics
 import subprocess
 import threading
 import time
 import xml.etree.ElementTree as ET
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import IO, Any
@@ -90,6 +91,26 @@ CSV_HEADER = "element_num,depth,bounds,attributes,parent_num"
 SERIAL_TIMEOUT_S = 15.0
 
 SESSION_STOP_S = 5.0
+
+MIN_SCROLL_AREA_PX = 300
+
+MAX_FORWARD_DRAGS = 6
+
+STILL_PX = 4
+
+RESTORED_PX = 8
+
+END_MARGIN_PX = 16
+
+FIRST_DRAG_SLOP_PX = 64
+
+SCAN_MARGIN_S = 2.0
+
+RESTORE_READ_S = 10.0
+
+SWIPE_TIMEOUT_S = 15.0
+
+SWIPE_HOLD_S = 0.3
 
 
 def role_for(class_name: str) -> str:
@@ -381,15 +402,29 @@ def resident_reader(timeout: float) -> str:
     return csv_to_hierarchy(RESIDENT(timeout))
 
 
+def adb_swipe(x: int, y0: int, y1: int) -> None:
+    """Drag from (x, y0) to (x, y1) and hold still before lifting, so the list does not fling past the drag."""
+    moves = [f"input motionevent MOVE {x} {y0 + (y1 - y0) * step // 4}" for step in range(1, 5)]
+    command = "; ".join(
+        [f"input motionevent DOWN {x} {y0}", *moves, f"sleep {SWIPE_HOLD_S:g}", f"input motionevent UP {x} {y1}"]
+    )
+    _run(["adb", "shell", command], timeout=SWIPE_TIMEOUT_S)
+
+
+Bounds = tuple[int, int, int, int]
+
+
 @dataclass(frozen=True)
 class DeviceNode:
-    """What a settle reads of one drawn hierarchy node: its role, the names it answers to, and its states when the hierarchy reports them."""
+    """What a settle reads of one drawn hierarchy node: its role, the names it answers to, where it sits, and its states when the hierarchy reports them."""
 
     role: str
     names: tuple[str, ...]
     enabled: bool | None
     checked: bool | None
     selected: bool | None
+    bounds: Bounds
+    scrollable: bool | None
 
 
 def _flag(node: Mapping[str, Any], attributes: Mapping[str, Any], key: str) -> bool | None:
@@ -426,6 +461,7 @@ def parse_device_nodes(raw: str) -> list[DeviceNode]:
             role_for(class_name), names,
             _flag(node, attributes, "enabled"), _flag(node, attributes, "checked"),
             _flag(node, attributes, "selected"),
+            (x, y, x2, y2), _flag(node, attributes, "scrollable"),
         ))
     return nodes
 
@@ -438,27 +474,40 @@ def _named(node: DeviceNode, role: str, name: str) -> bool:
     return any(pattern.match(found) for found in node.names)
 
 
-class DeviceReading:
-    """One view hierarchy, asked whether a perceivable is drawn on it."""
+def _matches(nodes: Sequence[DeviceNode], perceivable: Mapping[str, Any]) -> bool:
+    role, name = str(perceivable["role"]), str(perceivable["name"])
+    announced = role in ANNOUNCED_ROLES
+    return any(
+        _named(node, role, name)
+        and (announced or not node.role or node.role == role)
+        and (not perceivable.get("disabled") or node.enabled is False)
+        and (not perceivable.get("checked") or node.checked is True)
+        and (not perceivable.get("selected") or node.selected is True)
+        for node in nodes
+    )
 
-    def __init__(self, nodes: list[DeviceNode]) -> None:
+
+class DeviceReading:
+    """One view hierarchy, asked whether a perceivable is drawn on the screen's whole scrollable content, the way a browser counts an element below the fold as visible. A miss in the viewport asks *scan* once for the nodes beyond it."""
+
+    def __init__(self, nodes: list[DeviceNode], scan: Callable[[], list[DeviceNode]] | None = None) -> None:
         self._nodes = nodes
+        self._scan = scan
+        self._beyond: list[DeviceNode] | None = None
+
+    def _scanned(self) -> list[DeviceNode]:
+        if self._beyond is None and self._scan is not None:
+            self._beyond = self._scan()
+        return self._beyond or []
 
     def shown(self, perceivable: Mapping[str, Any]) -> bool:
-        role, name = str(perceivable["role"]), str(perceivable["name"])
-        announced = role in ANNOUNCED_ROLES
-        return any(
-            _named(node, role, name)
-            and (announced or not node.role or node.role == role)
-            and (not perceivable.get("disabled") or node.enabled is False)
-            and (not perceivable.get("checked") or node.checked is True)
-            and (not perceivable.get("selected") or node.selected is True)
-            for node in self._nodes
-        )
+        if _matches(self._nodes, perceivable):
+            return True
+        return self._scan is not None and _matches(self._scanned(), perceivable)
 
     def inventory(self) -> str:
         entries: list[str] = []
-        for node in self._nodes:
+        for node in [*self._nodes, *(self._beyond or [])]:
             if not node.names:
                 continue
             entry = f"{node.role or 'element'} {node.names[0][:80]!r}"
@@ -468,18 +517,180 @@ class DeviceReading:
         return text + ", …" if len(entries) > INVENTORY_ENTRIES else text
 
 
-class DeviceScreen:
-    """The device behind `maestro mcp`, read one hierarchy at a time."""
+Reader = Callable[[float], str]
 
-    def __init__(self, reader: Callable[[float], str] = resident_reader) -> None:
+Swiper = Callable[[int, int, int], None]
+
+
+def _key(node: DeviceNode) -> tuple[str, tuple[str, ...]]:
+    return node.role, node.names
+
+
+def _inside(node: DeviceNode, area: Bounds) -> bool:
+    x1, y1, x2, y2 = node.bounds
+    return x1 >= area[0] and y1 >= area[1] and x2 <= area[2] and y2 <= area[3]
+
+
+def _inner(nodes: Sequence[DeviceNode], area: Bounds) -> list[DeviceNode]:
+    return [node for node in nodes if node.names and _inside(node, area)]
+
+
+def viewport_signature(nodes: Sequence[DeviceNode]) -> tuple[tuple[str, tuple[str, ...], Bounds], ...]:
+    """Every named node of a reading with where it sits: equal signatures mean the screen has not moved."""
+    return tuple((node.role, node.names, node.bounds) for node in nodes if node.names)
+
+
+def _scroll_area(nodes: Sequence[DeviceNode]) -> Bounds | None:
+    """The scrollable node with the largest area that is at least tall enough to drag inside."""
+    best: Bounds | None = None
+    best_area = 0
+    for node in nodes:
+        x1, y1, x2, y2 = node.bounds
+        if node.scrollable and y2 - y1 >= MIN_SCROLL_AREA_PX and (x2 - x1) * (y2 - y1) > best_area:
+            best, best_area = node.bounds, (x2 - x1) * (y2 - y1)
+    return best
+
+
+def _tops(nodes: Sequence[DeviceNode], area: Bounds) -> dict[tuple[str, tuple[str, ...]], int]:
+    """Where each node that is the only one of its name inside *area* starts."""
+    counts: dict[tuple[str, tuple[str, ...]], int] = {}
+    for node in _inner(nodes, area):
+        counts[_key(node)] = counts.get(_key(node), 0) + 1
+    return {_key(node): node.bounds[1] for node in _inner(nodes, area) if counts[_key(node)] == 1}
+
+
+def _shift(before: Sequence[DeviceNode], after: Sequence[DeviceNode], area: Bounds, fallback: float) -> float:
+    """How far the content moved up between two readings: the median over the nodes both show, else *fallback*."""
+    first, second = _tops(before, area), _tops(after, area)
+    moved = [first[key] - second[key] for key in first.keys() & second.keys()]
+    return float(statistics.median(moved)) if moved else fallback
+
+
+def scan_beyond(
+    viewport: list[DeviceNode], deadline: float, reader: Reader, swiper: Swiper, clock: Callable[[], float],
+) -> tuple[list[DeviceNode], bool]:
+    """The nodes the largest scrollable area holds beyond the viewport, and whether the scan finished.
+
+    Drags the area forward, reads after each drag, then drags back by the distance it measured and never past the starting position, so a pull-to-refresh never fires.
+    """
+    area = _scroll_area(viewport)
+    if area is None:
+        return [], True
+    height = area[3] - area[1]
+    x = (area[0] + area[2]) // 2
+    start = area[1] + height * 3 // 4
+    end = area[1] + height // 4
+    length = start - end
+    seen: dict[tuple[str, tuple[str, ...]], DeviceNode] = {}
+    previous = viewport
+    total = 0.0
+    slop = 0.0
+    measured = False
+    forward = 0
+    spent = 0.0
+    complete = True
+    failure: Exception | None = None
+
+    def look(within: float) -> list[DeviceNode]:
+        return parse_device_nodes(reader(max(0.001, within)))
+
+    try:
+        while forward < MAX_FORWARD_DRAGS:
+            mean = spent / forward if forward else 0.0
+            if deadline - clock() < mean * forward + SCAN_MARGIN_S:
+                complete = False
+                break
+            began = clock()
+            swiper(x, start, end)
+            forward += 1
+            current = look(deadline - clock())
+            spent += clock() - began
+            for node in current:
+                if node.names:
+                    seen.setdefault(_key(node), node)
+            moved = _shift(previous, current, area, float(length))
+            previous = current
+            if moved <= STILL_PX:
+                break
+            total += moved
+            allowance = slop if measured else FIRST_DRAG_SLOP_PX
+            if moved < length - allowance - END_MARGIN_PX:
+                break
+            if not measured:
+                slop, measured = max(0.0, length - moved), True
+    except subprocess.TimeoutExpired:
+        complete = False
+    except Exception as exc:
+        failure = exc
+
+    try:
+        _restore(previous, viewport, area, total, slop, forward, look, swiper, deadline, clock)
+    except subprocess.TimeoutExpired:
+        complete = False
+    except Exception as exc:
+        failure = failure or exc
+    if failure is not None:
+        raise failure
+
+    home = {_key(node) for node in viewport}
+    return [node for key, node in seen.items() if key not in home], complete
+
+
+def _restore(
+    previous: Sequence[DeviceNode], viewport: Sequence[DeviceNode], area: Bounds, total: float, slop: float,
+    forward: int, look: Callable[[float], list[DeviceNode]], swiper: Swiper, deadline: float,
+    clock: Callable[[], float],
+) -> None:
+    """Drag back down by *total*, never when it is already near zero, since a downward drag at the top pulls to refresh."""
+    height = area[3] - area[1]
+    x = (area[0] + area[2]) // 2
+    top = area[1] + height // 4
+    home = viewport_signature(_inner(viewport, area))
+    drags = 0
+    while total > RESTORED_PX and drags <= forward + 1:
+        reach = int(min(total + slop, height // 2))
+        swiper(x, top, top + reach)
+        drags += 1
+        current = look(max(deadline - clock(), RESTORE_READ_S))
+        moved = abs(_shift(previous, current, area, float(-reach)))
+        total -= moved
+        slop = max(slop, reach - moved)
+        previous = current
+        if viewport_signature(_inner(current, area)) == home:
+            return
+
+
+class DeviceScreen:
+    """The device behind `maestro mcp`, read one hierarchy at a time and scrolled to find what lies beyond the viewport."""
+
+    def __init__(
+        self,
+        reader: Reader = resident_reader,
+        swiper: Swiper = adb_swipe,
+        clock: Callable[[], float] = time.monotonic,
+    ) -> None:
         self._reader = reader
+        self._swiper = swiper
+        self._clock = clock
+        self._cache: tuple[tuple[Any, ...], list[DeviceNode]] | None = None
 
     def read(self, within: float) -> Reading | None:
+        deadline = self._clock() + within
         try:
             raw = self._reader(within)
         except subprocess.TimeoutExpired:
             return None
-        return DeviceReading(parse_device_nodes(raw))
+        nodes = parse_device_nodes(raw)
+        return DeviceReading(nodes, lambda: self._beyond(nodes, deadline))
+
+    def _beyond(self, viewport: list[DeviceNode], deadline: float) -> list[DeviceNode]:
+        signature = viewport_signature(viewport)
+        if self._cache is not None and self._cache[0] == signature:
+            return self._cache[1]
+        beyond, complete = scan_beyond(viewport, deadline, self._reader, self._swiper, self._clock)
+        if complete:
+            self._cache = (signature, beyond)
+        return beyond
 
     def pause(self, seconds: float) -> None:
         time.sleep(seconds)
