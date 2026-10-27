@@ -24,7 +24,10 @@ your turn enforce it.
   never run `ostler qa context`. A hand-built packet drops that scope and charges the story
   with every other story's obligations. A `stale-plan` finding means the plan is behind the
   packet: reconcile the plan's `covers=` with the packet and set `book=` to the value the
-  finding names. A packet that looks wrong is a blocker you name in your result.
+  finding names. A `stale-context` finding means the story file or the book moved after the
+  packet was built, usually through your own edit. The workflow rebuilds the packet when your
+  turn ends and validates the plan against it, so finish the turn on the plan as it stands. A
+  packet that looks wrong is a blocker you name in your result.
 - The implementation plans, the review results and the QA skills this repo installs.
 - `docs/qa/lessons.md` and `<spec_dir>/qa-inputs/`, when present.
 

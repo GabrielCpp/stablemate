@@ -15,6 +15,8 @@ fingerprint still matches the repository state and the arguments that shaped the
 - rule: the QA lane owns the packet. The QA turn reads it through `ostler qa context-show` and
   never runs `ostler qa context`, because a hand-built packet drops the story scope and charges
   the story with every other story's obligations. A `stale-plan` finding is repaired in the plan.
+  A `stale-context` finding ends the turn, because the lane rebuilds the packet after every QA
+  turn before it validates the plan.
 - tests: `workflows/tests/coder/docs/test_flow.py::test_sources_inside_the_docs_worktree_take_the_local_route`
 
 ## Fields
