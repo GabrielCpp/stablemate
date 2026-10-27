@@ -10,6 +10,7 @@ from pathlib import Path
 import pytest
 from ostler import Ostler, doctor
 from ostler.model import load
+from pydantic import ValidationError
 from workhorse._vendor.stablemate_core import config as core_config
 from workhorse.pyflow.blueprint import node_spec
 from workhorse_workflows.coder.shared.backlog import close_fix_item, file_follow_up_backlog, seed_fix_story
@@ -133,8 +134,14 @@ def test_nothing_filed_commits_nothing(
     assert git(repo, "rev-parse", "HEAD").stdout == head
 
 
-@pytest.mark.parametrize("over", [{"area": ""}, {"pattern": ""}])
-def test_a_follow_up_without_an_area_or_a_pattern_is_refused_with_a_reason(
+@pytest.mark.parametrize("area", ["", "api/internal/core/calculation/compile.go", "Billing"])
+def test_a_follow_up_whose_area_is_not_one_kebab_word_fails_the_turn_s_result(area: str) -> None:
+    with pytest.raises(ValidationError, match="area"):
+        _follow_up("Warm the cache", area=area)
+
+
+@pytest.mark.parametrize("over", [{"pattern": ""}])
+def test_a_follow_up_without_a_pattern_is_refused_with_a_reason(
     repo: Path,
     artifacts: Path,
     logger: logging.Logger,

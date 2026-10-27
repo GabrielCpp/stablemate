@@ -24,8 +24,9 @@ class FollowUp(CoderResult):
         "workspace gives it. Leave it empty only when the run has one repository.",
     )
     area: str = Field(
+        pattern=r"^[a-z0-9][a-z0-9-]*$",
         description="The module or service area the work sits in, as one lowercase kebab "
-        "word such as `billing` or `auth`.",
+        "word such as `billing` or `auth`. Never a file path: the files go in `symbols`.",
     )
     pattern: str = Field(
         description="The kind of fix the work calls for, as a short lowercase kebab phrase "

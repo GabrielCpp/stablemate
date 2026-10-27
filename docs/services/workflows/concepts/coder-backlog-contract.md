@@ -25,6 +25,7 @@ the review-debt workflow: no coder lane drains them.
 - code: `workflows/src/workhorse_workflows/coder/shared/backlog.py::select_fix_item` @a57d509225b0
 - code: `workflows/src/workhorse_workflows/coder/shared/backlog.py::seed_fix_story` @a57d509225b0
 - code: `workflows/src/workhorse_workflows/coder/shared/backlog.py::close_fix_item` @a57d509225b0
+- rule: a dev turn's follow-up `area` is checked against the register's one-kebab-segment rule when the turn returns its result, so a file path costs the agent one correction prompt and never a dropped record
 - tests: `workflows/tests/coder/shared/test_qa_leftovers_backlog.py::test_each_item_becomes_a_qa_record_in_one_artifacts_commit`
 - tests: `workflows/tests/coder/shared/test_follow_up_backlog.py::test_the_filed_follow_ups_are_committed_to_the_artifacts_repo_and_leave_the_code_repo_clean`
 - tests: `workflows/tests/coder/shared/test_deferred_obligations_backlog.py::test_each_page_with_deferred_checks_becomes_one_record_in_one_artifacts_commit`
