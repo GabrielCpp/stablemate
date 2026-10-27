@@ -10,7 +10,7 @@ import pytest
 
 from workhorse.pyflow import NodeNotRunError, WorkflowFailed
 
-from workhorse_workflows.coder.shared.conversation import backbone
+from workhorse_workflows.coder.shared.conversation import backbone, opening_phase
 from workhorse_workflows.coder.docs import flow as docs_flow
 from workhorse_workflows.coder.docs.flow import Docs
 from workhorse_workflows.coder.dev.flow import Dev
@@ -220,3 +220,23 @@ def test_a_refix_keeps_the_owner_conversation_for_the_recheck(spy: _Spy) -> None
 
     assert isinstance(done.result, QaFlowResult) and done.result.status == "refix"
     assert spy.resets == []
+
+
+def test_an_empty_session_has_no_opening_phase() -> None:
+    assert opening_phase({"plan": ""}, "") == ""
+
+
+def test_a_session_no_phase_ran_on_has_no_opening_phase() -> None:
+    assert opening_phase({"plan": "sess-1", "build": "sess-1"}, "sess-2") == ""
+
+
+def test_the_first_phase_on_a_session_opens_it() -> None:
+    ledger = {"plan": "sess-1", "build": "sess-1", "review": "sess-1"}
+
+    assert opening_phase(ledger, "sess-1") == "plan"
+
+
+def test_a_phase_moved_to_a_new_session_opens_that_session() -> None:
+    ledger = {"plan": "sess-1", "build": "sess-1", "review": "sess-2"}
+
+    assert opening_phase(ledger, "sess-2") == "review"

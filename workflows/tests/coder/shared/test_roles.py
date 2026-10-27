@@ -15,7 +15,14 @@ CODER = Path(roles.__file__).resolve().parent.parent
 
 PROMPT_DIRS = sorted(CODER.glob("*/prompts"))
 
-MECHANICS = {"dev-follow-up", "fix-merge", "judge", "resolve-operator"}
+MECHANICS = {
+    "dev-answer-file",
+    "dev-follow-up",
+    "dev-reviewer",
+    "fix-merge",
+    "judge",
+    "resolve-operator",
+}
 
 
 def _stems(directory: Path) -> set[str]:

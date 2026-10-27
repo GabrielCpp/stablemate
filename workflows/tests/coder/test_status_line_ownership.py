@@ -4,6 +4,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
+from workhorse.templates import render
 
 import workhorse_workflows
 from workhorse_workflows.coder.shared.schemas.dev import StoryStatusCheck
@@ -19,6 +20,11 @@ UNAUTHORIZED = sorted(
 PROHIBITIONS = ("Do **not**", "do **not**", "exactly as you found them")
 
 
+def _fresh_brief(prompt: Path) -> str:
+    relative = prompt.relative_to(CODER).as_posix()
+    return render(relative, {"opening_brief": "", "_node_cwd": str(CODER)}, CODER)
+
+
 def _id(path: Path) -> str:
     return f"{path.parent.parent.name}/{path.stem}"
 
@@ -31,17 +37,25 @@ def test_every_named_prompt_exists() -> None:
 @pytest.mark.parametrize("prompt", UNAUTHORIZED, ids=_id)
 def test_the_prompt_forbids_writing_the_story_status_line(prompt: Path) -> None:
     """Each names the status line and prohibits editing it."""
-    text = prompt.read_text(encoding="utf-8")
-    section = text.partition("## Story Status")[2]
+    section = _fresh_brief(prompt).partition("## Story Status")[2]
     assert section, f"{prompt} has no `## Story Status` section"
     assert "Implementation Status" in section, prompt
     assert any(phrase in section for phrase in PROHIBITIONS), prompt
 
 
+@pytest.mark.parametrize("prompt", UNAUTHORIZED, ids=_id)
+def test_a_primed_brief_points_at_the_opening_brief_instead(prompt: Path) -> None:
+    """A later phase on the conversation repeats no status rule and names the brief that holds it."""
+    relative = prompt.relative_to(CODER).as_posix()
+    text = render(relative, {"opening_brief": "/briefs/plan.md", "_node_cwd": str(CODER)}, CODER)
+    assert "## Story Status" not in text, prompt
+    assert "/briefs/plan.md" in text, prompt
+
+
 def test_the_guard_names_what_enforces_it() -> None:
     """Each prompt points at the machinery that re-reads the line, not at a bare rule."""
     for prompt in UNAUTHORIZED:
-        section = prompt.read_text(encoding="utf-8").partition("## Story Status")[2]
+        section = _fresh_brief(prompt).partition("## Story Status")[2]
         assert "gate" in section, prompt
 
 

@@ -1,9 +1,12 @@
 """The static read of `coder`: every prompt named, every state reachable, nothing drawn as `?`."""
 from __future__ import annotations
 
+from pathlib import Path
+
 from workhorse.pyflow.graph import registry_graphs
 from workhorse.pyflow.preflight import preflight
 
+from workhorse_workflows.coder.dev.flow import REVIEW_REFERENCES
 from workhorse_workflows.coder.workflow import workflow
 
 
@@ -18,4 +21,6 @@ def test_the_static_read_names_every_prompt_the_coder_renders() -> None:
         for p in workflow.directory().glob("*/prompts/*.md")
         if not p.name.startswith("_")
     }
-    assert rendered == on_disk
+    references = {f"dev/prompts/{Path(t).name}" for t in REVIEW_REFERENCES.values()}
+    assert rendered | references == on_disk
+    assert rendered.isdisjoint(references)

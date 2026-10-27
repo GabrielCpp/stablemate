@@ -195,6 +195,7 @@ class _Agent:
         self.calls: list[str] = []
         self.args: list[dict[str, Any]] = []
         self.powers: list[tuple[str, str | None]] = []
+        self.rebriefs: list[Callable[[], str] | None] = []
 
     def __call__(self, node: Any, ctx: Any, *args: Any, **kwargs: Any) -> Any:
         stem = Path(node.prompt).stem
@@ -202,6 +203,7 @@ class _Agent:
         self.calls.append(stem)
         self.args.append(data)
         self.powers.append((stem, node.power))
+        self.rebriefs.append(kwargs.get("rebrief"))
         if self.session is not None and len(args) > 1:
             chain = Path(args[1])
             chain.parent.mkdir(parents=True, exist_ok=True)
@@ -211,6 +213,9 @@ class _Agent:
 
     def counts(self) -> Counter[str]:
         return Counter(self.calls)
+
+    def rebriefs_for(self, stem: str) -> list[Callable[[], str] | None]:
+        return [r for s, r in zip(self.calls, self.rebriefs, strict=True) if s == stem]
 
     def args_for(self, stem: str) -> list[dict[str, Any]]:
         return [a for s, a in zip(self.calls, self.args, strict=True) if s == stem]
@@ -1198,3 +1203,87 @@ def test_a_conversation_other_than_the_briefed_one_opens_with_the_full_brief_aga
 
     turns = [c for c in agent.calls if c in (*PHASE_TURNS, "dev-follow-up")]
     assert turns == ["dev-plan", "dev-build", "dev-review", "dev-review"], agent.calls
+
+
+def test_the_plan_turn_on_a_fresh_conversation_carries_the_full_rules(
+    docs: Path,
+    workspace: dict[str, Path],
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    agent = _Agent(workspace, session=lambda n: "sess-1")
+
+    drive_flow(_dev(docs), env(), agent)
+
+    (plan,) = agent.args_for("dev-plan")
+    assert plan["opening_brief"] == "", plan
+    text = Path(str(plan["brief_path"])).read_text(encoding="utf-8")
+    assert "## Story Status" in text, text
+    assert "## Commit Identity" in text, text
+
+
+def test_the_build_turn_on_the_plans_conversation_points_at_the_opening_brief(
+    docs: Path,
+    workspace: dict[str, Path],
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    agent = _Agent(workspace, session=lambda n: "sess-1")
+
+    drive_flow(_dev(docs), env(), agent)
+
+    (plan,) = agent.args_for("dev-plan")
+    (build,) = agent.args_for("dev-build")
+    opening = Path(str(plan["brief_path"]))
+    assert opening.name == "plan.md", opening
+    assert build["opening_brief"] == str(opening), build
+    assert Path(str(build["brief_path"])).parent == opening.parent, build
+    text = Path(str(build["brief_path"])).read_text(encoding="utf-8")
+    assert "## Story Status" not in text, text
+    assert "Scope" not in text, text
+    assert str(opening) in text, text
+
+
+def test_a_rebrief_renders_the_full_rules_and_rewrites_the_brief_on_disk(
+    docs: Path,
+    workspace: dict[str, Path],
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    agent = _Agent(workspace, session=lambda n: "sess-1")
+
+    drive_flow(_dev(docs), env(), agent)
+
+    (build,) = agent.args_for("dev-build")
+    (rebrief,) = agent.rebriefs_for("dev-build")
+    assert rebrief is not None
+    brief = Path(str(build["brief_path"]))
+    assert "## Story Status" not in brief.read_text(encoding="utf-8")
+
+    text = rebrief()
+
+    assert "## Story Status" in text, text
+    assert brief.read_text(encoding="utf-8") == text
+
+
+def test_the_first_review_turn_writes_the_reviewer_files_beside_its_brief(
+    docs: Path,
+    workspace: dict[str, Path],
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    agent = _Agent(workspace)
+
+    drive_flow(_dev(docs), env(), agent)
+
+    (review,) = agent.args_for("dev-review")
+    folder = Path(str(review["brief_path"])).parent
+    reviewer = folder / "dev-reviewer.md"
+    answer = folder / "dev-answer-file.md"
+    assert reviewer.is_file(), sorted(folder.iterdir())
+    assert answer.is_file(), sorted(folder.iterdir())
+    assert review["reviewer_brief"] == str(reviewer), review
+    assert review["answer_format"] == str(answer), review
+    text = Path(str(review["brief_path"])).read_text(encoding="utf-8")
+    assert str(reviewer) in text, text
+    assert str(answer) in text, text
