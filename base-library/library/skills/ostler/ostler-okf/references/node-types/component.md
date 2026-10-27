@@ -64,6 +64,12 @@ element is visible. The wording moves to `verify: visible(locator=..., text="...
 or a link to where the label is defined. One value per node. A name with a link, a code span
 or an inner quote is `prose-name`, and the compiler refuses it.
 
+An accessible name has its whitespace flattened, so a label drawn on two lines is one name with
+a space at the break. A phone tab read as `Tickets` above `Tab 2 of 5` is `name: Tickets Tab 2 of 5`.
+Every driver matches a space in `name:` against any run of whitespace, a line break included. A
+`.` or another pattern character standing in for the break is matched as itself and finds
+nothing.
+
 `placement:` is screen-relative on purpose: no `sidebar`/`main-column` vocabulary, nothing that
 assumes a grid. It is the one documented fact a role+name assertion cannot check — `getByRole`
 finds an element whether the page lays it out across the window or crushes it into a sliver.
