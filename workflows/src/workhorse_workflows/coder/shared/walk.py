@@ -24,7 +24,10 @@ def criteria_count(story_text: str) -> int:
 
 def walked(plan_text: str) -> set[int]:
     """The criterion numbers the plan's `## Acceptance Walk` has a heading for."""
-    section = markdown.split(plan_text).find_section("Acceptance Walk")
+    titled = [
+        s for s in markdown.split(plan_text).walk_sections() if s.title.strip() == "Acceptance Walk"
+    ]
+    section = min(titled, key=lambda s: s.level, default=None)
     if section is None:
         return set()
     found: set[int] = set()

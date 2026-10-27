@@ -132,11 +132,13 @@ before QA spends a turn on it.
 
 The checks also walk the story's acceptance criteria against the plan's own `## Acceptance Walk`
 section, naming any criterion the plan's walk does not cover; a follow-up, which carries no
-acceptance criteria of its own, skips this check.
+acceptance criteria of its own, skips this check. When the plan holds more than one section of
+that title, the walk reads the shallowest one, so a follow-up section's own walk never stands in
+for the plan's.
 
-- code: `workflows/src/workhorse_workflows/coder/shared/walk.py::acceptance_walk` @dfa24ea633f6
-- code: `workflows/src/workhorse_workflows/coder/shared/walk.py::criteria_count` @dfa24ea633f6
-- code: `workflows/src/workhorse_workflows/coder/shared/walk.py::walked` @dfa24ea633f6
+- code: `workflows/src/workhorse_workflows/coder/shared/walk.py::acceptance_walk` @c36ec782d6b4
+- code: `workflows/src/workhorse_workflows/coder/shared/walk.py::criteria_count` @c36ec782d6b4
+- code: `workflows/src/workhorse_workflows/coder/shared/walk.py::walked` @c36ec782d6b4
 
 ### operator-block
 

@@ -48,3 +48,12 @@ def test_headings_outside_the_walk_do_not_count() -> None:
 
 def test_no_walk_section_walks_nothing() -> None:
     assert walked("# Plan\n\ntext\n") == set()
+
+
+def test_a_follow_up_s_nested_walk_does_not_shadow_the_plan_s_own() -> None:
+    plan = (
+        "# Plan\n\n## Follow-up: tidy\n\n### Acceptance Walk\n\n#### AC 3: here\n\n"
+        "## Acceptance Walk\n\n### AC 1: one\n\n### AC 2: two\n\n### AC 3: three\n"
+    )
+
+    assert walked(plan) == {1, 2, 3}
