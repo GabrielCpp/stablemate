@@ -364,6 +364,21 @@ class Chosen(Workflow):
         return Done(None)
 
 
+class ChosenOfThree(Workflow):
+    """A state that binds its local to one of three resolver calls."""
+
+    def start(self) -> Transition:
+        turn = (
+            pick_turn(self, "repair")
+            if self.run_id
+            else pick_turn(self, "review")
+            if self.run_id
+            else pick_turn(self, "plan")
+        )
+        self.agent(turn.prompt, returns=str)
+        return Done(None)
+
+
 class Unbound(Workflow):
     """A state that reads the helper's result without binding the call to a local."""
 
@@ -383,6 +398,14 @@ def test_a_prompt_bound_through_a_resolver_is_the_path_it_resolves():
 
 def test_a_local_bound_to_a_ternary_of_resolver_calls_is_each_arm_s_path():
     assert _state(Chosen, "start").prompts == ("prompts/repair.md", "prompts/review.md")
+
+
+def test_a_local_bound_to_a_nested_ternary_of_resolver_calls_is_each_arm_s_path():
+    assert _state(ChosenOfThree, "start").prompts == (
+        "prompts/repair.md",
+        "prompts/review.md",
+        "prompts/plan.md",
+    )
 
 
 def test_a_resolver_result_read_without_a_binding_is_still_a_problem():

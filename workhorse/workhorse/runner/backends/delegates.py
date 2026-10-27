@@ -51,6 +51,18 @@ ROLES: dict[str, _Role] = {
         ),
         read_only=False,
     ),
+    "advisor": _Role(
+        description=(
+            "Read-only second opinion on the strongest model: answers one design question, such as "
+            "whether a finding is a defect or whether a plan departure holds, from the pointers given."
+        ),
+        instructions=(
+            "You answer one design question. Read the files and paths the caller names, and run "
+            "read-only commands if you need to. Leave every file as you found it. Answer with your "
+            "verdict first, then the reasons and the paths and lines they rest on, in a few lines."
+        ),
+        read_only=True,
+    ),
 }
 
 _warned: set[str] = set()

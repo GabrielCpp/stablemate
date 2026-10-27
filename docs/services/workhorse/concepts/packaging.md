@@ -24,7 +24,7 @@ version. The changelog records each release's breaking changes, features and fix
 - code: `workhorse/workhorse/packaged.py::package_dir` @7eeb988b4091
 - code: `workhorse/workhorse/packaged.py::PackagedWorkflowError` @7eeb988b4091
 - code: `workhorse/pyproject.toml` @f025c95695b7
-- code: `workhorse/README.md` @01443fd6a425
+- code: `workhorse/README.md` @c97473a3e543
 - code: `workhorse/workhorse/README.md` @ae6c81203345
 - code: `workhorse/CHANGELOG.md` @c90a5202513a
 - code: `workhorse/LICENSE` @cfa64d417f35

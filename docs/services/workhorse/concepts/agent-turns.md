@@ -45,7 +45,7 @@ started on, a given number of times, to size a prompt variant. The
 [size a replay variant](../flows/size-replay-variant.md) journey shows its refusal of a turn whose
 tree has moved.
 
-- code: `workhorse/workhorse/runner/ladder.py::AgentRunner` @d22216e866b4
+- code: `workhorse/workhorse/runner/ladder.py::AgentRunner` @37697b43e577
 - code: `workhorse/workhorse/runner/turn_record.py::TurnRecord` @50530978b759
 - code: `workhorse/workhorse/runner/spec.py::AgentNode` @ea80f1fc2fed
 - code: `workhorse/workhorse/runner/failure.py::classify_turn` @67f43d6fb9ef

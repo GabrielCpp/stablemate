@@ -283,7 +283,7 @@ An operator can [answer the inbox](flows/answer-inbox.md), [inspect a stopped ru
 - run: invoke(argv=["run", "--profile", "ghost", "--config", "/tmp/workhorse-book/seeded/config.toml"])
 - verify: stderr(text="error: unknown profile 'ghost' in /tmp/workhorse-book/seeded/config.toml (known: bare, cheap, odd)")
 - code: `workhorse/workhorse/cli/run.py::run` @6bb7cf530876
-- code: `workhorse/workhorse/profile.py::select_backend` @5940a4ebe776
+- code: `workhorse/workhorse/profile.py::select_backend` @ff29018aab02
 - code: `workhorse/workhorse/_vendor/stablemate_core/profiles.py::select_profile` @0f757c16382b
 - code: `workhorse/workhorse/_vendor/stablemate_core/config.py::load_config` @7a84c0cc67a5
 - code: `workhorse/workhorse/_vendor/stablemate_core/discovery.py::base_library_dir` @42eebfdfea77
@@ -295,7 +295,7 @@ An operator can [answer the inbox](flows/answer-inbox.md), [inspect a stopped ru
 - code: `workhorse/workhorse/runner/backends/cline.py::ClineBackend` @6e58fb02886c
 - code: `workhorse/workhorse/runner/backends/copilot.py::CopilotBackend` @6ee4a19c5aa9
 - code: `workhorse/workhorse/runner/backends/opencode.py::OpenCodeBackend` @7bd44f4d3832
-- code: `workhorse/workhorse/runner/backends/delegates.py::Delegate` @543f51f3d262
+- code: `workhorse/workhorse/runner/backends/delegates.py::Delegate` @f0673c19c181
 - code: `workhorse/workhorse/runner/backends/jsonl.py::JsonlBackend` @f6c5136add76
 - code: `workhorse/workhorse/runner/backends/turn.py::TurnState` @53dc2823fd84
 - code: `workhorse/workhorse/runner/backends/codex_guard.py::Policy` @736e50949720
@@ -415,17 +415,17 @@ An operator can [answer the inbox](flows/answer-inbox.md), [inspect a stopped ru
 - code: `workhorse/workhorse/pyflow/driver.py::drive` @6ee79b75b0f1
 - code: `workhorse/workhorse/pyflow/transitions.py::Continue` @05edc5a834cc
 - code: `workhorse/workhorse/pyflow/activity.py::ActivityLog` @fc149a498518
-- code: `workhorse/workhorse/pyflow/engine.py::Engine` @922a7b361e6e
+- code: `workhorse/workhorse/pyflow/engine.py::Engine` @a6d7852198a4
 - code: `workhorse/workhorse/pyflow/registry.py::Registry` @a2d3d9fd50b3
 - code: `workhorse/workhorse/pyflow/names.py::NameIndex` @ec28548d30de
 - code: `workhorse/workhorse/pyflow/blueprint.py::Blueprint` @4911263291b8
 - code: `workhorse/workhorse/pyflow/preflight.py::preflight` @3460fa12f550
-- code: `workhorse/workhorse/pyflow/graph.py::registry_graphs` @103855581ca1
-- code: `workhorse/workhorse/pyflow/workflow.py::Workflow` @9704358a90e7
+- code: `workhorse/workhorse/pyflow/graph.py::registry_graphs` @92977d520d37
+- code: `workhorse/workhorse/pyflow/workflow.py::Workflow` @c123d36ff73e
 - code: `workhorse/workhorse/control.py::NULL_CHANNEL` @52683677757e
 - code: `workhorse/workhorse/config_run.py::RunConfig` @d96de3e447d1
 - code: `workhorse/workhorse/runner/backends/null.py::NullBackend` @4464f8371e1f
-- code: `workhorse/workhorse/runner/ladder.py::AgentRunner` @d22216e866b4
+- code: `workhorse/workhorse/runner/ladder.py::AgentRunner` @37697b43e577
 - code: `workhorse/workhorse/runner/spec.py::AgentNode` @ea80f1fc2fed
 - code: `workhorse/workhorse/context.py::WorkflowContext` @313726f99d8a
 - code: `workhorse/workhorse/runner/caps.py::cap_delay_seconds` @57869724201e

@@ -436,3 +436,48 @@ if __name__ == "__main__":
             print(f"FAIL  {fn.__name__}: {type(e).__name__}: {e}")
     print(f"\n{len(fns) - failed}/{len(fns)} passed")
     raise SystemExit(1 if failed else 0)
+
+
+def _renders(prompt: str, **args: Any) -> Workflow:
+    class Renders(Workflow):
+        def start(self) -> Transition:
+            return Done(self.render_prompt(prompt, args))
+
+    return Renders()
+
+
+def _has_delegate() -> Workflow:
+    class Has(Workflow):
+        def start(self) -> Transition:
+            return Done(self.has_delegate("advisor"))
+
+    return Has()
+
+
+def test_a_dry_run_render_returns_the_placeholder():
+    with tempfile.TemporaryDirectory() as tmp:
+        env = _env(tmp)
+        env.dry_run = True
+        assert drive(_renders("dev/brief.md", who="x"), env) == "(dry-run) dev/brief.md\n"
+
+
+def test_a_render_returns_the_text_a_turn_would_send_and_writes_no_step():
+    from _fakes import FakeBackend, FakeClock
+
+    with tempfile.TemporaryDirectory() as tmp:
+        (Path(tmp) / "brief.md").write_text("Hello {{ who }}.", encoding="utf-8")
+        env = _env(tmp)
+        env.agent_runner = AgentRunner(backend=FakeBackend(), clock=FakeClock())
+        text = drive(_renders("brief.md", who="globex"), env)
+        assert text.strip() == "Hello globex."
+        assert not list(env.run_dir.rglob("prompt.md"))
+        assert not list(env.run_dir.rglob("brief"))
+
+
+def test_a_dry_run_has_a_delegate_only_when_the_environment_grants_subagents():
+    with tempfile.TemporaryDirectory() as tmp:
+        env = _env(tmp)
+        env.dry_run = True
+        assert drive(_has_delegate(), env) is False
+        env.subagents = True
+        assert drive(_has_delegate(), env) is True

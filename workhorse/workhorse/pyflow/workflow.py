@@ -163,6 +163,10 @@ class Workflow(BaseModel):
         """Whether the agent CLI running this workflow can spawn subagents. A dry run answers `False` unless the test environment sets it."""
         return self._require_engine().subagents
 
+    def has_delegate(self, role: str) -> bool:
+        """Whether the agent CLI is launched with a subagent named `role`. A dry run answers `False` unless the test environment sets `subagents`."""
+        return self._require_engine().has_delegate(role)
+
 
     def call(
         self,
@@ -334,6 +338,10 @@ class Workflow(BaseModel):
     def chain_session(self, key: str) -> str:
         """The session id chain `key` is on, or `""` before its first turn."""
         return self._require_engine().session_id(key)
+
+    def render_prompt(self, prompt: str, args: dict[str, Any]) -> str:
+        """The text `prompt` renders to with `args`, as a turn would send it, without running one."""
+        return self._require_engine().render_prompt(prompt, args)
 
     def reset_session(self, key: str) -> None:
         """End session chain `key`, so the next turn on it starts a fresh conversation."""

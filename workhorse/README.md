@@ -197,6 +197,13 @@ A workflow reads the answer as `self.subagents`, and a dry run answers `False` u
 test's `RunEnv` sets `subagents`. A workflow that wants one subagent per concern writes
 one prompt for each case and picks by `self.subagents`.
 
+A profile's delegates name the subagents a turn may hand work to: `lookup` for a narrow
+read-only question, `worker` for one bounded task, and `advisor` for one read-only design
+question. A CLI that takes subagents gets a default `advisor` on the model the `max` power
+tier maps to, even when the profile names none. A workflow asks `self.has_delegate(role)`
+whether its turns will be offered one role, and can run a turn on a cheaper tier when the
+advisor is there to answer its design calls.
+
 JSONL provider error events and logs that identify a transient failure are aborted
 immediately and retried by workhorse's bounded backoff instead of being left to a CLI's
 opaque internal retry loop.
@@ -375,7 +382,7 @@ functions that are its **nodes**, and `prompts/` holds the Jinja2 templates an a
 renders. Once a workflow grows more than one machine, each one takes a directory of its
 own — `dev/flow.py` beside the `prompts/` only it renders — `workflow.py`
 shrinks to the `Registry` alone, and prompt paths are written from the package root down
-(`"dev/prompts/dev-story.md"`), which is what `Registry(name, package=__package__)`
+(`"dev/prompts/dev-plan.md"`), which is what `Registry(name, package=__package__)`
 declares. Control flow is ordinary Python — `if`, `for`, a counter that is just a counter —
 and each state returns the next one:
 

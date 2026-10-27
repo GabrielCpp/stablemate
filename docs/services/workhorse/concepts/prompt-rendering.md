@@ -22,6 +22,11 @@ stop the turn. Every prompt can call these helpers:
 - `find_by_tags(...)` links every installed skill carrying all the given tags.
 - `has_skill(name)` tells whether a skill is installed.
 
+A workflow can render a prompt without running a turn, through `Workflow.render_prompt(prompt,
+args)`. It returns the text the turn would send with those values, and it writes no step and no
+node record. A workflow uses it to keep a brief on disk, so a later turn can read it again. A dry
+run returns `(dry-run) <prompt>` instead of the text.
+
 A retired helper, such as `skill_file` or `prompt_ref`, fails the render and names the helper
 that replaced it.
 
@@ -38,3 +43,6 @@ against.
 - code: `workhorse/workhorse/references.py::missing_references` @c6ff9b16296e
 - code: `workhorse/workhorse/references.py::format_missing` @c6ff9b16296e
 - code: `workhorse/docs/CHECKING.md` @792e2e8e883a
+- code: `workhorse/workhorse/pyflow/workflow.py::Workflow.render_prompt` @c123d36ff73e
+- tests: `workhorse/tests/test_pipeline.py::test_a_dry_run_render_returns_the_placeholder`
+- tests: `workhorse/tests/test_pipeline.py::test_a_render_returns_the_text_a_turn_would_send_and_writes_no_step`

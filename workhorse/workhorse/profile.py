@@ -97,9 +97,17 @@ def resolve_power_settings(
     return model, mapped.effort or fallback.effort, scale
 
 
-def resolve_delegates_for(backend_name: str, profile: str = "") -> tuple[Delegate, ...]:
-    """The subagents ``profile`` gives a turn on ``backend_name``: none unless it names a model for a role."""
-    return delegates_for(resolve_delegates(backend_name, _profile_config(profile)))
+def resolve_delegates_for(
+    backend_name: str, profile: str = "", *, subagents: bool = True
+) -> tuple[Delegate, ...]:
+    """The subagents ``profile`` gives a turn on ``backend_name``: none unless it names a model for a role, plus an advisor on the profile's ``max`` tier when the CLI takes subagents and the profile names none."""
+    cfg = _profile_config(profile)
+    mappings = resolve_delegates(backend_name, cfg)
+    if subagents and "advisor" not in mappings:
+        top = resolve_power("max", backend_name, cfg)
+        if top.model:
+            mappings = {**mappings, "advisor": top}
+    return delegates_for(mappings)
 
 
 def implied_profile(cfg: dict[str, Any], cli: str) -> str:

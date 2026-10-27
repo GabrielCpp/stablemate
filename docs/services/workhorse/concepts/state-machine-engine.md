@@ -43,20 +43,21 @@ Before a run starts, preflight reads the flow's graph off its source and refuses
 start state does not exist, when no state returns `Done`, when a transition names something that
 is not a state, when a state is unreachable from the start, or when a prompt file is missing. A
 prompt path that comes from a helper marked `@resolves_prompt` is read through that helper, and
-a local bound to a ternary of two such calls is read arm by arm, each arm resolved the same way.
+a local bound to a ternary of such calls is read arm by arm, nested ternaries included, each arm
+resolved the same way.
 Any other computed path is reported, because a path preflight cannot read is a path nothing
 checks. The same graph renders to Graphviz DOT through [`dot`](../workhorse.md#dot), and the
 [check a workflow](../flows/check-workflow.md) journey renders one.
 
-- code: `workhorse/workhorse/pyflow/workflow.py::Workflow` @9704358a90e7
-- code: `workhorse/workhorse/pyflow/workflow.py::state` @9704358a90e7
+- code: `workhorse/workhorse/pyflow/workflow.py::Workflow` @c123d36ff73e
+- code: `workhorse/workhorse/pyflow/workflow.py::state` @c123d36ff73e
 - code: `workhorse/workhorse/pyflow/transitions.py::Continue` @05edc5a834cc
 - code: `workhorse/workhorse/pyflow/transitions.py::Done` @05edc5a834cc
 - code: `workhorse/workhorse/pyflow/transitions.py::Await` @05edc5a834cc
-- code: `workhorse/workhorse/pyflow/engine.py::Engine` @922a7b361e6e
+- code: `workhorse/workhorse/pyflow/engine.py::Engine` @a6d7852198a4
 - code: `workhorse/workhorse/pyflow/driver.py::drive` @6ee79b75b0f1
 - code: `workhorse/workhorse/pyflow/driver.py::coerce_params` @6ee79b75b0f1
-- code: `workhorse/workhorse/pyflow/graph.py::FlowGraph` @103855581ca1
+- code: `workhorse/workhorse/pyflow/graph.py::FlowGraph` @92977d520d37
 - code: `workhorse/workhorse/pyflow/names.py::NameIndex` @ec28548d30de
 - code: `workhorse/workhorse/pyflow/blueprint.py::Blueprint` @4911263291b8
 - code: `workhorse/workhorse/pyflow/preflight.py::preflight` @3460fa12f550
@@ -69,3 +70,5 @@ checks. The same graph renders to Graphviz DOT through [`dot`](../workhorse.md#d
 - code: `workhorse/workhorse/context.py::WorkflowContext` @313726f99d8a
 - code: `workhorse/docs/WORKFLOW.md` @7ac0edfa642f
 - code: `workhorse/docs/AUTHORING.md` @83e8becee436
+- code: `workhorse/workhorse/pyflow/graph.py::_ternary_arms` @92977d520d37
+- tests: `workhorse/tests/test_pyflow_graph.py::test_a_local_bound_to_a_nested_ternary_of_resolver_calls_is_each_arm_s_path`

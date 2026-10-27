@@ -228,3 +228,62 @@ def test_a_cli_with_no_launch_time_subagents_says_so_once(profile_config):
                 delegates=(LOOKUP,),
             )
     assert out.getvalue().count("copilot defines no subagents at launch") == 1
+
+
+_POWERS = """\
+config_version = 2
+
+[profiles.top]
+cli = "fake"
+
+[profiles.top.powers.max]
+model = "big"
+effort = "high"
+
+[profiles.top.delegates.lookup]
+model = "small"
+
+[profiles.named]
+cli = "fake"
+
+[profiles.named.powers.max]
+model = "big"
+
+[profiles.named.delegates.advisor]
+model = "chosen"
+
+[profiles.bare]
+cli = "fake"
+
+[profiles.bare.delegates.lookup]
+model = "small"
+"""
+
+
+@pytest.fixture
+def powers_config(tmp_path, monkeypatch):
+    path = tmp_path / "config.toml"
+    path.write_text(_POWERS)
+    monkeypatch.setenv(config.CONFIG_PATH_ENV, str(path))
+    monkeypatch.delenv(config.LEGACY_CONFIG_PATH_ENV, raising=False)
+    return path
+
+
+def test_the_advisor_defaults_to_the_max_tier_model(powers_config):
+    picked = {d.name: d for d in resolve_delegates_for("fake", "top")}
+    assert list(picked) == ["lookup", "advisor"]
+    assert (picked["advisor"].model, picked["advisor"].effort) == ("big", "high")
+    assert picked["advisor"].read_only
+
+
+def test_an_explicit_advisor_wins_over_the_default(powers_config):
+    picked = {d.name: d for d in resolve_delegates_for("fake", "named")}
+    assert picked["advisor"].model == "chosen"
+
+
+def test_no_default_advisor_when_the_cli_takes_no_subagents(powers_config):
+    assert [d.name for d in resolve_delegates_for("fake", "top", subagents=False)] == ["lookup"]
+
+
+def test_no_max_model_means_no_advisor(powers_config):
+    assert [d.name for d in resolve_delegates_for("fake", "bare")] == ["lookup"]

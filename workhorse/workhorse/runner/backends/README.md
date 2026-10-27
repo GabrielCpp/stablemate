@@ -9,7 +9,7 @@ holds a piece several adapters share. A new CLI gets its own module and a line h
 - `cline.py`: the Cline CLI's event vocabulary, adapter and ACP transcript mapper.
 - `codex.py`: the Codex CLI's event vocabulary, adapter and ACP transcript mapper, including how a confined turn runs behind its guard hook.
 - `copilot.py`: the GitHub Copilot CLI's event vocabulary, adapter and ACP transcript mapper.
-- `delegates.py`: the subagent roles a turn may hand narrow work to, and the models the operator's profile gives them.
+- `delegates.py`: the subagent roles a turn may hand work to (`lookup`, `worker` and `advisor`), the models the operator's profile gives them, and the default advisor on the `max` tier.
 - `guard.py`: the hook that holds a confined codex or claude turn to its policy. It owns the policy, the file and patch checks and the hook entry.
 - `guard_shell.py`: the judge of one shell call a confined codex or claude turn makes.
 - `jsonl.py`: the newline-delimited JSON event loop the CLIs that speak one share.

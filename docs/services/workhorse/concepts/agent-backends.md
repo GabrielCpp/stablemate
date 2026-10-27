@@ -21,13 +21,18 @@ in one place from what it yielded. Each backend also maps its CLI's events to th
 transcript form that [agent turns](agent-turns.md) describes, so a dashboard reads every CLI the
 same way.
 
-A profile can name subagent delegates for a turn to hand narrow work to on cheaper models. There
-are two roles. `lookup` answers one narrow read-only question about the code or a log. `worker`
-does one bounded task the caller specifies in full. A delegate name outside these two is ignored
-with a warning. Claude, codex and opencode define the delegates when the turn launches. Copilot
-and cline take no subagents, so they warn once that the profile's delegates go unused. Each
-backend also declares `supports_subagents`, so a workflow can check `Engine.subagents()` before
-it asks for a delegate rather than finding out only from the runtime warning.
+A profile can name subagent delegates for a turn to hand work to on another model. There are
+three roles. `lookup` answers one narrow read-only question about the code or a log. `worker`
+does one bounded task the caller specifies in full. `advisor` answers one design question
+read-only, such as whether a finding is a defect, from the paths the caller names. A delegate
+name outside these three is ignored with a warning. A profile that names no `advisor` still gets
+one on a CLI that takes subagents: it runs on the model the profile's `max` power tier maps to.
+A profile whose `max` tier names no model gets no default advisor. Claude, codex and opencode
+define the delegates when the turn launches. Copilot and cline take no subagents, so they get no
+default advisor, and they warn once that the delegates the profile names go unused. Each backend
+also declares `supports_subagents`, so a workflow can check `Engine.subagents()` before it asks
+for a delegate rather than finding out only from the runtime warning. A workflow asks
+`Engine.has_delegate(role)` whether a turn it runs will be offered one named role.
 
 A turn never loads less of the operator's environment than an interactive session of its CLI.
 User settings, permission rules, hooks, model settings, skills, instruction files and plugins all
@@ -73,10 +78,17 @@ the operator's full permissions` once per turn. It does not refuse the turn.
 - code: `workhorse/workhorse/runner/backends/opencode.py::OpenCodeBackend` @9f80c4f01201
 - code: `workhorse/workhorse/runner/backends/turn.py::TurnState` @53dc2823fd84
 - code: `workhorse/workhorse/runner/backends/turn.py::OnEvent.__call__` @53dc2823fd84
-- code: `workhorse/workhorse/runner/backends/delegates.py::Delegate` @543f51f3d262
+- code: `workhorse/workhorse/runner/backends/delegates.py::Delegate` @f0673c19c181
 - code: `workhorse/workhorse/runner/backends/guard.py::Policy` @d037c4d084f4
 - code: `workhorse/workhorse/runner/backends/guard_shell.py::shell_denial` @17d1634259b6
-- code: `workhorse/workhorse/runner/backends/README.md` @62fdedd35d86
+- code: `workhorse/workhorse/runner/backends/README.md` @62d9e59d5ca1
 - code: `workhorse/docs/BACKENDS.md` @595130c671ae
+- code: `workhorse/workhorse/profile.py::resolve_delegates_for` @ff29018aab02
+- code: `workhorse/workhorse/pyflow/engine.py::Engine.has_delegate` @a6d7852198a4
 - rule: a turn never loads less of the operator's environment than an interactive session of its CLI, and confinement is a guard layered on top of it
 - rule: a confined opencode turn gets read and write on its added directories through permission config, never through a plugin or shared state file
+- tests: `workhorse/tests/test_delegates.py::test_the_advisor_defaults_to_the_max_tier_model`
+- tests: `workhorse/tests/test_delegates.py::test_an_explicit_advisor_wins_over_the_default`
+- tests: `workhorse/tests/test_delegates.py::test_no_default_advisor_when_the_cli_takes_no_subagents`
+- tests: `workhorse/tests/test_delegates.py::test_no_max_model_means_no_advisor`
+- tests: `workhorse/tests/test_pipeline.py::test_a_dry_run_has_a_delegate_only_when_the_environment_grants_subagents`

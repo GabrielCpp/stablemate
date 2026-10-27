@@ -16,6 +16,7 @@ from workhorse.artifacts import ArtifactWriter
 from workhorse.config_run import RunConfig
 from workhorse.context import WorkflowContext
 from workhorse.manifest import ManifestContext
+from workhorse.profile import resolve_delegates_for
 from workhorse.runner.backends import AgentProfile
 from workhorse.runner.spec import AgentNode, OutputSpec
 from workhorse.pyflow.blueprint import NodeSpec, node_spec
@@ -170,6 +171,17 @@ class Engine:
             return self.env.subagents
         runner = self.env.agent_runner
         return runner is not None and runner.backend.supports_subagents
+
+    def has_delegate(self, role: str) -> bool:
+        """Whether this run's agent CLI is launched with a subagent named `role`. A dry run answers from `RunEnv.subagents`."""
+        if self.env.dry_run:
+            return self.env.subagents
+        runner = self.env.agent_runner
+        if runner is None or not runner.backend.supports_subagents:
+            return False
+        return role in {
+            d.name for d in resolve_delegates_for(runner.backend.name, runner.profile.name)
+        }
 
     def resuming(self) -> bool:
         """Whether the state now running is the one a resume landed on, and no handoff in this visit has used that up yet."""
@@ -378,6 +390,25 @@ class Engine:
                 raise AgentTurnFailed(str(exc), transient=exc.transient, overflow=exc.overflow) from exc
             writer.write_step(node_id, rendered, raw, {}, next_node=None)
             return _coerce(raw, returns, node_id)
+
+    def render_prompt(self, prompt: str, args: dict[str, Any]) -> str:
+        """The text `prompt` renders to with `args`, as a turn would send it, without running one."""
+        if self.env.dry_run:
+            return f"(dry-run) {prompt}\n"
+        runner = self.env.agent_runner
+        if runner is None:
+            raise WorkflowFailed("this run was built without an agent runner")
+        node = AgentNode(
+            type="agent",
+            id=Path(prompt).stem or "agent",
+            prompt=prompt,
+            prompt_text="",
+            args={},
+            outputs=[],
+            next=None,
+        )
+        context = WorkflowContext({**self.env.manifest.as_context(), **jsonable(args)})
+        return runner.render(node, context.as_dict(), self.env.workflow_dir).prompt
 
     def turn_usage(self, node_id: str) -> TurnUsage:
         return self.env.writer.read_usage(node_id)

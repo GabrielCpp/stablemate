@@ -450,9 +450,21 @@ def _local_calls(scope: ast.AST, name: str) -> list[ast.Call]:
         value = node.value
         if isinstance(value, ast.Call):
             return [value]
-        if isinstance(value, ast.IfExp) and isinstance(value.body, ast.Call) and isinstance(value.orelse, ast.Call):
-            return [value.body, value.orelse]
+        arms = _ternary_arms(value)
+        if arms and all(isinstance(arm, ast.Call) for arm in arms):
+            return [arm for arm in arms if isinstance(arm, ast.Call)]
     return []
+
+
+def _ternary_arms(expr: ast.expr) -> list[ast.expr]:
+    """The arms of a ternary, nested ones flattened, else empty."""
+    if not isinstance(expr, ast.IfExp):
+        return []
+    return [
+        arm
+        for branch in (expr.body, expr.orelse)
+        for arm in (_ternary_arms(branch) or [branch])
+    ]
 
 
 def _module_constant(cls: type[Workflow], name: str) -> object:

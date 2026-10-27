@@ -117,7 +117,7 @@ class AgentRunner:
                 rebrief=rebrief,
             )
 
-    def _render(self, node: AgentNode, ctx: dict[str, Any], workflow_dir: Path) -> RenderedTurn:
+    def render(self, node: AgentNode, ctx: dict[str, Any], workflow_dir: Path) -> RenderedTurn:
         """Resolve the node's settings and budgets, and render its prompt and working trees."""
         resilience = self.resilience
         model, node_effort, timeout_scale = resolve_power_settings(
@@ -202,7 +202,7 @@ class AgentRunner:
         """Render the prompt, invoke the agent, and parse its declared outputs — resiliently."""
         node_id = node.id
         resilience = self.resilience
-        turn = self._render(node, context.as_dict(), workflow_dir)
+        turn = self.render(node, context.as_dict(), workflow_dir)
         rendered_prompt = turn.prompt
         model = turn.model
 
@@ -483,7 +483,9 @@ class AgentRunner:
         short_attempt = 0
         cap_waits = 0
         attempt_prompt = prompt
-        delegates = resolve_delegates_for(backend.name, self.profile.name)
+        delegates = resolve_delegates_for(
+            backend.name, self.profile.name, subagents=backend.supports_subagents
+        )
         while True:
             try:
                 print(f"[{node_id}] 🚀 Invoking {backend.name} (model: {model or 'default'})", flush=True)
