@@ -12,10 +12,12 @@ fingerprint still matches the repository state and the arguments that shaped the
 `passed` when the build that produced it was invalid.
 
 - code: `workflows/src/workhorse_workflows/coder/shared/okf.py::__all__` @a8cbd64f2928
-- rule: the QA lane owns the packet. The QA turn reads it through `ostler qa context-show` and
-  never runs `ostler qa context`, because a hand-built packet drops the story scope and charges
-  the story with every other story's obligations. A `stale-plan` finding is repaired in the plan.
-  A `stale-context` finding ends the turn, because the lane rebuilds the packet after every QA
+- rule: the QA lane owns the packet's scope. The QA turn reads the packet through
+  `ostler qa context-show` and never runs `ostler qa context --base`, because a packet built
+  from a new base drops the story scope and charges the story with every other story's
+  obligations. A `stale-plan` finding is repaired in the plan. A `stale-context` finding is
+  repaired with `ostler qa context --refresh`, which rebuilds the packet from the base and
+  excluded paths the lane recorded in it. The lane rebuilds the packet again after every QA
   turn before it validates the plan.
 - tests: `workflows/tests/coder/docs/test_flow.py::test_sources_inside_the_docs_worktree_take_the_local_route`
 
