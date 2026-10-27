@@ -205,3 +205,57 @@ extends it, and never runs it.
 
 **Counter-case.** A library's public API, whose callers live outside the repository, and a
 command-line entry point run by hand.
+
+## 2.11 Search before you add a name
+
+**Statement.** Before you add a named function, type or constant, look for one that already does
+the job. Then reuse it, extend it, or add the new name, and say which.
+
+**Trigger.** A diff adds an exported name: a capitalised identifier in Go, an `export` in
+TypeScript, a name without a leading underscore in Python or Dart.
+
+**Fix.** Search the tree three ways before you write the body:
+
+- by the name you are about to use, and its synonyms;
+- by the behaviour, in the domain's words;
+- by the signature's shape: the parameter and return types.
+
+Reuse what fits. Extend what nearly fits. Add the name only when nothing does. The plan or the
+reply states the decision and the queries behind it.
+
+A codebase that agents maintain outgrows any map of what is shared. The search is the map, run at
+the moment it is needed. A helper nobody searched for gets written again under a new name, and
+the two copies drift from that commit on.
+
+**Counter-case.** A name that a port, an interface or a framework requires by that spelling. The
+search still runs for its body.
+
+## 2.12 The second copy is the extraction
+
+**Statement.** When code you write repeats code that already exists, the same change extracts it
+to one owner. Waiting for a third copy gives the first two time to drift.
+
+**Trigger.** The clone check reports a pair. It runs as this skill's pre-commit hook,
+`scripts/check_clones.py`, and names both places with their lines and their enclosing functions.
+A reader sees the same trigger in a block of five or more lines repeated in two places.
+
+**Fix.** Move one copy to the owner that rules 2.5 to 2.9 pick. Delete the other copy and point
+both callers at the owner. When the copies differ, decide which behaviour is right before deleting,
+as 2.7 says.
+
+This rule is 2.7 widened from decodings and constants to any fragment. A copy left in place gets
+one fix and not the other, and every later fix pays for the copy again.
+
+**Counter-case.** A coincidence: two copies that will change for different reasons, such as a
+public API's wire format and an internal one. Record it in `.agent-checks.toml` so a reviewer
+sees it:
+
+```toml
+[[check-clones.coincidence]]
+files = ["api-service/errors/map.go", "reporting-service/errors/map.go"]
+reasons = ["the public API's error codes", "the internal report's error codes"]
+```
+
+One reason, or the same reason twice, is not a coincidence, and the check refuses it. Generated
+code, vendored code, mocks, fixtures, migrations and tests are outside the check by default. A
+repo sets its own size and ignore list in the same file's `[check-clones]` table.

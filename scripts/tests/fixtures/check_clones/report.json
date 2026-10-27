@@ -1,0 +1,72 @@
+{
+  "duplicates": [
+    {
+      "firstFile": {
+        "end": 17,
+        "name": "api-service/xlsx/extra.go",
+        "start": 5
+      },
+      "format": "go",
+      "isNew": true,
+      "kind": "exact",
+      "lines": 13,
+      "secondFile": {
+        "end": 17,
+        "name": "api-service/xlsx/sheet.go",
+        "start": 5
+      },
+      "tokens": 92
+    },
+    {
+      "firstFile": {
+        "end": 17,
+        "name": "api-service/xlsx/extra.go",
+        "start": 5
+      },
+      "format": "go",
+      "isNew": true,
+      "kind": "exact",
+      "lines": 13,
+      "secondFile": {
+        "end": 18,
+        "name": "docs/notes.md:go",
+        "start": 6
+      },
+      "tokens": 92
+    },
+    {
+      "firstFile": {
+        "end": 17,
+        "name": "api-service/xlsx/extra.go",
+        "start": 5
+      },
+      "format": "go",
+      "isNew": true,
+      "kind": "exact",
+      "lines": 13,
+      "secondFile": {
+        "end": 18,
+        "name": "gen/emit.go",
+        "start": 6
+      },
+      "tokens": 92
+    },
+    {
+      "firstFile": {
+        "end": 17,
+        "name": "api-service/xlsx/sheet.go",
+        "start": 1
+      },
+      "format": "go",
+      "isNew": false,
+      "kind": "exact",
+      "lines": 17,
+      "secondFile": {
+        "end": 17,
+        "name": "reporting-service/xlsx/sheet.go",
+        "start": 1
+      },
+      "tokens": 98
+    }
+  ]
+}

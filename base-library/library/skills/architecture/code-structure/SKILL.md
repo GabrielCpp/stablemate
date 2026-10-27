@@ -3,6 +3,9 @@ name: code-structure
 description: "Language-neutral rules for where code lives inside one layer: when functions become an object, when a module splits, where configuration, environment facts and side effects may appear, when a branch chain is a table, and which assumptions must raise. Each rule has a trigger a reader or a grep can detect. Load when choosing between a function and a class, adding a second way to do something the code already does, growing a parameter list or a module, adding a setting or a file path, reading a value another stage fills, or reviewing structure. hexagonal-architecture covers the boundaries between layers. Applies to **/*.go,**/*.dart,**/*.ts,**/*.tsx,**/*.py."
 applyTo: "**/*.go,**/*.dart,**/*.ts,**/*.tsx,**/*.py"
 tags: [standards]
+hooks:
+  - stage: pre-commit
+    run: scripts/check_clones.py
 ---
 
 # Code Structure — Rules That Can Fire
@@ -66,9 +69,11 @@ reason the rule exists. Each carries a quarter of the rule set:
   when you search for something that must exist, or when you add a boolean or optional callback
   parameter.
 
-Rules 2.5 to 2.10 in modules.md cover where shared code lives: below every feature that uses it,
+Rules 2.5 to 2.12 in modules.md cover where shared code lives: below every feature that uses it,
 in a module whose name predicts it, in a directory of its kind, with one owner per decoding,
-constant and domain fact, and no module that only tests import. Rules 1.5 to 1.8 in objects.md
+constant and domain fact, and no module that only tests import. Rules 2.11 and 2.12 keep it
+shared: search the tree before adding a name, and extract on the second copy. A pre-commit hook
+enforces 2.12. Rules 1.5 to 1.8 in objects.md
 keep derived analysis off a core model, keep one model per entity, keep an index read-only after it
 is built, and keep a function's parameters to the data it reads.
 
@@ -146,6 +151,8 @@ but this is the exception that is real.
 | [2.8](references/modules.md) | domain entity names as literals outside their owner | query the owner |
 | [2.9](references/modules.md) | an entry that isn't the kind its directory holds | move it to its kind |
 | [2.10](references/modules.md) | a module only tests import, or a doc naming files that are gone | wire it or delete it |
+| [2.11](references/modules.md) | a diff adding an exported name with no search behind it | search by name, behaviour and signature first |
+| [2.12](references/modules.md) | the clone check reports a pair, or a 5+ line block in two places | extract to one owner in the same change |
 | [3.1](references/boundaries.md) | literal in, key-lookup-with-default out | one model owns both directions |
 | [3.2](references/boundaries.md) | 3+-tuple, documented map keys, mutated argument | a named record |
 | [3.3](references/boundaries.md) | a strict model mirroring a foreign schema | tolerant read, owned type |
