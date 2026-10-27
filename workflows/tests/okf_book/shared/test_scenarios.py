@@ -299,6 +299,13 @@ def test_a_failed_state_check_the_app_owns_carries_no_hint_to_change_the_book() 
     assert "name the fixture that arranges it" not in product.failure_line()
 
 
+def test_a_failed_check_tells_the_writer_what_the_screen_showed() -> None:
+    check = FailedCheck(label="greeting shown", expected='{"visible": true}', actual='{"visible": false}',
+                        seen="maestro stopped at: x. The screen showed: button 'Save'")
+    assert check.failure_line().endswith(
+        'observed {"visible": false}. maestro stopped at: x. The screen showed: button \'Save\'')
+
+
 STOP_LINE = "line 78: qa.by_role('button').click()  # add; TimeoutError: waiting for locator"
 
 
