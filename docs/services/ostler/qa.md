@@ -273,19 +273,20 @@ are written, because each later command reads what an earlier one wrote.
 
 ### ostler-qa-run-maestro-target
 - usage: ostler qa run PLAN --json, PLAN naming a target whose driver is `maestro` — settling a
-  screen on that target reads the device through the `maestro hierarchy` CLI, so the claim that
-  settles is the whole claim
+  screen on that target reads the device through one resident `maestro mcp` session per run, so
+  the claim that settles is the whole claim
 - args: none
 - exits: 1 when the claim that settles raises before any state it names is ever checked, which
-  is every outcome short of a real device answering `maestro hierarchy`
+  is every outcome short of a real device answering the resident `maestro mcp` session, and with
+  no `maestro` on PATH the claim still raises
 - run: invoke(argv=["-C", "qa-scratch", "qa", "run", "art/specs/s1/qa_plan_device.py", "--json"], env={"STABLEMATE_ARTIFACTS_DIR": "qa-scratch/art", "STABLEMATE_CONFIG": "qa-scratch/qa.toml", "GIT_DIR": "repo.git"})
 - verify: exit_status(code=1)
 - fixture: [qa scratch repo](fixtures/qa-scratch-repo.md) with a QA scratch repo with one changed
   source file and a plan under spec s1
 - fixture: [qa maestro scratch plan](fixtures/qa-maestro-scratch-plan.md)
 - code: ostler/ostler/qa/harness/ostler_qa.py::settle@9c2c885402aa
-- code: ostler/ostler/qa/harness/ostler_qa_hierarchy.py::DeviceScreen@afdd9406b9cd
-- code: ostler/ostler/qa/harness/ostler_qa_hierarchy.py::_maestro_hierarchy@afdd9406b9cd
+- code: ostler/ostler/qa/harness/ostler_qa_hierarchy.py::DeviceScreen@fb220b2a8d3e
+- code: ostler/ostler/qa/harness/ostler_qa_hierarchy.py::resident_reader@fb220b2a8d3e
 - detail: [Running and reporting a QA run](concepts/running-and-reporting-a-qa-run.md)
 
 ### ostler-qa-run-grpc-target

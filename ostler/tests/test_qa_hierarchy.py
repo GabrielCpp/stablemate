@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import io
 import json
 
 import pytest
@@ -264,3 +265,130 @@ def test_a_device_inventory_stops_at_forty_entries_and_says_so() -> None:
 
 def test_a_device_with_no_named_node_has_an_empty_inventory() -> None:
     assert _inventory(_drawn(**{"class": "android.widget.FrameLayout"})) == ""
+
+
+MCP_CSV = '''\
+Hierarchy of emulator-5554
+element_num,depth,bounds,attributes,parent_num
+0,0,,,
+1,1,"[0,0][1080,2400]","class=android.widget.FrameLayout; enabled=true",0
+2,2,"[0,275][1080,1517]","scrollable=true; class=android.widget.ScrollView; important-for-accessibility=true; enabled=true",1
+3,3,"[40,300][1040,400]","text=Tea; milk=none; class=android.widget.TextView; enabled=true",2
+4,3,"[40,420][1040,520]","text=Save; class=android.widget.Button; clickable=true",2
+5,3,"[40,540][1040,640]","hintText=Your email; class=android.widget.EditText; enabled=true; focused=true",2
+'''
+
+
+def _csv_shown(**perceivable: object) -> bool:
+    nodes = hierarchy.parse_device_nodes(hierarchy.csv_to_hierarchy(MCP_CSV))
+    return hierarchy.DeviceReading(nodes).shown(perceivable)
+
+
+def test_the_csv_reply_becomes_a_tree_the_json_parsers_read() -> None:
+    tree = json.loads(hierarchy.csv_to_hierarchy(MCP_CSV))
+
+    scroll = tree["children"][0]["children"][0]["children"][0]
+    assert scroll["attributes"]["class"] == "android.widget.ScrollView"
+    assert scroll["attributes"]["bounds"] == "[0,275][1080,1517]"
+    assert [child["attributes"].get("text") for child in scroll["children"]] == ["Tea; milk=none", "Save", None]
+
+
+def test_a_text_holding_a_semicolon_and_an_equals_sign_matches_whole() -> None:
+    assert _csv_shown(role="list", name="Tea; milk=none")
+    assert not _csv_shown(role="list", name="Tea")
+
+
+def test_a_field_is_found_by_its_hint() -> None:
+    assert _csv_shown(role="textbox", name="Your email")
+
+
+def test_a_button_missing_its_enabled_key_is_disabled() -> None:
+    assert _csv_shown(role="button", name="Save", disabled=True)
+    assert not _csv_shown(role="textbox", name="Your email", disabled=True)
+
+
+def test_a_csv_with_no_header_is_refused() -> None:
+    with pytest.raises(ValueError, match="no CSV header"):
+        hierarchy.csv_to_hierarchy("nothing here")
+
+
+def test_a_reply_joins_its_text_parts() -> None:
+    reply = {"result": {"content": [{"type": "text", "text": "a"}, {"type": "text", "text": "b"}]}}
+
+    assert hierarchy.reply_text(reply) == "a\nb"
+
+
+def test_a_reply_that_reports_an_error_raises_with_its_text() -> None:
+    with pytest.raises(RuntimeError, match="no device"):
+        hierarchy.reply_text({"result": {"isError": True, "content": [{"text": "no device"}]}})
+    with pytest.raises(RuntimeError, match="boom"):
+        hierarchy.reply_text({"error": {"code": -1, "message": "boom"}})
+
+
+class _Process:
+    def __init__(self, replies: list[str]) -> None:
+        self.stdin = io.StringIO()
+        self.stdout = io.StringIO("".join(reply + "\n" for reply in replies))
+        self.killed = False
+
+    def poll(self) -> int | None:
+        return 0 if self.killed else None
+
+    def kill(self) -> None:
+        self.killed = True
+
+    def terminate(self) -> None:
+        self.killed = True
+
+    def wait(self, timeout: float | None = None) -> int:
+        return 0
+
+
+def _answers(*texts: str) -> list[str]:
+    handshake = json.dumps({"jsonrpc": "2.0", "id": 1, "result": {}})
+    calls = [
+        json.dumps({"jsonrpc": "2.0", "id": index + 2, "result": {"content": [{"type": "text", "text": text}]}})
+        for index, text in enumerate(texts)
+    ]
+    return [handshake, *calls]
+
+
+def test_the_resident_reader_handshakes_once_and_reads_the_device_by_its_serial() -> None:
+    process = _Process(_answers("first", "second"))
+    launched: list[_Process] = []
+
+    def launch() -> _Process:
+        launched.append(process)
+        return process
+
+    reader = hierarchy.ResidentReader(launch, lambda timeout: "emulator-5554")
+
+    assert [reader(5), reader(5)] == ["first", "second"]
+    assert len(launched) == 1
+    sent = [json.loads(line) for line in process.stdin.getvalue().splitlines()]
+    assert [message.get("method") for message in sent] == [
+        "initialize", "notifications/initialized", "tools/call", "tools/call",
+    ]
+    assert sent[2]["params"] == {"name": "inspect_view_hierarchy", "arguments": {"device_id": "emulator-5554"}}
+
+
+def test_a_session_that_closes_mid_read_is_replaced_once_and_the_read_retried() -> None:
+    processes = [_Process(_answers()), _Process(_answers("again"))]
+    reader = hierarchy.ResidentReader(lambda: processes.pop(0), lambda timeout: "serial")
+
+    assert reader(5) == "again"
+
+
+def test_a_session_that_closes_twice_raises_naming_what_happened() -> None:
+    processes = [_Process(_answers()), _Process(_answers())]
+    reader = hierarchy.ResidentReader(lambda: processes.pop(0), lambda timeout: "serial")
+
+    with pytest.raises(RuntimeError, match="ended twice"):
+        reader(5)
+
+
+def test_a_missing_maestro_raises_the_install_message(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(hierarchy.shutil, "which", lambda name: None)
+
+    with pytest.raises(RuntimeError, match="the maestro CLI is not installed on this machine"):
+        hierarchy.ResidentReader()(5)

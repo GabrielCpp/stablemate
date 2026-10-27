@@ -2,16 +2,23 @@
 
 from __future__ import annotations
 
+import atexit
+import csv
+import io
+import itertools
 import json
+import os
+import queue
 import re
 import shutil
 import subprocess
+import threading
 import time
 import xml.etree.ElementTree as ET
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import IO, Any
 
 from ostler_qa_elements import name_pattern
 from ostler_qa_settle import ANNOUNCED_ROLES, Reading
@@ -59,6 +66,30 @@ SETTLE_NAME_ATTRIBUTES = ("accessibilityText", "content-desc", "text", "hintText
 INVENTORY_ENTRIES = 40
 
 NAME_ATTRIBUTES = ("resource-id", "accessibilityText", "content-desc", "text", "hintText")
+
+MAESTRO_MISSING = "the maestro CLI is not installed on this machine"
+
+MCP_ENV = {
+    "MAESTRO_CLI_NO_ANALYTICS": "1",
+    "MAESTRO_DISABLE_UPDATE_CHECK": "true",
+    "MAESTRO_CLI_ANALYSIS_NOTIFICATION_DISABLED": "true",
+}
+
+ATTRIBUTE_KEYS = (
+    "accessibilityText", "bounds", "checked", "class", "clickable", "enabled", "error", "focused",
+    "hintText", "ignoreBoundsFiltering", "important-for-accessibility", "resource-id", "scrollable",
+    "selected", "text",
+)
+
+LISTED_WHEN_TRUE = ("checked", "clickable", "enabled", "focused", "scrollable", "selected")
+
+ATTRIBUTE_BREAK = re.compile("; (?=(?:" + "|".join(re.escape(key) for key in ATTRIBUTE_KEYS) + ")=)")
+
+CSV_HEADER = "element_num,depth,bounds,attributes,parent_num"
+
+SERIAL_TIMEOUT_S = 15.0
+
+SESSION_STOP_S = 5.0
 
 
 def role_for(class_name: str) -> str:
@@ -141,6 +172,213 @@ def parse_maestro(raw: str) -> list[dict[str, Any]]:
         elements.extend(_element(attributes, attributes.get("bounds") or ""))
         stack.extend(reversed(node.get("children") or []))
     return elements
+
+
+def _attribute_pieces(text: str) -> dict[str, str]:
+    """The `key=value` pairs of one CSV attribute cell, split only where the next token is a known key."""
+    pairs: dict[str, str] = {}
+    for piece in ATTRIBUTE_BREAK.split(text):
+        key, found, value = piece.partition("=")
+        if found:
+            pairs[key.strip()] = value
+    return pairs
+
+
+def csv_to_hierarchy(text: str) -> str:
+    """The `maestro mcp` hierarchy CSV as the JSON `maestro hierarchy` prints: one root whose children are the parentless rows."""
+    start = text.find(CSV_HEADER)
+    if start < 0:
+        raise ValueError(f"the maestro hierarchy has no CSV header: {text.strip()[:200]!r}")
+    rows = csv.reader(io.StringIO(text[start:]))
+    next(rows)
+    nodes: dict[str, dict[str, Any]] = {}
+    root: dict[str, Any] = {"attributes": {}, "children": []}
+    for row in rows:
+        if len(row) < 5:
+            continue
+        number, _depth, bounds, attributes, parent = row[:5]
+        pairs = _attribute_pieces(attributes) if attributes else {}
+        for key in LISTED_WHEN_TRUE:
+            pairs.setdefault(key, "false")
+        if bounds:
+            pairs["bounds"] = bounds
+        node: dict[str, Any] = {"attributes": pairs, "children": []}
+        nodes[number] = node
+        holder = nodes.get(parent, root) if parent else root
+        holder["children"].append(node)
+    return json.dumps(root)
+
+
+def reply_text(message: Mapping[str, Any]) -> str:
+    """The text of one `tools/call` reply, or a RuntimeError carrying the error it reported."""
+    error = message.get("error")
+    if error:
+        detail = error.get("message") if isinstance(error, Mapping) else None
+        raise RuntimeError(f"maestro mcp reported an error: {detail or error}")
+    result = message.get("result") or {}
+    parts = result.get("content") or []
+    text = "\n".join(str(part.get("text") or "") for part in parts if isinstance(part, Mapping))
+    if result.get("isError"):
+        raise RuntimeError(f"maestro mcp reported an error: {text}")
+    return text
+
+
+class SessionLost(Exception):
+    """The resident maestro process ended or stopped answering its pipes."""
+
+
+def _pump(stream: IO[str], lines: queue.Queue[str | None]) -> None:
+    for line in iter(stream.readline, ""):
+        lines.put(line)
+    lines.put(None)
+
+
+class McpSession:
+    """One `maestro mcp` process, spoken to in JSON-RPC lines."""
+
+    def __init__(self, process: subprocess.Popen[str]) -> None:
+        if process.stdin is None or process.stdout is None:
+            raise SessionLost("maestro mcp opened no pipes")
+        self.process = process
+        self.serial = ""
+        self._stdin = process.stdin
+        self._lines: queue.Queue[str | None] = queue.Queue()
+        threading.Thread(target=_pump, args=(process.stdout, self._lines), daemon=True).start()
+        self._ids = itertools.count(1)
+
+    def notify(self, method: str) -> None:
+        self._send({"jsonrpc": "2.0", "method": method})
+
+    def request(self, method: str, params: Mapping[str, Any], deadline: float) -> Mapping[str, Any]:
+        """Send one request and wait for the reply that carries its id, until *deadline*."""
+        identifier = next(self._ids)
+        self._send({"jsonrpc": "2.0", "id": identifier, "method": method, "params": params})
+        while True:
+            left = deadline - time.monotonic()
+            if left <= 0:
+                raise subprocess.TimeoutExpired("maestro mcp", 0)
+            try:
+                line = self._lines.get(timeout=left)
+            except queue.Empty:
+                raise subprocess.TimeoutExpired("maestro mcp", left) from None
+            if line is None:
+                raise SessionLost("maestro mcp closed its output")
+            try:
+                message = json.loads(line)
+            except ValueError:
+                continue
+            if isinstance(message, dict) and message.get("id") == identifier:
+                return message
+
+    def _send(self, message: Mapping[str, Any]) -> None:
+        try:
+            self._stdin.write(json.dumps(message) + "\n")
+            self._stdin.flush()
+        except (OSError, ValueError) as exc:
+            raise SessionLost(f"maestro mcp stopped reading its input: {exc}") from exc
+
+    def stop(self, *, patiently: bool) -> None:
+        """End the process: asked to leave first when *patiently*, else killed at once."""
+        if self.process.poll() is None:
+            if patiently:
+                self.process.terminate()
+                try:
+                    self.process.wait(SESSION_STOP_S)
+                except subprocess.TimeoutExpired:
+                    self.process.kill()
+            else:
+                self.process.kill()
+        try:
+            self.process.wait(SESSION_STOP_S)
+        except subprocess.TimeoutExpired:
+            return
+
+
+def _launch_maestro() -> subprocess.Popen[str]:
+    if shutil.which("maestro") is None:
+        raise RuntimeError(MAESTRO_MISSING)
+    return subprocess.Popen(  # noqa: S603 - fixed argv
+        ["maestro", "mcp"], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+        text=True, env={**os.environ, **MCP_ENV},
+    )
+
+
+def _adb_serial(timeout: float) -> str:
+    """The serial `maestro test` would pick: `ANDROID_SERIAL`, else the one attached device."""
+    if shutil.which("adb") is None:
+        raise RuntimeError("the adb CLI is not installed on this machine")
+    return _run(["adb", "get-serialno"], timeout=timeout).strip()
+
+
+class ResidentReader:
+    """Reads the device hierarchy through one `maestro mcp` process kept for the run, started on the first read."""
+
+    def __init__(
+        self,
+        launch: Callable[[], subprocess.Popen[str]] = _launch_maestro,
+        serial: Callable[[float], str] = _adb_serial,
+    ) -> None:
+        self._launch = launch
+        self._serial = serial
+        self._session: McpSession | None = None
+
+    def __call__(self, timeout: float) -> str:
+        deadline = time.monotonic() + timeout
+        lost: SessionLost | None = None
+        for _ in range(2):
+            try:
+                session = self._session or self._open(deadline)
+                self._session = session
+                reply = session.request(
+                    "tools/call",
+                    {"name": "inspect_view_hierarchy", "arguments": {"device_id": session.serial}},
+                    deadline,
+                )
+                return reply_text(reply)
+            except subprocess.TimeoutExpired:
+                self.close()
+                raise
+            except SessionLost as exc:
+                self.close()
+                lost = exc
+        raise RuntimeError(f"the maestro session ended twice while reading the screen: {lost}")
+
+    def _open(self, deadline: float) -> McpSession:
+        process = self._launch()
+        session = McpSession(process)
+        try:
+            session.serial = self._serial(max(0.001, min(SERIAL_TIMEOUT_S, deadline - time.monotonic())))
+            session.request(
+                "initialize",
+                {"protocolVersion": "2024-11-05", "capabilities": {}, "clientInfo": {"name": "ostler-qa", "version": "0"}},
+                deadline,
+            )
+            session.notify("notifications/initialized")
+        except BaseException:
+            session.stop(patiently=False)
+            raise
+        return session
+
+    def close(self) -> None:
+        """Kill the session, so the next read starts a fresh one."""
+        session, self._session = self._session, None
+        if session is not None:
+            session.stop(patiently=False)
+
+    def shutdown(self) -> None:
+        session, self._session = self._session, None
+        if session is not None:
+            session.stop(patiently=True)
+
+
+RESIDENT = ResidentReader()
+
+atexit.register(RESIDENT.shutdown)
+
+
+def resident_reader(timeout: float) -> str:
+    """The device hierarchy as `maestro hierarchy` JSON, read through the run's one resident maestro."""
+    return csv_to_hierarchy(RESIDENT(timeout))
 
 
 @dataclass(frozen=True)
@@ -230,16 +468,10 @@ class DeviceReading:
         return text + ", …" if len(entries) > INVENTORY_ENTRIES else text
 
 
-def _maestro_hierarchy(timeout: float) -> str:
-    if shutil.which("maestro") is None:
-        raise RuntimeError("the maestro CLI is not installed on this machine")
-    return _run(["maestro", "hierarchy"], timeout=timeout)
-
-
 class DeviceScreen:
-    """The device behind `maestro hierarchy`, read one hierarchy at a time."""
+    """The device behind `maestro mcp`, read one hierarchy at a time."""
 
-    def __init__(self, reader: Callable[[float], str] = _maestro_hierarchy) -> None:
+    def __init__(self, reader: Callable[[float], str] = resident_reader) -> None:
         self._reader = reader
 
     def read(self, within: float) -> Reading | None:
