@@ -17,6 +17,9 @@ still governs the turn, and it names the file the brief is kept at, so an agent 
 brief to a compaction reads it again. It carries only what changed since the last turn: the
 report that sent the turn back, QA's findings, the other open findings, the review prefix, the
 operator answer and the task note. It asks for the JSON result the brief describes. A review
+follow-up says the result's findings hold only what a reviewer run in this turn reported, so a
+turn that ran no reviewer returns none, and a finding filed before the turn is answered in the
+answer file instead. A review
 follow-up also asks the agent to re-state the plan's full structure, because the review result
 replaces the last one.
 

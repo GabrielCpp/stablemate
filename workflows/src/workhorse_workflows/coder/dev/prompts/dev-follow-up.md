@@ -36,6 +36,9 @@ These findings are open, and each one needs a section in the answer file:
 {% if review_prefix %}
 
 A new review in this turn files its findings as `{{ workhorse_var('review_prefix') }}n`.
+The result's `findings` holds only what a reviewer you ran in this turn reported. A finding
+filed before this turn is answered in the answer file and never returned in `findings`, so a
+turn that ran no reviewer returns an empty `findings`.
 {% endif %}
 {% if operator_context %}
 

@@ -35,6 +35,7 @@ file's format, sit in files beside the review brief, and the brief names their p
 - rule: when an advisor is offered, a build departure from the plan with no advice is sent back to the build as a repair lap
 - rule: when an advisor is offered, a declined review finding with no consult on file is reopened and sent back to the review as a repair lap
 - rule: the advisor reads the paths it is handed and answers one question, and it never edits a file
+- rule: a review turn's result lists only what a reviewer it ran in that turn reported, and a finding filed before the turn is answered in the answer file and never listed again, because the flow files every listed finding as a new one and merges the older open finding of the same cause into it, which leaves the answer the turn wrote attached to a finding that is no longer open
 - prefers: the follow-up note over a full brief on a continued phase, because the conversation already holds the brief and resending it costs a full prompt per lap
 - prefers: a pointer to the opening brief over repeating the story's rules in each phase brief, because the conversation already holds them and the pointer keeps each brief near one screen of reading
 - tests: `workflows/tests/coder/dev/test_flow.py::test_a_fresh_story_runs_plan_build_and_review_in_that_order`

@@ -146,8 +146,9 @@ class DevResult(PlanFields):
         default=[],
         description="Every finding your reviewer reported this turn, verbatim and in its "
         "order, before triage drops any. The run files the nth one under the review prefix "
-        "plus n, and the answer file answers it under that id. Empty on a turn that ran no "
-        "review.",
+        "plus n, and the answer file answers it under that id. A finding filed before this "
+        "turn is answered in the answer file and never listed here. Empty on a turn that ran "
+        "no review.",
     )
     consults: list[Consult] = Field(
         default=[],
