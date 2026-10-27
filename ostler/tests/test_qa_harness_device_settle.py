@@ -341,8 +341,9 @@ class _Phone:
 
     def __init__(
         self, time: _Time, *, rows: int = 12, slop: int = 20, scrollable: bool = True,
-        label: Callable[[int], str] = lambda index: f"Row {index}",
+        label: Callable[[int], str] = lambda index: f"Row {index}", button: bool = False,
     ) -> None:
+        self.button = button
         self.time = time
         self.label = label
         self.rows = rows
@@ -370,6 +371,12 @@ class _Phone:
         for index in range(self.rows):
             y = top + index * self.ROW - self.offset
             if y >= top and y + self.ROW - 20 <= bottom:
+                if self.button:
+                    title = f"[40,{y}][1040,{y + 90}]"
+                    drawn.append({"attributes": {"bounds": title, "class": "android.widget.TextView", "text": self.label(index)}, "children": []})
+                    press = f"[40,{y + 100}][1040,{y + self.ROW - 20}]"
+                    drawn.append({"attributes": {"bounds": press, "class": "android.widget.Button", "text": "Open"}, "children": []})
+                    continue
                 bounds = f"[40,{y}][1040,{y + self.ROW - 20}]"
                 drawn.append({"attributes": {"bounds": bounds, "class": "android.widget.TextView", "text": self.label(index)}, "children": []})
         return json.dumps({"attributes": {}, "children": drawn})
@@ -516,3 +523,26 @@ def test_an_area_that_does_not_scroll_is_dragged_once_and_never_restored() -> No
 
     assert not settled.passed
     assert len(phone.swipes) == 1
+
+
+def test_rows_with_a_unique_title_and_a_repeated_button_are_restored_after_a_drag_that_hits_the_end() -> None:
+    phone = _Phone(_Time(), rows=9, button=True)
+
+    settled = _settle_phone(phone, _row(99))
+
+    forward = [swipe for swipe in phone.swipes if swipe[2] < swipe[1]]
+    assert not settled.passed
+    assert len(forward) == 2
+    assert phone.offset <= phone.slop
+    assert phone.refreshes == 0
+
+
+def test_a_drag_that_moves_nothing_is_the_last_one() -> None:
+    phone = _Phone(_Time(), rows=7, button=True)
+
+    settled = _settle_phone(phone, _row(99))
+
+    forward = [swipe for swipe in phone.swipes if swipe[2] < swipe[1]]
+    assert not settled.passed
+    assert len(forward) == 1
+    assert phone.refreshes == 0

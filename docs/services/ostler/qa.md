@@ -285,8 +285,8 @@ are written, because each later command reads what an earlier one wrote.
   source file and a plan under spec s1
 - fixture: [qa maestro scratch plan](fixtures/qa-maestro-scratch-plan.md)
 - code: ostler/ostler/qa/harness/ostler_qa.py::settle@9c2c885402aa
-- code: ostler/ostler/qa/harness/ostler_qa_hierarchy.py::DeviceScreen@19abb8b9d792
-- code: ostler/ostler/qa/harness/ostler_qa_hierarchy.py::resident_reader@19abb8b9d792
+- code: ostler/ostler/qa/harness/ostler_qa_hierarchy.py::DeviceScreen@9ef5636f7782
+- code: ostler/ostler/qa/harness/ostler_qa_hierarchy.py::resident_reader@9ef5636f7782
 - detail: [Running and reporting a QA run](concepts/running-and-reporting-a-qa-run.md)
 
 ### ostler-qa-run-grpc-target

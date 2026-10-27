@@ -559,9 +559,15 @@ def _layout(nodes: Sequence[DeviceNode], area: Bounds) -> tuple[tuple[str, tuple
 def _shift(before: Sequence[DeviceNode], after: Sequence[DeviceNode], area: Bounds, expected: float) -> float:
     """How far the content moved up between two readings.
 
-    Every pair of same-keyed nodes votes for the distance between their tops. Identical rows make that ambiguous by multiples of the row spacing, so of the distances with at least a quarter of the top vote, the one nearest *expected* wins. With no pair at all the content is taken as still when every node sits where it did, else as moved by *expected*.
+    Readings that lay out alike mean it did not move. Else the nodes whose key is unique inside the area in both readings give the exact distance. Else every pair of same-keyed nodes votes for the distance between their tops, and identical rows make that ambiguous by multiples of the row spacing, so of the distances with at least a quarter of the top vote the one nearest *expected* wins. With no pair at all the content is taken as moved by *expected*.
     """
+    if _layout(before, area) == _layout(after, area):
+        return 0.0
     first, second = _members(before, area), _members(after, area)
+    once = _tops(first), _tops(second)
+    exact = [once[0][key] - once[1][key] for key in once[0].keys() & once[1].keys()]
+    if exact:
+        return float(statistics.median(exact))
     votes: dict[int, list[int]] = {}
     for a in first:
         for b in second:
@@ -569,12 +575,19 @@ def _shift(before: Sequence[DeviceNode], after: Sequence[DeviceNode], area: Boun
                 distance = a.bounds[1] - b.bounds[1]
                 votes.setdefault(round(distance / 2), []).append(distance)
     if not votes:
-        still = sorted(node.bounds for node in first) == sorted(node.bounds for node in second)
-        return 0.0 if still else expected
+        return expected
     top = max(len(found) for found in votes.values())
     contenders = [found for found in votes.values() if len(found) * 4 >= top]
     chosen = min(contenders, key=lambda found: (abs(statistics.median(found) - expected), abs(statistics.median(found))))
     return float(statistics.median(chosen))
+
+
+def _tops(members: Sequence[DeviceNode]) -> dict[tuple[str, tuple[str, ...]], int]:
+    """Where each node that is the only one of its key starts."""
+    counts: dict[tuple[str, tuple[str, ...]], int] = {}
+    for node in members:
+        counts[_key(node)] = counts.get(_key(node), 0) + 1
+    return {_key(node): node.bounds[1] for node in members if counts[_key(node)] == 1}
 
 
 def scan_beyond(
