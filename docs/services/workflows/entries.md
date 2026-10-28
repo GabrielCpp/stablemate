@@ -111,6 +111,7 @@ title: workflows
 - [Coder path resolution](concepts/coder-path-resolution.md)
 - [Coder prompt role resolution](concepts/coder-prompt-role-resolution.md)
 - [Coder prompt stack neutrality](concepts/coder-prompt-stack-neutrality.md)
+- [Coder owner step cost](concepts/coder-owner-step-cost.md)
 - [Coder qa package](concepts/coder-qa-package.md)
 - [Coder QA regression suites](concepts/coder-qa-regression.md)
 - [Coder QA schema contracts](concepts/coder-qa-schema-contracts.md)

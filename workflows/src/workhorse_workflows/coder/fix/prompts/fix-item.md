@@ -58,6 +58,8 @@ any earlier assumption in the item, the story or the code. Do not raise the same
 5. **Repair.** Send the real defects back to fixers, then QA again. Repeat until QA passes.
 6. **Commit** and return the result.
 
+{% include "shared/prompts/_step-cost.md" %}
+
 ## Subagents
 
 Spawn subagents through your harness's own task or agent tool. Pick each one's model by the

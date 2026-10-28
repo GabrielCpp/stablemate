@@ -101,6 +101,8 @@ block again.
 5. **Fix.** Have a fixer repair the real findings, then converge `ostler doctor` again.
 6. **Return** the result.
 
+{% include "shared/prompts/_step-cost.md" %}
+
 ## Subagents
 
 Spawn subagents through your harness's own task or agent tool. Pick each one's model by the

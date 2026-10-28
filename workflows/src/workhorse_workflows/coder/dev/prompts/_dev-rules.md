@@ -14,4 +14,6 @@ re-reads that line after the review phase and sends the story back to you if it 
 Every commit carries `Epic: {{ workhorse_var('epic') }}` and
 `Story: {{ workhorse_var('story_id') }}` as footers, spelled exactly so, and nowhere else in
 the message. Do not push and do not open a pull request. The workflow owns both.
+
+{% include "shared/prompts/_step-cost.md" %}
 {% endif %}

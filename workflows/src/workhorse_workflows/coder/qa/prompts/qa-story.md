@@ -147,6 +147,8 @@ register. A finding resolved during this run is never an item. A remark about th
 toolchain, such as commit trailers, ostler or packet attribution, is never an item
 either. Both are run findings for the operator, and they go in `notes`.
 
+{% include "shared/prompts/_step-cost.md" %}
+
 ## Subagents
 
 Spawn subagents through your harness's own task or agent tool. Pick each one's model by the

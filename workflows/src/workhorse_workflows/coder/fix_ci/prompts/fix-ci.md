@@ -61,6 +61,8 @@ endpoint, flow, concept, format or other observable contract, because no story
 documentation context exists here. When CI can only go green through such a change, make no
 commit and report `blocked` with the change it would take.
 
+{% include "shared/prompts/_step-cost.md" %}
+
 ## Subagents
 
 Spawn subagents through your harness's own task or agent tool. Pick each one's model by the

@@ -19,8 +19,9 @@ The dev-build envelope is the build phase of the dev owner's story, on the conve
 ran on. It tells the agent to read the plan, build each change with its test, and run every gate
 and verification command the plan declares. It then brings each touched layer up once and writes
 one Acceptance Walk entry per criterion from what it saw hold. The turn commits under the story's
-footers and ends with a `BuildResult`. The agent builds the story itself. It hands a lookup or a
-bounded unit to a subagent only where that saves work.
+footers and ends with a `BuildResult`. The agent builds the story itself. It sends lookups to a
+lookup subagent, and hands a bounded unit to a builder subagent only where that unit can run
+beside its own work.
 
 A departure is any change the build makes to the plan. The envelope allows one only when building
 the plan as written would fail a criterion or a gate. It asks for each departure in `plan.md` and

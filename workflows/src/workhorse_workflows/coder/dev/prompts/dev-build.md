@@ -48,8 +48,9 @@ and the JSON result below.
 
 ## Subagents
 
-You build the story yourself. Spawn a subagent through your harness's own task or agent
-tool only where it saves you work:
+You build the story yourself, and you send lookups to a lookup subagent. Spawn a builder
+through your harness's own task or agent tool only where one unit can run beside your own
+work:
 
 | Seat | Sees | May touch |
 | --- | --- | --- |
