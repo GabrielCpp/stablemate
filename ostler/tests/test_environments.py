@@ -349,7 +349,7 @@ class FakeDocker:
         self.calls: list[list[str]] = []
         self.ps = ps
 
-    def __call__(self, argv: Sequence[str], *, capture: bool) -> subprocess.CompletedProcess[str]:
+    def __call__(self, argv: Sequence[str], *, capture: bool, stdin: str | None = None) -> subprocess.CompletedProcess[str]:
         args = list(argv)
         self.calls.append(args)
         stdout = ""
@@ -849,13 +849,13 @@ class FakeDecrypt(FakeDocker):
         super().__init__()
         self.status = status
 
-    def __call__(self, argv: Sequence[str], *, capture: bool) -> subprocess.CompletedProcess[str]:
+    def __call__(self, argv: Sequence[str], *, capture: bool, stdin: str | None = None) -> subprocess.CompletedProcess[str]:
         if argv[0] == "sh":
             self.calls.append(list(argv))
             return subprocess.CompletedProcess(
                 list(argv), self.status, "TOKEN=s3cret-value\n" if not self.status else "",
                 "\n".join(f"line {n}" for n in range(8)) if self.status else "")
-        return super().__call__(argv, capture=capture)
+        return super().__call__(argv, capture=capture, stdin=stdin)
 
 
 def test_a_decrypt_command_writes_a_private_file_and_no_output_holds_its_value(
@@ -1101,7 +1101,7 @@ class FakeJobs(FakeDocker):
         self.writes = writes
         self.seen: list[str] = []
 
-    def __call__(self, argv: Sequence[str], *, capture: bool) -> subprocess.CompletedProcess[str]:
+    def __call__(self, argv: Sequence[str], *, capture: bool, stdin: str | None = None) -> subprocess.CompletedProcess[str]:
         args = list(argv)
         if "up" in args and "api-provision" in args:
             directory = Path(args[args.index("--project-directory") + 1])
@@ -1109,7 +1109,7 @@ class FakeJobs(FakeDocker):
                              if "--env-file" in args else "")
             target = directory / "outputs" / "api-provision" / "outputs.env"
             target.write_text(self.writes, encoding="utf-8")
-        return super().__call__(args, capture=capture)
+        return super().__call__(args, capture=capture, stdin=stdin)
 
 
 def test_a_stack_with_no_job_outputs_runs_exactly_one_compose_up(tmp_path: Path) -> None:
@@ -1170,13 +1170,13 @@ class FakeSaddlebag(FakeDocker):
                          "fields": ["value"]}] if secrets is None else secrets
         self.status = status
 
-    def __call__(self, argv: Sequence[str], *, capture: bool) -> subprocess.CompletedProcess[str]:
+    def __call__(self, argv: Sequence[str], *, capture: bool, stdin: str | None = None) -> subprocess.CompletedProcess[str]:
         if argv[0] == "saddlebag":
             self.calls.append(list(argv))
             return subprocess.CompletedProcess(
                 list(argv), self.status, json.dumps({"secrets": self.secrets}) if not self.status else "",
                 "the daemon is not running" if self.status else "")
-        return super().__call__(argv, capture=capture)
+        return super().__call__(argv, capture=capture, stdin=stdin)
 
 
 def test_the_saddlebag_key_takes_one_or_more_tags_and_refuses_a_bad_one(tmp_path: Path) -> None:

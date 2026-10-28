@@ -32,11 +32,15 @@ _OCCUPANT_FORMAT = "\t".join([
 class Runner(Protocol):
     """Runs one command and returns its outcome, so a test can stand in for docker."""
 
-    def __call__(self, argv: Sequence[str], *, capture: bool) -> subprocess.CompletedProcess[str]: ...
+    def __call__(
+        self, argv: Sequence[str], *, capture: bool, stdin: str | None = None,
+    ) -> subprocess.CompletedProcess[str]: ...
 
 
-def run_command(argv: Sequence[str], *, capture: bool) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(list(argv), capture_output=capture, text=True, check=False)
+def run_command(
+    argv: Sequence[str], *, capture: bool, stdin: str | None = None,
+) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(list(argv), capture_output=capture, text=True, check=False, input=stdin)
 
 
 def home() -> Path:

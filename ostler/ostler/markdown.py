@@ -619,3 +619,21 @@ def _build_sections(body: str) -> list[Section]:
             container.tables.append(table)
 
     return roots
+
+
+def bullet_text(text: str) -> str:
+    """A raw bullet string, extracted the way this book's values are actually read."""
+    text = text.strip()
+    backticked = re.match(r"`([^`]+)`", text)
+    return backticked.group(1).strip() if backticked else text.partition("\n")[0].strip()
+
+
+def children(meta: dict, key: str) -> list[str]:
+    """A nested bullet's children as a flat list of strings."""
+    value = meta.get(key)
+    if value is None:
+        return []
+    if isinstance(value, list):
+        return [str(v).strip() for v in value if str(v).strip()]
+    text = str(value).strip()
+    return [text] if text else []

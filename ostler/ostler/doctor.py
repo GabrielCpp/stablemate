@@ -25,6 +25,7 @@ from ostler import adr as adr_mod
 from ostler import ids as ids_mod
 from ostler import path as path_mod
 from ostler import register as register_mod
+from ostler.environments import inject as inject_mod, page as env_page
 from ostler.finding import Finding
 from ostler.model import Graph, Epic, Story, UINode, load_config, read_doc, required_section_problems
 from ostler.path import services_root as services_root_of, specs_root_in
@@ -107,8 +108,12 @@ def _epic_matches(epic: Epic, epic_filter: str) -> bool:
             or registry.epic_slug(epic.name) == registry.epic_slug(epic_filter))
 
 
+Classifier = Callable[[list[tuple[str, str]]], dict[str, str | None]]
+
+
 def run(graph: Graph, epic_filter: str | None = None, check_schema: bool = True,
-        checkouts: dict[str, Path] | None = None) -> Report:
+        checkouts: dict[str, Path] | None = None,
+        classify: Classifier = inject_mod.classify_literals) -> Report:
     report = Report(org=graph.org_name, profile=graph.profile)
     f = report.findings
 
@@ -119,6 +124,7 @@ def run(graph: Graph, epic_filter: str | None = None, check_schema: bool = True,
     _check_register_records(graph, f)
     _check_decisions(graph, f)
     _check_ui(graph, f, resolver, checkouts)
+    _check_environment_variables(graph, f, classify)
     server_membership.check_server_membership(graph, f, resolver)
     rpc_coverage.check_rpc_coverage(graph, f, resolver, checkouts)
     route_coverage.check_route_coverage(graph, f, resolver, checkouts)
@@ -2345,6 +2351,42 @@ def _check_runbook(graph: Graph, f: list[Finding], resolver: links_mod.LinkResol
 
     _check_shared_entry_urls([n for n in runbooks if n.id in stacks], graph, f, resolver)
     _check_environment_addresses(graph, f)
+
+
+def _check_environment_variables(graph: Graph, f: list[Finding], classify: Classifier) -> None:
+    """An environment page states plain variables as literals and marks every secret one `secret`."""
+    for node in graph.ui_nodes_of_type("environment"):
+        rel = _rel_path(graph, node)
+        line = next((node.bullet_lines.get(idx, node.line) for key, _value, idx in node.bullet_order
+                     if key == "variables"), node.line)
+        try:
+            variables = env_page.read_variables(node)
+        except env_page.VariableError as exc:
+            f.append(Finding("error", "environment-variable-name", f"{rel}: {exc}",
+                             path=rel, line=line, ref=exc.name,
+                             suggestion="- NAME: value, or - NAME: secret, with NAME a letter or "
+                                        "`_` then letters, digits and `_`"))
+            continue
+        literals = list(variables.literals.items())
+        if not literals:
+            continue
+        slug = env_page.slug_of(node)
+        try:
+            rules = classify(literals)
+        except (inject_mod.ClassifyError, OSError) as exc:
+            f.append(Finding("warn", "environment-variables-unchecked",
+                             f"{rel}: the literals were not checked for secret values: {exc}",
+                             path=rel, line=line, ref=node.id))
+            continue
+        for name, _value in literals:
+            rule = rules.get(name)
+            if rule:
+                f.append(Finding("error", "environment-variable-secret",
+                                 f"{rel}: {name} holds a secret value ({rule}); replace it with "
+                                 f"the held mark `{env_page.HELD_MARK}` and register the value: "
+                                 f"saddlebag secret create <name> --var {name} "
+                                 f"--tag environment={slug}",
+                                 path=rel, line=line, ref=name))
 
 
 def _check_shared_entry_urls(stacks: list[UINode], graph: Graph, f: list[Finding],

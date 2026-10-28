@@ -14,6 +14,7 @@ from ostler import checks
 from ostler import graph as graph_mod
 from ostler import links as links_mod
 from ostler import markdown
+from ostler.markdown import bullet_text, children
 from ostler import model
 from ostler import path as path_mod
 from ostler.environments import leases
@@ -45,30 +46,12 @@ _SCALARS: dict[str, str] = {
 }
 
 
-def bullet_text(text: str) -> str:
-    """A raw bullet string, extracted the way this book's values are actually read."""
-    text = text.strip()
-    backticked = re.match(r"`([^`]+)`", text)
-    return backticked.group(1).strip() if backticked else text.partition("\n")[0].strip()
-
-
 def bullet_value(meta: dict, key: str) -> str:
     """One bullet's value as a string — a repeated bullet keeps its first value."""
     value = meta.get(key, "")
     if isinstance(value, list):
         value = value[0] if value else ""
     return bullet_text(str(value))
-
-
-def _children(meta: dict, key: str) -> list[str]:
-    """A nested bullet's children as a flat list of strings."""
-    value = meta.get(key)
-    if value is None:
-        return []
-    if isinstance(value, list):
-        return [str(v).strip() for v in value if str(v).strip()]
-    text = str(value).strip()
-    return [text] if text else []
 
 
 def steps_of(graph: Graph, runbook: UINode) -> list[UINode]:
@@ -149,7 +132,7 @@ def _env_exports(node: UINode) -> str:
     """A step's `env:` children as a shell prefix."""
     assignments = [
         value
-        for value in (bullet_text(item) for item in _children(node.meta, "env"))
+        for value in (bullet_text(item) for item in children(node.meta, "env"))
         if _ASSIGNMENT.match(value)
     ]
     return "".join(f"export {item}; " for item in assignments).strip()
@@ -158,7 +141,7 @@ def _env_exports(node: UINode) -> str:
 def _secrets_of(meta: dict) -> dict[str, str]:
     """The runbook's `secrets:` children as ``{ENV_NAME: mint recipe}``."""
     secrets: dict[str, str] = {}
-    for item in _children(meta, "secrets"):
+    for item in children(meta, "secrets"):
         idx = markdown.label_colon_index(item)
         if idx == -1:
             continue
@@ -328,7 +311,7 @@ class EnvironmentAddresses:
 def environment_addresses(node: UINode) -> EnvironmentAddresses:
     """The `addresses:` and `sharing:` bullets of the `environment` node *node*."""
     entries: dict[str, str] = {}
-    for item in _children(node.meta, "addresses"):
+    for item in children(node.meta, "addresses"):
         idx = markdown.label_colon_index(item)
         if idx == -1:
             continue

@@ -623,6 +623,7 @@ UI_TYPES: tuple[UINodeType, ...] = (
             BulletKey("local-only"),
             BulletKey("sharing", values=("shared", "per-run")),
             BulletKey("addresses", nested=True),
+            BulletKey("variables", nested=True),
             BulletKey("code", link=True, owns=True),
             BulletKey("config", owns=True),
             BulletKey("verify", check=True),
@@ -858,6 +859,7 @@ UI_TYPES: tuple[UINodeType, ...] = (
         bullet_keys=(
             BulletKey("kind", required=True, values=STEP_KIND_VALUES),
             BulletKey("run"),
+            BulletKey("sign-in-as"),
             BulletKey("working-directory", value_kind="checkout-path"),
             BulletKey("timeout"),
             BulletKey("env", nested=True),
