@@ -169,27 +169,37 @@ def _front_matter(path: Path) -> dict[str, object]:
     return data if isinstance(data, dict) else {}
 
 
-def upgrade_spec_layout(repo: Path) -> None:
-    """Rename an old seed's slug spec folders to story ids, then stage every spec out of *repo* into the trial's artifacts dir."""
+def _stage(source: Path, target: Path) -> None:
+    if target.is_dir():
+        shutil.rmtree(target)
+    elif target.exists():
+        target.unlink()
+    target.parent.mkdir(parents=True, exist_ok=True)
+    shutil.move(source, target)
+
+
+def upgrade_layout(repo: Path) -> None:
+    """Rename an old seed's slug spec folders to story ids, then stage every spec and epic out of *repo* into the trial's artifacts dir, and drop the staged epics from the copy's index."""
     specs = repo / "docs" / "specs"
-    if not specs.is_dir():
-        return
-    ids: dict[str, str] = {}
-    for story_md in sorted([*repo.glob("docs/epics/*/stories/*/story.md"), *repo.glob("epics/*/stories/*/story.md")]):
-        story_id = _front_matter(story_md).get("id")
-        if isinstance(story_id, str) and story_id:
-            ids[story_md.parent.name] = story_id
-    for folder in sorted(specs.iterdir()):
-        target = ids.get(folder.name)
-        if folder.is_dir() and target and not (specs / target).exists():
-            folder.rename(specs / target)
-    staged = trial_artifacts(repo) / "specs"
-    staged.mkdir(parents=True, exist_ok=True)
-    for entry in sorted(specs.iterdir()):
-        target = staged / entry.name
-        if target.is_dir():
-            shutil.rmtree(target)
-        elif target.exists():
-            target.unlink()
-        shutil.move(entry, target)
-    shutil.rmtree(specs)
+    epics = repo / "docs" / "epics"
+    if specs.is_dir():
+        ids: dict[str, str] = {}
+        for story_md in sorted([*repo.glob("docs/epics/*/stories/*/story.md"), *repo.glob("epics/*/stories/*/story.md")]):
+            story_id = _front_matter(story_md).get("id")
+            if isinstance(story_id, str) and story_id:
+                ids[story_md.parent.name] = story_id
+        for folder in sorted(specs.iterdir()):
+            target = ids.get(folder.name)
+            if folder.is_dir() and target and not (specs / target).exists():
+                folder.rename(specs / target)
+        staged = trial_artifacts(repo) / "specs"
+        staged.mkdir(parents=True, exist_ok=True)
+        for entry in sorted(specs.iterdir()):
+            _stage(entry, staged / entry.name)
+        shutil.rmtree(specs)
+    if epics.is_dir():
+        for epic in sorted(epics.iterdir()):
+            _stage(epic, trial_artifacts(repo) / "epics" / epic.name)
+        shutil.rmtree(epics)
+        if (repo / ".git").exists():
+            _ = git("rm", "-r", "--cached", "--quiet", "--ignore-unmatch", "--", "docs/epics", cwd=repo)

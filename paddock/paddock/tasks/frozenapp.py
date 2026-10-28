@@ -24,7 +24,7 @@ from paddock.tasks.stablemate import (
     spec_dir,
     stablemate_checkout,
     trial_artifacts,
-    upgrade_spec_layout,
+    upgrade_layout,
     uv_run,
 )
 from paddock.runner import CommandResult, Run
@@ -124,8 +124,6 @@ def materialize(
     targets = tree.repos_at(dest, member_names)
     for key, target in targets.items():
         copy_tracked(sources[key], target)
-    if not member_names:
-        upgrade_spec_layout(dest)
 
     after = {
         rel: story_image(stories, story, rel, phase="post", source=source).read_bytes()
@@ -139,6 +137,8 @@ def materialize(
         target = dest / rel
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_bytes(story_image(stories, story, rel, phase="pinned").read_bytes())
+    if not member_names:
+        upgrade_layout(dest)
 
     for repo in targets.values():
         git("init", "--quiet", "--initial-branch", "main", cwd=repo)

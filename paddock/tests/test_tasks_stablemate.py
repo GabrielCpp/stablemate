@@ -9,6 +9,8 @@ from types import SimpleNamespace
 from typing import cast
 
 import pytest
+from fakes import init_repo
+from smoke import git
 
 from paddock import project as project_mod
 from paddock.runner import Run
@@ -197,3 +199,31 @@ def test_install_agents_refuses_a_stage_with_no_agents_file(tmp_path: Path) -> N
         sm.install_agents(run)
 
     assert seen == []
+
+
+def test_upgrade_layout_stages_epics_out_of_the_copy_and_ostler_loads_it(tmp_path: Path) -> None:
+    from ostler import layout
+
+    repo = init_repo(tmp_path / "repo", {"docs/epics/KEY-1/epic.md": "# epic\n", "docs/epics/KEY-1/stories/s/story.md": "# s\n"})
+    sm.upgrade_layout(repo)
+    artifacts = sm.trial_artifacts(repo)
+    assert (artifacts / "epics" / "KEY-1" / "epic.md").read_text(encoding="utf-8") == "# epic\n"
+    assert (artifacts / "epics" / "KEY-1" / "stories" / "s" / "story.md").is_file()
+    assert not (repo / "docs" / "epics").exists()
+    layout.check(artifacts, repo)
+
+
+def test_upgrade_layout_drops_the_staged_epics_from_the_copys_index(tmp_path: Path) -> None:
+    repo = init_repo(tmp_path / "repo", {"docs/epics/KEY-1/epic.md": "# epic\n", "README.md": "x\n"})
+    sm.upgrade_layout(repo)
+    assert "docs/epics" not in git(repo, "ls-files")
+    assert "README.md" in git(repo, "ls-files")
+
+
+def test_upgrade_layout_replaces_a_stale_staged_epic(tmp_path: Path) -> None:
+    repo = init_repo(tmp_path / "repo", {"docs/epics/KEY-1/epic.md": "new\n"})
+    stale = sm.trial_artifacts(repo) / "epics" / "KEY-1"
+    stale.mkdir(parents=True)
+    (stale / "old.md").write_text("old\n", encoding="utf-8")
+    sm.upgrade_layout(repo)
+    assert sorted(path.name for path in stale.iterdir()) == ["epic.md"]

@@ -231,10 +231,10 @@ def checkout(
         if key in pinned:
             sm.git("checkout", "--quiet", pinned[key], cwd=target)
     if not member_names:
-        sm.upgrade_spec_layout(dest)
+        sm.upgrade_layout(dest)
     rewind(dest, fixture, pin, flow, run=run)
     if not member_names:
-        sm.upgrade_spec_layout(dest)
+        sm.upgrade_layout(dest)
     home = tree.witness_docs(run, dest)
     restore_harness(home, fixture)
     if fixture.backfill_dependencies:
