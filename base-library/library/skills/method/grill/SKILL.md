@@ -1,6 +1,6 @@
 ---
 name: grill
-description: "Interviewing me about a plan, a design or an idea until its design tree has no unvisited branch: one round of numbered questions per frontier, each with a recommended answer, and every fact looked up instead of asked. Load when asked to grill, stress-test or challenge a plan, when a plan is about to be built with decisions nobody took, or after a brainstorm picked a direction. For options on a problem with no plan yet, load brainstorm."
+description: "Interviewing me about a plan, a design or an idea until its design tree has no unvisited branch: one round of numbered questions per frontier, each with a recommended answer, every fact looked up instead of asked, and at the end the settled decisions, rejected alternatives and unresolved objections filed where the repo keeps each. Load when asked to grill, stress-test or challenge a plan, when a plan is about to be built with decisions nobody took, or after a brainstorm picked a direction. For options on a problem with no plan yet, load brainstorm."
 argument-hint: "[the plan, decision or idea to stress-test]"
 tags: [grill]
 ---
@@ -60,7 +60,34 @@ Before the first round, read what the repo already knows, so I do not recite it:
 
 The session ends when the **frontier is empty**: every branch visited, nothing left
 silently assumed. Then summarise the settled tree in one pass, so I see the whole shape at
-once.
+once, and file the three things the summary would otherwise be the only copy of. A chat
+is lost to the next reader. A file is not.
+
+- **A settled decision** goes where the repo keeps its rules. Where the repo keeps a
+  book, that is a `rule:` bullet on the concept that covers it, or a new concept when
+  none does.
+- **A rejected alternative** becomes `docs/decisions/<short-kebab-slug>.md` under the
+  repo's docs root, in the shape the coder's resolver writes and the dev scope reads
+  before it asks. The reader is the next agent about to propose the same path.
+
+  ```markdown
+  # <the question, as a question>
+
+  **Decided:** <the path taken, and the alternative it rejects, in one or two sentences>
+
+  **Grounded in:** <the file and line that decided it, or my answer to Q<n> of this grill>
+
+  **Context:** <the plan this grill stress-tested, and what was at stake>
+  ```
+
+- **An unresolved objection** is work nobody has scheduled. File it on the Register:
+
+  ```bash
+  ostler backlog add --repo <repo> --area <area> "<the objection in one line>" --body "<what settling it would take>"
+  ```
+
+A repo with no docs root yet keeps all three in the summary, and the first story that
+creates the docs root files them.
 
 Start implementing only after I confirm we have reached shared understanding. When I ask
 you to start early, name the branches still unvisited first, then do as I asked.
