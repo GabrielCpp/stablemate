@@ -1389,7 +1389,8 @@ def test_the_opening_brief_records_an_operator_answer_where_the_resolver_reads_d
     decisions = str(plan["decisions_dir"])
     assert decisions.endswith("docs/decisions"), decisions
     text = Path(str(plan["brief_path"])).read_text(encoding="utf-8")
-    assert f"`{decisions}/<short-kebab-slug>.md`" in text, text
+    assert "ostler decisions add <short-kebab-slug> --summary" in text, text
+    assert f"`{decisions}`" in text, text
     assert "code-structure rule 2.13" in " ".join(text.split()), text
 
 

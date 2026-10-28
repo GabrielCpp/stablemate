@@ -50,7 +50,7 @@ found, not just that you looked.
 
 Then check whether the question is already decided. In descending order of authority:
 
-1. **`{{ decisions_dir }}`** — standing decisions a human made, or a previous resolver
+1. **`{{ decisions_dir }}/*/decision.md`** — standing decisions a human made, or a previous resolver
    recorded on their behalf. A record that covers this question decides it outright.
 2. **The repo's own rules** — `AGENTS.md`, `CLAUDE.md`, and the installed skills under
    `.claude/skills/`. A convention written down there is the operator's convention; a
@@ -109,18 +109,16 @@ a resolver has said exactly that and then written the file out at five lines.
   quoting the line. If you cannot write this section, you are not answering; escalate.
 
 Then record it, so the next run does not pay for it again. If no record in
-`{{ decisions_dir }}` already covers this question, create
-`{{ decisions_dir }}/<short-kebab-slug>.md`:
+`{{ decisions_dir }}/*/decision.md` already covers this question, run
+`ostler decisions add <short-kebab-slug> --summary "<the question, in one line>"`. It prints the
+path of the new `decision.md`, under `{{ decisions_dir }}`. It refuses a slug that is already
+taken, so read that decision and pick another slug if it is a different question. Fill the four
+headings in the printed file:
 
-```markdown
-# <the question, as a question>
-
-**Decided:** <the ruling, in one or two sentences>
-
-**Grounded in:** <the file and line that determined it>
-
-**Context:** <the block that raised it — story slug and stage — and what was at stake>
-```
+- `## Question`: the question, as a question.
+- `## Decided`: the ruling, in one or two sentences.
+- `## Grounded in`: the file and line that determined it.
+- `## Context`: the block that raised it, with the story slug and stage, and what was at stake.
 
 If a record *does* cover it, leave it alone and cite it. A record is amended only by a
 human, or by a resolver a human's own answer has just overruled it with.

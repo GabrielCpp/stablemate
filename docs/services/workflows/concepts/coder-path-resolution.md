@@ -129,8 +129,8 @@ operator-gate sandboxes, and the plain engine resolver is used by callers outsid
 
 ### decisions_dir
 - sig: `decisions_dir(docs_root: Path) -> Path`
-- does: joins `docs/decisions` beneath `docs_root`
-- returns: the absolute `docs/decisions` directory of the docs root
+- does: joins `docs/decisions` beneath `docs_root`, the folder that holds one `<slug>/decision.md` per standing decision
+- returns: the absolute `docs/decisions` directory of the docs root, where `docs_root` is the artifacts dir for a repository in any workspace and the repository otherwise
 - verify: json_path(path="$.result", matches=".*docs/decisions")
 - code: `workflows/src/workhorse_workflows/coder/shared/paths.py::decisions_dir` @7fff90d60929
 - tests: `workflows/tests/coder/shared/test_paths.py::test_decisions_land_with_the_documents_not_beside_the_service_directories`
