@@ -271,6 +271,17 @@ Revision log:
   pass through ostler's process; `saddlebag secret set` already reads values on stdin.
 - Section 3, I7 added. Finding: the keyring route can block on an unlock prompt
   (saddlebag skill, errors table), and a blocked hook blocks every Bash call.
+- Section 2, Injection: Rendered file is `ostler env dotenv`, not `ostler env render`.
+  Finding: `env render` exists and writes the compose file
+  ([cli.py:49](ostler/ostler/environments/cli.py:49)).
+- Section 2, Description: Environment identity is the page's `slug:` (its file stem when
+  absent), not its id. Finding: the id is the repo-relative path, and a tag value with
+  slashes and `.md` is not what the saddlebag skill shows.
+- Section 2, Injection: Composition sets the page's literals over the process environment
+  (A12). Finding: the note decided only the file's precedence (I5); the operator who runs
+  `ostler env exec` asked for the page.
+- Section 5, Injection: `SaddlebagSource.names()` stays on `saddlebag list`. Finding: a
+  stack.yml carries no link to one environment page, so there is no page to read first.
 
 **Refusal.** New. `saddlebag/saddlebag/guard.py`, exposed as `saddlebag guard --hook` and
 `saddlebag guard install --user|--project`. The decision shape exists in
@@ -285,15 +296,20 @@ only, found through `sockets.py`, which the protocol module shares; the keyring 
 never asked from the hook (A5). Heredoc bodies and single-quoted backticks are data to
 Revealing command, not stages.
 
-**Description.** Reshape. The environment node's keys are declared at
+**Description.** Reshape, revised (log above). The environment node's keys are declared at
 [registry.py:618](ostler/ostler/registry.py:618): `selector`, `services`, `backing`,
-`local-only`, `sharing`, `addresses`, `code`, `config`, `verify`, `fixture`. Variable is a
-new `BulletKey("variables", nested=True)`. Held mark is the constant `secret`. Address
-exists. Role reference: a runbook step today names no role; the saddlebag skill's `role=`
-tag convention is the only carrier, so a runbook `sign-in-as:` key is the home. Environment
-identity exists as the page id, matching the skill's `environment=<id>` convention (A7).
-Doctor gains I2 on `variables`. The reference `environment.md` and the ostler skills are
-updated with the key.
+`local-only`, `sharing`, `addresses`, `code`, `config`, `verify`, `fixture`. Variable is
+`BulletKey("variables", nested=True)`, read by `environments/page.py`: a child `NAME: value`
+is a literal, `NAME: secret` is a held mark, and a bad name, a repeated name or a child with
+no colon is a `VariableError`. Held mark is the constant `secret`. Address exists. Role
+reference: a runbook step today names no role; the saddlebag skill's `role=` tag convention
+is the only carrier, so the step's `sign-in-as:` key is the home, declared and documented
+with no reader yet. Environment identity is the page's `slug:` frontmatter, the file stem
+when absent, matching the skill's `environment=<slug>` convention (A7). Doctor gains I2 on
+`variables` as `environment-variable-secret`: it feeds the page's literals to `saddlebag env
+classify - --json` on stdin through the environment runner, and when saddlebag cannot
+answer it warns `environment-variables-unchecked` rather than passing the page. The
+reference `environment.md`, `step.md` and `doctor-codes.md` carry the keys and codes.
 
 **Custody.** Exists, reshaped in three places.
 
@@ -318,11 +334,17 @@ updated with the key.
 111 builds the compose prefix from a tag query. That is the compose variant of Consumer.
 Mismatch: `SaddlebagSource.names()` draws the required names from `saddlebag list`, while
 the design draws them from the page's held marks and checks each against custody (I3). The
-design is right: the page is the spec, and `list` confirms. `names()` stays for the stack's
-`${VAR}` check and reads the page first. Resolution and Composition are new in
-`environments/`, exposed as `ostler env exec <environment> -- <command>`. Rendered file is
-new, `ostler env render <environment>`, and the file is added to the repo's gitignore by
-the command.
+design is right for a command run under a page: the page is the spec, and `list` confirms.
+`names()` stays on `list` for the stack's `${VAR}` check, because a stack.yml names no
+environment page (revised, log above). Resolution and Composition live in
+`environments/inject.py`, exposed as `ostler env exec <environment> -- <command>`:
+Resolution asks `saddlebag list --tag environment=<slug> --json` through the runner and
+fails by name when a held mark has no record or several (I3); Composition sets the literals
+over the process environment (A12) and replaces the process with `saddlebag exec --env
+VAR=name … -- <command>`, or with the command itself when the page holds nothing. Rendered
+file is `ostler env dotenv <environment> [--to PATH]` (revised, log above): a header line
+naming the page, the literals and blank held lines in page order, and the path added to the
+repo's `.gitignore` when it is inside the repo.
 
 **Migration.** New. `ostler env import-dotenv FILE --environment <id>` in
 `environments/`: asks `saddlebag env classify`, writes the page diff, calls `saddlebag env
@@ -372,13 +394,13 @@ are new and the code follows none of them yet.
    Injection (Resolution, Composition, Rendered file). Done when: an environment page with
    three literals and two held marks passes doctor, a literal equal to a held value fails
    doctor (I2), `ostler env exec local -- env | sort` shows the literals and `[REDACTED]`
-   for the held names, a held mark with no record fails by name (I3), `ostler env render
+   for the held names, a held mark with no record fails by name (I3), `ostler env dotenv
    local` writes the file with the two lines blank and adds it to gitignore, and the stack's
    `${VAR}` check still passes on the existing books. Suites hold.
 4. **Move a repo.** Migration, Custody (Intake from file). Done when: a fixture dotenv with
    eight lines, three of them secret by different rules, becomes a page diff with five
    literals and three marks, three records with `var` and the environment tag, a report of
-   8, 3, 5, and `ostler env render` reproduces the file with the three lines blank. The
+   8, 3, 5, and `ostler env dotenv` reproduces the file with the three lines blank. The
    values appear in no ostler process output. Suites hold.
 5. **Say so.** The saddlebag skill, README and `docs/SECURITY.md`; the ostler skill's stack
    and environment references; the ostler book pages the change touched, restamped. Done
@@ -409,22 +431,28 @@ are new and the code follows none of them yet.
 5. **A9. The operator reads the import diff before committing.** Decided: the diff is the
    backstop for a line the rules missed, and no interactive prompt. Basis: the repo's commit
    procedure reads the diff first. If wrong: Migration gains a confirmation step.
-6. **A7. The environment page's id is the value of the `environment=` tag.** Decided:
-   Resolution queries custody with the page id. Basis: the saddlebag skill states the
-   convention. If wrong: Description gains an explicit tag key.
-7. **A11. A QA plan's `secret(from_env=…)` is satisfied when the run starts under the
+6. **A7. The environment page's slug is the value of the `environment=` tag.** Decided:
+   Resolution queries custody with the page's `slug:`, or its file stem when the page has
+   none. Basis: the saddlebag skill states the convention with a short name, and the three
+   environment pages in this repo each carry a `slug:`. If wrong: Description gains an
+   explicit tag key.
+7. **A12. The operator who runs a command under a page wants the page's literals, not the
+   shell's.** Decided: Composition sets each literal over the process environment, as
+   `saddlebag exec` already does for the held names. Basis: none. If wrong: Composition
+   sets a literal only when the process environment lacks it, and I5 covers the page too.
+8. **A11. A QA plan's `secret(from_env=…)` is satisfied when the run starts under the
    injector.** Decided: out of scope. Basis: `from_env` reads the process environment, which
    Composition sets. If wrong: slice 3 adds a QA run case.
-8. **A3. No real configuration value is the literal word `secret`.** Decided: the held mark
+9. **A3. No real configuration value is the literal word `secret`.** Decided: the held mark
    is that word alone. Basis: none. If wrong: Held mark becomes `saddlebag:` and the
    reference updates.
-9. **A6. The hook payload names a Read's path in `tool_input.file_path` and a Bash
+10. **A6. The hook payload names a Read's path in `tool_input.file_path` and a Bash
    command in `tool_input.command`.** Decided: Verdict reads those two. Basis: the no-shell
    guard's `hook_decision` reads the same payload. If wrong: Verdict's reader only.
-10. **A8. The eight-character floor from the output mask fits the masked view.** Decided:
+11. **A8. The eight-character floor from the output mask fits the masked view.** Decided:
     Masked view masks by key rule regardless of length and by value rule above the floor.
     Basis: README's reasoning that short strings match by accident. If wrong: Masked view's
     value rule.
-11. **A10. Each slice is one story on the `dev` branch worktree, landed by rebase, and
+12. **A10. Each slice is one story on the `dev` branch worktree, landed by rebase, and
     none needs a live book run stopped.** Decided: the order in section 6. Basis: the repo's
     commit and branch rules. If wrong: the slices reorder, not their content.
