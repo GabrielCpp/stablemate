@@ -326,6 +326,19 @@ def test_claude_effort_maps_to_native_flag():
         assert cmd[cmd.index("--model") + 1] == "opus"
 
 
+def test_claude_names_the_turn_brief_in_the_system_prompt():
+    with tempfile.TemporaryDirectory() as tmp:
+        brief = Path(tmp) / "prompt.md"
+        cmd = _capture_claude_cmd(prompt_path=brief)
+    anchor = cmd[cmd.index("--append-system-prompt") + 1]
+    assert str(brief.resolve()) in anchor
+    assert cmd.index("--append-system-prompt") < cmd.index("-p")
+
+
+def test_claude_without_a_brief_file_appends_no_system_prompt():
+    assert "--append-system-prompt" not in _capture_claude_cmd()
+
+
 def test_claude_no_effort_omits_flag():
     cmd = _capture_claude_cmd(model="opus")
     assert "--effort" not in cmd

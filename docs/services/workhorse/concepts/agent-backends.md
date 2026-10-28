@@ -63,6 +63,13 @@ The turn has no grep, glob or list, because opencode answers those outside its p
 confined turn whose working directory lies in no git worktree fails before it starts with
 `a confined opencode turn needs a git worktree`.
 
+A claude turn names its brief in its system prompt. The engine writes each turn's rendered prompt
+to a file, and the backend passes `--append-system-prompt` with that file's absolute path and an
+instruction to read it again after a compaction. Claude compacts a long turn's conversation on its
+own, and the summary can drop a path the brief gave. The system prompt is never compacted, so the
+turn can always recover its inputs from disk. A turn with no prompt file gets no appended system
+prompt.
+
 Copilot and cline apply no box. A confined profile still runs the turn with the operator's full
 permissions, and the backend prints `<cli> does not enforce a confined profile; the turn runs with
 the operator's full permissions` once per turn. It does not refuse the turn.
@@ -70,7 +77,7 @@ the operator's full permissions` once per turn. It does not refuse the turn.
 - code: `workhorse/workhorse/runner/backends/__init__.py::AgentBackend` @bd7a03e99213
 - code: `workhorse/workhorse/runner/backends/registry.py::get_backend` @da60c2e93d28
 - code: `workhorse/workhorse/runner/backends/null.py::NullBackend` @4464f8371e1f
-- code: `workhorse/workhorse/runner/backends/claude.py::ClaudeBackend` @d1d9cb14c387
+- code: `workhorse/workhorse/runner/backends/claude.py::ClaudeBackend` @6d8d3bfe5558
 - code: `workhorse/workhorse/runner/backends/jsonl.py::JsonlBackend` @f6c5136add76
 - code: `workhorse/workhorse/runner/backends/codex.py::CodexBackend` @39b0f1e8c0c2
 - code: `workhorse/workhorse/runner/backends/copilot.py::CopilotBackend` @bb84ceeeae1a
@@ -87,6 +94,9 @@ the operator's full permissions` once per turn. It does not refuse the turn.
 - code: `workhorse/workhorse/pyflow/engine.py::Engine.has_delegate` @a6d7852198a4
 - rule: a turn never loads less of the operator's environment than an interactive session of its CLI, and confinement is a guard layered on top of it
 - rule: a confined opencode turn gets read and write on its added directories through permission config, never through a plugin or shared state file
+- rule: a claude turn's system prompt names the turn's brief file, because a compaction summary once lost the spec dir and the turn returned a false `blocked` after searching its working directory for a plan it had already written
+- tests: `workhorse/tests/test_backends.py::test_claude_names_the_turn_brief_in_the_system_prompt`
+- tests: `workhorse/tests/test_backends.py::test_claude_without_a_brief_file_appends_no_system_prompt`
 - tests: `workhorse/tests/test_delegates.py::test_the_advisor_defaults_to_the_max_tier_model`
 - tests: `workhorse/tests/test_delegates.py::test_an_explicit_advisor_wins_over_the_default`
 - tests: `workhorse/tests/test_delegates.py::test_no_default_advisor_when_the_cli_takes_no_subagents`

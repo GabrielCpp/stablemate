@@ -69,6 +69,8 @@ class ClaudeBackend(AgentBackend):
             cmd.extend(["--effort", effort])
         if agent is not None and agent.steps is not None:
             cmd.extend(["--max-turns", str(agent.steps)])
+        if prompt_path is not None:
+            cmd.extend(["--append-system-prompt", _brief_anchor(prompt_path)])
         for directory in add_dirs or []:
             cmd.extend(["--add-dir", directory])
         if delegates:
@@ -243,6 +245,15 @@ def _guard_flags(policy: Policy | None) -> Iterator[list[str]]:
         hook = {"type": "command", "command": hook_command(path)}
         settings = {"hooks": {"PreToolUse": [{"matcher": ".*", "hooks": [hook]}]}}
         yield ["--settings", json.dumps(settings)]
+
+
+def _brief_anchor(prompt_path: Path) -> str:
+    """The system-prompt line naming the turn's brief on disk, which an auto-compaction of the conversation cannot summarize away."""
+    return (
+        f"This turn's brief is the file {prompt_path.resolve()}. It names the inputs, the paths and the "
+        "result this turn owes. After the conversation is compacted, read that file again before your "
+        "next action, and trust it over the summary."
+    )
 
 
 def _command_timeout_env(agent: AgentProfile | None) -> dict[str, str]:
