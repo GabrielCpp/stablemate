@@ -51,7 +51,8 @@ disk, including a before/after pair read for an unchanged- or created/removed/pe
 claim; `ostler_qa_paths.py` supplies the `$.key[index][*][?(@.key==value)]` path grammar every
 JSON-reading verifier walks to pick a value out of a document.
 
-The rest of the reader/judge pairs are browser-only. `ostler_qa_dom.py` reads one element's
+The rest of the reader/judge pairs read a browser page, and those whose check compiles on a
+phone also judge a phone flow's pass or fail. `ostler_qa_dom.py` reads one element's
 attribute, form value, or focus state; `ostler_qa_elements.py` reads a page or element's
 visibility, actionable/inert state, focus order, emitted-event count, title, console output, or
 a triggered download. The same module holds the one rendering of a book name for both drivers:
