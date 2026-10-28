@@ -277,7 +277,7 @@ def _read_dotenv(path: Path) -> list[dotenv.Line] | int:
     from saddlebag import dotenv
 
     try:
-        return dotenv.parse(path.read_text())
+        return dotenv.parse(sys.stdin.read() if str(path) == "-" else path.read_text())
     except OSError as exc:
         return _error(f"cannot read {path}: {exc.strerror or exc}", 1)
 
@@ -471,7 +471,7 @@ def build_parser() -> argparse.ArgumentParser:
     esub = ev.add_subparsers(dest="env_command", required=True)
     for verb, text in (("show", "print FILE with secret values masked"), ("keys", "list FILE's keys, marking secret ones"), ("classify", "say which of FILE's keys are secret")):
         ep = esub.add_parser(verb, help=text)
-        ep.add_argument("file", type=Path, metavar="FILE")
+        ep.add_argument("file", type=Path, metavar="FILE", help="a dotenv file, or - for stdin")
         if verb == "classify":
             ep.add_argument("--json", action="store_true")
         ep.set_defaults(func=cmd_env, json=False)

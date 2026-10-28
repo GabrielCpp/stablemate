@@ -124,6 +124,13 @@ def test_classify_without_json_prints_tab_separated_lines(seeded: Callable[..., 
     assert lines[2] == "LOGIN_PASSWORD\tsecret:held-value"
 
 
+def test_classify_reads_stdin_when_the_file_is_a_dash(seeded: Callable[..., None], run: Run, capsys: pytest.CaptureFixture[str]) -> None:
+    seeded()
+    assert run("env", "classify", "-", "--json", stdin="APP_HOST=localhost\nSTRIPE_KEY=sk-live-abcdefghijklmnop\n") == 0
+    verdicts = json.loads(capsys.readouterr().out)["verdicts"]
+    assert [(v["key"], v["rule"]) for v in verdicts] == [("APP_HOST", None), ("STRIPE_KEY", "token-shape")]
+
+
 def test_a_registered_var_is_secret_whatever_its_value(seeded: Callable[..., None], run: Run, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     seeded("RUNTIME_HANDLE")
     path = tmp_path / "other.env"
