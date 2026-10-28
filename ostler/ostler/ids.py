@@ -154,9 +154,9 @@ def shelf_ids(graph: Graph) -> list[str]:
 
 
 def decision_files(graph: Graph) -> list[Path]:
-    """Every decision file in the artifacts dir's ``adr/`` folder, in path order."""
+    """Every ``adr.md`` in the ADR folder, one level down, in path order."""
     folder = path_mod.adr_root(graph)
-    return sorted(folder.glob("*.md")) if folder.is_dir() else []
+    return sorted(folder.glob("*/adr.md")) if folder.is_dir() else []
 
 
 def claimed(graph: Graph) -> set[str]:
@@ -169,7 +169,7 @@ def claimed(graph: Graph) -> set[str]:
     out.update(m.eid for m in graph.milestones)
     out.update(str(f.data.get("id") or "") for f in graph.features)
     out.update(shelf_ids(graph))
-    out.update(p.stem for p in decision_files(graph))
+    out.update(p.parent.name for p in decision_files(graph))
     out.discard("")
     return out
 

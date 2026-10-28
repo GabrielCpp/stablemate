@@ -25,7 +25,7 @@ def decided(tmp_path: Path) -> str:
         )
         assert filing.ok, filing.message
     result = adr.propose(
-        load(tmp_path), title="Guard every total", context="c", decision="d", consequences="q",
+        load(tmp_path), slug="guard-every-total", title="Guard every total", context="c", decision="d", consequences="q",
         evidence=["acme-1", "acme-2", "acme-3"],
     )
     assert result.ok, result.message
@@ -45,7 +45,7 @@ def test_an_intact_decision_yields_no_finding(tmp_path: Path) -> None:
 
 def test_evidence_whose_record_folder_was_deleted_is_named_with_its_decision(tmp_path: Path) -> None:
     decision_id = decided(tmp_path)
-    shutil.rmtree(artifacts() / "backlog/api-service/billing/acme-2")
+    shutil.rmtree(artifacts() / "backlogs/api-service/billing/acme-2")
 
     found = findings(tmp_path, "decision-evidence-unresolved")
 
@@ -76,7 +76,7 @@ def test_a_record_naming_a_missing_decision_file_is_reported(tmp_path: Path) -> 
 
 def test_a_decision_listing_a_record_bound_elsewhere_is_reported(tmp_path: Path) -> None:
     decision_id = decided(tmp_path)
-    target = artifacts() / "backlog/api-service/billing/acme-3/record.md"
+    target = artifacts() / "backlogs/api-service/billing/acme-3/record.md"
     target.write_text(
         target.read_text(encoding="utf-8").replace(f"decision: {decision_id}", "decision: acme-other"),
         encoding="utf-8",

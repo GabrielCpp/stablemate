@@ -11,7 +11,7 @@ from pathlib import Path
 
 import yaml
 
-from ostler import dynamic_registry, index, markdown, registry
+from ostler import dynamic_registry, index, layout, markdown, registry
 from ostler._vendor.stablemate_core import config as core_config
 from ostler.pages import files_in_book
 
@@ -622,7 +622,8 @@ def _parse_stories(doc: markdown.MarkdownDoc, epic_name: str, root: Path,
             continue
         meta = _meta_from_bullets(sub)
         seed_items = _split_list(_meta_scalar(meta, registry.STORY_COVERS_KEY))
-        rel = (epic_dir / "stories" / slug / "story.md").relative_to(root).as_posix()
+        story_md = epic_dir / "stories" / slug / "story.md"
+        rel = story_md.relative_to(root).as_posix() if story_md.is_relative_to(root) else story_md.as_posix()
         raw = {"slug": slug, "seedItems": seed_items, **meta}
         stories.append(Story(
             slug=slug,
@@ -665,19 +666,19 @@ def load_config(root: Path) -> dict:
 
 BUILTIN_DOC_ROOTS: dict[str, str] = {
     "services": "docs/services",
-    "epics": "docs/epics",
     "milestones": "docs/milestones",
-    "specs": "docs/specs",
     "decisions": "docs/decisions",
+    "adrs": "docs/adrs",
 }
 
 
 def doc_roots(root: Path, kinds: Sequence[dynamic_registry.TemplateKind] | None = None) -> dict[str, Path]:
-    """Where each kind of document lives under *root*: its built-in path, and specs in the artifacts dir."""
+    """Where each kind of document lives: the kept kinds under *root*'s ``docs/``, and the stand-in shelves at the top level of the artifacts dir."""
     roots = {key: root / default for key, default in BUILTIN_DOC_ROOTS.items()}
-    roots["specs"] = core_config.resolve_artifacts_dir() / "specs"
-    roots["register"] = core_config.resolve_artifacts_dir() / "backlog"
-    roots["adr"] = core_config.resolve_artifacts_dir() / "adr"
+    artifacts = core_config.resolve_artifacts_dir()
+    roots["epics"] = artifacts / "epics"
+    roots["specs"] = artifacts / "specs"
+    roots["register"] = artifacts / "backlogs"
     for kind in (dynamic_registry.load_kinds(root) if kinds is None else kinds):
         roots.setdefault(kind.doc_root, root / kind.default_path)
     return roots
@@ -691,6 +692,7 @@ def load(
     root = find_root(cwd or Path.cwd())
     config = load_config(root)
 
+    layout.check(core_config.resolve_artifacts_dir(), root)
     template_kinds = dynamic_registry.load_kinds(root)
     roots = doc_roots(root, template_kinds)
     for kind, configured in (root_overrides or {}).items():

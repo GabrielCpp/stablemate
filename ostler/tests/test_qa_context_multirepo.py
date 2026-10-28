@@ -3,6 +3,7 @@ from __future__ import annotations
 import subprocess
 from pathlib import Path
 
+from conftest import epics_root
 from ostler import doctor
 from ostler.model import load
 from ostler.qa.context import (
@@ -37,7 +38,7 @@ def test_external_source_repository_maps_qualified_code_ref(tmp_path: Path) -> N
     docs = tmp_path / "product-docs"
     source = tmp_path / "api-service"
     (docs / "docs/services/billing").mkdir(parents=True)
-    story = docs / "docs/epics/billing/stories/create-invoice/story.md"
+    story = epics_root() / "billing/stories/create-invoice/story.md"
     story.parent.mkdir(parents=True)
     story.write_text(
         "---\nid: BILL-01ABCDEF\nslug: create-invoice\n"
@@ -248,7 +249,7 @@ def test_a_whole_book_context_maps_a_source_repository_from_the_empty_tree(tmp_p
 def test_a_refresh_rebuilds_from_the_recorded_scope_after_the_story_moves(tmp_path: Path) -> None:
     docs = tmp_path / "product-docs"
     (docs / "docs/services/billing").mkdir(parents=True)
-    story = docs / "docs/epics/billing/stories/create-invoice/story.md"
+    story = epics_root() / "billing/stories/create-invoice/story.md"
     story.parent.mkdir(parents=True)
     story.write_text("---\nid: BILL-01ABCDEF\nslug: create-invoice\ntype: story\n---\n# Create\n",
                      encoding="utf-8")

@@ -31,13 +31,21 @@ def _refusal(message: str) -> Result:
     return Result(False, message)
 
 
+def slug_problem(slug: str) -> str:
+    """Why *slug* cannot name a folder under the docs home, or an empty string when it can."""
+    if _SLUG.fullmatch(slug) and len(slug) <= SLUG_MAX:
+        return ""
+    return (
+        f"slug {slug!r} must be short kebab-case: lowercase letters, digits and single hyphens, "
+        f"at most {SLUG_MAX} characters"
+    )
+
+
 def add(graph: Graph, slug: str, *, repo: str, summary: str) -> Result:
     """Write the empty ``decision.md`` of *slug* and report its path; a taken slug, a slug that is not short kebab-case or an empty summary is refused."""
-    if not _SLUG.fullmatch(slug) or len(slug) > SLUG_MAX:
-        return _refusal(
-            f"slug {slug!r} must be short kebab-case: lowercase letters, digits and single hyphens, "
-            f"at most {SLUG_MAX} characters"
-        )
+    problem = slug_problem(slug)
+    if problem:
+        return _refusal(problem)
     if not _SLUG.fullmatch(repo):
         return _refusal(f"repo {repo!r} must be one lowercase kebab segment")
     line = summary.strip()

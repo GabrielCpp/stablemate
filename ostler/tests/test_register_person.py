@@ -1,4 +1,4 @@
-"""The person Producer: ``ostler backlog add`` and ``ostler create backlog-item`` file a record and commit it in the artifacts repo."""
+"""The person Producer: ``ostler backlog add`` and ``ostler create backlog-item`` file a record on the untracked backlogs shelf and commit nothing."""
 
 from __future__ import annotations
 
@@ -40,7 +40,7 @@ def subjects() -> list[str]:
         return []
 
 
-def test_backlog_add_files_a_person_record_and_commits_it(tmp_path: Path, capsys) -> None:
+def test_backlog_add_files_a_person_record_and_commits_nothing(tmp_path: Path, capsys) -> None:
     code = run(
         tmp_path, "backlog", "add", "Extract the invoice rounding rules",
         "--repo", "api-service", "--area", "billing", "--symbol", "billing/rounding.py",
@@ -56,8 +56,7 @@ def test_backlog_add_files_a_person_record_and_commits_it(tmp_path: Path, capsys
         (out["id"], "api-service", "billing", "untriaged", "person", "open")]
     assert read[0].symbols == ["billing/rounding.py", "Invoice.total"]
     assert read[0].body == "The slice worked without it."
-    assert subjects() == [f"chore(api-service): file {out['id']}"]
-    assert git("status", "--porcelain", "--", "backlog").strip() == ""
+    assert subjects() == []
     assert not (tmp_path / "docs").exists()
 
 
@@ -67,7 +66,7 @@ def test_backlog_add_keeps_a_given_id_and_a_given_pattern(tmp_path: Path) -> Non
 
     [only] = register.records(load(tmp_path)).records
     assert (only.id, only.pattern) == ("BL-77", "widen-api")
-    assert subjects() == ["chore(web-app): file BL-77"]
+    assert subjects() == []
 
 
 def test_create_backlog_item_files_the_same_record(tmp_path: Path, capsys) -> None:
@@ -79,7 +78,7 @@ def test_create_backlog_item_files_the_same_record(tmp_path: Path, capsys) -> No
     [only] = register.records(load(tmp_path)).records
     assert only.id == out["id"] and only.filed_by == "person" and only.pattern == "untriaged"
     assert len(only.id.split("-", 1)[1]) == 26
-    assert subjects() == [f"chore(web-app): file {only.id}"]
+    assert subjects() == []
 
 
 @pytest.mark.parametrize("argv", [
@@ -114,7 +113,7 @@ def test_a_taken_id_is_refused_and_the_shelf_keeps_the_first_record(tmp_path: Pa
     assert "BL-1" in printed and "already taken" in printed
     [only] = register.records(load(tmp_path)).records
     assert only.summary == "First"
-    assert subjects() == ["chore(api-service): file BL-1"]
+    assert subjects() == []
 
 
 def test_a_filing_without_repo_or_area_is_a_usage_error(tmp_path: Path) -> None:
@@ -124,38 +123,22 @@ def test_a_filing_without_repo_or_area_is_a_usage_error(tmp_path: Path) -> None:
     assert exc.value.code == 2
 
 
-def test_the_facade_files_and_commits_a_person_record(tmp_path: Path) -> None:
+def test_the_facade_files_a_person_record_and_commits_nothing(tmp_path: Path) -> None:
     okf = Ostler(tmp_path)
 
     result = okf.create_backlog_item("Ship draft recovery", repo="web-app", area="drafts", prefix="acme")
 
     assert result.ok and result.entity_id.startswith("acme-")
     assert [r.id for r in okf.records().records] == [result.entity_id]
-    assert subjects() == [f"chore(web-app): file {result.entity_id}"]
+    assert subjects() == []
 
 
-def test_commit_stages_only_the_given_paths(tmp_path: Path) -> None:
-    graph = load(tmp_path)
-    mine = register.file_record(graph, repo="api-service", area="billing", pattern="x",
-                                summary="Mine", filed_by="person", record_id="BL-1")
-    other = register.file_record(load(tmp_path), repo="api-service", area="billing", pattern="x",
-                                 summary="Not mine", filed_by="person", record_id="BL-2")
-    assert mine.path is not None and other.path is not None
-
-    committed = register.commit(load(tmp_path), [mine.path], "chore(api-service): file BL-1")
-
-    assert committed is True
-    assert subjects() == ["chore(api-service): file BL-1"]
-    assert "BL-2" in git("status", "--porcelain", "-uall")
-    assert "BL-1" not in git("status", "--porcelain", "-uall")
-
-
-def test_commit_over_nothing_new_commits_nothing(tmp_path: Path) -> None:
+def test_filing_leaves_the_shelf_out_of_git(tmp_path: Path) -> None:
     graph = load(tmp_path)
     filing = register.file_record(graph, repo="api-service", area="billing", pattern="x",
                                   summary="Mine", filed_by="person", record_id="BL-1")
-    assert filing.path is not None
-    assert register.commit(load(tmp_path), [filing.path], "chore: file BL-1")
 
-    assert register.commit(load(tmp_path), [filing.path], "chore: file BL-1 again") is False
-    assert subjects() == ["chore: file BL-1"]
+    assert filing.ok and filing.path is not None
+    assert subjects() == []
+    assert "BL-1" not in git("status", "--porcelain", "-uall")
+    assert git("check-ignore", "backlogs/api-service/billing/BL-1/record.md").strip()

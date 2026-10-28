@@ -1,4 +1,4 @@
-"""Closure: ``close`` rewrites a record's status and reason, ``close_record`` commits it, ``backlog prune`` drives both."""
+"""Closure: ``close`` rewrites a record's status and reason, ``close_record`` applies it without committing, ``backlog prune`` drives both."""
 
 from __future__ import annotations
 
@@ -101,35 +101,15 @@ def test_close_refuses_an_unknown_id_and_open_as_a_target(tmp_path: Path) -> Non
     assert target.read_text(encoding="utf-8") == before
 
 
-def test_close_record_commits_once_and_a_repeat_commits_nothing(tmp_path: Path) -> None:
-    shelve(tmp_path)
-    Ostler(tmp_path).close_record("acme-1", "done", "fixed in api-service@abc1234")
-    after_first = subjects()
+def test_close_record_commits_nothing_and_a_repeat_succeeds(tmp_path: Path) -> None:
+    target = shelve(tmp_path)
 
+    first = Ostler(tmp_path).close_record("acme-1", "done", "fixed in api-service@abc1234")
     again = Ostler(tmp_path).close_record("acme-1", "done", "fixed in api-service@abc1234")
 
-    assert again.ok
-    assert after_first[0] == "chore(api-service): close acme-1 as done"
-    assert subjects() == after_first
-    status = subprocess.run(
-        ["git", "-C", str(artifacts()), "status", "--porcelain", "--", "backlog"],
-        capture_output=True, text=True, check=True, timeout=30,
-    )
-    assert status.stdout.strip() == ""
-
-
-def test_close_record_restores_the_record_when_the_commit_fails(tmp_path: Path, monkeypatch) -> None:
-    target = shelve(tmp_path)
-    before = target.read_text(encoding="utf-8")
-
-    def broken(*_args: object, **_kwargs: object) -> bool:
-        raise subprocess.CalledProcessError(1, "git")
-
-    monkeypatch.setattr(register, "commit", broken)
-    result = Ostler(tmp_path).close_record("acme-1", "done", "fixed")
-
-    assert not result.ok
-    assert target.read_text(encoding="utf-8") == before
+    assert first.ok and again.ok
+    assert register.Record.read(target).status == "done"
+    assert subjects() == []
 
 
 def test_prune_closes_as_done_by_default(tmp_path: Path, capsys) -> None:
@@ -139,7 +119,7 @@ def test_prune_closes_as_done_by_default(tmp_path: Path, capsys) -> None:
 
     assert json.loads(capsys.readouterr().out)["ok"] is True
     assert register.Record.read(target).status == "done"
-    assert subjects()[0] == "chore(api-service): close acme-1 as done"
+    assert subjects() == []
 
 
 def test_prune_dropped_and_promoted_need_a_reason(tmp_path: Path, capsys) -> None:

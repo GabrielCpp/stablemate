@@ -362,17 +362,17 @@ class Ostler:
     def propose_decision(
         self,
         *,
+        slug: str,
         title: str,
         context: str,
         decision: str,
         consequences: str,
         evidence: Iterable[str],
-        prefix: str | None = None,
     ) -> Result:
-        """Propose a decision from *evidence* records, bind them to it and commit all of it in the artifacts repo."""
+        """Propose the decision *slug* from *evidence* records and bind them to it; the decision file is committed only where the docs home is the artifacts repo."""
         return self._apply(adr_mod.propose(
-            self._fresh(), title=title, context=context, decision=decision,
-            consequences=consequences, evidence=evidence, prefix=prefix,
+            self._fresh(), slug=slug, title=title, context=context, decision=decision,
+            consequences=consequences, evidence=evidence,
         ))
 
     def doctor(self, *, epic: str | None = None, check_schema: bool = True) -> QaOutcome:
@@ -600,7 +600,7 @@ class Ostler:
         record_id: str = "",
         prefix: str | None = None,
     ) -> Result:
-        """File a person's record on the Register and commit it in the artifacts repo (``ostler backlog add``)."""
+        """File a person's record on the Register (``ostler backlog add``)."""
         filing = register_mod.file_person(
             self._fresh(), summary=summary, repo=repo, area=area, pattern=pattern,
             symbols=symbols, body=body, record_id=record_id, prefix=prefix,
@@ -617,14 +617,14 @@ class Ostler:
     def backlog_import(
         self, source: str | Path, *, repo: str, prefix: str | None = None
     ) -> register_import.Imported:
-        """Turn an old bullet list into records of *repo*, commit them in the artifacts repo, and delete the list (``ostler backlog adopt``)."""
+        """Turn an old bullet list into records of *repo* and delete the list (``ostler backlog adopt``)."""
         outcome = register_import.import_list(self._fresh(), self._resolve(source), repo, prefix)
         self._graph = None
         return outcome
 
     def close_record(self, token: str, status: register_mod.Status, reason: str) -> Result:
-        """End a record as *status* with *reason* and commit it in the artifacts repo (``ostler backlog prune``); *token* may be a short handle."""
-        return self._apply(register_mod.close_and_commit(self._fresh(), token, status, reason))
+        """End a record as *status* with *reason* (``ostler backlog prune``); *token* may be a short handle."""
+        return self._apply(register_mod.close(self._fresh(), token, status, reason))
 
     def allocate_id(self) -> str:
         """Mint and persist the next repo-prefixed ostler id (``ACME-15``) — the same id space stories/epics/seeds draw from, so a backlog IOU is a first-class, numbered work item."""

@@ -4,7 +4,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from conftest import FOO_ID, epic_md, write, write_json
+from conftest import FOO_ID, epic_md, write, write_json, epics_root
 from ostler import doctor, freeze
 from ostler.model import load
 
@@ -33,7 +33,7 @@ def test_freeze_then_clean(repo):
 def test_frozen_mutation_is_flagged(repo):
     _ids(repo)
     freeze.freeze(load(repo), FOO_ID).apply()
-    story = repo / "docs/epics/epic-a/stories/01-foo/story.md"
+    story = epics_root() / "epic-a/stories/01-foo/story.md"
     story.write_text(story.read_text() + "\n- A new, unapproved acceptance criterion.\n")
     codes = _codes(repo)
     assert "frozen-mutated" in codes
@@ -43,19 +43,19 @@ def test_frozen_mutation_is_flagged(repo):
 def test_frozen_removal_is_flagged(repo):
     _ids(repo)
     freeze.freeze(load(repo), FOO_ID).apply()
-    write(repo / "docs/epics/epic-a/epic.md", epic_md(
+    write(epics_root() / "epic-a/epic.md", epic_md(
         "t-1", "epic-a",
         seeds=[("seed-a1", "resolved", "first"), ("seed-a2", "resolved", "done")],
         stories=[],
     ))
-    (repo / "docs/epics/epic-a/stories/01-foo/story.md").unlink()
+    (epics_root() / "epic-a/stories/01-foo/story.md").unlink()
     assert "frozen-removed" in _codes(repo)
 
 
 def test_unfreeze_lifts_the_guard(repo):
     _ids(repo)
     freeze.freeze(load(repo), FOO_ID).apply()
-    story = repo / "docs/epics/epic-a/stories/01-foo/story.md"
+    story = epics_root() / "epic-a/stories/01-foo/story.md"
     story.write_text(story.read_text() + "\nchanged\n")
     assert "frozen-mutated" in _codes(repo)
     freeze.unfreeze(load(repo), FOO_ID).apply()
@@ -78,7 +78,7 @@ def test_freeze_a_seed(repo):
     plan = freeze.freeze(load(repo), "seed-a1")
     assert not plan.error and plan.entry["kind"] == "seed"
     plan.apply()
-    write(repo / "docs/epics/epic-a/epic.md", epic_md(
+    write(epics_root() / "epic-a/epic.md", epic_md(
         "t-1", "epic-a",
         seeds=[("seed-a1", "researched", "rewritten"), ("seed-a2", "resolved", "done")],
         stories=[(FOO_ID, "Foo", ["seed-a1"])],

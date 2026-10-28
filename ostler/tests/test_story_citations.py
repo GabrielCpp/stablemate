@@ -1,12 +1,13 @@
 """A story cites the OKF book by linking node ids — the three pieces that make that an edge."""
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 from ostler import markdown, query
 from ostler.model import load
 
-from conftest import write
+from conftest import write, epics_root
 
 SCREEN = "docs/services/gui/screens/settings.md"
 SCREEN_MD = """\
@@ -29,7 +30,7 @@ title: Settings
 - name: Save profile
 """
 
-STORY_DIR = "docs/epics/e/stories/01-s"
+STORY_DIR = "e/stories/01-s"
 
 
 def story(context: str) -> str:
@@ -44,10 +45,10 @@ def story(context: str) -> str:
 
 def book_repo(root: Path, context: str) -> Path:
     write(root / SCREEN, SCREEN_MD)
-    write(root / "docs/epics/e/epic.md",
+    write(epics_root() / "e/epic.md",
           "---\ntype: epic\nid: t-1\ntitle: E\n---\n# Epic: E\n\n"
           "## Stories\n\n### 01-s\n- title: S\n- covers: (none)\n")
-    write(root / STORY_DIR / "story.md", story(context))
+    write(epics_root() / STORY_DIR / "story.md", story(context))
     return root
 
 
@@ -74,23 +75,23 @@ def test_doc_hrefs_drops_non_documents_and_dedupes():
 
 def test_resolve_doc_ref_accepts_all_three_link_forms(tmp_path: Path):
     g = load(book_repo(tmp_path, "no citations here"))
-    origin = tmp_path / STORY_DIR / "story.md"
+    origin = epics_root() / STORY_DIR / "story.md"
     for href in (SCREEN,
                  f"/{SCREEN}",
-                 "../../../../services/gui/screens/settings.md"):
+                 os.path.relpath(tmp_path / SCREEN, origin.parent)):
         assert g.resolve_doc_ref(href, origin=origin) == SCREEN, href
 
 
 def test_resolve_doc_ref_keeps_the_anchor(tmp_path: Path):
     g = load(book_repo(tmp_path, "no citations here"))
-    ident = g.resolve_doc_ref(f"{SCREEN}#save-profile", origin=tmp_path / STORY_DIR / "story.md")
+    ident = g.resolve_doc_ref(f"{SCREEN}#save-profile", origin=epics_root() / STORY_DIR / "story.md")
     assert ident == f"{SCREEN}#save-profile"
 
 
 def test_resolve_doc_ref_returns_unresolvable_refs_instead_of_dropping_them(tmp_path: Path):
     """A typo must come back as an identity the caller can report, not as an empty string."""
     g = load(book_repo(tmp_path, "no citations here"))
-    ident = g.resolve_doc_ref("nope/missing.md", origin=tmp_path / STORY_DIR / "story.md")
+    ident = g.resolve_doc_ref("nope/missing.md", origin=epics_root() / STORY_DIR / "story.md")
     assert ident.endswith("missing.md")
 
 
@@ -98,7 +99,7 @@ def test_a_link_that_escapes_the_repo_is_not_silently_resolved(tmp_path: Path):
     """It is not a document in this repo, so neither reading lands — it comes back verbatim and is reported as a citation of nothing rather than quietly becoming some in-repo path."""
     href = "../" * 12 + "elsewhere.md"
     g = load(book_repo(tmp_path, "no citations here"))
-    assert g.resolve_doc_ref(href, origin=tmp_path / STORY_DIR / "story.md") == href
+    assert g.resolve_doc_ref(href, origin=epics_root() / STORY_DIR / "story.md") == href
     assert [r["kind"] for r in refs(book_repo(tmp_path, f"See [x]({href}))."))] == ["missing"]
 
 
@@ -142,7 +143,7 @@ def test_citations_are_deduped_across_link_forms(tmp_path: Path):
     rows = refs(book_repo(
         tmp_path,
         f"Reworks [settings]({SCREEN}), see also "
-        "[settings again](../../../../services/gui/screens/settings.md).",
+        f"[settings again]({os.path.relpath(tmp_path / SCREEN, epics_root() / STORY_DIR)}).",
     ))
     assert [r["path"] for r in rows] == [SCREEN]
 

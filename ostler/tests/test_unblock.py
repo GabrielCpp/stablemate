@@ -7,7 +7,7 @@ import pytest
 from ostler import cli, crud, select
 from ostler.model import load
 
-from conftest import BAR_ID, FOO_ID, present
+from conftest import BAR_ID, FOO_ID, present, epics_root
 
 GIVE_UP = "QA give-up after 4 attempts — needs manual review: docs/specs/01-foo/qa.md"
 DOCS_BLOCKED = "Docs blocked — needs manual review: documentation did not converge"
@@ -31,7 +31,7 @@ def test_unblock_rewrites_both_places_the_stamp_lives(repo: Path):
     res = crud.unblock(load(repo), story=FOO_ID)
 
     assert res.ok, res.message
-    text = (repo / "docs/epics/epic-a/stories/01-foo/story.md").read_text(encoding="utf-8")
+    text = (epics_root() / "epic-a/stories/01-foo/story.md").read_text(encoding="utf-8")
     assert "status: Not started" in text
     assert "- **Status**: Not started" in text
     assert "give-up" not in text

@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
-from conftest import FOO_ID, ostler_process, specs_root
+from conftest import FOO_ID, ostler_process, specs_root, epics_root
 import pytest
 
 from ostler import crud
 from ostler.model import load
-from ostler.path import resolve_branch, resolve_spec, resolve_story
+from ostler.path import epics_root as epics_root_of, resolve_branch, resolve_spec, resolve_story
 
 
 def _minted_story(tmp_path):
@@ -66,7 +66,7 @@ def test_resolve_spec_returns_the_id_folder(repo):
 
 def test_resolve_story(repo):
     graph = load(repo)
-    assert resolve_story(graph, FOO_ID) == "docs/epics/epic-a/stories/01-foo/story.md"
+    assert resolve_story(graph, FOO_ID) == str(epics_root() / "epic-a/stories/01-foo/story.md")
 
 
 def test_resolve_story_refuses_a_slug(repo):
@@ -86,3 +86,23 @@ def test_path_spec_cli_refuses_a_slug_with_the_id_hint(repo):
     done = ostler_process(repo, "path", "spec", "01-foo")
     assert done.returncode == 1
     assert FOO_ID in done.stdout + done.stderr
+
+
+def test_epics_live_at_the_artifacts_top_level_for_a_repo_outside_every_workspace(repo):
+    assert epics_root_of(load(repo)) == epics_root()
+    assert not (repo / "docs/epics").exists()
+
+
+def test_epics_live_at_the_artifacts_top_level_for_a_workspace_member(tmp_path, monkeypatch):
+    from ostler._vendor.stablemate_core import config as core_config
+
+    member = tmp_path / "code" / "api-service"
+    member.mkdir(parents=True)
+    config = tmp_path / "home.toml"
+    config.write_text(f'[workspaces]\nacme = ["{member}"]\n')
+    monkeypatch.setenv(core_config.CONFIG_PATH_ENV, str(config))
+
+    graph = load(member)
+
+    assert epics_root_of(graph) == epics_root()
+    assert graph.root == epics_root().parent

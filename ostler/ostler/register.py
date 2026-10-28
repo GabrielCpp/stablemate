@@ -1,9 +1,8 @@
-"""The Register — one ``record.md`` per proposed improvement, shelved by repository, area and id in the artifacts dir."""
+"""The Register — one ``record.md`` per proposed improvement, shelved by repository, area and id in the artifacts dir. The shelf is untracked, so nothing here calls git."""
 
 from __future__ import annotations
 
 import re
-import subprocess
 from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
@@ -156,7 +155,7 @@ def open_records(graph: Graph, repo: str) -> list[Record]:
 
 
 def write(graph: Graph, record: Record, *, own: frozenset[str] = frozenset()) -> Result:
-    """Shelve *record* in the artifacts repo; refuse an id the workspace already uses, except the ids in *own*."""
+    """Shelve *record* in the artifacts dir; refuse an id the workspace already uses, except the ids in *own*."""
     shelf = path_mod.register_root(graph)
     folder = record.folder(shelf)
     if (record.id in ids.known(graph) and record.id not in own) or folder.exists():
@@ -242,43 +241,6 @@ def bind(target: Path, decision_id: str) -> None:
     target.write_text(f"---\n{crud.dump_frontmatter(front)}---\n{text[head.end():]}", encoding="utf-8")
 
 
-def close_and_commit(graph: Graph, token: str, status: Status, reason: str) -> Result:
-    """:func:`close` a record and commit it in the artifacts repo; a close whose commit fails leaves the old text."""
-    folder = locate(graph, token)
-    before = (folder / RECORD_FILE).read_text(encoding="utf-8") if folder else ""
-    result = close(graph, token, status, reason)
-    if not result.ok or not result.paths:
-        return result
-    target = result.paths[0]
-    try:
-        commit(graph, [target], f"chore({Record.read(target).repo}): close {result.entity_id} as {status}")
-    except (subprocess.CalledProcessError, subprocess.TimeoutExpired, OSError) as exc:
-        target.write_text(before, encoding="utf-8")
-        return Result(False, f"record '{result.entity_id}' was not closed: the artifacts commit failed: {exc}")
-    return result
-
-
-def commit(graph: Graph, paths: Iterable[Path], message: str) -> bool:
-    """Commit exactly *paths* in the artifacts repo, hooks off; False when there was nothing new to commit."""
-    root = path_mod.register_root(graph).parent
-    rels = [str(Path(p).relative_to(root)) for p in paths]
-    if not rels or not (root / ".git").exists():
-        return False
-    git = ["git", "-C", str(root)]
-    subprocess.run([*git, "add", "--", *rels], check=True, capture_output=True, timeout=60)
-    if subprocess.run([*git, "diff", "--cached", "--quiet", "--", *rels], check=False, capture_output=True, timeout=60).returncode == 0:
-        return False
-    try:
-        subprocess.run(
-            [*git, "-c", "core.hooksPath=/dev/null", "commit", "--no-verify", "-m", message, "--only", "--", *rels],
-            check=True, capture_output=True, timeout=60,
-        )
-    except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
-        subprocess.run([*git, "reset", "--quiet", "--", *rels], check=False, capture_output=True, timeout=60)
-        raise
-    return True
-
-
 def file_person(
     graph: Graph,
     *,
@@ -291,19 +253,11 @@ def file_person(
     record_id: str = "",
     prefix: str | None = None,
 ) -> Filing:
-    """File a record a person wrote and commit it in the artifacts repo; a record whose commit fails is taken off the shelf."""
-    filing = file_record(
+    """File a record a person wrote."""
+    return file_record(
         graph, repo=repo, area=area, pattern=pattern, summary=summary, filed_by="person",
         symbols=symbols, body=body, record_id=record_id, prefix=prefix,
     )
-    if filing.record is None or filing.path is None:
-        return filing
-    try:
-        commit(graph, [filing.path], f"chore({filing.record.repo}): file {filing.record.id}")
-    except (subprocess.CalledProcessError, subprocess.TimeoutExpired, OSError) as exc:
-        discard(filing.path)
-        return Filing(False, f"record '{filing.record.id}' was not filed: the artifacts commit failed: {exc}")
-    return filing
 
 
 def discard(file: Path) -> None:

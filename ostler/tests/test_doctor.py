@@ -23,9 +23,9 @@ from ostler.qa import compile_support
 from ostler.qa import plan_source
 from ostler.qa.context import build_context
 
-from conftest import BAR_ID, FOO_ID, epic_md, screen_md, story_md, write
+from conftest import BAR_ID, FOO_ID, epic_md, screen_md, story_md, write, epics_root
 
-FOO_STORY = "docs/epics/epic-a/stories/01-foo/story.md"
+FOO_STORY = "epic-a/stories/01-foo/story.md"
 
 
 def codes(report):
@@ -61,7 +61,7 @@ def test_a_typed_page_outside_every_doc_root_is_flagged_as_misplaced(repo: Path)
 
 def test_typed_pages_under_the_doc_roots_are_not_misplaced(repo: Path):
     """The predicate is "outside every doc root", never "outside `docs/services`" alone -- real `epic`/`story`/`spec.*` pages that sit under one of the *other* doc roots must not be flagged, even once git tracking makes the new check actually run."""
-    write(repo / "docs/epics/epic-x/epic.md",
+    write(epics_root() / "epic-x/epic.md",
           "---\ntype: epic\ntitle: Extra\n---\n# Extra\n\nBody.\n")
     _git_track(repo)
 
@@ -106,7 +106,7 @@ def test_a_spec_typed_page_under_services_is_flagged_as_misrooted(repo: Path):
 
 def test_typed_pages_under_their_own_registered_root_are_not_misrooted(repo: Path):
     """The predicate is "inside a doc root that disagrees with the type", never "inside any doc root but `docs/services`" -- a real `spec.*` page under `docs/specs` (its registered home) must not be flagged."""
-    write(repo / "docs/epics/epic-x/epic.md",
+    write(epics_root() / "epic-x/epic.md",
           "---\ntype: epic\ntitle: Extra\n---\n# Extra\n\nBody.\n")
     _git_track(repo)
 
@@ -116,15 +116,15 @@ def test_typed_pages_under_their_own_registered_root_are_not_misrooted(repo: Pat
 
 def test_a_ui_typed_page_outside_services_is_flagged_as_misrooted(repo: Path):
     """The reverse direction: a book page whose type belongs under `services`, filed elsewhere."""
-    write(repo / "docs/epics/area/stray.md",
+    write(repo / "docs/milestones/area/stray.md",
           "---\ntype: screen\ntitle: Stray\n---\n# Stray\n\n- route: /stray\n")
     _git_track(repo)
 
     report = doctor.run(load(repo))
     finding = next(f for f in report.findings if f.code == "misrooted-book-page")
-    assert finding.path == "docs/epics/area/stray.md"
+    assert finding.path == "docs/milestones/area/stray.md"
     assert "services" in finding.message
-    assert "epics" in finding.message
+    assert "milestones" in finding.message
 
 
 def test_a_ui_typed_page_under_services_is_not_misrooted(repo: Path):
@@ -138,7 +138,7 @@ def test_a_ui_typed_page_under_services_is_not_misrooted(repo: Path):
 
 
 def test_cross_epic_seed_reference_is_flagged(repo: Path):
-    write(repo / "docs/epics/epic-a/epic.md", epic_md(
+    write(epics_root() / "epic-a/epic.md", epic_md(
         "t-1", "epic-a",
         seeds=[("seed-a1", "researched", "first"), ("seed-a2", "resolved", "done")],
         stories=[("01-foo", "Foo", ["seed-b1"])],
@@ -151,17 +151,17 @@ def test_cross_epic_seed_reference_is_flagged(repo: Path):
 
 
 def test_blocker_naming_no_story_is_flagged(repo: Path):
-    write(repo / FOO_STORY, story_md("01-foo", "Foo", "Not started", depends=["no-such-story"]))
+    write(epics_root() / FOO_STORY, story_md("01-foo", "Foo", "Not started", depends=["no-such-story"]))
     assert "dangling-dependency" in codes(doctor.run(load(repo)))
 
 
 def test_blocker_in_another_epic_is_flagged(repo: Path):
-    write(repo / FOO_STORY, story_md("01-foo", "Foo", "Not started", depends=["01-bar"]))
+    write(epics_root() / FOO_STORY, story_md("01-foo", "Foo", "Not started", depends=["01-bar"]))
     assert "cross-epic-dependency" in codes(doctor.run(load(repo)))
 
 
 def test_story_key_collision_is_flagged_and_lookup_is_ambiguous(repo: Path):
-    second = repo / "docs/epics/epic-b/stories/01-bar/story.md"
+    second = epics_root() / "epic-b/stories/01-bar/story.md"
     second.write_text(
         second.read_text(encoding="utf-8").replace(f"id: {BAR_ID}", f"id: {FOO_ID}"),
         encoding="utf-8",
@@ -180,7 +180,7 @@ def test_story_key_collision_is_flagged_and_lookup_is_ambiguous(repo: Path):
 
 def test_story_id_mismatch_between_epic_and_story_is_flagged(tmp_path: Path):
     write(
-        tmp_path / "docs/epics/e/epic.md",
+        epics_root() / "e/epic.md",
         "\n".join(
             [
                 "---",
@@ -202,7 +202,7 @@ def test_story_id_mismatch_between_epic_and_story_is_flagged(tmp_path: Path):
         + "\n",
     )
     write(
-        tmp_path / "docs/epics/e/stories/a/story.md",
+        epics_root() / "e/stories/a/story.md",
         story_md("a", "A", "Not started").replace(
             "type: story", "type: story\nid: STORY-2"
         ),
@@ -222,7 +222,7 @@ def test_story_id_mismatch_between_epic_and_story_is_flagged(tmp_path: Path):
 def test_a_dependencies_bullet_that_names_no_blocker_is_flagged(repo: Path):
     """The guard against a silent rewrite: story.md is agent-written, and a body turned into prose empties the DAG with nothing else reporting it."""
     text = story_md("01-foo", "Foo", "Not started", depends=["01-bar"])
-    write(repo / FOO_STORY, text.replace("- Blocked by: 01-bar", "- Needs: 01-bar"))
+    write(epics_root() / FOO_STORY, text.replace("- Blocked by: 01-bar", "- Needs: 01-bar"))
 
     findings = [f for f in doctor.run(load(repo)).findings
                 if f.code == "malformed-dependency-bullet"]
@@ -238,7 +238,7 @@ def test_resolved_seed_not_required_to_be_covered(repo: Path):
 
 def test_a_story_covering_a_seed_id_unknown_to_the_whole_book_is_flagged(repo: Path):
     """Unlike `cross-epic-seed` (the id belongs to a sibling epic), `dangling-seed` is what fires when no epic anywhere claims the id at all."""
-    write(repo / "docs/epics/epic-a/epic.md", epic_md(
+    write(epics_root() / "epic-a/epic.md", epic_md(
         "t-1", "epic-a",
         seeds=[("seed-a1", "researched", "first"), ("seed-a2", "resolved", "done")],
         stories=[("01-foo", "Foo", ["seed-ghost"])],
@@ -250,7 +250,7 @@ def test_a_story_covering_a_seed_id_unknown_to_the_whole_book_is_flagged(repo: P
 
 
 def test_a_story_named_in_the_epic_with_no_story_file_on_disk_is_flagged(repo: Path):
-    write(repo / "docs/epics/epic-a/epic.md", epic_md(
+    write(epics_root() / "epic-a/epic.md", epic_md(
         "t-1", "epic-a",
         seeds=[("seed-a1", "researched", "first")],
         stories=[("01-foo", "Foo", ["seed-a1"]), ("02-ghost", "Ghost", [])],
@@ -329,16 +329,16 @@ title: Rec
 
 
 def test_seedless_epic_no_covers_warning(repo: Path):
-    write(repo / "docs/epics/epic-c/epic.md", epic_md(
+    write(epics_root() / "epic-c/epic.md", epic_md(
         "t-3", "epic-c", seeds=[], stories=[("01-x", "X", [])]))
-    write(repo / "docs/epics/epic-c/stories/01-x/story.md",
+    write(epics_root() / "epic-c/stories/01-x/story.md",
           "---\ntype: story\nslug: 01-x\nstatus: Not started\n---\n# Story: X\n")
     warns = {f.code for f in doctor.run(load(repo)).findings if f.severity == "warn"}
     assert "story-covers-no-seed" not in warns
 
 
 def test_a_story_that_covers_no_seed_in_a_seeded_epic_is_flagged(repo: Path):
-    write(repo / "docs/epics/epic-a/epic.md", epic_md(
+    write(epics_root() / "epic-a/epic.md", epic_md(
         "t-1", "epic-a",
         seeds=[("seed-a1", "researched", "first")],
         stories=[("01-foo", "Foo", [])],
@@ -401,12 +401,12 @@ def test_every_unwritten_story_is_named_with_its_empty_sections(tmp_path: Path):
     assert all(f.severity == "error" for f in found)
     assert all(f.epic == epic_dir for f in found)
     assert "Context (empty), Acceptance Criteria (empty)" in found[0].message
-    assert found[0].path == f"docs/epics/{epic_dir}/stories/01-a/story.md"
+    assert found[0].path == str(epics_root() / epic_dir / "stories/01-a/story.md")
 
 
 def test_writing_the_sections_clears_the_finding(tmp_path: Path):
     epic_dir = _scaffolded(tmp_path, ["01-a"])
-    story_md = tmp_path / f"docs/epics/{epic_dir}/stories/01-a/story.md"
+    story_md = epics_root() / f"{epic_dir}/stories/01-a/story.md"
     story_md.write_text(
         story_md.read_text(encoding="utf-8")
         .replace("## Context\n", "## Context\n\n- the operator needs a daily total\n")
@@ -425,7 +425,7 @@ def test_writing_the_sections_clears_the_finding(tmp_path: Path):
 def test_an_old_story_is_unwritten_for_the_sections_it_never_had(tmp_path: Path):
     """No frontmatter exempts a document from the contract — there is only one, and it is the table."""
     epic_dir = _scaffolded(tmp_path, ["01-a"])
-    story_md = tmp_path / f"docs/epics/{epic_dir}/stories/01-a/story.md"
+    story_md = epics_root() / f"{epic_dir}/stories/01-a/story.md"
     text = story_md.read_text(encoding="utf-8")
     start = text.index("## Non-Functional Acceptance Criteria")
     end = text.index("## Implementation Status")
@@ -442,7 +442,7 @@ def test_an_old_story_is_unwritten_for_the_sections_it_never_had(tmp_path: Path)
 
 def test_a_partially_written_story_names_only_the_empty_section(tmp_path: Path):
     epic_dir = _scaffolded(tmp_path, ["01-a"])
-    story_md = tmp_path / f"docs/epics/{epic_dir}/stories/01-a/story.md"
+    story_md = epics_root() / f"{epic_dir}/stories/01-a/story.md"
     story_md.write_text(
         story_md.read_text(encoding="utf-8").replace(
             "## Context\n", "## Context\n\n- the operator needs a daily total\n"),
@@ -458,7 +458,7 @@ def test_a_partially_written_story_names_only_the_empty_section(tmp_path: Path):
 def test_a_section_the_story_predates_is_reported_missing_not_empty(tmp_path: Path):
     """A story written before a section was required has no heading to write under, and reporting that as "empty" sends the reader looking for prose that has nowhere to go."""
     epic_dir = _scaffolded(tmp_path, ["01-a"])
-    story_md = tmp_path / f"docs/epics/{epic_dir}/stories/01-a/story.md"
+    story_md = epics_root() / f"{epic_dir}/stories/01-a/story.md"
     body = story_md.read_text(encoding="utf-8")
     start = body.index("## Dependencies")
     story_md.write_text(body[:start] + body[body.index("## Context") :], encoding="utf-8")
@@ -470,7 +470,7 @@ def test_a_section_the_story_predates_is_reported_missing_not_empty(tmp_path: Pa
 
 
 def test_story_status_mismatch_is_flagged(repo: Path):
-    story = repo / "docs/epics/epic-a/stories/01-foo/story.md"
+    story = epics_root() / "epic-a/stories/01-foo/story.md"
     story.write_text(
         story.read_text(encoding="utf-8").replace(
             "- **Status**: Not started", "- **Status**: QA passed"),
@@ -1003,7 +1003,7 @@ def test_a_doc_roots_key_in_the_organization_config_is_flagged_as_removed(repo: 
     assert finding.severity == "error"
     assert "docRoots" in finding.message
     assert not (repo / "docs/plans").exists()
-    assert load(repo).doc_roots["epics"] == repo / "docs/epics"
+    assert load(repo).doc_roots["epics"] == epics_root()
 
 
 def test_no_doc_roots_key_means_no_removed_doc_roots_finding(repo: Path):

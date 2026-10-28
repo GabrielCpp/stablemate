@@ -9,7 +9,7 @@ import pytest
 
 from ostler import Ostler
 
-from conftest import FOO_ID, present, specs_root, write
+from conftest import FOO_ID, present, specs_root, write, epics_root
 
 
 def test_reads_match_the_underlying_core(repo: Path):
@@ -88,7 +88,7 @@ def test_doc_root_override_is_used_for_reads_and_mutations(tmp_path: Path) -> No
 
     assert result.ok
     assert (tmp_path / "product/epics/0001-accounts/epic.md").is_file()
-    assert not (tmp_path / "docs/epics").exists()
+    assert not (epics_root()).exists()
     assert [row["name"] for row in okf.list("epic")] == ["0001-accounts"]
 
 
@@ -104,7 +104,7 @@ def test_delete_story_is_visible_to_the_next_read(repo: Path):
 
 def test_update_story_and_delete_epic_are_visible_to_the_next_read(repo: Path):
     okf = Ostler(repo)
-    body = repo / "docs/epics/epic-a/stories/01-foo/story.md"
+    body = epics_root() / "epic-a/stories/01-foo/story.md"
     before = body.read_bytes()
 
     updated = okf.update_story(
@@ -209,4 +209,4 @@ def test_settle_answers_and_ledger_only_settle_review_through_the_facade(repo: P
     plan = okf.settle_review(FOO_ID, write=True, status_write=False)
     assert not plan.error, plan.error
     assert okf.story(FOO_ID) is not None
-    assert "Not started" in (repo / "docs/epics/epic-a/stories/01-foo/story.md").read_text()
+    assert "Not started" in (epics_root() / "epic-a/stories/01-foo/story.md").read_text()

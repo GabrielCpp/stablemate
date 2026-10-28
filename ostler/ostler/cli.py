@@ -12,7 +12,7 @@ from pathlib import Path
 
 import yaml
 
-from ostler import autofix as autofix_mod, backfill as backfill_mod, coverage, crud, crud_generic, decisions as decisions_mod, doctor, edit, fmt as fmt_mod, freeze as freeze_mod, graph as graph_mod, ids as ids_mod, locators, path as path_mod, query as query_mod, reach, register as register_mod, register_import, registry, scaffold as scaffold_mod, select, templates as templates_mod, todo as todo_mod, trace
+from ostler import autofix as autofix_mod, backfill as backfill_mod, coverage, crud, crud_generic, decisions as decisions_mod, doctor, edit, fmt as fmt_mod, freeze as freeze_mod, graph as graph_mod, ids as ids_mod, layout as layout_mod, locators, path as path_mod, query as query_mod, reach, register as register_mod, register_import, registry, scaffold as scaffold_mod, select, templates as templates_mod, todo as todo_mod, trace
 from ostler import checks as checks_mod
 from ostler import carve as carve_mod
 from ostler import fragment_carve
@@ -1127,7 +1127,7 @@ def _record_flags(parser: argparse.ArgumentParser) -> None:
 
 
 def _file_person(graph, args) -> register_mod.Filing:
-    """File and commit the record the parsed ``_record_flags`` describe."""
+    """File the record the parsed ``_record_flags`` describe."""
     return register_mod.file_person(
         graph, summary=args.summary, repo=args.repo, area=args.area, pattern=args.pattern,
         symbols=args.symbols, body=args.body, record_id=args.record_id, prefix=args.prefix,
@@ -1138,7 +1138,7 @@ def _prune_record(graph, args) -> int:
     """Close the record ``backlog prune`` names; ``dropped`` and ``promoted`` must say why."""
     if args.status != "done" and not args.reason.strip():
         return _result(crud.Result(False, f"--as {args.status} requires --reason"), args.json)
-    return _result(register_mod.close_and_commit(graph, args.id, args.status, args.reason), args.json)
+    return _result(register_mod.close(graph, args.id, args.status, args.reason), args.json)
 
 
 def _adopt_list(graph, args) -> int:
@@ -2029,7 +2029,11 @@ def main(argv: list[str] | None = None) -> int:
         directory=args.index_dir,
         enabled=not args.no_index,
     ) as store:
-        graph = load(cwd)
+        try:
+            graph = load(cwd)
+        except layout_mod.LayoutMoveRequired as exc:
+            print(f"error: {exc}", file=sys.stderr)
+            return 1
         _use_handles(graph, args)
         return _dispatch(graph, args, store)
 

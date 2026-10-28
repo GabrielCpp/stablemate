@@ -223,7 +223,7 @@ def _check_decisions(graph: Graph, findings: list[Finding]) -> None:
     bound = {r.id: r.decision for r in register_mod.records(graph).records}
     decided = {d.id for d in read.decisions}
     for decision in read.decisions:
-        where = str(path_mod.adr_root(graph) / f"{decision.id}.md")
+        where = str(path_mod.adr_root(graph) / decision.id / adr_mod.ADR_FILE)
         for record_id in decision.evidence:
             if record_id not in shelved:
                 findings.append(Finding(
@@ -1618,6 +1618,40 @@ def _check_test_subject(node, rel: str, f: list[Finding]) -> None:
         suggestion="keep only product citations in `code:`; cite a proving test under `tests:`"))
 
 
+def _check_service_repository(graph: Graph, f: list[Finding]) -> None:
+    """A service id belongs to one repository, so one `docs/services/<service>/` folder cites code from one."""
+    services = services_root_of(graph)
+    own_repository = book_repository(services)
+    cited: dict[str, dict[str, list[str]]] = {}
+    for node in graph.ui_nodes:
+        try:
+            parts = node.path.resolve().relative_to(services.resolve()).parts
+        except ValueError:
+            continue
+        if len(parts) < 2:
+            continue
+        for ref in refs_mod.code_refs(node.meta.get("code")):
+            try:
+                parsed = refs_mod.parse_code_ref(ref)
+            except ValueError:
+                continue
+            repository = parsed.repository or own_repository
+            if repository:
+                cited.setdefault(parts[0], {}).setdefault(repository, []).append(node.id)
+    for service, by_repository in sorted(cited.items()):
+        if len(by_repository) < 2:
+            continue
+        names = sorted(by_repository)
+        rel = _rel_posix(services / service, graph.root)
+        f.append(Finding(
+            "error", "service-spans-repositories",
+            f"service '{service}': `code:` bullets cite files from {len(names)} repositories "
+            f"({', '.join(names)}), but a service id belongs to one repository",
+            path=rel,
+            suggestion="split the service into one folder per repository, or cite only the "
+                       "repository that owns it"))
+
+
 def _check_code_grounding(graph: Graph, f: list[Finding],
                            checkouts: dict[str, Path] | None = None) -> None:
     """`code:` targets name a file that exists, and a symbol that file declares."""
@@ -2747,6 +2781,7 @@ def _check_ui(graph: Graph, f: list[Finding],
             if path.name not in registry.RESERVED_FILES:
                 _check_ui_file(graph, path, f)
     _check_code_grounding(graph, f, checkouts)
+    _check_service_repository(graph, f)
 
     by_id = {n.id: n for n in graph.ui_nodes}
     for node in graph.ui_nodes:

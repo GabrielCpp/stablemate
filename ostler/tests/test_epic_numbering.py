@@ -7,7 +7,7 @@ from pathlib import Path
 from ostler import crud, doctor, path as path_mod, query, registry, select, todo
 from ostler.model import load
 
-from conftest import write
+from conftest import write, epics_root
 
 
 def _create(root: Path, name: str, title: str = "T") -> str:
@@ -50,11 +50,11 @@ def test_every_entry_point_takes_the_bare_slug(tmp_path: Path):
 
     g = load(tmp_path)
     assert path_mod.epic_dir(g, "checkout").name == dir_name
-    assert path_mod.resolve_epic(g, "checkout") == f"docs/epics/{dir_name}"
+    assert path_mod.resolve_epic(g, "checkout") == str(epics_root() / dir_name)
     assert crud.add_seed(load(tmp_path), "checkout", "s1", summary="a seed").ok
     story_id = crud.create_story(load(tmp_path), "checkout", "01-a", "A", covers=["s1"]).entity_id
     assert path_mod.resolve_story(load(tmp_path), story_id) == \
-        f"docs/epics/{dir_name}/stories/01-a/story.md"
+        str(epics_root() / dir_name / "stories/01-a/story.md")
 
     g = load(tmp_path)
     found = select.epic_by_name(g, "checkout")
@@ -77,7 +77,7 @@ def test_a_wrong_number_is_reported_rather_than_resolved(tmp_path: Path):
 
 def test_an_unnumbered_epic_on_disk_still_resolves(tmp_path: Path):
     """Epics that predate the numbering are left where they are — nothing renames them, and a caller naming one gets its real directory back."""
-    write(tmp_path / "docs/epics/legacy/epic.md",
+    write(epics_root() / "legacy/epic.md",
           "---\ntype: epic\nid: x-1\ntitle: Legacy\n---\n# Epic: Legacy\n\n## Stories\n")
     g = load(tmp_path)
     assert path_mod.epic_dir(g, "legacy").name == "legacy"
@@ -89,7 +89,7 @@ def test_an_unnumbered_epic_on_disk_still_resolves(tmp_path: Path):
 def test_the_queue_tolerates_either_name(tmp_path: Path):
     _create(tmp_path, "one")
     _create(tmp_path, "two")
-    write(tmp_path / "docs/epics/index.md", "# Epics\n\n- [one](one/epic.md) — One\n")
+    write(epics_root() / "index.md", "# Epics\n\n- [one](one/epic.md) — One\n")
     assert todo.list_epics(load(tmp_path)) == ["one"]
     assert not todo.add(load(tmp_path), "0001-one").ok, "already queued, under its other name"
     assert todo.add(load(tmp_path), "two").ok

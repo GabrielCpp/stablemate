@@ -28,6 +28,11 @@ def specs_root() -> Path:
     return Path(os.environ["STABLEMATE_ARTIFACTS_DIR"]).resolve() / "specs"
 
 
+def epics_root() -> Path:
+    """The epics root the per-test artifacts folder gives every repo."""
+    return Path(os.environ["STABLEMATE_ARTIFACTS_DIR"]).resolve() / "epics"
+
+
 def write(path: Path, text: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(text, encoding="utf-8")
@@ -134,20 +139,20 @@ def repo(tmp_path: Path) -> Path:
     """A clean two-epic repo with feature docs cited by story prose."""
     root = tmp_path
 
-    write(root / "docs/epics/epic-a/epic.md", epic_md(
+    write(epics_root() / "epic-a/epic.md", epic_md(
         "t-1", "epic-a",
         seeds=[("seed-a1", "researched", "first"), ("seed-a2", "resolved", "done")],
         stories=[("01-foo", "Foo", ["seed-a1"])],
     ))
-    write(root / "docs/epics/epic-a/stories/01-foo/story.md",
-          story_md("01-foo", "Foo", "Not started", "../../../services/area/rec.md", eid=FOO_ID))
+    write(epics_root() / "epic-a/stories/01-foo/story.md",
+          story_md("01-foo", "Foo", "Not started", os.path.relpath(root / "docs/services/area/rec.md", epics_root() / "epic-a/stories/01-foo"), eid=FOO_ID))
 
-    write(root / "docs/epics/epic-b/epic.md", epic_md(
+    write(epics_root() / "epic-b/epic.md", epic_md(
         "t-2", "epic-b",
         seeds=[("seed-b1", "researched", "bee")],
         stories=[("01-bar", "Bar", ["seed-b1"])],
     ))
-    write(root / "docs/epics/epic-b/stories/01-bar/story.md",
+    write(epics_root() / "epic-b/stories/01-bar/story.md",
           story_md("01-bar", "Bar", "Not started", eid=BAR_ID))
 
     write(root / "docs/services/area/rec.md", feature_md("rec", "Rec", area="area"))

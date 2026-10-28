@@ -14,7 +14,7 @@ def doc_root_in(root: Path, kind: str) -> Path:
 
 
 def epics_root_in(root: Path) -> Path:
-    """Where epics live under *root* — ``docs/epics``."""
+    """Where epics live: ``epics/`` at the top level of the artifacts dir."""
     return doc_root_in(root, "epics")
 
 
@@ -62,7 +62,7 @@ def specs_root_in(root: Path) -> Path:
 
 
 def register_root_in(root: Path) -> Path:
-    """Where the Register's records live for *root*: ``backlog/`` in the artifacts dir, never in a code repo."""
+    """Where the Register's records live for *root*: ``backlogs/`` in the artifacts dir, never in a code repo."""
     return doc_root_in(root, "register")
 
 
@@ -72,13 +72,13 @@ def register_root(graph: Graph) -> Path:
 
 
 def adr_root_in(root: Path) -> Path:
-    """Where the decision records live for *root*: ``adr/`` in the artifacts dir, beside the Register's shelf."""
-    return doc_root_in(root, "adr")
+    """Where the decision records live for *root*: ``docs/adrs`` under its docs home."""
+    return doc_root_in(root, "adrs")
 
 
 def adr_root(graph: Graph) -> Path:
     """Where the decision records live for this graph."""
-    return graph.doc_roots.get("adr") or register_root(graph).parent / "adr"
+    return graph.doc_roots["adrs"]
 
 
 def epics_index_in(root: Path) -> Path:
@@ -203,7 +203,7 @@ def screenshots_dir(graph: Graph, service: str = "") -> Path:
 
 def resolve_epic(graph: Graph, name: str) -> str:
     """Resolve an epic name to its directory path (relative to root)."""
-    return str(epic_dir(graph, name).relative_to(graph.root))
+    return display_path(graph.root, epic_dir(graph, name))
 
 
 def resolve_story(graph: Graph, story: str) -> str:
@@ -212,8 +212,7 @@ def resolve_story(graph: Graph, story: str) -> str:
     if found is None:
         raise ValueError(graph.no_story(story))
     epic, s = found
-    return str(epic_dir(graph, epic.name).relative_to(graph.root) / "stories" / s.slug
-               / "story.md")
+    return display_path(graph.root, epic_dir(graph, epic.name) / "stories" / s.slug / "story.md")
 
 
 def resolve_branch(graph: Graph, ref: str, *, epic: bool = False) -> str:

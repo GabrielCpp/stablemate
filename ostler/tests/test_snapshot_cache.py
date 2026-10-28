@@ -11,7 +11,7 @@ import pytest
 from ostler import api, model, index
 from ostler.api import Ostler
 
-from conftest import epic_md, feature_md, story_md, write
+from conftest import epic_md, feature_md, story_md, write, epics_root
 
 
 def loads(monkeypatch: pytest.MonkeyPatch) -> list[int]:
@@ -77,7 +77,7 @@ def test_writing_into_the_spec_root_does_not_invalidate(repo, index_home, monkey
 
 def test_editing_a_story_invalidates(repo, index_home):
     Ostler(repo).graph
-    write(repo / "docs/epics/epic-a/stories/01-foo/story.md",
+    write(epics_root() / "epic-a/stories/01-foo/story.md",
           story_md("01-foo", "Foo", "QA passed"))
 
     okf = Ostler(repo)
@@ -112,14 +112,14 @@ def test_a_deleted_document_invalidates(repo, index_home):
 
 def test_a_story_file_appearing_where_none_was_invalidates(repo, index_home):
     """The negative half: a graph is a function of what was *not* found, too."""
-    write(repo / "docs/epics/epic-c/epic.md", epic_md(
+    write(epics_root() / "epic-c/epic.md", epic_md(
         "t-3", "epic-c", seeds=[("seed-c1", "researched", "see")],
         stories=[("01-baz", "Baz", ["seed-c1"])]))
     first = Ostler(repo)
     story = next(s for e in first.graph.epics if e.name == "epic-c" for s in e.stories)
     assert story.story_md is None
 
-    write(repo / "docs/epics/epic-c/stories/01-baz/story.md", story_md("01-baz", "Baz", "Not started"))
+    write(epics_root() / "epic-c/stories/01-baz/story.md", story_md("01-baz", "Baz", "Not started"))
     okf = Ostler(repo)
     grown = next(s for e in okf.graph.epics if e.name == "epic-c" for s in e.stories)
 
@@ -230,11 +230,11 @@ def big_book(root: Path, features: int = 400, epics: int = 4, stories: int = 8) 
         write(root / f"docs/services/area{i % 8}/rec{i}.md",
               feature_md(f"rec{i}", f"Rec {i}", area=f"area{i % 8}"))
     for e in range(epics):
-        write(root / f"docs/epics/epic-{e}/epic.md", epic_md(
+        write(epics_root() / f"epic-{e}/epic.md", epic_md(
             f"t-{e}", f"epic-{e}", seeds=[(f"seed-{e}", "researched", "s")],
             stories=[(f"0{s}-story", f"S{s}", []) for s in range(stories)]))
         for s in range(stories):
-            write(root / f"docs/epics/epic-{e}/stories/0{s}-story/story.md",
+            write(epics_root() / f"epic-{e}/stories/0{s}-story/story.md",
                   story_md(f"0{s}-story", f"S{s}", "Not started"))
     return root
 

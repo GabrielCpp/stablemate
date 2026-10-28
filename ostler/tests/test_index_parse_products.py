@@ -12,7 +12,7 @@ import pytest
 from ostler import doctor, index, markdown
 from ostler.cli import main
 
-from conftest import UI_DASH_UNLINKED, entry_files, report_of, screen_md, warm_index, write
+from conftest import UI_DASH_UNLINKED, entry_files, report_of, screen_md, warm_index, write, epics_root
 
 
 class _Seam:
@@ -129,8 +129,8 @@ def test_a_second_process_reads_the_epics_and_stories_off_the_index_too(
     assert main(["-C", str(ui_book), "doctor", "--json", "--index-dir", str(directory)]) == 0
     _ = report_of(capsys)
 
-    planning = sorted((ui_book / "docs" / "epics").rglob("*.md"))
-    reparsed = {path.relative_to(ui_book).as_posix(): parse_counts(path, texts, bodies)
+    planning = sorted(epics_root().rglob("*.md"))
+    reparsed = {path.relative_to(epics_root()).as_posix(): parse_counts(path, texts, bodies)
                 for path in planning}
     assert planning and not {name: c for name, c in reparsed.items() if any(c)}
 

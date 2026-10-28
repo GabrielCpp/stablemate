@@ -8,7 +8,7 @@ import pytest
 from ostler import crud, doctor, markdown, query, registry, select, todo
 from ostler.model import load
 
-from conftest import FOO_ID, present
+from conftest import FOO_ID, present, epics_root
 
 
 def test_create_epic_allocates_id_and_parses(tmp_path: Path):
@@ -82,7 +82,7 @@ def test_story_scaffold_writes_every_required_section(tmp_path: Path):
     crud.create_epic(load(tmp_path), "billing", "Billing", prefix="acme")
     assert crud.create_story(load(tmp_path), "billing", "01-current", "Current shape").ok
 
-    story_path = tmp_path / "docs/epics/0001-billing/stories/01-current/story.md"
+    story_path = epics_root() / "0001-billing/stories/01-current/story.md"
     text = story_path.read_text(encoding="utf-8")
 
     assert "storyShape" not in text
@@ -97,15 +97,15 @@ def test_create_story_writes_its_blockers_into_the_story(tmp_path: Path):
     assert crud.create_story(load(tmp_path), "billing", "02-second", "Second",
                              depends=["01-first"]).ok
 
-    epic_text = (tmp_path / "docs/epics/0001-billing/epic.md").read_text(encoding="utf-8")
+    epic_text = (epics_root() / "0001-billing/epic.md").read_text(encoding="utf-8")
     assert "depends on" not in epic_text
 
-    second = (tmp_path / "docs/epics/0001-billing/stories/02-second/story.md"
+    second = (epics_root() / "0001-billing/stories/02-second/story.md"
               ).read_text(encoding="utf-8")
     assert "## Dependencies\n\n- Blocked by: 01-first\n" in second
     assert second.index("## Dependencies") < second.index("## Context")
 
-    first = (tmp_path / "docs/epics/0001-billing/stories/01-first/story.md"
+    first = (epics_root() / "0001-billing/stories/01-first/story.md"
              ).read_text(encoding="utf-8")
     assert "## Dependencies\n\n(none)\n" in first
     assert "Blocked by" not in first
@@ -120,7 +120,7 @@ def test_none_passed_as_a_blocker_is_not_written_as_one(tmp_path: Path):
     crud.create_epic(load(tmp_path), "billing", "Billing", prefix="acme")
     assert crud.create_story(load(tmp_path), "billing", "01-only", "Only",
                              depends=["(none)"]).ok
-    text = (tmp_path / "docs/epics/0001-billing/stories/01-only/story.md"
+    text = (epics_root() / "0001-billing/stories/01-only/story.md"
             ).read_text(encoding="utf-8")
     assert "## Dependencies\n\n(none)\n" in text
     assert "Blocked by" not in text
@@ -139,7 +139,7 @@ def test_set_status_rewrites_only_the_field_not_the_prose(tmp_path: Path):
     g = load(tmp_path)
     epic_dir = crud.create_epic(g, "billing", "Billing", prefix="acme").entity_name
     story_id = crud.create_story(load(tmp_path), "billing", "01-apercu", "Aperçu").entity_id
-    story_md = tmp_path / f"docs/epics/{epic_dir}/stories/01-apercu/story.md"
+    story_md = epics_root() / f"{epic_dir}/stories/01-apercu/story.md"
     prose = (
         "- The legacy screen's QA passed in 4.2; hold that behaviour.\n"
         "- Status is shown in the header — do not move it.\n"
@@ -164,7 +164,7 @@ def test_status_is_read_as_the_field_even_when_the_prose_says_qa_passed(tmp_path
     g = load(tmp_path)
     epic_dir = crud.create_epic(g, "billing", "Billing", prefix="acme").entity_name
     crud.create_story(load(tmp_path), "billing", "01-apercu", "Aperçu")
-    story_md = tmp_path / f"docs/epics/{epic_dir}/stories/01-apercu/story.md"
+    story_md = epics_root() / f"{epic_dir}/stories/01-apercu/story.md"
     story_md.write_text(
         story_md.read_text(encoding="utf-8").replace(
             "## Context\n", "## Context\n\nThe old report QA passed before the rewrite.\n"),
@@ -178,7 +178,7 @@ def test_status_is_read_as_the_field_even_when_the_prose_says_qa_passed(tmp_path
 def test_delete_story_removes_block_and_dir(repo: Path):
     res = crud.delete_story(load(repo), FOO_ID)
     assert res.ok
-    assert not (repo / "docs/epics/epic-a/stories/01-foo").exists()
+    assert not (epics_root() / "epic-a/stories/01-foo").exists()
     g = load(repo)
     assert g.find_story(FOO_ID) is None
     assert g.story_by_slug("01-foo") is None
@@ -193,13 +193,13 @@ def test_update_story_rewrites_only_the_dependencies_section(tmp_path: Path):
         load(tmp_path), "accounts", "sign-in", "Sign in", covers=["sign-in"]
     ).ok
     assert crud.create_story(load(tmp_path), "accounts", "editor", "Editor").ok
-    story_path = tmp_path / "docs/epics/0001-accounts/stories/editor/story.md"
+    story_path = epics_root() / "0001-accounts/stories/editor/story.md"
     story_path.write_text(
         story_path.read_text(encoding="utf-8") + "\nHand-authored contract.\n",
         encoding="utf-8",
     )
     assert "## Dependencies\n\n(none)\n" in story_path.read_text(encoding="utf-8")
-    epic_path = tmp_path / "docs/epics/0001-accounts/epic.md"
+    epic_path = epics_root() / "0001-accounts/epic.md"
     epic_path.write_text(
         epic_path.read_text(encoding="utf-8").replace(
             "### editor\n- title: Editor\n",
@@ -243,7 +243,7 @@ def test_update_story_states_its_fixtures_only_when_asked(tmp_path: Path):
     """`--fixtures` is optional where `--depends` is not, and that asymmetry is deliberate."""
     assert crud.create_epic(load(tmp_path), "accounts", "Accounts", prefix="t").ok
     editor_id = crud.create_story(load(tmp_path), "accounts", "editor", "Editor").entity_id
-    story_path = tmp_path / "docs/epics/0001-accounts/stories/editor/story.md"
+    story_path = epics_root() / "0001-accounts/stories/editor/story.md"
     assert "## Fixtures\n\n(none)\n" in story_path.read_text(encoding="utf-8")
 
     def update(**kwargs):
@@ -300,7 +300,7 @@ def test_delete_epic_removes_its_milestone_reference(tmp_path: Path):
     assert milestone is not None
     assert milestone.epics == ["profiles"]
     assert "Milestone prose survives." in milestone_path.read_text(encoding="utf-8")
-    assert not (tmp_path / f"docs/epics/{created.entity_name}").exists()
+    assert not (epics_root() / f"{created.entity_name}").exists()
 
 
 def test_delete_epic_finishes_cleanup_after_interruption(
@@ -330,7 +330,7 @@ def test_delete_epic_finishes_cleanup_after_interruption(
     resumed = crud.delete_epic(load(tmp_path), "accounts")
 
     assert resumed.ok
-    assert not (tmp_path / f"docs/epics/{created.entity_name}").exists()
+    assert not (epics_root() / f"{created.entity_name}").exists()
     milestone = load(tmp_path).milestone_by_name("mvp")
     assert milestone is not None and milestone.epics == []
     assert todo.list_epics(load(tmp_path)) == []
@@ -345,7 +345,7 @@ def test_list_epics_falls_back_to_milestone_order_without_index(tmp_path: Path):
     milestone_path.write_text(
         milestone_path.read_text(encoding="utf-8").replace("epics: []", "epics:\n- accounts")
     )
-    assert not (tmp_path / "docs/epics/index.md").exists()
+    assert not (epics_root() / "index.md").exists()
 
     assert todo.list_epics(load(tmp_path)) == ["accounts"]
 
@@ -386,7 +386,7 @@ def test_a_seed_keeps_the_record_it_came_from(repo: Path):
 
 def test_a_seed_with_a_legacy_source_bullet_line_still_parses_and_raises_no_finding(repo: Path):
     before = sorted((f.code, f.ref) for f in doctor.run(load(repo)).findings)
-    epic_md = repo / "docs/epics/epic-a/epic.md"
+    epic_md = epics_root() / "epic-a/epic.md"
     text = epic_md.read_text(encoding="utf-8")
     assert "### seed-a1\n- status: researched\n" in text
     epic_md.write_text(
@@ -406,7 +406,7 @@ def test_create_story_existing_slug_is_a_noop(repo: Path):
     crud.add_seed(load(repo), "epic-a", "s1", status="researched")
     first = crud.create_story(load(repo), "epic-a", "01-dup", "Dup", covers=["s1"])
     assert first.ok
-    story_md = repo / "docs/epics/epic-a/stories/01-dup/story.md"
+    story_md = epics_root() / "epic-a/stories/01-dup/story.md"
     story_md.write_text(story_md.read_text(encoding="utf-8") + "\nhand-written body\n",
                         encoding="utf-8")
 
@@ -423,7 +423,7 @@ def test_story_frontmatter_carries_the_allocated_id(repo: Path):
     assert res.ok and res.entity_id
 
     import yaml as _yaml
-    text = (repo / "docs/epics/epic-a/stories/01-ided/story.md").read_text(encoding="utf-8")
+    text = (epics_root() / "epic-a/stories/01-ided/story.md").read_text(encoding="utf-8")
     fm = _yaml.safe_load(text.split("---")[1])
     assert fm["id"] == res.entity_id, "the allocated id must be in the story's own frontmatter"
     found = load(repo).find_story(res.entity_id)
@@ -451,7 +451,7 @@ def test_seed_layers_and_services_round_trip(repo: Path):
     assert seed.layers == ("frontend", "backend")
     assert seed.services == ("api-service",)
     assert seed.design == "preserve"
-    assert "- layers: frontend, backend" in (repo / "docs/epics/epic-a/epic.md").read_text(
+    assert "- layers: frontend, backend" in (epics_root() / "epic-a/epic.md").read_text(
         encoding="utf-8"
     )
 
@@ -484,5 +484,5 @@ def test_set_conflict_records_and_clears_the_frontmatter_key(repo: Path):
     assert crud.set_conflict(load(repo), FOO_ID, "").ok
     _, story = present(load(repo).find_story(FOO_ID))
     assert story.conflict == ""
-    assert "conflict" not in (repo / "docs/epics/epic-a/stories/01-foo/story.md").read_text()
+    assert "conflict:" not in (epics_root() / "epic-a/stories/01-foo/story.md").read_text()
     assert not crud.set_conflict(load(repo), "no-such", "x").ok

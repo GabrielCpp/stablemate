@@ -7,17 +7,17 @@ from pathlib import Path
 from ostler import doctor, ids, path as path_mod
 from ostler.model import load
 
-from conftest import epic_md, present, story_md, write
+from conftest import epic_md, present, story_md, write, epics_root
 
 KEY = "CASE-574"
 EPIC = "CASE-457"
 
 
 def _tracker_repo(root: Path) -> Path:
-    write(root / f"docs/epics/{EPIC}/epic.md", epic_md(
+    write(epics_root() / f"{EPIC}/epic.md", epic_md(
         EPIC, "Case epic", seeds=[], stories=[(KEY, "Case story", [])],
     ))
-    write(root / f"docs/epics/{EPIC}/stories/{KEY}/story.md",
+    write(epics_root() / f"{EPIC}/stories/{KEY}/story.md",
           story_md(KEY, "Case story", "Not started", eid=KEY))
     return root
 
@@ -35,7 +35,7 @@ def test_a_tracker_key_id_resolves_to_its_own_spec_directory(tmp_path: Path):
 
 def test_an_epic_named_by_a_tracker_key_resolves_without_a_numeric_prefix(tmp_path: Path):
     graph = load(_tracker_repo(tmp_path))
-    assert path_mod.resolve_epic(graph, EPIC) == f"docs/epics/{EPIC}"
+    assert path_mod.resolve_epic(graph, EPIC) == str(epics_root() / EPIC)
 
 
 def test_a_tracker_key_id_is_never_rewritten_by_the_handle_table(tmp_path: Path):

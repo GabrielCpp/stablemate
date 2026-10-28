@@ -76,6 +76,7 @@ Three scoping rules explain findings that otherwise read as false positives or a
 | `story-key-collision` | error | One id or slug names multiple stories. Keep every accepted story spelling graph-global and unambiguous. |
 | `story-status-mismatch` | error | Frontmatter `status` differs from the `## Implementation Status` value. |
 | `unwritten-story` | error | A story is still a bare `ostler create story` scaffold. |
+| `service-spans-repositories` | error | The `code:` bullets of one service cite files of two repositories. A service belongs to one repository: move the citations or split the service. |
 | `story-section-order` | error | A story carries its required sections out of contract order. |
 | `story-conflict` | error | The story's frontmatter `conflict:` records two acceptance criteria that cannot both hold — the adjudicator's `story` verdict, with its chain. Rewriting intent is the operator's: edit the criteria so one intent holds, then `ostler conflict <slug> --clear`. |
 | `story-covers-no-seed` | warn | A story lists no `seedItems`. |

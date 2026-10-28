@@ -1,4 +1,4 @@
-"""The Decision record — ``adr/<id>.md`` in the artifacts dir, proposed from a cluster of Register records."""
+"""The Decision record — ``docs/adrs/<slug>/adr.md`` under the docs home, proposed from a cluster of Register records."""
 
 from __future__ import annotations
 
@@ -11,11 +11,12 @@ from typing import Literal
 
 import pydantic
 
-from ostler import crud, ids, markdown, path as path_mod, register
+from ostler import crud, decisions as decisions_mod, ids, markdown, path as path_mod, register
 from ostler._vendor.stablemate_core import config as core_config
 from ostler.model import Graph
 from ostler.result import Result
 
+ADR_FILE = "adr.md"
 Status = Literal["proposed", "accepted", "rejected", "superseded"]
 
 SECTIONS = ("Context", "Decision", "Consequences")
@@ -39,7 +40,7 @@ class Decision(pydantic.BaseModel):
     @pydantic.field_validator("id")
     @classmethod
     def _id_is_one_path_segment(cls, value: str) -> str:
-        """An id names a file, so it is one non-empty path-safe segment."""
+        """An id names a folder, so it is one non-empty path-safe segment."""
         if not register.ID_PATTERN.fullmatch(value):
             raise ValueError(f"id {value!r} must be one path-safe segment")
         return value
@@ -108,20 +109,47 @@ def _refusal(message: str) -> Result:
     return Result(False, message)
 
 
+def _commit(graph: Graph, target: Path, message: str) -> bool:
+    """Commit exactly *target* in the artifacts repo, hooks off; False when the docs home is not that repo or there was nothing new to commit."""
+    root = core_config.resolve_artifacts_dir()
+    if graph.root.resolve() != root.resolve() or not (root / ".git").exists():
+        return False
+    rel = str(target.resolve().relative_to(root.resolve()))
+    git = ["git", "-C", str(root)]
+    subprocess.run([*git, "add", "--", rel], check=True, capture_output=True, timeout=60)
+    if subprocess.run([*git, "diff", "--cached", "--quiet", "--", rel], check=False, capture_output=True, timeout=60).returncode == 0:
+        return False
+    try:
+        subprocess.run(
+            [*git, "-c", "core.hooksPath=/dev/null", "commit", "--no-verify", "-m", message, "--only", "--", rel],
+            check=True, capture_output=True, timeout=60,
+        )
+    except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
+        subprocess.run([*git, "reset", "--quiet", "--", rel], check=False, capture_output=True, timeout=60)
+        raise
+    return True
+
+
 def propose(
     graph: Graph,
     *,
+    slug: str,
     title: str,
     context: str,
     decision: str,
     consequences: str,
     evidence: Iterable[str],
-    prefix: str | None = None,
 ) -> Result:
-    """Write a proposed decision for *evidence* and bind each record to it in one artifacts commit; a failed commit restores every file."""
+    """Write a proposed decision named *slug* for *evidence* and bind each record to it; the decision file alone is committed, and only where the docs home is the artifacts repo."""
+    problem = decisions_mod.slug_problem(slug)
+    if problem:
+        return _refusal(problem)
     wanted = list(dict.fromkeys(evidence))
     if not wanted:
         return _refusal("a decision needs evidence: name at least one record")
+    home = path_mod.adr_root(graph) / slug
+    if home.exists():
+        return _refusal(f"decision '{slug}' already exists at {home / ADR_FILE}: read it, or pick a different slug")
     found: list[register.Record] = []
     shelved: list[Path] = []
     for token in wanted:
@@ -138,28 +166,25 @@ def propose(
         shelved.append(folder / register.RECORD_FILE)
     try:
         written = Decision(
-            id=ids.allocate(graph, prefix), title=title, repos=sorted({r.repo for r in found}),
+            id=slug, title=title, repos=sorted({r.repo for r in found}),
             evidence=[r.id for r in found], context=context, decision=decision, consequences=consequences,
         )
     except pydantic.ValidationError as exc:
         first = exc.errors()[0]
         return _refusal(f"invalid decision: {'.'.join(map(str, first['loc']))}: {first['msg']}")
     core_config.ensure_artifacts_repo()
-    folder = path_mod.adr_root(graph)
-    made = not folder.exists()
-    folder.mkdir(parents=True, exist_ok=True)
-    target = folder / f"{written.id}.md"
+    target = home / ADR_FILE
     before = {path: path.read_text(encoding="utf-8") for path in shelved}
+    home.mkdir(parents=True)
     target.write_text(written.render(), encoding="utf-8")
     try:
         for path in shelved:
             register.bind(path, written.id)
-        register.commit(graph, [target, *shelved], f"chore: propose {written.id} from {len(found)} records")
+        _commit(graph, target, f"docs: propose {written.id} from {len(found)} records")
     except (subprocess.CalledProcessError, subprocess.TimeoutExpired, OSError) as exc:
         for path, text in before.items():
             path.write_text(text, encoding="utf-8")
         target.unlink(missing_ok=True)
-        if made:
-            folder.rmdir()
+        home.rmdir()
         return Result(False, f"decision '{written.id}' was not proposed: the artifacts commit failed: {exc}")
     return Result(True, f"proposed decision '{written.id}' from {len(found)} records", [target, *shelved], entity_id=written.id)

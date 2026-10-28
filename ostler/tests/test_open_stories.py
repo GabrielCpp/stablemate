@@ -8,14 +8,14 @@ import pytest
 
 from ostler import Ostler
 
-from conftest import epic_md, present, story_md, write
+from conftest import epic_md, present, story_md, write, epics_root
 
 
 def _epic(root: Path, name: str, eid: str, stories: list[tuple[str, str, list[str]]]) -> None:
-    write(root / f"docs/epics/{name}/epic.md", epic_md(
+    write(epics_root() / f"{name}/epic.md", epic_md(
         eid, name, seeds=[], stories=[(slug, slug, []) for slug, _, _ in stories]))
     for slug, status, deps in stories:
-        write(root / f"docs/epics/{name}/stories/{slug}/story.md",
+        write(epics_root() / f"{name}/stories/{slug}/story.md",
               story_md(slug, slug, status, depends=deps, eid=f"id-{slug}"))
 
 
@@ -42,7 +42,7 @@ def test_open_story_entry_carries_paths_and_every_dep(book: Path):
     okf = Ostler(book)
     mid = next(e for e in okf.open_stories("epic-a") if e["slug"] == "02-mid")
     assert mid["epic"] == "epic-a"
-    assert mid["path"] == "docs/epics/epic-a/stories/02-mid/story.md"
+    assert mid["path"] == str(epics_root() / "epic-a/stories/02-mid/story.md")
     assert mid["spec_dir"] == okf.spec_path("id-02-mid")
     assert mid["deps"] == ["01-base", "01-bar"]
     assert mid["open_deps"] == ["01-bar"]

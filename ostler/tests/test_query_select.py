@@ -7,7 +7,7 @@ import pytest
 from ostler import crud, query, select, todo
 from ostler.model import load
 
-from conftest import FOO_ID, present, write
+from conftest import FOO_ID, present, write, epics_root
 
 
 def _sid(root: Path, slug: str) -> str:
@@ -62,11 +62,11 @@ def test_next_story_reports_the_minted_id(tmp_path: Path):
 
 
 def test_story_id_survives_an_epic_block_that_never_recorded_it(tmp_path: Path):
-    write(tmp_path / "docs/epics/e/epic.md", "\n".join([
+    write(epics_root() / "e/epic.md", "\n".join([
         "---", "type: epic", "id: t-9", "title: E", "---", "# Epic: E", "",
         "## Stories", "", "### a", "- title: A", "- covers: (none)", "",
     ]) + "\n")
-    write(tmp_path / "docs/epics/e/stories/a/story.md", "\n".join([
+    write(epics_root() / "e/stories/a/story.md", "\n".join([
         "---", "type: story", "id: X-LEGACY7", "slug: a", "status: Not started", "---",
         "# Story: A", "",
     ]) + "\n")
@@ -133,7 +133,7 @@ def test_todo_queue(tmp_path: Path):
 
 def test_todo_add_warns_when_the_epic_has_no_doc(tmp_path: Path):
     """Queueing a name with no epic.md still succeeds (queue-ahead is legitimate), but says so: selection silently skips such a name and then reports "every epic is fully authored", which is a no-work run indistinguishable from a successful one."""
-    write(tmp_path / "docs/epics/.keep", "")
+    write(epics_root() / ".keep", "")
     res = todo.add(load(tmp_path), "ghost")
     assert res.ok
     assert "WARNING" in res.message and "ghost" in res.message

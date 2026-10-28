@@ -8,7 +8,7 @@ from ostler import doctor, todo
 from ostler.model import load
 from ostler.scripts import okf_migrate
 
-from conftest import write
+from conftest import write, epics_root
 
 
 def _old_repo(root: Path) -> None:
@@ -39,6 +39,8 @@ def test_migration_is_lossless(tmp_path: Path):
     _old_repo(tmp_path)
     rep = okf_migrate.migrate(tmp_path)
     assert rep["epics"] == 1 and rep["stories"] == 1 and rep["todo"]
+    epics_root().parent.mkdir(parents=True, exist_ok=True)
+    (tmp_path / "docs/epics").rename(epics_root())
 
     g = load(tmp_path)
     epic = next(e for e in g.epics if e.name == "epic-a")
@@ -47,7 +49,7 @@ def test_migration_is_lossless(tmp_path: Path):
     story = epic.stories[0]
     assert story.slug == "01-foo" and story.seed_items == ["seed-a1"] and story.title == "Foo"
 
-    epic_text = (tmp_path / "docs/epics/epic-a/epic.md").read_text()
+    epic_text = (epics_root() / "epic-a/epic.md").read_text()
     assert "build it" in epic_text and "## Seeds" in epic_text and "## Stories" in epic_text
 
     assert (tmp_path / "docs/services/area/rec.md").exists()
@@ -57,8 +59,9 @@ def test_migration_is_lossless(tmp_path: Path):
     report = doctor.run(g)
     residual = [f.code for f in report.findings if f.severity == "error"]
     assert sorted(residual) == ["story-section-order", "unwritten-story"]
-    leftovers = list(tmp_path.rglob("seed.json")) + list(tmp_path.rglob("dependencies.json")) \
-        + list(tmp_path.rglob("epics-todo.json")) + list(tmp_path.rglob("inventory.json"))
+    leftovers = [p for root in (tmp_path, epics_root())
+                 for name in ("seed.json", "dependencies.json", "epics-todo.json", "inventory.json")
+                 for p in root.rglob(name)]
     assert leftovers == []
 
 

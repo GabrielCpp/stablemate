@@ -56,9 +56,9 @@ def test_write_lays_the_record_under_repo_area_id_in_the_artifacts_dir(tmp_path:
     written = register.write(graph, record())
 
     assert written.ok
-    expected = artifacts() / "backlog/api-service/billing/acme-1/record.md"
+    expected = artifacts() / "backlogs/api-service/billing/acme-1/record.md"
     assert written.paths == [expected] and expected.is_file()
-    assert path_mod.register_root(graph) == artifacts() / "backlog"
+    assert path_mod.register_root(graph) == artifacts() / "backlogs"
     assert not (tmp_path / "docs/backlog").exists()
     assert (artifacts() / ".git").exists()
 
@@ -66,13 +66,13 @@ def test_write_lays_the_record_under_repo_area_id_in_the_artifacts_dir(tmp_path:
 def test_write_refuses_an_id_that_is_already_taken(tmp_path: Path) -> None:
     graph = load(tmp_path)
     register.write(graph, record())
-    before = (artifacts() / "backlog/api-service/billing/acme-1/record.md").read_text()
+    before = (artifacts() / "backlogs/api-service/billing/acme-1/record.md").read_text()
 
     again = register.write(graph, record(repo="web-app", area="ui", summary="Something else"))
 
     assert not again.ok and "acme-1" in again.message
-    assert (artifacts() / "backlog/api-service/billing/acme-1/record.md").read_text() == before
-    assert not (artifacts() / "backlog/web-app").exists()
+    assert (artifacts() / "backlogs/api-service/billing/acme-1/record.md").read_text() == before
+    assert not (artifacts() / "backlogs/web-app").exists()
 
 
 def test_the_listing_has_one_line_per_record_closed_ones_included(tmp_path: Path) -> None:
@@ -99,8 +99,8 @@ def test_a_short_handle_locates_the_records_folder(tmp_path: Path) -> None:
     handle = ids.table(ids.known(graph))[minted]
 
     assert handle != minted
-    assert register.locate(graph, handle) == artifacts() / f"backlog/api-service/billing/{minted}"
-    assert register.locate(graph, minted) == artifacts() / f"backlog/api-service/billing/{minted}"
+    assert register.locate(graph, handle) == artifacts() / f"backlogs/api-service/billing/{minted}"
+    assert register.locate(graph, minted) == artifacts() / f"backlogs/api-service/billing/{minted}"
     assert register.locate(graph, "acme-nothing") is None
 
 
@@ -124,7 +124,7 @@ def test_an_unparsable_record_is_skipped_by_the_listing_and_named_by_the_doctor(
 ) -> None:
     graph = load(tmp_path)
     register.write(graph, record())
-    broken = artifacts() / "backlog/api-service/billing/acme-2/record.md"
+    broken = artifacts() / "backlogs/api-service/billing/acme-2/record.md"
     broken.parent.mkdir(parents=True)
     broken.write_text("---\nid: acme-2\nrepo: api-service\n---\nno area, no summary\n")
 
@@ -161,7 +161,7 @@ def test_file_record_without_an_area_files_nothing(tmp_path: Path) -> None:
     filing = okf.file_record(repo="api-service", area="", pattern="x", summary="s", filed_by="coder")
 
     assert not filing.ok and filing.record is None
-    assert not (artifacts() / "backlog").exists()
+    assert not (artifacts() / "backlogs").exists()
 
 
 def test_backlog_list_prints_one_line_per_record(tmp_path: Path, capsys) -> None:

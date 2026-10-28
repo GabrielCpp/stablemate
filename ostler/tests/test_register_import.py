@@ -118,17 +118,12 @@ def test_a_hand_written_list_becomes_one_record_per_bullet(tmp_path: Path, capsy
     assert not file.exists()
 
 
-def test_the_records_are_one_artifacts_commit_and_the_code_repo_is_untouched(tmp_path: Path) -> None:
+def test_the_records_are_never_committed_and_the_code_repo_is_untouched(tmp_path: Path) -> None:
     file = source(tmp_path, HAND_WRITTEN)
 
     assert run(tmp_path, "backlog", "adopt", "--repo", "acme-shop", str(file), "--prefix", "acme") == 0
 
-    assert commit_subjects() == ["chore(acme-shop): import the backlog list"]
-    status = subprocess.run(
-        ["git", "-C", str(artifacts()), "status", "--porcelain", "-uall", "--", "backlog"],
-        capture_output=True, text=True, check=True, timeout=30,
-    )
-    assert status.stdout.strip() == ""
+    assert commit_subjects() == []
     left = sorted(p.relative_to(tmp_path).as_posix() for p in tmp_path.rglob("*") if p.is_file())
     assert left == [".agents/ids.json"]
 

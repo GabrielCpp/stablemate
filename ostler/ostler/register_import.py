@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import re
-import subprocess
 import textwrap
 from dataclasses import dataclass
 from pathlib import Path
@@ -132,7 +131,7 @@ def _rollback(written: list[Path]) -> None:
 
 
 def import_list(graph: Graph, source: Path, repo: str, prefix: str | None = None) -> Imported:
-    """Turn the bullets of *source* into records of *repo*, all or none, commit them in the artifacts repo, then delete *source*."""
+    """Turn the bullets of *source* into records of *repo*, all or none, then delete *source*."""
     if not source.is_file():
         return Imported(False, f"no list at {source}")
     built, kept, reason = _built(graph, source.read_text(encoding="utf-8"), repo, prefix)
@@ -154,10 +153,5 @@ def import_list(graph: Graph, source: Path, repo: str, prefix: str | None = None
             _rollback(written)
             return Imported(False, result.message)
         written.extend(result.paths)
-    try:
-        register.commit(graph, written, f"chore({repo}): import the backlog list")
-    except (subprocess.CalledProcessError, subprocess.TimeoutExpired, OSError) as exc:
-        _rollback(written)
-        return Imported(False, f"nothing imported: the artifacts commit failed: {exc}")
     source.unlink()
     return Imported(True, f"imported {len(built)} records, kept {len(kept)} ids", tuple(built), len(kept))
