@@ -755,6 +755,31 @@ def test_the_owner_turn_is_granted_only_the_repos_the_plan_touches(
     assert agent.powers == ["high"], agent.powers
 
 
+def test_the_owner_is_told_the_plan_s_shared_packages_then_the_check_set_s_without_repeats(
+    docs: Path,
+    ostler: Callable[..., _Ostler],
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+    check_set: Any,
+) -> None:
+    """Plan-declared shared directories come first, and a directory both name is listed once."""
+    ostler()
+    run_env = env()
+    agent = _Agent(docs)
+    check_set.shared = ["acme::packages/shared/auth", "acme::packages/shared/auth", "acme::lib"]
+
+    drive_flow(Qa(story=STORY), run_env, agent)
+
+    (call,) = check_set.calls
+    assert call["story_id"] == STORY, call
+    (turn,) = agent.args_for("qa-story")
+    impl = _output(run_env, resolve_impl_context)
+    assert turn["shared_packages"] == list(
+        dict.fromkeys([*impl["shared_packages"], "acme::packages/shared/auth", "acme::lib"])
+    ), turn["shared_packages"]
+    assert turn["shared_packages"][-2:] == ["acme::packages/shared/auth", "acme::lib"]
+
+
 def test_an_unmappable_packet_reaches_the_owner_and_is_rebuilt_by_the_check(
     docs: Path,
     ostler: Callable[..., _Ostler],

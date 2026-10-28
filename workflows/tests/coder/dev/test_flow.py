@@ -26,6 +26,7 @@ from workhorse_workflows.coder.dev.flow import Dev
 from workhorse_workflows.coder.shared.owner import MAX_LAPS
 from workhorse_workflows.coder.shared import commits, work
 from workhorse_workflows.coder.shared.review import ANSWERS_FILE
+from workhorse_workflows.coder.shared.schemas.dev import DispatchEntry
 from workhorse_workflows.coder.shared.schemas.dev_story import DevOutcome
 from workhorse_workflows.coder.shared.schemas.qa import StackStatus
 from workhorse_workflows.kit.qa import runner as qa_runner
@@ -472,6 +473,75 @@ def test_the_clone_check_receives_the_dispatch_repos_and_the_story_identity(
     assert call["roots"] == [str(workspace["api"])], call
     assert call["story_id"] == STORY, call
     assert call["story_slug"], call
+
+
+def test_the_lap_gates_a_service_the_check_set_adds_after_the_plan_services(
+    tmp_path: Path,
+    docs: Path,
+    workspace: dict[str, Path],
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+    check_set: Any,
+) -> None:
+    """A dependent's dirty gate is the lap's failure, and the lap that finds it clean passes."""
+    dependent = tmp_path / "dependent"
+    dependent.mkdir()
+    makefile = dependent / "Makefile"
+    makefile.write_text("lint:\n\t@echo 'dependent gate is red'; exit 1\n", encoding="utf-8")
+    check_set.adds(
+        DispatchEntry(service="dependent", repo="api", cwd=str(dependent), type="go", label="go")
+    )
+
+    class Repairing(_Agent):
+        def _dev_review(self, data: dict[str, Any], nth: int) -> dict[str, Any]:
+            if nth > 1:
+                makefile.unlink(missing_ok=True)
+            return super()._dev_review(data, nth)
+
+    agent = Repairing(workspace)
+
+    result = drive_flow(_dev(docs), env(), agent)
+
+    assert result.status == "ready", result
+    first, second = agent.args_for("dev-review")
+    assert first["report"] == "", first
+    assert "dependent gate is red" in str(second["report"]), second["report"]
+
+
+def test_the_check_set_receives_the_dispatch_and_the_story_identity(
+    docs: Path,
+    workspace: dict[str, Path],
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+    check_set: Any,
+) -> None:
+    """The check set sees the plan's dispatch, docs entry included, and the story's id and slug."""
+    agent = _Agent(workspace)
+
+    drive_flow(_dev(docs), env(), agent)
+
+    (call,) = check_set.calls
+    assert [e.cwd for e in call["dispatch"] if e.type != "docs"] == [str(workspace["api"])], call
+    assert call["story_id"] == STORY, call
+    assert call["story_slug"], call
+
+
+def test_the_check_set_is_not_consulted_when_the_clone_check_finds_a_copy(
+    docs: Path,
+    workspace: dict[str, Path],
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+    copies: Any,
+    check_set: Any,
+) -> None:
+    """The lap that fails on a copy stops before the check set; the lap after it consults it."""
+    agent = _Agent(workspace)
+    copies.finds("api/links.go:1-9", str(workspace["api"]))
+
+    drive_flow(_dev(docs), env(), agent)
+
+    assert len(copies.calls) == 2, copies.calls
+    assert len(check_set.calls) == 1, check_set.calls
 
 
 def test_an_unanswered_finding_comes_back_named_in_the_report(

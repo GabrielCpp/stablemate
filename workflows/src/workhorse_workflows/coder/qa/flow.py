@@ -62,6 +62,7 @@ from workhorse_workflows.coder.shared.owner import (
 )
 from workhorse_workflows.coder.shared.plan import plan_summary, resolve_impl_context
 from workhorse_workflows.coder.shared.provenance import resolve_story_sources
+from workhorse_workflows.coder.shared.reach import resolve_check_set
 from workhorse_workflows.coder.shared.resolution import RESOLVER_POWER, answered, resolver_args
 from workhorse_workflows.coder.shared.review import check_feedback
 from workhorse_workflows.coder.shared.schemas.dev import OperatorResolution
@@ -188,6 +189,12 @@ class Qa(Workflow):
     def _owner_args(self) -> dict[str, Any]:
         """What the owner reads about its story, its plan and the tools it may drive."""
         impl = self.output(resolve_impl_context)
+        reach = self.call(
+            resolve_check_set,
+            tuple(impl.dispatch_list),
+            self.ctx.story_slug,
+            self.ctx.story_id,
+        )
         spec_dir = self.ctx.spec_dir
         return {
             "story_path": self.ctx.story_path,
@@ -202,7 +209,7 @@ class Qa(Workflow):
             "runtime_python": sys.executable,
             "verification_setup": impl.verification_setup,
             "fixtures": [f.model_dump() for f in impl.fixtures],
-            "shared_packages": impl.shared_packages,
+            "shared_packages": list(dict.fromkeys([*impl.shared_packages, *reach.shared])),
             "qa_run_plan": [r.model_dump() for r in impl.qa_run_plan],
             "plan_services": self.call(plan_summary, spec_dir).text,
             "qa_only_scenarios": qa_only_arg(spec_dir),

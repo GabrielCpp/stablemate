@@ -259,6 +259,13 @@ class CopyCheck(CoderResult):
     cwd: str = ""
 
 
+class CheckSet(CoderResult):
+    """The services a lap gates and the changed directories that belong to no service."""
+
+    checks: list[DispatchEntry] = []
+    shared: list[str] = []
+
+
 class StorySource(CoderResult):
     """One story-scoped source root with its repository provenance."""
 
@@ -359,6 +366,7 @@ class ChangedFiles(CoderResult):
 __all__ = [
     "BranchOutcome",
     "ChangedFiles",
+    "CheckSet",
     "CopyCheck",
     "DispatchEntry",
     "FailureReport",

@@ -39,6 +39,8 @@ title: Coder development flow
 - tests: `workflows/tests/coder/dev/test_flow.py::test_a_conversation_other_than_the_briefed_one_opens_with_the_full_brief_again`
 - tests: `workflows/tests/coder/dev/test_flow.py::test_a_copy_the_story_added_comes_back_as_a_copies_failure_before_any_service_gate`
 - detail: [coder lap clone check](../concepts/coder-lap-clone-check.md)
+- tests: `workflows/tests/coder/dev/test_flow.py::test_the_lap_gates_a_service_the_check_set_adds_after_the_plan_services`
+- detail: [coder lap check set](../concepts/coder-lap-check-set.md)
 
 The `docs` and `workspace` test fixtures stand up the inputs every dev-flow scenario runs
 against. `docs` builds a docs repo carrying one epic and one authored story. `workspace` builds
@@ -118,7 +120,9 @@ resolve the implementation context, move the code repositories to the run branch
 supplied, and check the story status. A status that already reads as finished is a failure.
 They then run the [lap clone check](../concepts/coder-lap-clone-check.md) on the code
 repositories the plan dispatches into, so a copy the story added of existing code fails the lap
-before any gate runs. They last run each service's gates in `GATE_ORDER`, stopping at the first
+before any gate runs. They then resolve the [lap check set](../concepts/coder-lap-check-set.md):
+the plan's services, then each service that owns a changed file or imports a changed directory.
+They last run the gates of each service in that set, in `GATE_ORDER`, stopping at the first
 dirty one. They then settle the open
 findings against the answers file, and name any finding still open with the reason its answer was
 rejected. A declined finding of the `Reuse` category holds only as a coincidence that names two

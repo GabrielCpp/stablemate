@@ -52,6 +52,7 @@ from workhorse_workflows.coder.shared.owner import (
 )
 from workhorse_workflows.coder.shared.plan import record_plan, resolve_impl_context
 from workhorse_workflows.coder.shared.resolution import RESOLVER_POWER, answered, resolver_args
+from workhorse_workflows.coder.shared.reach import resolve_check_set
 from workhorse_workflows.coder.shared.review import (
     ANSWERS_FILE,
     resolve_review_context,
@@ -472,7 +473,13 @@ class Dev(Workflow):
         )
         if copies.findings:
             return from_findings("copies", copies.findings, copies.cwd, lap)
-        for entry in impl.dispatch_list:
+        checks = self.call(
+            resolve_check_set,
+            tuple(impl.dispatch_list),
+            self.ctx.story_slug,
+            self.ctx.story_id,
+        )
+        for entry in checks.checks:
             outcome = GateOutcome()
             for gate in GATE_ORDER:
                 outcome = self.call(
