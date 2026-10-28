@@ -27,6 +27,14 @@ REPAIR = (
     f"[[check-clones.coincidence]] entry to {COINCIDENCE_CONFIG} naming both files and two "
     "different reasons instead."
 )
+CROSS_BUILD_REPAIR = (
+    "extract the repeated code to a library the repository's workspace lists and each build "
+    "declares, in this change (code-structure rule 2.13). When the repository has no workspace, "
+    "or a build context, CI path filter or deploy has to widen, and no docs/decisions record "
+    "covers it, propose the library and return blocked instead. When the two change for "
+    f"different reasons, add a [[check-clones.coincidence]] entry to {COINCIDENCE_CONFIG} naming "
+    "both files and two different reasons instead."
+)
 PROBLEM_REPAIR = "give the entry two different reasons, one per file, or remove it"
 
 
@@ -94,13 +102,16 @@ def _pair_finding(repo: Path, pair: dict) -> Finding:
     added, existing = pair["added"], pair["existing"]
     sits = f" The copy sits in {added['unit']}." if added.get("unit") else ""
     unit = f" ({existing['unit']})" if existing.get("unit") else ""
+    builds = (added.get("build"), existing.get("build"))
+    across = builds[0] is not None and builds[1] is not None and builds[0] != builds[1]
+    split = f" The two sit in separate builds, {builds[0]} and {builds[1]}." if across else ""
     return Finding(
         target=f"{repo.name}/{_named(added)}",
         issue=(
-            f"this story added a copy of {_named(existing)}{unit}, {pair['lines']} lines.{sits} "
+            f"this story added a copy of {_named(existing)}{unit}, {pair['lines']} lines.{sits}{split} "
             "The two will change for the same reason and get fixed in one place only."
         ),
-        repair=REPAIR,
+        repair=CROSS_BUILD_REPAIR if across else REPAIR,
     )
 
 

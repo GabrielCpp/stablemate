@@ -86,6 +86,35 @@ def test_a_pair_becomes_a_finding_naming_the_copy_the_original_and_both_units(
     assert "[[check-clones.coincidence]]" in finding.repair
 
 
+def test_a_pair_across_two_builds_names_both_and_asks_for_a_library(
+    tmp_path: Path, code_repo: Path, logger: logging.Logger
+) -> None:
+    pair = {
+        "added": {**ADDED, "build": "api-service"},
+        "existing": {**EXISTING, "build": "reporting-service"},
+        "lines": 13,
+    }
+    library = layer(tmp_path, "base", {"pairs": [pair], "problems": []}, code=1)
+
+    (finding,) = check_copies(logger, [str(code_repo)], library_dirs=(str(library),)).findings
+
+    assert "The two sit in separate builds, api-service and reporting-service." in finding.issue
+    assert "code-structure rule 2.13" in finding.repair
+    assert "return blocked" in finding.repair
+
+
+def test_a_pair_in_one_build_keeps_the_single_owner_repair(
+    tmp_path: Path, code_repo: Path, logger: logging.Logger
+) -> None:
+    pair = {"added": {**ADDED, "build": "."}, "existing": {**EXISTING, "build": "."}, "lines": 13}
+    library = layer(tmp_path, "base", {"pairs": [pair], "problems": []}, code=1)
+
+    (finding,) = check_copies(logger, [str(code_repo)], library_dirs=(str(library),)).findings
+
+    assert "separate builds" not in finding.issue
+    assert "code-structure rule 2.12" in finding.repair
+
+
 def test_a_pair_without_units_names_only_the_ranges(
     tmp_path: Path, code_repo: Path, logger: logging.Logger
 ) -> None:

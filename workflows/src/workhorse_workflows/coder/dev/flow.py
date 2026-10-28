@@ -51,7 +51,12 @@ from workhorse_workflows.coder.shared.owner import (
     owner_profile,
 )
 from workhorse_workflows.coder.shared.plan import record_plan, resolve_impl_context
-from workhorse_workflows.coder.shared.resolution import RESOLVER_POWER, answered, resolver_args
+from workhorse_workflows.coder.shared.resolution import (
+    RESOLVER_POWER,
+    answered,
+    decisions_dir,
+    resolver_args,
+)
 from workhorse_workflows.coder.shared.reach import resolve_check_set
 from workhorse_workflows.coder.shared.review import (
     ANSWERS_FILE,
@@ -177,6 +182,7 @@ class Dev(Workflow):
             "story_services": self.ctx.story_services,
             "spec_dir": self.ctx.spec_dir,
             "branch": self.branch,
+            "decisions_dir": str(decisions_dir(self.repo_dir)),
         }
 
     def start(self) -> Continue:

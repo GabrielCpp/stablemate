@@ -14,6 +14,27 @@ use, in this story. When the two copies change for different reasons, a
 `[[check-clones.coincidence]]` entry in `.agent-checks.toml` names both files and one reason
 per file instead.
 
+When the clone check says the two copies sit in separate builds, the owner is a library the
+repository's workspace lists and each build declares, as code-structure rule 2.13 says. The
+library's manifest, its workspace entry and each build's dependency on it are in scope. Build it
+without asking when a record in `{{ decisions_dir }}` says where such code lives, or when the
+workspace already exists and every build context, image, CI path filter and deploy stays as it
+was. Otherwise return `blocked`. `notes` then holds one concrete library: its folder, its name,
+its manifest, its workspace entry, each build that declares it, each build context or filter it
+widens, and your recommendation. When the operator's answer settles it, write that answer to
+`{{ decisions_dir }}/<short-kebab-slug>.md` before you build, so the next story follows it
+without asking:
+
+```markdown
+# Where does code two services share live?
+
+**Decided:** <the operator's answer, in one or two sentences>
+
+**Grounded in:** the operator's answer to <story slug>, dev stage
+
+**Context:** <the copy that raised it, and what was at stake>
+```
+
 A follow-up is undone product work on this story's feature that the working slice does not
 need: a refactor, a wider surface, a polish the criteria do not ask for. A copy that predates
 this story is one, with the pattern `extract-module`.{% if not follow_up_title %}
@@ -43,7 +64,8 @@ phase, and it goes in `notes`.
 ## Blocked
 
 Return `blocked` only for a decision an operator alone can make: a product call the story
-and the repo's decisions leave open, a credential, a real deploy, a spend. First try every
-route the repo offers: its docs, its `docs/decisions/` records, its skills, its fixtures.
+and the repo's decisions leave open, a credential, a real deploy, a spend, a change to how the
+code ships. First try every route the repo offers: its docs, its `{{ decisions_dir }}` records,
+its skills, its fixtures.
 A missing fixture, seed, migration or data row is not a block. Building it is in scope. On
 `blocked`, `notes` holds the one question that would unblock you and what you ruled out.
