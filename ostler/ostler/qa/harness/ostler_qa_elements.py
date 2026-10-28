@@ -20,9 +20,9 @@ def _escape(text: str) -> str:
 
 
 def template_pattern(template: str) -> re.Pattern[str]:
-    """The names a templated control can carry: its literal text in place, any text in each hole."""
+    """The names a templated control can carry: its literal text in place, any text, the empty text included, in each hole."""
     parts = _TEMPLATE_HOLE.split(template)
-    return re.compile("^" + ".+?".join(_escape(part) for part in parts) + "$")
+    return re.compile("^" + ".*?".join(_escape(part) for part in parts) + "$", re.DOTALL)
 
 
 def name_pattern(name: str) -> re.Pattern[str]:
@@ -41,7 +41,7 @@ def _located_by(name: str) -> str:
         pieces: list[str] = []
         for at, part in enumerate(_TEMPLATE_HOLE.split(name)):
             if at:
-                pieces.append(".+?")
+                pieces.append(".*?")
             if part:
                 pieces.append(java_quote(part))
         return "(?-i:" + "".join(pieces) + ")"
