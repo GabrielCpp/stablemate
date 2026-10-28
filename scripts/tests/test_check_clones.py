@@ -400,6 +400,41 @@ def test_main_fails_naming_both_locations_when_the_commit_adds_a_copy(repo: Path
     assert "api-service/xlsx/extra.go:5-17 (WriteExtra)" in err
     assert "repeats api-service/xlsx/sheet.go:5-17 (WriteSheet), 13 lines" in err
     assert "coincidence" in err
+    assert "2.13" not in err
+
+
+def _cross_build_report() -> dict:
+    side = {"name": "api-service/xlsx/extra.go", "start": 5, "end": 17}
+    other = {"name": "reporting-service/xlsx/sheet.go", "start": 5, "end": 17}
+    return {"duplicates": [{"firstFile": side, "secondFile": other, "lines": 13, "isNew": True}]}
+
+
+def _two_builds(repo: Path) -> None:
+    (repo / "api-service/go.mod").write_text("module example.com/api\n", encoding="utf-8")
+    (repo / "reporting-service/go.mod").write_text("module example.com/report\n", encoding="utf-8")
+
+
+def test_main_names_both_builds_and_rule_2_13_when_the_copies_sit_in_two_builds(repo: Path, capsys):
+    _two_builds(repo)
+    _stage_copy(repo)
+
+    code = gate.main(["--root", str(repo)], lambda root, limits, base: _cross_build_report())
+
+    err = capsys.readouterr().err
+    assert code == 1
+    assert "across two builds, api-service and reporting-service: rule 2.13 applies" in err
+    assert "share it as a library" in err
+
+
+def test_json_names_the_build_of_each_side(repo: Path, capsys):
+    _two_builds(repo)
+    _stage_copy(repo)
+
+    gate.main(["--root", str(repo), "--json"], lambda root, limits, base: _cross_build_report())
+
+    pair = json.loads(capsys.readouterr().out)["pairs"][0]
+    assert pair["added"]["build"] == "api-service"
+    assert pair["existing"]["build"] == "reporting-service"
 
 
 def test_main_passes_when_the_report_has_no_new_pair(repo: Path, capsys):
@@ -489,8 +524,20 @@ def test_json_prints_the_pair_with_both_sides_units_and_lines(repo: Path, capsys
     assert json.loads(captured.out) == {
         "pairs": [
             {
-                "added": {"path": "api-service/xlsx/extra.go", "start": 5, "end": 17, "unit": "WriteExtra"},
-                "existing": {"path": "api-service/xlsx/sheet.go", "start": 5, "end": 17, "unit": "WriteSheet"},
+                "added": {
+                    "path": "api-service/xlsx/extra.go",
+                    "start": 5,
+                    "end": 17,
+                    "unit": "WriteExtra",
+                    "build": ".",
+                },
+                "existing": {
+                    "path": "api-service/xlsx/sheet.go",
+                    "start": 5,
+                    "end": 17,
+                    "unit": "WriteSheet",
+                    "build": ".",
+                },
                 "lines": 13,
             }
         ],

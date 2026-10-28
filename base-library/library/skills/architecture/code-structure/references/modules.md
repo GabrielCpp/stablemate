@@ -259,3 +259,58 @@ reasons = ["the public API's error codes", "the internal report's error codes"]
 One reason, or the same reason twice, is not a coincidence, and the check refuses it. Generated
 code, vendored code, mocks, fixtures, migrations and tests are outside the check by default. A
 repo sets its own size and ignore list in the same file's `[check-clones]` table.
+
+## 2.13 Code two builds share is a library the workspace lists
+
+**Statement.** When the two copies sit in separately built services, the owner is a library: a
+package with its own manifest, listed in the repository's workspace, and declared as a dependency
+by each service that imports it. A module inside one service is not an owner the other service can
+reach.
+
+**Trigger.** The clone check reports a pair whose two files sit under different nearest build
+manifests, such as two `go.mod`, `package.json`, `pubspec.yaml` or `pyproject.toml` files. The
+refusal names both builds. A reader sees the same trigger in a block repeated between two
+directories that each carry their own manifest.
+
+**Fix.** Find the library's home in this order, and stop at the first that answers:
+
+1. a record under `docs/decisions/` that says where code two services share lives;
+2. the workspace the repository already has, such as `go.work`, `pnpm-workspace.yaml`, the
+   `workspaces` of the root `package.json`, `[tool.uv.workspace]` or the root pubspec's
+   `workspace:`, and the folder its libraries already sit in.
+
+Then extract in one change. Give the library its own manifest and a name for what it does, as 2.6
+says. List it in the workspace. Declare it in each service that imports it. Delete both copies.
+The extraction is done when each importing service builds, its image included.
+
+**Ask before you extract** when the extraction changes how the code ships. That holds when the
+repository has no workspace yet, or when a build has to widen to reach the library: a Docker build
+context, a CI path filter, a deploy's source list or a published package. An extraction inside an
+existing workspace that leaves every build and deploy as it was needs no approval.
+
+When you ask, propose one concrete library: its folder, its name, its manifest, the workspace entry,
+each service that declares it and each build it widens. Name the convention it sets, such as "code
+two services share lives under `libs/<name>`, one manifest each, listed in the workspace". In a
+coder run, return `blocked` with the proposal as the question and your recommendation in it. In a
+session, put the proposal to the user in chat and wait for the answer.
+
+Record the answer as `docs/decisions/<short-kebab-slug>.md` in the change that follows it, so the
+next share follows the convention without asking:
+
+```markdown
+# Where does code two services share live?
+
+**Decided:** <the convention, in one or two sentences>
+
+**Grounded in:** <who answered, and where>
+
+**Context:** <the copy that raised it, and what was at stake>
+```
+
+A copy left in each service because no shared home existed is the start of a fork. The second
+service fixes its copy, the first never hears about it, and each later service copies whichever
+one it found first.
+
+**Counter-case.** Two services in different languages. The shared thing is a contract, such as a
+schema both generate from, not a library either imports. Two repositories are outside this rule
+too: each keeps its copy until the code ships as a published package.

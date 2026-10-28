@@ -24,6 +24,7 @@ from pathlib import Path
 
 CONFIG = ".agent-checks.toml"
 TABLE = "check-clones"
+BUILD_MANIFESTS = ("go.mod", "package.json", "pubspec.yaml", "pyproject.toml")
 
 JSCPD_VERSION = "5.4.1"
 CACHE_ENV = "STABLEMATE_CACHE_DIR"
@@ -397,6 +398,20 @@ def label(root: Path, side: Side) -> str:
     return where if unit is None else f"{where} ({unit})"
 
 
+def build_of(root: Path, path: str) -> str:
+    """The directory of the nearest build manifest above `path`, "." for the root or none."""
+    here = (root / path).parent
+    while here != root and root in here.parents:
+        if any((here / name).is_file() for name in BUILD_MANIFESTS):
+            return here.relative_to(root).as_posix()
+        here = here.parent
+    return "."
+
+
+def builds(root: Path, pair: CopyPair) -> tuple[str, str]:
+    return build_of(root, pair.first.path), build_of(root, pair.second.path)
+
+
 def run_detector(root: Path, limits: Threshold, base: str = "HEAD") -> Mapping:
     """jscpd's JSON report of clones new against `base`."""
     binary = ensure_detector()
@@ -464,11 +479,20 @@ def _renders(root: Path, pairs: Sequence[CopyPair]) -> list[str]:
     for pair in pairs:
         lines.append(f"  {label(root, pair.first)}")
         lines.append(f"    repeats {label(root, pair.second)}, {pair.lines} lines")
+        first, second = builds(root, pair)
+        if first != second:
+            lines.append(f"    across two builds, {first} and {second}: rule 2.13 applies")
     return lines
 
 
 def _side_json(root: Path, side: Side) -> dict:
-    return {"path": side.path, "start": side.start, "end": side.end, "unit": unit_text(root, side)}
+    return {
+        "path": side.path,
+        "start": side.start,
+        "end": side.end,
+        "unit": unit_text(root, side),
+        "build": build_of(root, side.path),
+    }
 
 
 def _json_report(root: Path, problems: Sequence[str], pairs: Sequence[CopyPair]) -> str:
@@ -515,12 +539,19 @@ def main(argv: Sequence[str] | None = None, runner: Runner = run_detector) -> in
             print(line, file=sys.stderr)
     for problem in problems:
         print(f"\nFAIL check_clones: {problem}", file=sys.stderr)
+    library = ""
+    if any(first != second for first, second in (builds(root, pair) for pair in pairs)):
+        library = (
+            "  share it as a library rule 2.13: copies in two builds move to a library the\n"
+            "                        workspace lists; ask first when a build or deploy changes\n"
+        )
     print(
         "\nA second copy changes for the same reason as the first and gets fixed in one\n"
         "place only. Pick one:\n"
         "\n"
         "  extract it            rule 2.12 of the code-structure skill: move one copy to the\n"
         "                        owner rules 2.5 to 2.9 pick and point both callers at it\n"
+        f"{library}"
         "  it must stay          the two change for different reasons: add a\n"
         f"                        [[{TABLE}.coincidence]] entry to {CONFIG} naming both files\n"
         "                        and two reasons, one per file\n"
