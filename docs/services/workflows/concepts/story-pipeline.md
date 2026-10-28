@@ -41,8 +41,6 @@ node identity so its recorded output cannot overwrite the parent story's prepara
 - verify: json_path(path="$.story_slug", equals="")
 - does: resolves the given handle, a minted story id or a slug, through the graph's `find_story` then `story_by_slug`, and takes the epic from the resolved entry rather than scanning the epics tree
 - verify: json_path(path="$.story_epic", equals="acme-epic")
-- raises: `WorkflowFailed` when the handle resolves to no story, or to a story with no minted id
-- verify: count(subject="unresolvable story handle failures", equals=1)
 - does: refuses a graph-known story whose authored contract is incomplete
 - verify: count(subject="unauthored story preparation failures", equals=1)
 - does: resolves the story spec directory through Ostler from the resolved story's minted id
@@ -55,6 +53,8 @@ node identity so its recorded output cannot overwrite the parent story's prepara
 - verify: count(subject="resolved story epic results", equals=1)
 - does: returns the resolved story's minted id alongside the resolved paths, which resolution guarantees is never empty for a non-blank handle
 - verify: count(subject="resolved story id results", equals=1)
+- raises: `WorkflowFailed` when the handle resolves to no story, or to a story with no minted id
+- verify: count(subject="unresolvable story handle failures", equals=1)
 - code: `workflows/src/workhorse_workflows/coder/shared/story.py::prepare_story` @7308a4f16d6e
 - detail: [Story paths](../formats/story-paths.md)
 

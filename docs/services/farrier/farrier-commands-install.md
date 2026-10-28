@@ -13,7 +13,6 @@ title: 'farrier — render the agent prompt library into a repository: install'
 - usage: `farrier install [--repo DIR] [--config PATH] [--check] [--library DIR] [--user]` (also
   the default command: `farrier [--repo DIR] [--config PATH] [--check] [--library DIR]` when the
   first argument isn't a recognized subcommand)
-- run: invoke(argv=["install", "--repo", ".", "--library", "lib"])
 - flags:
   - `--repo <dir>` — repository root to render generated files into. Default: current working
     directory. A repo install writes only under that root.
@@ -28,6 +27,7 @@ title: 'farrier — render the agent prompt library into a repository: install'
     private overlay layer this repo's config selects from.
   - `--library <dir>` — the library directory (the `agents/` tree). Overrides
     `$FARRIER_LIBRARY_DIR` and the home config's `library_dir` for this invocation.
+- run: invoke(argv=["install", "--repo", ".", "--library", "lib"])
 - verify: unchanged(subject="repository after an install --check run")
 - does:
   - resolve the [library directory](concepts/library-directory.md) (`--library` >
@@ -248,12 +248,12 @@ title: 'farrier — render the agent prompt library into a repository: install'
 - code: `farrier/farrier/outputs.py::install_outputs` @a2464a92144d
 - code: `farrier/farrier/cli.py::_run_install` @2eeeeaa1740e
 - code: `farrier/farrier/launcher.py::render_agents_mk` @f719f4c89bcb
+- detail: [hook manager wiring](concepts/hook-manager-wiring.md)
 - tests: `farrier/tests/test_tagged_deletion.py::test_an_untagged_file_at_an_output_path_aborts_the_whole_install`
 - tests: `farrier/tests/test_tagged_deletion.py::test_a_deselected_skill_is_still_removed`
 - tests: `farrier/tests/test_qa_evidence_ignore.py::test_the_install_follows_the_skill_that_ships_the_gate`
 - tests: `farrier/tests/test_makefile_include.py::test_appends_include_block_and_preserves_existing`
 - tests: `farrier/tests/test_hook_managers.py::test_every_manager_gets_the_command_and_keeps_the_users_lines`
-- detail: [hook manager wiring](concepts/hook-manager-wiring.md)
 
 A scratch-directory run cannot observe several parts of an install, so no check backs them. Before anything looks for the library, install calls `ensure_base_library_dir(ref=farrier-v<version> or main, refresh=not --check)`. That call fetches an absent [base library](concepts/library-directory.md#fetching-and-updating-the-base) into `~/.cache/stablemate`. It updates a cached one to this farrier's release tag, or to `main` when farrier was installed from a checkout or a URL. It does neither when `$STABLEMATE_BASE_DIR`, `base_dir` or a `stablemate_dir` checkout already names the base library. Under `--check` the call passes `refresh=False`: an absent base library is fetched and a present one stays at its current revision, because the check writes nothing and runs in CI. After a failed fetch install goes on to library resolution, which raises only when there is no overlay either.
 

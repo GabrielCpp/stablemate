@@ -14,35 +14,35 @@ The demo skill repo plus a hand-written `.claude/skills/acme-demo/SKILL.md` and 
 ### clear
 
 - kind: seed
-- working-directory: scenario:
 - run: rm -rf "$dir" && mkdir -p "$dir/home" && printf 'config_version = 2\n' > "$dir/config.toml"
+- working-directory: scenario:
 
 ### library-demo
 
 - kind: seed
-- working-directory: scenario:
 - run: mkdir -p "$(dirname "$dir/lib/library/skills/demo.md")" && printf '%s\n' --- 'name: demo' 'description: "A skill."' --- '' 'Use it.' > "$dir/lib/library/skills/demo.md"
+- working-directory: scenario:
 
 ### agents-yml
 
 - kind: seed
-- working-directory: scenario:
 - run: mkdir -p "$(dirname "$dir/agents.yml")" && printf '%s\n' agents: '  claude: true' repo: '  name: acme' skills: '  - demo' > "$dir/agents.yml"
+- working-directory: scenario:
 
 ### held-skill
 
 - kind: seed
-- working-directory: scenario:
 - run: mkdir -p "$(dirname "$dir/.claude/skills/acme-demo/SKILL.md")" && printf '%s\n' 'hand written' > "$dir/.claude/skills/acme-demo/SKILL.md"
+- working-directory: scenario:
 
 ### held-mk
 
 - kind: seed
-- working-directory: scenario:
 - run: mkdir -p "$(dirname "$dir/.agents/agents.mk")" && printf '%s\n' '# hand written' > "$dir/.agents/agents.mk"
+- working-directory: scenario:
 
 ### landed
 
 - kind: verify
-- working-directory: scenario:
 - run: test -d "$dir"
+- working-directory: scenario:

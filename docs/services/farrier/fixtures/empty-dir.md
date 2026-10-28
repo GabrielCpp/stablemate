@@ -14,11 +14,11 @@ A directory named by `dir` inside the scenario checkout, holding nothing. The ch
 ### clear
 
 - kind: seed
-- working-directory: scenario:
 - run: rm -rf "$dir" && mkdir -p "$dir/home" && printf 'config_version = 2\n' > "$dir/config.toml"
+- working-directory: scenario:
 
 ### landed
 
 - kind: verify
-- working-directory: scenario:
 - run: test -d "$dir"
+- working-directory: scenario:

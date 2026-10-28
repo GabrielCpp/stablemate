@@ -90,7 +90,6 @@ that the flow routes.
 - verify: persists(subject="the plan-context projection")
 - code: `workflows/src/workhorse_workflows/coder/shared/plan.py::record_plan` @9e8d38cfead5
 
-
 ### load_plan_context
 - sig: `load_plan_context(root: Path, spec_dir: str, logger: logging.Logger) -> dict[str, Any]`
 - does: reads `plan-context.json` under the spec directory, taken relative to `root` unless absolute
@@ -117,7 +116,6 @@ that the flow routes.
 - returns: blank text when the projection is missing or declares no services, otherwise a human-readable plan summary
 - verify: count(subject="rendered plan summaries", equals=1)
 - code: `workflows/src/workhorse_workflows/coder/shared/plan.py::plan_summary` @9e8d38cfead5
-
 
 ### build_dispatch_list
 

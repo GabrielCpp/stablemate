@@ -306,16 +306,16 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - selector: `#runs-list .row[data-worker-id] .badge[data-type='coder']`
 - role: none
 - parent: [run-row](#run-row)
-- detail: [workflow type badge style rules](../../concepts/workflow-type-badge-style-rules.md)
 - code: groom/groom/assets/dashboard.js::TypeBadge@9b3683b0ffb1
+- detail: [workflow type badge style rules](../../concepts/workflow-type-badge-style-rules.md)
 
 ### run-row-type-badge-hue
 
 - selector: `#runs-list .row[data-worker-id] .badge[data-type='coder'][style*='--type-hue']`
 - role: none
 - parent: [run-row-type-badge](#run-row-type-badge)
-- detail: [workflow type badge style rules](../../concepts/workflow-type-badge-style-rules.md)
 - code: groom/groom/assets/dashboard.js::TypeBadge@9b3683b0ffb1
+- detail: [workflow type badge style rules](../../concepts/workflow-type-badge-style-rules.md)
 
 ### detail-pane
 
@@ -733,9 +733,9 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - verify: visible(locator="#file-view .file-pre")
 - code: groom/groom/assets/dashboard.js::FileView@9b3683b0ffb1
 - code: groom/groom/assets/dashboard.js::highlight@9b3683b0ffb1
+- detail: [operator browses workspace file](../../flows/operator-browses-workspace-file.md)
 - dom: highlighting is applied by highlight.js, whose output is escaped HTML; when the library is absent or throws, the content is rendered as a plain text node instead. The language comes from the server so the extension table lives next to the rest of the presentation policy.
 - screenshot: docs/specs/groom-dashboard/vet/files-file-view-region.png
-- detail: [operator browses workspace file](../../flows/operator-browses-workspace-file.md)
 
 ### diff-directory-toggle
 

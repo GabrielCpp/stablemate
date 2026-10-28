@@ -27,10 +27,11 @@ The [workhorse-author driver runbook](ops/workhorse-author.md) exercises this CL
   - `--resume-run PATH`, `--resume-latest`, and `--no-cache` select resume or fresh-run behavior.
 - args:
   - `<flow>` selects `surveyor`, `parity-surveyor`, `epic-edit`, `story-edit`, `milestone`, `epic-split`, `epic-author`, `story-split`, `story-author`, or `finalize`; omitting it starts Author.
-- does: starts the selected registered authoring flow
-- fixture: none, because the command reads only the installed package
+- does:
+  - starts the selected registered authoring flow
 - run: invoke(argv=["run", "--dry-run"])
 - verify: exit_status(code=0)
+- fixture: none, because the command reads only the installed package
 - code: `workflows/src/workhorse_workflows/author/workflow.py::main` @1a18dc6ba866
 - detail: [author surveyor flow](flows/author-surveyor.md)
 - detail: [author parity surveyor flow](flows/author-parity-surveyor.md)
@@ -43,19 +44,21 @@ The [workhorse-author driver runbook](ops/workhorse-author.md) exercises this CL
 - flags:
   - `--name ID` overrides the rendered graph identifier.
   - `-o, --output PATH` writes DOT output to a file instead of standard output.
-- does: renders the registered Author and selectable-flow state graphs
-- fixture: none, because the command reads only the installed package
+- does:
+  - renders the registered Author and selectable-flow state graphs
 - run: invoke(argv=["dot"])
 - verify: exit_status(code=0)
+- fixture: none, because the command reads only the installed package
 - code: `workflows/src/workhorse_workflows/author/workflow.py::main` @1a18dc6ba866
 - detail: [workhorse-author command selection](concepts/workhorse-author-command-selection.md)
 
 ### version
 - usage: `workhorse-author version`
-- does: prints the installed Workhorse engine version
-- fixture: none, because the command reads only the installed package
+- does:
+  - prints the installed Workhorse engine version
 - run: invoke(argv=["version"])
 - verify: exit_status(code=0)
+- fixture: none, because the command reads only the installed package
 - code: `workflows/src/workhorse_workflows/author/workflow.py::main` @1a18dc6ba866
 - detail: [workhorse-author command selection](concepts/workhorse-author-command-selection.md)
 
@@ -63,11 +66,12 @@ The [workhorse-author driver runbook](ops/workhorse-author.md) exercises this CL
 
 ### plan-and-dispatch
 - on: [run command](#run)
-- run: invoke(argv=["run", "--dry-run"])
 - trigger: after setup, then after each filled kind drains
+- run: invoke(argv=["run", "--dry-run"])
 - when: the approved milestone and its current planning artifacts are available
 - fixture: none, because the dry run stands in for every agent turn and the fill reads only the artifacts that `when:` names
-- does: files each kind of work from the current artifacts, drains it, and walks the run to its close
+- does:
+  - files each kind of work from the current artifacts, drains it, and walks the run to its close
 - verify: exit_status(code=0)
 - verify: stdout(matches="dry-run ok")
 - code: `workflows/src/workhorse_workflows/author/main/nodes/fill.py::fill_work` @0a6247ab8773

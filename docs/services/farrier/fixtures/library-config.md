@@ -14,23 +14,23 @@ A config file `c.toml` in `dir` holding a `library_dir` setting.
 ### clear
 
 - kind: seed
-- working-directory: scenario:
 - run: rm -rf "$dir" && mkdir -p "$dir/home" && printf 'config_version = 2\n' > "$dir/config.toml"
+- working-directory: scenario:
 
 ### library
 
 - kind: seed
-- working-directory: scenario:
 - run: mkdir -p "$dir/lib/library" "$dir/lib/packs"
+- working-directory: scenario:
 
 ### config
 
 - kind: seed
-- working-directory: scenario:
 - run: printf 'library_dir = "%s"\n' "$PWD/$dir/lib" > "$dir/c.toml"
+- working-directory: scenario:
 
 ### landed
 
 - kind: verify
-- working-directory: scenario:
 - run: test -d "$dir"
+- working-directory: scenario:

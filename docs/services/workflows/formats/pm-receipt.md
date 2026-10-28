@@ -17,8 +17,8 @@ The receipt lives beside the output it judged: next to `story.md` for a story, i
 - code: `workflows/src/workhorse_workflows/author/pm/receipt.py::story_split_digest` @e2e7f255aa72
 - code: `workflows/src/workhorse_workflows/author/pm/receipt.py::epic_split_digest` @e2e7f255aa72
 - code: `workflows/src/workhorse_workflows/author/pm/schemas.py::PMReceipt` @5a761dc52f0a
-- tests: `workflows/tests/author/pm/test_pm.py::test_a_receipt_is_current_only_for_its_stage_and_digest`
 - detail: [Author PM review](../concepts/author-pm-review.md)
+- tests: `workflows/tests/author/pm/test_pm.py::test_a_receipt_is_current_only_for_its_stage_and_digest`
 
 ## Fields
 

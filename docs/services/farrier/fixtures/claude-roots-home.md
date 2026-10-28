@@ -14,35 +14,35 @@ A library shipping the root `demo-root`, with `[user_library.claude]` selecting 
 ### clear
 
 - kind: seed
-- working-directory: scenario:
 - run: rm -rf "$dir" && mkdir -p "$dir/home" && printf 'config_version = 2\n' > "$dir/config.toml"
+- working-directory: scenario:
 
 ### library-skill
 
 - kind: seed
-- working-directory: scenario:
 - run: mkdir -p "$(dirname "$dir/lib/library/skills/demo.md")" && printf '%s\n' --- 'name: demo' 'description: "A skill."' --- '' 'Use it.' > "$dir/lib/library/skills/demo.md"
+- working-directory: scenario:
 
 ### packs
 
 - kind: seed
-- working-directory: scenario:
 - run: mkdir -p "$dir/lib/packs"
+- working-directory: scenario:
 
 ### config
 
 - kind: seed
-- working-directory: scenario:
 - run: printf '%s\n' '[user_library.claude]' 'roots = ["demo-root"]' >> "$dir/config.toml"
+- working-directory: scenario:
 
 ### root
 
 - kind: seed
-- working-directory: scenario:
 - run: mkdir -p "$(dirname "$dir/lib/library/roots/demo-root.md")" && printf '%s\n' --- 'description: "A root."' --- '' Rules. > "$dir/lib/library/roots/demo-root.md"
+- working-directory: scenario:
 
 ### landed
 
 - kind: verify
-- working-directory: scenario:
 - run: test -d "$dir"
+- working-directory: scenario:

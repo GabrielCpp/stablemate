@@ -106,10 +106,10 @@ generated instruction files (`AGENTS.md` and `CLAUDE.md`) that source lookup rec
 - sig: `mapping_text(mapping: dict[str, Any]) -> str`
 - does: read the repo-specific `text` of a localInstructions mapping
 - verify: json_path(path="$.text", equals="## Map")
-- returns: an empty string when `text` is absent or null
-- verify: json_path(path="$.text", equals="")
 - raises: `SystemExit` when `text` is not a string
 - verify: exit_status(code=1)
+- returns: an empty string when `text` is absent or null
+- verify: json_path(path="$.text", equals="")
 - code: `farrier/farrier/local_instructions.py::mapping_text` @031879ad8cf2
 
 ### local_instructions

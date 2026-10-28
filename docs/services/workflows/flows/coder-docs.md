@@ -12,10 +12,10 @@ review it and fixes what they find. The flow gates the result against direct gro
 a failed gate back to the owner as a report. It is entered by the Coder main flow or directly
 with `workhorse-coder run docs`.
 - fixture: none, because the walk dry-runs the registered flow, which stands in for every agent turn
-- steps:
-  - [run](../workhorse-coder.md#run)
 - start: the working directory holds no rendered graph
 - verify: absent(subject="workhorse-coder.dot")
+- steps:
+  - [run](../workhorse-coder.md#run)
 - end: the dry run leaves the command with a zero exit status
 - verify: exit_status(code=0)
 - detail: [coder handoff boundary contract](../concepts/coder-handoff-boundary.md)

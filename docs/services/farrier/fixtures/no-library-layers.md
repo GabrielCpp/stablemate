@@ -14,11 +14,11 @@ An empty config in `dir`, no library path and no base library installed.
 ### clear
 
 - kind: seed
-- working-directory: scenario:
 - run: rm -rf "$dir" && mkdir -p "$dir/home" && printf 'config_version = 2\n' > "$dir/config.toml"
+- working-directory: scenario:
 
 ### landed
 
 - kind: verify
-- working-directory: scenario:
 - run: test -d "$dir"
+- working-directory: scenario:

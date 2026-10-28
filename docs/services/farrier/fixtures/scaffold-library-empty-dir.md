@@ -14,29 +14,29 @@ A library whose scaffold `logs-dir` maps `logs` to null, listed in the repo `age
 ### clear
 
 - kind: seed
-- working-directory: scenario:
 - run: rm -rf "$dir" && mkdir -p "$dir/home" && printf 'config_version = 2\n' > "$dir/config.toml"
+- working-directory: scenario:
 
 ### library
 
 - kind: seed
-- working-directory: scenario:
 - run: mkdir -p "$dir/scaffold-library/library/skills" "$dir/scaffold-library/packs"
+- working-directory: scenario:
 
 ### scaffold-service-gitignore
 
 - kind: seed
-- working-directory: scenario:
 - run: mkdir -p "$(dirname "$dir/scaffold-library/scaffolds/service-gitignore.yml")" && printf '%s\n' logs-dir: '  tree:' '    logs:' > "$dir/scaffold-library/scaffolds/service-gitignore.yml"
+- working-directory: scenario:
 
 ### agents-yml
 
 - kind: seed
-- working-directory: scenario:
 - run: mkdir -p "$(dirname "$dir/agents.yml")" && printf '%s\n' agents: '  claude: true' repo: '  name: acme' scaffolds: '  - logs-dir' > "$dir/agents.yml"
+- working-directory: scenario:
 
 ### landed
 
 - kind: verify
-- working-directory: scenario:
 - run: test -d "$dir"
+- working-directory: scenario:

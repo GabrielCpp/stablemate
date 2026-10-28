@@ -20,8 +20,8 @@ cannot import the stablemate core to find the shared cache. The runner hands it 
 instead. A hook that needs a tool, such as a clone detector, fetches it once into that cache and
 reuses it across repositories.
 
-- rule: a skill hook script reads the shared cache location from `STABLEMATE_CACHE_DIR`, which the generated runner exports; it never derives the path itself
 - code: `farrier/farrier/hook_managers.py` @9e507a6846f9
+- rule: a skill hook script reads the shared cache location from `STABLEMATE_CACHE_DIR`, which the generated runner exports; it never derives the path itself
 - tests: `farrier/tests/test_hook_managers.py`
 - detail: [skill hook declarations](skill-hook-declarations.md)
 

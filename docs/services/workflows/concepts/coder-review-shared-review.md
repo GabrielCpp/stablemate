@@ -81,7 +81,6 @@ status, as the authority for whether a finding is settled.
 ### settle_findings
 
 - sig: `settle_findings(logger, story_slug="", story_id="", filed=None, repos=None, repo_dir="", reuse=None) -> Settlement`
-- raises: `WorkflowFailed` when `story_id` is empty
 - does: settles the filed finding ids against the dev owner's answer list through Ostler, keyed on `story_id` rather than `story_slug`, and writes the settlement ledger
 - verify: persists(subject="the review settlement ledger")
 - does: commits the ledger as a `docs` commit when it lies inside the documentation repository
@@ -91,15 +90,16 @@ status, as the authority for whether a finding is settled.
 - does: moves a declined answer to `rejected` with its decline gap when it is a "not a defect" decline without an existing test
 - verify: json_path(path="$.declined", equals="[]")
 - does: checks a declined answer whose id is in `reuse` with its coincidence gap instead of its decline gap
+- does: lists a finding as open when the ledger leaves it open or its answer is rejected
+- verify: json_path(path="$.open", equals="[]")
+- raises: `WorkflowFailed` when `story_id` is empty
+- returns: a `Settlement` of the settled, declined, open and rejected findings with the ledger's errors
+- verify: json_path(path="$.settled", equals="[]")
+- code: `workflows/src/workhorse_workflows/coder/shared/review.py::settle_findings` @ba6796cad3b9
 - tests: `workflows/tests/coder/shared/test_review_settlement.py::test_a_reuse_decline_naming_two_different_reasons_settles_as_declined`
 - tests: `workflows/tests/coder/shared/test_review_settlement.py::test_a_not_a_defect_decline_of_a_finding_that_is_not_reuse_still_follows_the_decline_rule`
 - tests: `workflows/tests/coder/shared/test_review_settlement.py::test_a_not_a_defect_decline_with_no_test_comes_back_open`
 - tests: `workflows/tests/coder/shared/test_review_settlement.py::test_a_not_a_defect_decline_citing_a_tracked_test_settles_as_declined`
-- does: lists a finding as open when the ledger leaves it open or its answer is rejected
-- verify: json_path(path="$.open", equals="[]")
-- returns: a `Settlement` of the settled, declined, open and rejected findings with the ledger's errors
-- verify: json_path(path="$.settled", equals="[]")
-- code: `workflows/src/workhorse_workflows/coder/shared/review.py::settle_findings` @ba6796cad3b9
 
 ### check_feedback
 

@@ -14,23 +14,23 @@ A directory whose `agents.yml` has an `agents:` mapping that enables nothing, ne
 ### clear
 
 - kind: seed
-- working-directory: scenario:
 - run: rm -rf "$dir" && mkdir -p "$dir/home" && printf 'config_version = 2\n' > "$dir/config.toml"
+- working-directory: scenario:
 
 ### library
 
 - kind: seed
-- working-directory: scenario:
 - run: mkdir -p "$dir/lib/library" "$dir/lib/packs"
+- working-directory: scenario:
 
 ### agents-yml
 
 - kind: seed
-- working-directory: scenario:
 - run: mkdir -p "$(dirname "$dir/agents.yml")" && printf '%s\n' 'agents: {}' > "$dir/agents.yml"
+- working-directory: scenario:
 
 ### landed
 
 - kind: verify
-- working-directory: scenario:
 - run: test -d "$dir"
+- working-directory: scenario:

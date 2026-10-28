@@ -14,14 +14,15 @@ Writes a standalone workflow distribution. Its single agent turn loops until a s
 
 ### new
 - usage: `workhorse-new NAME --check COMMAND [--into DIR]`
-- args: `NAME` is the workflow name, written in lowercase letters, digits and single dashes, and the new command becomes `workhorse-NAME`.
 - flags:
   - `--check COMMAND` is the shell command that decides when the work is done.
   - `--into DIR` is the directory to create `NAME` in, defaulting to the current directory.
-- does: writes the distribution into `DIR/NAME` from the bundled template
-- fixture: none, because the command creates everything its check observes
+- args: `NAME` is the workflow name, written in lowercase letters, digits and single dashes, and the new command becomes `workhorse-NAME`.
+- does:
+  - writes the distribution into `DIR/NAME` from the bundled template
 - run: invoke(argv=["fix-tests", "--check", "true", "--into", "."])
 - verify: created(subject="fix-tests/pyproject.toml")
+- fixture: none, because the command creates everything its check observes
 - code: `workflows/src/workhorse_workflows/new/scaffold.py::main` @e93136a05eae
 
 The bundled template carries its own `CheckLoop` workflow, copied verbatim into every new

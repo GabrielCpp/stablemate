@@ -14,10 +14,10 @@ restores the tree after each turn and commits only the stamps. It is entered by 
 owner.
 
 - fixture: none, because the walk dry-runs the registered flow, which stands in for every agent turn
-- steps:
-  - [run](../workhorse-okf-book.md#run)
 - start: the working directory holds no rendered graph
 - verify: absent(subject="workhorse-okf-book.dot")
+- steps:
+  - [run](../workhorse-okf-book.md#run)
 - end: the dry run leaves the command with a zero exit status
 - verify: exit_status(code=0)
 - detail: [check-okf-book flow](check-okf-book.md)

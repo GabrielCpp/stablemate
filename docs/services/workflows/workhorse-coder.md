@@ -29,10 +29,11 @@ The [workhorse-coder driver runbook](ops/workhorse-coder.md) exercises this CLI 
   - `--resume-run PATH`, `--resume-latest`, and `--no-cache` select resume or fresh-run behavior.
 - args:
   - `<flow>` selects `genesis`, `dev`, `docs`, `qa`, `fix`, or `fix_ci`; omitting it starts Coder.
-- does: starts the selected registered coder flow
-- fixture: none, because the command reads only the installed package
+- does:
+  - starts the selected registered coder flow
 - run: invoke(argv=["run", "--dry-run"])
 - verify: exit_status(code=0)
+- fixture: none, because the command reads only the installed package
 - code: `workflows/src/workhorse_workflows/coder/workflow.py::main` @a28e84f788c2
 - detail: [Coder command selection](concepts/coder-command-selection.md)
 
@@ -41,18 +42,20 @@ The [workhorse-coder driver runbook](ops/workhorse-coder.md) exercises this CLI 
 - flags:
   - `--name ID` overrides the rendered graph identifier.
   - `-o, --output PATH` writes DOT output to a file instead of standard output.
-- does: renders the registered Coder and selectable-flow state graphs
-- fixture: none, because the command reads only the installed package
+- does:
+  - renders the registered Coder and selectable-flow state graphs
 - run: invoke(argv=["dot"])
 - verify: exit_status(code=0)
+- fixture: none, because the command reads only the installed package
 - code: `workflows/src/workhorse_workflows/coder/workflow.py::main` @a28e84f788c2
 - detail: [Coder command selection](concepts/coder-command-selection.md)
 
 ### version
 - usage: `workhorse-coder version`
-- does: prints the installed Workhorse engine version
-- fixture: none, because the command reads only the installed package
+- does:
+  - prints the installed Workhorse engine version
 - run: invoke(argv=["version"])
 - verify: exit_status(code=0)
+- fixture: none, because the command reads only the installed package
 - code: `workflows/src/workhorse_workflows/coder/workflow.py::main` @a28e84f788c2
 - detail: [Coder command selection](concepts/coder-command-selection.md)

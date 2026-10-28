@@ -242,6 +242,12 @@ actions of the `hooks` command group.
     - run: invoke(argv=["hooks", "list", "--repo", "c196"], env={"HOME": "c196/home", "STABLEMATE_CONFIG": "c196/config.toml", "STABLEMATE_FETCH_BASE": "0", "PATH": "c196/pipx-stub-bin:$PATH"})
     - verify: stderr(text="no agents.yml in")
     - fixture: empty-dir dir=c196
+- errors:
+  - print the invalid `hooks.manager` value and the accepted manager names when configuration names
+    an unsupported manager
+    - run: invoke(argv=["hooks", "install", "--repo", "c199"], env={"HOME": "c199/home", "STABLEMATE_CONFIG": "c199/config.toml", "STABLEMATE_FETCH_BASE": "0", "PATH": "c199/pipx-stub-bin:$PATH"})
+    - verify: stderr(text="svn")
+    - fixture: bad-manager-repo dir=c199
 - exits:
   - return `0` after wiring completes, including when no `agents.yml` exists
     - run: invoke(argv=["hooks", "install", "--repo", "c197"], env={"HOME": "c197/home", "STABLEMATE_CONFIG": "c197/config.toml", "STABLEMATE_FETCH_BASE": "0", "PATH": "c197/pipx-stub-bin:$PATH"})
@@ -251,12 +257,6 @@ actions of the `hooks` command group.
     - run: invoke(argv=["hooks", "install", "--repo", "c198"], env={"HOME": "c198/home", "STABLEMATE_CONFIG": "c198/config.toml", "STABLEMATE_FETCH_BASE": "0", "PATH": "c198/pipx-stub-bin:$PATH"})
     - verify: exit_status(code=1)
     - fixture: bad-manager-repo dir=c198
-- errors:
-  - print the invalid `hooks.manager` value and the accepted manager names when configuration names
-    an unsupported manager
-    - run: invoke(argv=["hooks", "install", "--repo", "c199"], env={"HOME": "c199/home", "STABLEMATE_CONFIG": "c199/config.toml", "STABLEMATE_FETCH_BASE": "0", "PATH": "c199/pipx-stub-bin:$PATH"})
-    - verify: stderr(text="svn")
-    - fixture: bad-manager-repo dir=c199
 - code: `farrier/farrier/cli.py::_run_hooks_install` @2eeeeaa1740e
 - code: `farrier/farrier/cli.py::_run_hooks_list` @2eeeeaa1740e
 - detail: [hook manager wiring](concepts/hook-manager-wiring.md)

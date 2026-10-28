@@ -21,11 +21,12 @@ Writes, repairs and runs one OKF book per surface of an app. It registers the wr
   - `--runs-dir DIR` and `--run-id ID` select the run-artifact location and stable identity.
   - `--dry-run` walks the graph with the agent turns and the stack stubbed.
   - `--resume-run PATH`, `--resume-latest`, and `--no-cache` select resume or fresh-run behavior.
-- does: starts the main OKF book flow
-- fixture: none, because the dry run walks the graph with every agent turn and the stack stubbed
+- does:
+  - starts the main OKF book flow
 - run: invoke(argv=["run", "--dry-run", "--params", "{\"surfaces\":[{\"service\":\"workflows\",\"kind\":\"cli\",\"entry\":\"workflows\"}]}"])
 - verify: exit_status(code=0)
 - verify: stdout(matches="dry-run ok")
+- fixture: none, because the dry run walks the graph with every agent turn and the stack stubbed
 - code: `workflows/src/workhorse_workflows/okf_book/workflow.py::main` @471692cad878
 
 ### dot
@@ -33,16 +34,18 @@ Writes, repairs and runs one OKF book per surface of an app. It registers the wr
 - flags:
   - `--name ID` overrides the rendered graph identifier.
   - `-o, --output PATH` writes DOT output to a file instead of standard output.
-- does: renders the registered OkfBook state graph
-- fixture: none, because the command reads only the installed package
+- does:
+  - renders the registered OkfBook state graph
 - run: invoke(argv=["dot"])
 - verify: exit_status(code=0)
+- fixture: none, because the command reads only the installed package
 - code: `workflows/src/workhorse_workflows/okf_book/workflow.py::main` @471692cad878
 
 ### version
 - usage: `workhorse-okf-book version`
-- does: prints the installed Workhorse engine version
-- fixture: none, because the command reads only the installed package
+- does:
+  - prints the installed Workhorse engine version
 - run: invoke(argv=["version"])
 - verify: exit_status(code=0)
+- fixture: none, because the command reads only the installed package
 - code: `workflows/src/workhorse_workflows/okf_book/workflow.py::main` @471692cad878

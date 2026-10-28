@@ -18,6 +18,8 @@ Nothing on this surface renders HTML on the browser's behalf. The single shape a
 
 ### get-root-dashboard-html
 
+- method: `GET`
+- path: `/`
 - does:
   - Serves the browser entry document for the [groom dashboard](../gui/screens/groom-dashboard.md).
   - Returns the preloaded dashboard template bytes unchanged for the browser to bootstrap the vendored assets and the dashboard ES module, which then opens the websocket and renders every panel from JSON.
@@ -35,6 +37,11 @@ Nothing on this surface renders HTML on the browser's behalf. The single shape a
 - verify: unchanged(subject="the dashboard HTML shell returned by GET /")
 - verify: unchanged(subject="groom server state after GET /")
 - verify: unchanged(subject="websocket clients and discovery state after GET /")
+- response:
+  - media: `text/html`
+  - body: exact bytes of the packaged dashboard HTML shell from `groom/groom/templates/dashboard.html`.
+- status: `200`
+- errors: none intentionally emitted by this handler; ordinary framework/static-template import failures are process-level failures, not endpoint error responses.
 - code: groom/groom/app.py::index
 - route: `GET /`
 - parent: [groom server](#groom-server)
@@ -44,16 +51,11 @@ Nothing on this surface renders HTML on the browser's behalf. The single shape a
   - query: none
   - headers: none required by the handler.
   - body: none
-- response:
-  - media: `text/html`
-  - body: exact bytes of the packaged dashboard HTML shell from `groom/groom/templates/dashboard.html`.
-- method: `GET`
-- path: `/`
-- status: `200`
-- errors: none intentionally emitted by this handler; ordinary framework/static-template import failures are process-level failures, not endpoint error responses.
 
 ### get-dashboard-state
 
+- method: `GET`
+- path: `/api/state`
 - does:
   - Returns the whole fleet as one [dashboard state payload](../formats/dashboard-state-payload.md) — **byte-for-byte the same body the dashboard websocket pushes**, built by the same [groom projection module](../concepts/groom-projection-module.md) member.
   - Serves the resync path. A tab whose socket has gone silent, or that is reading `live` off a half-open connection that will never deliver another frame, polls this and feeds the parsed body through the same client `applyState` a pushed frame goes through.
@@ -63,6 +65,11 @@ Nothing on this surface renders HTML on the browser's behalf. The single shape a
   - Does not mutate workflow state, start discovery, contact Docker or sidecars, or broadcast anything to other tabs.
 - verify: http_status(code=200, path="/api/state")
 - verify: json_path(path="$.type", equals="state")
+- response:
+  - media: `application/json`
+  - body: `{"type": "state", "ts": float, "scanning": bool, "runs": [run row, …], "status": {"counts": {state: int, …}, "repos": int, "workers": int}}`. Rows are sorted blocked first, then live, then dead, then finished, with names ascending inside each rank, so the list does not shuffle on a tick. `scanning` is true while startup discovery is still running.
+- status: `200`
+- errors: none intentionally emitted by this handler; request parsing failures are framework-level failures, not endpoint-specific responses.
 - code: groom/groom/app.py::api_state
 - tests: groom/tests/test_app.py::test_api_state_is_the_resync_payload,
   groom/tests/test_app.py::test_api_state_and_the_socket_push_the_same_payload,
@@ -76,16 +83,11 @@ Nothing on this surface renders HTML on the browser's behalf. The single shape a
   - query: `q` string, optional, default `""`; case-insensitive substring filter over workflow name, repository name, repository branch, workflow type, and current node. Empty means no filter. Not trimmed, tokenized, or matched as a regex.
   - headers: none required by the handler.
   - body: none
-- response:
-  - media: `application/json`
-  - body: `{"type": "state", "ts": float, "scanning": bool, "runs": [run row, …], "status": {"counts": {state: int, …}, "repos": int, "workers": int}}`. Rows are sorted blocked first, then live, then dead, then finished, with names ascending inside each rank, so the list does not shuffle on a tick. `scanning` is true while startup discovery is still running.
-- method: `GET`
-- path: `/api/state`
-- status: `200`
-- errors: none intentionally emitted by this handler; request parsing failures are framework-level failures, not endpoint-specific responses.
 
 ### get-repository-menu
 
+- method: `GET`
+- path: `/repos`
 - does:
   - Reads the current in-memory workflow list and keeps only workflows whose workspace volume is known.
   - Lists checkout directories for each eligible workflow concurrently through the [workspace volume repository-directory reader](../concepts/workspace-volume-repository-directory-reader.md).
@@ -94,6 +96,11 @@ Nothing on this surface renders HTML on the browser's behalf. The single shape a
   - Excludes this route from the application OpenAPI schema, since it is an internal dashboard data endpoint rather than a public API contract.
   - Does not accept a repository search query, since the dashboard filters the returned entries client-side after the menu data is loaded.
 - verify: count(subject="repository menu entries", equals=2)
+- response:
+  - media: `application/json`
+  - body: a JSON array of [repository menu data](../formats/repository-menu-data.md) groups, `[{"container": str, "name": str, "state": str, "type": str, "type_hue": int, "repos": [{"repo": str, "label": str}, …]}, …]`. `repo` is the volume-relative checkout directory and `label` is the visible `workflow/repo` text, or the workflow name alone for a volume-root entry. Groups are sorted by dashboard state order and then workflow name; each group's checkout directories are already sorted by checkout discovery. A workflow whose volume contains no checkout contributes one group with a single empty-`repo` entry; no eligible workflows returns `[]`, which the browser renders as the non-interactive `No repositories available.` empty state.
+- status: `200`
+- errors: none intentionally emitted by this handler; Docker discovery failures for an individual volume are represented as an empty checkout list for that workflow, and request parsing failures are framework-level failures.
 - code: groom/groom/app.py::repos
 - tests: groom/tests/test_app.py::test_repos_endpoint_lists_one_entry_per_container_repo
 - route: `GET /repos`
@@ -104,16 +111,11 @@ Nothing on this surface renders HTML on the browser's behalf. The single shape a
   - query: none
   - headers: none required by the handler.
   - body: none
-- response:
-  - media: `application/json`
-  - body: a JSON array of [repository menu data](../formats/repository-menu-data.md) groups, `[{"container": str, "name": str, "state": str, "type": str, "type_hue": int, "repos": [{"repo": str, "label": str}, …]}, …]`. `repo` is the volume-relative checkout directory and `label` is the visible `workflow/repo` text, or the workflow name alone for a volume-root entry. Groups are sorted by dashboard state order and then workflow name; each group's checkout directories are already sorted by checkout discovery. A workflow whose volume contains no checkout contributes one group with a single empty-`repo` entry; no eligible workflows returns `[]`, which the browser renders as the non-interactive `No repositories available.` empty state.
-- method: `GET`
-- path: `/repos`
-- status: `200`
-- errors: none intentionally emitted by this handler; Docker discovery failures for an individual volume are represented as an empty checkout list for that workflow, and request parsing failures are framework-level failures.
 
 ### get-workspace-file-list
 
+- method: `GET`
+- path: `/files/{container_id}`
 - does:
   - Serves the [groom dashboard](../gui/screens/groom-dashboard.md) Files panel with the selected checkout's file inventory for one workflow container.
   - Produces [workspace file list data](../formats/workspace-file-list-data.md) for the selected workflow checkout.
@@ -123,6 +125,11 @@ Nothing on this surface renders HTML on the browser's behalf. The single shape a
   - Returns an empty `paths` array when the workflow id is unknown, the workflow has no workspace volume, the fallback reader process exits non-zero, the selected checkout has no retained file names, or neither path can provide file names.
   - Does not mutate workflow state, start discovery, broadcast dashboard updates, read file contents, compute diffs, or validate that `repo` is a git checkout.
 - verify: json_path(path="$.paths", matches="README\\.md|src/a\\.py|a\\.py|b\\.py")
+- response:
+  - media: `application/json`
+  - body: `{"paths": [str, …]}` — zero or more repo-relative file paths. Clients must treat an empty array as "no file tree available" rather than as a transport failure.
+- status: `200`
+- errors: none intentionally emitted by this handler; missing workflow state, missing volume metadata, sidecar RPC failure, and a non-zero Docker fallback process all resolve to `200` with an empty array or fallback data. Request parsing failures, Docker process-launch exceptions, and Docker timeout exceptions are framework-level failures rather than endpoint-specific error bodies.
 - code: groom/groom/app.py::files
 - tests: groom/tests/test_app.py::test_files_endpoint_returns_a_json_path_list,
   groom/tests/test_app.py::test_files_prefers_sidecar_socket_when_connected,
@@ -135,16 +142,11 @@ Nothing on this surface renders HTML on the browser's behalf. The single shape a
   - query: `repo` string, optional, default `""`; volume-relative checkout directory chosen by the repository picker. Empty means the workspace volume root.
   - headers: none required by the handler.
   - body: none
-- response:
-  - media: `application/json`
-  - body: `{"paths": [str, …]}` — zero or more repo-relative file paths. Clients must treat an empty array as "no file tree available" rather than as a transport failure.
-- method: `GET`
-- path: `/files/{container_id}`
-- status: `200`
-- errors: none intentionally emitted by this handler; missing workflow state, missing volume metadata, sidecar RPC failure, and a non-zero Docker fallback process all resolve to `200` with an empty array or fallback data. Request parsing failures, Docker process-launch exceptions, and Docker timeout exceptions are framework-level failures rather than endpoint-specific error bodies.
 
 ### get-workspace-file-content
 
+- method: `GET`
+- path: `/file/{container_id}`
 - does:
   - Serves the [groom dashboard](../gui/screens/groom-dashboard.md) Files panel with the raw text for the selected [file row](../gui/screens/groom-dashboard.md#files-file-row).
   - Produces [workspace file content data](../formats/workspace-file-content-data.md) for the selected workflow checkout path.
@@ -155,6 +157,11 @@ Nothing on this surface renders HTML on the browser's behalf. The single shape a
   - Converts an unknown workflow id, missing workspace volume, empty resolved path, traversal-guard failure, missing file, unreadable file, or falsey returned content into a `200 OK` body with an empty `content` string.
   - Does not mutate workflow state, start discovery, broadcast dashboard updates, apply syntax highlighting, compute diffs, list directories, or raise endpoint-specific error responses for unavailable file content.
 - verify: json_path(path="$.content", equals="print(1)\n")
+- response:
+  - media: `application/json`
+  - body: `{"path": str, "content": str, "lang": str}`. `path` echoes the requested repo-relative path, `content` is the raw file text exactly as returned by the sidecar or the fallback reader (empty when no content is available), and `lang` is the highlighting language derived from the path — `""` meaning "let the browser's highlighter auto-detect". Clients must treat an empty `content` as "no file content available" rather than as a transport failure.
+- status: `200`
+- errors: none intentionally emitted by this handler; missing workflow state, missing volume metadata, sidecar RPC failure, empty path, unsafe path, missing files, and fallback read failures all resolve to `200` with an empty `content` or fallback data. Request parsing failures are framework-level failures.
 - code: groom/groom/app.py::file_content
 - tests: groom/tests/test_app.py::test_file_content_prefers_sidecar_socket,
   groom/tests/test_app.py::test_file_endpoint_joins_repo_and_path_and_returns_content,
@@ -168,16 +175,11 @@ Nothing on this surface renders HTML on the browser's behalf. The single shape a
   - query: `path` string, optional, default `""`; repo-relative file path chosen from the file tree. Empty means no file is selected and produces an empty response.
   - headers: none required by the handler.
   - body: none
-- response:
-  - media: `application/json`
-  - body: `{"path": str, "content": str, "lang": str}`. `path` echoes the requested repo-relative path, `content` is the raw file text exactly as returned by the sidecar or the fallback reader (empty when no content is available), and `lang` is the highlighting language derived from the path — `""` meaning "let the browser's highlighter auto-detect". Clients must treat an empty `content` as "no file content available" rather than as a transport failure.
-- method: `GET`
-- path: `/file/{container_id}`
-- status: `200`
-- errors: none intentionally emitted by this handler; missing workflow state, missing volume metadata, sidecar RPC failure, empty path, unsafe path, missing files, and fallback read failures all resolve to `200` with an empty `content` or fallback data. Request parsing failures are framework-level failures.
 
 ### get-working-tree-diff
 
+- method: `GET`
+- path: `/diff/{container_id}`
 - does:
   - Serves the [groom dashboard](../gui/screens/groom-dashboard.md) Changes panel and the run-detail working-tree disclosure with the selected checkout's [workspace diff data](../formats/workspace-diff-data.md).
   - Prefers the connected sidecar data plane from [sidecar live sessions](../sidecar-live-sessions.md): sends `getDiff` with the selected `repo` and, when the RPC returns data, returns the RPC result's `diff` value.
@@ -186,6 +188,11 @@ Nothing on this surface renders HTML on the browser's behalf. The single shape a
   - Returns an empty `diff` string when the workflow id is unknown, the workflow has no workspace volume, the sidecar response omits or falseys `diff`, or fallback diff collection returns no text.
   - Does not mutate workflow state, start discovery, broadcast dashboard updates, render diff markup, list files, read individual files, or validate that `repo` is a git checkout. Turning the unified diff into per-file markup is the browser's job.
 - verify: json_path(path="$.diff", equals="diff --git a/x b/x\n")
+- response:
+  - media: `application/json`
+  - body: `{"diff": str}` carrying [workspace diff data](../formats/workspace-diff-data.md) as raw unified git diff text exactly as returned by the sidecar `diff` value or fallback volume reader, or an empty string when no diff is available. Clients must treat an empty string as "no diff available" rather than as a transport failure.
+- status: `200`
+- errors: none intentionally emitted by this handler; missing workflow state, missing volume metadata, sidecar RPC failure, empty sidecar diff, empty fallback output, and fallback git failures all resolve to `200` with an empty `diff` or fallback data. Request parsing failures are framework-level failures.
 - code: groom/groom/app.py::diff
 - tests: groom/tests/test_app.py::test_diff_prefers_sidecar_socket,
   groom/tests/test_app.py::test_diff_endpoint_passes_repo_through
@@ -197,16 +204,11 @@ Nothing on this surface renders HTML on the browser's behalf. The single shape a
   - query: `repo` string, optional, default `""`; volume-relative checkout directory, with an empty value meaning the fallback reader chooses the first repo it finds.
   - headers: none required by the handler.
   - body: none
-- response:
-  - media: `application/json`
-  - body: `{"diff": str}` carrying [workspace diff data](../formats/workspace-diff-data.md) as raw unified git diff text exactly as returned by the sidecar `diff` value or fallback volume reader, or an empty string when no diff is available. Clients must treat an empty string as "no diff available" rather than as a transport failure.
-- method: `GET`
-- path: `/diff/{container_id}`
-- status: `200`
-- errors: none intentionally emitted by this handler; missing workflow state, missing volume metadata, sidecar RPC failure, empty sidecar diff, empty fallback output, and fallback git failures all resolve to `200` with an empty `diff` or fallback data. Request parsing failures are framework-level failures.
 
 ### get-run-detail
 
+- method: `GET`
+- path: `/worker/{container_id}`
 - does:
   - Looks up the requested workflow container id in the groom process's in-memory workflow registry, yielding either one [workflow container](../concepts/workflow-container.md) or no run state.
   - Returns the run's workflow container id as `id`.
@@ -232,6 +234,11 @@ Nothing on this surface renders HTML on the browser's behalf. The single shape a
 - verify: http_status(code=200, path="/worker/{container_id}")
 - verify: json_path(path="$.found", equals=true)
 - verify: emitted(event="detail", count=1)
+- response:
+  - media: `application/json`
+  - body: for a known id, `{"found": true, "id": str, "run_id": str, "state": str, "node": str, "gates": [{…}, …], "head": {…}, "metrics": [{…}, …], "logs": [{…}, …]}`. Gates are sorted by gate file path and carry the question as text. For an unknown id, `{"found": false, "id": str}` and nothing else. The `detail` websocket frame wraps this same object under a `detail` key.
+- status: `200`
+- errors: none intentionally emitted by this handler; an unknown workflow id is a `200 OK` not-found body, and request parsing failures are framework-level failures.
 - code: groom/groom/app.py::worker_detail
 - tests: groom/tests/test_app.py::test_worker_detail_and_pushed_slices,
   groom/tests/test_projection.py::test_run_detail_carries_gates_head_metrics_and_logs,
@@ -245,16 +252,11 @@ Nothing on this surface renders HTML on the browser's behalf. The single shape a
   - query: none
   - headers: none required by the handler.
   - body: none
-- response:
-  - media: `application/json`
-  - body: for a known id, `{"found": true, "id": str, "run_id": str, "state": str, "node": str, "gates": [{…}, …], "head": {…}, "metrics": [{…}, …], "logs": [{…}, …]}`. Gates are sorted by gate file path and carry the question as text. For an unknown id, `{"found": false, "id": str}` and nothing else. The `detail` websocket frame wraps this same object under a `detail` key.
-- method: `GET`
-- path: `/worker/{container_id}`
-- status: `200`
-- errors: none intentionally emitted by this handler; an unknown workflow id is a `200 OK` not-found body, and request parsing failures are framework-level failures.
 
 ### post-refresh
 
+- method: `POST`
+- path: `/refresh`
 - does:
   - Sets the process-local scanning flag to true, then sends a pre-scan dashboard shell broadcast so connected dashboard tabs can show the discovery spinner before Docker discovery starts.
   - Runs one on-demand reconciliation pass through the same path used by startup discovery only after the pre-scan broadcast succeeds.
@@ -264,6 +266,13 @@ Nothing on this surface renders HTML on the browser's behalf. The single shape a
   - Overlapping refresh requests share the same process-local scanning flag and workflow registry.
 - verify: removed(subject="the vanished workflow registry entry")
 - verify: unchanged(subject="the existing workflow registry when Docker is unavailable")
+- response:
+  - media: `application/json`
+  - body: object with `ok: true` and `count`, the number of workflows found by the reconciliation scan before stale-workflow pruning is considered.
+  - field: `ok`; type boolean; required; default none; always `true` on the handler's successful return path.
+  - field: `count`; type integer; required; default none; number of workflows returned by discovery before pruning, not the final registry size.
+- status: `200`
+- errors: no endpoint-specific error body is produced; a pre-scan broadcast failure propagates before reconciliation starts and leaves the scanning flag true, a reconciliation failure clears the scanning flag and skips the post-scan broadcast, and a post-scan broadcast failure propagates after the scanning flag is already false.
 - code: groom/groom/app.py::refresh
 - tests: groom/tests/test_app.py::test_refresh_prunes_vanished_containers,
   groom/tests/test_app.py::test_refresh_skips_prune_when_docker_unavailable
@@ -275,18 +284,11 @@ Nothing on this surface renders HTML on the browser's behalf. The single shape a
   - headers: none required by the handler.
   - query: none
   - body: none
-- response:
-  - media: `application/json`
-  - body: object with `ok: true` and `count`, the number of workflows found by the reconciliation scan before stale-workflow pruning is considered.
-  - field: `ok`; type boolean; required; default none; always `true` on the handler's successful return path.
-  - field: `count`; type integer; required; default none; number of workflows returned by discovery before pruning, not the final registry size.
-- method: `POST`
-- path: `/refresh`
-- status: `200`
-- errors: no endpoint-specific error body is produced; a pre-scan broadcast failure propagates before reconciliation starts and leaves the scanning flag true, a reconciliation failure clears the scanning flag and skips the post-scan broadcast, and a post-scan broadcast failure propagates after the scanning flag is already false.
 
 ### post-push-progress
 
+- method: `POST`
+- path: `/push/progress`
 - does:
   - Receives a best-effort [progress push payload](../formats/progress-push-payload.md) from the container-side sidecar or backstop path described by [sidecar protocol](../sidecar-protocol.md).
   - Normalizes the payload `container_id` to a string and truncates it to the first 12 characters.
@@ -303,6 +305,11 @@ Nothing on this surface renders HTML on the browser's behalf. The single shape a
 - verify: unchanged(subject="workflow fields omitted from a progress push", except_fields=["state", "name", "repo_name", "repo_branch", "current_node"])
 - verify: emitted(event="state", count=1)
 - verify: json_path(path="$.ok", equals=true)
+- response:
+  - media: `application/json`
+  - body: `{"ok": true}` when the normalized container id is non-empty; `{"ok": false}` when it is empty.
+- status: `200` when the handler returns normally.
+- errors: no endpoint-specific error body is produced; Docker metadata lookup, render, or broadcast failures propagate as framework errors.
 - code: groom/groom/app.py::push_progress
 - route: `POST /push/progress`
 - parent: [groom server](#groom-server)
@@ -317,16 +324,11 @@ Nothing on this surface renders HTML on the browser's behalf. The single shape a
   - field: `repo_name`; type any value accepted by the workflow model assignment; optional; default omitted; when non-null, updates the repository name shown for the worker.
   - field: `repo_branch`; type any value accepted by the workflow model assignment; optional; default omitted; when non-null, updates the repository branch shown for the worker.
   - field: `current_node`; type any value accepted by the workflow model assignment; optional; default omitted; when non-null, updates the worker's current workflow node.
-- response:
-  - media: `application/json`
-  - body: `{"ok": true}` when the normalized container id is non-empty; `{"ok": false}` when it is empty.
-- method: `POST`
-- path: `/push/progress`
-- status: `200` when the handler returns normally.
-- errors: no endpoint-specific error body is produced; Docker metadata lookup, render, or broadcast failures propagate as framework errors.
 
 ### post-push-blocked
 
+- method: `POST`
+- path: `/push/blocked`
 - does:
   - Receives a best-effort [blocked push payload](../formats/blocked-push-payload.md) from the workflow container sidecar or the await-operator backstop path described by [sidecar protocol](../sidecar-protocol.md).
   - Normalizes the payload `container_id` to a string and truncates it to the first 12 characters.
@@ -346,6 +348,12 @@ Nothing on this surface renders HTML on the browser's behalf. The single shape a
 - verify: created(subject="open gate record for the normalized gate file path")
 - verify: emitted(event="state", count=1)
 - verify: emitted(event="notify", count=1)
+- response:
+  - media: `application/json`
+  - body: object with `ok: bool`; `false` means the request lacked a usable container id or gate file path, and `true` means workflow state was marked blocked, the gate was recorded, and the dashboard broadcast completed.
+  - field: `ok`; type boolean; required; default none; `false` when `container_id` or `file_path` normalizes to an empty string, otherwise `true` after the workflow mutation and broadcast succeed.
+- status: `200` when the handler returns normally.
+- errors: no endpoint-specific error body is produced; Docker metadata lookup, render, or broadcast failures propagate as framework errors.
 - code: groom/groom/app.py::push_blocked
 - route: `POST /push/blocked`
 - parent: [groom server](#groom-server)
@@ -361,17 +369,11 @@ Nothing on this surface renders HTML on the browser's behalf. The single shape a
   - field: `name`; type any value accepted by the workflow model assignment; optional; default omitted; when non-null, updates the workflow display name.
   - field: `repo_name`; type any value accepted by the workflow model assignment; optional; default omitted; when non-null, updates the repository name shown for the worker.
   - field: `repo_branch`; type any value accepted by the workflow model assignment; optional; default omitted; when non-null, updates the repository branch shown for the worker.
-- response:
-  - media: `application/json`
-  - body: object with `ok: bool`; `false` means the request lacked a usable container id or gate file path, and `true` means workflow state was marked blocked, the gate was recorded, and the dashboard broadcast completed.
-  - field: `ok`; type boolean; required; default none; `false` when `container_id` or `file_path` normalizes to an empty string, otherwise `true` after the workflow mutation and broadcast succeed.
-- method: `POST`
-- path: `/push/blocked`
-- status: `200` when the handler returns normally.
-- errors: no endpoint-specific error body is produced; Docker metadata lookup, render, or broadcast failures propagate as framework errors.
 
 ### post-push-exited
 
+- method: `POST`
+- path: `/push/exited`
 - does:
   - Receives the residual [exited push payload](../formats/exited-push-payload.md) sent after the workflow process has returned, when the persistent sidecar socket is no longer authoritative for liveness.
   - Normalizes the payload `container_id` to a string and truncates it to the first 12 characters.
@@ -385,6 +387,12 @@ Nothing on this surface renders HTML on the browser's behalf. The single shape a
 - verify: http_status(code=200, path="/push/exited")
 - verify: json_path(path="$.ok", equals=true)
 - verify: json_path(path="$.ok", equals=false)
+- response:
+  - media: `application/json`
+  - body: object with `ok: bool`; `false` means the request lacked a usable container id, and `true` means workflow state was marked finished, open gates were cleared, and the shell broadcast completed.
+  - field: `ok`; type boolean; required; default none; `false` on the validation-failure path and `true` only after volume metadata resolution, workflow upsert, gate clearing, and dashboard shell broadcast complete.
+- status: `200` when the handler returns normally.
+- errors: no endpoint-specific error body is produced; Docker metadata lookup, render, or broadcast failures propagate as framework errors.
 - code: groom/groom/app.py::push_exited
 - tests: `groom/tests/test_app.py::test_push_exited_marks_finished_clears_gates_and_records_code`,
   `groom/tests/test_app.py::test_push_exited_rejects_missing_container_id`
@@ -401,17 +409,11 @@ Nothing on this surface renders HTML on the browser's behalf. The single shape a
   - field: `name`; type any value accepted by the workflow model assignment; optional; default omitted; when non-null, updates the workflow display name.
   - field: `repo_name`; type any value accepted by the workflow model assignment; optional; default omitted; when non-null, updates the repository name shown for the worker.
   - field: `repo_branch`; type any value accepted by the workflow model assignment; optional; default omitted; when non-null, updates the repository branch shown for the worker.
-- response:
-  - media: `application/json`
-  - body: object with `ok: bool`; `false` means the request lacked a usable container id, and `true` means workflow state was marked finished, open gates were cleared, and the shell broadcast completed.
-  - field: `ok`; type boolean; required; default none; `false` on the validation-failure path and `true` only after volume metadata resolution, workflow upsert, gate clearing, and dashboard shell broadcast complete.
-- method: `POST`
-- path: `/push/exited`
-- status: `200` when the handler returns normally.
-- errors: no endpoint-specific error body is produced; Docker metadata lookup, render, or broadcast failures propagate as framework errors.
 
 ### websocket-dashboard
 
+- method: websocket upgrade
+- path: `/ws`
 - does:
   - Provides the [groom dashboard](../gui/screens/groom-dashboard.md) browser websocket, carrying fleet-wide `state`, `notify`, and `answered` JSON frames plus this tab's own `detail` frames down.
   - Accepts `watch` and `answer` commands from the browser up.
@@ -437,6 +439,15 @@ Nothing on this surface renders HTML on the browser's behalf. The single shape a
 - does:
   - Ignores any other `cmd` value with no response frame, state mutation, gate write, log entry, or broadcast.
 - verify: count(subject="the tab's outbound queue after receiving an unknown cmd", equals=0)
+- response:
+  - media: websocket JSON text frames.
+  - initial-frame: one [dashboard state payload](../formats/dashboard-state-payload.md) from `projection.state_message`, the same object `GET /api/state` returns for an empty query.
+  - broadcast-frame: zero or more later JSON messages received from the registered process-local client queue — `state` on every fleet change and on every clock tick, and `notify` when a run newly blocks or an alert rule fires.
+  - detail-frame: `{"type": "detail", "ts": float, "id": str, "detail": {…}}` carrying the same object [GET /worker/{container_id}](#get-run-detail) returns. This is the one downstream frame that is not fleet-wide: it goes only to the tabs that sent `watch` for that run, because which run is open is a property of the tab and not of the fleet.
+  - answered-frame: [dashboard answered message](../formats/dashboard-answered-message.md) after a gate answer is written, so every tab with that run open can clear its form.
+  - command-response: no acknowledgement frame for a `watch` command or an accepted answer. An answer's outcome is reflected through the next `state` and `detail` push, a successful one also through the `answered` frame for every tab, and a refused one through an `answer_rejected` frame for its sender alone. That frame is `{"type": "answer_rejected", "id": str, "file_path": str, "reason": str}` from `projection.answer_rejected_message`. `id` and `file_path` are the normalized `workflow_id` and `file_path` of that answer frame. `reason` is the [answer result](../formats/answer-result.md) message as plain text, never markup. The reasons the server gives are `already answered in another tab` when the gate file no longer reads `AWAITING_OPERATOR`, `gate file not found`, `failed to write answer`, `unknown workspace volume for this container`, `machine waits require their producer's result`, and the run's own refusal when it answers over its control socket.
+- status: accepted websocket connection when the route handler starts normally.
+- errors: unknown `cmd` values are ignored; malformed websocket frames, send failures, and non-disconnect receive errors end the session through the framework rather than producing an endpoint-specific error payload.
 - code: groom/groom/app.py::dashboard_ws
 - tests: `groom/tests/test_app.py::test_handle_answer_flips_state_and_broadcasts_an_answered_event`,
   `groom/tests/test_app.py::test_handle_answer_failure_does_not_flip_or_dispatch`,
@@ -452,20 +463,11 @@ Nothing on this surface renders HTML on the browser's behalf. The single shape a
   - headers: no endpoint-specific headers beyond the websocket upgrade handshake.
   - body: none before the websocket is accepted.
   - inbound-frame: JSON object messages decoded from browser text frames, discriminated by `cmd`. Answer submissions use [dashboard websocket answer frame](../formats/dashboard-websocket-answer-frame.md); subscriptions use `{"cmd": "watch", "run_id": str}`, where an empty `run_id` clears the subscription.
-- response:
-  - media: websocket JSON text frames.
-  - initial-frame: one [dashboard state payload](../formats/dashboard-state-payload.md) from `projection.state_message`, the same object `GET /api/state` returns for an empty query.
-  - broadcast-frame: zero or more later JSON messages received from the registered process-local client queue — `state` on every fleet change and on every clock tick, and `notify` when a run newly blocks or an alert rule fires.
-  - detail-frame: `{"type": "detail", "ts": float, "id": str, "detail": {…}}` carrying the same object [GET /worker/{container_id}](#get-run-detail) returns. This is the one downstream frame that is not fleet-wide: it goes only to the tabs that sent `watch` for that run, because which run is open is a property of the tab and not of the fleet.
-  - answered-frame: [dashboard answered message](../formats/dashboard-answered-message.md) after a gate answer is written, so every tab with that run open can clear its form.
-  - command-response: no acknowledgement frame for a `watch` command or an accepted answer. An answer's outcome is reflected through the next `state` and `detail` push, a successful one also through the `answered` frame for every tab, and a refused one through an `answer_rejected` frame for its sender alone. That frame is `{"type": "answer_rejected", "id": str, "file_path": str, "reason": str}` from `projection.answer_rejected_message`. `id` and `file_path` are the normalized `workflow_id` and `file_path` of that answer frame. `reason` is the [answer result](../formats/answer-result.md) message as plain text, never markup. The reasons the server gives are `already answered in another tab` when the gate file no longer reads `AWAITING_OPERATOR`, `gate file not found`, `failed to write answer`, `unknown workspace volume for this container`, `machine waits require their producer's result`, and the run's own refusal when it answers over its control socket.
-- method: websocket upgrade
-- path: `/ws`
-- status: accepted websocket connection when the route handler starts normally.
-- errors: unknown `cmd` values are ignored; malformed websocket frames, send failures, and non-disconnect receive errors end the session through the framework rather than producing an endpoint-specific error payload.
 
 ### websocket-sidecar
 
+- method: websocket upgrade
+- path: `/sidecar`
 - does:
   - Provides the persistent sidecar socket for [sidecar live sessions](../sidecar-live-sessions.md), distinct from the browser dashboard websocket, using [sidecar websocket frame](../formats/sidecar-websocket-frame.md) JSON messages.
   - Accepts a websocket upgrade from a workflow-container sidecar.
@@ -487,6 +489,13 @@ Nothing on this surface renders HTML on the browser's behalf. The single shape a
   - Treats a websocket disconnect as normal session end and unregisters only the current connection, failing any in-flight RPCs so callers can fall back instead of hanging.
 - verify: created(subject="the sidecar connection registered for the container id in the sidecar connection registry")
 - verify: json_path(path="hello.snapshot.current_node", equals="await_operator")
+- response:
+  - media: websocket JSON text frames sent by host-side sidecar operations.
+  - outbound-frame: `{"type":"rpc","id":string,"method":"getTree"|"getFile"|"getDiff","params":object}` when HTTP data-plane handlers need file-tree, file-content, or diff data from the sidecar.
+  - outbound-frame: `{"type":"reload"}` when the reload endpoint targets this connected sidecar.
+  - command-response: no acknowledgement for `hello`, `progress`, `blocked`, or `turn`; the first three are reflected through dashboard shell broadcasts on the browser websocket, while `turn` only schedules a sidecar turn pull with no reply. `rpc_result` resolves an in-process future and does not send a reply frame.
+- status: accepted websocket connection when the route handler starts normally.
+- errors: malformed JSON, receive failures other than ordinary websocket disconnect, send failures on host-issued frames, and failures while folding/broadcasting state end through the framework or the waiting caller rather than producing an endpoint-specific error payload.
 - code: groom/groom/app.py::dashboard_sidecar
 - tests: `groom/tests/test_app.py::test_apply_hello_marks_blocked_with_gate`,
   `groom/tests/test_app.py::test_apply_hello_running_when_no_gates`,
@@ -526,18 +535,11 @@ Nothing on this surface renders HTML on the browser's behalf. The single shape a
   - field: `run`; type string-convertible value; optional for `turn`; default `""`; names the container run whose turn records the host should refetch.
   - field: `run_id`; type string-convertible value; optional for `turn`; default `""`; corollary run identifier carried into the archive alongside the pulled records.
   - field: `workflow`; type string-convertible value; optional for `turn`; default `""`; workflow name carried into the archive alongside the pulled records.
-- response:
-  - media: websocket JSON text frames sent by host-side sidecar operations.
-  - outbound-frame: `{"type":"rpc","id":string,"method":"getTree"|"getFile"|"getDiff","params":object}` when HTTP data-plane handlers need file-tree, file-content, or diff data from the sidecar.
-  - outbound-frame: `{"type":"reload"}` when the reload endpoint targets this connected sidecar.
-  - command-response: no acknowledgement for `hello`, `progress`, `blocked`, or `turn`; the first three are reflected through dashboard shell broadcasts on the browser websocket, while `turn` only schedules a sidecar turn pull with no reply. `rpc_result` resolves an in-process future and does not send a reply frame.
-- method: websocket upgrade
-- path: `/sidecar`
-- status: accepted websocket connection when the route handler starts normally.
-- errors: malformed JSON, receive failures other than ordinary websocket disconnect, send failures on host-issued frames, and failures while folding/broadcasting state end through the framework or the waiting caller rather than producing an endpoint-specific error payload.
 
 ### post-reload
 
+- method: `POST`
+- path: `/reload`
 - does:
   - Receives the development-loop reload request for the connected [sidecar live sessions](../sidecar-live-sessions.md).
   - Targets exactly the requested sidecar when `container_id` is non-empty.
@@ -564,6 +566,13 @@ Nothing on this surface renders HTML on the browser's behalf. The single shape a
 - verify: http_status(code=200, path="/reload")
 - verify: json_path(path="$.ok", equals=true)
 - verify: json_path(path="$.reloaded", matches="^[0-9]+$")
+- response:
+  - media: `application/json`
+  - body: object with `ok: true` and `reloaded`, the number of sidecars that accepted the reload command. `reloaded` may be `0` when no target is connected or every target send fails.
+  - field: `ok`; type boolean; required; default none; always `true` on the handler's normal return path.
+  - field: `reloaded`; type integer; required; default none; count of target sidecar connections whose reload websocket frame send completed without raising.
+- status: `200`
+- errors: no endpoint-specific error body is produced; absent sidecars and dead sockets are swallowed as no-op targets, while request parsing failures are framework-level failures.
 - code: groom/groom/app.py::reload
 - tests: groom/tests/test_app.py::test_reload_broadcasts_to_all_connected_sidecars,
    groom/tests/test_app.py::test_reload_targets_one_container_when_id_given
@@ -575,18 +584,11 @@ Nothing on this surface renders HTML on the browser's behalf. The single shape a
   - query: `container_id` string, optional, default `""`; when empty, all connected sidecars are targeted.
   - headers: none required by the handler.
   - body: none
-- response:
-  - media: `application/json`
-  - body: object with `ok: true` and `reloaded`, the number of sidecars that accepted the reload command. `reloaded` may be `0` when no target is connected or every target send fails.
-  - field: `ok`; type boolean; required; default none; always `true` on the handler's normal return path.
-  - field: `reloaded`; type integer; required; default none; count of target sidecar connections whose reload websocket frame send completed without raising.
-- method: `POST`
-- path: `/reload`
-- status: `200`
-- errors: no endpoint-specific error body is produced; absent sidecars and dead sockets are swallowed as no-op targets, while request parsing failures are framework-level failures.
 
 ### get-static-assets
 
+- method: `GET`
+- path: `/assets/{path...}`
 - does:
   - Serves vendored dashboard assets from the package asset directory mounted at `/assets` by `create_app`.
 - verify: http_status(code=200, path="/assets/dashboard.js")
@@ -620,6 +622,11 @@ Nothing on this surface renders HTML on the browser's behalf. The single shape a
 - does:
   - Does not mutate server state, schedule discovery, broadcast websocket updates, or proxy asset requests to any remote host.
 - verify: unchanged(subject="Groom process-local state")
+- response:
+  - media: derived from the requested asset type by the static-file response.
+  - body: bytes of the matched packaged asset; no application JSON envelope is added by groom.
+- status: `200` for an existing requested asset; missing files, unsupported methods, and conditional request outcomes use the framework static-file response for the mounted router.
+- errors: no endpoint-specific error body is produced by groom; absent assets and invalid static-file requests are handled by the mounted framework router.
 - code: groom/groom/app.py::create_app
 - route: `GET /assets/*`
 - parent: [groom server](#groom-server)
@@ -630,16 +637,11 @@ Nothing on this surface renders HTML on the browser's behalf. The single shape a
   - query: none consumed by groom; query strings, when present, do not select workflow, sidecar, or dashboard state.
   - headers: none required by groom; cache and conditional request handling, when present, is framework static-file behavior.
   - body: none
-- response:
-  - media: derived from the requested asset type by the static-file response.
-  - body: bytes of the matched packaged asset; no application JSON envelope is added by groom.
-- method: `GET`
-- path: `/assets/{path...}`
-- status: `200` for an existing requested asset; missing files, unsupported methods, and conditional request outcomes use the framework static-file response for the mounted router.
-- errors: no endpoint-specific error body is produced by groom; absent assets and invalid static-file requests are handled by the mounted framework router.
 
 ### get-run-outbox
 
+- method: `GET`
+- path: `/api/run/{run_id}`
 - does:
   - Returns the gate this run is currently parked on, if any — the operator question, the file path, and the gate status.
   - Looks up the workflow by run id in the in-memory workflow registry.
@@ -648,6 +650,11 @@ Nothing on this surface renders HTML on the browser's behalf. The single shape a
   - Does not mutate workflow state, start discovery, contact Docker, broadcast updates, or write gate files.
 - verify: json_path(path="$.found", equals=true)
 - verify: json_path(path="$.file_path", equals="docs/gate.md")
+- response:
+  - media: `application/json`
+  - body: `{"found": false}` when the run or its gate is not found; `{"found": true, "file_path": str, "question": str, "status": str}` when found.
+- status: `200`
+- errors: none intentionally emitted by this handler; request parsing failures are framework-level failures.
 - code: groom/groom/app.py::outbox_get
 - route: `GET /api/run/{run_id}/outbox`
 - parent: [groom server](#groom-server)
@@ -656,16 +663,11 @@ Nothing on this surface renders HTML on the browser's behalf. The single shape a
   - query: none
   - headers: none required by the handler.
   - body: none
-- response:
-  - media: `application/json`
-  - body: `{"found": false}` when the run or its gate is not found; `{"found": true, "file_path": str, "question": str, "status": str}` when found.
-- method: `GET`
-- path: `/api/run/{run_id}`
-- status: `200`
-- errors: none intentionally emitted by this handler; request parsing failures are framework-level failures.
 
 ### post-run-outbox
 
+- method: `POST`
+- path: `/api/run/{run_id}`
 - does:
   - Answers the gate this run is parked on by submitting an answer.
   - Looks up the workflow by run id in the in-memory workflow registry.
@@ -675,6 +677,11 @@ Nothing on this surface renders HTML on the browser's behalf. The single shape a
   - Returns `{"ok": true, "message": "…"}` on successful answer submission.
   - Does not mutate workflow state beyond writing the gate answer, start discovery, or contact Docker.
 - verify: json_path(path="$.ok", equals=true)
+- response:
+  - media: `application/json`
+  - body: `{"ok": true, "message": str}` on success; `{"ok": false, "message": str}` on error.
+- status: `200`
+- errors: no endpoint-specific error body is produced; request parsing failures are framework-level failures.
 - code: groom/groom/app.py::outbox_post
 - route: `POST /api/run/{run_id}/outbox`
 - parent: [groom server](#groom-server)
@@ -685,16 +692,11 @@ Nothing on this surface renders HTML on the browser's behalf. The single shape a
   - body: JSON object with `file_path` and `answer` fields.
   - field: `file_path`; type string-convertible value; required; default none; normalized to `str(value)`.
   - field: `answer`; type string-convertible value; required; default none; normalized to `str(value)`.
-- response:
-  - media: `application/json`
-  - body: `{"ok": true, "message": str}` on success; `{"ok": false, "message": str}` on error.
-- method: `POST`
-- path: `/api/run/{run_id}`
-- status: `200`
-- errors: no endpoint-specific error body is produced; request parsing failures are framework-level failures.
 
 ### get-run-inbox
 
+- method: `GET`
+- path: `/api/run/{run_id}`
 - does:
   - Returns this run's inbox — outstanding operator messages by default, or every message when `?include_all=true`.
   - Looks up the workflow by run id in the in-memory workflow registry.
@@ -704,6 +706,11 @@ Nothing on this surface renders HTML on the browser's behalf. The single shape a
   - Mirrors the CLI's `read` command over HTTP.
   - Does not mutate workflow state, start discovery, or contact Docker.
 - verify: json_path(path="$.messages", matches=".*")
+- response:
+  - media: `application/json`
+  - body: `{"messages": [message object, …]}` where each message carries `body`, `id`, `at`, and `reply` fields.
+- status: `200`
+- errors: none intentionally emitted by this handler; request parsing failures are framework-level failures.
 - code: groom/groom/app.py::inbox_get
 - route: `GET /api/run/{run_id}/inbox`
 - parent: [groom server](#groom-server)
@@ -712,16 +719,11 @@ Nothing on this surface renders HTML on the browser's behalf. The single shape a
   - query: `include_all` boolean, optional, default `false`; when truthy, returns all messages including replied ones.
   - headers: none required by the handler.
   - body: none
-- response:
-  - media: `application/json`
-  - body: `{"messages": [message object, …]}` where each message carries `body`, `id`, `at`, and `reply` fields.
-- method: `GET`
-- path: `/api/run/{run_id}`
-- status: `200`
-- errors: none intentionally emitted by this handler; request parsing failures are framework-level failures.
 
 ### post-run-inbox
 
+- method: `POST`
+- path: `/api/run/{run_id}`
 - does:
   - Appends an operator message to this run's inbox — the `ask` verb, reachable over HTTP for browser tabs and babysitting sessions without shell access.
   - Looks up the workflow by run id in the in-memory workflow registry.
@@ -733,6 +735,11 @@ Nothing on this surface renders HTML on the browser's behalf. The single shape a
   - Returns `{"ok": true, "message": message object}` on successful append.
   - Does not mutate workflow state beyond appending the message, start discovery, or contact Docker.
 - verify: json_path(path="$.ok", equals=true)
+- response:
+  - media: `application/json`
+  - body: `{"ok": true, "message": message object}` on success; `{"ok": false, "message": str}` on error.
+- status: `200`
+- errors: no endpoint-specific error body is produced; request parsing failures are framework-level failures.
 - code: groom/groom/app.py::inbox_post
 - route: `POST /api/run/{run_id}/inbox`
 - parent: [groom server](#groom-server)
@@ -743,22 +750,22 @@ Nothing on this surface renders HTML on the browser's behalf. The single shape a
   - body: JSON object with `body` and optional `id` fields.
   - field: `body`; type string-convertible value; required; default none; normalized to `str(value)`.
   - field: `id`; type string-convertible value; optional; default generated uuid hex; normalized to `str(value)` and truncated to 12 characters.
-- response:
-  - media: `application/json`
-  - body: `{"ok": true, "message": message object}` on success; `{"ok": false, "message": str}` on error.
-- method: `POST`
-- path: `/api/run/{run_id}`
-- status: `200`
-- errors: no endpoint-specific error body is produced; request parsing failures are framework-level failures.
 
 ### get-attendant-queue
 
+- method: `GET`
+- path: `/api/attend/queue`
 - does:
   - Returns every run currently waiting on an attendant, oldest first — the whole fleet.
   - When dispatch mode is `session`, a single interactive Claude session polls this endpoint instead of stacking a watch loop per run id.
   - Does not mutate workflow state, start discovery, contact Docker, or write gate files.
 - verify: json_path(path="$.mode", equals="session")
 - verify: json_path(path="$.jobs", matches=".*")
+- response:
+  - media: `application/json`
+  - body: `{"mode": str, "jobs": [job entry, …]}` where mode is the current attendant dispatch mode and jobs are the pending queue entries.
+- status: `200`
+- errors: none intentionally emitted by this handler; request parsing failures are framework-level failures.
 - code: groom/groom/app.py::attend_queue
 - detail: [attend job](../formats/attend-job.md), [as_dict](../formats/attend-job.md#as_dict)
 - route: `GET /api/attend/queue`
@@ -768,16 +775,11 @@ Nothing on this surface renders HTML on the browser's behalf. The single shape a
   - query: none
   - headers: none required by the handler.
   - body: none
-- response:
-  - media: `application/json`
-  - body: `{"mode": str, "jobs": [job entry, …]}` where mode is the current attendant dispatch mode and jobs are the pending queue entries.
-- method: `GET`
-- path: `/api/attend/queue`
-- status: `200`
-- errors: none intentionally emitted by this handler; request parsing failures are framework-level failures.
 
 ### post-otlp-traces
 
+- method: `POST`
+- path: `/v1/traces`
 - does:
   - Standard OTLP/HTTP trace receiver — decodes the protobuf payload through [parse_traces](../concepts/groom-otlp-module.md#parse_traces), stores spans, evaluates alert rules, broadcasts updates.
   - A pushed span carries its own identity, so native non-Docker runs appear here without passing the discovery gate.
@@ -788,6 +790,11 @@ Nothing on this surface renders HTML on the browser's behalf. The single shape a
   - Does not validate payload contents beyond decode-ability.
 - verify: http_status(code=200, path="/v1/traces")
 - verify: http_status(code=400)
+- response:
+  - media: `application/x-protobuf`
+  - body: empty protobuf-encoded ExportTraceServiceResponse on success; empty body on error.
+- status: `200` on success; `400` on parse failure; `503` when store is unavailable.
+- errors: malformed payload returns `400`; sqlite errors return `503` with `Retry-After: 5`; the exporter retries all 5xx.
 - code: groom/groom/app.py::otlp_traces
 - route: `POST /v1/traces`
 - parent: [groom server](#groom-server)
@@ -795,16 +802,11 @@ Nothing on this surface renders HTML on the browser's behalf. The single shape a
   - path variables: none
   - headers: `content-type` header expected to be `application/x-protobuf`.
   - body: OTLP ExportTraceServiceRequest message in protobuf binary format.
-- response:
-  - media: `application/x-protobuf`
-  - body: empty protobuf-encoded ExportTraceServiceResponse on success; empty body on error.
-- method: `POST`
-- path: `/v1/traces`
-- status: `200` on success; `400` on parse failure; `503` when store is unavailable.
-- errors: malformed payload returns `400`; sqlite errors return `503` with `Retry-After: 5`; the exporter retries all 5xx.
 
 ### post-otlp-metrics
 
+- method: `POST`
+- path: `/v1/metrics`
 - does:
   - Standard OTLP/HTTP metric receiver — decodes the protobuf payload through [parse_metrics](../concepts/groom-otlp-module.md#parse_metrics), stores metrics, evaluates alert rules, broadcasts updates.
   - The cap-wait heartbeat lands here — the liveness signal that suppresses false stalls during legitimate multi-hour/day spending-cap sleeps.
@@ -814,6 +816,11 @@ Nothing on this surface renders HTML on the browser's behalf. The single shape a
   - Does not validate payload contents beyond decode-ability.
 - verify: http_status(code=200, path="/v1/metrics")
 - verify: http_status(code=400)
+- response:
+  - media: `application/x-protobuf`
+  - body: empty protobuf-encoded ExportMetricsServiceResponse on success; empty body on error.
+- status: `200` on success; `400` on parse failure; `503` when store is unavailable.
+- errors: malformed payload returns `400`; sqlite errors return `503` with `Retry-After: 5`; the exporter retries all 5xx.
 - code: groom/groom/app.py::otlp_metrics
 - route: `POST /v1/metrics`
 - parent: [groom server](#groom-server)
@@ -821,16 +828,11 @@ Nothing on this surface renders HTML on the browser's behalf. The single shape a
   - path variables: none
   - headers: `content-type` header expected to be `application/x-protobuf`.
   - body: OTLP ExportMetricsServiceRequest message in protobuf binary format.
-- response:
-  - media: `application/x-protobuf`
-  - body: empty protobuf-encoded ExportMetricsServiceResponse on success; empty body on error.
-- method: `POST`
-- path: `/v1/metrics`
-- status: `200` on success; `400` on parse failure; `503` when store is unavailable.
-- errors: malformed payload returns `400`; sqlite errors return `503` with `Retry-After: 5`; the exporter retries all 5xx.
 
 ### post-otlp-logs
 
+- method: `POST`
+- path: `/v1/logs`
 - does:
   - Standard OTLP/HTTP log receiver — decodes the protobuf payload through [parse_logs](../concepts/groom-otlp-module.md#parse_logs), stores log records.
   - Script node diagnostics land here now that workhorse imports and runs scripts in-process: their log records ride the engine's own logger and arrive with the same run_id/run_dir resource as spans.
@@ -843,6 +845,11 @@ Nothing on this surface renders HTML on the browser's behalf. The single shape a
   - Does not validate payload contents beyond decode-ability.
 - verify: http_status(code=200, path="/v1/logs")
 - verify: http_status(code=400)
+- response:
+  - media: `application/x-protobuf`
+  - body: empty protobuf-encoded ExportLogsServiceResponse on success; empty body on error.
+- status: `200` on success; `400` on parse failure; `503` when store is unavailable.
+- errors: malformed payload returns `400`; sqlite errors return `503` with `Retry-After: 5`; the exporter retries all 5xx.
 - code: groom/groom/app.py::otlp_logs
 - route: `POST /v1/logs`
 - parent: [groom server](#groom-server)
@@ -850,16 +857,11 @@ Nothing on this surface renders HTML on the browser's behalf. The single shape a
   - path variables: none
   - headers: `content-type` header expected to be `application/x-protobuf`.
   - body: OTLP ExportLogsServiceRequest message in protobuf binary format.
-- response:
-  - media: `application/x-protobuf`
-  - body: empty protobuf-encoded ExportLogsServiceResponse on success; empty body on error.
-- method: `POST`
-- path: `/v1/logs`
-- status: `200` on success; `400` on parse failure; `503` when store is unavailable.
-- errors: malformed payload returns `400`; sqlite errors return `503` with `Retry-After: 5`; the exporter retries all 5xx.
 
 ### get-live-status
 
+- method: `GET`
+- path: `/api/live`
 - does:
   - Returns where each live run is right now — the rows behind `groom status`.
   - Served from the in-memory ingest cache (`alerts.live_status`): the heartbeat ticks it is built from are never persisted, so the running server is the only process that can answer.
@@ -868,6 +870,11 @@ Nothing on this surface renders HTML on the browser's behalf. The single shape a
   - Returns only currently live runs unless a specific `run` id is requested.
   - Does not mutate workflow state, start discovery, or contact Docker.
 - verify: json_path(path="$", matches=".*")
+- response:
+  - media: `application/json`
+  - body: `[run status entry, …]` from the in-memory cache, filtered by optional run id query.
+- status: `200`
+- errors: none intentionally emitted by this handler; request parsing failures are framework-level failures.
 - code: groom/groom/app.py::api_live
 - route: `GET /api/live`
 - parent: [groom server](#groom-server)
@@ -876,13 +883,6 @@ Nothing on this surface renders HTML on the browser's behalf. The single shape a
   - query: `run` string, optional, default `""`; filter to a specific run id.
   - headers: none required by the handler.
   - body: none
-- response:
-  - media: `application/json`
-  - body: `[run status entry, …]` from the in-memory cache, filtered by optional run id query.
-- method: `GET`
-- path: `/api/live`
-- status: `200`
-- errors: none intentionally emitted by this handler; request parsing failures are framework-level failures.
 
 ## Invocations
 
@@ -920,6 +920,8 @@ Nothing on this surface renders HTML on the browser's behalf. The single shape a
 - emits: no HTTP response, websocket frame, sidecar frame, browser event, log entry, or persisted artifact before the startup hook returns.
 - verify: count(subject="external effects emitted by _spawn_scan before it returns", equals=0)
 - consumes: the current asyncio event loop, the startup lifecycle call from the Litestar application, the first-party [startup background discovery scan](../concepts/startup-background-discovery-scan.md) coroutine, the [workflow registry](../concepts/workflow-registry.md), the [dashboard discovery scanning flag](../concepts/dashboard-discovery-scanning-flag.md), and the [dashboard shell broadcaster](../concepts/dashboard-shell-broadcaster.md).
+- status: none; successful completion means the startup hook coroutine returned after scheduling the task.
+- errors: task creation failures propagate out of the startup hook; reconciliation or completion-broadcast failures raised later by the background task do not change the startup hook's already-returned result.
 - code: groom/groom/app.py::_spawn_scan
 - tests: groom/tests/test_app.py::test_spawn_scan_returns_before_discovery_completes
 - request:
@@ -932,8 +934,6 @@ Nothing on this surface renders HTML on the browser's behalf. The single shape a
 - response:
   - media: none
   - body: none
-- status: none; successful completion means the startup hook coroutine returned after scheduling the task.
-- errors: task creation failures propagate out of the startup hook; reconciliation or completion-broadcast failures raised later by the background task do not change the startup hook's already-returned result.
 
 ### schedule-live-clock
 
@@ -975,6 +975,8 @@ Nothing on this surface renders HTML on the browser's behalf. The single shape a
 - emits: one [dashboard state payload](../formats/dashboard-state-payload.md) broadcast plus zero or more per-run `detail` pushes every `LIVE_TICK_S` seconds while at least one tab is connected.
 - consumes: the current asyncio event loop, the process-local workflow registry, the durable store's per-run facts read for each watched run, the [dashboard client queue set](../concepts/dashboard-client-queue-set.md), and the [run watch registry](../concepts/run-watch-registry.md).
 - verify: emitted(event="dashboard state payload", count=1)
+- status: none; successful completion means the startup hook coroutine returned after scheduling the task.
+- errors: task creation failures propagate out of the startup hook; per-tick failures are swallowed inside the loop by design, so a failing broadcast costs one tick rather than the clock.
 - code: groom/groom/app.py::_spawn_live
 - tests: groom/tests/test_app.py::test_live_loop_repushes_the_run_list_to_connected_clients
 - tests: groom/tests/test_app.py::test_live_loop_skips_the_render_when_nobody_is_watching
@@ -990,8 +992,6 @@ Nothing on this surface renders HTML on the browser's behalf. The single shape a
 - response:
   - media: none
   - body: none
-- status: none; successful completion means the startup hook coroutine returned after scheduling the task.
-- errors: task creation failures propagate out of the startup hook; per-tick failures are swallowed inside the loop by design, so a failing broadcast costs one tick rather than the clock.
 
 ### schedule-alert-rule-ticker
 
@@ -1082,6 +1082,8 @@ Nothing on this surface renders HTML on the browser's behalf. The single shape a
 - verify: count(subject="hot telemetry caches used for stale-run eviction", equals=1)
 - consumes: the durable store.
 - verify: count(subject="durable stores used for rules-loop pruning", equals=1)
+- status: none; successful completion means the startup hook coroutine returned after the first prune and the task creation.
+- errors: the startup prune and task creation propagate their failures out of the startup hook; per-tick failures are swallowed inside the loop by design.
 - code: groom/groom/app.py::_spawn_rules
 - request:
   - method: none; this is a server startup lifecycle invocation, not an HTTP route or websocket message.
@@ -1093,8 +1095,6 @@ Nothing on this surface renders HTML on the browser's behalf. The single shape a
 - response:
   - media: none
   - body: none
-- status: none; successful completion means the startup hook coroutine returned after the first prune and the task creation.
-- errors: the startup prune and task creation propagate their failures out of the startup hook; per-tick failures are swallowed inside the loop by design.
 
 ### serve-root-dashboard-html
 
@@ -1133,6 +1133,8 @@ Nothing on this surface renders HTML on the browser's behalf. The single shape a
 - emits: no log entries.
 - verify: count(subject="log entries written by the root route", equals=0)
 - consumes: the route match for `GET /` and packaged [groom dashboard](../gui/screens/groom-dashboard.md) HTML bytes from `groom/groom/templates/dashboard.html` via [field-dashboard-html](../concepts/groom-app-module.md#field-dashboard-html).
+- status: `200`
+- errors: none intentionally emitted by this handler; route matching, response construction, or import-time template-read failures are framework/process-level failures rather than endpoint-specific error responses.
 - code: groom/groom/app.py::index
 - request:
   - method: `GET`
@@ -1144,8 +1146,6 @@ Nothing on this surface renders HTML on the browser's behalf. The single shape a
 - response:
   - media: `text/html`
   - body: exact static dashboard shell bytes from `groom/groom/templates/dashboard.html`; clients interpret this as the [groom dashboard](../gui/screens/groom-dashboard.md) screen and then load its linked vendored assets from the static asset mount.
-- status: `200`
-- errors: none intentionally emitted by this handler; route matching, response construction, or import-time template-read failures are framework/process-level failures rather than endpoint-specific error responses.
 
 ### serve-dashboard-state
 
@@ -1183,6 +1183,8 @@ Nothing on this surface renders HTML on the browser's behalf. The single shape a
 - emits: no websocket frame, sidecar frame, Docker request, answer write, log entry, or persisted artifact.
 - verify: count(subject="websocket frames, sidecar frames, Docker requests, answer writes, log entries, and persisted artifacts emitted by GET /api/state", equals=0)
 - consumes: the `GET /api/state` route match, the optional `q` query string, the current in-memory [workflow registry](../concepts/workflow-registry.md), the [dashboard discovery scanning flag](../concepts/dashboard-discovery-scanning-flag.md), and the [groom projection module](../concepts/groom-projection-module.md).
+- status: `200`
+- errors: none intentionally emitted by this handler; request parsing failures and serialization failures are framework-level failures rather than endpoint-specific response bodies.
 - code: groom/groom/app.py::api_state
 - tests: groom/tests/test_app.py::test_api_state_is_the_resync_payload,
   groom/tests/test_app.py::test_api_state_and_the_socket_push_the_same_payload
@@ -1196,8 +1198,6 @@ Nothing on this surface renders HTML on the browser's behalf. The single shape a
 - response:
   - media: `application/json`
   - body: the [dashboard state payload](../formats/dashboard-state-payload.md) — `{"type": "state", "ts", "scanning", "runs", "status"}` — identical to the frame the websocket pushes for the same query and the same fleet.
-- status: `200`
-- errors: none intentionally emitted by this handler; request parsing failures and serialization failures are framework-level failures rather than endpoint-specific response bodies.
 
 ### serve-repository-menu
 
@@ -1236,6 +1236,8 @@ Nothing on this surface renders HTML on the browser's behalf. The single shape a
 - emits: no websocket frame, sidecar frame, Docker mutation, workflow-state mutation, or persisted artifact is emitted.
 - verify: count(subject="websocket frames, sidecar frames, Docker mutations, workflow-state mutations, and persisted artifacts emitted by GET /repos", equals=0)
 - consumes: the `GET /repos` route match, the current in-memory [workflow registry](../concepts/workflow-registry.md), each eligible workflow's `workspace_volume` field from [workflow container](../concepts/workflow-container.md), checkout directory lists from the [workspace volume repository-directory reader](../concepts/workspace-volume-repository-directory-reader.md), and the [repository menu data](../formats/repository-menu-data.md) rendering contract.
+- status: `200`
+- errors: none intentionally emitted by this invocation; request parsing failures are framework-level failures, checkout discovery failures for a volume collapse to an empty checkout list for that workflow, and unexpected Docker process-launch or timeout exceptions from checkout discovery propagate as framework-level failures rather than endpoint-specific response bodies.
 - code: groom/groom/app.py::repos
 - tests: groom/tests/test_app.py::test_repos_endpoint_lists_one_entry_per_container_repo
 - request:
@@ -1248,8 +1250,6 @@ Nothing on this surface renders HTML on the browser's behalf. The single shape a
 - response:
   - media: `application/json`
   - body: a JSON array of [repository menu data](../formats/repository-menu-data.md) groups, or `[]` when no eligible workflow entries exist. Each group carries `container`, `name`, `state`, `type`, `type_hue`, and a `repos` array of `{"repo", "label"}` pairs. No escaping is applied or needed; the values travel as data and the browser sets them as text.
-- status: `200`
-- errors: none intentionally emitted by this invocation; request parsing failures are framework-level failures, checkout discovery failures for a volume collapse to an empty checkout list for that workflow, and unexpected Docker process-launch or timeout exceptions from checkout discovery propagate as framework-level failures rather than endpoint-specific response bodies.
 
 ### serve-workspace-file-list
 
@@ -1359,6 +1359,8 @@ Nothing on this surface renders HTML on the browser's behalf. The single shape a
 - verify: count(subject="sidecar RPC results consumed by the file-list invocation", equals=1)
 - consumes: fallback [workspace file list data](../formats/workspace-file-list-data.md) from the [workspace volume file-list reader](../concepts/workspace-volume-file-list-reader.md).
 - verify: count(subject="fallback workspace file-list results consumed after an unavailable sidecar path", equals=1)
+- status: `200`
+- errors: none intentionally emitted by this invocation; absent workflow state, absent workspace volume, sidecar RPC failure, and fallback reader non-zero exit are represented as an empty `paths` array or fallback data. Request parsing failures, Docker process-launch exceptions, and Docker timeout exceptions propagate as framework-level failures.
 - code: groom/groom/app.py::files
 - tests: groom/tests/test_app.py::test_files_endpoint_returns_a_json_path_list,
   groom/tests/test_app.py::test_files_prefers_sidecar_socket_when_connected,
@@ -1373,8 +1375,6 @@ Nothing on this surface renders HTML on the browser's behalf. The single shape a
 - response:
   - media: `application/json`
   - body: `{"paths": [str, …]}` matching [workspace file list data](../formats/workspace-file-list-data.md), or `{"paths": []}` when no sidecar or fallback data is available.
-- status: `200`
-- errors: none intentionally emitted by this invocation; absent workflow state, absent workspace volume, sidecar RPC failure, and fallback reader non-zero exit are represented as an empty `paths` array or fallback data. Request parsing failures, Docker process-launch exceptions, and Docker timeout exceptions propagate as framework-level failures.
 
 ### serve-workspace-file-content
 
@@ -1498,6 +1498,8 @@ Nothing on this surface renders HTML on the browser's behalf. The single shape a
 - verify: count(subject="workflow registry workspace-volume values consumed after an unavailable sidecar path", equals=1)
 - consumes: when the sidecar path is unavailable, fallback [workspace file content data](../formats/workspace-file-content-data.md) from the [workspace volume file-content reader](../concepts/workspace-volume-file-content-reader.md).
 - verify: count(subject="fallback workspace file-content values consumed after an unavailable sidecar path", equals=1)
+- status: `200`
+- errors: none intentionally emitted by this invocation; absent workflow state, absent workspace volume, absent or failed sidecar RPCs, empty selected paths, traversal-guard failures, missing files, unreadable files, and empty reader output are all represented as an empty `content` or sidecar/fallback data. Request parsing failures and unexpected reader exceptions other than traversal rejection propagate as framework-level failures.
 - code: groom/groom/app.py::file_content
 - tests: groom/tests/test_app.py::test_file_content_prefers_sidecar_socket,
   groom/tests/test_app.py::test_file_endpoint_joins_repo_and_path_and_returns_content,
@@ -1513,8 +1515,6 @@ Nothing on this surface renders HTML on the browser's behalf. The single shape a
 - response:
   - media: `application/json`
   - body: [workspace file content data](../formats/workspace-file-content-data.md) as `{"path", "content", "lang"}`, where `content` is raw file text from the selected checkout or an empty string when the sidecar and fallback paths cannot supply it, and `lang` is derived from the requested path regardless.
-- status: `200`
-- errors: none intentionally emitted by this invocation; absent workflow state, absent workspace volume, absent or failed sidecar RPCs, empty selected paths, traversal-guard failures, missing files, unreadable files, and empty reader output are all represented as an empty `content` or sidecar/fallback data. Request parsing failures and unexpected reader exceptions other than traversal rejection propagate as framework-level failures.
 
 ### serve-working-tree-diff
 
@@ -1622,6 +1622,8 @@ Nothing on this surface renders HTML on the browser's behalf. The single shape a
 - consumes: optional sidecar RPC result shaped as `{diff: str}` from [sidecar live sessions](../sidecar-live-sessions.md), or fallback [workspace diff data](../formats/workspace-diff-data.md) from the [workspace volume diff reader](../concepts/workspace-volume-diff-reader.md).
 - verify: http_status(code=200, path="/diff/{container_id}")
 - verify: json_path(path="$.diff", equals="diff --git a/x b/x\n")
+- status: `200`
+- errors: none intentionally emitted by this invocation; absent workflow state, absent workspace volume, absent or failed sidecar RPCs, no discovered fallback checkout, non-zero fallback git/Docker completion, and empty diff output are all represented as an empty `diff` under a `200 OK`. Request parsing failures and unexpected sidecar-registry, Docker process-launch, Docker timeout, or response-construction exceptions propagate as framework-level failures.
 - code: groom/groom/app.py::diff
 - tests: groom/tests/test_app.py::test_diff_prefers_sidecar_socket,
   groom/tests/test_app.py::test_diff_endpoint_passes_repo_through
@@ -1635,8 +1637,6 @@ Nothing on this surface renders HTML on the browser's behalf. The single shape a
 - response:
   - media: `application/json`
   - body: [workspace diff data](../formats/workspace-diff-data.md) as `{"diff": str}`, whose value is the raw unified git diff text from the selected checkout, or `""` when the sidecar path has no diff, no workspace volume is known, no fallback checkout is discovered, the fallback git/Docker process exits non-zero, or the selected checkout has no working-tree diff.
-- status: `200`
-- errors: none intentionally emitted by this invocation; absent workflow state, absent workspace volume, absent or failed sidecar RPCs, no discovered fallback checkout, non-zero fallback git/Docker completion, and empty diff output are all represented as an empty `diff` under a `200 OK`. Request parsing failures and unexpected sidecar-registry, Docker process-launch, Docker timeout, or response-construction exceptions propagate as framework-level failures.
 
 ### serve-run-detail
 
@@ -1693,6 +1693,8 @@ Nothing on this surface renders HTML on the browser's behalf. The single shape a
 - consumes: the [groom projection module](../concepts/groom-projection-module.md#method-run-detail) consumes that workflow record plus the durable store's facts for the same run.
 - verify: json_path(path="$.found", equals=true)
 - verify: json_path(path="$.head.node", equals="write_epic")
+- status: `200`
+- errors: none intentionally emitted by this handler; an unknown workflow id is a successful `found: false` body, and request parsing or projection failures are framework-level failures rather than endpoint-specific error bodies.
 - code: groom/groom/app.py::worker_detail
 - tests: groom/tests/test_app.py::test_worker_detail_and_pushed_slices,
   groom/tests/test_projection.py::test_run_detail_carries_gates_head_metrics_and_logs,
@@ -1708,8 +1710,6 @@ Nothing on this surface renders HTML on the browser's behalf. The single shape a
 - response:
   - media: `application/json`
   - body: the run detail payload documented under [get-run-detail](#get-run-detail) — `{"found": false, "id": …}` for an unknown id, otherwise `found: true` with the run's identity, state, node, gates, head, metrics, and logs.
-- status: `200`
-- errors: none intentionally emitted by this handler; an unknown workflow id is a successful `found: false` body, and request parsing or projection failures are framework-level failures rather than endpoint-specific error bodies.
 
 ### refresh-workflow-fleet
 
@@ -1758,6 +1758,8 @@ Nothing on this surface renders HTML on the browser's behalf. The single shape a
   - one completed pre-scan dashboard shell broadcast and no post-scan attempt when reconciliation fails.
   - one completed pre-scan dashboard shell broadcast plus a failed or partial post-scan attempt when the post-scan broadcast fails.
 - consumes: the process-local `state.WORKFLOWS` registry, the process-local `state.SCANNING` flag, Docker workflow discovery results, and the current connected dashboard websocket client set.
+- status: `200` on successful reconciliation and broadcasts.
+- errors: no endpoint-specific error body is produced; broadcast, reconciliation, response-construction, and request parsing failures propagate through the framework after the state effects described above.
 - code: groom/groom/app.py::refresh
 - tests: groom/tests/test_app.py::test_refresh_prunes_vanished_containers,
   groom/tests/test_app.py::test_refresh_skips_prune_when_docker_unavailable
@@ -1773,8 +1775,6 @@ Nothing on this surface renders HTML on the browser's behalf. The single shape a
   - body: object with `ok: true` and `count: int`; `count` is the number of workflows returned by the scan before any prune decision.
   - field: `ok`; type boolean; required; default none; always `true` on the successful handler return path.
   - field: `count`; type integer; required; default none; number of workflow containers returned by the discovery scan before safe pruning, not the final registry size.
-- status: `200` on successful reconciliation and broadcasts.
-- errors: no endpoint-specific error body is produced; broadcast, reconciliation, response-construction, and request parsing failures propagate through the framework after the state effects described above.
 
 ### receive-progress-push
 
@@ -1827,6 +1827,8 @@ Nothing on this surface renders HTML on the browser's behalf. The single shape a
 - emits: no dashboard state payload broadcast on missing or empty container id.
 - verify: emitted(event="state", count=0)
 - consumes: [progress push payload](../formats/progress-push-payload.md) JSON from the container sidecar/backstop, process-local workflow state, optional Docker inspection metadata resolved by the [push-first volume metadata resolver](../concepts/push-first-volume-metadata-resolver.md), and the current connected dashboard websocket client set.
+- status: `200` on normal handler return.
+- errors: no endpoint-specific error body is produced; Docker metadata lookup, registry upsert, fleet projection, broadcast queueing, or response construction failures propagate as framework errors.
 - code: groom/groom/app.py::push_progress
 - request:
   - method: `POST`
@@ -1845,8 +1847,6 @@ Nothing on this surface renders HTML on the browser's behalf. The single shape a
   - media: `application/json`
   - body: object with `ok: bool`; `false` means the request lacked a usable container id, and `true` means the workflow state was updated and the shell broadcast completed.
   - field: `ok`; type boolean; required; default none; `false` only on the missing-or-empty normalized container-id path before any mutation or broadcast, and `true` only after Docker metadata resolution, workflow upsert, shell rendering, and broadcast queueing complete.
-- status: `200` on normal handler return.
-- errors: no endpoint-specific error body is produced; Docker metadata lookup, registry upsert, fleet projection, broadcast queueing, or response construction failures propagate as framework errors.
 
 ### receive-blocked-push
 
@@ -1889,6 +1889,8 @@ Nothing on this surface renders HTML on the browser's behalf. The single shape a
 - emits: no `notify` frame when the container id or gate file path is missing or empty.
 - verify: emitted(event="notify", count=0)
 - consumes: [blocked push payload](../formats/blocked-push-payload.md) JSON from the container sidecar/backstop, process-local workflow state, optional Docker inspection metadata, and the current [dashboard client queue set](../concepts/dashboard-client-queue-set.md).
+- status: `200` on normal handler return.
+- errors: no endpoint-specific error body is produced; volume metadata lookup, workflow upsert, fleet projection, broadcast queueing, or response construction failures propagate as framework errors.
 - code: groom/groom/app.py::push_blocked
 - request:
   - method: `POST`
@@ -1908,8 +1910,6 @@ Nothing on this surface renders HTML on the browser's behalf. The single shape a
   - media: `application/json`
   - body: object with `ok: bool`; `false` means the request lacked a usable container id or gate file path, and `true` means the workflow state was marked blocked, the gate was stored, and the state-plus-notify broadcast completed.
   - field: `ok`; type boolean; required; default none; `false` on the validation-failure path and `true` only after the dashboard broadcast has accepted both the state payload and the notify frame.
-- status: `200` on normal handler return.
-- errors: no endpoint-specific error body is produced; volume metadata lookup, workflow upsert, fleet projection, broadcast queueing, or response construction failures propagate as framework errors.
 
 ### receive-exited-push
 
@@ -1987,6 +1987,8 @@ Nothing on this surface renders HTML on the browser's behalf. The single shape a
 - emits: no dashboard state payload broadcast when the container id is missing or empty.
 - verify: emitted(event="state", count=0)
 - consumes: [exited push payload](../formats/exited-push-payload.md) JSON from the container entrypoint sidecar path, process-local workflow state, optional Docker inspection metadata, the current connected dashboard websocket client set, and the process-local attend ledger.
+- status: `200` on normal handler return.
+- errors: no endpoint-specific error body is produced; volume metadata lookup, workflow upsert, fleet projection, broadcast queueing, or response construction failures propagate as framework errors.
 - code: groom/groom/app.py::push_exited
 - tests: `groom/tests/test_app.py::test_push_exited_marks_finished_clears_gates_and_records_code`
 - tests: `groom/tests/test_app.py::test_push_exited_rejects_missing_container_id`
@@ -2007,8 +2009,6 @@ Nothing on this surface renders HTML on the browser's behalf. The single shape a
   - media: `application/json`
   - body: object with `ok: bool`; `false` means the request lacked a usable container id, and `true` means the workflow state was marked finished, open gates were cleared, and the shell broadcast completed.
   - field: `ok`; type boolean; required; default none; `false` on the validation-failure path and `true` only after `_ensure_volumes`, `state.upsert_workflow`, gate clearing, and `_broadcast_shell` complete.
-- status: `200` on normal handler return.
-- errors: no endpoint-specific error body is produced; volume metadata lookup, workflow upsert, fleet projection, broadcast queueing, or response construction failures propagate as framework errors.
 
 ### reload-sidecars
 
@@ -2057,6 +2057,8 @@ Nothing on this surface renders HTML on the browser's behalf. The single shape a
 - emits: no process-local workflow state change.
 - verify: unchanged(subject="process-local workflow state")
 - consumes: the process-local sidecar connection registry and the optional `container_id` query string.
+- status: `200` on normal handler return.
+- errors: no endpoint-specific error body is produced; missing target connections and send exceptions are swallowed per target, while request parsing or response construction failures are framework-level failures.
 - code: groom/groom/app.py::reload
 - tests: `groom/tests/test_app.py::test_reload_broadcasts_to_all_connected_sidecars`
 - tests: `groom/tests/test_app.py::test_reload_targets_one_container_when_id_given`
@@ -2072,8 +2074,6 @@ Nothing on this surface renders HTML on the browser's behalf. The single shape a
   - body: object with `ok: true` and integer `reloaded` count of successful reload sends.
   - field: `ok`; type boolean; required; default none; always `true` on the handler's normal return path.
   - field: `reloaded`; type integer; required; default none; starts at `0` and increments once for each target connection whose `send_reload()` call completes.
-- status: `200` on normal handler return.
-- errors: no endpoint-specific error body is produced; missing target connections and send exceptions are swallowed per target, while request parsing or response construction failures are framework-level failures.
 
 ### serve-static-asset
 
@@ -2142,6 +2142,8 @@ Nothing on this surface renders HTML on the browser's behalf. The single shape a
 - verify: count(subject="Docker data reads for a static asset request", equals=0)
 - consumes: no request-body data.
 - verify: count(subject="request-body reads for a static asset request", equals=0)
+- status: `200` when the path maps to an existing packaged asset; otherwise the framework static-file status.
+- errors: no endpoint-specific error body is produced by groom; missing files, unsupported methods, invalid paths, and conditional request outcomes are handled by the mounted static-file router.
 - code: groom/groom/app.py::create_app
 - request:
   - method: `GET`
@@ -2153,8 +2155,6 @@ Nothing on this surface renders HTML on the browser's behalf. The single shape a
 - response:
   - media: static-file media type for the requested asset.
   - body: raw packaged asset bytes, with no groom-specific envelope.
-- status: `200` when the path maps to an existing packaged asset; otherwise the framework static-file status.
-- errors: no endpoint-specific error body is produced by groom; missing files, unsupported methods, invalid paths, and conditional request outcomes are handled by the mounted static-file router.
 
 ### run-dashboard-websocket-session
 
@@ -2300,6 +2300,8 @@ Nothing on this surface renders HTML on the browser's behalf. The single shape a
   - verify: emitted(event="answer_rejected", count=1)
 - consumes: process-local workflow state, process-local dashboard client queues consumed by the [dashboard websocket send loop](../concepts/dashboard-websocket-send-loop.md), inbound frames consumed by the [dashboard websocket receive loop](../concepts/dashboard-websocket-receive-loop.md), [dashboard websocket answer frame](../formats/dashboard-websocket-answer-frame.md) messages, and [answer result](../formats/answer-result.md) values from the gate-answering layer.
 - verify: emitted(event="answered", count=1)
+- status: accepted websocket connection on normal route start.
+- errors: ordinary websocket disconnect from the completed send or receive loop ends the session normally; non-disconnect loop exceptions, initial-projection failures, send failures, malformed receive frames, and command-handler failures propagate through the framework after cleanup rather than producing an endpoint-specific error payload.
 - code: groom/groom/app.py::dashboard_ws
 - tests: groom/tests/test_app.py::test_handle_answer_flips_state_and_broadcasts_an_answered_event,
   groom/tests/test_app.py::test_handle_answer_failure_does_not_flip_or_dispatch,
@@ -2328,8 +2330,6 @@ Nothing on this surface renders HTML on the browser's behalf. The single shape a
   - answered-frame: `{"type": "answered", "id": str, "file_path": str}` broadcast to every tab after a successful answer.
   - answer-rejected-frame: `{"type": "answer_rejected", "id": str, "file_path": str, "reason": str}` sent to the sending tab alone after a refused answer. See [websocket-dashboard](#websocket-dashboard) for its members and reasons.
   - command-response: no per-command acknowledgement frame. A watch command is answered by the detail frame it triggers. An answer attempt is reflected by the state broadcast, the detail push to watching tabs, the `answered` frame on success, and the `answer_rejected` frame to its sender on refusal.
-- status: accepted websocket connection on normal route start.
-- errors: ordinary websocket disconnect from the completed send or receive loop ends the session normally; non-disconnect loop exceptions, initial-projection failures, send failures, malformed receive frames, and command-handler failures propagate through the framework after cleanup rather than producing an endpoint-specific error payload.
 
 ### run-sidecar-websocket-session
 
@@ -2493,6 +2493,8 @@ Nothing on this surface renders HTML on the browser's behalf. The single shape a
 - verify: json_path(path="$.workflow.gates.path", equals="gates/approval.json")
 - consumes: the current connected dashboard websocket client set.
 - verify: emitted(event="dashboard state payload", count=1)
+- status: accepted websocket connection on normal route start.
+- errors: malformed JSON frames, receive failures other than ordinary websocket disconnect, send failures from later host-issued RPC or reload frames, connection-registration failures, delegated applier failures, renderer failures, broadcast failures, and cleanup-time failures are not converted into sidecar protocol error frames; they propagate through the websocket handler or through the waiting HTTP caller after cleanup semantics run where applicable.
 - code: groom/groom/app.py::dashboard_sidecar
 - tests: groom/tests/test_app.py::test_apply_hello_marks_blocked_with_gate,
   groom/tests/test_app.py::test_apply_hello_running_when_no_gates,
@@ -2540,5 +2542,3 @@ Nothing on this surface renders HTML on the browser's behalf. The single shape a
   - command-response: no acknowledgement frame is sent for `hello`, `progress`, or `blocked`; successful effects are visible only through browser dashboard websocket broadcasts.
   - rpc-result-response: no websocket reply is sent for `rpc_result`; a matching pending in-process future is resolved or failed, and unknown, late, duplicate, or already-completed ids are ignored.
   - cleanup-result: ordinary websocket disconnect ends the session without an endpoint payload; if a connection was established, cleanup unregisters this connection only when it is still current and fails its unresolved RPC futures with `sidecar connection closed`.
-- status: accepted websocket connection on normal route start.
-- errors: malformed JSON frames, receive failures other than ordinary websocket disconnect, send failures from later host-issued RPC or reload frames, connection-registration failures, delegated applier failures, renderer failures, broadcast failures, and cleanup-time failures are not converted into sidecar protocol error frames; they propagate through the websocket handler or through the waiting HTTP caller after cleanup semantics run where applicable.

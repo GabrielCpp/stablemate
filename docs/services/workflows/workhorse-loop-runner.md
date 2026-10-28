@@ -25,10 +25,11 @@ The [workhorse-loop-runner driver runbook](ops/workhorse-loop-runner.md) exercis
   - `--runs-dir DIR` and `--run-id ID` select the run-artifact location and stable identity.
   - `--dry-run` answers the agent turn with a deterministic summary instead of calling an agent CLI.
   - `--resume-run PATH`, `--resume-latest`, and `--no-cache` select resume or fresh-run behavior.
-- does: sends `plan` to the agent in a single turn and returns the agent's summary
-- fixture: none, because the command reads only the installed package
+- does:
+  - sends `plan` to the agent in a single turn and returns the agent's summary
 - run: invoke(argv=["run", "--dry-run"])
 - verify: exit_status(code=0)
+- fixture: none, because the command reads only the installed package
 - code: `workflows/src/workhorse_workflows/loop_runner/workflow.py::main` @a2ae9831bbc1
 - detail: [Loop-runner command selection](concepts/loop-runner-command-selection.md)
 
@@ -37,18 +38,20 @@ The [workhorse-loop-runner driver runbook](ops/workhorse-loop-runner.md) exercis
 - flags:
   - `--name ID` overrides the rendered graph identifier.
   - `-o, --output PATH` writes DOT output to a file instead of standard output.
-- does: renders the registered LoopRunner state graph
-- fixture: none, because the command reads only the installed package
+- does:
+  - renders the registered LoopRunner state graph
 - run: invoke(argv=["dot"])
 - verify: exit_status(code=0)
+- fixture: none, because the command reads only the installed package
 - code: `workflows/src/workhorse_workflows/loop_runner/workflow.py::main` @a2ae9831bbc1
 - detail: [Loop-runner command selection](concepts/loop-runner-command-selection.md)
 
 ### version
 - usage: `workhorse-loop-runner version`
-- does: prints the installed Workhorse engine version
-- fixture: none, because the command reads only the installed package
+- does:
+  - prints the installed Workhorse engine version
 - run: invoke(argv=["version"])
 - verify: exit_status(code=0)
+- fixture: none, because the command reads only the installed package
 - code: `workflows/src/workhorse_workflows/loop_runner/workflow.py::main` @a2ae9831bbc1
 - detail: [Loop-runner command selection](concepts/loop-runner-command-selection.md)

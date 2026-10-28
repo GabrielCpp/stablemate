@@ -22,10 +22,10 @@ lane on when set. `operator_mode` defaults to `auto`. Each repository gets its o
 `MAX_LAPS` repair turns, and the epic's merge gets the same cap.
 
 - fixture: none, because the walk dry-runs the registered flow, which stands in for every agent turn
-- steps:
-  - [run](../workhorse-coder.md#run)
 - start: the working directory holds no rendered graph
 - verify: absent(subject="workhorse-coder.dot")
+- steps:
+  - [run](../workhorse-coder.md#run)
 - end: the dry run leaves the command with a zero exit status
 - verify: exit_status(code=0)
 - detail: [coder handoff boundary contract](../concepts/coder-handoff-boundary.md)

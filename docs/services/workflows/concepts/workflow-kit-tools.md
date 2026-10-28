@@ -43,7 +43,7 @@ The genesis workflow patches this callable at its module boundary with a canned
 - verify: exit_status(code=1)
 - raises: propagates operating-system or process-launch errors from the subprocess invocation
 - returns: the `subprocess.CompletedProcess` for the child, including its arguments, return code, captured text standard output, and captured text standard error
+- fixture:
 - code: `workflows/src/workhorse_workflows/kit/tools.py::run_tool` @5a3fc2691e18
 - detail:
-- fixture:
 - tests: `workflows/tests/coder/genesis/test_flow.py::test_a_bare_directory_becomes_a_repo_the_main_loop_will_accept`

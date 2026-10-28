@@ -14,41 +14,41 @@ A base library `base` and an overlay library `overlay`, both holding the skill `
 ### clear
 
 - kind: seed
-- working-directory: scenario:
 - run: rm -rf "$dir" && mkdir -p "$dir/home" && printf 'config_version = 2\n' > "$dir/config.toml"
+- working-directory: scenario:
 
 ### base-skill
 
 - kind: seed
-- working-directory: scenario:
 - run: mkdir -p "$(dirname "$dir/base/library/skills/stacks/api.md")" && printf '%s\n' --- 'name: api' 'description: "Base api"' --- '' 'Use it.' > "$dir/base/library/skills/stacks/api.md"
+- working-directory: scenario:
 
 ### base-packs
 
 - kind: seed
-- working-directory: scenario:
 - run: mkdir -p "$dir/base/packs"
+- working-directory: scenario:
 
 ### overlay-skill
 
 - kind: seed
-- working-directory: scenario:
 - run: mkdir -p "$(dirname "$dir/overlay/library/skills/stacks/api.md")" && printf '%s\n' --- 'name: api' 'description: "Overlay api"' --- '' 'Use it.' > "$dir/overlay/library/skills/stacks/api.md"
+- working-directory: scenario:
 
 ### overlay-packs
 
 - kind: seed
-- working-directory: scenario:
 - run: mkdir -p "$dir/overlay/packs"
+- working-directory: scenario:
 
 ### config
 
 - kind: seed
-- working-directory: scenario:
 - run: { printf 'config_version = 2\n'; printf 'library_dir = "%s"\nbase_dir = "%s"\n' "$PWD/$dir/overlay" "$PWD/$dir/base"; } > "$dir/config.toml"
+- working-directory: scenario:
 
 ### landed
 
 - kind: verify
-- working-directory: scenario:
 - run: test -d "$dir"
+- working-directory: scenario:

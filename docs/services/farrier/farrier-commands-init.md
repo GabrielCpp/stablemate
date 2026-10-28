@@ -558,7 +558,8 @@ A `{url: ...}` scaffold file value is downloaded at write time with a 30-second 
 
 ### version
 - usage: `farrier version`
-- does: print the installed `farrier` package's version (`importlib.metadata.version("farrier")`)
+- does:
+  - print the installed `farrier` package's version (`importlib.metadata.version("farrier")`)
 - run: invoke(argv=["version"])
 - verify: stdout(matches="^[0-9]+\\.[0-9]+\\.[0-9]+")
 - fixture: none, because the version comes from the installed package metadata
