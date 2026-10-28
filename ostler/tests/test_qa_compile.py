@@ -6034,8 +6034,9 @@ def test_an_obligation_off_the_launch_screen_taps_its_way_there_first() -> None:
     _header, commands = yaml.safe_load_all(flow_text)
     assert commands[0] == {"launchApp": {"clearState": True}}
     assert commands[1] == _DRAWN_PROBE_LINK
-    assert commands[2] == {"scrollUntilVisible": {"element": {"id": "probe-link"}, "direction": "DOWN"}}
-    assert commands[3] == {"tapOn": {"id": "probe-link"}}
+    assert commands[2] == {"scrollUntilVisible": {"element": {"id": "probe-link"}, "direction": "DOWN", "optional": True}}
+    assert commands[3] == {"scrollUntilVisible": {"element": {"id": "probe-link"}, "direction": "UP"}}
+    assert commands[4] == {"tapOn": {"id": "probe-link"}}
 
 
 _DRAWN_PROBE_LINK = {"extendedWaitUntil": {"visible": {"id": "probe-link"}, "timeout": 15000, "optional": True}}
@@ -6116,15 +6117,29 @@ def test_a_device_tap_and_a_device_visibility_check_scroll_their_control_into_vi
     assert isinstance(result, Plan)
     assert _gap_kinds(result.gaps, oid) == []
     commands = _probe_flow(result)
-    scroll = {"scrollUntilVisible": {"element": {"id": "probe-link"}, "direction": "DOWN"}}
+    scroll = {"scrollUntilVisible": {"element": {"id": "probe-link"}, "direction": "DOWN", "optional": True}}
     tap_at = commands.index({"tapOn": {"id": "probe-link"}})
-    assert commands[tap_at - 1] == scroll
+    assert commands[tap_at - 2] == scroll
     asserts = [i for i, c in enumerate(commands) if isinstance(c, dict) and "assertVisible" in c]
     assert asserts, commands
     for i in asserts:
         assert "scrollUntilVisible" in commands[i - 1], commands[i - 1]
     assert not any(isinstance(c, dict) and "assertNotVisible" in c and "scrollUntilVisible" in commands[i - 1]
                    for i, c in enumerate(commands))
+
+
+def test_a_device_control_is_searched_below_the_viewport_and_then_above_it() -> None:
+    """Maestro sees only what is drawn and the viewport may sit anywhere in the content, so a downward search alone never finds a control above it."""
+    context, oid, _launch = _device_fixture_probe({})
+
+    result = _compile_plan_gaps(context, story="demo-story")
+    assert isinstance(result, Plan)
+    assert _gap_kinds(result.gaps, oid) == []
+    commands = _probe_flow(result)
+    down = {"scrollUntilVisible": {"element": {"id": "probe-link"}, "direction": "DOWN", "optional": True}}
+    up = {"scrollUntilVisible": {"element": {"id": "probe-link"}, "direction": "UP"}}
+    tap_at = commands.index({"tapOn": {"id": "probe-link"}})
+    assert commands[tap_at - 2 : tap_at] == [down, up]
 
 
 def test_a_claim_with_no_device_fixture_starts_on_a_cleared_device() -> None:
@@ -6136,8 +6151,9 @@ def test_a_claim_with_no_device_fixture_starts_on_a_cleared_device() -> None:
     commands = _probe_flow(result)
     assert commands[0] == {"launchApp": {"clearState": True}}
     assert commands[1] == _DRAWN_PROBE_LINK
-    assert commands[2] == {"scrollUntilVisible": {"element": {"id": "probe-link"}, "direction": "DOWN"}}
-    assert commands[3] == {"tapOn": {"id": "probe-link"}}
+    assert commands[2] == {"scrollUntilVisible": {"element": {"id": "probe-link"}, "direction": "DOWN", "optional": True}}
+    assert commands[3] == {"scrollUntilVisible": {"element": {"id": "probe-link"}, "direction": "UP"}}
+    assert commands[4] == {"tapOn": {"id": "probe-link"}}
 
 
 def test_two_fixtures_that_open_the_app_on_different_screens_gap_the_claim() -> None:
@@ -7130,7 +7146,7 @@ def test_a_templated_name_and_a_referenced_text_reach_maestro_as_one_variable() 
     _header, commands = _strict_flow(flow_text)
     assert commands[-1] == {"assertVisible": {"text": "${OKF_REF_1}"}}
     assert commands[1] == {"extendedWaitUntil": {"visible": {"text": "${OKF_REF_1}"}, "timeout": 15000, "optional": True}}
-    assert commands[2] == {"scrollUntilVisible": {"element": {"text": "${OKF_REF_1}"}, "direction": "DOWN"}}
+    assert commands[2] == {"scrollUntilVisible": {"element": {"text": "${OKF_REF_1}"}, "direction": "DOWN", "optional": True}}
     assert (f'env={{"OKF_REF_1": qa.maestro.pattern({json.dumps(_TICKET_NAME)}, '
             f'text=qa.resolve({json.dumps(text)}))}}') in result.source
 

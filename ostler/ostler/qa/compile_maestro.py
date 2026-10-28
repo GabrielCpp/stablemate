@@ -193,10 +193,13 @@ def _selector(
 
 
 def _into_view(locator: MaestroLocator, text: str | None, refs: _Refs) -> list[str]:
-    """The scroll that brings the control at *locator* onto the screen: Maestro sees only what is drawn, where a browser driver scrolls to a control by itself."""
+    """The searches that bring the control at *locator* onto the screen, below the viewport and then above it: Maestro sees only what is drawn, and the viewport may sit anywhere in the content."""
+    selector = _selector(locator, text, refs, "      ")
     return [
-        "- scrollUntilVisible:", "    element:", *_selector(locator, text, refs, "      "),
-        "    direction: DOWN",
+        "- scrollUntilVisible:", "    element:", *selector,
+        "    direction: DOWN", "    optional: true",
+        "- scrollUntilVisible:", "    element:", *selector,
+        "    direction: UP",
     ]
 
 

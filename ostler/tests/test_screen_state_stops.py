@@ -233,9 +233,11 @@ def test_a_device_flow_with_no_stop_is_one_flow_file_that_launches_first() -> No
     assert files[f"{FLOW_STEM}.yaml"] == (
         'appId: "com.example.mobile-app"\n---\n- launchApp:\n    clearState: true\n'
         f'- extendedWaitUntil:\n    visible:\n      text: {_pattern("Open details")}\n    timeout: 15000\n    optional: true\n'
-        f'- scrollUntilVisible:\n    element:\n      text: {_pattern("Open details")}\n    direction: DOWN\n'
+        f'- scrollUntilVisible:\n    element:\n      text: {_pattern("Open details")}\n    direction: DOWN\n    optional: true\n'
+        f'- scrollUntilVisible:\n    element:\n      text: {_pattern("Open details")}\n    direction: UP\n'
         f'- tapOn:\n    text: {_pattern("Open details")}\n'
-        f'- scrollUntilVisible:\n    element:\n      text: {_pattern("Results")}\n    direction: DOWN\n'
+        f'- scrollUntilVisible:\n    element:\n      text: {_pattern("Results")}\n    direction: DOWN\n    optional: true\n'
+        f'- scrollUntilVisible:\n    element:\n      text: {_pattern("Results")}\n    direction: UP\n'
         f'- assertVisible:\n    text: {_pattern("Results")}\n')
     assert f'    journey_result = qa.maestro.run(qa.spec_dir / "{FLOW_STEM}.yaml")' in journey
     assert "require=True" not in journey

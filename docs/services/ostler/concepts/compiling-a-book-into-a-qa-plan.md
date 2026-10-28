@@ -97,8 +97,8 @@ its first hop.
 - code: ostler/ostler/qa/compile_playwright.py::perform_acts@373cfbcaf3e9
 - code: ostler/ostler/qa/compile_playwright.py::page_observations@373cfbcaf3e9
 - code: ostler/ostler/qa/compile_playwright.py::web_walk@373cfbcaf3e9
-- code: ostler/ostler/qa/compile_maestro.py::mobile_scenarios@b0e272ce8fa7
-- code: ostler/ostler/qa/compile_maestro.py::maestro_walk@b0e272ce8fa7
+- code: ostler/ostler/qa/compile_maestro.py::mobile_scenarios@32347236b218
+- code: ostler/ostler/qa/compile_maestro.py::maestro_walk@32347236b218
 - code: ostler/ostler/qa/harness/ostler_qa_elements.py::maestro_pattern@208d06012507
 - code: ostler/ostler/qa/harness/ostler_qa.py::Maestro@3d971d498ead
 - code: ostler/ostler/qa/compile_moves.py::move_walks@357b72ed93c7
@@ -167,6 +167,10 @@ its first hop.
   up to 15 seconds for its control with an optional `extendedWaitUntil`, and only then scrolls
   for it. A look after a tap scrolls at once, because the tap already waited for the screen to
   settle.
+- rule: a phone flow finds a control by searching below the viewport and then above it, because a
+  device driver sees only the drawn viewport and the viewport may sit anywhere in the content.
+  The downward search is optional, so a control above the viewport falls through to the upward
+  search instead of failing the flow.
 - generated names are unique: every `*_function_name` helper in `plan_source.py` is given the
   full set of already-emitted names (`EmittedScenarios`) and never returns one already used in
   the same plan.
