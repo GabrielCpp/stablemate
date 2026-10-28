@@ -190,7 +190,7 @@ are written, because each later command reads what an earlier one wrote.
 - fixture: [qa scratch repo](fixtures/qa-scratch-repo.md) with a QA scratch repo with one changed
   source file and a plan under spec s1
 - code: ostler/ostler/qa/context.py::book_files@1722899c30ab
-- code: ostler/ostler/qa/harness_host.py::default_interpreter@9aece567e098
+- code: ostler/ostler/qa/harness_host.py::default_interpreter@be0a59e0887d
 - code: ostler/ostler/qa/lint.py::cmd_lint@7072719988f2
 - code: ostler/ostler/qa/outcome.py::QaOutcome@a11c201f424c
 - code: ostler/ostler/qa/plan.py::load_plan@dcbff5ecd985
@@ -237,7 +237,7 @@ are written, because each later command reads what an earlier one wrote.
 - code: ostler/ostler/qa/harness/ostler_qa_transfer.py::paste@02ae85efa7b7
 - code: ostler/ostler/qa/harness/ostler_qa_verdicts.py::recorded@6473ea39a89f
 - code: ostler/ostler/qa/harness/ostler_qa_verifiers.py::_verifier@f540620c6633
-- code: ostler/ostler/qa/harness_host.py::capped_argv@9aece567e098
+- code: ostler/ostler/qa/harness_host.py::capped_argv@be0a59e0887d
 - code: ostler/ostler/qa/lint.py::cmd_lint@7072719988f2
 - code: ostler/ostler/qa/manifest.py::RunManifest@2d00c95675d5
 - code: ostler/ostler/qa/outcome.py::QaOutcome@a11c201f424c

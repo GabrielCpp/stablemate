@@ -65,7 +65,7 @@ def _scope_argv(env: dict[str, str]) -> list[str] | None:
         return None
     prefix = [
         systemd_run, "--user", "--scope", "--quiet", "--collect",
-        "-p", f"MemoryMax={SCENARIO_MEMORY_MAX}", "-p", "MemorySwapMax=0",
+        "-p", f"MemoryMax={SCENARIO_MEMORY_MAX}", "-p", "MemorySwapMax=0", "-p", "OOMPolicy=kill",
         "-p", f"CPUQuota={SCENARIO_CPU_QUOTA}", "--",
     ]
     return prefix if _scopes_answer(tuple(prefix), env.get("XDG_RUNTIME_DIR", ""), env.get("DBUS_SESSION_BUS_ADDRESS", "")) else None

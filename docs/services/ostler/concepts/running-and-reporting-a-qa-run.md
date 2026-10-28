@@ -42,7 +42,11 @@ implementation, `Launcher`/`LocalLauncher` start and stop the scenario subproces
 `ostler_qa*` modules documented in
 [Authoring QA scenarios](authoring-qa-scenarios.md) by name; `default_interpreter`/
 `harness_argv`/`harness_env` assemble the subprocess command and environment for one scenario,
-and `describe` introspects a plan module without running it. `run_log.py`'s `read_records` and
+and `describe` introspects a plan module without running it. `capped_argv` runs each scenario
+inside a systemd user scope that caps its memory at `SCENARIO_MEMORY_MAX` with no swap and its
+CPU at `SCENARIO_CPU_QUOTA`, over every process the scenario starts. The scope kills the whole scenario with SIGKILL as soon as any of its processes
+passes the memory cap, so the failure names the cap instead of reporting a bare exit code. Where
+no systemd user manager answers, the scenario runs uncapped. `run_log.py`'s `read_records` and
 `run_log_tally` read back the JSONL log a session writes, and `passing_log_ref`/
 `failing_log_refs` report whether a given assertion id passed on its most recent attempt.
 
@@ -141,11 +145,12 @@ re-exports the public surface of all of the above (`cmd_run`, `cmd_compile_plan`
 - code: ostler/ostler/qa/drivers.py::LocalLauncher@378b768cf1f8
 - code: ostler/ostler/qa/drivers.py::DisplayRecorder@378b768cf1f8
 - code: ostler/ostler/qa/drivers.py::DeviceRecorder@378b768cf1f8
-- code: ostler/ostler/qa/harness_host.py::load_harness_module@9aece567e098
-- code: ostler/ostler/qa/harness_host.py::default_interpreter@9aece567e098
-- code: ostler/ostler/qa/harness_host.py::harness_argv@9aece567e098
-- code: ostler/ostler/qa/harness_host.py::harness_env@9aece567e098
-- code: ostler/ostler/qa/harness_host.py::describe@9aece567e098
+- code: ostler/ostler/qa/harness_host.py::load_harness_module@be0a59e0887d
+- code: ostler/ostler/qa/harness_host.py::default_interpreter@be0a59e0887d
+- code: ostler/ostler/qa/harness_host.py::harness_argv@be0a59e0887d
+- code: ostler/ostler/qa/harness_host.py::harness_env@be0a59e0887d
+- code: ostler/ostler/qa/harness_host.py::describe@be0a59e0887d
+- code: ostler/ostler/qa/harness_host.py::capped_argv@be0a59e0887d
 - code: ostler/ostler/qa/run_log.py::read_records@b2d1c68eaf42
 - code: ostler/ostler/qa/run_log.py::run_log_tally@b2d1c68eaf42
 - code: ostler/ostler/qa/run_log.py::passing_log_ref@b2d1c68eaf42
@@ -208,6 +213,7 @@ re-exports the public surface of all of the above (`cmd_run`, `cmd_compile_plan`
 - code: ostler/ostler/qa/runbook.py::stack_runbooks@66911fe4abd5
 - code: ostler/ostler/qa/__init__.py@8ab478d8d2f2
 - rule: in a workspace, a tool is opted in when the docs home or any workspace member lists it under `qa: {tools: [...]}`
+- rule: a scenario whose process passes the memory cap is killed whole with SIGKILL and fails naming the cap, because under systemd's default policy the scope sent the scenario SIGTERM and the run reported only `exit -15`, which a QA turn could not tell from any other termination
 - rule: a gRPC stack bring-up with no `grpcurl` opted in fails at once at the `tools` step and never waits out its boot timeout
 - rule: when the entry address already answers before the launch, readiness waits for the launch to finish instead of trusting the probe: a launch that exits 0 handed its stack off and the serving stack is the run's, one that exits nonzero fails as a dead launch, and one still running at the boot timeout is a foreground server shadowed by the holder, so its process group is reaped and the run fails naming the holder
 - detail: [ostler](../cli.md)

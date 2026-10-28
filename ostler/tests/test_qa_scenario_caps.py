@@ -24,6 +24,7 @@ def test_a_scenario_runs_in_a_scope_capping_memory_and_cpu(tmp_path: Path, monke
     assert capped[:3] == [str(systemd_run), "--user", "--scope"]
     assert f"MemoryMax={harness_host.SCENARIO_MEMORY_MAX}" in capped
     assert "MemorySwapMax=0" in capped
+    assert "OOMPolicy=kill" in capped
     assert f"CPUQuota={harness_host.SCENARIO_CPU_QUOTA}" in capped
     assert capped[-4:] == ["--", "python", "-m", "ostler_qa"]
 
