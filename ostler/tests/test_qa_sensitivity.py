@@ -11,7 +11,9 @@ import pytest
 from ostler import checks, model
 from ostler.qa import sensitivity
 from ostler.qa.harness_host import load_harness_module
-from paddock import loader, paths
+from conftest import staged_books
+from paddock import paths
+from paddock.tasks.stablemate import trial_artifacts
 
 
 def _trial(text: str) -> sensitivity.Trial:
@@ -348,13 +350,15 @@ def test_a_matches_check_with_an_alternation_is_now_witnessed() -> None:
     assert trial.sensitive
 
 
-def test_the_benchmark_corpus_declares_no_check_that_cannot_go_red() -> None:
+def test_the_benchmark_corpus_declares_no_check_that_cannot_go_red(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """The calibration set: every catch the seeded-defect books earned survives the mutations."""
-    root = paths.root()
-    books = [repo for repo in loader.data_repos(root) if (repo / "docs").is_dir()]
+    books = staged_books(tmp_path)
     if not books:
-        pytest.skip(f"no benchmark book under {paths.gold_dir(root)}")
+        pytest.skip(f"no benchmark book under {paths.gold_dir(paths.root())}")
     for book in books:
+        monkeypatch.setenv("STABLEMATE_ARTIFACTS_DIR", str(trial_artifacts(book)))
         outcome = sensitivity.cmd_sensitivity(book)
         assert outcome.ok, f"{book}: {outcome.message}"
 

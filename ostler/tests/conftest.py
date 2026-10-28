@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -31,6 +32,28 @@ def specs_root() -> Path:
 def epics_root() -> Path:
     """The epics root the per-test artifacts folder gives every repo."""
     return Path(os.environ["STABLEMATE_ARTIFACTS_DIR"]).resolve() / "epics"
+
+
+def staged_books(into: Path) -> list[Path]:
+    """Every benchmark book of the corpus, copied under *into* and staged the way a trial stages it, with its epics and specs in the copy's artifacts dir."""
+    from paddock import loader, paths
+    from paddock.tasks.stablemate import upgrade_layout
+
+    root = paths.root()
+    books: list[Path] = []
+    for repo in loader.data_repos(root):
+        if not (repo / "docs").is_dir():
+            continue
+        copy = into / "-".join(repo.relative_to(paths.gold_dir(root)).parts)
+        copy.mkdir(parents=True)
+        for entry in repo.iterdir():
+            if entry.name == "docs":
+                shutil.copytree(entry, copy / "docs", symlinks=True)
+            elif entry.name != ".git":
+                (copy / entry.name).symlink_to(entry)
+        upgrade_layout(copy)
+        books.append(copy)
+    return books
 
 
 def write(path: Path, text: str) -> None:
