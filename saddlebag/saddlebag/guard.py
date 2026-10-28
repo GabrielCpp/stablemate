@@ -34,7 +34,15 @@ FILE_MESSAGE = "`{path}` holds secrets. Store it: `saddlebag secret set NAME < {
 ENVIRONMENT_MESSAGE = "`{word}` would print every secret in the environment. Print one variable by name: `printenv HOME`; list a dotenv's keys: `saddlebag env keys .env`."
 MANAGER_MESSAGE = "`{stage}` prints a secret. Store it instead: `{stage} | saddlebag secret set NAME`, then run the consumer under `saddlebag exec --env VAR=NAME -- <command>`."
 
+PASTED_MESSAGE = "the command carries the value of secret {names}. Refer to it instead: run the consumer under `saddlebag exec --env VAR={name} -- <command>` and use $VAR."
+UNREACHABLE_NOTE = "saddlebag guard: no daemon answers, so the command was not checked for pasted secret values; start one with `saddlebag serve`."
+
 HOOK_SUFFIX = "guard --hook"
+
+_MIN_CANDIDATE = 8
+_TOKEN_SPLIT = re.compile(r"[^\s'\"`;|&()<>]+")
+_TOKEN_PREFIXES = ("sk-", "ghp_", "github_pat_", "hvs.", "AKIA", "xoxa-", "xoxb-", "xoxp-", "xoxr-", "xoxs-", "glpat-", "-----BEGIN")
+_HEREDOC = re.compile(r"(?<!<)<<(?!<)-?\s*(['\"]?)(\w+)\1")
 
 
 class Verdict:
@@ -129,9 +137,43 @@ def _split(command: str) -> list[tuple[str, bool]]:
     return stages
 
 
+def _without_heredocs(command: str) -> str:
+    """*command* with the body of every heredoc removed; the line that opens it stays."""
+    kept: list[str] = []
+    pending: list[str] = []
+    for line in command.split("\n"):
+        if pending:
+            if line.strip() == pending[0]:
+                pending.pop(0)
+            continue
+        kept.append(line)
+        pending.extend(match.group(2) for match in _HEREDOC.finditer(line))
+    return "\n".join(kept)
+
+
+def _single_quoted(text: str) -> list[tuple[int, int]]:
+    spans: list[tuple[int, int]] = []
+    double = False
+    start = -1
+    for i, char in enumerate(text):
+        if start >= 0:
+            if char == "'":
+                spans.append((start, i))
+                start = -1
+        elif char == '"':
+            double = not double
+        elif char == "'" and not double:
+            start = i
+    return spans
+
+
 def _stages(command: str) -> list[tuple[str, bool]]:
+    command = _without_heredocs(command)
     found = _split(command)
+    spans = _single_quoted(command)
     for match in _SUBSHELL.finditer(command):
+        if any(start < match.start() < end for start, end in spans):
+            continue
         found.extend(_stages(match.group(1) or match.group(2) or ""))
     return found
 
@@ -231,6 +273,36 @@ def _is_saddlebag(tokens: list[str], *words: str) -> bool:
     return bool(tokens) and posixpath.basename(tokens[0]) == "saddlebag" and tokens[1 : 1 + len(words)] == list(words)
 
 
+def _candidates(text: str) -> bool:
+    """Whether *text* holds a token that could be a secret value: long enough, and mixed letters and digits or a vendor prefix."""
+    for token in _TOKEN_SPLIT.findall(text):
+        if len(token) < _MIN_CANDIDATE:
+            continue
+        if token.startswith(_TOKEN_PREFIXES):
+            return True
+        if any(char.isalpha() for char in token) and any(char.isdigit() for char in token):
+            return True
+    return False
+
+
+def _ask_custody(text: str) -> tuple[bool, list[str]] | None:
+    """Whether the daemon holds a value that appears in *text*, with the names, or None when no daemon answers."""
+    from saddlebag.sockets import socket_path
+
+    if not socket_path().exists():
+        return None
+    from saddlebag import protocol
+
+    try:
+        reply = protocol.send(protocol.Request("holds", {"text": text}), timeout=0.5)
+    except (protocol.DaemonNotRunning, protocol.ProtocolError, OSError):
+        return None
+    if not reply.ok:
+        return None
+    names = reply.result.get("names")
+    return bool(reply.result.get("held")), [name for name in names if isinstance(name, str)] if isinstance(names, list) else []
+
+
 def _decide_command(command: str) -> Verdict:
     stages = _stages(command)
     parsed = [_strip_wrappers(_tokens(text)) for text, _ in stages]
@@ -248,6 +320,15 @@ def _decide_command(command: str) -> Verdict:
             if piped and index + 1 < len(parsed) and _is_saddlebag(parsed[index + 1][0], "secret", "set"):
                 continue
             return _deny(MANAGER_MESSAGE.format(stage=text))
+    if any(_is_saddlebag(tokens, "secret", "set") for tokens, _ in parsed) or not _candidates(command):
+        return ALLOW
+    answer = _ask_custody(command)
+    if answer is None:
+        sys.stderr.write(UNREACHABLE_NOTE + "\n")
+        return ALLOW
+    held, names = answer
+    if held and names:
+        return _deny(PASTED_MESSAGE.format(names=", ".join(names), name=names[0]))
     return ALLOW
 
 

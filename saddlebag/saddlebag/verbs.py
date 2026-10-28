@@ -266,6 +266,25 @@ class Verbs:
             values[var] = self._value(secret, field)
         return {"values": values}
 
+    def _held_forms(self) -> dict[str, set[str]]:
+        held: dict[str, set[str]] = {}
+        for secret in self._matching(frozenset()):
+            forms = held.setdefault(secret.name, set())
+            for field in VALUE_FIELDS:
+                stored = self.store.value(secret.name, field)
+                if stored:
+                    forms |= redact.forms(stored)
+        return held
+
+    def verb_holds(self, args: dict[str, Any]) -> dict[str, Any]:
+        text = _required(args, "text")
+        names = sorted(
+            name
+            for name, forms in self._held_forms().items()
+            if any(len(form) >= redact.MIN_LENGTH and form in text for form in forms)
+        )
+        return {"held": bool(names), "names": names}
+
     def verb_classify(self, args: dict[str, Any]) -> dict[str, Any]:
         entries = args.get("entries")
         if not isinstance(entries, list):
@@ -277,11 +296,8 @@ class Verbs:
             pairs.append((_required(entry, "key"), _text(entry, "value", required=False) or ""))
         secrets = self._matching(frozenset())
         held: set[str] = set()
-        for secret in secrets:
-            for field in VALUE_FIELDS:
-                stored = self.store.value(secret.name, field)
-                if stored:
-                    held |= redact.forms(stored)
+        for forms in self._held_forms().values():
+            held |= forms
         registered = {secret.var for secret in secrets if secret.var}
         verdicts: list[dict[str, Any]] = []
         for key, value in pairs:

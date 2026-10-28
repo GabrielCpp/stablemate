@@ -81,7 +81,7 @@ def cmd_serve(args: argparse.Namespace) -> int:
     import signal
     import threading
 
-    from saddlebag import custody, daemon, protocol
+    from saddlebag import custody, daemon, protocol, sockets
     from saddlebag.custody import CustodyError
     from saddlebag.keyring_store import open_door
     from saddlebag.store import StoreUnavailable
@@ -103,7 +103,7 @@ def cmd_serve(args: argparse.Namespace) -> int:
         store = VaultStore(addr, token.value)
     except VaultError as exc:
         return _error(str(exc), 1)
-    path = protocol.fit_socket_path(args.socket) if args.socket else protocol.socket_path()
+    path = sockets.fit_socket_path(args.socket) if args.socket else protocol.socket_path()
     stop = threading.Event()
     signal.signal(signal.SIGTERM, lambda *_: stop.set())
     signal.signal(signal.SIGINT, lambda *_: stop.set())

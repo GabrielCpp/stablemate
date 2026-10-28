@@ -2,25 +2,20 @@
 
 from __future__ import annotations
 
-import hashlib
 import json
-import os
 import socket
-import tempfile
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-import platformdirs
+from saddlebag.sockets import socket_path
 
-SOCKET_FILE = "saddlebag.sock"
 REQUEST_LIMIT = 64 * 1024
 REPLY_LIMIT = 4 * 1024 * 1024
 CONNECT_RETRY_S = 0.05
 DEFAULT_TIMEOUT = 120.0
 
-_SUN_PATH_MAX = 100
 _CHUNK = 64 * 1024
 
 
@@ -80,24 +75,6 @@ class Reply:
             raise ProtocolError("'result' must be an object")
         error = payload.get("error")
         return cls(payload["ok"], result, error if isinstance(error, str) else None)
-
-
-def socket_path() -> Path:
-    """Where the daemon listens, shortened when the natural path would not fit a unix socket."""
-    explicit = os.environ.get("SADDLEBAG_SOCKET")
-    if explicit:
-        return fit_socket_path(Path(explicit))
-    runtime = os.environ.get("XDG_RUNTIME_DIR")
-    base = Path(runtime) if runtime else Path(platformdirs.user_runtime_dir("saddlebag"))
-    return fit_socket_path(base / SOCKET_FILE)
-
-
-def fit_socket_path(path: Path) -> Path:
-    """``path`` itself, or a short temp path derived from it when it exceeds sun_path."""
-    if len(str(path)) <= _SUN_PATH_MAX:
-        return path
-    digest = hashlib.sha256(str(path).encode("utf-8")).hexdigest()[:16]
-    return Path(tempfile.gettempdir()) / f"saddlebag-{digest}.sock"
 
 
 def read_message(conn: socket.socket, *, limit: int) -> str:

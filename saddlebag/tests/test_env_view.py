@@ -164,3 +164,28 @@ def test_short_values_match_by_token_shape_only_above_the_floor(running: Running
 
 def test_the_backend_fixture_is_used(backend: FakeBackend) -> None:
     assert backend.items == {}
+
+
+def test_holds_finds_a_stored_value_in_every_written_form_and_never_returns_it(running: Running) -> None:
+    value = "pa ss$w0rd&x"
+    running.vault.create(Secret("s", "admin-user-1", None, None, frozenset(), metadata={"region": "eu-west-1-x"}))
+    running.vault.set_value("s", "password", value)
+    texts = [f"echo {value}", "echo pa%20ss%24w0rd%26x", "echo pa+ss%24w0rd%26x", json.dumps({"p": 'pa ss$w0rd&x"'}), "echo pa ss$$w0rd&x"]
+    for text in texts:
+        reply = running.ask("holds", text=text)
+        assert reply.result == {"held": True, "names": ["s"]}
+        assert value not in reply.to_json()
+
+
+def test_holds_is_false_without_a_value_username_metadata_or_a_short_value(running: Running) -> None:
+    running.vault.create(Secret("s", "admin-user-1", None, None, frozenset(), metadata={"region": "eu-west-1-x"}))
+    running.vault.set_value("s", "password", "pa ss$w0rd&x")
+    running.vault.create(Secret("t", None, None, None, frozenset()))
+    running.vault.set_value("t", "password", "short1")
+    for text in ["echo hello", "echo admin-user-1", "echo eu-west-1-x", "echo short1"]:
+        assert running.ask("holds", text=text).result == {"held": False, "names": []}
+
+
+def test_holds_rejects_a_missing_or_non_string_text(running: Running) -> None:
+    assert not running.ask("holds").ok
+    assert not running.ask("holds", text=3).ok

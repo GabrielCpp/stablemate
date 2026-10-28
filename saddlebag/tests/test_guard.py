@@ -247,3 +247,134 @@ def test_the_install_command_writes_the_user_settings(tmp_path: Path, monkeypatc
 
 def test_the_install_command_needs_a_scope(run: Run) -> None:
     assert run("guard", "install") == 2
+
+
+@pytest.fixture(autouse=True)
+def no_daemon(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    path = tmp_path / "absent.sock"
+    monkeypatch.setenv("SADDLEBAG_SOCKET", str(path))
+    return path
+
+
+def answer_with(monkeypatch: pytest.MonkeyPatch, no_daemon: Path, *, held: bool, names: list[str]) -> list[str]:
+    from saddlebag import protocol
+
+    asked: list[str] = []
+
+    def send(request: protocol.Request, *, timeout: float = 0) -> protocol.Reply:
+        asked.append(request.args["text"])
+        return protocol.Reply(True, {"held": held, "names": names})
+
+    no_daemon.touch()
+    monkeypatch.setattr(protocol, "send", send)
+    return asked
+
+
+def test_a_command_without_a_candidate_token_never_asks_custody(monkeypatch: pytest.MonkeyPatch) -> None:
+    from saddlebag import protocol
+
+    def refuse(*args: object, **kwargs: object) -> None:
+        raise AssertionError("custody was asked")
+
+    monkeypatch.setattr(protocol, "send", refuse)
+    assert guard.decide(bash("echo hello world; ls -la src 12345 abcdefgh")).allowed
+
+
+def test_a_held_value_in_the_command_is_denied(monkeypatch: pytest.MonkeyPatch, no_daemon: Path) -> None:
+    asked = answer_with(monkeypatch, no_daemon, held=True, names=["qa_admin", "other"])
+    verdict = guard.decide(bash("echo correct-horse-9f3k2m"))
+    assert not verdict.allowed
+    assert verdict.reason == guard.PASTED_MESSAGE.format(names="qa_admin, other", name="qa_admin")
+    assert asked == ["echo correct-horse-9f3k2m"]
+
+
+def test_a_candidate_that_custody_does_not_hold_is_allowed(monkeypatch: pytest.MonkeyPatch, no_daemon: Path) -> None:
+    answer_with(monkeypatch, no_daemon, held=False, names=[])
+    assert guard.decide(bash("echo correct-horse-9f3k2m")).allowed
+
+
+def test_a_held_value_in_a_heredoc_body_is_denied(monkeypatch: pytest.MonkeyPatch, no_daemon: Path) -> None:
+    answer_with(monkeypatch, no_daemon, held=True, names=["qa_admin"])
+    assert not guard.decide(bash("cat <<EOF\ncorrect-horse-9f3k2m\nEOF")).allowed
+
+
+def test_no_daemon_allows_and_says_the_command_was_not_checked(capsys: pytest.CaptureFixture[str]) -> None:
+    assert guard.decide(bash("echo correct-horse-9f3k2m")).allowed
+    assert guard.UNREACHABLE_NOTE in capsys.readouterr().err
+
+
+def test_a_refusing_daemon_allows(monkeypatch: pytest.MonkeyPatch, no_daemon: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    from saddlebag import protocol
+
+    def down(request: protocol.Request, *, timeout: float = 0) -> protocol.Reply:
+        raise protocol.DaemonNotRunning("down")
+
+    no_daemon.touch()
+    monkeypatch.setattr(protocol, "send", down)
+    assert guard.decide(bash("echo correct-horse-9f3k2m")).allowed
+    assert guard.UNREACHABLE_NOTE in capsys.readouterr().err
+
+
+def test_intake_through_secret_set_is_not_checked(monkeypatch: pytest.MonkeyPatch, no_daemon: Path) -> None:
+    asked = answer_with(monkeypatch, no_daemon, held=True, names=["x"])
+    assert guard.decide(bash("printf 'hunter2hunter2' | saddlebag secret set x")).allowed
+    assert asked == []
+
+
+def test_exec_is_not_checked(monkeypatch: pytest.MonkeyPatch, no_daemon: Path) -> None:
+    asked = answer_with(monkeypatch, no_daemon, held=True, names=["x"])
+    assert guard.decide(bash("saddlebag exec --env A=x -- echo 9f3k2m9f3k2m")).allowed
+    assert asked == []
+
+
+@pytest.mark.parametrize(
+    "text",
+    ["abcdefg1", "sk-abcdefgh", "ghp_abcdefgh", "xoxb-abcdefg", "glpat-abcdefg", "echo 'abc' 'defghijk1'"],
+)
+def test_candidate_tokens(text: str) -> None:
+    assert guard._candidates(text)
+
+
+@pytest.mark.parametrize("text", ["abcdefgh", "12345678", "abc123", "ls -la src/long-name", "echo (hello) $(world)"])
+def test_non_candidate_tokens(text: str) -> None:
+    assert not guard._candidates(text)
+
+
+HEREDOC_FIXTURE = """python3 - <<'EOF'
+t = t.replace("| `set` reads its value |", "...")
+EOF"""
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        HEREDOC_FIXTURE,
+        "cat <<EOF\nset\nEOF",
+        "cat <<-EOF\n\tset\n\tEOF",
+        "cat <<A <<B\nset\nA\nprintenv\nB",
+        "echo '`set`'",
+        "cat <<< `echo hi`",
+    ],
+)
+def test_heredoc_bodies_and_single_quoted_backticks_are_not_commands(command: str) -> None:
+    assert guard.decide(bash(command)).allowed
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "cat <<EOF\nbody\nEOF\nprintenv",
+        'echo "`set`"',
+        "echo 'a' `set`",
+        "cat <<EOF >out\nx\nEOF\nset",
+    ],
+)
+def test_a_real_stage_after_a_heredoc_or_in_double_quotes_is_still_denied(command: str) -> None:
+    assert not guard.decide(bash(command)).allowed
+
+
+def test_the_pasted_value_redirect_passes_the_guard() -> None:
+    found = alternatives(guard.PASTED_MESSAGE.format(names="qa_admin", name="qa_admin"))
+    assert found
+    assert all(guard.decide(bash(concrete(alt))).allowed for alt in found)
+    assert guard.decide(bash("saddlebag exec --env VAR=qa_admin -- true")).allowed
