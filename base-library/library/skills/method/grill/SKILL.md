@@ -66,19 +66,17 @@ is lost to the next reader. A file is not.
 - **A settled decision** goes where the repo keeps its rules. Where the repo keeps a
   book, that is a `rule:` bullet on the concept that covers it, or a new concept when
   none does.
-- **A rejected alternative** becomes `docs/decisions/<short-kebab-slug>.md` under the
-  repo's docs root, in the shape the coder's resolver writes and the dev scope reads
-  before it asks. The reader is the next agent about to propose the same path.
+- **A rejected alternative** becomes a decision. Run
+  `ostler decisions add <short-kebab-slug> --summary "<the question, in one line>"`. It files
+  `decision.md` in a folder named by the slug under the repo's docs home, prints its path, and
+  refuses a slug that is already taken. The coder's resolver files the same way, and the dev scope
+  reads it before it asks. The reader is the next agent about to propose the same path. Fill the
+  four headings in the printed file:
 
-  ```markdown
-  # <the question, as a question>
-
-  **Decided:** <the path taken, and the alternative it rejects, in one or two sentences>
-
-  **Grounded in:** <the file and line that decided it, or my answer to Q<n> of this grill>
-
-  **Context:** <the plan this grill stress-tested, and what was at stake>
-  ```
+  - `## Question`: the question, as a question.
+  - `## Decided`: the path taken, and the alternative it rejects, in one or two sentences.
+  - `## Grounded in`: the file and line that decided it, or my answer to Q<n> of this grill.
+  - `## Context`: the plan this grill stress-tested, and what was at stake.
 
 - **An unresolved objection** is work nobody has scheduled. File it on the Register:
 
