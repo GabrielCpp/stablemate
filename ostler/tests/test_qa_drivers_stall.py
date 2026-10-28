@@ -41,7 +41,7 @@ def _execute(repo: Path, scenario_id: str, timeout: float) -> tuple[list[dict], 
     spec = repo / "docs/specs/story-1"
     spec.mkdir(parents=True, exist_ok=True)
     session = QaSession.create(spec, "qa-stall-1", "story-1", {})
-    launcher = LocalLauncher(kill_grace=1.0)
+    launcher = LocalLauncher(kill_grace=1.0, session_store=repo / ".maestro" / "sessions")
     driver = PythonDriver(session, "api", {"driver": "python", "module": str(module)}, root=repo, variables={}, launcher=launcher)
     context = {"root": str(repo), "spec_dir": str(spec), "qa_dir": str(session.qa_dir)}
     started = time.monotonic()

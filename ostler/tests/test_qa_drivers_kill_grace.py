@@ -41,7 +41,7 @@ def _run_past_timeout(repo: Path, scenario_id: str, probe: Path, grace: float) -
     spec = repo / "docs/specs/story-1"
     spec.mkdir(parents=True, exist_ok=True)
     session = QaSession.create(spec, "qa-kill-1", "story-1", {})
-    launcher = LocalLauncher(kill_grace=grace)
+    launcher = LocalLauncher(kill_grace=grace, session_store=repo / ".maestro" / "sessions")
     driver = PythonDriver(session, "api", {"driver": "python", "module": str(module)}, root=repo, variables={}, launcher=launcher)
     context = {"root": str(repo), "spec_dir": str(spec), "qa_dir": str(session.qa_dir)}
     os.environ["KILL_PROBE"] = str(probe)
