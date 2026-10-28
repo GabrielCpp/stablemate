@@ -15,9 +15,9 @@ invent epic paths or duplicate the graph's story semantics.
 
 - code: `workflows/src/workhorse_workflows/author/shared/nodes/story_mode.py::seed_story` @ec2020d13cf3
 - code: `workflows/src/workhorse_workflows/author/story_author/nodes/mockup.py::check_mockup_needed` @16f77856eb81
-- code: `workflows/src/workhorse_workflows/author/shared/nodes/stories.py::validate_story` @61ad4510b612
-- code: `workflows/src/workhorse_workflows/author/shared/nodes/stories.py::check_story_grounding` @61ad4510b612
-- code: `workflows/src/workhorse_workflows/author/shared/nodes/stories.py::record_attempt` @61ad4510b612
+- code: `workflows/src/workhorse_workflows/author/shared/nodes/stories.py::validate_story` @87bbe358d335
+- code: `workflows/src/workhorse_workflows/author/shared/nodes/stories.py::check_story_grounding` @87bbe358d335
+- code: `workflows/src/workhorse_workflows/author/shared/nodes/stories.py::record_attempt` @87bbe358d335
 - code: `workflows/src/workhorse_workflows/author/story_author/nodes/feedback.py::check_story_feedback` @8125ecb8d1d2
 - code: `workflows/src/workhorse_workflows/author/shared/nodes/story_mode.py::promote_record` @ec2020d13cf3
 - detail: [Author main package](author-main-package.md)
@@ -92,7 +92,7 @@ invent epic paths or duplicate the graph's story semantics.
 - does: returns `ok` only when all deterministic checks pass
 - does: returns one newline-separated error per finding
 - verify: json_path(path="$.errors", matches=".+\\n.+")
-- code: `workflows/src/workhorse_workflows/author/shared/nodes/stories.py::validate_story` @61ad4510b612
+- code: `workflows/src/workhorse_workflows/author/shared/nodes/stories.py::validate_story` @87bbe358d335
 - tests: `workflows/tests/author/test_story_contract.py::test_technical_notes_require_a_grounded_code_pointer`
 
 ### check_story_grounding
@@ -110,7 +110,7 @@ invent epic paths or duplicate the graph's story semantics.
 - does: does not require UI citations while the Ostler graph has no UI nodes
 - verify: absent(subject="UI citation requirement on an empty UI graph")
 - does: returns `ok` with newline-separated findings only when seed scope and the armed UI citation contract hold
-- code: `workflows/src/workhorse_workflows/author/shared/nodes/stories.py::check_story_grounding` @61ad4510b612
+- code: `workflows/src/workhorse_workflows/author/shared/nodes/stories.py::check_story_grounding` @87bbe358d335
 - tests: `workflows/tests/author/test_workflow.py::test_a_story_that_is_not_a_contract_is_reworked_against_the_gate`
 
 ### record_attempt
@@ -124,7 +124,7 @@ invent epic paths or duplicate the graph's story semantics.
 - does: treats an existing matching attempt heading as an idempotent no-op
 - verify: count(subject="duplicate attempt headings", equals=1)
 - does: preserves readable prior content when the ledger cannot be written
-- code: `workflows/src/workhorse_workflows/author/shared/nodes/stories.py::record_attempt` @61ad4510b612
+- code: `workflows/src/workhorse_workflows/author/shared/nodes/stories.py::record_attempt` @87bbe358d335
 - tests: `workflows/tests/author/test_workflow.py::test_a_story_that_is_not_a_contract_is_reworked_against_the_gate`
 
 ### check_story_feedback

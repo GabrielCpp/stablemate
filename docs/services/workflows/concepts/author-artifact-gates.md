@@ -6,12 +6,12 @@ title: Author artifact gates
 # Author artifact gates
 
 The Author main machine uses these nodes as its final artifact boundary. Reconciliation compares
-planning scope with a committed baseline, integrity delegates graph-reference checking to Ostler,
+planning scope with the epics as they stood when the run started, integrity delegates graph-reference checking to Ostler,
 artifact validation confirms that the queue contains runnable authored work, and the commit node
 ships only the paths Author owns. Missing infrastructure is skipped only where the individual gate
 explicitly defines that fail-open behavior; actual findings remain blocking results.
 
-- code: `workflows/src/workhorse_workflows/author/finalize/nodes/artifacts.py::verify_reconcile` @f3adad9536ae
+- code: `workflows/src/workhorse_workflows/author/finalize/nodes/artifacts.py::verify_reconcile` @2caa87fcc660
 - detail: [author finalize subflow](author-finalize-subflow.md)
 - detail: [author shared schemas](author-shared-schemas.md)
 
@@ -19,31 +19,39 @@ explicitly defines that fail-open behavior; actual findings remain blocking resu
 
 ### verify_reconcile
 
-Compares the current epic seed and story identifiers with the committed baseline so a rerun cannot
-silently remove previously committed planning scope.
+Compares the current epic seed and story identifiers with the [epic baseline](author-epic-baseline.md)
+the run recorded when it started, so a run cannot silently remove planning scope an earlier run wrote.
+The epics sit untracked in the artifacts dir, so the baseline travels with the run and git is never
+asked.
 
-- sig: `verify_reconcile(logger: logging.Logger, ref: str = "HEAD", repo_dir: str = "") -> VerifyReport`
-- does: trims the baseline reference, resolves the launch repository root, and locates the configured epics directory
+- sig: `verify_reconcile(logger: logging.Logger, baseline: str = "", repo_dir: str = "") -> VerifyReport`
+- does: reads `baseline` as the JSON of an `EpicBaseline`, and treats an empty string as a baseline with no epics
+- verify: count(subject="reconciliation baseline reads", equals=1)
+- does: skips when the baseline holds no epic, which is the case for a run that began with no epics and for a finalize started on its own
+- verify: count(subject="baseline-free reconciliation skips", equals=1)
+- does: resolves the launch repository root and locates the configured epics directory
 - verify: count(subject="reconciliation repository resolutions", equals=1)
-- does: skips when the baseline cannot be read and the repository is not a git repository
-- verify: count(subject="non-git reconciliation skips", equals=1)
 - does: skips when the epics directory does not exist
 - verify: count(subject="missing epics directory skips", equals=1)
-- does: skips when no epic has a committed baseline
-- verify: count(subject="baseline-free reconciliation skips", equals=1)
-- does: reports every committed seed subsection absent from the current epic as a dropped seed
+- does: skips when no epic of the baseline is still on disk
+- verify: count(subject="vanished baseline epic skips", equals=1)
+- does: reports every baseline seed subsection absent from the current epic as a dropped seed
 - verify: count(subject="dropped seed findings", equals=1)
 - does: reports every committed story subsection absent from the current epic as a dropped story
 - verify: count(subject="dropped story findings", equals=1)
-- does: returns a holding report when all baseline epic seed and story identifiers remain present
+- does: returns a holding report, whose summary reads `reconcile vs run start`, when all baseline epic seed and story identifiers remain present
 - verify: count(subject="reconciliation holding reports", equals=1)
-- does: returns an error report when any committed seed or story identifier was removed
+- does: returns an error report when any baseline seed or story identifier was removed
 - verify: count(subject="reconciliation drop reports", equals=1)
 - returns: returns `VerifyReport` with `skipped`, `holds`, `errors`, and a reconciliation summary
 - verify: count(subject="reconciliation reports", equals=1)
-- code: `workflows/src/workhorse_workflows/author/finalize/nodes/artifacts.py::verify_reconcile` @f3adad9536ae
+- code: `workflows/src/workhorse_workflows/author/finalize/nodes/artifacts.py::verify_reconcile` @2caa87fcc660
 - detail: [Author backlogged fixture contexts](author-backlogged-fixture-context.md)
+- detail: [Author epic baseline](author-epic-baseline.md)
 - tests: `workflows/tests/author/finalize/test_flow.py::test_finalizes_with_one_commit_on_the_current_branch`
+- tests: `workflows/tests/author/finalize/test_reconcile.py::test_a_run_that_drops_a_story_it_started_with_fails_the_gate`
+- tests: `workflows/tests/author/finalize/test_reconcile.py::test_a_run_that_keeps_its_scope_holds`
+- tests: `workflows/tests/author/finalize/test_reconcile.py::test_a_run_that_started_with_no_epics_skips`
 
 ### verify_integrity
 
@@ -92,7 +100,7 @@ one selectable story.
 - verify: count(subject="empty selectable artifact queues", equals=1)
 - returns: returns `Defects` with `ok` true only when the queue has no errors and at least one selectable story
 - verify: count(subject="validated artifact defect reports", equals=1)
-- code: `workflows/src/workhorse_workflows/author/finalize/nodes/artifacts.py::validate_artifacts` @f3adad9536ae
+- code: `workflows/src/workhorse_workflows/author/finalize/nodes/artifacts.py::validate_artifacts` @2caa87fcc660
 - tests: `workflows/tests/author/test_workflow.py::test_author_nodes_use_milestones_when_todo_is_absent`
 
 ### commit_author

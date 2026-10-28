@@ -6,7 +6,7 @@ title: Author finalize subflow
 # Author finalize subflow
 
 `Finalize` validates and delivers an already-authored milestone. It never performs another authoring
-agent turn: it resolves the epic-mode configuration, checks for silently dropped planning scope,
+agent turn: it resolves the epic-mode configuration, checks the epics against the baseline it was handed for silently dropped planning scope,
 checks whole-graph integrity, checks that the milestone lists epics, validates the produced
 artifacts again, marks the milestone authored, and commits the authored documents on the current
 branch. The gate implementations are described in the [author artifact gates](author-artifact-gates.md)
@@ -16,7 +16,7 @@ terminal artifact or milestone failure commits an incomplete marker and raises i
 success. A passing or explicitly skipped gate is the only path to the next gate. The module exports
 the integrity resolution limit and an unbounded timeout used only for resolver turns.
 
-- code: `workflows/src/workhorse_workflows/author/finalize/flow.py::Finalize` @dc589cfbd2c4
+- code: `workflows/src/workhorse_workflows/author/finalize/flow.py::Finalize` @00fdb936a6a1
 - code: `workflows/src/workhorse_workflows/author/finalize/nodes/_blueprint.py::blueprint` @840c4e312d81
 - tests: `workflows/tests/author/finalize/test_flow.py::test_finalizes_with_one_commit_on_the_current_branch`
 - tests: `workflows/tests/author/finalize/test_flow.py::test_terminal_validation_commits_incomplete_then_fails`
@@ -31,7 +31,15 @@ the integrity resolution limit and an unbounded timeout used only for resolver t
 - semantics: selects automatic resolution or direct human operator gates
 - verify: json_path(path="$.operator_mode", matches="^(auto|human)$")
 - semantics: accepts only `auto` and `human`
-- code: `workflows/src/workhorse_workflows/author/finalize/flow.py::Finalize.operator_mode` @dc589cfbd2c4
+- code: `workflows/src/workhorse_workflows/author/finalize/flow.py::Finalize.operator_mode` @00fdb936a6a1
+
+### baseline
+- type: `str`
+- default: `""`
+- required: false
+- semantics: carries the JSON of the [epic baseline](author-epic-baseline.md) the parent run recorded at its start
+- semantics: an empty value means no epic existed at run start, so the reconcile gate skips
+- code: `workflows/src/workhorse_workflows/author/finalize/flow.py::Finalize.baseline` @00fdb936a6a1 @0
 
 ### MAX_INTEGRITY_RESOLVES
 - type: `int`
@@ -39,7 +47,7 @@ the integrity resolution limit and an unbounded timeout used only for resolver t
 - required: true
 - semantics: maximum automatic integrity and milestone resolver passes before awaiting an operator
 - verify: json_path(path="$.max_integrity_resolves", equals=2)
-- code: `workflows/src/workhorse_workflows/author/finalize/flow.py::MAX_INTEGRITY_RESOLVES` @dc589cfbd2c4
+- code: `workflows/src/workhorse_workflows/author/finalize/flow.py::MAX_INTEGRITY_RESOLVES` @00fdb936a6a1
 
 ### UNBOUNDED
 - type: `float`
@@ -47,7 +55,7 @@ the integrity resolution limit and an unbounded timeout used only for resolver t
 - required: true
 - semantics: timeout passed to resolver agent turns so the flow cap does not truncate diagnosis
 - verify: json_path(path="$.resolver_timeout", equals="inf")
-- code: `workflows/src/workhorse_workflows/author/finalize/flow.py::UNBOUNDED` @dc589cfbd2c4
+- code: `workflows/src/workhorse_workflows/author/finalize/flow.py::UNBOUNDED` @00fdb936a6a1
 
 ## Methods
 
@@ -59,7 +67,7 @@ the integrity resolution limit and an unbounded timeout used only for resolver t
 - verify: count(subject="finalize run contexts", equals=1)
 - returns: returns the resolved [run context](../formats/author-config.md)
 - verify: json_path(path="$.repo_root", equals="docs/stories")
-- code: `workflows/src/workhorse_workflows/author/finalize/flow.py::Finalize.setup` @dc589cfbd2c4
+- code: `workflows/src/workhorse_workflows/author/finalize/flow.py::Finalize.setup` @00fdb936a6a1
 
 ### labels
 - sig: `labels() -> dict[str, str]`
@@ -69,7 +77,7 @@ the integrity resolution limit and an unbounded timeout used only for resolver t
 - verify: json_path(path="$.progress", equals="validating and delivering authored milestone")
 - returns: returns the work identifier and progress labels
 - verify: count(subject="finalize label mappings", equals=1)
-- code: `workflows/src/workhorse_workflows/author/finalize/flow.py::Finalize.labels` @dc589cfbd2c4
+- code: `workflows/src/workhorse_workflows/author/finalize/flow.py::Finalize.labels` @00fdb936a6a1
 
 ### _context
 - sig: `_context() -> str`
@@ -77,7 +85,7 @@ the integrity resolution limit and an unbounded timeout used only for resolver t
 - verify: json_path(path="$.context_path", equals="docs/stories/acme-story/story.md")
 - returns: returns the path used by finalization's operator gates
 - verify: count(subject="finalize operator context paths", equals=1)
-- code: `workflows/src/workhorse_workflows/author/finalize/flow.py::Finalize._context` @dc589cfbd2c4
+- code: `workflows/src/workhorse_workflows/author/finalize/flow.py::Finalize._context` @00fdb936a6a1
 
 ### _context_path
 - sig: `_context_path() -> Path`
@@ -85,7 +93,7 @@ the integrity resolution limit and an unbounded timeout used only for resolver t
 - verify: json_path(path="$.context_path", equals="docs/stories/acme-story/story.md")
 - returns: returns the absolute operator context file path
 - verify: count(subject="absolute finalize context paths", equals=1)
-- code: `workflows/src/workhorse_workflows/author/finalize/flow.py::Finalize._context_path` @dc589cfbd2c4
+- code: `workflows/src/workhorse_workflows/author/finalize/flow.py::Finalize._context_path` @00fdb936a6a1
 
 ### _resolve_integrity
 - sig: `_resolve_integrity(notes: str) -> OperatorResolution`
@@ -97,7 +105,7 @@ the integrity resolution limit and an unbounded timeout used only for resolver t
 - verify: count(subject="unbounded finalize resolver turns", equals=1)
 - returns: returns the resolver's operator resolution
 - verify: json_path(path="$.decision", equals="answered")
-- code: `workflows/src/workhorse_workflows/author/finalize/flow.py::Finalize._resolve_integrity` @dc589cfbd2c4
+- code: `workflows/src/workhorse_workflows/author/finalize/flow.py::Finalize._resolve_integrity` @00fdb936a6a1
 - detail: [author resolve-integrity prompt](../formats/author-resolve-integrity-prompt.md)
 
 ### _fail_validation
@@ -110,7 +118,7 @@ the integrity resolution limit and an unbounded timeout used only for resolver t
 - verify: count(subject="workflow failures after incomplete finalize commits", equals=1)
 - returns: returns no value when validation does not fail before the commit call
 - verify: count(subject="successful _fail_validation returns", equals=0)
-- code: `workflows/src/workhorse_workflows/author/finalize/flow.py::Finalize._fail_validation` @dc589cfbd2c4
+- code: `workflows/src/workhorse_workflows/author/finalize/flow.py::Finalize._fail_validation` @00fdb936a6a1
 
 ### start
 - sig: `start() -> Continue`
@@ -122,11 +130,11 @@ the integrity resolution limit and an unbounded timeout used only for resolver t
 - verify: count(subject="invalid finalize mode workflow failures", equals=1)
 - returns: returns a continuation targeting reconciliation
 - verify: json_path(path="$.next", equals="reconcile")
-- code: `workflows/src/workhorse_workflows/author/finalize/flow.py::Finalize.start` @dc589cfbd2c4
+- code: `workflows/src/workhorse_workflows/author/finalize/flow.py::Finalize.start` @00fdb936a6a1
 
 ### reconcile
 - sig: `reconcile() -> Continue | Await`
-- does: runs the reconciliation gate against the committed epic baseline
+- does: runs the reconciliation gate against the `baseline` field
 - verify: count(subject="finalize reconciliation checks", equals=1)
 - does: proceeds to integrity when reconciliation holds or is skipped
 - verify: count(subject="reconciliation-to-integrity transitions", equals=1)
@@ -136,7 +144,7 @@ the integrity resolution limit and an unbounded timeout used only for resolver t
 - verify: json_path(path="$.await", matches="reconciliation")
 - returns: returns a continuation or operator await state for the next reconciliation decision
 - verify: count(subject="reconciliation gate outcomes", equals=1)
-- code: `workflows/src/workhorse_workflows/author/finalize/flow.py::Finalize.reconcile` @dc589cfbd2c4
+- code: `workflows/src/workhorse_workflows/author/finalize/flow.py::Finalize.reconcile` @00fdb936a6a1
 
 ### integrity
 - sig: `integrity(resolves: int = 0) -> Continue | Await`
@@ -152,7 +160,7 @@ the integrity resolution limit and an unbounded timeout used only for resolver t
 - verify: count(subject="automatic integrity resolutions", equals=1)
 - returns: returns a continuation or operator await state for the next integrity decision
 - verify: count(subject="integrity gate outcomes", equals=1)
-- code: `workflows/src/workhorse_workflows/author/finalize/flow.py::Finalize.integrity` @dc589cfbd2c4
+- code: `workflows/src/workhorse_workflows/author/finalize/flow.py::Finalize.integrity` @00fdb936a6a1
 
 ### resolve_graph
 - sig: `resolve_graph(notes: str, resolves: int = 0) -> Continue | Await`
@@ -167,7 +175,7 @@ the integrity resolution limit and an unbounded timeout used only for resolver t
 - raises: an escalated resolver result becomes an operator await
 - returns: returns an integrity continuation or an operator await state
 - verify: count(subject="graph resolution outcomes", equals=1)
-- code: `workflows/src/workhorse_workflows/author/finalize/flow.py::Finalize.resolve_graph` @dc589cfbd2c4
+- code: `workflows/src/workhorse_workflows/author/finalize/flow.py::Finalize.resolve_graph` @00fdb936a6a1
 - detail: [author resolve-integrity prompt](../formats/author-resolve-integrity-prompt.md)
 
 ### milestone_epics
@@ -182,7 +190,7 @@ the integrity resolution limit and an unbounded timeout used only for resolver t
 - verify: count(subject="automatic milestone resolutions", equals=1)
 - returns: returns a continuation or operator await state for the next milestone decision
 - verify: count(subject="milestone gate outcomes", equals=1)
-- code: `workflows/src/workhorse_workflows/author/finalize/flow.py::Finalize.milestone_epics` @dc589cfbd2c4
+- code: `workflows/src/workhorse_workflows/author/finalize/flow.py::Finalize.milestone_epics` @00fdb936a6a1
 
 ### resolve_milestone
 - sig: `resolve_milestone(notes: str, resolves: int = 0) -> Continue | Await`
@@ -197,7 +205,7 @@ the integrity resolution limit and an unbounded timeout used only for resolver t
 - raises: an escalated resolver result becomes an operator await
 - returns: returns a milestone continuation or an operator await state
 - verify: count(subject="milestone resolution outcomes", equals=1)
-- code: `workflows/src/workhorse_workflows/author/finalize/flow.py::Finalize.resolve_milestone` @dc589cfbd2c4
+- code: `workflows/src/workhorse_workflows/author/finalize/flow.py::Finalize.resolve_milestone` @00fdb936a6a1
 - detail: [author resolve-integrity prompt](../formats/author-resolve-integrity-prompt.md)
 
 ### close
@@ -220,7 +228,7 @@ the integrity resolution limit and an unbounded timeout used only for resolver t
 - verify: count(subject="finalize pull requests", equals=0)
 - returns: returns Done with the commit result
 - verify: json_path(path="$.committed", equals=True)
-- code: `workflows/src/workhorse_workflows/author/finalize/flow.py::Finalize.close` @dc589cfbd2c4
+- code: `workflows/src/workhorse_workflows/author/finalize/flow.py::Finalize.close` @00fdb936a6a1
 
 ## Nodes
 
@@ -235,14 +243,14 @@ The returned `Config` carries the resolved repository root, the repo-relative mi
 - detail: [author load_config documentation roles](author-load-config-documentation-roles.md)
 
 ### verify_reconcile
-- sig: `verify_reconcile(logger: logging.Logger, ref: str = "HEAD", repo_dir: str = "") -> VerifyReport`
-- does: measure scope this run silently dropped against the last committed epics
+- sig: `verify_reconcile(logger: logging.Logger, baseline: str = "", repo_dir: str = "") -> VerifyReport`
+- does: measure scope this run silently dropped against the epics as they stood when the run started
 - verify: count(subject="finalize reconciliation checks", equals=1)
 - does: detect dropped seed items and dropped stories that were in the baseline
 - verify: count(subject="dropped scope detections", equals=1)
-- consistency: reconcile-report-status — the returned VerifyReport sets holds=True when no scope was dropped, skipped=True when there is no git repository, no epics directory, or no epic with a committed baseline, and errors carrying one dropped-seed or dropped-story line per silent removal otherwise
+- consistency: reconcile-report-status — the returned VerifyReport sets holds=True when no scope was dropped, skipped=True when the baseline holds no epic, there is no epics directory, or no baseline epic is still on disk, and errors carrying one dropped-seed or dropped-story line per silent removal otherwise
 - verify: count(subject="reconciliation reports", equals=1)
-- code: `workflows/src/workhorse_workflows/author/finalize/nodes/artifacts.py::verify_reconcile` @f3adad9536ae
+- code: `workflows/src/workhorse_workflows/author/finalize/nodes/artifacts.py::verify_reconcile` @2caa87fcc660
 
 ### verify_integrity
 - sig: `verify_integrity(logger: logging.Logger, epic: str = "", repo_dir: str = "") -> VerifyReport`
@@ -274,7 +282,7 @@ The returned `Config` carries the resolved repository root, the repo-relative mi
 - verify: count(subject="selectable story checks", equals=1)
 - consistency: validate-artifacts-return — the returned Defects carries one error when any queued epic is unloadable, has no stories, or has an unauthored story.md
 - verify: count(subject="artifact validation results", equals=1)
-- code: `workflows/src/workhorse_workflows/author/finalize/nodes/artifacts.py::validate_artifacts` @f3adad9536ae
+- code: `workflows/src/workhorse_workflows/author/finalize/nodes/artifacts.py::validate_artifacts` @2caa87fcc660
 
 ### mark_milestone_authored
 

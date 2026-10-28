@@ -71,18 +71,20 @@ digraph author {
       style="rounded,filled"; fillcolor=lightblue; color=steelblue;
       node [style="filled", fontsize=10];
       f0__start__0 [label="contract_digest\nThe sha256 of the milestone body, which the run never writes, so a change is an operator's edit.", shape=box, fillcolor=white];
-      f0__start__1 [label="seed_story\nRegister ONE register record as a new story inside an already-existing epic.", shape=box, fillcolor=white];
-      f0__start__2 [label="derive_story_services\nA story's services stay inside the sorted union of the services of the seeds it covers.", shape=box, fillcolor=white];
-      f0__start__3 [label="handoff → story-author", shape=box, fillcolor=plum];
-      f0__start__4 [label="handoff → surveyor", shape=box, fillcolor=plum];
-      f0__start__5 [label="handoff → parity-surveyor", shape=box, fillcolor=plum];
-      f0__start__6 [label="promote_record\nClose the record a story was authored from as promoted, naming the story and its epic.", shape=box, fillcolor=white];
+      f0__start__1 [label="snapshot_epics\nEach epic's seed ids and story slugs as the run found them, for the reconcile gate to measure drops against.", shape=box, fillcolor=white];
+      f0__start__2 [label="seed_story\nRegister ONE register record as a new story inside an already-existing epic.", shape=box, fillcolor=white];
+      f0__start__3 [label="derive_story_services\nA story's services stay inside the sorted union of the services of the seeds it covers.", shape=box, fillcolor=white];
+      f0__start__4 [label="handoff → story-author", shape=box, fillcolor=plum];
+      f0__start__5 [label="handoff → surveyor", shape=box, fillcolor=plum];
+      f0__start__6 [label="handoff → parity-surveyor", shape=box, fillcolor=plum];
+      f0__start__7 [label="promote_record\nClose the record a story was authored from as promoted, naming the story and its epic.", shape=box, fillcolor=white];
       f0__start__0 -> f0__start__1 [color=gray40, arrowsize=0.6];
       f0__start__1 -> f0__start__2 [color=gray40, arrowsize=0.6];
       f0__start__2 -> f0__start__3 [color=gray40, arrowsize=0.6];
       f0__start__3 -> f0__start__4 [color=gray40, arrowsize=0.6];
       f0__start__4 -> f0__start__5 [color=gray40, arrowsize=0.6];
       f0__start__5 -> f0__start__6 [color=gray40, arrowsize=0.6];
+      f0__start__6 -> f0__start__7 [color=gray40, arrowsize=0.6];
     }
     f0__stories [label="stories"];
     f0__story_splits [label="story_splits"];
@@ -105,8 +107,8 @@ digraph author {
     f0__split_epic_stories__0 -> f0__story_splits [ltail=cluster_f0__split_epic_stories];
     f0__split_epics__1 -> f0__fill_epics__0 [ltail=cluster_f0__split_epics, lhead=cluster_f0__fill_epics];
     f0__split_epics__1 -> f0__answered_split [label="question", style=dashed, color=darkorange, ltail=cluster_f0__split_epics];
-    f0__start__6 -> f0__split_epics__0 [ltail=cluster_f0__start, lhead=cluster_f0__split_epics];
-    f0__start__6 -> f0____end [color=darkgoldenrod, ltail=cluster_f0__start];
+    f0__start__7 -> f0__split_epics__0 [ltail=cluster_f0__start, lhead=cluster_f0__split_epics];
+    f0__start__7 -> f0____end [color=darkgoldenrod, ltail=cluster_f0__start];
     f0__stories -> f0__stories [label="another chunk"];
     f0__stories -> f0__author_story__0 [label="drain target", lhead=cluster_f0__author_story];
     f0__stories -> f0__complete__0 [lhead=cluster_f0__complete];
@@ -732,7 +734,7 @@ digraph author {
       label="reconcile"; fontsize=12;
       style="rounded,filled"; fillcolor=lightblue; color=steelblue;
       node [style="filled", fontsize=10];
-      f9__reconcile__0 [label="verify_reconcile\nScope this run silently dropped, measured against the last committed epics.", shape=box, fillcolor=white];
+      f9__reconcile__0 [label="verify_reconcile\nScope this run silently dropped, measured against the epics as they stood when it started.", shape=box, fillcolor=white];
     }
     subgraph cluster_f9__resolve_graph {
       label="resolve_graph"; fontsize=12;

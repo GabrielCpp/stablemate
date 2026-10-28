@@ -370,28 +370,28 @@ respective flow packages and consume these results.
 - sig: `Proposal(key: str, area: str, summary: str, body: str = "", pattern: str = "untriaged", symbols: tuple[str, ...] = ())`
 - does: carries one finding to file, where `key` names it to the caller and the other fields become the record's area, listing summary, body, pattern and symbols
 - verify: count(subject="survey filing proposals", equals=1)
-- code: `workflows/src/workhorse_workflows/author/shared/survey/filing.py::Proposal` @3dd2d67b639a
+- code: `workflows/src/workhorse_workflows/author/shared/survey/filing.py::Proposal` @6c7fa13c67e0
 - tests: `workflows/tests/author/surveyor/test_partition.py::test_one_survey_record_per_cluster_is_filed_for_the_surveyed_repository`
 
 ### Filed
 - sig: `Filed(ids: dict[str, str], new: int, errors: str)`
 - does: maps each proposal key to the id of the record that holds it, counts the records this call created, and carries a refusal message
 - verify: count(subject="survey filing outcomes", equals=1)
-- code: `workflows/src/workhorse_workflows/author/shared/survey/filing.py::Filed` @3dd2d67b639a
+- code: `workflows/src/workhorse_workflows/author/shared/survey/filing.py::Filed` @6c7fa13c67e0
 - tests: `workflows/tests/author/surveyor/test_partition.py::test_a_rerun_names_the_record_it_already_holds_in_the_manifest`
 
 ### segment
 - sig: `segment(value: str, fallback: str = "general") -> str`
 - returns: the value as one lowercase kebab segment, or the fallback when nothing is left
 - verify: count(subject="survey record segments", equals=1)
-- code: `workflows/src/workhorse_workflows/author/shared/survey/filing.py::segment` @3dd2d67b639a
+- code: `workflows/src/workhorse_workflows/author/shared/survey/filing.py::segment` @6c7fa13c67e0
 - tests: `workflows/tests/author/parity_surveyor/test_parity.py::test_emit_takes_the_area_as_one_lowercase_kebab_segment`
 
 ### surveyed_repo
 - sig: `surveyed_repo(repo_dir: str) -> str`
 - returns: the name the surveyed repository goes by on the [debt register](../../ostler/concepts/the-debt-register.md)
 - verify: count(subject="surveyed repository names", equals=1)
-- code: `workflows/src/workhorse_workflows/author/shared/survey/filing.py::surveyed_repo` @3dd2d67b639a
+- code: `workflows/src/workhorse_workflows/author/shared/survey/filing.py::surveyed_repo` @6c7fa13c67e0
 - tests: `workflows/tests/author/surveyor/test_partition.py::test_one_survey_record_per_cluster_is_filed_for_the_surveyed_repository`
 
 ### file_proposals
@@ -410,7 +410,7 @@ respective flow packages and consume these results.
 - verify: count(subject="refused survey filings", equals=1)
 - returns: a `Filed` with the id behind each key, the count of new records and any refusal
 - verify: count(subject="survey filing results", equals=1)
-- code: `workflows/src/workhorse_workflows/author/shared/survey/filing.py::file_proposals` @3dd2d67b639a
+- code: `workflows/src/workhorse_workflows/author/shared/survey/filing.py::file_proposals` @6c7fa13c67e0
 - tests: `workflows/tests/author/surveyor/test_partition.py::test_every_record_of_one_emit_lands_in_one_artifacts_commit`
 - tests: `workflows/tests/author/surveyor/test_partition.py::test_a_rerun_with_unchanged_clusters_files_nothing_and_adds_no_commit`
 - tests: `workflows/tests/author/surveyor/test_partition.py::test_a_rerun_leaves_alone_a_record_another_filer_holds`

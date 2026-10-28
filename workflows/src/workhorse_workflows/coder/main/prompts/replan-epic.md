@@ -7,7 +7,7 @@ A story hit an operator block, and the operator chose to replan at the **epic** 
 Triggering story: `{{ story_path }}`
 Spec/artifact directory: `{{ spec_dir }}`
 Epic: `{{ epic }}`
-Epic queue: the ostler-managed OKF index `docs/epics/index.md` (read with `ostler todo list`,
+Epic queue: the ostler-managed epic queue (read with `ostler todo list`,
 edit with `ostler todo add|prune|reorder`).
 
 ## Operator answer (authoritative ground truth)
@@ -15,7 +15,7 @@ Treat the following as fact. It overrides any earlier assumption in the epic or 
 {{ operator_context }}
 
 ## What to do
-1. **Read before writing.** Read the epic doc (`docs/epics/{{ epic }}/epic.md` or equivalent), every story under it, and whichever of this repo's source trees are needed to confirm the *actual* state. Follow this repo's developer workflow skill and the layer skills that auto-load.
+1. **Read before writing.** Read the epic doc (`{{ epic }}/epic.md` under the artifacts dir's `epics/` folder), every story under it, and whichever of this repo's source trees are needed to confirm the *actual* state. Follow this repo's developer workflow skill and the layer skills that auto-load.
 2. **Re-ground to reality.** Correct the epic and the affected stories so they reflect what the operator stated and what actually exists. Remove or rewrite assumptions the answer invalidated (e.g. environments, deploy targets, prerequisites that don't exist). Verify every claim against the real repo/infra state — **never invent** environments, targets, or facts to fill a gap. If something is still genuinely unknown, leave it as an explicit open question rather than fabricating.
 3. **Adjust the queue and stories.** Reorder/prune/add epics in the queue with `ostler todo reorder|prune|add`; adjust this epic's story set in its `epic.md` `## Stories` (add/split via `ostler create story --covers --depends`, drop via `ostler delete story`) and set each story's status with `ostler set-status {{ workhorse_var('story_id') }} "<status>"` (or edit its `## Implementation Status` line) so the corrected set of stories is what gets executed next. The workflow re-reads the queue and the epic's stories immediately after this stage.
 4. **Preserve completed work.** Do NOT delete or revert code, commits, or passing artifacts. Re-grounding changes plans and docs; it must not discard work that is already correct.

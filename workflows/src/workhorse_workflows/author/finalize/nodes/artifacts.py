@@ -4,76 +4,56 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
-from ostler import Ostler, markdown, select
+from ostler import Ostler, select
 from workhorse_workflows.author.finalize.nodes._blueprint import blueprint
 from workhorse_workflows.author.shared.nodes import stubs as _stubs
 from workhorse_workflows.author.shared import paths
+from workhorse_workflows.author.shared.baseline import epic_scopes
 from workhorse_workflows.author.shared.paths import launch_repo_root, survey_repo_root
-from workhorse_workflows.author.shared.schemas.main import Defects, VerifyReport
-from workhorse_workflows.kit import show_file
-
-
-def _subsection_ids(text: str, heading: str) -> set[str]:
-    """The `### <id>` titles directly under the `## <heading>` section of an epic.md."""
-    ids: set[str] = set()
-    for root in markdown.split(text or "").sections:
-        for section in root.walk():
-            if section.level == 2 and section.title.strip().lower() == heading.lower():
-                ids.update(c.title.strip() for c in section.children if c.level == 3)
-    return ids
+from workhorse_workflows.author.shared.schemas.main import Defects, EpicBaseline, VerifyReport
 
 
 @blueprint.node(stub=_stubs.holds)
 def verify_reconcile(
     logger: logging.Logger,
-    ref: str = "HEAD",
+    baseline: str = "",
     repo_dir: str = "",
 ) -> VerifyReport:
-    """Scope this run silently dropped, measured against the last committed epics."""
-    ref = ref.strip() or "HEAD"
+    """Scope this run silently dropped, measured against the epics as they stood when it started."""
+    start = EpicBaseline.model_validate_json(baseline).epics if baseline.strip() else {}
+    if not start:
+        logger.info("no epics at run start — reconciliation gate skipped")
+        return VerifyReport(skipped=True, report="no epics at run start — skipped")
     root = launch_repo_root(repo_dir)
-    epics_rel = paths.epics_dir(root)
-    epics_path = root / epics_rel
-
-    if not epics_path.resolve().is_relative_to(root.resolve()):
-        logger.info("epics at %s are outside the repository and untracked — reconciliation gate skipped", epics_path)
-        return VerifyReport(skipped=True, report=f"epics at {epics_path} are untracked — reconciliation gate skipped")
-    if show_file(root, ref, epics_rel) is None and not (root / ".git").exists():
-        logger.info("not a git repo at %s — reconciliation gate skipped", root)
-        return VerifyReport(skipped=True, report="not a git repo — reconciliation gate skipped")
+    epics_path = root / paths.epics_dir(root)
     if not epics_path.is_dir():
         logger.info("no epics dir at %s — skipped", epics_path)
-        return VerifyReport(skipped=True, report=f"no epics dir at {epics_rel} — skipped")
+        return VerifyReport(skipped=True, report=f"no epics dir at {epics_path} — skipped")
 
     drops: list[str] = []
     checked = 0
-    for epic_md in sorted(epics_path.glob("*/epic.md")):
-        epic = epic_md.parent.name
-        base = show_file(root, ref, str(epic_md.relative_to(root)))
-        if base is None:
+    for epic, (seeds, stories) in epic_scopes(epics_path).items():
+        before = start.get(epic)
+        if before is None:
             continue
         checked += 1
-        now = epic_md.read_text(encoding="utf-8")
-
-        for sid in sorted(_subsection_ids(base, "Seeds") - _subsection_ids(now, "Seeds")):
+        for sid in sorted(set(before.seeds) - seeds):
             drops.append(
                 f"  - [dropped-seed] ({epic}) seed item '{sid}' was committed but is "
                 f"absent now — confirm it was intentionally dropped (record the reason), "
                 f"or restore it"
             )
-        for slug in sorted(_subsection_ids(base, "Stories") - _subsection_ids(now, "Stories")):
+        for slug in sorted(set(before.stories) - stories):
             drops.append(
                 f"  - [dropped-story] ({epic}) story '{slug}' was committed but is "
                 f"absent now — confirm intentional, or restore it"
             )
 
     if checked == 0:
-        logger.info("no epics with a committed baseline at %s — skipped", ref)
-        return VerifyReport(
-            skipped=True, report=f"no epics with a committed baseline at {ref} — skipped"
-        )
+        logger.info("no epic of the run's start is still on disk — skipped")
+        return VerifyReport(skipped=True, report="no epic of the run's start is still on disk — skipped")
 
-    summary = f"reconcile vs {ref}: {checked} epic(s) checked, {len(drops)} silent drop(s)"
+    summary = f"reconcile vs run start: {checked} epic(s) checked, {len(drops)} silent drop(s)"
     logger.info(summary)
     if not drops:
         return VerifyReport(holds=True, report=summary)

@@ -37,6 +37,19 @@ class ContractDigest(AuthorResult):
     digest: str = ""
 
 
+class EpicScope(AuthorResult):
+    """One epic's seed ids and story slugs at a moment of the run."""
+
+    seeds: list[str] = []
+    stories: list[str] = []
+
+
+class EpicBaseline(AuthorResult):
+    """`snapshot_epics` — each epic's scope as the run found it, keyed by epic folder."""
+
+    epics: dict[str, EpicScope] = {}
+
+
 class UnfinishedRow(AuthorResult):
     """One work-list row the run has not finished."""
 
@@ -180,6 +193,8 @@ __all__ = [
     "Config",
     "ContractDigest",
     "Defects",
+    "EpicBaseline",
+    "EpicScope",
     "Feedback",
     "Filled",
     "Ledger",

@@ -17,5 +17,5 @@ no deprecation, replacement, wrapper, or preference among them, so no field supe
 Select the field for the corresponding part of the seeded-story result; readers commonly need
 the story identity together with its origin and outcome rationale.
 
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::SeededStory` @c0c7fb10e846
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::SeededStory` @b91d7be769de
 - rule: select each field for its named part of the seeded-story result; the six fields are complementary and no ranking exists

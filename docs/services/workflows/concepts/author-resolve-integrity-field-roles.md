@@ -23,6 +23,6 @@ The `author-resolve-integrity-prompt` format carries six fields that the finaliz
 
 **`tried`** — concrete investigations and dead ends the agent ruled out, supplied one line per attempt. Omit when nothing was ruled out. This is the diagnosis the agent already paid for; sending it saves a human from re-running every dead end on a retry.
 
-- code: `workflows/src/workhorse_workflows/author/finalize/flow.py::Finalize._resolve_integrity` @dc589cfbd2c4
+- code: `workflows/src/workhorse_workflows/author/finalize/flow.py::Finalize._resolve_integrity` @00fdb936a6a1
 - detail: [author resolve-integrity prompt](../formats/author-resolve-integrity-prompt.md)
 

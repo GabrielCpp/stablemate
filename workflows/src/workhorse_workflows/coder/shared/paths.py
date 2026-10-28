@@ -25,12 +25,12 @@ TOOL_OUTPUT_DIRS = frozenset(
 
 
 def epics_repo_root(repo_dir: str | Path = "") -> Path:
-    """Root marked by `agents.yml` or a `docs/epics/` **directory**, never `.git`; the artifacts repo while a workspace is active."""
+    """*repo_dir* when given, else the nearest ancestor of the cwd holding `agents.yml`, else the cwd; never marked by `.git`. Each answer passes through the docs home, which is the artifacts repo while the repository belongs to a workspace."""
     if repo_dir:
         return docs_home_or(Path(repo_dir).resolve())
     here = Path.cwd().resolve()
     for candidate in [here, *here.parents]:
-        if (candidate / "agents.yml").exists() or (candidate / "docs" / "epics").is_dir():
+        if (candidate / "agents.yml").exists():
             return docs_home_or(candidate)
     return docs_home_or(here)
 

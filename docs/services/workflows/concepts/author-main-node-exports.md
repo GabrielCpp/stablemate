@@ -13,7 +13,7 @@ author machines call live in the shared nodes package instead, and the nodes one
 live with that subflow. The node implementations remain
 documented at their declaring modules rather than being duplicated here.
 
-- code: `workflows/src/workhorse_workflows/author/main/nodes/__init__.py::__all__` @b8bb5d77c75b
+- code: `workflows/src/workhorse_workflows/author/main/nodes/__init__.py::__all__` @717a587e740a
 - tests: `workflows/tests/author/test_workflow.py::test_every_flat_stage_is_directly_registered`
 - detail: [Author main package](author-main-package.md)
 
@@ -22,11 +22,11 @@ documented at their declaring modules rather than being duplicated here.
 ### __all__
 
 The explicit export list is the complete import surface the main flow consumes from this
-package. It includes the blueprint and the nodes that fill the work list and gate completion.
+package. It includes the blueprint and the nodes that fill the work list, record the run-start epic baseline and gate completion.
 
 - type: `list[str]`
-- default: `['answer_below', 'blueprint', 'check_completion', 'check_epic_split', 'contract_digest', 'fill_work']`
+- default: `['blueprint', 'check_completion', 'check_epic_split', 'contract_digest', 'fill_work', 'snapshot_epics']`
 - required: true
 - semantics: importing the package exposes exactly the blueprint and the fill and completion nodes
 - verify: count(subject="author main node exports", equals=6)
-- code: `workflows/src/workhorse_workflows/author/main/nodes/__init__.py::__all__` @b8bb5d77c75b
+- code: `workflows/src/workhorse_workflows/author/main/nodes/__init__.py::__all__` @717a587e740a

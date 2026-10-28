@@ -15,6 +15,6 @@ epic-specific fields. Read those fields when determining the complete checkpoint
 to that subflow; they do not define a second configuration source or change the values declared by
 `Config`.
 
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::Config` @c0c7fb10e846
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::Config` @b91d7be769de
 - rule: use Author workflow configuration for the canonical resolved configuration; use Epic author context only for that configuration as carried into the epic-writing subflow
 - prefers: [author workflow configuration](../formats/author-config.md)

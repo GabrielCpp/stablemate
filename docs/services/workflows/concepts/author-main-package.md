@@ -19,8 +19,8 @@ gates](author-artifact-gates.md). Story registration, validation, feedback, and 
 documented in the [Author main story processing](author-main-story-processing.md) concept. The package's explicit re-export
 surface is recorded in [Author main node exports](author-main-node-exports.md).
 
-- code: `workflows/src/workhorse_workflows/author/main/flow.py` @006e755d5a80
-- code: `workflows/src/workhorse_workflows/author/main/flow.py::Author` @006e755d5a80
+- code: `workflows/src/workhorse_workflows/author/main/flow.py` @41e4cc0d4cfc
+- code: `workflows/src/workhorse_workflows/author/main/flow.py::Author` @41e4cc0d4cfc
 - code: `workflows/src/workhorse_workflows/author/main/__init__.py::__getattr__` @b16a7b4233aa
 - code: `workflows/src/workhorse_workflows/author/main/nodes/_blueprint.py::blueprint` @29102aa5dc01
 - tests: `workflows/tests/author/test_workflow.py::test_every_flat_stage_is_directly_registered`

@@ -17,7 +17,7 @@ The package contains two subject modules, `fill` and `completion`. The blueprint
 is isolated in a submodule to break circular import cycles: subject modules import the blueprint to
 register themselves, so the blueprint cannot import them back.
 
-- code: `workflows/src/workhorse_workflows/author/main/nodes/__init__.py` @b8bb5d77c75b
+- code: `workflows/src/workhorse_workflows/author/main/nodes/__init__.py` @717a587e740a
 - code: `workflows/src/workhorse_workflows/author/main/nodes/_blueprint.py::blueprint` @29102aa5dc01
 - tests: `workflows/tests/author/test_workflow.py::test_every_flat_stage_is_directly_registered`
 - detail: [author main node exports](author-main-node-exports.md)
@@ -40,5 +40,5 @@ The following modules contain decorated nodes:
 - contains: `check_epic_split`, `fill_work`
 
 ### completion
-- semantics: the completion gate's evidence, the milestone contract digest and the unfinished work rows
-- contains: `contract_digest`, `check_completion`
+- semantics: the completion gate's evidence, the milestone contract digest, the run-start epic baseline and the unfinished work rows
+- contains: `contract_digest`, `snapshot_epics`, `check_completion`

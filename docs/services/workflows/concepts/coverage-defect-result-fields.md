@@ -13,5 +13,5 @@ provides the operator- and agent-facing findings when one exists, one per line.
 The schema does not rank either field or permit one to substitute for the other. Consumers first
 use `ok` to decide whether the validator holds, then use `errors` to explain a failing result.
 
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::Defects` @c0c7fb10e846
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::Defects` @b91d7be769de
 - rule: use `ok` for the validator verdict and `errors` for one-per-line diagnostic findings; neither field is an alternative to the other

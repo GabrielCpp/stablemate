@@ -13,6 +13,7 @@ from workhorse_workflows.author.main.nodes import (
     check_epic_split,
     contract_digest,
     fill_work,
+    snapshot_epics,
 )
 from workhorse_workflows.author.shared import paths
 from workhorse_workflows.author.shared.answer import answer_below
@@ -85,6 +86,7 @@ class Author(Workflow):
                 seeded.story_slug,
             ))
         self.call(contract_digest, self.ctx.milestone_path)
+        self.call(snapshot_epics)
         return Continue(None, self.split_epics)
 
     def _context_path(self) -> Path:
@@ -206,7 +208,11 @@ class Author(Workflow):
                 ids=[row.id for row in check.unfinished],
                 question=question,
             )
-        return Done(self.handoff(Finalize, operator_mode=self.operator_mode))
+        return Done(self.handoff(
+            Finalize,
+            operator_mode=self.operator_mode,
+            baseline=self.output(snapshot_epics).model_dump_json(),
+        ))
 
     def requeue(self, ids: list[str], question: str) -> Continue:
         """Reset the unfinished rows with the operator's answer as their note, and run the chain again."""

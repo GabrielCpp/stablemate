@@ -9,12 +9,12 @@ from workhorse_workflows.kit.paths import docs_home_or
 
 
 def survey_repo_root(repo_dir: str | Path = "") -> Path:
-    """The consuming repo, as the surveyor's scripts resolved it; the artifacts repo while a workspace is active."""
+    """*repo_dir* when given, else the nearest ancestor of the cwd holding `agents.yml`, else the cwd. Each answer passes through the docs home, which is the artifacts repo while the repository belongs to a workspace."""
     if repo_dir:
         return docs_home_or(Path(repo_dir).resolve())
     here = Path.cwd().resolve()
     for candidate in [here, *here.parents]:
-        if (candidate / "agents.yml").exists() or (candidate / "docs" / "epics").is_dir():
+        if (candidate / "agents.yml").exists():
             return docs_home_or(candidate)
     return docs_home_or(here)
 
@@ -36,7 +36,7 @@ def _rel(root: str | Path, target: Path) -> str:
 
 
 def epics_dir(root: str | Path) -> str:
-    """Where epics live, repo-relative — ostler's answer, `docs/epics`."""
+    """Where epics live — ostler's answer, `epics/` under the artifacts dir, repo-relative only when the artifacts dir sits inside the repo."""
     return _rel(root, okf_path.epics_root_in(Path(root)))
 
 

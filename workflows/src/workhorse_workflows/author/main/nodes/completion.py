@@ -1,4 +1,4 @@
-"""The completion gate's evidence: the contract the run started from, and the rows it left unfinished."""
+"""The completion gate's evidence: the contract and the epics the run started from, and the rows it left unfinished."""
 from __future__ import annotations
 
 import logging
@@ -6,9 +6,17 @@ from pathlib import Path
 
 from workhorse.worklist import WORK_FILE, JsonBackend, WorkList
 from workhorse_workflows.author.main.nodes._blueprint import blueprint
+from workhorse_workflows.author.shared import paths
+from workhorse_workflows.author.shared.baseline import epic_scopes
 from workhorse_workflows.author.shared.digests import milestone_body_digest
-from workhorse_workflows.author.shared.paths import survey_repo_root
-from workhorse_workflows.author.shared.schemas.main import Completion, ContractDigest, UnfinishedRow
+from workhorse_workflows.author.shared.paths import launch_repo_root, survey_repo_root
+from workhorse_workflows.author.shared.schemas.main import (
+    Completion,
+    ContractDigest,
+    EpicBaseline,
+    EpicScope,
+    UnfinishedRow,
+)
 
 
 @blueprint.node
@@ -21,6 +29,21 @@ def contract_digest(
     digest = milestone_body_digest(survey_repo_root(repo_dir), milestone_path)
     logger.info("milestone contract digest %s", digest[:12])
     return ContractDigest(digest=digest)
+
+
+@blueprint.node
+def snapshot_epics(logger: logging.Logger, repo_dir: str = "") -> EpicBaseline:
+    """Each epic's seed ids and story slugs as the run found them, for the reconcile gate to measure drops against."""
+    root = launch_repo_root(repo_dir)
+    epics_path = root / paths.epics_dir(root)
+    scopes = epic_scopes(epics_path) if epics_path.is_dir() else {}
+    logger.info("%d epic(s) at run start", len(scopes))
+    return EpicBaseline(
+        epics={
+            epic: EpicScope(seeds=sorted(seeds), stories=sorted(stories))
+            for epic, (seeds, stories) in scopes.items()
+        }
+    )
 
 
 @blueprint.node
@@ -49,4 +72,4 @@ def check_completion(
     return Completion(matches=digest == baseline, digest=digest, unfinished=unfinished)
 
 
-__all__ = ["check_completion", "contract_digest"]
+__all__ = ["check_completion", "contract_digest", "snapshot_epics"]

@@ -49,8 +49,8 @@ It ends in one of these ways: the selected story has passed structural, groundin
 - kind: verify
 - run: validate story structure and feature-book grounding
 - verify: [check_story](../concepts/author-story-author-subflow.md#check_story)
-- code: `workflows/src/workhorse_workflows/author/shared/nodes/stories.py::validate_story` @61ad4510b612
-- code: `workflows/src/workhorse_workflows/author/shared/nodes/stories.py::check_story_grounding` @61ad4510b612
+- code: `workflows/src/workhorse_workflows/author/shared/nodes/stories.py::validate_story` @87bbe358d335
+- code: `workflows/src/workhorse_workflows/author/shared/nodes/stories.py::check_story_grounding` @87bbe358d335
 - code: `workflows/src/workhorse_workflows/author/shared/nodes/services.py::service_errors` @a4aea1835f7b
 - code: `workflows/src/workhorse_workflows/author/shared/nodes/services.py::ui_service_names` @a4aea1835f7b
 

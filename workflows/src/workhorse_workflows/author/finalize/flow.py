@@ -26,6 +26,7 @@ class Finalize(Workflow):
     """Run the normal epic-mode validation and commit the epics it passed."""
 
     operator_mode: str = "auto"
+    baseline: str = ""
 
     def setup(self) -> RunContext:
         """Resolve repository config for the branch the repo is already on."""
@@ -68,7 +69,7 @@ class Finalize(Workflow):
         return Continue(None, self.reconcile)
 
     def reconcile(self) -> Continue | Await:
-        report = self.call(verify_reconcile)
+        report = self.call(verify_reconcile, self.baseline)
         if report.holds or report.skipped:
             return Continue(report, self.integrity)
         return Await(self._context_path(), report.errors, self.integrity)
